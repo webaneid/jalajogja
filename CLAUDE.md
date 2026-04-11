@@ -191,6 +191,7 @@ app/(dashboard)/[tenant]/
 - [x] Auth system (login, register, multi-role)
 - [x] Shell UI (sidebar, header, user menu, mobile drawer)
 - [x] Modul Anggota (list, tambah, detail, edit, hapus dari cabang)
+- [x] Member Wizard 4-step (identitas, kontak+alamat, pendidikan, usaha)
 - [ ] Modul Website (pages + posts)
 - [ ] Modul Surat menyurat
 - [ ] Modul Keuangan/Ledger
@@ -303,14 +304,25 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Komponen `WilayahSelect` di `components/ui/wilayah-select.tsx` sebagai referensi implementasi
 - Data kecil (<100): filter client-side via CommandInput; data besar: lazy fetch on-open per level
 
+### [2025-04] Member Wizard Selesai
+- 4-step wizard: submit wajib di Step 1 (buat record), Step 2–4 opsional (bisa skip/diisi nanti)
+- WilayahSelect: lazy fetch per level (provinsi saat mount, kab/kec/desa on-select), 83k desa
+- Semua select pakai Combobox — standar UI aplikasi, bukan plain `<select>`
+- Cabang domisili otomatis dari context tenant (bukan pilihan user) — field read-only di UI
+- Dynamic list education & business: replace-all strategy (hapus semua lama → insert batch baru)
+- Alamat Indonesia/Luar Negeri: toggle pill button, mutual exclusive — LN simpan `country` text, wilayah di-null-kan; Indonesia sebaliknya. Berlaku untuk alamat rumah (Step 2) DAN alamat usaha (Step 4)
+- `addresses` table shared helper: menambah kolom `country` otomatis berlaku ke semua jenis alamat (rumah + usaha) di DB level — tapi UI dan action tetap harus diupdate manual per form
+- Sequence `public.member_number_seq` harus dibuat manual via raw SQL (tidak bisa di Drizzle schema)
+- Bug: `nextval('member_number_seq')` tanpa schema prefix gagal jika search_path tidak set — selalu pakai `nextval('public.member_number_seq')`
+
 ### [2025-04] Setup Awal
 - Struktur monorepo: apps/web + packages/db + packages/ui + packages/types
 - Bun sebagai package manager, bukan npm/yarn
 - Tailwind v4 tidak butuh tailwind.config.ts
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Schema alumni komprehensif (13 tabel baru) + seed wilayah 91k rows + 4 API endpoint cascading + WilayahSelect combobox component. 0 TypeScript errors.
-- State DB: fresh dengan migration 0001, data wilayah lengkap, data profesi 25 rows.
-- Komponen UI baru: `components/ui/wilayah-select.tsx` — cascading combobox 4 level (provinsi→kab→kec→desa), lazy fetch per level, hidden inputs untuk form submission
-- shadcn components tersedia: command, popover, button, dialog
-- Next step: Bangun MemberWizard 4-step (wizard shell → step1 identitas → step2 kontak+alamat → step3 pendidikan → step4 usaha)
+- Terakhir dikerjakan: Member Wizard 4-step selesai + toggle alamat Indonesia/Luar Negeri (rumah & usaha) + migration `addresses.country`. 0 TypeScript errors.
+- State DB: migration 0002 applied (`addresses.country` column). Data wilayah lengkap, data profesi 25 rows.
+- Commit terakhir: `ccdf38c` — feat: member wizard 4-step complete (16 files, +3812 lines)
+- Komponen wizard: `components/members/wizard/` — shell, step1–4. Edit shell: `member-edit-shell.tsx`
+- Next step: Modul Website (pages + posts) atau Modul Surat menyurat
