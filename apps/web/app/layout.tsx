@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Jalagon",
-  description: "Jalagon app",
+  title: "Jalajogja",
+  description: "Super-app untuk organisasi",
 };
 
 export default function RootLayout({

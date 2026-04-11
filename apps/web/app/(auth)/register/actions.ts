@@ -125,6 +125,7 @@ export async function registerAction(
     }
 
     const message = err instanceof Error ? err.message : "Terjadi kesalahan.";
+    console.error("[registerAction] GAGAL:", { slug, userId: tenantId, err });
     return { success: false, error: `Gagal membuat organisasi: ${message}` };
   }
 }

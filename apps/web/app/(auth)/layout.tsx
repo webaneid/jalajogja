@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentSession } from "@/lib/tenant";
+import { getCurrentSession, getFirstTenantForUser } from "@/lib/tenant";
 
 export default async function AuthLayout({
   children,
@@ -8,9 +8,15 @@ export default async function AuthLayout({
 }) {
   const session = await getCurrentSession();
 
-  // Hard redirect jika sudah login — jangan tampilkan form login/register
+  // Jika sudah login, cek apakah sudah punya tenant
+  // Jika punya → langsung ke dashboard (tidak perlu lihat form auth)
+  // Jika belum punya → biarkan akses /register untuk melengkapi pendaftaran
   if (session?.user) {
-    redirect("/dashboard-redirect");
+    const slug = await getFirstTenantForUser();
+    if (slug) {
+      redirect(`/${slug}/dashboard`);
+    }
+    // Belum punya tenant → lanjut render (tampilkan /register)
   }
 
   return (

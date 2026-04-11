@@ -15,6 +15,7 @@
 - ORM: Drizzle ORM
 - Auth: Better Auth
 - Styling: Tailwind CSS v4 + shadcn/ui
+- Icons: lucide-react
 - Payment: Midtrans, Xendit, iPaymu (manual confirm + QRIS)
 - Storage: MinIO (self-hosted)
 - Deploy: Docker + Nginx di VPS
@@ -24,7 +25,7 @@
 2. SELALU pertimbangkan implikasi multi-tenant di setiap keputusan
 3. Pecah task besar menjadi sub-steps yang jelas
 4. Jika ada lebih dari satu solusi, tampilkan trade-off-nya
-5. Setelah setiap task selesai, update section Lessons Learned
+5. Setelah setiap task selesai, update CLAUDE.md — lessons learned + context sesi
 6. Jika menemukan bug atau masalah, catat polanya agar tidak terulang
 7. Selalu tanya konfirmasi sebelum mengubah arsitektur atau keputusan besar
 
@@ -38,10 +39,15 @@
 
 ## Keputusan Arsitektur yang Sudah Dikunci
 - Multi-tenant: schema isolation per tenant (bukan row-level tenant_id)
+- **Member data: terpusat di `public.members`** — bukan di tenant schema
+- **Akses member: dikontrol via `public.tenant_memberships`** — tenant hanya lihat member mereka sendiri
+- Super admin jalajogja: akses semua `public.members` tanpa filter
 - Payment: semua butuh konfirmasi manual (cash/transfer/QRIS/gateway)
 - Storage: self-hosted MinIO di VPS
 - Auth: Better Auth dengan Drizzle adapter
 - Monorepo: Turborepo dengan workspace Bun
+- Port dev: 6202 (frontend + API dalam satu Next.js app). Jalankan: `bun run dev --filter=@jalajogja/web`
+- Port 6201: dicadangkan untuk API server terpisah di masa depan
 
 ## Keputusan Teknis Database
 
@@ -66,15 +72,13 @@ Gunakan `text` column dengan TypeScript enum constraint, **bukan** `pgEnum`:
 status: text("status", { enum: ["draft", "published"] }).notNull().default("draft")
 ```
 Alasan: `pgEnum` bersifat schema-scoped di PostgreSQL → ratusan tenant = ribuan enum objects.
-Validasi dilakukan di aplikasi layer.
 
 ### drizzle-kit: Public Schema Only
-`drizzle-kit` hanya mengelola **public schema**. `drizzle.config.ts` diarahkan ke `schema/public/`.
-Tenant schema dibuat programmatically via `createTenantSchemaInDb(db, slug)` — dipanggil saat tenant baru dibuat, bukan via migration file.
+`drizzle-kit` hanya mengelola **public schema**. Tenant schema dibuat programmatically via
+`createTenantSchemaInDb(db, slug)` — dipanggil saat tenant baru dibuat, bukan via migration file.
 
 ### Double-Entry Accounting + Helpers
-Keuangan pakai double-entry dari awal (transactions + transaction_entries).
-Helper di `packages/db/src/helpers/finance.ts` agar user tidak perlu input debit/kredit manual:
+Helper di `packages/db/src/helpers/finance.ts`:
 - `recordExpense(db, schema, { amount, expenseAccountId, cashAccountId, ... })`
 - `recordIncome(db, schema, { amount, incomeAccountId, cashAccountId, ... })`
 - `recordTransfer(db, schema, { amount, fromAccountId, toAccountId, ... })`
@@ -82,7 +86,37 @@ Helper di `packages/db/src/helpers/finance.ts` agar user tidak perlu input debit
 ### Better Auth Tables: Public Schema
 Tabel auth (user, session, account, verification) ada di `public` schema.
 Satu user bisa akses multiple tenant. Mapping role per tenant ada di `tenant_{slug}.users`.
-Auth schema diekspor dari `@jalajogja/db` untuk dipakai di `apps/web/lib/auth.ts`.
+
+### Arsitektur Member: Federated Identity
+Data anggota dipisah menjadi dua lapisan:
+
+```
+public.members           → identitas global (siapa orangnya)
+  - id, member_number, stambuk_number, nik
+  - name, gender, birth_place, birth_date
+  - phone, email, address, photo_url
+
+public.tenant_memberships → relasi (anggota ini di cabang mana)
+  - tenant_id, member_id
+  - status (active/inactive/alumni), joined_at, registered_via
+
+public.member_number_seq  → PostgreSQL SEQUENCE global (atomic, tidak duplikat)
+```
+
+**Aturan akses (application-level, bukan PostgreSQL RLS):**
+- Query tenant: selalu JOIN ke `tenant_memberships WHERE tenant_id = {id_tenant_ini}`
+- Super admin: query `public.members` langsung tanpa filter
+- Tenant tidak bisa lihat member tenant lain meskipun datanya ada di tabel yang sama
+
+**Format nomor anggota:**
+```
+{tahun_daftar} + {DDMMYYYY_lahir} + {00001..99999}
+Contoh: lahir 26-10-1981, daftar 2025, urutan ke-1 → 202526101981 00001
+```
+Generator: `generateMemberNumber(db, birthDate, year?)` di `packages/db/src/helpers/member-number.ts`
+
+**Tenant schema TIDAK lagi punya tabel members.**
+`orders.customer_id` dan `tenant.users.member_id` merujuk ke `public.members.id`.
 
 ### Struktur File packages/db/src/
 ```
@@ -91,27 +125,83 @@ src/
 ├── client.ts              ← public schema db instance
 ├── tenant-client.ts       ← factory: createTenantDb(slug)
 ├── schema/
-│   ├── public/            ← auth.ts, tenants.ts
-│   └── tenant/            ← factory tables: users, members, website,
-│                             letters, finance, shop, settings
+│   ├── public/            ← auth.ts, tenants.ts, members.ts, tenant-memberships.ts
+│   └── tenant/            ← factory tables: users, website, letters, finance, shop, settings
+│                             (members TIDAK ADA di sini — sudah dipindah ke public)
 └── helpers/
-    └── finance.ts         ← double-entry helper functions
+    ├── finance.ts         ← double-entry helper functions
+    ├── member-number.ts   ← generateMemberNumber() via PostgreSQL SEQUENCE
+    └── create-tenant-schema.ts ← DDL provisioning tenant baru
 ```
 
 ### Orders & Payment
 `member_id` di `orders` nullable — untuk donasi dari luar yang tidak perlu login.
 Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 
+## Arsitektur Shell UI Dashboard
+
+### Struktur Komponen
+```
+components/dashboard/
+├── sidebar.tsx         — sidebar desktop, SERVER component
+├── sidebar-nav.tsx     — nav items + active state, CLIENT component (butuh usePathname)
+├── user-menu.tsx       — dropdown user + sign out, CLIENT component (butuh signOut + useState)
+├── mobile-sidebar.tsx  — drawer overlay mobile, CLIENT component (butuh useState)
+└── header.tsx          — tidak dipakai langsung; UserMenu di-embed langsung di layout
+```
+
+### Struktur Route Dashboard
+```
+app/(dashboard)/[tenant]/
+├── layout.tsx              → wraps SEMUA halaman /{slug}/* — auth check di sini
+├── page.tsx                → /{slug} → redirect ke /{slug}/dashboard
+├── dashboard/
+│   └── page.tsx            → /{slug}/dashboard
+├── members/
+│   ├── actions.ts          → Server Actions: create, update, removeMemberFromTenant
+│   ├── page.tsx            → /{slug}/members — list + search + filter + pagination
+│   ├── new/page.tsx        → /{slug}/members/new — form tambah anggota
+│   └── [id]/
+│       ├── page.tsx        → /{slug}/members/{id} — detail anggota
+│       ├── delete-button.tsx → CLIENT component, inline confirm
+│       └── edit/page.tsx   → /{slug}/members/{id}/edit — form edit anggota
+├── website/                → (belum dibuat)
+├── letters/                → (belum dibuat)
+├── finance/                → (belum dibuat)
+├── shop/                   → (belum dibuat)
+└── settings/               → (belum dibuat)
+```
+
+### Pola Layout Dashboard
+- `TenantLayout` mengambil `session` + `getTenantAccess()` satu kali untuk semua child
+- Child page tidak perlu query ulang data tenant/user dasar
+- Data spesifik modul (list anggota, dll) tetap diambil di page masing-masing
+
+## Status Project
+- [x] Setup monorepo & dependencies
+- [x] Database schema (public + tenant schema)
+- [x] Auth system (login, register, multi-role)
+- [x] Shell UI (sidebar, header, user menu, mobile drawer)
+- [x] Modul Anggota (list, tambah, detail, edit, hapus dari cabang)
+- [ ] Modul Website (pages + posts)
+- [ ] Modul Surat menyurat
+- [ ] Modul Keuangan/Ledger
+- [ ] Modul Toko
+- [ ] Payment integration
+- [ ] Modul Pengaturan
+- [ ] Docker deployment
+
+## Technical Debt
+- `getFirstTenantForUser()` loop O(n) — perlu tabel `public.user_tenant_index` saat tenant > 100
+- `check-slug` endpoint perlu rate limiting per-IP (saat ini hanya referer check)
+- `getTenantAccess()` dipanggil di layout DAN page — perlu `React.cache()` saat query makin banyak
+
 ## Lessons Learned
-<!-- Update bagian ini setelah setiap task penting -->
 
 ### [2025-04] Database Schema Selesai
-- 18 file schema dibuat: public (auth, tenants) + tenant (users, members, website, letters, finance, shop, settings)
+- 18 file schema: public (auth, tenants) + tenant (users, members, website, letters, finance, shop, settings)
 - Pattern: getTenantSchema(slug) dengan in-memory cache
-- Shared postgresClient — satu connection pool untuk public dan tenant
 - drizzle-kit hanya kelola public schema, tenant schema via createTenantSchemaInDb()
-- Finance helpers: recordExpense, recordIncome, recordTransfer, recordJournal, getNextLetterNumber
-- Bug yang dihindari: month dari parameter bukan new Date(), composite PK di pivot tables, unique constraint di sequences
 - schemaFilter: ["public"] di drizzle.config.ts wajib ada untuk proteksi tenant schemas
 
 ### [2025-04] Auth System Selesai
@@ -119,36 +209,93 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 - Register flow: Better Auth signUp → Server Action buat tenant + schema
 - Security fix: userId diambil dari session server, bukan dari client
 - Rollback mechanism: gagal buat schema → hapus tenant dari public
-- check-slug endpoint dengan referer validation
 - params di Next.js 15 adalah Promise<> — wajib await
-- getTenantAccess() belum di-cache — technical debt
+
+### [2025-04] Bug: Port Change → BETTER_AUTH_URL Harus Ikut Diganti
+- Error: "An unexpected response was received from the server" dari Better Auth client
+- Artinya: server return HTML (bukan JSON) — biasanya karena port mismatch atau DB error
+- Setiap ganti port: update `BETTER_AUTH_URL` + `NEXT_PUBLIC_APP_URL` di `.env.local`, restart server, clear cookie browser
+
+### [2025-04] Bug: Infinite Redirect Loop — "Partial Registration" State
+**Skenario**: `signUp.email()` berhasil, tapi `registerAction` (buat tenant) gagal → user punya session tapi tidak punya tenant.
+
+**Root cause**: Auth gate diduplikasi di dua tempat yang saling bertabrakan:
+1. `middleware.ts` blok `/register` → redirect `/dashboard-redirect`
+2. `AuthLayout` JUGA redirect semua user login → `/dashboard-redirect`
+3. `/dashboard-redirect` tidak ada tenant → redirect ke `/register?error=no-tenant`
+4. Loop tak henti
+
+**Fix**:
+- `middleware.ts`: hapus `/register` dari `AUTH_PAGES`
+- `AuthLayout`: cek tenant dulu. Punya tenant → redirect dashboard. Belum → render halaman
+- `register/page.tsx`: jika email sudah ada, skip `signUp`, langsung ke `registerAction`
+
+**Pelajaran utama**:
+- Auth gate JANGAN diduplikasi di middleware DAN layout tanpa koordinasi
+- Selalu pikirkan "partial state": jika step 1 berhasil tapi step 2 gagal, user bisa recover
+- Setiap redirect chain harus punya exit condition — hindari pola A → B → A
+
+### [2025-04] Bug: 404 pada `/{slug}/dashboard`
+- `app/(dashboard)/[tenant]/page.tsx` hanya menangani `/{slug}`, bukan `/{slug}/dashboard`
+- Solusi: buat subfolder `dashboard/` → `app/(dashboard)/[tenant]/dashboard/page.tsx`
+- Root `[tenant]/page.tsx` dijadikan redirect ke `/{slug}/dashboard`
+
+**Aturan route Next.js App Router**:
+```
+[tenant]/page.tsx            → /{slug}
+[tenant]/dashboard/page.tsx  → /{slug}/dashboard
+[tenant]/members/page.tsx    → /{slug}/members
+```
+Setiap modul baru = subfolder baru di dalam `[tenant]/`.
+
+**Client vs Server component**:
+- `usePathname`, `useState`, `useRouter`, `signOut` → wajib `"use client"`
+- Data fetching DB → server component. Jangan jadikan seluruh layout client hanya karena satu bagian kecil butuh interaktivitas — pecah jadi komponen terpisah
+
+### [2025-04] Shell UI Selesai
+- Sidebar desktop: server component, SidebarNav (client) untuk `usePathname` active state
+- Mobile drawer: client component, render `<Sidebar>` dalam overlay — tidak duplikasi markup
+- UserMenu: dropdown dengan inisial avatar, role badge, tombol keluar via Better Auth `signOut`
+- Layout TenantLayout mengambil session + tenant 1× — child pages tidak perlu query ulang
+- `dashboard/page.tsx` terpisah dari `page.tsx` — root redirect, dashboard content di subfolder
+
+### [2025-04] Modul Anggota Selesai
+- 3 Server Actions: `createMemberAction`, `updateMemberAction`, `removeMemberFromTenantAction`
+- Semua action: validasi `getTenantAccess()` terlebih dahulu — tidak ada aksi tanpa auth tenant
+- Update: dua query (update `public.members` + update `public.tenant_memberships`) — selalu atomik berurutan
+- Delete: hanya hapus dari `tenant_memberships` — data identitas global terlindungi
+- NIK duplicate error: deteksi via constraint name `members_nik_not_null_unique` di catch block
+- Form: MemberForm shared antara new + edit — `defaultValues` prop untuk pre-fill, `memberId` untuk teks tombol
+- `joinedAt` default = `today()` client-side — tidak dari server untuk hindari hydration mismatch
+
+### [2025-04] Keputusan Besar: Sentralisasi Data Anggota
+**Konteks**: Visi jalajogja sebagai ekosistem big data alumni Gontor lintas cabang IKPM.
+
+**Masalah dengan arsitektur lama**: Member di tenant schema → data terisolasi per cabang → tidak bisa deteksi duplikasi anggota lintas cabang → tidak bisa global member number.
+
+**Keputusan**: Member data dipindah ke `public` schema dengan akses dikontrol application-level:
+- `public.members` = single source of truth identitas anggota
+- `public.tenant_memberships` = junction table siapa anggota di cabang mana
+- Tenant hanya query member yang ada di tenant_memberships mereka
+
+**Implikasi ke kode**:
+- `tenant_{slug}.members` dihapus dari semua tenant schema
+- `createTenantSchemaInDb` tidak lagi buat tabel members
+- `generateMemberNumber()` pakai PostgreSQL SEQUENCE yang atomic
+- DB di-reset total karena perubahan fundamental (data masih kosong, aman)
+
+**Setelah reset DB**: user harus clear cookie browser dan register ulang.
+
+**Pelajaran**: Saat data adalah "shared entity" lintas tenant (orang yang sama bisa di banyak cabang), data itu harus di public schema dengan access control di aplikasi — bukan di tenant schema yang terisolasi.
 
 ### [2025-04] Setup Awal
 - Struktur monorepo: apps/web + packages/db + packages/ui + packages/types
-- Multi-tenant strategy: schema-per-tenant di PostgreSQL
 - Bun sebagai package manager, bukan npm/yarn
 - Tailwind v4 tidak butuh tailwind.config.ts
 
-## Status Project
-- [x] Setup monorepo & dependencies
-- [x] Database schema (public + tenant schema)
-- [x] Auth system (login, register, multi-role)
-- [ ] Website module (pages + posts)
-- [ ] Surat menyurat module
-- [ ] Database anggota module
-- [ ] Ledger/keuangan module
-- [ ] Online shop module
-- [ ] Payment integration
-- [ ] Settings module
-- [ ] Docker deployment
-
-## Technical Debt
-- `getFirstTenantForUser()` loop O(n) di `apps/web/lib/tenant.ts` — perlu tabel `public.user_tenant_index` saat jumlah tenant > 100. Saat ini dibatasi `.limit(100)` sebagai safeguard.
-- `check-slug` endpoint perlu rate limiting per-IP saat production. Saat ini hanya ada referer check sebagai abuse prevention dasar. Ganti dengan Redis + sliding window counter.
-- `getTenantAccess()` dipanggil di layout DAN page — perlu di-wrap dengan React `cache()` saat sidebar mulai butuh data yang sama (saat ini dua DB query per request).
-
 ## Context Sesi Terakhir
-<!-- Claude update bagian ini di akhir setiap sesi -->
-- Terakhir dikerjakan: Database schema selesai (18 file), type-check dijalankan
-- Pending: lihat hasil type-check, fix errors jika ada
-- Next step: Auth system (login, register, multi-role)
+- Terakhir dikerjakan: Modul Anggota selesai (list, tambah, detail, edit, hapus dari cabang). Review kode lengkap dilakukan — 0 TypeScript errors.
+- State DB: fresh, siap pakai. Jika reset DB, user harus clear cookie + register ulang.
+- Komponen anggota: MemberForm di `components/members/member-form.tsx` (shared untuk new + edit)
+- Pola delete anggota: hapus dari `tenant_memberships` saja — data global `public.members` tetap aman
+- Next step: Modul Website (pages + posts) atau modul lain sesuai prioritas user

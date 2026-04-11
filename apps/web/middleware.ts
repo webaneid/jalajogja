@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 const PROTECTED_PATTERN = /^\/[a-z0-9-]+\/(dashboard|members|letters|finance|shop|settings)/;
 
 // Route yang tidak boleh diakses kalau sudah login (auth pages)
-const AUTH_PAGES = ["/login", "/register"];
+// /register TIDAK diblok — user yang login tapi belum punya tenant perlu akses ke sini
+const AUTH_PAGES = ["/login"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

@@ -1,9 +1,5 @@
-"use client";
+import { createAuthClient } from "better-auth/client";
 
-import { createAuthClient } from "better-auth/react";
-
-export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_APP_URL,
-});
-
-export const { signIn, signOut, signUp, useSession } = authClient;
+// Tanpa baseURL — otomatis pakai window.location.origin
+// Ini berarti selalu benar, tidak peduli port berubah saat dev
+export const { signIn, signUp, signOut, useSession } = createAuthClient();

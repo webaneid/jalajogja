@@ -22,7 +22,8 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 hari dalam detik
   },
-  trustedOrigins: [process.env.NEXT_PUBLIC_APP_URL!],
+  // trustedOrigins dikonfigurasi via BETTER_AUTH_URL — tidak perlu di-hardcode
+  // TODO: set BETTER_AUTH_URL ke domain production saat deploy
 });
 
 export type Auth = typeof auth;

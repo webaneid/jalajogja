@@ -88,8 +88,17 @@ export default function RegisterPage() {
       const { error: signUpError } = await signUp.email({ name, email, password });
 
       if (signUpError) {
-        setError(signUpError.message ?? "Gagal membuat akun.");
-        return;
+        // Jika email sudah terdaftar, user mungkin sudah punya akun tapi belum punya tenant
+        // Lanjutkan ke langkah 2 — registerAction akan ambil session dari server
+        const isEmailTaken =
+          signUpError.code === "USER_ALREADY_EXISTS" ||
+          (signUpError.message ?? "").toLowerCase().includes("already");
+
+        if (!isEmailTaken) {
+          setError(signUpError.message ?? "Gagal membuat akun.");
+          return;
+        }
+        // Jika email sudah ada → lanjut buat tenant saja (user sudah login sebelumnya)
       }
 
       // Langkah 2: Buat tenant + schema via Server Action
@@ -150,7 +159,7 @@ export default function RegisterPage() {
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm
                          focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="Ahmad Fauzi"
+              placeholder="Wasugi Spinker"
             />
           </div>
 
@@ -167,7 +176,7 @@ export default function RegisterPage() {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm
                          focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="ahmad@ikpm.or.id"
+              placeholder="wasugi@webane.com"
             />
           </div>
 
@@ -208,7 +217,7 @@ export default function RegisterPage() {
               onChange={(e) => setOrgName(e.target.value)}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm
                          focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="IKPM Cabang Jakarta"
+              placeholder="PC IKPM Jogjakarta"
             />
           </div>
 
@@ -232,7 +241,7 @@ export default function RegisterPage() {
               }}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm
                          focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="ikpm-jakarta"
+              placeholder="ikpm-jogja"
             />
             {slugStatus !== "idle" && (
               <p className={`mt-1 text-xs ${slugStatusColor[slugStatus]}`}>

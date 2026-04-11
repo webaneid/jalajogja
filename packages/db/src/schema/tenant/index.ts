@@ -1,6 +1,5 @@
 import { pgSchema } from "drizzle-orm/pg-core";
 import { createUsersTable } from "./users";
-import { createMembersTable, createMemberCategoriesTable, createMemberCategoryPivotTable } from "./members";
 import { createPagesTable, createPostCategoriesTable, createPostsTable, createPostTagsTable, createPostTagPivotTable, createMediaTable } from "./website";
 import { createLettersTable, createLetterNumberSequencesTable } from "./letters";
 import { createAccountsTable, createTransactionsTable, createTransactionEntriesTable, createBudgetsTable, createBudgetItemsTable, createPaymentConfirmationsTable } from "./finance";
@@ -13,12 +12,8 @@ const schemaCache = new Map<string, TenantSchema>();
 function buildTenantSchema(slug: string) {
   const s = pgSchema(`tenant_${slug}`);
   return {
-    // Auth & akses
+    // Akses dashboard per tenant (pemetaan Better Auth user → role)
     users: createUsersTable(s),
-    // Anggota
-    members: createMembersTable(s),
-    memberCategories: createMemberCategoriesTable(s),
-    memberCategoryPivot: createMemberCategoryPivotTable(s),
     // Website
     pages: createPagesTable(s),
     postCategories: createPostCategoriesTable(s),
@@ -58,9 +53,7 @@ export function getTenantSchema(slug: string): TenantSchema {
 
 export type TenantSchema = ReturnType<typeof buildTenantSchema>;
 
-// Re-export semua constants & types dari modul tenant
 export * from "./users";
-export * from "./members";
 export * from "./website";
 export * from "./letters";
 export * from "./finance";

@@ -18,3 +18,6 @@ export {
   recordTransfer,
   getNextLetterNumber,
 } from "./helpers/finance";
+
+// Member number generator (global sequence)
+export { generateMemberNumber } from "./helpers/member-number";
