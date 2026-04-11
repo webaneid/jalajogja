@@ -33,7 +33,6 @@ export default async function MemberDetailPage({
   const access = await getTenantAccess(slug);
   if (!access) redirect("/dashboard-redirect");
 
-  // Ambil member + data keanggotaan sekaligus
   const [row] = await db
     .select({
       id: members.id,
@@ -42,11 +41,9 @@ export default async function MemberDetailPage({
       nik: members.nik,
       name: members.name,
       gender: members.gender,
-      birthPlace: members.birthPlace,
+      birthPlaceText: members.birthPlaceText,
       birthDate: members.birthDate,
-      phone: members.phone,
-      email: members.email,
-      address: members.address,
+      graduationYear: members.graduationYear,
       status: tenantMemberships.status,
       joinedAt: tenantMemberships.joinedAt,
       registeredVia: tenantMemberships.registeredVia,
@@ -108,20 +105,9 @@ export default async function MemberDetailPage({
           <Row label="Nomor Stambuk" value={row.stambukNumber} />
           <Row label="NIK" value={row.nik} />
           <Row label="Jenis Kelamin" value={row.gender ? GENDER_LABEL[row.gender] : null} />
-          <Row label="Tempat Lahir" value={row.birthPlace} />
+          <Row label="Tempat Lahir" value={row.birthPlaceText} />
           <Row label="Tanggal Lahir" value={row.birthDate} />
-        </dl>
-      </section>
-
-      {/* Kontak */}
-      <section className="rounded-xl border bg-card p-5 mb-4">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Kontak
-        </h2>
-        <dl>
-          <Row label="Telepon" value={row.phone} />
-          <Row label="Email" value={row.email} />
-          <Row label="Alamat" value={row.address} />
+          <Row label="Tahun Lulus Gontor" value={row.graduationYear?.toString()} />
         </dl>
       </section>
 

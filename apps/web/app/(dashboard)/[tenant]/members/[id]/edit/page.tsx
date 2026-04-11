@@ -23,11 +23,9 @@ export default async function EditMemberPage({
       stambukNumber: members.stambukNumber,
       nik: members.nik,
       gender: members.gender,
-      birthPlace: members.birthPlace,
+      birthPlaceText: members.birthPlaceText,
       birthDate: members.birthDate,
-      phone: members.phone,
-      email: members.email,
-      address: members.address,
+      graduationYear: members.graduationYear,
       status: tenantMemberships.status,
       joinedAt: tenantMemberships.joinedAt,
     })
@@ -44,7 +42,6 @@ export default async function EditMemberPage({
 
   if (!row) notFound();
 
-  // Bind memberId ke updateMemberAction agar form tidak perlu tahu
   async function handleUpdate(slug: string, data: Parameters<typeof updateMemberAction>[2]) {
     "use server";
     return updateMemberAction(slug, memberId, data);
@@ -69,11 +66,9 @@ export default async function EditMemberPage({
           stambukNumber: row.stambukNumber ?? undefined,
           nik: row.nik ?? undefined,
           gender: row.gender as "male" | "female" | undefined,
-          birthPlace: row.birthPlace ?? undefined,
+          birthPlaceText: row.birthPlaceText ?? undefined,
           birthDate: row.birthDate ?? undefined,
-          phone: row.phone ?? undefined,
-          email: row.email ?? undefined,
-          address: row.address ?? undefined,
+          graduationYear: row.graduationYear ?? undefined,
           status: row.status as "active" | "inactive" | "alumni" | undefined,
           joinedAt: row.joinedAt ?? undefined,
         }}

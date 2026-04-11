@@ -48,7 +48,6 @@ export default async function MembersPage({
       stambukNumber: members.stambukNumber,
       name: members.name,
       gender: members.gender,
-      phone: members.phone,
       status: tenantMemberships.status,
       joinedAt: tenantMemberships.joinedAt,
     })
@@ -115,7 +114,6 @@ export default async function MembersPage({
                          focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          {/* Pertahankan filter status saat search */}
           {status && <input type="hidden" name="status" value={status} />}
           <button
             type="submit"
@@ -165,7 +163,6 @@ export default async function MembersPage({
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Stambuk</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">No. Anggota</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">L/P</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Telepon</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
               </tr>
             </thead>
@@ -187,7 +184,6 @@ export default async function MembersPage({
                   <td className="px-4 py-3 text-muted-foreground">
                     {m.gender ? GENDER_LABEL[m.gender] : "—"}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{m.phone ?? "—"}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium
                       ${STATUS_COLOR[m.status ?? "active"]}`}>

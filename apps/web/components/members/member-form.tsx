@@ -13,11 +13,13 @@ type MemberFormProps = {
   >;
 };
 
-// Format Date → YYYY-MM-DD untuk input[type=date]
 function today(): string {
   return new Date().toISOString().split("T")[0];
 }
 
+// Catatan: Ini adalah Step 1 dari form wizard anggota (data wajib + dasar).
+// Step 2 (kontak & domisili), Step 3 (pendidikan), Step 4 (usaha) akan
+// diimplementasikan terpisah menggunakan helper tables (contacts, addresses, dll).
 export function MemberForm({ slug, defaultValues = {}, memberId, onSubmit }: MemberFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -28,16 +30,15 @@ export function MemberForm({ slug, defaultValues = {}, memberId, onSubmit }: Mem
     setError("");
 
     const fd = new FormData(e.currentTarget);
+    const graduationYearRaw = fd.get("graduationYear") as string;
     const data: MemberFormData = {
       name: fd.get("name") as string,
       stambukNumber: fd.get("stambukNumber") as string,
       nik: fd.get("nik") as string,
       gender: (fd.get("gender") as "male" | "female") || undefined,
-      birthPlace: fd.get("birthPlace") as string,
+      birthPlaceText: fd.get("birthPlaceText") as string,
       birthDate: fd.get("birthDate") as string,
-      phone: fd.get("phone") as string,
-      email: fd.get("email") as string,
-      address: fd.get("address") as string,
+      graduationYear: graduationYearRaw ? parseInt(graduationYearRaw) : undefined,
       status: (fd.get("status") as "active" | "inactive" | "alumni") || "active",
       joinedAt: fd.get("joinedAt") as string,
     };
@@ -73,7 +74,7 @@ export function MemberForm({ slug, defaultValues = {}, memberId, onSubmit }: Mem
           <div>
             <label className={label}>Nomor Stambuk</label>
             <input name="stambukNumber" defaultValue={defaultValues.stambukNumber} className={field} placeholder="cth: 4321" />
-            <p className="mt-1 text-xs text-muted-foreground">Nomor santri di Pondok Gontor</p>
+            <p className="mt-1 text-xs text-muted-foreground">Nomor santri di PM Gontor</p>
           </div>
 
           <div>
@@ -91,38 +92,27 @@ export function MemberForm({ slug, defaultValues = {}, memberId, onSubmit }: Mem
           </div>
 
           <div>
+            <label className={label}>Tahun Lulus Gontor</label>
+            <input
+              name="graduationYear"
+              type="number"
+              min={1950}
+              max={new Date().getFullYear()}
+              defaultValue={defaultValues.graduationYear}
+              className={field}
+              placeholder="cth: 2005"
+            />
+          </div>
+
+          <div>
             <label className={label}>Tempat Lahir</label>
-            <input name="birthPlace" defaultValue={defaultValues.birthPlace} className={field} placeholder="Yogyakarta" />
+            <input name="birthPlaceText" defaultValue={defaultValues.birthPlaceText} className={field} placeholder="Yogyakarta" />
+            <p className="mt-1 text-xs text-muted-foreground">Kota/kabupaten atau negara jika lahir di luar negeri</p>
           </div>
 
           <div>
             <label className={label}>Tanggal Lahir</label>
             <input name="birthDate" type="date" defaultValue={defaultValues.birthDate} className={field} />
-          </div>
-
-        </div>
-      </section>
-
-      {/* ── Kontak ── */}
-      <section className="rounded-xl border bg-card p-5">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Kontak
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-
-          <div>
-            <label className={label}>Telepon / WhatsApp</label>
-            <input name="phone" type="tel" defaultValue={defaultValues.phone} className={field} placeholder="08xx-xxxx-xxxx" />
-          </div>
-
-          <div>
-            <label className={label}>Email</label>
-            <input name="email" type="email" defaultValue={defaultValues.email} className={field} placeholder="email@contoh.com" />
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className={label}>Alamat</label>
-            <textarea name="address" defaultValue={defaultValues.address} className={`${field} min-h-[80px] resize-none`} placeholder="Jl. Contoh No. 1, Kota, Provinsi" />
           </div>
 
         </div>
@@ -156,6 +146,11 @@ export function MemberForm({ slug, defaultValues = {}, memberId, onSubmit }: Mem
 
         </div>
       </section>
+
+      {/* Informasi wizard */}
+      <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+        Data kontak, alamat, riwayat pendidikan, dan informasi usaha dapat dilengkapi setelah anggota tersimpan.
+      </div>
 
       {/* Error */}
       {error && (

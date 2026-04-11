@@ -11,20 +11,21 @@ import {
 import { getTenantAccess } from "@/lib/tenant";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
+// Catatan: phone/email/address sudah dipindah ke helper tables (contacts, addresses)
+// MemberFormData ini untuk Step 1 form wizard — data wajib + data pribadi dasar
+// Step 2–4 (kontak, pendidikan, usaha) akan ditangani oleh actions terpisah
 
 export type MemberFormData = {
   name: string;
   stambukNumber?: string;
   nik?: string;
   gender?: "male" | "female";
-  birthPlace?: string;
-  birthDate?: string;       // YYYY-MM-DD
-  phone?: string;
-  email?: string;
-  address?: string;
+  birthPlaceText?: string;     // Teks bebas: kota lahir atau negara jika LN
+  birthDate?: string;          // YYYY-MM-DD
+  graduationYear?: number;     // Tahun lulus/keluar PM Gontor
   // Data keanggotaan cabang
   status?: "active" | "inactive" | "alumni";
-  joinedAt?: string;        // YYYY-MM-DD
+  joinedAt?: string;           // YYYY-MM-DD
 };
 
 type ActionResult =
@@ -39,11 +40,9 @@ function sanitize(data: MemberFormData) {
     stambukNumber: data.stambukNumber?.trim() || null,
     nik: data.nik?.trim() || null,
     gender: data.gender || null,
-    birthPlace: data.birthPlace?.trim() || null,
+    birthPlaceText: data.birthPlaceText?.trim() || null,
     birthDate: data.birthDate || null,
-    phone: data.phone?.trim() || null,
-    email: data.email?.trim() || null,
-    address: data.address?.trim() || null,
+    graduationYear: data.graduationYear || null,
   };
 }
 
@@ -87,7 +86,6 @@ export async function createMemberAction(
   } catch (err) {
     console.error("[createMemberAction]", err);
     const msg = err instanceof Error ? err.message : "Gagal menyimpan.";
-    // Deteksi duplikat NIK
     if (msg.includes("members_nik_not_null_unique")) {
       return { success: false, error: "NIK sudah terdaftar di sistem." };
     }
