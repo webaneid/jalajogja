@@ -20,7 +20,8 @@ export * from "./member-businesses";
 export * from "./member-domicile-requests";
 export * from "./tenant-memberships";
 
-// ── Add-on system (platform-level) ────────────────────────────────────────────
+// ── Module + Add-on system (platform-level) ───────────────────────────────────
+export * from "./modules";
 export * from "./addons";
 export * from "./tenant-addon-installations";
 export * from "./addon-usage";
