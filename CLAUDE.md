@@ -37,6 +37,14 @@
 - Semua fungsi database wajib multi-tenant aware (gunakan tenant schema)
 - Penamaan: camelCase untuk variabel/fungsi, PascalCase untuk komponen/types
 
+## UI Standards
+- SEMUA dropdown/select wajib menggunakan Combobox (autocomplete), bukan plain `<select>` HTML
+- Implementasi: shadcn/ui Command + Popover pattern
+- Untuk data kecil (<100 items): filter client-side
+- Untuk data besar (>100 items, misal wilayah): server-side fetch per keystroke / on-open
+- Komponen standar: `components/ui/wilayah-select.tsx` untuk wilayah, generic combobox pattern untuk lainnya
+- Konsisten di seluruh aplikasi: wizard form, edit form, filter tabel, search, semua
+
 ## Keputusan Arsitektur yang Sudah Dikunci
 - Multi-tenant: schema isolation per tenant (bukan row-level tenant_id)
 - **Member data: terpusat di `public.members`** — bukan di tenant schema
@@ -288,14 +296,21 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 
 **Pelajaran**: Saat data adalah "shared entity" lintas tenant (orang yang sama bisa di banyak cabang), data itu harus di public schema dengan access control di aplikasi — bukan di tenant schema yang terisolasi.
 
+### [2025-04] UI Standard — Autocomplete
+- Semua select/dropdown pakai Combobox (shadcn Command + Popover)
+- Keputusan ini karena ref_villages 83k rows — plain select tidak feasible
+- Berlaku untuk SEMUA form di seluruh aplikasi, bukan hanya wilayah
+- Komponen `WilayahSelect` di `components/ui/wilayah-select.tsx` sebagai referensi implementasi
+- Data kecil (<100): filter client-side via CommandInput; data besar: lazy fetch on-open per level
+
 ### [2025-04] Setup Awal
 - Struktur monorepo: apps/web + packages/db + packages/ui + packages/types
 - Bun sebagai package manager, bukan npm/yarn
 - Tailwind v4 tidak butuh tailwind.config.ts
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Modul Anggota selesai (list, tambah, detail, edit, hapus dari cabang). Review kode lengkap dilakukan — 0 TypeScript errors.
-- State DB: fresh, siap pakai. Jika reset DB, user harus clear cookie + register ulang.
-- Komponen anggota: MemberForm di `components/members/member-form.tsx` (shared untuk new + edit)
-- Pola delete anggota: hapus dari `tenant_memberships` saja — data global `public.members` tetap aman
-- Next step: Modul Website (pages + posts) atau modul lain sesuai prioritas user
+- Terakhir dikerjakan: Schema alumni komprehensif (13 tabel baru) + seed wilayah 91k rows + 4 API endpoint cascading + WilayahSelect combobox component. 0 TypeScript errors.
+- State DB: fresh dengan migration 0001, data wilayah lengkap, data profesi 25 rows.
+- Komponen UI baru: `components/ui/wilayah-select.tsx` — cascading combobox 4 level (provinsi→kab→kec→desa), lazy fetch per level, hidden inputs untuk form submission
+- shadcn components tersedia: command, popover, button, dialog
+- Next step: Bangun MemberWizard 4-step (wizard shell → step1 identitas → step2 kontak+alamat → step3 pendidikan → step4 usaha)
