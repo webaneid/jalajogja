@@ -338,6 +338,50 @@ key="primary_color", group="display",  value="#2563eb"
 **Catatan:** Modul ini sangat mirip dengan modul Toko dari sisi alur pembayaran —
 kemungkinan bisa berbagi infrastruktur orders + payment confirmations.
 
+## Arsitektur Universal Payments & Disbursements
+
+### Tiga Lapisan Keuangan
+```
+[Business Layer]     [Financial Layer]      [Accounting Layer]
+orders ──────────→  payments ───────────→  transactions
+donations ───────→  (source_type+id)       transaction_entries
+invoices ────────→                         (double-entry, sudah ada)
+                    disbursements ───────→  transactions
+                    (purpose_type+id)
+```
+
+### payments — Universal Uang Masuk
+Menggantikan `shop.order_payments` + `finance.payment_confirmations`.
+Semua sumber pembayaran melalui satu tabel:
+- `source_type`: `order` | `donation` | `invoice` | `manual`
+- `source_id`: FK ke tabel masing-masing (polymorphic)
+- `unique_code`: 3 digit random ditambah ke nominal transfer untuk identifikasi
+  Contoh: total Rp 150.000 + kode 234 → customer transfer Rp 150.234
+- Setelah `confirmed_by` admin → auto-create journal entry (debit kas, kredit pendapatan)
+- Nomor format: `620-PAY-YYYYMM-NNNNN`
+
+### disbursements — Universal Uang Keluar
+Tabel baru. Semua pengeluaran melalui satu tabel:
+- `purpose_type`: `refund` | `expense` | `grant` | `transfer` | `manual`
+- 2-level approval: `draft` → `approved` (bendahara) → `paid`
+- Setelah `paid` → auto-create journal entry (debit beban, kredit kas)
+- Nomor format: `620-DIS-YYYYMM-NNNNN`
+
+### financial_sequences — Generator Nomor Dokumen
+Pola sama dengan `letter_number_sequences` — atomic SELECT FOR UPDATE.
+Helper: `generateFinancialNumber(tenantDb, type)` di `packages/db/src/helpers/finance.ts`
+Prefix `620` adalah kode internal jalajogja — konsisten di semua dokumen keuangan.
+
+### Nomor Jurnal Manual
+`620-JNL-YYYYMM-NNNNN` — untuk entry manual di modul Keuangan.
+
+### Kategori Rekening & QRIS untuk Modul
+Rekening bank dan QRIS punya field `categories` di settings JSONB:
+- `general` → fallback/catch-all semua modul
+- `toko` → checkout Toko
+- `donasi` → Modul Donasi/Infaq
+Logika: cari yang spesifik dulu → fallback ke `general`.
+
 ## Technical Debt
 - `getFirstTenantForUser()` loop O(n) — perlu tabel `public.user_tenant_index` saat tenant > 100
 - `check-slug` endpoint perlu rate limiting per-IP (saat ini hanya referer check)
@@ -463,4 +507,5 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - State DB: migration 0002 applied (`addresses.country` column). Data wilayah lengkap, data profesi 25 rows.
 - Commit terakhir: `14b91d3` — docs: update CLAUDE.md wizard selesai
 - Komponen wizard: `components/members/wizard/` — shell, step1–4. Edit shell: `member-edit-shell.tsx`
+- Commit terakhir: `23bb041` — universal payments & disbursements
 - Next step: **Modul Settings** (`/{slug}/settings`) — wajib selesai sebelum modul lain
