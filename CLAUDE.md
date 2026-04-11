@@ -198,6 +198,7 @@ app/(dashboard)/[tenant]/
 - [ ] Surat Menyurat
 - [ ] Keuangan
 - [ ] Toko
+- [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
 ## Arsitektur Settings
@@ -337,6 +338,58 @@ key="primary_color", group="display",  value="#2563eb"
 
 **Catatan:** Modul ini sangat mirip dengan modul Toko dari sisi alur pembayaran —
 kemungkinan bisa berbagi infrastruktur orders + payment confirmations.
+
+## Arsitektur Add-on System
+
+### Konsep
+- Organisasi berlangganan add-on secara opsional — tidak semua butuh semua fitur
+- Ada yang gratis (payment gateway, analytics) dan berbayar (WhatsApp, QRIS Dynamic)
+- Pengiriman dibatasi per quota/bulan untuk add-on berbayar
+
+### Schema (public)
+```
+addons                      → katalog semua add-on tersedia (dikelola jalajogja)
+tenant_addon_installations  → tenant mana install add-on apa + config + quota
+addon_usage                 → tracking penggunaan per bulan per tenant per add-on
+```
+
+### Katalog Add-on (seeded di migration 0003)
+| Slug | Nama | Tier | Harga |
+|------|------|------|-------|
+| `whatsapp-starter` | WhatsApp Starter | Paid | 49k/bln (200 msg) |
+| `whatsapp-pro` | WhatsApp Pro | Paid | 129k/bln (1.000 msg) |
+| `whatsapp-unlimited` | WhatsApp Unlimited | Paid | 299k/bln (∞) |
+| `midtrans` | Midtrans Gateway | Free | - |
+| `xendit` | Xendit Gateway | Free | - |
+| `ipaymu` | iPaymu Gateway | Free | - |
+| `qris-dynamic` | QRIS Dynamic Nominal | Paid | 29k/bln |
+| `google-analytics` | Google Analytics | Free | - |
+| `meta-pixel` | Meta Pixel | Free | - |
+| `webhook-out` | Webhook Out | Free | coming soon |
+
+### WhatsApp Gateway — Arsitektur
+- Library: [go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice)
+- **Hosting: sumopod** (bukan main VPS — murah, tidak membebani app server)
+- Satu service, banyak tenant — masing-masing punya `device_id` unik
+- Tenant self-service: scan QR via dashboard jalajogja → nomor WA terdaftar
+- Platform env: `WHATSAPP_SERVICE_URL`, `WHATSAPP_API_SECRET`
+- Config per tenant di `tenant_addon_installations.config`:
+  ```json
+  { "device_id": "ikpm-001", "phone_number": "628xxx", "verified": true,
+    "notifications": { "payment_submitted": true, "payment_confirmed": true, ... } }
+  ```
+
+### Quota Enforcement
+Sebelum kirim notifikasi WA:
+1. Cek `tenant_addon_installations.status = active`
+2. Cek `addon_usage.count < quota_monthly` (bulan berjalan)
+3. OK → kirim → `UPDATE addon_usage SET count = count + 1`
+4. Over quota → tolak + tampilkan pesan upgrade
+
+### Cara Tambah Add-on Baru
+1. Insert row baru di tabel `addons` (via migration atau platform admin)
+2. Tambah handler di `apps/web/app/api/addons/[slug]/` untuk konfigurasi spesifik
+3. Tambah trigger di event yang relevan (misal: `onPaymentConfirmed` → kirim WA)
 
 ## Arsitektur Universal Payments & Disbursements
 
@@ -507,5 +560,5 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - State DB: migration 0002 applied (`addresses.country` column). Data wilayah lengkap, data profesi 25 rows.
 - Commit terakhir: `14b91d3` — docs: update CLAUDE.md wizard selesai
 - Komponen wizard: `components/members/wizard/` — shell, step1–4. Edit shell: `member-edit-shell.tsx`
-- Commit terakhir: `23bb041` — universal payments & disbursements
+- Commit terakhir: `290dcc2` — add-on system (catalog, installations, usage tracking)
 - Next step: **Modul Settings** (`/{slug}/settings`) — wajib selesai sebelum modul lain
