@@ -27,7 +27,15 @@ export type PaymentMethod = typeof PAYMENT_METHODS[number];
 export const PAYMENT_SOURCE_TYPES = ["order", "donation", "invoice", "manual"] as const;
 export type PaymentSourceType = typeof PAYMENT_SOURCE_TYPES[number];
 
-export const PAYMENT_STATUSES = ["pending", "paid", "failed", "refunded", "cancelled"] as const;
+export const PAYMENT_STATUSES = [
+  "pending",    // dibuat, belum ada aksi dari customer
+  "submitted",  // customer sudah upload bukti, menunggu verifikasi admin
+  "paid",       // admin verifikasi ✅ (manual) ATAU webhook gateway sukses
+  "rejected",   // admin tolak bukti — customer bisa retry upload
+  "failed",     // gateway gagal (otomatis dari webhook)
+  "cancelled",  // dibatalkan
+  "refunded",   // sudah dikembalikan via disbursement
+] as const;
 export type PaymentStatus = typeof PAYMENT_STATUSES[number];
 
 // Tujuan uang keluar — semua melalui tabel disbursements yang sama
@@ -111,8 +119,11 @@ export function createPaymentsTable(s: ReturnType<typeof pgSchema>) {
     status: text("status", { enum: PAYMENT_STATUSES }).notNull().default("pending"),
     gatewayRef: text("gateway_ref"), // ID transaksi dari Midtrans/Xendit/iPaymu
 
-    // Bukti pembayaran (upload manual)
-    proofUrl: text("proof_url"), // MinIO path
+    // ── Customer confirmation (submit bukti) ─────────────────────────────
+    // Diisi saat customer klik "Saya Sudah Bayar"
+    transferDate: date("transfer_date"),   // tanggal customer klaim sudah transfer
+    proofUrl: text("proof_url"),           // MinIO path — foto bukti transfer/QRIS
+    submittedAt: timestamp("submitted_at", { withTimezone: true }), // waktu submit
 
     // Info pengirim — bisa member (login) atau anonim
     memberId: uuid("member_id"),       // FK → public.members.id via SQL (nullable)
@@ -120,11 +131,18 @@ export function createPaymentsTable(s: ReturnType<typeof pgSchema>) {
     payerBank: text("payer_bank"),
     payerNote: text("payer_note"),
 
-    // Konfirmasi oleh admin (bendahara/admin)
+    // ── Admin verification ────────────────────────────────────────────────
+    // Diisi admin saat approve (status → paid)
     confirmedBy: uuid("confirmed_by"), // FK → users.id via SQL (nullable)
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
 
-    // Diisi setelah dikonfirmasi — jurnal otomatis dibuat
+    // Diisi admin saat reject (status → rejected, customer bisa retry)
+    rejectedBy: uuid("rejected_by"),   // FK → users.id via SQL (nullable)
+    rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+    rejectionNote: text("rejection_note"), // alasan penolakan untuk customer
+
+    // ── Jurnal akuntansi ──────────────────────────────────────────────────
+    // Diisi setelah status paid — jurnal otomatis dibuat
     transactionId: uuid("transaction_id"), // FK → transactions.id via SQL (nullable)
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

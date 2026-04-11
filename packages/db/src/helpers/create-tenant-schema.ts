@@ -245,15 +245,23 @@ export async function createTenantSchemaInDb(
         bank_account_ref  TEXT,
         qris_account_ref  TEXT,
         status            TEXT           NOT NULL DEFAULT 'pending'
-                                         CHECK (status IN ('pending','paid','failed','refunded','cancelled')),
+                                         CHECK (status IN ('pending','submitted','paid','rejected','failed','cancelled','refunded')),
         gateway_ref       TEXT,
+        -- Customer confirmation (submit bukti bayar)
+        transfer_date     DATE,
         proof_url         TEXT,
+        submitted_at      TIMESTAMPTZ,
         member_id         UUID           REFERENCES public.members(id) ON DELETE SET NULL,
         payer_name        TEXT,
         payer_bank        TEXT,
         payer_note        TEXT,
+        -- Admin verification
         confirmed_by      UUID           REFERENCES "${s}".users(id) ON DELETE SET NULL,
         confirmed_at      TIMESTAMPTZ,
+        rejected_by       UUID           REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        rejected_at       TIMESTAMPTZ,
+        rejection_note    TEXT,
+        -- Jurnal (diisi setelah paid)
         transaction_id    UUID           REFERENCES "${s}".transactions(id) ON DELETE SET NULL,
         created_at        TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at        TIMESTAMPTZ    NOT NULL DEFAULT NOW()
