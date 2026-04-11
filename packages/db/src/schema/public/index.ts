@@ -19,3 +19,8 @@ export * from "./member-educations";
 export * from "./member-businesses";
 export * from "./member-domicile-requests";
 export * from "./tenant-memberships";
+
+// ── Add-on system (platform-level) ────────────────────────────────────────────
+export * from "./addons";
+export * from "./tenant-addon-installations";
+export * from "./addon-usage";
