@@ -194,6 +194,7 @@ app/(dashboard)/[tenant]/
 - [x] Member Wizard 4-step (identitas, kontak+alamat, pendidikan, usaha)
 - [ ] **Settings** (NEXT — harus selesai sebelum modul lain)
 - [ ] Website (Pages, Posts, Media, Block Editor)
+- [ ] Donasi / Infaq
 - [ ] Surat Menyurat
 - [ ] Keuangan
 - [ ] Toko
@@ -236,8 +237,8 @@ app/(dashboard)/[tenant]/
 │   └── Sosial media (Instagram, FB, dll)
 │
 ├── Pembayaran (payment)
-│   ├── Rekening bank (bisa multiple)
-│   ├── Nomor QRIS
+│   ├── Rekening bank (multiple, dengan kategori)
+│   ├── QRIS (multiple, dengan kategori + dynamic nominal)
 │   ├── Midtrans config (server key, client key)
 │   ├── Xendit config (api key)
 │   └── iPaymu config (va, api key)
@@ -253,14 +254,89 @@ app/(dashboard)/[tenant]/
     └── WhatsApp notifikasi (opsional)
 ```
 
+### Kategori Rekening & QRIS
+Rekening bank dan QRIS punya field `categories` (array) untuk menentukan di modul mana mereka
+ditampilkan. Sistem: specific match → fallback ke `general`.
+
+**Kategori yang tersedia:**
+| Value | Label | Tampil di |
+|-------|-------|-----------|
+| `general` | Umum | Semua modul (fallback/catch-all) |
+| `toko` | Toko | Checkout modul Toko |
+| `donasi` | Donasi | Modul Donasi/Infaq |
+
+Satu rekening/QRIS bisa punya multiple kategori, misal `["toko", "donasi"]`.
+Jika modul butuh rekening "toko" tapi tidak ada → fallback ke rekening `["general"]`.
+
+### Struktur Data Rekening Bank (JSONB)
+```json
+{
+  "id": "bank-abc123",
+  "bankName": "BCA",
+  "accountNumber": "1234567890",
+  "accountName": "IKPM Yogyakarta",
+  "categories": ["general"]
+}
+```
+
+### Struktur Data QRIS (JSONB)
+Diadaptasi dari blueprint Bantuanku (`03-qris-autonominal-blueprint.md`):
+```json
+{
+  "id": "qris-abc123",
+  "name": "IKPM Jogja",
+  "nmid": "0000123456789",
+  "imageUrl": "https://minio.../qris-static.png",
+  "categories": ["general"],
+
+  "emvPayload": "00020101021126...",
+  "merchantName": "IKPM YOGYAKARTA",
+  "merchantCity": "YOGYAKARTA",
+  "isDynamic": false
+}
+```
+
+**Mode QRIS:**
+- `isDynamic: false` / `emvPayload` kosong → tampilkan gambar static dari `imageUrl`
+- `isDynamic: true` + `emvPayload` ada → generate QR per-transaksi dengan nominal terkunci
+
+**Cara dynamic nominal bekerja** (dari blueprint Bantuanku):
+1. Parse EMV TLV payload dari admin settings
+2. Ubah Tag 01: `"11"` (static) → `"12"` (dynamic) — KRITIS agar nominal terkunci
+3. Inject Tag 54 = `totalAmount + uniqueCode` (nominal terkunci)
+4. Inject Tag 62.05 = nomor transaksi (referensi)
+5. Hitung ulang CRC16-CCITT
+6. Generate QR image sebagai SVG — server-side via `qrcode` package
+- Admin juga bisa decode gambar QRIS upload → auto-extract EMV payload via jsQR
+
 ### Storage Settings di DB
 Semua pakai tabel `settings` yang sudah ada (key, group, value JSONB):
 ```
 key="site_name",     group="general",  value="IKPM Jogja"
-key="bank_accounts", group="payment",  value=[{bank:"BCA", number:"1234", name:"IKPM"}]
+key="bank_accounts", group="payment",  value=[{bankName:"BCA", accountNumber:"1234", categories:["general"]}]
+key="qris_accounts", group="payment",  value=[{name:"IKPM", nmid:"...", categories:["general"], isDynamic:false}]
 key="smtp_config",   group="email",    value={host:"...", port:587, ...}
 key="primary_color", group="display",  value="#2563eb"
 ```
+
+## Arsitektur Modul Donasi / Infaq
+> Status: direncanakan, detail teknis belum dikerjakan. Masuk roadmap setelah Website.
+
+**Konsep dasar:**
+- Tenant bisa buat campaign donasi/infaq dengan target nominal dan periode
+- Donatur bisa dari luar (tanpa akun) atau anggota yang login
+- Pembayaran via rekening/QRIS dengan kategori `donasi` — fallback ke `general`
+- Konfirmasi manual (upload bukti) atau otomatis via gateway
+
+**Yang perlu dipikirkan nanti:**
+- Apakah campaign berbasis produk (seperti Toko) atau tabel tersendiri?
+- Laporan donasi: per campaign, per donatur, per periode
+- Sertifikat donasi (PDF otomatis)
+- Notifikasi ke donatur (email)
+- Apakah ada konsep "donasi rutin" (recurring)?
+
+**Catatan:** Modul ini sangat mirip dengan modul Toko dari sisi alur pembayaran —
+kemungkinan bisa berbagi infrastruktur orders + payment confirmations.
 
 ## Technical Debt
 - `getFirstTenantForUser()` loop O(n) — perlu tabel `public.user_tenant_index` saat tenant > 100
