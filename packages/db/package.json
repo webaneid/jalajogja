@@ -1,0 +1,23 @@
+{
+  "name": "@jalajogja/db",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.43",
+    "postgres": "^3"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "drizzle-kit": "^0.31",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+apps/web/.next/
+apps/web/out/
+
+# Build outputs
+dist/
+build/
+.turbo/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Bun
+bun.lockb
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Drizzle
+packages/db/migrations/meta/
+
+# TypeScript generated
+*.tsbuildinfo
+next-env.d.ts
