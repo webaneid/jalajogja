@@ -192,13 +192,75 @@ app/(dashboard)/[tenant]/
 - [x] Shell UI (sidebar, header, user menu, mobile drawer)
 - [x] Modul Anggota (list, tambah, detail, edit, hapus dari cabang)
 - [x] Member Wizard 4-step (identitas, kontak+alamat, pendidikan, usaha)
-- [ ] Modul Website (pages + posts)
-- [ ] Modul Surat menyurat
-- [ ] Modul Keuangan/Ledger
-- [ ] Modul Toko
-- [ ] Payment integration
-- [ ] Modul Pengaturan
+- [ ] **Settings** (NEXT — harus selesai sebelum modul lain)
+- [ ] Website (Pages, Posts, Media, Block Editor)
+- [ ] Surat Menyurat
+- [ ] Keuangan
+- [ ] Toko
 - [ ] Docker deployment
+
+## Arsitektur Settings
+- SATU halaman settings terpusat: `/{slug}/settings`
+- TIDAK ada settings tersebar di masing-masing modul
+- Semua konfigurasi tenant ada di sini
+
+### Sections dalam /settings
+```
+├── Umum (general)
+│   ├── Nama organisasi, tagline
+│   ├── Logo (upload MinIO)
+│   ├── Favicon
+│   ├── Timezone
+│   ├── Bahasa default
+│   └── Currency
+│
+├── Website
+│   ├── Homepage layout (posts/page statis)
+│   ├── Post per halaman
+│   ├── Format tanggal
+│   └── Kode analitik (GA, GTM, Meta Pixel)
+│
+├── Navigasi
+│   ├── Menu header (builder drag-drop atau manual)
+│   └── Menu footer
+│
+├── Tampilan
+│   ├── Warna utama (primary color)
+│   ├── Font
+│   └── Footer text
+│
+├── Kontak & Sosial Media
+│   ├── Email organisasi
+│   ├── Telepon organisasi
+│   ├── Alamat organisasi (WilayahSelect)
+│   └── Sosial media (Instagram, FB, dll)
+│
+├── Pembayaran (payment)
+│   ├── Rekening bank (bisa multiple)
+│   ├── Nomor QRIS
+│   ├── Midtrans config (server key, client key)
+│   ├── Xendit config (api key)
+│   └── iPaymu config (va, api key)
+│
+├── Email/SMTP
+│   ├── Host, port, user, password
+│   ├── From name, from email
+│   └── Test kirim email
+│
+└── Notifikasi
+    ├── Email notifikasi order
+    ├── Email notifikasi anggota baru
+    └── WhatsApp notifikasi (opsional)
+```
+
+### Storage Settings di DB
+Semua pakai tabel `settings` yang sudah ada (key, group, value JSONB):
+```
+key="site_name",     group="general",  value="IKPM Jogja"
+key="bank_accounts", group="payment",  value=[{bank:"BCA", number:"1234", name:"IKPM"}]
+key="smtp_config",   group="email",    value={host:"...", port:587, ...}
+key="primary_color", group="display",  value="#2563eb"
+```
 
 ## Technical Debt
 - `getFirstTenantForUser()` loop O(n) — perlu tabel `public.user_tenant_index` saat tenant > 100
@@ -321,8 +383,8 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Tailwind v4 tidak butuh tailwind.config.ts
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Member Wizard 4-step selesai + toggle alamat Indonesia/Luar Negeri (rumah & usaha) + migration `addresses.country`. 0 TypeScript errors.
+- Terakhir dikerjakan: Member Wizard 4-step selesai + arsitektur Settings direncanakan.
 - State DB: migration 0002 applied (`addresses.country` column). Data wilayah lengkap, data profesi 25 rows.
-- Commit terakhir: `ccdf38c` — feat: member wizard 4-step complete (16 files, +3812 lines)
+- Commit terakhir: `14b91d3` — docs: update CLAUDE.md wizard selesai
 - Komponen wizard: `components/members/wizard/` — shell, step1–4. Edit shell: `member-edit-shell.tsx`
-- Next step: Modul Website (pages + posts) atau Modul Surat menyurat
+- Next step: **Modul Settings** (`/{slug}/settings`) — wajib selesai sebelum modul lain
