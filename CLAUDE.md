@@ -339,6 +339,73 @@ key="primary_color", group="display",  value="#2563eb"
 **Catatan:** Modul ini sangat mirip dengan modul Toko dari sisi alur pembayaran —
 kemungkinan bisa berbagi infrastruktur orders + payment confirmations.
 
+## Visi Super-App & Arsitektur Platform
+
+### Konsep Utama
+jalajogja adalah super-app untuk organisasi — bukan satu aplikasi monolitik, melainkan **ekosistem modular** di mana organisasi memilih fitur sesuai kebutuhan.
+
+### Modul vs Add-on — Perbedaan Kunci
+| | Modul | Add-on |
+|---|---|---|
+| Fungsi | Fitur utama aplikasi | Ekstensi/integrasi opsional |
+| Contoh | Anggota, Website, Toko | WhatsApp, Midtrans, Google Analytics |
+| Akses | Ditentukan oleh Package | Install + konfigurasi mandiri |
+| Harga | Termasuk dalam Package | Berlangganan terpisah |
+| DB | Tabel di tenant schema | `tenant_addon_installations` |
+| Catalog | `public.modules` | `public.addons` |
+
+### Package — Bundle Modul + Add-on
+Organisasi membeli **Package** yang berisi bundel modul + add-on tertentu.
+Package dikelola di `public.tenant_plans` dengan field `features` JSONB:
+```json
+{
+  "modules": ["settings", "anggota", "website"],
+  "addons": ["google-analytics"]
+}
+```
+
+**Tiga Package saat ini (seeded di migration 0004):**
+| Package | Harga | Modul | Add-on |
+|---------|-------|-------|--------|
+| Starter | Rp 0 | settings, anggota | - |
+| Standar | Rp 199.000/bln | settings, anggota, website, surat | google-analytics |
+| Pro | Rp 499.000/bln | semua modul | google-analytics, meta-pixel, midtrans, xendit, ipaymu, whatsapp-starter, qris-dynamic |
+
+**Logika akses modul di aplikasi:**
+- Cek `tenant.plan_id` → ambil `tenant_plans.features.modules`
+- Jika slug modul tidak ada di list → tampilkan "coming soon" / blokir
+- Add-on tambahan bisa dibeli terpisah di luar package
+
+### Tiga Layer Pembangunan (Urutan)
+```
+1. Tenant Dashboard  → aplikasi yang dipakai organisasi
+   URL: app.jalajogja.com/{slug}/*
+   Status: SEDANG DIBANGUN
+
+2. Front-end (Public) → website publik organisasi
+   URL: {slug}.jalajogja.com atau custom domain
+   Status: BELUM — setelah Tenant Dashboard selesai
+
+3. Platform Dashboard → admin jalajogja (bukan untuk tenant)
+   URL: platform.jalajogja.com
+   Status: BELUM — setelah Front-end selesai
+   Fitur: kelola tenant, modul, add-on, billing, package
+```
+
+**Aturan urutan ini TIDAK boleh diubah** — Front-end dan Platform Dashboard bergantung pada keputusan arsitektur yang dibuat saat membangun Tenant Dashboard.
+
+### Modul Catalog (seeded di migration 0004)
+```
+public.modules
+├── settings   → active (wajib di semua package)
+├── anggota    → active
+├── website    → coming_soon
+├── surat      → coming_soon
+├── keuangan   → coming_soon
+├── toko       → coming_soon
+└── donasi     → coming_soon
+```
+
 ## Arsitektur Add-on System
 
 ### Konsep
@@ -556,9 +623,9 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Tailwind v4 tidak butuh tailwind.config.ts
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Member Wizard 4-step selesai + arsitektur Settings direncanakan.
-- State DB: migration 0002 applied (`addresses.country` column). Data wilayah lengkap, data profesi 25 rows.
-- Commit terakhir: `14b91d3` — docs: update CLAUDE.md wizard selesai
+- Terakhir dikerjakan: Module catalog + package system + super-app vision didokumentasikan.
+- State DB: migration 0004 applied — `public.modules` + 7 modul seeded + 3 package di `tenant_plans`.
+- Migrasi yang sudah applied: 0001 (schema awal), 0002 (addresses.country), 0003 (addons system), 0004 (modules + packages).
+- Commit terakhir: `c173497` — feat: module catalog + package system
 - Komponen wizard: `components/members/wizard/` — shell, step1–4. Edit shell: `member-edit-shell.tsx`
-- Commit terakhir: `290dcc2` — add-on system (catalog, installations, usage tracking)
 - Next step: **Modul Settings** (`/{slug}/settings`) — wajib selesai sebelum modul lain
