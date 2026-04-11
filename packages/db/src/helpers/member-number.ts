@@ -15,7 +15,7 @@ export async function generateMemberNumber(
 ): Promise<string> {
   // Ambil nomor urut berikutnya dari sequence PostgreSQL — atomic
   const result = await db.execute(
-    sql.raw(`SELECT nextval('member_number_seq') AS seq`)
+    sql.raw(`SELECT nextval('public.member_number_seq') AS seq`)
   );
   const rows = result as unknown as Array<{ seq: string }>;
   const seq = Number(rows[0].seq);

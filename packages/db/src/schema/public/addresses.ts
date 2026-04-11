@@ -15,6 +15,8 @@ export const addresses = pgTable("addresses", {
   districtId: integer("district_id").references(() => refDistricts.id),
   villageId: bigint("village_id", { mode: "number" }).references(() => refVillages.id),
   postalCode: text("postal_code"), // Override manual jika berbeda dari data village
+  // NULL = Indonesia (gunakan wilayah fields). Diisi = nama negara untuk alamat luar negeri.
+  country: text("country"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
