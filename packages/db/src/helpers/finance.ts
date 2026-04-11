@@ -116,6 +116,59 @@ export async function recordTransfer(
   });
 }
 
+// ─── Generate Nomor Dokumen Keuangan ──────────────────────────────────────────
+// Format: 620-PAY-YYYYMM-NNNNN | 620-DIS-YYYYMM-NNNNN | 620-JNL-YYYYMM-NNNNN
+// "620" adalah prefix rahasia jalajogja — jangan diubah
+// Atomic increment via SELECT FOR UPDATE — aman untuk concurrent requests
+
+const DOC_TYPE_PREFIX: Record<string, string> = {
+  payment:      "PAY",
+  disbursement: "DIS",
+  journal:      "JNL",
+};
+
+export async function generateFinancialNumber(
+  { db, schema }: TenantDb,
+  type: "payment" | "disbursement" | "journal",
+  now: Date = new Date()
+): Promise<string> {
+  const year  = now.getFullYear();
+  const month = now.getMonth() + 1; // 1-indexed
+  const prefix = DOC_TYPE_PREFIX[type];
+  const yyyymm = `${year}${String(month).padStart(2, "0")}`;
+
+  const nextNumber = await db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(schema.financialSequences)
+      .where(
+        sql`${schema.financialSequences.year}  = ${year}
+        AND ${schema.financialSequences.month} = ${month}
+        AND ${schema.financialSequences.type}  = ${type}
+        FOR UPDATE`
+      );
+
+    if (rows.length === 0) {
+      await tx.insert(schema.financialSequences).values({
+        year:       year  as unknown as number,
+        month:      month as unknown as number,
+        type,
+        lastNumber: 1,
+      });
+      return 1;
+    }
+
+    const next = rows[0].lastNumber + 1;
+    await tx
+      .update(schema.financialSequences)
+      .set({ lastNumber: next, updatedAt: new Date() })
+      .where(eq(schema.financialSequences.id, rows[0].id));
+    return next;
+  });
+
+  return `620-${prefix}-${yyyymm}-${String(nextNumber).padStart(5, "0")}`;
+}
+
 const ROMAN_MONTHS = [
   "I","II","III","IV","V","VI",
   "VII","VIII","IX","X","XI","XII",

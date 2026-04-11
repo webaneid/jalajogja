@@ -2,8 +2,8 @@ import { pgSchema } from "drizzle-orm/pg-core";
 import { createUsersTable } from "./users";
 import { createPagesTable, createPostCategoriesTable, createPostsTable, createPostTagsTable, createPostTagPivotTable, createMediaTable } from "./website";
 import { createLettersTable, createLetterNumberSequencesTable } from "./letters";
-import { createAccountsTable, createTransactionsTable, createTransactionEntriesTable, createBudgetsTable, createBudgetItemsTable, createPaymentConfirmationsTable } from "./finance";
-import { createProductCategoriesTable, createProductsTable, createOrdersTable, createOrderItemsTable, createOrderPaymentsTable } from "./shop";
+import { createAccountsTable, createTransactionsTable, createTransactionEntriesTable, createBudgetsTable, createBudgetItemsTable, createPaymentsTable, createDisbursementsTable, createFinancialSequencesTable } from "./finance";
+import { createProductCategoriesTable, createProductsTable, createOrdersTable, createOrderItemsTable } from "./shop";
 import { createSettingsTable, createMenusTable, createMenuItemsTable } from "./settings";
 
 // Cache schema objects — hindari buat ulang setiap request
@@ -24,19 +24,21 @@ function buildTenantSchema(slug: string) {
     // Surat menyurat
     letters: createLettersTable(s),
     letterNumberSequences: createLetterNumberSequencesTable(s),
-    // Keuangan
+    // Keuangan — jurnal double-entry
     accounts: createAccountsTable(s),
     transactions: createTransactionsTable(s),
     transactionEntries: createTransactionEntriesTable(s),
     budgets: createBudgetsTable(s),
     budgetItems: createBudgetItemsTable(s),
-    paymentConfirmations: createPaymentConfirmationsTable(s),
+    // Universal payments & disbursements (uang masuk + keluar terpusat)
+    payments: createPaymentsTable(s),
+    disbursements: createDisbursementsTable(s),
+    financialSequences: createFinancialSequencesTable(s),
     // Toko
     productCategories: createProductCategoriesTable(s),
     products: createProductsTable(s),
     orders: createOrdersTable(s),
     orderItems: createOrderItemsTable(s),
-    orderPayments: createOrderPaymentsTable(s),
     // Settings & navigasi
     settings: createSettingsTable(s),
     menus: createMenusTable(s),

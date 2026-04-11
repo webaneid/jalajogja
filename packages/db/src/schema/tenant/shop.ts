@@ -22,13 +22,6 @@ export const ORDER_STATUSES = [
 ] as const;
 export type OrderStatus = typeof ORDER_STATUSES[number];
 
-export const PAYMENT_STATUSES = ["pending", "paid", "failed", "refunded"] as const;
-export type PaymentStatus = typeof PAYMENT_STATUSES[number];
-
-export const SHOP_PAYMENT_METHODS = [
-  "cash", "transfer", "qris", "midtrans", "xendit", "ipaymu",
-] as const;
-
 // Kategori produk — hierarkis
 export function createProductCategoriesTable(s: ReturnType<typeof pgSchema>) {
   return s.table("product_categories", {
@@ -94,25 +87,9 @@ export function createOrderItemsTable(s: ReturnType<typeof pgSchema>) {
   }));
 }
 
-// Satu order bisa punya beberapa percobaan pembayaran
-export function createOrderPaymentsTable(s: ReturnType<typeof pgSchema>) {
-  return s.table("order_payments", {
-    id: uuid("id").primaryKey().defaultRandom(),
-    orderId: uuid("order_id").notNull(), // FK → orders.id via SQL migration
-    method: text("method", { enum: SHOP_PAYMENT_METHODS }).notNull(),
-    amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
-    status: text("status", { enum: PAYMENT_STATUSES }).notNull().default("pending"),
-    // ID transaksi dari payment gateway (Midtrans/Xendit/iPaymu)
-    gatewayRef: text("gateway_ref"),
-    // Untuk pembayaran manual — link ke payment_confirmations
-    confirmationId: uuid("confirmation_id"), // FK → payment_confirmations.id via SQL migration
-    paidAt: timestamp("paid_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  });
-}
+// Catatan: pembayaran order ditangani oleh finance.payments (source_type='order')
+// Tidak ada tabel order_payments di sini — semua uang masuk terpusat
 
-export type ProductsTable = ReturnType<typeof createProductsTable>;
-export type OrdersTable = ReturnType<typeof createOrdersTable>;
+export type ProductsTable  = ReturnType<typeof createProductsTable>;
+export type OrdersTable    = ReturnType<typeof createOrdersTable>;
 export type OrderItemsTable = ReturnType<typeof createOrderItemsTable>;
-export type OrderPaymentsTable = ReturnType<typeof createOrderPaymentsTable>;

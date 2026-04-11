@@ -16,6 +16,7 @@ export {
   recordExpense,
   recordIncome,
   recordTransfer,
+  generateFinancialNumber,
   getNextLetterNumber,
 } from "./helpers/finance";
 

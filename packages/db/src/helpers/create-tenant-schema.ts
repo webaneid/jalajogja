@@ -228,29 +228,84 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 16. Payment Confirmations ──────────────────────────────────────────
+    // ── 16. Universal Payments (Uang Masuk) ───────────────────────────────
+    // Menggantikan payment_confirmations + order_payments
+    // Nomor format: 620-PAY-YYYYMM-NNNNN
     await tx.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS "${s}".payment_confirmations (
-        id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
-        method         TEXT           NOT NULL
-                                      CHECK (method IN ('cash','transfer','qris','midtrans','xendit','ipaymu')),
-        amount         NUMERIC(15,2)  NOT NULL,
-        proof_url      TEXT,
-        sender_name    TEXT,
-        sender_bank    TEXT,
-        note           TEXT,
-        status         TEXT           NOT NULL DEFAULT 'pending'
-                                      CHECK (status IN ('pending','confirmed','rejected')),
-        submitted_by   UUID           NOT NULL REFERENCES "${s}".users(id),
-        confirmed_by   UUID           REFERENCES "${s}".users(id),
-        confirmed_at   TIMESTAMPTZ,
-        transaction_id UUID           REFERENCES "${s}".transactions(id),
-        created_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-        updated_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+      CREATE TABLE IF NOT EXISTS "${s}".payments (
+        id                UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        number            TEXT           NOT NULL UNIQUE,
+        source_type       TEXT           NOT NULL
+                                         CHECK (source_type IN ('order','donation','invoice','manual')),
+        source_id         UUID           NOT NULL,
+        amount            NUMERIC(15,2)  NOT NULL,
+        unique_code       SMALLINT       NOT NULL DEFAULT 0,
+        method            TEXT           NOT NULL
+                                         CHECK (method IN ('cash','transfer','qris','midtrans','xendit','ipaymu')),
+        bank_account_ref  TEXT,
+        qris_account_ref  TEXT,
+        status            TEXT           NOT NULL DEFAULT 'pending'
+                                         CHECK (status IN ('pending','paid','failed','refunded','cancelled')),
+        gateway_ref       TEXT,
+        proof_url         TEXT,
+        member_id         UUID           REFERENCES public.members(id) ON DELETE SET NULL,
+        payer_name        TEXT,
+        payer_bank        TEXT,
+        payer_note        TEXT,
+        confirmed_by      UUID           REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        confirmed_at      TIMESTAMPTZ,
+        transaction_id    UUID           REFERENCES "${s}".transactions(id) ON DELETE SET NULL,
+        created_at        TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )
     `));
 
-    // ── 17. Product Categories ─────────────────────────────────────────────
+    // ── 17. Universal Disbursements (Uang Keluar) ──────────────────────────
+    // 2-level approval: pengaju → bendahara (approver) → eksekusi
+    // Nomor format: 620-DIS-YYYYMM-NNNNN
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".disbursements (
+        id                UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        number            TEXT           NOT NULL UNIQUE,
+        purpose_type      TEXT           NOT NULL
+                                         CHECK (purpose_type IN ('refund','expense','grant','transfer','manual')),
+        purpose_id        UUID,
+        amount            NUMERIC(15,2)  NOT NULL,
+        method            TEXT           NOT NULL DEFAULT 'transfer'
+                                         CHECK (method IN ('cash','transfer')),
+        recipient_name    TEXT           NOT NULL,
+        recipient_bank    TEXT,
+        recipient_account TEXT,
+        note              TEXT,
+        proof_url         TEXT,
+        status            TEXT           NOT NULL DEFAULT 'draft'
+                                         CHECK (status IN ('draft','approved','paid','cancelled')),
+        requested_by      UUID           NOT NULL REFERENCES "${s}".users(id),
+        approved_by       UUID           REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        approved_at       TIMESTAMPTZ,
+        paid_at           TIMESTAMPTZ,
+        transaction_id    UUID           REFERENCES "${s}".transactions(id) ON DELETE SET NULL,
+        created_at        TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 18. Financial Sequences ────────────────────────────────────────────
+    // Generate nomor 620-PAY/DIS/JNL-YYYYMM-NNNNN secara atomic
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".financial_sequences (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        year        SMALLINT    NOT NULL,
+        month       SMALLINT    NOT NULL,
+        type        TEXT        NOT NULL
+                                CHECK (type IN ('payment','disbursement','journal')),
+        last_number INTEGER     NOT NULL DEFAULT 0,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (year, month, type)
+      )
+    `));
+
+    // ── 19. Product Categories ─────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".product_categories (
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -261,7 +316,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 18. Products ───────────────────────────────────────────────────────
+    // ── 20. Products ───────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".products (
         id          UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -280,7 +335,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 19. Orders ─────────────────────────────────────────────────────────
+    // ── 21. Orders ─────────────────────────────────────────────────────────
     // customer_id → public.members.id (bukan tenant member)
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".orders (
@@ -302,7 +357,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 20. Order Items ────────────────────────────────────────────────────
+    // ── 22. Order Items ────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".order_items (
         id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -316,25 +371,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 21. Order Payments ─────────────────────────────────────────────────
-    await tx.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS "${s}".order_payments (
-        id              UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
-        order_id        UUID           NOT NULL REFERENCES "${s}".orders(id) ON DELETE CASCADE,
-        method          TEXT           NOT NULL
-                                       CHECK (method IN ('cash','transfer','qris','midtrans','xendit','ipaymu')),
-        amount          NUMERIC(15,2)  NOT NULL,
-        status          TEXT           NOT NULL DEFAULT 'pending'
-                                       CHECK (status IN ('pending','paid','failed','refunded')),
-        gateway_ref     TEXT,
-        confirmation_id UUID           REFERENCES "${s}".payment_confirmations(id),
-        paid_at         TIMESTAMPTZ,
-        created_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-        updated_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW()
-      )
-    `));
-
-    // ── 22. Settings ───────────────────────────────────────────────────────
+    // ── 23. Settings ───────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".settings (
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -347,7 +384,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 23. Menus ──────────────────────────────────────────────────────────
+    // ── 24. Menus ──────────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".menus (
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -359,7 +396,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 24. Menu Items ─────────────────────────────────────────────────────
+    // ── 25. Menu Items ─────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".menu_items (
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -376,11 +413,16 @@ export async function createTenantSchemaInDb(
     `));
 
     // ── Indexes ────────────────────────────────────────────────────────────
-    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON "${s}".order_items(order_id)`));
-    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_menu_items_menu_id   ON "${s}".menu_items(menu_id)`));
-    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_posts_status         ON "${s}".posts(status)`));
-    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_orders_status        ON "${s}".orders(status)`));
-    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_transactions_date    ON "${s}".transactions(date)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_order_items_order_id        ON "${s}".order_items(order_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_menu_items_menu_id          ON "${s}".menu_items(menu_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_posts_status               ON "${s}".posts(status)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_orders_status              ON "${s}".orders(status)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_transactions_date          ON "${s}".transactions(date)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_payments_source            ON "${s}".payments(source_type, source_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_payments_status            ON "${s}".payments(status)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_payments_member_id         ON "${s}".payments(member_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_disbursements_status       ON "${s}".disbursements(status)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_disbursements_requested_by ON "${s}".disbursements(requested_by)`));
 
     // ── Default Data ───────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
