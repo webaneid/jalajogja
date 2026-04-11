@@ -18,6 +18,7 @@
         "@jalajogja/ui": "workspace:*",
         "better-auth": "^1",
         "clsx": "^2",
+        "drizzle-orm": "^0.43",
         "next": "^15",
         "react": "^19",
         "react-dom": "^19",

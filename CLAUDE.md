@@ -114,6 +114,15 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 - Bug yang dihindari: month dari parameter bukan new Date(), composite PK di pivot tables, unique constraint di sequences
 - schemaFilter: ["public"] di drizzle.config.ts wajib ada untuk proteksi tenant schemas
 
+### [2025-04] Auth System Selesai
+- Two-layer auth: middleware (cookie check) + layout (session validation)
+- Register flow: Better Auth signUp → Server Action buat tenant + schema
+- Security fix: userId diambil dari session server, bukan dari client
+- Rollback mechanism: gagal buat schema → hapus tenant dari public
+- check-slug endpoint dengan referer validation
+- params di Next.js 15 adalah Promise<> — wajib await
+- getTenantAccess() belum di-cache — technical debt
+
 ### [2025-04] Setup Awal
 - Struktur monorepo: apps/web + packages/db + packages/ui + packages/types
 - Multi-tenant strategy: schema-per-tenant di PostgreSQL
@@ -123,7 +132,7 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 ## Status Project
 - [x] Setup monorepo & dependencies
 - [x] Database schema (public + tenant schema)
-- [ ] Auth system (login, register, multi-role)
+- [x] Auth system (login, register, multi-role)
 - [ ] Website module (pages + posts)
 - [ ] Surat menyurat module
 - [ ] Database anggota module
@@ -132,6 +141,11 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 - [ ] Payment integration
 - [ ] Settings module
 - [ ] Docker deployment
+
+## Technical Debt
+- `getFirstTenantForUser()` loop O(n) di `apps/web/lib/tenant.ts` — perlu tabel `public.user_tenant_index` saat jumlah tenant > 100. Saat ini dibatasi `.limit(100)` sebagai safeguard.
+- `check-slug` endpoint perlu rate limiting per-IP saat production. Saat ini hanya ada referer check sebagai abuse prevention dasar. Ganti dengan Redis + sliding window counter.
+- `getTenantAccess()` dipanggil di layout DAN page — perlu di-wrap dengan React `cache()` saat sidebar mulai butuh data yang sama (saat ini dua DB query per request).
 
 ## Context Sesi Terakhir
 <!-- Claude update bagian ini di akhir setiap sesi -->

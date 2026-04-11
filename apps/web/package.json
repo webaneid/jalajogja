@@ -14,6 +14,7 @@
     "@jalajogja/ui": "workspace:*",
     "@jalajogja/types": "workspace:*",
     "better-auth": "^1",
+    "drizzle-orm": "^0.43",
     "clsx": "^2",
     "tailwind-merge": "^3",
     "next": "^15",
