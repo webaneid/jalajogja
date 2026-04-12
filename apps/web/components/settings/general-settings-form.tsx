@@ -67,7 +67,7 @@ export function GeneralSettingsForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-lg">
+    <form onSubmit={handleSubmit} className="space-y-6">
       {/* Nama Organisasi */}
       <div className="space-y-2">
         <Label htmlFor="siteName">
