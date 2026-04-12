@@ -192,7 +192,15 @@ app/(dashboard)/[tenant]/
 - [x] Shell UI (sidebar, header, user menu, mobile drawer)
 - [x] Modul Anggota (list, tambah, detail, edit, hapus dari cabang)
 - [x] Member Wizard 4-step (identitas, kontak+alamat, pendidikan, usaha)
+- [x] Domain routing schema (subdomain + custom_domain + status columns)
 - [ ] **Settings** (NEXT — harus selesai sebelum modul lain)
+  - [ ] /settings/general — nama org, tagline, logo, timezone, bahasa, currency
+  - [ ] /settings/domain — subdomain + custom domain + instruksi DNS + verifikasi
+  - [ ] /settings/contact — kontak org + sosial media
+  - [ ] /settings/payment — rekening bank + QRIS + gateway config
+  - [ ] /settings/display — primary color, font, footer text
+  - [ ] /settings/email — SMTP config + test kirim
+  - [ ] /settings/notifications — toggle notifikasi email + WA
 - [ ] Website (Pages, Posts, Media, Block Editor)
 - [ ] Donasi / Infaq
 - [ ] Surat Menyurat
@@ -201,58 +209,233 @@ app/(dashboard)/[tenant]/
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
+## Arsitektur Domain Routing (3 Fase)
+
+### Konsep
+Tiga fase hidup bersamaan — tidak saling menggantikan. Tenant bisa punya ketiganya aktif sekaligus.
+
+| Fase | URL | Status | Catatan |
+|------|-----|--------|---------|
+| 1 — Path | `app.jalajogja.com/{slug}` | **Aktif sekarang** | Default, selalu ada |
+| 2 — Subdomain | `{subdomain}.jalajogja.com` | Implementasi saat Front-end | Wildcard DNS `*.jalajogja.com` |
+| 3 — Custom Domain | `ikpm.or.id` | Implementasi saat Front-end | A record → VPS IP, SSL via Caddy |
+
+### Cara Kerja Custom Domain (White-label)
+```
+Tenant pointing DNS:
+  ikpm.or.id  →  A record  →  123.45.67.89 (IP VPS)
+
+Request flow:
+  Browser buka ikpm.or.id
+  → Caddy terima request, auto-provision SSL (Let's Encrypt)
+  → Forward ke Next.js app
+  → Middleware baca Host header: "ikpm.or.id"
+  → DB lookup: SELECT slug FROM tenants WHERE custom_domain = 'ikpm.or.id'
+  → Render tenant "ikpm" — jalajogja.com tidak terlihat sama sekali
+```
+
+**Tidak perlu NS server sendiri** — cukup minta tenant ganti A record di Cloudflare/Niagahoster/dll.
+
+### Logika Middleware (saat Fase 2 & 3 diimplementasikan)
+```typescript
+const host = request.headers.get("host")
+
+if (host === "app.jalajogja.com") {
+  slug = pathname.split("/")[1]              // Fase 1: dari path
+} else if (host.endsWith(".jalajogja.com")) {
+  slug = host.replace(".jalajogja.com", "")  // Fase 2: dari subdomain
+} else {
+  slug = await db.query(                     // Fase 3: lookup DB
+    "SELECT slug FROM tenants WHERE custom_domain = $1", [host])
+}
+```
+
+### Schema DB (migration 0005)
+Kolom di `public.tenants`:
+```
+slug                       → Fase 1, path-based, selalu ada (sudah ada sejak awal)
+subdomain                  → Fase 2, null = fallback ke slug
+custom_domain              → Fase 3, null = belum set
+custom_domain_status       → none | pending | active | failed
+custom_domain_verified_at  → timestamp saat verifikasi berhasil
+```
+
+**Rename**: kolom `domain` lama → `custom_domain` (lebih eksplisit)
+
+### Alur Setup Custom Domain (dari sisi tenant)
+```
+1. Tenant buka /{slug}/settings/domain
+2. Isi form: "ikpm.or.id"
+3. jalajogja simpan → custom_domain_status = 'pending'
+4. Tampilkan instruksi: "Tambahkan A record: ikpm.or.id → A → {IP_VPS}"
+5. Background job verifikasi DNS (cek apakah domain resolve ke IP VPS)
+6. Jika OK → custom_domain_status = 'active', custom_domain_verified_at = now()
+7. Caddy auto-provision SSL saat first request masuk
+```
+
+### Settings Contact — TIDAK pakai helper tables
+Helper tables (`contacts`, `addresses`, `social_medias`) dipakai untuk **member** dan **member_business** — entity yang queryable dengan FK. Data kontak organisasi adalah **konfigurasi** (satu record, bukan entitas relasional) → disimpan di `settings` JSONB:
+```
+key="contact_email"    group="contact"  value="ikpm@gmail.com"
+key="contact_phone"    group="contact"  value="0274-123456"
+key="contact_address"  group="contact"  value={detail, provinceId, regencyId, ...}
+key="socials"          group="contact"  value={instagram, facebook, youtube, website, ...}
+```
+
 ## Arsitektur Settings
 - SATU halaman settings terpusat: `/{slug}/settings`
 - TIDAK ada settings tersebar di masing-masing modul
 - Semua konfigurasi tenant ada di sini
 
+### Route Structure
+```
+app/(dashboard)/[tenant]/settings/
+├── layout.tsx              → settings shell: sidebar nav kiri + slot konten kanan
+├── page.tsx                → redirect ke /settings/general
+├── general/page.tsx        → Umum
+├── domain/page.tsx         → Domain & Routing
+├── contact/page.tsx        → Kontak & Sosial Media
+├── payment/page.tsx        → Pembayaran (rekening + QRIS + gateway)
+├── display/page.tsx        → Tampilan
+├── email/page.tsx          → Email / SMTP
+├── notifications/page.tsx  → Notifikasi
+├── website/page.tsx        → Website (skip — butuh modul Website selesai dulu)
+└── navigation/page.tsx     → Navigasi (skip — butuh drag-drop builder)
+```
+
 ### Sections dalam /settings
+
 ```
 ├── Umum (general)
 │   ├── Nama organisasi, tagline
-│   ├── Logo (upload MinIO)
-│   ├── Favicon
-│   ├── Timezone
-│   ├── Bahasa default
-│   └── Currency
+│   ├── Logo URL (upload MinIO — skip dulu, isi URL manual)
+│   ├── Favicon URL
+│   ├── Timezone (combobox)
+│   ├── Bahasa default (combobox: id / en)
+│   └── Currency (default IDR)
 │
-├── Website
-│   ├── Homepage layout (posts/page statis)
-│   ├── Post per halaman
-│   ├── Format tanggal
-│   └── Kode analitik (GA, GTM, Meta Pixel)
+├── Domain (/settings/domain)         ← BARU
+│   ├── Default URL (read-only): app.jalajogja.com/{slug}
+│   ├── Subdomain jalajogja: [input].jalajogja.com
+│   ├── Custom Domain: input domain + status badge
+│   │   ├── Status: none | pending | active | failed
+│   │   ├── Instruksi DNS: "Tambahkan A record: {domain} → {IP_VPS}"
+│   │   └── Tombol "Verifikasi DNS"
+│   └── Catatan: Fase 2 & 3 aktif saat Front-end diimplementasikan
 │
-├── Navigasi
-│   ├── Menu header (builder drag-drop atau manual)
-│   └── Menu footer
-│
-├── Tampilan
-│   ├── Warna utama (primary color)
-│   ├── Font
-│   └── Footer text
-│
-├── Kontak & Sosial Media
+├── Kontak & Sosial Media (/settings/contact)
 │   ├── Email organisasi
 │   ├── Telepon organisasi
-│   ├── Alamat organisasi (WilayahSelect)
-│   └── Sosial media (Instagram, FB, dll)
+│   ├── Alamat (WilayahSelect — sama seperti di wizard member)
+│   ├── Instagram, Facebook, YouTube, TikTok, LinkedIn
+│   └── Website resmi organisasi
+│       └── CATATAN: field "website" di sini = URL eksternal org (bukan jalajogja)
+│           Domain jalajogja dikelola di /settings/domain
 │
-├── Pembayaran (payment)
-│   ├── Rekening bank (multiple, dengan kategori)
-│   ├── QRIS (multiple, dengan kategori + dynamic nominal)
-│   ├── Midtrans config (server key, client key)
-│   ├── Xendit config (api key)
-│   └── iPaymu config (va, api key)
+├── Pembayaran (/settings/payment)
+│   ├── Rekening Bank (dynamic list: add/edit/remove)
+│   │   └── Per rekening: bankName, accountNumber, accountName, categories[]
+│   ├── QRIS (dynamic list: add/edit/remove)
+│   │   ├── Mode static: upload gambar imageUrl
+│   │   └── Mode dynamic: paste EMV payload → QR di-generate server-side
+│   └── Gateway Config (tab per gateway)
+│       ├── Midtrans: server key, client key, sandbox toggle
+│       ├── Xendit: API key
+│       └── iPaymu: VA number, API key
 │
-├── Email/SMTP
-│   ├── Host, port, user, password
+├── Tampilan (/settings/display)
+│   ├── Primary color (color picker)
+│   ├── Font (combobox)
+│   └── Footer text
+│
+├── Email/SMTP (/settings/email)
+│   ├── Host, port, username, password
 │   ├── From name, from email
-│   └── Test kirim email
+│   └── Tombol "Kirim Test Email"
 │
-└── Notifikasi
-    ├── Email notifikasi order
-    ├── Email notifikasi anggota baru
-    └── WhatsApp notifikasi (opsional)
+├── Notifikasi (/settings/notifications)
+│   ├── Email: anggota baru, pembayaran masuk, pembayaran dikonfirmasi
+│   └── WhatsApp (tampil jika add-on WA aktif, CTA upgrade jika tidak)
+│
+├── Website (/settings/website)        ← SKIP — tunggu modul Website selesai
+│   ├── Homepage layout
+│   ├── Post per halaman
+│   └── Kode analitik (GA, GTM, Meta Pixel)
+│
+└── Navigasi (/settings/navigation)   ← SKIP — tunggu drag-drop builder
+    ├── Menu header
+    └── Menu footer
+```
+
+### Urutan Eksekusi Settings
+```
+Step 1 — DB Helper: packages/db/src/helpers/settings.ts
+          getSettings(tenantDb, group)
+          getSetting(tenantDb, key, group)
+          upsertSetting(tenantDb, key, group, value)
+
+Step 2 — Settings Shell: layout.tsx + page.tsx (redirect)
+
+Step 3 — /settings/general
+
+Step 4 — /settings/domain
+          (UI lengkap, verifikasi DNS background job — implementasi saat Front-end)
+
+Step 5 — /settings/contact
+          (WilayahSelect untuk alamat org, socials JSONB)
+
+Step 6 — /settings/payment
+          Step 6a: Rekening Bank (dynamic list)
+          Step 6b: QRIS (static dulu, dynamic EMV nanti)
+          Step 6c: Gateway Config
+
+Step 7 — /settings/display
+
+Step 8 — /settings/email
+
+Step 9 — /settings/notifications
+```
+
+### Server Actions (settings/actions.ts)
+```typescript
+saveGeneralSettingsAction()
+saveDomainSettingsAction()        // simpan custom_domain ke tenants table (bukan settings)
+saveContactSettingsAction()
+savePaymentAccountsAction()       // rekening bank array
+saveQrisAccountsAction()          // QRIS array
+saveGatewayConfigAction()         // midtrans / xendit / ipaymu
+saveDisplaySettingsAction()
+saveSmtpConfigAction()
+saveNotificationSettingsAction()
+```
+
+### Storage Settings di DB
+Semua pakai `tenant_{slug}.settings` (key/group/value JSONB), kecuali domain yang langsung ke `public.tenants`:
+```
+key="site_name"       group="general"   value="IKPM Yogyakarta"
+key="tagline"         group="general"   value="Satu Hati, Satu Langkah"
+key="logo_url"        group="general"   value="https://..."
+key="timezone"        group="general"   value="Asia/Jakarta"
+key="contact_email"   group="contact"   value="ikpm@gmail.com"
+key="contact_phone"   group="contact"   value="0274-123456"
+key="contact_address" group="contact"   value={detail, provinceId, regencyId, districtId, villageId}
+key="socials"         group="contact"   value={instagram, facebook, youtube, tiktok, website}
+key="bank_accounts"   group="payment"   value=[{id, bankName, accountNumber, accountName, categories}]
+key="qris_accounts"   group="payment"   value=[{id, name, imageUrl, categories, isDynamic, emvPayload}]
+key="midtrans"        group="payment"   value={serverKey, clientKey, isSandbox}
+key="xendit"          group="payment"   value={apiKey}
+key="ipaymu"          group="payment"   value={va, apiKey}
+key="smtp_config"     group="email"     value={host, port, user, password, fromName, fromEmail}
+key="primary_color"   group="display"   value="#2563eb"
+key="font"            group="display"   value="Inter"
+key="footer_text"     group="display"   value="© 2025 IKPM Yogyakarta"
+```
+
+Domain settings disimpan langsung ke `public.tenants` (bukan `settings` table):
+```
+tenants.subdomain              → "ikpm" (untuk ikpm.jalajogja.com)
+tenants.custom_domain          → "ikpm.or.id"
+tenants.custom_domain_status   → "pending" | "active" | "failed"
 ```
 
 ### Kategori Rekening & QRIS
@@ -623,9 +806,10 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Tailwind v4 tidak butuh tailwind.config.ts
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Module catalog + package system + super-app vision didokumentasikan.
-- State DB: migration 0004 applied — `public.modules` + 7 modul seeded + 3 package di `tenant_plans`.
-- Migrasi yang sudah applied: 0001 (schema awal), 0002 (addresses.country), 0003 (addons system), 0004 (modules + packages).
-- Commit terakhir: `c173497` — feat: module catalog + package system
-- Komponen wizard: `components/members/wizard/` — shell, step1–4. Edit shell: `member-edit-shell.tsx`
-- Next step: **Modul Settings** (`/{slug}/settings`) — wajib selesai sebelum modul lain
+- Terakhir dikerjakan: Domain routing architecture direncanakan + schema di-migrate.
+- State DB: migration 0005 applied — `tenants.domain` rename → `custom_domain`, tambah `subdomain`, `custom_domain_status`, `custom_domain_verified_at`.
+- Migrasi yang sudah applied: 0001–0005.
+- Commit terakhir: `68a5d8d` — docs: super-app vision (sebelum domain schema)
+- Perlu di-commit: tenants.ts schema update + migration 0005 + CLAUDE.md update ini
+- Next step: **Modul Settings** (`/{slug}/settings`) — mulai dari DB helper → shell → tiap section
+- Urutan section: general → domain → contact → payment → display → email → notifications
