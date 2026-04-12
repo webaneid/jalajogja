@@ -24,7 +24,7 @@ import type { PostFormData } from "@/app/(dashboard)/[tenant]/website/actions";
 import type { SeoValues } from "@/components/seo/seo-panel";
 import type { ContentStatus } from "@jalajogja/db";
 import { generateSlug } from "@/lib/seo";
-import { Globe, Save, Eye, EyeOff, ImagePlus, X, RefreshCw } from "lucide-react";
+import { Globe, Save, Eye, EyeOff, ImagePlus, X, RefreshCw, Archive } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -81,8 +81,7 @@ export function PostForm({
   tags,
 }: PostFormProps) {
   const router = useRouter();
-  const [isSaving, startSave] = useTransition();
-  const [isPublishing, startPublish] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   // Form state
   const [title, setTitle]           = useState(initialData.title);
@@ -157,30 +156,37 @@ export function PostForm({
   }
 
   function handleSave() {
-    startSave(async () => {
+    startTransition(async () => {
       const res = await updatePostAction(slug, postId, buildPayload());
-      if (!res.success) {
-        alert(res.error);
-        return;
-      }
+      if (!res.success) { alert(res.error); return; }
       router.refresh();
     });
   }
 
-  function handleTogglePublish() {
-    const newStatus: ContentStatus = status === "published" ? "draft" : "published";
-    startPublish(async () => {
-      const res = await updatePostAction(slug, postId, buildPayload(newStatus));
-      if (!res.success) {
-        alert(res.error);
-        return;
-      }
-      setStatus(newStatus);
+  function handleChangeStatus(target: ContentStatus) {
+    startTransition(async () => {
+      const res = await updatePostAction(slug, postId, buildPayload(target));
+      if (!res.success) { alert(res.error); return; }
+      setStatus(target);
       router.refresh();
     });
   }
 
-  const isPending = isSaving || isPublishing;
+  // Label tombol simpan berdasarkan status aktif
+  const saveLabel =
+    isPending        ? "Menyimpan..." :
+    status === "draft"      ? "Simpan Draft" :
+    status === "published"  ? "Simpan Perubahan" :
+    "Arsipkan";
+
+  const saveIcon =
+    status === "archived" ? <Archive className="h-4 w-4" /> : <Save className="h-4 w-4" />;
+
+  // Tombol aksi perubahan status
+  const actionConfig: { label: string; target: ContentStatus; variant: "default" | "outline" } =
+    status === "published"
+      ? { label: "Jadikan Draft", target: "draft",     variant: "outline" }
+      : { label: "Publikasikan",  target: "published", variant: "default" };
 
   return (
     <div className="flex flex-col h-full">
@@ -378,7 +384,7 @@ export function PostForm({
             )}
           </div>
 
-          {/* ── Tombol Simpan + Publish — sticky di bawah sidebar ── */}
+          {/* ── Tombol aksi — sticky di bawah sidebar ── */}
           <div className="p-4 border-t border-border space-y-2 bg-background">
             <Button
               className="w-full gap-1.5"
@@ -386,20 +392,19 @@ export function PostForm({
               disabled={isPending}
               variant="outline"
             >
-              <Save className="h-4 w-4" />
-              {isSaving ? "Menyimpan..." : "Simpan Draft"}
+              {saveIcon}
+              {saveLabel}
             </Button>
             <Button
               className="w-full gap-1.5"
-              onClick={handleTogglePublish}
+              onClick={() => handleChangeStatus(actionConfig.target)}
               disabled={isPending}
-              variant={status === "published" ? "secondary" : "default"}
+              variant={actionConfig.variant}
             >
-              {status === "published" ? (
-                <><EyeOff className="h-4 w-4" /> Unpublish</>
-              ) : (
-                <><Eye className="h-4 w-4" /> Publish</>
-              )}
+              {actionConfig.target === "published"
+                ? <><Globe className="h-4 w-4" /> {actionConfig.label}</>
+                : <><EyeOff className="h-4 w-4" /> {actionConfig.label}</>
+              }
             </Button>
           </div>
         </div>

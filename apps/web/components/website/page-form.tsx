@@ -23,7 +23,7 @@ import type { PageFormData } from "@/app/(dashboard)/[tenant]/website/actions";
 import type { SeoValues } from "@/components/seo/seo-panel";
 import type { ContentStatus } from "@jalajogja/db";
 import { generateSlug } from "@/lib/seo";
-import { Globe, Save, Eye, EyeOff, ImagePlus, X, RefreshCw } from "lucide-react";
+import { Globe, Save, Eye, EyeOff, ImagePlus, X, RefreshCw, Archive } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -65,8 +65,7 @@ function SidebarLabel({ children }: { children: React.ReactNode }) {
 
 export function PageForm({ slug, pageId, initialData }: PageFormProps) {
   const router = useRouter();
-  const [isSaving, startSave] = useTransition();
-  const [isPublishing, startPublish] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   // Form state
   const [title, setTitle]       = useState(initialData.title);
@@ -128,24 +127,35 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
   }
 
   function handleSave() {
-    startSave(async () => {
+    startTransition(async () => {
       const res = await updatePageAction(slug, pageId, buildPayload());
       if (!res.success) { alert(res.error); return; }
       router.refresh();
     });
   }
 
-  function handleTogglePublish() {
-    const newStatus: ContentStatus = status === "published" ? "draft" : "published";
-    startPublish(async () => {
-      const res = await updatePageAction(slug, pageId, buildPayload(newStatus));
+  function handleChangeStatus(target: ContentStatus) {
+    startTransition(async () => {
+      const res = await updatePageAction(slug, pageId, buildPayload(target));
       if (!res.success) { alert(res.error); return; }
-      setStatus(newStatus);
+      setStatus(target);
       router.refresh();
     });
   }
 
-  const isPending = isSaving || isPublishing;
+  const saveLabel =
+    isPending               ? "Menyimpan..." :
+    status === "draft"      ? "Simpan Draft" :
+    status === "published"  ? "Simpan Perubahan" :
+    "Arsipkan";
+
+  const saveIcon =
+    status === "archived" ? <Archive className="h-4 w-4" /> : <Save className="h-4 w-4" />;
+
+  const actionConfig: { label: string; target: ContentStatus; variant: "default" | "outline" } =
+    status === "published"
+      ? { label: "Jadikan Draft", target: "draft",     variant: "outline" }
+      : { label: "Publikasikan",  target: "published", variant: "default" };
 
   return (
     <div className="flex flex-col h-full">
@@ -308,20 +318,19 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
               disabled={isPending}
               variant="outline"
             >
-              <Save className="h-4 w-4" />
-              {isSaving ? "Menyimpan..." : "Simpan Draft"}
+              {saveIcon}
+              {saveLabel}
             </Button>
             <Button
               className="w-full gap-1.5"
-              onClick={handleTogglePublish}
+              onClick={() => handleChangeStatus(actionConfig.target)}
               disabled={isPending}
-              variant={status === "published" ? "secondary" : "default"}
+              variant={actionConfig.variant}
             >
-              {status === "published" ? (
-                <><EyeOff className="h-4 w-4" /> Unpublish</>
-              ) : (
-                <><Eye className="h-4 w-4" /> Publish</>
-              )}
+              {actionConfig.target === "published"
+                ? <><Globe className="h-4 w-4" /> {actionConfig.label}</>
+                : <><EyeOff className="h-4 w-4" /> {actionConfig.label}</>
+              }
             </Button>
           </div>
         </div>
