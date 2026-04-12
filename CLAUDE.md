@@ -231,7 +231,7 @@ components/website/
 ├── page-list-client.tsx   → CreatePageButton, PagesTable
 ├── post-form.tsx          → full editor form untuk posts
 ├── page-form.tsx          → full editor form untuk pages
-└── website-nav.tsx        → sub-nav kiri: Dashboard, Posts, Halaman, Kategori(Soon), Komentar(Soon)
+└── website-nav.tsx        → sub-nav kiri: Dashboard, Posts, Halaman, Kategori, Komentar(Soon/Ditunda)
 ```
 
 **Aturan export client components**: selalu gunakan individual named exports, bukan namespace object
@@ -288,6 +288,8 @@ app/(dashboard)/[tenant]/
 - [x] Media Library (upload, grid/list view, MediaPicker, metadata edit)
 - [x] SEO Module (helpers, SeoPanel, snippet preview, social preview, score)
 - [x] Website Module (Posts + Pages + Block Editor + SeoPanel + Featured Image)
+- [x] Kategori & Tag (CRUD + inline add di post editor, autocomplete tag dengan comma creation)
+- [ ] Komentar — **DITUNDA** (deprioritized, bukan kebutuhan utama saat ini)
 - [ ] **Surat Menyurat** ← NEXT
 - [ ] Keuangan (sudah ada schema, belum ada UI)
 - [ ] Toko
@@ -994,8 +996,29 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Tombol ubah status harus eksplisit: "Publikasikan" / "Jadikan Draft" — bukan "Publish/Unpublish" dalam bahasa Inggris
 - Hindari `useTransition` ganda untuk aksi yang memanggil function yang sama — cukup satu `isPending`
 
+### [2025-04] Kategori & Tag Selesai
+
+**SelectItem value="" — Error Radix**
+- `<SelectItem value="">` tidak valid di shadcn/ui — Radix melarang empty string karena dipakai sebagai sentinel "clear selection"
+- Fix: gunakan sentinel explicit seperti `value="none"`, lalu konversi ke `null` sebelum dikirim ke server action
+- Berlaku di SEMUA SelectItem di seluruh aplikasi — pattern ini harus konsisten
+
+**Combobox untuk Select di Sidebar**
+- Category di post editor pakai Popover + Command (bukan Select), sesuai standar UI Combobox
+- "Tambah kategori baru" sebagai inline form di bawah CommandList — tidak perlu navigasi ke halaman kategori
+- Setelah inline create: update local state (tidak perlu router.refresh) + select item baru otomatis
+
+**TagInput dengan Comma Creation**
+- Pattern: input field + Popover dropdown dengan PopoverAnchor
+- Ketik → dropdown filter existing tags; koma/Enter → cek exact match (case-insensitive) → select existing ATAU create baru
+- onBlur + setTimeout(150ms) untuk tutup dropdown — memberi waktu click di dropdown terdaftar sebelum blur menutup
+- `onInteractOutside={(e) => e.preventDefault()}` di PopoverContent untuk cegah Radix auto-close saat klik item
+- Backspace saat input kosong → hapus tag terakhir (UX standar tag input)
+- Local state untuk tag/category yang baru dibuat — tidak butuh router.refresh(), ID langsung dipakai
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Website Module selesai (Posts + Pages + Block Editor + SeoPanel + Featured Image)
-- Commit terakhir: `510c2c0` — fix: label tombol simpan + publikasikan berdasarkan status
-- Website Module: selesai (lihat Arsitektur Website Module + Lessons Learned di atas)
+- Terakhir dikerjakan: Website Module — Kategori & Tag selesai + integrasi ke PostForm
+- Commit terakhir: `106aa2d` — feat: kategori & tag module + combobox category + tag autocomplete di post editor
+- Website Module: **SELESAI** (Posts + Pages + Kategori + Tag; Komentar ditunda)
+- Komentar ditunda — bukan prioritas, bisa diimplementasikan nanti saat ada kebutuhan nyata
 - Next step: **Surat Menyurat** — schema sudah ada di tenant DB (`letters`, `letter_number_sequences`)
