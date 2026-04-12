@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
@@ -522,5 +522,297 @@ export async function deletePageAction(
   } catch (err) {
     console.error("[deletePageAction]", err);
     return { success: false, error: "Gagal menghapus halaman." };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CATEGORIES — taksonomi hierarkis untuk posts (satu level parent → children)
+// ════════════════════════════════════════════════════════════════════════════
+
+export type CategoryFormData = {
+  name: string;
+  slug?: string;
+  parentId?: string | null;
+};
+
+// ─── CREATE CATEGORY ──────────────────────────────────────────────────────────
+
+export async function createCategoryAction(
+  slug: string,
+  data: CategoryFormData
+): Promise<ActionResult<{ categoryId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!data.name?.trim()) return { success: false, error: "Nama kategori wajib diisi." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const catSlug = resolveSlug(data.name, data.slug);
+
+  // Cek slug duplikat
+  const [dup] = await db
+    .select({ id: schema.postCategories.id })
+    .from(schema.postCategories)
+    .where(eq(schema.postCategories.slug, catSlug))
+    .limit(1);
+  if (dup) return { success: false, error: "Slug sudah dipakai kategori lain." };
+
+  try {
+    const [cat] = await db
+      .insert(schema.postCategories)
+      .values({
+        name:     data.name.trim(),
+        slug:     catSlug,
+        parentId: data.parentId ?? null,
+      })
+      .returning({ id: schema.postCategories.id });
+
+    revalidatePath(`/${slug}/website/categories`);
+    return { success: true, data: { categoryId: cat.id } };
+
+  } catch (err) {
+    console.error("[createCategoryAction]", err);
+    return { success: false, error: "Gagal membuat kategori." };
+  }
+}
+
+// ─── UPDATE CATEGORY ──────────────────────────────────────────────────────────
+
+export async function updateCategoryAction(
+  slug: string,
+  categoryId: string,
+  data: CategoryFormData
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!data.name?.trim()) return { success: false, error: "Nama kategori wajib diisi." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [existing] = await db
+    .select({ id: schema.postCategories.id, slug: schema.postCategories.slug })
+    .from(schema.postCategories)
+    .where(eq(schema.postCategories.id, categoryId))
+    .limit(1);
+  if (!existing) return { success: false, error: "Kategori tidak ditemukan." };
+
+  const catSlug = resolveSlug(data.name, data.slug);
+
+  // Cek slug duplikat hanya jika slug berubah
+  if (catSlug !== existing.slug) {
+    const [dup] = await db
+      .select({ id: schema.postCategories.id })
+      .from(schema.postCategories)
+      .where(eq(schema.postCategories.slug, catSlug))
+      .limit(1);
+    if (dup) return { success: false, error: "Slug sudah dipakai kategori lain." };
+  }
+
+  // Cegah kategori jadi parent dirinya sendiri
+  if (data.parentId === categoryId) {
+    return { success: false, error: "Kategori tidak bisa jadi parent dirinya sendiri." };
+  }
+
+  try {
+    await db
+      .update(schema.postCategories)
+      .set({
+        name:     data.name.trim(),
+        slug:     catSlug,
+        parentId: data.parentId ?? null,
+      })
+      .where(eq(schema.postCategories.id, categoryId));
+
+    revalidatePath(`/${slug}/website/categories`);
+    return { success: true, data: undefined };
+
+  } catch (err) {
+    console.error("[updateCategoryAction]", err);
+    return { success: false, error: "Gagal mengupdate kategori." };
+  }
+}
+
+// ─── DELETE CATEGORY ──────────────────────────────────────────────────────────
+// Ditolak jika masih ada posts yang menggunakan kategori ini.
+
+export async function deleteCategoryAction(
+  slug: string,
+  categoryId: string
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  // Hitung posts yang pakai kategori ini
+  const [{ postCount }] = await db
+    .select({ postCount: count() })
+    .from(schema.posts)
+    .where(eq(schema.posts.categoryId, categoryId));
+
+  if (Number(postCount) > 0) {
+    return {
+      success: false,
+      error: `Tidak bisa dihapus — ${postCount} post masih menggunakan kategori ini.`,
+    };
+  }
+
+  // Cegah hapus kategori yang masih punya anak
+  const [{ childCount }] = await db
+    .select({ childCount: count() })
+    .from(schema.postCategories)
+    .where(eq(schema.postCategories.parentId, categoryId));
+
+  if (Number(childCount) > 0) {
+    return {
+      success: false,
+      error: `Tidak bisa dihapus — kategori ini masih punya ${childCount} sub-kategori.`,
+    };
+  }
+
+  try {
+    await db
+      .delete(schema.postCategories)
+      .where(eq(schema.postCategories.id, categoryId));
+
+    revalidatePath(`/${slug}/website/categories`);
+    return { success: true, data: undefined };
+
+  } catch (err) {
+    console.error("[deleteCategoryAction]", err);
+    return { success: false, error: "Gagal menghapus kategori." };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TAGS — label flat untuk posts (tanpa hierarki)
+// ════════════════════════════════════════════════════════════════════════════
+
+export type TagFormData = {
+  name: string;
+  slug?: string;
+};
+
+// ─── CREATE TAG ───────────────────────────────────────────────────────────────
+
+export async function createTagAction(
+  slug: string,
+  data: TagFormData
+): Promise<ActionResult<{ tagId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!data.name?.trim()) return { success: false, error: "Nama tag wajib diisi." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const tagSlug = resolveSlug(data.name, data.slug);
+
+  const [dup] = await db
+    .select({ id: schema.postTags.id })
+    .from(schema.postTags)
+    .where(eq(schema.postTags.slug, tagSlug))
+    .limit(1);
+  if (dup) return { success: false, error: "Tag dengan nama ini sudah ada." };
+
+  try {
+    const [tag] = await db
+      .insert(schema.postTags)
+      .values({ name: data.name.trim(), slug: tagSlug })
+      .returning({ id: schema.postTags.id });
+
+    revalidatePath(`/${slug}/website/categories`);
+    return { success: true, data: { tagId: tag.id } };
+
+  } catch (err) {
+    console.error("[createTagAction]", err);
+    return { success: false, error: "Gagal membuat tag." };
+  }
+}
+
+// ─── UPDATE TAG ───────────────────────────────────────────────────────────────
+
+export async function updateTagAction(
+  slug: string,
+  tagId: string,
+  data: TagFormData
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!data.name?.trim()) return { success: false, error: "Nama tag wajib diisi." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [existing] = await db
+    .select({ id: schema.postTags.id, slug: schema.postTags.slug })
+    .from(schema.postTags)
+    .where(eq(schema.postTags.id, tagId))
+    .limit(1);
+  if (!existing) return { success: false, error: "Tag tidak ditemukan." };
+
+  const tagSlug = resolveSlug(data.name, data.slug);
+
+  if (tagSlug !== existing.slug) {
+    const [dup] = await db
+      .select({ id: schema.postTags.id })
+      .from(schema.postTags)
+      .where(eq(schema.postTags.slug, tagSlug))
+      .limit(1);
+    if (dup) return { success: false, error: "Tag dengan nama ini sudah ada." };
+  }
+
+  try {
+    await db
+      .update(schema.postTags)
+      .set({ name: data.name.trim(), slug: tagSlug })
+      .where(eq(schema.postTags.id, tagId));
+
+    revalidatePath(`/${slug}/website/categories`);
+    return { success: true, data: undefined };
+
+  } catch (err) {
+    console.error("[updateTagAction]", err);
+    return { success: false, error: "Gagal mengupdate tag." };
+  }
+}
+
+// ─── DELETE TAG ───────────────────────────────────────────────────────────────
+// Hapus pivot dulu (post_tag_pivot), baru tag-nya.
+
+export async function deleteTagAction(
+  slug: string,
+  tagId: string
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [existing] = await db
+    .select({ id: schema.postTags.id })
+    .from(schema.postTags)
+    .where(eq(schema.postTags.id, tagId))
+    .limit(1);
+  if (!existing) return { success: false, error: "Tag tidak ditemukan." };
+
+  try {
+    // Hapus pivot dulu
+    await db
+      .delete(schema.postTagPivot)
+      .where(eq(schema.postTagPivot.tagId, tagId));
+
+    await db
+      .delete(schema.postTags)
+      .where(eq(schema.postTags.id, tagId));
+
+    revalidatePath(`/${slug}/website/categories`);
+    return { success: true, data: undefined };
+
+  } catch (err) {
+    console.error("[deleteTagAction]", err);
+    return { success: false, error: "Gagal menghapus tag." };
   }
 }
