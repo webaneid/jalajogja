@@ -125,6 +125,9 @@ export async function createTenantSchemaInDb(
         -- Bucket per tenant: tenant-{slug}
         path          TEXT        NOT NULL,
         alt_text      TEXT,
+        title         TEXT,
+        caption       TEXT,
+        description   TEXT,
         -- Modul asal upload: website/members/letters/shop/general
         module        TEXT        NOT NULL DEFAULT 'general'
                                   CHECK (module IN ('website','members','letters','shop','general')),

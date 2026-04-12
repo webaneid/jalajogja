@@ -2,24 +2,18 @@
 
 import { useState, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { UploadCloud, Grid, List, Trash2, X, Search, Filter, FileText, Film, Image as ImageIcon, File } from "lucide-react";
+import {
+  UploadCloud, Grid, List, Trash2, X, Search,
+  Filter, FileText, Film, Image as ImageIcon, File, Pencil,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Image from "next/image";
+import { MediaEditModal } from "./media-edit-modal";
+import type { MediaItem } from "./media-picker";
 
-type MediaItem = {
-  id: string;
-  filename: string;
-  originalName: string;
-  mimeType: string;
-  size: number;
-  path: string;
-  altText: string | null;
-  module: string;
-  isUsed: boolean;
-  createdAt: Date;
-  url: string;
-};
+// Re-export agar page.tsx bisa import dari satu tempat
+export type { MediaItem };
 
 const MODULE_LABELS: Record<string, string> = {
   general: "Umum",
@@ -62,84 +56,73 @@ export function MediaShell({
   const [uploading, setUploading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Filter client-side
   const filtered = media.filter((m) => {
-    const matchSearch = search === "" || m.originalName.toLowerCase().includes(search.toLowerCase());
+    const matchSearch =
+      search === "" || m.originalName.toLowerCase().includes(search.toLowerCase());
     const matchModule = moduleFilter === "" || m.module === moduleFilter;
     return matchSearch && matchModule;
   });
 
-  // Upload files
-  const uploadFiles = useCallback(async (files: FileList | File[]) => {
-    setUploading(true);
-    const fileArr = Array.from(files);
-    let successCount = 0;
-
-    for (const file of fileArr) {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch(
-        `/api/media/upload?tenant=${slug}&module=${uploadModule}`,
-        { method: "POST", body: formData },
-      );
-
-      if (res.ok) {
-        const data = await res.json();
-        // Tambah ke state lokal
-        setMedia((prev) => [
-          {
-            id: data.id,
-            filename: data.filename,
-            originalName: data.originalName,
-            mimeType: data.mimeType,
-            size: data.size,
-            path: data.path,
-            altText: null,
-            module: uploadModule,
-            isUsed: false,
-            createdAt: new Date(),
-            url: data.url,
-          },
-          ...prev,
-        ]);
-        successCount++;
-      } else {
-        const err = await res.json();
-        toast.error(`Gagal upload ${file.name}: ${err.error}`);
+  const uploadFiles = useCallback(
+    async (files: FileList | File[]) => {
+      setUploading(true);
+      let successCount = 0;
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch(
+          `/api/media/upload?tenant=${slug}&module=${uploadModule}`,
+          { method: "POST", body: formData },
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setMedia((prev) => [
+            {
+              id: data.id,
+              filename: data.filename,
+              originalName: data.originalName,
+              mimeType: data.mimeType,
+              size: data.size,
+              path: data.path,
+              altText: null,
+              title: null,
+              caption: null,
+              description: null,
+              module: uploadModule,
+              isUsed: false,
+              createdAt: new Date().toISOString(),
+              url: data.url,
+            },
+            ...prev,
+          ]);
+          successCount++;
+        } else {
+          const err = await res.json();
+          toast.error(`Gagal upload ${file.name}: ${err.error}`);
+        }
       }
-    }
+      setUploading(false);
+      if (successCount > 0) toast.success(`${successCount} file berhasil diupload`);
+    },
+    [slug, uploadModule],
+  );
 
-    setUploading(false);
-    if (successCount > 0) {
-      toast.success(`${successCount} file berhasil diupload`);
-    }
-  }, [slug, uploadModule]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
+    },
+    [uploadFiles],
+  );
 
-  // Drag & drop handlers
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files.length) {
-      uploadFiles(e.dataTransfer.files);
-    }
-  }, [uploadFiles]);
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => setIsDragging(false);
-
-  // Hapus selected
   const deleteSelected = async () => {
     if (selected.size === 0) return;
     setDeleting(true);
     let successCount = 0;
-
     for (const id of selected) {
       const res = await fetch(`/api/media/delete?tenant=${slug}&id=${id}`, {
         method: "DELETE",
@@ -149,22 +132,22 @@ export function MediaShell({
         successCount++;
       }
     }
-
     setSelected(new Set());
     setDeleting(false);
-    if (successCount > 0) {
-      toast.success(`${successCount} file dihapus`);
-    }
+    if (successCount > 0) toast.success(`${successCount} file dihapus`);
   };
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+
+  // Update item di local state setelah metadata disimpan
+  const handleMetaSave = (updated: MediaItem) =>
+    setMedia((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
 
   return (
     <div className="flex flex-col h-full">
@@ -184,10 +167,11 @@ export function MediaShell({
                 Hapus ({selected.size})
               </Button>
             )}
-            {/* Selector modul untuk upload */}
             <select
               value={uploadModule}
-              onChange={(e) => setUploadModule(e.target.value as typeof MODULE_OPTIONS[number])}
+              onChange={(e) =>
+                setUploadModule(e.target.value as typeof MODULE_OPTIONS[number])
+              }
               className="text-sm border rounded-md px-2 py-1 bg-background"
             >
               {MODULE_OPTIONS.map((m) => (
@@ -256,12 +240,12 @@ export function MediaShell({
 
       {/* Konten — drop zone + grid/list */}
       <div
-        className={`flex-1 overflow-y-auto p-6 relative ${isDragging ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
+        className={`flex-1 overflow-y-auto p-6 relative
+          ${isDragging ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
         onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
       >
-        {/* Overlay saat drag */}
         {isDragging && (
           <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
             <div className="bg-background/90 border-2 border-dashed border-primary rounded-xl px-12 py-8 text-center">
@@ -278,15 +262,29 @@ export function MediaShell({
             items={filtered}
             selected={selected}
             onToggle={toggleSelect}
+            onEdit={setEditingItem}
           />
         ) : (
           <ListView
             items={filtered}
             selected={selected}
             onToggle={toggleSelect}
+            onEdit={setEditingItem}
           />
         )}
       </div>
+
+      {/* MediaEditModal */}
+      {editingItem && (
+        <MediaEditModal
+          key={editingItem.id}
+          media={editingItem}
+          slug={slug}
+          open={!!editingItem}
+          onClose={() => setEditingItem(null)}
+          onSave={handleMetaSave}
+        />
+      )}
     </div>
   );
 }
@@ -305,11 +303,12 @@ function EmptyState({ uploading, onUpload }: { uploading: boolean; onUpload: () 
 }
 
 function GridView({
-  items, selected, onToggle,
+  items, selected, onToggle, onEdit,
 }: {
   items: MediaItem[];
   selected: Set<string>;
   onToggle: (id: string) => void;
+  onEdit: (item: MediaItem) => void;
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
@@ -318,9 +317,10 @@ function GridView({
           key={item.id}
           onClick={() => onToggle(item.id)}
           className={`group relative rounded-lg border cursor-pointer overflow-hidden transition-all
-            ${selected.has(item.id) ? "ring-2 ring-primary border-primary" : "border-border hover:border-primary/50"}`}
+            ${selected.has(item.id)
+              ? "ring-2 ring-primary border-primary"
+              : "border-border hover:border-primary/50"}`}
         >
-          {/* Thumbnail */}
           <div className="aspect-square bg-muted flex items-center justify-center">
             {item.mimeType.startsWith("image/") ? (
               <Image
@@ -335,14 +335,24 @@ function GridView({
             )}
           </div>
 
-          {/* Checkbox overlay */}
           {selected.has(item.id) && (
-            <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+            <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-primary rounded-full
+                            flex items-center justify-center">
               <X className="h-3 w-3 text-primary-foreground" />
             </div>
           )}
 
-          {/* Info bawah */}
+          {/* Tombol edit — kiri atas, muncul saat hover */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit(item); }}
+            className="absolute top-1.5 left-1.5 w-6 h-6 bg-black/60 rounded flex items-center
+                       justify-center opacity-0 group-hover:opacity-100 transition-opacity
+                       hover:bg-black/80"
+            title="Edit metadata"
+          >
+            <Pencil className="h-3 w-3 text-white" />
+          </button>
+
           <div className="p-1.5">
             <p className="text-xs truncate text-muted-foreground">{item.originalName}</p>
             <p className="text-xs text-muted-foreground/60">{formatSize(item.size)}</p>
@@ -354,11 +364,12 @@ function GridView({
 }
 
 function ListView({
-  items, selected, onToggle,
+  items, selected, onToggle, onEdit,
 }: {
   items: MediaItem[];
   selected: Set<string>;
   onToggle: (id: string) => void;
+  onEdit: (item: MediaItem) => void;
 }) {
   return (
     <div className="divide-y border rounded-lg overflow-hidden bg-card">
@@ -366,11 +377,11 @@ function ListView({
         <div
           key={item.id}
           onClick={() => onToggle(item.id)}
-          className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors
+          className={`group flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors
             ${selected.has(item.id) ? "bg-primary/5" : "hover:bg-muted/50"}`}
         >
-          {/* Thumbnail kecil */}
-          <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+          <div className="w-10 h-10 rounded bg-muted flex items-center justify-center
+                          shrink-0 overflow-hidden">
             {item.mimeType.startsWith("image/") ? (
               <Image
                 src={item.url}
@@ -384,13 +395,11 @@ function ListView({
             )}
           </div>
 
-          {/* Nama + path */}
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{item.originalName}</p>
             <p className="text-xs text-muted-foreground truncate">{item.path}</p>
           </div>
 
-          {/* Meta */}
           <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
             <span className="hidden sm:block">{MODULE_LABELS[item.module] ?? item.module}</span>
             <span>{formatSize(item.size)}</span>
@@ -399,7 +408,16 @@ function ListView({
             </span>
           </div>
 
-          {/* Checkbox */}
+          {/* Tombol edit — muncul saat hover */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit(item); }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded
+                       hover:bg-muted shrink-0"
+            title="Edit metadata"
+          >
+            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+
           <div className={`w-4 h-4 rounded border shrink-0 flex items-center justify-center
             ${selected.has(item.id) ? "bg-primary border-primary" : "border-border"}`}>
             {selected.has(item.id) && <X className="h-2.5 w-2.5 text-primary-foreground" />}

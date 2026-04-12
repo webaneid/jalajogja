@@ -95,6 +95,9 @@ export function createMediaTable(s: ReturnType<typeof pgSchema>) {
     size: integer("size").notNull(),     // bytes
     path: text("path").notNull(),         // path di MinIO bucket
     altText: text("alt_text"),
+    title: text("title"),                // judul gambar (hover tooltip)
+    caption: text("caption"),            // keterangan di bawah gambar dalam artikel
+    description: text("description"),    // deskripsi panjang untuk SEO / schema.org
     // Modul asal upload: website/members/letters/shop/general
     module: text("module", { enum: MEDIA_MODULES }).notNull().default("general"),
     // false = file ter-upload tapi belum dipakai di konten (orphan candidate)

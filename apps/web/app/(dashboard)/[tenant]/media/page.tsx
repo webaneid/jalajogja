@@ -26,10 +26,11 @@ export default async function MediaPage({
     .from(schema.media)
     .orderBy(desc(schema.media.createdAt));
 
-  // Tambah URL publik untuk setiap file
+  // Tambah URL publik + serialize createdAt ke string
   const mediaWithUrl = mediaList.map((m) => ({
     ...m,
     url: publicUrl(slug, m.path),
+    createdAt: m.createdAt.toISOString(),
   }));
 
   return (

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { toast } from "sonner";
-import { UploadCloud, Search, CheckCircle2, Loader2 } from "lucide-react";
+import { UploadCloud, Search, CheckCircle2, Loader2, Pencil } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MediaEditModal } from "./media-edit-modal";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,9 @@ export type MediaItem = {
   size: number;
   path: string;
   altText: string | null;
+  title: string | null;
+  caption: string | null;
+  description: string | null;
   module: string;
   isUsed: boolean;
   createdAt: string;
@@ -72,6 +76,7 @@ export function MediaPicker({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch media list setiap kali dialog dibuka
@@ -144,6 +149,9 @@ export function MediaPicker({
               size: data.size,
               path: data.path,
               altText: null,
+              title: null,
+              caption: null,
+              description: null,
               module: uploadModule,
               isUsed: false,
               createdAt: new Date().toISOString(),
@@ -179,6 +187,7 @@ export function MediaPicker({
   );
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-3xl p-0 gap-0" showCloseButton={false}>
         <DialogHeader className="px-6 pt-5 pb-0">
@@ -251,6 +260,7 @@ export function MediaPicker({
                       item={item}
                       isSelected={selected.has(item.id)}
                       onClick={() => toggleSelect(item.id)}
+                      onEdit={setEditingItem}
                     />
                   ))}
                 </div>
@@ -337,6 +347,21 @@ export function MediaPicker({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* MediaEditModal — di luar Dialog agar tidak terjebak di z-index stack */}
+    {editingItem && (
+      <MediaEditModal
+        key={editingItem.id}
+        media={editingItem}
+        slug={slug}
+        open={!!editingItem}
+        onClose={() => setEditingItem(null)}
+        onSave={(updated) =>
+          setMedia((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
+        }
+      />
+    )}
+    </>
   );
 }
 
@@ -346,10 +371,12 @@ function MediaThumb({
   item,
   isSelected,
   onClick,
+  onEdit,
 }: {
   item: MediaItem;
   isSelected: boolean;
   onClick: () => void;
+  onEdit: (item: MediaItem) => void;
 }) {
   return (
     <div
@@ -384,6 +411,17 @@ function MediaThumb({
           <CheckCircle2 className="h-6 w-6 text-primary drop-shadow-md" />
         </div>
       )}
+
+      {/* Tombol edit pensil — kiri atas, muncul saat hover */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onEdit(item); }}
+        className="absolute top-1 left-1 w-5 h-5 bg-black/60 rounded flex items-center
+                   justify-center opacity-0 group-hover:opacity-100 transition-opacity
+                   hover:bg-black/80"
+        title="Edit metadata"
+      >
+        <Pencil className="h-2.5 w-2.5 text-white" />
+      </button>
 
       {/* Nama file saat hover */}
       <div
