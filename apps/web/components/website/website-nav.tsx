@@ -31,7 +31,7 @@ export function WebsiteNav({ slug }: { slug: string }) {
               ? pathname === base
               : pathname.startsWith(href);
           // Placeholder: halaman belum dibuat
-          const isComingSoon = path === "/pages" || path === "/categories" || path === "/comments";
+          const isComingSoon = path === "/categories" || path === "/comments";
 
           return (
             <li key={label}>

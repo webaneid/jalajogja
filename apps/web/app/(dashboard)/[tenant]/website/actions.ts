@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { generateSlug } from "@/lib/seo";
-import type { ContentStatus, PostTwitterCard, PostRobots, PostSchemaType } from "@jalajogja/db";
+import type { ContentStatus, PostTwitterCard, PostRobots, PostSchemaType, PageSchemaType } from "@jalajogja/db";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -301,5 +301,226 @@ export async function deletePostAction(
   } catch (err) {
     console.error("[deletePostAction]", err);
     return { success: false, error: "Gagal menghapus post." };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PAGES — halaman statis (Tentang, Kontak, dll)
+// ════════════════════════════════════════════════════════════════════════════
+
+export type PageFormData = {
+  title: string;
+  slug?: string;
+  content?: string | null;
+  coverId?: string | null;
+  order?: number;
+  status?: ContentStatus;
+  publishedAt?: string | null;
+  // SEO
+  metaTitle?: string;
+  metaDesc?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImageId?: string | null;
+  twitterCard?: "summary" | "summary_large_image";
+  focusKeyword?: string;
+  canonicalUrl?: string;
+  robots?: "index,follow" | "noindex" | "noindex,nofollow";
+  schemaType?: PageSchemaType;
+  structuredData?: string | null;
+};
+
+// ─── CREATE PAGE DRAFT ───────────────────────────────────────────────────────
+
+export async function createPageDraftAction(
+  slug: string,
+  title = "Halaman Baru"
+): Promise<ActionResult<{ pageId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  let pageSlug = resolveSlug(title);
+  const [existing] = await db
+    .select({ id: schema.pages.id })
+    .from(schema.pages)
+    .where(eq(schema.pages.slug, pageSlug))
+    .limit(1);
+
+  if (existing) {
+    pageSlug = `${pageSlug}-${crypto.randomUUID().slice(0, 6)}`;
+  }
+
+  try {
+    const [page] = await db
+      .insert(schema.pages)
+      .values({
+        title: title.trim() || "Halaman Baru",
+        slug:     pageSlug,
+        status:   "draft",
+        authorId: access.tenantUser.id,
+      })
+      .returning({ id: schema.pages.id });
+
+    revalidatePath(`/${slug}/website/pages`);
+    return { success: true, data: { pageId: page.id } };
+
+  } catch (err) {
+    console.error("[createPageDraftAction]", err);
+    return { success: false, error: "Gagal membuat halaman." };
+  }
+}
+
+// ─── UPDATE PAGE ─────────────────────────────────────────────────────────────
+
+export async function updatePageAction(
+  slug: string,
+  pageId: string,
+  data: PageFormData
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!data.title?.trim()) {
+    return { success: false, error: "Judul halaman wajib diisi." };
+  }
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [existing] = await db
+    .select({ id: schema.pages.id, slug: schema.pages.slug })
+    .from(schema.pages)
+    .where(eq(schema.pages.id, pageId))
+    .limit(1);
+
+  if (!existing) return { success: false, error: "Halaman tidak ditemukan." };
+
+  const newSlug = resolveSlug(data.title, data.slug);
+  if (newSlug !== existing.slug) {
+    const [duplicate] = await db
+      .select({ id: schema.pages.id })
+      .from(schema.pages)
+      .where(eq(schema.pages.slug, newSlug))
+      .limit(1);
+
+    if (duplicate && duplicate.id !== pageId) {
+      return { success: false, error: "Slug sudah dipakai halaman lain." };
+    }
+  }
+
+  let publishedAt: Date | null = null;
+  if (data.status === "published") {
+    publishedAt = data.publishedAt ? new Date(data.publishedAt) : new Date();
+  }
+
+  try {
+    await db
+      .update(schema.pages)
+      .set({
+        title:    data.title.trim(),
+        slug:     newSlug,
+        content:  data.content ?? null,
+        coverId:  data.coverId ?? null,
+        order:    data.order ?? 0,
+        status:   data.status ?? "draft",
+        publishedAt,
+        metaTitle:      data.metaTitle?.trim()      || null,
+        metaDesc:       data.metaDesc?.trim()       || null,
+        ogTitle:        data.ogTitle?.trim()        || null,
+        ogDescription:  data.ogDescription?.trim()  || null,
+        ogImageId:      data.ogImageId              ?? null,
+        twitterCard:    data.twitterCard            ?? "summary",
+        focusKeyword:   data.focusKeyword?.trim()   || null,
+        canonicalUrl:   data.canonicalUrl?.trim()   || null,
+        robots:         data.robots                 ?? "index,follow",
+        schemaType:     data.schemaType             ?? "WebPage",
+        structuredData: parseStructuredData(data.structuredData),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.pages.id, pageId));
+
+    revalidatePath(`/${slug}/website/pages`);
+    revalidatePath(`/${slug}/website/pages/${pageId}/edit`);
+    return { success: true, data: undefined };
+
+  } catch (err) {
+    console.error("[updatePageAction]", err);
+    const msg = err instanceof Error ? err.message : "Gagal menyimpan.";
+    if (msg.includes("pages_slug_unique")) {
+      return { success: false, error: "Slug sudah dipakai halaman lain." };
+    }
+    return { success: false, error: `Gagal: ${msg}` };
+  }
+}
+
+// ─── UPDATE PAGE STATUS ───────────────────────────────────────────────────────
+
+export async function updatePageStatusAction(
+  slug: string,
+  pageId: string,
+  status: ContentStatus
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [existing] = await db
+    .select({ id: schema.pages.id, publishedAt: schema.pages.publishedAt })
+    .from(schema.pages)
+    .where(eq(schema.pages.id, pageId))
+    .limit(1);
+
+  if (!existing) return { success: false, error: "Halaman tidak ditemukan." };
+
+  const publishedAt =
+    status === "published"
+      ? (existing.publishedAt ?? new Date())
+      : null;
+
+  try {
+    await db
+      .update(schema.pages)
+      .set({ status, publishedAt, updatedAt: new Date() })
+      .where(eq(schema.pages.id, pageId));
+
+    revalidatePath(`/${slug}/website/pages`);
+    revalidatePath(`/${slug}/website/pages/${pageId}/edit`);
+    return { success: true, data: undefined };
+
+  } catch (err) {
+    console.error("[updatePageStatusAction]", err);
+    return { success: false, error: "Gagal mengubah status." };
+  }
+}
+
+// ─── DELETE PAGE ──────────────────────────────────────────────────────────────
+
+export async function deletePageAction(
+  slug: string,
+  pageId: string
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [existing] = await db
+    .select({ id: schema.pages.id })
+    .from(schema.pages)
+    .where(eq(schema.pages.id, pageId))
+    .limit(1);
+
+  if (!existing) return { success: false, error: "Halaman tidak ditemukan." };
+
+  try {
+    await db.delete(schema.pages).where(eq(schema.pages.id, pageId));
+    revalidatePath(`/${slug}/website/pages`);
+    return { success: true, data: undefined };
+
+  } catch (err) {
+    console.error("[deletePageAction]", err);
+    return { success: false, error: "Gagal menghapus halaman." };
   }
 }
