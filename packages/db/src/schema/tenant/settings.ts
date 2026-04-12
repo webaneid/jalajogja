@@ -11,11 +11,13 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const SETTING_GROUPS = [
-  "general",  // nama org, logo, deskripsi
+  "general",  // nama org, logo, tagline, timezone, bahasa, currency
+  "contact",  // email, telepon, alamat, sosial media organisasi
+  "payment",  // rekening bank, QRIS, gateway config (midtrans/xendit/ipaymu)
+  "display",  // primary color, font, footer text
   "mail",     // konfigurasi SMTP untuk kirim email
-  "payment",  // rekening bank, nomor QRIS
   "notif",    // notifikasi email/WhatsApp
-  "website",  // tema, warna, footer text
+  "website",  // homepage layout, analitik (untuk modul Website nanti)
 ] as const;
 export type SettingGroup = typeof SETTING_GROUPS[number];
 

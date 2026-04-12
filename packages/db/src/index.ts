@@ -22,3 +22,11 @@ export {
 
 // Member number generator (global sequence)
 export { generateMemberNumber } from "./helpers/member-number";
+
+// Settings helpers (tenant key-value config store)
+export {
+  getSettings,
+  getSetting,
+  upsertSetting,
+  upsertSettings,
+} from "./helpers/settings";
