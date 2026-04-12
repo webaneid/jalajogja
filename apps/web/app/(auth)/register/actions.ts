@@ -90,7 +90,8 @@ export async function registerAction(
 
     // 5. Buat schema PostgreSQL + semua tabel + seed data default
     // Fungsi ini punya transaksi sendiri — tidak bisa di-nest di atas
-    await createTenantSchemaInDb(db, slug);
+    // Pass orgName agar site_name di settings langsung terisi dari form registrasi
+    await createTenantSchemaInDb(db, slug, orgName);
     schemaCreated = true;
 
     // 6. Insert user sebagai owner di tenant schema yang baru dibuat

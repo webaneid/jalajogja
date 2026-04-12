@@ -12,7 +12,8 @@ function validateSlug(slug: string): boolean {
 // Catatan: tabel members TIDAK ada di sini — data anggota terpusat di public.members
 export async function createTenantSchemaInDb(
   db: PublicDb,
-  slug: string
+  slug: string,
+  orgName?: string  // nama organisasi dari form registrasi → seed ke settings.site_name
 ): Promise<void> {
   if (!validateSlug(slug)) {
     throw new Error(`Slug tidak valid: "${slug}".`);
@@ -461,9 +462,11 @@ export async function createTenantSchemaInDb(
       ON CONFLICT (location) DO NOTHING
     `));
 
+    // Escape tanda kutip dalam nama org agar aman dimasukkan ke SQL string JSON
+    const safeName = (orgName ?? "Organisasi Saya").replace(/'/g, "''").replace(/"/g, '\\"');
     await tx.execute(sql.raw(`
       INSERT INTO "${s}".settings (key, "group", value) VALUES
-        ('site_name', 'general', '"Organisasi Saya"'),
+        ('site_name', 'general', '"${safeName}"'),
         ('site_desc', 'general', '""'),
         ('timezone',  'general', '"Asia/Jakarta"'),
         ('language',  'general', '"id"'),
