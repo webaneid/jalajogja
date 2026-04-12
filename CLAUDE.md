@@ -146,6 +146,97 @@ src/
 `member_id` di `orders` nullable — untuk donasi dari luar yang tidak perlu login.
 Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 
+## Arsitektur Website Module
+
+### Struktur Route
+```
+app/(dashboard)/[tenant]/website/
+├── layout.tsx              → website shell: WebsiteNav (sub-nav kiri) + slot konten kanan
+├── page.tsx                → /website — dashboard: stats (total posts/pages, draft, terbit) + 5 post terbaru
+├── actions.ts              → SEMUA server actions website (posts + pages)
+├── posts/
+│   ├── page.tsx            → list posts: filter status + search + pagination
+│   ├── new/page.tsx        → pre-create draft → redirect ke edit (server-side fallback)
+│   └── [id]/edit/page.tsx  → full editor: fetch post + tags + categories → render PostForm
+└── pages/
+    ├── page.tsx            → list pages: sorted by `order` asc
+    ├── new/page.tsx        → pre-create draft → redirect ke edit
+    └── [id]/edit/page.tsx  → full editor: fetch page → render PageForm
+```
+
+### Server Actions (website/actions.ts)
+```
+Posts:
+  createPostDraftAction(slug, title?)      → pre-create + return postId
+  updatePostAction(slug, postId, data)     → full update + tag sync diff
+  updatePostStatusAction(slug, postId, s)  → quick status change
+  deletePostAction(slug, postId)           → delete pivot dulu, baru post
+
+Pages:
+  createPageDraftAction(slug, title?)      → pre-create + return pageId
+  updatePageAction(slug, pageId, data)     → full update
+  updatePageStatusAction(slug, pageId, s)  → quick status change
+  deletePageAction(slug, pageId)           → delete
+```
+
+### Pre-create Pattern
+User klik "Post Baru" → action buat draft kosong di DB → redirect ke `/posts/{id}/edit`.
+Tidak ada modal input judul dulu — judul bisa diisi langsung di form editor.
+Server-side fallback: `posts/new/page.tsx` untuk akses tanpa JS.
+
+### Tags Sync: Replace-All Diff
+Bukan delete-all + insert-all. Hitung diff:
+- `toRemove` = tag lama yang tidak ada di list baru → `DELETE WHERE tagId IN (...)`
+- `toAdd` = tag baru yang belum ada di pivot → `INSERT batch`
+
+### PostForm / PageForm Layout
+```
+[Header: ← Posts | StatusBadge]  ← sticky top, navigasi saja
+[Main area]          [Sidebar 288px]
+  Judul (h1-style)     Status (select full width)
+  Slug (font-mono)     ────────────
+  Excerpt (post only)  Featured Image (aspect-video)
+  TiptapEditor           [Ganti] [Hapus] atau dashed empty state
+  SeoPanel             ────────────
+                       Kategori (post only)
+                       Tags pills (post only)
+                       Urutan / Order (pages only)
+                       ────────────
+                       [Simpan ...]   ← sticky bottom
+                       [Publikasikan]
+```
+
+### Logika Label Tombol (PostForm + PageForm)
+| Status aktif | Button 1 (outline) | Button 2 |
+|---|---|---|
+| `draft` | "Simpan Draft" | "Publikasikan" (primary, Globe) |
+| `published` | "Simpan Perubahan" | "Jadikan Draft" (outline, EyeOff) |
+| `archived` | "Arsipkan" (Archive icon) | "Publikasikan" (primary, Globe) |
+
+### Perbedaan Posts vs Pages
+| | Posts | Pages |
+|---|---|---|
+| Excerpt | ✓ | ✗ |
+| Kategori | ✓ | ✗ |
+| Tags | ✓ | ✗ |
+| Urutan (order) | ✗ | ✓ |
+| Sort list | updatedAt desc | order asc, title asc |
+| schemaType | Article/NewsArticle/BlogPosting | WebPage/AboutPage/ContactPage/FAQPage |
+| twitterCard default | summary_large_image | summary |
+
+### Komponen Client Website
+```
+components/website/
+├── post-list-client.tsx   → CreateButton, SearchInput, PostsTable (named exports)
+├── page-list-client.tsx   → CreatePageButton, PagesTable
+├── post-form.tsx          → full editor form untuk posts
+├── page-form.tsx          → full editor form untuk pages
+└── website-nav.tsx        → sub-nav kiri: Dashboard, Posts, Halaman, Kategori(Soon), Komentar(Soon)
+```
+
+**Aturan export client components**: selalu gunakan individual named exports, bukan namespace object
+`export const X = { A, B }` — pattern ini tidak kompatibel dengan Next.js App Router client boundary.
+
 ## Arsitektur Shell UI Dashboard
 
 ### Struktur Komponen
@@ -196,9 +287,9 @@ app/(dashboard)/[tenant]/
 - [x] Modul Settings (7 sections: general, domain, contact, payment, display, email, notifications)
 - [x] Media Library (upload, grid/list view, MediaPicker, metadata edit)
 - [x] SEO Module (helpers, SeoPanel, snippet preview, social preview, score)
-- [ ] **Website** (Pages, Posts, Block Editor) ← NEXT
-- [ ] Surat Menyurat
-- [ ] Keuangan
+- [x] Website Module (Posts + Pages + Block Editor + SeoPanel + Featured Image)
+- [ ] **Surat Menyurat** ← NEXT
+- [ ] Keuangan (sudah ada schema, belum ada UI)
 - [ ] Toko
 - [ ] Donasi / Infaq
 - [ ] Add-on Marketplace UI (settings + install flow)
@@ -878,9 +969,33 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - SeoValues type di-export dari seo-panel.tsx — parent form cukup `useState<SeoValues>(DEFAULT_VALUES)` + `onChange`
 - Test page: `/{slug}/seo-test` — dummy page untuk verifikasi sebelum integrasi ke form post/page
 
+### [2025-04] Website Module Selesai
+
+**Block Editor (Tiptap v3):**
+- Tiptap v3 banyak breaking change dari v2: BubbleMenu di `@tiptap/react/menus` (subpath), `immediatelyRender: false` wajib untuk Next.js SSR, named import `{ TextStyle }` dan `{ Table }`, tidak ada `tippyOptions` (ganti Floating UI `options={{ placement: "top" }}`), `setContent(parsed)` tanpa arg kedua
+- `atom: true` di custom Node → leaf node → renderHTML TIDAK boleh ada `0` (content hole)
+- Prose modifier Tailwind v4 tidak reliable di contenteditable — pakai direct selectors `[&_p]:my-3` dst
+- oEmbed universal via `noembed.com/embed?url=` — support 300+ platform, tidak perlu package tambahan
+- EmbedBlockView: `dangerouslySetInnerHTML` tidak re-execute `<script>` → pakai `useEffect` re-inject scripts (untuk Twitter/Instagram embeds)
+- Preview konten embed: jangan pakai `dangerouslySetInnerHTML` di preview biasa — pakai `TiptapEditor editable={false}` agar React NodeView tetap aktif
+
+**Client Components & Next.js App Router:**
+- Namespace export `export const X = { A, B, C }` → import `{ X }` → `X.A` **tidak bekerja** dengan baik di Next.js client boundary. Selalu pakai individual named exports: `export function A()`, `export function B()`.
+- `useSearchParams` wajib dibungkus `<Suspense>` di Next.js App Router — jika tidak dipakai, hapus importnya untuk menghindari warning.
+
+**Pre-create Pattern:**
+- Buat record kosong di DB dulu saat klik tombol, redirect ke edit page — tidak perlu modal input dulu. Pattern ini lebih baik dari "form create" karena: autosave bisa jalan, draft tersimpan meski browser tutup, URL bisa dibookmark.
+
+**Tag Sync:**
+- Gunakan diff (bukan delete-all + insert-all) untuk pivot table: hitung `toRemove` dan `toAdd`, jalankan DELETE dan INSERT hanya untuk yang berubah. Lebih aman untuk race condition.
+
+**Label Tombol yang Jelas:**
+- Tombol simpan harus mencerminkan status: "Simpan Draft" / "Simpan Perubahan" / "Arsipkan" — bukan "Simpan" generik
+- Tombol ubah status harus eksplisit: "Publikasikan" / "Jadikan Draft" — bukan "Publish/Unpublish" dalam bahasa Inggris
+- Hindari `useTransition` ganda untuk aksi yang memanggil function yang sama — cukup satu `isPending`
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: SEO Module selesai (helpers + SeoPanel + seo-test page)
-- Commit terakhir: `98edd5b` — feat: seo-test page for SeoPanel verification
-- Media Library: selesai (upload, grid/list, MediaPicker dialog, metadata edit, pencil hover)
-- SEO Module: selesai (lihat Lessons Learned di bawah)
-- Next step: **Website Module** — Posts + Pages + Block Editor + integrasi SeoPanel
+- Terakhir dikerjakan: Website Module selesai (Posts + Pages + Block Editor + SeoPanel + Featured Image)
+- Commit terakhir: `510c2c0` — fix: label tombol simpan + publikasikan berdasarkan status
+- Website Module: selesai (lihat Arsitektur Website Module + Lessons Learned di atas)
+- Next step: **Surat Menyurat** — schema sudah ada di tenant DB (`letters`, `letter_number_sequences`)
