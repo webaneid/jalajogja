@@ -14,7 +14,7 @@ import {
   Highlighter, Palette,
   ImagePlus, Code2, Minus,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Table, Film,
+  Table, Film, Trash2,
   Quote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -424,6 +424,17 @@ function FixedToolbar({ editor, slug }: ToolbarProps) {
       <ToolBtn onClick={handleInsertTable} title="Sisipkan Tabel">
         <Table className="h-4 w-4" />
       </ToolBtn>
+
+      {/* Hapus tabel — hanya tampil saat cursor di dalam tabel */}
+      {editor.isActive("table") && (
+        <ToolBtn
+          onClick={() => editor.chain().focus().deleteTable().run()}
+          title="Hapus Tabel"
+          className="text-destructive hover:text-destructive"
+        >
+          <Trash2 className="h-4 w-4" />
+        </ToolBtn>
+      )}
 
       <Separator />
 

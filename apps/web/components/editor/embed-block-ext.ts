@@ -82,11 +82,11 @@ export const EmbedBlock = Node.create({
   },
 
   renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, unknown> }) {
+    // atom: true → leaf node, tidak boleh ada content hole (tanpa angka 0 di akhir)
     return [
       "div",
       mergeAttributes(HTMLAttributes as Record<string, string>, { "data-type": "embed-block" }),
-      0,
-    ] as const;
+    ];
   },
 
   addCommands() {

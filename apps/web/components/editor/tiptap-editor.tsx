@@ -108,6 +108,7 @@ export function TiptapEditor({
 
     content: parseContent(content),
     editable,
+    immediatelyRender: false,  // wajib untuk Next.js SSR — hindari hydration mismatch
     autofocus: editable ? "end" : false,
 
     onUpdate({ editor }) {
@@ -122,7 +123,11 @@ export function TiptapEditor({
         class: [
           "prose prose-sm sm:prose-base max-w-none",
           "min-h-[400px] px-8 py-6 focus:outline-none",
-          "prose-headings:font-semibold prose-headings:tracking-tight",
+          "prose-headings:font-semibold prose-headings:tracking-tight prose-headings:mt-6 prose-headings:mb-3",
+          "prose-p:my-3",
+          "prose-ul:my-3 prose-ol:my-3",
+          "prose-blockquote:my-4",
+          "prose-pre:my-4",
           "prose-a:text-primary prose-a:underline",
           "prose-table:border-collapse",
           "[&_table]:w-full [&_td]:border [&_td]:border-border [&_td]:p-2",
