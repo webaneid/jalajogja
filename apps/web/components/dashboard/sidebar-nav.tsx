@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
+  Image,
   Globe,
   FileText,
   Wallet,
@@ -15,6 +16,7 @@ import {
 const navItems = [
   { label: "Dashboard",  icon: LayoutDashboard, path: "dashboard"  },
   { label: "Anggota",    icon: Users,           path: "members"    },
+  { label: "Media",      icon: Image,           path: "media"      },
   { label: "Website",    icon: Globe,           path: "website"    },
   { label: "Surat",      icon: FileText,        path: "letters"    },
   { label: "Keuangan",   icon: Wallet,          path: "finance"    },

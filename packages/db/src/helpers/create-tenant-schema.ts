@@ -121,8 +121,15 @@ export async function createTenantSchemaInDb(
         original_name TEXT        NOT NULL,
         mime_type     TEXT        NOT NULL,
         size          INTEGER     NOT NULL,
+        -- Path di MinIO: /{module}/{year}/{month}/{filename}
+        -- Bucket per tenant: tenant-{slug}
         path          TEXT        NOT NULL,
         alt_text      TEXT,
+        -- Modul asal upload: website/members/letters/shop/general
+        module        TEXT        NOT NULL DEFAULT 'general'
+                                  CHECK (module IN ('website','members','letters','shop','general')),
+        -- false = file ter-upload tapi belum dipakai di konten (orphan candidate)
+        is_used       BOOLEAN     NOT NULL DEFAULT false,
         uploaded_by   UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
         created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )

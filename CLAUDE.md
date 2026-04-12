@@ -193,21 +193,79 @@ app/(dashboard)/[tenant]/
 - [x] Modul Anggota (list, tambah, detail, edit, hapus dari cabang)
 - [x] Member Wizard 4-step (identitas, kontak+alamat, pendidikan, usaha)
 - [x] Domain routing schema (subdomain + custom_domain + status columns)
-- [ ] **Settings** (NEXT — harus selesai sebelum modul lain)
-  - [ ] /settings/general — nama org, tagline, logo, timezone, bahasa, currency
-  - [ ] /settings/domain — subdomain + custom domain + instruksi DNS + verifikasi
-  - [ ] /settings/contact — kontak org + sosial media
-  - [ ] /settings/payment — rekening bank + QRIS + gateway config
-  - [ ] /settings/display — primary color, font, footer text
-  - [ ] /settings/email — SMTP config + test kirim
-  - [ ] /settings/notifications — toggle notifikasi email + WA
-- [ ] Website (Pages, Posts, Media, Block Editor)
-- [ ] Donasi / Infaq
+- [x] Modul Settings (7 sections: general, domain, contact, payment, display, email, notifications)
+- [ ] **Media Library** (NEXT — shared infra, sebelum modul lain yang butuh upload)
+- [ ] Website (Pages, Posts, Block Editor)
 - [ ] Surat Menyurat
 - [ ] Keuangan
 - [ ] Toko
+- [ ] Donasi / Infaq
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
+
+## Arsitektur Media Library
+
+### Konsep
+Media Library adalah modul **tersendiri** — bukan bagian dari Website atau modul lain.
+Semua modul yang butuh file/gambar menggunakan infrastruktur yang sama.
+
+**Route:** `/{slug}/media` (bukan `/{slug}/website/media`)
+
+### Dipakai oleh semua modul
+| Modul | Kegunaan |
+|-------|----------|
+| Website | Featured image posts/pages, konten block editor |
+| Toko | Foto produk (multiple images) |
+| Surat | Lampiran PDF/dokumen, TTD digital |
+| Anggota | Foto profil anggota |
+| Settings | Logo, favicon, gambar QRIS |
+
+### Storage: MinIO (self-hosted di VPS)
+- **Bucket per tenant:** `tenant-{slug}`
+- **Path struktur:** `/{module}/{year}/{month}/{filename}`
+
+```
+Contoh:
+/website/2025/04/artikel-foto.jpg
+/members/2025/04/foto-profil.jpg
+/letters/2025/04/ttd-direktur.png
+/shop/2025/04/produk-baju.jpg
+/general/2025/04/logo-org.png
+```
+
+### Permission per role
+| Role | Upload | Lihat | Hapus |
+|------|--------|-------|-------|
+| owner/admin | ✓ | ✓ | ✓ |
+| editor | ✓ | ✓ | ✗ |
+| viewer | ✗ | ✓ | ✗ |
+
+### Schema DB — `tenant_{slug}.media`
+Tabel sudah ada. Kolom yang sudah ada:
+```
+id, filename, original_name, mime_type, size, path, alt_text, uploaded_by, created_at
+```
+
+Kolom yang ditambah (via `create-tenant-schema.ts` untuk tenant baru):
+```
+module   TEXT    — 'website'|'members'|'letters'|'shop'|'general'
+is_used  BOOLEAN DEFAULT false — untuk cleanup orphan files nanti
+```
+
+**Tenant existing** perlu migration terpisah jika kolom ini diperlukan.
+
+### Sidebar Navigation
+Media Library masuk ke sidebar utama, posisi setelah Anggota:
+```
+Dashboard
+Anggota
+Media       ← ditambahkan
+Website
+Surat
+Keuangan
+Toko
+Pengaturan
+```
 
 ## Arsitektur Domain Routing (3 Fase)
 
@@ -806,10 +864,10 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Tailwind v4 tidak butuh tailwind.config.ts
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Domain routing architecture direncanakan + schema di-migrate.
-- State DB: migration 0005 applied — `tenants.domain` rename → `custom_domain`, tambah `subdomain`, `custom_domain_status`, `custom_domain_verified_at`.
-- Migrasi yang sudah applied: 0001–0005.
-- Commit terakhir: `68a5d8d` — docs: super-app vision (sebelum domain schema)
-- Perlu di-commit: tenants.ts schema update + migration 0005 + CLAUDE.md update ini
-- Next step: **Modul Settings** (`/{slug}/settings`) — mulai dari DB helper → shell → tiap section
-- Urutan section: general → domain → contact → payment → display → email → notifications
+- Terakhir dikerjakan: Modul Settings selesai (7 sections) + Media Library direncanakan sebagai shared infra.
+- State DB: migration 0005 applied. Semua migration 0001–0005 applied.
+- Commit terakhir: `0c9a04e` — feat: settings module — all 7 sections complete
+- Settings: semua section done (general, domain, contact, payment, display, email, notifications)
+- Media schema: tabel sudah ada di tenant schema, perlu tambah kolom `module` + `is_used`
+- Next step: **Media Library** (`/{slug}/media`) — shared infra untuk semua modul upload
+- Sidebar: perlu tambah "Media" setelah "Anggota" — sudah diputuskan, belum dieksekusi
