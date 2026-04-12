@@ -3,7 +3,7 @@ import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { PostListClient } from "@/components/website/post-list-client";
+import { CreateButton, SearchInput, PostsTable } from "@/components/website/post-list-client";
 import type { ContentStatus } from "@jalajogja/db";
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ export default async function PostsPage({
             Artikel, berita, dan pengumuman organisasi
           </p>
         </div>
-        <PostListClient.CreateButton slug={slug} />
+        <CreateButton slug={slug} />
       </div>
 
       {/* Filter bar */}
@@ -103,12 +103,12 @@ export default async function PostsPage({
           );
         })}
         <div className="ml-auto">
-          <PostListClient.SearchInput slug={slug} status={statusFilter} defaultValue={query} />
+          <SearchInput slug={slug} status={statusFilter} defaultValue={query} />
         </div>
       </div>
 
       {/* Tabel */}
-      <PostListClient.Table
+      <PostsTable
         posts={posts}
         slug={slug}
         page={page}

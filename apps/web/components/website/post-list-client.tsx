@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,9 +38,9 @@ type Post = {
   updatedAt: Date;
 };
 
-// ── Create Button ─────────────────────────────────────────────────────────────
+// ── CreateButton ──────────────────────────────────────────────────────────────
 
-function CreateButton({ slug }: { slug: string }) {
+export function CreateButton({ slug }: { slug: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -63,9 +63,9 @@ function CreateButton({ slug }: { slug: string }) {
   );
 }
 
-// ── Search Input ──────────────────────────────────────────────────────────────
+// ── SearchInput ───────────────────────────────────────────────────────────────
 
-function SearchInput({
+export function SearchInput({
   slug,
   status,
   defaultValue,
@@ -100,7 +100,7 @@ function SearchInput({
   );
 }
 
-// ── Row Actions ───────────────────────────────────────────────────────────────
+// ── RowActions (internal) ─────────────────────────────────────────────────────
 
 function RowActions({ post, slug }: { post: Post; slug: string }) {
   const router = useRouter();
@@ -179,7 +179,7 @@ function RowActions({ post, slug }: { post: Post; slug: string }) {
   );
 }
 
-// ── Status Badge ──────────────────────────────────────────────────────────────
+// ── StatusBadge (internal) ────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: ContentStatus }) {
   const map: Record<ContentStatus, { label: string; variant: "default" | "secondary" | "outline" }> = {
@@ -191,9 +191,9 @@ function StatusBadge({ status }: { status: ContentStatus }) {
   return <Badge variant={variant}>{label}</Badge>;
 }
 
-// ── Table ─────────────────────────────────────────────────────────────────────
+// ── PostsTable ────────────────────────────────────────────────────────────────
 
-function Table({
+export function PostsTable({
   posts,
   slug,
   page,
@@ -266,12 +266,20 @@ function Table({
           <span>Halaman {page} dari {totalPages}</span>
           <div className="flex gap-2">
             {page > 1 && (
-              <Button variant="outline" size="sm" onClick={() => router.push(`/${slug}/website/posts?page=${page - 1}`)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/${slug}/website/posts?page=${page - 1}`)}
+              >
                 Sebelumnya
               </Button>
             )}
             {page < totalPages && (
-              <Button variant="outline" size="sm" onClick={() => router.push(`/${slug}/website/posts?page=${page + 1}`)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/${slug}/website/posts?page=${page + 1}`)}
+              >
                 Berikutnya
               </Button>
             )}
@@ -281,11 +289,3 @@ function Table({
     </div>
   );
 }
-
-// ── Namespace export ──────────────────────────────────────────────────────────
-
-export const PostListClient = {
-  CreateButton,
-  SearchInput,
-  Table,
-};
