@@ -64,56 +64,8 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 5. Pages ───────────────────────────────────────────────────────────
-    await tx.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS "${s}".pages (
-        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        slug         TEXT        NOT NULL UNIQUE,
-        title        TEXT        NOT NULL,
-        content      TEXT,
-        meta_title   TEXT,
-        meta_desc    TEXT,
-        status       TEXT        NOT NULL DEFAULT 'draft'
-                                 CHECK (status IN ('draft','published','archived')),
-        "order"      INTEGER     NOT NULL DEFAULT 0,
-        author_id    UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
-        published_at TIMESTAMPTZ,
-        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `));
-
-    // ── 6. Posts ───────────────────────────────────────────────────────────
-    await tx.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS "${s}".posts (
-        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        slug         TEXT        NOT NULL UNIQUE,
-        title        TEXT        NOT NULL,
-        excerpt      TEXT,
-        content      TEXT,
-        cover_url    TEXT,
-        meta_title   TEXT,
-        meta_desc    TEXT,
-        status       TEXT        NOT NULL DEFAULT 'draft'
-                                 CHECK (status IN ('draft','published','archived')),
-        author_id    UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
-        category_id  UUID        REFERENCES "${s}".post_categories(id) ON DELETE SET NULL,
-        published_at TIMESTAMPTZ,
-        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `));
-
-    // ── 7. Post Tag Pivot ──────────────────────────────────────────────────
-    await tx.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS "${s}".post_tag_pivot (
-        post_id UUID NOT NULL REFERENCES "${s}".posts(id) ON DELETE CASCADE,
-        tag_id  UUID NOT NULL REFERENCES "${s}".post_tags(id) ON DELETE CASCADE,
-        PRIMARY KEY (post_id, tag_id)
-      )
-    `));
-
-    // ── 8. Media ───────────────────────────────────────────────────────────
+    // ── 5. Media ───────────────────────────────────────────────────────────
+    // Dipindah ke sini (sebelum pages/posts) agar cover_id + og_image_id bisa FK ke media
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".media (
         id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -135,6 +87,88 @@ export async function createTenantSchemaInDb(
         is_used       BOOLEAN     NOT NULL DEFAULT false,
         uploaded_by   UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
         created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 6. Pages ───────────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".pages (
+        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        slug         TEXT        NOT NULL UNIQUE,
+        title        TEXT        NOT NULL,
+        content      TEXT,
+        -- Cover gambar
+        cover_id         UUID        REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        -- SEO dasar
+        meta_title       TEXT,
+        meta_desc        TEXT,
+        -- Open Graph
+        og_title         TEXT,
+        og_description   TEXT,
+        og_image_id      UUID        REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        -- Social / Advanced
+        twitter_card     TEXT        DEFAULT 'summary'
+                                     CHECK (twitter_card IN ('summary','summary_large_image')),
+        focus_keyword    TEXT,
+        canonical_url    TEXT,
+        robots           TEXT        NOT NULL DEFAULT 'index,follow'
+                                     CHECK (robots IN ('index,follow','noindex','noindex,nofollow')),
+        schema_type      TEXT        NOT NULL DEFAULT 'WebPage'
+                                     CHECK (schema_type IN ('WebPage','AboutPage','ContactPage','FAQPage')),
+        structured_data  JSONB,
+        status       TEXT        NOT NULL DEFAULT 'draft'
+                                 CHECK (status IN ('draft','published','archived')),
+        "order"      INTEGER     NOT NULL DEFAULT 0,
+        author_id    UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        published_at TIMESTAMPTZ,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 7. Posts ───────────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".posts (
+        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        slug         TEXT        NOT NULL UNIQUE,
+        title        TEXT        NOT NULL,
+        excerpt      TEXT,
+        content      TEXT,
+        -- Cover gambar (gantikan cover_url TEXT)
+        cover_id         UUID        REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        -- SEO dasar
+        meta_title       TEXT,
+        meta_desc        TEXT,
+        -- Open Graph
+        og_title         TEXT,
+        og_description   TEXT,
+        og_image_id      UUID        REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        -- Social / Advanced
+        twitter_card     TEXT        DEFAULT 'summary_large_image'
+                                     CHECK (twitter_card IN ('summary','summary_large_image')),
+        focus_keyword    TEXT,
+        canonical_url    TEXT,
+        robots           TEXT        NOT NULL DEFAULT 'index,follow'
+                                     CHECK (robots IN ('index,follow','noindex','noindex,nofollow')),
+        schema_type      TEXT        NOT NULL DEFAULT 'Article'
+                                     CHECK (schema_type IN ('Article','NewsArticle','BlogPosting')),
+        structured_data  JSONB,
+        status       TEXT        NOT NULL DEFAULT 'draft'
+                                 CHECK (status IN ('draft','published','archived')),
+        author_id    UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        category_id  UUID        REFERENCES "${s}".post_categories(id) ON DELETE SET NULL,
+        published_at TIMESTAMPTZ,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 8. Post Tag Pivot ──────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".post_tag_pivot (
+        post_id UUID NOT NULL REFERENCES "${s}".posts(id) ON DELETE CASCADE,
+        tag_id  UUID NOT NULL REFERENCES "${s}".post_tags(id) ON DELETE CASCADE,
+        PRIMARY KEY (post_id, tag_id)
       )
     `));
 
@@ -346,6 +380,22 @@ export async function createTenantSchemaInDb(
         price       NUMERIC(15,2)  NOT NULL,
         stock       INTEGER        NOT NULL DEFAULT 0,
         images      JSONB          NOT NULL DEFAULT '[]',
+        -- SEO dasar (tidak ada di schema awal)
+        meta_title      TEXT,
+        meta_desc       TEXT,
+        -- Open Graph
+        og_title        TEXT,
+        og_description  TEXT,
+        og_image_id     UUID           REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        -- Social / Advanced
+        twitter_card    TEXT           DEFAULT 'summary_large_image'
+                                       CHECK (twitter_card IN ('summary','summary_large_image')),
+        focus_keyword   TEXT,
+        canonical_url   TEXT,
+        robots          TEXT           NOT NULL DEFAULT 'index,follow'
+                                       CHECK (robots IN ('index,follow','noindex','noindex,nofollow')),
+        schema_type     TEXT           NOT NULL DEFAULT 'Product',
+        structured_data JSONB,
         status      TEXT           NOT NULL DEFAULT 'draft'
                                    CHECK (status IN ('active','draft','archived')),
         category_id UUID           REFERENCES "${s}".product_categories(id) ON DELETE SET NULL,

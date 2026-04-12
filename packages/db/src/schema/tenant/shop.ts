@@ -33,19 +33,37 @@ export function createProductCategoriesTable(s: ReturnType<typeof pgSchema>) {
   });
 }
 
+export const PRODUCT_TWITTER_CARDS = ["summary", "summary_large_image"] as const;
+export const PRODUCT_ROBOTS_VALUES = ["index,follow", "noindex", "noindex,nofollow"] as const;
+
 export function createProductsTable(s: ReturnType<typeof pgSchema>) {
   return s.table("products", {
-    id: uuid("id").primaryKey().defaultRandom(),
-    sku: text("sku").unique(),
-    slug: text("slug").notNull().unique(),
-    name: text("name").notNull(),
+    id:    uuid("id").primaryKey().defaultRandom(),
+    sku:   text("sku").unique(),
+    slug:  text("slug").notNull().unique(),
+    name:  text("name").notNull(),
     description: text("description"),
     price: numeric("price", { precision: 15, scale: 2 }).notNull(),
     stock: integer("stock").notNull().default(0),
     // Array objek: [{ url, alt, order }] — path MinIO
     images: jsonb("images").notNull().default([]),
+    // SEO dasar (tidak ada di schema awal, ditambah sekarang)
+    metaTitle: text("meta_title"),
+    metaDesc:  text("meta_desc"),
+    // Open Graph
+    ogTitle:       text("og_title"),
+    ogDescription: text("og_description"),
+    ogImageId:     uuid("og_image_id"),     // FK → media.id via SQL migration
+    // Social / Advanced
+    twitterCard:    text("twitter_card", { enum: PRODUCT_TWITTER_CARDS }).default("summary_large_image"),
+    focusKeyword:   text("focus_keyword"),
+    canonicalUrl:   text("canonical_url"),
+    robots:         text("robots",       { enum: PRODUCT_ROBOTS_VALUES }).notNull().default("index,follow"),
+    // schema_type untuk produk — default 'Product', bisa override (misal: SoftwareApplication)
+    schemaType:     text("schema_type").notNull().default("Product"),
+    structuredData: jsonb("structured_data"),
     status: text("status", { enum: PRODUCT_STATUSES }).notNull().default("draft"),
-    categoryId: uuid("category_id"), // FK → product_categories.id via SQL migration
+    categoryId: uuid("category_id"),        // FK → product_categories.id via SQL migration
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   });
@@ -90,6 +108,9 @@ export function createOrderItemsTable(s: ReturnType<typeof pgSchema>) {
 // Catatan: pembayaran order ditangani oleh finance.payments (source_type='order')
 // Tidak ada tabel order_payments di sini — semua uang masuk terpusat
 
-export type ProductsTable  = ReturnType<typeof createProductsTable>;
-export type OrdersTable    = ReturnType<typeof createOrdersTable>;
+export type ProductsTable   = ReturnType<typeof createProductsTable>;
+export type OrdersTable     = ReturnType<typeof createOrdersTable>;
 export type OrderItemsTable = ReturnType<typeof createOrderItemsTable>;
+
+export type ProductTwitterCard = typeof PRODUCT_TWITTER_CARDS[number];
+export type ProductRobots      = typeof PRODUCT_ROBOTS_VALUES[number];
