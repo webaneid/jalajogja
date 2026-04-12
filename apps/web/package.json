@@ -13,6 +13,7 @@
     "@jalajogja/db": "workspace:*",
     "@jalajogja/types": "workspace:*",
     "@jalajogja/ui": "workspace:*",
+    "@tailwindcss/typography": "^0.5.19",
     "@tiptap/core": "^3.22.3",
     "@tiptap/extension-bubble-menu": "^3.22.3",
     "@tiptap/extension-character-count": "^3.22.3",

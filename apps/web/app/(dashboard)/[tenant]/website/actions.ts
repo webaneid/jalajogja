@@ -1,0 +1,305 @@
+"use server";
+
+import { eq, and, inArray } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+import { createTenantDb } from "@jalajogja/db";
+import { getTenantAccess } from "@/lib/tenant";
+import { generateSlug } from "@/lib/seo";
+import type { ContentStatus, PostTwitterCard, PostRobots, PostSchemaType } from "@jalajogja/db";
+
+// ─── Types ─────────────────────────────────────────────────────────────────
+
+type ActionResult<T = void> =
+  | { success: true; data: T }
+  | { success: false; error: string };
+
+export type PostFormData = {
+  title: string;
+  slug?: string;
+  excerpt?: string;
+  content?: string | null;
+  coverId?: string | null;
+  categoryId?: string | null;
+  status?: ContentStatus;
+  publishedAt?: string | null;        // ISO string atau null
+  // Tags
+  tagIds?: string[];                  // UUID[] — pivot dikelola action
+  // SEO
+  metaTitle?: string;
+  metaDesc?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImageId?: string | null;
+  twitterCard?: PostTwitterCard;
+  focusKeyword?: string;
+  canonicalUrl?: string;
+  robots?: PostRobots;
+  schemaType?: PostSchemaType;
+  structuredData?: string | null;     // JSON string atau null
+};
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Parse structuredData: JSON string → object, invalid/kosong → null */
+function parseStructuredData(raw?: string | null): object | null {
+  if (!raw || raw.trim() === "") return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Slug unik: pakai user input jika ada, generate dari title, atau fallback UUID */
+function resolveSlug(title: string, slugInput?: string): string {
+  if (slugInput?.trim()) return generateSlug(slugInput.trim());
+  if (title.trim()) return generateSlug(title.trim());
+  return crypto.randomUUID().slice(0, 8);
+}
+
+// ─── CREATE DRAFT (pre-create) ───────────────────────────────────────────────
+
+/**
+ * Buat post draft kosong dengan slug temp → redirect ke halaman edit.
+ * Judul sementara bisa dikirim dari client (dari dialog input), atau kosong.
+ */
+export async function createPostDraftAction(
+  slug: string,
+  title = "Judul Sementara"
+): Promise<ActionResult<{ postId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  // Buat slug unik — tambah suffix UUID jika slug title sudah ada
+  let postSlug = resolveSlug(title);
+  const [existing] = await db
+    .select({ id: schema.posts.id })
+    .from(schema.posts)
+    .where(eq(schema.posts.slug, postSlug))
+    .limit(1);
+
+  if (existing) {
+    postSlug = `${postSlug}-${crypto.randomUUID().slice(0, 6)}`;
+  }
+
+  try {
+    const [post] = await db
+      .insert(schema.posts)
+      .values({
+        title: title.trim() || "Judul Sementara",
+        slug:     postSlug,
+        status:   "draft",
+        authorId: access.tenantUser.id,
+      })
+      .returning({ id: schema.posts.id });
+
+    revalidatePath(`/${slug}/website/posts`);
+    return { success: true, data: { postId: post.id } };
+
+  } catch (err) {
+    console.error("[createPostDraftAction]", err);
+    return { success: false, error: "Gagal membuat draft." };
+  }
+}
+
+// ─── UPDATE POST ─────────────────────────────────────────────────────────────
+
+export async function updatePostAction(
+  slug: string,
+  postId: string,
+  data: PostFormData
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!data.title?.trim()) {
+    return { success: false, error: "Judul post wajib diisi." };
+  }
+
+  const { db, schema } = createTenantDb(slug);
+
+  // Pastikan post ada di tenant ini
+  const [existing] = await db
+    .select({ id: schema.posts.id, slug: schema.posts.slug })
+    .from(schema.posts)
+    .where(eq(schema.posts.id, postId))
+    .limit(1);
+
+  if (!existing) return { success: false, error: "Post tidak ditemukan." };
+
+  // Tentukan slug baru — cek duplikasi hanya jika slug berubah
+  const newSlug = resolveSlug(data.title, data.slug);
+  if (newSlug !== existing.slug) {
+    const [duplicate] = await db
+      .select({ id: schema.posts.id })
+      .from(schema.posts)
+      .where(eq(schema.posts.slug, newSlug))
+      .limit(1);
+
+    if (duplicate && duplicate.id !== postId) {
+      return { success: false, error: "Slug sudah dipakai post lain." };
+    }
+  }
+
+  // publishedAt: set ke now() saat pertama publish, null saat unpublish/archive
+  let publishedAt: Date | null = null;
+  if (data.status === "published") {
+    publishedAt = data.publishedAt ? new Date(data.publishedAt) : new Date();
+  }
+
+  try {
+    // ── Update post ──────────────────────────────────────────────────────────
+    await db
+      .update(schema.posts)
+      .set({
+        title:    data.title.trim(),
+        slug:     newSlug,
+        excerpt:  data.excerpt?.trim() || null,
+        content:  data.content ?? null,
+        coverId:  data.coverId ?? null,
+        categoryId: data.categoryId ?? null,
+        status:   data.status ?? "draft",
+        publishedAt,
+        // SEO dasar
+        metaTitle: data.metaTitle?.trim() || null,
+        metaDesc:  data.metaDesc?.trim()  || null,
+        // Open Graph
+        ogTitle:       data.ogTitle?.trim()       || null,
+        ogDescription: data.ogDescription?.trim() || null,
+        ogImageId:     data.ogImageId ?? null,
+        // Advanced
+        twitterCard:    data.twitterCard    ?? "summary_large_image",
+        focusKeyword:   data.focusKeyword?.trim()  || null,
+        canonicalUrl:   data.canonicalUrl?.trim()  || null,
+        robots:         data.robots         ?? "index,follow",
+        schemaType:     data.schemaType     ?? "Article",
+        structuredData: parseStructuredData(data.structuredData),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.posts.id, postId));
+
+    // ── Sync tags (replace-all diff) ─────────────────────────────────────────
+    const incomingTagIds = data.tagIds ?? [];
+
+    const currentPivots = await db
+      .select({ tagId: schema.postTagPivot.tagId })
+      .from(schema.postTagPivot)
+      .where(eq(schema.postTagPivot.postId, postId));
+
+    const currentTagIds = currentPivots.map((p) => p.tagId);
+    const toRemove = currentTagIds.filter((id) => !incomingTagIds.includes(id));
+    const toAdd    = incomingTagIds.filter((id) => !currentTagIds.includes(id));
+
+    if (toRemove.length > 0) {
+      await db
+        .delete(schema.postTagPivot)
+        .where(
+          and(
+            eq(schema.postTagPivot.postId, postId),
+            inArray(schema.postTagPivot.tagId, toRemove)
+          )
+        );
+    }
+
+    if (toAdd.length > 0) {
+      await db
+        .insert(schema.postTagPivot)
+        .values(toAdd.map((tagId) => ({ postId, tagId })));
+    }
+
+    revalidatePath(`/${slug}/website/posts`);
+    revalidatePath(`/${slug}/website/posts/${postId}/edit`);
+    return { success: true, data: undefined };
+
+  } catch (err) {
+    console.error("[updatePostAction]", err);
+    const msg = err instanceof Error ? err.message : "Gagal menyimpan.";
+    if (msg.includes("posts_slug_unique")) {
+      return { success: false, error: "Slug sudah dipakai post lain." };
+    }
+    return { success: false, error: `Gagal: ${msg}` };
+  }
+}
+
+// ─── UPDATE STATUS (quick publish / unpublish) ───────────────────────────────
+
+export async function updatePostStatusAction(
+  slug: string,
+  postId: string,
+  status: ContentStatus
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [existing] = await db
+    .select({ id: schema.posts.id, publishedAt: schema.posts.publishedAt })
+    .from(schema.posts)
+    .where(eq(schema.posts.id, postId))
+    .limit(1);
+
+  if (!existing) return { success: false, error: "Post tidak ditemukan." };
+
+  // Pertahankan tanggal publish pertama — jangan overwrite saat republish
+  const publishedAt =
+    status === "published"
+      ? (existing.publishedAt ?? new Date())
+      : null;
+
+  try {
+    await db
+      .update(schema.posts)
+      .set({ status, publishedAt, updatedAt: new Date() })
+      .where(eq(schema.posts.id, postId));
+
+    revalidatePath(`/${slug}/website/posts`);
+    revalidatePath(`/${slug}/website/posts/${postId}/edit`);
+    return { success: true, data: undefined };
+
+  } catch (err) {
+    console.error("[updatePostStatusAction]", err);
+    return { success: false, error: "Gagal mengubah status." };
+  }
+}
+
+// ─── DELETE ──────────────────────────────────────────────────────────────────
+
+export async function deletePostAction(
+  slug: string,
+  postId: string
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [existing] = await db
+    .select({ id: schema.posts.id })
+    .from(schema.posts)
+    .where(eq(schema.posts.id, postId))
+    .limit(1);
+
+  if (!existing) return { success: false, error: "Post tidak ditemukan." };
+
+  try {
+    // Hapus pivot dulu — FK tanpa CASCADE di Drizzle schema level
+    await db
+      .delete(schema.postTagPivot)
+      .where(eq(schema.postTagPivot.postId, postId));
+
+    await db
+      .delete(schema.posts)
+      .where(eq(schema.posts.id, postId));
+
+    revalidatePath(`/${slug}/website/posts`);
+    return { success: true, data: undefined };
+
+  } catch (err) {
+    console.error("[deletePostAction]", err);
+    return { success: false, error: "Gagal menghapus post." };
+  }
+}
