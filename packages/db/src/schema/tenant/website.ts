@@ -80,6 +80,10 @@ export function createPostTagPivotTable(s: ReturnType<typeof pgSchema>) {
   }));
 }
 
+// Modul asal file yang diupload
+export const MEDIA_MODULES = ["website", "members", "letters", "shop", "general"] as const;
+export type MediaModule = typeof MEDIA_MODULES[number];
+
 // Metadata file yang diupload ke MinIO
 // URL adalah path di MinIO — presigned URL di-generate di app layer
 export function createMediaTable(s: ReturnType<typeof pgSchema>) {
@@ -88,10 +92,14 @@ export function createMediaTable(s: ReturnType<typeof pgSchema>) {
     filename: text("filename").notNull(),
     originalName: text("original_name").notNull(),
     mimeType: text("mime_type").notNull(),
-    size: integer("size").notNull(), // bytes
-    path: text("path").notNull(),    // path di MinIO bucket
+    size: integer("size").notNull(),     // bytes
+    path: text("path").notNull(),         // path di MinIO bucket
     altText: text("alt_text"),
-    uploadedBy: uuid("uploaded_by"), // FK → users.id via SQL migration
+    // Modul asal upload: website/members/letters/shop/general
+    module: text("module", { enum: MEDIA_MODULES }).notNull().default("general"),
+    // false = file ter-upload tapi belum dipakai di konten (orphan candidate)
+    isUsed: boolean("is_used").notNull().default(false),
+    uploadedBy: uuid("uploaded_by"),      // FK → users.id via SQL migration
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   });
 }
