@@ -252,6 +252,26 @@ export function PostForm({
         <div className="w-72 shrink-0 border-l border-border overflow-y-auto flex flex-col">
           <div className="flex-1 p-4 space-y-5">
 
+            {/* ── Status ── */}
+            <div className="space-y-2">
+              <SidebarLabel>Status</SidebarLabel>
+              <Select
+                value={status}
+                onValueChange={(val) => setStatus(val as ContentStatus)}
+              >
+                <SelectTrigger className="w-full text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="published">Terbit</SelectItem>
+                  <SelectItem value="archived">Arsip</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Separator />
+
             {/* ── Featured Image ── */}
             <div className="space-y-2">
               <SidebarLabel>Featured Image</SidebarLabel>
@@ -305,26 +325,6 @@ export function PostForm({
                   <span className="text-xs">Pilih Gambar Featured</span>
                 </button>
               )}
-            </div>
-
-            <Separator />
-
-            {/* ── Status ── */}
-            <div className="space-y-2">
-              <SidebarLabel>Status</SidebarLabel>
-              <Select
-                value={status}
-                onValueChange={(val) => setStatus(val as ContentStatus)}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="draft">Draft</SelectItem>
-                  <SelectItem value="published">Terbit</SelectItem>
-                  <SelectItem value="archived">Arsip</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             {/* ── Kategori ── */}
