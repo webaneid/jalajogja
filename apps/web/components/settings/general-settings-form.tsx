@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/ui/combobox";
 import { saveGeneralSettingsAction } from "@/app/(dashboard)/[tenant]/settings/actions";
+import { MediaPicker } from "@/components/media/media-picker";
 
 const TIMEZONES = [
   { value: "Asia/Jakarta",   label: "WIB — Asia/Jakarta"   },
@@ -47,8 +48,17 @@ export function GeneralSettingsForm({
   const [pending, setPending] = React.useState(false);
   const [values, setValues] = React.useState<DefaultValues>(defaultValues);
 
+  // State MediaPicker
+  const [mediaPickerOpen, setMediaPickerOpen] = React.useState(false);
+  const [pickerTarget, setPickerTarget] = React.useState<"logo" | "favicon" | null>(null);
+
   const set = (key: keyof DefaultValues) => (val: string) =>
     setValues((v) => ({ ...v, [key]: val }));
+
+  function openPickerFor(target: "logo" | "favicon") {
+    setPickerTarget(target);
+    setMediaPickerOpen(true);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -67,6 +77,7 @@ export function GeneralSettingsForm({
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Nama Organisasi */}
       <div className="space-y-2">
@@ -93,31 +104,84 @@ export function GeneralSettingsForm({
         />
       </div>
 
-      {/* Logo URL */}
+      {/* Logo */}
       <div className="space-y-2">
-        <Label htmlFor="logoUrl">Logo URL</Label>
-        <Input
-          id="logoUrl"
-          value={values.logoUrl}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => set("logoUrl")(e.target.value)}
-          placeholder="https://..."
-          type="url"
-        />
-        <p className="text-xs text-muted-foreground">
-          Upload langsung (MinIO) belum tersedia — isi URL manual untuk sementara.
-        </p>
+        <Label>Logo</Label>
+        {values.logoUrl ? (
+          <div className="flex items-start gap-3">
+            <img
+              src={values.logoUrl}
+              alt="Logo organisasi"
+              className="max-h-16 rounded border object-contain bg-muted p-1"
+            />
+            <div className="flex flex-col gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => openPickerFor("logo")}
+              >
+                Ganti
+              </Button>
+              <button
+                type="button"
+                onClick={() => set("logoUrl")("")}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors text-left"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => openPickerFor("logo")}
+          >
+            Pilih Logo
+          </Button>
+        )}
       </div>
 
-      {/* Favicon URL */}
+      {/* Favicon */}
       <div className="space-y-2">
-        <Label htmlFor="faviconUrl">Favicon URL</Label>
-        <Input
-          id="faviconUrl"
-          value={values.faviconUrl}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => set("faviconUrl")(e.target.value)}
-          placeholder="https://..."
-          type="url"
-        />
+        <Label>Favicon</Label>
+        {values.faviconUrl ? (
+          <div className="flex items-start gap-3">
+            <img
+              src={values.faviconUrl}
+              alt="Favicon"
+              className="w-8 h-8 rounded border object-contain bg-muted p-0.5"
+            />
+            <div className="flex flex-col gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => openPickerFor("favicon")}
+              >
+                Ganti
+              </Button>
+              <button
+                type="button"
+                onClick={() => set("faviconUrl")("")}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors text-left"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => openPickerFor("favicon")}
+          >
+            Pilih Favicon
+          </Button>
+        )}
       </div>
 
       {/* Timezone */}
@@ -158,5 +222,19 @@ export function GeneralSettingsForm({
         {pending ? "Menyimpan..." : "Simpan"}
       </Button>
     </form>
+
+    <MediaPicker
+      slug={slug}
+      open={mediaPickerOpen}
+      onClose={() => setMediaPickerOpen(false)}
+      onSelect={(media) => {
+        if (pickerTarget === "logo") set("logoUrl")(media.url);
+        if (pickerTarget === "favicon") set("faviconUrl")(media.url);
+        setMediaPickerOpen(false);
+      }}
+      module="general"
+      accept={["image/"]}
+    />
+    </>
   );
 }
