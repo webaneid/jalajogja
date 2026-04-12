@@ -194,8 +194,9 @@ app/(dashboard)/[tenant]/
 - [x] Member Wizard 4-step (identitas, kontak+alamat, pendidikan, usaha)
 - [x] Domain routing schema (subdomain + custom_domain + status columns)
 - [x] Modul Settings (7 sections: general, domain, contact, payment, display, email, notifications)
-- [ ] **Media Library** (NEXT — shared infra, sebelum modul lain yang butuh upload)
-- [ ] Website (Pages, Posts, Block Editor)
+- [x] Media Library (upload, grid/list view, MediaPicker, metadata edit)
+- [x] SEO Module (helpers, SeoPanel, snippet preview, social preview, score)
+- [ ] **Website** (Pages, Posts, Block Editor) ← NEXT
 - [ ] Surat Menyurat
 - [ ] Keuangan
 - [ ] Toko
@@ -863,11 +864,23 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Bun sebagai package manager, bukan npm/yarn
 - Tailwind v4 tidak butuh tailwind.config.ts
 
+### [2025-04] SEO Module Selesai
+- SeoPanel: accordion 3 tab (SEO Dasar, OG, Advanced) — collapsed by default, embed di form apapun
+- Benchmark: Yoast SEO style — familiar bagi developer WordPress
+- Traffic light score: 5 checks (keyword in title, desc, content; title length; desc length)
+- Google Snippet Preview: real-time, toggle desktop/mobile, truncate otomatis di batas Google
+- Social Preview: Facebook card + Twitter/X card — gambar OG atau placeholder abu-abu
+- SEO helpers (`lib/seo.ts`): `generateMetadata`, `generateArticleJsonLd`, `generateProductJsonLd`, `generateOrganizationJsonLd`, `generateBreadcrumbJsonLd`, `truncateForSeo`, `generateSlug`, `buildTitle`
+- SEO constants (`lib/seo-defaults.ts`): batas karakter, AI-friendly crawlers, robots preset, schema.org types
+- AI-friendly robots.txt: izinkan GPTBot, ClaudeBot, Google-Extended (konten organisasi bersifat publik)
+- Schema columns: posts, pages (cover_id FK → media, 9 SEO columns per tabel), products (og_image_id, SEO cols)
+- DDL ordering fix: media dipindah ke step 5 (sebelum pages/posts) agar FK `cover_id` + `og_image_id` valid
+- SeoValues type di-export dari seo-panel.tsx — parent form cukup `useState<SeoValues>(DEFAULT_VALUES)` + `onChange`
+- Test page: `/{slug}/seo-test` — dummy page untuk verifikasi sebelum integrasi ke form post/page
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Modul Settings selesai (7 sections) + Media Library direncanakan sebagai shared infra.
-- State DB: migration 0005 applied. Semua migration 0001–0005 applied.
-- Commit terakhir: `0c9a04e` — feat: settings module — all 7 sections complete
-- Settings: semua section done (general, domain, contact, payment, display, email, notifications)
-- Media schema: tabel sudah ada di tenant schema, perlu tambah kolom `module` + `is_used`
-- Next step: **Media Library** (`/{slug}/media`) — shared infra untuk semua modul upload
-- Sidebar: perlu tambah "Media" setelah "Anggota" — sudah diputuskan, belum dieksekusi
+- Terakhir dikerjakan: SEO Module selesai (helpers + SeoPanel + seo-test page)
+- Commit terakhir: `98edd5b` — feat: seo-test page for SeoPanel verification
+- Media Library: selesai (upload, grid/list, MediaPicker dialog, metadata edit, pencil hover)
+- SEO Module: selesai (lihat Lessons Learned di bawah)
+- Next step: **Website Module** — Posts + Pages + Block Editor + integrasi SeoPanel
