@@ -282,7 +282,7 @@ export async function createTenantSchemaInDb(
         number            TEXT           NOT NULL UNIQUE,
         source_type       TEXT           NOT NULL
                                          CHECK (source_type IN ('order','donation','invoice','manual')),
-        source_id         UUID           NOT NULL,
+        source_id         UUID,          -- nullable untuk source_type='manual'
         amount            NUMERIC(15,2)  NOT NULL,
         unique_code       SMALLINT       NOT NULL DEFAULT 0,
         method            TEXT           NOT NULL
@@ -502,6 +502,8 @@ export async function createTenantSchemaInDb(
         ('1102', 'Bank',               'asset'),
         ('2000', 'Kewajiban',          'liability'),
         ('2100', 'Hutang',             'liability'),
+        ('2200', 'Dana Titipan',       'liability'),
+        ('2201', 'Dana Titipan Donasi','liability'),
         ('3000', 'Ekuitas',            'equity'),
         ('3100', 'Modal Organisasi',   'equity'),
         ('4000', 'Pendapatan',         'income'),

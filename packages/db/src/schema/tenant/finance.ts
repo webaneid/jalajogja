@@ -104,7 +104,7 @@ export function createPaymentsTable(s: ReturnType<typeof pgSchema>) {
 
     // Polymorphic source — dari modul mana uang ini berasal
     sourceType: text("source_type", { enum: PAYMENT_SOURCE_TYPES }).notNull(),
-    sourceId: uuid("source_id").notNull(), // FK ke orders.id / donations.id / dll.
+    sourceId: uuid("source_id"),           // nullable — NULL untuk source_type='manual'
 
     amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
     // Kode unik 3 digit — ditambahkan ke nominal transfer agar bisa diidentifikasi
