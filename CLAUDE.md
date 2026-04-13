@@ -279,7 +279,7 @@ app/(dashboard)/[tenant]/
 │   └── kategori/
 │       └── page.tsx        → CRUD kategori produk (inline create)
 ├── website/                → /{slug}/website/*
-├── letters/                → (belum dibuat)
+├── letters/                → /{slug}/letters/* (keluar, masuk, nota, template)
 ├── finance/                → (belum dibuat)
 └── settings/               → /{slug}/settings/*
 ```
@@ -304,8 +304,9 @@ app/(dashboard)/[tenant]/
 - [x] Kategori & Tag (CRUD + inline add di post editor, autocomplete tag dengan comma creation)
 - [x] Modul Toko (Produk + Pesanan + Kategori + MediaPicker multi-gambar)
 - [x] Modul Pengurus (divisions, officers, letter_signatures schema + UI)
+- [x] Modul Surat — CRUD dasar (schema + keluar + masuk + nota + template + jenis surat)
 - [ ] Komentar — **DITUNDA** (deprioritized, bukan kebutuhan utama saat ini)
-- [ ] **Surat Menyurat** ← NEXT
+- [ ] **Surat Menyurat lanjutan** — PDF (Playwright), tanda tangan, mail merge, QR verifikasi ← NEXT
 - [ ] Keuangan (sudah ada schema, belum ada UI)
 - [ ] Donasi / Infaq
 - [ ] Add-on Marketplace UI (settings + install flow)
@@ -1169,8 +1170,78 @@ Pattern: `CREATE TABLE IF NOT EXISTS` dalam DO $ block — idempotent, aman dija
 **Bug fix saat type-check:**
 `access.id` → `access.tenant.id` — `TenantAccessResult` punya struktur `{ tenant, tenantUser, userId }`, bukan flat. Periksa setiap kali pakai `access.*` di server page.
 
+## Arsitektur Modul Surat
+
+### Tabel Schema
+```
+letter_types      → jenis surat (SK, Undangan, dll) — CRUD inline di /letters/template
+letter_contacts   → kontak luar + opsional link ke public.members
+letter_templates  → kop surat (ukuran kertas, font, margin, gambar header/footer)
+letters           → surat utama — type: outgoing | incoming | internal
+letter_number_sequences → counter nomor surat per year+type+category (atomic)
+letter_signatures → tanda tangan digital per officer (multi-signer)
+```
+
+### Route Structure
+```
+app/(dashboard)/[tenant]/letters/
+├── layout.tsx            → shell: LettersNav (sub-nav kiri) + slot konten kanan
+├── page.tsx              → redirect ke /letters/keluar
+├── keluar/
+│   ├── page.tsx          → list surat keluar (type=outgoing)
+│   ├── new/page.tsx      → pre-create draft → redirect ke edit
+│   └── [id]/edit/page.tsx → LetterForm (subject, body, nomor, jenis, template, paper size)
+├── masuk/
+│   ├── page.tsx          → list surat masuk (type=incoming)
+│   └── new/page.tsx      → IncomingLetterForm (direct save, no pre-create)
+├── nota/
+│   ├── page.tsx          → list nota dinas (type=internal)
+│   ├── new/page.tsx      → pre-create draft → redirect ke edit
+│   └── [id]/edit/page.tsx → LetterForm (sama seperti keluar)
+└── template/
+    ├── page.tsx          → LetterTypeManageClient + LetterTemplateList
+    ├── new/page.tsx      → LetterTemplateForm
+    └── [id]/edit/page.tsx → LetterTemplateForm
+```
+
+### Server Actions (letters/actions.ts)
+```
+createLetterDraftAction(slug, type)           → pre-create draft → return letterId
+createIncomingLetterAction(slug, data)        → direct create surat masuk
+updateLetterAction(slug, letterId, data)      → update semua field
+updateLetterStatusAction(slug, letterId, s)   → quick status change
+deleteLetterAction(slug, letterId)            → delete sigs dulu, baru letter
+getNextLetterNumberAction(slug, type, cat?)   → atomic SELECT FOR UPDATE
+
+CRUD letter_types:    createLetterTypeAction, updateLetterTypeAction, deleteLetterTypeAction
+CRUD letter_templates: createLetterTemplateAction, updateLetterTemplateAction, deleteLetterTemplateAction
+CRUD letter_contacts: createLetterContactAction, updateLetterContactAction, deleteLetterContactAction
+```
+
+### Nomor Surat — Format
+```
+{counter}/{kategori}/{bulan-romawi}/{tahun}
+Contoh: 001/IKPM/IV/2025
+Counter atomic: SELECT FOR UPDATE di letter_number_sequences
+Kategori = letter_types.default_category (mis. UMUM, SEKR, IKPM)
+```
+
+### Fitur Lanjutan (belum diimplementasikan)
+- PDF via Playwright headless — template HTML → PDF download
+- Tanda tangan digital — officer click "Tanda Tangani" → insert letter_signatures
+- QR verifikasi — SHA-256(letter_id+officer_id+timestamp) → QR di PDF
+- Mail merge — is_bulk + bulk_parent_id → satu surat untuk banyak penerima
+- Inter-tenant — kirim surat ke cabang IKPM lain (inter_tenant_to + inter_tenant_status)
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Modul Pengurus & Divisi — schema + UI + routes
-- Commit terakhir: `a8568db` — feat: modul Pengurus & Divisi
-- Modul Pengurus: **SELESAI** (Divisions + Officers + Letter Signatures schema; UI list/new/edit/divisi)
-- Next step: **Surat Menyurat** — schema dasar sudah ada (`letters`, `letter_number_sequences`, `letter_signatures`, `officers`)
+- Terakhir dikerjakan: Modul Surat — schema komprehensif + CRUD dasar
+- Commit terakhir: `1756f10` — feat: modul surat — schema komprehensif + CRUD dasar
+- Modul Surat CRUD: **SELESAI** (keluar, masuk, nota, template, jenis surat)
+- Next step: **Surat lanjutan** — PDF Playwright, tanda tangan digital, mail merge, QR verifikasi
+- Fitur yang belum diimplementasikan (dalam scope surat):
+  - PDF generation via Playwright headless
+  - Tanda tangan digital oleh officer (letter_signatures)
+  - Mail merge (is_bulk + bulk_parent_id)
+  - QR verifikasi (verification_hash → SHA-256)
+  - Inter-tenant letters (inter_tenant_to + inter_tenant_status)
+  - MediaPicker untuk attachment lampiran
