@@ -1,0 +1,94 @@
+import { createTenantDb } from "@jalajogja/db";
+import { getTenantAccess } from "@/lib/tenant";
+import { redirect, notFound } from "next/navigation";
+import { eq } from "drizzle-orm";
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
+import { LetterForm } from "@/components/letters/letter-form";
+
+export default async function NotaDinasEditPage({
+  params,
+}: {
+  params: Promise<{ tenant: string; id: string }>;
+}) {
+  const { tenant: slug, id: letterId } = await params;
+  const access = await getTenantAccess(slug);
+  if (!access) redirect("/login");
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  const [letter] = await tenantDb
+    .select()
+    .from(schema.letters)
+    .where(eq(schema.letters.id, letterId))
+    .limit(1);
+
+  if (!letter || letter.type !== "internal") notFound();
+
+  const letterTypes = await tenantDb
+    .select({ id: schema.letterTypes.id, name: schema.letterTypes.name, code: schema.letterTypes.code, defaultCategory: schema.letterTypes.defaultCategory })
+    .from(schema.letterTypes)
+    .where(eq(schema.letterTypes.isActive, true))
+    .orderBy(schema.letterTypes.sortOrder, schema.letterTypes.name);
+
+  const templates = await tenantDb
+    .select({ id: schema.letterTemplates.id, name: schema.letterTemplates.name, isDefault: schema.letterTemplates.isDefault })
+    .from(schema.letterTemplates)
+    .orderBy(schema.letterTemplates.name);
+
+  const signers = await tenantDb
+    .select({
+      id:         schema.officers.id,
+      memberId:   schema.officers.memberId,
+      position:   schema.officers.position,
+      divisionId: schema.officers.divisionId,
+    })
+    .from(schema.officers)
+    .where(eq(schema.officers.canSign, true));
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center gap-3">
+        <Link
+          href={`/${slug}/letters/nota`}
+          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Nota Dinas
+        </Link>
+      </div>
+
+      <div>
+        <h1 className="text-xl font-semibold">
+          {letter.subject?.trim() ? letter.subject : "Nota Dinas Baru"}
+        </h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          {letter.letterNumber ?? "Nomor belum diisi"}
+        </p>
+      </div>
+
+      <LetterForm
+        slug={slug}
+        letterId={letterId}
+        type="internal"
+        letterTypes={letterTypes.map((t) => ({ ...t, code: t.code ?? null }))}
+        templates={templates}
+        signers={signers}
+        defaultValues={{
+          letterNumber:   letter.letterNumber ?? "",
+          typeId:         letter.typeId ?? "",
+          templateId:     letter.templateId ?? "",
+          subject:        letter.subject,
+          body:           letter.body ?? "",
+          sender:         letter.sender,
+          recipient:      letter.recipient,
+          letterDate:     letter.letterDate,
+          status:         letter.status as "draft" | "sent" | "received" | "archived",
+          paperSize:      (letter.paperSize as "A4" | "F4" | "Letter") ?? "A4",
+          mergeFields:    (letter.mergeFields as Record<string, string>) ?? {},
+          attachmentUrls: (letter.attachmentUrls as string[]) ?? [],
+        }}
+      />
+    </div>
+  );
+}

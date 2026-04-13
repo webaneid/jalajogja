@@ -1,0 +1,627 @@
+"use server";
+
+import { createTenantDb } from "@jalajogja/db";
+import { getTenantAccess } from "@/lib/tenant";
+import { redirect } from "next/navigation";
+import { eq, sql } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+
+// ─── Types ─────────────────────────────────────────────────────────────────
+
+export type LetterData = {
+  type:           "outgoing" | "incoming" | "internal";
+  typeId?:        string | null;
+  templateId?:    string | null;
+  subject:        string;
+  body?:          string | null;
+  mergeFields?:   Record<string, string>;
+  attachmentUrls?: string[];
+  sender:         string;
+  recipient:      string;
+  letterDate:     string;        // ISO date string
+  status?:        "draft" | "sent" | "received" | "archived";
+  paperSize?:     "A4" | "F4" | "Letter";
+  letterNumber?:  string | null;
+  isBulk?:        boolean;
+  bulkParentId?:  string | null;
+  interTenantTo?:     string | null;
+  interTenantStatus?: "pending" | "delivered" | null;
+};
+
+export type LetterTypeData = {
+  name:            string;
+  code?:           string | null;
+  defaultCategory: string;
+  isActive:        boolean;
+  sortOrder:       number;
+};
+
+export type LetterTemplateData = {
+  name:          string;
+  paperSize:     "A4" | "F4" | "Letter";
+  headerImageId?: string | null;
+  footerImageId?: string | null;
+  bodyFont:      string;
+  marginTop:     number;
+  marginRight:   number;
+  marginBottom:  number;
+  marginLeft:    number;
+  isDefault:     boolean;
+};
+
+export type LetterContactData = {
+  name:          string;
+  title?:        string | null;
+  organization?: string | null;
+  address?:      string | null;
+  email?:        string | null;
+  phone?:        string | null;
+  memberId?:     string | null;
+};
+
+// ─── Letter Number Generator ────────────────────────────────────────────────
+
+// Format: {counter}/{kategori}/{bulan-romawi}/{tahun}
+// Contoh: 001/IKPM/IV/2025
+const ROMAN = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"];
+
+export async function getNextLetterNumberAction(
+  slug: string,
+  type: "outgoing" | "incoming" | "internal",
+  category?: string
+): Promise<{ success: true; number: string } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+  const cat = (category ?? "UMUM").toUpperCase();
+  const now = new Date();
+  const year = now.getFullYear();
+  const monthRoman = ROMAN[now.getMonth()];
+
+  try {
+    let nextNum = 1;
+    await tenantDb.transaction(async (tx) => {
+      // SELECT FOR UPDATE — atomic agar tidak ada nomor ganda
+      const [existing] = await tx
+        .select()
+        .from(schema.letterNumberSequences)
+        .where(
+          sql`${schema.letterNumberSequences.year} = ${year}
+           AND ${schema.letterNumberSequences.type} = ${type}
+           AND ${schema.letterNumberSequences.category} = ${cat}
+           FOR UPDATE`
+        )
+        .limit(1);
+
+      if (existing) {
+        nextNum = existing.lastNumber + 1;
+        await tx
+          .update(schema.letterNumberSequences)
+          .set({ lastNumber: nextNum, updatedAt: new Date() })
+          .where(eq(schema.letterNumberSequences.id, existing.id));
+      } else {
+        await tx
+          .insert(schema.letterNumberSequences)
+          .values({ year, type, category: cat, lastNumber: 1 });
+        nextNum = 1;
+      }
+    });
+
+    const padded = String(nextNum).padStart(3, "0");
+    const number = `${padded}/${cat}/${monthRoman}/${year}`;
+    return { success: true, number };
+  } catch (err) {
+    console.error("[getNextLetterNumberAction]", err);
+    return { success: false, error: "Gagal generate nomor surat." };
+  }
+}
+
+// ─── Surat Keluar & Nota Dinas: Pre-create draft ───────────────────────────
+
+export async function createLetterDraftAction(
+  slug: string,
+  type: "outgoing" | "internal"
+): Promise<{ success: true; letterId: string } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    const userId = access.userId;
+    // Cari user record di tenant schema
+    const [tenantUser] = await tenantDb
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.betterAuthUserId, userId))
+      .limit(1);
+
+    if (!tenantUser) return { success: false, error: "User tidak ditemukan di tenant." };
+
+    const [letter] = await tenantDb
+      .insert(schema.letters)
+      .values({
+        type,
+        subject: "",
+        sender: "",
+        recipient: "",
+        letterDate: new Date().toISOString().split("T")[0],
+        status: "draft",
+        createdBy: tenantUser.id,
+      })
+      .returning({ id: schema.letters.id });
+
+    return { success: true, letterId: letter.id };
+  } catch (err) {
+    console.error("[createLetterDraftAction]", err);
+    return { success: false, error: "Gagal membuat draft surat." };
+  }
+}
+
+// ─── Surat Masuk: Direct create (tidak perlu pre-create) ──────────────────
+
+export async function createIncomingLetterAction(
+  slug: string,
+  data: Omit<LetterData, "type">
+): Promise<{ success: true; letterId: string } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!data.subject.trim()) return { success: false, error: "Subjek surat wajib diisi." };
+  if (!data.sender.trim()) return { success: false, error: "Pengirim wajib diisi." };
+  if (!data.letterDate) return { success: false, error: "Tanggal surat wajib diisi." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    const userId = access.userId;
+    const [tenantUser] = await tenantDb
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.betterAuthUserId, userId))
+      .limit(1);
+
+    if (!tenantUser) return { success: false, error: "User tidak ditemukan di tenant." };
+
+    const [letter] = await tenantDb
+      .insert(schema.letters)
+      .values({
+        type: "incoming",
+        typeId:      data.typeId      || null,
+        templateId:  data.templateId  || null,
+        subject:     data.subject.trim(),
+        body:        data.body        || null,
+        mergeFields: data.mergeFields || {},
+        attachmentUrls: data.attachmentUrls || [],
+        sender:      data.sender.trim(),
+        recipient:   data.recipient?.trim() || "",
+        letterDate:  data.letterDate,
+        letterNumber: data.letterNumber?.trim() || null,
+        status:      "received",
+        paperSize:   data.paperSize || "A4",
+        createdBy:   tenantUser.id,
+      })
+      .returning({ id: schema.letters.id });
+
+    revalidatePath(`/${slug}/letters/masuk`);
+    return { success: true, letterId: letter.id };
+  } catch (err) {
+    console.error("[createIncomingLetterAction]", err);
+    return { success: false, error: "Gagal menyimpan surat masuk." };
+  }
+}
+
+// ─── Update Letter ────────────────────────────────────────────────────────
+
+export async function updateLetterAction(
+  slug: string,
+  letterId: string,
+  data: Partial<LetterData>
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    const [existing] = await tenantDb
+      .select({ id: schema.letters.id, type: schema.letters.type })
+      .from(schema.letters)
+      .where(eq(schema.letters.id, letterId))
+      .limit(1);
+
+    if (!existing) return { success: false, error: "Surat tidak ditemukan." };
+
+    await tenantDb
+      .update(schema.letters)
+      .set({
+        ...(data.typeId     !== undefined && { typeId:     data.typeId     || null }),
+        ...(data.templateId !== undefined && { templateId: data.templateId || null }),
+        ...(data.subject    !== undefined && { subject:    data.subject.trim() }),
+        ...(data.body       !== undefined && { body:       data.body }),
+        ...(data.mergeFields !== undefined && { mergeFields: data.mergeFields }),
+        ...(data.attachmentUrls !== undefined && { attachmentUrls: data.attachmentUrls }),
+        ...(data.sender     !== undefined && { sender:     data.sender.trim() }),
+        ...(data.recipient  !== undefined && { recipient:  data.recipient.trim() }),
+        ...(data.letterDate !== undefined && { letterDate: data.letterDate }),
+        ...(data.letterNumber !== undefined && { letterNumber: data.letterNumber?.trim() || null }),
+        ...(data.paperSize  !== undefined && { paperSize:  data.paperSize }),
+        ...(data.isBulk     !== undefined && { isBulk:     data.isBulk }),
+        ...(data.bulkParentId !== undefined && { bulkParentId: data.bulkParentId || null }),
+        ...(data.interTenantTo !== undefined && { interTenantTo: data.interTenantTo || null }),
+        ...(data.interTenantStatus !== undefined && { interTenantStatus: data.interTenantStatus || null }),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.letters.id, letterId));
+
+    const path = existing.type === "incoming"
+      ? `/${slug}/letters/masuk`
+      : existing.type === "internal"
+        ? `/${slug}/letters/nota`
+        : `/${slug}/letters/keluar`;
+    revalidatePath(path);
+    return { success: true };
+  } catch (err) {
+    console.error("[updateLetterAction]", err);
+    return { success: false, error: "Gagal menyimpan surat." };
+  }
+}
+
+// ─── Update Status ────────────────────────────────────────────────────────
+
+export async function updateLetterStatusAction(
+  slug: string,
+  letterId: string,
+  status: "draft" | "sent" | "received" | "archived"
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    await tenantDb
+      .update(schema.letters)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(schema.letters.id, letterId));
+
+    revalidatePath(`/${slug}/letters`);
+    return { success: true };
+  } catch (err) {
+    console.error("[updateLetterStatusAction]", err);
+    return { success: false, error: "Gagal update status surat." };
+  }
+}
+
+// ─── Delete Letter ────────────────────────────────────────────────────────
+
+export async function deleteLetterAction(
+  slug: string,
+  letterId: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    // Hapus signatures dulu (CASCADE seharusnya handle ini, tapi eksplisit lebih aman)
+    await tenantDb
+      .delete(schema.letterSignatures)
+      .where(eq(schema.letterSignatures.letterId, letterId));
+
+    await tenantDb
+      .delete(schema.letters)
+      .where(eq(schema.letters.id, letterId));
+
+    revalidatePath(`/${slug}/letters`);
+    return { success: true };
+  } catch (err) {
+    console.error("[deleteLetterAction]", err);
+    return { success: false, error: "Gagal menghapus surat." };
+  }
+}
+
+// ─── Letter Types CRUD ────────────────────────────────────────────────────
+
+export async function createLetterTypeAction(
+  slug: string,
+  data: LetterTypeData
+): Promise<{ success: true; typeId: string } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!data.name.trim()) return { success: false, error: "Nama jenis surat wajib diisi." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    const [type] = await tenantDb
+      .insert(schema.letterTypes)
+      .values({
+        name:            data.name.trim(),
+        code:            data.code?.trim() || null,
+        defaultCategory: data.defaultCategory.trim() || "UMUM",
+        isActive:        data.isActive,
+        sortOrder:       data.sortOrder,
+      })
+      .returning({ id: schema.letterTypes.id });
+
+    revalidatePath(`/${slug}/letters/template`);
+    return { success: true, typeId: type.id };
+  } catch (err) {
+    console.error("[createLetterTypeAction]", err);
+    return { success: false, error: "Gagal membuat jenis surat." };
+  }
+}
+
+export async function updateLetterTypeAction(
+  slug: string,
+  typeId: string,
+  data: LetterTypeData
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!data.name.trim()) return { success: false, error: "Nama jenis surat wajib diisi." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    await tenantDb
+      .update(schema.letterTypes)
+      .set({
+        name:            data.name.trim(),
+        code:            data.code?.trim() || null,
+        defaultCategory: data.defaultCategory.trim() || "UMUM",
+        isActive:        data.isActive,
+        sortOrder:       data.sortOrder,
+        updatedAt:       new Date(),
+      })
+      .where(eq(schema.letterTypes.id, typeId));
+
+    revalidatePath(`/${slug}/letters/template`);
+    return { success: true };
+  } catch (err) {
+    console.error("[updateLetterTypeAction]", err);
+    return { success: false, error: "Gagal update jenis surat." };
+  }
+}
+
+export async function deleteLetterTypeAction(
+  slug: string,
+  typeId: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    // Cek apakah masih dipakai
+    const [used] = await tenantDb
+      .select({ id: schema.letters.id })
+      .from(schema.letters)
+      .where(eq(schema.letters.typeId, typeId))
+      .limit(1);
+
+    if (used) return { success: false, error: "Jenis surat masih digunakan oleh surat yang ada." };
+
+    await tenantDb
+      .delete(schema.letterTypes)
+      .where(eq(schema.letterTypes.id, typeId));
+
+    revalidatePath(`/${slug}/letters/template`);
+    return { success: true };
+  } catch (err) {
+    console.error("[deleteLetterTypeAction]", err);
+    return { success: false, error: "Gagal menghapus jenis surat." };
+  }
+}
+
+// ─── Letter Templates CRUD ────────────────────────────────────────────────
+
+export async function createLetterTemplateAction(
+  slug: string,
+  data: LetterTemplateData
+): Promise<{ success: true; templateId: string } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!data.name.trim()) return { success: false, error: "Nama template wajib diisi." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    // Jika is_default diset true, unset default template lain
+    if (data.isDefault) {
+      await tenantDb
+        .update(schema.letterTemplates)
+        .set({ isDefault: false, updatedAt: new Date() })
+        .where(eq(schema.letterTemplates.isDefault, true));
+    }
+
+    const [template] = await tenantDb
+      .insert(schema.letterTemplates)
+      .values({
+        name:          data.name.trim(),
+        paperSize:     data.paperSize,
+        headerImageId: data.headerImageId || null,
+        footerImageId: data.footerImageId || null,
+        bodyFont:      data.bodyFont || "Times New Roman",
+        marginTop:     data.marginTop,
+        marginRight:   data.marginRight,
+        marginBottom:  data.marginBottom,
+        marginLeft:    data.marginLeft,
+        isDefault:     data.isDefault,
+      })
+      .returning({ id: schema.letterTemplates.id });
+
+    revalidatePath(`/${slug}/letters/template`);
+    return { success: true, templateId: template.id };
+  } catch (err) {
+    console.error("[createLetterTemplateAction]", err);
+    return { success: false, error: "Gagal membuat template surat." };
+  }
+}
+
+export async function updateLetterTemplateAction(
+  slug: string,
+  templateId: string,
+  data: LetterTemplateData
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!data.name.trim()) return { success: false, error: "Nama template wajib diisi." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    // Jika is_default diset true, unset default template lain
+    if (data.isDefault) {
+      await tenantDb
+        .update(schema.letterTemplates)
+        .set({ isDefault: false, updatedAt: new Date() })
+        .where(eq(schema.letterTemplates.isDefault, true));
+    }
+
+    await tenantDb
+      .update(schema.letterTemplates)
+      .set({
+        name:          data.name.trim(),
+        paperSize:     data.paperSize,
+        headerImageId: data.headerImageId || null,
+        footerImageId: data.footerImageId || null,
+        bodyFont:      data.bodyFont || "Times New Roman",
+        marginTop:     data.marginTop,
+        marginRight:   data.marginRight,
+        marginBottom:  data.marginBottom,
+        marginLeft:    data.marginLeft,
+        isDefault:     data.isDefault,
+        updatedAt:     new Date(),
+      })
+      .where(eq(schema.letterTemplates.id, templateId));
+
+    revalidatePath(`/${slug}/letters/template`);
+    return { success: true };
+  } catch (err) {
+    console.error("[updateLetterTemplateAction]", err);
+    return { success: false, error: "Gagal update template surat." };
+  }
+}
+
+export async function deleteLetterTemplateAction(
+  slug: string,
+  templateId: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    // Cek apakah masih dipakai
+    const [used] = await tenantDb
+      .select({ id: schema.letters.id })
+      .from(schema.letters)
+      .where(eq(schema.letters.templateId, templateId))
+      .limit(1);
+
+    if (used) return { success: false, error: "Template masih digunakan oleh surat yang ada." };
+
+    await tenantDb
+      .delete(schema.letterTemplates)
+      .where(eq(schema.letterTemplates.id, templateId));
+
+    revalidatePath(`/${slug}/letters/template`);
+    return { success: true };
+  } catch (err) {
+    console.error("[deleteLetterTemplateAction]", err);
+    return { success: false, error: "Gagal menghapus template surat." };
+  }
+}
+
+// ─── Letter Contacts CRUD ────────────────────────────────────────────────
+
+export async function createLetterContactAction(
+  slug: string,
+  data: LetterContactData
+): Promise<{ success: true; contactId: string } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!data.name.trim()) return { success: false, error: "Nama kontak wajib diisi." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    const [contact] = await tenantDb
+      .insert(schema.letterContacts)
+      .values({
+        name:         data.name.trim(),
+        title:        data.title?.trim()        || null,
+        organization: data.organization?.trim() || null,
+        address:      data.address?.trim()      || null,
+        email:        data.email?.trim()        || null,
+        phone:        data.phone?.trim()        || null,
+        memberId:     data.memberId             || null,
+      })
+      .returning({ id: schema.letterContacts.id });
+
+    return { success: true, contactId: contact.id };
+  } catch (err) {
+    console.error("[createLetterContactAction]", err);
+    return { success: false, error: "Gagal menyimpan kontak surat." };
+  }
+}
+
+export async function updateLetterContactAction(
+  slug: string,
+  contactId: string,
+  data: LetterContactData
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!data.name.trim()) return { success: false, error: "Nama kontak wajib diisi." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    await tenantDb
+      .update(schema.letterContacts)
+      .set({
+        name:         data.name.trim(),
+        title:        data.title?.trim()        || null,
+        organization: data.organization?.trim() || null,
+        address:      data.address?.trim()      || null,
+        email:        data.email?.trim()        || null,
+        phone:        data.phone?.trim()        || null,
+        memberId:     data.memberId             || null,
+        updatedAt:    new Date(),
+      })
+      .where(eq(schema.letterContacts.id, contactId));
+
+    return { success: true };
+  } catch (err) {
+    console.error("[updateLetterContactAction]", err);
+    return { success: false, error: "Gagal update kontak surat." };
+  }
+}
+
+export async function deleteLetterContactAction(
+  slug: string,
+  contactId: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    await tenantDb
+      .delete(schema.letterContacts)
+      .where(eq(schema.letterContacts.id, contactId));
+
+    return { success: true };
+  } catch (err) {
+    console.error("[deleteLetterContactAction]", err);
+    return { success: false, error: "Gagal menghapus kontak surat." };
+  }
+}

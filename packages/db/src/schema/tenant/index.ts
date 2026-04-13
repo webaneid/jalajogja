@@ -1,7 +1,7 @@
 import { pgSchema } from "drizzle-orm/pg-core";
 import { createUsersTable } from "./users";
 import { createPagesTable, createPostCategoriesTable, createPostsTable, createPostTagsTable, createPostTagPivotTable, createMediaTable } from "./website";
-import { createLettersTable, createLetterNumberSequencesTable } from "./letters";
+import { createLetterTypesTable, createLetterContactsTable, createLetterTemplatesTable, createLettersTable, createLetterNumberSequencesTable } from "./letters";
 import {
   createDivisionsTable,
   createOfficersTable,
@@ -27,7 +27,10 @@ function buildTenantSchema(slug: string) {
     postTagPivot: createPostTagPivotTable(s),
     media: createMediaTable(s),
     // Surat menyurat
-    letters: createLettersTable(s),
+    letterTypes:           createLetterTypesTable(s),
+    letterContacts:        createLetterContactsTable(s),
+    letterTemplates:       createLetterTemplatesTable(s),
+    letters:               createLettersTable(s),
     letterNumberSequences: createLetterNumberSequencesTable(s),
     // Pengurus & Divisi organisasi
     divisions:        createDivisionsTable(s),

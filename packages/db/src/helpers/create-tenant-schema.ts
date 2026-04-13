@@ -172,26 +172,87 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 9. Letters ─────────────────────────────────────────────────────────
+    // ── 9a. Letter Types ───────────────────────────────────────────────────
     await tx.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS "${s}".letters (
+      CREATE TABLE IF NOT EXISTS "${s}".letter_types (
+        id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        name             TEXT        NOT NULL,
+        code             TEXT,
+        default_category TEXT        NOT NULL DEFAULT 'UMUM',
+        is_active        BOOLEAN     NOT NULL DEFAULT true,
+        sort_order       INTEGER     NOT NULL DEFAULT 0,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 9b. Letter Contacts ────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".letter_contacts (
+        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        name         TEXT        NOT NULL,
+        title        TEXT,
+        organization TEXT,
+        address      TEXT,
+        email        TEXT,
+        phone        TEXT,
+        member_id    UUID        REFERENCES public.members(id) ON DELETE SET NULL,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 9c. Letter Templates ───────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".letter_templates (
         id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        letter_number   TEXT        UNIQUE,
-        type            TEXT        NOT NULL
-                                    CHECK (type IN ('incoming','outgoing','internal')),
-        subject         TEXT        NOT NULL,
-        body            TEXT,
-        attachment_urls JSONB       NOT NULL DEFAULT '[]',
-        sender          TEXT        NOT NULL,
-        recipient       TEXT        NOT NULL,
-        letter_date     DATE        NOT NULL,
-        status          TEXT        NOT NULL DEFAULT 'draft'
-                                    CHECK (status IN ('draft','sent','received','archived')),
-        created_by      UUID        NOT NULL REFERENCES "${s}".users(id),
+        name            TEXT        NOT NULL,
+        paper_size      TEXT        NOT NULL DEFAULT 'A4'
+                                    CHECK (paper_size IN ('A4','F4','Letter')),
+        header_image_id UUID        REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        footer_image_id UUID        REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        body_font       TEXT        NOT NULL DEFAULT 'Times New Roman',
+        margin_top      INTEGER     NOT NULL DEFAULT 20,
+        margin_right    INTEGER     NOT NULL DEFAULT 20,
+        margin_bottom   INTEGER     NOT NULL DEFAULT 20,
+        margin_left     INTEGER     NOT NULL DEFAULT 25,
+        is_default      BOOLEAN     NOT NULL DEFAULT false,
         created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `));
+
+    // ── 9. Letters ─────────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".letters (
+        id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        letter_number       TEXT        UNIQUE,
+        type                TEXT        NOT NULL
+                                        CHECK (type IN ('incoming','outgoing','internal')),
+        type_id             UUID        REFERENCES "${s}".letter_types(id) ON DELETE SET NULL,
+        template_id         UUID        REFERENCES "${s}".letter_templates(id) ON DELETE SET NULL,
+        subject             TEXT        NOT NULL,
+        body                TEXT,
+        merge_fields        JSONB       NOT NULL DEFAULT '{}',
+        attachment_urls     JSONB       NOT NULL DEFAULT '[]',
+        sender              TEXT        NOT NULL,
+        recipient           TEXT        NOT NULL,
+        letter_date         DATE        NOT NULL,
+        status              TEXT        NOT NULL DEFAULT 'draft'
+                                        CHECK (status IN ('draft','sent','received','archived')),
+        paper_size          TEXT        NOT NULL DEFAULT 'A4'
+                                        CHECK (paper_size IN ('A4','F4','Letter')),
+        pdf_url             TEXT,
+        pdf_generated_at    TIMESTAMPTZ,
+        is_bulk             BOOLEAN     NOT NULL DEFAULT false,
+        bulk_parent_id      UUID        REFERENCES "${s}".letters(id) ON DELETE CASCADE,
+        inter_tenant_to     TEXT,
+        inter_tenant_status TEXT        CHECK (inter_tenant_status IN ('pending','delivered')),
+        created_by          UUID        NOT NULL REFERENCES "${s}".users(id),
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `))
 
     // ── 10. Letter Number Sequences ────────────────────────────────────────
     await tx.execute(sql.raw(`
@@ -533,6 +594,10 @@ export async function createTenantSchemaInDb(
     `));
 
     // ── Indexes ────────────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letters_type             ON "${s}".letters(type)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letters_status           ON "${s}".letters(status)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letters_bulk_parent      ON "${s}".letters(bulk_parent_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letter_contacts_member   ON "${s}".letter_contacts(member_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_officers_member_id         ON "${s}".officers(member_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_officers_division_id       ON "${s}".officers(division_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_officers_is_active         ON "${s}".officers(is_active)`));
