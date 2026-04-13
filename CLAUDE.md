@@ -303,6 +303,7 @@ app/(dashboard)/[tenant]/
 - [x] Website Module (Posts + Pages + Block Editor + SeoPanel + Featured Image)
 - [x] Kategori & Tag (CRUD + inline add di post editor, autocomplete tag dengan comma creation)
 - [x] Modul Toko (Produk + Pesanan + Kategori + MediaPicker multi-gambar)
+- [x] Modul Pengurus (divisions, officers, letter_signatures schema + UI)
 - [ ] Komentar — **DITUNDA** (deprioritized, bukan kebutuhan utama saat ini)
 - [ ] **Surat Menyurat** ← NEXT
 - [ ] Keuangan (sudah ada schema, belum ada UI)
@@ -1143,8 +1144,33 @@ Pattern: `CREATE TABLE IF NOT EXISTS` dalam DO $ block — idempotent, aman dija
 - Route folder: `[tenant]/toko/` → sidebar path harus `"toko"`, bukan `"shop"`
 - Selalu verifikasi path di `sidebar-nav.tsx` saat buat modul baru
 
+### [2026-04] Modul Pengurus Selesai
+
+**Schema baru:**
+- `divisions` — hierarkis self-referential (parent_id FK ke diri sendiri), kode singkatan (SEKR, BEND, dll)
+- `officers` — FK cross-schema ke `public.members` (bukan tenant members), `can_sign` flag untuk penandatangan resmi
+- `letter_signatures` — multi-signer per surat (signer/approver/witness), `verification_hash` unik per approval event
+
+**Keputusan desain yang dikunci:**
+- QR Code verifikasi: hash di-generate **saat officer menandatangani** (`letter_id + officer_id + timestamp`), bukan stored di officer table
+- Layout TTD **tidak di-hardcode** — posisi QR Code bebas ditempatkan di template surat oleh admin
+- Info di QR Code: nama + jabatan + divisi + tanggal (bukan data sensitif)
+- `deleteOfficerAction` diblokir jika officer sudah punya `letter_signatures` — gunakan toggle non-aktif saja
+- `deleteDivisionAction` diblokir jika masih ada officer di divisi
+
+**Route:**
+```
+/{slug}/pengurus/ — list per divisi, avatar, badge "Penandatangan"
+/{slug}/pengurus/new — combobox pilih anggota + combobox pilih divisi
+/{slug}/pengurus/[id]/edit — edit + toggle aktif + hapus (dengan guard)
+/{slug}/divisi/ — CRUD inline divisi (nama, kode, deskripsi, urutan)
+```
+
+**Bug fix saat type-check:**
+`access.id` → `access.tenant.id` — `TenantAccessResult` punya struktur `{ tenant, tenantUser, userId }`, bukan flat. Periksa setiap kali pakai `access.*` di server page.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Modul Toko — produk, pesanan, kategori, pembayaran manual
-- Commit terakhir: `77900fd` — feat: modul Toko — produk, pesanan, kategori
-- Modul Toko: **SELESAI** (Produk + Pesanan + Kategori; multi-gambar via MediaPicker)
-- Next step: **Surat Menyurat** — schema sudah ada di tenant DB (`letters`, `letter_number_sequences`)
+- Terakhir dikerjakan: Modul Pengurus & Divisi — schema + UI + routes
+- Commit terakhir: `a8568db` — feat: modul Pengurus & Divisi
+- Modul Pengurus: **SELESAI** (Divisions + Officers + Letter Signatures schema; UI list/new/edit/divisi)
+- Next step: **Surat Menyurat** — schema dasar sudah ada (`letters`, `letter_number_sequences`, `letter_signatures`, `officers`)
