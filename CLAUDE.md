@@ -264,11 +264,24 @@ app/(dashboard)/[tenant]/
 │       ├── page.tsx        → /{slug}/members/{id} — detail anggota
 │       ├── delete-button.tsx → CLIENT component, inline confirm
 │       └── edit/page.tsx   → /{slug}/members/{id}/edit — form edit anggota
-├── website/                → (belum dibuat)
+├── toko/                   → /{slug}/toko/*
+│   ├── actions.ts          → SEMUA server actions toko (produk + pesanan + kategori)
+│   ├── layout.tsx          → toko shell: TokoNav (sub-nav kiri) + slot konten kanan
+│   ├── page.tsx            → redirect ke /toko/produk
+│   ├── produk/
+│   │   ├── page.tsx        → list produk: grid + filter status + search + pagination
+│   │   ├── new/page.tsx    → pre-create draft → redirect ke edit
+│   │   └── [id]/edit/page.tsx → full editor: ProductForm (Tiptap + MediaPicker + SeoPanel)
+│   ├── pesanan/
+│   │   ├── page.tsx        → list pesanan: tabel + filter status + search + pagination
+│   │   ├── new/page.tsx    → buat pesanan manual (fetch produk aktif → OrderCreateClient)
+│   │   └── [id]/page.tsx   → detail pesanan: info + items + pembayaran + OrderActions
+│   └── kategori/
+│       └── page.tsx        → CRUD kategori produk (inline create)
+├── website/                → /{slug}/website/*
 ├── letters/                → (belum dibuat)
 ├── finance/                → (belum dibuat)
-├── shop/                   → (belum dibuat)
-└── settings/               → (belum dibuat)
+└── settings/               → /{slug}/settings/*
 ```
 
 ### Pola Layout Dashboard
@@ -289,10 +302,10 @@ app/(dashboard)/[tenant]/
 - [x] SEO Module (helpers, SeoPanel, snippet preview, social preview, score)
 - [x] Website Module (Posts + Pages + Block Editor + SeoPanel + Featured Image)
 - [x] Kategori & Tag (CRUD + inline add di post editor, autocomplete tag dengan comma creation)
+- [x] Modul Toko (Produk + Pesanan + Kategori + MediaPicker multi-gambar)
 - [ ] Komentar — **DITUNDA** (deprioritized, bukan kebutuhan utama saat ini)
 - [ ] **Surat Menyurat** ← NEXT
 - [ ] Keuangan (sudah ada schema, belum ada UI)
-- [ ] Toko
 - [ ] Donasi / Infaq
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
@@ -1016,9 +1029,122 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Backspace saat input kosong → hapus tag terakhir (UX standar tag input)
 - Local state untuk tag/category yang baru dibuat — tidak butuh router.refresh(), ID langsung dipakai
 
+## Arsitektur Modul Toko
+
+### Struktur Komponen
+```
+components/toko/
+├── toko-nav.tsx              → sub-nav kiri: Dashboard, Produk, Pesanan, Kategori
+├── product-form.tsx          → full editor produk (Tiptap + MediaPicker + SeoPanel + sidebar)
+├── product-list-client.tsx   → tombol pre-create produk baru
+├── order-create-client.tsx   → UI keranjang pesanan manual admin
+├── order-detail-client.tsx   → OrderActions + AddPaymentForm (status transitions)
+└── category-manage-client.tsx → CRUD kategori inline
+```
+
+### Server Actions (toko/actions.ts)
+```typescript
+// Produk
+createProductDraftAction(slug)                        → pre-create + return productId
+updateProductAction(slug, productId, data: ProductData) → full update + SEO
+toggleProductStatusAction(slug, productId)            → draft→active→archived→draft cycle
+deleteProductAction(slug, productId)                  → delete
+
+// Pesanan
+createOrderAction(slug, data: OrderData)              → buat pesanan + generate nomor ORD-YYYYMM-NNNNN
+addPaymentToOrderAction(slug, orderId, paymentData)   → input pembayaran manual
+confirmOrderPaymentAction(slug, paymentId)            → konfirmasi bayar → kurangi stok → recordIncome()
+cancelOrderAction(slug, orderId)                      → cancel → kembalikan stok jika sudah terbayar
+updateOrderStatusAction(slug, orderId, newStatus)     → processing | shipped | done
+
+// Kategori
+createProductCategoryAction(slug, { name, slug })     → buat kategori baru
+```
+
+### Tipe Data Kunci
+```typescript
+type ProductImage = { id: string; url: string; alt: string; order: number };
+// Disimpan sebagai JSONB array di products.images
+
+type ProductData = {
+  name, slug, sku?, description?, price, stock,
+  images: ProductImage[],   // ← dari MediaPicker, bukan URL manual
+  categoryId?, status,
+  metaTitle?, metaDesc?, ogTitle?, ogDescription?, ogImageId?,
+  twitterCard?, focusKeyword?, canonicalUrl?, robots?,
+};
+```
+
+### Alur Status Produk
+```
+draft → active → archived → draft (cycle)
+```
+- draft: tidak tampil di front-end
+- active: tampil + bisa dipesan
+- archived: tidak tampil, tidak bisa dipesan baru
+
+### Alur Status Pesanan + Pembayaran
+```
+Order: pending → paid → processing → shipped → done
+                 ↓
+             cancelled (dari status apapun kecuali done)
+
+Payment: pending → paid (setelah konfirmasi admin)
+```
+- `confirmOrderPaymentAction`: validasi stok → `recordIncome()` → kurangi stok → order.status = 'paid'
+- `cancelOrderAction`: jika order sudah paid/processing/shipped → kembalikan stok
+
+### Nomor Pesanan
+Format: `ORD-YYYYMM-NNNNN` — via COUNT query per bulan, **bukan** via `financial_sequences` enum.
+Alasan: menghindari DDL change (ALTER TYPE) di tenant yang sudah ada.
+
+### Schema productCategories — Kolom yang Ada
+```
+id, slug, name, parentId, createdAt
+```
+**Tidak ada kolom `description`** — jangan tambahkan di query atau komponen.
+
+### TiptapEditor — Prop Wajib
+`TiptapEditor` butuh prop `slug` (tenant slug) untuk MediaPicker di toolbar:
+```tsx
+<TiptapEditor slug={slug} content={...} onChange={...} />
+```
+
+### Tenant Lama: Finance Tables Missing
+Tenant yang dibuat sebelum finance tables ada perlu migration manual:
+```sql
+-- Jalankan di psql untuk tambah tabel yang kurang
+CREATE TABLE IF NOT EXISTS tenant_{slug}.payments ( ... );
+CREATE TABLE IF NOT EXISTS tenant_{slug}.disbursements ( ... );
+CREATE TABLE IF NOT EXISTS tenant_{slug}.financial_sequences ( ... );
+```
+Pattern: `CREATE TABLE IF NOT EXISTS` dalam DO $ block — idempotent, aman dijalankan ulang.
+
+### [2026-04] Lessons Learned Modul Toko
+
+**Bug: Fungsi utilitas di-export dari "use server" file jadi server action proxy**
+- `slugify` di-export dari `actions.ts` (file `"use server"`)
+- Di client component, fungsi non-async dari `"use server"` file menjadi server action proxy → return `Promise`, bukan nilai langsung
+- Efek: `data.slug` yang diterima server adalah Promise object, bukan string → `trim is not a function`
+- **Fix**: JANGAN import fungsi utilitas (bukan server action) dari file `"use server"`. Selalu implementasikan fungsi utilitas secara lokal di client component, atau pindahkan ke file utility terpisah yang tidak pakai `"use server"`.
+
+**Bug: Dev server cache stale setelah edit client component**
+- Error runtime menunjukkan kode lama meskipun file sudah diubah
+- Fix: restart dev server (`pkill -f "next dev"`) + reload browser
+- Ini terjadi khususnya saat ada perubahan import/export antar boundary server-client
+
+**Gambar produk: wajib MediaPicker, bukan URL manual**
+- Array `images: ProductImage[]` — setiap item dari MediaPicker: `{ id, url, alt, order }`
+- `order` field: index posisi, di-set ulang saat simpan: `images.map((img, i) => ({ ...img, order: i }))`
+- Reorder via tombol naik/turun (swap adjacent), bukan drag-drop
+- Prevent duplicate: cek `images.some(img => img.id === media.id)` sebelum add
+
+**Sidebar path harus konsisten dengan route folder**
+- Route folder: `[tenant]/toko/` → sidebar path harus `"toko"`, bukan `"shop"`
+- Selalu verifikasi path di `sidebar-nav.tsx` saat buat modul baru
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Website Module — Kategori & Tag selesai + integrasi ke PostForm
-- Commit terakhir: `106aa2d` — feat: kategori & tag module + combobox category + tag autocomplete di post editor
-- Website Module: **SELESAI** (Posts + Pages + Kategori + Tag; Komentar ditunda)
-- Komentar ditunda — bukan prioritas, bisa diimplementasikan nanti saat ada kebutuhan nyata
+- Terakhir dikerjakan: Modul Toko — produk, pesanan, kategori, pembayaran manual
+- Commit terakhir: `77900fd` — feat: modul Toko — produk, pesanan, kategori
+- Modul Toko: **SELESAI** (Produk + Pesanan + Kategori; multi-gambar via MediaPicker)
 - Next step: **Surat Menyurat** — schema sudah ada di tenant DB (`letters`, `letter_number_sequences`)
