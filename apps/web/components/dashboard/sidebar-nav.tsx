@@ -20,7 +20,7 @@ const navItems = [
   { label: "Website",    icon: Globe,           path: "website"    },
   { label: "Surat",      icon: FileText,        path: "letters"    },
   { label: "Keuangan",   icon: Wallet,          path: "finance"    },
-  { label: "Toko",       icon: ShoppingBag,     path: "shop"       },
+  { label: "Toko",       icon: ShoppingBag,     path: "toko"       },
   { label: "Pengaturan", icon: Settings,        path: "settings"   },
 ];
 
