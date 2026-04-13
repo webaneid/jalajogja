@@ -2,7 +2,17 @@
 
 import { useState, useTransition } from "react";
 import { Plus, X, Check } from "lucide-react";
-import { createProductCategoryAction, slugify } from "@/app/(dashboard)/[tenant]/toko/actions";
+import { createProductCategoryAction } from "@/app/(dashboard)/[tenant]/toko/actions";
+
+function toSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+}
 
 type Category = {
   id:           string;
@@ -32,7 +42,7 @@ export function CategoryManageClient({ slug, initialCategories }: Props) {
       const trimmedName = name.trim();
       const res = await createProductCategoryAction(slug, {
         name: trimmedName,
-        slug: slugify(trimmedName),
+        slug: toSlug(trimmedName),
       });
 
       if (res.success) {
@@ -41,7 +51,7 @@ export function CategoryManageClient({ slug, initialCategories }: Props) {
           {
             id:           res.data.categoryId,
             name:         trimmedName,
-            slug:         slugify(trimmedName),
+            slug:         toSlug(trimmedName),
             productCount: 0,
           },
         ]);
