@@ -2,6 +2,11 @@ import { pgSchema } from "drizzle-orm/pg-core";
 import { createUsersTable } from "./users";
 import { createPagesTable, createPostCategoriesTable, createPostsTable, createPostTagsTable, createPostTagPivotTable, createMediaTable } from "./website";
 import { createLettersTable, createLetterNumberSequencesTable } from "./letters";
+import {
+  createDivisionsTable,
+  createOfficersTable,
+  createLetterSignaturesTable,
+} from "./officers";
 import { createAccountsTable, createTransactionsTable, createTransactionEntriesTable, createBudgetsTable, createBudgetItemsTable, createPaymentsTable, createDisbursementsTable, createFinancialSequencesTable } from "./finance";
 import { createProductCategoriesTable, createProductsTable, createOrdersTable, createOrderItemsTable } from "./shop";
 import { createSettingsTable, createMenusTable, createMenuItemsTable } from "./settings";
@@ -24,6 +29,10 @@ function buildTenantSchema(slug: string) {
     // Surat menyurat
     letters: createLettersTable(s),
     letterNumberSequences: createLetterNumberSequencesTable(s),
+    // Pengurus & Divisi organisasi
+    divisions:        createDivisionsTable(s),
+    officers:         createOfficersTable(s),
+    letterSignatures: createLetterSignaturesTable(s),
     // Keuangan — jurnal double-entry
     accounts: createAccountsTable(s),
     transactions: createTransactionsTable(s),
@@ -58,6 +67,7 @@ export type TenantSchema = ReturnType<typeof buildTenantSchema>;
 export * from "./users";
 export * from "./website";
 export * from "./letters";
+export * from "./officers";
 export * from "./finance";
 export * from "./shop";
 export * from "./settings";

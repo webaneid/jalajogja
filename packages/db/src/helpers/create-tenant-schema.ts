@@ -207,7 +207,58 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 11. Accounts (Chart of Accounts) ───────────────────────────────────
+    // ── 11. Divisions ──────────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".divisions (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        name        TEXT        NOT NULL,
+        code        TEXT,
+        description TEXT,
+        parent_id   UUID        REFERENCES "${s}".divisions(id) ON DELETE SET NULL,
+        sort_order  INTEGER     NOT NULL DEFAULT 0,
+        is_active   BOOLEAN     NOT NULL DEFAULT true,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 12. Officers ───────────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".officers (
+        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        member_id    UUID        NOT NULL REFERENCES public.members(id) ON DELETE RESTRICT,
+        division_id  UUID        REFERENCES "${s}".divisions(id) ON DELETE SET NULL,
+        position     TEXT        NOT NULL,
+        period_start DATE        NOT NULL,
+        period_end   DATE,
+        is_active    BOOLEAN     NOT NULL DEFAULT true,
+        can_sign     BOOLEAN     NOT NULL DEFAULT false,
+        sort_order   INTEGER     NOT NULL DEFAULT 0,
+        user_id      UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 13. Letter Signatures ──────────────────────────────────────────────────
+    // Multi-signer: satu surat bisa punya beberapa penandatangan
+    // verification_hash → isi QR Code: nama + jabatan + divisi + tanggal + hash
+    // Posisi QR Code di template surat bebas, tidak di-hardcode di sini
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".letter_signatures (
+        id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        letter_id         UUID        NOT NULL REFERENCES "${s}".letters(id) ON DELETE CASCADE,
+        officer_id        UUID        NOT NULL REFERENCES "${s}".officers(id) ON DELETE RESTRICT,
+        role              TEXT        NOT NULL DEFAULT 'signer'
+                                      CHECK (role IN ('signer','approver','witness')),
+        signed_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        verification_hash TEXT        NOT NULL UNIQUE,
+        ip_address        TEXT,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 14. Accounts (Chart of Accounts) ───────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".accounts (
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -482,6 +533,10 @@ export async function createTenantSchemaInDb(
     `));
 
     // ── Indexes ────────────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_officers_member_id         ON "${s}".officers(member_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_officers_division_id       ON "${s}".officers(division_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_officers_is_active         ON "${s}".officers(is_active)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letter_sigs_letter_id      ON "${s}".letter_signatures(letter_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_order_items_order_id        ON "${s}".order_items(order_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_menu_items_menu_id          ON "${s}".menu_items(menu_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_posts_status               ON "${s}".posts(status)`));
