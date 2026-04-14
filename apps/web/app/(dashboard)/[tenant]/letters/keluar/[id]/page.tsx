@@ -1,4 +1,4 @@
-import { createTenantDb, db, members } from "@jalajogja/db";
+import { createTenantDb, db, members, getSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
@@ -10,6 +10,7 @@ import { LetterSigningSection } from "@/components/letters/letter-signing-sectio
 import type { AvailableSigner, ExistingSignature } from "@/components/letters/letter-signing-section";
 import { GeneratePdfButton } from "@/components/letters/generate-pdf-button";
 import { BulkChildrenSection } from "@/components/letters/bulk-children-section";
+import { resolveMergeFields } from "@/lib/letter-merge";
 
 const STATUS_COLORS: Record<string, string> = {
   draft:    "bg-zinc-100 text-zinc-600",
@@ -30,7 +31,8 @@ export default async function SuratKeluarDetailPage({
   const access = await getTenantAccess(slug);
   if (!access) redirect("/login");
 
-  const { db: tenantDb, schema } = createTenantDb(slug);
+  const tenantClient             = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
 
   // Fetch surat
   const [letter] = await tenantDb
@@ -131,6 +133,55 @@ export default async function SuratKeluarDetailPage({
   }));
 
   const isAdmin = ["owner", "admin"].includes(access.tenantUser.role);
+
+  // Fetch data org dari settings untuk resolve merge fields
+  const [generalSettings, contactSettings] = await Promise.all([
+    getSettings(tenantClient, "general"),
+    getSettings(tenantClient, "contact"),
+  ]);
+  const orgName    = (generalSettings["site_name"]     as string | undefined) ?? "";
+  const orgAddress = (contactSettings["contact_address"] as { detail?: string } | undefined)?.detail ?? "";
+  const orgPhone   = (contactSettings["contact_phone"]   as string | undefined) ?? "";
+  const orgEmail   = (contactSettings["contact_email"]   as string | undefined) ?? "";
+
+  // Ambil data penerima dari mergeFields (terisi untuk surat bulk anak)
+  const mf = (letter.mergeFields ?? {}) as Record<string, string>;
+
+  // Build context merge fields
+  const mergeCtx = {
+    org: { name: orgName, address: orgAddress, phone: orgPhone, email: orgEmail },
+    letter: {
+      number:    letter.letterNumber ?? "",
+      date:      letter.letterDate   ?? "",
+      subject:   letter.subject      ?? "",
+      sender:    letter.sender       ?? "",
+      recipient: letter.recipient    ?? "",
+    },
+    // Signers: ambil dari rawSigs yang sudah di-fetch sebelumnya
+    signers: rawSigs.map((s) => {
+      const off = officers.find((o) => o.id === s.officerId);
+      return {
+        name:     off ? (memberMap.get(off.memberId) ?? "") : "",
+        position: off?.position  ?? "",
+        division: off?.divisionId ? (divisionMap.get(off.divisionId) ?? "") : "",
+      };
+    }),
+    // Konteks penerima — terisi untuk surat anak dari bulk, kosong untuk surat biasa
+    recipient: mf["recipient.name"]
+      ? {
+          name:    mf["recipient.name"]    ?? "",
+          phone:   mf["recipient.phone"]   ?? "",
+          email:   mf["recipient.email"]   ?? "",
+          address: mf["recipient.address"] ?? "",
+          number:  mf["recipient.number"]  ?? "",
+          nik:     mf["recipient.nik"]     ?? "",
+        }
+      : undefined,
+  };
+
+  // Resolve variabel merge fields di raw JSON string Tiptap
+  // Aman: {{variable}} hanya muncul di dalam "text" nodes, tidak merusak struktur JSON
+  const resolvedBody = letter.body ? resolveMergeFields(letter.body, mergeCtx) : null;
 
   // Fetch salinan surat (anak dari bulk) jika ini surat induk
   const children = letter.isBulk
@@ -235,13 +286,13 @@ export default async function SuratKeluarDetailPage({
       </div>
 
       {/* Isi surat */}
-      {letter.body && (
+      {resolvedBody && (
         <div>
           <h2 className="text-sm font-medium mb-2">Isi Surat</h2>
           <div className="rounded-lg border border-border bg-muted/10 px-2 py-2">
             <TiptapEditor
               slug={slug}
-              content={letter.body}
+              content={resolvedBody}
               editable={false}
             />
           </div>
