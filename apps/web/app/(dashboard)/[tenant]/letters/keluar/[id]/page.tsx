@@ -1,7 +1,7 @@
-import { createTenantDb, db, members, getSettings } from "@jalajogja/db";
+import { createTenantDb, db, members } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft, Pencil, Copy, Users } from "lucide-react";
 import { renderBody } from "@/lib/letter-render";
@@ -10,7 +10,7 @@ import { LetterSigningSection } from "@/components/letters/letter-signing-sectio
 import type { AvailableSigner, ExistingSignature } from "@/components/letters/letter-signing-section";
 import { GeneratePdfButton } from "@/components/letters/generate-pdf-button";
 import { BulkChildrenSection } from "@/components/letters/bulk-children-section";
-import { resolveMergeFields } from "@/lib/letter-merge";
+import { resolveMergeFields, buildMergeContext } from "@/lib/letter-merge";
 
 const STATUS_COLORS: Record<string, string> = {
   draft:    "bg-zinc-100 text-zinc-600",
@@ -134,54 +134,41 @@ export default async function SuratKeluarDetailPage({
 
   const isAdmin = ["owner", "admin"].includes(access.tenantUser.role);
 
-  // Fetch data org dari settings untuk resolve merge fields
-  const [generalSettings, contactSettings] = await Promise.all([
-    getSettings(tenantClient, "general"),
-    getSettings(tenantClient, "contact"),
-  ]);
-  const orgName    = (generalSettings["site_name"]     as string | undefined) ?? "";
-  const orgAddress = (contactSettings["contact_address"] as { detail?: string } | undefined)?.detail ?? "";
-  const orgPhone   = (contactSettings["contact_phone"]   as string | undefined) ?? "";
-  const orgEmail   = (contactSettings["contact_email"]   as string | undefined) ?? "";
+  // Ambil setting organisasi untuk merge fields
+  const [orgSetting] = await tenantDb
+    .select({ value: schema.settings.value })
+    .from(schema.settings)
+    .where(
+      and(
+        eq(schema.settings.key, "general"),
+        eq(schema.settings.group, "general")
+      )
+    )
+    .limit(1);
 
-  // Ambil data penerima dari mergeFields (terisi untuk surat bulk anak)
-  const mf = (letter.mergeFields ?? {}) as Record<string, string>;
+  const orgData = (orgSetting?.value as Record<string, string> | null) ?? {};
 
-  // Build context merge fields
-  const mergeCtx = {
-    org: { name: orgName, address: orgAddress, phone: orgPhone, email: orgEmail },
-    letter: {
-      number:    letter.letterNumber ?? "",
-      date:      letter.letterDate   ?? "",
-      subject:   letter.subject      ?? "",
-      sender:    letter.sender       ?? "",
-      recipient: letter.recipient    ?? "",
-    },
-    // Signers: ambil dari rawSigs yang sudah di-fetch sebelumnya
-    signers: rawSigs.map((s) => {
-      const off = officers.find((o) => o.id === s.officerId);
-      return {
-        name:     off ? (memberMap.get(off.memberId) ?? "") : "",
-        position: off?.position  ?? "",
-        division: off?.divisionId ? (divisionMap.get(off.divisionId) ?? "") : "",
-      };
-    }),
-    // Konteks penerima — terisi untuk surat anak dari bulk, kosong untuk surat biasa
-    recipient: mf["recipient.name"]
-      ? {
-          name:    mf["recipient.name"]    ?? "",
-          phone:   mf["recipient.phone"]   ?? "",
-          email:   mf["recipient.email"]   ?? "",
-          address: mf["recipient.address"] ?? "",
-          number:  mf["recipient.number"]  ?? "",
-          nik:     mf["recipient.nik"]     ?? "",
-        }
-      : undefined,
-  };
+  // Build merge context dan resolve variabel di body
+  const mergeCtx = buildMergeContext({
+    orgName:      orgData.name    ?? "",
+    orgAddress:   orgData.address ?? "",
+    orgPhone:     orgData.phone   ?? "",
+    orgEmail:     orgData.email   ?? "",
+    letterNumber: letter.letterNumber ?? "",
+    letterDate:   letter.letterDate   ?? "",
+    subject:      letter.subject      ?? "",
+    sender:       letter.sender       ?? "",
+    recipient:    letter.recipient    ?? "",
+    signers: signatures.map((s) => ({
+      name:     s.signerName,
+      position: s.signerPosition,
+      division: s.signerDivision ?? "",
+    })),
+  });
 
-  // Resolve variabel merge fields di raw JSON string Tiptap
-  // Aman: {{variable}} hanya muncul di dalam "text" nodes, tidak merusak struktur JSON
-  const resolvedBody = letter.body ? resolveMergeFields(letter.body, mergeCtx) : null;
+  // Resolve variabel di JSON string, lalu render ke HTML
+  const resolvedBody = resolveMergeFields(letter.body ?? "", mergeCtx);
+  const bodyHtml     = renderBody(resolvedBody);
 
   // Fetch salinan surat (anak dari bulk) jika ini surat induk
   const children = letter.isBulk
@@ -286,12 +273,12 @@ export default async function SuratKeluarDetailPage({
       </div>
 
       {/* Isi surat */}
-      {resolvedBody && (
+      {bodyHtml && (
         <div>
           <h2 className="text-sm font-medium mb-2">Isi Surat</h2>
           <div
-            className="rounded-lg border border-border bg-muted/10 px-6 py-5 text-sm leading-relaxed prose prose-sm max-w-none"
-            dangerouslySetInnerHTML={{ __html: renderBody(resolvedBody) }}
+            className="prose prose-sm max-w-none [&_p]:my-2 [&_h2]:mt-4 [&_h2]:mb-2 [&_table]:w-full [&_td]:border [&_td]:p-2 [&_th]:border [&_th]:p-2 [&_th]:bg-muted"
+            dangerouslySetInnerHTML={{ __html: bodyHtml }}
           />
         </div>
       )}
