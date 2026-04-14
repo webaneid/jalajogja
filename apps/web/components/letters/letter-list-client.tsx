@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Plus, Pencil, Trash2, FileText } from "lucide-react";
-import { deleteLetterAction, updateLetterStatusAction } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { Plus, Pencil, Trash2, FileText, Eye, FileDown, Copy } from "lucide-react";
+import { deleteLetterAction } from "@/app/(dashboard)/[tenant]/letters/actions";
 
 type LetterRow = {
   id:           string;
@@ -13,6 +13,8 @@ type LetterRow = {
   recipient:    string;
   letterDate:   string;
   status:       string;
+  isBulk:       boolean;
+  pdfUrl:       string | null;
   createdAt:    Date;
 };
 
@@ -42,7 +44,7 @@ const TYPE_NEW_HREF: Record<string, string> = {
   internal: "nota/new",
 };
 
-const TYPE_EDIT_PREFIX: Record<string, string> = {
+const TYPE_PREFIX: Record<string, string> = {
   outgoing: "keluar",
   incoming: "masuk",
   internal: "nota",
@@ -55,8 +57,10 @@ export function LetterListClient({ slug, type, initialLetters }: Props) {
   const [error, setError] = useState("");
 
   const filtered = letters.filter((l) =>
-    !search || l.subject.toLowerCase().includes(search.toLowerCase()) ||
-    (l.letterNumber ?? "").toLowerCase().includes(search.toLowerCase())
+    !search ||
+    l.subject.toLowerCase().includes(search.toLowerCase()) ||
+    (l.letterNumber ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    l.recipient.toLowerCase().includes(search.toLowerCase())
   );
 
   function handleDelete(letterId: string) {
@@ -74,15 +78,16 @@ export function LetterListClient({ slug, type, initialLetters }: Props) {
     });
   }
 
-  const newHref = `/${slug}/letters/${TYPE_NEW_HREF[type]}`;
-  const editPrefix = `/${slug}/letters/${TYPE_EDIT_PREFIX[type]}`;
+  const newHref  = `/${slug}/letters/${TYPE_NEW_HREF[type]}`;
+  const prefix   = `/${slug}/letters/${TYPE_PREFIX[type]}`;
+  const hasDetail = type !== "incoming"; // masuk tidak punya halaman detail terpisah
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <input
           type="search"
-          placeholder="Cari surat..."
+          placeholder="Cari surat…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -123,16 +128,25 @@ export function LetterListClient({ slug, type, initialLetters }: Props) {
             <tbody className="divide-y divide-border">
               {filtered.map((letter) => (
                 <tr key={letter.id} className="hover:bg-muted/20">
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
                     {letter.letterNumber ?? "—"}
                   </td>
-                  <td className="px-4 py-3 font-medium max-w-xs truncate">
-                    <Link
-                      href={`${editPrefix}/${letter.id}`}
-                      className="hover:underline underline-offset-2"
-                    >
-                      {letter.subject || <span className="text-muted-foreground italic">Tanpa perihal</span>}
-                    </Link>
+                  <td className="px-4 py-3 font-medium max-w-xs">
+                    <div className="flex items-center gap-1.5">
+                      <Link
+                        href={`${prefix}/${letter.id}`}
+                        className="truncate hover:underline underline-offset-2"
+                        title="Buka detail surat"
+                      >
+                        {letter.subject || <span className="text-muted-foreground italic">Tanpa perihal</span>}
+                      </Link>
+                      {/* Badge bulk — surat induk massal */}
+                      {letter.isBulk && (
+                        <span title="Surat massal" className="shrink-0">
+                          <Copy className="h-3 w-3 text-muted-foreground/60" />
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground truncate max-w-[160px]">
                     {type === "incoming" ? letter.sender : letter.recipient}
@@ -147,18 +161,42 @@ export function LetterListClient({ slug, type, initialLetters }: Props) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
+                      {/* Lihat detail */}
+                      <Link
+                        href={`${prefix}/${letter.id}`}
+                        title="Lihat detail"
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Link>
+                      {/* Download PDF jika sudah ada */}
+                      {letter.pdfUrl && (
+                        <a
+                          href={letter.pdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Download PDF"
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <FileDown className="h-4 w-4" />
+                        </a>
+                      )}
+                      {/* Edit — tidak untuk surat masuk */}
                       {type !== "incoming" && (
                         <Link
-                          href={`${editPrefix}/${letter.id}/edit`}
+                          href={`${prefix}/${letter.id}/edit`}
+                          title="Edit"
                           className="text-muted-foreground hover:text-foreground"
                         >
                           <Pencil className="h-4 w-4" />
                         </Link>
                       )}
+                      {/* Hapus */}
                       <button
                         type="button"
                         onClick={() => handleDelete(letter.id)}
                         disabled={pending}
+                        title="Hapus"
                         className="text-muted-foreground hover:text-destructive disabled:opacity-40"
                       >
                         <Trash2 className="h-4 w-4" />

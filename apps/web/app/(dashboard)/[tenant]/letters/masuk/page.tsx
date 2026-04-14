@@ -24,6 +24,8 @@ export default async function SuratMasukPage({
       recipient:    schema.letters.recipient,
       letterDate:   schema.letters.letterDate,
       status:       schema.letters.status,
+      isBulk:       schema.letters.isBulk,
+      pdfUrl:       schema.letters.pdfUrl,
       createdAt:    schema.letters.createdAt,
     })
     .from(schema.letters)
@@ -43,6 +45,8 @@ export default async function SuratMasukPage({
         initialLetters={letters.map((l) => ({
           ...l,
           letterNumber: l.letterNumber ?? null,
+          isBulk:       false,
+          pdfUrl:       null,
         }))}
       />
     </div>
