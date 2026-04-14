@@ -21,6 +21,15 @@ type MergeContext = {
     position: string;
     division: string;
   }>;
+  // Konteks penerima — terisi saat mail merge bulk, kosong untuk surat biasa
+  recipient?: {
+    name:    string;
+    phone:   string;
+    email:   string;
+    address: string;
+    number:  string; // nomor anggota
+    nik:     string;
+  };
 };
 
 // Resolusi sederhana: ganti semua {{key}} dengan nilai dari context
@@ -39,6 +48,13 @@ export function resolveMergeFields(template: string, ctx: MergeContext): string 
     "signer.name":         ctx.signers[0]?.name     ?? "",
     "signer.position":     ctx.signers[0]?.position ?? "",
     "signer.division":     ctx.signers[0]?.division ?? "",
+    // Penerima individual (mail merge bulk)
+    "recipient.name":    ctx.recipient?.name    ?? "",
+    "recipient.phone":   ctx.recipient?.phone   ?? "",
+    "recipient.email":   ctx.recipient?.email   ?? "",
+    "recipient.address": ctx.recipient?.address ?? "",
+    "recipient.number":  ctx.recipient?.number  ?? "",
+    "recipient.nik":     ctx.recipient?.nik     ?? "",
   };
 
   return template.replace(/\{\{([^}]+)\}\}/g, (_, key: string) => {
@@ -58,6 +74,15 @@ export function buildMergeContext(params: {
   sender:       string;
   recipient:    string;
   signers: Array<{ name: string; position: string; division: string }>;
+  // Opsional — hanya untuk surat bulk (mail merge)
+  recipientData?: {
+    name:    string;
+    phone?:  string;
+    email?:  string;
+    address?: string;
+    number?:  string;
+    nik?:     string;
+  };
 }): MergeContext {
   return {
     org: {
@@ -74,5 +99,15 @@ export function buildMergeContext(params: {
       recipient: params.recipient,
     },
     signers: params.signers,
+    recipient: params.recipientData
+      ? {
+          name:    params.recipientData.name,
+          phone:   params.recipientData.phone    ?? "",
+          email:   params.recipientData.email    ?? "",
+          address: params.recipientData.address  ?? "",
+          number:  params.recipientData.number   ?? "",
+          nik:     params.recipientData.nik      ?? "",
+        }
+      : undefined,
   };
 }

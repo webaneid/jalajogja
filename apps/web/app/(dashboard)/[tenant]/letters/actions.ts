@@ -713,3 +713,159 @@ export async function removeSignatureAction(
     return { success: false, error: "Gagal menghapus tanda tangan." };
   }
 }
+
+// ─── Mail Merge Bulk ──────────────────────────────────────────────────────────
+
+// Data satu penerima — dari public.members ATAU letter_contacts
+export type BulkRecipient = {
+  type:     "member" | "contact";
+  id:       string;          // member.id atau letter_contact.id
+  name:     string;
+  phone?:   string | null;
+  email?:   string | null;
+  address?: string | null;
+  number?:  string | null;   // member_number — hanya untuk type="member"
+  nik?:     string | null;   // NIK — hanya untuk type="member"
+};
+
+// Buat salinan surat untuk setiap penerima
+// Nomor surat anak: {nomor_parent}/{urutan} — contoh: 001/IKPM/IV/2025/1
+export async function createBulkLettersAction(
+  slug: string,
+  parentId: string,
+  recipients: BulkRecipient[]
+): Promise<{ success: true; count: number; childIds: string[] } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!["owner", "admin"].includes(access.tenantUser.role)) {
+    return { success: false, error: "Hanya admin yang bisa membuat surat massal." };
+  }
+
+  if (recipients.length === 0) {
+    return { success: false, error: "Pilih minimal satu penerima." };
+  }
+
+  if (recipients.length > 500) {
+    return { success: false, error: "Maksimal 500 penerima sekaligus." };
+  }
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    // Fetch user di tenant schema untuk createdBy
+    const [tenantUser] = await tenantDb
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.betterAuthUserId, access.userId))
+      .limit(1);
+
+    if (!tenantUser) return { success: false, error: "User tidak ditemukan di tenant." };
+
+    // Fetch parent letter
+    const [parent] = await tenantDb
+      .select()
+      .from(schema.letters)
+      .where(eq(schema.letters.id, parentId))
+      .limit(1);
+
+    if (!parent)                    return { success: false, error: "Surat induk tidak ditemukan." };
+    if (parent.type !== "outgoing") return { success: false, error: "Hanya surat keluar yang bisa di-bulk." };
+
+    const childIds: string[] = [];
+
+    // Insert satu per satu — sequential agar nomor urut konsisten
+    for (let i = 0; i < recipients.length; i++) {
+      const r = recipients[i];
+      const suffix = i + 1;
+      // Nomor anak: tambah /{urutan} ke nomor parent, atau null jika parent tidak punya nomor
+      const childNumber = parent.letterNumber
+        ? `${parent.letterNumber}/${suffix}`
+        : null;
+
+      // Merge fields untuk penerima ini — di-snapshot saat generate
+      const mergeFields: Record<string, string> = {
+        "recipient.name":    r.name,
+        "recipient.phone":   r.phone    ?? "",
+        "recipient.email":   r.email    ?? "",
+        "recipient.address": r.address  ?? "",
+        "recipient.number":  r.number   ?? "",
+        "recipient.nik":     r.nik      ?? "",
+      };
+
+      const [child] = await tenantDb
+        .insert(schema.letters)
+        .values({
+          type:         "outgoing",
+          typeId:       parent.typeId       ?? null,
+          templateId:   parent.templateId   ?? null,
+          subject:      parent.subject,
+          body:         parent.body         ?? null,
+          mergeFields,
+          attachmentUrls: parent.attachmentUrls as string[] ?? [],
+          sender:       parent.sender,
+          recipient:    r.name,
+          letterDate:   parent.letterDate,
+          letterNumber: childNumber,
+          status:       "draft",
+          paperSize:    parent.paperSize    ?? "A4",
+          isBulk:       false,
+          bulkParentId: parentId,
+          createdBy:    tenantUser.id,
+        })
+        .returning({ id: schema.letters.id });
+
+      childIds.push(child.id);
+    }
+
+    // Tandai parent sebagai surat bulk
+    await tenantDb
+      .update(schema.letters)
+      .set({ isBulk: true, updatedAt: new Date() })
+      .where(eq(schema.letters.id, parentId));
+
+    revalidatePath(`/${slug}/letters/keluar/${parentId}`);
+    revalidatePath(`/${slug}/letters/keluar`);
+
+    return { success: true, count: childIds.length, childIds };
+  } catch (err) {
+    console.error("[createBulkLettersAction]", err);
+    return { success: false, error: "Gagal membuat surat massal." };
+  }
+}
+
+// Tandai semua salinan surat menjadi "Terkirim" sekaligus
+export async function markAllChildrenSentAction(
+  slug: string,
+  parentId: string
+): Promise<{ success: true; count: number } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!["owner", "admin"].includes(access.tenantUser.role)) {
+    return { success: false, error: "Hanya admin yang bisa mengubah status massal." };
+  }
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    const result = await tenantDb
+      .update(schema.letters)
+      .set({ status: "sent", updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.letters.bulkParentId, parentId),
+          sql`${schema.letters.status} != 'sent'`
+        )
+      )
+      .returning({ id: schema.letters.id });
+
+    revalidatePath(`/${slug}/letters/keluar/${parentId}`);
+    revalidatePath(`/${slug}/letters/keluar`);
+
+    return { success: true, count: result.length };
+  } catch (err) {
+    console.error("[markAllChildrenSentAction]", err);
+    return { success: false, error: "Gagal update status surat salinan." };
+  }
+}

@@ -3,12 +3,13 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
-import { ChevronLeft, Pencil } from "lucide-react";
+import { ChevronLeft, Pencil, Copy, Users } from "lucide-react";
 import { renderBody } from "@/lib/letter-render";
 import { generateQrDataUrl, buildVerifyUrl } from "@/lib/qr-code";
 import { LetterSigningSection } from "@/components/letters/letter-signing-section";
 import type { AvailableSigner, ExistingSignature } from "@/components/letters/letter-signing-section";
 import { GeneratePdfButton } from "@/components/letters/generate-pdf-button";
+import { BulkChildrenSection } from "@/components/letters/bulk-children-section";
 
 const STATUS_COLORS: Record<string, string> = {
   draft:    "bg-zinc-100 text-zinc-600",
@@ -131,9 +132,24 @@ export default async function SuratKeluarDetailPage({
 
   const isAdmin = ["owner", "admin"].includes(access.tenantUser.role);
 
+  // Fetch salinan surat (anak dari bulk) jika ini surat induk
+  const children = letter.isBulk
+    ? await tenantDb
+        .select({
+          id:           schema.letters.id,
+          letterNumber: schema.letters.letterNumber,
+          recipient:    schema.letters.recipient,
+          status:       schema.letters.status,
+          createdAt:    schema.letters.createdAt,
+        })
+        .from(schema.letters)
+        .where(eq(schema.letters.bulkParentId, letterId))
+        .orderBy(schema.letters.createdAt)
+    : [];
+
   return (
     <div className="p-6 space-y-6 max-w-3xl">
-      {/* Breadcrumb + Edit */}
+      {/* Breadcrumb + tombol aksi */}
       <div className="flex items-center justify-between">
         <Link
           href={`/${slug}/letters/keluar`}
@@ -148,6 +164,16 @@ export default async function SuratKeluarDetailPage({
             letterId={letterId}
             existingPdfUrl={letter.pdfUrl}
           />
+          {/* Tombol Kirim Massal — hanya jika admin + belum punya anak */}
+          {isAdmin && !letter.isBulk && (
+            <Link
+              href={`/${slug}/letters/keluar/${letterId}/bulk`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+            >
+              <Users className="h-3.5 w-3.5" />
+              Kirim Massal
+            </Link>
+          )}
           <Link
             href={`/${slug}/letters/keluar/${letterId}/edit`}
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
@@ -157,6 +183,17 @@ export default async function SuratKeluarDetailPage({
           </Link>
         </div>
       </div>
+
+      {/* Warning jika surat sudah di-bulk */}
+      {letter.isBulk && (
+        <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+          <Copy className="h-4 w-4 shrink-0 mt-0.5" />
+          <p>
+            Surat ini sudah memiliki <strong>{children.length} salinan</strong>.
+            Perubahan pada surat induk tidak akan mempengaruhi salinan yang sudah dibuat.
+          </p>
+        </div>
+      )}
 
       {/* Header */}
       <div className="space-y-1">
@@ -219,6 +256,24 @@ export default async function SuratKeluarDetailPage({
           isAdmin={isAdmin}
         />
       </div>
+
+      {/* Salinan surat (bulk children) */}
+      {letter.isBulk && (
+        <div>
+          <h2 className="text-sm font-medium mb-3">Salinan Surat ({children.length})</h2>
+          <BulkChildrenSection
+            slug={slug}
+            parentId={letterId}
+            isAdmin={isAdmin}
+            initialChildren={children.map((c) => ({
+              id:           c.id,
+              letterNumber: c.letterNumber ?? null,
+              recipient:    c.recipient,
+              status:       c.status as "draft" | "sent" | "archived",
+            }))}
+          />
+        </div>
+      )}
     </div>
   );
 }
