@@ -8,6 +8,7 @@ import { renderBody } from "@/lib/letter-render";
 import { generateQrDataUrl, buildVerifyUrl } from "@/lib/qr-code";
 import { LetterSigningSection } from "@/components/letters/letter-signing-section";
 import type { AvailableSigner, ExistingSignature } from "@/components/letters/letter-signing-section";
+import { GeneratePdfButton } from "@/components/letters/generate-pdf-button";
 
 const STATUS_COLORS: Record<string, string> = {
   draft:    "bg-zinc-100 text-zinc-600",
@@ -133,13 +134,20 @@ export default async function NotaDinasDetailPage({
           <ChevronLeft className="h-4 w-4" />
           Nota Dinas
         </Link>
-        <Link
-          href={`/${slug}/letters/nota/${letterId}/edit`}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          Edit
-        </Link>
+        <div className="flex items-center gap-2">
+          <GeneratePdfButton
+            slug={slug}
+            letterId={letterId}
+            existingPdfUrl={letter.pdfUrl}
+          />
+          <Link
+            href={`/${slug}/letters/nota/${letterId}/edit`}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </Link>
+        </div>
       </div>
 
       {/* Header */}
