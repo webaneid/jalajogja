@@ -90,6 +90,7 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
     })
   );
 
+  // Margin diserahkan ke @page CSS rule (bukan body padding) agar tidak dobel dengan Playwright PDF margin
   const mt = template.marginTop;
   const mr = template.marginRight;
   const mb = template.marginBottom;
@@ -165,13 +166,17 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* @page mengontrol margin PDF — tidak dobel dengan Playwright margin option */
+    @page {
+      margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm;
+    }
+
     body {
       font-family: "${template.bodyFont}", "Times New Roman", serif;
       font-size: 12pt;
       line-height: 1.6;
       color: #000;
       background: #fff;
-      padding: ${mt}mm ${mr}mm ${mb}mm ${ml}mm;
     }
 
     /* Kop surat */

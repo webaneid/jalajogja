@@ -305,8 +305,9 @@ app/(dashboard)/[tenant]/
 - [x] Modul Toko (Produk + Pesanan + Kategori + MediaPicker multi-gambar)
 - [x] Modul Pengurus (divisions, officers, letter_signatures schema + UI)
 - [x] Modul Surat — CRUD dasar (schema + keluar + masuk + nota + template + jenis surat)
+- [x] Modul Surat lanjutan — TTD digital, QR verifikasi, halaman publik verifikasi, PDF Playwright
 - [ ] Komentar — **DITUNDA** (deprioritized, bukan kebutuhan utama saat ini)
-- [ ] **Surat Menyurat lanjutan** — PDF (Playwright), tanda tangan, mail merge, QR verifikasi ← NEXT
+- [ ] **Modul Surat — sisa fitur**: mail merge (bulk), inter-tenant, attachment MediaPicker ← NEXT
 - [ ] Keuangan (sudah ada schema, belum ada UI)
 - [ ] Donasi / Infaq
 - [ ] Add-on Marketplace UI (settings + install flow)
@@ -1170,6 +1171,53 @@ Pattern: `CREATE TABLE IF NOT EXISTS` dalam DO $ block — idempotent, aman dija
 **Bug fix saat type-check:**
 `access.id` → `access.tenant.id` — `TenantAccessResult` punya struktur `{ tenant, tenantUser, userId }`, bukan flat. Periksa setiap kali pakai `access.*` di server page.
 
+### [2026-04] Modul Surat Lanjutan — TTD Digital + QR + PDF
+
+**Pattern: `getSettings` butuh TenantDb lengkap, bukan raw db**
+- `getSettings(tenantDb, group)` gagal jika `tenantDb` adalah hasil destructure `{ db, schema }` — TypeScript menolak karena tipe berbeda
+- Fix: simpan hasil `createTenantDb(slug)` dulu, baru destructure:
+```typescript
+const tenantClient             = createTenantDb(slug);
+const { db: tenantDb, schema } = tenantClient;
+// Query pakai tenantDb; helper (getSettings) pakai tenantClient
+await getSettings(tenantClient, "contact");
+```
+
+**PDF margin — jangan dobel antara CSS dan Playwright**
+- `page.pdf({ margin: { top: "20mm" } })` di Playwright + `body { padding: 20mm }` di CSS = margin 40mm di PDF
+- Fix: gunakan CSS `@page { margin: Xmm }` di HTML, dan JANGAN set `margin` di `page.pdf()`
+- `@page` adalah print-specific CSS yang dikehormati browser rendering engine (Chromium)
+- Playwright kemudian tidak perlu tahu soal margin sama sekali
+
+**Playwright di Next.js API Route**
+- Import dari `playwright`, bukan `@playwright/test`: `import { chromium } from "playwright"`
+- Wajib `args: ["--no-sandbox", "--disable-setuid-sandbox"]` untuk Docker/VPS environment
+- Jalankan di Node.js runtime (bukan Edge) — default di Next.js App Router
+- Pattern: `let browser; try { browser = await chromium.launch(...) } finally { await browser?.close() }`
+- `await page.setContent(html, { waitUntil: "networkidle" })` — tunggu semua resource (gambar MinIO) loaded
+
+**QR Code optimistic update caveat**
+- QR di-generate server-side (Node.js) saat halaman detail dimuat
+- Setelah officer sign (optimistic update via client), QR tidak tersedia langsung — tampilkan placeholder
+- QR baru muncul setelah halaman di-refresh (server render ulang)
+- Pattern ini sudah didokumentasikan di `LetterSigningSection`: `qrDataUrl: null` untuk signature baru
+
+**Public route group untuk halaman tanpa auth**
+- `app/(public)/[tenant]/verify/[hash]/page.tsx` — route group `(public)` sejajar dengan `(dashboard)`
+- Karena di luar `(dashboard)`, layout auth tidak teraplikasi — tidak ada `redirect("/login")`
+- Halaman tetap bisa query DB langsung (server component) tanpa auth
+- Pattern ini cocok untuk halaman publik lain: invoice, receipt, link undangan
+
+**Halaman verifikasi: tampilkan "invalid" bukan 404**
+- Jika hash tidak ditemukan → jangan `notFound()` (return 404) — itu membingungkan
+- Tampilkan halaman "Tanda Tangan Tidak Valid" yang informatif — hash mungkin dipalsukan atau surat diedit
+- Hanya `notFound()` untuk tenant yang tidak ada / tidak aktif
+
+**`renderBody` — Tiptap JSON di server**
+- `generateHTML(json, [StarterKit, Underline])` dari `@tiptap/core` — pure JS, tidak butuh browser
+- Dibungkus try/catch: jika body bukan JSON valid → `escapeHtml(body).replace(/\n/g, "<br>")`
+- Untuk PDF generation: body di-resolve merge fields dulu via `resolveMergeFields()`, baru di-render HTML
+
 ## Arsitektur Modul Surat
 
 ### Tabel Schema
@@ -1226,22 +1274,42 @@ Counter atomic: SELECT FOR UPDATE di letter_number_sequences
 Kategori = letter_types.default_category (mis. UMUM, SEKR, IKPM)
 ```
 
-### Fitur Lanjutan (belum diimplementasikan)
-- PDF via Playwright headless — template HTML → PDF download
-- Tanda tangan digital — officer click "Tanda Tangani" → insert letter_signatures
-- QR verifikasi — SHA-256(letter_id+officer_id+timestamp) → QR di PDF
-- Mail merge — is_bulk + bulk_parent_id → satu surat untuk banyak penerima
-- Inter-tenant — kirim surat ke cabang IKPM lain (inter_tenant_to + inter_tenant_status)
+### Fitur yang Sudah Diimplementasikan (Surat Lanjutan)
+
+**Step 3a — Tanda Tangan Digital**
+- `signLetterAction(slug, letterId, officerId, role)` — insert `letter_signatures`, hash = SHA-256(`${letterId}:${officerId}:${signedAt.toISOString()}`)
+- `removeSignatureAction(slug, signatureId)` — admin/owner only
+- `LetterSigningSection` client component — role select (signer/approver/witness) per officer, optimistic update
+- `isCurrentUser` detection: prioritas `officers.userId === tenantUser.id`, fallback `officers.memberId === tenantUser.memberId`
+- Body surat di-render dari Tiptap JSON via `lib/letter-render.ts` (`generateHTML` dari `@tiptap/core`)
+- Detail page untuk keluar/[id], nota/[id] (masuk read-only)
+
+**Step 3b+3c — QR Code + Halaman Verifikasi Publik**
+- `lib/qr-code.ts`: `generateQrDataUrl(text)` → base64 PNG via `qrcode` npm package (server-side only)
+- `buildVerifyUrl(slug, hash)` → `${NEXT_PUBLIC_APP_URL}/${slug}/verify/${hash}`
+- QR di-generate server-side saat halaman detail dimuat; optimistic state setelah sign menampilkan placeholder
+- `app/(public)/[tenant]/verify/[hash]/page.tsx` — route group `(public)` di luar `(dashboard)`, NO auth
+- Halaman publik: cek tenant aktif → lookup hash → tampilkan letter info + signer info + QR ulang
+
+**Step 3d — PDF Generation**
+- `lib/letter-merge.ts`: `resolveMergeFields(template, ctx)` — regex replace `{{key}}` dari flat map
+- `lib/letter-html.ts`: build HTML lengkap (kop surat header image, metadata, body, signers + QR, footer image)
+  - Margin via CSS `@page { margin: Xmm }` — bukan body padding, agar tidak dobel dengan Playwright
+- `POST /api/letters/[id]/generate-pdf?slug=` — auth check → fetch data → build HTML → Playwright → MinIO → update `pdf_url`
+- `components/letters/generate-pdf-button.tsx` — tombol unduh + link buka PDF terakhir (auto-download)
+- Tombol muncul di halaman detail keluar + nota
+
+### Fitur Belum Diimplementasikan
+- Mail merge — `is_bulk` + `bulk_parent_id` → satu template, banyak penerima
+- Inter-tenant — `inter_tenant_to` + `inter_tenant_status` → kirim ke cabang IKPM lain
+- Attachment lampiran — MediaPicker untuk upload lampiran surat
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Modul Surat — schema komprehensif + CRUD dasar
-- Commit terakhir: `1756f10` — feat: modul surat — schema komprehensif + CRUD dasar
-- Modul Surat CRUD: **SELESAI** (keluar, masuk, nota, template, jenis surat)
-- Next step: **Surat lanjutan** — PDF Playwright, tanda tangan digital, mail merge, QR verifikasi
+- Terakhir dikerjakan: Modul Surat lanjutan — TTD digital + QR + verifikasi publik + PDF Playwright
+- Commit terakhir: `78c1f36` — feat: step 3d — PDF generation via Playwright + merge fields
+- Modul Surat lanjutan: **SELESAI** (TTD, QR, halaman verifikasi publik, PDF via Playwright)
+- Next step: **Modul Surat sisa** (mail merge bulk, inter-tenant, attachment) ATAU **Keuangan**
 - Fitur yang belum diimplementasikan (dalam scope surat):
-  - PDF generation via Playwright headless
-  - Tanda tangan digital oleh officer (letter_signatures)
   - Mail merge (is_bulk + bulk_parent_id)
-  - QR verifikasi (verification_hash → SHA-256)
   - Inter-tenant letters (inter_tenant_to + inter_tenant_status)
   - MediaPicker untuk attachment lampiran

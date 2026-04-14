@@ -177,15 +177,10 @@ export async function POST(
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle" });
     const format = paperFormat(template.paperSize);
+    // Margin dikontrol via CSS @page di HTML — jangan set margin di page.pdf() agar tidak dobel
     const rawPdf = await page.pdf({
       ...format,
       printBackground: true,
-      margin: {
-        top:    `${template.marginTop}mm`,
-        right:  `${template.marginRight}mm`,
-        bottom: `${template.marginBottom}mm`,
-        left:   `${template.marginLeft}mm`,
-      },
     });
     pdfBuffer = Buffer.from(rawPdf);
   } finally {
