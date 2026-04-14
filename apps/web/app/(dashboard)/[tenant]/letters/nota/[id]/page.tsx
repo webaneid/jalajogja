@@ -5,6 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { renderBody } from "@/lib/letter-render";
+import { generateQrDataUrl, buildVerifyUrl } from "@/lib/qr-code";
 import { LetterSigningSection } from "@/components/letters/letter-signing-section";
 import type { AvailableSigner, ExistingSignature } from "@/components/letters/letter-signing-section";
 
@@ -90,19 +91,25 @@ export default async function NotaDinasDetailPage({
     .from(schema.letterSignatures)
     .where(eq(schema.letterSignatures.letterId, letterId));
 
-  const signatures: ExistingSignature[] = rawSigs.map((s) => {
-    const off = officers.find((o) => o.id === s.officerId);
-    return {
-      id:               s.id,
-      officerId:        s.officerId,
-      role:             s.role as "signer" | "approver" | "witness",
-      signedAt:         s.signedAt,
-      verificationHash: s.verificationHash,
-      signerName:       off ? (memberMap.get(off.memberId) ?? "—") : "—",
-      signerPosition:   off?.position ?? "—",
-      signerDivision:   off?.divisionId ? (divisionMap.get(off.divisionId) ?? null) : null,
-    };
-  });
+  const signatures: ExistingSignature[] = await Promise.all(
+    rawSigs.map(async (s) => {
+      const off       = officers.find((o) => o.id === s.officerId);
+      const verifyUrl = buildVerifyUrl(slug, s.verificationHash);
+      const qrDataUrl = await generateQrDataUrl(verifyUrl);
+      return {
+        id:               s.id,
+        officerId:        s.officerId,
+        role:             s.role as "signer" | "approver" | "witness",
+        signedAt:         s.signedAt,
+        verificationHash: s.verificationHash,
+        verifyUrl,
+        qrDataUrl,
+        signerName:       off ? (memberMap.get(off.memberId) ?? "—") : "—",
+        signerPosition:   off?.position ?? "—",
+        signerDivision:   off?.divisionId ? (divisionMap.get(off.divisionId) ?? null) : null,
+      };
+    })
+  );
 
   const availableSigners: AvailableSigner[] = officers.map((o) => ({
     officerId:     o.id,

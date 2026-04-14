@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { PenLine, CheckCircle2, Trash2, Shield } from "lucide-react";
+import { PenLine, CheckCircle2, Trash2, Shield, QrCode } from "lucide-react";
 import { signLetterAction, removeSignatureAction } from "@/app/(dashboard)/[tenant]/letters/actions";
 
 type SignerRole = "signer" | "approver" | "witness";
@@ -21,6 +21,8 @@ export type ExistingSignature = {
   role:             SignerRole;
   signedAt:         Date;
   verificationHash: string;
+  verifyUrl:        string;        // URL lengkap untuk QR
+  qrDataUrl:        string | null; // base64 PNG dari server; null untuk sig baru (optimistic)
   signerName:       string;
   signerPosition:   string;
   signerDivision:   string | null;
@@ -44,12 +46,12 @@ export function LetterSigningSection({
   slug, letterId, availableSigners, initialSignatures, isAdmin,
 }: Props) {
   const [signatures, setSignatures] = useState<ExistingSignature[]>(initialSignatures);
-  // selectedRole[officerId] → role yang dipilih untuk officer ini sebelum TTD
   const [selectedRole, setSelectedRole] = useState<Record<string, SignerRole>>(
     Object.fromEntries(availableSigners.map((s) => [s.officerId, "signer" as SignerRole]))
   );
-  const [error, setError]          = useState("");
-  const [pending, startTransition] = useTransition();
+  const [expandedQr, setExpandedQr]    = useState<string | null>(null); // officerId yang QR-nya terbuka
+  const [error, setError]              = useState("");
+  const [pending, startTransition]     = useTransition();
 
   function isSigned(officerId: string): boolean {
     return signatures.some((s) => s.officerId === officerId);
@@ -70,15 +72,17 @@ export function LetterSigningSection({
     startTransition(async () => {
       const res = await signLetterAction(slug, letterId, signer.officerId, role);
       if (res.success) {
-        // Optimistic update — hash langsung tersedia untuk QR (Step 3b)
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
         setSignatures((prev) => [
           ...prev,
           {
-            id:               crypto.randomUUID(), // placeholder; halaman akan reload jika user refresh
+            id:               crypto.randomUUID(),
             officerId:        signer.officerId,
             role,
             signedAt:         new Date(),
             verificationHash: res.verificationHash,
+            verifyUrl:        `${baseUrl}/${slug}/verify/${res.verificationHash}`,
+            qrDataUrl:        null, // QR server-side akan muncul setelah refresh
             signerName:       signer.name,
             signerPosition:   signer.position,
             signerDivision:   signer.division,
@@ -123,73 +127,133 @@ export function LetterSigningSection({
           const sig    = getSignature(signer.officerId);
           const signed = !!sig;
           const role   = selectedRole[signer.officerId] ?? "signer";
+          const qrOpen = expandedQr === signer.officerId;
 
           return (
-            <div key={signer.officerId} className="flex items-center justify-between px-4 py-3 gap-4">
-              {/* Kiri: status icon + info */}
-              <div className="flex items-center gap-3 min-w-0">
-                {signed
-                  ? <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
-                  : <Shield className="h-5 w-5 text-muted-foreground/40 shrink-0" />
-                }
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{signer.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {signer.position}
-                    {signer.division ? ` · ${signer.division}` : ""}
-                    {signed && sig ? ` · ${ROLE_LABELS[sig.role]}` : ""}
-                  </p>
-                  {signed && sig && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      TTD: {new Date(sig.signedAt).toLocaleString("id-ID")}
+            <div key={signer.officerId}>
+              {/* Row utama */}
+              <div className="flex items-center justify-between px-4 py-3 gap-4">
+                {/* Kiri: status + info */}
+                <div className="flex items-center gap-3 min-w-0">
+                  {signed
+                    ? <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                    : <Shield className="h-5 w-5 text-muted-foreground/40 shrink-0" />
+                  }
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{signer.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {signer.position}
+                      {signer.division ? ` · ${signer.division}` : ""}
+                      {signed && sig ? ` · ${ROLE_LABELS[sig.role]}` : ""}
                     </p>
+                    {signed && sig && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        TTD: {new Date(sig.signedAt).toLocaleString("id-ID")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Kanan: role select / tombol */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Belum TTD — user ini sendiri */}
+                  {!signed && signer.isCurrentUser && (
+                    <>
+                      <select
+                        value={role}
+                        onChange={(e) => setRole(signer.officerId, e.target.value as SignerRole)}
+                        disabled={pending}
+                        className="rounded border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      >
+                        <option value="signer">Penandatangan</option>
+                        <option value="approver">Penyetuju</option>
+                        <option value="witness">Saksi</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleSign(signer)}
+                        disabled={pending}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 whitespace-nowrap"
+                      >
+                        <PenLine className="h-3.5 w-3.5" />
+                        Tanda Tangani
+                      </button>
+                    </>
+                  )}
+
+                  {/* Belum TTD — bukan user ini */}
+                  {!signed && !signer.isCurrentUser && (
+                    <span className="text-xs text-muted-foreground italic">Menunggu</span>
+                  )}
+
+                  {/* Sudah TTD — tombol QR + hapus (admin) */}
+                  {signed && sig && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedQr(qrOpen ? null : signer.officerId)}
+                        title="Lihat QR Code verifikasi"
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <QrCode className="h-4 w-4" />
+                      </button>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemove(sig.id)}
+                          disabled={pending}
+                          title="Hapus tanda tangan (admin)"
+                          className="text-muted-foreground hover:text-destructive disabled:opacity-40"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
 
-              {/* Kanan: role select + tombol */}
-              <div className="flex items-center gap-2 shrink-0">
-                {!signed && signer.isCurrentUser && (
-                  <>
-                    {/* Pilih role sebelum TTD */}
-                    <select
-                      value={role}
-                      onChange={(e) => setRole(signer.officerId, e.target.value as SignerRole)}
-                      disabled={pending}
-                      className="rounded border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                    >
-                      <option value="signer">Penandatangan</option>
-                      <option value="approver">Penyetuju</option>
-                      <option value="witness">Saksi</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => handleSign(signer)}
-                      disabled={pending}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 whitespace-nowrap"
-                    >
-                      <PenLine className="h-3.5 w-3.5" />
-                      Tanda Tangani
-                    </button>
-                  </>
-                )}
+              {/* Panel QR — expand saat tombol QR diklik */}
+              {signed && sig && qrOpen && (
+                <div className="px-4 pb-4 pt-1 border-t border-border bg-muted/5 flex items-start gap-5">
+                  {/* QR image */}
+                  <div className="shrink-0">
+                    {sig.qrDataUrl ? (
+                      <img
+                        src={sig.qrDataUrl}
+                        alt="QR Code verifikasi"
+                        width={120}
+                        height={120}
+                        className="rounded border border-border"
+                      />
+                    ) : (
+                      <div className="w-[120px] h-[120px] rounded border border-dashed border-border flex items-center justify-center bg-muted/20">
+                        <p className="text-xs text-muted-foreground text-center px-2">
+                          QR muncul setelah refresh
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
-                {!signed && !signer.isCurrentUser && (
-                  <span className="text-xs text-muted-foreground italic">Menunggu</span>
-                )}
-
-                {signed && sig && isAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(sig.id)}
-                    disabled={pending}
-                    title="Hapus tanda tangan (admin)"
-                    className="text-muted-foreground hover:text-destructive disabled:opacity-40"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
+                  {/* Info verifikasi */}
+                  <div className="min-w-0 space-y-1.5 text-xs">
+                    <p className="font-medium text-sm">{sig.signerName}</p>
+                    <p className="text-muted-foreground">{sig.signerPosition}{sig.signerDivision ? ` · ${sig.signerDivision}` : ""}</p>
+                    <p className="text-muted-foreground">{ROLE_LABELS[sig.role]}</p>
+                    <p className="text-muted-foreground">
+                      {new Date(sig.signedAt).toLocaleString("id-ID")}
+                    </p>
+                    <a
+                      href={sig.verifyUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block mt-2 font-mono text-[10px] text-primary break-all hover:underline"
+                    >
+                      {sig.verifyUrl}
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
