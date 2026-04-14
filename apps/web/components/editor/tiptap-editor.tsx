@@ -66,7 +66,7 @@ export function TiptapEditor({
 
       Link.configure({
         openOnClick: false,   // jangan buka link saat edit
-        autolink: true,       // auto-detect URL saat paste
+        autolink: false,      // matikan — {{variable}} merge fields salah dikenali sebagai URL
         HTMLAttributes: {
           target: "_blank",
           rel: "noopener noreferrer",

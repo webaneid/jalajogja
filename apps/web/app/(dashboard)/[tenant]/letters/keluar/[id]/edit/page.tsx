@@ -1,4 +1,4 @@
-import { createTenantDb, db, members } from "@jalajogja/db";
+import { createTenantDb, db, members, getSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
@@ -15,7 +15,8 @@ export default async function SuratKeluarEditPage({
   const access = await getTenantAccess(slug);
   if (!access) redirect("/login");
 
-  const { db: tenantDb, schema } = createTenantDb(slug);
+  const tenantClient             = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
 
   const [letter] = await tenantDb
     .select()
@@ -26,6 +27,10 @@ export default async function SuratKeluarEditPage({
   if (!letter || letter.type !== "outgoing") notFound();
 
   const isAdmin = ["owner", "admin"].includes(access.tenantUser.role);
+
+  // Ambil nama organisasi untuk field Pengirim (auto-set dari settings)
+  const generalSettings = await getSettings(tenantClient, "general");
+  const orgName = (generalSettings["site_name"] as string | undefined) ?? "";
 
   // Fetch jenis surat aktif
   const letterTypes = await tenantDb
@@ -116,6 +121,7 @@ export default async function SuratKeluarEditPage({
         slug={slug}
         letterId={letterId}
         type="outgoing"
+        orgName={orgName}
         letterTypes={letterTypes.map((t) => ({ ...t, code: t.code ?? null }))}
         templates={templates.map((t) => ({
           ...t,

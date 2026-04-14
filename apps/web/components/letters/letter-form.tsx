@@ -6,6 +6,7 @@ import {
   updateLetterAction,
   getNextLetterNumberAction,
 } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { TiptapEditor } from "@/components/editor/tiptap-editor";
 
 type LetterType = { id: string; name: string; code: string | null; defaultCategory: string };
 type Template   = { id: string; name: string; type: string; subject: string | null; body: string | null };
@@ -35,9 +36,10 @@ type Props = {
   templates:     Template[];
   officers:      Officer[];
   defaultValues: DefaultValues;
+  orgName:       string;
 };
 
-export function LetterForm({ slug, letterId, type, letterTypes, templates, officers, defaultValues }: Props) {
+export function LetterForm({ slug, letterId, type, letterTypes, templates, officers, defaultValues, orgName }: Props) {
   const router  = useRouter();
   const [form, setForm] = useState(defaultValues);
   const [error, setError] = useState("");
@@ -89,6 +91,7 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
       const status = newStatus ?? form.status;
       const res = await updateLetterAction(slug, letterId, {
         ...form,
+        sender:          orgName,
         typeId:          form.typeId          || null,
         templateId:      form.templateId      || null,
         issuerOfficerId: form.issuerOfficerId || null,
@@ -149,40 +152,30 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
           />
         </div>
 
-        {/* Pengirim & Penerima */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-muted-foreground">Pengirim</label>
-            <input
-              type="text"
-              value={form.sender}
-              onChange={(e) => set("sender", e.target.value)}
-              placeholder="Nama pengirim / jabatan"
-              className={fieldCls}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Kepada</label>
-            <input
-              type="text"
-              value={form.recipient}
-              onChange={(e) => set("recipient", e.target.value)}
-              placeholder="Nama penerima / instansi"
-              className={fieldCls}
-            />
-          </div>
+        {/* Kepada */}
+        <div>
+          <label className="text-xs text-muted-foreground">Kepada</label>
+          <input
+            type="text"
+            value={form.recipient}
+            onChange={(e) => set("recipient", e.target.value)}
+            placeholder="Nama penerima / instansi"
+            className={fieldCls}
+          />
         </div>
 
         {/* Body */}
         <div>
-          <label className="text-xs text-muted-foreground">Isi Surat</label>
-          <textarea
-            rows={14}
-            value={form.body}
-            onChange={(e) => set("body", e.target.value)}
-            placeholder="Tulis isi surat di sini..."
-            className={`${fieldCls} resize-y`}
-          />
+          <label className="text-xs text-muted-foreground block mb-1">Isi Surat</label>
+          <div className="rounded-md border border-input overflow-hidden">
+            <TiptapEditor
+              slug={slug}
+              content={form.body || null}
+              onChange={(json, _html) => set("body", json)}
+              placeholder="Tulis isi surat di sini... Gunakan {{recipient.name}}, {{letter.date}}, dll"
+              editable={true}
+            />
+          </div>
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
