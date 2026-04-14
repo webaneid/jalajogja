@@ -831,9 +831,9 @@ export async function createBulkLettersAction(
 // ─── Letter Config (kop surat + format nomor) ────────────────────────────────
 
 export type LetterConfig = {
-  header_image_id: string | null;
-  footer_image_id: string | null;
-  paper_size:      "A4" | "F4" | "Letter";
+  header_image_url: string | null;   // URL gambar kop surat dari media library
+  footer_image_url: string | null;   // URL gambar footer dari media library
+  paper_size:       "A4" | "F4" | "Letter";
   body_font:       string;
   margin_top:      number;
   margin_right:    number;

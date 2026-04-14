@@ -7,8 +7,8 @@ import type { LetterConfig } from "@/app/(dashboard)/[tenant]/letters/actions";
 import { DEFAULT_LETTER_CONFIG } from "@/lib/letter-number";
 
 const DEFAULT_CONFIG: LetterConfig = {
-  header_image_id: null,
-  footer_image_id: null,
+  header_image_url: null,
+  footer_image_url: null,
   paper_size:      "A4",
   body_font:       "Times New Roman",
   margin_top:      20,
@@ -34,8 +34,8 @@ export default async function LetterPengaturanPage({
   const raw = (generalSettings["letter_config"] as Partial<LetterConfig> | undefined) ?? {};
 
   const config: LetterConfig = {
-    header_image_id: raw.header_image_id ?? null,
-    footer_image_id: raw.footer_image_id ?? null,
+    header_image_url: raw.header_image_url ?? null,
+    footer_image_url: raw.footer_image_url ?? null,
     paper_size:      raw.paper_size      ?? DEFAULT_CONFIG.paper_size,
     body_font:       raw.body_font       ?? DEFAULT_CONFIG.body_font,
     margin_top:      raw.margin_top      ?? DEFAULT_CONFIG.margin_top,

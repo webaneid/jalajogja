@@ -3,12 +3,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createTenantDb, db, getSettings, members, tenants } from "@jalajogja/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm"; // inArray masih dipakai untuk officer/member lookups
 import { chromium } from "playwright";
 import { getTenantAccess } from "@/lib/tenant";
 import { buildLetterHtml, paperFormat } from "@/lib/letter-html";
 import { uploadFile, publicUrl, buildPath, ensureBucket } from "@/lib/minio";
-import { type LetterNumberConfig } from "@/lib/letter-number";
 
 // Default styling untuk PDF jika letter_config belum diatur
 const DEFAULT_LETTER_CONFIG_FULL = {
@@ -52,30 +51,18 @@ export async function POST(
   }
 
   // Fetch letter_config dari settings (kop surat, margin, font)
-  // Template sekarang hanya berisi konten (perihal + body) — styling dari settings
+  // URL gambar header/footer disimpan langsung di config (tidak perlu lookup media table)
   const generalSettingsRaw = await getSettings(tenantClient, "general");
-  const rawLetterConfig = (generalSettingsRaw["letter_config"] as Partial<LetterNumberConfig> & {
-    header_image_id?: string | null;
-    footer_image_id?: string | null;
-    paper_size?:      string;
-    body_font?:       string;
-    margin_top?:      number;
-    margin_right?:    number;
-    margin_bottom?:   number;
-    margin_left?:     number;
+  const rawLetterConfig = (generalSettingsRaw["letter_config"] as {
+    header_image_url?: string | null;
+    footer_image_url?: string | null;
+    paper_size?:       string;
+    body_font?:        string;
+    margin_top?:       number;
+    margin_right?:     number;
+    margin_bottom?:    number;
+    margin_left?:      number;
   } | undefined) ?? {};
-
-  // Resolve gambar header/footer dari media table jika ada
-  const mediaIds = [rawLetterConfig.header_image_id, rawLetterConfig.footer_image_id]
-    .filter((x): x is string => !!x);
-  const mediaMap = new Map<string, string>();
-  if (mediaIds.length > 0) {
-    const mediaRows = await tenantDb
-      .select({ id: schema.media.id, path: schema.media.path })
-      .from(schema.media)
-      .where(inArray(schema.media.id, mediaIds));
-    mediaRows.forEach((m) => mediaMap.set(m.id, publicUrl(slug, m.path)));
-  }
 
   const template = {
     bodyFont:       rawLetterConfig.body_font      ?? DEFAULT_LETTER_CONFIG_FULL.body_font,
@@ -83,8 +70,8 @@ export async function POST(
     marginRight:    rawLetterConfig.margin_right   ?? DEFAULT_LETTER_CONFIG_FULL.margin_right,
     marginBottom:   rawLetterConfig.margin_bottom  ?? DEFAULT_LETTER_CONFIG_FULL.margin_bottom,
     marginLeft:     rawLetterConfig.margin_left    ?? DEFAULT_LETTER_CONFIG_FULL.margin_left,
-    headerImageUrl: rawLetterConfig.header_image_id ? (mediaMap.get(rawLetterConfig.header_image_id) ?? null) : null,
-    footerImageUrl: rawLetterConfig.footer_image_id ? (mediaMap.get(rawLetterConfig.footer_image_id) ?? null) : null,
+    headerImageUrl: rawLetterConfig.header_image_url ?? null,
+    footerImageUrl: rawLetterConfig.footer_image_url ?? null,
     paperSize: ((rawLetterConfig.paper_size ?? letter.paperSize ?? "A4")) as "A4" | "F4" | "Letter",
   };
 

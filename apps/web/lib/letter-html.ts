@@ -5,15 +5,20 @@ import { renderBody } from "./letter-render";
 import { resolveMergeFields, buildMergeContext } from "./letter-merge";
 import { generateQrDataUrl, buildVerifyUrl } from "./qr-code";
 
+// Lebar kertas tepat per ukuran (presisi sesuai standar cetak)
+// A4     : 210mm lebar, tinggi menyesuaikan konten
+// F4     : 215mm lebar (Folio Indonesia), tinggi 330mm
+// Letter : 215.9mm lebar (8.5"), tinggi 279.4mm (11")
+
 type TemplateConfig = {
-  bodyFont:     string;
-  marginTop:    number;
-  marginRight:  number;
-  marginBottom: number;
-  marginLeft:   number;
+  bodyFont:       string;
+  marginTop:      number;
+  marginRight:    number;
+  marginBottom:   number;
+  marginLeft:     number;
   headerImageUrl: string | null;
   footerImageUrl: string | null;
-  paperSize: "A4" | "F4" | "Letter";
+  paperSize:      "A4" | "F4" | "Letter";
 };
 
 type SignerInfo = {
@@ -47,10 +52,13 @@ const ROLE_LABELS: Record<string, string> = {
   witness:  "Saksi",
 };
 
-// Konversi paper size ke dimensi Playwright
+// Konversi paper size ke dimensi Playwright — presisi lebar per standar cetak
 export function paperFormat(size: string): { format?: string; width?: string; height?: string } {
-  if (size === "F4") return { width: "210mm", height: "330mm" };
+  // F4 / Folio Indonesia: 215mm × 330mm (bukan A4 210mm)
+  if (size === "F4") return { width: "215mm", height: "330mm" };
+  // Letter US: 215.9mm × 279.4mm — Playwright sudah tahu dimensinya
   if (size === "Letter") return { format: "Letter" };
+  // A4: 210mm × 297mm — default
   return { format: "A4" };
 }
 
@@ -58,8 +66,6 @@ export function paperFormat(size: string): { format?: string; width?: string; he
 export async function buildLetterHtml(params: LetterHtmlParams): Promise<string> {
   const { template, signers, orgName, orgAddress, orgPhone, orgEmail } = params;
 
-  // Resolve merge fields di body (jika ada {{...}})
-  const firstSigner = signers[0];
   const mergeCtx = buildMergeContext({
     orgName,
     orgAddress,
@@ -77,9 +83,8 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
     })),
   });
 
-  const rawBody  = params.body ?? "";
-  const resolvedBody = resolveMergeFields(rawBody, mergeCtx);
-  const bodyHtml = renderBody(resolvedBody);
+  const resolvedBody = resolveMergeFields(params.body ?? "", mergeCtx);
+  const bodyHtml     = renderBody(resolvedBody);
 
   // Generate QR untuk setiap penandatangan
   const signersWithQr = await Promise.all(
@@ -90,12 +95,14 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
     })
   );
 
-  // Margin diserahkan ke @page CSS rule (bukan body padding) agar tidak dobel dengan Playwright PDF margin
   const mt = template.marginTop;
   const mr = template.marginRight;
   const mb = template.marginBottom;
   const ml = template.marginLeft;
 
+  const hasFooter = !!template.footerImageUrl;
+
+  // Kop surat — tampil di bagian atas halaman pertama
   const headerSection = template.headerImageUrl
     ? `<div class="kop-surat">
         <img src="${template.headerImageUrl}" alt="Kop Surat" class="kop-img" />
@@ -108,8 +115,11 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
         <div class="kop-garis"></div>
        </div>`;
 
-  const footerSection = template.footerImageUrl
-    ? `<div class="footer-surat"><img src="${template.footerImageUrl}" alt="Footer" class="footer-img" /></div>`
+  // Footer — fixed di bawah SETIAP halaman PDF via position:fixed
+  const footerSection = hasFooter
+    ? `<div class="footer-surat">
+        <img src="${template.footerImageUrl}" alt="Footer" class="footer-img" />
+       </div>`
     : "";
 
   const metaSection = `
@@ -177,31 +187,35 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
       line-height: 1.6;
       color: #000;
       background: #fff;
+      /* Sisakan ruang di bawah untuk footer fixed (jika ada) */
+      ${hasFooter ? "padding-bottom: 36mm;" : ""}
     }
 
-    /* Kop surat */
+    /* Kop surat — inline, muncul sekali di atas halaman pertama */
     .kop-surat { margin-bottom: 8px; }
-    .kop-img { width: 100%; max-height: 60mm; object-fit: contain; object-position: top; }
+    .kop-img   { width: 100%; object-fit: contain; object-position: top; display: block; }
     .kop-garis { border-bottom: 3px solid #000; margin-top: 4px; }
-    .kop-text { text-align: center; }
-    .org-name { font-size: 16pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+    .kop-text  { text-align: center; }
+    .org-name  { font-size: 16pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
     .org-detail { font-size: 10pt; margin-top: 2px; }
 
     /* Metadata surat */
     .meta-table { border-collapse: collapse; margin-top: 16px; font-size: 12pt; }
     .meta-label { width: 80px; vertical-align: top; }
-    .meta-sep { width: 14px; vertical-align: top; }
+    .meta-sep   { width: 14px; vertical-align: top; }
 
     /* Body */
     .body-surat { margin-top: 20px; font-size: 12pt; text-align: justify; }
-    .body-surat p { margin-bottom: 8px; }
-    .body-surat ul, .body-surat ol { margin-left: 24px; margin-bottom: 8px; }
-    .body-surat li { margin-bottom: 4px; }
+    .body-surat p   { margin-bottom: 8px; }
+    .body-surat ul,
+    .body-surat ol  { margin-left: 24px; margin-bottom: 8px; }
+    .body-surat li  { margin-bottom: 4px; }
     .body-surat strong { font-weight: bold; }
-    .body-surat em { font-style: italic; }
-    .body-surat u { text-decoration: underline; }
-    .body-surat table { border-collapse: collapse; width: 100%; }
-    .body-surat th, .body-surat td { border: 1px solid #000; padding: 4px 8px; }
+    .body-surat em     { font-style: italic; }
+    .body-surat u      { text-decoration: underline; }
+    .body-surat table  { border-collapse: collapse; width: 100%; }
+    .body-surat th,
+    .body-surat td     { border: 1px solid #000; padding: 4px 8px; }
 
     /* Penandatangan */
     .sign-section {
@@ -218,14 +232,24 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
       min-width: 140px;
     }
     .signer-role { font-size: 10pt; margin-bottom: 6px; color: #333; }
-    .qr-img { width: 90px; height: 90px; border: 1px solid #ccc; }
+    .qr-img      { width: 90px; height: 90px; border: 1px solid #ccc; }
     .signer-name { font-size: 11pt; font-weight: bold; margin-top: 6px; text-align: center; }
-    .signer-pos { font-size: 9pt; text-align: center; color: #333; margin-top: 2px; }
+    .signer-pos  { font-size: 9pt; text-align: center; color: #333; margin-top: 2px; }
     .signer-date { font-size: 8pt; color: #666; margin-top: 2px; }
 
-    /* Footer */
-    .footer-surat { margin-top: 16px; }
-    .footer-img { width: 100%; max-height: 30mm; object-fit: contain; object-position: bottom; }
+    /* Footer — fixed di bawah SETIAP halaman PDF */
+    .footer-surat {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+    }
+    .footer-img {
+      width: 100%;
+      display: block;
+      object-fit: contain;
+      object-position: bottom;
+    }
   </style>
 </head>
 <body>
