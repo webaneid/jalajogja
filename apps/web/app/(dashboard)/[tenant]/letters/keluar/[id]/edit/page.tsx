@@ -3,7 +3,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Users } from "lucide-react";
 import { LetterForm } from "@/components/letters/letter-form";
 
 export default async function SuratKeluarEditPage({
@@ -24,6 +24,8 @@ export default async function SuratKeluarEditPage({
     .limit(1);
 
   if (!letter || letter.type !== "outgoing") notFound();
+
+  const isAdmin = ["owner", "admin"].includes(access.tenantUser.role);
 
   // Fetch jenis surat aktif
   const letterTypes = await tenantDb
@@ -51,14 +53,23 @@ export default async function SuratKeluarEditPage({
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between">
         <Link
-          href={`/${slug}/letters/keluar`}
+          href={`/${slug}/letters/keluar/${letterId}`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" />
-          Surat Keluar
+          Detail Surat
         </Link>
+        {isAdmin && !letter.isBulk && (
+          <Link
+            href={`/${slug}/letters/keluar/${letterId}/bulk`}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+          >
+            <Users className="h-3.5 w-3.5" />
+            Kirim Massal
+          </Link>
+        )}
       </div>
 
       <div>
