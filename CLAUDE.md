@@ -307,7 +307,9 @@ app/(dashboard)/[tenant]/
 - [x] Modul Surat — CRUD dasar (schema + keluar + masuk + nota + template + jenis surat)
 - [x] Modul Surat lanjutan — TTD digital, QR verifikasi, halaman publik verifikasi, PDF Playwright
 - [ ] Komentar — **DITUNDA** (deprioritized, bukan kebutuhan utama saat ini)
-- [ ] **Modul Surat — sisa fitur**: mail merge (bulk), inter-tenant, attachment MediaPicker ← NEXT
+- [x] Modul Surat — Mail Merge Bulk (kirim surat massal ke banyak penerima, picker anggota + kontak)
+- [x] Modul Surat — Manajemen Kontak (letter_contacts CRUD, menu Kontak di nav)
+- [ ] **Modul Surat — sisa fitur**: inter-tenant, attachment MediaPicker ← NEXT
 - [ ] Keuangan (sudah ada schema, belum ada UI)
 - [ ] Donasi / Infaq
 - [ ] Add-on Marketplace UI (settings + install flow)
@@ -1299,17 +1301,80 @@ Kategori = letter_types.default_category (mis. UMUM, SEKR, IKPM)
 - `components/letters/generate-pdf-button.tsx` — tombol unduh + link buka PDF terakhir (auto-download)
 - Tombol muncul di halaman detail keluar + nota
 
+**Step 4 — Mail Merge Bulk**
+- `createBulkLettersAction(slug, parentId, recipients[])` — insert N child letters, set `isBulk=true` di parent setelah selesai
+  - `BulkRecipient` type: `{ type: "member"|"contact", id, name, phone?, email?, address?, number?, nik? }`
+  - Nomor anak: `parent.letterNumber + "/1"`, `"/2"`, dst — null jika parent belum punya nomor
+  - Sequential insert (bukan Promise.all) untuk suffix yang konsisten
+  - Guard: max 500 recipients, admin/owner only
+- `markAllChildrenSentAction(slug, parentId)` — bulk update status anak dari draft → sent
+- `lib/letter-merge.ts` — extended: tambah `recipient` context (name, phone, email, address, number, nik)
+  - Merge fields baru: `{{recipient.name}}`, `{{recipient.phone}}`, dll — resolved per-anak saat generate PDF
+- `GET /api/ref/tenant-members` — paginated API (PAGE_SIZE=30) dengan filter `status`, `search`, `page`
+  - JOIN: `members INNER JOIN tenantMemberships LEFT JOIN contacts` (phone/email dari contacts table via FK)
+  - Gunakan `access.tenant.id` dari `getTenantAccess()` — tidak butuh lookup tenant terpisah
+- `app/(dashboard)/[tenant]/letters/keluar/[id]/bulk/page.tsx` — server component, fetch parent + contacts
+- `components/letters/bulk-recipient-picker.tsx` — client component dua tab:
+  - Tab "Dari Anggota": debounced search (300ms), pagination, filter status (aktif/alumni/semua), "Pilih semua halaman ini"
+  - Tab "Dari Kontak": pre-loaded dari server (biasanya kecil)
+  - Chip display selected recipients (removable), call `createBulkLettersAction`, redirect setelah 1.5s
+- `components/letters/bulk-children-section.tsx` — client component, daftar salinan dengan:
+  - "Generate Semua PDF" — fire and forget via `Promise.allSettled`, trigger paralel per anak, re-enable tombol setelah 2 detik
+  - "Tandai Semua Terkirim" — optimistic update via `markAllChildrenSentAction`
+  - Status icon: CheckCircle2 (sent) / Clock (draft)
+- `keluar/[id]/page.tsx` — updated: tombol "Kirim Massal", warning banner jika sudah isBulk, section BulkChildrenSection di bawah
+
+**Step 5 — Manajemen Kontak Surat + Nav Fix**
+- `letters-nav.tsx` — tambah item "Kontak" (path: `kontak`) di antara Nota Dinas dan Template
+- `app/(dashboard)/[tenant]/letters/kontak/page.tsx` — server component, fetch `letterContacts` orderBy name
+- `components/letters/letter-contact-manage-client.tsx` — inline CRUD: form tambah/edit (name, title, org, phone, email, address), list dengan Pencil + Trash2
+- `letter-list-client.tsx` — updated:
+  - Kolom aksi: Eye (detail) + FileDown (PDF, jika pdfUrl ada) + Copy badge (bulk parent) + Pencil (edit, non-incoming) + Trash2 (delete)
+  - `LetterRow` type: tambah `isBulk: boolean` dan `pdfUrl: string | null`
+  - Search diperluas ke field `recipient`
+- Semua list page (keluar, nota, masuk) — query ditambah `isBulk` dan `pdfUrl` di SELECT
+
 ### Fitur Belum Diimplementasikan
-- Mail merge — `is_bulk` + `bulk_parent_id` → satu template, banyak penerima
 - Inter-tenant — `inter_tenant_to` + `inter_tenant_status` → kirim ke cabang IKPM lain
 - Attachment lampiran — MediaPicker untuk upload lampiran surat
 
+### [2026-04] Mail Merge Bulk + Kontak Surat
+
+**`members` tidak punya kolom `phone`/`email` langsung**
+Data kontak (phone, email) ada di tabel `contacts` via FK `members.contactId` — bukan kolom langsung di `members`.
+Fix: `LEFT JOIN contacts ON contacts.id = members.contactId` di setiap query yang butuh data kontak anggota.
+Berlaku juga untuk API paginated `/api/ref/tenant-members`.
+
+**Sequential insert untuk suffix yang konsisten**
+Saat buat N child letters sekaligus, gunakan `for` loop (bukan `Promise.all`) agar suffix `/1`, `/2`, dst
+muncul sesuai urutan iterasi — `Promise.all` tidak menjamin urutan insert.
+
+**Fire-and-forget di browser: `void Promise.allSettled(...).then(...)`**
+Pattern untuk trigger batch tanpa blokir UI:
+```typescript
+void Promise.allSettled(items.map(item => fetch(...))).then(() => {
+  setState("selesai");
+});
+setTimeout(() => setFiring(false), 2000); // re-enable tombol lebih cepat
+```
+Gunakan `void` di depan agar TypeScript tidak komplain tentang unhandled Promise.
+Re-enable tombol via `setTimeout` sebelum `allSettled` selesai — cegah double-click tanpa blokir UX.
+
+**Debounce search di client component**
+Pattern standard: `useEffect` dengan `clearTimeout`/`setTimeout` 300ms pada `search` state,
+hasil disimpan ke `debouncedSearch` state terpisah. `useEffect` kedua trigger fetch hanya ketika
+`debouncedSearch` (atau params lain) berubah. Ini memisahkan "kapan user berhenti ketik" dari "kapan fetch jalan".
+
+**Paginated API dengan filter: gunakan `access.tenant.id` langsung**
+Di API route yang butuh filter per-tenant, `getTenantAccess(slug)` sudah mengembalikan `access.tenant.id`.
+Tidak perlu query `public.tenants` lagi untuk dapat tenant ID — ini menghemat satu roundtrip DB.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Modul Surat lanjutan — TTD digital + QR + verifikasi publik + PDF Playwright
-- Commit terakhir: `78c1f36` — feat: step 3d — PDF generation via Playwright + merge fields
-- Modul Surat lanjutan: **SELESAI** (TTD, QR, halaman verifikasi publik, PDF via Playwright)
-- Next step: **Modul Surat sisa** (mail merge bulk, inter-tenant, attachment) ATAU **Keuangan**
+- Terakhir dikerjakan: Mail Merge Bulk + Kontak nav + Generate Semua PDF button
+- Commit terakhir: `db3954f` — feat: Generate Semua PDF button
+- Mail Merge Bulk: **SELESAI** (picker anggota + kontak, bulk create, mark all sent, generate all PDF)
+- Kontak Surat: **SELESAI** (CRUD inline, menu nav Kontak)
+- Next step: **Keuangan** (sudah ada schema double-entry, belum ada UI) ATAU inter-tenant surat
 - Fitur yang belum diimplementasikan (dalam scope surat):
-  - Mail merge (is_bulk + bulk_parent_id)
   - Inter-tenant letters (inter_tenant_to + inter_tenant_status)
   - MediaPicker untuk attachment lampiran
