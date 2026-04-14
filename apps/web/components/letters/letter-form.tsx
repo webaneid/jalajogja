@@ -55,11 +55,13 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
     if (!templateId) return;
     const tpl = templates.find((t) => t.id === templateId);
     if (!tpl) return;
-    // Terapkan subject + body dari template jika belum diisi
+    // Subject: isi jika belum ada (plain text, aman di-trim)
     if (tpl.subject && !form.subject.trim()) {
       set("subject", tpl.subject);
     }
-    if (tpl.body && !form.body.trim()) {
+    // Body: selalu terapkan — user secara eksplisit memilih template.
+    // Tidak bisa pakai trim() karena body adalah Tiptap JSON, bukan plain text.
+    if (tpl.body) {
       set("body", tpl.body);
     }
   }
