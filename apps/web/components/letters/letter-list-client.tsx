@@ -127,7 +127,12 @@ export function LetterListClient({ slug, type, initialLetters }: Props) {
                     {letter.letterNumber ?? "—"}
                   </td>
                   <td className="px-4 py-3 font-medium max-w-xs truncate">
-                    {letter.subject || <span className="text-muted-foreground italic">Tanpa perihal</span>}
+                    <Link
+                      href={`${editPrefix}/${letter.id}`}
+                      className="hover:underline underline-offset-2"
+                    >
+                      {letter.subject || <span className="text-muted-foreground italic">Tanpa perihal</span>}
+                    </Link>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground truncate max-w-[160px]">
                     {type === "incoming" ? letter.sender : letter.recipient}

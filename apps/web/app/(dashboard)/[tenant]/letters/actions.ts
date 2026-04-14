@@ -3,8 +3,9 @@
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { createHash } from "crypto";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -623,5 +624,92 @@ export async function deleteLetterContactAction(
   } catch (err) {
     console.error("[deleteLetterContactAction]", err);
     return { success: false, error: "Gagal menghapus kontak surat." };
+  }
+}
+
+// ─── Tanda Tangan Digital ─────────────────────────────────────────────────
+
+export async function signLetterAction(
+  slug: string,
+  letterId: string,
+  officerId: string,
+  role: "signer" | "approver" | "witness",
+  ipAddress?: string
+): Promise<{ success: true; verificationHash: string } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    // Cek officer exists + canSign
+    const [officer] = await tenantDb
+      .select({ id: schema.officers.id, canSign: schema.officers.canSign })
+      .from(schema.officers)
+      .where(eq(schema.officers.id, officerId))
+      .limit(1);
+
+    if (!officer)        return { success: false, error: "Pengurus tidak ditemukan." };
+    if (!officer.canSign) return { success: false, error: "Pengurus tidak memiliki izin tanda tangan." };
+
+    // Cek sudah TTD di surat ini belum
+    const [existing] = await tenantDb
+      .select({ id: schema.letterSignatures.id })
+      .from(schema.letterSignatures)
+      .where(
+        and(
+          eq(schema.letterSignatures.letterId, letterId),
+          eq(schema.letterSignatures.officerId, officerId)
+        )
+      )
+      .limit(1);
+
+    if (existing) return { success: false, error: "Sudah menandatangani surat ini." };
+
+    // SHA-256(letter_id:officer_id:signed_at_iso) → unik per event
+    const signedAt = new Date();
+    const hashInput = `${letterId}:${officerId}:${signedAt.toISOString()}`;
+    const verificationHash = createHash("sha256").update(hashInput).digest("hex");
+
+    await tenantDb.insert(schema.letterSignatures).values({
+      letterId,
+      officerId,
+      role,
+      signedAt,
+      verificationHash,
+      ipAddress: ipAddress ?? null,
+    });
+
+    revalidatePath(`/${slug}/letters`);
+    return { success: true, verificationHash };
+  } catch (err) {
+    console.error("[signLetterAction]", err);
+    return { success: false, error: "Gagal menyimpan tanda tangan." };
+  }
+}
+
+export async function removeSignatureAction(
+  slug: string,
+  signatureId: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!["owner", "admin"].includes(access.tenantUser.role)) {
+    return { success: false, error: "Hanya admin yang bisa menghapus tanda tangan." };
+  }
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    await tenantDb
+      .delete(schema.letterSignatures)
+      .where(eq(schema.letterSignatures.id, signatureId));
+
+    revalidatePath(`/${slug}/letters`);
+    return { success: true };
+  } catch (err) {
+    console.error("[removeSignatureAction]", err);
+    return { success: false, error: "Gagal menghapus tanda tangan." };
   }
 }
