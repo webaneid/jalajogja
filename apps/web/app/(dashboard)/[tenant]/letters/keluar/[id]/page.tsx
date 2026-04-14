@@ -4,7 +4,7 @@ import { redirect, notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft, Pencil, Copy, Users } from "lucide-react";
-import { renderBody } from "@/lib/letter-render";
+import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { generateQrDataUrl, buildVerifyUrl } from "@/lib/qr-code";
 import { LetterSigningSection } from "@/components/letters/letter-signing-section";
 import type { AvailableSigner, ExistingSignature } from "@/components/letters/letter-signing-section";
@@ -238,10 +238,13 @@ export default async function SuratKeluarDetailPage({
       {letter.body && (
         <div>
           <h2 className="text-sm font-medium mb-2">Isi Surat</h2>
-          <div
-            className="rounded-lg border border-border bg-muted/10 px-6 py-5 text-sm leading-relaxed prose prose-sm max-w-none"
-            dangerouslySetInnerHTML={{ __html: renderBody(letter.body) }}
-          />
+          <div className="rounded-lg border border-border bg-muted/10 px-2 py-2">
+            <TiptapEditor
+              slug={slug}
+              content={letter.body}
+              editable={false}
+            />
+          </div>
         </div>
       )}
 
