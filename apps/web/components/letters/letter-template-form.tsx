@@ -2,10 +2,62 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   createLetterTemplateAction,
   updateLetterTemplateAction,
 } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { TiptapEditor } from "@/components/editor/tiptap-editor";
+
+// ── Variabel merge fields yang tersedia di template surat ──────────────────
+
+const MERGE_VARS = [
+  {
+    group: "Organisasi",
+    vars: [
+      { v: "{{org.name}}",    desc: "Nama organisasi" },
+      { v: "{{org.address}}", desc: "Alamat organisasi" },
+      { v: "{{org.phone}}",   desc: "Telepon organisasi" },
+    ],
+  },
+  {
+    group: "Surat",
+    vars: [
+      { v: "{{letter.number}}",  desc: "Nomor surat" },
+      { v: "{{letter.date}}",    desc: "Tanggal surat" },
+      { v: "{{letter.subject}}", desc: "Perihal surat" },
+    ],
+  },
+  {
+    group: "Penerima",
+    vars: [
+      { v: "{{recipient.name}}",         desc: "Nama penerima" },
+      { v: "{{recipient.title}}",        desc: "Gelar/jabatan penerima" },
+      { v: "{{recipient.organization}}", desc: "Instansi penerima" },
+      { v: "{{recipient.address}}",      desc: "Alamat penerima" },
+    ],
+  },
+  {
+    group: "Penandatangan",
+    vars: [
+      { v: "{{signer.name}}",     desc: "Nama penandatangan" },
+      { v: "{{signer.position}}", desc: "Jabatan penandatangan" },
+      { v: "{{signer.division}}", desc: "Divisi penandatangan" },
+      { v: "{{signer.qr}}",       desc: "QR verifikasi tanda tangan" },
+    ],
+  },
+  {
+    group: "Tanggal",
+    vars: [
+      { v: "{{today}}",       desc: "Tanggal hari ini (DD/MM/YYYY)" },
+      { v: "{{today.roman}}", desc: "Bulan Romawi: I–XII" },
+      { v: "{{today.year}}",  desc: "Tahun 4 digit: 2026" },
+      { v: "{{today.id}}",    desc: "Format Indonesia: 1 Januari 2026" },
+    ],
+  },
+];
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 type DefaultValues = {
   name:     string;
@@ -16,8 +68,8 @@ type DefaultValues = {
 };
 
 type Props = {
-  slug:          string;
-  templateId?:   string;
+  slug:           string;
+  templateId?:    string;
   defaultValues?: DefaultValues;
 };
 
@@ -31,28 +83,32 @@ const EMPTY: DefaultValues = {
 
 const fieldCls = "w-full mt-0.5 rounded border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
 
-export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
-  const router  = useRouter();
-  const [form, setForm] = useState<DefaultValues>(defaultValues ?? EMPTY);
-  const [error, setError] = useState("");
-  const [pending, startTransition] = useTransition();
+// ── Component ──────────────────────────────────────────────────────────────
 
-  function set<K extends keyof DefaultValues>(field: K, value: DefaultValues[K]) {
-    setForm((f) => ({ ...f, [field]: value }));
-  }
+export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
+  const router = useRouter();
+
+  const [name,     setName]     = useState(defaultValues?.name     ?? "");
+  const [type,     setType]     = useState<"outgoing" | "internal">(defaultValues?.type ?? "outgoing");
+  const [subject,  setSubject]  = useState(defaultValues?.subject  ?? "");
+  const [body,     setBody]     = useState(defaultValues?.body     ?? "");
+  const [isActive, setIsActive] = useState(defaultValues?.isActive ?? true);
+  const [varsOpen, setVarsOpen] = useState(false);
+  const [error,    setError]    = useState("");
+  const [pending,  startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) { setError("Nama template wajib diisi."); return; }
+    if (!name.trim()) { setError("Nama template wajib diisi."); return; }
     setError("");
 
     startTransition(async () => {
       const data = {
-        name:     form.name.trim(),
-        type:     form.type,
-        subject:  form.subject.trim() || null,
-        body:     form.body.trim() || null,
-        isActive: form.isActive,
+        name:     name.trim(),
+        type,
+        subject:  subject.trim() || null,
+        body:     body.trim() || null,
+        isActive,
       };
 
       const res = templateId
@@ -68,7 +124,8 @@ export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-xl space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5 max-w-2xl">
+
       {/* Nama */}
       <div>
         <label className="text-xs text-muted-foreground">
@@ -77,8 +134,8 @@ export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
         <input
           autoFocus
           type="text"
-          value={form.name}
-          onChange={(e) => set("name", e.target.value)}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           placeholder="mis. Surat Undangan Rapat"
           className={fieldCls}
         />
@@ -88,8 +145,8 @@ export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
       <div>
         <label className="text-xs text-muted-foreground">Jenis Surat</label>
         <select
-          value={form.type}
-          onChange={(e) => set("type", e.target.value as "outgoing" | "internal")}
+          value={type}
+          onChange={(e) => setType(e.target.value as "outgoing" | "internal")}
           className={fieldCls}
         >
           <option value="outgoing">Surat Keluar</option>
@@ -105,34 +162,68 @@ export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
         <label className="text-xs text-muted-foreground">Perihal (opsional)</label>
         <input
           type="text"
-          value={form.subject}
-          onChange={(e) => set("subject", e.target.value)}
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
           placeholder="Perihal default yang akan diisi otomatis"
           className={fieldCls}
         />
       </div>
 
-      {/* Isi Surat */}
+      {/* Isi Surat — TiptapEditor */}
       <div>
-        <label className="text-xs text-muted-foreground">Isi Surat (opsional)</label>
-        <textarea
-          rows={10}
-          value={form.body}
-          onChange={(e) => set("body", e.target.value)}
-          placeholder="Tulis isi surat template di sini. Gunakan {{nama_penerima}}, {{tanggal}}, dll untuk merge fields."
-          className={`${fieldCls} resize-y font-mono text-xs`}
-        />
-        <p className="text-xs text-muted-foreground mt-1">
-          Mendukung merge fields: <code className="font-mono">{"{{nama_penerima}}"}</code>, <code className="font-mono">{"{{tanggal}}"}</code>, <code className="font-mono">{"{{nomor_surat}}"}</code>, dll.
-        </p>
+        <label className="text-xs text-muted-foreground block mb-1">Isi Surat (opsional)</label>
+        <div className="rounded-md border border-input overflow-hidden">
+          <TiptapEditor
+            slug={slug}
+            content={body || null}
+            onChange={(json, _html) => setBody(json)}
+            placeholder="Tulis isi template surat... Gunakan {{recipient.name}}, {{letter.date}}, dll"
+            editable={true}
+          />
+        </div>
       </div>
 
-      {/* Aktif */}
+      {/* Panel variabel merge fields — collapsible */}
+      <div className="rounded-lg border border-border overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setVarsOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/30 transition-colors"
+        >
+          <span>Variabel yang bisa digunakan di isi surat</span>
+          {varsOpen
+            ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          }
+        </button>
+
+        {varsOpen && (
+          <div className="px-4 pb-4 pt-1 bg-muted/10 border-t border-border space-y-4">
+            {MERGE_VARS.map((group) => (
+              <div key={group.group}>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                  {group.group}
+                </p>
+                <div className="space-y-1">
+                  {group.vars.map((item) => (
+                    <div key={item.v} className="flex items-baseline gap-3 text-xs">
+                      <code className="font-mono text-primary shrink-0 w-52">{item.v}</code>
+                      <span className="text-muted-foreground">{item.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Toggle aktif */}
       <label className="flex items-center gap-2 text-sm cursor-pointer">
         <input
           type="checkbox"
-          checked={form.isActive}
-          onChange={(e) => set("isActive", e.target.checked)}
+          checked={isActive}
+          onChange={(e) => setIsActive(e.target.checked)}
           className="h-4 w-4 rounded accent-primary"
         />
         Template aktif (tampil di pilihan saat buat surat)
