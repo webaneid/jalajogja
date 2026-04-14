@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { CheckCircle2, Clock, Send, Loader2, ExternalLink } from "lucide-react";
+import { CheckCircle2, Clock, Send, Loader2, ExternalLink, FileDown } from "lucide-react";
 import { markAllChildrenSentAction } from "@/app/(dashboard)/[tenant]/letters/actions";
 
 type ChildLetter = {
@@ -32,11 +32,34 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function BulkChildrenSection({ slug, parentId, isAdmin, initialChildren }: Props) {
-  const [children, setChildren]     = useState<ChildLetter[]>(initialChildren);
-  const [error, setError]           = useState("");
-  const [pending, startTransition]  = useTransition();
+  const [children, setChildren]       = useState<ChildLetter[]>(initialChildren);
+  const [error, setError]             = useState("");
+  const [pending, startTransition]    = useTransition();
+  const [pdfFiring, setPdfFiring]     = useState(false);
+  const [pdfMessage, setPdfMessage]   = useState("");
 
   const draftCount = children.filter((c) => c.status === "draft").length;
+
+  function handleGenerateAllPdf() {
+    if (!confirm(`Generate PDF untuk semua ${children.length} salinan surat? Proses berjalan di background.`)) return;
+    setPdfFiring(true);
+    setPdfMessage(`Memulai generate ${children.length} PDF…`);
+
+    // Fire and forget — tidak perlu tunggu selesai
+    void Promise.allSettled(
+      children.map((c) =>
+        fetch(`/api/letters/${c.id}/generate-pdf?slug=${encodeURIComponent(slug)}`, {
+          method: "POST",
+        }).catch(() => null)
+      )
+    ).then(() => {
+      setPdfFiring(false);
+      setPdfMessage(`${children.length} PDF selesai di-generate. Refresh halaman untuk mengunduh.`);
+    });
+
+    // Re-enable tombol setelah 2 detik agar tidak klik ganda
+    setTimeout(() => setPdfFiring(false), 2000);
+  }
 
   function handleMarkAllSent() {
     if (!confirm(`Tandai ${draftCount} salinan menjadi "Terkirim"?`)) return;
@@ -56,25 +79,51 @@ export function BulkChildrenSection({ slug, parentId, isAdmin, initialChildren }
 
   return (
     <div className="space-y-3">
-      {/* Tombol "Tandai Semua Terkirim" — hanya jika masih ada draft */}
-      {isAdmin && draftCount > 0 && (
-        <div className="flex items-center justify-between">
+      {/* Toolbar: Generate Semua PDF + Tandai Semua Terkirim */}
+      {isAdmin && children.length > 0 && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-xs text-muted-foreground">
-            {draftCount} salinan masih berstatus Draft
-          </p>
-          <button
-            type="button"
-            onClick={handleMarkAllSent}
-            disabled={pending}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-          >
-            {pending
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : <Send className="h-3.5 w-3.5" />
+            {draftCount > 0
+              ? `${draftCount} salinan masih berstatus Draft`
+              : `Semua ${children.length} salinan sudah terkirim`
             }
-            Tandai Semua Terkirim
-          </button>
+          </p>
+          <div className="flex items-center gap-2">
+            {/* Generate Semua PDF */}
+            <button
+              type="button"
+              onClick={handleGenerateAllPdf}
+              disabled={pdfFiring}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted/40 disabled:opacity-60"
+            >
+              {pdfFiring
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <FileDown className="h-3.5 w-3.5" />
+              }
+              Generate Semua PDF
+            </button>
+
+            {/* Tandai Semua Terkirim — hanya jika masih ada draft */}
+            {draftCount > 0 && (
+              <button
+                type="button"
+                onClick={handleMarkAllSent}
+                disabled={pending}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+              >
+                {pending
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Send className="h-3.5 w-3.5" />
+                }
+                Tandai Semua Terkirim
+              </button>
+            )}
+          </div>
         </div>
+      )}
+
+      {pdfMessage && (
+        <p className="text-xs text-muted-foreground">{pdfMessage}</p>
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
