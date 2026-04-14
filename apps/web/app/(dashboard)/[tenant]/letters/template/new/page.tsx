@@ -27,7 +27,7 @@ export default async function TemplateNewPage({
 
       <div>
         <h1 className="text-xl font-semibold">Template Baru</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Buat kop surat untuk digunakan di surat</p>
+        <p className="text-sm text-muted-foreground mt-0.5">Buat template konten surat (perihal + isi) untuk dipilih saat buat surat</p>
       </div>
 
       <LetterTemplateForm slug={slug} />

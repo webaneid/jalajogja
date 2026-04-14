@@ -1,11 +1,17 @@
 "use server";
 
-import { createTenantDb } from "@jalajogja/db";
+import { createTenantDb, getSettings, upsertSetting } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { eq, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createHash } from "crypto";
+import {
+  resolveLetterNumberFormat,
+  resolveSequenceCategory,
+  DEFAULT_LETTER_CONFIG,
+  type LetterNumberConfig,
+} from "@/lib/letter-number";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -23,6 +29,7 @@ export type LetterData = {
   status?:        "draft" | "sent" | "received" | "archived";
   paperSize?:     "A4" | "F4" | "Letter";
   letterNumber?:  string | null;
+  issuerOfficerId?: string | null;
   isBulk?:        boolean;
   bulkParentId?:  string | null;
   interTenantTo?:     string | null;
@@ -38,16 +45,11 @@ export type LetterTypeData = {
 };
 
 export type LetterTemplateData = {
-  name:          string;
-  paperSize:     "A4" | "F4" | "Letter";
-  headerImageId?: string | null;
-  footerImageId?: string | null;
-  bodyFont:      string;
-  marginTop:     number;
-  marginRight:   number;
-  marginBottom:  number;
-  marginLeft:    number;
-  isDefault:     boolean;
+  name:     string;
+  type:     "outgoing" | "internal";
+  subject?: string | null;
+  body?:    string | null;
+  isActive: boolean;
 };
 
 export type LetterContactData = {
@@ -62,35 +64,45 @@ export type LetterContactData = {
 
 // ─── Letter Number Generator ────────────────────────────────────────────────
 
-// Format: {counter}/{kategori}/{bulan-romawi}/{tahun}
-// Contoh: 001/IKPM/IV/2025
-const ROMAN = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"];
-
 export async function getNextLetterNumberAction(
   slug: string,
   type: "outgoing" | "incoming" | "internal",
-  category?: string
+  opts: {
+    typeCode?:    string | null;   // dari letter_types.code
+    issuerCode?:  string | null;   // dari divisions.code officer yang dipilih
+    letterDate?:  string | null;   // ISO date string, default = today
+  } = {}
 ): Promise<{ success: true; number: string } | { success: false; error: string }> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
 
-  const { db: tenantDb, schema } = createTenantDb(slug);
-  const cat = (category ?? "UMUM").toUpperCase();
-  const now = new Date();
-  const year = now.getFullYear();
-  const monthRoman = ROMAN[now.getMonth()];
+  const tenantClient = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
+
+  // Baca config format nomor dari settings
+  const generalSettings = await getSettings(tenantClient, "general");
+  const rawConfig = (generalSettings["letter_config"] as Partial<LetterNumberConfig> | undefined) ?? {};
+  const config: LetterNumberConfig = {
+    number_format:  rawConfig.number_format  ?? DEFAULT_LETTER_CONFIG.number_format,
+    org_code:       rawConfig.org_code       ?? DEFAULT_LETTER_CONFIG.org_code,
+    number_padding: rawConfig.number_padding ?? DEFAULT_LETTER_CONFIG.number_padding,
+  };
+
+  const issuerCode = opts.issuerCode?.trim() ?? "";
+  const category   = resolveSequenceCategory(config.number_format, issuerCode).toUpperCase();
+  const date       = opts.letterDate ? new Date(opts.letterDate) : new Date();
+  const year       = date.getFullYear();
 
   try {
     let nextNum = 1;
     await tenantDb.transaction(async (tx) => {
-      // SELECT FOR UPDATE — atomic agar tidak ada nomor ganda
       const [existing] = await tx
         .select()
         .from(schema.letterNumberSequences)
         .where(
           sql`${schema.letterNumberSequences.year} = ${year}
            AND ${schema.letterNumberSequences.type} = ${type}
-           AND ${schema.letterNumberSequences.category} = ${cat}
+           AND ${schema.letterNumberSequences.category} = ${category}
            FOR UPDATE`
         )
         .limit(1);
@@ -104,13 +116,20 @@ export async function getNextLetterNumberAction(
       } else {
         await tx
           .insert(schema.letterNumberSequences)
-          .values({ year, type, category: cat, lastNumber: 1 });
+          .values({ year, type, category, lastNumber: 1 });
         nextNum = 1;
       }
     });
 
-    const padded = String(nextNum).padStart(3, "0");
-    const number = `${padded}/${cat}/${monthRoman}/${year}`;
+    const number = resolveLetterNumberFormat(config.number_format, {
+      number:     nextNum,
+      padding:    config.number_padding,
+      typeCode:   opts.typeCode?.trim()  ?? "",
+      orgCode:    config.org_code,
+      issuerCode,
+      date,
+    });
+
     return { success: true, number };
   } catch (err) {
     console.error("[getNextLetterNumberAction]", err);
@@ -248,6 +267,7 @@ export async function updateLetterAction(
         ...(data.letterDate !== undefined && { letterDate: data.letterDate }),
         ...(data.letterNumber !== undefined && { letterNumber: data.letterNumber?.trim() || null }),
         ...(data.paperSize  !== undefined && { paperSize:  data.paperSize }),
+        ...(data.issuerOfficerId !== undefined && { issuerOfficerId: data.issuerOfficerId || null }),
         ...(data.isBulk     !== undefined && { isBulk:     data.isBulk }),
         ...(data.bulkParentId !== undefined && { bulkParentId: data.bulkParentId || null }),
         ...(data.interTenantTo !== undefined && { interTenantTo: data.interTenantTo || null }),
@@ -432,27 +452,14 @@ export async function createLetterTemplateAction(
   const { db: tenantDb, schema } = createTenantDb(slug);
 
   try {
-    // Jika is_default diset true, unset default template lain
-    if (data.isDefault) {
-      await tenantDb
-        .update(schema.letterTemplates)
-        .set({ isDefault: false, updatedAt: new Date() })
-        .where(eq(schema.letterTemplates.isDefault, true));
-    }
-
     const [template] = await tenantDb
       .insert(schema.letterTemplates)
       .values({
-        name:          data.name.trim(),
-        paperSize:     data.paperSize,
-        headerImageId: data.headerImageId || null,
-        footerImageId: data.footerImageId || null,
-        bodyFont:      data.bodyFont || "Times New Roman",
-        marginTop:     data.marginTop,
-        marginRight:   data.marginRight,
-        marginBottom:  data.marginBottom,
-        marginLeft:    data.marginLeft,
-        isDefault:     data.isDefault,
+        name:     data.name.trim(),
+        type:     data.type,
+        subject:  data.subject?.trim() || null,
+        body:     data.body            || null,
+        isActive: data.isActive,
       })
       .returning({ id: schema.letterTemplates.id });
 
@@ -476,28 +483,15 @@ export async function updateLetterTemplateAction(
   const { db: tenantDb, schema } = createTenantDb(slug);
 
   try {
-    // Jika is_default diset true, unset default template lain
-    if (data.isDefault) {
-      await tenantDb
-        .update(schema.letterTemplates)
-        .set({ isDefault: false, updatedAt: new Date() })
-        .where(eq(schema.letterTemplates.isDefault, true));
-    }
-
     await tenantDb
       .update(schema.letterTemplates)
       .set({
-        name:          data.name.trim(),
-        paperSize:     data.paperSize,
-        headerImageId: data.headerImageId || null,
-        footerImageId: data.footerImageId || null,
-        bodyFont:      data.bodyFont || "Times New Roman",
-        marginTop:     data.marginTop,
-        marginRight:   data.marginRight,
-        marginBottom:  data.marginBottom,
-        marginLeft:    data.marginLeft,
-        isDefault:     data.isDefault,
-        updatedAt:     new Date(),
+        name:      data.name.trim(),
+        type:      data.type,
+        subject:   data.subject?.trim() || null,
+        body:      data.body            || null,
+        isActive:  data.isActive,
+        updatedAt: new Date(),
       })
       .where(eq(schema.letterTemplates.id, templateId));
 
@@ -831,6 +825,44 @@ export async function createBulkLettersAction(
   } catch (err) {
     console.error("[createBulkLettersAction]", err);
     return { success: false, error: "Gagal membuat surat massal." };
+  }
+}
+
+// ─── Letter Config (kop surat + format nomor) ────────────────────────────────
+
+export type LetterConfig = {
+  header_image_id: string | null;
+  footer_image_id: string | null;
+  paper_size:      "A4" | "F4" | "Letter";
+  body_font:       string;
+  margin_top:      number;
+  margin_right:    number;
+  margin_bottom:   number;
+  margin_left:     number;
+  number_format:   string;
+  org_code:        string;
+  number_padding:  number;
+};
+
+export async function saveLetterConfigAction(
+  slug: string,
+  config: LetterConfig
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!["owner", "admin"].includes(access.tenantUser.role)) {
+    return { success: false, error: "Hanya admin yang bisa mengubah pengaturan surat." };
+  }
+
+  const tenantClient = createTenantDb(slug);
+
+  try {
+    await upsertSetting(tenantClient, "letter_config", "general", config);
+    revalidatePath(`/${slug}/letters/pengaturan`);
+    return { success: true };
+  } catch (err) {
+    console.error("[saveLetterConfigAction]", err);
+    return { success: false, error: "Gagal menyimpan pengaturan surat." };
   }
 }
 

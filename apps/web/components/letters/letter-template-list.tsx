@@ -2,16 +2,20 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Pencil, Trash2, Star, FileText } from "lucide-react";
+import { Pencil, Trash2, FileText } from "lucide-react";
 import { deleteLetterTemplateAction } from "@/app/(dashboard)/[tenant]/letters/actions";
 
 type Template = {
-  id:        string;
-  name:      string;
-  paperSize: string;
-  bodyFont:  string;
-  isDefault: boolean;
+  id:       string;
+  name:     string;
+  type:     "outgoing" | "internal";
+  isActive: boolean;
   createdAt: Date;
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  outgoing: "Surat Keluar",
+  internal: "Nota Dinas",
 };
 
 type Props = {
@@ -43,7 +47,10 @@ export function LetterTemplateList({ slug, templates: initial }: Props) {
     return (
       <div className="rounded-lg border border-dashed border-border py-10 text-center">
         <FileText className="h-8 w-8 mx-auto text-muted-foreground/50 mb-3" />
-        <p className="text-sm text-muted-foreground">Belum ada template kop surat</p>
+        <p className="text-sm text-muted-foreground">Belum ada template surat</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Template berisi perihal dan isi surat yang bisa dipilih saat membuat surat baru.
+        </p>
       </div>
     );
   }
@@ -54,14 +61,18 @@ export function LetterTemplateList({ slug, templates: initial }: Props) {
       <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
         {templates.map((t) => (
           <div key={t.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/20">
-            <div className="flex items-center gap-3 min-w-0">
-              {t.isDefault && <Star className="h-4 w-4 text-yellow-500 shrink-0" />}
-              <div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
                 <p className="text-sm font-medium">{t.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {t.paperSize} · {t.bodyFont}
-                </p>
+                {!t.isActive && (
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                    Nonaktif
+                  </span>
+                )}
               </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {TYPE_LABELS[t.type] ?? t.type}
+              </p>
             </div>
             <div className="flex items-center gap-2 shrink-0 ml-4">
               <Link
@@ -73,8 +84,7 @@ export function LetterTemplateList({ slug, templates: initial }: Props) {
               <button
                 type="button"
                 onClick={() => handleDelete(t.id)}
-                disabled={pending || t.isDefault}
-                title={t.isDefault ? "Template default tidak bisa dihapus" : undefined}
+                disabled={pending}
                 className="text-muted-foreground hover:text-destructive disabled:opacity-40"
               >
                 <Trash2 className="h-4 w-4" />

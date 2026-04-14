@@ -2,13 +2,22 @@
 // Generate PDF surat via Playwright → upload MinIO → update letters.pdf_url
 
 import { NextRequest, NextResponse } from "next/server";
-import { createTenantDb, db, members, tenants } from "@jalajogja/db";
+import { createTenantDb, db, getSettings, members, tenants } from "@jalajogja/db";
 import { eq, inArray } from "drizzle-orm";
 import { chromium } from "playwright";
 import { getTenantAccess } from "@/lib/tenant";
 import { buildLetterHtml, paperFormat } from "@/lib/letter-html";
 import { uploadFile, publicUrl, buildPath, ensureBucket } from "@/lib/minio";
-import { getSettings } from "@jalajogja/db";
+import { type LetterNumberConfig } from "@/lib/letter-number";
+
+// Default styling untuk PDF jika letter_config belum diatur
+const DEFAULT_LETTER_CONFIG_FULL = {
+  body_font:     "Times New Roman",
+  margin_top:    20,
+  margin_right:  20,
+  margin_bottom: 20,
+  margin_left:   25,
+};
 
 export async function POST(
   request: NextRequest,
@@ -42,53 +51,45 @@ export async function POST(
     return NextResponse.json({ error: "Surat tidak ditemukan" }, { status: 404 });
   }
 
-  // Fetch template kop surat (opsional)
-  let template = {
-    bodyFont:     "Times New Roman",
-    marginTop:    20,
-    marginRight:  20,
-    marginBottom: 20,
-    marginLeft:   25,
-    headerImageUrl: null as string | null,
-    footerImageUrl: null as string | null,
-    paperSize: (letter.paperSize ?? "A4") as "A4" | "F4" | "Letter",
-  };
+  // Fetch letter_config dari settings (kop surat, margin, font)
+  // Template sekarang hanya berisi konten (perihal + body) — styling dari settings
+  const generalSettingsRaw = await getSettings(tenantClient, "general");
+  const rawLetterConfig = (generalSettingsRaw["letter_config"] as Partial<LetterNumberConfig> & {
+    header_image_id?: string | null;
+    footer_image_id?: string | null;
+    paper_size?:      string;
+    body_font?:       string;
+    margin_top?:      number;
+    margin_right?:    number;
+    margin_bottom?:   number;
+    margin_left?:     number;
+  } | undefined) ?? {};
 
-  if (letter.templateId) {
-    const [tmpl] = await tenantDb
-      .select()
-      .from(schema.letterTemplates)
-      .where(eq(schema.letterTemplates.id, letter.templateId))
-      .limit(1);
-
-    if (tmpl) {
-      // Fetch URL gambar header/footer dari tabel media
-      const mediaIds = [tmpl.headerImageId, tmpl.footerImageId].filter((x): x is string => !!x);
-      const mediaMap = new Map<string, string>();
-      if (mediaIds.length > 0) {
-        const mediaRows = await tenantDb
-          .select({ id: schema.media.id, path: schema.media.path })
-          .from(schema.media)
-          .where(inArray(schema.media.id, mediaIds));
-        mediaRows.forEach((m) => mediaMap.set(m.id, publicUrl(slug, m.path)));
-      }
-
-      template = {
-        bodyFont:      tmpl.bodyFont,
-        marginTop:     tmpl.marginTop,
-        marginRight:   tmpl.marginRight,
-        marginBottom:  tmpl.marginBottom,
-        marginLeft:    tmpl.marginLeft,
-        headerImageUrl: tmpl.headerImageId ? (mediaMap.get(tmpl.headerImageId) ?? null) : null,
-        footerImageUrl: tmpl.footerImageId ? (mediaMap.get(tmpl.footerImageId) ?? null) : null,
-        paperSize: (tmpl.paperSize ?? "A4") as "A4" | "F4" | "Letter",
-      };
-    }
+  // Resolve gambar header/footer dari media table jika ada
+  const mediaIds = [rawLetterConfig.header_image_id, rawLetterConfig.footer_image_id]
+    .filter((x): x is string => !!x);
+  const mediaMap = new Map<string, string>();
+  if (mediaIds.length > 0) {
+    const mediaRows = await tenantDb
+      .select({ id: schema.media.id, path: schema.media.path })
+      .from(schema.media)
+      .where(inArray(schema.media.id, mediaIds));
+    mediaRows.forEach((m) => mediaMap.set(m.id, publicUrl(slug, m.path)));
   }
 
+  const template = {
+    bodyFont:       rawLetterConfig.body_font      ?? DEFAULT_LETTER_CONFIG_FULL.body_font,
+    marginTop:      rawLetterConfig.margin_top     ?? DEFAULT_LETTER_CONFIG_FULL.margin_top,
+    marginRight:    rawLetterConfig.margin_right   ?? DEFAULT_LETTER_CONFIG_FULL.margin_right,
+    marginBottom:   rawLetterConfig.margin_bottom  ?? DEFAULT_LETTER_CONFIG_FULL.margin_bottom,
+    marginLeft:     rawLetterConfig.margin_left    ?? DEFAULT_LETTER_CONFIG_FULL.margin_left,
+    headerImageUrl: rawLetterConfig.header_image_id ? (mediaMap.get(rawLetterConfig.header_image_id) ?? null) : null,
+    footerImageUrl: rawLetterConfig.footer_image_id ? (mediaMap.get(rawLetterConfig.footer_image_id) ?? null) : null,
+    paperSize: ((rawLetterConfig.paper_size ?? letter.paperSize ?? "A4")) as "A4" | "F4" | "Letter",
+  };
+
   // Fetch settings org (nama, alamat, telepon, email)
-  const orgSettings     = await getSettings(tenantClient, "contact");
-  const generalSettings = await getSettings(tenantClient, "general");
+  const orgSettings = await getSettings(tenantClient, "contact");
 
   // Ambil nama tenant dari public.tenants sebagai fallback
   const [tenantRow] = await db
@@ -97,10 +98,10 @@ export async function POST(
     .where(eq(tenants.slug, slug))
     .limit(1);
 
-  const orgName    = (generalSettings["site_name"] as string | undefined)    ?? tenantRow?.name ?? "";
+  const orgName    = (generalSettingsRaw["site_name"] as string | undefined) ?? tenantRow?.name ?? "";
   const orgAddress = (orgSettings["contact_address"] as { detail?: string } | undefined)?.detail ?? "";
-  const orgPhone   = (orgSettings["contact_phone"] as string | undefined)    ?? "";
-  const orgEmail   = (orgSettings["contact_email"] as string | undefined)    ?? "";
+  const orgPhone   = (orgSettings["contact_phone"] as string | undefined) ?? "";
+  const orgEmail   = (orgSettings["contact_email"] as string | undefined) ?? "";
 
   // Fetch signatures + signer info
   const rawSigs = await tenantDb

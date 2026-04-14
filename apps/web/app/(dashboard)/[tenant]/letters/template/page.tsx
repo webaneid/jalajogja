@@ -25,12 +25,11 @@ export default async function TemplatePage({
 
   const templates = await tenantDb
     .select({
-      id:         schema.letterTemplates.id,
-      name:       schema.letterTemplates.name,
-      paperSize:  schema.letterTemplates.paperSize,
-      bodyFont:   schema.letterTemplates.bodyFont,
-      isDefault:  schema.letterTemplates.isDefault,
-      createdAt:  schema.letterTemplates.createdAt,
+      id:       schema.letterTemplates.id,
+      name:     schema.letterTemplates.name,
+      type:     schema.letterTemplates.type,
+      isActive: schema.letterTemplates.isActive,
+      createdAt: schema.letterTemplates.createdAt,
     })
     .from(schema.letterTemplates)
     .orderBy(schema.letterTemplates.name);
@@ -53,12 +52,12 @@ export default async function TemplatePage({
         />
       </div>
 
-      {/* Template Kop Surat */}
+      {/* Template Konten Surat */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Template Kop Surat</h2>
-            <p className="text-sm text-muted-foreground">Layout dan desain surat</p>
+            <h2 className="text-lg font-semibold">Template Surat</h2>
+            <p className="text-sm text-muted-foreground">Template konten (perihal + isi) yang bisa dipilih saat buat surat</p>
           </div>
           <Link
             href={`/${slug}/letters/template/new`}
@@ -68,7 +67,13 @@ export default async function TemplatePage({
             Template Baru
           </Link>
         </div>
-        <LetterTemplateList slug={slug} templates={templates} />
+        <LetterTemplateList
+          slug={slug}
+          templates={templates.map((t) => ({
+            ...t,
+            type: (t.type === "internal" ? "internal" : "outgoing") as "outgoing" | "internal",
+          }))}
+        />
       </div>
     </div>
   );

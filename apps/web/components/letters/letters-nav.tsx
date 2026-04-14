@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
-  { label: "Surat Keluar",  path: "keluar"   },
-  { label: "Surat Masuk",   path: "masuk"    },
-  { label: "Nota Dinas",    path: "nota"     },
-  { label: "Kontak",        path: "kontak"   },
-  { label: "Template",      path: "template" },
+  { label: "Surat Keluar",  path: "keluar"      },
+  { label: "Surat Masuk",   path: "masuk"       },
+  { label: "Nota Dinas",    path: "nota"        },
+  { label: "Kontak",        path: "kontak"      },
+  { label: "Template",      path: "template"    },
+  { label: "Pengaturan",    path: "pengaturan"  },
 ];
 
 export function LettersNav({ slug }: { slug: string }) {

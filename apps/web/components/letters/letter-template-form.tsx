@@ -8,16 +8,11 @@ import {
 } from "@/app/(dashboard)/[tenant]/letters/actions";
 
 type DefaultValues = {
-  name:          string;
-  paperSize:     "A4" | "F4" | "Letter";
-  headerImageId: string | null;
-  footerImageId: string | null;
-  bodyFont:      string;
-  marginTop:     number;
-  marginRight:   number;
-  marginBottom:  number;
-  marginLeft:    number;
-  isDefault:     boolean;
+  name:     string;
+  type:     "outgoing" | "internal";
+  subject:  string;
+  body:     string;
+  isActive: boolean;
 };
 
 type Props = {
@@ -27,25 +22,14 @@ type Props = {
 };
 
 const EMPTY: DefaultValues = {
-  name:          "",
-  paperSize:     "A4",
-  headerImageId: null,
-  footerImageId: null,
-  bodyFont:      "Times New Roman",
-  marginTop:     20,
-  marginRight:   20,
-  marginBottom:  20,
-  marginLeft:    25,
-  isDefault:     false,
+  name:     "",
+  type:     "outgoing",
+  subject:  "",
+  body:     "",
+  isActive: true,
 };
 
-const FONTS = [
-  "Times New Roman",
-  "Arial",
-  "Calibri",
-  "Georgia",
-  "Helvetica",
-];
+const fieldCls = "w-full mt-0.5 rounded border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
 
 export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
   const router  = useRouter();
@@ -64,16 +48,11 @@ export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
 
     startTransition(async () => {
       const data = {
-        name:          form.name.trim(),
-        paperSize:     form.paperSize,
-        headerImageId: form.headerImageId || null,
-        footerImageId: form.footerImageId || null,
-        bodyFont:      form.bodyFont,
-        marginTop:     Number(form.marginTop),
-        marginRight:   Number(form.marginRight),
-        marginBottom:  Number(form.marginBottom),
-        marginLeft:    Number(form.marginLeft),
-        isDefault:     form.isDefault,
+        name:     form.name.trim(),
+        type:     form.type,
+        subject:  form.subject.trim() || null,
+        body:     form.body.trim() || null,
+        isActive: form.isActive,
       };
 
       const res = templateId
@@ -92,76 +71,71 @@ export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
     <form onSubmit={handleSubmit} className="max-w-xl space-y-4">
       {/* Nama */}
       <div>
-        <label className="text-xs text-muted-foreground">Nama Template <span className="text-destructive">*</span></label>
+        <label className="text-xs text-muted-foreground">
+          Nama Template <span className="text-destructive">*</span>
+        </label>
         <input
           autoFocus
           type="text"
           value={form.name}
           onChange={(e) => set("name", e.target.value)}
-          placeholder="mis. Kop Resmi IKPM"
-          className="w-full mt-0.5 rounded border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          placeholder="mis. Surat Undangan Rapat"
+          className={fieldCls}
         />
       </div>
 
-      {/* Ukuran kertas & font */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs text-muted-foreground">Ukuran Kertas</label>
-          <select
-            value={form.paperSize}
-            onChange={(e) => set("paperSize", e.target.value as "A4" | "F4" | "Letter")}
-            className="w-full mt-0.5 rounded border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="A4">A4</option>
-            <option value="F4">F4 / Folio</option>
-            <option value="Letter">Letter</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Font</label>
-          <select
-            value={form.bodyFont}
-            onChange={(e) => set("bodyFont", e.target.value)}
-            className="w-full mt-0.5 rounded border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            {FONTS.map((f) => (
-              <option key={f} value={f}>{f}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Margin — dalam mm */}
+      {/* Jenis Surat */}
       <div>
-        <label className="text-xs text-muted-foreground mb-1.5 block">Margin (mm)</label>
-        <div className="grid grid-cols-4 gap-3">
-          {(["marginTop", "marginRight", "marginBottom", "marginLeft"] as const).map((field) => (
-            <div key={field}>
-              <label className="text-xs text-muted-foreground">
-                {field === "marginTop" ? "Atas" : field === "marginRight" ? "Kanan" : field === "marginBottom" ? "Bawah" : "Kiri"}
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="50"
-                value={form[field]}
-                onChange={(e) => set(field, Number(e.target.value))}
-                className="w-full mt-0.5 rounded border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-          ))}
-        </div>
+        <label className="text-xs text-muted-foreground">Jenis Surat</label>
+        <select
+          value={form.type}
+          onChange={(e) => set("type", e.target.value as "outgoing" | "internal")}
+          className={fieldCls}
+        >
+          <option value="outgoing">Surat Keluar</option>
+          <option value="internal">Nota Dinas</option>
+        </select>
+        <p className="text-xs text-muted-foreground mt-1">
+          Template akan tersedia saat membuat surat dengan jenis yang sesuai.
+        </p>
       </div>
 
-      {/* Default */}
+      {/* Perihal */}
+      <div>
+        <label className="text-xs text-muted-foreground">Perihal (opsional)</label>
+        <input
+          type="text"
+          value={form.subject}
+          onChange={(e) => set("subject", e.target.value)}
+          placeholder="Perihal default yang akan diisi otomatis"
+          className={fieldCls}
+        />
+      </div>
+
+      {/* Isi Surat */}
+      <div>
+        <label className="text-xs text-muted-foreground">Isi Surat (opsional)</label>
+        <textarea
+          rows={10}
+          value={form.body}
+          onChange={(e) => set("body", e.target.value)}
+          placeholder="Tulis isi surat template di sini. Gunakan {{nama_penerima}}, {{tanggal}}, dll untuk merge fields."
+          className={`${fieldCls} resize-y font-mono text-xs`}
+        />
+        <p className="text-xs text-muted-foreground mt-1">
+          Mendukung merge fields: <code className="font-mono">{"{{nama_penerima}}"}</code>, <code className="font-mono">{"{{tanggal}}"}</code>, <code className="font-mono">{"{{nomor_surat}}"}</code>, dll.
+        </p>
+      </div>
+
+      {/* Aktif */}
       <label className="flex items-center gap-2 text-sm cursor-pointer">
         <input
           type="checkbox"
-          checked={form.isDefault}
-          onChange={(e) => set("isDefault", e.target.checked)}
+          checked={form.isActive}
+          onChange={(e) => set("isActive", e.target.checked)}
           className="h-4 w-4 rounded accent-primary"
         />
-        Jadikan template default
+        Template aktif (tampil di pilihan saat buat surat)
       </label>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

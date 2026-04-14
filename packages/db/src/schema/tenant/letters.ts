@@ -54,23 +54,17 @@ export function createLetterContactsTable(s: ReturnType<typeof pgSchema>) {
   });
 }
 
-// Template kop surat — ukuran kertas, font, margin, gambar header/footer
+// Template isi surat siap pakai — subject + body (Tiptap JSON) untuk di-apply saat buat surat baru
 export function createLetterTemplatesTable(s: ReturnType<typeof pgSchema>) {
   return s.table("letter_templates", {
-    id:            uuid("id").primaryKey().defaultRandom(),
-    name:          text("name").notNull(),
-    paperSize:     text("paper_size", { enum: PAPER_SIZES }).notNull().default("A4"),
-    // header_image_id + footer_image_id → FK ke media via SQL DDL
-    headerImageId: uuid("header_image_id"),
-    footerImageId: uuid("footer_image_id"),
-    bodyFont:      text("body_font").notNull().default("Times New Roman"),
-    marginTop:     integer("margin_top").notNull().default(20),
-    marginRight:   integer("margin_right").notNull().default(20),
-    marginBottom:  integer("margin_bottom").notNull().default(20),
-    marginLeft:    integer("margin_left").notNull().default(25),
-    isDefault:     boolean("is_default").notNull().default(false),
-    createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt:     timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    id:       uuid("id").primaryKey().defaultRandom(),
+    name:     text("name").notNull(),
+    type:     text("type", { enum: LETTER_TYPES }).notNull().default("outgoing"),
+    subject:  text("subject"),
+    body:     text("body"),           // Tiptap JSON atau plain text
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   });
 }
 
@@ -104,6 +98,9 @@ export function createLettersTable(s: ReturnType<typeof pgSchema>) {
     isBulk:         boolean("is_bulk").notNull().default(false),
     // bulkParentId → self-reference ke letters.id via SQL DDL (tidak bisa di Drizzle factory)
     bulkParentId:   uuid("bulk_parent_id"),
+    // Officer yang mengeluarkan surat — untuk resolusi {issuer_code} di format nomor
+    // FK → officers.id via SQL DDL
+    issuerOfficerId: uuid("issuer_officer_id"),
     // Inter-tenant — surat antar cabang IKPM
     interTenantTo:     text("inter_tenant_to"),
     interTenantStatus: text("inter_tenant_status", { enum: INTER_TENANT_STATUSES }),

@@ -18,7 +18,14 @@ export default async function TemplateEditPage({
   const { db: tenantDb, schema } = createTenantDb(slug);
 
   const [template] = await tenantDb
-    .select()
+    .select({
+      id:       schema.letterTemplates.id,
+      name:     schema.letterTemplates.name,
+      type:     schema.letterTemplates.type,
+      subject:  schema.letterTemplates.subject,
+      body:     schema.letterTemplates.body,
+      isActive: schema.letterTemplates.isActive,
+    })
     .from(schema.letterTemplates)
     .where(eq(schema.letterTemplates.id, templateId))
     .limit(1);
@@ -46,16 +53,11 @@ export default async function TemplateEditPage({
         slug={slug}
         templateId={templateId}
         defaultValues={{
-          name:          template.name,
-          paperSize:     template.paperSize as "A4" | "F4" | "Letter",
-          headerImageId: template.headerImageId ?? null,
-          footerImageId: template.footerImageId ?? null,
-          bodyFont:      template.bodyFont,
-          marginTop:     template.marginTop,
-          marginRight:   template.marginRight,
-          marginBottom:  template.marginBottom,
-          marginLeft:    template.marginLeft,
-          isDefault:     template.isDefault,
+          name:     template.name,
+          type:     (template.type ?? "outgoing") as "outgoing" | "internal",
+          subject:  template.subject ?? "",
+          body:     template.body ?? "",
+          isActive: template.isActive,
         }}
       />
     </div>

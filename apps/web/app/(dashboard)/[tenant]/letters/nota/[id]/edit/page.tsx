@@ -1,7 +1,7 @@
-import { createTenantDb } from "@jalajogja/db";
+import { createTenantDb, db, members } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { LetterForm } from "@/components/letters/letter-form";
@@ -25,18 +25,22 @@ export default async function NotaDinasEditPage({
 
   if (!letter || letter.type !== "internal") notFound();
 
+  // Fetch jenis surat aktif
   const letterTypes = await tenantDb
     .select({ id: schema.letterTypes.id, name: schema.letterTypes.name, code: schema.letterTypes.code, defaultCategory: schema.letterTypes.defaultCategory })
     .from(schema.letterTypes)
     .where(eq(schema.letterTypes.isActive, true))
     .orderBy(schema.letterTypes.sortOrder, schema.letterTypes.name);
 
+  // Fetch template konten aktif (internal + outgoing)
   const templates = await tenantDb
-    .select({ id: schema.letterTemplates.id, name: schema.letterTemplates.name, isDefault: schema.letterTemplates.isDefault })
+    .select({ id: schema.letterTemplates.id, name: schema.letterTemplates.name, type: schema.letterTemplates.type, subject: schema.letterTemplates.subject, body: schema.letterTemplates.body })
     .from(schema.letterTemplates)
+    .where(eq(schema.letterTemplates.isActive, true))
     .orderBy(schema.letterTemplates.name);
 
-  const signers = await tenantDb
+  // Fetch semua officer aktif dengan kode divisi
+  const rawOfficers = await tenantDb
     .select({
       id:         schema.officers.id,
       memberId:   schema.officers.memberId,
@@ -44,7 +48,37 @@ export default async function NotaDinasEditPage({
       divisionId: schema.officers.divisionId,
     })
     .from(schema.officers)
-    .where(eq(schema.officers.canSign, true));
+    .where(eq(schema.officers.isActive, true))
+    .orderBy(schema.officers.sortOrder, schema.officers.position);
+
+  // Fetch nama member dari public.members
+  const memberIds = [...new Set(rawOfficers.map((o) => o.memberId))];
+  const memberMap = new Map<string, string>();
+  if (memberIds.length > 0) {
+    const memberRows = await db
+      .select({ id: members.id, name: members.name })
+      .from(members)
+      .where(inArray(members.id, memberIds));
+    memberRows.forEach((m) => memberMap.set(m.id, m.name));
+  }
+
+  // Fetch kode divisi
+  const divisionIds = rawOfficers.map((o) => o.divisionId).filter((x): x is string => !!x);
+  const divisionMap = new Map<string, string>();
+  if (divisionIds.length > 0) {
+    const divisionRows = await tenantDb
+      .select({ id: schema.divisions.id, code: schema.divisions.code })
+      .from(schema.divisions)
+      .where(inArray(schema.divisions.id, divisionIds));
+    divisionRows.forEach((d) => divisionMap.set(d.id, d.code ?? ""));
+  }
+
+  const officers = rawOfficers.map((o) => ({
+    id:           o.id,
+    name:         memberMap.get(o.memberId) ?? "—",
+    position:     o.position,
+    divisionCode: o.divisionId ? (divisionMap.get(o.divisionId) ?? null) : null,
+  }));
 
   return (
     <div className="p-6 space-y-6">
@@ -72,21 +106,27 @@ export default async function NotaDinasEditPage({
         letterId={letterId}
         type="internal"
         letterTypes={letterTypes.map((t) => ({ ...t, code: t.code ?? null }))}
-        templates={templates}
-        signers={signers}
+        templates={templates.map((t) => ({
+          ...t,
+          type:    t.type ?? "internal",
+          subject: t.subject ?? null,
+          body:    t.body    ?? null,
+        }))}
+        officers={officers}
         defaultValues={{
-          letterNumber:   letter.letterNumber ?? "",
-          typeId:         letter.typeId ?? "",
-          templateId:     letter.templateId ?? "",
-          subject:        letter.subject,
-          body:           letter.body ?? "",
-          sender:         letter.sender,
-          recipient:      letter.recipient,
-          letterDate:     letter.letterDate,
-          status:         letter.status as "draft" | "sent" | "received" | "archived",
-          paperSize:      (letter.paperSize as "A4" | "F4" | "Letter") ?? "A4",
-          mergeFields:    (letter.mergeFields as Record<string, string>) ?? {},
-          attachmentUrls: (letter.attachmentUrls as string[]) ?? [],
+          letterNumber:    letter.letterNumber ?? "",
+          typeId:          letter.typeId       ?? "",
+          templateId:      letter.templateId   ?? "",
+          issuerOfficerId: (letter as { issuerOfficerId?: string | null }).issuerOfficerId ?? "",
+          subject:         letter.subject,
+          body:            letter.body ?? "",
+          sender:          letter.sender,
+          recipient:       letter.recipient,
+          letterDate:      letter.letterDate,
+          status:          letter.status as "draft" | "sent" | "received" | "archived",
+          paperSize:       (letter.paperSize as "A4" | "F4" | "Letter") ?? "A4",
+          mergeFields:     (letter.mergeFields as Record<string, string>) ?? {},
+          attachmentUrls:  (letter.attachmentUrls as string[]) ?? [],
         }}
       />
     </div>

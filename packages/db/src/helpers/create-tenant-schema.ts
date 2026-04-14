@@ -205,20 +205,15 @@ export async function createTenantSchemaInDb(
     // ── 9c. Letter Templates ───────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".letter_templates (
-        id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        name            TEXT        NOT NULL,
-        paper_size      TEXT        NOT NULL DEFAULT 'A4'
-                                    CHECK (paper_size IN ('A4','F4','Letter')),
-        header_image_id UUID        REFERENCES "${s}".media(id) ON DELETE SET NULL,
-        footer_image_id UUID        REFERENCES "${s}".media(id) ON DELETE SET NULL,
-        body_font       TEXT        NOT NULL DEFAULT 'Times New Roman',
-        margin_top      INTEGER     NOT NULL DEFAULT 20,
-        margin_right    INTEGER     NOT NULL DEFAULT 20,
-        margin_bottom   INTEGER     NOT NULL DEFAULT 20,
-        margin_left     INTEGER     NOT NULL DEFAULT 25,
-        is_default      BOOLEAN     NOT NULL DEFAULT false,
-        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        id        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        name      TEXT        NOT NULL,
+        type      TEXT        NOT NULL DEFAULT 'outgoing'
+                              CHECK (type IN ('incoming','outgoing','internal')),
+        subject   TEXT,
+        body      TEXT,
+        is_active BOOLEAN     NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `));
 
@@ -246,6 +241,7 @@ export async function createTenantSchemaInDb(
         pdf_generated_at    TIMESTAMPTZ,
         is_bulk             BOOLEAN     NOT NULL DEFAULT false,
         bulk_parent_id      UUID        REFERENCES "${s}".letters(id) ON DELETE CASCADE,
+        issuer_officer_id   UUID        REFERENCES "${s}".officers(id) ON DELETE SET NULL,
         inter_tenant_to     TEXT,
         inter_tenant_status TEXT        CHECK (inter_tenant_status IN ('pending','delivered')),
         created_by          UUID        NOT NULL REFERENCES "${s}".users(id),
