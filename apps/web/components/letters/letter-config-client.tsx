@@ -9,11 +9,12 @@ import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
 const FONTS = ["Times New Roman", "Arial", "Calibri", "Georgia", "Helvetica"];
 const PAPER_SIZES = ["A4", "F4", "Letter"] as const;
 
-// Label + dimensi kertas untuk tampilan referensi
-const PAPER_SIZE_INFO: Record<string, string> = {
-  A4:     "A4 — 210mm lebar",
-  F4:     "F4 / Folio — 215mm lebar",
-  Letter: "Letter — 215.9mm lebar",
+// Dimensi kertas dalam piksel (96 DPI, standar web/Chromium)
+// 1mm = 96/25.4 = 3.7795px
+const PAPER_SIZE_PX: Record<string, { label: string; width: number; height: number }> = {
+  A4:     { label: "A4",          width: 794,  height: 1123 },
+  F4:     { label: "F4 / Folio",  width: 813,  height: 1247 },
+  Letter: { label: "Letter",      width: 816,  height: 1056 },
 };
 
 const FORMAT_VARS = [
@@ -186,9 +187,19 @@ export function LetterConfigClient({ slug, initialConfig, isAdmin }: Props) {
                 className={fieldCls}
               >
                 {PAPER_SIZES.map((s) => (
-                  <option key={s} value={s}>{PAPER_SIZE_INFO[s]}</option>
+                  <option key={s} value={s}>
+                    {PAPER_SIZE_PX[s]?.label ?? s}
+                  </option>
                 ))}
               </select>
+              {PAPER_SIZE_PX[config.paper_size] && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Lebar: <strong>{PAPER_SIZE_PX[config.paper_size].width}px</strong>
+                  {" · "}
+                  Tinggi: <strong>{PAPER_SIZE_PX[config.paper_size].height}px</strong>
+                  {" "}(tergantung konten, tinggi bisa lebih)
+                </p>
+              )}
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Font</label>
