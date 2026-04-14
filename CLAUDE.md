@@ -1297,6 +1297,9 @@ Kategori = letter_types.default_category (mis. UMUM, SEKR, IKPM)
 - `lib/letter-merge.ts`: `resolveMergeFields(template, ctx)` — regex replace `{{key}}` dari flat map
 - `lib/letter-html.ts`: build HTML lengkap (kop surat header image, metadata, body, signers + QR, footer image)
   - Margin via CSS `@page { margin: Xmm }` — bukan body padding, agar tidak dobel dengan Playwright
+  - Footer: `position: fixed; bottom: 0` → muncul di SETIAP halaman PDF
+  - Body mendapat `padding-bottom: 36mm` kondisional saat footer ada (cegah overlap)
+  - F4/Folio: lebar tepat `215mm` (bukan 210mm)
 - `POST /api/letters/[id]/generate-pdf?slug=` — auth check → fetch data → build HTML → Playwright → MinIO → update `pdf_url`
 - `components/letters/generate-pdf-button.tsx` — tombol unduh + link buka PDF terakhir (auto-download)
 - Tombol muncul di halaman detail keluar + nota
@@ -1334,6 +1337,37 @@ Kategori = letter_types.default_category (mis. UMUM, SEKR, IKPM)
   - Search diperluas ke field `recipient`
 - Semua list page (keluar, nota, masuk) — query ditambah `isBulk` dan `pdfUrl` di SELECT
 
+**Step 6 — Arsitektur Ulang Template + Format Nomor Dinamis + Pengaturan Surat**
+
+*Template surat:*
+- `letter_templates` diubah dari "kop surat" → template konten (perihal + isi surat)
+- Kolom lama (paper_size, body_font, margin_*, is_default, header_image_id, footer_image_id) dihapus
+- Kolom baru: `type` (outgoing/internal), `subject`, `body`, `is_active`
+- Saat template dipilih di form surat → auto-isi perihal & isi jika masih kosong
+- `letters-nav.tsx`: tambah item "Pengaturan" (path: `pengaturan`)
+
+*Kop surat & styling dipindah ke `/letters/pengaturan`:*
+- Disimpan di `settings` table: `key="letter_config", group="general"` (JSONB)
+- Fields: `header_image_url`, `footer_image_url`, `paper_size`, `body_font`, `margin_*`, `number_format`, `org_code`, `number_padding`
+- **URL gambar disimpan langsung** (bukan media ID) → PDF route tidak perlu lookup media table
+- `components/letters/letter-config-client.tsx` — form pengaturan dengan MediaPicker untuk header/footer
+
+*Format nomor surat dinamis:*
+- `lib/letter-number.ts`: `resolveLetterNumberFormat()` + `resolveSequenceCategory()`
+- Format string: `{number}`, `{number:N}`, `{type_code}`, `{org_code}`, `{issuer_code}`, `{month_roman}`, `{month}`, `{year}`, `{year:2}`
+- `issuer_officer_id` ditambah ke tabel `letters` (FK ke officers)
+- Form surat: dropdown "Yang Mengeluarkan" → kode divisi officer → `{issuer_code}`
+- `resolveSequenceCategory()`: jika format pakai `{issuer_code}` → category = divisionCode.upper(); else "UMUM"
+
+*Presisi ukuran kertas (piksel @ 96 DPI):*
+| Ukuran | Lebar | Tinggi |
+|--------|-------|--------|
+| A4 | 794px | 1123px |
+| F4 / Folio | 813px | 1247px |
+| Letter | 816px | 1056px |
+
+Hint dinamis di dropdown pengaturan berubah sesuai pilihan. Tinggi hanya referensi (konten menentukan panjang aktual).
+
 ### Fitur Belum Diimplementasikan
 - Inter-tenant — `inter_tenant_to` + `inter_tenant_status` → kirim ke cabang IKPM lain
 - Attachment lampiran — MediaPicker untuk upload lampiran surat
@@ -1369,11 +1403,40 @@ hasil disimpan ke `debouncedSearch` state terpisah. `useEffect` kedua trigger fe
 Di API route yang butuh filter per-tenant, `getTenantAccess(slug)` sudah mengembalikan `access.tenant.id`.
 Tidak perlu query `public.tenants` lagi untuk dapat tenant ID — ini menghemat satu roundtrip DB.
 
+### [2026-04] Arsitektur Ulang Surat — Template, Nomor Dinamis, Pengaturan
+
+**Jangan simpan media ID di settings JSONB jika perlu URL di PDF route**
+Jika menyimpan `header_image_id` di settings, PDF route harus query media table lagi untuk dapat URL.
+Lebih efisien simpan URL langsung (`header_image_url`) — MediaPicker sudah mengembalikan URL via `media.url`.
+Pattern: simpan ID hanya jika perlu referensi relasional (misal audit trail, cascade delete). Untuk config statis → simpan URL langsung.
+
+**letter_templates: konten bukan styling**
+Template surat = isi (perihal + body) yang bisa dipilih saat buat surat. Styling (font, margin, kop surat) adalah konfigurasi organisasi → masuk settings, bukan template per-surat.
+Jangan campurkan "template konten" dengan "template tampilan" — keduanya lifecycle-nya berbeda.
+
+**F4/Folio = 215mm, bukan 210mm**
+Kertas Folio standar Indonesia adalah 215mm × 330mm. Playwright menggunakan `{ width: "215mm", height: "330mm" }`.
+A4 = 210mm, F4 = 215mm — bedanya 5mm tapi mempengaruhi presisi layout kop surat.
+
+**Footer PDF: position:fixed agar muncul di setiap halaman**
+`position: fixed; bottom: 0; left: 0; right: 0` di HTML yang dirender Playwright → footer muncul di semua halaman.
+Tambahkan `padding-bottom` kondisional ke body agar konten tidak tertimpa footer.
+Jangan masukkan footer sebagai elemen flow biasa jika ingin muncul di setiap halaman.
+
+**Format nomor surat dinamis: urutan replace penting**
+Di `resolveLetterNumberFormat()`, `{number:N}` harus di-replace SEBELUM `{number}`, dan `{year:2}` SEBELUM `{year}`.
+Jika dibalik, `{number:3}` akan di-replace sebagian oleh `{number}` lebih dulu → hasil salah.
+Pattern: selalu proses yang lebih spesifik (dengan parameter) sebelum yang umum.
+
+**officer fetch untuk dropdown form: pakai isActive, bukan canSign**
+Dropdown "Yang Mengeluarkan" di form surat butuh SEMUA officer aktif (semua bisa mengeluarkan surat),
+bukan hanya yang `canSign=true` (canSign khusus untuk tanda tangan digital di letter_signatures).
+Jangan campur dua konsep ini.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Mail Merge Bulk + Kontak nav + Generate Semua PDF button
-- Commit terakhir: `db3954f` — feat: Generate Semua PDF button
-- Mail Merge Bulk: **SELESAI** (picker anggota + kontak, bulk create, mark all sent, generate all PDF)
-- Kontak Surat: **SELESAI** (CRUD inline, menu nav Kontak)
+- Terakhir dikerjakan: Arsitektur ulang template surat + format nomor dinamis + pengaturan surat
+- Commit terakhir: `05ed7bd` — fix: ganti dimensi kertas dari mm ke pixel
+- Arsitektur ulang surat: **SELESAI** (template konten, format nomor dinamis, halaman pengaturan, MediaPicker header/footer, presisi kertas)
 - Next step: **Keuangan** (sudah ada schema double-entry, belum ada UI) ATAU inter-tenant surat
 - Fitur yang belum diimplementasikan (dalam scope surat):
   - Inter-tenant letters (inter_tenant_to + inter_tenant_status)
