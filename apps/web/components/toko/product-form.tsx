@@ -17,6 +17,7 @@ import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { SeoPanel } from "@/components/seo/seo-panel";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
 import {
+  createProductAction,
   updateProductAction,
   toggleProductStatusAction,
   deleteProductAction,
@@ -44,7 +45,7 @@ type Category = { id: string; name: string; slug: string };
 
 export type ProductFormProps = {
   slug:      string;
-  productId: string;
+  productId: string | null; // null = create mode
   initialData: {
     name:        string;
     productSlug: string;
@@ -225,12 +226,17 @@ export function ProductForm({
   const [isToggling, startToggle]    = useTransition();
   const [isDeleting, startDelete]    = useTransition();
 
-  // Auto-generate slug dari nama
+  // Auto-generate slug dari nama — menggunakan slugEdited flag
+  const [slugEdited, setSlugEdited] = useState(false);
+
   function handleNameChange(val: string) {
     setName(val);
-    if (!productSlug || productSlug === slugify(name)) {
-      setProductSlug(slugify(val));
-    }
+    if (!slugEdited) setProductSlug(slugify(val));
+  }
+
+  function handleSlugChange(val: string) {
+    setSlugEdited(true);
+    setProductSlug(val);
   }
 
   function handleSave() {
@@ -262,17 +268,28 @@ export function ProductForm({
     };
 
     startTransition(async () => {
-      const res = await updateProductAction(slug, productId, data);
-      if (res.success) {
-        setSaveMsg("Tersimpan");
-        setTimeout(() => setSaveMsg(""), 2000);
+      if (productId === null) {
+        // Create mode — record belum ada
+        const res = await createProductAction(slug, data);
+        if (res.success) {
+          router.push(`/${slug}/toko/produk/${res.data.productId}/edit`);
+        } else {
+          setError(res.error);
+        }
       } else {
-        setError(res.error);
+        const res = await updateProductAction(slug, productId, data);
+        if (res.success) {
+          setSaveMsg("Tersimpan");
+          setTimeout(() => setSaveMsg(""), 2000);
+        } else {
+          setError(res.error);
+        }
       }
     });
   }
 
   function handleToggleStatus() {
+    if (!productId) return;
     startToggle(async () => {
       const res = await toggleProductStatusAction(slug, productId);
       if (res.success) {
@@ -284,6 +301,7 @@ export function ProductForm({
   }
 
   function handleDelete() {
+    if (!productId) return;
     if (!confirm("Hapus produk ini? Tindakan tidak bisa dibatalkan.")) return;
     startDelete(async () => {
       const res = await deleteProductAction(slug, productId);
@@ -338,7 +356,7 @@ export function ProductForm({
             <span className="text-xs text-muted-foreground shrink-0">Slug:</span>
             <Input
               value={productSlug}
-              onChange={(e) => setProductSlug(slugify(e.target.value))}
+              onChange={(e) => handleSlugChange(slugify(e.target.value))}
               className="font-mono text-xs border-none shadow-none px-0 h-auto py-0 focus-visible:ring-0 text-muted-foreground"
             />
           </div>
@@ -474,24 +492,28 @@ export function ProductForm({
               {isPending ? "Menyimpan..." : saveLabel}
             </Button>
 
-            <Button
-              variant={toggleBtn.variant}
-              className="w-full"
-              onClick={handleToggleStatus}
-              disabled={isToggling}
-            >
-              <ToggleIcon className="h-4 w-4 mr-2" />
-              {isToggling ? "Memproses..." : toggleBtn.label}
-            </Button>
+            {productId && (
+              <>
+                <Button
+                  variant={toggleBtn.variant}
+                  className="w-full"
+                  onClick={handleToggleStatus}
+                  disabled={isToggling}
+                >
+                  <ToggleIcon className="h-4 w-4 mr-2" />
+                  {isToggling ? "Memproses..." : toggleBtn.label}
+                </Button>
 
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className="w-full text-xs text-destructive hover:underline py-1 disabled:opacity-60"
-            >
-              {isDeleting ? "Menghapus..." : "Hapus Produk"}
-            </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="w-full text-xs text-destructive hover:underline py-1 disabled:opacity-60"
+                >
+                  {isDeleting ? "Menghapus..." : "Hapus Produk"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

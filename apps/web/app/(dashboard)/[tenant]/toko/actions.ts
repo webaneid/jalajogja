@@ -170,8 +170,65 @@ function revalidateToko(slug: string) {
 // ════════════════════════════════════════════════════════════════════════════════
 
 /**
- * Pre-create produk draft kosong — dipanggil saat klik "Produk Baru".
- * Langsung redirect ke halaman edit tanpa modal konfirmasi judul.
+ * Create produk dengan data lengkap — dipanggil dari form kosong di /produk/new.
+ * Tidak pre-create; record baru dibuat saat user klik "Simpan" pertama kali.
+ */
+export async function createProductAction(
+  slug: string,
+  data: ProductData
+): Promise<ActionResult<{ productId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!data.name?.trim()) return { success: false, error: "Nama produk wajib diisi." };
+  if (!data.slug?.trim()) return { success: false, error: "Slug produk wajib diisi." };
+  if (data.price < 0)     return { success: false, error: "Harga tidak boleh negatif." };
+  if (data.stock < 0)     return { success: false, error: "Stok tidak boleh negatif." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [dup] = await db
+    .select({ id: schema.products.id })
+    .from(schema.products)
+    .where(eq(schema.products.slug, data.slug.trim()))
+    .limit(1);
+  if (dup) return { success: false, error: "Slug sudah dipakai produk lain." };
+
+  try {
+    const [product] = await db
+      .insert(schema.products)
+      .values({
+        name:          data.name.trim(),
+        slug:          data.slug.trim(),
+        sku:           data.sku             ?? null,
+        description:   data.description     ?? null,
+        price:         String(data.price),
+        stock:         data.stock,
+        images:        data.images.map((img, i) => ({ ...img, order: i })),
+        categoryId:    data.categoryId      ?? null,
+        status:        data.status          ?? "draft",
+        metaTitle:     data.metaTitle       ?? null,
+        metaDesc:      data.metaDesc        ?? null,
+        ogTitle:       data.ogTitle         ?? null,
+        ogDescription: data.ogDescription   ?? null,
+        ogImageId:     data.ogImageId       ?? null,
+        twitterCard:   data.twitterCard     || "summary_large_image",
+        focusKeyword:  data.focusKeyword    ?? null,
+        canonicalUrl:  data.canonicalUrl    ?? null,
+        robots:        data.robots          || "index,follow",
+      })
+      .returning({ id: schema.products.id });
+
+    revalidateToko(slug);
+    return { success: true, data: { productId: product.id } };
+  } catch (err) {
+    console.error("[createProductAction]", err);
+    return { success: false, error: "Gagal membuat produk." };
+  }
+}
+
+/**
+ * Pre-create produk draft kosong — dipertahankan untuk kompatibilitas.
  */
 export async function createProductDraftAction(
   slug: string

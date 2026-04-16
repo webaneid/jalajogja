@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   updateLetterAction,
+  createLetterAction,
   getNextLetterNumberAction,
 } from "@/app/(dashboard)/[tenant]/letters/actions";
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
@@ -32,7 +33,7 @@ type DefaultValues = {
 
 type Props = {
   slug:          string;
-  letterId:      string;
+  letterId:      string | null; // null = create mode
   type:          "outgoing" | "internal";
   letterTypes:   LetterType[];
   templates:     Template[];
@@ -93,20 +94,35 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
     if (!form.subject.trim()) { setError("Perihal surat wajib diisi."); return; }
     if (!form.letterDate)     { setError("Tanggal surat wajib diisi."); return; }
 
+    const status = newStatus ?? form.status;
+    const data = {
+      ...form,
+      sender:          orgName,
+      typeId:          form.typeId          || null,
+      templateId:      form.templateId      || null,
+      issuerOfficerId: form.issuerOfficerId || null,
+      status,
+    };
+
     startTransition(async () => {
-      const status = newStatus ?? form.status;
-      const res = await updateLetterAction(slug, letterId, {
-        ...form,
-        sender:          orgName,
-        typeId:          form.typeId          || null,
-        templateId:      form.templateId      || null,
-        issuerOfficerId: form.issuerOfficerId || null,
-        status,
-      });
-      if (res.success) {
-        set("status", status);
+      if (letterId === null) {
+        // Create mode — record belum ada di DB
+        const res = await createLetterAction(slug, type, data);
+        if (res.success) {
+          const editPath = type === "outgoing"
+            ? `/${slug}/letters/keluar/${res.letterId}/edit`
+            : `/${slug}/letters/nota/${res.letterId}/edit`;
+          router.push(editPath);
+        } else {
+          setError(res.error);
+        }
       } else {
-        setError(res.error);
+        const res = await updateLetterAction(slug, letterId, data);
+        if (res.success) {
+          set("status", status);
+        } else {
+          setError(res.error);
+        }
       }
     });
   }

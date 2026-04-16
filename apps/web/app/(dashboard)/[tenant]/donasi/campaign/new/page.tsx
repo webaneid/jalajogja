@@ -1,8 +1,7 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
-import { createCampaignDraftAction } from "../../actions";
+import { CampaignForm } from "@/components/donasi/campaign-form";
 
-// Pre-create pattern — buat draft kosong, redirect ke edit
 export default async function CampaignNewPage({
   params,
 }: {
@@ -12,10 +11,24 @@ export default async function CampaignNewPage({
   const access = await getTenantAccess(slug);
   if (!access) redirect("/login");
 
-  const res = await createCampaignDraftAction(slug);
-  if (res.success) {
-    redirect(`/${slug}/donasi/campaign/${res.data.campaignId}/edit`);
-  }
-
-  redirect(`/${slug}/donasi/campaign`);
+  return (
+    <CampaignForm
+      slug={slug}
+      campaignId={null}
+      initialData={{
+        slug:          "",
+        title:         "",
+        description:   "",
+        campaignType:  "donasi",
+        targetAmount:  null,
+        coverId:       null,
+        coverUrl:      null,
+        status:        "draft",
+        startsAt:      null,
+        endsAt:        null,
+        showDonorList: true,
+        showAmount:    true,
+      }}
+    />
+  );
 }

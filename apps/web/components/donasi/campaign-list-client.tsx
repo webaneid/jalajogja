@@ -14,9 +14,7 @@ import {
   HeartHandshake,
 } from "lucide-react";
 import {
-  createCampaignDraftAction,
   deleteCampaignAction,
-  toggleCampaignStatusAction,
 } from "@/app/(dashboard)/[tenant]/donasi/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -60,21 +58,11 @@ const TYPE_MAP: Record<string, string> = {
 
 export function CreateCampaignButton({ slug }: { slug: string }) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-
-  function handleCreate() {
-    startTransition(async () => {
-      const res = await createCampaignDraftAction(slug);
-      if (res.success) {
-        router.push(`/${slug}/donasi/campaign/${res.data.campaignId}/edit`);
-      }
-    });
-  }
 
   return (
-    <Button onClick={handleCreate} disabled={isPending} size="sm">
+    <Button onClick={() => router.push(`/${slug}/donasi/campaign/new`)} size="sm">
       <Plus className="h-4 w-4 mr-1.5" />
-      {isPending ? "Membuat..." : "Campaign Baru"}
+      Campaign Baru
     </Button>
   );
 }

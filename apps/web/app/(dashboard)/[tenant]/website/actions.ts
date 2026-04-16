@@ -58,7 +58,114 @@ function resolveSlug(title: string, slugInput?: string): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
-// ─── CREATE DRAFT (pre-create) ───────────────────────────────────────────────
+// ─── CREATE POST (create-on-save — dipanggil dari form kosong di /posts/new) ──
+
+export async function createPostAction(
+  slug: string,
+  data: PostFormData
+): Promise<ActionResult<{ postId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!data.title?.trim()) return { success: false, error: "Judul post wajib diisi." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  let postSlug = resolveSlug(data.title, data.slug);
+  const [dup] = await db
+    .select({ id: schema.posts.id })
+    .from(schema.posts)
+    .where(eq(schema.posts.slug, postSlug))
+    .limit(1);
+  if (dup) postSlug = `${postSlug}-${crypto.randomUUID().slice(0, 6)}`;
+
+  try {
+    const [post] = await db
+      .insert(schema.posts)
+      .values({
+        title:    data.title.trim(),
+        slug:     postSlug,
+        excerpt:  data.excerpt?.trim()  || null,
+        content:  data.content          ?? null,
+        coverId:  data.coverId          ?? null,
+        categoryId: data.categoryId     ?? null,
+        status:   data.status           ?? "draft",
+        publishedAt: data.status === "published" ? new Date() : null,
+        metaTitle:   data.metaTitle?.trim()  || null,
+        metaDesc:    data.metaDesc?.trim()   || null,
+        ogTitle:     data.ogTitle?.trim()    || null,
+        ogDescription: data.ogDescription?.trim() || null,
+        ogImageId:   data.ogImageId          ?? null,
+        twitterCard: data.twitterCard        || "summary_large_image",
+        focusKeyword: data.focusKeyword?.trim() || null,
+        canonicalUrl: data.canonicalUrl?.trim() || null,
+        robots:      data.robots             || "index,follow",
+        schemaType:  data.schemaType         || undefined,
+        authorId:    access.tenantUser.id,
+      })
+      .returning({ id: schema.posts.id });
+
+    revalidatePath(`/${slug}/website/posts`);
+    return { success: true, data: { postId: post.id } };
+  } catch (err) {
+    console.error("[createPostAction]", err);
+    return { success: false, error: "Gagal membuat post." };
+  }
+}
+
+// ─── CREATE PAGE (create-on-save — dipanggil dari form kosong di /pages/new) ─
+
+export async function createPageAction(
+  slug: string,
+  data: PageFormData
+): Promise<ActionResult<{ pageId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!data.title?.trim()) return { success: false, error: "Judul halaman wajib diisi." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  let pageSlug = resolveSlug(data.title, data.slug);
+  const [dup] = await db
+    .select({ id: schema.pages.id })
+    .from(schema.pages)
+    .where(eq(schema.pages.slug, pageSlug))
+    .limit(1);
+  if (dup) pageSlug = `${pageSlug}-${crypto.randomUUID().slice(0, 6)}`;
+
+  try {
+    const [page] = await db
+      .insert(schema.pages)
+      .values({
+        title:    data.title.trim(),
+        slug:     pageSlug,
+        content:  data.content          ?? null,
+        coverId:  data.coverId          ?? null,
+        order:    data.order            ?? 0,
+        status:   data.status           ?? "draft",
+        publishedAt: data.status === "published" ? new Date() : null,
+        metaTitle:   data.metaTitle?.trim()  || null,
+        metaDesc:    data.metaDesc?.trim()   || null,
+        ogTitle:     data.ogTitle?.trim()    || null,
+        ogDescription: data.ogDescription?.trim() || null,
+        ogImageId:   data.ogImageId          ?? null,
+        twitterCard: data.twitterCard        || "summary",
+        focusKeyword: data.focusKeyword?.trim() || null,
+        canonicalUrl: data.canonicalUrl?.trim() || null,
+        robots:      data.robots             || "index,follow",
+        schemaType:  data.schemaType         || undefined,
+        authorId:    access.tenantUser.id,
+      })
+      .returning({ id: schema.pages.id });
+
+    revalidatePath(`/${slug}/website/pages`);
+    return { success: true, data: { pageId: page.id } };
+  } catch (err) {
+    console.error("[createPageAction]", err);
+    return { success: false, error: "Gagal membuat halaman." };
+  }
+}
+
+// ─── CREATE DRAFT (pre-create, dipertahankan untuk kompatibilitas) ───────────
 
 /**
  * Buat post draft kosong dengan slug temp → redirect ke halaman edit.

@@ -18,7 +18,7 @@ import {
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { SeoPanel } from "@/components/seo/seo-panel";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
-import { updatePageAction } from "@/app/(dashboard)/[tenant]/website/actions";
+import { updatePageAction, createPageAction } from "@/app/(dashboard)/[tenant]/website/actions";
 import type { PageFormData } from "@/app/(dashboard)/[tenant]/website/actions";
 import type { SeoValues } from "@/components/seo/seo-panel";
 import type { ContentStatus } from "@jalajogja/db";
@@ -29,7 +29,7 @@ import { Globe, Save, Eye, EyeOff, ImagePlus, X, RefreshCw, Archive } from "luci
 
 export type PageFormProps = {
   slug: string;
-  pageId: string;
+  pageId: string | null; // null = create mode
   initialData: {
     title:    string;
     pageSlug: string;
@@ -128,14 +128,26 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
 
   function handleSave() {
     startTransition(async () => {
-      const res = await updatePageAction(slug, pageId, buildPayload());
-      if (!res.success) { alert(res.error); return; }
-      router.refresh();
+      if (pageId === null) {
+        const res = await createPageAction(slug, buildPayload());
+        if (!res.success) { alert(res.error); return; }
+        router.push(`/${slug}/website/pages/${res.data.pageId}/edit`);
+      } else {
+        const res = await updatePageAction(slug, pageId, buildPayload());
+        if (!res.success) { alert(res.error); return; }
+        router.refresh();
+      }
     });
   }
 
   function handleChangeStatus(target: ContentStatus) {
     startTransition(async () => {
+      if (pageId === null) {
+        const res = await createPageAction(slug, buildPayload(target));
+        if (!res.success) { alert(res.error); return; }
+        router.push(`/${slug}/website/pages/${res.data.pageId}/edit`);
+        return;
+      }
       const res = await updatePageAction(slug, pageId, buildPayload(target));
       if (!res.success) { alert(res.error); return; }
       setStatus(target);

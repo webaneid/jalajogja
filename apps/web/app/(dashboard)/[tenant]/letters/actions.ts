@@ -187,6 +187,59 @@ export async function createLetterDraftAction(
   }
 }
 
+// ─── Surat Keluar / Nota: Create langsung dengan data (tanpa pre-create) ─────
+
+export async function createLetterAction(
+  slug: string,
+  type: "outgoing" | "internal",
+  data: Omit<LetterData, "type">
+): Promise<{ success: true; letterId: string } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  if (!data.subject.trim()) return { success: false, error: "Subjek surat wajib diisi." };
+  if (!data.letterDate) return { success: false, error: "Tanggal surat wajib diisi." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    const [tenantUser] = await tenantDb
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.betterAuthUserId, access.userId))
+      .limit(1);
+
+    if (!tenantUser) return { success: false, error: "User tidak ditemukan di tenant." };
+
+    const [letter] = await tenantDb
+      .insert(schema.letters)
+      .values({
+        type,
+        typeId:           data.typeId           || null,
+        templateId:       data.templateId        || null,
+        subject:          data.subject.trim(),
+        body:             data.body              || null,
+        mergeFields:      data.mergeFields       || {},
+        attachmentUrls:   data.attachmentUrls    || [],
+        sender:           data.sender?.trim()    || "",
+        recipient:        data.recipient?.trim() || "",
+        letterDate:       data.letterDate,
+        letterNumber:     data.letterNumber?.trim() || null,
+        issuerOfficerId:  data.issuerOfficerId   || null,
+        status:           "draft",
+        paperSize:        data.paperSize         || "A4",
+        createdBy:        tenantUser.id,
+      })
+      .returning({ id: schema.letters.id });
+
+    revalidatePath(`/${slug}/letters/${type === "outgoing" ? "keluar" : "nota"}`);
+    return { success: true, letterId: letter.id };
+  } catch (err) {
+    console.error("[createLetterAction]", err);
+    return { success: false, error: "Gagal menyimpan surat." };
+  }
+}
+
 // ─── Surat Masuk: Direct create (tidak perlu pre-create) ──────────────────
 
 export async function createIncomingLetterAction(

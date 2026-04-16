@@ -24,6 +24,7 @@ import {
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
 import {
+  createCampaignAction,
   updateCampaignAction,
   toggleCampaignStatusAction,
   deleteCampaignAction,
@@ -44,7 +45,7 @@ type CoverImage = { id: string; url: string } | null;
 
 export type CampaignFormProps = {
   slug:       string;
-  campaignId: string;
+  campaignId: string | null; // null = create mode
   initialData: {
     slug:          string;
     title:         string;
@@ -143,6 +144,7 @@ export function CampaignForm({ slug, campaignId, initialData }: CampaignFormProp
   const [error,       setError]       = useState<string | null>(null);
   const [typeOpen,    setTypeOpen]    = useState(false);
   const [pickerOpen,  setPickerOpen]  = useState(false);
+  const [slugEdited,  setSlugEdited]  = useState(false);
 
   const [isSaving,   startSaving]   = useTransition();
   const [isToggling, startToggling] = useTransition();
@@ -152,9 +154,12 @@ export function CampaignForm({ slug, campaignId, initialData }: CampaignFormProp
 
   function handleTitleChange(val: string) {
     setTitle(val);
-    if (campaignSlug === toSlug(title) || campaignSlug === "") {
-      setSlug(toSlug(val));
-    }
+    if (!slugEdited) setSlug(toSlug(val));
+  }
+
+  function handleSlugChange(val: string) {
+    setSlugEdited(true);
+    setSlug(toSlug(val));
   }
 
   function handleCoverSelect(media: MediaItem) {
@@ -182,12 +187,22 @@ export function CampaignForm({ slug, campaignId, initialData }: CampaignFormProp
   function handleSave() {
     setError(null);
     startSaving(async () => {
-      const res = await updateCampaignAction(slug, campaignId, buildData());
-      if (!res.success) setError(res.error);
+      if (campaignId === null) {
+        const res = await createCampaignAction(slug, buildData());
+        if (res.success) {
+          router.push(`/${slug}/donasi/campaign/${res.data.campaignId}/edit`);
+        } else {
+          setError(res.error);
+        }
+      } else {
+        const res = await updateCampaignAction(slug, campaignId, buildData());
+        if (!res.success) setError(res.error);
+      }
     });
   }
 
   function handleToggleStatus() {
+    if (!campaignId) return;
     startToggling(async () => {
       const res = await toggleCampaignStatusAction(slug, campaignId);
       if (res.success) setStatus(res.data.newStatus as typeof status);
@@ -195,6 +210,7 @@ export function CampaignForm({ slug, campaignId, initialData }: CampaignFormProp
   }
 
   function handleDelete() {
+    if (!campaignId) return;
     if (!confirm("Hapus campaign ini? Aksi ini tidak bisa dibatalkan.")) return;
     startDeleting(async () => {
       const res = await deleteCampaignAction(slug, campaignId);
@@ -221,20 +237,22 @@ export function CampaignForm({ slug, campaignId, initialData }: CampaignFormProp
           <Badge variant={st.variant}>{st.label}</Badge>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleToggleStatus}
-            disabled={isToggling || isSaving}
-          >
-            {isToggling ? "..." : NEXT_STATUS_LABEL[status] ?? "Ubah Status"}
-          </Button>
+          {campaignId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleToggleStatus}
+              disabled={isToggling || isSaving}
+            >
+              {isToggling ? "..." : NEXT_STATUS_LABEL[status] ?? "Ubah Status"}
+            </Button>
+          )}
           <Button
             size="sm"
             onClick={handleSave}
             disabled={isSaving || isToggling}
           >
-            {isSaving ? "Menyimpan..." : "Simpan"}
+            {isSaving ? "Menyimpan..." : campaignId ? "Simpan" : "Buat Campaign"}
           </Button>
         </div>
       </div>
@@ -265,7 +283,7 @@ export function CampaignForm({ slug, campaignId, initialData }: CampaignFormProp
             <Input
               id="slug"
               value={campaignSlug}
-              onChange={(e) => setSlug(toSlug(e.target.value))}
+              onChange={(e) => handleSlugChange(e.target.value)}
               placeholder="donasi-renovasi-masjid-2025"
               className="font-mono text-sm"
             />
@@ -441,19 +459,21 @@ export function CampaignForm({ slug, campaignId, initialData }: CampaignFormProp
             />
           </div>
 
-          <Separator />
-
-          {/* Hapus */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10"
-            onClick={handleDelete}
-            disabled={isDeleting}
-          >
-            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-            {isDeleting ? "Menghapus..." : "Hapus Campaign"}
-          </Button>
+          {campaignId && (
+            <>
+              <Separator />
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/10"
+                onClick={handleDelete}
+                disabled={isDeleting}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                {isDeleting ? "Menghapus..." : "Hapus Campaign"}
+              </Button>
+            </>
+          )}
         </aside>
       </div>
     </div>

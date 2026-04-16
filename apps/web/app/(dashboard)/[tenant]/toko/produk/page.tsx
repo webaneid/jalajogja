@@ -3,7 +3,6 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { sql, ilike, eq } from "drizzle-orm";
 import Link from "next/link";
-import { createProductDraftAction } from "../actions";
 import { ProductListClient } from "@/components/toko/product-list-client";
 
 function formatRupiah(amount: number | string) {
@@ -106,7 +105,7 @@ export default async function ProdukPage({
           <h1 className="text-xl font-semibold">Produk</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{total} produk</p>
         </div>
-        <ProductListClient slug={slug} createAction={createProductDraftAction} />
+        <ProductListClient slug={slug} />
       </div>
 
       {/* Filter status */}

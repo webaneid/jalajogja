@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Plus, MoreHorizontal, Pencil, Trash2, Eye, EyeOff } from "lucide-react";
-import { createPageDraftAction, deletePageAction, updatePageStatusAction } from "@/app/(dashboard)/[tenant]/website/actions";
+import { deletePageAction, updatePageStatusAction } from "@/app/(dashboard)/[tenant]/website/actions";
 import type { ContentStatus } from "@jalajogja/db";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -41,23 +41,11 @@ type Page = {
 
 export function CreatePageButton({ slug }: { slug: string }) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-
-  function handleCreate() {
-    startTransition(async () => {
-      const res = await createPageDraftAction(slug);
-      if (res.success) {
-        router.push(`/${slug}/website/pages/${res.data.pageId}/edit`);
-      } else {
-        alert(res.error);
-      }
-    });
-  }
 
   return (
-    <Button onClick={handleCreate} disabled={isPending} className="gap-2">
+    <Button onClick={() => router.push(`/${slug}/website/pages/new`)} className="gap-2">
       <Plus className="h-4 w-4" />
-      {isPending ? "Membuat..." : "Halaman Baru"}
+      Halaman Baru
     </Button>
   );
 }

@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Plus, MoreHorizontal, Pencil, Trash2, Eye, EyeOff, Search } from "lucide-react";
-import { createPostDraftAction, deletePostAction, updatePostStatusAction } from "@/app/(dashboard)/[tenant]/website/actions";
+import { deletePostAction, updatePostStatusAction } from "@/app/(dashboard)/[tenant]/website/actions";
 import type { ContentStatus } from "@jalajogja/db";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -42,23 +42,11 @@ type Post = {
 
 export function CreateButton({ slug }: { slug: string }) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-
-  function handleCreate() {
-    startTransition(async () => {
-      const res = await createPostDraftAction(slug);
-      if (res.success) {
-        router.push(`/${slug}/website/posts/${res.data.postId}/edit`);
-      } else {
-        alert(res.error);
-      }
-    });
-  }
 
   return (
-    <Button onClick={handleCreate} disabled={isPending} className="gap-2">
+    <Button onClick={() => router.push(`/${slug}/website/posts/new`)} className="gap-2">
       <Plus className="h-4 w-4" />
-      {isPending ? "Membuat..." : "Post Baru"}
+      Post Baru
     </Button>
   );
 }

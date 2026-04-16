@@ -35,6 +35,7 @@ import { SeoPanel } from "@/components/seo/seo-panel";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
 import {
   updatePostAction,
+  createPostAction,
   createCategoryAction,
   createTagAction,
 } from "@/app/(dashboard)/[tenant]/website/actions";
@@ -54,7 +55,7 @@ type Tag      = { id: string; name: string; slug: string };
 
 export type PostFormProps = {
   slug: string;
-  postId: string;
+  postId: string | null; // null = create mode (belum tersimpan di DB)
   initialData: {
     title:       string;
     postSlug:    string;
@@ -505,18 +506,31 @@ export function PostForm({
 
   function handleSave() {
     startTransition(async () => {
-      const res = await updatePostAction(slug, postId, buildPayload());
-      if (!res.success) { alert(res.error); return; }
-      router.refresh();
+      if (postId === null) {
+        // Create mode — record belum ada di DB
+        const res = await createPostAction(slug, buildPayload());
+        if (!res.success) { alert(res.error); return; }
+        router.push(`/${slug}/website/posts/${res.data.postId}/edit`);
+      } else {
+        const res = await updatePostAction(slug, postId, buildPayload());
+        if (!res.success) { alert(res.error); return; }
+        router.refresh();
+      }
     });
   }
 
   function handleChangeStatus(target: ContentStatus) {
     startTransition(async () => {
-      const res = await updatePostAction(slug, postId, buildPayload(target));
-      if (!res.success) { alert(res.error); return; }
-      setStatus(target);
-      router.refresh();
+      if (postId === null) {
+        const res = await createPostAction(slug, buildPayload(target));
+        if (!res.success) { alert(res.error); return; }
+        router.push(`/${slug}/website/posts/${res.data.postId}/edit`);
+      } else {
+        const res = await updatePostAction(slug, postId, buildPayload(target));
+        if (!res.success) { alert(res.error); return; }
+        setStatus(target);
+        router.refresh();
+      }
     });
   }
 
