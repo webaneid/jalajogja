@@ -34,6 +34,7 @@ export type EventData = {
   endsAt?:          string | null;
   location?:        string | null;
   locationDetail?:  string | null;
+  mapsUrl?:         string | null;
   onlineLink?:      string | null;
   organizerName?:   string | null;
   maxCapacity?:     number | null;
@@ -196,25 +197,26 @@ export async function createEventAction(
         status:           data.status,
         startsAt:         data.startsAt           ? new Date(data.startsAt)  : null,
         endsAt:           data.endsAt             ? new Date(data.endsAt)    : null,
-        location:         data.location?.trim()   ?? null,
-        locationDetail:   data.locationDetail?.trim() ?? null,
-        onlineLink:       data.onlineLink?.trim() ?? null,
-        organizerName:    data.organizerName?.trim() ?? null,
-        maxCapacity:      data.maxCapacity         ?? null,
+        location:         data.location?.trim()        ?? null,
+        locationDetail:   data.locationDetail?.trim()  ?? null,
+        mapsUrl:          data.mapsUrl?.trim()         || null,
+        onlineLink:       data.onlineLink?.trim()       ?? null,
+        organizerName:    data.organizerName?.trim()    ?? null,
+        maxCapacity:      data.maxCapacity              ?? null,
         showAttendeeList: data.showAttendeeList,
         showTicketCount:  data.showTicketCount,
         requireApproval:  data.requireApproval,
-        coverId:          data.coverId             ?? null,
-        metaTitle:        data.metaTitle?.trim()  || null,
-        metaDesc:         data.metaDesc?.trim()   || null,
-        ogTitle:          data.ogTitle?.trim()    || null,
-        ogDescription:    data.ogDescription?.trim() || null,
-        ogImageId:        data.ogImageId           ?? null,
-        twitterCard:      data.twitterCard         || "summary_large_image",
-        focusKeyword:     data.focusKeyword?.trim() || null,
-        canonicalUrl:     data.canonicalUrl?.trim() || null,
-        robots:           data.robots              || "index,follow",
-        schemaType:       data.schemaType          || "Event",
+        coverId:          data.coverId                  ?? null,
+        metaTitle:        data.metaTitle?.trim()       || null,
+        metaDesc:         data.metaDesc?.trim()        || null,
+        ogTitle:          data.ogTitle?.trim()         || null,
+        ogDescription:    data.ogDescription?.trim()   || null,
+        ogImageId:        data.ogImageId                ?? null,
+        twitterCard:      data.twitterCard              || "summary_large_image",
+        focusKeyword:     data.focusKeyword?.trim()    || null,
+        canonicalUrl:     data.canonicalUrl?.trim()    || null,
+        robots:           data.robots                  || "index,follow",
+        schemaType:       data.schemaType              || "Event",
       })
       .returning({ id: schema.events.id });
 
@@ -272,25 +274,26 @@ export async function updateEventAction(
         status:           data.status,
         startsAt:         data.startsAt           ? new Date(data.startsAt)  : null,
         endsAt:           data.endsAt             ? new Date(data.endsAt)    : null,
-        location:         data.location?.trim()   ?? null,
-        locationDetail:   data.locationDetail?.trim() ?? null,
-        onlineLink:       data.onlineLink?.trim() ?? null,
-        organizerName:    data.organizerName?.trim() ?? null,
-        maxCapacity:      data.maxCapacity         ?? null,
+        location:         data.location?.trim()        ?? null,
+        locationDetail:   data.locationDetail?.trim()  ?? null,
+        mapsUrl:          data.mapsUrl?.trim()         || null,
+        onlineLink:       data.onlineLink?.trim()       ?? null,
+        organizerName:    data.organizerName?.trim()    ?? null,
+        maxCapacity:      data.maxCapacity              ?? null,
         showAttendeeList: data.showAttendeeList,
         showTicketCount:  data.showTicketCount,
         requireApproval:  data.requireApproval,
-        coverId:          data.coverId             ?? null,
-        metaTitle:        data.metaTitle?.trim()  || null,
-        metaDesc:         data.metaDesc?.trim()   || null,
-        ogTitle:          data.ogTitle?.trim()    || null,
-        ogDescription:    data.ogDescription?.trim() || null,
-        ogImageId:        data.ogImageId           ?? null,
-        twitterCard:      data.twitterCard         || "summary_large_image",
-        focusKeyword:     data.focusKeyword?.trim() || null,
-        canonicalUrl:     data.canonicalUrl?.trim() || null,
-        robots:           data.robots              || "index,follow",
-        schemaType:       data.schemaType          || "Event",
+        coverId:          data.coverId                  ?? null,
+        metaTitle:        data.metaTitle?.trim()       || null,
+        metaDesc:         data.metaDesc?.trim()        || null,
+        ogTitle:          data.ogTitle?.trim()         || null,
+        ogDescription:    data.ogDescription?.trim()   || null,
+        ogImageId:        data.ogImageId                ?? null,
+        twitterCard:      data.twitterCard              || "summary_large_image",
+        focusKeyword:     data.focusKeyword?.trim()    || null,
+        canonicalUrl:     data.canonicalUrl?.trim()    || null,
+        robots:           data.robots                  || "index,follow",
+        schemaType:       data.schemaType              || "Event",
         updatedAt:        new Date(),
       })
       .where(eq(schema.events.id, eventId));
@@ -483,9 +486,13 @@ export async function registerForEventAction(
   const tenantDb = createTenantDb(slug);
   const { db, schema } = tenantDb;
 
-  // Cek event masih published
+  // Cek event masih published + ambil maxCapacity sekaligus
   const [event] = await db
-    .select({ id: schema.events.id, requireApproval: schema.events.requireApproval })
+    .select({
+      id:              schema.events.id,
+      requireApproval: schema.events.requireApproval,
+      maxCapacity:     schema.events.maxCapacity,
+    })
     .from(schema.events)
     .where(and(eq(schema.events.id, data.eventId), eq(schema.events.status, "published")))
     .limit(1);
@@ -511,39 +518,59 @@ export async function registerForEventAction(
   if (ticket.saleEndsAt && now > ticket.saleEndsAt)
     return { success: false, error: "Penjualan tiket sudah berakhir." };
 
-  // Cek kuota
-  if (ticket.quota != null) {
-    const [{ used }] = await db
-      .select({ used: count() })
-      .from(schema.eventRegistrations)
-      .where(and(
-        eq(schema.eventRegistrations.ticketId, data.ticketId),
-        sql`${schema.eventRegistrations.status} != 'cancelled'`
-      ));
-    if (Number(used) >= ticket.quota)
-      return { success: false, error: "Kuota tiket sudah habis." };
-  }
-
   try {
     const regNumber = await generateRegistrationNumber(tenantDb);
     const price     = parseFloat(String(ticket.price));
     const isGratis  = price <= 0;
-
-    // Status pendaftaran awal
     const regStatus = isGratis && !event.requireApproval ? "confirmed" : "pending";
 
-    const [reg] = await db
-      .insert(schema.eventRegistrations)
-      .values({
-        registrationNumber: regNumber,
-        eventId:            data.eventId,
-        ticketId:           data.ticketId,
-        attendeeName:       data.attendeeName.trim(),
-        attendeePhone:      data.attendeePhone?.trim() ?? null,
-        attendeeEmail:      data.attendeeEmail?.trim() ?? null,
-        status:             regStatus,
-      })
-      .returning({ id: schema.eventRegistrations.id });
+    // INSERT dalam transaction: lock tiket dulu (FOR UPDATE) untuk cegah race condition kuota
+    const [reg] = await db.transaction(async (tx) => {
+      // Lock tiket row — satu request menunggu yang lain selesai
+      await tx.select({ id: schema.eventTickets.id })
+        .from(schema.eventTickets)
+        .where(sql`${schema.eventTickets.id} = ${data.ticketId} FOR UPDATE`)
+        .limit(1);
+
+      // Cek kuota tiket (di dalam transaction, setelah lock)
+      if (ticket.quota != null) {
+        const [{ used }] = await tx
+          .select({ used: count() })
+          .from(schema.eventRegistrations)
+          .where(and(
+            eq(schema.eventRegistrations.ticketId, data.ticketId),
+            sql`${schema.eventRegistrations.status} != 'cancelled'`
+          ));
+        if (Number(used) >= ticket.quota)
+          throw new Error("Kuota tiket sudah habis.");
+      }
+
+      // Cek kapasitas total event
+      if (event.maxCapacity != null) {
+        const [{ total }] = await tx
+          .select({ total: count() })
+          .from(schema.eventRegistrations)
+          .where(and(
+            eq(schema.eventRegistrations.eventId, data.eventId),
+            sql`${schema.eventRegistrations.status} != 'cancelled'`
+          ));
+        if (Number(total) >= event.maxCapacity)
+          throw new Error("Kapasitas event sudah penuh.");
+      }
+
+      return tx
+        .insert(schema.eventRegistrations)
+        .values({
+          registrationNumber: regNumber,
+          eventId:            data.eventId,
+          ticketId:           data.ticketId,
+          attendeeName:       data.attendeeName.trim(),
+          attendeePhone:      data.attendeePhone?.trim() ?? null,
+          attendeeEmail:      data.attendeeEmail?.trim() ?? null,
+          status:             regStatus,
+        })
+        .returning({ id: schema.eventRegistrations.id });
+    });
 
     // Tiket berbayar — buat payment record
     if (!isGratis) {
@@ -568,6 +595,7 @@ export async function registerForEventAction(
         })
         .returning({ id: schema.payments.id });
 
+      revalidatePath(`/${slug}/event/acara/${data.eventId}`);
       return {
         success: true,
         data: {
@@ -582,11 +610,14 @@ export async function registerForEventAction(
       };
     }
 
+    revalidatePath(`/${slug}/event/acara/${data.eventId}`);
     return {
       success: true,
       data: { registrationId: reg.id, registrationNumber: regNumber, isPaid: true },
     };
   } catch (err) {
+    if (err instanceof Error && (err.message.includes("Kuota") || err.message.includes("Kapasitas")))
+      return { success: false, error: err.message };
     console.error("[registerForEventAction]", err);
     return { success: false, error: "Gagal mendaftarkan peserta. Silakan coba lagi." };
   }

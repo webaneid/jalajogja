@@ -51,6 +51,7 @@ export default async function AcaraNewPage({
         endsAt:           null,
         location:         "",
         locationDetail:   "",
+        mapsUrl:          "",
         onlineLink:       "",
         organizerName:    "",
         maxCapacity:      null,

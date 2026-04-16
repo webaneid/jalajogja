@@ -219,8 +219,8 @@ export async function POST(
     return NextResponse.json({ error: "Registrasi tidak ditemukan" }, { status: 404 });
   }
 
-  if (reg.status !== "attended" && reg.status !== "confirmed") {
-    return NextResponse.json({ error: "Sertifikat hanya untuk peserta yang hadir atau dikonfirmasi" }, { status: 400 });
+  if (reg.status !== "attended") {
+    return NextResponse.json({ error: "Sertifikat hanya bisa dibuat untuk peserta yang sudah hadir (check-in)" }, { status: 400 });
   }
 
   const [event] = await tenantDb

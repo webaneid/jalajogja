@@ -60,6 +60,7 @@ export default async function AcaraEditPage({
           : null,
         location:         event.location          ?? "",
         locationDetail:   event.locationDetail    ?? "",
+        mapsUrl:          event.mapsUrl           ?? "",
         onlineLink:       event.onlineLink        ?? "",
         organizerName:    event.organizerName     ?? "",
         maxCapacity:      event.maxCapacity        ?? null,

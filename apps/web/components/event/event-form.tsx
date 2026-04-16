@@ -34,8 +34,9 @@ type CoverImage = { id: string; url: string } | null;
 type CategoryOption = { id: string; name: string };
 
 type TicketLocal = TicketInput & {
-  _key:      string;   // React key lokal
-  _expanded: boolean;  // UI: expand/collapse detail tiket
+  _key:      string;    // React key lokal
+  _expanded: boolean;   // UI: expand/collapse detail tiket
+  _isGratis: boolean;   // UI: toggle Gratis/Berbayar — jika true price=0 dan input harga tersembunyi
 };
 
 export type EventFormProps = {
@@ -53,6 +54,7 @@ export type EventFormProps = {
     endsAt:           string | null;
     location:         string;
     locationDetail:   string;
+    mapsUrl:          string;
     onlineLink:       string;
     organizerName:    string;
     maxCapacity:      number | null;
@@ -141,6 +143,7 @@ export function EventForm({ slug, eventId, categories, initialData }: EventFormP
   const [endsAt,         setEndsAt]         = useState(initialData.endsAt    ?? "");
   const [location,       setLocation]       = useState(initialData.location);
   const [locationDetail, setLocationDetail] = useState(initialData.locationDetail);
+  const [mapsUrl,        setMapsUrl]        = useState(initialData.mapsUrl);
   const [onlineLink,     setOnlineLink]     = useState(initialData.onlineLink);
   const [organizerName,  setOrganizerName]  = useState(initialData.organizerName);
   const [maxCapacity,    setMaxCapacity]    = useState(
@@ -164,6 +167,7 @@ export function EventForm({ slug, eventId, categories, initialData }: EventFormP
       saleEndsAt:   t.saleEndsAt   ?? null,
       _key:         nextKey(),
       _expanded:    false,
+      _isGratis:    (t.price ?? 0) === 0,
     }))
   );
   const [seo,         setSeo]         = useState<SeoValues>(initialData.seo);
@@ -203,6 +207,7 @@ export function EventForm({ slug, eventId, categories, initialData }: EventFormP
       {
         _key:         nextKey(),
         _expanded:    true,
+        _isGratis:    true,
         id:           null,
         name:         "Tiket Baru",
         description:  "",
@@ -241,9 +246,10 @@ export function EventForm({ slug, eventId, categories, initialData }: EventFormP
       status,
       startsAt:         startsAt  || null,
       endsAt:           endsAt    || null,
-      location:         showLocation   ? location.trim()        || null : null,
-      locationDetail:   showLocation   ? locationDetail.trim()  || null : null,
-      onlineLink:       showOnlineLink ? onlineLink.trim()       || null : null,
+      location:         showLocation   ? location.trim()       || null : null,
+      locationDetail:   showLocation   ? locationDetail.trim() || null : null,
+      mapsUrl:          showLocation   ? mapsUrl.trim()        || null : null,
+      onlineLink:       showOnlineLink ? onlineLink.trim()      || null : null,
       organizerName:    organizerName.trim()   || null,
       maxCapacity:      cap && !isNaN(cap)     ? cap             : null,
       showAttendeeList,
@@ -488,6 +494,16 @@ export function EventForm({ slug, eventId, categories, initialData }: EventFormP
                     placeholder="Jl. Kaliurang No. 10, Sleman, Yogyakarta"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mapsUrl">Link Google Maps <span className="text-muted-foreground font-normal">(opsional)</span></Label>
+                  <Input
+                    id="mapsUrl"
+                    type="url"
+                    value={mapsUrl}
+                    onChange={(e) => setMapsUrl(e.target.value)}
+                    placeholder="https://maps.app.goo.gl/..."
+                  />
+                </div>
               </>
             )}
 
@@ -614,29 +630,59 @@ export function EventForm({ slug, eventId, categories, initialData }: EventFormP
                   {/* Ticket detail */}
                   {ticket._expanded && (
                     <div className="px-4 pb-4 pt-1 border-t border-border space-y-3 bg-muted/5">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Nama Tiket</Label>
-                          <Input
-                            value={ticket.name}
-                            onChange={(e) => updateTicket(ticket._key, { name: e.target.value })}
-                            placeholder="Tiket Umum"
-                            className="h-8 text-sm"
-                          />
+                      {/* Nama tiket */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Nama Tiket</Label>
+                        <Input
+                          value={ticket.name}
+                          onChange={(e) => updateTicket(ticket._key, { name: e.target.value })}
+                          placeholder="Tiket Umum"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+
+                      {/* Toggle Gratis / Berbayar */}
+                      <div className="space-y-2">
+                        <Label className="text-xs">Harga Tiket</Label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateTicket(ticket._key, { _isGratis: true, price: 0 })}
+                            className={cn(
+                              "flex-1 rounded-md border py-1.5 text-xs font-medium transition-colors",
+                              ticket._isGratis
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "border-border text-muted-foreground hover:border-primary/50"
+                            )}
+                          >
+                            Gratis
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateTicket(ticket._key, { _isGratis: false })}
+                            className={cn(
+                              "flex-1 rounded-md border py-1.5 text-xs font-medium transition-colors",
+                              !ticket._isGratis
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "border-border text-muted-foreground hover:border-primary/50"
+                            )}
+                          >
+                            Berbayar
+                          </button>
                         </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Harga (0 = Gratis)</Label>
+                        {!ticket._isGratis && (
                           <div className="relative">
                             <span className="absolute left-2.5 top-2 text-xs text-muted-foreground">Rp</span>
                             <Input
                               type="number"
-                              min={0}
-                              value={ticket.price}
+                              min={1}
+                              value={ticket.price || ""}
                               onChange={(e) => updateTicket(ticket._key, { price: parseInt(e.target.value) || 0 })}
+                              placeholder="Masukkan harga"
                               className="h-8 text-sm pl-7"
                             />
                           </div>
-                        </div>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">

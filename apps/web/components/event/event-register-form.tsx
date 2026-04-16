@@ -15,6 +15,7 @@ type TicketInfo = {
   price:       number;
   quota:       number | null;
   description: string | null | undefined;
+  usedCount?:  number;  // jumlah pendaftaran aktif (untuk tampil sisa kuota di form)
 };
 
 type BankAccount = {

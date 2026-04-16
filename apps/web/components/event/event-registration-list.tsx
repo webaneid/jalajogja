@@ -250,8 +250,8 @@ export function EventRegistrationList({
                         </Button>
                       )}
 
-                      {/* Sertifikat — hanya untuk hadir/confirmed */}
-                      {!isLoading && (reg.status === "attended" || reg.status === "confirmed") && (
+                      {/* Sertifikat — hanya untuk yang sudah hadir (check-in) */}
+                      {!isLoading && reg.status === "attended" && (
                         <EventCertificateButton
                           slug={slug}
                           eventId={eventId}

@@ -62,6 +62,7 @@ export function createEventsTable(s: ReturnType<typeof pgSchema>) {
     // Lokasi — untuk offline/hybrid
     location:       text("location"),         // nama tempat / link venue
     locationDetail: text("location_detail"),  // alamat lengkap
+    mapsUrl:        text("maps_url"),         // link Google Maps (opsional)
     onlineLink:     text("online_link"),      // Zoom/Meet/dll — untuk online/hybrid
 
     // Penyelenggara (bisa beda dari nama tenant)
@@ -142,7 +143,7 @@ export function createEventRegistrationsTable(s: ReturnType<typeof pgSchema>) {
     registrationNumber: text("registration_number").notNull().unique(),  // EVT-YYYYMM-NNNNN
 
     eventId:  uuid("event_id"),   // FK → events.id via SQL (ON DELETE CASCADE)
-    ticketId: uuid("ticket_id"),  // FK → event_tickets.id via SQL
+    ticketId: uuid("ticket_id").notNull(),  // FK → event_tickets.id via SQL
 
     // Peserta — anggota login atau publik tanpa akun
     memberId:      uuid("member_id"),   // FK → public.members.id via SQL (nullable)

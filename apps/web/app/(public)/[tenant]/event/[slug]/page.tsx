@@ -1,8 +1,8 @@
 // Halaman publik event — tanpa auth, siapapun bisa akses dan mendaftar
 import { createTenantDb, db, tenants } from "@jalajogja/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { CalendarDays, MapPin, Globe, Users, Ticket } from "lucide-react";
+import { CalendarDays, MapPin, Globe, Users, Ticket, MapIcon, UserCheck } from "lucide-react";
 import { EventRegisterForm } from "@/components/event/event-register-form";
 
 type BankAccount = {
@@ -98,19 +98,62 @@ export default async function PublicEventPage({
     .where(and(eq(schema.settings.key, "qris_accounts"), eq(schema.settings.group, "payment")))
     .limit(1);
 
-  const allBanks  = (bankRow?.value as BankAccount[] | null) ?? [];
-  const allQris   = (qrisRow?.value as QrisAccount[] | null) ?? [];
+  const allBanks = (bankRow?.value as BankAccount[] | null) ?? [];
+  const allQris  = (qrisRow?.value  as QrisAccount[] | null) ?? [];
 
-  // Filter: ambil yang punya kategori "donasi" atau "general" sebagai fallback pembayaran event
-  const banks = allBanks.filter((b) =>
-    b.categories?.includes("donasi") || b.categories?.includes("general")
-  );
-  const qrisAccounts = allQris.filter((q) =>
-    q.categories?.includes("donasi") || q.categories?.includes("general")
-  );
+  // Filter: "donasi" atau "general" sebagai fallback pembayaran event
+  // TODO: tambah kategori "event" di settings payment saat ada tiket berbayar
+  const banks        = allBanks.filter((b) => b.categories?.includes("donasi") || b.categories?.includes("general"));
+  const qrisAccounts = allQris.filter((q)  => q.categories?.includes("donasi") || q.categories?.includes("general"));
 
-  // Apakah ada tiket berbayar
   const hasPaidTicket = tickets.some((t) => parseFloat(String(t.price)) > 0);
+
+  // ── showTicketCount: hitung sisa kuota per tiket ──────────────────────────
+  type TicketCount = { ticketId: string; used: number };
+  let ticketCounts: TicketCount[] = [];
+
+  if (event.showTicketCount && tickets.some((t) => t.quota != null)) {
+    const rows = await tenantDb
+      .select({
+        ticketId: schema.eventRegistrations.ticketId,
+        used:     count(),
+      })
+      .from(schema.eventRegistrations)
+      .where(and(
+        eq(schema.eventRegistrations.eventId, event.id),
+        sql`${schema.eventRegistrations.status} != 'cancelled'`
+      ))
+      .groupBy(schema.eventRegistrations.ticketId);
+
+    ticketCounts = rows.map((r) => ({ ticketId: r.ticketId!, used: Number(r.used) }));
+  }
+
+  // ── showAttendeeList: ambil nama peserta yang confirmed/attended ──────────
+  let attendeeNames: string[] = [];
+
+  if (event.showAttendeeList) {
+    const rows = await tenantDb
+      .select({ name: schema.eventRegistrations.attendeeName })
+      .from(schema.eventRegistrations)
+      .where(and(
+        eq(schema.eventRegistrations.eventId, event.id),
+        sql`${schema.eventRegistrations.status} IN ('confirmed','attended')`
+      ))
+      .orderBy(schema.eventRegistrations.attendeeName);
+
+    attendeeNames = rows.map((r) => r.name);
+  }
+
+  // Bangun info tiket untuk form (dengan sisa kuota)
+  const ticketCountMap = new Map(ticketCounts.map((tc) => [tc.ticketId, tc.used]));
+  const ticketsForForm = tickets.map((t) => ({
+    id:          t.id,
+    name:        t.name,
+    price:       parseFloat(String(t.price)),
+    quota:       t.quota,
+    description: t.description,
+    usedCount:   ticketCountMap.get(t.id) ?? 0,
+  }));
 
   return (
     <div className="min-h-screen bg-background">
@@ -166,6 +209,19 @@ export default async function PublicEventPage({
           {event.locationDetail && (
             <p className="text-sm text-muted-foreground">{event.locationDetail}</p>
           )}
+
+          {/* Tombol Google Maps */}
+          {event.mapsUrl && (event.eventType === "offline" || event.eventType === "hybrid") && (
+            <a
+              href={event.mapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+            >
+              <MapIcon className="h-4 w-4" />
+              Lihat di Google Maps
+            </a>
+          )}
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1fr_320px] items-start">
@@ -192,6 +248,23 @@ export default async function PublicEventPage({
                 </a>
               </div>
             )}
+
+            {/* Daftar peserta (jika showAttendeeList aktif) */}
+            {event.showAttendeeList && attendeeNames.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-sm font-semibold flex items-center gap-1.5">
+                  <UserCheck className="h-4 w-4 text-muted-foreground" />
+                  Peserta Terdaftar ({attendeeNames.length})
+                </p>
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <ul className="space-y-1.5 text-sm text-muted-foreground columns-2">
+                    {attendeeNames.map((name, i) => (
+                      <li key={i} className="truncate">{name}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Kanan: Tiket + Form */}
@@ -203,17 +276,34 @@ export default async function PublicEventPage({
               </div>
             ) : (
               <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                {/* Info tiket + kuota (jika showTicketCount aktif) */}
+                {event.showTicketCount && tickets.some((t) => t.quota != null) && (
+                  <div className="space-y-2">
+                    {tickets.map((t) => {
+                      const used     = ticketCountMap.get(t.id) ?? 0;
+                      const quota    = t.quota;
+                      const isFull   = quota != null && used >= quota;
+                      const sisaText = quota != null ? `${quota - used} sisa` : "Tidak terbatas";
+                      return (
+                        <div key={t.id} className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Ticket className="h-3 w-3" />
+                            {t.name}
+                          </span>
+                          <span className={isFull ? "text-destructive font-medium" : ""}>
+                            {isFull ? "Penuh" : sisaText}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 <p className="font-semibold text-sm">Daftar Sekarang</p>
                 <EventRegisterForm
                   slug={tenantSlug}
                   eventId={event.id}
-                  tickets={tickets.map((t) => ({
-                    id:    t.id,
-                    name:  t.name,
-                    price: parseFloat(String(t.price)),
-                    quota: t.quota,
-                    description: t.description,
-                  }))}
+                  tickets={ticketsForForm}
                   requireApproval={event.requireApproval}
                   banks={banks}
                   qrisAccounts={qrisAccounts}

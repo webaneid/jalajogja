@@ -586,6 +586,7 @@ export async function createTenantSchemaInDb(
         ends_at                 TIMESTAMPTZ,
         location                TEXT,
         location_detail         TEXT,
+        maps_url                TEXT,
         online_link             TEXT,
         organizer_name          TEXT,
         max_capacity            INTEGER,
