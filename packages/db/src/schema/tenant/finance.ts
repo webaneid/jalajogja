@@ -24,7 +24,7 @@ export const PAYMENT_METHODS = ["cash", "transfer", "qris", "midtrans", "xendit"
 export type PaymentMethod = typeof PAYMENT_METHODS[number];
 
 // Sumber uang masuk — semua melalui tabel payments yang sama
-export const PAYMENT_SOURCE_TYPES = ["order", "donation", "invoice", "manual"] as const;
+export const PAYMENT_SOURCE_TYPES = ["order", "donation", "invoice", "event_registration", "manual"] as const;
 export type PaymentSourceType = typeof PAYMENT_SOURCE_TYPES[number];
 
 export const PAYMENT_STATUSES = [

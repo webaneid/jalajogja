@@ -400,7 +400,7 @@ export async function createTenantSchemaInDb(
         id                UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
         number            TEXT           NOT NULL UNIQUE,
         source_type       TEXT           NOT NULL
-                                         CHECK (source_type IN ('order','donation','invoice','manual')),
+                                         CHECK (source_type IN ('order','donation','invoice','event_registration','manual')),
         source_id         UUID,          -- nullable untuk source_type='manual'
         amount            NUMERIC(15,2)  NOT NULL,
         unique_code       SMALLINT       NOT NULL DEFAULT 0,
@@ -559,7 +559,113 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 23. Product Categories ─────────────────────────────────────────────
+    // ── 23. Event Categories ──────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".event_categories (
+        id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        name       TEXT        NOT NULL,
+        slug       TEXT        NOT NULL UNIQUE,
+        sort_order INTEGER     NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 24. Events ────────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".events (
+        id                      UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+        slug                    TEXT          NOT NULL UNIQUE,
+        title                   TEXT          NOT NULL,
+        description             TEXT,
+        category_id             UUID          REFERENCES "${s}".event_categories(id) ON DELETE SET NULL,
+        event_type              TEXT          NOT NULL DEFAULT 'offline'
+                                              CHECK (event_type IN ('offline','online','hybrid')),
+        status                  TEXT          NOT NULL DEFAULT 'draft'
+                                              CHECK (status IN ('draft','published','cancelled','completed')),
+        starts_at               TIMESTAMPTZ,
+        ends_at                 TIMESTAMPTZ,
+        location                TEXT,
+        location_detail         TEXT,
+        online_link             TEXT,
+        organizer_name          TEXT,
+        max_capacity            INTEGER,
+        show_attendee_list      BOOLEAN       NOT NULL DEFAULT false,
+        show_ticket_count       BOOLEAN       NOT NULL DEFAULT true,
+        require_approval        BOOLEAN       NOT NULL DEFAULT false,
+        cover_id                UUID          REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        certificate_template_id UUID,
+        meta_title              TEXT,
+        meta_desc               TEXT,
+        og_title                TEXT,
+        og_description          TEXT,
+        og_image_id             UUID          REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        twitter_card            TEXT          DEFAULT 'summary_large_image'
+                                              CHECK (twitter_card IN ('summary','summary_large_image')),
+        focus_keyword           TEXT,
+        canonical_url           TEXT,
+        robots                  TEXT          NOT NULL DEFAULT 'index,follow'
+                                              CHECK (robots IN ('index,follow','noindex','noindex,nofollow')),
+        schema_type             TEXT          NOT NULL DEFAULT 'Event',
+        structured_data         JSONB,
+        created_by              UUID          REFERENCES "${s}".officers(id) ON DELETE SET NULL,
+        created_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 25. Event Tickets ─────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".event_tickets (
+        id             UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id       UUID          NOT NULL REFERENCES "${s}".events(id) ON DELETE CASCADE,
+        name           TEXT          NOT NULL,
+        description    TEXT,
+        price          NUMERIC(15,2) NOT NULL DEFAULT 0,
+        quota          INTEGER,
+        sort_order     INTEGER       NOT NULL DEFAULT 0,
+        is_active      BOOLEAN       NOT NULL DEFAULT true,
+        sale_starts_at TIMESTAMPTZ,
+        sale_ends_at   TIMESTAMPTZ,
+        created_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 26. Event Registrations ───────────────────────────────────────────
+    // Uang masuk via payments (source_type='event_registration', source_id=id)
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".event_registrations (
+        id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        registration_number TEXT        NOT NULL UNIQUE,
+        event_id            UUID        NOT NULL REFERENCES "${s}".events(id) ON DELETE CASCADE,
+        ticket_id           UUID        NOT NULL REFERENCES "${s}".event_tickets(id),
+        member_id           UUID        REFERENCES public.members(id) ON DELETE SET NULL,
+        attendee_name       TEXT        NOT NULL,
+        attendee_phone      TEXT,
+        attendee_email      TEXT,
+        custom_fields       JSONB,
+        status              TEXT        NOT NULL DEFAULT 'pending'
+                                        CHECK (status IN ('pending','confirmed','cancelled','attended')),
+        checked_in_at       TIMESTAMPTZ,
+        checked_in_by       UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        certificate_url     TEXT,
+        certificate_sent_at TIMESTAMPTZ,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 27. Event Registration Sequences ─────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".event_registration_sequences (
+        id      UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        year    INTEGER NOT NULL,
+        month   INTEGER NOT NULL,
+        counter INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (year, month)
+      )
+    `));
+
+    // ── 28. Product Categories ─────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".product_categories (
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -570,7 +676,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 20. Products ───────────────────────────────────────────────────────
+    // ── 29. Products ───────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".products (
         id          UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -605,7 +711,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 21. Orders ─────────────────────────────────────────────────────────
+    // ── 30. Orders ─────────────────────────────────────────────────────────
     // customer_id → public.members.id (bukan tenant member)
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".orders (
@@ -627,7 +733,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 22. Order Items ────────────────────────────────────────────────────
+    // ── 31. Order Items ────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".order_items (
         id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
