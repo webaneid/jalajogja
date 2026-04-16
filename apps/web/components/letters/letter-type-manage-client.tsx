@@ -16,6 +16,9 @@ type LetterType = {
   defaultCategory: string;
   isActive:        boolean;
   sortOrder:       number;
+  identitasLayout: "layout1" | "layout2" | "layout3";
+  showLampiran:    boolean;
+  dateFormat:      "masehi" | "masehi_hijri" | null;
 };
 
 type Props = {
@@ -25,6 +28,9 @@ type Props = {
 
 const EMPTY = {
   name: "", code: "", defaultCategory: "UMUM", isActive: true, sortOrder: "0",
+  identitasLayout: "layout1" as "layout1" | "layout2" | "layout3",
+  showLampiran: true,
+  dateFormat: null as "masehi" | "masehi_hijri" | null,
 };
 
 export function LetterTypeManageClient({ slug, initialTypes }: Props) {
@@ -50,6 +56,9 @@ export function LetterTypeManageClient({ slug, initialTypes }: Props) {
       defaultCategory: t.defaultCategory,
       isActive:        t.isActive,
       sortOrder:       String(t.sortOrder),
+      identitasLayout: t.identitasLayout,
+      showLampiran:    t.showLampiran,
+      dateFormat:      t.dateFormat,
     });
     setError("");
     setShowForm(true);
@@ -73,6 +82,10 @@ export function LetterTypeManageClient({ slug, initialTypes }: Props) {
       defaultCategory: form.defaultCategory.trim() || "UMUM",
       isActive:        form.isActive,
       sortOrder:       parseInt(form.sortOrder) || 0,
+      identitasLayout: form.identitasLayout,
+      // Layout 3 selalu showLampiran=false
+      showLampiran:    form.identitasLayout === "layout3" ? false : form.showLampiran,
+      dateFormat:      form.dateFormat,
     };
 
     startTransition(async () => {
@@ -87,7 +100,11 @@ export function LetterTypeManageClient({ slug, initialTypes }: Props) {
       } else {
         const res = await createLetterTypeAction(slug, data);
         if (res.success) {
-          setTypes((prev) => [...prev, { id: res.typeId, ...data, description: null }]);
+          setTypes((prev) => [...prev, {
+            id: res.typeId, ...data,
+            description: null,
+            dateFormat: data.dateFormat ?? null,
+          }]);
           closeForm();
         } else {
           setError(res.error);
@@ -184,6 +201,79 @@ export function LetterTypeManageClient({ slug, initialTypes }: Props) {
             Aktif
           </label>
 
+          {/* ── Format Identitas Surat ── */}
+          <div className="rounded-md border border-border p-3 space-y-3">
+            <p className="text-xs font-medium text-muted-foreground">Format Identitas Surat</p>
+
+            {/* Layout */}
+            <div>
+              <p className="text-xs text-muted-foreground mb-1.5">Layout</p>
+              <div className="space-y-1.5">
+                {(["layout1", "layout2", "layout3"] as const).map((val) => (
+                  <label key={val} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="radio"
+                      name="identitasLayout"
+                      value={val}
+                      checked={form.identitasLayout === val}
+                      onChange={() => setForm((f) => ({
+                        ...f,
+                        identitasLayout: val,
+                        // Layout 3: paksa showLampiran=false
+                        showLampiran: val === "layout3" ? false : f.showLampiran,
+                        // Layout 3: format tanggal tidak relevan (tanggal di bawah TTD)
+                      }))}
+                      className="accent-primary"
+                    />
+                    <span>
+                      {val === "layout1" && "Layout 1 — Identitas kiri, tanggal kanan (klasik)"}
+                      {val === "layout2" && "Layout 2 — Tanggal pojok kanan atas, identitas di bawah"}
+                      {val === "layout3" && "Layout 3 — Terpusat: SE, SK, Pengumuman"}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Format tanggal — hanya untuk Layout 1 & 2 */}
+            {form.identitasLayout !== "layout3" && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1.5">Format Tanggal</p>
+                <div className="space-y-1.5">
+                  {([
+                    { val: null,          label: "Default (ikut pengaturan global)" },
+                    { val: "masehi",      label: "Masehi — Yogyakarta, 16 April 2026" },
+                    { val: "masehi_hijri", label: "Masehi + Hijriah — dua baris" },
+                  ] as const).map(({ val, label }) => (
+                    <label key={String(val)} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="radio"
+                        name="dateFormat"
+                        checked={form.dateFormat === val}
+                        onChange={() => setForm((f) => ({ ...f, dateFormat: val }))}
+                        className="accent-primary"
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tampilkan Lampiran — hanya untuk Layout 1 & 2 */}
+            {form.identitasLayout !== "layout3" && (
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.showLampiran}
+                  onChange={(e) => setForm((f) => ({ ...f, showLampiran: e.target.checked }))}
+                  className="h-4 w-4 rounded accent-primary"
+                />
+                Tampilkan baris Lampiran
+              </label>
+            )}
+          </div>
+
           {error && <p className="text-xs text-destructive">{error}</p>}
 
           <div className="flex gap-2">
@@ -232,7 +322,12 @@ export function LetterTypeManageClient({ slug, initialTypes }: Props) {
                         <span className="rounded-full bg-zinc-100 text-zinc-500 px-2 py-0.5 text-xs">Non-aktif</span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">Kategori: {t.defaultCategory}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Kategori: {t.defaultCategory}
+                      {" · "}
+                      {t.identitasLayout === "layout1" ? "L1" : t.identitasLayout === "layout2" ? "L2" : "L3"}
+                      {t.identitasLayout !== "layout3" && !t.showLampiran && " · tanpa lampiran"}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-4">

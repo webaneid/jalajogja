@@ -1,7 +1,8 @@
-import { createTenantDb } from "@jalajogja/db";
+import { createTenantDb, db, refRegencies } from "@jalajogja/db";
 import { getSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
+import { eq } from "drizzle-orm";
 import { LetterConfigClient } from "@/components/letters/letter-config-client";
 import type { LetterConfig } from "@/app/(dashboard)/[tenant]/letters/actions";
 import { DEFAULT_LETTER_CONFIG } from "@/lib/letter-number";
@@ -18,6 +19,9 @@ const DEFAULT_CONFIG: LetterConfig = {
   number_format:   DEFAULT_LETTER_CONFIG.number_format,
   org_code:        DEFAULT_LETTER_CONFIG.org_code,
   number_padding:  DEFAULT_LETTER_CONFIG.number_padding,
+  date_format:     "masehi",
+  hijri_offset:    0,
+  letter_city:     null,
 };
 
 export default async function LetterPengaturanPage({
@@ -30,7 +34,12 @@ export default async function LetterPengaturanPage({
   if (!access) redirect("/login");
 
   const tenantClient = createTenantDb(slug);
-  const generalSettings = await getSettings(tenantClient, "general");
+
+  const [generalSettings, contactSettings] = await Promise.all([
+    getSettings(tenantClient, "general"),
+    getSettings(tenantClient, "contact"),
+  ]);
+
   const raw = (generalSettings["letter_config"] as Partial<LetterConfig> | undefined) ?? {};
 
   const config: LetterConfig = {
@@ -45,7 +54,27 @@ export default async function LetterPengaturanPage({
     number_format:   raw.number_format   ?? DEFAULT_CONFIG.number_format,
     org_code:        raw.org_code        ?? DEFAULT_CONFIG.org_code,
     number_padding:  raw.number_padding  ?? DEFAULT_CONFIG.number_padding,
+    date_format:     raw.date_format     ?? DEFAULT_CONFIG.date_format,
+    hijri_offset:    raw.hijri_offset    ?? DEFAULT_CONFIG.hijri_offset,
+    letter_city:     raw.letter_city     ?? null,
   };
+
+  // Ambil nama kota dari kontak untuk ditampilkan sebagai placeholder hint
+  const contactAddress = contactSettings["contact_address"] as {
+    regencyId?: number;
+  } | undefined;
+  let contactCity = "";
+  if (contactAddress?.regencyId) {
+    const [regRow] = await db
+      .select({ name: refRegencies.name, type: refRegencies.type })
+      .from(refRegencies)
+      .where(eq(refRegencies.id, contactAddress.regencyId))
+      .limit(1);
+    if (regRow) {
+      const prefix = regRow.type === "kota" ? /^Kota\s+/i : /^Kabupaten\s+/i;
+      contactCity = regRow.name.replace(prefix, "").trim();
+    }
+  }
 
   const isAdmin = ["owner", "admin"].includes(access.tenantUser.role);
 
@@ -62,6 +91,7 @@ export default async function LetterPengaturanPage({
         slug={slug}
         initialConfig={config}
         isAdmin={isAdmin}
+        contactCity={contactCity}
       />
     </div>
   );

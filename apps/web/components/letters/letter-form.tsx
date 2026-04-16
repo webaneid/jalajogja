@@ -7,6 +7,7 @@ import {
   getNextLetterNumberAction,
 } from "@/app/(dashboard)/[tenant]/letters/actions";
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
+import { RecipientCombobox, type ContactOption, type RecipientSelection } from "./recipient-combobox";
 
 type LetterType = { id: string; name: string; code: string | null; defaultCategory: string };
 type Template   = { id: string; name: string; type: string; subject: string | null; body: string | null };
@@ -26,6 +27,7 @@ type DefaultValues = {
   paperSize:       "A4" | "F4" | "Letter";
   mergeFields:     Record<string, string>;
   attachmentUrls:  string[];
+  attachmentLabel: string;
 };
 
 type Props = {
@@ -35,16 +37,18 @@ type Props = {
   letterTypes:   LetterType[];
   templates:     Template[];
   officers:      Officer[];
+  contacts:      ContactOption[];
   defaultValues: DefaultValues;
   orgName:       string;
 };
 
-export function LetterForm({ slug, letterId, type, letterTypes, templates, officers, defaultValues, orgName }: Props) {
+export function LetterForm({ slug, letterId, type, letterTypes, templates, officers, contacts: initialContacts, defaultValues, orgName }: Props) {
   const router  = useRouter();
   const [form, setForm] = useState(defaultValues);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const [generatingNum, setGeneratingNum] = useState(false);
+  const [contacts, setContacts] = useState<ContactOption[]>(initialContacts);
 
   function set(field: keyof DefaultValues, value: unknown) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -131,15 +135,22 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
             <button
               type="button"
               onClick={handleGenerateNumber}
-              disabled={generatingNum}
-              className="rounded border border-border px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-60 whitespace-nowrap"
+              disabled={generatingNum || !form.typeId}
+              title={!form.typeId ? "Pilih jenis surat terlebih dahulu" : "Generate nomor surat otomatis"}
+              className="rounded border border-border px-3 py-2 text-sm hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
             >
               {generatingNum ? "..." : "Generate"}
             </button>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Pilih <strong>Jenis Surat</strong> dan <strong>Yang Mengeluarkan</strong> sebelum generate nomor.
-          </p>
+          {!form.typeId ? (
+            <p className="text-xs text-amber-600 mt-1">
+              Pilih <strong>Jenis Surat</strong> di sidebar terlebih dahulu untuk mengaktifkan generate nomor.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground mt-1">
+              Pilih <strong>Yang Mengeluarkan</strong> jika format nomor menggunakan kode divisi.
+            </p>
+          )}
         </div>
 
         {/* Perihal */}
@@ -154,15 +165,44 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
           />
         </div>
 
+        {/* Lampiran */}
+        <div>
+          <label className="text-xs text-muted-foreground">Lampiran</label>
+          <input
+            type="text"
+            value={form.attachmentLabel}
+            onChange={(e) => set("attachmentLabel", e.target.value)}
+            placeholder='mis. 1 (satu) berkas, — (jika tidak ada)'
+            className={fieldCls}
+          />
+          <p className="text-xs text-muted-foreground mt-0.5">Teks yang tampil di identitas surat. Kosongkan jika tidak perlu.</p>
+        </div>
+
         {/* Kepada */}
         <div>
           <label className="text-xs text-muted-foreground">Kepada</label>
-          <input
-            type="text"
+          <RecipientCombobox
+            slug={slug}
             value={form.recipient}
-            onChange={(e) => set("recipient", e.target.value)}
-            placeholder="Nama penerima / instansi"
-            className={fieldCls}
+            onChange={(data: RecipientSelection) => {
+              set("recipient", data.name);
+              // Simpan data penerima lengkap ke mergeFields agar {{recipient.*}} bisa di-resolve
+              setForm((f) => ({
+                ...f,
+                recipient: data.name,
+                mergeFields: {
+                  ...f.mergeFields,
+                  recipient_title:        data.title,
+                  recipient_organization: data.organization,
+                  recipient_address:      data.address,
+                  recipient_phone:        data.phone,
+                  recipient_email:        data.email,
+                },
+              }));
+            }}
+            contacts={contacts}
+            onContactCreated={(c) => setContacts((prev) => [...prev, c])}
+            orgName={orgName}
           />
         </div>
 

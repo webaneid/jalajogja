@@ -1,13 +1,18 @@
 // GET /api/ref/tenant-members?slug=&status=active|alumni|all&search=&page=1
-// Daftar anggota suatu tenant — untuk picker penerima mail merge bulk
+// Daftar anggota suatu tenant — untuk picker penerima mail merge bulk + RecipientCombobox
 // Butuh sesi valid (admin/owner)
 
 import { NextRequest, NextResponse } from "next/server";
-import { db, members, tenantMemberships, contacts } from "@jalajogja/db";
+import { db, members, tenantMemberships, contacts, addresses, refRegencies } from "@jalajogja/db";
 import { eq, and, ilike, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getTenantAccess } from "@/lib/tenant";
 
 const PAGE_SIZE = 30;
+
+// Alias untuk JOIN ganda (addresses + ref_regencies)
+const homeAddress = alias(addresses, "home_address");
+const homeRegency = alias(refRegencies, "home_regency");
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -61,7 +66,7 @@ export async function GET(request: NextRequest) {
   const total  = count ?? 0;
   const offset = (page - 1) * PAGE_SIZE;
 
-  // Fetch halaman — LEFT JOIN ke contacts untuk phone/email
+  // Fetch halaman — LEFT JOIN ke contacts, addresses, refRegencies
   const rows = await db
     .select({
       id:           members.id,
@@ -71,28 +76,38 @@ export async function GET(request: NextRequest) {
       phone:        contacts.phone,
       email:        contacts.email,
       status:       tenantMemberships.status,
+      // Alamat: detail jalan + nama kabupaten/kota sebagai ringkasan
+      addressDetail: homeAddress.detail,
+      addressRegency: homeRegency.name,
     })
     .from(members)
     .innerJoin(tenantMemberships, and(
       eq(tenantMemberships.memberId, members.id),
       membershipCondition as ReturnType<typeof and>
     ))
-    .leftJoin(contacts, eq(contacts.id, members.contactId))
+    .leftJoin(contacts,     eq(contacts.id,     members.contactId))
+    .leftJoin(homeAddress,  eq(homeAddress.id,  members.homeAddressId))
+    .leftJoin(homeRegency,  eq(homeRegency.id,  homeAddress.regencyId))
     .where(searchCondition)
     .orderBy(members.name)
     .limit(PAGE_SIZE)
     .offset(offset);
 
   return NextResponse.json({
-    items: rows.map((r) => ({
-      id:           r.id,
-      name:         r.name,
-      memberNumber: r.memberNumber ?? null,
-      nik:          r.nik          ?? null,
-      phone:        r.phone        ?? null,
-      email:        r.email        ?? null,
-      status:       r.status,
-    })),
+    items: rows.map((r) => {
+      // Bangun string alamat ringkas: "Jl. XX No. 1, Kab. Sleman"
+      const addrParts = [r.addressDetail, r.addressRegency].filter(Boolean);
+      return {
+        id:           r.id,
+        name:         r.name,
+        memberNumber: r.memberNumber ?? null,
+        nik:          r.nik          ?? null,
+        phone:        r.phone        ?? null,
+        email:        r.email        ?? null,
+        address:      addrParts.length > 0 ? addrParts.join(", ") : null,
+        status:       r.status,
+      };
+    }),
     total,
     page,
     pageSize:   PAGE_SIZE,

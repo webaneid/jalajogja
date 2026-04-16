@@ -22,7 +22,8 @@ export type LetterData = {
   subject:        string;
   body?:          string | null;
   mergeFields?:   Record<string, string>;
-  attachmentUrls?: string[];
+  attachmentUrls?:  string[];
+  attachmentLabel?: string | null;
   sender:         string;
   recipient:      string;
   letterDate:     string;        // ISO date string
@@ -42,6 +43,9 @@ export type LetterTypeData = {
   defaultCategory: string;
   isActive:        boolean;
   sortOrder:       number;
+  identitasLayout: "layout1" | "layout2" | "layout3";
+  showLampiran:    boolean;
+  dateFormat:      "masehi" | "masehi_hijri" | null;
 };
 
 export type LetterTemplateData = {
@@ -53,13 +57,17 @@ export type LetterTemplateData = {
 };
 
 export type LetterContactData = {
-  name:          string;
-  title?:        string | null;
-  organization?: string | null;
-  address?:      string | null;
-  email?:        string | null;
-  phone?:        string | null;
-  memberId?:     string | null;
+  name:           string;
+  title?:         string | null;
+  organization?:  string | null;
+  addressDetail?: string | null;
+  provinceId?:    number | null;
+  regencyId?:     number | null;
+  districtId?:    number | null;
+  villageId?:     number | null;
+  email?:         string | null;
+  phone?:         string | null;
+  memberId?:      string | null;
 };
 
 // ─── Letter Number Generator ────────────────────────────────────────────────
@@ -261,7 +269,8 @@ export async function updateLetterAction(
         ...(data.subject    !== undefined && { subject:    data.subject.trim() }),
         ...(data.body       !== undefined && { body:       data.body }),
         ...(data.mergeFields !== undefined && { mergeFields: data.mergeFields }),
-        ...(data.attachmentUrls !== undefined && { attachmentUrls: data.attachmentUrls }),
+        ...(data.attachmentUrls  !== undefined && { attachmentUrls:  data.attachmentUrls }),
+        ...(data.attachmentLabel !== undefined && { attachmentLabel: data.attachmentLabel ?? null }),
         ...(data.sender     !== undefined && { sender:     data.sender.trim() }),
         ...(data.recipient  !== undefined && { recipient:  data.recipient.trim() }),
         ...(data.letterDate !== undefined && { letterDate: data.letterDate }),
@@ -365,6 +374,9 @@ export async function createLetterTypeAction(
         defaultCategory: data.defaultCategory.trim() || "UMUM",
         isActive:        data.isActive,
         sortOrder:       data.sortOrder,
+        identitasLayout: data.identitasLayout,
+        showLampiran:    data.showLampiran,
+        dateFormat:      data.dateFormat ?? null,
       })
       .returning({ id: schema.letterTypes.id });
 
@@ -396,6 +408,9 @@ export async function updateLetterTypeAction(
         defaultCategory: data.defaultCategory.trim() || "UMUM",
         isActive:        data.isActive,
         sortOrder:       data.sortOrder,
+        identitasLayout: data.identitasLayout,
+        showLampiran:    data.showLampiran,
+        dateFormat:      data.dateFormat ?? null,
         updatedAt:       new Date(),
       })
       .where(eq(schema.letterTypes.id, typeId));
@@ -550,13 +565,17 @@ export async function createLetterContactAction(
     const [contact] = await tenantDb
       .insert(schema.letterContacts)
       .values({
-        name:         data.name.trim(),
-        title:        data.title?.trim()        || null,
-        organization: data.organization?.trim() || null,
-        address:      data.address?.trim()      || null,
-        email:        data.email?.trim()        || null,
-        phone:        data.phone?.trim()        || null,
-        memberId:     data.memberId             || null,
+        name:          data.name.trim(),
+        title:         data.title?.trim()         || null,
+        organization:  data.organization?.trim()  || null,
+        addressDetail: data.addressDetail?.trim() || null,
+        provinceId:    data.provinceId            ?? null,
+        regencyId:     data.regencyId             ?? null,
+        districtId:    data.districtId            ?? null,
+        villageId:     data.villageId             ?? null,
+        email:         data.email?.trim()         || null,
+        phone:         data.phone?.trim()         || null,
+        memberId:      data.memberId              || null,
       })
       .returning({ id: schema.letterContacts.id });
 
@@ -582,14 +601,18 @@ export async function updateLetterContactAction(
     await tenantDb
       .update(schema.letterContacts)
       .set({
-        name:         data.name.trim(),
-        title:        data.title?.trim()        || null,
-        organization: data.organization?.trim() || null,
-        address:      data.address?.trim()      || null,
-        email:        data.email?.trim()        || null,
-        phone:        data.phone?.trim()        || null,
-        memberId:     data.memberId             || null,
-        updatedAt:    new Date(),
+        name:          data.name.trim(),
+        title:         data.title?.trim()         || null,
+        organization:  data.organization?.trim()  || null,
+        addressDetail: data.addressDetail?.trim() || null,
+        provinceId:    data.provinceId            ?? null,
+        regencyId:     data.regencyId             ?? null,
+        districtId:    data.districtId            ?? null,
+        villageId:     data.villageId             ?? null,
+        email:         data.email?.trim()         || null,
+        phone:         data.phone?.trim()         || null,
+        memberId:      data.memberId              || null,
+        updatedAt:     new Date(),
       })
       .where(eq(schema.letterContacts.id, contactId));
 
@@ -842,6 +865,13 @@ export type LetterConfig = {
   number_format:   string;
   org_code:        string;
   number_padding:  number;
+  // Format tanggal default (berlaku jika jenis surat tidak set dateFormat-nya)
+  date_format:     "masehi" | "masehi_hijri";
+  // Penyesuaian kalender Hijriah vs kalkulasi internasional: -1, 0, atau +1 hari
+  hijri_offset:    number;
+  // Kota yang tampil di tanggal surat (mis. "Yogyakarta, 16 April 2026")
+  // Jika null/kosong → fallback ke kota dari settings kontak
+  letter_city:     string | null;
 };
 
 export async function saveLetterConfigAction(

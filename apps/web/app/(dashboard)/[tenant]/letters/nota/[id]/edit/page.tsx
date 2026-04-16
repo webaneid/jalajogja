@@ -1,4 +1,4 @@
-import { createTenantDb, db, members, getSettings } from "@jalajogja/db";
+import { createTenantDb, db, members, getSettings, refProvinces, refRegencies, refDistricts } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
@@ -85,6 +85,38 @@ export default async function NotaDinasEditPage({
     divisionCode: o.divisionId ? (divisionMap.get(o.divisionId) ?? null) : null,
   }));
 
+  // Fetch kontak surat untuk autocomplete field Kepada
+  const rawContacts = await tenantDb
+    .select({
+      id:           schema.letterContacts.id,
+      name:         schema.letterContacts.name,
+      title:        schema.letterContacts.title,
+      organization: schema.letterContacts.organization,
+      addressDetail: schema.letterContacts.addressDetail,
+      provinceId:   schema.letterContacts.provinceId,
+      regencyId:    schema.letterContacts.regencyId,
+      districtId:   schema.letterContacts.districtId,
+      phone:        schema.letterContacts.phone,
+      email:        schema.letterContacts.email,
+    })
+    .from(schema.letterContacts)
+    .orderBy(schema.letterContacts.name);
+
+  // Resolve nama wilayah untuk address display di RecipientCombobox
+  const cProvinceIds = [...new Set(rawContacts.map((c) => c.provinceId).filter((x): x is number => x != null))];
+  const cRegencyIds  = [...new Set(rawContacts.map((c) => c.regencyId).filter((x): x is number => x != null))];
+  const cDistrictIds = [...new Set(rawContacts.map((c) => c.districtId).filter((x): x is number => x != null))];
+
+  const [cProvinceRows, cRegencyRows, cDistrictRows] = await Promise.all([
+    cProvinceIds.length > 0 ? db.select({ id: refProvinces.id, name: refProvinces.name }).from(refProvinces).where(inArray(refProvinces.id, cProvinceIds)) : Promise.resolve([]),
+    cRegencyIds.length  > 0 ? db.select({ id: refRegencies.id, name: refRegencies.name }).from(refRegencies).where(inArray(refRegencies.id, cRegencyIds)) : Promise.resolve([]),
+    cDistrictIds.length > 0 ? db.select({ id: refDistricts.id, name: refDistricts.name }).from(refDistricts).where(inArray(refDistricts.id, cDistrictIds)) : Promise.resolve([]),
+  ]);
+
+  const cProvinceMap = new Map(cProvinceRows.map((p) => [p.id, p.name]));
+  const cRegencyMap  = new Map(cRegencyRows.map((r) => [r.id, r.name]));
+  const cDistrictMap = new Map(cDistrictRows.map((d) => [d.id, d.name]));
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center gap-3">
@@ -119,6 +151,23 @@ export default async function NotaDinasEditPage({
           body:    t.body    ?? null,
         }))}
         officers={officers}
+        contacts={rawContacts.map((c) => {
+          const parts = [
+            c.addressDetail,
+            c.districtId ? cDistrictMap.get(c.districtId) : null,
+            c.regencyId  ? cRegencyMap.get(c.regencyId)   : null,
+            c.provinceId ? cProvinceMap.get(c.provinceId) : null,
+          ].filter(Boolean);
+          return {
+            id:           c.id,
+            name:         c.name,
+            title:        c.title        ?? null,
+            organization: c.organization ?? null,
+            address:      parts.length > 0 ? parts.join(", ") : null,
+            phone:        c.phone        ?? null,
+            email:        c.email        ?? null,
+          };
+        })}
         defaultValues={{
           letterNumber:    letter.letterNumber ?? "",
           typeId:          letter.typeId       ?? "",
@@ -133,6 +182,7 @@ export default async function NotaDinasEditPage({
           paperSize:       (letter.paperSize as "A4" | "F4" | "Letter") ?? "A4",
           mergeFields:     (letter.mergeFields as Record<string, string>) ?? {},
           attachmentUrls:  (letter.attachmentUrls as string[]) ?? [],
+          attachmentLabel: (letter as { attachmentLabel?: string | null }).attachmentLabel ?? "",
         }}
       />
     </div>

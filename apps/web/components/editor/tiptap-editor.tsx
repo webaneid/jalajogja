@@ -56,6 +56,9 @@ export function TiptapEditor({
           levels: [1, 2, 3, 4],
         },
         codeBlock: {},
+        // Matikan Link bawaan StarterKit — kita pakai versi kustom di bawah (autolink off)
+        // Tanpa ini StarterKit mungkin aktifkan autolink-nya sendiri
+        link: false,
       }),
 
       // Image digantikan oleh MediaImageExtension (extend dengan mediaId attr)

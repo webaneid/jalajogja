@@ -1,7 +1,7 @@
-import { createTenantDb, db, members } from "@jalajogja/db";
+import { createTenantDb, db, members, tenants, getSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
-import { eq, inArray, and } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft, Pencil, Copy, Users } from "lucide-react";
 import { renderBody } from "@/lib/letter-render";
@@ -33,6 +33,24 @@ export default async function SuratKeluarDetailPage({
 
   const tenantClient             = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
+
+  // Fetch settings org — sama persis dengan generate-pdf/route.ts
+  const [generalSettingsRaw, orgSettings] = await Promise.all([
+    getSettings(tenantClient, "general"),
+    getSettings(tenantClient, "contact"),
+  ]);
+
+  // Ambil nama tenant dari public.tenants sebagai fallback jika site_name belum diset
+  const [tenantRow] = await db
+    .select({ name: tenants.name })
+    .from(tenants)
+    .where(eq(tenants.slug, slug))
+    .limit(1);
+
+  const orgName    = (generalSettingsRaw["site_name"] as string | undefined) ?? tenantRow?.name ?? "";
+  const orgAddress = (orgSettings["contact_address"] as { detail?: string } | undefined)?.detail ?? "";
+  const orgPhone   = (orgSettings["contact_phone"] as string | undefined) ?? "";
+  const orgEmail   = (orgSettings["contact_email"] as string | undefined) ?? "";
 
   // Fetch surat
   const [letter] = await tenantDb
@@ -134,26 +152,14 @@ export default async function SuratKeluarDetailPage({
 
   const isAdmin = ["owner", "admin"].includes(access.tenantUser.role);
 
-  // Ambil setting organisasi untuk merge fields
-  const [orgSetting] = await tenantDb
-    .select({ value: schema.settings.value })
-    .from(schema.settings)
-    .where(
-      and(
-        eq(schema.settings.key, "general"),
-        eq(schema.settings.group, "general")
-      )
-    )
-    .limit(1);
-
-  const orgData = (orgSetting?.value as Record<string, string> | null) ?? {};
+  const mf = (letter.mergeFields as Record<string, string> | null) ?? {};
 
   // Build merge context dan resolve variabel di body
   const mergeCtx = buildMergeContext({
-    orgName:      orgData.name    ?? "",
-    orgAddress:   orgData.address ?? "",
-    orgPhone:     orgData.phone   ?? "",
-    orgEmail:     orgData.email   ?? "",
+    orgName,
+    orgAddress,
+    orgPhone,
+    orgEmail,
     letterNumber: letter.letterNumber ?? "",
     letterDate:   letter.letterDate   ?? "",
     subject:      letter.subject      ?? "",
@@ -164,6 +170,15 @@ export default async function SuratKeluarDetailPage({
       position: s.signerPosition,
       division: s.signerDivision ?? "",
     })),
+    // Data penerima lengkap — disimpan di mergeFields saat kontak/anggota dipilih di form
+    recipientData: {
+      name:         letter.recipient    ?? "",
+      title:        mf.recipient_title        ?? "",
+      organization: mf.recipient_organization ?? "",
+      address:      mf.recipient_address      ?? "",
+      phone:        mf.recipient_phone        ?? "",
+      email:        mf.recipient_email        ?? "",
+    },
   });
 
   // Resolve variabel di JSON string, lalu render ke HTML

@@ -1,111 +1,21 @@
 // Render body surat: Tiptap JSON → HTML, atau plain text → escaped HTML
 // Dipakai di halaman detail surat dan template PDF (server-side)
 //
-// PENTING: semua extension di sini harus server-safe (tidak boleh akses window/document).
-// - Jangan import @tiptap/extension-link langsung — pakai ServerLink (tanpa click handler)
-// - Jangan import @tiptap/extension-table langsung — pakai ServerTable* (tanpa resizable)
-// - Jangan import extension yang pakai ReactNodeViewRenderer (@tiptap/react)
-// - EmbedBlock → stub server-safe (tanpa addNodeView)
-// - MediaImageExtension → aman (extends @tiptap/extension-image, tanpa browser API)
+// PENTING: implementasi ini pure string manipulation — tidak pakai @tiptap/core
+// atau prosemirror-model agar tidak ada dependency pada window/document (server-safe).
 
-import { generateHTML, Node, Mark, mergeAttributes } from "@tiptap/core";
-import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
-import TextAlign from "@tiptap/extension-text-align";
-import { TextStyle } from "@tiptap/extension-text-style";
-import Color from "@tiptap/extension-color";
-import Highlight from "@tiptap/extension-highlight";
-import { MediaImageExtension } from "@/components/editor/media-image-ext";
+type TiptapNode = {
+  type: string;
+  text?: string;
+  attrs?: Record<string, string | number | null>;
+  content?: TiptapNode[];
+  marks?: TiptapMark[];
+};
 
-// Link server-safe: hanya renderHTML, tanpa click handler / window access
-const ServerLink = Mark.create({
-  name: "link",
-  addAttributes() {
-    return {
-      href:   { default: null },
-      target: { default: "_blank" },
-      rel:    { default: "noopener noreferrer" },
-      class:  { default: null },
-      title:  { default: null },
-    };
-  },
-  parseHTML() { return [{ tag: "a[href]" }]; },
-  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, unknown> }) {
-    return ["a", mergeAttributes(HTMLAttributes as Record<string, string>), 0];
-  },
-});
-
-// Table server-safe: tanpa resizable (resizable pakai DOM/window)
-const ServerTable = Node.create({
-  name: "table",
-  group: "block",
-  content: "tableRow+",
-  parseHTML() { return [{ tag: "table" }]; },
-  renderHTML() { return ["table", 0]; },
-});
-const ServerTableRow = Node.create({
-  name: "tableRow",
-  content: "(tableCell | tableHeader)*",
-  parseHTML() { return [{ tag: "tr" }]; },
-  renderHTML() { return ["tr", 0]; },
-});
-const ServerTableCell = Node.create({
-  name: "tableCell",
-  content: "block+",
-  addAttributes() { return { colspan: { default: 1 }, rowspan: { default: 1 } }; },
-  parseHTML() { return [{ tag: "td" }]; },
-  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, unknown> }) {
-    return ["td", mergeAttributes(HTMLAttributes as Record<string, string>), 0];
-  },
-});
-const ServerTableHeader = Node.create({
-  name: "tableHeader",
-  content: "block+",
-  addAttributes() { return { colspan: { default: 1 }, rowspan: { default: 1 } }; },
-  parseHTML() { return [{ tag: "th" }]; },
-  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, unknown> }) {
-    return ["th", mergeAttributes(HTMLAttributes as Record<string, string>), 0];
-  },
-});
-
-// Stub server-safe untuk EmbedBlock — sama persis schema-nya tapi tanpa addNodeView
-// (ReactNodeViewRenderer tidak bisa dipakai di server)
-const EmbedBlockRender = Node.create({
-  name: "embedBlock",
-  group: "block",
-  atom: true,
-  addAttributes() {
-    return {
-      url:          { default: null },
-      html:         { default: null },
-      provider:     { default: null },
-      title:        { default: null },
-      thumbnailUrl: { default: null },
-    };
-  },
-  parseHTML() {
-    return [{ tag: 'div[data-type="embed-block"]' }];
-  },
-  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, unknown> }) {
-    return ["div", mergeAttributes(HTMLAttributes as Record<string, string>, { "data-type": "embed-block" })];
-  },
-});
-
-const RENDER_EXTENSIONS = [
-  StarterKit,
-  Underline,
-  ServerLink,
-  TextAlign.configure({ types: ["heading", "paragraph"] }),
-  TextStyle,
-  Color.configure({ types: ["textStyle"] }),
-  Highlight.configure({ multicolor: true }),
-  ServerTable,
-  ServerTableRow,
-  ServerTableCell,
-  ServerTableHeader,
-  MediaImageExtension,
-  EmbedBlockRender,
-];
+type TiptapMark = {
+  type: string;
+  attrs?: Record<string, string | null>;
+};
 
 function escapeHtml(str: string): string {
   return str
@@ -115,33 +25,123 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// Sanitasi Tiptap JSON: hapus text node kosong yang menyebabkan
-// "Empty text nodes are not allowed" di generateHTML.
-// Terjadi saat autolink memecah {{variable}} menjadi link node + text node kosong.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sanitizeTiptapJson(node: any): any {
-  if (!node || typeof node !== "object") return node;
-  if (node.content) {
-    node.content = (node.content as any[])
-      .map(sanitizeTiptapJson)
-      .filter((child: any) => {
-        // Buang text node dengan text kosong atau undefined
-        if (child.type === "text") return child.text != null && child.text !== "";
-        return true;
-      });
+function applyMark(text: string, mark: TiptapMark): string {
+  switch (mark.type) {
+    case "bold":      return `<strong>${text}</strong>`;
+    case "italic":    return `<em>${text}</em>`;
+    case "underline": return `<u>${text}</u>`;
+    case "strike":    return `<s>${text}</s>`;
+    case "code":      return `<code>${text}</code>`;
+    case "link": {
+      const href = escapeHtml(mark.attrs?.href ?? "");
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+    }
+    case "textStyle": {
+      const color = mark.attrs?.color;
+      return color ? `<span style="color:${color}">${text}</span>` : text;
+    }
+    case "highlight": {
+      const color = mark.attrs?.color;
+      return color
+        ? `<mark style="background-color:${color}">${text}</mark>`
+        : `<mark>${text}</mark>`;
+    }
+    default: return text;
   }
-  return node;
+}
+
+function renderChildren(node: TiptapNode): string {
+  if (!node.content?.length) return "";
+  return node.content.map(renderNode).join("");
+}
+
+function renderNode(node: TiptapNode): string {
+  switch (node.type) {
+    case "doc":
+      return renderChildren(node);
+
+    case "paragraph": {
+      const align = node.attrs?.textAlign as string | null;
+      const style = align ? ` style="text-align:${align}"` : "";
+      const inner = renderChildren(node);
+      return `<p${style}>${inner || "<br>"}</p>`;
+    }
+
+    case "heading": {
+      const level = node.attrs?.level ?? 2;
+      const align = node.attrs?.textAlign as string | null;
+      const style = align ? ` style="text-align:${align}"` : "";
+      return `<h${level}${style}>${renderChildren(node)}</h${level}>`;
+    }
+
+    case "text": {
+      let text = escapeHtml(node.text ?? "");
+      for (const mark of node.marks ?? []) {
+        text = applyMark(text, mark);
+      }
+      return text;
+    }
+
+    case "bulletList":
+      return `<ul style="padding-left:1.5em;margin:0.5em 0">${renderChildren(node)}</ul>`;
+
+    case "orderedList":
+      return `<ol style="padding-left:1.5em;margin:0.5em 0">${renderChildren(node)}</ol>`;
+
+    case "listItem":
+      return `<li>${renderChildren(node)}</li>`;
+
+    case "blockquote":
+      return `<blockquote style="border-left:3px solid #ddd;padding-left:1em;margin:0.5em 0;color:#666">${renderChildren(node)}</blockquote>`;
+
+    case "codeBlock":
+      return `<pre style="background:#f5f5f5;padding:1em;border-radius:4px;overflow-x:auto"><code>${renderChildren(node)}</code></pre>`;
+
+    case "horizontalRule":
+      return `<hr style="border:none;border-top:1px solid #ddd;margin:1em 0">`;
+
+    case "hardBreak":
+      return `<br>`;
+
+    case "image": {
+      const src = escapeHtml(node.attrs?.src as string ?? "");
+      const alt = escapeHtml(node.attrs?.alt as string ?? "");
+      return `<img src="${src}" alt="${alt}" style="max-width:100%;height:auto">`;
+    }
+
+    case "table":
+      return `<table style="width:100%;border-collapse:collapse;margin:0.5em 0">${renderChildren(node)}</table>`;
+
+    case "tableRow":
+      return `<tr>${renderChildren(node)}</tr>`;
+
+    case "tableHeader":
+      return `<th style="border:1px solid #ddd;padding:8px;background:#f5f5f5;text-align:left">${renderChildren(node)}</th>`;
+
+    case "tableCell":
+      return `<td style="border:1px solid #ddd;padding:8px">${renderChildren(node)}</td>`;
+
+    case "embedBlock": {
+      const html = node.attrs?.html as string | null;
+      if (html) return `<div style="margin:1em 0">${html}</div>`;
+      const url = escapeHtml(node.attrs?.url as string ?? "");
+      return `<a href="${url}" target="_blank">${url}</a>`;
+    }
+
+    default:
+      return renderChildren(node);
+  }
 }
 
 export function renderBody(body: string | null | undefined): string {
   if (!body) return "";
   try {
-    const json = JSON.parse(body);
-    // Pastikan ini memang Tiptap doc
-    if (json?.type !== "doc") return escapeHtml(body).replace(/\n/g, "<br>");
-    return generateHTML(sanitizeTiptapJson(json), RENDER_EXTENSIONS);
+    const json = JSON.parse(body) as TiptapNode;
+    if (json?.type !== "doc") {
+      return escapeHtml(body).replace(/\n/g, "<br>");
+    }
+    return renderNode(json);
   } catch {
-    // Plain text fallback — escape HTML + newline → <br>
-    return escapeHtml(body).replace(/\n/g, "<br>");
+    return escapeHtml(body ?? "").replace(/\n/g, "<br>");
   }
 }

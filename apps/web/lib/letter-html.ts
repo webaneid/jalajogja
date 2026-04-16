@@ -1,9 +1,133 @@
 // Builder HTML surat untuk Playwright PDF
-// Menghasilkan HTML lengkap: kop surat, isi, penandatangan + QR
+// Menghasilkan HTML lengkap: kop surat, identitas, tujuan, isi, penandatangan + QR
 
 import { renderBody } from "./letter-render";
 import { resolveMergeFields, buildMergeContext } from "./letter-merge";
 import { generateQrDataUrl, buildVerifyUrl } from "./qr-code";
+
+// ── Helpers tanggal ──────────────────────────────────────────────────────────
+
+const ID_MONTHS_HTML = [
+  "Januari","Februari","Maret","April","Mei","Juni",
+  "Juli","Agustus","September","Oktober","November","Desember",
+] as const;
+
+const HIJRI_MONTHS_HTML = [
+  "Muharram","Safar","Rabiul Awal","Rabiul Akhir",
+  "Jumadil Awal","Jumadil Akhir","Rajab","Sya'ban",
+  "Ramadan","Syawal","Dzulqa'dah","Dzulhijjah",
+] as const;
+
+function formatLetterDate(
+  letterDate: Date,
+  format: "masehi" | "masehi_hijri",
+  orgCity: string,
+  hijriOffset = 0
+): string {
+  const dd   = letterDate.getDate();
+  const mm   = letterDate.getMonth();
+  const yyyy = letterDate.getFullYear();
+  const masehiStr = `${dd} ${ID_MONTHS_HTML[mm]} ${yyyy}`;
+  const prefix = orgCity ? `${orgCity}, ` : "";
+
+  if (format === "masehi") {
+    return `${prefix}${masehiStr}`;
+  }
+
+  // masehi_hijri — hitung Hijriah, hasilkan dua baris HTML
+  const shifted = new Date(letterDate);
+  shifted.setDate(shifted.getDate() + hijriOffset);
+  let hijriLine = "";
+  try {
+    const parts = new Intl.DateTimeFormat("id-ID-u-ca-islamic-umalqura", {
+      year: "numeric", month: "numeric", day: "numeric",
+    }).formatToParts(shifted);
+    const hDay   = Number(parts.find((p) => p.type === "day")?.value   ?? "0");
+    const hMonth = Number(parts.find((p) => p.type === "month")?.value ?? "1");
+    const hYear  = Number(parts.find((p) => p.type === "year")?.value  ?? "0");
+    hijriLine = `${hDay} ${HIJRI_MONTHS_HTML[(hMonth - 1) % 12]} ${hYear} H`;
+  } catch {
+    hijriLine = "";
+  }
+  return `${prefix}${masehiStr} M<br><hr style="border:none;border-top:0.5px solid currentColor;opacity:0.4;margin:2px 0;">${hijriLine}`;
+}
+
+// ── Identitas Surat ──────────────────────────────────────────────────────────
+
+type IdentitasParams = {
+  identitasLayout: "layout1" | "layout2" | "layout3";
+  dateFormat:      "masehi" | "masehi_hijri";
+  letterNumber:    string | null;
+  subject:         string;
+  attachmentLabel: string | null;
+  showLampiran:    boolean;
+  letterDate:      Date;
+  orgCity:         string;
+  letterTypeName:  string;
+  hijriOffset:     number;
+};
+
+function renderIdentitasSurat(p: IdentitasParams): string {
+  const dateHtml = formatLetterDate(p.letterDate, p.dateFormat, p.orgCity, p.hijriOffset);
+
+  if (p.identitasLayout === "layout3") {
+    // Terpusat — nama jenis surat besar + nomor. Tanggal di bawah TTD.
+    return `
+      <div class="identitas-layout3">
+        <p class="identitas-jenis">${escapeHtml(p.letterTypeName).toUpperCase()}</p>
+        ${p.letterNumber ? `<p class="identitas-nomor">Nomor: ${escapeHtml(p.letterNumber)}</p>` : ""}
+      </div>`;
+  }
+
+  const rows: string[] = [];
+  if (p.letterNumber) {
+    rows.push(`<tr><td class="id-label">Nomor</td><td class="id-sep">:</td><td>${escapeHtml(p.letterNumber)}</td></tr>`);
+  }
+  if (p.showLampiran) {
+    rows.push(`<tr><td class="id-label">Lampiran</td><td class="id-sep">:</td><td>${escapeHtml(p.attachmentLabel || "—")}</td></tr>`);
+  }
+  rows.push(`<tr><td class="id-label">Hal</td><td class="id-sep">:</td><td>${escapeHtml(p.subject)}</td></tr>`);
+
+  const identitasTable = `<table class="id-table">${rows.join("")}</table>`;
+  const dateDiv = `<div class="id-tanggal">${dateHtml}</div>`;
+
+  if (p.identitasLayout === "layout1") {
+    // Dua kolom: identitas kiri, tanggal kanan sejajar baris pertama
+    return `
+      <div class="identitas-layout1">
+        <div class="id-kiri">${identitasTable}</div>
+        <div class="id-kanan">${dateDiv}</div>
+      </div>`;
+  }
+
+  // Layout 2: tanggal pojok kanan atas, identitas di bawah
+  return `
+    <div class="identitas-layout2">
+      <div class="id-tanggal-atas">${dateDiv}</div>
+      ${identitasTable}
+    </div>`;
+}
+
+// ── Tujuan Surat ─────────────────────────────────────────────────────────────
+
+function renderTujuanSurat(
+  recipientName:         string | null,
+  recipientTitle:        string | null,
+  recipientOrganization: string | null,
+  showTujuan:            boolean
+): string {
+  if (!showTujuan || !recipientName?.trim()) return "";
+
+  const lines = [
+    "Kepada Yth.",
+    recipientName,
+    recipientTitle        || null,
+    recipientOrganization || null,
+    "di Tempat",
+  ].filter((l): l is string => !!l);
+
+  return `<div class="tujuan-surat">${lines.map((l) => `<p>${escapeHtml(l)}</p>`).join("")}</div>`;
+}
 
 // Lebar kertas tepat per ukuran (presisi sesuai standar cetak)
 // A4     : 210mm lebar, tinggi menyesuaikan konten
@@ -31,19 +155,36 @@ type SignerInfo = {
   slug:             string;
 };
 
+type RecipientData = {
+  title:        string;
+  organization: string;
+  address:      string;
+  phone:        string;
+  email:        string;
+};
+
 type LetterHtmlParams = {
-  letterNumber: string | null;
-  letterDate:   string;
-  subject:      string;
-  sender:       string;
-  recipient:    string;
-  body:         string | null;
-  template:     TemplateConfig;
-  signers:      SignerInfo[];
-  orgName:      string;
-  orgAddress:   string;
-  orgPhone:     string;
-  orgEmail:     string;
+  letterNumber:    string | null;
+  letterDate:      string;   // ISO date string dari DB
+  subject:         string;
+  sender:          string;
+  recipient:       string;
+  recipientData?:  RecipientData;
+  body:            string | null;
+  template:        TemplateConfig;
+  signers:         SignerInfo[];
+  orgName:         string;
+  orgAddress:      string;
+  orgPhone:        string;
+  orgEmail:        string;
+  // Identitas Surat
+  identitasLayout:  "layout1" | "layout2" | "layout3";
+  dateFormat:       "masehi" | "masehi_hijri";
+  attachmentLabel:  string | null;
+  showLampiran:     boolean;
+  letterTypeName:   string;
+  orgCity:          string;   // kota dari settings.contact_address (regency name)
+  hijriOffset:      number;
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -64,7 +205,14 @@ export function paperFormat(size: string): { format?: string; width?: string; he
 
 // Build full HTML surat — siap dirender Playwright
 export async function buildLetterHtml(params: LetterHtmlParams): Promise<string> {
-  const { template, signers, orgName, orgAddress, orgPhone, orgEmail } = params;
+  const {
+    template, signers, orgName, orgAddress, orgPhone, orgEmail,
+    identitasLayout, dateFormat, attachmentLabel, showLampiran,
+    letterTypeName, orgCity, hijriOffset,
+  } = params;
+
+  // Parse letterDate dari ISO string ke Date object untuk kalkulasi format
+  const letterDateObj = params.letterDate ? new Date(params.letterDate) : new Date();
 
   const mergeCtx = buildMergeContext({
     orgName,
@@ -81,9 +229,17 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
       position: s.position,
       division: s.division ?? "",
     })),
+    recipientData: {
+      name:         params.recipient,
+      title:        params.recipientData?.title        ?? "",
+      organization: params.recipientData?.organization ?? "",
+      address:      params.recipientData?.address      ?? "",
+      phone:        params.recipientData?.phone        ?? "",
+      email:        params.recipientData?.email        ?? "",
+    },
   });
 
-  const resolvedBody = resolveMergeFields(params.body ?? "", mergeCtx);
+  const resolvedBody = resolveMergeFields(params.body ?? "", mergeCtx, hijriOffset);
   const bodyHtml     = renderBody(resolvedBody);
 
   // Generate QR untuk setiap penandatangan
@@ -122,37 +278,27 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
        </div>`
     : "";
 
-  const metaSection = `
-    <table class="meta-table">
-      ${params.letterNumber ? `
-      <tr>
-        <td class="meta-label">Nomor</td>
-        <td class="meta-sep">:</td>
-        <td>${escapeHtml(params.letterNumber)}</td>
-      </tr>` : ""}
-      <tr>
-        <td class="meta-label">Perihal</td>
-        <td class="meta-sep">:</td>
-        <td>${escapeHtml(params.subject)}</td>
-      </tr>
-      <tr>
-        <td class="meta-label">Tanggal</td>
-        <td class="meta-sep">:</td>
-        <td>${escapeHtml(params.letterDate)}</td>
-      </tr>
-    </table>
-    <table class="meta-table meta-addr" style="margin-top: 16px">
-      <tr>
-        <td class="meta-label">Dari</td>
-        <td class="meta-sep">:</td>
-        <td>${escapeHtml(params.sender)}</td>
-      </tr>
-      <tr>
-        <td class="meta-label">Kepada</td>
-        <td class="meta-sep">:</td>
-        <td>${escapeHtml(params.recipient)}</td>
-      </tr>
-    </table>`;
+  // Identitas surat (Layout 1/2/3) + Tujuan surat
+  const identitasHtml = renderIdentitasSurat({
+    identitasLayout,
+    dateFormat,
+    letterNumber:    params.letterNumber,
+    subject:         params.subject,
+    attachmentLabel: attachmentLabel,
+    showLampiran,
+    letterDate:      letterDateObj,
+    orgCity,
+    letterTypeName,
+    hijriOffset,
+  });
+
+  // Layout 3 tidak menampilkan tujuan surat
+  const tujuanHtml = renderTujuanSurat(
+    params.recipient || null,
+    params.recipientData?.title        || null,
+    params.recipientData?.organization || null,
+    identitasLayout !== "layout3"
+  );
 
   const signSection = signersWithQr.length > 0
     ? `<div class="sign-section">
@@ -199,10 +345,34 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
     .org-name  { font-size: 16pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
     .org-detail { font-size: 10pt; margin-top: 2px; }
 
-    /* Metadata surat */
-    .meta-table { border-collapse: collapse; margin-top: 16px; font-size: 12pt; }
-    .meta-label { width: 80px; vertical-align: top; }
-    .meta-sep   { width: 14px; vertical-align: top; }
+    /* Identitas Surat */
+    /* Layout 1 — dua kolom */
+    .identitas-layout1 {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-top: 16px;
+    }
+    .id-kiri  { flex: 1; }
+    .id-kanan { text-align: right; white-space: nowrap; }
+    .id-tanggal { font-size: 12pt; }
+
+    /* Layout 2 — tanggal pojok kanan atas */
+    .identitas-layout2 { margin-top: 16px; }
+    .id-tanggal-atas { text-align: right; margin-bottom: 8px; font-size: 12pt; }
+
+    /* Layout 3 — terpusat */
+    .identitas-layout3 { text-align: center; margin-top: 16px; }
+    .identitas-jenis   { font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+    .identitas-nomor   { font-size: 12pt; margin-top: 4px; }
+
+    /* Tabel identitas (Layout 1 & 2) */
+    .id-table    { border-collapse: collapse; font-size: 12pt; }
+    .id-label    { width: 80px; vertical-align: top; }
+    .id-sep      { width: 14px; vertical-align: top; }
+
+    /* Tujuan Surat */
+    .tujuan-surat { margin-top: 20px; font-size: 12pt; line-height: 1.8; }
 
     /* Body */
     .body-surat { margin-top: 20px; font-size: 12pt; text-align: justify; }
@@ -254,7 +424,8 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
 </head>
 <body>
   ${headerSection}
-  ${metaSection}
+  ${identitasHtml}
+  ${tujuanHtml}
   <div class="body-surat">${bodyHtml}</div>
   ${signSection}
   ${footerSection}

@@ -9,8 +9,8 @@ import {
   Image,
   Globe,
   Mail,
-  FileText,
   Wallet,
+  HeartHandshake,
   ShoppingBag,
   Settings,
 } from "lucide-react";
@@ -23,6 +23,7 @@ const navItems = [
   { label: "Website",    icon: Globe,           path: "website"    },
   { label: "Surat",      icon: Mail,            path: "letters"    },
   { label: "Keuangan",   icon: Wallet,          path: "finance"    },
+  { label: "Donasi",     icon: HeartHandshake,  path: "donasi"     },
   { label: "Toko",       icon: ShoppingBag,     path: "toko"       },
   { label: "Pengaturan", icon: Settings,        path: "settings"   },
 ];

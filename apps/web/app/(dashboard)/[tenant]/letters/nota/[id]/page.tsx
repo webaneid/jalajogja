@@ -1,10 +1,11 @@
-import { createTenantDb, db, members } from "@jalajogja/db";
+import { createTenantDb, db, members, tenants, getSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { renderBody } from "@/lib/letter-render";
+import { resolveMergeFields, buildMergeContext } from "@/lib/letter-merge";
 import { generateQrDataUrl, buildVerifyUrl } from "@/lib/qr-code";
 import { LetterSigningSection } from "@/components/letters/letter-signing-section";
 import type { AvailableSigner, ExistingSignature } from "@/components/letters/letter-signing-section";
@@ -29,7 +30,25 @@ export default async function NotaDinasDetailPage({
   const access = await getTenantAccess(slug);
   if (!access) redirect("/login");
 
-  const { db: tenantDb, schema } = createTenantDb(slug);
+  const tenantClient             = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
+
+  // Fetch settings org — konsisten dengan keluar/[id]/page.tsx dan generate-pdf/route.ts
+  const [generalSettingsRaw, orgSettings] = await Promise.all([
+    getSettings(tenantClient, "general"),
+    getSettings(tenantClient, "contact"),
+  ]);
+
+  const [tenantRow] = await db
+    .select({ name: tenants.name })
+    .from(tenants)
+    .where(eq(tenants.slug, slug))
+    .limit(1);
+
+  const orgName    = (generalSettingsRaw["site_name"] as string | undefined) ?? tenantRow?.name ?? "";
+  const orgAddress = (orgSettings["contact_address"] as { detail?: string } | undefined)?.detail ?? "";
+  const orgPhone   = (orgSettings["contact_phone"] as string | undefined) ?? "";
+  const orgEmail   = (orgSettings["contact_email"] as string | undefined) ?? "";
 
   const [letter] = await tenantDb
     .select()
@@ -123,6 +142,31 @@ export default async function NotaDinasDetailPage({
 
   const isAdmin = ["owner", "admin"].includes(access.tenantUser.role);
 
+  // Resolve merge fields di body nota
+  const mf = (letter.mergeFields as Record<string, string> | null) ?? {};
+  const mergeCtx = buildMergeContext({
+    orgName, orgAddress, orgPhone, orgEmail,
+    letterNumber: letter.letterNumber ?? "",
+    letterDate:   letter.letterDate   ?? "",
+    subject:      letter.subject      ?? "",
+    sender:       letter.sender       ?? "",
+    recipient:    letter.recipient    ?? "",
+    signers: signatures.map((s) => ({
+      name:     s.signerName,
+      position: s.signerPosition,
+      division: s.signerDivision ?? "",
+    })),
+    recipientData: {
+      name:         letter.recipient    ?? "",
+      title:        mf.recipient_title        ?? "",
+      organization: mf.recipient_organization ?? "",
+      address:      mf.recipient_address      ?? "",
+      phone:        mf.recipient_phone        ?? "",
+      email:        mf.recipient_email        ?? "",
+    },
+  });
+  const bodyHtml = renderBody(resolveMergeFields(letter.body ?? "", mergeCtx));
+
   return (
     <div className="p-6 space-y-6 max-w-3xl">
       {/* Breadcrumb + Edit */}
@@ -186,12 +230,12 @@ export default async function NotaDinasDetailPage({
       </div>
 
       {/* Isi nota */}
-      {letter.body && (
+      {bodyHtml && (
         <div>
           <h2 className="text-sm font-medium mb-2">Isi Nota Dinas</h2>
           <div
             className="rounded-lg border border-border bg-muted/10 px-6 py-5 text-sm leading-relaxed prose prose-sm max-w-none"
-            dangerouslySetInnerHTML={{ __html: renderBody(letter.body) }}
+            dangerouslySetInnerHTML={{ __html: bodyHtml }}
           />
         </div>
       )}

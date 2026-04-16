@@ -31,6 +31,16 @@ export function createLetterTypesTable(s: ReturnType<typeof pgSchema>) {
     defaultCategory: text("default_category").notNull().default("UMUM"),
     isActive:        boolean("is_active").notNull().default(true),
     sortOrder:       integer("sort_order").notNull().default(0),
+    // Identitas surat — layout per jenis surat
+    identitasLayout: text("identitas_layout", {
+      enum: ["layout1", "layout2", "layout3"],
+    }).notNull().default("layout1"),
+    // Apakah baris Lampiran ditampilkan — Layout 3 default false
+    showLampiran:    boolean("show_lampiran").notNull().default(true),
+    // Format tanggal — NULL = ikut global default dari settings.letter_date_format
+    dateFormat:      text("date_format", {
+      enum: ["masehi", "masehi_hijri"],
+    }),
     createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   });
@@ -44,7 +54,12 @@ export function createLetterContactsTable(s: ReturnType<typeof pgSchema>) {
     name:         text("name").notNull(),
     title:        text("title"),           // jabatan
     organization: text("organization"),
-    address:      text("address"),
+    // Alamat terstruktur — konsisten dengan public.addresses
+    addressDetail: text("address_detail"), // jalan, nomor, RT/RW, dll
+    provinceId:    integer("province_id"), // ref ke public.ref_provinces.id
+    regencyId:     integer("regency_id"),  // ref ke public.ref_regencies.id
+    districtId:    integer("district_id"), // ref ke public.ref_districts.id
+    villageId:     integer("village_id"),  // ref ke public.ref_villages.id
     email:        text("email"),
     phone:        text("phone"),
     // FK ke public.members — via raw SQL FK di create-tenant-schema.ts
@@ -94,6 +109,9 @@ export function createLettersTable(s: ReturnType<typeof pgSchema>) {
     paperSize:      text("paper_size", { enum: PAPER_SIZES }).notNull().default("A4"),
     pdfUrl:         text("pdf_url"),
     pdfGeneratedAt: timestamp("pdf_generated_at", { withTimezone: true }),
+    // Lampiran — teks bebas untuk ditampilkan di identitas surat ("1 berkas", "—", "2 lembar")
+    // Berbeda dari attachmentUrls (path file MinIO)
+    attachmentLabel: text("attachment_label"),
     // Mail merge — satu surat massal, banyak penerima
     isBulk:         boolean("is_bulk").notNull().default(false),
     // bulkParentId → self-reference ke letters.id via SQL DDL (tidak bisa di Drizzle factory)

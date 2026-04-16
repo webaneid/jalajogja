@@ -7,13 +7,21 @@ import {
   updateLetterContactAction,
   deleteLetterContactAction,
 } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
 
 type Contact = {
   id:           string;
   name:         string;
   title:        string | null;
   organization: string | null;
-  address:      string | null;
+  addressDetail: string | null;
+  provinceId:   number | null;
+  regencyId:    number | null;
+  districtId:   number | null;
+  villageId:    number | null;
+  provinceName: string | null;
+  regencyName:  string | null;
+  districtName: string | null;
   email:        string | null;
   phone:        string | null;
 };
@@ -23,21 +31,41 @@ type Props = {
   initialContacts: Contact[];
 };
 
-const EMPTY = {
-  name: "", title: "", organization: "", address: "", email: "", phone: "",
+type FormState = {
+  name:          string;
+  title:         string;
+  organization:  string;
+  addressDetail: string;
+  wilayah:       WilayahValue;
+  email:         string;
+  phone:         string;
 };
+
+const EMPTY_FORM: FormState = {
+  name: "", title: "", organization: "", addressDetail: "",
+  wilayah: {}, email: "", phone: "",
+};
+
+function formatAddress(c: Contact): string {
+  const parts: string[] = [];
+  if (c.addressDetail) parts.push(c.addressDetail);
+  if (c.districtName)  parts.push(c.districtName);
+  if (c.regencyName)   parts.push(c.regencyName);
+  if (c.provinceName)  parts.push(c.provinceName);
+  return parts.join(", ");
+}
 
 export function LetterContactManageClient({ slug, initialContacts }: Props) {
   const [contacts,  setContacts]  = useState<Contact[]>(initialContacts);
   const [showForm,  setShowForm]  = useState(false);
   const [editId,    setEditId]    = useState<string | null>(null);
-  const [form,      setForm]      = useState(EMPTY);
+  const [form,      setForm]      = useState<FormState>(EMPTY_FORM);
   const [error,     setError]     = useState("");
   const [pending,   startTransition] = useTransition();
 
   function openNew() {
     setEditId(null);
-    setForm(EMPTY);
+    setForm(EMPTY_FORM);
     setError("");
     setShowForm(true);
   }
@@ -45,12 +73,18 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
   function openEdit(c: Contact) {
     setEditId(c.id);
     setForm({
-      name:         c.name,
-      title:        c.title        ?? "",
-      organization: c.organization ?? "",
-      address:      c.address      ?? "",
-      email:        c.email        ?? "",
-      phone:        c.phone        ?? "",
+      name:          c.name,
+      title:         c.title         ?? "",
+      organization:  c.organization  ?? "",
+      addressDetail: c.addressDetail ?? "",
+      wilayah: {
+        provinceId: c.provinceId ?? undefined,
+        regencyId:  c.regencyId  ?? undefined,
+        districtId: c.districtId ?? undefined,
+        villageId:  c.villageId  ?? undefined,
+      },
+      email: c.email ?? "",
+      phone: c.phone ?? "",
     });
     setError("");
     setShowForm(true);
@@ -59,7 +93,7 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
   function closeForm() {
     setShowForm(false);
     setEditId(null);
-    setForm(EMPTY);
+    setForm(EMPTY_FORM);
     setError("");
   }
 
@@ -69,19 +103,36 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
 
     startTransition(async () => {
       const data = {
-        name:         form.name.trim(),
-        title:        form.title.trim()        || null,
-        organization: form.organization.trim() || null,
-        address:      form.address.trim()      || null,
-        email:        form.email.trim()        || null,
-        phone:        form.phone.trim()        || null,
+        name:          form.name.trim(),
+        title:         form.title.trim()         || null,
+        organization:  form.organization.trim()  || null,
+        addressDetail: form.addressDetail.trim() || null,
+        provinceId:    form.wilayah.provinceId   ?? null,
+        regencyId:     form.wilayah.regencyId    ?? null,
+        districtId:    form.wilayah.districtId   ?? null,
+        villageId:     form.wilayah.villageId    ?? null,
+        email:         form.email.trim()         || null,
+        phone:         form.phone.trim()         || null,
       };
 
       if (editId) {
         const res = await updateLetterContactAction(slug, editId, data);
         if (res.success) {
+          // Perbarui nama wilayah di local state — hanya provinceId/regencyId/districtId yang berubah
+          // Karena WilayahSelect tidak expose nama, refresh tampilan dengan ID saja; nama akan muncul saat reload
           setContacts((prev) =>
-            prev.map((c) => c.id === editId ? { ...c, ...data } : c)
+            prev.map((c) =>
+              c.id === editId
+                ? {
+                    ...c,
+                    ...data,
+                    // Reset display names — akan benar setelah halaman refresh
+                    provinceName: data.provinceId === c.provinceId ? c.provinceName : null,
+                    regencyName:  data.regencyId  === c.regencyId  ? c.regencyName  : null,
+                    districtName: data.districtId === c.districtId ? c.districtName : null,
+                  }
+                : c
+            )
           );
           closeForm();
         } else {
@@ -92,7 +143,13 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
         if (res.success) {
           setContacts((prev) => [
             ...prev,
-            { id: res.contactId, ...data },
+            {
+              id: res.contactId,
+              ...data,
+              provinceName: null,
+              regencyName:  null,
+              districtName: null,
+            },
           ]);
           closeForm();
         } else {
@@ -141,6 +198,7 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
+            {/* Nama */}
             <div className="col-span-2">
               <label className="text-xs text-muted-foreground">Nama *</label>
               <input
@@ -151,6 +209,8 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
                 className="mt-0.5 w-full rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
+
+            {/* Jabatan */}
             <div>
               <label className="text-xs text-muted-foreground">Jabatan</label>
               <input
@@ -161,6 +221,8 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
                 className="mt-0.5 w-full rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
+
+            {/* Instansi */}
             <div>
               <label className="text-xs text-muted-foreground">Instansi / Organisasi</label>
               <input
@@ -171,6 +233,8 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
                 className="mt-0.5 w-full rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
+
+            {/* Telepon */}
             <div>
               <label className="text-xs text-muted-foreground">Telepon</label>
               <input
@@ -181,6 +245,8 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
                 className="mt-0.5 w-full rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
+
+            {/* Email */}
             <div>
               <label className="text-xs text-muted-foreground">Email</label>
               <input
@@ -191,14 +257,25 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
                 className="mt-0.5 w-full rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
+
+            {/* Detail alamat */}
             <div className="col-span-2">
-              <label className="text-xs text-muted-foreground">Alamat</label>
+              <label className="text-xs text-muted-foreground">Detail Alamat</label>
               <input
                 type="text"
-                value={form.address}
-                onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                placeholder="Jl. Contoh No. 1, Kota"
+                value={form.addressDetail}
+                onChange={(e) => setForm((f) => ({ ...f, addressDetail: e.target.value }))}
+                placeholder="Jl. Contoh No. 1, RT 01/RW 02"
                 className="mt-0.5 w-full rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+
+            {/* Wilayah */}
+            <div className="col-span-2">
+              <label className="text-xs text-muted-foreground block mb-1.5">Wilayah</label>
+              <WilayahSelect
+                defaultValue={form.wilayah}
+                onChange={(val) => setForm((f) => ({ ...f, wilayah: val }))}
               />
             </div>
           </div>
@@ -239,45 +316,48 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
         </div>
       ) : (
         <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
-          {contacts.map((c) => (
-            <div key={c.id} className="flex items-center gap-4 px-4 py-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{c.name}</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {[c.title, c.organization].filter(Boolean).join(", ") || "—"}
-                </p>
-                {(c.phone || c.email) && (
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {[c.phone, c.email].filter(Boolean).join(" · ")}
+          {contacts.map((c) => {
+            const addressDisplay = formatAddress(c);
+            return (
+              <div key={c.id} className="flex items-center gap-4 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{c.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {[c.title, c.organization].filter(Boolean).join(", ") || "—"}
+                  </p>
+                  {(c.phone || c.email) && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {[c.phone, c.email].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                </div>
+                {addressDisplay && (
+                  <p className="text-xs text-muted-foreground max-w-[200px] truncate hidden sm:block">
+                    {addressDisplay}
                   </p>
                 )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => openEdit(c)}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Edit kontak"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(c.id, c.name)}
+                    disabled={pending}
+                    className="text-muted-foreground hover:text-destructive disabled:opacity-40"
+                    title="Hapus kontak"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
-              {c.address && (
-                <p className="text-xs text-muted-foreground max-w-[200px] truncate hidden sm:block">
-                  {c.address}
-                </p>
-              )}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => openEdit(c)}
-                  className="text-muted-foreground hover:text-foreground"
-                  title="Edit kontak"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(c.id, c.name)}
-                  disabled={pending}
-                  className="text-muted-foreground hover:text-destructive disabled:opacity-40"
-                  title="Hapus kontak"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

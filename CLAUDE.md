@@ -309,9 +309,9 @@ app/(dashboard)/[tenant]/
 - [ ] Komentar — **DITUNDA** (deprioritized, bukan kebutuhan utama saat ini)
 - [x] Modul Surat — Mail Merge Bulk (kirim surat massal ke banyak penerima, picker anggota + kontak)
 - [x] Modul Surat — Manajemen Kontak (letter_contacts CRUD, menu Kontak di nav)
-- [ ] **Modul Surat — sisa fitur**: inter-tenant, attachment MediaPicker ← NEXT
+- [ ] **Modul Surat — sisa fitur**: inter-tenant, attachment MediaPicker
 - [ ] Keuangan (sudah ada schema, belum ada UI)
-- [ ] Donasi / Infaq
+- [ ] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` ← NEXT
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
@@ -674,23 +674,16 @@ key="primary_color", group="display",  value="#2563eb"
 ```
 
 ## Arsitektur Modul Donasi / Infaq
-> Status: direncanakan, detail teknis belum dikerjakan. Masuk roadmap setelah Website.
+> Detail lengkap: **`docs/arsitektur-donasi.md`**
 
-**Konsep dasar:**
-- Tenant bisa buat campaign donasi/infaq dengan target nominal dan periode
-- Donatur bisa dari luar (tanpa akun) atau anggota yang login
-- Pembayaran via rekening/QRIS dengan kategori `donasi` — fallback ke `general`
-- Konfirmasi manual (upload bukti) atau otomatis via gateway
-
-**Yang perlu dipikirkan nanti:**
-- Apakah campaign berbasis produk (seperti Toko) atau tabel tersendiri?
-- Laporan donasi: per campaign, per donatur, per periode
-- Sertifikat donasi (PDF otomatis)
-- Notifikasi ke donatur (email)
-- Apakah ada konsep "donasi rutin" (recurring)?
-
-**Catatan:** Modul ini sangat mirip dengan modul Toko dari sisi alur pembayaran —
-kemungkinan bisa berbagi infrastruktur orders + payment confirmations.
+- Tabel tersendiri (bukan berbasis produk Toko): `campaigns`, `donations`, `donation_sequences`
+- Donatur: anggota login (member_id) atau publik tanpa akun (nama/email/phone manual)
+- Kategori: umum / infaq / sedekah / wakaf / zakat / iuran — dipilih per campaign
+- Pembayaran via rekening/QRIS kategori `donasi` — fallback ke `general`
+- Konfirmasi manual + unique code 3 digit untuk identifikasi transfer
+- Sertifikat PDF otomatis saat konfirmasi, kirim email ke donatur
+- Halaman publik: `/(public)/[tenant]/donasi/[slug]` — tanpa auth
+- 5 pertanyaan terbuka di `docs/arsitektur-donasi.md` bagian Q&A
 
 ## Visi Super-App & Arsitektur Platform
 
@@ -1216,9 +1209,12 @@ await getSettings(tenantClient, "contact");
 - Hanya `notFound()` untuk tenant yang tidak ada / tidak aktif
 
 **`renderBody` — Tiptap JSON di server**
-- `generateHTML(json, [StarterKit, Underline])` dari `@tiptap/core` — pure JS, tidak butuh browser
-- Dibungkus try/catch: jika body bukan JSON valid → `escapeHtml(body).replace(/\n/g, "<br>")`
-- Untuk PDF generation: body di-resolve merge fields dulu via `resolveMergeFields()`, baru di-render HTML
+> Detail lengkap arsitektur render, merge fields, QR, dan bulk: **`docs/arsitektur-surat-detail.md`**
+
+- Implementasi: custom renderer di `lib/letter-render.ts` — pure string manipulation, **tanpa** `@tiptap/core` / `prosemirror-model`
+- Alasan: `prosemirror-model` akses `window.document` saat serialisasi → crash di RSC/Node
+- Fallback: jika body bukan JSON valid → `escapeHtml(body).replace(/\n/g, "<br>")`
+- Urutan wajib: `resolveMergeFields(rawJsonString)` dulu → baru `renderBody()` → HTML
 
 ## Arsitektur Modul Surat
 
@@ -1283,7 +1279,7 @@ Kategori = letter_types.default_category (mis. UMUM, SEKR, IKPM)
 - `removeSignatureAction(slug, signatureId)` — admin/owner only
 - `LetterSigningSection` client component — role select (signer/approver/witness) per officer, optimistic update
 - `isCurrentUser` detection: prioritas `officers.userId === tenantUser.id`, fallback `officers.memberId === tenantUser.memberId`
-- Body surat di-render dari Tiptap JSON via `lib/letter-render.ts` (`generateHTML` dari `@tiptap/core`)
+- Body surat di-render dari Tiptap JSON via `lib/letter-render.ts` (custom renderer, lihat `docs/arsitektur-surat-detail.md`)
 - Detail page untuk keluar/[id], nota/[id] (masuk read-only)
 
 **Step 3b+3c — QR Code + Halaman Verifikasi Publik**
@@ -1371,6 +1367,7 @@ Hint dinamis di dropdown pengaturan berubah sesuai pilihan. Tinggi hanya referen
 ### Fitur Belum Diimplementasikan
 - Inter-tenant — `inter_tenant_to` + `inter_tenant_status` → kirim ke cabang IKPM lain
 - Attachment lampiran — MediaPicker untuk upload lampiran surat
+> Detail arsitektur identitas surat, tujuan surat, dan format tanggal: **`docs/arsitektur-surat.md`**
 
 ### [2026-04] Mail Merge Bulk + Kontak Surat
 
@@ -1433,11 +1430,25 @@ Dropdown "Yang Mengeluarkan" di form surat butuh SEMUA officer aktif (semua bisa
 bukan hanya yang `canSign=true` (canSign khusus untuk tanda tangan digital di letter_signatures).
 Jangan campur dua konsep ini.
 
+### [2026-04] renderBody — prosemirror-model tidak server-safe
+
+> Detail lengkap ada di `docs/arsitektur-surat-detail.md` bagian "Lessons Learned"
+
+**Masalah**: Isi surat tampil sebagai raw JSON, bukan HTML. Root cause berlapis:
+1. `TiptapEditor editable={false}` di server component → butuh JS hydration → konten tidak muncul
+2. `generateHTML` dari `@tiptap/core` → `prosemirror-model` memanggil `window.document` → crash
+3. Crash ditelan `try/catch` diam-diam → fallback ke `escapeHtml(body)` → tampak "raw JSON"
+4. Bug tambahan: autolink lama pecah `{{variable}}` jadi empty text node → `RangeError`
+
+**Fix**: Buang `@tiptap/core` dari `letter-render.ts`. Ganti dengan custom renderer pure string
+(recursive `renderNode` + `applyMark`) — zero DOM dependency, fully server-safe.
+
+**Aturan**: Jangan pakai `generateHTML` dari `@tiptap/core` di server. Jangan bungkus
+rendering dengan `try/catch` tanpa log — error tersembunyi sangat sulit dideteksi.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: Arsitektur ulang template surat + format nomor dinamis + pengaturan surat
 - Commit terakhir: `05ed7bd` — fix: ganti dimensi kertas dari mm ke pixel
 - Arsitektur ulang surat: **SELESAI** (template konten, format nomor dinamis, halaman pengaturan, MediaPicker header/footer, presisi kertas)
-- Next step: **Keuangan** (sudah ada schema double-entry, belum ada UI) ATAU inter-tenant surat
-- Fitur yang belum diimplementasikan (dalam scope surat):
-  - Inter-tenant letters (inter_tenant_to + inter_tenant_status)
-  - MediaPicker untuk attachment lampiran
+- Next step: **Donasi** (arsitektur di `docs/arsitektur-donasi.md`) ATAU **Keuangan** (schema sudah ada, belum ada UI)
+- Fitur surat yang belum diimplementasikan: inter-tenant letters, attachment MediaPicker

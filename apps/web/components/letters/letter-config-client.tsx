@@ -33,9 +33,10 @@ type Props = {
   slug:          string;
   initialConfig: LetterConfig;
   isAdmin:       boolean;
+  contactCity:   string;   // kota dari settings kontak — ditampilkan sebagai placeholder hint
 };
 
-export function LetterConfigClient({ slug, initialConfig, isAdmin }: Props) {
+export function LetterConfigClient({ slug, initialConfig, isAdmin, contactCity }: Props) {
   const [config, setConfig]   = useState<LetterConfig>(initialConfig);
   const [error, setError]     = useState("");
   const [saved, setSaved]     = useState(false);
@@ -234,6 +235,79 @@ export function LetterConfigClient({ slug, initialConfig, isAdmin }: Props) {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* ── Format Tanggal ── */}
+        <section className="space-y-4">
+          <h2 className="text-sm font-semibold border-b border-border pb-2">Format Tanggal Surat</h2>
+
+          <div>
+            <label className="text-xs text-muted-foreground">
+              Kota Surat
+            </label>
+            <input
+              type="text"
+              disabled={!isAdmin}
+              value={config.letter_city ?? ""}
+              onChange={(e) => set("letter_city", e.target.value || null)}
+              placeholder={contactCity ? `Otomatis: ${contactCity}` : "mis. Yogyakarta"}
+              className={fieldCls}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Nama kota yang tampil sebelum tanggal surat, mis.{" "}
+              <span className="font-mono">Yogyakarta, 16 April 2026</span>.
+              {contactCity
+                ? <> Kosongkan untuk menggunakan kota dari kontak (<strong>{contactCity}</strong>).</>
+                : <> Kosongkan untuk menggunakan kota dari <a href="settings/contact" className="underline">settings kontak</a>.</>
+              }
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs text-muted-foreground mb-1.5">Format Tanggal Default</p>
+            <div className="space-y-2">
+              {([
+                { val: "masehi",       label: "Masehi saja",        hint: "Yogyakarta, 16 April 2026" },
+                { val: "masehi_hijri", label: "Masehi + Hijriah",   hint: "Yogyakarta, 16 April 2026 M\n27 Syawal 1447 H" },
+              ] as const).map(({ val, label, hint }) => (
+                <label key={val} className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="date_format"
+                    disabled={!isAdmin}
+                    checked={config.date_format === val}
+                    onChange={() => set("date_format", val)}
+                    className="accent-primary mt-0.5"
+                  />
+                  <div>
+                    <span className="text-sm">{label}</span>
+                    <p className="text-xs text-muted-foreground font-mono whitespace-pre">{hint}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Jenis surat dapat menggunakan format berbeda — setting ini berlaku sebagai default.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-xs text-muted-foreground">Penyesuaian Kalender Hijriah</label>
+            <select
+              disabled={!isAdmin}
+              value={config.hijri_offset}
+              onChange={(e) => set("hijri_offset", Number(e.target.value))}
+              className={fieldCls}
+            >
+              <option value={-1}>-1 (mundur 1 hari dari kalkulasi internasional)</option>
+              <option value={0}>0 (sesuai kalkulasi Umm al-Qura)</option>
+              <option value={1}>+1 (maju 1 hari dari kalkulasi internasional)</option>
+            </select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Sesuaikan jika kalender pemerintah RI berbeda dari kalkulasi internasional.
+              Berlaku untuk semua surat yang menggunakan format tanggal Masehi + Hijriah.
+            </p>
           </div>
         </section>
 
