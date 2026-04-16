@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/popover";
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
+import { SeoPanel } from "@/components/seo/seo-panel";
+import type { SeoValues } from "@/components/seo/seo-panel";
 import {
   createCampaignAction,
   updateCampaignAction,
@@ -63,6 +65,7 @@ export type CampaignFormProps = {
     endsAt:        string | null;
     showDonorList: boolean;
     showAmount:    boolean;
+    seo:           SeoValues;
   };
 };
 
@@ -145,6 +148,7 @@ export function CampaignForm({ slug, campaignId, categories, initialData }: Camp
       ? { id: initialData.coverId, url: initialData.coverUrl }
       : null
   );
+  const [seo,         setSeo]         = useState<SeoValues>(initialData.seo);
   const [status,      setStatus]      = useState(initialData.status);
   const [error,       setError]       = useState<string | null>(null);
   const [typeOpen,    setTypeOpen]    = useState(false);
@@ -188,6 +192,16 @@ export function CampaignForm({ slug, campaignId, categories, initialData }: Camp
       endsAt:        endsAt   ? new Date(endsAt)   : null,
       showDonorList,
       showAmount,
+      metaTitle:     seo.metaTitle     || null,
+      metaDesc:      seo.metaDesc      || null,
+      ogTitle:       seo.ogTitle       || null,
+      ogDescription: seo.ogDescription || null,
+      ogImageId:     seo.ogImageId     ?? null,
+      twitterCard:   seo.twitterCard   as "summary" | "summary_large_image" | null,
+      focusKeyword:  seo.focusKeyword  || null,
+      canonicalUrl:  seo.canonicalUrl  || null,
+      robots:        seo.robots        as "index,follow" | "noindex" | "noindex,nofollow",
+      schemaType:    seo.schemaType    || "WebPage",
     };
   }
 
@@ -304,6 +318,15 @@ export function CampaignForm({ slug, campaignId, categories, initialData }: Camp
               onChange={setDescription}
             />
           </div>
+
+          <SeoPanel
+            slug={slug}
+            contentType="campaign"
+            title={title}
+            content={description ?? ""}
+            values={seo}
+            onChange={setSeo}
+          />
         </div>
 
         {/* Sidebar */}

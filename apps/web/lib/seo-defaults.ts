@@ -54,7 +54,8 @@ export const ROBOTS_BLOCK_AI_TRAINING = {
 
 // ── Schema.org types yang tersedia per konten ─────────────────────────────────
 export const SCHEMA_ORG_TYPES = {
-  post: ["Article", "NewsArticle", "BlogPosting"] as const,
-  page: ["WebPage", "AboutPage", "ContactPage", "FAQPage"] as const,
-  product: ["Product", "SoftwareApplication"] as const,
+  post:     ["Article", "NewsArticle", "BlogPosting"] as const,
+  page:     ["WebPage", "AboutPage", "ContactPage", "FAQPage"] as const,
+  product:  ["Product", "SoftwareApplication"] as const,
+  campaign: ["WebPage", "Event", "DonateAction"] as const,
 } as const;

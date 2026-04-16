@@ -8,7 +8,11 @@ import {
   timestamp,
   unique,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
+
+export const CAMPAIGN_TWITTER_CARDS = ["summary", "summary_large_image"] as const;
+export const CAMPAIGN_ROBOTS_VALUES = ["index,follow", "noindex", "noindex,nofollow"] as const;
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -67,6 +71,19 @@ export function createCampaignsTable(s: ReturnType<typeof pgSchema>) {
     // Kontrol tampilan di halaman publik
     showDonorList: boolean("show_donor_list").notNull().default(true),
     showAmount:    boolean("show_amount").notNull().default(true),
+
+    // SEO — untuk halaman publik campaign
+    metaTitle:      text("meta_title"),
+    metaDesc:       text("meta_desc"),
+    ogTitle:        text("og_title"),
+    ogDescription:  text("og_description"),
+    ogImageId:      uuid("og_image_id"),   // FK → media.id via SQL
+    twitterCard:    text("twitter_card",   { enum: CAMPAIGN_TWITTER_CARDS }).default("summary_large_image"),
+    focusKeyword:   text("focus_keyword"),
+    canonicalUrl:   text("canonical_url"),
+    robots:         text("robots",         { enum: CAMPAIGN_ROBOTS_VALUES }).notNull().default("index,follow"),
+    schemaType:     text("schema_type").notNull().default("WebPage"),
+    structuredData: jsonb("structured_data"),
 
     // Audit — FK ke officers.id via SQL (nullable)
     createdBy: uuid("created_by"),

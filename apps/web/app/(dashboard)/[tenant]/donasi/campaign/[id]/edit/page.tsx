@@ -3,6 +3,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { CampaignForm } from "@/components/donasi/campaign-form";
+import type { SeoValues } from "@/components/seo/seo-panel";
 
 export default async function CampaignEditPage({
   params,
@@ -58,6 +59,20 @@ export default async function CampaignEditPage({
           : null,
         showDonorList: campaign.showDonorList,
         showAmount:    campaign.showAmount,
+        seo: {
+          metaTitle:      campaign.metaTitle     ?? "",
+          metaDesc:       campaign.metaDesc      ?? "",
+          focusKeyword:   campaign.focusKeyword  ?? "",
+          ogTitle:        campaign.ogTitle       ?? "",
+          ogDescription:  campaign.ogDescription ?? "",
+          ogImageId:      campaign.ogImageId     ?? null,
+          ogImageUrl:     null,
+          twitterCard:    (campaign.twitterCard  ?? "summary_large_image") as SeoValues["twitterCard"],
+          canonicalUrl:   campaign.canonicalUrl  ?? "",
+          robots:         (campaign.robots       ?? "index,follow") as SeoValues["robots"],
+          schemaType:     (campaign.schemaType   ?? "WebPage") as SeoValues["schemaType"],
+          structuredData: "",
+        },
       }}
     />
   );

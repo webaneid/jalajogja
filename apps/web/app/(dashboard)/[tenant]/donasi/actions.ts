@@ -24,6 +24,17 @@ export type CampaignData = {
   endsAt?:       Date | null;
   showDonorList: boolean;
   showAmount:    boolean;
+  // SEO
+  metaTitle?:     string | null;
+  metaDesc?:      string | null;
+  ogTitle?:       string | null;
+  ogDescription?: string | null;
+  ogImageId?:     string | null;
+  twitterCard?:   "summary" | "summary_large_image" | null;
+  focusKeyword?:  string | null;
+  canonicalUrl?:  string | null;
+  robots?:        "index,follow" | "noindex" | "noindex,nofollow";
+  schemaType?:    string | null;
 };
 
 export type DonationData = {
@@ -170,6 +181,16 @@ export async function createCampaignAction(
         endsAt:        data.endsAt         ?? null,
         showDonorList: data.showDonorList,
         showAmount:    data.showAmount,
+        metaTitle:     data.metaTitle?.trim()     || null,
+        metaDesc:      data.metaDesc?.trim()      || null,
+        ogTitle:       data.ogTitle?.trim()       || null,
+        ogDescription: data.ogDescription?.trim() || null,
+        ogImageId:     data.ogImageId             ?? null,
+        twitterCard:   data.twitterCard           || "summary_large_image",
+        focusKeyword:  data.focusKeyword?.trim()  || null,
+        canonicalUrl:  data.canonicalUrl?.trim()  || null,
+        robots:        data.robots                || "index,follow",
+        schemaType:    data.schemaType            || "WebPage",
       })
       .returning({ id: schema.campaigns.id });
 
@@ -213,6 +234,16 @@ export async function updateCampaignAction(
         endsAt:        data.endsAt         ?? null,
         showDonorList: data.showDonorList,
         showAmount:    data.showAmount,
+        metaTitle:     data.metaTitle?.trim()     || null,
+        metaDesc:      data.metaDesc?.trim()      || null,
+        ogTitle:       data.ogTitle?.trim()       || null,
+        ogDescription: data.ogDescription?.trim() || null,
+        ogImageId:     data.ogImageId             ?? null,
+        twitterCard:   data.twitterCard           || "summary_large_image",
+        focusKeyword:  data.focusKeyword?.trim()  || null,
+        canonicalUrl:  data.canonicalUrl?.trim()  || null,
+        robots:        data.robots                || "index,follow",
+        schemaType:    data.schemaType            || "WebPage",
         updatedAt:     new Date(),
       })
       .where(eq(schema.campaigns.id, campaignId));

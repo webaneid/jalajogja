@@ -2,6 +2,22 @@ import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { CampaignForm } from "@/components/donasi/campaign-form";
+import type { SeoValues } from "@/components/seo/seo-panel";
+
+const DEFAULT_SEO: SeoValues = {
+  metaTitle:      "",
+  metaDesc:       "",
+  focusKeyword:   "",
+  ogTitle:        "",
+  ogDescription:  "",
+  ogImageId:      null,
+  ogImageUrl:     null,
+  twitterCard:    "summary_large_image",
+  canonicalUrl:   "",
+  robots:         "index,follow",
+  schemaType:     "WebPage",
+  structuredData: "",
+};
 
 export default async function CampaignNewPage({
   params,
@@ -38,6 +54,7 @@ export default async function CampaignNewPage({
         endsAt:        null,
         showDonorList: true,
         showAmount:    true,
+        seo:           DEFAULT_SEO,
       }}
     />
   );

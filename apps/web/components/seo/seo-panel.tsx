@@ -54,7 +54,7 @@ export type SeoValues = {
 
 export interface SeoPanelProps {
   slug: string;
-  contentType: "post" | "page" | "product";
+  contentType: "post" | "page" | "product" | "campaign";
   /** Judul konten aktual (dari parent form) — dipakai sebagai fallback */
   title: string;
   /** Konten HTML/teks — dipakai oleh SEO analyzer untuk cek keyword */

@@ -507,6 +507,19 @@ export async function createTenantSchemaInDb(
         ends_at          TIMESTAMPTZ,
         show_donor_list  BOOLEAN       NOT NULL DEFAULT true,
         show_amount      BOOLEAN       NOT NULL DEFAULT true,
+        meta_title       TEXT,
+        meta_desc        TEXT,
+        og_title         TEXT,
+        og_description   TEXT,
+        og_image_id      UUID          REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        twitter_card     TEXT          DEFAULT 'summary_large_image'
+                                       CHECK (twitter_card IN ('summary','summary_large_image')),
+        focus_keyword    TEXT,
+        canonical_url    TEXT,
+        robots           TEXT          NOT NULL DEFAULT 'index,follow'
+                                       CHECK (robots IN ('index,follow','noindex','noindex,nofollow')),
+        schema_type      TEXT          NOT NULL DEFAULT 'WebPage',
+        structured_data  JSONB,
         created_by       UUID          REFERENCES "${s}".officers(id) ON DELETE SET NULL,
         created_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
         updated_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW()
