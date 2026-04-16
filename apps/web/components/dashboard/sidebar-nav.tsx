@@ -11,6 +11,7 @@ import {
   Mail,
   Wallet,
   HeartHandshake,
+  CalendarDays,
   ShoppingBag,
   Settings,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const navItems = [
   { label: "Surat",      icon: Mail,            path: "letters"    },
   { label: "Keuangan",   icon: Wallet,          path: "finance"    },
   { label: "Donasi",     icon: HeartHandshake,  path: "donasi"     },
+  { label: "Event",      icon: CalendarDays,    path: "event"      },
   { label: "Toko",       icon: ShoppingBag,     path: "toko"       },
   { label: "Pengaturan", icon: Settings,        path: "settings"   },
 ];

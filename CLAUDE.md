@@ -311,7 +311,8 @@ app/(dashboard)/[tenant]/
 - [x] Modul Surat — Manajemen Kontak (letter_contacts CRUD, menu Kontak di nav)
 - [ ] **Modul Surat — sisa fitur**: inter-tenant, attachment MediaPicker
 - [ ] Keuangan (sudah ada schema, belum ada UI)
-- [ ] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` ← NEXT
+- [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
+- [~] Event — arsitektur di `docs/arsitektur-event.md` ← Step 1+2 selesai; Step 3–6 (publik, pendaftaran, check-in, sertifikat) roadmap
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
@@ -1447,8 +1448,9 @@ Jangan campur dua konsep ini.
 rendering dengan `try/catch` tanpa log — error tersembunyi sangat sulit dideteksi.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Arsitektur ulang template surat + format nomor dinamis + pengaturan surat
-- Commit terakhir: `05ed7bd` — fix: ganti dimensi kertas dari mm ke pixel
-- Arsitektur ulang surat: **SELESAI** (template konten, format nomor dinamis, halaman pengaturan, MediaPicker header/footer, presisi kertas)
-- Next step: **Donasi** (arsitektur di `docs/arsitektur-donasi.md`) ATAU **Keuangan** (schema sudah ada, belum ada UI)
+- Terakhir dikerjakan: Modul Event — Step 1 (Schema) + Step 2 (UI + Actions)
+- Donasi: **SELESAI** (schema, CRUD campaign + kategori, SEO, transaksi) — lihat `docs/arsitektur-donasi.md`
+- Event Step 1+2: **SELESAI** — 5 tabel baru, EventForm + TicketManager + SeoPanel, sidebar nav
+- Event roadmap (Step 3–6): halaman publik pendaftaran, pendaftaran admin, check-in, sertifikat
+- Next step: **Event Step 3** (halaman publik `/(public)/[tenant]/event/[slug]`) ATAU **Keuangan** (schema sudah ada, belum ada UI)
 - Fitur surat yang belum diimplementasikan: inter-tenant letters, attachment MediaPicker
