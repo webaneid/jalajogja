@@ -15,6 +15,7 @@ export type CampaignData = {
   slug:          string;
   title:         string;
   description?:  string | null;
+  categoryId?:   string | null;
   campaignType:  "donasi" | "zakat" | "wakaf" | "qurban";
   targetAmount?: number | null;
   coverId?:      string | null;
@@ -160,6 +161,7 @@ export async function createCampaignAction(
         slug:          data.slug.trim(),
         title:         data.title.trim(),
         description:   data.description   ?? null,
+        categoryId:    data.categoryId     ?? null,
         campaignType:  data.campaignType,
         targetAmount:  data.targetAmount != null ? String(data.targetAmount) : null,
         coverId:       data.coverId        ?? null,
@@ -202,6 +204,7 @@ export async function updateCampaignAction(
         slug:          data.slug.trim(),
         title:         data.title.trim(),
         description:   data.description   ?? null,
+        categoryId:    data.categoryId     ?? null,
         campaignType:  data.campaignType,
         targetAmount:  data.targetAmount != null ? String(data.targetAmount) : null,
         coverId:       data.coverId        ?? null,
@@ -457,6 +460,96 @@ export async function confirmDonationAction(
     console.error("[confirmDonationAction]", err);
     return { success: false, error: "Gagal mengkonfirmasi donasi." };
   }
+}
+
+// ─── Campaign Category Actions ────────────────────────────────────────────────
+
+export async function createCampaignCategoryAction(
+  slug: string,
+  data: { name: string; slug: string }
+): Promise<ActionResult<{ categoryId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!["owner", "admin"].includes(access.tenantUser.role))
+    return { success: false, error: "Hanya admin yang bisa membuat kategori." };
+
+  if (!data.name.trim()) return { success: false, error: "Nama kategori wajib diisi." };
+  if (!data.slug.trim()) return { success: false, error: "Slug kategori wajib diisi." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  try {
+    const [cat] = await db
+      .insert(schema.campaignCategories)
+      .values({ name: data.name.trim(), slug: data.slug.trim() })
+      .returning({ id: schema.campaignCategories.id });
+
+    revalidatePath(`/${slug}/donasi/kategori`);
+    revalidatePath(`/${slug}/donasi/campaign`);
+    return { success: true, data: { categoryId: cat.id } };
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes("unique"))
+      return { success: false, error: "Slug sudah digunakan." };
+    console.error("[createCampaignCategoryAction]", err);
+    return { success: false, error: "Gagal membuat kategori." };
+  }
+}
+
+export async function updateCampaignCategoryAction(
+  slug: string,
+  categoryId: string,
+  data: { name: string; slug: string }
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!["owner", "admin"].includes(access.tenantUser.role))
+    return { success: false, error: "Hanya admin yang bisa mengubah kategori." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  try {
+    await db
+      .update(schema.campaignCategories)
+      .set({ name: data.name.trim(), slug: data.slug.trim() })
+      .where(eq(schema.campaignCategories.id, categoryId));
+
+    revalidatePath(`/${slug}/donasi/kategori`);
+    return { success: true, data: undefined };
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes("unique"))
+      return { success: false, error: "Slug sudah digunakan." };
+    console.error("[updateCampaignCategoryAction]", err);
+    return { success: false, error: "Gagal memperbarui kategori." };
+  }
+}
+
+export async function deleteCampaignCategoryAction(
+  slug: string,
+  categoryId: string
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!["owner", "admin"].includes(access.tenantUser.role))
+    return { success: false, error: "Hanya admin yang bisa menghapus kategori." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  // Blokir hapus jika masih ada campaign yang pakai kategori ini
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(schema.campaigns)
+    .where(eq(schema.campaigns.categoryId, categoryId));
+
+  if (Number(total) > 0)
+    return { success: false, error: `Kategori ini digunakan oleh ${total} campaign. Pindahkan campaign terlebih dahulu.` };
+
+  await db
+    .delete(schema.campaignCategories)
+    .where(eq(schema.campaignCategories.id, categoryId));
+
+  revalidatePath(`/${slug}/donasi/kategori`);
+  revalidatePath(`/${slug}/donasi/campaign`);
+  return { success: true, data: undefined };
 }
 
 export async function cancelDonationAction(

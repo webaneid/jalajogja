@@ -21,6 +21,19 @@ export type DonationType       = typeof DONATION_TYPES[number];
 export const CAMPAIGN_STATUSES = ["draft", "active", "closed", "archived"] as const;
 export type CampaignStatus     = typeof CAMPAIGN_STATUSES[number];
 
+// ─── campaign_categories ──────────────────────────────────────────────────────
+// Kategori campaign (Sosial, Kesehatan, Pendidikan, dll) — CRUD oleh admin.
+
+export function createCampaignCategoriesTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("campaign_categories", {
+    id:        uuid("id").primaryKey().defaultRandom(),
+    name:      text("name").notNull(),
+    slug:      text("slug").notNull().unique(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  });
+}
+
 // ─── campaigns ────────────────────────────────────────────────────────────────
 // Program penggalangan dana. Donations terkait ke campaign via campaign_id.
 // Donations tanpa campaign (campaign_id = null) = "Donasi Umum".
@@ -31,6 +44,9 @@ export function createCampaignsTable(s: ReturnType<typeof pgSchema>) {
     slug:  text("slug").notNull().unique(),
     title: text("title").notNull(),
     description: text("description"),  // HTML dari Tiptap, nullable
+
+    // Kategori campaign — FK ke campaign_categories.id via SQL
+    categoryId: uuid("category_id"),
 
     campaignType: text("campaign_type", { enum: CAMPAIGN_TYPES })
                     .notNull().default("donasi"),
@@ -111,6 +127,7 @@ export function createDonationSequencesTable(s: ReturnType<typeof pgSchema>) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type CampaignsTable    = ReturnType<typeof createCampaignsTable>;
-export type DonationsTable    = ReturnType<typeof createDonationsTable>;
-export type DonationSeqsTable = ReturnType<typeof createDonationSequencesTable>;
+export type CampaignCategoriesTable = ReturnType<typeof createCampaignCategoriesTable>;
+export type CampaignsTable          = ReturnType<typeof createCampaignsTable>;
+export type DonationsTable          = ReturnType<typeof createDonationsTable>;
+export type DonationSeqsTable       = ReturnType<typeof createDonationSequencesTable>;

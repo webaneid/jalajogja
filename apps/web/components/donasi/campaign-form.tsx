@@ -43,13 +43,17 @@ import { cn } from "@/lib/utils";
 
 type CoverImage = { id: string; url: string } | null;
 
+type CategoryOption = { id: string; name: string };
+
 export type CampaignFormProps = {
   slug:       string;
   campaignId: string | null; // null = create mode
+  categories: CategoryOption[];
   initialData: {
     slug:          string;
     title:         string;
     description:   string;
+    categoryId:    string | null;
     campaignType:  "donasi" | "zakat" | "wakaf" | "qurban";
     targetAmount:  number | null;
     coverId:       string | null;
@@ -123,12 +127,13 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
 
 // ─── CampaignForm ─────────────────────────────────────────────────────────────
 
-export function CampaignForm({ slug, campaignId, initialData }: CampaignFormProps) {
+export function CampaignForm({ slug, campaignId, categories, initialData }: CampaignFormProps) {
   const router = useRouter();
 
   const [title,         setTitle]         = useState(initialData.title);
   const [campaignSlug,  setSlug]          = useState(initialData.slug);
   const [description,   setDescription]   = useState(initialData.description);
+  const [categoryId,    setCategoryId]    = useState<string | null>(initialData.categoryId);
   const [campaignType,  setCampaignType]  = useState<CampaignData["campaignType"]>(initialData.campaignType);
   const [targetAmount,  setTargetAmount]  = useState(initialData.targetAmount != null ? String(initialData.targetAmount) : "");
   const [startsAt,      setStartsAt]      = useState(initialData.startsAt ?? "");
@@ -143,6 +148,7 @@ export function CampaignForm({ slug, campaignId, initialData }: CampaignFormProp
   const [status,      setStatus]      = useState(initialData.status);
   const [error,       setError]       = useState<string | null>(null);
   const [typeOpen,    setTypeOpen]    = useState(false);
+  const [catOpen,     setCatOpen]     = useState(false);
   const [pickerOpen,  setPickerOpen]  = useState(false);
   const [slugEdited,  setSlugEdited]  = useState(false);
 
@@ -173,6 +179,7 @@ export function CampaignForm({ slug, campaignId, initialData }: CampaignFormProp
       slug:          campaignSlug.trim() || toSlug(title),
       title:         title.trim(),
       description:   description || null,
+      categoryId:    categoryId ?? null,
       campaignType,
       targetAmount:  target && !isNaN(target) ? target : null,
       coverId:       cover?.id ?? null,
@@ -301,6 +308,55 @@ export function CampaignForm({ slug, campaignId, initialData }: CampaignFormProp
 
         {/* Sidebar */}
         <aside className="w-72 shrink-0 border-l border-border overflow-y-auto p-4 space-y-5 bg-muted/10">
+            {/* Kategori Campaign — Combobox */}
+          <div className="space-y-2">
+            <Label>Kategori</Label>
+            <Popover open={catOpen} onOpenChange={setCatOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className="w-full justify-between font-normal"
+                >
+                  {categoryId
+                    ? (categories.find((c) => c.id === categoryId)?.name ?? "Pilih kategori")
+                    : <span className="text-muted-foreground">Pilih kategori</span>
+                  }
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[220px] p-0">
+                <Command>
+                  <CommandInput placeholder="Cari kategori..." />
+                  <CommandList>
+                    <CommandEmpty>Tidak ditemukan</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value="__none__"
+                        onSelect={() => { setCategoryId(null); setCatOpen(false); }}
+                      >
+                        <Check className={cn("mr-2 h-4 w-4", categoryId === null ? "opacity-100" : "opacity-0")} />
+                        <span className="text-muted-foreground">Tanpa kategori</span>
+                      </CommandItem>
+                      {categories.map((c) => (
+                        <CommandItem
+                          key={c.id}
+                          value={c.name}
+                          onSelect={() => { setCategoryId(c.id); setCatOpen(false); }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", categoryId === c.id ? "opacity-100" : "opacity-0")} />
+                          {c.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <Separator />
+
           {/* Jenis Campaign — Combobox */}
           <div className="space-y-2">
             <Label>Jenis</Label>

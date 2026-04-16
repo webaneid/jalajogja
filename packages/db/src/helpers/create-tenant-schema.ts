@@ -477,13 +477,25 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 19. Campaigns ─────────────────────────────────────────────────────
+    // ── 19. Campaign Categories ────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".campaign_categories (
+        id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        name       TEXT        NOT NULL,
+        slug       TEXT        NOT NULL UNIQUE,
+        sort_order INTEGER     NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 20. Campaigns ─────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".campaigns (
         id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
         slug             TEXT          NOT NULL UNIQUE,
         title            TEXT          NOT NULL,
         description      TEXT,
+        category_id      UUID          REFERENCES "${s}".campaign_categories(id) ON DELETE SET NULL,
         campaign_type    TEXT          NOT NULL DEFAULT 'donasi'
                                        CHECK (campaign_type IN ('donasi','zakat','wakaf','qurban')),
         target_amount    NUMERIC(15,2),
@@ -501,7 +513,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 20. Donations ──────────────────────────────────────────────────────
+    // ── 21. Donations ──────────────────────────────────────────────────────
     // Amount + status + bukti bayar ada di payments (source_type='donation')
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".donations (
@@ -523,7 +535,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 21. Donation Sequences ─────────────────────────────────────────────
+    // ── 22. Donation Sequences ─────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".donation_sequences (
         id      UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -534,7 +546,7 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 22. Product Categories ─────────────────────────────────────────────
+    // ── 23. Product Categories ─────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".product_categories (
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

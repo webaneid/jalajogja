@@ -15,11 +15,12 @@ export default async function CampaignEditPage({
 
   const { db, schema } = createTenantDb(slug);
 
-  const [campaign] = await db
-    .select()
-    .from(schema.campaigns)
-    .where(eq(schema.campaigns.id, campaignId))
-    .limit(1);
+  const [[campaign], categories] = await Promise.all([
+    db.select().from(schema.campaigns).where(eq(schema.campaigns.id, campaignId)).limit(1),
+    db.select({ id: schema.campaignCategories.id, name: schema.campaignCategories.name })
+      .from(schema.campaignCategories)
+      .orderBy(schema.campaignCategories.sortOrder, schema.campaignCategories.name),
+  ]);
 
   if (!campaign) notFound();
 
@@ -38,10 +39,12 @@ export default async function CampaignEditPage({
     <CampaignForm
       slug={slug}
       campaignId={campaignId}
+      categories={categories}
       initialData={{
         slug:          campaign.slug,
         title:         campaign.title,
         description:   campaign.description ?? "",
+        categoryId:    campaign.categoryId  ?? null,
         campaignType:  campaign.campaignType as "donasi" | "zakat" | "wakaf" | "qurban",
         targetAmount:  campaign.targetAmount ? parseFloat(campaign.targetAmount) : null,
         coverId:       campaign.coverId    ?? null,
