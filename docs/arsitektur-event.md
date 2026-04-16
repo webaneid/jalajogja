@@ -1,6 +1,6 @@
 # Arsitektur Modul Event
 
-> Status: **Step 1 (Schema) ✅ | Step 2 (UI + Actions) ✅**
+> Status: **Step 1 (Schema) ✅ | Step 2 (UI + Actions) ✅ | Step 3 (Halaman Publik) ✅ | Step 4 (Pendaftaran Admin) ✅ | Step 5 (Check-in) ✅ | Step 6 (Sertifikat) ✅**
 
 ## Konsep
 
@@ -120,9 +120,16 @@ app/(dashboard)/[tenant]/event/
 ├── acara/
 │   ├── page.tsx            → list event: tabel + filter + search
 │   ├── new/page.tsx        → form buat event baru (create-on-save)
-│   └── [id]/edit/page.tsx  → full editor: EventForm (Tiptap + TicketManager + SeoPanel)
+│   └── [id]/
+│       ├── page.tsx        → detail event: stats + list pendaftaran + konfirmasi
+│       ├── edit/page.tsx   → full editor: EventForm (Tiptap + TicketManager + SeoPanel)
+│       └── checkin/page.tsx → check-in hari-H (EventCheckinClient)
 └── kategori/
     └── page.tsx            → CRUD inline kategori event
+
+app/(public)/[tenant]/event/[slug]/page.tsx  → halaman publik event + form pendaftaran
+
+app/api/events/[id]/certificate/[regId]/route.ts  → POST: generate PDF sertifikat
 ```
 
 ---
@@ -140,10 +147,14 @@ createEventCategoryAction(slug, { name, slug })
 updateEventCategoryAction(slug, categoryId, { name, slug })
 deleteEventCategoryAction(slug, categoryId)            → guard: no events in category
 
-// Registrasi (roadmap — Step 3)
-// createRegistrationAction(slug, eventId, ticketId, data)
-// confirmRegistrationAction(slug, registrationId)
-// checkInRegistrationAction(slug, registrationId)
+// Registrasi (PUBLIC — tanpa auth)
+registerForEventAction(slug, data: RegisterData)              → insert registration + payment (jika berbayar)
+
+// Registrasi admin
+confirmRegistrationPaymentAction(slug, paymentId)             → konfirmasi bayar → recordIncome → status confirmed
+approveRegistrationAction(slug, registrationId)               → setujui pending (requireApproval)
+cancelRegistrationAction(slug, registrationId)                → batalkan + cancel payment jika belum bayar
+checkInRegistrationAction(slug, registrationId)               → status → attended + checkedInAt
 ```
 
 ---
@@ -154,8 +165,12 @@ deleteEventCategoryAction(slug, categoryId)            → guard: no events in c
 components/event/
 ├── event-nav.tsx                    → sub-nav kiri: Acara, Kategori
 ├── event-form.tsx                   → full editor (Tiptap + TicketManager + SeoPanel + sidebar)
-├── event-list-client.tsx            → CreateEventButton + EventTable
-└── event-category-manage-client.tsx → inline CRUD kategori
+├── event-list-client.tsx            → CreateEventButton + EventTable (+ Eye link ke detail)
+├── event-category-manage-client.tsx → inline CRUD kategori
+├── event-register-form.tsx          → form publik: pilih tiket, data peserta, metode bayar, konfirmasi
+├── event-registration-list.tsx      → admin: list pendaftar + konfirmasi bayar + setujui + batalkan + sertifikat
+├── event-checkin-client.tsx         → check-in hari-H: search + tombol check-in + flash sukses
+└── event-certificate-button.tsx     → generate + buka PDF sertifikat kehadiran
 ```
 
 ### EventForm Layout
@@ -239,13 +254,10 @@ Toko       → /toko
 
 - [x] **Step 1 — Schema**: 5 tabel baru, enums, index, DDL, ALTER TABLE tenant existing
 - [x] **Step 2 — UI + Actions**: EventForm, TicketManager, EventNav, list, CRUD kategori, sidebar
-
-## Roadmap (Belum Diimplementasikan)
-
-- [ ] **Step 3 — Halaman Publik**: `/(public)/[tenant]/event/[slug]` — form pendaftaran publik
-- [ ] **Step 4 — Pendaftaran Admin**: manual entry registrasi dari dashboard + konfirmasi pembayaran tiket berbayar
-- [ ] **Step 5 — Check-in**: QR scan / list kehadiran hari-H
-- [ ] **Step 6 — Sertifikat**: generate PDF sertifikat kehadiran (pakai letter template)
+- [x] **Step 3 — Halaman Publik**: `/(public)/[tenant]/event/[slug]` — EventRegisterForm: pilih tiket, isi data peserta, pilih metode bayar, konfirmasi
+- [x] **Step 4 — Pendaftaran Admin**: `event/acara/[id]` — stats, list pendaftaran, konfirmasi pembayaran, setujui, batalkan
+- [x] **Step 5 — Check-in**: `event/acara/[id]/checkin` — EventCheckinClient: search real-time, satu tombol check-in, flash konfirmasi
+- [x] **Step 6 — Sertifikat PDF**: `POST /api/events/[id]/certificate/[regId]` — HTML landscape A4, upload MinIO, EventCertificateButton di list pendaftaran
 
 ---
 
@@ -254,6 +266,12 @@ Toko       → /toko
 ### TicketManager: diff tidak delete-all
 Sync tiket pakai diff (delete yang hilang, update yang ada, insert baru) — tidak delete-all + insert-all.
 Alasan: tiket yang sudah ada pendaftaran tidak boleh dihapus. Guard via `count(event_registrations WHERE ticket_id IN toDeleteIds)`.
+
+### Public action tanpa auth
+`registerForEventAction` tidak punya `getTenantAccess()` guard — siapapun bisa mendaftar event. Validasi tetap dilakukan: cek event published, tiket aktif + periode jual, kuota.
+
+### ticketId nullable di registrations
+Kolom `ticket_id` di `event_registrations` dideklarasikan tanpa `notNull()` → tipe TypeScript `string | null`. Selalu guard dengan `r.ticketId ?? ""` sebelum pakai sebagai Map key atau argumen `eq()`.
 
 ### Ticket gratis vs berbayar
 `price = 0` = gratis → tidak perlu payments record. Cukup insert registration dengan status "confirmed" langsung.

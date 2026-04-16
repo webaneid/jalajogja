@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Pencil, Trash2, CalendarDays } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, CalendarDays, Eye } from "lucide-react";
 import { deleteEventAction } from "@/app/(dashboard)/[tenant]/event/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -141,6 +141,11 @@ export function EventTable({ slug, events: initialEvents }: { slug: string; even
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">
+                        <Link href={`/${slug}/event/acara/${event.id}`}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="Lihat pendaftaran">
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        </Link>
                         <Link href={`/${slug}/event/acara/${event.id}/edit`}>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
                             <Pencil className="h-3.5 w-3.5" />

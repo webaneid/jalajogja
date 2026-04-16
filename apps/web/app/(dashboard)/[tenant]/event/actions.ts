@@ -1,8 +1,8 @@
 "use server";
 
-import { eq, count, inArray } from "drizzle-orm";
+import { eq, count, inArray, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createTenantDb } from "@jalajogja/db";
+import { createTenantDb, generateFinancialNumber, recordIncome } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -73,24 +73,25 @@ async function generateRegistrationNumber(
   const yyyymm = `${year}${String(month).padStart(2, "0")}`;
 
   const nextNumber = await db.transaction(async (tx) => {
-    const [row] = await tx
+    const rows = await tx
       .select()
       .from(schema.eventRegistrationSequences)
       .where(
-        eq(schema.eventRegistrationSequences.year, year)
-      )
-      .limit(1);
+        sql`${schema.eventRegistrationSequences.year}  = ${year}
+        AND ${schema.eventRegistrationSequences.month} = ${month}
+        FOR UPDATE`
+      );
 
-    if (!row || row.month !== month) {
+    if (rows.length === 0) {
       await tx.insert(schema.eventRegistrationSequences).values({ year, month, counter: 1 });
       return 1;
     }
 
-    const next = row.counter + 1;
+    const next = rows[0].counter + 1;
     await tx
       .update(schema.eventRegistrationSequences)
       .set({ counter: next })
-      .where(eq(schema.eventRegistrationSequences.id, row.id));
+      .where(eq(schema.eventRegistrationSequences.id, rows[0].id));
     return next;
   });
 
@@ -426,5 +427,358 @@ export async function deleteEventCategoryAction(
   return { success: true, data: undefined };
 }
 
-// Export generateRegistrationNumber untuk dipakai di halaman pendaftaran (roadmap)
+// ─── Resolusi akun event dari settings ───────────────────────────────────────
+
+async function resolveEventAccounts(tenantDb: ReturnType<typeof createTenantDb>) {
+  const { db, schema } = tenantDb;
+  const [row] = await db
+    .select({ value: schema.settings.value })
+    .from(schema.settings)
+    .where(and(
+      eq(schema.settings.key,   "account_mappings"),
+      eq(schema.settings.group, "keuangan")
+    ))
+    .limit(1);
+
+  const m = (row?.value && typeof row.value === "object")
+    ? (row.value as Record<string, string | null>)
+    : {};
+
+  return {
+    cash_default:  (m.cash_default  ?? null) as string | null,
+    bank_default:  (m.bank_default  ?? null) as string | null,
+    event_income:  (m.event_income  ?? m.dana_titipan ?? null) as string | null,
+  };
+}
+
+// ─── Registrasi Event (PUBLIC — tanpa auth) ───────────────────────────────────
+
+export type RegisterData = {
+  eventId:      string;
+  ticketId:     string;
+  attendeeName:  string;
+  attendeePhone?: string | null;
+  attendeeEmail?: string | null;
+  // Untuk tiket berbayar
+  method?:          "cash" | "transfer" | "qris";
+  bankAccountRef?:  string | null;
+  qrisAccountRef?:  string | null;
+};
+
+export async function registerForEventAction(
+  slug: string,
+  data: RegisterData
+): Promise<ActionResult<{
+  registrationId:     string;
+  registrationNumber: string;
+  isPaid:             boolean;
+  amount?:            number;
+  uniqueCode?:        number;
+  totalAmount?:       number;
+  paymentId?:         string;
+}>> {
+  if (!data.attendeeName.trim())
+    return { success: false, error: "Nama peserta wajib diisi." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  // Cek event masih published
+  const [event] = await db
+    .select({ id: schema.events.id, requireApproval: schema.events.requireApproval })
+    .from(schema.events)
+    .where(and(eq(schema.events.id, data.eventId), eq(schema.events.status, "published")))
+    .limit(1);
+
+  if (!event) return { success: false, error: "Event tidak ditemukan atau sudah tidak tersedia." };
+
+  // Cek tiket valid, aktif, dan dalam periode jual
+  const [ticket] = await db
+    .select()
+    .from(schema.eventTickets)
+    .where(and(
+      eq(schema.eventTickets.id,      data.ticketId),
+      eq(schema.eventTickets.eventId, data.eventId),
+      eq(schema.eventTickets.isActive, true)
+    ))
+    .limit(1);
+
+  if (!ticket) return { success: false, error: "Tiket tidak ditemukan atau tidak aktif." };
+
+  const now = new Date();
+  if (ticket.saleStartsAt && now < ticket.saleStartsAt)
+    return { success: false, error: "Penjualan tiket belum dimulai." };
+  if (ticket.saleEndsAt && now > ticket.saleEndsAt)
+    return { success: false, error: "Penjualan tiket sudah berakhir." };
+
+  // Cek kuota
+  if (ticket.quota != null) {
+    const [{ used }] = await db
+      .select({ used: count() })
+      .from(schema.eventRegistrations)
+      .where(and(
+        eq(schema.eventRegistrations.ticketId, data.ticketId),
+        sql`${schema.eventRegistrations.status} != 'cancelled'`
+      ));
+    if (Number(used) >= ticket.quota)
+      return { success: false, error: "Kuota tiket sudah habis." };
+  }
+
+  try {
+    const regNumber = await generateRegistrationNumber(tenantDb);
+    const price     = parseFloat(String(ticket.price));
+    const isGratis  = price <= 0;
+
+    // Status pendaftaran awal
+    const regStatus = isGratis && !event.requireApproval ? "confirmed" : "pending";
+
+    const [reg] = await db
+      .insert(schema.eventRegistrations)
+      .values({
+        registrationNumber: regNumber,
+        eventId:            data.eventId,
+        ticketId:           data.ticketId,
+        attendeeName:       data.attendeeName.trim(),
+        attendeePhone:      data.attendeePhone?.trim() ?? null,
+        attendeeEmail:      data.attendeeEmail?.trim() ?? null,
+        status:             regStatus,
+      })
+      .returning({ id: schema.eventRegistrations.id });
+
+    // Tiket berbayar — buat payment record
+    if (!isGratis) {
+      const method     = data.method ?? "transfer";
+      const uniqueCode = method === "transfer" ? Math.floor(Math.random() * 999) + 1 : 0;
+      const total      = price + uniqueCode;
+      const payNum     = await generateFinancialNumber(tenantDb, "payment");
+
+      const [payment] = await db
+        .insert(schema.payments)
+        .values({
+          number:         payNum,
+          sourceType:     "event_registration",
+          sourceId:       reg.id,
+          amount:         String(price),
+          uniqueCode,
+          method,
+          bankAccountRef: data.bankAccountRef ?? null,
+          qrisAccountRef: data.qrisAccountRef ?? null,
+          status:         method === "cash" ? "submitted" : "pending",
+          payerName:      data.attendeeName.trim(),
+        })
+        .returning({ id: schema.payments.id });
+
+      return {
+        success: true,
+        data: {
+          registrationId:     reg.id,
+          registrationNumber: regNumber,
+          isPaid:             false,
+          amount:             price,
+          uniqueCode,
+          totalAmount:        total,
+          paymentId:          payment.id,
+        },
+      };
+    }
+
+    return {
+      success: true,
+      data: { registrationId: reg.id, registrationNumber: regNumber, isPaid: true },
+    };
+  } catch (err) {
+    console.error("[registerForEventAction]", err);
+    return { success: false, error: "Gagal mendaftarkan peserta. Silakan coba lagi." };
+  }
+}
+
+// ─── Konfirmasi Pembayaran (admin) ────────────────────────────────────────────
+
+export async function confirmRegistrationPaymentAction(
+  slug: string,
+  paymentId: string
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!["owner", "admin"].includes(access.tenantUser.role))
+    return { success: false, error: "Hanya admin yang bisa mengkonfirmasi pembayaran." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  const [payment] = await db
+    .select()
+    .from(schema.payments)
+    .where(eq(schema.payments.id, paymentId))
+    .limit(1);
+
+  if (!payment) return { success: false, error: "Data pembayaran tidak ditemukan." };
+  if (payment.sourceType !== "event_registration")
+    return { success: false, error: "Bukan pembayaran event." };
+  if (payment.status === "paid")
+    return { success: false, error: "Pembayaran sudah dikonfirmasi sebelumnya." };
+
+  const [reg] = await db
+    .select({ id: schema.eventRegistrations.id, eventId: schema.eventRegistrations.eventId })
+    .from(schema.eventRegistrations)
+    .where(eq(schema.eventRegistrations.id, payment.sourceId!))
+    .limit(1);
+
+  if (!reg) return { success: false, error: "Data registrasi tidak ditemukan." };
+
+  const mappings      = await resolveEventAccounts(tenantDb);
+  const cashAccountId = mappings.cash_default ?? mappings.bank_default;
+  const incomeAccountId = mappings.event_income;
+
+  if (!cashAccountId || !incomeAccountId) {
+    return {
+      success: false,
+      error: "Mapping akun belum dikonfigurasi. Atur di Keuangan → Akun → Mapping (cash_default + event_income).",
+    };
+  }
+
+  const amount = parseFloat(String(payment.amount));
+
+  try {
+    const txNumber = await generateFinancialNumber(tenantDb, "journal");
+    const transaction = await recordIncome(tenantDb, {
+      date:            new Date().toISOString().slice(0, 10),
+      description:     `Pembayaran tiket event ${payment.number}`,
+      referenceNumber: txNumber,
+      createdBy:       access.userId,
+      amount,
+      cashAccountId,
+      incomeAccountId,
+    });
+
+    await db
+      .update(schema.payments)
+      .set({
+        status:        "paid",
+        confirmedBy:   access.userId,
+        confirmedAt:   new Date(),
+        transactionId: transaction.id,
+        updatedAt:     new Date(),
+      })
+      .where(eq(schema.payments.id, paymentId));
+
+    // Konfirmasi registrasi
+    await db
+      .update(schema.eventRegistrations)
+      .set({ status: "confirmed", updatedAt: new Date() })
+      .where(eq(schema.eventRegistrations.id, reg.id));
+
+    revalidatePath(`/${slug}/event/acara/${reg.eventId}`);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[confirmRegistrationPaymentAction]", err);
+    return { success: false, error: "Gagal mengkonfirmasi pembayaran." };
+  }
+}
+
+// ─── Setujui registrasi pending (admin — untuk requireApproval=true) ──────────
+
+export async function approveRegistrationAction(
+  slug: string,
+  registrationId: string
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!["owner", "admin"].includes(access.tenantUser.role))
+    return { success: false, error: "Hanya admin yang bisa menyetujui pendaftaran." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [reg] = await db
+    .select({ id: schema.eventRegistrations.id, eventId: schema.eventRegistrations.eventId, status: schema.eventRegistrations.status })
+    .from(schema.eventRegistrations)
+    .where(eq(schema.eventRegistrations.id, registrationId))
+    .limit(1);
+
+  if (!reg) return { success: false, error: "Registrasi tidak ditemukan." };
+  if (reg.status !== "pending") return { success: false, error: "Registrasi tidak dalam status pending." };
+
+  await db
+    .update(schema.eventRegistrations)
+    .set({ status: "confirmed", updatedAt: new Date() })
+    .where(eq(schema.eventRegistrations.id, registrationId));
+
+  revalidatePath(`/${slug}/event/acara/${reg.eventId}`);
+  return { success: true, data: undefined };
+}
+
+// ─── Batalkan registrasi (admin) ──────────────────────────────────────────────
+
+export async function cancelRegistrationAction(
+  slug: string,
+  registrationId: string
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!["owner", "admin"].includes(access.tenantUser.role))
+    return { success: false, error: "Hanya admin yang bisa membatalkan registrasi." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [reg] = await db
+    .select({ id: schema.eventRegistrations.id, eventId: schema.eventRegistrations.eventId })
+    .from(schema.eventRegistrations)
+    .where(eq(schema.eventRegistrations.id, registrationId))
+    .limit(1);
+
+  if (!reg) return { success: false, error: "Registrasi tidak ditemukan." };
+
+  await db
+    .update(schema.eventRegistrations)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(eq(schema.eventRegistrations.id, registrationId));
+
+  // Cancel payment jika ada
+  await db
+    .update(schema.payments)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(and(
+      eq(schema.payments.sourceType, "event_registration"),
+      eq(schema.payments.sourceId,   registrationId),
+      sql`${schema.payments.status} != 'paid'`
+    ));
+
+  revalidatePath(`/${slug}/event/acara/${reg.eventId}`);
+  return { success: true, data: undefined };
+}
+
+// ─── Check-in peserta (admin) ─────────────────────────────────────────────────
+
+export async function checkInRegistrationAction(
+  slug: string,
+  registrationId: string
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!["owner", "admin", "editor"].includes(access.tenantUser.role))
+    return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [reg] = await db
+    .select({ id: schema.eventRegistrations.id, eventId: schema.eventRegistrations.eventId, status: schema.eventRegistrations.status })
+    .from(schema.eventRegistrations)
+    .where(eq(schema.eventRegistrations.id, registrationId))
+    .limit(1);
+
+  if (!reg) return { success: false, error: "Registrasi tidak ditemukan." };
+  if (!["confirmed", "pending"].includes(reg.status))
+    return { success: false, error: `Peserta berstatus "${reg.status}", tidak bisa check-in.` };
+
+  await db
+    .update(schema.eventRegistrations)
+    .set({ status: "attended", checkedInAt: new Date(), checkedInBy: access.userId, updatedAt: new Date() })
+    .where(eq(schema.eventRegistrations.id, registrationId));
+
+  revalidatePath(`/${slug}/event/acara/${reg.eventId}`);
+  revalidatePath(`/${slug}/event/acara/${reg.eventId}/checkin`);
+  return { success: true, data: undefined };
+}
+
+// Export generateRegistrationNumber
 export { generateRegistrationNumber };
