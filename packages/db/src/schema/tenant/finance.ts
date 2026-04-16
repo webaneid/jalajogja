@@ -39,7 +39,7 @@ export const PAYMENT_STATUSES = [
 export type PaymentStatus = typeof PAYMENT_STATUSES[number];
 
 // Tujuan uang keluar — semua melalui tabel disbursements yang sama
-export const DISBURSEMENT_PURPOSE_TYPES = ["refund", "expense", "grant", "transfer", "manual"] as const;
+export const DISBURSEMENT_PURPOSE_TYPES = ["refund", "expense", "grant", "transfer", "donation_payout", "manual"] as const;
 export type DisbursementPurposeType = typeof DISBURSEMENT_PURPOSE_TYPES[number];
 
 // 2-level approval: draft → approved (bendahara) → paid

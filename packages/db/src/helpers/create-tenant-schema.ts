@@ -181,6 +181,12 @@ export async function createTenantSchemaInDb(
         default_category TEXT        NOT NULL DEFAULT 'UMUM',
         is_active        BOOLEAN     NOT NULL DEFAULT true,
         sort_order       INTEGER     NOT NULL DEFAULT 0,
+        -- Identitas surat
+        identitas_layout TEXT        NOT NULL DEFAULT 'layout1'
+                                     CHECK (identitas_layout IN ('layout1','layout2','layout3')),
+        show_lampiran    BOOLEAN     NOT NULL DEFAULT true,
+        -- NULL = ikut global default dari settings.letter_date_format
+        date_format      TEXT        CHECK (date_format IN ('masehi','masehi_hijri')),
         created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
@@ -189,16 +195,20 @@ export async function createTenantSchemaInDb(
     // ── 9b. Letter Contacts ────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".letter_contacts (
-        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        name         TEXT        NOT NULL,
-        title        TEXT,
-        organization TEXT,
-        address      TEXT,
-        email        TEXT,
-        phone        TEXT,
-        member_id    UUID        REFERENCES public.members(id) ON DELETE SET NULL,
-        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        name           TEXT        NOT NULL,
+        title          TEXT,
+        organization   TEXT,
+        address_detail TEXT,
+        province_id    INTEGER,
+        regency_id     INTEGER,
+        district_id    INTEGER,
+        village_id     INTEGER,
+        email          TEXT,
+        phone          TEXT,
+        member_id      UUID        REFERENCES public.members(id) ON DELETE SET NULL,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `));
 
@@ -230,6 +240,7 @@ export async function createTenantSchemaInDb(
         body                TEXT,
         merge_fields        JSONB       NOT NULL DEFAULT '{}',
         attachment_urls     JSONB       NOT NULL DEFAULT '[]',
+        attachment_label    TEXT,
         sender              TEXT        NOT NULL,
         recipient           TEXT        NOT NULL,
         letter_date         DATE        NOT NULL,
@@ -429,7 +440,7 @@ export async function createTenantSchemaInDb(
         id                UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
         number            TEXT           NOT NULL UNIQUE,
         purpose_type      TEXT           NOT NULL
-                                         CHECK (purpose_type IN ('refund','expense','grant','transfer','manual')),
+                                         CHECK (purpose_type IN ('refund','expense','grant','transfer','donation_payout','manual')),
         purpose_id        UUID,
         amount            NUMERIC(15,2)  NOT NULL,
         method            TEXT           NOT NULL DEFAULT 'transfer'
@@ -466,7 +477,64 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 19. Product Categories ─────────────────────────────────────────────
+    // ── 19. Campaigns ─────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".campaigns (
+        id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+        slug             TEXT          NOT NULL UNIQUE,
+        title            TEXT          NOT NULL,
+        description      TEXT,
+        campaign_type    TEXT          NOT NULL DEFAULT 'donasi'
+                                       CHECK (campaign_type IN ('donasi','zakat','wakaf','qurban')),
+        target_amount    NUMERIC(15,2),
+        collected_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+        cover_id         UUID          REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        status           TEXT          NOT NULL DEFAULT 'draft'
+                                       CHECK (status IN ('draft','active','closed','archived')),
+        starts_at        TIMESTAMPTZ,
+        ends_at          TIMESTAMPTZ,
+        show_donor_list  BOOLEAN       NOT NULL DEFAULT true,
+        show_amount      BOOLEAN       NOT NULL DEFAULT true,
+        created_by       UUID          REFERENCES "${s}".officers(id) ON DELETE SET NULL,
+        created_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 20. Donations ──────────────────────────────────────────────────────
+    // Amount + status + bukti bayar ada di payments (source_type='donation')
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".donations (
+        id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        donation_number     TEXT        NOT NULL UNIQUE,
+        campaign_id         UUID        REFERENCES "${s}".campaigns(id) ON DELETE SET NULL,
+        donation_type       TEXT        NOT NULL DEFAULT 'donasi'
+                                        CHECK (donation_type IN ('donasi','zakat','wakaf','qurban')),
+        member_id           UUID        REFERENCES public.members(id) ON DELETE SET NULL,
+        donor_name          TEXT        NOT NULL,
+        donor_phone         TEXT,
+        donor_email         TEXT,
+        donor_message       TEXT,
+        is_anonymous        BOOLEAN     NOT NULL DEFAULT false,
+        certificate_url     TEXT,
+        certificate_sent_at TIMESTAMPTZ,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 21. Donation Sequences ─────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".donation_sequences (
+        id      UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        year    INTEGER NOT NULL,
+        month   INTEGER NOT NULL,
+        counter INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (year, month)
+      )
+    `));
+
+    // ── 22. Product Categories ─────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".product_categories (
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -608,6 +676,9 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_payments_member_id         ON "${s}".payments(member_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_disbursements_status       ON "${s}".disbursements(status)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_disbursements_requested_by ON "${s}".disbursements(requested_by)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_donations_campaign_id     ON "${s}".donations(campaign_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_donations_member_id       ON "${s}".donations(member_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_campaigns_status          ON "${s}".campaigns(status)`));
 
     // ── Default Data ───────────────────────────────────────────────────────
     await tx.execute(sql.raw(`

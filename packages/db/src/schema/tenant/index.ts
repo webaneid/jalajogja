@@ -9,6 +9,7 @@ import {
 } from "./officers";
 import { createAccountsTable, createTransactionsTable, createTransactionEntriesTable, createBudgetsTable, createBudgetItemsTable, createPaymentsTable, createDisbursementsTable, createFinancialSequencesTable } from "./finance";
 import { createProductCategoriesTable, createProductsTable, createOrdersTable, createOrderItemsTable } from "./shop";
+import { createCampaignsTable, createDonationsTable, createDonationSequencesTable } from "./donations";
 import { createSettingsTable, createMenusTable, createMenuItemsTable } from "./settings";
 
 // Cache schema objects — hindari buat ulang setiap request
@@ -46,6 +47,10 @@ function buildTenantSchema(slug: string) {
     payments: createPaymentsTable(s),
     disbursements: createDisbursementsTable(s),
     financialSequences: createFinancialSequencesTable(s),
+    // Donasi
+    campaigns:         createCampaignsTable(s),
+    donations:         createDonationsTable(s),
+    donationSequences: createDonationSequencesTable(s),
     // Toko
     productCategories: createProductCategoriesTable(s),
     products: createProductsTable(s),
@@ -73,4 +78,5 @@ export * from "./letters";
 export * from "./officers";
 export * from "./finance";
 export * from "./shop";
+export * from "./donations";
 export * from "./settings";
