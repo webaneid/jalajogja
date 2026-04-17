@@ -320,7 +320,7 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
               onChange={(newSlots) => setSlots(newSlots)}
             />
             <p className="text-xs text-muted-foreground">
-              Assign pengurus ke tiap slot. Tanda tangan dan QR dilakukan dari halaman detail.
+              Pilih pengurus untuk tiap slot di sini. Setelah disimpan, buka <strong>halaman detail</strong> untuk mendapatkan link TTD yang dikirim ke masing-masing penandatangan.
             </p>
           </div>
         </div>

@@ -11,12 +11,10 @@ import {
   type SignatureLayout,
   type SignatureSlot,
   SIGNATURE_LAYOUTS,
-  SIGNER_ROLE_LABELS,
   type SlotRole,
   buildEmptyMainSlots,
 } from "@/lib/letter-signature-layout";
 import {
-  signLetterAction,
   removeSignatureAction,
   generateSigningTokenAction,
 } from "@/app/(dashboard)/[tenant]/letters/actions";
@@ -144,26 +142,6 @@ export function SignatureSlotManager({
     const next = slots.filter((s) => !(s.section === slot.section && s.order === slot.order));
     setSlots(next);
     emitChange(next);
-  }
-
-  // TTD langsung (mode detail)
-  function handleSignDirect(slot: SignatureSlot) {
-    const officer = availableOfficers.find((o) => o.isCurrentUser);
-    if (!officer) return;
-    setError("");
-    startTransition(async () => {
-      const role: SlotRole = slot.section === "witnesses" ? "witness" : (slot.role ?? "signer");
-      const res = await signLetterAction(slug, letterId, officer.officerId, role);
-      if (res.success) {
-        setSlots((prev) => prev.map((s) =>
-          s.section === slot.section && s.order === slot.order
-            ? { ...s, signedAt: new Date(), verifyUrl: `${appUrl}/${slug}/verify/${res.verificationHash}` }
-            : s
-        ));
-      } else {
-        setError(res.error);
-      }
-    });
   }
 
   // Hapus slot (mode detail)
@@ -336,10 +314,11 @@ export function SignatureSlotManager({
         {/* Header slot */}
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
-          {isSigned && (
+          {/* Status badge hanya tampil di detail mode */}
+          {mode === "detail" && isSigned && (
             <span className="text-[10px] text-green-600 font-medium">✓ TTD</span>
           )}
-          {!isSigned && slot.officerId && !isSigned && (
+          {mode === "detail" && !isSigned && slot.officerId && (
             <span className="text-[10px] text-amber-600">⏳ Menunggu</span>
           )}
         </div>
@@ -353,29 +332,22 @@ export function SignatureSlotManager({
           </div>
         )}
 
-        {/* Mode form — combobox assign */}
-        {mode === "form" && renderOfficerCombobox(
+        {/* Mode form — combobox assign (hanya tentang siapa yang akan TTD, bukan status TTD) */}
+        {mode === "form" && !isSigned && renderOfficerCombobox(
           slot,
           (officerId, role) => handleAssignForm(slot, officerId, role),
-          slot.officerId && !isSigned ? () => handleClearForm(slot) : undefined,
+          slot.officerId ? () => handleClearForm(slot) : undefined,
+        )}
+        {/* Slot yang sudah TTD tidak bisa diubah dari form — batalkan dari halaman detail */}
+        {mode === "form" && isSigned && (
+          <p className="text-[10px] text-muted-foreground italic mt-0.5">
+            Sudah ditandatangani — batalkan dari halaman detail jika perlu mengubah.
+          </p>
         )}
 
         {/* Mode detail — link TTD (unsigned) */}
         {mode === "detail" && !isSigned && slot.officerId && (
           <div className="mt-2 space-y-1.5">
-            {/* Tombol TTD Sekarang — hanya untuk officer yang sedang login */}
-            {availableOfficers.find((o) => o.isCurrentUser)?.officerId === slot.officerId && (
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => handleSignDirect(slot)}
-                className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-              >
-                <PenLine className="h-3.5 w-3.5" />
-                TTD Sekarang
-              </button>
-            )}
-
             {/* Link TTD — tampilkan jika sudah ada token */}
             {slot.signingToken && (
               <div className="rounded-md bg-blue-50 border border-blue-200 p-2.5 space-y-1.5">
