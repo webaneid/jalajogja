@@ -34,6 +34,7 @@ event_type: offline | online | hybrid
 status: draft | published | cancelled | completed
 starts_at, ends_at
 location, location_detail  -- untuk offline/hybrid
+maps_url                   -- Google Maps URL (opsional, offline/hybrid saja)
 online_link                -- untuk online/hybrid
 organizer_name             -- penyelenggara (bisa beda dari nama tenant)
 max_capacity               -- null = tidak terbatas
@@ -185,6 +186,7 @@ components/event/
   Waktu Mulai + Selesai
   Lokasi (jika offline/hybrid)
   Alamat Lokasi
+  Link Google Maps (opsional)
   Link Online (jika online/hybrid)
   Penyelenggara
   Kapasitas Maks
@@ -196,19 +198,27 @@ components/event/
   requireApproval toggle
   ── Tiket ──
   TicketManager (dynamic list):
-    Per tiket: nama, harga, kuota,
-    aktif/nonaktif, periode jual,
+    Per tiket: nama, toggle Gratis/
+    Berbayar, input harga (disabled
+    saat Gratis), kuota, aktif/
+    nonaktif, periode jual,
     expand/collapse
   ── SEO ──
   SeoPanel (contentType="event")
 ```
 
 ### TicketManager
-- Local state `tickets: TicketLocal[]` — setiap item punya `_key` (React key lokal) dan `_expanded` (UI toggle)
-- Tiket baru: `id: null` → `createEventAction` INSERT baru
-- Tiket lama: `id: string` → `updateEventAction` UPDATE existing
+- Local state `tickets: TicketLocal[]` — setiap item punya `_key` (React key lokal), `_expanded` (UI toggle), dan `_isGratis` (toggle harga)
+- Tiket baru: `id: null` → `createEventAction` INSERT baru; default `_expanded: true, _isGratis: true`
+- Tiket lama: `id: string` → `updateEventAction` UPDATE existing; `_isGratis = price === 0` saat load
 - Tiket dihapus: hilang dari array → `syncTickets` DELETE di DB (guard: no registrations)
 - Diff logic di `syncTickets(tenantDb, eventId, tickets)` — helper di actions.ts
+
+### Gratis / Berbayar Toggle
+- `_isGratis: true` → price dikirim sebagai `0`, tidak ada payments record
+- `_isGratis: false` → price input aktif, validasi `price >= 1`
+- Input harga **selalu tampil** (disabled jika Gratis) — tidak disembunyikan saat Gratis dipilih. Alasan: jika disembunyikan, user tidak tahu di mana mengisi harga setelah toggle ke Berbayar
+- Field `_isGratis`, `_key`, `_expanded` di-strip di `buildData()` — tidak dikirim ke server
 
 ---
 
@@ -276,6 +286,13 @@ Kolom `ticket_id` di `event_registrations` dideklarasikan tanpa `notNull()` → 
 ### Ticket gratis vs berbayar
 `price = 0` = gratis → tidak perlu payments record. Cukup insert registration dengan status "confirmed" langsung.
 Validasi dilakukan di halaman publik (Step 3), bukan di EventForm admin.
+
+### Input conditional: selalu tampil, disabled bukan hidden
+Untuk input yang bergantung pada toggle (Gratis/Berbayar), jangan sembunyikan input saat kondisi off —
+tampilkan tapi disable. User tidak tahu di mana mengisi nilai jika inputnya tidak kelihatan sama sekali.
+Pattern yang salah: `{!isGratis && <Input ... />}` → user bingung.
+Pattern yang benar: `<Input disabled={isGratis} placeholder={isGratis ? "0 (Gratis)" : "Masukkan harga"} />`
+Berlaku untuk semua input conditional di seluruh aplikasi.
 
 ### payments.source_type
 Drizzle enum `PAYMENT_SOURCE_TYPES` DAN DDL CHECK constraint di `create-tenant-schema.ts` harus diperbarui bersamaan saat menambah source_type baru. Jika hanya update salah satu → runtime error saat insert.

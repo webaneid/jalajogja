@@ -17,6 +17,11 @@ import {
   createEventRegistrationsTable,
   createEventRegistrationSequencesTable,
 } from "./events";
+import {
+  createDocumentCategoriesTable,
+  createDocumentsTable,
+  createDocumentVersionsTable,
+} from "./documents";
 import { createSettingsTable, createMenusTable, createMenuItemsTable } from "./settings";
 
 // Cache schema objects — hindari buat ulang setiap request
@@ -65,6 +70,10 @@ function buildTenantSchema(slug: string) {
     eventTickets:                 createEventTicketsTable(s),
     eventRegistrations:           createEventRegistrationsTable(s),
     eventRegistrationSequences:   createEventRegistrationSequencesTable(s),
+    // Dokumen
+    documentCategories: createDocumentCategoriesTable(s),
+    documents:          createDocumentsTable(s),
+    documentVersions:   createDocumentVersionsTable(s),
     // Toko
     productCategories: createProductCategoriesTable(s),
     products: createProductsTable(s),
@@ -94,4 +103,5 @@ export * from "./finance";
 export * from "./shop";
 export * from "./donations";
 export * from "./events";
+export * from "./documents";
 export * from "./settings";

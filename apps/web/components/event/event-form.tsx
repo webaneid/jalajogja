@@ -670,19 +670,18 @@ export function EventForm({ slug, eventId, categories, initialData }: EventFormP
                             Berbayar
                           </button>
                         </div>
-                        {!ticket._isGratis && (
-                          <div className="relative">
-                            <span className="absolute left-2.5 top-2 text-xs text-muted-foreground">Rp</span>
-                            <Input
-                              type="number"
-                              min={1}
-                              value={ticket.price || ""}
-                              onChange={(e) => updateTicket(ticket._key, { price: parseInt(e.target.value) || 0 })}
-                              placeholder="Masukkan harga"
-                              className="h-8 text-sm pl-7"
-                            />
-                          </div>
-                        )}
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-2 text-xs text-muted-foreground">Rp</span>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={ticket._isGratis ? "" : (ticket.price || "")}
+                            onChange={(e) => updateTicket(ticket._key, { price: parseInt(e.target.value) || 0 })}
+                            placeholder={ticket._isGratis ? "0 (Gratis)" : "Masukkan harga"}
+                            disabled={ticket._isGratis}
+                            className="h-8 text-sm pl-7 disabled:opacity-50"
+                          />
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">

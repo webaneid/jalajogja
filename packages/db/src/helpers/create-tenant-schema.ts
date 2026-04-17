@@ -666,7 +666,54 @@ export async function createTenantSchemaInDb(
       )
     `));
 
-    // ── 28. Product Categories ─────────────────────────────────────────────
+    // ── 28. Document Categories ───────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".document_categories (
+        id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        name       TEXT        NOT NULL,
+        slug       TEXT        NOT NULL UNIQUE,
+        parent_id  UUID        REFERENCES "${s}".document_categories(id) ON DELETE SET NULL,
+        sort_order INTEGER     NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 29. Documents ─────────────────────────────────────────────────────
+    // current_version_id: plain UUID tanpa FK constraint (circular ref dengan document_versions)
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".documents (
+        id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        title              TEXT        NOT NULL,
+        description        TEXT,
+        category_id        UUID        REFERENCES "${s}".document_categories(id) ON DELETE SET NULL,
+        current_version_id UUID,
+        visibility         TEXT        NOT NULL DEFAULT 'internal'
+                                       CHECK (visibility IN ('internal','public')),
+        tags               TEXT[]      NOT NULL DEFAULT '{}',
+        created_by         UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 30. Document Versions ─────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".document_versions (
+        id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        document_id    UUID        NOT NULL REFERENCES "${s}".documents(id) ON DELETE CASCADE,
+        version_number INTEGER     NOT NULL DEFAULT 1,
+        file_id        UUID        REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        file_name      TEXT        NOT NULL,
+        file_size      INTEGER,
+        mime_type      TEXT,
+        notes          TEXT,
+        uploaded_by    UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(document_id, version_number)
+      )
+    `));
+
+    // ── 31. Product Categories ─────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".product_categories (
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -808,9 +855,12 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_payments_member_id         ON "${s}".payments(member_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_disbursements_status       ON "${s}".disbursements(status)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_disbursements_requested_by ON "${s}".disbursements(requested_by)`));
-    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_donations_campaign_id     ON "${s}".donations(campaign_id)`));
-    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_donations_member_id       ON "${s}".donations(member_id)`));
-    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_campaigns_status          ON "${s}".campaigns(status)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_donations_campaign_id        ON "${s}".donations(campaign_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_donations_member_id          ON "${s}".donations(member_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_campaigns_status             ON "${s}".campaigns(status)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_document_versions_document_id ON "${s}".document_versions(document_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_documents_category_id        ON "${s}".documents(category_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_documents_visibility         ON "${s}".documents(visibility)`));
 
     // ── Default Data ───────────────────────────────────────────────────────
     await tx.execute(sql.raw(`

@@ -312,7 +312,8 @@ app/(dashboard)/[tenant]/
 - [ ] **Modul Surat — sisa fitur**: inter-tenant, attachment MediaPicker
 - [ ] Keuangan (sudah ada schema, belum ada UI)
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
-- [~] Event — arsitektur di `docs/arsitektur-event.md` ← Step 1+2 selesai; Step 3–6 (publik, pendaftaran, check-in, sertifikat) roadmap
+- [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai
+- [ ] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
@@ -1447,10 +1448,89 @@ Jangan campur dua konsep ini.
 **Aturan**: Jangan pakai `generateHTML` dari `@tiptap/core` di server. Jangan bungkus
 rendering dengan `try/catch` tanpa log — error tersembunyi sangat sulit dideteksi.
 
+### [2026-04] Modul Event — SELESAI (Step 1–6 + Audit Fixes)
+
+**Arsitektur lengkap di `docs/arsitektur-event.md`.**
+
+**Step 1–2 (Schema + Admin UI):**
+- 5 tabel baru: `event_categories`, `events`, `event_tickets`, `event_registrations`, `event_registration_sequences`
+- EventForm: Tiptap + TicketManager (diff sync, tidak delete-all) + SeoPanel + sidebar (Kategori combobox + Cover MediaPicker)
+- CRUD kategori inline di `/event/kategori`
+- payments.source_type diperluas: tambah `"event_registration"` — **wajib update Drizzle enum DAN DDL CHECK constraint bersamaan**
+
+**Step 3–6 (Publik + Pendaftaran + Check-in + Sertifikat):**
+- Halaman publik `/(public)/[tenant]/event/[slug]` — EventRegisterForm: pilih tiket, data peserta, metode bayar
+- Admin detail event: stats (total/confirmed/pending/attended) + list pendaftaran + konfirmasi bayar + approve/cancel
+- Check-in hari-H: EventCheckinClient — search real-time + satu tombol + flash konfirmasi
+- Sertifikat PDF: Playwright landscape A4, upload MinIO, tombol di list pendaftaran
+
+**Lessons Learned:**
+
+#### Toggle tanpa render = fitur palsu
+Setiap boolean toggle di form admin (`showAttendeeList`, `showTicketCount`, `requireApproval`) harus punya pasangannya di consumer. Kalau belum diimplementasikan di halaman publik, jangan tampilkan toggle dulu. Berlaku di semua modul.
+
+#### Drizzle `.notNull()` wajib match DDL `NOT NULL`
+Jika DDL sudah `NOT NULL`, Drizzle schema wajib `.notNull()`. Ketidakcocokan membuat TypeScript types lebih lebar dari realita → guard `?? ""` tidak perlu tersebar di mana-mana.
+
+**Pattern**: setiap kali nulis DDL `NOT NULL`, langsung tambahkan `.notNull()` di Drizzle schema di baris yang sama.
+
+#### Kuota/kapasitas terbatas wajib SELECT FOR UPDATE
+Pattern `SELECT COUNT → INSERT` tanpa lock rentan race condition. Untuk quota-limited resources, gunakan:
+```typescript
+await db.transaction(async (tx) => {
+  // Lock baris tiket agar concurrent requests antre
+  await tx.select().from(schema.eventTickets)
+    .where(sql`${schema.eventTickets.id} = ${ticketId} FOR UPDATE`);
+  
+  // Count SETELAH lock — tidak akan berubah sampai transaction selesai
+  const [{ used }] = await tx.select({ used: count() })...
+  if (Number(used) >= quota) throw new Error("Kuota habis.");
+  
+  // Insert dalam transaction yang sama
+  return tx.insert(...).values(...).returning(...);
+});
+```
+**Kapan wajib**: event populer, produk terbatas, apapun yang punya `quota != null`.
+
+#### Public action tetap perlu revalidatePath
+Server action tanpa `getTenantAccess()` (public, seperti `registerForEventAction`) tetap perlu `revalidatePath` jika ada server component yang menampilkan data yang berubah akibat action tersebut. Jangan berasumsi public action tidak perlu revalidate.
+
+#### Semantik nama fitur menentukan validasi
+"Sertifikat Kehadiran" harus hanya untuk `status=attended` — bukan siapapun yang `confirmed`. Nama fitur di UI harus dicerminkan oleh validasi di API route. Jika ragu, nama yang lebih ketat lebih aman.
+
+#### Toggle Gratis/Berbayar per tiket: pattern `_isGratis`
+Untuk input yang conditional (muncul/sembunyi berdasarkan pilihan user), simpan state UI sebagai field `_` di local state (`_isGratis`, `_expanded`, dll). Field `_` tidak dikirim ke server — di-strip saat `buildData()`. Pattern:
+```typescript
+type TicketLocal = TicketInput & {
+  _key:      string;    // React key, tidak ke server
+  _expanded: boolean;  // UI state, tidak ke server
+  _isGratis: boolean;  // UI toggle, mengontrol price=0 dan visibilitas input harga
+};
+
+// Di addTicket: _isGratis: true (default gratis)
+// Di loading existing: _isGratis: t.price === 0
+// Di toggle → gratis: updateTicket(key, { _isGratis: true, price: 0 })
+// Di buildData(): strip semua _ fields, kirim hanya TicketInput
+```
+
+#### Input conditional: disabled bukan hidden
+Jika sebuah input conditional (muncul/sembunyi berdasarkan toggle), jangan sembunyikan input saat kondisi off — **tampilkan tapi disable**. Jika input disembunyikan, user tidak tahu di mana mengisi nilai setelah mengubah toggle.
+- **Salah**: `{!isGratis && <Input ... />}` → input hilang saat Gratis, user bingung mencari field harga
+- **Benar**: `<Input disabled={isGratis} placeholder={isGratis ? "0 (Gratis)" : "Masukkan harga"} />`
+Berlaku untuk semua input conditional di seluruh aplikasi.
+
+#### Kategori payment untuk modul baru
+Saat modul baru butuh pembayaran, **buat kategori baru** di payment settings — jangan menumpang kategori modul lain. Event saat ini menggunakan kategori `"donasi"` atau `"general"` sebagai fallback. Jika ingin pisah, tambah kategori `"event"` di settings payment dan update filter di public page. Komentar TODO sudah ditambahkan di `[slug]/page.tsx`.
+
+#### showTicketCount: hitung per-query, bukan realtime
+`showTicketCount` di halaman publik mengambil count dari DB saat page di-render (server component). Tidak realtime — peserta lain yang baru daftar tidak langsung update hitungan. Untuk event dengan kuota ketat dan traffic tinggi, pertimbangkan revalidate lebih agresif atau polling client-side.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Modul Event — Step 1 (Schema) + Step 2 (UI + Actions)
+- Terakhir dikerjakan: Modul Event **SELESAI PENUH** (Step 1–6 + audit fixes + Google Maps + toggle Gratis/Berbayar + UX fix harga tiket)
+- UX fix: input harga tiket selalu tampil (disabled saat Gratis) — tidak tersembunyi. Lesson: disabled > hidden untuk input conditional
 - Donasi: **SELESAI** (schema, CRUD campaign + kategori, SEO, transaksi) — lihat `docs/arsitektur-donasi.md`
-- Event Step 1+2: **SELESAI** — 5 tabel baru, EventForm + TicketManager + SeoPanel, sidebar nav
-- Event roadmap (Step 3–6): halaman publik pendaftaran, pendaftaran admin, check-in, sertifikat
-- Next step: **Event Step 3** (halaman publik `/(public)/[tenant]/event/[slug]`) ATAU **Keuangan** (schema sudah ada, belum ada UI)
+- Event: **SELESAI** — semua 6 step + audit fixes — lihat `docs/arsitektur-event.md`
+- Kolom roadmap yang belum digunakan (sengaja): `certificate_template_id` (events), `custom_fields` (event_registrations)
+- Kategori payment "event" belum ditambahkan — saat ini pakai "donasi"/"general" (TODO di public page)
+- Next step: **Modul Dokumen** (proposal di `docs/arsitektur-document.md`, belum dieksekusi)
 - Fitur surat yang belum diimplementasikan: inter-tenant letters, attachment MediaPicker

@@ -12,6 +12,7 @@ import {
   Wallet,
   HeartHandshake,
   CalendarDays,
+  FolderOpen,
   ShoppingBag,
   Settings,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const navItems = [
   { label: "Keuangan",   icon: Wallet,          path: "finance"    },
   { label: "Donasi",     icon: HeartHandshake,  path: "donasi"     },
   { label: "Event",      icon: CalendarDays,    path: "event"      },
+  { label: "Dokumen",    icon: FolderOpen,      path: "dokumen"    },
   { label: "Toko",       icon: ShoppingBag,     path: "toko"       },
   { label: "Pengaturan", icon: Settings,        path: "settings"   },
 ];
