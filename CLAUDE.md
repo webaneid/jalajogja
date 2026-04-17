@@ -1680,20 +1680,48 @@ Solusi: server action on-demand yang di-trigger via tombol "Buat Link TTD" di de
 - Jika slot sudah TTD, tolak
 - Token muncul di UI langsung via optimistic state update (tanpa refresh halaman)
 
-## Context Sesi Terakhir
-- Terakhir dikerjakan: **Modul Surat — TTD fixes (token stability + UI link signing)**
-- TTD system: **SELESAI** — 4-layer arsitektur, slot assignment di edit page, signing di detail page, halaman publik `/sign/[token]` — lihat `docs/arsitektur-tandatangan.md`
-- Role system: **SELESAI** — lihat `docs/arsitektur-role-user.md`
-- Dokumen: **SELESAI** — lihat `docs/arsitektur-document.md`
-- Event: **SELESAI** — lihat `docs/arsitektur-event.md`
-- Donasi: **SELESAI** — lihat `docs/arsitektur-donasi.md`
-- Type check: **0 errors** setelah semua perubahan sesi ini
+#### Pisahkan assignment dari status signing di form mode
+Form edit ("Assign Penandatangan") hanya untuk menentukan SIAPA yang akan TTD.
+- Badge `✓ TTD` dan `⏳ Menunggu` TIDAK boleh tampil di form mode — hanya di detail mode
+- Tombol "TTD Sekarang" di detail mode DIHAPUS — URL adalah satu-satunya cara TTD
+- Alasan: tombol direct-sign membypass alur persetujuan yang diinginkan
 
-### Perubahan sesi ini (TTD fixes)
-1. **`syncSignatureSlotsAction` token-stable** — token hanya di-regenerate jika officer berubah ATAU token null; link yang sudah dikirim tidak rusak saat admin simpan ulang
-2. **Link TTD tampil sebagai URL penuh** di detail page — text input read-only + tombol copy, bukan tombol "Salin" kecil
-3. **`generateSigningTokenAction`** — server action baru untuk generate token on-demand bagi slot yang `signingToken = null` (slot lama / edge case)
-4. **Tombol "Buat Link TTD"** di detail page — muncul jika slot tidak punya token + admin; token muncul langsung via optimistic update
+### **[2026-04] BUG KRITIS: `signed_at DEFAULT NOW()` di DDL lama**
+
+> **JANGAN PERNAH beri `DEFAULT NOW()` (atau default apapun) pada kolom `signed_at` / `confirmed_at` / kolom timestamp yang menandai KONFIRMASI AKTIF dari user.**
+
+**Masalah yang terjadi**: Kolom `signed_at` di tabel `letter_signatures` tenant lama memiliki `DEFAULT now()` dari versi DDL sebelum refactor. Akibatnya setiap INSERT slot baru via `syncSignatureSlotsAction` otomatis mendapat `signed_at = NOW()` — slot langsung dianggap "sudah ditandatangani" tanpa siapapun yang benar-benar menandatangani.
+
+**Gejala**: Admin assign officer di edit page → simpan → buka detail page → slot langsung `✓ TTD`. Link TTD tidak pernah muncul karena `isSigned = true` menyembunyikan section link.
+
+**Diagnosa**: `signed_at = created_at` persis sama → default DB yang mengisi, bukan kode.
+
+**Fix yang dilakukan**:
+```sql
+-- Hapus default dari kolom (jalankan per tenant yang terdampak)
+ALTER TABLE "tenant_{slug}".letter_signatures ALTER COLUMN signed_at DROP DEFAULT;
+
+-- Reset slot yang auto-signed (signed_at = created_at = tidak sah)
+UPDATE "tenant_{slug}".letter_signatures
+SET signed_at = NULL, verification_hash = NULL, ip_address = NULL
+WHERE signed_at = created_at;
+```
+
+**DDL baru sudah benar** — `create-tenant-schema.ts` tidak punya `DEFAULT NOW()` di `signed_at`. Tapi **tenant yang dibuat dengan DDL lama perlu migration manual** di atas.
+
+**Aturan berlaku untuk semua modul**: Kolom yang merepresentasikan konfirmasi eksplisit user (`signed_at`, `confirmed_at`, `approved_at`, `paid_at`, dll) **TIDAK BOLEH punya `DEFAULT`**. Kolom ini harus selalu `NULL` saat row dibuat, dan diisi secara eksplisit oleh kode saat event konfirmasi terjadi.
+
+## Context Sesi Terakhir
+- Terakhir dikerjakan: **Modul Surat — TTD bug root cause ditemukan dan diperbaiki**
+- TTD system: **SELESAI + FIXED** — bug `signed_at DEFAULT NOW()` ditemukan dan diperbaiki
+- Type check: **0 errors**
+
+### Perubahan sesi ini (TTD complete fixes)
+1. **`syncSignatureSlotsAction` token-stable** — token hanya di-regenerate jika officer berubah ATAU token null
+2. **Hapus tombol "TTD Sekarang"** dari detail mode — URL adalah satu-satunya cara TTD
+3. **Form mode tidak tampilkan status TTD** — badge `✓ TTD` / `⏳ Menunggu` hanya di detail mode
+4. **Bug root cause**: `signed_at DEFAULT NOW()` di DDL lama → semua slot baru langsung `signed` — fix: `ALTER COLUMN signed_at DROP DEFAULT` + reset data palsu
+5. **Hapus duplicate public dokumen route** yang konflik dengan dashboard route
 
 ### Known TODO
 - Role System: email SMTP sending untuk invite (saat ini hanya manual link copy), update role dropdown di daftar user aktif, wajibkan email di form anggota
