@@ -428,8 +428,9 @@ export function SignatureSlotManager({
             )}
             {isAdmin && slot.id && (
               <button type="button" disabled={pending} onClick={() => handleRevoke(slot)}
-                className="text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-40">
-                Hapus TTD
+                className="inline-flex items-center gap-1 rounded border border-destructive/40 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10 disabled:opacity-40">
+                <Trash2 className="h-3 w-3" />
+                Batalkan TTD
               </button>
             )}
           </div>
