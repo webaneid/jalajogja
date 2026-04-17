@@ -26,20 +26,38 @@ export async function createTenantSchemaInDb(
     // ── 1. Schema ──────────────────────────────────────────────────────────
     await tx.execute(sql.raw(`CREATE SCHEMA IF NOT EXISTS "${s}"`));
 
-    // ── 2. Users (akses dashboard) ─────────────────────────────────────────
-    // member_id merujuk ke public.members.id — FK ke public schema
+    // ── 2. Custom Roles (harus sebelum users — users FK ke custom_roles) ─────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".custom_roles (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        name        TEXT        NOT NULL,
+        description TEXT,
+        permissions JSONB       NOT NULL DEFAULT '{}',
+        is_system   BOOLEAN     NOT NULL DEFAULT false,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 3. Users (akses dashboard — bukan semua anggota, hanya pengurus) ────
+    // member_id → public.members: link ke identitas anggota (nullable — owner awal boleh null)
+    // custom_role_id → custom_roles: diisi jika role = 'custom'
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".users (
         id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
         better_auth_user_id TEXT        NOT NULL UNIQUE,
-        role                TEXT        NOT NULL DEFAULT 'viewer'
-                                        CHECK (role IN ('owner','admin','editor','viewer')),
+        role                TEXT        NOT NULL DEFAULT 'ketua'
+                                        CHECK (role IN ('owner','ketua','sekretaris','bendahara','custom')),
+        custom_role_id      UUID        REFERENCES "${s}".custom_roles(id) ON DELETE SET NULL,
         member_id           UUID        REFERENCES public.members(id) ON DELETE SET NULL,
         created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         CONSTRAINT fk_users_auth_user
           FOREIGN KEY (better_auth_user_id)
-          REFERENCES public."user"(id) ON DELETE CASCADE
+          REFERENCES public."user"(id) ON DELETE CASCADE,
+        CONSTRAINT users_custom_role_check CHECK (
+          (role IN ('owner','ketua','sekretaris','bendahara') AND custom_role_id IS NULL)
+          OR (role = 'custom' AND custom_role_id IS NOT NULL)
+        )
       )
     `));
 
@@ -255,6 +273,12 @@ export async function createTenantSchemaInDb(
         issuer_officer_id   UUID        REFERENCES "${s}".officers(id) ON DELETE SET NULL,
         inter_tenant_to     TEXT,
         inter_tenant_status TEXT        CHECK (inter_tenant_status IN ('pending','delivered')),
+        signature_layout    TEXT        NOT NULL DEFAULT 'double'
+                                        CHECK (signature_layout IN (
+                                          'single-center','single-left','single-right',
+                                          'double','triple-row','triple-pyramid','double-with-witnesses'
+                                        )),
+        signature_show_date BOOLEAN     NOT NULL DEFAULT true,
         created_by          UUID        NOT NULL REFERENCES "${s}".users(id),
         created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -309,9 +333,9 @@ export async function createTenantSchemaInDb(
     `));
 
     // ── 13. Letter Signatures ──────────────────────────────────────────────────
-    // Multi-signer: satu surat bisa punya beberapa penandatangan
-    // verification_hash → isi QR Code: nama + jabatan + divisi + tanggal + hash
-    // Posisi QR Code di template surat bebas, tidak di-hardcode di sini
+    // Slot-based: slot bisa di-assign sebelum officer TTD.
+    // signed_at + verification_hash nullable → null = sudah di-assign, belum TTD.
+    // signing_token = UUID untuk URL publik /sign/{token}.
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".letter_signatures (
         id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -319,8 +343,13 @@ export async function createTenantSchemaInDb(
         officer_id        UUID        NOT NULL REFERENCES "${s}".officers(id) ON DELETE RESTRICT,
         role              TEXT        NOT NULL DEFAULT 'signer'
                                       CHECK (role IN ('signer','approver','witness')),
-        signed_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        verification_hash TEXT        NOT NULL UNIQUE,
+        slot_order        INTEGER     NOT NULL DEFAULT 1,
+        slot_section      TEXT        NOT NULL DEFAULT 'main'
+                                      CHECK (slot_section IN ('main','witnesses')),
+        signing_token              TEXT        UNIQUE,
+        signing_token_expires_at   TIMESTAMPTZ,
+        signed_at                  TIMESTAMPTZ,
+        verification_hash TEXT        UNIQUE,
         ip_address        TEXT,
         created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
@@ -836,6 +865,30 @@ export async function createTenantSchemaInDb(
       )
     `));
 
+    // ── Tenant Invites (setelah users — FK ke users) ──────────────────────
+    // Audit trail undangan pengurus — tidak dihapus saat expired/accepted
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".tenant_invites (
+        id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        email           TEXT,
+        member_id       UUID        REFERENCES public.members(id) ON DELETE CASCADE,
+        role            TEXT        NOT NULL
+                                    CHECK (role IN ('ketua','sekretaris','bendahara','custom')),
+        custom_role_id  UUID        REFERENCES "${s}".custom_roles(id) ON DELETE SET NULL,
+        token           TEXT        NOT NULL UNIQUE,
+        delivery_method TEXT        NOT NULL DEFAULT 'manual'
+                                    CHECK (delivery_method IN ('email','manual')),
+        expires_at      TIMESTAMPTZ NOT NULL,
+        accepted_at     TIMESTAMPTZ,
+        created_by      UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT invites_custom_role_check CHECK (
+          (role IN ('ketua','sekretaris','bendahara') AND custom_role_id IS NULL)
+          OR (role = 'custom' AND custom_role_id IS NOT NULL)
+        )
+      )
+    `));
+
     // ── Indexes ────────────────────────────────────────────────────────────
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letters_type             ON "${s}".letters(type)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letters_status           ON "${s}".letters(status)`));
@@ -861,6 +914,9 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_document_versions_document_id ON "${s}".document_versions(document_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_documents_category_id        ON "${s}".documents(category_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_documents_visibility         ON "${s}".documents(visibility)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_tenant_invites_token         ON "${s}".tenant_invites(token)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_tenant_invites_email         ON "${s}".tenant_invites(email)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_tenant_invites_member        ON "${s}".tenant_invites(member_id)`))
 
     // ── Default Data ───────────────────────────────────────────────────────
     await tx.execute(sql.raw(`

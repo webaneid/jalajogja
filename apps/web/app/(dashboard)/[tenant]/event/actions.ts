@@ -4,6 +4,7 @@ import { eq, count, inArray, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, generateFinancialNumber, recordIncome } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -176,7 +177,7 @@ export async function createEventAction(
 ): Promise<ActionResult<{ eventId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "event"))
     return { success: false, error: "Hanya admin yang bisa membuat event." };
 
   if (!data.title.trim()) return { success: false, error: "Judul event wajib diisi." };
@@ -254,7 +255,7 @@ export async function updateEventAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "event"))
     return { success: false, error: "Hanya admin yang bisa mengubah event." };
 
   if (!data.title.trim()) return { success: false, error: "Judul event wajib diisi." };
@@ -320,7 +321,7 @@ export async function deleteEventAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "event"))
     return { success: false, error: "Hanya admin yang bisa menghapus event." };
 
   const { db, schema } = createTenantDb(slug);
@@ -349,7 +350,7 @@ export async function createEventCategoryAction(
 ): Promise<ActionResult<{ categoryId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "event"))
     return { success: false, error: "Hanya admin yang bisa membuat kategori." };
 
   if (!data.name.trim()) return { success: false, error: "Nama kategori wajib diisi." };
@@ -381,7 +382,7 @@ export async function updateEventCategoryAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "event"))
     return { success: false, error: "Hanya admin yang bisa mengubah kategori." };
 
   const { db, schema } = createTenantDb(slug);
@@ -408,7 +409,7 @@ export async function deleteEventCategoryAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "event"))
     return { success: false, error: "Hanya admin yang bisa menghapus kategori." };
 
   const { db, schema } = createTenantDb(slug);
@@ -631,7 +632,7 @@ export async function confirmRegistrationPaymentAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!canConfirmPayment(access.tenantUser, "event"))
     return { success: false, error: "Hanya admin yang bisa mengkonfirmasi pembayaran." };
 
   const tenantDb = createTenantDb(slug);
@@ -715,7 +716,7 @@ export async function approveRegistrationAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "event"))
     return { success: false, error: "Hanya admin yang bisa menyetujui pendaftaran." };
 
   const { db, schema } = createTenantDb(slug);
@@ -746,7 +747,7 @@ export async function cancelRegistrationAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "event"))
     return { success: false, error: "Hanya admin yang bisa membatalkan registrasi." };
 
   const { db, schema } = createTenantDb(slug);
@@ -786,7 +787,7 @@ export async function checkInRegistrationAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin", "editor"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "event"))
     return { success: false, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);

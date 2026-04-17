@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess } from "@/lib/permissions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ export async function createOfficerAction(
 ): Promise<ActionResult<{ officerId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "pengurus")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.memberId?.trim()) return { success: false, error: "Anggota wajib dipilih." };
   if (!data.position?.trim()) return { success: false, error: "Jabatan wajib diisi." };
@@ -85,6 +87,7 @@ export async function updateOfficerAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "pengurus")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.position?.trim()) return { success: false, error: "Jabatan wajib diisi." };
   if (!data.periodStart)      return { success: false, error: "Tanggal mulai wajib diisi." };
@@ -121,6 +124,7 @@ export async function toggleOfficerActiveAction(
 ): Promise<ActionResult<{ isActive: boolean }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "pengurus")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -149,6 +153,7 @@ export async function deleteOfficerAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "pengurus")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -177,6 +182,7 @@ export async function createDivisionAction(
 ): Promise<ActionResult<{ divisionId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "pengurus")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.name?.trim()) return { success: false, error: "Nama divisi wajib diisi." };
 
@@ -210,6 +216,7 @@ export async function updateDivisionAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "pengurus")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.name?.trim()) return { success: false, error: "Nama divisi wajib diisi." };
 
@@ -238,6 +245,7 @@ export async function deleteDivisionAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "pengurus")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 

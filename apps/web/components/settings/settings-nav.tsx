@@ -11,16 +11,20 @@ import {
   Palette,
   Mail,
   Bell,
+  Users,
+  ShieldCheck,
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: "Umum",            href: "general",       icon: Settings   },
-  { label: "Domain",          href: "domain",        icon: Globe      },
-  { label: "Kontak & Sosmed", href: "contact",       icon: Phone      },
-  { label: "Pembayaran",      href: "payment",       icon: CreditCard },
-  { label: "Tampilan",        href: "display",       icon: Palette    },
-  { label: "Email / SMTP",    href: "email",         icon: Mail       },
-  { label: "Notifikasi",      href: "notifications", icon: Bell       },
+  { label: "Umum",            href: "general",       icon: Settings    },
+  { label: "Domain",          href: "domain",        icon: Globe       },
+  { label: "Kontak & Sosmed", href: "contact",       icon: Phone       },
+  { label: "Pembayaran",      href: "payment",       icon: CreditCard  },
+  { label: "Tampilan",        href: "display",       icon: Palette     },
+  { label: "Email / SMTP",    href: "email",         icon: Mail        },
+  { label: "Notifikasi",      href: "notifications", icon: Bell        },
+  { label: "Pengguna",        href: "users",         icon: Users       },
+  { label: "Role Kustom",     href: "roles",         icon: ShieldCheck },
 ] as const;
 
 export function SettingsNav({ slug }: { slug: string }) {

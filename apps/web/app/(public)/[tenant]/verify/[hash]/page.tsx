@@ -154,7 +154,7 @@ export default async function VerifyPage({
         </div>
         <div className="px-4 py-2.5 grid grid-cols-[140px_1fr]">
           <span className="text-muted-foreground">Waktu TTD</span>
-          <span>{new Date(sig.signedAt).toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" })}</span>
+          <span>{sig.signedAt ? new Date(sig.signedAt).toLocaleString("id-ID", { dateStyle: "full", timeStyle: "short" }) : "—"}</span>
         </div>
       </div>
 

@@ -10,6 +10,18 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
+export const SIGNATURE_LAYOUTS = [
+  "single-center",
+  "single-left",
+  "single-right",
+  "double",
+  "triple-row",
+  "triple-pyramid",
+  "double-with-witnesses",
+] as const;
+export type SignatureLayoutDb = typeof SIGNATURE_LAYOUTS[number];
+
+
 export const LETTER_TYPES = ["incoming", "outgoing", "internal"] as const;
 export type LetterType = typeof LETTER_TYPES[number];
 
@@ -122,6 +134,9 @@ export function createLettersTable(s: ReturnType<typeof pgSchema>) {
     // Inter-tenant — surat antar cabang IKPM
     interTenantTo:     text("inter_tenant_to"),
     interTenantStatus: text("inter_tenant_status", { enum: INTER_TENANT_STATUSES }),
+    // Tanda tangan — layout blok TTD + toggle tanggal
+    signatureLayout:   text("signature_layout", { enum: SIGNATURE_LAYOUTS }).notNull().default("double"),
+    signatureShowDate: boolean("signature_show_date").notNull().default(true),
     // FK → users.id via SQL migration
     createdBy:      uuid("created_by").notNull(),
     createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

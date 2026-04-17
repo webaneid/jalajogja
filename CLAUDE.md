@@ -310,10 +310,22 @@ app/(dashboard)/[tenant]/
 - [x] Modul Surat — Mail Merge Bulk (kirim surat massal ke banyak penerima, picker anggota + kontak)
 - [x] Modul Surat — Manajemen Kontak (letter_contacts CRUD, menu Kontak di nav)
 - [ ] **Modul Surat — sisa fitur**: inter-tenant, attachment MediaPicker
+- [x] **Modul Surat — Layout TTD + signing via URL** — SELESAI SEMUA — lihat `docs/arsitektur-tandatangan.md`
+      - Layer 1: `lib/letter-signature-layout.ts` ✅
+      - Layer 2: `components/letters/signature-block.tsx` ✅
+      - Layer 3: `components/letters/signature-slot-manager.tsx` ✅ (mode "form" + mode "detail")
+      - Layer 4: `lib/letter-html.ts` ✅
+      - Layout picker + assign combobox di `letter-form.tsx` (di bawah body, selalu tampil) ✅
+      - `syncSignatureSlotsAction` — reconcile slot state ke DB saat save ✅
+      - Edit/new pages: fetch `availableOfficers` (dengan `userRole`) + `initialSlots` ✅
+      - Detail pages: `mode="detail"` + fetch `userRole` via tenant.users JOIN ✅
+      - Halaman publik `/(public)/[tenant]/sign/[token]` ✅
+      - Token expiry 30 hari + migration SQL tenant existing ✅
 - [ ] Keuangan (sudah ada schema, belum ada UI)
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai
-- [ ] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
+- [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
+- [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
@@ -1370,6 +1382,7 @@ Hint dinamis di dropdown pengaturan berubah sesuai pilihan. Tinggi hanya referen
 - Inter-tenant — `inter_tenant_to` + `inter_tenant_status` → kirim ke cabang IKPM lain
 - Attachment lampiran — MediaPicker untuk upload lampiran surat
 > Detail arsitektur identitas surat, tujuan surat, dan format tanggal: **`docs/arsitektur-surat.md`**
+> Detail arsitektur layout TTD, slot-based signing, dan alur URL publik (SELESAI): **`docs/arsitektur-tandatangan.md`**
 
 ### [2026-04] Mail Merge Bulk + Kontak Surat
 
@@ -1525,12 +1538,165 @@ Saat modul baru butuh pembayaran, **buat kategori baru** di payment settings —
 #### showTicketCount: hitung per-query, bukan realtime
 `showTicketCount` di halaman publik mengambil count dari DB saat page di-render (server component). Tidak realtime — peserta lain yang baru daftar tidak langsung update hitungan. Untuk event dengan kuota ketat dan traffic tinggi, pertimbangkan revalidate lebih agresif atau polling client-side.
 
+### [2026-04] Modul Dokumen — SELESAI
+
+**Arsitektur lengkap di `docs/arsitektur-document.md`.**
+
+**Schema:** 3 tabel — `document_categories` (hierarkis self-ref), `documents`, `document_versions`
+
+**Fitur selesai:**
+- CRUD dokumen: create + metadata edit
+- Versioning: upload versi baru, riwayat versi, restore versi lama
+- File proxy API: `GET /api/documents/[id]/file` — auth check visibility → stream MinIO
+- PDF Viewer: `<iframe>` dalam shadcn Dialog, fallback "Buka di tab baru"
+- Kategori hierarkis: tree view inline, parent-child 2+ level
+- Halaman publik: `/(public)/[tenant]/dokumen/[id]` — hanya untuk `visibility=public`
+- Sidebar: "Dokumen" dengan icon FolderOpen setelah Event
+
+**Lessons Learned:**
+
+#### Circular FK: plain UUID tanpa constraint
+`documents.current_version_id → document_versions` dan `document_versions.document_id → documents` = circular. Solusi: `current_version_id` adalah plain UUID tanpa FK constraint di DDL. Application layer menjamin konsistensi.
+
+#### tenant.users tidak punya kolom name
+`tenant_{slug}.users` hanya punya `betterAuthUserId`, `role`, `memberId`. Untuk nama user perlu join ke `public.user WHERE id = betterAuthUserId`. Saat ini uploader name di-skip (null) — diimplementasikan nanti saat ada helper cross-schema.
+
+#### inArray untuk filter array UUID
+`inArray(column, ids)` adalah cara Drizzle yang benar untuk `WHERE column = ANY(array)`.
+Jangan pakai `sql.raw` dengan spread args — TypeScript tidak bisa inferensikan tipe.
+
+#### Content-Disposition inline untuk PDF viewer
+`inline` → browser render (PDF terbuka). `attachment` → download paksa.
+Pakai `inline` agar `<iframe>` PDF viewer berfungsi. Download tetap via `<a download>`.
+
+### [2026-04] Role System & User Management — SELESAI
+
+**Arsitektur lengkap di `docs/arsitektur-role-user.md`.**
+
+**Schema baru di tenant:**
+- `custom_roles` — nama, deskripsi, permissions (JSONB array per module), is_system flag
+- `tenant_invites` — token UUID, deliveryMethod, expiresAt, acceptedAt, memberId, customRoleId
+
+**TENANT_ROLES enum diperluas:**
+- Sebelumnya: `owner|admin|editor|viewer`
+- Sekarang: `owner|ketua|sekretaris|bendahara|custom`
+- `custom` → role didefinisikan di `custom_roles` per tenant
+
+**Permission Matrix:** lib/permissions.ts
+- 10 modul: `anggota|website|surat|keuangan|toko|donasi|event|dokumen|pengurus|pengaturan`
+- 4 level: `full|read|own|none` (linear dengan `own` = khusus surat)
+- Helper: `canManageUsers()`, `getPermission()`, `hasPermission()`, `DEFAULT_ROLE_PERMISSIONS`
+
+**Dua metode aktivasi user:**
+1. **Kirim Link Undangan** — token UUID 7 hari, user klik link → isi password sendiri
+2. **Aktifkan Langsung** — admin set password, akun langsung aktif
+
+**Email dari data anggota — PENTING:**
+Email user SELALU diambil dari `public.contacts` via `members.contactId`, BUKAN dari input admin.
+Ini mencegah typo dan menjamin konsistensi dengan data anggota yang sudah ada.
+Di form "Aktifkan Langsung": email ditampilkan read-only, hanya password yang perlu diisi admin.
+Di server action `activateUserDirectAction`: email di-fetch ulang dari DB (tidak percaya input client).
+
+**Cross-tenant account reuse:**
+Jika email sudah ada di Better Auth (`public.user`), akun lama dipakai ulang — tidak buat akun baru.
+Ini menangani pengurus yang melayani di beberapa cabang IKPM sekaligus.
+
+**Bug patterns ditemukan:**
+- Relative import dari `components/` ke `app/(dashboard)/` butuh alias `@/app/(dashboard)/...`, bukan path relatif
+- `revalidatePath` harus di-import dari `"next/cache"` — tidak auto-imported
+- TypeScript shorthand `{ email }` di callback gagal jika variable `email` sudah tidak ada di scope — pakai `{ email: memberEmail }` eksplisit
+
+**Invite upsert — jangan duplikat:**
+`createInviteAction` cek existing invite dengan `memberId` yang sama → update (reset token + expiry) daripada insert baru. Ini mencegah satu anggota punya banyak invite pending aktif.
+
+**Route group `(public)` untuk halaman tanpa auth:**
+`/(public)/[tenant]/invite/page.tsx` — di luar group `(dashboard)`, tidak ada middleware auth.
+Pattern sama seperti `verify/[hash]` dan `dokumen/[id]` sebelumnya.
+
+**Available members filter — dua kondisi:**
+Member tersedia untuk diundang hanya jika:
+1. Belum ada di `tenant.users` (belum aktif)
+2. Belum punya invite pending (non-expired + belum di-accept)
+Filter kedua mencegah double-invite ke anggota yang sama.
+
+### [2026-04] Modul Surat — Layout TTD + Signing via URL SELESAI
+
+**Arsitektur lengkap di `docs/arsitektur-tandatangan.md` — semua fitur selesai.**
+
+**Keputusan desain yang dikunci:**
+
+#### Pemisahan assignment (edit) vs signing (detail)
+Assign officer ke slot dilakukan di **edit page** (form mode), bukan di detail page.
+Detail page hanya menampilkan status + tombol signing. Ini separation of concern yang jelas:
+- Admin set siapa yang harus TTD → edit page
+- Officer TTD via link → halaman publik `/sign/[token]`
+- Admin pantau status → detail page
+
+**Jangan balik ke pola lama** di mana detail page juga punya combobox assign.
+
+#### `syncSignatureSlotsAction` — idempotent + token-stable reconcile
+Pattern untuk sync state form → DB: bukan delete-all + insert-all, melainkan diff per slot.
+- Signed slots → skip (tidak pernah diubah termasuk token)
+- Slot baru (belum di DB) → INSERT + generate token baru
+- Slot existing, officer **sama** → UPDATE role saja — token DIPERTAHANKAN (link yang sudah dikirim tetap berlaku)
+- Slot existing, officer **berubah** → UPDATE + generate token baru (link lama tidak valid, orangnya ganti)
+- Slot existing, token null (slot lama/edge case) → UPDATE + generate token baru
+- Slot kosong (officerId null) → DELETE dari DB jika ada dan belum signed
+- Hapus slot DB yang tidak ada di desired (dan belum signed)
+
+**Bug yang pernah terjadi**: update branch dulu selalu panggil `token30d()` tanpa cek apakah officer berubah → link yang sudah dikirim jadi rusak setiap kali admin simpan surat.
+**Fix**: fetch `officerId` + `signingToken` dari existing row, bandingkan, generate token baru hanya jika perlu.
+
+Sama persis dengan pattern tag sync di website module. Berlaku untuk semua resource yang punya "signed/confirmed" state yang tidak boleh di-undo.
+
+#### `userRole` di officer combobox via JOIN
+Officer ↔ user role connection: `officers.memberId → public.members.id ← tenant_users.memberId`.
+Tidak perlu schema change. Cukup query `tenant.users WHERE memberId IN (officerMemberIds)`.
+Hasilnya dipakai sebagai `userRole` di `AvailableOfficer` → badge berwarna di combobox.
+
+#### `SlotInput` vs `SignatureSlot` — dua representasi
+- `SlotInput` — form state (minimal: id, order, section, officerId, role, signedAt?) — dikirim ke `syncSignatureSlotsAction`
+- `SignatureSlot` — display state (full: nama officer, posisi, divisi, QR, verifyUrl, token) — dipakai `SignatureBlock` + `SignatureSlotManager`
+- Konversi `SlotInput → SignatureSlot` via `toDisplaySlots()` di `letter-form.tsx` menggunakan `availableOfficers` lookup
+
+#### `appUrl` optional di `SignatureSlotManager`
+Di form mode, `appUrl` tidak digunakan (tidak ada copy link). Jadikan optional dengan default `""`.
+Berlaku untuk props yang hanya dibutuhkan di satu mode dari komponen dual-mode.
+
+#### Link TTD harus tampil sebagai URL penuh, bukan tombol kecil
+Tombol "Salin Link" kecil tidak cukup — admin perlu melihat URL-nya agar bisa:
+- Memverifikasi token sebelum dikirim
+- Menyalin sebagian URL jika perlu
+- Menyadari link sudah ada (tidak perlu generate ulang)
+
+**Pattern yang benar**: text input read-only berisi URL lengkap `{APP_URL}/{slug}/sign/{token}`,
+klik field → select-all otomatis, tombol copy ikon di sebelah kanan.
+Berlaku untuk semua fitur link-sharing di seluruh aplikasi.
+
+#### `generateSigningTokenAction` — token on-demand untuk slot lama
+Slot yang dibuat sebelum sistem token ada (atau edge case lain) bisa punya `signingToken = null`.
+Solusi: server action on-demand yang di-trigger via tombol "Buat Link TTD" di detail page.
+- Idempotent: jika token sudah ada, kembalikan yang lama (tidak generate baru)
+- Jika slot sudah TTD, tolak
+- Token muncul di UI langsung via optimistic state update (tanpa refresh halaman)
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: Modul Event **SELESAI PENUH** (Step 1–6 + audit fixes + Google Maps + toggle Gratis/Berbayar + UX fix harga tiket)
-- UX fix: input harga tiket selalu tampil (disabled saat Gratis) — tidak tersembunyi. Lesson: disabled > hidden untuk input conditional
-- Donasi: **SELESAI** (schema, CRUD campaign + kategori, SEO, transaksi) — lihat `docs/arsitektur-donasi.md`
-- Event: **SELESAI** — semua 6 step + audit fixes — lihat `docs/arsitektur-event.md`
-- Kolom roadmap yang belum digunakan (sengaja): `certificate_template_id` (events), `custom_fields` (event_registrations)
-- Kategori payment "event" belum ditambahkan — saat ini pakai "donasi"/"general" (TODO di public page)
-- Next step: **Modul Dokumen** (proposal di `docs/arsitektur-document.md`, belum dieksekusi)
-- Fitur surat yang belum diimplementasikan: inter-tenant letters, attachment MediaPicker
+- Terakhir dikerjakan: **Modul Surat — TTD fixes (token stability + UI link signing)**
+- TTD system: **SELESAI** — 4-layer arsitektur, slot assignment di edit page, signing di detail page, halaman publik `/sign/[token]` — lihat `docs/arsitektur-tandatangan.md`
+- Role system: **SELESAI** — lihat `docs/arsitektur-role-user.md`
+- Dokumen: **SELESAI** — lihat `docs/arsitektur-document.md`
+- Event: **SELESAI** — lihat `docs/arsitektur-event.md`
+- Donasi: **SELESAI** — lihat `docs/arsitektur-donasi.md`
+- Type check: **0 errors** setelah semua perubahan sesi ini
+
+### Perubahan sesi ini (TTD fixes)
+1. **`syncSignatureSlotsAction` token-stable** — token hanya di-regenerate jika officer berubah ATAU token null; link yang sudah dikirim tidak rusak saat admin simpan ulang
+2. **Link TTD tampil sebagai URL penuh** di detail page — text input read-only + tombol copy, bukan tombol "Salin" kecil
+3. **`generateSigningTokenAction`** — server action baru untuk generate token on-demand bagi slot yang `signingToken = null` (slot lama / edge case)
+4. **Tombol "Buat Link TTD"** di detail page — muncul jika slot tidak punya token + admin; token muncul langsung via optimistic update
+
+### Known TODO
+- Role System: email SMTP sending untuk invite (saat ini hanya manual link copy), update role dropdown di daftar user aktif, wajibkan email di form anggota
+- Modul Dokumen: uploader name di version history (perlu cross-schema join tenant.users → public.user)
+- Fitur surat belum: inter-tenant letters, attachment MediaPicker
+- Next step: **Keuangan** (schema sudah ada, belum ada UI) ATAU modul lain sesuai prioritas

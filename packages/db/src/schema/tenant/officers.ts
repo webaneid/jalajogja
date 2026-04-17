@@ -46,12 +46,15 @@ export function createOfficersTable(s: ReturnType<typeof pgSchema>) {
 }
 
 // ─── Letter Signatures ────────────────────────────────────────────────────────
-// Satu surat bisa punya multiple penandatangan (signer/approver/witness)
-// verification_hash berisi: officer_id + letter_id + signed_at → untuk QR Code verifikasi
-// Posisi QR Code di template surat bebas ditentukan admin — tidak di-hardcode di sini
+// Slot-based: slot bisa di-assign sebelum officer TTD.
+// signed_at + verification_hash nullable → null = sudah di-assign, belum TTD.
+// signing_token = UUID untuk URL publik /sign/{token} — null jika TTD langsung dari dashboard.
 
 export const SIGNATURE_ROLES = ["signer", "approver", "witness"] as const;
 export type SignatureRole = typeof SIGNATURE_ROLES[number];
+
+export const SIGNATURE_SLOT_SECTIONS = ["main", "witnesses"] as const;
+export type SignatureSlotSection = typeof SIGNATURE_SLOT_SECTIONS[number];
 
 export function createLetterSignaturesTable(s: ReturnType<typeof pgSchema>) {
   return s.table("letter_signatures", {
@@ -59,9 +62,15 @@ export function createLetterSignaturesTable(s: ReturnType<typeof pgSchema>) {
     letterId:         uuid("letter_id").notNull(),      // FK → letters via DDL
     officerId:        uuid("officer_id").notNull(),     // FK → officers via DDL
     role:             text("role", { enum: SIGNATURE_ROLES }).notNull().default("signer"),
-    signedAt:         timestamp("signed_at", { withTimezone: true }).notNull().defaultNow(),
-    // Hash unik per approval — isi QR Code: nama + jabatan + divisi + tanggal + hash ini
-    verificationHash: text("verification_hash").notNull().unique(),
+    // Posisi slot dalam layout TTD
+    slotOrder:        integer("slot_order").notNull().default(1),
+    slotSection:      text("slot_section", { enum: SIGNATURE_SLOT_SECTIONS }).notNull().default("main"),
+    // Token URL publik /sign/{token} — null jika TTD langsung dari dashboard
+    signingToken:            text("signing_token").unique(),
+    signingTokenExpiresAt:   timestamp("signing_token_expires_at", { withTimezone: true }),
+    // Null = slot sudah di-assign tapi officer belum TTD
+    signedAt:         timestamp("signed_at", { withTimezone: true }),
+    verificationHash: text("verification_hash").unique(),
     ipAddress:        text("ip_address"),
     createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   });

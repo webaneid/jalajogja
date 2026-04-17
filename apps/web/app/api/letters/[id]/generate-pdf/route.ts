@@ -177,18 +177,21 @@ export async function POST(
       : [];
     const divisionMap = new Map(divisionRows.map((d) => [d.id, d.name]));
 
-    signers = rawSigs.map((s) => {
-      const off = officers.find((o) => o.id === s.officerId);
-      return {
-        name:             off ? (memberMap.get(off.memberId) ?? "—") : "—",
-        position:         off?.position ?? "—",
-        division:         off?.divisionId ? (divisionMap.get(off.divisionId) ?? null) : null,
-        role:             s.role,
-        signedAt:         s.signedAt,
-        verificationHash: s.verificationHash,
-        slug,
-      };
-    });
+    // Hanya render slot yang sudah TTD (signedAt + verificationHash tidak null)
+    signers = rawSigs
+      .filter((s) => s.signedAt !== null && s.verificationHash !== null)
+      .map((s) => {
+        const off = officers.find((o) => o.id === s.officerId);
+        return {
+          name:             off ? (memberMap.get(off.memberId) ?? "—") : "—",
+          position:         off?.position ?? "—",
+          division:         off?.divisionId ? (divisionMap.get(off.divisionId) ?? null) : null,
+          role:             s.role,
+          signedAt:         s.signedAt as Date,
+          verificationHash: s.verificationHash as string,
+          slug,
+        };
+      });
   }
 
   // Ekstrak data penerima dari mergeFields (disimpan saat user pilih kontak di form)
@@ -223,6 +226,9 @@ export async function POST(
     letterTypeName,
     orgCity,
     hijriOffset,
+    // Layout TTD
+    signatureLayout:   ((letter as { signatureLayout?: string }).signatureLayout ?? "double") as import("@/lib/letter-signature-layout").SignatureLayout,
+    signatureShowDate: (letter as { signatureShowDate?: boolean }).signatureShowDate ?? true,
   });
 
   // Playwright → PDF

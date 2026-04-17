@@ -14,6 +14,7 @@ import {
   generateMemberNumber,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess } from "@/lib/permissions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 // Catatan: phone/email/address sudah dipindah ke helper tables (contacts, addresses)
@@ -63,6 +64,7 @@ export async function createMemberAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.name?.trim()) {
     return { success: false, error: "Nama anggota wajib diisi." };
@@ -111,6 +113,7 @@ export async function updateMemberAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota")) return { success: false as const, error: "Akses ditolak." };
 
   // Pastikan anggota ini memang milik tenant ini
   const [membership] = await db
@@ -202,6 +205,7 @@ export async function upsertMemberContactAction(
 ): Promise<{ success: boolean; error?: string }> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota")) return { success: false as const, error: "Akses ditolak." };
 
   // Pastikan anggota milik tenant ini
   const [membership] = await db
@@ -362,6 +366,7 @@ export async function saveMemberEducationsAction(
 ): Promise<{ success: boolean; error?: string }> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota")) return { success: false as const, error: "Akses ditolak." };
 
   // Pastikan anggota milik tenant ini
   const [membership] = await db
@@ -457,6 +462,7 @@ export async function saveMemberBusinessesAction(
 ): Promise<{ success: boolean; error?: string }> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota")) return { success: false as const, error: "Akses ditolak." };
 
   // Pastikan anggota milik tenant ini
   const [membership] = await db
@@ -581,6 +587,7 @@ export async function removeMemberFromTenantAction(
 ): Promise<{ success: boolean; error?: string }> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota")) return { success: false as const, error: "Akses ditolak." };
 
   try {
     await db

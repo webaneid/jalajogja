@@ -5,6 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { LetterForm } from "@/components/letters/letter-form";
+import type { AvailableOfficer } from "@/components/letters/signature-slot-manager";
 
 export default async function NotaDinasNewPage({
   params,
@@ -54,14 +55,31 @@ export default async function NotaDinasNewPage({
 
   const divisionIds = rawOfficers.map((o) => o.divisionId).filter((x): x is string => !!x);
   const divisionMap = new Map<string, string>();
+  const divisionNameMap = new Map<string, string>();
   if (divisionIds.length > 0) {
-    const rows = await tenantDb.select({ id: schema.divisions.id, code: schema.divisions.code }).from(schema.divisions).where(inArray(schema.divisions.id, divisionIds));
-    rows.forEach((d) => divisionMap.set(d.id, d.code ?? ""));
+    const rows = await tenantDb.select({ id: schema.divisions.id, code: schema.divisions.code, name: schema.divisions.name }).from(schema.divisions).where(inArray(schema.divisions.id, divisionIds));
+    rows.forEach((d) => { divisionMap.set(d.id, d.code ?? ""); divisionNameMap.set(d.id, d.name); });
+  }
+
+  const officerRoleMap = new Map<string, string>();
+  if (memberIds.length > 0) {
+    const userRows = await tenantDb.select({ memberId: schema.users.memberId, role: schema.users.role }).from(schema.users).where(inArray(schema.users.memberId, memberIds));
+    userRows.forEach((u) => { if (u.memberId) officerRoleMap.set(u.memberId, u.role); });
   }
 
   const officers = rawOfficers.map((o) => ({
     id: o.id, name: memberMap.get(o.memberId) ?? "—", position: o.position,
     divisionCode: o.divisionId ? (divisionMap.get(o.divisionId) ?? null) : null,
+  }));
+
+  const availableOfficers: AvailableOfficer[] = rawOfficers.map((o) => ({
+    officerId:     o.id,
+    name:          memberMap.get(o.memberId) ?? "—",
+    position:      o.position,
+    division:      o.divisionId ? (divisionNameMap.get(o.divisionId) ?? null) : null,
+    userRole:      officerRoleMap.get(o.memberId) ?? null,
+    canSign:       true,
+    isCurrentUser: false,
   }));
 
   const cProvinceIds = [...new Set(rawContacts.map((c) => c.provinceId).filter((x): x is number => x != null))];
@@ -136,9 +154,13 @@ export default async function NotaDinasNewPage({
           status:          "draft",
           paperSize:       "A4",
           mergeFields:     {},
-          attachmentUrls:  [],
-          attachmentLabel: "",
+          attachmentUrls:    [],
+          attachmentLabel:   "",
+          signatureLayout:   "double",
+          signatureShowDate: true,
         }}
+        availableOfficers={availableOfficers}
+        initialSlots={[]}
       />
     </div>
   );

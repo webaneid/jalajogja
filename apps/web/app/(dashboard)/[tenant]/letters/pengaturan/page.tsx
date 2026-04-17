@@ -1,6 +1,7 @@
 import { createTenantDb, db, refRegencies } from "@jalajogja/db";
 import { getSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess } from "@/lib/permissions";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { LetterConfigClient } from "@/components/letters/letter-config-client";
@@ -76,7 +77,7 @@ export default async function LetterPengaturanPage({
     }
   }
 
-  const isAdmin = ["owner", "admin"].includes(access.tenantUser.role);
+  const isAdmin = hasFullAccess(access.tenantUser, "surat");
 
   return (
     <div className="p-6 space-y-6 max-w-2xl">

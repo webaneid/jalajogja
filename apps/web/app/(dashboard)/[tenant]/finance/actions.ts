@@ -4,6 +4,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess } from "@/lib/permissions";
 import {
   recordJournal,
   recordIncome,
@@ -131,6 +132,7 @@ export async function createManualPaymentAction(
 ): Promise<ActionResult<{ paymentId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.amount || data.amount <= 0)
     return { success: false, error: "Jumlah harus lebih dari 0." };
@@ -176,6 +178,7 @@ export async function confirmPaymentAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   const tenantDb = createTenantDb(slug);
   const { db, schema } = tenantDb;
@@ -246,6 +249,7 @@ export async function rejectPaymentAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   if (!reason?.trim())
     return { success: false, error: "Alasan penolakan wajib diisi." };
@@ -295,6 +299,7 @@ export async function createDisbursementAction(
 ): Promise<ActionResult<{ disbursementId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.amount || data.amount <= 0)
     return { success: false, error: "Jumlah harus lebih dari 0." };
@@ -338,6 +343,7 @@ export async function approveDisbursementAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -372,6 +378,7 @@ export async function markDisbursementPaidAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   const tenantDb = createTenantDb(slug);
   const { db, schema } = tenantDb;
@@ -436,6 +443,7 @@ export async function cancelDisbursementAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -479,6 +487,7 @@ export async function createJournalAction(
 ): Promise<ActionResult<{ transactionId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.description?.trim())
     return { success: false, error: "Keterangan jurnal wajib diisi." };
@@ -534,6 +543,7 @@ export async function createAccountAction(
 ): Promise<ActionResult<{ accountId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.code?.trim()) return { success: false, error: "Kode akun wajib diisi." };
   if (!data.name?.trim()) return { success: false, error: "Nama akun wajib diisi." };
@@ -574,6 +584,7 @@ export async function updateAccountAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -608,6 +619,7 @@ export async function toggleAccountActiveAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -646,6 +658,7 @@ export async function saveAccountMappingsAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 

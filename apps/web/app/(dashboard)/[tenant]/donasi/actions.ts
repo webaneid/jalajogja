@@ -4,6 +4,7 @@ import { eq, and, sql, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, recordIncome, generateFinancialNumber } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,7 +129,7 @@ export async function createCampaignDraftAction(
 ): Promise<ActionResult<{ campaignId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "donasi"))
     return { success: false, error: "Hanya admin yang bisa membuat campaign." };
 
   const { db, schema } = createTenantDb(slug);
@@ -157,7 +158,7 @@ export async function createCampaignAction(
 ): Promise<ActionResult<{ campaignId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "donasi"))
     return { success: false, error: "Hanya admin yang bisa membuat campaign." };
 
   if (!data.title.trim()) return { success: false, error: "Judul campaign wajib diisi." };
@@ -211,7 +212,7 @@ export async function updateCampaignAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "donasi"))
     return { success: false, error: "Hanya admin yang bisa mengubah campaign." };
 
   if (!data.title.trim()) return { success: false, error: "Judul campaign wajib diisi." };
@@ -266,7 +267,7 @@ export async function toggleCampaignStatusAction(
 ): Promise<ActionResult<{ newStatus: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "donasi"))
     return { success: false, error: "Hanya admin yang bisa mengubah status." };
 
   const { db, schema } = createTenantDb(slug);
@@ -302,7 +303,7 @@ export async function deleteCampaignAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "donasi"))
     return { success: false, error: "Hanya admin yang bisa menghapus campaign." };
 
   const { db, schema } = createTenantDb(slug);
@@ -411,7 +412,7 @@ export async function confirmDonationAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!canConfirmPayment(access.tenantUser, "donasi"))
     return { success: false, error: "Hanya admin yang bisa mengkonfirmasi donasi." };
 
   const tenantDb = createTenantDb(slug);
@@ -501,7 +502,7 @@ export async function createCampaignCategoryAction(
 ): Promise<ActionResult<{ categoryId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "donasi"))
     return { success: false, error: "Hanya admin yang bisa membuat kategori." };
 
   if (!data.name.trim()) return { success: false, error: "Nama kategori wajib diisi." };
@@ -533,7 +534,7 @@ export async function updateCampaignCategoryAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "donasi"))
     return { success: false, error: "Hanya admin yang bisa mengubah kategori." };
 
   const { db, schema } = createTenantDb(slug);
@@ -560,7 +561,7 @@ export async function deleteCampaignCategoryAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!hasFullAccess(access.tenantUser, "donasi"))
     return { success: false, error: "Hanya admin yang bisa menghapus kategori." };
 
   const { db, schema } = createTenantDb(slug);
@@ -589,7 +590,7 @@ export async function cancelDonationAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role))
+  if (!canConfirmPayment(access.tenantUser, "donasi"))
     return { success: false, error: "Hanya admin yang bisa membatalkan donasi." };
 
   const { db, schema } = createTenantDb(slug);

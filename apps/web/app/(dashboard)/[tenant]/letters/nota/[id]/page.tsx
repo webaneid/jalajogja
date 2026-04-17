@@ -1,5 +1,6 @@
 import { createTenantDb, db, members, tenants, getSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess } from "@/lib/permissions";
 import { redirect, notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
@@ -7,8 +8,9 @@ import { ChevronLeft, Pencil } from "lucide-react";
 import { renderBody } from "@/lib/letter-render";
 import { resolveMergeFields, buildMergeContext } from "@/lib/letter-merge";
 import { generateQrDataUrl, buildVerifyUrl } from "@/lib/qr-code";
-import { LetterSigningSection } from "@/components/letters/letter-signing-section";
-import type { AvailableSigner, ExistingSignature } from "@/components/letters/letter-signing-section";
+import { SignatureSlotManager } from "@/components/letters/signature-slot-manager";
+import type { AvailableOfficer } from "@/components/letters/signature-slot-manager";
+import type { SignatureSlot } from "@/lib/letter-signature-layout";
 import { GeneratePdfButton } from "@/components/letters/generate-pdf-button";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -33,7 +35,7 @@ export default async function NotaDinasDetailPage({
   const tenantClient             = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
 
-  // Fetch settings org — konsisten dengan keluar/[id]/page.tsx dan generate-pdf/route.ts
+  // Fetch settings org
   const [generalSettingsRaw, orgSettings] = await Promise.all([
     getSettings(tenantClient, "general"),
     getSettings(tenantClient, "contact"),
@@ -50,6 +52,13 @@ export default async function NotaDinasDetailPage({
   const orgPhone   = (orgSettings["contact_phone"] as string | undefined) ?? "";
   const orgEmail   = (orgSettings["contact_email"] as string | undefined) ?? "";
 
+  // dateFormat + hijriOffset dari letter_config
+  const rawLetterConfig = (generalSettingsRaw["letter_config"] as {
+    date_format?: string; hijri_offset?: number;
+  } | undefined) ?? {};
+  const globalDateFormat = (rawLetterConfig.date_format ?? "masehi") as "masehi" | "masehi_hijri";
+  const hijriOffset = Number(rawLetterConfig.hijri_offset ?? 0);
+
   const [letter] = await tenantDb
     .select()
     .from(schema.letters)
@@ -58,15 +67,23 @@ export default async function NotaDinasDetailPage({
 
   if (!letter || letter.type !== "internal") notFound();
 
-  const [letterType] = letter.typeId
+  // dateFormat: per jenis surat > global
+  const letterTypeData = letter.typeId
     ? await tenantDb
-        .select({ name: schema.letterTypes.name })
+        .select({ name: schema.letterTypes.name, dateFormat: schema.letterTypes.dateFormat })
         .from(schema.letterTypes)
         .where(eq(schema.letterTypes.id, letter.typeId))
         .limit(1)
-    : [null];
+        .then((r) => r[0] ?? null)
+    : null;
 
-  // Fetch officers yang canSign
+  const dateFormat = ((letterTypeData?.dateFormat as "masehi" | "masehi_hijri" | null) ?? globalDateFormat);
+
+  // Layout TTD dari kolom surat
+  const signatureLayout   = (letter as { signatureLayout?: string }).signatureLayout as import("@/lib/letter-signature-layout").SignatureLayout ?? "double";
+  const signatureShowDate = (letter as { signatureShowDate?: boolean }).signatureShowDate ?? true;
+
+  // Fetch officers aktif
   const officers = await tenantDb
     .select({
       id:         schema.officers.id,
@@ -74,9 +91,11 @@ export default async function NotaDinasDetailPage({
       position:   schema.officers.position,
       divisionId: schema.officers.divisionId,
       userId:     schema.officers.userId,
+      canSign:    schema.officers.canSign,
+      isActive:   schema.officers.isActive,
     })
     .from(schema.officers)
-    .where(eq(schema.officers.canSign, true));
+    .where(eq(schema.officers.isActive, true));
 
   const memberMap = new Map<string, string>();
   if (officers.length > 0) {
@@ -86,6 +105,17 @@ export default async function NotaDinasDetailPage({
       .from(members)
       .where(inArray(members.id, memberIds));
     memberRows.forEach((m) => memberMap.set(m.id, m.name));
+  }
+
+  // Fetch role per member dari tenant.users
+  const roleMap = new Map<string, string>();
+  if (officers.length > 0) {
+    const memberIds = officers.map((o) => o.memberId);
+    const userRows = await tenantDb
+      .select({ memberId: schema.users.memberId, role: schema.users.role })
+      .from(schema.users)
+      .where(inArray(schema.users.memberId, memberIds));
+    userRows.forEach((u) => { if (u.memberId) roleMap.set(u.memberId, u.role); });
   }
 
   const divisionMap = new Map<string, string>();
@@ -98,7 +128,7 @@ export default async function NotaDinasDetailPage({
     divRows.forEach((d) => divisionMap.set(d.id, d.name));
   }
 
-  // Cari officer milik user login — via userId dulu, lalu fallback memberId
+  // Cari officer milik user login
   const currentUserOfficerId =
     officers.find((o) => o.userId === access.tenantUser.id)?.id ??
     (access.tenantUser.memberId
@@ -111,39 +141,54 @@ export default async function NotaDinasDetailPage({
     .from(schema.letterSignatures)
     .where(eq(schema.letterSignatures.letterId, letterId));
 
-  const signatures: ExistingSignature[] = await Promise.all(
+  // Convert ke SignatureSlot[]
+  const slots: SignatureSlot[] = await Promise.all(
     rawSigs.map(async (s) => {
       const off       = officers.find((o) => o.id === s.officerId);
-      const verifyUrl = buildVerifyUrl(slug, s.verificationHash);
-      const qrDataUrl = await generateQrDataUrl(verifyUrl);
+      const verifyUrl = s.verificationHash ? buildVerifyUrl(slug, s.verificationHash) : null;
+      const qrDataUrl = verifyUrl ? await generateQrDataUrl(verifyUrl) : null;
       return {
-        id:               s.id,
-        officerId:        s.officerId,
-        role:             s.role as "signer" | "approver" | "witness",
-        signedAt:         s.signedAt,
-        verificationHash: s.verificationHash,
-        verifyUrl,
+        id:           s.id,
+        order:        s.slotOrder,
+        section:      s.slotSection as SignatureSlot["section"],
+        officerId:    s.officerId,
+        officerName:  off ? (memberMap.get(off.memberId) ?? "—") : "—",
+        position:     off?.position ?? null,
+        division:     off?.divisionId ? (divisionMap.get(off.divisionId) ?? null) : null,
+        role:         s.role as SignatureSlot["role"],
+        signedAt:     s.signedAt,
         qrDataUrl,
-        signerName:       off ? (memberMap.get(off.memberId) ?? "—") : "—",
-        signerPosition:   off?.position ?? "—",
-        signerDivision:   off?.divisionId ? (divisionMap.get(off.divisionId) ?? null) : null,
+        verifyUrl,
+        signingToken: s.signingToken,
       };
     })
   );
 
-  const availableSigners: AvailableSigner[] = officers.map((o) => ({
+  const availableOfficers: AvailableOfficer[] = officers.map((o) => ({
     officerId:     o.id,
     name:          memberMap.get(o.memberId) ?? "—",
     position:      o.position,
     division:      o.divisionId ? (divisionMap.get(o.divisionId) ?? null) : null,
-    canSign:       true,
+    userRole:      roleMap.get(o.memberId) ?? null,
+    canSign:       o.canSign ?? false,
     isCurrentUser: o.id === currentUserOfficerId,
   }));
 
-  const isAdmin = ["owner", "admin"].includes(access.tenantUser.role);
+  const isAdmin = hasFullAccess(access.tenantUser, "surat");
 
   // Resolve merge fields di body nota
   const mf = (letter.mergeFields as Record<string, string> | null) ?? {};
+  const signerInfo = rawSigs
+    .filter((s) => s.signedAt !== null)
+    .map((s) => {
+      const off = officers.find((o) => o.id === s.officerId);
+      return {
+        name:     off ? (memberMap.get(off.memberId) ?? "—") : "—",
+        position: off?.position ?? "—",
+        division: off?.divisionId ? (divisionMap.get(off.divisionId) ?? "") : "",
+      };
+    });
+
   const mergeCtx = buildMergeContext({
     orgName, orgAddress, orgPhone, orgEmail,
     letterNumber: letter.letterNumber ?? "",
@@ -151,21 +196,19 @@ export default async function NotaDinasDetailPage({
     subject:      letter.subject      ?? "",
     sender:       letter.sender       ?? "",
     recipient:    letter.recipient    ?? "",
-    signers: signatures.map((s) => ({
-      name:     s.signerName,
-      position: s.signerPosition,
-      division: s.signerDivision ?? "",
-    })),
+    signers:      signerInfo,
     recipientData: {
-      name:         letter.recipient    ?? "",
-      title:        mf.recipient_title        ?? "",
-      organization: mf.recipient_organization ?? "",
-      address:      mf.recipient_address      ?? "",
-      phone:        mf.recipient_phone        ?? "",
-      email:        mf.recipient_email        ?? "",
+      name:         letter.recipient               ?? "",
+      title:        mf.recipient_title             ?? "",
+      organization: mf.recipient_organization      ?? "",
+      address:      mf.recipient_address           ?? "",
+      phone:        mf.recipient_phone             ?? "",
+      email:        mf.recipient_email             ?? "",
     },
   });
   const bodyHtml = renderBody(resolveMergeFields(letter.body ?? "", mergeCtx));
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   return (
     <div className="p-6 space-y-6 max-w-3xl">
@@ -221,10 +264,10 @@ export default async function NotaDinasDetailPage({
           <span className="text-muted-foreground">Kepada</span>
           <span>{letter.recipient || "—"}</span>
         </div>
-        {letterType && (
+        {letterTypeData && (
           <div className="grid grid-cols-[120px_1fr] px-4 py-2.5">
             <span className="text-muted-foreground">Jenis</span>
-            <span>{letterType.name}</span>
+            <span>{letterTypeData.name}</span>
           </div>
         )}
       </div>
@@ -243,12 +286,18 @@ export default async function NotaDinasDetailPage({
       {/* Penandatangan */}
       <div>
         <h2 className="text-sm font-medium mb-3">Penandatangan</h2>
-        <LetterSigningSection
+        <SignatureSlotManager
+          mode="detail"
           slug={slug}
           letterId={letterId}
-          availableSigners={availableSigners}
-          initialSignatures={signatures}
+          layout={signatureLayout}
+          showDate={signatureShowDate}
+          dateFormat={dateFormat}
+          hijriOffset={hijriOffset}
+          initialSlots={slots}
+          availableOfficers={availableOfficers}
           isAdmin={isAdmin}
+          appUrl={appUrl}
         />
       </div>
     </div>

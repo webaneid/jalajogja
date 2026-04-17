@@ -3,6 +3,7 @@
 
 import { createTenantDb, db, refProvinces, refRegencies, refDistricts } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess } from "@/lib/permissions";
 import { redirect, notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
@@ -19,7 +20,7 @@ export default async function BulkLetterPage({
   if (!access) redirect("/login");
 
   // Hanya admin/owner yang bisa akses halaman ini
-  if (!["owner", "admin"].includes(access.tenantUser.role)) {
+  if (!hasFullAccess(access.tenantUser, "surat")) {
     redirect(`/${slug}/letters/keluar/${letterId}`);
   }
 

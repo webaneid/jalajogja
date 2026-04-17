@@ -6,9 +6,13 @@ import {
   updateLetterAction,
   createLetterAction,
   getNextLetterNumberAction,
+  syncSignatureSlotsAction,
+  type SlotInput,
 } from "@/app/(dashboard)/[tenant]/letters/actions";
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { RecipientCombobox, type ContactOption, type RecipientSelection } from "./recipient-combobox";
+import { SIGNATURE_LAYOUTS, SIGNATURE_LAYOUT_KEYS, type SignatureLayout, type SignatureSlot } from "@/lib/letter-signature-layout";
+import { SignatureSlotManager, type AvailableOfficer } from "@/components/letters/signature-slot-manager";
 
 type LetterType = { id: string; name: string; code: string | null; defaultCategory: string };
 type Template   = { id: string; name: string; type: string; subject: string | null; body: string | null };
@@ -27,29 +31,55 @@ type DefaultValues = {
   status:          "draft" | "sent" | "received" | "archived";
   paperSize:       "A4" | "F4" | "Letter";
   mergeFields:     Record<string, string>;
-  attachmentUrls:  string[];
-  attachmentLabel: string;
+  attachmentUrls:    string[];
+  attachmentLabel:   string;
+  signatureLayout:   SignatureLayout;
+  signatureShowDate: boolean;
 };
 
 type Props = {
-  slug:          string;
-  letterId:      string | null; // null = create mode
-  type:          "outgoing" | "internal";
-  letterTypes:   LetterType[];
-  templates:     Template[];
-  officers:      Officer[];
-  contacts:      ContactOption[];
-  defaultValues: DefaultValues;
-  orgName:       string;
+  slug:               string;
+  letterId:           string | null; // null = create mode
+  type:               "outgoing" | "internal";
+  letterTypes:        LetterType[];
+  templates:          Template[];
+  officers:           Officer[];
+  contacts:           ContactOption[];
+  defaultValues:      DefaultValues;
+  orgName:            string;
+  availableOfficers:  AvailableOfficer[];
+  initialSlots:       SlotInput[];
 };
 
-export function LetterForm({ slug, letterId, type, letterTypes, templates, officers, contacts: initialContacts, defaultValues, orgName }: Props) {
+export function LetterForm({ slug, letterId, type, letterTypes, templates, officers, contacts: initialContacts, defaultValues, orgName, availableOfficers, initialSlots }: Props) {
   const router  = useRouter();
   const [form, setForm] = useState(defaultValues);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const [generatingNum, setGeneratingNum] = useState(false);
   const [contacts, setContacts] = useState<ContactOption[]>(initialContacts);
+  const [slots, setSlots] = useState<SlotInput[]>(initialSlots);
+
+  // Konversi SlotInput[] → SignatureSlot[] untuk display di SignatureSlotManager
+  function toDisplaySlots(inputs: SlotInput[]): SignatureSlot[] {
+    return inputs.map((inp) => {
+      const off = availableOfficers.find((o) => o.officerId === inp.officerId);
+      return {
+        id:           inp.id,
+        order:        inp.order,
+        section:      inp.section,
+        officerId:    inp.officerId,
+        officerName:  off?.name ?? null,
+        position:     off?.position ?? null,
+        division:     off?.division ?? null,
+        role:         inp.role,
+        signedAt:     inp.signedAt ?? null,
+        qrDataUrl:    null,
+        verifyUrl:    null,
+        signingToken: null,
+      };
+    });
+  }
 
   function set(field: keyof DefaultValues, value: unknown) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -97,10 +127,12 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
     const status = newStatus ?? form.status;
     const data = {
       ...form,
-      sender:          orgName,
-      typeId:          form.typeId          || null,
-      templateId:      form.templateId      || null,
-      issuerOfficerId: form.issuerOfficerId || null,
+      sender:            orgName,
+      typeId:            form.typeId            || null,
+      templateId:        form.templateId        || null,
+      issuerOfficerId:   form.issuerOfficerId   || null,
+      signatureLayout:   form.signatureLayout,
+      signatureShowDate: form.signatureShowDate,
       status,
     };
 
@@ -109,6 +141,10 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
         // Create mode — record belum ada di DB
         const res = await createLetterAction(slug, type, data);
         if (res.success) {
+          // Sync slot assignments ke DB
+          if (slots.length > 0) {
+            await syncSignatureSlotsAction(slug, res.letterId, slots);
+          }
           const editPath = type === "outgoing"
             ? `/${slug}/letters/keluar/${res.letterId}/edit`
             : `/${slug}/letters/nota/${res.letterId}/edit`;
@@ -119,6 +155,8 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
       } else {
         const res = await updateLetterAction(slug, letterId, data);
         if (res.success) {
+          // Sync slot assignments ke DB
+          await syncSignatureSlotsAction(slug, letterId, slots);
           set("status", status);
         } else {
           setError(res.error);
@@ -236,6 +274,57 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
           </div>
         </div>
 
+        {/* Layout Tanda Tangan — selalu tampil di bawah body */}
+        <div className="rounded-lg border border-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-muted/5">
+            <p className="text-sm font-medium">Tanda Tangan</p>
+          </div>
+          <div className="px-4 py-4 space-y-4">
+            {/* Kontrol layout + toggle tanggal */}
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted-foreground whitespace-nowrap">Layout:</label>
+                <select
+                  value={form.signatureLayout}
+                  onChange={(e) => set("signatureLayout", e.target.value as SignatureLayout)}
+                  className="rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  {SIGNATURE_LAYOUT_KEYS.map((key) => (
+                    <option key={key} value={key}>{SIGNATURE_LAYOUTS[key].label}</option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.signatureShowDate}
+                  onChange={(e) => set("signatureShowDate", e.target.checked)}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                Tampilkan tanggal TTD
+              </label>
+            </div>
+
+            {/* Slot manager — assign officer per slot + preview layout */}
+            <SignatureSlotManager
+              mode="form"
+              slug={slug}
+              letterId={letterId ?? ""}
+              layout={form.signatureLayout}
+              showDate={form.signatureShowDate}
+              dateFormat="masehi"
+              hijriOffset={0}
+              initialSlots={toDisplaySlots(slots)}
+              availableOfficers={availableOfficers}
+              isAdmin={true}
+              onChange={(newSlots) => setSlots(newSlots)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Assign pengurus ke tiap slot. Tanda tangan dan QR dilakukan dari halaman detail.
+            </p>
+          </div>
+        </div>
+
         {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
 
@@ -323,6 +412,7 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
               </p>
             </div>
           )}
+
         </div>
 
         {/* Action buttons */}

@@ -4,6 +4,7 @@ import { eq, and, sql, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, recordIncome, generateFinancialNumber } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -179,6 +180,7 @@ export async function createProductAction(
 ): Promise<ActionResult<{ productId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.name?.trim()) return { success: false, error: "Nama produk wajib diisi." };
   if (!data.slug?.trim()) return { success: false, error: "Slug produk wajib diisi." };
@@ -235,6 +237,7 @@ export async function createProductDraftAction(
 ): Promise<ActionResult<{ productId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -273,6 +276,7 @@ export async function updateProductAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.name?.trim()) return { success: false, error: "Nama produk wajib diisi." };
   if (!data.slug?.trim()) return { success: false, error: "Slug produk wajib diisi." };
@@ -337,6 +341,7 @@ export async function toggleProductStatusAction(
 ): Promise<ActionResult<{ newStatus: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -373,6 +378,7 @@ export async function deleteProductAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -416,6 +422,7 @@ export async function createOrderAction(
 ): Promise<ActionResult<{ orderId: string; orderNumber: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.customerName?.trim())
     return { success: false, error: "Nama pelanggan wajib diisi." };
@@ -528,6 +535,7 @@ export async function addPaymentToOrderAction(
 ): Promise<ActionResult<{ paymentId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
 
   const tenantDb = createTenantDb(slug);
   const { db, schema } = tenantDb;
@@ -586,6 +594,7 @@ export async function confirmOrderPaymentAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!canConfirmPayment(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
 
   const tenantDb = createTenantDb(slug);
   const { db, schema } = tenantDb;
@@ -711,6 +720,7 @@ export async function cancelOrderAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -783,6 +793,7 @@ export async function updateOrderStatusAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -824,6 +835,7 @@ export async function createProductCategoryAction(
 ): Promise<ActionResult<{ categoryId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.name?.trim()) return { success: false, error: "Nama kategori wajib diisi." };
   if (!data.slug?.trim()) return { success: false, error: "Slug kategori wajib diisi." };

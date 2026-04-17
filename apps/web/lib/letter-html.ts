@@ -4,6 +4,12 @@
 import { renderBody } from "./letter-render";
 import { resolveMergeFields, buildMergeContext } from "./letter-merge";
 import { generateQrDataUrl, buildVerifyUrl } from "./qr-code";
+import {
+  renderSignatureBlockHtml,
+  SIGNATURE_CSS,
+  type SignatureLayout,
+  type SignatureSlot,
+} from "./letter-signature-layout";
 
 // ── Helpers tanggal ──────────────────────────────────────────────────────────
 
@@ -185,13 +191,12 @@ type LetterHtmlParams = {
   letterTypeName:   string;
   orgCity:          string;   // kota dari settings.contact_address (regency name)
   hijriOffset:      number;
+  // Layout TTD — dari letters.signature_layout + signature_show_date
+  signatureLayout:   SignatureLayout;
+  signatureShowDate: boolean;
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  signer:   "Penandatangan",
-  approver: "Penyetuju",
-  witness:  "Saksi",
-};
+// ROLE_LABELS dipindah ke lib/letter-signature-layout.ts (SIGNER_ROLE_LABELS)
 
 // Konversi paper size ke dimensi Playwright — presisi lebar per standar cetak
 export function paperFormat(size: string): { format?: string; width?: string; height?: string } {
@@ -300,18 +305,31 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
     identitasLayout !== "layout3"
   );
 
-  const signSection = signersWithQr.length > 0
-    ? `<div class="sign-section">
-        ${signersWithQr.map((s) => `
-          <div class="signer-block">
-            <p class="signer-role">${escapeHtml(ROLE_LABELS[s.role] ?? s.role)}</p>
-            <img src="${s.qrDataUrl}" alt="QR Verifikasi" class="qr-img" />
-            <p class="signer-name">${escapeHtml(s.name)}</p>
-            <p class="signer-pos">${escapeHtml(s.position)}${s.division ? ` / ${escapeHtml(s.division)}` : ""}</p>
-            <p class="signer-date">${new Date(s.signedAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
-          </div>`).join("")}
-       </div>`
-    : "";
+  // Konversi signers ke SignatureSlot[] untuk renderSignatureBlockHtml (Layer 1)
+  const signatureSlots: (SignatureSlot & { qrDataUrl: string | null }) [] = signersWithQr.map((s, i) => ({
+    id:           null,
+    order:        i + 1,
+    section:      "main" as const,
+    officerId:    null,
+    officerName:  s.name,
+    position:     s.position,
+    division:     s.division,
+    role:         s.role as "signer" | "approver" | "witness",
+    signedAt:     s.signedAt,
+    qrDataUrl:    s.qrDataUrl,
+    verifyUrl:    s.verifyUrl,
+    signingToken: null,
+  }));
+
+  const signSection = renderSignatureBlockHtml(
+    params.signatureLayout,
+    signatureSlots,
+    {
+      showDate:   params.signatureShowDate,
+      dateFormat: params.dateFormat,
+      hijriOffset: params.hijriOffset,
+    }
+  );
 
   return `<!DOCTYPE html>
 <html lang="id">
@@ -387,25 +405,8 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
     .body-surat th,
     .body-surat td     { border: 1px solid #000; padding: 4px 8px; }
 
-    /* Penandatangan */
-    .sign-section {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 24px;
-      margin-top: 32px;
-      page-break-inside: avoid;
-    }
-    .signer-block {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-width: 140px;
-    }
-    .signer-role { font-size: 10pt; margin-bottom: 6px; color: #333; }
-    .qr-img      { width: 90px; height: 90px; border: 1px solid #ccc; }
-    .signer-name { font-size: 11pt; font-weight: bold; margin-top: 6px; text-align: center; }
-    .signer-pos  { font-size: 9pt; text-align: center; color: #333; margin-top: 2px; }
-    .signer-date { font-size: 8pt; color: #666; margin-top: 2px; }
+    /* Penandatangan — dari letter-signature-layout.ts (Layer 1) */
+    ${SIGNATURE_CSS}
 
     /* Footer — fixed di bawah SETIAP halaman PDF */
     .footer-surat {

@@ -2,10 +2,11 @@
 
 import { createTenantDb, getSettings, upsertSetting } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess } from "@/lib/permissions";
 import { redirect } from "next/navigation";
 import { eq, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import {
   resolveLetterNumberFormat,
   resolveSequenceCategory,
@@ -35,6 +36,8 @@ export type LetterData = {
   bulkParentId?:  string | null;
   interTenantTo?:     string | null;
   interTenantStatus?: "pending" | "delivered" | null;
+  signatureLayout?:   string | null;
+  signatureShowDate?: boolean;
 };
 
 export type LetterTypeData = {
@@ -334,6 +337,8 @@ export async function updateLetterAction(
         ...(data.bulkParentId !== undefined && { bulkParentId: data.bulkParentId || null }),
         ...(data.interTenantTo !== undefined && { interTenantTo: data.interTenantTo || null }),
         ...(data.interTenantStatus !== undefined && { interTenantStatus: data.interTenantStatus || null }),
+        ...(data.signatureLayout   !== undefined && { signatureLayout:   (data.signatureLayout || "double") as "single-center" | "single-left" | "single-right" | "double" | "triple-row" | "triple-pyramid" | "double-with-witnesses" }),
+        ...(data.signatureShowDate !== undefined && { signatureShowDate: data.signatureShowDate }),
         updatedAt: new Date(),
       })
       .where(eq(schema.letters.id, letterId));
@@ -765,7 +770,7 @@ export async function removeSignatureAction(
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
 
-  if (!["owner", "admin"].includes(access.tenantUser.role)) {
+  if (!hasFullAccess(access.tenantUser, "surat")) {
     return { success: false, error: "Hanya admin yang bisa menghapus tanda tangan." };
   }
 
@@ -781,6 +786,311 @@ export async function removeSignatureAction(
   } catch (err) {
     console.error("[removeSignatureAction]", err);
     return { success: false, error: "Gagal menghapus tanda tangan." };
+  }
+}
+
+// ─── Assign Signer Slot ───────────────────────────────────────────────────────
+// Membuat atau mengupdate slot TTD — signedAt null, signingToken di-generate
+// Admin assign officer ke slot sebelum TTD dilakukan
+
+export async function assignSignerSlotAction(
+  slug:        string,
+  letterId:    string,
+  slotOrder:   number,
+  slotSection: "main" | "witnesses",
+  officerId:   string,
+  role:        "signer" | "approver" | "witness"
+): Promise<
+  | { success: true; signingToken: string; signatureId: string }
+  | { success: false; error: string }
+> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  // Hanya admin/sekretaris yang bisa assign slot
+  if (!hasFullAccess(access.tenantUser, "surat")) {
+    return { success: false, error: "Tidak punya izin assign penandatangan." };
+  }
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    // Cek officer exists
+    const [officer] = await tenantDb
+      .select({ id: schema.officers.id })
+      .from(schema.officers)
+      .where(eq(schema.officers.id, officerId))
+      .limit(1);
+    if (!officer) return { success: false, error: "Pengurus tidak ditemukan." };
+
+    // Cek apakah slot ini sudah ada (letter + order + section)
+    const [existing] = await tenantDb
+      .select({ id: schema.letterSignatures.id })
+      .from(schema.letterSignatures)
+      .where(
+        and(
+          eq(schema.letterSignatures.letterId, letterId),
+          eq(schema.letterSignatures.slotOrder, slotOrder),
+          eq(schema.letterSignatures.slotSection, slotSection)
+        )
+      )
+      .limit(1);
+
+    const signingToken          = randomUUID();
+    const signingTokenExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 hari
+
+    if (existing) {
+      // Update slot yang sudah ada — ganti officer + role + reset token
+      // Jika sudah TTD (signedAt tidak null), tolak perubahan
+      const [slot] = await tenantDb
+        .select({ signedAt: schema.letterSignatures.signedAt })
+        .from(schema.letterSignatures)
+        .where(eq(schema.letterSignatures.id, existing.id))
+        .limit(1);
+
+      if (slot?.signedAt) {
+        return { success: false, error: "Slot ini sudah ditandatangani, tidak bisa diubah." };
+      }
+
+      await tenantDb
+        .update(schema.letterSignatures)
+        .set({ officerId, role, signingToken, signingTokenExpiresAt })
+        .where(eq(schema.letterSignatures.id, existing.id));
+
+      revalidatePath(`/${slug}/letters`);
+      return { success: true, signingToken, signatureId: existing.id };
+    }
+
+    // Insert slot baru
+    const [inserted] = await tenantDb
+      .insert(schema.letterSignatures)
+      .values({
+        letterId,
+        officerId,
+        role,
+        slotOrder,
+        slotSection,
+        signingToken,
+        signingTokenExpiresAt,
+        // signedAt + verificationHash tetap null — officer belum TTD
+      })
+      .returning({ id: schema.letterSignatures.id });
+
+    revalidatePath(`/${slug}/letters`);
+    return { success: true, signingToken, signatureId: inserted.id };
+  } catch (err) {
+    console.error("[assignSignerSlotAction]", err);
+    return { success: false, error: "Gagal menyimpan slot penandatangan." };
+  }
+}
+
+// ─── Sync Signature Slots ─────────────────────────────────────────────────────
+// Dipanggil saat simpan surat (draft/kirim) dari edit/new page.
+// desired = state combobox di form. Reconcile dengan DB:
+//   - slot baru (officerId ada, id kosong) → INSERT
+//   - slot berubah (id ada, bukan TTD) → UPDATE
+//   - slot kosong (officerId null) → DELETE jika ada di DB dan belum TTD
+
+export type SlotInput = {
+  id:          string | null;   // null = belum ada di DB
+  order:       number;
+  section:     "main" | "witnesses";
+  officerId:   string | null;   // null = kosong / dihapus
+  role:        "signer" | "approver" | "witness";
+  signedAt?:   Date | null;     // hanya untuk display di form mode (tidak dikirim ke DB)
+};
+
+export async function syncSignatureSlotsAction(
+  slug:     string,
+  letterId: string,
+  desired:  SlotInput[],
+): Promise<{ success: true } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "surat")) {
+    return { success: false, error: "Tidak punya izin mengatur penandatangan." };
+  }
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    // Ambil semua slot existing (termasuk signed) — butuh officerId + signingToken untuk perbandingan
+    const existing = await tenantDb
+      .select({
+        id:           schema.letterSignatures.id,
+        slotOrder:    schema.letterSignatures.slotOrder,
+        slotSection:  schema.letterSignatures.slotSection,
+        officerId:    schema.letterSignatures.officerId,
+        signingToken: schema.letterSignatures.signingToken,
+        signedAt:     schema.letterSignatures.signedAt,
+      })
+      .from(schema.letterSignatures)
+      .where(eq(schema.letterSignatures.letterId, letterId));
+
+    const newToken = () => ({
+      signingToken:          randomUUID(),
+      signingTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+
+    for (const slot of desired) {
+      const existingSlot = existing.find(
+        (e) => e.slotOrder === slot.order && e.slotSection === slot.section
+      );
+
+      if (!slot.officerId) {
+        // Hapus slot jika ada di DB dan belum TTD
+        if (existingSlot && !existingSlot.signedAt) {
+          await tenantDb
+            .delete(schema.letterSignatures)
+            .where(eq(schema.letterSignatures.id, existingSlot.id));
+        }
+        continue;
+      }
+
+      if (existingSlot) {
+        // Sudah TTD → skip, jangan ubah apapun termasuk token
+        if (existingSlot.signedAt) continue;
+
+        // Officer berubah → generate token baru (link lama tidak valid karena orangnya ganti)
+        // Officer sama   → pertahankan token lama agar link yang sudah dikirim tetap berlaku
+        const officerChanged = existingSlot.officerId !== slot.officerId;
+        const tokenMissing   = !existingSlot.signingToken;
+
+        await tenantDb
+          .update(schema.letterSignatures)
+          .set({
+            officerId: slot.officerId,
+            role:      slot.role,
+            ...(officerChanged || tokenMissing ? newToken() : {}),
+          })
+          .where(eq(schema.letterSignatures.id, existingSlot.id));
+      } else {
+        // Insert baru — selalu generate token
+        await tenantDb
+          .insert(schema.letterSignatures)
+          .values({
+            letterId,
+            officerId:   slot.officerId,
+            role:        slot.role,
+            slotOrder:   slot.order,
+            slotSection: slot.section,
+            ...newToken(),
+          });
+      }
+    }
+
+    // Hapus slot DB yang tidak ada di desired (dan belum TTD)
+    const desiredKeys = new Set(desired.map((d) => `${d.section}-${d.order}`));
+    for (const e of existing) {
+      if (!e.signedAt && !desiredKeys.has(`${e.slotSection}-${e.slotOrder}`)) {
+        await tenantDb
+          .delete(schema.letterSignatures)
+          .where(eq(schema.letterSignatures.id, e.id));
+      }
+    }
+
+    revalidatePath(`/${slug}/letters`);
+    return { success: true };
+  } catch (err) {
+    console.error("[syncSignatureSlotsAction]", err);
+    return { success: false, error: "Gagal menyimpan penandatangan." };
+  }
+}
+
+// ─── Generate Signing Token On-Demand ────────────────────────────────────────
+// Untuk slot lama yang belum punya signingToken (edge case) — admin/owner only
+
+export async function generateSigningTokenAction(
+  slug: string,
+  signatureId: string,
+): Promise<{ success: true; token: string } | { success: false; error: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "surat")) {
+    return { success: false, error: "Tidak punya izin." };
+  }
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    const [sig] = await tenantDb
+      .select({
+        id:           schema.letterSignatures.id,
+        signingToken: schema.letterSignatures.signingToken,
+        signedAt:     schema.letterSignatures.signedAt,
+      })
+      .from(schema.letterSignatures)
+      .where(eq(schema.letterSignatures.id, signatureId))
+      .limit(1);
+
+    if (!sig) return { success: false, error: "Slot tidak ditemukan." };
+    if (sig.signedAt) return { success: false, error: "Slot sudah ditandatangani." };
+    // Kalau sudah ada token kembalikan saja
+    if (sig.signingToken) return { success: true, token: sig.signingToken };
+
+    const token = randomUUID();
+    await tenantDb
+      .update(schema.letterSignatures)
+      .set({
+        signingToken:          token,
+        signingTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      })
+      .where(eq(schema.letterSignatures.id, signatureId));
+
+    revalidatePath(`/${slug}/letters`);
+    return { success: true, token };
+  } catch (err) {
+    console.error("[generateSigningTokenAction]", err);
+    return { success: false, error: "Gagal membuat link TTD." };
+  }
+}
+
+// ─── Sign by Token (halaman publik) ──────────────────────────────────────────
+// Dipanggil dari SigningPageClient — TIDAK membutuhkan login dashboard
+// Validasi: token valid + belum TTD. Officer ID sudah ada di slot.
+
+export async function signByTokenAction(
+  slug: string,
+  token: string,
+): Promise<
+  | { success: true; verificationHash: string }
+  | { success: false; error: string }
+> {
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  try {
+    // Cari slot by token
+    const [sig] = await tenantDb
+      .select()
+      .from(schema.letterSignatures)
+      .where(eq(schema.letterSignatures.signingToken, token))
+      .limit(1);
+
+    if (!sig) return { success: false, error: "Link tanda tangan tidak valid." };
+    if (sig.signedAt) return { success: false, error: "Surat ini sudah ditandatangani sebelumnya." };
+    if (sig.signingTokenExpiresAt && sig.signingTokenExpiresAt < new Date()) {
+      return { success: false, error: "Link tanda tangan sudah kadaluarsa." };
+    }
+
+    const now              = new Date();
+    const verificationHash = createHash("sha256")
+      .update(`${sig.letterId}:${sig.officerId}:${now.toISOString()}`)
+      .digest("hex");
+
+    await tenantDb
+      .update(schema.letterSignatures)
+      .set({
+        signedAt:         now,
+        verificationHash,
+        signingToken:     null,  // Invalidate token setelah dipakai
+      })
+      .where(eq(schema.letterSignatures.id, sig.id));
+
+    revalidatePath(`/${slug}/letters`);
+    return { success: true, verificationHash };
+  } catch (err) {
+    console.error("[signByTokenAction]", err);
+    return { success: false, error: "Gagal menyimpan tanda tangan." };
   }
 }
 
@@ -808,7 +1118,7 @@ export async function createBulkLettersAction(
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
 
-  if (!["owner", "admin"].includes(access.tenantUser.role)) {
+  if (!hasFullAccess(access.tenantUser, "surat")) {
     return { success: false, error: "Hanya admin yang bisa membuat surat massal." };
   }
 
@@ -933,7 +1243,7 @@ export async function saveLetterConfigAction(
 ): Promise<{ success: true } | { success: false; error: string }> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
-  if (!["owner", "admin"].includes(access.tenantUser.role)) {
+  if (!hasFullAccess(access.tenantUser, "surat")) {
     return { success: false, error: "Hanya admin yang bisa mengubah pengaturan surat." };
   }
 
@@ -957,7 +1267,7 @@ export async function markAllChildrenSentAction(
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
 
-  if (!["owner", "admin"].includes(access.tenantUser.role)) {
+  if (!hasFullAccess(access.tenantUser, "surat")) {
     return { success: false, error: "Hanya admin yang bisa mengubah status massal." };
   }
 

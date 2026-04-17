@@ -5,6 +5,8 @@ import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { LetterForm } from "@/components/letters/letter-form";
+import type { AvailableOfficer } from "@/components/letters/signature-slot-manager";
+import type { SlotInput } from "@/app/(dashboard)/[tenant]/letters/actions";
 
 export default async function NotaDinasEditPage({
   params,
@@ -70,12 +72,26 @@ export default async function NotaDinasEditPage({
   // Fetch kode divisi
   const divisionIds = rawOfficers.map((o) => o.divisionId).filter((x): x is string => !!x);
   const divisionMap = new Map<string, string>();
+  const divisionNameMap = new Map<string, string>();
   if (divisionIds.length > 0) {
     const divisionRows = await tenantDb
-      .select({ id: schema.divisions.id, code: schema.divisions.code })
+      .select({ id: schema.divisions.id, code: schema.divisions.code, name: schema.divisions.name })
       .from(schema.divisions)
       .where(inArray(schema.divisions.id, divisionIds));
-    divisionRows.forEach((d) => divisionMap.set(d.id, d.code ?? ""));
+    divisionRows.forEach((d) => {
+      divisionMap.set(d.id, d.code ?? "");
+      divisionNameMap.set(d.id, d.name);
+    });
+  }
+
+  // Fetch role per member dari tenant.users
+  const officerRoleMap = new Map<string, string>();
+  if (memberIds.length > 0) {
+    const userRows = await tenantDb
+      .select({ memberId: schema.users.memberId, role: schema.users.role })
+      .from(schema.users)
+      .where(inArray(schema.users.memberId, memberIds));
+    userRows.forEach((u) => { if (u.memberId) officerRoleMap.set(u.memberId, u.role); });
   }
 
   const officers = rawOfficers.map((o) => ({
@@ -83,6 +99,39 @@ export default async function NotaDinasEditPage({
     name:         memberMap.get(o.memberId) ?? "—",
     position:     o.position,
     divisionCode: o.divisionId ? (divisionMap.get(o.divisionId) ?? null) : null,
+  }));
+
+  // AvailableOfficer untuk SignatureSlotManager (form mode)
+  const availableOfficers: AvailableOfficer[] = rawOfficers.map((o) => ({
+    officerId:     o.id,
+    name:          memberMap.get(o.memberId) ?? "—",
+    position:      o.position,
+    division:      o.divisionId ? (divisionNameMap.get(o.divisionId) ?? null) : null,
+    userRole:      officerRoleMap.get(o.memberId) ?? null,
+    canSign:       true,
+    isCurrentUser: false,
+  }));
+
+  // Fetch slot yang sudah di-assign ke surat ini
+  const rawSlots = await tenantDb
+    .select({
+      id:        schema.letterSignatures.id,
+      order:     schema.letterSignatures.slotOrder,
+      section:   schema.letterSignatures.slotSection,
+      officerId: schema.letterSignatures.officerId,
+      role:      schema.letterSignatures.role,
+      signedAt:  schema.letterSignatures.signedAt,
+    })
+    .from(schema.letterSignatures)
+    .where(eq(schema.letterSignatures.letterId, letterId));
+
+  const initialSlots: SlotInput[] = rawSlots.map((s) => ({
+    id:        s.id,
+    order:     s.order ?? 1,
+    section:   (s.section ?? "main") as "main" | "witnesses",
+    officerId: s.officerId,
+    role:      (s.role ?? "signer") as "signer" | "approver" | "witness",
+    signedAt:  s.signedAt,
   }));
 
   // Fetch kontak surat untuk autocomplete field Kepada
@@ -180,10 +229,14 @@ export default async function NotaDinasEditPage({
           letterDate:      letter.letterDate,
           status:          letter.status as "draft" | "sent" | "received" | "archived",
           paperSize:       (letter.paperSize as "A4" | "F4" | "Letter") ?? "A4",
-          mergeFields:     (letter.mergeFields as Record<string, string>) ?? {},
-          attachmentUrls:  (letter.attachmentUrls as string[]) ?? [],
-          attachmentLabel: (letter as { attachmentLabel?: string | null }).attachmentLabel ?? "",
+          mergeFields:       (letter.mergeFields as Record<string, string>) ?? {},
+          attachmentUrls:    (letter.attachmentUrls as string[]) ?? [],
+          attachmentLabel:   (letter as { attachmentLabel?: string | null }).attachmentLabel ?? "",
+          signatureLayout:   ((letter as { signatureLayout?: string }).signatureLayout ?? "double") as import("@/lib/letter-signature-layout").SignatureLayout,
+          signatureShowDate: (letter as { signatureShowDate?: boolean }).signatureShowDate ?? true,
         }}
+        availableOfficers={availableOfficers}
+        initialSlots={initialSlots}
       />
     </div>
   );

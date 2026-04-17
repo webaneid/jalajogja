@@ -8,6 +8,12 @@ import {
   updateLetterTemplateAction,
 } from "@/app/(dashboard)/[tenant]/letters/actions";
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
+import { SignatureBlock } from "@/components/letters/signature-block";
+import {
+  type SignatureLayout,
+  SIGNATURE_LAYOUTS,
+  SIGNATURE_LAYOUT_KEYS,
+} from "@/lib/letter-signature-layout";
 
 // ── Variabel merge fields yang tersedia di template surat ──────────────────
 
@@ -93,7 +99,10 @@ export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
   const [subject,  setSubject]  = useState(defaultValues?.subject  ?? "");
   const [body,     setBody]     = useState(defaultValues?.body     ?? "");
   const [isActive, setIsActive] = useState(defaultValues?.isActive ?? true);
-  const [varsOpen, setVarsOpen] = useState(false);
+  const [varsOpen,         setVarsOpen]         = useState(false);
+  const [previewLayout,    setPreviewLayout]    = useState<SignatureLayout>("double");
+  const [previewShowDate,  setPreviewShowDate]  = useState(true);
+  const [sigPreviewOpen,   setSigPreviewOpen]   = useState(false);
   const [error,    setError]    = useState("");
   const [pending,  startTransition] = useTransition();
 
@@ -214,6 +223,65 @@ export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Preview Tanda Tangan — collapsible */}
+      <div className="rounded-lg border border-border overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setSigPreviewOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/30 transition-colors"
+        >
+          <span>Preview Tanda Tangan</span>
+          {sigPreviewOpen
+            ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          }
+        </button>
+        {sigPreviewOpen && (
+          <div className="px-4 pb-5 pt-3 bg-muted/5 border-t border-border space-y-4">
+            {/* Kontrol layout + tanggal */}
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted-foreground whitespace-nowrap">Layout:</label>
+                <select
+                  value={previewLayout}
+                  onChange={(e) => setPreviewLayout(e.target.value as SignatureLayout)}
+                  className="rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  {SIGNATURE_LAYOUT_KEYS.map((key) => (
+                    <option key={key} value={key}>{SIGNATURE_LAYOUTS[key].label}</option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={previewShowDate}
+                  onChange={(e) => setPreviewShowDate(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                Tampilkan tanggal TTD
+                <span className="text-muted-foreground">(format dari /letters/pengaturan)</span>
+              </label>
+            </div>
+
+            {/* Preview read-only */}
+            <div className="rounded-md border border-dashed border-border p-4 bg-white dark:bg-background min-h-[140px]">
+              <SignatureBlock
+                layout={previewLayout}
+                slots={[]}
+                showDate={previewShowDate}
+                dateFormat="masehi"
+                hijriOffset={0}
+                mode="preview"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              ⚠️ Preview ini menunjukkan tata letak saja. Officer dan QR akan terisi saat surat ditandatangani.
+            </p>
           </div>
         )}
       </div>

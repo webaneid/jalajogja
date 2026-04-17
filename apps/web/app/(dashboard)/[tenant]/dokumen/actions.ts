@@ -2,6 +2,7 @@
 
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess } from "@/lib/permissions";
 import { eq, and, count, max, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -30,6 +31,7 @@ export async function createDocumentAction(
 ) {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false as const, error: "Unauthorized" };
+  if (!hasFullAccess(access.tenantUser, "dokumen")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.title?.trim()) return { success: false as const, error: "Judul wajib diisi." };
   if (!data.fileId || !data.fileName) return { success: false as const, error: "File wajib diunggah." };
@@ -89,6 +91,7 @@ export async function updateDocumentAction(
 ) {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false as const, error: "Unauthorized" };
+  if (!hasFullAccess(access.tenantUser, "dokumen")) return { success: false as const, error: "Akses ditolak." };
   if (!data.title?.trim()) return { success: false as const, error: "Judul wajib diisi." };
 
   const { db, schema } = createTenantDb(slug);
@@ -131,6 +134,7 @@ export async function uploadNewVersionAction(
 ) {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false as const, error: "Unauthorized" };
+  if (!hasFullAccess(access.tenantUser, "dokumen")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -180,6 +184,7 @@ export async function restoreVersionAction(
 ) {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false as const, error: "Unauthorized" };
+  if (!hasFullAccess(access.tenantUser, "dokumen")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -216,6 +221,7 @@ export async function restoreVersionAction(
 export async function deleteDocumentAction(slug: string, docId: string) {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false as const, error: "Unauthorized" };
+  if (!hasFullAccess(access.tenantUser, "dokumen")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -237,6 +243,7 @@ export async function createDocumentCategoryAction(
 ) {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false as const, error: "Unauthorized" };
+  if (!hasFullAccess(access.tenantUser, "dokumen")) return { success: false as const, error: "Akses ditolak." };
   if (!data.name?.trim()) return { success: false as const, error: "Nama kategori wajib diisi." };
 
   const { db, schema } = createTenantDb(slug);
@@ -274,6 +281,7 @@ export async function updateDocumentCategoryAction(
 ) {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false as const, error: "Unauthorized" };
+  if (!hasFullAccess(access.tenantUser, "dokumen")) return { success: false as const, error: "Akses ditolak." };
   if (!data.name?.trim()) return { success: false as const, error: "Nama kategori wajib diisi." };
 
   const { db, schema } = createTenantDb(slug);
@@ -306,6 +314,7 @@ export async function updateDocumentCategoryAction(
 export async function deleteDocumentCategoryAction(slug: string, catId: string) {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false as const, error: "Unauthorized" };
+  if (!hasFullAccess(access.tenantUser, "dokumen")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 

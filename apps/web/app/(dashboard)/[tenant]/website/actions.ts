@@ -4,6 +4,7 @@ import { eq, and, inArray, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { hasFullAccess } from "@/lib/permissions";
 import { generateSlug } from "@/lib/seo";
 import type { ContentStatus, PostTwitterCard, PostRobots, PostSchemaType, PageSchemaType } from "@jalajogja/db";
 
@@ -66,6 +67,7 @@ export async function createPostAction(
 ): Promise<ActionResult<{ postId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
   if (!data.title?.trim()) return { success: false, error: "Judul post wajib diisi." };
 
   const { db, schema } = createTenantDb(slug);
@@ -120,6 +122,7 @@ export async function createPageAction(
 ): Promise<ActionResult<{ pageId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
   if (!data.title?.trim()) return { success: false, error: "Judul halaman wajib diisi." };
 
   const { db, schema } = createTenantDb(slug);
@@ -177,6 +180,7 @@ export async function createPostDraftAction(
 ): Promise<ActionResult<{ postId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -221,6 +225,7 @@ export async function updatePostAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.title?.trim()) {
     return { success: false, error: "Judul post wajib diisi." };
@@ -340,6 +345,7 @@ export async function updatePostStatusAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -381,6 +387,7 @@ export async function deletePostAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -445,6 +452,7 @@ export async function createPageDraftAction(
 ): Promise<ActionResult<{ pageId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -488,6 +496,7 @@ export async function updatePageAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.title?.trim()) {
     return { success: false, error: "Judul halaman wajib diisi." };
@@ -570,6 +579,7 @@ export async function updatePageStatusAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -610,6 +620,7 @@ export async function deletePageAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -650,6 +661,7 @@ export async function createCategoryAction(
 ): Promise<ActionResult<{ categoryId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.name?.trim()) return { success: false, error: "Nama kategori wajib diisi." };
 
@@ -693,6 +705,7 @@ export async function updateCategoryAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.name?.trim()) return { success: false, error: "Nama kategori wajib diisi." };
 
@@ -750,6 +763,7 @@ export async function deleteCategoryAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -810,6 +824,7 @@ export async function createTagAction(
 ): Promise<ActionResult<{ tagId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.name?.trim()) return { success: false, error: "Nama tag wajib diisi." };
 
@@ -848,6 +863,7 @@ export async function updateTagAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   if (!data.name?.trim()) return { success: false, error: "Nama tag wajib diisi." };
 
@@ -895,6 +911,7 @@ export async function deleteTagAction(
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 

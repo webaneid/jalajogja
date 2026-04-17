@@ -11,7 +11,13 @@ export const getCurrentSession = cache(async () => {
 
 export type TenantAccessResult = {
   tenant: typeof tenants.$inferSelect;
-  tenantUser: { id: string; role: string; memberId: string | null };
+  tenantUser: {
+    id:           string;
+    role:         string;
+    memberId:     string | null;
+    customRoleId: string | null;
+    customRole:   { permissions: unknown } | null;
+  };
   userId: string;
 };
 
@@ -36,9 +42,10 @@ export async function getTenantAccess(
   const { db: tenantDb, schema } = createTenantDb(slug);
   const [tenantUser] = await tenantDb
     .select({
-      id: schema.users.id,
-      role: schema.users.role,
-      memberId: schema.users.memberId,
+      id:           schema.users.id,
+      role:         schema.users.role,
+      memberId:     schema.users.memberId,
+      customRoleId: schema.users.customRoleId,
     })
     .from(schema.users)
     .where(eq(schema.users.betterAuthUserId, session.user.id))
@@ -46,9 +53,20 @@ export async function getTenantAccess(
 
   if (!tenantUser) return null;
 
+  // Jika role = "custom", fetch permissions dari custom_roles
+  let customRole: { permissions: unknown } | null = null;
+  if (tenantUser.customRoleId) {
+    const [cr] = await tenantDb
+      .select({ permissions: schema.customRoles.permissions })
+      .from(schema.customRoles)
+      .where(eq(schema.customRoles.id, tenantUser.customRoleId))
+      .limit(1);
+    if (cr) customRole = { permissions: cr.permissions };
+  }
+
   return {
     tenant,
-    tenantUser,
+    tenantUser: { ...tenantUser, customRole },
     userId: session.user.id,
   };
 }

@@ -1,5 +1,7 @@
 import { pgSchema } from "drizzle-orm/pg-core";
 import { createUsersTable } from "./users";
+import { createCustomRolesTable } from "./custom-roles";
+import { createTenantInvitesTable } from "./tenant-invites";
 import { createPagesTable, createPostCategoriesTable, createPostsTable, createPostTagsTable, createPostTagPivotTable, createMediaTable } from "./website";
 import { createLetterTypesTable, createLetterContactsTable, createLetterTemplatesTable, createLettersTable, createLetterNumberSequencesTable } from "./letters";
 import {
@@ -30,8 +32,10 @@ const schemaCache = new Map<string, TenantSchema>();
 function buildTenantSchema(slug: string) {
   const s = pgSchema(`tenant_${slug}`);
   return {
-    // Akses dashboard per tenant (pemetaan Better Auth user → role)
-    users: createUsersTable(s),
+    // Role & akses dashboard per tenant
+    customRoles:   createCustomRolesTable(s),
+    users:         createUsersTable(s),
+    tenantInvites: createTenantInvitesTable(s),
     // Website
     pages: createPagesTable(s),
     postCategories: createPostCategoriesTable(s),
@@ -96,6 +100,8 @@ export function getTenantSchema(slug: string): TenantSchema {
 export type TenantSchema = ReturnType<typeof buildTenantSchema>;
 
 export * from "./users";
+export * from "./custom-roles";
+export * from "./tenant-invites";
 export * from "./website";
 export * from "./letters";
 export * from "./officers";

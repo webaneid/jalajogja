@@ -1,6 +1,6 @@
 # Arsitektur Modul Dokumen
 
-> Status: **Proposal — belum dieksekusi**
+> Status: **Step 1 (Schema) ✅ | Step 2 (CRUD + Routes + Components) ✅ | Step 3 (Versioning) ✅ | Step 4 (File Proxy + PDF Viewer) ✅ | Step 5 (Halaman Publik) ✅**
 
 ## Konsep
 
@@ -117,9 +117,10 @@ app/(dashboard)/[tenant]/dokumen/
 └── kategori/
     └── page.tsx            → CRUD inline kategori (tree view, drag-reorder)
 
-app/(public)/[tenant]/dokumen/[id]/page.tsx
+app/(public)/[tenant]/dokumen/view/[id]/page.tsx
   → halaman publik dokumen (hanya untuk visibility=public)
   → info dokumen + tombol download/view PDF
+  → URL: `{appUrl}/{tenant}/dokumen/view/{id}` (prefix `view/` menghindari konflik path dengan dashboard)
 
 app/api/documents/[id]/file/route.ts
   → GET: stream file dari MinIO
@@ -276,12 +277,12 @@ export async function GET(req, { params }) {
 
 ## Halaman Publik
 
-`app/(public)/[tenant]/dokumen/[id]/page.tsx`:
+`app/(public)/[tenant]/dokumen/view/[id]/page.tsx`:
 - Server component, tanpa auth
 - Cek: tenant aktif + dokumen `visibility=public`
 - Jika internal → tampilkan "Dokumen ini tidak tersedia untuk publik" (bukan 404)
 - Tampilkan: judul, deskripsi, kategori, info file, tombol Download/Lihat PDF
-- URL share: `{appUrl}/{tenant}/dokumen/{id}`
+- URL share: `{appUrl}/{tenant}/dokumen/view/{id}`
 
 ---
 
@@ -300,11 +301,11 @@ Keuangan   → (belum)
 
 ## Implementasi — Roadmap
 
-- [ ] **Step 1 — Schema**: tabel `document_categories`, `documents`, `document_versions`; DDL di `create-tenant-schema.ts`; update sidebar
-- [ ] **Step 2 — CRUD Dokumen + Kategori**: DokumenForm (create + edit), list, kategori inline, server actions
-- [ ] **Step 3 — Versioning**: upload versi baru, riwayat versi, restore versi lama
-- [ ] **Step 4 — File Proxy API + PDF Viewer**: `/api/documents/[id]/file`, modal preview PDF
-- [ ] **Step 5 — Halaman Publik**: `/(public)/[tenant]/dokumen/[id]`, share link
+- [x] **Step 1 — Schema**: tabel `document_categories`, `documents`, `document_versions`; DDL di `create-tenant-schema.ts`; update sidebar
+- [x] **Step 2 — CRUD Dokumen + Kategori**: DokumenForm (create + edit), list, kategori inline, server actions
+- [x] **Step 3 — Versioning**: upload versi baru, riwayat versi, restore versi lama (dalam Step 2)
+- [x] **Step 4 — File Proxy API + PDF Viewer**: `/api/documents/[id]/file`, modal preview PDF (dalam Step 2)
+- [x] **Step 5 — Halaman Publik**: `/(public)/[tenant]/dokumen/view/[id]`, share link (dalam Step 2)
 
 ---
 
@@ -319,3 +320,25 @@ Keuangan   → (belum)
 ## Open Questions
 
 1. **Permission upload**: semua user yang login ke tenant bisa upload, edit, dan hapus dokumen — belum ada hirarki role per-tenant. Akan diperketat saat modul User/Role diimplementasikan nanti.
+
+---
+
+## Lessons Learned
+
+### current_version_id: circular FK diselesaikan tanpa constraint
+`documents.current_version_id` → `document_versions.id` dan `document_versions.document_id` → `documents.id` membentuk circular reference. Solusi: `current_version_id` adalah plain UUID tanpa FK constraint di DDL. Konsistensi dijaga di application layer (action selalu update `current_version_id` setelah insert version). Pattern ini aman selama tidak ada DELETE tanpa urutan yang benar (version dihapus CASCADE dari document).
+
+### Uploader name: tenant users tidak punya kolom name
+`tenant_{slug}.users` hanya punya `betterAuthUserId` — tidak ada `name`. Untuk tampilkan nama uploader perlu:
+1. Ambil `betterAuthUserId` dari `tenant.users WHERE id = uploadedBy`
+2. Join ke `public.user WHERE id = betterAuthUserId`
+
+Implementasi saat ini skip nama uploader (ditampilkan `null`). Diimplementasikan nanti saat ada helper cross-schema join yang lebih bersih.
+
+### inArray untuk filter array UUID
+Drizzle `inArray(column, ids)` adalah cara yang benar untuk `WHERE column = ANY(array)`.
+Jangan pakai `sql.raw` dengan spread args — TypeScript tidak bisa inferensikan tipe dan akan error.
+
+### File proxy: Content-Disposition inline vs attachment
+`inline` → browser coba render (PDF terbuka di tab). `attachment` → browser download langsung.
+Untuk dokumen, gunakan `inline` agar PDF viewer di browser berfungsi. Download tetap bisa via `<a download>` di HTML.
