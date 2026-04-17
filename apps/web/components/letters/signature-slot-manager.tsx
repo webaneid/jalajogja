@@ -378,25 +378,26 @@ export function SignatureSlotManager({
 
             {/* Link TTD — tampilkan jika sudah ada token */}
             {slot.signingToken && (
-              <div className="space-y-1">
-                <p className="text-[10px] text-muted-foreground">Link TTD — kirim ke penandatangan:</p>
-                <div className="flex items-center gap-1">
+              <div className="rounded-md bg-blue-50 border border-blue-200 p-2.5 space-y-1.5">
+                <p className="text-xs font-medium text-blue-700">🔗 Link TTD</p>
+                <p className="text-[10px] text-blue-600">Kirim link ini ke penandatangan:</p>
+                <div className="flex items-center gap-1.5">
                   <input
                     readOnly
                     type="text"
                     value={`${appUrl ?? ""}/${slug}/sign/${slot.signingToken}`}
-                    className="flex-1 rounded border border-border bg-muted/30 px-2 py-1 font-mono text-[10px] text-foreground outline-none"
+                    className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 font-mono text-[11px] text-foreground outline-none focus:border-blue-500"
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                   />
                   <button
                     type="button"
                     onClick={() => copySigningLink(slot.signingToken!)}
-                    className="shrink-0 inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground"
+                    className="shrink-0 inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-blue-700"
                     title="Salin link"
                   >
                     {copiedToken === slot.signingToken
-                      ? <Check className="h-3.5 w-3.5 text-green-500" />
-                      : <Copy className="h-3.5 w-3.5" />}
+                      ? <><Check className="h-3.5 w-3.5" /> Tersalin</>
+                      : <><Copy className="h-3.5 w-3.5" /> Salin</>}
                   </button>
                 </div>
               </div>
@@ -408,26 +409,24 @@ export function SignatureSlotManager({
                 type="button"
                 disabled={pending}
                 onClick={() => handleGenerateToken(slot)}
-                className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1.5 text-[11px] text-primary hover:bg-primary/5 disabled:opacity-60"
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-[12px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
               >
-                <PenLine className="h-3.5 w-3.5" />
+                <PenLine className="h-4 w-4" />
                 Buat Link TTD
               </button>
             )}
 
             {/* Hapus slot (admin) */}
             {isAdmin && slot.id && (
-              <div>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => handleRevoke(slot)}
-                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-destructive disabled:opacity-40 mt-0.5"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  Batalkan
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => handleRevoke(slot)}
+                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-40"
+              >
+                <Trash2 className="h-3 w-3" />
+                Batalkan Slot
+              </button>
             )}
           </div>
         )}

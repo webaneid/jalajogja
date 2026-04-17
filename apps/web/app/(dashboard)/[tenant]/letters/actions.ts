@@ -717,43 +717,63 @@ export async function signLetterAction(
   const { db: tenantDb, schema } = createTenantDb(slug);
 
   try {
-    // Cek officer exists + canSign
-    const [officer] = await tenantDb
-      .select({ id: schema.officers.id, canSign: schema.officers.canSign })
-      .from(schema.officers)
-      .where(eq(schema.officers.id, officerId))
-      .limit(1);
-
-    if (!officer)        return { success: false, error: "Pengurus tidak ditemukan." };
-    if (!officer.canSign) return { success: false, error: "Pengurus tidak memiliki izin tanda tangan." };
-
-    // Cek sudah TTD di surat ini belum
+    // Cari slot existing untuk officer ini di surat ini
     const [existing] = await tenantDb
-      .select({ id: schema.letterSignatures.id })
+      .select({
+        id:       schema.letterSignatures.id,
+        signedAt: schema.letterSignatures.signedAt,
+      })
       .from(schema.letterSignatures)
       .where(
         and(
-          eq(schema.letterSignatures.letterId, letterId),
+          eq(schema.letterSignatures.letterId,  letterId),
           eq(schema.letterSignatures.officerId, officerId)
         )
       )
       .limit(1);
 
-    if (existing) return { success: false, error: "Sudah menandatangani surat ini." };
+    // Sudah TTD → tolak
+    if (existing?.signedAt) return { success: false, error: "Sudah menandatangani surat ini." };
 
-    // SHA-256(letter_id:officer_id:signed_at_iso) → unik per event
     const signedAt = new Date();
-    const hashInput = `${letterId}:${officerId}:${signedAt.toISOString()}`;
-    const verificationHash = createHash("sha256").update(hashInput).digest("hex");
+    const verificationHash = createHash("sha256")
+      .update(`${letterId}:${officerId}:${signedAt.toISOString()}`)
+      .digest("hex");
 
-    await tenantDb.insert(schema.letterSignatures).values({
-      letterId,
-      officerId,
-      role,
-      signedAt,
-      verificationHash,
-      ipAddress: ipAddress ?? null,
-    });
+    if (existing) {
+      // Slot sudah di-assign via syncSignatureSlotsAction → UPDATE (clear token + set signedAt)
+      await tenantDb
+        .update(schema.letterSignatures)
+        .set({
+          signedAt,
+          verificationHash,
+          signingToken:          null,   // invalidate — tidak bisa sign ulang via URL
+          signingTokenExpiresAt: null,
+          role,
+          ipAddress: ipAddress ?? null,
+        })
+        .where(eq(schema.letterSignatures.id, existing.id));
+    } else {
+      // Tidak ada slot pre-assigned → INSERT (flow lama / fallback)
+      // Cek officer canSign dulu
+      const [officer] = await tenantDb
+        .select({ id: schema.officers.id, canSign: schema.officers.canSign })
+        .from(schema.officers)
+        .where(eq(schema.officers.id, officerId))
+        .limit(1);
+
+      if (!officer)         return { success: false, error: "Pengurus tidak ditemukan." };
+      if (!officer.canSign) return { success: false, error: "Pengurus tidak memiliki izin tanda tangan." };
+
+      await tenantDb.insert(schema.letterSignatures).values({
+        letterId,
+        officerId,
+        role,
+        signedAt,
+        verificationHash,
+        ipAddress: ipAddress ?? null,
+      });
+    }
 
     revalidatePath(`/${slug}/letters`);
     return { success: true, verificationHash };
