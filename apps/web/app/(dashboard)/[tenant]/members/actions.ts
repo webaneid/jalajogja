@@ -358,7 +358,6 @@ export type EducationEntryData = {
   endYear?: number;
   isGontor: boolean;
   gontorCampus?: string;
-  pesantrenId?: string; // link ke direktori pesantren (opsional)
 };
 
 export type MemberPesantrenEntryData = {
@@ -414,7 +413,6 @@ export async function saveMemberEducationsAction(
           endYear: e.endYear ?? null,
           isGontor: e.isGontor,
           gontorCampus: e.isGontor ? (e.gontorCampus as "Gontor 1 (Putra)" | "Gontor 2 (Putra)" | "Gontor 3 (Putra)" | "Gontor 4 (Putra)" | "Gontor 5 (Putra)" | "Gontor 6 (Putra)" | "Gontor 7 (Putra)" | "Gontor 8 (Putra)" | "Gontor Putri 1" | "Gontor Putri 2" | "Gontor Putri 3" | "Gontor Putri 4" | "Gontor Putri 5" | "Gontor Putri 6" | null) ?? null : null,
-          pesantrenId: e.pesantrenId ?? null,
         }))
       );
     }

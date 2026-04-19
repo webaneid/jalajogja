@@ -13,9 +13,10 @@ const STEPS = [
   { number: 2, label: "Kontak & Alamat" },
   { number: 3, label: "Pendidikan" },
   { number: 4, label: "Usaha" },
+  { number: 5, label: "Pesantren" },
 ] as const
 
-type StepNumber = 1 | 2 | 3 | 4
+type StepNumber = 1 | 2 | 3 | 4 | 5
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -161,17 +162,16 @@ export function MemberWizard({ slug, children }: MemberWizardProps) {
 
   // Step 2-3 selesai: maju ke step berikutnya
   function handleStepSuccess() {
-    if (currentStep < 4) {
+    if (currentStep < 5) {
       setCurrentStep((prev) => (prev + 1) as StepNumber)
     } else {
-      // Step 4 selesai
       finishWizard()
     }
   }
 
-  // Lewati step (step 2-4)
+  // Lewati step (step 2-5)
   function handleSkip() {
-    if (currentStep < 4) {
+    if (currentStep < 5) {
       setCurrentStep((prev) => (prev + 1) as StepNumber)
     } else {
       finishWizard()
@@ -194,7 +194,7 @@ export function MemberWizard({ slug, children }: MemberWizardProps) {
 
   // ID form per step — digunakan oleh tombol submit di WizardNav
   const formId = `wizard-step-${currentStep}-form`
-  const isLastStep = currentStep === 4
+  const isLastStep = currentStep === 5
 
   return (
     <div className="max-w-2xl mx-auto">
