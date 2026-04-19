@@ -20,6 +20,15 @@ export * from "./member-businesses";
 export * from "./member-domicile-requests";
 export * from "./tenant-memberships";
 
+// ── Akun publik (universal customer identity) ──────────────────────────────────
+export * from "./profiles";
+
+// ── Pesantren (direktori pesantren alumni Gontor, community-driven) ────────────
+export * from "./pesantren-facility-types";
+export * from "./pesantren";
+export * from "./member-pesantren";
+export * from "./pesantren-facilities";
+
 // ── Module + Add-on system (platform-level) ───────────────────────────────────
 export * from "./modules";
 export * from "./addons";

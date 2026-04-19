@@ -1,5 +1,6 @@
 import { pgTable, uuid, text, smallint, boolean, timestamp, index } from "drizzle-orm/pg-core";
-import { members } from "./members";
+import { members }   from "./members";
+import { pesantren } from "./pesantren";
 
 const EDUCATION_LEVELS = [
   "TK", "SD", "SMP", "SMA", "D3", "S1", "S2", "S3", "Non-Formal",
@@ -26,10 +27,13 @@ export const memberEducations = pgTable("member_educations", {
   endYear: smallint("end_year"),     // NULL = masih aktif / tidak tahu tahun selesai
   isGontor: boolean("is_gontor").notNull().default(false),
   gontorCampus: text("gontor_campus", { enum: GONTOR_CAMPUSES }), // Isi hanya jika isGontor = true
+  pesantrenId:  uuid("pesantren_id")
+                  .references(() => pesantren.id, { onDelete: "set null" }), // link ke direktori pesantren
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
-  memberIdIdx: index("idx_member_educations_member_id").on(t.memberId),
-  isGontorIdx: index("idx_member_educations_is_gontor").on(t.isGontor), // Query: total alumni per kampus/angkatan
+  memberIdIdx:    index("idx_member_educations_member_id").on(t.memberId),
+  isGontorIdx:    index("idx_member_educations_is_gontor").on(t.isGontor),
+  pesantrenIdIdx: index("idx_member_educations_pesantren_id").on(t.pesantrenId),
 }));
 
 export type MemberEducation = typeof memberEducations.$inferSelect;
