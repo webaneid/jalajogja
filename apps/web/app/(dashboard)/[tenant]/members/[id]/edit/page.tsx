@@ -203,6 +203,8 @@ export default async function EditMemberPage({
     endYear: e.endYear?.toString() ?? "",
     isGontor: e.isGontor,
     gontorCampus: e.gontorCampus ?? "",
+    pesantrenId: e.pesantrenId ?? "",
+    pesantrenName: "",
   }));
 
   const defaultBusinesses: BusinessEntry[] = businesses.map((b) => ({

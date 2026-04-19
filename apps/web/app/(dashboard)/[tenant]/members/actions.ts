@@ -11,6 +11,7 @@ import {
   socialMedias,
   memberEducations,
   memberBusinesses,
+  memberPesantren,
   generateMemberNumber,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
@@ -357,6 +358,16 @@ export type EducationEntryData = {
   endYear?: number;
   isGontor: boolean;
   gontorCampus?: string;
+  pesantrenId?: string; // link ke direktori pesantren (opsional)
+};
+
+export type MemberPesantrenEntryData = {
+  pesantrenId: string;
+  peran: "alumni" | "pengasuh" | "pendiri" | "pengajar" | "pengurus" | "lainnya";
+  posisi?: string;
+  tahunMulai?: number;
+  tahunSelesai?: number;
+  catatan?: string;
 };
 
 export async function saveMemberEducationsAction(
@@ -403,6 +414,7 @@ export async function saveMemberEducationsAction(
           endYear: e.endYear ?? null,
           isGontor: e.isGontor,
           gontorCampus: e.isGontor ? (e.gontorCampus as "Gontor 1 (Putra)" | "Gontor 2 (Putra)" | "Gontor 3 (Putra)" | "Gontor 4 (Putra)" | "Gontor 5 (Putra)" | "Gontor 6 (Putra)" | "Gontor 7 (Putra)" | "Gontor 8 (Putra)" | "Gontor Putri 1" | "Gontor Putri 2" | "Gontor Putri 3" | "Gontor Putri 4" | "Gontor Putri 5" | "Gontor Putri 6" | null) ?? null : null,
+          pesantrenId: e.pesantrenId ?? null,
         }))
       );
     }
@@ -412,6 +424,55 @@ export async function saveMemberEducationsAction(
 
   } catch (err) {
     console.error("[saveMemberEducationsAction]", err);
+    const msg = err instanceof Error ? err.message : "Gagal menyimpan.";
+    return { success: false, error: `Gagal: ${msg}` };
+  }
+}
+
+// ─── SAVE KETERLIBATAN DI PESANTREN (Step 3 Wizard) ─────────────────────────
+
+export async function saveMemberPesantrenAction(
+  slug: string,
+  memberId: string,
+  entries: MemberPesantrenEntryData[]
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota")) return { success: false, error: "Akses ditolak." };
+
+  const [membership] = await db
+    .select({ id: tenantMemberships.id })
+    .from(tenantMemberships)
+    .where(and(eq(tenantMemberships.tenantId, access.tenant.id), eq(tenantMemberships.memberId, memberId)))
+    .limit(1);
+  if (!membership) return { success: false, error: "Anggota tidak ditemukan." };
+
+  const validEntries = entries.filter((e) => e.pesantrenId?.trim());
+
+  try {
+    // Replace-all: hapus lama → insert baru
+    await db.delete(memberPesantren).where(eq(memberPesantren.memberId, memberId));
+
+    if (validEntries.length > 0) {
+      await db.insert(memberPesantren).values(
+        validEntries.map((e) => ({
+          memberId,
+          pesantrenId: e.pesantrenId,
+          peran: e.peran,
+          posisi: e.posisi?.trim() || null,
+          tahunMulai: e.tahunMulai ?? null,
+          tahunSelesai: e.tahunSelesai ?? null,
+          catatan: e.catatan?.trim() || null,
+          isActive: e.tahunSelesai == null, // masih aktif jika tidak ada tahun selesai
+        }))
+      );
+    }
+
+    revalidatePath(`/${slug}/members/${memberId}`);
+    return { success: true };
+
+  } catch (err) {
+    console.error("[saveMemberPesantrenAction]", err);
     const msg = err instanceof Error ? err.message : "Gagal menyimpan.";
     return { success: false, error: `Gagal: ${msg}` };
   }
