@@ -3,9 +3,6 @@
 import { MemberWizard } from "./member-wizard"
 import { Step1Identity } from "./step1-identity"
 import { Step2Contact } from "./step2-contact"
-import { Step3Education } from "./step3-education"
-import { Step4Business } from "./step4-business"
-import { Step5Pesantren } from "./step5-pesantren"
 import type { RefProfession } from "@jalajogja/db"
 
 interface MemberWizardShellProps {
@@ -38,27 +35,6 @@ export function MemberWizardShell({
               slug={slug}
               tenantId={tenantId}
               tenantName={tenantName}
-              onSuccess={onStepSuccess}
-            />
-          )}
-          {currentStep === 3 && memberId && (
-            <Step3Education
-              memberId={memberId}
-              slug={slug}
-              onSuccess={onStepSuccess}
-            />
-          )}
-          {currentStep === 4 && memberId && (
-            <Step4Business
-              memberId={memberId}
-              slug={slug}
-              onSuccess={onStepSuccess}
-            />
-          )}
-          {currentStep === 5 && memberId && (
-            <Step5Pesantren
-              memberId={memberId}
-              slug={slug}
               onSuccess={onStepSuccess}
             />
           )}

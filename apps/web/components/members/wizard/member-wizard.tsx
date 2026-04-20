@@ -11,12 +11,9 @@ import { Button } from "@/components/ui/button"
 const STEPS = [
   { number: 1, label: "Identitas" },
   { number: 2, label: "Kontak & Alamat" },
-  { number: 3, label: "Pendidikan" },
-  { number: 4, label: "Usaha" },
-  { number: 5, label: "Pesantren" },
 ] as const
 
-type StepNumber = 1 | 2 | 3 | 4 | 5
+type StepNumber = 1 | 2
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -162,16 +159,16 @@ export function MemberWizard({ slug, children }: MemberWizardProps) {
 
   // Step 2-3 selesai: maju ke step berikutnya
   function handleStepSuccess() {
-    if (currentStep < 5) {
+    if (currentStep < 2) {
       setCurrentStep((prev) => (prev + 1) as StepNumber)
     } else {
       finishWizard()
     }
   }
 
-  // Lewati step (step 2-5)
+  // Lewati step 2
   function handleSkip() {
-    if (currentStep < 5) {
+    if (currentStep < 2) {
       setCurrentStep((prev) => (prev + 1) as StepNumber)
     } else {
       finishWizard()
@@ -194,7 +191,7 @@ export function MemberWizard({ slug, children }: MemberWizardProps) {
 
   // ID form per step — digunakan oleh tombol submit di WizardNav
   const formId = `wizard-step-${currentStep}-form`
-  const isLastStep = currentStep === 5
+  const isLastStep = currentStep === 2
 
   return (
     <div className="max-w-2xl mx-auto">
