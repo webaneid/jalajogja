@@ -547,59 +547,203 @@ Hanya untuk dashboard (client component). Front-end publik tidak perlu dnd-kit.
 
 ### Status Implementasi
 
-| Komponen | Status | Commit |
-|----------|--------|--------|
-| DB: kolom `template` di pages | ✅ Selesai | Fase 1 |
-| DB: tabel `contact_submissions` | ✅ Selesai | Fase 1 |
-| Admin: Template picker di PageForm sidebar | ✅ Selesai | Fase 2 |
-| Admin: `LandingBuilder` drag & drop | ✅ Selesai | Fase 2 |
-| Admin: `SectionPicker` wireframe popup | ✅ Selesai | Fase 2 |
-| Admin: Section Editors 10 types | ✅ Selesai | Fase 2 |
-| Admin: `ContactPageEditor` | ✅ Selesai | Fase 2 |
-| Admin: `LinktreeEditor` drag & drop | ✅ Selesai | Fase 2 |
-| Admin: Inbox Pesan (`/website/pesan`) | ✅ Selesai | Fase 5 |
-| Front-end: Template Router `/[pageSlug]` | ✅ Selesai | Fase 3 |
-| Front-end: `DefaultTemplate` + `AboutTemplate` | ✅ Selesai | Fase 3 |
-| Front-end: `LandingTemplate` + 10 sections | ✅ Selesai | Fase 4 |
-| Front-end: `ContactTemplate` + form submit | ✅ Selesai | Fase 5 |
-| Front-end: `LinktreeTemplate` | ✅ Selesai | Fase 5 |
-| Front-end: `/blog` list + `/blog/[slug]` | ✅ Selesai | Fase 6 |
-| Front-end: `PublicLayout` (header+footer) | ⬜ Belum | — |
-| Front-end: `/` (homepage route) | ⬜ Belum | — |
-| Domain routing Fase 2-3 (middleware) | ⬜ Belum | — |
+| Komponen | Status |
+|----------|--------|
+| DB: kolom `template` di pages | ✅ Selesai |
+| DB: tabel `contact_submissions` | ✅ Selesai |
+| Admin: Template picker di PageForm sidebar | ✅ Selesai |
+| Admin: `LandingBuilder` drag & drop (@dnd-kit) | ✅ Selesai |
+| Admin: `SectionPicker` wireframe popup | ✅ Selesai |
+| Admin: Section Editors 10 types | ✅ Selesai |
+| Admin: `ContactPageEditor` | ✅ Selesai |
+| Admin: `LinktreeEditor` drag & drop | ✅ Selesai |
+| Admin: Inbox Pesan (`/website/pesan`) | ✅ Selesai |
+| Admin: `/settings/website` (homepage + nav builder) | ✅ Selesai |
+| Front-end: `PublicLayout` (header+footer) | ✅ Selesai |
+| Front-end: `/` homepage route | ✅ Selesai |
+| Front-end: Template Router `/[pageSlug]` | ✅ Selesai |
+| Front-end: `DefaultTemplate` + `AboutTemplate` | ✅ Selesai |
+| Front-end: `LandingTemplate` + 10 sections | ✅ Selesai |
+| Front-end: `ContactTemplate` + form submit | ✅ Selesai |
+| Front-end: `LinktreeTemplate` mobile-first | ✅ Selesai |
+| Front-end: `/blog` list + `/blog/[slug]` detail | ✅ Selesai |
+| Domain routing Fase 2-3 (subdomain + custom domain) | ⬜ Belum |
+| Event list publik `/event` | ⬜ Belum |
+| Toko publik `/toko` | ⬜ Belum |
+| Donasi list publik `/donasi` | ⬜ Belum |
 
-### Komponen File Map (Sudah Diimplementasikan)
+---
+
+## Bagian 4: Nav Menu System
+
+### Konsep
+
+Menu navigasi header website dikelola admin di `/{slug}/settings/website`.
+Data disimpan sebagai JSONB di `settings` table, bukan tabel terpisah.
+
+### Settings yang Disimpan
+
+```
+key="nav_menu",      group="website"  → NavItem[] (JSONB array)
+key="homepage_slug", group="website"  → string (slug halaman beranda)
+```
+
+### Tipe Data NavItem
+
+```typescript
+type NavItemType = "page" | "blog" | "event" | "toko" | "donasi" | "custom";
+
+type NavItem = {
+  id:        string;
+  label:     string;
+  type:      NavItemType;
+  pageSlug?: string;   // jika type === "page"
+  href?:     string;   // jika type === "custom"
+  external?: boolean;  // buka di tab baru
+  order:     number;
+};
+```
+
+### URL Resolusi per Type
+
+| Type | URL |
+|------|-----|
+| `page` | `/{slug}/{pageSlug}` |
+| `blog` | `/{slug}/blog` |
+| `event` | `/{slug}/event` |
+| `toko` | `/{slug}/toko` |
+| `donasi` | `/{slug}/donasi` |
+| `custom` | value dari `href` |
+
+### File yang Terlibat
+
+```
+lib/nav-menu.ts                                     → types + resolveNavHref + parseNavMenu
+app/(dashboard)/[tenant]/settings/website/
+├── page.tsx                                        → server: fetch settings + pages
+└── actions.ts                                      → saveWebsiteSettingsAction
+components/settings/website-settings-client.tsx     → drag & drop nav builder + homepage picker
+```
+
+---
+
+## Bagian 5: Public Layout (Header + Footer)
+
+### PublicLayout — Server Component
+
+`app/(public)/[tenant]/layout.tsx` — diterapkan ke SEMUA route publik:
+
+```
+(public)/[tenant]/
+├── layout.tsx   ← PublicHeader + PublicFooter wrapping semua konten
+├── page.tsx     ← homepage
+├── blog/
+├── [pageSlug]/
+├── event/
+├── donasi/
+├── sign/        ← TODO: tidak perlu header/footer, pisahkan nanti
+├── verify/      ← TODO: tidak perlu header/footer, pisahkan nanti
+└── invite/      ← TODO: tidak perlu header/footer, pisahkan nanti
+```
+
+Layout fetch 3 grup settings sekali: `general`, `website`, `contact`.
+
+### PublicHeader v1
+
+- Sticky top, bg-white, shadow-sm
+- Logo (dari `settings.logo_url`) + nama organisasi — kiri
+- Nav horizontal dari `nav_menu` settings — tengah/kanan (desktop)
+- Hamburger mobile → overlay drawer
+- File: `components/website/public/layout/public-header.tsx`
+
+### PublicFooter v1
+
+- Background `gray-900`
+- 3 kolom: Logo+tagline+sosmed | Nav links | Kontak (email/phone/alamat)
+- Copyright bar bawah: "© {year} {orgName}. Powered by jalajogja"
+- File: `components/website/public/layout/public-footer.tsx`
+
+---
+
+## Bagian 6: Homepage Route
+
+### Cara Kerja
+
+`app/(public)/[tenant]/page.tsx` — serve URL `/{slug}/`:
+
+1. Baca `homepage_slug` dari `settings` group `website`
+2. Jika kosong → tampilkan placeholder "Website sedang dipersiapkan"
+3. Jika ada → query page dengan slug itu
+4. Jika halaman tidak published → tampilkan pesan "Halaman beranda belum tersedia"
+5. Render template sesuai field `page.template`
+
+### Konflik Route yang Sudah Diselesaikan
+
+**Masalah**: `(dashboard)/[tenant]/page.tsx` dan `(public)/[tenant]/page.tsx` keduanya resolve ke `/{slug}` → Next.js build error.
+
+**Solusi**: Hapus `(dashboard)/[tenant]/page.tsx` (isinya hanya redirect ke `/dashboard`).
+- `/{slug}` → milik `(public)/[tenant]/page.tsx` (public homepage)
+- `/{slug}/dashboard` → milik `(dashboard)/[tenant]/dashboard/page.tsx` (tetap dengan auth)
+- `(dashboard)/[tenant]/layout.tsx` tetap melindungi semua sub-route dashboard
+
+---
+
+## Komponen File Map Lengkap
 
 ```
 apps/web/
-├── lib/page-templates.ts                    → semua types + parse helpers
-├── components/website/
-│   ├── landing-builder.tsx                  → drag & drop section admin
-│   ├── section-picker.tsx                   → wireframe popup pilih section
-│   ├── section-editors.tsx                  → editor per section type (10 types)
-│   ├── section-wireframes.tsx               → CSS wireframe thumbnails
-│   ├── contact-page-editor.tsx              → editor contact page
-│   ├── linktree-editor.tsx                  → editor linktree dengan dnd
-│   └── public/
-│       ├── default-template.tsx             → Tiptap HTML renderer
-│       ├── landing-template.tsx             → async server, 10 section renderers
-│       ├── contact-template.tsx             → client, form + maps + info
-│       └── linktree-template.tsx            → mobile-first link list
+├── lib/
+│   ├── page-templates.ts                    → types + parse helpers (template system)
+│   └── nav-menu.ts                          → NavItem types + resolveNavHref
+│
+├── components/
+│   ├── settings/
+│   │   ├── settings-nav.tsx                 → tambah "Website" item
+│   │   └── website-settings-client.tsx      → drag & drop nav builder
+│   └── website/
+│       ├── landing-builder.tsx              → drag & drop section admin
+│       ├── section-picker.tsx               → wireframe popup pilih section
+│       ├── section-editors.tsx              → editor per section type (10 types)
+│       ├── section-wireframes.tsx           → CSS wireframe thumbnails
+│       ├── contact-page-editor.tsx          → editor contact page
+│       ├── linktree-editor.tsx              → editor linktree dengan dnd
+│       ├── website-nav.tsx                  → tambah "Pesan" item
+│       └── public/
+│           ├── default-template.tsx         → Tiptap HTML renderer (default + about)
+│           ├── landing-template.tsx         → async server, 10 section renderers
+│           ├── contact-template.tsx         → "use client", form + maps + info kontak
+│           ├── linktree-template.tsx        → mobile-first link list
+│           └── layout/
+│               ├── public-header.tsx        → sticky header, hamburger mobile
+│               └── public-footer.tsx        → 3 kolom, copyright bar
+│
 ├── app/(public)/[tenant]/
+│   ├── layout.tsx                           → PublicLayout (fetch settings + render header/footer)
+│   ├── page.tsx                             → homepage route (baca homepage_slug dari settings)
 │   ├── [pageSlug]/
-│   │   ├── page.tsx                         → template router
+│   │   ├── page.tsx                         → template router (landing/contact/linktree/default)
 │   │   └── actions.ts                       → submitContactFormAction
-│   ├── blog/
-│   │   ├── page.tsx                         → list posts ISR 60s
-│   │   └── [slug]/page.tsx                  → detail post ISR 60s
-└── app/(dashboard)/[tenant]/website/
-    └── pesan/
-        ├── page.tsx                         → inbox submissions
-        ├── actions.ts                       → markSubmissionReadAction
-        └── mark-read-button.tsx             → client tombol tandai dibaca
+│   └── blog/
+│       ├── page.tsx                         → list posts published (ISR 60s)
+│       └── [slug]/page.tsx                  → detail post + SEO (ISR 60s)
+│
+├── app/(dashboard)/[tenant]/
+│   ├── settings/website/
+│   │   ├── page.tsx                         → homepage picker + nav builder
+│   │   └── actions.ts                       → saveWebsiteSettingsAction
+│   └── website/
+│       └── pesan/
+│           ├── page.tsx                     → inbox contact submissions
+│           ├── actions.ts                   → markSubmissionReadAction
+│           └── mark-read-button.tsx         → client tombol tandai dibaca
+│
+└── components/ui/
+    └── switch.tsx                           → Switch component (baru, @radix-ui/react-switch)
 ```
 
-### Migration SQL Tenant Existing
+---
+
+## Migration SQL Tenant Existing
 
 ```sql
 -- Jalankan per tenant yang sudah ada:
@@ -618,3 +762,40 @@ CREATE TABLE IF NOT EXISTS "tenant_{slug}".contact_submissions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
+
+Migration sudah dijalankan untuk tenant `pc-ikpm-jogjakarta`.
+
+---
+
+## Lessons Learned — Sesi Ini
+
+### Route group `(public)` dan `(dashboard)` tidak boleh punya `page.tsx` di segment yang sama
+
+`(dashboard)/[tenant]/page.tsx` dan `(public)/[tenant]/page.tsx` keduanya resolve ke `/{slug}` → Next.js build error: *"You cannot have two parallel pages that resolve to the same path."*
+
+**Fix**: Hapus `(dashboard)/[tenant]/page.tsx`. URL `/{slug}` dimiliki satu route group saja.
+
+**Rule**: Setiap URL harus punya tepat SATU `page.tsx` di seluruh codebase, terlepas dari route group. Layouts boleh overlap, pages tidak.
+
+### `require()` di server component crash dengan Turbopack
+
+```typescript
+// ❌ SALAH — crash di Turbopack
+.where(require("drizzle-orm").inArray(schema.media.id, coverIds))
+
+// ✅ BENAR — import di atas file
+import { inArray } from "drizzle-orm";
+.where(inArray(schema.media.id, coverIds))
+```
+
+`require()` adalah CommonJS — tidak diizinkan di ES Module context (Turbopack/Next.js). Selalu pakai `import` di atas file.
+
+### `PublicLayout` saat ini wrap semua route publik termasuk sign/verify/invite
+
+Route seperti `/(public)/[tenant]/sign/[token]`, `verify/[hash]`, `invite` tidak perlu header/footer publik. Saat ini masih wrapped oleh `PublicLayout` — tidak merusak fungsionalitas tapi menambah query DB yang tidak perlu.
+
+**TODO**: Pindahkan route-route ini ke route group terpisah `(public-bare)` yang tidak punya layout. Lakukan saat ada waktu, bukan urgent.
+
+### `(public)/[tenant]/layout.tsx` hanya butuh tenant aktif
+
+Layout fetch 3 grup settings sekaligus via `Promise.all`. Jika tenant tidak aktif → `notFound()`. Pattern ini aman dan efisien — satu DB roundtrip untuk semua data layout.
