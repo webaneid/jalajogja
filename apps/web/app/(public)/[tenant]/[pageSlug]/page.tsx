@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { createTenantDb, db, tenants } from "@jalajogja/db";
 import { DefaultTemplate } from "@/components/website/public/default-template";
+import { LandingTemplate } from "@/components/website/public/landing-template";
+import { parseLandingBody } from "@/lib/page-templates";
 import type { Metadata } from "next";
 
 export const revalidate = 60;
@@ -48,7 +50,7 @@ async function getPage(slug: string, pageSlug: string) {
     coverUrl = media?.path ?? null;
   }
 
-  return { page, coverUrl, tenantName: tenant.name };
+  return { page, coverUrl, tenantName: tenant.name, tenantClient };
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
@@ -67,9 +69,20 @@ export default async function PublicPageRoute({ params }: { params: Params }) {
   const result = await getPage(slug, pageSlug);
   if (!result) notFound();
 
-  const { page, coverUrl } = result;
+  const { page, coverUrl, tenantClient } = result;
 
-  // Default + about template: render tiptap HTML
+  if (page.template === "landing") {
+    const body = parseLandingBody(page.content);
+    return (
+      <LandingTemplate
+        body={body}
+        tenantSlug={slug}
+        tenantClient={tenantClient}
+      />
+    );
+  }
+
+  // default + about template: render Tiptap HTML
   return (
     <DefaultTemplate
       title={page.title}
