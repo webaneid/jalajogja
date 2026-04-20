@@ -12,6 +12,8 @@ import {
   socialMedias,
   memberEducations,
   memberBusinesses,
+  memberPesantren,
+  pesantren,
   refProfessions,
   refRegencies,
   refProvinces,
@@ -19,6 +21,12 @@ import {
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { DeleteMemberButton } from "./delete-button";
+import {
+  EducationSection,
+  BusinessSection,
+  PesantrenSection,
+  type BizRow,
+} from "./member-data-sections";
 
 // ─── Alias untuk join tabel yang sama lebih dari sekali ──────────────────────
 // (kelahiran vs alamat rumah; alamat rumah vs alamat usaha)
@@ -88,7 +96,7 @@ export default async function MemberDetailPage({
   if (!access) redirect("/dashboard-redirect");
 
   // Ambil semua data anggota secara paralel
-  const [row, educations, businesses] = await Promise.all([
+  const [row, educations, businesses, pesantrenList] = await Promise.all([
     // Identitas + kontak + alamat + sosmed + profesi + kelahiran
     db
       .select({
@@ -196,6 +204,23 @@ export default async function MemberDetailPage({
       .leftJoin(bizRegencies,   eq(bizRegencies.id,   bizAddresses.regencyId))
       .leftJoin(bizProvinces,   eq(bizProvinces.id,   bizAddresses.provinceId))
       .where(eq(memberBusinesses.memberId, memberId)),
+
+    // Keterlibatan di pesantren
+    db
+      .select({
+        id:           memberPesantren.id,
+        pesantrenId:  memberPesantren.pesantrenId,
+        pesantrenName: pesantren.name,
+        peran:        memberPesantren.peran,
+        posisi:       memberPesantren.posisi,
+        tahunMulai:   memberPesantren.tahunMulai,
+        tahunSelesai: memberPesantren.tahunSelesai,
+        catatan:      memberPesantren.catatan,
+      })
+      .from(memberPesantren)
+      .leftJoin(pesantren, eq(pesantren.id, memberPesantren.pesantrenId))
+      .where(eq(memberPesantren.memberId, memberId))
+      .orderBy(memberPesantren.tahunMulai),
   ]);
 
   if (!row) notFound();
@@ -323,121 +348,14 @@ export default async function MemberDetailPage({
         </Section>
       )}
 
-      {/* ── Riwayat Pendidikan ── */}
-      {educations.length > 0 && (
-        <Section title="Riwayat Pendidikan">
-          <div className="space-y-4">
-            {educations.map((edu, i) => (
-              <div key={edu.id} className={i > 0 ? "border-t pt-4" : ""}>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium">{edu.institutionName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {edu.level}{edu.major ? ` — ${edu.major}` : ""}
-                    </p>
-                    {(edu.startYear || edu.endYear) && (
-                      <p className="text-xs text-muted-foreground">
-                        {edu.startYear ?? "?"} – {edu.endYear ?? "sekarang"}
-                      </p>
-                    )}
-                  </div>
-                  {edu.isGontor && (
-                    <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-                      {edu.gontorCampus ?? "Gontor"}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
+      {/* ── Riwayat Pendidikan (interaktif) ── */}
+      <EducationSection memberId={memberId} slug={slug} educations={educations} />
 
-      {/* ── Data Usaha ── */}
-      {businesses.length > 0 && (
-        <Section title="Data Usaha">
-          <div className="space-y-6">
-            {businesses.map((biz, i) => {
-              const bizSocials = [
-                { label: "Instagram", value: biz.bizInstagram },
-                { label: "Facebook",  value: biz.bizFacebook },
-                { label: "LinkedIn",  value: biz.bizLinkedin },
-                { label: "Twitter/X", value: biz.bizTwitter },
-                { label: "YouTube",   value: biz.bizYoutube },
-                { label: "TikTok",    value: biz.bizTiktok },
-                { label: "Website",   value: biz.bizWebsite },
-              ].filter((s) => s.value);
+      {/* ── Data Usaha (interaktif) ── */}
+      <BusinessSection memberId={memberId} slug={slug} businesses={businesses as BizRow[]} />
 
-              const hasAddress = biz.bizAddrDetail || biz.bizDistrictName || biz.bizRegencyName || biz.bizProvinceName || biz.bizAddrPostal;
-              const hasContact = biz.bizPhone || biz.bizWhatsapp || biz.bizEmail;
-              const hasScale   = biz.employees || biz.branches || biz.revenue;
-
-              return (
-                <div key={biz.id} className={i > 0 ? "border-t pt-6" : ""}>
-                  {/* Nama + posisi */}
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div>
-                      <p className="text-sm font-semibold">
-                        {biz.name}
-                        {biz.brand ? <span className="font-normal text-muted-foreground"> ({biz.brand})</span> : null}
-                      </p>
-                      {biz.description && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">{biz.description}</p>
-                      )}
-                    </div>
-                    {biz.position && (
-                      <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
-                        {biz.position}
-                      </span>
-                    )}
-                  </div>
-
-                  <dl>
-                    {/* Klasifikasi */}
-                    <Row label="Kategori"  value={biz.category} />
-                    <Row label="Sektor"    value={biz.sector} />
-                    {biz.legality  && <Row label="Legalitas" value={biz.legality} />}
-
-                    {/* Skala */}
-                    {hasScale && (
-                      <>
-                        {biz.employees && <Row label="Jumlah Karyawan" value={biz.employees} />}
-                        {biz.branches  && <Row label="Jumlah Cabang"   value={biz.branches} />}
-                        {biz.revenue   && <Row label="Omzet / Tahun"   value={biz.revenue} />}
-                      </>
-                    )}
-
-                    {/* Alamat */}
-                    {hasAddress && (
-                      <>
-                        {biz.bizAddrDetail  && <Row label="Detail Alamat"    value={biz.bizAddrDetail} />}
-                        {biz.bizDistrictName && <Row label="Kecamatan"        value={biz.bizDistrictName} />}
-                        {biz.bizRegencyName  && <Row label="Kabupaten / Kota" value={biz.bizRegencyName} />}
-                        {biz.bizProvinceName && <Row label="Provinsi"          value={biz.bizProvinceName} />}
-                        {biz.bizAddrPostal   && <Row label="Kode Pos"          value={biz.bizAddrPostal} />}
-                      </>
-                    )}
-
-                    {/* Kontak */}
-                    {hasContact && (
-                      <>
-                        {biz.bizPhone    && <Row label="Telepon"  value={biz.bizPhone} />}
-                        {biz.bizWhatsapp && <Row label="WhatsApp" value={biz.bizWhatsapp} />}
-                        {biz.bizEmail    && <Row label="Email"    value={biz.bizEmail} />}
-                      </>
-                    )}
-
-                    {/* Sosial media */}
-                    {bizSocials.map((s) => (
-                      <Row key={s.label} label={s.label} value={s.value} />
-                    ))}
-                  </dl>
-                </div>
-              );
-            })}
-          </div>
-        </Section>
-      )}
+      {/* ── Pesantren (interaktif) ── */}
+      <PesantrenSection memberId={memberId} slug={slug} pesantrenList={pesantrenList.map(p => ({ ...p, pesantrenName: p.pesantrenName ?? "" }))} />
     </div>
   );
 }
