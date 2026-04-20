@@ -547,23 +547,74 @@ Hanya untuk dashboard (client component). Front-end publik tidak perlu dnd-kit.
 
 ### Status Implementasi
 
-| Komponen | Status | Prioritas |
-|----------|--------|-----------|
-| DB: kolom `template` di pages | ⬜ Belum | 1 |
-| DB: tabel `contact_submissions` | ⬜ Belum | 1 |
-| Admin: `PageTemplatePicke` di PageForm | ⬜ Belum | 1 |
-| Admin: `LandingBuilder` drag & drop | ⬜ Belum | 1 |
-| Admin: `SectionPicker` wireframe popup | ⬜ Belum | 1 |
-| Admin: Section Editors (per type) | ⬜ Belum | 1 |
-| Admin: `ContactPageEditor` | ⬜ Belum | 2 |
-| Admin: `LinktreeEditor` | ⬜ Belum | 2 |
-| Admin: Inbox Pesan (`/website/pesan`) | ⬜ Belum | 3 |
-| Front-end: `PublicLayout` (header+footer) | ⬜ Belum | 1 |
-| Front-end: Template Router `/[pageSlug]` | ⬜ Belum | 1 |
-| Front-end: `DefaultTemplate` | ⬜ Belum | 1 |
-| Front-end: `LandingTemplate` + sections | ⬜ Belum | 1 |
-| Front-end: `ContactTemplate` | ⬜ Belum | 2 |
-| Front-end: `LinktreeTemplate` | ⬜ Belum | 2 |
-| Front-end: `/blog` + `/blog/[slug]` | ⬜ Belum | 2 |
-| Front-end: `AboutTemplate` | ⬜ Belum | 3 |
-| Domain routing Fase 2-3 (middleware) | ⬜ Belum | 4 |
+| Komponen | Status | Commit |
+|----------|--------|--------|
+| DB: kolom `template` di pages | ✅ Selesai | Fase 1 |
+| DB: tabel `contact_submissions` | ✅ Selesai | Fase 1 |
+| Admin: Template picker di PageForm sidebar | ✅ Selesai | Fase 2 |
+| Admin: `LandingBuilder` drag & drop | ✅ Selesai | Fase 2 |
+| Admin: `SectionPicker` wireframe popup | ✅ Selesai | Fase 2 |
+| Admin: Section Editors 10 types | ✅ Selesai | Fase 2 |
+| Admin: `ContactPageEditor` | ✅ Selesai | Fase 2 |
+| Admin: `LinktreeEditor` drag & drop | ✅ Selesai | Fase 2 |
+| Admin: Inbox Pesan (`/website/pesan`) | ✅ Selesai | Fase 5 |
+| Front-end: Template Router `/[pageSlug]` | ✅ Selesai | Fase 3 |
+| Front-end: `DefaultTemplate` + `AboutTemplate` | ✅ Selesai | Fase 3 |
+| Front-end: `LandingTemplate` + 10 sections | ✅ Selesai | Fase 4 |
+| Front-end: `ContactTemplate` + form submit | ✅ Selesai | Fase 5 |
+| Front-end: `LinktreeTemplate` | ✅ Selesai | Fase 5 |
+| Front-end: `/blog` list + `/blog/[slug]` | ✅ Selesai | Fase 6 |
+| Front-end: `PublicLayout` (header+footer) | ⬜ Belum | — |
+| Front-end: `/` (homepage route) | ⬜ Belum | — |
+| Domain routing Fase 2-3 (middleware) | ⬜ Belum | — |
+
+### Komponen File Map (Sudah Diimplementasikan)
+
+```
+apps/web/
+├── lib/page-templates.ts                    → semua types + parse helpers
+├── components/website/
+│   ├── landing-builder.tsx                  → drag & drop section admin
+│   ├── section-picker.tsx                   → wireframe popup pilih section
+│   ├── section-editors.tsx                  → editor per section type (10 types)
+│   ├── section-wireframes.tsx               → CSS wireframe thumbnails
+│   ├── contact-page-editor.tsx              → editor contact page
+│   ├── linktree-editor.tsx                  → editor linktree dengan dnd
+│   └── public/
+│       ├── default-template.tsx             → Tiptap HTML renderer
+│       ├── landing-template.tsx             → async server, 10 section renderers
+│       ├── contact-template.tsx             → client, form + maps + info
+│       └── linktree-template.tsx            → mobile-first link list
+├── app/(public)/[tenant]/
+│   ├── [pageSlug]/
+│   │   ├── page.tsx                         → template router
+│   │   └── actions.ts                       → submitContactFormAction
+│   ├── blog/
+│   │   ├── page.tsx                         → list posts ISR 60s
+│   │   └── [slug]/page.tsx                  → detail post ISR 60s
+└── app/(dashboard)/[tenant]/website/
+    └── pesan/
+        ├── page.tsx                         → inbox submissions
+        ├── actions.ts                       → markSubmissionReadAction
+        └── mark-read-button.tsx             → client tombol tandai dibaca
+```
+
+### Migration SQL Tenant Existing
+
+```sql
+-- Jalankan per tenant yang sudah ada:
+ALTER TABLE "tenant_{slug}".pages
+  ADD COLUMN IF NOT EXISTS template TEXT NOT NULL DEFAULT 'default'
+    CHECK (template IN ('default','landing','contact','about','linktree'));
+
+CREATE TABLE IF NOT EXISTS "tenant_{slug}".contact_submissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  page_id UUID NOT NULL REFERENCES "tenant_{slug}".pages(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  message TEXT NOT NULL,
+  is_read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
