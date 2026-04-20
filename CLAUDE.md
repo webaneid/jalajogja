@@ -86,45 +86,44 @@ Alasan: `pgEnum` bersifat schema-scoped di PostgreSQL → ratusan tenant = ribua
 `createTenantSchemaInDb(db, slug)` — dipanggil saat tenant baru dibuat, bukan via migration file.
 
 ### Double-Entry Accounting + Helpers
-Helper di `packages/db/src/helpers/finance.ts`:
-- `recordExpense(db, schema, { amount, expenseAccountId, cashAccountId, ... })`
-- `recordIncome(db, schema, { amount, incomeAccountId, cashAccountId, ... })`
-- `recordTransfer(db, schema, { amount, fromAccountId, toAccountId, ... })`
+> Detail lengkap: **`docs/arsitektur-keuangan.md`**
+
+Helper di `packages/db/src/helpers/finance.ts` (tanda tangan memakai `tenantDb`, bukan `{db, schema}`):
+- `recordExpense(tenantDb, { amount, expenseAccountId, cashAccountId, ... })`
+- `recordIncome(tenantDb, { amount, incomeAccountId, cashAccountId, ... })`
+- `recordTransfer(tenantDb, { amount, fromAccountId, toAccountId, ... })`
+- `generateFinancialNumber(tenantDb, type)` — format `620-PAY/DIS/JNL-YYYYMM-NNNNN`
 
 ### Better Auth Tables: Public Schema
 Tabel auth (user, session, account, verification) ada di `public` schema.
 Satu user bisa akses multiple tenant. Mapping role per tenant ada di `tenant_{slug}.users`.
 
 ### Arsitektur Member: Federated Identity
-Data anggota dipisah menjadi dua lapisan:
+> Detail lengkap — visi, skenario, implementasi, lessons learned: **`docs/arsitektur-keanggotaan.md`**
 
-```
-public.members           → identitas global (siapa orangnya)
-  - id, member_number, stambuk_number, nik
-  - name, gender, birth_place, birth_date
-  - phone, email, address, photo_url
+- `public.members` — identitas global IKPM, satu record per orang lintas semua cabang
+- `public.tenant_memberships` — relasi cabang, satu orang bisa di banyak cabang
+- `public.member_number_seq` — SEQUENCE global atomic
+- Tenant schema **TIDAK punya tabel members** — semua referensi via UUID ke `public.members.id`
+- Query tenant: **wajib** JOIN `tenant_memberships WHERE tenant_id = {current}` (application-level, bukan RLS)
 
-public.tenant_memberships → relasi (anggota ini di cabang mana)
-  - tenant_id, member_id
-  - status (active/inactive/alumni), joined_at, registered_via
+### Arsitektur Akun: Universal Customer Identity
+> Detail lengkap: **`docs/arsitektur-akun.md`**
 
-public.member_number_seq  → PostgreSQL SEQUENCE global (atomic, tidak duplikat)
-```
+Lapisan identitas untuk siapapun di luar ekosistem IKPM (pembeli umum, donatur, peserta event).
 
-**Aturan akses (application-level, bukan PostgreSQL RLS):**
-- Query tenant: selalu JOIN ke `tenant_memberships WHERE tenant_id = {id_tenant_ini}`
-- Super admin: query `public.members` langsung tanpa filter
-- Tenant tidak bisa lihat member tenant lain meskipun datanya ada di tabel yang sama
+- `public.profiles` — identitas universal publik (BARU, belum diimplementasikan)
+- Relasi: `profiles.member_id → public.members.id` (nullable — jika ternyata alumni)
+- Relasi: `profiles.better_auth_user_id → public.user.id` (nullable — jika punya login)
 
-**Format nomor anggota:**
-```
-{tahun_daftar} + {DDMMYYYY_lahir} + {00001..99999}
-Contoh: lahir 26-10-1981, daftar 2025, urutan ke-1 → 202526101981 00001
-```
-Generator: `generateMemberNumber(db, birthDate, year?)` di `packages/db/src/helpers/member-number.ts`
+**Konsep kunci:**
+- `public.members` = sakral, hanya alumni IKPM, dikontrol admin
+- `public.profiles` = siapapun, self-service register dari halaman publik tenant manapun
+- Transaksi tabel akan punya dua kolom: `member_id` (IKPM) + `profile_id` (publik) — keduanya nullable
+- Lookup di checkout: session → profile lookup → member lookup → guest
+- Dashboard tenant tidak bisa diakses oleh profile publik (hanya front-end)
 
-**Tenant schema TIDAK lagi punya tabel members.**
-`orders.customer_id` dan `tenant.users.member_id` merujuk ke `public.members.id`.
+**Status**: Arsitektur selesai, implementasi belum dimulai. Ikuti fase di `docs/arsitektur-akun.md`.
 
 ### Struktur File packages/db/src/
 ```
@@ -133,7 +132,7 @@ src/
 ├── client.ts              ← public schema db instance
 ├── tenant-client.ts       ← factory: createTenantDb(slug)
 ├── schema/
-│   ├── public/            ← auth.ts, tenants.ts, members.ts, tenant-memberships.ts
+│   ├── public/            ← auth.ts, tenants.ts, members.ts, tenant-memberships.ts, profiles.ts (BELUM)
 │   └── tenant/            ← factory tables: users, website, letters, finance, shop, settings
 │                             (members TIDAK ADA di sini — sudah dipindah ke public)
 └── helpers/
@@ -146,96 +145,13 @@ src/
 `member_id` di `orders` nullable — untuk donasi dari luar yang tidak perlu login.
 Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 
-## Arsitektur Website Module
+## Arsitektur Website (Dashboard CMS + Front-end Publik)
+> Detail lengkap — dashboard CMS, domain routing, front-end publik, caching, open questions: **`docs/arsitektur-website.md`**
 
-### Struktur Route
-```
-app/(dashboard)/[tenant]/website/
-├── layout.tsx              → website shell: WebsiteNav (sub-nav kiri) + slot konten kanan
-├── page.tsx                → /website — dashboard: stats (total posts/pages, draft, terbit) + 5 post terbaru
-├── actions.ts              → SEMUA server actions website (posts + pages)
-├── posts/
-│   ├── page.tsx            → list posts: filter status + search + pagination
-│   ├── new/page.tsx        → pre-create draft → redirect ke edit (server-side fallback)
-│   └── [id]/edit/page.tsx  → full editor: fetch post + tags + categories → render PostForm
-└── pages/
-    ├── page.tsx            → list pages: sorted by `order` asc
-    ├── new/page.tsx        → pre-create draft → redirect ke edit
-    └── [id]/edit/page.tsx  → full editor: fetch page → render PageForm
-```
-
-### Server Actions (website/actions.ts)
-```
-Posts:
-  createPostDraftAction(slug, title?)      → pre-create + return postId
-  updatePostAction(slug, postId, data)     → full update + tag sync diff
-  updatePostStatusAction(slug, postId, s)  → quick status change
-  deletePostAction(slug, postId)           → delete pivot dulu, baru post
-
-Pages:
-  createPageDraftAction(slug, title?)      → pre-create + return pageId
-  updatePageAction(slug, pageId, data)     → full update
-  updatePageStatusAction(slug, pageId, s)  → quick status change
-  deletePageAction(slug, pageId)           → delete
-```
-
-### Pre-create Pattern
-User klik "Post Baru" → action buat draft kosong di DB → redirect ke `/posts/{id}/edit`.
-Tidak ada modal input judul dulu — judul bisa diisi langsung di form editor.
-Server-side fallback: `posts/new/page.tsx` untuk akses tanpa JS.
-
-### Tags Sync: Replace-All Diff
-Bukan delete-all + insert-all. Hitung diff:
-- `toRemove` = tag lama yang tidak ada di list baru → `DELETE WHERE tagId IN (...)`
-- `toAdd` = tag baru yang belum ada di pivot → `INSERT batch`
-
-### PostForm / PageForm Layout
-```
-[Header: ← Posts | StatusBadge]  ← sticky top, navigasi saja
-[Main area]          [Sidebar 288px]
-  Judul (h1-style)     Status (select full width)
-  Slug (font-mono)     ────────────
-  Excerpt (post only)  Featured Image (aspect-video)
-  TiptapEditor           [Ganti] [Hapus] atau dashed empty state
-  SeoPanel             ────────────
-                       Kategori (post only)
-                       Tags pills (post only)
-                       Urutan / Order (pages only)
-                       ────────────
-                       [Simpan ...]   ← sticky bottom
-                       [Publikasikan]
-```
-
-### Logika Label Tombol (PostForm + PageForm)
-| Status aktif | Button 1 (outline) | Button 2 |
-|---|---|---|
-| `draft` | "Simpan Draft" | "Publikasikan" (primary, Globe) |
-| `published` | "Simpan Perubahan" | "Jadikan Draft" (outline, EyeOff) |
-| `archived` | "Arsipkan" (Archive icon) | "Publikasikan" (primary, Globe) |
-
-### Perbedaan Posts vs Pages
-| | Posts | Pages |
-|---|---|---|
-| Excerpt | ✓ | ✗ |
-| Kategori | ✓ | ✗ |
-| Tags | ✓ | ✗ |
-| Urutan (order) | ✗ | ✓ |
-| Sort list | updatedAt desc | order asc, title asc |
-| schemaType | Article/NewsArticle/BlogPosting | WebPage/AboutPage/ContactPage/FAQPage |
-| twitterCard default | summary_large_image | summary |
-
-### Komponen Client Website
-```
-components/website/
-├── post-list-client.tsx   → CreateButton, SearchInput, PostsTable (named exports)
-├── page-list-client.tsx   → CreatePageButton, PagesTable
-├── post-form.tsx          → full editor form untuk posts
-├── page-form.tsx          → full editor form untuk pages
-└── website-nav.tsx        → sub-nav kiri: Dashboard, Posts, Halaman, Kategori, Komentar(Soon/Ditunda)
-```
-
-**Aturan export client components**: selalu gunakan individual named exports, bukan namespace object
-`export const X = { A, B }` — pattern ini tidak kompatibel dengan Next.js App Router client boundary.
+- Dashboard CMS (`/{slug}/website/`): posts, pages, kategori, tag — **SELESAI**
+- Domain routing 3 fase (path → subdomain → custom domain) — schema selesai, middleware Fase 2–3 saat front-end
+- Front-end publik Layer 1–4 — **BELUM, sedang dikerjakan**
+- Route group `(public)` sudah ada, donasi/event/dokumen/surat sudah render publik
 
 ## Arsitektur Shell UI Dashboard
 
@@ -321,11 +237,18 @@ app/(dashboard)/[tenant]/
       - Detail pages: `mode="detail"` + fetch `userRole` via tenant.users JOIN ✅
       - Halaman publik `/(public)/[tenant]/sign/[token]` ✅
       - Token expiry 30 hari + migration SQL tenant existing ✅
-- [ ] Keuangan (sudah ada schema, belum ada UI)
+- [x] Keuangan — SELESAI (Pemasukan, Pengeluaran, Jurnal, Akun, Dashboard, Laporan 4 jenis + CSV export); integrasi Toko/Donasi/Event → universal payments; Budget belum ada UI — arsitektur di `docs/arsitektur-keuangan.md`
+- [x] **Billing Phase 1** — schema 7 tabel + nav + dashboard invoice (list/create/detail + partial payment) — arsitektur di `docs/arsitektur-billing.md`
+- [ ] **Billing Phase 2** — public API cart + checkout + halaman invoice publik
+- [ ] **Billing Phase 3** — integrasi Toko/Donasi/Event → invoice otomatis
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
 - [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik
+- [x] **Modul Akun Phase 1** — `public.profiles` schema + migrasi `profile_id` ke 4 tabel transaksi (invoices, orders, donations, event_registrations). TypeScript 0 errors. Tenant existing `pc-ikpm-jogjakarta` sudah dimigrasikan manual.
+- [x] **Modul Akun Phase 2** — `resolveIdentity()` helper + update `checkoutAction`. TypeScript 0 errors.
+- [x] **Modul Akun Phase 3** — API routes selesai (front-end ditunda sampai website dibangun). 3 endpoints: register, profil (GET/PATCH/DELETE), transaksi (GET). TypeScript 0 errors.
+- [x] **Modul Akun Phase 4** — Dashboard admin `/akun` — list page + detail page + link/unlink ke anggota IKPM. TypeScript 0 errors.
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
@@ -391,70 +314,6 @@ Surat
 Keuangan
 Toko
 Pengaturan
-```
-
-## Arsitektur Domain Routing (3 Fase)
-
-### Konsep
-Tiga fase hidup bersamaan — tidak saling menggantikan. Tenant bisa punya ketiganya aktif sekaligus.
-
-| Fase | URL | Status | Catatan |
-|------|-----|--------|---------|
-| 1 — Path | `app.jalajogja.com/{slug}` | **Aktif sekarang** | Default, selalu ada |
-| 2 — Subdomain | `{subdomain}.jalajogja.com` | Implementasi saat Front-end | Wildcard DNS `*.jalajogja.com` |
-| 3 — Custom Domain | `ikpm.or.id` | Implementasi saat Front-end | A record → VPS IP, SSL via Caddy |
-
-### Cara Kerja Custom Domain (White-label)
-```
-Tenant pointing DNS:
-  ikpm.or.id  →  A record  →  123.45.67.89 (IP VPS)
-
-Request flow:
-  Browser buka ikpm.or.id
-  → Caddy terima request, auto-provision SSL (Let's Encrypt)
-  → Forward ke Next.js app
-  → Middleware baca Host header: "ikpm.or.id"
-  → DB lookup: SELECT slug FROM tenants WHERE custom_domain = 'ikpm.or.id'
-  → Render tenant "ikpm" — jalajogja.com tidak terlihat sama sekali
-```
-
-**Tidak perlu NS server sendiri** — cukup minta tenant ganti A record di Cloudflare/Niagahoster/dll.
-
-### Logika Middleware (saat Fase 2 & 3 diimplementasikan)
-```typescript
-const host = request.headers.get("host")
-
-if (host === "app.jalajogja.com") {
-  slug = pathname.split("/")[1]              // Fase 1: dari path
-} else if (host.endsWith(".jalajogja.com")) {
-  slug = host.replace(".jalajogja.com", "")  // Fase 2: dari subdomain
-} else {
-  slug = await db.query(                     // Fase 3: lookup DB
-    "SELECT slug FROM tenants WHERE custom_domain = $1", [host])
-}
-```
-
-### Schema DB (migration 0005)
-Kolom di `public.tenants`:
-```
-slug                       → Fase 1, path-based, selalu ada (sudah ada sejak awal)
-subdomain                  → Fase 2, null = fallback ke slug
-custom_domain              → Fase 3, null = belum set
-custom_domain_status       → none | pending | active | failed
-custom_domain_verified_at  → timestamp saat verifikasi berhasil
-```
-
-**Rename**: kolom `domain` lama → `custom_domain` (lebih eksplisit)
-
-### Alur Setup Custom Domain (dari sisi tenant)
-```
-1. Tenant buka /{slug}/settings/domain
-2. Isi form: "ikpm.or.id"
-3. jalajogja simpan → custom_domain_status = 'pending'
-4. Tampilkan instruksi: "Tambahkan A record: ikpm.or.id → A → {IP_VPS}"
-5. Background job verifikasi DNS (cek apakah domain resolve ke IP VPS)
-6. Jika OK → custom_domain_status = 'active', custom_domain_verified_at = now()
-7. Caddy auto-provision SSL saat first request masuk
 ```
 
 ### Settings Contact — TIDAK pakai helper tables
@@ -819,41 +678,11 @@ Sebelum kirim notifikasi WA:
 3. Tambah trigger di event yang relevan (misal: `onPaymentConfirmed` → kirim WA)
 
 ## Arsitektur Universal Payments & Disbursements
+> Detail lengkap: **`docs/arsitektur-keuangan.md`**
 
-### Tiga Lapisan Keuangan
-```
-[Business Layer]     [Financial Layer]      [Accounting Layer]
-orders ──────────→  payments ───────────→  transactions
-donations ───────→  (source_type+id)       transaction_entries
-invoices ────────→                         (double-entry, sudah ada)
-                    disbursements ───────→  transactions
-                    (purpose_type+id)
-```
-
-### payments — Universal Uang Masuk
-Menggantikan `shop.order_payments` + `finance.payment_confirmations`.
-Semua sumber pembayaran melalui satu tabel:
-- `source_type`: `order` | `donation` | `invoice` | `manual`
-- `source_id`: FK ke tabel masing-masing (polymorphic)
-- `unique_code`: 3 digit random ditambah ke nominal transfer untuk identifikasi
-  Contoh: total Rp 150.000 + kode 234 → customer transfer Rp 150.234
-- Setelah `confirmed_by` admin → auto-create journal entry (debit kas, kredit pendapatan)
-- Nomor format: `620-PAY-YYYYMM-NNNNN`
-
-### disbursements — Universal Uang Keluar
-Tabel baru. Semua pengeluaran melalui satu tabel:
-- `purpose_type`: `refund` | `expense` | `grant` | `transfer` | `manual`
-- 2-level approval: `draft` → `approved` (bendahara) → `paid`
-- Setelah `paid` → auto-create journal entry (debit beban, kredit kas)
-- Nomor format: `620-DIS-YYYYMM-NNNNN`
-
-### financial_sequences — Generator Nomor Dokumen
-Pola sama dengan `letter_number_sequences` — atomic SELECT FOR UPDATE.
-Helper: `generateFinancialNumber(tenantDb, type)` di `packages/db/src/helpers/finance.ts`
-Prefix `620` adalah kode internal jalajogja — konsisten di semua dokumen keuangan.
-
-### Nomor Jurnal Manual
-`620-JNL-YYYYMM-NNNNN` — untuk entry manual di modul Keuangan.
+Semua uang masuk melalui tabel `payments` (source_type polymorphic: order/donation/event_registration/manual).
+Semua uang keluar melalui tabel `disbursements` (2-level approval: draft→approved→paid).
+Konfirmasi → auto-generate journal entry double-entry. Nomor: `620-PAY/DIS/JNL-YYYYMM-NNNNN`.
 
 ### Kategori Rekening & QRIS untuk Modul
 Rekening bank dan QRIS punya field `categories` di settings JSONB:
@@ -930,34 +759,14 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Layout TenantLayout mengambil session + tenant 1× — child pages tidak perlu query ulang
 - `dashboard/page.tsx` terpisah dari `page.tsx` — root redirect, dashboard content di subfolder
 
-### [2025-04] Modul Anggota Selesai
+### [2025-04] Modul Anggota + Member Wizard Selesai
+> Detail implementasi, lessons learned, keputusan sentralisasi: **`docs/arsitektur-keanggotaan.md`**
+
 - 3 Server Actions: `createMemberAction`, `updateMemberAction`, `removeMemberFromTenantAction`
-- Semua action: validasi `getTenantAccess()` terlebih dahulu — tidak ada aksi tanpa auth tenant
-- Update: dua query (update `public.members` + update `public.tenant_memberships`) — selalu atomik berurutan
-- Delete: hanya hapus dari `tenant_memberships` — data identitas global terlindungi
-- NIK duplicate error: deteksi via constraint name `members_nik_not_null_unique` di catch block
-- Form: MemberForm shared antara new + edit — `defaultValues` prop untuk pre-fill, `memberId` untuk teks tombol
-- `joinedAt` default = `today()` client-side — tidak dari server untuk hindari hydration mismatch
-
-### [2025-04] Keputusan Besar: Sentralisasi Data Anggota
-**Konteks**: Visi jalajogja sebagai ekosistem big data alumni Gontor lintas cabang IKPM.
-
-**Masalah dengan arsitektur lama**: Member di tenant schema → data terisolasi per cabang → tidak bisa deteksi duplikasi anggota lintas cabang → tidak bisa global member number.
-
-**Keputusan**: Member data dipindah ke `public` schema dengan akses dikontrol application-level:
-- `public.members` = single source of truth identitas anggota
-- `public.tenant_memberships` = junction table siapa anggota di cabang mana
-- Tenant hanya query member yang ada di tenant_memberships mereka
-
-**Implikasi ke kode**:
-- `tenant_{slug}.members` dihapus dari semua tenant schema
-- `createTenantSchemaInDb` tidak lagi buat tabel members
-- `generateMemberNumber()` pakai PostgreSQL SEQUENCE yang atomic
-- DB di-reset total karena perubahan fundamental (data masih kosong, aman)
-
-**Setelah reset DB**: user harus clear cookie browser dan register ulang.
-
-**Pelajaran**: Saat data adalah "shared entity" lintas tenant (orang yang sama bisa di banyak cabang), data itu harus di public schema dengan access control di aplikasi — bukan di tenant schema yang terisolasi.
+- Delete: hanya hapus dari `tenant_memberships` — data di `public.members` tidak dihapus
+- NIK duplicate: deteksi via constraint name `members_nik_not_null_unique` di catch block
+- Wizard 4-step: submit wajib di Step 1, Step 2–4 opsional
+- SEQUENCE `public.member_number_seq` wajib dibuat manual via raw SQL; selalu pakai prefix `public.`
 
 ### [2025-04] UI Standard — Autocomplete
 - Semua select/dropdown pakai Combobox (shadcn Command + Popover)
@@ -966,16 +775,6 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Komponen `WilayahSelect` di `components/ui/wilayah-select.tsx` sebagai referensi implementasi
 - Data kecil (<100): filter client-side via CommandInput; data besar: lazy fetch on-open per level
 
-### [2025-04] Member Wizard Selesai
-- 4-step wizard: submit wajib di Step 1 (buat record), Step 2–4 opsional (bisa skip/diisi nanti)
-- WilayahSelect: lazy fetch per level (provinsi saat mount, kab/kec/desa on-select), 83k desa
-- Semua select pakai Combobox — standar UI aplikasi, bukan plain `<select>`
-- Cabang domisili otomatis dari context tenant (bukan pilihan user) — field read-only di UI
-- Dynamic list education & business: replace-all strategy (hapus semua lama → insert batch baru)
-- Alamat Indonesia/Luar Negeri: toggle pill button, mutual exclusive — LN simpan `country` text, wilayah di-null-kan; Indonesia sebaliknya. Berlaku untuk alamat rumah (Step 2) DAN alamat usaha (Step 4)
-- `addresses` table shared helper: menambah kolom `country` otomatis berlaku ke semua jenis alamat (rumah + usaha) di DB level — tapi UI dan action tetap harus diupdate manual per form
-- Sequence `public.member_number_seq` harus dibuat manual via raw SQL (tidak bisa di Drizzle schema)
-- Bug: `nextval('member_number_seq')` tanpa schema prefix gagal jika search_path tidak set — selalu pakai `nextval('public.member_number_seq')`
 
 ### [2025-04] Setup Awal
 - Struktur monorepo: apps/web + packages/db + packages/ui + packages/types
@@ -1121,16 +920,6 @@ id, slug, name, parentId, createdAt
 ```tsx
 <TiptapEditor slug={slug} content={...} onChange={...} />
 ```
-
-### Tenant Lama: Finance Tables Missing
-Tenant yang dibuat sebelum finance tables ada perlu migration manual:
-```sql
--- Jalankan di psql untuk tambah tabel yang kurang
-CREATE TABLE IF NOT EXISTS tenant_{slug}.payments ( ... );
-CREATE TABLE IF NOT EXISTS tenant_{slug}.disbursements ( ... );
-CREATE TABLE IF NOT EXISTS tenant_{slug}.financial_sequences ( ... );
-```
-Pattern: `CREATE TABLE IF NOT EXISTS` dalam DO $ block — idempotent, aman dijalankan ulang.
 
 ### [2026-04] Lessons Learned Modul Toko
 
@@ -1711,10 +1500,105 @@ WHERE signed_at = created_at;
 
 **Aturan berlaku untuk semua modul**: Kolom yang merepresentasikan konfirmasi eksplisit user (`signed_at`, `confirmed_at`, `approved_at`, `paid_at`, dll) **TIDAK BOLEH punya `DEFAULT`**. Kolom ini harus selalu `NULL` saat row dibuat, dan diisi secara eksplisit oleh kode saat event konfirmasi terjadi.
 
+### [2026-04] Modul Akun Phase 1 — public.profiles Schema
+
+**drizzle-kit generate butuh TTY interaktif**
+`drizzle-kit generate` gagal di non-TTY environment karena `promptColumnsConflicts` membutuhkan input user.
+Fix: tulis migration SQL manual + update `_journal.json` secara manual, lalu jalankan via `psql -f`.
+Pattern ini konsisten dengan migration 0005 yang juga manual.
+
+**drizzle-kit migrate skip migration dengan timestamp lebih kecil**
+Migration 0006 tidak tereksekusi via `drizzle-kit migrate` karena timestamp journal (`when`) lebih kecil
+dari timestamp migration terakhir yang sudah ada. Fix: jalankan SQL langsung via `psql -f file.sql`.
+Untuk migration manual selanjutnya, set `when` > timestamp migration terakhir, atau langsung pakai `psql -f`.
+
+**profile_id additive ke 4 tabel transaksi**
+Kolom `profile_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL` ditambah ke:
+`invoices`, `orders`, `donations`, `event_registrations` — di Drizzle schema factory + DDL `create-tenant-schema.ts`.
+Tenant existing perlu `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` manual per tenant.
+
+### [2026-04] Modul Akun Phase 2 — resolveIdentity helper
+
+**Helper `resolveIdentity` di `packages/db/src/helpers/resolve-identity.ts`**
+Urutan lookup: session (betterAuthUserId) → `public.profiles` by email/phone → `public.members` via contacts (lazy-create profile) → guest.
+Mengembalikan `{ profileId, memberId, resolvedName }` — ketiganya nullable.
+
+**Lazy-create profile untuk alumni yang checkout tanpa login**
+Saat alumni IKPM checkout tanpa login, HP/email ditemukan di `public.members` via contacts.
+Sistem auto-create `public.profiles` dengan `memberId` dan `accountType = 'member'`.
+Pattern: `INSERT ... ON CONFLICT DO NOTHING` — aman jika dipanggil concurrent.
+
+**`checkoutAction` diupdate: profileId disimpan ke invoices**
+Import lama (`members`, `contacts`, lookup manual) dihapus, diganti `resolveIdentity(db, { phone, email })`.
+`profileId` dari hasil lookup langsung di-insert ke `schema.invoices`.
+
+**Lesson: `sql` tag masih dipakai di fungsi lain — jangan hapus import sembarangan**
+Setelah hapus `sql` dari import karena dikira tidak dipakai, `tsc` menemukan `sql<number>` masih ada
+di `getOrCreateCart`. Selalu verifikasi dengan `tsc --noEmit` sebelum finalisasi.
+
+### [2026-04] Modul Akun Phase 3 — API Routes
+
+3 endpoint REST di `app/api/akun/`:
+
+**`POST /api/akun/register`** — daftar akun baru
+- Input: `{ name, email, phone, password, tenantSlug? }`
+- Cek duplikat email/phone di profiles → `auth.api.signUpEmail` → insert profiles
+- Return: `{ profileId, name, email, phone }` (201)
+
+**`GET|PATCH|DELETE /api/akun/profil`** — kelola profil (session required)
+- GET: kembalikan data profil lengkap + alamat
+- PATCH: update name/phone/alamat (email tidak bisa diubah tanpa verifikasi)
+- DELETE: soft delete `deleted_at = NOW()` + `auth.api.signOut`
+
+**`GET /api/akun/transaksi?slug={tenant}`** — riwayat transaksi (session required)
+- Filter invoice by `profile_id` di tenant yang diminta
+- Pagination: `?page=1&limit=20` (max 50)
+
+**Front-end ditunda** — akan diimplementasikan bersamaan dengan website publik.
+Login tetap via Better Auth standard: `POST /api/auth/sign-in/email`.
+
+### [2026-04] Modul Akun Phase 4 — Dashboard Admin `/akun`
+
+**File yang dibuat/diubah:**
+```
+app/(dashboard)/[tenant]/akun/
+├── page.tsx              → list page (diupdate: query + tombol Tambah Akun)
+├── actions.ts            → tambah createProfileAction, linkProfileToMemberAction, unlinkProfileFromMemberAction
+├── new/page.tsx          → form tambah akun baru (nama, email, HP)
+└── [id]/
+    ├── page.tsx          → detail: identitas, riwayat invoice, section link anggota
+    └── link-member-client.tsx → combobox cari anggota + tombol link/unlink
+```
+
+**List page — query diperluas (dua sumber):**
+- Sebelumnya: hanya profil yang punya invoice di tenant ini
+- Sekarang: profil yang punya invoice DI SINI **atau** `registered_at_tenant = tenantId`
+- Ini agar akun yang baru ditambah admin langsung tampil meski belum bertransaksi
+- Early-return "belum ada transaksi" dihapus — list bisa kosong tapi tetap render dengan tombol Tambah
+
+**`createProfileAction` — tambah akun dari dashboard:**
+- Input: name, email, phone (semua wajib) via FormData
+- Cek duplikat email + phone sebelum insert (return error eksplisit)
+- Set `registeredAtTenant = access.tenant.id` agar profil muncul di list tenant ini
+- Setelah berhasil: `redirect` ke halaman detail profil baru
+- Tidak membuat login/password — akun tanpa login sampai user set password sendiri
+
+**Detail page — tiga bagian utama:**
+1. Identitas (nama, email, HP, tipe akun, tanggal daftar)
+2. Link ke Anggota IKPM — combobox cari anggota aktif via `/api/ref/tenant-members`, link/unlink
+3. Riwayat invoice di tenant ini (maks 50 terbaru) — nomor, sumber, total, status, tanggal
+
+**`LinkMemberClient` — combobox search anggota:**
+- Debounced fetch (300ms) ke `/api/ref/tenant-members?slug=&search=&status=active`
+- Dropdown manual (bukan shadcn Command) — custom scroll list + search input
+- Mode "link": combobox + tombol Hubungkan; mode "unlink": tombol Lepas Link + confirm()
+- `router.refresh()` setelah berhasil — update UI tanpa reload penuh
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Modul Surat — TTD bug root cause ditemukan dan diperbaiki**
-- TTD system: **SELESAI + FIXED** — bug `signed_at DEFAULT NOW()` ditemukan dan diperbaiki
+- Terakhir dikerjakan: **Modul Akun — SELESAI semua phase + fitur tambah akun dari dashboard**
+- `createProfileAction` + `/akun/new` + query list diperluas + detail page + link/unlink
 - Type check: **0 errors**
+- Next: bebas — Billing Phase 2 atau modul lain
 
 ### Perubahan sesi ini (TTD complete fixes)
 1. **`syncSignatureSlotsAction` token-stable** — token hanya di-regenerate jika officer berubah ATAU token null
@@ -1727,4 +1611,25 @@ WHERE signed_at = created_at;
 - Role System: email SMTP sending untuk invite (saat ini hanya manual link copy), update role dropdown di daftar user aktif, wajibkan email di form anggota
 - Modul Dokumen: uploader name di version history (perlu cross-schema join tenant.users → public.user)
 - Fitur surat belum: inter-tenant letters, attachment MediaPicker
-- Next step: **Keuangan** (schema sudah ada, belum ada UI) ATAU modul lain sesuai prioritas
+- **Keuangan** — laporan & event_income selesai; sisa: Budget UI, export PDF laporan — lihat `docs/arsitektur-keuangan.md`
+- **Billing** — arsitektur selesai di `docs/arsitektur-billing.md`; belum ada implementasi. Phase 1: schema + dashboard invoice. Phase 2: public cart/checkout. Phase 3: integrasi modul existing.
+
+## Arsitektur Modul Billing
+> Detail lengkap: **`docs/arsitektur-billing.md`**
+
+Billing adalah lapisan universal antara modul produk (Toko/Donasi/Event) dan Keuangan.
+**Posisi di UI: submenu di bawah Keuangan** (bukan modul terpisah di sidebar).
+
+Alur: Cart → Checkout (input HP/email, lookup member) → Invoice → Payment → Finance Verifikasi → Jurnal.
+
+**Keputusan desain yang dikunci:**
+- Guest boleh tambah ke cart, tapi checkout wajib input minimal HP atau email
+- Harga di cart adalah snapshot — tidak berubah meski admin edit harga produk
+- Cicilan (`installment_plans`) default hidden — admin publish manual per program
+- Cart session via httpOnly cookie (TTL 24 jam), bukan localStorage
+- Public API (cart/checkout) terpisah rate-limit dan CSRF dari dashboard API
+- Invoice number: `INV-YYYYMM-NNNNN` via `financial_sequences` type baru
+- Partial payment didukung: `invoice.paid_amount < total` → status `partial` (piutang aktif)
+- Source tabel existing (orders, donations, event_registrations) tidak dihapus — tetap ada sebagai detail, invoice sebagai header universal
+
+**6 tabel baru:** `carts`, `cart_items`, `invoices`, `invoice_items`, `invoice_payments`, `installment_plans`, `installment_schedules`
