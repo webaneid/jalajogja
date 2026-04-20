@@ -2,7 +2,7 @@ import { pgSchema } from "drizzle-orm/pg-core";
 import { createUsersTable } from "./users";
 import { createCustomRolesTable } from "./custom-roles";
 import { createTenantInvitesTable } from "./tenant-invites";
-import { createPagesTable, createPostCategoriesTable, createPostsTable, createPostTagsTable, createPostTagPivotTable, createMediaTable } from "./website";
+import { createPagesTable, createPostCategoriesTable, createPostsTable, createPostTagsTable, createPostTagPivotTable, createMediaTable, createContactSubmissionsTable } from "./website";
 import { createLetterTypesTable, createLetterContactsTable, createLetterTemplatesTable, createLettersTable, createLetterNumberSequencesTable } from "./letters";
 import {
   createDivisionsTable,
@@ -25,6 +25,15 @@ import {
   createDocumentVersionsTable,
 } from "./documents";
 import { createSettingsTable, createMenusTable, createMenuItemsTable } from "./settings";
+import {
+  createCartsTable,
+  createCartItemsTable,
+  createInvoicesTable,
+  createInvoiceItemsTable,
+  createInvoicePaymentsTable,
+  createInstallmentPlansTable,
+  createInstallmentSchedulesTable,
+} from "./billing";
 
 // Cache schema objects — hindari buat ulang setiap request
 const schemaCache = new Map<string, TenantSchema>();
@@ -37,12 +46,13 @@ function buildTenantSchema(slug: string) {
     users:         createUsersTable(s),
     tenantInvites: createTenantInvitesTable(s),
     // Website
-    pages: createPagesTable(s),
-    postCategories: createPostCategoriesTable(s),
-    posts: createPostsTable(s),
-    postTags: createPostTagsTable(s),
-    postTagPivot: createPostTagPivotTable(s),
-    media: createMediaTable(s),
+    pages:               createPagesTable(s),
+    postCategories:      createPostCategoriesTable(s),
+    posts:               createPostsTable(s),
+    postTags:            createPostTagsTable(s),
+    postTagPivot:        createPostTagPivotTable(s),
+    media:               createMediaTable(s),
+    contactSubmissions:  createContactSubmissionsTable(s),
     // Surat menyurat
     letterTypes:           createLetterTypesTable(s),
     letterContacts:        createLetterContactsTable(s),
@@ -87,6 +97,14 @@ function buildTenantSchema(slug: string) {
     settings: createSettingsTable(s),
     menus: createMenusTable(s),
     menuItems: createMenuItemsTable(s),
+    // Billing — universal cart → invoice → payment
+    carts:                createCartsTable(s),
+    cartItems:            createCartItemsTable(s),
+    invoices:             createInvoicesTable(s),
+    invoiceItems:         createInvoiceItemsTable(s),
+    invoicePayments:      createInvoicePaymentsTable(s),
+    installmentPlans:     createInstallmentPlansTable(s),
+    installmentSchedules: createInstallmentSchedulesTable(s),
   };
 }
 
@@ -111,3 +129,4 @@ export * from "./donations";
 export * from "./events";
 export * from "./documents";
 export * from "./settings";
+export * from "./billing";

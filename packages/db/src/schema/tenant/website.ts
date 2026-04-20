@@ -12,6 +12,9 @@ import {
 export const CONTENT_STATUSES = ["draft", "published", "archived"] as const;
 export type ContentStatus = typeof CONTENT_STATUSES[number];
 
+export const PAGE_TEMPLATES = ["default", "landing", "contact", "about", "linktree"] as const;
+export type PageTemplate = typeof PAGE_TEMPLATES[number];
+
 export const PAGE_TWITTER_CARDS = ["summary", "summary_large_image"] as const;
 export const PAGE_ROBOTS_VALUES = ["index,follow", "noindex", "noindex,nofollow"] as const;
 export const PAGE_SCHEMA_TYPES  = ["WebPage", "AboutPage", "ContactPage", "FAQPage"] as const;
@@ -39,6 +42,7 @@ export function createPagesTable(s: ReturnType<typeof pgSchema>) {
     robots:         text("robots",        { enum: PAGE_ROBOTS_VALUES }).notNull().default("index,follow"),
     schemaType:     text("schema_type",   { enum: PAGE_SCHEMA_TYPES  }).notNull().default("WebPage"),
     structuredData: jsonb("structured_data"),
+    template: text("template", { enum: PAGE_TEMPLATES }).notNull().default("default"),
     status: text("status", { enum: CONTENT_STATUSES }).notNull().default("draft"),
     order:  integer("order").notNull().default(0),  // urutan di navigasi
     authorId: uuid("author_id"),            // FK → users.id via SQL migration
@@ -143,9 +147,24 @@ export function createMediaTable(s: ReturnType<typeof pgSchema>) {
   });
 }
 
-export type PostsTable = ReturnType<typeof createPostsTable>;
-export type PagesTable = ReturnType<typeof createPagesTable>;
-export type MediaTable = ReturnType<typeof createMediaTable>;
+// Pesan masuk dari Contact Page — inbox di dashboard
+export function createContactSubmissionsTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("contact_submissions", {
+    id:        uuid("id").primaryKey().defaultRandom(),
+    pageId:    uuid("page_id").notNull(),  // FK → pages.id via SQL migration
+    name:      text("name").notNull(),
+    email:     text("email"),
+    phone:     text("phone"),
+    message:   text("message").notNull(),
+    isRead:    boolean("is_read").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  });
+}
+
+export type PostsTable               = ReturnType<typeof createPostsTable>;
+export type PagesTable               = ReturnType<typeof createPagesTable>;
+export type MediaTable               = ReturnType<typeof createMediaTable>;
+export type ContactSubmissionsTable  = ReturnType<typeof createContactSubmissionsTable>;
 
 export type PostTwitterCard = typeof POST_TWITTER_CARDS[number];
 export type PostRobots      = typeof POST_ROBOTS_VALUES[number];

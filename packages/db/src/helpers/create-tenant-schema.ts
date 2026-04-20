@@ -134,6 +134,8 @@ export async function createTenantSchemaInDb(
         schema_type      TEXT        NOT NULL DEFAULT 'WebPage'
                                      CHECK (schema_type IN ('WebPage','AboutPage','ContactPage','FAQPage')),
         structured_data  JSONB,
+        template     TEXT        NOT NULL DEFAULT 'default'
+                                 CHECK (template IN ('default','landing','contact','about','linktree')),
         status       TEXT        NOT NULL DEFAULT 'draft'
                                  CHECK (status IN ('draft','published','archived')),
         "order"      INTEGER     NOT NULL DEFAULT 0,
@@ -141,6 +143,20 @@ export async function createTenantSchemaInDb(
         published_at TIMESTAMPTZ,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 7b. Contact Submissions ────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".contact_submissions (
+        id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        page_id    UUID        NOT NULL REFERENCES "${s}".pages(id) ON DELETE CASCADE,
+        name       TEXT        NOT NULL,
+        email      TEXT,
+        phone      TEXT,
+        message    TEXT        NOT NULL,
+        is_read    BOOLEAN     NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `));
 
@@ -492,14 +508,14 @@ export async function createTenantSchemaInDb(
     `));
 
     // ── 18. Financial Sequences ────────────────────────────────────────────
-    // Generate nomor 620-PAY/DIS/JNL-YYYYMM-NNNNN secara atomic
+    // Generate nomor 620-PAY/DIS/JNL/INV-YYYYMM-NNNNN secara atomic
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".financial_sequences (
         id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
         year        SMALLINT    NOT NULL,
         month       SMALLINT    NOT NULL,
         type        TEXT        NOT NULL
-                                CHECK (type IN ('payment','disbursement','journal')),
+                                CHECK (type IN ('payment','disbursement','journal','invoice')),
         last_number INTEGER     NOT NULL DEFAULT 0,
         updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (year, month, type)
@@ -565,6 +581,7 @@ export async function createTenantSchemaInDb(
         donation_type       TEXT        NOT NULL DEFAULT 'donasi'
                                         CHECK (donation_type IN ('donasi','zakat','wakaf','qurban')),
         member_id           UUID        REFERENCES public.members(id) ON DELETE SET NULL,
+        profile_id          UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
         donor_name          TEXT        NOT NULL,
         donor_phone         TEXT,
         donor_email         TEXT,
@@ -669,6 +686,7 @@ export async function createTenantSchemaInDb(
         event_id            UUID        NOT NULL REFERENCES "${s}".events(id) ON DELETE CASCADE,
         ticket_id           UUID        NOT NULL REFERENCES "${s}".event_tickets(id),
         member_id           UUID        REFERENCES public.members(id) ON DELETE SET NULL,
+        profile_id          UUID        REFERENCES public.profiles(id) ON DELETE SET NULL,
         attendee_name       TEXT        NOT NULL,
         attendee_phone      TEXT,
         attendee_email      TEXT,
@@ -795,6 +813,7 @@ export async function createTenantSchemaInDb(
         id               UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
         order_number     TEXT           NOT NULL UNIQUE,
         customer_id      UUID           REFERENCES public.members(id) ON DELETE SET NULL,
+        profile_id       UUID           REFERENCES public.profiles(id) ON DELETE SET NULL,
         customer_name    TEXT           NOT NULL,
         customer_email   TEXT,
         customer_phone   TEXT,
@@ -889,6 +908,134 @@ export async function createTenantSchemaInDb(
       )
     `));
 
+    // ── 32. Installment Plans ─────────────────────────────────────────────
+    // Program cicilan (mis. Nabung Qurban). Default hidden — admin aktifkan manual.
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".installment_plans (
+        id                UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        name              TEXT           NOT NULL,
+        description       TEXT,
+        source_type       TEXT,
+        source_id         UUID,
+        total_amount      NUMERIC(15,2),
+        installment_count INTEGER        NOT NULL,
+        interval_days     INTEGER        NOT NULL,
+        is_active         BOOLEAN        NOT NULL DEFAULT FALSE,
+        is_published      BOOLEAN        NOT NULL DEFAULT FALSE,
+        created_at        TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 33. Carts (Billing) ───────────────────────────────────────────────
+    // Keranjang guest (httpOnly cookie TTL 24 jam). member_id diisi jika user login.
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".carts (
+        id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_token  TEXT        NOT NULL UNIQUE,
+        member_id      UUID        REFERENCES public.members(id) ON DELETE SET NULL,
+        expires_at     TIMESTAMPTZ NOT NULL,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 33. Cart Items ─────────────────────────────────────────────────────
+    // Snapshot harga saat item ditambahkan — tidak live dari produk.
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".cart_items (
+        id         UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        cart_id    UUID           NOT NULL REFERENCES "${s}".carts(id) ON DELETE CASCADE,
+        item_type  TEXT           NOT NULL
+                                  CHECK (item_type IN ('product','ticket','donation','custom')),
+        item_id    UUID,
+        name       TEXT           NOT NULL,
+        unit_price NUMERIC(15,2)  NOT NULL,
+        quantity   INTEGER        NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+        notes      TEXT,
+        sort_order INTEGER        NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 34. Invoices ───────────────────────────────────────────────────────
+    // Header universal tagihan. Source polymorphic: cart/order/donation/event_registration/manual.
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".invoices (
+        id              UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_number  TEXT           NOT NULL UNIQUE,
+        source_type     TEXT           NOT NULL
+                                       CHECK (source_type IN ('cart','order','donation','event_registration','manual')),
+        source_id       UUID,
+        customer_name   TEXT           NOT NULL,
+        customer_phone  TEXT,
+        customer_email  TEXT,
+        member_id       UUID           REFERENCES public.members(id) ON DELETE SET NULL,
+        profile_id      UUID           REFERENCES public.profiles(id) ON DELETE SET NULL,
+        subtotal        NUMERIC(15,2)  NOT NULL,
+        discount        NUMERIC(15,2)  NOT NULL DEFAULT 0,
+        total           NUMERIC(15,2)  NOT NULL,
+        paid_amount     NUMERIC(15,2)  NOT NULL DEFAULT 0,
+        status          TEXT           NOT NULL DEFAULT 'pending'
+                                       CHECK (status IN ('draft','pending','waiting_verification','partial','paid','cancelled','overdue')),
+        due_date        DATE,
+        notes           TEXT,
+        pdf_url         TEXT,
+        installment_plan_id UUID       REFERENCES "${s}".installment_plans(id) ON DELETE SET NULL,
+        created_by      UUID           REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        created_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 35. Invoice Items ──────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".invoice_items (
+        id          UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_id  UUID           NOT NULL REFERENCES "${s}".invoices(id) ON DELETE CASCADE,
+        item_type   TEXT           NOT NULL
+                                   CHECK (item_type IN ('product','ticket','donation','custom')),
+        item_id     UUID,
+        name        TEXT           NOT NULL,
+        description TEXT,
+        unit_price  NUMERIC(15,2)  NOT NULL,
+        quantity    INTEGER        NOT NULL DEFAULT 1,
+        total       NUMERIC(15,2)  NOT NULL,
+        sort_order  INTEGER        NOT NULL DEFAULT 0
+      )
+    `));
+
+    // ── 36. Invoice Payments (junction) ───────────────────────────────────
+    // Satu invoice bisa dilunasi dengan banyak payment (partial/cicilan).
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".invoice_payments (
+        id         UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_id UUID           NOT NULL REFERENCES "${s}".invoices(id) ON DELETE CASCADE,
+        payment_id UUID           NOT NULL REFERENCES "${s}".payments(id) ON DELETE CASCADE,
+        amount     NUMERIC(15,2)  NOT NULL,
+        created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+        UNIQUE (invoice_id, payment_id)
+      )
+    `));
+
+    // ── 37. Installment Schedules ──────────────────────────────────────────
+    // Jadwal termin cicilan per invoice. Dibuat otomatis saat invoice ikut program cicilan.
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".installment_schedules (
+        id                  UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_id          UUID           NOT NULL REFERENCES "${s}".invoices(id) ON DELETE CASCADE,
+        installment_plan_id UUID           NOT NULL REFERENCES "${s}".installment_plans(id) ON DELETE RESTRICT,
+        term_number         INTEGER        NOT NULL,
+        due_date            DATE           NOT NULL,
+        amount              NUMERIC(15,2)  NOT NULL,
+        payment_id          UUID           REFERENCES "${s}".payments(id) ON DELETE SET NULL,
+        paid_at             TIMESTAMPTZ,
+        status              TEXT           NOT NULL DEFAULT 'pending'
+                                           CHECK (status IN ('pending','paid','overdue')),
+        UNIQUE (invoice_id, term_number)
+      )
+    `));
+
     // ── Indexes ────────────────────────────────────────────────────────────
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letters_type             ON "${s}".letters(type)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letters_status           ON "${s}".letters(status)`));
@@ -916,7 +1063,17 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_documents_visibility         ON "${s}".documents(visibility)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_tenant_invites_token         ON "${s}".tenant_invites(token)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_tenant_invites_email         ON "${s}".tenant_invites(email)`));
-    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_tenant_invites_member        ON "${s}".tenant_invites(member_id)`))
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_tenant_invites_member        ON "${s}".tenant_invites(member_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_carts_session_token          ON "${s}".carts(session_token)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_carts_member_id             ON "${s}".carts(member_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_cart_items_cart_id          ON "${s}".cart_items(cart_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoices_status             ON "${s}".invoices(status)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoices_member_id          ON "${s}".invoices(member_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoices_source             ON "${s}".invoices(source_type, source_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id    ON "${s}".invoice_items(invoice_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice_id ON "${s}".invoice_payments(invoice_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_installment_schedules_invoice ON "${s}".installment_schedules(invoice_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_installment_schedules_due   ON "${s}".installment_schedules(due_date, status)`));
 
     // ── Default Data ───────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
@@ -935,6 +1092,7 @@ export async function createTenantSchemaInDb(
         ('4100', 'Pendapatan Iuran',   'income'),
         ('4200', 'Pendapatan Donasi',  'income'),
         ('4300', 'Pendapatan Usaha',   'income'),
+        ('4400', 'Pendapatan Event',   'income'),
         ('5000', 'Beban',              'expense'),
         ('5100', 'Beban Operasional',  'expense'),
         ('5200', 'Beban Administrasi', 'expense'),
