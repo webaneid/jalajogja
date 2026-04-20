@@ -168,58 +168,244 @@ custom_domain_verified_at  → timestamp saat verifikasi berhasil
 
 ---
 
-## Bagian 3: Front-end Publik (BELUM DIIMPLEMENTASIKAN)
+## Bagian 3: Front-end Publik — Page Template System
 
-### Filosofi Desain
+### Filosofi
 
-Website publik jalajogja adalah **website organisasi yang dikontrol penuh oleh tenant** — bukan
-microsite generik. Setiap tenant punya website dengan identitas sendiri: nama, logo, warna, konten.
+Website publik dikontrol penuh oleh tenant. Admin pilih **template** untuk setiap halaman.
+Template yang lebih sederhana langsung render. Landing page punya **section builder** drag & drop.
 
-Tiga prinsip:
-1. **Data sudah ada** — posts, pages, event, donasi, toko sudah tersimpan di DB. Front-end tinggal render.
-2. **SEO-first** — semua halaman server-rendered, metadata lengkap dari `seo_*` columns.
-3. **Layered** — mulai minimal (Layer 1), tambah fitur bertahap (Layer 2–4) tanpa redesign.
+Semua preview menggunakan **wireframe CSS/Tailwind** (skeleton abu-abu). Setelah dipilih,
+design asli yang render. Tidak ada gambar PNG — murni Tailwind untuk performa.
 
-### Layer Pembangunan
+---
+
+### 5 Template Halaman
+
+| Template | Deskripsi | Body Format |
+|----------|-----------|-------------|
+| `default` | Tiptap body + featured image | Tiptap JSON (sudah ada) |
+| `landing` | Section builder drag & drop | `{ sections: SectionItem[] }` |
+| `contact` | Form + info kontak + Google Maps | `{ showForm, mapEmbedUrl, customTitle }` |
+| `about` | Tiptap body, layout beda | Tiptap JSON |
+| `linktree` | Link list mobile-optimized | `{ profileImage, bio, links: LinkItem[] }` |
+
+---
+
+### DB Schema: Kolom Baru di `pages`
+
+```sql
+-- Tambah ke DDL create-tenant-schema.ts + migration manual tenant existing
+ALTER TABLE pages ADD COLUMN template TEXT NOT NULL DEFAULT 'default';
+```
+
+Drizzle schema update:
+```typescript
+template: text("template", {
+  enum: ["default", "landing", "contact", "about", "linktree"]
+}).notNull().default("default"),
+```
+
+---
+
+### Tabel Baru: `contact_submissions`
+
+Form Contact Page menyimpan pesan masuk ke DB — bukan hanya email.
+Jadi ada "Inbox Pesan" di dashboard.
+
+```sql
+CREATE TABLE contact_submissions (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  page_id     UUID NOT NULL,            -- FK → pages.id
+  name        TEXT NOT NULL,
+  email       TEXT,
+  phone       TEXT,
+  message     TEXT NOT NULL,
+  is_read     BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+Dashboard: `/{slug}/website/pesan` — list submissions dengan badge unread count.
+
+---
+
+### Template: Landing Page — Section Builder
+
+#### Konsep Alur Admin
 
 ```
-Layer 1 — Minimal Viable (PRIORITAS SEKARANG)
-  / → Halaman depan: nama org, tagline, logo, posts terbaru
-  /blog → List postingan yang published
-  /blog/[slug] → Detail postingan + metadata SEO
-
-Layer 2 — Konten Statis
-  /[page-slug] → Halaman statis dari Pages module (tentang, kontak, dll)
-
-Layer 3 — Fitur Organisasi (sebagian sudah ada)
-  /donasi/[slug] → Campaign donasi (✅ sudah ada di (public))
-  /event/[slug] → Halaman event (✅ sudah ada di (public))
-  /dokumen/[id] → Dokumen publik (✅ sudah ada di (public))
-  /sign/[token] → TTD surat (✅ sudah ada di (public))
-  /verify/[hash] → Verifikasi surat (✅ sudah ada di (public))
-
-Layer 4 — Advanced
-  /toko → Toko online publik
-  /anggota → Direktori anggota (optional, bisa di-hide)
-  Navigation builder (drag-drop)
-  Custom blocks / page builder
+Edit halaman (template=landing)
+  ↓
+[Section List — drag & drop menggunakan @dnd-kit/sortable]
+  ⠿  [Wireframe Hero]       Hero              [Ganti Design] [Edit] [Hapus]
+  ⠿  [Wireframe Posts]      Postingan Terbaru [Ganti Design] [Edit] [Hapus]
+  ⠿  [Wireframe Gallery]    Galeri            [Ganti Design] [Edit] [Hapus]
+  
+  [+ Tambah Section]
 ```
+
+- **Ganti Design** → popup picker: wireframe grid semua variant section type itu → klik → langsung apply
+- **Edit** → panel/drawer edit konten section (field sesuai type)
+- **Drag** → reorder urutan
+
+#### Format Data `body` untuk Landing
+
+```typescript
+type SectionItem = {
+  id:      string;        // UUID lokal (nanoid), untuk React key + drag
+  type:    SectionType;   // "hero" | "posts" | "gallery" | ...
+  variant: string;        // "1" | "2" | ... (design variant)
+  data:    Record<string, unknown>; // konten spesifik per type
+}
+
+type LandingBody = {
+  sections: SectionItem[];
+}
+```
+
+#### Section Types (mulai 1 variant per type, siap tambah lebih)
+
+| Type | Label | Data Fields | Auto-data |
+|------|-------|-------------|-----------|
+| `hero` | Hero Banner | title, subtitle, ctaLabel, ctaUrl, bgImageUrl, bgColor | — |
+| `posts` | Postingan Terbaru | title, count(6) | Ambil dari DB otomatis |
+| `events` | Event Mendatang | title, count(3) | Ambil dari DB otomatis |
+| `gallery` | Galeri Foto | title, images[{url,alt}] | — |
+| `about_text` | Tentang Kami | title, body, imageUrl, imagePosition(left\|right) | — |
+| `features` | Keunggulan / Layanan | title, items[{icon,title,desc}] max 6 | — |
+| `cta` | Call to Action | title, subtitle, ctaLabel, ctaUrl, bgColor | — |
+| `contact_info` | Info Kontak | — | Dari settings otomatis |
+| `stats` | Statistik | items[{number,label}] max 4 | — |
+| `divider` | Pemisah / Spacer | height, bgColor | — |
+
+#### Default Sections saat Template Dipilih
+
+Saat admin pilih template `landing` untuk pertama kali, langsung ada 3 section default:
+```
+[Hero v1] → [Posts Terbaru v1] → [Contact Info v1]
+```
+Admin bisa langsung edit atau tambah section lain.
+
+#### Wireframe Tiap Section (CSS Tailwind)
+
+Wireframe = skeleton representasi layout section. Contoh Hero v1:
+```
+┌────────────────────────────────────┐
+│░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│  ← bg gray
+│         ██████████████            │  ← title bar
+│         ████████████              │  ← subtitle bar
+│         ┌──────┐  ┌──────┐        │  ← CTA buttons
+│         └──────┘  └──────┘        │
+│░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│
+└────────────────────────────────────┘
+```
+Dibuat dengan `div` bg-gray-200, rounded, animate-pulse optional.
+
+---
+
+### Template: Contact Page
+
+Satu design untuk sekarang. Config di `body`:
+```typescript
+type ContactBody = {
+  customTitle?:  string;   // default: "Hubungi Kami"
+  showForm:      boolean;  // default: true
+  showMap:       boolean;  // default: true
+  mapEmbedUrl?:  string;   // paste dari Google Maps → Share → Embed
+  successMsg?:   string;   // pesan setelah form submit
+}
+```
+
+Data kontak (nama org, email, telepon, alamat) otomatis dari `settings` group `contact`.
+
+Layout render di front-end:
+```
+[Judul: "Hubungi Kami" atau customTitle]
+[Grid 2 kolom]
+  Kiri:                    Kanan:
+  - Nama (required)        - Nama organisasi
+  - Email                  - Telepon
+  - Telepon                - Email
+  - Pesan (required)       - Alamat
+  - [Kirim]                - Socials icons
+[Google Maps iframe full-width bawah]
+```
+
+---
+
+### Template: Linktree
+
+Mobile-first (max-width 480px centered).
+
+```typescript
+type LinkItem = {
+  id:      string;
+  type:    LinkType;   // enum di bawah
+  label:   string;     // custom label
+  url:     string;
+  enabled: boolean;
+}
+
+type LinktreeBody = {
+  profileImageUrl?: string;
+  bio?:             string;
+  links:            LinkItem[];
+}
+
+// Link types dengan icon bawaan
+type LinkType =
+  | "instagram" | "tiktok" | "facebook" | "youtube" | "twitter"
+  | "whatsapp"  | "telegram" | "linkedin" | "email" | "phone"
+  | "website"   | "shopee"   | "tokopedia" | "gofood" | "grabfood"
+  | "custom"    // generic link, pakai icon Globe
+```
+
+Layout:
+```
+[Logo/foto profil bulat]
+[Nama org]
+[Bio text]
+[Instagram ─────────────────── →]
+[TikTok ─────────────────────── →]
+[Website ────────────────────── →]
+[WhatsApp ───────────────────── →]
+```
+
+Admin editor: list link dengan drag reorder (juga pakai @dnd-kit), toggle enabled/disabled,
+edit label + url + type.
+
+---
+
+### Template: About Us
+
+Sama dengan `default` — Tiptap editor. Tapi front-end render dengan layout yang berbeda:
+- Sidebar info organisasi (ambil dari settings)
+- Featured image sebagai hero atas
+- Body di bawahnya
+
+Tidak ada field tambahan — beda hanya di presentasi front-end.
+
+---
+
+### Template: Default
+
+Status quo — Tiptap body + featured image. Render sebagai artikel biasa.
+
+---
 
 ### Struktur Route Front-end
 
-Route group `(public)` sudah ada dan dipakai oleh donasi/event/dokumen/surat.
-Website publik Layer 1–2 masuk ke sini juga:
-
 ```
 app/(public)/[tenant]/
-├── layout.tsx              → PublicLayout: load settings (logo, warna, nav) dari DB
-├── page.tsx                → / → Halaman depan
+├── layout.tsx              → PublicLayout (header + footer dari settings)
+├── page.tsx                → / → Render halaman slug="home" atau fallback
 ├── blog/
-│   ├── page.tsx            → /blog → list posts (published)
-│   └── [slug]/
-│       └── page.tsx        → /blog/[slug] → detail post
-├── [slug]/
-│   └── page.tsx            → /[page-slug] → halaman statis (Pages module)
+│   ├── page.tsx            → /blog → list posts published
+│   └── [postSlug]/
+│       └── page.tsx        → /blog/[slug] → detail post + SEO
+├── [pageSlug]/
+│   └── page.tsx            → /[slug] → router template (pilih renderer)
 ├── donasi/[slug]/page.tsx  → ✅ sudah ada
 ├── event/[slug]/page.tsx   → ✅ sudah ada
 ├── dokumen/[id]/page.tsx   → ✅ sudah ada
@@ -227,177 +413,157 @@ app/(public)/[tenant]/
 └── verify/[hash]/page.tsx  → ✅ sudah ada
 ```
 
-**Catatan penting**: Route `[slug]` untuk Pages harus ditempatkan SETELAH semua route spesifik
-(`blog`, `donasi`, `event`, dll) agar tidak menimpa route yang lebih spesifik.
-Next.js menyelesaikan ini via urutan folder — folder spesifik selalu menang atas `[slug]`.
-
-### PublicLayout — Data yang Diload
-
-Layout publik perlu load dari DB setiap render (atau di-cache dengan revalidate):
-
+Route `[pageSlug]` adalah **template router**:
 ```typescript
-// Data dari tenant settings
-const settings = await getSettings(tenantClient, "general")  // site_name, tagline, logo_url
-const contact  = await getSettings(tenantClient, "contact")  // socials, phone, email
-const display  = await getSettings(tenantClient, "display")  // primary_color, font, footer_text
+// app/(public)/[tenant]/[pageSlug]/page.tsx
+const page = await fetchPage(slug, pageSlug)
+if (!page || page.status !== "published") notFound()
 
-// Data dari tenant table
-const tenant   = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1)
-
-// Navigation: ambil Pages yang published, sorted by order
-const navPages = await tenantDb.select().from(schema.pages)
-  .where(eq(schema.pages.status, "published"))
-  .orderBy(schema.pages.order)
-```
-
-Layout render:
-- `<head>`: favicon, meta charset, viewport
-- Header: logo + nav (nama halaman dari Pages)
-- Footer: socials + contact + footer_text dari settings
-- Inject primary_color sebagai CSS variable `--color-primary`
-
-### Halaman Depan (`/`)
-
-Konten halaman depan bisa dari dua sumber:
-1. **Page dengan slug `home`** — jika ada di Pages module dan published → render kontennya
-2. **Default fallback** — jika tidak ada → render template default (nama org + tagline + posts terbaru)
-
-```
-Halaman Depan (default fallback):
-  [Hero: nama org + tagline + CTA]
-  [Posts Terbaru: grid 3 kolom, 6 post]
-  [Event Mendatang: jika ada event upcoming]
-  [Footer]
-```
-
-### SEO per Halaman
-
-Setiap halaman publik harus menggunakan `generateMetadata()` dari `lib/seo.ts`:
-
-```typescript
-export async function generateMetadata({ params }): Promise<Metadata> {
-  const post = await fetchPost(slug, postSlug)
-  return generateMetadata({
-    title:       post.metaTitle || post.title,
-    description: post.metaDesc || post.excerpt,
-    ogImage:     post.ogImageUrl,
-    // ...
-  })
+switch (page.template) {
+  case "landing":  return <LandingTemplate page={page} tenant={tenant} />
+  case "contact":  return <ContactTemplate page={page} tenant={tenant} settings={contact} />
+  case "linktree": return <LinktreeTemplate page={page} />
+  case "about":    return <AboutTemplate page={page} tenant={tenant} />
+  default:         return <DefaultTemplate page={page} />
 }
 ```
 
-Metadata sudah tersimpan di DB (kolom `meta_title`, `meta_desc`, `og_title`, dll).
-Tinggal map ke `generateMetadata()` yang sudah ada.
+---
 
-### Caching Strategy
-
-Front-end publik harus **cepat** — beda dengan dashboard yang selalu fresh.
-
-| Halaman | Strategy | Revalidate |
-|---------|----------|-----------|
-| Halaman depan | ISR | 60 detik |
-| List blog | ISR | 60 detik |
-| Detail post | ISR | 300 detik (5 menit) |
-| Halaman statis | ISR | 3600 detik (1 jam) |
-| Donasi/Event | ISR | 30 detik (data kritis) |
-
-Gunakan `export const revalidate = 60` di page level, atau `fetch(..., { next: { revalidate: 60 } })`.
-
-Dashboard admin bisa trigger manual revalidation via `revalidatePath` saat publish konten.
-
-### Middleware Update (Fase 2 & 3)
-
-Middleware saat ini hanya menangani dashboard routes. Saat front-end diimplementasikan,
-middleware perlu diupdate untuk membedakan request dashboard vs publik:
-
-```typescript
-// Pseudocode
-const isDashboard = pathname.startsWith("/") && !isPublicRoute(pathname)
-const slug = resolveSlug(host, pathname) // path / subdomain / custom domain
-
-if (isDashboard) {
-  // Cek session, redirect ke login jika perlu
-} else {
-  // Public route — tidak perlu auth
-  // Tapi tetap perlu resolve slug untuk render tenant yang benar
-}
-```
-
-### Halaman Blog — Detail
-
-```
-/blog/[slug]
-
-Data yang diambil:
-  - post (title, excerpt, body Tiptap JSON, meta_*, og_*, cover_id)
-  - cover image URL dari media table
-  - author info (jika ada relasi ke members)
-  - kategori + tags
-  - posts terkait (same kategori, exclude current, limit 3)
-
-Render:
-  <article>
-    <header>
-      <h1>{title}</h1>
-      <time>{publishedAt}</time>
-      <div class="tags">{tags}</div>
-    </header>
-    {coverImage && <img>}
-    <div class="prose">{renderBody(body)}</div>  ← pakai renderBody() dari letter-render.ts atau Tiptap
-  </article>
-  <aside>Posts Terkait</aside>
-```
-
-**Render body**: gunakan `renderBody()` yang sudah ada di `lib/letter-render.ts` —
-tapi perhatikan: versi saat ini untuk surat. Mungkin perlu variant khusus untuk posts
-yang lebih kaya (heading levels, images, embeds, table, dll).
-
-### Komponen UI Front-end
-
-Komponen front-end beda dengan dashboard — tidak pakai shadcn/ui yang heavy.
-Gunakan Tailwind langsung, seminimal mungkin:
+### Komponen Struktur
 
 ```
 components/public/
-├── public-header.tsx    → logo + nav responsif (hamburger mobile)
-├── public-footer.tsx    → socials + kontak + copyright
-├── post-card.tsx        → card post untuk grid/list
-├── prose-content.tsx    → wrapper untuk render Tiptap body (styling prose)
-└── breadcrumb.tsx       → navigasi breadcrumb
+├── layout/
+│   ├── public-header.tsx      → logo + nav (Pages published, sorted by order)
+│   ├── public-footer.tsx      → socials + kontak + copyright
+│   └── public-layout.tsx      → wrapper: inject CSS vars warna + font
+├── templates/
+│   ├── default-template.tsx   → Tiptap body + featured image
+│   ├── about-template.tsx     → sidebar info + Tiptap body
+│   ├── contact-template.tsx   → form + info + maps
+│   ├── linktree-template.tsx  → mobile link list
+│   └── landing-template.tsx  → loop sections → render per type+variant
+├── sections/
+│   ├── hero/
+│   │   ├── hero-v1.tsx        → full-width hero: bg + title + subtitle + CTA
+│   │   └── hero-wireframe.tsx → CSS wireframe untuk picker
+│   ├── posts/
+│   │   ├── posts-v1.tsx       → grid 3 kolom card
+│   │   └── posts-wireframe.tsx
+│   ├── gallery/
+│   │   ├── gallery-v1.tsx     → masonry/grid foto
+│   │   └── gallery-wireframe.tsx
+│   └── ... (satu folder per section type)
+├── post-card.tsx              → card post reusable
+└── prose-content.tsx          → Tiptap body renderer untuk front-end
 ```
 
-### Open Questions (perlu keputusan sebelum mulai coding)
+```
+components/website/        (dashboard admin — sudah ada, tambahkan:)
+├── page-template-picker.tsx   → grid wireframe pilih template
+├── landing-builder.tsx        → drag & drop section list (@dnd-kit)
+├── section-picker.tsx         → popup wireframe picker variant per type
+├── section-editor/
+│   ├── hero-editor.tsx
+│   ├── posts-editor.tsx
+│   ├── gallery-editor.tsx
+│   └── ... (satu per type)
+├── contact-page-editor.tsx    → form + toggle showMap + paste mapUrl
+└── linktree-editor.tsx        → drag & drop link list
+```
 
-1. **Navigation**: apakah nav di-hardcode (Blog, Tentang, Kontak) atau dinamis dari Pages?
-   - Opsi A: hardcode + Pages jadi sub-nav
-   - Opsi B: semua dari Pages (lebih fleksibel, tapi admin harus setup dulu)
-   - **Rekomendasi**: Opsi A untuk Layer 1 (cepat), Opsi B untuk Layer 4
+---
 
-2. **Tema / Warna**: primary_color dari settings sudah ada. Cukup untuk Layer 1?
-   - Ya — inject sebagai CSS variable, pakai untuk button, link, accent
+### Dashboard: Admin Landing Builder
 
-3. **Font**: dari settings juga (key `font`). Bagaimana load Google Font dinamis?
-   - Opsi A: `next/font` dengan fallback Inter (simple, tidak 100% dinamis)
-   - Opsi B: inject `<link rel="stylesheet">` di layout berdasarkan settings (lebih fleksibel)
-   - **Rekomendasi**: Opsi A dulu untuk Layer 1
+```
+PageForm (template=landing)
+  ↓ bukan Tiptap editor
+  ↓ render LandingBuilder
 
-4. **Route collision**: `/(public)/[tenant]/[slug]` vs route lain yang sudah ada (`donasi`, `event`, dll)
-   - Sudah aman — Next.js App Router prioritaskan folder statis atas dynamic `[slug]`
+LandingBuilder (client component, @dnd-kit/sortable):
+  SortableContext → DndContext
+    SectionRow (draggable):
+      [GripVertical] [Wireframe mini 60px] [Label] [Ganti] [Edit ▼] [Trash]
+  
+  [+ Tambah Section] → SectionPicker modal:
+      Grid wireframe semua section types
+      Klik → append ke list dengan variant "1"
+  
+  Section Picker per row (Ganti Design):
+      Popup wireframe semua variant untuk type itu
+      Klik → update variant di state
 
-5. **Apakah halaman event/donasi sudah masuk layout publik (dengan header/footer org)?**
-   - Saat ini mereka standalone — tidak punya PublicLayout
-   - Perlu diupdate agar konsisten saat front-end jadi
+  Section Editor panel (Edit):
+      Slide-in drawer dari kanan
+      Field sesuai type (title, url, images, dll)
+```
+
+---
+
+### Dashboard: Inbox Pesan (Contact Submissions)
+
+Route baru: `/{slug}/website/pesan`
+
+```
+Sidebar nav website:
+  Dashboard
+  Posts
+  Halaman
+  Kategori
+  Pesan      ← BARU (badge angka unread)
+```
+
+List page: tanggal, nama, email, pesan preview, status baca/belum.
+Detail: modal atau expand inline.
+Server action: `markContactSubmissionReadAction(slug, submissionId)`.
+
+---
+
+### Caching Strategy
+
+| Halaman | Revalidate |
+|---------|-----------|
+| Beranda / | 60 detik |
+| /blog list | 60 detik |
+| /blog/[slug] | 300 detik |
+| /[pageSlug] landing/contact/dll | 120 detik |
+| Linktree | 300 detik |
+
+Saat admin publish/update konten → `revalidatePath(`/(public)/${slug}/...`)` di server action.
+
+---
+
+### Dependensi Baru
+
+```bash
+bun add @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities
+```
+
+Hanya untuk dashboard (client component). Front-end publik tidak perlu dnd-kit.
+
+---
 
 ### Status Implementasi
 
-| Layer | Status | Catatan |
-|-------|--------|---------|
-| Layer 1 (Blog + Beranda) | ⬜ Belum | **PRIORITAS SEKARANG** |
-| Layer 2 (Pages statis) | ⬜ Belum | Setelah Layer 1 |
-| Layer 3 Donasi | ✅ Sudah ada | Di `(public)/[tenant]/donasi/` |
-| Layer 3 Event | ✅ Sudah ada | Di `(public)/[tenant]/event/` |
-| Layer 3 Dokumen | ✅ Sudah ada | Di `(public)/[tenant]/dokumen/` |
-| Domain Routing Fase 2–3 | ⬜ Belum | Middleware update |
-| PublicLayout (header/footer) | ⬜ Belum | Perlu dibuat dulu |
-| Toko Publik | ⬜ Belum | Layer 4 |
-| Navigation Builder | ⬜ Belum | Layer 4 |
+| Komponen | Status | Prioritas |
+|----------|--------|-----------|
+| DB: kolom `template` di pages | ⬜ Belum | 1 |
+| DB: tabel `contact_submissions` | ⬜ Belum | 1 |
+| Admin: `PageTemplatePicke` di PageForm | ⬜ Belum | 1 |
+| Admin: `LandingBuilder` drag & drop | ⬜ Belum | 1 |
+| Admin: `SectionPicker` wireframe popup | ⬜ Belum | 1 |
+| Admin: Section Editors (per type) | ⬜ Belum | 1 |
+| Admin: `ContactPageEditor` | ⬜ Belum | 2 |
+| Admin: `LinktreeEditor` | ⬜ Belum | 2 |
+| Admin: Inbox Pesan (`/website/pesan`) | ⬜ Belum | 3 |
+| Front-end: `PublicLayout` (header+footer) | ⬜ Belum | 1 |
+| Front-end: Template Router `/[pageSlug]` | ⬜ Belum | 1 |
+| Front-end: `DefaultTemplate` | ⬜ Belum | 1 |
+| Front-end: `LandingTemplate` + sections | ⬜ Belum | 1 |
+| Front-end: `ContactTemplate` | ⬜ Belum | 2 |
+| Front-end: `LinktreeTemplate` | ⬜ Belum | 2 |
+| Front-end: `/blog` + `/blog/[slug]` | ⬜ Belum | 2 |
+| Front-end: `AboutTemplate` | ⬜ Belum | 3 |
+| Domain routing Fase 2-3 (middleware) | ⬜ Belum | 4 |
