@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import { createTenantDb, db, tenants } from "@jalajogja/db";
 import type { Metadata } from "next";
 
@@ -56,7 +56,7 @@ export default async function BlogListPage({ params }: { params: Params }) {
         .where(
           coverIds.length === 1
             ? eq(schema.media.id, coverIds[0]!)
-            : require("drizzle-orm").inArray(schema.media.id, coverIds)
+            : inArray(schema.media.id, coverIds)
         )
     : [];
   const mediaMap = new Map(mediaRows.map((m) => [m.id, m.path]));
