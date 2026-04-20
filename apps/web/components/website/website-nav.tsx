@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, FileText, FileStack, Tag, MessageSquare } from "lucide-react";
+import { LayoutDashboard, FileText, FileStack, Tag, MessageSquare, Inbox } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Dashboard",  icon: LayoutDashboard, path: ""           },
   { label: "Posts",      icon: FileText,         path: "/posts"     },
   { label: "Halaman",    icon: FileStack,         path: "/pages"     },
   { label: "Kategori",   icon: Tag,               path: "/categories"},
+  { label: "Pesan",      icon: Inbox,             path: "/pesan"     },
   { label: "Komentar",   icon: MessageSquare,     path: "/comments"  },
 ] as const;
 
@@ -31,7 +32,7 @@ export function WebsiteNav({ slug }: { slug: string }) {
               ? pathname === base
               : pathname.startsWith(href);
           // Placeholder: halaman belum dibuat
-          const isComingSoon = path === "/comments";
+          const isComingSoon = path === "/comments" ;
 
           return (
             <li key={label}>

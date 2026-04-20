@@ -3,7 +3,10 @@ import { eq } from "drizzle-orm";
 import { createTenantDb, db, tenants } from "@jalajogja/db";
 import { DefaultTemplate } from "@/components/website/public/default-template";
 import { LandingTemplate } from "@/components/website/public/landing-template";
-import { parseLandingBody } from "@/lib/page-templates";
+import { ContactTemplate } from "@/components/website/public/contact-template";
+import { LinktreeTemplate } from "@/components/website/public/linktree-template";
+import { parseLandingBody, parseContactBody, parseLinktreeBody } from "@/lib/page-templates";
+import { getSettings } from "@jalajogja/db";
 import type { Metadata } from "next";
 
 export const revalidate = 60;
@@ -50,7 +53,7 @@ async function getPage(slug: string, pageSlug: string) {
     coverUrl = media?.path ?? null;
   }
 
-  return { page, coverUrl, tenantName: tenant.name, tenantClient };
+  return { page, coverUrl, tenantName: tenant.name, tenantClient, slug };
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
@@ -69,7 +72,7 @@ export default async function PublicPageRoute({ params }: { params: Params }) {
   const result = await getPage(slug, pageSlug);
   if (!result) notFound();
 
-  const { page, coverUrl, tenantClient } = result;
+  const { page, coverUrl, tenantClient, tenantName } = result;
 
   if (page.template === "landing") {
     const body = parseLandingBody(page.content);
@@ -78,6 +81,31 @@ export default async function PublicPageRoute({ params }: { params: Params }) {
         body={body}
         tenantSlug={slug}
         tenantClient={tenantClient}
+      />
+    );
+  }
+
+  if (page.template === "contact") {
+    const body     = parseContactBody(page.content);
+    const settings = await getSettings(tenantClient, "contact");
+    return (
+      <ContactTemplate
+        tenantSlug={slug}
+        pageId={page.id}
+        title={page.title}
+        body={body}
+        settings={settings as Parameters<typeof ContactTemplate>[0]["settings"]}
+      />
+    );
+  }
+
+  if (page.template === "linktree") {
+    const body = parseLinktreeBody(page.content);
+    return (
+      <LinktreeTemplate
+        title={page.title}
+        body={body}
+        orgName={tenantName}
       />
     );
   }
