@@ -30,3 +30,17 @@ export {
   upsertSetting,
   upsertSettings,
 } from "./helpers/settings";
+
+// Billing helpers — buat + sync invoice dari modul mana saja
+export {
+  createLinkedInvoice,
+  syncInvoicePayment,
+  type LinkedInvoiceItem,
+  type CreateLinkedInvoiceInput,
+} from "./helpers/billing";
+
+// Identity resolution — lookup profile/member dari phone/email/session
+export {
+  resolveIdentity,
+  type ResolvedIdentity,
+} from "./helpers/resolve-identity";

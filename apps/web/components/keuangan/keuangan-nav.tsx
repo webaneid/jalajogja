@@ -10,10 +10,12 @@ import {
   BookOpen,
   Landmark,
   BarChart2,
+  Receipt,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Dashboard",   icon: LayoutDashboard,  path: ""            },
+  { label: "Billing",     icon: Receipt,          path: "/billing"    },
   { label: "Pemasukan",   icon: ArrowDownCircle,  path: "/pemasukan"  },
   { label: "Pengeluaran", icon: ArrowUpCircle,    path: "/pengeluaran"},
   { label: "Jurnal",      icon: BookOpen,         path: "/jurnal"     },

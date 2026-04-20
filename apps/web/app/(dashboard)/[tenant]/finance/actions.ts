@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, gte, lte, desc, isNull, or, ilike, ne, inArray, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
@@ -24,6 +24,7 @@ type AccountMappings = {
   bank_default:   string | null; // UUID akun 1102 Bank
   income_toko:    string | null; // UUID akun 4300 Pendapatan Usaha
   income_donasi:  string | null; // UUID akun 4200 Pendapatan Donasi
+  income_event:   string | null; // UUID akun 4400 Pendapatan Event
   income_manual:  string | null; // UUID akun 4100 Pendapatan Iuran
   dana_titipan:   string | null; // UUID akun 2200 Dana Titipan
   expense_default:string | null; // UUID akun 5100 Beban Operasional
@@ -66,12 +67,13 @@ async function resolveAccountMappings(
   }
 
   // Fallback: lookup by kode akun default
-  const [cashDefault, bankDefault, incomeToko, incomeDonasi, incomeManual, danaTitipan, expenseDefault] =
+  const [cashDefault, bankDefault, incomeToko, incomeDonasi, incomeEvent, incomeManual, danaTitipan, expenseDefault] =
     await Promise.all([
       lookupAccountByCode(db, schema, "1101"),
       lookupAccountByCode(db, schema, "1102"),
       lookupAccountByCode(db, schema, "4300"),
       lookupAccountByCode(db, schema, "4200"),
+      lookupAccountByCode(db, schema, "4400"),
       lookupAccountByCode(db, schema, "4100"),
       lookupAccountByCode(db, schema, "2200"),
       lookupAccountByCode(db, schema, "5100"),
@@ -82,6 +84,7 @@ async function resolveAccountMappings(
     bank_default:    bankDefault,
     income_toko:     incomeToko,
     income_donasi:   incomeDonasi,
+    income_event:    incomeEvent,
     income_manual:   incomeManual,
     dana_titipan:    danaTitipan,
     expense_default: expenseDefault,
@@ -105,13 +108,27 @@ function pickIncomeAccount(
   sourceType: string,
   mappings: AccountMappings
 ): string | null {
-  if (sourceType === "order")    return mappings.income_toko;
-  if (sourceType === "donation") return mappings.dana_titipan;
+  if (sourceType === "order")              return mappings.income_toko;
+  if (sourceType === "donation")           return mappings.dana_titipan;
+  if (sourceType === "event_registration") return mappings.income_event ?? mappings.income_manual;
   return mappings.income_manual;
 }
 
 function revalidateFinance(slug: string) {
   revalidatePath(`/${slug}/finance`);
+}
+
+/** Wrapper untuk billing/actions.ts yang butuh resolusi akun kas + pendapatan */
+export async function resolveAccountMappingsForBilling(
+  tenantDb: ReturnType<typeof createTenantDb>,
+  method: string,
+  sourceType: string
+): Promise<{ cashAccountId: string | null; incomeAccountId: string | null }> {
+  const mappings = await resolveAccountMappings(tenantDb);
+  return {
+    cashAccountId:   pickCashAccount(method, mappings),
+    incomeAccountId: pickIncomeAccount(sourceType, mappings),
+  };
 }
 
 // ─── PEMASUKAN (Payments) ────────────────────────────────────────────────────
@@ -279,6 +296,311 @@ export async function rejectPaymentAction(
 
   revalidateFinance(slug);
   return { success: true, data: undefined };
+}
+
+// ─── SEARCH helpers untuk form Catat Pemasukan ──────────────────────────────
+
+export type PendingOrderResult = {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  total: number;
+};
+
+export type ActiveCampaignResult = {
+  id: string;
+  title: string;
+  slug: string;
+};
+
+export type UnpaidRegistrationResult = {
+  id: string;
+  registrationNumber: string;
+  attendeeName: string;
+  eventName: string;
+  ticketName: string;
+  ticketPrice: number;
+};
+
+/** Cari order yang belum ada payment dengan status paid */
+export async function searchPendingOrdersAction(
+  slug: string,
+  q: string
+): Promise<ActionResult<PendingOrderResult[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  // Sub-query: order IDs yang sudah paid
+  const paidOrderIds = db
+    .select({ sourceId: schema.payments.sourceId })
+    .from(schema.payments)
+    .where(
+      and(
+        eq(schema.payments.sourceType, "order"),
+        eq(schema.payments.status, "paid")
+      )
+    );
+
+  const term = `%${q}%`;
+  const rows = await db
+    .select({
+      id:           schema.orders.id,
+      orderNumber:  schema.orders.orderNumber,
+      customerName: schema.orders.customerName,
+      total:        schema.orders.total,
+    })
+    .from(schema.orders)
+    .where(
+      and(
+        ne(schema.orders.status, "cancelled"),
+        or(
+          ilike(schema.orders.orderNumber, term),
+          ilike(schema.orders.customerName, term)
+        ),
+        // belum ada payment paid
+        sql`${schema.orders.id} NOT IN (${paidOrderIds})`
+      )
+    )
+    .orderBy(desc(schema.orders.createdAt))
+    .limit(20);
+
+  return {
+    success: true,
+    data: rows.map((r) => ({
+      id:           r.id,
+      orderNumber:  r.orderNumber,
+      customerName: r.customerName ?? "",
+      total:        parseFloat(String(r.total)),
+    })),
+  };
+}
+
+/** Ambil campaign donasi yang aktif */
+export async function searchActiveCampaignsAction(
+  slug: string,
+  q: string
+): Promise<ActionResult<ActiveCampaignResult[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+  const term = `%${q}%`;
+
+  const rows = await db
+    .select({
+      id:    schema.campaigns.id,
+      title: schema.campaigns.title,
+      slug:  schema.campaigns.slug,
+    })
+    .from(schema.campaigns)
+    .where(
+      and(
+        eq(schema.campaigns.status, "active"),
+        q.trim() ? ilike(schema.campaigns.title, term) : undefined
+      )
+    )
+    .orderBy(schema.campaigns.title)
+    .limit(20);
+
+  return { success: true, data: rows };
+}
+
+/** Cari registrasi event yang belum ada payment paid */
+export async function searchUnpaidRegistrationsAction(
+  slug: string,
+  q: string
+): Promise<ActionResult<UnpaidRegistrationResult[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const paidRegIds = db
+    .select({ sourceId: schema.payments.sourceId })
+    .from(schema.payments)
+    .where(
+      and(
+        eq(schema.payments.sourceType, "event_registration"),
+        eq(schema.payments.status, "paid")
+      )
+    );
+
+  const term = `%${q}%`;
+  const rows = await db
+    .select({
+      id:                 schema.eventRegistrations.id,
+      registrationNumber: schema.eventRegistrations.registrationNumber,
+      attendeeName:       schema.eventRegistrations.attendeeName,
+      eventName:          schema.events.title,
+      ticketName:         schema.eventTickets.name,
+      ticketPrice:        schema.eventTickets.price,
+    })
+    .from(schema.eventRegistrations)
+    .innerJoin(schema.eventTickets, eq(schema.eventRegistrations.ticketId, schema.eventTickets.id))
+    .innerJoin(schema.events, eq(schema.eventRegistrations.eventId, schema.events.id))
+    .where(
+      and(
+        eq(schema.eventRegistrations.status, "confirmed"),
+        or(
+          ilike(schema.eventRegistrations.registrationNumber, term),
+          ilike(schema.eventRegistrations.attendeeName, term),
+          ilike(schema.events.title, term)
+        ),
+        sql`${schema.eventRegistrations.id} NOT IN (${paidRegIds})`
+      )
+    )
+    .orderBy(desc(schema.eventRegistrations.createdAt))
+    .limit(20);
+
+  return {
+    success: true,
+    data: rows.map((r) => ({
+      id:                 r.id,
+      registrationNumber: r.registrationNumber,
+      attendeeName:       r.attendeeName ?? "",
+      eventName:          r.eventName,
+      ticketName:         r.ticketName,
+      ticketPrice:        parseFloat(String(r.ticketPrice)),
+    })),
+  };
+}
+
+export type LinkedPaymentData = {
+  sourceType: "manual" | "order" | "donation" | "event_registration";
+  sourceId?: string;
+  // Manual
+  amount?: number;
+  payerName?: string;
+  // Donasi — data donatur
+  donorName?: string;
+  donorPhone?: string;
+  donorEmail?: string;
+  campaignId?: string;
+  donationAmount?: number;
+  // Common
+  method: "cash" | "transfer" | "qris";
+  payerBank?: string;
+  transferDate?: string;
+  notes?: string;
+};
+
+/** Buat payment yang terhubung ke sumber tertentu (order/donation/event/manual) */
+export async function createLinkedPaymentAction(
+  slug: string,
+  data: LinkedPaymentData
+): Promise<ActionResult<{ paymentId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false as const, error: "Akses ditolak." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  try {
+    let sourceId   = data.sourceId ?? null;
+    let amount     = 0;
+    let payerName  = "";
+
+    if (data.sourceType === "manual") {
+      if (!data.amount || data.amount <= 0)
+        return { success: false, error: "Jumlah harus lebih dari 0." };
+      if (!data.payerName?.trim())
+        return { success: false, error: "Nama pembayar wajib diisi." };
+      amount    = data.amount;
+      payerName = data.payerName.trim();
+
+    } else if (data.sourceType === "order") {
+      if (!data.sourceId)
+        return { success: false, error: "Pesanan harus dipilih." };
+      const [order] = await db
+        .select({ total: schema.orders.total, customerName: schema.orders.customerName })
+        .from(schema.orders)
+        .where(eq(schema.orders.id, data.sourceId))
+        .limit(1);
+      if (!order) return { success: false, error: "Pesanan tidak ditemukan." };
+      amount    = parseFloat(String(order.total));
+      payerName = order.customerName ?? "Pelanggan";
+
+    } else if (data.sourceType === "donation") {
+      if (!data.campaignId)
+        return { success: false, error: "Campaign harus dipilih." };
+      if (!data.donorName?.trim())
+        return { success: false, error: "Nama donatur wajib diisi." };
+      if (!data.donationAmount || data.donationAmount <= 0)
+        return { success: false, error: "Jumlah donasi harus lebih dari 0." };
+
+      // Buat record donasi
+      const donNum = await generateFinancialNumber(tenantDb, "payment");
+      const [donation] = await db
+        .insert(schema.donations)
+        .values({
+          donationNumber: donNum.replace("PAY", "DON"),
+          campaignId:     data.campaignId,
+          memberId:       null,
+          donorName:      data.donorName.trim(),
+          donorPhone:     data.donorPhone?.trim() ?? null,
+          donorEmail:     data.donorEmail?.trim() ?? null,
+          donorMessage:   data.notes?.trim() ?? null,
+        })
+        .returning({ id: schema.donations.id });
+
+      sourceId  = donation.id;
+      amount    = data.donationAmount;
+      payerName = data.donorName.trim();
+
+    } else if (data.sourceType === "event_registration") {
+      if (!data.sourceId)
+        return { success: false, error: "Registrasi harus dipilih." };
+      const [reg] = await db
+        .select({
+          attendeeName: schema.eventRegistrations.attendeeName,
+          ticketId:     schema.eventRegistrations.ticketId,
+        })
+        .from(schema.eventRegistrations)
+        .where(eq(schema.eventRegistrations.id, data.sourceId))
+        .limit(1);
+      if (!reg) return { success: false, error: "Registrasi tidak ditemukan." };
+
+      const [ticket] = await db
+        .select({ price: schema.eventTickets.price })
+        .from(schema.eventTickets)
+        .where(eq(schema.eventTickets.id, reg.ticketId))
+        .limit(1);
+
+      amount    = parseFloat(String(ticket?.price ?? 0));
+      payerName = reg.attendeeName ?? "Peserta";
+    }
+
+    const number = await generateFinancialNumber(tenantDb, "payment");
+
+    const [payment] = await db
+      .insert(schema.payments)
+      .values({
+        number,
+        sourceType:     data.sourceType,
+        sourceId,
+        amount:         amount.toFixed(2),
+        uniqueCode:     0,
+        method:         data.method,
+        bankAccountRef: null,
+        status:         "submitted",
+        transferDate:   data.transferDate ?? null,
+        payerName,
+        payerBank:      data.payerBank?.trim() ?? null,
+        payerNote:      data.notes?.trim() ?? null,
+        submittedAt:    new Date(),
+      })
+      .returning({ id: schema.payments.id });
+
+    revalidateFinance(slug);
+    return { success: true, data: { paymentId: payment.id } };
+  } catch (err) {
+    console.error("[createLinkedPaymentAction]", err);
+    return { success: false, error: "Gagal mencatat pemasukan." };
+  }
 }
 
 // ─── PENGELUARAN (Disbursements) ─────────────────────────────────────────────
@@ -676,4 +998,253 @@ export async function saveAccountMappingsAction(
 
   revalidateFinance(slug);
   return { success: true, data: undefined };
+}
+
+// ─── LAPORAN KEUANGAN ────────────────────────────────────────────────────────
+
+export type NeracaSaldoRow = {
+  code:        string;
+  name:        string;
+  type:        string;
+  totalDebit:  number;
+  totalCredit: number;
+  balance:     number; // debit - credit
+};
+
+export type LabaRugiRow = {
+  code:   string;
+  name:   string;
+  type:   "income" | "expense";
+  amount: number;
+};
+
+export type LabaRugiData = {
+  rows:         LabaRugiRow[];
+  totalIncome:  number;
+  totalExpense: number;
+  netProfit:    number;
+};
+
+export type ArusKasRow = {
+  label:  string;
+  amount: number;
+};
+
+export type ArusKasData = {
+  pemasukan:        ArusKasRow[];
+  pengeluaran:      ArusKasRow[];
+  totalPemasukan:   number;
+  totalPengeluaran: number;
+  saldo:            number;
+};
+
+export type BukuBesarRow = {
+  date:            string;
+  referenceNumber: string;
+  description:     string;
+  note:            string | null;
+  debit:           number;
+  credit:          number;
+  balance:         number;
+};
+
+/** Neraca Saldo: saldo debit/kredit per akun dalam periode */
+export async function getLaporanNeracaSaldoAction(
+  slug: string,
+  start: string,
+  end: string
+): Promise<ActionResult<NeracaSaldoRow[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const rows = await db
+    .select({
+      code:        schema.accounts.code,
+      name:        schema.accounts.name,
+      type:        schema.accounts.type,
+      totalDebit:  sql<string>`COALESCE(SUM(CASE WHEN ${schema.transactionEntries.type} = 'debit' AND ${schema.transactions.date} BETWEEN ${start}::date AND ${end}::date THEN ${schema.transactionEntries.amount}::numeric ELSE 0 END), 0)`,
+      totalCredit: sql<string>`COALESCE(SUM(CASE WHEN ${schema.transactionEntries.type} = 'credit' AND ${schema.transactions.date} BETWEEN ${start}::date AND ${end}::date THEN ${schema.transactionEntries.amount}::numeric ELSE 0 END), 0)`,
+    })
+    .from(schema.accounts)
+    .leftJoin(schema.transactionEntries, eq(schema.transactionEntries.accountId, schema.accounts.id))
+    .leftJoin(schema.transactions, eq(schema.transactions.id, schema.transactionEntries.transactionId))
+    .where(eq(schema.accounts.isActive, true))
+    .groupBy(schema.accounts.id, schema.accounts.code, schema.accounts.name, schema.accounts.type)
+    .orderBy(schema.accounts.code);
+
+  return {
+    success: true,
+    data: rows.map((r) => {
+      const d = parseFloat(String(r.totalDebit));
+      const c = parseFloat(String(r.totalCredit));
+      return { code: r.code, name: r.name, type: r.type, totalDebit: d, totalCredit: c, balance: d - c };
+    }),
+  };
+}
+
+/** Laporan Laba Rugi: pendapatan vs beban dalam periode */
+export async function getLaporanLabaRugiAction(
+  slug: string,
+  start: string,
+  end: string
+): Promise<ActionResult<LabaRugiData>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const rows = await db
+    .select({
+      code:        schema.accounts.code,
+      name:        schema.accounts.name,
+      type:        schema.accounts.type,
+      totalDebit:  sql<string>`COALESCE(SUM(CASE WHEN ${schema.transactionEntries.type} = 'debit' THEN ${schema.transactionEntries.amount}::numeric ELSE 0 END), 0)`,
+      totalCredit: sql<string>`COALESCE(SUM(CASE WHEN ${schema.transactionEntries.type} = 'credit' THEN ${schema.transactionEntries.amount}::numeric ELSE 0 END), 0)`,
+    })
+    .from(schema.accounts)
+    .innerJoin(schema.transactionEntries, eq(schema.transactionEntries.accountId, schema.accounts.id))
+    .innerJoin(schema.transactions, and(
+      eq(schema.transactions.id, schema.transactionEntries.transactionId),
+      gte(schema.transactions.date, start),
+      lte(schema.transactions.date, end)
+    ))
+    .where(sql`${schema.accounts.type} IN ('income', 'expense') AND ${schema.accounts.isActive} = true`)
+    .groupBy(schema.accounts.id, schema.accounts.code, schema.accounts.name, schema.accounts.type)
+    .orderBy(schema.accounts.code);
+
+  const result: LabaRugiRow[] = rows.map((r) => {
+    const d = parseFloat(String(r.totalDebit));
+    const c = parseFloat(String(r.totalCredit));
+    // Income: saldo normal kredit → amount = credit - debit
+    // Expense: saldo normal debit → amount = debit - credit
+    const amount = r.type === "income" ? (c - d) : (d - c);
+    return { code: r.code, name: r.name, type: r.type as "income" | "expense", amount };
+  });
+
+  const totalIncome  = result.filter(r => r.type === "income").reduce((s, r) => s + r.amount, 0);
+  const totalExpense = result.filter(r => r.type === "expense").reduce((s, r) => s + r.amount, 0);
+
+  return { success: true, data: { rows: result, totalIncome, totalExpense, netProfit: totalIncome - totalExpense } };
+}
+
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  order:              "Penjualan Toko",
+  donation:           "Donasi / Infaq",
+  event_registration: "Pendaftaran Event",
+  invoice:            "Tagihan",
+  manual:             "Pemasukan Manual",
+};
+
+const PURPOSE_TYPE_LABELS: Record<string, string> = {
+  refund:          "Pengembalian Dana",
+  expense:         "Biaya Operasional",
+  grant:           "Bantuan / Hibah",
+  transfer:        "Transfer Internal",
+  donation_payout: "Penyaluran Donasi",
+  manual:          "Pengeluaran Manual",
+};
+
+/** Laporan Arus Kas: ringkasan pemasukan & pengeluaran dalam periode */
+export async function getLaporanArusKasAction(
+  slug: string,
+  start: string,
+  end: string
+): Promise<ActionResult<ArusKasData>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const pemasukanRows = await db
+    .select({
+      sourceType: schema.payments.sourceType,
+      total:      sql<string>`COALESCE(SUM(${schema.payments.amount}::numeric), 0)`,
+    })
+    .from(schema.payments)
+    .where(and(
+      eq(schema.payments.status, "paid"),
+      gte(schema.payments.confirmedAt, new Date(start)),
+      lte(schema.payments.confirmedAt, new Date(end + "T23:59:59"))
+    ))
+    .groupBy(schema.payments.sourceType);
+
+  const pengeluaranRows = await db
+    .select({
+      purposeType: schema.disbursements.purposeType,
+      total:       sql<string>`COALESCE(SUM(${schema.disbursements.amount}::numeric), 0)`,
+    })
+    .from(schema.disbursements)
+    .where(and(
+      eq(schema.disbursements.status, "paid"),
+      gte(schema.disbursements.paidAt, new Date(start)),
+      lte(schema.disbursements.paidAt, new Date(end + "T23:59:59"))
+    ))
+    .groupBy(schema.disbursements.purposeType);
+
+  const pemasukan: ArusKasRow[]   = pemasukanRows.map((r) => ({
+    label:  SOURCE_TYPE_LABELS[r.sourceType] ?? r.sourceType,
+    amount: parseFloat(String(r.total)),
+  }));
+  const pengeluaran: ArusKasRow[] = pengeluaranRows.map((r) => ({
+    label:  PURPOSE_TYPE_LABELS[r.purposeType] ?? r.purposeType,
+    amount: parseFloat(String(r.total)),
+  }));
+
+  const totalPemasukan   = pemasukan.reduce((s, r) => s + r.amount, 0);
+  const totalPengeluaran = pengeluaran.reduce((s, r) => s + r.amount, 0);
+
+  return { success: true, data: { pemasukan, pengeluaran, totalPemasukan, totalPengeluaran, saldo: totalPemasukan - totalPengeluaran } };
+}
+
+/** Buku Besar: riwayat semua transaksi per akun dalam periode */
+export async function getLaporanBukuBesarAction(
+  slug: string,
+  accountId: string,
+  start: string,
+  end: string
+): Promise<ActionResult<BukuBesarRow[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!accountId) return { success: false, error: "Pilih akun terlebih dahulu." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const entries = await db
+    .select({
+      date:            schema.transactions.date,
+      referenceNumber: schema.transactions.referenceNumber,
+      description:     schema.transactions.description,
+      note:            schema.transactionEntries.note,
+      type:            schema.transactionEntries.type,
+      amount:          schema.transactionEntries.amount,
+    })
+    .from(schema.transactionEntries)
+    .innerJoin(schema.transactions, and(
+      eq(schema.transactions.id, schema.transactionEntries.transactionId),
+      gte(schema.transactions.date, start),
+      lte(schema.transactions.date, end)
+    ))
+    .where(eq(schema.transactionEntries.accountId, accountId))
+    .orderBy(schema.transactions.date, schema.transactions.createdAt);
+
+  let runningBalance = 0;
+  const rows: BukuBesarRow[] = entries.map((e) => {
+    const amount = parseFloat(String(e.amount));
+    const debit  = e.type === "debit"  ? amount : 0;
+    const credit = e.type === "credit" ? amount : 0;
+    runningBalance += debit - credit;
+    return {
+      date:            e.date,
+      referenceNumber: e.referenceNumber ?? "—",
+      description:     e.description,
+      note:            e.note,
+      debit,
+      credit,
+      balance:         runningBalance,
+    };
+  });
+
+  return { success: true, data: rows };
 }

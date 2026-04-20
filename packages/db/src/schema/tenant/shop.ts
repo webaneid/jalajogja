@@ -75,6 +75,7 @@ export function createOrdersTable(s: ReturnType<typeof pgSchema>) {
     orderNumber: text("order_number").notNull().unique(), // misal: ORD-20250411-001
     // Nullable — untuk donasi/pembelian dari luar yang tidak punya akun
     customerId: uuid("customer_id"),        // FK → members.id via SQL migration
+    profileId:  uuid("profile_id"),         // FK → public.profiles.id via SQL migration
     customerName: text("customer_name").notNull(),
     customerEmail: text("customer_email"),
     customerPhone: text("customer_phone"),

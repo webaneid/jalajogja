@@ -51,6 +51,7 @@ export default async function EditPagePage({
           title:    page.title,
           pageSlug: page.slug,
           content:  page.content,
+          template: page.template,
           status:   page.status,
           order:    page.order,
           coverId:  page.coverId,

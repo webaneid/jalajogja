@@ -144,6 +144,7 @@ export async function createPageAction(
         content:  data.content          ?? null,
         coverId:  data.coverId          ?? null,
         order:    data.order            ?? 0,
+        template: data.template         ?? "default",
         status:   data.status           ?? "draft",
         publishedAt: data.status === "published" ? new Date() : null,
         metaTitle:   data.metaTitle?.trim()  || null,
@@ -428,6 +429,7 @@ export type PageFormData = {
   content?: string | null;
   coverId?: string | null;
   order?: number;
+  template?: "default" | "landing" | "contact" | "about" | "linktree";
   status?: ContentStatus;
   publishedAt?: string | null;
   // SEO
@@ -536,10 +538,11 @@ export async function updatePageAction(
       .set({
         title:    data.title.trim(),
         slug:     newSlug,
-        content:  data.content ?? null,
-        coverId:  data.coverId ?? null,
-        order:    data.order ?? 0,
-        status:   data.status ?? "draft",
+        content:  data.content  ?? null,
+        coverId:  data.coverId  ?? null,
+        order:    data.order    ?? 0,
+        template: data.template ?? "default",
+        status:   data.status   ?? "draft",
         publishedAt,
         metaTitle:      data.metaTitle?.trim()      || null,
         metaDesc:       data.metaDesc?.trim()       || null,

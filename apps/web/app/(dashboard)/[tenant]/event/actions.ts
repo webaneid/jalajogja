@@ -2,7 +2,7 @@
 
 import { eq, count, inArray, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createTenantDb, generateFinancialNumber, recordIncome } from "@jalajogja/db";
+import { createTenantDb, generateFinancialNumber, recordIncome, createLinkedInvoice, syncInvoicePayment } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 
@@ -596,6 +596,25 @@ export async function registerForEventAction(
         })
         .returning({ id: schema.payments.id });
 
+      // Fetch nama tiket untuk invoice item
+      const ticketName = ticket.name ?? "Tiket Event";
+
+      // Buat invoice universal untuk registrasi berbayar
+      await createLinkedInvoice(tenantDb, {
+        sourceType:    "event_registration",
+        sourceId:      reg.id,
+        customerName:  data.attendeeName.trim(),
+        customerPhone: data.attendeePhone?.trim() ?? null,
+        customerEmail: data.attendeeEmail?.trim() ?? null,
+        items: [{
+          itemType:  "ticket",
+          itemId:    data.ticketId,
+          name:      ticketName,
+          unitPrice: price,
+          quantity:  1,
+        }],
+      });
+
       revalidatePath(`/${slug}/event/acara/${data.eventId}`);
       return {
         success: true,
@@ -699,6 +718,14 @@ export async function confirmRegistrationPaymentAction(
       .update(schema.eventRegistrations)
       .set({ status: "confirmed", updatedAt: new Date() })
       .where(eq(schema.eventRegistrations.id, reg.id));
+
+    // Sync invoice yang terhubung ke registrasi ini
+    await syncInvoicePayment(tenantDb, {
+      sourceType: "event_registration",
+      sourceId:   reg.id,
+      paymentId:  paymentId,
+      amount,
+    });
 
     revalidatePath(`/${slug}/event/acara/${reg.eventId}`);
     return { success: true, data: undefined };

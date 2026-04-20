@@ -109,6 +109,7 @@ export function createDonationsTable(s: ReturnType<typeof pgSchema>) {
 
     // Donatur — anggota login (member_id terisi) atau publik tanpa akun (null)
     memberId:     uuid("member_id"),     // FK → public.members.id via SQL (nullable)
+    profileId:    uuid("profile_id"),    // FK → public.profiles.id via SQL (nullable)
     donorName:    text("donor_name").notNull(),
     donorPhone:   text("donor_phone"),
     donorEmail:   text("donor_email"),

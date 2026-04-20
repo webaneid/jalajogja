@@ -26,9 +26,9 @@ export default async function PemasukanNewPage({
       </div>
 
       <div>
-        <h1 className="text-xl font-semibold">Catat Pemasukan Manual</h1>
+        <h1 className="text-xl font-semibold">Catat Pemasukan</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Input uang masuk secara manual (iuran, donasi, atau sumber lainnya).
+          Catat pembayaran dari berbagai sumber: manual, pesanan toko, donasi, atau tiket event.
         </p>
       </div>
 

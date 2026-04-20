@@ -125,11 +125,12 @@ const DOC_TYPE_PREFIX: Record<string, string> = {
   payment:      "PAY",
   disbursement: "DIS",
   journal:      "JNL",
+  invoice:      "INV",
 };
 
 export async function generateFinancialNumber(
   { db, schema }: TenantDb,
-  type: "payment" | "disbursement" | "journal",
+  type: "payment" | "disbursement" | "journal" | "invoice",
   now: Date = new Date()
 ): Promise<string> {
   const year  = now.getFullYear();

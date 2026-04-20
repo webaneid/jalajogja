@@ -2,17 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { saveAccountMappingsAction } from "@/app/(dashboard)/[tenant]/finance/actions";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 
 type AccountOption = {
-  id: string;
+  id:   string;
   code: string;
   name: string;
   type: string;
 };
 
 type Props = {
-  slug: string;
-  accounts: AccountOption[];
+  slug:            string;
+  accounts:        AccountOption[];
   initialMappings: Record<string, string | null>;
 };
 
@@ -21,6 +22,7 @@ const MAPPING_FIELDS = [
   { key: "bank_default",    label: "Rekening Bank (default)",  hint: "Dipakai untuk Transfer / QRIS / Gateway" },
   { key: "income_manual",   label: "Pendapatan Iuran",         hint: "Kredit saat konfirmasi pemasukan manual" },
   { key: "income_toko",     label: "Pendapatan Usaha (Toko)",  hint: "Kredit saat konfirmasi pembayaran order" },
+  { key: "income_event",    label: "Pendapatan Event",         hint: "Kredit saat konfirmasi pendaftaran event (akun 4400)" },
   { key: "dana_titipan",    label: "Dana Titipan (Donasi)",    hint: "Kredit saat konfirmasi pembayaran donasi (akun kewajiban 2200)" },
   { key: "expense_default", label: "Beban Operasional",        hint: "Debit saat pengeluaran dibayar" },
 ] as const;
@@ -34,6 +36,14 @@ export function AccountMappingsForm({ slug, accounts, initialMappings }: Props) 
   const [saved,   setSaved]   = useState(false);
   const [error,   setError]   = useState("");
   const [pending, startTransition] = useTransition();
+
+  const options: ComboboxOption[] = [
+    { value: "", label: "— Pilih akun —" },
+    ...accounts.map((acc) => ({
+      value: acc.id,
+      label: `${acc.code} · ${acc.name}`,
+    })),
+  ];
 
   function handleChange(key: string, value: string) {
     setMappings((prev) => ({ ...prev, [key]: value }));
@@ -66,18 +76,13 @@ export function AccountMappingsForm({ slug, accounts, initialMappings }: Props) 
             <p className="text-xs text-muted-foreground">{field.hint}</p>
           </div>
           <div className="sm:col-span-2">
-            <select
+            <Combobox
+              options={options}
               value={mappings[field.key] ?? ""}
-              onChange={(e) => handleChange(field.key, e.target.value)}
-              className="w-full rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              <option value="">— Pilih akun —</option>
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.code} · {acc.name}
-                </option>
-              ))}
-            </select>
+              onValueChange={(val) => handleChange(field.key, val)}
+              placeholder="— Pilih akun —"
+              searchPlaceholder="Cari kode atau nama akun..."
+            />
           </div>
         </div>
       ))}

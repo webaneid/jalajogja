@@ -2,7 +2,7 @@
 
 import { eq, and, sql, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createTenantDb, recordIncome, generateFinancialNumber } from "@jalajogja/db";
+import { createTenantDb, recordIncome, generateFinancialNumber, createLinkedInvoice, syncInvoicePayment } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 
@@ -509,6 +509,25 @@ export async function createOrderAction(
       .insert(schema.orderItems)
       .values(itemRows.map((r) => ({ ...r, orderId: order.id })));
 
+    // Buat invoice universal untuk order ini
+    const tenantDb = createTenantDb(slug);
+    await createLinkedInvoice(tenantDb, {
+      sourceType:    "order",
+      sourceId:      order.id,
+      customerName:  data.customerName.trim(),
+      customerPhone: data.customerPhone?.trim() ?? null,
+      customerEmail: data.customerEmail?.trim() ?? null,
+      items: itemRows.map((r) => ({
+        itemType:  "product" as const,
+        itemId:    r.productId,
+        name:      r.productName,
+        unitPrice: parseFloat(r.priceAtOrder),
+        quantity:  r.qty,
+      })),
+      discount: discount,
+      createdBy: access.userId,
+    });
+
     revalidateToko(slug);
     return { success: true, data: { orderId: order.id, orderNumber: order.orderNumber } };
   } catch (err) {
@@ -700,6 +719,14 @@ export async function confirmOrderPaymentAction(
       .update(schema.orders)
       .set({ status: "paid", updatedAt: new Date() })
       .where(eq(schema.orders.id, orderId));
+
+    // Sync invoice yang terhubung ke order ini
+    await syncInvoicePayment(tenantDb, {
+      sourceType: "order",
+      sourceId:   orderId,
+      paymentId:  paymentId,
+      amount,
+    });
 
     revalidateToko(slug);
     return { success: true, data: undefined };

@@ -2,7 +2,7 @@
 
 import { eq, and, sql, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createTenantDb, recordIncome, generateFinancialNumber } from "@jalajogja/db";
+import { createTenantDb, recordIncome, generateFinancialNumber, createLinkedInvoice, syncInvoicePayment } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 
@@ -389,6 +389,22 @@ export async function createDonationAction(
       })
       .returning({ id: schema.payments.id });
 
+    // Buat invoice universal untuk donasi ini
+    await createLinkedInvoice(tenantDb, {
+      sourceType:    "donation",
+      sourceId:      donation.id,
+      customerName:  data.donorName.trim(),
+      customerPhone: data.donorPhone ?? null,
+      customerEmail: data.donorEmail ?? null,
+      memberId:      data.memberId   ?? null,
+      items: [{
+        itemType:  "donation",
+        name:      `Donasi${data.donationType !== "donasi" ? ` (${data.donationType})` : ""}`,
+        unitPrice: data.amount,
+        quantity:  1,
+      }],
+    });
+
     revalidateDonasi(slug);
     return {
       success: true,
@@ -483,6 +499,14 @@ export async function confirmDonationAction(
         })
         .where(eq(schema.campaigns.id, donation.campaignId));
     }
+
+    // Sync invoice yang terhubung ke donasi ini
+    await syncInvoicePayment(tenantDb, {
+      sourceType: "donation",
+      sourceId:   donation.id,
+      paymentId:  paymentId,
+      amount,
+    });
 
     revalidateDonasi(slug);
     if (donation.campaignId)

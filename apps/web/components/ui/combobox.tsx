@@ -35,6 +35,8 @@ type Props = {
   emptyText?: string;
   disabled?: boolean;
   className?: string;
+  /** Jika diberikan, filter dilakukan server-side dan built-in filter dimatikan */
+  onSearchChange?: (q: string) => void;
 };
 
 export function Combobox({
@@ -46,6 +48,7 @@ export function Combobox({
   emptyText = "Tidak ada pilihan.",
   disabled = false,
   className,
+  onSearchChange,
 }: Props) {
   const [open, setOpen] = React.useState(false);
   const selected = options.find((o) => o.value === value);
@@ -73,8 +76,11 @@ export function Combobox({
         className="w-[var(--radix-popover-trigger-width)] p-0"
         align="start"
       >
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+        <Command shouldFilter={!onSearchChange}>
+          <CommandInput
+            placeholder={searchPlaceholder}
+            onValueChange={onSearchChange}
+          />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>

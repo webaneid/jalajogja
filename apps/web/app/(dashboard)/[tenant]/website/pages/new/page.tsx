@@ -38,6 +38,7 @@ export default async function PagesNewPage({
         coverId:  null,
         status:   "draft",
         order:    0,
+        template: "default",
         seo:      DEFAULT_SEO,
       }}
     />

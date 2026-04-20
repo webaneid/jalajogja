@@ -47,7 +47,7 @@ export const DISBURSEMENT_STATUSES = ["draft", "approved", "paid", "cancelled"] 
 export type DisbursementStatus = typeof DISBURSEMENT_STATUSES[number];
 
 // Tipe dokumen keuangan — untuk generate nomor 620-* per bulan
-export const FINANCIAL_DOC_TYPES = ["payment", "disbursement", "journal"] as const;
+export const FINANCIAL_DOC_TYPES = ["payment", "disbursement", "journal", "invoice"] as const;
 export type FinancialDocType = typeof FINANCIAL_DOC_TYPES[number];
 
 // ─── Chart of Accounts ────────────────────────────────────────────────────────

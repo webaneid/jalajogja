@@ -147,6 +147,7 @@ export function createEventRegistrationsTable(s: ReturnType<typeof pgSchema>) {
 
     // Peserta — anggota login atau publik tanpa akun
     memberId:      uuid("member_id"),   // FK → public.members.id via SQL (nullable)
+    profileId:     uuid("profile_id"),  // FK → public.profiles.id via SQL (nullable)
     attendeeName:  text("attendee_name").notNull(),
     attendeePhone: text("attendee_phone"),
     attendeeEmail: text("attendee_email"),

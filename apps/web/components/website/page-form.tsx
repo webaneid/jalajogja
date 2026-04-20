@@ -23,7 +23,11 @@ import type { PageFormData } from "@/app/(dashboard)/[tenant]/website/actions";
 import type { SeoValues } from "@/components/seo/seo-panel";
 import type { ContentStatus } from "@jalajogja/db";
 import { generateSlug } from "@/lib/seo";
-import { Globe, Save, Eye, EyeOff, ImagePlus, X, RefreshCw, Archive } from "lucide-react";
+import { Globe, Save, EyeOff, ImagePlus, X, RefreshCw, Archive } from "lucide-react";
+import { LandingBuilder } from "./landing-builder";
+import { ContactPageEditor } from "./contact-page-editor";
+import { LinktreeEditor } from "./linktree-editor";
+import type { PageTemplate } from "@/lib/page-templates";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,6 +41,7 @@ export type PageFormProps = {
     status:   ContentStatus;
     order:    number;
     coverId:  string | null;
+    template: PageTemplate;
     seo: SeoValues;
   };
 };
@@ -68,11 +73,12 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
   const [isPending, startTransition] = useTransition();
 
   // Form state
-  const [title, setTitle]       = useState(initialData.title);
-  const [pageSlug, setPageSlug] = useState(initialData.pageSlug);
-  const [content, setContent]   = useState<string | null>(initialData.content);
-  const [status, setStatus]     = useState<ContentStatus>(initialData.status);
-  const [order, setOrder]       = useState(initialData.order);
+  const [title, setTitle]         = useState(initialData.title);
+  const [pageSlug, setPageSlug]   = useState(initialData.pageSlug);
+  const [content, setContent]     = useState<string | null>(initialData.content);
+  const [status, setStatus]       = useState<ContentStatus>(initialData.status);
+  const [order, setOrder]         = useState(initialData.order);
+  const [template, setTemplate]   = useState<PageTemplate>(initialData.template);
   const [seoValues, setSeoValues] = useState<SeoValues>(initialData.seo);
 
   // Featured image
@@ -111,6 +117,7 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
       content,
       coverId:  coverId ?? null,
       order,
+      template,
       status:   overrideStatus ?? status,
       metaTitle:      seoValues.metaTitle,
       metaDesc:       seoValues.metaDesc,
@@ -207,13 +214,21 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
             />
           </div>
 
-          {/* Block Editor */}
-          <TiptapEditor
-            slug={slug}
-            content={content}
-            onChange={(json) => setContent(json)}
-            placeholder="Mulai menulis konten halaman..."
-          />
+          {/* Content area — conditional per template */}
+          {template === "landing" ? (
+            <LandingBuilder value={content} onChange={setContent} />
+          ) : template === "contact" ? (
+            <ContactPageEditor value={content} onChange={setContent} />
+          ) : template === "linktree" ? (
+            <LinktreeEditor value={content} onChange={setContent} />
+          ) : (
+            <TiptapEditor
+              slug={slug}
+              content={content}
+              onChange={(json) => setContent(json)}
+              placeholder="Mulai menulis konten halaman..."
+            />
+          )}
 
           {/* SEO Panel */}
           <SeoPanel
@@ -228,6 +243,34 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
         {/* ── Sidebar ───────────────────────────────────────────────── */}
         <div className="w-72 shrink-0 border-l border-border overflow-y-auto flex flex-col">
           <div className="flex-1 p-4 space-y-5">
+
+            {/* Template */}
+            <div className="space-y-2">
+              <SidebarLabel>Template Halaman</SidebarLabel>
+              <Select
+                value={template}
+                onValueChange={(val) => {
+                  setTemplate(val as PageTemplate);
+                  setContent(null); // reset content saat ganti template
+                }}
+              >
+                <SelectTrigger className="w-full text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default (Artikel)</SelectItem>
+                  <SelectItem value="about">Tentang Kami</SelectItem>
+                  <SelectItem value="landing">Landing Page</SelectItem>
+                  <SelectItem value="contact">Kontak</SelectItem>
+                  <SelectItem value="linktree">Linktree</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Mengganti template akan mereset konten halaman.
+              </p>
+            </div>
+
+            <Separator />
 
             {/* Status */}
             <div className="space-y-2">
