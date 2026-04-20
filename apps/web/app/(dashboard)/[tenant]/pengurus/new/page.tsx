@@ -1,7 +1,7 @@
-import { createTenantDb, db, members, tenantMemberships } from "@jalajogja/db";
+import { createTenantDb, db, members, tenantMemberships, contacts } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { OfficerForm } from "@/components/pengurus/officer-form";
@@ -16,9 +16,9 @@ export default async function PengurusNewPage({
   if (!access) redirect("/login");
 
   const { db: tenantDb, schema } = createTenantDb(slug);
-
-  // Fetch anggota aktif tenant (dari public.members via tenant_memberships)
   const tenantId = access.tenant.id;
+
+  // Fetch anggota aktif + email dari contacts
   const memberships = await db
     .select({ memberId: tenantMemberships.memberId })
     .from(tenantMemberships)
@@ -26,21 +26,17 @@ export default async function PengurusNewPage({
 
   const memberIds = memberships.map((m) => m.memberId);
 
-  const memberList = memberIds.length > 0
-    ? await db
-        .select({ id: members.id, name: members.name, memberNumber: members.memberNumber })
-        .from(members)
-        .where(eq(members.id, memberIds[0])) // placeholder — pakai inArray di bawah
-        .limit(0)
-    : [];
-
-  // Fetch dengan inArray jika ada member
-  let allMembers: { id: string; name: string; memberNumber: string | null }[] = [];
+  let allMembers: { id: string; name: string; memberNumber: string | null; email: string | null }[] = [];
   if (memberIds.length > 0) {
-    const { inArray } = await import("drizzle-orm");
     allMembers = await db
-      .select({ id: members.id, name: members.name, memberNumber: members.memberNumber })
+      .select({
+        id:           members.id,
+        name:         members.name,
+        memberNumber: members.memberNumber,
+        email:        contacts.email,
+      })
       .from(members)
+      .leftJoin(contacts, eq(contacts.id, members.contactId))
       .where(inArray(members.id, memberIds))
       .orderBy(members.name);
   }
@@ -51,6 +47,12 @@ export default async function PengurusNewPage({
     .from(schema.divisions)
     .where(eq(schema.divisions.isActive, true))
     .orderBy(schema.divisions.sortOrder, schema.divisions.name);
+
+  // Fetch custom roles
+  const customRoles = await tenantDb
+    .select({ id: schema.customRoles.id, name: schema.customRoles.name })
+    .from(schema.customRoles)
+    .orderBy(schema.customRoles.name);
 
   return (
     <div className="p-6 space-y-6">
@@ -66,13 +68,16 @@ export default async function PengurusNewPage({
 
       <div>
         <h1 className="text-xl font-semibold">Tambah Pengurus</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Pilih anggota dan isi jabatannya</p>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Pilih anggota, isi jabatan, dan opsional aktifkan akses dashboard sekaligus.
+        </p>
       </div>
 
       <OfficerForm
         slug={slug}
         members={allMembers}
         divisions={divisions.map((d) => ({ ...d, code: d.code ?? null }))}
+        customRoles={customRoles}
       />
     </div>
   );

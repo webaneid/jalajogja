@@ -1,4 +1,4 @@
-import { createTenantDb, db, members, tenantMemberships } from "@jalajogja/db";
+import { createTenantDb, db, members, tenantMemberships, contacts } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
@@ -28,8 +28,9 @@ export default async function PengurusEditPage({
 
   // Fetch member data untuk officer ini
   const [memberData] = await db
-    .select({ id: members.id, name: members.name, memberNumber: members.memberNumber })
+    .select({ id: members.id, name: members.name, memberNumber: members.memberNumber, email: contacts.email })
     .from(members)
+    .leftJoin(contacts, eq(contacts.id, members.contactId))
     .where(eq(members.id, officer.memberId))
     .limit(1);
 
@@ -43,8 +44,9 @@ export default async function PengurusEditPage({
   const memberIds = memberships.map((m) => m.memberId);
   const allMembers = memberIds.length > 0
     ? await db
-        .select({ id: members.id, name: members.name, memberNumber: members.memberNumber })
+        .select({ id: members.id, name: members.name, memberNumber: members.memberNumber, email: contacts.email })
         .from(members)
+        .leftJoin(contacts, eq(contacts.id, members.contactId))
         .where(inArray(members.id, memberIds))
         .orderBy(members.name)
     : [];
@@ -55,6 +57,12 @@ export default async function PengurusEditPage({
     .from(schema.divisions)
     .where(eq(schema.divisions.isActive, true))
     .orderBy(schema.divisions.sortOrder, schema.divisions.name);
+
+  // Fetch custom roles
+  const customRoles = await tenantDb
+    .select({ id: schema.customRoles.id, name: schema.customRoles.name })
+    .from(schema.customRoles)
+    .orderBy(schema.customRoles.name);
 
   return (
     <div className="p-6 space-y-6">
@@ -78,6 +86,7 @@ export default async function PengurusEditPage({
         officerId={officerId}
         members={allMembers}
         divisions={divisions.map((d) => ({ ...d, code: d.code ?? null }))}
+        customRoles={customRoles}
         defaultValues={{
           memberId:    officer.memberId,
           memberName:  memberData?.name ?? "",

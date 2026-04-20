@@ -1,10 +1,11 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createTenantDb } from "@jalajogja/db";
+import { createTenantDb, db, members, tenantMemberships, contacts, user as authUserTable } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
+import { auth } from "@/lib/auth";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -172,6 +173,126 @@ export async function deleteOfficerAction(
 
   revalidatePengurus(slug);
   return { success: true, data: undefined };
+}
+
+// ─── Buat Pengurus + Aktifkan Akun Sekaligus ─────────────────────────────────
+
+export type OfficerWithAccountData = OfficerData & {
+  // Jika activate = true, isi field di bawah
+  activate:              boolean;
+  activationEmail?:      string;
+  activationPassword?:   string;
+  activationRole?:       "ketua" | "sekretaris" | "bendahara" | "custom";
+  activationCustomRoleId?: string;
+  activationName?:       string;
+};
+
+export async function createOfficerWithAccountAction(
+  slug: string,
+  data: OfficerWithAccountData
+): Promise<ActionResult<{ officerId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "pengurus")) return { success: false, error: "Akses ditolak." };
+
+  if (!data.memberId?.trim()) return { success: false, error: "Anggota wajib dipilih." };
+  if (!data.position?.trim()) return { success: false, error: "Jabatan wajib diisi." };
+  if (!data.periodStart)      return { success: false, error: "Tanggal mulai wajib diisi." };
+
+  if (data.activate) {
+    if (!data.activationEmail?.trim())    return { success: false, error: "Email wajib diisi untuk aktivasi akun." };
+    if (!data.activationPassword || data.activationPassword.length < 8)
+      return { success: false, error: "Password minimal 8 karakter." };
+    if (!data.activationRole)             return { success: false, error: "Role wajib dipilih." };
+    if (data.activationRole === "custom" && !data.activationCustomRoleId)
+      return { success: false, error: "Role kustom wajib dipilih." };
+  }
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  // Validasi member ada di tenant
+  const [membership] = await db
+    .select({ memberId: tenantMemberships.memberId })
+    .from(tenantMemberships)
+    .where(and(eq(tenantMemberships.tenantId, access.tenant.id), eq(tenantMemberships.memberId, data.memberId)))
+    .limit(1);
+  if (!membership) return { success: false, error: "Anggota tidak ditemukan di cabang ini." };
+
+  let userId: string | null = null;
+
+  // ── Aktivasi akun dashboard ───────────────────────────────────────────────
+  if (data.activate) {
+    // Cek member belum jadi user di tenant ini
+    const [existingByMember] = await tenantDb
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.memberId, data.memberId))
+      .limit(1);
+    if (existingByMember) return { success: false, error: "Anggota ini sudah memiliki akses dashboard." };
+
+    const email = data.activationEmail!.toLowerCase().trim();
+
+    // Cek email di Better Auth
+    const [existingAuth] = await db
+      .select({ id: authUserTable.id })
+      .from(authUserTable)
+      .where(eq(authUserTable.email, email))
+      .limit(1);
+
+    if (existingAuth) {
+      // Pakai akun existing (pengurus multi-cabang)
+      const [existingByAuth] = await tenantDb
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.betterAuthUserId, existingAuth.id))
+        .limit(1);
+      if (existingByAuth) return { success: false, error: "Email ini sudah terdaftar sebagai pengguna dashboard ini." };
+      userId = existingAuth.id;
+    } else {
+      // Buat akun baru via Better Auth
+      const result = await auth.api.signUpEmail({
+        body: {
+          name:     (data.activationName ?? data.memberId).trim(),
+          email,
+          password: data.activationPassword!,
+        },
+      });
+      if (!result?.user?.id) return { success: false, error: "Gagal membuat akun login." };
+      userId = result.user.id;
+    }
+
+    // Insert ke tenant.users
+    await tenantDb.insert(schema.users).values({
+      betterAuthUserId: userId,
+      memberId:         data.memberId,
+      role:             data.activationRole!,
+      customRoleId:     data.activationRole === "custom" ? (data.activationCustomRoleId ?? null) : null,
+    });
+  }
+
+  // ── Buat officer record ───────────────────────────────────────────────────
+  try {
+    const [officer] = await tenantDb
+      .insert(schema.officers)
+      .values({
+        memberId:    data.memberId,
+        divisionId:  data.divisionId  || null,
+        position:    data.position.trim(),
+        periodStart: data.periodStart,
+        periodEnd:   data.periodEnd   || null,
+        isActive:    data.isActive,
+        canSign:     data.canSign,
+        sortOrder:   data.sortOrder,
+        userId,
+      })
+      .returning({ id: schema.officers.id });
+
+    revalidatePengurus(slug);
+    return { success: true, data: { officerId: officer.id } };
+  } catch (e) {
+    console.error("createOfficerWithAccountAction:", e);
+    return { success: false, error: "Gagal menyimpan pengurus." };
+  }
 }
 
 // ─── Division Actions ─────────────────────────────────────────────────────────
