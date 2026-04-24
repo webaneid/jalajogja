@@ -25,17 +25,16 @@ export const FOOTER_DESIGN_LABELS: Record<FooterDesignId, string> = {
   light: "Terang",
 };
 
-// Registry — tambah desain baru di sini saja
 export const FOOTER_DESIGNS: Record<FooterDesignId, {
   label:       string;
   description: string;
 }> = {
   dark: {
     label:       "Gelap",
-    description: "Background abu gelap, teks putih. 3 kolom: logo+sosmed | navigasi | kontak.",
+    description: "Background gelap, teks putih. Logo + sosmed | nav | kontak.",
   },
   light: {
     label:       "Terang",
-    description: "Background putih, teks gelap. (Belum tersedia)",
+    description: "Background putih, teks gelap. Struktur identik dengan desain Gelap.",
   },
 };

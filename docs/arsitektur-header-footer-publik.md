@@ -215,25 +215,190 @@ kompatibel dengan registry.
 
 ## Desain Footer
 
-Footer tetap server component — tidak butuh session.
+Footer adalah server component — tidak butuh session.
 
 | Design ID | Label | Status |
 |-----------|-------|--------|
-| `dark` | Dark (default) | ✅ Sudah ada, dipindah ke `dark-footer.tsx` |
-| `light` | Terang | ⬜ Perencanaan, belum dieksekusi |
+| `dark` | Gelap (default) | ⚠️ Ada — layout LAMA (3 kolom datar), perlu refactor ke layout baru |
+| `light` | Terang | ⬜ Belum dieksekusi — layout identik dark, hanya warna berbeda |
 
-Props universal footer:
+---
+
+### Props Universal Footer
+
 ```typescript
 export type FooterProps = {
   tenantSlug:      string;
   siteName:        string;
   logoUrl:         string | null;
-  tagline:         string | null;
+  tagline:         string | null;   // slogan + dipakai sebagai deskripsi pendek di footer
   navMenu:         NavItem[];
   contactSettings: ContactSettings;
   primaryColor:    string;
 };
 ```
+
+**Catatan**: tidak ada field `description` terpisah. `tagline` sudah ada di settings general
+dan di-pass dari `layout.tsx` — dipakai sebagai teks deskripsi di footer.
+Jika di masa depan butuh deskripsi panjang terpisah, tambah key `site_description` ke settings general.
+
+---
+
+### Layout Default (Dark & Light)
+
+Struktur HTML **identik** untuk kedua mode — hanya variabel warna yang berbeda.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  SECTION 1 — Grid 2 kolom (gap-12)                             │
+│                                                                 │
+│  Kiri (~55%):                   Kanan (~45%):                  │
+│  [Logo]                         STAY CONNECTED (label kecil)   │
+│  NAMA TENANT (uppercase, kecil) Support Our Social Media       │
+│                                 (heading bold besar)           │
+│  Silaturahim, Sinergi, Berbagi  [deskripsi singkat]            │
+│  (tagline — heading bold besar) [ikon sosial bulat berwarna]   │
+│                                                                 │
+│  [deskripsi singkat organisasi]                                 │
+│  [ikon sosial bulat berwarna]                                   │
+├───────────────────── border separator ──────────────────────────┤
+│  SECTION 2 — Grid 2 kolom (gap-12)                             │
+│                                                                 │
+│  Kiri:                          Kanan:                         │
+│  NAVIGATION (label kecil)       CONTACT (label kecil)          │
+│  Useful Links (heading bold)    Contact Us (heading bold)       │
+│                                                                 │
+│  Menu 1    Menu 4               ALAMAT (sub-label kecil)       │
+│  Menu 2    Menu 5               [alamat detail]                │
+│  Menu 3    Menu 6               [email jika ada]               │
+│                                 [telepon jika ada]             │
+├─────────────── copyright bar (bg lebih gelap) ─────────────────┤
+│  Copyright © {year} {siteName}. All rights reserved.           │
+│                    Jalakarta v.0.0.1 developed with ❤️ by Webane │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Detail Tiap Elemen
+
+#### Kolom Kiri Section 1 — Identitas Organisasi
+
+| Elemen | Sumber Data | Catatan |
+|--------|-------------|---------|
+| Logo | `logoUrl` dari `settings.logo_url` | `<img class="h-14 w-auto object-contain">` |
+| Nama tenant | `siteName` | Uppercase, huruf kecil (`text-xs tracking-widest uppercase`), tampil di bawah logo |
+| Tagline / slogan | `tagline` | Heading bold besar (`text-2xl font-bold`), warna putih (dark) / abu gelap (light) |
+| Deskripsi | `description` | Paragraf `text-sm`, warna `text-gray-400` (dark) / `text-gray-600` (light), maks 2–3 kalimat |
+| Ikon sosial | `contactSettings.socials` | Bulat berwarna (brand color per platform), bukan emoji — lihat tabel ikon |
+
+#### Kolom Kanan Section 1 — Social Media CTA
+
+| Elemen | Konten | Catatan |
+|--------|--------|---------|
+| Label atas | "STAY CONNECTED" | `text-xs tracking-widest uppercase`, warna `text-gray-400` |
+| Heading | "Support Our Social Media" | `text-2xl font-bold`, warna putih (dark) / gelap (light) |
+| Deskripsi | "Ikuti kanal sosial kami untuk update berita, video, dan distribusi konten terbaru." | Teks statis / bisa dikonfigurasi |
+| Ikon sosial | Sama dengan kiri | Bulat berwarna, ukuran lebih besar (`w-10 h-10`) |
+
+#### Ikon Sosial — Brand Color Circles
+
+**Lucide-react TIDAK menyertakan brand icons** (Facebook, Instagram, dll tidak ada).
+Gunakan **SVG inline** per platform, bukan lucide.
+
+| Platform | Background | SVG Path |
+|----------|-----------|----------|
+| facebook | `#1877F2` | path huruf "f" |
+| youtube | `#FF0000` | path segitiga play |
+| instagram | `#E1306C` | path kamera |
+| tiktok | `#010101` | path "T" kustom |
+| twitter/x | `#1DA1F2` | path burung / "X" |
+| telegram | `#26A5E4` | path pesawat |
+| whatsapp | `#25D366` | path gelembung WA |
+| linkedin | `#0A66C2` | path "in" |
+
+```tsx
+// Pattern ikon sosial — SVG inline dalam lingkaran brand color:
+<a
+  href={url}
+  target="_blank"
+  rel="noopener noreferrer"
+  className="w-9 h-9 rounded-full flex items-center justify-center text-white transition-opacity hover:opacity-80"
+  style={{ backgroundColor: SOCIAL_BRAND_COLORS[platform] ?? "#6b7280" }}
+>
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+    {SOCIAL_SVG_PATHS[platform]}
+  </svg>
+</a>
+```
+
+#### Kolom Kiri Section 2 — Navigation
+
+- Label: "NAVIGATION" (`text-xs tracking-widest uppercase text-gray-400`)
+- Heading: "Useful Links" (`text-xl font-bold`)
+- Menu: CSS grid 2 kolom (`grid grid-cols-2 gap-x-8 gap-y-2`)
+- Jika menu ≤ 3 item → 1 kolom saja
+- Setiap link: `text-sm`, warna `text-gray-400 hover:text-white` (dark) / `text-gray-600 hover:text-gray-900` (light)
+
+#### Kolom Kanan Section 2 — Contact
+
+- Label: "CONTACT" (`text-xs tracking-widest uppercase text-gray-400`)
+- Heading: "Contact Us" (`text-xl font-bold`)
+- Sub-label "ALAMAT": `text-xs tracking-widest uppercase text-gray-500 mt-4`
+- Alamat: `text-sm font-semibold` (bold, seperti di screenshot)
+- Email + telepon: `text-sm text-gray-400`, dengan link `mailto:` / `tel:`
+
+#### Copyright Bar
+
+Bar paling bawah — bg sedikit lebih gelap dari body footer:
+- Dark mode: `bg-black/20` atau `border-t border-white/10`
+- Light mode: `border-t border-gray-200`
+
+```
+Kiri:  © {year} {siteName}. All rights reserved.
+Kanan: Jalakarta — developed with ❤️ by Webane
+```
+
+**Nama platform**: **Jalakarta** (bukan jalajogja — sedang dalam proses rebranding).
+
+```tsx
+<span>Jalakarta &mdash; developed with ❤️ by <span className="font-semibold">Webane</span></span>
+```
+
+---
+
+### Variabel Warna Dark vs Light
+
+| Elemen | Dark | Light |
+|--------|------|-------|
+| Background footer | `bg-gray-900` | `bg-gray-50` |
+| Background copyright bar | `bg-black/30` | `bg-gray-100` |
+| Heading text | `text-white` | `text-gray-900` |
+| Body text | `text-gray-400` | `text-gray-600` |
+| Label kecil (uppercase) | `text-gray-500` | `text-gray-400` |
+| Link hover | `hover:text-white` | `hover:text-gray-900` |
+| Separator border | `border-white/10` | `border-gray-200` |
+
+---
+
+### Status Refactor
+
+`dark-footer.tsx` saat ini masih layout **lama** (3 kolom datar). Perlu direfactor ke layout
+4-bagian (Section 1 kiri/kanan + Section 2 kiri/kanan + copyright bar) sesuai dokumentasi ini.
+`light-footer.tsx` dibuat sekalian saat refactor, struktur identik dengan dark.
+
+### Rencana Eksekusi Footer Baru
+
+```
+Step 1 — lib/footer-designs.ts        Update registry description (hapus mention description field)
+Step 2 — footers/dark-footer.tsx      Refactor total ke layout 2-section baru + SVG brand icons
+Step 3 — footers/light-footer.tsx     Buat baru — layout identik dark, variabel warna berbeda
+Step 4 — public-footer.tsx            Tambah case "light" ke switcher
+Step 5 — settings/website             Update FOOTER_DESIGNS description di registry
+Step 6 — tsc --noEmit                 0 errors
+```
+
+Setiap step: jalankan `tsc --noEmit` sebelum lanjut ke step berikutnya.
 
 ---
 
@@ -373,8 +538,8 @@ Step 10 — tsc --noEmit → 0 errors
 | `NAV_TYPE_ICONS` di `lib/nav-menu.ts` | ✅ Selesai |
 | `headers/classic-header.tsx` | ✅ Selesai |
 | `headers/flex-header.tsx` (2-row, client, authClient.useSession) | ✅ Selesai |
-| `footers/dark-footer.tsx` | ✅ Selesai |
-| `footers/light-footer.tsx` | ⬜ Perencanaan |
+| `footers/dark-footer.tsx` (layout baru 2-section + SVG brand icons) | ✅ Selesai |
+| `footers/light-footer.tsx` | ✅ Selesai |
 | Refactor wrapper `public-header.tsx` + `public-footer.tsx` | ✅ Selesai |
 | Update `PublicLayout` (+displaySettings, no session) | ✅ Selesai |
 | `GET /api/search?slug=&q=` | ✅ Selesai |

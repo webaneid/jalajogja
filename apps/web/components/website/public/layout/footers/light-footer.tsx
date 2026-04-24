@@ -1,8 +1,6 @@
 import { type NavItem, resolveNavHref } from "@/lib/nav-menu";
 import type { FooterProps } from "@/lib/footer-designs";
 
-// ── Brand colors & SVG paths ──────────────────────────────────────────────────
-
 const SOCIAL_BRAND_COLORS: Record<string, string> = {
   facebook:  "#1877F2",
   youtube:   "#FF0000",
@@ -37,16 +35,12 @@ function SocialIcon({ platform, url }: { platform: string; url: string }) {
       className="w-9 h-9 rounded-full flex items-center justify-center text-white transition-opacity hover:opacity-80"
       style={{ backgroundColor: bg }}
     >
-      <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-        {path}
-      </svg>
+      <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">{path}</svg>
     </a>
   );
 }
 
-// ── DarkFooter ────────────────────────────────────────────────────────────────
-
-export function DarkFooter({
+export function LightFooter({
   tenantSlug,
   siteName,
   logoUrl,
@@ -67,18 +61,17 @@ export function DarkFooter({
   const address = cs.contact_address?.detail;
   const year    = new Date().getFullYear();
 
-  // Bagi menu ke 2 kolom jika > 3
   const col1 = navMenu.slice(0, Math.ceil(navMenu.length / 2));
   const col2 = navMenu.slice(Math.ceil(navMenu.length / 2));
 
   return (
-    <footer className="bg-gray-900 text-gray-300">
+    <footer className="bg-gray-50 text-gray-600 border-t border-gray-200">
 
       {/* ── Section 1: Identitas + Social CTA ── */}
       <div className="max-w-6xl mx-auto px-4 pt-14 pb-10">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
 
-          {/* Kiri: Logo + Nama + Tagline + Sosmed kecil */}
+          {/* Kiri */}
           <div className="space-y-5">
             <a href={`/${tenantSlug}`} className="inline-block">
               {logoUrl ? (
@@ -94,9 +87,9 @@ export function DarkFooter({
               )}
             </a>
             <div>
-              <p className="text-xs tracking-widest uppercase text-gray-500">{siteName}</p>
+              <p className="text-xs tracking-widest uppercase text-gray-400">{siteName}</p>
               {tagline && (
-                <p className="text-2xl font-bold text-white mt-1 leading-snug">{tagline}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1 leading-snug">{tagline}</p>
               )}
             </div>
             {socials.length > 0 && (
@@ -108,14 +101,14 @@ export function DarkFooter({
             )}
           </div>
 
-          {/* Kanan: Stay Connected CTA */}
+          {/* Kanan: Stay Connected */}
           {socials.length > 0 && (
             <div className="space-y-4">
-              <p className="text-xs tracking-widest uppercase text-gray-500">Stay Connected</p>
-              <p className="text-2xl font-bold text-white leading-snug">
+              <p className="text-xs tracking-widest uppercase text-gray-400">Stay Connected</p>
+              <p className="text-2xl font-bold text-gray-900 leading-snug">
                 Support Our Social Media
               </p>
-              <p className="text-sm text-gray-400 leading-relaxed">
+              <p className="text-sm text-gray-600 leading-relaxed">
                 Ikuti kanal sosial kami untuk update berita, video, dan konten terbaru.
               </p>
               <div className="flex flex-wrap gap-3 pt-1">
@@ -128,18 +121,16 @@ export function DarkFooter({
         </div>
       </div>
 
-      {/* ── Separator ── */}
-      <div className="border-t border-white/10" />
+      <div className="border-t border-gray-200" />
 
       {/* ── Section 2: Nav + Kontak ── */}
       <div className="max-w-6xl mx-auto px-4 py-10">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
 
-          {/* Kiri: Navigation */}
           {navMenu.length > 0 && (
             <div className="space-y-4">
-              <p className="text-xs tracking-widest uppercase text-gray-500">Navigation</p>
-              <p className="text-xl font-bold text-white">Useful Links</p>
+              <p className="text-xs tracking-widest uppercase text-gray-400">Navigation</p>
+              <p className="text-xl font-bold text-gray-900">Useful Links</p>
               <div className={`grid gap-x-8 gap-y-2 ${navMenu.length > 3 ? "grid-cols-2" : "grid-cols-1"}`}>
                 {col1.map((item: NavItem) => (
                   <a
@@ -147,7 +138,7 @@ export function DarkFooter({
                     href={resolveNavHref(item, tenantSlug)}
                     target={item.external ? "_blank" : undefined}
                     rel={item.external ? "noopener noreferrer" : undefined}
-                    className="text-sm text-gray-400 hover:text-white transition-colors"
+                    className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
                   >
                     {item.label}
                   </a>
@@ -158,7 +149,7 @@ export function DarkFooter({
                     href={resolveNavHref(item, tenantSlug)}
                     target={item.external ? "_blank" : undefined}
                     rel={item.external ? "noopener noreferrer" : undefined}
-                    className="text-sm text-gray-400 hover:text-white transition-colors"
+                    className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
                   >
                     {item.label}
                   </a>
@@ -167,31 +158,22 @@ export function DarkFooter({
             </div>
           )}
 
-          {/* Kanan: Contact */}
           {(email || phone || address) && (
             <div className="space-y-4">
-              <p className="text-xs tracking-widest uppercase text-gray-500">Contact</p>
-              <p className="text-xl font-bold text-white">Contact Us</p>
+              <p className="text-xs tracking-widest uppercase text-gray-400">Contact</p>
+              <p className="text-xl font-bold text-gray-900">Contact Us</p>
               {address && (
                 <>
-                  <p className="text-xs tracking-widest uppercase text-gray-500 mt-4">Alamat</p>
-                  <p className="text-sm font-semibold text-gray-200">{address}</p>
+                  <p className="text-xs tracking-widest uppercase text-gray-400 mt-4">Alamat</p>
+                  <p className="text-sm font-semibold text-gray-800">{address}</p>
                 </>
               )}
-              <ul className="space-y-2 text-sm text-gray-400 mt-2">
+              <ul className="space-y-2 text-sm text-gray-600 mt-2">
                 {email && (
-                  <li>
-                    <a href={`mailto:${email}`} className="hover:text-white transition-colors">
-                      {email}
-                    </a>
-                  </li>
+                  <li><a href={`mailto:${email}`} className="hover:text-gray-900 transition-colors">{email}</a></li>
                 )}
                 {phone && (
-                  <li>
-                    <a href={`tel:${phone}`} className="hover:text-white transition-colors">
-                      {phone}
-                    </a>
-                  </li>
+                  <li><a href={`tel:${phone}`} className="hover:text-gray-900 transition-colors">{phone}</a></li>
                 )}
               </ul>
             </div>
@@ -200,10 +182,10 @@ export function DarkFooter({
       </div>
 
       {/* ── Copyright ── */}
-      <div className="bg-black/30 border-t border-white/10">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-500">
+      <div className="bg-gray-100 border-t border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-400">
           <span>© {year} {siteName}. All rights reserved.</span>
-          <span>Jalakarta &mdash; developed with ❤️ by <span className="text-gray-400 font-semibold">Webane</span></span>
+          <span>Jalakarta &mdash; developed with ❤️ by <span className="text-gray-600 font-semibold">Webane</span></span>
         </div>
       </div>
     </footer>

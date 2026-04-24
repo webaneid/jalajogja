@@ -1,12 +1,13 @@
 import type { FooterProps, FooterDesignId } from "@/lib/footer-designs";
-import { DarkFooter } from "./footers/dark-footer";
+import { DarkFooter }  from "./footers/dark-footer";
+import { LightFooter } from "./footers/light-footer";
 
 type Props = FooterProps & { designId?: FooterDesignId };
 
 export function PublicFooter({ designId = "dark", ...props }: Props) {
   switch (designId) {
+    case "light": return <LightFooter {...props} />;
     case "dark":
-    default: return <DarkFooter {...props} />;
-    // "light" belum diimplementasikan — fallback ke dark
+    default:      return <DarkFooter {...props} />;
   }
 }
