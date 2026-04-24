@@ -1,4 +1,6 @@
 // ─── Nav Menu Types — dipakai admin settings + PublicHeader ──────────────────
+import { FileText, Newspaper, Calendar, ShoppingBag, Heart, Link2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 export const NAV_ITEM_TYPES = [
   "page", "blog", "event", "toko", "donasi", "custom",
@@ -46,6 +48,15 @@ export function parseNavMenu(value: unknown): NavMenu {
     (item) => item && typeof item === "object" && item.id && item.label && item.type
   );
 }
+
+export const NAV_TYPE_ICONS: Record<NavItemType, LucideIcon> = {
+  page:   FileText,
+  blog:   Newspaper,
+  event:  Calendar,
+  toko:   ShoppingBag,
+  donasi: Heart,
+  custom: Link2,
+};
 
 export function createNavItem(): NavItem {
   return {

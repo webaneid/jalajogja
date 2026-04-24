@@ -18,18 +18,14 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button }   from "@/components/ui/button";
+import { Input }    from "@/components/ui/input";
+import { Label }    from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { GripVertical, PlusIcon, Trash2 } from "lucide-react";
+import { GripVertical, PlusIcon, Trash2, Check } from "lucide-react";
 import {
   type NavItem,
   type NavMenu,
@@ -37,7 +33,16 @@ import {
   NAV_ITEM_TYPE_LABELS,
   createNavItem,
 } from "@/lib/nav-menu";
-import { saveWebsiteSettingsAction } from "@/app/(dashboard)/[tenant]/settings/website/actions";
+import {
+  HEADER_DESIGN_IDS, HEADER_DESIGN_LABELS, HEADER_DESIGNS, type HeaderDesignId,
+} from "@/lib/header-designs";
+import {
+  FOOTER_DESIGN_IDS, FOOTER_DESIGN_LABELS, FOOTER_DESIGNS, type FooterDesignId,
+} from "@/lib/footer-designs";
+import {
+  saveWebsiteSettingsAction,
+  saveDesignSettingsAction,
+} from "@/app/(dashboard)/[tenant]/settings/website/actions";
 
 type PageOption = { slug: string; title: string };
 
@@ -77,7 +82,6 @@ function NavItemRow({
           <GripVertical className="h-4 w-4" />
         </button>
 
-        {/* Label */}
         <Input
           value={item.label}
           onChange={(e) => u({ label: e.target.value })}
@@ -85,7 +89,6 @@ function NavItemRow({
           className="h-8 text-xs flex-1"
         />
 
-        {/* Type */}
         <Select value={item.type} onValueChange={(v) => u({ type: v as NavItem["type"] })}>
           <SelectTrigger className="h-8 text-xs w-36 shrink-0">
             <SelectValue />
@@ -110,7 +113,6 @@ function NavItemRow({
         </Button>
       </div>
 
-      {/* Conditional: page picker atau custom URL */}
       {item.type === "page" && (
         <div className="pl-6">
           <Select
@@ -152,20 +154,78 @@ function NavItemRow({
   );
 }
 
+// ── Design Picker ─────────────────────────────────────────────────────────────
+
+function DesignCard<T extends string>({
+  id,
+  label,
+  description,
+  selected,
+  onSelect,
+}: {
+  id:          T;
+  label:       string;
+  description: string;
+  selected:    boolean;
+  onSelect:    (id: T) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(id)}
+      className={`relative text-left border-2 rounded-xl p-4 transition-all w-full ${
+        selected
+          ? "border-primary bg-primary/5"
+          : "border-border hover:border-primary/40 hover:bg-muted/40"
+      }`}
+    >
+      {selected && (
+        <span className="absolute top-2 right-2 h-5 w-5 rounded-full bg-primary flex items-center justify-center">
+          <Check className="h-3 w-3 text-primary-foreground" />
+        </span>
+      )}
+      {/* Wireframe preview */}
+      <div className="mb-3 h-16 bg-muted/60 rounded-lg overflow-hidden flex flex-col gap-1 p-2">
+        <div className="h-2.5 bg-muted-foreground/30 rounded-sm w-3/4" />
+        <div className="flex gap-1 mt-0.5">
+          {[1,2,3].map((i) => <div key={i} className="h-1.5 bg-muted-foreground/20 rounded-sm w-8" />)}
+        </div>
+        <div className="mt-auto h-1.5 bg-muted-foreground/10 rounded-sm w-full" />
+      </div>
+      <p className="text-sm font-medium">{label}</p>
+      <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{description}</p>
+    </button>
+  );
+}
+
 // ── WebsiteSettingsClient ─────────────────────────────────────────────────────
 
 type Props = {
-  slug:          string;
-  initialMenu:   NavMenu;
-  initialHome:   string;
-  pages:         PageOption[];
+  slug:                 string;
+  initialMenu:          NavMenu;
+  initialHome:          string;
+  initialHeaderDesign:  HeaderDesignId;
+  initialFooterDesign:  FooterDesignId;
+  pages:                PageOption[];
 };
 
-export function WebsiteSettingsClient({ slug, initialMenu, initialHome, pages }: Props) {
-  const [menu,     setMenu]     = useState<NavMenu>(initialMenu);
-  const [homePage, setHomePage] = useState(initialHome);
-  const [isPending, start]      = useTransition();
-  const [saved,    setSaved]    = useState(false);
+export function WebsiteSettingsClient({
+  slug,
+  initialMenu,
+  initialHome,
+  initialHeaderDesign,
+  initialFooterDesign,
+  pages,
+}: Props) {
+  const [menu,         setMenu]         = useState<NavMenu>(initialMenu);
+  const [homePage,     setHomePage]     = useState(initialHome);
+  const [headerDesign, setHeaderDesign] = useState<HeaderDesignId>(initialHeaderDesign);
+  const [footerDesign, setFooterDesign] = useState<FooterDesignId>(initialFooterDesign);
+
+  const [isPending,     start]     = useTransition();
+  const [isDesignPend,  startDes]  = useTransition();
+  const [saved,         setSaved]  = useState(false);
+  const [designSaved,   setDesSaved] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -207,9 +267,19 @@ export function WebsiteSettingsClient({ slug, initialMenu, initialHome, pages }:
     });
   }
 
+  function handleDesignSave() {
+    startDes(async () => {
+      const res = await saveDesignSettingsAction(slug, { headerDesign, footerDesign });
+      if (res.success) {
+        setDesSaved(true);
+        setTimeout(() => setDesSaved(false), 2500);
+      }
+    });
+  }
+
   return (
-    <div className="space-y-8">
-      {/* Homepage */}
+    <div className="space-y-10">
+      {/* ── Halaman Beranda ── */}
       <div className="space-y-3">
         <div>
           <Label className="text-sm font-semibold">Halaman Beranda</Label>
@@ -231,7 +301,7 @@ export function WebsiteSettingsClient({ slug, initialMenu, initialHome, pages }:
         </Select>
       </div>
 
-      {/* Nav Menu */}
+      {/* ── Menu Navigasi ── */}
       <div className="space-y-3">
         <div>
           <Label className="text-sm font-semibold">Menu Navigasi</Label>
@@ -281,9 +351,56 @@ export function WebsiteSettingsClient({ slug, initialMenu, initialHome, pages }:
         </Button>
       </div>
 
-      {/* Simpan */}
       <Button onClick={handleSave} disabled={isPending} className="w-full max-w-sm">
         {isPending ? "Menyimpan..." : saved ? "✓ Tersimpan" : "Simpan Pengaturan Website"}
+      </Button>
+
+      {/* ── Desain Header ── */}
+      <div className="space-y-3 pt-2 border-t border-border">
+        <div>
+          <Label className="text-sm font-semibold">Desain Header</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Tampilan header di website publik Anda.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {HEADER_DESIGN_IDS.map((id) => (
+            <DesignCard
+              key={id}
+              id={id}
+              label={HEADER_DESIGN_LABELS[id]}
+              description={HEADER_DESIGNS[id].description}
+              selected={headerDesign === id}
+              onSelect={setHeaderDesign}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* ── Desain Footer ── */}
+      <div className="space-y-3">
+        <div>
+          <Label className="text-sm font-semibold">Desain Footer</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Tampilan footer di website publik Anda.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {FOOTER_DESIGN_IDS.map((id) => (
+            <DesignCard
+              key={id}
+              id={id}
+              label={FOOTER_DESIGN_LABELS[id]}
+              description={FOOTER_DESIGNS[id].description}
+              selected={footerDesign === id}
+              onSelect={setFooterDesign}
+            />
+          ))}
+        </div>
+      </div>
+
+      <Button onClick={handleDesignSave} disabled={isDesignPend} className="w-full max-w-sm">
+        {isDesignPend ? "Menyimpan..." : designSaved ? "✓ Tersimpan" : "Simpan Desain"}
       </Button>
     </div>
   );

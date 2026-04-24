@@ -629,6 +629,10 @@ components/settings/website-settings-client.tsx     → drag & drop nav builder 
 
 ## Bagian 5: Public Layout (Header + Footer)
 
+> **Detail arsitektur header & footer multi-desain ada di `docs/arsitektur-header-footer-publik.md`.**
+> Bagian ini hanya ringkasan; semua keputusan desain, registry, props, dan urutan eksekusi
+> didokumentasikan di sana.
+
 ### PublicLayout — Server Component
 
 `app/(public)/[tenant]/layout.tsx` — diterapkan ke SEMUA route publik:
@@ -646,22 +650,21 @@ components/settings/website-settings-client.tsx     → drag & drop nav builder 
 └── invite/      ← TODO: tidak perlu header/footer, pisahkan nanti
 ```
 
-Layout fetch 3 grup settings sekali: `general`, `website`, `contact`.
+Layout fetch: `general`, `website`, `contact`, `display` (untuk `header_design` + `footer_design`).
+Juga resolve `currentUser` dari session Better Auth (member atau profile publik).
 
-### PublicHeader v1
+### PublicHeader — Multi-Design
 
-- Sticky top, bg-white, shadow-sm
-- Logo (dari `settings.logo_url`) + nama organisasi — kiri
-- Nav horizontal dari `nav_menu` settings — tengah/kanan (desktop)
-- Hamburger mobile → overlay drawer
-- File: `components/website/public/layout/public-header.tsx`
+- Wrapper `public-header.tsx` baca `header_design` dari settings → render komponen desain terpilih
+- Design registry: `lib/header-designs.ts` — saat ini: `flex` (default baru) + `classic` (lama)
+- Default: `"flex"` — dua row (TopBar: logo+search+lonceng+avatar; NavBar: menu+login/daftar)
+- Mobile: bottom navigation bar fixed (app-like), maks 4 item
 
-### PublicFooter v1
+### PublicFooter — Multi-Design
 
-- Background `gray-900`
-- 3 kolom: Logo+tagline+sosmed | Nav links | Kontak (email/phone/alamat)
-- Copyright bar bawah: "© {year} {orgName}. Powered by jalajogja"
-- File: `components/website/public/layout/public-footer.tsx`
+- Wrapper `public-footer.tsx` baca `footer_design` dari settings → render komponen desain terpilih
+- Design registry: `lib/footer-designs.ts` — saat ini: `dark` (default, lama) + `light` (perencanaan)
+- Default: `"dark"` — background gray-900, 3 kolom, copyright bar
 
 ---
 

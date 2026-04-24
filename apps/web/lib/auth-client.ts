@@ -1,5 +1,6 @@
-import { createAuthClient } from "better-auth/client";
+import { createAuthClient } from "better-auth/react";
 
-// Tanpa baseURL — otomatis pakai window.location.origin
-// Ini berarti selalu benar, tidak peduli port berubah saat dev
-export const { signIn, signUp, signOut, useSession } = createAuthClient();
+// React-aware auth client — useSession() tersedia sebagai React hook
+// Import dari "better-auth/react" agar atom di-wrap sebagai hook via useStore
+export const authClient = createAuthClient();
+export const { signIn, signUp, signOut } = authClient;

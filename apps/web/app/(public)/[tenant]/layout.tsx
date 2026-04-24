@@ -28,10 +28,11 @@ export default async function PublicLayout({
 
   const tenantClient = createTenantDb(slug);
 
-  const [generalSettings, websiteSettings, contactSettings] = await Promise.all([
+  const [generalSettings, websiteSettings, contactSettings, displaySettings] = await Promise.all([
     getSettings(tenantClient, "general"),
     getSettings(tenantClient, "website"),
     getSettings(tenantClient, "contact"),
+    getSettings(tenantClient, "display"),
   ]);
 
   const siteName     = (generalSettings.site_name    as string | undefined) ?? tenant.name;
@@ -39,10 +40,13 @@ export default async function PublicLayout({
   const logoUrl      = (generalSettings.logo_url      as string | undefined) ?? null;
   const primaryColor = (generalSettings.primary_color as string | undefined) ?? "#2563eb";
   const navMenu      = parseNavMenu(websiteSettings.nav_menu);
+  const headerDesign = (displaySettings.header_design as string | undefined) ?? "flex";
+  const footerDesign = (displaySettings.footer_design as string | undefined) ?? "dark";
 
   return (
     <div className="min-h-screen flex flex-col">
       <PublicHeader
+        designId={headerDesign as import("@/lib/header-designs").HeaderDesignId}
         tenantSlug={slug}
         siteName={siteName}
         logoUrl={logoUrl}
@@ -55,6 +59,7 @@ export default async function PublicLayout({
       </main>
 
       <PublicFooter
+        designId={footerDesign as import("@/lib/footer-designs").FooterDesignId}
         tenantSlug={slug}
         siteName={siteName}
         logoUrl={logoUrl}
