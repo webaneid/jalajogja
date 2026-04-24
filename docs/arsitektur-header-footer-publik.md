@@ -136,8 +136,8 @@ Dua row terpisah. Komponen ini `"use client"` — mengambil session via `authCli
 
 | Elemen | Detail |
 |--------|--------|
-| Logo | Jika `logoUrl` ada → `<img>`, tanpa `siteName`. Jika tidak ada → inisial bulat berwarna `primaryColor` + `siteName` |
-| Search | Input debounce 300ms → `GET /api/search?slug=&q=` → dropdown hasil |
+| Logo | Jika `logoUrl` ada → `<img class="h-12">` **tanpa teks nama**. Jika tidak ada → inisial bulat + `siteName` |
+| Search | Input full-width, `border-gray-300` (terlihat jelas), background putih, debounce 300ms → `GET /api/search?slug=&q=` |
 | Lonceng | Icon Bell — placeholder kosong. Tersambung ke Modul Pengumuman nanti |
 | Avatar | Inisial nama jika belum login. Jika login → inisial dari session user. Klik → dropdown (Profil / Keluar) atau tombol "Masuk" |
 
@@ -151,7 +151,7 @@ Dua row terpisah. Komponen ini `"use client"` — mengambil session via `authCli
 
 - Menu diambil dari `navMenu` prop (di-pass dari layout server)
 - Kanan: "Masuk" + "Daftar" jika belum login, atau dropdown user jika sudah login
-- Separator tipis (`border-b`) antara TopBar dan NavBar
+- Separator antara TopBar dan NavBar: `border-gray-200` (lebih terang dari search `border-gray-300`)
 
 ### Mobile — Bottom Navigation Bar
 
@@ -383,9 +383,17 @@ Step 10 — tsc --noEmit → 0 errors
 | Mobile bottom navigation bar | ✅ Selesai (dalam FlexHeader) |
 | Notifikasi lonceng | ⬜ Menunggu Modul Pengumuman |
 
-### Catatan Bug Fix
+### Catatan Bug Fix & UI Decisions
 
 - `auth-client.ts` diubah dari `better-auth/client` → `better-auth/react` agar `useSession`
   tersedia sebagai React hook. Import lama menyebabkan `useSession` menjadi nanostores Atom
   yang tidak callable — TypeScript error TS2349.
 - Events table pakai kolom `title` bukan `name` (berbeda dengan `event_categories`).
+
+### UI: Logo, Search, Border (FlexHeader)
+
+| Elemen | Keputusan | Alasan |
+|--------|-----------|--------|
+| Logo | Jika `logoUrl` ada → tampil logo saja (`h-12`), **tanpa teks nama** | Nama di sebelah logo redundant dan memenuhi ruang |
+| Search | `border-gray-300`, bg-white, lebar full-width | Border transparan sebelumnya tidak terlihat; full-width mengisi ruang TopBar lebih baik |
+| Border TopBar/NavBar | `border-gray-200` | Lebih terang dari search (`gray-300`) agar tidak mengalahkan search bar secara visual |

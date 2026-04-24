@@ -21,16 +21,18 @@ export function ClassicHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryC
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoUrl} alt={siteName} className="h-10 w-auto object-contain" />
             ) : (
-              <div
-                className="h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0"
-                style={{ backgroundColor: primaryColor }}
-              >
-                {siteName.charAt(0)}
-              </div>
+              <>
+                <div
+                  className="h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  {siteName.charAt(0)}
+                </div>
+                <span className="font-semibold text-sm leading-tight hidden sm:block max-w-[180px] line-clamp-2">
+                  {siteName}
+                </span>
+              </>
             )}
-            <span className="font-semibold text-sm leading-tight hidden sm:block max-w-[180px] line-clamp-2">
-              {siteName}
-            </span>
           </a>
 
           {/* Desktop Nav */}

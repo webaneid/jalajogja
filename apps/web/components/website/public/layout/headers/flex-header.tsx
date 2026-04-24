@@ -133,7 +133,7 @@ function SearchBar({ tenantSlug }: { tenantSlug: string }) {
     : 0;
 
   return (
-    <div className="relative flex-1 max-w-sm hidden md:block">
+    <div className="relative flex-1 hidden md:block">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <input
@@ -143,7 +143,7 @@ function SearchBar({ tenantSlug }: { tenantSlug: string }) {
           onBlur={() => setTimeout(() => setOpen(false), 200)}
           onFocus={() => { if (results && total > 0) setOpen(true); }}
           placeholder="Cari..."
-          className="w-full h-9 pl-9 pr-4 text-sm bg-muted/60 rounded-full border border-transparent focus:border-border focus:bg-white focus:outline-none transition-colors"
+          className="w-full h-9 pl-9 pr-4 text-sm bg-white rounded-full border border-gray-300 focus:border-gray-500 focus:outline-none transition-colors"
         />
       </div>
 
@@ -292,18 +292,20 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
             <a href={`/${tenantSlug}`} className="flex items-center gap-2.5 shrink-0">
               {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoUrl} alt={siteName} className="h-9 w-auto object-contain" />
+                <img src={logoUrl} alt={siteName} className="h-12 w-auto object-contain" />
               ) : (
-                <div
-                  className="h-9 w-9 rounded-full flex items-center justify-center text-white font-bold shrink-0"
-                  style={{ backgroundColor: primaryColor }}
-                >
-                  {siteName.charAt(0)}
-                </div>
+                <>
+                  <div
+                    className="h-9 w-9 rounded-full flex items-center justify-center text-white font-bold shrink-0"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    {siteName.charAt(0)}
+                  </div>
+                  <span className="font-semibold text-sm leading-tight hidden sm:block max-w-[160px] line-clamp-2">
+                    {siteName}
+                  </span>
+                </>
               )}
-              <span className="font-semibold text-sm leading-tight hidden sm:block max-w-[160px] line-clamp-2">
-                {siteName}
-              </span>
             </a>
 
             {/* Search */}
@@ -327,7 +329,7 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
 
         {/* NavBar — hanya desktop */}
         {navMenu.length > 0 && (
-          <div className="hidden md:block border-t border-border/60">
+          <div className="hidden md:block border-t border-gray-200">
             <div className="max-w-6xl mx-auto px-4">
               <nav className="flex items-center gap-0.5 h-10">
                 {navMenu.map((item) => {

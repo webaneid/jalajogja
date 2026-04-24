@@ -40,16 +40,18 @@ export function DarkFooter({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={logoUrl} alt={siteName} className="h-10 w-auto object-contain" />
               ) : (
-                <div
-                  className="h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0"
-                  style={{ backgroundColor: primaryColor }}
-                >
-                  {siteName.charAt(0)}
-                </div>
+                <>
+                  <div
+                    className="h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    {siteName.charAt(0)}
+                  </div>
+                  <span className="font-semibold text-white text-sm leading-tight max-w-[150px]">
+                    {siteName}
+                  </span>
+                </>
               )}
-              <span className="font-semibold text-white text-sm leading-tight max-w-[150px]">
-                {siteName}
-              </span>
             </a>
 
             {tagline && (
