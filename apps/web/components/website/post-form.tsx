@@ -65,6 +65,8 @@ export type PostFormProps = {
     categoryId:  string | null;
     tagIds:      string[];
     coverId:     string | null;
+    coverUrl?:   string | null;
+    isFeatured:  boolean;
     seo: SeoValues;
   };
   categories: Category[];
@@ -449,11 +451,12 @@ export function PostForm({
   const [categoryId, setCategoryId] = useState<string>(initialData.categoryId ?? "");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialData.tagIds);
   const [status, setStatus]         = useState<ContentStatus>(initialData.status);
+  const [isFeatured, setIsFeatured] = useState<boolean>(initialData.isFeatured);
   const [seoValues, setSeoValues]   = useState<SeoValues>(initialData.seo);
 
   // Featured image
   const [coverId, setCoverId]       = useState<string | null>(initialData.coverId);
-  const [coverUrl, setCoverUrl]     = useState<string | null>(null);
+  const [coverUrl, setCoverUrl]     = useState<string | null>(initialData.coverUrl ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // Slug auto-generate
@@ -488,6 +491,7 @@ export function PostForm({
       content,
       coverId:    coverId ?? null,
       categoryId: categoryId || null,
+      isFeatured,
       tagIds:     selectedTagIds,
       status:     overrideStatus ?? status,
       metaTitle:      seoValues.metaTitle,
@@ -534,11 +538,15 @@ export function PostForm({
     });
   }
 
+  // Label tombol simpan berdasarkan STATUS TERSIMPAN (bukan state dropdown saat ini)
+  // agar tidak berubah saat user ganti dropdown sebelum klik simpan
+  const savedStatus = initialData.status;
   const saveLabel =
-    isPending               ? "Menyimpan..." :
-    status === "draft"      ? "Simpan Draft" :
-    status === "published"  ? "Simpan Perubahan" :
-    "Arsipkan";
+    isPending                              ? "Menyimpan..."     :
+    savedStatus === "published"            ? "Simpan Perubahan" :
+    status     === "published"             ? "Terbitkan"        :
+    status     === "archived"              ? "Arsipkan"         :
+    "Simpan Draft";
 
   const saveIcon =
     status === "archived" ? <Archive className="h-4 w-4" /> : <Save className="h-4 w-4" />;
@@ -629,6 +637,27 @@ export function PostForm({
                   <SelectItem value="archived">Arsip</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <Separator />
+
+            {/* Berita Unggulan */}
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <SidebarLabel>Berita Unggulan</SidebarLabel>
+                <p className="text-xs text-muted-foreground mt-0.5">Tampil di section unggulan</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isFeatured}
+                onClick={() => setIsFeatured((v) => !v)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isFeatured ? "bg-primary" : "bg-input"}`}
+              >
+                <span
+                  className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${isFeatured ? "translate-x-5" : "translate-x-0"}`}
+                />
+              </button>
             </div>
 
             <Separator />

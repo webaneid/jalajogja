@@ -1,25 +1,11 @@
 import { desc, eq, lte, gte, and } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
 import { getSettings } from "@jalajogja/db";
-import type { SectionItem, SectionType, LandingBody } from "@/lib/page-templates";
+import type { SectionItem, SectionType, LandingBody, PostsSectionData } from "@/lib/page-templates";
+import type { PostsSectionDesignId } from "@/lib/posts-section-designs";
+import { PostsSection } from "@/components/website/public/sections/posts/posts-section";
 
 // ─── Data helpers ─────────────────────────────────────────────────────────────
-
-async function fetchPosts(tenantClient: TenantDb, count: number) {
-  const { db, schema } = tenantClient;
-  return db
-    .select({
-      id:          schema.posts.id,
-      title:       schema.posts.title,
-      slug:        schema.posts.slug,
-      excerpt:     schema.posts.excerpt,
-      publishedAt: schema.posts.publishedAt,
-    })
-    .from(schema.posts)
-    .where(eq(schema.posts.status, "published"))
-    .orderBy(desc(schema.posts.publishedAt))
-    .limit(count);
-}
 
 async function fetchEvents(tenantClient: TenantDb, count: number) {
   const { db, schema } = tenantClient;
@@ -64,47 +50,6 @@ function HeroSection({ data }: { data: Record<string, unknown> }) {
           >
             {d.ctaLabel}
           </a>
-        )}
-      </div>
-    </section>
-  );
-}
-
-type PostRow = { id: string; title: string; slug: string; excerpt: string | null; publishedAt: Date | null };
-
-function PostsSection({
-  data, posts, tenantSlug,
-}: {
-  data:       Record<string, unknown>;
-  posts:      PostRow[];
-  tenantSlug: string;
-}) {
-  const d = data as { title?: string };
-  const fmt = (date: Date | null) =>
-    date ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(date) : "";
-
-  return (
-    <section className="py-14 px-4 bg-muted/40">
-      <div className="max-w-5xl mx-auto">
-        {d.title && <h2 className="text-2xl font-bold mb-8">{d.title}</h2>}
-        {posts.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Belum ada postingan.</p>
-        ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {posts.map((post) => (
-              <a
-                key={post.id}
-                href={`/${tenantSlug}/blog/${post.slug}`}
-                className="block bg-white rounded-xl border border-border p-5 hover:border-primary/50 hover:shadow-sm transition-all"
-              >
-                <p className="text-xs text-muted-foreground mb-2">{fmt(post.publishedAt)}</p>
-                <h3 className="font-semibold leading-snug line-clamp-2">{post.title}</h3>
-                {post.excerpt && (
-                  <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{post.excerpt}</p>
-                )}
-              </a>
-            ))}
-          </div>
         )}
       </div>
     </section>
@@ -341,22 +286,12 @@ type Props = {
 };
 
 export async function LandingTemplate({ body, tenantSlug, tenantClient }: Props) {
-  // Pre-fetch data for data-dependent sections
   const sectionTypes = new Set<SectionType>(body.sections.map((s) => s.type));
 
-  const postsMap:   Map<string, PostRow[]>  = new Map();
-  const eventsMap:  Map<string, EventRow[]> = new Map();
+  const eventsMap: Map<string, EventRow[]> = new Map();
   let   contactSettings: ContactSettings   = {};
 
   await Promise.all([
-    sectionTypes.has("posts") &&
-      (async () => {
-        for (const s of body.sections.filter((x) => x.type === "posts")) {
-          const count = (s.data.count as number | undefined) ?? 6;
-          postsMap.set(s.id, await fetchPosts(tenantClient, count));
-        }
-      })(),
-
     sectionTypes.has("events") &&
       (async () => {
         for (const s of body.sections.filter((x) => x.type === "events")) {
@@ -378,7 +313,7 @@ export async function LandingTemplate({ body, tenantSlug, tenantClient }: Props)
           key={section.id}
           section={section}
           tenantSlug={tenantSlug}
-          posts={postsMap.get(section.id) ?? []}
+          tenantClient={tenantClient}
           events={eventsMap.get(section.id) ?? []}
           contactSettings={contactSettings}
         />
@@ -390,17 +325,24 @@ export async function LandingTemplate({ body, tenantSlug, tenantClient }: Props)
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 function SectionRenderer({
-  section, tenantSlug, posts, events, contactSettings,
+  section, tenantSlug, tenantClient, events, contactSettings,
 }: {
   section:         SectionItem;
   tenantSlug:      string;
-  posts:           PostRow[];
+  tenantClient:    TenantDb;
   events:          EventRow[];
   contactSettings: ContactSettings;
 }) {
   switch (section.type) {
     case "hero":         return <HeroSection         data={section.data} />;
-    case "posts":        return <PostsSection         data={section.data} posts={posts}   tenantSlug={tenantSlug} />;
+    case "posts":        return (
+      <PostsSection
+        data={section.data as PostsSectionData}
+        variant={(section.variant ?? "1") as PostsSectionDesignId}
+        tenantClient={tenantClient}
+        tenantSlug={tenantSlug}
+      />
+    );
     case "events":       return <EventsSection        data={section.data} events={events} tenantSlug={tenantSlug} />;
     case "gallery":      return <GallerySection       data={section.data} />;
     case "about_text":   return <AboutTextSection     data={section.data} />;

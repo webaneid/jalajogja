@@ -187,6 +187,7 @@ export async function createTenantSchemaInDb(
         schema_type      TEXT        NOT NULL DEFAULT 'Article'
                                      CHECK (schema_type IN ('Article','NewsArticle','BlogPosting')),
         structured_data  JSONB,
+        is_featured  BOOLEAN     NOT NULL DEFAULT false,
         status       TEXT        NOT NULL DEFAULT 'draft'
                                  CHECK (status IN ('draft','published','archived')),
         author_id    UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,

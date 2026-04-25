@@ -91,6 +91,7 @@ export function createPostsTable(s: ReturnType<typeof pgSchema>) {
     robots:         text("robots",        { enum: POST_ROBOTS_VALUES  }).notNull().default("index,follow"),
     schemaType:     text("schema_type",   { enum: POST_SCHEMA_TYPES   }).notNull().default("Article"),
     structuredData: jsonb("structured_data"),
+    isFeatured: boolean("is_featured").notNull().default(false),
     status: text("status", { enum: CONTENT_STATUSES }).notNull().default("draft"),
     authorId:   uuid("author_id"),          // FK → users.id via SQL migration
     categoryId: uuid("category_id"),        // FK → post_categories.id via SQL migration

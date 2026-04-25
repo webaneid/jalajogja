@@ -16,10 +16,13 @@ import {
 } from "@/components/ui/select";
 import { PlusIcon, Trash2 } from "lucide-react";
 import type { SectionType } from "@/lib/page-templates";
+import { POSTS_SECTION_DESIGNS, POSTS_SECTION_DESIGN_IDS } from "@/lib/posts-section-designs";
 
 type EditorProps = {
-  data:     Record<string, unknown>;
-  onChange: (data: Record<string, unknown>) => void;
+  data:            Record<string, unknown>;
+  onChange:        (data: Record<string, unknown>) => void;
+  variant?:        string;
+  onVariantChange?: (variant: string) => void;
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -65,11 +68,13 @@ function HeroEditor({ data, onChange }: EditorProps) {
 
 // ── Posts ─────────────────────────────────────────────────────────────────────
 
-function PostsEditor({ data, onChange }: EditorProps) {
+function PostsEditor({ data, onChange, variant, onVariantChange }: EditorProps) {
   const d = data as { title?: string; count?: number };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+  const activeVariant = variant ?? "1";
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <Field label="Judul Section">
         <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Berita & Pengumuman" />
       </Field>
@@ -83,6 +88,30 @@ function PostsEditor({ data, onChange }: EditorProps) {
           </SelectContent>
         </Select>
       </Field>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Design Layout</Label>
+        <div className="grid grid-cols-1 gap-2">
+          {POSTS_SECTION_DESIGN_IDS.map((id) => {
+            const meta = POSTS_SECTION_DESIGNS[id];
+            const isActive = activeVariant === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onVariantChange?.(id)}
+                className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+                  isActive
+                    ? "border-primary bg-primary/5 text-primary font-medium"
+                    : "border-border hover:border-primary/40 text-foreground"
+                }`}
+              >
+                <span className="font-medium">{id}. {meta.label}</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">{meta.description}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -373,7 +402,7 @@ const EDITOR_MAP: Record<SectionType, React.FC<EditorProps>> = {
 
 // ── Public Export ─────────────────────────────────────────────────────────────
 
-export function SectionEditor({ type, data, onChange }: { type: SectionType } & EditorProps) {
+export function SectionEditor({ type, data, onChange, variant, onVariantChange }: { type: SectionType } & EditorProps) {
   const Editor = EDITOR_MAP[type];
-  return <Editor data={data} onChange={onChange} />;
+  return <Editor data={data} onChange={onChange} variant={variant} onVariantChange={onVariantChange} />;
 }

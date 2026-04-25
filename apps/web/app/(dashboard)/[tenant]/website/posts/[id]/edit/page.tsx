@@ -1,7 +1,8 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { notFound, redirect } from "next/navigation";
+import { publicUrl } from "@/lib/minio";
 import { PostForm } from "@/components/website/post-form";
 import type { SeoValues } from "@/components/seo/seo-panel";
 
@@ -25,6 +26,17 @@ export default async function EditPostPage({
     .limit(1);
 
   if (!post) notFound();
+
+  // Resolve cover URL dari media table
+  let coverUrl: string | null = null;
+  if (post.coverId) {
+    const [media] = await db
+      .select({ path: schema.media.path })
+      .from(schema.media)
+      .where(inArray(schema.media.id, [post.coverId]))
+      .limit(1);
+    coverUrl = media ? publicUrl(slug, media.path) : null;
+  }
 
   // Fetch tag pivots untuk post ini
   const pivots = await db
@@ -75,8 +87,10 @@ export default async function EditPostPage({
           content:    post.content,
           status:     post.status,
           categoryId: post.categoryId,
+          isFeatured: post.isFeatured,
           tagIds,
           coverId:    post.coverId,
+          coverUrl:   coverUrl,
           seo:        seoValues,
         }}
         categories={categories}

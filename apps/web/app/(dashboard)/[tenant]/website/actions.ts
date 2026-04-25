@@ -21,6 +21,7 @@ export type PostFormData = {
   content?: string | null;
   coverId?: string | null;
   categoryId?: string | null;
+  isFeatured?: boolean;
   status?: ContentStatus;
   publishedAt?: string | null;        // ISO string atau null
   // Tags
@@ -84,13 +85,14 @@ export async function createPostAction(
     const [post] = await db
       .insert(schema.posts)
       .values({
-        title:    data.title.trim(),
-        slug:     postSlug,
-        excerpt:  data.excerpt?.trim()  || null,
-        content:  data.content          ?? null,
-        coverId:  data.coverId          ?? null,
-        categoryId: data.categoryId     ?? null,
-        status:   data.status           ?? "draft",
+        title:      data.title.trim(),
+        slug:       postSlug,
+        excerpt:    data.excerpt?.trim()  || null,
+        content:    data.content          ?? null,
+        coverId:    data.coverId          ?? null,
+        categoryId: data.categoryId       ?? null,
+        isFeatured: data.isFeatured       ?? false,
+        status:     data.status           ?? "draft",
         publishedAt: data.status === "published" ? new Date() : null,
         metaTitle:   data.metaTitle?.trim()  || null,
         metaDesc:    data.metaDesc?.trim()   || null,
@@ -268,13 +270,14 @@ export async function updatePostAction(
     await db
       .update(schema.posts)
       .set({
-        title:    data.title.trim(),
-        slug:     newSlug,
-        excerpt:  data.excerpt?.trim() || null,
-        content:  data.content ?? null,
-        coverId:  data.coverId ?? null,
+        title:      data.title.trim(),
+        slug:       newSlug,
+        excerpt:    data.excerpt?.trim() || null,
+        content:    data.content ?? null,
+        coverId:    data.coverId ?? null,
         categoryId: data.categoryId ?? null,
-        status:   data.status ?? "draft",
+        isFeatured: data.isFeatured ?? false,
+        status:     data.status ?? "draft",
         publishedAt,
         // SEO dasar
         metaTitle: data.metaTitle?.trim() || null,

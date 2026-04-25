@@ -115,11 +115,13 @@ function SectionEditDialog({
   open,
   onClose,
   onChange,
+  onVariantChange,
 }: {
-  section:  SectionItem | null;
-  open:     boolean;
-  onClose:  () => void;
-  onChange: (data: Record<string, unknown>) => void;
+  section:         SectionItem | null;
+  open:            boolean;
+  onClose:         () => void;
+  onChange:        (data: Record<string, unknown>) => void;
+  onVariantChange: (variant: string) => void;
 }) {
   if (!section) return null;
   return (
@@ -141,7 +143,9 @@ function SectionEditDialog({
         <SectionEditor
           type={section.type}
           data={section.data}
+          variant={section.variant}
           onChange={onChange}
+          onVariantChange={onVariantChange}
         />
 
         <DialogFooter>
@@ -208,6 +212,15 @@ export function LandingBuilder({ value, onChange }: Props) {
     commit(next);
   }
 
+  function handleVariantChange(variant: string) {
+    if (!editSection) return;
+    const next = sections.map((s) =>
+      s.id === editSection.id ? { ...s, variant } : s
+    );
+    setEditSection((prev) => prev ? { ...prev, variant } : prev);
+    commit(next);
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -265,6 +278,7 @@ export function LandingBuilder({ value, onChange }: Props) {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         onChange={handleEditChange}
+        onVariantChange={handleVariantChange}
       />
     </div>
   );

@@ -32,6 +32,13 @@ export type SectionItem = {
   data:    Record<string, unknown>;
 };
 
+export type PostsSectionData = {
+  title:         string;
+  count:         number;
+  categoryId?:   string | null;
+  onlyFeatured?: boolean;
+};
+
 export type LandingBody = {
   sections: SectionItem[];
 };
