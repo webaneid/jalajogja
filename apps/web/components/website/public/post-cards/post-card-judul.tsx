@@ -6,7 +6,7 @@ const fmt = (date: Date | null) =>
 export function PostCardJudul({ post, tenantSlug }: { post: PostCardData; tenantSlug: string }) {
   return (
     <a
-      href={`/${tenantSlug}/blog/${post.slug}`}
+      href={`/${tenantSlug}/post/${post.slug}`}
       className="group flex flex-col gap-1 py-3 border-t border-border first:border-0 hover:bg-muted/40 px-2 -mx-2 rounded-lg transition-colors"
     >
       {/* Meta: kategori + tanggal satu baris */}

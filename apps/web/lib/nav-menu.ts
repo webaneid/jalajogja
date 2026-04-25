@@ -3,14 +3,14 @@ import { FileText, Newspaper, Calendar, ShoppingBag, Heart, Link2 } from "lucide
 import type { LucideIcon } from "lucide-react";
 
 export const NAV_ITEM_TYPES = [
-  "page", "blog", "event", "toko", "donasi", "custom",
+  "page", "post", "event", "toko", "donasi", "custom",
 ] as const;
 
 export type NavItemType = typeof NAV_ITEM_TYPES[number];
 
 export const NAV_ITEM_TYPE_LABELS: Record<NavItemType, string> = {
   page:   "Halaman",
-  blog:   "Blog / Berita",
+  post:   "Postingan / Berita",
   event:  "Event",
   toko:   "Toko",
   donasi: "Donasi / Infaq",
@@ -33,7 +33,7 @@ export type NavMenu = NavItem[];
 export function resolveNavHref(item: NavItem, tenantSlug: string): string {
   switch (item.type) {
     case "page":   return `/${tenantSlug}/${item.pageSlug ?? ""}`;
-    case "blog":   return `/${tenantSlug}/blog`;
+    case "post":   return `/${tenantSlug}/post`;
     case "event":  return `/${tenantSlug}/event`;
     case "toko":   return `/${tenantSlug}/toko`;
     case "donasi": return `/${tenantSlug}/donasi`;
@@ -51,7 +51,7 @@ export function parseNavMenu(value: unknown): NavMenu {
 
 export const NAV_TYPE_ICONS: Record<NavItemType, LucideIcon> = {
   page:   FileText,
-  blog:   Newspaper,
+  post:   Newspaper,
   event:  Calendar,
   toko:   ShoppingBag,
   donasi: Heart,

@@ -153,6 +153,32 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 - Front-end publik Layer 1–4 — **BELUM, sedang dikerjakan**
 - Route group `(public)` sudah ada, donasi/event/dokumen/surat sudah render publik
 
+### Template Card Post
+> Detail lengkap: **`docs/arsitektur-template-post-card.md`**
+
+Sistem card reusable untuk menampilkan post di mana saja — analog `get_template_part()` di WordPress.
+
+- Komponen: `<PostCard post={data} variant="..." tenantSlug={slug} />`
+- 6 variant: `klasik` | `list` | `overlay` | `ringkas` | `judul` | `ticker`
+- Registry: `lib/post-card-templates.ts` — `PostCardVariant` + `PostCardData` type
+- File komponen: `components/website/public/post-cards/`
+- Dipakai di: blog archive, landing section posts, search results, related posts (future)
+- `PostCardData`: id, title, slug, excerpt, **coverUrl** (sudah resolved, bukan coverId), categoryName, publishedAt
+- **Status: ⬜ Belum diimplementasikan**
+
+### Section Post
+> Detail lengkap: **`docs/arsitektur-section-post.md`**
+
+Container untuk menampilkan kumpulan post dalam berbagai layout design, di atas sistem Template Card Post.
+
+- Hirarki: `SectionItem (type="posts", variant="N")` → `PostsSection` wrapper → `PostsDesignN` → `PostCard`
+- Registry design: `lib/posts-section-designs.ts` — saat ini 5 slot design (visual menyusul)
+- **Design menentukan card variant** — bukan admin. Admin hanya pilih design + filter kategori
+- Filter kategori: `categoryId` opsional di `SectionItem.data` — null = semua kategori
+- Fetch terpusat di `PostsSection` wrapper — design menerima `PostCardData[]` siap pakai
+- Menambah design baru: 1 file + 1 baris registry + 1 wireframe. Tidak ada perubahan lain
+- **Status: ⬜ Belum diimplementasikan — menunggu referensi visual design**
+
 ## Arsitektur Shell UI Dashboard
 
 ### Struktur Komponen

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { createTenantDb, db, tenants, getSettings } from "@jalajogja/db";
+import { publicUrl } from "@/lib/minio";
 import { DefaultTemplate } from "@/components/website/public/default-template";
 import { LandingTemplate } from "@/components/website/public/landing-template";
 import { ContactTemplate } from "@/components/website/public/contact-template";
@@ -119,7 +120,7 @@ export default async function PublicHomePage({ params }: { params: Params }) {
       .from(schema.media)
       .where(eq(schema.media.id, page.coverId))
       .limit(1);
-    coverUrl = media?.path ?? null;
+    coverUrl = media ? publicUrl(slug, media.path) : null;
   }
 
   return (

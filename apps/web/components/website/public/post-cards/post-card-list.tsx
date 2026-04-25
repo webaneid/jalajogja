@@ -6,7 +6,7 @@ const fmt = (date: Date | null) =>
 export function PostCardList({ post, tenantSlug }: { post: PostCardData; tenantSlug: string }) {
   return (
     <a
-      href={`/${tenantSlug}/blog/${post.slug}`}
+      href={`/${tenantSlug}/post/${post.slug}`}
       className="group flex gap-4 items-start py-3 border-t border-border first:border-0 transition-all hover:bg-muted/40 px-2 -mx-2 rounded-lg"
     >
       {/* Content */}

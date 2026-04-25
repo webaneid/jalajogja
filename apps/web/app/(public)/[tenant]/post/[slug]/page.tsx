@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { createTenantDb, db, tenants } from "@jalajogja/db";
+import { publicUrl } from "@/lib/minio";
 import { renderBody } from "@/lib/letter-render";
 import type { Metadata } from "next";
 
@@ -48,7 +49,7 @@ async function getPost(tenantSlug: string, postSlug: string) {
       .from(schema.media)
       .where(eq(schema.media.id, post.coverId))
       .limit(1);
-    coverUrl = media?.path ?? null;
+    coverUrl = media ? publicUrl(tenantSlug, media.path) : null;
   }
 
   return { post, coverUrl, tenantName: tenant.name };
@@ -82,7 +83,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
     <article className="max-w-3xl mx-auto px-4 py-10">
       {/* Breadcrumb */}
       <div className="text-xs text-muted-foreground mb-6 flex items-center gap-2">
-        <a href={`/${tenantSlug}/blog`} className="hover:text-foreground transition-colors">Blog</a>
+        <a href={`/${tenantSlug}/post`} className="hover:text-foreground transition-colors">Postingan</a>
         <span>/</span>
         <span className="text-foreground truncate max-w-xs">{post.title}</span>
       </div>
@@ -138,7 +139,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
       </div>
 
       <a
-        href={`/${tenantSlug}/blog`}
+        href={`/${tenantSlug}/post`}
         className="mt-6 inline-block text-sm text-primary hover:underline"
       >
         ← Kembali ke Blog

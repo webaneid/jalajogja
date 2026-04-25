@@ -50,6 +50,7 @@ export default async function PostsNewPage({
         content:     null,
         coverId:     null,
         categoryId:  null,
+        isFeatured:  false,
         tagIds:      [],
         status:      "draft",
         seo:         DEFAULT_SEO,

@@ -73,12 +73,22 @@ Bukan delete-all + insert-all. Hitung diff:
 | `published` | "Simpan Perubahan" | "Jadikan Draft" (outline, EyeOff) |
 | `archived` | "Arsipkan" (Archive icon) | "Publikasikan" (primary, Globe) |
 
+### Berita Unggulan (isFeatured)
+
+Kolom `is_featured BOOLEAN NOT NULL DEFAULT false` di tabel `posts`.
+
+- Toggle di sidebar form (antara Status dan Featured Image)
+- `PostsSection` bisa filter hanya post `is_featured = true` via `PostsSectionData.onlyFeatured`
+- Tersedia di `PostCardData.isFeatured` — design section bisa gunakan untuk styling khusus (badge, highlight)
+- Tidak mempengaruhi status publish — post draft bisa di-mark featured, tapi tidak tampil publik sampai published
+
 ### Perbedaan Posts vs Pages
 | | Posts | Pages |
 |---|---|---|
 | Excerpt | ✓ | ✗ |
 | Kategori | ✓ | ✗ |
 | Tags | ✓ | ✗ |
+| Berita Unggulan | ✓ | ✗ |
 | Urutan (order) | ✗ | ✓ |
 | Sort list | updatedAt desc | order asc, title asc |
 | schemaType | Article/NewsArticle/BlogPosting | WebPage/AboutPage/ContactPage/FAQPage |

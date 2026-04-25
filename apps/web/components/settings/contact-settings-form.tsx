@@ -19,6 +19,7 @@ const SOCIAL_PLATFORMS = [
   { key: "twitter",   label: "Twitter / X", placeholder: "username (tanpa @)", hint: "Contoh: @ikpmjogja",              inputType: "text", icon: null  },
   { key: "youtube",   label: "YouTube",   placeholder: "URL channel",           hint: "Contoh: youtube.com/@ikpmjogja",  inputType: "url",  icon: null  },
   { key: "tiktok",    label: "TikTok",    placeholder: "username (tanpa @)",    hint: "Contoh: @ikpmjogja",              inputType: "text", icon: null  },
+  { key: "telegram",  label: "Telegram",  placeholder: "username atau link",    hint: "Contoh: t.me/ikpmjogja",          inputType: "text", icon: null  },
   { key: "website",   label: "Website",   placeholder: "https://...",           hint: "URL resmi organisasi",            inputType: "url",  icon: Globe },
 ] as const;
 
@@ -36,10 +37,11 @@ type AddressDefault = {
 };
 
 type DefaultValues = {
-  contactEmail: string;
-  contactPhone: string;
-  address:      AddressDefault;
-  socials:      Record<SocialKey, string>;
+  contactEmail:    string;
+  contactPhone:    string;
+  contactWhatsapp: string;
+  address:         AddressDefault;
+  socials:         Record<SocialKey, string>;
 };
 
 // ─── Sub-komponen ─────────────────────────────────────────────────────────────
@@ -67,8 +69,9 @@ export function ContactSettingsForm({
   const router = useRouter();
   const [pending, setPending] = React.useState(false);
 
-  const [contactEmail, setContactEmail] = React.useState(defaultValues.contactEmail);
-  const [contactPhone, setContactPhone] = React.useState(defaultValues.contactPhone);
+  const [contactEmail,    setContactEmail]    = React.useState(defaultValues.contactEmail    ?? "");
+  const [contactPhone,    setContactPhone]    = React.useState(defaultValues.contactPhone    ?? "");
+  const [contactWhatsapp, setContactWhatsapp] = React.useState(defaultValues.contactWhatsapp ?? "");
 
   const [wilayah, setWilayah] = React.useState<WilayahValue>({
     provinceId: defaultValues.address.provinceId,
@@ -92,6 +95,7 @@ export function ContactSettingsForm({
       const result = await saveContactSettingsAction(slug, {
         contactEmail,
         contactPhone,
+        contactWhatsapp,
         contactAddress: {
           provinceId: wilayah.provinceId,
           regencyId:  wilayah.regencyId,
@@ -118,7 +122,7 @@ export function ContactSettingsForm({
 
       {/* ── KONTAK ── */}
       <Section title="Kontak Organisasi">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="contactEmail">Email</Label>
             <Input
@@ -130,17 +134,33 @@ export function ContactSettingsForm({
               disabled={pending}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="contactPhone">Telepon / WhatsApp</Label>
-            <Input
-              id="contactPhone"
-              type="tel"
-              value={contactPhone}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setContactPhone(e.target.value)}
-              placeholder="6285210626455"
-              inputMode="numeric"
-              disabled={pending}
-            />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="contactPhone">Telepon</Label>
+              <Input
+                id="contactPhone"
+                type="tel"
+                value={contactPhone}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setContactPhone(e.target.value)}
+                placeholder="(0274) 123456"
+                inputMode="tel"
+                disabled={pending}
+              />
+              <p className="text-xs text-muted-foreground">Nomor kantor, bisa format lokal.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="contactWhatsapp">WhatsApp</Label>
+              <Input
+                id="contactWhatsapp"
+                type="tel"
+                value={contactWhatsapp}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setContactWhatsapp(e.target.value)}
+                placeholder="6285210626455"
+                inputMode="numeric"
+                disabled={pending}
+              />
+              <p className="text-xs text-muted-foreground">Format internasional tanpa +. Misal: 628521...</p>
+            </div>
           </div>
         </div>
       </Section>

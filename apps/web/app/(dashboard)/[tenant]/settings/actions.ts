@@ -2,7 +2,7 @@
 
 import { getTenantAccess } from "@/lib/tenant";
 import { canManageUsers } from "@/lib/permissions";
-import { createTenantDb, db, tenants, members, tenantMemberships, contacts } from "@jalajogja/db";
+import { createTenantDb, db, tenants, members, tenantMemberships, contacts, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
 import { upsertSettings } from "@jalajogja/db";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -30,13 +30,14 @@ export type CustomRoleFormData = {
 export async function saveGeneralSettingsAction(
   slug: string,
   values: {
-    siteName: string;
-    tagline: string;
-    logoUrl: string;
-    faviconUrl: string;
-    timezone: string;
-    language: string;
-    currency: string;
+    siteName:        string;
+    tagline:         string;
+    siteDescription: string;
+    logoUrl:         string;
+    faviconUrl:      string;
+    timezone:        string;
+    language:        string;
+    currency:        string;
   }
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
@@ -45,13 +46,14 @@ export async function saveGeneralSettingsAction(
 
   const tenantDb = createTenantDb(slug);
   await upsertSettings(tenantDb, "general", {
-    site_name:   values.siteName,
-    tagline:     values.tagline,
-    logo_url:    values.logoUrl,
-    favicon_url: values.faviconUrl,
-    timezone:    values.timezone,
-    language:    values.language,
-    currency:    values.currency,
+    site_name:        values.siteName,
+    tagline:          values.tagline,
+    site_description: values.siteDescription,
+    logo_url:         values.logoUrl,
+    favicon_url:      values.faviconUrl,
+    timezone:         values.timezone,
+    language:         values.language,
+    currency:         values.currency,
   });
 
   return {};
@@ -97,9 +99,17 @@ export async function saveDomainSettingsAction(
 export async function saveContactSettingsAction(
   slug: string,
   values: {
-    contactEmail: string;
-    contactPhone: string;
-    contactAddress: Record<string, unknown>;
+    contactEmail:    string;
+    contactPhone:    string;
+    contactWhatsapp: string;
+    contactAddress: {
+      provinceId?: number;
+      regencyId?:  number;
+      districtId?: number;
+      villageId?:  number;
+      detail:      string;
+      postalCode:  string;
+    };
     socials: Record<string, string>;
   }
 ): Promise<ActionResult> {
@@ -107,12 +117,28 @@ export async function saveContactSettingsAction(
   if (!access) return { error: "Akses ditolak." };
   if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
 
+  // Resolve nama wilayah dari IDs untuk display di footer
+  const { provinceId, regencyId, districtId, villageId } = values.contactAddress;
+  const [province, regency, district, village] = await Promise.all([
+    provinceId ? db.select({ name: refProvinces.name }).from(refProvinces).where(eq(refProvinces.id, provinceId)).limit(1).then(r => r[0]?.name ?? null) : null,
+    regencyId  ? db.select({ name: refRegencies.name }).from(refRegencies).where(eq(refRegencies.id, regencyId)).limit(1).then(r => r[0]?.name ?? null) : null,
+    districtId ? db.select({ name: refDistricts.name }).from(refDistricts).where(eq(refDistricts.id, districtId)).limit(1).then(r => r[0]?.name ?? null) : null,
+    villageId  ? db.select({ name: refVillages.name }).from(refVillages).where(eq(refVillages.id, villageId)).limit(1).then(r => r[0]?.name ?? null) : null,
+  ]);
+
   const tenantDb = createTenantDb(slug);
   await upsertSettings(tenantDb, "contact", {
-    contact_email:   values.contactEmail,
-    contact_phone:   values.contactPhone,
-    contact_address: values.contactAddress,
-    socials:         values.socials,
+    contact_email:    values.contactEmail,
+    contact_phone:    values.contactPhone,
+    contact_whatsapp: values.contactWhatsapp,
+    contact_address: {
+      ...values.contactAddress,
+      provinceName: province,
+      regencyName:  regency,
+      districtName: district,
+      villageName:  village,
+    },
+    socials: values.socials,
   });
 
   return {};

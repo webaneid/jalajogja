@@ -14,7 +14,7 @@ export function PostCardOverlay({
 }) {
   return (
     <a
-      href={`/${tenantSlug}/blog/${post.slug}`}
+      href={`/${tenantSlug}/post/${post.slug}`}
       className="group relative flex flex-col justify-end rounded-xl overflow-hidden aspect-[4/3] hover:shadow-lg transition-all"
     >
       {/* Background */}

@@ -12,6 +12,7 @@ export type FooterProps = {
   siteName:        string;
   logoUrl:         string | null;
   tagline:         string | null;
+  description:     string | null;
   navMenu:         NavItem[];
   contactSettings: ContactSettings;
   primaryColor:    string;

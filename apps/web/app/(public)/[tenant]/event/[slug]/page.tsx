@@ -1,5 +1,6 @@
 // Halaman publik event — tanpa auth, siapapun bisa akses dan mendaftar
 import { createTenantDb, db, tenants } from "@jalajogja/db";
+import { publicUrl } from "@/lib/minio";
 import { eq, and, count, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { CalendarDays, MapPin, Globe, Users, Ticket, MapIcon, UserCheck } from "lucide-react";
@@ -82,7 +83,7 @@ export default async function PublicEventPage({
       .from(schema.media)
       .where(eq(schema.media.id, event.coverId))
       .limit(1);
-    coverUrl = media?.path ?? null;
+    coverUrl = media ? publicUrl(tenantSlug, media.path) : null;
   }
 
   // Fetch payment settings (bank accounts + QRIS) untuk tiket berbayar

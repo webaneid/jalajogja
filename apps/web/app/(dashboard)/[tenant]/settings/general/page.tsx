@@ -28,13 +28,14 @@ export default async function GeneralSettingsPage({
       <GeneralSettingsForm
         slug={slug}
         defaultValues={{
-          siteName:   (settings.site_name   as string) ?? "",
-          tagline:    (settings.tagline     as string) ?? "",
-          logoUrl:    (settings.logo_url    as string) ?? "",
-          faviconUrl: (settings.favicon_url as string) ?? "",
-          timezone:   (settings.timezone    as string) ?? "Asia/Jakarta",
-          language:   (settings.language    as string) ?? "id",
-          currency:   (settings.currency    as string) ?? "IDR",
+          siteName:        (settings.site_name        as string) ?? "",
+          tagline:         (settings.tagline          as string) ?? "",
+          siteDescription: (settings.site_description as string) ?? "",
+          logoUrl:         (settings.logo_url         as string) ?? "",
+          faviconUrl:      (settings.favicon_url      as string) ?? "",
+          timezone:        (settings.timezone         as string) ?? "Asia/Jakarta",
+          language:        (settings.language         as string) ?? "id",
+          currency:        (settings.currency         as string) ?? "IDR",
         }}
       />
     </div>

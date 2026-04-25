@@ -28,13 +28,14 @@ const CURRENCIES = [
 ];
 
 type DefaultValues = {
-  siteName: string;
-  tagline: string;
-  logoUrl: string;
-  faviconUrl: string;
-  timezone: string;
-  language: string;
-  currency: string;
+  siteName:        string;
+  tagline:         string;
+  siteDescription: string;
+  logoUrl:         string;
+  faviconUrl:      string;
+  timezone:        string;
+  language:        string;
+  currency:        string;
 };
 
 export function GeneralSettingsForm({
@@ -102,6 +103,20 @@ export function GeneralSettingsForm({
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => set("tagline")(e.target.value)}
           placeholder="Satu Hati, Satu Langkah"
         />
+      </div>
+
+      {/* Deskripsi Singkat */}
+      <div className="space-y-2">
+        <Label htmlFor="siteDescription">Deskripsi Singkat</Label>
+        <textarea
+          id="siteDescription"
+          value={values.siteDescription}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => set("siteDescription")(e.target.value)}
+          placeholder="Deskripsi singkat organisasi yang ditampilkan di footer website."
+          rows={3}
+          className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+        />
+        <p className="text-xs text-muted-foreground">Tampil di footer website. Maks 2–3 kalimat.</p>
       </div>
 
       {/* Logo */}

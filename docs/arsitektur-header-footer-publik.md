@@ -562,3 +562,21 @@ Step 10 — tsc --noEmit → 0 errors
 | Logo | Jika `logoUrl` ada → tampil logo saja (`h-12`), **tanpa teks nama** | Nama di sebelah logo redundant dan memenuhi ruang |
 | Search | `border-gray-300`, bg-white, lebar full-width | Border transparan sebelumnya tidak terlihat; full-width mengisi ruang TopBar lebih baik |
 | Border TopBar/NavBar | `border-gray-200` | Lebih terang dari search (`gray-300`) agar tidak mengalahkan search bar secara visual |
+
+### UI: Logo Dark Footer — Putih via CSS Filter
+
+Logo di `dark-footer.tsx` menggunakan filter Tailwind `brightness-0 invert` agar logo berwarna
+apapun tampil **putih** di atas background gelap.
+
+```tsx
+<img
+  src={logoUrl}
+  alt={siteName}
+  className="h-14 w-auto object-contain brightness-0 invert"
+/>
+```
+
+- `brightness-0` → paksa semua piksel jadi hitam
+- `invert` → balik hitam jadi putih
+- Kombinasi ini bekerja untuk logo warna apapun selama ada area transparan (PNG/SVG)
+- `light-footer.tsx` **tidak** pakai filter ini — logo tetap warna asli di background terang

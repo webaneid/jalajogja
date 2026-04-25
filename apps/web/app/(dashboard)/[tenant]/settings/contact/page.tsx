@@ -42,8 +42,9 @@ export default async function ContactSettingsPage({
       <ContactSettingsForm
         slug={slug}
         defaultValues={{
-          contactEmail: (settings.contact_email as string) ?? "",
-          contactPhone: (settings.contact_phone as string) ?? "",
+          contactEmail:    (settings.contact_email    as string) ?? "",
+          contactPhone:    (settings.contact_phone    as string) ?? "",
+          contactWhatsapp: (settings.contact_whatsapp as string) ?? "",
           address: {
             provinceId: address.provinceId,
             regencyId:  address.regencyId,
@@ -59,6 +60,7 @@ export default async function ContactSettingsPage({
             twitter:   socials.twitter   ?? "",
             youtube:   socials.youtube   ?? "",
             tiktok:    socials.tiktok    ?? "",
+            telegram:  socials.telegram  ?? "",
             website:   socials.website   ?? "",
           },
         }}

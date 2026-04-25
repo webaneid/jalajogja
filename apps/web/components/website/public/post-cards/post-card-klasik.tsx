@@ -6,7 +6,7 @@ const fmt = (date: Date | null) =>
 export function PostCardKlasik({ post, tenantSlug }: { post: PostCardData; tenantSlug: string }) {
   return (
     <a
-      href={`/${tenantSlug}/blog/${post.slug}`}
+      href={`/${tenantSlug}/post/${post.slug}`}
       className="group flex flex-col rounded-xl overflow-hidden transition-all"
     >
       {/* Cover */}

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { eq, desc, inArray } from "drizzle-orm";
 import { createTenantDb, db, tenants } from "@jalajogja/db";
+import { publicUrl } from "@/lib/minio";
 import type { Metadata } from "next";
 
 export const revalidate = 60;
@@ -15,7 +16,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     .where(eq(tenants.slug, slug))
     .limit(1);
   if (!tenant) return {};
-  return { title: `Blog — ${tenant.name}` };
+  return { title: `Postingan — ${tenant.name}` };
 }
 
 export default async function BlogListPage({ params }: { params: Params }) {
@@ -59,7 +60,7 @@ export default async function BlogListPage({ params }: { params: Params }) {
             : inArray(schema.media.id, coverIds)
         )
     : [];
-  const mediaMap = new Map(mediaRows.map((m) => [m.id, m.path]));
+  const mediaMap = new Map(mediaRows.map((m) => [m.id, publicUrl(slug, m.path)]));
 
   const fmt = (date: Date | null) =>
     date
@@ -79,7 +80,7 @@ export default async function BlogListPage({ params }: { params: Params }) {
             return (
               <a
                 key={post.id}
-                href={`/${slug}/blog/${post.slug}`}
+                href={`/${slug}/post/${post.slug}`}
                 className="group block border border-border rounded-xl overflow-hidden hover:border-primary/50 hover:shadow-md transition-all"
               >
                 {coverUrl ? (

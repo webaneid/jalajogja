@@ -6,7 +6,7 @@ const fmt = (date: Date | null) =>
 export function PostCardRingkas({ post, tenantSlug }: { post: PostCardData; tenantSlug: string }) {
   return (
     <a
-      href={`/${tenantSlug}/blog/${post.slug}`}
+      href={`/${tenantSlug}/post/${post.slug}`}
       className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 hover:shadow-md transition-all"
     >
       {/* Cover */}
