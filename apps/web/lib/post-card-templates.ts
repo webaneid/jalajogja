@@ -5,6 +5,8 @@ export type PostCardData = {
   excerpt:        string | null;
   coverUrl:       string | null;                       // large atau path asli — backward compat
   coverVariants?: Record<string, string> | null;       // semua variant resolved URLs
+  coverAlt?:      string | null;                       // dari media.alt_text
+  coverTitle?:    string | null;                       // dari media.title
   categoryName:   string | null;
   publishedAt:    string | null;
   isFeatured:     boolean;

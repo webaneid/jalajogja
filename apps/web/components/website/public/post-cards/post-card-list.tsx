@@ -34,7 +34,8 @@ export function PostCardList({ post, tenantSlug }: { post: PostCardData; tenantS
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={pickCover(post, "square")!}
-            alt={post.title}
+            alt={post.coverAlt ?? post.title}
+            title={post.coverTitle ?? undefined}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
         </div>

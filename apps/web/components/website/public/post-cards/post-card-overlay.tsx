@@ -25,7 +25,8 @@ export function PostCardOverlay({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={pickCover(post, "medium")!}
-          alt={post.title}
+          alt={post.coverAlt ?? post.title}
+          title={post.coverTitle ?? undefined}
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
       ) : (

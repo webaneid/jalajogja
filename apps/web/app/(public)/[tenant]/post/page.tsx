@@ -48,11 +48,16 @@ export default async function BlogListPage({ params }: { params: Params }) {
     .orderBy(desc(schema.posts.publishedAt))
     .limit(50);
 
-  // Fetch cover URLs
+  // Fetch cover URLs + metadata
   const coverIds = [...new Set(posts.map((p) => p.coverId).filter(Boolean))] as string[];
   const mediaRows = coverIds.length
     ? await tenantDb
-        .select({ id: schema.media.id, path: schema.media.path })
+        .select({
+          id:      schema.media.id,
+          path:    schema.media.path,
+          altText: schema.media.altText,
+          title:   schema.media.title,
+        })
         .from(schema.media)
         .where(
           coverIds.length === 1
@@ -60,7 +65,9 @@ export default async function BlogListPage({ params }: { params: Params }) {
             : inArray(schema.media.id, coverIds)
         )
     : [];
-  const mediaMap = new Map(mediaRows.map((m) => [m.id, publicUrl(slug, m.path)]));
+  const mediaMap = new Map(
+    mediaRows.map((m) => [m.id, { url: publicUrl(slug, m.path), altText: m.altText, title: m.title }]),
+  );
 
   const fmt = (date: Date | null) =>
     date
@@ -76,18 +83,19 @@ export default async function BlogListPage({ params }: { params: Params }) {
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {posts.map((post) => {
-            const coverUrl = post.coverId ? mediaMap.get(post.coverId) : null;
+            const cover = post.coverId ? mediaMap.get(post.coverId) : null;
             return (
               <a
                 key={post.id}
                 href={`/${slug}/post/${post.slug}`}
                 className="group block border border-border rounded-xl overflow-hidden hover:border-primary/50 hover:shadow-md transition-all"
               >
-                {coverUrl ? (
+                {cover ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={coverUrl}
-                    alt={post.title}
+                    src={cover.url}
+                    alt={cover.altText ?? post.title}
+                    title={cover.title ?? undefined}
                     className="w-full aspect-video object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                 ) : (

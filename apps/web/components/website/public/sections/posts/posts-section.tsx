@@ -81,7 +81,12 @@ export async function PostsSection({ data, variant, tenantClient, tenantSlug }: 
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-type CoverEntry = { url: string | null; variants: Record<string, string> | null };
+type CoverEntry = {
+  url:      string | null;
+  variants: Record<string, string> | null;
+  altText:  string | null;
+  title:    string | null;
+};
 
 async function resolveCovers(
   db: TenantDb["db"],
@@ -92,7 +97,13 @@ async function resolveCovers(
   const coverIds = [...new Set(rows.map(r => r.coverId).filter(Boolean))] as string[];
   if (!coverIds.length) return new Map();
   const media = await db
-    .select({ id: schema.media.id, path: schema.media.path, variants: schema.media.variants })
+    .select({
+      id:       schema.media.id,
+      path:     schema.media.path,
+      variants: schema.media.variants,
+      altText:  schema.media.altText,
+      title:    schema.media.title,
+    })
     .from(schema.media)
     .where(inArray(schema.media.id, coverIds));
   return new Map(
@@ -104,7 +115,12 @@ async function resolveCovers(
               .map(([k, v]) => [k, publicUrl(tenantSlug, v as string)]),
           )
         : null;
-      return [m.id, { url: getImageUrl(m, tenantSlug, "large"), variants: resolvedVariants }];
+      return [m.id, {
+        url:      getImageUrl(m, tenantSlug, "large"),
+        variants: resolvedVariants,
+        altText:  m.altText,
+        title:    m.title,
+      }];
     }),
   );
 }
@@ -161,6 +177,8 @@ async function fetchRecentPosts(
       excerpt:        r.excerpt,
       coverUrl:       cover?.url ?? null,
       coverVariants:  cover?.variants ?? null,
+      coverAlt:       cover?.altText ?? null,
+      coverTitle:     cover?.title ?? null,
       categoryName:   r.categoryName ?? null,
       publishedAt:    r.publishedAt ? r.publishedAt.toISOString() : null,
       isFeatured:     r.isFeatured,
@@ -208,6 +226,8 @@ async function fetchFeaturedPosts(
       excerpt:        r.excerpt,
       coverUrl:       cover?.url ?? null,
       coverVariants:  cover?.variants ?? null,
+      coverAlt:       cover?.altText ?? null,
+      coverTitle:     cover?.title ?? null,
       categoryName:   r.categoryName ?? null,
       publishedAt:    r.publishedAt ? r.publishedAt.toISOString() : null,
       isFeatured:     r.isFeatured,

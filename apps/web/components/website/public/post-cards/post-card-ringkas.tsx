@@ -16,7 +16,8 @@ export function PostCardRingkas({ post, tenantSlug }: { post: PostCardData; tena
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={pickCover(post, "thumbnail")!}
-            alt={post.title}
+            alt={post.coverAlt ?? post.title}
+            title={post.coverTitle ?? undefined}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
         ) : (

@@ -26,7 +26,8 @@ export function PostsDesign2({ data, posts, tenantSlug, sectionTitle, filterHref
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={pickCover(featured, "large")!}
-                alt={featured.title}
+                alt={featured.coverAlt ?? featured.title}
+                title={featured.coverTitle ?? undefined}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
             ) : (
