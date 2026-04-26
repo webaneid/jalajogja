@@ -1,21 +1,23 @@
 import type { PostCardData } from "@/lib/post-card-templates";
 
-const fmt = (date: Date | null) =>
-  date ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(date) : "";
+const fmt = (date: string | null) =>
+  date ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date)) : "";
 
 export function PostCardOverlay({
   post,
   tenantSlug,
   primaryColor = "#2563eb",
+  className,
 }: {
-  post:         PostCardData;
-  tenantSlug:   string;
+  post:          PostCardData;
+  tenantSlug:    string;
   primaryColor?: string;
+  className?:    string;
 }) {
   return (
     <a
       href={`/${tenantSlug}/post/${post.slug}`}
-      className="group relative flex flex-col justify-end rounded-xl overflow-hidden aspect-[4/3] hover:shadow-lg transition-all"
+      className={`group relative flex flex-col justify-end rounded-xl overflow-hidden aspect-[4/3] hover:shadow-lg transition-all${className ? ` ${className}` : ""}`}
     >
       {/* Background */}
       {post.coverUrl ? (

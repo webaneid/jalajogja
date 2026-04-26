@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Bell, Search, Menu, X, ChevronDown, User, LogOut } from "lucide-react";
+import { Bell, Search, Menu, X, ChevronDown, User, LogOut, Newspaper } from "lucide-react";
 import { authClient, signOut } from "@/lib/auth-client";
 import { type NavItem, resolveNavHref, NAV_TYPE_ICONS } from "@/lib/nav-menu";
 import type { HeaderProps } from "@/lib/header-designs";
@@ -25,7 +25,7 @@ function BottomNav({
         <div className="flex items-center justify-around h-14">
           {main.map((item) => {
             const href = resolveNavHref(item, tenantSlug);
-            const Icon = NAV_TYPE_ICONS[item.type];
+            const Icon = NAV_TYPE_ICONS[item.type] ?? Newspaper;
             return (
               <a
                 key={item.id}
@@ -76,7 +76,7 @@ function BottomNav({
             <nav className="px-4 py-2 space-y-0.5 max-h-80 overflow-y-auto">
               {extra.map((item) => {
                 const href = resolveNavHref(item, tenantSlug);
-                const Icon = NAV_TYPE_ICONS[item.type];
+                const Icon = NAV_TYPE_ICONS[item.type] ?? Newspaper;
                 return (
                   <a
                     key={item.id}
@@ -151,9 +151,9 @@ function SearchBar({ tenantSlug }: { tenantSlug: string }) {
         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-border rounded-xl shadow-lg overflow-hidden z-50 max-h-80 overflow-y-auto">
           {results.posts.length > 0 && (
             <section>
-              <p className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/40 font-semibold">Blog</p>
+              <p className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/40 font-semibold">Postingan</p>
               {results.posts.map((p) => (
-                <a key={p.slug} href={`/${tenantSlug}/blog/${p.slug}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
+                <a key={p.slug} href={`/${tenantSlug}/post/${p.slug}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
                   {p.title}
                 </a>
               ))}
@@ -286,7 +286,7 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
     <>
       <header className="sticky top-0 z-50 bg-white border-b border-border shadow-sm">
         {/* TopBar */}
-        <div className="max-w-6xl mx-auto px-4">
+        <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center gap-4 h-14">
             {/* Logo */}
             <a href={`/${tenantSlug}`} className="flex items-center gap-2.5 shrink-0">
@@ -330,7 +330,7 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
         {/* NavBar — hanya desktop */}
         {navMenu.length > 0 && (
           <div className="hidden md:block border-t border-gray-200">
-            <div className="max-w-6xl mx-auto px-4">
+            <div className="max-w-7xl mx-auto px-4">
               <nav className="flex items-center gap-0.5 h-10">
                 {navMenu.map((item) => {
                   const href  = resolveNavHref(item, tenantSlug);

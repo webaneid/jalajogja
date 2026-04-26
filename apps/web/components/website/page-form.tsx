@@ -216,7 +216,7 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
 
           {/* Content area — conditional per template */}
           {template === "landing" ? (
-            <LandingBuilder value={content} onChange={setContent} />
+            <LandingBuilder value={content} onChange={setContent} tenantSlug={slug} />
           ) : template === "contact" ? (
             <ContactPageEditor value={content} onChange={setContent} />
           ) : template === "linktree" ? (

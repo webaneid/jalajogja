@@ -1,7 +1,7 @@
 import type { PostCardData } from "@/lib/post-card-templates";
 
-const fmt = (date: Date | null) =>
-  date ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(date) : "";
+const fmt = (date: string | null) =>
+  date ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date)) : "";
 
 export function PostCardJudul({ post, tenantSlug }: { post: PostCardData; tenantSlug: string }) {
   return (

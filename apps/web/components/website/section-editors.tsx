@@ -3,6 +3,7 @@
 // Editor panel per section type — dipanggil dari LandingBuilder
 // Setiap editor menerima `data` dan `onChange` — update section.data
 
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -19,10 +20,11 @@ import type { SectionType } from "@/lib/page-templates";
 import { POSTS_SECTION_DESIGNS, POSTS_SECTION_DESIGN_IDS } from "@/lib/posts-section-designs";
 
 type EditorProps = {
-  data:            Record<string, unknown>;
-  onChange:        (data: Record<string, unknown>) => void;
-  variant?:        string;
+  data:             Record<string, unknown>;
+  onChange:         (data: Record<string, unknown>) => void;
+  variant?:         string;
   onVariantChange?: (variant: string) => void;
+  tenantSlug?:      string;
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -68,10 +70,35 @@ function HeroEditor({ data, onChange }: EditorProps) {
 
 // ── Posts ─────────────────────────────────────────────────────────────────────
 
-function PostsEditor({ data, onChange, variant, onVariantChange }: EditorProps) {
-  const d = data as { title?: string; count?: number };
+type CategoryOption = { id: string; name: string };
+type TagOption     = { id: string; name: string };
+type ColConfig = { categoryId?: string | null; count?: number };
+
+function PostsEditor({ data, onChange, variant, onVariantChange, tenantSlug }: EditorProps) {
+  const d = data as { title?: string; count?: number; categoryId?: string | null; tagId?: string | null; columns?: ColConfig[] };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const activeVariant = variant ?? "1";
+  const isHero   = POSTS_SECTION_DESIGNS[activeVariant as keyof typeof POSTS_SECTION_DESIGNS]?.type === "hero";
+  const isTrio   = activeVariant === "4";
+
+  // "category" | "tag" — ditentukan dari data yang ada, default "category"
+  const filterMode = d.tagId ? "tag" : "category";
+
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [tags,       setTags]       = useState<TagOption[]>([]);
+  useEffect(() => {
+    if (!tenantSlug || isHero) return;
+    fetch(`/api/ref/post-categories?slug=${tenantSlug}`)
+      .then(r => r.json()).then(setCategories).catch(() => {});
+    fetch(`/api/ref/post-tags?slug=${tenantSlug}`)
+      .then(r => r.json()).then(setTags).catch(() => {});
+  }, [tenantSlug, isHero]);
+
+  const cols: ColConfig[] = d.columns ?? [{}, {}, {}];
+  const updateCol = (i: number, patch: Partial<ColConfig>) => {
+    const next = [0, 1, 2].map(j => j === i ? { ...cols[j], ...patch } : (cols[j] ?? {}));
+    u("columns", next);
+  };
 
   return (
     <div className="space-y-4">
@@ -82,12 +109,89 @@ function PostsEditor({ data, onChange, variant, onVariantChange }: EditorProps) 
         <Select value={String(d.count ?? 6)} onValueChange={(v) => u("count", Number(v))}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            {[3, 4, 6, 8, 9, 12].map((n) => (
+            {[3, 4, 6, 8, 9, 11, 12].map((n) => (
               <SelectItem key={n} value={String(n)}>{n} postingan</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </Field>
+      {!isHero && !isTrio && (
+        <div className="space-y-2">
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => onChange({ ...data, tagId: null })}
+              className={`px-3 py-1 rounded text-xs border transition-colors ${
+                filterMode === "category"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border text-muted-foreground hover:border-primary/40"
+              }`}
+            >
+              Kategori
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ ...data, categoryId: null })}
+              className={`px-3 py-1 rounded text-xs border transition-colors ${
+                filterMode === "tag"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border text-muted-foreground hover:border-primary/40"
+              }`}
+            >
+              Tag
+            </button>
+          </div>
+          {filterMode === "category" ? (
+            <Select
+              value={d.categoryId ?? "all"}
+              onValueChange={(v) => u("categoryId", v === "all" ? null : v)}
+            >
+              <SelectTrigger><SelectValue placeholder="Semua kategori" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua kategori</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Select
+              value={d.tagId ?? "all"}
+              onValueChange={(v) => u("tagId", v === "all" ? null : v)}
+            >
+              <SelectTrigger><SelectValue placeholder="Semua tag" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua tag</SelectItem>
+                {tags.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      )}
+      {isTrio && (
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Kategori per Kolom</Label>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-14 shrink-0">Kolom {i + 1}</span>
+              <Select
+                value={cols[i]?.categoryId ?? "all"}
+                onValueChange={(v) => updateCol(i, { categoryId: v === "all" ? null : v })}
+              >
+                <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="Semua" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua kategori</SelectItem>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">Design Layout</Label>
         <div className="grid grid-cols-1 gap-2">
@@ -402,7 +506,7 @@ const EDITOR_MAP: Record<SectionType, React.FC<EditorProps>> = {
 
 // ── Public Export ─────────────────────────────────────────────────────────────
 
-export function SectionEditor({ type, data, onChange, variant, onVariantChange }: { type: SectionType } & EditorProps) {
+export function SectionEditor({ type, data, onChange, variant, onVariantChange, tenantSlug }: { type: SectionType } & EditorProps) {
   const Editor = EDITOR_MAP[type];
-  return <Editor data={data} onChange={onChange} variant={variant} onVariantChange={onVariantChange} />;
+  return <Editor data={data} onChange={onChange} variant={variant} onVariantChange={onVariantChange} tenantSlug={tenantSlug} />;
 }

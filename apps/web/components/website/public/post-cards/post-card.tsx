@@ -11,12 +11,13 @@ type Props = {
   variant:       PostCardVariant;
   tenantSlug:    string;
   primaryColor?: string;
+  className?:    string;
 };
 
-export function PostCard({ post, variant, tenantSlug, primaryColor }: Props) {
+export function PostCard({ post, variant, tenantSlug, primaryColor, className }: Props) {
   switch (variant) {
     case "list":    return <PostCardList    post={post} tenantSlug={tenantSlug} />;
-    case "overlay": return <PostCardOverlay post={post} tenantSlug={tenantSlug} primaryColor={primaryColor} />;
+    case "overlay": return <PostCardOverlay post={post} tenantSlug={tenantSlug} primaryColor={primaryColor} className={className} />;
     case "ringkas": return <PostCardRingkas post={post} tenantSlug={tenantSlug} />;
     case "judul":   return <PostCardJudul   post={post} tenantSlug={tenantSlug} />;
     case "ticker":  return <PostCardTicker  post={post} tenantSlug={tenantSlug} />;

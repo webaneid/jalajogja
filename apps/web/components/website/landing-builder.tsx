@@ -116,12 +116,14 @@ function SectionEditDialog({
   onClose,
   onChange,
   onVariantChange,
+  tenantSlug,
 }: {
   section:         SectionItem | null;
   open:            boolean;
   onClose:         () => void;
   onChange:        (data: Record<string, unknown>) => void;
   onVariantChange: (variant: string) => void;
+  tenantSlug:      string;
 }) {
   if (!section) return null;
   return (
@@ -146,6 +148,7 @@ function SectionEditDialog({
           variant={section.variant}
           onChange={onChange}
           onVariantChange={onVariantChange}
+          tenantSlug={tenantSlug}
         />
 
         <DialogFooter>
@@ -159,11 +162,12 @@ function SectionEditDialog({
 // ── LandingBuilder ────────────────────────────────────────────────────────────
 
 type Props = {
-  value:    string | null; // JSON string dari pages.content
-  onChange: (value: string) => void;
+  value:      string | null;
+  onChange:   (value: string) => void;
+  tenantSlug: string;
 };
 
-export function LandingBuilder({ value, onChange }: Props) {
+export function LandingBuilder({ value, onChange, tenantSlug }: Props) {
   const initial = parseLandingBody(value);
   const [sections, setSections] = useState<SectionItem[]>(initial.sections);
   const [pickerOpen, setPickerOpen]   = useState(false);
@@ -279,6 +283,7 @@ export function LandingBuilder({ value, onChange }: Props) {
         onClose={() => setEditOpen(false)}
         onChange={handleEditChange}
         onVariantChange={handleVariantChange}
+        tenantSlug={tenantSlug}
       />
     </div>
   );

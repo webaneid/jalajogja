@@ -38,6 +38,8 @@
 - Penamaan: camelCase untuk variabel/fungsi, PascalCase untuk komponen/types
 
 ## UI Standards
+- **Container width front-end publik: selalu `max-w-7xl mx-auto px-4`** — header, footer, semua section (hero, posts, events, dll) wajib pakai lebar yang sama agar layout proporsional. Jangan pakai `max-w-6xl`, `max-w-5xl`, atau lebar lain kecuali ada alasan desain yang eksplisit.
+- **Border dekoratif: selalu sertakan `border-border`** — `border-l`, `border-t`, dst tanpa kelas warna menggunakan warna default browser (hitam). Wajib: `border-l border-border`, `border-t border-border`, dst.
 - SEMUA dropdown/select wajib menggunakan Combobox (autocomplete), bukan plain `<select>` HTML
 - Implementasi: shadcn/ui Command + Popover pattern
 - Untuk data kecil (<100 items): filter client-side
@@ -150,7 +152,7 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 
 - Dashboard CMS (`/{slug}/website/`): posts, pages, kategori, tag — **SELESAI**
 - Domain routing 3 fase (path → subdomain → custom domain) — schema selesai, middleware Fase 2–3 saat front-end
-- Front-end publik Layer 1–4 — **BELUM, sedang dikerjakan**
+- Front-end publik Layer 1–4 — **SELESAI** (header/footer, homepage, post cards, section post, search)
 - Route group `(public)` sudah ada, donasi/event/dokumen/surat sudah render publik
 
 ### Template Card Post
@@ -162,9 +164,11 @@ Sistem card reusable untuk menampilkan post di mana saja — analog `get_templat
 - 6 variant: `klasik` | `list` | `overlay` | `ringkas` | `judul` | `ticker`
 - Registry: `lib/post-card-templates.ts` — `PostCardVariant` + `PostCardData` type
 - File komponen: `components/website/public/post-cards/`
-- Dipakai di: blog archive, landing section posts, search results, related posts (future)
-- `PostCardData`: id, title, slug, excerpt, **coverUrl** (sudah resolved, bukan coverId), categoryName, publishedAt
-- **Status: ⬜ Belum diimplementasikan**
+- Dipakai di: **post** archive, landing section posts, search results, related posts (future)
+- URL post publik: **`/{tenantSlug}/post/{slug}`** — BUKAN `/blog/`
+- URL arsip post: **`/{tenantSlug}/post`** — dengan query `?category={slug}` atau `?tag={slug}`
+- `PostCardData`: id, title, slug, excerpt, **coverUrl** (sudah resolved, bukan coverId), categoryName, publishedAt, isFeatured
+- **Status: ✅ Selesai**
 
 ### Section Post
 > Detail lengkap: **`docs/arsitektur-section-post.md`**
@@ -172,12 +176,12 @@ Sistem card reusable untuk menampilkan post di mana saja — analog `get_templat
 Container untuk menampilkan kumpulan post dalam berbagai layout design, di atas sistem Template Card Post.
 
 - Hirarki: `SectionItem (type="posts", variant="N")` → `PostsSection` wrapper → `PostsDesignN` → `PostCard`
-- Registry design: `lib/posts-section-designs.ts` — saat ini 5 slot design (visual menyusul)
-- **Design menentukan card variant** — bukan admin. Admin hanya pilih design + filter kategori
-- Filter kategori: `categoryId` opsional di `SectionItem.data` — null = semua kategori
-- Fetch terpusat di `PostsSection` wrapper — design menerima `PostCardData[]` siap pakai
-- Menambah design baru: 1 file + 1 baris registry + 1 wireframe. Tidak ada perubahan lain
-- **Status: ⬜ Belum diimplementasikan — menunggu referensi visual design**
+- Registry: `lib/posts-section-designs.ts` — 5 design, field `type: "hero" | "section"` di tiap entry
+- **Dua kategori design**: `hero` (Design 1 — fetch featured+recent, tanpa title) vs `section` (Design 2–5 — filter kategori/tag, wajib ada `PostsSectionTitle`)
+- `PostsSectionTitle` — shared component wajib untuk semua section type: heading + dashed line + "Lihat Semua ›"
+- Design 4 (Trio Column): `columns[]` — tiap kolom punya filter `categoryId`/`tagId` sendiri
+- Design 5 (Post Carousel): client component, aspect ratio 3:4, `className?` prop di `PostCardOverlay`
+- **Status: ✅ Selesai — semua 5 design + section title + fetch wrapper diimplementasikan**
 
 ## Arsitektur Shell UI Dashboard
 
@@ -275,6 +279,8 @@ app/(dashboard)/[tenant]/
 - [x] **Modul Akun Phase 2** — `resolveIdentity()` helper + update `checkoutAction`. TypeScript 0 errors.
 - [x] **Modul Akun Phase 3** — API routes selesai (front-end ditunda sampai website dibangun). 3 endpoints: register, profil (GET/PATCH/DELETE), transaksi (GET). TypeScript 0 errors.
 - [x] **Modul Akun Phase 4** — Dashboard admin `/akun` — list page + detail page + link/unlink ke anggota IKPM. TypeScript 0 errors.
+- [x] **Front-end Publik** — PublicLayout (header+footer switcher), `/post` archive + detail, 6 PostCard variants, PostsSection (5 designs), PostsSectionTitle, search API, login/register pages, `/settings/website` dengan header/footer design picker. TypeScript 0 errors.
+- [ ] **Image System** — arsitektur selesai di `docs/arsitektur-image.md`; implementasi belum dimulai (Sharp + 6 variants + WebP + cron cleanup)
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
@@ -1620,25 +1626,42 @@ app/(dashboard)/[tenant]/akun/
 - Mode "link": combobox + tombol Hubungkan; mode "unlink": tombol Lepas Link + confirm()
 - `router.refresh()` setelah berhasil — update UI tanpa reload penuh
 
-## Context Sesi Terakhir
-- Terakhir dikerjakan: **Modul Akun — SELESAI semua phase + fitur tambah akun dari dashboard**
-- `createProfileAction` + `/akun/new` + query list diperluas + detail page + link/unlink
-- Type check: **0 errors**
-- Next: bebas — Billing Phase 2 atau modul lain
+### [2026-04] Arsitektur Front-end Publik — Post Section & Card System
 
-### Perubahan sesi ini (TTD complete fixes)
-1. **`syncSignatureSlotsAction` token-stable** — token hanya di-regenerate jika officer berubah ATAU token null
-2. **Hapus tombol "TTD Sekarang"** dari detail mode — URL adalah satu-satunya cara TTD
-3. **Form mode tidak tampilkan status TTD** — badge `✓ TTD` / `⏳ Menunggu` hanya di detail mode
-4. **Bug root cause**: `signed_at DEFAULT NOW()` di DDL lama → semua slot baru langsung `signed` — fix: `ALTER COLUMN signed_at DROP DEFAULT` + reset data palsu
-5. **Hapus duplicate public dokumen route** yang konflik dengan dashboard route
+**URL publik post: `/post` bukan `/blog`**
+Route publik untuk post menggunakan `/{tenantSlug}/post/{slug}` (detail) dan `/{tenantSlug}/post` (arsip).
+Semua referensi `/blog` di kode dan dokumentasi wajib diganti ke `/post`.
+Filter arsip: `/{tenantSlug}/post?category={slug}` dan `/{tenantSlug}/post?tag={slug}`.
+
+**Dua kategori design section post: `hero` vs `section`**
+Registry design punya field `type: "hero" | "section"`. `hero` = tidak ada title/filter (Design 1).
+`section` = wajib ada `PostsSectionTitle` + filterHref selalu terisi. Ini dikontrol di wrapper, bukan di tiap design.
+
+**`PostsSectionTitle` — shared component wajib**
+Semua design `section` type wajib pakai `PostsSectionTitle` (heading + dashed line + "Lihat Semua ›").
+Design baru cukup render `<PostsSectionTitle title={sectionTitle} href={filterHref} />` — tidak perlu implement header sendiri.
+
+**`sectionTitle` dan `filterHref` di-resolve di wrapper, bukan di design**
+Props `sectionTitle` dan `filterHref` di `PostsSectionProps` sudah di-resolve sebelum masuk ke design component.
+Fallback chain: `filterLabel` (nama kategori/tag dari DB) → `data.title` → `"Berita Terbaru"`.
+`filterHref` dijamin selalu terisi untuk section type (fallback ke `/{tenantSlug}/post`).
+
+**Design 4 (Trio Column) dieksekusi terakhir**
+Kompleksitas section editor lebih tinggi (3 combobox independen per kolom). Eksekusi Design 2, 3, 5 dulu.
+
+## Context Sesi Terakhir
+- Terakhir dikerjakan: **Front-end Publik — implementasi lengkap** (header/footer system, 6 PostCard variants, 5 PostsSection designs, PostsSectionTitle, LandingTemplate, PublicLayout, search API, login/register, /settings/website design picker)
+- Dokumentasi: `docs/arsitektur-image.md` dibuat (arsitektur image system dengan Sharp + 6 variants + WebP + cron cleanup)
+- Type check: **0 errors**
+- Next: bebas — Image System implementation atau Billing Phase 2
 
 ### Known TODO
 - Role System: email SMTP sending untuk invite (saat ini hanya manual link copy), update role dropdown di daftar user aktif, wajibkan email di form anggota
 - Modul Dokumen: uploader name di version history (perlu cross-schema join tenant.users → public.user)
 - Fitur surat belum: inter-tenant letters, attachment MediaPicker
 - **Keuangan** — laporan & event_income selesai; sisa: Budget UI, export PDF laporan — lihat `docs/arsitektur-keuangan.md`
-- **Billing** — arsitektur selesai di `docs/arsitektur-billing.md`; belum ada implementasi. Phase 1: schema + dashboard invoice. Phase 2: public cart/checkout. Phase 3: integrasi modul existing.
+- **Billing** — Phase 1 selesai (schema + dashboard invoice + partial payment). Phase 2: public cart/checkout. Phase 3: integrasi modul existing.
+- **Image System** — arsitektur di `docs/arsitektur-image.md`: `bun add sharp`, `lib/image-processor.ts`, `lib/image-url.ts`, update media upload route, update DB schema (variants JSONB + processingStatus + originalExpiresAt), cron cleanup API
 
 ## Arsitektur Modul Billing
 > Detail lengkap: **`docs/arsitektur-billing.md`**

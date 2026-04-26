@@ -5,7 +5,7 @@ export type PostCardData = {
   excerpt:      string | null;
   coverUrl:     string | null;
   categoryName: string | null;
-  publishedAt:  Date | null;
+  publishedAt:  string | null;
   isFeatured:   boolean;
 };
 

@@ -98,7 +98,7 @@ export function LightFooter({
     <footer className="bg-gray-50 text-gray-600 border-t border-gray-200">
 
       {/* ── Section 1: Identitas + Social CTA ── */}
-      <div className="max-w-6xl mx-auto px-4 pt-14 pb-10">
+      <div className="max-w-7xl mx-auto px-4 pt-14 pb-10">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
 
           {/* Kiri: Logo + Nama + Tagline + Deskripsi */}
@@ -147,7 +147,7 @@ export function LightFooter({
       <div className="border-t border-gray-200" />
 
       {/* ── Section 2: Nav + Kontak ── */}
-      <div className="max-w-6xl mx-auto px-4 py-10">
+      <div className="max-w-7xl mx-auto px-4 py-10">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
 
           {navMenu.length > 0 && (
@@ -224,7 +224,7 @@ export function LightFooter({
 
       {/* ── Copyright ── */}
       <div className="bg-gray-100 border-t border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-400">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-400">
           <span>© {year} {siteName}. All rights reserved.</span>
           <span>Jalakarta &mdash; developed with ❤️ by <span className="text-gray-600 font-semibold">Webane</span></span>
         </div>

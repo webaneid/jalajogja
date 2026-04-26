@@ -13,7 +13,7 @@ export function ClassicHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryC
       className="sticky top-0 z-50 bg-white border-b border-border shadow-sm"
       style={{ "--primary-color": primaryColor } as React.CSSProperties}
     >
-      <div className="max-w-6xl mx-auto px-4">
+      <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo + Nama */}
           <a href={`/${tenantSlug}`} className="flex items-center gap-3 shrink-0">

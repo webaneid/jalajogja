@@ -105,7 +105,7 @@ export function DarkFooter({
     <footer className="bg-gray-900 text-gray-300">
 
       {/* ── Section 1: Identitas + Social CTA ── */}
-      <div className="max-w-6xl mx-auto px-4 pt-14 pb-10">
+      <div className="max-w-7xl mx-auto px-4 pt-14 pb-10">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
 
           {/* Kiri: Logo + Nama + Tagline + Deskripsi */}
@@ -155,7 +155,7 @@ export function DarkFooter({
       <div className="border-t border-white/10" />
 
       {/* ── Section 2: Nav + Kontak ── */}
-      <div className="max-w-6xl mx-auto px-4 py-10">
+      <div className="max-w-7xl mx-auto px-4 py-10">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
 
           {/* Kiri: Navigation */}
@@ -234,7 +234,7 @@ export function DarkFooter({
 
       {/* ── Copyright ── */}
       <div className="bg-black/30 border-t border-white/10">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-500">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-500">
           <span>© {year} {siteName}. All rights reserved.</span>
           <span>Jalakarta &mdash; developed with ❤️ by <span className="text-gray-400 font-semibold">Webane</span></span>
         </div>
