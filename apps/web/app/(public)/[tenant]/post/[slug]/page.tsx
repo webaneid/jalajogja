@@ -42,23 +42,25 @@ async function getPost(tenantSlug: string, postSlug: string) {
 
   if (!post || post.status !== "published") return null;
 
-  let coverUrl:   string | null = null;
-  let coverAlt:   string | null = null;
-  let coverTitle: string | null = null;
+  let coverUrl:     string | null = null;
+  let coverAlt:     string | null = null;
+  let coverTitle:   string | null = null;
+  let coverCaption: string | null = null;
   if (post.coverId) {
     const [media] = await tenantDb
-      .select({ path: schema.media.path, altText: schema.media.altText, title: schema.media.title })
+      .select({ path: schema.media.path, altText: schema.media.altText, title: schema.media.title, caption: schema.media.caption })
       .from(schema.media)
       .where(eq(schema.media.id, post.coverId))
       .limit(1);
     if (media) {
-      coverUrl   = publicUrl(tenantSlug, media.path);
-      coverAlt   = media.altText;
-      coverTitle = media.title;
+      coverUrl     = publicUrl(tenantSlug, media.path);
+      coverAlt     = media.altText;
+      coverTitle   = media.title;
+      coverCaption = media.caption;
     }
   }
 
-  return { post, coverUrl, coverAlt, coverTitle, tenantName: tenant.name };
+  return { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName: tenant.name };
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
@@ -77,7 +79,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
   const result = await getPost(tenantSlug, postSlug);
   if (!result) notFound();
 
-  const { post, coverUrl, coverAlt, coverTitle, tenantName } = result;
+  const { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName } = result;
   const html = renderBody(post.content);
 
   const fmtDate = (date: Date | null) =>
@@ -109,15 +111,22 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
 
       {/* Cover */}
       {coverUrl && (
-        <div className="mb-8 rounded-xl overflow-hidden border border-border">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={coverUrl}
-            alt={coverAlt ?? post.title}
-            title={coverTitle ?? undefined}
-            className="w-full aspect-video object-cover"
-          />
-        </div>
+        <figure className="mb-8">
+          <div className="rounded-xl overflow-hidden border border-border">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={coverUrl}
+              alt={coverAlt ?? post.title}
+              title={coverTitle ?? undefined}
+              className="w-full aspect-video object-cover"
+            />
+          </div>
+          {coverCaption && (
+            <figcaption className="mt-2 text-center text-xs text-muted-foreground italic px-2">
+              {coverCaption}
+            </figcaption>
+          )}
+        </figure>
       )}
 
       {/* Excerpt */}
