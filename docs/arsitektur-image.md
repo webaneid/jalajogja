@@ -478,9 +478,232 @@ export async function GET(request: Request) {
 
 ---
 
+## Metadata SEO Gambar
+
+Setiap gambar di media library memiliki 4 field metadata yang penting untuk SEO dan aksesibilitas.
+Field ini sudah ada di DB schema (`alt_text`, `title`, `caption`, `description`) dan sudah ada
+di `MediaItem` type. Yang perlu diimplementasikan adalah **UX untuk mengisi dan mengeditnya**.
+
+### Fungsi Tiap Field
+
+| Field | Tag HTML | Fungsi SEO / UX | Contoh |
+|-------|----------|-----------------|--------|
+| **Alt Text** | `<img alt="...">` | **Wajib untuk SEO** — dibaca Google untuk indexing gambar, screen reader, muncul saat gambar gagal load | `"Prosesi wisuda santri IKPM angkatan 2024"` |
+| **Title** | `<img title="...">` | Tooltip saat hover gambar. Juga dipakai schema.org `ImageObject.name` | `"Wisuda Santri 2024"` |
+| **Caption** | `<figcaption>` | Teks di bawah gambar dalam artikel/post. Terbaca Google sebagai konteks gambar | `"Para santri mengenakan toga saat prosesi wisuda di Aula Utama IKPM"` |
+| **Description** | schema.org `ImageObject.description` | Deskripsi panjang untuk structured data — dipakai `generateArticleJsonLd()` dan image sitemap | `"Dokumentasi wisuda angkatan 87 Pondok Modern Darussalam Gontor, ..."` |
+
+**Alt text adalah field terpenting** — tanpa alt text, Google tidak tahu isi gambar.
+Caption dan description adalah bonus SEO yang bisa ditambahkan kapan saja setelah upload.
+
+### Urutan Prioritas Pengisian
+
+Saat upload baru: hanya upload, metadata kosong — **tidak blokir alur upload**.
+Admin isi metadata kapan saja di media library atau saat memilih gambar di MediaPicker.
+
+```
+Upload → gambar masuk DB (metadata null)
+       ↓
+Edit via MediaShell (/media page) — klik gambar → panel detail → autosave
+       ATAU
+Edit via MediaPicker (saat pilih gambar di form post/produk/dll) → panel kanan → save sebelum konfirmasi
+```
+
+---
+
+## UI Editing Metadata: MediaShell
+
+Halaman `/media` — perubahan UX dari pola saat ini (pensil hover-only) ke pola WordPress:
+
+### Layout dua zona
+
+```
+┌─────────────────────────────┬───────────────────────────┐
+│  Grid/List (kiri, flex-1)   │  Detail Panel (kanan)     │
+│                             │  — muncul saat ada        │
+│  [☐img] [☐img] [☐img]      │    gambar di-klik         │
+│  [☐img] [☐img] [☐img]      │                           │
+│                             │  [preview gambar]         │
+│                             │  Nama file, ukuran, tipe  │
+│                             │  ─────────────────────    │
+│                             │  Alt Text [input]         │
+│                             │  Title    [input]         │
+│                             │  Caption  [textarea]      │
+│                             │  Deskripsi[textarea]      │
+│                             │                           │
+│                             │  💾 Tersimpan ✓ (autosave)│
+└─────────────────────────────┴───────────────────────────┘
+```
+
+Panel kanan: `w-80 shrink-0 border-l bg-card` — muncul/hilang via `selectedItem` state.
+
+### Behavior
+
+- **Klik gambar** → set `selectedItem`, panel kanan muncul (jika belum ada)
+- **Klik gambar lain** → ganti `selectedItem`, panel update ke gambar baru
+- **Klik gambar yang sudah dipilih** → tutup panel (toggle)
+- **Checkbox** di pojok kiri atas **selalu tampil** (tidak hanya hover) — untuk select batch delete atau pemilihan gallery
+  - Toolbar "Hapus yang Dipilih" muncul saat minimal 1 checkbox tercentang
+  - Checkbox dan klik-detail adalah dua interaksi independen — satu item bisa sekaligus diceklis DAN tampil di panel
+- **Panel menutup** → autosave sudah jalan via debounce — tidak perlu explicit save saat menutup
+
+### Autosave
+
+Debounce **1000ms** setelah user stop mengetik di field mana pun:
+
+```
+User mengetik → clearTimeout → setTimeout(1000ms) → PATCH /api/media/[id]/metadata
+                                                     → indicator "Menyimpan..."
+                                                     → "Tersimpan ✓" (2 detik, lalu hilang)
+                                                     → jika error → "Gagal ✗" + toast
+```
+
+Indicator di pojok kanan bawah panel:
+- Idle: kosong
+- Saving: `<Loader2 spin /> Menyimpan...` (teks abu-abu kecil)
+- Saved: `✓ Tersimpan` (hijau, fade out setelah 2 detik)
+- Error: `✗ Gagal simpan` (merah, tetap sampai retry)
+
+---
+
+## UI Editing Metadata: MediaPicker
+
+Dialog picker yang dipakai di form post/produk/dll — perubahan dari single-column ke split view
+saat ada gambar terpilih:
+
+### Layout dua kolom (saat ada yang terpilih)
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Dialog Header: "Pilih Media"                        │
+├─────────────────────┬────────────────────────────────┤
+│  Grid (kiri)        │  Detail (kanan, w-72)          │
+│  — tetap scroll     │  — muncul saat 1 item terpilih │
+│                     │                                │
+│  [ ✓ ] [ ] [ ]     │  [preview gambar besar]        │
+│  [ ] [ ] [ ]        │  nama.jpg · 240 KB · image/jpg │
+│                     │  ─────────────────────────     │
+│                     │  Alt Text [input]              │
+│                     │  Title    [input]              │
+│                     │  Caption  [textarea 2 rows]    │
+│                     │                                │
+│                     │  💾 Tersimpan ✓               │
+└─────────────────────┴────────────────────────────────┘
+│ [Batal]                           [Pilih (1)]        │
+└──────────────────────────────────────────────────────┘
+```
+
+Panel kanan hanya tampil saat **tepat 1 item terpilih** (bukan `multiple` select atau 0 item).
+
+### Behavior
+
+- Klik gambar → pilih + panel kanan muncul otomatis
+- User isi Alt Text / Title / Caption di panel kanan
+- Debounce autosave ke DB (1000ms) — sama seperti di MediaShell
+- Klik "Pilih" → `onSelect` dipanggil dengan `MediaItem` yang sudah updated
+- Data yang dikembalikan ke parent sudah include perubahan metadata terbaru
+
+### Multiple mode
+
+Saat `multiple=true`: panel kanan **tidak tampil** (terlalu sempit untuk multi-select UX).
+Edit metadata individual dalam multiple mode via tombol pensil kecil per item → buka `MediaEditModal`.
+Ini konsisten dengan pola saat ini — modal tetap ada sebagai fallback untuk multiple mode.
+
+---
+
+## MediaDetailPanel — Komponen Bersama
+
+Daripada duplikasi form di `MediaShell` dan `MediaPicker`, gunakan satu komponen:
+
+```typescript
+// components/media/media-detail-panel.tsx
+
+type Props = {
+  media:            MediaItem;
+  slug:             string;
+  onChange:         (updated: MediaItem) => void;   // update local state parent
+  showDescription?: boolean;                        // default false; true hanya di MediaShell
+};
+
+export function MediaDetailPanel({ media, slug, onChange, showDescription = false }: Props)
+```
+
+**State internal**: field values (altText, title, caption, description)
+**Autosave**: `useEffect` watch field changes + debounce 1000ms → PATCH → update parent via `onChange`
+**Indicator**: save status (idle | saving | saved | error)
+
+**PENTING — reset state saat item berganti**: komponen harus di-`key` oleh `media.id` di parent:
+```tsx
+<MediaDetailPanel key={selectedItem.id} media={selectedItem} ... />
+```
+Tanpa `key`, state internal (altText dll) tidak ter-reset saat panel berpindah ke gambar lain —
+data gambar lama akan ter-autosave ke gambar yang baru dipilih.
+
+Dipakai oleh:
+- `MediaShell` → panel kanan saat item dipilih, `showDescription={true}`
+- `MediaPicker` → panel kanan saat 1 item terpilih (single mode), `showDescription={false}`
+
+---
+
+## Update: api/media/[id]/metadata/route.ts
+
+Endpoint sudah ada. Tidak perlu perubahan — sudah support PATCH dengan field `altText`, `title`,
+`caption`, `description`. Response mengembalikan `MediaItem` updated.
+
+Field `description` tidak ditampilkan di `MediaDetailPanel` dalam `MediaPicker`
+(caption sudah cukup untuk konteks picker) — tampilkan `description` hanya di `MediaShell`
+yang lebih luas.
+
+---
+
+## Integrasi dengan SEO
+
+### Alt text di `<img>` tag
+
+Semua komponen yang render gambar dari media library wajib pakai `altText` jika tersedia:
+
+```typescript
+// PostCard, product images, member photos, dsb.
+<img
+  src={coverUrl}
+  alt={media.altText ?? media.originalName}  // fallback ke nama file
+  title={media.title ?? undefined}
+/>
+```
+
+`PostCardData.coverUrl` adalah URL sudah resolved — alt text tidak ikut di `PostCardData`.
+Untuk post card, alt text = `post.title` (lebih relevan daripada alt text gambar standalone).
+
+### Caption di block editor
+
+Block editor (Tiptap) sudah support `<figure>` + `<figcaption>` di `ImageBlock` node.
+Saat user insert gambar via MediaPicker di editor:
+- `alt` diisi otomatis dari `media.altText`
+- `title` diisi dari `media.title`
+- Caption bisa diisi manual di editor (terpisah dari `media.caption`)
+- `media.caption` adalah default suggestion tapi user bisa override di editor
+
+### schema.org ImageObject (future)
+
+`media.description` dipakai untuk structured data gambar. Implementasi di `generateArticleJsonLd()`:
+
+```typescript
+image: {
+  "@type": "ImageObject",
+  url:         resolvedUrl,
+  name:        media.title        ?? post.title,
+  description: media.description  ?? post.excerpt ?? undefined,
+  width:       1200,
+  height:      630,
+}
+```
+
+---
+
 ## Urutan Eksekusi (Wajib Diikuti)
 
 ```
+── Phase A: Variant System ─────────────────────────────────────────────────
 Step 1 — Drizzle schema update (website.ts — tambah 4 kolom + ImageVariants type)
 Step 2 — DDL update create-tenant-schema.ts (ALTER TABLE ADD COLUMN)
 Step 3 — ALTER TABLE manual untuk tenant existing (pc-ikpm-jogjakarta)
@@ -493,11 +716,17 @@ Step 9 — Update MediaItem type di media-picker.tsx (tambah variants field)
 Step 10 — Update media-shell.tsx + media-picker.tsx (gunakan thumbnail di grid)
 Step 11 — Update resolveCovers + fetchFeaturedPosts di posts-section.tsx (getImageUrl)
 Step 12 — (Opsional) api/cron/cleanup-images/route.ts
+
+── Phase B: Metadata UI ────────────────────────────────────────────────────
+Step 13 — Buat components/media/media-detail-panel.tsx (autosave + indicator)
+Step 14 — Refactor media-shell.tsx: klik = detail panel kanan, checkbox = select delete
+Step 15 — Refactor media-picker.tsx: tambah panel kanan saat 1 item terpilih (single mode)
+Step 16 — TypeScript check (tsc --noEmit)
 ```
 
-Step 1–3 wajib selesai sebelum Step 6 dijalankan.
-Step 5 wajib selesai sebelum Step 11.
-Step 9 wajib selesai sebelum Step 10.
+Phase A Step 1–3 wajib selesai sebelum Step 6.
+Phase A Step 5 wajib selesai sebelum Step 11.
+Phase B bisa dikerjakan independen dari Phase A (metadata sudah ada di DB).
 
 ---
 
@@ -519,12 +748,14 @@ apps/web/
 │   ├── upload/route.ts            → update: pipeline + bypass + rollback
 │   ├── delete/route.ts            → update: hapus semua variant
 │   ├── list/route.ts              → update: resolve variant URLs
-│   └── [id]/metadata/route.ts    → tidak berubah
+│   └── [id]/metadata/route.ts    → tidak berubah (sudah support 4 field)
 ├── app/api/cron/
 │   └── cleanup-images/route.ts   → baru: hapus expired originals
 └── components/media/
-    ├── media-picker.tsx           → update: MediaItem type + thumbnail display
-    └── media-shell.tsx            → update: thumbnail display di grid
+    ├── media-picker.tsx           → update: thumbnail display + panel detail kanan
+    ├── media-shell.tsx            → update: thumbnail display + klik = panel, checkbox = select
+    ├── media-detail-panel.tsx     → BARU: form 4 field + autosave + indicator
+    └── media-edit-modal.tsx       → tetap ada (dipakai di MediaPicker multiple mode)
 
 packages/db/src/schema/tenant/website.ts
   → update: createMediaTable() + ImageVariants type export
@@ -540,6 +771,8 @@ apps/web/components/website/public/sections/posts/posts-section.tsx
 
 ## Status Implementasi
 
+### Phase A — Variant System
+
 | Komponen | Status |
 |----------|--------|
 | Drizzle schema — 4 kolom baru + `ImageVariants` type | ✅ Selesai |
@@ -554,15 +787,25 @@ apps/web/components/website/public/sections/posts/posts-section.tsx
 | `resolveCovers` + `fetchFeaturedPosts` — `getImageUrl()` | ✅ Selesai |
 | `api/cron/cleanup-images/route.ts` | ✅ Selesai |
 
-**TypeScript: 0 errors. Semua fase selesai.**
+### Phase B — Metadata UI
+
+| Komponen | Status |
+|----------|--------|
+| DB schema — `alt_text`, `title`, `caption`, `description` | ✅ Selesai (sudah ada sejak awal) |
+| `api/media/[id]/metadata/route.ts` — PATCH 4 field | ✅ Selesai |
+| `media-edit-modal.tsx` — modal edit manual (tombol Simpan) | ✅ Selesai |
+| `media-detail-panel.tsx` — panel autosave baru | ✅ Selesai |
+| `media-shell.tsx` — klik=panel, checkbox=select | ✅ Selesai |
+| `media-picker.tsx` — panel kanan saat 1 item terpilih | ✅ Selesai |
 
 ### Catatan Implementasi
 
-- **Tenant existing sudah dimigrasikan**: `pc-ikpm-jogjakarta` sudah dapat 4 kolom baru via `ALTER TABLE` manual (2026-04-26). Media lama tetap bekerja via fallback `path` di `getImageUrl()` — `variants = NULL` ditangani gracefully.
+- **Tenant existing sudah dimigrasikan**: `pc-ikpm-jogjakarta` sudah dapat 4 kolom variant baru via `ALTER TABLE` manual (2026-04-26). Media lama tetap bekerja via fallback `path` di `getImageUrl()` — `variants = NULL` ditangani gracefully.
 - **Tenant baru**: 4 kolom sudah ada di `create-tenant-schema.ts` — otomatis saat provisioning.
 - **`CRON_SECRET`**: wajib set di `.env` sebelum cron job aktif.
 - **`resolveCovers`**: `fetchRecentPosts` menggunakan `"medium"`, `fetchFeaturedPosts` menggunakan `"large"`.
 - **`resolveDisplayUrl`**: helper lokal di `media-shell.tsx` dan `media-picker.tsx` — prioritas thumbnail untuk grid.
+- **Phase B bisa dikerjakan kapan saja**: DB schema dan API sudah siap, tinggal UX component.
 
 ---
 

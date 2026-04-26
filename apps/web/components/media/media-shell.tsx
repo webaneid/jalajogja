@@ -3,13 +3,13 @@
 import { useState, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import {
-  UploadCloud, Grid, List, Trash2, X, Search,
-  Filter, FileText, Film, Image as ImageIcon, File, Pencil,
+  UploadCloud, Grid, List, Trash2, Search,
+  Filter, FileText, Film, Image as ImageIcon, File, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Image from "next/image";
-import { MediaEditModal } from "./media-edit-modal";
+import { MediaDetailPanel } from "./media-detail-panel";
 import type { MediaItem } from "./media-picker";
 
 function resolveDisplayUrl(item: MediaItem): string {
@@ -51,17 +51,17 @@ export function MediaShell({
   media: MediaItem[];
   initialModule?: string;
 }) {
-  const [media, setMedia] = useState<MediaItem[]>(initialMedia);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [search, setSearch] = useState("");
+  const [media, setMedia]               = useState<MediaItem[]>(initialMedia);
+  const [viewMode, setViewMode]         = useState<"grid" | "list">("grid");
+  const [search, setSearch]             = useState("");
   const [moduleFilter, setModuleFilter] = useState(initialModule ?? "");
   const [uploadModule, setUploadModule] = useState<typeof MODULE_OPTIONS[number]>("general");
-  const [isDragging, setIsDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [deleting, setDeleting] = useState(false);
-  const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging]     = useState(false);
+  const [uploading, setUploading]       = useState(false);
+  const [selected, setSelected]         = useState<Set<string>>(new Set());   // checkbox batch delete
+  const [deleting, setDeleting]         = useState(false);
+  const [detailItem, setDetailItem]     = useState<MediaItem | null>(null);   // panel kanan
+  const fileInputRef                    = useRef<HTMLInputElement>(null);
 
   const filtered = media.filter((m) => {
     const matchSearch =
@@ -134,6 +134,7 @@ export function MediaShell({
       });
       if (res.ok) {
         setMedia((prev) => prev.filter((m) => m.id !== id));
+        if (detailItem?.id === id) setDetailItem(null);
         successCount++;
       }
     }
@@ -142,7 +143,7 @@ export function MediaShell({
     if (successCount > 0) toast.success(`${successCount} file dihapus`);
   };
 
-  const toggleSelect = (id: string) =>
+  const toggleCheck = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -150,14 +151,18 @@ export function MediaShell({
       return next;
     });
 
-  // Update item di local state setelah metadata disimpan
-  const handleMetaSave = (updated: MediaItem) =>
+  const handleClickItem = (item: MediaItem) =>
+    setDetailItem((prev) => (prev?.id === item.id ? null : item));
+
+  const handlePanelChange = (updated: MediaItem) => {
     setMedia((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+    setDetailItem(updated);
+  };
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b bg-card px-6 py-4">
+      <div className="border-b border-border bg-card px-6 py-4 shrink-0">
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-xl font-semibold">Media Library</h1>
           <div className="flex items-center gap-2">
@@ -243,53 +248,71 @@ export function MediaShell({
         </div>
       </div>
 
-      {/* Konten — drop zone + grid/list */}
-      <div
-        className={`flex-1 overflow-y-auto p-6 relative
-          ${isDragging ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
-        onDrop={handleDrop}
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-        onDragLeave={() => setIsDragging(false)}
-      >
-        {isDragging && (
-          <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-            <div className="bg-background/90 border-2 border-dashed border-primary rounded-xl px-12 py-8 text-center">
-              <UploadCloud className="h-10 w-10 mx-auto mb-2 text-primary" />
-              <p className="font-semibold text-primary">Lepas untuk upload</p>
+      {/* Body — grid/list + detail panel */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Drop zone + grid/list — flex-1 */}
+        <div
+          className={`flex-1 overflow-y-auto p-6 relative
+            ${isDragging ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
+          onDrop={handleDrop}
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+        >
+          {isDragging && (
+            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+              <div className="bg-background/90 border-2 border-dashed border-primary rounded-xl px-12 py-8 text-center">
+                <UploadCloud className="h-10 w-10 mx-auto mb-2 text-primary" />
+                <p className="font-semibold text-primary">Lepas untuk upload</p>
+              </div>
+            </div>
+          )}
+
+          {filtered.length === 0 ? (
+            <EmptyState uploading={uploading} onUpload={() => fileInputRef.current?.click()} />
+          ) : viewMode === "grid" ? (
+            <GridView
+              items={filtered}
+              selected={selected}
+              detailId={detailItem?.id ?? null}
+              onToggleCheck={toggleCheck}
+              onClickItem={handleClickItem}
+            />
+          ) : (
+            <ListView
+              items={filtered}
+              selected={selected}
+              detailId={detailItem?.id ?? null}
+              onToggleCheck={toggleCheck}
+              onClickItem={handleClickItem}
+            />
+          )}
+        </div>
+
+        {/* Detail panel kanan */}
+        {detailItem && (
+          <div className="w-80 shrink-0 border-l border-border bg-card flex flex-col overflow-hidden">
+            {/* Panel header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+              <span className="text-sm font-medium">Detail</span>
+              <button
+                onClick={() => setDetailItem(null)}
+                className="p-1 rounded hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <MediaDetailPanel
+                key={detailItem.id}
+                media={detailItem}
+                slug={slug}
+                onChange={handlePanelChange}
+                showDescription={true}
+              />
             </div>
           </div>
         )}
-
-        {filtered.length === 0 ? (
-          <EmptyState uploading={uploading} onUpload={() => fileInputRef.current?.click()} />
-        ) : viewMode === "grid" ? (
-          <GridView
-            items={filtered}
-            selected={selected}
-            onToggle={toggleSelect}
-            onEdit={setEditingItem}
-          />
-        ) : (
-          <ListView
-            items={filtered}
-            selected={selected}
-            onToggle={toggleSelect}
-            onEdit={setEditingItem}
-          />
-        )}
       </div>
-
-      {/* MediaEditModal */}
-      {editingItem && (
-        <MediaEditModal
-          key={editingItem.id}
-          media={editingItem}
-          slug={slug}
-          open={!!editingItem}
-          onClose={() => setEditingItem(null)}
-          onSave={handleMetaSave}
-        />
-      )}
     </div>
   );
 }
@@ -308,21 +331,22 @@ function EmptyState({ uploading, onUpload }: { uploading: boolean; onUpload: () 
 }
 
 function GridView({
-  items, selected, onToggle, onEdit,
+  items, selected, detailId, onToggleCheck, onClickItem,
 }: {
-  items: MediaItem[];
-  selected: Set<string>;
-  onToggle: (id: string) => void;
-  onEdit: (item: MediaItem) => void;
+  items:         MediaItem[];
+  selected:      Set<string>;
+  detailId:      string | null;
+  onToggleCheck: (id: string) => void;
+  onClickItem:   (item: MediaItem) => void;
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
       {items.map((item) => (
         <div
           key={item.id}
-          onClick={() => onToggle(item.id)}
+          onClick={() => onClickItem(item)}
           className={`group relative rounded-lg border cursor-pointer overflow-hidden transition-all
-            ${selected.has(item.id)
+            ${detailId === item.id
               ? "ring-2 ring-primary border-primary"
               : "border-border hover:border-primary/50"}`}
         >
@@ -340,23 +364,21 @@ function GridView({
             )}
           </div>
 
-          {selected.has(item.id) && (
-            <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-primary rounded-full
-                            flex items-center justify-center">
-              <X className="h-3 w-3 text-primary-foreground" />
-            </div>
-          )}
-
-          {/* Tombol edit — kiri atas, muncul saat hover */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onEdit(item); }}
-            className="absolute top-1.5 left-1.5 w-6 h-6 bg-black/60 rounded flex items-center
-                       justify-center opacity-0 group-hover:opacity-100 transition-opacity
-                       hover:bg-black/80"
-            title="Edit metadata"
+          {/* Checkbox pojok kiri atas — selalu tampil */}
+          <div
+            onClick={(e) => { e.stopPropagation(); onToggleCheck(item.id); }}
+            className={`absolute top-1.5 left-1.5 w-5 h-5 rounded border-2 flex items-center
+                        justify-center cursor-pointer transition-colors
+                        ${selected.has(item.id)
+                          ? "bg-primary border-primary"
+                          : "bg-background/80 border-border hover:border-primary"}`}
           >
-            <Pencil className="h-3 w-3 text-white" />
-          </button>
+            {selected.has(item.id) && (
+              <svg viewBox="0 0 10 8" className="w-3 h-3 fill-primary-foreground">
+                <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
 
           <div className="p-1.5">
             <p className="text-xs truncate text-muted-foreground">{item.originalName}</p>
@@ -369,22 +391,39 @@ function GridView({
 }
 
 function ListView({
-  items, selected, onToggle, onEdit,
+  items, selected, detailId, onToggleCheck, onClickItem,
 }: {
-  items: MediaItem[];
-  selected: Set<string>;
-  onToggle: (id: string) => void;
-  onEdit: (item: MediaItem) => void;
+  items:         MediaItem[];
+  selected:      Set<string>;
+  detailId:      string | null;
+  onToggleCheck: (id: string) => void;
+  onClickItem:   (item: MediaItem) => void;
 }) {
   return (
-    <div className="divide-y border rounded-lg overflow-hidden bg-card">
+    <div className="divide-y border border-border rounded-lg overflow-hidden bg-card">
       {items.map((item) => (
         <div
           key={item.id}
-          onClick={() => onToggle(item.id)}
-          className={`group flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors
-            ${selected.has(item.id) ? "bg-primary/5" : "hover:bg-muted/50"}`}
+          onClick={() => onClickItem(item)}
+          className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors
+            ${detailId === item.id ? "bg-primary/5" : "hover:bg-muted/50"}`}
         >
+          {/* Checkbox */}
+          <div
+            onClick={(e) => { e.stopPropagation(); onToggleCheck(item.id); }}
+            className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center
+                        cursor-pointer transition-colors
+                        ${selected.has(item.id)
+                          ? "bg-primary border-primary"
+                          : "border-border hover:border-primary"}`}
+          >
+            {selected.has(item.id) && (
+              <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 fill-primary-foreground">
+                <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+
           <div className="w-10 h-10 rounded bg-muted flex items-center justify-center
                           shrink-0 overflow-hidden">
             {item.mimeType.startsWith("image/") ? (
@@ -411,21 +450,6 @@ function ListView({
             <span className="hidden md:block">
               {new Date(item.createdAt).toLocaleDateString("id-ID")}
             </span>
-          </div>
-
-          {/* Tombol edit — muncul saat hover */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onEdit(item); }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded
-                       hover:bg-muted shrink-0"
-            title="Edit metadata"
-          >
-            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-          </button>
-
-          <div className={`w-4 h-4 rounded border shrink-0 flex items-center justify-center
-            ${selected.has(item.id) ? "bg-primary border-primary" : "border-border"}`}>
-            {selected.has(item.id) && <X className="h-2.5 w-2.5 text-primary-foreground" />}
           </div>
         </div>
       ))}

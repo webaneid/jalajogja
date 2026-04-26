@@ -15,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MediaEditModal } from "./media-edit-modal";
+import { MediaDetailPanel } from "./media-detail-panel";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -73,17 +74,23 @@ export function MediaPicker({
   accept,
   multiple = false,
 }: MediaPickerProps) {
-  const [activeTab, setActiveTab] = useState<"library" | "upload">("library");
-  const [media, setMedia] = useState<MediaItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab]       = useState<"library" | "upload">("library");
+  const [media, setMedia]               = useState<MediaItem[]>([]);
+  const [loading, setLoading]           = useState(false);
+  const [search, setSearch]             = useState("");
   const [moduleFilter, setModuleFilter] = useState(defaultModule ?? "");
   const [uploadModule, setUploadModule] = useState(defaultModule ?? "general");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [isDragging, setIsDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selected, setSelected]         = useState<Set<string>>(new Set());
+  const [isDragging, setIsDragging]     = useState(false);
+  const [uploading, setUploading]       = useState(false);
+  const [editingItem, setEditingItem]   = useState<MediaItem | null>(null);
+  const fileInputRef                    = useRef<HTMLInputElement>(null);
+
+  // Panel detail — hanya di single mode, muncul saat tepat 1 item terpilih
+  const selectedItem: MediaItem | null =
+    !multiple && selected.size === 1
+      ? (media.find((m) => selected.has(m.id)) ?? null)
+      : null;
 
   // Fetch media list setiap kali dialog dibuka
   useEffect(() => {
@@ -131,6 +138,9 @@ export function MediaPicker({
     items.forEach((item) => onSelect(item));
     onClose();
   }
+
+  const handlePanelChange = (updated: MediaItem) =>
+    setMedia((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
 
   const uploadFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -193,158 +203,175 @@ export function MediaPicker({
     [uploadFiles],
   );
 
+  const showPanel = !!selectedItem;
+
   return (
     <>
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl p-0 gap-0" showCloseButton={false}>
+      <DialogContent
+        className={`p-0 gap-0 ${showPanel ? "max-w-5xl" : "max-w-3xl"}`}
+        showCloseButton={false}
+      >
         <DialogHeader className="px-6 pt-5 pb-0">
           <DialogTitle>Pilih Media</DialogTitle>
         </DialogHeader>
 
-        <Tabs
-          value={activeTab}
-          onValueChange={(v) => setActiveTab(v as "library" | "upload")}
-          className="flex flex-col"
-        >
-          <div className="px-6 pt-3">
-            <TabsList>
-              <TabsTrigger value="library">Library</TabsTrigger>
-              <TabsTrigger value="upload">Upload Baru</TabsTrigger>
-            </TabsList>
+        <div className="flex overflow-hidden">
+          {/* Kolom kiri: tab + grid */}
+          <div className="flex-1 min-w-0 flex flex-col">
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => setActiveTab(v as "library" | "upload")}
+              className="flex flex-col"
+            >
+              <div className="px-6 pt-3">
+                <TabsList>
+                  <TabsTrigger value="library">Library</TabsTrigger>
+                  <TabsTrigger value="upload">Upload Baru</TabsTrigger>
+                </TabsList>
+              </div>
+
+              {/* ── Tab Library ── */}
+              <TabsContent value="library" className="m-0">
+                {/* Filter bar */}
+                <div className="flex items-center gap-3 px-6 py-3 border-b border-border">
+                  <div className="relative flex-1 max-w-xs">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Cari file..."
+                      value={search}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        setSearch(e.target.value)
+                      }
+                      className="pl-8 h-8"
+                    />
+                  </div>
+                  <select
+                    value={moduleFilter}
+                    onChange={(e) => setModuleFilter(e.target.value)}
+                    className="text-sm border rounded-md px-2 py-1 bg-background h-8"
+                  >
+                    <option value="">Semua modul</option>
+                    {MODULE_OPTIONS.map((m) => (
+                      <option key={m} value={m}>
+                        {MODULE_LABELS[m]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Grid thumbnail */}
+                <div className="h-[400px] overflow-y-auto p-4">
+                  {loading ? (
+                    <div className="flex items-center justify-center h-full">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : filtered.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-2">
+                      <p className="text-sm text-muted-foreground">Tidak ada file</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setActiveTab("upload")}
+                      >
+                        Upload File
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
+                      {filtered.map((item) => (
+                        <MediaThumb
+                          key={item.id}
+                          item={item}
+                          isSelected={selected.has(item.id)}
+                          multiple={multiple}
+                          onClick={() => toggleSelect(item.id)}
+                          onEdit={multiple ? setEditingItem : undefined}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* ── Tab Upload Baru ── */}
+              <TabsContent value="upload" className="m-0">
+                <div className="h-[464px] flex flex-col gap-3 p-6">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Upload ke modul:</span>
+                    <select
+                      value={uploadModule}
+                      onChange={(e) => setUploadModule(e.target.value)}
+                      className="text-sm border rounded-md px-2 py-1 bg-background"
+                    >
+                      {MODULE_OPTIONS.map((m) => (
+                        <option key={m} value={m}>
+                          {MODULE_LABELS[m]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div
+                    className={`flex-1 border-2 border-dashed rounded-xl flex flex-col items-center
+                      justify-center gap-3 cursor-pointer transition-colors
+                      ${isDragging
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50 hover:bg-muted/30"}`}
+                    onDrop={handleDrop}
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <p className="text-sm text-muted-foreground">Mengupload...</p>
+                      </>
+                    ) : (
+                      <>
+                        <UploadCloud className="h-10 w-10 text-muted-foreground" />
+                        <div className="text-center">
+                          <p className="font-medium">Drag & drop file ke sini</p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            atau klik untuk pilih file
+                          </p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Gambar, PDF, Video · Maks 20 MB per file
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    accept="image/*,application/pdf,video/mp4"
+                    onChange={(e) => e.target.files && uploadFiles(e.target.files)}
+                  />
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
 
-          {/* ── Tab Library ── */}
-          <TabsContent value="library" className="m-0">
-            {/* Filter bar */}
-            <div className="flex items-center gap-3 px-6 py-3 border-b">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Cari file..."
-                  value={search}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setSearch(e.target.value)
-                  }
-                  className="pl-8 h-8"
-                />
-              </div>
-              <select
-                value={moduleFilter}
-                onChange={(e) => setModuleFilter(e.target.value)}
-                className="text-sm border rounded-md px-2 py-1 bg-background h-8"
-              >
-                <option value="">Semua modul</option>
-                {MODULE_OPTIONS.map((m) => (
-                  <option key={m} value={m}>
-                    {MODULE_LABELS[m]}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Grid thumbnail */}
-            <div className="h-[400px] overflow-y-auto p-4">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-2">
-                  <p className="text-sm text-muted-foreground">Tidak ada file</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setActiveTab("upload")}
-                  >
-                    Upload File
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
-                  {filtered.map((item) => (
-                    <MediaThumb
-                      key={item.id}
-                      item={item}
-                      isSelected={selected.has(item.id)}
-                      onClick={() => toggleSelect(item.id)}
-                      onEdit={setEditingItem}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </TabsContent>
-
-          {/* ── Tab Upload Baru ── */}
-          <TabsContent value="upload" className="m-0">
-            <div className="h-[464px] flex flex-col gap-3 p-6">
-              {/* Selector modul upload */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Upload ke modul:</span>
-                <select
-                  value={uploadModule}
-                  onChange={(e) => setUploadModule(e.target.value)}
-                  className="text-sm border rounded-md px-2 py-1 bg-background"
-                >
-                  {MODULE_OPTIONS.map((m) => (
-                    <option key={m} value={m}>
-                      {MODULE_LABELS[m]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Drop zone */}
-              <div
-                className={`flex-1 border-2 border-dashed rounded-xl flex flex-col items-center
-                  justify-center gap-3 cursor-pointer transition-colors
-                  ${
-                    isDragging
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50 hover:bg-muted/30"
-                  }`}
-                onDrop={handleDrop}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {uploading ? (
-                  <>
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">Mengupload...</p>
-                  </>
-                ) : (
-                  <>
-                    <UploadCloud className="h-10 w-10 text-muted-foreground" />
-                    <div className="text-center">
-                      <p className="font-medium">Drag & drop file ke sini</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        atau klik untuk pilih file
-                      </p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Gambar, PDF, Video · Maks 10 MB per file
-                    </p>
-                  </>
-                )}
-              </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                accept="image/*,application/pdf,video/mp4"
-                onChange={(e) => e.target.files && uploadFiles(e.target.files)}
+          {/* Panel detail kanan — hanya single mode, 1 item terpilih */}
+          {showPanel && selectedItem && (
+            <div className="w-72 shrink-0 border-l border-border flex flex-col overflow-hidden">
+              <MediaDetailPanel
+                key={selectedItem.id}
+                media={selectedItem}
+                slug={slug}
+                onChange={handlePanelChange}
+                showDescription={false}
               />
             </div>
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
 
-        <DialogFooter className="px-6 py-4 border-t">
+        <DialogFooter className="px-6 py-4 border-t border-border">
           <Button variant="outline" onClick={onClose}>
             Batal
           </Button>
@@ -355,7 +382,7 @@ export function MediaPicker({
       </DialogContent>
     </Dialog>
 
-    {/* MediaEditModal — di luar Dialog agar tidak terjebak di z-index stack */}
+    {/* MediaEditModal — di luar Dialog, dipakai di multiple mode */}
     {editingItem && (
       <MediaEditModal
         key={editingItem.id}
@@ -363,9 +390,10 @@ export function MediaPicker({
         slug={slug}
         open={!!editingItem}
         onClose={() => setEditingItem(null)}
-        onSave={(updated) =>
-          setMedia((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
-        }
+        onSave={(updated) => {
+          setMedia((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+          setEditingItem(null);
+        }}
       />
     )}
     </>
@@ -377,24 +405,24 @@ export function MediaPicker({
 function MediaThumb({
   item,
   isSelected,
+  multiple,
   onClick,
   onEdit,
 }: {
-  item: MediaItem;
+  item:       MediaItem;
   isSelected: boolean;
-  onClick: () => void;
-  onEdit: (item: MediaItem) => void;
+  multiple:   boolean;
+  onClick:    () => void;
+  onEdit?:    (item: MediaItem) => void;
 }) {
   return (
     <div
       onClick={onClick}
       title={item.originalName}
       className={`group relative aspect-square rounded-md border cursor-pointer overflow-hidden transition-all
-        ${
-          isSelected
-            ? "ring-2 ring-primary border-primary"
-            : "border-border hover:border-primary/50"
-        }`}
+        ${isSelected
+          ? "ring-2 ring-primary border-primary"
+          : "border-border hover:border-primary/50"}`}
     >
       {item.mimeType.startsWith("image/") ? (
         <Image
@@ -419,16 +447,18 @@ function MediaThumb({
         </div>
       )}
 
-      {/* Tombol edit pensil — kiri atas, muncul saat hover */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onEdit(item); }}
-        className="absolute top-1 left-1 w-5 h-5 bg-black/60 rounded flex items-center
-                   justify-center opacity-0 group-hover:opacity-100 transition-opacity
-                   hover:bg-black/80"
-        title="Edit metadata"
-      >
-        <Pencil className="h-2.5 w-2.5 text-white" />
-      </button>
+      {/* Tombol edit pensil — hanya di multiple mode, kiri atas, muncul saat hover */}
+      {multiple && onEdit && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onEdit(item); }}
+          className="absolute top-1 left-1 w-5 h-5 bg-black/60 rounded flex items-center
+                     justify-center opacity-0 group-hover:opacity-100 transition-opacity
+                     hover:bg-black/80"
+          title="Edit metadata"
+        >
+          <Pencil className="h-2.5 w-2.5 text-white" />
+        </button>
+      )}
 
       {/* Nama file saat hover */}
       <div
