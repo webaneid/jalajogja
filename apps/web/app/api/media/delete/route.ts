@@ -10,7 +10,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const slug = req.nextUrl.searchParams.get("tenant");
+  const slug    = req.nextUrl.searchParams.get("tenant");
   const mediaId = req.nextUrl.searchParams.get("id");
 
   if (!slug || !mediaId) {
@@ -24,9 +24,8 @@ export async function DELETE(req: NextRequest) {
 
   const { db: tenantDb, schema } = createTenantDb(slug);
 
-  // Ambil path file dari DB
   const [media] = await tenantDb
-    .select({ path: schema.media.path })
+    .select({ path: schema.media.path, variants: schema.media.variants })
     .from(schema.media)
     .where(eq(schema.media.id, mediaId))
     .limit(1);
@@ -35,10 +34,13 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "File tidak ditemukan" }, { status: 404 });
   }
 
-  // Hapus dari MinIO
-  await deleteFile(slug, media.path);
+  // Hapus semua variant dari MinIO — jika ada; fallback ke path tunggal untuk media lama
+  const pathsToDelete = media.variants
+    ? (Object.values(media.variants).filter(Boolean) as string[])
+    : [media.path];
 
-  // Hapus dari DB
+  await Promise.allSettled(pathsToDelete.map(p => deleteFile(slug, p)));
+
   await tenantDb.delete(schema.media).where(eq(schema.media.id, mediaId));
 
   return NextResponse.json({ success: true });

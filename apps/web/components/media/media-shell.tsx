@@ -12,6 +12,10 @@ import Image from "next/image";
 import { MediaEditModal } from "./media-edit-modal";
 import type { MediaItem } from "./media-picker";
 
+function resolveDisplayUrl(item: MediaItem): string {
+  return item.variants?.thumbnail ?? item.variants?.large ?? item.url;
+}
+
 // Re-export agar page.tsx bisa import dari satu tempat
 export type { MediaItem };
 
@@ -81,20 +85,21 @@ export function MediaShell({
           const data = await res.json();
           setMedia((prev) => [
             {
-              id: data.id,
-              filename: data.filename,
+              id:           data.id,
+              filename:     data.filename,
               originalName: data.originalName,
-              mimeType: data.mimeType,
-              size: data.size,
-              path: data.path,
-              altText: null,
-              title: null,
-              caption: null,
-              description: null,
-              module: uploadModule,
-              isUsed: false,
-              createdAt: new Date().toISOString(),
-              url: data.url,
+              mimeType:     data.mimeType,
+              size:         data.size,
+              path:         data.path,
+              altText:      null,
+              title:        null,
+              caption:      null,
+              description:  null,
+              module:       uploadModule,
+              isUsed:       false,
+              createdAt:    new Date().toISOString(),
+              url:          data.url,
+              variants:     data.variants ?? null,
             },
             ...prev,
           ]);
@@ -324,7 +329,7 @@ function GridView({
           <div className="aspect-square bg-muted flex items-center justify-center">
             {item.mimeType.startsWith("image/") ? (
               <Image
-                src={item.url}
+                src={resolveDisplayUrl(item)}
                 alt={item.altText ?? item.originalName}
                 width={200}
                 height={200}
@@ -384,7 +389,7 @@ function ListView({
                           shrink-0 overflow-hidden">
             {item.mimeType.startsWith("image/") ? (
               <Image
-                src={item.url}
+                src={resolveDisplayUrl(item)}
                 alt={item.altText ?? item.originalName}
                 width={40}
                 height={40}

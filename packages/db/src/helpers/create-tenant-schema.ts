@@ -93,6 +93,7 @@ export async function createTenantSchemaInDb(
         size          INTEGER     NOT NULL,
         -- Path di MinIO: /{module}/{year}/{month}/{filename}
         -- Bucket per tenant: tenant-{slug}
+        -- Selalu berisi path large (atau as-is untuk bypass)
         path          TEXT        NOT NULL,
         alt_text      TEXT,
         title         TEXT,
@@ -104,7 +105,13 @@ export async function createTenantSchemaInDb(
         -- false = file ter-upload tapi belum dipakai di konten (orphan candidate)
         is_used       BOOLEAN     NOT NULL DEFAULT false,
         uploaded_by   UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
-        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        -- Variant sistem: path MinIO per variant (bukan URL)
+        variants              JSONB,
+        processing_status     TEXT        NOT NULL DEFAULT 'done'
+                                          CHECK (processing_status IN ('pending','processing','done','failed','bypass')),
+        original_mime         TEXT,
+        original_expires_at   TIMESTAMPTZ
       )
     `));
 

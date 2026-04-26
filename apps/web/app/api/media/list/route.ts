@@ -29,6 +29,12 @@ export async function GET(req: NextRequest) {
   const result = mediaList.map((m) => ({
     ...m,
     url: publicUrl(slug, m.path),
+    // Resolve variant paths → full URLs
+    variants: m.variants
+      ? Object.fromEntries(
+          Object.entries(m.variants).map(([k, v]) => [k, publicUrl(slug, v as string)]),
+        )
+      : null,
     createdAt: m.createdAt.toISOString(),
   }));
 

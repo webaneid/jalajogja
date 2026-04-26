@@ -125,6 +125,18 @@ export function createPostTagPivotTable(s: ReturnType<typeof pgSchema>) {
 export const MEDIA_MODULES = ["website", "members", "letters", "shop", "general"] as const;
 export type MediaModule = typeof MEDIA_MODULES[number];
 
+export const MEDIA_PROCESSING_STATUSES = ["pending", "processing", "done", "failed", "bypass"] as const;
+export type MediaProcessingStatus = typeof MEDIA_PROCESSING_STATUSES[number];
+
+export type ImageVariants = {
+  original?:  string;
+  large?:     string;
+  medium?:    string;
+  thumbnail?: string;
+  square?:    string;
+  profile?:   string;
+};
+
 // Metadata file yang diupload ke MinIO
 // URL adalah path di MinIO — presigned URL di-generate di app layer
 export function createMediaTable(s: ReturnType<typeof pgSchema>) {
@@ -134,7 +146,7 @@ export function createMediaTable(s: ReturnType<typeof pgSchema>) {
     originalName: text("original_name").notNull(),
     mimeType: text("mime_type").notNull(),
     size: integer("size").notNull(),     // bytes
-    path: text("path").notNull(),         // path di MinIO bucket
+    path: text("path").notNull(),         // path di MinIO bucket — selalu large (atau as-is untuk bypass)
     altText: text("alt_text"),
     title: text("title"),                // judul gambar (hover tooltip)
     caption: text("caption"),            // keterangan di bawah gambar dalam artikel
@@ -145,6 +157,11 @@ export function createMediaTable(s: ReturnType<typeof pgSchema>) {
     isUsed: boolean("is_used").notNull().default(false),
     uploadedBy: uuid("uploaded_by"),      // FK → users.id via SQL migration
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // Variant sistem — path MinIO per variant (bukan URL)
+    variants:             jsonb("variants").$type<ImageVariants>(),
+    processingStatus:     text("processing_status", { enum: MEDIA_PROCESSING_STATUSES }).notNull().default("done"),
+    originalMime:         text("original_mime"),
+    originalExpiresAt:    timestamp("original_expires_at", { withTimezone: true }),
   });
 }
 
