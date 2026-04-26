@@ -4,8 +4,8 @@ import type { PostsSectionProps } from "@/lib/posts-section-designs";
 export function PostsDesign1({ data, posts, featuredPosts = [], tenantSlug }: PostsSectionProps) {
   const leftPosts  = posts.slice(0, 5);
   const rightPosts = posts.slice(5, 10);
-  // Jika featured kosong → fallback ke 5 post terkini di kolom tengah
-  const centerPosts = featuredPosts.length > 0 ? featuredPosts : posts.slice(0, 5);
+  // Jika featured kosong → fallback ke 3 post terkini di kolom tengah; max 3 featured
+  const centerPosts = (featuredPosts.length > 0 ? featuredPosts : posts.slice(0, 3)).slice(0, 3);
 
   // Kolom kanan hanya tampil jika ada minimal 1 post untuk posisi kanan
   const showRight = rightPosts.length > 0;
