@@ -1,4 +1,5 @@
 import { PostCard } from "@/components/website/public/post-cards/post-card";
+import { pickCover } from "@/lib/post-card-templates";
 import { PostsSectionTitle } from "./posts-section-title";
 import type { PostsSectionProps } from "@/lib/posts-section-designs";
 
@@ -21,10 +22,10 @@ export function PostsDesign2({ data, posts, tenantSlug, sectionTitle, filterHref
           className="flex gap-4 mb-6 group"
         >
           <div className="w-1/2 shrink-0 aspect-video overflow-hidden rounded-lg bg-muted">
-            {featured.coverUrl ? (
+            {pickCover(featured, "large") ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={featured.coverUrl}
+                src={pickCover(featured, "large")!}
                 alt={featured.title}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />

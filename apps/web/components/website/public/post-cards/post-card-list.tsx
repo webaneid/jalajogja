@@ -1,4 +1,5 @@
 import type { PostCardData } from "@/lib/post-card-templates";
+import { pickCover } from "@/lib/post-card-templates";
 
 const fmt = (date: string | null) =>
   date ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date)) : "";
@@ -28,11 +29,11 @@ export function PostCardList({ post, tenantSlug }: { post: PostCardData; tenantS
       </div>
 
       {/* Thumbnail */}
-      {post.coverUrl && (
+      {pickCover(post, "square") && (
         <div className="w-24 h-24 shrink-0 rounded-lg overflow-hidden bg-muted">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={post.coverUrl}
+            src={pickCover(post, "square")!}
             alt={post.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />

@@ -1,4 +1,5 @@
 import type { PostCardData } from "@/lib/post-card-templates";
+import { pickCover } from "@/lib/post-card-templates";
 
 const fmt = (date: string | null) =>
   date ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date)) : "";
@@ -20,10 +21,10 @@ export function PostCardOverlay({
       className={`group relative flex flex-col justify-end rounded-xl overflow-hidden aspect-[4/3] hover:shadow-lg transition-all${className ? ` ${className}` : ""}`}
     >
       {/* Background */}
-      {post.coverUrl ? (
+      {pickCover(post, "medium") ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={post.coverUrl}
+          src={pickCover(post, "medium")!}
           alt={post.title}
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />

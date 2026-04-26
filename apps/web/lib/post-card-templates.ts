@@ -1,13 +1,19 @@
 export type PostCardData = {
-  id:           string;
-  title:        string;
-  slug:         string;
-  excerpt:      string | null;
-  coverUrl:     string | null;
-  categoryName: string | null;
-  publishedAt:  string | null;
-  isFeatured:   boolean;
+  id:             string;
+  title:          string;
+  slug:           string;
+  excerpt:        string | null;
+  coverUrl:       string | null;                       // large atau path asli — backward compat
+  coverVariants?: Record<string, string> | null;       // semua variant resolved URLs
+  categoryName:   string | null;
+  publishedAt:    string | null;
+  isFeatured:     boolean;
 };
+
+/** Pilih URL gambar variant terbaik, fallback ke coverUrl jika variant belum ada */
+export function pickCover(post: PostCardData, variant: string): string | null {
+  return post.coverVariants?.[variant] ?? post.coverUrl;
+}
 
 export const POST_CARD_VARIANTS = ["klasik", "list", "overlay", "ringkas", "judul", "ticker"] as const;
 export type PostCardVariant = typeof POST_CARD_VARIANTS[number];

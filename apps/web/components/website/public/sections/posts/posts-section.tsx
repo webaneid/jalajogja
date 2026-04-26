@@ -1,6 +1,7 @@
 import { eq, desc, and, inArray, exists, sql } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
 import { getImageUrl } from "@/lib/image-url";
+import { publicUrl } from "@/lib/minio";
 import type { PostsSectionData, PostsSectionDesignId, ColumnRenderData } from "@/lib/posts-section-designs";
 import { POSTS_SECTION_DESIGNS } from "@/lib/posts-section-designs";
 import type { PostCardData } from "@/lib/post-card-templates";
@@ -80,13 +81,14 @@ export async function PostsSection({ data, variant, tenantClient, tenantSlug }: 
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+type CoverEntry = { url: string | null; variants: Record<string, string> | null };
+
 async function resolveCovers(
   db: TenantDb["db"],
   schema: TenantDb["schema"],
   rows: { coverId: string | null }[],
   tenantSlug: string,
-  variant: Parameters<typeof getImageUrl>[2] = "medium",
-): Promise<Map<string, string>> {
+): Promise<Map<string, CoverEntry>> {
   const coverIds = [...new Set(rows.map(r => r.coverId).filter(Boolean))] as string[];
   if (!coverIds.length) return new Map();
   const media = await db
@@ -94,9 +96,16 @@ async function resolveCovers(
     .from(schema.media)
     .where(inArray(schema.media.id, coverIds));
   return new Map(
-    media
-      .map(m => [m.id, getImageUrl(m, tenantSlug, variant)] as [string, string | null])
-      .filter((entry): entry is [string, string] => entry[1] !== null),
+    media.map(m => {
+      const resolvedVariants = m.variants
+        ? Object.fromEntries(
+            Object.entries(m.variants)
+              .filter(([, v]) => Boolean(v))
+              .map(([k, v]) => [k, publicUrl(tenantSlug, v as string)]),
+          )
+        : null;
+      return [m.id, { url: getImageUrl(m, tenantSlug, "large"), variants: resolvedVariants }];
+    }),
   );
 }
 
@@ -142,17 +151,21 @@ async function fetchRecentPosts(
     .orderBy(desc(schema.posts.publishedAt))
     .limit(count);
 
-  const mediaMap = await resolveCovers(db, schema, rows, tenantSlug, "medium");
-  return rows.map(r => ({
-    id:           r.id,
-    title:        r.title,
-    slug:         r.slug,
-    excerpt:      r.excerpt,
-    coverUrl:     r.coverId ? (mediaMap.get(r.coverId) ?? null) : null,
-    categoryName: r.categoryName ?? null,
-    publishedAt:  r.publishedAt ? r.publishedAt.toISOString() : null,
-    isFeatured:   r.isFeatured,
-  }));
+  const mediaMap = await resolveCovers(db, schema, rows, tenantSlug);
+  return rows.map(r => {
+    const cover = r.coverId ? (mediaMap.get(r.coverId) ?? null) : null;
+    return {
+      id:             r.id,
+      title:          r.title,
+      slug:           r.slug,
+      excerpt:        r.excerpt,
+      coverUrl:       cover?.url ?? null,
+      coverVariants:  cover?.variants ?? null,
+      categoryName:   r.categoryName ?? null,
+      publishedAt:    r.publishedAt ? r.publishedAt.toISOString() : null,
+      isFeatured:     r.isFeatured,
+    };
+  });
 }
 
 async function fetchFeaturedPosts(
@@ -185,15 +198,19 @@ async function fetchFeaturedPosts(
     .orderBy(desc(schema.posts.publishedAt))
     .limit(5);
 
-  const mediaMap = await resolveCovers(db, schema, rows, tenantSlug, "large");
-  return rows.map(r => ({
-    id:           r.id,
-    title:        r.title,
-    slug:         r.slug,
-    excerpt:      r.excerpt,
-    coverUrl:     r.coverId ? (mediaMap.get(r.coverId) ?? null) : null,
-    categoryName: r.categoryName ?? null,
-    publishedAt:  r.publishedAt ? r.publishedAt.toISOString() : null,
-    isFeatured:   r.isFeatured,
-  }));
+  const mediaMap = await resolveCovers(db, schema, rows, tenantSlug);
+  return rows.map(r => {
+    const cover = r.coverId ? (mediaMap.get(r.coverId) ?? null) : null;
+    return {
+      id:             r.id,
+      title:          r.title,
+      slug:           r.slug,
+      excerpt:        r.excerpt,
+      coverUrl:       cover?.url ?? null,
+      coverVariants:  cover?.variants ?? null,
+      categoryName:   r.categoryName ?? null,
+      publishedAt:    r.publishedAt ? r.publishedAt.toISOString() : null,
+      isFeatured:     r.isFeatured,
+    };
+  });
 }
