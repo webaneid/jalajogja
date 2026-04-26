@@ -280,7 +280,7 @@ app/(dashboard)/[tenant]/
 - [x] **Modul Akun Phase 3** — API routes selesai (front-end ditunda sampai website dibangun). 3 endpoints: register, profil (GET/PATCH/DELETE), transaksi (GET). TypeScript 0 errors.
 - [x] **Modul Akun Phase 4** — Dashboard admin `/akun` — list page + detail page + link/unlink ke anggota IKPM. TypeScript 0 errors.
 - [x] **Front-end Publik** — PublicLayout (header+footer switcher), `/post` archive + detail, 6 PostCard variants, PostsSection (5 designs), PostsSectionTitle, search API, login/register pages, `/settings/website` dengan header/footer design picker. TypeScript 0 errors.
-- [ ] **Image System** — arsitektur selesai di `docs/arsitektur-image.md`; implementasi belum dimulai (Sharp + 6 variants + WebP + cron cleanup)
+- [x] **Image System** — Phase A (variant system Sharp + 6 WebP variants + cron cleanup) + Phase B (metadata UI autosave panel) + Phase C (alt/title/caption di semua front-end post) SELESAI. Arsitektur lengkap di `docs/arsitektur-image.md`.
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
@@ -1649,11 +1649,52 @@ Fallback chain: `filterLabel` (nama kategori/tag dari DB) → `data.title` → `
 **Design 4 (Trio Column) dieksekusi terakhir**
 Kompleksitas section editor lebih tinggi (3 combobox independen per kolom). Eksekusi Design 2, 3, 5 dulu.
 
+### [2026-04] Image System — Phase A+B+C SELESAI
+
+**Arsitektur lengkap di `docs/arsitektur-image.md`.**
+
+**Phase A — Variant System:**
+- 6 variant WebP via Sharp: `original`, `large` (1200×630), `medium` (800×420), `thumbnail` (400×210), `square` (400×400), `profile` (300×400)
+- `shouldBypass(mime)`: SVG selalu bypass (simpan as-is)
+- Rollback MinIO jika partial upload gagal
+- `ImageVariants` JSONB di DB + 4 kolom baru di `media` table
+- `getImageUrl(media, tenantSlug, variant)`: fallback chain variant → large → original → path lama
+- Cron `/api/cron/cleanup-images`: hapus `_ori` file setelah 10 hari
+
+**Phase B — Metadata UI:**
+- `MediaDetailPanel`: form 4 field + debounce autosave 1000ms + indicator (saving/saved/error)
+- `showDescription` prop: `true` di MediaShell (ada description SEO), `false` di MediaPicker
+- `key={media.id}` wajib di parent — agar state panel reset saat item berganti (tanpa ini autosave kirim data gambar lama ke gambar baru)
+- MediaShell: layout 2 zona, klik = panel detail, checkbox selalu tampil = batch delete independen
+- MediaPicker single mode: klik = pilih + panel kanan (w-72). Multiple mode: tetap pakai `MediaEditModal` via pensil
+
+**Phase C — Propagasi ke Front-end:**
+- `PostCardData` diperluas: `coverAlt?` + `coverTitle?` di-resolve dari `media.alt_text` + `media.title`
+- `resolveCovers` fetch 4 field: `path`, `variants`, `altText`, `title`
+- Fallback alt: `media.altText ?? post.title` — tidak pernah kosong
+- Single post: `<figure>` + `<figcaption>` untuk `media.caption` di featured image — hanya tampil jika caption terisi
+
+**Lessons Learned:**
+
+#### `key={media.id}` pada komponen autosave — kritis
+Komponen dengan state internal yang di-inisialisasi dari props HARUS punya `key` yang unik per data.
+Tanpa `key`, React reuse komponen lama → state tidak reset → autosave kirim nilai field gambar lama ke ID gambar baru = data corruption diam-diam.
+Pattern: selalu `key={item.id}` pada komponen yang punya form/input di-inisialisasi dari props item.
+
+#### Checkbox dan klik bisa independen pada satu komponen grid
+Dua interaksi yang berbeda pada satu item: klik body = buka panel detail, klik checkbox = batch select.
+Implementasi: `onClick` di wrapper div = `onClickItem`, `onClick` di `<div>` checkbox = `e.stopPropagation(); onToggleCheck(id)`.
+Hasilnya: satu item bisa sekaligus tampil di panel DAN tercentang untuk delete — dua state berbeda tidak saling mempengaruhi.
+
+#### Caption sebagai `<figcaption>` bukan `<p>` biasa
+`<figure>` + `<figcaption>` adalah semantik HTML yang benar untuk gambar + keterangan.
+Google membaca `<figcaption>` sebagai konteks gambar untuk indexing — lebih kuat dari `<p>` biasa di bawah gambar.
+Gunakan ini konsisten di semua tempat yang menampilkan caption gambar (post detail, page detail, galeri).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Front-end Publik — implementasi lengkap** (header/footer system, 6 PostCard variants, 5 PostsSection designs, PostsSectionTitle, LandingTemplate, PublicLayout, search API, login/register, /settings/website design picker)
-- Dokumentasi: `docs/arsitektur-image.md` dibuat (arsitektur image system dengan Sharp + 6 variants + WebP + cron cleanup)
+- Terakhir dikerjakan: **Image System selesai semua (Phase A+B+C)** — variant Sharp, metadata UI autosave panel, alt/title/caption di semua front-end post
 - Type check: **0 errors**
-- Next: bebas — Image System implementation atau Billing Phase 2
+- Next: bebas — Add-on Marketplace UI, Docker deployment, atau fitur surat yang belum
 
 ### Known TODO
 - Role System: email SMTP sending untuk invite (saat ini hanya manual link copy), update role dropdown di daftar user aktif, wajibkan email di form anggota
@@ -1661,7 +1702,6 @@ Kompleksitas section editor lebih tinggi (3 combobox independen per kolom). Ekse
 - Fitur surat belum: inter-tenant letters, attachment MediaPicker
 - **Keuangan** — laporan & event_income selesai; sisa: Budget UI, export PDF laporan — lihat `docs/arsitektur-keuangan.md`
 - **Billing** — Phase 1 selesai (schema + dashboard invoice + partial payment). Phase 2: public cart/checkout. Phase 3: integrasi modul existing.
-- **Image System** — arsitektur di `docs/arsitektur-image.md`: `bun add sharp`, `lib/image-processor.ts`, `lib/image-url.ts`, update media upload route, update DB schema (variants JSONB + processingStatus + originalExpiresAt), cron cleanup API
 
 ## Arsitektur Modul Billing
 > Detail lengkap: **`docs/arsitektur-billing.md`**

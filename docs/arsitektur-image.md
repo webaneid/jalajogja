@@ -658,21 +658,53 @@ yang lebih luas.
 
 ## Integrasi dengan SEO
 
-### Alt text di `<img>` tag
+### Alt text & title di `<img>` tag — ✅ Selesai
 
-Semua komponen yang render gambar dari media library wajib pakai `altText` jika tersedia:
+`PostCardData` diperluas dengan dua field baru:
 
 ```typescript
-// PostCard, product images, member photos, dsb.
-<img
-  src={coverUrl}
-  alt={media.altText ?? media.originalName}  // fallback ke nama file
-  title={media.title ?? undefined}
-/>
+coverAlt?:   string | null;  // dari media.alt_text
+coverTitle?: string | null;  // dari media.title
 ```
 
-`PostCardData.coverUrl` adalah URL sudah resolved — alt text tidak ikut di `PostCardData`.
-Untuk post card, alt text = `post.title` (lebih relevan daripada alt text gambar standalone).
+`resolveCovers` di `posts-section.tsx` fetch `altText` + `title` dari DB dan mengisinya.
+
+**Fallback chain** (tidak pernah kosong):
+```
+alt   = media.altText   ?? post.title
+title = media.title     ?? undefined  (tidak wajib ada)
+```
+
+Komponen yang sudah terimplementasi:
+| Komponen | alt | title |
+|----------|-----|-------|
+| `PostCardKlasik` | `coverAlt ?? post.title` | `coverTitle` |
+| `PostCardList` | `coverAlt ?? post.title` | `coverTitle` |
+| `PostCardRingkas` | `coverAlt ?? post.title` | `coverTitle` |
+| `PostCardOverlay` | `coverAlt ?? post.title` | `coverTitle` |
+| `PostsDesign2` (featured) | `coverAlt ?? post.title` | `coverTitle` |
+| Post archive page | `media.altText ?? post.title` | `media.title` |
+| Post detail page | `media.altText ?? post.title` | `media.title` |
+
+### Caption di single post — ✅ Selesai
+
+Featured image di halaman detail post (`/(public)/[tenant]/post/[slug]`) dibungkus `<figure>`:
+
+```tsx
+<figure className="mb-8">
+  <div className="rounded-xl overflow-hidden border border-border">
+    <img src={coverUrl} alt={coverAlt ?? post.title} title={coverTitle ?? undefined} ... />
+  </div>
+  {coverCaption && (
+    <figcaption className="mt-2 text-center text-xs text-muted-foreground italic px-2">
+      {coverCaption}
+    </figcaption>
+  )}
+</figure>
+```
+
+`coverCaption` diambil dari `media.caption` — hanya tampil jika terisi, tidak mempengaruhi layout jika kosong.
+`getPost()` fetch empat field sekaligus: `path`, `altText`, `title`, `caption`.
 
 ### Caption di block editor
 
@@ -798,6 +830,18 @@ apps/web/components/website/public/sections/posts/posts-section.tsx
 | `media-shell.tsx` — klik=panel, checkbox=select | ✅ Selesai |
 | `media-picker.tsx` — panel kanan saat 1 item terpilih | ✅ Selesai |
 
+### Phase C — Propagasi ke Front-end
+
+| Komponen | Status |
+|----------|--------|
+| `PostCardData` — tambah `coverAlt` + `coverTitle` | ✅ Selesai |
+| `resolveCovers` — fetch `altText` + `title` dari DB | ✅ Selesai |
+| PostCard (klasik, list, ringkas, overlay) — `alt` + `title` attr | ✅ Selesai |
+| `PostsDesign2` featured image — `alt` + `title` attr | ✅ Selesai |
+| Post archive page — `alt` + `title` dari media | ✅ Selesai |
+| Post detail page — `alt` + `title` + `caption` dari media | ✅ Selesai |
+| Post detail — `<figure>` + `<figcaption>` untuk caption | ✅ Selesai |
+
 ### Catatan Implementasi
 
 - **Tenant existing sudah dimigrasikan**: `pc-ikpm-jogjakarta` sudah dapat 4 kolom variant baru via `ALTER TABLE` manual (2026-04-26). Media lama tetap bekerja via fallback `path` di `getImageUrl()` — `variants = NULL` ditangani gracefully.
@@ -805,7 +849,8 @@ apps/web/components/website/public/sections/posts/posts-section.tsx
 - **`CRON_SECRET`**: wajib set di `.env` sebelum cron job aktif.
 - **`resolveCovers`**: `fetchRecentPosts` menggunakan `"medium"`, `fetchFeaturedPosts` menggunakan `"large"`.
 - **`resolveDisplayUrl`**: helper lokal di `media-shell.tsx` dan `media-picker.tsx` — prioritas thumbnail untuk grid.
-- **Phase B bisa dikerjakan kapan saja**: DB schema dan API sudah siap, tinggal UX component.
+- **Fallback alt text**: `media.altText ?? post.title` — tidak pernah kosong, selalu ada nilai semantik.
+- **Caption single post**: hanya di halaman detail, bukan di post card — caption panjang tidak cocok untuk grid.
 
 ---
 
