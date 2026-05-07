@@ -2,7 +2,7 @@
 
 import { eq, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db, profiles, members } from "@jalajogja/db";
+import { db, profiles } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
 import { getTenantAccess } from "@/lib/tenant";
 
@@ -84,66 +84,7 @@ export async function createProfileAction(
     })
     .returning({ id: profiles.id });
 
-  revalidatePath(`/${slug}/akun`);
+  revalidatePath(`/${slug}/accounts`);
   return { success: true, profileId: created.id };
 }
 
-// ─── linkProfileToMemberAction ────────────────────────────────────────────────
-// Admin link profile publik → anggota IKPM.
-// Otomatis set account_type = 'member'.
-
-export async function linkProfileToMemberAction(
-  slug: string,
-  profileId: string,
-  memberId: string
-): Promise<{ success: boolean; error?: string }> {
-  const access = await getTenantAccess(slug);
-  if (!access) return { success: false, error: "Akses ditolak." };
-
-  const profile = await db.query.profiles.findFirst({
-    where: eq(profiles.id, profileId),
-  });
-  if (!profile)        return { success: false, error: "Profil tidak ditemukan." };
-  if (profile.deletedAt) return { success: false, error: "Profil sudah dihapus." };
-
-  const member = await db.query.members.findFirst({
-    where: eq(members.id, memberId),
-  });
-  if (!member) return { success: false, error: "Anggota tidak ditemukan." };
-
-  const existingLink = await db.query.profiles.findFirst({
-    where: eq(profiles.memberId, memberId),
-  });
-  if (existingLink && existingLink.id !== profileId) {
-    return { success: false, error: "Anggota ini sudah ter-link ke profil lain." };
-  }
-
-  await db
-    .update(profiles)
-    .set({ memberId, accountType: "member", updatedAt: new Date() })
-    .where(eq(profiles.id, profileId));
-
-  revalidatePath(`/${slug}/akun/${profileId}`);
-  revalidatePath(`/${slug}/akun`);
-  return { success: true };
-}
-
-// ─── unlinkProfileFromMemberAction ───────────────────────────────────────────
-// Lepas link profile dari member → account_type kembali ke 'akun'.
-
-export async function unlinkProfileFromMemberAction(
-  slug: string,
-  profileId: string
-): Promise<{ success: boolean; error?: string }> {
-  const access = await getTenantAccess(slug);
-  if (!access) return { success: false, error: "Akses ditolak." };
-
-  await db
-    .update(profiles)
-    .set({ memberId: null, accountType: "akun", updatedAt: new Date() })
-    .where(eq(profiles.id, profileId));
-
-  revalidatePath(`/${slug}/akun/${profileId}`);
-  revalidatePath(`/${slug}/akun`);
-  return { success: true };
-}

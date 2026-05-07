@@ -256,12 +256,12 @@ function UserButton({ tenantSlug }: { tenantSlug: string }) {
             </div>
             <div className="py-1">
               <a
-                href={`/${tenantSlug}/profil`}
+                href={`/${tenantSlug}/akun`}
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/60 transition-colors"
               >
                 <User className="h-4 w-4" />
-                Profil Saya
+                Dashboard Saya
               </a>
               <button
                 type="button"

@@ -1,20 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { desc, eq, ilike, or, and, isNotNull, inArray } from "drizzle-orm";
-import { Eye, Plus, UserCheck, UserX } from "lucide-react";
+import { Eye, Plus } from "lucide-react";
 import { db, profiles, createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 
 const PAGE_SIZE = 20;
 
-const ACCOUNT_TYPE_BADGE: Record<string, string> = {
-  akun:   "bg-muted text-muted-foreground",
-  member: "bg-blue-100 text-blue-700",
-};
-const ACCOUNT_TYPE_LABEL: Record<string, string> = {
-  akun:   "Akun Publik",
-  member: "Alumni IKPM",
-};
 
 export default async function AkunPage({
   params,
@@ -63,13 +55,11 @@ export default async function AkunPage({
   const [rows, countRows] = await Promise.all([
     db
       .select({
-        id:          profiles.id,
-        name:        profiles.name,
-        email:       profiles.email,
-        phone:       profiles.phone,
-        accountType: profiles.accountType,
-        memberId:    profiles.memberId,
-        createdAt:   profiles.createdAt,
+        id:        profiles.id,
+        name:      profiles.name,
+        email:     profiles.email,
+        phone:     profiles.phone,
+        createdAt: profiles.createdAt,
       })
       .from(profiles)
       .where(finalWhere)
@@ -97,7 +87,7 @@ export default async function AkunPage({
           </p>
         </div>
         <Link
-          href={`/${slug}/akun/new`}
+          href={`/${slug}/accounts/new`}
           className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           <Plus className="h-4 w-4" />
@@ -122,7 +112,7 @@ export default async function AkunPage({
         </button>
         {q && (
           <Link
-            href={`/${slug}/akun`}
+            href={`/${slug}/accounts`}
             className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
           >
             Reset
@@ -138,7 +128,7 @@ export default async function AkunPage({
               <th className="text-left px-4 py-2.5 font-medium">Nama</th>
               <th className="text-left px-4 py-2.5 font-medium">Email</th>
               <th className="text-left px-4 py-2.5 font-medium">Nomor HP</th>
-              <th className="text-left px-4 py-2.5 font-medium">Tipe</th>
+              <th className="text-left px-4 py-2.5 font-medium">Terdaftar</th>
               <th className="px-4 py-2.5" />
             </tr>
           </thead>
@@ -155,18 +145,12 @@ export default async function AkunPage({
                   <td className="px-4 py-3 font-medium">{row.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{row.email}</td>
                   <td className="px-4 py-3 text-muted-foreground">{row.phone}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${ACCOUNT_TYPE_BADGE[row.accountType] ?? "bg-muted text-muted-foreground"}`}>
-                      {row.accountType === "member"
-                        ? <UserCheck className="h-3 w-3" />
-                        : <UserX className="h-3 w-3" />
-                      }
-                      {ACCOUNT_TYPE_LABEL[row.accountType] ?? row.accountType}
-                    </span>
+                  <td className="px-4 py-3 text-muted-foreground text-xs">
+                    {new Intl.DateTimeFormat("id-ID", { day:"2-digit", month:"short", year:"numeric" }).format(new Date(row.createdAt))}
                   </td>
                   <td className="px-4 py-3">
                     <Link
-                      href={`/${slug}/akun/${row.id}`}
+                      href={`/${slug}/accounts/${row.id}`}
                       className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <Eye className="h-3.5 w-3.5" />
@@ -192,7 +176,7 @@ export default async function AkunPage({
               return (
                 <Link
                   key={p}
-                  href={`/${slug}/akun${sp.size ? `?${sp}` : ""}`}
+                  href={`/${slug}/accounts${sp.size ? `?${sp}` : ""}`}
                   className={`rounded-md px-2.5 py-1 border text-xs ${
                     p === currentPage
                       ? "bg-foreground text-background border-foreground"

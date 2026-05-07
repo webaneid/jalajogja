@@ -3,19 +3,21 @@ import type { PublicDb } from "../client";
 import { profiles, members, contacts } from "../schema/public";
 
 // ─── resolveIdentity ──────────────────────────────────────────────────────────
-// Lookup identitas dari public schema berdasarkan:
-//   1. betterAuthUserId (session login) → cari di profiles
-//   2. email / phone → cari di profiles
-//   3. email / phone → fallback ke members via contacts (lazy-create profile)
-//   4. tidak ketemu → guest (profileId = null, memberId = null)
+// Lookup identitas dari public schema berdasarkan session atau email/phone.
+//
+// Urutan lookup:
+//   1. betterAuthUserId → cek public.members dulu (anggota IKPM), lalu public.profiles (publik)
+//   2. email / phone    → cek contacts → members, lalu profiles
+//   3. tidak ketemu     → guest (keduanya null)
 //
 // Dipakai di semua checkout: cart, donasi, event.
-// Mengembalikan profileId + memberId untuk disimpan ke tabel transaksi.
+// member_id  → anggota IKPM (dari public.members)
+// profile_id → akun publik  (dari public.profiles)
 
 export type ResolvedIdentity = {
   profileId:    string | null;
   memberId:     string | null;
-  resolvedName: string | null; // nama dari profil/member jika ketemu
+  resolvedName: string | null;
 };
 
 export async function resolveIdentity(
@@ -28,77 +30,58 @@ export async function resolveIdentity(
 ): Promise<ResolvedIdentity> {
   const { betterAuthUserId, phone, email } = opts;
 
-  // ── 1. Session login → cari profile by better_auth_user_id ──────────────────
+  // ── 1a. Session login → cek public.members (anggota IKPM) ───────────────────
   if (betterAuthUserId) {
+    const member = await publicDb.query.members.findFirst({
+      where: eq(members.betterAuthUserId, betterAuthUserId),
+      columns: { id: true, name: true },
+    });
+    if (member) {
+      return { profileId: null, memberId: member.id, resolvedName: member.name };
+    }
+
+    // ── 1b. Session login → cek public.profiles (akun publik) ─────────────────
     const profile = await publicDb.query.profiles.findFirst({
       where: eq(profiles.betterAuthUserId, betterAuthUserId),
-    });
-    if (profile) {
-      return {
-        profileId:    profile.id,
-        memberId:     profile.memberId ?? null,
-        resolvedName: profile.name,
-      };
-    }
-  }
-
-  // ── 2. Lookup di public.profiles by email atau phone ─────────────────────────
-  if (email || phone) {
-    const conditions = [];
-    if (email) conditions.push(eq(profiles.email, email));
-    if (phone) conditions.push(eq(profiles.phone, phone));
-
-    const profile = await publicDb.query.profiles.findFirst({
-      where: conditions.length === 1 ? conditions[0] : or(...conditions),
+      columns: { id: true, name: true, deletedAt: true },
     });
     if (profile && !profile.deletedAt) {
-      return {
-        profileId:    profile.id,
-        memberId:     profile.memberId ?? null,
-        resolvedName: profile.name,
-      };
+      return { profileId: profile.id, memberId: null, resolvedName: profile.name };
     }
   }
 
-  // ── 3. Fallback: lookup di public.members via contacts ───────────────────────
-  // Jika alumni IKPM checkout tanpa login → auto-create profile + link member
+  // ── 2a. Lookup via email/phone → contacts → members ──────────────────────────
   if (email || phone) {
     const conditions = [];
     if (email) conditions.push(eq(contacts.email, email));
     if (phone) conditions.push(eq(contacts.phone, phone));
+    const cond = conditions.length === 1 ? conditions[0] : or(...conditions);
 
     const rows = await publicDb
-      .select({
-        memberId:   members.id,
-        memberName: members.name,
-      })
+      .select({ memberId: members.id, memberName: members.name })
       .from(members)
       .innerJoin(contacts, eq(contacts.id, members.contactId))
-      .where(conditions.length === 1 ? conditions[0] : or(...conditions))
+      .where(cond)
       .limit(1);
 
     if (rows[0]) {
-      // Lazy-create profile linked ke member
-      const [newProfile] = await publicDb
-        .insert(profiles)
-        .values({
-          name:     rows[0].memberName,
-          email:    email ?? `noemail-${rows[0].memberId}@placeholder.internal`,
-          phone:    phone ?? `nophone-${rows[0].memberId}`,
-          memberId: rows[0].memberId,
-          accountType: "member",
-        })
-        .onConflictDoNothing()
-        .returning({ id: profiles.id });
+      return { profileId: null, memberId: rows[0].memberId, resolvedName: rows[0].memberName };
+    }
 
-      return {
-        profileId:    newProfile?.id ?? null,
-        memberId:     rows[0].memberId,
-        resolvedName: rows[0].memberName,
-      };
+    // ── 2b. Lookup via email/phone → public.profiles ─────────────────────────
+    const pcond = [];
+    if (email) pcond.push(eq(profiles.email, email));
+    if (phone) pcond.push(eq(profiles.phone, phone));
+
+    const profile = await publicDb.query.profiles.findFirst({
+      where: pcond.length === 1 ? pcond[0] : or(...pcond),
+      columns: { id: true, name: true, deletedAt: true },
+    });
+    if (profile && !profile.deletedAt) {
+      return { profileId: profile.id, memberId: null, resolvedName: profile.name };
     }
   }
 
-  // ── 4. Guest murni — tidak ada di sistem ────────────────────────────────────
+  // ── 3. Guest murni ────────────────────────────────────────────────────────────
   return { profileId: null, memberId: null, resolvedName: null };
 }

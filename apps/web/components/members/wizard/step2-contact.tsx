@@ -18,6 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select"
+import { PhoneInput } from "@/components/ui/phone-input"
 import {
   upsertMemberContactAction,
   type Step2ContactData,
@@ -26,9 +27,12 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface Step2DefaultValues {
-  phone?: string
-  whatsapp?: string
-  email?: string
+  phone?:           string
+  whatsapp?:        string
+  email?:           string
+  isPhonePublic?:    boolean
+  isWhatsappPublic?: boolean
+  isEmailPublic?:    boolean
   domicileStatus?: "permanent" | "temporary"
   // Alamat: mode luar negeri jika addressCountry terisi
   addressCountry?: string
@@ -197,6 +201,31 @@ function SimpleCombobox({
   )
 }
 
+// ─── VisibilityToggle — tampilkan ke publik? ──────────────────────────────────
+
+function VisibilityToggle({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked:  boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        disabled={disabled}
+        className="rounded border-input accent-primary"
+      />
+      Publik
+    </label>
+  );
+}
+
 // ─── Data statis ──────────────────────────────────────────────────────────────
 
 const DOMICILE_STATUS_ITEMS = [
@@ -269,10 +298,13 @@ type SocialKey = (typeof SOCIAL_PLATFORMS)[number]["key"]
 // ─── Step 2: Kontak & Alamat ──────────────────────────────────────────────────
 
 export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, defaultValues }: Step2Props) {
-  // Kontak — controlled untuk sinkronisasi WhatsApp
-  const [phone, setPhone] = React.useState(defaultValues?.phone ?? "")
+  // Kontak
+  const [phone,    setPhone]    = React.useState(defaultValues?.phone    ?? "")
   const [whatsapp, setWhatsapp] = React.useState(defaultValues?.whatsapp ?? "")
   const [sameAsPhone, setSameAsPhone] = React.useState(false)
+  const [isPhonePublic,    setIsPhonePublic]    = React.useState(defaultValues?.isPhonePublic    ?? false)
+  const [isWhatsappPublic, setIsWhatsappPublic] = React.useState(defaultValues?.isWhatsappPublic ?? false)
+  const [isEmailPublic,    setIsEmailPublic]    = React.useState(defaultValues?.isEmailPublic    ?? false)
 
   // Domisili
   const [domicileStatus, setDomicileStatus] = React.useState<string | undefined>(defaultValues?.domicileStatus)
@@ -324,16 +356,23 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
+
+    if (!phone.trim())                             { setError("Nomor HP wajib diisi.");         return; }
+    if (!(sameAsPhone ? phone : whatsapp).trim())  { setError("Nomor WhatsApp wajib diisi.");   return; }
+    const fd  = new FormData(e.currentTarget)
+    const str = (key: string) => (fd.get(key) as string)?.trim() || undefined
+    if (!str("email"))                             { setError("Email wajib diisi.");             return; }
+    if (!domicileStatus)                           { setError("Status domisili wajib dipilih."); return; }
+
     setLoading(true)
 
-    const fd = new FormData(e.currentTarget)
-    const str = (key: string) => (fd.get(key) as string)?.trim() || undefined
-
     const data: Step2ContactData = {
-      // Kontak — baca dari state (controlled)
-      phone:    phone.trim() || undefined,
-      whatsapp: (sameAsPhone ? phone : whatsapp).trim() || undefined,
-      email:    str("email"),
+      phone:            phone.trim() || undefined,
+      whatsapp:         (sameAsPhone ? phone : whatsapp).trim() || undefined,
+      email:            str("email"),
+      isPhonePublic,
+      isWhatsappPublic,
+      isEmailPublic,
       // Domisili — tenant ID dari props (otomatis dari slug)
       domicileStatus:   (domicileStatus as "permanent" | "temporary") || undefined,
       domicileTenantId: tenantId,
@@ -375,61 +414,61 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
       <Section title="Kontak">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {/* Telepon */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-foreground">
-              Telepon{" "}
-              <span className="font-normal text-muted-foreground">(opsional)</span>
-            </label>
-            <input
-              type="tel"
+          <div className="space-y-1.5">
+            <PhoneInput
+              label="Nomor HP"
+              required
               value={phone}
-              onChange={handlePhoneChange}
-              placeholder="6285210626455"
-              inputMode="numeric"
+              onChange={(e164) => { setPhone(e164); if (sameAsPhone) setWhatsapp(e164); }}
               disabled={loading}
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <VisibilityToggle
+              checked={isPhonePublic}
+              onChange={setIsPhonePublic}
+              disabled={loading}
             />
           </div>
 
           {/* WhatsApp */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-foreground">
-              WhatsApp{" "}
-              <span className="font-normal text-muted-foreground">(opsional)</span>
-            </label>
-            <input
-              type="tel"
-              value={whatsapp}
-              onChange={(e) => { if (!sameAsPhone) setWhatsapp(e.target.value) }}
-              placeholder="6285210626455"
-              inputMode="numeric"
+          <div className="space-y-1.5">
+            <PhoneInput
+              label="Nomor WhatsApp"
+              required
+              value={sameAsPhone ? phone : whatsapp}
+              onChange={(e164) => { if (!sameAsPhone) setWhatsapp(e164); }}
               disabled={loading || sameAsPhone}
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             />
-            {/* Checkbox sinkronisasi */}
             <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
-              <input
-                type="checkbox"
-                checked={sameAsPhone}
-                onChange={handleSameAsPhoneChange}
-                disabled={loading}
-                className="rounded border-input"
-              />
-              Sama dengan nomor telepon di atas
+              <input type="checkbox" checked={sameAsPhone} onChange={handleSameAsPhoneChange}
+                disabled={loading} className="rounded border-input" />
+              Sama dengan nomor HP
             </label>
+            <VisibilityToggle
+              checked={isWhatsappPublic}
+              onChange={setIsWhatsappPublic}
+              disabled={loading}
+            />
           </div>
         </div>
 
-        <TextInput
-          label="Email"
-          name="email"
-          optional
-          type="email"
-          placeholder="contoh@email.com"
-          inputMode="email"
-          defaultValue={defaultValues?.email}
-          disabled={loading}
-        />
+        {/* Email */}
+        <div className="space-y-1.5">
+          <TextInput
+            label="Email"
+            name="email"
+            required
+            type="email"
+            placeholder="contoh@email.com"
+            inputMode="email"
+            defaultValue={defaultValues?.email}
+            disabled={loading}
+          />
+          <VisibilityToggle
+            checked={isEmailPublic}
+            onChange={setIsEmailPublic}
+            disabled={loading}
+          />
+        </div>
       </Section>
 
       {/* ── DOMISILI ── */}
@@ -444,8 +483,6 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
             items={DOMICILE_STATUS_ITEMS}
             value={domicileStatus}
             onSelect={setDomicileStatus}
-            optional
-            clearable
             disabled={loading}
           />
 
@@ -499,6 +536,12 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
             onChange={setWilayah}
             defaultValue={wilayah}
             disabled={loading}
+            hints={{
+              province: "Publik",
+              regency:  "Publik",
+              district: "Tidak ditampilkan ke publik",
+              village:  "Tidak ditampilkan ke publik",
+            }}
           />
         ) : (
           <div className="flex flex-col gap-1.5">
@@ -531,8 +574,9 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
               disabled={loading}
               className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
             />
+            <p className="text-xs text-muted-foreground">Tidak ditampilkan ke publik.</p>
           </div>
-          <div className="max-w-[180px]">
+          <div className="max-w-[180px] space-y-1.5">
             <TextInput
               label="Kode Pos"
               name="addressPostalCode"
@@ -543,12 +587,14 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
               defaultValue={defaultValues?.addressPostalCode}
               disabled={loading}
             />
+            <p className="text-xs text-muted-foreground">Tidak ditampilkan ke publik.</p>
           </div>
         </div>
       </Section>
 
       {/* ── SOSIAL MEDIA ── */}
       <Section title="Sosial Media">
+        <p className="text-xs text-muted-foreground -mt-2">Semua opsional. Yang diisi akan ditampilkan ke publik.</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {SOCIAL_PLATFORMS.map(({ key, label, placeholder, hint, icon: Icon, inputType }) => (
             <div key={key} className="flex flex-col gap-1.5">

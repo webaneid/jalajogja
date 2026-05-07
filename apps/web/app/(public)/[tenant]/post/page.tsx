@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { eq, desc, inArray } from "drizzle-orm";
 import { createTenantDb, db, tenants } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
+import { WidgetArea } from "@/components/website/public/widget-area";
 import type { Metadata } from "next";
 
 export const revalidate = 60;
@@ -30,7 +31,8 @@ export default async function BlogListPage({ params }: { params: Params }) {
 
   if (!tenant?.isActive) notFound();
 
-  const { db: tenantDb, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
 
   const posts = await tenantDb
     .select({
@@ -75,56 +77,66 @@ export default async function BlogListPage({ params }: { params: Params }) {
       : "";
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-12">
+    <div className="max-w-7xl mx-auto px-4 py-12">
       <h1 className="text-3xl font-bold mb-10">Blog</h1>
 
-      {posts.length === 0 ? (
-        <p className="text-muted-foreground">Belum ada postingan.</p>
-      ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {posts.map((post) => {
-            const cover = post.coverId ? mediaMap.get(post.coverId) : null;
-            return (
-              <a
-                key={post.id}
-                href={`/${slug}/post/${post.slug}`}
-                className="group block border border-border rounded-xl overflow-hidden hover:border-primary/50 hover:shadow-md transition-all"
-              >
-                {cover ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={cover.url}
-                    alt={cover.altText ?? post.title}
-                    title={cover.title ?? undefined}
-                    className="w-full aspect-video object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                ) : (
-                  <div className="w-full aspect-video bg-muted/60 flex items-center justify-center">
-                    <span className="text-muted-foreground/40 text-3xl">📄</span>
-                  </div>
-                )}
-                <div className="p-4">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                    {post.categoryName && (
-                      <>
-                        <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full">{post.categoryName}</span>
-                        <span>·</span>
-                      </>
+      <div className="flex gap-10">
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          {posts.length === 0 ? (
+            <p className="text-muted-foreground">Belum ada postingan.</p>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-6">
+              {posts.map((post) => {
+                const cover = post.coverId ? mediaMap.get(post.coverId) : null;
+                return (
+                  <a
+                    key={post.id}
+                    href={`/${slug}/post/${post.slug}`}
+                    className="group block border border-border rounded-xl overflow-hidden hover:border-primary/50 hover:shadow-md transition-all"
+                  >
+                    {cover ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={cover.url}
+                        alt={cover.altText ?? post.title}
+                        title={cover.title ?? undefined}
+                        className="w-full aspect-video object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full aspect-video bg-muted/60 flex items-center justify-center">
+                        <span className="text-muted-foreground/40 text-3xl">📄</span>
+                      </div>
                     )}
-                    <span>{fmt(post.publishedAt)}</span>
-                  </div>
-                  <h2 className="font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
-                    {post.title}
-                  </h2>
-                  {post.excerpt && (
-                    <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{post.excerpt}</p>
-                  )}
-                </div>
-              </a>
-            );
-          })}
+                    <div className="p-4">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                        {post.categoryName && (
+                          <>
+                            <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full">{post.categoryName}</span>
+                            <span>·</span>
+                          </>
+                        )}
+                        <span>{fmt(post.publishedAt)}</span>
+                      </div>
+                      <h2 className="font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                        {post.title}
+                      </h2>
+                      {post.excerpt && (
+                        <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{post.excerpt}</p>
+                      )}
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Sidebar */}
+        <div className="w-72 shrink-0 hidden lg:block">
+          <WidgetArea id="default-sidebar" tenantClient={tenantClient} tenantSlug={slug} />
+        </div>
+      </div>
     </div>
   );
 }

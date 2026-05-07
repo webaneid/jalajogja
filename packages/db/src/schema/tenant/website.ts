@@ -12,8 +12,11 @@ import {
 export const CONTENT_STATUSES = ["draft", "published", "archived"] as const;
 export type ContentStatus = typeof CONTENT_STATUSES[number];
 
-export const PAGE_TEMPLATES = ["default", "landing", "contact", "about", "linktree"] as const;
+export const PAGE_TEMPLATES = ["default", "landing", "contact", "about", "linktree", "terms", "privacy"] as const;
 export type PageTemplate = typeof PAGE_TEMPLATES[number];
+
+// Template yang hanya boleh ada satu per tenant (singleton)
+export const SINGLETON_TEMPLATES: PageTemplate[] = ["terms", "privacy"];
 
 export const PAGE_TWITTER_CARDS = ["summary", "summary_large_image"] as const;
 export const PAGE_ROBOTS_VALUES = ["index,follow", "noindex", "noindex,nofollow"] as const;
@@ -46,6 +49,7 @@ export function createPagesTable(s: ReturnType<typeof pgSchema>) {
     status: text("status", { enum: CONTENT_STATUSES }).notNull().default("draft"),
     order:  integer("order").notNull().default(0),  // urutan di navigasi
     authorId: uuid("author_id"),            // FK → users.id via SQL migration
+    viewCount:   integer("view_count").notNull().default(0),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt:   timestamp("created_at",   { withTimezone: true }).notNull().defaultNow(),
     updatedAt:   timestamp("updated_at",   { withTimezone: true }).notNull().defaultNow(),
@@ -95,6 +99,7 @@ export function createPostsTable(s: ReturnType<typeof pgSchema>) {
     status: text("status", { enum: CONTENT_STATUSES }).notNull().default("draft"),
     authorId:   uuid("author_id"),          // FK → users.id via SQL migration
     categoryId: uuid("category_id"),        // FK → post_categories.id via SQL migration
+    viewCount:  integer("view_count").notNull().default(0),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt:   timestamp("created_at",   { withTimezone: true }).notNull().defaultNow(),
     updatedAt:   timestamp("updated_at",   { withTimezone: true }).notNull().defaultNow(),

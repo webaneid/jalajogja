@@ -22,7 +22,7 @@ const navItems = [
   { label: "Dashboard",  icon: LayoutDashboard, path: "dashboard"  },
   { label: "Anggota",    icon: Users,           path: "members"    },
   { label: "Pengurus",   icon: UserCog,         path: "pengurus"   },
-  { label: "Akun",       icon: UserCircle,      path: "akun"       },
+  { label: "Akun",       icon: UserCircle,      path: "accounts"   },
   { label: "Media",      icon: Image,           path: "media"      },
   { label: "Website",    icon: Globe,           path: "website"    },
   { label: "Surat",      icon: Mail,            path: "letters"    },

@@ -6,6 +6,8 @@ import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { generateSlug } from "@/lib/seo";
+import { saveWidgetArea } from "@/lib/widget-areas";
+import type { SidebarSection } from "@/lib/widget-areas";
 import type { ContentStatus, PostTwitterCard, PostRobots, PostSchemaType, PageSchemaType } from "@jalajogja/db";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -432,7 +434,7 @@ export type PageFormData = {
   content?: string | null;
   coverId?: string | null;
   order?: number;
-  template?: "default" | "landing" | "contact" | "about" | "linktree";
+  template?: "default" | "landing" | "contact" | "about" | "linktree" | "terms" | "privacy";
   status?: ContentStatus;
   publishedAt?: string | null;
   // SEO
@@ -488,6 +490,52 @@ export async function createPageDraftAction(
 
   } catch (err) {
     console.error("[createPageDraftAction]", err);
+    return { success: false, error: "Gagal membuat halaman." };
+  }
+}
+
+// ─── CREATE SINGLETON PAGE (terms / privacy) ─────────────────────────────────
+// Buat halaman jika belum ada; jika sudah ada, kembalikan ID yang existing.
+
+export async function createSingletonPageAction(
+  slug: string,
+  template: "terms" | "privacy"
+): Promise<ActionResult<{ pageId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
+
+  const LABELS: Record<string, string> = { terms: "Syarat dan Ketentuan", privacy: "Kebijakan Privasi" };
+  const SLUGS:  Record<string, string> = { terms: "syarat-dan-ketentuan", privacy: "kebijakan-privasi" };
+
+  const { db, schema } = createTenantDb(slug);
+
+  // Cek apakah sudah ada
+  const [existing] = await db
+    .select({ id: schema.pages.id })
+    .from(schema.pages)
+    .where(eq(schema.pages.template, template))
+    .limit(1);
+
+  if (existing) return { success: true, data: { pageId: existing.id } };
+
+  try {
+    const [page] = await db
+      .insert(schema.pages)
+      .values({
+        title:    LABELS[template],
+        slug:     SLUGS[template],
+        template,
+        status:   "draft",
+        authorId: access.tenantUser.id,
+      })
+      .returning({ id: schema.pages.id });
+
+    revalidatePath(`/${slug}/website/pages`);
+    return { success: true, data: { pageId: page.id } };
+
+  } catch (err) {
+    console.error("[createSingletonPageAction]", err);
     return { success: false, error: "Gagal membuat halaman." };
   }
 }
@@ -944,5 +992,28 @@ export async function deleteTagAction(
   } catch (err) {
     console.error("[deleteTagAction]", err);
     return { success: false, error: "Gagal menghapus tag." };
+  }
+}
+
+// ─── Widget Area Actions ────────────────────────────────────────────────────
+
+export async function saveWidgetAreaAction(
+  slug:     string,
+  areaId:   string,
+  sections: SidebarSection[],
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Unauthorized." };
+  if (!hasFullAccess(access.tenantUser, "website"))
+    return { success: false, error: "Tidak punya akses." };
+
+  try {
+    const tenantClient = createTenantDb(slug);
+    await saveWidgetArea(areaId, sections, tenantClient);
+    revalidatePath(`/${slug}/post`);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[saveWidgetAreaAction]", err);
+    return { success: false, error: "Gagal menyimpan widget area." };
   }
 }

@@ -21,8 +21,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, MoreHorizontal, Pencil, Trash2, Eye, EyeOff } from "lucide-react";
-import { deletePageAction, updatePageStatusAction } from "@/app/(dashboard)/[tenant]/website/actions";
+import { Plus, MoreHorizontal, Pencil, Trash2, Eye, EyeOff, ShieldCheck, FileText } from "lucide-react";
+import { deletePageAction, updatePageStatusAction, createSingletonPageAction } from "@/app/(dashboard)/[tenant]/website/actions";
 import type { ContentStatus } from "@jalajogja/db";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -138,6 +138,92 @@ function StatusBadge({ status }: { status: ContentStatus }) {
   };
   const { label, variant } = map[status] ?? { label: status, variant: "outline" };
   return <Badge variant={variant}>{label}</Badge>;
+}
+
+// ── SingletonPageCards ────────────────────────────────────────────────────────
+
+type SingletonEntry = { id: string; status: ContentStatus } | null;
+
+export function SingletonPageCards({
+  slug,
+  existingTerms,
+  existingPrivacy,
+}: {
+  slug:            string;
+  existingTerms:   SingletonEntry;
+  existingPrivacy: SingletonEntry;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  function handleOpen(template: "terms" | "privacy", existing: SingletonEntry) {
+    if (existing) {
+      router.push(`/${slug}/website/pages/${existing.id}/edit`);
+      return;
+    }
+    startTransition(async () => {
+      const res = await createSingletonPageAction(slug, template);
+      if (res.success) {
+        router.push(`/${slug}/website/pages/${res.data.pageId}/edit`);
+      } else {
+        alert(res.error);
+      }
+    });
+  }
+
+  const items = [
+    {
+      template:  "terms" as const,
+      label:     "Syarat dan Ketentuan",
+      desc:      "Aturan penggunaan layanan yang harus disetujui pengguna",
+      icon:      FileText,
+      existing:  existingTerms,
+    },
+    {
+      template:  "privacy" as const,
+      label:     "Kebijakan Privasi",
+      desc:      "Penjelasan cara pengelolaan data pribadi pengguna",
+      icon:      ShieldCheck,
+      existing:  existingPrivacy,
+    },
+  ] as const;
+
+  return (
+    <div>
+      <p className="text-sm font-medium text-muted-foreground mb-3">Halaman Legal (Singleton)</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {items.map(({ template, label, desc, icon: Icon, existing }) => (
+          <button
+            key={template}
+            onClick={() => handleOpen(template, existing)}
+            disabled={isPending}
+            className="flex items-start gap-3 rounded-lg border border-border p-4 text-left hover:border-primary/50 hover:bg-muted/30 transition-all disabled:opacity-60"
+          >
+            <Icon className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm">{label}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+            </div>
+            <div className="shrink-0">
+              {existing ? (
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  existing.status === "published"
+                    ? "bg-green-100 text-green-700"
+                    : "bg-muted text-muted-foreground"
+                }`}>
+                  {existing.status === "published" ? "Terbit" : "Draft"}
+                </span>
+              ) : (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium">
+                  Belum dibuat
+                </span>
+              )}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ── PagesTable ────────────────────────────────────────────────────────────────

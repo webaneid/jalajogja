@@ -51,6 +51,7 @@ export default async function PostsPage({
       title:       schema.posts.title,
       slug:        schema.posts.slug,
       status:      schema.posts.status,
+      viewCount:   schema.posts.viewCount,
       publishedAt: schema.posts.publishedAt,
       createdAt:   schema.posts.createdAt,
       updatedAt:   schema.posts.updatedAt,

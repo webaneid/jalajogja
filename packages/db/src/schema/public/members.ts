@@ -14,6 +14,7 @@ import { refRegencies } from "./ref-regencies";
 import { addresses } from "./addresses";
 import { contacts } from "./contacts";
 import { socialMedias } from "./social-medias";
+import { user } from "./auth";
 
 // ─── Tabel pusat identitas anggota — lintas semua tenant ─────────────────────
 // Satu record = satu orang nyata. Tidak duplikat antar cabang.
@@ -43,7 +44,8 @@ export const members = pgTable("members", {
   photoUrl: text("photo_url"),
 
   // ── Alumni Gontor ────────────────────────────────────────────────────────────
-  graduationYear: smallint("graduation_year"), // Tahun lulus/keluar dari PM Gontor
+  graduationYear:   smallint("graduation_year"), // Tahun lulus/keluar dari PM Gontor
+  graduationPeriod: text("graduation_period", { enum: ["awal", "akhir"] }), // khusus 1999
 
   // ── Pekerjaan ────────────────────────────────────────────────────────────────
   professionId: smallint("profession_id").references(() => refProfessions.id),
@@ -59,6 +61,13 @@ export const members = pgTable("members", {
   homeAddressId: uuid("home_address_id").references(() => addresses.id, { onDelete: "set null" }),
   contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
   socialMediaId: uuid("social_media_id").references(() => socialMedias.id, { onDelete: "set null" }),
+
+  // ── Login front-end ──────────────────────────────────────────────────────────
+  // Diisi saat anggota aktivasi akun login (via register atau admin aktifkan)
+  // null = belum punya login; diisi = bisa login di front-end semua tenant
+  betterAuthUserId: text("better_auth_user_id")
+    .unique()
+    .references(() => user.id, { onDelete: "set null" }),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

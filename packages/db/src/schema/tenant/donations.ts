@@ -87,6 +87,7 @@ export function createCampaignsTable(s: ReturnType<typeof pgSchema>) {
 
     // Audit — FK ke officers.id via SQL (nullable)
     createdBy: uuid("created_by"),
+    viewCount: integer("view_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   });

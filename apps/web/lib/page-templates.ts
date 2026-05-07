@@ -1,7 +1,20 @@
 // ─── Shared types untuk Page Template System ─────────────────────────────────
 // Dipakai oleh admin (dashboard) dan front-end (public) — server & client safe
 
-export type PageTemplate = "default" | "landing" | "contact" | "about" | "linktree";
+export type PageTemplate = "default" | "landing" | "contact" | "about" | "linktree" | "terms" | "privacy";
+
+// Template singleton — hanya boleh ada 1 per tenant
+export const SINGLETON_TEMPLATES: PageTemplate[] = ["terms", "privacy"];
+
+export const SINGLETON_LABELS: Record<string, string> = {
+  terms:   "Syarat dan Ketentuan",
+  privacy: "Kebijakan Privasi",
+};
+
+export const SINGLETON_SLUGS: Record<string, string> = {
+  terms:   "syarat-dan-ketentuan",
+  privacy: "kebijakan-privasi",
+};
 
 // ── Landing Page ──────────────────────────────────────────────────────────────
 

@@ -30,8 +30,9 @@ export type MemberFormData = {
   birthRegencyId?: number;     // FK ke ref_regencies — untuk lahir di Indonesia
   birthPlaceText?: string;     // Teks bebas: kota/negara jika LN atau data lama
   birthDate?: string;          // YYYY-MM-DD
-  graduationYear?: number;     // Tahun lulus/keluar PM Gontor
-  professionId?: number;       // FK ke ref_professions
+  graduationYear?:   number;           // Tahun lulus/keluar PM Gontor
+  graduationPeriod?: "awal" | "akhir"; // khusus angkatan 1999
+  professionId?:     number;           // FK ke ref_professions
   // Data keanggotaan cabang
   status?: "active" | "inactive" | "alumni";
   joinedAt?: string;           // YYYY-MM-DD
@@ -52,8 +53,9 @@ function sanitize(data: MemberFormData) {
     birthRegencyId: data.birthRegencyId ?? null,
     birthPlaceText: data.birthPlaceText?.trim() || null,
     birthDate: data.birthDate || null,
-    graduationYear: data.graduationYear || null,
-    professionId: data.professionId ?? null,
+    graduationYear:   data.graduationYear || null,
+    graduationPeriod: data.graduationYear === 1999 ? (data.graduationPeriod ?? null) : null,
+    professionId:     data.professionId ?? null,
   };
 }
 
@@ -174,9 +176,12 @@ export async function updateMemberAction(
 
 export type Step2ContactData = {
   // Kontak
-  phone?: string;
-  whatsapp?: string;
-  email?: string;
+  phone?:           string;
+  whatsapp?:        string;
+  email?:           string;
+  isPhonePublic?:    boolean;
+  isWhatsappPublic?: boolean;
+  isEmailPublic?:    boolean;
   // Domisili (langsung di tabel members)
   domicileStatus?: "permanent" | "temporary";
   domicileTenantId?: string;
@@ -239,9 +244,12 @@ export async function upsertMemberContactAction(
 
     if (hasContact) {
       const contactPayload = {
-        phone: data.phone?.trim() || null,
-        whatsapp: data.whatsapp?.trim() || null,
-        email: data.email?.trim() || null,
+        phone:            data.phone?.trim()    || null,
+        whatsapp:         data.whatsapp?.trim() || null,
+        email:            data.email?.trim()    || null,
+        isPhonePublic:    data.isPhonePublic    ?? false,
+        isWhatsappPublic: data.isWhatsappPublic ?? false,
+        isEmailPublic:    data.isEmailPublic    ?? false,
       };
       if (member.contactId) {
         await db

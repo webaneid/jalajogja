@@ -812,3 +812,29 @@ Route seperti `/(public)/[tenant]/sign/[token]`, `verify/[hash]`, `invite` tidak
 ### `(public)/[tenant]/layout.tsx` hanya butuh tenant aktif
 
 Layout fetch 3 grup settings sekaligus via `Promise.all`. Jika tenant tidak aktif → `notFound()`. Pattern ini aman dan efisien — satu DB roundtrip untuk semua data layout.
+
+---
+
+## Bagian 5: Sidebar Publik
+
+> Detail lengkap arsitektur, schema section, DnD builder, integrasi publik: **`docs/arsitektur-sidebar.md`**
+
+Sidebar adalah panel konten di sisi kanan halaman publik (post archive + post detail).
+Dikonfigurasi oleh admin via drag-and-drop section builder di `/{slug}/website/pengaturan`.
+
+**Phase 1 (segera):** Hanya satu jenis section — **Select Posts** — dengan filter:
+- `recent` — terbaru
+- `popular` — terpopuler (ORDER BY view_count DESC, memanfaatkan view counter)
+- `category` — filter by kategori
+- `tag` — filter by tag
+
+**Storage**: `settings` key `sidebar_sections`, group `website` — JSONB array `SidebarSection[]`.
+
+**Lokasi admin**: `/{slug}/website/pengaturan` — nav item baru menggantikan Komentar (coming soon).
+
+**Render publik**: `<PublicSidebar>` server component — muncul di `lg:` breakpoint (hidden mobile).
+Layout: `flex gap-8`, konten utama `flex-1`, sidebar `w-72 shrink-0 hidden lg:block`.
+
+**Dependency baru**: `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities`.
+
+**Status**: ⬜ Belum diimplementasikan — arsitektur selesai.

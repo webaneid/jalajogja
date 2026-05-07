@@ -111,7 +111,7 @@ export default async function PublicPageRoute({ params }: { params: Params }) {
     );
   }
 
-  // default + about template: render Tiptap HTML
+  // terms + privacy + default + about: render Tiptap HTML
   return (
     <DefaultTemplate
       title={page.title}

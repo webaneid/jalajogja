@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { use }                     from "react";
 import { authClient }              from "@/lib/auth-client";
 import { useRouter }               from "next/navigation";
 import { Button }                  from "@/components/ui/button";
 import { Input }                   from "@/components/ui/input";
 import { Label }                   from "@/components/ui/label";
-import { use }                     from "react";
 
 type Params = Promise<{ tenant: string }>;
 
@@ -23,15 +23,11 @@ export default function LoginPage({ params }: { params: Params }) {
     e.preventDefault();
     setError(null);
     start(async () => {
-      const res = await authClient.signIn.email({
-        email,
-        password,
-        callbackURL: `/${slug}`,
-      });
+      const res = await authClient.signIn.email({ email, password, callbackURL: `/${slug}/akun` });
       if (res.error) {
-        setError(res.error.message ?? "Email atau password salah.");
+        setError("Email atau password salah. Silakan coba lagi.");
       } else {
-        router.push(`/${slug}`);
+        router.push(`/${slug}/akun`);
       }
     });
   }
@@ -61,7 +57,15 @@ export default function LoginPage({ params }: { params: Params }) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <a
+                href={`/${slug}/forgot-password`}
+                className="text-xs text-primary hover:underline"
+              >
+                Lupa password?
+              </a>
+            </div>
             <Input
               id="password"
               type="password"
@@ -73,9 +77,7 @@ export default function LoginPage({ params }: { params: Params }) {
             />
           </div>
 
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
           <Button type="submit" className="w-full" disabled={isPending}>
             {isPending ? "Memproses..." : "Masuk"}

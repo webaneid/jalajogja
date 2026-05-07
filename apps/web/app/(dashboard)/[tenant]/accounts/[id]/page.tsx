@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { eq, desc, isNotNull } from "drizzle-orm";
-import { ChevronLeft, UserCheck, UserX, Mail, Phone, MapPin } from "lucide-react";
-import { db, profiles, members, tenantMemberships, createTenantDb } from "@jalajogja/db";
+import { eq, desc } from "drizzle-orm";
+import { ChevronLeft } from "lucide-react";
+import { db, profiles, createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
-import { LinkMemberClient } from "./link-member-client";
 
 // ─── Label maps ───────────────────────────────────────────────────────────────
 
@@ -76,11 +75,6 @@ export default async function AkunDetailPage({
 
   if (!profile || profile.deletedAt) notFound();
 
-  // ── Fetch linked member (jika ada) ────────────────────────────────────────
-  const linkedMember = profile.memberId
-    ? await db.query.members.findFirst({ where: eq(members.id, profile.memberId) })
-    : null;
-
   // ── Riwayat invoice di tenant ini ─────────────────────────────────────────
   const { db: tenantDb, schema } = createTenantDb(slug);
 
@@ -104,7 +98,7 @@ export default async function AkunDetailPage({
     <div className="p-6 max-w-3xl space-y-5">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link href={`/${slug}/akun`} className="flex items-center gap-1 hover:text-foreground transition-colors">
+        <Link href={`/${slug}/accounts`} className="flex items-center gap-1 hover:text-foreground transition-colors">
           <ChevronLeft className="h-4 w-4" />
           Akun Publik
         </Link>
@@ -115,16 +109,8 @@ export default async function AkunDetailPage({
         <div>
           <h1 className="text-xl font-semibold">{profile.name}</h1>
           <div className="mt-1 flex items-center gap-2">
-            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-              profile.accountType === "member"
-                ? "bg-blue-100 text-blue-700"
-                : "bg-muted text-muted-foreground"
-            }`}>
-              {profile.accountType === "member"
-                ? <UserCheck className="h-3 w-3" />
-                : <UserX className="h-3 w-3" />
-              }
-              {profile.accountType === "member" ? "Alumni IKPM" : "Akun Publik"}
+            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              Akun Publik
             </span>
             {profile.deletedAt && (
               <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
@@ -154,40 +140,6 @@ export default async function AkunDetailPage({
           </dl>
         </Section>
       )}
-
-      {/* Link ke Anggota */}
-      <Section title="Link ke Anggota IKPM">
-        {linkedMember ? (
-          <div className="space-y-3">
-            <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
-              <p className="text-sm font-medium text-blue-900">{linkedMember.name}</p>
-              {linkedMember.memberNumber && (
-                <p className="text-xs text-blue-700 mt-0.5">No. Anggota: {linkedMember.memberNumber}</p>
-              )}
-            </div>
-            <LinkMemberClient
-              slug={slug}
-              profileId={profileId}
-              currentMemberId={linkedMember.id}
-              currentMemberName={linkedMember.name}
-              mode="unlink"
-            />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Akun ini belum ter-link ke anggota IKPM. Jika pemilik akun adalah alumni, hubungkan ke data anggota untuk verifikasi identitas.
-            </p>
-            <LinkMemberClient
-              slug={slug}
-              profileId={profileId}
-              currentMemberId={null}
-              currentMemberName={null}
-              mode="link"
-            />
-          </div>
-        )}
-      </Section>
 
       {/* Riwayat Transaksi */}
       <Section title={`Riwayat Transaksi di Cabang Ini (${invoices.length})`}>

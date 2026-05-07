@@ -142,11 +142,12 @@ export async function createTenantSchemaInDb(
                                      CHECK (schema_type IN ('WebPage','AboutPage','ContactPage','FAQPage')),
         structured_data  JSONB,
         template     TEXT        NOT NULL DEFAULT 'default'
-                                 CHECK (template IN ('default','landing','contact','about','linktree')),
+                                 CHECK (template IN ('default','landing','contact','about','linktree','terms','privacy')),
         status       TEXT        NOT NULL DEFAULT 'draft'
                                  CHECK (status IN ('draft','published','archived')),
         "order"      INTEGER     NOT NULL DEFAULT 0,
         author_id    UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        view_count   INTEGER     NOT NULL DEFAULT 0,
         published_at TIMESTAMPTZ,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -199,6 +200,7 @@ export async function createTenantSchemaInDb(
                                  CHECK (status IN ('draft','published','archived')),
         author_id    UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
         category_id  UUID        REFERENCES "${s}".post_categories(id) ON DELETE SET NULL,
+        view_count   INTEGER     NOT NULL DEFAULT 0,
         published_at TIMESTAMPTZ,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -574,6 +576,7 @@ export async function createTenantSchemaInDb(
         schema_type      TEXT          NOT NULL DEFAULT 'WebPage',
         structured_data  JSONB,
         created_by       UUID          REFERENCES "${s}".officers(id) ON DELETE SET NULL,
+        view_count       INTEGER       NOT NULL DEFAULT 0,
         created_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
         updated_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW()
       )
@@ -663,6 +666,7 @@ export async function createTenantSchemaInDb(
         schema_type             TEXT          NOT NULL DEFAULT 'Event',
         structured_data         JSONB,
         created_by              UUID          REFERENCES "${s}".officers(id) ON DELETE SET NULL,
+        view_count              INTEGER       NOT NULL DEFAULT 0,
         created_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
         updated_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW()
       )
@@ -809,6 +813,7 @@ export async function createTenantSchemaInDb(
         status      TEXT           NOT NULL DEFAULT 'draft'
                                    CHECK (status IN ('active','draft','archived')),
         category_id UUID           REFERENCES "${s}".product_categories(id) ON DELETE SET NULL,
+        view_count  INTEGER        NOT NULL DEFAULT 0,
         created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )
@@ -1061,6 +1066,19 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_payments_source            ON "${s}".payments(source_type, source_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_payments_status            ON "${s}".payments(status)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_payments_member_id         ON "${s}".payments(member_id)`));
+    // ── View Counter: dedup tracker untuk deduplikasi kunjungan per IP ───────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".content_view_sessions (
+        content_type  TEXT          NOT NULL
+                                    CHECK (content_type IN ('post','page','event','product','campaign')),
+        content_id    UUID          NOT NULL,
+        ip_hash       TEXT          NOT NULL,
+        viewed_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (content_type, content_id, ip_hash)
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_cvs_viewed_at ON "${s}".content_view_sessions (viewed_at)`));
+
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_disbursements_status       ON "${s}".disbursements(status)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_disbursements_requested_by ON "${s}".disbursements(requested_by)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_donations_campaign_id        ON "${s}".donations(campaign_id)`));

@@ -64,6 +64,7 @@ export function createProductsTable(s: ReturnType<typeof pgSchema>) {
     structuredData: jsonb("structured_data"),
     status: text("status", { enum: PRODUCT_STATUSES }).notNull().default("draft"),
     categoryId: uuid("category_id"),        // FK → product_categories.id via SQL migration
+    viewCount: integer("view_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   });

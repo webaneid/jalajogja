@@ -71,6 +71,13 @@ interface WilayahSelectProps {
     district?: string
     village?: string
   }
+  /** Teks keterangan di bawah tiap input */
+  hints?: {
+    province?: string
+    regency?: string
+    district?: string
+    village?: string
+  }
   className?: string
 }
 
@@ -86,6 +93,7 @@ interface ComboboxProps<T extends { id: number; name: string }> {
   disabled?: boolean
   loading?: boolean
   renderItem?: (item: T) => React.ReactNode
+  hint?: string
 }
 
 function Combobox<T extends { id: number; name: string }>({
@@ -98,6 +106,7 @@ function Combobox<T extends { id: number; name: string }>({
   disabled = false,
   loading = false,
   renderItem,
+  hint,
 }: ComboboxProps<T>) {
   const [open, setOpen] = React.useState(false)
   const selected = items.find((item) => item.id === value)
@@ -157,6 +166,7 @@ function Combobox<T extends { id: number; name: string }>({
           </Command>
         </PopoverContent>
       </Popover>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   )
 }
@@ -169,6 +179,7 @@ export function WilayahSelect({
   namePrefix,
   disabled = false,
   labels = {},
+  hints = {},
   className,
 }: WilayahSelectProps) {
   // State nilai terpilih
@@ -312,6 +323,7 @@ export function WilayahSelect({
         onSelect={handleProvinceSelect}
         disabled={disabled}
         loading={loadingProvinces}
+        hint={hints.province}
       />
 
       {/* Kabupaten/Kota */}
@@ -324,6 +336,7 @@ export function WilayahSelect({
         onSelect={handleRegencySelect}
         disabled={disabled || !provinceId}
         loading={loadingRegencies}
+        hint={hints.regency}
         renderItem={(item) => (
           <span>
             <span className="text-xs text-muted-foreground mr-1.5">
@@ -344,6 +357,7 @@ export function WilayahSelect({
         onSelect={handleDistrictSelect}
         disabled={disabled || !regencyId}
         loading={loadingDistricts}
+        hint={hints.district}
       />
 
       {/* Desa / Kelurahan */}
@@ -356,6 +370,7 @@ export function WilayahSelect({
         onSelect={handleVillageSelect}
         disabled={disabled || !districtId}
         loading={loadingVillages}
+        hint={hints.village}
         renderItem={(item) => (
           <span>
             <span className="text-xs text-muted-foreground mr-1.5">

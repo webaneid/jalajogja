@@ -1,13 +1,46 @@
+import { createHash } from "crypto";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
+import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
-import { createTenantDb, db, tenants } from "@jalajogja/db";
+import { createTenantDb, db, tenants, getSetting, user as authUser } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import { renderBody } from "@/lib/letter-render";
+import { recordView, hashIp } from "@/lib/view-counter";
+import { WidgetArea } from "@/components/website/public/widget-area";
 import type { Metadata } from "next";
 
 export const revalidate = 60;
 
 type Params = Promise<{ tenant: string; slug: string }>;
+
+// ── Date formatter ─────────────────────────────────────────────────────────────
+
+function formatPostDate(date: Date, timezone: string): string {
+  const tz = timezone || "Asia/Jakarta";
+
+  // "Selasa, 20 April 2026"
+  const datePart = new Intl.DateTimeFormat("id-ID", {
+    timeZone: tz, weekday: "long", day: "numeric", month: "long", year: "numeric",
+  }).format(date);
+
+  // "00.00" (24 jam, titik sebagai pemisah)
+  const timeParts = new Intl.DateTimeFormat("id-ID", {
+    timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(date);
+  const hour   = timeParts.find(p => p.type === "hour")?.value   ?? "00";
+  const minute = timeParts.find(p => p.type === "minute")?.value ?? "00";
+
+  // Abbreviasi timezone: WIB / WITA / WIT / GMT+X
+  const tzParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, timeZoneName: "short",
+  }).formatToParts(date);
+  const tzAbbr = tzParts.find(p => p.type === "timeZoneName")?.value ?? "";
+
+  return `${datePart} | ${hour}.${minute} ${tzAbbr}`;
+}
+
+// ── Data fetcher ───────────────────────────────────────────────────────────────
 
 async function getPost(tenantSlug: string, postSlug: string) {
   const [tenant] = await db
@@ -29,6 +62,7 @@ async function getPost(tenantSlug: string, postSlug: string) {
       content:      schema.posts.content,
       status:       schema.posts.status,
       coverId:      schema.posts.coverId,
+      authorId:     schema.posts.authorId,
       publishedAt:  schema.posts.publishedAt,
       updatedAt:    schema.posts.updatedAt,
       metaTitle:    schema.posts.metaTitle,
@@ -42,6 +76,7 @@ async function getPost(tenantSlug: string, postSlug: string) {
 
   if (!post || post.status !== "published") return null;
 
+  // Resolve cover
   let coverUrl:     string | null = null;
   let coverAlt:     string | null = null;
   let coverTitle:   string | null = null;
@@ -60,8 +95,42 @@ async function getPost(tenantSlug: string, postSlug: string) {
     }
   }
 
-  return { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName: tenant.name };
+  // Timezone dari settings
+  const timezone = (await getSetting<string>(tenantClient, "timezone", "general")) ?? "Asia/Jakarta";
+
+  // Resolve author: posts.authorId → tenant.users → public.user
+  let authorName:     string | null = null;
+  let authorGravatar: string | null = null;
+
+  if (post.authorId) {
+    const [tenantUser] = await tenantDb
+      .select({ betterAuthUserId: schema.users.betterAuthUserId })
+      .from(schema.users)
+      .where(eq(schema.users.id, post.authorId))
+      .limit(1);
+
+    if (tenantUser) {
+      const [au] = await db
+        .select({ name: authUser.name, email: authUser.email })
+        .from(authUser)
+        .where(eq(authUser.id, tenantUser.betterAuthUserId))
+        .limit(1);
+
+      if (au) {
+        authorName     = au.name;
+        const hashHex  = createHash("md5").update(au.email.trim().toLowerCase()).digest("hex");
+        authorGravatar = `https://www.gravatar.com/avatar/${hashHex}?s=64&d=mp`;
+      }
+    }
+  }
+
+  return {
+    post, coverUrl, coverAlt, coverTitle, coverCaption,
+    tenantName: tenant.name, timezone, authorName, authorGravatar,
+  };
 }
+
+// ── Metadata ───────────────────────────────────────────────────────────────────
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: tenantSlug, slug: postSlug } = await params;
@@ -74,96 +143,150 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   };
 }
 
+// ── Page ───────────────────────────────────────────────────────────────────────
+
 export default async function BlogDetailPage({ params }: { params: Params }) {
   const { tenant: tenantSlug, slug: postSlug } = await params;
   const result = await getPost(tenantSlug, postSlug);
   if (!result) notFound();
 
-  const { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName } = result;
+  const tenantClient = createTenantDb(tenantSlug);
+
+  const hdrs  = await headers();
+  const ua    = hdrs.get("user-agent") ?? "";
+  const isBot = /bot|crawl|spider|slurp|facebookexternalhit|twitterbot|googlebot|bingbot/i.test(ua);
+  if (!isBot) {
+    const rawIp = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim()
+               ?? hdrs.get("x-real-ip")
+               ?? "unknown";
+    after(() => recordView(tenantClient, {
+      slug:   tenantSlug,
+      type:   "post",
+      id:     result.post.id,
+      ipHash: hashIp(rawIp),
+    }));
+  }
+
+  const { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName, timezone, authorName, authorGravatar } = result;
   const html = renderBody(post.content);
 
-  const fmtDate = (date: Date | null) =>
-    date
-      ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(date)
-      : "";
+  const fmtUpdated = (date: Date) =>
+    new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(date);
 
   return (
-    <article className="max-w-3xl mx-auto px-4 py-10">
-      {/* Breadcrumb */}
-      <div className="text-xs text-muted-foreground mb-6 flex items-center gap-2">
-        <a href={`/${tenantSlug}/post`} className="hover:text-foreground transition-colors">Postingan</a>
-        <span>/</span>
-        <span className="text-foreground truncate max-w-xs">{post.title}</span>
-      </div>
-
-      {/* Category + Date */}
-      <div className="flex items-center gap-3 mb-4 text-xs text-muted-foreground">
-        {post.categoryName && (
-          <span className="px-2.5 py-1 bg-primary/10 text-primary rounded-full font-medium">
-            {post.categoryName}
-          </span>
-        )}
-        <span>{fmtDate(post.publishedAt)}</span>
-      </div>
-
-      {/* Title */}
-      <h1 className="text-3xl font-bold tracking-tight mb-6">{post.title}</h1>
-
-      {/* Cover */}
-      {coverUrl && (
-        <figure className="mb-8">
-          <div className="rounded-xl overflow-hidden border border-border">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={coverUrl}
-              alt={coverAlt ?? post.title}
-              title={coverTitle ?? undefined}
-              className="w-full aspect-video object-cover"
-            />
+    <div className="max-w-7xl mx-auto px-4 py-10">
+      <div className="flex gap-10">
+        {/* Main article */}
+        <article className="flex-1 min-w-0">
+          {/* Breadcrumb */}
+          <div className="text-xs text-muted-foreground mb-6 flex items-center gap-2">
+            <a href={`/${tenantSlug}/post`} className="hover:text-foreground transition-colors">Postingan</a>
+            <span>/</span>
+            <span className="text-foreground truncate max-w-xs">{post.title}</span>
           </div>
-          {coverCaption && (
-            <figcaption className="mt-2 text-center text-xs text-muted-foreground italic px-2">
-              {coverCaption}
-            </figcaption>
+
+          {/* ── Post Header ── */}
+          <div className="mb-8 space-y-3">
+            {/* 1. Kategori */}
+            {post.categoryName && (
+              <div>
+                <span className="px-2.5 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium">
+                  {post.categoryName}
+                </span>
+              </div>
+            )}
+
+            {/* 2. Judul */}
+            <h1 className="text-3xl font-bold tracking-tight leading-tight">{post.title}</h1>
+
+            {/* 3. Meta date */}
+            {post.publishedAt && (
+              <p className="text-sm text-muted-foreground">
+                {formatPostDate(post.publishedAt, timezone)}
+              </p>
+            )}
+
+            {/* 4. Author */}
+            {authorName && (
+              <div className="flex items-center gap-3 pt-1">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={authorGravatar ?? `https://www.gravatar.com/avatar/?d=mp&s=64`}
+                  alt={authorName}
+                  width={40}
+                  height={40}
+                  className="w-10 h-10 rounded-full object-cover ring-2 ring-border"
+                />
+                <div>
+                  <p className="text-sm font-semibold leading-tight">{authorName}</p>
+                  <p className="text-xs text-muted-foreground">Tim Redaksi</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Cover */}
+          {coverUrl && (
+            <figure className="mb-8">
+              <div className="rounded-xl overflow-hidden border border-border">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={coverUrl}
+                  alt={coverAlt ?? post.title}
+                  title={coverTitle ?? undefined}
+                  className="w-full aspect-video object-cover"
+                />
+              </div>
+              {coverCaption && (
+                <figcaption className="mt-2 text-center text-xs text-muted-foreground italic px-2">
+                  {coverCaption}
+                </figcaption>
+              )}
+            </figure>
           )}
-        </figure>
-      )}
 
-      {/* Excerpt */}
-      {post.excerpt && (
-        <p className="text-muted-foreground text-base leading-relaxed mb-6 font-medium">
-          {post.excerpt}
-        </p>
-      )}
+          {/* Excerpt */}
+          {post.excerpt && (
+            <p className="text-muted-foreground text-base leading-relaxed mb-6 font-medium">
+              {post.excerpt}
+            </p>
+          )}
 
-      {/* Content */}
-      <div
-        className="prose prose-sm max-w-none
-          [&_p]:my-3 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-8 [&_h2]:mb-3
-          [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-6 [&_h3]:mb-2
-          [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6
-          [&_li]:my-1 [&_a]:text-primary [&_a]:underline
-          [&_blockquote]:border-l-4 [&_blockquote]:border-border [&_blockquote]:pl-4
-          [&_blockquote]:italic [&_blockquote]:text-muted-foreground
-          [&_pre]:bg-muted [&_pre]:rounded [&_pre]:p-4 [&_pre]:overflow-x-auto
-          [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-sm"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+          {/* Content */}
+          <div
+            className="prose prose-sm max-w-none
+              [&_p]:my-3 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-8 [&_h2]:mb-3
+              [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-6 [&_h3]:mb-2
+              [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6
+              [&_li]:my-1 [&_a]:text-primary [&_a]:underline
+              [&_blockquote]:border-l-4 [&_blockquote]:border-border [&_blockquote]:pl-4
+              [&_blockquote]:italic [&_blockquote]:text-muted-foreground
+              [&_pre]:bg-muted [&_pre]:rounded [&_pre]:p-4 [&_pre]:overflow-x-auto
+              [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-sm"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
 
-      {/* Footer */}
-      <div className="mt-12 pt-6 border-t border-border text-xs text-muted-foreground flex items-center justify-between">
-        <span>Diterbitkan oleh {tenantName}</span>
-        {post.updatedAt && post.updatedAt !== post.publishedAt && (
-          <span>Diperbarui {fmtDate(post.updatedAt)}</span>
-        )}
+          {/* Footer */}
+          <div className="mt-12 pt-6 border-t border-border text-xs text-muted-foreground flex items-center justify-between">
+            <span>Diterbitkan oleh {tenantName}</span>
+            {post.updatedAt && post.updatedAt !== post.publishedAt && (
+              <span>Diperbarui {fmtUpdated(post.updatedAt)}</span>
+            )}
+          </div>
+
+          <a
+            href={`/${tenantSlug}/post`}
+            className="mt-6 inline-block text-sm text-primary hover:underline"
+          >
+            ← Kembali ke Blog
+          </a>
+        </article>
+
+        {/* Sidebar */}
+        <div className="w-72 shrink-0 hidden lg:block">
+          <WidgetArea id="default-sidebar" tenantClient={tenantClient} tenantSlug={tenantSlug} />
+        </div>
       </div>
-
-      <a
-        href={`/${tenantSlug}/post`}
-        className="mt-6 inline-block text-sm text-primary hover:underline"
-      >
-        ← Kembali ke Blog
-      </a>
-    </article>
+    </div>
   );
 }

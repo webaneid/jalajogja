@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, FileText, FileStack, Tag, MessageSquare, Inbox } from "lucide-react";
+import { LayoutDashboard, FileText, FileStack, Tag, Inbox, Settings2 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: "Dashboard",  icon: LayoutDashboard, path: ""           },
-  { label: "Posts",      icon: FileText,         path: "/posts"     },
-  { label: "Halaman",    icon: FileStack,         path: "/pages"     },
-  { label: "Kategori",   icon: Tag,               path: "/categories"},
-  { label: "Pesan",      icon: Inbox,             path: "/pesan"     },
-  { label: "Komentar",   icon: MessageSquare,     path: "/comments"  },
+  { label: "Dashboard",   icon: LayoutDashboard, path: ""             },
+  { label: "Posts",       icon: FileText,         path: "/posts"       },
+  { label: "Halaman",     icon: FileStack,         path: "/pages"       },
+  { label: "Kategori",    icon: Tag,               path: "/categories"  },
+  { label: "Pesan",       icon: Inbox,             path: "/pesan"       },
+  { label: "Pengaturan",  icon: Settings2,         path: "/pengaturan"  },
 ] as const;
 
 export function WebsiteNav({ slug }: { slug: string }) {
@@ -31,37 +31,20 @@ export function WebsiteNav({ slug }: { slug: string }) {
             path === ""
               ? pathname === base
               : pathname.startsWith(href);
-          // Placeholder: halaman belum dibuat
-          const isComingSoon = path === "/comments" ;
-
           return (
             <li key={label}>
-              {isComingSoon ? (
-                <span
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm",
-                    "text-muted-foreground/50 cursor-not-allowed"
-                  )}
-                  title="Segera hadir"
-                >
-                  <Icon className="h-4 w-4" />
-                  {label}
-                  <span className="ml-auto text-[10px] bg-muted rounded px-1">Soon</span>
-                </span>
-              ) : (
-                <Link
-                  href={href}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
-                    isActive
-                      ? "bg-background text-foreground font-medium shadow-sm border border-border"
-                      : "text-muted-foreground hover:text-foreground hover:bg-background/60"
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {label}
-                </Link>
-              )}
+              <Link
+                href={href}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                  isActive
+                    ? "bg-background text-foreground font-medium shadow-sm border border-border"
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/60"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </Link>
             </li>
           );
         })}

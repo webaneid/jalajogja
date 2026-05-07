@@ -247,27 +247,36 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
             {/* Template */}
             <div className="space-y-2">
               <SidebarLabel>Template Halaman</SidebarLabel>
-              <Select
-                value={template}
-                onValueChange={(val) => {
-                  setTemplate(val as PageTemplate);
-                  setContent(null); // reset content saat ganti template
-                }}
-              >
-                <SelectTrigger className="w-full text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">Default (Artikel)</SelectItem>
-                  <SelectItem value="about">Tentang Kami</SelectItem>
-                  <SelectItem value="landing">Landing Page</SelectItem>
-                  <SelectItem value="contact">Kontak</SelectItem>
-                  <SelectItem value="linktree">Linktree</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Mengganti template akan mereset konten halaman.
-              </p>
+              {(template === "terms" || template === "privacy") ? (
+                <p className="text-sm font-medium text-muted-foreground">
+                  {template === "terms" ? "Syarat dan Ketentuan" : "Kebijakan Privasi"}
+                  <span className="ml-2 text-xs bg-muted px-1.5 py-0.5 rounded">Terkunci</span>
+                </p>
+              ) : (
+                <>
+                  <Select
+                    value={template}
+                    onValueChange={(val) => {
+                      setTemplate(val as PageTemplate);
+                      setContent(null); // reset content saat ganti template
+                    }}
+                  >
+                    <SelectTrigger className="w-full text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default (Artikel)</SelectItem>
+                      <SelectItem value="about">Tentang Kami</SelectItem>
+                      <SelectItem value="landing">Landing Page</SelectItem>
+                      <SelectItem value="contact">Kontak</SelectItem>
+                      <SelectItem value="linktree">Linktree</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Mengganti template akan mereset konten halaman.
+                  </p>
+                </>
+              )}
             </div>
 
             <Separator />

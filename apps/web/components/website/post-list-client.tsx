@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, MoreHorizontal, Pencil, Trash2, Eye, EyeOff, Search } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, Eye, EyeOff, Search, BarChart2 } from "lucide-react";
 import { deletePostAction, updatePostStatusAction } from "@/app/(dashboard)/[tenant]/website/actions";
 import type { ContentStatus } from "@jalajogja/db";
 
@@ -33,6 +33,7 @@ type Post = {
   title: string;
   slug: string;
   status: ContentStatus;
+  viewCount: number;
   publishedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -210,6 +211,7 @@ export function PostsTable({
             <tr className="border-b border-border bg-muted/40">
               <th className="px-4 py-3 text-left font-medium">Judul</th>
               <th className="px-4 py-3 text-left font-medium w-28">Status</th>
+              <th className="px-4 py-3 text-right font-medium w-24 hidden md:table-cell">Dilihat</th>
               <th className="px-4 py-3 text-left font-medium w-40 hidden md:table-cell">Diperbarui</th>
               <th className="px-4 py-3 w-12" />
             </tr>
@@ -233,6 +235,12 @@ export function PostsTable({
                 </td>
                 <td className="px-4 py-3">
                   <StatusBadge status={post.status} />
+                </td>
+                <td className="px-4 py-3 text-right text-sm text-muted-foreground hidden md:table-cell">
+                  <span className="flex items-center justify-end gap-1">
+                    <BarChart2 className="h-3.5 w-3.5" />
+                    {post.viewCount.toLocaleString("id-ID")}
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
                   {post.updatedAt.toLocaleDateString("id-ID", {

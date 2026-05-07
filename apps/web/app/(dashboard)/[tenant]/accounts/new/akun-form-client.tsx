@@ -54,7 +54,7 @@ export function AkunFormClient({ slug }: { slug: string }) {
       setError(result.error);
       return;
     }
-    router.push(`/${slug}/akun/${result.profileId}`);
+    router.push(`/${slug}/accounts/${result.profileId}`);
   }
 
   return (
@@ -219,7 +219,7 @@ export function AkunFormClient({ slug }: { slug: string }) {
           Simpan Akun
         </button>
         <a
-          href={`/${slug}/akun`}
+          href={`/${slug}/accounts`}
           className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           Batal

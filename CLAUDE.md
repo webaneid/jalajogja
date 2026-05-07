@@ -109,23 +109,36 @@ Satu user bisa akses multiple tenant. Mapping role per tenant ada di `tenant_{sl
 - Tenant schema **TIDAK punya tabel members** — semua referensi via UUID ke `public.members.id`
 - Query tenant: **wajib** JOIN `tenant_memberships WHERE tenant_id = {current}` (application-level, bukan RLS)
 
-### Arsitektur Akun: Universal Customer Identity
+### Arsitektur Akun: Tiga Level Akses
 > Detail lengkap: **`docs/arsitektur-akun.md`**
 
-Lapisan identitas untuk siapapun di luar ekosistem IKPM (pembeli umum, donatur, peserta event).
+jalajogja punya **tiga level akses** yang berbeda entitas, berbeda tabel, berbeda lifecycle:
 
-- `public.profiles` — identitas universal publik (BARU, belum diimplementasikan)
-- Relasi: `profiles.member_id → public.members.id` (nullable — jika ternyata alumni)
-- Relasi: `profiles.better_auth_user_id → public.user.id` (nullable — jika punya login)
+**Level 1 — Pengurus** (subset Anggota IKPM)
+- Anggota IKPM yang diangkat owner/super admin, masa jabatan terbatas
+- Bisa login di **dashboard tenant** + front-end
+- Data: `public.members` + `public.user` + `tenant_{slug}.users`
+- Dikelola di: `/{slug}/settings/users` + `/{slug}/pengurus`
 
-**Konsep kunci:**
-- `public.members` = sakral, hanya alumni IKPM, dikontrol admin
-- `public.profiles` = siapapun, self-service register dari halaman publik tenant manapun
-- Transaksi tabel akan punya dua kolom: `member_id` (IKPM) + `profile_id` (publik) — keduanya nullable
-- Lookup di checkout: session → profile lookup → member lookup → guest
-- Dashboard tenant tidak bisa diakses oleh profile publik (hanya front-end)
+**Level 2 — Anggota IKPM** (alumni Gontor)
+- Login di **front-end saja** (belanja, donasi, event lintas semua tenant)
+- Data: `public.members` + `public.user` (via `members.better_auth_user_id`)
+- TIDAK ada di `tenant.users` kecuali diangkat jadi pengurus
+- Register: klaim data existing via stambuk/email/HP — tidak buat record baru di `public.members`
 
-**Status**: Arsitektur selesai, implementasi belum dimulai. Ikuti fase di `docs/arsitektur-akun.md`.
+**Level 3 — Akun Publik** (orang umum, bukan alumni)
+- Login di **front-end saja**
+- Data: `public.profiles` + `public.user`
+- Tidak bisa diangkat jadi pengurus
+
+**Kolom kunci yang membedakan:**
+- `public.members.better_auth_user_id` → anggota IKPM yang sudah aktivasi login
+- `public.profiles.better_auth_user_id` → akun publik
+- `tenant.users.member_id` → wajib tidak null (pengurus HARUS anggota IKPM)
+
+**`public.profiles` HANYA untuk akun publik** — tidak ada `member_id` atau `account_type` di sini.
+
+**Status**: Arsitektur dikoreksi total. Implementasi lama (Phase 1–4) perlu refactoring. Detail di `docs/arsitektur-akun.md`.
 
 ### Struktur File packages/db/src/
 ```
@@ -151,9 +164,11 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 > Detail lengkap — dashboard CMS, domain routing, front-end publik, caching, open questions: **`docs/arsitektur-website.md`**
 
 - Dashboard CMS (`/{slug}/website/`): posts, pages, kategori, tag — **SELESAI**
+- **Halaman Legal Singleton** — `terms` (Syarat dan Ketentuan) dan `privacy` (Kebijakan Privasi): template terkunci, satu per tenant, buat via tombol khusus di list pages, render `DefaultTemplate` di front-end
 - Domain routing 3 fase (path → subdomain → custom domain) — schema selesai, middleware Fase 2–3 saat front-end
 - Front-end publik Layer 1–4 — **SELESAI** (header/footer, homepage, post cards, section post, search)
 - Route group `(public)` sudah ada, donasi/event/dokumen/surat sudah render publik
+- **View Counter** — arsitektur selesai di `docs/arsitektur-views-count.md`; implementasi belum dimulai
 
 ### Template Card Post
 > Detail lengkap: **`docs/arsitektur-template-post-card.md`**
@@ -182,6 +197,23 @@ Container untuk menampilkan kumpulan post dalam berbagai layout design, di atas 
 - Design 4 (Trio Column): `columns[]` — tiap kolom punya filter `categoryId`/`tagId` sendiri
 - Design 5 (Post Carousel): client component, aspect ratio 3:4, `className?` prop di `PostCardOverlay`
 - **Status: ✅ Selesai — semua 5 design + section title + fetch wrapper diimplementasikan**
+
+### Widget Area System
+> Detail lengkap: **`docs/arsitektur-sidebar.md`**
+
+Sistem **named widget area** — area konten yang dikonfigurasi admin via DnD section builder,
+dan bisa di-drop di mana saja di front-end cukup dengan `<WidgetArea id="..." tenantSlug={slug} />`.
+Analogi `dynamic_sidebar()` di WordPress.
+
+- Instance pertama: `default-sidebar` — tampil di sisi kanan post (archive + detail)
+- Storage: `settings` key `widget_areas`, group `website` — JSONB `Record<string, SidebarSection[]>`
+- Satu key menampung semua named areas — nambah area baru tidak butuh perubahan schema
+- Phase 1: section type **posts** — filter `recent | popular | category | tag`, limit 1–10, display `PostCardList`
+- `popular` memanfaatkan `view_count` dari view counter
+- Admin route: `/{slug}/website/pengaturan` — nav item baru (gantikan Komentar coming-soon)
+- Render publik: `<WidgetArea>` SERVER component, `hidden lg:block`, `w-72`
+- DnD: `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities`
+- **Status: ⬜ Arsitektur selesai, implementasi belum dimulai**
 
 ## Arsitektur Shell UI Dashboard
 
@@ -281,6 +313,11 @@ app/(dashboard)/[tenant]/
 - [x] **Modul Akun Phase 4** — Dashboard admin `/akun` — list page + detail page + link/unlink ke anggota IKPM. TypeScript 0 errors.
 - [x] **Front-end Publik** — PublicLayout (header+footer switcher), `/post` archive + detail, 6 PostCard variants, PostsSection (5 designs), PostsSectionTitle, search API, login/register pages, `/settings/website` dengan header/footer design picker. TypeScript 0 errors.
 - [x] **Image System** — Phase A (variant system Sharp + 6 WebP variants + cron cleanup) + Phase B (metadata UI autosave panel) + Phase C (alt/title/caption di semua front-end post) SELESAI. Arsitektur lengkap di `docs/arsitektur-image.md`.
+- [x] **View Counter** — DDL + Drizzle schema + `lib/view-counter.ts` + integrasi post detail + kolom admin. Arsitektur lengkap di `docs/arsitektur-views-count.md`.
+- [x] **Widget Area System** — `default-sidebar` live di post archive + detail. DnD builder di `/website/pengaturan`. Arsitektur di `docs/arsitektur-sidebar.md`.
+- [x] **Single post header refactor** — urutan: Kategori → Judul → Meta date (tz-aware: WIB/WITA/WIT) → Author (Gravatar + nama + "Tim Redaksi").
+- [x] **Login Universal Phase 1** — SELESAI. Login, register (2-jalur: IKPM vs publik + stambuk lookup + auto-link member), forgot-password, reset-password, dashboard `/akun`. Schema `whatsapp` di `public.profiles`. TypeScript 0 errors.
+- [x] **Login Universal Phase 2** — SELESAI. Self-service profile completion wizard anggota IKPM (`/akun/lengkapi`). API routes `member-data` + `member-contact`. Banner kelengkapan data di dashboard `/akun`. Legal singleton pages (terms/privacy). TypeScript 0 errors.
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
@@ -1691,17 +1728,334 @@ Hasilnya: satu item bisa sekaligus tampil di panel DAN tercentang untuk delete �
 Google membaca `<figcaption>` sebagai konteks gambar untuk indexing — lebih kuat dari `<p>` biasa di bawah gambar.
 Gunakan ini konsisten di semua tempat yang menampilkan caption gambar (post detail, page detail, galeri).
 
+### [2026-04] View Counter — postgres.js `.count` bukan `.rowCount`
+
+**Bug:** `recordView` selalu return `false` — view tidak pernah terhitung meskipun SQL berjalan normal.
+
+**Root cause:** Project ini pakai driver **postgres.js** (package `postgres`), bukan `node-postgres` (package `pg`).
+Keduanya punya hasil DML yang berbeda:
+- `node-postgres` (`pg`): jumlah baris terpengaruh ada di `result.rowCount`
+- `postgres.js`: jumlah baris terpengaruh ada di `result.count`
+
+Menggunakan `result.rowCount` dengan postgres.js selalu menghasilkan `undefined` → conditional logic tidak bekerja.
+
+**Fix:**
+```typescript
+// SALAH — ini node-postgres API
+const counted = ((result as unknown as { rowCount: number | null }).rowCount ?? 0) > 0;
+
+// BENAR — ini postgres.js API (yang dipakai project ini)
+const counted = ((result as unknown as { count: number }).count ?? 0) > 0;
+```
+
+**Aturan:** Setiap kali perlu cek jumlah baris terpengaruh dari `db.execute()` di project ini, **selalu pakai `.count`**, bukan `.rowCount`. Berlaku untuk INSERT, UPDATE, DELETE.
+
+**Cara debug:** Tambah `console.log(result)` sementara untuk lihat struktur result object — jangan tebak nama property-nya.
+
+### [2026-04] INTERVAL sebagai `sql.raw()` — bukan parameterisasi biasa
+
+Parameterisasi angka ke PostgreSQL INTERVAL via string concatenation bisa bermasalah di beberapa driver:
+```typescript
+// Berpotensi masalah — driver bisa menghasilkan SQL tidak valid
+`< NOW() - (${String(VIEW_WINDOW_MINUTES)} || ' minutes')::INTERVAL`
+
+// BENAR — INTERVAL konstanta via sql.raw(), aman karena nilai dari kode (bukan user input)
+const interval = sql.raw(`INTERVAL '${VIEW_WINDOW_MINUTES} minutes'`);
+// ...
+WHERE ${sessTable}.viewed_at < NOW() - ${interval}
+```
+
+**Aturan:** `sql.raw()` boleh dipakai untuk identifier (schema/table name) DAN konstanta numerik dari kode (bukan input user). Nilai dari user tetap harus parameterized via `sql` template tag.
+
+### [2026-05] Route Conflict: Route Group (dashboard) vs (public) dengan Path Sama
+
+**Masalah**: Next.js error "You cannot have two parallel pages that resolve to the same path" saat dev server start.
+
+**Root cause**: Route group `(dashboard)` dan `(public)` **tidak mengubah URL** — mereka hanya grouping di filesystem. Jika keduanya punya `[tenant]/akun/page.tsx`, keduanya resolve ke `/{tenant}/akun` → konflik.
+
+```
+app/(dashboard)/[tenant]/akun/page.tsx  → /{tenant}/akun  ← KONFLIK
+app/(public)/[tenant]/akun/page.tsx     → /{tenant}/akun  ← KONFLIK
+```
+
+**Fix**: Rename salah satu agar path URL berbeda. Dashboard admin `/akun` (manajemen profil publik) dipindah ke `/accounts`:
+```
+app/(dashboard)/[tenant]/accounts/page.tsx → /{tenant}/accounts  ✓
+app/(public)/[tenant]/akun/page.tsx        → /{tenant}/akun       ✓
+```
+Update juga: semua `href` dan `revalidatePath` di files dalam folder, plus entri `path` di `sidebar-nav.tsx`.
+
+**Aturan**: Setiap kali menambah halaman baru di `(public)`, cek apakah path yang sama sudah ada di `(dashboard)` — dan sebaliknya. Gunakan nama path yang berbeda untuk halaman admin vs halaman publik yang konsepnya serupa.
+
+### [2026-05] Better Auth v1.6.2 — `forgetPassword` tidak ada, pakai direct fetch
+
+**Masalah**: `authClient.forgetPassword()` tidak ada → TypeScript error "Property 'forgetPassword' does not exist".
+
+**Fix**: Gunakan direct fetch ke endpoint Better Auth yang sebenarnya:
+```typescript
+const res = await fetch("/api/auth/request-password-reset", {
+  method:  "POST",
+  headers: { "Content-Type": "application/json" },
+  body:    JSON.stringify({ email, redirectTo: `/${slug}/reset-password` }),
+});
+```
+
+**Reset password (confirm)**: `authClient.resetPassword({ newPassword, token })` — ini BENAR dan ada di client.
+
+**Aturan**: Jika client method tidak ditemukan, cek endpoint API-nya langsung di `dist/api/index.d.mts`. Path endpoint → nama method: `/request-password-reset` → `requestPasswordReset`. Jika TypeScript tidak ekspos method-nya di client, direct fetch selalu bisa dipakai.
+
+### [2026-05] KOREKSI ARSITEKTUR AKUN — Tiga Level Akses
+
+**Arsitektur lama SALAH TOTAL.** Implementasi Phase 1–4 Modul Akun mencampur anggota IKPM dan publik dalam satu tabel `public.profiles` via kolom `accountType` dan `memberId`. Ini salah secara konseptual.
+
+**Konsep yang benar (dikunci oleh owner project):**
+
+jalajogja adalah super-app komunitas IKPM. Ada tiga level akses yang berbeda entitas:
+
+1. **Pengurus** = anggota IKPM yang diangkat, satu-satunya yang bisa login dashboard
+2. **Anggota IKPM** = alumni Gontor, login front-end saja, bisa diangkat jadi pengurus
+3. **Akun Publik** = orang umum, login front-end saja, tidak bisa jadi pengurus
+
+**Implikasi teknis yang benar:**
+- `public.members` butuh kolom `better_auth_user_id` untuk front-end login anggota
+- `public.profiles` HANYA untuk akun publik — hapus `member_id` dan `account_type`
+- Register jalur IKPM = klaim data existing (stambuk/email/HP), **bukan** insert record baru
+- Register jalur publik = insert `public.profiles` baru
+- `tenant.users.member_id` TIDAK BOLEH null — pengurus wajib anggota IKPM
+
+**Yang perlu direfactor:**
+- `public.profiles` schema — hapus `member_id`, `account_type`
+- `POST /api/akun/register` — pisah benar-benar dua jalur
+- `resolveIdentity()` helper — cek `members.better_auth_user_id` dulu
+- Semua implementasi Login Universal Phase 1–4 yang berkaitan dengan `accountType`
+
+Detail lengkap: `docs/arsitektur-akun.md`
+
+### [2026-05] Arsitektur Akun Universal — Refactoring Selesai
+
+**File kunci:**
+- `lib/akun-identity.ts` — `getAkunIdentity(userId)` + `isMemberDataIncomplete(identity)`
+- `docs/arsitektur-akun.md` — arsitektur 3 level akses lengkap
+
+**Perubahan schema DB:**
+- `public.members` — tambah `better_auth_user_id TEXT UNIQUE REFERENCES public.user(id)`
+- `public.profiles` — hapus `member_id`, `account_type`; data lama di-truncate
+
+**Alur register:**
+- Jalur IKPM → lookup stambuk/email/HP di `public.members`
+  - Ketemu + belum punya akun → klaim: `UPDATE members SET better_auth_user_id`
+  - Tidak ketemu → daftar baru: `INSERT contacts` + `INSERT members`
+  - Ketemu + sudah punya akun → arahkan ke forgot-password
+- Jalur Publik → `INSERT public.profiles`
+
+**`lib/akun-identity.ts` — pattern universal:**
+Selalu cek `members.better_auth_user_id` dulu, baru `profiles.better_auth_user_id`.
+Gunakan `AkunIdentity` type di semua halaman `/akun/*` — tidak perlu tahu asalnya dari tabel mana.
+Field `memberId`/`profileId` null sesuai type; UI branching hanya via `identity.type`.
+
+**`/api/akun/transaksi` — dua filter:**
+- `type === "member"` → `WHERE invoices.member_id = memberId`
+- `type === "public"` → `WHERE invoices.profile_id = profileId`
+
+**Jangan pernah** menyimpan relasi anggota IKPM di `public.profiles` (tidak ada `member_id` lagi).
+**Jangan pernah** insert ke `public.members` dari front-end selain via register jalur IKPM.
+**Jangan pernah** buat `better_auth_user_id` di `public.members` jika sudah ada — cek dulu sebelum register.
+
+---
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Image System selesai semua (Phase A+B+C)** — variant Sharp, metadata UI autosave panel, alt/title/caption di semua front-end post
-- Type check: **0 errors**
-- Next: bebas — Add-on Marketplace UI, Docker deployment, atau fitur surat yang belum
+- Terakhir dikerjakan: **Dashboard akun anggota final** — label menu diperbarui (Belanja/Donasi/Event), card "Produk" coming soon. TypeScript 0 errors.
+- Next: Halaman listing Donasi, Event, Toko (riwayat per user) — semua masih under construction
+
+### Status Halaman Publik Anggota
+| Link dari Dashboard | URL | Status |
+|---------------------|-----|--------|
+| Transaksi | `/{slug}/akun/transaksi` | ✅ Ada |
+| Donasi | `/{slug}/donasi` | ⬜ Belum ada |
+| Event | `/{slug}/event` | ⬜ Listing belum ada (detail `/event/[slug]` ada) |
+| Belanja | `/{slug}/toko` | ⬜ Belum ada |
+| Keranjang | `/{slug}/keranjang` | ✅ Ada |
+| Checkout | `/{slug}/checkout` | ✅ Ada |
+| Invoice detail | `/{slug}/invoice/[id]` | ✅ Ada |
 
 ### Known TODO
-- Role System: email SMTP sending untuk invite (saat ini hanya manual link copy), update role dropdown di daftar user aktif, wajibkan email di form anggota
+- Role System: email SMTP sending untuk invite (saat ini hanya manual link copy)
 - Modul Dokumen: uploader name di version history (perlu cross-schema join tenant.users → public.user)
 - Fitur surat belum: inter-tenant letters, attachment MediaPicker
-- **Keuangan** — laporan & event_income selesai; sisa: Budget UI, export PDF laporan — lihat `docs/arsitektur-keuangan.md`
-- **Billing** — Phase 1 selesai (schema + dashboard invoice + partial payment). Phase 2: public cart/checkout. Phase 3: integrasi modul existing.
+- **Keuangan** — sisa: Budget UI, export PDF laporan — lihat `docs/arsitektur-keuangan.md`
+- **Billing** — Phase 2: public cart/checkout. Phase 3: integrasi modul existing.
+- **View Counter** — Step 10: tampil di detail publik (≥50). Detail: `docs/arsitektur-views-count.md`
+- **Widget Area System** — ✅ SELESAI
+
+### [2026-05] Login Universal Phase 2 — Self-Service Member Profile Completion
+
+**Self-service ≠ admin wizard: jangan pakai action yang sama**
+Admin actions (`updateMemberAction`, `upsertMemberContactAction`) pakai `getTenantAccess(slug)` → tenant dashboard access check. Public profile holders TIDAK punya akses ini. Buat API routes terpisah (`/api/akun/member-data`, `/api/akun/member-contact`) yang auth via `auth.api.getSession() → profiles.betterAuthUserId → profiles.memberId`.
+
+**Batas field self-service vs admin-only**
+Self-service boleh edit: nama, NIK, stambuk, gender, tgl lahir, tempat lahir, tahun lulus, profesi, kontak, alamat, sosmed.
+Admin-only (TIDAK boleh diubah self-service): `status`, `joinedAt`, `memberNumber`.
+Aturan: field yang menentukan hak anggota (status) harus tetap di tangan admin.
+
+**Completeness check: cek `birthDate` + `contactId` sebagai proxy**
+Daripada cek semua field satu per satu, dua kolom ini cukup representatif:
+- `birthDate = null` → belum isi data identitas dasar
+- `contactId = null` → belum isi kontak
+Jika salah satu null → tampilkan banner di dashboard. Ini bisa diperketat nanti tanpa ubah arsitektur.
+
+**Singleton page enforcement di action level (bukan DB constraint)**
+Untuk template "terms" dan "privacy": `createSingletonPageAction` cek existing sebelum insert, return existing ID jika sudah ada. Template dropdown dikunci di editor. Tidak perlu `UNIQUE` constraint di DB karena slug sudah unique.
+
+**`WilayahSelect` tidak punya prop `level` atau `placeholder`**
+Props yang valid: `defaultValue`, `onChange`, `namePrefix`, `disabled`, `requiredLevel`, `labels`, `className`.
+Untuk birth place (butuh province + regency saja), gunakan prop `labels` untuk rename label level — komponen tetap tampil 4 level tapi user cukup pilih 2 level pertama.
+
+### [2026-05] Modul Akun Front-end + Admin — Konsistensi Form
+
+**Prinsip: perubahan form harus berlaku di dua tempat sekaligus**
+Form anggota ada di dua tempat:
+1. Front-end publik: `app/(public)/[tenant]/akun/lengkapi/page.tsx` (self-service anggota IKPM)
+2. Admin dashboard: `components/members/wizard/step1-identity.tsx` + `step2-contact.tsx` (admin input manual)
+
+Setiap perubahan field (wajib/opsional, komponen, validasi) **harus diterapkan ke kedua tempat sekaligus**.
+Jangan edit satu tempat saja — inconsistency antar form = pengalaman yang membingungkan.
+
+**`RegencyCombobox` — search kabupaten langsung tanpa pilih provinsi dulu**
+- `components/ui/regency-combobox.tsx` — debounce 300ms, min 2 karakter, max 15 hasil
+- `/api/ref/regencies?search=` — mode search baru (alongside `?province_id=` yang lama)
+- Tampil: nama kabupaten + provinsi (untuk disambiguasi nama sama antar provinsi)
+- Nama di DB sudah include prefix "Kabupaten/Kota" — tidak perlu tambah lagi di UI
+- Pakai di: tempat lahir (front-end `lengkapi` + admin `step1-identity`)
+
+**`ProfessionCombobox` inline di `lengkapi` — fix bug professions selalu kosong**
+API `/api/ref/professions` return plain array `[...]`, tapi kode lama baca `.data` → undefined → fallback `[]`.
+Fix: `Array.isArray(profData) ? profData : (profData.data ?? [])`.
+Pattern: selalu verifikasi struktur response API sebelum akses `.data` — jangan assume semua API wrap dalam `{ data: [...] }`.
+
+**4 field wajib di form anggota IKPM (kedua tempat)**
+- Jenis kelamin, tanggal lahir, tahun lulus KMI, profesi
+- Di front-end: validasi di `saveStep1()` + tombol disabled
+- Di admin: `required` prop + validasi HTML native
+
+**Angkatan 1999 — dua periode dalam satu tahun**
+Gontor punya dua angkatan di tahun 1999. Solusi:
+- Kolom baru `graduation_period TEXT CHECK (graduation_period IN ('awal', 'akhir'))` di `public.members`
+- UI: saat `graduationYear = 1999`, muncul radio **1999 Awal** / **1999 Akhir**
+- Saat tahun bukan 1999, nilai di-reset ke null — tidak ada awal/akhir untuk tahun lain
+- Berlaku di: front-end `lengkapi` + admin `step1-identity` + `actions.ts`
+
+**Phone Number — E.164 dengan country code selector (SELESAI)**
+Format: `+628xxxxxxxx` — universal, kompatibel WhatsApp API dan SMS gateway.
+Komponen: `components/ui/phone-input.tsx` — country flag + dial code selector + input nomor.
+- 57 negara, Indonesia (+62) sebagai default
+- Auto-parse format lama `08xxx` → Indonesia saat load data existing
+- Sinkronisasi WA ← HP via checkbox "Sama dengan nomor HP"
+- Berlaku di Step 2 front-end (`/akun/lengkapi`) + Step 2 admin wizard (`step2-contact.tsx`)
+
+**Visibilitas kontak — `public.contacts` tiga kolom boolean (SELESAI)**
+```sql
+is_phone_public    BOOLEAN DEFAULT false
+is_whatsapp_public BOOLEAN DEFAULT false
+is_email_public    BOOLEAN DEFAULT false
+```
+- Default: privat (false) — user harus aktif centang untuk publish
+- Checkbox "Publik" di bawah tiap field HP, WA, Email
+- Berlaku di kedua form (front-end + admin)
+- Tersimpan via `upsertMemberContactAction` + `PATCH /api/akun/member-contact`
+
+**Visibilitas alamat — aturan fixed (bukan toggle)**
+| Field | Visibilitas |
+|-------|-------------|
+| Provinsi, Kabupaten/Kota | Publik |
+| Kecamatan, Desa/Kelurahan | Tidak ditampilkan ke publik |
+| Kode Pos, Alamat Detail | Tidak ditampilkan ke publik |
+
+Implementasi: prop `hints` di `WilayahSelect` — teks keterangan muncul langsung di bawah tiap input.
+`hints={{ province: "Publik", regency: "Publik", district: "Tidak ditampilkan...", village: "..." }}`
+Tidak perlu kolom DB — ini aturan display tetap, bukan pilihan user.
+
+**Field wajib Step 2 (kontak + domisili) — kedua form**
+- Nomor HP: wajib
+- Nomor WhatsApp: wajib
+- Email: wajib
+- Status Domisili: wajib
+Validasi dilakukan sebelum submit di `saveStep2()` (front-end) dan `handleSubmit()` (admin).
+
+**Sosial media — semua opsional, semua publik jika diisi**
+Tidak ada toggle per-platform. Yang diisi otomatis tampil di profil publik.
+Info text "Semua opsional. Yang diisi akan ditampilkan ke publik." di header section.
+
+**`WilayahSelect` — prop `hints` baru (non-breaking)**
+Tambah prop opsional `hints?: { province?, regency?, district?, village? }`.
+Hint text muncul langsung di bawah tiap Combobox via `hint` prop di inner `Combobox` component.
+Tidak mengubah interface yang sudah ada — backward compatible.
+
+### [2026-05] Dashboard Akun Anggota — Lengkapi Data Step 3 + Pesantren + Usaha + Profil
+
+**File baru:**
+
+| File | Fungsi |
+|------|--------|
+| `app/api/akun/member-education/route.ts` | GET + POST riwayat pendidikan (auth via `members.betterAuthUserId`) |
+| `app/api/akun/member-pesantren/route.ts` | GET + POST data pesantren (replace-all) |
+| `app/api/akun/member-business/route.ts`  | GET + POST data usaha + helper tables (contacts/addresses/socials per usaha) |
+| `app/(public)/[tenant]/akun/pesantren/page.tsx` | Halaman pesantren: multi-entry, search async |
+| `app/(public)/[tenant]/akun/usaha/page.tsx`     | Halaman usaha: multi-entry, kategori/sektor/skala |
+| `app/(public)/[tenant]/anggota/[id]/page.tsx`   | Profil lengkap anggota: auth-protected (owner only) |
+
+**`/akun/lengkapi` → 3 step:**
+1. Data Identitas
+2. Kontak & Alamat
+3. Riwayat Pendidikan (multi-entry, Gontor checkbox + kampus)
+
+**Dashboard `/akun` tambahan (member only):**
+- Card "Data Pesantren" → `/akun/pesantren`
+- Card "Data Usaha" → `/akun/usaha`
+- Tombol "Lihat Detail Profil →" di bawah Status keanggotaan → `/anggota/{memberId}`
+
+**Halaman `/anggota/[id]` — profil pribadi lengkap:**
+- Auth required: `session.user.id === member.betterAuthUserId` → jika bukan pemilik, redirect ke `/akun`
+- Tampilkan SEMUA data: identitas, No. Anggota, No. Induk Gontor (stambuk), NIK, kontak (all), alamat lengkap, sosmed, pendidikan, pesantren, usaha
+- Link edit ke masing-masing halaman
+
+**No. Anggota vs No. Induk Gontor — BEDA:**
+- `member_number` = **No. Anggota IKPM** — auto-generated via PostgreSQL SEQUENCE
+  Format: `{tahun_daftar}{DDMMYYYY_lahir}{5-digit-urutan}` — misal `20262610198100007`
+- `stambuk_number` = **No. Induk Gontor** — nomor santri di PM Gontor, diisi manual
+
+**Auto-generate No. Anggota di `PATCH /api/akun/member-data`:**
+Sebelumnya hanya di-generate oleh `createMemberAction` (admin). Sekarang:
+- Jika `member.memberNumber IS NULL` saat PATCH → `generateMemberNumber(db, birthDate)` → simpan
+- Anggota self-register → nomor ter-generate otomatis saat pertama kali simpan Step 1
+- Menggunakan `public.member_number_seq` yang sama — atomic, tidak ada duplikat
+
+**Backfill anggota existing:**
+Anggota lama yang `member_number IS NULL` di-backfill via SQL langsung menggunakan `nextval('public.member_number_seq')` — tidak perlu API call.
+
+**Aturan: jangan tampilkan "Belum diterbitkan" untuk `member_number`**
+Gunakan `Row` component yang otomatis hide jika value null. Nomor selalu ada setelah PATCH pertama.
+
+**API routes self-service anggota (pattern umum):**
+Auth: `members.betterAuthUserId = session.user.id` — tidak butuh tenant access.
+Replace-all pattern: DELETE all + INSERT batch — untuk pendidikan dan pesantren.
+Per-entry helper tables: untuk usaha (contacts + addresses + socials per business entry).
+
+**Label keanggotaan yang benar:**
+- `member_number` → **"No. ID IKPM Gontor"** (nomor anggota IKPM, auto-generated)
+- `stambuk_number` → **"No. Stambuk Gontor"** (nomor santri PM Gontor, bukan nomor anggota)
+Konsisten di semua halaman: profil `/anggota/[id]` dan dashboard `/akun`.
+
+**Urutan tampil alamat — standar Indonesia:**
+```
+Alamat (detail/jalan)
+Desa / Kelurahan
+Kecamatan
+Kabupaten / Kota
+Provinsi
+Kode Pos
+```
+Jangan tampilkan alamat dari bawah ke atas (provinsi → desa). Urutkan dari spesifik ke umum.
+`refVillages` wajib di-fetch untuk melengkapi alamat — jangan skip level manapun.
 
 ## Arsitektur Modul Billing
 > Detail lengkap: **`docs/arsitektur-billing.md`**
@@ -1722,3 +2076,98 @@ Alur: Cart → Checkout (input HP/email, lookup member) → Invoice → Payment 
 - Source tabel existing (orders, donations, event_registrations) tidak dihapus — tetap ada sebagai detail, invoice sebagai header universal
 
 **6 tabel baru:** `carts`, `cart_items`, `invoices`, `invoice_items`, `invoice_payments`, `installment_plans`, `installment_schedules`
+
+## Arsitektur Login Universal (Front-end Publik)
+> Detail lengkap: **`docs/arsitektur-login-universal.md`**
+
+Login, registrasi, lupa password, dan dashboard akun publik — berlaku seragam untuk semua tenant.
+
+**Satu sistem, dua tier:**
+- `member` = alumni IKPM, auto-link saat daftar jika email/HP cocok data di `public.contacts → public.members`
+- `akun` = publik umum, daftar mandiri tanpa validasi admin
+
+**Schema change yang dikunci:**
+- `public.profiles` ditambah kolom `whatsapp TEXT UNIQUE` (nullable) — khusus untuk OTP WA (Fase 2)
+- `phone` tetap sebagai nomor HP biasa; `whatsapp` bisa beda atau sama
+
+**Route publik:**
+```
+/{slug}/login               → email + password; link lupa password
+/{slug}/register            → nama, email, HP, WA (opsional), password; member lookup live
+/{slug}/forgot-password     → input email → Better Auth kirim link reset
+/{slug}/reset-password      → input password baru via token
+/{slug}/akun                → dashboard (protected, redirect login jika belum auth)
+/{slug}/akun/profil         → edit profil (nama, HP, WA, alamat sederhana)
+/{slug}/akun/transaksi      → riwayat invoice
+/{slug}/akun/lengkapi       → wizard lengkapi data anggota IKPM (2 step) — hanya untuk member
+```
+
+**Self-service member profile completion (`/akun/lengkapi`):**
+- Hanya untuk `accountType = "member"` — non-member di-redirect ke `/akun`
+- Step 1: identitas (nama, NIK, stambuk, gender, tgl lahir, tempat lahir, tahun lulus Gontor, profesi)
+- Step 2: kontak (HP, WA, email) + alamat domisili (WilayahSelect atau LN) + sosial media
+- Data existing di-load dari `GET /api/akun/member-data` saat page mount
+- Save via `PATCH /api/akun/member-data` (Step 1) dan `PATCH /api/akun/member-contact` (Step 2)
+- Field admin-only (status, joinedAt, memberNumber) TIDAK bisa diubah di sini
+
+**API routes self-service anggota:**
+```
+GET  /api/akun/member-data      → fetch identitas + kontak + alamat + sosmed anggota yang login
+PATCH /api/akun/member-data     → update identitas (step 1) — tanpa status/joinedAt/memberNumber
+PATCH /api/akun/member-contact  → upsert kontak + alamat + sosmed (step 2) — sama dengan admin upsertMemberContactAction
+```
+
+**Kelengkapan data di dashboard `/akun`:**
+- Banner kuning muncul jika `!members.birthDate || !members.contactId`
+- Quick link "Data Keanggotaan" selalu tampil untuk member
+- Banner hilang otomatis setelah `/akun/lengkapi` diisi dan disimpan
+
+**Halaman Legal Singleton (terms + privacy):**
+- `PAGE_TEMPLATES` diperluas: `"terms"` + `"privacy"` — satu per tenant, tidak bisa duplikasi
+- `SINGLETON_TEMPLATES: PageTemplate[]` di `lib/page-templates.ts`
+- Buat via tombol khusus di list pages (`createSingletonPageAction`) — cek existing sebelum insert
+- Editor: template dropdown dikunci (tidak bisa diubah setelah dibuat)
+- Konsumsi via `GET /api/akun/legal?slug=&template=terms|privacy` → `{ found, title, html, updatedAt }`
+- Tampil di register form sebagai modal Dialog dengan konten HTML dari API
+- DDL CHECK constraint di `create-tenant-schema.ts` sudah mencakup `"terms"` dan `"privacy"`
+
+**Register 2-jalur + stambuk:**
+- Layar 1: pilih path — "Anggota IKPM Gontor" atau "Bukan Anggota" (full-screen card)
+- Layar 2 (IKPM path): form + field stambuk opsional + live lookup `GET /api/akun/lookup-member?stambuk=`
+- Layar 2 (publik path): form tanpa stambuk
+- Auto-link 3 jalur di `POST /api/akun/register`: stambuk → email → phone/whatsapp
+- Checkbox persetujuan legal wajib dicentang sebelum submit
+
+**Route conflict fix — dashboard `/akun` → `/accounts`:**
+- `(dashboard)/[tenant]/akun` dan `(public)/[tenant]/akun` → konflik path `/{tenant}/akun`
+- Fix: rename `(dashboard)/[tenant]/akun` → `(dashboard)/[tenant]/accounts`
+- Semua href + revalidatePath di dalam folder diupdate; sidebar-nav.tsx path diubah ke `"accounts"`
+
+**Member auto-link saat daftar:**
+Saat registrasi: lookup email/HP di `public.contacts → public.members`. Jika cocok:
+- `profiles.memberId` = UUID member
+- `profiles.accountType` = "member"
+- Nama di-override dari `members.fullName` jika field nama kosong
+
+**Member lookup live (onBlur):**
+- `GET /api/akun/lookup-member?email=X` atau `?phone=X`
+- Return `{ found, name, memberId }` — ditampilkan sebagai banner di form registrasi
+- Auto-isi nama jika ditemukan, user bisa override
+
+**WhatsApp OTP (Fase 2 — saat gateway aktif):**
+- Kolom `phone_verified_at`, `email_verified_at` ditambah ke `profiles`
+- Endpoint: `POST /api/akun/send-otp`, `POST /api/akun/verify-otp`
+- Halaman: `/{slug}/register/verify`
+
+**Dashboard `/akun` — perbedaan member vs publik:**
+| Section | Member | Akun Umum |
+|---------|--------|-----------|
+| Badge | "Anggota IKPM" | "Akun Publik" |
+| Info keanggotaan | Nomor anggota, cabang, status | — |
+| Transaksi | Invoice, donasi, event, produk | Sama |
+
+**Auth pattern server component:**
+```typescript
+const session = await auth.api.getSession({ headers: await headers() });
+if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
+```

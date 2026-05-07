@@ -18,6 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { createMemberAction, updateMemberAction } from "@/app/(dashboard)/[tenant]/members/actions"
+import { RegencyCombobox } from "@/components/ui/regency-combobox"
 import type { RefProfession } from "@jalajogja/db"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,8 +33,9 @@ export interface Step1DefaultValues {
   birthProvinceId?: number
   birthPlaceText?: string
   birthType?: "id" | "ln"
-  graduationYear?: number
-  professionId?: number
+  graduationYear?:   number
+  graduationPeriod?: "awal" | "akhir"
+  professionId?:     number
   status?: "active" | "inactive" | "alumni"
   joinedAt?: string
 }
@@ -293,46 +295,22 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
   const [professionId, setProfessionId] = React.useState<number | undefined>(defaultValues?.professionId)
 
   // Tempat lahir
-  const [birthType, setBirthType] = React.useState<"id" | "ln">(defaultValues?.birthType ?? "id")
-  const [birthProvinceId, setBirthProvinceId] = React.useState<number | undefined>(defaultValues?.birthProvinceId)
-  const [birthRegencyId, setBirthRegencyId] = React.useState<number | undefined>(defaultValues?.birthRegencyId)
-  const [provinces, setProvinces] = React.useState<{ id: number; name: string }[]>([])
-  const [regencies, setRegencies] = React.useState<{ id: number; name: string; type: string }[]>([])
-  const [loadingProvinces, setLoadingProvinces] = React.useState(false)
-  const [loadingRegencies, setLoadingRegencies] = React.useState(false)
+  const [birthType,        setBirthType]        = React.useState<"id" | "ln">(defaultValues?.birthType ?? "id")
+  const [birthRegencyId,   setBirthRegencyId]   = React.useState<number | undefined>(defaultValues?.birthRegencyId)
+  const [birthRegencyName, setBirthRegencyName] = React.useState<string | null>(null)
+
+  // Tahun lulus + periode 1999
+  const [graduationYear,   setGraduationYear]   = React.useState<string>(defaultValues?.graduationYear ? String(defaultValues.graduationYear) : "")
+  const [graduationPeriod, setGraduationPeriod] = React.useState<"awal" | "akhir" | "">(defaultValues?.graduationPeriod ?? "")
 
   // Form state
   const [loading, setLoading] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-
-  // Ambil provinsi saat mode Indonesia (termasuk saat pertama mount di edit mode)
-  React.useEffect(() => {
-    if (birthType !== "id" || provinces.length > 0) return
-    setLoadingProvinces(true)
-    fetch("/api/ref/provinces")
-      .then((r) => r.json())
-      .then(setProvinces)
-      .finally(() => setLoadingProvinces(false))
-  }, [birthType, provinces.length])
-
-  // Ambil kabupaten/kota saat provinsi berubah (atau pre-load untuk edit mode)
-  React.useEffect(() => {
-    if (!birthProvinceId) {
-      setRegencies([])
-      return
-    }
-    setLoadingRegencies(true)
-    fetch(`/api/ref/regencies?province_id=${birthProvinceId}`)
-      .then((r) => r.json())
-      .then(setRegencies)
-      .finally(() => setLoadingRegencies(false))
-  }, [birthProvinceId])
+  const [error,   setError]   = React.useState<string | null>(null)
 
   function handleBirthTypeChange(type: "id" | "ln") {
     setBirthType(type)
-    setBirthProvinceId(undefined)
     setBirthRegencyId(undefined)
-    setRegencies([])
+    setBirthRegencyName(null)
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -343,21 +321,17 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
     const fd = new FormData(e.currentTarget)
 
     const data = {
-      name: (fd.get("name") as string).trim(),
-      nik: (fd.get("nik") as string)?.trim() || undefined,
-      stambukNumber: (fd.get("stambukNumber") as string)?.trim() || undefined,
-      gender: (gender as "male" | "female") || undefined,
-      birthDate: (fd.get("birthDate") as string) || undefined,
+      name:           (fd.get("name") as string).trim(),
+      nik:            (fd.get("nik") as string)?.trim() || undefined,
+      stambukNumber:  (fd.get("stambukNumber") as string)?.trim() || undefined,
+      gender:         (gender as "male" | "female") || undefined,
+      birthDate:      (fd.get("birthDate") as string) || undefined,
       birthRegencyId: birthType === "id" ? birthRegencyId : undefined,
-      birthPlaceText:
-        birthType === "ln"
-          ? (fd.get("birthPlaceText") as string)?.trim() || undefined
-          : undefined,
-      graduationYear: fd.get("graduationYear")
-        ? Number(fd.get("graduationYear"))
-        : undefined,
+      birthPlaceText: birthType === "ln" ? (fd.get("birthPlaceText") as string)?.trim() || undefined : undefined,
+      graduationYear:   graduationYear ? Number(graduationYear) : undefined,
+      graduationPeriod: Number(graduationYear) === 1999 ? (graduationPeriod || undefined) : undefined,
       professionId,
-      status: (status as "active" | "inactive" | "alumni") || "active",
+      status:   (status as "active" | "inactive" | "alumni") || "active",
       joinedAt: (fd.get("joinedAt") as string) || undefined,
     }
 
@@ -373,16 +347,6 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
       setLoading(false)
     }
   }
-
-  // Items untuk province/regency combobox
-  const provinceItems: SimpleItem[] = provinces.map((p) => ({
-    value: String(p.id),
-    label: p.name,
-  }))
-  const regencyItems: SimpleItem[] = regencies.map((r) => ({
-    value: String(r.id),
-    label: r.name,
-  }))
 
   return (
     <form
@@ -438,7 +402,7 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
         <TextInput
           label="Tanggal Lahir"
           name="birthDate"
-          optional
+          required
           type="date"
           max={TODAY}
           defaultValue={defaultValues?.birthDate}
@@ -485,28 +449,16 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
 
         {/* Konten berdasarkan toggle */}
         {birthType === "id" ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <SimpleCombobox
-              label="Provinsi"
-              placeholder={loadingProvinces ? "Memuat..." : "Pilih provinsi"}
-              items={provinceItems}
-              value={birthProvinceId !== undefined ? String(birthProvinceId) : undefined}
-              onSelect={(v) => {
-                setBirthProvinceId(Number(v))
-                setBirthRegencyId(undefined)
-                setRegencies([])
-              }}
-              disabled={loadingProvinces || loading}
-            />
-            <SimpleCombobox
-              label="Kabupaten / Kota"
-              placeholder={loadingRegencies ? "Memuat..." : "Pilih kabupaten/kota"}
-              items={regencyItems}
-              value={birthRegencyId !== undefined ? String(birthRegencyId) : undefined}
-              onSelect={(v) => setBirthRegencyId(Number(v))}
-              disabled={!birthProvinceId || loadingRegencies || loading}
-            />
-          </div>
+          <RegencyCombobox
+            label=""
+            value={birthRegencyId ?? null}
+            displayName={birthRegencyName}
+            placeholder="Ketik nama kabupaten / kota..."
+            onChange={(id, name) => {
+              setBirthRegencyId(id ?? undefined)
+              setBirthRegencyName(name)
+            }}
+          />
         ) : (
           <TextInput
             label="Kota / Negara"
@@ -520,22 +472,55 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
 
       {/* ── Tahun Lulus + Profesi ── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <TextInput
-          label="Tahun Lulus Gontor"
-          name="graduationYear"
-          optional
-          type="number"
-          min={1950}
-          max={CURRENT_YEAR}
-          placeholder={`1950 – ${CURRENT_YEAR}`}
-          defaultValue={defaultValues?.graduationYear}
-          disabled={loading}
-        />
-        <ProfessionCombobox
-          professions={professions}
-          value={professionId}
-          onSelect={setProfessionId}
-        />
+        <div className="space-y-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-foreground">
+              Tahun Lulus KMI <span className="text-destructive ml-0.5">*</span>
+            </label>
+            <input
+              type="number"
+              min={1950}
+              max={CURRENT_YEAR}
+              placeholder={`1950 – ${CURRENT_YEAR}`}
+              value={graduationYear}
+              onChange={(e) => {
+                setGraduationYear(e.target.value)
+                if (Number(e.target.value) !== 1999) setGraduationPeriod("")
+              }}
+              required
+              disabled={loading}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
+          {Number(graduationYear) === 1999 && (
+            <div className="flex gap-4 pt-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="graduationPeriod" value="awal"
+                  checked={graduationPeriod === "awal"}
+                  onChange={() => setGraduationPeriod("awal")}
+                  className="accent-primary" />
+                <span className="text-sm">1999 Awal</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="graduationPeriod" value="akhir"
+                  checked={graduationPeriod === "akhir"}
+                  onChange={() => setGraduationPeriod("akhir")}
+                  className="accent-primary" />
+                <span className="text-sm">1999 Akhir</span>
+              </label>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-foreground">
+            Profesi <span className="text-destructive ml-0.5">*</span>
+          </span>
+          <ProfessionCombobox
+            professions={professions}
+            value={professionId}
+            onSelect={setProfessionId}
+          />
+        </div>
       </div>
 
       {/* ── Status Keanggotaan + Tanggal Bergabung ── */}

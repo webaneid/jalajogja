@@ -45,8 +45,9 @@ export default async function EditMemberPage({
         birthDate: members.birthDate,
         birthRegencyId: members.birthRegencyId,
         birthPlaceText: members.birthPlaceText,
-        graduationYear: members.graduationYear,
-        professionId: members.professionId,
+        graduationYear:   members.graduationYear,
+        graduationPeriod: members.graduationPeriod,
+        professionId:     members.professionId,
         // Kontak
         contactId: members.contactId,
         phone: contacts.phone,
@@ -168,8 +169,9 @@ export default async function EditMemberPage({
     birthProvinceId: memberRow.birthProvinceId ?? undefined,
     birthType: memberRow.birthRegencyId ? "id" : (memberRow.birthPlaceText ? "ln" : "id"),
     birthPlaceText: memberRow.birthPlaceText ?? undefined,
-    graduationYear: memberRow.graduationYear ?? undefined,
-    professionId: memberRow.professionId ?? undefined,
+    graduationYear:   memberRow.graduationYear   ?? undefined,
+    graduationPeriod: (memberRow.graduationPeriod as "awal" | "akhir") ?? undefined,
+    professionId:     memberRow.professionId     ?? undefined,
     status: (memberRow.status as "active" | "inactive" | "alumni") ?? "active",
     joinedAt: memberRow.joinedAt ?? undefined,
   };
