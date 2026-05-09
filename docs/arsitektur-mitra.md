@@ -340,24 +340,29 @@ ikpmCommissionAmount:      numeric("ikpm_commission_amount",    { precision: 15,
 
 ```
 app/(dashboard)/[tenant]/toko/
+├── pengaturan/
+│   └── page.tsx           → Pengaturan Toko: mitra config + info toko
 └── mitra/
     ├── page.tsx           → Tab "Pengajuan" + Tab "Mitra Aktif"
     └── [id]/page.tsx      → Detail aplikasi: info member + usaha + tombol Approve/Tolak
                              Detail mitra aktif: info + produk + tombol Suspend/Aktifkan
 ```
 
-Terintegrasi ke `toko-nav.tsx` — tambah item "Mitra".
+Terintegrasi ke `toko-nav.tsx` — tambah item "Mitra" dan "Pengaturan".
 
-### Front-end Mitra (anggota login)
+### Front-end Mitra — di dalam Dashboard Akun Anggota
+
+Mitra dikelola anggota dari **dashboard akun** (`/akun/*`), bukan di halaman publik terpisah.
 
 ```
-app/(public)/[tenant]/akun/mitra/
-├── page.tsx               → Status mitra + dashboard (jika aktif)
-├── apply/page.tsx         → Form pengajuan (pilih usaha + motivasi)
-└── produk/
-    ├── page.tsx           → List produk mitra sendiri
-    ├── new/page.tsx       → Buat produk baru
-    └── [id]/edit/page.tsx → Edit produk
+app/(public)/[tenant]/akun/
+└── mitra/
+    ├── page.tsx               → Status mitra + dashboard ringkas (jika aktif)
+    ├── apply/page.tsx         → Form pengajuan (pilih usaha + motivasi)
+    └── produk/
+        ├── page.tsx           → List produk mitra sendiri
+        ├── new/page.tsx       → Buat produk baru
+        └── [id]/edit/page.tsx → Edit produk
 ```
 
 **Auth**: Semua route ini dilindungi — wajib login sebagai anggota IKPM
@@ -591,18 +596,18 @@ Phase 3 — Integrasi Produk & Transaksi
 
 | Komponen | Status |
 |----------|--------|
-| `/toko/pengaturan/` — halaman pengaturan toko | ⬜ Belum (Phase 0) |
-| `toko-nav.tsx` tambah item Pengaturan + Mitra | ⬜ Belum |
-| Schema: `mitra_applications` + `mitras` (Drizzle) | ⬜ Belum (Phase 1) |
-| Schema: `products` + kolom baru + `order_items` + kolom baru | ⬜ Belum |
-| DDL: `create-tenant-schema.ts` update | ⬜ Belum |
-| Admin: `approveMitraAction`, `rejectMitraAction`, `suspendMitraAction` | ⬜ Belum |
-| Admin: `/toko/mitra/` list + `/toko/mitra/[id]` review | ⬜ Belum |
-| API: `GET /api/mitra/status` | ⬜ Belum (Phase 2) |
-| API: `POST /api/mitra/apply` + validasi eligibility | ⬜ Belum |
-| Frontend: `/akun/mitra` + `/akun/mitra/apply` | ⬜ Belum |
-| API: CRUD `/api/mitra/products` + validasi member_price | ⬜ Belum |
-| Frontend: `/akun/mitra/produk/*` | ⬜ Belum |
+| `/toko/pengaturan/` — halaman pengaturan toko | ✅ Selesai |
+| `toko-nav.tsx` tambah item Pengaturan + Mitra | ✅ Selesai |
+| Schema: `mitra_applications` + `mitras` (Drizzle) | ✅ Selesai |
+| Schema: `products` + kolom baru + `order_items` + kolom baru | ✅ Selesai |
+| DDL: `create-tenant-schema.ts` update | ✅ Selesai |
+| Admin: `approveMitraAction`, `rejectMitraAction`, `suspendMitraAction` | ✅ Selesai |
+| Admin: `/toko/mitra/` list + review | ✅ Selesai |
+| API: `GET /api/mitra/status` | ✅ Selesai |
+| API: `POST /api/mitra/apply` + `DELETE` cancel | ✅ Selesai |
+| Frontend: `/akun/mitra` + `/akun/mitra/apply` | ✅ Selesai |
+| API: CRUD `/api/mitra/products` + validasi member_price | ✅ Selesai |
+| Frontend: `/akun/mitra/produk/*` | ✅ Selesai |
 | `ProductCardData` update (sellerType + memberPrice + businessName) | ⬜ Belum (Phase 3) |
 | Fetch produk publik: JOIN mitras + tampilkan member_price | ⬜ Belum |
 | ProductCard display: harga member + badge Mitra | ⬜ Belum |

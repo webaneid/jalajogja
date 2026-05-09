@@ -25,6 +25,7 @@ import {
   createDocumentVersionsTable,
 } from "./documents";
 import { createSettingsTable, createMenusTable, createMenuItemsTable } from "./settings";
+import { createMitraApplicationsTable, createMitrasTable } from "./mitra";
 import {
   createCartsTable,
   createCartItemsTable,
@@ -89,10 +90,13 @@ function buildTenantSchema(slug: string) {
     documents:          createDocumentsTable(s),
     documentVersions:   createDocumentVersionsTable(s),
     // Toko
-    productCategories: createProductCategoriesTable(s),
-    products: createProductsTable(s),
-    orders: createOrdersTable(s),
-    orderItems: createOrderItemsTable(s),
+    productCategories:  createProductCategoriesTable(s),
+    products:           createProductsTable(s),
+    orders:             createOrdersTable(s),
+    orderItems:         createOrderItemsTable(s),
+    // Mitra — anggota IKPM yang berjualan di toko tenant
+    mitraApplications:  createMitraApplicationsTable(s),
+    mitras:             createMitrasTable(s),
     // Settings & navigasi
     settings: createSettingsTable(s),
     menus: createMenusTable(s),
@@ -130,3 +134,4 @@ export * from "./events";
 export * from "./documents";
 export * from "./settings";
 export * from "./billing";
+export * from "./mitra";

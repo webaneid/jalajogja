@@ -8,13 +8,17 @@ import {
   Package,
   ShoppingCart,
   Tag,
+  Handshake,
+  Settings2,
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: "Dashboard",  icon: LayoutDashboard, path: ""          },
-  { label: "Produk",     icon: Package,         path: "/produk"   },
-  { label: "Pesanan",    icon: ShoppingCart,    path: "/pesanan"  },
-  { label: "Kategori",   icon: Tag,             path: "/kategori" },
+  { label: "Dashboard",   icon: LayoutDashboard, path: ""             },
+  { label: "Produk",      icon: Package,         path: "/produk"      },
+  { label: "Pesanan",     icon: ShoppingCart,    path: "/pesanan"     },
+  { label: "Kategori",    icon: Tag,             path: "/kategori"    },
+  { label: "Mitra",       icon: Handshake,       path: "/mitra"       },
+  { label: "Pengaturan",  icon: Settings2,       path: "/pengaturan"  },
 ] as const;
 
 export function TokoNav({ slug }: { slug: string }) {

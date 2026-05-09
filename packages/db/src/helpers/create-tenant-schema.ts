@@ -815,10 +815,14 @@ export async function createTenantSchemaInDb(
         structured_data JSONB,
         status      TEXT           NOT NULL DEFAULT 'draft'
                                    CHECK (status IN ('active','draft','archived')),
-        category_id UUID           REFERENCES "${s}".product_categories(id) ON DELETE SET NULL,
-        view_count  INTEGER        NOT NULL DEFAULT 0,
-        created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+        category_id  UUID           REFERENCES "${s}".product_categories(id) ON DELETE SET NULL,
+        view_count   INTEGER        NOT NULL DEFAULT 0,
+        seller_type  TEXT           NOT NULL DEFAULT 'tenant'
+                                    CHECK (seller_type IN ('tenant','mitra')),
+        mitra_id     UUID,                      -- FK → mitras.id (set setelah tabel mitras dibuat)
+        member_price NUMERIC(15,2),             -- harga IKPM (mitra only)
+        created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )
     `));
 
@@ -848,14 +852,50 @@ export async function createTenantSchemaInDb(
     // ── 31. Order Items ────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".order_items (
-        id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
-        order_id       UUID           NOT NULL REFERENCES "${s}".orders(id) ON DELETE CASCADE,
-        product_id     UUID           NOT NULL REFERENCES "${s}".products(id),
-        product_name   TEXT           NOT NULL,
-        sku_at_order   TEXT,
-        qty            INTEGER        NOT NULL,
-        price_at_order NUMERIC(15,2)  NOT NULL,
-        subtotal       NUMERIC(15,2)  NOT NULL
+        id                       UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id                 UUID           NOT NULL REFERENCES "${s}".orders(id) ON DELETE CASCADE,
+        product_id               UUID           NOT NULL REFERENCES "${s}".products(id),
+        product_name             TEXT           NOT NULL,
+        sku_at_order             TEXT,
+        qty                      INTEGER        NOT NULL,
+        price_at_order           NUMERIC(15,2)  NOT NULL,
+        subtotal                 NUMERIC(15,2)  NOT NULL,
+        commission_rate_snapshot NUMERIC(5,2),
+        ikpm_commission_amount   NUMERIC(15,2)
+      )
+    `));
+
+    // ── 32. Mitra Applications ─────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".mitra_applications (
+        id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        member_id        UUID         NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+        business_id      UUID         NOT NULL REFERENCES public.member_businesses(id) ON DELETE CASCADE,
+        motivation       TEXT,
+        status           TEXT         NOT NULL DEFAULT 'pending'
+                                      CHECK (status IN ('pending','approved','rejected','cancelled')),
+        rejection_reason TEXT,
+        applied_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        reviewed_at      TIMESTAMPTZ,
+        reviewed_by      UUID         REFERENCES "${s}".officers(id) ON DELETE SET NULL,
+        created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 33. Mitras ─────────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".mitras (
+        id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        member_id         UUID         NOT NULL UNIQUE REFERENCES public.members(id) ON DELETE CASCADE,
+        business_id       UUID         NOT NULL REFERENCES public.member_businesses(id) ON DELETE CASCADE,
+        application_id    UUID         REFERENCES "${s}".mitra_applications(id) ON DELETE SET NULL,
+        status            TEXT         NOT NULL DEFAULT 'active'
+                                       CHECK (status IN ('active','suspended')),
+        suspension_reason TEXT,
+        approved_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        approved_by       UUID         REFERENCES "${s}".officers(id) ON DELETE SET NULL,
+        created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
       )
     `));
 

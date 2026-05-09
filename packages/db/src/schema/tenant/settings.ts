@@ -19,6 +19,7 @@ export const SETTING_GROUPS = [
   "notif",     // notifikasi email/WhatsApp
   "website",   // homepage layout, analitik (untuk modul Website nanti)
   "keuangan",  // account mappings untuk jurnal otomatis
+  "toko",      // pengaturan toko: mitra, komisi, info toko
 ] as const;
 export type SettingGroup = typeof SETTING_GROUPS[number];
 

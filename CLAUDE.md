@@ -931,7 +931,7 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Nomor pesanan: `ORD-YYYYMM-NNNNN`
 - Konfirmasi bayar → `recordIncome()` + kurangi stok
 - Front-end `/toko` + `/toko/{slug}` + ProductCard (grid/list/ringkas) + ProductsSection — **⬜ Belum**
-- **Sistem Mitra** — anggota IKPM berjualan di toko tenant — **⬜ Belum** (arsitektur di `docs/arsitektur-mitra.md`)
+- **Sistem Mitra** — **✅ Phase 0–2 Selesai** (pengaturan toko, schema, admin approve/reject/suspend, frontend mitra di `/akun/mitra/*`, API CRUD produk mitra + validasi komisi). Phase 3 (integrasi card produk) belum. Arsitektur di `docs/arsitektur-mitra.md`.
 
 ### [2026-04] Modul Pengurus Selesai
 
