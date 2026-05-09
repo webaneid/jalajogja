@@ -817,9 +817,12 @@ export async function createTenantSchemaInDb(
                                    CHECK (status IN ('active','draft','archived')),
         category_id  UUID           REFERENCES "${s}".product_categories(id) ON DELETE SET NULL,
         view_count   INTEGER        NOT NULL DEFAULT 0,
-        public_price NUMERIC(15,2),             -- tier 2: harga untuk akun login (profiles + members)
-        member_price NUMERIC(15,2),             -- tier 3: harga anggota IKPM seluruh dunia
-        seller_type  TEXT           NOT NULL DEFAULT 'tenant'
+        public_price      NUMERIC(15,2),
+        member_price      NUMERIC(15,2),
+        product_type      TEXT           NOT NULL DEFAULT 'simple'
+                                         CHECK (product_type IN ('simple','variable')),
+        attribute_groups  JSONB,
+        seller_type       TEXT           NOT NULL DEFAULT 'tenant'
                                     CHECK (seller_type IN ('tenant','mitra')),
         mitra_id     UUID,                      -- FK → mitras.id (set setelah tabel mitras dibuat)
         created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
@@ -863,6 +866,24 @@ export async function createTenantSchemaInDb(
         subtotal                 NUMERIC(15,2)  NOT NULL,
         commission_rate_snapshot NUMERIC(5,2),
         ikpm_commission_amount   NUMERIC(15,2)
+      )
+    `));
+
+    // ── 31b. Product Variations ────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".product_variations (
+        id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+        product_id      UUID          NOT NULL REFERENCES "${s}".products(id) ON DELETE CASCADE,
+        sku             TEXT,
+        price           NUMERIC(15,2) NOT NULL,
+        public_price    NUMERIC(15,2),
+        member_price    NUMERIC(15,2),
+        stock           INTEGER       NOT NULL DEFAULT 0,
+        images          JSONB         NOT NULL DEFAULT '[]',
+        attribute_combo JSONB         NOT NULL DEFAULT '{}',
+        is_active       BOOLEAN       NOT NULL DEFAULT true,
+        created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
       )
     `));
 

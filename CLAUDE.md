@@ -321,7 +321,8 @@ app/(dashboard)/[tenant]/
 - [x] **Front-end Publik** — PublicLayout (header+footer switcher), `/post` archive + detail, 6 PostCard variants, PostsSection (5 designs), PostsSectionTitle, search API, login/register pages, `/settings/website` dengan header/footer design picker. TypeScript 0 errors.
 - [x] **ProductCard** — 3 variant (grid, list, ringkas) + `lib/product-card-templates.ts`. Support harga mitra + badge Mitra + nama usaha. TypeScript 0 errors.
 - [~] **ProductsSection** — 3 design (Grid, Showcase, Carousel). **DITUNDA**.
-- [~] **Produk Variasi** — `product_type` (simple/variable) + `attribute_groups` JSONB + `product_variations` table. Arsitektur di `docs/arsitektur-product.md` § Produk Variasi. **DITUNDA**.
+- [x] **Produk Variasi V1–V6+V9** — schema (product_type, attribute_groups, product_variations), DDL, AttributeGroupEditor, VariationTable, saveVariationsAction, generateVariationsAction (cartesian product), ProductCardData (priceMin/priceMax), edit page load variations. TypeScript 0 errors.
+- [~] **Produk Variasi V7–V8** — halaman detail publik picker + keranjang. Ditunda (butuh front-end /toko).
 - [~] **ProductCard Phase 3 Mitra** — integrasi fetch publik (JOIN mitras) + order commission snapshot + filter seller_type admin. **DITUNDA**.
 - [x] **Sistem Harga Berlapis** — 3 tier: `price` (tidak login) → `public_price` (siapapun yang login) → `member_price` (anggota IKPM seluruh dunia). Schema Drizzle + DDL + form admin + ProductCard + `resolvePrice()` helper. Berlaku untuk tenant dan mitra. TypeScript 0 errors.
 - [~] **Halaman publik `/toko` + `/toko/{slug}`** — listing + detail produk. **DITUNDA**.

@@ -3,25 +3,46 @@ export type ProductCardData = {
   name:           string;
   slug:           string;
   description:    string | null;
+  // Harga — untuk simple product; variable product pakai priceMin/priceMax
   price:          string;          // tier 1: harga dasar (tidak login)
-  publicPrice:    string | null;   // tier 2: harga untuk akun login (profiles + anggota IKPM)
+  publicPrice:    string | null;   // tier 2: harga untuk akun login
   memberPrice:    string | null;   // tier 3: harga anggota IKPM seluruh dunia
-  coverUrl:       string | null;   // dari images[0] → resolved MinIO URL
+  // Variasi
+  productType:    "simple" | "variable";
+  priceMin:       string;          // simple → price; variable → MIN(variation.price)
+  priceMax:       string | null;   // null jika simple atau semua variasi sama harganya
+  coverUrl:       string | null;
   coverVariants?: Record<string, string> | null;
   categoryName:   string | null;
-  // Mitra fields — null untuk produk tenant internal
+  // Mitra fields
   sellerType:   "tenant" | "mitra";
   businessName: string | null;
   mitraId:      string | null;
 };
 
-// Resolve harga sesuai tipe session pembeli — fallback chain tier 3 → 2 → 1
 export type SessionType = "none" | "public" | "member";
 
+// Resolve harga display — untuk variable product pakai priceMin sebagai base
 export function resolvePrice(product: ProductCardData, sessionType: SessionType): string {
+  if (product.productType === "variable") {
+    // Variable product: tampilkan priceMin (harga terendah variasi)
+    // Diskon per variasi ditampilkan di halaman detail saat user pilih variasi
+    return product.priceMin;
+  }
   if (sessionType === "member" && product.memberPrice) return product.memberPrice;
   if (sessionType !== "none"   && product.publicPrice)  return product.publicPrice;
   return product.price;
+}
+
+// Label harga untuk card — variable product tampil "Mulai dari"
+export function priceLabel(product: ProductCardData, sessionType: SessionType): string {
+  if (product.productType === "variable") {
+    const hasRange = product.priceMax && product.priceMax !== product.priceMin;
+    return hasRange
+      ? `${formatPrice(product.priceMin)} – ${formatPrice(product.priceMax)}`
+      : `Mulai dari ${formatPrice(product.priceMin)}`;
+  }
+  return formatPrice(resolvePrice(product, sessionType));
 }
 
 export const PRODUCT_CARD_VARIANTS = ["grid", "list", "ringkas"] as const;

@@ -617,7 +617,9 @@ Phase V — Produk Variasi
 | `ProductImage.variants` disimpan + dipakai | ✅ Selesai |
 | Sistem Harga Berlapis (price + public_price + member_price) | ✅ Selesai |
 | ProductCard (grid, list, ringkas) + SessionType + resolvePrice() | ✅ Selesai |
-| **Produk Variasi** (product_type, attribute_groups, product_variations) | ⏸ Ditunda |
+| **Produk Variasi** (product_type, attribute_groups, product_variations) | ✅ V1–V6+V9 Selesai |
+| Produk Variasi V7 — halaman detail publik (variasi picker) | ⏸ Ditunda (butuh /toko/[slug]) |
+| Produk Variasi V8 — keranjang/checkout validasi variasi | ⏸ Ditunda (butuh front-end toko) |
 | Front-end: `/{slug}/toko` (archive) | ⏸ Ditunda |
 | Front-end: `/{slug}/toko/{slug}` (detail) | ⏸ Ditunda |
 | ProductsSection (Design 1, 2, 3) | ⏸ Ditunda |

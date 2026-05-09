@@ -22,15 +22,17 @@ export type ProductImage = {
 };
 
 export type ProductData = {
-  name:         string;
-  slug:         string;
-  sku?:         string | null;
-  description?: string | null;   // Tiptap HTML
-  price:        number;
-  publicPrice?: number | null;   // tier 2: harga untuk akun login
-  memberPrice?: number | null;   // tier 3: harga anggota IKPM
-  stock:        number;
-  images:       ProductImage[];
+  name:            string;
+  slug:            string;
+  sku?:            string | null;
+  description?:    string | null;
+  price:           number;
+  publicPrice?:    number | null;
+  memberPrice?:    number | null;
+  stock:           number;
+  images:          ProductImage[];
+  productType?:    "simple" | "variable";
+  attributeGroups?: import("@jalajogja/db").AttributeGroup[];
   categoryId?:  string | null;
   status:       "draft" | "active" | "archived";
   // SEO
@@ -308,13 +310,15 @@ export async function updateProductAction(
         slug:        data.slug.trim(),
         sku:         data.sku?.trim() || null,
         description: data.description ?? null,
-        price:       data.price.toFixed(2),
-        publicPrice: data.publicPrice != null ? data.publicPrice.toFixed(2) : null,
-        memberPrice: data.memberPrice != null ? data.memberPrice.toFixed(2) : null,
-        stock:       data.stock,
-        images:      data.images,
-        categoryId:  data.categoryId ?? null,
-        status:      data.status,
+        price:           data.price.toFixed(2),
+        publicPrice:     data.publicPrice  != null ? data.publicPrice.toFixed(2)  : null,
+        memberPrice:     data.memberPrice  != null ? data.memberPrice.toFixed(2)  : null,
+        stock:           data.stock,
+        images:          data.images,
+        categoryId:      data.categoryId   ?? null,
+        status:          data.status,
+        productType:     data.productType  ?? "simple",
+        attributeGroups: data.attributeGroups ?? [],
         // SEO
         metaTitle:     data.metaTitle?.trim()    || null,
         metaDesc:      data.metaDesc?.trim()     || null,
@@ -896,3 +900,90 @@ export async function createProductCategoryAction(
 }
 
 export { slugify };
+
+// ─── Variasi Produk ────────────────────────────────────────────────────────────
+
+import type { VariationLocal } from "@/components/toko/variation-table";
+
+export async function saveVariationsAction(
+  slug:       string,
+  productId:  string,
+  variations: VariationLocal[],
+): Promise<{ error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  // Hapus semua variasi existing, lalu insert ulang (simpler & safer)
+  await tenantDb.delete(schema.productVariations)
+    .where(eq(schema.productVariations.productId, productId));
+
+  if (variations.length > 0) {
+    await tenantDb.insert(schema.productVariations).values(
+      variations.map(v => ({
+        productId,
+        sku:            v.sku.trim() || null,
+        price:          (parseFloat(v.price) || 0).toFixed(2),
+        publicPrice:    v.publicPrice ? (parseFloat(v.publicPrice)).toFixed(2) : null,
+        memberPrice:    v.memberPrice ? (parseFloat(v.memberPrice)).toFixed(2) : null,
+        stock:          parseInt(v.stock) || 0,
+        images:         v.images,
+        attributeCombo: v.attributeCombo,
+        isActive:       v.isActive,
+      })),
+    );
+  }
+
+  revalidateToko(slug);
+  return {};
+}
+
+// Hasilkan semua kombinasi (cartesian product) dari attribute_groups
+// Kombinasi yang sudah ada (by attributeCombo) dipertahankan, tidak di-overwrite
+export async function generateVariationsAction(
+  slug:            string,
+  productId:       string,
+  attributeGroups: import("@jalajogja/db").AttributeGroup[],
+  existing:        VariationLocal[],
+): Promise<{ variations?: VariationLocal[]; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+
+  if (attributeGroups.length === 0 || attributeGroups.some(g => g.values.length === 0)) {
+    return { error: "Semua atribut harus memiliki minimal satu nilai." };
+  }
+
+  // Cartesian product dari semua attribute values
+  function cartesian(groups: import("@jalajogja/db").AttributeGroup[]): Record<string, string>[] {
+    return groups.reduce<Record<string, string>[]>((acc, group) => {
+      if (acc.length === 0) return group.values.map(v => ({ [group.name]: v }));
+      return acc.flatMap(combo => group.values.map(v => ({ ...combo, [group.name]: v })));
+    }, []);
+  }
+
+  const combos = cartesian(attributeGroups);
+
+  // Map existing variations by combo key
+  const existingMap = new Map(
+    existing.map(v => [JSON.stringify(v.attributeCombo), v])
+  );
+
+  const result: VariationLocal[] = combos.map(combo => {
+    const key      = JSON.stringify(combo);
+    const found    = existingMap.get(key);
+    return found ?? {
+      _key:        crypto.randomUUID(),
+      sku:         "",
+      price:       "",
+      publicPrice: "",
+      memberPrice: "",
+      stock:       "0",
+      images:      [],
+      attributeCombo: combo,
+      isActive:    true,
+    };
+  });
+
+  return { variations: result };
+}

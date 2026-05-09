@@ -60,6 +60,13 @@ export default async function ProductEditPage({
     ogImageUrl = media?.url ?? null;
   }
 
+  // Fetch variations jika variable product
+  const existingVariations = product.productType === "variable"
+    ? await db.select().from(schema.productVariations)
+        .where(eq(schema.productVariations.productId, productId))
+        .orderBy(schema.productVariations.createdAt)
+    : [];
+
   const images = Array.isArray(product.images)
     ? (product.images as ProductImage[])
     : [];
@@ -76,10 +83,24 @@ export default async function ProductEditPage({
         price:       parseFloat(String(product.price)),
         publicPrice: product.publicPrice != null ? parseFloat(String(product.publicPrice)) : null,
         memberPrice: product.memberPrice != null ? parseFloat(String(product.memberPrice)) : null,
-        stock:       product.stock,
+        stock:           product.stock,
         images,
-        categoryId:  product.categoryId ?? null,
-        status:      product.status,
+        categoryId:      product.categoryId  ?? null,
+        status:          product.status,
+        productType:     (product.productType ?? "simple") as "simple" | "variable",
+        attributeGroups: Array.isArray(product.attributeGroups) ? product.attributeGroups as import("@jalajogja/db").AttributeGroup[] : [],
+        variations:      existingVariations.map(v => ({
+          _key:           v.id,
+          id:             v.id,
+          sku:            v.sku ?? "",
+          price:          String(v.price),
+          publicPrice:    v.publicPrice != null ? String(v.publicPrice) : "",
+          memberPrice:    v.memberPrice != null ? String(v.memberPrice) : "",
+          stock:          String(v.stock),
+          images:         Array.isArray(v.images) ? v.images as ProductImage[] : [],
+          attributeCombo: (v.attributeCombo as Record<string, string>) ?? {},
+          isActive:       v.isActive,
+        })),
         seo: {
           ...DEFAULT_SEO,
           metaTitle:     product.metaTitle     ?? "",

@@ -10,7 +10,7 @@ import {
   createLetterSignaturesTable,
 } from "./officers";
 import { createAccountsTable, createTransactionsTable, createTransactionEntriesTable, createBudgetsTable, createBudgetItemsTable, createPaymentsTable, createDisbursementsTable, createFinancialSequencesTable } from "./finance";
-import { createProductCategoriesTable, createProductsTable, createOrdersTable, createOrderItemsTable } from "./shop";
+import { createProductCategoriesTable, createProductsTable, createOrdersTable, createOrderItemsTable, createProductVariationsTable } from "./shop";
 import { createCampaignCategoriesTable, createCampaignsTable, createDonationsTable, createDonationSequencesTable } from "./donations";
 import {
   createEventCategoriesTable,
@@ -92,6 +92,7 @@ function buildTenantSchema(slug: string) {
     // Toko
     productCategories:  createProductCategoriesTable(s),
     products:           createProductsTable(s),
+    productVariations:  createProductVariationsTable(s),
     orders:             createOrdersTable(s),
     orderItems:         createOrderItemsTable(s),
     // Mitra — anggota IKPM yang berjualan di toko tenant

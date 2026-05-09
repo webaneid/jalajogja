@@ -1,5 +1,5 @@
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
-import { pickProductCover, formatPrice, resolvePrice } from "@/lib/product-card-templates";
+import { pickProductCover, formatPrice, resolvePrice, priceLabel } from "@/lib/product-card-templates";
 import { Store } from "lucide-react";
 
 export function ProductCardGrid({
@@ -13,8 +13,9 @@ export function ProductCardGrid({
 }) {
   const cover        = pickProductCover(product, "square-large");
   const isMitra      = product.sellerType === "mitra";
+  const isVariable   = product.productType === "variable";
   const displayPrice = resolvePrice(product, sessionType);
-  const hasDiscount  = displayPrice !== product.price;
+  const hasDiscount  = !isVariable && displayPrice !== product.price;
 
   return (
     <a
@@ -69,7 +70,9 @@ export function ProductCardGrid({
 
         {/* Harga */}
         <div className="mt-auto pt-1">
-          {hasDiscount ? (
+          {isVariable ? (
+            <p className="text-sm font-bold text-foreground">{priceLabel(product, sessionType)}</p>
+          ) : hasDiscount ? (
             <div>
               <p className="text-xs text-muted-foreground line-through">{formatPrice(product.price)}</p>
               <p className="text-sm font-bold text-primary">{formatPrice(displayPrice)}</p>
@@ -80,7 +83,7 @@ export function ProductCardGrid({
               )}
             </div>
           ) : (
-            <p className="text-sm font-bold text-foreground">{formatPrice(product.price)}</p>
+            <p className="text-sm font-bold text-foreground">{formatPrice(displayPrice)}</p>
           )}
         </div>
       </div>

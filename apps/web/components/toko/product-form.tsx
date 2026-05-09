@@ -21,11 +21,16 @@ import {
   updateProductAction,
   toggleProductStatusAction,
   deleteProductAction,
+  saveVariationsAction,
+  generateVariationsAction,
   type ProductData,
   type ProductImage,
   slugify,
 } from "@/app/(dashboard)/[tenant]/toko/actions";
 import type { SeoValues } from "@/components/seo/seo-panel";
+import { AttributeGroupEditor } from "./attribute-group-editor";
+import { VariationTable, type VariationLocal } from "./variation-table";
+import type { AttributeGroup } from "@jalajogja/db";
 import {
   ChevronLeft,
   ImagePlus,
@@ -47,18 +52,21 @@ export type ProductFormProps = {
   slug:      string;
   productId: string | null; // null = create mode
   initialData: {
-    name:        string;
-    productSlug: string;
-    sku:         string;
-    description: string;
-    price:       number;
-    publicPrice: number | null;
-    memberPrice: number | null;
-    stock:       number;
-    images:      ProductImage[];
-    categoryId:  string | null;
-    status:      "draft" | "active" | "archived";
-    seo:         SeoValues;
+    name:            string;
+    productSlug:     string;
+    sku:             string;
+    description:     string;
+    price:           number;
+    publicPrice:     number | null;
+    memberPrice:     number | null;
+    stock:           number;
+    images:          ProductImage[];
+    categoryId:      string | null;
+    status:          "draft" | "active" | "archived";
+    productType:     "simple" | "variable";
+    attributeGroups: AttributeGroup[];
+    variations:      VariationLocal[];
+    seo:             SeoValues;
   };
   categories: Category[];
 };
@@ -215,10 +223,13 @@ export function ProductForm({
   const [productSlug, setProductSlug] = useState(initialData.productSlug);
   const [sku,         setSku]         = useState(initialData.sku);
   const [description, setDescription] = useState(initialData.description);
-  const [price,       setPrice]       = useState(String(initialData.price));
-  const [publicPrice, setPublicPrice] = useState(initialData.publicPrice != null ? String(initialData.publicPrice) : "");
-  const [memberPrice, setMemberPrice] = useState(initialData.memberPrice != null ? String(initialData.memberPrice) : "");
-  const [stock,       setStock]       = useState(String(initialData.stock));
+  const [price,           setPrice]           = useState(String(initialData.price));
+  const [publicPrice,     setPublicPrice]     = useState(initialData.publicPrice != null ? String(initialData.publicPrice) : "");
+  const [memberPrice,     setMemberPrice]     = useState(initialData.memberPrice != null ? String(initialData.memberPrice) : "");
+  const [stock,           setStock]           = useState(String(initialData.stock));
+  const [productType,     setProductType]     = useState<"simple" | "variable">(initialData.productType);
+  const [attributeGroups, setAttributeGroups] = useState<AttributeGroup[]>(initialData.attributeGroups);
+  const [variations,      setVariations]      = useState<VariationLocal[]>(initialData.variations);
   const [images,      setImages]      = useState<ProductImage[]>(initialData.images);
   const [categoryId,  setCategoryId]  = useState(initialData.categoryId ?? "none");
   const [status,      setStatus]      = useState(initialData.status);
@@ -251,14 +262,16 @@ export function ProductForm({
     const stockNum = parseInt(stock) || 0;
 
     const data: ProductData = {
-      name:        name.trim(),
-      slug:        productSlug.trim(),
-      sku:         sku.trim() || null,
-      description: description || null,
-      price:       priceNum,
-      publicPrice: publicPrice ? (parseFloat(publicPrice) || null) : null,
-      memberPrice: memberPrice ? (parseFloat(memberPrice) || null) : null,
-      stock:       stockNum,
+      name:            name.trim(),
+      slug:            productSlug.trim(),
+      sku:             sku.trim() || null,
+      description:     description || null,
+      price:           priceNum,
+      publicPrice:     publicPrice ? (parseFloat(publicPrice) || null) : null,
+      memberPrice:     memberPrice ? (parseFloat(memberPrice) || null) : null,
+      stock:           stockNum,
+      productType,
+      attributeGroups: productType === "variable" ? attributeGroups : [],
       images:      images.map((img, i) => ({ ...img, order: i })),
       categoryId:  categoryId === "none" ? null : categoryId,
       status,
@@ -285,6 +298,10 @@ export function ProductForm({
       } else {
         const res = await updateProductAction(slug, productId, data);
         if (res.success) {
+          // Simpan variasi jika variable product
+          if (productType === "variable") {
+            await saveVariationsAction(slug, productId, variations);
+          }
           setSaveMsg("Tersimpan");
           setTimeout(() => setSaveMsg(""), 2000);
         } else {
@@ -468,11 +485,77 @@ export function ProductForm({
 
             <Separator />
 
-            {/* Gambar produk */}
+            {/* Tipe Produk — toggle simple/variable */}
             <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Gambar Produk</p>
-              <ProductImages slug={slug} images={images} onChange={setImages} />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Tipe Produk</p>
+              <div className="flex gap-2">
+                {(["simple", "variable"] as const).map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setProductType(type)}
+                    className={`px-4 py-1.5 rounded-full border text-sm font-medium transition-colors ${
+                      productType === type
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border text-muted-foreground hover:border-primary"
+                    }`}
+                  >
+                    {type === "simple" ? "Produk Simple" : "Produk Variasi"}
+                  </button>
+                ))}
+              </div>
+              {productType === "variable" && (
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Harga & stok diatur per variasi. Field harga di atas diabaikan.
+                </p>
+              )}
             </div>
+
+            {/* Atribut & Variasi — hanya untuk variable product */}
+            {productType === "variable" && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Atribut Produk</p>
+                  <AttributeGroupEditor groups={attributeGroups} onChange={setAttributeGroups} />
+                  {attributeGroups.length > 0 && attributeGroups.every(g => g.values.length > 0) && productId && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const result = await generateVariationsAction(slug, productId, attributeGroups, variations);
+                        if (result.variations) setVariations(result.variations);
+                      }}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      ⚡ Generate Variasi dari Atribut
+                    </button>
+                  )}
+                </div>
+
+                <Separator />
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Variasi ({variations.length})
+                  </p>
+                  <VariationTable
+                    slug={slug}
+                    variations={variations}
+                    attributeGroups={attributeGroups}
+                    onChange={setVariations}
+                  />
+                </div>
+              </>
+            )}
+
+            <Separator />
+
+            {/* Gambar produk (hanya untuk simple product) */}
+            {productType === "simple" && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Gambar Produk</p>
+                <ProductImages slug={slug} images={images} onChange={setImages} />
+              </div>
+            )}
 
             <Separator />
 
