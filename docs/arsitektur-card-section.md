@@ -226,13 +226,18 @@ export type CampaignCardVariant = typeof CAMPAIGN_CARD_VARIANTS[number];
 | `judul` | Teks saja, tanpa gambar | Design 1 kiri/kanan (item 2–5), sidebar |
 | `ticker` | Judul link minimal untuk marquee | Running text / ticker bar |
 
-### Produk — 3 variant (⬜ belum)
+### Produk — 3 variant (✅ selesai)
 
 | Variant | Deskripsi | Dipakai di |
 |---------|-----------|-----------|
-| `grid` | Gambar atas + nama + harga + kategori | Design 1 (Grid), Design 2 (bagian kecil) |
+| `grid` | Gambar atas + nama + harga + kategori + badge Mitra | Design 1 (Grid), Design 2 (bagian kecil) |
 | `list` | Horizontal: thumbnail kiri, nama + harga kanan | Design 2 (list samping featured) |
 | `ringkas` | Gambar + nama + harga saja, padat | Design 3 (Carousel) |
+
+**Fitur mitra di semua variant:**
+- Badge "Mitra" (amber) + nama usaha bila `sellerType = "mitra"`
+- Prop `isMember`: jika true + `memberPrice` ada → tampilkan harga member (primary) + harga umum dicoret
+- `pickProductCover(product, variant)`: `square` untuk list/ringkas, `square-large` untuk grid
 
 ### Event — 3 variant (⬜ belum)
 
