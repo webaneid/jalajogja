@@ -27,8 +27,9 @@ Dua jenis produk di toko IKPM:
 └──────────────────────────────────────────────────────┘
 ```
 
-**Mitra adalah per-tenant** — satu anggota bisa menjadi mitra di banyak cabang,
-tapi di setiap cabang memiliki satu akun mitra dengan satu usaha utama.
+**Mitra adalah per-tenant dan terikat cabang** — mitra hanya bisa mendaftar di
+tenant yang mana dia terdaftar sebagai anggota (`tenant_memberships`). Tidak bisa
+mendaftar di cabang lain meskipun anggota di beberapa cabang.
 
 ---
 
@@ -37,7 +38,8 @@ tapi di setiap cabang memiliki satu akun mitra dengan satu usaha utama.
 Untuk mendaftar sebagai mitra di tenant tertentu, anggota harus memenuhi **semua** syarat:
 
 1. **Anggota IKPM** — terdaftar di `public.members` (alumni Gontor)
-2. **Anggota tenant ini** — ada di `public.tenant_memberships` untuk tenant ini
+2. **Anggota cabang ini** — ada di `public.tenant_memberships` untuk tenant ini
+   *(tidak bisa mendaftar di cabang lain, hanya cabang tempat dia terdaftar)*
 3. **Sudah melengkapi data usaha** — minimal satu `public.member_businesses` dengan `is_active = true`
 4. **Belum punya akun mitra** di tenant ini (satu member = satu mitra per tenant)
 5. **Tidak sedang menunggu** review pengajuan yang pending
@@ -71,6 +73,141 @@ Buka /{slug}/akun/mitra
     ├── Tab "Pengajuan" — list pending applications + review
     │   └── Klik → lihat detail member + data usaha → Approve / Tolak
     └── Tab "Mitra Aktif" — list mitra + toggle suspend/aktifkan
+```
+
+---
+
+## Model Harga & Komisi
+
+### Dua Harga per Produk Mitra
+
+Setiap produk mitra wajib memiliki dua harga:
+
+| Field | Nama | Deskripsi |
+|-------|------|-----------|
+| `price` | Harga Umum | Harga untuk pembeli umum (non-anggota) |
+| `member_price` | Harga IKPM | Harga khusus anggota IKPM — selalu ≤ `price` |
+
+Produk **tenant internal** hanya memiliki satu harga (`price`). `member_price` hanya
+relevan untuk produk mitra.
+
+### Sistem Komisi (Bagi Hasil)
+
+IKPM mengambil komisi minimum dari setiap transaksi produk mitra.
+Persentase minimum dikonfigurasi di **Pengaturan Toko** (bukan Settings General).
+
+**Formula:**
+
+```
+commission_rate     = setting "min_komisi_mitra" (misal: 10%)
+IKPM commission     = price × commission_rate   (selalu dari harga umum, bukan harga member)
+member_price_max    = price - IKPM commission
+                    = price × (1 - commission_rate)
+
+Contoh: price = 100.000, commission_rate = 10%
+→ IKPM commission   = 10.000 (selalu, dari setiap penjualan)
+→ member_price_max  = 90.000 (batas atas harga IKPM yang boleh diset mitra)
+```
+
+**Aturan validasi member_price:**
+- `member_price ≤ price × (1 - commission_rate)` — WAJIB, tidak boleh dilanggar
+- `member_price ≥ 0` — tidak boleh negatif
+- Mitra boleh set `member_price` lebih rendah dari `member_price_max` (berarti mitra
+  memberikan diskon lebih besar ke anggota, IKPM tetap dapat komisimya)
+- Mitra **tidak boleh** set `member_price` lebih tinggi dari `member_price_max`
+  (itu artinya mengurangi komisi IKPM di bawah minimum)
+
+**Auto-kalkulasi di form mitra:**
+
+```
+User input: price = 100.000
+                         ↓ (otomatis)
+Sistem tampilkan: "Harga IKPM maksimum: Rp 90.000"
+User bisa set:    member_price = 90.000 (tepat minimum komisi)
+                  member_price = 80.000 (komisi lebih besar, mitra dapat lebih sedikit)
+                  member_price = 95.000 ← DITOLAK (komisi di bawah minimum)
+```
+
+### Alur Keuangan per Transaksi
+
+Semua pembayaran masuk ke **rekening tenant (IKPM cabang)**, tidak ke rekening mitra.
+Pencairan ke mitra dilakukan via `disbursements` (modul keuangan existing).
+
+```
+Pembeli bayar Rp 100.000 (harga umum)
+         ↓
+Masuk ke rekening tenant IKPM
+         ↓
+Dicatat sebagai Order → Payment → dikonfirmasi admin
+         ↓
+Admin buat Disbursement ke mitra:
+  Jumlah disbursed = price - IKPM_commission
+                   = 100.000 - 10.000
+                   = 90.000 → dikirim ke rekening mitra
+
+(Untuk pembelian anggota dengan member_price = 90.000)
+  Jumlah disbursed = member_price - IKPM_commission
+                   = 90.000 - 10.000
+                   = 80.000 → dikirim ke rekening mitra
+```
+
+**Snapshot komisi di order:** Saat order dibuat, `commission_rate` yang berlaku saat itu
+di-snapshot ke `order_items.commission_rate_snapshot` — agar perubahan setting di masa depan
+tidak mempengaruhi perhitungan order lama.
+
+### Rekening Mitra
+
+Mitra **tidak** mempunyai rekening yang terdaftar di sistem toko.
+Pencairan dilakukan admin secara manual via `disbursements`.
+Info rekening mitra diambil dari `public.contacts` (data kontak usaha mereka).
+
+---
+
+## Pengaturan Toko (`/toko/pengaturan`)
+
+Sub-menu baru di bawah Toko — **bukan** di `/settings/`. Toko memiliki pengaturan
+tersendiri yang terpisah dari pengaturan umum tenant.
+
+### Route
+
+```
+app/(dashboard)/[tenant]/toko/pengaturan/
+└── page.tsx   → Pengaturan Toko (single page, beberapa section)
+```
+
+Tambahkan ke `toko-nav.tsx` sebagai item terakhir: "Pengaturan".
+
+### Isi Pengaturan Toko
+
+Disimpan di `tenant_{slug}.settings` dengan group `"toko"`:
+
+```
+key="mitra_enabled"         group="toko"  value=true|false
+key="mitra_max_products"    group="toko"  value=20   (0 = tidak terbatas)
+key="min_komisi_mitra"      group="toko"  value=10   (persen, 0–100)
+key="toko_description"      group="toko"  value="Deskripsi toko"
+key="toko_banner_url"       group="toko"  value="..."
+key="toko_whatsapp"         group="toko"  value="+628xxx"
+```
+
+**Section dalam halaman Pengaturan Toko:**
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Sistem Mitra                                        │
+│ Aktifkan Mitra  [toggle on/off]                     │
+│ Batas produk per mitra: [20____] (0 = tak terbatas) │
+│ Komisi minimum IKPM:    [10___]% per transaksi      │
+│                                                     │
+│ ℹ️  Contoh: komisi 10%, produk Rp 100.000           │
+│    → Harga IKPM maks: Rp 90.000                     │
+│    → IKPM dapat: Rp 10.000 per penjualan            │
+├─────────────────────────────────────────────────────┤
+│ Info Toko                                           │
+│ Deskripsi toko: [textarea]                          │
+│ Nomor WhatsApp: [input]                             │
+│ Banner toko:    [MediaPicker]                       │
+└─────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -123,11 +260,23 @@ CREATE INDEX IF NOT EXISTS idx_mitras_status ON "{s}".mitras (status);
 ### Perubahan Tabel: `tenant_{slug}.products`
 
 ```sql
--- Tambah dua kolom untuk membedakan produk tenant vs mitra
+-- Tambah kolom untuk membedakan produk tenant vs mitra + harga member
 ALTER TABLE "{s}".products
   ADD COLUMN IF NOT EXISTS seller_type TEXT NOT NULL DEFAULT 'tenant'
     CHECK (seller_type IN ('tenant', 'mitra')),
-  ADD COLUMN IF NOT EXISTS mitra_id UUID REFERENCES "{s}".mitras(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS mitra_id UUID REFERENCES "{s}".mitras(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS member_price NUMERIC(15,2);  -- harga khusus anggota IKPM (mitra only)
+```
+
+### Perubahan Tabel: `tenant_{slug}.order_items`
+
+```sql
+-- Snapshot komisi saat order dibuat — agar tidak berubah jika setting diubah kemudian
+ALTER TABLE "{s}".order_items
+  ADD COLUMN IF NOT EXISTS commission_rate_snapshot NUMERIC(5,2),  -- misal: 10.00 (persen)
+  ADD COLUMN IF NOT EXISTS ikpm_commission_amount   NUMERIC(15,2); -- nominal komisi IKPM
+  -- Untuk produk tenant: kedua kolom NULL (tidak ada komisi mitra)
+  -- Untuk produk mitra: diisi saat order confirmed
 ```
 
 ### Drizzle Schema
@@ -173,9 +322,14 @@ export function createMitrasTable(s: ReturnType<typeof pgSchema>) {
 // Perubahan di shop.ts — tambah ke createProductsTable()
 export const SELLER_TYPES = ["tenant", "mitra"] as const;
 
-// Tambah dua kolom:
-sellerType: text("seller_type", { enum: SELLER_TYPES }).notNull().default("tenant"),
-mitraId:    uuid("mitra_id"),  // FK → mitras.id via DDL
+// Tambah tiga kolom ke products:
+sellerType:  text("seller_type", { enum: SELLER_TYPES }).notNull().default("tenant"),
+mitraId:     uuid("mitra_id"),                                  // FK → mitras.id via DDL
+memberPrice: numeric("member_price", { precision: 15, scale: 2 }),  // harga IKPM (mitra only)
+
+// Tambah dua kolom ke order_items:
+commissionRateSnapshot:    numeric("commission_rate_snapshot",  { precision: 5,  scale: 2 }),
+ikpmCommissionAmount:      numeric("ikpm_commission_amount",    { precision: 15, scale: 2 }),
 ```
 
 ---
@@ -306,10 +460,20 @@ export type MitraDetail = {
 2. Mitra `status = 'active'` untuk tenant ini
 3. Untuk PATCH/DELETE: `products.mitra_id = mitraId` (tidak bisa edit produk mitra lain)
 4. `seller_type` di-set hardcode ke `"mitra"`, `mitra_id` diambil dari session (tidak dari client)
+5. **Validasi harga:** `member_price ≤ price × (1 - commission_rate)` — commission_rate diambil dari settings toko saat ini
+6. **Batas produk:** jika `mitra_max_products > 0`, cek COUNT produk mitra yang ada
+
+### Hak admin atas produk mitra:
+- Admin **dapat menghapus atau menonaktifkan** produk mitra kapanpun, tanpa alasan
+- Tidak perlu persetujuan mitra — mitra menerima notifikasi (jika add-on aktif)
+- **Produk mitra TIDAK perlu review admin** untuk aktif — setelah mitra approved, produk bisa langsung `status = 'active'`
+- Admin tetap bisa override ke `status = 'archived'` / hapus
 
 ### Produk mitra di front-end publik:
 - Hanya tampil jika `products.status = 'active'` AND `mitras.status = 'active'`
 - JOIN ke `mitras` wajib untuk filter ini
+- Anggota IKPM yang login → tampilkan `member_price` sebagai harga
+- Pembeli umum → tampilkan `price` sebagai harga
 
 ---
 
@@ -346,11 +510,18 @@ Produk mitra menampilkan badge "Mitra" + nama usaha di bawah judul:
 ```typescript
 export type ProductCardData = {
   // ... existing fields ...
+  price:        string;          // harga umum
+  memberPrice:  string | null;   // harga IKPM — null untuk produk tenant
   sellerType:   "tenant" | "mitra";
   businessName: string | null;   // null untuk produk tenant
   mitraId:      string | null;
 };
 ```
+
+**Display harga di card:**
+- Pembeli umum: tampilkan `price`
+- Anggota IKPM login: tampilkan `memberPrice` (jika ada) dengan badge "Harga Member" + `price` dicoret
+- Produk tenant: tampilkan `price` saja
 
 ### Admin produk list — perlu filter baru
 
@@ -383,25 +554,35 @@ Saat event berikut, kirim notifikasi (email/WA jika add-on aktif):
 ## Urutan Implementasi
 
 ```
-Phase 1 — Schema & Admin
-  Step 1: Drizzle schema baru (mitra.ts) + shop.ts update seller_type/mitra_id
-  Step 2: DDL create-tenant-schema.ts (mitra_applications + mitras + ALTER products)
-  Step 3: Admin actions (approve/reject/suspend/reactivate)
-  Step 4: Admin routes: /toko/mitra/ + /toko/mitra/[id]
-  Step 5: toko-nav.tsx — tambah item Mitra
+Phase 0 — Pengaturan Toko
+  Step 1: Settings helper group "toko" di DB (sudah ada mechanism-nya)
+  Step 2: /toko/pengaturan/ — halaman pengaturan toko
+  Step 3: toko-nav.tsx — tambah item "Pengaturan" (terakhir)
+  Step 4: Form: mitra_enabled, mitra_max_products, min_komisi_mitra, info toko
 
-Phase 2 — Frontend Mitra
-  Step 6: GET /api/mitra/status — cek status + eligibility check
-  Step 7: POST /api/mitra/apply + cancel
-  Step 8: Frontend: /akun/mitra + /akun/mitra/apply
-  Step 9: CRUD API /api/mitra/products
-  Step 10: Frontend: /akun/mitra/produk/*
+Phase 1 — Schema & Admin Mitra
+  Step 5: Drizzle schema baru (mitra.ts) — mitra_applications + mitras
+  Step 6: shop.ts — seller_type + mitra_id + member_price di products
+         + commission_rate_snapshot + ikpm_commission_amount di order_items
+  Step 7: DDL create-tenant-schema.ts update
+  Step 8: Admin actions (approve/reject/suspend/reactivate)
+  Step 9: Admin routes: /toko/mitra/ + /toko/mitra/[id]
+  Step 10: toko-nav.tsx — tambah item "Mitra"
 
-Phase 3 — Integrasi Produk
-  Step 11: ProductCardData — tambah sellerType + businessName
-  Step 12: Fetch produk front-end — JOIN mitras + filter status
-  Step 13: ProductCard display — badge Mitra + nama usaha
-  Step 14: Admin produk list — filter seller_type
+Phase 2 — Frontend Mitra (anggota)
+  Step 11: GET /api/mitra/status — cek status + eligibility check + settings
+  Step 12: POST /api/mitra/apply + cancel
+  Step 13: Frontend: /akun/mitra + /akun/mitra/apply
+  Step 14: CRUD API /api/mitra/products — validasi member_price + batas produk
+  Step 15: Frontend: /akun/mitra/produk/*
+
+Phase 3 — Integrasi Produk & Transaksi
+  Step 16: ProductCardData — tambah sellerType + businessName + memberPrice
+  Step 17: Fetch produk publik — JOIN mitras + filter status
+  Step 18: ProductCard display — harga member / badge Mitra / nama usaha
+  Step 19: Admin produk list — filter seller_type
+  Step 20: Order flow — snapshot commission_rate saat order confirmed
+           + disbursement calculation helper untuk mitra
 ```
 
 ---
@@ -410,26 +591,37 @@ Phase 3 — Integrasi Produk
 
 | Komponen | Status |
 |----------|--------|
-| Schema: `mitra_applications` + `mitras` (Drizzle) | ⬜ Belum |
-| Schema: `products.seller_type` + `products.mitra_id` | ⬜ Belum |
+| `/toko/pengaturan/` — halaman pengaturan toko | ⬜ Belum (Phase 0) |
+| `toko-nav.tsx` tambah item Pengaturan + Mitra | ⬜ Belum |
+| Schema: `mitra_applications` + `mitras` (Drizzle) | ⬜ Belum (Phase 1) |
+| Schema: `products` + kolom baru + `order_items` + kolom baru | ⬜ Belum |
 | DDL: `create-tenant-schema.ts` update | ⬜ Belum |
-| Admin: `approveMitraAction`, `rejectMitraAction`, dst | ⬜ Belum |
-| Admin: `/toko/mitra/` list + review | ⬜ Belum |
-| `toko-nav.tsx` tambah item Mitra | ⬜ Belum |
-| API: `GET /api/mitra/status` | ⬜ Belum |
-| API: `POST /api/mitra/apply` + validasi | ⬜ Belum |
+| Admin: `approveMitraAction`, `rejectMitraAction`, `suspendMitraAction` | ⬜ Belum |
+| Admin: `/toko/mitra/` list + `/toko/mitra/[id]` review | ⬜ Belum |
+| API: `GET /api/mitra/status` | ⬜ Belum (Phase 2) |
+| API: `POST /api/mitra/apply` + validasi eligibility | ⬜ Belum |
 | Frontend: `/akun/mitra` + `/akun/mitra/apply` | ⬜ Belum |
-| API: CRUD `/api/mitra/products` | ⬜ Belum |
+| API: CRUD `/api/mitra/products` + validasi member_price | ⬜ Belum |
 | Frontend: `/akun/mitra/produk/*` | ⬜ Belum |
-| `ProductCardData` update + card display mitra | ⬜ Belum |
-| Fetch produk publik: JOIN mitras + filter | ⬜ Belum |
+| `ProductCardData` update (sellerType + memberPrice + businessName) | ⬜ Belum (Phase 3) |
+| Fetch produk publik: JOIN mitras + tampilkan member_price | ⬜ Belum |
+| ProductCard display: harga member + badge Mitra | ⬜ Belum |
 | Admin produk list: filter seller_type | ⬜ Belum |
+| Order flow: snapshot commission_rate + disbursement calc | ⬜ Belum |
 
 ---
 
-## Pertanyaan Terbuka
+## Keputusan yang Sudah Dikunci
 
-1. **Limit produk per mitra**: apakah ada batas jumlah produk yang bisa di-upload mitra?
-2. **Komisi**: apakah ada sistem komisi dari penjualan mitra? (jika ya, butuh kolom tambahan di orders)
-3. **Review produk**: apakah produk mitra perlu di-approve admin sebelum tampil publik?
-4. **Multiple tenant**: jika mitra dari PC Jogja ingin jual juga di PC Semarang — apakah bisa apply di sana juga?
+| Keputusan | Nilai |
+|-----------|-------|
+| Batas produk per mitra | Dikonfigurasi di Pengaturan Toko. Default: 20. Nilai 0 = tidak terbatas. |
+| Komisi minimum | Dikonfigurasi di Pengaturan Toko (%). Default: 10%. Wajib ada. |
+| Formula komisi | `IKPM_commission = price × commission_rate` (dari harga umum, bukan harga member) |
+| Batas member_price | `member_price ≤ price × (1 - commission_rate)` — divalidasi server-side |
+| Review produk | Tidak perlu — mitra approved → produk langsung bisa aktif |
+| Hapus/nonaktif produk | Admin bisa kapanpun tanpa alasan |
+| Scope mitra | Hanya di cabang tempat terdaftar (`tenant_memberships`) |
+| Rekening pembayaran | Selalu rekening tenant/IKPM — tidak ada rekening mitra di sistem |
+| Pencairan ke mitra | Manual via `disbursements` (modul keuangan existing) |
+| Transaksi | Melalui universal payment system (orders → payments → finance) |
