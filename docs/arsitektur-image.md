@@ -137,7 +137,8 @@ dengan ukuran total yang jauh lebih kecil. 10 MB terlalu ketat untuk foto resolu
 [8. Hapus file original (_ori) dari MinIO]
 ```
 
-**Auto-crop strategy**: Sharp `fit: 'cover'`, `position: 'center'` — crop dari tengah.
+**Auto-crop strategy**: Sharp `fit: 'cover'`, `position: 'attention'` — smart crop via libvips
+(face detection + saliency map). Detail lengkap di bagian **Phase D** di bawah.
 
 **Rollback jika upload variant gagal**: jika salah satu `Promise.all` MinIO upload gagal,
 hapus variant yang sudah terupload sebelum throw error (cleanup partial upload).
@@ -842,6 +843,13 @@ apps/web/components/website/public/sections/posts/posts-section.tsx
 | Post detail page — `alt` + `title` + `caption` dari media | ✅ Selesai |
 | Post detail — `<figure>` + `<figcaption>` untuk caption | ✅ Selesai |
 
+### Phase D — Autocrop
+
+| Komponen | Status |
+|----------|--------|
+| D1: `position: "attention"` di `image-processor.ts` | ⬜ Belum |
+| D2: `crop_data` kolom + manual crop UI | ⬜ Belum |
+
 ### Catatan Implementasi
 
 - **Tenant existing sudah dimigrasikan**: `pc-ikpm-jogjakarta` sudah dapat 4 kolom variant baru via `ALTER TABLE` manual (2026-04-26). Media lama tetap bekerja via fallback `path` di `getImageUrl()` — `variants = NULL` ditangani gracefully.
@@ -851,6 +859,208 @@ apps/web/components/website/public/sections/posts/posts-section.tsx
 - **`resolveDisplayUrl`**: helper lokal di `media-shell.tsx` dan `media-picker.tsx` — prioritas thumbnail untuk grid.
 - **Fallback alt text**: `media.altText ?? post.title` — tidak pernah kosong, selalu ada nilai semantik.
 - **Caption single post**: hanya di halaman detail, bukan di post card — caption panjang tidak cocok untuk grid.
+
+---
+
+## Phase D — Autocrop System
+
+### Latar Belakang
+
+Phase A–C menggunakan `position: "center"` — crop selalu dari tengah gambar, tanpa peduli
+subjek foto ada di mana. Untuk foto orang dan kegiatan (mayoritas konten IKPM), ini sering
+memotong kepala atau wajah.
+
+Phase D mengganti strategi crop menjadi dua lapis:
+1. **Attention autocrop** — default, otomatis, berbasis libvips
+2. **Manual crop** — override oleh admin jika attention tidak tepat
+
+---
+
+### Phase D1 — Attention Autocrop (1 baris kode)
+
+Ganti `position: "center"` → `position: "attention"` di `lib/image-processor.ts`.
+
+**Cara kerja `attention` di libvips (tanpa AI, tanpa API eksternal):**
+
+| Langkah | Mekanisme | Prioritas |
+|---------|-----------|-----------|
+| 1 | **Face detection** — Haar cascade classifier (OpenCV-style, murni matematika) | Tertinggi |
+| 2 | **Saliency map** — analisis brightness + saturation + edge density per region | Fallback |
+| 3 | **Entropy** — area dengan informasi visual paling tinggi (kontras, tekstur) | Fallback |
+
+Semua proses **lokal, offline, zero API call** — libvips sudah ter-bundle dalam Sharp.
+Kecepatan: hampir sama dengan `center`, tambahan ~5–15ms per gambar.
+
+**Perubahan di `lib/image-processor.ts`:**
+```typescript
+// Sebelum (Phase A–C):
+sharp(inputBuffer).resize(1200, 630, { fit: "cover", position: "center" })
+
+// Sesudah (Phase D):
+sharp(inputBuffer).resize(1200, 630, { fit: "cover", position: "attention" })
+```
+
+Berlaku untuk semua 5 variant yang di-resize (large, medium, thumbnail, square, profile).
+`original` tidak di-crop — tetap konversi WebP saja.
+
+**Perlu re-crop gambar lama?** Tidak wajib — gambar lama tetap jalan dengan crop lama.
+Re-crop opsional bisa dilakukan via tombol "Proses Ulang" di Media Library (future feature).
+
+---
+
+### Phase D2 — Manual Crop Override
+
+Untuk kasus di mana attention tidak menghasilkan crop yang tepat, admin bisa override
+lewat UI crop editor di **Media Detail Panel** (`/media`).
+
+#### Flow Lengkap
+
+```
+[Admin buka /media]
+         │
+         ▼
+[Klik gambar → Media Detail Panel terbuka di kanan]
+         │
+         ▼
+[Klik "Edit Crop" di panel]
+         │
+         ▼
+[Crop editor muncul: gambar original + crop box overlay]
+[Admin drag crop box ke posisi yang diinginkan]
+[Pilih variant yang ingin di-override: large / square / semua]
+         │
+         ▼
+[Klik "Terapkan"]
+         │
+         ▼
+[POST /api/media/[id]/recrop]
+├── Fetch original (_ori) dari MinIO
+├── sharp.extract({ left, top, width, height })  ← manual crop rect
+├── sharp.resize(target_w, target_h, { fit: "cover" })
+├── Re-upload variant ke MinIO (overwrite path yang sama)
+└── Simpan crop_data ke DB: { x%, y%, w%, h%, variant }
+         │
+         ▼
+[Panel refresh — tampilkan hasil crop baru]
+```
+
+#### Schema DB — kolom baru `crop_data`
+
+```sql
+-- Tambah ke tenant_{slug}.media
+ALTER TABLE "tenant_{slug}".media
+  ADD COLUMN IF NOT EXISTS crop_data JSONB;
+```
+
+```typescript
+// Drizzle schema
+cropData: jsonb("crop_data").$type<CropData | null>(),
+
+// Type
+export type CropData = {
+  x:       number;  // persentase dari lebar original (0–100)
+  y:       number;  // persentase dari tinggi original (0–100)
+  width:   number;  // persentase lebar crop area (0–100)
+  height:  number;  // persentase tinggi crop area (0–100)
+  variant: "all" | "large" | "medium" | "thumbnail" | "square" | "profile";
+};
+```
+
+Koordinat dalam **persentase** (bukan pixel) — agar tidak bergantung pada dimensi original
+yang tidak kita simpan secara eksplisit.
+
+#### Logika server saat processImage
+
+```typescript
+async function processVariant(
+  inputBuffer: Buffer,
+  width: number,
+  height: number,
+  cropData?: CropData | null,
+): Promise<Buffer> {
+  let pipeline = sharp(inputBuffer);
+
+  if (cropData) {
+    // Manual crop: extract dulu, baru resize
+    const meta    = await sharp(inputBuffer).metadata();
+    const imgW    = meta.width  ?? 1;
+    const imgH    = meta.height ?? 1;
+    pipeline = pipeline.extract({
+      left:   Math.round(cropData.x      / 100 * imgW),
+      top:    Math.round(cropData.y      / 100 * imgH),
+      width:  Math.round(cropData.width  / 100 * imgW),
+      height: Math.round(cropData.height / 100 * imgH),
+    });
+  }
+
+  return pipeline
+    .resize(width, height, { fit: "cover", position: cropData ? "center" : "attention" })
+    .webp({ quality: 85 })
+    .toBuffer();
+}
+```
+
+Saat `cropData` ada → `extract()` dulu ke area manual, lalu resize dengan `center`
+(area sudah dipersempit, tidak perlu attention lagi).
+Saat `cropData` tidak ada → `attention` langsung.
+
+#### API Route
+
+```
+POST /api/media/[id]/recrop
+Body: { cropData: CropData }
+
+Auth: tenant access wajib
+Flow:
+1. Fetch media row (cek variants.original ada)
+2. Fetch file _ori dari MinIO
+3. Jalankan processVariant() sesuai cropData.variant
+4. Re-upload ke path yang sama (overwrite)
+5. Update media.crop_data di DB
+6. Return updated MediaItem
+```
+
+#### UI: Crop Editor di MediaDetailPanel
+
+Library: **`react-image-crop`** (npm `react-image-crop`, ~10 KB, zero dependency).
+
+```
+┌──────────────────────────────────────────────────────┐
+│  [Gambar dengan crop overlay — draggable]            │
+│  ┌──────────────────────┐                            │
+│  │  ✂ Area Crop         │                            │
+│  │  (drag untuk pindah) │                            │
+│  └──────────────────────┘                            │
+│                                                      │
+│  Terapkan ke: [Semua variant ▾]                      │
+│  [Batal]                          [✓ Terapkan Crop]  │
+└──────────────────────────────────────────────────────┘
+```
+
+Tombol "Edit Crop" muncul di `MediaDetailPanel` di bawah preview gambar.
+Saat klik → panel berganti ke crop editor mode.
+Saat "Batal" → kembali ke panel normal tanpa perubahan.
+Saat "Terapkan" → POST ke `/api/media/[id]/recrop` → loading → tampilkan hasil.
+
+**Catatan**: Crop editor hanya tampil jika `variants.original` ada (belum dihapus cron).
+Jika original sudah dihapus (> 10 hari), tampilkan teks "Crop manual tidak tersedia —
+original sudah dihapus. Upload ulang untuk mengaktifkan fitur ini."
+
+---
+
+### Phase D — Status Implementasi
+
+| Komponen | Status |
+|----------|--------|
+| **D1**: Ganti `position: "center"` → `"attention"` di `image-processor.ts` | ⬜ Belum |
+| **D2**: Kolom `crop_data JSONB` di media table (Drizzle + DDL) | ⬜ Belum |
+| **D2**: `processVariant()` helper — manual extract + attention fallback | ⬜ Belum |
+| **D2**: `POST /api/media/[id]/recrop` route | ⬜ Belum |
+| **D2**: Crop editor UI di `MediaDetailPanel` (`react-image-crop`) | ⬜ Belum |
+| **D2**: Tombol "Edit Crop" di panel + state crop editor | ⬜ Belum |
+
+**Urutan eksekusi D1 → D2** — D1 berdiri sendiri (1 baris kode, langsung deploy).
+D2 membutuhkan D1 selesai + kolom `crop_data` di DB.
 
 ---
 
