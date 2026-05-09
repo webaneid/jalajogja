@@ -176,9 +176,9 @@ publicPrice: numeric("public_price", { precision: 15, scale: 2 }),
 ```typescript
 export type ProductCardData = {
   // ... existing fields ...
-  price:       string;          // harga dasar (tier 1)
-  publicPrice: string | null;   // harga publik (tier 2) — ⏸ belum ada di type
-  memberPrice: string | null;   // harga anggota IKPM (tier 3) — sudah ada
+  price:       string;          // tier 1: harga dasar
+  publicPrice: string | null;   // tier 2: harga untuk akun login ✅
+  memberPrice: string | null;   // tier 3: harga anggota IKPM ✅
 };
 ```
 
@@ -361,15 +361,263 @@ gambar besar untuk display kecil. Fix: simpan `media.variants` di `handleSelect`
 
 ---
 
+## Produk Variasi (Variable Product)
+
+> **Status**: Perencanaan selesai. Implementasi **⏸ ditunda**.
+
+### Latar Belakang
+
+Produk saat ini adalah **simple product** — satu harga, satu stok, satu set gambar.
+Banyak produk nyata (kaos, sepatu, pelek motor) punya variasi seperti ukuran atau warna,
+di mana tiap variasi punya harga, stok, dan foto yang berbeda.
+
+Sistem variasi ini **dinamis** — tenant dan mitra bebas mendefinisikan group atribut
+sendiri (ukuran, warna, material, dll) tanpa perlu hardcode di kode.
+
+---
+
+### Dua Tipe Produk
+
+```
+product_type = "simple"    → produk saat ini (tidak berubah)
+product_type = "variable"  → produk dengan variasi
+```
+
+Pergantian tipe dilakukan via toggle di form editor.
+Saat switch ke "variable", field harga/stok di-disable dan digantikan oleh harga per variasi.
+
+---
+
+### Konsep: Atribut + Variasi
+
+```
+Produk: "Kaos Polos IKPM"  (product_type = "variable")
+│
+├── Atribut Groups (attribute_groups JSONB di products):
+│   ├── { name: "Ukuran",  values: ["S", "M", "L", "XL", "XXL"] }
+│   └── { name: "Warna",   values: ["Putih", "Hitam", "Navy"] }
+│
+└── Variasi (product_variations table):
+    ├── { ukuran: "S",  warna: "Putih", price: 85000, stock: 10, images: [...] }
+    ├── { ukuran: "M",  warna: "Putih", price: 85000, stock: 15, images: [...] }
+    ├── { ukuran: "L",  warna: "Hitam", price: 90000, stock: 8,  images: [...] }
+    └── ... (semua kombinasi yang aktif)
+```
+
+---
+
+### Schema DB
+
+#### Perubahan `tenant_{slug}.products`
+
+```sql
+ALTER TABLE "{s}".products
+  ADD COLUMN IF NOT EXISTS product_type      TEXT NOT NULL DEFAULT 'simple'
+    CHECK (product_type IN ('simple', 'variable')),
+  ADD COLUMN IF NOT EXISTS attribute_groups  JSONB;
+  -- attribute_groups: [{ name: "Ukuran", values: ["S","M","L"] }, ...]
+  -- Saat simple: null. Saat variable: diisi admin.
+  -- price/stock/images di products tetap ada tapi diabaikan saat variable.
+```
+
+#### Tabel Baru `tenant_{slug}.product_variations`
+
+```sql
+CREATE TABLE IF NOT EXISTS "{s}".product_variations (
+  id             UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id     UUID          NOT NULL REFERENCES "{s}".products(id) ON DELETE CASCADE,
+  sku            TEXT,                         -- SKU per variasi (opsional)
+  price          NUMERIC(15,2) NOT NULL,        -- tier 1
+  public_price   NUMERIC(15,2),                -- tier 2: harga akun login
+  member_price   NUMERIC(15,2),                -- tier 3: harga anggota IKPM
+  stock          INTEGER       NOT NULL DEFAULT 0,
+  images         JSONB         NOT NULL DEFAULT '[]',  -- ProductImage[]
+  attribute_combo JSONB        NOT NULL,        -- { "Ukuran": "M", "Warna": "Hitam" }
+  is_active      BOOLEAN       NOT NULL DEFAULT true,
+  created_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_variations_product_id
+  ON "{s}".product_variations (product_id);
+```
+
+#### Drizzle Schema
+
+```typescript
+// Tambah ke shop.ts — createProductVariationsTable()
+export function createProductVariationsTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("product_variations", {
+    id:             uuid("id").primaryKey().defaultRandom(),
+    productId:      uuid("product_id").notNull(),  // FK via DDL
+    sku:            text("sku"),
+    price:          numeric("price",        { precision: 15, scale: 2 }).notNull(),
+    publicPrice:    numeric("public_price", { precision: 15, scale: 2 }),
+    memberPrice:    numeric("member_price", { precision: 15, scale: 2 }),
+    stock:          integer("stock").notNull().default(0),
+    images:         jsonb("images").notNull().default([]),
+    attributeCombo: jsonb("attribute_combo").notNull().$type<Record<string, string>>(),
+    isActive:       boolean("is_active").notNull().default(true),
+    createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:      timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  });
+}
+```
+
+---
+
+### Tipe Data
+
+```typescript
+// lib/product-card-templates.ts — update ProductCardData
+export type ProductCardData = {
+  // ... existing fields ...
+  productType:  "simple" | "variable";
+  priceMin:     string;  // simple → price; variable → MIN(variation.price)
+  priceMax:     string | null;  // null jika simple; MAX jika variable
+  // publicPrice + memberPrice tetap ada untuk simple product
+  // Untuk variable: display "Mulai dari Rp X" + "Pilih Variasi"
+};
+
+// Tipe untuk variasi
+export type ProductVariationData = {
+  id:             string;
+  sku:            string | null;
+  price:          string;
+  publicPrice:    string | null;
+  memberPrice:    string | null;
+  stock:          number;
+  images:         ProductImage[];
+  attributeCombo: Record<string, string>;  // { "Ukuran": "M", "Warna": "Hitam" }
+  isActive:       boolean;
+};
+
+// Tipe untuk attribute group
+export type AttributeGroup = {
+  name:   string;         // "Ukuran"
+  values: string[];       // ["S", "M", "L", "XL"]
+};
+```
+
+---
+
+### Admin UX — Form Editor Produk
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Tipe Produk                                         │
+│  ○ Produk Simple   ● Produk Variasi                 │
+└──────────────────────────────────────────────────────┘
+
+[Saat Variasi dipilih]
+
+┌──────────────────────────────────────────────────────┐
+│  Atribut Produk                                      │
+│  ┌──────────────────────┬───────────────────────┐   │
+│  │ Group: [Ukuran_____] │ Nilai: S, M, L, XL [x]│   │
+│  │        [Warna______] │ Nilai: Merah, Biru  [x]│   │
+│  └──────────────────────┴───────────────────────┘   │
+│  [+ Tambah Atribut]  [⚡ Generate Semua Variasi]     │
+└──────────────────────────────────────────────────────┘
+
+[Setelah generate — tiap kombinasi muncul sebagai row]
+
+┌──────────────────────────────────────────────────────┐
+│  Variasi (6 variasi dari 2 ukuran × 3 warna)         │
+│  ┌────────────┬──────────┬──────────┬──────────────┐ │
+│  │ Ukuran/Warna│ Harga   │ Stok     │ Aktif        │ │
+│  ├────────────┼──────────┼──────────┼──────────────┤ │
+│  │ M / Merah  │ [85.000] │ [10____] │ [✓]  [foto]  │ │
+│  │ M / Biru   │ [85.000] │ [8_____] │ [✓]  [foto]  │ │
+│  │ L / Merah  │ [90.000] │ [5_____] │ [✓]  [foto]  │ │
+│  └────────────┴──────────┴──────────┴──────────────┘ │
+└──────────────────────────────────────────────────────┘
+```
+
+**"Generate Semua Variasi"** — buat semua kombinasi (cartesian product) dari
+attribute_groups. Kombinasi yang sudah ada tidak di-overwrite.
+
+---
+
+### Front-end Publik — Halaman Detail Produk
+
+```
+┌──────────────────────────────────────────────────────┐
+│  [Foto Variasi Terpilih]                             │
+│                                                      │
+│  Kaos Polos IKPM                                     │
+│  Mulai dari Rp 85.000                               │
+│                                                      │
+│  Ukuran:                                             │
+│  [S] [M] [L] [XL] [XXL]                             │
+│                                                      │
+│  Warna:                                             │
+│  [● Putih] [○ Hitam] [○ Navy]                       │
+│                                                      │
+│  Harga: Rp 90.000     Stok: 8                       │
+│  [- Kuantitas +]                                    │
+│  [+ Tambah ke Keranjang]                            │
+└──────────────────────────────────────────────────────┘
+```
+
+- Saat variasi dipilih → update foto, harga, stok secara real-time (client-side)
+- Data semua variasi di-load saat page render (server component pass ke client)
+- Variasi tidak aktif (`is_active = false`) atau stok 0 → disabled/greyed out
+
+---
+
+### Harga di ProductCard untuk Variable Product
+
+```
+Simple:   Rp 85.000
+Variable: Mulai dari Rp 85.000   ← MIN(price) dari variasi aktif
+          Rp 85.000 – Rp 120.000  ← jika ada range harga
+```
+
+`priceMin` = MIN dari semua variasi aktif — dihitung di fetch layer, disimpan ke
+`ProductCardData` agar tidak perlu JOIN saat render card.
+
+---
+
+### Constraint Komisi untuk Produk Mitra Variable
+
+Untuk setiap variasi mitra, berlaku constraint yang sama:
+```
+variation.member_price ≤ variation.price × (1 - commission_rate)
+```
+
+Validasi dilakukan per variasi saat save, bukan di level produk.
+
+---
+
+### Urutan Implementasi (Ditunda)
+
+```
+Phase V — Produk Variasi
+  Step V1:  Drizzle schema — createProductVariationsTable() + product_type + attribute_groups
+  Step V2:  DDL create-tenant-schema.ts — product_variations table
+  Step V3:  Admin form — toggle simple/variable + AttributeGroupEditor + VariationTable
+  Step V4:  Server actions — saveVariationsAction, generateVariationsAction
+  Step V5:  ProductCardData update — productType + priceMin + priceMax
+  Step V6:  Fetch layer update — JOIN product_variations untuk priceMin
+  Step V7:  Halaman detail publik — variasi picker (client component)
+  Step V8:  Keranjang/checkout — validasi variasi saat add to cart
+  Step V9:  Mitra product form — variasi support + validasi komisi per variasi
+```
+
+---
+
 ## Status Implementasi
 
 | Komponen | Status |
 |----------|--------|
-| Dashboard: CRUD Produk | ✅ Selesai |
+| Dashboard: CRUD Produk (simple) | ✅ Selesai |
 | Dashboard: CRUD Pesanan + konfirmasi bayar | ✅ Selesai |
 | Dashboard: CRUD Kategori | ✅ Selesai |
 | `ProductImage.variants` disimpan + dipakai | ✅ Selesai |
+| Sistem Harga Berlapis (price + public_price + member_price) | ✅ Selesai |
+| ProductCard (grid, list, ringkas) + SessionType + resolvePrice() | ✅ Selesai |
+| **Produk Variasi** (product_type, attribute_groups, product_variations) | ⏸ Ditunda |
 | Front-end: `/{slug}/toko` (archive) | ⏸ Ditunda |
 | Front-end: `/{slug}/toko/{slug}` (detail) | ⏸ Ditunda |
-| ProductCard (grid, list, ringkas) | ✅ Selesai |
 | ProductsSection (Design 1, 2, 3) | ⏸ Ditunda |
