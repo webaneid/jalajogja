@@ -951,7 +951,8 @@ createProductCategoryAction(slug, { name, slug })     → buat kategori baru
 
 ### Tipe Data Kunci
 ```typescript
-type ProductImage = { id: string; url: string; alt: string; order: number };
+type ProductImage = { id: string; url: string; variants?: Record<string, string> | null; alt: string; order: number };
+// variants menyimpan resolved URLs per variant — { square, "square-large" } untuk module shop
 // Disimpan sebagai JSONB array di products.images
 
 type ProductData = {
@@ -1012,7 +1013,9 @@ id, slug, name, parentId, createdAt
 - Ini terjadi khususnya saat ada perubahan import/export antar boundary server-client
 
 **Gambar produk: wajib MediaPicker, bukan URL manual**
-- Array `images: ProductImage[]` — setiap item dari MediaPicker: `{ id, url, alt, order }`
+- Array `images: ProductImage[]` — setiap item dari MediaPicker: `{ id, url, variants, alt, order }`
+- `variants` menyimpan resolved URLs tiap variant — pakai `img.variants?.square` untuk thumbnail grid, `img.url` (=square-large) untuk display besar
+- `getFirstImage()` di admin produk list: prioritas `variants.square` → fallback `url`
 - `order` field: index posisi, di-set ulang saat simpan: `images.map((img, i) => ({ ...img, order: i }))`
 - Reorder via tombol naik/turun (swap adjacent), bukan drag-drop
 - Prevent duplicate: cek `images.some(img => img.id === media.id)` sebelum add

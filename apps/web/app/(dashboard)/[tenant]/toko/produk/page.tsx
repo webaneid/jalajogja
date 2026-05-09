@@ -92,10 +92,11 @@ export default async function ProdukPage({
 
   const statuses = ["all", "active", "draft", "archived"];
 
-  // Ambil thumbnail pertama dari JSONB images
+  // Ambil thumbnail pertama dari JSONB images — pakai square (400×400) untuk grid admin
   function getFirstImage(images: unknown): string | null {
     if (!Array.isArray(images) || images.length === 0) return null;
-    return (images[0] as { url?: string })?.url ?? null;
+    const first = images[0] as { url?: string; variants?: Record<string, string> | null };
+    return first?.variants?.square ?? first?.url ?? null;
   }
 
   return (

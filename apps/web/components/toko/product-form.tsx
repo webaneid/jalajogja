@@ -87,13 +87,13 @@ function ProductImages({
   const [pickerOpen, setPickerOpen] = useState(false);
 
   function handleSelect(media: MediaItem) {
-    // Cek duplikasi
     if (images.some((img) => img.id === media.id)) return;
     const newImg: ProductImage = {
-      id:    media.id,
-      url:   media.url,
-      alt:   media.altText ?? media.originalName,
-      order: images.length,
+      id:       media.id,
+      url:      media.url,
+      variants: media.variants ?? null,
+      alt:      media.altText ?? media.originalName,
+      order:    images.length,
     };
     onChange([...images, newImg]);
   }
@@ -122,7 +122,7 @@ function ProductImages({
             <div key={img.id} className="group relative rounded-md border border-border overflow-hidden aspect-square bg-muted/20">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={img.url}
+                src={img.variants?.square ?? img.url}
                 alt={img.alt}
                 className="w-full h-full object-cover"
               />

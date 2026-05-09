@@ -14,10 +14,11 @@ type ActionResult<T = void> =
 
 // Gambar produk — disimpan di JSONB images[]
 export type ProductImage = {
-  id:    string;  // media.id
-  url:   string;  // URL publik (media.url / MinIO path)
-  alt:   string;  // alt text
-  order: number;  // urutan tampil, 0-based
+  id:       string;                              // media.id
+  url:      string;                              // URL primary (square-large untuk shop)
+  variants?: Record<string, string> | null;     // resolved URLs per variant — { square, "square-large" }
+  alt:      string;                              // alt text
+  order:    number;                              // urutan tampil, 0-based
 };
 
 export type ProductData = {
