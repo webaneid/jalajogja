@@ -4,6 +4,7 @@ Dokumen ini mendefinisikan arsitektur lengkap modul Toko: dashboard admin (CRUD 
 pesanan, kategori) dan front-end publik (listing + detail produk).
 
 **Keterkaitan dokumen:**
+- `docs/arsitektur-mitra.md` — sistem mitra: anggota IKPM yang berjualan di toko tenant
 - `docs/arsitektur-image.md` — sistem gambar, variant, autocrop, module-aware generation
 - `docs/arsitektur-card-section.md` — card + section front-end untuk produk (ProductCard, ProductsSection)
 - `docs/arsitektur-keuangan.md` — integrasi pembayaran pesanan → jurnal keuangan

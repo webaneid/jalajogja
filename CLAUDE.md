@@ -921,6 +921,7 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 
 ## Arsitektur Modul Toko
 > Detail lengkap: **`docs/arsitektur-product.md`**
+> Sistem Mitra (anggota IKPM berjualan): **`docs/arsitektur-mitra.md`**
 > Gambar produk: **`docs/arsitektur-image.md`** (module `shop` → hanya `square` + `square-large`)
 > Front-end card + section: **`docs/arsitektur-card-section.md`**
 
@@ -930,6 +931,7 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Nomor pesanan: `ORD-YYYYMM-NNNNN`
 - Konfirmasi bayar → `recordIncome()` + kurangi stok
 - Front-end `/toko` + `/toko/{slug}` + ProductCard (grid/list/ringkas) + ProductsSection — **⬜ Belum**
+- **Sistem Mitra** — anggota IKPM berjualan di toko tenant — **⬜ Belum** (arsitektur di `docs/arsitektur-mitra.md`)
 
 ### [2026-04] Modul Pengurus Selesai
 
