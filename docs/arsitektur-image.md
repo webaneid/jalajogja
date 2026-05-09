@@ -31,20 +31,23 @@ Berlaku untuk **semua modul** — posts, pages, donasi, event, produk, anggota, 
 ## Enam Variant Standar
 
 ```
-┌─────────────┬────────┬────────┬────────┬──────────────────────────────────┐
-│ Variant     │ Lebar  │ Tinggi │ Rasio  │ Dipakai untuk                    │
-├─────────────┼────────┼────────┼────────┼──────────────────────────────────┤
-│ original    │ as-is  │ as-is  │ as-is  │ Backup — WebP tanpa crop         │
-│ large       │ 1200px │  630px │ 1.91:1 │ Featured image, OG meta, Discover│
-│ medium      │  800px │  420px │ 1.91:1 │ Card list, section preview       │
-│ thumbnail   │  400px │  210px │ 1.91:1 │ Grid kecil, widget, admin list   │
-│ square      │  400px │  400px │  1:1   │ Produk, avatar, icon             │
-│ profile     │  300px │  400px │   3:4  │ Foto profil anggota IKPM         │
-└─────────────┴────────┴────────┴────────┴──────────────────────────────────┘
+┌──────────────┬────────┬────────┬────────┬──────────────────────────────────┐
+│ Variant      │ Lebar  │ Tinggi │ Rasio  │ Dipakai untuk                    │
+├──────────────┼────────┼────────┼────────┼──────────────────────────────────┤
+│ original     │ as-is  │ as-is  │ as-is  │ Backup — WebP tanpa crop         │
+│ large        │ 1200px │  630px │ 1.91:1 │ Featured image, OG meta, Discover│
+│ medium       │  800px │  420px │ 1.91:1 │ Card list, section preview       │
+│ thumbnail    │  400px │  210px │ 1.91:1 │ Grid kecil, widget, admin list   │
+│ square       │  400px │  400px │  1:1   │ Produk kecil, avatar, icon       │
+│ square-large │  800px │  800px │  1:1   │ Produk utama, galeri, OG produk  │
+│ profile      │  300px │  400px │   3:4  │ Foto profil anggota IKPM         │
+└──────────────┴────────┴────────┴────────┴──────────────────────────────────┘
 ```
 
-**Pola dimensi**: `large → medium → thumbnail` adalah satu keluarga rasio yang sama (1.91:1),
-ukurannya setengah dari sebelumnya. `square` dan `profile` adalah variant terpisah.
+**Pola dimensi**:
+- Keluarga 1.91:1: `large → medium → thumbnail` — ukuran setengah dari sebelumnya
+- Keluarga 1:1: `square` (400) → `square-large` (800) — untuk produk dan galeri
+- Independen: `profile` (3:4) — khusus foto orang
 
 ---
 
@@ -56,13 +59,16 @@ ukurannya setengah dari sebelumnya. `square` dan `profile` adalah variant terpis
 | Pages — featured image | `large` | `original` | |
 | Donasi — featured image | `large` | `original` | |
 | Event — featured image | `large` | `original` | |
-| Produk — foto utama | `square` | `large` | Google Shopping standard |
-| Produk — foto tambahan | `square` | `large` | |
+| Produk — foto utama (card besar) | `square-large` | `square` | 800×800 — Google Shopping ideal |
+| Produk — foto utama (card kecil) | `square` | `square-large` | 400×400 — grid padat |
+| Produk — foto tambahan (thumbnail) | `square` | `square-large` | |
 | Anggota — foto profil | `profile` | `square` | Portrait 3:4 |
 | Post card `klasik`/`ringkas` | `medium` | `large` | Aspect 16:9 via CSS |
-| Post card `list` (gambar kecil) | `thumbnail` | `medium` | 120×90px display |
+| Post card `list` (gambar kecil) | `square` | `medium` | 96×96px display — square lebih rapi |
 | Post card `overlay` | `medium` | `large` | |
 | Post Carousel (Design 5) | `medium` | `large` | CSS override ke aspect-[3/4] |
+| Event card — cover | `medium` | `large` | |
+| Campaign card — cover | `medium` | `large` | |
 | Admin media library grid | `thumbnail` | `path` | Lebih cepat untuk grid 6 kolom |
 | Admin media picker thumbnail | `thumbnail` | `path` | 120px display |
 
@@ -111,12 +117,13 @@ dengan ukuran total yang jauh lebih kecil. 10 MB terlalu ketat untuk foto resolu
          │
          ▼
 [4. processImage(buffer) via Sharp — generate 6 variant]
-   ├── original.webp  ← konversi saja, tanpa crop/resize
-   ├── large.webp     ← resize + center crop ke 1200×630
-   ├── medium.webp    ← resize + center crop ke 800×420
-   ├── thumbnail.webp ← resize + center crop ke 400×210
-   ├── square.webp    ← resize + center crop ke 400×400
-   └── profile.webp   ← resize + center crop ke 300×400
+   ├── original.webp      ← konversi saja, tanpa crop/resize
+   ├── large.webp         ← resize + attention crop ke 1200×630
+   ├── medium.webp        ← resize + attention crop ke 800×420
+   ├── thumbnail.webp     ← resize + attention crop ke 400×210
+   ├── square.webp        ← resize + attention crop ke 400×400
+   ├── square-large.webp  ← resize + attention crop ke 800×800  ← BARU
+   └── profile.webp       ← resize + attention crop ke 300×400
          │
          ▼
 [5. Upload semua variant ke MinIO — path: {module}/{year}/{month}/{uuid}_{suffix}.webp]
@@ -152,11 +159,12 @@ hapus variant yang sudah terupload sebelum throw error (cleanup partial upload).
 
 Contoh:
 website/2026/04/a1b2c3d4_ori.webp      ← original (WebP, no crop)
-website/2026/04/a1b2c3d4_lg.webp       ← large
-website/2026/04/a1b2c3d4_md.webp       ← medium
-website/2026/04/a1b2c3d4_th.webp       ← thumbnail
-website/2026/04/a1b2c3d4_sq.webp       ← square
-website/2026/04/a1b2c3d4_pf.webp       ← profile
+website/2026/04/a1b2c3d4_lg.webp       ← large        (1200×630)
+website/2026/04/a1b2c3d4_md.webp       ← medium       (800×420)
+website/2026/04/a1b2c3d4_th.webp       ← thumbnail    (400×210)
+website/2026/04/a1b2c3d4_sq.webp       ← square       (400×400)
+website/2026/04/a1b2c3d4_sql.webp      ← square-large (800×800)
+website/2026/04/a1b2c3d4_pf.webp       ← profile      (300×400)
 
 Untuk bypass (SVG, PDF, video):
 general/2026/04/uuid.svg               ← as-is, no suffix
@@ -190,12 +198,13 @@ Ini menjaga backward compatibility dengan kode yang belum diupdate ke sistem var
 
 ```json
 {
-  "original":  "website/2026/04/a1b2c3d4_ori.webp",
-  "large":     "website/2026/04/a1b2c3d4_lg.webp",
-  "medium":    "website/2026/04/a1b2c3d4_md.webp",
-  "thumbnail": "website/2026/04/a1b2c3d4_th.webp",
-  "square":    "website/2026/04/a1b2c3d4_sq.webp",
-  "profile":   "website/2026/04/a1b2c3d4_pf.webp"
+  "original":      "website/2026/04/a1b2c3d4_ori.webp",
+  "large":         "website/2026/04/a1b2c3d4_lg.webp",
+  "medium":        "website/2026/04/a1b2c3d4_md.webp",
+  "thumbnail":     "website/2026/04/a1b2c3d4_th.webp",
+  "square":        "website/2026/04/a1b2c3d4_sq.webp",
+  "square-large":  "website/2026/04/a1b2c3d4_sql.webp",
+  "profile":       "website/2026/04/a1b2c3d4_pf.webp"
 }
 ```
 
@@ -207,12 +216,13 @@ Ini menjaga backward compatibility dengan kode yang belum diupdate ke sistem var
 // packages/db/src/schema/tenant/website.ts — createMediaTable()
 
 export type ImageVariants = {
-  original?:  string;
-  large?:     string;
-  medium?:    string;
-  thumbnail?: string;
-  square?:    string;
-  profile?:   string;
+  original?:       string;
+  large?:          string;
+  medium?:         string;
+  thumbnail?:      string;
+  square?:         string;
+  "square-large"?: string;
+  profile?:        string;
 };
 
 // Tambah di dalam s.table("media", { ... }):
@@ -234,22 +244,24 @@ import sharp from "sharp";
 import type { ImageVariants } from "@jalajogja/db"; // atau import lokal dari schema
 
 export const IMAGE_VARIANTS = {
-  large:     { width: 1200, height: 630  },
-  medium:    { width: 800,  height: 420  },
-  thumbnail: { width: 400,  height: 210  },
-  square:    { width: 400,  height: 400  },
-  profile:   { width: 300,  height: 400  },
+  large:        { width: 1200, height: 630  },   // 1.91:1 — featured, OG
+  medium:       { width: 800,  height: 420  },   // 1.91:1 — card preview
+  thumbnail:    { width: 400,  height: 210  },   // 1.91:1 — grid kecil
+  square:       { width: 400,  height: 400  },   // 1:1 — produk kecil, avatar
+  "square-large": { width: 800, height: 800 },   // 1:1 — produk utama, galeri
+  profile:      { width: 300,  height: 400  },   // 3:4 — foto profil
 } as const;
 
 const WEBP_QUALITY = 85;
 
 export type ProcessedVariants = {
-  original:  Buffer;
-  large:     Buffer;
-  medium:    Buffer;
-  thumbnail: Buffer;
-  square:    Buffer;
-  profile:   Buffer;
+  original:     Buffer;
+  large:        Buffer;
+  medium:       Buffer;
+  thumbnail:    Buffer;
+  square:       Buffer;
+  "square-large": Buffer;
+  profile:      Buffer;
 };
 
 export function shouldBypass(mime: string): boolean {
@@ -262,15 +274,16 @@ export async function processImage(inputBuffer: Buffer): Promise<ProcessedVarian
     .toBuffer();
 
   // Proses per-key, bukan positional destructuring — urutan Object.entries tidak dijamin
-  const [large, medium, thumbnail, square, profile] = await Promise.all([
-    sharp(inputBuffer).resize(1200, 630,  { fit: "cover", position: "center" }).webp({ quality: WEBP_QUALITY }).toBuffer(),
-    sharp(inputBuffer).resize(800,  420,  { fit: "cover", position: "center" }).webp({ quality: WEBP_QUALITY }).toBuffer(),
-    sharp(inputBuffer).resize(400,  210,  { fit: "cover", position: "center" }).webp({ quality: WEBP_QUALITY }).toBuffer(),
-    sharp(inputBuffer).resize(400,  400,  { fit: "cover", position: "center" }).webp({ quality: WEBP_QUALITY }).toBuffer(),
-    sharp(inputBuffer).resize(300,  400,  { fit: "cover", position: "center" }).webp({ quality: WEBP_QUALITY }).toBuffer(),
+  const [large, medium, thumbnail, square, squareLarge, profile] = await Promise.all([
+    sharp(inputBuffer).resize(1200, 630,  { fit: "cover", position: "attention" }).webp({ quality: WEBP_QUALITY }).toBuffer(),
+    sharp(inputBuffer).resize(800,  420,  { fit: "cover", position: "attention" }).webp({ quality: WEBP_QUALITY }).toBuffer(),
+    sharp(inputBuffer).resize(400,  210,  { fit: "cover", position: "attention" }).webp({ quality: WEBP_QUALITY }).toBuffer(),
+    sharp(inputBuffer).resize(400,  400,  { fit: "cover", position: "attention" }).webp({ quality: WEBP_QUALITY }).toBuffer(),
+    sharp(inputBuffer).resize(800,  800,  { fit: "cover", position: "attention" }).webp({ quality: WEBP_QUALITY }).toBuffer(),
+    sharp(inputBuffer).resize(300,  400,  { fit: "cover", position: "attention" }).webp({ quality: WEBP_QUALITY }).toBuffer(),
   ]);
 
-  return { original, large, medium, thumbnail, square, profile };
+  return { original, large, medium, thumbnail, square, "square-large": squareLarge, profile };
 }
 ```
 
@@ -283,7 +296,7 @@ export async function processImage(inputBuffer: Buffer): Promise<ProcessedVarian
 import { publicUrl } from "@/lib/minio";
 import type { ImageVariants } from "@jalajogja/db"; // atau import lokal dari schema
 
-export type ImageVariant = "original" | "large" | "medium" | "thumbnail" | "square" | "profile";
+export type ImageVariant = "original" | "large" | "medium" | "thumbnail" | "square" | "square-large" | "profile";
 
 /**
  * Resolve URL lengkap untuk variant gambar tertentu.
@@ -810,8 +823,8 @@ apps/web/components/website/public/sections/posts/posts-section.tsx
 |----------|--------|
 | Drizzle schema — 4 kolom baru + `ImageVariants` type | ✅ Selesai |
 | DDL `create-tenant-schema.ts` | ✅ Selesai |
-| `lib/image-processor.ts` | ✅ Selesai |
-| `lib/image-url.ts` | ✅ Selesai |
+| `lib/image-processor.ts` — tambah `square-large` + ganti ke `attention` | ⬜ Belum (Phase D) |
+| `lib/image-url.ts` — tambah `"square-large"` ke `ImageVariant` type | ⬜ Belum (Phase D) |
 | `api/media/upload/route.ts` — pipeline + bypass + rollback | ✅ Selesai |
 | `api/media/delete/route.ts` — hapus semua variant | ✅ Selesai |
 | `api/media/list/route.ts` — variant URLs di response | ✅ Selesai |
