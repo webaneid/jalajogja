@@ -80,6 +80,73 @@ ditandai via `module=general` + ukuran file kecil (belum ada mekanisme eksplisit
 
 ---
 
+## Module-Aware Variant Generation
+
+Tidak semua modul butuh semua variant. Upload route membaca parameter `module` dan hanya
+men-generate variant yang relevan. `ImageVariants` JSONB sudah handle partial variants
+(semua field optional) — `getImageUrl()` fallback gracefully jika variant tidak ada.
+
+### Aturan per Modul
+
+| Module | Variant yang di-generate | Alasan |
+|--------|--------------------------|--------|
+| `shop` | `original`, `square`, `square-large` | Produk butuh square (Google Shopping, card grid + card besar). Landscape tidak relevan. |
+| `members` | `original`, `profile` | Foto profil anggota — portrait 3:4. Square/landscape tidak relevan. |
+| `website`, `event`, `donasi`, `letters`, `general` | `original`, `large`, `medium`, `thumbnail`, `square` | Konten umum: keluarga 1.91:1 untuk featured/OG + square kecil untuk avatar/thumbnail. `square-large` dan `profile` tidak dibutuhkan. |
+
+### Implementasi di Upload Route
+
+```typescript
+// lib/image-processor.ts — variant sets per modul
+export const MODULE_VARIANTS: Record<string, (keyof ProcessedVariants)[]> = {
+  shop:    ["original", "square", "square-large"],
+  members: ["original", "profile"],
+  // default: semua modul lain
+};
+
+export const DEFAULT_VARIANTS: (keyof ProcessedVariants)[] = [
+  "original", "large", "medium", "thumbnail", "square",
+];
+
+export function getVariantsForModule(module: string): (keyof ProcessedVariants)[] {
+  return MODULE_VARIANTS[module] ?? DEFAULT_VARIANTS;
+}
+```
+
+```typescript
+// api/media/upload/route.ts — hanya generate & upload variant yang relevan
+const variantKeys = getVariantsForModule(module);
+const allProcessed = await processImage(inputBuffer);   // generate semua
+const toUpload = variantKeys.reduce((acc, key) => {
+  acc[key] = allProcessed[key];
+  return acc;
+}, {} as Partial<ProcessedVariants>);
+// Upload hanya variant yang dipilih
+```
+
+### Fallback di getImageUrl()
+
+Jika variant yang diminta tidak ada (karena tidak di-generate untuk modul ini),
+`getImageUrl()` fallback ke chain berikutnya:
+
+```
+variant diminta → large → original → path lama (backward compat)
+```
+
+Contoh: card produk meminta `medium` → tidak ada → fallback ke `large` → tidak ada
+→ fallback ke `original` → tetap tampil meski tidak optimal.
+
+### Profile Upload — Belum Diimplementasi
+
+Modul `members` (foto profil anggota) belum punya UI upload — saat ini foto profil diisi
+via URL manual. Saat diimplementasikan:
+- Upload via `module=members`
+- Hanya generate `original` + `profile` (300×400, 3:4)
+- UI crop editor di halaman edit anggota (Phase D2) akan sangat berguna di sini
+  karena foto KTP/selfie sering butuh adjustment posisi wajah
+
+---
+
 ## Format File: WebP Wajib
 
 Semua gambar yang diproses **harus disimpan sebagai WebP**, kecuali file yang di-bypass:

@@ -320,7 +320,7 @@ app/(dashboard)/[tenant]/
 - [x] **Front-end Publik** — PublicLayout (header+footer switcher), `/post` archive + detail, 6 PostCard variants, PostsSection (5 designs), PostsSectionTitle, search API, login/register pages, `/settings/website` dengan header/footer design picker. TypeScript 0 errors.
 - [ ] **Card + Section: Produk, Event, Campaign** — arsitektur di `docs/arsitektur-card-section.md`. Implementasi belum dimulai.
 - [x] **Image System** — Phase A (variant system Sharp + 6 WebP variants + cron cleanup) + Phase B (metadata UI autosave panel) + Phase C (alt/title/caption di semua front-end post) SELESAI. Arsitektur lengkap di `docs/arsitektur-image.md`.
-- [ ] **Image System Phase D — Autocrop + Variant Baru**: tambah `square-large` (800×800) ke semua variant; ganti `position:"center"` → `"attention"` (libvips smart crop); D2 = manual crop override UI (`react-image-crop`) + `crop_data` kolom + `/api/media/[id]/recrop`. Detail di `docs/arsitektur-image.md` bagian Phase D.
+- [ ] **Image System Phase D — Autocrop + Variant Baru**: tambah `square-large` (800×800); module-aware generation (`shop`→square only, `members`→profile only, lainnya→1.91:1+square); ganti ke `position:"attention"`; D2 = manual crop UI. Detail di `docs/arsitektur-image.md`.
 - [x] **View Counter** — DDL + Drizzle schema + `lib/view-counter.ts` + integrasi post detail + kolom admin. Arsitektur lengkap di `docs/arsitektur-views-count.md`.
 - [x] **Widget Area System** — `default-sidebar` live di post archive + detail. DnD builder di `/website/pengaturan`. Arsitektur di `docs/arsitektur-sidebar.md`.
 - [x] **Single post header refactor** — urutan: Kategori → Judul → Meta date (tz-aware: WIB/WITA/WIT) → Author (Gravatar + nama + "Tim Redaksi").
