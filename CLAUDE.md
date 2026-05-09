@@ -918,111 +918,16 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Local state untuk tag/category yang baru dibuat — tidak butuh router.refresh(), ID langsung dipakai
 
 ## Arsitektur Modul Toko
+> Detail lengkap: **`docs/arsitektur-product.md`**
+> Gambar produk: **`docs/arsitektur-image.md`** (module `shop` → hanya `square` + `square-large`)
+> Front-end card + section: **`docs/arsitektur-card-section.md`**
 
-### Struktur Komponen
-```
-components/toko/
-├── toko-nav.tsx              → sub-nav kiri: Dashboard, Produk, Pesanan, Kategori
-├── product-form.tsx          → full editor produk (Tiptap + MediaPicker + SeoPanel + sidebar)
-├── product-list-client.tsx   → tombol pre-create produk baru
-├── order-create-client.tsx   → UI keranjang pesanan manual admin
-├── order-detail-client.tsx   → OrderActions + AddPaymentForm (status transitions)
-└── category-manage-client.tsx → CRUD kategori inline
-```
-
-### Server Actions (toko/actions.ts)
-```typescript
-// Produk
-createProductDraftAction(slug)                        → pre-create + return productId
-updateProductAction(slug, productId, data: ProductData) → full update + SEO
-toggleProductStatusAction(slug, productId)            → draft→active→archived→draft cycle
-deleteProductAction(slug, productId)                  → delete
-
-// Pesanan
-createOrderAction(slug, data: OrderData)              → buat pesanan + generate nomor ORD-YYYYMM-NNNNN
-addPaymentToOrderAction(slug, orderId, paymentData)   → input pembayaran manual
-confirmOrderPaymentAction(slug, paymentId)            → konfirmasi bayar → kurangi stok → recordIncome()
-cancelOrderAction(slug, orderId)                      → cancel → kembalikan stok jika sudah terbayar
-updateOrderStatusAction(slug, orderId, newStatus)     → processing | shipped | done
-
-// Kategori
-createProductCategoryAction(slug, { name, slug })     → buat kategori baru
-```
-
-### Tipe Data Kunci
-```typescript
-type ProductImage = { id: string; url: string; variants?: Record<string, string> | null; alt: string; order: number };
-// variants menyimpan resolved URLs per variant — { square, "square-large" } untuk module shop
-// Disimpan sebagai JSONB array di products.images
-
-type ProductData = {
-  name, slug, sku?, description?, price, stock,
-  images: ProductImage[],   // ← dari MediaPicker, bukan URL manual
-  categoryId?, status,
-  metaTitle?, metaDesc?, ogTitle?, ogDescription?, ogImageId?,
-  twitterCard?, focusKeyword?, canonicalUrl?, robots?,
-};
-```
-
-### Alur Status Produk
-```
-draft → active → archived → draft (cycle)
-```
-- draft: tidak tampil di front-end
-- active: tampil + bisa dipesan
-- archived: tidak tampil, tidak bisa dipesan baru
-
-### Alur Status Pesanan + Pembayaran
-```
-Order: pending → paid → processing → shipped → done
-                 ↓
-             cancelled (dari status apapun kecuali done)
-
-Payment: pending → paid (setelah konfirmasi admin)
-```
-- `confirmOrderPaymentAction`: validasi stok → `recordIncome()` → kurangi stok → order.status = 'paid'
-- `cancelOrderAction`: jika order sudah paid/processing/shipped → kembalikan stok
-
-### Nomor Pesanan
-Format: `ORD-YYYYMM-NNNNN` — via COUNT query per bulan, **bukan** via `financial_sequences` enum.
-Alasan: menghindari DDL change (ALTER TYPE) di tenant yang sudah ada.
-
-### Schema productCategories — Kolom yang Ada
-```
-id, slug, name, parentId, createdAt
-```
-**Tidak ada kolom `description`** — jangan tambahkan di query atau komponen.
-
-### TiptapEditor — Prop Wajib
-`TiptapEditor` butuh prop `slug` (tenant slug) untuk MediaPicker di toolbar:
-```tsx
-<TiptapEditor slug={slug} content={...} onChange={...} />
-```
-
-### [2026-04] Lessons Learned Modul Toko
-
-**Bug: Fungsi utilitas di-export dari "use server" file jadi server action proxy**
-- `slugify` di-export dari `actions.ts` (file `"use server"`)
-- Di client component, fungsi non-async dari `"use server"` file menjadi server action proxy → return `Promise`, bukan nilai langsung
-- Efek: `data.slug` yang diterima server adalah Promise object, bukan string → `trim is not a function`
-- **Fix**: JANGAN import fungsi utilitas (bukan server action) dari file `"use server"`. Selalu implementasikan fungsi utilitas secara lokal di client component, atau pindahkan ke file utility terpisah yang tidak pakai `"use server"`.
-
-**Bug: Dev server cache stale setelah edit client component**
-- Error runtime menunjukkan kode lama meskipun file sudah diubah
-- Fix: restart dev server (`pkill -f "next dev"`) + reload browser
-- Ini terjadi khususnya saat ada perubahan import/export antar boundary server-client
-
-**Gambar produk: wajib MediaPicker, bukan URL manual**
-- Array `images: ProductImage[]` — setiap item dari MediaPicker: `{ id, url, variants, alt, order }`
-- `variants` menyimpan resolved URLs tiap variant — pakai `img.variants?.square` untuk thumbnail grid, `img.url` (=square-large) untuk display besar
-- `getFirstImage()` di admin produk list: prioritas `variants.square` → fallback `url`
-- `order` field: index posisi, di-set ulang saat simpan: `images.map((img, i) => ({ ...img, order: i }))`
-- Reorder via tombol naik/turun (swap adjacent), bukan drag-drop
-- Prevent duplicate: cek `images.some(img => img.id === media.id)` sebelum add
-
-**Sidebar path harus konsisten dengan route folder**
-- Route folder: `[tenant]/toko/` → sidebar path harus `"toko"`, bukan `"shop"`
-- Selalu verifikasi path di `sidebar-nav.tsx` saat buat modul baru
+- Dashboard: CRUD Produk + Pesanan + Kategori — **✅ Selesai**
+- `ProductImage` menyimpan `variants` — pakai `square` untuk thumbnail, `square-large` untuk display besar
+- Status produk: `draft → active → archived → draft`
+- Nomor pesanan: `ORD-YYYYMM-NNNNN`
+- Konfirmasi bayar → `recordIncome()` + kurangi stok
+- Front-end `/toko` + `/toko/{slug}` + ProductCard (grid/list/ringkas) + ProductsSection — **⬜ Belum**
 
 ### [2026-04] Modul Pengurus Selesai
 
