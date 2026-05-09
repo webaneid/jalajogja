@@ -100,21 +100,12 @@ export const SIGNER_ROLE_LABELS: Record<SlotRole, string> = {
   witness:  "Saksi",
 };
 
+import { ID_MONTHS, formatHijri } from "./letter-date";
+
 // ── Format Tanggal TTD ────────────────────────────────────────────────────────
 // Format tanggal TTD TIDAK punya setting sendiri — selalu mengikuti letter_config
 // dari /letters/pengaturan (date_format + hijri_offset).
 // Kota TIDAK ditampilkan di blok TTD (kota hanya untuk header surat).
-
-const ID_MONTHS = [
-  "Januari","Februari","Maret","April","Mei","Juni",
-  "Juli","Agustus","September","Oktober","November","Desember",
-];
-
-const HIJRI_MONTHS = [
-  "Muharram","Safar","Rabiul Awal","Rabiul Akhir",
-  "Jumadil Awal","Jumadil Akhir","Rajab","Sya'ban",
-  "Ramadan","Syawal","Dzulqa'dah","Dzulhijjah",
-];
 
 /**
  * Format tanggal untuk blok TTD — tanpa kota, pakai date_format + hijri_offset
@@ -135,23 +126,7 @@ export function formatSignatureDate(
     return [masehiLine];
   }
 
-  // masehi_hijri — hitung tanggal Hijriah
-  const shifted = new Date(date);
-  shifted.setDate(shifted.getDate() + hijriOffset);
-
-  let hijriLine = "";
-  try {
-    const parts = new Intl.DateTimeFormat("id-ID-u-ca-islamic-umalqura", {
-      year: "numeric", month: "numeric", day: "numeric",
-    }).formatToParts(shifted);
-    const hDay   = Number(parts.find((p) => p.type === "day")?.value   ?? "0");
-    const hMonth = Number(parts.find((p) => p.type === "month")?.value ?? "1");
-    const hYear  = Number(parts.find((p) => p.type === "year")?.value  ?? "0");
-    hijriLine = `${hDay} ${HIJRI_MONTHS[(hMonth - 1) % 12]} ${hYear} H`;
-  } catch {
-    hijriLine = "";
-  }
-
+  const hijriLine = formatHijri(date, hijriOffset);
   return hijriLine
     ? [`${masehiLine} M`, hijriLine]
     : [masehiLine];
@@ -187,11 +162,9 @@ export function renderSignatureBlockHtml(
   const mainSlots     = slots.filter((s) => s.section === "main").sort((a, b) => a.order - b.order);
   const witnessSlots  = slots.filter((s) => s.section === "witnesses").sort((a, b) => a.order - b.order);
 
-  function renderSlot(slot: HtmlSlot, label: string): string {
-    const name     = slot.officerName ?? "_______________";
-    const pos      = slot.position   ?? "";
-    const div      = slot.division   ?? "";
-    const roleLabel = slot.role ? (SIGNER_ROLE_LABELS[slot.role] ?? slot.role) : label;
+  function renderSlot(slot: HtmlSlot): string {
+    const name = slot.officerName ?? "_______________";
+    const pos  = slot.position   ?? "";
 
     const dateLines = (opts.showDate && slot.signedAt)
       ? formatSignatureDate(slot.signedAt, opts.dateFormat, opts.hijriOffset)
@@ -207,10 +180,9 @@ export function renderSignatureBlockHtml(
 
     return `
       <div class="signer-block">
-        <p class="signer-role">${escHtml(roleLabel)}</p>
         ${qrHtml}
         <p class="signer-name">${escHtml(name)}</p>
-        ${pos ? `<p class="signer-pos">${escHtml(pos)}${div ? ` / ${escHtml(div)}` : ""}</p>` : ""}
+        ${pos ? `<p class="signer-pos">${escHtml(pos)}</p>` : ""}
         ${dateHtml}
       </div>`;
   }
@@ -222,11 +194,11 @@ export function renderSignatureBlockHtml(
     const [s1, s2, s3] = mainSlots;
     mainHtml = `
       <div class="sign-row sign-space-between">
-        ${renderSlot(s1, getSlotLabel(layout, s1))}
-        ${renderSlot(s2, getSlotLabel(layout, s2))}
+        ${renderSlot(s1)}
+        ${renderSlot(s2)}
       </div>
       <div class="sign-row sign-center" style="margin-top:12px;">
-        ${renderSlot(s3, getSlotLabel(layout, s3))}
+        ${renderSlot(s3)}
       </div>`;
   } else {
     const justifyMap: Record<SignatureLayout, string> = {
@@ -241,7 +213,7 @@ export function renderSignatureBlockHtml(
     const cls = justifyMap[layout] ?? "sign-center";
     mainHtml = `
       <div class="sign-row ${cls}">
-        ${mainSlots.map((s) => renderSlot(s, getSlotLabel(layout, s))).join("")}
+        ${mainSlots.map((s) => renderSlot(s)).join("")}
       </div>`;
   }
 
@@ -252,7 +224,7 @@ export function renderSignatureBlockHtml(
       <div class="sign-witnesses">
         <p class="sign-witness-label">Saksi:</p>
         <div class="sign-witness-grid">
-          ${witnessSlots.map((s) => renderSlot(s, getSlotLabel(layout, s))).join("")}
+          ${witnessSlots.map((s) => renderSlot(s)).join("")}
         </div>
       </div>`;
   }
@@ -278,8 +250,7 @@ export const SIGNATURE_CSS = `
   .sign-witness-label{ font-size: 11pt; margin-bottom: 8px; }
   .sign-witness-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .signer-block      { display: flex; flex-direction: column; align-items: center; min-width: 130px; }
-  .signer-role       { font-size: 10pt; margin-bottom: 6px; color: #333; }
-  .qr-img            { width: 90px; height: 90px; border: 1px solid #ccc; }
+  .qr-img            { width: 90px; height: 90px; }
   .qr-placeholder    { width: 90px; height: 90px; border: 1px dashed #bbb; background: #f9f9f9; }
   .signer-name       { font-size: 11pt; font-weight: bold; margin-top: 6px; text-align: center; }
   .signer-pos        { font-size: 9pt; text-align: center; color: #333; margin-top: 2px; }

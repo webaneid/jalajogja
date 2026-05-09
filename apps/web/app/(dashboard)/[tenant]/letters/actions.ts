@@ -741,14 +741,14 @@ export async function signLetterAction(
       .digest("hex");
 
     if (existing) {
-      // Slot sudah di-assign via syncSignatureSlotsAction → UPDATE (clear token + set signedAt)
+      // Slot sudah di-assign via syncSignatureSlotsAction → UPDATE (set signedAt, token TETAP)
+      // Token dipertahankan agar link masih bisa dibuka → tampil halaman "sudah ditandatangani"
+      // Tidak bisa sign ulang karena signedAt sudah terisi (dicek di atas)
       await tenantDb
         .update(schema.letterSignatures)
         .set({
           signedAt,
           verificationHash,
-          signingToken:          null,   // invalidate — tidak bisa sign ulang via URL
-          signingTokenExpiresAt: null,
           role,
           ipAddress: ipAddress ?? null,
         })
@@ -1044,16 +1044,20 @@ export async function generateSigningTokenAction(
       .limit(1);
 
     if (!sig) return { success: false, error: "Slot tidak ditemukan." };
-    if (sig.signedAt) return { success: false, error: "Slot sudah ditandatangani." };
-    // Kalau sudah ada token kembalikan saja
+    // Kalau sudah ada token kembalikan saja (signed maupun belum)
     if (sig.signingToken) return { success: true, token: sig.signingToken };
 
+    // Tidak ada token (slot lama / token pernah di-null) → generate baru
+    // Untuk slot yang sudah TTD: token tetap valid agar link menampilkan "sudah ditandatangani"
     const token = randomUUID();
+    const expiresAt = sig.signedAt
+      ? null  // slot sudah TTD — token tidak perlu expiry
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await tenantDb
       .update(schema.letterSignatures)
       .set({
         signingToken:          token,
-        signingTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        signingTokenExpiresAt: expiresAt,
       })
       .where(eq(schema.letterSignatures.id, signatureId));
 

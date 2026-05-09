@@ -3,7 +3,7 @@
 // Variabel: {number}, {number:N}, {type_code}, {org_code}, {issuer_code},
 //           {month_roman}, {month}, {year}, {year:2}
 
-const ROMAN = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"] as const;
+import { ROMAN_MONTHS } from "./letter-date";
 
 export type LetterNumberConfig = {
   number_format:  string;   // template string
@@ -40,7 +40,7 @@ export function resolveLetterNumberFormat(
     .replace(/\{type_code\}/g, typeCode)
     .replace(/\{org_code\}/g, orgCode)
     .replace(/\{issuer_code\}/g, issuerCode)
-    .replace(/\{month_roman\}/g, ROMAN[month])
+    .replace(/\{month_roman\}/g, ROMAN_MONTHS[month])
     .replace(/\{month\}/g, String(month + 1).padStart(2, "0"))
     // {year:2} — harus lebih dulu dari {year}
     .replace(/\{year:2\}/g, String(year).slice(-2))

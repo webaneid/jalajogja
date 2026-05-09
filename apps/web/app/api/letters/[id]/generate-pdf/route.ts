@@ -40,6 +40,8 @@ export async function POST(
   const tenantClient            = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
 
+  try {
+
   // Fetch surat
   const [letter] = await tenantDb
     .select()
@@ -51,9 +53,16 @@ export async function POST(
     return NextResponse.json({ error: "Surat tidak ditemukan" }, { status: 404 });
   }
 
-  // Fetch letter_config dari settings (kop surat, margin, font)
-  // URL gambar header/footer disimpan langsung di config (tidak perlu lookup media table)
-  const generalSettingsRaw = await getSettings(tenantClient, "general");
+  // Fetch settings general (letter_config, primary_color) dan display sekaligus
+  const [generalSettingsRaw, displaySettings] = await Promise.all([
+    getSettings(tenantClient, "general"),
+    getSettings(tenantClient, "display"),
+  ]);
+
+  const primaryColor = typeof displaySettings["primary_color"] === "string"
+    ? displaySettings["primary_color"]
+    : "#2563eb"; // fallback = warna default UI jika belum pernah disimpan
+  console.log("[generate-pdf] primaryColor:", primaryColor);
   const rawLetterConfig = (generalSettingsRaw["letter_config"] as {
     header_image_url?: string | null;
     footer_image_url?: string | null;
@@ -84,10 +93,13 @@ export async function POST(
       .then((r) => r[0]),
   ]);
 
-  const orgName    = (generalSettingsRaw["site_name"] as string | undefined) ?? tenantRow?.name ?? "";
-  const orgAddress = (orgSettings["contact_address"] as { detail?: string } | undefined)?.detail ?? "";
-  const orgPhone   = (orgSettings["contact_phone"] as string | undefined) ?? "";
-  const orgEmail   = (orgSettings["contact_email"] as string | undefined) ?? "";
+  // Paksa ke string — JSONB settings bisa mengembalikan tipe apapun di runtime
+  const toStr = (v: unknown): string => (typeof v === "string" ? v : (v == null ? "" : String(v)));
+
+  const orgName    = toStr((generalSettingsRaw["site_name"] as string | undefined) ?? tenantRow?.name);
+  const orgAddress = toStr((orgSettings["contact_address"] as { detail?: string } | undefined)?.detail);
+  const orgPhone   = toStr(orgSettings["contact_phone"]);
+  const orgEmail   = toStr(orgSettings["contact_email"]);
 
   // Ambil kota untuk format tanggal surat
   // Prioritas: letter_config.letter_city (override) → kota dari settings kontak (fallback)
@@ -227,8 +239,8 @@ export async function POST(
     orgCity,
     hijriOffset,
     // Layout TTD
-    signatureLayout:   ((letter as { signatureLayout?: string }).signatureLayout ?? "double") as import("@/lib/letter-signature-layout").SignatureLayout,
-    signatureShowDate: (letter as { signatureShowDate?: boolean }).signatureShowDate ?? true,
+    signatureLayout: ((letter as { signatureLayout?: string }).signatureLayout ?? "double") as import("@/lib/letter-signature-layout").SignatureLayout,
+    primaryColor,
   });
 
   // Playwright → PDF
@@ -265,5 +277,11 @@ export async function POST(
     .where(eq(schema.letters.id, letterId));
 
   // Kembalikan URL PDF
-  return NextResponse.json({ success: true, pdfUrl }, { status: 200 });
+    return NextResponse.json({ success: true, pdfUrl }, { status: 200 });
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[generate-pdf] ERROR:", err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

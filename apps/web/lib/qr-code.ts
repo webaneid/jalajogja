@@ -2,13 +2,13 @@
 // Return: data URL "data:image/png;base64,..." siap dipakai di <img src={...} />
 import QRCode from "qrcode";
 
-export async function generateQrDataUrl(text: string): Promise<string> {
+export async function generateQrDataUrl(text: string, darkColor = "#000000"): Promise<string> {
   return QRCode.toDataURL(text, {
     width: 200,
     margin: 1,
     errorCorrectionLevel: "M",
     color: {
-      dark:  "#000000",
+      dark:  darkColor,
       light: "#ffffff",
     },
   });

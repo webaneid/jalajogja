@@ -11,18 +11,9 @@ import {
   type SignatureSlot,
 } from "./letter-signature-layout";
 
+import { ID_MONTHS, formatHijri } from "./letter-date";
+
 // ── Helpers tanggal ──────────────────────────────────────────────────────────
-
-const ID_MONTHS_HTML = [
-  "Januari","Februari","Maret","April","Mei","Juni",
-  "Juli","Agustus","September","Oktober","November","Desember",
-] as const;
-
-const HIJRI_MONTHS_HTML = [
-  "Muharram","Safar","Rabiul Awal","Rabiul Akhir",
-  "Jumadil Awal","Jumadil Akhir","Rajab","Sya'ban",
-  "Ramadan","Syawal","Dzulqa'dah","Dzulhijjah",
-] as const;
 
 function formatLetterDate(
   letterDate: Date,
@@ -33,28 +24,15 @@ function formatLetterDate(
   const dd   = letterDate.getDate();
   const mm   = letterDate.getMonth();
   const yyyy = letterDate.getFullYear();
-  const masehiStr = `${dd} ${ID_MONTHS_HTML[mm]} ${yyyy}`;
+  const masehiStr = `${dd} ${ID_MONTHS[mm]} ${yyyy}`;
   const prefix = orgCity ? `${orgCity}, ` : "";
 
   if (format === "masehi") {
     return `${prefix}${masehiStr}`;
   }
 
-  // masehi_hijri — hitung Hijriah, hasilkan dua baris HTML
-  const shifted = new Date(letterDate);
-  shifted.setDate(shifted.getDate() + hijriOffset);
-  let hijriLine = "";
-  try {
-    const parts = new Intl.DateTimeFormat("id-ID-u-ca-islamic-umalqura", {
-      year: "numeric", month: "numeric", day: "numeric",
-    }).formatToParts(shifted);
-    const hDay   = Number(parts.find((p) => p.type === "day")?.value   ?? "0");
-    const hMonth = Number(parts.find((p) => p.type === "month")?.value ?? "1");
-    const hYear  = Number(parts.find((p) => p.type === "year")?.value  ?? "0");
-    hijriLine = `${hDay} ${HIJRI_MONTHS_HTML[(hMonth - 1) % 12]} ${hYear} H`;
-  } catch {
-    hijriLine = "";
-  }
+  // masehi_hijri — hasilkan dua baris HTML: Masehi di atas, Hijriah di bawah
+  const hijriLine = formatHijri(letterDate, hijriOffset);
   return `${prefix}${masehiStr} M<br><hr style="border:none;border-top:0.5px solid currentColor;opacity:0.4;margin:2px 0;">${hijriLine}`;
 }
 
@@ -106,11 +84,11 @@ function renderIdentitasSurat(p: IdentitasParams): string {
       </div>`;
   }
 
-  // Layout 2: tanggal pojok kanan atas, identitas di bawah
+  // Layout 2: identitas kiri, tanggal kanan — sejajar (sama level dengan baris Nomor)
   return `
     <div class="identitas-layout2">
-      <div class="id-tanggal-atas">${dateDiv}</div>
-      ${identitasTable}
+      <div class="id-kiri">${identitasTable}</div>
+      <div class="id-kanan">${dateDiv}</div>
     </div>`;
 }
 
@@ -191,9 +169,10 @@ type LetterHtmlParams = {
   letterTypeName:   string;
   orgCity:          string;   // kota dari settings.contact_address (regency name)
   hijriOffset:      number;
-  // Layout TTD — dari letters.signature_layout + signature_show_date
-  signatureLayout:   SignatureLayout;
-  signatureShowDate: boolean;
+  // Layout TTD — dari letters.signature_layout
+  signatureLayout: SignatureLayout;
+  // Warna primary dari settings.display (untuk QR barcode)
+  primaryColor?:   string;
 };
 
 // ROLE_LABELS dipindah ke lib/letter-signature-layout.ts (SIGNER_ROLE_LABELS)
@@ -214,6 +193,7 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
     template, signers, orgName, orgAddress, orgPhone, orgEmail,
     identitasLayout, dateFormat, attachmentLabel, showLampiran,
     letterTypeName, orgCity, hijriOffset,
+    primaryColor,
   } = params;
 
   // Parse letterDate dari ISO string ke Date object untuk kalkulasi format
@@ -247,11 +227,12 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
   const resolvedBody = resolveMergeFields(params.body ?? "", mergeCtx, hijriOffset);
   const bodyHtml     = renderBody(resolvedBody);
 
-  // Generate QR untuk setiap penandatangan
+  // Generate QR untuk setiap penandatangan — warna sesuai primary color tenant
+  const qrColor = primaryColor ?? "#000000";
   const signersWithQr = await Promise.all(
     signers.map(async (s) => {
       const verifyUrl = buildVerifyUrl(s.slug, s.verificationHash);
-      const qrDataUrl = await generateQrDataUrl(verifyUrl);
+      const qrDataUrl = await generateQrDataUrl(verifyUrl, qrColor);
       return { ...s, qrDataUrl, verifyUrl };
     })
   );
@@ -306,13 +287,15 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
   );
 
   // Konversi signers ke SignatureSlot[] untuk renderSignatureBlockHtml (Layer 1)
+  // Jabatan dilengkapi nama tenant agar tampil lengkap di surat resmi, misal:
+  // "Ketua 1" → "Ketua 1 IKPM Cabang DI Yogyakarta"
   const signatureSlots: (SignatureSlot & { qrDataUrl: string | null }) [] = signersWithQr.map((s, i) => ({
     id:           null,
     order:        i + 1,
     section:      "main" as const,
     officerId:    null,
     officerName:  s.name,
-    position:     s.position,
+    position:     s.position && orgName ? `${s.position} ${orgName}` : (s.position ?? ""),
     division:     s.division,
     role:         s.role as "signer" | "approver" | "witness",
     signedAt:     s.signedAt,
@@ -321,12 +304,13 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
     signingToken: null,
   }));
 
+  // Tanggal TTD tidak ditampilkan di PDF — selalu off
   const signSection = renderSignatureBlockHtml(
     params.signatureLayout,
     signatureSlots,
     {
-      showDate:   params.signatureShowDate,
-      dateFormat: params.dateFormat,
+      showDate:    false,
+      dateFormat:  params.dateFormat,
       hijriOffset: params.hijriOffset,
     }
   );
@@ -375,9 +359,13 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
     .id-kanan { text-align: right; white-space: nowrap; }
     .id-tanggal { font-size: 12pt; }
 
-    /* Layout 2 — tanggal pojok kanan atas */
-    .identitas-layout2 { margin-top: 16px; }
-    .id-tanggal-atas { text-align: right; margin-bottom: 8px; font-size: 12pt; }
+    /* Layout 2 — identitas kiri, tanggal kanan sejajar */
+    .identitas-layout2 {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-top: 16px;
+    }
 
     /* Layout 3 — terpusat */
     .identitas-layout3 { text-align: center; margin-top: 16px; }

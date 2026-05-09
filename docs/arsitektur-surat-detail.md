@@ -223,6 +223,9 @@ link node dengan href = `http://variable` tetap di-render sebagai `<a>`, bukan c
 - Untuk mark baru: tambah case di `applyMark()` di `letter-render.ts`
 - CSS styling di halaman detail: inline Tailwind prose di `dangerouslySetInnerHTML` wrapper,
   bukan inline style di HTML yang di-generate (keduanya bisa koeksistensi)
+- **Konstanta bulan terpusat di `lib/letter-date.ts`** — `ROMAN_MONTHS`, `ID_MONTHS`, `HIJRI_MONTHS`,
+  dan `formatHijri()`. Jangan definisikan ulang di file lain. Tiga file yang mengimport: `letter-number.ts`,
+  `letter-merge.ts`, `letter-html.ts`.
 
 ---
 

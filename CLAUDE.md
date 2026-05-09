@@ -1863,8 +1863,74 @@ Field `memberId`/`profileId` null sesuai type; UI branching hanya via `identity.
 
 ---
 
+### [2026-05] Refactor: Konstanta Bulan Surat Dipusatkan
+
+Sebelumnya konstanta nama bulan (ROMAN, ID, Hijri) dan logika format Hijri terduplikasi di 3 file:
+`letter-number.ts`, `letter-merge.ts`, `letter-html.ts`.
+
+**Fix**: ekstrak ke `lib/letter-date.ts` — satu sumber kebenaran.
+- `ROMAN_MONTHS`, `ID_MONTHS`, `HIJRI_MONTHS` — array konstanta
+- `formatHijri(date, hijriOffset?)` — helper shared untuk format string Hijriah
+
+Semua file sebelumnya di-update ke import dari `letter-date.ts`. TypeScript 0 errors.
+
+**Aturan**: Jangan pernah mendefinisikan ulang konstanta atau helper tanggal surat di file lain.
+Selalu import dari `lib/letter-date.ts`.
+
+### [2026-05] Generate PDF Surat — Fix + 4 Improvement
+
+**Fix error 500**: tambah `try/catch` top-level di route; `orgPhone`/`orgEmail` dari JSONB settings
+dipaksa ke string via helper `toStr()` (JSONB bisa mengembalikan tipe apapun, TypeScript cast tidak cukup).
+
+**4 improvement yang dikunci:**
+- QR barcode warna sesuai `primary_color` dari `settings.display` (fallback `#2563eb` jika belum disimpan)
+- Tanggal TTD **tidak pernah** tampil di PDF — `showDate: false` di-enforce langsung di `buildLetterHtml`
+- Jabatan penandatangan dilengkapi nama tenant: `"Ketua 1"` → `"Ketua 1 IKPM Cabang DI Yogyakarta"`
+- Layout 2 identitas surat difix: tanggal sekarang **sejajar** dengan Nomor/Lampiran/Hal (flex row),
+  bukan di atas tabel identitas
+
+**Fix tambahan**: nama divisi (`/ Ketua`) dihapus dari blok TTD PDF — cukup jabatan saja (position).
+`renderSlot` di `letter-signature-layout.ts` tidak lagi render `div` field sama sekali.
+Border QR code di PDF dihapus (`.qr-img` tidak punya `border`) — barcode tampil bersih tanpa frame.
+
+**Debug color**: `console.log("[generate-pdf] primaryColor: ...")` ada di route sementara untuk verifikasi.
+Hapus setelah konfirmasi warna sudah benar.
+
+**File yang diubah**: `lib/qr-code.ts`, `lib/letter-html.ts`, `lib/letter-signature-layout.ts`,
+`app/api/letters/[id]/generate-pdf/route.ts`
+
+**Aturan PDF surat**: `signatureShowDate` di DB tidak dipakai untuk PDF — tanggal TTD hanya
+untuk tampilan dashboard (jika ditambah di UI nanti). Label role ("Penandatangan") dan nama divisi
+tidak tampil di PDF — blok TTD hanya berisi: QR · Nama · Jabatan+NamaTenant.
+
+### [2026-05] Bug: Link TTD "Tidak Valid" setelah officer menandatangani
+
+**Masalah**: Setelah officer TTD via link, jika link dibuka lagi → "Link Tidak Valid".
+
+**Root cause**: `signLetterAction` meng-null-kan `signingToken` setelah signing (alasan lama:
+"invalidate agar tidak bisa sign ulang"). Padahal token null = row tidak bisa ditemukan by token
+= "Link Tidak Valid" alih-alih "sudah ditandatangani".
+
+**Mengapa aman mempertahankan token setelah signing:**
+Double-sign sudah dicegah oleh `if (existing?.signedAt) return { error }` di `signLetterAction` —
+bukan oleh nullifikasi token. Token yang tetap ada hanya memungkinkan link menampilkan halaman
+konfirmasi "sudah ditandatangani".
+
+**Fix:**
+1. `signLetterAction` — hapus `signingToken: null` dari UPDATE setelah signing
+2. `generateSigningTokenAction` — hapus guard `if (sig.signedAt) return error` agar admin bisa
+   pulihkan link untuk slot yang tokennya sudah terlanjur di-null; token slot signed tidak punya expiry
+3. `signature-slot-manager.tsx` — tombol "Pulihkan Link Konfirmasi" muncul di signed slot yang tokennya null
+   + link konfirmasi (salin) tampil di signed slot yang sudah punya token
+
+**Untuk slot lama yang tokennya sudah di-null**: admin klik "Pulihkan Link Konfirmasi" di halaman
+detail surat → token baru di-generate → bagikan link baru ke officer → halaman tampil
+"sudah ditandatangani" dengan benar.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Dashboard akun anggota final** — label menu diperbarui (Belanja/Donasi/Event), card "Produk" coming soon. TypeScript 0 errors.
+- Terakhir dikerjakan: **PDF surat improvement** (QR color dari primary_color, tanggal TTD off, jabatan+orgName, layout 2 fix, hapus divisi dari TTD block). TypeScript 0 errors.
+- Selesai: fix halaman sign publik `/{slug}/sign/{token}` — "Link Tidak Valid" setelah TTD.
+- Sebelumnya: Dashboard akun anggota final — label menu diperbarui (Belanja/Donasi/Event), card "Produk" coming soon.
 - Next: Halaman listing Donasi, Event, Toko (riwayat per user) — semua masih under construction
 
 ### Status Halaman Publik Anggota

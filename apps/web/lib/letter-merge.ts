@@ -107,51 +107,23 @@ type MergeContext = {
   };
 };
 
+import { ROMAN_MONTHS, ID_MONTHS, formatHijri } from "./letter-date";
+
 // ─── Helper: tanggal hari ini dalam berbagai format ─────────────────────────
 
-const ROMAN_MONTHS = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"] as const;
-const ID_MONTHS    = ["Januari","Februari","Maret","April","Mei","Juni",
-                      "Juli","Agustus","September","Oktober","November","Desember"] as const;
-const HIJRI_MONTHS = [
-  "Muharram","Safar","Rabiul Awal","Rabiul Akhir",
-  "Jumadil Awal","Jumadil Akhir","Rajab","Sya'ban",
-  "Ramadan","Syawal","Dzulqa'dah","Dzulhijjah",
-] as const;
-
 // hijriOffset: penyesuaian hari kalender pemerintah RI vs kalkulasi internasional (-1/0/+1)
-// Base algorithm: islamic-umalqura (Umm al-Qura, Saudi Arabia) via Intl bawaan Node.js
 function buildTodayVars(hijriOffset = 0): Record<string, string> {
   const now  = new Date();
   const dd   = String(now.getDate()).padStart(2, "0");
   const mm   = String(now.getMonth() + 1).padStart(2, "0");
   const yyyy = String(now.getFullYear());
 
-  // Hitung tanggal Hijriah dengan offset
-  const shifted = new Date(now);
-  shifted.setDate(shifted.getDate() + hijriOffset);
-
-  let hijriStr = "";
-  try {
-    const parts = new Intl.DateTimeFormat("id-ID-u-ca-islamic-umalqura", {
-      year: "numeric", month: "numeric", day: "numeric",
-    }).formatToParts(shifted);
-
-    const hDay   = Number(parts.find((p) => p.type === "day")?.value   ?? "0");
-    const hMonth = Number(parts.find((p) => p.type === "month")?.value ?? "1");
-    const hYear  = Number(parts.find((p) => p.type === "year")?.value  ?? "0");
-    const monthName = HIJRI_MONTHS[(hMonth - 1) % 12];
-    hijriStr = `${hDay} ${monthName} ${hYear} H`;
-  } catch {
-    // Fallback jika Intl tidak support islamic-umalqura di runtime ini
-    hijriStr = "";
-  }
-
   return {
     "today":        `${dd}/${mm}/${yyyy}`,
     "today.roman":  ROMAN_MONTHS[now.getMonth()],
     "today.year":   yyyy,
     "today.id":     `${now.getDate()} ${ID_MONTHS[now.getMonth()]} ${yyyy}`,
-    "today.hijri":  hijriStr,
+    "today.hijri":  formatHijri(now, hijriOffset),
   };
 }
 

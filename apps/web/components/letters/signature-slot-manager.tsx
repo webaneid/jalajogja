@@ -406,6 +406,32 @@ export function SignatureSlotManager({
         {/* Mode detail — QR sudah TTD */}
         {mode === "detail" && isSigned && (
           <div className="space-y-1">
+            {/* Token hilang (slot lama) → admin bisa generate link konfirmasi */}
+            {!slot.signingToken && slot.id && isAdmin && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => handleGenerateToken(slot)}
+                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+              >
+                <PenLine className="h-3 w-3" />
+                Pulihkan Link Konfirmasi
+              </button>
+            )}
+            {slot.signingToken && (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-muted-foreground">Link konfirmasi:</span>
+                <button
+                  type="button"
+                  onClick={() => copySigningLink(slot.signingToken!)}
+                  className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+                >
+                  {copiedToken === slot.signingToken
+                    ? <><Check className="h-3 w-3" /> Tersalin</>
+                    : <><Copy className="h-3 w-3" /> Salin</>}
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => setExpandedQr(qrOpen ? null : key)}
