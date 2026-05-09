@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, getTenantAccess } from "@/lib/tenant";
 import { createTenantDb } from "@jalajogja/db";
 import { uploadFile, deleteFile, ensureBucket, buildPath, publicUrl } from "@/lib/minio";
-import { shouldBypass, processImage } from "@/lib/image-processor";
+import { shouldBypass, processImage, getVariantsForModule, type VariantKey } from "@/lib/image-processor";
 import { randomUUID } from "crypto";
 import path from "path";
 
@@ -18,14 +18,18 @@ const ALLOWED_TYPES: Record<string, string> = {
 
 const MAX_SIZE = 20 * 1024 * 1024; // 20 MB
 
-const VARIANT_SUFFIXES = {
-  original:  "_ori",
-  large:     "_lg",
-  medium:    "_md",
-  thumbnail: "_th",
-  square:    "_sq",
-  profile:   "_pf",
-} as const;
+const VARIANT_SUFFIXES: Record<VariantKey, string> = {
+  original:       "_ori",
+  large:          "_lg",
+  medium:         "_md",
+  thumbnail:      "_th",
+  square:         "_sq",
+  "square-large": "_sql",
+  profile:        "_pf",
+};
+
+// Urutan prioritas untuk path backward-compat (kode lama pakai path tunggal)
+const PATH_PRIORITY: VariantKey[] = ["large", "square-large", "square", "profile", "original"];
 
 export async function POST(req: NextRequest) {
   const session = await getCurrentSession();
@@ -95,10 +99,10 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ── Pipeline gambar: generate 6 variant WebP ───────────────────────────────
-  const variants = await processImage(buffer);
+  // ── Pipeline gambar: generate semua variant, upload subset per modul ───────
+  const allVariants  = await processImage(buffer);
+  const variantKeys  = getVariantsForModule(module);
 
-  // Upload semua variant — track yang berhasil untuk rollback jika gagal
   const now      = new Date();
   const basePath = `${module}/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}`;
 
@@ -107,9 +111,9 @@ export async function POST(req: NextRequest) {
 
   try {
     await Promise.all(
-      (Object.keys(variants) as Array<keyof typeof variants>).map(async (name) => {
+      variantKeys.map(async (name) => {
         const filePath = `${basePath}/${uuid}${VARIANT_SUFFIXES[name]}.webp`;
-        await uploadFile(slug, filePath, variants[name], "image/webp");
+        await uploadFile(slug, filePath, allVariants[name], "image/webp");
         variantPaths[name] = filePath;
         uploadedPaths.push(filePath);
       }),
@@ -121,22 +125,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Gagal memproses gambar" }, { status: 500 });
   }
 
-  const expiresAt  = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
-  const largePath  = variantPaths.large;
-  const filename   = path.basename(largePath);
+  // Primary path: prioritas large → square-large → square → profile → original
+  const primaryKey  = PATH_PRIORITY.find(k => variantPaths[k]) ?? variantKeys[0];
+  const primaryPath = variantPaths[primaryKey];
+  const filename    = path.basename(primaryPath);
 
   const [media] = await tenantDb.insert(schema.media).values({
     filename,
     originalName:        file.name,
     mimeType:            "image/webp",
     originalMime:        file.type,
-    size:                variants.large.length,
-    path:                largePath,
+    size:                allVariants[primaryKey].length,
+    path:                primaryPath,
     module:              module as "general" | "website" | "members" | "letters" | "shop",
     uploadedBy:          access.tenantUser.id,
     variants:            variantPaths,
     processingStatus:    "done",
-    originalExpiresAt:   expiresAt,
+    originalExpiresAt:   new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
   }).returning();
 
   const resolvedVariants = Object.fromEntries(
@@ -145,12 +150,12 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     id:           media.id,
-    url:          publicUrl(slug, largePath),
-    path:         largePath,
+    url:          publicUrl(slug, primaryPath),
+    path:         primaryPath,
     filename,
     originalName: file.name,
     mimeType:     "image/webp",
-    size:         variants.large.length,
+    size:         allVariants[primaryKey].length,
     variants:     resolvedVariants,
   });
 }

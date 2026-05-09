@@ -111,7 +111,8 @@ export async function createTenantSchemaInDb(
         processing_status     TEXT        NOT NULL DEFAULT 'done'
                                           CHECK (processing_status IN ('pending','processing','done','failed','bypass')),
         original_mime         TEXT,
-        original_expires_at   TIMESTAMPTZ
+        original_expires_at   TIMESTAMPTZ,
+        crop_data             JSONB
       )
     `));
 

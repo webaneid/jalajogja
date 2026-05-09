@@ -927,8 +927,8 @@ apps/web/components/website/public/sections/posts/posts-section.tsx
 
 | Komponen | Status |
 |----------|--------|
-| D1: `position: "attention"` di `image-processor.ts` | ⬜ Belum |
-| D2: `crop_data` kolom + manual crop UI | ⬜ Belum |
+| D1: `position: "attention"` + `square-large` + `getVariantsForModule()` | ✅ Selesai |
+| D2: `crop_data` kolom + manual crop UI | ✅ Selesai |
 
 ### Catatan Implementasi
 
@@ -1132,15 +1132,16 @@ original sudah dihapus. Upload ulang untuk mengaktifkan fitur ini."
 
 | Komponen | Status |
 |----------|--------|
-| **D1**: Ganti `position: "center"` → `"attention"` di `image-processor.ts` | ⬜ Belum |
-| **D2**: Kolom `crop_data JSONB` di media table (Drizzle + DDL) | ⬜ Belum |
-| **D2**: `processVariant()` helper — manual extract + attention fallback | ⬜ Belum |
-| **D2**: `POST /api/media/[id]/recrop` route | ⬜ Belum |
-| **D2**: Crop editor UI di `MediaDetailPanel` (`react-image-crop`) | ⬜ Belum |
-| **D2**: Tombol "Edit Crop" di panel + state crop editor | ⬜ Belum |
+| **D1**: `position: "attention"` + `square-large` + `getVariantsForModule()` | ✅ Selesai |
+| **D2**: Kolom `crop_data JSONB` di media table (Drizzle + DDL) | ✅ Selesai |
+| **D2**: `processVariant()` helper — manual extract + attention fallback | ✅ Selesai |
+| **D2**: `POST /api/media/[id]/recrop` route | ✅ Selesai |
+| **D2**: Crop editor UI di `MediaDetailPanel` (`react-image-crop`) | ✅ Selesai |
+| **D2**: Tombol "Crop" di panel + state crop editor | ✅ Selesai |
 
-**Urutan eksekusi D1 → D2** — D1 berdiri sendiri (1 baris kode, langsung deploy).
-D2 membutuhkan D1 selesai + kolom `crop_data` di DB.
+**Phase D selesai** — D1 (attention + square-large + module-aware) + D2 (manual crop UI).
+**Catatan tenant existing**: perlu `ALTER TABLE ... ADD COLUMN IF NOT EXISTS crop_data JSONB`
+untuk tenant yang sudah ada sebelum Phase D.
 
 ---
 

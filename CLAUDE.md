@@ -320,7 +320,7 @@ app/(dashboard)/[tenant]/
 - [x] **Front-end Publik** — PublicLayout (header+footer switcher), `/post` archive + detail, 6 PostCard variants, PostsSection (5 designs), PostsSectionTitle, search API, login/register pages, `/settings/website` dengan header/footer design picker. TypeScript 0 errors.
 - [ ] **Card + Section: Produk, Event, Campaign** — arsitektur di `docs/arsitektur-card-section.md`. Implementasi belum dimulai.
 - [x] **Image System** — Phase A (variant system Sharp + 6 WebP variants + cron cleanup) + Phase B (metadata UI autosave panel) + Phase C (alt/title/caption di semua front-end post) SELESAI. Arsitektur lengkap di `docs/arsitektur-image.md`.
-- [ ] **Image System Phase D — Autocrop + Variant Baru**: tambah `square-large` (800×800); module-aware generation (`shop`→square only, `members`→profile only, lainnya→1.91:1+square); ganti ke `position:"attention"`; D2 = manual crop UI. Detail di `docs/arsitektur-image.md`.
+- [x] **Image System Phase D — Autocrop + Variant Baru**: `square-large` (800×800); module-aware generation; `position:"attention"` (libvips smart crop); manual crop editor UI (`react-image-crop`) + `crop_data` kolom + `/api/media/[id]/recrop`. ✅ SELESAI.
 - [x] **View Counter** — DDL + Drizzle schema + `lib/view-counter.ts` + integrasi post detail + kolom admin. Arsitektur lengkap di `docs/arsitektur-views-count.md`.
 - [x] **Widget Area System** — `default-sidebar` live di post archive + detail. DnD builder di `/website/pengaturan`. Arsitektur di `docs/arsitektur-sidebar.md`.
 - [x] **Single post header refactor** — urutan: Kategori → Judul → Meta date (tz-aware: WIB/WITA/WIT) → Author (Gravatar + nama + "Tim Redaksi").
@@ -1936,7 +1936,7 @@ detail surat → token baru di-generate → bagikan link baru ke officer → hal
 "sudah ditandatangani" dengan benar.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Arsitektur Image Phase D (Autocrop)** — dokumentasi D1 (attention) + D2 (manual crop) ditambahkan ke `docs/arsitektur-image.md`, CLAUDE.md diupdate.
+- Terakhir dikerjakan: **Image System Phase D selesai** — D1 (attention autocrop + square-large + module-aware) + D2 (manual crop editor UI). TypeScript 0 errors.
 - Sebelumnya: PDF surat improvement + fix link TTD "Tidak Valid" setelah signing.
 - Sebelumnya: Dashboard akun anggota final — label menu diperbarui (Belanja/Donasi/Event), card "Produk" coming soon.
 - Next: Halaman listing Donasi, Event, Toko (riwayat per user) — semua masih under construction

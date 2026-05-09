@@ -133,13 +133,22 @@ export type MediaModule = typeof MEDIA_MODULES[number];
 export const MEDIA_PROCESSING_STATUSES = ["pending", "processing", "done", "failed", "bypass"] as const;
 export type MediaProcessingStatus = typeof MEDIA_PROCESSING_STATUSES[number];
 
+export type CropData = {
+  x:       number;  // % dari lebar original (0–100)
+  y:       number;  // % dari tinggi original (0–100)
+  width:   number;  // % lebar area crop (0–100)
+  height:  number;  // % tinggi area crop (0–100)
+  variant: "all" | "large" | "medium" | "thumbnail" | "square" | "square-large" | "profile";
+};
+
 export type ImageVariants = {
-  original?:  string;
-  large?:     string;
-  medium?:    string;
-  thumbnail?: string;
-  square?:    string;
-  profile?:   string;
+  original?:       string;
+  large?:          string;
+  medium?:         string;
+  thumbnail?:      string;
+  square?:         string;
+  "square-large"?: string;
+  profile?:        string;
 };
 
 // Metadata file yang diupload ke MinIO
@@ -167,6 +176,8 @@ export function createMediaTable(s: ReturnType<typeof pgSchema>) {
     processingStatus:     text("processing_status", { enum: MEDIA_PROCESSING_STATUSES }).notNull().default("done"),
     originalMime:         text("original_mime"),
     originalExpiresAt:    timestamp("original_expires_at", { withTimezone: true }),
+    // Manual crop override (Phase D2) — koordinat dalam persen (0–100) relatif terhadap original
+    cropData:             jsonb("crop_data").$type<CropData | null>(),
   });
 }
 

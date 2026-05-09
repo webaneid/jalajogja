@@ -48,6 +48,18 @@ export async function uploadFile(
   );
 }
 
+// Ambil file dari MinIO sebagai Buffer — dipakai untuk re-crop
+export async function getFile(slug: string, path: string): Promise<Buffer> {
+  const res = await s3.send(
+    new GetObjectCommand({ Bucket: tenantBucket(slug), Key: path }),
+  );
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of res.Body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 // Hapus file dari MinIO
 export async function deleteFile(slug: string, path: string): Promise<void> {
   await s3.send(

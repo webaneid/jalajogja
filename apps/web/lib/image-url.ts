@@ -1,7 +1,7 @@
 import { publicUrl } from "@/lib/minio";
 import type { ImageVariants } from "@jalajogja/db";
 
-export type ImageVariant = "original" | "large" | "medium" | "thumbnail" | "square" | "profile";
+export type ImageVariant = "original" | "large" | "medium" | "thumbnail" | "square" | "square-large" | "profile";
 
 /**
  * Resolve URL lengkap untuk variant gambar tertentu.
