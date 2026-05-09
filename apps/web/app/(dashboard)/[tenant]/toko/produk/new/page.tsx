@@ -49,6 +49,8 @@ export default async function ProdukNewPage({
         sku:         "",
         description: "",
         price:       0,
+        publicPrice: null,
+        memberPrice: null,
         stock:       0,
         images:      [],
         categoryId:  null,

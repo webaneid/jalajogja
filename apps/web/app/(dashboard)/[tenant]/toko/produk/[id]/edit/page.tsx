@@ -74,6 +74,8 @@ export default async function ProductEditPage({
         sku:         product.sku       ?? "",
         description: product.description ?? "",
         price:       parseFloat(String(product.price)),
+        publicPrice: product.publicPrice != null ? parseFloat(String(product.publicPrice)) : null,
+        memberPrice: product.memberPrice != null ? parseFloat(String(product.memberPrice)) : null,
         stock:       product.stock,
         images,
         categoryId:  product.categoryId ?? null,

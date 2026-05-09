@@ -1,22 +1,22 @@
-import type { ProductCardData } from "@/lib/product-card-templates";
-import { pickProductCover, formatPrice } from "@/lib/product-card-templates";
+import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
+import { pickProductCover, formatPrice, resolvePrice } from "@/lib/product-card-templates";
 import { Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function ProductCardRingkas({
   product,
   tenantSlug,
-  isMember = false,
+  sessionType = "none",
   className,
 }: {
-  product:    ProductCardData;
-  tenantSlug: string;
-  isMember?:  boolean;
-  className?: string;
+  product:      ProductCardData;
+  tenantSlug:   string;
+  sessionType?: SessionType;
+  className?:   string;
 }) {
-  const cover      = pickProductCover(product, "square");
-  const isMitra    = product.sellerType === "mitra";
-  const showMember = isMember && !!product.memberPrice;
+  const cover        = pickProductCover(product, "square");
+  const isMitra      = product.sellerType === "mitra";
+  const displayPrice = resolvePrice(product, sessionType);
 
   return (
     <a
@@ -53,11 +53,9 @@ export function ProductCardRingkas({
         <h3 className="text-xs font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
           {product.name}
         </h3>
-        {showMember ? (
-          <p className="text-xs font-bold text-primary">{formatPrice(product.memberPrice)}</p>
-        ) : (
-          <p className="text-xs font-bold">{formatPrice(product.price)}</p>
-        )}
+        <p className={`text-xs font-bold ${displayPrice !== product.price ? "text-primary" : ""}`}>
+          {formatPrice(displayPrice)}
+        </p>
       </div>
     </a>
   );

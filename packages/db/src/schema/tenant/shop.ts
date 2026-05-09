@@ -65,10 +65,12 @@ export function createProductsTable(s: ReturnType<typeof pgSchema>) {
     status: text("status", { enum: PRODUCT_STATUSES }).notNull().default("draft"),
     categoryId: uuid("category_id"),        // FK → product_categories.id via SQL migration
     viewCount: integer("view_count").notNull().default(0),
-    // Mitra fields — seller_type = "tenant" untuk produk internal IKPM
+    // Harga berlapis — berlaku untuk tenant dan mitra
+    publicPrice: numeric("public_price", { precision: 15, scale: 2 }),  // tier 2: harga untuk akun login (profiles + members)
+    memberPrice: numeric("member_price", { precision: 15, scale: 2 }),  // tier 3: harga anggota IKPM seluruh dunia
+    // Mitra fields
     sellerType:  text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull().default("tenant"),
-    mitraId:     uuid("mitra_id"),           // FK → mitras.id via DDL (null untuk seller_type tenant)
-    memberPrice: numeric("member_price", { precision: 15, scale: 2 }),  // harga IKPM (mitra only)
+    mitraId:     uuid("mitra_id"),           // FK → mitras.id via DDL
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   });

@@ -1,20 +1,20 @@
-import type { ProductCardData } from "@/lib/product-card-templates";
-import { pickProductCover, formatPrice } from "@/lib/product-card-templates";
+import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
+import { pickProductCover, formatPrice, resolvePrice } from "@/lib/product-card-templates";
 import { Store } from "lucide-react";
 
 export function ProductCardGrid({
   product,
   tenantSlug,
-  isMember = false,
+  sessionType = "none",
 }: {
-  product:     ProductCardData;
-  tenantSlug:  string;
-  isMember?:   boolean;   // anggota IKPM yang login → tampilkan harga member
+  product:      ProductCardData;
+  tenantSlug:   string;
+  sessionType?: SessionType;
 }) {
-  const cover       = pickProductCover(product, "square-large");
-  const isMitra     = product.sellerType === "mitra";
-  const showMember  = isMember && !!product.memberPrice;
-  const displayPrice = showMember ? product.memberPrice! : product.price;
+  const cover        = pickProductCover(product, "square-large");
+  const isMitra      = product.sellerType === "mitra";
+  const displayPrice = resolvePrice(product, sessionType);
+  const hasDiscount  = displayPrice !== product.price;
 
   return (
     <a
@@ -69,16 +69,18 @@ export function ProductCardGrid({
 
         {/* Harga */}
         <div className="mt-auto pt-1">
-          {showMember ? (
+          {hasDiscount ? (
             <div>
               <p className="text-xs text-muted-foreground line-through">{formatPrice(product.price)}</p>
               <p className="text-sm font-bold text-primary">{formatPrice(displayPrice)}</p>
-              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
-                Harga Anggota
-              </span>
+              {sessionType === "member" && (
+                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                  Harga Anggota
+                </span>
+              )}
             </div>
           ) : (
-            <p className="text-sm font-bold text-foreground">{formatPrice(displayPrice)}</p>
+            <p className="text-sm font-bold text-foreground">{formatPrice(product.price)}</p>
           )}
         </div>
       </div>

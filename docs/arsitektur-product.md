@@ -182,9 +182,9 @@ export type ProductCardData = {
 };
 ```
 
-> **Status**: Arsitektur terdokumentasi. `public_price` kolom **belum ditambahkan**
-> ke schema + Drizzle. `member_price` sudah ada. Implementasi display harga berlapis
-> di ProductCard + halaman publik ditunda.
+> **Status**: ✅ Selesai diimplementasikan. `public_price` + `member_price` ada di
+> schema Drizzle, DDL, form admin, dan ProductCard (semua 3 variant). `resolvePrice()`
+> helper di `lib/product-card-templates.ts` handle logika 3 tier.
 
 ---
 

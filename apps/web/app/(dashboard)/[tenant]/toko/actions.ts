@@ -22,15 +22,17 @@ export type ProductImage = {
 };
 
 export type ProductData = {
-  name:        string;
-  slug:        string;
-  sku?:        string | null;
+  name:         string;
+  slug:         string;
+  sku?:         string | null;
   description?: string | null;   // Tiptap HTML
-  price:       number;
-  stock:       number;
-  images:      ProductImage[];
-  categoryId?: string | null;
-  status:      "draft" | "active" | "archived";
+  price:        number;
+  publicPrice?: number | null;   // tier 2: harga untuk akun login
+  memberPrice?: number | null;   // tier 3: harga anggota IKPM
+  stock:        number;
+  images:       ProductImage[];
+  categoryId?:  string | null;
+  status:       "draft" | "active" | "archived";
   // SEO
   metaTitle?:      string | null;
   metaDesc?:       string | null;
@@ -307,6 +309,8 @@ export async function updateProductAction(
         sku:         data.sku?.trim() || null,
         description: data.description ?? null,
         price:       data.price.toFixed(2),
+        publicPrice: data.publicPrice != null ? data.publicPrice.toFixed(2) : null,
+        memberPrice: data.memberPrice != null ? data.memberPrice.toFixed(2) : null,
         stock:       data.stock,
         images:      data.images,
         categoryId:  data.categoryId ?? null,

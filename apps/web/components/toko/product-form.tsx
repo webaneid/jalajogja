@@ -52,6 +52,8 @@ export type ProductFormProps = {
     sku:         string;
     description: string;
     price:       number;
+    publicPrice: number | null;
+    memberPrice: number | null;
     stock:       number;
     images:      ProductImage[];
     categoryId:  string | null;
@@ -214,6 +216,8 @@ export function ProductForm({
   const [sku,         setSku]         = useState(initialData.sku);
   const [description, setDescription] = useState(initialData.description);
   const [price,       setPrice]       = useState(String(initialData.price));
+  const [publicPrice, setPublicPrice] = useState(initialData.publicPrice != null ? String(initialData.publicPrice) : "");
+  const [memberPrice, setMemberPrice] = useState(initialData.memberPrice != null ? String(initialData.memberPrice) : "");
   const [stock,       setStock]       = useState(String(initialData.stock));
   const [images,      setImages]      = useState<ProductImage[]>(initialData.images);
   const [categoryId,  setCategoryId]  = useState(initialData.categoryId ?? "none");
@@ -252,6 +256,8 @@ export function ProductForm({
       sku:         sku.trim() || null,
       description: description || null,
       price:       priceNum,
+      publicPrice: publicPrice ? (parseFloat(publicPrice) || null) : null,
+      memberPrice: memberPrice ? (parseFloat(memberPrice) || null) : null,
       stock:       stockNum,
       images:      images.map((img, i) => ({ ...img, order: i })),
       categoryId:  categoryId === "none" ? null : categoryId,
@@ -408,7 +414,7 @@ export function ProductForm({
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Harga & Stok</p>
               <div className="space-y-2">
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">Harga (Rp)</label>
+                  <label className="block text-xs text-muted-foreground mb-1">Harga Dasar (Rp)</label>
                   <Input
                     type="number"
                     min="0"
@@ -416,6 +422,34 @@ export function ProductForm({
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
                     placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">
+                    Harga Publik (Rp)
+                    <span className="ml-1 font-normal text-muted-foreground/70">— untuk akun login</span>
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={publicPrice}
+                    onChange={(e) => setPublicPrice(e.target.value)}
+                    placeholder="Kosong = tidak ada diskon publik"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">
+                    Harga Anggota IKPM (Rp)
+                    <span className="ml-1 font-normal text-muted-foreground/70">— seluruh dunia</span>
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={memberPrice}
+                    onChange={(e) => setMemberPrice(e.target.value)}
+                    placeholder="Kosong = tidak ada diskon anggota"
                   />
                 </div>
                 <div>

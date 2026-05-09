@@ -817,10 +817,11 @@ export async function createTenantSchemaInDb(
                                    CHECK (status IN ('active','draft','archived')),
         category_id  UUID           REFERENCES "${s}".product_categories(id) ON DELETE SET NULL,
         view_count   INTEGER        NOT NULL DEFAULT 0,
+        public_price NUMERIC(15,2),             -- tier 2: harga untuk akun login (profiles + members)
+        member_price NUMERIC(15,2),             -- tier 3: harga anggota IKPM seluruh dunia
         seller_type  TEXT           NOT NULL DEFAULT 'tenant'
                                     CHECK (seller_type IN ('tenant','mitra')),
         mitra_id     UUID,                      -- FK → mitras.id (set setelah tabel mitras dibuat)
-        member_price NUMERIC(15,2),             -- harga IKPM (mitra only)
         created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )

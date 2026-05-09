@@ -322,7 +322,7 @@ app/(dashboard)/[tenant]/
 - [x] **ProductCard** — 3 variant (grid, list, ringkas) + `lib/product-card-templates.ts`. Support harga mitra + badge Mitra + nama usaha. TypeScript 0 errors.
 - [~] **ProductsSection** — 3 design (Grid, Showcase, Carousel). **DITUNDA** — belum prioritas.
 - [~] **ProductCard Phase 3 Mitra** — integrasi fetch publik (JOIN mitras) + order commission snapshot + filter seller_type admin. **DITUNDA**.
-- [~] **Sistem Harga Berlapis** — 3 tier: `price` (tidak login) → `public_price` (public.profiles + anggota IKPM) → `member_price` (anggota IKPM seluruh dunia). Kolom `public_price` belum ditambah ke schema. Arsitektur di `docs/arsitektur-product.md` § Sistem Harga. **DITUNDA**.
+- [x] **Sistem Harga Berlapis** — 3 tier: `price` (tidak login) → `public_price` (siapapun yang login) → `member_price` (anggota IKPM seluruh dunia). Schema Drizzle + DDL + form admin + ProductCard + `resolvePrice()` helper. Berlaku untuk tenant dan mitra. TypeScript 0 errors.
 - [~] **Halaman publik `/toko` + `/toko/{slug}`** — listing + detail produk. **DITUNDA**.
 - [~] **EventCard + EventsSection** — belum dimulai. **DITUNDA**.
 - [~] **CampaignCard + CampaignsSection** — belum dimulai. **DITUNDA**.

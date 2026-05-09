@@ -3,16 +3,26 @@ export type ProductCardData = {
   name:           string;
   slug:           string;
   description:    string | null;
-  price:          string;          // numeric dari DB
+  price:          string;          // tier 1: harga dasar (tidak login)
+  publicPrice:    string | null;   // tier 2: harga untuk akun login (profiles + anggota IKPM)
+  memberPrice:    string | null;   // tier 3: harga anggota IKPM seluruh dunia
   coverUrl:       string | null;   // dari images[0] → resolved MinIO URL
   coverVariants?: Record<string, string> | null;
   categoryName:   string | null;
   // Mitra fields — null untuk produk tenant internal
   sellerType:   "tenant" | "mitra";
-  memberPrice:  string | null;     // harga khusus anggota IKPM (mitra only)
-  businessName: string | null;     // nama usaha mitra
+  businessName: string | null;
   mitraId:      string | null;
 };
+
+// Resolve harga sesuai tipe session pembeli — fallback chain tier 3 → 2 → 1
+export type SessionType = "none" | "public" | "member";
+
+export function resolvePrice(product: ProductCardData, sessionType: SessionType): string {
+  if (sessionType === "member" && product.memberPrice) return product.memberPrice;
+  if (sessionType !== "none"   && product.publicPrice)  return product.publicPrice;
+  return product.price;
+}
 
 export const PRODUCT_CARD_VARIANTS = ["grid", "list", "ringkas"] as const;
 export type ProductCardVariant = typeof PRODUCT_CARD_VARIANTS[number];
