@@ -169,6 +169,7 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 - Front-end publik Layer 1–4 — **SELESAI** (header/footer, homepage, post cards, section post, search)
 - Route group `(public)` sudah ada, donasi/event/dokumen/surat sudah render publik
 - **View Counter** — arsitektur selesai di `docs/arsitektur-views-count.md`; implementasi belum dimulai
+- **Gallery System** — komponen universal (Grid + Lightbox + Carousel + Picker + Tiptap Block); arsitektur di `docs/arsitektur-gallery.md`; dipakai di: produk, event, donasi, editor, landing section
 
 ### Sistem Card + Section (Universal)
 > Arsitektur lengkap semua tipe konten: **`docs/arsitektur-card-section.md`**
@@ -326,6 +327,7 @@ app/(dashboard)/[tenant]/
 - [x] **Single post header refactor** — urutan: Kategori → Judul → Meta date (tz-aware: WIB/WITA/WIT) → Author (Gravatar + nama + "Tim Redaksi").
 - [x] **Login Universal Phase 1** — SELESAI. Login, register (2-jalur: IKPM vs publik + stambuk lookup + auto-link member), forgot-password, reset-password, dashboard `/akun`. Schema `whatsapp` di `public.profiles`. TypeScript 0 errors.
 - [x] **Login Universal Phase 2** — SELESAI. Self-service profile completion wizard anggota IKPM (`/akun/lengkapi`). API routes `member-data` + `member-contact`. Banner kelengkapan data di dashboard `/akun`. Legal singleton pages (terms/privacy). TypeScript 0 errors.
+- [ ] **Gallery System** — komponen universal reusable: `<Gallery>`, `<GalleryPicker>`, lightbox, GalleryBlock Tiptap, integrasi Event + Campaign + Landing section. Arsitektur di `docs/arsitektur-gallery.md`.
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
