@@ -271,9 +271,9 @@ Lihat `docs/arsitektur-section-post.md` untuk detail lengkap.
 | 4 | Trio Column | section | 3 kolom, tiap kolom filter sendiri |
 | 5 | Post Carousel | section | Scroll horizontal overlay card portrait |
 
-### Produk — 3 design (⬜ belum)
+### Produk — 3 design (⏸ DITUNDA)
 
-Semua section type (ada judul + "Lihat Semua"). Tidak perlu hero design.
+Arsitektur sudah terdokumentasi, implementasi ditunda.
 
 | Design | Label | Deskripsi |
 |--------|-------|-----------|
@@ -281,9 +281,9 @@ Semua section type (ada judul + "Lihat Semua"). Tidak perlu hero design.
 | 2 | Showcase | 1 produk featured besar (inline) + 4 produk kecil (product-card-grid). Count 5. |
 | 3 | Carousel Produk | Scroll horizontal, product-card-ringkas aspect 1:1. Count 8. |
 
-### Event — 3 design (⬜ belum)
+### Event — 3 design (⏸ DITUNDA)
 
-Semua section type.
+Arsitektur sudah terdokumentasi, implementasi ditunda.
 
 | Design | Label | Deskripsi |
 |--------|-------|-----------|
@@ -291,9 +291,9 @@ Semua section type.
 | 2 | Event Utama | 1 event featured besar (inline + deskripsi) + list 3 event lain (event-card-list). |
 | 3 | Agenda | List vertikal: tanggal di kolom kiri sebagai aksen, info di kanan. Count 5. |
 
-### Campaign — 3 design (⬜ belum)
+### Campaign — 3 design (⏸ DITUNDA)
 
-Semua section type.
+Arsitektur sudah terdokumentasi, implementasi ditunda.
 
 | Design | Label | Deskripsi |
 |--------|-------|-----------|

@@ -608,11 +608,11 @@ Phase 3 — Integrasi Produk & Transaksi
 | Frontend: `/akun/mitra` + `/akun/mitra/apply` | ✅ Selesai |
 | API: CRUD `/api/mitra/products` + validasi member_price | ✅ Selesai |
 | Frontend: `/akun/mitra/produk/*` | ✅ Selesai |
-| `ProductCardData` update (sellerType + memberPrice + businessName) | ⬜ Belum (Phase 3) |
-| Fetch produk publik: JOIN mitras + tampilkan member_price | ⬜ Belum |
-| ProductCard display: harga member + badge Mitra | ⬜ Belum |
-| Admin produk list: filter seller_type | ⬜ Belum |
-| Order flow: snapshot commission_rate + disbursement calc | ⬜ Belum |
+| `ProductCardData` update (sellerType + memberPrice + businessName) | ✅ Selesai |
+| Fetch produk publik: JOIN mitras + tampilkan member_price | ⏸ Ditunda |
+| ProductCard display: harga member + badge Mitra | ✅ Selesai |
+| Admin produk list: filter seller_type | ⏸ Ditunda |
+| Order flow: snapshot commission_rate + disbursement calc | ⏸ Ditunda |
 
 ---
 

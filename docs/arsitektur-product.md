@@ -270,7 +270,7 @@ gambar besar untuk display kecil. Fix: simpan `media.variants` di `handleSelect`
 | Dashboard: CRUD Pesanan + konfirmasi bayar | ✅ Selesai |
 | Dashboard: CRUD Kategori | ✅ Selesai |
 | `ProductImage.variants` disimpan + dipakai | ✅ Selesai |
-| Front-end: `/{slug}/toko` (archive) | ⬜ Belum |
-| Front-end: `/{slug}/toko/{slug}` (detail) | ⬜ Belum |
-| ProductCard (grid, list, ringkas) | ⬜ Belum |
-| ProductsSection (Design 1, 2, 3) | ⬜ Belum |
+| Front-end: `/{slug}/toko` (archive) | ⏸ Ditunda |
+| Front-end: `/{slug}/toko/{slug}` (detail) | ⏸ Ditunda |
+| ProductCard (grid, list, ringkas) | ✅ Selesai |
+| ProductsSection (Design 1, 2, 3) | ⏸ Ditunda |
