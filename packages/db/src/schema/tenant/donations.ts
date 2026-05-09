@@ -10,6 +10,7 @@ import {
   index,
   jsonb,
 } from "drizzle-orm/pg-core";
+import type { GalleryItem } from "./website";
 
 export const CAMPAIGN_TWITTER_CARDS = ["summary", "summary_large_image"] as const;
 export const CAMPAIGN_ROBOTS_VALUES = ["index,follow", "noindex", "noindex,nofollow"] as const;
@@ -84,6 +85,9 @@ export function createCampaignsTable(s: ReturnType<typeof pgSchema>) {
     robots:         text("robots",         { enum: CAMPAIGN_ROBOTS_VALUES }).notNull().default("index,follow"),
     schemaType:     text("schema_type").notNull().default("WebPage"),
     structuredData: jsonb("structured_data"),
+
+    // Gallery foto campaign — GalleryItem[] JSONB
+    gallery: jsonb("gallery").$type<GalleryItem[]>(),
 
     // Audit — FK ke officers.id via SQL (nullable)
     createdBy: uuid("created_by"),

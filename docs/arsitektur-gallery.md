@@ -391,17 +391,23 @@ Phase 4 — Layout Tambahan
 
 | Komponen | Status |
 |----------|--------|
-| `lib/gallery.ts` — type + helpers | ⬜ Belum |
-| `gallery-grid.tsx` — grid display | ⬜ Belum |
-| `gallery-lightbox.tsx` — lightbox | ⬜ Belum |
-| `gallery.tsx` — wrapper | ⬜ Belum |
-| `gallery-picker.tsx` — admin input | ⬜ Belum |
-| `gallery-block-ext.ts` — Tiptap | ⬜ Belum |
-| `gallery-block-view.tsx` — NodeView | ⬜ Belum |
-| Integrasi ke `tiptap-editor.tsx` | ⬜ Belum |
-| `letter-render.ts` case galleryBlock | ⬜ Belum |
-| Event: kolom `gallery` + form | ⬜ Belum |
-| Campaign: kolom `gallery` + form | ⬜ Belum |
-| Landing page section `"gallery"` | ⬜ Belum |
-| `gallery-masonry.tsx` | ⬜ Belum |
-| `gallery-carousel.tsx` | ⬜ Belum |
+| `lib/gallery.ts` — type + helpers | ✅ Selesai |
+| `gallery-grid.tsx` — grid display | ✅ Selesai |
+| `gallery-lightbox.tsx` — lightbox | ✅ Selesai |
+| `gallery.tsx` — wrapper | ✅ Selesai |
+| `gallery-picker.tsx` — admin input | ✅ Selesai |
+| `gallery-block-ext.ts` — Tiptap | ✅ Selesai |
+| `gallery-block-view.tsx` — NodeView | ✅ Selesai |
+| Integrasi ke `tiptap-editor.tsx` | ✅ Selesai |
+| `letter-render.ts` case galleryBlock | ✅ Selesai |
+| Event: kolom `gallery` JSONB (Drizzle schema + DDL) | ✅ Selesai |
+| Campaign: kolom `gallery` JSONB (Drizzle schema + DDL) | ✅ Selesai |
+| Landing page section `"gallery"` pakai `<Gallery>` | ✅ Selesai |
+| `gallery-masonry.tsx` | ⬜ Phase 4 |
+| `gallery-carousel.tsx` | ⬜ Phase 4 |
+
+**Catatan Phase 3:**
+- GalleryItem type dipindah ke `packages/db/src/schema/tenant/website.ts` agar bisa dipakai DB schema
+- `lib/gallery.ts` di web app re-export type yang kompatibel
+- Form admin Event + Campaign (GalleryPicker di form) belum diimplementasi — menunggu refactor form tersebut
+- Tenant existing perlu: `ALTER TABLE ... ADD COLUMN IF NOT EXISTS gallery JSONB`

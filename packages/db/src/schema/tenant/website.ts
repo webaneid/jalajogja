@@ -133,6 +133,16 @@ export type MediaModule = typeof MEDIA_MODULES[number];
 export const MEDIA_PROCESSING_STATUSES = ["pending", "processing", "done", "failed", "bypass"] as const;
 export type MediaProcessingStatus = typeof MEDIA_PROCESSING_STATUSES[number];
 
+// Satu item dalam gallery — dipakai di events.gallery, campaigns.gallery, dll
+export type GalleryItem = {
+  id:       string;
+  url:      string;
+  variants?: Record<string, string> | null;
+  alt?:     string | null;
+  caption?: string | null;
+  order:    number;
+};
+
 export type CropData = {
   x:       number;  // % dari lebar original (0–100)
   y:       number;  // % dari tinggi original (0–100)

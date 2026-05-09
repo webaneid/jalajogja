@@ -4,6 +4,8 @@ import { getSettings } from "@jalajogja/db";
 import type { SectionItem, SectionType, LandingBody, PostsSectionData } from "@/lib/page-templates";
 import type { PostsSectionDesignId } from "@/lib/posts-section-designs";
 import { PostsSection } from "@/components/website/public/sections/posts/posts-section";
+import { Gallery } from "@/components/gallery/gallery";
+import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
 
 // ─── Data helpers ─────────────────────────────────────────────────────────────
 
@@ -106,30 +108,27 @@ function EventsSection({
   );
 }
 
-type GalleryImage = { url: string; alt: string };
-
 function GallerySection({ data }: { data: Record<string, unknown> }) {
-  const d = data as { title?: string; images?: GalleryImage[] };
-  const images = d.images ?? [];
+  const d = data as {
+    title?:   string;
+    items?:   GalleryItem[];
+    layout?:  GalleryConfig["layout"];
+    columns?: GalleryConfig["columns"];
+  };
+  const items = d.items ?? [];
 
   return (
-    <section className="py-14 px-4 bg-muted/40">
-      <div className="max-w-5xl mx-auto">
-        {d.title && <h2 className="text-2xl font-bold mb-8">{d.title}</h2>}
-        {images.length === 0 ? (
+    <section className="py-14 px-4">
+      <div className="max-w-7xl mx-auto">
+        {d.title && <h2 className="text-2xl font-bold mb-6">{d.title}</h2>}
+        {items.length === 0 ? (
           <p className="text-muted-foreground text-sm">Belum ada gambar.</p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {images.map((img, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={i}
-                src={img.url}
-                alt={img.alt || `Foto ${i + 1}`}
-                className="w-full aspect-square object-cover rounded-lg border border-border"
-              />
-            ))}
-          </div>
+          <Gallery
+            items={items}
+            config={{ layout: d.layout ?? "grid", columns: d.columns ?? 3 }}
+            param="gallery"
+          />
         )}
       </div>
     </section>

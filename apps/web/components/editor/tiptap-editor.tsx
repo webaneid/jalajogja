@@ -21,6 +21,7 @@ import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import { MediaImageExtension } from "./media-image-ext";
 import { EmbedBlock } from "./embed-block-ext";
+import { GalleryBlock } from "./gallery-block-ext";
 import { EditorToolbar } from "./editor-toolbar";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -107,12 +108,20 @@ export function TiptapEditor({
       TableCell,
 
       EmbedBlock,
+      GalleryBlock,
     ],
 
     content: parseContent(content),
     editable,
     immediatelyRender: false,  // wajib untuk Next.js SSR — hindari hydration mismatch
     autofocus: editable ? "end" : false,
+
+    // Slug disimpan di storage agar NodeView (GalleryBlockView) bisa akses
+    // tanpa prop drilling — diambil via editor.storage.slug
+    onCreate({ editor }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (editor.storage as any).slug = slug;
+    },
 
     onUpdate({ editor }) {
       if (!onChange) return;

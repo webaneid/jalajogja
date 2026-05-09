@@ -10,6 +10,7 @@ import {
   index,
   jsonb,
 } from "drizzle-orm/pg-core";
+import type { GalleryItem } from "./website";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -94,6 +95,9 @@ export function createEventsTable(s: ReturnType<typeof pgSchema>) {
     robots:         text("robots",          { enum: EVENT_ROBOTS_VALUES }).notNull().default("index,follow"),
     schemaType:     text("schema_type").notNull().default("Event"),
     structuredData: jsonb("structured_data"),
+
+    // Gallery foto event — GalleryItem[] JSONB (lihat GalleryItem di website.ts)
+    gallery: jsonb("gallery").$type<GalleryItem[]>(),
 
     // Audit
     createdBy: uuid("created_by"),  // FK → officers.id via SQL

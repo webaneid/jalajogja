@@ -128,6 +128,22 @@ function renderNode(node: TiptapNode): string {
       return `<a href="${url}" target="_blank">${url}</a>`;
     }
 
+    case "galleryBlock": {
+      // Render sebagai grid gambar sederhana untuk PDF — tanpa lightbox
+      const items = (node.attrs?.items as unknown as Array<{ url: string; alt?: string }>) ?? [];
+      if (items.length === 0) return "";
+      const cols = (node.attrs?.columns as number) ?? 3;
+      const width = Math.floor(100 / cols);
+      const imgs = items
+        .map((item) =>
+          `<td style="width:${width}%;padding:4px;vertical-align:top">` +
+          `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt ?? "")}" ` +
+          `style="width:100%;height:auto;display:block;border-radius:4px" /></td>`
+        )
+        .join("");
+      return `<table style="width:100%;border-collapse:collapse;margin:1em 0"><tr>${imgs}</tr></table>`;
+    }
+
     default:
       return renderChildren(node);
   }
