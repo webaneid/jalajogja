@@ -89,6 +89,105 @@ createProductCategoryAction(slug, { name, slug })       → buat kategori baru
 
 ---
 
+## Sistem Harga Berlapis
+
+Setiap produk memiliki **tiga tingkat harga** berdasarkan identitas pembeli.
+Sistem ini berlaku untuk produk tenant maupun mitra.
+
+### Tiga Tier Harga
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Tier 1 — Harga Dasar (price)                               │
+│  Berlaku: pembeli tidak login                               │
+├─────────────────────────────────────────────────────────────┤
+│  Tier 2 — Harga Publik (public_price)                       │
+│  Berlaku: siapapun yang punya akun login                    │
+│           termasuk public.profiles (orang umum)             │
+│           dan anggota IKPM                                  │
+├─────────────────────────────────────────────────────────────┤
+│  Tier 3 — Harga Anggota IKPM (member_price)                 │
+│  Berlaku: anggota IKPM dari cabang MANAPUN di dunia         │
+│           (public.members dengan better_auth_user_id)       │
+│           bukan hanya anggota cabang ini                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### "Anggota IKPM Seluruh Dunia"
+
+`member_price` berlaku untuk **semua** anggota IKPM yang sudah aktivasi login,
+terlepas dari cabang mana mereka terdaftar.
+
+```
+Cek: session.user.id → public.members.better_auth_user_id
+     Jika ketemu → user adalah anggota IKPM → dapat member_price
+     Jika tidak → cek public.profiles → dapat public_price
+     Jika tidak ada akun → dapat price (harga dasar)
+```
+
+Ini berbeda dari sistem mitra yang terikat cabang. Member discount adalah
+**benefit keanggotaan IKPM global**, bukan hak eksklusif cabang tertentu.
+
+### Logika Display Harga
+
+```typescript
+function resolvePrice(product: ProductCardData, sessionType: "none" | "public" | "member"): string {
+  if (sessionType === "member" && product.memberPrice) return product.memberPrice;
+  if (sessionType !== "none"   && product.publicPrice)  return product.publicPrice;
+  return product.price;
+}
+```
+
+Fallback chain: `member_price → public_price → price`
+
+### Tanggung Jawab Penentuan Harga
+
+Diskon adalah **hak product owner** (tenant atau mitra) — bukan kewajiban yang
+dipaksa sistem. Tenant/mitra bebas menentukan besaran diskon di tiap tier.
+
+Pengecualian: untuk **produk mitra**, `member_price` tunduk pada aturan komisi:
+```
+member_price ≤ price × (1 - commission_rate)
+```
+Detail di `docs/arsitektur-mitra.md` bagian Model Harga & Komisi.
+
+Untuk **produk tenant internal**: `public_price` dan `member_price` bebas
+diset admin tanpa constraint komisi.
+
+### Schema DB — Kolom yang Dibutuhkan
+
+```sql
+-- Tambah ke tenant_{slug}.products
+ALTER TABLE "{s}".products
+  ADD COLUMN IF NOT EXISTS public_price NUMERIC(15,2);
+  -- member_price sudah ada (ditambah di Phase 1 Sistem Mitra)
+  -- public_price = harga untuk public.profiles + anggota IKPM (tier 2)
+  -- member_price = harga untuk anggota IKPM saja (tier 3)
+```
+
+```typescript
+// Drizzle schema — tambah ke createProductsTable()
+publicPrice: numeric("public_price", { precision: 15, scale: 2 }),
+// member_price sudah ada
+```
+
+### ProductCardData — field yang Dibutuhkan
+
+```typescript
+export type ProductCardData = {
+  // ... existing fields ...
+  price:       string;          // harga dasar (tier 1)
+  publicPrice: string | null;   // harga publik (tier 2) — ⏸ belum ada di type
+  memberPrice: string | null;   // harga anggota IKPM (tier 3) — sudah ada
+};
+```
+
+> **Status**: Arsitektur terdokumentasi. `public_price` kolom **belum ditambahkan**
+> ke schema + Drizzle. `member_price` sudah ada. Implementasi display harga berlapis
+> di ProductCard + halaman publik ditunda.
+
+---
+
 ## Tipe Data Kunci
 
 ### ProductImage
