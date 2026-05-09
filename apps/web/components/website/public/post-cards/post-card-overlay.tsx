@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import type { PostCardData } from "@/lib/post-card-templates";
 import { pickCover } from "@/lib/post-card-templates";
 
@@ -18,7 +19,7 @@ export function PostCardOverlay({
   return (
     <a
       href={`/${tenantSlug}/post/${post.slug}`}
-      className={`group relative flex flex-col justify-end rounded-xl overflow-hidden aspect-[4/3] hover:shadow-lg transition-all${className ? ` ${className}` : ""}`}
+      className={cn("group relative flex flex-col justify-end rounded-xl overflow-hidden aspect-[4/3] hover:shadow-lg transition-all", className)}
     >
       {/* Background */}
       {pickCover(post, "medium") ? (

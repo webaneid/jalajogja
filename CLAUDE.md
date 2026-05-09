@@ -170,33 +170,39 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 - Route group `(public)` sudah ada, donasi/event/dokumen/surat sudah render publik
 - **View Counter** — arsitektur selesai di `docs/arsitektur-views-count.md`; implementasi belum dimulai
 
-### Template Card Post
-> Detail lengkap: **`docs/arsitektur-template-post-card.md`**
+### Sistem Card + Section (Universal)
+> Arsitektur lengkap semua tipe konten: **`docs/arsitektur-card-section.md`**
+> Detail Post Card: **`docs/arsitektur-template-post-card.md`**
+> Detail Section Post: **`docs/arsitektur-section-post.md`**
 
-Sistem card reusable untuk menampilkan post di mana saja — analog `get_template_part()` di WordPress.
+Satu arsitektur berlaku untuk semua tipe konten publik: Post, Produk, Event, Campaign/Donasi.
+Pola: `{Type}Section (fetch)` → `{Type}DesignN (layout)` → `{Type}Card (render)`.
 
-- Komponen: `<PostCard post={data} variant="..." tenantSlug={slug} />`
+**Post Card — ✅ Selesai**
 - 6 variant: `klasik` | `list` | `overlay` | `ringkas` | `judul` | `ticker`
-- Registry: `lib/post-card-templates.ts` — `PostCardVariant` + `PostCardData` type
-- File komponen: `components/website/public/post-cards/`
-- Dipakai di: **post** archive, landing section posts, search results, related posts (future)
-- URL post publik: **`/{tenantSlug}/post/{slug}`** — BUKAN `/blog/`
-- URL arsip post: **`/{tenantSlug}/post`** — dengan query `?category={slug}` atau `?tag={slug}`
-- `PostCardData`: id, title, slug, excerpt, **coverUrl** (sudah resolved, bukan coverId), categoryName, publishedAt, isFeatured
-- **Status: ✅ Selesai**
+- 5 section design: Hero 3 Kolom | Klasik | Twin Columns | Trio Column | Carousel
+- URL: `/{slug}/post` (arsip) | `/{slug}/post/{postSlug}` (detail)
 
-### Section Post
-> Detail lengkap: **`docs/arsitektur-section-post.md`**
+**Produk Card + Section — ⬜ Belum**
+- 3 variant: `grid` | `list` | `ringkas`
+- 3 section design: Grid | Showcase | Carousel
+- URL: `/{slug}/toko` (arsip) | `/{slug}/toko/{productSlug}` (detail)
+- Cover dari `images[0]` JSONB (bukan coverId)
 
-Container untuk menampilkan kumpulan post dalam berbagai layout design, di atas sistem Template Card Post.
+**Event Card + Section — ⬜ Belum**
+- 3 variant: `grid` | `list` | `ringkas`
+- 3 section design: Grid | Featured | Agenda
+- URL: `/{slug}/event` (arsip) | `/{slug}/event/{eventSlug}` (detail ✅ sudah ada)
+- Fetch: JOIN `event_tickets` untuk `lowestPrice`
 
-- Hirarki: `SectionItem (type="posts", variant="N")` → `PostsSection` wrapper → `PostsDesignN` → `PostCard`
-- Registry: `lib/posts-section-designs.ts` — 5 design, field `type: "hero" | "section"` di tiap entry
-- **Dua kategori design**: `hero` (Design 1 — fetch featured+recent, tanpa title) vs `section` (Design 2–5 — filter kategori/tag, wajib ada `PostsSectionTitle`)
-- `PostsSectionTitle` — shared component wajib untuk semua section type: heading + dashed line + "Lihat Semua ›"
-- Design 4 (Trio Column): `columns[]` — tiap kolom punya filter `categoryId`/`tagId` sendiri
-- Design 5 (Post Carousel): client component, aspect ratio 3:4, `className?` prop di `PostCardOverlay`
-- **Status: ✅ Selesai — semua 5 design + section title + fetch wrapper diimplementasikan**
+**Campaign Card + Section — ⬜ Belum**
+- 3 variant: `grid` | `list` | `ringkas`
+- 3 section design: Grid | Featured | Compact List
+- URL: `/{slug}/donasi` (arsip) | `/{slug}/donasi/{campaignSlug}` (detail)
+- `progressPercent` pre-computed di fetch layer
+
+**`PostsSectionTitle`** dipakai ulang semua tipe — sudah generik (title + href + "Lihat Semua").
+**Menambah card/design/tipe baru** → lihat panduan di `docs/arsitektur-card-section.md`.
 
 ### Widget Area System
 > Detail lengkap: **`docs/arsitektur-sidebar.md`**
@@ -312,6 +318,7 @@ app/(dashboard)/[tenant]/
 - [x] **Modul Akun Phase 3** — API routes selesai (front-end ditunda sampai website dibangun). 3 endpoints: register, profil (GET/PATCH/DELETE), transaksi (GET). TypeScript 0 errors.
 - [x] **Modul Akun Phase 4** — Dashboard admin `/akun` — list page + detail page + link/unlink ke anggota IKPM. TypeScript 0 errors.
 - [x] **Front-end Publik** — PublicLayout (header+footer switcher), `/post` archive + detail, 6 PostCard variants, PostsSection (5 designs), PostsSectionTitle, search API, login/register pages, `/settings/website` dengan header/footer design picker. TypeScript 0 errors.
+- [ ] **Card + Section: Produk, Event, Campaign** — arsitektur di `docs/arsitektur-card-section.md`. Implementasi belum dimulai.
 - [x] **Image System** — Phase A (variant system Sharp + 6 WebP variants + cron cleanup) + Phase B (metadata UI autosave panel) + Phase C (alt/title/caption di semua front-end post) SELESAI. Arsitektur lengkap di `docs/arsitektur-image.md`.
 - [x] **View Counter** — DDL + Drizzle schema + `lib/view-counter.ts` + integrasi post detail + kolom admin. Arsitektur lengkap di `docs/arsitektur-views-count.md`.
 - [x] **Widget Area System** — `default-sidebar` live di post archive + detail. DnD builder di `/website/pengaturan`. Arsitektur di `docs/arsitektur-sidebar.md`.
@@ -1928,8 +1935,8 @@ detail surat → token baru di-generate → bagikan link baru ke officer → hal
 "sudah ditandatangani" dengan benar.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **PDF surat improvement** (QR color dari primary_color, tanggal TTD off, jabatan+orgName, layout 2 fix, hapus divisi dari TTD block). TypeScript 0 errors.
-- Selesai: fix halaman sign publik `/{slug}/sign/{token}` — "Link Tidak Valid" setelah TTD.
+- Terakhir dikerjakan: **Arsitektur Card + Section universal** — `docs/arsitektur-card-section.md` dibuat, CLAUDE.md diupdate. Fix bug overlay aspect ratio (`cn()` bukan string concat).
+- Sebelumnya: PDF surat improvement + fix link TTD "Tidak Valid" setelah signing.
 - Sebelumnya: Dashboard akun anggota final — label menu diperbarui (Belanja/Donasi/Event), card "Produk" coming soon.
 - Next: Halaman listing Donasi, Event, Toko (riwayat per user) — semua masih under construction
 
