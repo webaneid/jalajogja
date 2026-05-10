@@ -489,11 +489,34 @@ function DividerEditor({ data, onChange }: EditorProps) {
   );
 }
 
+// ── Products ──────────────────────────────────────────────────────────────────
+
+function ProductsEditor({ data, onChange }: EditorProps) {
+  const d = data as { title?: string; count?: number; categoryId?: string | null };
+  const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+  return (
+    <div className="space-y-3">
+      <Field label="Judul Section">
+        <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)}
+          placeholder="Produk Terbaru" className="h-8 text-sm" />
+      </Field>
+      <Field label="Jumlah Produk">
+        <select value={d.count ?? 8} onChange={(e) => u("count", Number(e.target.value))}
+          className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+          {[4, 8, 12, 16].map(n => <option key={n} value={n}>{n} produk</option>)}
+        </select>
+      </Field>
+      <p className="text-xs text-muted-foreground">Filter kategori dapat dikonfigurasi setelah section disimpan.</p>
+    </div>
+  );
+}
+
 // ── Editor Map ────────────────────────────────────────────────────────────────
 
 const EDITOR_MAP: Record<SectionType, React.FC<EditorProps>> = {
   hero:         HeroEditor,
   posts:        PostsEditor,
+  products:     ProductsEditor,
   events:       EventsEditor,
   gallery:      GalleryEditor,
   about_text:   AboutTextEditor,

@@ -19,7 +19,7 @@ export const SINGLETON_SLUGS: Record<string, string> = {
 // ── Landing Page ──────────────────────────────────────────────────────────────
 
 export const SECTION_TYPES = [
-  "hero", "posts", "events", "gallery", "about_text",
+  "hero", "posts", "products", "events", "gallery", "about_text",
   "features", "cta", "contact_info", "stats", "divider",
 ] as const;
 
@@ -28,6 +28,7 @@ export type SectionType = typeof SECTION_TYPES[number];
 export const SECTION_LABELS: Record<SectionType, string> = {
   hero:         "Hero Banner",
   posts:        "Postingan Terbaru",
+  products:     "Produk Terbaru",
   events:       "Event Mendatang",
   gallery:      "Galeri Foto",
   about_text:   "Tentang Kami",
@@ -60,6 +61,7 @@ export type LandingBody = {
 const SECTION_DEFAULTS: Record<SectionType, Record<string, unknown>> = {
   hero:         { title: "", subtitle: "", ctaLabel: "Pelajari Lebih", ctaUrl: "#", bgImageUrl: "", bgColor: "#1e40af" },
   posts:        { title: "Berita & Pengumuman", count: 6 },
+  products:     { title: "Produk Terbaru", count: 8, categoryId: null },
   events:       { title: "Event Mendatang", count: 3 },
   gallery:      { title: "Galeri Foto", images: [] },
   about_text:   { title: "Tentang Kami", body: "", imageUrl: "", imagePosition: "right" },

@@ -164,11 +164,35 @@ function DividerWireframe() {
   );
 }
 
+function ProductsWireframe() {
+  return (
+    <div className="w-full h-full bg-gray-100 rounded flex flex-col gap-1.5 p-2">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-1/3 h-2.5 bg-gray-400 rounded" />
+        <div className="flex-1 border-t border-dashed border-gray-300" />
+        <div className="w-10 h-2 bg-gray-300 rounded" />
+      </div>
+      <div className="grid grid-cols-4 gap-1.5 flex-1">
+        {[0,1,2,3].map((i) => (
+          <div key={i} className="bg-gray-200 rounded flex flex-col gap-1 overflow-hidden">
+            <div className="w-full aspect-square bg-gray-300" />
+            <div className="p-1 space-y-0.5">
+              <div className="w-full h-1.5 bg-gray-400 rounded" />
+              <div className="w-2/3 h-1.5 bg-gray-300 rounded" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Map type → component ──────────────────────────────────────────────────────
 
 const WIREFRAME_MAP: Record<SectionType, React.FC> = {
   hero:         HeroWireframe,
   posts:        PostsWireframe,
+  products:     ProductsWireframe,
   events:       EventsWireframe,
   gallery:      GalleryWireframe,
   about_text:   AboutTextWireframe,

@@ -3,7 +3,9 @@ import type { TenantDb } from "@jalajogja/db";
 import { getSettings } from "@jalajogja/db";
 import type { SectionItem, SectionType, LandingBody, PostsSectionData } from "@/lib/page-templates";
 import type { PostsSectionDesignId } from "@/lib/posts-section-designs";
+import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
 import { PostsSection } from "@/components/website/public/sections/posts/posts-section";
+import { ProductsSection } from "@/components/website/public/sections/products/products-section";
 import { Gallery } from "@/components/gallery/gallery";
 import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
 
@@ -338,6 +340,14 @@ function SectionRenderer({
       <PostsSection
         data={section.data as PostsSectionData}
         variant={(section.variant ?? "1") as PostsSectionDesignId}
+        tenantClient={tenantClient}
+        tenantSlug={tenantSlug}
+      />
+    );
+    case "products":     return (
+      <ProductsSection
+        data={section.data as ProductsSectionData}
+        variant={(section.variant ?? "1") as ProductsSectionDesignId}
         tenantClient={tenantClient}
         tenantSlug={tenantSlug}
       />
