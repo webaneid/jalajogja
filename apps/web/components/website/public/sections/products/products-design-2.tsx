@@ -12,7 +12,8 @@ export function ProductsDesign2({ products, tenantSlug, sectionTitle, filterHref
   const cover    = pickProductCover(featured, "square-large");
 
   return (
-    <section className="w-full">
+    <section className="py-10 px-4">
+      <div className="max-w-7xl mx-auto">
       <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -57,6 +58,7 @@ export function ProductsDesign2({ products, tenantSlug, sectionTitle, filterHref
             ))}
           </div>
         )}
+      </div>
       </div>
     </section>
   );

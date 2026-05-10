@@ -1,6 +1,5 @@
 import { eq, desc, and, inArray, min, max } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
-import { publicUrl } from "@/lib/minio";
 import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
 import type { ProductCardData } from "@/lib/product-card-templates";
 import { ProductsDesign1 } from "./products-design-1";
@@ -14,26 +13,16 @@ type Props = {
   tenantSlug:   string;
 };
 
-// Ambil cover pertama dari images JSONB dan resolve URL-nya
+// Ambil cover pertama dari images JSONB
+// images[0].url dan images[0].variants sudah berisi URL lengkap dari MediaPicker
+// TIDAK perlu publicUrl() lagi — akan double URL jika dipanggil
 function extractCover(
   images: unknown,
-  tenantSlug: string,
 ): { coverUrl: string | null; coverVariants: Record<string, string> | null } {
   if (!Array.isArray(images) || images.length === 0) return { coverUrl: null, coverVariants: null };
   const first = images[0] as { url?: string; variants?: Record<string, string> | null };
-
-  // Resolve variants — nilai adalah path MinIO, bukan URL
-  const variants = first.variants
-    ? Object.fromEntries(
-        Object.entries(first.variants).map(([k, v]) => [k, publicUrl(tenantSlug, v as string)])
-      )
-    : null;
-
-  const coverUrl = first.variants?.["square-large"]
-    ? publicUrl(tenantSlug, first.variants["square-large"])
-    : first.url ?? null;
-
-  return { coverUrl, coverVariants: variants };
+  const coverUrl = first.variants?.["square-large"] ?? first.url ?? null;
+  return { coverUrl, coverVariants: first.variants ?? null };
 }
 
 async function fetchProducts(
@@ -131,7 +120,7 @@ async function fetchProducts(
   }
 
   return filtered.map(r => {
-    const { coverUrl, coverVariants } = extractCover(r.images, tenantSlug);
+    const { coverUrl, coverVariants } = extractCover(r.images);
     const isVariable = r.productType === "variable";
     const range      = isVariable ? priceRangeMap.get(r.id) : null;
     const priceMin   = range?.min ?? String(r.price);

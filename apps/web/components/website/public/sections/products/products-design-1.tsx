@@ -6,12 +6,14 @@ export function ProductsDesign1({ products, tenantSlug, sectionTitle, filterHref
   if (products.length === 0) return null;
 
   return (
-    <section className="w-full">
-      <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" />
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-        {products.map(p => (
-          <ProductCard key={p.id} product={p} variant="grid" tenantSlug={tenantSlug} />
-        ))}
+    <section className="py-10 px-4">
+      <div className="max-w-7xl mx-auto">
+        <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          {products.map(p => (
+            <ProductCard key={p.id} product={p} variant="grid" tenantSlug={tenantSlug} />
+          ))}
+        </div>
       </div>
     </section>
   );
