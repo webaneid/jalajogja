@@ -307,9 +307,11 @@ app/(dashboard)/[tenant]/
       - Halaman publik `/(public)/[tenant]/sign/[token]` ✅
       - Token expiry 30 hari + migration SQL tenant existing ✅
 - [x] Keuangan — SELESAI (Pemasukan, Pengeluaran, Jurnal, Akun, Dashboard, Laporan 4 jenis + CSV export); integrasi Toko/Donasi/Event → universal payments; Budget belum ada UI — arsitektur di `docs/arsitektur-keuangan.md`
-- [x] **Billing Phase 1** — schema 7 tabel + nav + dashboard invoice (list/create/detail + partial payment) — arsitektur di `docs/arsitektur-billing.md`
-- [ ] **Billing Phase 2** — public API cart + checkout + halaman invoice publik
-- [ ] **Billing Phase 3** — integrasi Toko/Donasi/Event → invoice otomatis
+- [x] **Billing Phase 1** — schema 7 tabel + nav + dashboard invoice (list/create/detail + partial payment)
+- [x] **Billing Phase 2** — cart + checkout + halaman publik (`/keranjang`, `/checkout`, `/invoice/[id]`) SELESAI. Item type product/ticket/donation menunggu halaman publik masing-masing modul.
+- [x] **Billing Phase 3 (partial)** — Toko sudah terintegrasi (invoice otomatis). Donasi + Event belum.
+- [~] **Billing sisa** — item picker di invoice manual admin (produk+tiket+donasi), integrasi Donasi+Event, PDF, cicilan UI. **DITUNDA**.
+- **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Detail di `docs/arsitektur-billing.md`.
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)

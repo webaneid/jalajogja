@@ -7,16 +7,56 @@ Billing adalah **lapisan universal** yang menghubungkan semua modul produk
 antarmuka: front-end publik dan tenant dashboard admin.
 
 ```
-[Front-end publik]             [Tenant Dashboard]
- User tambah ke cart      |    Admin input manual
+[Front-end publik]             [Tenant Dashboard Admin]
+ User tambah ke cart      |    Admin input invoice manual
+  (produk + tiket +       |    (bisa campur produk +
+   donasi sekaligus)      |     tiket + donasi)
          ↓                |           ↓
     Universal Cart ────────┴──→ Universal Invoice
-                                  (invoices)
+                                  (invoices + invoice_items)
                                        ↓
                            Universal Payment Request
                                   (payments)
                                        ↓
                            Finance Verifikasi → Jurnal
+```
+
+### Prinsip Kunci yang TIDAK BOLEH Dilanggar
+
+1. **Satu infrastruktur, dua pintu masuk** — cart (front-end) dan invoice manual
+   (admin) sama-sama menghasilkan `invoices` + `invoice_items`. Tidak ada
+   "transaksi tersembunyi" di luar sistem ini.
+
+2. **Cart = front-end universal** — user bisa tambah produk, tiket event, dan
+   donasi sekaligus ke satu keranjang. Checkout satu kali, bayar satu kali.
+
+3. **Invoice manual admin = back-end universal** — admin bisa buat invoice yang
+   berisi campuran apapun (produk + tiket + donasi + item custom) tanpa harus
+   masuk ke modul masing-masing.
+
+4. **Tidak ada transaksi modul-spesifik di front-end** — halaman detail produk,
+   event, dan donasi tidak punya form "beli/daftar/donasi" sendiri. Semua
+   lewat "Tambah ke Keranjang" → checkout universal.
+
+5. **Toko, Donasi, Event = sumber item saja** — mereka adalah *katalog*.
+   Transaksinya selalu lewat Billing.
+
+### Contoh Use Case yang Harus Bisa Dilakukan
+
+```
+User A (front-end):
+  - Tambah 2 kaos IKPM ke cart (produk)
+  - Tambah 1 tiket Tabligh Akbar (event)
+  - Tambah donasi Rp 50.000 (donasi)
+  → Checkout → 1 invoice → 1 transfer → 1 konfirmasi
+  → Semua modul terupdate: stok produk berkurang,
+    event_registrations terbuat, donation terbuat
+
+Admin B (dashboard):
+  - Buat invoice manual untuk Pak Ahmad
+  - Tambah: 3 kaos M (produk), 1 tiket VIP (event), donasi Rp 100.000
+  → 1 invoice → admin input bukti bayar → konfirmasi
+  → Semua modul terupdate sekaligus
 ```
 
 ---
@@ -483,22 +523,32 @@ A: Belum di scope ini. `invoices.discount` kolom sudah ada, implementasi promo c
 
 ## Status Implementasi
 
-- [x] Phase 1 — Schema 7 tabel baru (`carts`, `cart_items`, `invoices`, `invoice_items`, `invoice_payments`, `installment_plans`, `installment_schedules`) + `financial_sequences` support type `invoice`
-- [x] Phase 1 — Dashboard Billing: list invoice (filter status + search + pagination) + create manual + detail
-- [x] Phase 1 — Partial payment tracking: `invoice.paid_amount` atomic, status `partial` jika belum lunas, jurnal hanya saat `paid`
-- [x] Phase 1 — Nav: "Billing" masuk `keuangan-nav.tsx` sebagai submenu pertama setelah Dashboard
-- [x] Phase 2 — Server Actions publik: `getCartAction`, `addToCartAction`, `updateCartItemQtyAction`, `removeCartItemAction`, `clearCartAction`, `checkoutAction`, `submitPaymentProofAction`
-- [x] Phase 2 — Halaman publik: `/{slug}/keranjang`, `/{slug}/checkout`, `/{slug}/invoice/[id]`
-- [x] Phase 2 — Client components: `cart-client.tsx`, `checkout-form.tsx`, `invoice-public-client.tsx`
-- [x] Phase 3 — Integrasi Toko/Donasi/Event → invoice otomatis
-  - `packages/db/src/helpers/billing.ts`: `createLinkedInvoice()` + `syncInvoicePayment()` — helper shared, zero circular dep
-  - Toko: `createOrderAction` → invoice (sourceType=order), `confirmOrderPaymentAction` → sync invoice paid
-  - Donasi: `createDonationAction` → invoice (sourceType=donation), `confirmDonationAction` → sync invoice paid
-  - Event: `registerForEventAction` (paid tickets) → invoice (sourceType=event_registration), `confirmRegistrationPaymentAction` → sync invoice paid
-  - Dashboard billing: tabel tambah kolom source badge (Toko/Donasi/Event/Cart/Manual), `sourceType` di `InvoiceListItem`
-- [ ] Phase 3 — Integrasi Donasi: donation → invoice otomatis
-- [ ] Phase 3 — Integrasi Event: registration → invoice otomatis
+### Phase 1 — Schema + Admin Dashboard
+- [x] Schema 7 tabel (`carts`, `cart_items`, `invoices`, `invoice_items`, `invoice_payments`, `installment_plans`, `installment_schedules`)
+- [x] Dashboard Billing: list + create manual + detail + partial payment tracking
+- [x] Nav: "Billing" di `keuangan-nav.tsx`
+
+### Phase 2 — Cart + Checkout + Halaman Publik
+- [x] Server Actions: `getCartAction`, `addToCartAction`, `updateCartItemQtyAction`, `removeCartItemAction`, `clearCartAction`, `checkoutAction`, `submitPaymentProofAction`
+- [x] Halaman publik: `/{slug}/keranjang`, `/{slug}/checkout`, `/{slug}/invoice/[id]`
+- [x] Client components: `cart-client.tsx`, `checkout-form.tsx`, `invoice-public-client.tsx`
+- [ ] **Cart item type `product`** — tombol "Tambah ke Keranjang" di halaman detail produk ⏸
+- [ ] **Cart item type `ticket`** — tombol "Daftar" di halaman detail event ⏸
+- [ ] **Cart item type `donation`** — tombol "Donasi" di halaman detail campaign ⏸
+  > Ketiga item di atas menunggu halaman publik masing-masing modul dibangun
+
+### Phase 3 — Integrasi Modul → Invoice Otomatis
+- [x] `billing.ts` helpers: `createLinkedInvoice()` + `syncInvoicePayment()`
+- [x] Toko: `createOrderAction` → invoice otomatis (sourceType=order)
+- [x] `confirmOrderPaymentAction` → sync invoice paid
+- [ ] **Donasi**: `createDonationAction` → invoice otomatis ⏸
+- [ ] **Event**: `registerForEventAction` → invoice otomatis ⏸
+- [ ] **Invoice manual admin** — item picker: pilih produk + tiket + donasi dalam 1 invoice ⏸
+  > Saat ini invoice manual hanya bisa item custom (teks bebas), belum bisa pick dari katalog
+
+### Belum Dimulai
 - [ ] Invoice PDF (Playwright)
 - [ ] Program Cicilan UI
 - [ ] Laporan Piutang Outstanding
+- [ ] Notifikasi status invoice (email/WA)
 - [ ] Invoice Aging Report
