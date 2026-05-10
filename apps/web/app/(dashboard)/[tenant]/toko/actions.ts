@@ -899,7 +899,9 @@ export async function createProductCategoryAction(
   return { success: true, data: { categoryId: cat.id } };
 }
 
-export { slugify };
+// slugify tidak di-export — jangan import dari "use server" file ke client component
+// (akan jadi server action proxy dan return Promise bukan string)
+// Implementasikan lokal di tiap client component yang butuh
 
 // ─── Variasi Produk ────────────────────────────────────────────────────────────
 
