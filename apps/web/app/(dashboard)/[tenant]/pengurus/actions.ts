@@ -261,9 +261,9 @@ export async function createOfficerWithAccountAction(
       userId = result.user.id;
     }
 
-    // Insert ke tenant.users
+    // Insert ke tenant.users — userId dijamin non-null di sini (dicek di atas)
     await tenantDb.insert(schema.users).values({
-      betterAuthUserId: userId,
+      betterAuthUserId: userId!,
       memberId:         data.memberId,
       role:             data.activationRole!,
       customRoleId:     data.activationRole === "custom" ? (data.activationCustomRoleId ?? null) : null,

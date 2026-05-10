@@ -62,7 +62,7 @@ export function TokoSettingsForm({ slug, initialSettings }: Props) {
           <Switch
             id="mitra-enabled"
             checked={settings.mitraEnabled}
-            onCheckedChange={(v) => set("mitraEnabled", v)}
+            onCheckedChange={(v: boolean) => set("mitraEnabled", v)}
           />
         </div>
 
@@ -81,7 +81,7 @@ export function TokoSettingsForm({ slug, initialSettings }: Props) {
                   min={0}
                   max={999}
                   value={settings.mitraMaxProducts}
-                  onChange={(e) => set("mitraMaxProducts", Number(e.target.value))}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set("mitraMaxProducts", Number(e.target.value))}
                   className="w-28 h-8 text-sm"
                 />
                 <span className="text-xs text-muted-foreground">
@@ -106,7 +106,7 @@ export function TokoSettingsForm({ slug, initialSettings }: Props) {
                   max={100}
                   step={0.5}
                   value={settings.minKomisiMitra}
-                  onChange={(e) => set("minKomisiMitra", Number(e.target.value))}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set("minKomisiMitra", Number(e.target.value))}
                   className="w-28 h-8 text-sm"
                 />
                 <span className="text-xs text-muted-foreground">% per transaksi</span>
@@ -139,7 +139,7 @@ export function TokoSettingsForm({ slug, initialSettings }: Props) {
             id="toko-desc"
             rows={3}
             value={settings.tokoDescription}
-            onChange={(e) => set("tokoDescription", e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set("tokoDescription", e.target.value)}
             placeholder="Deskripsi singkat toko IKPM..."
             className="w-full rounded-md border border-input bg-background px-3 py-2
                        text-sm placeholder:text-muted-foreground focus-visible:outline-none
@@ -153,7 +153,7 @@ export function TokoSettingsForm({ slug, initialSettings }: Props) {
             id="toko-wa"
             type="tel"
             value={settings.tokoWhatsapp}
-            onChange={(e) => set("tokoWhatsapp", e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set("tokoWhatsapp", e.target.value)}
             placeholder="+628xxxxxxxxxx"
             className="max-w-xs h-8 text-sm"
           />
