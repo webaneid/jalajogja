@@ -309,7 +309,7 @@ app/(dashboard)/[tenant]/
 - [x] Keuangan — SELESAI (Pemasukan, Pengeluaran, Jurnal, Akun, Dashboard, Laporan 4 jenis + CSV export); integrasi Toko/Donasi/Event → universal payments; Budget belum ada UI — arsitektur di `docs/arsitektur-keuangan.md`
 - [x] **Billing Phase 1** — schema 7 tabel + nav + dashboard invoice (list/create/detail + partial payment)
 - [x] **Billing Phase 2** — cart + checkout + halaman publik (`/keranjang`, `/checkout`, `/invoice/[id]`) SELESAI. Item type product/ticket/donation menunggu halaman publik masing-masing modul.
-- [x] **Billing Phase 3 (partial)** — Toko sudah terintegrasi (invoice otomatis). Donasi + Event belum.
+- [x] **Billing Phase 3** — Toko + Donasi + Event semua sudah terintegrasi (invoice otomatis via `createLinkedInvoice`). Billing dashboard tampilkan badge sumber untuk semua tipe. ✅
 - [~] **Billing sisa** — item picker di invoice manual admin (produk+tiket+donasi), integrasi Donasi+Event, PDF, cicilan UI. **DITUNDA**.
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Detail di `docs/arsitektur-billing.md`.
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)

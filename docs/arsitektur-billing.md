@@ -539,12 +539,12 @@ A: Belum di scope ini. `invoices.discount` kolom sudah ada, implementasi promo c
 
 ### Phase 3 — Integrasi Modul → Invoice Otomatis
 - [x] `billing.ts` helpers: `createLinkedInvoice()` + `syncInvoicePayment()`
-- [x] Toko: `createOrderAction` → invoice otomatis (sourceType=order)
-- [x] `confirmOrderPaymentAction` → sync invoice paid
-- [ ] **Donasi**: `createDonationAction` → invoice otomatis ⏸
-- [ ] **Event**: `registerForEventAction` → invoice otomatis ⏸
-- [ ] **Invoice manual admin** — item picker: pilih produk + tiket + donasi dalam 1 invoice ⏸
-  > Saat ini invoice manual hanya bisa item custom (teks bebas), belum bisa pick dari katalog
+- [x] Toko: `createOrderAction` → invoice otomatis (sourceType=`order`), `confirmOrderPaymentAction` → sync
+- [x] Donasi: `createDonationAction` → invoice otomatis (sourceType=`donation`), `confirmDonationAction` → sync
+- [x] Event: `registerForEventAction` → invoice otomatis untuk tiket berbayar (sourceType=`event_registration`), `confirmRegistrationPaymentAction` → sync
+- [x] Billing dashboard: badge sumber tampil untuk semua tipe (Toko/Donasi/Event/Cart/Manual)
+- [ ] **Invoice manual admin** — item picker: pilih dari katalog produk/tiket/donasi ⏸
+  > Saat ini invoice manual hanya bisa item custom (teks bebas)
 
 ### Belum Dimulai
 - [ ] Invoice PDF (Playwright)
