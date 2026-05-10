@@ -19,7 +19,7 @@ export function ProductsDesign2({ products, tenantSlug, sectionTitle, filterHref
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Produk featured — kiri, besar */}
         <a
-          href={`/${tenantSlug}/toko/${featured.slug}`}
+          href={`/${tenantSlug}/produk/${featured.slug}`}
           className="group flex flex-col rounded-xl overflow-hidden border border-border bg-card
                      hover:border-primary/50 hover:shadow-md transition-all"
         >

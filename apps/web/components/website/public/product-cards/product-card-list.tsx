@@ -18,7 +18,7 @@ export function ProductCardList({
 
   return (
     <a
-      href={`/${tenantSlug}/toko/${product.slug}`}
+      href={`/${tenantSlug}/produk/${product.slug}`}
       className="group flex gap-3 items-start py-3 border-t border-border first:border-0
                  hover:bg-muted/40 px-2 -mx-2 rounded-lg transition-colors"
     >

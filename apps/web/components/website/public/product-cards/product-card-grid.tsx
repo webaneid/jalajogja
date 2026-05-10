@@ -19,7 +19,7 @@ export function ProductCardGrid({
 
   return (
     <a
-      href={`/${tenantSlug}/toko/${product.slug}`}
+      href={`/${tenantSlug}/produk/${product.slug}`}
       className="group flex flex-col rounded-xl overflow-hidden border border-border bg-card
                  hover:border-primary/50 hover:shadow-md transition-all"
     >

@@ -324,10 +324,13 @@ app/(dashboard)/[tenant]/
 - [x] **ProductCard** — 3 variant (grid, list, ringkas) + `lib/product-card-templates.ts`. Support harga mitra + badge Mitra + nama usaha. TypeScript 0 errors.
 - [x] **ProductsSection** — 3 design (Grid 4 kolom, Showcase 1+4, Carousel). Fetch layer: JOIN mitras aktif + business name + priceMin/priceMax untuk variable product. Terdaftar di page-templates + landing-template + section-editors + section-wireframes. TypeScript 0 errors.
 - [x] **Produk Variasi V1–V6+V9** — schema (product_type, attribute_groups, product_variations), DDL, AttributeGroupEditor, VariationTable, saveVariationsAction, generateVariationsAction (cartesian product), ProductCardData (priceMin/priceMax), edit page load variations. TypeScript 0 errors.
-- [~] **Produk Variasi V7–V8** — halaman detail publik picker + keranjang. Ditunda (butuh front-end /toko).
+- [x] **Produk Variasi V7** — halaman detail publik variasi picker (`ProductDetailClient`). TypeScript 0 errors.
+- [~] **Produk Variasi V8** — validasi stok server-side saat add to cart. **DITUNDA**.
 - [~] **ProductCard Phase 3 Mitra** — integrasi fetch publik (JOIN mitras) + order commission snapshot + filter seller_type admin. **DITUNDA**.
 - [x] **Sistem Harga Berlapis** — 3 tier: `price` (tidak login) → `public_price` (siapapun yang login) → `member_price` (anggota IKPM seluruh dunia). Schema Drizzle + DDL + form admin + ProductCard + `resolvePrice()` helper. Berlaku untuk tenant dan mitra. TypeScript 0 errors.
-- [~] **Halaman publik `/toko` + `/toko/{slug}`** — listing + detail produk. **DITUNDA**.
+- [x] **Halaman publik `/produk`** — archive + filter kategori + search + pagination. URL `/produk` (bukan `/toko` — hindari konflik dashboard). TypeScript 0 errors.
+- [x] **Halaman publik `/produk/kategori/{slug}`** — arsip per kategori + breadcrumb + SEO. TypeScript 0 errors.
+- [x] **Halaman publik `/produk/{slug}`** — detail produk: gallery + variasi picker + add to cart via `addToCartAction` + produk terkait. TypeScript 0 errors.
 - [~] **EventCard + EventsSection** — belum dimulai. **DITUNDA**.
 - [~] **CampaignCard + CampaignsSection** — belum dimulai. **DITUNDA**.
 - [x] **Image System** — Phase A (variant system Sharp + 6 WebP variants + cron cleanup) + Phase B (metadata UI autosave panel) + Phase C (alt/title/caption di semua front-end post) SELESAI. Arsitektur lengkap di `docs/arsitektur-image.md`.
@@ -1947,9 +1950,9 @@ Detail: `docs/arsitektur-billing.md` § Prinsip Kunci.
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **ProductsSection fix** — container `max-w-7xl mx-auto` + fix URL double dari extractCover.
-- Sesi ini: Sistem Mitra (Phase 0–2), Harga Berlapis (3 tier), Produk Variasi (V1–V6), ProductCard (3 variant), ProductsSection (3 design), Gallery System (Phase 1–3), Billing universal prinsip dikunci, Image Phase D.
-- Ditunda: `/toko` publik, EventCard, CampaignCard, Variasi V7–V8, item picker invoice admin.
+- Terakhir dikerjakan: **Halaman publik toko** — 3 halaman `/produk`, `/produk/kategori/{slug}`, `/produk/{slug}`. URL pakai `/produk` (bukan `/toko`) untuk hindari konflik dengan dashboard admin.
+- Sesi ini: Arsitektur + implementasi Phase P1–P5 halaman publik toko, Produk Variasi V7 (detail + picker), update semua href `/toko/` → `/produk/` di ProductCard + ProductsSection + nav-menu.
+- Ditunda: V8 (stok check server-side), EventCard, CampaignCard, item picker invoice admin.
 
 ### Status Halaman Publik Anggota
 | Link dari Dashboard | URL | Status |

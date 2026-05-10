@@ -308,11 +308,15 @@ Detail arsitektur card dan section front-end ada di **`docs/arsitektur-card-sect
 ### URL
 
 ```
-/{tenantSlug}/toko              → archive / listing produk  ⬜ Belum
-/{tenantSlug}/toko/{slug}       → detail produk             ⬜ Belum
+/{tenantSlug}/produk                           → archive / listing produk
+/{tenantSlug}/produk?category={slug}           → filter by kategori (query param)
+/{tenantSlug}/produk/kategori/{categorySlug}   → arsip per kategori (dedicated URL)
+/{tenantSlug}/produk/{productSlug}             → detail produk
 ```
 
-Filter di archive: `?category={slug}`
+> **Catatan**: Dashboard admin tetap `/{slug}/toko` — tidak ada konflik dengan front-end publik
+> karena keduanya ada di route group berbeda (`(dashboard)` vs `(public)`).
+> URL front-end memilih `/produk` bukan `/toko` untuk menghindari konflik ini.
 
 ### Card Variants (dipakai di Section)
 
@@ -329,6 +333,476 @@ Filter di archive: `?category={slug}`
 | 1 | Grid Produk | 4 kolom `product-card-grid`, count default 8 |
 | 2 | Showcase | 1 featured besar (inline) + 4 kecil (`product-card-grid`) |
 | 3 | Carousel | Scroll horizontal `product-card-ringkas`, aspect 1:1 |
+
+---
+
+## Perencanaan Halaman Publik Toko
+
+Tiga halaman publik yang perlu dibangun di bawah `app/(public)/[tenant]/toko/`.
+
+---
+
+### 1. Halaman Arsip Produk — `/{slug}/toko`
+
+**Route:** `app/(public)/[tenant]/produk/page.tsx`
+
+**Fungsi:** Listing semua produk aktif milik tenant + mitra aktif, dengan filter dan pagination.
+
+#### Route Structure
+
+```
+app/(public)/[tenant]/produk/
+├── page.tsx                         → archive + search + filter + pagination
+├── kategori/
+│   └── [categorySlug]/page.tsx      → dedicated category archive
+└── [productSlug]/page.tsx           → product detail
+```
+
+#### Data yang Dibutuhkan
+
+```typescript
+// Di page.tsx (server component)
+const products: ProductCardData[]     // fetch dari DB
+const categories: { id, name, slug }[] // untuk sidebar filter
+const totalCount: number              // untuk pagination
+const sessionType: SessionType        // untuk resolvePrice() di client
+```
+
+#### Fetch Strategy
+
+```typescript
+// Query produk
+const rows = await db
+  .select({ ... })
+  .from(schema.products)
+  .leftJoin(schema.productCategories, eq(schema.productCategories.id, schema.products.categoryId))
+  .leftJoin(schema.mitras, eq(schema.mitras.id, schema.products.mitraId))
+  .where(and(
+    eq(schema.products.status, "active"),
+    // jika ada filter categoryId: eq(schema.products.categoryId, categoryId)
+    // jika ada filter search: sql`${schema.products.name} ILIKE ${'%' + search + '%'}`
+    // seller_type=tenant selalu tampil, seller_type=mitra hanya jika mitras.status='active'
+  ))
+  .orderBy(desc(schema.products.createdAt))
+  .limit(PAGE_SIZE)
+  .offset((page - 1) * PAGE_SIZE);
+
+// Resolve businessName untuk produk mitra (pattern sama dengan products-section.tsx)
+// Aggregate priceMin/priceMax untuk variable products
+```
+
+#### Resolusi SessionType
+
+```typescript
+// Di page.tsx server component
+import { auth }         from "@/lib/auth";
+import { headers }      from "next/headers";
+import { db, members }  from "@jalajogja/db";
+
+async function resolveSessionType(session: Session | null): Promise<SessionType> {
+  if (!session?.user?.id) return "none";
+  const [member] = await db
+    .select({ id: members.id })
+    .from(members)
+    .where(eq(members.betterAuthUserId, session.user.id))
+    .limit(1);
+  return member ? "member" : "public";
+}
+```
+
+`sessionType` dikirim sebagai prop ke client component — tidak boleh di-resolve di client
+karena butuh DB query ke `public.members`.
+
+#### Query Params
+
+| Param | Tipe | Fungsi |
+|-------|------|--------|
+| `category` | `string` (slug) | Filter by kategori |
+| `mitra` | `string` (slug) | Filter by mitra (opsional, fase 2) |
+| `search` | `string` | Full-text search by nama produk |
+| `page` | `number` | Halaman pagination (default 1) |
+| `sort` | `terbaru\|termurah\|termahal` | Urutan (default terbaru) |
+
+#### Layout
+
+```
+┌───────────────────────────────────────────────────────────┐
+│  Toko — Produk Kami              [🔍 Cari produk...]      │
+├─────────────────┬─────────────────────────────────────────┤
+│  KATEGORI       │  Filter: [Semua] [Kaos] [Aksesoris]...  │
+│  • Semua        │                                          │
+│  • Kaos (12)    │  [Grid: Card 4 kolom — ProductCard grid] │
+│  • Aksesoris    │                                          │
+│  • Buku (5)     │  [Card] [Card] [Card] [Card]            │
+│                 │  [Card] [Card] [Card] [Card]            │
+│  MITRA          │                                          │
+│  • Semua        │  [← 1  2  3  →]  (pagination)           │
+│  • Nama Mitra   │                                          │
+└─────────────────┴─────────────────────────────────────────┘
+```
+
+Pada mobile: sidebar kategori diganti chip scroll horizontal di atas grid.
+
+#### Komponen
+
+```
+components/toko/public/
+├── product-archive-client.tsx   → filter chips + search input (client component)
+└── product-archive-grid.tsx     → grid 2×2 (mobile), 3×N (tablet), 4×N (desktop)
+```
+
+`ProductCard` (dari `components/website/public/product-cards/product-card.tsx`) dipakai langsung.
+
+#### Metadata SEO
+
+```typescript
+export async function generateMetadata({ params }): Promise<Metadata> {
+  return {
+    title: `Toko — ${tenant.name}`,
+    description: `Produk dari ${tenant.name}`,
+    openGraph: { ... },
+  };
+}
+```
+
+#### Container & Styling
+
+```tsx
+<section className="py-10 px-4">
+  <div className="max-w-7xl mx-auto">
+    {/* filter + grid */}
+  </div>
+</section>
+```
+
+#### Konstanta
+
+```typescript
+const PAGE_SIZE = 20; // 4 kolom × 5 baris
+```
+
+---
+
+### 2. Halaman Arsip Kategori — `/{slug}/toko/kategori/{categorySlug}`
+
+**Route:** `app/(public)/[tenant]/produk/kategori/[categorySlug]/page.tsx`
+
+**Fungsi:** Identik dengan archive utama tapi pre-filter by kategori. URL-nya bisa di-share dan di-index Google secara terpisah.
+
+#### Perbedaan dari Archive Utama
+
+- Server component langsung SELECT kategori by `slug` → 404 jika tidak ditemukan
+- Title halaman = nama kategori (`"Kaos — Toko IKPM"`)
+- Breadcrumb: `Toko > Kaos`
+- Filter kategori lain tetap tampil di sidebar sebagai navigasi
+- Query params yang masih berlaku: `search`, `page`, `sort`
+- `category` tidak perlu di query param — sudah tersirat dari URL
+
+#### Fetch Tambahan
+
+```typescript
+// Resolve kategori dari slug
+const [category] = await db
+  .select({ id: schema.productCategories.id, name: schema.productCategories.name })
+  .from(schema.productCategories)
+  .where(eq(schema.productCategories.slug, categorySlug))
+  .limit(1);
+
+if (!category) notFound();
+
+// Produk di-filter langsung by category.id
+```
+
+#### Metadata SEO
+
+```typescript
+export async function generateMetadata({ params }): Promise<Metadata> {
+  return {
+    title: `${category.name} — Toko ${tenant.name}`,
+    description: `Produk kategori ${category.name} dari ${tenant.name}`,
+  };
+}
+```
+
+---
+
+### 3. Halaman Detail Produk — `/{slug}/toko/{productSlug}`
+
+**Route:** `app/(public)/[tenant]/produk/[productSlug]/page.tsx`
+
+**Fungsi:** Halaman lengkap satu produk — gallery, info harga, variasi picker (untuk variable product), dan tombol tambah ke keranjang.
+
+#### Data yang Dibutuhkan
+
+```typescript
+const product: ProductDetail   // produk + semua kolom
+const variations: ProductVariationData[]  // jika variable product
+const sessionType: SessionType           // untuk harga yang tepat
+const relatedProducts: ProductCardData[] // produk kategori sama (max 4)
+const primaryColor: string               // dari tenant settings → warna tombol CTA
+```
+
+#### Fetch Strategy
+
+```typescript
+// Step 1: fetch produk
+const [row] = await db
+  .select({ ...allProductColumns, categoryName, categorySlug })
+  .from(schema.products)
+  .leftJoin(schema.productCategories, ...)
+  .leftJoin(schema.mitras, ...)
+  .where(and(
+    eq(schema.products.slug, productSlug),
+    eq(schema.products.status, "active"),
+  ))
+  .limit(1);
+
+if (!row) notFound();
+
+// Step 2: fetch variasi (jika variable)
+let variations: ProductVariationData[] = [];
+if (row.productType === "variable") {
+  variations = await db
+    .select()
+    .from(schema.productVariations)
+    .where(and(
+      eq(schema.productVariations.productId, row.id),
+      eq(schema.productVariations.isActive, true),
+    ))
+    .orderBy(schema.productVariations.createdAt);
+}
+
+// Step 3: resolve sessionType (sama seperti archive)
+// Step 4: fetch related products (kategori sama, status active, limit 4, exclude current)
+// Step 5: fetch businessName jika mitra (cross-schema via publicDb)
+```
+
+#### Layout Halaman
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  [Breadcrumb: Toko > Kaos > Kaos Polos IKPM]                │
+├──────────────────────────────────────────────────────────────┤
+│  [Gallery: gambar besar + thumbnail strip]                   │
+│                            │  Kaos Polos IKPM               │
+│  ┌─────────────────────┐  │                                  │
+│  │                     │  │  Kategori: Kaos                  │
+│  │   [Gambar Utama]    │  │  Dijual oleh: Nama Mitra         │
+│  │                     │  │                                  │
+│  └─────────────────────┘  │  [HARGA — resolvePrice()]        │
+│  [thumb1][thumb2][thumb3]  │  Rp 90.000                      │
+│                            │  ~~Rp 100.000~~  (coret jika    │
+│                            │  ada public/member price)        │
+│                            │                                  │
+│                            │  [Simple product:]              │
+│                            │  Kuantitas: [- 1 +]  Stok: 8   │
+│                            │                                  │
+│                            │  [Variable product:]            │
+│                            │  Ukuran: [S][M][L][XL]          │
+│                            │  Warna:  [●Putih][○Hitam]       │
+│                            │  Harga: Rp 90.000  Stok: 8     │
+│                            │  Kuantitas: [- 1 +]             │
+│                            │                                  │
+│                            │  [+ Tambah ke Keranjang]        │
+│                            │  [→ Beli Sekarang]  (opsional)  │
+├──────────────────────────────────────────────────────────────┤
+│  Deskripsi Produk                                            │
+│  [render Tiptap HTML — dangerouslySetInnerHTML]              │
+├──────────────────────────────────────────────────────────────┤
+│  Produk Lainnya dari Kategori Ini                            │
+│  [ProductCard grid × 4]                                      │
+└──────────────────────────────────────────────────────────────┘
+```
+
+#### Gallery
+
+Menggunakan komponen `<Gallery>` dari sistem gallery yang sudah ada
+(`components/gallery/` — lightbox + keyboard + touch swipe).
+
+```typescript
+// Convert ProductImage[] ke format Gallery
+const galleryImages = images.map((img, i) => ({
+  id:  img.id,
+  src: img.variants?.["square-large"] ?? img.url,
+  alt: img.alt || product.name,
+  thumb: img.variants?.square ?? img.url,
+}));
+```
+
+#### Pemisahan Server / Client
+
+```typescript
+// page.tsx — server component
+// Fetch semua data, resolve sessionType, siapkan variations array
+
+// product-detail-client.tsx — client component
+// Menerima: product, variations, sessionType, galleryImages
+// State internal:
+//   - selectedAttributes: Record<string, string>    // { "Ukuran": "M", "Warna": "Hitam" }
+//   - quantity: number                              // default 1
+//   - activeVariation: ProductVariationData | null  // computed dari selectedAttributes
+//   - isAddingToCart: boolean                       // loading state
+
+// Computed dari selectedAttributes + variations:
+//   - activeVariation → harga + stok + foto yang aktif
+//   - displayPrice   → resolvePrice(activeVariation ?? product, sessionType)
+//   - isOutOfStock   → activeVariation?.stock === 0 || product.stock === 0
+```
+
+#### Logika Variation Picker
+
+```typescript
+// Cari variasi yang cocok dengan kombinasi atribut yang dipilih
+function findVariation(
+  variations: ProductVariationData[],
+  selected:   Record<string, string>
+): ProductVariationData | null {
+  return variations.find(v =>
+    Object.entries(selected).every(([key, val]) => v.attributeCombo[key] === val)
+  ) ?? null;
+}
+
+// Cek apakah sebuah value atribut tersedia (ada variasi aktif + stok > 0)
+function isValueAvailable(
+  variations: ProductVariationData[],
+  attrName:   string,
+  attrValue:  string,
+  current:    Record<string, string>   // atribut lain yang sudah dipilih
+): boolean {
+  return variations.some(v =>
+    v.attributeCombo[attrName] === attrValue &&
+    v.isActive && v.stock > 0 &&
+    Object.entries(current).every(([k, val]) => k === attrName || v.attributeCombo[k] === val)
+  );
+}
+```
+
+#### Integrasi addToCartAction
+
+```typescript
+import { addToCartAction } from "@/app/(public)/[tenant]/cart/actions";
+
+async function handleAddToCart() {
+  setIsAddingToCart(true);
+
+  // Untuk simple product
+  const result = await addToCartAction(slug, {
+    itemType:  "product",
+    itemId:    product.id,
+    name:      product.name,
+    unitPrice: parseFloat(displayPrice.replace(/\D/g, "")),
+    quantity,
+    notes:     null,
+  });
+
+  // Untuk variable product — sertakan variasi info di name/notes
+  const result = await addToCartAction(slug, {
+    itemType:  "product",
+    itemId:    activeVariation.id,   // variasi ID sebagai itemId
+    name:      `${product.name} — ${formatVariationLabel(activeVariation.attributeCombo)}`,
+    unitPrice: parseFloat(resolvedPrice),
+    quantity,
+    notes:     null,
+  });
+
+  if (result.success) {
+    // Toast sukses + link ke keranjang
+  } else {
+    // Toast error
+  }
+  setIsAddingToCart(false);
+}
+```
+
+**Catatan**: `itemId` untuk variable product menggunakan `variation.id`, bukan `product.id`.
+Ini penting agar di keranjang sistem bisa bedakan variasi yang berbeda dari produk yang sama.
+Validasi stok real-time dilakukan server-side di `addToCartAction` (V8 — belum diimplementasi).
+
+#### Display Harga di Detail Page
+
+```
+Simple:
+  Rp 85.000                                  ← tier 1 (tidak login)
+  Rp 75.000  ~~Rp 85.000~~                   ← tier 2/3 (ada diskon)
+
+Variable (sebelum pilih variasi):
+  Mulai dari Rp 85.000                        ← priceMin variasi aktif
+
+Variable (setelah pilih variasi):
+  Rp 90.000  ~~Rp 100.000~~                  ← harga variasi terpilih
+```
+
+#### Metadata SEO
+
+```typescript
+export async function generateMetadata({ params }): Promise<Metadata> {
+  const og = product.ogImageId
+    ? await resolveOgImage(tenantClient, product.ogImageId)
+    : pickProductCover(productCardData, "square-large");
+
+  return {
+    title:       product.metaTitle ?? `${product.name} — ${tenant.name}`,
+    description: product.metaDesc ?? product.description?.slice(0, 160),
+    openGraph: {
+      title:  product.ogTitle ?? product.name,
+      description: product.ogDescription ?? product.description?.slice(0, 160),
+      images: og ? [{ url: og }] : undefined,
+    },
+  };
+}
+```
+
+#### File Komponen Baru
+
+```
+components/toko/public/
+├── product-detail-client.tsx    → UTAMA — variation picker + quantity + add to cart
+├── product-gallery-strip.tsx    → thumbnail strip di bawah gambar utama (client)
+├── product-price-display.tsx    → display harga dengan coret (server-safe, props only)
+├── product-attributes-picker.tsx → tombol atribut S/M/L per group (bagian dari detail-client)
+└── product-related.tsx          → grid 4 produk terkait (server component)
+```
+
+---
+
+### Ringkasan Route + File
+
+```
+app/(public)/[tenant]/produk/
+├── page.tsx                              → archive utama (server component)
+├── kategori/
+│   └── [categorySlug]/page.tsx          → archive per kategori (server component)
+└── [productSlug]/page.tsx               → detail produk (server component, pass ke client)
+
+components/toko/public/
+├── product-archive-client.tsx           → filter chips + search input
+├── product-archive-grid.tsx             → grid card dengan pagination
+├── product-detail-client.tsx            → variation picker + qty + add-to-cart
+├── product-gallery-strip.tsx            → thumbnail strip
+├── product-price-display.tsx            → harga + coret
+├── product-attributes-picker.tsx        → tombol atribut per group
+└── product-related.tsx                  → grid 4 produk terkait
+```
+
+---
+
+### Urutan Implementasi
+
+```
+Phase P — Halaman Publik Toko
+  Step P1: archive utama (/{slug}/toko) — server component, filter + grid + pagination
+  Step P2: archive kategori (/{slug}/toko/kategori/{slug}) — sama + SEO per kategori
+  Step P3: detail simple product — gallery + harga + qty + add to cart
+  Step P4: variation picker — ProductDetailClient + atribut picker + stok check
+  Step P5: V7 — variasi di cart + V8 — validasi stok server-side saat add to cart
+  Step P6: SEO metadata lengkap + JSON-LD (Product schema)
+  Step P7: "Beli Sekarang" shortcut (add to cart → langsung ke checkout)
+```
+
+**Dependensi**:
+- Step P3–P4 butuh V1–V6 (Produk Variasi) yang sudah selesai
+- Step P5 butuh `addToCartAction` yang sudah ada
+- Step P6 butuh `generateProductJsonLd` dari `lib/seo.ts`
 
 ---
 
@@ -617,9 +1091,13 @@ Phase V — Produk Variasi
 | `ProductImage.variants` disimpan + dipakai | ✅ Selesai |
 | Sistem Harga Berlapis (price + public_price + member_price) | ✅ Selesai |
 | ProductCard (grid, list, ringkas) + SessionType + resolvePrice() | ✅ Selesai |
+| ProductsSection (Design 1, 2, 3) | ✅ Selesai |
 | **Produk Variasi** (product_type, attribute_groups, product_variations) | ✅ V1–V6+V9 Selesai |
-| Produk Variasi V7 — halaman detail publik (variasi picker) | ⏸ Ditunda (butuh /toko/[slug]) |
-| Produk Variasi V8 — keranjang/checkout validasi variasi | ⏸ Ditunda (butuh front-end toko) |
-| Front-end: `/{slug}/toko` (archive) | ⏸ Ditunda |
-| Front-end: `/{slug}/toko/{slug}` (detail) | ⏸ Ditunda |
-| ProductsSection (Design 1, 2, 3) | ⏸ Ditunda |
+| Produk Variasi V7 — halaman detail publik (variasi picker) | ✅ Selesai (Phase P4) |
+| Produk Variasi V8 — keranjang/checkout validasi variasi | ⏸ Ditunda (stok check server-side) |
+| **Halaman Publik** — perencanaan (3 halaman) | ✅ Perencanaan selesai |
+| Phase P1 — `/{slug}/produk` archive utama | ✅ Selesai |
+| Phase P2 — `/{slug}/produk/kategori/{slug}` | ✅ Selesai |
+| Phase P3 — `/{slug}/produk/{slug}` detail simple | ✅ Selesai |
+| Phase P4 — detail variasi picker + add to cart variasi | ✅ Selesai |
+| Phase P5 — SEO metadata per halaman | ✅ Selesai |

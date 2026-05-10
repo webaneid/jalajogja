@@ -152,7 +152,7 @@ export async function ProductsSection({ data, variant, tenantClient, tenantSlug 
 
   // Resolve filter meta (nama kategori + href arsip)
   let sectionTitle = data.title || "Produk";
-  let filterHref   = `/${tenantSlug}/toko`;
+  let filterHref   = `/${tenantSlug}/produk`;
 
   if (data.categoryId) {
     const [cat] = await db
@@ -162,7 +162,7 @@ export async function ProductsSection({ data, variant, tenantClient, tenantSlug 
       .limit(1);
     if (cat) {
       if (!data.title) sectionTitle = cat.name;
-      filterHref = `/${tenantSlug}/toko?category=${cat.slug}`;
+      filterHref = `/${tenantSlug}/produk?category=${cat.slug}`;
     }
   }
 
