@@ -1857,11 +1857,99 @@ konfirmasi "sudah ditandatangani".
 detail surat → token baru di-generate → bagikan link baru ke officer → halaman tampil
 "sudah ditandatangani" dengan benar.
 
+### [2026-05] Sistem Mitra — Phase 0–2 Selesai
+
+Detail arsitektur: `docs/arsitektur-mitra.md`.
+
+**Keputusan dikunci**: mitra hanya di cabang sendiri, `member_price ≤ price × (1 - commission_rate)`,
+komisi di `/toko/pengaturan/`, produk mitra langsung aktif, transaksi via rekening tenant.
+
+Phase 0: settings `"toko"` + `/toko/pengaturan/` + nav
+Phase 1: schema mitra_applications + mitras + kolom products/order_items + admin UI
+Phase 2: API `/api/mitra/*` + frontend `/akun/mitra/*`
+
+Tenant existing migration: `docs/migration-tenant-pc-ikpm-jogjakarta.sql`
+
+---
+
+### [2026-05] Sistem Harga Berlapis — 3 Tier
+
+```
+price        → tidak login
+public_price → siapapun yang login (profiles + anggota IKPM)
+member_price → anggota IKPM seluruh dunia (members.better_auth_user_id)
+```
+
+`resolvePrice(product, sessionType)` di `lib/product-card-templates.ts` — fallback chain.
+Form admin: 3 field harga bebas diset. Mitra: `member_price` tunduk constraint komisi.
+
+---
+
+### [2026-05] Produk Variasi — V1–V6+V9
+
+`product_type = "simple" | "variable"` — toggle di form editor.
+`attribute_groups JSONB` + tabel `product_variations` (price 3 tier, stock, images, attribute_combo).
+"Generate Variasi" = cartesian product, kombinasi existing dipertahankan.
+ProductCard variable: `priceMin`/`priceMax` → "Mulai dari Rp X".
+V7 (detail publik) + V8 (keranjang) ditunda — butuh front-end `/toko`.
+
+---
+
+### [2026-05] ProductCard + ProductsSection
+
+3 card variant: `grid` | `list` | `ringkas` — semua support badge Mitra + harga 3 tier.
+3 section design: Grid 4 kolom | Showcase 1+4 | Carousel horizontal.
+Fetch layer: JOIN mitras, businessName cross-schema, priceMin/priceMax via aggregate.
+
+**Container wajib semua section landing page:**
+```
+<section className="py-10 px-4">
+  <div className="max-w-7xl mx-auto">...</div>
+</section>
+```
+Konsisten dengan header/footer. Tidak boleh `w-full` tanpa inner container.
+
+---
+
+### [2026-05] Bug: images JSONB dari MediaPicker sudah URL penuh — jangan publicUrl() lagi
+
+`images[].url` dan `images[].variants` yang disimpan ke JSONB produk oleh MediaPicker sudah
+berisi **URL lengkap** (hasil `publicUrl()` di upload route). Jika dipanggil `publicUrl()` lagi
+di fetch layer → double URL: `http://localhost:9000/tenant-x/http://localhost:9000/tenant-x/...`.
+
+**Aturan**: data dari MediaPicker (`media.url`, `media.variants`) langsung pakai — tidak perlu
+wrap dengan `publicUrl()`. Hanya path mentah MinIO (dari `media.path`) yang perlu di-wrap.
+
+---
+
+### [2026-05] slugify dari "use server" — bug berulang, CATAT
+
+`slugify` yang di-export dari `actions.ts` (`"use server"`) → jadi server action proxy di client
+→ return `Promise<string>` bukan `string` → `slug.trim()` throw TypeError, slug field tampil
+`[object Promise]`.
+
+**Fix & Aturan**: implementasi `slugify` lokal di client component. JANGAN export fungsi utilitas
+apapun dari file `"use server"` untuk dipakai di client component. Export dihapus dari actions.ts.
+
+---
+
+### [2026-05] Billing Universal — Prinsip Dikunci
+
+Satu infrastruktur (tabel `invoices`), dua pintu:
+- **Front-end**: cart universal (produk + tiket + donasi bisa dicampur) → checkout → invoice
+- **Admin**: invoice manual dari dashboard
+
+Toko/Donasi/Event sudah terintegrasi via `createLinkedInvoice()` + `syncInvoicePayment()`.
+Yang belum: item picker katalog di invoice manual admin (pilih dari produk/tiket/donasi).
+
+Detail: `docs/arsitektur-billing.md` § Prinsip Kunci.
+
+---
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Image System Phase D selesai** — D1 (attention autocrop + square-large + module-aware) + D2 (manual crop editor UI). TypeScript 0 errors.
-- Sebelumnya: PDF surat improvement + fix link TTD "Tidak Valid" setelah signing.
-- Sebelumnya: Dashboard akun anggota final — label menu diperbarui (Belanja/Donasi/Event), card "Produk" coming soon.
-- Next: Halaman listing Donasi, Event, Toko (riwayat per user) — semua masih under construction
+- Terakhir dikerjakan: **ProductsSection fix** — container `max-w-7xl mx-auto` + fix URL double dari extractCover.
+- Sesi ini: Sistem Mitra (Phase 0–2), Harga Berlapis (3 tier), Produk Variasi (V1–V6), ProductCard (3 variant), ProductsSection (3 design), Gallery System (Phase 1–3), Billing universal prinsip dikunci, Image Phase D.
+- Ditunda: `/toko` publik, EventCard, CampaignCard, Variasi V7–V8, item picker invoice admin.
 
 ### Status Halaman Publik Anggota
 | Link dari Dashboard | URL | Status |
