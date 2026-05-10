@@ -25,8 +25,17 @@ import {
   generateVariationsAction,
   type ProductData,
   type ProductImage,
-  slugify,
 } from "@/app/(dashboard)/[tenant]/toko/actions";
+
+// Lokal — tidak import dari "use server" file agar tidak jadi server action proxy
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
 import type { SeoValues } from "@/components/seo/seo-panel";
 import { AttributeGroupEditor } from "./attribute-group-editor";
 import { VariationTable, type VariationLocal } from "./variation-table";
