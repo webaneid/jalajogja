@@ -685,7 +685,7 @@ Step D4: Front-end halaman publik
 
 ---
 
-## 15. Status Implementasi
+## 16. Status Implementasi
 
 | Fitur | Status |
 |-------|--------|
@@ -716,7 +716,7 @@ Step D4: Front-end halaman publik
 
 ---
 
-## 15. Lessons Learned
+## 17. Lessons Learned
 
 ### Arsitektur payment terpisah dari donations
 Amount dan status tidak disimpan langsung di `donations` — melainkan di tabel `payments`
@@ -740,3 +740,30 @@ Di edit page, pass `ogImageUrl: null` — form akan load URL dari `ogImageId` ji
 Jangan campur dua konsep:
 - `campaignType` = jenis syariat (enum tetap: donasi/zakat/wakaf/qurban)
 - `categoryId` = tema program (FK fleksibel: Sosial, Kesehatan, dll — bisa tambah kapan saja)
+
+### Cover image edit page wajib `publicUrl(slug, path)`
+`media.path` adalah raw MinIO path (`general/2026/05/file.webp`) — bukan URL.
+Jika langsung dipakai sebagai `src`, browser mengira itu path relatif → 404.
+Fix: `coverUrl = media ? publicUrl(slug, media.path) : null` — identik dengan post edit page.
+**Aturan**: selalu wrap `media.path` dengan `publicUrl()`. Hanya `media.url` dan JSONB
+`images[].url` dari MediaPicker yang sudah berupa full URL dan tidak perlu wrap.
+
+### Tenant existing wajib migration manual untuk kolom + constraint baru
+Kolom yang ditambahkan setelah tenant di-provisioning tidak otomatis ada di DB tenant lama.
+Wajib jalankan `ALTER TABLE` manual via `psql`. Selalu update
+`docs/migration-tenant-pc-ikpm-jogjakarta.sql` setiap ada perubahan schema.
+Kolom yang perlu dimigrasikan di sesi ini: `campaigns.default_amount`, `campaigns.gallery`,
+dan `settings` CHECK constraint group `donasi`.
+
+### Settings group baru wajib ditambah di tiga tempat
+Saat menambah group settings baru (misal `donasi`), wajib update ketiganya sekaligus:
+1. `packages/db/src/schema/tenant/settings.ts` → `SETTING_GROUPS` array
+2. `packages/db/src/helpers/create-tenant-schema.ts` → DDL CHECK constraint
+3. `docs/migration-tenant-pc-ikpm-jogjakarta.sql` → `ALTER TABLE ... DROP/ADD CONSTRAINT`
+Melewatkan salah satu → TypeScript error atau runtime `23514` constraint violation.
+
+### Status campaign: dropdown bebas, bukan cycle paksa
+Status campaign bisa pindah ke nilai apapun langsung — tidak perlu urutan draft→active→closed→archived.
+Implementasi: `<select>` native di header form, nilai disimpan bersamaan tombol "Simpan".
+Tidak butuh `toggleCampaignStatusAction` di UI (action bisa tetap ada untuk programmatic use).
+Prinsip: jangan paksa admin mengikuti alur yang tidak mereka butuhkan.
