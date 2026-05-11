@@ -230,45 +230,62 @@ export async function createOfficerWithAccountAction(
       .limit(1);
     if (existingByMember) return { success: false, error: "Anggota ini sudah memiliki akses dashboard." };
 
-    const email = data.activationEmail!.toLowerCase().trim();
-
-    // Cek email di Better Auth
-    const [existingAuth] = await db
-      .select({ id: authUserTable.id })
-      .from(authUserTable)
-      .where(eq(authUserTable.email, email))
+    // Ambil better_auth_user_id dari public.members (jika sudah punya akun front-end)
+    const [memberRow] = await db
+      .select({ betterAuthUserId: members.betterAuthUserId })
+      .from(members)
+      .where(eq(members.id, data.memberId))
       .limit(1);
 
-    if (existingAuth) {
-      // Pakai akun existing (pengurus multi-cabang)
+    if (memberRow?.betterAuthUserId) {
+      // Anggota sudah punya akun front-end → pakai langsung, tidak perlu email/password
+      userId = memberRow.betterAuthUserId;
+
       const [existingByAuth] = await tenantDb
         .select({ id: schema.users.id })
         .from(schema.users)
-        .where(eq(schema.users.betterAuthUserId, existingAuth.id))
+        .where(eq(schema.users.betterAuthUserId, userId))
         .limit(1);
-      if (existingByAuth) return { success: false, error: "Email ini sudah terdaftar sebagai pengguna dashboard ini." };
-      userId = existingAuth.id;
+      if (existingByAuth) return { success: false, error: "Akun ini sudah terdaftar sebagai pengguna dashboard ini." };
     } else {
-      // Buat akun baru via Better Auth
-      const result = await auth.api.signUpEmail({
-        body: {
-          name:     (data.activationName ?? data.memberId).trim(),
-          email,
-          password: data.activationPassword!,
-        },
-      });
-      if (!result?.user?.id) return { success: false, error: "Gagal membuat akun login." };
-      userId = result.user.id;
+      // Belum punya akun → wajib email + password
+      const email = data.activationEmail!.toLowerCase().trim();
+
+      // Cek email di Better Auth
+      const [existingAuth] = await db
+        .select({ id: authUserTable.id })
+        .from(authUserTable)
+        .where(eq(authUserTable.email, email))
+        .limit(1);
+
+      if (existingAuth) {
+        const [existingByAuth] = await tenantDb
+          .select({ id: schema.users.id })
+          .from(schema.users)
+          .where(eq(schema.users.betterAuthUserId, existingAuth.id))
+          .limit(1);
+        if (existingByAuth) return { success: false, error: "Email ini sudah terdaftar sebagai pengguna dashboard ini." };
+        userId = existingAuth.id;
+      } else {
+        const result = await auth.api.signUpEmail({
+          body: {
+            name:     (data.activationName ?? data.memberId).trim(),
+            email,
+            password: data.activationPassword!,
+          },
+        });
+        if (!result?.user?.id) return { success: false, error: "Gagal membuat akun login." };
+        userId = result.user.id;
+      }
+
+      // Set better_auth_user_id di public.members agar pengurus bisa login front-end
+      await db
+        .update(members)
+        .set({ betterAuthUserId: userId! })
+        .where(and(eq(members.id, data.memberId), isNull(members.betterAuthUserId)));
     }
 
-    // Set better_auth_user_id di public.members agar pengurus bisa login front-end
-    // sebagai anggota IKPM. Wajib dilakukan sebelum/bersamaan insert tenant.users.
-    await db
-      .update(members)
-      .set({ betterAuthUserId: userId! })
-      .where(and(eq(members.id, data.memberId), isNull(members.betterAuthUserId)));
-
-    // Insert ke tenant.users — userId dijamin non-null di sini (dicek di atas)
+    // Insert ke tenant.users
     await tenantDb.insert(schema.users).values({
       betterAuthUserId: userId!,
       memberId:         data.memberId,

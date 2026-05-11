@@ -29,6 +29,7 @@ export type MemberOption = {
   name:         string;
   memberNumber: string | null;
   email:        string | null; // dari contacts
+  hasAccount:   boolean;       // sudah punya better_auth_user_id (akun front-end)
 };
 
 export type DivisionOption = {
@@ -68,9 +69,10 @@ export function OfficerForm({ slug, officerId, members, divisions, customRoles, 
   const [memberOpen,   setMemberOpen]   = useState(false);
   const [divisionOpen, setDivisionOpen] = useState(false);
 
-  const [memberId,    setMemberId]    = useState(defaultValues?.memberId    ?? "");
-  const [memberName,  setMemberName]  = useState(defaultValues?.memberName  ?? "");
-  const [memberEmail, setMemberEmail] = useState<string | null>(null);
+  const [memberId,         setMemberId]         = useState(defaultValues?.memberId ?? "");
+  const [memberName,       setMemberName]       = useState(defaultValues?.memberName ?? "");
+  const [memberEmail,      setMemberEmail]      = useState<string | null>(null);
+  const [memberHasAccount, setMemberHasAccount] = useState(false);
   const [divisionId,  setDivisionId]  = useState(defaultValues?.divisionId  ?? "");
   const [position,    setPosition]    = useState(defaultValues?.position    ?? "");
   const [periodStart, setPeriodStart] = useState(defaultValues?.periodStart ?? "");
@@ -99,6 +101,8 @@ export function OfficerForm({ slug, officerId, members, divisions, customRoles, 
     setMemberId(m.id);
     setMemberName(m.name);
     setMemberEmail(m.email ?? null);
+    setMemberHasAccount(m.hasAccount);
+    setPassword(""); // reset password saat ganti anggota
     setMemberOpen(false);
   }
 
@@ -113,8 +117,11 @@ export function OfficerForm({ slug, officerId, members, divisions, customRoles, 
     if (activate && !isEdit) {
       if (!activationRole)   { setError("Pilih role dashboard."); return; }
       if (activationRole === "custom" && !customRoleId) { setError("Pilih role kustom."); return; }
-      if (password.length < 8) { setError("Password minimal 8 karakter."); return; }
-      if (!memberEmail)        { setError("Anggota ini tidak memiliki email. Tambahkan email di profil anggota terlebih dahulu."); return; }
+      if (!memberHasAccount) {
+        // Akun baru: email + password wajib
+        if (!memberEmail)        { setError("Anggota ini tidak memiliki email. Tambahkan email di profil anggota terlebih dahulu."); return; }
+        if (password.length < 8) { setError("Password minimal 8 karakter."); return; }
+      }
     }
 
     const officerData: OfficerData = {
@@ -377,53 +384,66 @@ export function OfficerForm({ slug, officerId, members, divisions, customRoles, 
 
           {activate && (
             <div className="space-y-4 pt-1 border-t">
-              {/* Email — read-only dari profil anggota */}
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">
-                  Email Login <span className="text-destructive">*</span>
-                </label>
-                {memberEmail ? (
-                  <div className={`${inputCls} bg-muted/50 text-muted-foreground cursor-not-allowed`}>
-                    {memberEmail}
-                    <span className="ml-2 text-xs">(dari profil anggota)</span>
-                  </div>
-                ) : memberId ? (
-                  <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                    Anggota ini belum memiliki email. Tambahkan email di profil anggota terlebih dahulu.
-                  </div>
-                ) : (
-                  <div className={`${inputCls} bg-muted/30 text-muted-foreground`}>
-                    Pilih anggota dulu untuk melihat email
-                  </div>
-                )}
-              </div>
 
-              {/* Password */}
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">
-                  Password <span className="text-destructive">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Minimal 8 karakter"
-                    className={`${inputCls} pr-10`}
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                  </button>
+              {/* Sudah punya akun front-end → tidak perlu password baru */}
+              {memberHasAccount ? (
+                <div className="rounded-md border border-green-300 bg-green-50 px-3 py-2.5 text-sm text-green-800">
+                  <p className="font-medium">Anggota ini sudah memiliki akun.</p>
+                  <p className="text-xs mt-0.5 text-green-700">
+                    Akses dashboard akan ditambahkan ke akun yang sudah ada — tidak perlu password baru.
+                  </p>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Pengurus bisa ubah password sendiri setelah login pertama.
-                </p>
-              </div>
+              ) : (
+                <>
+                  {/* Email — read-only dari profil anggota */}
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">
+                      Email Login <span className="text-destructive">*</span>
+                    </label>
+                    {memberEmail ? (
+                      <div className={`${inputCls} bg-muted/50 text-muted-foreground cursor-not-allowed`}>
+                        {memberEmail}
+                        <span className="ml-2 text-xs">(dari profil anggota)</span>
+                      </div>
+                    ) : memberId ? (
+                      <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                        Anggota ini belum memiliki email. Tambahkan email di profil anggota terlebih dahulu.
+                      </div>
+                    ) : (
+                      <div className={`${inputCls} bg-muted/30 text-muted-foreground`}>
+                        Pilih anggota dulu untuk melihat email
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Password — hanya untuk akun baru */}
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">
+                      Password <span className="text-destructive">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Minimal 8 karakter"
+                        className={`${inputCls} pr-10`}
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Pengurus bisa ubah password sendiri setelah login pertama.
+                    </p>
+                  </div>
+                </>
+              )}
 
               {/* Role dashboard */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

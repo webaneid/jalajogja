@@ -26,19 +26,28 @@ export default async function PengurusNewPage({
 
   const memberIds = memberships.map((m) => m.memberId);
 
-  let allMembers: { id: string; name: string; memberNumber: string | null; email: string | null }[] = [];
+  let allMembers: { id: string; name: string; memberNumber: string | null; email: string | null; hasAccount: boolean }[] = [];
   if (memberIds.length > 0) {
-    allMembers = await db
+    const rows = await db
       .select({
-        id:           members.id,
-        name:         members.name,
-        memberNumber: members.memberNumber,
-        email:        contacts.email,
+        id:               members.id,
+        name:             members.name,
+        memberNumber:     members.memberNumber,
+        email:            contacts.email,
+        betterAuthUserId: members.betterAuthUserId,
       })
       .from(members)
       .leftJoin(contacts, eq(contacts.id, members.contactId))
       .where(inArray(members.id, memberIds))
       .orderBy(members.name);
+
+    allMembers = rows.map(r => ({
+      id:           r.id,
+      name:         r.name,
+      memberNumber: r.memberNumber,
+      email:        r.email,
+      hasAccount:   !!r.betterAuthUserId,
+    }));
   }
 
   // Fetch divisi aktif

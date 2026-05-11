@@ -42,14 +42,15 @@ export default async function PengurusEditPage({
     .where(eq(tenantMemberships.tenantId, tenantId));
 
   const memberIds = memberships.map((m) => m.memberId);
-  const allMembers = memberIds.length > 0
+  const allMembersRaw = memberIds.length > 0
     ? await db
-        .select({ id: members.id, name: members.name, memberNumber: members.memberNumber, email: contacts.email })
+        .select({ id: members.id, name: members.name, memberNumber: members.memberNumber, email: contacts.email, betterAuthUserId: members.betterAuthUserId })
         .from(members)
         .leftJoin(contacts, eq(contacts.id, members.contactId))
         .where(inArray(members.id, memberIds))
         .orderBy(members.name)
     : [];
+  const allMembers = allMembersRaw.map(r => ({ ...r, hasAccount: !!r.betterAuthUserId }));
 
   // Fetch divisi aktif
   const divisions = await tenantDb
