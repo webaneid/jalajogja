@@ -1962,6 +1962,31 @@ Detail: `docs/arsitektur-billing.md` § Prinsip Kunci.
 
 ---
 
+### [2026-05] Aktivasi Pengurus — Deteksi Akun Existing + Tanpa Password Baru
+
+**Masalah**: Form aktivasi pengurus selalu minta email + password, padahal anggota yang sudah
+punya akun front-end (`members.better_auth_user_id` sudah terisi) tidak perlu password baru.
+Admin bingung, dan password yang diisi pun tidak akan dipakai (karena akun sudah ada di Better Auth).
+
+**Fix**:
+- `MemberOption` diperluas dengan `hasAccount: boolean` (dari `!!members.better_auth_user_id`)
+- `OfficerForm`: jika `memberHasAccount=true` → tampil banner hijau, sembunyikan form email/password
+- `createOfficerWithAccountAction`: lookup `better_auth_user_id` dari `public.members` dulu.
+  Jika sudah ada → pakai langsung tanpa `signUpEmail`. Jika belum → buat akun baru seperti biasa.
+- Validasi password hanya wajib jika `!memberHasAccount`
+
+**Alur lengkap aktivasi pengurus:**
+```
+Admin pilih anggota → centang "Aktifkan Akses Dashboard"
+→ members.better_auth_user_id sudah ada?
+    YA → banner hijau "pakai akun yang sudah ada" → pilih role saja → simpan
+    TIDAK → isi email (dari profil) + password baru + role → simpan
+              → signUpEmail + UPDATE members.better_auth_user_id + INSERT tenant.users
+```
+
+**Aturan idempotency**: `UPDATE members SET better_auth_user_id WHERE ... AND better_auth_user_id IS NULL`
+— tidak pernah overwrite akun yang sudah ada.
+
 ### [2026-05] Redirect Loop Login ↔ Akun — Pengurus Tanpa Front-end Profile
 
 **Penyebab**: `createOfficerWithAccountAction` membuat Better Auth account + insert `tenant.users`,
