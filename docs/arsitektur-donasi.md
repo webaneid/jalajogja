@@ -441,13 +441,313 @@ Jika user sudah login → nama otomatis terisi, `member_id` di-set.
 
 ---
 
-## 12. Donasi Rutin (Recurring) — Roadmap
+## 12. Donasi Rutin (Recurring) — Perencanaan
 
-Belum diimplementasi:
-- Donatur berkomitmen donasi rutin (bulanan/tahunan)
-- Sistem generate reminder notifikasi setiap periode
-- Tidak ada auto-debit — tetap konfirmasi manual
-- Schema: tambah `is_recurring`, `recurring_interval`, `parent_donation_id`
+> **Status**: Belum diimplementasi. Dokumen ini adalah perencanaan lengkap.
+
+---
+
+### 12a. Konsep
+
+Donasi rutin adalah **komitmen berlangganan** dari anggota — mereka mendaftar satu kali
+dan sistem mengingatkan (atau menagih) setiap periode secara otomatis.
+
+```
+Admin buat campaign "Donasi Jumat Berkah" (is_recurring = true)
+  → tentukan interval: mingguan / bulanan / tahunan
+  → tentukan pilihan nominal: [Rp 10.000, Rp 25.000, Rp 50.000, Rp 100.000]
+
+Anggota buka front-end dashboard → pilih campaign → subscribe
+  → pilih nominal dari pilihan yang admin buat
+  → sistem simpan subscription: next_due_at = sekarang + interval
+
+Setiap periode (cron harian):
+  → cari subscription yang due hari ini
+  → generate draft donation + kirim reminder ke anggota (WA/email)
+  → anggota klik link → konfirmasi bayar seperti biasa
+```
+
+**Model: reminder-based, bukan auto-debit.**
+Auto-debit membutuhkan integrasi rekening bank atau payment gateway recurring.
+Sistem jalajogja menggunakan konfirmasi manual → reminder adalah pilihan yang realistis.
+Auto-debit bisa ditambahkan di fase berikutnya jika gateway mendukung.
+
+---
+
+### 12b. Keputusan Desain yang Dikunci
+
+| Keputusan | Pilihan | Alasan |
+|-----------|---------|--------|
+| Siapa yang bisa subscribe | Anggota IKPM saja | Perlu identitas untuk notifikasi + riwayat |
+| Nominal | Dari pilihan admin (tidak bebas) | Lebih mudah dikelola + analitik yang bersih |
+| Interval | Mingguan / Bulanan / Tahunan | Cukup untuk kebutuhan umum |
+| Billing model | Reminder-based | Tidak butuh gateway recurring |
+| Jika anggota tidak bayar | Lanjut cycle berikutnya | Tidak suspend — ini donasi, bukan langganan SaaS |
+| Cancel subscription | Kapan saja oleh anggota | Self-service di dashboard |
+
+---
+
+### 12c. Perubahan Schema
+
+#### Perubahan `campaigns` — tambah kolom recurring
+
+```sql
+ALTER TABLE "{s}".campaigns
+  ADD COLUMN IF NOT EXISTS is_recurring       BOOLEAN     NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS recurring_interval TEXT        -- 'weekly' | 'monthly' | 'yearly' | null
+                                               CHECK (recurring_interval IN ('weekly','monthly','yearly')),
+  ADD COLUMN IF NOT EXISTS recurring_amounts  JSONB;      -- [10000, 25000, 50000, 100000]
+```
+
+**Drizzle:**
+```typescript
+isRecurring:        boolean("is_recurring").notNull().default(false),
+recurringInterval:  text("recurring_interval", { enum: ["weekly","monthly","yearly"] }),
+recurringAmounts:   jsonb("recurring_amounts").$type<number[]>(),
+```
+
+**Aturan:**
+- `is_recurring = true` → `recurringInterval` wajib diisi
+- `recurringAmounts` = pilihan nominal yang admin tentukan (bukan rekomendasi global)
+- Campaign recurring tidak punya `defaultAmount` atau `targetAmount` — tidak relevan
+
+---
+
+#### Tabel baru `donation_subscriptions`
+
+```sql
+CREATE TABLE "{s}".donation_subscriptions (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id  UUID        NOT NULL REFERENCES "{s}".campaigns(id) ON DELETE CASCADE,
+  member_id    UUID        NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+  amount       NUMERIC(15,2) NOT NULL,         -- nominal yang dipilih anggota
+  interval     TEXT        NOT NULL
+               CHECK (interval IN ('weekly','monthly','yearly')),
+  status       TEXT        NOT NULL DEFAULT 'active'
+               CHECK (status IN ('active','paused','cancelled')),
+  next_due_at  TIMESTAMPTZ NOT NULL,           -- kapan reminder berikutnya dikirim
+  last_paid_at TIMESTAMPTZ,                    -- terakhir kali donasi dikonfirmasi
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (campaign_id, member_id)              -- satu anggota satu subscription per campaign
+);
+
+CREATE INDEX idx_subscriptions_next_due ON "{s}".donation_subscriptions(next_due_at)
+  WHERE status = 'active';
+CREATE INDEX idx_subscriptions_member   ON "{s}".donation_subscriptions(member_id);
+```
+
+---
+
+#### Perubahan `donations` — link ke subscription
+
+```sql
+ALTER TABLE "{s}".donations
+  ADD COLUMN IF NOT EXISTS subscription_id UUID
+    REFERENCES "{s}".donation_subscriptions(id) ON DELETE SET NULL;
+```
+
+Setiap donasi yang di-generate dari subscription akan punya `subscription_id` terisi.
+Donasi manual / one-time tetap `subscription_id = null`.
+
+---
+
+### 12d. Alur Subscription Anggota
+
+```
+[Front-end: /{slug}/campaign/{campaignSlug}]
+
+Halaman campaign recurring:
+  → Tampil pilihan nominal dari campaign.recurring_amounts
+  → Tampil interval (mis. "Setiap Bulan")
+  → Tombol "Subscribe Donasi Bulanan"
+
+Anggota klik Subscribe:
+  → Pilih nominal dari list (chip selection)
+  → Konfirmasi: "Anda akan menerima reminder donasi setiap bulan sebesar Rp 50.000"
+  → createSubscriptionAction() → INSERT donation_subscriptions
+    - next_due_at = NOW() + interval (mis. +1 bulan)
+    - status = 'active'
+  → Tampil: "Berhasil berlangganan! Reminder pertama akan dikirim pada {next_due_at}"
+```
+
+---
+
+### 12e. Alur Reminder (Cron Job)
+
+```
+Cron: setiap hari jam 07.00 WIB
+→ Jalankan: generateRecurringDonationsJob(slug)
+
+Untuk setiap subscription WHERE status='active' AND next_due_at <= NOW():
+  1. Generate draft donation:
+     INSERT donations { campaignId, memberId, amount, subscriptionId, status='pending' }
+     INSERT payments { sourceType='donation', sourceId=donationId, status='pending' }
+
+  2. Kirim reminder ke anggota:
+     → WhatsApp (jika add-on aktif): "Halo {nama}, saatnya donasi rutin Anda untuk
+       {campaign.title} sebesar Rp {amount}. Klik: {link konfirmasi}"
+     → Email (jika SMTP dikonfigurasi): sama
+
+  3. Update subscription:
+     next_due_at = next_due_at + interval
+     (contoh: jika monthly, tambah 1 bulan dari next_due_at lama)
+
+Anggota klik link → halaman konfirmasi bayar
+  → Pilih metode bayar → bayar → upload bukti
+  → Admin konfirmasi → status donation = 'paid', subscription.last_paid_at = NOW()
+```
+
+**Toleransi keterlambatan**: jika anggota tidak bayar, reminder tetap dikirim lagi di periode
+berikutnya. Tidak ada penalti, tidak ada suspend — ini donasi, bukan tagihan wajib.
+
+---
+
+### 12f. Dashboard Anggota — Manage Subscriptions
+
+Route: `/{slug}/akun/subscriptions`
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Donasi Rutin Saya                                  │
+├─────────────────────────────────────────────────────┤
+│  📅 Donasi Jumat Berkah                              │
+│  Rp 50.000 / Bulan                                  │
+│  Reminder berikutnya: 1 Juni 2026                   │
+│  Status: Aktif                          [Batalkan]  │
+├─────────────────────────────────────────────────────┤
+│  📅 Infaq Pendidikan                                │
+│  Rp 25.000 / Mingguan                               │
+│  Reminder berikutnya: Jumat, 16 Mei 2026            │
+│  Status: Aktif                          [Batalkan]  │
+└─────────────────────────────────────────────────────┘
+```
+
+**Actions:**
+- Cancel → `cancelSubscriptionAction` → status = 'cancelled'
+- Pause (opsional fase 2) → status = 'paused', system skip reminder
+
+---
+
+### 12g. Admin View — Subscriber per Campaign
+
+Di halaman detail campaign recurring, tab tambahan "Subscriber":
+
+```
+Campaign: Donasi Jumat Berkah
+Total Subscriber Aktif: 42 orang
+Total Terkumpul Bulan Ini: Rp 1.750.000
+
+┌────────────────┬──────────┬────────────┬────────────┬──────────┐
+│ Nama Anggota   │ Nominal  │ Interval   │ Terakhir   │ Status   │
+├────────────────┼──────────┼────────────┼────────────┼──────────┤
+│ Ahmad Fauzi    │ Rp 50K   │ Bulanan    │ 1 Mei 2026 │ Aktif    │
+│ Budi Santoso   │ Rp 25K   │ Mingguan   │ 8 Mei 2026 │ Aktif    │
+│ ...            │          │            │            │          │
+└────────────────┴──────────┴────────────┴────────────┴──────────┘
+```
+
+---
+
+### 12h. CampaignForm — Perubahan untuk Recurring
+
+Saat `is_recurring = true`, sidebar tampil section **Konfigurasi Rutin**:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Donasi Rutin  [✓]                                  │
+│                                                     │
+│  Interval:                                          │
+│  ○ Mingguan  ● Bulanan  ○ Tahunan                   │
+│                                                     │
+│  Pilihan Nominal:                                   │
+│  [Rp 10.000 ✕] [Rp 25.000 ✕] [Rp 50.000 ✕]        │
+│  [+ Tambah nominal]                                 │
+│                                                     │
+│  Maksimal 4 pilihan nominal                         │
+└─────────────────────────────────────────────────────┘
+```
+
+Field yang disembunyikan untuk campaign recurring:
+- Target Nominal (tidak relevan)
+- Nominal Tetap (tidak relevan — user pilih dari list)
+- Konfigurasi Qurban (bukan qurban)
+
+---
+
+### 12i. Server Actions Baru
+
+```typescript
+// createSubscriptionAction — anggota subscribe
+createSubscriptionAction(slug, { campaignId, memberId, amount, interval })
+  → validasi: campaign is_recurring=true, amount in recurring_amounts
+  → INSERT donation_subscriptions, next_due_at = NOW() + interval
+  → return { subscriptionId, nextDueAt }
+
+// cancelSubscriptionAction — anggota cancel
+cancelSubscriptionAction(slug, subscriptionId)
+  → validasi: subscription.memberId === current user
+  → UPDATE status = 'cancelled'
+
+// generateRecurringDonationsJob — dipanggil cron
+generateRecurringDonationsJob(slug)
+  → SELECT subscriptions WHERE status='active' AND next_due_at <= NOW()
+  → Untuk tiap subscription: INSERT donation + INSERT payment + kirim notif
+  → UPDATE next_due_at += interval
+
+// getMySubscriptionsAction — dashboard anggota
+getMySubscriptionsAction(slug, memberId)
+  → SELECT dengan JOIN campaigns
+```
+
+---
+
+### 12j. Integrasi Notifikasi
+
+| Channel | Trigger | Isi Pesan |
+|---------|---------|-----------|
+| WhatsApp | Reminder H-0 | "Saatnya donasi {campaign.title} sebesar Rp {amount}" + link |
+| Email | Reminder H-0 | Sama + tombol konfirmasi |
+| WhatsApp | Konfirmasi terima | "Terima kasih atas donasi Anda 🙏" |
+
+**Dependency**: Add-on WhatsApp harus aktif untuk notifikasi WA.
+Jika tidak ada add-on WA dan tidak ada SMTP → reminder tidak terkirim (silent fail, bukan error).
+
+---
+
+### 12k. Urutan Implementasi
+
+```
+Phase R — Donasi Rutin
+  Step R1: Schema
+    - Kolom is_recurring, recurring_interval, recurring_amounts di campaigns
+    - Tabel donation_subscriptions
+    - Kolom subscription_id di donations
+
+  Step R2: CampaignForm
+    - Toggle is_recurring + section konfigurasi rutin
+    - Input pilihan nominal (max 4, sama dengan recommendation chips)
+
+  Step R3: Front-end subscribe
+    - Halaman campaign recurring: pilih nominal + tombol subscribe
+    - createSubscriptionAction
+
+  Step R4: Dashboard anggota
+    - /{slug}/akun/subscriptions — list + cancel
+    - getMySubscriptionsAction + cancelSubscriptionAction
+
+  Step R5: Admin view
+    - Tab subscriber di halaman detail campaign recurring
+    - Stats: total subscriber, terkumpul bulan ini
+
+  Step R6: Cron reminder
+    - generateRecurringDonationsJob (dipanggil via cron API route atau external scheduler)
+    - Integrasi WhatsApp/email notification
+
+  Step R7: Riwayat donasi rutin
+    - Di /{slug}/akun/transaksi, filter by subscription
+    - Badge "Rutin" di samping nomor donasi
+```
 
 ---
 
@@ -1022,7 +1322,8 @@ Step Q5: Admin — manajemen pesanan qurban
 | Qurban Step Q3 — CampaignForm konfigurasi hewan | ✅ Done |
 | Qurban Step Q4 — front-end publik (arsip + detail + form order) | ✅ Done |
 | Qurban Step Q5 — admin peserta qurban di detail campaign | ✅ Done |
-| Donasi recurring | 🔲 Roadmap |
+| **Donasi Rutin** — perencanaan lengkap (Section 12) | 📋 Terdokumentasi |
+| Donasi Rutin Step R1–R7 — implementasi | 🔲 Belum |
 | Export CSV laporan | 🔲 Belum |
 | Grafik donasi per bulan | 🔲 Belum |
 
