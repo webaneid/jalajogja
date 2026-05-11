@@ -3,15 +3,21 @@
 import { useState, useTransition } from "react";
 import { saveQurbanAnimalsAction, type QurbanAnimalInput } from "@/app/(dashboard)/[tenant]/donasi/actions";
 
-const ANIMAL_LABELS: Record<string, string> = {
-  domba: "Domba", kambing: "Kambing", sapi: "Sapi",
-};
+const ANIMALS: { type: QurbanAnimalInput["animalType"]; label: string; emoji: string }[] = [
+  { type: "domba",   label: "Domba",   emoji: "🐑" },
+  { type: "kambing", label: "Kambing", emoji: "🐐" },
+  { type: "sapi",    label: "Sapi",    emoji: "🐄" },
+];
 
 const DEFAULT_ANIMALS: QurbanAnimalInput[] = [
   { animalType: "domba",   price: 0, stock: 0, split: null, isActive: true },
   { animalType: "kambing", price: 0, stock: 0, split: null, isActive: true },
   { animalType: "sapi",    price: 0, stock: 0, split: 7,    isActive: true },
 ];
+
+function formatRp(n: number) {
+  return n > 0 ? `Rp ${n.toLocaleString("id-ID")}` : "—";
+}
 
 type Props = {
   slug:        string;
@@ -27,8 +33,8 @@ export function QurbanAnimalsEditor({ slug, campaignId, initialData }: Props) {
   const [saved,   setSaved]  = useState(false);
   const [pending, start]     = useTransition();
 
-  function update(idx: number, patch: Partial<QurbanAnimalInput>) {
-    setAnimals(prev => prev.map((a, i) => i === idx ? { ...a, ...patch } : a));
+  function update(type: string, patch: Partial<QurbanAnimalInput>) {
+    setAnimals(prev => prev.map(a => a.animalType === type ? { ...a, ...patch } : a));
     setSaved(false);
   }
 
@@ -41,87 +47,105 @@ export function QurbanAnimalsEditor({ slug, campaignId, initialData }: Props) {
     });
   }
 
-  const inputCls = "w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
+  const inputCls = "w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
 
   return (
-    <div className="space-y-4">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs text-muted-foreground border-b border-border">
-              <th className="pb-2 pr-3 font-medium">Hewan</th>
-              <th className="pb-2 pr-3 font-medium">Harga (Rp)</th>
-              <th className="pb-2 pr-3 font-medium w-20">Stok</th>
-              <th className="pb-2 pr-3 font-medium w-28">Patungan</th>
-              <th className="pb-2 font-medium w-16">Aktif</th>
-            </tr>
-          </thead>
-          <tbody className="space-y-2">
-            {animals.map((a, i) => (
-              <tr key={a.animalType} className="border-b border-border/50 last:border-0">
-                <td className="py-2 pr-3 font-medium">{ANIMAL_LABELS[a.animalType]}</td>
+    <div className="space-y-3">
+      {ANIMALS.map(({ type, label, emoji }) => {
+        const a = animals.find(x => x.animalType === type);
+        if (!a) return null;
+        const isSapi       = type === "sapi";
+        const pricePerSlot = isSapi && a.split && a.price > 0 ? Math.ceil(a.price / a.split) : null;
 
-                {/* Harga */}
-                <td className="py-2 pr-3">
-                  <input
-                    type="number"
-                    min={0}
-                    value={a.price}
-                    onChange={e => update(i, { price: parseInt(e.target.value) || 0 })}
+        return (
+          <div
+            key={type}
+            className={`rounded-xl border p-3 space-y-2.5 transition-colors ${a.isActive ? "border-border bg-card" : "border-border/50 bg-muted/30 opacity-60"}`}
+          >
+            {/* Header card */}
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-sm flex items-center gap-1.5">
+                <span>{emoji}</span> {label}
+              </span>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={a.isActive}
+                  onChange={e => update(type, { isActive: e.target.checked })}
+                  className="h-3.5 w-3.5 rounded accent-primary"
+                />
+                Aktif
+              </label>
+            </div>
+
+            {/* Harga */}
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Harga {isSapi ? "per ekor" : ""}</label>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={a.price || ""}
+                  onChange={e => update(type, { price: parseInt(e.target.value) || 0 })}
+                  placeholder="0"
+                  className={`${inputCls} pl-8`}
+                />
+              </div>
+            </div>
+
+            {/* Stok + Patungan (satu baris) */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Stok (ekor)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={a.stock || ""}
+                  onChange={e => update(type, { stock: parseInt(e.target.value) || 0 })}
+                  placeholder="0"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Tipe</label>
+                {isSapi ? (
+                  <select
+                    value={a.split ?? "individu"}
+                    onChange={e => update(type, { split: e.target.value === "individu" ? null : parseInt(e.target.value) })}
                     className={inputCls}
-                  />
-                </td>
+                  >
+                    <option value="individu">Individu</option>
+                    <option value={5}>Patungan 5</option>
+                    <option value={7}>Patungan 7</option>
+                  </select>
+                ) : (
+                  <div className={`${inputCls} bg-muted/30 text-muted-foreground text-xs flex items-center`}>
+                    Individu
+                  </div>
+                )}
+              </div>
+            </div>
 
-                {/* Stok */}
-                <td className="py-2 pr-3">
-                  <input
-                    type="number"
-                    min={0}
-                    value={a.stock}
-                    onChange={e => update(i, { stock: parseInt(e.target.value) || 0 })}
-                    className={inputCls}
-                  />
-                </td>
-
-                {/* Patungan — hanya sapi */}
-                <td className="py-2 pr-3">
-                  {a.animalType === "sapi" ? (
-                    <select
-                      value={a.split ?? 7}
-                      onChange={e => update(i, { split: parseInt(e.target.value) })}
-                      className={inputCls}
-                    >
-                      <option value={5}>5 orang</option>
-                      <option value={7}>7 orang</option>
-                    </select>
-                  ) : (
-                    <span className="text-muted-foreground text-xs">Individu</span>
-                  )}
-                </td>
-
-                {/* Aktif toggle */}
-                <td className="py-2">
-                  <input
-                    type="checkbox"
-                    checked={a.isActive}
-                    onChange={e => update(i, { isActive: e.target.checked })}
-                    className="h-4 w-4 rounded border-input accent-primary"
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            {/* Info harga per orang untuk sapi patungan */}
+            {pricePerSlot && (
+              <p className="text-xs text-muted-foreground bg-primary/5 rounded-lg px-2.5 py-1.5">
+                Per orang: <span className="font-semibold text-primary">{formatRp(pricePerSlot)}</span>
+                {" "}({a.price.toLocaleString("id-ID")} ÷ {a.split})
+              </p>
+            )}
+          </div>
+        );
+      })}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {saved && <p className="text-sm text-green-600">Konfigurasi hewan disimpan.</p>}
+      {saved && <p className="text-sm text-green-600">Tersimpan.</p>}
 
       <button
         type="button"
         onClick={handleSave}
         disabled={pending}
-        className="rounded-md border border-border bg-muted px-4 py-1.5 text-sm font-medium hover:bg-muted/70 disabled:opacity-60 transition-colors"
+        className="w-full rounded-lg border border-border bg-muted/50 py-1.5 text-sm font-medium hover:bg-muted/80 disabled:opacity-60 transition-colors"
       >
         {pending ? "Menyimpan..." : "Simpan Konfigurasi Hewan"}
       </button>
