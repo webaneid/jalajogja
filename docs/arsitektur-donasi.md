@@ -465,7 +465,227 @@ Belum diimplementasi:
 
 ---
 
-## 14. Status Implementasi
+## 14. Pengaturan Donasi + Nominal Default per Campaign
+
+### 14a. Konsep
+
+Dua layer nominal donasi yang saling berinteraksi:
+
+```
+Layer 1 — Tenant level (berlaku untuk semua campaign)
+  Rekomendasi nominal: [10.000, 50.000, 100.000, 500.000]
+  Max 4 rekomendasi, admin bisa kustom
+  Disimpan di settings (key=donation_config, group=donasi)
+
+Layer 2 — Campaign level (berlaku hanya untuk campaign tertentu)
+  default_amount: NUMERIC(15,2) nullable
+  null  = gunakan rekomendasi + kolom custom (perilaku default)
+  diisi = nominal dikunci, tidak ada pilihan lain
+```
+
+**Perilaku front-end:**
+
+```
+Campaign.default_amount != null?
+  ✅ YA  → Tampilkan nominal terkunci saja
+            "Nominal donasi: Rp 100.000 (tetap)"
+            Tidak ada rekomendasi chip, tidak ada custom input
+            User hanya bisa klik Donasi Sekarang
+
+  ❌ TIDAK → Tampilkan rekomendasi (dari settings tenant) + custom input
+              [Rp 10K] [Rp 50K] [Rp 100K] [Rp 500K]
+              [         Nominal lain: Rp ________      ]
+              User bisa pilih chip ATAU ketik nominal sendiri
+```
+
+---
+
+### 14b. Perubahan Schema
+
+**Kolom baru di `campaigns`:**
+```sql
+ALTER TABLE "{s}".campaigns
+  ADD COLUMN IF NOT EXISTS default_amount NUMERIC(15,2);
+  -- null = tidak ada default (pakai rekomendasi)
+  -- diisi = nominal dikunci di front-end
+```
+
+**Drizzle schema — tambah ke `createCampaignsTable()`:**
+```typescript
+defaultAmount: numeric("default_amount", { precision: 15, scale: 2 }),
+```
+
+**Settings baru — group `donasi`:**
+```json
+key   = "donation_config"
+group = "donasi"
+value = {
+  "recommended_amounts": [10000, 50000, 100000, 500000]
+}
+```
+
+**CHECK constraint `settings.group`** perlu diperluas:
+```sql
+-- Tambahkan 'donasi' ke CHECK constraint di create-tenant-schema.ts dan DDL migration
+CHECK ("group" IN ('general','contact','payment','display','mail','notif','website','keuangan','toko','donasi'))
+```
+
+---
+
+### 14c. Route Pengaturan
+
+```
+app/(dashboard)/[tenant]/donasi/
+└── pengaturan/
+    └── page.tsx    → DonationSettingsClient (rekomendasi nominal)
+```
+
+Sub-nav `DonasiNav` diperluas dengan item "Pengaturan" (icon: Settings2).
+
+---
+
+### 14d. UI Pengaturan (`/donasi/pengaturan`)
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Pengaturan Donasi                                  │
+├─────────────────────────────────────────────────────┤
+│  Rekomendasi Nominal                                │
+│  Tampil sebagai pilihan cepat di form donasi publik │
+│  Maksimal 4 rekomendasi                             │
+│                                                     │
+│  [Rp 10.000  ✕]  [Rp 50.000  ✕]                    │
+│  [Rp 100.000 ✕]  [Rp 500.000 ✕]                    │
+│                                                     │
+│  [+ Tambah Rekomendasi]  (disabled jika sudah 4)    │
+│                                                     │
+│  Catatan: Rekomendasi tidak tampil jika campaign    │
+│  memiliki nominal tetap (default amount).           │
+│                                                     │
+│  [Simpan Pengaturan]                                │
+└─────────────────────────────────────────────────────┘
+```
+
+**Input tambah rekomendasi:**
+- Input angka (Rp format)
+- Tekan Enter atau klik + → tambah ke list
+- Klik ✕ → hapus
+- Sort: diurutkan ascending otomatis sebelum disimpan
+
+---
+
+### 14e. Perubahan CampaignForm (Admin)
+
+Tambah field **Nominal Tetap (Opsional)** di sidebar campaign form:
+
+```
+┌─────────────────────────────────────┐
+│  Nominal Tetap (Opsional)           │
+│  [Rp ___________________]           │
+│  Jika diisi, donatur tidak bisa     │
+│  memilih nominal lain. Rekomendasi  │
+│  dan input custom disembunyikan.    │
+└─────────────────────────────────────┘
+```
+
+- Input: `type="number"`, nullable (kosong = null)
+- Posisi di sidebar: setelah field Target Nominal
+
+---
+
+### 14f. UI Front-end — Form Donasi Publik
+
+**Saat `default_amount = null` (bebas pilih):**
+```
+Pilih Nominal:
+  [Rp 10.000] [Rp 50.000] [Rp 100.000] [Rp 500.000]  ← dari settings
+
+  Nominal lain:
+  [Rp _______________]  ← custom input, always tampil
+
+  → Chip yang diklik = selected (highlight), custom input dikosongkan
+  → Ketik di custom input = chip-chip di-deselect
+```
+
+**Saat `default_amount != null` (nominal terkunci):**
+```
+Nominal Donasi:
+  Rp 100.000  (tetap)   ← tidak bisa diubah
+
+  [Donasi Sekarang]
+```
+
+---
+
+### 14g. Data yang Dibutuhkan Front-end
+
+Server component halaman publik fetch:
+```typescript
+// 1. Data campaign (termasuk default_amount)
+const campaign = await tenantDb.select({ ..., defaultAmount: schema.campaigns.defaultAmount })...
+
+// 2. Settings rekomendasi (hanya jika default_amount = null)
+let recommendedAmounts: number[] = [];
+if (!campaign.defaultAmount) {
+  const settings = await getSettings(tenantClient, "donasi");
+  const config = settings.donation_config as { recommended_amounts?: number[] } | undefined;
+  recommendedAmounts = config?.recommended_amounts ?? [10000, 50000, 100000, 500000];
+}
+```
+
+Pass ke client component:
+```typescript
+<DonationForm
+  campaign={campaign}
+  defaultAmount={campaign.defaultAmount ? Number(campaign.defaultAmount) : null}
+  recommendedAmounts={recommendedAmounts}
+  // ...
+/>
+```
+
+---
+
+### 14h. Server Actions
+
+```typescript
+// Di donasi/actions.ts — baru
+saveDonationSettingsAction(slug, { recommendedAmounts: number[] })
+  → validasi max 4 item, semua > 0
+  → upsertSetting(tenantDb, "donation_config", "donasi", { recommended_amounts: sorted })
+
+// Di donasi/actions.ts — update updateCampaignAction
+// Terima field defaultAmount?: number | null
+// Set ke null jika input kosong
+```
+
+---
+
+### 14i. Urutan Implementasi
+
+```
+Step D1: Schema
+  - Tambah default_amount ke Drizzle schema campaigns
+  - Tambah 'donasi' ke settings CHECK constraint (create-tenant-schema.ts)
+  - DDL migration untuk tenant existing (migration-tenant-pc-ikpm-jogjakarta.sql)
+
+Step D2: Pengaturan admin (/donasi/pengaturan)
+  - DonasiNav: tambah item Pengaturan
+  - saveDonationSettingsAction
+  - DonationSettingsClient (UI chip + input)
+  - Page server component
+
+Step D3: CampaignForm — field default_amount
+  - Input di sidebar
+  - Update updateCampaignAction + createCampaignAction terima defaultAmount
+
+Step D4: Front-end halaman publik
+  - Fetch recommendedAmounts dari settings
+  - DonationForm: conditional UI (rekomendasi vs nominal terkunci)
+```
+
+---
+
+## 15. Status Implementasi
 
 | Fitur | Status |
 |-------|--------|
@@ -482,7 +702,12 @@ Belum diimplementasi:
 | Halaman detail transaksi | ✅ Done |
 | List transaksi semua campaign | ✅ Done |
 | SeoPanel di CampaignForm | ✅ Done |
-| Halaman publik campaign | 🔲 Belum |
+| **Pengaturan Donasi** — rekomendasi nominal (Step D1–D3) | 🔲 Belum |
+| **default_amount** per campaign + schema | 🔲 Belum |
+| Halaman publik — arsip campaign (`/{slug}/donasi`) | 🔲 Belum |
+| Halaman publik — detail + form donasi (`/{slug}/donasi/{slug}`) | 🔲 Belum |
+| Form donasi: rekomendasi chips + custom input + nominal terkunci | 🔲 Belum |
+| Instruksi bayar pasca submit (rekening + unique code) | 🔲 Belum |
 | Sertifikat PDF donasi | 🔲 Belum |
 | Kirim email sertifikat | 🔲 Belum |
 | Donasi recurring | 🔲 Roadmap |
