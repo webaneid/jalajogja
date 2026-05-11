@@ -67,6 +67,23 @@ function EventsWireframe() {
   );
 }
 
+function CampaignsWireframe() {
+  return (
+    <div className="w-full h-full bg-gray-100 rounded flex flex-col gap-1.5 p-2">
+      <div className="w-1/2 h-2.5 bg-gray-400 rounded mb-1" />
+      <div className="grid grid-cols-3 gap-1">
+        {[0,1,2].map((i) => (
+          <div key={i} className="flex flex-col gap-1 bg-gray-200 rounded p-1">
+            <div className="w-full aspect-video bg-gray-300 rounded" />
+            <div className="w-3/4 h-1.5 bg-gray-400 rounded" />
+            <div className="w-full h-1 bg-gray-300 rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function GalleryWireframe() {
   return (
     <div className="w-full h-full bg-gray-100 rounded flex flex-col gap-1.5 p-2">
@@ -194,6 +211,7 @@ const WIREFRAME_MAP: Record<SectionType, React.FC> = {
   posts:        PostsWireframe,
   products:     ProductsWireframe,
   events:       EventsWireframe,
+  campaigns:    CampaignsWireframe,
   gallery:      GalleryWireframe,
   about_text:   AboutTextWireframe,
   features:     FeaturesWireframe,

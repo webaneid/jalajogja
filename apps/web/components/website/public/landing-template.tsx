@@ -4,8 +4,10 @@ import { getSettings } from "@jalajogja/db";
 import type { SectionItem, SectionType, LandingBody, PostsSectionData } from "@/lib/page-templates";
 import type { PostsSectionDesignId } from "@/lib/posts-section-designs";
 import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
+import type { CampaignsSectionData, CampaignsSectionDesignId } from "@/lib/campaigns-section-designs";
 import { PostsSection } from "@/components/website/public/sections/posts/posts-section";
 import { ProductsSection } from "@/components/website/public/sections/products/products-section";
+import { CampaignsSection } from "@/components/website/public/sections/campaigns/campaigns-section";
 import { Gallery } from "@/components/gallery/gallery";
 import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
 
@@ -353,6 +355,14 @@ function SectionRenderer({
       />
     );
     case "events":       return <EventsSection        data={section.data} events={events} tenantSlug={tenantSlug} />;
+    case "campaigns":    return (
+      <CampaignsSection
+        data={section.data as CampaignsSectionData}
+        variant={(section.variant ?? "1") as CampaignsSectionDesignId}
+        tenantClient={tenantClient}
+        tenantSlug={tenantSlug}
+      />
+    );
     case "gallery":      return <GallerySection       data={section.data} />;
     case "about_text":   return <AboutTextSection     data={section.data} />;
     case "features":     return <FeaturesSection      data={section.data} />;

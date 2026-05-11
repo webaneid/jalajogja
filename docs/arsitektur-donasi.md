@@ -1654,10 +1654,14 @@ Step Q5: Admin — manajemen pesanan qurban
 | SeoPanel di CampaignForm | ✅ Done |
 | **Pengaturan Donasi** — rekomendasi nominal (Step D1–D3) | ✅ Done |
 | **default_amount** per campaign + schema | ✅ Done |
-| Halaman publik — arsip campaign (`/{slug}/donasi`) | 🔲 Belum |
-| Halaman publik — detail + form donasi (`/{slug}/donasi/{slug}`) | 🔲 Belum |
-| Form donasi: rekomendasi chips + custom input + nominal terkunci | 🔲 Belum |
-| Instruksi bayar pasca submit (rekening + unique code) | 🔲 Belum |
+| CampaignCardData + 3 variant (grid/list/ringkas) | ✅ Done |
+| CampaignsSection (3 design) + fetch layer | ✅ Done |
+| "campaigns" di SECTION_TYPES + section editor + wireframe | ✅ Done |
+| Archive `/{slug}/campaign` — filter type + kategori | ✅ Done |
+| Detail `/{slug}/campaign/{slug}` — donasi reguler + qurban unified | ✅ Done |
+| CampaignDetailClient — alur cart universal (addToCartAction) | ✅ Done |
+| Qurban = variasi hewan, atas nama di notes, slot assign saat konfirmasi | ✅ Done |
+| Instruksi bayar pasca submit → universal checkout | ✅ Done (via keranjang) |
 | Sertifikat PDF donasi | 🔲 Belum |
 | Kirim email sertifikat | 🔲 Belum |
 | **Fitur Qurban** — arsitektur selesai (Section 15) | ✅ Done |

@@ -244,6 +244,42 @@ function EventsEditor({ data, onChange }: EditorProps) {
   );
 }
 
+// ── Campaigns ─────────────────────────────────────────────────────────────────
+
+function CampaignsEditor({ data, onChange }: EditorProps) {
+  const d = data as { title?: string; count?: number; campaignType?: string | null };
+  const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+  return (
+    <div className="space-y-3">
+      <Field label="Judul Section">
+        <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Donasi & Infaq" />
+      </Field>
+      <Field label="Jumlah Campaign">
+        <Select value={String(d.count ?? 6)} onValueChange={(v) => u("count", Number(v))}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {[3, 4, 6, 9].map((n) => (
+              <SelectItem key={n} value={String(n)}>{n} campaign</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Filter Jenis">
+        <Select value={d.campaignType ?? "semua"} onValueChange={(v) => u("campaignType", v === "semua" ? null : v)}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="semua">Semua Jenis</SelectItem>
+            <SelectItem value="donasi">Donasi</SelectItem>
+            <SelectItem value="zakat">Zakat</SelectItem>
+            <SelectItem value="wakaf">Wakaf</SelectItem>
+            <SelectItem value="qurban">Qurban</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+    </div>
+  );
+}
+
 // ── Gallery ───────────────────────────────────────────────────────────────────
 
 type GalleryImage = { url: string; alt: string };
@@ -518,6 +554,7 @@ const EDITOR_MAP: Record<SectionType, React.FC<EditorProps>> = {
   posts:        PostsEditor,
   products:     ProductsEditor,
   events:       EventsEditor,
+  campaigns:    CampaignsEditor,
   gallery:      GalleryEditor,
   about_text:   AboutTextEditor,
   features:     FeaturesEditor,
