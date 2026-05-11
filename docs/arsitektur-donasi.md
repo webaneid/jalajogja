@@ -685,6 +685,294 @@ Step D4: Front-end halaman publik
 
 ---
 
+## 15. Fitur Qurban
+
+Qurban **bukan entitas terpisah** — ia adalah campaign dengan `campaign_type = 'qurban'`.
+Ketika admin membuat campaign bertipe qurban, muncul konfigurasi tambahan: jenis hewan,
+harga, stok, dan sistem patungan. Front-end publik menampilkan UI qurban-spesifik.
+
+---
+
+### 15a. Konsep Utama
+
+```
+Campaign (campaign_type = 'qurban')
+  ├── Periode qurban (TEXT, mis. "1446 H / 2025 M")
+  └── Jenis hewan (qurban_animals — tabel baru):
+        ├── Domba  → individual, harga tetap, stok N ekor
+        ├── Kambing → individual, harga tetap, stok N ekor
+        └── Sapi   → bisa individual ATAU patungan (split: 5 atau 7 orang)
+                      admin yang tentukan split-nya, bukan user front-end
+```
+
+**Alur pesanan qurban:**
+```
+User pilih jenis hewan → isi atas nama (shohibul qurban) → pilih metode bayar
+  → Untuk sapi patungan: masuk ke "grup sapi" yang masih tersedia
+  → Satu grup = 1 ekor sapi, total slot = split (5 atau 7)
+  → Grup otomatis penuh saat semua slot terisi + terbayar
+  → Jika grup habis, buka grup sapi baru (dari stok)
+```
+
+---
+
+### 15b. Schema Database — Tabel Baru
+
+#### Tabel `qurban_animals` — jenis hewan per campaign
+
+```sql
+CREATE TABLE "{s}".qurban_animals (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID        NOT NULL REFERENCES "{s}".campaigns(id) ON DELETE CASCADE,
+  animal_type TEXT        NOT NULL CHECK (animal_type IN ('domba','kambing','sapi')),
+  price       NUMERIC(15,2) NOT NULL,     -- harga per ekor / per slot patungan
+  stock       INTEGER     NOT NULL DEFAULT 0, -- jumlah ekor tersedia
+  booked      INTEGER     NOT NULL DEFAULT 0, -- sudah dipesan (confirmed + pending)
+  split       INTEGER,    -- hanya sapi: 5 atau 7 (null untuk domba/kambing)
+  is_active   BOOLEAN     NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**Aturan:**
+- `domba` dan `kambing`: `split = null` — selalu individual
+- `sapi`: `split = 5` atau `split = 7` — dikonfigurasi admin, bukan user
+- `booked` di-increment saat ada pesanan masuk (pending), de-increment jika dibatalkan
+- `available = stock × split - booked` (untuk sapi) atau `stock - booked` (individu)
+
+---
+
+#### Tabel `qurban_sapi_groups` — grup patungan sapi
+
+```sql
+CREATE TABLE "{s}".qurban_sapi_groups (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  animal_id    UUID        NOT NULL REFERENCES "{s}".qurban_animals(id) ON DELETE CASCADE,
+  group_number INTEGER     NOT NULL,   -- urutan grup ke-N dari stok sapi ini
+  total_slots  INTEGER     NOT NULL,   -- = animal.split (5 atau 7)
+  filled_slots INTEGER     NOT NULL DEFAULT 0,
+  is_complete  BOOLEAN     NOT NULL DEFAULT false,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+Grup baru dibuat otomatis saat grup sebelumnya penuh.
+
+---
+
+#### Tabel `qurban_participants` — satu slot per peserta
+
+```sql
+CREATE TABLE "{s}".qurban_participants (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  donation_id   UUID        NOT NULL REFERENCES "{s}".donations(id) ON DELETE CASCADE,
+  animal_id     UUID        NOT NULL REFERENCES "{s}".qurban_animals(id),
+  sapi_group_id UUID        REFERENCES "{s}".qurban_sapi_groups(id), -- null untuk domba/kambing
+  slot_number   INTEGER,    -- posisi di grup sapi (1,2,3,...,split); null untuk individu
+  atas_nama     TEXT        NOT NULL,  -- nama shohibul qurban
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**Catatan:** `donation_id` tetap menyimpan identitas pemesan (`donor_name`).
+`atas_nama` di `qurban_participants` adalah nama yang diniatkan qurban-nya —
+bisa sama dengan pemesan, bisa berbeda (mis. "atas nama almarhum Bapak X").
+
+---
+
+### 15c. Pengaturan Donasi — Tambahan Qurban
+
+Tambah ke `/donasi/pengaturan` section baru "Pengaturan Qurban":
+
+```json
+key   = "qurban_config"
+group = "donasi"
+value = {
+  "default_prices": {
+    "domba":  2500000,
+    "kambing": 1800000,
+    "sapi":   15000000
+  },
+  "admin_fee": 50000,
+  "admin_fee_label": "Biaya Operasional"
+}
+```
+
+**`default_prices`**: Harga default saat admin buat campaign qurban baru — bisa di-override per campaign.
+
+**`admin_fee`**: Biaya administrasi yang ditambahkan ke setiap pesanan (per slot/per ekor).
+Ditagihkan di atas harga hewan. Contoh: harga domba Rp 2.500.000 + admin fee Rp 50.000 = total Rp 2.550.000.
+
+---
+
+### 15d. Akuntansi Qurban
+
+```
+Total pembayaran = harga_hewan + admin_fee
+
+→ Jurnal saat konfirmasi:
+   Debit  Kas / Bank
+   Kredit Dana Titipan (harga_hewan)  ← amanah untuk disalurkan
+   Kredit Pendapatan Jasa (admin_fee) ← hak organisasi sebagai penyelenggara
+```
+
+Dua credit entry berbeda: harga hewan masuk **Dana Titipan** (liabilitas),
+admin fee masuk **Pendapatan Jasa** (income). Mapping akun di Keuangan → Mapping Akun.
+
+---
+
+### 15e. Perubahan CampaignForm (Admin)
+
+Saat `campaign_type = 'qurban'`, sidebar form tambah section **Konfigurasi Qurban**:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Konfigurasi Qurban                                 │
+├─────────────────────────────────────────────────────┤
+│  Periode Qurban:                                    │
+│  [1446 H / 2025 M________________]                  │
+│                                                     │
+│  Jenis Hewan yang Tersedia:                         │
+│  ┌──────────┬──────────┬──────┬─────┬──────────┐   │
+│  │ Hewan    │ Harga    │ Stok │Patungan│ Aktif │   │
+│  ├──────────┼──────────┼──────┼─────┼──────────┤   │
+│  │ Domba    │[2.500.000│ [10] │  -  │  [✓]    │   │
+│  │ Kambing  │[1.800.000│ [5_] │  -  │  [✓]    │   │
+│  │ Sapi     │[15.000.00│ [3_] │ [7] │  [✓]    │   │
+│  └──────────┴──────────┴──────┴─────┴──────────┘   │
+│                                                     │
+│  Catatan: Harga sudah termasuk admin fee            │
+│  (atau di luar, ditampilkan terpisah di front-end)  │
+└─────────────────────────────────────────────────────┘
+```
+
+Harga default diambil dari `qurban_config.default_prices` di settings saat form pertama dibuka.
+
+---
+
+### 15f. UI Front-end Publik — Halaman Qurban
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  [Cover Campaign]                                           │
+│  Qurban 1446 H / 2025 M                                    │
+│  [Deskripsi campaign]                                       │
+├─────────────────────────────────────────────────────────────┤
+│  Pilih Jenis Hewan:                                         │
+│                                                             │
+│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐  │
+│  │  🐑 Domba     │  │  🐐 Kambing   │  │  🐄 Sapi      │  │
+│  │  Rp 2.500.000 │  │  Rp 1.800.000 │  │  Rp 15.000.000│  │
+│  │  Stok: 8 ekor │  │  Stok: 3 ekor │  │  7 orang/ekor │  │
+│  │  [Pilih]      │  │  [Pilih]      │  │  Slot: 4/7    │  │
+│  └───────────────┘  └───────────────┘  └───────────────┘  │
+│                                                             │
+│  [Setelah pilih hewan:]                                     │
+│                                                             │
+│  Atas Nama (Shohibul Qurban):                              │
+│  [___________________________________]                      │
+│  Saya memesan atas nama sendiri [✓]  (auto-isi nama login) │
+│                                                             │
+│  Biaya Administrasi: Rp 50.000 (ditambahkan otomatis)      │
+│  Total: Rp 2.550.000                                        │
+│                                                             │
+│  Nama Pemesan: [___________________]                        │
+│  Telepon:      [___________________]                        │
+│  Metode Bayar: [Transfer ▼]                                 │
+│                                                             │
+│  [Pesan Qurban]                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Sapi patungan** — tampil info grup:
+```
+  🐄 Sapi (Patungan 7 Orang)
+  Grup saat ini: slot 4 dari 7 sudah terisi
+  Slot tersisa: 3
+  Harga per slot: Rp 2.143.000
+  + Biaya admin: Rp 50.000
+  Total: Rp 2.193.000
+```
+
+---
+
+### 15g. Logika Slot Sapi Patungan
+
+```
+Saat user pesan sapi patungan:
+1. Cari grup aktif (is_complete = false) untuk animal_id ini
+   → Ada → tambahkan ke grup tersebut (slot_number = filled_slots + 1)
+   → Tidak ada → buat grup baru (jika booked/split < stock)
+2. Increment qurban_sapi_groups.filled_slots
+3. Jika filled_slots == total_slots → set is_complete = true
+4. Increment qurban_animals.booked
+
+Saat pembayaran dibatalkan:
+1. Hapus qurban_participants record
+2. Decrement filled_slots di grup
+3. Jika grup was_complete → set is_complete = false (reopened)
+4. Decrement qurban_animals.booked
+```
+
+Validasi sebelum accept pesanan:
+```
+Domba/Kambing: qurban_animals.booked < qurban_animals.stock
+Sapi:          total_slots_available > 0
+               (= stock × split - total filled across all groups)
+```
+
+---
+
+### 15h. Server Actions Baru
+
+```typescript
+// Di donasi/actions.ts — tambahan qurban
+saveQurbanConfigAction(slug, config: QurbanConfig)
+  → upsertSetting(tenantClient, "qurban_config", "donasi", config)
+
+saveQurbanAnimalsAction(slug, campaignId, animals: QurbanAnimalInput[])
+  → delete existing + insert new (atau diff update)
+
+createQurbanOrderAction(slug, data: QurbanOrderData)
+  → validasi stok + slot
+  → generate donation + payment record
+  → buat/update qurban_sapi_groups (jika sapi)
+  → insert qurban_participants
+```
+
+---
+
+### 15i. Urutan Implementasi
+
+```
+Step Q1: Schema
+  - DDL + Drizzle: qurban_animals, qurban_sapi_groups, qurban_participants
+  - Settings: qurban_config key
+
+Step Q2: Pengaturan admin (/donasi/pengaturan)
+  - Section "Pengaturan Qurban": default harga + admin fee
+  - saveQurbanConfigAction
+
+Step Q3: CampaignForm — section Konfigurasi Qurban
+  - Muncul saat campaign_type = 'qurban'
+  - Input per hewan: harga, stok, split (sapi)
+  - saveQurbanAnimalsAction
+
+Step Q4: Front-end publik halaman qurban
+  - Pilih hewan card (stok realtime)
+  - Form: atas nama + pemesan + metode bayar
+  - Sapi: tampil info slot grup
+  - createQurbanOrderAction
+
+Step Q5: Admin — manajemen pesanan qurban
+  - List peserta per hewan per campaign
+  - View grup sapi + siapa saja di tiap grup
+  - Konfirmasi bayar (existing confirmDonationAction + tambah admin_fee split)
+```
+
+---
+
 ## 16. Status Implementasi
 
 | Fitur | Status |
@@ -710,6 +998,8 @@ Step D4: Front-end halaman publik
 | Instruksi bayar pasca submit (rekening + unique code) | 🔲 Belum |
 | Sertifikat PDF donasi | 🔲 Belum |
 | Kirim email sertifikat | 🔲 Belum |
+| **Fitur Qurban** — arsitektur selesai (Section 15) | 📋 Terdokumentasi |
+| Qurban Step Q1–Q5 — implementasi | 🔲 Belum |
 | Donasi recurring | 🔲 Roadmap |
 | Export CSV laporan | 🔲 Belum |
 | Grafik donasi per bulan | 🔲 Belum |
