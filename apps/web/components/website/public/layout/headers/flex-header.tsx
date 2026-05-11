@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, Menu, X, ChevronDown, User, LogOut, Newspaper } from "lucide-react";
+import { Search, Menu, X, ChevronDown, User, LogOut, Newspaper, LayoutDashboard } from "lucide-react";
 import { authClient, signOut } from "@/lib/auth-client";
 import { type NavItem, resolveNavHref, NAV_TYPE_ICONS } from "@/lib/nav-menu";
 import type { HeaderProps } from "@/lib/header-designs";
 import { CartButton } from "@/components/website/public/layout/cart-button";
+import { checkDashboardAccessAction } from "@/app/(public)/[tenant]/actions";
 
 // ── Mobile bottom nav — maks 3 item + "Lainnya" ──────────────────────────────
 
@@ -209,8 +210,14 @@ function SearchBar({ tenantSlug }: { tenantSlug: string }) {
 // ── User avatar / dropdown ────────────────────────────────────────────────────
 
 function UserButton({ tenantSlug }: { tenantSlug: string }) {
-  const { data: session } = authClient.useSession();
-  const [open, setOpen] = useState(false);
+  const { data: session }          = authClient.useSession();
+  const [open, setOpen]            = useState(false);
+  const [hasDashboard, setHasDash] = useState(false);
+
+  useEffect(() => {
+    if (!session?.user) { setHasDash(false); return; }
+    checkDashboardAccessAction(tenantSlug).then(setHasDash);
+  }, [session?.user?.id, tenantSlug]);
 
   if (!session) {
     return (
@@ -262,8 +269,19 @@ function UserButton({ tenantSlug }: { tenantSlug: string }) {
                 className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/60 transition-colors"
               >
                 <User className="h-4 w-4" />
-                Dashboard Saya
+                Akun Saya
               </a>
+              {hasDashboard && (
+                <a
+                  href={`/${tenantSlug}/dashboard`}
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/60 transition-colors"
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  Dashboard Admin
+                </a>
+              )}
+              <div className="border-t border-border my-1" />
               <button
                 type="button"
                 onClick={() => { void signOut(); setOpen(false); }}
