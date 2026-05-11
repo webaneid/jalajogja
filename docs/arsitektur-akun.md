@@ -1,7 +1,54 @@
 # Arsitektur Akun — jalajogja
 
-> Status: **REFACTORING — arsitektur lama salah, dokumen ini adalah yang benar**
-> Arsitektur lama mencampur anggota IKPM dan publik dalam `public.profiles` via `accountType` — ini salah.
+> Status: **SELESAI** — arsitektur sudah diimplementasikan. Dokumen ini adalah referensi utama.
+
+---
+
+## Prinsip Utama (Dikunci)
+
+> Ini bukan sekadar keputusan teknis — ini adalah identitas sistem.
+
+jalajogja adalah super-app komunitas IKPM. Semua yang punya akses ke sistem — baik di
+front-end maupun dashboard — adalah bagian dari ekosistem IKPM, dengan hierarki yang jelas:
+
+**Pengurus adalah anggota IKPM yang sedang bertugas.**
+Bukan entitas terpisah. Bukan karyawan. Bukan user biasa.
+Mereka adalah alumni Gontor yang dipercaya mengelola organisasi untuk satu periode jabatan.
+
+**Konsekuensi prinsip ini:**
+- Tidak ada pengurus yang bukan anggota IKPM — `tenant.users.member_id` TIDAK BOLEH null
+- Saat masa jabatan berakhir, mereka kembali menjadi anggota biasa — akun tidak dihapus
+- Satu akun Better Auth berlaku di dua tempat: dashboard (saat menjabat) + front-end (selamanya)
+- Aktivasi akun pengurus = otomatis dapat akses front-end sebagai anggota IKPM
+
+---
+
+## Empat Jenis Entitas di Sistem
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  SUPER ADMIN JALAJOGJA (platform level)                         │
+│  ✓ Akses semua tenant    ✓ Kelola modul, billing, paket         │
+│  Data: platform terpisah — bukan bagian dari tenant schema      │
+│  Tidak dibahas di dokumen ini                                   │
+├─────────────────────────────────────────────────────────────────┤
+│  LEVEL 1 — PENGURUS (subset Anggota IKPM, per tenant)           │
+│  ✓ Login dashboard tenant    ✓ Login front-end (sebagai anggota)│
+│  Data: public.members + public.user + tenant_{slug}.users       │
+│  Diangkat oleh owner/super admin, masa jabatan terbatas         │
+│  Saat jabatan berakhir → turun ke Level 2, akun tetap ada       │
+├─────────────────────────────────────────────────────────────────┤
+│  LEVEL 2 — ANGGOTA IKPM (alumni Gontor)                         │
+│  ✗ Login dashboard tenant    ✓ Login front-end semua tenant     │
+│  Data: public.members + public.user                             │
+│  Kecuali diangkat jadi pengurus → naik ke Level 1               │
+├─────────────────────────────────────────────────────────────────┤
+│  LEVEL 3 — AKUN PUBLIK (orang umum)                             │
+│  ✗ Login dashboard tenant    ✓ Login front-end semua tenant     │
+│  Data: public.profiles + public.user                            │
+│  Tidak bisa diangkat jadi pengurus                              │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -148,16 +195,49 @@ User buka /{slug}/register → pilih "Bukan Anggota IKPM"
 
 ---
 
-## Alur Login Front-end
+## Alur Login & Routing Pasca Login
+
+### Login Front-end (`/{slug}/login`)
 
 ```
-POST /{slug}/login (email + password)
+Buka /{slug}/login:
+→ Server component cek session dulu (auth.api.getSession)
+    → Session ada → jangan tampilkan form, redirect ke tujuan:
+        → getAkunIdentity() ada → /{slug}/akun
+        → getAkunIdentity() null (pengurus-only) → /{slug}/dashboard
+    → Session tidak ada → tampilkan LoginForm
+
+Submit form (email + password):
 → Better Auth signIn → dapat public.user.id
-→ Cek public.members WHERE better_auth_user_id = user.id
-    → Ketemu → login sebagai ANGGOTA IKPM
-→ Cek public.profiles WHERE better_auth_user_id = user.id
-    → Ketemu → login sebagai AKUN PUBLIK
-→ Tidak ketemu di keduanya → ini pengurus, redirect dashboard
+→ Redirect ke /{slug}/akun
+
+Di /{slug}/akun:
+→ getAkunIdentity(userId):
+    → Cek public.members WHERE better_auth_user_id = userId → ANGGOTA IKPM
+    → Cek public.profiles WHERE better_auth_user_id = userId → AKUN PUBLIK
+    → Tidak ketemu → user adalah pengurus tanpa front-end profile → redirect /dashboard
+```
+
+### Login Dashboard (`/{slug}/dashboard`)
+
+Dashboard dilindungi middleware. Session tidak ada → redirect ke `/login` (atau `/login?redirect=...`).
+Session ada tapi tidak di `tenant.users` → 403 / redirect halaman tidak punya akses.
+Session ada dan di `tenant.users` → akses sesuai role.
+
+### Satu Akun, Dua Konteks
+
+```
+Ahmad (anggota IKPM + pengurus aktif) login dengan email + password:
+
+Via /{slug}/login (front-end):
+→ Redirect ke /{slug}/akun → tampil sebagai ANGGOTA IKPM
+→ Bisa belanja, donasi, ikut event, lihat riwayat transaksi
+
+Via dashboard (/{slug}/dashboard):
+→ Tampil sebagai PENGURUS → kelola surat, anggota, keuangan, dll
+
+Dua konteks, satu akun. Tidak perlu logout untuk pindah — 
+dashboard dan front-end membaca tabel berbeda untuk menentukan hak akses.
 ```
 
 ---
@@ -176,13 +256,42 @@ Admin buka /{slug}/settings/users → "Tambah Pengurus"
     role = {pilihan}
 
 Jika anggota belum punya better_auth_user_id:
-→ Buat public.user baru
-→ Update public.members.better_auth_user_id
+→ Buat public.user baru (via auth.api.signUpEmail)
+→ UPDATE public.members SET better_auth_user_id = userId  ← WAJIB, jangan lupa!
 → Insert tenant.users
 ```
 
 > Pengurus adalah anggota IKPM — `tenant.users.member_id` TIDAK BOLEH null.
 > Tidak ada pengurus yang bukan alumni Gontor.
+
+### ⚠️ Aturan Kritis: `better_auth_user_id` Wajib Diset Saat Aktivasi
+
+Ketika akun pengurus diaktifkan (`createOfficerWithAccountAction`), **wajib** melakukan
+dua operasi sekaligus — bukan hanya satu:
+
+```typescript
+// ✅ BENAR — dua operasi
+await db.update(members)
+  .set({ betterAuthUserId: userId })
+  .where(eq(members.id, memberId));   // ← SET ini juga
+
+await tenantDb.insert(schema.users).values({
+  betterAuthUserId: userId,
+  memberId,
+  role: ...,
+});
+```
+
+```typescript
+// ❌ SALAH — hanya insert tenant.users tanpa update members
+await tenantDb.insert(schema.users).values({ betterAuthUserId: userId, memberId });
+// Pengurus tidak bisa login di front-end → redirect loop saat akses /login
+```
+
+**Mengapa wajib:** `getAkunIdentity()` mencari `members.better_auth_user_id` untuk menentukan
+apakah user adalah anggota IKPM di front-end. Jika null, user dianggap "dashboard-only" dan
+diarahkan ke `/dashboard` saat membuka `/akun`. Ini benar untuk kasus darurat, tapi jika dibiarkan
+permanen, pengurus tidak bisa menikmati hak front-end sebagai anggota IKPM (belanja, donasi, dll).
 
 ---
 
@@ -253,21 +362,30 @@ Keduanya nullable. Lookup saat checkout:
 
 ---
 
-## Yang Perlu Direfactor
+## Status Implementasi
 
-### Schema
-- [ ] Tambah kolom `better_auth_user_id TEXT UNIQUE REFERENCES public.user(id)` ke `public.members`
-- [ ] Hapus kolom `member_id` dan `account_type` dari `public.profiles`
-- [ ] `public.profiles` murni untuk akun publik
+### Schema ✅ Selesai
+- [x] Kolom `better_auth_user_id TEXT UNIQUE REFERENCES public.user(id)` di `public.members`
+- [x] `public.profiles` murni untuk akun publik (tidak ada `member_id`, `account_type`)
 
-### Kode
-- [ ] `POST /api/akun/register` — pisah dua jalur benar-benar berbeda
-- [ ] Jalur IKPM: cek `public.members`, update `better_auth_user_id` (bukan insert profiles)
-- [ ] Jalur publik: insert `public.profiles` saja
-- [ ] `resolveIdentity()` — update logic: cek `members.better_auth_user_id` dulu, lalu `profiles.better_auth_user_id`
-- [ ] Front-end auth middleware: bedakan anggota vs publik dari tabel mana mereka berasal
+### Kode ✅ Selesai
+- [x] Register 2 jalur (IKPM + publik) di `/{slug}/register`
+- [x] Jalur IKPM: lookup → klaim existing atau buat baru → `UPDATE members SET better_auth_user_id`
+- [x] Jalur publik: `INSERT public.profiles`
+- [x] `getAkunIdentity(userId)` di `lib/akun-identity.ts`
+- [x] `/login` redirect ke `/akun` jika sudah login
+- [x] `/register` redirect ke `/akun` jika sudah login
+- [x] `/akun` redirect ke `/dashboard` jika identity null (pengurus-only)
 
-### Register Page
-- [ ] Jalur "Anggota IKPM" → stambuk/email/HP wajib diisi untuk verifikasi
-- [ ] Jika tidak ketemu di `public.members` → tampilkan pesan "Hubungi admin cabang"
-- [ ] Tidak ada auto-create member dari front-end
+### ⚠️ Belum Diimplementasi — Bug Aktif
+- [ ] **`createOfficerWithAccountAction`** — belum set `members.better_auth_user_id`
+      Pengurus yang akun-nya diaktifkan via dashboard tidak otomatis dapat akses front-end.
+      Fix: tambah `UPDATE public.members SET better_auth_user_id = userId WHERE id = memberId`
+      setelah `auth.api.signUpEmail()` berhasil.
+
+- [ ] **Aktivasi via link undangan** (`activateUserViaInviteAction`) — sama, belum set `better_auth_user_id`.
+
+### Tidak Akan Diimplementasi
+- Auto-create member dari front-end jika tidak ketemu di `public.members` → DILARANG.
+  Anggota baru wajib didaftarkan oleh admin via `/{slug}/members/new`.
+  Register jalur IKPM hanya untuk klaim data yang sudah ada.
