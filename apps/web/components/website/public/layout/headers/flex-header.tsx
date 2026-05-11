@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Bell, Search, Menu, X, ChevronDown, User, LogOut, Newspaper } from "lucide-react";
+import { Search, Menu, X, ChevronDown, User, LogOut, Newspaper } from "lucide-react";
 import { authClient, signOut } from "@/lib/auth-client";
 import { type NavItem, resolveNavHref, NAV_TYPE_ICONS } from "@/lib/nav-menu";
 import type { HeaderProps } from "@/lib/header-designs";
+import { CartButton } from "@/components/website/public/layout/cart-button";
 
 // ── Mobile bottom nav — maks 3 item + "Lainnya" ──────────────────────────────
 
@@ -312,14 +313,8 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
             <SearchBar tenantSlug={tenantSlug} />
 
             <div className="ml-auto flex items-center gap-2">
-              {/* Lonceng — placeholder */}
-              <button
-                type="button"
-                className="hidden md:flex items-center justify-center h-8 w-8 rounded-full hover:bg-muted/60 text-muted-foreground transition-colors"
-                aria-label="Notifikasi"
-              >
-                <Bell className="h-4.5 w-4.5" />
-              </button>
+              {/* Keranjang belanja */}
+              <CartButton tenantSlug={tenantSlug} />
 
               {/* User */}
               <UserButton tenantSlug={tenantSlug} />

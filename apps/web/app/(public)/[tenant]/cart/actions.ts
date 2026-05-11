@@ -515,3 +515,32 @@ export async function submitPaymentProofAction(
     return { success: false, error: "Gagal mengirim konfirmasi pembayaran." };
   }
 }
+
+// ─── getCartCountAction ───────────────────────────────────────────────────────
+// Hanya mengembalikan jumlah item di keranjang — ringan, untuk badge di header
+
+export async function getCartCountAction(slug: string): Promise<number> {
+  try {
+    const token = await getSessionToken();
+    if (!token) return 0;
+
+    const { db: tenantDb, schema } = createTenantDb(slug);
+
+    const [cart] = await tenantDb
+      .select({ id: schema.carts.id, expiresAt: schema.carts.expiresAt })
+      .from(schema.carts)
+      .where(eq(schema.carts.sessionToken, token))
+      .limit(1);
+
+    if (!cart || cart.expiresAt <= new Date()) return 0;
+
+    const [{ count }] = await tenantDb
+      .select({ count: sql<number>`cast(sum(${schema.cartItems.quantity}) as int)` })
+      .from(schema.cartItems)
+      .where(eq(schema.cartItems.cartId, cart.id));
+
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
+}
