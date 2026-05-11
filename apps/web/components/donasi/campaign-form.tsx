@@ -28,7 +28,6 @@ import type { SeoValues } from "@/components/seo/seo-panel";
 import {
   createCampaignAction,
   updateCampaignAction,
-  toggleCampaignStatusAction,
   deleteCampaignAction,
   type CampaignData,
 } from "@/app/(dashboard)/[tenant]/donasi/actions";
@@ -58,6 +57,7 @@ export type CampaignFormProps = {
     categoryId:    string | null;
     campaignType:  "donasi" | "zakat" | "wakaf" | "qurban";
     targetAmount:  number | null;
+    defaultAmount: number | null;
     coverId:       string | null;
     coverUrl:      string | null;
     status:        "draft" | "active" | "closed" | "archived";
@@ -78,19 +78,12 @@ const CAMPAIGN_TYPES = [
   { value: "qurban", label: "Qurban"       },
 ] as const;
 
-const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
-  draft:    { label: "Draft",    variant: "secondary" },
-  active:   { label: "Aktif",   variant: "default"   },
-  closed:   { label: "Ditutup", variant: "outline"   },
-  archived: { label: "Arsip",   variant: "outline"   },
-};
-
-const NEXT_STATUS_LABEL: Record<string, string> = {
-  draft:    "Aktifkan",
-  active:   "Tutup",
-  closed:   "Arsipkan",
-  archived: "Jadikan Draft",
-};
+const STATUS_OPTIONS = [
+  { value: "draft",    label: "Draft"    },
+  { value: "active",   label: "Aktif"    },
+  { value: "closed",   label: "Ditutup"  },
+  { value: "archived", label: "Arsip"    },
+] as const;
 
 // ─── Slugify (lokal, bukan dari server action) ────────────────────────────────
 
@@ -139,6 +132,7 @@ export function CampaignForm({ slug, campaignId, categories, initialData }: Camp
   const [categoryId,    setCategoryId]    = useState<string | null>(initialData.categoryId);
   const [campaignType,  setCampaignType]  = useState<CampaignData["campaignType"]>(initialData.campaignType);
   const [targetAmount,  setTargetAmount]  = useState(initialData.targetAmount != null ? String(initialData.targetAmount) : "");
+  const [defaultAmount, setDefaultAmount] = useState(initialData.defaultAmount != null ? String(initialData.defaultAmount) : "");
   const [startsAt,      setStartsAt]      = useState(initialData.startsAt ?? "");
   const [endsAt,        setEndsAt]        = useState(initialData.endsAt   ?? "");
   const [showDonorList, setShowDonorList] = useState(initialData.showDonorList);
@@ -157,10 +151,7 @@ export function CampaignForm({ slug, campaignId, categories, initialData }: Camp
   const [slugEdited,  setSlugEdited]  = useState(false);
 
   const [isSaving,   startSaving]   = useTransition();
-  const [isToggling, startToggling] = useTransition();
   const [isDeleting, startDeleting] = useTransition();
-
-  const st = STATUS_MAP[status] ?? { label: status, variant: "outline" as const };
 
   function handleTitleChange(val: string) {
     setTitle(val);
@@ -178,7 +169,8 @@ export function CampaignForm({ slug, campaignId, categories, initialData }: Camp
   }
 
   function buildData(): CampaignData {
-    const target = targetAmount.trim() !== "" ? parseFloat(targetAmount) : null;
+    const target  = targetAmount.trim()  !== "" ? parseFloat(targetAmount)  : null;
+    const defAmt  = defaultAmount.trim() !== "" ? parseFloat(defaultAmount) : null;
     return {
       slug:          campaignSlug.trim() || toSlug(title),
       title:         title.trim(),
@@ -186,6 +178,7 @@ export function CampaignForm({ slug, campaignId, categories, initialData }: Camp
       categoryId:    categoryId ?? null,
       campaignType,
       targetAmount:  target && !isNaN(target) ? target : null,
+      defaultAmount: defAmt && !isNaN(defAmt) ? defAmt : null,
       coverId:       cover?.id ?? null,
       status,
       startsAt:      startsAt ? new Date(startsAt) : null,
@@ -222,14 +215,6 @@ export function CampaignForm({ slug, campaignId, categories, initialData }: Camp
     });
   }
 
-  function handleToggleStatus() {
-    if (!campaignId) return;
-    startToggling(async () => {
-      const res = await toggleCampaignStatusAction(slug, campaignId);
-      if (res.success) setStatus(res.data.newStatus as typeof status);
-    });
-  }
-
   function handleDelete() {
     if (!campaignId) return;
     if (!confirm("Hapus campaign ini? Aksi ini tidak bisa dibatalkan.")) return;
@@ -255,23 +240,22 @@ export function CampaignForm({ slug, campaignId, categories, initialData }: Camp
             <ChevronLeft className="h-4 w-4" />
             Campaign
           </Link>
-          <Badge variant={st.variant}>{st.label}</Badge>
+          {/* Dropdown status — bebas pilih tanpa cycle paksa */}
+          <select
+            value={status}
+            onChange={e => setStatus(e.target.value as typeof status)}
+            className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {STATUS_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
         </div>
         <div className="flex items-center gap-2">
-          {campaignId && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleToggleStatus}
-              disabled={isToggling || isSaving}
-            >
-              {isToggling ? "..." : NEXT_STATUS_LABEL[status] ?? "Ubah Status"}
-            </Button>
-          )}
           <Button
             size="sm"
             onClick={handleSave}
-            disabled={isSaving || isToggling}
+            disabled={isSaving}
           >
             {isSaving ? "Menyimpan..." : campaignId ? "Simpan" : "Buat Campaign"}
           </Button>
@@ -495,6 +479,25 @@ export function CampaignForm({ slug, campaignId, categories, initialData }: Camp
                 />
               </div>
               <p className="text-xs text-muted-foreground">Kosongkan jika tanpa target</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="defaultAmount">Nominal Tetap (opsional)</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">Rp</span>
+                <Input
+                  id="defaultAmount"
+                  type="number"
+                  min={0}
+                  value={defaultAmount}
+                  onChange={(e) => setDefaultAmount(e.target.value)}
+                  placeholder="0"
+                  className="pl-9"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Jika diisi, donatur tidak bisa memilih nominal lain. Rekomendasi dan input bebas disembunyikan.
+              </p>
             </div>
 
             <div className="space-y-2">
