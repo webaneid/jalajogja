@@ -465,43 +465,47 @@ export function CampaignForm({ slug, campaignId, categories, initialData, qurban
 
           <Separator />
 
-          {/* Target & Periode */}
+          {/* Target & Periode — disembunyikan untuk qurban (harga dari hewan) */}
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="targetAmount">Target Nominal (opsional)</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">Rp</span>
-                <Input
-                  id="targetAmount"
-                  type="number"
-                  min={0}
-                  value={targetAmount}
-                  onChange={(e) => setTargetAmount(e.target.value)}
-                  placeholder="0"
-                  className="pl-9"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">Kosongkan jika tanpa target</p>
-            </div>
+            {campaignType !== "qurban" && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="targetAmount">Target Nominal (opsional)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">Rp</span>
+                    <Input
+                      id="targetAmount"
+                      type="number"
+                      min={0}
+                      value={targetAmount}
+                      onChange={(e) => setTargetAmount(e.target.value)}
+                      placeholder="0"
+                      className="pl-9"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Kosongkan jika tanpa target</p>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="defaultAmount">Nominal Tetap (opsional)</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">Rp</span>
-                <Input
-                  id="defaultAmount"
-                  type="number"
-                  min={0}
-                  value={defaultAmount}
-                  onChange={(e) => setDefaultAmount(e.target.value)}
-                  placeholder="0"
-                  className="pl-9"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Jika diisi, donatur tidak bisa memilih nominal lain. Rekomendasi dan input bebas disembunyikan.
-              </p>
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="defaultAmount">Nominal Tetap (opsional)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">Rp</span>
+                    <Input
+                      id="defaultAmount"
+                      type="number"
+                      min={0}
+                      value={defaultAmount}
+                      onChange={(e) => setDefaultAmount(e.target.value)}
+                      placeholder="0"
+                      className="pl-9"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Jika diisi, donatur tidak bisa memilih nominal lain. Rekomendasi dan input bebas disembunyikan.
+                  </p>
+                </div>
+              </>
+            )}
 
             {/* Konfigurasi Qurban — muncul hanya jika campaign_type = qurban */}
             {campaignType === "qurban" && campaignId && (
