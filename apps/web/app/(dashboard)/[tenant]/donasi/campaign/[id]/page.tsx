@@ -100,6 +100,41 @@ export default async function CampaignDetailPage({
   const progress  = target ? Math.min(100, (collected / target) * 100) : null;
   const st = STATUS_MAP[campaign.status] ?? { label: campaign.status, variant: "outline" as const };
 
+  // Qurban: fetch animals + participants
+  const isQurban = campaign.campaignType === "qurban";
+  type QurbanRow = {
+    animalType: string | null; animalId: string | null;
+    groupNumber: number | null; slotNumber: number | null;
+    atasNama: string; donorName: string | null;
+    paymentStatus: string | null; paymentAmount: string | null;
+  };
+  let qurbanRows: QurbanRow[] = [];
+  if (isQurban) {
+    qurbanRows = await db
+      .select({
+        animalType:    schema.qurbanAnimals.animalType,
+        animalId:      schema.qurbanAnimals.id,
+        groupNumber:   schema.qurbanSapiGroups.groupNumber,
+        slotNumber:    schema.qurbanParticipants.slotNumber,
+        atasNama:      schema.qurbanParticipants.atasNama,
+        donorName:     schema.donations.donorName,
+        paymentStatus: schema.payments.status,
+        paymentAmount: schema.payments.amount,
+      })
+      .from(schema.qurbanParticipants)
+      .leftJoin(schema.qurbanAnimals,    eq(schema.qurbanAnimals.id,    schema.qurbanParticipants.animalId))
+      .leftJoin(schema.qurbanSapiGroups, eq(schema.qurbanSapiGroups.id, schema.qurbanParticipants.sapiGroupId))
+      .leftJoin(schema.donations,        eq(schema.donations.id,        schema.qurbanParticipants.donationId))
+      .leftJoin(schema.payments,         and(
+        eq(schema.payments.sourceType, "donation"),
+        eq(schema.payments.sourceId,   schema.qurbanParticipants.donationId),
+      ))
+      .where(
+        eq(schema.qurbanAnimals.campaignId, campaignId)
+      )
+      .orderBy(schema.qurbanAnimals.animalType, schema.qurbanSapiGroups.groupNumber, schema.qurbanParticipants.slotNumber);
+  }
+
   return (
     <div className="p-6 space-y-6 max-w-4xl">
       {/* Header */}
@@ -233,6 +268,53 @@ export default async function CampaignDetailPage({
           </div>
         )}
       </div>
+
+      {/* Tabel peserta qurban */}
+      {isQurban && (
+        <div className="space-y-3">
+          <h2 className="font-semibold">Peserta Qurban</h2>
+          {qurbanRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Belum ada pesanan qurban.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr className="text-left text-xs text-muted-foreground">
+                    <th className="px-3 py-2 font-medium">Hewan</th>
+                    <th className="px-3 py-2 font-medium">Grup/Slot</th>
+                    <th className="px-3 py-2 font-medium">Atas Nama</th>
+                    <th className="px-3 py-2 font-medium">Pemesan</th>
+                    <th className="px-3 py-2 font-medium">Nominal</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {qurbanRows.map((r, i) => {
+                    const pay = PAY_STATUS[r.paymentStatus ?? ""] ?? { label: r.paymentStatus ?? "—", color: "bg-muted" };
+                    const ANIMAL_LABEL: Record<string, string> = { domba: "Domba", kambing: "Kambing", sapi: "Sapi" };
+                    return (
+                      <tr key={i} className="border-t border-border hover:bg-muted/20">
+                        <td className="px-3 py-2">{r.animalType ? (ANIMAL_LABEL[r.animalType] ?? r.animalType) : "—"}</td>
+                        <td className="px-3 py-2 text-muted-foreground text-xs">
+                          {r.groupNumber != null ? `Grup ${r.groupNumber}` : ""}
+                          {r.slotNumber  != null ? ` / Slot ${r.slotNumber}` : ""}
+                          {r.groupNumber == null && r.slotNumber == null ? "Individu" : ""}
+                        </td>
+                        <td className="px-3 py-2 font-medium">{r.atasNama}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{r.donorName}</td>
+                        <td className="px-3 py-2">{r.paymentAmount ? formatRupiah(r.paymentAmount) : "—"}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${pay.color}`}>{pay.label}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

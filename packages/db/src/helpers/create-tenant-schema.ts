@@ -619,6 +619,50 @@ export async function createTenantSchemaInDb(
       )
     `));
 
+    // ── 22b. Qurban Tables ────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".qurban_animals (
+        id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id UUID          NOT NULL REFERENCES "${s}".campaigns(id) ON DELETE CASCADE,
+        animal_type TEXT          NOT NULL CHECK (animal_type IN ('domba','kambing','sapi')),
+        price       NUMERIC(15,2) NOT NULL,
+        stock       INTEGER       NOT NULL DEFAULT 0,
+        booked      INTEGER       NOT NULL DEFAULT 0,
+        split       INTEGER,
+        is_active   BOOLEAN       NOT NULL DEFAULT true,
+        created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".qurban_sapi_groups (
+        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        animal_id    UUID        NOT NULL REFERENCES "${s}".qurban_animals(id) ON DELETE CASCADE,
+        group_number INTEGER     NOT NULL,
+        total_slots  INTEGER     NOT NULL,
+        filled_slots INTEGER     NOT NULL DEFAULT 0,
+        is_complete  BOOLEAN     NOT NULL DEFAULT false,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".qurban_participants (
+        id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        donation_id    UUID        NOT NULL REFERENCES "${s}".donations(id) ON DELETE CASCADE,
+        animal_id      UUID        NOT NULL REFERENCES "${s}".qurban_animals(id),
+        sapi_group_id  UUID        REFERENCES "${s}".qurban_sapi_groups(id),
+        slot_number    INTEGER,
+        atas_nama      TEXT        NOT NULL,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_qurban_animals_campaign ON "${s}".qurban_animals(campaign_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_qurban_participants_donation ON "${s}".qurban_participants(donation_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_qurban_participants_animal ON "${s}".qurban_participants(animal_id)`));
+
     // ── 23. Event Categories ──────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".event_categories (

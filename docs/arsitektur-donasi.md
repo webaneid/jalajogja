@@ -998,8 +998,12 @@ Step Q5: Admin — manajemen pesanan qurban
 | Instruksi bayar pasca submit (rekening + unique code) | 🔲 Belum |
 | Sertifikat PDF donasi | 🔲 Belum |
 | Kirim email sertifikat | 🔲 Belum |
-| **Fitur Qurban** — arsitektur selesai (Section 15) | 📋 Terdokumentasi |
-| Qurban Step Q1–Q5 — implementasi | 🔲 Belum |
+| **Fitur Qurban** — arsitektur selesai (Section 15) | ✅ Done |
+| Qurban Step Q1 — schema (3 tabel + settings group) | ✅ Done |
+| Qurban Step Q2 — pengaturan admin harga + admin fee | ✅ Done |
+| Qurban Step Q3 — CampaignForm konfigurasi hewan | ✅ Done |
+| Qurban Step Q4 — front-end publik (arsip + detail + form order) | ✅ Done |
+| Qurban Step Q5 — admin peserta qurban di detail campaign | ✅ Done |
 | Donasi recurring | 🔲 Roadmap |
 | Export CSV laporan | 🔲 Belum |
 | Grafik donasi per bulan | 🔲 Belum |

@@ -11,7 +11,7 @@ import {
 } from "./officers";
 import { createAccountsTable, createTransactionsTable, createTransactionEntriesTable, createBudgetsTable, createBudgetItemsTable, createPaymentsTable, createDisbursementsTable, createFinancialSequencesTable } from "./finance";
 import { createProductCategoriesTable, createProductsTable, createOrdersTable, createOrderItemsTable, createProductVariationsTable } from "./shop";
-import { createCampaignCategoriesTable, createCampaignsTable, createDonationsTable, createDonationSequencesTable } from "./donations";
+import { createCampaignCategoriesTable, createCampaignsTable, createDonationsTable, createDonationSequencesTable, createQurbanAnimalsTable, createQurbanSapiGroupsTable, createQurbanParticipantsTable } from "./donations";
 import {
   createEventCategoriesTable,
   createEventsTable,
@@ -75,10 +75,13 @@ function buildTenantSchema(slug: string) {
     disbursements: createDisbursementsTable(s),
     financialSequences: createFinancialSequencesTable(s),
     // Donasi
-    campaignCategories: createCampaignCategoriesTable(s),
-    campaigns:          createCampaignsTable(s),
-    donations:          createDonationsTable(s),
-    donationSequences:  createDonationSequencesTable(s),
+    campaignCategories:  createCampaignCategoriesTable(s),
+    campaigns:           createCampaignsTable(s),
+    donations:           createDonationsTable(s),
+    donationSequences:   createDonationSequencesTable(s),
+    qurbanAnimals:       createQurbanAnimalsTable(s),
+    qurbanSapiGroups:    createQurbanSapiGroupsTable(s),
+    qurbanParticipants:  createQurbanParticipantsTable(s),
     // Event
     eventCategories:              createEventCategoriesTable(s),
     events:                       createEventsTable(s),

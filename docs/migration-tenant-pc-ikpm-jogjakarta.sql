@@ -114,3 +114,42 @@ ALTER TABLE "tenant_pc-ikpm-jogjakarta".settings
 ALTER TABLE "tenant_pc-ikpm-jogjakarta".campaigns
   ADD COLUMN IF NOT EXISTS gallery    JSONB,
   ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0;
+
+-- ── Qurban Tables ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS "tenant_pc-ikpm-jogjakarta".qurban_animals (
+  id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID          NOT NULL REFERENCES "tenant_pc-ikpm-jogjakarta".campaigns(id) ON DELETE CASCADE,
+  animal_type TEXT          NOT NULL CHECK (animal_type IN ('domba','kambing','sapi')),
+  price       NUMERIC(15,2) NOT NULL,
+  stock       INTEGER       NOT NULL DEFAULT 0,
+  booked      INTEGER       NOT NULL DEFAULT 0,
+  split       INTEGER,
+  is_active   BOOLEAN       NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS "tenant_pc-ikpm-jogjakarta".qurban_sapi_groups (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  animal_id    UUID        NOT NULL REFERENCES "tenant_pc-ikpm-jogjakarta".qurban_animals(id) ON DELETE CASCADE,
+  group_number INTEGER     NOT NULL,
+  total_slots  INTEGER     NOT NULL,
+  filled_slots INTEGER     NOT NULL DEFAULT 0,
+  is_complete  BOOLEAN     NOT NULL DEFAULT false,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS "tenant_pc-ikpm-jogjakarta".qurban_participants (
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  donation_id    UUID        NOT NULL REFERENCES "tenant_pc-ikpm-jogjakarta".donations(id) ON DELETE CASCADE,
+  animal_id      UUID        NOT NULL REFERENCES "tenant_pc-ikpm-jogjakarta".qurban_animals(id),
+  sapi_group_id  UUID        REFERENCES "tenant_pc-ikpm-jogjakarta".qurban_sapi_groups(id),
+  slot_number    INTEGER,
+  atas_nama      TEXT        NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_qurban_animals_campaign     ON "tenant_pc-ikpm-jogjakarta".qurban_animals(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_qurban_participants_donation ON "tenant_pc-ikpm-jogjakarta".qurban_participants(donation_id);
+CREATE INDEX IF NOT EXISTS idx_qurban_participants_animal   ON "tenant_pc-ikpm-jogjakarta".qurban_participants(animal_id);

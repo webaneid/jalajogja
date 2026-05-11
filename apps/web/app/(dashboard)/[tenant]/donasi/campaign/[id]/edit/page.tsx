@@ -1,10 +1,11 @@
-import { createTenantDb } from "@jalajogja/db";
+import { createTenantDb, getSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { publicUrl } from "@/lib/minio";
 import { CampaignForm } from "@/components/donasi/campaign-form";
 import type { SeoValues } from "@/components/seo/seo-panel";
+import type { QurbanAnimalInput } from "@/app/(dashboard)/[tenant]/donasi/actions";
 
 export default async function CampaignEditPage({
   params,
@@ -15,7 +16,8 @@ export default async function CampaignEditPage({
   const access = await getTenantAccess(slug);
   if (!access) redirect("/login");
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient             = createTenantDb(slug);
+  const { db, schema }          = tenantClient;
 
   const [[campaign], categories] = await Promise.all([
     db.select().from(schema.campaigns).where(eq(schema.campaigns.id, campaignId)).limit(1),
@@ -37,11 +39,40 @@ export default async function CampaignEditPage({
     coverUrl = media ? publicUrl(slug, media.path) : null;
   }
 
+  // Fetch qurban animals jika campaign type = qurban
+  let qurbanAnimals: QurbanAnimalInput[] = [];
+  let qurbanDefPrices = { domba: 2500000, kambing: 1800000, sapi: 15000000 };
+  if (campaign.campaignType === "qurban") {
+    const [qRows, donasiSettings] = await Promise.all([
+      db.select().from(schema.qurbanAnimals).where(eq(schema.qurbanAnimals.campaignId, campaignId)),
+      getSettings(tenantClient, "donasi"),
+    ]);
+    qurbanAnimals = qRows.map(r => ({
+      animalType: r.animalType as "domba" | "kambing" | "sapi",
+      price:      parseFloat(r.price),
+      stock:      r.stock,
+      split:      r.split ?? null,
+      isActive:   r.isActive,
+    }));
+    const qc = donasiSettings.qurban_config as
+      | { default_prices?: { domba?: number; kambing?: number; sapi?: number } }
+      | undefined;
+    if (qc?.default_prices) {
+      qurbanDefPrices = {
+        domba:   qc.default_prices.domba   ?? 2500000,
+        kambing: qc.default_prices.kambing ?? 1800000,
+        sapi:    qc.default_prices.sapi    ?? 15000000,
+      };
+    }
+  }
+
   return (
     <CampaignForm
       slug={slug}
       campaignId={campaignId}
       categories={categories}
+      qurbanAnimals={qurbanAnimals}
+      qurbanDefPrices={qurbanDefPrices}
       initialData={{
         slug:          campaign.slug,
         title:         campaign.title,

@@ -2,7 +2,7 @@
 
 import { eq, and, sql, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createTenantDb, recordIncome, generateFinancialNumber, createLinkedInvoice, syncInvoicePayment, upsertSetting } from "@jalajogja/db";
+import { createTenantDb, recordIncome, generateFinancialNumber, createLinkedInvoice, syncInvoicePayment, upsertSetting, getSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 
@@ -668,4 +668,257 @@ export async function saveDonationSettingsAction(
 
   revalidateDonasi(slug);
   return { success: true };
+}
+
+// ─── Pengaturan Qurban ────────────────────────────────────────────────────────
+
+export type QurbanConfig = {
+  defaultPrices: { domba: number; kambing: number; sapi: number };
+  adminFee:      number;
+  adminFeeLabel: string;
+};
+
+export async function saveQurbanConfigAction(
+  slug: string,
+  config: QurbanConfig
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "donasi")) return { success: false, error: "Akses ditolak." };
+
+  if (config.defaultPrices.domba <= 0 || config.defaultPrices.kambing <= 0 || config.defaultPrices.sapi <= 0)
+    return { success: false, error: "Harga hewan harus lebih dari 0." };
+  if (config.adminFee < 0)
+    return { success: false, error: "Biaya administrasi tidak boleh negatif." };
+
+  const tenantClient = createTenantDb(slug);
+  await upsertSetting(tenantClient, "qurban_config", "donasi", {
+    default_prices: {
+      domba:   config.defaultPrices.domba,
+      kambing: config.defaultPrices.kambing,
+      sapi:    config.defaultPrices.sapi,
+    },
+    admin_fee:       config.adminFee,
+    admin_fee_label: config.adminFeeLabel.trim() || "Biaya Administrasi",
+  });
+
+  revalidateDonasi(slug);
+  return { success: true };
+}
+
+// ─── Qurban Animals ───────────────────────────────────────────────────────────
+
+export type QurbanAnimalInput = {
+  animalType: "domba" | "kambing" | "sapi";
+  price:      number;
+  stock:      number;
+  split:      number | null; // hanya sapi: 5 atau 7
+  isActive:   boolean;
+};
+
+export async function saveQurbanAnimalsAction(
+  slug: string,
+  campaignId: string,
+  animals: QurbanAnimalInput[]
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "donasi")) return { success: false, error: "Akses ditolak." };
+
+  for (const a of animals) {
+    if (a.price <= 0) return { success: false, error: `Harga ${a.animalType} harus lebih dari 0.` };
+    if (a.stock < 0)  return { success: false, error: `Stok ${a.animalType} tidak boleh negatif.` };
+    if (a.animalType === "sapi" && a.split !== null && ![5, 7].includes(a.split))
+      return { success: false, error: "Patungan sapi hanya boleh 5 atau 7 orang." };
+  }
+
+  const { db, schema } = createTenantDb(slug);
+
+  // Delete lama yang belum ada peserta, insert/update baru
+  // Simpel: delete all non-booked lalu insert ulang
+  await db.delete(schema.qurbanAnimals)
+    .where(and(
+      eq(schema.qurbanAnimals.campaignId, campaignId),
+      eq(schema.qurbanAnimals.booked, 0),
+    ));
+
+  if (animals.length > 0) {
+    await db.insert(schema.qurbanAnimals).values(
+      animals.map(a => ({
+        campaignId: campaignId,
+        animalType: a.animalType,
+        price:      String(a.price),
+        stock:      a.stock,
+        booked:     0,
+        split:      a.animalType === "sapi" ? (a.split ?? 7) : null,
+        isActive:   a.isActive,
+      }))
+    );
+  }
+
+  revalidateDonasi(slug);
+  return { success: true };
+}
+
+export async function getQurbanAnimalsAction(
+  slug: string,
+  campaignId: string
+): Promise<QurbanAnimalInput[]> {
+  const { db, schema } = createTenantDb(slug);
+  const rows = await db
+    .select()
+    .from(schema.qurbanAnimals)
+    .where(eq(schema.qurbanAnimals.campaignId, campaignId))
+    .orderBy(schema.qurbanAnimals.createdAt);
+
+  return rows.map(r => ({
+    animalType: r.animalType as "domba" | "kambing" | "sapi",
+    price:      parseFloat(r.price),
+    stock:      r.stock,
+    split:      r.split ?? null,
+    isActive:   r.isActive,
+  }));
+}
+
+// ─── Qurban Order (front-end publik) ─────────────────────────────────────────
+
+export type QurbanOrderData = {
+  campaignId:  string;
+  animalId:    string;
+  atasNama:    string;
+  donorName:   string;
+  donorPhone?: string | null;
+  donorEmail?: string | null;
+  memberId?:   string | null;
+  method:      "cash" | "transfer" | "qris";
+  bankAccountRef?: string | null;
+  qrisAccountRef?: string | null;
+};
+
+export async function createQurbanOrderAction(
+  slug: string,
+  data: QurbanOrderData
+): Promise<ActionResult<{ donationId: string; donationNumber: string; uniqueCode: number; totalAmount: number }>> {
+  if (!data.atasNama?.trim())  return { success: false, error: "Nama shohibul qurban wajib diisi." };
+  if (!data.donorName?.trim()) return { success: false, error: "Nama pemesan wajib diisi." };
+
+  const tenantClient             = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
+
+  // Fetch animal
+  const [animal] = await tenantDb
+    .select()
+    .from(schema.qurbanAnimals)
+    .where(and(
+      eq(schema.qurbanAnimals.id, data.animalId),
+      eq(schema.qurbanAnimals.campaignId, data.campaignId),
+      eq(schema.qurbanAnimals.isActive, true),
+    ))
+    .limit(1);
+
+  if (!animal) return { success: false, error: "Jenis hewan tidak ditemukan." };
+
+  // Validasi stok
+  if (animal.animalType === "sapi" && animal.split) {
+    const maxSlots = animal.stock * animal.split;
+    if (animal.booked >= maxSlots)
+      return { success: false, error: "Stok sapi sudah habis." };
+  } else {
+    if (animal.booked >= animal.stock)
+      return { success: false, error: "Stok hewan sudah habis." };
+  }
+
+  // Fetch biaya admin dari settings
+  const donasiSettings = await getSettings(tenantClient, "donasi");
+  const qc = donasiSettings.qurban_config as
+    | { admin_fee?: number; admin_fee_label?: string }
+    | undefined;
+  const adminFee   = qc?.admin_fee ?? 0;
+  const totalAmount = parseFloat(animal.price) + adminFee;
+
+  // Unique code hanya untuk transfer
+  const uniqueCode = data.method === "transfer" ? Math.floor(Math.random() * 900) + 100 : 0;
+
+  // Generate nomor donasi
+  const donationNumber = await generateDonationNumber(tenantClient);
+
+  // Slot sapi patungan
+  let sapiGroupId: string | null = null;
+  let slotNumber:  number | null = null;
+
+  if (animal.animalType === "sapi" && animal.split) {
+    // Cari grup yang belum penuh
+    const [activeGroup] = await tenantDb
+      .select()
+      .from(schema.qurbanSapiGroups)
+      .where(and(
+        eq(schema.qurbanSapiGroups.animalId, animal.id),
+        eq(schema.qurbanSapiGroups.isComplete, false),
+      ))
+      .limit(1);
+
+    if (activeGroup) {
+      sapiGroupId = activeGroup.id;
+      slotNumber  = activeGroup.filledSlots + 1;
+      const newFilled = activeGroup.filledSlots + 1;
+      await tenantDb.update(schema.qurbanSapiGroups).set({
+        filledSlots: newFilled,
+        isComplete:  newFilled >= activeGroup.totalSlots,
+      }).where(eq(schema.qurbanSapiGroups.id, activeGroup.id));
+    } else {
+      // Buat grup baru
+      const [totalGroups] = await tenantDb
+        .select({ cnt: sql<number>`count(*)` })
+        .from(schema.qurbanSapiGroups)
+        .where(eq(schema.qurbanSapiGroups.animalId, animal.id));
+      const groupNumber = Number(totalGroups?.cnt ?? 0) + 1;
+      const [newGroup] = await tenantDb.insert(schema.qurbanSapiGroups).values({
+        animalId:    animal.id,
+        groupNumber,
+        totalSlots:  animal.split,
+        filledSlots: 1,
+        isComplete:  animal.split === 1,
+      }).returning({ id: schema.qurbanSapiGroups.id });
+      sapiGroupId = newGroup.id;
+      slotNumber  = 1;
+    }
+  }
+
+  // Insert donation + payment + participant
+  const [donation] = await tenantDb.insert(schema.donations).values({
+    donationNumber,
+    campaignId:    data.campaignId,
+    donationType:  "qurban",
+    memberId:      data.memberId ?? null,
+    donorName:     data.donorName.trim(),
+    donorPhone:    data.donorPhone ?? null,
+    donorEmail:    data.donorEmail ?? null,
+    isAnonymous:   false,
+  }).returning({ id: schema.donations.id });
+
+  const paymentNumber = await generateFinancialNumber(tenantClient, "payment");
+  await tenantDb.insert(schema.payments).values({
+    number:        paymentNumber,
+    sourceType:    "donation",
+    sourceId:      donation.id,
+    amount:        String(totalAmount),
+    uniqueCode,
+    method:        data.method,
+    status:        data.method === "cash" ? "submitted" : "pending",
+  });
+
+  await tenantDb.insert(schema.qurbanParticipants).values({
+    donationId:   donation.id,
+    animalId:     animal.id,
+    sapiGroupId,
+    slotNumber,
+    atasNama:     data.atasNama.trim(),
+  });
+
+  // Increment booked
+  await tenantDb.update(schema.qurbanAnimals)
+    .set({ booked: animal.booked + 1, updatedAt: new Date() })
+    .where(eq(schema.qurbanAnimals.id, animal.id));
+
+  return { success: true, data: { donationId: donation.id, donationNumber, uniqueCode, totalAmount } };
 }

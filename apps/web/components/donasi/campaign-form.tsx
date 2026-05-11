@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,9 @@ import {
   updateCampaignAction,
   deleteCampaignAction,
   type CampaignData,
+  type QurbanAnimalInput,
 } from "@/app/(dashboard)/[tenant]/donasi/actions";
+import { QurbanAnimalsEditor } from "@/components/donasi/qurban-animals-editor";
 import {
   ChevronLeft,
   Check,
@@ -47,9 +49,11 @@ type CoverImage = { id: string; url: string } | null;
 type CategoryOption = { id: string; name: string };
 
 export type CampaignFormProps = {
-  slug:       string;
-  campaignId: string | null; // null = create mode
-  categories: CategoryOption[];
+  slug:              string;
+  campaignId:        string | null; // null = create mode
+  categories:        CategoryOption[];
+  qurbanAnimals?:    QurbanAnimalInput[];
+  qurbanDefPrices?:  { domba: number; kambing: number; sapi: number };
   initialData: {
     slug:          string;
     title:         string;
@@ -123,7 +127,7 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
 
 // ─── CampaignForm ─────────────────────────────────────────────────────────────
 
-export function CampaignForm({ slug, campaignId, categories, initialData }: CampaignFormProps) {
+export function CampaignForm({ slug, campaignId, categories, initialData, qurbanAnimals = [], qurbanDefPrices = { domba: 2500000, kambing: 1800000, sapi: 15000000 } }: CampaignFormProps) {
   const router = useRouter();
 
   const [title,         setTitle]         = useState(initialData.title);
@@ -499,6 +503,33 @@ export function CampaignForm({ slug, campaignId, categories, initialData }: Camp
                 Jika diisi, donatur tidak bisa memilih nominal lain. Rekomendasi dan input bebas disembunyikan.
               </p>
             </div>
+
+            {/* Konfigurasi Qurban — muncul hanya jika campaign_type = qurban */}
+            {campaignType === "qurban" && campaignId && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">Konfigurasi Hewan Qurban</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Atur jenis hewan, harga, stok, dan patungan untuk campaign ini.
+                    </p>
+                  </div>
+                  <QurbanAnimalsEditor
+                    slug={slug}
+                    campaignId={campaignId}
+                    initialData={qurbanAnimals}
+                    defaultPrices={qurbanDefPrices}
+                  />
+                </div>
+              </>
+            )}
+
+            {campaignType === "qurban" && !campaignId && (
+              <p className="text-xs text-muted-foreground rounded-lg border border-border bg-muted/30 p-3">
+                Simpan campaign terlebih dahulu untuk mengatur konfigurasi hewan qurban.
+              </p>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="startsAt">Tanggal Mulai</Label>

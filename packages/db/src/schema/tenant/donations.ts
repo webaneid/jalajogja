@@ -152,9 +152,59 @@ export function createDonationSequencesTable(s: ReturnType<typeof pgSchema>) {
   }));
 }
 
+// ─── Qurban ───────────────────────────────────────────────────────────────────
+
+export const QURBAN_ANIMAL_TYPES = ["domba", "kambing", "sapi"] as const;
+export type QurbanAnimalType = typeof QURBAN_ANIMAL_TYPES[number];
+
+// Jenis hewan per campaign qurban — harga, stok, dan split patungan
+export function createQurbanAnimalsTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("qurban_animals", {
+    id:         uuid("id").primaryKey().defaultRandom(),
+    campaignId: uuid("campaign_id").notNull(),           // FK → campaigns.id via DDL
+    animalType: text("animal_type", { enum: QURBAN_ANIMAL_TYPES }).notNull(),
+    price:      numeric("price",    { precision: 15, scale: 2 }).notNull(),
+    stock:      integer("stock").notNull().default(0),   // jumlah ekor tersedia
+    booked:     integer("booked").notNull().default(0),  // sudah dipesan (pending+confirmed)
+    split:      integer("split"),                        // hanya sapi: 5 atau 7
+    isActive:   boolean("is_active").notNull().default(true),
+    createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:  timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  });
+}
+
+// Grup patungan sapi — satu grup = 1 ekor sapi, dibagi split orang
+export function createQurbanSapiGroupsTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("qurban_sapi_groups", {
+    id:          uuid("id").primaryKey().defaultRandom(),
+    animalId:    uuid("animal_id").notNull(),             // FK → qurban_animals.id via DDL
+    groupNumber: integer("group_number").notNull(),       // urutan grup ke-N
+    totalSlots:  integer("total_slots").notNull(),        // = animal.split
+    filledSlots: integer("filled_slots").notNull().default(0),
+    isComplete:  boolean("is_complete").notNull().default(false),
+    createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  });
+}
+
+// Satu slot per pesanan qurban — atas nama + relasi ke hewan/grup
+export function createQurbanParticipantsTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("qurban_participants", {
+    id:           uuid("id").primaryKey().defaultRandom(),
+    donationId:   uuid("donation_id").notNull(),          // FK → donations.id via DDL
+    animalId:     uuid("animal_id").notNull(),            // FK → qurban_animals.id via DDL
+    sapiGroupId:  uuid("sapi_group_id"),                  // FK → qurban_sapi_groups.id (null utk individu)
+    slotNumber:   integer("slot_number"),                 // posisi di grup sapi; null utk domba/kambing
+    atasNama:     text("atas_nama").notNull(),            // nama shohibul qurban
+    createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  });
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type CampaignCategoriesTable = ReturnType<typeof createCampaignCategoriesTable>;
-export type CampaignsTable          = ReturnType<typeof createCampaignsTable>;
-export type DonationsTable          = ReturnType<typeof createDonationsTable>;
-export type DonationSeqsTable       = ReturnType<typeof createDonationSequencesTable>;
+export type CampaignCategoriesTable  = ReturnType<typeof createCampaignCategoriesTable>;
+export type CampaignsTable           = ReturnType<typeof createCampaignsTable>;
+export type DonationsTable           = ReturnType<typeof createDonationsTable>;
+export type DonationSeqsTable        = ReturnType<typeof createDonationSequencesTable>;
+export type QurbanAnimalsTable       = ReturnType<typeof createQurbanAnimalsTable>;
+export type QurbanSapiGroupsTable    = ReturnType<typeof createQurbanSapiGroupsTable>;
+export type QurbanParticipantsTable  = ReturnType<typeof createQurbanParticipantsTable>;
