@@ -17,9 +17,11 @@ export default async function LoginPage({
   const { redirect: dest } = await searchParams;
 
   // Jika sudah login → langsung ke akun (atau URL tujuan)
+  // Hindari redirect ke /akun jika dest adalah /login (loop guard)
   const session = await auth.api.getSession({ headers: await headers() });
   if (session?.user) {
-    redirect(dest ?? `/${slug}/akun`);
+    const safe = dest && !dest.includes("/login") ? dest : `/${slug}/akun`;
+    redirect(safe);
   }
 
   return <LoginForm slug={slug} redirectTo={dest} />;

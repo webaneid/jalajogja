@@ -24,7 +24,9 @@ export default async function AkunPage({ params }: { params: Params }) {
   if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
 
   const identity = await getAkunIdentity(session.user.id);
-  if (!identity) redirect(`/${slug}/login`);
+  // Jika session ada tapi tidak ada profil front-end → user ini hanya punya akun
+  // dashboard (pengurus). Jangan redirect ke /login — akan loop. Arahkan ke dashboard.
+  if (!identity) redirect(`/${slug}/dashboard`);
 
   const isMember     = identity.type === "member";
   const isIncomplete = isMemberDataIncomplete(identity);
