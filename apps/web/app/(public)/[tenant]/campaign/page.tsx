@@ -80,7 +80,7 @@ export default async function DonasiArchivePage({ params }: { params: Params }) 
               return (
                 <a
                   key={c.id}
-                  href={`/${slug}/donasi/${c.slug}`}
+                  href={`/${slug}/campaign/${c.slug}`}
                   className="group flex flex-col rounded-xl overflow-hidden border border-border bg-card hover:border-primary/50 hover:shadow-md transition-all"
                 >
                   {/* Cover */}

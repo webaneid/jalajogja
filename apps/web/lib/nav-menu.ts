@@ -36,7 +36,7 @@ export function resolveNavHref(item: NavItem, tenantSlug: string): string {
     case "post":   return `/${tenantSlug}/post`;
     case "event":  return `/${tenantSlug}/event`;
     case "toko":   return `/${tenantSlug}/produk`;
-    case "donasi": return `/${tenantSlug}/donasi`;
+    case "donasi": return `/${tenantSlug}/campaign`;
     case "custom": return item.href ?? "#";
     default:       return "#";
   }
