@@ -2061,9 +2061,9 @@ Keputusan ini dipertahankan — tambahan `hasDashboard` juga client-side dengan 
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix halaman publik produk** — ProductImageViewer (gambar besar + thumbnail strip), renderBody() untuk deskripsi Tiptap JSON.
-- Sesi ini: 3 halaman publik toko selesai (`/produk`, `/produk/kategori/{slug}`, `/produk/{slug}`), ProductImageViewer, fix deskripsi Tiptap JSON.
-- Ditunda: V8 (stok check server-side), sidebar produk, EventCard, CampaignCard.
+- Terakhir dikerjakan: **Fitur Qurban + perbaikan donasi** — schema 3 tabel, pengaturan biaya penyembelihan per hewan, campaign form UI (card per hewan, sembunyikan target/nominal tetap), front-end publik `/campaign`.
+- Sesi ini: Halaman publik toko (P1–P5), cart button header, redirect loop login fix, aktivasi pengurus reuse akun, header Dashboard Admin link, pengaturan donasi (nominal rekomendasi), qurban Q1–Q5, route conflict `/donasi`→`/campaign`, UI cards qurban.
+- Ditunda: V8 stok check server-side, form donasi non-qurban di front-end, EventCard, CampaignCard.
 
 ### Status Halaman Publik Anggota
 | Link dari Dashboard | URL | Status |

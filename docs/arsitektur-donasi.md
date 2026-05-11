@@ -781,73 +781,89 @@ bisa sama dengan pemesan, bisa berbeda (mis. "atas nama almarhum Bapak X").
 
 ---
 
-### 15c. Pengaturan Donasi — Tambahan Qurban
+### 15c. Pengaturan Donasi — Biaya Administrasi Penyembelihan
 
-Tambah ke `/donasi/pengaturan` section baru "Pengaturan Qurban":
+Tambah ke `/donasi/pengaturan` section **Biaya Administrasi Penyembelihan**:
 
 ```json
 key   = "qurban_config"
 group = "donasi"
 value = {
-  "default_prices": {
-    "domba":  2500000,
-    "kambing": 1800000,
-    "sapi":   15000000
-  },
-  "admin_fee": 50000,
-  "admin_fee_label": "Biaya Operasional"
+  "slaughter_fees": {
+    "domba":   150000,
+    "kambing": 200000,
+    "sapi":    500000
+  }
 }
 ```
 
-**`default_prices`**: Harga default saat admin buat campaign qurban baru — bisa di-override per campaign.
+**Tidak ada `default_prices`** — harga hewan diatur per campaign oleh admin karena berubah tiap tahun.
 
-**`admin_fee`**: Biaya administrasi yang ditambahkan ke setiap pesanan (per slot/per ekor).
-Ditagihkan di atas harga hewan. Contoh: harga domba Rp 2.500.000 + admin fee Rp 50.000 = total Rp 2.550.000.
+**`slaughter_fees`**: Biaya administrasi penyembelihan per jenis hewan, berbeda-beda.
+Ditambahkan otomatis ke harga hewan saat user checkout.
+
+> Harga hewan = per campaign (di `qurban_animals.price`)
+> Biaya penyembelihan = per tenant (di `settings.qurban_config.slaughter_fees`)
+> Total pesanan = harga_hewan + slaughter_fee[animal_type]
+
+**`QurbanConfig` type:**
+```typescript
+export type QurbanConfig = {
+  slaughterFees: { domba: number; kambing: number; sapi: number };
+};
+```
 
 ---
 
 ### 15d. Akuntansi Qurban
 
 ```
-Total pembayaran = harga_hewan + admin_fee
+Total pembayaran = harga_hewan + slaughter_fee[animal_type]
 
 → Jurnal saat konfirmasi:
    Debit  Kas / Bank
-   Kredit Dana Titipan (harga_hewan)  ← amanah untuk disalurkan
-   Kredit Pendapatan Jasa (admin_fee) ← hak organisasi sebagai penyelenggara
+   Kredit Dana Titipan (harga_hewan)         ← amanah untuk disalurkan
+   Kredit Pendapatan Jasa (slaughter_fee)    ← hak organisasi sebagai penyelenggara
 ```
 
 Dua credit entry berbeda: harga hewan masuk **Dana Titipan** (liabilitas),
-admin fee masuk **Pendapatan Jasa** (income). Mapping akun di Keuangan → Mapping Akun.
+biaya penyembelihan masuk **Pendapatan Jasa** (income). Mapping akun di Keuangan → Mapping Akun.
 
 ---
 
 ### 15e. Perubahan CampaignForm (Admin)
 
-Saat `campaign_type = 'qurban'`, sidebar form tambah section **Konfigurasi Qurban**:
+Saat `campaign_type = 'qurban'`:
+
+**Field yang DISEMBUNYIKAN (tidak relevan untuk qurban):**
+- Target Nominal — harga ditentukan dari hewan, bukan target uang
+- Nominal Tetap — harga sudah fixed per hewan
+
+**Section yang DITAMBAHKAN** di sidebar: **Konfigurasi Hewan Qurban** (card vertikal, fit di sidebar):
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Konfigurasi Qurban                                 │
-├─────────────────────────────────────────────────────┤
-│  Periode Qurban:                                    │
-│  [1446 H / 2025 M________________]                  │
-│                                                     │
-│  Jenis Hewan yang Tersedia:                         │
-│  ┌──────────┬──────────┬──────┬─────┬──────────┐   │
-│  │ Hewan    │ Harga    │ Stok │Patungan│ Aktif │   │
-│  ├──────────┼──────────┼──────┼─────┼──────────┤   │
-│  │ Domba    │[2.500.000│ [10] │  -  │  [✓]    │   │
-│  │ Kambing  │[1.800.000│ [5_] │  -  │  [✓]    │   │
-│  │ Sapi     │[15.000.00│ [3_] │ [7] │  [✓]    │   │
-│  └──────────┴──────────┴──────┴─────┴──────────┘   │
-│                                                     │
-│  Catatan: Harga sudah termasuk admin fee            │
-│  (atau di luar, ditampilkan terpisah di front-end)  │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────┐
+│  🐑 Domba                    [✓ Aktif]│
+│  Harga per ekor: [Rp _________]      │
+│  Stok: [__]  Tipe: [Individu]        │
+├──────────────────────────────────────┤
+│  🐐 Kambing                  [✓ Aktif]│
+│  Harga per ekor: [Rp _________]      │
+│  Stok: [__]  Tipe: [Individu]        │
+├──────────────────────────────────────┤
+│  🐄 Sapi                     [✓ Aktif]│
+│  Harga per ekor: [Rp 15.000.000]     │
+│  Stok: [3_]  Tipe: [Patungan 7 ▼]   │
+│  Per orang: Rp 2.142.857 (÷7)        │
+└──────────────────────────────────────┘
+│  [Simpan Konfigurasi Hewan]          │
 ```
 
-Harga default diambil dari `qurban_config.default_prices` di settings saat form pertama dibuka.
+**Harga per ekor** diisi admin — tidak ada default global (harga berubah tiap tahun).
+**Info per orang** muncul otomatis untuk sapi patungan: `price / split` (hanya tampilan, tidak disimpan).
+**Sapi bisa pilih**: Individu / Patungan 5 / Patungan 7 — domba & kambing selalu individu.
+
+`QurbanAnimalsEditor` komponen terpisah dari form utama — punya tombol simpan sendiri (bukan bagian dari handleSave campaign). Muncul hanya jika `campaignId` sudah ada (create dulu, baru konfigurasi hewan).
 
 ---
 
@@ -885,15 +901,17 @@ Harga default diambil dari `qurban_config.default_prices` di settings saat form 
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Sapi patungan** — tampil info grup:
+**Sapi patungan** — harga per orang dihitung otomatis:
 ```
   🐄 Sapi (Patungan 7 Orang)
-  Grup saat ini: slot 4 dari 7 sudah terisi
-  Slot tersisa: 3
-  Harga per slot: Rp 2.143.000
-  + Biaya admin: Rp 50.000
-  Total: Rp 2.193.000
+  Slot tersisa: 3 dari 7
+  Harga per orang: Rp 2.142.857  (15.000.000 ÷ 7)
+  + Biaya Administrasi Penyembelihan: Rp 500.000
+  Total: Rp 2.642.857
 ```
+
+**Biaya penyembelihan** per jenis hewan diambil dari `settings.qurban_config.slaughter_fees[animalType]`.
+Ditampilkan terpisah — jika 0 maka tidak ditampilkan.
 
 ---
 
@@ -1055,6 +1073,38 @@ Saat menambah group settings baru (misal `donasi`), wajib update ketiganya sekal
 2. `packages/db/src/helpers/create-tenant-schema.ts` → DDL CHECK constraint
 3. `docs/migration-tenant-pc-ikpm-jogjakarta.sql` → `ALTER TABLE ... DROP/ADD CONSTRAINT`
 Melewatkan salah satu → TypeScript error atau runtime `23514` constraint violation.
+
+### Route conflict public vs dashboard — selalu pakai URL berbeda
+
+`(public)/[tenant]/donasi` dan `(dashboard)/[tenant]/donasi` resolve ke URL yang sama → Build Error.
+Fix: public pages dipindah ke `/campaign` (pattern sama seperti `/toko` → `/produk`).
+**Aturan**: setiap kali buat halaman publik, cek dulu apakah nama route sudah dipakai di dashboard.
+
+### Qurban: tidak ada harga default global — harga per campaign
+
+Harga hewan qurban berubah setiap tahun (tergantung harga pasar). Tidak ada gunanya menyimpan
+"harga default" di settings. Yang ada di settings hanya **biaya administrasi penyembelihan** per hewan
+(`slaughter_fees`) yang relatif stabil.
+`QurbanConfig.slaughterFees: { domba, kambing, sapi }` — bukan `defaultPrices`.
+
+### Qurban: harga per orang dihitung client-side, tidak disimpan
+
+`price_per_slot = animal.price / animal.split` — dihitung di UI, bukan di DB.
+Simpan hanya `price` (total per ekor) dan `split`. Harga per orang adalah derived value.
+Berlaku untuk display di admin editor maupun front-end publik.
+
+### CampaignForm: field conditional per campaign_type
+
+Field yang tidak relevan untuk tipe tertentu harus disembunyikan, bukan hanya di-disable:
+- `campaignType === "qurban"` → sembunyikan Target Nominal dan Nominal Tetap
+- Ini mencegah admin mengisi field yang tidak akan dipakai dan menyebabkan kebingungan
+
+### QurbanAnimalsEditor: card vertikal lebih baik dari table di sidebar
+
+Sidebar form campaign lebarnya ~288px — table multi-kolom tidak fit dan sulit dibaca.
+Solusi: card vertikal per hewan (satu card = satu jenis hewan), stacked ke bawah.
+Tiap card memuat: toggle aktif, input harga, input stok, select tipe patungan, info harga per orang.
+**Prinsip**: pilih layout berdasarkan lebar kontainer, bukan kebiasaan.
 
 ### Status campaign: dropdown bebas, bukan cycle paksa
 Status campaign bisa pindah ke nilai apapun langsung — tidak perlu urutan draft→active→closed→archived.
