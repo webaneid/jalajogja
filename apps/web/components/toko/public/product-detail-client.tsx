@@ -258,37 +258,39 @@ export function ProductDetailClient({
           </p>
         )}
 
-        {/* Quantity + Add to cart */}
+        {/* Quantity + Add to cart — satu baris */}
         <div className="space-y-3">
           <div className="flex items-center gap-3">
-            <div className="flex items-center border border-border rounded-lg overflow-hidden">
+            {/* Quantity stepper */}
+            <div className="flex items-center border border-border rounded-lg overflow-hidden shrink-0">
               <button
-                className="px-3 py-2 hover:bg-muted transition-colors disabled:opacity-40"
+                className="px-3 py-2.5 hover:bg-muted transition-colors disabled:opacity-40"
                 disabled={quantity <= 1 || isPending}
                 onClick={() => setQuantity(q => Math.max(1, q - 1))}
               >
                 <Minus className="h-4 w-4" />
               </button>
-              <span className="px-4 py-2 text-sm font-medium min-w-[2.5rem] text-center">{quantity}</span>
+              <span className="px-4 py-2.5 text-sm font-medium min-w-[2.5rem] text-center">{quantity}</span>
               <button
-                className="px-3 py-2 hover:bg-muted transition-colors disabled:opacity-40"
+                className="px-3 py-2.5 hover:bg-muted transition-colors disabled:opacity-40"
                 disabled={isPending || (isVariable && stock !== null && quantity >= stock)}
                 onClick={() => setQuantity(q => q + 1)}
               >
                 <Plus className="h-4 w-4" />
               </button>
             </div>
-          </div>
 
-          <Button
-            className="w-full"
-            size="lg"
-            disabled={!canAdd}
-            onClick={() => startTransition(handleAddToCart)}
-          >
-            <ShoppingCart className="h-4 w-4 mr-2" />
-            {isPending ? "Menambahkan..." : added ? "Ditambahkan ✓" : isOutOfStock ? "Stok Habis" : !allAttrSelected ? "Pilih Variasi" : "Tambah ke Keranjang"}
-          </Button>
+            {/* Tombol tambah ke keranjang */}
+            <Button
+              className="flex-1"
+              size="lg"
+              disabled={!canAdd}
+              onClick={() => startTransition(handleAddToCart)}
+            >
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              {isPending ? "Menambahkan..." : added ? "Ditambahkan ✓" : isOutOfStock ? "Stok Habis" : !allAttrSelected ? "Pilih Variasi" : "Tambah ke Keranjang"}
+            </Button>
+          </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
