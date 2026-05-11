@@ -108,3 +108,9 @@ ALTER TABLE "tenant_pc-ikpm-jogjakarta".settings
 ALTER TABLE "tenant_pc-ikpm-jogjakarta".settings
   ADD CONSTRAINT settings_group_check
   CHECK ("group" IN ('general','contact','payment','display','mail','notif','website','keuangan','toko','donasi'));
+
+-- ── Campaigns: kolom gallery + view_count (ditambahkan setelah provisioning awal) ──
+
+ALTER TABLE "tenant_pc-ikpm-jogjakarta".campaigns
+  ADD COLUMN IF NOT EXISTS gallery    JSONB,
+  ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0;
