@@ -23,18 +23,16 @@ export default async function DonationSettingsPage({
     | undefined;
   const initialAmounts: number[] = donationConfig?.recommended_amounts ?? [10000, 50000, 100000, 500000];
 
-  // Konfigurasi qurban
+  // Konfigurasi qurban — biaya administrasi penyembelihan per hewan
   const qurbanRaw = settings.qurban_config as
-    | { default_prices?: { domba?: number; kambing?: number; sapi?: number }; admin_fee?: number; admin_fee_label?: string }
+    | { slaughter_fees?: { domba?: number; kambing?: number; sapi?: number } }
     | undefined;
   const qurbanConfig: QurbanConfig = {
-    defaultPrices: {
-      domba:   qurbanRaw?.default_prices?.domba   ?? 2500000,
-      kambing: qurbanRaw?.default_prices?.kambing ?? 1800000,
-      sapi:    qurbanRaw?.default_prices?.sapi    ?? 15000000,
+    slaughterFees: {
+      domba:   qurbanRaw?.slaughter_fees?.domba   ?? 0,
+      kambing: qurbanRaw?.slaughter_fees?.kambing ?? 0,
+      sapi:    qurbanRaw?.slaughter_fees?.sapi    ?? 0,
     },
-    adminFee:      qurbanRaw?.admin_fee       ?? 50000,
-    adminFeeLabel: qurbanRaw?.admin_fee_label ?? "Biaya Administrasi",
   };
 
   return (

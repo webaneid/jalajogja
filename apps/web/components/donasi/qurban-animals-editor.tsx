@@ -8,24 +8,20 @@ const ANIMAL_LABELS: Record<string, string> = {
 };
 
 const DEFAULT_ANIMALS: QurbanAnimalInput[] = [
-  { animalType: "domba",   price: 2500000,  stock: 0, split: null, isActive: true },
-  { animalType: "kambing", price: 1800000,  stock: 0, split: null, isActive: true },
-  { animalType: "sapi",    price: 15000000, stock: 0, split: 7,    isActive: true },
+  { animalType: "domba",   price: 0, stock: 0, split: null, isActive: true },
+  { animalType: "kambing", price: 0, stock: 0, split: null, isActive: true },
+  { animalType: "sapi",    price: 0, stock: 0, split: 7,    isActive: true },
 ];
 
 type Props = {
-  slug:         string;
-  campaignId:   string;
-  initialData:  QurbanAnimalInput[];
-  defaultPrices: { domba: number; kambing: number; sapi: number };
+  slug:        string;
+  campaignId:  string;
+  initialData: QurbanAnimalInput[];
 };
 
-export function QurbanAnimalsEditor({ slug, campaignId, initialData, defaultPrices }: Props) {
+export function QurbanAnimalsEditor({ slug, campaignId, initialData }: Props) {
   const [animals, setAnimals] = useState<QurbanAnimalInput[]>(
-    initialData.length > 0 ? initialData : DEFAULT_ANIMALS.map(a => ({
-      ...a,
-      price: defaultPrices[a.animalType as keyof typeof defaultPrices] ?? a.price,
-    }))
+    initialData.length > 0 ? initialData : DEFAULT_ANIMALS
   );
   const [error,   setError]  = useState("");
   const [saved,   setSaved]  = useState(false);

@@ -86,9 +86,8 @@ export default async function DonasiDetailPage({ params }: { params: Params }) {
 
   // ── Qurban data ──────────────────────────────────────────────────────────
   type Animal = { id: string; animalType: "domba" | "kambing" | "sapi"; price: number; stock: number; booked: number; split: number | null; isActive: boolean };
-  let qurbanAnimals: Animal[]  = [];
-  let adminFee      = 0;
-  let adminFeeLabel = "Biaya Administrasi";
+  let qurbanAnimals: Animal[] = [];
+  let slaughterFees = { domba: 0, kambing: 0, sapi: 0 };
 
   type PaymentMethod =
     | { type: "transfer"; bankName: string; accountNumber: string; accountName: string }
@@ -113,9 +112,14 @@ export default async function DonasiDetailPage({ params }: { params: Params }) {
       isActive:   r.isActive,
     }));
 
-    const qc = donasiSettings.qurban_config as { admin_fee?: number; admin_fee_label?: string } | undefined;
-    adminFee      = qc?.admin_fee ?? 0;
-    adminFeeLabel = qc?.admin_fee_label ?? "Biaya Administrasi";
+    const qc = donasiSettings.qurban_config as
+      | { slaughter_fees?: { domba?: number; kambing?: number; sapi?: number } }
+      | undefined;
+    slaughterFees = {
+      domba:   qc?.slaughter_fees?.domba   ?? 0,
+      kambing: qc?.slaughter_fees?.kambing ?? 0,
+      sapi:    qc?.slaughter_fees?.sapi    ?? 0,
+    };
 
     // Rekening + QRIS kategori donasi → fallback general
     type BankAccount = { bankName: string; accountNumber: string; accountName: string; categories?: string[] };
@@ -210,8 +214,7 @@ export default async function DonasiDetailPage({ params }: { params: Params }) {
                     slug={slug}
                     campaignId={campaign.id}
                     animals={qurbanAnimals}
-                    adminFee={adminFee}
-                    adminFeeLabel={adminFeeLabel}
+                    slaughterFees={slaughterFees}
                     methods={paymentMethods}
                     defaultName={defaultName}
                     memberId={memberId}

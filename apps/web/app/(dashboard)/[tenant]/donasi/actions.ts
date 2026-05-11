@@ -673,9 +673,8 @@ export async function saveDonationSettingsAction(
 // ─── Pengaturan Qurban ────────────────────────────────────────────────────────
 
 export type QurbanConfig = {
-  defaultPrices: { domba: number; kambing: number; sapi: number };
-  adminFee:      number;
-  adminFeeLabel: string;
+  // Biaya administrasi penyembelihan per jenis hewan — berbeda tiap hewan
+  slaughterFees: { domba: number; kambing: number; sapi: number };
 };
 
 export async function saveQurbanConfigAction(
@@ -686,20 +685,16 @@ export async function saveQurbanConfigAction(
   if (!access) return { success: false, error: "Akses ditolak." };
   if (!hasFullAccess(access.tenantUser, "donasi")) return { success: false, error: "Akses ditolak." };
 
-  if (config.defaultPrices.domba <= 0 || config.defaultPrices.kambing <= 0 || config.defaultPrices.sapi <= 0)
-    return { success: false, error: "Harga hewan harus lebih dari 0." };
-  if (config.adminFee < 0)
+  if (config.slaughterFees.domba < 0 || config.slaughterFees.kambing < 0 || config.slaughterFees.sapi < 0)
     return { success: false, error: "Biaya administrasi tidak boleh negatif." };
 
   const tenantClient = createTenantDb(slug);
   await upsertSetting(tenantClient, "qurban_config", "donasi", {
-    default_prices: {
-      domba:   config.defaultPrices.domba,
-      kambing: config.defaultPrices.kambing,
-      sapi:    config.defaultPrices.sapi,
+    slaughter_fees: {
+      domba:   config.slaughterFees.domba,
+      kambing: config.slaughterFees.kambing,
+      sapi:    config.slaughterFees.sapi,
     },
-    admin_fee:       config.adminFee,
-    admin_fee_label: config.adminFeeLabel.trim() || "Biaya Administrasi",
   });
 
   revalidateDonasi(slug);
@@ -828,13 +823,13 @@ export async function createQurbanOrderAction(
       return { success: false, error: "Stok hewan sudah habis." };
   }
 
-  // Fetch biaya admin dari settings
+  // Fetch biaya administrasi penyembelihan dari settings (per jenis hewan)
   const donasiSettings = await getSettings(tenantClient, "donasi");
   const qc = donasiSettings.qurban_config as
-    | { admin_fee?: number; admin_fee_label?: string }
+    | { slaughter_fees?: { domba?: number; kambing?: number; sapi?: number } }
     | undefined;
-  const adminFee   = qc?.admin_fee ?? 0;
-  const totalAmount = parseFloat(animal.price) + adminFee;
+  const slaughterFee = qc?.slaughter_fees?.[animal.animalType as "domba" | "kambing" | "sapi"] ?? 0;
+  const totalAmount  = parseFloat(animal.price) + slaughterFee;
 
   // Unique code hanya untuk transfer
   const uniqueCode = data.method === "transfer" ? Math.floor(Math.random() * 900) + 100 : 0;

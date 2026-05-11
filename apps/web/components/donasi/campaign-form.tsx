@@ -52,8 +52,7 @@ export type CampaignFormProps = {
   slug:              string;
   campaignId:        string | null; // null = create mode
   categories:        CategoryOption[];
-  qurbanAnimals?:    QurbanAnimalInput[];
-  qurbanDefPrices?:  { domba: number; kambing: number; sapi: number };
+  qurbanAnimals?: QurbanAnimalInput[];
   initialData: {
     slug:          string;
     title:         string;
@@ -127,7 +126,7 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
 
 // ─── CampaignForm ─────────────────────────────────────────────────────────────
 
-export function CampaignForm({ slug, campaignId, categories, initialData, qurbanAnimals = [], qurbanDefPrices = { domba: 2500000, kambing: 1800000, sapi: 15000000 } }: CampaignFormProps) {
+export function CampaignForm({ slug, campaignId, categories, initialData, qurbanAnimals = [] }: CampaignFormProps) {
   const router = useRouter();
 
   const [title,         setTitle]         = useState(initialData.title);
@@ -519,7 +518,6 @@ export function CampaignForm({ slug, campaignId, categories, initialData, qurban
                     slug={slug}
                     campaignId={campaignId}
                     initialData={qurbanAnimals}
-                    defaultPrices={qurbanDefPrices}
                   />
                 </div>
               </>

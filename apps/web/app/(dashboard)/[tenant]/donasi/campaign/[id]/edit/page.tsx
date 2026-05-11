@@ -41,12 +41,9 @@ export default async function CampaignEditPage({
 
   // Fetch qurban animals jika campaign type = qurban
   let qurbanAnimals: QurbanAnimalInput[] = [];
-  let qurbanDefPrices = { domba: 2500000, kambing: 1800000, sapi: 15000000 };
   if (campaign.campaignType === "qurban") {
-    const [qRows, donasiSettings] = await Promise.all([
-      db.select().from(schema.qurbanAnimals).where(eq(schema.qurbanAnimals.campaignId, campaignId)),
-      getSettings(tenantClient, "donasi"),
-    ]);
+    const qRows = await db.select().from(schema.qurbanAnimals)
+      .where(eq(schema.qurbanAnimals.campaignId, campaignId));
     qurbanAnimals = qRows.map(r => ({
       animalType: r.animalType as "domba" | "kambing" | "sapi",
       price:      parseFloat(r.price),
@@ -54,16 +51,6 @@ export default async function CampaignEditPage({
       split:      r.split ?? null,
       isActive:   r.isActive,
     }));
-    const qc = donasiSettings.qurban_config as
-      | { default_prices?: { domba?: number; kambing?: number; sapi?: number } }
-      | undefined;
-    if (qc?.default_prices) {
-      qurbanDefPrices = {
-        domba:   qc.default_prices.domba   ?? 2500000,
-        kambing: qc.default_prices.kambing ?? 1800000,
-        sapi:    qc.default_prices.sapi    ?? 15000000,
-      };
-    }
   }
 
   return (
@@ -72,7 +59,6 @@ export default async function CampaignEditPage({
       campaignId={campaignId}
       categories={categories}
       qurbanAnimals={qurbanAnimals}
-      qurbanDefPrices={qurbanDefPrices}
       initialData={{
         slug:          campaign.slug,
         title:         campaign.title,

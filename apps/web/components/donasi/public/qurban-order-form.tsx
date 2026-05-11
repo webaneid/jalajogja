@@ -17,14 +17,13 @@ type PaymentMethod = { type: "transfer"; bankName: string; accountNumber: string
                    | { type: "qris"; name: string; imageUrl: string };
 
 type Props = {
-  slug:         string;
-  campaignId:   string;
-  animals:      Animal[];
-  adminFee:     number;
-  adminFeeLabel: string;
-  methods:      PaymentMethod[];
-  defaultName?: string;
-  memberId?:    string | null;
+  slug:          string;
+  campaignId:    string;
+  animals:       Animal[];
+  slaughterFees: { domba: number; kambing: number; sapi: number };
+  methods:       PaymentMethod[];
+  defaultName?:  string;
+  memberId?:     string | null;
 };
 
 const ANIMAL_LABEL: Record<string, string> = { domba: "Domba", kambing: "Kambing", sapi: "Sapi" };
@@ -32,7 +31,7 @@ const ANIMAL_EMOJI: Record<string, string> = { domba: "🐑", kambing: "🐐", s
 
 function formatRp(n: number) { return `Rp ${n.toLocaleString("id-ID")}`; }
 
-export function QurbanOrderForm({ slug, campaignId, animals, adminFee, adminFeeLabel, methods, defaultName = "", memberId }: Props) {
+export function QurbanOrderForm({ slug, campaignId, animals, slaughterFees, methods, defaultName = "", memberId }: Props) {
   const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
   const [atasNama,   setAtasNama]   = useState("");
   const [sameAsSelf, setSameAsSelf] = useState(false);
@@ -46,8 +45,9 @@ export function QurbanOrderForm({ slug, campaignId, animals, adminFee, adminFeeL
   const [result,     setResult]     = useState<{ donationNumber: string; uniqueCode: number; totalAmount: number; method: string } | null>(null);
   const [pending, startTransition]  = useTransition();
 
-  const selectedAnimal = animals.find(a => a.id === selectedAnimalId);
-  const totalAmount    = selectedAnimal ? selectedAnimal.price + adminFee : 0;
+  const selectedAnimal   = animals.find(a => a.id === selectedAnimalId);
+  const slaughterFee     = selectedAnimal ? (slaughterFees[selectedAnimal.animalType] ?? 0) : 0;
+  const totalAmount      = selectedAnimal ? selectedAnimal.price + slaughterFee : 0;
 
   function availableSlots(a: Animal): number {
     if (a.animalType === "sapi" && a.split) return (a.stock * a.split) - a.booked;
@@ -157,10 +157,12 @@ export function QurbanOrderForm({ slug, campaignId, animals, adminFee, adminFeeL
           })}
         </div>
 
-        {selectedAnimal && adminFee > 0 && (
+        {selectedAnimal && (
           <div className="rounded-lg bg-muted/40 border border-border px-4 py-3 text-sm space-y-1">
             <div className="flex justify-between"><span>Harga {ANIMAL_LABEL[selectedAnimal.animalType]}</span><span>{formatRp(selectedAnimal.price)}</span></div>
-            <div className="flex justify-between text-muted-foreground"><span>{adminFeeLabel}</span><span>{formatRp(adminFee)}</span></div>
+            {slaughterFee > 0 && (
+              <div className="flex justify-between text-muted-foreground"><span>Biaya Administrasi Penyembelihan</span><span>{formatRp(slaughterFee)}</span></div>
+            )}
             <div className="flex justify-between font-semibold border-t border-border pt-1 mt-1"><span>Total</span><span className="text-primary">{formatRp(totalAmount)}</span></div>
           </div>
         )}
