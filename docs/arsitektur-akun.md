@@ -377,13 +377,11 @@ Keduanya nullable. Lookup saat checkout:
 - [x] `/register` redirect ke `/akun` jika sudah login
 - [x] `/akun` redirect ke `/dashboard` jika identity null (pengurus-only)
 
-### ⚠️ Belum Diimplementasi — Bug Aktif
-- [ ] **`createOfficerWithAccountAction`** — belum set `members.better_auth_user_id`
-      Pengurus yang akun-nya diaktifkan via dashboard tidak otomatis dapat akses front-end.
-      Fix: tambah `UPDATE public.members SET better_auth_user_id = userId WHERE id = memberId`
-      setelah `auth.api.signUpEmail()` berhasil.
-
-- [ ] **Aktivasi via link undangan** (`activateUserViaInviteAction`) — sama, belum set `better_auth_user_id`.
+### ✅ Bug Diperbaiki
+- [x] **`createOfficerWithAccountAction`** — sekarang set `members.better_auth_user_id`
+      `UPDATE public.members SET better_auth_user_id = userId WHERE id = memberId AND better_auth_user_id IS NULL`
+- [x] **`activateUserDirectAction`** — sama, sudah set `better_auth_user_id`
+- [x] **`acceptInviteAction` + `registerAndAcceptAction`** — sudah set `better_auth_user_id` jika `invite.memberId` tidak null
 
 ### Tidak Akan Diimplementasi
 - Auto-create member dari front-end jika tidak ketemu di `public.members` → DILARANG.

@@ -1,7 +1,7 @@
 "use server";
 
-import { eq } from "drizzle-orm";
-import { createTenantDb, db, tenants, user as authUser } from "@jalajogja/db";
+import { eq, and, isNull } from "drizzle-orm";
+import { createTenantDb, db, tenants, members, user as authUser } from "@jalajogja/db";
 import { getCurrentSession } from "@/lib/tenant";
 
 type AcceptResult =
@@ -52,6 +52,14 @@ export async function acceptInviteAction(
 
   if (existing) {
     return { success: false, error: "Anda sudah memiliki akses ke dashboard ini." };
+  }
+
+  // Set better_auth_user_id di public.members jika invite ini untuk anggota IKPM
+  if (invite.memberId) {
+    await db
+      .update(members)
+      .set({ betterAuthUserId: session.user.id })
+      .where(and(eq(members.id, invite.memberId), isNull(members.betterAuthUserId)));
   }
 
   // Buat user di tenant
@@ -137,6 +145,14 @@ export async function registerAndAcceptAction(
     .limit(1);
 
   if (!existingTenantUser) {
+    // Set better_auth_user_id di public.members jika invite untuk anggota IKPM
+    if (invite.memberId) {
+      await db
+        .update(members)
+        .set({ betterAuthUserId: userId })
+        .where(and(eq(members.id, invite.memberId), isNull(members.betterAuthUserId)));
+    }
+
     await tenantDb.insert(schema.users).values({
       betterAuthUserId: userId,
       role:             invite.role,

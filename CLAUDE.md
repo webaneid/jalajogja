@@ -149,9 +149,9 @@ jalajogja punya **tiga level akses** yang berbeda entitas, berbeda tabel, berbed
 - `/{slug}/akun` → `getAkunIdentity()` null (pengurus-only) → redirect `/dashboard`
 - Dashboard → dilindungi middleware, cek `tenant.users`
 
-**⚠️ Bug Aktif**: `createOfficerWithAccountAction` belum set `members.better_auth_user_id`.
-Pengurus yang diaktifkan via dashboard tidak otomatis dapat akses front-end sebagai anggota.
-Fix diperlukan di `app/(dashboard)/[tenant]/pengurus/actions.ts`. Detail: `docs/arsitektur-akun.md`.
+**Fix dilakukan** di 3 tempat: `pengurus/actions.ts`, `settings/actions.ts`, `invite/actions.ts`.
+Semua alur aktivasi pengurus sekarang set `members.better_auth_user_id` → pengurus langsung
+dapat akses front-end sebagai anggota IKPM. Guard `isNull()` mencegah overwrite akun yang sudah ada.
 
 ### Struktur File packages/db/src/
 ```

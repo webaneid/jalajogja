@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, db, members, tenantMemberships, contacts, user as authUserTable } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
@@ -260,6 +260,13 @@ export async function createOfficerWithAccountAction(
       if (!result?.user?.id) return { success: false, error: "Gagal membuat akun login." };
       userId = result.user.id;
     }
+
+    // Set better_auth_user_id di public.members agar pengurus bisa login front-end
+    // sebagai anggota IKPM. Wajib dilakukan sebelum/bersamaan insert tenant.users.
+    await db
+      .update(members)
+      .set({ betterAuthUserId: userId! })
+      .where(and(eq(members.id, data.memberId), isNull(members.betterAuthUserId)));
 
     // Insert ke tenant.users — userId dijamin non-null di sini (dicek di atas)
     await tenantDb.insert(schema.users).values({

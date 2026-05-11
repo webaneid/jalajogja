@@ -4,7 +4,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { canManageUsers } from "@/lib/permissions";
 import { createTenantDb, db, tenants, members, tenantMemberships, contacts, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
 import { upsertSettings } from "@jalajogja/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import type { Level, Module } from "@/lib/permissions";
@@ -657,6 +657,13 @@ export async function activateUserDirectAction(
     if (!result?.user) return { success: false, error: "Gagal membuat akun. Coba lagi." };
     userId = result.user.id;
   }
+
+  // Set better_auth_user_id di public.members agar pengurus bisa login front-end
+  // sebagai anggota IKPM. Hanya update jika belum terisi (jaga idempotency).
+  await db
+    .update(members)
+    .set({ betterAuthUserId: userId })
+    .where(and(eq(members.id, data.memberId), isNull(members.betterAuthUserId)));
 
   // Buat user di tenant
   await tenantDb.insert(schema.users).values({
