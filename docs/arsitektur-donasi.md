@@ -441,6 +441,350 @@ Jika user sudah login → nama otomatis terisi, `member_id` di-set.
 
 ---
 
+## 11b. Front-end Publik — CampaignCard + CampaignsSection + Halaman Arsip & Detail
+
+> **Status**: Perencanaan selesai. Implementasi belum dimulai.
+
+---
+
+### Prinsip Utama: Satu Alur Universal
+
+Donasi menggunakan **alur cart universal** — identik dengan Toko. Tidak ada alur
+pembayaran terpisah untuk donasi.
+
+```
+Donasi Reguler (donasi/zakat/wakaf):
+  Detail page → pilih nominal (chips + custom) → add to cart
+  → checkout → bayar → admin konfirmasi → recordIncome (Dana Titipan)
+
+Donasi Qurban:
+  Detail page → pilih hewan (= variasi) → isi atas nama (= notes) → add to cart
+  → checkout → bayar → admin konfirmasi → assign slot patungan → Dana Titipan
+```
+
+**Qurban = campaign dengan variasi hewan** — persis seperti produk dengan variasi ukuran/warna.
+`qurban_animals` adalah tabel variasi. `atas_nama` masuk ke `cart_item.notes`.
+Slot patungan sapi di-assign saat admin konfirmasi pembayaran (bukan saat cart).
+
+```typescript
+// Donasi reguler
+addToCartAction(slug, {
+  itemType:  "donation",
+  itemId:    campaign.id,
+  name:      campaign.title,
+  unitPrice: nominal,       // yang dipilih user dari chips/custom
+});
+
+// Qurban (hewan = variasi)
+addToCartAction(slug, {
+  itemType:  "donation",
+  itemId:    qurbanAnimal.id,   // ID variasi hewan, bukan campaign
+  name:      `Qurban ${labelHewan} — ${campaign.title}`,
+  unitPrice: pricePerSlot + slaughterFee,
+  notes:     `Atas nama: ${atasNama}`,
+});
+```
+
+---
+
+### URL Publik
+
+```
+/{slug}/campaign                          → arsip semua campaign aktif
+/{slug}/campaign?type={campaignType}      → filter by tipe (donasi/zakat/wakaf/qurban)
+/{slug}/campaign?category={categorySlug}  → filter by kategori
+/{slug}/campaign/kategori/{categorySlug}  → dedicated category archive
+/{slug}/campaign/{campaignSlug}           → detail + form donasi/qurban
+```
+
+> **Catatan URL**: `/{slug}/campaign` bukan `/{slug}/donasi` — karena `/donasi` sudah
+> dipakai dashboard admin. Pattern sama dengan `/produk` (bukan `/toko`).
+> `nav-menu.ts` case `"donasi"` sudah di-update ke `/campaign`.
+
+---
+
+### CampaignCardData
+
+```typescript
+// lib/campaign-card-templates.ts (file baru)
+export type CampaignCardData = {
+  id:              string;
+  title:           string;
+  slug:            string;
+  description:     string | null;
+  campaignType:    "donasi" | "zakat" | "wakaf" | "qurban";
+  coverUrl:        string | null;
+  coverVariants?:  Record<string, string> | null;
+  categoryName:    string | null;
+  targetAmount:    string | null;    // null = tanpa target
+  collectedAmount: string;
+  progressPercent: number | null;    // pre-computed, null jika tanpa target
+  endsAt:          string | null;    // ISO string
+  isRecurring:     boolean;
+};
+
+export const CAMPAIGN_CARD_VARIANTS = ["grid", "list", "ringkas"] as const;
+export type CampaignCardVariant = typeof CAMPAIGN_CARD_VARIANTS[number];
+
+export const CAMPAIGN_TYPE_LABELS: Record<string, string> = {
+  donasi: "Donasi",
+  zakat:  "Zakat",
+  wakaf:  "Wakaf",
+  qurban: "Qurban",
+};
+```
+
+---
+
+### Card Variants
+
+| Variant | Deskripsi | Dipakai di |
+|---------|-----------|------------|
+| `grid` | Cover (aspect-video) + badge tipe + judul + progress bar + sisa hari | Design 1, Design 2 (kecil) |
+| `list` | Horizontal: thumbnail kecil + judul + progress mini + badge tipe | Design 3 |
+| `ringkas` | Cover + judul + progress bar tipis saja | Design 2 (featured inline) |
+
+**Progress bar** hanya tampil jika `targetAmount != null`. Qurban tidak punya progress bar
+(targetnya adalah stok hewan, bukan uang — sudah tampil di detail page).
+
+---
+
+### Section Designs
+
+```typescript
+// lib/campaigns-section-designs.ts (file baru)
+export type CampaignsSectionData = {
+  title:        string;
+  count:        number;          // default 6
+  categoryId:   string | null;
+  campaignType: "donasi" | "zakat" | "wakaf" | "qurban" | null; // null = semua tipe
+};
+
+export const CAMPAIGNS_SECTION_DESIGN_IDS = ["1", "2", "3"] as const;
+
+// Design 1 — Grid Donasi
+// 3 kolom campaign-card-grid, cocok untuk semua tipe campaign
+
+// Design 2 — Campaign Unggulan
+// 1 campaign terbaru besar (inline: cover kiri, info+progress kanan) + 2 card grid kecil
+
+// Design 3 — Daftar Donasi (Compact)
+// List vertikal campaign-card-list, cocok untuk widget sidebar atau section sempit
+```
+
+**Filter di section** bisa berdasarkan:
+- `categoryId` — kategori campaign (Sosial, Kesehatan, dll)
+- `campaignType` — jenis (donasi/zakat/wakaf/qurban)
+- `null` — semua campaign aktif
+
+---
+
+### Integrasi Landing Page
+
+Tambah `"campaigns"` ke `SECTION_TYPES` di `lib/page-templates.ts`:
+
+```typescript
+// lib/page-templates.ts
+export const SECTION_TYPES = [
+  "hero", "posts", "products", "events", "campaigns", "gallery", "about_text",
+] as const;
+
+// Default data untuk section campaigns
+campaigns: { title: "Donasi & Infaq", count: 6, categoryId: null, campaignType: null }
+```
+
+Di `landing-template.tsx`:
+```typescript
+case "campaigns": return <CampaignsSection data={...} variant={...} tenantClient={...} tenantSlug={...} />;
+```
+
+Di section editor (`website/page/[id]/edit`): tambah design picker untuk campaigns.
+
+---
+
+### Halaman Arsip Campaign
+
+```
+app/(public)/[tenant]/campaign/
+├── page.tsx                              → arsip utama (semua campaign aktif)
+├── kategori/
+│   └── [categorySlug]/page.tsx          → arsip per kategori
+└── [campaignSlug]/page.tsx              → detail + form donasi/qurban (sudah ada, perlu refactor)
+```
+
+**Archive `page.tsx`**: filter chips (tipe + kategori), grid 3 kolom, pagination.
+**Query params**: `?type=qurban`, `?category=sosial`, `?page=2`
+
+---
+
+### Halaman Detail Campaign — Dua Mode UI
+
+Server component fetch campaign → pass ke `CampaignDetailClient` (client component).
+
+**Mode 1: Campaign Reguler (donasi/zakat/wakaf)**
+
+```
+┌─────────────────────────────────────────────┐
+│  [Cover campaign]                           │
+│  Judul Campaign                Badge Tipe   │
+│  Progress bar (jika ada target)             │
+│  Deskripsi                                  │
+├─────────────────────────────────────────────┤
+│  [Sticky sidebar kanan]                     │
+│  Pilih Nominal:                             │
+│  [Rp 10K] [Rp 25K] [Rp 50K] [Rp 100K]     │  ← dari settings.donation_config
+│  [Nominal lain: Rp ____________]            │
+│                                             │
+│  Nama Donatur: [________________]           │  ← pre-fill jika login
+│  Pesan (opsional): [____________]           │
+│  [ ] Sembunyikan nama (anonim)              │
+│                                             │
+│  [+ Tambah ke Keranjang]                    │
+└─────────────────────────────────────────────┘
+```
+
+**Mode 2: Campaign Qurban (qurban)**
+
+```
+┌─────────────────────────────────────────────┐
+│  [Cover campaign]                           │
+│  Qurban 1446 H / 2025 M      Badge Qurban  │
+│  Deskripsi                                  │
+├─────────────────────────────────────────────┤
+│  [Sticky sidebar kanan]                     │
+│  Pilih Hewan:  ← cards seperti variasi     │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐   │
+│  │🐑 Domba  │ │🐐 Kambing│ │🐄 Sapi   │   │
+│  │Rp 2,5jt  │ │Rp 1,8jt  │ │Patungan 7│   │
+│  │Stok: 8   │ │Stok: 3   │ │Rp 2,1jt/org│ │
+│  └──────────┘ └──────────┘ └──────────┘   │
+│                                             │
+│  Atas Nama (Shohibul Qurban):               │
+│  [________________________________]         │
+│  [ ] Atas nama saya sendiri                 │
+│                                             │
+│  Biaya Penyembelihan: Rp XXX                │
+│  Total: Rp XXX                              │
+│                                             │
+│  [+ Tambah ke Keranjang]                    │
+└─────────────────────────────────────────────┘
+```
+
+**Perbedaan hanya di pilihan nominal/hewan** — aksi akhir sama: `addToCartAction`.
+
+---
+
+### CampaignDetailClient — Komponen Shared
+
+```typescript
+// components/donasi/public/campaign-detail-client.tsx
+type Props = {
+  campaign:      CampaignDetailData;
+  qurbanAnimals: QurbanAnimalData[];    // kosong jika bukan qurban
+  slaughterFees: { domba: number; kambing: number; sapi: number };
+  recommendedAmounts: number[];         // dari settings, untuk campaign reguler
+  defaultName:   string;               // pre-fill dari session
+  tenantSlug:    string;
+  session:       { userId: string } | null;
+};
+```
+
+Mode ditentukan dari `campaign.campaignType === "qurban"` — bukan dua komponen berbeda.
+
+---
+
+### Refactor QurbanOrderForm yang Sudah Ada
+
+`QurbanOrderForm` (sudah dibuat) harus **diganti** dengan bagian dari `CampaignDetailClient`.
+Hapus file `qurban-order-form.tsx` saat implementasi, integrasikan ke dalam satu komponen.
+
+Keuntungan: satu komponen untuk semua tipe campaign, lebih mudah maintain.
+
+---
+
+### Fetch Layer CampaignsSection
+
+```typescript
+async function fetchCampaigns(
+  tenantClient: TenantDb,
+  data: CampaignsSectionData,
+  tenantSlug: string,
+): Promise<CampaignCardData[]> {
+  const { db, schema } = tenantClient;
+
+  const clauses = [
+    eq(schema.campaigns.status, "active"),
+    ...(data.categoryId    ? [eq(schema.campaigns.categoryId,    data.categoryId)]    : []),
+    ...(data.campaignType  ? [eq(schema.campaigns.campaignType,  data.campaignType)]  : []),
+  ];
+
+  const rows = await db
+    .select({ id, title, slug, description, campaignType, coverId,
+              targetAmount, collectedAmount, endsAt, categoryName, isRecurring })
+    .from(schema.campaigns)
+    .leftJoin(schema.campaignCategories, ...)
+    .where(and(...clauses))
+    .orderBy(desc(schema.campaigns.createdAt))
+    .limit(data.count ?? 6);
+
+  // Resolve cover URLs
+  // Pre-compute progressPercent
+  return rows.map(r => ({
+    ...r,
+    progressPercent: r.targetAmount
+      ? Math.round((parseFloat(r.collectedAmount) / parseFloat(r.targetAmount)) * 100)
+      : null,
+    coverUrl: /* resolveMediaUrl(r.coverId) */,
+  }));
+}
+```
+
+---
+
+### Urutan Implementasi
+
+```
+Phase C — CampaignCard + CampaignsSection + Halaman Publik
+
+Step C1: lib/campaign-card-templates.ts
+  - CampaignCardData type
+  - CAMPAIGN_CARD_VARIANTS
+
+Step C2: lib/campaigns-section-designs.ts
+  - CampaignsSectionData type
+  - CAMPAIGNS_SECTION_DESIGN_IDS + design registry
+
+Step C3: Tambah "campaigns" ke lib/page-templates.ts
+  - SECTION_TYPES, SECTION_LABELS, SECTION_DEFAULTS
+  - landing-template.tsx case
+
+Step C4: CampaignCard (3 variant)
+  - components/website/public/campaign-cards/campaign-card.tsx
+  - campaign-card-grid.tsx + campaign-card-list.tsx + campaign-card-ringkas.tsx
+
+Step C5: CampaignsSection (3 design)
+  - components/website/public/sections/campaigns/campaigns-section.tsx
+  - campaigns-design-1.tsx + campaigns-design-2.tsx + campaigns-design-3.tsx
+
+Step C6: Archive pages
+  - app/(public)/[tenant]/campaign/page.tsx — refactor dari yang sudah ada
+  - app/(public)/[tenant]/campaign/kategori/[categorySlug]/page.tsx
+  - Filter: ?type= + ?category=
+
+Step C7: Detail page + CampaignDetailClient
+  - Refactor app/(public)/[tenant]/campaign/[slug]/page.tsx
+  - Ganti QurbanOrderForm dengan CampaignDetailClient unified
+  - Mode reguler: nominal chips + custom input + addToCartAction
+  - Mode qurban: hewan cards (= variasi) + atasNama + addToCartAction
+  - Sapi patungan: unitPrice = price/split + slaughterFee, notes = "Atas nama: X"
+
+Step C8: Section editor
+  - Tambah campaigns ke section editor di /website/page/[id]/edit
+  - Filter picker: kategori + tipe campaign
+```
+
+---
+
 ## 12. Donasi Rutin (Recurring) — Perencanaan
 
 > **Status**: Belum diimplementasi. Dokumen ini adalah perencanaan lengkap.
