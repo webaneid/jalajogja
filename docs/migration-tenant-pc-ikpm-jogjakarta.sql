@@ -94,3 +94,17 @@ ALTER TABLE "tenant_pc-ikpm-jogjakarta".settings
 ALTER TABLE "tenant_pc-ikpm-jogjakarta".settings
   ADD CONSTRAINT settings_group_check
   CHECK ("group" IN ('general','contact','payment','display','mail','notif','website','keuangan','toko'));
+
+-- ── Campaigns: kolom default_amount ──────────────────────────────────────────
+
+ALTER TABLE "tenant_pc-ikpm-jogjakarta".campaigns
+  ADD COLUMN IF NOT EXISTS default_amount NUMERIC(15,2);
+
+-- ── Settings: tambah 'donasi' ke CHECK constraint group ──────────────────────
+
+ALTER TABLE "tenant_pc-ikpm-jogjakarta".settings
+  DROP CONSTRAINT IF EXISTS settings_group_check;
+
+ALTER TABLE "tenant_pc-ikpm-jogjakarta".settings
+  ADD CONSTRAINT settings_group_check
+  CHECK ("group" IN ('general','contact','payment','display','mail','notif','website','keuangan','toko','donasi'));

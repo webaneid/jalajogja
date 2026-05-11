@@ -47,6 +47,7 @@ export default async function CampaignNewPage({
         categoryId:    null,
         campaignType:  "donasi",
         targetAmount:  null,
+        defaultAmount: null,
         coverId:       null,
         coverUrl:      null,
         status:        "draft",

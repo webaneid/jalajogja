@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { HeartHandshake, ListOrdered, FolderOpen } from "lucide-react";
+import { HeartHandshake, ListOrdered, FolderOpen, Settings2 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: "Campaign",  icon: HeartHandshake, path: "/campaign"  },
-  { label: "Transaksi", icon: ListOrdered,    path: "/transaksi" },
-  { label: "Kategori",  icon: FolderOpen,     path: "/kategori"  },
+  { label: "Campaign",    icon: HeartHandshake, path: "/campaign"    },
+  { label: "Transaksi",   icon: ListOrdered,    path: "/transaksi"   },
+  { label: "Kategori",    icon: FolderOpen,     path: "/kategori"    },
+  { label: "Pengaturan",  icon: Settings2,      path: "/pengaturan"  },
 ] as const;
 
 export function DonasiNav({ slug }: { slug: string }) {

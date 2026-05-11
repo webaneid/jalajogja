@@ -563,6 +563,7 @@ export async function createTenantSchemaInDb(
         ends_at          TIMESTAMPTZ,
         show_donor_list  BOOLEAN       NOT NULL DEFAULT true,
         show_amount      BOOLEAN       NOT NULL DEFAULT true,
+        default_amount   NUMERIC(15,2),
         meta_title       TEXT,
         meta_desc        TEXT,
         og_title         TEXT,
@@ -927,7 +928,7 @@ export async function createTenantSchemaInDb(
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
         key        TEXT        NOT NULL,
         "group"    TEXT        NOT NULL DEFAULT 'general'
-                               CHECK ("group" IN ('general','contact','payment','display','mail','notif','website','keuangan','toko')),
+                               CHECK ("group" IN ('general','contact','payment','display','mail','notif','website','keuangan','toko','donasi')),
         value      JSONB       NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (key, "group")

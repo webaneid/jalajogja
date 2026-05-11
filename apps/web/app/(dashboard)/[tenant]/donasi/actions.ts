@@ -2,7 +2,7 @@
 
 import { eq, and, sql, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createTenantDb, recordIncome, generateFinancialNumber, createLinkedInvoice, syncInvoicePayment } from "@jalajogja/db";
+import { createTenantDb, recordIncome, generateFinancialNumber, createLinkedInvoice, syncInvoicePayment, upsertSetting } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 
@@ -18,7 +18,8 @@ export type CampaignData = {
   description?:  string | null;
   categoryId?:   string | null;
   campaignType:  "donasi" | "zakat" | "wakaf" | "qurban";
-  targetAmount?: number | null;
+  targetAmount?:  number | null;
+  defaultAmount?: number | null;
   coverId?:      string | null;
   status:        "draft" | "active" | "closed" | "archived";
   startsAt?:     Date | null;
@@ -175,7 +176,8 @@ export async function createCampaignAction(
         description:   data.description   ?? null,
         categoryId:    data.categoryId     ?? null,
         campaignType:  data.campaignType,
-        targetAmount:  data.targetAmount != null ? String(data.targetAmount) : null,
+        targetAmount:  data.targetAmount  != null ? String(data.targetAmount)  : null,
+        defaultAmount: data.defaultAmount != null ? String(data.defaultAmount) : null,
         coverId:       data.coverId        ?? null,
         status:        data.status,
         startsAt:      data.startsAt       ?? null,
@@ -228,7 +230,8 @@ export async function updateCampaignAction(
         description:   data.description   ?? null,
         categoryId:    data.categoryId     ?? null,
         campaignType:  data.campaignType,
-        targetAmount:  data.targetAmount != null ? String(data.targetAmount) : null,
+        targetAmount:  data.targetAmount  != null ? String(data.targetAmount)  : null,
+        defaultAmount: data.defaultAmount != null ? String(data.defaultAmount) : null,
         coverId:       data.coverId        ?? null,
         status:        data.status,
         startsAt:      data.startsAt       ?? null,
@@ -639,4 +642,30 @@ export async function cancelDonationAction(
 
   revalidateDonasi(slug);
   return { success: true, data: undefined };
+}
+
+// ─── Pengaturan Donasi ────────────────────────────────────────────────────────
+
+export async function saveDonationSettingsAction(
+  slug: string,
+  recommendedAmounts: number[]
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "donasi")) return { success: false, error: "Akses ditolak." };
+
+  if (recommendedAmounts.length > 4)
+    return { success: false, error: "Maksimal 4 rekomendasi nominal." };
+  if (recommendedAmounts.some(n => n <= 0))
+    return { success: false, error: "Nominal harus lebih dari 0." };
+
+  const tenantClient = createTenantDb(slug);
+  const sorted = [...recommendedAmounts].sort((a, b) => a - b);
+
+  await upsertSetting(tenantClient, "donation_config", "donasi", {
+    recommended_amounts: sorted,
+  });
+
+  revalidateDonasi(slug);
+  return { success: true };
 }

@@ -702,8 +702,8 @@ Step D4: Front-end halaman publik
 | Halaman detail transaksi | ✅ Done |
 | List transaksi semua campaign | ✅ Done |
 | SeoPanel di CampaignForm | ✅ Done |
-| **Pengaturan Donasi** — rekomendasi nominal (Step D1–D3) | 🔲 Belum |
-| **default_amount** per campaign + schema | 🔲 Belum |
+| **Pengaturan Donasi** — rekomendasi nominal (Step D1–D3) | ✅ Done |
+| **default_amount** per campaign + schema | ✅ Done |
 | Halaman publik — arsip campaign (`/{slug}/donasi`) | 🔲 Belum |
 | Halaman publik — detail + form donasi (`/{slug}/donasi/{slug}`) | 🔲 Belum |
 | Form donasi: rekomendasi chips + custom input + nominal terkunci | 🔲 Belum |

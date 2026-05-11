@@ -73,6 +73,10 @@ export function createCampaignsTable(s: ReturnType<typeof pgSchema>) {
     showDonorList: boolean("show_donor_list").notNull().default(true),
     showAmount:    boolean("show_amount").notNull().default(true),
 
+    // Nominal tetap — jika diisi, donatur tidak bisa memilih nominal lain
+    // null = pakai rekomendasi tenant + custom input (perilaku default)
+    defaultAmount: numeric("default_amount", { precision: 15, scale: 2 }),
+
     // SEO — untuk halaman publik campaign
     metaTitle:      text("meta_title"),
     metaDesc:       text("meta_desc"),
