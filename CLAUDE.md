@@ -1949,10 +1949,33 @@ Detail: `docs/arsitektur-billing.md` § Prinsip Kunci.
 
 ---
 
+### [2026-05] Halaman Publik Toko — ProductImageViewer + renderBody
+
+**URL `/produk` bukan `/toko` untuk hindari route conflict**
+`(dashboard)/[tenant]/toko` dan `(public)/[tenant]/toko` resolve ke URL yang sama → konflik.
+Fix: halaman publik pakai `/produk`. Semua href di ProductCard, ProductsSection, flex-header, nav-menu diupdate.
+**Aturan**: setiap tambah halaman publik yang namanya sama dengan halaman dashboard → rename salah satu.
+
+**`ProductImageViewer` — gambar besar + thumbnail strip**
+Komponen di `components/toko/public/product-image-viewer.tsx`:
+- Satu gambar besar (aspect-square) + thumbnail strip horizontal di bawah (desktop)
+- Panah prev/next muncul on-hover di gambar utama
+- Dot indicator di mobile (thumbnail strip hidden di mobile)
+- `getFullUrl()` pakai `variants["square-large"]`, `getThumbUrl()` pakai `variants.square`
+- Saat variasi dipilih di `ProductDetailClient` → `displayImages` auto-switch ke gambar variasi
+
+**Deskripsi produk adalah Tiptap JSON — wajib `renderBody()` bukan `dangerouslySetInnerHTML` langsung**
+`products.description` disimpan sebagai Tiptap JSON string (sama dengan `posts.content`).
+Render langsung via `dangerouslySetInnerHTML={{ __html: row.description }}` → tampil raw JSON.
+Fix: `renderBody(row.description)` dari `lib/letter-render.ts` — custom renderer server-safe.
+**Aturan**: semua field yang diisi via Tiptap editor (description, body, content) wajib lewat `renderBody()` sebelum ditampilkan.
+
+---
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Halaman publik toko** — 3 halaman `/produk`, `/produk/kategori/{slug}`, `/produk/{slug}`. URL pakai `/produk` (bukan `/toko`) untuk hindari konflik dengan dashboard admin.
-- Sesi ini: Arsitektur + implementasi Phase P1–P5 halaman publik toko, Produk Variasi V7 (detail + picker), update semua href `/toko/` → `/produk/` di ProductCard + ProductsSection + nav-menu.
-- Ditunda: V8 (stok check server-side), EventCard, CampaignCard, item picker invoice admin.
+- Terakhir dikerjakan: **Fix halaman publik produk** — ProductImageViewer (gambar besar + thumbnail strip), renderBody() untuk deskripsi Tiptap JSON.
+- Sesi ini: 3 halaman publik toko selesai (`/produk`, `/produk/kategori/{slug}`, `/produk/{slug}`), ProductImageViewer, fix deskripsi Tiptap JSON.
+- Ditunda: V8 (stok check server-side), sidebar produk, EventCard, CampaignCard.
 
 ### Status Halaman Publik Anggota
 | Link dari Dashboard | URL | Status |
