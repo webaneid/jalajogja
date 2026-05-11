@@ -2,6 +2,7 @@ import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
+import { publicUrl } from "@/lib/minio";
 import { CampaignForm } from "@/components/donasi/campaign-form";
 import type { SeoValues } from "@/components/seo/seo-panel";
 
@@ -33,7 +34,7 @@ export default async function CampaignEditPage({
       .from(schema.media)
       .where(eq(schema.media.id, campaign.coverId))
       .limit(1);
-    coverUrl = media?.path ?? null;
+    coverUrl = media ? publicUrl(slug, media.path) : null;
   }
 
   return (
