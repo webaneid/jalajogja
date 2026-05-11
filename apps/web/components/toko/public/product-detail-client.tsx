@@ -3,11 +3,10 @@
 import { useState, useTransition } from "react";
 import { ShoppingCart, Minus, Plus, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Gallery } from "@/components/gallery/gallery";
+import { ProductImageViewer } from "./product-image-viewer";
 import { addToCartAction } from "@/app/(public)/[tenant]/cart/actions";
 import { resolvePrice, formatPrice, priceLabel } from "@/lib/product-card-templates";
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
-import type { GalleryItem } from "@/lib/gallery";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +27,13 @@ export type AttributeGroup = {
   values: string[];
 };
 
+export type ViewerImage = {
+  id:       string;
+  url:      string;
+  variants?: Record<string, string> | null;
+  alt:      string;
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function findVariation(
@@ -41,7 +47,6 @@ function findVariation(
   ) ?? null;
 }
 
-// Cek apakah value atribut masih tersedia dengan kombinasi atribut lain yang sudah dipilih
 function isValueAvailable(
   variations:  ProductVariationData[],
   attrName:    string,
@@ -56,34 +61,22 @@ function isValueAvailable(
   );
 }
 
-function variationToGallery(
-  images: ProductVariationData["images"],
-): GalleryItem[] {
-  return images.map((img, i) => ({
-    id:       img.id,
-    url:      img.variants?.["square-large"] ?? img.url,
-    variants: img.variants,
-    alt:      img.alt,
-    order:    i,
-  }));
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 type Props = {
-  product:      ProductCardData;
-  variations:   ProductVariationData[];
-  attrGroups:   AttributeGroup[];
-  galleryItems: GalleryItem[];
-  sessionType:  SessionType;
-  tenantSlug:   string;
+  product:       ProductCardData;
+  variations:    ProductVariationData[];
+  attrGroups:    AttributeGroup[];
+  productImages: ViewerImage[];   // gambar utama produk
+  sessionType:   SessionType;
+  tenantSlug:    string;
 };
 
 export function ProductDetailClient({
   product,
   variations,
   attrGroups,
-  galleryItems,
+  productImages,
   sessionType,
   tenantSlug,
 }: Props) {
@@ -97,11 +90,11 @@ export function ProductDetailClient({
 
   const activeVariation = isVariable ? findVariation(variations, selected) : null;
 
-  // Gallery: pakai gambar variasi terpilih jika ada, fallback ke gambar produk
-  const displayGallery =
+  // Gambar: pakai gambar variasi terpilih jika ada, fallback ke gambar produk utama
+  const displayImages: ViewerImage[] =
     activeVariation && activeVariation.images.length > 0
-      ? variationToGallery(activeVariation.images)
-      : galleryItems;
+      ? activeVariation.images
+      : productImages;
 
   // Harga display
   const displayPrice: string = (() => {
@@ -169,15 +162,9 @@ export function ProductDetailClient({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
 
-      {/* Kiri — Gallery */}
+      {/* Kiri — Image viewer: gambar besar + thumbnail strip */}
       <div>
-        {displayGallery.length > 0 ? (
-          <Gallery items={displayGallery} module="shop" config={{ layout: "grid", columns: 2 }} param="produk-foto" />
-        ) : (
-          <div className="aspect-square rounded-xl bg-muted flex items-center justify-center text-muted-foreground/30">
-            <Store className="h-20 w-20" />
-          </div>
-        )}
+        <ProductImageViewer images={displayImages} productName={product.name} />
       </div>
 
       {/* Kanan — Info + CTA */}

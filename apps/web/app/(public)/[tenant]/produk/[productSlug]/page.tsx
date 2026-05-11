@@ -6,9 +6,8 @@ import { headers }                from "next/headers";
 import { ProductDetailClient }    from "@/components/toko/public/product-detail-client";
 import { ProductCard }            from "@/components/website/public/product-cards/product-card";
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
-import type { GalleryItem }       from "@/lib/gallery";
 import type { Metadata }          from "next";
-import type { ProductVariationData, AttributeGroup } from "@/components/toko/public/product-detail-client";
+import type { ProductVariationData, AttributeGroup, ViewerImage } from "@/components/toko/public/product-detail-client";
 import { ChevronRight }           from "lucide-react";
 
 export const revalidate = 60;
@@ -171,17 +170,16 @@ export default async function ProdukDetailPage({ params }: { params: Params }) {
     priceMax = maxP !== minP ? String(maxP) : null;
   }
 
-  // ── Gallery dari images produk ────────────────────────────────────────────
+  // ── Images produk → ViewerImage[] ────────────────────────────────────────
   const rawImages = Array.isArray(row.images) ? row.images as Array<{
     id: string; url: string; variants?: Record<string, string> | null; alt: string; order: number;
   }> : [];
 
-  const galleryItems: GalleryItem[] = rawImages.map((img, i) => ({
+  const productImages: ViewerImage[] = rawImages.map(img => ({
     id:       img.id,
-    url:      img.variants?.["square-large"] ?? img.url,
+    url:      img.url,
     variants: img.variants,
     alt:      img.alt,
-    order:    i,
   }));
 
   // ── ProductCardData untuk client component ────────────────────────────────
@@ -311,7 +309,7 @@ export default async function ProdukDetailPage({ params }: { params: Params }) {
           product={product}
           variations={variations}
           attrGroups={attrGroups}
-          galleryItems={galleryItems}
+          productImages={productImages}
           sessionType={sessionType}
           tenantSlug={slug}
         />
