@@ -2038,6 +2038,28 @@ Fix: `renderBody(row.description)` dari `lib/letter-render.ts` — custom render
 
 ---
 
+### [2026-05] Header Front-end — Dua Dashboard Berbeda untuk Dua Entitas
+
+**Prinsip**: Front-end publik dan dashboard admin adalah dua konteks berbeda. Header front-end
+harus mencerminkan ini — bukan selalu redirect ke satu tempat.
+
+**UserButton dropdown:**
+- "Akun Saya" → `/{slug}/akun` — selalu tampil untuk semua user login (anggota/publik/pengurus)
+- "Dashboard Admin" → `/{slug}/dashboard` — hanya tampil jika user punya `tenant.users` record
+
+**`checkDashboardAccessAction(slug)`** di `app/(public)/[tenant]/actions.ts`:
+- Server action ringan — cek session → cek `tenant.users` → return `boolean`
+- Dipanggil di `useEffect` saat `session.user.id` berubah (bukan di server layout)
+- Layout tetap ISR-safe — tidak ada DB query saat render awal
+
+**Kenapa tidak di-pass dari layout:** Ada komentar di `HeaderProps`:
+"currentUser diambil client-side agar PublicLayout tetap ISR-safe."
+Keputusan ini dipertahankan — tambahan `hasDashboard` juga client-side dengan pola yang sama.
+
+**File:** `app/(public)/[tenant]/actions.ts` — server actions untuk public layout (bukan per-route).
+
+---
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Fix halaman publik produk** — ProductImageViewer (gambar besar + thumbnail strip), renderBody() untuk deskripsi Tiptap JSON.
 - Sesi ini: 3 halaman publik toko selesai (`/produk`, `/produk/kategori/{slug}`, `/produk/{slug}`), ProductImageViewer, fix deskripsi Tiptap JSON.
