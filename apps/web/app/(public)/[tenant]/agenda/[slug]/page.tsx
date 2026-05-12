@@ -8,6 +8,7 @@ import { headers } from "next/headers";
 import { CalendarDays, MapPin, Globe, Users, Ticket, MapIcon, UserCheck, CheckCircle2 } from "lucide-react";
 import { EventRegisterForm } from "@/components/event/event-register-form";
 import { renderBody } from "@/lib/letter-render";
+import { generateQrDataUrl } from "@/lib/qr-code";
 
 type BankAccount = {
   id: string;
@@ -208,7 +209,14 @@ export default async function PublicEventPage({
   let defaultAttendeeName  = "";
   let defaultAttendeePhone = "";
   let defaultAttendeeEmail = "";
-  let alreadyRegistered: { registrationNumber: string; status: string } | null = null;
+  let alreadyRegistered: {
+    registrationNumber: string;
+    status:             string;
+    attendeeName:       string;
+    attendeePhone:      string | null;
+    attendeeEmail:      string | null;
+    ticketId:           string | null;
+  } | null = null;
   let resolvedMemberId: string | null = null;
 
   if (session?.user?.id) {
@@ -252,12 +260,40 @@ export default async function PublicEventPage({
         .select({
           registrationNumber: schema.eventRegistrations.registrationNumber,
           status:             schema.eventRegistrations.status,
+          attendeeName:       schema.eventRegistrations.attendeeName,
+          attendeePhone:      schema.eventRegistrations.attendeePhone,
+          attendeeEmail:      schema.eventRegistrations.attendeeEmail,
+          ticketId:           schema.eventRegistrations.ticketId,
         })
         .from(schema.eventRegistrations)
         .where(and(...dupConditions))
         .limit(1);
       if (existing) alreadyRegistered = existing;
     }
+  }
+
+  // QR Code tiket digital — generate server-side jika sudah terdaftar
+  let ticketQrDataUrl: string | null = null;
+  let registeredTicketName: string | null = null;
+  if (alreadyRegistered) {
+    // Nama tiket
+    if (alreadyRegistered.ticketId) {
+      const found = tickets.find((t) => t.id === alreadyRegistered!.ticketId);
+      registeredTicketName = found?.name ?? null;
+    }
+
+    // Konten QR: teks terstruktur agar mudah dibaca scanner apapun
+    const lines = [
+      `EVENT: ${event.title}`,
+      `TIKET: ${registeredTicketName ?? "—"}`,
+      `NO: ${alreadyRegistered.registrationNumber}`,
+      `NAMA: ${alreadyRegistered.attendeeName}`,
+      alreadyRegistered.attendeePhone ? `HP: ${alreadyRegistered.attendeePhone}` : null,
+      alreadyRegistered.attendeeEmail ? `EMAIL: ${alreadyRegistered.attendeeEmail}` : null,
+      `STATUS: ${alreadyRegistered.status.toUpperCase()}`,
+    ].filter(Boolean).join("\n");
+
+    ticketQrDataUrl = await generateQrDataUrl(lines, "#111827");
   }
 
   // Donation prompt data
@@ -395,31 +431,70 @@ export default async function PublicEventPage({
           {/* ── Kanan: Form Pendaftaran (sticky) ── */}
           <div className="lg:sticky lg:top-6 space-y-4">
             {alreadyRegistered ? (
-              /* Sudah terdaftar — tampilkan status, sembunyikan form */
-              <div className="rounded-xl border border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800 p-6 text-center space-y-3">
-                <CheckCircle2 className="h-10 w-10 mx-auto text-green-500" />
-                <div>
-                  <p className="font-semibold text-sm text-green-800 dark:text-green-200">Kamu Sudah Terdaftar</p>
-                  <p className="text-xs text-green-700 dark:text-green-300 mt-1">
-                    No. Pendaftaran:{" "}
-                    <span className="font-mono font-semibold">{alreadyRegistered.registrationNumber}</span>
+              /* Tiket digital — QR + info peserta */
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                {/* Header tiket */}
+                <div className="bg-primary px-4 py-3 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-primary-foreground shrink-0" />
+                  <p className="text-sm font-semibold text-primary-foreground">Tiket Pendaftaran</p>
+                  <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    alreadyRegistered.status === "attended"  ? "bg-white/30 text-white" :
+                    alreadyRegistered.status === "confirmed" ? "bg-white/20 text-white" :
+                    "bg-white/10 text-white/80"
+                  }`}>
+                    {alreadyRegistered.status === "pending"   ? "Menunggu" :
+                     alreadyRegistered.status === "confirmed" ? "Dikonfirmasi" :
+                     alreadyRegistered.status === "attended"  ? "Sudah Hadir" :
+                     alreadyRegistered.status}
+                  </span>
+                </div>
+
+                {/* QR Code */}
+                {ticketQrDataUrl && (
+                  <div className="flex justify-center py-5 bg-white dark:bg-neutral-950 border-b border-dashed border-border">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={ticketQrDataUrl}
+                      alt="QR Code Tiket"
+                      className="w-44 h-44"
+                    />
+                  </div>
+                )}
+
+                {/* Info peserta */}
+                <div className="px-4 py-4 space-y-2.5 text-sm">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">No. Pendaftaran</p>
+                    <p className="font-mono font-bold text-base">{alreadyRegistered.registrationNumber}</p>
+                  </div>
+                  {registeredTicketName && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Tiket</p>
+                      <p className="font-medium">{registeredTicketName}</p>
+                    </div>
+                  )}
+                  <div className="border-t border-border pt-2.5 space-y-2">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Nama</p>
+                      <p className="font-medium">{alreadyRegistered.attendeeName}</p>
+                    </div>
+                    {alreadyRegistered.attendeePhone && (
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">HP</p>
+                        <p>{alreadyRegistered.attendeePhone}</p>
+                      </div>
+                    )}
+                    {alreadyRegistered.attendeeEmail && (
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Email</p>
+                        <p className="truncate">{alreadyRegistered.attendeeEmail}</p>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground pt-1 text-center">
+                    Tunjukkan QR ini kepada panitia saat acara
                   </p>
                 </div>
-                {alreadyRegistered.status === "pending" && (
-                  <p className="text-xs text-green-600 dark:text-green-400">
-                    Pendaftaranmu sedang menunggu konfirmasi panitia.
-                  </p>
-                )}
-                {alreadyRegistered.status === "confirmed" && (
-                  <p className="text-xs text-green-600 dark:text-green-400">
-                    Pendaftaranmu telah dikonfirmasi. Sampai jumpa di acara!
-                  </p>
-                )}
-                {alreadyRegistered.status === "attended" && (
-                  <p className="text-xs text-green-600 dark:text-green-400">
-                    Kamu sudah hadir di acara ini.
-                  </p>
-                )}
               </div>
             ) : tickets.length === 0 ? (
               <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
