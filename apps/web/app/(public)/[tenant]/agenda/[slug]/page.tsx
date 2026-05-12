@@ -262,67 +262,68 @@ export default async function PublicEventPage({
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-8 space-y-8">
-        {/* Cover */}
-        {coverUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={coverUrl}
-            alt={event.title}
-            className="w-full aspect-video object-cover rounded-xl border border-border"
-          />
-        )}
+      <main className="max-w-5xl mx-auto px-4 py-8">
+        <div className="grid gap-6 lg:grid-cols-[1fr_360px] items-start">
 
-        {/* Judul + Meta */}
-        <div className="space-y-3">
-          <h1 className="text-2xl font-bold leading-tight">{event.title}</h1>
-
-          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              <CalendarDays className="h-4 w-4" />
-              {formatEventDateRange(event.startsAt, event.endsAt)}
-            </span>
-            {(event.eventType === "offline" || event.eventType === "hybrid") && event.location && (
-              <span className="inline-flex items-center gap-1.5">
-                <MapPin className="h-4 w-4" />
-                {event.location}
-              </span>
-            )}
-            {(event.eventType === "online" || event.eventType === "hybrid") && (
-              <span className="inline-flex items-center gap-1.5">
-                <Globe className="h-4 w-4" />
-                {EVENT_TYPE_LABELS[event.eventType]}
-              </span>
-            )}
-            {event.organizerName && (
-              <span className="inline-flex items-center gap-1.5">
-                <Users className="h-4 w-4" />
-                {event.organizerName}
-              </span>
-            )}
-          </div>
-
-          {event.locationDetail && (
-            <p className="text-sm text-muted-foreground">{event.locationDetail}</p>
-          )}
-
-          {/* Tombol Google Maps */}
-          {event.mapsUrl && (event.eventType === "offline" || event.eventType === "hybrid") && (
-            <a
-              href={event.mapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-            >
-              <MapIcon className="h-4 w-4" />
-              Lihat di Google Maps
-            </a>
-          )}
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-[1fr_320px] items-start">
-          {/* Kiri: Deskripsi */}
+          {/* ── Kiri: Gambar + Info + Deskripsi ── */}
           <div className="space-y-6">
+            {/* Cover */}
+            {coverUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={coverUrl}
+                alt={event.title}
+                className="w-full aspect-video object-cover rounded-xl border border-border"
+              />
+            )}
+
+            {/* Judul + Meta */}
+            <div className="space-y-3">
+              <h1 className="text-2xl font-bold leading-tight">{event.title}</h1>
+
+              <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarDays className="h-4 w-4 shrink-0" />
+                  {formatEventDateRange(event.startsAt, event.endsAt)}
+                </span>
+                {(event.eventType === "offline" || event.eventType === "hybrid") && event.location && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <MapPin className="h-4 w-4 shrink-0" />
+                    {event.location}
+                  </span>
+                )}
+                {(event.eventType === "online" || event.eventType === "hybrid") && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Globe className="h-4 w-4 shrink-0" />
+                    {EVENT_TYPE_LABELS[event.eventType]}
+                  </span>
+                )}
+                {event.organizerName && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Users className="h-4 w-4 shrink-0" />
+                    {event.organizerName}
+                  </span>
+                )}
+              </div>
+
+              {event.locationDetail && (
+                <p className="text-sm text-muted-foreground">{event.locationDetail}</p>
+              )}
+
+              {event.mapsUrl && (event.eventType === "offline" || event.eventType === "hybrid") && (
+                <a
+                  href={event.mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                >
+                  <MapIcon className="h-4 w-4" />
+                  Lihat di Google Maps
+                </a>
+              )}
+            </div>
+
+            {/* Deskripsi */}
             {event.description && (
               <div
                 className="prose prose-sm max-w-none text-foreground [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base"
@@ -345,7 +346,7 @@ export default async function PublicEventPage({
               </div>
             )}
 
-            {/* Daftar peserta (jika showAttendeeList aktif) */}
+            {/* Daftar peserta */}
             {event.showAttendeeList && attendeeNames.length > 0 && (
               <div className="space-y-3">
                 <p className="text-sm font-semibold flex items-center gap-1.5">
@@ -363,8 +364,8 @@ export default async function PublicEventPage({
             )}
           </div>
 
-          {/* Kanan: Tiket + Form */}
-          <div className="space-y-4">
+          {/* ── Kanan: Form Pendaftaran (sticky) ── */}
+          <div className="lg:sticky lg:top-6 space-y-4">
             {tickets.length === 0 ? (
               <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
                 <Ticket className="h-8 w-8 mx-auto mb-2 opacity-40" />
@@ -372,7 +373,7 @@ export default async function PublicEventPage({
               </div>
             ) : (
               <div className="rounded-xl border border-border bg-card p-4 space-y-4">
-                {/* Info tiket + kuota (jika showTicketCount aktif) */}
+                {/* Info kuota tiket */}
                 {event.showTicketCount && tickets.some((t) => t.quota != null) && (
                   <div className="space-y-2">
                     {tickets.map((t) => {
