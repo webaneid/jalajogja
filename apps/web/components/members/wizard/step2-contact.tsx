@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { CheckIcon, ChevronsUpDownIcon, Globe } from "lucide-react"
+import { CheckIcon, ChevronsUpDownIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/popover"
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select"
 import { PhoneInput } from "@/components/ui/phone-input"
+import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/components/ui/social-media-input"
 import {
   upsertMemberContactAction,
   type Step2ContactData,
@@ -233,68 +234,6 @@ const DOMICILE_STATUS_ITEMS = [
   { value: "temporary", label: "Sementara / Perantau" },
 ]
 
-// Platform sosial media: label, placeholder, hint, dan icon opsional
-const SOCIAL_PLATFORMS = [
-  {
-    key: "instagram",
-    label: "Instagram",
-    placeholder: "username (tanpa @)",
-    hint: "Contoh: instagram.com/wasugi",
-    icon: null,
-    inputType: "text",
-  },
-  {
-    key: "facebook",
-    label: "Facebook",
-    placeholder: "URL atau nama profil",
-    hint: 'Contoh: facebook.com/wasugi atau "Wasugi"',
-    icon: null,
-    inputType: "text",
-  },
-  {
-    key: "linkedin",
-    label: "LinkedIn",
-    placeholder: "URL profil lengkap",
-    hint: "Contoh: linkedin.com/in/wasugi",
-    icon: null,
-    inputType: "url",
-  },
-  {
-    key: "twitter",
-    label: "Twitter / X",
-    placeholder: "username (tanpa @)",
-    hint: "Contoh: @wasugi",
-    icon: null,
-    inputType: "text",
-  },
-  {
-    key: "youtube",
-    label: "YouTube",
-    placeholder: "URL channel",
-    hint: "Contoh: youtube.com/@wasugi",
-    icon: null,
-    inputType: "url",
-  },
-  {
-    key: "tiktok",
-    label: "TikTok",
-    placeholder: "username (tanpa @)",
-    hint: "Contoh: @wasugi",
-    icon: null,
-    inputType: "text",
-  },
-  {
-    key: "website",
-    label: "Website",
-    placeholder: "https://...",
-    hint: "Contoh: https://wasugi.com",
-    icon: Globe,
-    inputType: "url",
-  },
-] as const
-
-type SocialKey = (typeof SOCIAL_PLATFORMS)[number]["key"]
-
 // ─── Step 2: Kontak & Alamat ──────────────────────────────────────────────────
 
 export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, defaultValues }: Step2Props) {
@@ -322,14 +261,15 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
   })
 
   // Sosial media state
-  const [social, setSocial] = React.useState<Record<SocialKey, string>>({
+  const [social, setSocial] = React.useState<SocialMediaValue>({
+    ...SOCIAL_MEDIA_EMPTY,
     instagram: defaultValues?.instagram ?? "",
-    facebook: defaultValues?.facebook ?? "",
-    linkedin: defaultValues?.linkedin ?? "",
-    twitter: defaultValues?.twitter ?? "",
-    youtube: defaultValues?.youtube ?? "",
-    tiktok: defaultValues?.tiktok ?? "",
-    website: defaultValues?.website ?? "",
+    facebook:  defaultValues?.facebook  ?? "",
+    linkedin:  defaultValues?.linkedin  ?? "",
+    twitter:   defaultValues?.twitter   ?? "",
+    youtube:   defaultValues?.youtube   ?? "",
+    tiktok:    defaultValues?.tiktok    ?? "",
+    website:   defaultValues?.website   ?? "",
   })
 
   // Form state
@@ -347,10 +287,6 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
     const checked = e.target.checked
     setSameAsPhone(checked)
     if (checked) setWhatsapp(phone)
-  }
-
-  function handleSocialChange(key: SocialKey, value: string) {
-    setSocial((prev) => ({ ...prev, [key]: value }))
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -596,26 +532,7 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
       {/* ── SOSIAL MEDIA ── */}
       <Section title="Sosial Media">
         <p className="text-xs text-muted-foreground -mt-2">Semua opsional. Yang diisi akan ditampilkan ke publik.</p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {SOCIAL_PLATFORMS.map(({ key, label, placeholder, hint, icon: Icon, inputType }) => (
-            <div key={key} className="flex flex-col gap-1.5">
-              <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                {Icon && <Icon className="size-3.5 text-muted-foreground" />}
-                {label}
-                <span className="font-normal text-muted-foreground">(opsional)</span>
-              </label>
-              <input
-                type={inputType}
-                value={social[key]}
-                onChange={(e) => handleSocialChange(key, e.target.value)}
-                placeholder={placeholder}
-                disabled={loading}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              />
-              <p className="text-xs text-muted-foreground">{hint}</p>
-            </div>
-          ))}
-        </div>
+        <SocialMediaInput value={social} onChange={setSocial} disabled={loading} />
       </Section>
 
       {/* ── Error ── */}

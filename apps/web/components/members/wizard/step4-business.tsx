@@ -4,7 +4,6 @@ import * as React from "react"
 import {
   CheckIcon,
   ChevronsUpDownIcon,
-  Globe,
   PlusIcon,
   XIcon,
 } from "lucide-react"
@@ -24,6 +23,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select"
+import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-media-input"
 import {
   saveMemberBusinessesAction,
   type BusinessEntryData,
@@ -106,19 +106,6 @@ const BRANCHES_ITEMS = [
 const REVENUE_ITEMS = [
   "Dibawah 500jt", "500jt-1M", "1M-2M", "Diatas 2M",
 ].map((v) => ({ value: v, label: v }))
-
-// Platform sosial media (sama persis dengan step2)
-const SOCIAL_PLATFORMS = [
-  { key: "instagram", label: "Instagram", placeholder: "username (tanpa @)",   hint: "Contoh: instagram.com/wasugi",         icon: null,  inputType: "text" },
-  { key: "facebook",  label: "Facebook",  placeholder: "URL atau nama profil", hint: 'Contoh: facebook.com/wasugi atau "Wasugi"', icon: null, inputType: "text" },
-  { key: "linkedin",  label: "LinkedIn",  placeholder: "URL profil lengkap",   hint: "Contoh: linkedin.com/in/wasugi",      icon: null,  inputType: "url"  },
-  { key: "twitter",   label: "Twitter/X", placeholder: "username (tanpa @)",   hint: "Contoh: @wasugi",                    icon: null,  inputType: "text" },
-  { key: "youtube",   label: "YouTube",   placeholder: "URL channel",          hint: "Contoh: youtube.com/@wasugi",         icon: null,  inputType: "url"  },
-  { key: "tiktok",    label: "TikTok",    placeholder: "username (tanpa @)",   hint: "Contoh: @wasugi",                    icon: null,  inputType: "text" },
-  { key: "website",   label: "Website",   placeholder: "https://...",          hint: "Contoh: https://wasugi.com",          icon: Globe, inputType: "url"  },
-] as const
-
-type SocialKey = (typeof SOCIAL_PLATFORMS)[number]["key"]
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -548,26 +535,16 @@ function BusinessCard({
       {/* ── Section 6: Sosial Media ── */}
       <div className="space-y-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sosial Media</p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {SOCIAL_PLATFORMS.map(({ key, label, placeholder, hint, icon: Icon, inputType }) => (
-            <div key={key} className="flex flex-col gap-1.5">
-              <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                {Icon && <Icon className="size-3.5 text-muted-foreground" />}
-                {label}
-                <span className="font-normal text-muted-foreground">(opsional)</span>
-              </label>
-              <input
-                type={inputType}
-                value={entry[key as SocialKey]}
-                onChange={(e) => onChange(key as SocialKey, e.target.value)}
-                placeholder={placeholder}
-                disabled={disabled}
-                className={inputCls}
-              />
-              <p className="text-xs text-muted-foreground">{hint}</p>
-            </div>
-          ))}
-        </div>
+        <SocialMediaInput
+          value={{ instagram: entry.instagram, facebook: entry.facebook, linkedin: entry.linkedin, twitter: entry.twitter, youtube: entry.youtube, tiktok: entry.tiktok, website: entry.website }}
+          onChange={(v: SocialMediaValue) => {
+            onChange("instagram", v.instagram); onChange("facebook",  v.facebook)
+            onChange("linkedin",  v.linkedin);  onChange("twitter",   v.twitter)
+            onChange("youtube",   v.youtube);   onChange("tiktok",    v.tiktok)
+            onChange("website",   v.website)
+          }}
+          disabled={disabled}
+        />
       </div>
     </div>
   )

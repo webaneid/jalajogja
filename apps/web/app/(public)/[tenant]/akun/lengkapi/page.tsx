@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { WilayahSelect }    from "@/components/ui/wilayah-select";
 import type { WilayahValue } from "@/components/ui/wilayah-select";
+import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/components/ui/social-media-input";
 import { RegencyCombobox } from "@/components/ui/regency-combobox";
 import { PhoneInput }      from "@/components/ui/phone-input";
 import { Search, ChevronDown, Plus, X } from "lucide-react";
@@ -265,13 +266,7 @@ export default function LengkapiPage() {
   const [tenantProvinceId, setTenantProvinceId] = React.useState<number | undefined>(undefined);
   const [addrDetail,     setAddrDetail]     = React.useState("");
   const [addrPostalCode, setAddrPostalCode] = React.useState("");
-  const [instagram, setInstagram] = React.useState("");
-  const [facebook,  setFacebook]  = React.useState("");
-  const [linkedin,  setLinkedin]  = React.useState("");
-  const [twitter,   setTwitter]   = React.useState("");
-  const [youtube,   setYoutube]   = React.useState("");
-  const [tiktok,    setTiktok]    = React.useState("");
-  const [website,   setWebsite]   = React.useState("");
+  const [social, setSocial] = React.useState<SocialMediaValue>(SOCIAL_MEDIA_EMPTY);
 
   // ── Step 3 state — pendidikan ─────────────────────────────────────────────
   type EduEntry = {
@@ -375,13 +370,15 @@ export default function LengkapiPage() {
         setAddrPostalCode(data.address?.postalCode ?? "");
 
         // Isi Step 2 — sosial media
-        setInstagram(data.social?.instagram ?? "");
-        setFacebook(data.social?.facebook   ?? "");
-        setLinkedin(data.social?.linkedin   ?? "");
-        setTwitter(data.social?.twitter     ?? "");
-        setYoutube(data.social?.youtube     ?? "");
-        setTiktok(data.social?.tiktok       ?? "");
-        setWebsite(data.social?.website     ?? "");
+        setSocial({
+          instagram: data.social?.instagram ?? "",
+          facebook:  data.social?.facebook  ?? "",
+          linkedin:  data.social?.linkedin  ?? "",
+          twitter:   data.social?.twitter   ?? "",
+          youtube:   data.social?.youtube   ?? "",
+          tiktok:    data.social?.tiktok    ?? "",
+          website:   data.social?.website   ?? "",
+        });
 
         if (profRes.ok) {
           const profData = await profRes.json();
@@ -474,13 +471,13 @@ export default function LengkapiPage() {
           addressVillageId:  addrType === "indonesia" ? (addrWilayah.villageId  ?? null) : null,
           addressDetail:     addrDetail.trim()     || null,
           addressPostalCode: addrPostalCode.trim() || null,
-          instagram: instagram.trim() || null,
-          facebook:  facebook.trim()  || null,
-          linkedin:  linkedin.trim()  || null,
-          twitter:   twitter.trim()   || null,
-          youtube:   youtube.trim()   || null,
-          tiktok:    tiktok.trim()    || null,
-          website:   website.trim()   || null,
+          instagram: social.instagram.trim() || null,
+          facebook:  social.facebook.trim()  || null,
+          linkedin:  social.linkedin.trim()  || null,
+          twitter:   social.twitter.trim()   || null,
+          youtube:   social.youtube.trim()   || null,
+          tiktok:    social.tiktok.trim()    || null,
+          website:   social.website.trim()   || null,
         }),
       });
       const json = await res.json();
@@ -881,17 +878,7 @@ export default function LengkapiPage() {
               </div>
               <p className="text-xs text-muted-foreground mt-1">Semua yang diisi akan ditampilkan ke publik.</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <TextInput label="Instagram" optional value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="username (tanpa @)" />
-              <TextInput label="Facebook"  optional value={facebook}  onChange={e => setFacebook(e.target.value)}  placeholder="URL atau username" />
-              <TextInput label="Twitter / X" optional value={twitter} onChange={e => setTwitter(e.target.value)}   placeholder="username (tanpa @)" />
-              <TextInput label="TikTok"    optional value={tiktok}    onChange={e => setTiktok(e.target.value)}    placeholder="username (tanpa @)" />
-              <TextInput label="LinkedIn"  optional value={linkedin}  onChange={e => setLinkedin(e.target.value)}  placeholder="URL profil LinkedIn" />
-              <TextInput label="YouTube"   optional value={youtube}   onChange={e => setYoutube(e.target.value)}   placeholder="URL channel YouTube" />
-              <div className="sm:col-span-2">
-                <TextInput label="Website"   optional value={website}   onChange={e => setWebsite(e.target.value)}   placeholder="https://example.com" />
-              </div>
-            </div>
+            <SocialMediaInput value={social} onChange={setSocial} />
           </div>
 
           {/* Navigasi Step 2 */}

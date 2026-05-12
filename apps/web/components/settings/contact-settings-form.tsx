@@ -3,27 +3,12 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Globe } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
+import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/components/ui/social-media-input";
 import { saveContactSettingsAction } from "@/app/(dashboard)/[tenant]/settings/actions";
-
-// ─── Sosial media platforms ───────────────────────────────────────────────────
-
-const SOCIAL_PLATFORMS = [
-  { key: "instagram", label: "Instagram", placeholder: "username (tanpa @)",    hint: "Contoh: ikpm.jogja",              inputType: "text", icon: null  },
-  { key: "facebook",  label: "Facebook",  placeholder: "URL atau nama halaman", hint: "Contoh: facebook.com/ikpmjogja",  inputType: "text", icon: null  },
-  { key: "linkedin",  label: "LinkedIn",  placeholder: "URL profil lengkap",    hint: "Contoh: linkedin.com/company/...", inputType: "url",  icon: null  },
-  { key: "twitter",   label: "Twitter / X", placeholder: "username (tanpa @)", hint: "Contoh: @ikpmjogja",              inputType: "text", icon: null  },
-  { key: "youtube",   label: "YouTube",   placeholder: "URL channel",           hint: "Contoh: youtube.com/@ikpmjogja",  inputType: "url",  icon: null  },
-  { key: "tiktok",    label: "TikTok",    placeholder: "username (tanpa @)",    hint: "Contoh: @ikpmjogja",              inputType: "text", icon: null  },
-  { key: "telegram",  label: "Telegram",  placeholder: "username atau link",    hint: "Contoh: t.me/ikpmjogja",          inputType: "text", icon: null  },
-  { key: "website",   label: "Website",   placeholder: "https://...",           hint: "URL resmi organisasi",            inputType: "url",  icon: Globe },
-] as const;
-
-type SocialKey = (typeof SOCIAL_PLATFORMS)[number]["key"];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,7 +26,7 @@ type DefaultValues = {
   contactPhone:    string;
   contactWhatsapp: string;
   address:         AddressDefault;
-  socials:         Record<SocialKey, string>;
+  socials:         Partial<SocialMediaValue> & Record<string, string>;
 };
 
 // ─── Sub-komponen ─────────────────────────────────────────────────────────────
@@ -82,11 +67,16 @@ export function ContactSettingsForm({
   const [addressDetail,    setAddressDetail]    = React.useState(defaultValues.address.detail);
   const [addressPostalCode, setAddressPostalCode] = React.useState(defaultValues.address.postalCode);
 
-  const [socials, setSocials] = React.useState<Record<SocialKey, string>>(defaultValues.socials);
-
-  function handleSocialChange(key: SocialKey, value: string) {
-    setSocials((prev) => ({ ...prev, [key]: value }));
-  }
+  const [socials, setSocials] = React.useState<SocialMediaValue>({
+    ...SOCIAL_MEDIA_EMPTY,
+    instagram: defaultValues.socials.instagram ?? "",
+    facebook:  defaultValues.socials.facebook  ?? "",
+    linkedin:  defaultValues.socials.linkedin  ?? "",
+    twitter:   defaultValues.socials.twitter   ?? "",
+    youtube:   defaultValues.socials.youtube   ?? "",
+    tiktok:    defaultValues.socials.tiktok    ?? "",
+    website:   defaultValues.socials.website   ?? "",
+  });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -104,7 +94,7 @@ export function ContactSettingsForm({
           detail:     addressDetail,
           postalCode: addressPostalCode,
         },
-        socials,
+        socials: socials as unknown as Record<string, string>,
       });
       if (result.error) {
         toast.error(result.error);
@@ -200,26 +190,7 @@ export function ContactSettingsForm({
 
       {/* ── SOSIAL MEDIA ── */}
       <Section title="Sosial Media">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {SOCIAL_PLATFORMS.map(({ key, label, placeholder, hint, icon: Icon, inputType }) => (
-            <div key={key} className="space-y-1.5">
-              <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" />}
-                {label}
-                <span className="font-normal text-muted-foreground">(opsional)</span>
-              </label>
-              <input
-                type={inputType}
-                value={socials[key]}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSocialChange(key, e.target.value)}
-                placeholder={placeholder}
-                disabled={pending}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              />
-              <p className="text-xs text-muted-foreground">{hint}</p>
-            </div>
-          ))}
-        </div>
+        <SocialMediaInput value={socials} onChange={setSocials} disabled={pending} />
       </Section>
 
       <Button type="submit" disabled={pending}>

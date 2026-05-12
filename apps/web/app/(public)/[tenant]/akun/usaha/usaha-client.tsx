@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
+import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-media-input";
 
 type Entry = {
   _key: string;
@@ -24,7 +25,8 @@ type Entry = {
   addressPostalCode: string;
   // Kontak
   phone: string; whatsapp: string; email: string;
-  instagram: string; facebook: string; website: string;
+  instagram: string; facebook: string; linkedin: string;
+  twitter: string; youtube: string; tiktok: string; website: string;
   isPhonePublic:    boolean;
   isWhatsappPublic: boolean;
   _sameAsPhone:     boolean; // UI only
@@ -88,7 +90,8 @@ function newEntry(): Entry {
     addressCountry: "", addressProvinceId: null,
     addressRegencyId: null, addressDistrictId: null, addressVillageId: null,
     addressDetail: "", addressPostalCode: "",
-    phone:"", whatsapp:"", email:"", instagram:"", facebook:"", website:"",
+    phone:"", whatsapp:"", email:"",
+    instagram:"", facebook:"", linkedin:"", twitter:"", youtube:"", tiktok:"", website:"",
     isPhonePublic: false, isWhatsappPublic: false, _sameAsPhone: false,
   };
 }
@@ -116,7 +119,8 @@ type ApiRow = {
   addressDetail?: string; addressPostalCode?: string;
   phone?: string; whatsapp?: string; email?: string;
   isPhonePublic?: boolean; isWhatsappPublic?: boolean;
-  instagram?: string; facebook?: string; website?: string;
+  instagram?: string; facebook?: string; linkedin?: string;
+  twitter?: string; youtube?: string; tiktok?: string; website?: string;
 };
 
 export function UsahaClient({ slug }: { slug: string }) {
@@ -161,6 +165,10 @@ export function UsahaClient({ slug }: { slug: string }) {
               email:            e.email       ?? "",
               instagram:        e.instagram   ?? "",
               facebook:         e.facebook    ?? "",
+              linkedin:         e.linkedin    ?? "",
+              twitter:          e.twitter     ?? "",
+              youtube:          e.youtube     ?? "",
+              tiktok:           e.tiktok      ?? "",
               website:          e.website     ?? "",
               isPhonePublic:    e.isPhonePublic    ?? false,
               isWhatsappPublic: e.isWhatsappPublic ?? false,
@@ -238,9 +246,13 @@ export function UsahaClient({ slug }: { slug: string }) {
           email:            e.email.trim()   || undefined,
           isPhonePublic:    e.isPhonePublic,
           isWhatsappPublic: e.isWhatsappPublic,
-          instagram:   e.instagram.trim() || undefined,
-          facebook:    e.facebook.trim()  || undefined,
-          website:     e.website.trim()   || undefined,
+          instagram: e.instagram.trim() || undefined,
+          facebook:  e.facebook.trim()  || undefined,
+          linkedin:  e.linkedin.trim()  || undefined,
+          twitter:   e.twitter.trim()   || undefined,
+          youtube:   e.youtube.trim()   || undefined,
+          tiktok:    e.tiktok.trim()    || undefined,
+          website:   e.website.trim()   || undefined,
         }))
         }),
       });
@@ -440,22 +452,11 @@ export function UsahaClient({ slug }: { slug: string }) {
                   placeholder="usaha@email.com" />
               </Field>
             </div>
-            <Field label="Instagram" optional>
-              <input className={inputCls} value={e.instagram}
-                onChange={ev => update(e._key, { instagram: ev.target.value })}
-                placeholder="username (tanpa @)" />
-            </Field>
-            <Field label="Facebook" optional>
-              <input className={inputCls} value={e.facebook}
-                onChange={ev => update(e._key, { facebook: ev.target.value })}
-                placeholder="URL atau nama halaman" />
-            </Field>
             <div className="sm:col-span-2">
-              <Field label="Website" optional>
-                <input className={inputCls} type="url" value={e.website}
-                  onChange={ev => update(e._key, { website: ev.target.value })}
-                  placeholder="https://usaha.com" />
-              </Field>
+              <SocialMediaInput
+                value={{ instagram: e.instagram, facebook: e.facebook, linkedin: e.linkedin, twitter: e.twitter, youtube: e.youtube, tiktok: e.tiktok, website: e.website }}
+                onChange={(v: SocialMediaValue) => update(e._key, { instagram: v.instagram, facebook: v.facebook, linkedin: v.linkedin, twitter: v.twitter, youtube: v.youtube, tiktok: v.tiktok, website: v.website })}
+              />
             </div>
           </div>
         </div>
