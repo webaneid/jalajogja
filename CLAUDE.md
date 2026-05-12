@@ -37,6 +37,19 @@
 - Semua fungsi database wajib multi-tenant aware (gunakan tenant schema)
 - Penamaan: camelCase untuk variabel/fungsi, PascalCase untuk komponen/types
 
+## Arsitektur Kontak (Phone & WhatsApp)
+> Detail lengkap: **`docs/arsitektur-kontak.md`**
+
+**Tiga aturan yang tidak boleh dilanggar:**
+1. **Input phone/WA** → selalu `<PhoneInput>` dari `components/ui/phone-input.tsx` — tidak boleh `<input type="tel">` biasa
+2. **Server insert/update phone/WA** → selalu `normalizePhone()` dari `lib/phone.ts` (belum dibuat, phase mendatang)
+3. **Display phone/WA** → selalu `displayPhone()` dari `lib/phone.ts`
+
+**Format DB: E.164** (`+6281234567890`) atau NULL. Default negara: Indonesia (+62).
+
+Yang sudah benar (jangan diubah): `PhoneInput`, `step2-contact.tsx`, `akun/data/page.tsx`, `akun/lengkapi/page.tsx` Step 2.
+Yang belum difix: `register-form.tsx`, `event-register-form.tsx`, server actions tanpa normalize → lihat arsitektur.
+
 ## UI Standards
 - **Container width front-end publik: selalu `max-w-7xl mx-auto px-4`** — header, footer, semua section (hero, posts, events, dll) wajib pakai lebar yang sama agar layout proporsional. Jangan pakai `max-w-6xl`, `max-w-5xl`, atau lebar lain kecuali ada alasan desain yang eksplisit.
 - **Border dekoratif: selalu sertakan `border-border`** — `border-l`, `border-t`, dst tanpa kelas warna menggunakan warna default browser (hitam). Wajib: `border-l border-border`, `border-t border-border`, dst.
