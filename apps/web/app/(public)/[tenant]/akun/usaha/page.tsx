@@ -3,6 +3,8 @@
 import * as React      from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2, Plus, X, CheckCircle2 } from "lucide-react";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 type Entry = {
   _key: string;
@@ -13,17 +15,59 @@ type Entry = {
   instagram: string; facebook: string; website: string;
 };
 
-const CATEGORIES = ["Jasa","Produsen","Distributor","Trading","Profesional"];
-const SECTORS    = ["Teknologi","Jasa Profesional","Kreatif","Manufaktur","Kesehatan & Pendidikan","Konsumsi & Ritel","Sumber Daya Alam"];
-const LEGALITIES = ["PT Perseorangan","PT","CV","Yayasan","Perkumpulan","Koperasi","Belum Memiliki Legalitas"];
-const POSITIONS  = ["Komisaris","Direktur","Pengelola","Manajer"];
-const EMPLOYEES  = ["1-4","5-10","11-20","Lebih dari 20"];
-const BRANCHES   = ["Tidak Ada","1-3","Diatas 3"];
-const REVENUES   = ["Dibawah 500jt","500jt-1M","1M-2M","Diatas 2M"];
+const CATEGORIES: ComboboxOption[] = [
+  { value: "Jasa",          label: "Jasa" },
+  { value: "Produsen",      label: "Produsen" },
+  { value: "Distributor",   label: "Distributor" },
+  { value: "Trading",       label: "Trading" },
+  { value: "Profesional",   label: "Profesional" },
+];
+const SECTORS: ComboboxOption[] = [
+  { value: "Teknologi",                  label: "Teknologi" },
+  { value: "Jasa Profesional",           label: "Jasa Profesional" },
+  { value: "Kreatif",                    label: "Kreatif" },
+  { value: "Manufaktur",                 label: "Manufaktur" },
+  { value: "Kesehatan & Pendidikan",     label: "Kesehatan & Pendidikan" },
+  { value: "Konsumsi & Ritel",           label: "Konsumsi & Ritel" },
+  { value: "Sumber Daya Alam",           label: "Sumber Daya Alam" },
+];
+const LEGALITIES: ComboboxOption[] = [
+  { value: "PT Perseorangan",            label: "PT Perseorangan" },
+  { value: "PT",                         label: "PT" },
+  { value: "CV",                         label: "CV" },
+  { value: "Yayasan",                    label: "Yayasan" },
+  { value: "Perkumpulan",                label: "Perkumpulan" },
+  { value: "Koperasi",                   label: "Koperasi" },
+  { value: "Belum Memiliki Legalitas",   label: "Belum Memiliki Legalitas" },
+];
+const POSITIONS: ComboboxOption[] = [
+  { value: "Komisaris", label: "Komisaris" },
+  { value: "Direktur",  label: "Direktur" },
+  { value: "Pengelola", label: "Pengelola" },
+  { value: "Manajer",   label: "Manajer" },
+];
+const EMPLOYEES: ComboboxOption[] = [
+  { value: "1-4",          label: "1–4 orang" },
+  { value: "5-10",         label: "5–10 orang" },
+  { value: "11-20",        label: "11–20 orang" },
+  { value: "Lebih dari 20",label: "Lebih dari 20" },
+];
+const BRANCHES: ComboboxOption[] = [
+  { value: "Tidak Ada", label: "Tidak Ada" },
+  { value: "1-3",       label: "1–3 cabang" },
+  { value: "Diatas 3",  label: "Di atas 3 cabang" },
+];
+const REVENUES: ComboboxOption[] = [
+  { value: "Dibawah 500jt", label: "Di bawah Rp 500 juta" },
+  { value: "500jt-1M",      label: "Rp 500 juta – 1 Miliar" },
+  { value: "1M-2M",         label: "Rp 1 – 2 Miliar" },
+  { value: "Diatas 2M",     label: "Di atas Rp 2 Miliar" },
+];
 
 function newEntry(): Entry {
-  return { _key: crypto.randomUUID(), name:"", brand:"", description:"", category:"Jasa", sector:"Teknologi",
-    legality:"", position:"", employees:"", branches:"", revenue:"",
+  return { _key: crypto.randomUUID(), name:"", brand:"", description:"",
+    category:"Jasa", sector:"Teknologi", legality:"", position:"",
+    employees:"", branches:"", revenue:"",
     phone:"", whatsapp:"", email:"", instagram:"", facebook:"", website:"" };
 }
 
@@ -39,7 +83,6 @@ function Field({ label, optional, children }: { label: string; optional?: boolea
 }
 
 const inputCls = "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-const selectCls = inputCls;
 
 export default function UsahaPage() {
   const params = useParams<{ tenant: string }>();
@@ -152,84 +195,130 @@ export default function UsahaPage() {
             <X className="h-4 w-4" />
           </button>
 
+          {/* ── Identitas ── */}
           <p className="text-sm font-semibold text-muted-foreground">Identitas Usaha</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <Field label="Nama Usaha">
-                <input className={inputCls} value={e.name} onChange={ev => update(e._key, { name: ev.target.value })} placeholder="Nama usaha / perusahaan" required />
+                <input className={inputCls} value={e.name}
+                  onChange={ev => update(e._key, { name: ev.target.value })}
+                  placeholder="Nama usaha / perusahaan" required />
               </Field>
             </div>
             <Field label="Nama Brand" optional>
-              <input className={inputCls} value={e.brand} onChange={ev => update(e._key, { brand: ev.target.value })} placeholder="Brand / merek dagang" />
+              <input className={inputCls} value={e.brand}
+                onChange={ev => update(e._key, { brand: ev.target.value })}
+                placeholder="Brand / merek dagang" />
+            </Field>
+            <Field label="Deskripsi" optional>
+              <input className={inputCls} value={e.description}
+                onChange={ev => update(e._key, { description: ev.target.value })}
+                placeholder="Ringkasan singkat usaha" />
             </Field>
             <Field label="Kategori">
-              <select className={selectCls} value={e.category} onChange={ev => update(e._key, { category: ev.target.value })}>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <Combobox
+                options={CATEGORIES}
+                value={e.category}
+                onValueChange={v => update(e._key, { category: v })}
+                placeholder="Pilih kategori"
+              />
             </Field>
             <Field label="Sektor">
-              <select className={selectCls} value={e.sector} onChange={ev => update(e._key, { sector: ev.target.value })}>
-                {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <Combobox
+                options={SECTORS}
+                value={e.sector}
+                onValueChange={v => update(e._key, { sector: v })}
+                placeholder="Pilih sektor"
+              />
             </Field>
             <Field label="Legalitas" optional>
-              <select className={selectCls} value={e.legality} onChange={ev => update(e._key, { legality: ev.target.value })}>
-                <option value="">Pilih legalitas</option>
-                {LEGALITIES.map(l => <option key={l} value={l}>{l}</option>)}
-              </select>
+              <Combobox
+                options={LEGALITIES}
+                value={e.legality}
+                onValueChange={v => update(e._key, { legality: v })}
+                placeholder="Pilih legalitas"
+              />
             </Field>
             <Field label="Posisi / Jabatan" optional>
-              <select className={selectCls} value={e.position} onChange={ev => update(e._key, { position: ev.target.value })}>
-                <option value="">Pilih posisi</option>
-                {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
+              <Combobox
+                options={POSITIONS}
+                value={e.position}
+                onValueChange={v => update(e._key, { position: v })}
+                placeholder="Pilih posisi"
+              />
             </Field>
           </div>
 
+          {/* ── Skala ── */}
           <p className="text-sm font-semibold text-muted-foreground pt-2">Skala Usaha</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Field label="Karyawan" optional>
-              <select className={selectCls} value={e.employees} onChange={ev => update(e._key, { employees: ev.target.value })}>
-                <option value="">Pilih</option>
-                {EMPLOYEES.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
+              <Combobox
+                options={EMPLOYEES}
+                value={e.employees}
+                onValueChange={v => update(e._key, { employees: v })}
+                placeholder="Jumlah karyawan"
+              />
             </Field>
             <Field label="Cabang" optional>
-              <select className={selectCls} value={e.branches} onChange={ev => update(e._key, { branches: ev.target.value })}>
-                <option value="">Pilih</option>
-                {BRANCHES.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
+              <Combobox
+                options={BRANCHES}
+                value={e.branches}
+                onValueChange={v => update(e._key, { branches: v })}
+                placeholder="Jumlah cabang"
+              />
             </Field>
             <Field label="Omzet / tahun" optional>
-              <select className={selectCls} value={e.revenue} onChange={ev => update(e._key, { revenue: ev.target.value })}>
-                <option value="">Pilih</option>
-                {REVENUES.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
+              <Combobox
+                options={REVENUES}
+                value={e.revenue}
+                onValueChange={v => update(e._key, { revenue: v })}
+                placeholder="Kisaran omzet"
+              />
             </Field>
           </div>
 
+          {/* ── Kontak ── */}
           <p className="text-sm font-semibold text-muted-foreground pt-2">Kontak Usaha</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Telepon" optional>
-              <input className={inputCls} type="tel" value={e.phone} onChange={ev => update(e._key, { phone: ev.target.value })} placeholder="08xxxxxxxxxx" />
+              <PhoneInput
+                label="Telepon"
+                value={e.phone}
+                onChange={v => update(e._key, { phone: v })}
+                optional
+              />
             </Field>
             <Field label="WhatsApp" optional>
-              <input className={inputCls} type="tel" value={e.whatsapp} onChange={ev => update(e._key, { whatsapp: ev.target.value })} placeholder="08xxxxxxxxxx" />
+              <PhoneInput
+                label="WhatsApp"
+                value={e.whatsapp}
+                onChange={v => update(e._key, { whatsapp: v })}
+                optional
+              />
             </Field>
             <div className="sm:col-span-2">
               <Field label="Email" optional>
-                <input className={inputCls} type="email" value={e.email} onChange={ev => update(e._key, { email: ev.target.value })} placeholder="usaha@email.com" />
+                <input className={inputCls} type="email" value={e.email}
+                  onChange={ev => update(e._key, { email: ev.target.value })}
+                  placeholder="usaha@email.com" />
               </Field>
             </div>
             <Field label="Instagram" optional>
-              <input className={inputCls} value={e.instagram} onChange={ev => update(e._key, { instagram: ev.target.value })} placeholder="username (tanpa @)" />
+              <input className={inputCls} value={e.instagram}
+                onChange={ev => update(e._key, { instagram: ev.target.value })}
+                placeholder="username (tanpa @)" />
             </Field>
             <Field label="Facebook" optional>
-              <input className={inputCls} value={e.facebook} onChange={ev => update(e._key, { facebook: ev.target.value })} placeholder="URL atau nama halaman" />
+              <input className={inputCls} value={e.facebook}
+                onChange={ev => update(e._key, { facebook: ev.target.value })}
+                placeholder="URL atau nama halaman" />
             </Field>
             <div className="sm:col-span-2">
               <Field label="Website" optional>
-                <input className={inputCls} type="url" value={e.website} onChange={ev => update(e._key, { website: ev.target.value })} placeholder="https://usaha.com" />
+                <input className={inputCls} type="url" value={e.website}
+                  onChange={ev => update(e._key, { website: ev.target.value })}
+                  placeholder="https://usaha.com" />
               </Field>
             </div>
           </div>
