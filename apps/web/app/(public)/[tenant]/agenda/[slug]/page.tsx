@@ -5,7 +5,7 @@ import { eq, and, or, count, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { CalendarDays, MapPin, Globe, Users, Ticket, MapIcon, UserCheck, CheckCircle2 } from "lucide-react";
+import { CalendarDays, MapPin, Globe, Building2, Navigation, ExternalLink, Video, Ticket, UserCheck, CheckCircle2 } from "lucide-react";
 import { EventRegisterForm } from "@/components/event/event-register-form";
 import { renderBody } from "@/lib/letter-render";
 import { generateQrDataUrl } from "@/lib/qr-code";
@@ -338,49 +338,81 @@ export default async function PublicEventPage({
             )}
 
             {/* Judul + Meta */}
-            <div className="space-y-3">
+            <div className="space-y-4">
               <h1 className="text-2xl font-bold leading-tight">{event.title}</h1>
 
-              <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <CalendarDays className="h-4 w-4 shrink-0" />
-                  {formatEventDateRange(event.startsAt, event.endsAt)}
-                </span>
-                {(event.eventType === "offline" || event.eventType === "hybrid") && event.location && (
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin className="h-4 w-4 shrink-0" />
-                    {event.location}
-                  </span>
-                )}
-                {(event.eventType === "online" || event.eventType === "hybrid") && (
-                  <span className="inline-flex items-center gap-1.5">
-                    <Globe className="h-4 w-4 shrink-0" />
-                    {EVENT_TYPE_LABELS[event.eventType]}
-                  </span>
-                )}
+              {/* Satu baris per informasi */}
+              <div className="space-y-2.5 text-sm text-muted-foreground">
+
+                {/* Penyelenggara */}
                 {event.organizerName && (
-                  <span className="inline-flex items-center gap-1.5">
-                    <Users className="h-4 w-4 shrink-0" />
-                    {event.organizerName}
-                  </span>
+                  <div className="flex items-start gap-2.5">
+                    <Building2 className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{event.organizerName}</span>
+                  </div>
+                )}
+
+                {/* Waktu pelaksanaan */}
+                <div className="flex items-start gap-2.5">
+                  <CalendarDays className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{formatEventDateRange(event.startsAt, event.endsAt)}</span>
+                </div>
+
+                {/* Tempat (offline/hybrid) */}
+                {(event.eventType === "offline" || event.eventType === "hybrid") && event.location && (
+                  <div className="flex items-start gap-2.5">
+                    <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{event.location}</span>
+                  </div>
+                )}
+
+                {/* Online (online/hybrid) */}
+                {(event.eventType === "online" || event.eventType === "hybrid") && (
+                  <div className="flex items-start gap-2.5">
+                    <Video className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{EVENT_TYPE_LABELS[event.eventType]}</span>
+                  </div>
+                )}
+
+                {/* Alamat detail */}
+                {event.locationDetail && (
+                  <div className="flex items-start gap-2.5">
+                    <Navigation className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{event.locationDetail}</span>
+                  </div>
+                )}
+
+                {/* Google Maps */}
+                {event.mapsUrl && (event.eventType === "offline" || event.eventType === "hybrid") && (
+                  <div className="flex items-start gap-2.5">
+                    <Globe className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                    <a
+                      href={event.mapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      Lihat di Google Maps
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
+
+                {/* Link bergabung online */}
+                {event.onlineLink && (event.eventType === "online" || event.eventType === "hybrid") && (
+                  <div className="flex items-start gap-2.5">
+                    <ExternalLink className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                    <a
+                      href={event.onlineLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline break-all"
+                    >
+                      {event.onlineLink}
+                    </a>
+                  </div>
                 )}
               </div>
-
-              {event.locationDetail && (
-                <p className="text-sm text-muted-foreground">{event.locationDetail}</p>
-              )}
-
-              {event.mapsUrl && (event.eventType === "offline" || event.eventType === "hybrid") && (
-                <a
-                  href={event.mapsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-                >
-                  <MapIcon className="h-4 w-4" />
-                  Lihat di Google Maps
-                </a>
-              )}
             </div>
 
             {/* Deskripsi */}
@@ -389,21 +421,6 @@ export default async function PublicEventPage({
                 className="prose prose-sm max-w-none text-foreground [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base"
                 dangerouslySetInnerHTML={{ __html: renderBody(event.description) }}
               />
-            )}
-
-            {/* Link online */}
-            {event.onlineLink && (event.eventType === "online" || event.eventType === "hybrid") && (
-              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-1">
-                <p className="text-sm font-semibold">Link Bergabung</p>
-                <a
-                  href={event.onlineLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-primary underline break-all"
-                >
-                  {event.onlineLink}
-                </a>
-              </div>
             )}
 
             {/* Daftar peserta */}
