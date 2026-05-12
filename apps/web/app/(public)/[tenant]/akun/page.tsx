@@ -1,21 +1,15 @@
-import { createHash }   from "crypto";
-import { redirect }      from "next/navigation";
-import { headers }       from "next/headers";
-import { eq }            from "drizzle-orm";
-import { auth }          from "@/lib/auth";
+import { redirect }  from "next/navigation";
+import { headers }   from "next/headers";
+import { eq }        from "drizzle-orm";
+import { auth }      from "@/lib/auth";
 import { db, tenantMemberships, tenants, members } from "@jalajogja/db";
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
-  ShoppingBag, KeyRound, AlertCircle, Building2, BookOpen,
+  ShoppingBag, AlertCircle, Building2, BookOpen,
 } from "lucide-react";
 
 type Params = Promise<{ tenant: string }>;
-
-function gravatar(email: string) {
-  const hash = createHash("md5").update(email.trim().toLowerCase()).digest("hex");
-  return `https://www.gravatar.com/avatar/${hash}?s=80&d=mp`;
-}
 
 export default async function AkunPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
@@ -24,14 +18,12 @@ export default async function AkunPage({ params }: { params: Params }) {
   if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
 
   const identity = await getAkunIdentity(session.user.id);
-  // Jika session ada tapi tidak ada profil front-end → user ini hanya punya akun
-  // dashboard (pengurus). Jangan redirect ke /login — akan loop. Arahkan ke dashboard.
   if (!identity) redirect(`/${slug}/dashboard`);
 
   const isMember     = identity.type === "member";
   const isIncomplete = isMemberDataIncomplete(identity);
 
-  // ── Info keanggotaan di cabang ini ────────────────────────────────────────
+  // Info keanggotaan di cabang ini
   let membershipInfo: {
     memberNumber: string | null;
     status:       string | null;
@@ -39,103 +31,62 @@ export default async function AkunPage({ params }: { params: Params }) {
   } | null = null;
 
   if (isMember && identity.memberId) {
-    const [tenant] = await db
-      .select({ id: tenants.id })
-      .from(tenants)
-      .where(eq(tenants.slug, slug))
+    const [row] = await db
+      .select({
+        memberNumber: members.memberNumber,
+        status:       tenantMemberships.status,
+        tenantName:   tenants.name,
+      })
+      .from(tenantMemberships)
+      .innerJoin(members, eq(members.id, tenantMemberships.memberId))
+      .innerJoin(tenants, eq(tenants.id, tenantMemberships.tenantId))
+      .where(eq(tenantMemberships.memberId, identity.memberId))
       .limit(1);
-
-    if (tenant) {
-      const [row] = await db
-        .select({
-          memberNumber: members.memberNumber,
-          status:       tenantMemberships.status,
-          tenantName:   tenants.name,
-        })
-        .from(tenantMemberships)
-        .innerJoin(members, eq(members.id, tenantMemberships.memberId))
-        .innerJoin(tenants, eq(tenants.id, tenantMemberships.tenantId))
-        .where(eq(tenantMemberships.memberId, identity.memberId))
-        .limit(1);
-      if (row) membershipInfo = row;
-    }
+    if (row) membershipInfo = row;
   }
 
-  const displayEmail = identity.email || session.user.email;
-
   return (
-    <div className="max-w-2xl mx-auto px-4 py-10 space-y-8">
+    <div className="space-y-6">
 
-      {/* ── Header profil ── */}
-      <div className="flex items-center gap-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={gravatar(displayEmail)}
-          alt={identity.name}
-          width={64}
-          height={64}
-          className="w-16 h-16 rounded-full ring-2 ring-border object-cover"
-        />
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-bold truncate">{identity.name}</h1>
-          <p className="text-sm text-muted-foreground truncate">{displayEmail}</p>
-          <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium mt-1 ${
-            isMember ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-          }`}>
-            {isMember ? "Anggota IKPM" : "Akun Publik"}
-          </span>
-        </div>
-        <a
-          href={`/${slug}/akun/profil`}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors shrink-0"
-        >
-          <KeyRound className="h-3.5 w-3.5" />
-          Info Login
-        </a>
-      </div>
-
-      {/* ── Banner lengkapi data (anggota, data belum lengkap) ── */}
+      {/* Banner lengkapi data */}
       {isMember && isIncomplete && (
         <a
           href={`/${slug}/akun/lengkapi`}
-          className="flex items-start gap-3 rounded-xl border border-border p-4 hover:bg-muted/30 transition-colors"
+          className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 p-4 hover:bg-amber-100 dark:hover:bg-amber-900 transition-colors"
         >
-          <AlertCircle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+          <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold">Data Keanggotaan Belum Lengkap</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Data Keanggotaan Belum Lengkap</p>
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
               Lengkapi data diri agar profil keanggotaan terdaftar dengan benar.
             </p>
           </div>
-          <span className="text-xs text-primary font-medium shrink-0 mt-0.5">Lengkapi →</span>
+          <span className="text-xs text-amber-700 dark:text-amber-300 font-medium shrink-0 mt-0.5">Lengkapi →</span>
         </a>
       )}
 
-      {/* ── Info keanggotaan (anggota saja) ── */}
+      {/* Info keanggotaan (anggota saja) */}
       {isMember && (
         <div className="rounded-xl border border-border p-5 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 font-semibold text-sm">
               <BadgeCheck className="h-4 w-4 text-primary" />
-              Informasi Keanggotaan
+              Keanggotaan IKPM
             </div>
-            <a
-              href={`/${slug}/akun/lengkapi`}
-              className="text-xs text-primary hover:underline"
-            >
-              {isIncomplete ? "Lengkapi Data →" : "Edit Data Pribadi →"}
+            <a href={`/${slug}/akun/lengkapi`} className="text-xs text-primary hover:underline">
+              {isIncomplete ? "Lengkapi →" : "Edit →"}
             </a>
           </div>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             {membershipInfo?.memberNumber && (
               <>
-                <dt className="text-muted-foreground">Nomor Anggota</dt>
+                <dt className="text-muted-foreground">No. Anggota</dt>
                 <dd className="font-mono font-medium">{membershipInfo.memberNumber}</dd>
               </>
             )}
             {identity.stambuk && (
               <>
-                <dt className="text-muted-foreground">No. Stambuk Gontor</dt>
+                <dt className="text-muted-foreground">Stambuk Gontor</dt>
                 <dd className="font-mono">{identity.stambuk}</dd>
               </>
             )}
@@ -160,23 +111,20 @@ export default async function AkunPage({ params }: { params: Params }) {
           </dl>
           {identity.memberId && (
             <div className="pt-2 border-t border-border">
-              <a
-                href={`/${slug}/anggota/${identity.memberId}`}
-                className="text-sm text-primary hover:underline"
-              >
-                Lihat Detail Profil →
+              <a href={`/${slug}/anggota/${identity.memberId}`} className="text-sm text-primary hover:underline">
+                Lihat profil lengkap →
               </a>
             </div>
           )}
         </div>
       )}
 
-      {/* ── Quick links — data anggota (member saja) ── */}
+      {/* Quick links data anggota */}
       {isMember && (
         <div className="grid grid-cols-2 gap-3">
           {[
-            { href: `/${slug}/akun/pesantren`, icon: BookOpen,  label: "Data Pesantren", desc: "Keterlibatan di pesantren" },
-            { href: `/${slug}/akun/usaha`,     icon: Building2, label: "Data Usaha",     desc: "Usaha & bisnis Anda" },
+            { href: `/${slug}/akun/pesantren`, icon: BookOpen,  label: "Pesantren", desc: "Data keterlibatan pesantren" },
+            { href: `/${slug}/akun/usaha`,     icon: Building2, label: "Usaha",     desc: "Data usaha & bisnis" },
           ].map(({ href, icon: Icon, label, desc }) => (
             <a key={href} href={href}
               className="flex items-center gap-3 rounded-xl border border-border p-4 hover:border-primary/50 hover:bg-muted/40 transition-all">
@@ -187,23 +135,19 @@ export default async function AkunPage({ params }: { params: Params }) {
               </div>
             </a>
           ))}
-
         </div>
       )}
 
-      {/* ── Quick links — layanan publik ── */}
+      {/* Quick links layanan */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { href: `/${slug}/akun/transaksi`, icon: Receipt,      label: "Transaksi",  desc: "Riwayat invoice & pembayaran" },
-          { href: `/${slug}/campaign`,        icon: Heart,        label: "Donasi",     desc: "Kampanye & infaq" },
-          { href: `/${slug}/agenda`,          icon: CalendarDays, label: "Agenda",     desc: "Event & kegiatan" },
-          { href: `/${slug}/produk`,          icon: ShoppingBag,  label: "Produk",     desc: "Belanja produk" },
+          { href: `/${slug}/akun/transaksi`, icon: Receipt,      label: "Transaksi", desc: "Riwayat invoice & pembayaran" },
+          { href: `/${slug}/campaign`,        icon: Heart,        label: "Donasi",    desc: "Kampanye & infaq" },
+          { href: `/${slug}/agenda`,          icon: CalendarDays, label: "Agenda",    desc: "Event & kegiatan" },
+          { href: `/${slug}/produk`,          icon: ShoppingBag,  label: "Produk",    desc: "Belanja produk" },
         ].map(({ href, icon: Icon, label, desc }) => (
-          <a
-            key={href}
-            href={href}
-            className="flex items-center gap-3 rounded-xl border border-border p-4 hover:border-primary/50 hover:bg-muted/40 transition-all"
-          >
+          <a key={href} href={href}
+            className="flex items-center gap-3 rounded-xl border border-border p-4 hover:border-primary/50 hover:bg-muted/40 transition-all">
             <Icon className="h-5 w-5 text-primary shrink-0" />
             <div className="min-w-0">
               <p className="font-medium text-sm">{label}</p>
@@ -211,15 +155,6 @@ export default async function AkunPage({ params }: { params: Params }) {
             </div>
           </a>
         ))}
-      </div>
-
-      {/* ── Sign out ── */}
-      <div className="pt-2 border-t border-border">
-        <form action="/api/auth/sign-out" method="POST">
-          <button type="submit" className="text-sm text-muted-foreground hover:text-destructive transition-colors">
-            Keluar dari akun
-          </button>
-        </form>
       </div>
     </div>
   );

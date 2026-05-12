@@ -1,0 +1,74 @@
+"use client";
+
+import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard, User, Receipt, ClipboardList,
+  BookOpen, Building2, Store, LogOut,
+} from "lucide-react";
+
+type NavItem = {
+  href:       string;
+  label:      string;
+  icon:       React.ElementType;
+  memberOnly: boolean;
+};
+
+const NAV_ITEMS: NavItem[] = [
+  { href: "",              label: "Beranda",      icon: LayoutDashboard, memberOnly: false },
+  { href: "/profil",       label: "Profil",       icon: User,            memberOnly: false },
+  { href: "/transaksi",    label: "Transaksi",    icon: Receipt,         memberOnly: false },
+  { href: "/lengkapi",     label: "Data Diri",    icon: ClipboardList,   memberOnly: true  },
+  { href: "/pesantren",    label: "Pesantren",    icon: BookOpen,        memberOnly: true  },
+  { href: "/usaha",        label: "Usaha",        icon: Building2,       memberOnly: true  },
+  { href: "/mitra",        label: "Mitra",        icon: Store,           memberOnly: true  },
+];
+
+type Props = {
+  slug:     string;
+  isMember: boolean;
+};
+
+export function AkunNav({ slug, isMember }: Props) {
+  const pathname = usePathname();
+  const base     = `/${slug}/akun`;
+
+  const items = NAV_ITEMS.filter((i) => isMember || !i.memberOnly);
+
+  return (
+    <nav className="space-y-0.5">
+      {items.map(({ href, label, icon: Icon }) => {
+        const fullHref  = `${base}${href}`;
+        const isActive  = href === ""
+          ? pathname === base
+          : pathname.startsWith(fullHref);
+
+        return (
+          <a
+            key={fullHref}
+            href={fullHref}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+              isActive
+                ? "bg-primary text-primary-foreground font-medium"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            {label}
+          </a>
+        );
+      })}
+
+      <div className="pt-2 mt-2 border-t border-border">
+        <form action="/api/auth/sign-out" method="POST">
+          <button
+            type="submit"
+            className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-destructive transition-colors"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            Keluar
+          </button>
+        </form>
+      </div>
+    </nav>
+  );
+}
