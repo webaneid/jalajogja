@@ -69,7 +69,7 @@ const REVENUES: ComboboxOption[] = [
 
 function newEntry(): Entry {
   return { _key: crypto.randomUUID(), name:"", brand:"", description:"",
-    category:"Jasa", sector:"Teknologi", legality:"", position:"",
+    category:"", sector:"", legality:"", position:"",
     employees:"", branches:"", revenue:"",
     phone:"", whatsapp:"", email:"", instagram:"", facebook:"", website:"",
     isPhonePublic: false, isWhatsappPublic: false, _sameAsPhone: false };
@@ -113,8 +113,8 @@ export default function UsahaPage() {
               name:             e.name        ?? "",
               brand:            e.brand       ?? "",
               description:      e.description ?? "",
-              category:         e.category    ?? "Jasa",
-              sector:           e.sector      ?? "Teknologi",
+              category:         e.category    ?? "",
+              sector:           e.sector      ?? "",
               legality:         e.legality    ?? "",
               position:         e.position    ?? "",
               employees:        e.employees   ?? "",
@@ -143,16 +143,20 @@ export default function UsahaPage() {
 
   async function handleSave() {
     setSaving(true); setError(null); setSaved(false);
-    const valid = entries.filter(e => e.name.trim() && e.category && e.sector);
-    if (valid.length < entries.length) {
-      setError("Nama usaha, kategori, dan sektor wajib diisi untuk setiap usaha.");
-      setSaving(false); return;
+    for (const e of entries) {
+      if (!e.name.trim())        { setError(`Nama usaha wajib diisi.`);        setSaving(false); return; }
+      if (!e.description.trim()) { setError(`Deskripsi usaha wajib diisi.`);   setSaving(false); return; }
+      if (!e.category)           { setError(`Kategori wajib dipilih.`);         setSaving(false); return; }
+      if (!e.sector)             { setError(`Sektor wajib dipilih.`);           setSaving(false); return; }
+      if (!e.employees)          { setError(`Jumlah karyawan wajib dipilih.`);  setSaving(false); return; }
+      if (!e.branches)           { setError(`Jumlah cabang wajib dipilih.`);    setSaving(false); return; }
+      if (!e.revenue)            { setError(`Omzet tahunan wajib dipilih.`);    setSaving(false); return; }
     }
     try {
       const res = await fetch("/api/akun/member-business", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ entries: valid.map(e => ({
+        body:    JSON.stringify({ entries: entries.map(e => ({
           name:        e.name.trim(),
           brand:       e.brand.trim()       || undefined,
           description: e.description.trim() || undefined,
@@ -224,7 +228,7 @@ export default function UsahaPage() {
                 onChange={ev => update(e._key, { brand: ev.target.value })}
                 placeholder="Brand / merek dagang" />
             </Field>
-            <Field label="Deskripsi" optional>
+            <Field label="Deskripsi">
               <input className={inputCls} value={e.description}
                 onChange={ev => update(e._key, { description: ev.target.value })}
                 placeholder="Ringkasan singkat usaha" />
@@ -266,7 +270,7 @@ export default function UsahaPage() {
           {/* ── Skala ── */}
           <p className="text-sm font-semibold text-muted-foreground pt-2">Skala Usaha</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Field label="Karyawan" optional>
+            <Field label="Karyawan">
               <Combobox
                 options={EMPLOYEES}
                 value={e.employees}
@@ -274,7 +278,7 @@ export default function UsahaPage() {
                 placeholder="Jumlah karyawan"
               />
             </Field>
-            <Field label="Cabang" optional>
+            <Field label="Cabang">
               <Combobox
                 options={BRANCHES}
                 value={e.branches}
@@ -282,7 +286,7 @@ export default function UsahaPage() {
                 placeholder="Jumlah cabang"
               />
             </Field>
-            <Field label="Omzet / tahun" optional>
+            <Field label="Omzet / tahun">
               <Combobox
                 options={REVENUES}
                 value={e.revenue}
