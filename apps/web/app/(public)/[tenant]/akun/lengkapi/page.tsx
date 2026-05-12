@@ -829,6 +829,7 @@ export default function LengkapiPage() {
                   <WilayahSelect
                     defaultValue={addrWilayah}
                     onChange={v => { setAddrWilayah(v); }}
+                    tenantSlug={slug}
                     hints={{
                       province: "Publik",
                       regency:  "Publik",

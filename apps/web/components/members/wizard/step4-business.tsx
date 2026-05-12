@@ -227,6 +227,7 @@ function BusinessCard({
   index,
   canRemove,
   disabled,
+  tenantSlug,
   onChange,
   onWilayahChange,
   onRemove,
@@ -235,6 +236,7 @@ function BusinessCard({
   index: number
   canRemove: boolean
   disabled: boolean
+  tenantSlug: string
   onChange: <K extends keyof BusinessEntry>(field: K, value: BusinessEntry[K]) => void
   onWilayahChange: (val: WilayahValue) => void
   onRemove: () => void
@@ -434,7 +436,7 @@ function BusinessCard({
         </div>
 
         {addressMode === "indonesia" ? (
-          <WilayahSelect onChange={onWilayahChange} disabled={disabled} />
+          <WilayahSelect onChange={onWilayahChange} disabled={disabled} tenantSlug={tenantSlug} />
         ) : (
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-foreground">
@@ -674,6 +676,7 @@ export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Ste
           index={index}
           canRemove={entries.length > 1}
           disabled={loading}
+          tenantSlug={slug}
           onChange={(field, value) => updateEntry(entry.id, field, value)}
           onWilayahChange={(val) => updateEntryWilayah(entry.id, val)}
           onRemove={() => removeEntry(entry.id)}

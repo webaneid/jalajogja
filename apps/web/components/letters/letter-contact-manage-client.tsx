@@ -276,6 +276,7 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
               <WilayahSelect
                 defaultValue={form.wilayah}
                 onChange={(val) => setForm((f) => ({ ...f, wilayah: val }))}
+                tenantSlug={slug}
               />
             </div>
           </div>

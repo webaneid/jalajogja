@@ -56,6 +56,11 @@ export interface WilayahValue {
 interface WilayahSelectProps {
   /** Nilai awal untuk mode edit */
   defaultValue?: WilayahValue
+  /**
+   * Slug tenant — jika diisi dan defaultValue.provinceId kosong,
+   * komponen otomatis fetch provinsi default dari settings contact tenant.
+   */
+  tenantSlug?: string
   /** Dipanggil setiap nilai berubah */
   onChange?: (value: WilayahValue) => void
   /** Nama prefix untuk hidden inputs — misal "address" → address_province_id, dst. */
@@ -175,6 +180,7 @@ function Combobox<T extends { id: number; name: string }>({
 
 export function WilayahSelect({
   defaultValue,
+  tenantSlug,
   onChange,
   namePrefix,
   disabled = false,
@@ -201,6 +207,17 @@ export function WilayahSelect({
   const [regencies, setRegencies] = React.useState<Regency[]>([])
   const [districts, setDistricts] = React.useState<District[]>([])
   const [villages, setVillages] = React.useState<Village[]>([])
+
+  // Auto-prefill provinsi dari settings/contact tenant jika tidak ada defaultValue.provinceId
+  React.useEffect(() => {
+    if (!tenantSlug || defaultValue?.provinceId) return
+    fetch(`/api/ref/tenant-default-address?slug=${tenantSlug}`)
+      .then((r) => r.json())
+      .then((d: { provinceId?: number | null }) => {
+        if (d.provinceId) setProvinceId(d.provinceId)
+      })
+      .catch(() => {})
+  }, [tenantSlug, defaultValue?.provinceId])
 
   // State loading
   const [loadingProvinces, setLoadingProvinces] = React.useState(true)

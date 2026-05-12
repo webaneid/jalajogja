@@ -135,7 +135,7 @@ export function AkunFormClient({ slug }: { slug: string }) {
             />
           </div>
         ) : (
-          <WilayahSelect onChange={setWilayah} />
+          <WilayahSelect onChange={setWilayah} tenantSlug={slug} />
         )}
 
         <div className="space-y-1.5">

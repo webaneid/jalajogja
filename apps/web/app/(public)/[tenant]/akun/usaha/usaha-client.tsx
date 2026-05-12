@@ -79,13 +79,13 @@ const REVENUES: ComboboxOption[] = [
   { value: "Diatas 2M",     label: "Di atas Rp 2 Miliar" },
 ];
 
-function newEntry(defaultProvinceId?: number): Entry {
+function newEntry(): Entry {
   return {
     _key: crypto.randomUUID(), name:"", brand:"", description:"",
     category:"", sector:"", legality:"", position:"",
     employees:"", branches:"", revenue:"",
     _addressMode: "indonesia",
-    addressCountry: "", addressProvinceId: defaultProvinceId ?? null,
+    addressCountry: "", addressProvinceId: null,
     addressRegencyId: null, addressDistrictId: null, addressVillageId: null,
     addressDetail: "", addressPostalCode: "",
     phone:"", whatsapp:"", email:"", instagram:"", facebook:"", website:"",
@@ -119,7 +119,7 @@ type ApiRow = {
   instagram?: string; facebook?: string; website?: string;
 };
 
-export function UsahaClient({ slug, defaultProvinceId }: { slug: string; defaultProvinceId?: number }) {
+export function UsahaClient({ slug }: { slug: string }) {
   const router = useRouter();
 
   const [entries, setEntries] = React.useState<Entry[]>([]);
@@ -373,6 +373,7 @@ export function UsahaClient({ slug, defaultProvinceId }: { slug: string; default
                   villageId:  e.addressVillageId  ?? undefined,
                 }}
                 onChange={val => handleWilayah(e._key, val)}
+                tenantSlug={slug}
               />
             ) : (
               <Field label="Negara" optional>
@@ -460,7 +461,7 @@ export function UsahaClient({ slug, defaultProvinceId }: { slug: string; default
         </div>
       ))}
 
-      <button type="button" onClick={() => setEntries(p => [...p, newEntry(defaultProvinceId)])}
+      <button type="button" onClick={() => setEntries(p => [...p, newEntry()])}
         className="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-2.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors w-full justify-center">
         <Plus className="h-4 w-4" />
         Tambah Usaha

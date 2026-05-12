@@ -192,6 +192,7 @@ export default function AkunDataPage() {
         <WilayahSelect
           defaultValue={wilayah}
           onChange={setWilayah}
+          tenantSlug={slug}
         />
 
         <div className="space-y-1.5">

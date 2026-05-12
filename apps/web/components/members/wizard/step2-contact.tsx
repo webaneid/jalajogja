@@ -536,6 +536,7 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
             onChange={setWilayah}
             defaultValue={wilayah}
             disabled={loading}
+            tenantSlug={slug}
             hints={{
               province: "Publik",
               regency:  "Publik",
