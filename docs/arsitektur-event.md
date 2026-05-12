@@ -271,6 +271,238 @@ Toko       → /toko
 
 ---
 
+## Front-end Publik — Perencanaan (Step 7–10)
+
+> **Status**: Belum diimplementasi. Dokumen ini adalah perencanaan lengkap.
+
+---
+
+### Keputusan Arsitektur yang Dikunci
+
+**1. URL public event = `/agenda`** (bukan `/event` — konflik dengan dashboard admin)
+```
+/{slug}/agenda              → arsip semua event mendatang
+/{slug}/agenda/{slug}       → detail event + form registrasi
+                              (pindah dari /event/{slug} yang sudah ada)
+nav-menu.ts case "event" → update ke /{slug}/agenda
+```
+
+**2. Alur registrasi: tetap direct (bukan cart)**
+- Event gratis: form → confirmed → donation prompt (jika admin aktifkan)
+- Event berbayar: pilih tiket → add ke cart → di keranjang: donation prompt → checkout
+- Alasan: data peserta (nama, HP, email) per tiket tidak fit di cart model
+
+**3. Donation Prompt — Opsi B (di keranjang)**
+Prompt donasi tampil di halaman `/keranjang` saat ada tiket event yang punya `linked_campaign_id`.
+Bukan di event detail page — agar tidak mengejutkan user yang baru saja add ke cart.
+
+**4. EventCard + EventsSection menggantikan placeholder di landing-template**
+`EventsSection` di `landing-template.tsx` saat ini adalah komponen inline sederhana.
+Diganti dengan sistem Card+Section yang proper (3 variant, 3 design) sesuai arsitektur universal.
+
+---
+
+### Step 7 — Schema Tambahan
+
+**Dua kolom baru di `events`:**
+
+```sql
+-- Drizzle schema (createEventsTable)
+showDonationPrompt: boolean("show_donation_prompt").notNull().default(false),
+linkedCampaignId:   uuid("linked_campaign_id"),  -- FK → campaigns.id via DDL
+
+-- DDL (create-tenant-schema.ts)
+ALTER TABLE "{s}".events
+  ADD COLUMN IF NOT EXISTS show_donation_prompt BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS linked_campaign_id   UUID REFERENCES "{s}".campaigns(id) ON DELETE SET NULL;
+```
+
+**EventForm — tambah section "Donasi Terkait":**
+```
+┌─────────────────────────────────────────────────┐
+│  Prompt Donasi (opsional)                       │
+│  [ ] Tampilkan prompt donasi setelah pendaftaran│
+│                                                 │
+│  Campaign:                                      │
+│  [Pilih campaign aktif ▼]  ← combobox           │
+│  Nominal dari setting donasi tenant             │
+└─────────────────────────────────────────────────┘
+```
+
+Muncul di sidebar EventForm, setelah section Pengaturan Tampilan.
+Combobox berisi semua campaign `status=active` — tidak filter tipe (donasi/zakat/wakaf/qurban bebas).
+
+---
+
+### Step 8 — EventCard + EventsSection (Card+Section System)
+
+#### EventCardData
+
+```typescript
+// lib/event-card-templates.ts (file baru)
+export type EventCardData = {
+  id:           string;
+  title:        string;
+  slug:         string;
+  description:  string | null;
+  eventType:    "offline" | "online" | "hybrid";
+  coverUrl:     string | null;
+  coverVariants?: Record<string, string> | null;
+  categoryName: string | null;
+  startsAt:     string | null;   // ISO string
+  endsAt:       string | null;
+  location:     string | null;
+  lowestPrice:  string | null;   // null = gratis; MIN(price) dari tiket aktif
+  status:       "published" | "completed";
+};
+
+export const EVENT_CARD_VARIANTS = ["grid", "list", "ringkas"] as const;
+```
+
+#### Card Variants
+
+| Variant | Deskripsi | Dipakai di |
+|---------|-----------|------------|
+| `grid` | Cover + badge tanggal + judul + lokasi + harga/gratis | Design 1, Design 2 (kecil) |
+| `list` | Horizontal: tanggal besar di kiri + judul + info | Design 3 (Agenda) |
+| `ringkas` | Cover + tanggal + judul saja | Design 2 (featured besar) |
+
+**Badge tanggal** menjadi elemen visual kunci EventCard — merah/primary, menonjol.
+
+#### Section Designs
+
+```typescript
+// lib/events-section-designs.ts (file baru)
+export type EventsSectionData = {
+  title:        string;
+  count:        number;          // default 6
+  categoryId:   string | null;
+  upcomingOnly: boolean;         // default true
+};
+
+// Design 1 — Grid Event: 3 kolom event-card-grid, badge tanggal menonjol
+// Design 2 — Event Utama: 1 featured besar + list 3 event lain (event-card-list)
+// Design 3 — Agenda: event-card-list vertikal, tanggal di kolom kiri sebagai aksen
+```
+
+#### Integrasi Landing Page
+
+Replace `EventsSection` placeholder di `landing-template.tsx`:
+```typescript
+// Sebelum: inline EventsSection lokal di landing-template.tsx
+// Sesudah: import EventsSection dari sections/events/events-section.tsx
+
+import { EventsSection } from "@/components/website/public/sections/events/events-section";
+
+case "events": return (
+  <EventsSection
+    data={section.data as EventsSectionData}
+    variant={(section.variant ?? "1") as EventsSectionDesignId}
+    tenantClient={tenantClient}
+    tenantSlug={tenantSlug}
+  />
+);
+```
+
+**Update section-editors.tsx** — ganti EventsEditor yang sederhana dengan editor yang support `categoryId` + `upcomingOnly` toggle.
+
+---
+
+### Step 9 — Halaman Arsip `/{slug}/agenda`
+
+```
+app/(public)/[tenant]/agenda/
+├── page.tsx              → arsip event mendatang
+└── [slug]/
+    └── page.tsx          → pindah dari /event/[slug] (atau redirect)
+```
+
+**Archive page** (`/agenda`):
+- Filter kategori (chips horizontal)
+- Toggle: "Mendatang" vs "Semua"
+- Grid 3 kolom EventCard grid
+- Tidak ada pagination — event biasanya sedikit (max 20)
+
+**Detail page** (`/agenda/{slug}`):
+- Pindah konten dari `/(public)/[tenant]/event/[slug]`
+- Halaman lama `/event/{slug}` → redirect 301 ke `/agenda/{slug}` (backward compat)
+- Form registrasi tetap sama (EventRegisterForm)
+
+**Setelah registrasi berhasil (gratis):**
+- Jika `event.show_donation_prompt = true` → tampilkan DonationPromptModal
+- Modal berisi info campaign + nominal chips (dari `settings.donation_config.recommended_amounts`)
+- "Ya, Donasi" → addToCartAction → redirect ke `/keranjang`
+- "Tidak" → tampilkan halaman konfirmasi biasa
+
+---
+
+### Step 10 — Donation Prompt di Keranjang
+
+**Untuk event berbayar** dengan `show_donation_prompt = true`:
+
+Halaman `/keranjang` sudah ada. Tambah logika:
+1. Saat render keranjang, fetch events dari ticket `itemId`-nya untuk cek `show_donation_prompt + linked_campaign_id`
+2. Jika ada tiket event yang linked campaign-nya belum ada di cart → tampilkan banner:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  💚  Dukung kampanye "Beasiswa IKPM Gontor"              │
+│  Yuk, tambahkan donasi sekalian untuk event ini!         │
+│                                                          │
+│  [Rp 10K] [Rp 25K] [Rp 50K] [Nominal lain...]          │
+│                                              [Tambahkan] │
+└──────────────────────────────────────────────────────────┘
+```
+
+3. Klik "Tambahkan" → `addToCartAction(itemType:"donation", itemId:campaign.id)` → banner hilang → checkout bersama
+
+**Catatan**: Banner hanya tampil sekali per session (atau sampai donasi ditambahkan). Jika user sudah add donasi dari campaign yang sama → banner tidak tampil.
+
+---
+
+### Urutan Implementasi
+
+```
+Step E7: Schema
+  - Tambah show_donation_prompt + linked_campaign_id ke events (Drizzle + DDL)
+  - Update EventForm: toggle + campaign combobox
+  - Migration tenant existing
+
+Step E8: EventCard + EventsSection
+  - lib/event-card-templates.ts
+  - lib/events-section-designs.ts
+  - EventCard 3 variant (grid/list/ringkas)
+  - EventsSection 3 design (Grid/Utama/Agenda)
+  - Replace placeholder di landing-template.tsx
+  - Update section-editors.tsx
+
+Step E9: Halaman Arsip + Detail
+  - app/(public)/[tenant]/agenda/page.tsx — arsip
+  - app/(public)/[tenant]/agenda/[slug]/page.tsx — detail (pindah dari /event/[slug])
+  - Redirect /event/{slug} → /agenda/{slug}
+  - nav-menu.ts update: "event" → /agenda
+
+Step E10: Donation Prompt
+  - DonationPromptModal komponen (untuk post-registrasi event gratis)
+  - Keranjang update: deteksi tiket event → fetch event data → tampilkan banner
+  - DonationBannerCart komponen
+```
+
+---
+
+### Status Implementasi
+
+| Fitur | Status |
+|-------|--------|
+| Schema + admin UI (Step 1–6) | ✅ Done |
+| Perencanaan front-end (Step 7–10) | ✅ Terdokumentasi |
+| **Step E7** — Schema show_donation_prompt + linked_campaign_id | 🔲 Belum |
+| **Step E8** — EventCard + EventsSection (3 variant + 3 design) | 🔲 Belum |
+| **Step E9** — Archive `/agenda` + Detail `/agenda/{slug}` | 🔲 Belum |
+| **Step E10** — Donation Prompt (post-register gratis + keranjang berbayar) | 🔲 Belum |
+
+---
+
 ## Lessons Learned
 
 ### TicketManager: diff tidak delete-all
