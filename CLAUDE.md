@@ -345,7 +345,11 @@ app/(dashboard)/[tenant]/
 - [x] **Halaman publik `/produk/kategori/{slug}`** — arsip per kategori + breadcrumb + SEO. TypeScript 0 errors.
 - [x] **Halaman publik `/produk/{slug}`** — detail produk: gallery + variasi picker + add to cart via `addToCartAction` + produk terkait. TypeScript 0 errors.
 - [~] **EventCard + EventsSection** — belum dimulai. **DITUNDA**.
-- [~] **CampaignCard + CampaignsSection** — belum dimulai. **DITUNDA**.
+- [x] **CampaignCard + CampaignsSection** — 3 variant (grid/list/ringkas), 3 design (Grid/Unggulan/Daftar), fetch layer filter tipe+kategori, terdaftar di landing page + section-editor. TypeScript 0 errors.
+- [x] **Halaman publik `/campaign`** — arsip donasi dengan filter tipe (donasi/zakat/wakaf/qurban) + kategori. URL `/campaign` (bukan `/donasi` — hindari konflik dashboard). TypeScript 0 errors.
+- [x] **Halaman publik `/campaign/{slug}`** — detail campaign + form donasi: donasi reguler (nominal chips + custom) dan qurban (hewan cards = variasi), keduanya → `addToCartAction`. Atas nama qurban di `notes`. TypeScript 0 errors.
+- [x] **Donasi/Qurban perencanaan lengkap** — arsitektur donasi rutin (Section 12 R1–R7) + front-end section (Section 11b). Docs di `docs/arsitektur-donasi.md`.
+- [~] **Donasi Rutin** — perencanaan selesai, implementasi belum. **DITUNDA** (Phase R).
 - [x] **Image System** — Phase A (variant system Sharp + 6 WebP variants + cron cleanup) + Phase B (metadata UI autosave panel) + Phase C (alt/title/caption di semua front-end post) SELESAI. Arsitektur lengkap di `docs/arsitektur-image.md`.
 - [x] **Image System Phase D — Autocrop + Variant Baru**: `square-large` (800×800); module-aware generation; `position:"attention"` (libvips smart crop); manual crop editor UI (`react-image-crop`) + `crop_data` kolom + `/api/media/[id]/recrop`. ✅ SELESAI.
 - [x] **View Counter** — DDL + Drizzle schema + `lib/view-counter.ts` + integrasi post detail + kolom admin. Arsitektur lengkap di `docs/arsitektur-views-count.md`.
@@ -2060,21 +2064,61 @@ Keputusan ini dipertahankan — tambahan `hasDashboard` juga client-side dengan 
 
 ---
 
-## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fitur Qurban + perbaikan donasi** — schema 3 tabel, pengaturan biaya penyembelihan per hewan, campaign form UI (card per hewan, sembunyikan target/nominal tetap), front-end publik `/campaign`.
-- Sesi ini: Halaman publik toko (P1–P5), cart button header, redirect loop login fix, aktivasi pengurus reuse akun, header Dashboard Admin link, pengaturan donasi (nominal rekomendasi), qurban Q1–Q5, route conflict `/donasi`→`/campaign`, UI cards qurban.
-- Ditunda: V8 stok check server-side, form donasi non-qurban di front-end, EventCard, CampaignCard.
+### [2026-05] Donasi = Alur Cart Universal, Qurban = Variasi Hewan
 
-### Status Halaman Publik Anggota
-| Link dari Dashboard | URL | Status |
-|---------------------|-----|--------|
-| Transaksi | `/{slug}/akun/transaksi` | ✅ Ada |
-| Donasi | `/{slug}/donasi` | ⬜ Belum ada |
-| Event | `/{slug}/event` | ⬜ Listing belum ada (detail `/event/[slug]` ada) |
-| Belanja | `/{slug}/toko` | ⬜ Belum ada |
+**Keputusan dikunci**: Donasi menggunakan alur cart universal identik dengan Toko.
+Tidak ada alur pembayaran terpisah untuk donasi.
+
+```
+Donasi reguler:   nominal chips → addToCartAction(itemType:"donation", itemId:campaign.id)
+Qurban:           pilih hewan   → addToCartAction(itemType:"donation", itemId:qurban_animal.id, notes:"Atas nama: X")
+```
+
+`qurban_animals` = tabel variasi untuk campaign qurban (persis seperti `product_variations`).
+Harga per orang sapi patungan = `price / split` (calculated, tidak disimpan).
+Slot patungan di-assign saat admin konfirmasi pembayaran, bukan saat add-to-cart.
+
+**`CampaignDetailClient`** — satu komponen untuk semua tipe campaign:
+- `campaignType === "qurban"` → tampilkan hewan cards
+- lainnya → tampilkan nominal chips + custom input
+- Keduanya berakhir di `addToCartAction` yang sama
+
+### [2026-05] URL Naming Pattern untuk Hindari Route Conflict
+
+Setiap kali ada halaman publik dengan nama route yang sama dengan dashboard:
+- Dashboard admin: `/{slug}/toko` → Public: `/{slug}/produk`
+- Dashboard admin: `/{slug}/donasi` → Public: `/{slug}/campaign`
+- `nav-menu.ts` diupdate setiap kali ada rename
+
+**Aturan**: sebelum buat halaman publik baru, cek apakah nama folder sudah dipakai di `(dashboard)/[tenant]/`.
+
+### [2026-05] CampaignsSection — isRecurring Belum Ada di Schema
+
+`campaigns.is_recurring` belum ditambahkan ke DB (menunggu Phase R).
+Di `campaigns-section.tsx` dan detail page: `isRecurring: false` sebagai hardcode sementara.
+Saat Phase R diimplementasikan, ganti dengan kolom aktual dari DB.
+
+---
+
+## Context Sesi Terakhir
+- Terakhir dikerjakan: **CampaignCard + CampaignsSection + halaman publik donasi (C1–C7)** — alur cart universal untuk donasi reguler dan qurban.
+- Sesi ini: Semua fitur donasi publik, qurban Q1–Q5, produk publik P1–P5, berbagai fix auth/login, dokumentasi arsitektur akun + donasi + qurban.
+- Ditunda: V8 (stok check qurban server-side), EventCard+Section, Donasi Rutin (R1–R7).
+
+### Status Halaman Publik
+
+| Fitur | URL | Status |
+|-------|-----|--------|
+| Transaksi anggota | `/{slug}/akun/transaksi` | ✅ Ada |
+| Arsip donasi/qurban | `/{slug}/campaign` | ✅ Ada |
+| Detail campaign + form | `/{slug}/campaign/{slug}` | ✅ Ada |
+| Arsip produk | `/{slug}/produk` | ✅ Ada |
+| Detail produk | `/{slug}/produk/{slug}` | ✅ Ada |
+| Event listing | `/{slug}/event` | ⬜ Belum (detail ada) |
 | Keranjang | `/{slug}/keranjang` | ✅ Ada |
 | Checkout | `/{slug}/checkout` | ✅ Ada |
 | Invoice detail | `/{slug}/invoice/[id]` | ✅ Ada |
+| Subscriptions donasi rutin | `/{slug}/akun/subscriptions` | ⬜ Belum (Phase R) |
 
 ### Known TODO
 - Role System: email SMTP sending untuk invite (saat ini hanya manual link copy)
