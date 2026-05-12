@@ -1,6 +1,6 @@
 # Arsitektur Kontak — jalajogja
 
-> Status: **PERENCANAAN** — fondasi sudah ada, refactoring konsistensi belum dikerjakan.
+> Status: **SELESAI** — refactoring konsistensi E.164 selesai 2026-05-13. DB backfill done.
 > Dokumen ini adalah sumber kebenaran tunggal untuk semua hal terkait kontak (phone, WA, email).
 
 ---
@@ -141,27 +141,30 @@ export function displayPhone(e164: string | null | undefined): string {
 
 ---
 
-## Rencana Refactoring (Urutan Eksekusi)
+## Status Implementasi
 
-### Phase 1 — Helper (fondasi)
-- [ ] Buat `lib/phone.ts` (`normalizePhone` + `displayPhone`)
+### Phase 1 — Helper ✅
+- [x] `lib/phone.ts` — `normalizePhone()` + `displayPhone()`
 
-### Phase 2 — Server Normalisasi (cegah data kotor masuk)
-- [ ] `app/api/akun/register/route.ts`
-- [ ] `app/api/akun/profile-data/route.ts`
-- [ ] `app/api/akun/member-contact/route.ts`
-- [ ] `members/actions.ts` (upsertMemberContactAction)
-- [ ] `event/actions.ts` (registerForEventAction)
+### Phase 2 — Server Normalisasi ✅
+- [x] `app/api/akun/register/route.ts`
+- [x] `app/api/akun/profile-data/route.ts`
+- [x] `app/api/akun/member-contact/route.ts`
+- [x] `members/actions.ts` (upsertMemberContactAction + business contact)
+- [x] `event/actions.ts` (registerForEventAction)
+- [x] `cart/actions.ts` (checkoutAction)
 
-### Phase 3 — Input Forms
-- [ ] `register-form.tsx` → ganti input phone + WA ke `<PhoneInput>`
-- [ ] `event-register-form.tsx` → ganti input phone ke `<PhoneInput>`
-- [ ] Audit: checkout form, donasi form
+### Phase 3 — Input Forms ✅
+- [x] `register-form.tsx` → PhoneInput
+- [x] `event-register-form.tsx` → PhoneInput
+- [x] `checkout-form.tsx` → PhoneInput
 
-### Phase 4 — Display
-- [ ] `anggota/[id]/page.tsx` → `displayPhone()`
-- [ ] Dashboard member detail → `displayPhone()`
-- [ ] Event registration list → `displayPhone()`
+### Phase 4 — Display ✅
+- [x] `anggota/[id]/page.tsx` → `displayPhone()`
+- [x] `members/[id]/page.tsx` → `displayPhone()`
+- [x] `members/[id]/member-data-sections.tsx` → `displayPhone()` (biz contact)
+- [x] `event-checkin-client.tsx` → `displayPhone()`
+- [x] `event-registration-list.tsx` → `displayPhone()`
 
 ### Phase 5 — Backfill Data Lama
 ```sql
