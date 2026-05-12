@@ -316,15 +316,13 @@ export default async function PublicEventPage({
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header minimal org */}
-      <header className="border-b border-border bg-card px-6 py-4">
-        <div className="max-w-3xl mx-auto flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-primary" />
-          <span className="font-semibold text-sm">{tenant.name}</span>
-        </div>
-      </header>
-
       <main className="max-w-5xl mx-auto px-4 py-8">
+        {/* Breadcrumb */}
+        <div className="text-xs text-muted-foreground mb-6 flex items-center gap-2">
+          <a href={`/${tenantSlug}/agenda`} className="hover:text-foreground transition-colors">Agenda</a>
+          <span>/</span>
+          <span className="text-foreground truncate max-w-xs">{event.title}</span>
+        </div>
         <div className="grid gap-6 lg:grid-cols-[1fr_360px] items-start">
 
           {/* ── Kiri: Gambar + Info + Deskripsi ── */}
@@ -544,9 +542,6 @@ export default async function PublicEventPage({
         </div>
       </main>
 
-      <footer className="border-t border-border mt-12 px-6 py-4 text-center text-xs text-muted-foreground">
-        {tenant.name} · Powered by jalajogja
-      </footer>
     </div>
   );
 }
