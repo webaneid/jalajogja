@@ -17,6 +17,7 @@ import {
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { MemberEditShell } from "@/components/members/member-edit-shell";
+import { ChangePasswordSection } from "@/components/members/change-password-section";
 import type { EducationEntry } from "@/components/members/wizard/step3-education";
 import type { BusinessEntry } from "@/components/members/wizard/step4-business";
 import type { Step1DefaultValues } from "@/components/members/wizard/step1-identity";
@@ -49,6 +50,7 @@ export default async function EditMemberPage({
         graduationPeriod: members.graduationPeriod,
         professionId:     members.professionId,
         waliSantri:       members.waliSantri,
+        betterAuthUserId: members.betterAuthUserId,
         // Kontak
         contactId: members.contactId,
         phone: contacts.phone,
@@ -263,6 +265,14 @@ export default async function EditMemberPage({
         defaultEducations={defaultEducations}
         defaultBusinesses={defaultBusinesses}
       />
+
+      <div className="mt-8">
+        <ChangePasswordSection
+          slug={slug}
+          memberId={memberId}
+          hasAccount={!!memberRow.betterAuthUserId}
+        />
+      </div>
     </div>
   );
 }

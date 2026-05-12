@@ -13,10 +13,12 @@ import {
   memberBusinesses,
   memberPesantren,
   generateMemberNumber,
+  account,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess }   from "@/lib/permissions";
 import { normalizePhone }  from "@/lib/phone";
+import { hashPassword }    from "better-auth/crypto";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 // Catatan: phone/email/address sudah dipindah ke helper tables (contacts, addresses)
@@ -675,5 +677,54 @@ export async function removeMemberFromTenantAction(
   } catch (err) {
     console.error("[removeMemberFromTenantAction]", err);
     return { success: false, error: "Gagal menghapus." };
+  }
+}
+
+// ─── Ubah Password User ──────────────────────────────────────────────────────
+
+export async function changeUserPasswordAction(
+  slug:     string,
+  memberId: string,
+  newPassword: string,
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota"))
+    return { success: false, error: "Akses ditolak." };
+
+  if (!newPassword || newPassword.length < 8)
+    return { success: false, error: "Password minimal 8 karakter." };
+
+  try {
+    // Cari betterAuthUserId dari member
+    const [member] = await db
+      .select({ betterAuthUserId: members.betterAuthUserId })
+      .from(members)
+      .where(eq(members.id, memberId))
+      .limit(1);
+
+    if (!member?.betterAuthUserId)
+      return { success: false, error: "Anggota ini belum punya akun login." };
+
+    const hashed = await hashPassword(newPassword);
+
+    // Update di tabel account (providerId = 'credential')
+    const result = await db
+      .update(account)
+      .set({ password: hashed, updatedAt: new Date() })
+      .where(
+        and(
+          eq(account.userId, member.betterAuthUserId),
+          eq(account.providerId, "credential"),
+        )
+      );
+
+    if ((result as unknown as { count: number }).count === 0)
+      return { success: false, error: "Akun credential tidak ditemukan." };
+
+    return { success: true };
+  } catch (err) {
+    console.error("[changeUserPasswordAction]", err);
+    return { success: false, error: "Gagal mengubah password." };
   }
 }
