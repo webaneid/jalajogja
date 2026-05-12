@@ -1,5 +1,5 @@
 // Halaman publik event — tanpa auth, siapapun bisa akses dan mendaftar
-import { createTenantDb, db, tenants, members, getSettings } from "@jalajogja/db";
+import { createTenantDb, db, tenants, members, contacts, getSettings } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import { eq, and, count, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { CalendarDays, MapPin, Globe, Users, Ticket, MapIcon, UserCheck } from "lucide-react";
 import { EventRegisterForm } from "@/components/event/event-register-form";
+import { renderBody } from "@/lib/letter-render";
 
 type BankAccount = {
   id: string;
@@ -23,12 +24,56 @@ type QrisAccount = {
   categories: string[];
 };
 
-function formatDate(d: Date | null) {
-  if (!d) return "—";
-  return new Intl.DateTimeFormat("id-ID", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  }).format(new Date(d));
+const TZ = "Asia/Jakarta";
+
+function fmtTime(d: Date) {
+  return new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TZ }).format(d);
+}
+
+// Tanggal pintar: hari sama → jam range; bulan sama → hari-hari range; beda bulan → full range
+function formatEventDateRange(startsAt: Date | null, endsAt: Date | null): string {
+  if (!startsAt) return "—";
+
+  const s = new Date(startsAt);
+  const e = endsAt ? new Date(endsAt) : null;
+
+  const opts = (o: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("id-ID", { ...o, timeZone: TZ });
+
+  const sDateFull = opts({ weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(s);
+
+  if (!e) return `${sDateFull}, Pukul ${fmtTime(s)} WIB`;
+
+  // Bandingkan komponen tanggal di timezone WIB
+  const [sDay, sMonth, sYear] = [
+    opts({ day: "numeric" }).format(s),
+    opts({ month: "long"  }).format(s),
+    opts({ year: "numeric" }).format(s),
+  ];
+  const [eDay, eMonth, eYear] = [
+    opts({ day: "numeric" }).format(e),
+    opts({ month: "long"  }).format(e),
+    opts({ year: "numeric" }).format(e),
+  ];
+
+  const sTimeStr = fmtTime(s);
+  const eTimeStr = fmtTime(e);
+
+  if (sDay === eDay && sMonth === eMonth && sYear === eYear) {
+    // Hari yang sama
+    return `${sDateFull}, Pukul ${sTimeStr} - ${eTimeStr} WIB`;
+  }
+
+  if (sMonth === eMonth && sYear === eYear) {
+    // Beda hari, bulan sama
+    const sWeekday = opts({ weekday: "long" }).format(s);
+    const eWeekday = opts({ weekday: "long" }).format(e);
+    return `${sWeekday} - ${eWeekday}, ${sDay} - ${eDay} ${sMonth} ${sYear}, Pukul ${sTimeStr} - ${eTimeStr} WIB`;
+  }
+
+  // Beda bulan
+  const eDateFull = opts({ weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(e);
+  return `${sDateFull} - ${eDateFull}`;
 }
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -164,13 +209,27 @@ export default async function PublicEventPage({
   let defaultAttendeePhone = "";
   let defaultAttendeeEmail = "";
   if (session?.user?.id) {
-    const [member] = await db.select({ name: members.name, contactId: members.contactId })
-      .from(members).where(eq(members.betterAuthUserId, session.user.id)).limit(1);
+    const [member] = await db
+      .select({ name: members.name, contactId: members.contactId })
+      .from(members)
+      .where(eq(members.betterAuthUserId, session.user.id))
+      .limit(1);
     if (member) {
       defaultAttendeeName = member.name ?? "";
-      // Phone/email diambil dari contacts — skip jika tidak ada contactId
+      if (member.contactId) {
+        const [contact] = await db
+          .select({ phone: contacts.phone, whatsapp: contacts.whatsapp, email: contacts.email })
+          .from(contacts)
+          .where(eq(contacts.id, member.contactId))
+          .limit(1);
+        if (contact) {
+          defaultAttendeePhone = contact.whatsapp ?? contact.phone ?? "";
+          defaultAttendeeEmail = contact.email ?? "";
+        }
+      }
     }
     if (!defaultAttendeeName) defaultAttendeeName = session.user.name ?? "";
+    if (!defaultAttendeeEmail) defaultAttendeeEmail = session.user.email ?? "";
   }
 
   // Donation prompt data
@@ -221,8 +280,7 @@ export default async function PublicEventPage({
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <CalendarDays className="h-4 w-4" />
-              {formatDate(event.startsAt)}
-              {event.endsAt && ` s/d ${formatDate(event.endsAt)}`}
+              {formatEventDateRange(event.startsAt, event.endsAt)}
             </span>
             {(event.eventType === "offline" || event.eventType === "hybrid") && event.location && (
               <span className="inline-flex items-center gap-1.5">
@@ -268,7 +326,7 @@ export default async function PublicEventPage({
             {event.description && (
               <div
                 className="prose prose-sm max-w-none text-foreground [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base"
-                dangerouslySetInnerHTML={{ __html: event.description }}
+                dangerouslySetInnerHTML={{ __html: renderBody(event.description) }}
               />
             )}
 
