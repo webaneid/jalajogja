@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, count, inArray, and, sql } from "drizzle-orm";
+import { eq, count, inArray, and, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, generateFinancialNumber, recordIncome, createLinkedInvoice, syncInvoicePayment, db as publicDb, members, contacts } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
@@ -521,22 +521,20 @@ export async function registerForEventAction(
     }
   }
 
-  // Guard double-daftar: cek pendaftaran aktif sebelumnya
-  if (resolvedMemberId || resolvedEmail) {
-    const conditions = [
-      eq(schema.eventRegistrations.eventId, data.eventId),
-      sql`${schema.eventRegistrations.status} != 'cancelled'`,
-    ];
-    if (resolvedMemberId) {
-      conditions.push(eq(schema.eventRegistrations.memberId, resolvedMemberId));
-    } else {
-      conditions.push(eq(schema.eventRegistrations.attendeeEmail, resolvedEmail!));
-    }
+  // Guard double-daftar: cek via OR (memberId ATAU email) agar registrasi lama tetap terdeteksi
+  const identityOr = [];
+  if (resolvedMemberId) identityOr.push(eq(schema.eventRegistrations.memberId, resolvedMemberId));
+  if (resolvedEmail)    identityOr.push(eq(schema.eventRegistrations.attendeeEmail, resolvedEmail));
 
+  if (identityOr.length > 0) {
     const [existing] = await db
       .select({ id: schema.eventRegistrations.id })
       .from(schema.eventRegistrations)
-      .where(and(...conditions))
+      .where(and(
+        eq(schema.eventRegistrations.eventId, data.eventId),
+        sql`${schema.eventRegistrations.status} != 'cancelled'`,
+        or(...identityOr),
+      ))
       .limit(1);
 
     if (existing) return { success: false, error: "Kamu sudah terdaftar di event ini." };

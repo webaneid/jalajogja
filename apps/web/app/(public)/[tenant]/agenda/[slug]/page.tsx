@@ -1,7 +1,7 @@
 // Halaman publik event — tanpa auth, siapapun bisa akses dan mendaftar
 import { createTenantDb, db, tenants, members, contacts, getSettings } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, or, count, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
@@ -243,19 +243,13 @@ export default async function PublicEventPage({
     if (!defaultAttendeeName) defaultAttendeeName = session.user.name ?? "";
     if (!defaultAttendeeEmail) defaultAttendeeEmail = session.user.email ?? "";
 
-    // Cek apakah sudah terdaftar (by memberId atau email)
-    const dupConditions = [
-      eq(schema.eventRegistrations.eventId, event.id),
-      sql`${schema.eventRegistrations.status} != 'cancelled'`,
-    ] as Parameters<typeof and>;
+    // Cek apakah sudah terdaftar — OR antara memberId dan email agar registrasi lama
+    // (sebelum memberId disimpan) tetap terdeteksi via email
+    const identityConditions = [];
+    if (resolvedMemberId)      identityConditions.push(eq(schema.eventRegistrations.memberId, resolvedMemberId));
+    if (defaultAttendeeEmail)  identityConditions.push(eq(schema.eventRegistrations.attendeeEmail, defaultAttendeeEmail));
 
-    if (resolvedMemberId) {
-      dupConditions.push(eq(schema.eventRegistrations.memberId, resolvedMemberId));
-    } else if (defaultAttendeeEmail) {
-      dupConditions.push(eq(schema.eventRegistrations.attendeeEmail, defaultAttendeeEmail));
-    }
-
-    if (dupConditions.length > 2) {
+    if (identityConditions.length > 0) {
       const [existing] = await tenantDb
         .select({
           registrationNumber: schema.eventRegistrations.registrationNumber,
@@ -266,7 +260,11 @@ export default async function PublicEventPage({
           ticketId:           schema.eventRegistrations.ticketId,
         })
         .from(schema.eventRegistrations)
-        .where(and(...dupConditions))
+        .where(and(
+          eq(schema.eventRegistrations.eventId, event.id),
+          sql`${schema.eventRegistrations.status} != 'cancelled'`,
+          or(...identityConditions),
+        ))
         .limit(1);
       if (existing) alreadyRegistered = existing;
     }
