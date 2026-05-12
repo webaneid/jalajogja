@@ -1,5 +1,5 @@
 // Halaman publik event — tanpa auth, siapapun bisa akses dan mendaftar
-import { createTenantDb, db, tenants, members, contacts, getSettings } from "@jalajogja/db";
+import { createTenantDb, db, tenants, members, contacts, profiles, getSettings } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import { eq, and, or, count, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
@@ -240,7 +240,21 @@ export default async function PublicEventPage({
         }
       }
     }
-    if (!defaultAttendeeName) defaultAttendeeName = session.user.name ?? "";
+    // Fallback: akun publik (profiles) — phone tersimpan langsung di profiles
+    if (!resolvedMemberId) {
+      const [profile] = await db
+        .select({ name: profiles.name, phone: profiles.phone, whatsapp: profiles.whatsapp, email: profiles.email })
+        .from(profiles)
+        .where(eq(profiles.betterAuthUserId, session.user.id))
+        .limit(1);
+      if (profile) {
+        if (!defaultAttendeeName)  defaultAttendeeName  = profile.name ?? "";
+        if (!defaultAttendeePhone) defaultAttendeePhone = profile.whatsapp ?? profile.phone ?? "";
+        if (!defaultAttendeeEmail) defaultAttendeeEmail = profile.email ?? "";
+      }
+    }
+
+    if (!defaultAttendeeName)  defaultAttendeeName  = session.user.name  ?? "";
     if (!defaultAttendeeEmail) defaultAttendeeEmail = session.user.email ?? "";
 
     // Cek apakah sudah terdaftar — OR antara memberId dan email agar registrasi lama
