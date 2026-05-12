@@ -19,7 +19,7 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
 
   if (!res.ok) {
     return (
-      <div className="max-w-lg mx-auto px-4 py-12 text-center">
+      <div className="text-center py-12">
         <p className="text-muted-foreground text-sm">Gagal memuat data mitra. Silakan coba lagi.</p>
       </div>
     );
@@ -37,7 +37,7 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
   const { mitra, pendingApplication, eligibility, settings } = data;
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Handshake className="h-6 w-6 text-primary" />
         <h1 className="text-xl font-semibold">Mitra Toko</h1>

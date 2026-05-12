@@ -29,7 +29,7 @@ export default async function MitraProdukPage({ params }: { params: Params }) {
 
   if (!res.ok) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-12 text-center">
+      <div className="text-center py-12">
         <p className="text-sm text-muted-foreground">Akses ditolak. Pastikan Anda sudah terdaftar sebagai mitra aktif.</p>
         <a href={`/${slug}/akun/mitra`} className="text-sm text-primary hover:underline mt-2 block">Kembali ke Mitra</a>
       </div>
@@ -41,7 +41,7 @@ export default async function MitraProdukPage({ params }: { params: Params }) {
   const fmt = (n: string) => `Rp ${Number(n).toLocaleString("id-ID")}`;
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 space-y-5">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Package className="h-6 w-6 text-primary" />

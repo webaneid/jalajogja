@@ -52,15 +52,7 @@ export default function TransaksiPage({ params }: { params: Params }) {
   }, [slug]);
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-10 space-y-6">
-      <div className="flex items-center gap-3">
-        <a href={`/${slug}/akun`} className="text-sm text-muted-foreground hover:text-foreground">
-          ← Dashboard
-        </a>
-        <span className="text-muted-foreground">/</span>
-        <span className="text-sm">Transaksi</span>
-      </div>
-
+    <div className="space-y-6">
       <h1 className="text-xl font-bold">Riwayat Transaksi</h1>
 
       {loading && (

@@ -528,7 +528,7 @@ export default function LengkapiPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-10">
+    <div>
 
       {/* Header */}
       <div className="mb-6">

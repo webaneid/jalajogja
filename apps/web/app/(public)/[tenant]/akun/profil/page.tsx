@@ -96,16 +96,9 @@ export default function ProfilPage({ params }: { params: Params }) {
   );
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-10 space-y-8">
+    <div className="space-y-8">
 
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <a href={`/${slug}/akun`} className="hover:text-foreground transition-colors">← Dashboard</a>
-        <span>/</span>
-        <span>Edit Info Login</span>
-      </div>
-
-      <h1 className="text-xl font-bold">Edit Info Login</h1>
+      <h1 className="text-xl font-bold">Info Login</h1>
 
       {/* ── Nama tampilan ── */}
       <section className="space-y-4">

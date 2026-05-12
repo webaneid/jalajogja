@@ -168,13 +168,7 @@ export default function PesantrenPage() {
   );
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-10 space-y-6">
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <a href={`/${slug}/akun`} className="hover:text-foreground transition-colors">← Dashboard</a>
-        <span>/</span>
-        <span>Data Pesantren</span>
-      </div>
-
+    <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold">Data Pesantren</h1>
         <p className="text-sm text-muted-foreground mt-1">

@@ -51,11 +51,7 @@ export default function MitraApplyPage() {
   if (loading) return <div className="p-8 text-center text-sm text-muted-foreground">Memuat...</div>;
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
-      <a href={`/${slug}/akun/mitra`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> Kembali
-      </a>
-
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Handshake className="h-6 w-6 text-primary" />
         <h1 className="text-xl font-semibold">Daftar Menjadi Mitra</h1>
