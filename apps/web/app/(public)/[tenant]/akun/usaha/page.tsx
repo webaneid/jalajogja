@@ -13,6 +13,9 @@ type Entry = {
   position: string; employees: string; branches: string; revenue: string;
   phone: string; whatsapp: string; email: string;
   instagram: string; facebook: string; website: string;
+  isPhonePublic:    boolean;
+  isWhatsappPublic: boolean;
+  _sameAsPhone:     boolean; // UI only — tidak disimpan ke server
 };
 
 const CATEGORIES: ComboboxOption[] = [
@@ -68,7 +71,8 @@ function newEntry(): Entry {
   return { _key: crypto.randomUUID(), name:"", brand:"", description:"",
     category:"Jasa", sector:"Teknologi", legality:"", position:"",
     employees:"", branches:"", revenue:"",
-    phone:"", whatsapp:"", email:"", instagram:"", facebook:"", website:"" };
+    phone:"", whatsapp:"", email:"", instagram:"", facebook:"", website:"",
+    isPhonePublic: false, isWhatsappPublic: false, _sameAsPhone: false };
 }
 
 function Field({ label, optional, children }: { label: string; optional?: boolean; children: React.ReactNode }) {
@@ -100,25 +104,33 @@ export default function UsahaPage() {
       .then(r => r.json())
       .then((d: { data?: Partial<Entry & { addressProvinceId?: number }>[] }) => {
         if (d.data && d.data.length > 0) {
-          setEntries(d.data.map(e => ({
-            _key: crypto.randomUUID(),
-            name:        e.name        ?? "",
-            brand:       e.brand       ?? "",
-            description: e.description ?? "",
-            category:    e.category    ?? "Jasa",
-            sector:      e.sector      ?? "Teknologi",
-            legality:    e.legality    ?? "",
-            position:    e.position    ?? "",
-            employees:   e.employees   ?? "",
-            branches:    e.branches    ?? "",
-            revenue:     e.revenue     ?? "",
-            phone:       e.phone       ?? "",
-            whatsapp:    e.whatsapp    ?? "",
-            email:       e.email       ?? "",
-            instagram:   e.instagram   ?? "",
-            facebook:    e.facebook    ?? "",
-            website:     e.website     ?? "",
-          })));
+          setEntries(d.data.map(e => {
+            const phone    = e.phone    ?? "";
+            const whatsapp = e.whatsapp ?? "";
+            const sameAsPhone = !!phone && phone === whatsapp;
+            return {
+              _key: crypto.randomUUID(),
+              name:             e.name        ?? "",
+              brand:            e.brand       ?? "",
+              description:      e.description ?? "",
+              category:         e.category    ?? "Jasa",
+              sector:           e.sector      ?? "Teknologi",
+              legality:         e.legality    ?? "",
+              position:         e.position    ?? "",
+              employees:        e.employees   ?? "",
+              branches:         e.branches    ?? "",
+              revenue:          e.revenue     ?? "",
+              phone,
+              whatsapp,
+              email:            e.email       ?? "",
+              instagram:        e.instagram   ?? "",
+              facebook:         e.facebook    ?? "",
+              website:          e.website     ?? "",
+              isPhonePublic:    e.isPhonePublic    ?? false,
+              isWhatsappPublic: e.isWhatsappPublic ?? false,
+              _sameAsPhone:     sameAsPhone,
+            };
+          }));
         }
       })
       .catch(() => {})
@@ -151,9 +163,11 @@ export default function UsahaPage() {
           employees:   e.employees || undefined,
           branches:    e.branches  || undefined,
           revenue:     e.revenue   || undefined,
-          phone:       e.phone.trim()     || undefined,
-          whatsapp:    e.whatsapp.trim()  || undefined,
-          email:       e.email.trim()     || undefined,
+          phone:            e.phone.trim()    || undefined,
+          whatsapp:         e._sameAsPhone ? (e.phone.trim() || undefined) : (e.whatsapp.trim() || undefined),
+          email:            e.email.trim()   || undefined,
+          isPhonePublic:    e.isPhonePublic,
+          isWhatsappPublic: e.isWhatsappPublic,
           instagram:   e.instagram.trim() || undefined,
           facebook:    e.facebook.trim()  || undefined,
           website:     e.website.trim()   || undefined,
@@ -281,22 +295,44 @@ export default function UsahaPage() {
           {/* ── Kontak ── */}
           <p className="text-sm font-semibold text-muted-foreground pt-2">Kontak Usaha</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Telepon" optional>
+            {/* Telepon */}
+            <div className="space-y-1.5">
               <PhoneInput
                 label="Telepon"
                 value={e.phone}
-                onChange={v => update(e._key, { phone: v })}
+                onChange={v => update(e._key, { phone: v, ...(e._sameAsPhone && { whatsapp: v }) })}
                 optional
               />
-            </Field>
-            <Field label="WhatsApp" optional>
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
+                <input type="checkbox" checked={e.isPhonePublic}
+                  onChange={ev => update(e._key, { isPhonePublic: ev.target.checked })}
+                  className="rounded border-input accent-primary" />
+                Publik
+              </label>
+            </div>
+
+            {/* WhatsApp */}
+            <div className="space-y-1.5">
               <PhoneInput
                 label="WhatsApp"
-                value={e.whatsapp}
-                onChange={v => update(e._key, { whatsapp: v })}
+                value={e._sameAsPhone ? e.phone : e.whatsapp}
+                onChange={v => { if (!e._sameAsPhone) update(e._key, { whatsapp: v }); }}
+                disabled={e._sameAsPhone}
                 optional
               />
-            </Field>
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
+                <input type="checkbox" checked={e._sameAsPhone}
+                  onChange={ev => update(e._key, { _sameAsPhone: ev.target.checked, ...(ev.target.checked && { whatsapp: e.phone }) })}
+                  className="rounded border-input accent-primary" />
+                Sama dengan nomor telepon
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
+                <input type="checkbox" checked={e.isWhatsappPublic}
+                  onChange={ev => update(e._key, { isWhatsappPublic: ev.target.checked })}
+                  className="rounded border-input accent-primary" />
+                Publik
+              </label>
+            </div>
             <div className="sm:col-span-2">
               <Field label="Email" optional>
                 <input className={inputCls} type="email" value={e.email}

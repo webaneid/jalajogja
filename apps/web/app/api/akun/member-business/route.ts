@@ -4,7 +4,8 @@ import {
   db, members, memberBusinesses,
   contacts, addresses, socialMedias,
 } from "@jalajogja/db";
-import { auth } from "@/lib/auth";
+import { auth }           from "@/lib/auth";
+import { normalizePhone } from "@/lib/phone";
 
 async function getSessionMember(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -36,9 +37,11 @@ export async function GET(req: NextRequest) {
       branches:    memberBusinesses.branches,
       revenue:     memberBusinesses.revenue,
       // Kontak
-      phone:       contacts.phone,
-      whatsapp:    contacts.whatsapp,
-      email:       contacts.email,
+      phone:              contacts.phone,
+      whatsapp:           contacts.whatsapp,
+      email:              contacts.email,
+      isPhonePublic:      contacts.isPhonePublic,
+      isWhatsappPublic:   contacts.isWhatsappPublic,
       // Alamat
       addressCountry:    addresses.country,
       addressProvinceId: addresses.provinceId,
@@ -79,6 +82,7 @@ export async function POST(req: NextRequest) {
       addressDistrictId?: number; addressVillageId?: number;
       addressDetail?: string; addressPostalCode?: string;
       phone?: string; whatsapp?: string; email?: string;
+      isPhonePublic?: boolean; isWhatsappPublic?: boolean;
       instagram?: string; facebook?: string; linkedin?: string;
       twitter?: string; youtube?: string; tiktok?: string; website?: string;
     }[];
@@ -96,7 +100,13 @@ export async function POST(req: NextRequest) {
 
       if (e.phone || e.whatsapp || e.email) {
         const [c] = await db.insert(contacts)
-          .values({ phone: e.phone?.trim() || null, whatsapp: e.whatsapp?.trim() || null, email: e.email?.trim() || null })
+          .values({
+            phone:            normalizePhone(e.phone),
+            whatsapp:         normalizePhone(e.whatsapp),
+            email:            e.email?.trim().toLowerCase() || null,
+            isPhonePublic:    e.isPhonePublic    ?? false,
+            isWhatsappPublic: e.isWhatsappPublic ?? false,
+          })
           .returning({ id: contacts.id });
         contactId = c.id;
       }
