@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db, profiles } from "@jalajogja/db";
 import { headers } from "next/headers";
+import { normalizePhone } from "@/lib/phone";
 
 // GET — ambil data profil publik
 export async function GET() {
@@ -61,8 +62,8 @@ export async function PATCH(req: NextRequest) {
     .update(profiles)
     .set({
       ...(body.name          !== undefined && { name: body.name.trim() }),
-      ...(body.phone         !== undefined && { phone: body.phone.trim() }),
-      ...(body.whatsapp      !== undefined && { whatsapp: body.whatsapp || null }),
+      ...(body.phone         !== undefined && { phone: normalizePhone(body.phone) ?? body.phone }),
+      ...(body.whatsapp      !== undefined && { whatsapp: normalizePhone(body.whatsapp) }),
       ...(body.addressDetail !== undefined && { addressDetail: body.addressDetail || null }),
       ...(body.provinceId    !== undefined && { provinceId: body.provinceId || null }),
       ...(body.regencyId     !== undefined && { regencyId: body.regencyId || null }),

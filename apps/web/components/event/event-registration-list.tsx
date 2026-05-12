@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { displayPhone } from "@/lib/phone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,7 +154,7 @@ export function EventRegistrationList({
                   <td className="px-3 py-3">
                     <p className="font-medium">{reg.attendeeName}</p>
                     {reg.attendeePhone && (
-                      <p className="text-xs text-muted-foreground">{reg.attendeePhone}</p>
+                      <p className="text-xs text-muted-foreground">{displayPhone(reg.attendeePhone)}</p>
                     )}
                     {reg.attendeeEmail && (
                       <p className="text-xs text-muted-foreground">{reg.attendeeEmail}</p>

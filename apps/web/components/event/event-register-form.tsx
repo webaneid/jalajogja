@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { CheckCircle2, Ticket, Loader2, Copy, Check } from "lucide-react";
 import { registerForEventAction } from "@/app/(dashboard)/[tenant]/event/actions";
 import { DonationPromptModal } from "@/components/event/public/donation-prompt-modal";
@@ -326,15 +327,12 @@ export function EventRegisterForm({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="attendeePhone" className="text-sm">
-            Nomor HP
-          </Label>
-          <Input
-            id="attendeePhone"
+          <PhoneInput
+            label="Nomor HP"
             value={attendeePhone}
-            onChange={(e) => setAttendeePhone(e.target.value)}
-            placeholder="08xxx"
+            onChange={setAttendeePhone}
             disabled={isPending}
+            optional
           />
         </div>
 

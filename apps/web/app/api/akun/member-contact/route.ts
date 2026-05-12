@@ -4,7 +4,8 @@ import {
   db, members,
   contacts, addresses, socialMedias,
 } from "@jalajogja/db";
-import { auth } from "@/lib/auth";
+import { auth }           from "@/lib/auth";
+import { normalizePhone } from "@/lib/phone";
 
 // ─── PATCH /api/akun/member-contact ──────────────────────────────────────────
 // Update kontak + alamat + sosial media anggota (Step 2).
@@ -65,8 +66,8 @@ export async function PATCH(req: NextRequest) {
 
     if (hasContact) {
       const contactPayload = {
-        phone:            body.phone?.trim()    || null,
-        whatsapp:         body.whatsapp?.trim() || null,
+        phone:            normalizePhone(body.phone),
+        whatsapp:         normalizePhone(body.whatsapp),
         email:            body.email?.trim()    || null,
         isPhonePublic:    body.isPhonePublic    ?? false,
         isWhatsappPublic: body.isWhatsappPublic ?? false,

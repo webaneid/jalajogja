@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { PlusIcon, BookOpen, Briefcase, School } from "lucide-react"
+import { displayPhone } from "@/lib/phone"
 import {
   Dialog,
   DialogContent,
@@ -270,8 +271,8 @@ export function BusinessSection({
                   <Row label="Detail Alamat" value={biz.bizAddrDetail} />
                   <Row label="Kab / Kota"    value={biz.bizRegencyName} />
                   <Row label="Provinsi"      value={biz.bizProvinceName} />
-                  <Row label="Telepon"   value={biz.bizPhone} />
-                  <Row label="WhatsApp"  value={biz.bizWhatsapp} />
+                  <Row label="Telepon"   value={displayPhone(biz.bizPhone)} />
+                  <Row label="WhatsApp"  value={displayPhone(biz.bizWhatsapp)} />
                   <Row label="Email"     value={biz.bizEmail} />
                   {bizSocials.map((s) => (
                     <Row key={s.label} label={s.label} value={s.value} />

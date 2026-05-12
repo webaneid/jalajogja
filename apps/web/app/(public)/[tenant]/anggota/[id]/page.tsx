@@ -3,6 +3,7 @@ import { createHash }         from "crypto";
 import { headers }            from "next/headers";
 import { eq }                 from "drizzle-orm";
 import { auth }               from "@/lib/auth";
+import { displayPhone }       from "@/lib/phone";
 import {
   db, members, contacts, addresses, socialMedias, refProfessions,
   memberBusinesses, memberEducations, memberPesantren, pesantren,
@@ -256,8 +257,8 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
       {(contact?.phone || contact?.whatsapp || contact?.email) && (
         <Section title="Kontak" icon={Phone}>
           <dl className="space-y-2">
-            <Row label="Nomor HP"    value={contact?.phone} />
-            <Row label="WhatsApp"    value={contact?.whatsapp} />
+            <Row label="Nomor HP"    value={displayPhone(contact?.phone)} />
+            <Row label="WhatsApp"    value={displayPhone(contact?.whatsapp)} />
             <Row label="Email"       value={contact?.email} />
           </dl>
           <div className="pt-2 border-t border-border text-xs text-muted-foreground space-y-0.5">
@@ -364,7 +365,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
                 {b.revenue   && <p className="text-xs text-muted-foreground">Omzet: {b.revenue}</p>}
                 {(b.contact?.phone || b.contact?.email) && (
                   <div className="space-y-0.5 pt-1">
-                    <Row label="Telepon" value={b.contact?.phone} />
+                    <Row label="Telepon" value={displayPhone(b.contact?.phone)} />
                     <Row label="Email"   value={b.contact?.email} />
                   </div>
                 )}

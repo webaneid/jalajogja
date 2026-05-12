@@ -10,6 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Users, User, Loader2, CheckCircle2, Info } from "lucide-react";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 type MemberLookup =
   | { found: true;  name: string; memberId: string; hasAccount: boolean }
@@ -137,11 +138,11 @@ export function RegisterForm({ slug }: { slug: string }) {
     triggerLookup({ email: v });
   }
 
-  function handlePhoneBlur(val: string) {
+  function handlePhoneChange(val: string) {
+    setPhone(val);
     if (accountPath !== "member" || lookup?.found) return;
-    const v = val.trim();
-    if (!v) return;
-    triggerLookup({ phone: v });
+    if (!val) return;
+    triggerLookup({ phone: val });
   }
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -357,16 +358,11 @@ export function RegisterForm({ slug }: { slug: string }) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="phone">No. HP</Label>
-            <Input
-              id="phone"
-              type="tel"
+            <PhoneInput
+              label="No. HP"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              onBlur={(e) => handlePhoneBlur(e.target.value)}
-              placeholder="08xxxxxxxxxx"
+              onChange={handlePhoneChange}
               required
-              autoComplete="tel"
             />
           </div>
 

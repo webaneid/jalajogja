@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db, resolveIdentity } from "@jalajogja/db";
 import { createTenantDb, generateFinancialNumber } from "@jalajogja/db";
 import { tenants } from "@jalajogja/db";
+import { normalizePhone } from "@/lib/phone";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -328,7 +329,7 @@ export async function checkoutAction(
     // ── Lookup identitas via resolveIdentity ─────────────────────────────────
     // Urutan: session login → public.profiles → public.members → guest
     const identity = await resolveIdentity(db, {
-      phone: customer.phone?.trim() || null,
+      phone: normalizePhone(customer.phone),
       email: customer.email?.trim() || null,
     });
 
@@ -397,7 +398,7 @@ export async function checkoutAction(
         sourceType:    "cart",
         sourceId:      cart.id,
         customerName,
-        customerPhone: customer.phone?.trim() ?? null,
+        customerPhone: normalizePhone(customer.phone),
         customerEmail: customer.email?.trim() ?? null,
         memberId,
         profileId,

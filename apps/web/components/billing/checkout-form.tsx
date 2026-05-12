@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { checkoutAction, type CartData } from "@/app/(public)/[tenant]/cart/actions";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 type Props = {
   slug: string;
@@ -65,15 +66,12 @@ export function CheckoutForm({ slug, cart }: Props) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>
-                Nomor HP <span className="text-muted-foreground text-xs">(atau email)</span>
-              </label>
-              <input
-                type="tel"
+              <PhoneInput
+                label="Nomor HP"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="08xxxxxxxxxx"
-                className={inputCls}
+                onChange={setPhone}
+                optional
+                hint="Atau isi email di sebelah kanan"
               />
             </div>
             <div>

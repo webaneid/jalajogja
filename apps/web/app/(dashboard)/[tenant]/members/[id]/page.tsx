@@ -20,6 +20,7 @@ import {
   refDistricts,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { displayPhone }   from "@/lib/phone";
 import { DeleteMemberButton } from "./delete-button";
 import {
   EducationSection,
@@ -314,8 +315,8 @@ export default async function MemberDetailPage({
       {(row.phone || row.whatsapp || row.contactEmail || row.domicileStatus) && (
         <Section title="Kontak">
           <dl>
-            <Row label="Telepon"  value={row.phone} />
-            <Row label="WhatsApp" value={row.whatsapp} />
+            <Row label="Telepon"  value={displayPhone(row.phone)} />
+            <Row label="WhatsApp" value={displayPhone(row.whatsapp)} />
             <Row label="Email"    value={row.contactEmail} />
             {row.domicileStatus && (
               <Row label="Status Domisili" value={DOMICILE_LABEL[row.domicileStatus]} />

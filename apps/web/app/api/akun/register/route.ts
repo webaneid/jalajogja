@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, or }                    from "drizzle-orm";
 import { db, profiles, tenants, contacts, members, tenantMemberships } from "@jalajogja/db";
 import { auth }                      from "@/lib/auth";
+import { normalizePhone }            from "@/lib/phone";
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,8 +36,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Password minimal 8 karakter." }, { status: 400 });
 
     const normalizedEmail    = email.toLowerCase().trim();
-    const normalizedPhone    = phone.trim();
-    const normalizedWhatsapp = whatsapp?.trim() || null;
+    const normalizedPhone    = normalizePhone(phone) ?? phone.trim();
+    const normalizedWhatsapp = normalizePhone(whatsapp);
     const normalizedStambuk  = stambukNumber?.trim() || null;
 
     // ── Tenant lookup ─────────────────────────────────────────────────────────

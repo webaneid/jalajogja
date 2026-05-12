@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { displayPhone } from "@/lib/phone";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -151,7 +152,7 @@ export function EventCheckinClient({
                   {reg.attendeePhone && (
                     <>
                       <span className="text-muted-foreground">·</span>
-                      <span className="text-xs text-muted-foreground">{reg.attendeePhone}</span>
+                      <span className="text-xs text-muted-foreground">{displayPhone(reg.attendeePhone)}</span>
                     </>
                   )}
                 </div>

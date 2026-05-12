@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache";
 import { createTenantDb, generateFinancialNumber, recordIncome, createLinkedInvoice, syncInvoicePayment, db as publicDb, members, contacts } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { auth }           from "@/lib/auth";
+import { headers }        from "next/headers";
+import { normalizePhone } from "@/lib/phone";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -620,8 +621,8 @@ export async function registerForEventAction(
           ticketId:           data.ticketId,
           memberId:           resolvedMemberId,
           attendeeName:       data.attendeeName.trim(),
-          attendeePhone:      data.attendeePhone?.trim() ?? null,
-          attendeeEmail:      data.attendeeEmail?.trim() ?? null,
+          attendeePhone:      normalizePhone(data.attendeePhone),
+          attendeeEmail:      data.attendeeEmail?.trim().toLowerCase() ?? null,
           status:             regStatus,
         })
         .returning({ id: schema.eventRegistrations.id });

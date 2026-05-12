@@ -15,7 +15,8 @@ import {
   generateMemberNumber,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
-import { hasFullAccess } from "@/lib/permissions";
+import { hasFullAccess }   from "@/lib/permissions";
+import { normalizePhone }  from "@/lib/phone";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 // Catatan: phone/email/address sudah dipindah ke helper tables (contacts, addresses)
@@ -246,8 +247,8 @@ export async function upsertMemberContactAction(
 
     if (hasContact) {
       const contactPayload = {
-        phone:            data.phone?.trim()    || null,
-        whatsapp:         data.whatsapp?.trim() || null,
+        phone:            normalizePhone(data.phone),
+        whatsapp:         normalizePhone(data.whatsapp),
         email:            data.email?.trim()    || null,
         isPhonePublic:    data.isPhonePublic    ?? false,
         isWhatsappPublic: data.isWhatsappPublic ?? false,
@@ -565,8 +566,8 @@ export async function saveMemberBusinessesAction(
         const [c] = await db
           .insert(contacts)
           .values({
-            phone:    entry.phone?.trim()    || null,
-            whatsapp: entry.whatsapp?.trim() || null,
+            phone:    normalizePhone(entry.phone),
+            whatsapp: normalizePhone(entry.whatsapp),
             email:    entry.email?.trim()    || null,
           })
           .returning({ id: contacts.id });
