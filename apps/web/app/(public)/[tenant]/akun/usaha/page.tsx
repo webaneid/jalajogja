@@ -3,19 +3,31 @@
 import * as React      from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2, Plus, X, CheckCircle2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
 
 type Entry = {
   _key: string;
   name: string; brand: string; description: string;
   category: string; sector: string; legality: string;
   position: string; employees: string; branches: string; revenue: string;
+  // Alamat
+  _addressMode:      "indonesia" | "overseas"; // UI only
+  addressCountry:    string;
+  addressProvinceId: number | null;
+  addressRegencyId:  number | null;
+  addressDistrictId: number | null;
+  addressVillageId:  number | null;
+  addressDetail:     string;
+  addressPostalCode: string;
+  // Kontak
   phone: string; whatsapp: string; email: string;
   instagram: string; facebook: string; website: string;
   isPhonePublic:    boolean;
   isWhatsappPublic: boolean;
-  _sameAsPhone:     boolean; // UI only — tidak disimpan ke server
+  _sameAsPhone:     boolean; // UI only
 };
 
 const CATEGORIES: ComboboxOption[] = [
@@ -68,11 +80,17 @@ const REVENUES: ComboboxOption[] = [
 ];
 
 function newEntry(): Entry {
-  return { _key: crypto.randomUUID(), name:"", brand:"", description:"",
+  return {
+    _key: crypto.randomUUID(), name:"", brand:"", description:"",
     category:"", sector:"", legality:"", position:"",
     employees:"", branches:"", revenue:"",
+    _addressMode: "indonesia",
+    addressCountry: "", addressProvinceId: null, addressRegencyId: null,
+    addressDistrictId: null, addressVillageId: null,
+    addressDetail: "", addressPostalCode: "",
     phone:"", whatsapp:"", email:"", instagram:"", facebook:"", website:"",
-    isPhonePublic: false, isWhatsappPublic: false, _sameAsPhone: false };
+    isPhonePublic: false, isWhatsappPublic: false, _sameAsPhone: false,
+  };
 }
 
 function Field({ label, optional, children }: { label: string; optional?: boolean; children: React.ReactNode }) {
@@ -88,6 +106,19 @@ function Field({ label, optional, children }: { label: string; optional?: boolea
 
 const inputCls = "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
+type ApiRow = {
+  name?: string; brand?: string; description?: string;
+  category?: string; sector?: string; legality?: string; position?: string;
+  employees?: string; branches?: string; revenue?: string;
+  addressCountry?: string;
+  addressProvinceId?: number; addressRegencyId?: number;
+  addressDistrictId?: number; addressVillageId?: number;
+  addressDetail?: string; addressPostalCode?: string;
+  phone?: string; whatsapp?: string; email?: string;
+  isPhonePublic?: boolean; isWhatsappPublic?: boolean;
+  instagram?: string; facebook?: string; website?: string;
+};
+
 export default function UsahaPage() {
   const params = useParams<{ tenant: string }>();
   const slug   = params.tenant;
@@ -102,14 +133,13 @@ export default function UsahaPage() {
   React.useEffect(() => {
     fetch("/api/akun/member-business")
       .then(r => r.json())
-      .then((d: { data?: Partial<Entry & { addressProvinceId?: number }>[] }) => {
+      .then((d: { data?: ApiRow[] }) => {
         if (d.data && d.data.length > 0) {
           setEntries(d.data.map(e => {
             const phone    = e.phone    ?? "";
             const whatsapp = e.whatsapp ?? "";
-            const sameAsPhone = !!phone && phone === whatsapp;
             return {
-              _key: crypto.randomUUID(),
+              _key:             crypto.randomUUID(),
               name:             e.name        ?? "",
               brand:            e.brand       ?? "",
               description:      e.description ?? "",
@@ -120,6 +150,14 @@ export default function UsahaPage() {
               employees:        e.employees   ?? "",
               branches:         e.branches    ?? "",
               revenue:          e.revenue     ?? "",
+              _addressMode:     (e.addressCountry ? "overseas" : "indonesia") as "indonesia" | "overseas",
+              addressCountry:   e.addressCountry   ?? "",
+              addressProvinceId: e.addressProvinceId ?? null,
+              addressRegencyId:  e.addressRegencyId  ?? null,
+              addressDistrictId: e.addressDistrictId ?? null,
+              addressVillageId:  e.addressVillageId  ?? null,
+              addressDetail:     e.addressDetail     ?? "",
+              addressPostalCode: e.addressPostalCode ?? "",
               phone,
               whatsapp,
               email:            e.email       ?? "",
@@ -128,7 +166,7 @@ export default function UsahaPage() {
               website:          e.website     ?? "",
               isPhonePublic:    e.isPhonePublic    ?? false,
               isWhatsappPublic: e.isWhatsappPublic ?? false,
-              _sameAsPhone:     sameAsPhone,
+              _sameAsPhone:     !!phone && phone === whatsapp,
             };
           }));
         }
@@ -139,6 +177,27 @@ export default function UsahaPage() {
 
   function update(key: string, patch: Partial<Entry>) {
     setEntries(prev => prev.map(e => e._key === key ? { ...e, ...patch } : e));
+  }
+
+  function handleWilayah(key: string, val: WilayahValue) {
+    update(key, {
+      addressProvinceId: val.provinceId ?? null,
+      addressRegencyId:  val.regencyId  ?? null,
+      addressDistrictId: val.districtId ?? null,
+      addressVillageId:  val.villageId  ?? null,
+    });
+  }
+
+  function switchAddressMode(key: string, mode: "indonesia" | "overseas") {
+    if (mode === "indonesia") {
+      update(key, { _addressMode: "indonesia", addressCountry: "" });
+    } else {
+      update(key, {
+        _addressMode: "overseas", addressCountry: "",
+        addressProvinceId: null, addressRegencyId: null,
+        addressDistrictId: null, addressVillageId: null,
+      });
+    }
   }
 
   async function handleSave() {
@@ -169,6 +228,13 @@ export default function UsahaPage() {
           employees:   e.employees || undefined,
           branches:    e.branches  || undefined,
           revenue:     e.revenue   || undefined,
+          addressCountry:    e._addressMode === "overseas" ? (e.addressCountry.trim() || undefined) : undefined,
+          addressProvinceId: e._addressMode === "indonesia" ? (e.addressProvinceId ?? undefined) : undefined,
+          addressRegencyId:  e._addressMode === "indonesia" ? (e.addressRegencyId  ?? undefined) : undefined,
+          addressDistrictId: e._addressMode === "indonesia" ? (e.addressDistrictId ?? undefined) : undefined,
+          addressVillageId:  e._addressMode === "indonesia" ? (e.addressVillageId  ?? undefined) : undefined,
+          addressDetail:    e.addressDetail.trim()    || undefined,
+          addressPostalCode: e.addressPostalCode.trim() || undefined,
           phone:            e.phone.trim()    || undefined,
           whatsapp:         e._sameAsPhone ? (e.phone.trim() || undefined) : (e.whatsapp.trim() || undefined),
           email:            e.email.trim()   || undefined,
@@ -240,36 +306,24 @@ export default function UsahaPage() {
               </Field>
             </div>
             <Field label="Kategori">
-              <Combobox
-                options={CATEGORIES}
-                value={e.category}
+              <Combobox options={CATEGORIES} value={e.category}
                 onValueChange={v => update(e._key, { category: v })}
-                placeholder="Pilih kategori"
-              />
+                placeholder="Pilih kategori" />
             </Field>
             <Field label="Sektor">
-              <Combobox
-                options={SECTORS}
-                value={e.sector}
+              <Combobox options={SECTORS} value={e.sector}
                 onValueChange={v => update(e._key, { sector: v })}
-                placeholder="Pilih sektor"
-              />
+                placeholder="Pilih sektor" />
             </Field>
             <Field label="Legalitas">
-              <Combobox
-                options={LEGALITIES}
-                value={e.legality}
+              <Combobox options={LEGALITIES} value={e.legality}
                 onValueChange={v => update(e._key, { legality: v })}
-                placeholder="Pilih legalitas"
-              />
+                placeholder="Pilih legalitas" />
             </Field>
             <Field label="Posisi / Jabatan">
-              <Combobox
-                options={POSITIONS}
-                value={e.position}
+              <Combobox options={POSITIONS} value={e.position}
                 onValueChange={v => update(e._key, { position: v })}
-                placeholder="Pilih posisi"
-              />
+                placeholder="Pilih posisi" />
             </Field>
           </div>
 
@@ -277,29 +331,72 @@ export default function UsahaPage() {
           <p className="text-sm font-semibold text-muted-foreground pt-2">Skala Usaha</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Field label="Karyawan">
-              <Combobox
-                options={EMPLOYEES}
-                value={e.employees}
+              <Combobox options={EMPLOYEES} value={e.employees}
                 onValueChange={v => update(e._key, { employees: v })}
-                placeholder="Jumlah karyawan"
-              />
+                placeholder="Jumlah karyawan" />
             </Field>
             <Field label="Cabang">
-              <Combobox
-                options={BRANCHES}
-                value={e.branches}
+              <Combobox options={BRANCHES} value={e.branches}
                 onValueChange={v => update(e._key, { branches: v })}
-                placeholder="Jumlah cabang"
-              />
+                placeholder="Jumlah cabang" />
             </Field>
             <Field label="Omzet / tahun">
-              <Combobox
-                options={REVENUES}
-                value={e.revenue}
+              <Combobox options={REVENUES} value={e.revenue}
                 onValueChange={v => update(e._key, { revenue: v })}
-                placeholder="Kisaran omzet"
-              />
+                placeholder="Kisaran omzet" />
             </Field>
+          </div>
+
+          {/* ── Alamat ── */}
+          <p className="text-sm font-semibold text-muted-foreground pt-2">Alamat Usaha</p>
+          <div className="space-y-4">
+            {/* Toggle Indonesia / Luar Negeri */}
+            <div className="flex gap-1 rounded-lg border border-input bg-muted p-1 w-fit">
+              {(["indonesia", "overseas"] as const).map(mode => (
+                <button key={mode} type="button"
+                  onClick={() => switchAddressMode(e._key, mode)}
+                  className={cn(
+                    "rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
+                    e._addressMode === mode
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}>
+                  {mode === "indonesia" ? "Indonesia" : "Luar Negeri"}
+                </button>
+              ))}
+            </div>
+
+            {e._addressMode === "indonesia" ? (
+              <WilayahSelect
+                defaultValue={{
+                  provinceId: e.addressProvinceId ?? undefined,
+                  regencyId:  e.addressRegencyId  ?? undefined,
+                  districtId: e.addressDistrictId ?? undefined,
+                  villageId:  e.addressVillageId  ?? undefined,
+                }}
+                onChange={val => handleWilayah(e._key, val)}
+              />
+            ) : (
+              <Field label="Negara" optional>
+                <input className={inputCls} value={e.addressCountry}
+                  onChange={ev => update(e._key, { addressCountry: ev.target.value })}
+                  placeholder="Contoh: Malaysia, Arab Saudi, Jepang" />
+              </Field>
+            )}
+
+            <Field label="Detail Alamat" optional>
+              <textarea className={`${inputCls} h-16 resize-none py-2`} value={e.addressDetail}
+                onChange={ev => update(e._key, { addressDetail: ev.target.value })}
+                placeholder="Nama jalan, nomor, RT/RW, gedung, lantai..." />
+            </Field>
+
+            <div className="max-w-[160px]">
+              <Field label="Kode Pos" optional>
+                <input className={inputCls} value={e.addressPostalCode}
+                  onChange={ev => update(e._key, { addressPostalCode: ev.target.value })}
+                  placeholder="55283" maxLength={10} inputMode="numeric" />
+              </Field>
+            </div>
           </div>
 
           {/* ── Kontak ── */}
@@ -307,12 +404,9 @@ export default function UsahaPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Telepon */}
             <div className="space-y-1.5">
-              <PhoneInput
-                label="Telepon"
-                value={e.phone}
+              <PhoneInput label="Telepon" value={e.phone}
                 onChange={v => update(e._key, { phone: v, ...(e._sameAsPhone && { whatsapp: v }) })}
-                optional
-              />
+                optional />
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
                 <input type="checkbox" checked={e.isPhonePublic}
                   onChange={ev => update(e._key, { isPhonePublic: ev.target.checked })}
@@ -323,13 +417,10 @@ export default function UsahaPage() {
 
             {/* WhatsApp */}
             <div className="space-y-1.5">
-              <PhoneInput
-                label="WhatsApp"
+              <PhoneInput label="WhatsApp"
                 value={e._sameAsPhone ? e.phone : e.whatsapp}
                 onChange={v => { if (!e._sameAsPhone) update(e._key, { whatsapp: v }); }}
-                disabled={e._sameAsPhone}
-                optional
-              />
+                disabled={e._sameAsPhone} optional />
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
                 <input type="checkbox" checked={e._sameAsPhone}
                   onChange={ev => update(e._key, { _sameAsPhone: ev.target.checked, ...(ev.target.checked && { whatsapp: e.phone }) })}
