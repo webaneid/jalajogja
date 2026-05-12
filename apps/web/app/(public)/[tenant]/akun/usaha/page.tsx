@@ -148,6 +148,8 @@ export default function UsahaPage() {
       if (!e.description.trim()) { setError(`Deskripsi usaha wajib diisi.`);   setSaving(false); return; }
       if (!e.category)           { setError(`Kategori wajib dipilih.`);         setSaving(false); return; }
       if (!e.sector)             { setError(`Sektor wajib dipilih.`);           setSaving(false); return; }
+      if (!e.legality)           { setError(`Legalitas wajib dipilih.`);        setSaving(false); return; }
+      if (!e.position)           { setError(`Posisi / jabatan wajib dipilih.`); setSaving(false); return; }
       if (!e.employees)          { setError(`Jumlah karyawan wajib dipilih.`);  setSaving(false); return; }
       if (!e.branches)           { setError(`Jumlah cabang wajib dipilih.`);    setSaving(false); return; }
       if (!e.revenue)            { setError(`Omzet tahunan wajib dipilih.`);    setSaving(false); return; }
@@ -253,7 +255,7 @@ export default function UsahaPage() {
                 placeholder="Pilih sektor"
               />
             </Field>
-            <Field label="Legalitas" optional>
+            <Field label="Legalitas">
               <Combobox
                 options={LEGALITIES}
                 value={e.legality}
@@ -261,7 +263,7 @@ export default function UsahaPage() {
                 placeholder="Pilih legalitas"
               />
             </Field>
-            <Field label="Posisi / Jabatan" optional>
+            <Field label="Posisi / Jabatan">
               <Combobox
                 options={POSITIONS}
                 value={e.position}
