@@ -159,3 +159,7 @@ CREATE INDEX IF NOT EXISTS idx_qurban_participants_animal   ON "tenant_pc-ikpm-j
 ALTER TABLE "tenant_pc-ikpm-jogjakarta".events
   ADD COLUMN IF NOT EXISTS show_donation_prompt BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS linked_campaign_id   UUID REFERENCES "tenant_pc-ikpm-jogjakarta".campaigns(id) ON DELETE SET NULL;
+
+-- [2026-05-12] Tambah kolom gallery di events (sudah ada: show_donation_prompt, linked_campaign_id)
+ALTER TABLE "tenant_pc-ikpm-jogjakarta".events
+  ADD COLUMN IF NOT EXISTS gallery JSONB;
