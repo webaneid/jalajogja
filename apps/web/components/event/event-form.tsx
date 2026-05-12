@@ -39,10 +39,13 @@ type TicketLocal = TicketInput & {
   _isGratis: boolean;   // UI: toggle Gratis/Berbayar — jika true price=0 dan input harga tersembunyi
 };
 
+export type CampaignOption = { id: string; title: string };
+
 export type EventFormProps = {
-  slug:    string;
-  eventId: string | null;
-  categories: CategoryOption[];
+  slug:            string;
+  eventId:         string | null;
+  categories:      CategoryOption[];
+  activeCampaigns: CampaignOption[];
   initialData: {
     slug:             string;
     title:            string;
@@ -58,11 +61,13 @@ export type EventFormProps = {
     onlineLink:       string;
     organizerName:    string;
     maxCapacity:      number | null;
-    showAttendeeList: boolean;
-    showTicketCount:  boolean;
-    requireApproval:  boolean;
-    coverId:          string | null;
-    coverUrl:         string | null;
+    showAttendeeList:   boolean;
+    showTicketCount:    boolean;
+    requireApproval:    boolean;
+    showDonationPrompt: boolean;
+    linkedCampaignId:   string | null;
+    coverId:            string | null;
+    coverUrl:           string | null;
     tickets: Array<{
       id?:          string;
       name:         string;
@@ -107,10 +112,13 @@ function toSlug(str: string) {
 let _keyCounter = 0;
 function nextKey() { return `t-${++_keyCounter}`; }
 
-function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function ToggleRow({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm">{label}</span>
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <span className="text-sm">{label}</span>
+        {hint && <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>}
+      </div>
       <button
         type="button"
         onClick={() => onChange(!checked)}
@@ -128,9 +136,10 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
   );
 }
 
+
 // ─── EventForm ────────────────────────────────────────────────────────────────
 
-export function EventForm({ slug, eventId, categories, initialData }: EventFormProps) {
+export function EventForm({ slug, eventId, categories, activeCampaigns, initialData }: EventFormProps) {
   const router = useRouter();
 
   const [title,          setTitle]          = useState(initialData.title);
@@ -149,9 +158,11 @@ export function EventForm({ slug, eventId, categories, initialData }: EventFormP
   const [maxCapacity,    setMaxCapacity]    = useState(
     initialData.maxCapacity != null ? String(initialData.maxCapacity) : ""
   );
-  const [showAttendeeList, setShowAttendeeList] = useState(initialData.showAttendeeList);
-  const [showTicketCount,  setShowTicketCount]  = useState(initialData.showTicketCount);
-  const [requireApproval,  setRequireApproval]  = useState(initialData.requireApproval);
+  const [showAttendeeList,   setShowAttendeeList]   = useState(initialData.showAttendeeList);
+  const [showTicketCount,    setShowTicketCount]    = useState(initialData.showTicketCount);
+  const [requireApproval,    setRequireApproval]    = useState(initialData.requireApproval);
+  const [showDonationPrompt, setShowDonationPrompt] = useState(initialData.showDonationPrompt);
+  const [linkedCampaignId,   setLinkedCampaignId]   = useState<string | null>(initialData.linkedCampaignId);
   const [cover,    setCover]    = useState<CoverImage>(
     initialData.coverId && initialData.coverUrl
       ? { id: initialData.coverId, url: initialData.coverUrl }
@@ -255,7 +266,9 @@ export function EventForm({ slug, eventId, categories, initialData }: EventFormP
       showAttendeeList,
       showTicketCount,
       requireApproval,
-      coverId:          cover?.id ?? null,
+      showDonationPrompt,
+      linkedCampaignId:  showDonationPrompt ? (linkedCampaignId ?? null) : null,
+      coverId:           cover?.id ?? null,
       tickets: tickets.map((t, i) => ({
         id:           t.id ?? undefined,
         name:         t.name.trim() || "Tiket",
@@ -574,6 +587,34 @@ export function EventForm({ slug, eventId, categories, initialData }: EventFormP
               checked={requireApproval}
               onChange={setRequireApproval}
             />
+          </div>
+
+          {/* Prompt Donasi */}
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <ToggleRow
+              label="Tampilkan prompt donasi"
+              hint="Muncul setelah daftar (gratis) atau di keranjang (berbayar)"
+              checked={showDonationPrompt}
+              onChange={(v) => { setShowDonationPrompt(v); if (!v) setLinkedCampaignId(null); }}
+            />
+            {showDonationPrompt && (
+              <div className="space-y-1.5 pt-1">
+                <label className="block text-xs text-muted-foreground">Campaign Donasi</label>
+                <select
+                  value={linkedCampaignId ?? ""}
+                  onChange={e => setLinkedCampaignId(e.target.value || null)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">Pilih campaign...</option>
+                  {activeCampaigns.map(c => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+                {activeCampaigns.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Belum ada campaign aktif.</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* TicketManager */}

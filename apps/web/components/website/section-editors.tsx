@@ -223,7 +223,7 @@ function PostsEditor({ data, onChange, variant, onVariantChange, tenantSlug }: E
 // ── Events ────────────────────────────────────────────────────────────────────
 
 function EventsEditor({ data, onChange }: EditorProps) {
-  const d = data as { title?: string; count?: number };
+  const d = data as { title?: string; count?: number; upcomingOnly?: boolean };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   return (
     <div className="space-y-3">
@@ -231,12 +231,21 @@ function EventsEditor({ data, onChange }: EditorProps) {
         <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Event Mendatang" />
       </Field>
       <Field label="Jumlah Event">
-        <Select value={String(d.count ?? 3)} onValueChange={(v) => u("count", Number(v))}>
+        <Select value={String(d.count ?? 6)} onValueChange={(v) => u("count", Number(v))}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            {[2, 3, 4, 6].map((n) => (
+            {[3, 4, 6, 9].map((n) => (
               <SelectItem key={n} value={String(n)}>{n} event</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Filter Waktu">
+        <Select value={d.upcomingOnly === false ? "semua" : "mendatang"} onValueChange={(v) => u("upcomingOnly", v === "mendatang")}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="mendatang">Hanya Mendatang</SelectItem>
+            <SelectItem value="semua">Semua Event</SelectItem>
           </SelectContent>
         </Select>
       </Field>

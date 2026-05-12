@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { CheckCircle2, Ticket, Loader2, Copy, Check } from "lucide-react";
 import { registerForEventAction } from "@/app/(dashboard)/[tenant]/event/actions";
+import { DonationPromptModal } from "@/components/event/public/donation-prompt-modal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,13 +35,23 @@ type QrisAccount = {
 };
 
 export type EventRegisterFormProps = {
-  slug:            string;
-  eventId:         string;
-  tickets:         TicketInfo[];
-  requireApproval: boolean;
-  banks:           BankAccount[];
-  qrisAccounts:    QrisAccount[];
-  hasPaidTicket:   boolean;
+  slug:               string;
+  eventId:            string;
+  tickets:            TicketInfo[];
+  requireApproval:    boolean;
+  banks:              BankAccount[];
+  qrisAccounts:       QrisAccount[];
+  hasPaidTicket:      boolean;
+  // Donation prompt (opsional — hanya jika admin aktifkan)
+  donationPrompt?:    {
+    campaignId:    string;
+    campaignTitle: string;
+    amounts:       number[];
+  } | null;
+  // Pre-fill data dari session (member/profile)
+  defaultAttendeeName?:  string;
+  defaultAttendeePhone?: string;
+  defaultAttendeeEmail?: string;
 };
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -59,14 +70,21 @@ export function EventRegisterForm({
   banks,
   qrisAccounts,
   hasPaidTicket,
+  donationPrompt,
+  defaultAttendeeName  = "",
+  defaultAttendeePhone = "",
+  defaultAttendeeEmail = "",
 }: EventRegisterFormProps) {
   // Pilihan tiket
   const [selectedTicketId, setSelectedTicketId] = useState<string>(tickets[0]?.id ?? "");
 
-  // Form peserta
-  const [attendeeName,  setAttendeeName]  = useState("");
-  const [attendeePhone, setAttendeePhone] = useState("");
-  const [attendeeEmail, setAttendeeEmail] = useState("");
+  // Form peserta — pre-filled dari session jika ada
+  const [attendeeName,  setAttendeeName]  = useState(defaultAttendeeName);
+  const [attendeePhone, setAttendeePhone] = useState(defaultAttendeePhone);
+  const [attendeeEmail, setAttendeeEmail] = useState(defaultAttendeeEmail);
+
+  // Modal donation prompt (tampil setelah registrasi gratis berhasil)
+  const [showDonationModal, setShowDonationModal] = useState(false);
 
   // Pembayaran
   const [method,         setMethod]         = useState<"cash" | "transfer" | "qris">("transfer");
@@ -126,6 +144,11 @@ export function EventRegisterForm({
         uniqueCode:         res.data.uniqueCode,
         totalAmount:        res.data.totalAmount,
       });
+
+      // Tampilkan modal donasi jika event gratis + admin aktifkan prompt
+      if (!res.data.isPaid && donationPrompt) {
+        setShowDonationModal(true);
+      }
     });
   }
 
@@ -235,6 +258,7 @@ export function EventRegisterForm({
 
   // ── Form state ─────────────────────────────────────────────────────────────
   return (
+    <>
     <div className="space-y-5">
       {/* Pilihan Tiket */}
       {tickets.length > 1 && (
@@ -425,5 +449,17 @@ export function EventRegisterForm({
         )}
       </Button>
     </div>
+
+    {/* Modal prompt donasi — tampil setelah registrasi gratis */}
+    {showDonationModal && donationPrompt && (
+      <DonationPromptModal
+        tenantSlug={slug}
+        campaignId={donationPrompt.campaignId}
+        campaignTitle={donationPrompt.campaignTitle}
+        amounts={donationPrompt.amounts}
+        onClose={() => setShowDonationModal(false)}
+      />
+    )}
+    </>
   );
 }

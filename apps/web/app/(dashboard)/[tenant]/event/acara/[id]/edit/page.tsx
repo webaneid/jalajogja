@@ -1,7 +1,8 @@
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
+import { publicUrl } from "@/lib/minio";
 import { EventForm } from "@/components/event/event-form";
 import type { SeoValues } from "@/components/seo/seo-panel";
 
@@ -16,7 +17,7 @@ export default async function AcaraEditPage({
 
   const { db, schema } = createTenantDb(slug);
 
-  const [[event], categories, tickets] = await Promise.all([
+  const [[event], categories, tickets, activeCampaigns] = await Promise.all([
     db.select().from(schema.events).where(eq(schema.events.id, eventId)).limit(1),
     db.select({ id: schema.eventCategories.id, name: schema.eventCategories.name })
       .from(schema.eventCategories)
@@ -25,11 +26,14 @@ export default async function AcaraEditPage({
       .from(schema.eventTickets)
       .where(eq(schema.eventTickets.eventId, eventId))
       .orderBy(schema.eventTickets.sortOrder),
+    db.select({ id: schema.campaigns.id, title: schema.campaigns.title })
+      .from(schema.campaigns)
+      .where(eq(schema.campaigns.status, "active"))
+      .orderBy(desc(schema.campaigns.createdAt)),
   ]);
 
   if (!event) notFound();
 
-  // Ambil URL cover image jika ada
   let coverUrl: string | null = null;
   if (event.coverId) {
     const [media] = await db
@@ -37,7 +41,7 @@ export default async function AcaraEditPage({
       .from(schema.media)
       .where(eq(schema.media.id, event.coverId))
       .limit(1);
-    coverUrl = media?.path ?? null;
+    coverUrl = media ? publicUrl(slug, media.path) : null;
   }
 
   return (
@@ -45,6 +49,7 @@ export default async function AcaraEditPage({
       slug={slug}
       eventId={eventId}
       categories={categories}
+      activeCampaigns={activeCampaigns}
       initialData={{
         slug:             event.slug,
         title:            event.title,
@@ -64,10 +69,12 @@ export default async function AcaraEditPage({
         onlineLink:       event.onlineLink        ?? "",
         organizerName:    event.organizerName     ?? "",
         maxCapacity:      event.maxCapacity        ?? null,
-        showAttendeeList: event.showAttendeeList,
-        showTicketCount:  event.showTicketCount,
-        requireApproval:  event.requireApproval,
-        coverId:          event.coverId            ?? null,
+        showAttendeeList:   event.showAttendeeList,
+        showTicketCount:    event.showTicketCount,
+        requireApproval:    event.requireApproval,
+        showDonationPrompt: event.showDonationPrompt,
+        linkedCampaignId:   event.linkedCampaignId  ?? null,
+        coverId:            event.coverId            ?? null,
         coverUrl,
         tickets: tickets.map((t) => ({
           id:           t.id,

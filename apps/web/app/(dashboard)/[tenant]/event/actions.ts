@@ -39,11 +39,13 @@ export type EventData = {
   onlineLink?:      string | null;
   organizerName?:   string | null;
   maxCapacity?:     number | null;
-  showAttendeeList: boolean;
-  showTicketCount:  boolean;
-  requireApproval:  boolean;
-  coverId?:         string | null;
-  tickets:          TicketInput[];
+  showAttendeeList:    boolean;
+  showTicketCount:     boolean;
+  requireApproval:     boolean;
+  showDonationPrompt:  boolean;
+  linkedCampaignId?:   string | null;
+  coverId?:            string | null;
+  tickets:             TicketInput[];
   // SEO
   metaTitle?:      string | null;
   metaDesc?:       string | null;
@@ -204,9 +206,11 @@ export async function createEventAction(
         onlineLink:       data.onlineLink?.trim()       ?? null,
         organizerName:    data.organizerName?.trim()    ?? null,
         maxCapacity:      data.maxCapacity              ?? null,
-        showAttendeeList: data.showAttendeeList,
-        showTicketCount:  data.showTicketCount,
-        requireApproval:  data.requireApproval,
+        showAttendeeList:   data.showAttendeeList,
+        showTicketCount:    data.showTicketCount,
+        requireApproval:    data.requireApproval,
+        showDonationPrompt: data.showDonationPrompt,
+        linkedCampaignId:   data.linkedCampaignId ?? null,
         coverId:          data.coverId                  ?? null,
         metaTitle:        data.metaTitle?.trim()       || null,
         metaDesc:         data.metaDesc?.trim()        || null,
@@ -281,9 +285,11 @@ export async function updateEventAction(
         onlineLink:       data.onlineLink?.trim()       ?? null,
         organizerName:    data.organizerName?.trim()    ?? null,
         maxCapacity:      data.maxCapacity              ?? null,
-        showAttendeeList: data.showAttendeeList,
-        showTicketCount:  data.showTicketCount,
-        requireApproval:  data.requireApproval,
+        showAttendeeList:   data.showAttendeeList,
+        showTicketCount:    data.showTicketCount,
+        requireApproval:    data.requireApproval,
+        showDonationPrompt: data.showDonationPrompt,
+        linkedCampaignId:   data.linkedCampaignId ?? null,
         coverId:          data.coverId                  ?? null,
         metaTitle:        data.metaTitle?.trim()       || null,
         metaDesc:         data.metaDesc?.trim()        || null,

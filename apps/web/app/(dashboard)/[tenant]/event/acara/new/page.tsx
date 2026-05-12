@@ -1,6 +1,7 @@
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
+import { eq, desc } from "drizzle-orm";
 import { EventForm } from "@/components/event/event-form";
 import type { SeoValues } from "@/components/seo/seo-panel";
 
@@ -30,16 +31,22 @@ export default async function AcaraNewPage({
 
   const { db, schema } = createTenantDb(slug);
 
-  const categories = await db
-    .select({ id: schema.eventCategories.id, name: schema.eventCategories.name })
-    .from(schema.eventCategories)
-    .orderBy(schema.eventCategories.sortOrder, schema.eventCategories.name);
+  const [categories, activeCampaigns] = await Promise.all([
+    db.select({ id: schema.eventCategories.id, name: schema.eventCategories.name })
+      .from(schema.eventCategories)
+      .orderBy(schema.eventCategories.sortOrder, schema.eventCategories.name),
+    db.select({ id: schema.campaigns.id, title: schema.campaigns.title })
+      .from(schema.campaigns)
+      .where(eq(schema.campaigns.status, "active"))
+      .orderBy(desc(schema.campaigns.createdAt)),
+  ]);
 
   return (
     <EventForm
       slug={slug}
       eventId={null}
       categories={categories}
+      activeCampaigns={activeCampaigns}
       initialData={{
         slug:             "",
         title:            "",
@@ -55,10 +62,12 @@ export default async function AcaraNewPage({
         onlineLink:       "",
         organizerName:    "",
         maxCapacity:      null,
-        showAttendeeList: false,
-        showTicketCount:  true,
-        requireApproval:  false,
-        coverId:          null,
+        showAttendeeList:   false,
+        showTicketCount:    true,
+        requireApproval:    false,
+        showDonationPrompt: false,
+        linkedCampaignId:   null,
+        coverId:            null,
         coverUrl:         null,
         tickets:          [],
         seo:              DEFAULT_SEO,

@@ -713,6 +713,8 @@ export async function createTenantSchemaInDb(
         schema_type             TEXT          NOT NULL DEFAULT 'Event',
         structured_data         JSONB,
         gallery                 JSONB,
+        show_donation_prompt    BOOLEAN       NOT NULL DEFAULT false,
+        linked_campaign_id      UUID,         -- FK → campaigns.id via ALTER (setelah campaigns dibuat)
         created_by              UUID          REFERENCES "${s}".officers(id) ON DELETE SET NULL,
         view_count              INTEGER       NOT NULL DEFAULT 0,
         created_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
@@ -1194,6 +1196,12 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_donations_campaign_id        ON "${s}".donations(campaign_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_donations_member_id          ON "${s}".donations(member_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_campaigns_status             ON "${s}".campaigns(status)`));
+    // FK events.linked_campaign_id → campaigns.id (kedua tabel sudah dibuat)
+    await tx.execute(sql.raw(`
+      ALTER TABLE "${s}".events
+        ADD CONSTRAINT IF NOT EXISTS events_linked_campaign_id_fk
+        FOREIGN KEY (linked_campaign_id) REFERENCES "${s}".campaigns(id) ON DELETE SET NULL
+    `));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_document_versions_document_id ON "${s}".document_versions(document_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_documents_category_id        ON "${s}".documents(category_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_documents_visibility         ON "${s}".documents(visibility)`));

@@ -1,39 +1,17 @@
-import { desc, eq, lte, gte, and } from "drizzle-orm";
+import { desc, eq, lte } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
 import { getSettings } from "@jalajogja/db";
 import type { SectionItem, SectionType, LandingBody, PostsSectionData } from "@/lib/page-templates";
 import type { PostsSectionDesignId } from "@/lib/posts-section-designs";
 import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
 import type { CampaignsSectionData, CampaignsSectionDesignId } from "@/lib/campaigns-section-designs";
+import type { EventsSectionData, EventsSectionDesignId } from "@/lib/events-section-designs";
 import { PostsSection } from "@/components/website/public/sections/posts/posts-section";
 import { ProductsSection } from "@/components/website/public/sections/products/products-section";
 import { CampaignsSection } from "@/components/website/public/sections/campaigns/campaigns-section";
+import { EventsSection } from "@/components/website/public/sections/events/events-section";
 import { Gallery } from "@/components/gallery/gallery";
 import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
-
-// ─── Data helpers ─────────────────────────────────────────────────────────────
-
-async function fetchEvents(tenantClient: TenantDb, count: number) {
-  const { db, schema } = tenantClient;
-  const now = new Date();
-  return db
-    .select({
-      id:       schema.events.id,
-      title:    schema.events.title,
-      slug:     schema.events.slug,
-      startsAt: schema.events.startsAt,
-      endsAt:   schema.events.endsAt,
-    })
-    .from(schema.events)
-    .where(
-      and(
-        eq(schema.events.status, "published"),
-        gte(schema.events.startsAt, now)
-      )
-    )
-    .orderBy(schema.events.startsAt)
-    .limit(count);
-}
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
@@ -56,56 +34,6 @@ function HeroSection({ data }: { data: Record<string, unknown> }) {
           >
             {d.ctaLabel}
           </a>
-        )}
-      </div>
-    </section>
-  );
-}
-
-type EventRow = { id: string; title: string; slug: string; startsAt: Date | null; endsAt: Date | null };
-
-function EventsSection({
-  data, events, tenantSlug,
-}: {
-  data:       Record<string, unknown>;
-  events:     EventRow[];
-  tenantSlug: string;
-}) {
-  const d = data as { title?: string };
-  const fmt = (date: Date | null) =>
-    date ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(date) : "TBA";
-
-  return (
-    <section className="py-14 px-4">
-      <div className="max-w-4xl mx-auto">
-        {d.title && <h2 className="text-2xl font-bold mb-8">{d.title}</h2>}
-        {events.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Belum ada event mendatang.</p>
-        ) : (
-          <div className="space-y-3">
-            {events.map((event) => (
-              <a
-                key={event.id}
-                href={`/${tenantSlug}/event/${event.slug}`}
-                className="flex items-center gap-4 border border-border rounded-xl p-4 bg-white hover:border-primary/50 hover:shadow-sm transition-all"
-              >
-                <div className="shrink-0 w-14 text-center bg-primary/10 rounded-lg p-2">
-                  <div className="text-xs text-primary font-medium uppercase">
-                    {event.startsAt
-                      ? new Intl.DateTimeFormat("id-ID", { month: "short" }).format(event.startsAt)
-                      : ""}
-                  </div>
-                  <div className="text-2xl font-bold text-primary leading-none">
-                    {event.startsAt ? event.startsAt.getDate() : "?"}
-                  </div>
-                </div>
-                <div>
-                  <h3 className="font-semibold">{event.title}</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">{fmt(event.startsAt)}</p>
-                </div>
-              </a>
-            ))}
-          </div>
         )}
       </div>
     </section>
@@ -289,25 +217,11 @@ type Props = {
 };
 
 export async function LandingTemplate({ body, tenantSlug, tenantClient }: Props) {
-  const sectionTypes = new Set<SectionType>(body.sections.map((s) => s.type));
+  let contactSettings: ContactSettings = {};
 
-  const eventsMap: Map<string, EventRow[]> = new Map();
-  let   contactSettings: ContactSettings   = {};
-
-  await Promise.all([
-    sectionTypes.has("events") &&
-      (async () => {
-        for (const s of body.sections.filter((x) => x.type === "events")) {
-          const count = (s.data.count as number | undefined) ?? 3;
-          eventsMap.set(s.id, await fetchEvents(tenantClient, count));
-        }
-      })(),
-
-    sectionTypes.has("contact_info") &&
-      (async () => {
-        contactSettings = await getSettings(tenantClient, "contact");
-      })(),
-  ]);
+  if (body.sections.some(s => s.type === "contact_info")) {
+    contactSettings = await getSettings(tenantClient, "contact");
+  }
 
   return (
     <>
@@ -317,7 +231,6 @@ export async function LandingTemplate({ body, tenantSlug, tenantClient }: Props)
           section={section}
           tenantSlug={tenantSlug}
           tenantClient={tenantClient}
-          events={eventsMap.get(section.id) ?? []}
           contactSettings={contactSettings}
         />
       ))}
@@ -328,12 +241,11 @@ export async function LandingTemplate({ body, tenantSlug, tenantClient }: Props)
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 function SectionRenderer({
-  section, tenantSlug, tenantClient, events, contactSettings,
+  section, tenantSlug, tenantClient, contactSettings,
 }: {
   section:         SectionItem;
   tenantSlug:      string;
   tenantClient:    TenantDb;
-  events:          EventRow[];
   contactSettings: ContactSettings;
 }) {
   switch (section.type) {
@@ -354,7 +266,14 @@ function SectionRenderer({
         tenantSlug={tenantSlug}
       />
     );
-    case "events":       return <EventsSection        data={section.data} events={events} tenantSlug={tenantSlug} />;
+    case "events":       return (
+      <EventsSection
+        data={section.data as EventsSectionData}
+        variant={(section.variant ?? "1") as EventsSectionDesignId}
+        tenantClient={tenantClient}
+        tenantSlug={tenantSlug}
+      />
+    );
     case "campaigns":    return (
       <CampaignsSection
         data={section.data as CampaignsSectionData}

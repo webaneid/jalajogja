@@ -153,3 +153,9 @@ CREATE TABLE IF NOT EXISTS "tenant_pc-ikpm-jogjakarta".qurban_participants (
 CREATE INDEX IF NOT EXISTS idx_qurban_animals_campaign     ON "tenant_pc-ikpm-jogjakarta".qurban_animals(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_qurban_participants_donation ON "tenant_pc-ikpm-jogjakarta".qurban_participants(donation_id);
 CREATE INDEX IF NOT EXISTS idx_qurban_participants_animal   ON "tenant_pc-ikpm-jogjakarta".qurban_participants(animal_id);
+
+-- ── Events: kolom prompt donasi ───────────────────────────────────────────────
+
+ALTER TABLE "tenant_pc-ikpm-jogjakarta".events
+  ADD COLUMN IF NOT EXISTS show_donation_prompt BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS linked_campaign_id   UUID REFERENCES "tenant_pc-ikpm-jogjakarta".campaigns(id) ON DELETE SET NULL;

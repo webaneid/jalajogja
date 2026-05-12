@@ -99,6 +99,10 @@ export function createEventsTable(s: ReturnType<typeof pgSchema>) {
     // Gallery foto event — GalleryItem[] JSONB (lihat GalleryItem di website.ts)
     gallery: jsonb("gallery").$type<GalleryItem[]>(),
 
+    // Prompt donasi — tampil setelah registrasi (gratis) atau di keranjang (berbayar)
+    showDonationPrompt: boolean("show_donation_prompt").notNull().default(false),
+    linkedCampaignId:   uuid("linked_campaign_id"),  // FK → campaigns.id via SQL
+
     // Audit
     createdBy: uuid("created_by"),  // FK → officers.id via SQL
     viewCount: integer("view_count").notNull().default(0),
