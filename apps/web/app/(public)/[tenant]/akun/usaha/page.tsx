@@ -223,16 +223,20 @@ export default function UsahaPage() {
                   placeholder="Nama usaha / perusahaan" required />
               </Field>
             </div>
-            <Field label="Nama Brand" optional>
-              <input className={inputCls} value={e.brand}
-                onChange={ev => update(e._key, { brand: ev.target.value })}
-                placeholder="Brand / merek dagang" />
-            </Field>
-            <Field label="Deskripsi">
-              <input className={inputCls} value={e.description}
-                onChange={ev => update(e._key, { description: ev.target.value })}
-                placeholder="Ringkasan singkat usaha" />
-            </Field>
+            <div className="sm:col-span-2">
+              <Field label="Nama Brand" optional>
+                <input className={inputCls} value={e.brand}
+                  onChange={ev => update(e._key, { brand: ev.target.value })}
+                  placeholder="Brand / merek dagang" />
+              </Field>
+            </div>
+            <div className="sm:col-span-2">
+              <Field label="Deskripsi">
+                <textarea className={`${inputCls} h-20 resize-none py-2`} value={e.description}
+                  onChange={ev => update(e._key, { description: ev.target.value })}
+                  placeholder="Ringkasan singkat usaha" />
+              </Field>
+            </div>
             <Field label="Kategori">
               <Combobox
                 options={CATEGORIES}
