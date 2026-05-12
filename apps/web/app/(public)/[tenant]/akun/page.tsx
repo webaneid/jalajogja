@@ -7,7 +7,7 @@ import { db, tenantMemberships, tenants, members } from "@jalajogja/db";
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
-  ShoppingBag, KeyRound, AlertCircle, Building2, BookOpen, Package,
+  ShoppingBag, KeyRound, AlertCircle, Building2, BookOpen,
 } from "lucide-react";
 
 type Params = Promise<{ tenant: string }>;
@@ -188,24 +188,16 @@ export default async function AkunPage({ params }: { params: Params }) {
             </a>
           ))}
 
-          {/* Coming soon: Produk */}
-          <div className="flex items-center gap-3 rounded-xl border border-dashed border-border p-4 opacity-50 cursor-not-allowed col-span-2 sm:col-span-1">
-            <Package className="h-5 w-5 text-muted-foreground shrink-0" />
-            <div className="min-w-0">
-              <p className="font-medium text-sm text-muted-foreground">Produk</p>
-              <p className="text-xs text-muted-foreground">Segera hadir</p>
-            </div>
-          </div>
         </div>
       )}
 
       {/* ── Quick links — layanan publik ── */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { href: `/${slug}/akun/transaksi`, icon: Receipt,      label: "Transaksi",  desc: "Riwayat invoice" },
-          { href: `/${slug}/donasi`,          icon: Heart,        label: "Donasi",     desc: "Riwayat donasi" },
-          { href: `/${slug}/event`,           icon: CalendarDays, label: "Event",      desc: "Riwayat keikutsertaan" },
-          { href: `/${slug}/toko`,            icon: ShoppingBag,  label: "Belanja",    desc: "Riwayat pembelian" },
+          { href: `/${slug}/akun/transaksi`, icon: Receipt,      label: "Transaksi",  desc: "Riwayat invoice & pembayaran" },
+          { href: `/${slug}/campaign`,        icon: Heart,        label: "Donasi",     desc: "Kampanye & infaq" },
+          { href: `/${slug}/agenda`,          icon: CalendarDays, label: "Agenda",     desc: "Event & kegiatan" },
+          { href: `/${slug}/produk`,          icon: ShoppingBag,  label: "Produk",     desc: "Belanja produk" },
         ].map(({ href, icon: Icon, label, desc }) => (
           <a
             key={href}
