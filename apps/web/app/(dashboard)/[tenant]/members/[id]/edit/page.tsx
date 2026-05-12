@@ -48,6 +48,7 @@ export default async function EditMemberPage({
         graduationYear:   members.graduationYear,
         graduationPeriod: members.graduationPeriod,
         professionId:     members.professionId,
+        waliSantri:       members.waliSantri,
         // Kontak
         contactId: members.contactId,
         phone: contacts.phone,
@@ -172,6 +173,7 @@ export default async function EditMemberPage({
     graduationYear:   memberRow.graduationYear   ?? undefined,
     graduationPeriod: (memberRow.graduationPeriod as "awal" | "akhir") ?? undefined,
     professionId:     memberRow.professionId     ?? undefined,
+    waliSantri: (memberRow.waliSantri as "gontor" | "alumni" | "lain" | "bukan") ?? undefined,
     status: (memberRow.status as "active" | "inactive" | "alumni") ?? "active",
     joinedAt: memberRow.joinedAt ?? undefined,
   };

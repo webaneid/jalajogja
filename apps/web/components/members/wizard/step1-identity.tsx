@@ -36,6 +36,7 @@ export interface Step1DefaultValues {
   graduationYear?:   number
   graduationPeriod?: "awal" | "akhir"
   professionId?:     number
+  waliSantri?:       "gontor" | "alumni" | "lain" | "bukan"
   status?: "active" | "inactive" | "alumni"
   joinedAt?: string
 }
@@ -302,6 +303,7 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
   // Tahun lulus + periode 1999
   const [graduationYear,   setGraduationYear]   = React.useState<string>(defaultValues?.graduationYear ? String(defaultValues.graduationYear) : "")
   const [graduationPeriod, setGraduationPeriod] = React.useState<"awal" | "akhir" | "">(defaultValues?.graduationPeriod ?? "")
+  const [waliSantri,       setWaliSantri]       = React.useState<"gontor" | "alumni" | "lain" | "bukan" | "">(defaultValues?.waliSantri ?? "")
 
   // Form state
   const [loading, setLoading] = React.useState(false)
@@ -331,6 +333,7 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
       graduationYear:   graduationYear ? Number(graduationYear) : undefined,
       graduationPeriod: Number(graduationYear) === 1999 ? (graduationPeriod || undefined) : undefined,
       professionId,
+      waliSantri: (waliSantri || undefined) as "gontor" | "alumni" | "lain" | "bukan" | undefined,
       status:   (status as "active" | "inactive" | "alumni") || "active",
       joinedAt: (fd.get("joinedAt") as string) || undefined,
     }
@@ -520,6 +523,22 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
             value={professionId}
             onSelect={setProfessionId}
           />
+        </div>
+
+        {/* Wali Santri */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-foreground">Wali Santri</label>
+          <select
+            value={waliSantri}
+            onChange={e => setWaliSantri(e.target.value as typeof waliSantri)}
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">— Pilih —</option>
+            <option value="gontor">Wali Santri PM Gontor</option>
+            <option value="alumni">Wali Santri PM Alumni Gontor</option>
+            <option value="lain">Wali Santri Pesantren Lain</option>
+            <option value="bukan">Bukan Wali Santri</option>
+          </select>
         </div>
       </div>
 

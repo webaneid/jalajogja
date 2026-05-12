@@ -33,6 +33,11 @@ export const profiles = pgTable("profiles", {
   villageId:     text("village_id"),
   country:       text("country").default("Indonesia"),
 
+  // ── Wali Santri ───────────────────────────────────────────────────────────────
+  waliSantri: text("wali_santri", {
+    enum: ["gontor", "alumni", "lain", "bukan"],
+  }),
+
   // ── Link ke ekosistem ──────────────────────────────────────────────────────────
   betterAuthUserId: text("better_auth_user_id")
     .unique()

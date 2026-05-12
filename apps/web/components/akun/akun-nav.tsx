@@ -13,14 +13,21 @@ type NavItem = {
   memberOnly: boolean;
 };
 
-const NAV_ITEMS: NavItem[] = [
-  { href: "",              label: "Beranda",      icon: LayoutDashboard, memberOnly: false },
-  { href: "/profil",       label: "Profil",       icon: User,            memberOnly: false },
-  { href: "/transaksi",    label: "Transaksi",    icon: Receipt,         memberOnly: false },
-  { href: "/lengkapi",     label: "Data Diri",    icon: ClipboardList,   memberOnly: true  },
-  { href: "/pesantren",    label: "Pesantren",    icon: BookOpen,        memberOnly: true  },
-  { href: "/usaha",        label: "Usaha",        icon: Building2,       memberOnly: true  },
-  { href: "/mitra",        label: "Mitra",        icon: Store,           memberOnly: true  },
+const MEMBER_NAV_ITEMS: NavItem[] = [
+  { href: "",           label: "Beranda",   icon: LayoutDashboard, memberOnly: false },
+  { href: "/profil",    label: "Profil",    icon: User,            memberOnly: false },
+  { href: "/transaksi", label: "Transaksi", icon: Receipt,         memberOnly: false },
+  { href: "/lengkapi",  label: "Data Diri", icon: ClipboardList,   memberOnly: false },
+  { href: "/pesantren", label: "Pesantren", icon: BookOpen,        memberOnly: false },
+  { href: "/usaha",     label: "Usaha",     icon: Building2,       memberOnly: false },
+  { href: "/mitra",     label: "Mitra",     icon: Store,           memberOnly: false },
+];
+
+const PUBLIC_NAV_ITEMS: NavItem[] = [
+  { href: "",           label: "Beranda",   icon: LayoutDashboard, memberOnly: false },
+  { href: "/profil",    label: "Profil",    icon: User,            memberOnly: false },
+  { href: "/transaksi", label: "Transaksi", icon: Receipt,         memberOnly: false },
+  { href: "/data",      label: "Data Diri", icon: ClipboardList,   memberOnly: false },
 ];
 
 type Props = {
@@ -32,7 +39,7 @@ export function AkunNav({ slug, isMember }: Props) {
   const pathname = usePathname();
   const base     = `/${slug}/akun`;
 
-  const items = NAV_ITEMS.filter((i) => isMember || !i.memberOnly);
+  const items = isMember ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
 
   return (
     <nav className="space-y-0.5">

@@ -27,6 +27,7 @@ interface MemberData {
   graduationYear:   number | null;
   graduationPeriod: "awal" | "akhir" | null;
   professionId:     number | null;
+  waliSantri:       "gontor" | "alumni" | "lain" | "bukan" | null;
   memberNumber: string | null;
   domicileStatus: "permanent" | "temporary" | null;
   contact: {
@@ -248,6 +249,7 @@ export default function LengkapiPage() {
   const [graduationYear,   setGraduationYear]   = React.useState("");
   const [graduationPeriod, setGraduationPeriod] = React.useState<"awal" | "akhir" | "">("");
   const [professionId,   setProfessionId]   = React.useState<number | null>(null);
+  const [waliSantri,     setWaliSantri]     = React.useState<"gontor" | "alumni" | "lain" | "bukan" | "">("");
 
   // ── Step 2 state — kontak ────────────────────────────────────────────────
   const [phone,    setPhone]    = React.useState("");
@@ -341,6 +343,7 @@ export default function LengkapiPage() {
         setGraduationYear(data.graduationYear ? String(data.graduationYear) : "");
         setGraduationPeriod((data.graduationPeriod ?? "") as "awal" | "akhir" | "");
         setProfessionId(data.professionId ?? null);
+        setWaliSantri((data.waliSantri ?? "") as "gontor" | "alumni" | "lain" | "bukan" | "");
 
         // Isi Step 2 — kontak
         setPhone(data.contact?.phone ?? "");
@@ -432,6 +435,7 @@ export default function LengkapiPage() {
           graduationYear:   graduationYear ? Number(graduationYear) : null,
           graduationPeriod: Number(graduationYear) === 1999 ? (graduationPeriod || null) : null,
           professionId:     professionId ?? null,
+          waliSantri:       waliSantri || null,
         }),
       });
       const json = await res.json();
@@ -691,6 +695,22 @@ export default function LengkapiPage() {
               value={professionId}
               onChange={setProfessionId}
             />
+
+            {/* Wali Santri */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Apakah Anda Wali Santri?</label>
+              <select
+                value={waliSantri}
+                onChange={e => setWaliSantri(e.target.value as typeof waliSantri)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">— Pilih —</option>
+                <option value="gontor">Wali Santri Pondok Modern Gontor</option>
+                <option value="alumni">Wali Santri Pondok Modern Alumni Gontor</option>
+                <option value="lain">Wali Santri Pesantren Lain</option>
+                <option value="bukan">Bukan Wali Santri</option>
+              </select>
+            </div>
           </div>
 
           <div className="flex justify-end pt-4">

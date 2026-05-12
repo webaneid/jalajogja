@@ -33,6 +33,7 @@ export type MemberFormData = {
   graduationYear?:   number;           // Tahun lulus/keluar PM Gontor
   graduationPeriod?: "awal" | "akhir"; // khusus angkatan 1999
   professionId?:     number;           // FK ke ref_professions
+  waliSantri?:       "gontor" | "alumni" | "lain" | "bukan";
   // Data keanggotaan cabang
   status?: "active" | "inactive" | "alumni";
   joinedAt?: string;           // YYYY-MM-DD
@@ -56,6 +57,7 @@ function sanitize(data: MemberFormData) {
     graduationYear:   data.graduationYear || null,
     graduationPeriod: data.graduationYear === 1999 ? (data.graduationPeriod ?? null) : null,
     professionId:     data.professionId ?? null,
+    waliSantri:       data.waliSantri ?? null,
   };
 }
 

@@ -62,6 +62,11 @@ export const members = pgTable("members", {
   contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
   socialMediaId: uuid("social_media_id").references(() => socialMedias.id, { onDelete: "set null" }),
 
+  // ── Wali Santri ──────────────────────────────────────────────────────────────
+  waliSantri: text("wali_santri", {
+    enum: ["gontor", "alumni", "lain", "bukan"],
+  }),
+
   // ── Login front-end ──────────────────────────────────────────────────────────
   // Diisi saat anggota aktivasi akun login (via register atau admin aktifkan)
   // null = belum punya login; diisi = bisa login di front-end semua tenant
