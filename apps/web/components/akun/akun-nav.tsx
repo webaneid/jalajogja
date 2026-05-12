@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, User, Receipt, ClipboardList,
-  BookOpen, Building2, Store, LogOut,
+  BookOpen, Building2, Store, CalendarDays, LogOut,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 
@@ -18,6 +18,7 @@ const MEMBER_NAV_ITEMS: NavItem[] = [
   { href: "",           label: "Beranda",   icon: LayoutDashboard, memberOnly: false },
   { href: "/profil",    label: "Profil",    icon: User,            memberOnly: false },
   { href: "/transaksi", label: "Transaksi", icon: Receipt,         memberOnly: false },
+  { href: "/event",     label: "Event",     icon: CalendarDays,    memberOnly: false },
   { href: "/lengkapi",  label: "Data Diri", icon: ClipboardList,   memberOnly: false },
   { href: "/pesantren", label: "Pesantren", icon: BookOpen,        memberOnly: false },
   { href: "/usaha",     label: "Usaha",     icon: Building2,       memberOnly: false },
@@ -28,6 +29,7 @@ const PUBLIC_NAV_ITEMS: NavItem[] = [
   { href: "",           label: "Beranda",   icon: LayoutDashboard, memberOnly: false },
   { href: "/profil",    label: "Profil",    icon: User,            memberOnly: false },
   { href: "/transaksi", label: "Transaksi", icon: Receipt,         memberOnly: false },
+  { href: "/event",     label: "Event",     icon: CalendarDays,    memberOnly: false },
   { href: "/data",      label: "Data Diri", icon: ClipboardList,   memberOnly: false },
 ];
 
