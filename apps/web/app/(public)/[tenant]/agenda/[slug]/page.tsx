@@ -5,7 +5,7 @@ import { eq, and, count, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { CalendarDays, MapPin, Globe, Users, Ticket, MapIcon, UserCheck } from "lucide-react";
+import { CalendarDays, MapPin, Globe, Users, Ticket, MapIcon, UserCheck, CheckCircle2 } from "lucide-react";
 import { EventRegisterForm } from "@/components/event/event-register-form";
 import { renderBody } from "@/lib/letter-render";
 
@@ -203,18 +203,22 @@ export default async function PublicEventPage({
     usedCount:   ticketCountMap.get(t.id) ?? 0,
   }));
 
-  // Pre-fill data peserta dari session
+  // Pre-fill data peserta dari session + cek sudah terdaftar
   const session = await auth.api.getSession({ headers: await headers() });
   let defaultAttendeeName  = "";
   let defaultAttendeePhone = "";
   let defaultAttendeeEmail = "";
+  let alreadyRegistered: { registrationNumber: string; status: string } | null = null;
+  let resolvedMemberId: string | null = null;
+
   if (session?.user?.id) {
     const [member] = await db
-      .select({ name: members.name, contactId: members.contactId })
+      .select({ id: members.id, name: members.name, contactId: members.contactId })
       .from(members)
       .where(eq(members.betterAuthUserId, session.user.id))
       .limit(1);
     if (member) {
+      resolvedMemberId    = member.id;
       defaultAttendeeName = member.name ?? "";
       if (member.contactId) {
         const [contact] = await db
@@ -230,6 +234,30 @@ export default async function PublicEventPage({
     }
     if (!defaultAttendeeName) defaultAttendeeName = session.user.name ?? "";
     if (!defaultAttendeeEmail) defaultAttendeeEmail = session.user.email ?? "";
+
+    // Cek apakah sudah terdaftar (by memberId atau email)
+    const dupConditions = [
+      eq(schema.eventRegistrations.eventId, event.id),
+      sql`${schema.eventRegistrations.status} != 'cancelled'`,
+    ] as Parameters<typeof and>;
+
+    if (resolvedMemberId) {
+      dupConditions.push(eq(schema.eventRegistrations.memberId, resolvedMemberId));
+    } else if (defaultAttendeeEmail) {
+      dupConditions.push(eq(schema.eventRegistrations.attendeeEmail, defaultAttendeeEmail));
+    }
+
+    if (dupConditions.length > 2) {
+      const [existing] = await tenantDb
+        .select({
+          registrationNumber: schema.eventRegistrations.registrationNumber,
+          status:             schema.eventRegistrations.status,
+        })
+        .from(schema.eventRegistrations)
+        .where(and(...dupConditions))
+        .limit(1);
+      if (existing) alreadyRegistered = existing;
+    }
   }
 
   // Donation prompt data
@@ -366,7 +394,34 @@ export default async function PublicEventPage({
 
           {/* ── Kanan: Form Pendaftaran (sticky) ── */}
           <div className="lg:sticky lg:top-6 space-y-4">
-            {tickets.length === 0 ? (
+            {alreadyRegistered ? (
+              /* Sudah terdaftar — tampilkan status, sembunyikan form */
+              <div className="rounded-xl border border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800 p-6 text-center space-y-3">
+                <CheckCircle2 className="h-10 w-10 mx-auto text-green-500" />
+                <div>
+                  <p className="font-semibold text-sm text-green-800 dark:text-green-200">Kamu Sudah Terdaftar</p>
+                  <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                    No. Pendaftaran:{" "}
+                    <span className="font-mono font-semibold">{alreadyRegistered.registrationNumber}</span>
+                  </p>
+                </div>
+                {alreadyRegistered.status === "pending" && (
+                  <p className="text-xs text-green-600 dark:text-green-400">
+                    Pendaftaranmu sedang menunggu konfirmasi panitia.
+                  </p>
+                )}
+                {alreadyRegistered.status === "confirmed" && (
+                  <p className="text-xs text-green-600 dark:text-green-400">
+                    Pendaftaranmu telah dikonfirmasi. Sampai jumpa di acara!
+                  </p>
+                )}
+                {alreadyRegistered.status === "attended" && (
+                  <p className="text-xs text-green-600 dark:text-green-400">
+                    Kamu sudah hadir di acara ini.
+                  </p>
+                )}
+              </div>
+            ) : tickets.length === 0 ? (
               <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
                 <Ticket className="h-8 w-8 mx-auto mb-2 opacity-40" />
                 Pendaftaran belum dibuka

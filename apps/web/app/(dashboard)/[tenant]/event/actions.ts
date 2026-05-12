@@ -2,9 +2,11 @@
 
 import { eq, count, inArray, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createTenantDb, generateFinancialNumber, recordIncome, createLinkedInvoice, syncInvoicePayment } from "@jalajogja/db";
+import { createTenantDb, generateFinancialNumber, recordIncome, createLinkedInvoice, syncInvoicePayment, db as publicDb, members, contacts } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -493,6 +495,53 @@ export async function registerForEventAction(
   const tenantDb = createTenantDb(slug);
   const { db, schema } = tenantDb;
 
+  // Resolve identitas user yang login (opsional — guest boleh daftar)
+  let resolvedMemberId:  string | null = null;
+  let resolvedProfileId: string | null = null;
+  let resolvedEmail:     string | null = data.attendeeEmail?.trim() ?? null;
+
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (session?.user?.id) {
+    const [member] = await publicDb
+      .select({ id: members.id, contactId: members.contactId })
+      .from(members)
+      .where(eq(members.betterAuthUserId, session.user.id))
+      .limit(1);
+
+    if (member) {
+      resolvedMemberId = member.id;
+      if (member.contactId && !resolvedEmail) {
+        const [contact] = await publicDb
+          .select({ email: contacts.email })
+          .from(contacts)
+          .where(eq(contacts.id, member.contactId))
+          .limit(1);
+        resolvedEmail = contact?.email ?? null;
+      }
+    }
+  }
+
+  // Guard double-daftar: cek pendaftaran aktif sebelumnya
+  if (resolvedMemberId || resolvedEmail) {
+    const conditions = [
+      eq(schema.eventRegistrations.eventId, data.eventId),
+      sql`${schema.eventRegistrations.status} != 'cancelled'`,
+    ];
+    if (resolvedMemberId) {
+      conditions.push(eq(schema.eventRegistrations.memberId, resolvedMemberId));
+    } else {
+      conditions.push(eq(schema.eventRegistrations.attendeeEmail, resolvedEmail!));
+    }
+
+    const [existing] = await db
+      .select({ id: schema.eventRegistrations.id })
+      .from(schema.eventRegistrations)
+      .where(and(...conditions))
+      .limit(1);
+
+    if (existing) return { success: false, error: "Kamu sudah terdaftar di event ini." };
+  }
+
   // Cek event masih published + ambil maxCapacity sekaligus
   const [event] = await db
     .select({
@@ -571,6 +620,7 @@ export async function registerForEventAction(
           registrationNumber: regNumber,
           eventId:            data.eventId,
           ticketId:           data.ticketId,
+          memberId:           resolvedMemberId,
           attendeeName:       data.attendeeName.trim(),
           attendeePhone:      data.attendeePhone?.trim() ?? null,
           attendeeEmail:      data.attendeeEmail?.trim() ?? null,
