@@ -2111,12 +2111,47 @@ Setiap kali ada halaman publik dengan nama route yang sama dengan dashboard:
 Di `campaigns-section.tsx` dan detail page: `isRecurring: false` sebagai hardcode sementara.
 Saat Phase R diimplementasikan, ganti dengan kolom aktual dari DB.
 
+### [2026-05] Data Pesantren Anggota — Redesign Konsep Total
+
+Arsitektur lengkap: `docs/arsitektur-pesantren.md` (status: SELESAI, commit `dbc933e`).
+
+**Konsep lama salah total**: `member_pesantren` adalah pivot ke tabel direktori `pesantren` — anggota link ke pesantren yang sudah ada. Ini salah karena tujuannya bukan riwayat "santri di pesantren mana", melainkan "pesantren yang dimiliki/dikelola anggota".
+
+**Konsep baru**: Identik dengan `member_businesses`. Tabel baru `public.member_owned_pesantren` — standalone, tidak ada FK ke tabel direktori pesantren. Anggota input data pesantren sendiri secara langsung (self-reported).
+
+**7 section form**: Identitas → Pimpinan → Klasifikasi (kurikulum/jenisPondok/modelPendidikan/kategoriSantri) → Statistik (santri putra+putri+total, asatidz+asatidzah+total) → Kontak → Alamat → Sosmed.
+
+**Pola yang diikuti** (tidak perlu reinvent):
+- Three-view pattern (list/detail/edit) identik dengan `/akun/usaha`
+- `focusedId` state di admin wizard (sama dengan `step4-business.tsx`)
+- Helper FK conditional insert di server action (sama dengan `saveMemberBusinessesAction`)
+- LEFT JOIN ke ref wilayah di API GET (sama dengan `member-business`)
+
+**Aturan baru yang dikunci**:
+- `member_owned_pesantren.hp_pimpinan` = nomor HP pimpinan di-`normalizePhone()`, bukan FK ke contacts
+- Auto-total santri/asatidz = kalkulasi client saja, tidak disimpan ke DB
+- `media.uploaded_by` FK ke `tenant.users` — tidak berlaku untuk file yang diupload anggota front-end (beda entitas, beda tabel). Ini jadi input untuk arsitektur Member Media Library.
+
+### [2026-05] Member Media Library — Arsitektur Selesai, Implementasi Belum
+
+Arsitektur lengkap + perencanaan implementasi: `docs/arsitektur-medialibrary.md`
+
+**Keputusan yang dikunci:**
+- Bucket sama `tenant-{slug}`, path prefix `akun/{memberId}/{year}/{month}/`
+- Kolom baru `member_id TEXT` di `tenant.media` (bukan FK, karena cross-schema ke `public.members`)
+- Modul baru `'akun'` di CHECK constraint media.module
+- Endpoint baru: `POST /api/akun/media/upload`, `GET /api/akun/media`, `DELETE /api/akun/media/[id]`
+- Guard kepemilikan wajib di DELETE — tidak bisa hapus file orang lain
+- Reuse Sharp pipeline yang sudah ada (`processImage()`) — tidak perlu duplikasi
+
+**Mengapa `uploaded_by` yang ada tidak cukup**: kolom itu FK ke `tenant.users` (pengurus/admin), bukan ke `public.members` (anggota front-end). Anggota front-end tidak ada di `tenant.users` kecuali diangkat pengurus.
+
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **CampaignCard + CampaignsSection + halaman publik donasi (C1–C7)** — alur cart universal untuk donasi reguler dan qurban.
-- Sesi ini: Semua fitur donasi publik, qurban Q1–Q5, produk publik P1–P5, berbagai fix auth/login, dokumentasi arsitektur akun + donasi + qurban.
-- Ditunda: V8 (stok check qurban server-side), EventCard+Section, Donasi Rutin (R1–R7).
+- Terakhir dikerjakan: **Data Pesantren anggota — redesign konsep + implementasi lengkap** (commit `dbc933e`).
+- Sesi ini: fix akun/usaha (wilayah names + PhoneInput admin), data pesantren redesign total (tabel baru `member_owned_pesantren`, 7-section form, three-view, admin wizard), dokumentasi arsitektur pesantren + media library.
+- Ditunda: V8 (stok check qurban server-side), EventCard+Section, Donasi Rutin (R1–R7), Member Media Library (Phase 1–4 — lihat `docs/arsitektur-medialibrary.md`).
 
 ### Status Halaman Publik
 
@@ -2141,6 +2176,7 @@ Saat Phase R diimplementasikan, ganti dengan kolom aktual dari DB.
 - **Billing** — Phase 2: public cart/checkout. Phase 3: integrasi modul existing.
 - **View Counter** — Step 10: tampil di detail publik (≥50). Detail: `docs/arsitektur-views-count.md`
 - **Widget Area System** — ✅ SELESAI
+- **Member Media Library** — Phase 1–4 (upload foto sendiri, lihat file sendiri, MemberMediaPicker). Arsitektur: `docs/arsitektur-medialibrary.md`
 
 ### [2026-05] Login Universal Phase 2 — Self-Service Member Profile Completion
 

@@ -1,6 +1,6 @@
 # Arsitektur Data Pesantren — jalajogja
 
-> Status: **PERENCANAAN** — belum dieksekusi.
+> Status: **SELESAI** — sudah dieksekusi dan ter-commit (commit `dbc933e`).
 
 ---
 
@@ -313,32 +313,49 @@ Satu entry per card, pola `BusinessCard` yang sama (`focusedId` state).
 
 ---
 
-## Urutan Eksekusi
+## Urutan Eksekusi (✅ Semua Selesai)
 
 ```
-Step 1 — Schema DB
+Step 1 — Schema DB ✅
   1a. Buat file Drizzle: member-owned-pesantren.ts
   1b. Export dari index.ts
   1c. Buat SQL migration file + jalankan via psql
 
-Step 2 — API Route
+Step 2 — API Route ✅
   2a. Rewrite GET: query memberOwnedPesantren + LEFT JOIN semua helper + ref wilayah
   2b. Rewrite POST: replace-all dengan insert helper tables kondisional
 
-Step 3 — Frontend (public)
+Step 3 — Frontend (public) ✅
   3a. Rewrite pesantren/page.tsx: three-view pattern (usaha-client style)
       - Entry type + ApiRow type dengan nama wilayah
       - DetailDialog: tampil semua info termasuk statistik auto-total
       - EntryEditForm: 7 section
       - Fokus satu entry saat tambah (same as step4)
 
-Step 4 — Admin Wizard
+Step 4 — Admin Wizard ✅
   4a. Rewrite step5-pesantren.tsx: form identik dengan frontend
   4b. Rewrite saveMemberOwnedPesantrenAction di actions.ts
   4c. Update member-data-sections.tsx: tampil data baru
 
-Step 5 — TypeScript check + commit
+Step 5 — TypeScript check + commit ✅
+  TypeScript 0 errors. Commit: dbc933e
 ```
+
+---
+
+## File Aktual yang Dibuat / Diubah
+
+| File | Status |
+|------|--------|
+| `packages/db/src/schema/public/member-owned-pesantren.ts` | ✅ Dibuat |
+| `packages/db/src/schema/public/index.ts` | ✅ Diperbarui |
+| `docs/migration-member-owned-pesantren.sql` | ✅ Dibuat + dijalankan |
+| `apps/web/app/api/akun/member-pesantren/route.ts` | ✅ Ditulis ulang |
+| `apps/web/app/(public)/[tenant]/akun/pesantren/page.tsx` | ✅ Ditulis ulang |
+| `apps/web/components/members/wizard/step5-pesantren.tsx` | ✅ Ditulis ulang |
+| `apps/web/app/(dashboard)/[tenant]/members/actions.ts` | ✅ Diperbarui |
+| `apps/web/app/(dashboard)/[tenant]/members/[id]/member-data-sections.tsx` | ✅ Diperbarui |
+| `apps/web/app/(dashboard)/[tenant]/members/[id]/page.tsx` | ✅ Diperbarui |
 
 ---
 
