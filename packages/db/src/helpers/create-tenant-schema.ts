@@ -99,12 +99,15 @@ export async function createTenantSchemaInDb(
         title         TEXT,
         caption       TEXT,
         description   TEXT,
-        -- Modul asal upload: website/members/letters/shop/general
+        -- Modul asal upload: website/members/letters/shop/general/akun
         module        TEXT        NOT NULL DEFAULT 'general'
-                                  CHECK (module IN ('website','members','letters','shop','general')),
+                                  CHECK (module IN ('website','members','letters','shop','general','akun')),
         -- false = file ter-upload tapi belum dipakai di konten (orphan candidate)
         is_used       BOOLEAN     NOT NULL DEFAULT false,
         uploaded_by   UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        -- UUID string ke public.members.id (bukan FK — cross-schema ref tidak bisa FK di factory pattern)
+        -- NULL = file admin; terisi = file anggota front-end (module='akun')
+        member_id     TEXT,
         created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         -- Variant sistem: path MinIO per variant (bukan URL)
         variants              JSONB,
@@ -1166,6 +1169,7 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letters_status           ON "${s}".letters(status)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letters_bulk_parent      ON "${s}".letters(bulk_parent_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_letter_contacts_member   ON "${s}".letter_contacts(member_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_media_member_id          ON "${s}".media(member_id) WHERE member_id IS NOT NULL`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_officers_member_id         ON "${s}".officers(member_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_officers_division_id       ON "${s}".officers(division_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_officers_is_active         ON "${s}".officers(is_active)`));

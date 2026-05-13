@@ -127,7 +127,7 @@ export function createPostTagPivotTable(s: ReturnType<typeof pgSchema>) {
 }
 
 // Modul asal file yang diupload
-export const MEDIA_MODULES = ["website", "members", "letters", "shop", "general"] as const;
+export const MEDIA_MODULES = ["website", "members", "letters", "shop", "general", "akun"] as const;
 export type MediaModule = typeof MEDIA_MODULES[number];
 
 export const MEDIA_PROCESSING_STATUSES = ["pending", "processing", "done", "failed", "bypass"] as const;
@@ -179,7 +179,8 @@ export function createMediaTable(s: ReturnType<typeof pgSchema>) {
     module: text("module", { enum: MEDIA_MODULES }).notNull().default("general"),
     // false = file ter-upload tapi belum dipakai di konten (orphan candidate)
     isUsed: boolean("is_used").notNull().default(false),
-    uploadedBy: uuid("uploaded_by"),      // FK → users.id via SQL migration
+    uploadedBy: uuid("uploaded_by"),      // FK → users.id via SQL migration (admin only)
+    memberId: text("member_id"),           // UUID string → public.members.id (anggota front-end, bukan FK)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     // Variant sistem — path MinIO per variant (bukan URL)
     variants:             jsonb("variants").$type<ImageVariants>(),
