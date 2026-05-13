@@ -214,9 +214,11 @@ export async function saveGatewayConfigAction(
 export async function saveDisplaySettingsAction(
   slug: string,
   values: {
-    primaryColor: string;
-    font: string;
-    footerText: string;
+    primaryColor:   string;
+    secondaryColor: string;
+    font:           string;
+    headingFont:    string;
+    footerText:     string;
   }
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
@@ -225,9 +227,11 @@ export async function saveDisplaySettingsAction(
 
   const tenantDb = createTenantDb(slug);
   await upsertSettings(tenantDb, "display", {
-    primary_color: values.primaryColor,
-    font:          values.font,
-    footer_text:   values.footerText,
+    primary_color:   values.primaryColor,
+    secondary_color: values.secondaryColor,
+    font:            values.font,
+    heading_font:    values.headingFont,
+    footer_text:     values.footerText,
   });
 
   return {};

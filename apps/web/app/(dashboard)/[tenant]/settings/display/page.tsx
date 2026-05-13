@@ -28,9 +28,11 @@ export default async function DisplaySettingsPage({
       <DisplaySettingsForm
         slug={slug}
         defaultValues={{
-          primaryColor: (settings.primary_color as string) ?? "#2563eb",
-          font:         (settings.font         as string) ?? "Inter",
-          footerText:   (settings.footer_text  as string) ?? "",
+          primaryColor:   (settings.primary_color   as string) ?? "#2563eb",
+          secondaryColor: (settings.secondary_color as string) ?? "#64748b",
+          font:           (settings.font            as string) ?? "Inter",
+          headingFont:    (settings.heading_font    as string) ?? "Inter",
+          footerText:     (settings.footer_text     as string) ?? "",
         }}
       />
     </div>
