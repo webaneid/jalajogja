@@ -10,6 +10,7 @@ import { WilayahSelect }    from "@/components/ui/wilayah-select";
 import type { WilayahValue } from "@/components/ui/wilayah-select";
 import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/components/ui/social-media-input";
 import { RegencyCombobox } from "@/components/ui/regency-combobox";
+import { CoverImageField } from "@/components/media/member-media-picker";
 import { PhoneInput }      from "@/components/ui/phone-input";
 import { Search, ChevronDown, Plus, X } from "lucide-react";
 
@@ -18,6 +19,7 @@ import { Search, ChevronDown, Plus, X } from "lucide-react";
 interface MemberData {
   id: string;
   name: string;
+  photoUrl: string | null;
   nik: string | null;
   stambukNumber: string | null;
   gender: "male" | "female" | null;
@@ -238,6 +240,7 @@ export default function LengkapiPage() {
   const [professions, setProfessions] = React.useState<Profession[]>([]);
 
   // ── Step 1 state ──────────────────────────────────────────────────────────
+  const [photoUrl,       setPhotoUrl]       = React.useState<string | null>(null);
   const [name,           setName]           = React.useState("");
   const [nik,            setNik]            = React.useState("");
   const [stambukNumber,  setStambukNumber]  = React.useState("");
@@ -322,6 +325,7 @@ export default function LengkapiPage() {
         const { data }: { data: MemberData } = await dataRes.json();
 
         // Isi Step 1
+        setPhotoUrl(data.photoUrl ?? null);
         setName(data.name ?? "");
         setNik(data.nik ?? "");
         setStambukNumber(data.stambukNumber ?? "");
@@ -423,6 +427,7 @@ export default function LengkapiPage() {
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
           name: name.trim(),
+          photoUrl: photoUrl || null,
           nik:  nik.trim() || null,
           stambukNumber: stambukNumber.trim() || null,
           gender: gender || null,
@@ -554,6 +559,14 @@ export default function LengkapiPage() {
             <User className="h-4 w-4 text-primary" />
             Data Identitas
           </div>
+
+          <CoverImageField
+            slug={slug}
+            label="Foto Profil"
+            value={photoUrl}
+            onChange={setPhotoUrl}
+            preferVariant="profile"
+          />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">

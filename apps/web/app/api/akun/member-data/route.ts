@@ -21,7 +21,7 @@ async function getSessionMember(req: NextRequest) {
       id: true, name: true, nik: true, stambukNumber: true, gender: true,
       birthDate: true, birthRegencyId: true, birthPlaceText: true,
       graduationYear: true, graduationPeriod: true, professionId: true, memberNumber: true,
-      waliSantri: true,
+      waliSantri: true, photoUrl: true,
       contactId: true, homeAddressId: true, socialMediaId: true, domicileStatus: true,
     },
   });
@@ -142,6 +142,7 @@ export async function GET(req: NextRequest) {
       memberNumber:  member.memberNumber,
       graduationPeriod: member.graduationPeriod ?? null,
       waliSantri:    member.waliSantri ?? null,
+      photoUrl:      member.photoUrl ?? null,
       domicileStatus: member.domicileStatus,
       // Kontak
       contact,
@@ -176,6 +177,7 @@ export async function PATCH(req: NextRequest) {
     graduationPeriod?: "awal" | "akhir" | null;
     professionId?:     number | null;
     waliSantri?:       "gontor" | "alumni" | "lain" | "bukan" | null;
+    photoUrl?:         string | null;
   };
 
   if (body.name !== undefined && !body.name?.trim())
@@ -194,6 +196,7 @@ export async function PATCH(req: NextRequest) {
   if (body.graduationPeriod !== undefined) updateData.graduationPeriod = body.graduationPeriod ?? null;
   if (body.professionId     !== undefined) updateData.professionId     = body.professionId     ?? null;
   if (body.waliSantri       !== undefined) updateData.waliSantri       = body.waliSantri       ?? null;
+  if (body.photoUrl         !== undefined) updateData.photoUrl         = body.photoUrl?.trim()  || null;
 
   // Auto-generate No. Anggota saat birthDate diisi dan member belum punya nomor
   if (!member.memberNumber) {

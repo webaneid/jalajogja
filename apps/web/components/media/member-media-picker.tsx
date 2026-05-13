@@ -258,11 +258,13 @@ export function CoverImageField({
   value,
   onChange,
   label = "Foto",
+  preferVariant,
 }: {
-  slug:     string;
-  value:    string | null | undefined;
-  onChange: (url: string | null) => void;
-  label?:   string;
+  slug:           string;
+  value:          string | null | undefined;
+  onChange:       (url: string | null) => void;
+  label?:         string;
+  preferVariant?: string;
 }) {
   const { open, openPicker, closePicker } = useMemberMediaPicker();
 
@@ -306,7 +308,10 @@ export function CoverImageField({
         open={open}
         onClose={closePicker}
         onSelect={(item) => {
-          onChange(item.variants?.large ?? item.url);
+          const url = (preferVariant ? item.variants?.[preferVariant] : null)
+            ?? item.variants?.large
+            ?? item.url;
+          onChange(url);
           closePicker();
         }}
       />
