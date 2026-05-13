@@ -7,7 +7,8 @@ import { ProductCard }                   from "@/components/website/public/produ
 import { ProductArchiveClient }          from "@/components/toko/public/product-archive-client";
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
 import type { Metadata }                 from "next";
-import { ShoppingBag, ChevronLeft, ChevronRight } from "lucide-react";
+import { ShoppingBag } from "lucide-react";
+import { PublicButton } from "@/components/website/public/ui/public-button";
 
 export const revalidate = 60;
 
@@ -244,25 +245,23 @@ export default async function ProdukArchivePage({
         {totalPages > 1 && (
           <div className="mt-10 flex items-center justify-center gap-2">
             {safePage > 1 && (
-              <a
+              <PublicButton
                 href={`${basePath}?${new URLSearchParams({ ...(category ? { category } : {}), ...(search ? { search } : {}), page: String(safePage - 1) }).toString()}`}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-sm transition-colors"
+                variant="outline-dark" size="sm" iconLeft="chevron" icon="none"
               >
-                <ChevronLeft className="h-4 w-4" />
                 Sebelumnya
-              </a>
+              </PublicButton>
             )}
             <span className="text-sm text-muted-foreground px-2">
               Halaman {safePage} dari {totalPages}
             </span>
             {safePage < totalPages && (
-              <a
+              <PublicButton
                 href={`${basePath}?${new URLSearchParams({ ...(category ? { category } : {}), ...(search ? { search } : {}), page: String(safePage + 1) }).toString()}`}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-sm transition-colors"
+                variant="outline-dark" size="sm" icon="chevron"
               >
                 Berikutnya
-                <ChevronRight className="h-4 w-4" />
-              </a>
+              </PublicButton>
             )}
           </div>
         )}

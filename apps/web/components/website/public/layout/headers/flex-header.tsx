@@ -7,6 +7,7 @@ import { type NavItem, resolveNavHref, NAV_TYPE_ICONS } from "@/lib/nav-menu";
 import type { HeaderProps } from "@/lib/header-designs";
 import { CartButton } from "@/components/website/public/layout/cart-button";
 import { checkDashboardAccessAction, getAkunAvatarAction } from "@/app/(public)/[tenant]/actions";
+import { PublicButton } from "@/components/website/public/ui/public-button";
 
 // ── Mobile bottom nav — maks 3 item + "Lainnya" ──────────────────────────────
 
@@ -224,18 +225,12 @@ function UserButton({ tenantSlug }: { tenantSlug: string }) {
   if (!session) {
     return (
       <div className="flex items-center gap-2">
-        <a
-          href={`/${tenantSlug}/login`}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
+        <PublicButton href={`/${tenantSlug}/login`} variant="ghost" size="sm" icon="none">
           Masuk
-        </a>
-        <a
-          href={`/${tenantSlug}/register`}
-          className="text-sm px-3 py-1.5 rounded-full bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-        >
+        </PublicButton>
+        <PublicButton href={`/${tenantSlug}/register`} variant="primary" size="sm" icon="arrow">
           Daftar
-        </a>
+        </PublicButton>
       </div>
     );
   }

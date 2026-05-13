@@ -8,6 +8,7 @@ import { publicUrl } from "@/lib/minio";
 import { renderBody } from "@/lib/letter-render";
 import { recordView, hashIp } from "@/lib/view-counter";
 import { WidgetArea } from "@/components/website/public/widget-area";
+import { PublicButton } from "@/components/website/public/ui/public-button";
 import type { Metadata } from "next";
 
 export const revalidate = 60;
@@ -286,12 +287,13 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
             )}
           </div>
 
-          <a
+          <PublicButton
             href={`/${tenantSlug}/post`}
-            className="mt-6 inline-block text-sm text-primary hover:underline"
+            variant="ghost" size="sm" iconLeft="chevron" icon="none"
+            className="mt-6"
           >
-            ← Kembali ke Blog
-          </a>
+            Kembali ke Blog
+          </PublicButton>
         </article>
 
         {/* Sidebar */}

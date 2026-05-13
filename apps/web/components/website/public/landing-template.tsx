@@ -12,6 +12,7 @@ import { CampaignsSection } from "@/components/website/public/sections/campaigns
 import { EventsSection } from "@/components/website/public/sections/events/events-section";
 import { Gallery } from "@/components/gallery/gallery";
 import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
+import { PublicButton } from "@/components/website/public/ui/public-button";
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
@@ -28,12 +29,9 @@ function HeroSection({ data }: { data: Record<string, unknown> }) {
         {d.title    && <h1 className="text-4xl font-bold leading-tight">{d.title}</h1>}
         {d.subtitle && <p className="text-lg text-white/90">{d.subtitle}</p>}
         {d.ctaLabel && d.ctaUrl && (
-          <a
-            href={d.ctaUrl}
-            className="inline-block mt-4 px-6 py-3 bg-white text-gray-900 font-semibold rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            {d.ctaLabel}
-          </a>
+          <PublicButton href={d.ctaUrl as string} variant="light" size="lg" className="mt-4">
+            {d.ctaLabel as string}
+          </PublicButton>
         )}
       </div>
     </section>
@@ -125,12 +123,9 @@ function CtaSection({ data }: { data: Record<string, unknown> }) {
         {d.title    && <h2 className="text-3xl font-bold">{d.title}</h2>}
         {d.subtitle && <p className="text-white/90">{d.subtitle}</p>}
         {d.ctaLabel && d.ctaUrl && (
-          <a
-            href={d.ctaUrl}
-            className="inline-block mt-2 px-6 py-3 bg-white text-gray-900 font-semibold rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            {d.ctaLabel}
-          </a>
+          <PublicButton href={d.ctaUrl as string} variant="light" size="lg" className="mt-2">
+            {d.ctaLabel as string}
+          </PublicButton>
         )}
       </div>
     </section>

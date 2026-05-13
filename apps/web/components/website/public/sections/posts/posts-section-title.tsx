@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { PublicButton } from "@/components/website/public/ui/public-button";
 
 type Props = {
   title:      string;
@@ -20,14 +21,10 @@ export function PostsSectionTitle({
       <Tag className="shrink-0 text-xl font-bold border-b-2 border-primary pb-1">
         {title}
       </Tag>
-      <div className="flex-1 border-t border-dashed border-gray-300 self-end mb-1" />
-      <a
-        href={href}
-        className="shrink-0 text-sm text-muted-foreground hover:text-primary flex items-center gap-0.5 whitespace-nowrap"
-      >
+      <div className="flex-1 border-t border-dashed border-border self-end mb-1" />
+      <PublicButton href={href} variant="ghost" size="sm" icon="chevron">
         {linkLabel}
-        <span aria-hidden className="ml-0.5">›</span>
-      </a>
+      </PublicButton>
     </div>
   );
 }
