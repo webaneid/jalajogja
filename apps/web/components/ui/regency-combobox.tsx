@@ -33,15 +33,27 @@ export function RegencyCombobox({
   const [results,  setResults]  = useState<Regency[]>([]);
   const [open,     setOpen]     = useState(false);
   const [loading,  setLoading]  = useState(false);
-  const [selected, setSelected] = useState<Regency | null>(null);
+  const [selected, setSelected] = useState<Regency | null>(() =>
+    value && displayName
+      ? { id: value, name: displayName, type: "", provinceName: "" }
+      : null
+  );
 
   const timer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // Sync displayName saat initial load data dari server
+  // Sync saat data dari server tiba setelah mount (async load)
   useEffect(() => {
-    if (displayName && !selected) setQuery(displayName);
-  }, [displayName, selected]);
+    if (value && displayName && !selected) {
+      setSelected({ id: value, name: displayName, type: "", provinceName: "" });
+      setQuery(displayName);
+    }
+    if (!value && !displayName) {
+      setSelected(null);
+      setQuery("");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, displayName]);
 
   // Debounced search
   useEffect(() => {
