@@ -6,7 +6,7 @@ import { authClient, signOut } from "@/lib/auth-client";
 import { type NavItem, resolveNavHref, NAV_TYPE_ICONS } from "@/lib/nav-menu";
 import type { HeaderProps } from "@/lib/header-designs";
 import { CartButton } from "@/components/website/public/layout/cart-button";
-import { checkDashboardAccessAction } from "@/app/(public)/[tenant]/actions";
+import { checkDashboardAccessAction, getAkunAvatarAction } from "@/app/(public)/[tenant]/actions";
 
 // ── Mobile bottom nav — maks 3 item + "Lainnya" ──────────────────────────────
 
@@ -213,10 +213,12 @@ function UserButton({ tenantSlug }: { tenantSlug: string }) {
   const { data: session }          = authClient.useSession();
   const [open, setOpen]            = useState(false);
   const [hasDashboard, setHasDash] = useState(false);
+  const [photoUrl, setPhotoUrl]    = useState<string | null>(null);
 
   useEffect(() => {
-    if (!session?.user) { setHasDash(false); return; }
+    if (!session?.user) { setHasDash(false); setPhotoUrl(null); return; }
     checkDashboardAccessAction(tenantSlug).then(setHasDash);
+    getAkunAvatarAction().then(setPhotoUrl);
   }, [session?.user?.id, tenantSlug]);
 
   if (!session) {
@@ -248,9 +250,18 @@ function UserButton({ tenantSlug }: { tenantSlug: string }) {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
-        <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">
-          {initial}
-        </div>
+        {photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={photoUrl}
+            alt={name}
+            className="h-8 w-8 rounded-full object-cover ring-1 ring-border"
+          />
+        ) : (
+          <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">
+            {initial}
+          </div>
+        )}
         <ChevronDown className="h-3.5 w-3.5" />
       </button>
 
