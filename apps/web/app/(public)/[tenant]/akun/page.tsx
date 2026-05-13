@@ -6,7 +6,7 @@ import { db, tenantMemberships, tenants, members } from "@jalajogja/db";
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
-  ShoppingBag, AlertCircle, Building2, BookOpen,
+  ShoppingBag, AlertCircle, Building2, BookOpen, ImageIcon,
 } from "lucide-react";
 
 type Params = Promise<{ tenant: string }>;
@@ -121,10 +121,11 @@ export default async function AkunPage({ params }: { params: Params }) {
 
       {/* Quick links data anggota */}
       {isMember && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[
-            { href: `/${slug}/akun/pesantren`, icon: BookOpen,  label: "Pesantren", desc: "Data keterlibatan pesantren" },
-            { href: `/${slug}/akun/usaha`,     icon: Building2, label: "Usaha",     desc: "Data usaha & bisnis" },
+            { href: `/${slug}/akun/pesantren`, icon: BookOpen,   label: "Pesantren", desc: "Data keterlibatan pesantren" },
+            { href: `/${slug}/akun/usaha`,     icon: Building2,  label: "Usaha",     desc: "Data usaha & bisnis" },
+            { href: `/${slug}/akun/media`,     icon: ImageIcon,  label: "Foto Saya", desc: "Kelola foto yang Anda upload" },
           ].map(({ href, icon: Icon, label, desc }) => (
             <a key={href} href={href}
               className="flex items-center gap-3 rounded-xl border border-border p-4 hover:border-primary/50 hover:bg-muted/40 transition-all">

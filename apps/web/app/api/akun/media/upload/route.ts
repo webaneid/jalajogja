@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
 
   try {
     await Promise.all(
-      variantKeys.map(async (name) => {
+      variantKeys.map(async (name: VariantKey) => {
         const filePath = `${basePath}/${uuid}${VARIANT_SUFFIXES[name]}.webp`;
         await uploadFile(slug, filePath, allVariants[name], "image/webp");
         variantPaths[name] = filePath;

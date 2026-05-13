@@ -117,13 +117,13 @@ export function MemberMediaPicker({ slug, open, onClose, onSelect }: MemberMedia
   );
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o: boolean) => !o && onClose()}>
       <DialogContent className="max-w-2xl p-0 gap-0" showCloseButton={false}>
         <DialogHeader className="px-6 pt-5 pb-0">
           <DialogTitle>Pilih Foto</DialogTitle>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "library" | "upload")} className="flex flex-col">
+        <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as "library" | "upload")} className="flex flex-col">
           <div className="px-6 pt-3">
             <TabsList>
               <TabsTrigger value="library">Foto Saya</TabsTrigger>
