@@ -61,6 +61,9 @@ export const memberBusinesses = pgTable("member_businesses", {
     enum: ["Dibawah 500jt", "500jt-1M", "1M-2M", "Diatas 2M"],
   }),
 
+  // ── Foto usaha ─────────────────────────────────────────────────────────────────
+  coverUrl: text("cover_url"),   // URL foto dari member media library (bukan FK — cross-schema)
+
   // ── Relasi ke helper tables ───────────────────────────────────────────────────
   addressId: uuid("address_id").references(() => addresses.id, { onDelete: "set null" }),
   contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),

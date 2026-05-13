@@ -11,6 +11,8 @@ import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
 import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/components/ui/social-media-input";
+import Image from "next/image";
+import { CoverImageField } from "@/components/media/member-media-picker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +46,8 @@ type Entry = {
   // Sosmed
   instagram: string; facebook: string; linkedin: string;
   twitter: string; youtube: string; tiktok: string; website: string;
+  // Foto
+  coverUrl: string | null;
 };
 
 type ApiRow = {
@@ -72,6 +76,7 @@ type ApiRow = {
   instagram?: string | null; facebook?: string | null; linkedin?: string | null;
   twitter?: string | null; youtube?: string | null; tiktok?: string | null;
   website?: string | null;
+  coverUrl?: string | null;
 };
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
@@ -126,6 +131,7 @@ function newEntry(): Entry {
     addressDetail: "", addressPostalCode: "",
     instagram: "", facebook: "", linkedin: "",
     twitter: "", youtube: "", tiktok: "", website: "",
+    coverUrl: null,
   };
 }
 
@@ -171,6 +177,7 @@ function apiRowToEntry(e: ApiRow): Entry {
     youtube:   e.youtube   ?? "",
     tiktok:    e.tiktok    ?? "",
     website:   e.website   ?? "",
+    coverUrl:  e.coverUrl  ?? null,
   };
 }
 
@@ -209,6 +216,7 @@ function buildPayload(e: Entry) {
     youtube:   t(e.youtube)   || undefined,
     tiktok:    t(e.tiktok)    || undefined,
     website:   t(e.website)   || undefined,
+    coverUrl:  e.coverUrl ?? undefined,
   };
 }
 
@@ -300,6 +308,13 @@ function DetailDialog({ entry, onClose, onEdit }: {
             <X className="size-4" />
           </button>
         </div>
+
+        {/* Foto */}
+        {entry.coverUrl && (
+          <div className="relative h-48 w-full overflow-hidden rounded-none">
+            <Image src={entry.coverUrl} alt={entry.name} fill sizes="512px" className="object-cover" />
+          </div>
+        )}
 
         {/* Body */}
         <div className="px-6 py-5 space-y-5 max-h-[60vh] overflow-y-auto">
@@ -417,6 +432,14 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
 
   return (
     <div className="space-y-6 rounded-lg border border-border bg-card p-5 sm:p-6">
+
+      {/* ── Foto ── */}
+      <CoverImageField
+        slug={slug}
+        value={entry.coverUrl}
+        onChange={(url) => onUpdate({ coverUrl: url })}
+        label="Foto Pesantren"
+      />
 
       {/* ── 1. Identitas ── */}
       <div className="space-y-4">
@@ -810,10 +833,23 @@ export default function PesantrenPage() {
               {entries.map(e => (
                 <tr key={e._key} className="hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-foreground">{e.name}</p>
-                    <p className="text-xs text-muted-foreground sm:hidden mt-0.5">
-                      {[e.kurikulum, e.modelPendidikan].filter(Boolean).join(" · ")}
-                    </p>
+                    <div className="flex items-center gap-3">
+                      {e.coverUrl ? (
+                        <div className="relative w-10 h-10 rounded-md overflow-hidden shrink-0 border border-border">
+                          <Image src={e.coverUrl} alt={e.name} fill sizes="40px" className="object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0">
+                          <School className="size-5 text-muted-foreground/50" />
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-medium text-foreground">{e.name}</p>
+                        <p className="text-xs text-muted-foreground sm:hidden mt-0.5">
+                          {[e.kurikulum, e.modelPendidikan].filter(Boolean).join(" · ")}
+                        </p>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{e.kurikulum || "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{e.modelPendidikan || "—"}</td>

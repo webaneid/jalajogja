@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
       employees:   memberBusinesses.employees,
       branches:    memberBusinesses.branches,
       revenue:     memberBusinesses.revenue,
+      coverUrl:    memberBusinesses.coverUrl,
       // Kontak
       phone:              contacts.phone,
       whatsapp:           contacts.whatsapp,
@@ -95,6 +96,7 @@ export async function POST(req: NextRequest) {
       isPhonePublic?: boolean; isWhatsappPublic?: boolean;
       instagram?: string; facebook?: string; linkedin?: string;
       twitter?: string; youtube?: string; tiktok?: string; website?: string;
+      coverUrl?: string;
     }[];
   };
 
@@ -165,6 +167,7 @@ export async function POST(req: NextRequest) {
         employees:   (e.employees || null) as "1-4"|"5-10"|"11-20"|"Lebih dari 20"|null,
         branches:    (e.branches  || null) as "Tidak Ada"|"1-3"|"Diatas 3"|null,
         revenue:     (e.revenue   || null) as "Dibawah 500jt"|"500jt-1M"|"1M-2M"|"Diatas 2M"|null,
+        coverUrl:    e.coverUrl?.trim() || null,
         contactId, addressId, socialMediaId,
       });
     }

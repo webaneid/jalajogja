@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
       santriPutri:  memberOwnedPesantren.santriPutri,
       asatidz:      memberOwnedPesantren.asatidz,
       asatidzah:    memberOwnedPesantren.asatidzah,
+      coverUrl:     memberOwnedPesantren.coverUrl,
       // Kontak
       phone:            contacts.phone,
       whatsapp:         contacts.whatsapp,
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest) {
       addressDetail?: string; addressPostalCode?: string;
       instagram?: string; facebook?: string; linkedin?: string;
       twitter?: string; youtube?: string; tiktok?: string; website?: string;
+      coverUrl?: string;
     }[];
   };
 
@@ -183,6 +185,7 @@ export async function POST(req: NextRequest) {
         santriPutri:  e.santriPutri  ?? null,
         asatidz:      e.asatidz      ?? null,
         asatidzah:    e.asatidzah    ?? null,
+        coverUrl:     e.coverUrl?.trim() || null,
         contactId, addressId, socialMediaId,
       });
     }

@@ -51,6 +51,9 @@ export const memberOwnedPesantren = pgTable("member_owned_pesantren", {
   asatidz:     integer("asatidz"),     // pengajar putra
   asatidzah:   integer("asatidzah"),   // pengajar putri
 
+  // ── Foto pesantren ──────────────────────────────────────────────────────────
+  coverUrl: text("cover_url"),   // URL foto dari member media library (bukan FK — cross-schema)
+
   // ── Helper FKs (kondisional, null jika kosong) ────────────────────────────
   contactId:     uuid("contact_id")
                    .references(() => contacts.id,     { onDelete: "set null" }),

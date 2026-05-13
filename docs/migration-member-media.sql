@@ -22,3 +22,11 @@ ALTER TABLE "tenant_pc-ikpm-jogjakarta".media
 CREATE INDEX IF NOT EXISTS idx_media_member_id
   ON "tenant_pc-ikpm-jogjakarta".media(member_id)
   WHERE member_id IS NOT NULL;
+
+-- ── Public schema: cover_url di member_businesses + member_owned_pesantren ───
+-- (sama untuk semua tenant — public schema global)
+ALTER TABLE public.member_businesses
+  ADD COLUMN IF NOT EXISTS cover_url TEXT;
+
+ALTER TABLE public.member_owned_pesantren
+  ADD COLUMN IF NOT EXISTS cover_url TEXT;
