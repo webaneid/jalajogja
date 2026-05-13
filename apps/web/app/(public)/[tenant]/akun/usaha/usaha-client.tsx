@@ -206,27 +206,29 @@ export function UsahaClient({ slug }: { slug: string }) {
     }
   }
 
+  function trim(s: string | undefined | null) { return (s ?? "").trim(); }
+
   async function handleSave() {
     setSaving(true); setError(null); setSaved(false);
     for (const e of entries) {
-      if (!e.name.trim())        { setError(`Nama usaha wajib diisi.`);        setSaving(false); return; }
-      if (!e.description.trim()) { setError(`Deskripsi usaha wajib diisi.`);   setSaving(false); return; }
-      if (!e.category)           { setError(`Kategori wajib dipilih.`);         setSaving(false); return; }
-      if (!e.sector)             { setError(`Sektor wajib dipilih.`);           setSaving(false); return; }
-      if (!e.legality)           { setError(`Legalitas wajib dipilih.`);        setSaving(false); return; }
-      if (!e.position)           { setError(`Posisi / jabatan wajib dipilih.`); setSaving(false); return; }
-      if (!e.employees)          { setError(`Jumlah karyawan wajib dipilih.`);  setSaving(false); return; }
-      if (!e.branches)           { setError(`Jumlah cabang wajib dipilih.`);    setSaving(false); return; }
-      if (!e.revenue)            { setError(`Omzet tahunan wajib dipilih.`);    setSaving(false); return; }
+      if (!trim(e.name))        { setError(`Nama usaha wajib diisi.`);        setSaving(false); return; }
+      if (!trim(e.description)) { setError(`Deskripsi usaha wajib diisi.`);   setSaving(false); return; }
+      if (!e.category)          { setError(`Kategori wajib dipilih.`);         setSaving(false); return; }
+      if (!e.sector)            { setError(`Sektor wajib dipilih.`);           setSaving(false); return; }
+      if (!e.legality)          { setError(`Legalitas wajib dipilih.`);        setSaving(false); return; }
+      if (!e.position)          { setError(`Posisi / jabatan wajib dipilih.`); setSaving(false); return; }
+      if (!e.employees)         { setError(`Jumlah karyawan wajib dipilih.`);  setSaving(false); return; }
+      if (!e.branches)          { setError(`Jumlah cabang wajib dipilih.`);    setSaving(false); return; }
+      if (!e.revenue)           { setError(`Omzet tahunan wajib dipilih.`);    setSaving(false); return; }
     }
     try {
       const res = await fetch("/api/akun/member-business", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ entries: entries.map(e => ({
-          name:        e.name.trim(),
-          brand:       e.brand.trim()       || undefined,
-          description: e.description.trim() || undefined,
+          name:        trim(e.name),
+          brand:       trim(e.brand)        || undefined,
+          description: trim(e.description)  || undefined,
           category:    e.category,
           sector:      e.sector,
           legality:    e.legality  || undefined,
@@ -234,25 +236,25 @@ export function UsahaClient({ slug }: { slug: string }) {
           employees:   e.employees || undefined,
           branches:    e.branches  || undefined,
           revenue:     e.revenue   || undefined,
-          addressCountry:    e._addressMode === "overseas" ? (e.addressCountry.trim() || undefined) : undefined,
+          addressCountry:    e._addressMode === "overseas" ? (trim(e.addressCountry) || undefined) : undefined,
           addressProvinceId: e._addressMode === "indonesia" ? (e.addressProvinceId ?? undefined) : undefined,
           addressRegencyId:  e._addressMode === "indonesia" ? (e.addressRegencyId  ?? undefined) : undefined,
           addressDistrictId: e._addressMode === "indonesia" ? (e.addressDistrictId ?? undefined) : undefined,
           addressVillageId:  e._addressMode === "indonesia" ? (e.addressVillageId  ?? undefined) : undefined,
-          addressDetail:    e.addressDetail.trim()    || undefined,
-          addressPostalCode: e.addressPostalCode.trim() || undefined,
-          phone:            e.phone.trim()    || undefined,
-          whatsapp:         e._sameAsPhone ? (e.phone.trim() || undefined) : (e.whatsapp.trim() || undefined),
-          email:            e.email.trim()   || undefined,
+          addressDetail:    trim(e.addressDetail)    || undefined,
+          addressPostalCode: trim(e.addressPostalCode) || undefined,
+          phone:            trim(e.phone)    || undefined,
+          whatsapp:         e._sameAsPhone ? (trim(e.phone) || undefined) : (trim(e.whatsapp) || undefined),
+          email:            trim(e.email)   || undefined,
           isPhonePublic:    e.isPhonePublic,
           isWhatsappPublic: e.isWhatsappPublic,
-          instagram: e.instagram.trim() || undefined,
-          facebook:  e.facebook.trim()  || undefined,
-          linkedin:  e.linkedin.trim()  || undefined,
-          twitter:   e.twitter.trim()   || undefined,
-          youtube:   e.youtube.trim()   || undefined,
-          tiktok:    e.tiktok.trim()    || undefined,
-          website:   e.website.trim()   || undefined,
+          instagram: trim(e.instagram) || undefined,
+          facebook:  trim(e.facebook)  || undefined,
+          linkedin:  trim(e.linkedin)  || undefined,
+          twitter:   trim(e.twitter)   || undefined,
+          youtube:   trim(e.youtube)   || undefined,
+          tiktok:    trim(e.tiktok)    || undefined,
+          website:   trim(e.website)   || undefined,
         }))
         }),
       });
