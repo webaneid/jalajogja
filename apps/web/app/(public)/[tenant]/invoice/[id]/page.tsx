@@ -1,19 +1,33 @@
 import { notFound } from "next/navigation";
 import { db, tenants } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
-import { createTenantDb } from "@jalajogja/db";
+import { createTenantDb, getSettings } from "@jalajogja/db";
 import {
   InvoicePublicClient,
   type PublicInvoiceData,
+  type BankAccountPublic,
+  type QrisAccountPublic,
 } from "@/components/billing/invoice-public-client";
-import { getSettings } from "@jalajogja/db";
 
 type Props = { params: Promise<{ tenant: string; id: string }> };
+
+function resolvePaymentCategory(itemTypes: string[]): "donasi" | "general" {
+  if (itemTypes.length === 0) return "general";
+  return itemTypes.every((t) => t === "donation") ? "donasi" : "general";
+}
+
+function filterByCategory<T extends { categories: string[] }>(
+  accounts: T[],
+  category: string,
+): T[] {
+  const specific = accounts.filter((a) => a.categories.includes(category));
+  if (specific.length > 0) return specific;
+  return accounts.filter((a) => a.categories.includes("general"));
+}
 
 export default async function PublicInvoicePage({ params }: Props) {
   const { tenant: slug, id: invoiceId } = await params;
 
-  // Validasi tenant
   const [tenant] = await db
     .select({ id: tenants.id, name: tenants.name })
     .from(tenants)
@@ -25,7 +39,6 @@ export default async function PublicInvoicePage({ params }: Props) {
   const tenantClient = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
 
-  // Fetch invoice
   const [inv] = await tenantDb
     .select()
     .from(schema.invoices)
@@ -34,30 +47,40 @@ export default async function PublicInvoicePage({ params }: Props) {
 
   if (!inv) notFound();
 
-  // Fetch invoice items
   const items = await tenantDb
     .select()
     .from(schema.invoiceItems)
     .where(eq(schema.invoiceItems.invoiceId, invoiceId))
     .orderBy(schema.invoiceItems.sortOrder);
 
-  // Ambil rekening bank untuk instruksi pembayaran
-  let bankAccounts: PublicInvoiceData["bankAccounts"] = [];
+  const paymentCategory = resolvePaymentCategory(items.map((it) => it.itemType));
+
+  let bankAccounts: BankAccountPublic[] = [];
+  let qrisAccounts: QrisAccountPublic[] = [];
+
   try {
     const paymentSettings = await getSettings(tenantClient, "payment");
-    const bankData = paymentSettings["bank_accounts"];
-    if (Array.isArray(bankData)) {
-      bankAccounts = bankData
-        .filter((acc: { categories?: string[] }) => {
-          const cats: string[] = acc.categories ?? ["general"];
-          return cats.includes("general") || cats.includes("toko");
-        })
-        .map((acc: { bankName: string; accountNumber: string; accountName: string }) => ({
-          bankName:      acc.bankName,
-          accountNumber: acc.accountNumber,
-          accountName:   acc.accountName,
-        }));
-    }
+
+    const rawBanks = (paymentSettings["bank_accounts"] ?? []) as Array<{
+      id: string; bankName: string; accountNumber: string; accountName: string; categories: string[];
+    }>;
+    const rawQris = (paymentSettings["qris_accounts"] ?? []) as Array<{
+      id: string; name: string; imageUrl: string; categories: string[];
+      isDynamic: boolean; emvPayload?: string;
+    }>;
+
+    const allBanks: BankAccountPublic[] = rawBanks.map((b) => ({
+      id: b.id, bankName: b.bankName, accountNumber: b.accountNumber,
+      accountName: b.accountName, categories: b.categories,
+    }));
+    const allQris: QrisAccountPublic[] = rawQris.map((q) => ({
+      id: q.id, name: q.name, imageUrl: q.imageUrl,
+      isDynamic: q.isDynamic, hasEmv: !!(q.isDynamic && q.emvPayload),
+      categories: q.categories,
+    }));
+
+    bankAccounts = filterByCategory(allBanks, paymentCategory);
+    qrisAccounts = filterByCategory(allQris, paymentCategory);
   } catch {
     // Lanjut tanpa rekening
   }
@@ -90,6 +113,7 @@ export default async function PublicInvoicePage({ params }: Props) {
       total:       parseFloat(String(it.total)),
     })),
     bankAccounts,
+    qrisAccounts,
   };
 
   return (

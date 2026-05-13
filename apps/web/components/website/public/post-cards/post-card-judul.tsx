@@ -20,7 +20,7 @@ export function PostCardJudul({ post, tenantSlug }: { post: PostCardData; tenant
       </div>
 
       {/* Judul di bawah */}
-      <h3 className="text-sm font-medium leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+      <h3 className="text-[1.2rem] font-medium leading-snug line-clamp-2 group-hover:text-primary transition-colors">
         {post.title}
       </h3>
     </a>

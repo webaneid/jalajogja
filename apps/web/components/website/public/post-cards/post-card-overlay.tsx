@@ -42,7 +42,7 @@ export function PostCardOverlay({
             {post.categoryName}
           </span>
         )}
-        <h3 className="font-semibold leading-snug line-clamp-2 group-hover:text-white/90 transition-colors">
+        <h3 className="text-[1.2rem] font-semibold leading-snug line-clamp-2 group-hover:text-white/90 transition-colors">
           {post.title}
         </h3>
         <p className="text-xs text-white/60 mt-1">{fmt(post.publishedAt)}</p>

@@ -65,7 +65,7 @@ const SECTION_DEFAULTS: Record<SectionType, Record<string, unknown>> = {
   products:     { title: "Produk Terbaru", count: 8, categoryId: null },
   events:       { title: "Event Mendatang", count: 3 },
   campaigns:    { title: "Donasi & Infaq", count: 6, categoryId: null, campaignType: null },
-  gallery:      { title: "Galeri Foto", images: [] },
+  gallery:      { title: "Galeri Foto", items: [] },
   about_text:   { title: "Tentang Kami", body: "", imageUrl: "", imagePosition: "right" },
   features:     { title: "Keunggulan Kami", items: [] },
   cta:          { title: "", subtitle: "", ctaLabel: "Hubungi Kami", ctaUrl: "#" },

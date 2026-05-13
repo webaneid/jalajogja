@@ -29,7 +29,7 @@ export function Sidebar({ slug, orgName }: SidebarProps) {
 
       {/* Footer sidebar — versi app */}
       <div className="border-t px-5 py-3">
-        <p className="text-xs text-muted-foreground">jalajogja v0.1</p>
+        <p className="text-xs text-muted-foreground">jalakarta v0.1</p>
       </div>
     </aside>
   );

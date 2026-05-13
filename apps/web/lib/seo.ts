@@ -20,7 +20,7 @@ export interface GenerateMetadataParams {
   description?: string | null;
   /** Nama organisasi / site */
   siteName: string;
-  /** URL kanonik penuh, misal "https://ikpm.jalajogja.com/posts/123" */
+  /** URL kanonik penuh, misal "https://ikpm.jalakarta.com/posts/123" */
   canonicalUrl?: string | null;
   /** URL gambar OG */
   ogImageUrl?: string | null;

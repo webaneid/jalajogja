@@ -7,9 +7,24 @@ const PROTECTED_PATTERN = /^\/[a-z0-9-]+\/(dashboard|members|letters|finance|sho
 // /register TIDAK diblok — user yang login tapi belum punya tenant perlu akses ke sini
 const AUTH_PAGES = ["/login"];
 
+// Platform: semua /platform/* kecuali /platform/login
+const PLATFORM_PUBLIC = /^\/platform\/login$/;
+const PLATFORM_PROTECTED = /^\/platform(\/|$)/;
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // ── Platform auth guard ────────────────────────────────────────────────────
+  if (PLATFORM_PROTECTED.test(pathname) && !PLATFORM_PUBLIC.test(pathname)) {
+    const platformToken = request.cookies.get("platform_session")?.value;
+    if (!platformToken) {
+      return NextResponse.redirect(new URL("/platform/login", request.url));
+    }
+    // Token ada — validasi penuh ada di layout server component
+    return NextResponse.next();
+  }
+
+  // ── Tenant auth guard ──────────────────────────────────────────────────────
   // Cek keberadaan session cookie Better Auth
   // Ini soft-check — validasi sungguhan ada di layout server component
   const sessionCookie =

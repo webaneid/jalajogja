@@ -225,7 +225,7 @@ export default function RegisterPage() {
             <label htmlFor="slug" className="mb-1.5 block text-sm font-medium">
               Slug Organisasi
               <span className="ml-1 font-normal text-muted-foreground">
-                (URL: jalajogja.com/
+                (URL: jalakarta.com/
                 <span className="font-medium text-foreground">{slug || "..."}</span>
                 )
               </span>

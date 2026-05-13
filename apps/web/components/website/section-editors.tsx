@@ -20,6 +20,8 @@ import type { SectionType } from "@/lib/page-templates";
 import { POSTS_SECTION_DESIGNS, POSTS_SECTION_DESIGN_IDS } from "@/lib/posts-section-designs";
 import { MediaPicker } from "@/components/media/media-picker";
 import type { MediaItem } from "@/components/media/media-picker";
+import { GalleryPicker } from "@/components/gallery/gallery-picker";
+import type { GalleryItem } from "@/lib/gallery";
 
 type EditorProps = {
   data:             Record<string, unknown>;
@@ -349,13 +351,10 @@ function CampaignsEditor({ data, onChange }: EditorProps) {
 
 // ── Gallery ───────────────────────────────────────────────────────────────────
 
-type GalleryImage = { url: string; alt: string };
-
-function GalleryEditor({ data, onChange }: EditorProps) {
-  const d = data as { title?: string; images?: GalleryImage[] };
-  const images: GalleryImage[] = d.images ?? [];
+function GalleryEditor({ data, onChange, tenantSlug }: EditorProps) {
+  const d = data as { title?: string; items?: GalleryItem[] };
+  const items: GalleryItem[] = d.items ?? [];
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
-  const updateImages = (imgs: GalleryImage[]) => u("images", imgs);
 
   return (
     <div className="space-y-3">
@@ -363,49 +362,15 @@ function GalleryEditor({ data, onChange }: EditorProps) {
         <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Galeri Foto" />
       </Field>
       <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">Gambar</Label>
-        {images.map((img, i) => (
-          <div key={i} className="flex gap-2 items-center">
-            <Input
-              value={img.url}
-              onChange={(e) => {
-                const next = [...images];
-                next[i] = { ...img, url: e.target.value };
-                updateImages(next);
-              }}
-              placeholder="URL gambar"
-              className="flex-1 h-8 text-xs"
-            />
-            <Input
-              value={img.alt}
-              onChange={(e) => {
-                const next = [...images];
-                next[i] = { ...img, alt: e.target.value };
-                updateImages(next);
-              }}
-              placeholder="Alt text"
-              className="w-24 h-8 text-xs"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-destructive shrink-0"
-              onClick={() => updateImages(images.filter((_, j) => j !== i))}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        ))}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="w-full gap-1.5 text-xs"
-          onClick={() => updateImages([...images, { url: "", alt: "" }])}
-        >
-          <PlusIcon className="h-3.5 w-3.5" /> Tambah Gambar
-        </Button>
+        <Label className="text-xs text-muted-foreground">Gambar ({items.length})</Label>
+        {tenantSlug && (
+          <GalleryPicker
+            slug={tenantSlug}
+            items={items}
+            onChange={(imgs) => u("items", imgs)}
+            module="website"
+          />
+        )}
       </div>
     </div>
   );
@@ -413,9 +378,11 @@ function GalleryEditor({ data, onChange }: EditorProps) {
 
 // ── About Text ────────────────────────────────────────────────────────────────
 
-function AboutTextEditor({ data, onChange }: EditorProps) {
+function AboutTextEditor({ data, onChange, tenantSlug }: EditorProps) {
   const d = data as { title?: string; body?: string; imageUrl?: string; imagePosition?: string };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+  const [pickerOpen, setPickerOpen] = useState(false);
+
   return (
     <div className="space-y-3">
       <Field label="Judul">
@@ -424,8 +391,42 @@ function AboutTextEditor({ data, onChange }: EditorProps) {
       <Field label="Isi Teks">
         <Textarea value={d.body ?? ""} onChange={(e) => u("body", e.target.value)} placeholder="Deskripsi organisasi..." rows={5} />
       </Field>
-      <Field label="URL Gambar">
-        <Input value={d.imageUrl ?? ""} onChange={(e) => u("imageUrl", e.target.value)} placeholder="https://..." />
+      <Field label="Gambar">
+        {d.imageUrl ? (
+          <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={d.imageUrl} alt="" className="w-full h-full object-cover" />
+            <button
+              type="button"
+              onClick={() => u("imageUrl", "")}
+              className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="w-full flex items-center justify-center gap-2 h-20 rounded-lg border border-dashed border-border text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+          >
+            <ImageIcon className="w-4 h-4" /> Pilih Gambar
+          </button>
+        )}
+        {tenantSlug && (
+          <MediaPicker
+            slug={tenantSlug}
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            onSelect={(media: MediaItem) => {
+              const url = media.variants?.large ?? media.variants?.medium ?? media.url;
+              u("imageUrl", url);
+              setPickerOpen(false);
+            }}
+            module="website"
+            accept={["image/"]}
+          />
+        )}
       </Field>
       <Field label="Posisi Gambar">
         <Select value={d.imagePosition ?? "right"} onValueChange={(v) => u("imagePosition", v)}>

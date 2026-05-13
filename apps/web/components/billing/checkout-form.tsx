@@ -5,9 +5,16 @@ import { useRouter } from "next/navigation";
 import { checkoutAction, type CartData } from "@/app/(public)/[tenant]/cart/actions";
 import { PhoneInput } from "@/components/ui/phone-input";
 
+export type CheckoutDefaults = {
+  name:  string;
+  email: string;
+  phone: string;
+};
+
 type Props = {
-  slug: string;
-  cart: CartData;
+  slug:      string;
+  cart:      CartData;
+  defaults?: CheckoutDefaults;
 };
 
 function formatRp(n: number) {
@@ -16,20 +23,15 @@ function formatRp(n: number) {
   }).format(n);
 }
 
-const METHOD_LABELS: Record<string, string> = {
-  cash: "Tunai", transfer: "Transfer Bank", qris: "QRIS",
-};
-
-export function CheckoutForm({ slug, cart }: Props) {
+export function CheckoutForm({ slug, cart, defaults }: Props) {
   const router                      = useRouter();
   const [pending, startTransition]  = useTransition();
   const [error, setError]           = useState("");
 
-  const [phone,  setPhone]   = useState("");
-  const [email,  setEmail]   = useState("");
-  const [name,   setName]    = useState("");
-  const [method, setMethod]  = useState<"cash" | "transfer" | "qris">("transfer");
-  const [notes,  setNotes]   = useState("");
+  const [phone, setPhone] = useState(defaults?.phone ?? "");
+  const [email, setEmail] = useState(defaults?.email ?? "");
+  const [name,  setName]  = useState(defaults?.name  ?? "");
+  const [notes, setNotes] = useState("");
 
   const inputCls = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
   const labelCls = "block text-sm font-medium mb-1";
@@ -42,7 +44,7 @@ export function CheckoutForm({ slug, cart }: Props) {
     }
     setError("");
     startTransition(async () => {
-      const res = await checkoutAction(slug, { phone, email, name, method, notes });
+      const res = await checkoutAction(slug, { phone, email, name, method: "transfer", notes });
       if (res.success) {
         router.push(`/${slug}/invoice/${res.data.invoiceId}`);
       } else {
@@ -87,7 +89,9 @@ export function CheckoutForm({ slug, cart }: Props) {
           </div>
 
           <div>
-            <label className={labelCls}>Nama <span className="text-muted-foreground text-xs">(opsional, diambil dari data anggota jika terdaftar)</span></label>
+            <label className={labelCls}>
+              Nama <span className="text-muted-foreground text-xs">(opsional)</span>
+            </label>
             <input
               type="text"
               value={name}
@@ -96,38 +100,24 @@ export function CheckoutForm({ slug, cart }: Props) {
               className={inputCls}
             />
           </div>
-        </div>
 
-        <div className="rounded-lg border border-border p-5 space-y-3">
-          <p className="font-semibold text-sm">Metode Pembayaran</p>
-          <div className="flex flex-wrap gap-2">
-            {(["cash", "transfer", "qris"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMethod(m)}
-                className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-                  method === m
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {METHOD_LABELS[m]}
-              </button>
-            ))}
+          <div>
+            <label className={labelCls}>
+              Catatan <span className="text-muted-foreground text-xs">(opsional)</span>
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Pesan atau catatan untuk admin..."
+              className={inputCls}
+            />
           </div>
         </div>
 
-        <div>
-          <label className={labelCls}>Catatan <span className="text-muted-foreground text-xs">(opsional)</span></label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            placeholder="Pesan atau catatan untuk admin..."
-            className={inputCls}
-          />
-        </div>
+        <p className="text-xs text-muted-foreground">
+          Metode pembayaran (transfer / QRIS) dipilih setelah invoice dibuat.
+        </p>
 
         <button
           type="submit"

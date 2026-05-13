@@ -221,7 +221,7 @@ function VerifyLayout({
 
       {/* Footer */}
       <footer className="border-t border-border px-6 py-4 text-center text-xs text-muted-foreground">
-        Sistem surat digital oleh jalajogja · Verifikasi otomatis
+        Sistem surat digital oleh jalakarta · Verifikasi otomatis
       </footer>
     </div>
   );

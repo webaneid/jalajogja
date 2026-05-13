@@ -1,17 +1,19 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { db, tenants } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
+import { auth } from "@/lib/auth";
+import { getAkunIdentity } from "@/lib/akun-identity";
 import { CheckoutForm } from "@/components/billing/checkout-form";
 import type { CartData, CartItem } from "@/app/(public)/[tenant]/cart/actions";
+import type { CheckoutDefaults } from "@/components/billing/checkout-form";
 
 type Props = { params: Promise<{ tenant: string }> };
 
 export default async function CheckoutPage({ params }: Props) {
   const { tenant: slug } = await params;
 
-  // Validasi tenant
   const [tenant] = await db
     .select({ id: tenants.id, name: tenants.name })
     .from(tenants)
@@ -20,11 +22,26 @@ export default async function CheckoutPage({ params }: Props) {
 
   if (!tenant) notFound();
 
-  // Baca keranjang
   const cookieStore = await cookies();
   const token = cookieStore.get("cart_session")?.value ?? null;
 
   if (!token) redirect(`/${slug}/keranjang`);
+
+  // Ambil data user yang login untuk pre-fill form
+  let defaults: CheckoutDefaults = { name: "", email: "", phone: "" };
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (session?.user?.id) {
+      const identity = await getAkunIdentity(session.user.id);
+      if (identity) {
+        defaults = {
+          name:  identity.name  ?? "",
+          email: identity.email ?? "",
+          phone: identity.phone ?? identity.whatsapp ?? "",
+        };
+      }
+    }
+  } catch { /* tidak login — biarkan form kosong */ }
 
   let cart: CartData | null = null;
 
@@ -37,9 +54,7 @@ export default async function CheckoutPage({ params }: Props) {
       .where(eq(schema.carts.sessionToken, token))
       .limit(1);
 
-    if (!cartRow || cartRow.expiresAt <= new Date()) {
-      redirect(`/${slug}/keranjang`);
-    }
+    if (!cartRow || cartRow.expiresAt <= new Date()) redirect(`/${slug}/keranjang`);
 
     const items = await tenantDb
       .select()
@@ -78,15 +93,16 @@ export default async function CheckoutPage({ params }: Props) {
     <main className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 py-10">
         <div className="mb-6">
-          <a
-            href={`/${slug}/keranjang`}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
+          <a href={`/${slug}/keranjang`} className="text-sm text-muted-foreground hover:text-foreground">
             ← Kembali ke Keranjang
           </a>
         </div>
         <h1 className="text-xl font-semibold mb-6">Checkout</h1>
-        <CheckoutForm slug={slug} cart={cart} />
+        <CheckoutForm
+          slug={slug}
+          cart={cart}
+          defaults={defaults}
+        />
       </div>
     </main>
   );

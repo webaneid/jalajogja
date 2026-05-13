@@ -44,7 +44,7 @@ export default function LoginPage() {
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-bold">Masuk</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Masuk ke akun jalajogja Anda
+          Masuk ke akun jalakarta Anda
         </p>
       </div>
 

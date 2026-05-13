@@ -167,7 +167,7 @@ export default async function PublicDokumenPage({
       </main>
 
       <footer className="border-t border-border mt-12 px-6 py-4 text-center text-xs text-muted-foreground">
-        {tenant.name} · Powered by jalajogja
+        {tenant.name} · Powered by jalakarta
       </footer>
     </div>
   );

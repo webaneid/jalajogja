@@ -35,3 +35,6 @@ export * from "./modules";
 export * from "./addons";
 export * from "./tenant-addon-installations";
 export * from "./addon-usage";
+
+// ── Platform admin users (jalajogja internal team) ────────────────────────────
+export * from "./platform-users";

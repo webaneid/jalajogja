@@ -73,7 +73,7 @@ export function LinktreeTemplate({ title, body, orgName }: Props) {
         </div>
 
         <p className="text-center text-xs text-muted-foreground pt-2">
-          Powered by jalajogja
+          Powered by jalakarta
         </p>
       </div>
     </div>

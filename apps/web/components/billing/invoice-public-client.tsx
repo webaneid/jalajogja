@@ -1,7 +1,25 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useCallback } from "react";
+import { Check, Copy, Download } from "lucide-react";
 import { submitPaymentProofAction } from "@/app/(public)/[tenant]/cart/actions";
+
+export type BankAccountPublic = {
+  id:            string;
+  bankName:      string;
+  accountNumber: string;
+  accountName:   string;
+  categories:    string[];
+};
+
+export type QrisAccountPublic = {
+  id:         string;
+  name:       string;
+  imageUrl:   string;
+  isDynamic:  boolean;
+  hasEmv:     boolean;
+  categories: string[];
+};
 
 export type PublicInvoiceData = {
   id:             string;
@@ -26,11 +44,8 @@ export type PublicInvoiceData = {
     quantity:    number;
     total:       number;
   }>;
-  bankAccounts: Array<{
-    bankName:      string;
-    accountNumber: string;
-    accountName:   string;
-  }>;
+  bankAccounts:  BankAccountPublic[];
+  qrisAccounts:  QrisAccountPublic[];
 };
 
 type Props = {
@@ -73,6 +88,226 @@ function formatDate(iso: string) {
 const inputCls = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
 const labelCls = "block text-sm font-medium mb-1";
 
+// ─── CopyButton ──────────────────────────────────────────────────────────────
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  function handleCopy() {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="ml-2 rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+      title="Salin"
+    >
+      {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
+    </button>
+  );
+}
+
+// ─── QrisDisplay ─────────────────────────────────────────────────────────────
+function QrisDisplay({
+  slug,
+  qris,
+  amount,
+  invoiceNumber,
+}: {
+  slug:          string;
+  qris:          QrisAccountPublic;
+  amount:        number;
+  invoiceNumber: string;
+}) {
+  const [qrSrc,    setQrSrc]    = useState<string | null>(null);
+  const [loading,  setLoading]  = useState(false);
+  const [isStatic, setIsStatic] = useState(false);
+
+  const loadQr = useCallback(async () => {
+    if (qris.isDynamic && qris.hasEmv) {
+      setLoading(true);
+      try {
+        const res  = await fetch(
+          `/api/qris?slug=${slug}&qrisId=${qris.id}&amount=${Math.round(amount)}&ref=${encodeURIComponent(invoiceNumber)}`,
+        );
+        const data = await res.json() as { type: string; qrDataUrl?: string; imageUrl?: string };
+        if (data.type === "dynamic" && data.qrDataUrl) {
+          setQrSrc(data.qrDataUrl);
+          setIsStatic(false);
+        } else if (data.imageUrl) {
+          setQrSrc(data.imageUrl);
+          setIsStatic(true);
+        }
+      } catch { /* abaikan */ }
+      setLoading(false);
+    } else {
+      setQrSrc(qris.imageUrl);
+      setIsStatic(true);
+    }
+  }, [slug, qris, amount, invoiceNumber]);
+
+  useEffect(() => { void loadQr(); }, [loadQr]);
+
+  function handleDownload() {
+    if (!qrSrc) return;
+    const a = document.createElement("a");
+    a.href     = qrSrc;
+    a.download = `QRIS-${invoiceNumber}.png`;
+    a.click();
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="font-medium text-sm">{qris.name}</div>
+      {loading ? (
+        <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">
+          Memuat QR Code...
+        </div>
+      ) : qrSrc ? (
+        <div className="flex flex-col items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={qrSrc}
+            alt="QRIS"
+            className="w-56 h-56 object-contain rounded-md border border-border"
+          />
+          {!isStatic && (
+            <p className="text-xs text-green-600 text-center">
+              ✓ Nominal terkunci: {formatRp(amount)}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <Download size={14} />
+            Unduh QR
+          </button>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground text-center py-8">QR tidak tersedia</p>
+      )}
+    </div>
+  );
+}
+
+// ─── PaymentMethodCard ────────────────────────────────────────────────────────
+function PaymentMethodCard({
+  slug,
+  invoice,
+}: {
+  slug:    string;
+  invoice: PublicInvoiceData;
+}) {
+  const hasBanks = invoice.bankAccounts.length > 0;
+  const hasQris  = invoice.qrisAccounts.length  > 0;
+
+  const [tab, setTab]         = useState<"transfer" | "qris">(hasBanks ? "transfer" : "qris");
+  const [activeQris, setActiveQris] = useState(0);
+
+  if (!hasBanks && !hasQris) return null;
+
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      {/* Tab header */}
+      {hasBanks && hasQris && (
+        <div className="flex border-b border-border">
+          <button
+            type="button"
+            onClick={() => setTab("transfer")}
+            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+              tab === "transfer"
+                ? "bg-background text-foreground border-b-2 border-primary"
+                : "text-muted-foreground hover:text-foreground bg-muted/20"
+            }`}
+          >
+            Transfer Bank
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("qris")}
+            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+              tab === "qris"
+                ? "bg-background text-foreground border-b-2 border-primary"
+                : "text-muted-foreground hover:text-foreground bg-muted/20"
+            }`}
+          >
+            QRIS
+          </button>
+        </div>
+      )}
+
+      <div className="p-4 space-y-3">
+        {/* Single-method label if no tabs */}
+        {!hasBanks && hasQris && (
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bayar via QRIS</p>
+        )}
+        {hasBanks && !hasQris && (
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Transfer Bank</p>
+        )}
+
+        {/* Transfer tab */}
+        {(tab === "transfer" && hasBanks) && (
+          <div className="space-y-2">
+            {invoice.bankAccounts.map((acc) => (
+              <div key={acc.id} className="rounded-md bg-muted/30 p-3 text-sm">
+                <p className="font-medium text-muted-foreground text-xs mb-0.5">{acc.bankName}</p>
+                <div className="flex items-center">
+                  <span className="font-mono text-base font-semibold">{acc.accountNumber}</span>
+                  <CopyButton text={acc.accountNumber} />
+                </div>
+                <p className="text-muted-foreground text-xs mt-0.5">a.n. {acc.accountName}</p>
+              </div>
+            ))}
+            <p className="text-xs text-muted-foreground pt-1">
+              Setelah transfer, klik &quot;Konfirmasi Pembayaran&quot; di bawah.
+            </p>
+          </div>
+        )}
+
+        {/* QRIS tab */}
+        {(tab === "qris" && hasQris) && (
+          <div className="space-y-3">
+            {/* Multi-QRIS picker */}
+            {invoice.qrisAccounts.length > 1 && (
+              <div className="flex gap-2 flex-wrap">
+                {invoice.qrisAccounts.map((q, i) => (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => setActiveQris(i)}
+                    className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
+                      activeQris === i
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {q.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <QrisDisplay
+              key={invoice.qrisAccounts[activeQris]?.id}
+              slug={slug}
+              qris={invoice.qrisAccounts[activeQris]!}
+              amount={invoice.remaining}
+              invoiceNumber={invoice.invoiceNumber}
+            />
+            <p className="text-xs text-muted-foreground">
+              Setelah scan dan bayar, klik &quot;Konfirmasi Pembayaran&quot; di bawah.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── InvoicePublicClient ──────────────────────────────────────────────────────
 export function InvoicePublicClient({ slug, invoice }: Props) {
   const [pending, startTransition] = useTransition();
   const [error,   setError]        = useState("");
@@ -80,7 +315,7 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
 
   const [showPayForm,  setShowPayForm]  = useState(false);
   const [payerName,    setPayerName]    = useState(invoice.customerName);
-  const [payMethod,    setPayMethod]    = useState<"cash" | "transfer" | "qris">("transfer");
+  const [payMethod,    setPayMethod]    = useState<"transfer" | "qris">("transfer");
   const [payerBank,    setPayerBank]    = useState("");
   const [transferDate, setTransferDate] = useState("");
   const [payNotes,     setPayNotes]     = useState("");
@@ -211,24 +446,9 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
         </div>
       </div>
 
-      {/* ── Instruksi pembayaran ── */}
-      {canPay && invoice.bankAccounts.length > 0 && (
-        <div className="rounded-lg border border-border p-4 space-y-3">
-          <p className="text-sm font-semibold">Cara Pembayaran</p>
-          <p className="text-sm text-muted-foreground">Transfer ke salah satu rekening berikut:</p>
-          <div className="space-y-2">
-            {invoice.bankAccounts.map((acc, i) => (
-              <div key={i} className="rounded-md bg-muted/30 p-3 text-sm">
-                <p className="font-medium">{acc.bankName}</p>
-                <p className="font-mono text-base">{acc.accountNumber}</p>
-                <p className="text-muted-foreground">a.n. {acc.accountName}</p>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Setelah transfer, klik tombol &quot;Konfirmasi Pembayaran&quot; di bawah untuk memberitahu kami.
-          </p>
-        </div>
+      {/* ── Metode pembayaran ── */}
+      {canPay && (
+        <PaymentMethodCard slug={slug} invoice={invoice} />
       )}
 
       {/* ── Catatan ── */}
@@ -270,8 +490,8 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
 
           <div>
             <label className={labelCls}>Metode</label>
-            <div className="flex gap-2 flex-wrap">
-              {(["cash", "transfer", "qris"] as const).map((m) => (
+            <div className="flex gap-2">
+              {(["transfer", "qris"] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
@@ -282,7 +502,7 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
                       : "border-border text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {m === "cash" ? "Tunai" : m === "transfer" ? "Transfer" : "QRIS"}
+                  {m === "transfer" ? "Transfer" : "QRIS"}
                 </button>
               ))}
             </div>

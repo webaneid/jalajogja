@@ -33,7 +33,7 @@ export default async function DomainSettingsPage({
       <div>
         <h2 className="text-lg font-semibold">Domain</h2>
         <p className="text-sm text-muted-foreground">
-          Atur subdomain jalajogja atau hubungkan domain kustom milikmu.
+          Atur subdomain jalakarta atau hubungkan domain kustom milikmu.
         </p>
       </div>
 

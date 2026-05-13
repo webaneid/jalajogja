@@ -1,7 +1,7 @@
 import { desc, eq, gt, and } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
 import { getSettings } from "@jalajogja/db";
-import { Heart, CalendarDays, ShoppingBag, FolderOpen, Newspaper, ArrowRight } from "lucide-react";
+import { Heart, CalendarDays, FolderOpen, Users, ArrowRight } from "lucide-react";
 import type { SectionItem, SectionType, LandingBody, PostsSectionData } from "@/lib/page-templates";
 import type { PostsSectionDesignId } from "@/lib/posts-section-designs";
 import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
@@ -14,15 +14,15 @@ import { EventsSection } from "@/components/website/public/sections/events/event
 import { Gallery } from "@/components/gallery/gallery";
 import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
 import { PublicButton } from "@/components/website/public/ui/public-button";
+import { PostsSectionTitle } from "@/components/website/public/sections/posts/posts-section-title";
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
 const HERO_MODULES = [
-  { id: "campaign", path: "campaign", label: "Donasi",   desc: "Program & infaq",       Icon: Heart },
-  { id: "agenda",   path: "agenda",   label: "Event",    desc: "Agenda & kegiatan",     Icon: CalendarDays },
-  { id: "produk",   path: "produk",   label: "Toko",     desc: "Produk & jasa",         Icon: ShoppingBag },
-  { id: "dokumen",  path: "dokumen",  label: "Dokumen",  desc: "Arsip & laporan",       Icon: FolderOpen },
-  { id: "post",     path: "post",     label: "Kabar",    desc: "Berita & pengumuman",   Icon: Newspaper },
+  { id: "campaign", path: "campaign", label: "Donasi",       desc: "Program & infaq",       Icon: Heart },
+  { id: "agenda",   path: "agenda",   label: "Agenda",       desc: "Agenda & kegiatan",     Icon: CalendarDays },
+  { id: "dokumen",  path: "dokumen",  label: "Dokumen",      desc: "Arsip & laporan",       Icon: FolderOpen },
+  { id: "anggota",  path: "anggota",  label: "Data Anggota", desc: "Direktori anggota",     Icon: Users },
 ] as const;
 
 type HeroCardData = {
@@ -173,7 +173,7 @@ async function HeroSection({ data, tenantClient, tenantSlug }: {
         {/* Module strip — aktif via showModuleStrip */}
         {d.showModuleStrip && (
           <div className="mt-12 pt-8 border-t border-border">
-            <div className="flex gap-3 overflow-x-auto pb-1 lg:grid lg:grid-cols-5 lg:overflow-visible">
+            <div className="flex gap-3 overflow-x-auto pb-1 lg:grid lg:grid-cols-4 lg:overflow-visible">
               {HERO_MODULES.map(({ id, path, label, desc, Icon }) => (
                 <a
                   key={id}
@@ -212,7 +212,7 @@ function GallerySection({ data }: { data: Record<string, unknown> }) {
   return (
     <section className="py-14 px-4">
       <div className="max-w-7xl mx-auto">
-        {d.title && <h2 className="text-2xl font-bold mb-6">{d.title}</h2>}
+        {d.title && <PostsSectionTitle title={d.title} />}
         {items.length === 0 ? (
           <p className="text-muted-foreground text-sm">Belum ada gambar.</p>
         ) : (
@@ -233,19 +233,21 @@ function AboutTextSection({ data }: { data: Record<string, unknown> }) {
 
   return (
     <section className="py-14 px-4">
-      <div className={`max-w-7xl mx-auto flex flex-col ${imgRight ? "md:flex-row" : "md:flex-row-reverse"} items-center gap-10`}>
-        <div className="flex-1">
-          {d.title && <h2 className="text-2xl font-bold mb-4">{d.title}</h2>}
-          {d.body  && <p className="text-muted-foreground leading-relaxed whitespace-pre-line">{d.body}</p>}
+      <div className="max-w-7xl mx-auto">
+        {d.title && <PostsSectionTitle title={d.title} />}
+        <div className={`flex flex-col ${imgRight ? "md:flex-row" : "md:flex-row-reverse"} items-center gap-10`}>
+          <div className="flex-1">
+            {d.body && <p className="text-muted-foreground leading-relaxed whitespace-pre-line">{d.body}</p>}
+          </div>
+          {d.imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={d.imageUrl}
+              alt={d.title ?? "Tentang Kami"}
+              className="w-full md:w-80 rounded-xl object-cover"
+            />
+          )}
         </div>
-        {d.imageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={d.imageUrl}
-            alt={d.title ?? "Tentang Kami"}
-            className="w-full md:w-80 rounded-xl object-cover border border-border"
-          />
-        )}
       </div>
     </section>
   );
@@ -260,7 +262,7 @@ function FeaturesSection({ data }: { data: Record<string, unknown> }) {
   return (
     <section className="py-14 px-4 bg-muted/40">
       <div className="max-w-7xl mx-auto">
-        {d.title && <h2 className="text-2xl font-bold mb-10 text-center">{d.title}</h2>}
+        {d.title && <PostsSectionTitle title={d.title} className="justify-center text-center" />}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {items.map((item, i) => (
             <div key={i} className="bg-white rounded-xl border border-border p-6">

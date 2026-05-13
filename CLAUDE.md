@@ -1,7 +1,7 @@
 # CLAUDE.md — jalajogja Project Brain
 
 ## Identitas Project
-- Nama: jalajogja
+- Nama: jalakarta
 - Klien pertama: IKPM (Ikatan Keluarga Pondok Modern Gontor)
 - Tujuan: Super-app untuk organisasi (website, surat, anggota, keuangan, toko)
 - Target: Multi-tenant SaaS — dibangun untuk IKPM, dijual ke banyak organisasi
@@ -548,8 +548,8 @@ app/(dashboard)/[tenant]/settings/
 │   └── Currency (default IDR)
 │
 ├── Domain (/settings/domain)         ← BARU
-│   ├── Default URL (read-only): app.jalajogja.com/{slug}
-│   ├── Subdomain jalajogja: [input].jalajogja.com
+│   ├── Default URL (read-only): app.jalakarta.com/{slug}
+│   ├── Subdomain jalajogja: [input].jalakarta.com
 │   ├── Custom Domain: input domain + status badge
 │   │   ├── Status: none | pending | active | failed
 │   │   ├── Instruksi DNS: "Tambahkan A record: {domain} → {IP_VPS}"
@@ -666,7 +666,7 @@ key="footer_text"     group="display"   value="© 2025 IKPM Yogyakarta"
 
 Domain settings disimpan langsung ke `public.tenants` (bukan `settings` table):
 ```
-tenants.subdomain              → "ikpm" (untuk ikpm.jalajogja.com)
+tenants.subdomain              → "ikpm" (untuk ikpm.jalakarta.com)
 tenants.custom_domain          → "ikpm.or.id"
 tenants.custom_domain_status   → "pending" | "active" | "failed"
 ```
@@ -788,15 +788,15 @@ Package dikelola di `public.tenant_plans` dengan field `features` JSONB:
 ### Tiga Layer Pembangunan (Urutan)
 ```
 1. Tenant Dashboard  → aplikasi yang dipakai organisasi
-   URL: app.jalajogja.com/{slug}/*
+   URL: app.jalakarta.com/{slug}/*
    Status: SEDANG DIBANGUN
 
 2. Front-end (Public) → website publik organisasi
-   URL: {slug}.jalajogja.com atau custom domain
+   URL: {slug}.jalakarta.com atau custom domain
    Status: BELUM — setelah Tenant Dashboard selesai
 
 3. Platform Dashboard → admin jalajogja (bukan untuk tenant)
-   URL: platform.jalajogja.com
+   URL: platform.jalakarta.com
    Status: BELUM — setelah Front-end selesai
    Fitur: kelola tenant, modul, add-on, billing, package
 ```

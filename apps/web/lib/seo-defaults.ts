@@ -1,4 +1,4 @@
-// Konstanta SEO untuk seluruh aplikasi jalajogja
+// Konstanta SEO untuk seluruh aplikasi jalakarta
 
 // ── Batas panjang teks ────────────────────────────────────────────────────────
 export const TITLE_MAX_LENGTH   = 60;

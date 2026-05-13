@@ -3,7 +3,10 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2, Eye, EyeOff } from "lucide-react";
+import { Plus, Trash2, Eye, EyeOff, ScanLine, X } from "lucide-react";
+import { MediaPicker } from "@/components/media/media-picker";
+import type { MediaItem } from "@/components/media/media-picker";
+import { isValidQrisPayload } from "@/lib/qris-emv";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -55,6 +58,150 @@ const CATEGORY_OPTIONS = [
 
 const GATEWAY_TABS = ["midtrans", "xendit", "ipaymu"] as const;
 type GatewayTab = (typeof GATEWAY_TABS)[number];
+
+// ─── QRIS Image Field + Auto Decode ──────────────────────────────────────────
+
+function QrisImageField({
+  qris,
+  slug,
+  onImageUrl,
+  onEmvPayload,
+}: {
+  qris:         QrisAccount;
+  slug:         string;
+  onImageUrl:   (url: string) => void;
+  onEmvPayload: (emv: string) => void;
+}) {
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+  const [decoding,   setDecoding]   = React.useState(false);
+  const [decodeMsg,  setDecodeMsg]  = React.useState("");
+
+  async function decodeQrisImage(imageUrl: string) {
+    setDecoding(true);
+    setDecodeMsg("");
+    try {
+      // Decode server-side: fetch gambar tanpa CORS + Sharp preprocess + jsQR
+      const res  = await fetch("/api/decode-qr", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ imageUrl }),
+      });
+      const data = await res.json() as { payload?: string; error?: string };
+
+      if (!data.payload) {
+        setDecodeMsg("QR Code tidak terdeteksi — coba gambar yang lebih jelas atau paste EMV manual.");
+        return;
+      }
+      if (!isValidQrisPayload(data.payload)) {
+        setDecodeMsg("Kode terdeteksi bukan payload QRIS EMV yang valid.");
+        return;
+      }
+      onEmvPayload(data.payload);
+      setDecodeMsg("✓ EMV payload berhasil dibaca — mode otomatis diubah ke Dynamic.");
+    } catch {
+      setDecodeMsg("Gagal decode — coba gambar yang lebih jelas atau paste EMV manual.");
+    } finally {
+      setDecoding(false);
+    }
+  }
+
+  function handleMediaSelect(media: MediaItem) {
+    // square-large (800×800, attention crop) lebih aman daripada large (1200×630 landscape)
+    // original (_ori) tersedia langsung setelah upload — decode pakai ini sebelum kadaluarsa
+    const storeUrl  = media.variants?.["square-large"] ?? media.variants?.square ?? media.url;
+    const decodeUrl = media.variants?.original ?? storeUrl;
+    onImageUrl(storeUrl);
+    setPickerOpen(false);
+    void decodeQrisImage(decodeUrl);
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Gambar QRIS */}
+      <div className="space-y-1.5">
+        <Label>Gambar QRIS</Label>
+        {qris.imageUrl ? (
+          <div className="flex gap-3 items-start">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={qris.imageUrl}
+              alt="QRIS"
+              className="w-28 h-28 object-contain border border-border rounded-lg bg-white p-1"
+            />
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                className="text-xs text-primary hover:underline"
+              >
+                Ganti gambar
+              </button>
+              <button
+                type="button"
+                disabled={decoding}
+                onClick={() => void decodeQrisImage(qris.imageUrl)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+              >
+                <ScanLine className="w-3.5 h-3.5" />
+                {decoding ? "Membaca..." : "Baca ulang EMV"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { onImageUrl(""); setDecodeMsg(""); }}
+                className="flex items-center gap-1.5 text-xs text-destructive hover:text-destructive/80"
+              >
+                <X className="w-3 h-3" /> Hapus gambar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="w-full flex items-center justify-center gap-2 h-20 rounded-lg border border-dashed border-border text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+          >
+            <ScanLine className="w-4 h-4" /> Upload gambar QRIS (auto-decode)
+          </button>
+        )}
+        {decodeMsg && (
+          <p className={`text-xs ${decodeMsg.startsWith("✓") ? "text-green-600" : "text-amber-600"}`}>
+            {decodeMsg}
+          </p>
+        )}
+        <MediaPicker
+          slug={slug}
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onSelect={handleMediaSelect}
+          module="general"
+          accept={["image/"]}
+        />
+      </div>
+
+      {/* EMV Payload (dynamic mode) */}
+      <div className="space-y-1.5">
+        <Label>
+          EMV Payload
+          {qris.emvPayload && (
+            <span className="ml-2 text-[10px] font-normal text-green-600 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full">
+              tersimpan
+            </span>
+          )}
+        </Label>
+        <textarea
+          value={qris.emvPayload ?? ""}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onEmvPayload(e.target.value)}
+          placeholder="Terisi otomatis saat upload gambar QRIS, atau paste manual: 00020101021126..."
+          rows={3}
+          className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+        />
+        <p className="text-xs text-muted-foreground">
+          Saat upload gambar QRIS, payload dibaca otomatis dan mode beralih ke Dynamic (nominal terkunci per transaksi).
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function newBank(): BankAccount {
   return { id: crypto.randomUUID(), bankName: "", accountNumber: "", accountName: "", categories: ["general"] };
@@ -331,30 +478,15 @@ export function PaymentSettingsForm({ slug, defaultValues }: { slug: string; def
                   </div>
                 </div>
 
-                {!qris.isDynamic ? (
-                  <div className="space-y-1.5">
-                    <Label>URL Gambar QRIS</Label>
-                    <Input
-                      value={qris.imageUrl}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateQris(qris.id, "imageUrl", e.target.value)}
-                      placeholder="https://..."
-                      type="url"
-                    />
-                    <p className="text-xs text-muted-foreground">Upload MinIO belum tersedia — isi URL gambar QRIS langsung.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <Label>EMV Payload</Label>
-                    <textarea
-                      value={qris.emvPayload ?? ""}
-                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => updateQris(qris.id, "emvPayload", e.target.value)}
-                      placeholder="00020101021126..."
-                      rows={3}
-                      className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                    />
-                    <p className="text-xs text-muted-foreground">Paste string EMV dari QRIS statis — sistem akan otomatis generate QR dengan nominal terkunci per transaksi.</p>
-                  </div>
-                )}
+                <QrisImageField
+                  qris={qris}
+                  slug={slug}
+                  onImageUrl={(url) => updateQris(qris.id, "imageUrl", url)}
+                  onEmvPayload={(emv) => {
+                    updateQris(qris.id, "emvPayload", emv);
+                    updateQris(qris.id, "isDynamic", true);
+                  }}
+                />
 
                 <div className="flex justify-end">
                   <button

@@ -172,7 +172,7 @@ export function SeoPanel({
   }));
 
   const snippetTitle = values.metaTitle || title;
-  const snippetUrl   = `${slug}.jalajogja.com`;
+  const snippetUrl   = `${slug}.jalakarta.com`;
   const ogTitle      = values.ogTitle      || values.metaTitle || title;
   const ogDesc       = values.ogDescription || values.metaDesc;
 
@@ -436,7 +436,7 @@ export function SeoPanel({
                   title={ogTitle}
                   description={ogDesc}
                   imageUrl={values.ogImageUrl}
-                  domain={`${slug}.jalajogja.com`}
+                  domain={`${slug}.jalakarta.com`}
                   platform={socialPlatform}
                 />
               </div>

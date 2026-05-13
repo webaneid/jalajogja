@@ -67,7 +67,7 @@ export function DomainSettingsForm({
         </legend>
         <div className="flex items-center gap-2 rounded-lg border bg-muted px-4 py-3">
           <span className="text-sm font-mono text-muted-foreground">
-            app.jalajogja.com/<span className="font-semibold text-foreground">{slug}</span>
+            app.jalakarta.com/<span className="font-semibold text-foreground">{slug}</span>
           </span>
           <span className="ml-auto rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
             Aktif
@@ -78,10 +78,10 @@ export function DomainSettingsForm({
         </p>
       </fieldset>
 
-      {/* ── Subdomain jalajogja ── */}
+      {/* ── Subdomain jalakarta ── */}
       <fieldset className="space-y-3">
         <legend className="w-full border-b pb-1.5 text-sm font-semibold text-foreground">
-          Subdomain jalajogja
+          Subdomain jalakarta
         </legend>
         <div className="space-y-2">
           <Label htmlFor="subdomain">Subdomain</Label>
@@ -96,10 +96,10 @@ export function DomainSettingsForm({
               disabled={pending}
               className="max-w-[200px] font-mono"
             />
-            <span className="text-sm text-muted-foreground">.jalajogja.com</span>
+            <span className="text-sm text-muted-foreground">.jalakarta.com</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Kosongkan untuk pakai slug default ({slug}.jalajogja.com).
+            Kosongkan untuk pakai slug default ({slug}.jalakarta.com).
             Fitur ini aktif saat modul Front-end tersedia.
           </p>
         </div>

@@ -17,7 +17,7 @@ export function SnippetPreview({
 }: SnippetPreviewProps) {
   const displayTitle = title.trim() || "Judul Halaman";
   const displayDesc  = description.trim() || "Deskripsi halaman akan tampil di sini saat muncul di hasil pencarian Google.";
-  const displayUrl   = url || "https://contoh.jalajogja.com/halaman";
+  const displayUrl   = url || "https://contoh.jalakarta.com/halaman";
 
   const shownTitle = displayTitle.length > TITLE_MAX_LENGTH
     ? displayTitle.slice(0, TITLE_MAX_LENGTH) + "..."

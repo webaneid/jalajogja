@@ -40,7 +40,7 @@ export function PostsDesign2({ data, posts, tenantSlug, sectionTitle, filterHref
                 {featured.categoryName}
               </span>
             )}
-            <h3 className="text-2xl font-bold leading-tight line-clamp-3 group-hover:text-primary transition-colors">
+            <h3 className="text-4xl md:text-5xl xl:text-6xl font-bold leading-[1.08] tracking-tight line-clamp-3 group-hover:text-primary transition-colors">
               {featured.title}
             </h3>
             {featured.excerpt && (

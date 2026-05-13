@@ -39,7 +39,7 @@ export function PostCardKlasik({ post, tenantSlug }: { post: PostCardData; tenan
           )}
           <span>{fmt(post.publishedAt)}</span>
         </div>
-        <h3 className="font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+        <h3 className="text-[1.2rem] font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
           {post.title}
         </h3>
         {post.excerpt && (

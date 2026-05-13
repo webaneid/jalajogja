@@ -19,7 +19,7 @@ export function SocialPreview({
 }: SocialPreviewProps) {
   const t  = title.trim()       || "Judul Halaman";
   const d  = description.trim() || "Deskripsi halaman";
-  const dm = domain             || "contoh.jalajogja.com";
+  const dm = domain             || "contoh.jalakarta.com";
 
   return platform === "twitter"
     ? <TwitterCard title={t} description={d} imageUrl={imageUrl} domain={dm} />

@@ -191,7 +191,7 @@ export default async function InvitePage({
       </main>
 
       <footer className="border-t border-border px-6 py-4 text-center text-xs text-muted-foreground">
-        Dikelola oleh jalajogja · Platform super-app organisasi
+        Dikelola oleh jalakarta · Platform super-app organisasi
       </footer>
     </div>
   );
