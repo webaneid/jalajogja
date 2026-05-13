@@ -2132,26 +2132,37 @@ Arsitektur lengkap: `docs/arsitektur-pesantren.md` (status: SELESAI, commit `dbc
 - Auto-total santri/asatidz = kalkulasi client saja, tidak disimpan ke DB
 - `media.uploaded_by` FK ke `tenant.users` — tidak berlaku untuk file yang diupload anggota front-end (beda entitas, beda tabel). Ini jadi input untuk arsitektur Member Media Library.
 
-### [2026-05] Member Media Library — Arsitektur Selesai, Implementasi Belum
+### [2026-05] Member Media Library — SELESAI (Phase 1–4)
 
-Arsitektur lengkap + perencanaan implementasi: `docs/arsitektur-medialibrary.md`
+Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 
 **Keputusan yang dikunci:**
 - Bucket sama `tenant-{slug}`, path prefix `akun/{memberId}/{year}/{month}/`
 - Kolom baru `member_id TEXT` di `tenant.media` (bukan FK, karena cross-schema ke `public.members`)
 - Modul baru `'akun'` di CHECK constraint media.module
-- Endpoint baru: `POST /api/akun/media/upload`, `GET /api/akun/media`, `DELETE /api/akun/media/[id]`
-- Guard kepemilikan wajib di DELETE — tidak bisa hapus file orang lain
-- Reuse Sharp pipeline yang sudah ada (`processImage()`) — tidak perlu duplikasi
+- Kolom `cover_url TEXT` di `member_businesses` + `member_owned_pesantren` (URL langsung, bukan FK)
+- `MODULE_VARIANTS['akun']` = `[original, large, square, profile]` di `image-processor.ts`
+- `MemberMediaPicker` + `CoverImageField` di `components/media/member-media-picker.tsx`
+- Halaman `/akun/media`: browse + upload + hapus per file
 
-**Mengapa `uploaded_by` yang ada tidak cukup**: kolom itu FK ke `tenant.users` (pengurus/admin), bukan ke `public.members` (anggota front-end). Anggota front-end tidak ada di `tenant.users` kecuali diangkat pengurus.
+**File yang dibuat/diubah:**
+- `packages/db/src/schema/tenant/website.ts` — `memberId` kolom + MEDIA_MODULES update
+- `packages/db/src/helpers/create-tenant-schema.ts` — DDL update
+- `packages/db/migrations/0009_member_cover_url.sql` — migration public schema
+- `docs/migration-member-media.sql` — migration tenant + public schema
+- `apps/web/app/api/akun/media/upload/route.ts` — POST upload
+- `apps/web/app/api/akun/media/route.ts` — GET list
+- `apps/web/app/api/akun/media/[id]/route.ts` — DELETE dengan guard
+- `apps/web/components/media/member-media-picker.tsx` — picker + CoverImageField
+- `apps/web/app/(public)/[tenant]/akun/media/page.tsx` — halaman browse
+- Form usaha + pesantren diupdate dengan CoverImageField
 
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Data Pesantren anggota — redesign konsep + implementasi lengkap** (commit `dbc933e`).
-- Sesi ini: fix akun/usaha (wilayah names + PhoneInput admin), data pesantren redesign total (tabel baru `member_owned_pesantren`, 7-section form, three-view, admin wizard), dokumentasi arsitektur pesantren + media library.
-- Ditunda: V8 (stok check qurban server-side), EventCard+Section, Donasi Rutin (R1–R7), Member Media Library (Phase 1–4 — lihat `docs/arsitektur-medialibrary.md`).
+- Terakhir dikerjakan: **Member Media Library — Phase 1–4 SELESAI** (commit `783e4d2`).
+- Sesi ini: member media library lengkap (schema, API, picker, integrasi form usaha/pesantren, halaman browse).
+- Ditunda: V8 (stok check qurban server-side), EventCard+Section, Donasi Rutin (R1–R7).
 
 ### Status Halaman Publik
 

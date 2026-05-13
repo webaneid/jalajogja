@@ -318,6 +318,6 @@ Phase 4 — Halaman /akun/media (opsional)
 | MediaPicker (admin) | ✅ Selesai |
 | MediaDetailPanel autosave | ✅ Selesai |
 | Manual Crop | ✅ Selesai |
-| **Member upload API** | ⬜ Belum (Phase 1-2) |
-| **MemberMediaPicker** | ⬜ Belum (Phase 3) |
-| **Halaman /akun/media** | ⬜ Belum (Phase 4, opsional) |
+| **Member upload API** | ✅ Selesai (Phase 1-2) |
+| **MemberMediaPicker** | ✅ Selesai (Phase 3) |
+| **Halaman /akun/media** | ✅ Selesai (Phase 4) |
