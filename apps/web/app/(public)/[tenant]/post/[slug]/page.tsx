@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
-import { createTenantDb, db, tenants, getSetting, user as authUser } from "@jalajogja/db";
+import { createTenantDb, db, tenants, getSetting, user as authUser, members } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import { renderBody } from "@/lib/letter-render";
 import { recordView, hashIp } from "@/lib/view-counter";
@@ -98,9 +98,9 @@ async function getPost(tenantSlug: string, postSlug: string) {
   // Timezone dari settings
   const timezone = (await getSetting<string>(tenantClient, "timezone", "general")) ?? "Asia/Jakarta";
 
-  // Resolve author: posts.authorId → tenant.users → public.user
-  let authorName:     string | null = null;
-  let authorGravatar: string | null = null;
+  // Resolve author: posts.authorId → tenant.users → public.user + public.members (photoUrl)
+  let authorName:   string | null = null;
+  let authorAvatar: string | null = null;
 
   if (post.authorId) {
     const [tenantUser] = await tenantDb
@@ -117,16 +117,28 @@ async function getPost(tenantSlug: string, postSlug: string) {
         .limit(1);
 
       if (au) {
-        authorName     = au.name;
-        const hashHex  = createHash("md5").update(au.email.trim().toLowerCase()).digest("hex");
-        authorGravatar = `https://www.gravatar.com/avatar/${hashHex}?s=64&d=mp`;
+        authorName = au.name;
+
+        // Cek photoUrl dari members (alumni IKPM yang juga pengurus)
+        const [mem] = await db
+          .select({ photoUrl: members.photoUrl })
+          .from(members)
+          .where(eq(members.betterAuthUserId, tenantUser.betterAuthUserId))
+          .limit(1);
+
+        if (mem?.photoUrl) {
+          authorAvatar = mem.photoUrl;
+        } else {
+          const hashHex = createHash("md5").update(au.email.trim().toLowerCase()).digest("hex");
+          authorAvatar  = `https://www.gravatar.com/avatar/${hashHex}?s=64&d=mp`;
+        }
       }
     }
   }
 
   return {
     post, coverUrl, coverAlt, coverTitle, coverCaption,
-    tenantName: tenant.name, timezone, authorName, authorGravatar,
+    tenantName: tenant.name, timezone, authorName, authorAvatar,
   };
 }
 
@@ -167,7 +179,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
     }));
   }
 
-  const { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName, timezone, authorName, authorGravatar } = result;
+  const { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName, timezone, authorName, authorAvatar } = result;
   const html = renderBody(post.content);
 
   const fmtUpdated = (date: Date) =>
@@ -211,7 +223,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
               <div className="flex items-center gap-3 pt-1">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={authorGravatar ?? `https://www.gravatar.com/avatar/?d=mp&s=64`}
+                  src={authorAvatar ?? `https://www.gravatar.com/avatar/?d=mp&s=64`}
                   alt={authorName}
                   width={40}
                   height={40}

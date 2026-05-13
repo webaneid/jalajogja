@@ -68,7 +68,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
       nik: true, gender: true, birthDate: true, birthRegencyId: true,
       birthPlaceText: true, graduationYear: true, graduationPeriod: true,
       professionId: true, domicileStatus: true, betterAuthUserId: true,
-      contactId: true, homeAddressId: true, socialMediaId: true,
+      contactId: true, homeAddressId: true, socialMediaId: true, photoUrl: true,
     },
   });
   if (!memberRow) notFound();
@@ -205,7 +205,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
       <div className="flex items-center gap-5">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={gravatar(displayEmail ?? memberRow.name)}
+          src={memberRow.photoUrl ?? gravatar(displayEmail ?? memberRow.name)}
           alt={memberRow.name}
           width={80} height={80}
           className="w-20 h-20 rounded-full ring-2 ring-border object-cover shrink-0"

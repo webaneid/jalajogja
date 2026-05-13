@@ -28,6 +28,9 @@ export type AkunIdentity = {
 
   // ── Public-specific (null jika type === "member") ─────────────────────────
   profileId:    string | null;
+
+  // ── Avatar ────────────────────────────────────────────────────────────────
+  photoUrl:     string | null;   // null → gunakan Gravatar sebagai fallback
 };
 
 // ── getAkunIdentity ───────────────────────────────────────────────────────────
@@ -41,7 +44,7 @@ export async function getAkunIdentity(userId: string): Promise<AkunIdentity | nu
     where: eq(members.betterAuthUserId, userId),
     columns: {
       id: true, name: true, memberNumber: true, stambukNumber: true,
-      birthDate: true, contactId: true,
+      birthDate: true, contactId: true, photoUrl: true,
     },
   });
 
@@ -66,6 +69,7 @@ export async function getAkunIdentity(userId: string): Promise<AkunIdentity | nu
       birthDate:    member.birthDate ?? null,
       contactId:    member.contactId ?? null,
       profileId:    null,
+      photoUrl:     member.photoUrl ?? null,
     };
   }
 
@@ -93,6 +97,7 @@ export async function getAkunIdentity(userId: string): Promise<AkunIdentity | nu
     birthDate:    null,
     contactId:    null,
     profileId:    profile.id,
+    photoUrl:     null,
   };
 }
 

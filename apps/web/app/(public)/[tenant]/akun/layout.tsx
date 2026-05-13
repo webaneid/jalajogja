@@ -27,7 +27,7 @@ export default async function AkunLayout({ children, params }: Props) {
 
   const isMember    = identity.type === "member";
   const displayEmail = identity.email || session.user.email;
-  const avatarUrl    = gravatar(displayEmail);
+  const avatarUrl    = identity.photoUrl ?? gravatar(displayEmail);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
