@@ -15,9 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PlusIcon, Trash2 } from "lucide-react";
+import { PlusIcon, Trash2, ImageIcon, X } from "lucide-react";
 import type { SectionType } from "@/lib/page-templates";
 import { POSTS_SECTION_DESIGNS, POSTS_SECTION_DESIGN_IDS } from "@/lib/posts-section-designs";
+import { MediaPicker } from "@/components/media/media-picker";
+import type { MediaItem } from "@/components/media/media-picker";
 
 type EditorProps = {
   data:             Record<string, unknown>;
@@ -38,31 +40,76 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
 
-function HeroEditor({ data, onChange }: EditorProps) {
-  const d = data as { title?: string; subtitle?: string; ctaLabel?: string; ctaUrl?: string; bgColor?: string; bgImageUrl?: string };
+function HeroEditor({ data, onChange, tenantSlug }: EditorProps) {
+  const d = data as {
+    eyebrow?: string; title?: string; subtitle?: string;
+    ctaLabel?: string; ctaUrl?: string;
+    ctaSecondaryLabel?: string; ctaSecondaryUrl?: string;
+    imageUrl?: string;
+  };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  function handleMediaSelect(media: MediaItem) {
+    const url = media.variants?.profile ?? media.variants?.large ?? media.url;
+    u("imageUrl", url);
+    setPickerOpen(false);
+  }
+
   return (
     <div className="space-y-3">
-      <Field label="Judul">
-        <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Judul utama hero" />
+      <Field label="Label Kecil (eyebrow)">
+        <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="Organisasi · 2026" />
       </Field>
-      <Field label="Sub-judul">
-        <Input value={d.subtitle ?? ""} onChange={(e) => u("subtitle", e.target.value)} placeholder="Kalimat pendukung" />
+      <Field label="Judul Besar">
+        <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Judul utama" />
       </Field>
-      <Field label="Teks Tombol CTA">
-        <Input value={d.ctaLabel ?? ""} onChange={(e) => u("ctaLabel", e.target.value)} placeholder="Pelajari Lebih" />
+      <Field label="Deskripsi">
+        <Textarea value={d.subtitle ?? ""} onChange={(e) => u("subtitle", e.target.value)} placeholder="Paragraf deskripsi singkat..." rows={3} />
       </Field>
-      <Field label="URL Tombol CTA">
-        <Input value={d.ctaUrl ?? ""} onChange={(e) => u("ctaUrl", e.target.value)} placeholder="/tentang atau https://..." />
-      </Field>
-      <Field label="Warna Background (hex)">
-        <div className="flex items-center gap-2">
-          <input type="color" value={d.bgColor ?? "#1e40af"} onChange={(e) => u("bgColor", e.target.value)} className="w-8 h-8 rounded border cursor-pointer" />
-          <Input value={d.bgColor ?? ""} onChange={(e) => u("bgColor", e.target.value)} placeholder="#1e40af" className="flex-1" />
+      <Field label="Tombol Utama">
+        <div className="grid grid-cols-2 gap-2">
+          <Input value={d.ctaLabel ?? ""} onChange={(e) => u("ctaLabel", e.target.value)} placeholder="Teks tombol" />
+          <Input value={d.ctaUrl ?? ""} onChange={(e) => u("ctaUrl", e.target.value)} placeholder="URL / #" />
         </div>
       </Field>
-      <Field label="URL Gambar Background (opsional)">
-        <Input value={d.bgImageUrl ?? ""} onChange={(e) => u("bgImageUrl", e.target.value)} placeholder="https://..." />
+      <Field label="Tombol Kedua (opsional)">
+        <div className="grid grid-cols-2 gap-2">
+          <Input value={d.ctaSecondaryLabel ?? ""} onChange={(e) => u("ctaSecondaryLabel", e.target.value)} placeholder="Teks tombol" />
+          <Input value={d.ctaSecondaryUrl ?? ""} onChange={(e) => u("ctaSecondaryUrl", e.target.value)} placeholder="URL / #" />
+        </div>
+      </Field>
+      <Field label="Gambar (dari Media Library)">
+        {d.imageUrl ? (
+          <div className="relative group">
+            <img src={d.imageUrl} alt="" className="w-full aspect-[3/4] object-cover rounded-lg border border-border" />
+            <button
+              onClick={() => u("imageUrl", "")}
+              className="absolute top-1.5 right-1.5 bg-background/90 border border-border rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => tenantSlug && setPickerOpen(true)}
+            disabled={!tenantSlug}
+            className="w-full h-24 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:border-primary hover:text-primary transition-colors text-xs disabled:opacity-50"
+          >
+            <ImageIcon className="w-5 h-5" />
+            Pilih dari Media Library
+          </button>
+        )}
+        {tenantSlug && (
+          <MediaPicker
+            slug={tenantSlug}
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            onSelect={handleMediaSelect}
+            module="website"
+            accept={["image/"]}
+          />
+        )}
       </Field>
     </div>
   );

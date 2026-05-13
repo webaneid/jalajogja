@@ -22,13 +22,20 @@ function Dot() {
 
 function HeroWireframe() {
   return (
-    <div className="w-full h-full bg-gray-300 rounded flex flex-col items-center justify-center gap-2 p-3">
-      <div className="w-3/4 h-4 bg-gray-500 rounded" />
-      <div className="w-1/2 h-2.5 bg-gray-400 rounded" />
-      <div className="flex gap-2 mt-1">
-        <div className="w-14 h-5 bg-gray-500 rounded" />
-        <div className="w-14 h-5 bg-gray-400 rounded border border-gray-400 bg-transparent" />
+    <div className="w-full h-full bg-gray-50 rounded flex items-center gap-3 p-3">
+      {/* left: text stack */}
+      <div className="flex-1 flex flex-col gap-1.5">
+        <div className="w-1/3 h-1.5 bg-gray-300 rounded" />
+        <div className="w-3/4 h-4 bg-gray-500 rounded" />
+        <div className="w-full h-2 bg-gray-300 rounded" />
+        <div className="w-4/5 h-2 bg-gray-300 rounded" />
+        <div className="flex gap-1.5 mt-1">
+          <div className="w-12 h-4 bg-gray-500 rounded-full" />
+          <div className="w-12 h-4 bg-transparent border border-gray-400 rounded-full" />
+        </div>
       </div>
+      {/* right: portrait image */}
+      <div className="w-1/3 h-full bg-gray-300 rounded-xl" style={{ aspectRatio: "3/4" }} />
     </div>
   );
 }

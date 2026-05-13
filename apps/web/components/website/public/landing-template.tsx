@@ -17,22 +17,73 @@ import { PublicButton } from "@/components/website/public/ui/public-button";
 // ─── Section renderers ────────────────────────────────────────────────────────
 
 function HeroSection({ data }: { data: Record<string, unknown> }) {
-  const d = data as { title?: string; subtitle?: string; ctaLabel?: string; ctaUrl?: string; bgColor?: string; bgImageUrl?: string };
-  const bg = d.bgImageUrl
-    ? { backgroundImage: `url(${d.bgImageUrl})`, backgroundSize: "cover", backgroundPosition: "center" }
-    : { backgroundColor: d.bgColor ?? "#1e40af" };
+  const d = data as {
+    eyebrow?: string;
+    title?: string;
+    subtitle?: string;
+    ctaLabel?: string;
+    ctaUrl?: string;
+    ctaSecondaryLabel?: string;
+    ctaSecondaryUrl?: string;
+    imageUrl?: string;
+  };
+
+  const hasImage = !!d.imageUrl;
 
   return (
-    <section className="relative py-20 px-4 text-center text-white" style={bg}>
-      {d.bgImageUrl && <div className="absolute inset-0 bg-black/40" />}
-      <div className="relative z-10 max-w-3xl mx-auto space-y-4">
-        {d.title    && <h1 className="text-4xl font-bold leading-tight">{d.title}</h1>}
-        {d.subtitle && <p className="text-lg text-white/90">{d.subtitle}</p>}
-        {d.ctaLabel && d.ctaUrl && (
-          <PublicButton href={d.ctaUrl as string} variant="light" size="lg" className="mt-4">
-            {d.ctaLabel as string}
-          </PublicButton>
-        )}
+    <section className="py-16 px-4 overflow-hidden">
+      <div className="max-w-7xl mx-auto">
+        <div className={`grid grid-cols-1 items-center gap-10 ${hasImage ? "lg:grid-cols-2 lg:gap-16" : ""}`}>
+
+          {/* Kiri: konten teks */}
+          <div className={`space-y-6 ${!hasImage ? "max-w-2xl mx-auto text-center" : ""}`}>
+            {d.eyebrow && (
+              <div className={`flex items-center gap-2.5 text-xs font-mono uppercase tracking-widest text-muted-foreground ${!hasImage ? "justify-center" : ""}`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />
+                {d.eyebrow}
+              </div>
+            )}
+            {d.title && (
+              <h1 className="text-4xl md:text-5xl xl:text-6xl font-bold leading-[1.08] tracking-tight">
+                {d.title}
+              </h1>
+            )}
+            {d.subtitle && (
+              <p className={`text-lg text-muted-foreground leading-relaxed ${!hasImage ? "mx-auto" : ""} max-w-lg`}>
+                {d.subtitle}
+              </p>
+            )}
+            {(d.ctaLabel || d.ctaSecondaryLabel) && (
+              <div className={`flex gap-3 flex-wrap pt-2 ${!hasImage ? "justify-center" : ""}`}>
+                {d.ctaLabel && d.ctaUrl && (
+                  <PublicButton href={d.ctaUrl as string} variant="primary" size="lg">
+                    {d.ctaLabel as string}
+                  </PublicButton>
+                )}
+                {d.ctaSecondaryLabel && d.ctaSecondaryUrl && (
+                  <PublicButton href={d.ctaSecondaryUrl as string} variant="ghost" size="lg" icon="none">
+                    {d.ctaSecondaryLabel as string}
+                  </PublicButton>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Kanan: gambar portrait */}
+          {hasImage && (
+            <div className="flex justify-center lg:justify-end">
+              <div className="relative w-full max-w-xs sm:max-w-sm">
+                <div className="absolute -inset-4 rounded-3xl bg-primary/5 -z-10" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={d.imageUrl!}
+                  alt={d.title ?? ""}
+                  className="w-full aspect-[3/4] object-cover rounded-2xl shadow-xl ring-1 ring-border"
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
