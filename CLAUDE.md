@@ -60,6 +60,74 @@ Yang belum difix: `register-form.tsx`, `event-register-form.tsx`, server actions
 - Komponen standar: `components/ui/wilayah-select.tsx` untuk wilayah, generic combobox pattern untuk lainnya
 - Konsisten di seluruh aplikasi: wizard form, edit form, filter tabel, search, semua
 
+## Public Button System (Front-end Publik)
+
+**Aturan mutlak: SEMUA button/CTA di front-end publik WAJIB pakai sistem ini.**
+Jangan pernah buat button baru dengan Tailwind classes manual di komponen publik.
+
+### Dua cara pakai
+
+**Cara 1 — CSS class langsung** (paling ringan, untuk HTML/JSX non-interaktif):
+```html
+<a href="/daftar" class="btn btn-primary btn-lg">Daftar Sekarang</a>
+<button class="btn btn-danger btn-sm">Hapus</button>
+<a href="/semua" class="btn btn-ghost btn-xs">Lihat Semua</a>
+```
+
+**Cara 2 — React component** (untuk link+button polimorfik, dengan ikon otomatis):
+```tsx
+import { PublicButton } from "@/components/website/public/ui/public-button";
+
+// Link (href → render <a>)
+<PublicButton href="/daftar" variant="primary" size="lg">Daftar Sekarang</PublicButton>
+
+// Button (no href → render <button>)
+<PublicButton variant="danger" size="sm" onClick={handleDelete}>Hapus</PublicButton>
+
+// Ikon kiri (← Kembali)
+<PublicButton href="/post" variant="ghost" iconLeft="chevron" icon="none">Kembali</PublicButton>
+
+// Override ikon
+<PublicButton variant="primary" icon="heart">Donasi</PublicButton>
+```
+
+### Variant dan use case
+
+| CSS Class | Variant | Kegunaan | Ikon Default |
+|---|---|---|---|
+| `btn-primary` | primary | CTA utama, warna primer tenant | ArrowRight |
+| `btn-secondary` | secondary | Alternatif, warna sekunder tenant | Zap |
+| `btn-dark` | dark | Kontras di section terang | ArrowUpRight |
+| `btn-light` | light | Kontras di section gelap/hero | ArrowRight |
+| `btn-outline-primary` | outline-primary | Ringan beridentitas, filter aktif | ChevronRight |
+| `btn-outline-dark` | outline-dark | Netral, pagination, navigasi | MoveRight |
+| `btn-ghost` | ghost | "Lihat Semua", "Kembali" — tidak mencolok | ChevronRight |
+| `btn-danger` | danger | Hapus, aksi destruktif | Trash2 |
+
+### Ukuran
+
+| CSS Class | Kegunaan |
+|---|---|
+| `btn-xs` | Badge/chip kecil, inline teks |
+| `btn-sm` | Header, pagination, secondary action |
+| `btn-md` | Default — form, card CTA |
+| `btn-lg` | Hero CTA, section CTA |
+| `btn-xl` | Landing page besar |
+
+### Ikon yang tersedia (prop `icon` / `iconLeft`)
+`arrow` · `arrow-up` · `move` · `chevron` · `zap` · `sparkles` · `send` · `download` · `calendar` · `cart` · `heart` · `external` · `trash` · `x` · `plus` · `minus` · `check` · `none`
+
+### File
+- **CSS**: `apps/web/app/globals.css` — `@layer utilities { .btn ... }`
+- **Component**: `apps/web/components/website/public/ui/public-button.tsx`
+
+### Catatan implementasi
+- Semua variant pakai CSS variables (`--primary`, `--secondary`, `--foreground`) → warna otomatis ikut tema tenant dari settings/display
+- Bentuk kapsul (`border-radius: 9999px`) — tidak boleh diubah ke `rounded-lg` atau lainnya
+- Hover effect: `opacity + translateY(-1px)` + shadow; active: `translateY(0)`
+- `btn-full` untuk lebar penuh (form submit)
+- Komponen `PublicButton` polimorfik: auto jadi `<a>` kalau ada prop `href`, jadi `<button>` kalau tidak
+
 ## Keputusan Arsitektur yang Sudah Dikunci
 - Multi-tenant: schema isolation per tenant (bukan row-level tenant_id)
 - **Member data: terpusat di `public.members`** — bukan di tenant schema
@@ -2160,8 +2228,13 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Member Media Library — Phase 1–4 SELESAI** (commit `783e4d2`).
-- Sesi ini: member media library lengkap (schema, API, picker, integrasi form usaha/pesantren, halaman browse).
+- Terakhir dikerjakan: **Sistem Tema + Public Button System** (commit `af6a7ab`).
+- Sesi ini:
+  - Foto profil anggota menggantikan Gravatar di header, akun layout, anggota detail, post author
+  - Settings Display diperluas: warna sekunder + heading font (Poppins/Philosopher)
+  - `lib/theme-palette.ts`: generator CSS dari hex (tint/shade/foreground kontras) + Google Fonts URL
+  - `PublicLayout` inject `<style>` + `<link>` Google Fonts server-side → semua `.public-layout` otomatis pakai tema tenant
+  - Public Button System: CSS utilities `@layer utilities` di `globals.css` + `PublicButton` component
 - Ditunda: V8 (stok check qurban server-side), EventCard+Section, Donasi Rutin (R1–R7).
 
 ### Status Halaman Publik
@@ -2178,6 +2251,67 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 | Checkout | `/{slug}/checkout` | ✅ Ada |
 | Invoice detail | `/{slug}/invoice/[id]` | ✅ Ada |
 | Subscriptions donasi rutin | `/{slug}/akun/subscriptions` | ⬜ Belum (Phase R) |
+
+### [2026-05] Sistem Tema Tenant — CSS Variables + Google Fonts
+
+**Pendekatan: inject CSS di server component, bukan prop drilling**
+
+Sebelumnya `primaryColor` di-prop-drill dari layout → header → footer → setiap komponen. Ini tidak scalable — menambah warna kedua berarti update 30+ komponen.
+
+**Fix yang benar**: inject `<style>` tag di `PublicLayout` dengan CSS variables:
+```css
+.public-layout {
+  --primary: #2563eb;
+  --secondary: #64748b;
+  font-family: "Poppins", sans-serif;
+}
+.public-layout h1, h2, h3, h4 {
+  font-family: "Philosopher", serif;
+}
+```
+
+Semua komponen di bawah `.public-layout` otomatis pakai warna dan font yang benar via CSS cascade. Tidak perlu sentuh satu komponen pun.
+
+**`lib/theme-palette.ts`** — konversi hex → palette:
+- Luminance WCAG untuk hitung foreground kontras (putih/hitam otomatis)
+- `tint(hex, ratio)` → mix dengan putih; `shade(hex, ratio)` → mix dengan hitam
+- `getGoogleFontsUrl(fonts[])` → URL Google Fonts yang di-dedupe
+- Hanya font yang ada di `GOOGLE_FONT_SPEC` yang di-load (Inter/Geist = sistem, skip)
+
+**Google Fonts di server component**: `<link rel="stylesheet" href="...">` di server component Next.js App Router → Next.js hoist otomatis ke `<head>`. Tidak perlu `next/font` untuk font yang dipilih dinamis dari DB.
+
+**`<style dangerouslySetInnerHTML>` di server component**: aman karena nilai berasal dari DB (hex color + font name dari whitelist) — bukan user input arbitrary. Tidak ada XSS risk.
+
+**Aturan**: Jangan pernah kembalikan ke prop drilling `primaryColor`. Tambah variabel baru? Tambah di `buildTenantThemeCss()` + `globals.css` → selesai.
+
+### [2026-05] Public Button System — CSS Utilities + Component
+
+**Prinsip: CSS utility class + thin React component di atasnya**
+
+Jangan buat button dengan Tailwind classes manual. CSS utility class:
+1. Tidak repeat — satu definisi, dipakai di mana saja
+2. Tidak ada import — cukup class name di HTML/JSX
+3. Pakai CSS variables → warna otomatis ikut tema tenant
+4. Bisa dipakai di email template, PDF HTML, atau konteks non-React
+
+Pattern: `globals.css` definisikan `.btn`, `.btn-primary`, `.btn-sm`, dll. via `@layer utilities`. React component `PublicButton` hanya compose nama class + handle ikon + polymorphism.
+
+**Polimorfik tanpa library**: `if ("href" in props && props.href !== undefined)` → render `<a>`, else `<button>`. Tidak butuh Radix atau `@radix-ui/react-slot`.
+
+**Ikon default per variant** — bukan dekoratif, tapi semantik:
+- `primary` → ArrowRight (action/lanjut)
+- `secondary` → Zap (alternatif cepat)
+- `dark` → ArrowUpRight (buka/navigasi)
+- `outline-primary/dark` → Chevron/Move (navigasi ringan)
+- `ghost` → ChevronRight (link navigasi)
+- `danger` → Trash2 (destruktif)
+
+**`iconLeft` prop untuk ← Kembali pattern**:
+```tsx
+<PublicButton iconLeft="chevron" icon="none">Kembali</PublicButton>
+```
+
+**Aturan**: Jangan ada `<a class="px-4 py-2 rounded-full bg-primary...">` baru di front-end publik. Selalu `btn btn-primary` atau `<PublicButton>`.
 
 ### Known TODO
 - Role System: email SMTP sending untuk invite (saat ini hanya manual link copy)
