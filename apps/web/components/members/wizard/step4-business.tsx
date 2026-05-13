@@ -547,15 +547,28 @@ export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Ste
   const [entries, setEntries] = React.useState<BusinessEntry[]>(
     defaultEntries && defaultEntries.length > 0 ? defaultEntries : [newEntry()]
   )
-  const [loading, setLoading] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  const [loading,    setLoading]    = React.useState(false)
+  const [error,      setError]      = React.useState<string | null>(null)
+  // ID entry yang sedang ditambah — null = tampilkan semua entry
+  const [focusedId,  setFocusedId]  = React.useState<string | null>(
+    defaultEntries && defaultEntries.length > 0 ? null : (entries[0]?.id ?? null)
+  )
 
   function addEntry() {
-    setEntries((prev) => [...prev, newEntry()])
+    const entry = newEntry()
+    setEntries((prev) => [...prev, entry])
+    setFocusedId(entry.id)
+  }
+
+  function backToAll() {
+    // Hapus entry yang masih kosong (belum diisi nama) sebelum kembali ke list
+    setEntries((prev) => prev.filter((e) => e.id !== focusedId || e.name.trim() !== ""))
+    setFocusedId(null)
   }
 
   function removeEntry(id: string) {
     setEntries((prev) => prev.filter((e) => e.id !== id))
+    if (focusedId === id) setFocusedId(null)
   }
 
   function updateEntry<K extends keyof BusinessEntry>(
@@ -631,17 +644,33 @@ export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Ste
     }
   }
 
+  const visibleEntries = focusedId
+    ? entries.filter((e) => e.id === focusedId)
+    : entries
+
   return (
     <form
       id="wizard-step-4-form"
       onSubmit={handleSubmit}
       className="space-y-4"
     >
-      {entries.map((entry, index) => (
+      {/* Navigasi kembali saat sedang fokus pada satu entry (ada usaha lain) */}
+      {focusedId && entries.length > 1 && (
+        <button
+          type="button"
+          onClick={backToAll}
+          disabled={loading}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+        >
+          ← Lihat semua usaha ({entries.length})
+        </button>
+      )}
+
+      {visibleEntries.map((entry) => (
         <BusinessCard
           key={entry.id}
           entry={entry}
-          index={index}
+          index={entries.indexOf(entry)}
           canRemove={entries.length > 1}
           disabled={loading}
           tenantSlug={slug}
@@ -651,16 +680,18 @@ export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Ste
         />
       ))}
 
-      {/* Tombol tambah */}
-      <button
-        type="button"
-        onClick={addEntry}
-        disabled={loading}
-        className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/40 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-50"
-      >
-        <PlusIcon className="size-4" />
-        Tambah Data Usaha
-      </button>
+      {/* Tombol tambah — hanya tampil saat melihat semua entry */}
+      {!focusedId && (
+        <button
+          type="button"
+          onClick={addEntry}
+          disabled={loading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/40 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-50"
+        >
+          <PlusIcon className="size-4" />
+          Tambah Data Usaha
+        </button>
+      )}
 
       {/* Error */}
       {error && (
