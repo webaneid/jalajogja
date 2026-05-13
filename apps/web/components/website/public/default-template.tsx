@@ -11,7 +11,8 @@ export function DefaultTemplate({ title, content, coverUrl, updatedAt }: Props) 
   const html = renderBody(content);
 
   return (
-    <article className="max-w-3xl mx-auto px-4 py-10">
+    <article className="max-w-7xl mx-auto px-4 py-10">
+      <div className="max-w-3xl mx-auto">
       {coverUrl && (
         <div className="mb-8 rounded-xl overflow-hidden aspect-video bg-muted">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -40,6 +41,7 @@ export function DefaultTemplate({ title, content, coverUrl, updatedAt }: Props) 
           [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-sm"
         dangerouslySetInnerHTML={{ __html: html }}
       />
+      </div>
     </article>
   );
 }

@@ -160,7 +160,7 @@ export default async function CampaignDetailPage({ params }: { params: Params })
 
   return (
     <div className="py-10 px-4">
-      <div className="max-w-5xl mx-auto space-y-8">
+      <div className="max-w-7xl mx-auto space-y-8">
 
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">

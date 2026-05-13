@@ -330,7 +330,7 @@ export default async function PublicEventPage({
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="max-w-5xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Breadcrumb */}
         <div className="text-xs text-muted-foreground mb-6 flex items-center gap-2">
           <a href={`/${tenantSlug}/agenda`} className="hover:text-foreground transition-colors">Agenda</a>

@@ -71,7 +71,7 @@ function AboutTextSection({ data }: { data: Record<string, unknown> }) {
 
   return (
     <section className="py-14 px-4">
-      <div className={`max-w-5xl mx-auto flex flex-col ${imgRight ? "md:flex-row" : "md:flex-row-reverse"} items-center gap-10`}>
+      <div className={`max-w-7xl mx-auto flex flex-col ${imgRight ? "md:flex-row" : "md:flex-row-reverse"} items-center gap-10`}>
         <div className="flex-1">
           {d.title && <h2 className="text-2xl font-bold mb-4">{d.title}</h2>}
           {d.body  && <p className="text-muted-foreground leading-relaxed whitespace-pre-line">{d.body}</p>}
@@ -97,7 +97,7 @@ function FeaturesSection({ data }: { data: Record<string, unknown> }) {
 
   return (
     <section className="py-14 px-4 bg-muted/40">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         {d.title && <h2 className="text-2xl font-bold mb-10 text-center">{d.title}</h2>}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {items.map((item, i) => (
@@ -142,7 +142,8 @@ function ContactInfoSection({ settings }: { settings: ContactSettings }) {
 
   return (
     <section className="py-14 px-4 bg-muted/40">
-      <div className="max-w-2xl mx-auto space-y-4">
+      <div className="max-w-7xl mx-auto">
+      <div className="max-w-2xl space-y-4">
         <h2 className="text-2xl font-bold mb-6">Info Kontak</h2>
         {email   && <p className="text-sm">📧 <a href={`mailto:${email}`} className="text-primary underline">{email}</a></p>}
         {phone   && <p className="text-sm">📞 <a href={`tel:${phone}`}   className="text-primary underline">{phone}</a></p>}
@@ -165,6 +166,7 @@ function ContactInfoSection({ settings }: { settings: ContactSettings }) {
           </div>
         )}
       </div>
+      </div>
     </section>
   );
 }
@@ -177,7 +179,7 @@ function StatsSection({ data }: { data: Record<string, unknown> }) {
 
   return (
     <section className="py-14 px-4">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
           {items.map((item, i) => (
             <div key={i}>

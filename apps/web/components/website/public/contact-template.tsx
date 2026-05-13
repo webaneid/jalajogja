@@ -52,7 +52,8 @@ export function ContactTemplate({ tenantSlug, pageId, title, body, settings }: P
   const socials = settings.socials;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-12">
+    <div className="max-w-7xl mx-auto px-4 py-12">
+      <div className="max-w-4xl">
       <h1 className="text-3xl font-bold mb-10">{body.customTitle || title}</h1>
 
       <div className="grid md:grid-cols-2 gap-10">
@@ -158,6 +159,7 @@ export function ContactTemplate({ tenantSlug, pageId, title, body, settings }: P
           />
         </div>
       )}
+      </div>
     </div>
   );
 }
