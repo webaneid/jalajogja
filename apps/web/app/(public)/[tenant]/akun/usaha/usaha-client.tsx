@@ -18,14 +18,18 @@ type Entry = {
   name: string; brand: string; description: string;
   category: string; sector: string; legality: string;
   position: string; employees: string; branches: string; revenue: string;
-  _addressMode:      "indonesia" | "overseas";
-  addressCountry:    string;
-  addressProvinceId: number | null;
-  addressRegencyId:  number | null;
-  addressDistrictId: number | null;
-  addressVillageId:  number | null;
-  addressDetail:     string;
-  addressPostalCode: string;
+  _addressMode:       "indonesia" | "overseas";
+  addressCountry:     string;
+  addressProvinceId:  number | null;
+  addressRegencyId:   number | null;
+  addressDistrictId:  number | null;
+  addressVillageId:   number | null;
+  addressProvinceName: string;
+  addressRegencyName:  string;
+  addressDistrictName: string;
+  addressVillageName:  string;
+  addressDetail:      string;
+  addressPostalCode:  string;
   phone: string; whatsapp: string; email: string;
   instagram: string; facebook: string; linkedin: string;
   twitter: string; youtube: string; tiktok: string; website: string;
@@ -41,6 +45,8 @@ type ApiRow = {
   addressCountry?: string;
   addressProvinceId?: number; addressRegencyId?: number;
   addressDistrictId?: number; addressVillageId?: number;
+  addressProvinceName?: string | null; addressRegencyName?: string | null;
+  addressDistrictName?: string | null; addressVillageName?: string | null;
   addressDetail?: string; addressPostalCode?: string;
   phone?: string; whatsapp?: string; email?: string;
   isPhonePublic?: boolean; isWhatsappPublic?: boolean;
@@ -109,6 +115,8 @@ function newEntry(): Entry {
     _addressMode: "indonesia",
     addressCountry: "", addressProvinceId: null,
     addressRegencyId: null, addressDistrictId: null, addressVillageId: null,
+    addressProvinceName: "", addressRegencyName: "",
+    addressDistrictName: "", addressVillageName: "",
     addressDetail: "", addressPostalCode: "",
     phone: "", whatsapp: "", email: "",
     instagram: "", facebook: "", linkedin: "", twitter: "", youtube: "", tiktok: "", website: "",
@@ -134,11 +142,15 @@ function apiRowToEntry(e: ApiRow): Entry {
     branches:          e.branches    ?? "",
     revenue:           e.revenue     ?? "",
     _addressMode:      (e.addressCountry ? "overseas" : "indonesia") as "indonesia" | "overseas",
-    addressCountry:    e.addressCountry   ?? "",
+    addressCountry:    e.addressCountry    ?? "",
     addressProvinceId: e.addressProvinceId ?? null,
     addressRegencyId:  e.addressRegencyId  ?? null,
     addressDistrictId: e.addressDistrictId ?? null,
     addressVillageId:  e.addressVillageId  ?? null,
+    addressProvinceName: e.addressProvinceName ?? "",
+    addressRegencyName:  e.addressRegencyName  ?? "",
+    addressDistrictName: e.addressDistrictName ?? "",
+    addressVillageName:  e.addressVillageName  ?? "",
     addressDetail:     e.addressDetail     ?? "",
     addressPostalCode: e.addressPostalCode ?? "",
     phone, whatsapp,
@@ -236,7 +248,8 @@ function DetailDialog({ entry, onClose, onEdit }: {
     { label: "Website",   value: entry.website   },
   ].filter(s => s.value);
 
-  const hasAddress = entry.addressDetail || entry.addressCountry || entry.addressPostalCode;
+  const hasAddress = entry.addressCountry || entry.addressProvinceId ||
+    entry.addressDetail || entry.addressPostalCode;
   const hasContact = entry.phone || entry.whatsapp || entry.email;
 
   return (
@@ -288,13 +301,22 @@ function DetailDialog({ entry, onClose, onEdit }: {
           {hasAddress && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-2">Alamat</p>
-              <p className="text-sm text-foreground">
-                {entry._addressMode === "overseas" && entry.addressCountry
-                  ? entry.addressCountry
-                  : "Indonesia"}
-                {entry.addressDetail ? ` — ${entry.addressDetail}` : ""}
-                {entry.addressPostalCode ? ` (${entry.addressPostalCode})` : ""}
-              </p>
+              {entry._addressMode === "overseas" ? (
+                <div className="space-y-0.5">
+                  {entry.addressCountry && <p className="text-sm text-foreground">{entry.addressCountry}</p>}
+                  {entry.addressDetail  && <p className="text-sm text-muted-foreground">{entry.addressDetail}</p>}
+                  {entry.addressPostalCode && <p className="text-sm text-muted-foreground">Kode Pos: {entry.addressPostalCode}</p>}
+                </div>
+              ) : (
+                <div className="space-y-0.5">
+                  {entry.addressDetail && <p className="text-sm text-foreground">{entry.addressDetail}</p>}
+                  {entry.addressVillageName  && <p className="text-sm text-muted-foreground">{entry.addressVillageName}</p>}
+                  {entry.addressDistrictName && <p className="text-sm text-muted-foreground">{entry.addressDistrictName}</p>}
+                  {entry.addressRegencyName  && <p className="text-sm text-muted-foreground">{entry.addressRegencyName}</p>}
+                  {entry.addressProvinceName && <p className="text-sm text-muted-foreground">{entry.addressProvinceName}</p>}
+                  {entry.addressPostalCode   && <p className="text-sm text-muted-foreground">Kode Pos: {entry.addressPostalCode}</p>}
+                </div>
+              )}
             </div>
           )}
 

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/popover"
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select"
 import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-media-input"
+import { PhoneInput } from "@/components/ui/phone-input"
 import {
   saveMemberBusinessesAction,
   type BusinessEntryData,
@@ -476,33 +477,23 @@ function BusinessCard({
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Kontak Usaha</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {/* Telepon */}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-foreground">
-              Telepon <span className="font-normal text-muted-foreground">(opsional)</span>
-            </span>
-            <input
-              type="tel"
+          <div>
+            <PhoneInput
+              label="Telepon"
               value={entry.phone}
-              onChange={(e) => handlePhoneChange(e.target.value)}
-              placeholder="6285210626455"
-              inputMode="numeric"
+              onChange={handlePhoneChange}
+              optional
               disabled={disabled}
-              className={inputCls}
             />
           </div>
           {/* WhatsApp + checkbox */}
           <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-foreground">
-              WhatsApp <span className="font-normal text-muted-foreground">(opsional)</span>
-            </span>
-            <input
-              type="tel"
+            <PhoneInput
+              label="WhatsApp"
               value={sameAsPhone ? entry.phone : entry.whatsapp}
-              onChange={(e) => { if (!sameAsPhone) onChange("whatsapp", e.target.value) }}
-              placeholder="6285210626455"
-              inputMode="numeric"
+              onChange={(v) => { if (!sameAsPhone) onChange("whatsapp", v) }}
+              optional
               disabled={disabled || sameAsPhone}
-              className={inputCls}
             />
             <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
               <input

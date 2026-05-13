@@ -3,6 +3,7 @@ import { eq }                                                from "drizzle-orm";
 import {
   db, members, memberBusinesses,
   contacts, addresses, socialMedias,
+  refProvinces, refRegencies, refDistricts, refVillages,
 } from "@jalajogja/db";
 import { auth }           from "@/lib/auth";
 import { normalizePhone } from "@/lib/phone";
@@ -50,6 +51,11 @@ export async function GET(req: NextRequest) {
       addressVillageId:  addresses.villageId,
       addressDetail:     addresses.detail,
       addressPostalCode: addresses.postalCode,
+      // Nama wilayah (resolved dari ref tables)
+      addressProvinceName: refProvinces.name,
+      addressRegencyName:  refRegencies.name,
+      addressDistrictName: refDistricts.name,
+      addressVillageName:  refVillages.name,
       // Sosmed
       instagram: socialMedias.instagram,
       facebook:  socialMedias.facebook,
@@ -63,6 +69,10 @@ export async function GET(req: NextRequest) {
     .leftJoin(contacts,    eq(contacts.id,    memberBusinesses.contactId))
     .leftJoin(addresses,   eq(addresses.id,   memberBusinesses.addressId))
     .leftJoin(socialMedias, eq(socialMedias.id, memberBusinesses.socialMediaId))
+    .leftJoin(refProvinces, eq(refProvinces.id, addresses.provinceId))
+    .leftJoin(refRegencies, eq(refRegencies.id, addresses.regencyId))
+    .leftJoin(refDistricts, eq(refDistricts.id, addresses.districtId))
+    .leftJoin(refVillages,  eq(refVillages.id,  addresses.villageId))
     .where(eq(memberBusinesses.memberId, member.id));
 
   return NextResponse.json({ success: true, data: rows });
