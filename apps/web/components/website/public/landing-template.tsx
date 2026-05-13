@@ -1,4 +1,4 @@
-import { desc, eq, lte } from "drizzle-orm";
+import { desc, eq, gt, and } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
 import { getSettings } from "@jalajogja/db";
 import type { SectionItem, SectionType, LandingBody, PostsSectionData } from "@/lib/page-templates";
@@ -16,7 +16,19 @@ import { PublicButton } from "@/components/website/public/ui/public-button";
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
-function HeroSection({ data }: { data: Record<string, unknown> }) {
+type HeroCardData = {
+  type:  "event" | "post";
+  label: string;
+  title: string;
+  href:  string;
+  date:  string | null;
+};
+
+async function HeroSection({ data, tenantClient, tenantSlug }: {
+  data:         Record<string, unknown>;
+  tenantClient: TenantDb;
+  tenantSlug:   string;
+}) {
   const d = data as {
     eyebrow?: string;
     title?: string;
@@ -29,6 +41,51 @@ function HeroSection({ data }: { data: Record<string, unknown> }) {
   };
 
   const hasImage = !!d.imageUrl;
+
+  // Fetch floating card: event mendatang → berita terbaru
+  let heroCard: HeroCardData | null = null;
+  if (hasImage) {
+    const { db: tenantDb, schema } = tenantClient;
+    const now = new Date();
+
+    const [upcomingEvent] = await tenantDb
+      .select({ title: schema.events.title, slug: schema.events.slug, startsAt: schema.events.startsAt })
+      .from(schema.events)
+      .where(and(eq(schema.events.status, "published"), gt(schema.events.startsAt, now)))
+      .orderBy(schema.events.startsAt)
+      .limit(1);
+
+    if (upcomingEvent) {
+      heroCard = {
+        type:  "event",
+        label: "Agenda Terbaru",
+        title: upcomingEvent.title,
+        href:  `/${tenantSlug}/agenda/${upcomingEvent.slug}`,
+        date:  upcomingEvent.startsAt
+          ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(upcomingEvent.startsAt)
+          : null,
+      };
+    } else {
+      const [latestPost] = await tenantDb
+        .select({ title: schema.posts.title, slug: schema.posts.slug, publishedAt: schema.posts.publishedAt })
+        .from(schema.posts)
+        .where(eq(schema.posts.status, "published"))
+        .orderBy(desc(schema.posts.publishedAt))
+        .limit(1);
+
+      if (latestPost) {
+        heroCard = {
+          type:  "post",
+          label: "Berita Terbaru",
+          title: latestPost.title,
+          href:  `/${tenantSlug}/post/${latestPost.slug}`,
+          date:  latestPost.publishedAt
+            ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(latestPost.publishedAt)
+            : null,
+        };
+      }
+    }
+  }
 
   return (
     <section className="py-16 px-4 overflow-hidden">
@@ -69,7 +126,7 @@ function HeroSection({ data }: { data: Record<string, unknown> }) {
             )}
           </div>
 
-          {/* Kanan: gambar portrait */}
+          {/* Kanan: gambar portrait + floating card */}
           {hasImage && (
             <div className="flex justify-center lg:justify-end">
               <div className="relative w-full max-w-xs sm:max-w-sm">
@@ -78,8 +135,26 @@ function HeroSection({ data }: { data: Record<string, unknown> }) {
                 <img
                   src={d.imageUrl!}
                   alt={d.title ?? ""}
-                  className="w-full aspect-[3/4] object-cover rounded-2xl shadow-xl ring-1 ring-border"
+                  className="w-full aspect-[3/4] object-cover rounded-2xl shadow-xl"
                 />
+
+                {/* Floating card — event mendatang atau berita terbaru */}
+                {heroCard && (
+                  <a
+                    href={heroCard.href}
+                    className="absolute bottom-4 left-4 right-4 bg-primary text-primary-foreground rounded-2xl px-4 py-3 no-underline hover:opacity-90 transition-opacity"
+                  >
+                    <p className="text-[10px] font-mono uppercase tracking-widest opacity-75 mb-1">
+                      {heroCard.label}
+                    </p>
+                    <p className="text-sm font-semibold leading-snug line-clamp-2">
+                      {heroCard.title}
+                    </p>
+                    {heroCard.date && (
+                      <p className="text-[11px] opacity-70 mt-1.5">{heroCard.date}</p>
+                    )}
+                  </a>
+                )}
               </div>
             </div>
           )}
@@ -297,7 +372,7 @@ function SectionRenderer({
   contactSettings: ContactSettings;
 }) {
   switch (section.type) {
-    case "hero":         return <HeroSection         data={section.data} />;
+    case "hero":         return <HeroSection data={section.data} tenantClient={tenantClient} tenantSlug={tenantSlug} />;
     case "posts":        return (
       <PostsSection
         data={section.data as PostsSectionData}
