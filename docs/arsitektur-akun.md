@@ -333,8 +333,136 @@ app/(public)/[tenant]/
     ├── page.tsx            → dashboard front-end (anggota + publik)
     ├── profil/page.tsx     → edit profil
     ├── transaksi/page.tsx  → riwayat transaksi
-    └── lengkapi/page.tsx   → wizard data keanggotaan (anggota IKPM saja)
+    ├── lengkapi/page.tsx   → wizard data keanggotaan (anggota IKPM saja)
+    ├── pesantren/page.tsx  → data pesantren multi-entry (anggota saja)
+    └── usaha/page.tsx      → data usaha multi-entry (anggota saja)
 ```
+
+---
+
+## Data Usaha Anggota (`/akun/usaha`)
+
+### Arsitektur Penyimpanan
+
+Setiap usaha disimpan sebagai **satu row `public.member_businesses`** dengan tiga FK opsional ke tabel helper:
+
+```
+public.member_businesses
+  id, member_id (FK → members)
+  name, brand, description, category, sector
+  legality, position, employees, branches, revenue
+  contact_id   → public.contacts   (phone, whatsapp, email, isPhonePublic, isWhatsappPublic)
+  address_id   → public.addresses  (country, provinceId, regencyId, districtId, villageId, detail, postalCode)
+  social_media_id → public.social_medias (instagram, facebook, linkedin, twitter, youtube, tiktok, website)
+```
+
+FK ke tabel helper **dibuat kondisional** — hanya jika datanya ada:
+- Tidak ada kontak → `contact_id = null` (tidak insert row kosong)
+- Tidak ada alamat → `address_id = null`
+- Tidak ada sosmed → `social_media_id = null`
+
+### API Route: `GET /api/akun/member-business`
+
+Auth: `members.betterAuthUserId = session.user.id` — tanpa tenant access.
+
+Query pakai LEFT JOIN ke semua tabel helper **plus ref tables** agar nama wilayah ikut ter-resolve:
+
+```typescript
+.from(memberBusinesses)
+.leftJoin(contacts,    eq(contacts.id,    memberBusinesses.contactId))
+.leftJoin(addresses,   eq(addresses.id,   memberBusinesses.addressId))
+.leftJoin(socialMedias, eq(socialMedias.id, memberBusinesses.socialMediaId))
+// ← WAJIB: resolve ID ke nama wilayah, bukan hanya kirim angka ID
+.leftJoin(refProvinces, eq(refProvinces.id, addresses.provinceId))
+.leftJoin(refRegencies, eq(refRegencies.id, addresses.regencyId))
+.leftJoin(refDistricts, eq(refDistricts.id, addresses.districtId))
+.leftJoin(refVillages,  eq(refVillages.id,  addresses.villageId))
+```
+
+Response menyertakan kedua versi:
+```
+addressProvinceId, addressRegencyId, addressDistrictId, addressVillageId  ← untuk form edit
+addressProvinceName, addressRegencyName, addressDistrictName, addressVillageName  ← untuk display
+```
+
+### API Route: `POST /api/akun/member-business`
+
+**Replace-all pattern** — hapus semua usaha lama, insert ulang semua yang valid:
+
+```
+DELETE FROM member_businesses WHERE member_id = {memberId}
+for each entry:
+  → INSERT contacts (kondisional)
+  → INSERT addresses (kondisional)
+  → INSERT social_medias (kondisional)
+  → INSERT member_businesses (dengan FK ke tiga row di atas)
+```
+
+Filter valid: `e.name?.trim() && e.category && e.sector` — hanya tiga field ini wajib (nama, kategori, sektor).
+
+### UX: Three-View Pattern
+
+Halaman `/akun/usaha` menggunakan **three-view pattern** berbasis state (bukan router navigation):
+
+```
+LIST VIEW (default)
+  Table: nama usaha | kategori | sektor | aksi [Detail] [Edit] [Hapus]
+  → klik [Detail] → DETAIL VIEW (dialog popup)
+  → klik [Edit]   → EDIT VIEW (form penuh, menggantikan halaman)
+  → klik [Hapus]  → konfirmasi + POST ke API
+
+DETAIL VIEW (dialog popup, di atas LIST VIEW)
+  Tampil SEMUA informasi: deskripsi, klasifikasi, alamat lengkap, kontak, sosmed
+  → Alamat Indonesia: urutan detail → desa → kecamatan → kabupaten → provinsi → kode pos
+  → Alamat LN: nama negara → detail → kode pos
+  Tombol "Edit" → transisi ke EDIT VIEW
+
+EDIT VIEW (full-page replace)
+  Form lengkap: identitas, klasifikasi, skala, alamat (wilayah atau LN), kontak, sosmed
+  Breadcrumb: "← Data Usaha / Nama Usaha"
+  Tombol "Batal" → kembali ke LIST VIEW (tanpa save)
+  Tombol "Simpan" → POST API → kembali ke LIST VIEW + success banner
+```
+
+**State management:**
+- `editingEntry: Entry | null` — null = list view; ada = edit view
+- `isNew: boolean` — true = entry baru (dihapus dari list jika batal)
+- `detailKey: string | null` — key entry yang sedang dibuka di dialog
+
+### Komponen
+
+**`usaha-client.tsx`** — satu file, tiga sub-komponen:
+- `DetailDialog` — modal popup, ESC untuk tutup, klik overlay untuk tutup
+- `EntryEditForm` — form lengkap per entry
+- `UsahaClient` — root: state management + list view
+
+**`Entry` type** — menyimpan dua representasi wilayah:
+```typescript
+// Untuk form edit (dikirim ke API):
+addressProvinceId: number | null
+addressRegencyId:  number | null
+// ...
+
+// Untuk display di detail popup (dari API response, tidak dikirim balik):
+addressProvinceName: string
+addressRegencyName:  string
+// ...
+```
+
+### Komponen Universal yang Dipakai
+
+- **`PhoneInput`** dari `components/ui/phone-input.tsx` — untuk Telepon dan WhatsApp (WAJIB, sesuai standar)
+- **`WilayahSelect`** dari `components/ui/wilayah-select.tsx` — untuk pilih wilayah Indonesia
+- **`SocialMediaInput`** dari `components/ui/social-media-input.tsx` — universal, 7 platform
+- **`Combobox`** dari `components/ui/combobox.tsx` — untuk semua dropdown (kategori, sektor, dll)
+
+### Aturan yang Tidak Boleh Dilanggar
+
+1. **Jangan simpan hanya ID wilayah** — API GET wajib LEFT JOIN ke `refProvinces/Regencies/Districts/Villages` dan kembalikan nama. Front-end tidak pernah tahu cara lookup nama dari ID.
+2. **Input phone/WA wajib `<PhoneInput>`** — tidak boleh `<input type="tel">` biasa, berlaku untuk admin form (`step4-business.tsx`) dan front-end form (`usaha-client.tsx`).
+3. **Display wilayah: urutan detail → desa → kec → kab/kota → prov → kodepos** — dari spesifik ke umum, konsisten dengan `/anggota/[id]`.
+4. **Tiga field wajib saat save**: `name`, `category`, `sector` — field lain opsional.
+5. **Jangan tampilkan emoji** di semua display kontak atau informasi apapun.
 
 ---
 

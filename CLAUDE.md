@@ -2312,6 +2312,49 @@ Kode Pos
 Jangan tampilkan alamat dari bawah ke atas (provinsi → desa). Urutkan dari spesifik ke umum.
 `refVillages` wajib di-fetch untuk melengkapi alamat — jangan skip level manapun.
 
+### [2026-05] Akun/Usaha — Three-View Pattern + SocialMediaInput + Wilayah Names
+
+**Three-view UX pattern untuk form multi-field kompleks:**
+Halaman data usaha menggunakan pola state-driven tiga tampilan tanpa navigasi router:
+- **List view** (default): tabel ringkas (nama, kategori, sektor) + aksi [Detail] [Edit] [Hapus]
+- **Detail view**: dialog popup modal di atas list — tampilkan SEMUA informasi lengkap
+- **Edit view**: form penuh menggantikan seluruh halaman, breadcrumb "← Data Usaha / Nama"
+
+Pattern ini cocok untuk entity yang punya banyak field tapi sehari-hari hanya perlu lihat ringkasan.
+Batal pada entry baru → hapus dari list (tidak simpan). Batal pada entry existing → kembalikan ke list tanpa perubahan.
+
+**Wilayah ID wajib di-resolve ke nama di API layer — bukan di client:**
+API route yang mengembalikan data dengan wilayah (provinsi/kabupaten/kecamatan/desa) HARUS LEFT JOIN ke `refProvinces/Regencies/Districts/Villages` dan sertakan nama dalam response. Jangan hanya kirim ID — client tidak tahu cara lookup nama dari ID tanpa request tambahan.
+
+```typescript
+// BENAR: resolve di API
+.leftJoin(refProvinces, eq(refProvinces.id, addresses.provinceId))
+// SELECT: addressProvinceName: refProvinces.name
+
+// SALAH: hanya kirim ID, display hardcode "Indonesia" di client
+// addressProvinceName tidak ada → detail popup hanya tampil "Indonesia"
+```
+
+Response harus sertakan **kedua versi**: ID (untuk form edit/WilayahSelect) + nama (untuk display).
+
+**`SocialMediaInput` — komponen universal:**
+- Lokasi: `components/ui/social-media-input.tsx`
+- Export: `SocialMediaValue`, `SOCIAL_MEDIA_EMPTY`, `SocialMediaInput`
+- 7 platform: instagram, facebook, twitter, tiktok, linkedin, youtube, website
+- Dipakai di: contact-settings-form, step2-contact (wizard), step4-business (wizard), akun/lengkapi, akun/usaha
+- Jangan duplikasi logika per platform di masing-masing form — selalu import dari sini
+
+**`null`-safe helper wajib sebelum `.trim()` pada data API:**
+Data dari API response bisa `undefined` meski TypeScript type bilang `string` (edge case runtime).
+Selalu gunakan helper: `function trim(s: string | undefined | null) { return (s ?? "").trim(); }`
+Berlaku untuk semua field social media, alamat, dan field opsional lainnya yang berasal dari DB join.
+
+**Aturan konsistensi admin form + front-end form:**
+Setiap fix atau penambahan field di form anggota HARUS diterapkan ke dua tempat sekaligus:
+- Admin: `components/members/wizard/step4-business.tsx` (wizard Step 4)
+- Front-end: `app/(public)/[tenant]/akun/usaha/usaha-client.tsx`
+Termasuk komponen input yang dipakai — `PhoneInput` wajib di keduanya, bukan hanya salah satu.
+
 ## Arsitektur Modul Billing
 > Detail lengkap: **`docs/arsitektur-billing.md`**
 
