@@ -45,7 +45,7 @@ function HeroEditor({ data, onChange, tenantSlug }: EditorProps) {
     eyebrow?: string; title?: string; subtitle?: string;
     ctaLabel?: string; ctaUrl?: string;
     ctaSecondaryLabel?: string; ctaSecondaryUrl?: string;
-    imageUrl?: string;
+    imageUrl?: string; showModuleStrip?: boolean;
   };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -110,6 +110,17 @@ function HeroEditor({ data, onChange, tenantSlug }: EditorProps) {
             accept={["image/"]}
           />
         )}
+      </Field>
+      <Field label="Strip Modul">
+        <label className="flex items-center gap-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={d.showModuleStrip ?? false}
+            onChange={(e) => u("showModuleStrip", e.target.checked)}
+            className="w-4 h-4 accent-primary"
+          />
+          <span className="text-xs">Tampilkan strip Donasi · Event · Toko · Dokumen · Kabar</span>
+        </label>
       </Field>
     </div>
   );

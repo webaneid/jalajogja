@@ -60,7 +60,7 @@ export type LandingBody = {
 
 // Default data per section type
 const SECTION_DEFAULTS: Record<SectionType, Record<string, unknown>> = {
-  hero:         { eyebrow: "", title: "", subtitle: "", ctaLabel: "Pelajari Lebih", ctaUrl: "#", ctaSecondaryLabel: "", ctaSecondaryUrl: "", imageUrl: "" },
+  hero:         { eyebrow: "", title: "", subtitle: "", ctaLabel: "Pelajari Lebih", ctaUrl: "#", ctaSecondaryLabel: "", ctaSecondaryUrl: "", imageUrl: "", showModuleStrip: false },
   posts:        { title: "Berita & Pengumuman", count: 6 },
   products:     { title: "Produk Terbaru", count: 8, categoryId: null },
   events:       { title: "Event Mendatang", count: 3 },

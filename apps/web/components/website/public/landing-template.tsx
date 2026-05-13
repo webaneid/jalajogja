@@ -1,6 +1,7 @@
 import { desc, eq, gt, and } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
 import { getSettings } from "@jalajogja/db";
+import { Heart, CalendarDays, ShoppingBag, FolderOpen, Newspaper, ArrowRight } from "lucide-react";
 import type { SectionItem, SectionType, LandingBody, PostsSectionData } from "@/lib/page-templates";
 import type { PostsSectionDesignId } from "@/lib/posts-section-designs";
 import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
@@ -15,6 +16,14 @@ import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 
 // ─── Section renderers ────────────────────────────────────────────────────────
+
+const HERO_MODULES = [
+  { id: "campaign", path: "campaign", label: "Donasi",   desc: "Program & infaq",       Icon: Heart },
+  { id: "agenda",   path: "agenda",   label: "Event",    desc: "Agenda & kegiatan",     Icon: CalendarDays },
+  { id: "produk",   path: "produk",   label: "Toko",     desc: "Produk & jasa",         Icon: ShoppingBag },
+  { id: "dokumen",  path: "dokumen",  label: "Dokumen",  desc: "Arsip & laporan",       Icon: FolderOpen },
+  { id: "post",     path: "post",     label: "Kabar",    desc: "Berita & pengumuman",   Icon: Newspaper },
+] as const;
 
 type HeroCardData = {
   type:  "event" | "post";
@@ -38,6 +47,7 @@ async function HeroSection({ data, tenantClient, tenantSlug }: {
     ctaSecondaryLabel?: string;
     ctaSecondaryUrl?: string;
     imageUrl?: string;
+    showModuleStrip?: boolean;
   };
 
   const hasImage = !!d.imageUrl;
@@ -159,6 +169,32 @@ async function HeroSection({ data, tenantClient, tenantSlug }: {
             </div>
           )}
         </div>
+
+        {/* Module strip — aktif via showModuleStrip */}
+        {d.showModuleStrip && (
+          <div className="mt-12 pt-8 border-t border-border">
+            <div className="flex gap-3 overflow-x-auto pb-1 lg:grid lg:grid-cols-5 lg:overflow-visible">
+              {HERO_MODULES.map(({ id, path, label, desc, Icon }) => (
+                <a
+                  key={id}
+                  href={`/${tenantSlug}/${path}`}
+                  className="group min-w-[160px] shrink-0 lg:min-w-0 flex flex-col gap-3 p-4 rounded-xl border border-border bg-card hover:border-primary hover:bg-primary/5 transition-all duration-200"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                    <Icon className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm">{label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{desc}</p>
+                  </div>
+                  <div className="flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100 translate-x-0 group-hover:translate-x-0.5 transition-all">
+                    Lihat semua <ArrowRight className="w-3 h-3" />
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
