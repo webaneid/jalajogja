@@ -12,8 +12,7 @@ import {
   socialMedias,
   memberEducations,
   memberBusinesses,
-  memberPesantren,
-  pesantren,
+  memberOwnedPesantren,
   refProfessions,
   refRegencies,
   refProvinces,
@@ -40,6 +39,13 @@ const bizSocialMedias = alias(socialMedias, "biz_social");
 const bizRegencies   = alias(refRegencies, "biz_regency");
 const bizProvinces   = alias(refProvinces, "biz_province");
 const bizDistricts   = alias(refDistricts, "biz_district");
+
+const pesContacts    = alias(contacts,     "pes_contact");
+const pesAddresses   = alias(addresses,    "pes_address");
+const pesSocialMedias = alias(socialMedias, "pes_social");
+const pesRegencies   = alias(refRegencies, "pes_regency");
+const pesProvinces   = alias(refProvinces, "pes_province");
+const pesDistricts   = alias(refDistricts, "pes_district");
 
 // ─── Label maps ──────────────────────────────────────────────────────────────
 
@@ -206,22 +212,48 @@ export default async function MemberDetailPage({
       .leftJoin(bizProvinces,   eq(bizProvinces.id,   bizAddresses.provinceId))
       .where(eq(memberBusinesses.memberId, memberId)),
 
-    // Keterlibatan di pesantren
+    // Pesantren yang dimiliki / dikelola anggota
     db
       .select({
-        id:           memberPesantren.id,
-        pesantrenId:  memberPesantren.pesantrenId,
-        pesantrenName: pesantren.name,
-        peran:        memberPesantren.peran,
-        posisi:       memberPesantren.posisi,
-        tahunMulai:   memberPesantren.tahunMulai,
-        tahunSelesai: memberPesantren.tahunSelesai,
-        catatan:      memberPesantren.catatan,
+        id:            memberOwnedPesantren.id,
+        name:          memberOwnedPesantren.name,
+        tahunBerdiri:  memberOwnedPesantren.tahunBerdiri,
+        luasArea:      memberOwnedPesantren.luasArea,
+        namaPimpinan:  memberOwnedPesantren.namaPimpinan,
+        hpPimpinan:    memberOwnedPesantren.hpPimpinan,
+        kurikulum:     memberOwnedPesantren.kurikulum,
+        jenisPondok:   memberOwnedPesantren.jenisPondok,
+        modelPendidikan: memberOwnedPesantren.modelPendidikan,
+        kategoriSantri:  memberOwnedPesantren.kategoriSantri,
+        santriPutra:   memberOwnedPesantren.santriPutra,
+        santriPutri:   memberOwnedPesantren.santriPutri,
+        asatidz:       memberOwnedPesantren.asatidz,
+        asatidzah:     memberOwnedPesantren.asatidzah,
+        pesPhone:      pesContacts.phone,
+        pesWhatsapp:   pesContacts.whatsapp,
+        pesEmail:      pesContacts.email,
+        pesAddrDetail:   pesAddresses.detail,
+        pesAddrPostal:   pesAddresses.postalCode,
+        pesDistrictName: pesDistricts.name,
+        pesRegencyName:  pesRegencies.name,
+        pesProvinceName: pesProvinces.name,
+        pesInstagram:  pesSocialMedias.instagram,
+        pesFacebook:   pesSocialMedias.facebook,
+        pesLinkedin:   pesSocialMedias.linkedin,
+        pesTwitter:    pesSocialMedias.twitter,
+        pesYoutube:    pesSocialMedias.youtube,
+        pesTiktok:     pesSocialMedias.tiktok,
+        pesWebsite:    pesSocialMedias.website,
       })
-      .from(memberPesantren)
-      .leftJoin(pesantren, eq(pesantren.id, memberPesantren.pesantrenId))
-      .where(eq(memberPesantren.memberId, memberId))
-      .orderBy(memberPesantren.tahunMulai),
+      .from(memberOwnedPesantren)
+      .leftJoin(pesContacts,    eq(pesContacts.id,    memberOwnedPesantren.contactId))
+      .leftJoin(pesAddresses,   eq(pesAddresses.id,   memberOwnedPesantren.addressId))
+      .leftJoin(pesSocialMedias, eq(pesSocialMedias.id, memberOwnedPesantren.socialMediaId))
+      .leftJoin(pesDistricts,   eq(pesDistricts.id,   pesAddresses.districtId))
+      .leftJoin(pesRegencies,   eq(pesRegencies.id,   pesAddresses.regencyId))
+      .leftJoin(pesProvinces,   eq(pesProvinces.id,   pesAddresses.provinceId))
+      .where(eq(memberOwnedPesantren.memberId, memberId))
+      .orderBy(memberOwnedPesantren.createdAt),
   ]);
 
   if (!row) notFound();
@@ -356,7 +388,7 @@ export default async function MemberDetailPage({
       <BusinessSection memberId={memberId} slug={slug} businesses={businesses as BizRow[]} />
 
       {/* ── Pesantren (interaktif) ── */}
-      <PesantrenSection memberId={memberId} slug={slug} pesantrenList={pesantrenList.map(p => ({ ...p, pesantrenName: p.pesantrenName ?? "" }))} />
+      <PesantrenSection memberId={memberId} slug={slug} pesantrenList={pesantrenList} />
     </div>
   );
 }

@@ -1,17 +1,33 @@
 "use client"
 
 import * as React from "react"
-import { CheckIcon, ChevronsUpDownIcon, PlusIcon, SearchIcon, XIcon } from "lucide-react"
+import {
+  CheckIcon,
+  ChevronsUpDownIcon,
+  PlusIcon,
+  XIcon,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select"
+import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-media-input"
+import { PhoneInput } from "@/components/ui/phone-input"
 import {
-  saveMemberPesantrenAction,
-  type MemberPesantrenEntryData,
+  saveMemberOwnedPesantrenAction,
+  type OwnedPesantrenEntryData,
 } from "@/app/(dashboard)/[tenant]/members/actions"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -20,165 +36,122 @@ interface Step5Props {
   memberId: string
   slug: string
   onSuccess: () => void
-  defaultEntries?: PesantrenEntry[]
+  defaultEntries?: OwnedPesantrenEntry[]
 }
 
-export interface PesantrenEntry {
-  id: string          // local key saja (crypto.randomUUID)
-  pesantrenId: string
-  pesantrenName: string // display only
-  peran: string
-  posisi: string
-  tahunMulai: string
-  tahunSelesai: string
-  catatan: string
+export interface OwnedPesantrenEntry {
+  id: string
+  // Identitas
+  name: string
+  tahunBerdiri: string
+  luasArea: string
+  // Pimpinan
+  namaPimpinan: string
+  hpPimpinan: string
+  // Klasifikasi
+  kurikulum: string
+  jenisPondok: string
+  modelPendidikan: string
+  kategoriSantri: string
+  // Statistik
+  santriPutra: string
+  santriPutri: string
+  asatidz: string
+  asatidzah: string
+  // Kontak
+  phone: string
+  whatsapp: string
+  email: string
+  isPhonePublic: boolean
+  isWhatsappPublic: boolean
+  // Alamat
+  addressMode: "indonesia" | "overseas"
+  addressCountry: string
+  provinceId: number | null
+  regencyId: number | null
+  districtId: number | null
+  villageId: number | null
+  addressDetail: string
+  postalCode: string
+  // Sosmed
+  instagram: string
+  facebook: string
+  linkedin: string
+  twitter: string
+  youtube: string
+  tiktok: string
+  website: string
 }
 
-// ─── Konstanta ────────────────────────────────────────────────────────────────
+// ─── Konstanta enum (mirror dari schema) ──────────────────────────────────────
 
-const PERAN_ITEMS = [
-  { value: "pengasuh", label: "Pengasuh" },
-  { value: "pendiri",  label: "Pendiri" },
-  { value: "pengurus", label: "Pengurus" },
-  { value: "pengajar", label: "Pengajar / Ustadz" },
-  { value: "alumni",   label: "Alumni / Santri" },
-  { value: "lainnya",  label: "Lainnya" },
-]
+const KURIKULUM_ITEMS = [
+  "KMI Gontor", "DIKNAS", "KEMENAG", "Salafiah", "Lainnya",
+].map((v) => ({ value: v, label: v }))
 
-const CURRENT_YEAR = new Date().getFullYear()
+const JENIS_PONDOK_ITEMS = [
+  "Wakaf", "Milik Keluarga",
+].map((v) => ({ value: v, label: v }))
+
+const MODEL_ITEMS = [
+  "Murni KMI Gontor", "KMI dan Tahfidz", "KMI dan Kewirausahaan",
+  "Pesantren Salafiah", "Pesantren Tahfidz", "Sekolah Umum",
+  "DIKNAS dan Tahfidz", "KEMENAG dan Tahfidz", "Sekolah Kejuruan",
+].map((v) => ({ value: v, label: v }))
+
+const KATEGORI_SANTRI_ITEMS = [
+  "Putra", "Putra dan Putri", "Putri",
+].map((v) => ({ value: v, label: v }))
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
-function newEntry(): PesantrenEntry {
+function newEntry(): OwnedPesantrenEntry {
   return {
     id: crypto.randomUUID(),
-    pesantrenId: "", pesantrenName: "",
-    peran: "pengasuh", posisi: "",
-    tahunMulai: "", tahunSelesai: "", catatan: "",
+    name: "", tahunBerdiri: "", luasArea: "",
+    namaPimpinan: "", hpPimpinan: "",
+    kurikulum: "", jenisPondok: "", modelPendidikan: "", kategoriSantri: "",
+    santriPutra: "", santriPutri: "",
+    asatidz: "", asatidzah: "",
+    phone: "", whatsapp: "", email: "",
+    isPhonePublic: false, isWhatsappPublic: false,
+    addressMode: "indonesia",
+    addressCountry: "",
+    provinceId: null, regencyId: null, districtId: null, villageId: null,
+    addressDetail: "", postalCode: "",
+    instagram: "", facebook: "", linkedin: "",
+    twitter: "", youtube: "", tiktok: "", website: "",
   }
 }
 
-// ─── Sub-komponen: Pesantren search combobox (async) ─────────────────────────
-
-type PesantrenOption = {
-  id: string
-  name: string
-  popularName: string | null
-  sistem: string | null
+function autoTotal(a: string, b: string): string {
+  const na = parseInt(a, 10)
+  const nb = parseInt(b, 10)
+  if (isNaN(na) && isNaN(nb)) return "—"
+  return String((isNaN(na) ? 0 : na) + (isNaN(nb) ? 0 : nb))
 }
 
-function PesantrenCombobox({
-  value, valueName, onSelect, disabled = false,
-}: {
-  value: string
-  valueName: string
-  onSelect: (id: string, name: string) => void
-  disabled?: boolean
-}) {
-  const [open, setOpen] = React.useState(false)
-  const [search, setSearch] = React.useState("")
-  const [options, setOptions] = React.useState<PesantrenOption[]>([])
-  const [fetching, setFetching] = React.useState(false)
-
-  React.useEffect(() => {
-    if (!open) return
-    const timer = setTimeout(async () => {
-      setFetching(true)
-      try {
-        const res = await fetch(`/api/ref/pesantren?search=${encodeURIComponent(search)}&limit=20`)
-        if (res.ok) {
-          const json = await res.json()
-          setOptions(json.data ?? [])
-        }
-      } finally {
-        setFetching(false)
-      }
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [open, search])
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-sm font-medium text-foreground">
-        Pesantren<span className="text-destructive ml-0.5">*</span>
-      </span>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button" variant="outline" role="combobox"
-            aria-expanded={open} disabled={disabled}
-            className={cn("w-full justify-between font-normal", !value && "text-muted-foreground")}
-          >
-            {valueName || "Cari pesantren di direktori..."}
-            <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-          <div className="flex items-center border-b px-3">
-            <SearchIcon className="mr-2 size-4 shrink-0 opacity-50" />
-            <input
-              className="flex h-9 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-              placeholder="Ketik nama pesantren..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="max-h-52 overflow-y-auto py-1">
-            {fetching && (
-              <div className="px-4 py-2 text-sm text-muted-foreground">Mencari...</div>
-            )}
-            {!fetching && options.length === 0 && (
-              <div className="px-4 py-2 text-sm text-muted-foreground">
-                {search.length < 2 ? "Ketik minimal 2 huruf untuk cari" : "Tidak ditemukan di direktori"}
-              </div>
-            )}
-            {options.map((opt) => (
-              <button
-                key={opt.id} type="button"
-                onClick={() => { onSelect(opt.id, opt.popularName ?? opt.name); setOpen(false) }}
-                className={cn(
-                  "flex w-full items-start gap-2 px-4 py-2 text-left text-sm hover:bg-accent",
-                  value === opt.id && "bg-accent"
-                )}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{opt.name}</div>
-                  {opt.popularName && opt.popularName !== opt.name && (
-                    <div className="text-xs text-muted-foreground truncate">{opt.popularName}</div>
-                  )}
-                </div>
-                {opt.sistem && (
-                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs capitalize">
-                    {opt.sistem.replace("_", " ")}
-                  </span>
-                )}
-              </button>
-            ))}
-            {value && (
-              <button
-                type="button"
-                onClick={() => { onSelect("", ""); setOpen(false) }}
-                className="flex w-full items-center px-4 py-2 text-sm text-destructive hover:bg-destructive/10"
-              >
-                <XIcon className="mr-2 size-3.5" /> Hapus pilihan
-              </button>
-            )}
-          </div>
-        </PopoverContent>
-      </Popover>
-    </div>
-  )
+function num(s: string): number | null {
+  const n = parseInt(s, 10)
+  return isNaN(n) ? null : n
 }
 
-// ─── Sub-komponen: Combobox sederhana ────────────────────────────────────────
+const inputCls =
+  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+
+// ─── Sub-komponen: Simple Combobox ───────────────────────────────────────────
 
 function SimpleCombobox({
-  label, placeholder, items, value, onSelect, disabled = false, required = false,
+  label, placeholder, items, value, onSelect, disabled = false, optional = false, clearable = false,
 }: {
-  label: string; placeholder: string
+  label: string
+  placeholder: string
   items: { value: string; label: string }[]
-  value: string; onSelect: (v: string) => void
-  disabled?: boolean; required?: boolean
+  value: string
+  onSelect: (v: string) => void
+  disabled?: boolean
+  optional?: boolean
+  clearable?: boolean
 }) {
   const [open, setOpen] = React.useState(false)
   const selected = items.find((i) => i.value === value)
@@ -186,13 +159,16 @@ function SimpleCombobox({
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-sm font-medium text-foreground">
-        {label}{required && <span className="text-destructive ml-0.5">*</span>}
+        {label}
+        {optional && <span className="ml-1 font-normal text-muted-foreground">(opsional)</span>}
       </span>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
-            type="button" variant="outline" role="combobox"
-            aria-expanded={open} disabled={disabled}
+            type="button"
+            variant="outline"
+            role="combobox"
+            disabled={disabled}
             className={cn("w-full justify-between font-normal", !selected && "text-muted-foreground")}
           >
             {selected?.label ?? placeholder}
@@ -200,136 +176,497 @@ function SimpleCombobox({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-          <div className="max-h-52 overflow-y-auto py-1">
-            {items.map((item) => (
-              <button
-                key={item.value} type="button"
-                onClick={() => { onSelect(item.value); setOpen(false) }}
-                className={cn(
-                  "flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-accent",
-                  value === item.value && "bg-accent"
+          <Command>
+            <CommandInput placeholder={`Cari ${label.toLowerCase()}...`} />
+            <CommandList>
+              <CommandEmpty>Tidak ditemukan.</CommandEmpty>
+              <CommandGroup>
+                {clearable && (
+                  <CommandItem
+                    value="__clear__"
+                    onSelect={() => { onSelect(""); setOpen(false) }}
+                  >
+                    <CheckIcon className={cn("mr-2 size-4", !value ? "opacity-100" : "opacity-0")} />
+                    <span className="text-muted-foreground">Tidak dipilih</span>
+                  </CommandItem>
                 )}
-              >
-                <CheckIcon className={cn("size-4", value === item.value ? "opacity-100" : "opacity-0")} />
-                {item.label}
-              </button>
-            ))}
-          </div>
+                {items.map((item) => (
+                  <CommandItem
+                    key={item.value}
+                    value={item.label}
+                    onSelect={() => { onSelect(item.value); setOpen(false) }}
+                  >
+                    <CheckIcon className={cn("mr-2 size-4", value === item.value ? "opacity-100" : "opacity-0")} />
+                    {item.label}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
         </PopoverContent>
       </Popover>
     </div>
   )
 }
 
-// ─── Sub-komponen: Field wrapper ──────────────────────────────────────────────
+// ─── Sub-komponen: satu PesantrenCard ────────────────────────────────────────
 
-function Field({ label, required, optional, children }: {
-  label: string; required?: boolean; optional?: boolean; children: React.ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-sm font-medium text-foreground">
-        {label}
-        {required && <span className="text-destructive ml-0.5">*</span>}
-        {optional && <span className="ml-1 font-normal text-muted-foreground">(opsional)</span>}
-      </span>
-      {children}
-    </div>
-  )
-}
-
-const inputCls =
-  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-
-// ─── Sub-komponen: Pesantren card ─────────────────────────────────────────────
-
-function PesantrenCard({ entry, index, disabled, onChange, onRemove }: {
-  entry: PesantrenEntry; index: number; disabled: boolean
-  onChange: <K extends keyof PesantrenEntry>(field: K, value: PesantrenEntry[K]) => void
+function PesantrenCard({
+  entry,
+  index,
+  canRemove,
+  disabled,
+  tenantSlug,
+  onChange,
+  onWilayahChange,
+  onRemove,
+}: {
+  entry: OwnedPesantrenEntry
+  index: number
+  canRemove: boolean
+  disabled: boolean
+  tenantSlug: string
+  onChange: <K extends keyof OwnedPesantrenEntry>(field: K, value: OwnedPesantrenEntry[K]) => void
+  onWilayahChange: (val: WilayahValue) => void
   onRemove: () => void
 }) {
+  const [sameAsPhone, setSameAsPhone] = React.useState(false)
+
+  function handlePhoneChange(val: string) {
+    onChange("phone", val)
+    if (sameAsPhone) onChange("whatsapp", val)
+  }
+
+  function handleSameAsPhone(checked: boolean) {
+    setSameAsPhone(checked)
+    if (checked) onChange("whatsapp", entry.phone)
+  }
+
+  function handleAddressModeChange(mode: "indonesia" | "overseas") {
+    onChange("addressMode", mode)
+    if (mode === "indonesia") {
+      onChange("addressCountry", "")
+    } else {
+      onChange("provinceId", null)
+      onChange("regencyId",  null)
+      onChange("districtId", null)
+      onChange("villageId",  null)
+    }
+  }
+
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-4">
+    <div className="rounded-lg border bg-card p-5 space-y-5">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-foreground">Pesantren #{index + 1}</span>
+        <span className="text-sm font-semibold">Pesantren #{index + 1}</span>
         <button
-          type="button" onClick={onRemove} disabled={disabled}
+          type="button"
+          onClick={onRemove}
+          disabled={!canRemove || disabled}
           className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:pointer-events-none disabled:opacity-30"
         >
-          <XIcon className="size-3.5" /> Hapus
+          <XIcon className="size-3.5" />
+          Hapus
         </button>
       </div>
 
-      {/* Pilih pesantren dari direktori */}
-      <PesantrenCombobox
-        value={entry.pesantrenId} valueName={entry.pesantrenName}
-        onSelect={(id, name) => { onChange("pesantrenId", id); onChange("pesantrenName", name) }}
-        disabled={disabled}
-      />
+      {/* ── Section 1: Identitas ── */}
+      <div className="space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Identitas Pesantren</p>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">Nama Pesantren<span className="text-destructive ml-0.5">*</span></span>
+          <input
+            type="text"
+            value={entry.name}
+            onChange={(e) => onChange("name", e.target.value)}
+            placeholder="Nama lengkap pesantren"
+            disabled={disabled}
+            className={inputCls}
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">
+              Tahun Berdiri <span className="font-normal text-muted-foreground">(opsional)</span>
+            </span>
+            <input
+              type="number"
+              value={entry.tahunBerdiri}
+              onChange={(e) => onChange("tahunBerdiri", e.target.value)}
+              placeholder="Cth: 1985"
+              min={1900} max={new Date().getFullYear()}
+              disabled={disabled}
+              className={inputCls}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">
+              Luas Area <span className="font-normal text-muted-foreground">(opsional)</span>
+            </span>
+            <input
+              type="text"
+              value={entry.luasArea}
+              onChange={(e) => onChange("luasArea", e.target.value)}
+              placeholder="Cth: 2 hektar"
+              disabled={disabled}
+              className={inputCls}
+            />
+          </div>
+        </div>
+      </div>
 
-      {/* Peran + Posisi */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <SimpleCombobox
-          label="Peran" required placeholder="Pilih peran"
-          items={PERAN_ITEMS} value={entry.peran}
-          onSelect={(v) => onChange("peran", v)}
+      {/* ── Section 2: Pimpinan ── */}
+      <div className="space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pimpinan</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">
+              Nama Pimpinan <span className="font-normal text-muted-foreground">(opsional)</span>
+            </span>
+            <input
+              type="text"
+              value={entry.namaPimpinan}
+              onChange={(e) => onChange("namaPimpinan", e.target.value)}
+              placeholder="Nama pengasuh / mudir"
+              disabled={disabled}
+              className={inputCls}
+            />
+          </div>
+          <PhoneInput
+            label="HP Pimpinan"
+            value={entry.hpPimpinan}
+            onChange={(v) => onChange("hpPimpinan", v)}
+            optional
+            disabled={disabled}
+          />
+        </div>
+      </div>
+
+      {/* ── Section 3: Klasifikasi ── */}
+      <div className="space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Klasifikasi</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <SimpleCombobox
+            label="Kurikulum" optional clearable
+            placeholder="Pilih kurikulum"
+            items={KURIKULUM_ITEMS}
+            value={entry.kurikulum}
+            onSelect={(v) => onChange("kurikulum", v)}
+            disabled={disabled}
+          />
+          <SimpleCombobox
+            label="Jenis Pondok" optional clearable
+            placeholder="Pilih jenis"
+            items={JENIS_PONDOK_ITEMS}
+            value={entry.jenisPondok}
+            onSelect={(v) => onChange("jenisPondok", v)}
+            disabled={disabled}
+          />
+          <SimpleCombobox
+            label="Model Pendidikan" optional clearable
+            placeholder="Pilih model"
+            items={MODEL_ITEMS}
+            value={entry.modelPendidikan}
+            onSelect={(v) => onChange("modelPendidikan", v)}
+            disabled={disabled}
+          />
+          <SimpleCombobox
+            label="Kategori Santri" optional clearable
+            placeholder="Pilih kategori"
+            items={KATEGORI_SANTRI_ITEMS}
+            value={entry.kategoriSantri}
+            onSelect={(v) => onChange("kategoriSantri", v)}
+            disabled={disabled}
+          />
+        </div>
+      </div>
+
+      {/* ── Section 4: Statistik ── */}
+      <div className="space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Statistik</p>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">Santri Putra</span>
+            <input
+              type="number"
+              value={entry.santriPutra}
+              onChange={(e) => onChange("santriPutra", e.target.value)}
+              placeholder="0" min={0}
+              disabled={disabled}
+              className={inputCls}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">Santri Putri</span>
+            <input
+              type="number"
+              value={entry.santriPutri}
+              onChange={(e) => onChange("santriPutri", e.target.value)}
+              placeholder="0" min={0}
+              disabled={disabled}
+              className={inputCls}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">Total Santri</span>
+            <div className={cn(inputCls, "bg-muted text-muted-foreground cursor-default select-none")}>
+              {autoTotal(entry.santriPutra, entry.santriPutri)}
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">Asatidz (L)</span>
+            <input
+              type="number"
+              value={entry.asatidz}
+              onChange={(e) => onChange("asatidz", e.target.value)}
+              placeholder="0" min={0}
+              disabled={disabled}
+              className={inputCls}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">Asatidzah (P)</span>
+            <input
+              type="number"
+              value={entry.asatidzah}
+              onChange={(e) => onChange("asatidzah", e.target.value)}
+              placeholder="0" min={0}
+              disabled={disabled}
+              className={inputCls}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">Total Pengajar</span>
+            <div className={cn(inputCls, "bg-muted text-muted-foreground cursor-default select-none")}>
+              {autoTotal(entry.asatidz, entry.asatidzah)}
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">Total dihitung otomatis, tidak disimpan terpisah.</p>
+      </div>
+
+      {/* ── Section 5: Kontak Pesantren ── */}
+      <div className="space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Kontak Pesantren</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <PhoneInput
+              label="Telepon"
+              value={entry.phone}
+              onChange={handlePhoneChange}
+              optional
+              disabled={disabled}
+            />
+            <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
+              <input
+                type="checkbox"
+                checked={entry.isPhonePublic}
+                onChange={(e) => onChange("isPhonePublic", e.target.checked)}
+                disabled={disabled}
+                className="rounded border-input"
+              />
+              Tampilkan ke publik
+            </label>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <PhoneInput
+              label="WhatsApp"
+              value={sameAsPhone ? entry.phone : entry.whatsapp}
+              onChange={(v) => { if (!sameAsPhone) onChange("whatsapp", v) }}
+              optional
+              disabled={disabled || sameAsPhone}
+            />
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
+              <input
+                type="checkbox"
+                checked={sameAsPhone}
+                onChange={(e) => handleSameAsPhone(e.target.checked)}
+                disabled={disabled}
+                className="rounded border-input"
+              />
+              Sama dengan nomor telepon di atas
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
+              <input
+                type="checkbox"
+                checked={entry.isWhatsappPublic}
+                onChange={(e) => onChange("isWhatsappPublic", e.target.checked)}
+                disabled={disabled}
+                className="rounded border-input"
+              />
+              Tampilkan ke publik
+            </label>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-foreground">
+            Email <span className="font-normal text-muted-foreground">(opsional)</span>
+          </span>
+          <input
+            type="email"
+            value={entry.email}
+            onChange={(e) => onChange("email", e.target.value)}
+            placeholder="pesantren@email.com"
+            inputMode="email"
+            disabled={disabled}
+            className={inputCls}
+          />
+        </div>
+      </div>
+
+      {/* ── Section 6: Alamat Pesantren ── */}
+      <div className="space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Alamat Pesantren</p>
+
+        <div className="flex gap-1 rounded-lg border border-input bg-muted p-1 w-fit">
+          <button
+            type="button"
+            onClick={() => handleAddressModeChange("indonesia")}
+            disabled={disabled}
+            className={cn(
+              "rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
+              entry.addressMode === "indonesia"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Indonesia
+          </button>
+          <button
+            type="button"
+            onClick={() => handleAddressModeChange("overseas")}
+            disabled={disabled}
+            className={cn(
+              "rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
+              entry.addressMode === "overseas"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Luar Negeri
+          </button>
+        </div>
+
+        {entry.addressMode === "indonesia" ? (
+          <WilayahSelect onChange={onWilayahChange} disabled={disabled} tenantSlug={tenantSlug} />
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">
+              Negara <span className="font-normal text-muted-foreground">(opsional)</span>
+            </span>
+            <input
+              type="text"
+              value={entry.addressCountry}
+              onChange={(e) => onChange("addressCountry", e.target.value)}
+              placeholder="Contoh: Malaysia, Arab Saudi"
+              disabled={disabled}
+              className={inputCls}
+            />
+          </div>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-foreground">
+            Detail Alamat <span className="font-normal text-muted-foreground">(opsional)</span>
+          </span>
+          <textarea
+            value={entry.addressDetail}
+            onChange={(e) => onChange("addressDetail", e.target.value)}
+            placeholder="Nama jalan, nomor, RT/RW..."
+            rows={2}
+            disabled={disabled}
+            className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+          />
+        </div>
+        <div className="max-w-[160px]">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">
+              Kode Pos <span className="font-normal text-muted-foreground">(opsional)</span>
+            </span>
+            <input
+              type="text"
+              value={entry.postalCode}
+              onChange={(e) => onChange("postalCode", e.target.value)}
+              placeholder="Cth: 55283"
+              maxLength={10}
+              inputMode="numeric"
+              disabled={disabled}
+              className={inputCls}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Section 7: Sosial Media ── */}
+      <div className="space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sosial Media</p>
+        <SocialMediaInput
+          value={{
+            instagram: entry.instagram, facebook: entry.facebook,
+            linkedin: entry.linkedin,   twitter:   entry.twitter,
+            youtube:  entry.youtube,    tiktok:    entry.tiktok,
+            website:  entry.website,
+          }}
+          onChange={(v: SocialMediaValue) => {
+            onChange("instagram", v.instagram); onChange("facebook",  v.facebook)
+            onChange("linkedin",  v.linkedin);  onChange("twitter",   v.twitter)
+            onChange("youtube",   v.youtube);   onChange("tiktok",    v.tiktok)
+            onChange("website",   v.website)
+          }}
           disabled={disabled}
         />
-        <Field label="Posisi / Jabatan" optional>
-          <input
-            type="text" value={entry.posisi}
-            onChange={(e) => onChange("posisi", e.target.value)}
-            placeholder="Cth: Direktur KMI, Musyrif"
-            disabled={disabled} className={inputCls}
-          />
-        </Field>
       </div>
-
-      {/* Tahun mulai + selesai */}
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Tahun Mulai" optional>
-          <input
-            type="number" value={entry.tahunMulai}
-            onChange={(e) => onChange("tahunMulai", e.target.value)}
-            placeholder={String(CURRENT_YEAR)} min={1950} max={CURRENT_YEAR}
-            disabled={disabled} className={inputCls}
-          />
-        </Field>
-        <Field label="Tahun Selesai" optional>
-          <input
-            type="number" value={entry.tahunSelesai}
-            onChange={(e) => onChange("tahunSelesai", e.target.value)}
-            placeholder="Kosongkan jika masih aktif" min={1950} max={CURRENT_YEAR + 10}
-            disabled={disabled} className={inputCls}
-          />
-        </Field>
-      </div>
-
-      <Field label="Catatan" optional>
-        <input
-          type="text" value={entry.catatan}
-          onChange={(e) => onChange("catatan", e.target.value)}
-          placeholder="Keterangan tambahan"
-          disabled={disabled} className={inputCls}
-        />
-      </Field>
     </div>
   )
 }
 
-// ─── Step 5: Pesantren Milik / Kelolaan Anggota ───────────────────────────────
+// ─── Step 5: Data Pesantren Milik / Kelolaan ──────────────────────────────────
 
 export function Step5Pesantren({ memberId, slug, onSuccess, defaultEntries }: Step5Props) {
-  const [entries, setEntries] = React.useState<PesantrenEntry[]>(
-    defaultEntries && defaultEntries.length > 0 ? defaultEntries : []
+  const [entries, setEntries] = React.useState<OwnedPesantrenEntry[]>(
+    defaultEntries && defaultEntries.length > 0 ? defaultEntries : [newEntry()]
   )
-  const [loading, setLoading] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  const [loading,   setLoading]   = React.useState(false)
+  const [error,     setError]     = React.useState<string | null>(null)
+  const [focusedId, setFocusedId] = React.useState<string | null>(
+    defaultEntries && defaultEntries.length > 0 ? null : (entries[0]?.id ?? null)
+  )
 
-  function addEntry() { setEntries((prev) => [...prev, newEntry()]) }
-  function removeEntry(id: string) { setEntries((prev) => prev.filter((e) => e.id !== id)) }
-  function updateEntry<K extends keyof PesantrenEntry>(id: string, field: K, value: PesantrenEntry[K]) {
+  function addEntry() {
+    const entry = newEntry()
+    setEntries((prev) => [...prev, entry])
+    setFocusedId(entry.id)
+  }
+
+  function backToAll() {
+    setEntries((prev) => prev.filter((e) => e.id !== focusedId || e.name.trim() !== ""))
+    setFocusedId(null)
+  }
+
+  function removeEntry(id: string) {
+    setEntries((prev) => prev.filter((e) => e.id !== id))
+    if (focusedId === id) setFocusedId(null)
+  }
+
+  function updateEntry<K extends keyof OwnedPesantrenEntry>(
+    id: string, field: K, value: OwnedPesantrenEntry[K]
+  ) {
     setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)))
+  }
+
+  function updateEntryWilayah(id: string, wilayah: WilayahValue) {
+    setEntries((prev) =>
+      prev.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              provinceId: wilayah.provinceId ?? null,
+              regencyId:  wilayah.regencyId  ?? null,
+              districtId: wilayah.districtId ?? null,
+              villageId:  wilayah.villageId  ?? null,
+            }
+          : e
+      )
+    )
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -337,18 +674,44 @@ export function Step5Pesantren({ memberId, slug, onSuccess, defaultEntries }: St
     setError(null)
     setLoading(true)
 
-    const payload: MemberPesantrenEntryData[] = entries
-      .filter((e) => e.pesantrenId.trim())
+    const payload: OwnedPesantrenEntryData[] = entries
+      .filter((e) => e.name.trim())
       .map((e) => ({
-        pesantrenId: e.pesantrenId,
-        peran: e.peran as MemberPesantrenEntryData["peran"],
-        posisi: e.posisi || undefined,
-        tahunMulai: e.tahunMulai ? Number(e.tahunMulai) : undefined,
-        tahunSelesai: e.tahunSelesai ? Number(e.tahunSelesai) : undefined,
-        catatan: e.catatan || undefined,
+        name:            e.name,
+        tahunBerdiri:    num(e.tahunBerdiri),
+        luasArea:        e.luasArea       || undefined,
+        namaPimpinan:    e.namaPimpinan   || undefined,
+        hpPimpinan:      e.hpPimpinan     || undefined,
+        kurikulum:       e.kurikulum      || undefined,
+        jenisPondok:     e.jenisPondok    || undefined,
+        modelPendidikan: e.modelPendidikan || undefined,
+        kategoriSantri:  e.kategoriSantri || undefined,
+        santriPutra:     num(e.santriPutra),
+        santriPutri:     num(e.santriPutri),
+        asatidz:         num(e.asatidz),
+        asatidzah:       num(e.asatidzah),
+        phone:           e.phone    || undefined,
+        whatsapp:        e.whatsapp || undefined,
+        email:           e.email    || undefined,
+        isPhonePublic:    e.isPhonePublic,
+        isWhatsappPublic: e.isWhatsappPublic,
+        addressCountry:    e.addressCountry       || undefined,
+        addressProvinceId: e.provinceId ?? undefined,
+        addressRegencyId:  e.regencyId  ?? undefined,
+        addressDistrictId: e.districtId ?? undefined,
+        addressVillageId:  e.villageId  ?? undefined,
+        addressDetail:     e.addressDetail  || undefined,
+        addressPostalCode: e.postalCode     || undefined,
+        instagram: e.instagram || undefined,
+        facebook:  e.facebook  || undefined,
+        linkedin:  e.linkedin  || undefined,
+        twitter:   e.twitter   || undefined,
+        youtube:   e.youtube   || undefined,
+        tiktok:    e.tiktok    || undefined,
+        website:   e.website   || undefined,
       }))
 
-    const result = await saveMemberPesantrenAction(slug, memberId, payload)
+    const result = await saveMemberOwnedPesantrenAction(slug, memberId, payload)
 
     if (result.success) {
       onSuccess()
@@ -358,36 +721,54 @@ export function Step5Pesantren({ memberId, slug, onSuccess, defaultEntries }: St
     }
   }
 
+  const visibleEntries = focusedId
+    ? entries.filter((e) => e.id === focusedId)
+    : entries
+
   return (
     <form id="wizard-step-5-form" onSubmit={handleSubmit} className="space-y-4">
       <div className="mb-2">
         <p className="text-sm text-muted-foreground">
-          Catat pesantren yang dimiliki, diasuh, atau dikelola oleh anggota ini.
-          Pesantren harus sudah terdaftar di direktori.
+          Catat pesantren yang dimiliki atau dikelola oleh anggota ini.
         </p>
       </div>
 
-      {entries.length === 0 && (
-        <p className="text-sm text-muted-foreground italic text-center py-4">
-          Belum ada data. Klik tombol di bawah untuk menambahkan.
-        </p>
+      {focusedId && entries.length > 1 && (
+        <button
+          type="button"
+          onClick={backToAll}
+          disabled={loading}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+        >
+          ← Lihat semua pesantren ({entries.length})
+        </button>
       )}
 
-      {entries.map((entry, index) => (
+      {visibleEntries.map((entry) => (
         <PesantrenCard
-          key={entry.id} entry={entry} index={index}
+          key={entry.id}
+          entry={entry}
+          index={entries.indexOf(entry)}
+          canRemove={entries.length > 1}
           disabled={loading}
+          tenantSlug={slug}
           onChange={(field, value) => updateEntry(entry.id, field, value)}
+          onWilayahChange={(val) => updateEntryWilayah(entry.id, val)}
           onRemove={() => removeEntry(entry.id)}
         />
       ))}
 
-      <button
-        type="button" onClick={addEntry} disabled={loading}
-        className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/40 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-50"
-      >
-        <PlusIcon className="size-4" /> Tambah Pesantren
-      </button>
+      {!focusedId && (
+        <button
+          type="button"
+          onClick={addEntry}
+          disabled={loading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/40 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-50"
+        >
+          <PlusIcon className="size-4" />
+          Tambah Data Pesantren
+        </button>
+      )}
 
       {error && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">

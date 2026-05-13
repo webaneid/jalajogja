@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Step3Education, type EducationEntry } from "@/components/members/wizard/step3-education"
 import { Step4Business, type BusinessEntry } from "@/components/members/wizard/step4-business"
-import { Step5Pesantren, type PesantrenEntry } from "@/components/members/wizard/step5-pesantren"
+import { Step5Pesantren, type OwnedPesantrenEntry } from "@/components/members/wizard/step5-pesantren"
 
 // ─── Types untuk props (data dari server) ────────────────────────────────────
 
@@ -60,13 +60,37 @@ export type BizRow = {
 
 export type PesantrenRow = {
   id: string
-  pesantrenId: string
-  pesantrenName: string
-  peran: string
-  posisi: string | null
-  tahunMulai: number | null
-  tahunSelesai: number | null
-  catatan: string | null
+  name: string
+  tahunBerdiri: number | null
+  luasArea: string | null
+  namaPimpinan: string | null
+  hpPimpinan: string | null
+  kurikulum: string | null
+  jenisPondok: string | null
+  modelPendidikan: string | null
+  kategoriSantri: string | null
+  santriPutra: number | null
+  santriPutri: number | null
+  asatidz: number | null
+  asatidzah: number | null
+  // Kontak
+  pesPhone: string | null
+  pesWhatsapp: string | null
+  pesEmail: string | null
+  // Alamat
+  pesAddrDetail: string | null
+  pesAddrPostal: string | null
+  pesProvinceName: string | null
+  pesRegencyName: string | null
+  pesDistrictName: string | null
+  // Sosmed
+  pesInstagram: string | null
+  pesFacebook: string | null
+  pesLinkedin: string | null
+  pesTwitter: string | null
+  pesYoutube: string | null
+  pesTiktok: string | null
+  pesWebsite: string | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -307,30 +331,47 @@ export function BusinessSection({
 
 // ─── Section: Data Pesantren ──────────────────────────────────────────────────
 
-const PERAN_LABEL: Record<string, string> = {
-  pengasuh: "Pengasuh",
-  pendiri:  "Pendiri",
-  pengurus: "Pengurus",
-  pengajar: "Pengajar / Ustadz",
-  alumni:   "Alumni / Santri",
-  lainnya:  "Lainnya",
-}
-
 export function PesantrenSection({
   memberId, slug, pesantrenList,
 }: { memberId: string; slug: string; pesantrenList: PesantrenRow[] }) {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
 
-  const defaultEntries: PesantrenEntry[] = pesantrenList.map((p) => ({
+  const defaultEntries: OwnedPesantrenEntry[] = pesantrenList.map((p) => ({
     id: p.id,
-    pesantrenId: p.pesantrenId,
-    pesantrenName: p.pesantrenName,
-    peran: p.peran,
-    posisi: p.posisi ?? "",
-    tahunMulai: p.tahunMulai?.toString() ?? "",
-    tahunSelesai: p.tahunSelesai?.toString() ?? "",
-    catatan: p.catatan ?? "",
+    name: p.name,
+    tahunBerdiri: p.tahunBerdiri?.toString() ?? "",
+    luasArea: p.luasArea ?? "",
+    namaPimpinan: p.namaPimpinan ?? "",
+    hpPimpinan: p.hpPimpinan ?? "",
+    kurikulum: p.kurikulum ?? "",
+    jenisPondok: p.jenisPondok ?? "",
+    modelPendidikan: p.modelPendidikan ?? "",
+    kategoriSantri: p.kategoriSantri ?? "",
+    santriPutra: p.santriPutra?.toString() ?? "",
+    santriPutri: p.santriPutri?.toString() ?? "",
+    asatidz: p.asatidz?.toString() ?? "",
+    asatidzah: p.asatidzah?.toString() ?? "",
+    phone: p.pesPhone ?? "",
+    whatsapp: p.pesWhatsapp ?? "",
+    email: p.pesEmail ?? "",
+    isPhonePublic: false,
+    isWhatsappPublic: false,
+    addressMode: "indonesia",
+    addressCountry: "",
+    provinceId: null,
+    regencyId: null,
+    districtId: null,
+    villageId: null,
+    addressDetail: p.pesAddrDetail ?? "",
+    postalCode: p.pesAddrPostal ?? "",
+    instagram: p.pesInstagram ?? "",
+    facebook: p.pesFacebook ?? "",
+    linkedin: p.pesLinkedin ?? "",
+    twitter: p.pesTwitter ?? "",
+    youtube: p.pesYoutube ?? "",
+    tiktok: p.pesTiktok ?? "",
+    website: p.pesWebsite ?? "",
   }))
 
   function handleSuccess() {
@@ -340,38 +381,64 @@ export function PesantrenSection({
 
   return (
     <section className="rounded-xl border bg-card p-5 mb-4">
-      <SectionHeader icon={School} title="Pesantren" onAdd={() => setOpen(true)} />
+      <SectionHeader icon={School} title="Data Pesantren" onAdd={() => setOpen(true)} />
 
       {pesantrenList.length === 0 ? (
         <EmptyState label="Belum ada data pesantren." />
       ) : (
-        <div className="space-y-4">
-          {pesantrenList.map((p, i) => (
-            <div key={p.id} className={i > 0 ? "border-t pt-4" : ""}>
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">{p.pesantrenName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {PERAN_LABEL[p.peran] ?? p.peran}
-                    {p.posisi ? ` — ${p.posisi}` : ""}
-                  </p>
-                  {(p.tahunMulai || p.tahunSelesai) && (
-                    <p className="text-xs text-muted-foreground">
-                      {p.tahunMulai ?? "?"} – {p.tahunSelesai ?? "sekarang"}
-                    </p>
-                  )}
-                  {p.catatan && (
-                    <p className="mt-1 text-xs text-muted-foreground italic">{p.catatan}</p>
-                  )}
+        <div className="space-y-6">
+          {pesantrenList.map((p, i) => {
+            const totalSantri = (p.santriPutra ?? 0) + (p.santriPutri ?? 0)
+            const totalAsatidz = (p.asatidz ?? 0) + (p.asatidzah ?? 0)
+            return (
+              <div key={p.id} className={i > 0 ? "border-t pt-6" : ""}>
+                <div className="mb-3">
+                  <p className="text-sm font-semibold">{p.name}</p>
+                  <div className="flex flex-wrap gap-x-3 mt-0.5">
+                    {p.kurikulum && (
+                      <span className="text-xs text-muted-foreground">{p.kurikulum}</span>
+                    )}
+                    {p.modelPendidikan && (
+                      <span className="text-xs text-muted-foreground">{p.modelPendidikan}</span>
+                    )}
+                    {p.kategoriSantri && (
+                      <span className="text-xs text-muted-foreground">{p.kategoriSantri}</span>
+                    )}
+                  </div>
                 </div>
+                <dl>
+                  <Row label="Tahun Berdiri"  value={p.tahunBerdiri?.toString()} />
+                  <Row label="Luas Area"      value={p.luasArea} />
+                  <Row label="Nama Pimpinan"  value={p.namaPimpinan} />
+                  <Row label="HP Pimpinan"    value={displayPhone(p.hpPimpinan)} />
+                  <Row label="Jenis Pondok"   value={p.jenisPondok} />
+                  {(p.santriPutra != null || p.santriPutri != null) && (
+                    <Row
+                      label="Santri"
+                      value={`${p.santriPutra ?? 0} putra + ${p.santriPutri ?? 0} putri = ${totalSantri} total`}
+                    />
+                  )}
+                  {(p.asatidz != null || p.asatidzah != null) && (
+                    <Row
+                      label="Pengajar"
+                      value={`${p.asatidz ?? 0} asatidz + ${p.asatidzah ?? 0} asatidzah = ${totalAsatidz} total`}
+                    />
+                  )}
+                  <Row label="Telepon"    value={displayPhone(p.pesPhone)} />
+                  <Row label="WhatsApp"   value={displayPhone(p.pesWhatsapp)} />
+                  <Row label="Email"      value={p.pesEmail} />
+                  <Row label="Alamat"     value={p.pesAddrDetail} />
+                  {p.pesRegencyName && <Row label="Kabupaten / Kota" value={p.pesRegencyName} />}
+                  {p.pesProvinceName && <Row label="Provinsi"        value={p.pesProvinceName} />}
+                </dl>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Kelola Data Pesantren</DialogTitle>
           </DialogHeader>

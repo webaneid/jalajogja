@@ -11,7 +11,7 @@ import {
   socialMedias,
   memberEducations,
   memberBusinesses,
-  memberPesantren,
+  memberOwnedPesantren,
   generateMemberNumber,
   account,
 } from "@jalajogja/db";
@@ -373,13 +373,39 @@ export type EducationEntryData = {
   gontorCampus?: string;
 };
 
-export type MemberPesantrenEntryData = {
-  pesantrenId: string;
-  peran: "alumni" | "pengasuh" | "pendiri" | "pengajar" | "pengurus" | "lainnya";
-  posisi?: string;
-  tahunMulai?: number;
-  tahunSelesai?: number;
-  catatan?: string;
+export type OwnedPesantrenEntryData = {
+  name: string;
+  tahunBerdiri?: number | null;
+  luasArea?: string;
+  namaPimpinan?: string;
+  hpPimpinan?: string;
+  kurikulum?: string;
+  jenisPondok?: string;
+  modelPendidikan?: string;
+  kategoriSantri?: string;
+  santriPutra?: number | null;
+  santriPutri?: number | null;
+  asatidz?: number | null;
+  asatidzah?: number | null;
+  phone?: string;
+  whatsapp?: string;
+  email?: string;
+  isPhonePublic?: boolean;
+  isWhatsappPublic?: boolean;
+  addressCountry?: string;
+  addressProvinceId?: number;
+  addressRegencyId?: number;
+  addressDistrictId?: number;
+  addressVillageId?: number;
+  addressDetail?: string;
+  addressPostalCode?: string;
+  instagram?: string;
+  facebook?: string;
+  linkedin?: string;
+  twitter?: string;
+  youtube?: string;
+  tiktok?: string;
+  website?: string;
 };
 
 export async function saveMemberEducationsAction(
@@ -440,12 +466,12 @@ export async function saveMemberEducationsAction(
   }
 }
 
-// ─── SAVE KETERLIBATAN DI PESANTREN (Step 3 Wizard) ─────────────────────────
+// ─── SAVE DATA PESANTREN MILIK / KELOLAAN (Step 5 Wizard) ───────────────────
 
-export async function saveMemberPesantrenAction(
+export async function saveMemberOwnedPesantrenAction(
   slug: string,
   memberId: string,
-  entries: MemberPesantrenEntryData[]
+  entries: OwnedPesantrenEntryData[]
 ): Promise<{ success: boolean; error?: string }> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
@@ -458,32 +484,94 @@ export async function saveMemberPesantrenAction(
     .limit(1);
   if (!membership) return { success: false, error: "Anggota tidak ditemukan." };
 
-  const validEntries = entries.filter((e) => e.pesantrenId?.trim());
+  const validEntries = entries.filter((e) => e.name?.trim());
 
   try {
-    // Replace-all: hapus lama → insert baru
-    await db.delete(memberPesantren).where(eq(memberPesantren.memberId, memberId));
+    await db.delete(memberOwnedPesantren).where(eq(memberOwnedPesantren.memberId, memberId));
 
-    if (validEntries.length > 0) {
-      await db.insert(memberPesantren).values(
-        validEntries.map((e) => ({
-          memberId,
-          pesantrenId: e.pesantrenId,
-          peran: e.peran,
-          posisi: e.posisi?.trim() || null,
-          tahunMulai: e.tahunMulai ?? null,
-          tahunSelesai: e.tahunSelesai ?? null,
-          catatan: e.catatan?.trim() || null,
-          isActive: e.tahunSelesai == null, // masih aktif jika tidak ada tahun selesai
-        }))
-      );
+    for (const entry of validEntries) {
+      // ── Insert kontak pesantren ─────────────────────────────────────────────
+      let contactId: string | null = null;
+      if (entry.phone || entry.whatsapp || entry.email) {
+        const [c] = await db
+          .insert(contacts)
+          .values({
+            phone:            normalizePhone(entry.phone),
+            whatsapp:         normalizePhone(entry.whatsapp),
+            email:            entry.email?.trim().toLowerCase() || null,
+            isPhonePublic:    entry.isPhonePublic    ?? false,
+            isWhatsappPublic: entry.isWhatsappPublic ?? false,
+          })
+          .returning({ id: contacts.id });
+        contactId = c.id;
+      }
+
+      // ── Insert alamat pesantren ─────────────────────────────────────────────
+      let addressId: string | null = null;
+      if (entry.addressCountry || entry.addressProvinceId || entry.addressDetail) {
+        const isOverseas = !!entry.addressCountry;
+        const [a] = await db
+          .insert(addresses)
+          .values({
+            label:      "usaha" as const,
+            country:    entry.addressCountry?.trim()   || null,
+            provinceId: isOverseas ? null : (entry.addressProvinceId ?? null),
+            regencyId:  isOverseas ? null : (entry.addressRegencyId  ?? null),
+            districtId: isOverseas ? null : (entry.addressDistrictId ?? null),
+            villageId:  isOverseas ? null : (entry.addressVillageId  ?? null),
+            detail:     entry.addressDetail?.trim()    || null,
+            postalCode: entry.addressPostalCode?.trim() || null,
+          })
+          .returning({ id: addresses.id });
+        addressId = a.id;
+      }
+
+      // ── Insert sosial media pesantren ───────────────────────────────────────
+      let socialMediaId: string | null = null;
+      if (
+        entry.instagram || entry.facebook || entry.linkedin ||
+        entry.twitter   || entry.youtube  || entry.tiktok   || entry.website
+      ) {
+        const [s] = await db
+          .insert(socialMedias)
+          .values({
+            instagram: entry.instagram?.trim() || null,
+            facebook:  entry.facebook?.trim()  || null,
+            linkedin:  entry.linkedin?.trim()  || null,
+            twitter:   entry.twitter?.trim()   || null,
+            youtube:   entry.youtube?.trim()   || null,
+            tiktok:    entry.tiktok?.trim()    || null,
+            website:   entry.website?.trim()   || null,
+          })
+          .returning({ id: socialMedias.id });
+        socialMediaId = s.id;
+      }
+
+      // ── Insert member_owned_pesantren ───────────────────────────────────────
+      await db.insert(memberOwnedPesantren).values({
+        memberId,
+        name:         entry.name.trim(),
+        tahunBerdiri: entry.tahunBerdiri   ?? null,
+        luasArea:     entry.luasArea?.trim()     || null,
+        namaPimpinan: entry.namaPimpinan?.trim() || null,
+        hpPimpinan:   normalizePhone(entry.hpPimpinan),
+        kurikulum:       (entry.kurikulum       || null) as typeof memberOwnedPesantren.$inferInsert["kurikulum"],
+        jenisPondok:     (entry.jenisPondok     || null) as typeof memberOwnedPesantren.$inferInsert["jenisPondok"],
+        modelPendidikan: (entry.modelPendidikan || null) as typeof memberOwnedPesantren.$inferInsert["modelPendidikan"],
+        kategoriSantri:  (entry.kategoriSantri  || null) as typeof memberOwnedPesantren.$inferInsert["kategoriSantri"],
+        santriPutra:  entry.santriPutra  ?? null,
+        santriPutri:  entry.santriPutri  ?? null,
+        asatidz:      entry.asatidz      ?? null,
+        asatidzah:    entry.asatidzah    ?? null,
+        contactId, addressId, socialMediaId,
+      });
     }
 
     revalidatePath(`/${slug}/members/${memberId}`);
     return { success: true };
 
   } catch (err) {
-    console.error("[saveMemberPesantrenAction]", err);
+    console.error("[saveMemberOwnedPesantrenAction]", err);
     const msg = err instanceof Error ? err.message : "Gagal menyimpan.";
     return { success: false, error: `Gagal: ${msg}` };
   }
