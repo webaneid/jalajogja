@@ -326,8 +326,7 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
               ) : (
                 <>
                   <div
-                    className="h-9 w-9 rounded-full flex items-center justify-center text-white font-bold shrink-0"
-                    style={{ backgroundColor: primaryColor }}
+                    className="h-9 w-9 rounded-full flex items-center justify-center font-bold shrink-0 bg-primary text-primary-foreground"
                   >
                     {siteName.charAt(0)}
                   </div>

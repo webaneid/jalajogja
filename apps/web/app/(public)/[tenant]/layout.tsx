@@ -4,6 +4,7 @@ import { createTenantDb, db, tenants, getSettings, refProvinces, refRegencies, r
 import { PublicHeader } from "@/components/website/public/layout/public-header";
 import { PublicFooter } from "@/components/website/public/layout/public-footer";
 import { parseNavMenu } from "@/lib/nav-menu";
+import { buildTenantThemeCss, getGoogleFontsUrl } from "@/lib/theme-palette";
 
 export default async function PublicLayout({
   children,
@@ -35,14 +36,20 @@ export default async function PublicLayout({
     getSettings(tenantClient, "display"),
   ]);
 
-  const siteName     = (generalSettings.site_name        as string | undefined) ?? tenant.name;
-  const tagline      = (generalSettings.tagline           as string | undefined) ?? null;
-  const description  = (generalSettings.site_description  as string | undefined) ?? null;
-  const logoUrl      = (generalSettings.logo_url          as string | undefined) ?? null;
-  const primaryColor = (displaySettings.primary_color     as string | undefined) ?? "#2563eb";
-  const navMenu      = parseNavMenu(websiteSettings.nav_menu);
-  const headerDesign = (displaySettings.header_design as string | undefined) ?? "flex";
-  const footerDesign = (displaySettings.footer_design as string | undefined) ?? "dark";
+  const siteName       = (generalSettings.site_name        as string | undefined) ?? tenant.name;
+  const tagline        = (generalSettings.tagline           as string | undefined) ?? null;
+  const description    = (generalSettings.site_description  as string | undefined) ?? null;
+  const logoUrl        = (generalSettings.logo_url          as string | undefined) ?? null;
+  const primaryColor   = (displaySettings.primary_color     as string | undefined) ?? "#2563eb";
+  const secondaryColor = (displaySettings.secondary_color   as string | undefined) ?? "#64748b";
+  const bodyFont       = (displaySettings.font              as string | undefined) ?? "Inter";
+  const headingFont    = (displaySettings.heading_font      as string | undefined) ?? "Inter";
+  const navMenu        = parseNavMenu(websiteSettings.nav_menu);
+  const headerDesign   = (displaySettings.header_design     as string | undefined) ?? "flex";
+  const footerDesign   = (displaySettings.footer_design     as string | undefined) ?? "dark";
+
+  const themeCss      = buildTenantThemeCss({ primaryColor, secondaryColor, bodyFont, headingFont });
+  const googleFontUrl = getGoogleFontsUrl([bodyFont, headingFont]);
 
   // Resolve nama wilayah dari IDs (selalu — agar data lama tetap tampil)
   type StoredAddress = {
@@ -87,7 +94,23 @@ export default async function PublicLayout({
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <>
+      {/* Google Fonts — di-hoist Next.js ke <head> otomatis */}
+      {googleFontUrl && (
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+      )}
+      {googleFontUrl && (
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      )}
+      {googleFontUrl && (
+        <link rel="stylesheet" href={googleFontUrl} />
+      )}
+
+      {/* CSS variables tema tenant — override Tailwind di scope .public-layout */}
+      {/* eslint-disable-next-line react/no-danger */}
+      <style dangerouslySetInnerHTML={{ __html: themeCss }} />
+
+    <div className="public-layout min-h-screen flex flex-col">
       <PublicHeader
         designId={headerDesign as import("@/lib/header-designs").HeaderDesignId}
         tenantSlug={slug}
@@ -113,5 +136,6 @@ export default async function PublicLayout({
         primaryColor={primaryColor}
       />
     </div>
+    </>
   );
 }

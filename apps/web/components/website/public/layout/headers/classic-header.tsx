@@ -11,7 +11,6 @@ export function ClassicHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryC
   return (
     <header
       className="sticky top-0 z-50 bg-white border-b border-border shadow-sm"
-      style={{ "--primary-color": primaryColor } as React.CSSProperties}
     >
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
@@ -23,8 +22,7 @@ export function ClassicHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryC
             ) : (
               <>
                 <div
-                  className="h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0"
-                  style={{ backgroundColor: primaryColor }}
+                  className="h-10 w-10 rounded-full flex items-center justify-center font-bold text-lg shrink-0 bg-primary text-primary-foreground"
                 >
                   {siteName.charAt(0)}
                 </div>

@@ -8,13 +8,11 @@ const fmt = (date: string | null) =>
 export function PostCardOverlay({
   post,
   tenantSlug,
-  primaryColor = "#2563eb",
   className,
 }: {
-  post:          PostCardData;
-  tenantSlug:    string;
-  primaryColor?: string;
-  className?:    string;
+  post:       PostCardData;
+  tenantSlug: string;
+  className?: string;
 }) {
   return (
     <a
@@ -31,7 +29,7 @@ export function PostCardOverlay({
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
       ) : (
-        <div className="absolute inset-0" style={{ backgroundColor: primaryColor }} />
+        <div className="absolute inset-0 bg-primary" />
       )}
 
       {/* Gradient overlay */}

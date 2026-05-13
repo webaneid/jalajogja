@@ -109,8 +109,7 @@ export function LightFooter({
                 <img src={logoUrl} alt={siteName} className="h-14 w-auto object-contain" />
               ) : (
                 <div
-                  className="h-14 w-14 rounded-full flex items-center justify-center text-white font-bold text-2xl"
-                  style={{ backgroundColor: primaryColor }}
+                  className="h-14 w-14 rounded-full flex items-center justify-center font-bold text-2xl bg-primary text-primary-foreground"
                 >
                   {siteName.charAt(0)}
                 </div>
