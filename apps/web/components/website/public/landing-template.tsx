@@ -239,17 +239,43 @@ function FeaturesSection({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+function renderCtaTitle(text: string) {
+  const parts = text.split(/\*([^*]+)\*/);
+  return parts.map((part, i) =>
+    i % 2 === 1 ? <em key={i}>{part}</em> : <span key={i}>{part}</span>
+  );
+}
+
 function CtaSection({ data }: { data: Record<string, unknown> }) {
-  const d = data as { title?: string; subtitle?: string; ctaLabel?: string; ctaUrl?: string; bgColor?: string };
-  const bg = { backgroundColor: d.bgColor ?? "#1e40af" };
+  const d = data as { title?: string; subtitle?: string; ctaLabel?: string; ctaUrl?: string };
 
   return (
-    <section className="py-16 px-4 text-center text-white" style={bg}>
-      <div className="max-w-2xl mx-auto space-y-4">
-        {d.title    && <h2 className="text-3xl font-bold">{d.title}</h2>}
-        {d.subtitle && <p className="text-white/90">{d.subtitle}</p>}
+    <section className="relative overflow-hidden px-4 bg-secondary text-secondary-foreground" style={{ paddingTop: 96, paddingBottom: 96 }}>
+      {/* Radial gradient overlay — subtle depth */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 10% 30%, rgba(255,255,255,0.08) 0, transparent 40%), radial-gradient(circle at 90% 70%, rgba(0,0,0,0.1) 0, transparent 40%)",
+        }}
+      />
+
+      <div className="relative max-w-7xl mx-auto">
+        {d.title && (
+          <h2
+            className="font-normal mb-6 max-w-[900px]"
+            style={{ fontSize: "clamp(48px, 6vw, 88px)", lineHeight: 0.95 }}
+          >
+            {renderCtaTitle(d.title)}
+          </h2>
+        )}
+        {d.subtitle && (
+          <p className="text-lg max-w-xl mb-8 opacity-85 leading-relaxed">
+            {d.subtitle}
+          </p>
+        )}
         {d.ctaLabel && d.ctaUrl && (
-          <PublicButton href={d.ctaUrl as string} variant="light" size="lg" className="mt-2">
+          <PublicButton href={d.ctaUrl as string} variant="light" size="lg">
             {d.ctaLabel as string}
           </PublicButton>
         )}

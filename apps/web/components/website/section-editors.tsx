@@ -485,28 +485,23 @@ function FeaturesEditor({ data, onChange }: EditorProps) {
 // ── CTA ───────────────────────────────────────────────────────────────────────
 
 function CtaEditor({ data, onChange }: EditorProps) {
-  const d = data as { title?: string; subtitle?: string; ctaLabel?: string; ctaUrl?: string; bgColor?: string };
+  const d = data as { title?: string; subtitle?: string; ctaLabel?: string; ctaUrl?: string };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   return (
     <div className="space-y-3">
-      <Field label="Judul">
-        <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Bergabunglah Bersama Kami" />
+      <Field label="Judul (gunakan *teks* untuk bagian miring)">
+        <Textarea value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Bergabunglah bersama *komunitas* kami" rows={3} />
       </Field>
-      <Field label="Sub-judul">
-        <Input value={d.subtitle ?? ""} onChange={(e) => u("subtitle", e.target.value)} placeholder="Kalimat pendukung" />
+      <Field label="Deskripsi">
+        <Textarea value={d.subtitle ?? ""} onChange={(e) => u("subtitle", e.target.value)} placeholder="Kalimat pendukung..." rows={2} />
       </Field>
-      <Field label="Teks Tombol">
-        <Input value={d.ctaLabel ?? ""} onChange={(e) => u("ctaLabel", e.target.value)} placeholder="Hubungi Kami" />
-      </Field>
-      <Field label="URL Tombol">
-        <Input value={d.ctaUrl ?? ""} onChange={(e) => u("ctaUrl", e.target.value)} placeholder="/kontak" />
-      </Field>
-      <Field label="Warna Background">
-        <div className="flex items-center gap-2">
-          <input type="color" value={d.bgColor ?? "#1e40af"} onChange={(e) => u("bgColor", e.target.value)} className="w-8 h-8 rounded border cursor-pointer" />
-          <Input value={d.bgColor ?? ""} onChange={(e) => u("bgColor", e.target.value)} placeholder="#1e40af" className="flex-1" />
+      <Field label="Tombol">
+        <div className="grid grid-cols-2 gap-2">
+          <Input value={d.ctaLabel ?? ""} onChange={(e) => u("ctaLabel", e.target.value)} placeholder="Teks tombol" />
+          <Input value={d.ctaUrl ?? ""} onChange={(e) => u("ctaUrl", e.target.value)} placeholder="URL / #" />
         </div>
       </Field>
+      <p className="text-[11px] text-muted-foreground">Background otomatis menggunakan warna sekunder tenant.</p>
     </div>
   );
 }

@@ -139,10 +139,11 @@ function FeaturesWireframe() {
 
 function CtaWireframe() {
   return (
-    <div className="w-full h-full bg-gray-400 rounded flex flex-col items-center justify-center gap-2 p-3">
-      <div className="w-2/3 h-3.5 bg-gray-600 rounded" />
-      <div className="w-1/2 h-2 bg-gray-500 rounded" />
-      <div className="w-20 h-5 bg-gray-600 rounded mt-1" />
+    <div className="w-full h-full bg-gray-500 rounded flex flex-col justify-end gap-2 p-3">
+      <div className="w-4/5 h-5 bg-gray-300 rounded" />
+      <div className="w-2/3 h-5 bg-gray-300 rounded" />
+      <div className="w-1/2 h-2 bg-gray-400 rounded mt-1" />
+      <div className="w-16 h-4 bg-white/80 rounded-full mt-1" />
     </div>
   );
 }
