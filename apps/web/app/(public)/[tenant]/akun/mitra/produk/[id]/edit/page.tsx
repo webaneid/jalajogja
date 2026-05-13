@@ -25,8 +25,8 @@ export default async function MitraProdukEditPage({ params }: { params: Params }
   const { products } = await prodRes.json() as {
     products: Array<{
       id: string; name: string; slug: string; price: string;
-      memberPrice: string | null; stock: number; description: string | null;
-      images: GalleryItem[];
+      memberPrice: string | null; stock: number; weightGram: number | null;
+      description: string | null; images: GalleryItem[];
     }>;
   };
 

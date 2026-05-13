@@ -1,4 +1,4 @@
-import { pgSchema, uuid, text, numeric, timestamp, index, unique } from "drizzle-orm/pg-core";
+import { pgSchema, uuid, text, numeric, integer, timestamp, index, unique } from "drizzle-orm/pg-core";
 
 export const MITRA_APPLICATION_STATUSES = ["pending", "approved", "rejected", "cancelled"] as const;
 export type MitraApplicationStatus = typeof MITRA_APPLICATION_STATUSES[number];
@@ -12,6 +12,8 @@ export function createMitraApplicationsTable(s: ReturnType<typeof pgSchema>) {
     memberId:        uuid("member_id").notNull(),       // FK → public.members via DDL
     businessId:      uuid("business_id").notNull(),     // FK → public.member_businesses via DDL
     motivation:      text("motivation"),
+    rajaongkirCityId:   integer("rajaongkir_city_id"),
+    rajaongkirCityName: text("rajaongkir_city_name"),
     status:          text("status", { enum: MITRA_APPLICATION_STATUSES }).notNull().default("pending"),
     rejectionReason: text("rejection_reason"),
     appliedAt:       timestamp("applied_at",  { withTimezone: true }).notNull().defaultNow(),
@@ -32,6 +34,9 @@ export function createMitrasTable(s: ReturnType<typeof pgSchema>) {
     applicationId:    uuid("application_id"),        // FK → mitra_applications.id via DDL
     status:           text("status", { enum: MITRA_STATUSES }).notNull().default("active"),
     suspensionReason: text("suspension_reason"),
+    // Kota asal pengiriman (RajaOngkir city_id) — wajib saat pengajuan mitra
+    rajaongkirCityId:   integer("rajaongkir_city_id"),
+    rajaongkirCityName: text("rajaongkir_city_name"),
     approvedAt:       timestamp("approved_at", { withTimezone: true }).notNull().defaultNow(),
     approvedBy:       uuid("approved_by"),           // FK → officers.id via DDL (nullable)
     createdAt:        timestamp("created_at",  { withTimezone: true }).notNull().defaultNow(),

@@ -34,6 +34,7 @@ import {
   createInvoicePaymentsTable,
   createInstallmentPlansTable,
   createInstallmentSchedulesTable,
+  createInvoiceShippingLinesTable,
 } from "./billing";
 
 // Cache schema objects — hindari buat ulang setiap request
@@ -106,13 +107,14 @@ function buildTenantSchema(slug: string) {
     menus: createMenusTable(s),
     menuItems: createMenuItemsTable(s),
     // Billing — universal cart → invoice → payment
-    carts:                createCartsTable(s),
-    cartItems:            createCartItemsTable(s),
-    invoices:             createInvoicesTable(s),
-    invoiceItems:         createInvoiceItemsTable(s),
-    invoicePayments:      createInvoicePaymentsTable(s),
-    installmentPlans:     createInstallmentPlansTable(s),
-    installmentSchedules: createInstallmentSchedulesTable(s),
+    carts:                  createCartsTable(s),
+    cartItems:              createCartItemsTable(s),
+    invoices:               createInvoicesTable(s),
+    invoiceItems:           createInvoiceItemsTable(s),
+    invoicePayments:        createInvoicePaymentsTable(s),
+    installmentPlans:       createInstallmentPlansTable(s),
+    installmentSchedules:   createInstallmentSchedulesTable(s),
+    invoiceShippingLines:   createInvoiceShippingLinesTable(s),
   };
 }
 

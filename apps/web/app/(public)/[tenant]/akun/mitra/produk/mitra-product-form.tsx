@@ -14,8 +14,8 @@ type Props = {
   settings: { minKomisiMitra: number; mitraMaxProducts: number };
   product?: {
     id: string; name: string; slug: string; price: string;
-    memberPrice: string | null; stock: number; description: string | null;
-    images: GalleryItem[];
+    memberPrice: string | null; stock: number; weightGram: number | null;
+    description: string | null; images: GalleryItem[];
   };
 };
 
@@ -32,6 +32,7 @@ export function MitraProductForm({ slug, settings, product }: Props) {
   const [price,       setPrice]       = useState(product?.price       ? Number(product.price)       : 0);
   const [memberPrice, setMemberPrice] = useState(product?.memberPrice ? Number(product.memberPrice) : null as number | null);
   const [stock,       setStock]       = useState(product?.stock       ?? 0);
+  const [weightGram,  setWeightGram]  = useState(product?.weightGram  ?? null as number | null);
   const [description, setDescription] = useState(product?.description ?? "");
   const [images,      setImages]      = useState<GalleryItem[]>(product?.images ?? []);
   const [submitting,  setSubmitting]  = useState(false);
@@ -52,7 +53,8 @@ export function MitraProductForm({ slug, settings, product }: Props) {
       id: img.id, url: img.url, variants: img.variants, alt: img.alt ?? "", order: i,
     }));
 
-    const body = { slug: prodSlug || slugify(name), name, price, memberPrice, stock, description, images: productImages };
+    if (!weightGram || weightGram <= 0) { setError("Berat produk wajib diisi (min. 1 gram)"); setSubmitting(false); return; }
+    const body = { slug: prodSlug || slugify(name), name, price, memberPrice, stock, weightGram, description, images: productImages };
     const url  = isEdit
       ? `/api/mitra/products/${product!.id}?slug=${slug}`
       : `/api/mitra/products?slug=${slug}`;
@@ -117,11 +119,26 @@ export function MitraProductForm({ slug, settings, product }: Props) {
           </div>
         )}
 
-        {/* Stok */}
-        <div className="space-y-1.5">
-          <Label htmlFor="stock" className="text-sm">Stok <span className="text-destructive">*</span></Label>
-          <Input id="stock" type="number" min={0} value={stock}
-            onChange={e => setStock(Number(e.target.value))} required className="h-9 w-32" />
+        {/* Stok & Berat */}
+        <div className="flex gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="stock" className="text-sm">Stok <span className="text-destructive">*</span></Label>
+            <Input id="stock" type="number" min={0} value={stock}
+              onChange={e => setStock(Number(e.target.value))} required className="h-9 w-28" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="weight" className="text-sm">
+              Berat (gram) <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="weight" type="number" min={1}
+              value={weightGram ?? ""}
+              onChange={e => setWeightGram(e.target.value ? Number(e.target.value) : null)}
+              placeholder="mis. 500"
+              className="h-9 w-28"
+            />
+            <p className="text-xs text-muted-foreground">Berat satuan produk</p>
+          </div>
         </div>
 
         {/* Deskripsi */}

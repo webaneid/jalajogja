@@ -82,8 +82,11 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json() as {
     name: string; slug: string; price: number; memberPrice?: number | null;
-    stock?: number; description?: string; images?: ProductImage[]; categoryId?: string | null;
+    stock?: number; weightGram?: number | null; description?: string; images?: ProductImage[]; categoryId?: string | null;
   };
+  if (!body.weightGram || body.weightGram <= 0) {
+    return NextResponse.json({ error: "Berat produk wajib diisi" }, { status: 422 });
+  }
 
   // Validasi member_price
   if (body.memberPrice != null) {
@@ -104,6 +107,7 @@ export async function POST(req: NextRequest) {
       price:       String(body.price),
       memberPrice: body.memberPrice != null ? String(body.memberPrice) : null,
       stock:       body.stock ?? 0,
+      weightGram:  body.weightGram ?? null,
       description: body.description ?? null,
       images:      body.images ?? [],
       categoryId:  body.categoryId ?? null,

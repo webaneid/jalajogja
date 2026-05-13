@@ -20,9 +20,13 @@ export async function POST(req: NextRequest) {
   const member = await getSessionMember(req);
   if (!member) return NextResponse.json({ error: "Login sebagai anggota IKPM diperlukan" }, { status: 401 });
 
-  const body = await req.json() as { slug: string; businessId: string; motivation?: string };
-  const { slug, businessId, motivation } = body;
+  const body = await req.json() as {
+    slug: string; businessId: string; motivation?: string;
+    rajaongkirCityId?: number; rajaongkirCityName?: string;
+  };
+  const { slug, businessId, motivation, rajaongkirCityId, rajaongkirCityName } = body;
   if (!slug || !businessId) return NextResponse.json({ error: "slug dan businessId wajib diisi" }, { status: 400 });
+  if (!rajaongkirCityId) return NextResponse.json({ error: "Kota asal pengiriman wajib dipilih" }, { status: 400 });
 
   const settings = await getTokoSettings(slug);
   if (!settings.mitraEnabled) return NextResponse.json({ error: "Sistem mitra belum diaktifkan di toko ini" }, { status: 403 });
@@ -63,10 +67,12 @@ export async function POST(req: NextRequest) {
   const [application] = await tenantDb
     .insert(schema.mitraApplications)
     .values({
-      memberId:   member.id,
+      memberId:            member.id,
       businessId,
-      motivation: motivation?.trim() || null,
-      status:     "pending",
+      motivation:          motivation?.trim() || null,
+      rajaongkirCityId:    rajaongkirCityId ?? null,
+      rajaongkirCityName:  rajaongkirCityName?.trim() || null,
+      status:              "pending",
     })
     .returning({ id: schema.mitraApplications.id });
 

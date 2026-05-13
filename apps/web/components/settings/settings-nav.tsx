@@ -14,6 +14,7 @@ import {
   Users,
   ShieldCheck,
   LayoutTemplate,
+  Puzzle,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { label: "Notifikasi",      href: "notifications", icon: Bell           },
   { label: "Pengguna",        href: "users",         icon: Users          },
   { label: "Role Kustom",     href: "roles",         icon: ShieldCheck    },
+  { label: "Add-on",          href: "addons",        icon: Puzzle         },
 ] as const;
 
 export function SettingsNav({ slug }: { slug: string }) {

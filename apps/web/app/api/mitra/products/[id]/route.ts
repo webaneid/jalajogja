@@ -51,7 +51,7 @@ export async function PATCH(
   const settings = await getTokoSettings(slug);
   const body = await req.json() as {
     name?: string; price?: number; memberPrice?: number | null;
-    stock?: number; description?: string; images?: ProductImage[];
+    stock?: number; weightGram?: number | null; description?: string; images?: ProductImage[];
     status?: "active" | "draft" | "archived";
   };
 
@@ -72,6 +72,7 @@ export async function PATCH(
   if (body.memberPrice != null) updateData.memberPrice = String(body.memberPrice);
   if (body.memberPrice === null) updateData.memberPrice = null;
   if (body.stock       != null) updateData.stock       = body.stock;
+  if (body.weightGram  != null) updateData.weightGram  = body.weightGram;
   if (body.description != null) updateData.description = body.description;
   if (body.images      != null) updateData.images      = body.images;
   if (body.status      != null) updateData.status      = body.status;

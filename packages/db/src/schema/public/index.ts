@@ -7,6 +7,7 @@ export * from "./ref-regencies";
 export * from "./ref-districts";
 export * from "./ref-villages";
 export * from "./ref-professions";
+export * from "./ref-rajaongkir-cities";
 
 // ── Helper tables (reusable FK-based) ─────────────────────────────────────────
 export * from "./addresses";

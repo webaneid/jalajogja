@@ -875,6 +875,7 @@ export async function createTenantSchemaInDb(
         seller_type       TEXT           NOT NULL DEFAULT 'tenant'
                                     CHECK (seller_type IN ('tenant','mitra')),
         mitra_id     UUID,                      -- FK → mitras.id (set setelah tabel mitras dibuat)
+        weight_gram  INTEGER,                   -- berat produk (gram), wajib untuk produk mitra
         created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )
@@ -929,6 +930,7 @@ export async function createTenantSchemaInDb(
         public_price    NUMERIC(15,2),
         member_price    NUMERIC(15,2),
         stock           INTEGER       NOT NULL DEFAULT 0,
+        weight_gram     INTEGER,                -- override berat per variasi (gram)
         images          JSONB         NOT NULL DEFAULT '[]',
         attribute_combo JSONB         NOT NULL DEFAULT '{}',
         is_active       BOOLEAN       NOT NULL DEFAULT true,
@@ -943,7 +945,9 @@ export async function createTenantSchemaInDb(
         id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
         member_id        UUID         NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
         business_id      UUID         NOT NULL REFERENCES public.member_businesses(id) ON DELETE CASCADE,
-        motivation       TEXT,
+        motivation            TEXT,
+        rajaongkir_city_id    INTEGER,
+        rajaongkir_city_name  TEXT,
         status           TEXT         NOT NULL DEFAULT 'pending'
                                       CHECK (status IN ('pending','approved','rejected','cancelled')),
         rejection_reason TEXT,
@@ -964,6 +968,8 @@ export async function createTenantSchemaInDb(
         status            TEXT         NOT NULL DEFAULT 'active'
                                        CHECK (status IN ('active','suspended')),
         suspension_reason TEXT,
+        rajaongkir_city_id   INTEGER,
+        rajaongkir_city_name TEXT,
         approved_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
         approved_by       UUID         REFERENCES "${s}".officers(id) ON DELETE SET NULL,
         created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -1101,9 +1107,14 @@ export async function createTenantSchemaInDb(
         member_id       UUID           REFERENCES public.members(id) ON DELETE SET NULL,
         profile_id      UUID           REFERENCES public.profiles(id) ON DELETE SET NULL,
         subtotal        NUMERIC(15,2)  NOT NULL,
+        shipping_total  NUMERIC(15,2)  NOT NULL DEFAULT 0,
         discount        NUMERIC(15,2)  NOT NULL DEFAULT 0,
         total           NUMERIC(15,2)  NOT NULL,
         paid_amount     NUMERIC(15,2)  NOT NULL DEFAULT 0,
+        -- Alamat pengiriman (snapshot saat checkout)
+        shipping_address  TEXT,
+        shipping_city_id  INTEGER,
+        shipping_city_name TEXT,
         status          TEXT           NOT NULL DEFAULT 'pending'
                                        CHECK (status IN ('draft','pending','waiting_verification','partial','paid','cancelled','overdue')),
         due_date        DATE,
@@ -1129,7 +1140,11 @@ export async function createTenantSchemaInDb(
         unit_price  NUMERIC(15,2)  NOT NULL,
         quantity    INTEGER        NOT NULL DEFAULT 1,
         total       NUMERIC(15,2)  NOT NULL,
-        sort_order  INTEGER        NOT NULL DEFAULT 0
+        sort_order  INTEGER        NOT NULL DEFAULT 0,
+        -- Seller info (untuk grouping ongkir per penjual)
+        seller_type TEXT           NOT NULL DEFAULT 'tenant'
+                                   CHECK (seller_type IN ('tenant','mitra')),
+        seller_id   UUID
       )
     `));
 
@@ -1222,6 +1237,35 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice_id ON "${s}".invoice_payments(invoice_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_installment_schedules_invoice ON "${s}".installment_schedules(invoice_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_installment_schedules_due   ON "${s}".installment_schedules(due_date, status)`));
+
+    // ── 38. Invoice Shipping Lines ─────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".invoice_shipping_lines (
+        id               UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_id       UUID           NOT NULL REFERENCES "${s}".invoices(id) ON DELETE CASCADE,
+        seller_type      TEXT           NOT NULL
+                                        CHECK (seller_type IN ('tenant','mitra')),
+        seller_id        UUID,
+        seller_name      TEXT           NOT NULL,
+        origin_city_id   INTEGER        NOT NULL,
+        origin_city_name TEXT           NOT NULL,
+        courier          TEXT           NOT NULL,
+        service          TEXT           NOT NULL,
+        service_desc     TEXT,
+        etd              TEXT,
+        weight_gram      INTEGER        NOT NULL,
+        cost             NUMERIC(15,2)  NOT NULL,
+        tracking_number  TEXT,
+        shipped_at       TIMESTAMPTZ,
+        delivered_at     TIMESTAMPTZ,
+        status           TEXT           NOT NULL DEFAULT 'pending'
+                                        CHECK (status IN ('pending','shipped','delivered')),
+        created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_shipping_invoice_id ON "${s}".invoice_shipping_lines(invoice_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_shipping_seller     ON "${s}".invoice_shipping_lines(seller_type, seller_id)`));
 
     // ── Default Data ───────────────────────────────────────────────────────
     await tx.execute(sql.raw(`

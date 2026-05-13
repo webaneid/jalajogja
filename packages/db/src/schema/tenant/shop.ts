@@ -79,6 +79,8 @@ export function createProductsTable(s: ReturnType<typeof pgSchema>) {
     // Variasi produk
     productType:     text("product_type",     { enum: PRODUCT_TYPES }).notNull().default("simple"),
     attributeGroups: jsonb("attribute_groups").$type<AttributeGroup[]>(),  // null jika simple
+    // Pengiriman
+    weightGram: integer("weight_gram"),    // berat produk (gram), wajib untuk produk mitra
     // Mitra fields
     sellerType:  text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull().default("tenant"),
     mitraId:     uuid("mitra_id"),
@@ -139,6 +141,7 @@ export function createProductVariationsTable(s: ReturnType<typeof pgSchema>) {
     publicPrice:    numeric("public_price", { precision: 15, scale: 2 }),
     memberPrice:    numeric("member_price", { precision: 15, scale: 2 }),
     stock:          integer("stock").notNull().default(0),
+    weightGram:     integer("weight_gram"),   // override berat per variasi (gram)
     images:         jsonb("images").notNull().default([]),
     attributeCombo: jsonb("attribute_combo").notNull().$type<Record<string, string>>(),
     isActive:       boolean("is_active").notNull().default(true),

@@ -37,14 +37,16 @@ export async function approveMitraAction(
 
   const now = new Date();
 
-  // Insert ke mitras
+  // Insert ke mitras (copy kota asal dari application)
   await tenantDb.insert(schema.mitras).values({
-    memberId:      application.memberId,
-    businessId:    application.businessId,
-    applicationId: applicationId,
-    status:        "active",
-    approvedAt:    now,
-    approvedBy:    access.tenantUser.id,
+    memberId:            application.memberId,
+    businessId:          application.businessId,
+    applicationId:       applicationId,
+    status:              "active",
+    rajaongkirCityId:    application.rajaongkirCityId ?? null,
+    rajaongkirCityName:  application.rajaongkirCityName ?? null,
+    approvedAt:          now,
+    approvedBy:          access.tenantUser.id,
   });
 
   // Update status application

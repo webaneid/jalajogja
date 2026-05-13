@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Handshake } from "lucide-react";
+import { Handshake } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label  } from "@/components/ui/label";
 
 type Business = { id: string; name: string; brand: string | null };
+type City     = { cityId: number; cityName: string; type: string; postalCode: string | null };
 
 export default function MitraApplyPage() {
   const router = useRouter();
@@ -21,6 +22,12 @@ export default function MitraApplyPage() {
   const [submitting,    setSubmitting]    = useState(false);
   const [error,         setError]         = useState<string | null>(null);
 
+  // Kota asal pengiriman
+  const [citySearch,   setCitySearch]   = useState("");
+  const [cityResults,  setCityResults]  = useState<City[]>([]);
+  const [selectedCity, setSelectedCity] = useState<City | null>(null);
+  const [cityOpen,     setCityOpen]     = useState(false);
+
   useEffect(() => {
     fetch(`/api/mitra/status?slug=${slug}`)
       .then(r => r.json())
@@ -32,15 +39,31 @@ export default function MitraApplyPage() {
       });
   }, [slug]);
 
+  useEffect(() => {
+    if (citySearch.length < 2) { setCityResults([]); return; }
+    const timer = setTimeout(async () => {
+      const res = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(citySearch)}&limit=15`);
+      const data = await res.json() as { cities: City[] };
+      setCityResults(data.cities ?? []);
+      if (data.cities?.length > 0) setCityOpen(true);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [citySearch]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!businessId) { setError("Pilih usaha terlebih dahulu."); return; }
+    if (!selectedCity) { setError("Pilih kota asal pengiriman terlebih dahulu."); return; }
     setSubmitting(true);
     setError(null);
     const res = await fetch("/api/mitra/apply", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ slug, businessId, motivation }),
+      body:    JSON.stringify({
+        slug, businessId, motivation,
+        rajaongkirCityId:   selectedCity.cityId,
+        rajaongkirCityName: `${selectedCity.type} ${selectedCity.cityName}`,
+      }),
     });
     const data = await res.json() as { error?: string };
     setSubmitting(false);
@@ -93,6 +116,45 @@ export default function MitraApplyPage() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Kota asal pengiriman */}
+        <div className="space-y-1.5">
+          <Label className="text-sm">
+            Kota Asal Pengiriman <span className="text-destructive">*</span>
+          </Label>
+          <div className="relative">
+            <input
+              type="text"
+              value={citySearch}
+              onChange={e => { setCitySearch(e.target.value); setSelectedCity(null); }}
+              onBlur={() => setTimeout(() => setCityOpen(false), 200)}
+              placeholder="Ketik nama kota (min. 2 karakter)..."
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {cityOpen && cityResults.length > 0 && (
+              <ul className="absolute z-20 top-full mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
+                {cityResults.map(city => (
+                  <li
+                    key={city.cityId}
+                    onMouseDown={() => {
+                      setSelectedCity(city);
+                      setCitySearch(`${city.type} ${city.cityName}`);
+                      setCityOpen(false);
+                    }}
+                    className="px-3 py-2 text-sm cursor-pointer hover:bg-muted"
+                  >
+                    {city.type} {city.cityName}
+                    {city.postalCode && <span className="text-muted-foreground ml-1">({city.postalCode})</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {selectedCity && (
+            <p className="text-xs text-green-600">✓ {selectedCity.type} {selectedCity.cityName} dipilih</p>
+          )}
+          <p className="text-xs text-muted-foreground">Kota gudang/rumah tempat produk dikirim.</p>
         </div>
 
         <div className="space-y-1.5">

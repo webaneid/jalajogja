@@ -11,6 +11,9 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
+export const SHIPPING_STATUSES = ["pending", "shipped", "delivered"] as const;
+export type ShippingStatus = typeof SHIPPING_STATUSES[number];
+
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
 export const CART_ITEM_TYPES = ["product", "ticket", "donation", "custom"] as const;
@@ -88,10 +91,16 @@ export function createInvoicesTable(s: ReturnType<typeof pgSchema>) {
     profileId:     uuid("profile_id"), // FK → public.profiles.id via SQL (nullable)
 
     // Nilai
-    subtotal:   numeric("subtotal",    { precision: 15, scale: 2 }).notNull(),
-    discount:   numeric("discount",    { precision: 15, scale: 2 }).notNull().default("0"),
-    total:      numeric("total",       { precision: 15, scale: 2 }).notNull(),
-    paidAmount: numeric("paid_amount", { precision: 15, scale: 2 }).notNull().default("0"),
+    subtotal:      numeric("subtotal",       { precision: 15, scale: 2 }).notNull(),
+    shippingTotal: numeric("shipping_total", { precision: 15, scale: 2 }).notNull().default("0"),
+    discount:      numeric("discount",       { precision: 15, scale: 2 }).notNull().default("0"),
+    total:         numeric("total",          { precision: 15, scale: 2 }).notNull(),
+    paidAmount:    numeric("paid_amount",    { precision: 15, scale: 2 }).notNull().default("0"),
+
+    // Alamat pengiriman (snapshot saat checkout)
+    shippingAddress:    text("shipping_address"),
+    shippingCityId:     integer("shipping_city_id"),
+    shippingCityName:   text("shipping_city_name"),
 
     // Status & tanggal
     status:  text("status", { enum: INVOICE_STATUSES }).notNull().default("pending"),
@@ -128,6 +137,9 @@ export function createInvoiceItemsTable(s: ReturnType<typeof pgSchema>) {
     quantity:    integer("quantity").notNull().default(1),
     total:       numeric("total",      { precision: 15, scale: 2 }).notNull(),
     sortOrder:   integer("sort_order").notNull().default(0),
+    // Seller info (untuk grouping per penjual di ongkir)
+    sellerType: text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull().default("tenant"),
+    sellerId:   uuid("seller_id"),          // null jika tenant, mitra.id jika mitra
   }, (t) => ({
     invoiceIdx: index("invoice_items_invoice_id_idx").on(t.invoiceId),
   }));
@@ -190,12 +202,43 @@ export function createInstallmentSchedulesTable(s: ReturnType<typeof pgSchema>) 
   }));
 }
 
+// ─── invoice_shipping_lines ───────────────────────────────────────────────────
+// Ongkir per seller group. Dibuat saat checkout, satu row per seller.
+
+export function createInvoiceShippingLinesTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("invoice_shipping_lines", {
+    id:              uuid("id").primaryKey().defaultRandom(),
+    invoiceId:       uuid("invoice_id").notNull(),       // FK → invoices.id CASCADE
+    sellerType:      text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull(),
+    sellerId:        uuid("seller_id"),                  // null jika tenant
+    sellerName:      text("seller_name").notNull(),      // snapshot
+    originCityId:    integer("origin_city_id").notNull(),
+    originCityName:  text("origin_city_name").notNull(),
+    courier:         text("courier").notNull(),           // 'jne' | 'pos' | 'tiki' | 'sicepat' dll
+    service:         text("service").notNull(),           // 'REG' | 'YES' | 'OKE' dll
+    serviceDesc:     text("service_desc"),
+    etd:             text("etd"),                        // estimasi tiba, mis '1-2 hari'
+    weightGram:      integer("weight_gram").notNull(),
+    cost:            numeric("cost", { precision: 15, scale: 2 }).notNull(),
+    trackingNumber:  text("tracking_number"),            // resi, diisi mitra setelah kirim
+    shippedAt:       timestamp("shipped_at",   { withTimezone: true }),
+    deliveredAt:     timestamp("delivered_at", { withTimezone: true }),
+    status:          text("status", { enum: SHIPPING_STATUSES }).notNull().default("pending"),
+    createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  }, (t) => ({
+    invoiceIdx: index("invoice_shipping_invoice_id_idx").on(t.invoiceId),
+    sellerIdx:  index("invoice_shipping_seller_idx").on(t.sellerType, t.sellerId),
+  }));
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type CartsTable               = ReturnType<typeof createCartsTable>;
-export type CartItemsTable           = ReturnType<typeof createCartItemsTable>;
-export type InvoicesTable            = ReturnType<typeof createInvoicesTable>;
-export type InvoiceItemsTable        = ReturnType<typeof createInvoiceItemsTable>;
-export type InvoicePaymentsTable     = ReturnType<typeof createInvoicePaymentsTable>;
-export type InstallmentPlansTable    = ReturnType<typeof createInstallmentPlansTable>;
-export type InstallmentSchedulesTable = ReturnType<typeof createInstallmentSchedulesTable>;
+export type CartsTable                    = ReturnType<typeof createCartsTable>;
+export type CartItemsTable                = ReturnType<typeof createCartItemsTable>;
+export type InvoicesTable                 = ReturnType<typeof createInvoicesTable>;
+export type InvoiceItemsTable             = ReturnType<typeof createInvoiceItemsTable>;
+export type InvoicePaymentsTable          = ReturnType<typeof createInvoicePaymentsTable>;
+export type InstallmentPlansTable         = ReturnType<typeof createInstallmentPlansTable>;
+export type InstallmentSchedulesTable     = ReturnType<typeof createInstallmentSchedulesTable>;
+export type InvoiceShippingLinesTable     = ReturnType<typeof createInvoiceShippingLinesTable>;
