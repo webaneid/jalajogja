@@ -27,6 +27,7 @@ export type VariantKey = keyof ProcessedVariants;
 const MODULE_VARIANTS: Partial<Record<string, VariantKey[]>> = {
   shop:    ["original", "square", "square-large"],
   members: ["original", "profile"],
+  akun:    ["original", "large", "square", "profile"],
 };
 
 export const DEFAULT_VARIANTS: VariantKey[] = [
