@@ -2,11 +2,8 @@
 
 import { db, tenantAddonInstallations } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
-import { getTenantAccess } from "@/lib/tenant";
 
 type RajaOngkirConfig = {
-  api_key:          string;
-  tier:             "starter" | "pro";
   origin_city_id:   number | null;
   origin_city_name: string;
   couriers:         string[];
@@ -17,10 +14,6 @@ export async function saveRajaOngkirConfigAction(
   config: RajaOngkirConfig,
 ): Promise<{ ok: true } | { error: string }> {
   try {
-    if (!config.api_key) {
-      return { error: "API key wajib diisi" };
-    }
-
     await db
       .update(tenantAddonInstallations)
       .set({ config, updatedAt: new Date() })

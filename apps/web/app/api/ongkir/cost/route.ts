@@ -1,5 +1,5 @@
 // POST /api/ongkir/cost?slug=
-// Proxy ke RajaOngkir — API key tidak pernah sampai ke browser
+// Proxy ke RajaOngkir — API key dari ENV, tidak pernah sampai ke browser
 //
 // Body: { origin: number, destination: number, weight: number, courier: string }
 // Response: { costs: CourierCost[] }
@@ -7,11 +7,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, tenants, tenantAddonInstallations, addons } from "@jalajogja/db";
 import { eq, and } from "drizzle-orm";
-
-type RajaOngkirConfig = {
-  api_key: string;
-  tier: "starter" | "pro";
-};
 
 type CourierCostDetail = {
   service:     string;
@@ -58,8 +53,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Tenant tidak ditemukan" }, { status: 404 });
     }
 
+    // Cek addon aktif untuk tenant ini
     const installation = await db
-      .select({ config: tenantAddonInstallations.config, status: tenantAddonInstallations.status })
+      .select({ status: tenantAddonInstallations.status })
       .from(tenantAddonInstallations)
       .innerJoin(addons, eq(addons.id, tenantAddonInstallations.addonId))
       .where(and(
@@ -73,13 +69,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Add-on RajaOngkir tidak aktif" }, { status: 403 });
     }
 
-    const config = installation.config as RajaOngkirConfig;
-    if (!config?.api_key) {
-      return NextResponse.json({ error: "API key RajaOngkir belum dikonfigurasi" }, { status: 400 });
+    // API key dari ENV platform — tidak disimpan di DB per tenant
+    const apiKey = process.env.RAJAONGKIR_PLATFORM_KEY;
+    const tier   = (process.env.RAJAONGKIR_PLATFORM_TIER ?? "starter") as "starter" | "pro";
+
+    if (!apiKey) {
+      return NextResponse.json({ error: "RAJAONGKIR_PLATFORM_KEY belum diset di server" }, { status: 500 });
     }
 
-    // Tentukan endpoint berdasarkan tier
-    const baseUrl = config.tier === "pro"
+    const baseUrl = tier === "pro"
       ? "https://pro.rajaongkir.com/api"
       : "https://api.rajaongkir.com/starter";
 
@@ -93,7 +91,7 @@ export async function POST(req: NextRequest) {
     const res = await fetch(`${baseUrl}/cost`, {
       method: "POST",
       headers: {
-        "key":          config.api_key,
+        "key":          apiKey,
         "content-type": "application/x-www-form-urlencoded",
       },
       body: formData.toString(),
