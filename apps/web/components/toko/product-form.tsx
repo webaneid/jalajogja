@@ -69,6 +69,7 @@ export type ProductFormProps = {
     publicPrice:     number | null;
     memberPrice:     number | null;
     stock:           number;
+    weightGram:      number | null;
     images:          ProductImage[];
     categoryId:      string | null;
     status:          "draft" | "active" | "archived";
@@ -236,6 +237,7 @@ export function ProductForm({
   const [publicPrice,     setPublicPrice]     = useState(initialData.publicPrice != null ? String(initialData.publicPrice) : "");
   const [memberPrice,     setMemberPrice]     = useState(initialData.memberPrice != null ? String(initialData.memberPrice) : "");
   const [stock,           setStock]           = useState(String(initialData.stock));
+  const [weightGram,      setWeightGram]      = useState(initialData.weightGram != null ? String(initialData.weightGram) : "");
   const [productType,     setProductType]     = useState<"simple" | "variable">(initialData.productType);
   const [attributeGroups, setAttributeGroups] = useState<AttributeGroup[]>(initialData.attributeGroups);
   const [variations,      setVariations]      = useState<VariationLocal[]>(initialData.variations);
@@ -267,8 +269,9 @@ export function ProductForm({
     setError("");
     setSaveMsg("");
 
-    const priceNum = parseFloat(price) || 0;
-    const stockNum = parseInt(stock) || 0;
+    const priceNum      = parseFloat(price) || 0;
+    const stockNum      = parseInt(stock) || 0;
+    const weightGramNum = weightGram ? (parseInt(weightGram) || null) : null;
 
     const data: ProductData = {
       name:            name.trim(),
@@ -279,6 +282,7 @@ export function ProductForm({
       publicPrice:     publicPrice ? (parseFloat(publicPrice) || null) : null,
       memberPrice:     memberPrice ? (parseFloat(memberPrice) || null) : null,
       stock:           stockNum,
+      weightGram:      weightGramNum,
       productType,
       attributeGroups: productType === "variable" ? attributeGroups : [],
       images:      images.map((img, i) => ({ ...img, order: i })),
@@ -487,6 +491,20 @@ export function ProductForm({
                     value={stock}
                     onChange={(e) => setStock(e.target.value)}
                     placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">
+                    Berat (gram)
+                    <span className="ml-1 font-normal text-muted-foreground/70">— untuk ongkir</span>
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={weightGram}
+                    onChange={(e) => setWeightGram(e.target.value)}
+                    placeholder="mis. 500"
                   />
                 </div>
               </div>

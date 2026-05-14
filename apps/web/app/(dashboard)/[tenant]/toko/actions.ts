@@ -30,6 +30,7 @@ export type ProductData = {
   publicPrice?:    number | null;
   memberPrice?:    number | null;
   stock:           number;
+  weightGram?:     number | null;
   images:          ProductImage[];
   productType?:    "simple" | "variable";
   attributeGroups?: import("@jalajogja/db").AttributeGroup[];
@@ -211,6 +212,7 @@ export async function createProductAction(
         description:   data.description     ?? null,
         price:         String(data.price),
         stock:         data.stock,
+        weightGram:    data.weightGram      ?? null,
         images:        data.images.map((img, i) => ({ ...img, order: i })),
         categoryId:    data.categoryId      ?? null,
         status:        data.status          ?? "draft",
@@ -314,6 +316,7 @@ export async function updateProductAction(
         publicPrice:     data.publicPrice  != null ? data.publicPrice.toFixed(2)  : null,
         memberPrice:     data.memberPrice  != null ? data.memberPrice.toFixed(2)  : null,
         stock:           data.stock,
+        weightGram:      data.weightGram   ?? null,
         images:          data.images,
         categoryId:      data.categoryId   ?? null,
         status:          data.status,
