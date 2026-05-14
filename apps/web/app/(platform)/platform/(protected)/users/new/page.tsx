@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { createPlatformUserAction } from "@/app/(platform)/platform/actions";
+import { createPlatformUserAction } from "@/app/(platform)/platform/(protected)/actions";
 
 const inputCls = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
 const labelCls = "block text-sm font-medium mb-1";

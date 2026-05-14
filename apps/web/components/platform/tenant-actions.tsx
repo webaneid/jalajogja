@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, ToggleLeft, ToggleRight } from "lucide-react";
-import { toggleTenantActiveAction } from "@/app/(platform)/platform/actions";
+import { toggleTenantActiveAction } from "@/app/(platform)/platform/(protected)/actions";
 
 export function PlatformTenantActions({
   tenantId,

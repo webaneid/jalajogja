@@ -6,7 +6,7 @@ import { ToggleLeft, ToggleRight, KeyRound } from "lucide-react";
 import {
   togglePlatformUserActiveAction,
   resetPlatformUserPasswordAction,
-} from "@/app/(platform)/platform/actions";
+} from "@/app/(platform)/platform/(protected)/actions";
 import type { PlatformUserRole } from "@jalajogja/db";
 
 export function PlatformUserActions({

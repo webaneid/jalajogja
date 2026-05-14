@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toggleTenantActiveAction } from "@/app/(platform)/platform/actions";
+import { toggleTenantActiveAction } from "@/app/(platform)/platform/(protected)/actions";
 
 export function PlatformTenantToggle({
   tenantId,
