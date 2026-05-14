@@ -299,6 +299,38 @@ Pola: `{Type}Section (fetch)` → `{Type}DesignN (layout)` → `{Type}Card (rend
 **`PostsSectionTitle`** dipakai ulang semua tipe — sudah generik (title + href + "Lihat Semua").
 **Menambah card/design/tipe baru** → lihat panduan di `docs/arsitektur-card-section.md`.
 
+### Public Link Picker (URL Autocomplete)
+> Detail lengkap: **`docs/arsitektur-public-link-picker.md`**
+
+Komponen autocomplete universal untuk memilih URL front-end publik. Dipakai di admin di mana saja
+ada field link ke halaman website organisasi (nav menu, CTA section, widget area, dll).
+
+**Inventaris URL:**
+- **14 rute statis**: beranda, post, agenda, produk, campaign, anggota, pesantren, usaha, statistik, keranjang, login, register, akun, transaksi
+- **9 tipe konten dinamis** (dari DB): pages, posts, post-category, post-tag, products, product-category, campaigns, pesantren detail, usaha detail
+
+**URL konten dinamis — pattern:**
+```
+/{slug}/{pageSlug}              → halaman statis
+/{slug}/post/{postSlug}         → post individual
+/{slug}/post?category={slug}    → post by kategori (query param, bukan path!)
+/{slug}/post?tag={slug}         → post by tag (query param)
+/{slug}/produk/{productSlug}    → produk individual
+/{slug}/produk/kategori/{slug}  → produk by kategori
+/{slug}/campaign/{slug}         → campaign/donasi individual
+/{slug}/pesantren/{id}          → pesantren detail
+/{slug}/usaha/{id}              → usaha detail
+```
+
+**File yang akan dibuat:**
+```
+lib/public-url-registry.ts            → daftar statis + helper buildPublicUrl()
+app/api/ref/public-links/route.ts     → GET ?slug=&q=, max 5 per tipe, grouped
+components/ui/public-link-picker.tsx  → Command + Popover, debounce 300ms
+```
+
+- **Status: ⬜ Arsitektur selesai, implementasi belum dimulai**
+
 ### Widget Area System
 > Detail lengkap: **`docs/arsitektur-sidebar.md`**
 
@@ -442,6 +474,7 @@ app/(dashboard)/[tenant]/
 - [x] **Login Universal Phase 1** — SELESAI. Login, register (2-jalur: IKPM vs publik + stambuk lookup + auto-link member), forgot-password, reset-password, dashboard `/akun`. Schema `whatsapp` di `public.profiles`. TypeScript 0 errors.
 - [x] **Login Universal Phase 2** — SELESAI. Self-service profile completion wizard anggota IKPM (`/akun/lengkapi`). API routes `member-data` + `member-contact`. Banner kelengkapan data di dashboard `/akun`. Legal singleton pages (terms/privacy). TypeScript 0 errors.
 - [x] **Gallery System Phase 1–3** — `<Gallery>`, `<GalleryGrid>`, `<GalleryLightbox>`, `<GalleryPicker>`, `GalleryBlock` Tiptap, kolom `gallery` JSONB di Event + Campaign, Landing section pakai `<Gallery>`. TypeScript 0 errors. Arsitektur di `docs/arsitektur-gallery.md`. Phase 4 (masonry + carousel) belum.
+- [ ] **Public Link Picker** — autocomplete combobox untuk semua URL front-end. Arsitektur di `docs/arsitektur-public-link-picker.md`. Phase 1: `lib/public-url-registry.ts` + API `/api/ref/public-links`. Phase 2: `components/ui/public-link-picker.tsx`. Phase 3: integrasi nav-menu builder + section editor CTA.
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
@@ -2272,7 +2305,8 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Direktori Publik — 4 halaman selesai** (sesi 2026-05-15).
+- Terakhir dikerjakan: **Arsitektur Public Link Picker** — perencanaan komponen autocomplete URL front-end (sesi 2026-05-15).
+- Sebelumnya: **Direktori Publik — 4 halaman selesai** (sesi 2026-05-15).
 - Sebelumnya: **Arsitektur Direktori Publik** (perencanaan) + **RajaOngkir Tracking + Konfirmasi Terima** (2026-05-14).
 - Sesi terakhir:
   - **`/api/member-public/[id]`** — API endpoint publik (no auth), scope check via `tenant_memberships`, kontak conditional per `is_*_public`, businesses + pesantren ringkasan.
