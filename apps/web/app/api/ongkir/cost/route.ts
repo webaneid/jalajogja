@@ -1,23 +1,23 @@
 // POST /api/ongkir/cost?slug=
-// Proxy ke RajaOngkir — API key dari ENV, tidak pernah sampai ke browser
+// Proxy ke RajaOngkir v2 — API key dari ENV, tidak pernah sampai ke browser
 //
 // Body: { origin: number, destination: number, weight: number, courier: string }
-// Response: { costs: CourierCost[] }
+// Courier: kolon-separated, misal "jne:tiki:pos"
+// Response: { costs: FlatCourierOption[] }
 
 import { NextRequest, NextResponse } from "next/server";
 import { db, tenants, tenantAddonInstallations, addons } from "@jalajogja/db";
 import { eq, and } from "drizzle-orm";
 
-type CourierCostDetail = {
-  service:     string;
-  description: string;
-  cost:        Array<{ value: number; etd: string; note: string }>;
-};
+const RAJAONGKIR_BASE = "https://rajaongkir.komerce.id/api/v1";
 
-type CourierResult = {
-  code:    string;
-  name:    string;
-  costs:   CourierCostDetail[];
+export type FlatCourierOption = {
+  name:        string; // nama kurir, misal "JNE"
+  code:        string; // kode kurir, misal "jne"
+  service:     string; // misal "REG", "OKE", "YES"
+  description: string;
+  cost:        number;
+  etd:         string;
 };
 
 export async function POST(req: NextRequest) {
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Ambil tenant dan addon config
+    // Cek addon aktif untuk tenant ini
     const tenant = await db
       .select({ id: tenants.id })
       .from(tenants)
@@ -53,7 +53,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Tenant tidak ditemukan" }, { status: 404 });
     }
 
-    // Cek addon aktif untuk tenant ini
     const installation = await db
       .select({ status: tenantAddonInstallations.status })
       .from(tenantAddonInstallations)
@@ -69,54 +68,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Add-on RajaOngkir tidak aktif" }, { status: 403 });
     }
 
-    // API key dari ENV platform — tidak disimpan di DB per tenant
     const apiKey = process.env.RAJAONGKIR_PLATFORM_KEY;
-    const tier   = (process.env.RAJAONGKIR_PLATFORM_TIER ?? "starter") as "starter" | "pro";
-
     if (!apiKey) {
       return NextResponse.json({ error: "RAJAONGKIR_PLATFORM_KEY belum diset di server" }, { status: 500 });
     }
 
-    const baseUrl = tier === "pro"
-      ? "https://pro.rajaongkir.com/api"
-      : "https://api.rajaongkir.com/starter";
+    // v2: POST dengan multipart form-data, bukan URLSearchParams
+    const form = new FormData();
+    form.append("origin",      String(origin));
+    form.append("destination", String(destination));
+    form.append("weight",      String(weight));
+    form.append("courier",     courier); // kolon-separated, misal "jne:tiki"
 
-    const formData = new URLSearchParams({
-      origin:      String(origin),
-      destination: String(destination),
-      weight:      String(weight),
-      courier,
-    });
-
-    const res = await fetch(`${baseUrl}/cost`, {
-      method: "POST",
-      headers: {
-        "key":          apiKey,
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      body: formData.toString(),
+    const res = await fetch(`${RAJAONGKIR_BASE}/calculate/domestic-cost`, {
+      method:  "POST",
+      headers: { key: apiKey },
+      body:    form,
     });
 
     if (!res.ok) {
-      console.error("[ongkir/cost] RajaOngkir HTTP error:", res.status);
+      const text = await res.text().catch(() => "");
+      console.error("[ongkir/cost] RajaOngkir HTTP error:", res.status, text);
       return NextResponse.json({ error: "Gagal menghubungi RajaOngkir" }, { status: 502 });
     }
 
     const data = await res.json() as {
-      rajaongkir: {
-        status: { code: number; description: string };
-        results: CourierResult[];
-      };
+      meta: { code: number; message?: string };
+      data: FlatCourierOption[];
     };
 
-    if (data.rajaongkir.status.code !== 200) {
+    if (data.meta.code !== 200) {
       return NextResponse.json(
-        { error: data.rajaongkir.status.description ?? "RajaOngkir error" },
+        { error: data.meta.message ?? "RajaOngkir error" },
         { status: 400 },
       );
     }
 
-    return NextResponse.json({ costs: data.rajaongkir.results });
+    return NextResponse.json({ costs: data.data ?? [] });
   } catch (err) {
     console.error("[ongkir/cost]", err);
     return NextResponse.json({ error: "Gagal kalkulasi ongkir" }, { status: 500 });

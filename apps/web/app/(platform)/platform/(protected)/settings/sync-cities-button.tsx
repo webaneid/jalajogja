@@ -1,21 +1,21 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { RefreshCw } from "lucide-react";
+import { Wifi } from "lucide-react";
 
-export function SyncRajaOngkirCitiesButton() {
+export function TestRajaOngkirButton() {
   const [pending, startTransition] = useTransition();
   const [result,  setResult]       = useState<string | null>(null);
 
-  function handleSync() {
+  function handleTest() {
     startTransition(async () => {
       setResult(null);
-      const res = await fetch("/api/platform/rajaongkir/sync-cities", { method: "POST" });
-      const data = await res.json() as { ok?: boolean; synced?: number; error?: string };
+      const res  = await fetch("/api/platform/rajaongkir/sync-cities", { method: "POST" });
+      const data = await res.json() as { ok?: boolean; message?: string; error?: string };
       if (data.ok) {
-        setResult(`✓ ${data.synced?.toLocaleString("id-ID")} kota berhasil disinkronisasi`);
+        setResult(`✓ ${data.message ?? "Koneksi berhasil"}`);
       } else {
-        setResult(`✗ ${data.error ?? "Gagal sync"}`);
+        setResult(`✗ ${data.error ?? "Gagal terhubung"}`);
       }
     });
   }
@@ -28,12 +28,12 @@ export function SyncRajaOngkirCitiesButton() {
         </span>
       )}
       <button
-        onClick={handleSync}
+        onClick={handleTest}
         disabled={pending}
         className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-60"
       >
-        <RefreshCw className={`h-3.5 w-3.5 ${pending ? "animate-spin" : ""}`} />
-        {pending ? "Menyinkronisasi..." : "Sync Kota"}
+        <Wifi className={`h-3.5 w-3.5 ${pending ? "animate-pulse" : ""}`} />
+        {pending ? "Menghubungkan..." : "Test Koneksi"}
       </button>
     </div>
   );

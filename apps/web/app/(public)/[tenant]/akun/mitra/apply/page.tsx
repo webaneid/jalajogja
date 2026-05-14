@@ -7,7 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Label  } from "@/components/ui/label";
 
 type Business = { id: string; name: string; brand: string | null };
-type City     = { cityId: number; cityName: string; type: string; postalCode: string | null };
+type City     = {
+  id:             number;
+  label:          string;
+  cityName:       string;
+  districtName:   string;
+  subdistrictName: string;
+  provinceName:   string;
+  zipCode:        string;
+};
 
 export default function MitraApplyPage() {
   const router = useRouter();
@@ -44,8 +52,9 @@ export default function MitraApplyPage() {
     const timer = setTimeout(async () => {
       const res = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(citySearch)}&limit=15`);
       const data = await res.json() as { cities: City[] };
-      setCityResults(data.cities ?? []);
-      if (data.cities?.length > 0) setCityOpen(true);
+      const cities = data.cities ?? [];
+      setCityResults(cities);
+      if (cities.length > 0) setCityOpen(true);
     }, 300);
     return () => clearTimeout(timer);
   }, [citySearch]);
@@ -61,8 +70,8 @@ export default function MitraApplyPage() {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({
         slug, businessId, motivation,
-        rajaongkirCityId:   selectedCity.cityId,
-        rajaongkirCityName: `${selectedCity.type} ${selectedCity.cityName}`,
+        rajaongkirCityId:   selectedCity.id,
+        rajaongkirCityName: selectedCity.label,
       }),
     });
     const data = await res.json() as { error?: string };
@@ -136,23 +145,22 @@ export default function MitraApplyPage() {
               <ul className="absolute z-20 top-full mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
                 {cityResults.map(city => (
                   <li
-                    key={city.cityId}
+                    key={city.id}
                     onMouseDown={() => {
                       setSelectedCity(city);
-                      setCitySearch(`${city.type} ${city.cityName}`);
+                      setCitySearch(city.label);
                       setCityOpen(false);
                     }}
                     className="px-3 py-2 text-sm cursor-pointer hover:bg-muted"
                   >
-                    {city.type} {city.cityName}
-                    {city.postalCode && <span className="text-muted-foreground ml-1">({city.postalCode})</span>}
+                    {city.label}
                   </li>
                 ))}
               </ul>
             )}
           </div>
           {selectedCity && (
-            <p className="text-xs text-green-600">✓ {selectedCity.type} {selectedCity.cityName} dipilih</p>
+            <p className="text-xs text-green-600">✓ {selectedCity.label} dipilih</p>
           )}
           <p className="text-xs text-muted-foreground">Kota gudang/rumah tempat produk dikirim.</p>
         </div>

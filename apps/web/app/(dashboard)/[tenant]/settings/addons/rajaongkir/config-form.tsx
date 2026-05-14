@@ -16,7 +16,15 @@ const COURIER_OPTIONS = [
   { value: "sap",      label: "SAP Express" },
 ] as const;
 
-type City = { cityId: number; cityName: string; type: string; postalCode: string | null };
+type City = {
+  id:             number;
+  label:          string;
+  cityName:       string;
+  districtName:   string;
+  subdistrictName: string;
+  provinceName:   string;
+  zipCode:        string;
+};
 
 type Props = {
   slug:           string;
@@ -39,7 +47,7 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
   const [cityResults,  setCityResults]  = useState<City[]>([]);
   const [selectedCity, setSelectedCity] = useState<City | null>(
     initialConfig.originCityId
-      ? { cityId: initialConfig.originCityId, cityName: initialConfig.originCityName, type: "", postalCode: null }
+      ? { id: initialConfig.originCityId, label: initialConfig.originCityName, cityName: "", districtName: "", subdistrictName: "", provinceName: "", zipCode: "" }
       : null,
   );
   const [cityOpen, setCityOpen] = useState(false);
@@ -47,7 +55,7 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
   useEffect(() => {
     if (citySearch.length < 2) { setCityResults([]); return; }
     const timer = setTimeout(async () => {
-      const res  = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(citySearch)}&limit=15`);
+      const res  = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(citySearch)}&limit=15&slug=${slug}`);
       const data = await res.json() as { cities: City[] };
       setCityResults(data.cities ?? []);
       setCityOpen(true);
@@ -65,8 +73,8 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
     setSaved(false);
     startTransition(async () => {
       const res = await saveRajaOngkirConfigAction(installationId, {
-        origin_city_id:   selectedCity?.cityId ?? null,
-        origin_city_name: selectedCity?.cityName ?? "",
+        origin_city_id:   selectedCity?.id ?? null,
+        origin_city_name: selectedCity?.label ?? "",
         couriers,
       });
       if ("error" in res) {
@@ -101,23 +109,22 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
             <ul className="absolute z-20 top-full mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
               {cityResults.map(city => (
                 <li
-                  key={city.cityId}
+                  key={city.id}
                   onMouseDown={() => {
                     setSelectedCity(city);
-                    setCitySearch(`${city.type} ${city.cityName}`);
+                    setCitySearch(city.label);
                     setCityOpen(false);
                   }}
                   className="px-3 py-2 text-sm cursor-pointer hover:bg-muted"
                 >
-                  {city.type} {city.cityName}
-                  {city.postalCode && <span className="text-muted-foreground ml-1">({city.postalCode})</span>}
+                  {city.label}
                 </li>
               ))}
             </ul>
           )}
         </div>
         {selectedCity && (
-          <p className="text-xs text-green-600">✓ {selectedCity.type} {selectedCity.cityName} (ID: {selectedCity.cityId})</p>
+          <p className="text-xs text-green-600">✓ {selectedCity.label} (ID: {selectedCity.id})</p>
         )}
         <p className="text-xs text-muted-foreground">
           Kota asal untuk produk milik toko ini. Mitra atur kota asal sendiri di profil mitra.

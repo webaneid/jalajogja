@@ -1,19 +1,6 @@
-import { SyncRajaOngkirCitiesButton } from "./sync-cities-button";
-import { db, refRajaongkirCities } from "@jalajogja/db";
-import { count } from "drizzle-orm";
-
-async function getCityCount() {
-  try {
-    const [{ total }] = await db.select({ total: count() }).from(refRajaongkirCities);
-    return total;
-  } catch {
-    return 0;
-  }
-}
+import { TestRajaOngkirButton } from "./sync-cities-button";
 
 export default async function PlatformSettingsPage() {
-  const cityCount = await getCityCount();
-
   return (
     <div className="space-y-6">
       <div>
@@ -23,24 +10,26 @@ export default async function PlatformSettingsPage() {
 
       <div className="rounded-xl border border-border bg-background p-5 space-y-4">
         <div>
-          <h2 className="text-sm font-semibold">RajaOngkir — Referensi Kota</h2>
+          <h2 className="text-sm font-semibold">RajaOngkir — Ongkos Kirim</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Data kota digunakan oleh add-on ongkir semua tenant. Wajib diisi sebelum add-on aktif.
+            Add-on ongkos kirim menggunakan API RajaOngkir v2 (rajaongkir.komerce.id).
+            Pencarian kota dilakukan secara realtime — tidak ada sinkronisasi yang diperlukan.
           </p>
         </div>
         <div className="flex items-center justify-between">
-          <div className="text-sm">
-            <span className="font-medium">{cityCount.toLocaleString("id-ID")}</span>
-            <span className="text-muted-foreground ml-1">kota tersedia</span>
+          <div className="space-y-0.5">
+            <p className="text-xs text-muted-foreground">
+              ENV:{" "}
+              <code className="bg-muted px-1 py-0.5 rounded text-xs">RAJAONGKIR_PLATFORM_KEY</code>
+              {process.env.RAJAONGKIR_PLATFORM_KEY
+                ? <span className="text-green-600 ml-2">✓ sudah diset</span>
+                : <span className="text-red-600 ml-2">✗ belum diset</span>}
+            </p>
           </div>
-          <SyncRajaOngkirCitiesButton />
+          <TestRajaOngkirButton />
         </div>
         <p className="text-xs text-muted-foreground">
-          ENV yang dibutuhkan:{" "}
-          <code className="bg-muted px-1 py-0.5 rounded text-xs">RAJAONGKIR_PLATFORM_KEY</code>{" "}
-          dan{" "}
-          <code className="bg-muted px-1 py-0.5 rounded text-xs">RAJAONGKIR_PLATFORM_TIER</code>{" "}
-          (starter/pro)
+          Klik tombol di atas untuk memverifikasi bahwa API key valid dan koneksi ke RajaOngkir aktif.
         </p>
       </div>
     </div>

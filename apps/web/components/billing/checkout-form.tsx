@@ -21,34 +21,36 @@ type CourierOption = {
   cost:        number;
 };
 
-type CourierApiResult = {
-  code:  string;
-  name:  string;
-  costs: Array<{
-    service:     string;
-    description: string;
-    cost:        Array<{ value: number; etd: string; note: string }>;
-  }>;
+// RajaOngkir v2 response sudah flat — tidak ada nested costs[]
+type FlatCourierResult = {
+  name:        string;
+  code:        string;
+  service:     string;
+  description: string;
+  cost:        number;
+  etd:         string;
 };
 
-type CityResult = { cityId: number; cityName: string; type: string; postalCode: string | null };
+type CityResult = {
+  id:             number;
+  label:          string; // "BENER, TEGALREJO, YOGYAKARTA, DI YOGYAKARTA, 55243"
+  cityName:       string;
+  districtName:   string;
+  subdistrictName: string;
+  provinceName:   string;
+  zipCode:        string;
+};
 
-function flattenCourierOptions(results: CourierApiResult[]): CourierOption[] {
-  const opts: CourierOption[] = [];
-  for (const courier of results) {
-    for (const svc of courier.costs) {
-      if (svc.cost[0]) {
-        opts.push({
-          courier:     courier.code,
-          service:     svc.service,
-          serviceDesc: svc.description,
-          etd:         svc.cost[0].etd || "—",
-          cost:        svc.cost[0].value,
-        });
-      }
-    }
-  }
-  return opts.sort((a, b) => a.cost - b.cost);
+function flattenCourierOptions(results: FlatCourierResult[]): CourierOption[] {
+  return results
+    .map(r => ({
+      courier:     r.code,
+      service:     r.service,
+      serviceDesc: r.description,
+      etd:         r.etd || "—",
+      cost:        r.cost,
+    }))
+    .sort((a, b) => a.cost - b.cost);
 }
 
 function formatRp(n: number) {
@@ -139,7 +141,7 @@ export function CheckoutForm({
           courier:     addonCouriers.join(":"),
         }),
       });
-      const data = await res.json() as { costs?: CourierApiResult[]; error?: string };
+      const data = await res.json() as { costs?: FlatCourierResult[]; error?: string };
       if (!res.ok || !data.costs) {
         setGroupStates(prev => ({
           ...prev,
@@ -358,20 +360,17 @@ export function CheckoutForm({
                       )}
                       {cityResults.map(city => (
                         <button
-                          key={city.cityId}
+                          key={city.id}
                           type="button"
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => {
-                            setDestCity({ id: city.cityId, name: `${city.type} ${city.cityName}` });
+                            setDestCity({ id: city.id, name: city.label });
                             setCitySearch("");
                             setCityOpen(false);
                           }}
                           className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors"
                         >
-                          <span>{city.type} {city.cityName}</span>
-                          {city.postalCode && (
-                            <span className="ml-2 text-xs text-muted-foreground">{city.postalCode}</span>
-                          )}
+                          <span>{city.label}</span>
                         </button>
                       ))}
                     </div>
