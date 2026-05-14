@@ -1,50 +1,32 @@
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
-import { sql, ilike, eq, desc } from "drizzle-orm";
+import { sql, ilike, eq, desc, or, and, inArray } from "drizzle-orm";
 import Link from "next/link";
-import { Plus, ShoppingCart } from "lucide-react";
+import { Plus } from "lucide-react";
 
-function formatRupiah(amount: number | string) {
-  const n = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(n || 0);
+function fmt(n: number | string) {
+  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(Number(n) || 0);
+}
+function fmtDate(d: Date) {
+  return new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function formatDate(d: Date) {
-  return new Date(d).toLocaleDateString("id-ID", {
-    day: "2-digit", month: "short", year: "numeric",
-  });
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  pending:    "Menunggu Bayar",
-  paid:       "Lunas",
-  processing: "Diproses",
-  shipped:    "Dikirim",
-  done:       "Selesai",
-  cancelled:  "Dibatalkan",
+const INV_STATUS: Record<string, { label: string; cls: string }> = {
+  pending:              { label: "Belum Dibayar",       cls: "bg-yellow-100 text-yellow-700" },
+  waiting_verification: { label: "Menunggu Verifikasi", cls: "bg-blue-100 text-blue-700"    },
+  partial:              { label: "Terbayar Sebagian",   cls: "bg-orange-100 text-orange-700" },
+  paid:                 { label: "Lunas",               cls: "bg-green-100 text-green-700"  },
+  cancelled:            { label: "Dibatalkan",          cls: "bg-zinc-100 text-zinc-500"    },
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  pending:    "bg-yellow-100 text-yellow-700",
-  paid:       "bg-blue-100 text-blue-700",
-  processing: "bg-indigo-100 text-indigo-700",
-  shipped:    "bg-purple-100 text-purple-700",
-  done:       "bg-green-100 text-green-700",
-  cancelled:  "bg-zinc-100 text-zinc-500",
-};
-
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 25;
 
 export default async function PesananPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ tenant: string }>;
+  params:       Promise<{ tenant: string }>;
   searchParams: Promise<{ q?: string; status?: string; page?: string }>;
 }) {
   const { tenant: slug } = await params;
@@ -56,59 +38,56 @@ export default async function PesananPage({
   const currentPage = Math.max(1, parseInt(page ?? "1"));
   const offset      = (currentPage - 1) * PAGE_SIZE;
 
-  const conditions = [];
+  // ── Temukan invoice ID yang relevan (punya shipping line tenant) ────────────
+  // Ini untuk membatasi cart invoices hanya yang ada produk fisik (bukan pure donasi/tiket)
+  const cartInvoiceIds = await db
+    .selectDistinct({ id: schema.invoiceShippingLines.invoiceId })
+    .from(schema.invoiceShippingLines)
+    .where(eq(schema.invoiceShippingLines.sellerType, "tenant"));
+
+  const cartIds = cartInvoiceIds.map((r) => r.id);
+
+  // ── Bangun kondisi filter ───────────────────────────────────────────────────
+  // Pesanan = invoice sourceType='order' (admin) ATAU cart dengan shipping tenant
+  const sourceFilter = cartIds.length > 0
+    ? or(
+        eq(schema.invoices.sourceType, "order"),
+        inArray(schema.invoices.id, cartIds),
+      )
+    : eq(schema.invoices.sourceType, "order");
+
+  const conditions = [sourceFilter!];
   if (status && status !== "all") {
-    conditions.push(sql`${schema.orders.status} = ${status}`);
+    conditions.push(sql`${schema.invoices.status} = ${status}`);
   }
   if (q) {
     conditions.push(
-      sql`(${ilike(schema.orders.customerName, `%${q}%`)} OR ${ilike(schema.orders.orderNumber, `%${q}%`)})`
+      sql`(${ilike(schema.invoices.customerName, `%${q}%`)} OR ${ilike(schema.invoices.invoiceNumber, `%${q}%`)})`
     );
   }
+  const whereClause = and(...conditions);
 
-  const whereClause = conditions.length > 0
-    ? conditions.reduce((acc, c) => sql`${acc} AND ${c}`)
-    : undefined;
-
-  const [rows, countResult, cartInvoices] = await Promise.all([
+  const [rows, countResult] = await Promise.all([
     db
       .select({
-        id:           schema.orders.id,
-        orderNumber:  schema.orders.orderNumber,
-        customerName: schema.orders.customerName,
-        total:        schema.orders.total,
-        status:       schema.orders.status,
-        createdAt:    schema.orders.createdAt,
-      })
-      .from(schema.orders)
-      .where(whereClause)
-      .orderBy(sql`${schema.orders.createdAt} DESC`)
-      .limit(PAGE_SIZE)
-      .offset(offset),
-    db
-      .select({ count: sql<string>`COUNT(*)` })
-      .from(schema.orders)
-      .where(whereClause),
-    // Invoice dari keranjang yang punya produk + pengiriman
-    db
-      .selectDistinct({
         id:            schema.invoices.id,
         invoiceNumber: schema.invoices.invoiceNumber,
+        sourceType:    schema.invoices.sourceType,
+        sourceId:      schema.invoices.sourceId,
         customerName:  schema.invoices.customerName,
         total:         schema.invoices.total,
         status:        schema.invoices.status,
         createdAt:     schema.invoices.createdAt,
       })
       .from(schema.invoices)
-      .innerJoin(
-        schema.invoiceShippingLines,
-        eq(schema.invoiceShippingLines.invoiceId, schema.invoices.id),
-      )
-      .where(
-        sql`${schema.invoices.sourceType} = 'cart' AND ${schema.invoiceShippingLines.sellerType} = 'tenant'`
-      )
+      .where(whereClause)
       .orderBy(desc(schema.invoices.createdAt))
-      .limit(50),
+      .limit(PAGE_SIZE)
+      .offset(offset),
+    db
+      .select({ count: sql<string>`COUNT(*)` })
+      .from(schema.invoices)
+      .where(whereClause),
   ]);
 
   const total      = parseInt(String(countResult[0]?.count ?? 0));
@@ -122,10 +101,11 @@ export default async function PesananPage({
     return `/${slug}/toko/pesanan?${sp.toString()}`;
   };
 
-  const statuses = ["all", "pending", "paid", "processing", "shipped", "done", "cancelled"];
+  const statuses = ["all", "pending", "waiting_verification", "partial", "paid", "cancelled"];
 
   return (
     <div className="p-6 space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Pesanan</h1>
@@ -142,31 +122,34 @@ export default async function PesananPage({
 
       {/* Filter status */}
       <div className="flex flex-wrap gap-2">
-        {statuses.map((s) => (
-          <Link
-            key={s}
-            href={buildUrl({ status: s === "all" ? "" : s, page: "1" })}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              (s === "all" && !status) || status === s
-                ? "bg-foreground text-background"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {s === "all" ? "Semua" : (STATUS_LABEL[s] ?? s)}
-          </Link>
-        ))}
+        {statuses.map((s) => {
+          const label = s === "all" ? "Semua" : (INV_STATUS[s]?.label ?? s);
+          return (
+            <Link
+              key={s}
+              href={buildUrl({ status: s === "all" ? "" : s, page: "1" })}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                (s === "all" && !status) || status === s
+                  ? "bg-foreground text-background"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </Link>
+          );
+        })}
       </div>
 
       {/* Search */}
       <form method="GET" action={`/${slug}/toko/pesanan`}>
+        {status && <input type="hidden" name="status" value={status} />}
         <div className="max-w-sm">
           <input
             name="q"
             defaultValue={q ?? ""}
-            placeholder="Cari nama pelanggan atau nomor pesanan..."
+            placeholder="Cari nama pelanggan atau nomor invoice..."
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
-          {status && <input type="hidden" name="status" value={status} />}
         </div>
       </form>
 
@@ -175,7 +158,7 @@ export default async function PesananPage({
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
             <tr>
-              <th className="px-4 py-3 text-left font-medium">Nomor</th>
+              <th className="px-4 py-3 text-left font-medium">Nomor Invoice</th>
               <th className="px-4 py-3 text-left font-medium">Pelanggan</th>
               <th className="px-4 py-3 text-left font-medium hidden md:table-cell">Tanggal</th>
               <th className="px-4 py-3 text-right font-medium">Total</th>
@@ -186,35 +169,43 @@ export default async function PesananPage({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
-                  Belum ada pesanan
+                  {q || status ? "Tidak ada pesanan yang cocok." : "Belum ada pesanan."}
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr key={row.id} className="hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3">
-                    <Link href={`/${slug}/toko/pesanan/${row.id}`} className="font-mono text-xs text-primary hover:underline">
-                      {row.orderNumber}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Link href={`/${slug}/toko/pesanan/${row.id}`} className="hover:underline">
-                      {row.customerName}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                    {formatDate(row.createdAt)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium">
-                    {formatRupiah(row.total)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[row.status] ?? "bg-zinc-100"}`}>
-                      {STATUS_LABEL[row.status] ?? row.status}
-                    </span>
-                  </td>
-                </tr>
-              ))
+              rows.map((row) => {
+                const st = INV_STATUS[row.status] ?? { label: row.status, cls: "bg-zinc-100 text-zinc-500" };
+                // Admin order → detail lama; cart → halaman fulfillment
+                const isAdmin = row.sourceType === "order";
+                const detailHref = isAdmin
+                  ? `/${slug}/toko/pesanan/${row.sourceId}`
+                  : `/${slug}/toko/pesanan/invoice/${row.id}`;
+                return (
+                  <tr key={row.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-3">
+                      <Link href={detailHref} className="font-mono text-xs text-primary hover:underline">
+                        {row.invoiceNumber}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link href={detailHref} className="hover:underline">
+                        {row.customerName}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                      {fmtDate(row.createdAt)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums">
+                      {fmt(row.total)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>
+                        {st.label}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -232,74 +223,6 @@ export default async function PesananPage({
             {currentPage < totalPages && (
               <Link href={buildUrl({ page: String(currentPage + 1) })} className="rounded border border-border px-3 py-1 hover:bg-muted/40">Berikutnya →</Link>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Pesanan via Keranjang ────────────────────────────────────── */}
-      {cartInvoices.length > 0 && (
-        <div className="space-y-3 pt-4 border-t border-border">
-          <div className="flex items-center gap-2">
-            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-base font-semibold">Pesanan via Keranjang</h2>
-            <span className="text-xs text-muted-foreground">({cartInvoices.length})</span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Pesanan dari pelanggan melalui checkout keranjang. Klik untuk kelola pengiriman.
-          </p>
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium">Invoice</th>
-                  <th className="px-4 py-3 text-left font-medium">Pelanggan</th>
-                  <th className="px-4 py-3 text-left font-medium hidden md:table-cell">Tanggal</th>
-                  <th className="px-4 py-3 text-right font-medium">Total</th>
-                  <th className="px-4 py-3 text-center font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {cartInvoices.map((inv) => {
-                  const INV_STATUS_MAP: Record<string, { label: string; cls: string }> = {
-                    pending:              { label: "Menunggu Bayar",    cls: "bg-yellow-100 text-yellow-700" },
-                    waiting_verification: { label: "Menunggu Verif.",   cls: "bg-blue-100 text-blue-700" },
-                    partial:              { label: "Terbayar Sebagian", cls: "bg-orange-100 text-orange-700" },
-                    paid:                 { label: "Lunas",             cls: "bg-green-100 text-green-700" },
-                    cancelled:            { label: "Dibatalkan",        cls: "bg-zinc-100 text-zinc-500" },
-                  };
-                  const invStatus = INV_STATUS_MAP[inv.status] ?? { label: inv.status, cls: "bg-zinc-100 text-zinc-500" };
-
-                  return (
-                    <tr key={inv.id} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/${slug}/toko/pesanan/invoice/${inv.id}`}
-                          className="font-mono text-xs text-primary hover:underline"
-                        >
-                          {inv.invoiceNumber}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Link href={`/${slug}/toko/pesanan/invoice/${inv.id}`} className="hover:underline">
-                          {inv.customerName}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                        {formatDate(inv.createdAt)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium">
-                        {formatRupiah(inv.total)}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${invStatus.cls}`}>
-                          {invStatus.label}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           </div>
         </div>
       )}
