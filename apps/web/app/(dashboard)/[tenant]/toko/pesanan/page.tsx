@@ -1,9 +1,9 @@
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
-import { sql, ilike } from "drizzle-orm";
+import { sql, ilike, eq, desc } from "drizzle-orm";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, ShoppingCart } from "lucide-react";
 
 function formatRupiah(amount: number | string) {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -70,7 +70,7 @@ export default async function PesananPage({
     ? conditions.reduce((acc, c) => sql`${acc} AND ${c}`)
     : undefined;
 
-  const [rows, countResult] = await Promise.all([
+  const [rows, countResult, cartInvoices] = await Promise.all([
     db
       .select({
         id:           schema.orders.id,
@@ -89,6 +89,26 @@ export default async function PesananPage({
       .select({ count: sql<string>`COUNT(*)` })
       .from(schema.orders)
       .where(whereClause),
+    // Invoice dari keranjang yang punya produk + pengiriman
+    db
+      .selectDistinct({
+        id:            schema.invoices.id,
+        invoiceNumber: schema.invoices.invoiceNumber,
+        customerName:  schema.invoices.customerName,
+        total:         schema.invoices.total,
+        status:        schema.invoices.status,
+        createdAt:     schema.invoices.createdAt,
+      })
+      .from(schema.invoices)
+      .innerJoin(
+        schema.invoiceShippingLines,
+        eq(schema.invoiceShippingLines.invoiceId, schema.invoices.id),
+      )
+      .where(
+        sql`${schema.invoices.sourceType} = 'cart' AND ${schema.invoiceShippingLines.sellerType} = 'tenant'`
+      )
+      .orderBy(desc(schema.invoices.createdAt))
+      .limit(50),
   ]);
 
   const total      = parseInt(String(countResult[0]?.count ?? 0));
@@ -212,6 +232,74 @@ export default async function PesananPage({
             {currentPage < totalPages && (
               <Link href={buildUrl({ page: String(currentPage + 1) })} className="rounded border border-border px-3 py-1 hover:bg-muted/40">Berikutnya →</Link>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Pesanan via Keranjang ────────────────────────────────────── */}
+      {cartInvoices.length > 0 && (
+        <div className="space-y-3 pt-4 border-t border-border">
+          <div className="flex items-center gap-2">
+            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-base font-semibold">Pesanan via Keranjang</h2>
+            <span className="text-xs text-muted-foreground">({cartInvoices.length})</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Pesanan dari pelanggan melalui checkout keranjang. Klik untuk kelola pengiriman.
+          </p>
+          <div className="rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium">Invoice</th>
+                  <th className="px-4 py-3 text-left font-medium">Pelanggan</th>
+                  <th className="px-4 py-3 text-left font-medium hidden md:table-cell">Tanggal</th>
+                  <th className="px-4 py-3 text-right font-medium">Total</th>
+                  <th className="px-4 py-3 text-center font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {cartInvoices.map((inv) => {
+                  const INV_STATUS_MAP: Record<string, { label: string; cls: string }> = {
+                    pending:              { label: "Menunggu Bayar",    cls: "bg-yellow-100 text-yellow-700" },
+                    waiting_verification: { label: "Menunggu Verif.",   cls: "bg-blue-100 text-blue-700" },
+                    partial:              { label: "Terbayar Sebagian", cls: "bg-orange-100 text-orange-700" },
+                    paid:                 { label: "Lunas",             cls: "bg-green-100 text-green-700" },
+                    cancelled:            { label: "Dibatalkan",        cls: "bg-zinc-100 text-zinc-500" },
+                  };
+                  const invStatus = INV_STATUS_MAP[inv.status] ?? { label: inv.status, cls: "bg-zinc-100 text-zinc-500" };
+
+                  return (
+                    <tr key={inv.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/${slug}/finance/billing/invoice/${inv.id}`}
+                          className="font-mono text-xs text-primary hover:underline"
+                        >
+                          {inv.invoiceNumber}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link href={`/${slug}/finance/billing/invoice/${inv.id}`} className="hover:underline">
+                          {inv.customerName}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                        {formatDate(inv.createdAt)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium">
+                        {formatRupiah(inv.total)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${invStatus.cls}`}>
+                          {invStatus.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

@@ -47,7 +47,7 @@ export default async function PublicInvoicePage({ params }: Props) {
 
   if (!inv) notFound();
 
-  const [items, shippingRows] = await Promise.all([
+  const [items, shippingRows, paymentRows] = await Promise.all([
     tenantDb
       .select()
       .from(schema.invoiceItems)
@@ -57,6 +57,12 @@ export default async function PublicInvoicePage({ params }: Props) {
       .select()
       .from(schema.invoiceShippingLines)
       .where(eq(schema.invoiceShippingLines.invoiceId, invoiceId)),
+    tenantDb
+      .select({ proofUrl: schema.payments.proofUrl })
+      .from(schema.invoicePayments)
+      .innerJoin(schema.payments, eq(schema.invoicePayments.paymentId, schema.payments.id))
+      .where(eq(schema.invoicePayments.invoiceId, invoiceId))
+      .orderBy(schema.payments.createdAt),
   ]);
 
   const paymentCategory = resolvePaymentCategory(items.map((it) => it.itemType));
@@ -95,6 +101,8 @@ export default async function PublicInvoicePage({ params }: Props) {
   const paid      = parseFloat(String(inv.paidAmount));
   const remaining = Math.max(0, total - paid);
 
+  const submittedProofUrl = paymentRows.find(p => p.proofUrl)?.proofUrl ?? null;
+
   const invoice: PublicInvoiceData = {
     id:               inv.id,
     invoiceNumber:    inv.invoiceNumber,
@@ -113,6 +121,7 @@ export default async function PublicInvoicePage({ params }: Props) {
     createdAt:        inv.createdAt.toISOString(),
     shippingCityName: inv.shippingCityName ?? null,
     shippingAddress:  inv.shippingAddress ?? null,
+    submittedProofUrl,
     items: items.map((it) => ({
       id:          it.id,
       name:        it.name,

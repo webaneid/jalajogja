@@ -554,6 +554,18 @@ export type InvoiceDetail = {
     proofUrl:  string | null;
     createdAt: string;
   }[];
+  shippingLines: {
+    id:             string;
+    sellerType:     "tenant" | "mitra";
+    sellerName:     string;
+    courier:        string;
+    service:        string;
+    etd:            string | null;
+    cost:           number;
+    trackingNumber: string | null;
+    shippedAt:      string | null;
+    status:         "pending" | "shipped" | "delivered";
+  }[];
 };
 
 export async function getInvoiceDetailAction(
@@ -573,7 +585,7 @@ export async function getInvoiceDetailAction(
 
   if (!inv) return { success: false, error: "Invoice tidak ditemukan." };
 
-  const [items, paymentLinks] = await Promise.all([
+  const [items, paymentLinks, shippingRows] = await Promise.all([
     db
       .select()
       .from(schema.invoiceItems)
@@ -596,6 +608,11 @@ export async function getInvoiceDetailAction(
       .innerJoin(schema.payments, eq(schema.invoicePayments.paymentId, schema.payments.id))
       .where(eq(schema.invoicePayments.invoiceId, invoiceId))
       .orderBy(desc(schema.payments.createdAt)),
+
+    db
+      .select()
+      .from(schema.invoiceShippingLines)
+      .where(eq(schema.invoiceShippingLines.invoiceId, invoiceId)),
   ]);
 
   const total      = parseFloat(String(inv.total));
@@ -640,6 +657,56 @@ export async function getInvoiceDetailAction(
         proofUrl:  p.proofUrl ?? null,
         createdAt: p.createdAt.toISOString(),
       })),
+      shippingLines: shippingRows.map((sl) => ({
+        id:             sl.id,
+        sellerType:     sl.sellerType as "tenant" | "mitra",
+        sellerName:     sl.sellerName,
+        courier:        sl.courier,
+        service:        sl.service,
+        etd:            sl.etd ?? null,
+        cost:           parseFloat(String(sl.cost)),
+        trackingNumber: sl.trackingNumber ?? null,
+        shippedAt:      sl.shippedAt?.toISOString() ?? null,
+        status:         sl.status as "pending" | "shipped" | "delivered",
+      })),
     },
   };
+}
+
+// ─── updateAdminShippingTrackingAction ────────────────────────────────────────
+// Admin input resi untuk pengiriman tenant (seller_type='tenant').
+
+export async function updateAdminShippingTrackingAction(
+  slug:           string,
+  shippingLineId: string,
+  trackingNumber: string,
+): Promise<ActionResult<void>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [line] = await db
+    .select({ id: schema.invoiceShippingLines.id, sellerType: schema.invoiceShippingLines.sellerType })
+    .from(schema.invoiceShippingLines)
+    .where(eq(schema.invoiceShippingLines.id, shippingLineId))
+    .limit(1);
+
+  if (!line) return { success: false, error: "Data pengiriman tidak ditemukan." };
+  if (line.sellerType !== "tenant") return { success: false, error: "Pengiriman mitra dikelola oleh mitra." };
+
+  const resi = trackingNumber.trim();
+
+  await db
+    .update(schema.invoiceShippingLines)
+    .set({
+      trackingNumber: resi || null,
+      shippedAt:      resi ? new Date() : null,
+      status:         resi ? "shipped" : "pending",
+      updatedAt:      new Date(),
+    })
+    .where(eq(schema.invoiceShippingLines.id, shippingLineId));
+
+  revalidateBilling(slug);
+  return { success: true, data: undefined };
 }

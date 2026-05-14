@@ -51,6 +51,7 @@ export type PublicInvoiceData = {
   createdAt:        string;
   shippingCityName: string | null;
   shippingAddress:  string | null;
+  submittedProofUrl: string | null;
   items: Array<{
     id:          string;
     name:        string;
@@ -341,6 +342,8 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
   const [uploadingProof, setUploadingProof] = useState(false);
   const [uploadError,    setUploadError]    = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [lightboxSrc, setLightboxSrc]      = useState<string | null>(null);
 
   const canPay = ["pending", "partial", "overdue"].includes(invoice.status);
 
@@ -675,12 +678,19 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
               </label>
             ) : (
               <div className="relative rounded-md overflow-hidden border border-border">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={proofPreview}
-                  alt="Bukti transfer"
-                  className="w-full max-h-64 object-contain bg-muted/20"
-                />
+                <button
+                  type="button"
+                  onClick={() => proofPreview && setLightboxSrc(proofPreview)}
+                  className="block w-full"
+                  disabled={uploadingProof}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={proofPreview}
+                    alt="Bukti transfer"
+                    className="w-full max-h-64 object-contain bg-muted/20 cursor-zoom-in"
+                  />
+                </button>
                 {uploadingProof && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/70">
                     <Loader2 size={28} className="animate-spin text-primary" />
@@ -699,7 +709,7 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
                 {proofUrl && !uploadingProof && (
                   <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs text-white">
                     <Check size={12} />
-                    Terupload
+                    Terupload · Klik untuk perbesar
                   </div>
                 )}
               </div>
@@ -733,9 +743,52 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
         </div>
       )}
       {invoice.status === "waiting_verification" && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-center">
-          <p className="font-semibold text-blue-700">Pembayaran sedang diverifikasi.</p>
-          <p className="text-sm text-blue-600 mt-1">Admin akan mengkonfirmasi dalam 1×24 jam.</p>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
+          <div className="text-center">
+            <p className="font-semibold text-blue-700">Pembayaran sedang diverifikasi.</p>
+            <p className="text-sm text-blue-600 mt-1">Admin akan mengkonfirmasi dalam 1×24 jam.</p>
+          </div>
+          {invoice.submittedProofUrl && (
+            <div className="space-y-1">
+              <p className="text-xs text-blue-600 font-medium text-center">Bukti yang dikirim:</p>
+              <button
+                type="button"
+                onClick={() => setLightboxSrc(invoice.submittedProofUrl)}
+                className="block mx-auto"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={invoice.submittedProofUrl}
+                  alt="Bukti transfer"
+                  className="max-h-48 rounded-md border border-blue-200 object-contain bg-white hover:opacity-90 transition-opacity cursor-zoom-in"
+                />
+                <p className="text-xs text-blue-500 mt-1 text-center">Klik untuk perbesar</p>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Lightbox ── */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxSrc(null)}
+            className="absolute top-4 right-4 rounded-full bg-white/20 p-2 text-white hover:bg-white/30 transition-colors"
+          >
+            <X size={20} />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxSrc}
+            alt="Bukti transfer"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

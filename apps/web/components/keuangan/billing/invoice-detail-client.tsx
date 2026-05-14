@@ -2,10 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
 import {
   confirmInvoicePaymentAction,
   cancelInvoiceAction,
   verifySubmittedPaymentAction,
+  updateAdminShippingTrackingAction,
   type InvoiceDetail,
 } from "@/app/(dashboard)/[tenant]/finance/billing/actions";
 
@@ -67,6 +69,13 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
   // Verifikasi payment submitted
   const [verifyingId, setVerifyingId]   = useState<string | null>(null);
 
+  // Lightbox
+  const [lightboxSrc, setLightboxSrc]  = useState<string | null>(null);
+
+  // Shipping tracking
+  const [resiInputs,  setResiInputs]   = useState<Record<string, string>>({});
+  const [savingResi,  setSavingResi]   = useState<string | null>(null);
+
   function handleVerify(paymentId: string) {
     if (!confirm("Verifikasi bahwa pembayaran ini sudah diterima?")) return;
     setError("");
@@ -81,6 +90,20 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
         setError(res.error);
       }
       setVerifyingId(null);
+    });
+  }
+
+  function handleSaveResi(lineId: string) {
+    const resi = (resiInputs[lineId] ?? "").trim();
+    setSavingResi(lineId);
+    startTransition(async () => {
+      const res = await updateAdminShippingTrackingAction(slug, lineId, resi);
+      if (res.success) {
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+      setSavingResi(null);
     });
   }
 
@@ -265,11 +288,10 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                   </div>
                 </div>
                 {p.proofUrl && (
-                  <a
-                    href={p.proofUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block"
+                  <button
+                    type="button"
+                    onClick={() => setLightboxSrc(p.proofUrl)}
+                    className="block text-left"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -277,7 +299,8 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                       alt="Bukti transfer"
                       className="max-h-48 rounded-md border border-border object-contain bg-muted/20 hover:opacity-90 transition-opacity cursor-zoom-in"
                     />
-                  </a>
+                    <p className="text-xs text-muted-foreground mt-1">Klik untuk perbesar</p>
+                  </button>
                 )}
               </div>
             ))}
@@ -409,6 +432,86 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
             {pending ? "Memproses..." : "Ya, Batalkan Invoice"}
           </button>
         </form>
+      )}
+
+      {/* ── Kelola Pengiriman (tenant lines only) ─────────────────────── */}
+      {invoice.shippingLines.filter(sl => sl.sellerType === "tenant").length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Kelola Pengiriman</p>
+          <div className="rounded-lg border border-border divide-y divide-border">
+            {invoice.shippingLines.filter(sl => sl.sellerType === "tenant").map((sl) => (
+              <div key={sl.id} className="px-4 py-3 space-y-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium uppercase">{sl.courier} {sl.service}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {sl.sellerName}
+                      {sl.etd && ` · Est. ${sl.etd}`}
+                      {" · "}Rp {sl.cost.toLocaleString("id-ID")}
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    sl.status === "shipped"   ? "bg-blue-100 text-blue-700" :
+                    sl.status === "delivered" ? "bg-green-100 text-green-700" :
+                    "bg-yellow-100 text-yellow-700"
+                  }`}>
+                    {sl.status === "shipped" ? "Dikirim" : sl.status === "delivered" ? "Terkirim" : "Menunggu"}
+                  </span>
+                </div>
+                {sl.trackingNumber && (
+                  <p className="text-xs">
+                    Resi: <span className="font-mono font-medium">{sl.trackingNumber}</span>
+                    {sl.shippedAt && (
+                      <span className="ml-2 text-muted-foreground">
+                        · Dikirim {new Date(sl.shippedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                      </span>
+                    )}
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={resiInputs[sl.id] ?? (sl.trackingNumber ?? "")}
+                    onChange={(e) => setResiInputs(prev => ({ ...prev, [sl.id]: e.target.value }))}
+                    placeholder="Nomor resi pengiriman"
+                    className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveResi(sl.id)}
+                    disabled={pending || savingResi === sl.id}
+                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                  >
+                    {savingResi === sl.id ? "Menyimpan..." : "Simpan Resi"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Lightbox ─────────────────────────────────────────────────── */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxSrc(null)}
+            className="absolute top-4 right-4 rounded-full bg-white/20 p-2 text-white hover:bg-white/30 transition-colors"
+          >
+            <X size={20} />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxSrc}
+            alt="Bukti transfer"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );
