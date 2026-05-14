@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { use }                 from "react";
-import { Loader2, Package, Heart, Ticket, Truck, CheckCircle2, Clock, Settings2, PackageCheck, ExternalLink } from "lucide-react";
+import {
+  Loader2, Package, Heart, Ticket, Truck, CheckCircle2, Clock,
+  Settings2, PackageCheck, ExternalLink, MapPin, ChevronDown, ChevronUp,
+} from "lucide-react";
 import Link from "next/link";
+import { confirmDeliveryAction } from "@/app/(public)/[tenant]/actions";
 
 type Params = Promise<{ tenant: string }>;
 
@@ -16,7 +20,7 @@ type ShippingLine = {
   cost:           number;
   trackingNumber: string | null;
   shippedAt:      string | null;
-  status:         "pending" | "shipped" | "delivered";
+  status:         "pending" | "processing" | "packed" | "shipped" | "delivered";
 };
 
 type OrderItem = {
@@ -42,6 +46,14 @@ type Order = {
   shippingLines: ShippingLine[];
 };
 
+type TrackingManifest = { date: string; time: string; description: string; city: string };
+type TrackingResult = {
+  status:     "pending" | "in_transit" | "delivered" | "problem" | "unknown";
+  summary:    string;
+  lastUpdate: string | null;
+  history:    TrackingManifest[];
+};
+
 const PAYMENT_STATUS: Record<string, { label: string; cls: string }> = {
   paid:                 { label: "Lunas",              cls: "bg-green-100 text-green-700" },
   waiting_verification: { label: "Menunggu Verifikasi", cls: "bg-blue-100 text-blue-700" },
@@ -58,6 +70,14 @@ const SHIPPING_STATUS: Record<string, { label: string; icon: React.ReactNode; cl
   delivered:  { label: "Sudah Diterima",     icon: <CheckCircle2 size={14} />, cls: "text-green-600"  },
 };
 
+const TRACK_STATUS_CLS: Record<string, string> = {
+  in_transit: "text-blue-600",
+  delivered:  "text-green-600",
+  problem:    "text-destructive",
+  pending:    "text-yellow-600",
+  unknown:    "text-muted-foreground",
+};
+
 function fmt(n: number) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 }
@@ -66,10 +86,172 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
 }
 
+// ── Tracking panel ────────────────────────────────────────────────────────────
+function TrackingPanel({ slug, trackingNumber, courier }: { slug: string; trackingNumber: string; courier: string }) {
+  const [open,    setOpen]    = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result,  setResult]  = useState<TrackingResult | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
+
+  async function load() {
+    if (result) { setOpen(o => !o); return; }
+    setOpen(true);
+    setLoading(true);
+    setError(null);
+    try {
+      const res  = await fetch(`/api/ongkir/track?waybill=${encodeURIComponent(trackingNumber)}&courier=${encodeURIComponent(courier)}&slug=${slug}`);
+      const data = await res.json() as TrackingResult | { error: string };
+      if ("error" in data) { setError(data.error); }
+      else { setResult(data); }
+    } catch {
+      setError("Gagal menghubungi layanan pelacakan.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={load}
+        className="flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+      >
+        <MapPin size={12} />
+        Lacak Kiriman
+        {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+      </button>
+
+      {open && (
+        <div className="mt-2 rounded-lg border border-border bg-muted/20 p-3 text-xs space-y-2">
+          {loading && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 size={12} className="animate-spin" />
+              Memuat data pelacakan...
+            </div>
+          )}
+          {error && <p className="text-destructive">{error}</p>}
+          {result && !loading && (
+            <>
+              <p className={`font-medium ${TRACK_STATUS_CLS[result.status] ?? "text-foreground"}`}>
+                {result.summary}
+              </p>
+              {result.history.length > 0 ? (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                  {result.history.map((h, i) => (
+                    <div key={i} className="flex gap-2">
+                      <span className="text-muted-foreground shrink-0 w-24">{h.date} {h.time}</span>
+                      <div className="flex-1">
+                        <span>{h.description}</span>
+                        {h.city && <span className="text-muted-foreground ml-1">— {h.city}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">Belum ada riwayat pengiriman.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Shipping line section ─────────────────────────────────────────────────────
+function ShippingSection({
+  slug,
+  invoiceId,
+  shippingLines,
+  onDelivered,
+}: {
+  slug:         string;
+  invoiceId:    string;
+  shippingLines: ShippingLine[];
+  onDelivered:  (slId: string) => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  function handleConfirm(slId: string) {
+    setConfirmingId(slId);
+    startTransition(async () => {
+      const res = await confirmDeliveryAction(slug, invoiceId, slId);
+      if (res.success) onDelivered(slId);
+      setConfirmingId(null);
+    });
+  }
+
+  return (
+    <div className="border-t border-border">
+      {shippingLines.map(sl => {
+        const shSt = SHIPPING_STATUS[sl.status] ?? SHIPPING_STATUS.pending;
+        return (
+          <div key={sl.id} className="px-4 py-3 space-y-1.5">
+            <div className={`flex items-center gap-1.5 text-xs font-medium ${shSt.cls}`}>
+              {shSt.icon}
+              {shSt.label}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              <span className="uppercase font-medium">{sl.courier}</span> {sl.service}
+              {sl.etd && <span> · Est. {sl.etd}</span>}
+            </div>
+            {sl.trackingNumber ? (
+              <>
+                <div className="rounded-md bg-muted/40 px-3 py-2 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Nomor Resi</p>
+                    <p className="font-mono text-sm font-semibold tracking-wide">{sl.trackingNumber}</p>
+                  </div>
+                  {sl.shippedAt && (
+                    <p className="text-xs text-muted-foreground text-right shrink-0">
+                      Dikirim<br />
+                      {new Date(sl.shippedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                    </p>
+                  )}
+                </div>
+
+                {/* Lacak kiriman */}
+                <TrackingPanel slug={slug} trackingNumber={sl.trackingNumber} courier={sl.courier} />
+
+                {/* Tombol konfirmasi terima */}
+                {sl.status === "shipped" && (
+                  <button
+                    onClick={() => handleConfirm(sl.id)}
+                    disabled={pending && confirmingId === sl.id}
+                    className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-green-700 border border-green-200 bg-green-50 hover:bg-green-100 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+                  >
+                    {pending && confirmingId === sl.id ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={12} />
+                    )}
+                    Konfirmasi Sudah Diterima
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">Resi belum diinput oleh penjual.</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Order card ────────────────────────────────────────────────────────────────
 function OrderCard({ order, slug }: { order: Order; slug: string }) {
   const payment = PAYMENT_STATUS[order.status] ?? { label: order.status, cls: "bg-muted text-muted-foreground" };
-  const productItems = order.items.filter(it => it.itemType === "product");
-  const otherItems   = order.items.filter(it => it.itemType !== "product");
+
+  // Local state untuk optimistic update shipping status
+  const [shippingLines, setShippingLines] = useState(order.shippingLines);
+
+  function handleDelivered(slId: string) {
+    setShippingLines(prev => prev.map(sl =>
+      sl.id === slId ? { ...sl, status: "delivered" as const } : sl
+    ));
+  }
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -89,7 +271,7 @@ function OrderCard({ order, slug }: { order: Order; slug: string }) {
             className="flex items-center gap-1 text-xs text-primary hover:underline"
           >
             <ExternalLink size={12} />
-            Bayar
+            Detail
           </Link>
         </div>
       </div>
@@ -130,40 +312,13 @@ function OrderCard({ order, slug }: { order: Order; slug: string }) {
       )}
 
       {/* ── Shipping ── */}
-      {order.shippingLines.length > 0 && (
-        <div className="border-t border-border">
-          {order.shippingLines.map(sl => {
-            const shSt = SHIPPING_STATUS[sl.status] ?? SHIPPING_STATUS.pending;
-            return (
-              <div key={sl.id} className="px-4 py-3 space-y-1.5">
-                <div className={`flex items-center gap-1.5 text-xs font-medium ${shSt.cls}`}>
-                  {shSt.icon}
-                  {shSt.label}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  <span className="uppercase font-medium">{sl.courier}</span> {sl.service}
-                  {sl.etd && <span> · Est. {sl.etd}</span>}
-                </div>
-                {sl.trackingNumber ? (
-                  <div className="rounded-md bg-muted/40 px-3 py-2 flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Nomor Resi</p>
-                      <p className="font-mono text-sm font-semibold tracking-wide">{sl.trackingNumber}</p>
-                    </div>
-                    {sl.shippedAt && (
-                      <p className="text-xs text-muted-foreground text-right shrink-0">
-                        Dikirim<br />
-                        {new Date(sl.shippedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground italic">Resi belum diinput oleh penjual.</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      {shippingLines.length > 0 && (
+        <ShippingSection
+          slug={slug}
+          invoiceId={order.id}
+          shippingLines={shippingLines}
+          onDelivered={handleDelivered}
+        />
       )}
 
       {/* ── Footer total ── */}
@@ -175,6 +330,7 @@ function OrderCard({ order, slug }: { order: Order; slug: string }) {
   );
 }
 
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function TransaksiPage({ params }: { params: Params }) {
   const { tenant: slug } = use(params);
 
