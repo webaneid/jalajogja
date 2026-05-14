@@ -220,7 +220,7 @@ export default async function PesantrenDirectoryPage({
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {rows.map(p => {
               const totalSantri = (p.santriPutra ?? 0) + (p.santriPutri ?? 0);
               return (

@@ -69,7 +69,7 @@ export function PostsDesign5({ posts, tenantSlug, sectionTitle, filterHref }: Po
           {posts.map(p => (
             <div
               key={p.id}
-              className="shrink-0 snap-start w-[72%] sm:w-[calc(33.333%-11px)] lg:w-[calc(20%-13px)]"
+              className="shrink-0 snap-start w-[85%] sm:w-[calc(33.333%-11px)] lg:w-[calc(20%-13px)]"
             >
               <PostCard post={p} variant="overlay" tenantSlug={tenantSlug} className="aspect-[3/4]" />
             </div>

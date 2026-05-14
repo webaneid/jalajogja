@@ -6,11 +6,29 @@ export function PostsDesign3({ posts, tenantSlug, sectionTitle, filterHref }: Po
   const leftPosts  = posts.slice(0, 5);
   const rightPosts = posts.slice(5, 10);
 
+  // Mobile: overlay first + list rest
+  const mobileFirst = posts[0];
+  const mobileRest  = posts.slice(1, 7);
+
   return (
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
         <PostsSectionTitle title={sectionTitle} href={filterHref} />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+
+        {/* ── MOBILE: overlay pertama + list ── */}
+        <div className="md:hidden">
+          {mobileFirst && (
+            <PostCard post={mobileFirst} variant="overlay" tenantSlug={tenantSlug} className="aspect-[4/3] mb-4" />
+          )}
+          <div>
+            {mobileRest.map(p => (
+              <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
+            ))}
+          </div>
+        </div>
+
+        {/* ── DESKTOP: 2 kolom list ── */}
+        <div className="hidden md:grid grid-cols-2 gap-x-6">
           <div>
             {leftPosts.map(p => (
               <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />

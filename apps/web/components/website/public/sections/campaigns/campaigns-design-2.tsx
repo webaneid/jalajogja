@@ -7,9 +7,9 @@ import { Heart } from "lucide-react";
 export function CampaignsDesign2({ campaigns, tenantSlug, sectionTitle, filterHref }: CampaignsSectionProps) {
   if (campaigns.length === 0) return null;
 
-  const featured = campaigns[0]!;
-  const rest     = campaigns.slice(1, 3);
-  const days     = daysRemaining(featured.endsAt);
+  const featured  = campaigns[0]!;
+  const rest      = campaigns.slice(1, 5);
+  const days      = daysRemaining(featured.endsAt);
   const typeColor = CAMPAIGN_TYPE_COLORS[featured.campaignType] ?? "bg-primary/10 text-primary";
 
   return (
@@ -17,7 +17,15 @@ export function CampaignsDesign2({ campaigns, tenantSlug, sectionTitle, filterHr
       <div className="max-w-7xl mx-auto">
         <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* ── MOBILE: 2-col grid semua ── */}
+        <div className="md:hidden grid grid-cols-2 gap-3">
+          {campaigns.slice(0, 6).map(c => (
+            <CampaignCard key={c.id} campaign={c} variant="grid" tenantSlug={tenantSlug} />
+          ))}
+        </div>
+
+        {/* ── DESKTOP: featured besar + 2 kecil ── */}
+        <div className="hidden md:grid grid-cols-2 gap-6">
           {/* Featured besar */}
           <a
             href={`/${tenantSlug}/campaign/${featured.slug}`}
@@ -68,7 +76,7 @@ export function CampaignsDesign2({ campaigns, tenantSlug, sectionTitle, filterHr
             </div>
           </a>
 
-          {/* 2 kecil */}
+          {/* 2 kecil di kanan */}
           {rest.length > 0 && (
             <div className="flex flex-col gap-4">
               {rest.map(c => (

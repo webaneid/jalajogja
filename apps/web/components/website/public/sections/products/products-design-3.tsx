@@ -38,7 +38,7 @@ export function ProductsDesign3({ products, tenantSlug, sectionTitle, filterHref
           className="flex gap-3 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-2 -mx-4 px-4 scrollbar-hide"
         >
           {products.map(p => (
-            <div key={p.id} className="shrink-0 snap-start w-[48%] sm:w-[calc(33.333%-8px)] lg:w-[calc(25%-9px)]">
+            <div key={p.id} className="shrink-0 snap-start w-[46%] sm:w-[calc(33.333%-8px)] lg:w-[calc(25%-9px)]">
               <ProductCard product={p} variant="ringkas" tenantSlug={tenantSlug} />
             </div>
           ))}

@@ -98,12 +98,41 @@ async function HeroSection({ data, tenantClient, tenantSlug }: {
   }
 
   return (
-    <section className="py-16 px-4 overflow-hidden">
+    <section className="py-10 md:py-16 px-4 overflow-hidden">
       <div className="max-w-7xl mx-auto">
-        <div className={`grid grid-cols-1 items-center gap-10 ${hasImage ? "lg:grid-cols-2 lg:gap-16" : ""}`}>
+        {/* Mobile dengan gambar: gambar di atas, teks di bawah */}
+        <div className={`grid grid-cols-1 items-center gap-8 ${hasImage ? "lg:grid-cols-2 lg:gap-16" : ""}`}>
 
-          {/* Kiri: konten teks */}
-          <div className={`space-y-6 ${!hasImage ? "max-w-2xl mx-auto text-center" : ""}`}>
+          {/* Gambar — ditampilkan PERTAMA di mobile jika ada */}
+          {hasImage && (
+            <div className="lg:hidden flex justify-center order-first">
+              <div className="relative w-full max-w-sm">
+                <div className="absolute -inset-3 rounded-3xl bg-primary/5 -z-10" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={d.imageUrl!}
+                  alt={d.title ?? ""}
+                  className="w-full aspect-[4/3] object-cover rounded-2xl shadow-xl"
+                />
+                {heroCard && (
+                  <a
+                    href={heroCard.href}
+                    className="absolute bottom-3 left-3 right-3 bg-primary text-primary-foreground rounded-xl px-3 py-2 no-underline hover:opacity-90 transition-opacity"
+                  >
+                    <p className="text-[10px] font-mono uppercase tracking-widest opacity-75 mb-0.5">
+                      {heroCard.label}
+                    </p>
+                    <p className="text-xs font-semibold leading-snug line-clamp-1">
+                      {heroCard.title}
+                    </p>
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Teks */}
+          <div className={`space-y-5 ${!hasImage ? "max-w-2xl mx-auto text-center" : ""}`}>
             {d.eyebrow && (
               <div className={`flex items-center gap-2.5 text-xs font-mono uppercase tracking-widest text-muted-foreground ${!hasImage ? "justify-center" : ""}`}>
                 <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />
@@ -111,17 +140,17 @@ async function HeroSection({ data, tenantClient, tenantSlug }: {
               </div>
             )}
             {d.title && (
-              <h1 className="text-4xl md:text-5xl xl:text-6xl font-bold leading-[1.08] tracking-tight">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-bold leading-[1.1] tracking-tight">
                 {d.title}
               </h1>
             )}
             {d.subtitle && (
-              <p className={`text-lg text-muted-foreground leading-relaxed ${!hasImage ? "mx-auto" : ""} max-w-lg`}>
+              <p className={`text-base sm:text-lg text-muted-foreground leading-relaxed ${!hasImage ? "mx-auto" : ""} max-w-lg`}>
                 {d.subtitle}
               </p>
             )}
             {(d.ctaLabel || d.ctaSecondaryLabel) && (
-              <div className={`flex gap-3 flex-wrap pt-2 ${!hasImage ? "justify-center" : ""}`}>
+              <div className={`flex gap-3 flex-wrap pt-1 ${!hasImage ? "justify-center" : ""}`}>
                 {d.ctaLabel && d.ctaUrl && (
                   <PublicButton href={d.ctaUrl as string} variant="primary" size="lg">
                     {d.ctaLabel as string}
@@ -136,9 +165,9 @@ async function HeroSection({ data, tenantClient, tenantSlug }: {
             )}
           </div>
 
-          {/* Kanan: gambar portrait + floating card */}
+          {/* Gambar — desktop only (kanan) */}
           {hasImage && (
-            <div className="flex justify-center lg:justify-end">
+            <div className="hidden lg:flex justify-end">
               <div className="relative w-full max-w-xs sm:max-w-sm">
                 <div className="absolute -inset-4 rounded-3xl bg-primary/5 -z-10" />
                 {/* eslint-disable-next-line @next/next/no-img-element */}

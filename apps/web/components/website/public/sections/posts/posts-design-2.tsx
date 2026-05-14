@@ -11,64 +11,80 @@ export function PostsDesign2({ data, posts, tenantSlug, sectionTitle, filterHref
   const leftPosts  = posts.slice(1, 6);
   const rightPosts = posts.slice(6, 11);
 
+  // Mobile: semua after featured
+  const mobileRest = posts.slice(1, 7);
+
   return (
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
-      <PostsSectionTitle title={sectionTitle} href={filterHref} />
+        <PostsSectionTitle title={sectionTitle} href={filterHref} />
 
-      {featured && (
-        <a
-          href={`/${tenantSlug}/post/${featured.slug}`}
-          className="flex gap-4 mb-6 group"
-        >
-          <div className="w-1/2 shrink-0 aspect-video overflow-hidden rounded-lg bg-muted">
-            {pickCover(featured, "medium") ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={pickCover(featured, "medium")!}
-                alt={featured.coverAlt ?? featured.title}
-                title={featured.coverTitle ?? undefined}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
-            ) : (
-              <div className="w-full h-full bg-muted" />
-            )}
-          </div>
-          <div className="w-1/2 flex flex-col gap-2">
-            {featured.categoryName && (
-              <span className="text-xs font-semibold text-primary uppercase tracking-wide">
-                {featured.categoryName}
-              </span>
-            )}
-            <h3 className="text-4xl md:text-5xl xl:text-6xl font-bold leading-[1.08] tracking-tight line-clamp-3 group-hover:text-primary transition-colors">
-              {featured.title}
-            </h3>
-            {featured.excerpt && (
-              <p className="text-sm text-muted-foreground line-clamp-3">{featured.excerpt}</p>
-            )}
-            {featured.publishedAt && (
-              <p className="text-xs text-muted-foreground mt-auto">{fmtDate(featured.publishedAt)}</p>
-            )}
-          </div>
-        </a>
-      )}
-
-      {leftPosts.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 border-t border-border pt-4">
-          <div>
-            {leftPosts.map(p => (
-              <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
-            ))}
-          </div>
-          {rightPosts.length > 0 && (
-            <div className="border-l border-border pl-6">
-              {rightPosts.map(p => (
+        {/* ── MOBILE: overlay featured + list sisanya ── */}
+        {featured && (
+          <div className="md:hidden mb-4">
+            <PostCard post={featured} variant="overlay" tenantSlug={tenantSlug} className="aspect-[4/3] mb-4" />
+            <div>
+              {mobileRest.map(p => (
                 <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
               ))}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+
+        {/* ── DESKTOP: featured besar + 2 kolom list ── */}
+        {featured && (
+          <a
+            href={`/${tenantSlug}/post/${featured.slug}`}
+            className="hidden md:flex gap-4 mb-6 group"
+          >
+            <div className="w-1/2 shrink-0 aspect-video overflow-hidden rounded-lg bg-muted">
+              {pickCover(featured, "medium") ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={pickCover(featured, "medium")!}
+                  alt={featured.coverAlt ?? featured.title}
+                  title={featured.coverTitle ?? undefined}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+              ) : (
+                <div className="w-full h-full bg-muted" />
+              )}
+            </div>
+            <div className="w-1/2 flex flex-col gap-2">
+              {featured.categoryName && (
+                <span className="text-xs font-semibold text-primary uppercase tracking-wide">
+                  {featured.categoryName}
+                </span>
+              )}
+              <h3 className="text-4xl md:text-5xl xl:text-6xl font-bold leading-[1.08] tracking-tight line-clamp-3 group-hover:text-primary transition-colors">
+                {featured.title}
+              </h3>
+              {featured.excerpt && (
+                <p className="text-sm text-muted-foreground line-clamp-3">{featured.excerpt}</p>
+              )}
+              {featured.publishedAt && (
+                <p className="text-xs text-muted-foreground mt-auto">{fmtDate(featured.publishedAt)}</p>
+              )}
+            </div>
+          </a>
+        )}
+
+        {leftPosts.length > 0 && (
+          <div className="hidden md:grid grid-cols-2 gap-x-6 border-t border-border pt-4">
+            <div>
+              {leftPosts.map(p => (
+                <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
+              ))}
+            </div>
+            {rightPosts.length > 0 && (
+              <div className="border-l border-border pl-6">
+                {rightPosts.map(p => (
+                  <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );

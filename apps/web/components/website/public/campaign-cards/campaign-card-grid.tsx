@@ -25,7 +25,7 @@ export function CampaignCardGrid({ campaign, tenantSlug }: { campaign: CampaignC
       </div>
 
       {/* Content */}
-      <div className="p-4 flex flex-col gap-2 flex-1">
+      <div className="p-3 sm:p-4 flex flex-col gap-1.5 sm:gap-2 flex-1">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${typeColor}`}>
             {CAMPAIGN_TYPE_LABELS[campaign.campaignType]}
@@ -40,7 +40,7 @@ export function CampaignCardGrid({ campaign, tenantSlug }: { campaign: CampaignC
           )}
         </div>
 
-        <h3 className="font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+        <h3 className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
           {campaign.title}
         </h3>
 

@@ -7,9 +7,9 @@ import { CalendarDays, MapPin } from "lucide-react";
 export function EventsDesign2({ events, tenantSlug, sectionTitle, filterHref }: EventsSectionProps) {
   if (events.length === 0) return null;
 
-  const featured = events[0]!;
-  const rest     = events.slice(1, 4);
-  const date     = formatEventDate(featured.startsAt);
+  const featured  = events[0]!;
+  const rest      = events.slice(1, 4);
+  const date      = formatEventDate(featured.startsAt);
   const typeColor = EVENT_TYPE_COLORS[featured.eventType] ?? "bg-muted text-muted-foreground";
 
   return (
@@ -17,7 +17,15 @@ export function EventsDesign2({ events, tenantSlug, sectionTitle, filterHref }: 
       <div className="max-w-7xl mx-auto">
         <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* ── MOBILE: full list ── */}
+        <div className="sm:hidden divide-y divide-border">
+          {events.map(e => (
+            <EventCard key={e.id} event={e} variant="list" tenantSlug={tenantSlug} />
+          ))}
+        </div>
+
+        {/* ── DESKTOP: featured besar + list kanan ── */}
+        <div className="hidden sm:grid grid-cols-2 gap-6">
           {/* Featured besar */}
           <a
             href={`/${tenantSlug}/agenda/${featured.slug}`}
