@@ -171,19 +171,22 @@ Disimpan di `tenant_addon_installations.config` (JSONB):
 
 ```json
 {
-  "api_key": "rajaongkir-api-key-tenant-xxx",
-  "origin_city_id": 501,
-  "origin_city_name": "Yogyakarta",
-  "couriers": ["jne", "pos", "tiki", "sicepat"],
-  "weight_unit": "gram",
-  "default_weight_gram": 500
+  "origin_city_id": 12345,
+  "origin_city_name": "BENER, TEGALREJO, YOGYAKARTA, DI YOGYAKARTA, 55243",
+  "couriers": ["jne", "pos", "tiki", "sicepat"]
 }
 ```
 
-- `api_key` — API key tenant di RajaOngkir (Pro account untuk akses semua kurir)
-- `origin_city_id` — kota asal produk tenant sendiri (bukan mitra)
-- `couriers` — kurir yang ditawarkan (dari yang tersedia di RajaOngkir)
-- `default_weight_gram` — berat default per item jika produk tidak ada berat
+- **`api_key` TIDAK ada di config tenant** — API key ada di `RAJAONGKIR_PLATFORM_KEY` ENV server
+- `origin_city_id` — ID kelurahan asal (dari RajaOngkir v2, bukan kode kota v1)
+- `origin_city_name` — label lengkap dari RajaOngkir (disimpan sebagai cache display)
+- `couriers` — kurir yang ditawarkan di checkout (dari yang tersedia di RajaOngkir)
+- `default_weight_gram` — **dihapus** dari config, karena sekarang wajib isi per produk
+
+**Keputusan dikunci:** API key adalah platform-level, bukan per-tenant. Alasannya:
+- Menyederhanakan setup tenant (tidak perlu daftar RajaOngkir sendiri)
+- Satu key platform untuk semua tenant jalakarta
+- Tenant hanya perlu set kota asal + kurir di settings add-on
 
 ---
 
@@ -204,54 +207,79 @@ ALTER TABLE "{tenant_schema}".product_variations
 
 ## API Endpoints
 
-### `GET /api/ongkir/cities?q=yogya`
-Cari kota untuk dropdown. Query dari `public.ref_rajaongkir_cities`.
-Tidak butuh API key tenant — data lokal di DB.
+### `GET /api/ongkir/cities?q=yogya&limit=15`
 
-```json
-[
-  { "cityId": 501, "cityName": "Yogyakarta", "type": "Kota", "postalCode": "55111" },
-  { "cityId": 389, "cityName": "Sleman", "type": "Kabupaten", "postalCode": "55511" }
-]
-```
+Cari kota/kelurahan untuk dropdown di checkout dan settings add-on.
 
-### `POST /api/ongkir/cost?slug=X`
-Hitung ongkir. Dipanggil dari checkout untuk setiap seller group.
+**SEKARANG (v2):** Proxy realtime ke RajaOngkir v2. Tidak ada tabel lokal.
+- Min 2 karakter query
+- API key: `RAJAONGKIR_PLATFORM_KEY` dari ENV server — tidak pernah ke browser
+- Endpoint RajaOngkir: `GET /destination/domestic-destination?search=&limit=&offset=0`
+- RajaOngkir v2 return HTTP 404 (bukan array kosong) saat tidak ada hasil — route menangani ini sebagai `{ cities: [] }` bukan error
 
-**Request:**
 ```json
 {
-  "origin": 501,
-  "destination": 23,
-  "weight": 1500,
-  "couriers": ["jne", "tiki"]
-}
-```
-
-**Flow server:**
-1. Ambil API key dari `tenant_addon_installations WHERE addon_slug = 'rajaongkir'`
-2. Call RajaOngkir `POST /cost` dengan key tersebut
-3. Return hasil — tidak pernah return API key ke client
-
-**Response:**
-```json
-{
-  "results": [
+  "cities": [
     {
-      "courier": "jne",
-      "services": [
-        { "service": "REG", "desc": "Layanan Reguler", "cost": 14000, "etd": "2-3 hari" },
-        { "service": "YES", "desc": "Yakin Esok Sampai", "cost": 38000, "etd": "1-1 hari" }
-      ]
+      "id": 12345,
+      "label": "BENER, TEGALREJO, YOGYAKARTA, DI YOGYAKARTA, 55243",
+      "cityName": "YOGYAKARTA",
+      "districtName": "TEGALREJO",
+      "subdistrictName": "BENER",
+      "provinceName": "DI YOGYAKARTA",
+      "zipCode": "55243"
     }
   ]
 }
 ```
 
-### `POST /api/ongkir/sync-cities`
-Platform admin endpoint — sync daftar kota dari RajaOngkir ke `ref_rajaongkir_cities`.
-Pakai API key dari ENV platform (`RAJAONGKIR_PLATFORM_KEY`), bukan API key tenant.
-Jalankan manual atau cron mingguan.
+> **Berbeda dari v1:** Kode ID adalah ID kelurahan (subdistrict level), bukan kode kota.
+> Label sudah dalam format `KELURAHAN, KECAMATAN, KOTA, PROVINSI, KODEPOS`.
+
+### `POST /api/ongkir/cost?slug=X`
+
+Hitung ongkir. Dipanggil dari checkout untuk setiap seller group.
+
+**SEKARANG (v2):** Menggunakan endpoint `POST /calculate/domestic-cost` dengan FormData.
+
+**Request (dari checkout-form ke route):**
+```json
+{
+  "origin":      12345,
+  "destination": 67890,
+  "weight":      1500,
+  "couriers":    ["jne", "tiki"]
+}
+```
+
+**Flow server:**
+1. Baca `RAJAONGKIR_PLATFORM_KEY` dari ENV (bukan dari DB tenant)
+2. Cek addon terinstall di tenant (`tenant_addon_installations WHERE addon_slug = 'rajaongkir'`)
+3. Build FormData: `origin`, `destination`, `weight`, `courier` (colon-separated: `"jne:tiki"`)
+4. Call RajaOngkir `POST /calculate/domestic-cost`
+5. Return hasil flat — tidak pernah return API key ke client
+
+**Response (flat — berbeda dari v1):**
+```json
+{
+  "results": [
+    { "courier": "JNE", "code": "jne", "service": "REG", "description": "Layanan Reguler", "cost": 14000, "etd": "2-3" },
+    { "courier": "JNE", "code": "jne", "service": "YES", "description": "Yakin Esok Sampai", "cost": 38000, "etd": "1-1" },
+    { "courier": "TIKI", "code": "tiki", "service": "REG", "description": "Regular Service", "cost": 12000, "etd": "3-4" }
+  ]
+}
+```
+
+> v1 response: nested `results[].costs[].cost[]`. v2: flat array, satu object per service.
+> `checkout-form.tsx` pakai `flattenCourierOptions()` untuk sort by cost ascending.
+
+### `GET /api/platform/rajaongkir/sync-cities` (sudah diubah)
+
+**SEKARANG:** Endpoint ini diubah menjadi **test connection ping**, bukan sync kota.
+
+- Endpoint `/sync-cities` sekarang test apakah `RAJAONGKIR_PLATFORM_KEY` valid dengan query `search=jakarta&limit=1`
+- **Tidak ada lagi tabel `ref_rajaongkir_cities`** — kota di-search realtime
+- Tampilan di platform settings: ENV key status + tombol "Test Koneksi" (Wifi icon)
 
 ---
 
@@ -406,38 +434,51 @@ Tenant route baru:
 
 ---
 
-## Phase 1 — Scope Implementasi Awal
+## Status Implementasi
 
-Yang dibangun di Phase 1:
+### ✅ Selesai
 
 **Backend:**
-- [ ] Seed `public.ref_rajaongkir_cities` via endpoint sync platform
-- [ ] Kolom `rajaongkir_city_id` + `rajaongkir_city_name` di `mitras`
-- [ ] Kolom `weight_gram` di `products` + `product_variations`
-- [ ] Tabel `invoice_shipping_lines`
-- [ ] Kolom `shipping_total` di `invoices`
-- [ ] `POST /api/ongkir/cost?slug=` — proxy ke RajaOngkir
-- [ ] `GET /api/ongkir/cities?q=` — search kota lokal
+- [x] Kolom `rajaongkir_city_id` + `rajaongkir_city_name` di `mitras`
+- [x] Kolom `weight_gram` di `products` (diisi admin di product form sidebar)
+- [x] Tabel `invoice_shipping_lines` (DDL + Drizzle schema)
+- [x] Kolom `shipping_total` di `invoices`
+- [x] `POST /api/ongkir/cost?slug=` — proxy ke RajaOngkir **v2** (`/calculate/domestic-cost`)
+- [x] `GET /api/ongkir/cities?q=` — search realtime ke RajaOngkir **v2** (bukan lokal DB)
+- [x] `GET /api/platform/rajaongkir/sync-cities` — diubah jadi test connection ping
 
 **Frontend:**
-- [ ] Checkout multi-step: tambah step pilih kurir per seller group
-- [ ] `checkoutAction` update: terima `shippingLines[]`, buat `invoice_shipping_lines`
-- [ ] Mitra profil: section kota asal pengiriman
-- [ ] Mitra pesanan: tampil list + input resi
-- [ ] Admin pesanan detail: section pengiriman per seller
-- [ ] `/settings/addons/rajaongkir`: form konfigurasi
+- [x] Checkout multi-step 3 langkah (data → kota tujuan → kurir per seller group)
+- [x] `checkoutAction` — terima `CheckoutShippingData`, insert `invoice_shipping_lines`, hitung `shippingTotal`
+- [x] Mitra pesanan (`/akun/mitra/pesanan`) — list pesanan + input resi per shipping line
+- [x] `updateShippingTrackingAction` — update resi + status pengiriman
+- [x] Invoice publik — tampilkan breakdown ongkir per seller + tracking number + status badge
+- [x] `/settings/addons/rajaongkir` — form konfigurasi (kota asal + kurir, tanpa api_key)
 
 **Platform:**
-- [ ] Endpoint sync kota RajaOngkir (`/api/platform/rajaongkir/sync-cities`)
-- [ ] UI install add-on di tenant detail
+- [x] Settings platform — status ENV key + tombol "Test Koneksi" (ganti "Sync Kota")
 
-**Yang DITUNDA (Phase 2+):**
+### Perubahan dari Arsitektur Awal (v1 → v2)
+
+| Aspek | Rencana Awal (v1) | Implementasi Aktual (v2) |
+|-------|-------------------|--------------------------|
+| API base URL | `api.rajaongkir.com` | `rajaongkir.komerce.id/api/v1` |
+| API key | Per-tenant di config | Platform-level `RAJAONGKIR_PLATFORM_KEY` ENV |
+| Daftar kota | Tabel `ref_rajaongkir_cities` di DB | Search realtime ke API v2 |
+| Level kota | Kota/kabupaten | Kelurahan (lebih granular) |
+| Format city ID | Integer kode kota | Integer ID kelurahan |
+| Response cost | Nested `results[].costs[].cost[]` | Flat array per service |
+| No results | Return `{data: []}` | Return HTTP 404 — ditangani sebagai empty array |
+| Platform endpoint | "Sync Cities" ke DB | "Test Connection" ping |
+
+### Ditunda (Phase 2+)
 - Tracking status otomatis (polling ke API kurir)
 - Notifikasi WhatsApp ke customer saat resi diinput
 - COD (bayar di tempat)
 - Asuransi pengiriman
 - Return/retur barang
 - Dropship label (print label pengiriman atas nama tenant, bukan mitra)
+- `weight_gram` di `product_variations` (override per variasi)
 
 ---
 

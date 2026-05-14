@@ -478,13 +478,22 @@ updateInvoiceDueDateAction(slug, invoiceId, dueDate)
 cancelInvoiceAction(slug, invoiceId, reason)
 generateInvoicePdfAction(slug, invoiceId)
 
-// Payment confirmation (via invoice layer)
+// Payment — dua jalur (lihat detail di bawah)
 confirmInvoicePaymentAction(slug, invoiceId, paymentData)
-  → insert payments
-  → insert invoice_payments
+  → admin input manual → insert payments (status: 'paid')
   → update invoice.paid_amount
-  → evaluate status (partial | paid)
   → if paid: recordIncome() → jurnal
+
+verifySubmittedPaymentAction(slug, paymentId)
+  → admin verifikasi bukti customer → update payments.status: submitted→paid
+  → update invoice.paid_amount
+  → if paid: recordIncome() → jurnal
+
+// Public — customer submit bukti bayar (tanpa auth)
+submitPaymentProofAction(slug, invoiceId, { method, payerName, payerBank, transferDate, proofUrl?, notes? })
+  → insert payments (status: 'submitted')
+  → insert invoice_payments
+  → update invoice.status → 'waiting_verification'
 
 // Cart (public, tidak butuh auth)
 addToCartAction(cartToken, slug, item)
@@ -496,6 +505,94 @@ clearCartAction(cartToken)
 createInstallmentPlanAction(slug, data)
 toggleInstallmentPlanAction(slug, planId, field: 'is_active' | 'is_published')
 ```
+
+---
+
+## Bukti Transfer (Payment Proof)
+
+### Upload API
+
+```
+POST /api/invoice/proof-upload?tenant={slug}&invoiceId={id}
+Content-Type: multipart/form-data
+body: file (image/jpeg|png|webp|heic, maks 8 MB)
+```
+
+- **Publik** — tidak butuh session/auth; siapapun yang punya `invoiceId` bisa upload
+- Validasi: invoice harus ada, status bukan `paid`/`cancelled`
+- File disimpan ke MinIO bucket `tenant-{slug}` di path `payments/{invoiceId}/{uuid}.{ext}`
+- Response: `{ url: string }` — URL lengkap MinIO
+- **Tidak ada image processing** (tidak buat variant WebP) — foto bukti disimpan as-is
+- Tidak ada record di tabel `media` — URL disimpan langsung di `payments.proof_url`
+
+### Alur Dua Tahap: Customer Submit → Admin Verifikasi
+
+```
+1. Customer klik "Konfirmasi Pembayaran" di /{slug}/invoice/{id}
+   → Isi form: nama pengirim, bank, tanggal, catatan
+   → Upload foto bukti transfer (opsional tapi disarankan)
+   → submitPaymentProofAction() dipanggil
+   → payments.status = "submitted", invoice.status = "waiting_verification"
+
+2. Admin buka /{slug}/finance/billing/invoice/{id}
+   → Lihat section Riwayat Pembayaran
+   → Badge "Menunggu Verifikasi" (biru) + tombol "✓ Verifikasi" hijau
+   → Jika ada proofUrl: tampil thumbnail foto bukti (klik = buka full di tab baru)
+   → Admin klik "✓ Verifikasi" → dialog konfirm
+   → verifySubmittedPaymentAction() dipanggil
+   → payments.status = "paid", invoice.paid_amount += amount
+   → invoice.status = "paid" (jika lunas) atau "partial"
+   → recordIncome() → jurnal double-entry dibuat
+```
+
+### Status Payment
+
+| Status | Artinya | Siapa yang set |
+|--------|---------|----------------|
+| `pending` | Dibuat, belum ada aksi | System saat invoice dibuat |
+| `submitted` | Customer klaim sudah bayar + upload bukti | Customer via submitPaymentProofAction |
+| `paid` | Terverifikasi — uang sudah masuk | Admin via verifySubmittedPaymentAction ATAU confirmInvoicePaymentAction |
+| `rejected` | Admin tolak bukti | Admin (belum ada UI, planned) |
+| `cancelled` | Dibatalkan | System |
+| `refunded` | Dikembalikan via disbursement | System |
+
+### Display di Admin Invoice Detail
+
+Tiap payment di-render dengan:
+- Jumlah, metode, bank, nama a.n., catatan
+- Badge status (warna berbeda per status)
+- Tombol **"✓ Verifikasi"** — hanya tampil jika status `submitted`
+- Thumbnail foto bukti jika `proofUrl` ada
+
+---
+
+## Keputusan Teknis — UUID vs nanoid (Bug Fix)
+
+### Problem
+
+Column `confirmed_by` dan `created_by` di tabel `payments` dan `transactions` bertipe `uuid`.
+Better Auth menyimpan user ID sebagai **nanoid** (26 karakter random), **bukan UUID**.
+
+```
+access.userId        = "1bbNUBnobqznt8AZX7LqiSW92l"   ← nanoid, BUKAN UUID
+access.tenantUser.id = "a3f1c2d4-..."                   ← UUID dari tenant.users table, BENAR
+```
+
+Mengisi kolom `uuid` dengan nanoid → PostgreSQL error: `invalid input syntax for type uuid`.
+
+### Fix
+
+Selalu gunakan `access.tenantUser.id` (UUID dari `tenant.users`) untuk kolom `confirmed_by`, `rejected_by`, `created_by` di tabel finance.
+
+```typescript
+// SALAH — nanoid, bukan UUID
+confirmedBy: access.userId,
+
+// BENAR — UUID dari tenant.users
+confirmedBy: access.tenantUser.id,
+```
+
+**Aturan ini berlaku untuk semua server actions di modul Keuangan dan Billing.**
 
 ---
 
@@ -532,6 +629,9 @@ A: Belum di scope ini. `invoices.discount` kolom sudah ada, implementasi promo c
 - [x] Server Actions: `getCartAction`, `addToCartAction`, `updateCartItemQtyAction`, `removeCartItemAction`, `clearCartAction`, `checkoutAction`, `submitPaymentProofAction`
 - [x] Halaman publik: `/{slug}/keranjang`, `/{slug}/checkout`, `/{slug}/invoice/[id]`
 - [x] Client components: `cart-client.tsx`, `checkout-form.tsx`, `invoice-public-client.tsx`
+- [x] **Bukti Transfer** — upload foto di form konfirmasi publik, API `POST /api/invoice/proof-upload`
+- [x] **Verifikasi Admin** — `verifySubmittedPaymentAction`, tombol "✓ Verifikasi" di invoice detail admin
+- [x] **Display bukti di admin** — thumbnail foto + status badge per payment di riwayat pembayaran
 - [ ] **Cart item type `product`** — tombol "Tambah ke Keranjang" di halaman detail produk ⏸
 - [ ] **Cart item type `ticket`** — tombol "Daftar" di halaman detail event ⏸
 - [ ] **Cart item type `donation`** — tombol "Donasi" di halaman detail campaign ⏸

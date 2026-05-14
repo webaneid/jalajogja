@@ -2269,15 +2269,17 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Add-on Ongkos Kirim Phase 2** (commit setelah `f6ae1ea`).
-- Sesi ini:
-  - **Checkout multi-step**: Step 1 (data pembeli) → Step 2 (kota tujuan + cari kota via `/api/ongkir/cities`) → Step 3 (pilih kurir per seller group)
-  - **`checkoutAction`** diupdate: terima `CheckoutShippingData`, insert `invoice_shipping_lines` per seller, hitung `shippingTotal`
-  - **Mitra Pesanan** (`/akun/mitra/pesanan`): halaman baru — list pesanan masuk mitra + input resi per shipping line
-  - **`updateShippingTrackingAction`**: server action untuk update nomor resi + status pengiriman
-  - **Invoice publik** (`/invoice/[id]`): fetch shipping lines, tampilkan breakdown ongkir per seller + tracking number + status badge
-  - **Security**: API key RajaOngkir **tidak pernah dikirim ke browser** — semua request ke RajaOngkir diproxy via `/api/ongkir/*`
-- Ditunda: V8 (stok check qurban server-side), EventCard+Section, Donasi Rutin (R1–R7), admin billing view untuk shipping.
+- Terakhir dikerjakan: **Billing — Bukti Transfer + Verifikasi Payment** (commit `da822ce`, `bc6d5ae`).
+- Sebelumnya: **RajaOngkir v1 → v2 migration** + **Add-on self-install** + **checkout ongkir** (commit `ac87dc6` dan sebelumnya).
+- Sesi terakhir:
+  - **Bukti Transfer**: API `POST /api/invoice/proof-upload`, field upload foto di form konfirmasi publik, preview + loading state
+  - **Verifikasi Admin**: `verifySubmittedPaymentAction` — verifikasi payment `submitted` → `paid`, update `paid_amount`, jurnal double-entry
+  - **Tombol Verifikasi**: muncul di admin invoice detail (`/finance/billing/invoice/[id]`) di samping payment "Menunggu Verifikasi"
+  - **Bug fix kritis**: `confirmedBy`/`createdBy` di finance harus `access.tenantUser.id` (UUID dari `tenant.users`), bukan `access.userId` (Better Auth nanoid — bukan UUID, crash PostgreSQL)
+  - **RajaOngkir v2**: migrasi total dari v1 (dead) ke v2. API key platform-level di ENV. Cities search realtime (no local table). Response format flat. 404 = empty results.
+  - **Addon self-install**: halaman settings addon didesain ulang — tampil katalog + Install button untuk free addons
+  - **Dokumentasi**: `arsitektur-billing.md` + `arsitektur-addon-ongkir.md` diupdate
+- Ditunda: V8 (stok check qurban server-side), EventCard+Section, Donasi Rutin (R1–R7).
 
 ### Status Halaman Publik
 
@@ -2293,6 +2295,50 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 | Checkout | `/{slug}/checkout` | ✅ Ada |
 | Invoice detail | `/{slug}/invoice/[id]` | ✅ Ada |
 | Subscriptions donasi rutin | `/{slug}/akun/subscriptions` | ⬜ Belum (Phase R) |
+
+### [2026-05] UUID vs nanoid — Bug Kritis di Finance Actions
+
+> **ATURAN: `confirmedBy`, `rejectedBy`, `createdBy` di tabel finance WAJIB `access.tenantUser.id` — bukan `access.userId`**
+
+`access.userId` = `session.user.id` dari Better Auth = **nanoid** (contoh: `"1bbNUBnobqznt8AZX7LqiSW92l"`).
+Column `confirmed_by`/`created_by` di `payments`, `transactions`, `disbursements` = **uuid** PostgreSQL.
+Mengisi uuid column dengan nanoid → `PostgresError: invalid input syntax for type uuid`.
+
+`access.tenantUser.id` = UUID dari tabel `tenant.users` (primaryKey defaultRandom) — ini yang benar.
+
+**Berlaku di semua server actions finance dan billing.** Cek setiap kali ada `confirmedBy`/`createdBy`.
+
+### [2026-05] Bukti Transfer + Verifikasi Dua Tahap
+
+Alur pembayaran invoice punya dua jalur berbeda yang penting dibedakan:
+
+**Jalur 1 — Admin Manual (langsung terkonfirmasi):**
+`confirmInvoicePaymentAction` → buat payment baru, `status: "paid"`, langsung update `paid_amount` + jurnal
+
+**Jalur 2 — Customer Submit + Admin Verify (dua tahap):**
+1. Customer: `submitPaymentProofAction` → buat payment `status: "submitted"`, invoice → `waiting_verification`
+2. Admin: `verifySubmittedPaymentAction(paymentId)` → update payment `submitted → paid`, update `paid_amount`, jurnal
+
+Jangan campur dua jalur ini. `verifySubmittedPaymentAction` menerima `paymentId` (bukan `invoiceId`) karena ia memverifikasi payment yang sudah ada — bukan membuat baru.
+
+**Bukti transfer (`proof_url`):**
+- Upload via `POST /api/invoice/proof-upload?tenant=&invoiceId=` — publik, tidak butuh auth
+- Simpan ke MinIO `payments/{invoiceId}/{uuid}.{ext}` — tidak ada image processing, tidak ada record di `media` table
+- URL disimpan di `payments.proof_url` saat `submitPaymentProofAction` dipanggil
+- Tampil sebagai thumbnail di admin invoice detail (klik = buka full)
+
+### [2026-05] RajaOngkir v1 → v2 Migration
+
+v1 (`api.rajaongkir.com`) mati total. v2 (`rajaongkir.komerce.id/api/v1`) adalah pengganti.
+
+**Perbedaan penting:**
+- v2 tidak ada bulk city list endpoint → pakai search realtime, tidak perlu tabel `ref_rajaongkir_cities`
+- v2 level kota = kelurahan (subdistrict), bukan kota/kabupaten
+- v2 return HTTP 404 (bukan `{data:[]}`) saat pencarian tidak menemukan hasil — WAJIB handle ini di route handler sebagai array kosong, bukan error 502
+- v2 cost endpoint: FormData `POST /calculate/domestic-cost`, courier sebagai colon-separated string (`"jne:tiki"`), response flat (tidak nested)
+- API key sekarang platform-level di ENV `RAJAONGKIR_PLATFORM_KEY` — tidak per-tenant
+
+**Aturan: `cache: "no-store"` di route handler** — jangan pakai `next: { revalidate }` di API Route Handler (itu hanya valid di Server Component fetch). Gunakan `cache: "no-store"` untuk search realtime.
 
 ### [2026-05] Sistem Tema Tenant — CSS Variables + Google Fonts
 
