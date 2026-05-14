@@ -3013,3 +3013,56 @@ Saat registrasi: lookup email/HP di `public.contacts → public.members`. Jika c
 const session = await auth.api.getSession({ headers: await headers() });
 if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
 ```
+
+### [2026-05] Deployment Production — Lessons Learned
+
+**Infrastruktur:**
+- Docker multi-stage (deps → builder → runner). Runner pakai Node.js minimal — tidak ada `bun` di dalamnya.
+- Jalankan migrasi DB dari **VPS host** (bukan dari dalam container): install bun di host, gunakan `DATABASE_URL` dengan `localhost:5432`.
+- Docker Compose baca `.env` bukan `.env.local` — wajib buat symlink: `ln -s .env.local .env`
+- MinIO console (port 9001) dan S3 API (port 9000) adalah dua endpoint berbeda. `minio.jalakarta.com` → port 9000 (S3 API).
+
+**Next.js build di Docker:**
+- Semua API route WAJIB `export const dynamic = "force-dynamic"` di baris pertama.
+  Tanpa ini Next.js mencoba prerender route → koneksi DB saat build time → `ECONNREFUSED`.
+- Folder `apps/web/public/` harus ada (boleh kosong dengan `.gitkeep`) atau Dockerfile COPY gagal.
+- `postcss.config.js` harus CommonJS (`module.exports = {}`), bukan ESM (`export default {}`).
+
+**"use server" constraint:**
+- File `"use server"` hanya boleh export **async function**. Type, konstanta, dan fungsi non-async harus di file terpisah.
+- Pattern fix: ekstrak ke `lib/toko-settings.ts` (tanpa `"use server"`), import dari sana di kedua sisi (server action + API route).
+
+**drizzle-kit `strict: true` — tidak kompatibel non-interaktif:**
+- `strict: true` di `drizzle.config.ts` minta konfirmasi terminal → hang lalu exit code 1 di CI/VPS.
+- Fix produksi: jalankan SQL migration files langsung via psql:
+  ```bash
+  for f in $(ls *.sql | sort); do
+    docker compose exec -T postgres psql -U jalakarta -d jalakarta < "$f"
+  done
+  ```
+
+**Bash gotcha di VPS:**
+- `!` di password dalam double quotes → bash history expansion → error. Selalu pakai **single quotes** untuk nilai yang mengandung `!`.
+- Command panjang yang wrap ke baris baru di terminal → bash parse error karena flag terpisah dari argumennya. Paste sebagai satu baris atau gunakan `\` line continuation.
+
+**`createTenantSchemaInDb` — urutan DDL kritis:**
+- Tabel yang punya FK ke tabel lain HARUS dibuat SETELAH tabel yang direferensikan.
+- Bug ditemukan: `letters` dibuat sebelum `officers` padahal punya `REFERENCES officers(id)` → error saat register tenant pertama.
+- Fix: pindah `divisions` dan `officers` ke sebelum `letters` dalam `create-tenant-schema.ts`.
+- **Aturan**: setiap kali tambah FK baru di DDL tenant, cek ulang apakah tabel yang direferensikan sudah dibuat lebih awal.
+
+**`member_owned_pesantren` — tabel tanpa migration:**
+- Tabel ini ada di Drizzle schema tapi tidak punya migration CREATE TABLE (ditambahkan langsung tanpa `drizzle-kit generate`).
+- Fix produksi: jalankan CREATE TABLE manual via psql, lalu migration 0009 yang pakai `ADD COLUMN IF NOT EXISTS` akan skip gracefully.
+- **Aturan**: setiap tambah tabel baru ke Drizzle schema → SELALU generate migration. Jangan hanya update schema file tanpa migration.
+
+**VPS setup ringkas (untuk referensi deploy ulang):**
+```
+1. git clone → /var/www/jalajogja/
+2. buat .env.local → ln -s .env.local .env
+3. docker compose build --no-cache
+4. docker compose up -d
+5. install bun di host → jalankan migrasi dari packages/db/
+6. setup nginx + certbot
+7. register tenant pertama via /register
+```
