@@ -2272,18 +2272,19 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Arsitektur Direktori Publik** — perencanaan 4 halaman (sesi 2026-05-15).
-- Sebelumnya: **Unifikasi list transaksi donasi + pesanan** (sesi sama) + **RajaOngkir Tracking + Konfirmasi Terima** (2026-05-14).
+- Terakhir dikerjakan: **Direktori Publik — 4 halaman selesai** (sesi 2026-05-15).
+- Sebelumnya: **Arsitektur Direktori Publik** (perencanaan) + **RajaOngkir Tracking + Konfirmasi Terima** (2026-05-14).
 - Sesi terakhir:
-  - **`GET /api/ongkir/track`** — proxy RajaOngkir v2 server-side, API key tidak pernah ke browser.
-  - **`TrackingPanel`** + **"Konfirmasi Sudah Diterima"** di `/akun/transaksi` — lazy-fetch manifest, optimistic update `shipped → delivered`.
-  - **`confirmDeliveryAction`** — verifikasi kepemilikan via `getAkunIdentity`, transisi status + `deliveredAt`.
-  - **Refactor `/donasi/transaksi`** — hapus dua section (admin vs keranjang), ganti satu query `invoice_items WHERE itemType='donation'`. Filter status + search server-side. Hapus `CartDonationsTable` + `TransaksiTable`.
-  - **Refactor `/toko/pesanan`** — hapus section "Pesanan via Keranjang" terpisah, ganti satu query `invoices WHERE sourceType='order' OR id IN (cart dengan shipping)`. Pagination + filter server-side.
-  - **Prinsip yang dikunci**: semua transaksi dari jalur manapun dicatat di `invoices` — tidak pernah dua section terpisah. `TransaksiTable` + `CartDonationsTable` dihapus.
-  - **Arsitektur Direktori Publik** — dokumen `docs/arsitektur-direktori-publik.md` selesai. 4 halaman direncanakan: `/anggota` (list+popup), `/pesantren` + `/pesantren/[id]`, `/usaha` + `/usaha/[id]`, `/statistik`. Aturan visibilitas data dikunci (NIK, birthDate, detail alamat = tidak pernah publik; HP/WA/Email conditional per toggle; hpPimpinan + revenue tidak pernah publik).
+  - **`/api/member-public/[id]`** — API endpoint publik (no auth), scope check via `tenant_memberships`, kontak conditional per `is_*_public`, businesses + pesantren ringkasan.
+  - **`components/anggota/anggota-directory-client.tsx`** — client component render prop, lazy-fetch popup detail, overlay fixed (Escape close), initials fallback avatar.
+  - **`/{slug}/anggota`** — list direktori anggota: grid 2/3/4/6 col, filter provinsi+angkatan+profesi, search ILIKE, pagination 24/page, popup via render prop.
+  - **`/{slug}/pesantren`** — list pesantren: filter kurikulum+kategoriSantri+provinsi, pagination 24/page.
+  - **`/{slug}/pesantren/[id]`** — detail pesantren: stats 4 card, InfoRow, kontak conditional, sosmed, owner.
+  - **`/{slug}/usaha`** — list usaha: filter sektor+kategori+legalitas+provinsi, pagination 24/page.
+  - **`/{slug}/usaha/[id]`** — detail usaha: `renderBody()` untuk deskripsi Tiptap JSON, kontak conditional.
+  - **`/{slug}/statistik`** — statistik: `sql<number>\`count(*)\`` + `sql<string>\`coalesce(sum(...),'0')\``, StatCard + BarList CSS-only, revalidate=300.
+  - TypeScript 0 errors di semua file baru.
 - Ditunda: sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7), WA notif per stage.
-- **Next**: implementasi 4 halaman direktori publik (mulai dari mana ditentukan user).
 
 ### Status Halaman Publik
 
@@ -2299,10 +2300,77 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 | Checkout | `/{slug}/checkout` | ✅ Ada |
 | Invoice detail | `/{slug}/invoice/[id]` | ✅ Ada |
 | Subscriptions donasi rutin | `/{slug}/akun/subscriptions` | ⬜ Belum (Phase R) |
-| **Direktori Anggota** | `/{slug}/anggota` | ⬜ Belum |
-| **Direktori Pesantren** | `/{slug}/pesantren` | ⬜ Belum |
-| **Direktori Usaha** | `/{slug}/usaha` | ⬜ Belum |
-| **Statistik** | `/{slug}/statistik` | ⬜ Belum |
+| **Direktori Anggota** | `/{slug}/anggota` | ✅ Ada |
+| **Direktori Pesantren** | `/{slug}/pesantren` + `/[id]` | ✅ Ada |
+| **Direktori Usaha** | `/{slug}/usaha` + `/[id]` | ✅ Ada |
+| **Statistik** | `/{slug}/statistik` | ✅ Ada |
+
+### [2026-05] Direktori Publik — 4 Halaman Selesai
+
+**Arsitektur lengkap di `docs/arsitektur-direktori-publik.md`.**
+
+**File yang dibuat:**
+```
+app/(public)/[tenant]/anggota/page.tsx             → list + popup (render prop)
+app/(public)/[tenant]/pesantren/page.tsx            → list pesantren
+app/(public)/[tenant]/pesantren/[id]/page.tsx       → detail pesantren
+app/(public)/[tenant]/usaha/page.tsx                → list usaha
+app/(public)/[tenant]/usaha/[id]/page.tsx           → detail usaha
+app/(public)/[tenant]/statistik/page.tsx            → statistik 3 seksi
+app/api/member-public/[id]/route.ts                 → API publik profil anggota
+components/anggota/anggota-directory-client.tsx     → client popup
+```
+
+**Pattern render prop untuk split server/client:**
+Halaman anggota butuh data DB (server) + state popup (client). Solusi: render prop pattern.
+Server page meneruskan server-fetched rows ke client component via children function:
+```tsx
+// Server page
+<AnggotaDirectoryClient slug={slug}>
+  {(onSelect) => rows.map(m => <button onClick={() => onSelect(m.id)}>...</button>)}
+</AnggotaDirectoryClient>
+
+// Client component
+export function AnggotaDirectoryClient({ slug, children }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  return (
+    <>
+      {children(setSelectedId)}
+      {/* popup overlay */}
+    </>
+  );
+}
+```
+Ini mempertahankan server-rendered grid (SEO-friendly) tanpa membuat seluruh halaman jadi client.
+
+**`sql<number>\`count(*)\`` — WAJIB, bukan `count()` dari drizzle-orm:**
+`count()` dari drizzle-orm menyebabkan TypeScript error saat dipakai dengan Promise.all destructuring.
+Gunakan `sql<number>\`count(*)\`` secara konsisten. Return type: `number`.
+Berlaku di semua query count di seluruh aplikasi.
+
+**`sql<string>\`coalesce(sum(...),0)\`` untuk aggregate nullable:**
+`sum()` pada kolom nullable mengembalikan `null` jika semua row null. `coalesce(...,0)` memaksa return 0.
+Return type yang benar: `sql<string>` (PostgreSQL aggregate selalu string) → parse ke `Number()` saat display.
+
+**Scope query direktori: SELALU JOIN `tenant_memberships`:**
+```typescript
+.innerJoin(tenantMemberships, and(
+  eq(tenantMemberships.memberId, members.id),
+  eq(tenantMemberships.tenantId, tenant.id),
+  inArray(tenantMemberships.status, ["active", "alumni"]),
+))
+```
+Direktori publik HANYA tampilkan anggota cabang ini — bukan semua anggota IKPM lintas cabang.
+Tanpa JOIN ini → data bocor lintas tenant.
+
+**`lucide-react` tidak punya `Instagram` dan `Youtube` icon:**
+Versi v0.503 yang dipakai tidak mengeksport social media brand icons.
+Fix: gunakan `Globe` sebagai pengganti universal untuk semua platform sosial media.
+Aturan: jangan import icon yang tidak tersedia, selalu cek dengan `tsc` sebelum commit.
+
+**Statistik — sequential query, bukan Promise.all destructuring:**
+Promise.all dengan destructuring array membuat TypeScript kehilangan inference tipe per-index.
+Sequential await lebih verbose tapi TypeScript tidak error dan kode lebih mudah di-debug.
 
 ### [2026-05] Prinsip Billing Universal — Jangan Pernah Split List per Jalur Masuk
 

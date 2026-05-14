@@ -376,11 +376,13 @@ Keempat halaman ditambahkan ke `nav-menu.ts` dan menu header front-end sebagai s
 
 | Halaman | Status |
 |---------|--------|
-| Direktori Anggota (`/anggota`) | ⬜ Belum |
-| Popup detail anggota | ⬜ Belum |
-| API `/api/member-public/[id]` | ⬜ Belum |
-| Direktori Pesantren (`/pesantren`) | ⬜ Belum |
-| Detail Pesantren (`/pesantren/[id]`) | ⬜ Belum |
-| Direktori Usaha (`/usaha`) | ⬜ Belum |
-| Detail Usaha (`/usaha/[id]`) | ⬜ Belum |
-| Statistik (`/statistik`) | ⬜ Belum |
+| Direktori Anggota (`/anggota`) | ✅ Selesai |
+| Popup detail anggota | ✅ Selesai |
+| API `/api/member-public/[id]` | ✅ Selesai |
+| Direktori Pesantren (`/pesantren`) | ✅ Selesai |
+| Detail Pesantren (`/pesantren/[id]`) | ✅ Selesai |
+| Direktori Usaha (`/usaha`) | ✅ Selesai |
+| Detail Usaha (`/usaha/[id]`) | ✅ Selesai |
+| Statistik (`/statistik`) | ✅ Selesai |
+
+Semua halaman selesai. TypeScript 0 errors. Commit: `feat: direktori publik anggota + pesantren + usaha + statistik`.
