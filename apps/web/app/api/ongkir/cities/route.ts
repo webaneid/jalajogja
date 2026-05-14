@@ -43,18 +43,22 @@ export async function GET(req: NextRequest) {
     const url = `${RAJAONGKIR_BASE}/destination/domestic-destination?search=${encodeURIComponent(q)}&limit=${limit}&offset=0`;
     const res = await fetch(url, {
       headers: { key: apiKey },
-      next:    { revalidate: 3600 }, // cache 1 jam per query
+      cache:   "no-store", // search realtime, jangan cache di route handler
     });
 
-    if (!res.ok) {
-      console.error("[ongkir/cities] RajaOngkir HTTP error:", res.status);
-      return NextResponse.json({ error: "Gagal memuat data kota dari RajaOngkir" }, { status: 502 });
+    const data = await res.json() as {
+      meta: { code: number; message?: string };
+      data: V2Destination[] | null;
+    };
+
+    // RajaOngkir v2 mengembalikan 404 saat tidak ada hasil — bukan error, cukup array kosong
+    if (!res.ok || data.meta.code === 404) {
+      return NextResponse.json({ cities: [] });
     }
 
-    const data = await res.json() as { meta: { code: number }; data: V2Destination[] };
-
     if (data.meta.code !== 200) {
-      return NextResponse.json({ error: "RajaOngkir error" }, { status: 400 });
+      console.error("[ongkir/cities] RajaOngkir error:", data.meta.code, data.meta.message);
+      return NextResponse.json({ error: "RajaOngkir error" }, { status: 502 });
     }
 
     const cities: OngkirCity[] = (data.data ?? []).map(d => ({
