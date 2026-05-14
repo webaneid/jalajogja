@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   confirmInvoicePaymentAction,
   cancelInvoiceAction,
+  verifySubmittedPaymentAction,
   type InvoiceDetail,
 } from "@/app/(dashboard)/[tenant]/finance/billing/actions";
 
@@ -62,6 +63,26 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
   // Cancel state
   const [showCancel,  setShowCancel]    = useState(false);
   const [cancelNote,  setCancelNote]    = useState("");
+
+  // Verifikasi payment submitted
+  const [verifyingId, setVerifyingId]   = useState<string | null>(null);
+
+  function handleVerify(paymentId: string) {
+    if (!confirm("Verifikasi bahwa pembayaran ini sudah diterima?")) return;
+    setError("");
+    setSuccess("");
+    setVerifyingId(paymentId);
+    startTransition(async () => {
+      const res = await verifySubmittedPaymentAction(slug, paymentId);
+      if (res.success) {
+        setSuccess("Pembayaran berhasil diverifikasi.");
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+      setVerifyingId(null);
+    });
+  }
 
   const canPay    = !["paid", "cancelled"].includes(invoice.status) && invoice.remaining > 0;
   const canCancel = !["paid", "cancelled"].includes(invoice.status);
@@ -220,14 +241,28 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                       <p className="text-xs text-muted-foreground italic mt-0.5">{p.payerNote}</p>
                     )}
                   </div>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                    p.status === "confirmed" ? "bg-green-100 text-green-700" :
-                    p.status === "submitted" ? "bg-blue-100 text-blue-700" :
-                    "bg-muted text-muted-foreground"
-                  }`}>
-                    {p.status === "confirmed" ? "Dikonfirmasi" :
-                     p.status === "submitted" ? "Menunggu Verifikasi" : p.status}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {p.status === "submitted" && (
+                      <button
+                        type="button"
+                        onClick={() => handleVerify(p.id)}
+                        disabled={pending || verifyingId === p.id}
+                        className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
+                      >
+                        {verifyingId === p.id ? "Memverifikasi..." : "✓ Verifikasi"}
+                      </button>
+                    )}
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      p.status === "paid"      ? "bg-green-100 text-green-700" :
+                      p.status === "submitted" ? "bg-blue-100 text-blue-700" :
+                      p.status === "rejected"  ? "bg-red-100 text-red-700" :
+                      "bg-muted text-muted-foreground"
+                    }`}>
+                      {p.status === "paid"      ? "Dikonfirmasi" :
+                       p.status === "submitted" ? "Menunggu Verifikasi" :
+                       p.status === "rejected"  ? "Ditolak" : p.status}
+                    </span>
+                  </div>
                 </div>
                 {p.proofUrl && (
                   <a

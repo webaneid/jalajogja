@@ -315,6 +315,109 @@ export async function confirmInvoicePaymentAction(
   }
 }
 
+// ─── verifySubmittedPaymentAction ────────────────────────────────────────────
+// Admin verifikasi payment yang di-submit customer → status confirmed, update paid_amount invoice
+
+export async function verifySubmittedPaymentAction(
+  slug:      string,
+  paymentId: string,
+): Promise<ActionResult<void>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  // Fetch payment + invoice dalam satu query
+  const [payment] = await db
+    .select()
+    .from(schema.payments)
+    .where(eq(schema.payments.id, paymentId))
+    .limit(1);
+
+  if (!payment)                         return { success: false, error: "Pembayaran tidak ditemukan." };
+  if (payment.status === "paid")        return { success: false, error: "Pembayaran sudah diverifikasi." };
+  if (payment.status !== "submitted")   return { success: false, error: "Pembayaran belum di-submit customer." };
+  if (payment.sourceType !== "invoice") return { success: false, error: "Bukan pembayaran invoice." };
+  if (!payment.sourceId)                return { success: false, error: "Invoice tidak ditemukan." };
+
+  const [inv] = await db
+    .select()
+    .from(schema.invoices)
+    .where(eq(schema.invoices.id, payment.sourceId))
+    .limit(1);
+
+  if (!inv)                    return { success: false, error: "Invoice tidak ditemukan." };
+  if (inv.status === "paid")   return { success: false, error: "Invoice sudah lunas." };
+  if (inv.status === "cancelled") return { success: false, error: "Invoice sudah dibatalkan." };
+
+  const payAmount  = parseFloat(String(payment.amount));
+  const paidSoFar  = parseFloat(String(inv.paidAmount));
+  const total      = parseFloat(String(inv.total));
+  const newPaid    = paidSoFar + payAmount;
+  const newStatus  = newPaid >= total ? "paid" : "partial";
+
+  // Resolve akun untuk jurnal
+  const { resolveAccountMappingsForBilling } = await import("../actions");
+  const { cashAccountId, incomeAccountId } = await resolveAccountMappingsForBilling(
+    tenantDb, payment.method as "cash" | "transfer" | "qris", "manual",
+  );
+
+  if (!cashAccountId || !incomeAccountId) {
+    return {
+      success: false,
+      error: "Konfigurasi mapping akun belum lengkap. Atur di menu Akun → Pengaturan Mapping.",
+    };
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      // Konfirmasi payment
+      await tx
+        .update(schema.payments)
+        .set({
+          status:      "paid",
+          confirmedBy: access.userId,
+          confirmedAt: new Date(),
+          updatedAt:   new Date(),
+        })
+        .where(eq(schema.payments.id, paymentId));
+
+      // Update invoice paid_amount + status
+      await tx
+        .update(schema.invoices)
+        .set({
+          paidAmount: newPaid.toFixed(2),
+          status:     newStatus,
+          updatedAt:  new Date(),
+        })
+        .where(eq(schema.invoices.id, inv.id));
+
+      // Jurnal double-entry saat lunas
+      if (newStatus === "paid") {
+        const txNum = await generateFinancialNumber(tenantDb, "journal");
+        await recordIncome(tenantDb, {
+          date:            new Date().toISOString().slice(0, 10),
+          description:     `Pelunasan invoice ${inv.invoiceNumber}`,
+          referenceNumber: txNum,
+          createdBy:       access.userId,
+          amount:          total,
+          cashAccountId,
+          incomeAccountId,
+        });
+      }
+    });
+
+    revalidateBilling(slug);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[verifySubmittedPaymentAction]", err);
+    return { success: false, error: "Gagal memverifikasi pembayaran." };
+  }
+}
+
 // ─── getInvoiceListAction ─────────────────────────────────────────────────────
 
 export type InvoiceListItem = {
