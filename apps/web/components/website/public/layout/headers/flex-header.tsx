@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, Menu, X, ChevronDown, User, LogOut, Newspaper, LayoutDashboard } from "lucide-react";
+import { Search, Menu, X, ChevronDown, User, LogOut, Link2, LayoutDashboard } from "lucide-react";
 import { authClient, signOut } from "@/lib/auth-client";
-import { type NavItem, resolveNavHref, NAV_TYPE_ICONS } from "@/lib/nav-menu";
+import { type NavItem, resolveNavHref } from "@/lib/nav-menu";
 import type { HeaderProps } from "@/lib/header-designs";
 import { CartButton } from "@/components/website/public/layout/cart-button";
 import { checkDashboardAccessAction, getAkunAvatarAction } from "@/app/(public)/[tenant]/actions";
@@ -27,8 +27,7 @@ function BottomNav({
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border">
         <div className="flex items-center justify-around h-14">
           {main.map((item) => {
-            const href = resolveNavHref(item, tenantSlug);
-            const Icon = NAV_TYPE_ICONS[item.type] ?? Newspaper;
+            const href = resolveNavHref(item);
             return (
               <a
                 key={item.id}
@@ -37,7 +36,7 @@ function BottomNav({
                 rel={item.external ? "noopener noreferrer" : undefined}
                 className="flex flex-col items-center gap-0.5 px-3 py-1 text-muted-foreground hover:text-foreground transition-colors"
               >
-                <Icon className="h-5 w-5" />
+                <Link2 className="h-5 w-5" />
                 <span className="text-[10px] leading-tight truncate max-w-[52px] text-center">
                   {item.label}
                 </span>
@@ -78,8 +77,7 @@ function BottomNav({
             </div>
             <nav className="px-4 py-2 space-y-0.5 max-h-80 overflow-y-auto">
               {extra.map((item) => {
-                const href = resolveNavHref(item, tenantSlug);
-                const Icon = NAV_TYPE_ICONS[item.type] ?? Newspaper;
+                const href = resolveNavHref(item);
                 return (
                   <a
                     key={item.id}
@@ -89,7 +87,7 @@ function BottomNav({
                     onClick={() => setDrawerOpen(false)}
                     className="flex items-center gap-3 px-2 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-lg transition-colors"
                   >
-                    <Icon className="h-4 w-4 shrink-0" />
+                    <Link2 className="h-4 w-4 shrink-0" />
                     {item.label}
                   </a>
                 );
@@ -351,7 +349,7 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
             <div className="max-w-7xl mx-auto px-4">
               <nav className="flex items-center gap-0.5 h-10">
                 {navMenu.map((item) => {
-                  const href  = resolveNavHref(item, tenantSlug);
+                  const href  = resolveNavHref(item);
                   const isExt = item.external ?? false;
                   return (
                     <a

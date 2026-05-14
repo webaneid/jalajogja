@@ -29,10 +29,9 @@ import { GripVertical, PlusIcon, Trash2, Check } from "lucide-react";
 import {
   type NavItem,
   type NavMenu,
-  NAV_ITEM_TYPES,
-  NAV_ITEM_TYPE_LABELS,
   createNavItem,
 } from "@/lib/nav-menu";
+import { PublicLinkPicker } from "@/components/ui/public-link-picker";
 import {
   HEADER_DESIGN_IDS, HEADER_DESIGN_LABELS, HEADER_DESIGNS, type HeaderDesignId,
 } from "@/lib/header-designs";
@@ -50,12 +49,12 @@ type PageOption = { slug: string; title: string };
 
 function NavItemRow({
   item,
-  pages,
+  slug,
   onUpdate,
   onDelete,
 }: {
   item:     NavItem;
-  pages:    PageOption[];
+  slug:     string;
   onUpdate: (item: NavItem) => void;
   onDelete: () => void;
 }) {
@@ -89,19 +88,6 @@ function NavItemRow({
           className="h-8 text-xs flex-1"
         />
 
-        <Select value={item.type} onValueChange={(v) => u({ type: v as NavItem["type"] })}>
-          <SelectTrigger className="h-8 text-xs w-36 shrink-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {NAV_ITEM_TYPES.map((t) => (
-              <SelectItem key={t} value={t} className="text-xs">
-                {NAV_ITEM_TYPE_LABELS[t]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
         <Button
           type="button"
           variant="ghost"
@@ -113,43 +99,22 @@ function NavItemRow({
         </Button>
       </div>
 
-      {item.type === "page" && (
-        <div className="pl-6">
-          <Select
-            value={item.pageSlug ?? ""}
-            onValueChange={(v) => u({ pageSlug: v })}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Pilih halaman..." />
-            </SelectTrigger>
-            <SelectContent>
-              {pages.map((p) => (
-                <SelectItem key={p.slug} value={p.slug} className="text-xs">
-                  {p.title} <span className="text-muted-foreground ml-1">/{p.slug}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      {item.type === "custom" && (
-        <div className="pl-6 space-y-1.5">
-          <Input
-            value={item.href ?? ""}
-            onChange={(e) => u({ href: e.target.value })}
-            placeholder="https://... atau /path"
-            className="h-8 text-xs"
+      <div className="pl-6 space-y-1.5">
+        <PublicLinkPicker
+          slug={slug}
+          value={item.href}
+          onChange={(url) => u({ href: url })}
+          placeholder="Pilih halaman atau ketik URL..."
+          className="text-xs"
+        />
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={item.external ?? false}
+            onCheckedChange={(v: boolean) => u({ external: v })}
           />
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={item.external ?? false}
-              onCheckedChange={(v: boolean) => u({ external: v })}
-            />
-            <span className="text-xs text-muted-foreground">Buka di tab baru</span>
-          </div>
+          <span className="text-xs text-muted-foreground">Buka di tab baru</span>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -324,7 +289,7 @@ export function WebsiteSettingsClient({
                 <NavItemRow
                   key={item.id}
                   item={item}
-                  pages={pages}
+                  slug={slug}
                   onUpdate={(updated) => updateItem(item.id, updated)}
                   onDelete={() => deleteItem(item.id)}
                 />

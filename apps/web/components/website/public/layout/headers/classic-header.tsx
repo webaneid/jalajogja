@@ -36,7 +36,7 @@ export function ClassicHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryC
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-1">
             {navMenu.map((item: NavItem) => {
-              const href  = resolveNavHref(item, tenantSlug);
+              const href  = resolveNavHref(item);
               const isExt = item.external ?? false;
               return (
                 <a
@@ -69,7 +69,7 @@ export function ClassicHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryC
         <div className="md:hidden border-t border-border bg-white">
           <nav className="px-4 py-3 space-y-0.5">
             {navMenu.map((item: NavItem) => {
-              const href  = resolveNavHref(item, tenantSlug);
+              const href  = resolveNavHref(item);
               const isExt = item.external ?? false;
               return (
                 <a

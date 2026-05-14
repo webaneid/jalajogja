@@ -166,7 +166,7 @@ export function DarkFooter({
                 {col1.map((item: NavItem) => (
                   <a
                     key={item.id}
-                    href={resolveNavHref(item, tenantSlug)}
+                    href={resolveNavHref(item)}
                     target={item.external ? "_blank" : undefined}
                     rel={item.external ? "noopener noreferrer" : undefined}
                     className="text-sm text-gray-400 hover:text-white transition-colors"
@@ -177,7 +177,7 @@ export function DarkFooter({
                 {col2.map((item: NavItem) => (
                   <a
                     key={item.id}
-                    href={resolveNavHref(item, tenantSlug)}
+                    href={resolveNavHref(item)}
                     target={item.external ? "_blank" : undefined}
                     rel={item.external ? "noopener noreferrer" : undefined}
                     className="text-sm text-gray-400 hover:text-white transition-colors"

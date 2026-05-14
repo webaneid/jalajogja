@@ -44,7 +44,7 @@ export default async function PublicLayout({
   const secondaryColor = (displaySettings.secondary_color   as string | undefined) ?? "#64748b";
   const bodyFont       = (displaySettings.font              as string | undefined) ?? "Inter";
   const headingFont    = (displaySettings.heading_font      as string | undefined) ?? "Inter";
-  const navMenu        = parseNavMenu(websiteSettings.nav_menu);
+  const navMenu        = parseNavMenu(websiteSettings.nav_menu, slug);
   const headerDesign   = (displaySettings.header_design     as string | undefined) ?? "flex";
   const footerDesign   = (displaySettings.footer_design     as string | undefined) ?? "dark";
 

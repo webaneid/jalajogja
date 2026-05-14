@@ -1,68 +1,60 @@
 // ─── Nav Menu Types — dipakai admin settings + PublicHeader ──────────────────
-import { FileText, Newspaper, Calendar, ShoppingBag, Heart, Link2 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-
-export const NAV_ITEM_TYPES = [
-  "page", "post", "event", "toko", "donasi", "custom",
-] as const;
-
-export type NavItemType = typeof NAV_ITEM_TYPES[number];
-
-export const NAV_ITEM_TYPE_LABELS: Record<NavItemType, string> = {
-  page:   "Halaman",
-  post:   "Postingan / Berita",
-  event:  "Event",
-  toko:   "Toko",
-  donasi: "Donasi / Infaq",
-  custom: "URL Kustom",
-};
 
 export type NavItem = {
   id:        string;
   label:     string;
-  type:      NavItemType;
-  pageSlug?: string;   // dipakai jika type === "page"
-  href?:     string;   // dipakai jika type === "custom"
-  external?: boolean;  // buka di tab baru
+  href:      string;       // URL penuh: "/ikpm/post", "/{slug}/{pageSlug}", dll
+  external?: boolean;      // buka di tab baru
   order:     number;
 };
 
 export type NavMenu = NavItem[];
 
-// Resolve URL publik dari sebuah nav item
-export function resolveNavHref(item: NavItem, tenantSlug: string): string {
-  switch (item.type) {
-    case "page":   return `/${tenantSlug}/${item.pageSlug ?? ""}`;
-    case "post":   return `/${tenantSlug}/post`;
-    case "event":  return `/${tenantSlug}/agenda`;
-    case "toko":   return `/${tenantSlug}/produk`;
-    case "donasi": return `/${tenantSlug}/campaign`;
-    case "custom": return item.href ?? "#";
-    default:       return "#";
-  }
+// Kembalikan href nav item — simpel karena sudah disimpan sebagai URL
+export function resolveNavHref(item: NavItem): string {
+  return item.href || "#";
 }
 
-export function parseNavMenu(value: unknown): NavMenu {
-  if (!Array.isArray(value)) return [];
-  return (value as NavItem[]).filter(
-    (item) => item && typeof item === "object" && item.id && item.label && item.type
-  );
-}
-
-export const NAV_TYPE_ICONS: Record<NavItemType, LucideIcon> = {
-  page:   FileText,
-  post:   Newspaper,
-  event:  Calendar,
-  toko:   ShoppingBag,
-  donasi: Heart,
-  custom: Link2,
-};
-
+// Buat item baru dengan default kosong
 export function createNavItem(): NavItem {
   return {
     id:    Math.random().toString(36).slice(2, 9),
     label: "",
-    type:  "page",
+    href:  "",
     order: 0,
   };
+}
+
+// Parse + migrasi dari DB (handle format lama berbasis type)
+export function parseNavMenu(value: unknown, tenantSlug?: string): NavMenu {
+  if (!Array.isArray(value)) return [];
+
+  return (value as Record<string, unknown>[]).flatMap((item) => {
+    if (!item || typeof item !== "object" || !item["id"] || !item["label"]) return [];
+
+    const id       = String(item["id"]);
+    const label    = String(item["label"]);
+    const external = Boolean(item["external"] ?? false);
+    const order    = Number(item["order"] ?? 0);
+
+    // Format baru: sudah punya href
+    if (item["href"] && typeof item["href"] === "string") {
+      return [{ id, label, href: item["href"], external, order }];
+    }
+
+    // Format lama: punya type → resolve ke href
+    const slug = tenantSlug ?? "";
+    let href = "#";
+    switch (item["type"]) {
+      case "page":   href = `/${slug}/${String(item["pageSlug"] ?? "")}`; break;
+      case "post":   href = `/${slug}/post`;                               break;
+      case "event":  href = `/${slug}/agenda`;                             break;
+      case "toko":   href = `/${slug}/produk`;                             break;
+      case "donasi": href = `/${slug}/campaign`;                           break;
+      case "custom":
+        href = typeof item["href"] === "string" ? item["href"] : "#";
+        break;
+    }
+    return [{ id, label, href, external, order }];
+  });
 }
