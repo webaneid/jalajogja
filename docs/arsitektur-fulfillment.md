@@ -132,41 +132,40 @@ API: `apps/web/app/api/akun/transaksi/route.ts`
 - Tombol "Konfirmasi Terima" di sisi pelanggan
 - Link tracking kurir external (Tokopedia/Shopee style)
 
-### Rencana: RajaOngkir Tracking (belum diimplementasi)
+### RajaOngkir Tracking ✅ SELESAI
 
-**Endpoint RajaOngkir v2:** `POST https://rajaongkir.komerce.id/api/v1/track/waybill`
+**Endpoint:** `GET /api/ongkir/track?waybill={resi}&courier={courier}&slug={tenant}`
 
-```
-Headers: key: {RAJAONGKIR_PLATFORM_KEY}
-Body: { waybill: "{resi}", courier: "{courier_code}" }
-Response: { status, summary, manifest[] }
-```
+File: `apps/web/app/api/ongkir/track/route.ts`
 
-**Implementasi rencana:**
-- Route handler: `GET /api/ongkir/track?waybill={resi}&courier={courier}` — proxy server-side
-- Dipanggil dari halaman publik `/akun/transaksi` atau halaman invoice publik
-- Cache hasil 10 menit (Next.js `fetch` dengan `revalidate: 600`)
-- Tampilkan: status terkini + manifest riwayat pengiriman
+**Implementasi:**
+- Proxy server-side ke RajaOngkir v2 `POST /track/waybill`
+- `RAJAONGKIR_PLATFORM_KEY` — **tidak pernah dikirim ke browser**
+- RajaOngkir 404 (resi belum terdaftar) → `status: "unknown"` bukan error 502
+- Manifest di-reverse agar terbaru di atas
+- `TrackingPanel` client component: lazy-fetch on-click, panel expandable + riwayat
 
-**Aturan keamanan:**
-- `RAJAONGKIR_PLATFORM_KEY` TIDAK PERNAH dikirim ke browser
-- Semua request ke RajaOngkir via proxy server-side
-- Rate limit per IP di route handler (belum diimplementasi)
-
-**Format response untuk pelanggan:**
+**Format response:**
 ```typescript
 type TrackingResult = {
-  status:    "pending" | "in_transit" | "delivered" | "problem";
-  summary:   string;           // "Paket dalam perjalanan"
-  lastUpdate: string;          // ISO timestamp
-  history:   {
-    date:        string;
-    time:        string;
-    description: string;
-    city:        string;
-  }[];
+  status:     "pending" | "in_transit" | "delivered" | "problem" | "unknown";
+  summary:    string;
+  lastUpdate: string | null;
+  history:    { date: string; time: string; description: string; city: string }[];
 };
 ```
+
+### Konfirmasi Terima ✅ SELESAI
+
+`confirmDeliveryAction(slug, invoiceId, shippingLineId)` di `app/(public)/[tenant]/actions.ts`:
+- Verifikasi session → `getAkunIdentity()` → `whereInvoice` clause
+- Verifikasi invoice milik akun yang login
+- Verifikasi `shippingLine.status === "shipped"` (sudah dikirim)
+- UPDATE `status = "delivered"`, `deliveredAt = NOW()`
+- `revalidatePath(/${slug}/akun/transaksi)`
+
+UI: tombol "Konfirmasi Sudah Diterima" (hijau) muncul hanya saat status `shipped`.
+Optimistic update via `useState(order.shippingLines)` + `handleDelivered` tanpa reload.
 
 ---
 
@@ -233,7 +232,8 @@ Admin verifikasi → Invoice paid
                   │  Pelanggan: /akun/transaksi                         │
                   │  - Lihat status: Menunggu / Dikirim / Diterima      │
                   │  - Lihat resi + nama kurir                          │
-                  │  - Tracking detail via RajaOngkir (rencana)         │
+                  │  - "Lacak Kiriman" → manifest RajaOngkir (SELESAI)  │
+                  │  - "Konfirmasi Terima" saat status shipped (SELESAI) │
                   └─────────────────────────────────────────────────────┘
 ```
 
@@ -249,8 +249,8 @@ Admin verifikasi → Invoice paid
 | `FulfillmentCard` + Timeline UI | ✅ SELESAI |
 | Link pesanan list → fulfillment page | ✅ SELESAI |
 | Tracking pelanggan di `/akun/transaksi` (status + resi) | ✅ SELESAI |
-| Status `processing` + `packed` di UI pelanggan | ⬜ BELUM |
-| Tombol "Konfirmasi Terima" di sisi pelanggan | ⬜ BELUM |
-| RajaOngkir tracking proxy (`/api/ongkir/track`) | ⬜ BELUM |
+| Status `processing` + `packed` di UI pelanggan | ✅ SELESAI |
+| Tombol "Konfirmasi Terima" di sisi pelanggan | ✅ SELESAI |
+| RajaOngkir tracking proxy (`/api/ongkir/track`) | ✅ SELESAI |
 | Notifikasi WhatsApp per stage | ⬜ BELUM |
 | Rate limit tracker API | ⬜ BELUM |

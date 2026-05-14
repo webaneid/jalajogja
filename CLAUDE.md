@@ -2272,16 +2272,16 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Donasi Tracking Lengkap** (sesi 2026-05-14).
-- Sebelumnya: **Billing Phase 4 — Fulfillment 5-stage** (sesi sama) + **Bukti Transfer + Verifikasi** + **RajaOngkir v2** + **checkout ongkir**.
+- Terakhir dikerjakan: **RajaOngkir Tracking + Konfirmasi Terima Pelanggan** (sesi 2026-05-14).
+- Sebelumnya: **Donasi Tracking Lengkap** (sesi sama) + **Billing Phase 4 — Fulfillment 5-stage** + **Bukti Transfer + Verifikasi** + **RajaOngkir v2** + **checkout ongkir**.
 - Sesi terakhir:
-  - **`collectedAmount` sync cart-based donations**: `confirmInvoicePaymentAction` + `verifySubmittedPaymentAction` di `billing/actions.ts` — setelah invoice paid, update `campaigns.collected_amount` untuk setiap donation item via `sql\`collected_amount + ${amt}\``
-  - **Campaign detail page** — 4-box financial summary: Terkumpul / Target / Disalurkan / Sisa Titipan. Menghitung dari dua jalur: donasi langsung (`payments`) + donasi keranjang (`invoice_items WHERE itemType='donation'`). Tambah section "Donasi via Keranjang" + "Riwayat Penyaluran" (dari `disbursements WHERE purposeType='donation_payout'`)
-  - **Admin `/donasi/transaksi`** — dua section: Donasi Langsung (sistem lama) + Donasi via Keranjang (`CartDonationsTable` baru)
-  - **`CartDonationsTable`** component baru di `components/donasi/cart-donations-table.tsx` — search + link ke invoice billing
-  - **`/akun/transaksi`** — ikon Heart (pink) untuk item donasi, ikon Ticket (violet) untuk tiket, Package untuk produk
-  - **`docs/arsitektur-donasi.md`** — ditambah Section 13a (dual-system tracking, 4-box summary, disbursement, format) + status tabel diperbarui
-- Ditunda: sertifikat PDF donasi, V8 (stok check), EventCard+Section, Donasi Rutin (R1–R7), RajaOngkir tracking, WA notif per stage.
+  - **Donasi tracking** — `collectedAmount` sync cart-based donations di `confirmInvoicePaymentAction` + `verifySubmittedPaymentAction`. Campaign detail 4-box summary (Terkumpul/Target/Disalurkan/Sisa). Admin `/donasi/transaksi` dua section (lama + keranjang). `CartDonationsTable` component baru.
+  - **`GET /api/ongkir/track`** — proxy RajaOngkir v2, `RAJAONGKIR_PLATFORM_KEY` server-only. Handle 404 sebagai `status: "unknown"`. `TrackingResult` type: status/summary/lastUpdate/history[].
+  - **`TrackingPanel`** component di `/akun/transaksi` — "Lacak Kiriman" button, lazy-fetch on-click, manifest history expandable.
+  - **`confirmDeliveryAction`** di `app/(public)/[tenant]/actions.ts` — verifikasi kepemilikan invoice via `getAkunIdentity`, transisi `shipped → delivered + deliveredAt`.
+  - **Tombol "Konfirmasi Sudah Diterima"** — muncul saat status = shipped, optimistic update via useState.
+  - **`docs/arsitektur-fulfillment.md`** — update Section 5 + status tabel (tracking + konfirmasi terima: ✅ SELESAI).
+- Ditunda: sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7), WA notif per stage.
 
 ### Status Halaman Publik
 
