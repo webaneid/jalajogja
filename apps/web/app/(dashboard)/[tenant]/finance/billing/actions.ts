@@ -109,7 +109,7 @@ export async function createInvoiceAction(
         status:        "pending",
         dueDate,
         notes:         data.notes?.trim() ?? null,
-        createdBy:     access.userId,
+        createdBy:     access.tenantUser.id,
       })
       .returning({ id: schema.invoices.id });
 
@@ -267,7 +267,7 @@ export async function confirmInvoicePaymentAction(
           payerName:    inv.customerName,
           payerBank:    data.payerBank?.trim() ?? null,
           payerNote:    data.notes?.trim() ?? null,
-          confirmedBy:  access.userId,
+          confirmedBy:  access.tenantUser.id,
           confirmedAt:  new Date(),
           submittedAt:  new Date(),
         })
@@ -297,7 +297,7 @@ export async function confirmInvoicePaymentAction(
           date:            new Date().toISOString().slice(0, 10),
           description:     `Pelunasan invoice ${inv.invoiceNumber}`,
           referenceNumber: txNum,
-          createdBy:       access.userId,
+          createdBy:       access.tenantUser.id,
           amount:          total,
           cashAccountId,
           incomeAccountId,
@@ -379,7 +379,7 @@ export async function verifySubmittedPaymentAction(
         .update(schema.payments)
         .set({
           status:      "paid",
-          confirmedBy: access.userId,
+          confirmedBy: access.tenantUser.id,
           confirmedAt: new Date(),
           updatedAt:   new Date(),
         })
@@ -402,7 +402,7 @@ export async function verifySubmittedPaymentAction(
           date:            new Date().toISOString().slice(0, 10),
           description:     `Pelunasan invoice ${inv.invoiceNumber}`,
           referenceNumber: txNum,
-          createdBy:       access.userId,
+          createdBy:       access.tenantUser.id,
           amount:          total,
           cashAccountId,
           incomeAccountId,
