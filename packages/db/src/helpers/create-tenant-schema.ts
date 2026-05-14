@@ -1218,7 +1218,7 @@ export async function createTenantSchemaInDb(
     // FK events.linked_campaign_id → campaigns.id (kedua tabel sudah dibuat)
     await tx.execute(sql.raw(`
       ALTER TABLE "${s}".events
-        ADD CONSTRAINT IF NOT EXISTS events_linked_campaign_id_fk
+        ADD CONSTRAINT events_linked_campaign_id_fk
         FOREIGN KEY (linked_campaign_id) REFERENCES "${s}".campaigns(id) ON DELETE SET NULL
     `));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_document_versions_document_id ON "${s}".document_versions(document_id)`));
