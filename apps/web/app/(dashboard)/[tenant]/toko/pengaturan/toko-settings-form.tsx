@@ -5,7 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { saveTokoSettingsAction, type TokoSettings } from "./actions";
+import { saveTokoSettingsAction } from "./actions";
+import type { TokoSettings } from "@/lib/toko-settings";
 
 type Props = {
   slug:            string;

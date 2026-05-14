@@ -1,6 +1,6 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
-import { getTokoSettings } from "./actions";
+import { getTokoSettings } from "@/lib/toko-settings";
 import { TokoSettingsForm } from "./toko-settings-form";
 
 export default async function TokoSettingsPage({

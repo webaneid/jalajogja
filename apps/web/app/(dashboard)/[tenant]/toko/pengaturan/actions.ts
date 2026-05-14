@@ -4,10 +4,7 @@ import { createTenantDb, upsertSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { canManageUsers } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
-import { TokoSettings, DEFAULT_TOKO_SETTINGS, getTokoSettings } from "@/lib/toko-settings";
-
-export type { TokoSettings };
-export { DEFAULT_TOKO_SETTINGS, getTokoSettings };
+import type { TokoSettings } from "@/lib/toko-settings";
 
 type ActionResult = { error?: string };
 
