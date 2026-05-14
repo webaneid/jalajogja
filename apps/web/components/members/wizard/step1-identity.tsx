@@ -317,6 +317,14 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    if (Number(graduationYear) === 1999 && !graduationPeriod) {
+      setError("Angkatan 1999 wajib memilih periode: Awal atau Akhir.")
+      return
+    }
+    if (!waliSantri) {
+      setError("Status wali santri wajib dipilih.")
+      return
+    }
     setError(null)
     setLoading(true)
 
@@ -527,7 +535,7 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
 
         {/* Wali Santri */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-foreground">Wali Santri</label>
+          <label className="text-sm font-medium text-foreground">Wali Santri <span className="text-destructive">*</span></label>
           <select
             value={waliSantri}
             onChange={e => setWaliSantri(e.target.value as typeof waliSantri)}

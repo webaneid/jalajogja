@@ -2,7 +2,7 @@ import { notFound }   from "next/navigation";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import {
   db, members, tenants, tenantMemberships,
-  addresses, refProvinces, refProfessions,
+  addresses, refRegencies, refProfessions,
   memberBusinesses, memberOwnedPesantren,
 } from "@jalajogja/db";
 import type { Metadata } from "next";
@@ -111,24 +111,34 @@ export default async function StatistikPage({ params }: { params: Params }) {
     .groupBy(members.gender)
     .orderBy(sql`count(*) desc`);
 
-  // Provinsi domisili (top 10)
-  const provinsiRows = await db
-    .select({ province: refProvinces.name, total: sql<number>`count(*)` })
+  // Kabupaten domisili (top 10)
+  const kabupatenAnggotaRows = await db
+    .select({ regency: refRegencies.name, total: sql<number>`count(*)` })
     .from(members)
     .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, members.id), scopeClause))
     .leftJoin(addresses,    eq(addresses.id,    members.homeAddressId))
-    .leftJoin(refProvinces, eq(refProvinces.id, addresses.provinceId))
-    .groupBy(refProvinces.name)
+    .leftJoin(refRegencies, eq(refRegencies.id, addresses.regencyId))
+    .where(sql`${refRegencies.id} IS NOT NULL`)
+    .groupBy(refRegencies.name)
     .orderBy(sql`count(*) desc`)
     .limit(10);
 
-  // Angkatan (top 10)
+  // Status domisili
+  const domisiliRows = await db
+    .select({ status: members.domicileStatus, total: sql<number>`count(*)` })
+    .from(members)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, members.id), scopeClause))
+    .where(sql`${members.domicileStatus} IS NOT NULL`)
+    .groupBy(members.domicileStatus)
+    .orderBy(sql`count(*) desc`);
+
+  // Angkatan (top 10) — group by year + period agar 1999 Awal/Akhir terpisah
   const angkatanRows = await db
-    .select({ year: members.graduationYear, total: sql<number>`count(*)` })
+    .select({ year: members.graduationYear, period: members.graduationPeriod, total: sql<number>`count(*)` })
     .from(members)
     .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, members.id), scopeClause))
     .where(sql`${members.graduationYear} IS NOT NULL`)
-    .groupBy(members.graduationYear)
+    .groupBy(members.graduationYear, members.graduationPeriod)
     .orderBy(sql`count(*) desc`)
     .limit(10);
 
@@ -139,6 +149,15 @@ export default async function StatistikPage({ params }: { params: Params }) {
     .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, members.id), scopeClause))
     .innerJoin(refProfessions, eq(refProfessions.id, members.professionId))
     .groupBy(refProfessions.category)
+    .orderBy(sql`count(*) desc`);
+
+  // Wali santri
+  const waliSantriRows = await db
+    .select({ wali: members.waliSantri, total: sql<number>`count(*)` })
+    .from(members)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, members.id), scopeClause))
+    .where(sql`${members.waliSantri} IS NOT NULL`)
+    .groupBy(members.waliSantri)
     .orderBy(sql`count(*) desc`);
 
   // Punya usaha
@@ -194,6 +213,22 @@ export default async function StatistikPage({ params }: { params: Params }) {
     .groupBy(memberOwnedPesantren.kategoriSantri)
     .orderBy(sql`count(*) desc`);
 
+  const modelPendidikanRows = await db
+    .select({ model: memberOwnedPesantren.modelPendidikan, total: sql<number>`count(*)` })
+    .from(memberOwnedPesantren)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberOwnedPesantren.memberId), scopeClause))
+    .where(sql`${memberOwnedPesantren.modelPendidikan} IS NOT NULL`)
+    .groupBy(memberOwnedPesantren.modelPendidikan)
+    .orderBy(sql`count(*) desc`);
+
+  const jenisPondokRows = await db
+    .select({ jenis: memberOwnedPesantren.jenisPondok, total: sql<number>`count(*)` })
+    .from(memberOwnedPesantren)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberOwnedPesantren.memberId), scopeClause))
+    .where(sql`${memberOwnedPesantren.jenisPondok} IS NOT NULL`)
+    .groupBy(memberOwnedPesantren.jenisPondok)
+    .orderBy(sql`count(*) desc`);
+
   // ── Stats Usaha ────────────────────────────────────────────────────────────
 
   const totalUsahaRows = await db
@@ -228,9 +263,46 @@ export default async function StatistikPage({ params }: { params: Params }) {
     .groupBy(memberBusinesses.legality)
     .orderBy(sql`count(*) desc`);
 
+  const karyawanRows = await db
+    .select({ employees: memberBusinesses.employees, total: sql<number>`count(*)` })
+    .from(memberBusinesses)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberBusinesses.memberId), scopeClause))
+    .where(and(eq(memberBusinesses.isActive, true), sql`${memberBusinesses.employees} IS NOT NULL`))
+    .groupBy(memberBusinesses.employees)
+    .orderBy(sql`count(*) desc`);
+
+  const cabangUsahaRows = await db
+    .select({ branches: memberBusinesses.branches, total: sql<number>`count(*)` })
+    .from(memberBusinesses)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberBusinesses.memberId), scopeClause))
+    .where(and(eq(memberBusinesses.isActive, true), sql`${memberBusinesses.branches} IS NOT NULL`))
+    .groupBy(memberBusinesses.branches)
+    .orderBy(sql`count(*) desc`);
+
+  const kabupatenUsahaRows = await db
+    .select({ regency: refRegencies.name, total: sql<number>`count(*)` })
+    .from(memberBusinesses)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberBusinesses.memberId), scopeClause))
+    .leftJoin(addresses,    eq(addresses.id,    memberBusinesses.addressId))
+    .leftJoin(refRegencies, eq(refRegencies.id, addresses.regencyId))
+    .where(and(eq(memberBusinesses.isActive, true), sql`${refRegencies.id} IS NOT NULL`))
+    .groupBy(refRegencies.name)
+    .orderBy(sql`count(*) desc`)
+    .limit(10);
+
   // ── Format helpers ─────────────────────────────────────────────────────────
 
   const genderLabel: Record<string, string> = { male: "Laki-laki", female: "Perempuan" };
+  const waliSantriLabel: Record<string, string> = {
+    gontor:  "Wali Santri PM Gontor",
+    alumni:  "Wali Santri PM Alumni Gontor",
+    lain:    "Wali Santri Pesantren Lain",
+    bukan:   "Bukan Wali Santri",
+  };
+  const domisiliLabel: Record<string, string> = {
+    permanent: "Domisili Tetap",
+    temporary: "Domisili Sementara / Perantau",
+  };
 
   return (
     <div className="py-10">
@@ -275,16 +347,37 @@ export default async function StatistikPage({ params }: { params: Params }) {
               />
             </div>
             <div className="rounded-xl border border-border p-5 space-y-4">
-              <p className="text-sm font-semibold">Top 10 Provinsi Domisili</p>
+              <p className="text-sm font-semibold">Wali Santri</p>
               <BarList
-                items={provinsiRows.map(r => ({ label: r.province ?? "Tidak diketahui", value: Number(r.total) }))}
+                items={waliSantriRows.map(r => ({ label: waliSantriLabel[r.wali ?? ""] ?? (r.wali ?? "Tidak diketahui"), value: Number(r.total) }))}
+                total={totalAnggota}
+              />
+            </div>
+            <div className="rounded-xl border border-border p-5 space-y-4">
+              <p className="text-sm font-semibold">Status Domisili</p>
+              <BarList
+                items={domisiliRows.map(r => ({ label: domisiliLabel[r.status ?? ""] ?? (r.status ?? "Tidak diketahui"), value: Number(r.total) }))}
+                total={totalAnggota}
+              />
+            </div>
+            <div className="rounded-xl border border-border p-5 space-y-4">
+              <p className="text-sm font-semibold">Top 10 Kabupaten / Kota Domisili</p>
+              <BarList
+                items={kabupatenAnggotaRows.map(r => ({ label: r.regency ?? "Tidak diketahui", value: Number(r.total) }))}
                 total={totalAnggota}
               />
             </div>
             <div className="rounded-xl border border-border p-5 space-y-4">
               <p className="text-sm font-semibold">Top 10 Angkatan</p>
               <BarList
-                items={angkatanRows.map(r => ({ label: r.year ? String(r.year) : "Tidak diketahui", value: Number(r.total) }))}
+                items={angkatanRows.map(r => {
+                  const base = r.year ? String(r.year) : "Tidak diketahui";
+                  let label = base;
+                  if (r.year === 1999) {
+                    label = r.period === "awal" ? "1999 (Awal)" : r.period === "akhir" ? "1999 (Akhir)" : "1999 (Belum ditentukan)";
+                  }
+                  return { label, value: Number(r.total) };
+                })}
                 total={totalAnggota}
               />
             </div>
@@ -321,6 +414,20 @@ export default async function StatistikPage({ params }: { params: Params }) {
                 total={totalPesantren}
               />
             </div>
+            <div className="rounded-xl border border-border p-5 space-y-4">
+              <p className="text-sm font-semibold">Model Pendidikan</p>
+              <BarList
+                items={modelPendidikanRows.map(r => ({ label: r.model ?? "Tidak diketahui", value: Number(r.total) }))}
+                total={totalPesantren}
+              />
+            </div>
+            <div className="rounded-xl border border-border p-5 space-y-4">
+              <p className="text-sm font-semibold">Jenis Pondok</p>
+              <BarList
+                items={jenisPondokRows.map(r => ({ label: r.jenis ?? "Tidak diketahui", value: Number(r.total) }))}
+                total={totalPesantren}
+              />
+            </div>
           </div>
         </section>
 
@@ -353,6 +460,27 @@ export default async function StatistikPage({ params }: { params: Params }) {
               <p className="text-sm font-semibold">Distribusi Legalitas</p>
               <BarList
                 items={legalitasRows.map(r => ({ label: r.legality ?? "Tidak diketahui", value: Number(r.total) }))}
+                total={totalUsaha}
+              />
+            </div>
+            <div className="rounded-xl border border-border p-5 space-y-4">
+              <p className="text-sm font-semibold">Jumlah Karyawan</p>
+              <BarList
+                items={karyawanRows.map(r => ({ label: r.employees ?? "Tidak diketahui", value: Number(r.total) }))}
+                total={totalUsaha}
+              />
+            </div>
+            <div className="rounded-xl border border-border p-5 space-y-4">
+              <p className="text-sm font-semibold">Jumlah Cabang Usaha</p>
+              <BarList
+                items={cabangUsahaRows.map(r => ({ label: r.branches ?? "Tidak diketahui", value: Number(r.total) }))}
+                total={totalUsaha}
+              />
+            </div>
+            <div className="rounded-xl border border-border p-5 space-y-4">
+              <p className="text-sm font-semibold">Top 10 Kabupaten / Kota</p>
+              <BarList
+                items={kabupatenUsahaRows.map(r => ({ label: r.regency ?? "Tidak diketahui", value: Number(r.total) }))}
                 total={totalUsaha}
               />
             </div>

@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs
+**/.next
+**/dist
+**/.turbo
+
+# Environment files (jangan pernah masuk image)
+.env
+.env.local
+.env.*.local
+
+# Dev tools
+**/.git
+**/.gitignore
+**/README.md
+**/CLAUDE.md
+**/docs
+
+# Logs
+**/*.log
+**/npm-debug.log*
+
+# OS
+.DS_Store
+**/.DS_Store

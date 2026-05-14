@@ -419,7 +419,9 @@ export default function LengkapiPage() {
     if (!gender)          { setError("Jenis kelamin wajib dipilih."); return; }
     if (!birthDate)       { setError("Tanggal lahir wajib diisi."); return; }
     if (!graduationYear)  { setError("Tahun lulus KMI wajib diisi."); return; }
+    if (Number(graduationYear) === 1999 && !graduationPeriod) { setError("Angkatan 1999 wajib memilih periode: Awal atau Akhir."); return; }
     if (!professionId)    { setError("Profesi wajib dipilih."); return; }
+    if (!waliSantri)      { setError("Status wali santri wajib dipilih."); return; }
     setSaving(true); setError(null);
     try {
       const res = await fetch("/api/akun/member-data", {
@@ -708,7 +710,7 @@ export default function LengkapiPage() {
 
             {/* Wali Santri */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Apakah Anda Wali Santri?</label>
+              <label className="text-sm font-medium">Apakah Anda Wali Santri? <span className="text-destructive">*</span></label>
               <select
                 value={waliSantri}
                 onChange={e => setWaliSantri(e.target.value as typeof waliSantri)}
@@ -726,7 +728,7 @@ export default function LengkapiPage() {
           <div className="flex justify-end pt-4">
             <button
               onClick={saveStep1}
-              disabled={saving || !name.trim() || !gender || !birthDate || !graduationYear || !professionId}
+              disabled={saving || !name.trim() || !gender || !birthDate || !graduationYear || (Number(graduationYear) === 1999 && !graduationPeriod) || !professionId || !waliSantri}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

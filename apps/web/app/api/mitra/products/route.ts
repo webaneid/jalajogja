@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and, desc } from "drizzle-orm";
 import { db, members, createTenantDb } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
-import { getTokoSettings } from "@/app/(dashboard)/[tenant]/toko/pengaturan/actions";
+import { getTokoSettings } from "@/lib/toko-settings";
 import type { ProductImage } from "@/app/(dashboard)/[tenant]/toko/actions";
 
 async function getMitraFromSession(req: NextRequest, slug: string) {

@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { db, members, createTenantDb } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
-import { getTokoSettings } from "@/app/(dashboard)/[tenant]/toko/pengaturan/actions";
+import { getTokoSettings } from "@/lib/toko-settings";
 import type { ProductImage } from "@/app/(dashboard)/[tenant]/toko/actions";
 
 async function getMitraProduct(req: NextRequest, slug: string, productId: string) {

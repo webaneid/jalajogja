@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { db, members, memberBusinesses, tenantMemberships, createTenantDb } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
-import { getTokoSettings } from "@/app/(dashboard)/[tenant]/toko/pengaturan/actions";
+import { getTokoSettings } from "@/lib/toko-settings";
 
 export async function GET(req: NextRequest) {
   const slug = req.nextUrl.searchParams.get("slug");

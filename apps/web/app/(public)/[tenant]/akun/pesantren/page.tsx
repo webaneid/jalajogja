@@ -450,13 +450,13 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
             placeholder="Nama pesantren" />
         </Field>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Berdiri Sejak" optional>
+          <Field label="Berdiri Sejak">
             <input className={inputCls} type="number" min={1800} max={new Date().getFullYear()}
               value={entry.tahunBerdiri} disabled={disabled}
               onChange={e => onUpdate({ tahunBerdiri: e.target.value })}
               placeholder="1985" />
           </Field>
-          <Field label="Luas Area" optional>
+          <Field label="Luas Area">
             <input className={inputCls} value={entry.luasArea} disabled={disabled}
               onChange={e => onUpdate({ luasArea: e.target.value })}
               placeholder="2 hektar" />
@@ -468,7 +468,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
       <div className="space-y-4">
         <p className="text-sm font-semibold text-muted-foreground">Pimpinan</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Nama Pimpinan" optional>
+          <Field label="Nama Pimpinan">
             <input className={inputCls} value={entry.namaPimpinan} disabled={disabled}
               onChange={e => onUpdate({ namaPimpinan: e.target.value })}
               placeholder="KH. Ahmad Fauzi" />
@@ -484,22 +484,22 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
       <div className="space-y-4">
         <p className="text-sm font-semibold text-muted-foreground">Klasifikasi</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Kurikulum Pendidikan" optional>
+          <Field label="Kurikulum Pendidikan">
             <Combobox options={KURIKULUM_OPTS} value={entry.kurikulum}
               onValueChange={v => onUpdate({ kurikulum: v as string })}
               placeholder="Pilih kurikulum" />
           </Field>
-          <Field label="Jenis Pondok" optional>
+          <Field label="Jenis Pondok">
             <Combobox options={JENIS_PONDOK_OPTS} value={entry.jenisPondok}
               onValueChange={v => onUpdate({ jenisPondok: v as string })}
               placeholder="Pilih jenis pondok" />
           </Field>
-          <Field label="Model Pendidikan" optional>
+          <Field label="Model Pendidikan">
             <Combobox options={MODEL_OPTS} value={entry.modelPendidikan}
               onValueChange={v => onUpdate({ modelPendidikan: v as string })}
               placeholder="Pilih model pendidikan" />
           </Field>
-          <Field label="Kategori Santri" optional>
+          <Field label="Kategori Santri">
             <Combobox options={KATEGORI_SANTRI_OPTS} value={entry.kategoriSantri}
               onValueChange={v => onUpdate({ kategoriSantri: v as string })}
               placeholder="Pilih kategori santri" />
@@ -549,7 +549,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
         <p className="text-sm font-semibold text-muted-foreground">Kontak Pesantren</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <PhoneInput label="Telepon" value={entry.phone} optional disabled={disabled}
+            <PhoneInput label="Telepon" value={entry.phone} disabled={disabled}
               onChange={v => onUpdate({ phone: v, ...(entry._sameAsPhone && { whatsapp: v }) })} />
             <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
               <input type="checkbox" checked={entry.isPhonePublic}
@@ -559,7 +559,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
             </label>
           </div>
           <div className="space-y-1.5">
-            <PhoneInput label="WhatsApp" optional
+            <PhoneInput label="WhatsApp"
               value={entry._sameAsPhone ? entry.phone : entry.whatsapp}
               onChange={v => { if (!entry._sameAsPhone) onUpdate({ whatsapp: v }); }}
               disabled={entry._sameAsPhone} />
@@ -711,7 +711,17 @@ export default function PesantrenPage() {
 
   async function saveEditing() {
     if (!editingEntry) return;
-    if (!t(editingEntry.name)) { setError("Nama pesantren wajib diisi."); return; }
+    if (!t(editingEntry.name))             { setError("Nama pesantren wajib diisi."); return; }
+    if (!t(editingEntry.tahunBerdiri))     { setError("Berdiri sejak (tahun) wajib diisi."); return; }
+    if (!t(editingEntry.luasArea))         { setError("Luas area wajib diisi."); return; }
+    if (!t(editingEntry.namaPimpinan))     { setError("Nama pimpinan wajib diisi."); return; }
+    if (!editingEntry.kurikulum)           { setError("Kurikulum pendidikan wajib dipilih."); return; }
+    if (!editingEntry.jenisPondok)         { setError("Jenis pondok wajib dipilih."); return; }
+    if (!editingEntry.modelPendidikan)     { setError("Model pendidikan wajib dipilih."); return; }
+    if (!editingEntry.kategoriSantri)      { setError("Kategori santri wajib dipilih."); return; }
+    if (!t(editingEntry.phone))            { setError("Nomor telepon wajib diisi."); return; }
+    const waOk = editingEntry._sameAsPhone ? !!t(editingEntry.phone) : !!t(editingEntry.whatsapp);
+    if (!waOk)                             { setError("Nomor WhatsApp wajib diisi."); return; }
     setError(null);
     setSaving(true);
     const updated = entries.map(en => en._key === editingEntry._key ? editingEntry : en);

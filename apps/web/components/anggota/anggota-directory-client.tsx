@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
+import Link  from "next/link";
 import {
   X, Loader2, Phone, MessageCircle, Mail, MapPin,
-  Globe, Briefcase, School,
+  Globe, Briefcase, School, Users, ChevronRight,
 } from "lucide-react";
-import Image from "next/image";
 
 const GENDER_LABEL: Record<string, string> = {
   male:   "Laki-laki",
@@ -13,8 +14,22 @@ const GENDER_LABEL: Record<string, string> = {
 };
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
-  active: { label: "Aktif",  cls: "bg-green-100 text-green-700" },
-  alumni: { label: "Alumni", cls: "bg-blue-100 text-blue-700"  },
+  active: { label: "Aktif",  cls: "bg-green-100 text-green-700 border-green-200"  },
+  alumni: { label: "Alumni", cls: "bg-blue-100  text-blue-700  border-blue-200"   },
+};
+
+export type MemberRow = {
+  id:               string;
+  name:             string;
+  photoUrl:         string | null;
+  gender:           string | null;
+  graduationYear:   number | null;
+  graduationPeriod: string | null;
+  memberStatus:     string;
+  professionName:   string | null;
+  professionCategory: string | null;
+  domicileProvince: string | null;
+  domicileRegency:  string | null;
 };
 
 type MemberDetail = {
@@ -43,17 +58,18 @@ type MemberDetail = {
 
 type Props = {
   slug:      string;
-  children:  (onSelect: (id: string) => void) => React.ReactNode;
+  rows:      MemberRow[];
+  hasFilter: boolean;
 };
 
-function Avatar({ name, photoUrl, size = 64 }: { name: string; photoUrl?: string | null; size?: number }) {
+function Avatar({ name, photoUrl, size = 36 }: { name: string; photoUrl?: string | null; size?: number }) {
   const initials = name.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase();
   if (photoUrl) {
     return (
       <Image
         src={photoUrl} alt={name}
         width={size} height={size}
-        className="rounded-full object-cover"
+        className="rounded-full object-cover shrink-0"
         style={{ width: size, height: size }}
         unoptimized
       />
@@ -62,14 +78,23 @@ function Avatar({ name, photoUrl, size = 64 }: { name: string; photoUrl?: string
   return (
     <div
       className="rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0"
-      style={{ width: size, height: size, fontSize: size * 0.35 }}
+      style={{ width: size, height: size, fontSize: size * 0.38 }}
     >
       {initials}
     </div>
   );
 }
 
-export function AnggotaDirectoryClient({ slug, children }: Props) {
+function StatusBadge({ status }: { status: string }) {
+  const s = STATUS_LABEL[status] ?? { label: status, cls: "bg-muted text-muted-foreground border-border" };
+  return (
+    <span className={`inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full border ${s.cls}`}>
+      {s.label}
+    </span>
+  );
+}
+
+export function AnggotaDirectoryClient({ slug, rows, hasFilter }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail,     setDetail]     = useState<MemberDetail | null>(null);
   const [loading,    setLoading]    = useState(false);
@@ -99,20 +124,138 @@ export function AnggotaDirectoryClient({ slug, children }: Props) {
       .finally(() => setLoading(false));
   }, [selectedId, slug]);
 
-  // Close on Escape
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") handleClose(); }
     if (selectedId) document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [selectedId, handleClose]);
 
-  const statusBadge = detail ? (STATUS_LABEL[detail.membershipStatus] ?? { label: detail.membershipStatus, cls: "bg-muted text-muted-foreground" }) : null;
+  const statusBadge = detail
+    ? (STATUS_LABEL[detail.membershipStatus] ?? { label: detail.membershipStatus, cls: "bg-muted text-muted-foreground border-border" })
+    : null;
+
+  // ── Empty state ───────────────────────────────────────────────────────────
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <Users className="h-12 w-12 text-muted-foreground/30 mb-3" />
+        <p className="text-muted-foreground">
+          {hasFilter ? "Tidak ada anggota yang cocok dengan filter." : "Belum ada anggota terdaftar."}
+        </p>
+        {hasFilter && (
+          <Link href={`/${slug}/anggota`} className="mt-3 text-sm text-primary hover:underline">
+            Tampilkan semua
+          </Link>
+        )}
+      </div>
+    );
+  }
 
   return (
     <>
-      {children(handleSelect)}
+      {/* ── DESKTOP: tabel ─────────────────────────────────────────────────── */}
+      <div className="hidden md:block rounded-xl border border-border overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-muted/50 border-b border-border text-left text-xs text-muted-foreground uppercase tracking-wide">
+              <th className="px-4 py-3 font-semibold w-[260px]">Nama</th>
+              <th className="px-4 py-3 font-semibold w-[90px]">Angkatan</th>
+              <th className="px-4 py-3 font-semibold">Profesi</th>
+              <th className="px-4 py-3 font-semibold">Domisili</th>
+              <th className="px-4 py-3 font-semibold w-[80px]">Status</th>
+              <th className="px-4 py-3 w-[40px]" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((m, i) => (
+              <tr
+                key={m.id}
+                onClick={() => handleSelect(m.id)}
+                className={`group cursor-pointer hover:bg-muted/40 transition-colors ${i !== rows.length - 1 ? "border-b border-border" : ""}`}
+              >
+                {/* Nama + avatar */}
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={m.name} photoUrl={m.photoUrl} size={34} />
+                    <span className="font-medium leading-snug line-clamp-1 group-hover:text-primary transition-colors">
+                      {m.name}
+                    </span>
+                  </div>
+                </td>
+                {/* Angkatan */}
+                <td className="px-4 py-3 text-muted-foreground">
+                  {m.graduationYear
+                    ? <>{m.graduationYear}{m.graduationPeriod ? <span className="text-xs"> ({m.graduationPeriod})</span> : null}</>
+                    : <span className="text-muted-foreground/40">—</span>
+                  }
+                </td>
+                {/* Profesi */}
+                <td className="px-4 py-3 text-muted-foreground">
+                  <span className="line-clamp-1">
+                    {m.professionName ?? <span className="text-muted-foreground/40">—</span>}
+                  </span>
+                </td>
+                {/* Domisili */}
+                <td className="px-4 py-3 text-muted-foreground">
+                  {m.domicileRegency || m.domicileProvince
+                    ? <span className="line-clamp-1">{[m.domicileRegency, m.domicileProvince].filter(Boolean).join(", ")}</span>
+                    : <span className="text-muted-foreground/40">—</span>
+                  }
+                </td>
+                {/* Status */}
+                <td className="px-4 py-3">
+                  <StatusBadge status={m.memberStatus} />
+                </td>
+                {/* Action */}
+                <td className="px-3 py-3 text-right">
+                  <ChevronRight size={15} className="text-muted-foreground/40 group-hover:text-primary transition-colors inline" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      {/* Popup Overlay */}
+      {/* ── MOBILE: card list ──────────────────────────────────────────────── */}
+      <div className="md:hidden space-y-2">
+        {rows.map(m => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => handleSelect(m.id)}
+            className="w-full text-left flex items-center gap-3 rounded-xl border border-border px-4 py-3 hover:bg-muted/40 hover:border-primary/30 transition-all group"
+          >
+            <Avatar name={m.name} photoUrl={m.photoUrl} size={44} />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm leading-snug group-hover:text-primary transition-colors line-clamp-1">
+                {m.name}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                {m.professionName && (
+                  <span className="text-xs text-muted-foreground line-clamp-1">{m.professionName}</span>
+                )}
+                {m.professionName && m.domicileProvince && (
+                  <span className="text-muted-foreground/30 text-xs">·</span>
+                )}
+                {m.domicileProvince && (
+                  <span className="text-xs text-muted-foreground">{m.domicileProvince}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <StatusBadge status={m.memberStatus} />
+                {m.graduationYear && (
+                  <span className="text-xs text-muted-foreground/60">
+                    {m.graduationYear}{m.graduationPeriod ? ` (${m.graduationPeriod})` : ""}
+                  </span>
+                )}
+              </div>
+            </div>
+            <ChevronRight size={16} className="text-muted-foreground/40 shrink-0 group-hover:text-primary transition-colors" />
+          </button>
+        ))}
+      </div>
+
+      {/* ── Popup detail ───────────────────────────────────────────────────── */}
       {selectedId && (
         <div
           className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
@@ -122,7 +265,6 @@ export function AnggotaDirectoryClient({ slug, children }: Props) {
             className="bg-background rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
-            {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-border">
               <h2 className="text-base font-semibold">Detail Anggota</h2>
               <button onClick={handleClose} className="text-muted-foreground hover:text-foreground p-1 rounded">
@@ -140,7 +282,6 @@ export function AnggotaDirectoryClient({ slug, children }: Props) {
 
               {detail && !loading && (
                 <div className="space-y-5">
-                  {/* Identity */}
                   <div className="flex items-start gap-4">
                     <Avatar name={detail.name} photoUrl={detail.photoUrl} size={72} />
                     <div className="flex-1 min-w-0">
@@ -150,7 +291,7 @@ export function AnggotaDirectoryClient({ slug, children }: Props) {
                       )}
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {statusBadge && (
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusBadge.cls}`}>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${statusBadge.cls}`}>
                             {statusBadge.label}
                           </span>
                         )}
@@ -169,7 +310,6 @@ export function AnggotaDirectoryClient({ slug, children }: Props) {
                     </div>
                   </div>
 
-                  {/* Info singkat */}
                   <div className="grid grid-cols-1 gap-2 text-sm">
                     {detail.domicileProvince && (
                       <div className="flex items-start gap-2 text-muted-foreground">
@@ -194,7 +334,6 @@ export function AnggotaDirectoryClient({ slug, children }: Props) {
                     )}
                   </div>
 
-                  {/* Kontak (kondisional) */}
                   {(detail.phone || detail.whatsapp || detail.email) && (
                     <div className="rounded-lg border border-border p-3 space-y-2">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Kontak</p>
@@ -221,7 +360,6 @@ export function AnggotaDirectoryClient({ slug, children }: Props) {
                     </div>
                   )}
 
-                  {/* Social Media */}
                   {Object.keys(detail.socials).length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {detail.socials.instagram && (
@@ -269,7 +407,6 @@ export function AnggotaDirectoryClient({ slug, children }: Props) {
                     </div>
                   )}
 
-                  {/* Usaha */}
                   {detail.businesses.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
@@ -286,7 +423,6 @@ export function AnggotaDirectoryClient({ slug, children }: Props) {
                     </div>
                   )}
 
-                  {/* Pesantren */}
                   {detail.pesantrenList.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">

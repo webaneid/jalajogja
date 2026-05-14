@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { db, members, memberBusinesses, createTenantDb } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
-import { getTokoSettings } from "@/app/(dashboard)/[tenant]/toko/pengaturan/actions";
+import { getTokoSettings } from "@/lib/toko-settings";
 
 async function getSessionMember(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
