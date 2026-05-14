@@ -441,10 +441,15 @@ export type InvoiceDetail = {
     total:       number;
   }[];
   payments: {
-    id:          string;
-    amount:      number;
-    method:      string;
-    createdAt:   string;
+    id:        string;
+    amount:    number;
+    method:    string;
+    status:    string;
+    payerName: string | null;
+    payerBank: string | null;
+    payerNote: string | null;
+    proofUrl:  string | null;
+    createdAt: string;
   }[];
 };
 
@@ -477,6 +482,11 @@ export async function getInvoiceDetailAction(
         id:        schema.payments.id,
         amount:    schema.invoicePayments.amount,
         method:    schema.payments.method,
+        status:    schema.payments.status,
+        payerName: schema.payments.payerName,
+        payerBank: schema.payments.payerBank,
+        payerNote: schema.payments.payerNote,
+        proofUrl:  schema.payments.proofUrl,
         createdAt: schema.payments.createdAt,
       })
       .from(schema.invoicePayments)
@@ -520,6 +530,11 @@ export async function getInvoiceDetailAction(
         id:        p.id,
         amount:    parseFloat(String(p.amount)),
         method:    p.method,
+        status:    p.status,
+        payerName: p.payerName ?? null,
+        payerBank: p.payerBank ?? null,
+        payerNote: p.payerNote ?? null,
+        proofUrl:  p.proofUrl ?? null,
         createdAt: p.createdAt.toISOString(),
       })),
     },

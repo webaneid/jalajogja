@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition, useEffect, useCallback } from "react";
-import { Check, Copy, Download } from "lucide-react";
+import { useState, useTransition, useEffect, useCallback, useRef } from "react";
+import { Check, Copy, Download, ImagePlus, X, Loader2 } from "lucide-react";
 import { submitPaymentProofAction } from "@/app/(public)/[tenant]/cart/actions";
 
 export type BankAccountPublic = {
@@ -336,7 +336,47 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
   const [transferDate, setTransferDate] = useState("");
   const [payNotes,     setPayNotes]     = useState("");
 
+  const [proofUrl,       setProofUrl]       = useState<string | null>(null);
+  const [proofPreview,   setProofPreview]   = useState<string | null>(null);
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [uploadError,    setUploadError]    = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const canPay = ["pending", "partial", "overdue"].includes(invoice.status);
+
+  async function handleProofFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError("");
+    setProofUrl(null);
+    setProofPreview(URL.createObjectURL(file));
+    setUploadingProof(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res  = await fetch(`/api/invoice/proof-upload?tenant=${slug}&invoiceId=${invoice.id}`, {
+        method: "POST", body: fd,
+      });
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        setUploadError(data.error ?? "Gagal upload bukti.");
+        setProofPreview(null);
+      } else {
+        setProofUrl(data.url);
+      }
+    } catch {
+      setUploadError("Gagal upload bukti.");
+      setProofPreview(null);
+    }
+    setUploadingProof(false);
+  }
+
+  function clearProof() {
+    setProofUrl(null);
+    setProofPreview(null);
+    setUploadError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   function handleSubmitProof(e: React.FormEvent) {
     e.preventDefault();
@@ -347,6 +387,7 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
         payerName:    payerName,
         payerBank:    payerBank.trim() || undefined,
         transferDate: transferDate || undefined,
+        proofUrl:     proofUrl ?? undefined,
         notes:        payNotes.trim() || undefined,
       });
       if (res.success) {
@@ -612,9 +653,66 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
             />
           </div>
 
+          {/* ── Bukti Transfer ── */}
+          <div>
+            <label className={labelCls}>
+              Bukti Transfer / Screenshot
+              <span className="ml-1 text-muted-foreground text-xs">(opsional tapi disarankan)</span>
+            </label>
+
+            {!proofPreview ? (
+              <label className="flex flex-col items-center gap-2 rounded-md border-2 border-dashed border-border px-4 py-6 text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground cursor-pointer transition-colors">
+                <ImagePlus size={24} />
+                <span>Klik untuk pilih foto</span>
+                <span className="text-xs">JPG, PNG, WebP · Maks. 8 MB</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                  onChange={handleProofFileChange}
+                  className="hidden"
+                />
+              </label>
+            ) : (
+              <div className="relative rounded-md overflow-hidden border border-border">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={proofPreview}
+                  alt="Bukti transfer"
+                  className="w-full max-h-64 object-contain bg-muted/20"
+                />
+                {uploadingProof && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/70">
+                    <Loader2 size={28} className="animate-spin text-primary" />
+                  </div>
+                )}
+                {!uploadingProof && (
+                  <button
+                    type="button"
+                    onClick={clearProof}
+                    className="absolute top-2 right-2 rounded-full bg-background/80 p-1 text-muted-foreground hover:text-destructive border border-border"
+                    title="Hapus foto"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+                {proofUrl && !uploadingProof && (
+                  <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs text-white">
+                    <Check size={12} />
+                    Terupload
+                  </div>
+                )}
+              </div>
+            )}
+
+            {uploadError && (
+              <p className="mt-1 text-xs text-destructive">{uploadError}</p>
+            )}
+          </div>
+
           <button
             type="submit"
-            disabled={pending}
+            disabled={pending || uploadingProof}
             className="rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
             {pending ? "Mengirim..." : "Kirim Konfirmasi"}

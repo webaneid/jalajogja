@@ -206,12 +206,44 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
           <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide text-xs">Riwayat Pembayaran</p>
           <div className="rounded-lg border border-border divide-y divide-border">
             {invoice.payments.map((p) => (
-              <div key={p.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                <div>
-                  <p className="font-medium">{formatRp(p.amount)}</p>
-                  <p className="text-xs text-muted-foreground">{METHOD_LABELS[p.method] ?? p.method} · {formatDate(p.createdAt)}</p>
+              <div key={p.id} className="px-4 py-3 text-sm space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{formatRp(p.amount)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {METHOD_LABELS[p.method] ?? p.method}
+                      {p.payerBank && ` · ${p.payerBank}`}
+                      {p.payerName && ` · a.n. ${p.payerName}`}
+                      {" · "}{formatDate(p.createdAt)}
+                    </p>
+                    {p.payerNote && (
+                      <p className="text-xs text-muted-foreground italic mt-0.5">{p.payerNote}</p>
+                    )}
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    p.status === "confirmed" ? "bg-green-100 text-green-700" :
+                    p.status === "submitted" ? "bg-blue-100 text-blue-700" :
+                    "bg-muted text-muted-foreground"
+                  }`}>
+                    {p.status === "confirmed" ? "Dikonfirmasi" :
+                     p.status === "submitted" ? "Menunggu Verifikasi" : p.status}
+                  </span>
                 </div>
-                <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">Dikonfirmasi</span>
+                {p.proofUrl && (
+                  <a
+                    href={p.proofUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.proofUrl}
+                      alt="Bukti transfer"
+                      className="max-h-48 rounded-md border border-border object-contain bg-muted/20 hover:opacity-90 transition-opacity cursor-zoom-in"
+                    />
+                  </a>
+                )}
               </div>
             ))}
           </div>
