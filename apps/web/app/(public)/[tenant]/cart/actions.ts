@@ -1,12 +1,13 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { eq, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, resolveIdentity } from "@jalajogja/db";
 import { createTenantDb, generateFinancialNumber } from "@jalajogja/db";
 import { tenants } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
+import { auth } from "@/lib/auth";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -367,7 +368,9 @@ export async function checkoutAction(
 
     // ── Lookup identitas via resolveIdentity ─────────────────────────────────
     // Urutan: session login → public.profiles → public.members → guest
+    const session = await auth.api.getSession({ headers: await headers() });
     const identity = await resolveIdentity(db, {
+      betterAuthUserId: session?.user?.id ?? null,
       phone: normalizePhone(customer.phone),
       email: customer.email?.trim() || null,
     });
