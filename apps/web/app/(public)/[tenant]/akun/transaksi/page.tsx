@@ -2,49 +2,178 @@
 
 import { useState, useEffect } from "react";
 import { use }                 from "react";
-import { Loader2, Receipt }    from "lucide-react";
+import { Loader2, Package, Truck, CheckCircle2, Clock, ExternalLink } from "lucide-react";
+import Link from "next/link";
 
 type Params = Promise<{ tenant: string }>;
 
-type Invoice = {
-  id:         string;
-  number:     string | null;
-  sourceType: string;
-  total:      number;
-  status:     string;
-  createdAt:  string;
+type ShippingLine = {
+  id:             string;
+  sellerName:     string;
+  courier:        string;
+  service:        string;
+  etd:            string | null;
+  cost:           number;
+  trackingNumber: string | null;
+  shippedAt:      string | null;
+  status:         "pending" | "shipped" | "delivered";
 };
 
-const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
-  paid:      { label: "Lunas",     cls: "bg-green-100 text-green-700" },
-  pending:   { label: "Menunggu",  cls: "bg-yellow-100 text-yellow-700" },
-  partial:   { label: "Sebagian",  cls: "bg-blue-100 text-blue-700" },
-  cancelled: { label: "Batal",     cls: "bg-red-100 text-red-700" },
+type OrderItem = {
+  id:          string;
+  itemType:    string;
+  name:        string;
+  description: string | null;
+  unitPrice:   number;
+  quantity:    number;
+  total:       number;
 };
 
-const SOURCE_LABEL: Record<string, string> = {
-  order:                "Toko",
-  donation:             "Donasi",
-  event_registration:   "Event",
-  manual:               "Manual",
+type Order = {
+  id:            string;
+  invoiceNumber: string;
+  sourceType:    string;
+  customerName:  string;
+  total:         number;
+  paidAmount:    number;
+  status:        string;
+  createdAt:     string;
+  items:         OrderItem[];
+  shippingLines: ShippingLine[];
+};
+
+const PAYMENT_STATUS: Record<string, { label: string; cls: string }> = {
+  paid:                 { label: "Lunas",              cls: "bg-green-100 text-green-700" },
+  waiting_verification: { label: "Menunggu Verifikasi", cls: "bg-blue-100 text-blue-700" },
+  pending:              { label: "Belum Dibayar",       cls: "bg-yellow-100 text-yellow-700" },
+  partial:              { label: "Terbayar Sebagian",   cls: "bg-orange-100 text-orange-700" },
+  cancelled:            { label: "Dibatalkan",          cls: "bg-zinc-100 text-zinc-600" },
+};
+
+const SHIPPING_STATUS: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
+  pending:   { label: "Menunggu Pengiriman", icon: <Clock    size={14} />, cls: "text-yellow-600" },
+  shipped:   { label: "Dalam Pengiriman",   icon: <Truck    size={14} />, cls: "text-blue-600"   },
+  delivered: { label: "Sudah Diterima",     icon: <CheckCircle2 size={14} />, cls: "text-green-600" },
 };
 
 function fmt(n: number) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 }
 
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+}
+
+function OrderCard({ order, slug }: { order: Order; slug: string }) {
+  const payment = PAYMENT_STATUS[order.status] ?? { label: order.status, cls: "bg-muted text-muted-foreground" };
+  const productItems = order.items.filter(it => it.itemType === "product");
+  const otherItems   = order.items.filter(it => it.itemType !== "product");
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-b border-border gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="font-mono text-xs text-muted-foreground shrink-0">{order.invoiceNumber}</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">·</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">{fmtDate(order.createdAt)}</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${payment.cls}`}>
+            {payment.label}
+          </span>
+          <Link
+            href={`/${slug}/invoice/${order.id}`}
+            className="flex items-center gap-1 text-xs text-primary hover:underline"
+          >
+            <ExternalLink size={12} />
+            Bayar
+          </Link>
+        </div>
+      </div>
+
+      {/* ── Produk ── */}
+      {order.items.length > 0 && (
+        <div className="divide-y divide-border/60">
+          {order.items.map(item => (
+            <div key={item.id} className="flex items-start gap-3 px-4 py-3">
+              {/* Icon tipe */}
+              <div className="mt-0.5 rounded-md bg-muted/50 p-1.5 shrink-0">
+                <Package size={16} className="text-muted-foreground" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium leading-snug">{item.name}</p>
+                {item.description && (
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.description}</p>
+                )}
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {fmt(item.unitPrice)} × {item.quantity}
+                </p>
+              </div>
+              <p className="text-sm font-semibold tabular-nums shrink-0">{fmt(item.total)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Shipping ── */}
+      {order.shippingLines.length > 0 && (
+        <div className="border-t border-border">
+          {order.shippingLines.map(sl => {
+            const shSt = SHIPPING_STATUS[sl.status] ?? SHIPPING_STATUS.pending;
+            return (
+              <div key={sl.id} className="px-4 py-3 space-y-1.5">
+                <div className={`flex items-center gap-1.5 text-xs font-medium ${shSt.cls}`}>
+                  {shSt.icon}
+                  {shSt.label}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  <span className="uppercase font-medium">{sl.courier}</span> {sl.service}
+                  {sl.etd && <span> · Est. {sl.etd}</span>}
+                </div>
+                {sl.trackingNumber ? (
+                  <div className="rounded-md bg-muted/40 px-3 py-2 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Nomor Resi</p>
+                      <p className="font-mono text-sm font-semibold tracking-wide">{sl.trackingNumber}</p>
+                    </div>
+                    {sl.shippedAt && (
+                      <p className="text-xs text-muted-foreground text-right shrink-0">
+                        Dikirim<br />
+                        {new Date(sl.shippedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">Resi belum diinput oleh penjual.</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Footer total ── */}
+      <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/10">
+        <span className="text-xs text-muted-foreground">Total Pesanan</span>
+        <span className="text-sm font-bold tabular-nums">{fmt(order.total)}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function TransaksiPage({ params }: { params: Params }) {
   const { tenant: slug } = use(params);
 
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState<string | null>(null);
+  const [orders,  setOrders]  = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/akun/transaksi?slug=${slug}`)
       .then(r => r.json())
-      .then((res: { data?: Invoice[]; error?: string }) => {
-        if (res.data) setInvoices(res.data);
+      .then((res: { data?: Order[]; error?: string }) => {
+        if (res.data) setOrders(res.data);
         else setError(res.error ?? "Gagal memuat data.");
       })
       .catch(() => setError("Gagal memuat data."))
@@ -52,8 +181,8 @@ export default function TransaksiPage({ params }: { params: Params }) {
   }, [slug]);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold">Riwayat Transaksi</h1>
+    <div className="space-y-5">
+      <h1 className="text-xl font-bold">Riwayat Pesanan</h1>
 
       {loading && (
         <div className="flex justify-center py-12">
@@ -63,43 +192,18 @@ export default function TransaksiPage({ params }: { params: Params }) {
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {!loading && !error && invoices.length === 0 && (
+      {!loading && !error && orders.length === 0 && (
         <div className="text-center py-16 space-y-2">
-          <Receipt className="h-10 w-10 text-muted-foreground/40 mx-auto" />
-          <p className="text-sm text-muted-foreground">Belum ada transaksi.</p>
+          <Package className="h-10 w-10 text-muted-foreground/40 mx-auto" />
+          <p className="text-sm text-muted-foreground">Belum ada pesanan.</p>
         </div>
       )}
 
-      {invoices.length > 0 && (
-        <div className="divide-y divide-border border border-border rounded-xl overflow-hidden">
-          {invoices.map(inv => {
-            const status = STATUS_LABEL[inv.status] ?? { label: inv.status, cls: "bg-muted text-muted-foreground" };
-            return (
-              <a
-                key={inv.id}
-                href={`/${slug}/invoice/${inv.id}`}
-                className="flex items-center gap-4 px-4 py-3 hover:bg-muted/40 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">
-                    {inv.number ?? `INV-${inv.id.slice(0, 8).toUpperCase()}`}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {SOURCE_LABEL[inv.sourceType] ?? inv.sourceType} ·{" "}
-                    {new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(new Date(inv.createdAt))}
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="font-semibold text-sm">{fmt(inv.total)}</p>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.cls}`}>
-                    {status.label}
-                  </span>
-                </div>
-              </a>
-            );
-          })}
-        </div>
-      )}
+      <div className="space-y-4">
+        {orders.map(order => (
+          <OrderCard key={order.id} order={order} slug={slug} />
+        ))}
+      </div>
     </div>
   );
 }
