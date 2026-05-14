@@ -52,7 +52,7 @@ export async function setPlatformSessionCookie(token: string) {
     secure:   process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge:   EXPIRES_IN,
-    path:     "/platform",
+    path:     "/",
   });
 }
 
