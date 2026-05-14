@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
-import { db, tenants } from "@jalajogja/db";
+import { db, tenants, addons, tenantAddonInstallations } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { ArrowLeft, Globe, ExternalLink } from "lucide-react";
 import { PlatformTenantToggle } from "@/components/platform/tenant-toggle";
+import { AddonToggle } from "./addon-toggle";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -19,6 +20,17 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
   if (!tenant) notFound();
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+
+  // Semua add-on tersedia + status instalasi untuk tenant ini
+  const [allAddons, installations] = await Promise.all([
+    db.select().from(addons).orderBy(addons.name),
+    db
+      .select({ addonId: tenantAddonInstallations.addonId, status: tenantAddonInstallations.status })
+      .from(tenantAddonInstallations)
+      .where(eq(tenantAddonInstallations.tenantId, tenant.id)),
+  ]);
+
+  const installedIds = new Set(installations.map(i => i.addonId));
 
   const rows: Array<{ label: string; value: React.ReactNode }> = [
     { label: "ID",            value: <span className="font-mono text-xs">{tenant.id}</span> },
@@ -87,6 +99,45 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
             </div>
           ))}
         </dl>
+      </div>
+
+      {/* Add-on */}
+      <div className="rounded-xl border border-border bg-background overflow-hidden">
+        <div className="px-5 py-3 border-b border-border">
+          <p className="text-sm font-semibold">Add-on</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Install atau cabut add-on untuk tenant ini</p>
+        </div>
+        <div className="divide-y divide-border">
+          {allAddons.map((addon) => {
+            const installed = installedIds.has(addon.id);
+            const inst      = installations.find(i => i.addonId === addon.id);
+            return (
+              <div key={addon.id} className="flex items-center justify-between px-5 py-3 gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">{addon.name}</p>
+                    {installed && (
+                      <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ${
+                        inst?.status === "active" ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
+                      }`}>
+                        {inst?.status === "active" ? "Aktif" : inst?.status}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground font-mono">{addon.slug}</span>
+                  </div>
+                  {addon.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{addon.description}</p>
+                  )}
+                </div>
+                <AddonToggle
+                  tenantId={tenant.id}
+                  addonSlug={addon.slug}
+                  isInstalled={installed}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
