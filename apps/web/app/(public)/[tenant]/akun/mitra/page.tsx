@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers  } from "next/headers";
 import { auth }     from "@/lib/auth";
-import { Handshake, CheckCircle2, Clock, XCircle, PauseCircle, Package } from "lucide-react";
+import { Handshake, CheckCircle2, Clock, PauseCircle, Package, ShoppingBag } from "lucide-react";
 
 type Params = Promise<{ tenant: string }>;
 
@@ -86,11 +86,19 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
                 <p className="text-xs text-muted-foreground">{mitra.productCount} produk</p>
               </a>
               <a
-                href={`/${slug}/akun/mitra/produk/new`}
-                className="rounded-xl border border-dashed border-border p-4 hover:border-primary transition-colors flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary"
+                href={`/${slug}/akun/mitra/pesanan`}
+                className="rounded-xl border border-border bg-card p-4 hover:border-primary/50 transition-colors space-y-1"
               >
-                <span className="text-2xl">+</span>
-                <p className="text-xs font-medium">Tambah Produk</p>
+                <ShoppingBag className="h-5 w-5 text-muted-foreground" />
+                <p className="font-medium text-sm">Pesanan Masuk</p>
+                <p className="text-xs text-muted-foreground">Input resi pengiriman</p>
+              </a>
+              <a
+                href={`/${slug}/akun/mitra/produk/new`}
+                className="col-span-2 rounded-xl border border-dashed border-border p-4 hover:border-primary transition-colors flex items-center justify-center gap-2 text-muted-foreground hover:text-primary"
+              >
+                <span className="text-xl">+</span>
+                <p className="text-xs font-medium">Tambah Produk Baru</p>
               </a>
             </div>
           )}

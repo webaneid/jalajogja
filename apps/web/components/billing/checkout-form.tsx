@@ -1,21 +1,55 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { checkoutAction, type CartData } from "@/app/(public)/[tenant]/cart/actions";
+import {
+  checkoutAction,
+  type CartData,
+  type SellerGroup,
+  type CheckoutShippingLine,
+  type CheckoutShippingData,
+} from "@/app/(public)/[tenant]/cart/actions";
 import { PhoneInput } from "@/components/ui/phone-input";
 
-export type CheckoutDefaults = {
-  name:  string;
-  email: string;
-  phone: string;
+// ─── Tipe kurir ───────────────────────────────────────────────────────────────
+
+type CourierOption = {
+  courier:     string;
+  service:     string;
+  serviceDesc: string;
+  etd:         string;
+  cost:        number;
 };
 
-type Props = {
-  slug:      string;
-  cart:      CartData;
-  defaults?: CheckoutDefaults;
+type CourierApiResult = {
+  code:  string;
+  name:  string;
+  costs: Array<{
+    service:     string;
+    description: string;
+    cost:        Array<{ value: number; etd: string; note: string }>;
+  }>;
 };
+
+type CityResult = { cityId: number; cityName: string; type: string; postalCode: string | null };
+
+function flattenCourierOptions(results: CourierApiResult[]): CourierOption[] {
+  const opts: CourierOption[] = [];
+  for (const courier of results) {
+    for (const svc of courier.costs) {
+      if (svc.cost[0]) {
+        opts.push({
+          courier:     courier.code,
+          service:     svc.service,
+          serviceDesc: svc.description,
+          etd:         svc.cost[0].etd || "—",
+          cost:        svc.cost[0].value,
+        });
+      }
+    }
+  }
+  return opts.sort((a, b) => a.cost - b.cost);
+}
 
 function formatRp(n: number) {
   return new Intl.NumberFormat("id-ID", {
@@ -23,28 +57,119 @@ function formatRp(n: number) {
   }).format(n);
 }
 
-export function CheckoutForm({ slug, cart, defaults }: Props) {
-  const router                      = useRouter();
-  const [pending, startTransition]  = useTransition();
-  const [error, setError]           = useState("");
+// ─── Props ────────────────────────────────────────────────────────────────────
 
+export type CheckoutDefaults = { name: string; email: string; phone: string };
+
+type Props = {
+  slug:           string;
+  cart:           CartData;
+  defaults?:      CheckoutDefaults;
+  sellerGroups?:  SellerGroup[];
+  addonCouriers?: string[];
+};
+
+// ─── Komponen ─────────────────────────────────────────────────────────────────
+
+export function CheckoutForm({
+  slug,
+  cart,
+  defaults,
+  sellerGroups = [],
+  addonCouriers = [],
+}: Props) {
+  const router                     = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError]          = useState("");
+
+  const needsShipping = sellerGroups.length > 0;
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+
+  // Step 1 — info pemesan
   const [phone, setPhone] = useState(defaults?.phone ?? "");
   const [email, setEmail] = useState(defaults?.email ?? "");
   const [name,  setName]  = useState(defaults?.name  ?? "");
   const [notes, setNotes] = useState("");
 
-  const inputCls = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
-  const labelCls = "block text-sm font-medium mb-1";
+  // Step 2 — kota tujuan
+  const [destCity,     setDestCity]     = useState<{ id: number; name: string } | null>(null);
+  const [address,      setAddress]      = useState("");
+  const [citySearch,   setCitySearch]   = useState("");
+  const [cityResults,  setCityResults]  = useState<CityResult[]>([]);
+  const [cityLoading,  setCityLoading]  = useState(false);
+  const [cityOpen,     setCityOpen]     = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!phone.trim() && !email.trim()) {
-      setError("Nomor HP atau email wajib diisi.");
-      return;
+  // Step 3 — opsi kurir per seller group
+  const [groupStates, setGroupStates] = useState<Record<string, {
+    options:  CourierOption[];
+    selected: CourierOption | null;
+    loading:  boolean;
+    error:    string;
+  }>>({});
+
+  // Debounced city search
+  useEffect(() => {
+    if (citySearch.length < 2) { setCityResults([]); return; }
+    const t = setTimeout(async () => {
+      setCityLoading(true);
+      try {
+        const res  = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(citySearch)}&limit=12`);
+        const data = await res.json() as { cities: CityResult[] };
+        setCityResults(data.cities ?? []);
+      } catch { setCityResults([]); }
+      finally  { setCityLoading(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [citySearch]);
+
+  // Fetch kurir saat masuk step 3
+  const fetchCouriers = useCallback(async (group: SellerGroup, destCityId: number) => {
+    setGroupStates(prev => ({
+      ...prev,
+      [group.key]: { options: [], selected: null, loading: true, error: "" },
+    }));
+    try {
+      const res  = await fetch(`/api/ongkir/cost?slug=${slug}`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          origin:      group.originCityId,
+          destination: destCityId,
+          weight:      group.totalWeightGram,
+          courier:     addonCouriers.join(":"),
+        }),
+      });
+      const data = await res.json() as { costs?: CourierApiResult[]; error?: string };
+      if (!res.ok || !data.costs) {
+        setGroupStates(prev => ({
+          ...prev,
+          [group.key]: { options: [], selected: null, loading: false, error: data.error ?? "Gagal memuat kurir" },
+        }));
+        return;
+      }
+      const options = flattenCourierOptions(data.costs);
+      setGroupStates(prev => ({
+        ...prev,
+        [group.key]: { options, selected: options[0] ?? null, loading: false, error: "" },
+      }));
+    } catch {
+      setGroupStates(prev => ({
+        ...prev,
+        [group.key]: { options: [], selected: null, loading: false, error: "Gagal memuat kurir" },
+      }));
     }
-    setError("");
+  }, [slug, addonCouriers]);
+
+  // Kalkulasi total
+  const shippingTotal = Object.values(groupStates).reduce((s, gs) => s + (gs.selected?.cost ?? 0), 0);
+  const grandTotal    = cart.subtotal + shippingTotal;
+  const allSelected   = sellerGroups.every(g => !!groupStates[g.key]?.selected);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  function doCheckout(shippingData?: CheckoutShippingData) {
     startTransition(async () => {
-      const res = await checkoutAction(slug, { phone, email, name, method: "transfer", notes });
+      const res = await checkoutAction(slug, { phone, email, name, method: "transfer", notes }, shippingData);
       if (res.success) {
         router.push(`/${slug}/invoice/${res.data.invoiceId}`);
       } else {
@@ -53,21 +178,99 @@ export function CheckoutForm({ slug, cart, defaults }: Props) {
     });
   }
 
+  function handleStep1Next() {
+    if (!phone.trim() && !email.trim()) {
+      setError("Nomor HP atau email wajib diisi.");
+      return;
+    }
+    setError("");
+    if (needsShipping) { setStep(2); return; }
+    doCheckout();
+  }
+
+  function handleStep2Next() {
+    if (!destCity) { setError("Pilih kota tujuan pengiriman."); return; }
+    setError("");
+    setStep(3);
+    for (const group of sellerGroups) {
+      void fetchCouriers(group, destCity.id);
+    }
+  }
+
+  function handleStep3Submit() {
+    setError("");
+    const lines: CheckoutShippingLine[] = sellerGroups
+      .filter(g => groupStates[g.key]?.selected)
+      .map(g => {
+        const sel = groupStates[g.key]!.selected!;
+        return {
+          sellerType:    g.sellerType,
+          sellerId:      g.sellerId,
+          sellerName:    g.sellerName,
+          originCityId:  g.originCityId,
+          originCityName: g.originCityName,
+          courier:       sel.courier,
+          service:       sel.service,
+          serviceDesc:   sel.serviceDesc,
+          etd:           sel.etd,
+          weightGram:    g.totalWeightGram,
+          cost:          sel.cost,
+        };
+      });
+
+    doCheckout(lines.length > 0 && destCity ? {
+      cityId:  destCity.id,
+      cityName: destCity.name,
+      address: address.trim() || undefined,
+      lines,
+    } : undefined);
+  }
+
+  // ── Shared styles ──────────────────────────────────────────────────────────
+
+  const inputCls = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
+  const labelCls = "block text-sm font-medium mb-1";
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_360px] items-start">
       {/* ── Form kiri ── */}
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="space-y-5">
+
+        {/* Progress indicator — hanya jika ada shipping */}
+        {needsShipping && (
+          <div className="flex items-center gap-1 text-sm">
+            {([1, 2, 3] as const).map((s) => (
+              <div key={s} className="flex items-center gap-1">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold ${
+                  step > s  ? "bg-green-500 text-white" :
+                  step === s ? "bg-primary text-primary-foreground" :
+                               "bg-muted text-muted-foreground"
+                }`}>
+                  {step > s ? "✓" : s}
+                </div>
+                <span className={`text-xs ${step === s ? "font-medium" : "text-muted-foreground"}`}>
+                  {s === 1 ? "Pemesan" : s === 2 ? "Tujuan" : "Kurir"}
+                </span>
+                {s < 3 && <span className="text-muted-foreground mx-1">›</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
         {error && (
           <p className="rounded-md bg-red-50 border border-red-200 px-4 py-2 text-sm text-destructive">
             {error}
           </p>
         )}
 
-        <div className="rounded-lg border border-border p-5 space-y-4">
-          <p className="font-semibold text-sm">Informasi Pemesan</p>
+        {/* ── Step 1: info pemesan ── */}
+        {step === 1 && (
+          <div className="rounded-lg border border-border p-5 space-y-4">
+            <p className="font-semibold text-sm">Informasi Pemesan</p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <PhoneInput
                 label="Nomor HP"
                 value={phone}
@@ -75,73 +278,290 @@ export function CheckoutForm({ slug, cart, defaults }: Props) {
                 optional
                 hint="Atau isi email di sebelah kanan"
               />
+              <div>
+                <label className={labelCls}>Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="nama@email.com"
+                  className={inputCls}
+                />
+              </div>
             </div>
+
             <div>
-              <label className={labelCls}>Email</label>
+              <label className={labelCls}>
+                Nama <span className="text-muted-foreground text-xs">(opsional)</span>
+              </label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="nama@email.com"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Nama lengkap"
+                className={inputCls}
+              />
+            </div>
+
+            <div>
+              <label className={labelCls}>
+                Catatan <span className="text-muted-foreground text-xs">(opsional)</span>
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                placeholder="Pesan atau catatan untuk admin..."
                 className={inputCls}
               />
             </div>
           </div>
+        )}
 
-          <div>
-            <label className={labelCls}>
-              Nama <span className="text-muted-foreground text-xs">(opsional)</span>
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Nama lengkap"
-              className={inputCls}
-            />
-          </div>
+        {/* ── Step 2: kota tujuan + alamat ── */}
+        {step === 2 && (
+          <div className="rounded-lg border border-border p-5 space-y-4">
+            <p className="font-semibold text-sm">Alamat Pengiriman</p>
 
-          <div>
-            <label className={labelCls}>
-              Catatan <span className="text-muted-foreground text-xs">(opsional)</span>
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              placeholder="Pesan atau catatan untuk admin..."
-              className={inputCls}
-            />
+            <div>
+              <label className={labelCls}>Kota / Kabupaten Tujuan</label>
+              {destCity ? (
+                <div className="flex items-center justify-between gap-2 px-3 py-2 border border-border rounded-md bg-muted/50 text-sm">
+                  <span>{destCity.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setDestCity(null); setCitySearch(""); }}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Ganti
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={citySearch}
+                    onChange={(e) => { setCitySearch(e.target.value); setCityOpen(true); }}
+                    onFocus={() => setCityOpen(true)}
+                    onBlur={() => setTimeout(() => setCityOpen(false), 150)}
+                    placeholder="Ketik nama kota atau kabupaten..."
+                    className={inputCls}
+                    autoComplete="off"
+                  />
+                  {cityOpen && citySearch.length >= 2 && (
+                    <div className="absolute z-20 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-52 overflow-y-auto">
+                      {cityLoading && (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">Mencari...</p>
+                      )}
+                      {!cityLoading && cityResults.length === 0 && (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">Tidak ada hasil untuk "{citySearch}"</p>
+                      )}
+                      {cityResults.map(city => (
+                        <button
+                          key={city.cityId}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setDestCity({ id: city.cityId, name: `${city.type} ${city.cityName}` });
+                            setCitySearch("");
+                            setCityOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors"
+                        >
+                          <span>{city.type} {city.cityName}</span>
+                          {city.postalCode && (
+                            <span className="ml-2 text-xs text-muted-foreground">{city.postalCode}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className={labelCls}>
+                Alamat Detail <span className="text-muted-foreground text-xs">(opsional)</span>
+              </label>
+              <textarea
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                rows={3}
+                placeholder="Jl. ..., No. ..., RT/RW, Kelurahan, Kecamatan"
+                className={inputCls}
+              />
+            </div>
+
+            <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+              <p className="font-medium text-foreground">Paket dikirim dari:</p>
+              {sellerGroups.map(g => (
+                <p key={g.key}>
+                  • {g.sellerName} — {g.originCityName} · {(g.totalWeightGram / 1000).toFixed(g.totalWeightGram >= 1000 ? 1 : 0)}
+                  {g.totalWeightGram >= 1000 ? " kg" : ` g`} · {g.items.length} produk
+                </p>
+              ))}
+            </div>
           </div>
+        )}
+
+        {/* ── Step 3: pilih kurir per seller ── */}
+        {step === 3 && (
+          <div className="space-y-4">
+            {sellerGroups.map(group => {
+              const gs = groupStates[group.key];
+              return (
+                <div key={group.key} className="rounded-lg border border-border p-5 space-y-3">
+                  <div>
+                    <p className="font-semibold text-sm">Pengiriman dari {group.sellerName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {group.originCityName} → {destCity?.name} · {group.totalWeightGram}g
+                    </p>
+                  </div>
+
+                  {!gs || gs.loading ? (
+                    <p className="text-sm text-muted-foreground animate-pulse">Memuat opsi pengiriman…</p>
+                  ) : gs.error ? (
+                    <p className="text-sm text-destructive">{gs.error}</p>
+                  ) : gs.options.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Tidak ada layanan tersedia untuk rute ini.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {gs.options.map((opt, i) => {
+                        const isSelected =
+                          gs.selected?.courier === opt.courier &&
+                          gs.selected?.service === opt.service;
+                        return (
+                          <label
+                            key={i}
+                            className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
+                              isSelected
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:bg-muted/50"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name={`courier-${group.key}`}
+                              checked={isSelected}
+                              onChange={() =>
+                                setGroupStates(prev => ({
+                                  ...prev,
+                                  [group.key]: { ...prev[group.key]!, selected: opt },
+                                }))
+                              }
+                              className="mt-0.5 shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-medium uppercase">
+                                  {opt.courier} {opt.service}
+                                </span>
+                                <span className="text-sm font-semibold tabular-nums shrink-0">
+                                  {formatRp(opt.cost)}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {opt.serviceDesc} · Estimasi {opt.etd}
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Tombol navigasi ── */}
+        <div className="flex gap-3">
+          {step > 1 && (
+            <button
+              type="button"
+              onClick={() => { setError(""); setStep(prev => (prev - 1) as 1 | 2 | 3); }}
+              className="shrink-0 rounded-md border border-border px-4 py-2.5 text-sm hover:bg-muted transition-colors"
+            >
+              ← Kembali
+            </button>
+          )}
+
+          {step === 1 && (
+            <button
+              type="button"
+              onClick={handleStep1Next}
+              disabled={pending}
+              className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
+            >
+              {pending
+                ? "Memproses…"
+                : needsShipping
+                  ? "Lanjut — Pilih Tujuan Pengiriman →"
+                  : `Buat Invoice — ${formatRp(cart.subtotal)}`}
+            </button>
+          )}
+
+          {step === 2 && (
+            <button
+              type="button"
+              onClick={handleStep2Next}
+              className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              Lanjut — Pilih Jasa Pengiriman →
+            </button>
+          )}
+
+          {step === 3 && (
+            <button
+              type="button"
+              onClick={handleStep3Submit}
+              disabled={pending || !allSelected}
+              className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
+            >
+              {pending ? "Memproses…" : `Buat Invoice — ${formatRp(grandTotal)}`}
+            </button>
+          )}
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Metode pembayaran (transfer / QRIS) dipilih setelah invoice dibuat.
-        </p>
-
-        <button
-          type="submit"
-          disabled={pending}
-          className="w-full rounded-md bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
-        >
-          {pending ? "Memproses..." : `Buat Invoice — ${formatRp(cart.subtotal)}`}
-        </button>
-      </form>
+        {step === 1 && (
+          <p className="text-xs text-muted-foreground">
+            Metode pembayaran (transfer / QRIS) dipilih setelah invoice dibuat.
+          </p>
+        )}
+      </div>
 
       {/* ── Ringkasan kanan ── */}
       <div className="rounded-lg border border-border p-5 space-y-3 sticky top-4">
         <p className="font-semibold text-sm">Ringkasan Pesanan</p>
         <div className="divide-y divide-border">
           {cart.items.map((item) => (
-            <div key={item.id} className="flex justify-between py-2 text-sm">
-              <span className="text-muted-foreground">{item.name} × {item.quantity}</span>
-              <span className="tabular-nums">{formatRp(item.unitPrice * item.quantity)}</span>
+            <div key={item.id} className="flex justify-between py-2 text-sm gap-2">
+              <span className="text-muted-foreground truncate">{item.name} × {item.quantity}</span>
+              <span className="tabular-nums shrink-0">{formatRp(item.unitPrice * item.quantity)}</span>
             </div>
           ))}
         </div>
+
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">Subtotal</span>
+          <span className="tabular-nums">{formatRp(cart.subtotal)}</span>
+        </div>
+
+        {step === 3 && sellerGroups.map(g => {
+          const sel = groupStates[g.key]?.selected;
+          return (
+            <div key={g.key} className="flex justify-between text-sm">
+              <span className="text-muted-foreground truncate">Ongkir {g.sellerName}</span>
+              <span className="tabular-nums shrink-0">{sel ? formatRp(sel.cost) : "—"}</span>
+            </div>
+          );
+        })}
+
         <div className="flex justify-between font-semibold border-t border-border pt-3">
           <span>Total</span>
-          <span className="tabular-nums">{formatRp(cart.subtotal)}</span>
+          <span className="tabular-nums">{formatRp(step === 3 ? grandTotal : cart.subtotal)}</span>
         </div>
       </div>
     </div>

@@ -1,15 +1,23 @@
 import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { db, tenants } from "@jalajogja/db";
-import { eq } from "drizzle-orm";
+import { db, tenants, tenantAddonInstallations, addons, memberBusinesses } from "@jalajogja/db";
+import { eq, and, inArray } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
 import { getAkunIdentity } from "@/lib/akun-identity";
 import { CheckoutForm } from "@/components/billing/checkout-form";
-import type { CartData, CartItem } from "@/app/(public)/[tenant]/cart/actions";
+import type { CartData, CartItem, SellerGroup } from "@/app/(public)/[tenant]/cart/actions";
 import type { CheckoutDefaults } from "@/components/billing/checkout-form";
 
 type Props = { params: Promise<{ tenant: string }> };
+
+type RajaOngkirConfig = {
+  api_key?:          string;
+  tier?:             "starter" | "pro";
+  origin_city_id?:   number;
+  origin_city_name?: string;
+  couriers?:         string[];
+};
 
 export default async function CheckoutPage({ params }: Props) {
   const { tenant: slug } = await params;
@@ -41,9 +49,10 @@ export default async function CheckoutPage({ params }: Props) {
         };
       }
     }
-  } catch { /* tidak login — biarkan form kosong */ }
+  } catch { /* tidak login */ }
 
   let cart: CartData | null = null;
+  let cartItems: CartItem[] = [];
 
   try {
     const { db: tenantDb, schema } = createTenantDb(slug);
@@ -64,7 +73,7 @@ export default async function CheckoutPage({ params }: Props) {
 
     if (items.length === 0) redirect(`/${slug}/keranjang`);
 
-    const cartItems: CartItem[] = items.map((it) => ({
+    cartItems = items.map((it) => ({
       id:        it.id,
       itemType:  it.itemType as CartItem["itemType"],
       itemId:    it.itemId,
@@ -89,6 +98,122 @@ export default async function CheckoutPage({ params }: Props) {
 
   if (!cart) redirect(`/${slug}/keranjang`);
 
+  // ── Cek add-on ongkir + bangun seller groups ──────────────────────────────
+  let sellerGroups: SellerGroup[] = [];
+  let addonCouriers: string[] = [];
+
+  const productItemIds = cartItems
+    .filter(i => i.itemType === "product" && i.itemId)
+    .map(i => i.itemId!);
+
+  if (productItemIds.length > 0) {
+    try {
+      const installation = await db
+        .select({
+          config: tenantAddonInstallations.config,
+          status: tenantAddonInstallations.status,
+        })
+        .from(tenantAddonInstallations)
+        .innerJoin(addons, eq(addons.id, tenantAddonInstallations.addonId))
+        .where(and(
+          eq(tenantAddonInstallations.tenantId, tenant.id),
+          eq(addons.slug, "rajaongkir"),
+        ))
+        .limit(1)
+        .then(r => r[0]);
+
+      if (installation && installation.status !== "expired" && installation.status !== "inactive") {
+        const config = installation.config as RajaOngkirConfig;
+
+        if (config.api_key && config.couriers?.length) {
+          addonCouriers = config.couriers;
+
+          const { db: tdb, schema: ts } = createTenantDb(slug);
+
+          // Fetch product + mitra detail sekaligus
+          const productDetails = await tdb
+            .select({
+              productId:       ts.products.id,
+              weightGram:      ts.products.weightGram,
+              mitraId:         ts.products.mitraId,
+              originCityId:    ts.mitras.rajaongkirCityId,
+              originCityName:  ts.mitras.rajaongkirCityName,
+              businessId:      ts.mitras.businessId,
+            })
+            .from(ts.products)
+            .leftJoin(ts.mitras, eq(ts.mitras.id, ts.products.mitraId))
+            .where(inArray(ts.products.id, productItemIds));
+
+          // Ambil nama usaha mitra dari public.member_businesses
+          const bizIds = [...new Set(
+            productDetails.filter(p => p.businessId).map(p => p.businessId!)
+          )];
+          const bizMap: Record<string, string> = {};
+          if (bizIds.length > 0) {
+            const rows = await db
+              .select({ id: memberBusinesses.id, name: memberBusinesses.name })
+              .from(memberBusinesses)
+              .where(inArray(memberBusinesses.id, bizIds));
+            for (const r of rows) bizMap[r.id] = r.name;
+          }
+
+          const detailMap: Record<string, typeof productDetails[0]> = {};
+          for (const d of productDetails) detailMap[d.productId] = d;
+
+          const groupMap: Record<string, SellerGroup> = {};
+
+          for (const item of cartItems.filter(i => i.itemType === "product" && i.itemId)) {
+            const d = detailMap[item.itemId!];
+            if (!d?.weightGram) continue;
+
+            let sellerType: "tenant" | "mitra";
+            let sellerId: string | null;
+            let sellerName: string;
+            let originCityId: number;
+            let originCityName: string;
+
+            if (d.mitraId && d.originCityId) {
+              sellerType    = "mitra";
+              sellerId      = d.mitraId;
+              sellerName    = d.businessId ? (bizMap[d.businessId] ?? "Mitra") : "Mitra";
+              originCityId  = d.originCityId;
+              originCityName = d.originCityName ?? "";
+            } else if (!d.mitraId && config.origin_city_id) {
+              sellerType    = "tenant";
+              sellerId      = null;
+              sellerName    = tenant.name;
+              originCityId  = config.origin_city_id;
+              originCityName = config.origin_city_name ?? "";
+            } else {
+              continue; // kota asal tidak diketahui, skip
+            }
+
+            const groupKey = `${sellerType}:${sellerId ?? "tenant"}`;
+            if (!groupMap[groupKey]) {
+              groupMap[groupKey] = {
+                key: groupKey, sellerType, sellerId, sellerName,
+                originCityId, originCityName, items: [], totalWeightGram: 0,
+              };
+            }
+
+            groupMap[groupKey].items.push({
+              cartItemId: item.id,
+              productId:  item.itemId!,
+              name:       item.name,
+              quantity:   item.quantity,
+              weightGram: d.weightGram,
+            });
+            groupMap[groupKey].totalWeightGram += d.weightGram * item.quantity;
+          }
+
+          sellerGroups = Object.values(groupMap);
+        }
+      }
+    } catch (e) {
+      console.error("[checkout] Error fetching shipping groups:", e);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 py-10">
@@ -102,6 +227,8 @@ export default async function CheckoutPage({ params }: Props) {
           slug={slug}
           cart={cart}
           defaults={defaults}
+          sellerGroups={sellerGroups}
+          addonCouriers={addonCouriers}
         />
       </div>
     </main>

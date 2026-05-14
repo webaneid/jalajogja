@@ -21,21 +21,36 @@ export type QrisAccountPublic = {
   categories: string[];
 };
 
-export type PublicInvoiceData = {
+export type PublicShippingLine = {
   id:             string;
-  invoiceNumber:  string;
-  status:         string;
-  customerName:   string;
-  customerPhone:  string | null;
-  customerEmail:  string | null;
-  subtotal:       number;
-  discount:       number;
-  total:          number;
-  paidAmount:     number;
-  remaining:      number;
-  dueDate:        string | null;
-  notes:          string | null;
-  createdAt:      string;
+  sellerName:     string;
+  courier:        string;
+  service:        string;
+  etd:            string | null;
+  cost:           number;
+  trackingNumber: string | null;
+  shippedAt:      string | null;
+  status:         "pending" | "shipped" | "delivered";
+};
+
+export type PublicInvoiceData = {
+  id:               string;
+  invoiceNumber:    string;
+  status:           string;
+  customerName:     string;
+  customerPhone:    string | null;
+  customerEmail:    string | null;
+  subtotal:         number;
+  shippingTotal:    number;
+  discount:         number;
+  total:            number;
+  paidAmount:       number;
+  remaining:        number;
+  dueDate:          string | null;
+  notes:            string | null;
+  createdAt:        string;
+  shippingCityName: string | null;
+  shippingAddress:  string | null;
   items: Array<{
     id:          string;
     name:        string;
@@ -44,8 +59,9 @@ export type PublicInvoiceData = {
     quantity:    number;
     total:       number;
   }>;
-  bankAccounts:  BankAccountPublic[];
-  qrisAccounts:  QrisAccountPublic[];
+  shippingLines:  PublicShippingLine[];
+  bankAccounts:   BankAccountPublic[];
+  qrisAccounts:   QrisAccountPublic[];
 };
 
 type Props = {
@@ -408,16 +424,24 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
             ))}
           </tbody>
           <tfoot className="bg-muted/20 text-sm">
-            {invoice.discount > 0 && (
+            {(invoice.discount > 0 || invoice.shippingTotal > 0) && (
               <>
                 <tr>
                   <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Subtotal</td>
                   <td className="px-4 py-2 text-right tabular-nums">{formatRp(invoice.subtotal)}</td>
                 </tr>
-                <tr>
-                  <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Diskon</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-green-600">- {formatRp(invoice.discount)}</td>
-                </tr>
+                {invoice.shippingTotal > 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Ongkos Kirim</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{formatRp(invoice.shippingTotal)}</td>
+                  </tr>
+                )}
+                {invoice.discount > 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Diskon</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-green-600">- {formatRp(invoice.discount)}</td>
+                  </tr>
+                )}
               </>
             )}
             <tr className="font-semibold">
@@ -427,6 +451,51 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
           </tfoot>
         </table>
       </div>
+
+      {/* ── Info pengiriman ── */}
+      {invoice.shippingLines.length > 0 && (
+        <div className="rounded-lg border border-border p-4 space-y-3">
+          <p className="text-sm font-semibold">Informasi Pengiriman</p>
+          {invoice.shippingCityName && (
+            <p className="text-xs text-muted-foreground">
+              Tujuan: {invoice.shippingCityName}
+              {invoice.shippingAddress && ` — ${invoice.shippingAddress}`}
+            </p>
+          )}
+          {invoice.shippingLines.map(line => (
+            <div key={line.id} className="rounded-md bg-muted/40 px-4 py-3 space-y-1 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium uppercase">{line.courier} {line.service}</span>
+                <span className={`text-xs rounded-full px-2 py-0.5 ${
+                  line.status === "shipped"   ? "bg-blue-100 text-blue-700" :
+                  line.status === "delivered" ? "bg-green-100 text-green-700" :
+                  "bg-yellow-100 text-yellow-700"
+                }`}>
+                  {line.status === "shipped" ? "Dalam Pengiriman" :
+                   line.status === "delivered" ? "Terkirim" : "Menunggu Pengiriman"}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Dari: {line.sellerName}
+                {line.etd && ` · Estimasi ${line.etd}`}
+                {" · "}{formatRp(line.cost)}
+              </p>
+              {line.trackingNumber && (
+                <p className="text-xs font-medium">
+                  Resi: <span className="font-mono">{line.trackingNumber}</span>
+                  {line.shippedAt && (
+                    <span className="ml-2 text-muted-foreground font-normal">
+                      · Dikirim {new Date(line.shippedAt).toLocaleDateString("id-ID", {
+                        day: "numeric", month: "short", year: "numeric",
+                      })}
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Ringkasan pembayaran ── */}
       <div className="rounded-lg border border-border bg-muted/10 p-4 space-y-2 text-sm">

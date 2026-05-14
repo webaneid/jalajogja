@@ -47,11 +47,17 @@ export default async function PublicInvoicePage({ params }: Props) {
 
   if (!inv) notFound();
 
-  const items = await tenantDb
-    .select()
-    .from(schema.invoiceItems)
-    .where(eq(schema.invoiceItems.invoiceId, invoiceId))
-    .orderBy(schema.invoiceItems.sortOrder);
+  const [items, shippingRows] = await Promise.all([
+    tenantDb
+      .select()
+      .from(schema.invoiceItems)
+      .where(eq(schema.invoiceItems.invoiceId, invoiceId))
+      .orderBy(schema.invoiceItems.sortOrder),
+    tenantDb
+      .select()
+      .from(schema.invoiceShippingLines)
+      .where(eq(schema.invoiceShippingLines.invoiceId, invoiceId)),
+  ]);
 
   const paymentCategory = resolvePaymentCategory(items.map((it) => it.itemType));
 
@@ -90,20 +96,23 @@ export default async function PublicInvoicePage({ params }: Props) {
   const remaining = Math.max(0, total - paid);
 
   const invoice: PublicInvoiceData = {
-    id:            inv.id,
-    invoiceNumber: inv.invoiceNumber,
-    status:        inv.status,
-    customerName:  inv.customerName,
-    customerPhone: inv.customerPhone,
-    customerEmail: inv.customerEmail,
-    subtotal:      parseFloat(String(inv.subtotal)),
-    discount:      parseFloat(String(inv.discount)),
+    id:               inv.id,
+    invoiceNumber:    inv.invoiceNumber,
+    status:           inv.status,
+    customerName:     inv.customerName,
+    customerPhone:    inv.customerPhone,
+    customerEmail:    inv.customerEmail,
+    subtotal:         parseFloat(String(inv.subtotal)),
+    shippingTotal:    parseFloat(String(inv.shippingTotal ?? 0)),
+    discount:         parseFloat(String(inv.discount)),
     total,
-    paidAmount:    paid,
+    paidAmount:       paid,
     remaining,
-    dueDate:       inv.dueDate,
-    notes:         inv.notes,
-    createdAt:     inv.createdAt.toISOString(),
+    dueDate:          inv.dueDate,
+    notes:            inv.notes,
+    createdAt:        inv.createdAt.toISOString(),
+    shippingCityName: inv.shippingCityName ?? null,
+    shippingAddress:  inv.shippingAddress ?? null,
     items: items.map((it) => ({
       id:          it.id,
       name:        it.name,
@@ -111,6 +120,17 @@ export default async function PublicInvoicePage({ params }: Props) {
       unitPrice:   parseFloat(String(it.unitPrice)),
       quantity:    it.quantity,
       total:       parseFloat(String(it.total)),
+    })),
+    shippingLines: shippingRows.map((sl) => ({
+      id:             sl.id,
+      sellerName:     sl.sellerName ?? "",
+      courier:        sl.courier,
+      service:        sl.service,
+      etd:            sl.etd,
+      cost:           parseFloat(String(sl.cost)),
+      trackingNumber: sl.trackingNumber,
+      shippedAt:      sl.shippedAt?.toISOString() ?? null,
+      status:         sl.status as "pending" | "shipped" | "delivered",
     })),
     bankAccounts,
     qrisAccounts,

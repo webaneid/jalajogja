@@ -1973,6 +1973,47 @@ Tenant existing migration: `docs/migration-tenant-pc-ikpm-jogjakarta.sql`
 
 ---
 
+### [2026-05] Add-on Ongkos Kirim — Phase 2 Selesai
+
+**File utama:**
+- `apps/web/app/(public)/[tenant]/cart/actions.ts` — `checkoutAction` + tiga tipe baru: `SellerGroup`, `CheckoutShippingLine`, `CheckoutShippingData`
+- `apps/web/components/billing/checkout-form.tsx` — multi-step form (3 langkah)
+- `apps/web/app/(public)/[tenant]/akun/mitra/pesanan/` — halaman + client + server action
+- `apps/web/app/(public)/[tenant]/invoice/[id]/page.tsx` — fetch + pass shipping lines
+- `apps/web/components/billing/invoice-public-client.tsx` — render ongkir + tracking
+
+**Keputusan desain yang dikunci:**
+
+#### API key RajaOngkir TIDAK PERNAH ke browser
+Semua request ke RajaOngkir diproxy via `/api/ongkir/*` server-side. API key diambil dari
+`tenant_addon_installations.config` di DB — tidak pernah dikirim sebagai JS variable atau
+response body. Ini aturan security yang tidak boleh dilanggar di semua modul ongkir.
+
+#### SellerGroup — satu request ongkir per seller
+Produk dari tenant dan setiap mitra membentuk group terpisah. Setiap group punya satu
+`originCityId` → satu request `/api/ongkir/cost`. Kurir dipilih per group secara independen.
+Checkout UI menampilkan accordion per group dengan radio pilihan kurir.
+
+#### Resi input hanya aktif saat invoice paid/waiting_verification
+Guard di `ResiForm` dan `pesanan-client.tsx`: tombol simpan resi hanya enable untuk invoice
+yang sudah dibayar atau menunggu konfirmasi. Status "pending" → tidak boleh input resi dulu.
+
+#### City search dropdown — blur vs click race condition
+Dropdown hasil pencarian kota harus `onMouseDown={(e) => e.preventDefault()}` di setiap item.
+Tanpa ini, `onBlur` pada input menjalankan `setCityOpen(false)` sebelum `onClick` terdaftar
+→ klik item tidak pernah terpilih. Pattern wajib untuk semua custom dropdown dengan blur-close.
+
+#### `flattenCourierOptions` — response RajaOngkir nested
+RajaOngkir return `{code, costs: [{service, description, cost: [{value, etd}]}]}`.
+Harus di-flatten ke `{courier, service, serviceDesc, etd, cost}[]` sebelum ditampilkan.
+Sort by cost ascending (termurah di atas). Implementasi di `checkout-form.tsx`.
+
+#### `shippingTotal` di invoice — hitung sebelum INSERT
+`shippingTotal = shipping.lines.reduce((s, l) => s + l.cost, 0)` dihitung **sebelum** INSERT invoice
+agar kolom `total = subtotal + shippingTotal` langsung benar dari awal. Tidak perlu UPDATE setelah.
+
+---
+
 ### [2026-05] Sistem Harga Berlapis — 3 Tier
 
 ```
@@ -2228,14 +2269,15 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Sistem Tema + Public Button System** (commit `af6a7ab`).
+- Terakhir dikerjakan: **Add-on Ongkos Kirim Phase 2** (commit setelah `f6ae1ea`).
 - Sesi ini:
-  - Foto profil anggota menggantikan Gravatar di header, akun layout, anggota detail, post author
-  - Settings Display diperluas: warna sekunder + heading font (Poppins/Philosopher)
-  - `lib/theme-palette.ts`: generator CSS dari hex (tint/shade/foreground kontras) + Google Fonts URL
-  - `PublicLayout` inject `<style>` + `<link>` Google Fonts server-side → semua `.public-layout` otomatis pakai tema tenant
-  - Public Button System: CSS utilities `@layer utilities` di `globals.css` + `PublicButton` component
-- Ditunda: V8 (stok check qurban server-side), EventCard+Section, Donasi Rutin (R1–R7).
+  - **Checkout multi-step**: Step 1 (data pembeli) → Step 2 (kota tujuan + cari kota via `/api/ongkir/cities`) → Step 3 (pilih kurir per seller group)
+  - **`checkoutAction`** diupdate: terima `CheckoutShippingData`, insert `invoice_shipping_lines` per seller, hitung `shippingTotal`
+  - **Mitra Pesanan** (`/akun/mitra/pesanan`): halaman baru — list pesanan masuk mitra + input resi per shipping line
+  - **`updateShippingTrackingAction`**: server action untuk update nomor resi + status pengiriman
+  - **Invoice publik** (`/invoice/[id]`): fetch shipping lines, tampilkan breakdown ongkir per seller + tracking number + status badge
+  - **Security**: API key RajaOngkir **tidak pernah dikirim ke browser** — semua request ke RajaOngkir diproxy via `/api/ongkir/*`
+- Ditunda: V8 (stok check qurban server-side), EventCard+Section, Donasi Rutin (R1–R7), admin billing view untuk shipping.
 
 ### Status Halaman Publik
 
