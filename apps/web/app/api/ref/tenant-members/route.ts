@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // GET /api/ref/tenant-members?slug=&status=active|alumni|all&search=&page=1
 // Daftar anggota suatu tenant — untuk picker penerima mail merge bulk + RecipientCombobox
 // Butuh sesi valid (admin/owner)

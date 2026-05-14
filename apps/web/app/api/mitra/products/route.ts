@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // GET  /api/mitra/products?slug= — list produk milik mitra yang login
 // POST /api/mitra/products       — buat produk baru
 

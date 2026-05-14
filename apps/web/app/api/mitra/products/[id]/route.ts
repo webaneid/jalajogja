@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // PATCH  /api/mitra/products/[id]?slug= — edit produk
 // DELETE /api/mitra/products/[id]?slug= — hapus produk
 

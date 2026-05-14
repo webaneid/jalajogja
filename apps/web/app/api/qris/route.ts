@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // GET /api/qris?slug=&qrisId=&amount=&ref=
 // Mengembalikan { qrDataUrl } — QR code dengan nominal terkunci (dynamic QRIS)
 

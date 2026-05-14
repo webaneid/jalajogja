@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // GET /api/ref/public-links?slug={tenantSlug}&q={query}
 // Kembalikan semua URL front-end publik yang cocok dengan query (statis + konten DB)
 // Dipakai oleh PublicLinkPicker di admin dashboard

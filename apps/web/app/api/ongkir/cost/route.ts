@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // POST /api/ongkir/cost?slug=
 // Proxy ke RajaOngkir v2 — API key dari ENV, tidak pernah sampai ke browser
 //

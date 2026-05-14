@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { NextResponse }             from "next/server";
 import { eq, ilike, or, and }       from "drizzle-orm";
 import { db, tenants, members, tenantMemberships, createTenantDb } from "@jalajogja/db";

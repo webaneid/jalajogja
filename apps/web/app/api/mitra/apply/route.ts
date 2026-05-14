@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // POST /api/mitra/apply — daftar sebagai mitra
 // DELETE /api/mitra/apply — batalkan pengajuan pending
 

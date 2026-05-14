@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // GET /api/ongkir/track?waybill={resi}&courier={courier_code}&slug={tenant}
 // Proxy ke RajaOngkir v2 — RAJAONGKIR_PLATFORM_KEY TIDAK PERNAH ke browser.
 // Lihat: docs/arsitektur-fulfillment.md § Rencana RajaOngkir Tracking

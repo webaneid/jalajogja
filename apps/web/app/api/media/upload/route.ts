@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, getTenantAccess } from "@/lib/tenant";
 import { createTenantDb } from "@jalajogja/db";

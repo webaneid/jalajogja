@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // GET /api/ongkir/cities?q=&limit= — proxy ke RajaOngkir v2 (search-based)
 // API key tetap di server — tidak pernah sampai ke browser
 

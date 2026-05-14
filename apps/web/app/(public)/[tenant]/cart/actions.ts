@@ -388,6 +388,7 @@ export async function checkoutAction(
       itemType:  string;
       itemId:    string | null;
       name:      string;
+      notes:     string | null;
       unitPrice: number;
       quantity:  number;
       mitraId:   string | null;
@@ -422,6 +423,7 @@ export async function checkoutAction(
         itemType:  item.itemType,
         itemId:    item.itemId,
         name:      item.name,
+        notes:     item.notes ?? null,
         unitPrice,
         quantity:  item.quantity,
         mitraId,
@@ -473,6 +475,7 @@ export async function checkoutAction(
         itemType:    item.itemType as "product" | "ticket" | "donation" | "custom",
         itemId:      item.itemId ?? null,
         name:        item.name,
+        description: item.notes ?? null,
         unitPrice:   item.unitPrice.toFixed(2),
         quantity:    item.quantity,
         total:       (item.unitPrice * item.quantity).toFixed(2),

@@ -9,6 +9,7 @@ import Link      from "next/link";
 import type { Metadata } from "next";
 import { School, MapPin } from "lucide-react";
 import { PublicButton }   from "@/components/website/public/ui/public-button";
+import { PesantrenFiltersClient } from "@/components/pesantren/pesantren-filters-client";
 
 export const revalidate = 60;
 
@@ -150,61 +151,16 @@ export default async function PesantrenDirectoryPage({
           </p>
         </div>
 
-        {/* Filter bar */}
-        <div className="mb-6 space-y-3">
-          <form method="GET" action={`/${slug}/pesantren`}>
-            {provinsi  && <input type="hidden" name="provinsi"  value={provinsi} />}
-            {kurikulum && <input type="hidden" name="kurikulum" value={kurikulum} />}
-            {model     && <input type="hidden" name="model"     value={model} />}
-            {kategori  && <input type="hidden" name="kategori"  value={kategori} />}
-            <div className="flex gap-2 max-w-md">
-              <input
-                name="q"
-                defaultValue={q ?? ""}
-                placeholder="Cari nama pesantren..."
-                className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-              <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-                Cari
-              </button>
-            </div>
-          </form>
-
-          <div className="flex flex-wrap gap-2 items-center">
-            <select
-              defaultValue={provinsi ?? ""}
-              onChange={e => { window.location.href = buildUrl({ provinsi: e.target.value || undefined, page: "1" }); }}
-              className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none"
-            >
-              <option value="">Semua Provinsi</option>
-              {provinsiList.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
-            </select>
-
-            <select
-              defaultValue={kurikulum ?? ""}
-              onChange={e => { window.location.href = buildUrl({ kurikulum: e.target.value || undefined, page: "1" }); }}
-              className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none"
-            >
-              <option value="">Semua Kurikulum</option>
-              {KURIKULUM_OPTIONS.map(k => <option key={k} value={k}>{k}</option>)}
-            </select>
-
-            <select
-              defaultValue={kategori ?? ""}
-              onChange={e => { window.location.href = buildUrl({ kategori: e.target.value || undefined, page: "1" }); }}
-              className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none"
-            >
-              <option value="">Semua Kategori Santri</option>
-              {KATEGORI_OPTIONS.map(k => <option key={k} value={k}>{k}</option>)}
-            </select>
-
-            {hasFilter && (
-              <Link href={`/${slug}/pesantren`} className="text-xs px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
-                × Reset Filter
-              </Link>
-            )}
-          </div>
-        </div>
+        <PesantrenFiltersClient
+          slug={slug}
+          currentQ={q}
+          currentProvinsi={provinsi}
+          currentKurikulum={kurikulum}
+          currentKategori={kategori}
+          currentPage={currentPage}
+          hasFilter={hasFilter}
+          provinsiList={provinsiList}
+        />
 
         {/* Grid */}
         {rows.length === 0 ? (

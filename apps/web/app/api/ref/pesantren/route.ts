@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // GET /api/ref/pesantren?search=&limit=20
 // Cari pesantren aktif dari direktori public — untuk combobox di wizard anggota
 // Tidak perlu filter tenant — pesantren adalah data publik ekosistem

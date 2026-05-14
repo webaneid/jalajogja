@@ -210,9 +210,12 @@ function SearchBar({ tenantSlug }: { tenantSlug: string }) {
 
 function UserButton({ tenantSlug }: { tenantSlug: string }) {
   const { data: session }          = authClient.useSession();
+  const [mounted, setMounted]      = useState(false);
   const [open, setOpen]            = useState(false);
   const [hasDashboard, setHasDash] = useState(false);
   const [photoUrl, setPhotoUrl]    = useState<string | null>(null);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (!session?.user) { setHasDash(false); setPhotoUrl(null); return; }
@@ -220,7 +223,9 @@ function UserButton({ tenantSlug }: { tenantSlug: string }) {
     getAkunAvatarAction().then(setPhotoUrl);
   }, [session?.user?.id, tenantSlug]);
 
-  if (!session) {
+  // Saat hydration, server dan client keduanya render guest state agar tidak mismatch.
+  // Setelah mount, baru switch ke state sebenarnya berdasarkan session.
+  if (!mounted || !session) {
     return (
       <div className="flex items-center gap-2">
         <PublicButton href={`/${tenantSlug}/login`} variant="ghost" size="sm" icon="none">

@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // POST /api/invoice/proof-upload?tenant=&invoiceId=
 // Upload bukti transfer/QRIS — tidak perlu auth, cukup punya invoiceId
 // File disimpan ke MinIO: payments/{invoiceId}/{uuid}.{ext}

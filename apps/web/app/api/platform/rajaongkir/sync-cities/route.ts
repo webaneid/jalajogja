@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // POST /api/platform/rajaongkir/sync-cities
 // Test koneksi ke RajaOngkir v2 (platform admin only)
 // API v2 adalah search-based — tidak ada bulk list endpoint, jadi ini hanya test ping

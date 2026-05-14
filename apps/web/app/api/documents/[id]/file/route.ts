@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // GET /api/documents/[id]/file?slug={slug}&version={versionId}
 // Stream file dokumen dari MinIO. Internal → wajib login + akses tenant. Public → bebas.
 

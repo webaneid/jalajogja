@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // POST /api/decode-qr
 // Body: { imageUrl: string }
 // Server-side decode: fetch image (no CORS) → Sharp preprocess → jsQR → EMV payload

@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useTransition, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -19,11 +19,14 @@ export function TransaksiActions({ slug, donationId, paymentId, paymentStatus, c
   const router = useRouter();
   const [isConfirming, startConfirm] = useTransition();
   const [isCancelling, startCancel]  = useTransition();
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   function handleConfirm() {
+    setConfirmError(null);
     startConfirm(async () => {
       const res = await confirmDonationAction(slug, paymentId);
       if (res.success) router.refresh();
+      else setConfirmError(res.error ?? "Gagal mengkonfirmasi donasi.");
     });
   }
 
@@ -47,7 +50,11 @@ export function TransaksiActions({ slug, donationId, paymentId, paymentStatus, c
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="space-y-2">
+      {confirmError && (
+        <p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">{confirmError}</p>
+      )}
+      <div className="flex flex-wrap gap-2">
       {canConfirm && (
         <Button
           onClick={handleConfirm}
@@ -69,6 +76,7 @@ export function TransaksiActions({ slug, donationId, paymentId, paymentStatus, c
           {isCancelling ? "Membatalkan..." : "Batalkan"}
         </Button>
       )}
+      </div>
     </div>
   );
 }

@@ -26,12 +26,19 @@ export default async function MediaPage({
     .from(schema.media)
     .orderBy(desc(schema.media.createdAt));
 
-  // Tambah URL publik + serialize createdAt ke string
-  const mediaWithUrl = mediaList.map((m) => ({
-    ...m,
-    url: publicUrl(slug, m.path),
-    createdAt: m.createdAt.toISOString(),
-  }));
+  // Tambah URL publik + resolve variant paths ke full URL + serialize createdAt
+  const mediaWithUrl = mediaList.map((m) => {
+    const rawVariants = m.variants as Record<string, string> | null | undefined;
+    const resolvedVariants = rawVariants
+      ? Object.fromEntries(Object.entries(rawVariants).map(([k, v]) => [k, publicUrl(slug, v)]))
+      : null;
+    return {
+      ...m,
+      url:      publicUrl(slug, m.path),
+      variants: resolvedVariants,
+      createdAt: m.createdAt.toISOString(),
+    };
+  });
 
   return (
     <MediaShell

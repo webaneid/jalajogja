@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // POST /api/events/[id]/certificate/[regId]?slug={slug}
 // Generate sertifikat kehadiran event via Playwright → upload MinIO → update certificate_url
 

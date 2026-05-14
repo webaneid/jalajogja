@@ -9,6 +9,7 @@ import Link      from "next/link";
 import type { Metadata } from "next";
 import { Briefcase, MapPin } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";
+import { UsahaFiltersClient } from "@/components/usaha/usaha-filters-client";
 
 export const revalidate = 60;
 
@@ -153,61 +154,17 @@ export default async function UsahaDirectoryPage({
           </p>
         </div>
 
-        {/* Filter bar */}
-        <div className="mb-6 space-y-3">
-          <form method="GET" action={`/${slug}/usaha`}>
-            {provinsi  && <input type="hidden" name="provinsi"  value={provinsi} />}
-            {sektor    && <input type="hidden" name="sektor"    value={sektor} />}
-            {kategori  && <input type="hidden" name="kategori"  value={kategori} />}
-            {legalitas && <input type="hidden" name="legalitas" value={legalitas} />}
-            <div className="flex gap-2 max-w-md">
-              <input
-                name="q"
-                defaultValue={q ?? ""}
-                placeholder="Cari nama usaha atau brand..."
-                className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-              <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-                Cari
-              </button>
-            </div>
-          </form>
-
-          <div className="flex flex-wrap gap-2 items-center">
-            <select
-              defaultValue={sektor ?? ""}
-              onChange={e => { window.location.href = buildUrl({ sektor: e.target.value || undefined, page: "1" }); }}
-              className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none"
-            >
-              <option value="">Semua Sektor</option>
-              {SEKTOR_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-
-            <select
-              defaultValue={kategori ?? ""}
-              onChange={e => { window.location.href = buildUrl({ kategori: e.target.value || undefined, page: "1" }); }}
-              className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none"
-            >
-              <option value="">Semua Kategori</option>
-              {KATEGORI_OPTIONS.map(k => <option key={k} value={k}>{k}</option>)}
-            </select>
-
-            <select
-              defaultValue={provinsi ?? ""}
-              onChange={e => { window.location.href = buildUrl({ provinsi: e.target.value || undefined, page: "1" }); }}
-              className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none"
-            >
-              <option value="">Semua Provinsi</option>
-              {provinsiList.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
-            </select>
-
-            {hasFilter && (
-              <Link href={`/${slug}/usaha`} className="text-xs px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
-                × Reset Filter
-              </Link>
-            )}
-          </div>
-        </div>
+        <UsahaFiltersClient
+          slug={slug}
+          currentQ={q}
+          currentProvinsi={provinsi}
+          currentSektor={sektor}
+          currentKategori={kategori}
+          currentLegalitas={legalitas}
+          currentPage={currentPage}
+          hasFilter={hasFilter}
+          provinsiList={provinsiList}
+        />
 
         {/* Grid */}
         {rows.length === 0 ? (

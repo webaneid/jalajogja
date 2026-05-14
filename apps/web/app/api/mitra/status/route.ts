@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // GET /api/mitra/status?slug={tenant}
 // Cek status mitra + eligibility untuk anggota IKPM yang sedang login
 

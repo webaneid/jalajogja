@@ -101,11 +101,15 @@ export function CampaignDetailClient({
     const itemName = isQurban && selectedAnimal
       ? `Qurban ${ANIMAL_LABEL[selectedAnimal.animalType]} — ${campaignTitle}`
       : campaignTitle;
-    const notes = isQurban ? `Atas nama: ${atasNama}` : (isAnon ? "Anonim" : undefined);
+    // itemId selalu campaignId agar billing bisa update collected_amount saat konfirmasi
+    // animalId disimpan di notes untuk referensi admin
+    const notes = isQurban
+      ? `Atas nama: ${atasNama}; animalId: ${selectedAnimalId ?? ""}`
+      : (isAnon ? "Anonim" : undefined);
 
     const res = await addToCartAction(tenantSlug, {
       itemType:  "donation",
-      itemId:    isQurban ? (selectedAnimalId ?? campaignId) : campaignId,
+      itemId:    campaignId,
       name:      itemName,
       unitPrice: donationAmount,
       notes,

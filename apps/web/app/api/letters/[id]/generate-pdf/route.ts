@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // POST /api/letters/[id]/generate-pdf?slug={slug}
 // Generate PDF surat via Playwright → upload MinIO → update letters.pdf_url
 

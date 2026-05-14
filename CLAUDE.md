@@ -2305,19 +2305,18 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Arsitektur Public Link Picker** — perencanaan komponen autocomplete URL front-end (sesi 2026-05-15).
-- Sebelumnya: **Direktori Publik — 4 halaman selesai** (sesi 2026-05-15).
+- Terakhir dikerjakan: **Direktori & Statistik — penyempurnaan form wajib + statistik anggota** (sesi 2026-05-15).
+- Sebelumnya: **Direktori Publik — 4 halaman selesai** + **SC→CC boundary fixes** (sesi 2026-05-15).
 - Sebelumnya: **Arsitektur Direktori Publik** (perencanaan) + **RajaOngkir Tracking + Konfirmasi Terima** (2026-05-14).
 - Sesi terakhir:
-  - **`/api/member-public/[id]`** — API endpoint publik (no auth), scope check via `tenant_memberships`, kontak conditional per `is_*_public`, businesses + pesantren ringkasan.
-  - **`components/anggota/anggota-directory-client.tsx`** — client component render prop, lazy-fetch popup detail, overlay fixed (Escape close), initials fallback avatar.
-  - **`/{slug}/anggota`** — list direktori anggota: grid 2/3/4/6 col, filter provinsi+angkatan+profesi, search ILIKE, pagination 24/page, popup via render prop.
-  - **`/{slug}/pesantren`** — list pesantren: filter kurikulum+kategoriSantri+provinsi, pagination 24/page.
-  - **`/{slug}/pesantren/[id]`** — detail pesantren: stats 4 card, InfoRow, kontak conditional, sosmed, owner.
-  - **`/{slug}/usaha`** — list usaha: filter sektor+kategori+legalitas+provinsi, pagination 24/page.
-  - **`/{slug}/usaha/[id]`** — detail usaha: `renderBody()` untuk deskripsi Tiptap JSON, kontak conditional.
-  - **`/{slug}/statistik`** — statistik: `sql<number>\`count(*)\`` + `sql<string>\`coalesce(sum(...),'0')\``, StatCard + BarList CSS-only, revalidate=300.
-  - TypeScript 0 errors di semua file baru.
+  - **SC→CC boundary fix** — `anggota/page.tsx` render prop → pass `rows` as prop; filter bar (pesantren, usaha, anggota) diekstrak ke `*FiltersClient` tersendiri. Tabel (desktop) + card list (mobile) untuk direktori anggota.
+  - **Statistik Pesantren** — tambah panel Model Pendidikan + Jenis Pondok.
+  - **Form Pesantren wajib** — 9 field wajib di `/akun/pesantren`: berdiri sejak, luas area, nama pimpinan, kurikulum, jenis pondok, model pendidikan, kategori santri, telepon, WhatsApp.
+  - **Statistik Usaha** — tambah 3 panel: Jumlah Karyawan, Jumlah Cabang Usaha, Top 10 Kabupaten/Kota.
+  - **Angkatan 1999 fix** — query group by `(graduationYear, graduationPeriod)`; label "1999 (Awal)" / "1999 (Akhir)" / "1999 (Belum ditentukan)" untuk data lama; period wajib dipilih di kedua form + tombol disabled.
+  - **Wali Santri wajib** — field `waliSantri` wajib di `/akun/lengkapi` + admin `step1-identity.tsx`; panel statistik Wali Santri di Statistik Anggota.
+  - **Statistik Anggota** — "Top 10 Provinsi" → "Top 10 Kabupaten / Kota Domisili" (JOIN `refRegencies`); tambah panel Status Domisili (permanent/temporary).
+  - TypeScript 0 errors di semua file.
 - Ditunda: sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7), WA notif per stage.
 
 ### Status Halaman Publik
@@ -2345,37 +2344,73 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 
 **File yang dibuat:**
 ```
-app/(public)/[tenant]/anggota/page.tsx             → list + popup (render prop)
+app/(public)/[tenant]/anggota/page.tsx             → server: fetch + pass rows ke CC
 app/(public)/[tenant]/pesantren/page.tsx            → list pesantren
 app/(public)/[tenant]/pesantren/[id]/page.tsx       → detail pesantren
 app/(public)/[tenant]/usaha/page.tsx                → list usaha
 app/(public)/[tenant]/usaha/[id]/page.tsx           → detail usaha
 app/(public)/[tenant]/statistik/page.tsx            → statistik 3 seksi
 app/api/member-public/[id]/route.ts                 → API publik profil anggota
-components/anggota/anggota-directory-client.tsx     → client popup
+components/anggota/anggota-directory-client.tsx     → tabel (desktop) + card (mobile) + popup
+components/anggota/anggota-filters-client.tsx       → filter bar dengan onChange handlers
 ```
 
-**Pattern render prop untuk split server/client:**
-Halaman anggota butuh data DB (server) + state popup (client). Solusi: render prop pattern.
-Server page meneruskan server-fetched rows ke client component via children function:
-```tsx
-// Server page
-<AnggotaDirectoryClient slug={slug}>
-  {(onSelect) => rows.map(m => <button onClick={() => onSelect(m.id)}>...</button>)}
-</AnggotaDirectoryClient>
+**Pattern yang BENAR untuk split server/client — kirim data, bukan fungsi:**
+Halaman anggota butuh data DB (server) + state popup (client). Solusi: kirim `rows` (data serializable)
+sebagai prop, dan pindahkan seluruh rendering grid ke dalam Client Component.
 
-// Client component
-export function AnggotaDirectoryClient({ slug, children }) {
+```tsx
+// Server page — kirim data, bukan fungsi
+<AnggotaDirectoryClient slug={slug} rows={rows} hasFilter={hasFilter} />
+
+// Client component — render grid + popup sendiri
+export function AnggotaDirectoryClient({ slug, rows, hasFilter }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   return (
     <>
-      {children(setSelectedId)}
+      {rows.map(m => <button onClick={() => setSelectedId(m.id)}>...</button>)}
       {/* popup overlay */}
     </>
   );
 }
 ```
-Ini mempertahankan server-rendered grid (SEO-friendly) tanpa membuat seluruh halaman jadi client.
+
+**JANGAN: render prop (fungsi sebagai children) dari Server Component ke Client Component**
+```tsx
+// SALAH — error: "Functions are not valid as a child of Client Components"
+<AnggotaDirectoryClient>
+  {(onSelect) => rows.map(m => <button onClick={() => onSelect(m.id)}>...</button>)}
+</AnggotaDirectoryClient>
+```
+Fungsi tidak serializable → Next.js App Router tidak bisa meneruskannya lintas SC→CC boundary.
+Error: `Functions are not valid as a child of Client Components. <... children={function children}>`
+
+**Event handler (`onChange`, `onClick`, dll.) TIDAK boleh ada di Server Component:**
+Setiap elemen yang butuh event handler harus ada di dalam Client Component (`"use client"`).
+Jika hanya sebagian kecil dari halaman yang interaktif, buat komponen client terpisah — jangan
+jadikan seluruh page client hanya karena satu `<select onChange>`.
+
+```tsx
+// SALAH — error: "Event handlers cannot be passed to Client Component props"
+// app/(public)/[tenant]/anggota/page.tsx (Server Component)
+<select onChange={e => window.location.href = buildUrl(...)}>...</select>
+
+// BENAR — ekstrak ke Client Component tersendiri
+// components/anggota/anggota-filters-client.tsx
+"use client";
+export function AnggotaFiltersClient({ ... }) {
+  return <select onChange={e => window.location.href = buildUrl(...)}>...</select>;
+}
+
+// Server page hanya kirim data serializable sebagai props
+<AnggotaFiltersClient provinsiList={provinsiList} currentProvinsi={provinsi} ... />
+```
+
+**Dua error Server Component yang sering terjadi dan perbedaannya:**
+| Error | Penyebab | Fix |
+|-------|----------|-----|
+| `Functions are not valid as a child of Client Components` | Render prop / fungsi sebagai `children` dari SC ke CC | Kirim data (array/object) sebagai prop, render di dalam CC |
+| `Event handlers cannot be passed to Client Component props` | `onChange`, `onClick`, dll. di SC | Ekstrak elemen interaktif ke CC terpisah |
 
 **`sql<number>\`count(*)\`` — WAJIB, bukan `count()` dari drizzle-orm:**
 `count()` dari drizzle-orm menyebabkan TypeScript error saat dipakai dengan Promise.all destructuring.
@@ -2405,6 +2440,55 @@ Aturan: jangan import icon yang tidak tersedia, selalu cek dengan `tsc` sebelum 
 **Statistik — sequential query, bukan Promise.all destructuring:**
 Promise.all dengan destructuring array membuat TypeScript kehilangan inference tipe per-index.
 Sequential await lebih verbose tapi TypeScript tidak error dan kode lebih mudah di-debug.
+
+### [2026-05] Statistik — Pola Angkatan dengan Sub-periode (1999 Awal/Akhir)
+
+Kolom `graduationYear` + `graduationPeriod` harus selalu di-group bersama di query statistik:
+```typescript
+.select({ year: members.graduationYear, period: members.graduationPeriod, total: sql<number>`count(*)` })
+.groupBy(members.graduationYear, members.graduationPeriod)
+```
+
+Label display — tiga kemungkinan untuk tahun 1999:
+```typescript
+if (r.year === 1999) {
+  label = r.period === "awal" ? "1999 (Awal)"
+        : r.period === "akhir" ? "1999 (Akhir)"
+        : "1999 (Belum ditentukan)";  // data lama sebelum kolom period ditambahkan
+}
+```
+
+**"Belum ditentukan" bukan error** — ini sinyal data lama yang perlu di-update oleh anggota via `/akun/lengkapi`. Jangan sembunyikan atau gabungkan dengan row lain.
+
+**Aturan validasi form untuk kolom sub-periode:**
+```typescript
+// Di saveStep1() / handleSubmit()
+if (Number(graduationYear) === 1999 && !graduationPeriod) {
+  setError("Angkatan 1999 wajib memilih periode: Awal atau Akhir.");
+  return;
+}
+// Tombol disabled juga harus ikut:
+disabled={... || (Number(graduationYear) === 1999 && !graduationPeriod) || ...}
+```
+
+Berlaku di: `app/(public)/[tenant]/akun/lengkapi/page.tsx` + `components/members/wizard/step1-identity.tsx`.
+Pattern ini bisa dipakai untuk kolom apapun yang punya sub-nilai kondisional.
+
+### [2026-05] Statistik — Kabupaten vs Provinsi
+
+Gunakan kabupaten (`refRegencies`) bukan provinsi (`refProvinces`) untuk granularitas yang lebih berguna di statistik domisili anggota dan lokasi usaha/pesantren.
+
+```typescript
+.leftJoin(refRegencies, eq(refRegencies.id, addresses.regencyId))
+.where(sql`${refRegencies.id} IS NOT NULL`)   // filter agar anggota tanpa alamat tidak masuk
+.groupBy(refRegencies.name)
+.limit(10)
+```
+
+`WHERE refRegencies.id IS NOT NULL` penting — tanpa ini, anggota yang belum isi alamat masuk dengan `regencyName = null` dan merusak label di BarList.
+
+**Filter NULL untuk semua kolom opsional di statistik:**
+Setiap kolom yang nullable (waliSantri, domicileStatus, employees, branches, graduationYear, dll) wajib filter `IS NOT NULL` di query statistik — jangan tampilkan "Tidak diketahui" sebagai bar yang besar hanya karena banyak anggota belum isi.
 
 ### [2026-05] Prinsip Billing Universal — Jangan Pernah Split List per Jalur Masuk
 

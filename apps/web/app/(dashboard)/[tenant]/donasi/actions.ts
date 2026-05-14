@@ -475,7 +475,7 @@ export async function confirmDonationAction(
       date:            new Date().toISOString().slice(0, 10),
       description:     `Donasi masuk ${payment.number} - Dana Titipan`,
       referenceNumber: txNumber,
-      createdBy:       access.userId,
+      createdBy:       access.tenantUser.id,
       amount,
       cashAccountId,
       incomeAccountId,
@@ -485,7 +485,7 @@ export async function confirmDonationAction(
       .update(schema.payments)
       .set({
         status:        "paid",
-        confirmedBy:   access.userId,
+        confirmedBy:   access.tenantUser.id,
         confirmedAt:   new Date(),
         transactionId: transaction.id,
         updatedAt:     new Date(),
@@ -512,8 +512,13 @@ export async function confirmDonationAction(
     });
 
     revalidateDonasi(slug);
-    if (donation.campaignId)
+    if (donation.campaignId) {
       revalidatePath(`/${slug}/donasi/campaign/${donation.campaignId}`);
+      // Revalidate public campaign pages
+      const [c] = await db.select({ slug: schema.campaigns.slug })
+        .from(schema.campaigns).where(eq(schema.campaigns.id, donation.campaignId)).limit(1);
+      if (c) revalidatePath(`/${slug}/campaign/${c.slug}`);
+    }
     return { success: true, data: undefined };
   } catch (err) {
     console.error("[confirmDonationAction]", err);

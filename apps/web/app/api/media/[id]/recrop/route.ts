@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // POST /api/media/[id]/recrop?slug={tenant}
 // Re-generate variant gambar dengan koordinat crop manual
 // Koordinat dalam persen (0–100) relatif terhadap gambar original
