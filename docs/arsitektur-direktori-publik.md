@@ -14,6 +14,28 @@ Semua halaman masuk ke route group `(public)/[tenant]/` — tidak butuh login, t
 | Direktori Usaha | `/{slug}/usaha` | List + halaman detail |
 | Statistik | `/{slug}/statistik` | Dashboard angka & grafik |
 
+## Paginasi — Berlaku di Semua List
+
+Ketiga halaman list (Anggota, Pesantren, Usaha) wajib menggunakan paginasi server-side berbasis URL.
+
+**Spesifikasi:**
+- Page size: **24** untuk kartu grid (kelipatan 4 kolom), **20** untuk list view
+- Parameter URL: `?page=N` (default 1)
+- Query: `LIMIT PAGE_SIZE OFFSET (page-1)*PAGE_SIZE`
+- Total count: satu query `COUNT(*)` paralel
+- Navigasi: tombol Sebelumnya / nomor halaman / Berikutnya
+- Filter dan search mempertahankan `page` di-reset ke 1 setiap kali filter berubah
+
+**Pattern URL:**
+```
+/{slug}/anggota?page=2&provinsi=34&angkatan=2005
+/{slug}/pesantren?page=1&kurikulum=KMI+Gontor
+/{slug}/usaha?page=3&sektor=Teknologi
+```
+
+Paginasi TIDAK menggunakan infinite scroll atau client-side load-more — semua server-side
+agar SEO-friendly dan bekerja tanpa JavaScript.
+
 ---
 
 ## 1. Aturan Visibilitas Data
