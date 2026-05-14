@@ -12,8 +12,6 @@ import type { CheckoutDefaults } from "@/components/billing/checkout-form";
 type Props = { params: Promise<{ tenant: string }> };
 
 type RajaOngkirConfig = {
-  api_key?:          string;
-  tier?:             "starter" | "pro";
   origin_city_id?:   number;
   origin_city_name?: string;
   couriers?:         string[];
@@ -125,7 +123,7 @@ export default async function CheckoutPage({ params }: Props) {
       if (installation && installation.status !== "expired" && installation.status !== "inactive") {
         const config = installation.config as RajaOngkirConfig;
 
-        if (config.api_key && config.couriers?.length) {
+        if (config.couriers?.length) {
           addonCouriers = config.couriers;
 
           const { db: tdb, schema: ts } = createTenantDb(slug);
