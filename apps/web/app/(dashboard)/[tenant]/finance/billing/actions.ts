@@ -302,6 +302,22 @@ export async function confirmInvoicePaymentAction(
           cashAccountId,
           incomeAccountId,
         });
+
+        // Sync collected_amount kampanye donasi dari cart
+        const donationItems = await tx
+          .select({ itemId: schema.invoiceItems.itemId, total: schema.invoiceItems.total })
+          .from(schema.invoiceItems)
+          .where(and(
+            eq(schema.invoiceItems.invoiceId, invoiceId),
+            eq(schema.invoiceItems.itemType, "donation"),
+          ));
+        const campaignAmounts: Record<string, number> = {};
+        for (const it of donationItems) {
+          if (it.itemId) campaignAmounts[it.itemId] = (campaignAmounts[it.itemId] ?? 0) + parseFloat(String(it.total));
+        }
+        for (const [cId, amt] of Object.entries(campaignAmounts)) {
+          await tx.update(schema.campaigns).set({ collectedAmount: sql`collected_amount + ${String(amt)}` }).where(eq(schema.campaigns.id, cId));
+        }
       }
 
       return payment.id;
@@ -407,6 +423,22 @@ export async function verifySubmittedPaymentAction(
           cashAccountId,
           incomeAccountId,
         });
+
+        // Sync collected_amount kampanye donasi dari cart
+        const donationItems = await tx
+          .select({ itemId: schema.invoiceItems.itemId, total: schema.invoiceItems.total })
+          .from(schema.invoiceItems)
+          .where(and(
+            eq(schema.invoiceItems.invoiceId, inv.id),
+            eq(schema.invoiceItems.itemType, "donation"),
+          ));
+        const campaignAmounts: Record<string, number> = {};
+        for (const it of donationItems) {
+          if (it.itemId) campaignAmounts[it.itemId] = (campaignAmounts[it.itemId] ?? 0) + parseFloat(String(it.total));
+        }
+        for (const [cId, amt] of Object.entries(campaignAmounts)) {
+          await tx.update(schema.campaigns).set({ collectedAmount: sql`collected_amount + ${String(amt)}` }).where(eq(schema.campaigns.id, cId));
+        }
       }
     });
 
@@ -564,7 +596,7 @@ export type InvoiceDetail = {
     cost:           number;
     trackingNumber: string | null;
     shippedAt:      string | null;
-    status:         "pending" | "shipped" | "delivered";
+    status:         "pending" | "processing" | "packed" | "shipped" | "delivered";
   }[];
 };
 
@@ -667,7 +699,7 @@ export async function getInvoiceDetailAction(
         cost:           parseFloat(String(sl.cost)),
         trackingNumber: sl.trackingNumber ?? null,
         shippedAt:      sl.shippedAt?.toISOString() ?? null,
-        status:         sl.status as "pending" | "shipped" | "delivered",
+        status:         sl.status as "pending" | "processing" | "packed" | "shipped" | "delivered",
       })),
     },
   };
@@ -708,5 +740,80 @@ export async function updateAdminShippingTrackingAction(
     .where(eq(schema.invoiceShippingLines.id, shippingLineId));
 
   revalidateBilling(slug);
+  return { success: true, data: undefined };
+}
+
+// ─── updateFulfillmentStatusAction ───────────────────────────────────────────
+// Majukan status pengiriman tenant sesuai alur: pending→processing→packed→shipped→delivered.
+// Shipped wajib ada trackingNumber. Delivered: set deliveredAt.
+
+const FULFILLMENT_ORDER: Record<string, number> = {
+  pending: 0, processing: 1, packed: 2, shipped: 3, delivered: 4,
+};
+
+export async function updateFulfillmentStatusAction(
+  slug:           string,
+  shippingLineId: string,
+  newStatus:      "processing" | "packed" | "shipped" | "delivered",
+  trackingNumber?: string,
+): Promise<ActionResult<void>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [line] = await db
+    .select({
+      id:             schema.invoiceShippingLines.id,
+      invoiceId:      schema.invoiceShippingLines.invoiceId,
+      sellerType:     schema.invoiceShippingLines.sellerType,
+      status:         schema.invoiceShippingLines.status,
+      trackingNumber: schema.invoiceShippingLines.trackingNumber,
+    })
+    .from(schema.invoiceShippingLines)
+    .where(eq(schema.invoiceShippingLines.id, shippingLineId))
+    .limit(1);
+
+  if (!line) return { success: false, error: "Data pengiriman tidak ditemukan." };
+  if (line.sellerType !== "tenant") return { success: false, error: "Pengiriman mitra dikelola oleh mitra." };
+
+  // Cek invoice sudah lunas sebelum mulai proses
+  const [inv] = await db
+    .select({ status: schema.invoices.status })
+    .from(schema.invoices)
+    .where(eq(schema.invoices.id, line.invoiceId))
+    .limit(1);
+
+  if (!inv) return { success: false, error: "Invoice tidak ditemukan." };
+  if (inv.status !== "paid") return { success: false, error: "Pesanan hanya bisa diproses setelah pembayaran lunas." };
+
+  // Validasi transisi — hanya boleh maju satu langkah
+  const currentOrder = FULFILLMENT_ORDER[line.status] ?? 0;
+  const newOrder     = FULFILLMENT_ORDER[newStatus]   ?? 0;
+  if (newOrder !== currentOrder + 1) {
+    return { success: false, error: "Urutan status tidak valid." };
+  }
+
+  if (newStatus === "shipped") {
+    const resi = (trackingNumber ?? "").trim() || (line.trackingNumber ?? "");
+    if (!resi) return { success: false, error: "Nomor resi wajib diisi sebelum mengubah status ke Dikirim." };
+    await db
+      .update(schema.invoiceShippingLines)
+      .set({ status: "shipped", trackingNumber: resi, shippedAt: new Date(), updatedAt: new Date() })
+      .where(eq(schema.invoiceShippingLines.id, shippingLineId));
+  } else if (newStatus === "delivered") {
+    await db
+      .update(schema.invoiceShippingLines)
+      .set({ status: "delivered", deliveredAt: new Date(), updatedAt: new Date() })
+      .where(eq(schema.invoiceShippingLines.id, shippingLineId));
+  } else {
+    await db
+      .update(schema.invoiceShippingLines)
+      .set({ status: newStatus, updatedAt: new Date() })
+      .where(eq(schema.invoiceShippingLines.id, shippingLineId));
+  }
+
+  revalidateBilling(slug);
+  revalidatePath(`/${slug}/toko/pesanan`);
   return { success: true, data: undefined };
 }

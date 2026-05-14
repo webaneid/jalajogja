@@ -273,14 +273,14 @@ export default async function PesananPage({
                     <tr key={inv.id} className="hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-3">
                         <Link
-                          href={`/${slug}/finance/billing/invoice/${inv.id}`}
+                          href={`/${slug}/toko/pesanan/invoice/${inv.id}`}
                           className="font-mono text-xs text-primary hover:underline"
                         >
                           {inv.invoiceNumber}
                         </Link>
                       </td>
                       <td className="px-4 py-3">
-                        <Link href={`/${slug}/finance/billing/invoice/${inv.id}`} className="hover:underline">
+                        <Link href={`/${slug}/toko/pesanan/invoice/${inv.id}`} className="hover:underline">
                           {inv.customerName}
                         </Link>
                       </td>

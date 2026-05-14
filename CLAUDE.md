@@ -352,9 +352,11 @@ app/(dashboard)/[tenant]/
 │   │   ├── new/page.tsx    → pre-create draft → redirect ke edit
 │   │   └── [id]/edit/page.tsx → full editor: ProductForm (Tiptap + MediaPicker + SeoPanel)
 │   ├── pesanan/
-│   │   ├── page.tsx        → list pesanan: tabel + filter status + search + pagination
+│   │   ├── page.tsx        → list pesanan: tabel (orders lama) + "Pesanan via Keranjang" (invoices cart)
 │   │   ├── new/page.tsx    → buat pesanan manual (fetch produk aktif → OrderCreateClient)
-│   │   └── [id]/page.tsx   → detail pesanan: info + items + pembayaran + OrderActions
+│   │   ├── [id]/page.tsx   → detail pesanan (orders table lama: info + items + pembayaran + OrderActions)
+│   │   └── invoice/
+│   │       └── [invoiceId]/page.tsx → fulfillment page (5-stage timeline + resi input + items)
 │   └── kategori/
 │       └── page.tsx        → CRUD kategori produk (inline create)
 ├── website/                → /{slug}/website/*
@@ -404,8 +406,9 @@ app/(dashboard)/[tenant]/
 - [x] **Billing Phase 1** — schema 7 tabel + nav + dashboard invoice (list/create/detail + partial payment)
 - [x] **Billing Phase 2** — cart + checkout + halaman publik (`/keranjang`, `/checkout`, `/invoice/[id]`) SELESAI. Item type product/ticket/donation menunggu halaman publik masing-masing modul.
 - [x] **Billing Phase 3** — Toko + Donasi + Event semua sudah terintegrasi (invoice otomatis via `createLinkedInvoice`). Billing dashboard tampilkan badge sumber untuk semua tipe. ✅
-- [~] **Billing sisa** — item picker di invoice manual admin (produk+tiket+donasi), integrasi Donasi+Event, PDF, cicilan UI. **DITUNDA**.
-- **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Detail di `docs/arsitektur-billing.md`.
+- [~] **Billing sisa** — item picker di invoice manual admin (produk+tiket+donasi), PDF, cicilan UI. **DITUNDA**.
+- [x] **Billing Phase 4 — Fulfillment** — 5-stage pengiriman (pending→processing→packed→shipped→delivered), `updateFulfillmentStatusAction`, halaman admin `/toko/pesanan/invoice/[invoiceId]`, `FulfillmentCard` + `FulfillmentTimeline`, lightbox bukti transfer, pelanggan lihat 5 status di `/akun/transaksi`. Detail di `docs/arsitektur-fulfillment.md`.
+- **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
@@ -2269,17 +2272,16 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Billing — Bukti Transfer + Verifikasi Payment** (commit `da822ce`, `bc6d5ae`).
-- Sebelumnya: **RajaOngkir v1 → v2 migration** + **Add-on self-install** + **checkout ongkir** (commit `ac87dc6` dan sebelumnya).
+- Terakhir dikerjakan: **Donasi Tracking Lengkap** (sesi 2026-05-14).
+- Sebelumnya: **Billing Phase 4 — Fulfillment 5-stage** (sesi sama) + **Bukti Transfer + Verifikasi** + **RajaOngkir v2** + **checkout ongkir**.
 - Sesi terakhir:
-  - **Bukti Transfer**: API `POST /api/invoice/proof-upload`, field upload foto di form konfirmasi publik, preview + loading state
-  - **Verifikasi Admin**: `verifySubmittedPaymentAction` — verifikasi payment `submitted` → `paid`, update `paid_amount`, jurnal double-entry
-  - **Tombol Verifikasi**: muncul di admin invoice detail (`/finance/billing/invoice/[id]`) di samping payment "Menunggu Verifikasi"
-  - **Bug fix kritis**: `confirmedBy`/`createdBy` di finance harus `access.tenantUser.id` (UUID dari `tenant.users`), bukan `access.userId` (Better Auth nanoid — bukan UUID, crash PostgreSQL)
-  - **RajaOngkir v2**: migrasi total dari v1 (dead) ke v2. API key platform-level di ENV. Cities search realtime (no local table). Response format flat. 404 = empty results.
-  - **Addon self-install**: halaman settings addon didesain ulang — tampil katalog + Install button untuk free addons
-  - **Dokumentasi**: `arsitektur-billing.md` + `arsitektur-addon-ongkir.md` diupdate
-- Ditunda: V8 (stok check qurban server-side), EventCard+Section, Donasi Rutin (R1–R7).
+  - **`collectedAmount` sync cart-based donations**: `confirmInvoicePaymentAction` + `verifySubmittedPaymentAction` di `billing/actions.ts` — setelah invoice paid, update `campaigns.collected_amount` untuk setiap donation item via `sql\`collected_amount + ${amt}\``
+  - **Campaign detail page** — 4-box financial summary: Terkumpul / Target / Disalurkan / Sisa Titipan. Menghitung dari dua jalur: donasi langsung (`payments`) + donasi keranjang (`invoice_items WHERE itemType='donation'`). Tambah section "Donasi via Keranjang" + "Riwayat Penyaluran" (dari `disbursements WHERE purposeType='donation_payout'`)
+  - **Admin `/donasi/transaksi`** — dua section: Donasi Langsung (sistem lama) + Donasi via Keranjang (`CartDonationsTable` baru)
+  - **`CartDonationsTable`** component baru di `components/donasi/cart-donations-table.tsx` — search + link ke invoice billing
+  - **`/akun/transaksi`** — ikon Heart (pink) untuk item donasi, ikon Ticket (violet) untuk tiket, Package untuk produk
+  - **`docs/arsitektur-donasi.md`** — ditambah Section 13a (dual-system tracking, 4-box summary, disbursement, format) + status tabel diperbarui
+- Ditunda: sertifikat PDF donasi, V8 (stok check), EventCard+Section, Donasi Rutin (R1–R7), RajaOngkir tracking, WA notif per stage.
 
 ### Status Halaman Publik
 
@@ -2325,7 +2327,12 @@ Jangan campur dua jalur ini. `verifySubmittedPaymentAction` menerima `paymentId`
 - Upload via `POST /api/invoice/proof-upload?tenant=&invoiceId=` — publik, tidak butuh auth
 - Simpan ke MinIO `payments/{invoiceId}/{uuid}.{ext}` — tidak ada image processing, tidak ada record di `media` table
 - URL disimpan di `payments.proof_url` saat `submitPaymentProofAction` dipanggil
-- Tampil sebagai thumbnail di admin invoice detail (klik = buka full)
+- Upload via `POST /api/invoice/proof-upload?tenant=&invoiceId=` — publik, tidak butuh auth
+- Simpan ke MinIO `payments/{invoiceId}/{uuid}.{ext}` — tidak ada image processing, tidak ada record di `media` table
+- URL disimpan di `payments.proof_url` saat `submitPaymentProofAction` dipanggil
+- Tampil sebagai thumbnail di admin + publik — **klik = lightbox popup** (bukan buka tab baru)
+
+Lightbox: `useState<string | null>` + `fixed inset-0 z-50 bg-black/85`. Klik background = tutup. Gambar: `onClick={(e) => e.stopPropagation()}`.
 
 ### [2026-05] RajaOngkir v1 → v2 Migration
 
@@ -2339,6 +2346,35 @@ v1 (`api.rajaongkir.com`) mati total. v2 (`rajaongkir.komerce.id/api/v1`) adalah
 - API key sekarang platform-level di ENV `RAJAONGKIR_PLATFORM_KEY` — tidak per-tenant
 
 **Aturan: `cache: "no-store"` di route handler** — jangan pakai `next: { revalidate }` di API Route Handler (itu hanya valid di Server Component fetch). Gunakan `cache: "no-store"` untuk search realtime.
+
+### [2026-05] Order Fulfillment — Pisahkan Payment dari Fulfillment
+
+**Dua halaman, dua tujuan berbeda:**
+- `/finance/billing/invoice/[id]` → untuk urusan **pembayaran** (verifikasi bukti, konfirmasi, riwayat payment)
+- `/toko/pesanan/invoice/[invoiceId]` → untuk urusan **pengiriman** (stage timeline, input resi, konfirmasi terima)
+
+Keduanya punya link ke satu sama lain. Jangan campur logika ini dalam satu halaman — membingungkan admin.
+
+**`resolveIdentity` wajib terima `betterAuthUserId` dari session:**
+Bug: di `checkoutAction`, `resolveIdentity` dipanggil hanya dengan `phone`/`email` tanpa session. Dua user dengan nomor HP yang sama → invoice di-assign ke user yang salah.
+Fix: `const session = await auth.api.getSession(...)` di `checkoutAction`, kirim `betterAuthUserId: session?.user?.id` ke `resolveIdentity`. Session selalu menang atas lookup HP/email.
+**Aturan**: setiap action yang melibatkan transaksi user wajib cek session dulu.
+
+**5-stage status — transisi linear ketat:**
+Status fulfillment hanya boleh maju satu langkah (`currentOrder + 1`). Tidak ada skip, tidak ada mundur.
+Ini memaksa admin mengikuti alur yang benar: proses → kemas → kirim → terima.
+`FULFILLMENT_ORDER: Record<string, number> = { pending:0, processing:1, packed:2, shipped:3, delivered:4 }`
+Pattern ini berlaku untuk semua alur multi-step yang membutuhkan audit trail terurut.
+
+**Jangan beri DEFAULT NOW() pada timestamp konfirmasi:**
+> Lihat bug kritis `signed_at DEFAULT NOW()` di lessons Modul Surat — aturan yang sama berlaku.
+`shippedAt`, `deliveredAt`, `confirmedAt`, `paidAt` TIDAK BOLEH punya `DEFAULT` di DDL.
+Selalu null saat row dibuat, diisi eksplisit oleh kode saat event terjadi.
+
+**`FulfillmentTimeline` — pure presentational, tidak ada async:**
+Timeline component hanya menerima `status` string dan render stage circles berdasarkan index.
+Tidak perlu fetch, tidak perlu context, tidak perlu useState.
+Pattern: komponen visual linear selalu bisa jadi pure function dari satu nilai enum.
 
 ### [2026-05] Sistem Tema Tenant — CSS Variables + Google Fonts
 

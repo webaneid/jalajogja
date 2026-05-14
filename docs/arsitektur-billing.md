@@ -1,5 +1,11 @@
 # Arsitektur Modul Billing
 
+> **Dokumen terkait:**
+> - `docs/arsitektur-keuangan.md` — double-entry journal, account mapping
+> - `docs/arsitektur-fulfillment.md` — 5-stage fulfillment, tracking, rencana WA notif
+> - `docs/arsitektur-addon-ongkir.md` — RajaOngkir v2, ongkos kirim per seller
+> - `docs/arsitektur-mitra.md` — shipping mitra vs tenant
+
 ## Visi
 
 Billing adalah **lapisan universal** yang menghubungkan semua modul produk
@@ -537,7 +543,7 @@ body: file (image/jpeg|png|webp|heic, maks 8 MB)
 2. Admin buka /{slug}/finance/billing/invoice/{id}
    → Lihat section Riwayat Pembayaran
    → Badge "Menunggu Verifikasi" (biru) + tombol "✓ Verifikasi" hijau
-   → Jika ada proofUrl: tampil thumbnail foto bukti (klik = buka full di tab baru)
+   → Jika ada proofUrl: tampil thumbnail foto bukti (klik = **lightbox popup**, bukan tab baru)
    → Admin klik "✓ Verifikasi" → dialog konfirm
    → verifySubmittedPaymentAction() dipanggil
    → payments.status = "paid", invoice.paid_amount += amount
@@ -562,7 +568,63 @@ Tiap payment di-render dengan:
 - Jumlah, metode, bank, nama a.n., catatan
 - Badge status (warna berbeda per status)
 - Tombol **"✓ Verifikasi"** — hanya tampil jika status `submitted`
-- Thumbnail foto bukti jika `proofUrl` ada
+- Thumbnail foto bukti jika `proofUrl` ada → klik = **lightbox popup** (bukan buka tab baru)
+
+Lightbox juga tersedia di halaman invoice publik `/{slug}/invoice/{id}`:
+- Section "Menunggu Verifikasi" tampil saat ada payment `submitted`
+- Thumbnail klik = lightbox overlay (fixed, tutup dengan klik background atau ×)
+
+---
+
+## Fulfillment Pengiriman (Toko — Produk Fisik)
+
+> Detail arsitektur lengkap: **`docs/arsitektur-fulfillment.md`**
+
+Setelah invoice `paid`, produk fisik perlu melalui alur fulfillment.
+State disimpan di `invoice_shipping_lines.status`.
+
+### 5 Stage
+
+```
+pending → processing → packed → shipped → delivered
+```
+
+| Stage | Admin | Timestamp set |
+|-------|-------|---------------|
+| `pending` | Belum diproses | — |
+| `processing` | Klik "Proses Pesanan" | — |
+| `packed` | Klik "Selesai Packing" | — |
+| `shipped` | Input resi + "Kirim" | `shipped_at` |
+| `delivered` | Klik "Konfirmasi Diterima" | `delivered_at` |
+
+### Route Admin Fulfillment
+
+Halaman khusus terpisah dari billing invoice detail:
+
+```
+/toko/pesanan/invoice/[invoiceId]   ← fulfillment page (5-stage timeline + actions)
+/finance/billing/invoice/[id]       ← billing invoice page (pembayaran, verifikasi)
+```
+
+Keduanya link satu sama lain — fulfillment halaman punya link "Buka Invoice" ke billing, dan sebaliknya billing punya section "Kelola Pengiriman".
+
+### Server Action
+
+```typescript
+updateFulfillmentStatusAction(slug, shippingLineId, newStatus, trackingNumber?)
+// Validasi: invoice harus paid, transisi hanya maju satu langkah
+// Shipped: wajib trackingNumber, set shippedAt
+// Delivered: set deliveredAt
+```
+
+### Display di Pelanggan
+
+`/akun/transaksi` menampilkan status pengiriman dengan 5 status:
+- `pending` → "Menunggu Diproses" (Clock)
+- `processing` → "Sedang Disiapkan" (Settings2)
+- `packed` → "Sudah Dikemas" (PackageCheck)
+- `shipped` → "Dalam Pengiriman" (Truck) + resi AWB
+- `delivered` → "Sudah Diterima" (CheckCircle2)
 
 ---
 
@@ -646,9 +708,21 @@ A: Belum di scope ini. `invoices.discount` kolom sudah ada, implementasi promo c
 - [ ] **Invoice manual admin** — item picker: pilih dari katalog produk/tiket/donasi ⏸
   > Saat ini invoice manual hanya bisa item custom (teks bebas)
 
+### Fulfillment Pengiriman (Phase 4)
+- [x] `SHIPPING_STATUSES` 5 stage: `pending|processing|packed|shipped|delivered`
+- [x] `updateFulfillmentStatusAction` — validasi transisi, handle timestamps
+- [x] Admin fulfillment page: `/toko/pesanan/invoice/[invoiceId]`
+- [x] `FulfillmentCard` + `FulfillmentTimeline` client component
+- [x] Lightbox untuk bukti transfer di admin + publik
+- [x] `/akun/transaksi` tampilkan 5 stage dengan icon berbeda
+- [x] Link pesanan list → fulfillment page
+> Detail: **`docs/arsitektur-fulfillment.md`**
+
 ### Belum Dimulai
 - [ ] Invoice PDF (Playwright)
 - [ ] Program Cicilan UI
 - [ ] Laporan Piutang Outstanding
-- [ ] Notifikasi status invoice (email/WA)
+- [ ] Notifikasi WA per fulfillment stage (rencana di `docs/arsitektur-fulfillment.md`)
+- [ ] RajaOngkir tracking proxy `/api/ongkir/track` (rencana di `docs/arsitektur-fulfillment.md`)
+- [ ] Tombol "Konfirmasi Terima" di sisi pelanggan
 - [ ] Invoice Aging Report

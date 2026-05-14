@@ -11,7 +11,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
-export const SHIPPING_STATUSES = ["pending", "shipped", "delivered"] as const;
+export const SHIPPING_STATUSES = ["pending", "processing", "packed", "shipped", "delivered"] as const;
 export type ShippingStatus = typeof SHIPPING_STATUSES[number];
 
 // ─── Enums ────────────────────────────────────────────────────────────────────

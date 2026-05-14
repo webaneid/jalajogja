@@ -3,7 +3,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq, and, desc } from "drizzle-orm";
 import Link from "next/link";
-import { ChevronLeft, Pencil, Plus } from "lucide-react";
+import { ChevronLeft, Pencil, Plus, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DonationActions } from "@/components/donasi/donation-actions";
@@ -30,10 +30,12 @@ const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondar
 };
 
 const PAY_STATUS: Record<string, { label: string; color: string }> = {
-  pending:   { label: "Menunggu",       color: "bg-yellow-100 text-yellow-700" },
-  submitted: { label: "Perlu Konfirm.", color: "bg-blue-100 text-blue-700"    },
-  paid:      { label: "Dikonfirmasi",   color: "bg-green-100 text-green-700"  },
-  cancelled: { label: "Dibatalkan",     color: "bg-zinc-100 text-zinc-500"    },
+  pending:              { label: "Menunggu",          color: "bg-yellow-100 text-yellow-700" },
+  submitted:            { label: "Perlu Konfirm.",    color: "bg-blue-100 text-blue-700"    },
+  waiting_verification: { label: "Perlu Konfirm.",    color: "bg-blue-100 text-blue-700"    },
+  paid:                 { label: "Dikonfirmasi",      color: "bg-green-100 text-green-700"  },
+  partial:              { label: "Sebagian",          color: "bg-orange-100 text-orange-700"},
+  cancelled:            { label: "Dibatalkan",        color: "bg-zinc-100 text-zinc-500"    },
 };
 
 const METHOD_LABEL: Record<string, string> = {
@@ -68,7 +70,7 @@ export default async function CampaignDetailPage({
 
   if (!campaign) notFound();
 
-  // Donasi terkait campaign ini (dengan data payment)
+  // ── Old-system donations (donations table + payments) ─────────────────────
   const donations = await db
     .select({
       id:             schema.donations.id,
@@ -77,7 +79,6 @@ export default async function CampaignDetailPage({
       isAnonymous:    schema.donations.isAnonymous,
       donationType:   schema.donations.donationType,
       createdAt:      schema.donations.createdAt,
-      // Payment
       paymentId:      schema.payments.id,
       paymentStatus:  schema.payments.status,
       paymentMethod:  schema.payments.method,
@@ -93,14 +94,77 @@ export default async function CampaignDetailPage({
     )
     .where(eq(schema.donations.campaignId, campaignId))
     .orderBy(desc(schema.donations.createdAt))
-    .limit(50);
+    .limit(100);
 
-  const target    = campaign.targetAmount ? parseFloat(campaign.targetAmount) : null;
-  const collected = parseFloat(campaign.collectedAmount);
-  const progress  = target ? Math.min(100, (collected / target) * 100) : null;
+  // ── Cart-based donations (invoice_items WHERE itemType='donation', itemId=campaignId) ─
+  const cartDonations = await db
+    .select({
+      invoiceId:     schema.invoices.id,
+      invoiceNumber: schema.invoices.invoiceNumber,
+      customerName:  schema.invoices.customerName,
+      invoiceStatus: schema.invoices.status,
+      createdAt:     schema.invoices.createdAt,
+      itemName:      schema.invoiceItems.name,
+      itemTotal:     schema.invoiceItems.total,
+      itemNotes:     schema.invoiceItems.description,
+    })
+    .from(schema.invoiceItems)
+    .innerJoin(schema.invoices, eq(schema.invoices.id, schema.invoiceItems.invoiceId))
+    .where(
+      and(
+        eq(schema.invoiceItems.itemType, "donation"),
+        eq(schema.invoiceItems.itemId, campaignId),
+      )
+    )
+    .orderBy(desc(schema.invoices.createdAt))
+    .limit(100);
+
+  // ── Disbursements (disalurkan) ────────────────────────────────────────────
+  const disbursements = await db
+    .select({
+      id:            schema.disbursements.id,
+      number:        schema.disbursements.number,
+      amount:        schema.disbursements.amount,
+      recipientName: schema.disbursements.recipientName,
+      note:          schema.disbursements.note,
+      status:        schema.disbursements.status,
+      paidAt:        schema.disbursements.paidAt,
+    })
+    .from(schema.disbursements)
+    .where(
+      and(
+        eq(schema.disbursements.purposeType, "donation_payout"),
+        eq(schema.disbursements.purposeId,   campaignId),
+      )
+    )
+    .orderBy(desc(schema.disbursements.createdAt));
+
+  // ── Kalkulasi keuangan ────────────────────────────────────────────────────
+  const oldCollected = donations.reduce((acc, d) => {
+    if (d.paymentStatus === "paid" && d.paymentAmount)
+      return acc + parseFloat(d.paymentAmount);
+    return acc;
+  }, 0);
+
+  const cartCollected = cartDonations.reduce((acc, d) => {
+    if (d.invoiceStatus === "paid" && d.itemTotal)
+      return acc + parseFloat(String(d.itemTotal));
+    return acc;
+  }, 0);
+
+  const totalCollected = oldCollected + cartCollected;
+
+  const totalDisbursed = disbursements
+    .filter(d => d.status === "paid")
+    .reduce((acc, d) => acc + parseFloat(String(d.amount)), 0);
+
+  const sisaTitipan = totalCollected - totalDisbursed;
+
+  const target   = campaign.targetAmount ? parseFloat(campaign.targetAmount) : null;
+  const progress = target ? Math.min(100, (totalCollected / target) * 100) : null;
   const st = STATUS_MAP[campaign.status] ?? { label: campaign.status, variant: "outline" as const };
 
-  // Qurban: fetch animals + participants
+  // ── Qurban ───────────────────────────────────────────────────────────────
   const isQurban = campaign.campaignType === "qurban";
   type QurbanRow = {
     animalType: string | null; animalId: string | null;
@@ -129,9 +193,7 @@ export default async function CampaignDetailPage({
         eq(schema.payments.sourceType, "donation"),
         eq(schema.payments.sourceId,   schema.qurbanParticipants.donationId),
       ))
-      .where(
-        eq(schema.qurbanAnimals.campaignId, campaignId)
-      )
+      .where(eq(schema.qurbanAnimals.campaignId, campaignId))
       .orderBy(schema.qurbanAnimals.animalType, schema.qurbanSapiGroups.groupNumber, schema.qurbanParticipants.slotNumber);
   }
 
@@ -176,40 +238,57 @@ export default async function CampaignDetailPage({
         </p>
       </div>
 
-      {/* Progress */}
-      <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-        <div className="flex items-end justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">Terkumpul</p>
-            <p className="text-2xl font-bold text-green-700">{formatRupiah(collected)}</p>
-          </div>
-          {target && (
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Target</p>
-              <p className="text-sm font-medium">{formatRupiah(target)}</p>
-            </div>
+      {/* ── Ringkasan Keuangan (4 kotak) ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-lg border border-border bg-card p-4 space-y-1">
+          <p className="text-xs text-muted-foreground">Terkumpul</p>
+          <p className="text-lg font-bold text-green-700">{formatRupiah(totalCollected)}</p>
+          {progress !== null && (
+            <p className="text-xs text-muted-foreground">{progress.toFixed(1)}% dari target</p>
           )}
         </div>
-        {progress !== null && (
-          <div className="space-y-1">
-            <div className="w-full bg-muted rounded-full h-2">
-              <div
-                className="bg-green-500 h-2 rounded-full transition-all"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground text-right">{progress.toFixed(1)}%</p>
-          </div>
-        )}
-        <p className="text-sm text-muted-foreground">{donations.length} transaksi</p>
+        <div className="rounded-lg border border-border bg-card p-4 space-y-1">
+          <p className="text-xs text-muted-foreground">Target</p>
+          <p className="text-lg font-bold">{target ? formatRupiah(target) : "—"}</p>
+          {target && totalCollected < target && (
+            <p className="text-xs text-muted-foreground">Kurang {formatRupiah(target - totalCollected)}</p>
+          )}
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4 space-y-1">
+          <p className="text-xs text-muted-foreground">Disalurkan</p>
+          <p className="text-lg font-bold text-blue-700">{formatRupiah(totalDisbursed)}</p>
+          <p className="text-xs text-muted-foreground">{disbursements.filter(d => d.status === "paid").length} transaksi</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4 space-y-1">
+          <p className="text-xs text-muted-foreground">Sisa Titipan</p>
+          <p className={`text-lg font-bold ${sisaTitipan < 0 ? "text-destructive" : "text-orange-600"}`}>
+            {formatRupiah(sisaTitipan)}
+          </p>
+          <p className="text-xs text-muted-foreground">Belum disalurkan</p>
+        </div>
       </div>
 
-      {/* Daftar donasi */}
+      {/* Progress bar */}
+      {progress !== null && (
+        <div className="space-y-1">
+          <div className="w-full bg-muted rounded-full h-2">
+            <div
+              className="bg-green-500 h-2 rounded-full transition-all"
+              style={{ width: `${Math.min(100, progress)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Donasi Langsung (sistem lama) ── */}
       <div>
-        <h2 className="font-medium text-sm mb-3">Riwayat Donasi</h2>
+        <h2 className="font-medium text-sm mb-3">
+          Donasi Langsung
+          <span className="ml-2 text-muted-foreground font-normal">({donations.length})</span>
+        </h2>
         {donations.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border p-8 text-center">
-            <p className="text-sm text-muted-foreground">Belum ada donasi masuk</p>
+          <div className="rounded-lg border border-dashed border-border p-6 text-center">
+            <p className="text-sm text-muted-foreground">Belum ada donasi langsung</p>
           </div>
         ) : (
           <div className="rounded-lg border border-border overflow-hidden">
@@ -269,7 +348,121 @@ export default async function CampaignDetailPage({
         )}
       </div>
 
-      {/* Tabel peserta qurban */}
+      {/* ── Donasi via Keranjang (sistem baru / billing) ── */}
+      <div>
+        <h2 className="font-medium text-sm mb-3 flex items-center gap-2">
+          <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+          Donasi via Keranjang
+          <span className="text-muted-foreground font-normal">({cartDonations.length})</span>
+        </h2>
+        {cartDonations.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border p-6 text-center">
+            <p className="text-sm text-muted-foreground">Belum ada donasi via keranjang</p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-medium">No. Invoice</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Donatur</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Keterangan</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Nominal</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Tanggal</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {cartDonations.map((d) => {
+                  const ps = PAY_STATUS[d.invoiceStatus] ?? { label: d.invoiceStatus, color: "bg-zinc-100" };
+                  return (
+                    <tr key={`${d.invoiceId}`} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/${slug}/finance/billing/invoice/${d.invoiceId}`}
+                          className="font-mono text-xs text-primary hover:underline"
+                        >
+                          {d.invoiceNumber}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3">{d.customerName}</td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
+                        {d.itemNotes ?? d.itemName}
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium">
+                        {formatRupiah(parseFloat(String(d.itemTotal ?? 0)))}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ps.color}`}>
+                          {ps.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
+                        {d.createdAt ? new Date(d.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Riwayat Penyaluran ── */}
+      <div>
+        <h2 className="font-medium text-sm mb-3">
+          Riwayat Penyaluran
+          <span className="ml-2 text-muted-foreground font-normal">({disbursements.length})</span>
+        </h2>
+        {disbursements.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border p-6 text-center">
+            <p className="text-sm text-muted-foreground">Belum ada penyaluran dicatat</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Catat penyaluran melalui menu Keuangan → Pengeluaran (tipe: Penyaluran Donasi)
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-medium">Nomor</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Penerima</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Keterangan</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Nominal</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Tanggal</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {disbursements.map((d) => (
+                  <tr key={d.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{d.number}</td>
+                    <td className="px-4 py-3">{d.recipientName}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{d.note ?? "—"}</td>
+                    <td className="px-4 py-3 text-right font-medium">{formatRupiah(parseFloat(String(d.amount)))}</td>
+                    <td className="px-4 py-3">
+                      {d.status === "paid" ? (
+                        <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">Disalurkan</span>
+                      ) : d.status === "approved" ? (
+                        <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700">Disetujui</span>
+                      ) : (
+                        <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">Draft</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">
+                      {d.paidAt ? new Date(d.paidAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Tabel peserta qurban ── */}
       {isQurban && (
         <div className="space-y-3">
           <h2 className="font-semibold">Peserta Qurban</h2>

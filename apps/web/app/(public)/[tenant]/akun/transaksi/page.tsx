@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { use }                 from "react";
-import { Loader2, Package, Truck, CheckCircle2, Clock, ExternalLink } from "lucide-react";
+import { Loader2, Package, Heart, Ticket, Truck, CheckCircle2, Clock, Settings2, PackageCheck, ExternalLink } from "lucide-react";
 import Link from "next/link";
 
 type Params = Promise<{ tenant: string }>;
@@ -51,9 +51,11 @@ const PAYMENT_STATUS: Record<string, { label: string; cls: string }> = {
 };
 
 const SHIPPING_STATUS: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
-  pending:   { label: "Menunggu Pengiriman", icon: <Clock    size={14} />, cls: "text-yellow-600" },
-  shipped:   { label: "Dalam Pengiriman",   icon: <Truck    size={14} />, cls: "text-blue-600"   },
-  delivered: { label: "Sudah Diterima",     icon: <CheckCircle2 size={14} />, cls: "text-green-600" },
+  pending:    { label: "Menunggu Diproses",  icon: <Clock        size={14} />, cls: "text-yellow-600" },
+  processing: { label: "Sedang Disiapkan",  icon: <Settings2    size={14} />, cls: "text-indigo-600" },
+  packed:     { label: "Sudah Dikemas",      icon: <PackageCheck size={14} />, cls: "text-violet-600" },
+  shipped:    { label: "Dalam Pengiriman",   icon: <Truck        size={14} />, cls: "text-blue-600"   },
+  delivered:  { label: "Sudah Diterima",     icon: <CheckCircle2 size={14} />, cls: "text-green-600"  },
 };
 
 function fmt(n: number) {
@@ -92,27 +94,38 @@ function OrderCard({ order, slug }: { order: Order; slug: string }) {
         </div>
       </div>
 
-      {/* ── Produk ── */}
+      {/* ── Items ── */}
       {order.items.length > 0 && (
         <div className="divide-y divide-border/60">
-          {order.items.map(item => (
-            <div key={item.id} className="flex items-start gap-3 px-4 py-3">
-              {/* Icon tipe */}
-              <div className="mt-0.5 rounded-md bg-muted/50 p-1.5 shrink-0">
-                <Package size={16} className="text-muted-foreground" />
+          {order.items.map(item => {
+            const isDonation = item.itemType === "donation";
+            const isTicket   = item.itemType === "ticket";
+            return (
+              <div key={item.id} className="flex items-start gap-3 px-4 py-3">
+                <div className={`mt-0.5 rounded-md p-1.5 shrink-0 ${isDonation ? "bg-pink-50" : isTicket ? "bg-violet-50" : "bg-muted/50"}`}>
+                  {isDonation ? (
+                    <Heart size={16} className="text-pink-500" />
+                  ) : isTicket ? (
+                    <Ticket size={16} className="text-violet-500" />
+                  ) : (
+                    <Package size={16} className="text-muted-foreground" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium leading-snug">{item.name}</p>
+                  {item.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.description}</p>
+                  )}
+                  {!isDonation && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {fmt(item.unitPrice)} × {item.quantity}
+                    </p>
+                  )}
+                </div>
+                <p className="text-sm font-semibold tabular-nums shrink-0">{fmt(item.total)}</p>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium leading-snug">{item.name}</p>
-                {item.description && (
-                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{item.description}</p>
-                )}
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {fmt(item.unitPrice)} × {item.quantity}
-                </p>
-              </div>
-              <p className="text-sm font-semibold tabular-nums shrink-0">{fmt(item.total)}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

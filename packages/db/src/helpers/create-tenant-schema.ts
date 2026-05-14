@@ -1259,7 +1259,7 @@ export async function createTenantSchemaInDb(
         shipped_at       TIMESTAMPTZ,
         delivered_at     TIMESTAMPTZ,
         status           TEXT           NOT NULL DEFAULT 'pending'
-                                        CHECK (status IN ('pending','shipped','delivered')),
+                                        CHECK (status IN ('pending','processing','packed','shipped','delivered')),
         created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )

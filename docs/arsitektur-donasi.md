@@ -1106,6 +1106,94 @@ Phase R — Donasi Rutin
 | Pengurus | `created_by` campaign → FK ke officers |
 | Notifikasi (WA add-on) | Kirim notif ke admin saat donasi masuk (roadmap) |
 | SEO Module | `SeoPanel` di CampaignForm — kolom SEO di `campaigns` |
+| **Billing** | Cart-based donation → `invoice_items.itemType='donation'`, `itemId=campaign.id` |
+
+---
+
+## 13a. Dua Jalur Donasi — Tracking Lengkap
+
+Sistem memiliki DUA jalur donasi yang harus ditampilkan secara terintegrasi:
+
+### Jalur A — Donasi Langsung (Sistem Lama)
+Admin input manual via `/donasi/transaksi/new`.
+
+```
+donations (donationNumber, donorName, campaignId, ...)
+   ↓ FK: source_type='donation', source_id=donation.id
+payments (amount, status, method, confirmedBy, ...)
+```
+
+Saat konfirmasi via `confirmDonationAction`:
+- `payment.status → paid`
+- `campaign.collected_amount += amount` (atomic SQL)
+
+### Jalur B — Donasi via Keranjang (Sistem Billing)
+Donatur checkout via front-end publik `/{slug}/campaign/{slug}`.
+
+```
+invoice_items (itemType='donation', itemId=campaign.id, total=nominal)
+   ↓ FK: invoiceId
+invoices (status, customerName, total, ...)
+   ↓ M2M via invoice_payments
+payments (amount, status, ...)
+```
+
+Saat konfirmasi via `confirmInvoicePaymentAction` atau `verifySubmittedPaymentAction`:
+- `payment.status → paid`
+- `invoice.status → paid`
+- **`campaign.collected_amount += sum(donation items)`** — sync dilakukan di `billing/actions.ts`
+
+### `collected_amount` adalah source of truth ringkasan
+
+Kolom `campaigns.collected_amount` di-update oleh KEDUANYA:
+- Jalur A: `confirmDonationAction` via `sql\`collected_amount + ${amount}\``
+- Jalur B: billing actions setelah invoice paid
+
+**Untuk display real-time yang akurat** (misal di campaign detail page), hitung LANGSUNG dari kedua jalur:
+```typescript
+// Jalur A: SUM payments yang paid
+const oldCollected = donations.filter(d => d.paymentStatus === "paid")
+  .reduce((sum, d) => sum + parseFloat(d.paymentAmount), 0);
+
+// Jalur B: SUM invoice_items yang invoicenya paid
+const cartCollected = cartDonations.filter(d => d.invoiceStatus === "paid")
+  .reduce((sum, d) => sum + parseFloat(d.itemTotal), 0);
+
+const totalCollected = oldCollected + cartCollected;
+```
+
+### Ringkasan Keuangan di Campaign Detail Page
+
+4-box summary di `/donasi/campaign/[id]`:
+
+| Kotak | Sumber Data | Formula |
+|-------|------------|---------|
+| **Terkumpul** | Payments (jalur A) + Invoice items (jalur B) | `oldCollected + cartCollected` |
+| **Target** | `campaigns.target_amount` | — |
+| **Disalurkan** | `disbursements WHERE purposeType='donation_payout' AND purposeId=campaignId AND status='paid'` | SUM |
+| **Sisa Titipan** | Terkumpul - Disalurkan | `totalCollected - totalDisbursed` |
+
+### Penyaluran (Disbursement)
+
+Penyaluran dicatat via Keuangan → Pengeluaran (type: `donation_payout`):
+```sql
+disbursements.purposeType = 'donation_payout'
+disbursements.purposeId   = campaign.id
+disbursements.status      = 'paid'  -- saat benar-benar disalurkan
+```
+
+Ditampilkan di campaign detail page sebagai "Riwayat Penyaluran".
+
+### Admin Transaksi List
+
+`/donasi/transaksi` menampilkan DUA tabel:
+1. **Donasi Langsung** — dari `donations` + `payments` (jalur A)
+2. **Donasi via Keranjang** — dari `invoice_items` + `invoices` (jalur B), komponen `CartDonationsTable`
+
+### Customer View (`/akun/transaksi`)
+
+Invoice dengan `invoice_items.itemType='donation'` muncul di riwayat transaksi anggota.
+Icon: Heart (pink) untuk donasi, berbeda dari Package (produk) dan Ticket (tiket).
 
 ---
 
@@ -1670,6 +1758,12 @@ Step Q5: Admin — manajemen pesanan qurban
 | Qurban Step Q3 — CampaignForm konfigurasi hewan | ✅ Done |
 | Qurban Step Q4 — front-end publik (arsip + detail + form order) | ✅ Done |
 | Qurban Step Q5 — admin peserta qurban di detail campaign | ✅ Done |
+| **Donasi via Keranjang — tracking di campaign detail + transaksi** | ✅ Done |
+| `collected_amount` sync saat invoice paid (cart-based) | ✅ Done |
+| 4-box financial summary campaign (Terkumpul/Target/Disalurkan/Sisa) | ✅ Done |
+| Riwayat penyaluran (disbursements) di campaign detail | ✅ Done |
+| `CartDonationsTable` di `/donasi/transaksi` (donasi via keranjang) | ✅ Done |
+| `/akun/transaksi` — ikon Heart untuk item donasi | ✅ Done |
 | **Donasi Rutin** — perencanaan lengkap (Section 12) | 📋 Terdokumentasi |
 | Donasi Rutin Step R1–R7 — implementasi | 🔲 Belum |
 | Export CSV laporan | 🔲 Belum |
