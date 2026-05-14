@@ -2272,16 +2272,18 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Unifikasi list transaksi donasi + pesanan** (sesi 2026-05-15).
-- Sebelumnya: **RajaOngkir Tracking + Konfirmasi Terima** (2026-05-14) + **Donasi Tracking Lengkap** (sama) + **Billing Phase 4 — Fulfillment 5-stage**.
+- Terakhir dikerjakan: **Arsitektur Direktori Publik** — perencanaan 4 halaman (sesi 2026-05-15).
+- Sebelumnya: **Unifikasi list transaksi donasi + pesanan** (sesi sama) + **RajaOngkir Tracking + Konfirmasi Terima** (2026-05-14).
 - Sesi terakhir:
   - **`GET /api/ongkir/track`** — proxy RajaOngkir v2 server-side, API key tidak pernah ke browser.
   - **`TrackingPanel`** + **"Konfirmasi Sudah Diterima"** di `/akun/transaksi` — lazy-fetch manifest, optimistic update `shipped → delivered`.
   - **`confirmDeliveryAction`** — verifikasi kepemilikan via `getAkunIdentity`, transisi status + `deliveredAt`.
   - **Refactor `/donasi/transaksi`** — hapus dua section (admin vs keranjang), ganti satu query `invoice_items WHERE itemType='donation'`. Filter status + search server-side. Hapus `CartDonationsTable` + `TransaksiTable`.
   - **Refactor `/toko/pesanan`** — hapus section "Pesanan via Keranjang" terpisah, ganti satu query `invoices WHERE sourceType='order' OR id IN (cart dengan shipping)`. Pagination + filter server-side.
-  - **Prinsip yang dikunci**: semua transaksi dari jalur manapun (admin/front-end) dicatat di `invoices` — tidak pernah tampilkan dua section terpisah. `TransaksiTable` dan `CartDonationsTable` dihapus karena sudah tidak perlu.
+  - **Prinsip yang dikunci**: semua transaksi dari jalur manapun dicatat di `invoices` — tidak pernah dua section terpisah. `TransaksiTable` + `CartDonationsTable` dihapus.
+  - **Arsitektur Direktori Publik** — dokumen `docs/arsitektur-direktori-publik.md` selesai. 4 halaman direncanakan: `/anggota` (list+popup), `/pesantren` + `/pesantren/[id]`, `/usaha` + `/usaha/[id]`, `/statistik`. Aturan visibilitas data dikunci (NIK, birthDate, detail alamat = tidak pernah publik; HP/WA/Email conditional per toggle; hpPimpinan + revenue tidak pernah publik).
 - Ditunda: sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7), WA notif per stage.
+- **Next**: implementasi 4 halaman direktori publik (mulai dari mana ditentukan user).
 
 ### Status Halaman Publik
 
@@ -2297,6 +2299,10 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 | Checkout | `/{slug}/checkout` | ✅ Ada |
 | Invoice detail | `/{slug}/invoice/[id]` | ✅ Ada |
 | Subscriptions donasi rutin | `/{slug}/akun/subscriptions` | ⬜ Belum (Phase R) |
+| **Direktori Anggota** | `/{slug}/anggota` | ⬜ Belum |
+| **Direktori Pesantren** | `/{slug}/pesantren` | ⬜ Belum |
+| **Direktori Usaha** | `/{slug}/usaha` | ⬜ Belum |
+| **Statistik** | `/{slug}/statistik` | ⬜ Belum |
 
 ### [2026-05] Prinsip Billing Universal — Jangan Pernah Split List per Jalur Masuk
 
@@ -2696,6 +2702,36 @@ Alur: Cart → Checkout (input HP/email, lookup member) → Invoice → Payment 
 - Source tabel existing (orders, donations, event_registrations) tidak dihapus — tetap ada sebagai detail, invoice sebagai header universal
 
 **6 tabel baru:** `carts`, `cart_items`, `invoices`, `invoice_items`, `invoice_payments`, `installment_plans`, `installment_schedules`
+
+## Arsitektur Direktori Publik (Anggota, Pesantren, Usaha, Statistik)
+> Detail lengkap: **`docs/arsitektur-direktori-publik.md`**
+
+Empat halaman front-end publik yang menampilkan data IKPM kepada pengunjung.
+Semua masuk route group `(public)/[tenant]/`, tidak butuh login.
+
+**Empat halaman:**
+- `/{slug}/anggota` — direktori anggota: grid kartu + popup detail
+- `/{slug}/pesantren` + `/{slug}/pesantren/[id]` — arsip pesantren + detail
+- `/{slug}/usaha` + `/{slug}/usaha/[id]` — direktori usaha anggota + detail
+- `/{slug}/statistik` — dashboard statistik anggota, pesantren, usaha
+
+**Aturan visibilitas data (dikunci, tidak boleh dilanggar):**
+- `nik`, `birthDate` (tanggal+bulan), detail alamat (kecamatan/desa/jalan) → **tidak pernah ditampilkan**
+- HP/WA/Email anggota → tampil hanya jika `contacts.is_*_public = true` (pilihan anggota)
+- HP/WA/Email pesantren → tampil hanya jika `contacts.is_*_public = true` pada `contactId` pesantren
+- HP/WA/Email usaha → tampil hanya jika `contacts.is_*_public = true` pada `contactId` usaha
+- `hpPimpinan` di pesantren → **tidak pernah ditampilkan** (nomor pribadi, tidak ada toggle)
+- `revenue` usaha → **tidak pernah ditampilkan** (finansial sensitif meski berupa range)
+- Social media → selalu tampil publik jika diisi (tidak ada toggle per-platform)
+- Domisili → tampil hanya 2 level: provinsi + kabupaten/kota (bukan kecamatan/desa)
+
+**Scope query:**
+Semua query WAJIB JOIN `tenant_memberships WHERE tenant_id = {tenantId}`.
+Direktori menampilkan anggota cabang ini, bukan lintas cabang.
+
+**Popup anggota:**
+Lazy fetch via `GET /api/member-public/[id]?slug=` saat Dialog dibuka.
+Endpoint publik (no auth), scope check via tenant_memberships.
 
 ## Arsitektur Login Universal (Front-end Publik)
 > Detail lengkap: **`docs/arsitektur-login-universal.md`**
