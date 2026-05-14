@@ -2272,15 +2272,15 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **RajaOngkir Tracking + Konfirmasi Terima Pelanggan** (sesi 2026-05-14).
-- Sebelumnya: **Donasi Tracking Lengkap** (sesi sama) + **Billing Phase 4 — Fulfillment 5-stage** + **Bukti Transfer + Verifikasi** + **RajaOngkir v2** + **checkout ongkir**.
+- Terakhir dikerjakan: **Unifikasi list transaksi donasi + pesanan** (sesi 2026-05-15).
+- Sebelumnya: **RajaOngkir Tracking + Konfirmasi Terima** (2026-05-14) + **Donasi Tracking Lengkap** (sama) + **Billing Phase 4 — Fulfillment 5-stage**.
 - Sesi terakhir:
-  - **Donasi tracking** — `collectedAmount` sync cart-based donations di `confirmInvoicePaymentAction` + `verifySubmittedPaymentAction`. Campaign detail 4-box summary (Terkumpul/Target/Disalurkan/Sisa). Admin `/donasi/transaksi` dua section (lama + keranjang). `CartDonationsTable` component baru.
-  - **`GET /api/ongkir/track`** — proxy RajaOngkir v2, `RAJAONGKIR_PLATFORM_KEY` server-only. Handle 404 sebagai `status: "unknown"`. `TrackingResult` type: status/summary/lastUpdate/history[].
-  - **`TrackingPanel`** component di `/akun/transaksi` — "Lacak Kiriman" button, lazy-fetch on-click, manifest history expandable.
-  - **`confirmDeliveryAction`** di `app/(public)/[tenant]/actions.ts` — verifikasi kepemilikan invoice via `getAkunIdentity`, transisi `shipped → delivered + deliveredAt`.
-  - **Tombol "Konfirmasi Sudah Diterima"** — muncul saat status = shipped, optimistic update via useState.
-  - **`docs/arsitektur-fulfillment.md`** — update Section 5 + status tabel (tracking + konfirmasi terima: ✅ SELESAI).
+  - **`GET /api/ongkir/track`** — proxy RajaOngkir v2 server-side, API key tidak pernah ke browser.
+  - **`TrackingPanel`** + **"Konfirmasi Sudah Diterima"** di `/akun/transaksi` — lazy-fetch manifest, optimistic update `shipped → delivered`.
+  - **`confirmDeliveryAction`** — verifikasi kepemilikan via `getAkunIdentity`, transisi status + `deliveredAt`.
+  - **Refactor `/donasi/transaksi`** — hapus dua section (admin vs keranjang), ganti satu query `invoice_items WHERE itemType='donation'`. Filter status + search server-side. Hapus `CartDonationsTable` + `TransaksiTable`.
+  - **Refactor `/toko/pesanan`** — hapus section "Pesanan via Keranjang" terpisah, ganti satu query `invoices WHERE sourceType='order' OR id IN (cart dengan shipping)`. Pagination + filter server-side.
+  - **Prinsip yang dikunci**: semua transaksi dari jalur manapun (admin/front-end) dicatat di `invoices` — tidak pernah tampilkan dua section terpisah. `TransaksiTable` dan `CartDonationsTable` dihapus karena sudah tidak perlu.
 - Ditunda: sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7), WA notif per stage.
 
 ### Status Halaman Publik
@@ -2297,6 +2297,23 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 | Checkout | `/{slug}/checkout` | ✅ Ada |
 | Invoice detail | `/{slug}/invoice/[id]` | ✅ Ada |
 | Subscriptions donasi rutin | `/{slug}/akun/subscriptions` | ⬜ Belum (Phase R) |
+
+### [2026-05] Prinsip Billing Universal — Jangan Pernah Split List per Jalur Masuk
+
+> **ATURAN: Semua transaksi dari jalur manapun (admin/front-end/API) HARUS tampil dalam SATU list bersama — tidak pernah dua section terpisah.**
+
+`invoices` adalah satu-satunya catatan transaksi universal. Admin buat pesanan → `createLinkedInvoice` → invoice. Front-end cart checkout → invoice. Keduanya menghasilkan invoice yang identik secara struktur.
+
+**Yang salah** (pernah dilakukan, sudah difix):
+- `/donasi/transaksi` punya dua section: "Donasi Langsung" (dari `donations` table) + "Donasi via Keranjang" (dari `invoices`)
+- `/toko/pesanan` punya dua section: tabel `orders` (admin) + "Pesanan via Keranjang" (dari `invoices`)
+
+**Yang benar**:
+- Query dari `invoices` sebagai sumber utama — filter berdasarkan `sourceType` atau `item_type`
+- Satu tabel, semua jalur, badge `sourceType` jika perlu dibedakan secara visual
+- Detail page boleh berbeda per source (admin order vs cart order pakai halaman berbeda) — yang penting LIST-nya satu
+
+**Kenapa ini penting**: Pemisahan list membuat admin harus memeriksa dua tempat untuk hal yang sama, menyembunyikan data dari front-end, dan bertentangan dengan alasan kita membangun billing universal.
 
 ### [2026-05] UUID vs nanoid — Bug Kritis di Finance Actions
 
