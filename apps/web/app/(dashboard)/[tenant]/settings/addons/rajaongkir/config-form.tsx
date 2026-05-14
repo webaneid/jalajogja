@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, useRef } from "react";
 import { saveRajaOngkirConfigAction } from "./actions";
 
 const COURIER_OPTIONS = [
@@ -51,11 +51,14 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
       : null,
   );
   const [cityOpen, setCityOpen] = useState(false);
+  const userTypedRef = useRef(false);
 
   useEffect(() => {
+    // Jangan fetch saat mount — hanya fetch jika user mengetik
+    if (!userTypedRef.current) return;
     if (citySearch.length < 2) { setCityResults([]); return; }
     const timer = setTimeout(async () => {
-      const res  = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(citySearch)}&limit=15&slug=${slug}`);
+      const res  = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(citySearch)}&limit=15`);
       const data = await res.json() as { cities: City[] };
       setCityResults(data.cities ?? []);
       setCityOpen(true);
@@ -99,7 +102,7 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
           <input
             type="text"
             value={citySearch}
-            onChange={e => { setCitySearch(e.target.value); setSelectedCity(null); }}
+            onChange={e => { userTypedRef.current = true; setCitySearch(e.target.value); setSelectedCity(null); }}
             onFocus={() => cityResults.length > 0 && setCityOpen(true)}
             onBlur={() => setTimeout(() => setCityOpen(false), 200)}
             placeholder="Ketik nama kota (min. 2 karakter)..."
