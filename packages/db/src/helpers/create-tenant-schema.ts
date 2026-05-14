@@ -275,6 +275,39 @@ export async function createTenantSchemaInDb(
       )
     `));
 
+    // ── 11. Divisions ──────────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".divisions (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        name        TEXT        NOT NULL,
+        code        TEXT,
+        description TEXT,
+        parent_id   UUID        REFERENCES "${s}".divisions(id) ON DELETE SET NULL,
+        sort_order  INTEGER     NOT NULL DEFAULT 0,
+        is_active   BOOLEAN     NOT NULL DEFAULT true,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 12. Officers ───────────────────────────────────────────────────────────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".officers (
+        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        member_id    UUID        NOT NULL REFERENCES public.members(id) ON DELETE RESTRICT,
+        division_id  UUID        REFERENCES "${s}".divisions(id) ON DELETE SET NULL,
+        position     TEXT        NOT NULL,
+        period_start DATE        NOT NULL,
+        period_end   DATE,
+        is_active    BOOLEAN     NOT NULL DEFAULT true,
+        can_sign     BOOLEAN     NOT NULL DEFAULT false,
+        sort_order   INTEGER     NOT NULL DEFAULT 0,
+        user_id      UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
     // ── 9. Letters ─────────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${s}".letters (
@@ -326,39 +359,6 @@ export async function createTenantSchemaInDb(
         last_number INTEGER     NOT NULL DEFAULT 0,
         updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (year, type, category)
-      )
-    `));
-
-    // ── 11. Divisions ──────────────────────────────────────────────────────────
-    await tx.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS "${s}".divisions (
-        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        name        TEXT        NOT NULL,
-        code        TEXT,
-        description TEXT,
-        parent_id   UUID        REFERENCES "${s}".divisions(id) ON DELETE SET NULL,
-        sort_order  INTEGER     NOT NULL DEFAULT 0,
-        is_active   BOOLEAN     NOT NULL DEFAULT true,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `));
-
-    // ── 12. Officers ───────────────────────────────────────────────────────────
-    await tx.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS "${s}".officers (
-        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        member_id    UUID        NOT NULL REFERENCES public.members(id) ON DELETE RESTRICT,
-        division_id  UUID        REFERENCES "${s}".divisions(id) ON DELETE SET NULL,
-        position     TEXT        NOT NULL,
-        period_start DATE        NOT NULL,
-        period_end   DATE,
-        is_active    BOOLEAN     NOT NULL DEFAULT true,
-        can_sign     BOOLEAN     NOT NULL DEFAULT false,
-        sort_order   INTEGER     NOT NULL DEFAULT 0,
-        user_id      UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
-        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `));
 
