@@ -3,7 +3,7 @@ import { eq, desc, and, inArray } from "drizzle-orm";
 import { createTenantDb, db, tenants, members, getSettings } from "@jalajogja/db";
 import { auth }                from "@/lib/auth";
 import { headers }             from "next/headers";
-import { publicUrl }           from "@/lib/minio";
+import { publicUrl, resolveMediaUrl } from "@/lib/minio";
 import { renderBody }          from "@/lib/letter-render";
 import { CampaignDetailClient } from "@/components/donasi/public/campaign-detail-client";
 import { CampaignCard }        from "@/components/website/public/campaign-cards/campaign-card";
@@ -33,7 +33,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
       .from(schema.media).where(eq(schema.media.id, campaign.coverId)).limit(1);
     if (media) {
       const vv = media.variants as Record<string, string> | null;
-      ogImage = vv?.["large"] ?? vv?.["original"] ?? publicUrl(slug, media.path);
+      ogImage = resolveMediaUrl(slug, media.path, vv);
     }
   }
   return buildMetadata({

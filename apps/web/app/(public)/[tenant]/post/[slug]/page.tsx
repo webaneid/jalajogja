@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { createTenantDb, db, tenants, getSetting, user as authUser, members } from "@jalajogja/db";
-import { publicUrl } from "@/lib/minio";
+import { resolveMediaUrl } from "@/lib/minio";
 import { renderBody } from "@/lib/letter-render";
 import { recordView, hashIp } from "@/lib/view-counter";
 import { WidgetArea } from "@/components/website/public/widget-area";
@@ -94,7 +94,7 @@ async function getPost(tenantSlug: string, postSlug: string) {
       .limit(1);
     if (media) {
       const vv = media.variants as Record<string, string> | null;
-      coverUrl     = vv?.large ?? vv?.original ?? publicUrl(tenantSlug, media.path);
+      coverUrl     = resolveMediaUrl(tenantSlug, media.path, vv);
       coverAlt     = media.altText;
       coverTitle   = media.title;
       coverCaption = media.caption;

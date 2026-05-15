@@ -88,6 +88,23 @@ export async function presignedUploadUrl(
   );
 }
 
+// Resolve URL terbaik dari record media yang di-query langsung dari DB.
+// media.variants menyimpan RELATIVE paths — wajib pakai publicUrl() sebelum dipakai sebagai src.
+// preferOrder: urutan nama variant yang dicoba, fallback ke media.path.
+export function resolveMediaUrl(
+  slug: string,
+  path: string,
+  variants: Record<string, string> | null | undefined,
+  preferOrder: string[] = ["large", "original"],
+): string {
+  if (variants) {
+    for (const key of preferOrder) {
+      if (variants[key]) return publicUrl(slug, variants[key]);
+    }
+  }
+  return publicUrl(slug, path);
+}
+
 // Cek apakah bucket ada, kalau belum buat baru
 import { CreateBucketCommand, HeadBucketCommand, PutBucketPolicyCommand } from "@aws-sdk/client-s3";
 
