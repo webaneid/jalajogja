@@ -222,53 +222,57 @@ function PaymentMethodCard({
 }) {
   const hasBanks = invoice.bankAccounts.length > 0;
   const hasQris  = invoice.qrisAccounts.length  > 0;
-
-  const [tab, setTab]         = useState<"transfer" | "qris">(hasBanks ? "transfer" : "qris");
   const [activeQris, setActiveQris] = useState(0);
 
   if (!hasBanks && !hasQris) return null;
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
-      {/* Tab header */}
-      {hasBanks && hasQris && (
-        <div className="flex border-b border-border">
-          <button
-            type="button"
-            onClick={() => setTab("transfer")}
-            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-              tab === "transfer"
-                ? "bg-background text-foreground border-b-2 border-primary"
-                : "text-muted-foreground hover:text-foreground bg-muted/20"
-            }`}
-          >
-            Transfer Bank
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("qris")}
-            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-              tab === "qris"
-                ? "bg-background text-foreground border-b-2 border-primary"
-                : "text-muted-foreground hover:text-foreground bg-muted/20"
-            }`}
-          >
-            QRIS
-          </button>
+
+      {/* ── QRIS ── */}
+      {hasQris && (
+        <div className="p-4 space-y-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bayar via QRIS</p>
+          {invoice.qrisAccounts.length > 1 && (
+            <div className="flex gap-2 flex-wrap">
+              {invoice.qrisAccounts.map((q, i) => (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => setActiveQris(i)}
+                  className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
+                    activeQris === i
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {q.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <QrisDisplay
+            key={invoice.qrisAccounts[activeQris]?.id}
+            slug={slug}
+            qris={invoice.qrisAccounts[activeQris]!}
+            amount={invoice.remaining}
+            invoiceNumber={invoice.invoiceNumber}
+          />
+          <p className="text-xs text-muted-foreground">
+            Setelah scan dan bayar, klik &quot;Konfirmasi Pembayaran&quot; di bawah.
+          </p>
         </div>
       )}
 
-      <div className="p-4 space-y-3">
-        {/* Single-method label if no tabs */}
-        {!hasBanks && hasQris && (
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bayar via QRIS</p>
-        )}
-        {hasBanks && !hasQris && (
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Transfer Bank</p>
-        )}
+      {/* ── Divider ── */}
+      {hasQris && hasBanks && (
+        <div className="border-t border-border" />
+      )}
 
-        {/* Transfer tab */}
-        {(tab === "transfer" && hasBanks) && (
+      {/* ── Transfer Bank ── */}
+      {hasBanks && (
+        <div className="p-4 space-y-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Transfer Bank</p>
           <div className="space-y-2">
             {invoice.bankAccounts.map((acc) => (
               <div key={acc.id} className="rounded-md bg-muted/30 p-3 text-sm">
@@ -280,47 +284,13 @@ function PaymentMethodCard({
                 <p className="text-muted-foreground text-xs mt-0.5">a.n. {acc.accountName}</p>
               </div>
             ))}
-            <p className="text-xs text-muted-foreground pt-1">
-              Setelah transfer, klik &quot;Konfirmasi Pembayaran&quot; di bawah.
-            </p>
           </div>
-        )}
+          <p className="text-xs text-muted-foreground">
+            Setelah transfer, klik &quot;Konfirmasi Pembayaran&quot; di bawah.
+          </p>
+        </div>
+      )}
 
-        {/* QRIS tab */}
-        {(tab === "qris" && hasQris) && (
-          <div className="space-y-3">
-            {/* Multi-QRIS picker */}
-            {invoice.qrisAccounts.length > 1 && (
-              <div className="flex gap-2 flex-wrap">
-                {invoice.qrisAccounts.map((q, i) => (
-                  <button
-                    key={q.id}
-                    type="button"
-                    onClick={() => setActiveQris(i)}
-                    className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
-                      activeQris === i
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {q.name}
-                  </button>
-                ))}
-              </div>
-            )}
-            <QrisDisplay
-              key={invoice.qrisAccounts[activeQris]?.id}
-              slug={slug}
-              qris={invoice.qrisAccounts[activeQris]!}
-              amount={invoice.remaining}
-              invoiceNumber={invoice.invoiceNumber}
-            />
-            <p className="text-xs text-muted-foreground">
-              Setelah scan dan bayar, klik &quot;Konfirmasi Pembayaran&quot; di bawah.
-            </p>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
