@@ -284,11 +284,12 @@ Pola: `{Type}Section (fetch)` → `{Type}DesignN (layout)` → `{Type}Card (rend
 - URL: `/{slug}/produk` (arsip ✅) | `/{slug}/produk/{slug}` (detail ✅) | `/produk/kategori/{slug}` (✅)
 - Cover dari `images[0]` JSONB (bukan coverId); support harga 3 tier + badge Mitra
 
-**Event Card + Section — ✅ Card + Section selesai; ⬜ Archive page belum**
+**Event Card + Section — ✅ Selesai**
 - 3 variant: `grid` | `list` | `ringkas` — `components/website/public/event-cards/`
 - 3 section design: Design 1 | Design 2 | Design 3 — `sections/events/`
 - Terdaftar di landing-template + section-editors + page-templates
-- URL: `/{slug}/event` (arsip ⬜ belum) | `/{slug}/event/{slug}` (detail ✅ sudah ada)
+- URL: `/{slug}/agenda` (arsip ✅) | `/{slug}/agenda/{slug}` (detail ✅)
+- Filter kategori + toggle Mendatang/Semua Event
 
 **Campaign Card + Section — ✅ Selesai**
 - 3 variant: `grid` | `list` | `ringkas`
@@ -464,7 +465,7 @@ app/(dashboard)/[tenant]/
 - [x] **Halaman publik `/produk`** — archive + filter kategori + search + pagination. URL `/produk` (bukan `/toko` — hindari konflik dashboard). TypeScript 0 errors.
 - [x] **Halaman publik `/produk/kategori/{slug}`** — arsip per kategori + breadcrumb + SEO. TypeScript 0 errors.
 - [x] **Halaman publik `/produk/{slug}`** — detail produk: gallery + variasi picker + add to cart via `addToCartAction` + produk terkait. TypeScript 0 errors.
-- [x] **EventCard + EventsSection** — 3 card variant (grid/list/ringkas) + 3 section design + integrasi landing-template + section-editors. TypeScript 0 errors. **Archive page `/{slug}/event` belum dibuat.**
+- [x] **EventCard + EventsSection** — 3 card variant (grid/list/ringkas) + 3 section design + integrasi landing-template + section-editors. Archive `/{slug}/agenda` + detail `/{slug}/agenda/{slug}` ✅. TypeScript 0 errors.
 - [x] **CampaignCard + CampaignsSection** — 3 variant (grid/list/ringkas), 3 design (Grid/Unggulan/Daftar), fetch layer filter tipe+kategori, terdaftar di landing page + section-editor. TypeScript 0 errors.
 - [x] **Halaman publik `/campaign`** — arsip donasi dengan filter tipe (donasi/zakat/wakaf/qurban) + kategori. URL `/campaign` (bukan `/donasi` — hindari konflik dashboard). TypeScript 0 errors.
 - [x] **Halaman publik `/campaign/{slug}`** — detail campaign + form donasi: donasi reguler (nominal chips + custom) dan qurban (hewan cards = variasi), keduanya → `addToCartAction`. Atas nama qurban di `notes`. TypeScript 0 errors.
@@ -944,7 +945,7 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 
 **Yang sudah pernah out-of-sync (dikoreksi 2026-05-16):**
 - Public Link Picker: CLAUDE.md bilang "belum dimulai" → sudah ada 3 file + integrasi nav-menu
-- EventCard + EventsSection: CLAUDE.md bilang "DITUNDA" → 4 card + 3 designs + landing integration
+- EventCard + EventsSection + Agenda archive: CLAUDE.md bilang "DITUNDA" → 4 card + 3 designs + landing integration + `/{slug}/agenda` page lengkap
 - Widget Area: CLAUDE.md bilang "belum dimulai" → `widget-area.tsx` sudah live
 - View Counter: CLAUDE.md bilang "belum dimulai" → `lib/view-counter.ts` + post integration
 - normalizePhone: CLAUDE.md bilang "belum dibuat" → `lib/phone.ts` sudah ada
@@ -2355,7 +2356,7 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 | Detail campaign + form | `/{slug}/campaign/{slug}` | ✅ Ada |
 | Arsip produk | `/{slug}/produk` | ✅ Ada |
 | Detail produk | `/{slug}/produk/{slug}` | ✅ Ada |
-| Event listing | `/{slug}/event` | ⬜ Belum (detail ada) |
+| Agenda / Event listing | `/{slug}/agenda` | ✅ Ada |
 | Keranjang | `/{slug}/keranjang` | ✅ Ada |
 | Checkout | `/{slug}/checkout` | ✅ Ada |
 | Invoice detail | `/{slug}/invoice/[id]` | ✅ Ada |
