@@ -17,3 +17,7 @@ ALTER TABLE public.members
 CREATE INDEX IF NOT EXISTS idx_members_better_auth_user_id
   ON public.members(better_auth_user_id)
   WHERE better_auth_user_id IS NOT NULL;
+
+-- wali_santri di public.profiles (untuk akun publik non-anggota IKPM)
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS wali_santri TEXT;
