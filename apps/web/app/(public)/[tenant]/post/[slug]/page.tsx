@@ -70,6 +70,8 @@ async function getPost(tenantSlug: string, postSlug: string) {
       updatedAt:    schema.posts.updatedAt,
       metaTitle:    schema.posts.metaTitle,
       metaDesc:     schema.posts.metaDesc,
+      ogTitle:      schema.posts.ogTitle,
+      ogDesc:       schema.posts.ogDescription,
       categoryName: schema.postCategories.name,
     })
     .from(schema.posts)
@@ -157,12 +159,14 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!result) return {};
   const { post, coverUrl } = result;
   return buildMetadata({
-    title:       post.metaTitle || post.title,
-    description: post.metaDesc ?? post.excerpt,
-    siteName:    base.siteName,
-    canonicalUrl: `${base.baseUrl}/post/${postSlug}`,
-    ogImageUrl:  coverUrl ?? base.logoUrl,
-    ogType:      "article",
+    title:          post.metaTitle || post.title,
+    description:    post.metaDesc ?? post.excerpt,
+    siteName:       base.siteName,
+    canonicalUrl:   `${base.baseUrl}/post/${postSlug}`,
+    ogImageUrl:     coverUrl ?? base.logoUrl,
+    ogTitle:        post.ogTitle || undefined,
+    ogDescription:  post.ogDesc  || undefined,
+    ogType:         "article",
   });
 }
 

@@ -9,6 +9,8 @@ import { LinktreeTemplate } from "@/components/website/public/linktree-template"
 import { parseLandingBody, parseContactBody, parseLinktreeBody } from "@/lib/page-templates";
 import { getSettings } from "@jalajogja/db";
 import type { Metadata } from "next";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 
 export const revalidate = 60;
 
@@ -35,8 +37,10 @@ async function getPage(slug: string, pageSlug: string) {
       status:    schema.pages.status,
       coverId:   schema.pages.coverId,
       updatedAt: schema.pages.updatedAt,
-      metaTitle: schema.pages.metaTitle,
-      metaDesc:  schema.pages.metaDesc,
+      metaTitle:      schema.pages.metaTitle,
+      metaDesc:       schema.pages.metaDesc,
+      ogTitle:        schema.pages.ogTitle,
+      ogDescription:  schema.pages.ogDescription,
     })
     .from(schema.pages)
     .where(eq(schema.pages.slug, pageSlug))
@@ -59,13 +63,21 @@ async function getPage(slug: string, pageSlug: string) {
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug, pageSlug } = await params;
-  const result = await getPage(slug, pageSlug);
+  const [result, base] = await Promise.all([
+    getPage(slug, pageSlug),
+    getTenantSeoBase(slug),
+  ]);
   if (!result) return {};
-  const { page, tenantName } = result;
-  return {
-    title:       page.metaTitle || `${page.title} — ${tenantName}`,
-    description: page.metaDesc ?? undefined,
-  };
+  const { page, coverUrl } = result;
+  return buildMetadata({
+    title:         page.metaTitle || page.title,
+    description:   page.metaDesc ?? undefined,
+    siteName:      base.siteName,
+    canonicalUrl:  `${base.baseUrl}/${pageSlug}`,
+    ogImageUrl:    coverUrl ?? base.logoUrl,
+    ogTitle:       page.ogTitle  || undefined,
+    ogDescription: page.ogDescription || undefined,
+  });
 }
 
 export default async function PublicPageRoute({ params }: { params: Params }) {

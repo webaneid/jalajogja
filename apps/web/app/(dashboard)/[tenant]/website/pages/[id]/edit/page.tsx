@@ -35,8 +35,9 @@ export default async function EditPagePage({
       .where(eq(schema.media.id, page.coverId))
       .limit(1);
     if (media) {
-      const vv = media.variants as Record<string, string> | null;
-      coverUrl = vv?.thumbnail ?? vv?.large ?? publicUrl(slug, media.path);
+      const vv          = media.variants as Record<string, string> | null;
+      const variantPath = vv?.thumbnail ?? vv?.large ?? null;
+      coverUrl          = publicUrl(slug, variantPath ?? media.path);
     }
   }
 
