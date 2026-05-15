@@ -2274,6 +2274,35 @@ Slot patungan di-assign saat admin konfirmasi pembayaran, bukan saat add-to-cart
 - lainnya → tampilkan nominal chips + custom input
 - Keduanya berakhir di `addToCartAction` yang sama
 
+**Alur UX donasi publik — Phone First (arsitektur lengkap: `docs/arsitektur-donasi-alur.md`)**
+
+Tiga jalur donatur:
+- **Sudah login** → nama pre-filled dari session, field HP tidak tampil
+- **HP dikenal** (`isKnown=true`) → nama auto-fill dari lookup, popup "ask" (sama seperti login)
+- **Guest murni** (`isKnown=false`) → nama diisi sendiri, popup "guest" (tawarkan daftar akun)
+
+Urutan form (non-login):
+1. Pilih Nominal / Hewan
+2. Nominal lain (custom)
+3. **Nomor HP / WhatsApp** — `<PhoneInput>` standar (flag + kode negara)
+4. **Nama Donatur** — hanya muncul setelah phone diisi (`showNameField = phone !== ""`)
+5. Tombol submit
+
+Phone lookup: debounce 500ms → `GET /api/akun/lookup-member?phone={E.164}` → dua sumber paralel:
+- `public.contacts` → `public.members` (anggota IKPM)
+- `public.profiles.phone` (akun publik)
+- Members > profiles jika keduanya ditemukan
+- Response: `{ found, name, type: "member" | "profile" }`
+
+State machine popup setelah `addToCartAction` sukses:
+- `isLoggedIn || isKnown` → popup **"ask"**: "Ya, lihat program lain" | "Tidak, lanjut bayar"
+- `!isLoggedIn && !isKnown` → popup **"guest"**: "Daftar Akun" (→ `/register`, cart tetap via cookie) | "Lanjut Tanpa Akun"
+
+Aturan UI yang dikunci:
+- Jangan beri label `(opsional)` di field HP — kalau phone tidak diisi, nama tidak muncul, jadi secara praktis wajib
+- `PhoneInput` (bukan `<input type="tel">`) wajib di form donasi publik, sesuai standar UI project
+- Field nama **tidak** tampil sampai phone diisi — dipaksa isi nomor dulu
+
 **Donor list di halaman publik — dua sumber wajib digabungkan** (bug pernah terjadi: hanya baca sumber lama → list kosong):
 ```typescript
 // Sumber lama (data historis) — tabel donations

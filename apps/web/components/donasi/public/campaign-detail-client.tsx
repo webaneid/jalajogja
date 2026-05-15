@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { addToCartAction, checkoutAction } from "@/app/(public)/[tenant]/cart/actions";
 import { formatRp } from "@/lib/campaign-card-templates";
 import { Loader2, CheckCircle } from "lucide-react";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,7 +42,7 @@ const ANIMAL_EMOJI: Record<string, string> = { domba: "🐑", kambing: "🐐", s
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-type PopupState = "hidden" | "ask" | "login" | "processing";
+type PopupState = "hidden" | "ask" | "guest" | "processing";
 
 export function CampaignDetailClient({
   campaignId, campaignTitle, campaignType, tenantSlug,
@@ -67,12 +68,51 @@ export function CampaignDetailClient({
   const [error,      setError]      = useState("");
   const [pending,    startTransition] = useTransition();
 
+  // Phone — E.164 format dari PhoneInput (contoh: "+6281234567890")
+  // Hanya dipakai saat tidak login; login = phone sudah dari session (memberPhone)
+  const [phone,        setPhone]        = useState("");
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [isKnown,      setIsKnown]      = useState(false);
+
   // Popup state machine
-  const [popup,         setPopup]         = useState<PopupState>("hidden");
-  const [loginEmail,    setLoginEmail]    = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginError,    setLoginError]    = useState("");
-  const [loginPending,  setLoginPending]  = useState(false);
+  const [popup,      setPopup]      = useState<PopupState>("hidden");
+  const [popupError, setPopupError] = useState("");
+
+  // ── Phone lookup — debounce 500ms, minimal panjang E.164 valid ───────────────
+  useEffect(() => {
+    if (isLoggedIn) return;
+    // Phone E.164 minimal "+62" + 8 digit = 11 karakter
+    if (!phone || phone.length < 10) {
+      setIsKnown(false);
+      setPhoneLoading(false);
+      return;
+    }
+
+    setPhoneLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/akun/lookup-member?phone=${encodeURIComponent(phone)}`);
+        const data = await res.json() as { found: boolean; name?: string };
+        if (data.found && data.name) {
+          setIsKnown(true);
+          setDonorName(data.name);
+        } else {
+          setIsKnown(false);
+          // Reset nama agar user isi sendiri
+          setDonorName("");
+        }
+      } catch {
+        setIsKnown(false);
+      } finally {
+        setPhoneLoading(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [phone, isLoggedIn]);
+
+  // Nama muncul hanya setelah phone diisi (atau langsung kalau sudah login)
+  const showNameField = isLoggedIn || phone !== "";
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const selectedAnimal = qurbanAnimals.find(a => a.id === selectedAnimalId);
@@ -127,45 +167,32 @@ export function CampaignDetailClient({
     });
 
     if (res.success) {
-      setPopup("ask");
+      setPopupError("");
+      if (isLoggedIn || isKnown) {
+        setPopup("ask");
+      } else {
+        setPopup("guest");
+      }
     } else {
       setError(res.error);
     }
   }
 
-  async function handleExpressCheckout(emailOverride?: string) {
+  // ── Express Checkout ─────────────────────────────────────────────────────────
+  async function handleExpressCheckout() {
     setPopup("processing");
     const res = await checkoutAction(tenantSlug, {
       name:   donorName.trim() || "Donatur",
-      phone:  memberPhone || undefined,
-      email:  (emailOverride ?? memberEmail) || undefined,
+      phone:  memberPhone || phone || undefined,
+      email:  memberEmail || undefined,
       method: "transfer",
     });
     if (res.success) {
       window.location.href = `/${tenantSlug}/invoice/${res.data.invoiceId}`;
     } else {
-      setLoginError(res.error);
-      setPopup("ask");
+      setPopupError(res.error);
+      setPopup(isLoggedIn || isKnown ? "ask" : "guest");
     }
-  }
-
-  async function handleInlineLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLoginError("");
-    setLoginPending(true);
-    const res = await fetch("/api/auth/sign-in/email", {
-      method:      "POST",
-      headers:     { "Content-Type": "application/json" },
-      credentials: "include",
-      body:        JSON.stringify({ email: loginEmail, password: loginPassword }),
-    });
-    if (!res.ok) {
-      setLoginError("Email atau password salah.");
-      setLoginPending(false);
-      return;
-    }
-    await handleExpressCheckout(loginEmail);
-    setLoginPending(false);
   }
 
   const inputCls = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
@@ -189,7 +216,7 @@ export function CampaignDetailClient({
               <p className="font-semibold text-sm">Berhasil ditambahkan!</p>
             </div>
             <p className="text-sm text-muted-foreground">Ingin berdonasi untuk program lain juga?</p>
-            {loginError && <p className="text-xs text-destructive">{loginError}</p>}
+            {popupError && <p className="text-xs text-destructive">{popupError}</p>}
             <div className="space-y-2">
               <button type="button"
                 onClick={() => { window.location.href = `/${tenantSlug}/campaign`; }}
@@ -198,7 +225,7 @@ export function CampaignDetailClient({
                 Ya, lihat program lain
               </button>
               <button type="button"
-                onClick={() => { if (isLoggedIn) { void handleExpressCheckout(); } else { setLoginError(""); setPopup("login"); } }}
+                onClick={() => void handleExpressCheckout()}
                 className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 Tidak, lanjut bayar →
@@ -207,30 +234,34 @@ export function CampaignDetailClient({
           </>
         )}
 
-        {popup === "login" && (
-          <form onSubmit={handleInlineLogin} className="space-y-4">
-            <div>
-              <p className="font-semibold text-sm mb-0.5">Masuk untuk melanjutkan</p>
-              <p className="text-xs text-muted-foreground">Invoice akan dibuat setelah login.</p>
+        {popup === "guest" && (
+          <>
+            <div className="flex items-center gap-2 text-green-600">
+              <CheckCircle className="h-5 w-5" />
+              <p className="font-semibold text-sm">Berhasil ditambahkan!</p>
             </div>
-            <div className="space-y-3">
-              <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
-                placeholder="Email" required autoFocus className={inputCls} />
-              <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)}
-                placeholder="Password" required className={inputCls} />
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Nomor HP belum terdaftar.</p>
+              <p className="text-xs text-muted-foreground">
+                Daftar agar donasi tersimpan di riwayat akun Anda.
+              </p>
             </div>
-            {loginError && <p className="text-xs text-destructive">{loginError}</p>}
-            <button type="submit" disabled={loginPending}
-              className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
-            >
-              {loginPending ? "Masuk..." : "Masuk & Buat Invoice"}
-            </button>
-            <button type="button" onClick={() => setPopup("ask")}
-              className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              ← Kembali
-            </button>
-          </form>
+            {popupError && <p className="text-xs text-destructive">{popupError}</p>}
+            <div className="space-y-2">
+              <button type="button"
+                onClick={() => { window.location.href = `/${tenantSlug}/register`; }}
+                className="w-full rounded-xl border border-border py-2.5 text-sm font-medium hover:bg-muted/50 transition-colors"
+              >
+                Daftar Akun
+              </button>
+              <button type="button"
+                onClick={() => void handleExpressCheckout()}
+                className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Lanjut Tanpa Akun →
+              </button>
+            </div>
+          </>
         )}
 
       </div>
@@ -243,16 +274,17 @@ export function CampaignDetailClient({
       <>
       {popupEl}
       <div className="space-y-5">
-        {/* Pilih hewan */}
+
+        {/* 1. Pilih hewan */}
         <div className="space-y-2">
           <p className="text-sm font-semibold">Pilih Jenis Hewan</p>
           <div className="grid grid-cols-1 gap-2">
             {qurbanAnimals.filter(a => a.isActive).map(a => {
-              const slots    = availableSlots(a);
-              const isAvail  = slots > 0;
-              const isSel    = selectedAnimalId === a.id;
-              const perSlot  = a.split ? Math.ceil(a.price / a.split) : a.price;
-              const fee      = slaughterFees[a.animalType] ?? 0;
+              const slots   = availableSlots(a);
+              const isAvail = slots > 0;
+              const isSel   = selectedAnimalId === a.id;
+              const perSlot = a.split ? Math.ceil(a.price / a.split) : a.price;
+              const fee     = slaughterFees[a.animalType] ?? 0;
               return (
                 <button
                   key={a.id} type="button" disabled={!isAvail}
@@ -280,7 +312,7 @@ export function CampaignDetailClient({
           </div>
         </div>
 
-        {/* Rincian harga */}
+        {/* 3. Rincian harga */}
         {selectedAnimal && (
           <div className="rounded-lg bg-muted/40 border border-border px-4 py-3 text-sm space-y-1">
             <div className="flex justify-between">
@@ -300,7 +332,7 @@ export function CampaignDetailClient({
           </div>
         )}
 
-        {/* Atas nama */}
+        {/* 3. Atas nama */}
         <div className="space-y-1.5">
           <label className="block text-sm font-semibold">Atas Nama (Shohibul Qurban)</label>
           <input type="text" value={atasNama} onChange={e => setAtasNama(e.target.value)}
@@ -312,15 +344,42 @@ export function CampaignDetailClient({
           </label>
         </div>
 
-        {/* Pemesan */}
-        <div className="space-y-2">
-          <label className="block text-sm font-semibold">Nama Pemesan</label>
-          <input type="text" value={donorName} onChange={e => handleDonorName(e.target.value)}
-            placeholder="Nama lengkap" className={inputCls} />
-        </div>
+        {/* 4. Nomor HP — di atas Nama Pemesan, hanya non-login */}
+        {!isLoggedIn && (
+          <div>
+            <PhoneInput
+              label="Nomor HP / WhatsApp"
+              value={phone}
+              onChange={e164 => { setPhone(e164); setIsKnown(false); }}
+            />
+            {isKnown && (
+              <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
+                <CheckCircle className="h-3 w-3" />
+                Nomor dikenal — nama terisi otomatis
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* 5. Nama pemesan — muncul setelah phone diisi (atau langsung kalau login) */}
+        {showNameField && (
+          <div className="space-y-1.5">
+            <label className="block text-sm font-semibold">Nama Pemesan</label>
+            <div className="relative">
+              <input type="text" value={donorName} onChange={e => handleDonorName(e.target.value)}
+                placeholder="Nama lengkap" className={inputCls} />
+              {phoneLoading && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {error && <p className="text-sm text-destructive">{error}</p>}
-        <button type="button" disabled={pending || !selectedAnimalId}
+        <button type="button"
+          disabled={pending || !selectedAnimalId || (!showNameField && !isLoggedIn)}
           onClick={() => startTransition(handleAddToCart)}
           className="w-full rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
         >
@@ -336,7 +395,8 @@ export function CampaignDetailClient({
     <>
     {popupEl}
     <div className="space-y-5">
-      {/* Nominal chips */}
+
+      {/* 1. Nominal chips */}
       {recommendedAmounts.length > 0 && (
         <div className="space-y-2">
           <p className="text-sm font-semibold">Pilih Nominal</p>
@@ -357,7 +417,7 @@ export function CampaignDetailClient({
         </div>
       )}
 
-      {/* Custom nominal */}
+      {/* 2. Custom nominal */}
       <div className="space-y-1.5">
         <label className="block text-sm text-muted-foreground">Nominal lain</label>
         <div className="relative">
@@ -371,20 +431,47 @@ export function CampaignDetailClient({
         </div>
       </div>
 
-      {/* Nama + anonim */}
-      <div className="space-y-2">
-        <label className="block text-sm font-semibold">Nama Donatur</label>
-        <input type="text" value={donorName} onChange={e => handleDonorName(e.target.value)}
-          placeholder="Nama lengkap" className={inputCls} />
-        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-          <input type="checkbox" checked={isAnon} onChange={e => setIsAnon(e.target.checked)}
-            className="h-3.5 w-3.5 rounded accent-primary" />
-          Sembunyikan nama (anonim)
-        </label>
-      </div>
+      {/* 3. Nomor HP — di atas Nama Donatur, hanya non-login */}
+      {!isLoggedIn && (
+        <div>
+          <PhoneInput
+            label="Nomor HP / WhatsApp"
+            value={phone}
+            onChange={e164 => { setPhone(e164); setIsKnown(false); }}
+          />
+          {isKnown && (
+            <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
+              <CheckCircle className="h-3 w-3" />
+              Nomor dikenal — nama terisi otomatis
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* 4. Nama donatur — muncul setelah phone diisi (atau langsung kalau login) */}
+      {showNameField && (
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold">Nama Donatur</label>
+          <div className="relative">
+            <input type="text" value={donorName} onChange={e => handleDonorName(e.target.value)}
+              placeholder="Nama lengkap" className={inputCls} />
+            {phoneLoading && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              </span>
+            )}
+          </div>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input type="checkbox" checked={isAnon} onChange={e => setIsAnon(e.target.checked)}
+              className="h-3.5 w-3.5 rounded accent-primary" />
+            Sembunyikan nama (anonim)
+          </label>
+        </div>
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
-      <button type="button" disabled={pending || donationAmount <= 0}
+      <button type="button"
+        disabled={pending || donationAmount <= 0 || (!showNameField && !isLoggedIn)}
         onClick={() => startTransition(handleAddToCart)}
         className="w-full rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
       >
