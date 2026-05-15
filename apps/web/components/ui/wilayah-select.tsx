@@ -242,7 +242,8 @@ export function WilayahSelect({
     setLoadingRegencies(true)
     fetch(`/api/ref/regencies?province_id=${provinceId}`)
       .then((r) => r.json())
-      .then((data) => setRegencies(data))
+      .then((data) => setRegencies(Array.isArray(data) ? data : []))
+      .catch(() => setRegencies([]))
       .finally(() => setLoadingRegencies(false))
   }, [provinceId])
 
@@ -255,7 +256,8 @@ export function WilayahSelect({
     setLoadingDistricts(true)
     fetch(`/api/ref/districts?regency_id=${regencyId}`)
       .then((r) => r.json())
-      .then((data) => setDistricts(data))
+      .then((data) => setDistricts(Array.isArray(data) ? data : []))
+      .catch(() => setDistricts([]))
       .finally(() => setLoadingDistricts(false))
   }, [regencyId])
 
@@ -268,7 +270,8 @@ export function WilayahSelect({
     setLoadingVillages(true)
     fetch(`/api/ref/villages?district_id=${districtId}`)
       .then((r) => r.json())
-      .then((data) => setVillages(data))
+      .then((data) => setVillages(Array.isArray(data) ? data : []))
+      .catch(() => setVillages([]))
       .finally(() => setLoadingVillages(false))
   }, [districtId])
 

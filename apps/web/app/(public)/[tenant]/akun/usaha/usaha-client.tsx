@@ -493,6 +493,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
 
         {entry._addressMode === "indonesia" ? (
           <WilayahSelect
+            key={entry.id || "new"}
             defaultValue={{
               provinceId: entry.addressProvinceId ?? undefined,
               regencyId:  entry.addressRegencyId  ?? undefined,
