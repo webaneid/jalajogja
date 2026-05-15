@@ -14,17 +14,27 @@ import {
 } from "lucide-react";
 import { displayPhone } from "@/lib/phone";
 import { renderBody }   from "@/lib/letter-render";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const { id } = await params;
-  const [b] = await db
-    .select({ name: memberBusinesses.name })
-    .from(memberBusinesses)
-    .where(eq(memberBusinesses.id, id))
-    .limit(1);
-  return b ? { title: b.name } : {};
+  const { tenant: slug, id } = await params;
+  const [base, b] = await Promise.all([
+    getTenantSeoBase(slug),
+    db.select({ name: memberBusinesses.name, coverUrl: memberBusinesses.coverUrl, description: memberBusinesses.description })
+      .from(memberBusinesses).where(eq(memberBusinesses.id, id)).limit(1)
+      .then(r => r[0]),
+  ]);
+  if (!b) return {};
+  return buildMetadata({
+    title:       b.name,
+    description: b.description ?? undefined,
+    siteName:    base.siteName,
+    canonicalUrl: `${base.baseUrl}/usaha/${id}`,
+    ogImageUrl:  b.coverUrl ?? base.logoUrl,
+    ogType:      "article",
+  });
 }
 
 function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
@@ -149,10 +159,10 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
           Direktori Usaha
         </Link>
 
-        {/* Cover */}
+        {/* Logo */}
         {row.coverUrl && (
-          <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted">
-            <Image src={row.coverUrl} alt={row.name} fill className="object-cover" unoptimized />
+          <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 flex items-center justify-center">
+            <Image src={row.coverUrl} alt={row.name} fill className="object-contain p-6" unoptimized />
           </div>
         )}
 

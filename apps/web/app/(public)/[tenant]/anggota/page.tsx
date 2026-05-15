@@ -4,6 +4,7 @@ import {
   db, members, tenants, tenantMemberships,
   addresses, refProvinces, refRegencies, refProfessions,
 } from "@jalajogja/db";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 import type { Metadata } from "next";
 import { PublicButton }  from "@/components/website/public/ui/public-button";
 import { AnggotaDirectoryClient } from "@/components/anggota/anggota-directory-client";
@@ -18,9 +19,8 @@ type SearchParams = Promise<{ q?: string; provinsi?: string; angkatan?: string; 
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
-  const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.slug, slug)).limit(1);
-  if (!tenant) return {};
-  return { title: `Direktori Anggota — ${tenant.name}` };
+  const base = await getTenantSeoBase(slug);
+  return buildMetadata({ title: "Direktori Anggota", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/anggota` });
 }
 
 export default async function AnggotaDirectoryPage({

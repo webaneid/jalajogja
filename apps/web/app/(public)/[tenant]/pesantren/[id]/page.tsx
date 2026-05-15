@@ -13,17 +13,26 @@ import {
   Users, BookOpen, ChevronLeft,
 } from "lucide-react";
 import { displayPhone } from "@/lib/phone";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const { id } = await params;
-  const [p] = await db
-    .select({ name: memberOwnedPesantren.name })
-    .from(memberOwnedPesantren)
-    .where(eq(memberOwnedPesantren.id, id))
-    .limit(1);
-  return p ? { title: p.name } : {};
+  const { tenant: slug, id } = await params;
+  const [base, p] = await Promise.all([
+    getTenantSeoBase(slug),
+    db.select({ name: memberOwnedPesantren.name, coverUrl: memberOwnedPesantren.coverUrl })
+      .from(memberOwnedPesantren).where(eq(memberOwnedPesantren.id, id)).limit(1)
+      .then(r => r[0]),
+  ]);
+  if (!p) return {};
+  return buildMetadata({
+    title:       p.name,
+    siteName:    base.siteName,
+    canonicalUrl: `${base.baseUrl}/pesantren/${id}`,
+    ogImageUrl:  p.coverUrl ?? base.logoUrl,
+    ogType:      "article",
+  });
 }
 
 function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
@@ -154,10 +163,10 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
           Direktori Pesantren
         </Link>
 
-        {/* Cover */}
+        {/* Logo */}
         {row.coverUrl && (
-          <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted">
-            <Image src={row.coverUrl} alt={row.name} fill className="object-cover" unoptimized />
+          <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 flex items-center justify-center">
+            <Image src={row.coverUrl} alt={row.name} fill className="object-contain p-6" unoptimized />
           </div>
         )}
 

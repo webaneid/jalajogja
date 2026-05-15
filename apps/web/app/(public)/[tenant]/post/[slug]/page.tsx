@@ -10,6 +10,7 @@ import { recordView, hashIp } from "@/lib/view-counter";
 import { WidgetArea } from "@/components/website/public/widget-area";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import type { Metadata } from "next";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 
 export const revalidate = 60;
 
@@ -84,12 +85,13 @@ async function getPost(tenantSlug: string, postSlug: string) {
   let coverCaption: string | null = null;
   if (post.coverId) {
     const [media] = await tenantDb
-      .select({ path: schema.media.path, altText: schema.media.altText, title: schema.media.title, caption: schema.media.caption })
+      .select({ path: schema.media.path, variants: schema.media.variants, altText: schema.media.altText, title: schema.media.title, caption: schema.media.caption })
       .from(schema.media)
       .where(eq(schema.media.id, post.coverId))
       .limit(1);
     if (media) {
-      coverUrl     = publicUrl(tenantSlug, media.path);
+      const vv = media.variants as Record<string, string> | null;
+      coverUrl     = vv?.large ?? vv?.original ?? publicUrl(tenantSlug, media.path);
       coverAlt     = media.altText;
       coverTitle   = media.title;
       coverCaption = media.caption;
@@ -147,13 +149,20 @@ async function getPost(tenantSlug: string, postSlug: string) {
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: tenantSlug, slug: postSlug } = await params;
-  const result = await getPost(tenantSlug, postSlug);
+  const [result, base] = await Promise.all([
+    getPost(tenantSlug, postSlug),
+    getTenantSeoBase(tenantSlug),
+  ]);
   if (!result) return {};
-  const { post, tenantName } = result;
-  return {
-    title:       post.metaTitle || `${post.title} — ${tenantName}`,
-    description: post.metaDesc ?? post.excerpt ?? undefined,
-  };
+  const { post, coverUrl } = result;
+  return buildMetadata({
+    title:       post.metaTitle || post.title,
+    description: post.metaDesc ?? post.excerpt,
+    siteName:    base.siteName,
+    canonicalUrl: `${base.baseUrl}/post/${postSlug}`,
+    ogImageUrl:  coverUrl ?? base.logoUrl,
+    ogType:      "article",
+  });
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────────

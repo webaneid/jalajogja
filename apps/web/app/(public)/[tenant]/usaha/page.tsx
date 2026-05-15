@@ -6,6 +6,7 @@ import {
 } from "@jalajogja/db";
 import Image     from "next/image";
 import Link      from "next/link";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 import type { Metadata } from "next";
 import { Briefcase, MapPin } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";
@@ -33,9 +34,8 @@ const LEGALITAS_OPTIONS = [
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
-  const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.slug, slug)).limit(1);
-  if (!tenant) return {};
-  return { title: `Direktori Usaha — ${tenant.name}` };
+  const base = await getTenantSeoBase(slug);
+  return buildMetadata({ title: "Direktori Usaha", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/usaha` });
 }
 
 export default async function UsahaDirectoryPage({
@@ -187,12 +187,12 @@ export default async function UsahaDirectoryPage({
                 href={`/${slug}/usaha/${b.id}`}
                 className="group flex flex-col rounded-xl border border-border overflow-hidden hover:border-primary/30 hover:shadow-md transition-all"
               >
-                {/* Cover */}
-                <div className="aspect-video bg-muted/50 relative overflow-hidden">
+                {/* Logo */}
+                <div className="aspect-video bg-muted/30 relative overflow-hidden flex items-center justify-center p-4">
                   {b.coverUrl ? (
                     <Image
                       src={b.coverUrl} alt={b.name}
-                      fill className="object-cover group-hover:scale-105 transition-transform duration-300"
+                      fill className="object-contain p-4"
                       unoptimized
                     />
                   ) : (

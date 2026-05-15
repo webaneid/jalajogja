@@ -8,6 +8,7 @@ import { ContactTemplate } from "@/components/website/public/contact-template";
 import { LinktreeTemplate } from "@/components/website/public/linktree-template";
 import { parseLandingBody, parseContactBody, parseLinktreeBody } from "@/lib/page-templates";
 import type { Metadata } from "next";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 
 export const revalidate = 60;
 
@@ -15,12 +16,14 @@ type Params = Promise<{ tenant: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
-  const [tenant] = await db
-    .select({ name: tenants.name })
-    .from(tenants)
-    .where(eq(tenants.slug, slug))
-    .limit(1);
-  return { title: tenant?.name ?? slug };
+  const base = await getTenantSeoBase(slug);
+  return buildMetadata({
+    title:       base.tagline ?? base.siteName,
+    description: base.description,
+    siteName:    base.siteName,
+    canonicalUrl: base.baseUrl,
+    ogImageUrl:  base.logoUrl,
+  });
 }
 
 export default async function PublicHomePage({ params }: { params: Params }) {

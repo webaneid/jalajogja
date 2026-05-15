@@ -5,6 +5,7 @@ import { publicUrl }          from "@/lib/minio";
 import { CampaignCard }       from "@/components/website/public/campaign-cards/campaign-card";
 import type { CampaignCardData } from "@/lib/campaign-card-templates";
 import { CAMPAIGN_TYPE_LABELS } from "@/lib/campaign-card-templates";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 import type { Metadata }      from "next";
 import { Heart }              from "lucide-react";
 
@@ -17,9 +18,8 @@ const VALID_TYPES = ["donasi", "zakat", "wakaf", "qurban"] as const;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
-  const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.slug, slug)).limit(1);
-  if (!tenant) return {};
-  return { title: `Donasi & Infaq — ${tenant.name}` };
+  const base = await getTenantSeoBase(slug);
+  return buildMetadata({ title: "Donasi & Infaq", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/campaign` });
 }
 
 export default async function CampaignArchivePage({

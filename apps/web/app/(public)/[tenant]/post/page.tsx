@@ -4,6 +4,7 @@ import { createTenantDb, db, tenants } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import { WidgetArea } from "@/components/website/public/widget-area";
 import type { Metadata } from "next";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 
 export const revalidate = 60;
 
@@ -11,13 +12,8 @@ type Params = Promise<{ tenant: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
-  const [tenant] = await db
-    .select({ name: tenants.name })
-    .from(tenants)
-    .where(eq(tenants.slug, slug))
-    .limit(1);
-  if (!tenant) return {};
-  return { title: `Postingan — ${tenant.name}` };
+  const base = await getTenantSeoBase(slug);
+  return buildMetadata({ title: "Berita & Artikel", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/post` });
 }
 
 export default async function BlogListPage({ params }: { params: Params }) {

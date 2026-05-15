@@ -11,6 +11,7 @@ import type { CampaignCardData } from "@/lib/campaign-card-templates";
 import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS } from "@/lib/campaign-card-templates";
 import type { Metadata }       from "next";
 import { ChevronRight, Heart } from "lucide-react";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 
 export const revalidate = 60;
 
@@ -18,17 +19,30 @@ type Params = Promise<{ tenant: string; slug: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug, slug: campaignSlug } = await params;
-  const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.slug, slug)).limit(1);
-  if (!tenant) return {};
+  const [base] = await Promise.all([getTenantSeoBase(slug)]);
   const tenantClient = createTenantDb(slug);
   const { db: tdb, schema } = tenantClient;
-  const [campaign] = await tdb.select({ title: schema.campaigns.title, metaTitle: schema.campaigns.metaTitle, metaDesc: schema.campaigns.metaDesc })
+  const [campaign] = await tdb
+    .select({ title: schema.campaigns.title, metaTitle: schema.campaigns.metaTitle, metaDesc: schema.campaigns.metaDesc, coverId: schema.campaigns.coverId })
     .from(schema.campaigns).where(and(eq(schema.campaigns.slug, campaignSlug), eq(schema.campaigns.status, "active"))).limit(1);
   if (!campaign) return {};
-  return {
-    title:       campaign.metaTitle ?? `${campaign.title} — ${tenant.name}`,
+  let ogImage = base.logoUrl;
+  if (campaign.coverId) {
+    const [media] = await tdb.select({ path: schema.media.path, variants: schema.media.variants })
+      .from(schema.media).where(eq(schema.media.id, campaign.coverId)).limit(1);
+    if (media) {
+      const vv = media.variants as Record<string, string> | null;
+      ogImage = vv?.["large"] ?? vv?.["original"] ?? publicUrl(slug, media.path);
+    }
+  }
+  return buildMetadata({
+    title:       campaign.metaTitle ?? campaign.title,
     description: campaign.metaDesc ?? undefined,
-  };
+    siteName:    base.siteName,
+    canonicalUrl: `${base.baseUrl}/campaign/${campaignSlug}`,
+    ogImageUrl:  ogImage,
+    ogType:      "article",
+  });
 }
 
 export default async function CampaignDetailPage({ params }: { params: Params }) {

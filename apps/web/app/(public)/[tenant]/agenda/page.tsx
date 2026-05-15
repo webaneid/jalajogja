@@ -4,6 +4,7 @@ import { createTenantDb, db, tenants } from "@jalajogja/db";
 import { publicUrl }          from "@/lib/minio";
 import { EventCard }          from "@/components/website/public/event-cards/event-card";
 import type { EventCardData } from "@/lib/event-card-templates";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 import type { Metadata }      from "next";
 import { CalendarDays }       from "lucide-react";
 
@@ -14,9 +15,8 @@ type SearchParams  = Promise<{ category?: string; all?: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
-  const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.slug, slug)).limit(1);
-  if (!tenant) return {};
-  return { title: `Agenda — ${tenant.name}` };
+  const base = await getTenantSeoBase(slug);
+  return buildMetadata({ title: "Agenda & Event", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/agenda` });
 }
 
 export default async function AgendaArchivePage({

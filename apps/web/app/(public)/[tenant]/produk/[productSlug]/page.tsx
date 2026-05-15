@@ -10,6 +10,7 @@ import type { ProductCardData, SessionType } from "@/lib/product-card-templates"
 import type { Metadata }          from "next";
 import type { ProductVariationData, AttributeGroup, ViewerImage } from "@/components/toko/public/product-detail-client";
 import { ChevronRight }           from "lucide-react";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 
 export const revalidate = 60;
 
@@ -33,26 +34,29 @@ async function resolveSessionType(userId: string | undefined): Promise<SessionTy
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug, productSlug } = await params;
-  const [tenant] = await db
-    .select({ name: tenants.name })
-    .from(tenants)
-    .where(eq(tenants.slug, slug))
-    .limit(1);
-  if (!tenant) return {};
+  const [base] = await Promise.all([getTenantSeoBase(slug)]);
 
   const tenantClient             = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
   const [product] = await tenantDb
-    .select({ name: schema.products.name, metaTitle: schema.products.metaTitle, metaDesc: schema.products.metaDesc })
+    .select({ name: schema.products.name, metaTitle: schema.products.metaTitle, metaDesc: schema.products.metaDesc, images: schema.products.images })
     .from(schema.products)
     .where(and(eq(schema.products.slug, productSlug), eq(schema.products.status, "active")))
     .limit(1);
 
   if (!product) return {};
-  return {
-    title:       product.metaTitle ?? `${product.name} — ${tenant.name}`,
+  const firstImg = Array.isArray(product.images) && product.images.length > 0
+    ? (product.images[0] as { variants?: Record<string, string>; url?: string })
+    : null;
+  const ogImage = firstImg?.variants?.["large"] ?? firstImg?.variants?.["original"] ?? firstImg?.url ?? base.logoUrl;
+  return buildMetadata({
+    title:       product.metaTitle ?? product.name,
     description: product.metaDesc ?? undefined,
-  };
+    siteName:    base.siteName,
+    canonicalUrl: `${base.baseUrl}/produk/${productSlug}`,
+    ogImageUrl:  ogImage,
+    ogType:      "article",
+  });
 }
 
 export default async function ProdukDetailPage({ params }: { params: Params }) {

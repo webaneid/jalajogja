@@ -6,6 +6,7 @@ import { headers }                       from "next/headers";
 import { ProductCard }                   from "@/components/website/public/product-cards/product-card";
 import { ProductArchiveClient }          from "@/components/toko/public/product-archive-client";
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
+import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
 import type { Metadata }                 from "next";
 import { ShoppingBag } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";
@@ -39,13 +40,8 @@ async function resolveSessionType(userId: string | undefined): Promise<SessionTy
 // ─── Metadata ─────────────────────────────────────────────────────────────────
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
-  const [tenant] = await db
-    .select({ name: tenants.name })
-    .from(tenants)
-    .where(eq(tenants.slug, slug))
-    .limit(1);
-  if (!tenant) return {};
-  return { title: `Produk — ${tenant.name}` };
+  const base = await getTenantSeoBase(slug);
+  return buildMetadata({ title: "Produk", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/produk` });
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
