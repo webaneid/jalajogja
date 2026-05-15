@@ -11,7 +11,8 @@ import type { CampaignCardData } from "@/lib/campaign-card-templates";
 import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS } from "@/lib/campaign-card-templates";
 import type { Metadata }       from "next";
 import { ChevronRight, Heart } from "lucide-react";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 
 export const revalidate = 60;
 

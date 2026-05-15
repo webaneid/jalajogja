@@ -8,7 +8,8 @@ import { ContactTemplate } from "@/components/website/public/contact-template";
 import { LinktreeTemplate } from "@/components/website/public/linktree-template";
 import { parseLandingBody, parseContactBody, parseLinktreeBody } from "@/lib/page-templates";
 import type { Metadata } from "next";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 
 export const revalidate = 60;
 

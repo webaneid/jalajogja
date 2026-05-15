@@ -10,7 +10,8 @@ import { recordView, hashIp } from "@/lib/view-counter";
 import { WidgetArea } from "@/components/website/public/widget-area";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import type { Metadata } from "next";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 
 export const revalidate = 60;
 

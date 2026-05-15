@@ -4,7 +4,8 @@ import {
   db, members, tenants, tenantMemberships,
   addresses, refProvinces, refRegencies, refProfessions,
 } from "@jalajogja/db";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 import type { Metadata } from "next";
 import { PublicButton }  from "@/components/website/public/ui/public-button";
 import { AnggotaDirectoryClient } from "@/components/anggota/anggota-directory-client";

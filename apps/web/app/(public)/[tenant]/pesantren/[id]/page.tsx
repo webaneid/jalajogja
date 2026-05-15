@@ -13,7 +13,8 @@ import {
   Users, BookOpen, ChevronLeft,
 } from "lucide-react";
 import { displayPhone } from "@/lib/phone";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 
 type Params = Promise<{ tenant: string; id: string }>;
 

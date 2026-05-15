@@ -6,7 +6,8 @@ import {
 } from "@jalajogja/db";
 import Image     from "next/image";
 import Link      from "next/link";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 import type { Metadata } from "next";
 import { Briefcase, MapPin } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";

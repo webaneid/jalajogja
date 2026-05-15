@@ -4,7 +4,8 @@ import { createTenantDb, db, tenants } from "@jalajogja/db";
 import { publicUrl }          from "@/lib/minio";
 import { EventCard }          from "@/components/website/public/event-cards/event-card";
 import type { EventCardData } from "@/lib/event-card-templates";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 import type { Metadata }      from "next";
 import { CalendarDays }       from "lucide-react";
 

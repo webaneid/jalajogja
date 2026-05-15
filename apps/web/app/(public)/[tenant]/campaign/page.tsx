@@ -5,7 +5,8 @@ import { publicUrl }          from "@/lib/minio";
 import { CampaignCard }       from "@/components/website/public/campaign-cards/campaign-card";
 import type { CampaignCardData } from "@/lib/campaign-card-templates";
 import { CAMPAIGN_TYPE_LABELS } from "@/lib/campaign-card-templates";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 import type { Metadata }      from "next";
 import { Heart }              from "lucide-react";
 

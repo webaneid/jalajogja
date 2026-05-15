@@ -14,7 +14,8 @@ import {
 } from "lucide-react";
 import { displayPhone } from "@/lib/phone";
 import { renderBody }   from "@/lib/letter-render";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 
 type Params = Promise<{ tenant: string; id: string }>;
 

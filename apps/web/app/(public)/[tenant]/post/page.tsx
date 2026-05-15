@@ -4,7 +4,8 @@ import { createTenantDb, db, tenants } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import { WidgetArea } from "@/components/website/public/widget-area";
 import type { Metadata } from "next";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 
 export const revalidate = 60;
 

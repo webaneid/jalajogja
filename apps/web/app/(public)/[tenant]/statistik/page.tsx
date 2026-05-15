@@ -5,7 +5,8 @@ import {
   addresses, refRegencies, refProfessions,
   memberBusinesses, memberOwnedPesantren,
 } from "@jalajogja/db";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 import type { Metadata } from "next";
 import { Users, School, Briefcase } from "lucide-react";
 

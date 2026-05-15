@@ -10,7 +10,8 @@ import type { ProductCardData, SessionType } from "@/lib/product-card-templates"
 import type { Metadata }          from "next";
 import type { ProductVariationData, AttributeGroup, ViewerImage } from "@/components/toko/public/product-detail-client";
 import { ChevronRight }           from "lucide-react";
-import { generateMetadata as buildMetadata, getTenantSeoBase } from "@/lib/seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 
 export const revalidate = 60;
 
