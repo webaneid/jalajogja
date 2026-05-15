@@ -781,14 +781,15 @@ key="primary_color", group="display",  value="#2563eb"
 ## Arsitektur Modul Donasi / Infaq
 > Detail lengkap: **`docs/arsitektur-donasi.md`**
 
-- Tabel tersendiri (bukan berbasis produk Toko): `campaigns`, `donations`, `donation_sequences`
-- Donatur: anggota login (member_id) atau publik tanpa akun (nama/email/phone manual)
+**PENTING — Alur donasi publik sepenuhnya via cart universal (invoice_items), BUKAN tabel `donations`.**
+Tabel `donations` adalah legacy — hanya berisi data historis sebelum migrasi ke cart universal.
+
+- **Alur publik saat ini**: `addToCartAction(itemType:"donation")` → `checkoutAction` → `invoices` + `invoice_items`
+- **Konfirmasi**: admin konfirmasi invoice → update `invoices.status = "paid"` → `campaign.collected_amount` naik
+- **Anon di cart**: `notes = "Anonim"` → tersimpan di `invoice_items.description`
+- **Dua sumber donor list** (wajib gabungkan keduanya): tabel `donations` (legacy) + `invoice_items` WHERE `itemType='donation' AND itemId=campaignId AND invoices.status='paid'`
 - Kategori: umum / infaq / sedekah / wakaf / zakat / iuran — dipilih per campaign
-- Pembayaran via rekening/QRIS kategori `donasi` — fallback ke `general`
-- Konfirmasi manual + unique code 3 digit untuk identifikasi transfer
-- Sertifikat PDF otomatis saat konfirmasi, kirim email ke donatur
-- Halaman publik: `/(public)/[tenant]/donasi/[slug]` — tanpa auth
-- 5 pertanyaan terbuka di `docs/arsitektur-donasi.md` bagian Q&A
+- Halaman publik: `/(public)/[tenant]/campaign/[slug]` (bukan `/donasi/[slug]`)
 
 ## Visi Super-App & Arsitektur Platform
 
@@ -2256,11 +2257,12 @@ Keputusan ini dipertahankan — tambahan `hasDashboard` juga client-side dengan 
 ### [2026-05] Donasi = Alur Cart Universal, Qurban = Variasi Hewan
 
 **Keputusan dikunci**: Donasi menggunakan alur cart universal identik dengan Toko.
-Tidak ada alur pembayaran terpisah untuk donasi.
+Tidak ada alur pembayaran terpisah untuk donasi. **Tabel `donations` adalah LEGACY** — tidak dipakai lagi di alur publik baru.
 
 ```
 Donasi reguler:   nominal chips → addToCartAction(itemType:"donation", itemId:campaign.id)
 Qurban:           pilih hewan   → addToCartAction(itemType:"donation", itemId:qurban_animal.id, notes:"Atas nama: X")
+Anonim:           notes = "Anonim" → tersimpan di invoice_items.description
 ```
 
 `qurban_animals` = tabel variasi untuk campaign qurban (persis seperti `product_variations`).
@@ -2271,6 +2273,22 @@ Slot patungan di-assign saat admin konfirmasi pembayaran, bukan saat add-to-cart
 - `campaignType === "qurban"` → tampilkan hewan cards
 - lainnya → tampilkan nominal chips + custom input
 - Keduanya berakhir di `addToCartAction` yang sama
+
+**Donor list di halaman publik — dua sumber wajib digabungkan** (bug pernah terjadi: hanya baca sumber lama → list kosong):
+```typescript
+// Sumber lama (data historis) — tabel donations
+.from(schema.donations)
+  .leftJoin(schema.payments, ... status='paid')
+  .where(eq(campaignId))
+
+// Sumber baru (alur cart) — SUMBER UTAMA
+.from(schema.invoiceItems)
+  .innerJoin(schema.invoices, ...)
+  .where(itemType='donation' AND itemId=campaignId AND invoices.status='paid')
+
+// Merge → sort by createdAt desc → slice(0, 100)
+```
+**Jangan pernah hanya query satu sumber.** Data lama ada di `donations`, data baru ada di `invoice_items`.
 
 ### [2026-05] URL Naming Pattern untuk Hindari Route Conflict
 

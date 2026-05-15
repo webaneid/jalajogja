@@ -95,31 +95,69 @@ export default async function CampaignDetailPage({ params }: { params: Params })
   const target      = campaign.targetAmount ? parseFloat(campaign.targetAmount) : null;
   const progressPct = target ? Math.min(100, Math.round((collected / target) * 100)) : 0;
 
-  // Donasi — list lengkap dengan nominal (JOIN payments untuk amount)
+  // Donasi — gabungkan dua sumber:
+  //   1. Lama: tabel donations (data historis sebelum migrasi ke cart universal)
+  //   2. Baru: invoice_items (alur cart universal — sumber utama sejak donasi publik pindah ke cart)
   let donorList: DonorEntry[] = [];
   if (campaign.showDonorList) {
-    donorList = await tenantDb
-      .select({
-        donorName:   schema.donations.donorName,
-        isAnonymous: schema.donations.isAnonymous,
-        amount:      schema.payments.amount,
-        createdAt:   schema.donations.createdAt,
-      })
-      .from(schema.donations)
-      .leftJoin(schema.payments, and(
-        eq(schema.payments.sourceType, "donation"),
-        eq(schema.payments.sourceId, schema.donations.id),
-        eq(schema.payments.status, "paid"),
-      ))
-      .where(eq(schema.donations.campaignId, campaign.id))
-      .orderBy(desc(schema.donations.createdAt))
-      .limit(100)
-      .then(rows => rows.map(r => ({
-        donorName:   r.isAnonymous ? "Anonim" : r.donorName,
-        isAnonymous: r.isAnonymous,
+    const [legacyRows, cartRows] = await Promise.all([
+      // Sumber lama
+      tenantDb
+        .select({
+          donorName:   schema.donations.donorName,
+          isAnonymous: schema.donations.isAnonymous,
+          amount:      schema.payments.amount,
+          createdAt:   schema.donations.createdAt,
+        })
+        .from(schema.donations)
+        .leftJoin(schema.payments, and(
+          eq(schema.payments.sourceType, "donation"),
+          eq(schema.payments.sourceId, schema.donations.id),
+          eq(schema.payments.status, "paid"),
+        ))
+        .where(eq(schema.donations.campaignId, campaign.id))
+        .orderBy(desc(schema.donations.createdAt))
+        .limit(100),
+
+      // Sumber baru (cart universal) — hanya invoice status paid
+      tenantDb
+        .select({
+          customerName: schema.invoices.customerName,
+          amount:       schema.invoiceItems.total,
+          description:  schema.invoiceItems.description,
+          createdAt:    schema.invoices.createdAt,
+        })
+        .from(schema.invoiceItems)
+        .innerJoin(schema.invoices, eq(schema.invoices.id, schema.invoiceItems.invoiceId))
+        .where(and(
+          eq(schema.invoiceItems.itemType, "donation"),
+          eq(schema.invoiceItems.itemId, campaign.id),
+          eq(schema.invoices.status, "paid"),
+        ))
+        .orderBy(desc(schema.invoices.createdAt))
+        .limit(100),
+    ]);
+
+    const legacy: DonorEntry[] = legacyRows.map(r => ({
+      donorName:   (r.isAnonymous ?? false) ? "Anonim" : (r.donorName ?? "Donatur"),
+      isAnonymous: r.isAnonymous ?? false,
+      amount:      r.amount,
+      createdAt:   r.createdAt.toISOString(),
+    }));
+
+    const cart: DonorEntry[] = cartRows.map(r => {
+      const isAnon = r.description === "Anonim";
+      return {
+        donorName:   isAnon ? "Anonim" : (r.customerName ?? "Donatur"),
+        isAnonymous: isAnon,
         amount:      r.amount,
         createdAt:   r.createdAt.toISOString(),
-      })));
+      };
+    });
+
+    donorList = [...legacy, ...cart]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 100);
   }
 
   // Qurban data
