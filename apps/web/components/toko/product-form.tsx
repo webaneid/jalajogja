@@ -440,71 +440,93 @@ export function ProductForm({
           <div className="flex-1 space-y-5 p-4">
 
             {/* Harga & Stok */}
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Harga & Stok</p>
-              <div className="space-y-2">
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">Harga Dasar (Rp)</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="0"
-                  />
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Harga & Stok</p>
+
+              {/* Card Harga — 3 tier dalam 1 card */}
+              <div className="rounded-xl border border-border bg-card divide-y divide-border">
+
+                {/* Harga Dasar */}
+                <div className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium leading-none">Harga Dasar</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Tdk login</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-xs text-muted-foreground">Rp</span>
+                    <Input
+                      type="number" min="0" step="1"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      placeholder="0"
+                      className="h-7 text-xs w-28 px-2"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">
-                    Harga Publik (Rp)
-                    <span className="ml-1 font-normal text-muted-foreground/70">— untuk akun login</span>
-                  </label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={publicPrice}
-                    onChange={(e) => setPublicPrice(e.target.value)}
-                    placeholder="Kosong = tidak ada diskon publik"
-                  />
+
+                {/* Harga Publik */}
+                <div className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium leading-none">Harga Publik</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Akun login</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-xs text-muted-foreground">Rp</span>
+                    <Input
+                      type="number" min="0" step="1"
+                      value={publicPrice}
+                      onChange={(e) => setPublicPrice(e.target.value)}
+                      placeholder="—"
+                      className="h-7 text-xs w-28 px-2"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">
-                    Harga Anggota IKPM (Rp)
-                    <span className="ml-1 font-normal text-muted-foreground/70">— seluruh dunia</span>
-                  </label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={memberPrice}
-                    onChange={(e) => setMemberPrice(e.target.value)}
-                    placeholder="Kosong = tidak ada diskon anggota"
-                  />
+
+                {/* Harga Anggota */}
+                <div className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium leading-none">Harga Anggota</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Alumni Gontor</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-xs text-muted-foreground">Rp</span>
+                    <Input
+                      type="number" min="0" step="1"
+                      value={memberPrice}
+                      onChange={(e) => setMemberPrice(e.target.value)}
+                      placeholder="—"
+                      className="h-7 text-xs w-28 px-2"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">Stok</label>
+              </div>
+
+              {/* Card Stok & Berat */}
+              <div className="rounded-xl border border-border bg-card divide-y divide-border">
+                <div className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium leading-none">Stok</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Jumlah tersedia</p>
+                  </div>
                   <Input
-                    type="number"
-                    min="0"
-                    step="1"
+                    type="number" min="0" step="1"
                     value={stock}
                     onChange={(e) => setStock(e.target.value)}
                     placeholder="0"
+                    className="h-7 text-xs w-28 px-2 shrink-0"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">
-                    Berat (gram)
-                    <span className="ml-1 font-normal text-muted-foreground/70">— untuk ongkir</span>
-                  </label>
+                <div className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium leading-none">Berat (gram)</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Untuk ongkir</p>
+                  </div>
                   <Input
-                    type="number"
-                    min="0"
-                    step="1"
+                    type="number" min="0" step="1"
                     value={weightGram}
                     onChange={(e) => setWeightGram(e.target.value)}
-                    placeholder="mis. 500"
+                    placeholder="500"
+                    className="h-7 text-xs w-28 px-2 shrink-0"
                   />
                 </div>
               </div>
