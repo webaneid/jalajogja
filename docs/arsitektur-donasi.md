@@ -424,20 +424,33 @@ URL disimpan di `donations.certificate_url`.
 
 > **Belum diimplementasi.** Dicatat untuk roadmap.
 
-URL: `app/(public)/[tenant]/donasi/[slug]/page.tsx` — grup `(public)`, tanpa auth.
+URL: `app/(public)/[tenant]/campaign/[slug]/page.tsx` — grup `(public)`, tanpa auth.
+
+**⚠️ DIIMPLEMENTASIKAN. Alur berbeda dari desain awal di bawah — baca catatan berikut.**
+
+### Alur Donasi Publik — SEKARANG (cart universal)
+
+Form donasi menggunakan `addToCartAction(itemType:"donation", itemId:campaignId)` → `checkoutAction` → invoice.
+**Tidak ada row baru di tabel `donations`** — tabel itu legacy.
+
+Anonimitas: `notes = "Anonim"` di cart item → tersimpan di `invoice_items.description`.
 
 Menampilkan:
 - Judul + deskripsi + cover campaign
-- Progress bar: `collected_amount / target_amount` + persentase
-- Sisa waktu jika ada `ends_at`
-- Daftar donatur (jika `show_donor_list = true`), label "Anonim" jika `is_anonymous = true`
+- Progress bar: `collected_amount / target_amount` + persentase (tampil meski tanpa target)
+- Daftar donatur (jika `show_donor_list = true`): **wajib gabung dua sumber**
+  - Legacy: `donations` INNER JOIN `payments` WHERE `status='paid'` → anonimitas dari `is_anonymous`
+  - Cart-based (utama): `invoice_items` INNER JOIN `invoices` WHERE `itemType='donation' AND itemId=campaignId AND invoices.status='paid'` → anonimitas dari `description === "Anonim"`, nama dari `invoices.customerName`
+  - Merge → sort by `createdAt` desc → limit 100
 - Jumlah terkumpul (jika `show_amount = true`)
-- Form donasi: nama, nominal, phone/email opsional, pilih metode bayar
-- Setelah submit → tampilkan instruksi transfer (nomor rekening + unique code)
+- Form donasi via cart universal (lihat `campaign-detail-client.tsx`)
 
 **Meta tags** dari kolom SEO campaign (meta_title, og_title, og_image_id, dll).
-Tidak perlu login — publik bisa donasi langsung.
-Jika user sudah login → nama otomatis terisi, `member_id` di-set.
+Tidak perlu login. Jika sudah login → nama + phone + email terisi otomatis dari session.
+Setelah add-to-cart → popup: "Donasi program lain?" Ya → `/campaign`, Tidak → express checkout langsung ke invoice (jika login) atau inline login form (jika belum login).
+
+### Catatan `revalidate = 60`
+Halaman di-cache 60 detik. Data donor baru bisa telat tampil hingga 1 menit setelah pembayaran dikonfirmasi. Ini diterima — bukan bug.
 
 ---
 

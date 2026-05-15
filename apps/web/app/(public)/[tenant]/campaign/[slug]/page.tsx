@@ -110,7 +110,7 @@ export default async function CampaignDetailPage({ params }: { params: Params })
           createdAt:   schema.donations.createdAt,
         })
         .from(schema.donations)
-        .leftJoin(schema.payments, and(
+        .innerJoin(schema.payments, and(
           eq(schema.payments.sourceType, "donation"),
           eq(schema.payments.sourceId, schema.donations.id),
           eq(schema.payments.status, "paid"),
