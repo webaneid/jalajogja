@@ -1,7 +1,7 @@
 import { notFound }            from "next/navigation";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { renderBody }              from "@/lib/letter-render";
-import { createTenantDb, db, tenants, members, getSettings } from "@jalajogja/db";
+import { createTenantDb, db, tenants, members, contacts, getSettings } from "@jalajogja/db";
 import { auth }                from "@/lib/auth";
 import { headers }             from "next/headers";
 import { publicUrl, resolveMediaUrl } from "@/lib/minio";
@@ -73,10 +73,21 @@ export default async function CampaignDetailPage({ params }: { params: Params })
   // Session
   const session   = await auth.api.getSession({ headers: await headers() });
   let defaultName = "";
+  let memberPhone = "";
+  let memberEmail = "";
   if (session?.user?.id) {
-    const [member] = await db.select({ name: members.name }).from(members)
-      .where(eq(members.betterAuthUserId, session.user.id)).limit(1);
+    const [member] = await db
+      .select({ name: members.name, contactId: members.contactId })
+      .from(members).where(eq(members.betterAuthUserId, session.user.id)).limit(1);
     defaultName = member?.name ?? session.user.name ?? "";
+    if (member?.contactId) {
+      const [contact] = await db
+        .select({ phone: contacts.phone, email: contacts.email })
+        .from(contacts).where(eq(contacts.id, member.contactId)).limit(1);
+      memberPhone = contact?.phone ?? "";
+      memberEmail = contact?.email ?? "";
+    }
+    if (!memberEmail) memberEmail = session.user.email ?? "";
   }
 
   // Progress
@@ -264,6 +275,9 @@ export default async function CampaignDetailPage({ params }: { params: Params })
                 qurbanAnimals={qurbanAnimals}
                 slaughterFees={slaughterFees}
                 defaultName={defaultName}
+                isLoggedIn={!!session?.user?.id}
+                memberPhone={memberPhone}
+                memberEmail={memberEmail}
               />
             </div>
           </div>

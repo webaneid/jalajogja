@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { addToCartAction } from "@/app/(public)/[tenant]/cart/actions";
+import { addToCartAction, checkoutAction } from "@/app/(public)/[tenant]/cart/actions";
 import { formatRp } from "@/lib/campaign-card-templates";
+import { Loader2, CheckCircle } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,9 @@ type Props = {
   slaughterFees:      SlaughterFees;
   // Pre-filled dari session
   defaultName:        string;
+  isLoggedIn:         boolean;
+  memberPhone?:       string;
+  memberEmail?:       string;
 };
 
 const ANIMAL_LABEL: Record<string, string> = { domba: "Domba", kambing: "Kambing", sapi: "Sapi" };
@@ -37,9 +41,12 @@ const ANIMAL_EMOJI: Record<string, string> = { domba: "🐑", kambing: "🐐", s
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+type PopupState = "hidden" | "ask" | "login" | "processing";
+
 export function CampaignDetailClient({
   campaignId, campaignTitle, campaignType, tenantSlug,
   recommendedAmounts, qurbanAnimals, slaughterFees, defaultName,
+  isLoggedIn, memberPhone = "", memberEmail = "",
 }: Props) {
   const isQurban = campaignType === "qurban";
 
@@ -57,9 +64,15 @@ export function CampaignDetailClient({
   // Shared
   const [donorName,  setDonorName]  = useState(defaultName);
   const [isAnon,     setIsAnon]     = useState(false);
-  const [added,      setAdded]      = useState(false);
   const [error,      setError]      = useState("");
   const [pending,    startTransition] = useTransition();
+
+  // Popup state machine
+  const [popup,         setPopup]         = useState<PopupState>("hidden");
+  const [loginEmail,    setLoginEmail]    = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError,    setLoginError]    = useState("");
+  const [loginPending,  setLoginPending]  = useState(false);
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const selectedAnimal = qurbanAnimals.find(a => a.id === selectedAnimalId);
@@ -101,8 +114,6 @@ export function CampaignDetailClient({
     const itemName = isQurban && selectedAnimal
       ? `Qurban ${ANIMAL_LABEL[selectedAnimal.animalType]} — ${campaignTitle}`
       : campaignTitle;
-    // itemId selalu campaignId agar billing bisa update collected_amount saat konfirmasi
-    // animalId disimpan di notes untuk referensi admin
     const notes = isQurban
       ? `Atas nama: ${atasNama}; animalId: ${selectedAnimalId ?? ""}`
       : (isAnon ? "Anonim" : undefined);
@@ -116,18 +127,121 @@ export function CampaignDetailClient({
     });
 
     if (res.success) {
-      setAdded(true);
-      setTimeout(() => setAdded(false), 2500);
+      setPopup("ask");
     } else {
       setError(res.error);
     }
   }
 
+  async function handleExpressCheckout(emailOverride?: string) {
+    setPopup("processing");
+    const res = await checkoutAction(tenantSlug, {
+      name:   donorName.trim() || "Donatur",
+      phone:  memberPhone || undefined,
+      email:  (emailOverride ?? memberEmail) || undefined,
+      method: "transfer",
+    });
+    if (res.success) {
+      window.location.href = `/${tenantSlug}/invoice/${res.data.invoiceId}`;
+    } else {
+      setLoginError(res.error);
+      setPopup("ask");
+    }
+  }
+
+  async function handleInlineLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setLoginError("");
+    setLoginPending(true);
+    const res = await fetch("/api/auth/sign-in/email", {
+      method:      "POST",
+      headers:     { "Content-Type": "application/json" },
+      credentials: "include",
+      body:        JSON.stringify({ email: loginEmail, password: loginPassword }),
+    });
+    if (!res.ok) {
+      setLoginError("Email atau password salah.");
+      setLoginPending(false);
+      return;
+    }
+    await handleExpressCheckout(loginEmail);
+    setLoginPending(false);
+  }
+
   const inputCls = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
+
+  // ── Popup overlay ─────────────────────────────────────────────────────────────
+  const popupEl = popup !== "hidden" && (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card border border-border p-6 shadow-xl space-y-4">
+
+        {popup === "processing" && (
+          <div className="flex flex-col items-center gap-3 py-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Membuat invoice...</p>
+          </div>
+        )}
+
+        {popup === "ask" && (
+          <>
+            <div className="flex items-center gap-2 text-green-600">
+              <CheckCircle className="h-5 w-5" />
+              <p className="font-semibold text-sm">Berhasil ditambahkan!</p>
+            </div>
+            <p className="text-sm text-muted-foreground">Ingin berdonasi untuk program lain juga?</p>
+            {loginError && <p className="text-xs text-destructive">{loginError}</p>}
+            <div className="space-y-2">
+              <button type="button"
+                onClick={() => { window.location.href = `/${tenantSlug}/campaign`; }}
+                className="w-full rounded-xl border border-border py-2.5 text-sm font-medium hover:bg-muted/50 transition-colors"
+              >
+                Ya, lihat program lain
+              </button>
+              <button type="button"
+                onClick={() => { if (isLoggedIn) { void handleExpressCheckout(); } else { setLoginError(""); setPopup("login"); } }}
+                className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Tidak, lanjut bayar →
+              </button>
+            </div>
+          </>
+        )}
+
+        {popup === "login" && (
+          <form onSubmit={handleInlineLogin} className="space-y-4">
+            <div>
+              <p className="font-semibold text-sm mb-0.5">Masuk untuk melanjutkan</p>
+              <p className="text-xs text-muted-foreground">Invoice akan dibuat setelah login.</p>
+            </div>
+            <div className="space-y-3">
+              <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
+                placeholder="Email" required autoFocus className={inputCls} />
+              <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)}
+                placeholder="Password" required className={inputCls} />
+            </div>
+            {loginError && <p className="text-xs text-destructive">{loginError}</p>}
+            <button type="submit" disabled={loginPending}
+              className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
+            >
+              {loginPending ? "Masuk..." : "Masuk & Buat Invoice"}
+            </button>
+            <button type="button" onClick={() => setPopup("ask")}
+              className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              ← Kembali
+            </button>
+          </form>
+        )}
+
+      </div>
+    </div>
+  );
 
   // ── Render Qurban ────────────────────────────────────────────────────────────
   if (isQurban) {
     return (
+      <>
+      {popupEl}
       <div className="space-y-5">
         {/* Pilih hewan */}
         <div className="space-y-2">
@@ -210,19 +324,17 @@ export function CampaignDetailClient({
           onClick={() => startTransition(handleAddToCart)}
           className="w-full rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
         >
-          {pending ? "Menambahkan..." : added ? "Ditambahkan ke Keranjang ✓" : "Tambah ke Keranjang"}
+          {pending ? "Menambahkan..." : "Tambah ke Keranjang"}
         </button>
-        {added && (
-          <p className="text-sm text-center text-muted-foreground">
-            <a href={`/${tenantSlug}/keranjang`} className="text-primary font-medium hover:underline">Lihat keranjang →</a>
-          </p>
-        )}
       </div>
+      </>
     );
   }
 
   // ── Render Donasi Reguler ────────────────────────────────────────────────────
   return (
+    <>
+    {popupEl}
     <div className="space-y-5">
       {/* Nominal chips */}
       {recommendedAmounts.length > 0 && (
@@ -276,13 +388,9 @@ export function CampaignDetailClient({
         onClick={() => startTransition(handleAddToCart)}
         className="w-full rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
       >
-        {pending ? "Menambahkan..." : added ? "Ditambahkan ke Keranjang ✓" : `Donasi ${donationAmount > 0 ? formatRp(donationAmount) : ""}`}
+        {pending ? "Menambahkan..." : `Donasi ${donationAmount > 0 ? formatRp(donationAmount) : ""}`}
       </button>
-      {added && (
-        <p className="text-sm text-center text-muted-foreground">
-          <a href={`/${tenantSlug}/keranjang`} className="text-primary font-medium hover:underline">Lihat keranjang →</a>
-        </p>
-      )}
     </div>
+    </>
   );
 }
