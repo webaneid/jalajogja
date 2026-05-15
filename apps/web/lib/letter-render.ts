@@ -17,6 +17,12 @@ type TiptapMark = {
   attrs?: Record<string, string | null>;
 };
 
+// Konteks opsional untuk render — dipakai untuk perbaikan URL gambar
+type RenderContext = {
+  // Base URL MinIO lengkap termasuk bucket tenant, mis. "https://minio.jalakarta.com/tenant-pc-ikpm-jogjakarta"
+  imageBaseUrl?: string;
+};
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -50,20 +56,35 @@ function applyMark(text: string, mark: TiptapMark): string {
   }
 }
 
-function renderChildren(node: TiptapNode): string {
+function renderChildren(node: TiptapNode, ctx?: RenderContext): string {
   if (!node.content?.length) return "";
-  return node.content.map(renderNode).join("");
+  return node.content.map((n) => renderNode(n, ctx)).join("");
 }
 
-function renderNode(node: TiptapNode): string {
+// Perbaiki URL gambar yang relative atau pakai localhost
+function fixImageSrc(src: string, ctx?: RenderContext): string {
+  if (!src || !ctx?.imageBaseUrl) return src;
+  // Relative path tanpa leading slash (mis. "website/2026/05/uuid_lg.webp")
+  if (!src.startsWith("http://") && !src.startsWith("https://") && !src.startsWith("//") && !src.startsWith("data:")) {
+    return `${ctx.imageBaseUrl}/${src.replace(/^\//, "")}`;
+  }
+  // localhost atau IP lokal — ganti dengan URL produksi
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.)/.test(src)) {
+    const pathMatch = src.match(/\/tenant-[^/]+\/(.+)$/);
+    if (pathMatch) return `${ctx.imageBaseUrl}/${pathMatch[1]}`;
+  }
+  return src;
+}
+
+function renderNode(node: TiptapNode, ctx?: RenderContext): string {
   switch (node.type) {
     case "doc":
-      return renderChildren(node);
+      return renderChildren(node, ctx);
 
     case "paragraph": {
       const align = node.attrs?.textAlign as string | null;
       const style = align ? ` style="text-align:${align}"` : "";
-      const inner = renderChildren(node);
+      const inner = renderChildren(node, ctx);
       return `<p${style}>${inner || "<br>"}</p>`;
     }
 
@@ -71,7 +92,7 @@ function renderNode(node: TiptapNode): string {
       const level = node.attrs?.level ?? 2;
       const align = node.attrs?.textAlign as string | null;
       const style = align ? ` style="text-align:${align}"` : "";
-      return `<h${level}${style}>${renderChildren(node)}</h${level}>`;
+      return `<h${level}${style}>${renderChildren(node, ctx)}</h${level}>`;
     }
 
     case "text": {
@@ -83,19 +104,19 @@ function renderNode(node: TiptapNode): string {
     }
 
     case "bulletList":
-      return `<ul style="padding-left:1.5em;margin:0.5em 0">${renderChildren(node)}</ul>`;
+      return `<ul style="padding-left:1.5em;margin:0.5em 0">${renderChildren(node, ctx)}</ul>`;
 
     case "orderedList":
-      return `<ol style="padding-left:1.5em;margin:0.5em 0">${renderChildren(node)}</ol>`;
+      return `<ol style="padding-left:1.5em;margin:0.5em 0">${renderChildren(node, ctx)}</ol>`;
 
     case "listItem":
-      return `<li>${renderChildren(node)}</li>`;
+      return `<li>${renderChildren(node, ctx)}</li>`;
 
     case "blockquote":
-      return `<blockquote style="border-left:3px solid #ddd;padding-left:1em;margin:0.5em 0;color:#666">${renderChildren(node)}</blockquote>`;
+      return `<blockquote style="border-left:3px solid #ddd;padding-left:1em;margin:0.5em 0;color:#666">${renderChildren(node, ctx)}</blockquote>`;
 
     case "codeBlock":
-      return `<pre style="background:#f5f5f5;padding:1em;border-radius:4px;overflow-x:auto"><code>${renderChildren(node)}</code></pre>`;
+      return `<pre style="background:#f5f5f5;padding:1em;border-radius:4px;overflow-x:auto"><code>${renderChildren(node, ctx)}</code></pre>`;
 
     case "horizontalRule":
       return `<hr style="border:none;border-top:1px solid #ddd;margin:1em 0">`;
@@ -104,22 +125,23 @@ function renderNode(node: TiptapNode): string {
       return `<br>`;
 
     case "image": {
-      const src = escapeHtml(node.attrs?.src as string ?? "");
+      const rawSrc = node.attrs?.src as string ?? "";
+      const src = escapeHtml(fixImageSrc(rawSrc, ctx));
       const alt = escapeHtml(node.attrs?.alt as string ?? "");
       return `<img src="${src}" alt="${alt}" style="max-width:100%;height:auto">`;
     }
 
     case "table":
-      return `<table style="width:100%;border-collapse:collapse;margin:0.5em 0">${renderChildren(node)}</table>`;
+      return `<table style="width:100%;border-collapse:collapse;margin:0.5em 0">${renderChildren(node, ctx)}</table>`;
 
     case "tableRow":
-      return `<tr>${renderChildren(node)}</tr>`;
+      return `<tr>${renderChildren(node, ctx)}</tr>`;
 
     case "tableHeader":
-      return `<th style="border:1px solid #ddd;padding:8px;background:#f5f5f5;text-align:left">${renderChildren(node)}</th>`;
+      return `<th style="border:1px solid #ddd;padding:8px;background:#f5f5f5;text-align:left">${renderChildren(node, ctx)}</th>`;
 
     case "tableCell":
-      return `<td style="border:1px solid #ddd;padding:8px">${renderChildren(node)}</td>`;
+      return `<td style="border:1px solid #ddd;padding:8px">${renderChildren(node, ctx)}</td>`;
 
     case "embedBlock": {
       const html = node.attrs?.html as string | null;
@@ -145,18 +167,18 @@ function renderNode(node: TiptapNode): string {
     }
 
     default:
-      return renderChildren(node);
+      return renderChildren(node, ctx);
   }
 }
 
-export function renderBody(body: string | null | undefined): string {
+export function renderBody(body: string | null | undefined, ctx?: RenderContext): string {
   if (!body) return "";
   try {
     const json = JSON.parse(body) as TiptapNode;
     if (json?.type !== "doc") {
       return escapeHtml(body).replace(/\n/g, "<br>");
     }
-    return renderNode(json);
+    return renderNode(json, ctx);
   } catch {
     return escapeHtml(body ?? "").replace(/\n/g, "<br>");
   }

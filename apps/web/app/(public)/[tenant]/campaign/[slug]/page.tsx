@@ -215,7 +215,7 @@ export default async function CampaignDetailPage({ params }: { params: Params })
             {/* Deskripsi */}
             {campaign.description && (
               <div className="prose prose-sm max-w-none [&_p]:my-3 [&_ul]:my-3 [&_ol]:my-3"
-                dangerouslySetInnerHTML={{ __html: renderBody(campaign.description) }} />
+                dangerouslySetInnerHTML={{ __html: renderBody(campaign.description, { imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${slug}` }) }} />
             )}
 
             {/* Donatur */}

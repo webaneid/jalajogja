@@ -195,7 +195,8 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
   }
 
   const { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName, timezone, authorName, authorAvatar } = result;
-  const html = renderBody(post.content);
+  const imageBaseUrl = `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${tenantSlug}`;
+  const html = renderBody(post.content, { imageBaseUrl });
 
   const fmtUpdated = (date: Date) =>
     new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(date);
