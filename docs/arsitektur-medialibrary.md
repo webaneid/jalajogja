@@ -4,6 +4,9 @@ Dokumen ini mencakup dua scope:
 1. **Admin Media Library** — sudah ada dan berjalan (`/{slug}/media`)
 2. **Member Media Library** — perencanaan: anggota IKPM bisa upload & kelola foto sendiri
 
+> **Rencana optimasi pipeline upload** (client-side compress + efisiensi Sharp + HEIC support):
+> **`docs/arsitektur-upload-pipeline.md`**
+
 ---
 
 ## 1. Admin Media Library (Sudah Ada)

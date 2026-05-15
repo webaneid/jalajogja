@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect, useCallback, useRef } from "react";
 import { Check, Copy, Download, ImagePlus, X, Loader2 } from "lucide-react";
 import { submitPaymentProofAction } from "@/app/(public)/[tenant]/cart/actions";
+import { compressImage } from "@/lib/client-image-compress";
 
 export type BankAccountPublic = {
   id:            string;
@@ -355,8 +356,9 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
     setProofPreview(URL.createObjectURL(file));
     setUploadingProof(true);
     try {
+      const compressed = await compressImage(file, { maxDimension: 1600, quality: 0.80 });
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", compressed);
       const res  = await fetch(`/api/invoice/proof-upload?tenant=${slug}&invoiceId=${invoice.id}`, {
         method: "POST", body: fd,
       });

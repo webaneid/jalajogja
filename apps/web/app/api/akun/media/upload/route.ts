@@ -15,6 +15,8 @@ const ALLOWED_TYPES: Record<string, string> = {
   "image/gif":     "gif",
   "image/webp":    "webp",
   "image/svg+xml": "svg",
+  "image/heic":    "heic",
+  "image/heif":    "heif",
 };
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -42,7 +44,10 @@ async function getSessionMember(req: NextRequest) {
   return { error: null, status: 200 as const, member };
 }
 
+const debugUpload = process.env.DEBUG_UPLOAD === "true";
+
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
   const { error, status, member } = await getSessionMember(req);
   if (error) return NextResponse.json({ error }, { status });
 
@@ -52,6 +57,7 @@ export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   if (!file) return NextResponse.json({ error: "file required" }, { status: 400 });
+  if (debugUpload) console.log(`[akun-upload] parse: ${Date.now()-t0}ms, size: ${file.size}B, type: ${file.type}`);
 
   if (file.size > MAX_SIZE) {
     return NextResponse.json({ error: "Ukuran file maksimal 10 MB" }, { status: 400 });
@@ -59,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   const ext = ALLOWED_TYPES[file.type];
   if (!ext) {
-    return NextResponse.json({ error: "Tipe file tidak didukung. Gunakan JPG, PNG, GIF, WebP, atau SVG." }, { status: 400 });
+    return NextResponse.json({ error: "Tipe file tidak didukung. Gunakan JPG, PNG, WebP, atau HEIC." }, { status: 400 });
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -96,26 +102,37 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ── Pipeline gambar ──────────────────────────────────────────────────────────
-  const allVariants = await processImage(buffer);
+  // ── Pipeline gambar: generate hanya variant yang dibutuhkan ─────────────────
   const variantKeys = getVariantsForModule("akun");
-
   const variantPaths: Record<string, string> = {};
   const uploadedPaths: string[] = [];
+  let allVariants: Awaited<ReturnType<typeof processImage>> = {};
 
   try {
+    const t1 = Date.now();
+    allVariants = await processImage(buffer, variantKeys, { originalMaxWidth: 1600 });
+    if (debugUpload) console.log(`[akun-upload] sharp: ${Date.now()-t1}ms`);
+
+    const t2 = Date.now();
     await Promise.all(
       variantKeys.map(async (name: VariantKey) => {
+        const output = allVariants[name];
+        if (!output) throw new Error(`Variant ${name} gagal dibuat`);
         const filePath = `${basePath}/${uuid}${VARIANT_SUFFIXES[name]}.webp`;
-        await uploadFile(slug, filePath, allVariants[name], "image/webp");
+        await uploadFile(slug, filePath, output, "image/webp");
         variantPaths[name] = filePath;
         uploadedPaths.push(filePath);
       }),
     );
+    if (debugUpload) console.log(`[akun-upload] minio: ${Date.now()-t2}ms, total: ${Date.now()-t0}ms`);
   } catch (err) {
     await Promise.allSettled(uploadedPaths.map(p => deleteFile(slug, p)));
     console.error("Member image upload failed:", err);
-    return NextResponse.json({ error: "Gagal memproses gambar" }, { status: 500 });
+    const isHeic = file.type === "image/heic" || file.type === "image/heif";
+    const msg = isHeic
+      ? "Format HEIC gagal diproses oleh server. Coba pilih format JPEG atau PNG."
+      : (err instanceof Error ? err.message : "Gagal memproses gambar");
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 
   const primaryKey  = PATH_PRIORITY.find(k => variantPaths[k]) ?? variantKeys[0];
@@ -127,7 +144,7 @@ export async function POST(req: NextRequest) {
     originalName:      file.name,
     mimeType:          "image/webp",
     originalMime:      file.type,
-    size:              allVariants[primaryKey].length,
+    size:              (allVariants[primaryKey]?.length ?? 0),
     path:              primaryPath,
     module:            "akun",
     memberId:          member!.id,

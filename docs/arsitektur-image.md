@@ -8,6 +8,10 @@ Berlaku untuk **semua modul** — posts, pages, donasi, event, produk, anggota, 
 **Entry point tunggal**: semua upload gambar di seluruh aplikasi melalui
 `POST /api/media/upload?tenant={slug}&module={module}` — tidak ada jalur upload lain.
 
+> **Rencana optimasi pipeline:** `processImage()` saat ini generate semua 7 variant lalu filter,
+> padahal setiap module hanya butuh subset. Rencana refactoring + client-side compression ada di
+> **`docs/arsitektur-upload-pipeline.md`**.
+
 ---
 
 ## Dasar Riset: Ukuran yang Disukai Google

@@ -100,21 +100,25 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ── Pipeline gambar: generate semua variant, upload subset per modul ───────
-  const allVariants  = await processImage(buffer);
+  // ── Pipeline gambar: generate hanya variant yang dibutuhkan per modul ────────
   const variantKeys  = getVariantsForModule(module);
-
   const now      = new Date();
   const basePath = `${module}/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   const variantPaths: Record<string, string> = {};
   const uploadedPaths: string[] = [];
+  let allVariants: Awaited<ReturnType<typeof processImage>> = {};
 
   try {
+    allVariants = await processImage(buffer, variantKeys, {
+      originalMaxWidth: module === "akun" ? 1600 : undefined,
+    });
     await Promise.all(
       variantKeys.map(async (name) => {
+        const output = allVariants[name];
+        if (!output) throw new Error(`Variant ${name} gagal dibuat`);
         const filePath = `${basePath}/${uuid}${VARIANT_SUFFIXES[name]}.webp`;
-        await uploadFile(slug, filePath, allVariants[name], "image/webp");
+        await uploadFile(slug, filePath, output, "image/webp");
         variantPaths[name] = filePath;
         uploadedPaths.push(filePath);
       }),
@@ -123,7 +127,8 @@ export async function POST(req: NextRequest) {
     // Rollback: hapus variant yang sudah terupload
     await Promise.allSettled(uploadedPaths.map(p => deleteFile(slug, p)));
     console.error("Image upload pipeline failed:", err);
-    return NextResponse.json({ error: "Gagal memproses gambar" }, { status: 500 });
+    const msg = err instanceof Error ? err.message : "Gagal memproses gambar";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 
   // Primary path: prioritas large → square-large → square → profile → original
@@ -136,7 +141,7 @@ export async function POST(req: NextRequest) {
     originalName:        file.name,
     mimeType:            "image/webp",
     originalMime:        file.type,
-    size:                allVariants[primaryKey].length,
+    size:                (allVariants[primaryKey]?.length ?? 0),
     path:                primaryPath,
     module:              module as "general" | "website" | "members" | "letters" | "shop",
     uploadedBy:          access.tenantUser.id,
@@ -156,7 +161,7 @@ export async function POST(req: NextRequest) {
     filename,
     originalName: file.name,
     mimeType:     "image/webp",
-    size:         allVariants[primaryKey].length,
+    size:         (allVariants[primaryKey]?.length ?? 0),
     variants:     resolvedVariants,
   });
 }

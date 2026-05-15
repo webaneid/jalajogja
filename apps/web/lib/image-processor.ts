@@ -77,21 +77,38 @@ export async function processVariant(
     .toBuffer();
 }
 
-// Generate semua variant — route memilih subset via getVariantsForModule()
-export async function processImage(inputBuffer: Buffer): Promise<ProcessedVariants> {
-  const pos = "attention"; // smart crop: face detection + saliency map (libvips, zero API)
+const MAX_PIXELS = 40_000_000; // 40 MP — foto 12MP/24MP masih aman
+
+// Generate hanya variant yang diminta. originalMaxWidth: cap "normalized original" (akun module).
+export async function processImage(
+  inputBuffer: Buffer,
+  variantList: VariantKey[],
+  options?: { originalMaxWidth?: number },
+): Promise<Partial<ProcessedVariants>> {
+  const meta = await sharp(inputBuffer).metadata();
+  const totalPixels = (meta.width ?? 0) * (meta.height ?? 0);
+  if (totalPixels > MAX_PIXELS) {
+    throw new Error("Gambar terlalu besar (maks 40 megapixel). Compress dulu sebelum upload.");
+  }
+
+  const pos = "attention";
   const q   = WEBP_QUALITY;
 
-  const [original, large, medium, thumbnail, square, squareLarge, profile] =
-    await Promise.all([
-      sharp(inputBuffer).webp({ quality: q }).toBuffer(),
-      sharp(inputBuffer).resize(1200, 630,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
-      sharp(inputBuffer).resize(800,  420,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
-      sharp(inputBuffer).resize(400,  210,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
-      sharp(inputBuffer).resize(400,  400,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
-      sharp(inputBuffer).resize(800,  800,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
-      sharp(inputBuffer).resize(300,  400,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
-    ]);
+  const VARIANT_BUILDERS: Record<VariantKey, () => Promise<Buffer>> = {
+    original:       () => options?.originalMaxWidth
+      ? sharp(inputBuffer).resize(options.originalMaxWidth, undefined, { fit: "inside", withoutEnlargement: true }).webp({ quality: q }).toBuffer()
+      : sharp(inputBuffer).webp({ quality: q }).toBuffer(),
+    large:          () => sharp(inputBuffer).resize(1200, 630,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
+    medium:         () => sharp(inputBuffer).resize(800,  420,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
+    thumbnail:      () => sharp(inputBuffer).resize(400,  210,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
+    square:         () => sharp(inputBuffer).resize(400,  400,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
+    "square-large": () => sharp(inputBuffer).resize(800,  800,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
+    profile:        () => sharp(inputBuffer).resize(300,  400,  { fit: "cover", position: pos }).webp({ quality: q }).toBuffer(),
+  };
 
-  return { original, large, medium, thumbnail, square, "square-large": squareLarge, profile };
+  const entries = await Promise.all(
+    variantList.map(async (name) => [name, await VARIANT_BUILDERS[name]()] as const),
+  );
+
+  return Object.fromEntries(entries) as Partial<ProcessedVariants>;
 }

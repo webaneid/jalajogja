@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
   const ext = ALLOWED_TYPES[file.type];
   if (!ext) {
     return NextResponse.json(
-      { error: "Format tidak didukung. Gunakan JPG, PNG, atau WebP." },
+      { error: "Format tidak didukung. Gunakan JPG, PNG, WebP, atau HEIC." },
       { status: 400 },
     );
   }

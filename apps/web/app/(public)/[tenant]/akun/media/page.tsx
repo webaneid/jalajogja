@@ -5,6 +5,7 @@ import { useParams }     from "next/navigation";
 import Image             from "next/image";
 import { UploadCloud, Loader2, Trash2, ArrowLeft } from "lucide-react";
 import { toast }         from "sonner";
+import { compressImage } from "@/lib/client-image-compress";
 import type { MemberMediaItem } from "@/components/media/member-media-picker";
 
 export default function AkunMediaPage() {
@@ -46,8 +47,13 @@ export default function AkunMediaPage() {
     async (files: FileList | File[]) => {
       setUploading(true);
       for (const file of Array.from(files)) {
+        const compressed = await compressImage(file);
+        if (compressed.size > 10 * 1024 * 1024) {
+          toast.error(`${file.name} terlalu besar setelah kompresi (maks 10 MB)`);
+          continue;
+        }
         const form = new FormData();
-        form.append("file", file);
+        form.append("file", compressed);
         const res = await fetch(`/api/akun/media/upload?tenant=${slug}`, {
           method: "POST",
           body:   form,
@@ -122,7 +128,7 @@ export default function AkunMediaPage() {
             <UploadCloud className="h-8 w-8 text-muted-foreground" />
             <div className="text-center">
               <p className="text-sm font-medium">Drag & drop foto ke sini</p>
-              <p className="text-xs text-muted-foreground mt-0.5">atau klik untuk pilih file · JPG, PNG, WebP · Maks 10 MB</p>
+              <p className="text-xs text-muted-foreground mt-0.5">atau klik untuk pilih file · JPG, PNG, WebP, HEIC · Maks 10 MB</p>
             </div>
           </>
         )}
@@ -131,7 +137,7 @@ export default function AkunMediaPage() {
           type="file"
           multiple
           className="hidden"
-          accept="image/jpeg,image/png,image/gif,image/webp"
+          accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif"
           onChange={(e) => e.target.files && uploadFiles(e.target.files)}
         />
       </div>

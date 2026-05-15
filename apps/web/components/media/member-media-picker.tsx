@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { compressImage } from "@/lib/client-image-compress";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
@@ -77,12 +78,18 @@ export function MemberMediaPicker({ slug, open, onClose, onSelect }: MemberMedia
     async (files: FileList | File[]) => {
       setUploading(true);
       for (const file of Array.from(files)) {
-        if (file.size > 10 * 1024 * 1024) {
+        const isImage = file.type.startsWith("image/") && file.type !== "image/svg+xml";
+        if (!isImage && file.size > 10 * 1024 * 1024) {
           toast.error(`${file.name} terlalu besar (maks 10 MB)`);
           continue;
         }
+        const compressed = await compressImage(file);
+        if (compressed.size > 10 * 1024 * 1024) {
+          toast.error(`${file.name} terlalu besar setelah kompresi (maks 10 MB)`);
+          continue;
+        }
         const form = new FormData();
-        form.append("file", file);
+        form.append("file", compressed);
         const res = await fetch(`/api/akun/media/upload?tenant=${slug}`, {
           method: "POST",
           body: form,
@@ -214,7 +221,7 @@ export function MemberMediaPicker({ slug, open, onClose, onSelect }: MemberMedia
                       <p className="font-medium">Ketuk untuk pilih foto</p>
                       <p className="text-sm text-muted-foreground mt-1">atau drag &amp; drop di sini</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">JPG, PNG, WebP · Maks 10 MB</p>
+                    <p className="text-xs text-muted-foreground">JPG, PNG, WebP, HEIC · Maks 10 MB</p>
                   </>
                 )}
               </label>
@@ -224,7 +231,7 @@ export function MemberMediaPicker({ slug, open, onClose, onSelect }: MemberMedia
                 type="file"
                 multiple={false}
                 className="hidden"
-                accept="image/jpeg,image/png,image/gif,image/webp"
+                accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif"
                 onChange={(e) => e.target.files && uploadFiles(e.target.files)}
               />
             </div>
