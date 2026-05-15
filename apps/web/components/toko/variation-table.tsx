@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2, Image as ImageIcon } from "lucide-react";
+import { Trash2, ImageIcon, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
 import type { AttributeGroup } from "@jalajogja/db";
 import type { ProductImage } from "@/app/(dashboard)/[tenant]/toko/actions";
 
 export type VariationLocal = {
-  _key:        string;   // React key, tidak dikirim ke server
-  id?:         string;   // existing DB id
+  _key:        string;
+  id?:         string;
   sku:         string;
   price:       string;
   publicPrice: string;
@@ -25,7 +26,7 @@ type Props = {
   variations:      VariationLocal[];
   attributeGroups: AttributeGroup[];
   onChange:        (variations: VariationLocal[]) => void;
-  minKomisi?:      number;   // untuk mitra — validasi member_price
+  minKomisi?:      number;
 };
 
 export function VariationTable({ slug, variations, attributeGroups, onChange, minKomisi }: Props) {
@@ -37,6 +38,12 @@ export function VariationTable({ slug, variations, attributeGroups, onChange, mi
 
   function removeVariation(key: string) {
     onChange(variations.filter(v => v._key !== key));
+  }
+
+  function removeImage(key: string, imageId: string) {
+    const v = variations.find(v2 => v2._key === key);
+    if (!v) return;
+    updateVariation(key, { images: v.images.filter(img => img.id !== imageId) });
   }
 
   function handleSelectImage(key: string, media: MediaItem) {
@@ -64,19 +71,9 @@ export function VariationTable({ slug, variations, attributeGroups, onChange, mi
   }
 
   return (
-    <div className="space-y-2">
-      <div className="grid text-xs font-medium text-muted-foreground uppercase tracking-wide px-2"
-        style={{ gridTemplateColumns: `${attributeGroups.map(() => "1fr").join(" ")} 1fr 1fr 1fr 80px 32px` }}>
-        {attributeGroups.map(g => <span key={g.name}>{g.name}</span>)}
-        <span>Harga</span>
-        <span>Stok</span>
-        <span>Aktif</span>
-        <span>Foto</span>
-        <span></span>
-      </div>
-
+    <div className="space-y-3">
       {variations.map(v => {
-        const priceNum = parseFloat(v.price) || 0;
+        const priceNum  = parseFloat(v.price) || 0;
         const maxMember = minKomisi != null && priceNum > 0
           ? priceNum * (1 - minKomisi / 100)
           : null;
@@ -84,69 +81,162 @@ export function VariationTable({ slug, variations, attributeGroups, onChange, mi
           ? parseFloat(v.memberPrice) > maxMember
           : false;
 
+        const thumbUrl = v.images[0]?.variants?.square ?? v.images[0]?.url ?? null;
+        const comboLabel = attributeGroups
+          .map(g => v.attributeCombo[g.name])
+          .filter(Boolean)
+          .join(" · ");
+
         return (
-          <div key={v._key}
-            className={`grid items-center gap-2 rounded-lg border px-2 py-2 ${
-              v.isActive ? "border-border bg-card" : "border-border/50 bg-muted/20 opacity-60"
+          <div
+            key={v._key}
+            className={`rounded-xl border bg-card transition-opacity ${
+              v.isActive ? "border-border" : "border-border/40 opacity-60"
             }`}
-            style={{ gridTemplateColumns: `${attributeGroups.map(() => "1fr").join(" ")} 1fr 1fr 1fr 80px 32px` }}>
+          >
+            {/* Header: atribut + toggle aktif + hapus */}
+            <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+              <div className="flex-1 flex flex-wrap gap-1">
+                {attributeGroups.map(g => (
+                  <span key={g.name}
+                    className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                    {g.name}: {v.attributeCombo[g.name] ?? "—"}
+                  </span>
+                ))}
+                {comboLabel === "" && (
+                  <span className="text-xs text-muted-foreground italic">Tanpa atribut</span>
+                )}
+              </div>
 
-            {/* Atribut values — read only */}
-            {attributeGroups.map(g => (
-              <span key={g.name} className="text-xs font-medium">
-                {v.attributeCombo[g.name] ?? "—"}
-              </span>
-            ))}
+              {/* Toggle aktif */}
+              <label className="flex items-center gap-1.5 cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={v.isActive}
+                  onChange={e => updateVariation(v._key, { isActive: e.target.checked })}
+                  className="accent-primary h-3.5 w-3.5"
+                />
+                <span className="text-xs text-muted-foreground">{v.isActive ? "Aktif" : "Nonaktif"}</span>
+              </label>
 
-            {/* Harga */}
-            <div className="space-y-0.5">
-              <Input type="number" min={0} value={v.price}
-                onChange={e => updateVariation(v._key, { price: e.target.value })}
-                placeholder="Harga" className="h-7 text-xs" />
-              <Input type="number" min={0} value={v.publicPrice}
-                onChange={e => updateVariation(v._key, { publicPrice: e.target.value })}
-                placeholder="Publik" className="h-6 text-[11px]" />
-              <Input type="number" min={0} value={v.memberPrice}
-                onChange={e => updateVariation(v._key, { memberPrice: e.target.value })}
-                placeholder="Anggota" className={`h-6 text-[11px] ${memberInvalid ? "border-destructive" : ""}`} />
-              {memberInvalid && maxMember != null && (
-                <p className="text-[10px] text-destructive">Maks Rp {Math.floor(maxMember).toLocaleString("id-ID")}</p>
-              )}
+              {/* Hapus */}
+              <button
+                type="button"
+                onClick={() => removeVariation(v._key)}
+                className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
             </div>
 
-            {/* Stok */}
-            <Input type="number" min={0} value={v.stock}
-              onChange={e => updateVariation(v._key, { stock: e.target.value })}
-              placeholder="0" className="h-7 text-xs" />
+            {/* Body: foto kiri + field kanan */}
+            <div className="flex gap-3 px-3 pb-3">
 
-            {/* Toggle aktif */}
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input type="checkbox" checked={v.isActive}
-                onChange={e => updateVariation(v._key, { isActive: e.target.checked })}
-                className="accent-primary h-4 w-4" />
-              <span className="text-xs">{v.isActive ? "Aktif" : "Off"}</span>
-            </label>
+              {/* Foto variasi */}
+              <div className="shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPickerKey(v._key)}
+                  className="relative group block w-16 h-16 rounded-lg border border-dashed border-border overflow-hidden hover:border-primary transition-colors"
+                >
+                  {thumbUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={thumbUrl} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground group-hover:text-primary transition-colors">
+                      <ImageIcon className="h-5 w-5" />
+                      <span className="text-[9px]">Foto</span>
+                    </div>
+                  )}
+                  {thumbUrl && (
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                      <ImageIcon className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  )}
+                </button>
 
-            {/* Foto */}
-            <button type="button" onClick={() => setPickerKey(v._key)}
-              className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors">
-              {v.images[0]?.variants?.square ?? v.images[0]?.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={v.images[0].variants?.square ?? v.images[0].url}
-                  alt="" className="w-10 h-10 rounded object-cover" />
-              ) : (
-                <div className="w-10 h-10 rounded border border-dashed border-border flex items-center justify-center">
-                  <ImageIcon className="h-4 w-4" />
+                {/* Jumlah foto + hapus foto pertama */}
+                {v.images.length > 0 && (
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-[10px] text-muted-foreground">{v.images.length} foto</span>
+                    <button
+                      type="button"
+                      onClick={() => removeImage(v._key, v.images[0].id)}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Field-field */}
+              <div className="flex-1 space-y-1.5 min-w-0">
+
+                {/* Harga baris */}
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Harga</Label>
+                    <Input
+                      type="number" min={0}
+                      value={v.price}
+                      onChange={e => updateVariation(v._key, { price: e.target.value })}
+                      placeholder="0"
+                      className="h-7 text-xs px-2"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Publik</Label>
+                    <Input
+                      type="number" min={0}
+                      value={v.publicPrice}
+                      onChange={e => updateVariation(v._key, { publicPrice: e.target.value })}
+                      placeholder="—"
+                      className="h-7 text-xs px-2"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Anggota</Label>
+                    <Input
+                      type="number" min={0}
+                      value={v.memberPrice}
+                      onChange={e => updateVariation(v._key, { memberPrice: e.target.value })}
+                      placeholder="—"
+                      className={`h-7 text-xs px-2 ${memberInvalid ? "border-destructive" : ""}`}
+                    />
+                    {memberInvalid && maxMember != null && (
+                      <p className="text-[10px] text-destructive mt-0.5">
+                        Maks Rp {Math.floor(maxMember).toLocaleString("id-ID")}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              )}
-              <span className="text-[10px]">{v.images.length > 0 ? `${v.images.length} foto` : "+"}</span>
-            </button>
 
-            {/* Hapus */}
-            <button type="button" onClick={() => removeVariation(v._key)}
-              className="text-muted-foreground hover:text-destructive transition-colors">
-              <Trash2 className="h-4 w-4" />
-            </button>
+                {/* Stok + SKU baris */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Stok</Label>
+                    <Input
+                      type="number" min={0}
+                      value={v.stock}
+                      onChange={e => updateVariation(v._key, { stock: e.target.value })}
+                      placeholder="0"
+                      className="h-7 text-xs px-2"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">SKU</Label>
+                    <Input
+                      value={v.sku}
+                      onChange={e => updateVariation(v._key, { sku: e.target.value })}
+                      placeholder="—"
+                      className="h-7 text-xs px-2"
+                    />
+                  </div>
+                </div>
+
+              </div>
+            </div>
           </div>
         );
       })}
