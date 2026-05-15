@@ -28,7 +28,7 @@ export async function middleware(request: NextRequest) {
 
   // ── Custom domain routing ──────────────────────────────────────────────────
   // Jika request datang dari domain selain jalakarta.com → resolve ke tenant slug
-  if (!isOwnHost(host) && !pathname.startsWith("/api/internal/")) {
+  if (!isOwnHost(host) && !pathname.startsWith("/api/")) {
     try {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com";
       const resolveUrl = new URL("/api/internal/resolve-domain", appUrl);
