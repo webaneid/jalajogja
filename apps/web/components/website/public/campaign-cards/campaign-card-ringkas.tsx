@@ -1,5 +1,5 @@
 import type { CampaignCardData } from "@/lib/campaign-card-templates";
-import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS } from "@/lib/campaign-card-templates";
+import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS, formatRp } from "@/lib/campaign-card-templates";
 import { Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,10 +32,16 @@ export function CampaignCardRingkas({ campaign, tenantSlug, className }: { campa
         <h3 className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
           {campaign.title}
         </h3>
-        {campaign.progressPercent !== null && (
-          <div className="h-1 bg-muted rounded-full overflow-hidden">
-            <div className="h-full bg-primary rounded-full" style={{ width: `${campaign.progressPercent}%` }} />
-          </div>
+        {campaign.campaignType !== "qurban" && (
+          campaign.progressPercent !== null ? (
+            <div className="h-1 bg-muted rounded-full overflow-hidden">
+              <div className="h-full bg-primary rounded-full" style={{ width: `${campaign.progressPercent}%` }} />
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Terkumpul <span className="font-medium text-foreground">{formatRp(campaign.collectedAmount)}</span>
+            </p>
+          )
         )}
       </div>
     </a>

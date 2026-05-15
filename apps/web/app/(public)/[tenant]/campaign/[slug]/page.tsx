@@ -1,16 +1,18 @@
 import { notFound }            from "next/navigation";
 import { eq, desc, and, inArray } from "drizzle-orm";
+import { renderBody }              from "@/lib/letter-render";
 import { createTenantDb, db, tenants, members, getSettings } from "@jalajogja/db";
 import { auth }                from "@/lib/auth";
 import { headers }             from "next/headers";
 import { publicUrl, resolveMediaUrl } from "@/lib/minio";
-import { renderBody }          from "@/lib/letter-render";
 import { CampaignDetailClient } from "@/components/donasi/public/campaign-detail-client";
+import { CampaignDetailTabs }  from "@/components/donasi/public/campaign-detail-tabs";
+import type { DonorEntry }     from "@/components/donasi/public/campaign-detail-tabs";
 import { CampaignCard }        from "@/components/website/public/campaign-cards/campaign-card";
 import type { CampaignCardData } from "@/lib/campaign-card-templates";
 import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS } from "@/lib/campaign-card-templates";
 import type { Metadata }       from "next";
-import { ChevronRight, Heart } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 
@@ -82,14 +84,31 @@ export default async function CampaignDetailPage({ params }: { params: Params })
   const target      = campaign.targetAmount ? parseFloat(campaign.targetAmount) : null;
   const progressPct = target ? Math.min(100, Math.round((collected / target) * 100)) : 0;
 
-  // Donasi terbaru
-  type DonorRow = { donorName: string; isAnonymous: boolean };
-  let donorList: DonorRow[] = [];
+  // Donasi — list lengkap dengan nominal (JOIN payments untuk amount)
+  let donorList: DonorEntry[] = [];
   if (campaign.showDonorList) {
-    donorList = await tenantDb.select({ donorName: schema.donations.donorName, isAnonymous: schema.donations.isAnonymous })
-      .from(schema.donations).where(eq(schema.donations.campaignId, campaign.id))
-      .orderBy(desc(schema.donations.createdAt)).limit(10)
-      .then(rows => rows.map(r => ({ donorName: r.isAnonymous ? "Anonim" : r.donorName, isAnonymous: r.isAnonymous })));
+    donorList = await tenantDb
+      .select({
+        donorName:   schema.donations.donorName,
+        isAnonymous: schema.donations.isAnonymous,
+        amount:      schema.payments.amount,
+        createdAt:   schema.donations.createdAt,
+      })
+      .from(schema.donations)
+      .leftJoin(schema.payments, and(
+        eq(schema.payments.sourceType, "donation"),
+        eq(schema.payments.sourceId, schema.donations.id),
+        eq(schema.payments.status, "paid"),
+      ))
+      .where(eq(schema.donations.campaignId, campaign.id))
+      .orderBy(desc(schema.donations.createdAt))
+      .limit(100)
+      .then(rows => rows.map(r => ({
+        donorName:   r.isAnonymous ? "Anonim" : r.donorName,
+        isAnonymous: r.isAnonymous,
+        amount:      r.amount,
+        createdAt:   r.createdAt.toISOString(),
+      })));
   }
 
   // Qurban data
@@ -199,39 +218,35 @@ export default async function CampaignDetailPage({ params }: { params: Params })
               <h1 className="text-2xl font-bold">{campaign.title}</h1>
             </div>
 
-            {/* Progress */}
-            {campaign.campaignType !== "qurban" && target && campaign.showAmount && (
+            {/* Terkumpul / Progress — selalu tampil untuk non-qurban jika showAmount aktif */}
+            {campaign.campaignType !== "qurban" && campaign.showAmount && (
               <div className="space-y-2">
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full" style={{ width: `${progressPct}%` }} />
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Terkumpul <span className="font-semibold text-primary">Rp {collected.toLocaleString("id-ID")}</span></span>
-                  <span className="text-muted-foreground">{progressPct}% dari Rp {target.toLocaleString("id-ID")}</span>
-                </div>
+                {target ? (
+                  <>
+                    <div className="h-2 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-primary rounded-full" style={{ width: `${progressPct}%` }} />
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Terkumpul <span className="font-semibold text-primary">Rp {collected.toLocaleString("id-ID")}</span></span>
+                      <span className="text-muted-foreground">{progressPct}% dari Rp {target.toLocaleString("id-ID")}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm">
+                    Terkumpul <span className="font-semibold text-primary">Rp {collected.toLocaleString("id-ID")}</span>
+                  </p>
+                )}
               </div>
             )}
 
-            {/* Deskripsi */}
-            {campaign.description && (
-              <div className="prose prose-sm max-w-none [&_p]:my-3 [&_ul]:my-3 [&_ol]:my-3"
-                dangerouslySetInnerHTML={{ __html: renderBody(campaign.description, { imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${slug}` }) }} />
-            )}
-
-            {/* Donatur */}
-            {campaign.showDonorList && donorList.length > 0 && (
-              <div>
-                <h3 className="font-semibold mb-3 text-sm">Donatur Terbaru</h3>
-                <ul className="space-y-1.5">
-                  {donorList.map((d, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Heart className="h-3.5 w-3.5 text-primary shrink-0" />
-                      {d.donorName}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {/* Deskripsi + Tab Donatur */}
+            <CampaignDetailTabs
+              descriptionHtml={campaign.description
+                ? renderBody(campaign.description, { imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${slug}` })
+                : null}
+              donorList={donorList}
+              showDonorList={campaign.showDonorList}
+            />
           </div>
 
           {/* Kanan: form */}
