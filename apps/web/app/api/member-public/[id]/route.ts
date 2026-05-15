@@ -14,6 +14,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  try {
   const { id } = await params;
   const slug = req.nextUrl.searchParams.get("slug");
   if (!slug) return NextResponse.json({ error: "slug diperlukan" }, { status: 400 });
@@ -202,4 +203,9 @@ export async function GET(
     businesses,
     pesantrenList,
   });
+  } catch (err) {
+    console.error("[member-public] Error:", err);
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

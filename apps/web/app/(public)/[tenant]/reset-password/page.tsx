@@ -5,8 +5,9 @@ import { use }                     from "react";
 import { authClient }              from "@/lib/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button }                  from "@/components/ui/button";
-import { Input }                   from "@/components/ui/input";
-import { Label }                   from "@/components/ui/label";
+import { Input }          from "@/components/ui/input";
+import { Label }          from "@/components/ui/label";
+import { PasswordInput }  from "@/components/ui/password-input";
 import { Suspense }                from "react";
 
 type Params = Promise<{ tenant: string }>;
@@ -50,31 +51,25 @@ function ResetForm({ slug }: { slug: string }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="password">Password Baru</Label>
-        <Input
-          id="password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Min. 8 karakter"
-          required
-          autoComplete="new-password"
-        />
-      </div>
+      <PasswordInput
+        id="password"
+        label="Password Baru"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="Min. 8 karakter"
+        required
+        autoComplete="new-password"
+      />
 
-      <div className="space-y-1.5">
-        <Label htmlFor="confirm">Konfirmasi Password</Label>
-        <Input
-          id="confirm"
-          type="password"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          placeholder="Ulangi password baru"
-          required
-          autoComplete="new-password"
-        />
-      </div>
+      <PasswordInput
+        id="confirm"
+        label="Konfirmasi Password"
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        placeholder="Ulangi password baru"
+        required
+        autoComplete="new-password"
+      />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 

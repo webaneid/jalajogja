@@ -3,9 +3,10 @@
 import { useState, useTransition } from "react";
 import { authClient }              from "@/lib/auth-client";
 import { useRouter }               from "next/navigation";
-import { Button }                  from "@/components/ui/button";
-import { Input }                   from "@/components/ui/input";
-import { Label }                   from "@/components/ui/label";
+import { Button }          from "@/components/ui/button";
+import { Input }           from "@/components/ui/input";
+import { Label }           from "@/components/ui/label";
+import { PasswordInput }   from "@/components/ui/password-input";
 
 export function LoginForm({ slug, redirectTo }: { slug: string; redirectTo?: string }) {
   const router                  = useRouter();
@@ -63,9 +64,8 @@ export function LoginForm({ slug, redirectTo }: { slug: string; redirectTo?: str
                 Lupa password?
               </a>
             </div>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"

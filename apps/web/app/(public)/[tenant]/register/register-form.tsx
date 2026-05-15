@@ -3,9 +3,10 @@
 import { useState, useTransition, useRef } from "react";
 import { authClient }   from "@/lib/auth-client";
 import { useRouter }    from "next/navigation";
-import { Button }       from "@/components/ui/button";
-import { Input }        from "@/components/ui/input";
-import { Label }        from "@/components/ui/label";
+import { Button }         from "@/components/ui/button";
+import { Input }          from "@/components/ui/input";
+import { Label }          from "@/components/ui/label";
+import { PasswordInput }  from "@/components/ui/password-input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -366,32 +367,26 @@ export function RegisterForm({ slug }: { slug: string }) {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Min. 8 karakter"
-              required
-              minLength={8}
-              autoComplete="new-password"
-            />
-          </div>
+          <PasswordInput
+            id="password"
+            label="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Min. 8 karakter"
+            required
+            minLength={8}
+            autoComplete="new-password"
+          />
 
-          <div className="space-y-1.5">
-            <Label htmlFor="confirm">Konfirmasi Password</Label>
-            <Input
-              id="confirm"
-              type="password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              placeholder="Ulangi password"
-              required
-              autoComplete="new-password"
-            />
-          </div>
+          <PasswordInput
+            id="confirm"
+            label="Konfirmasi Password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="Ulangi password"
+            required
+            autoComplete="new-password"
+          />
 
           {/* Persetujuan */}
           <div className="flex items-start gap-2.5 pt-1">

@@ -115,12 +115,17 @@ export function AnggotaDirectoryClient({ slug, rows, hasFilter }: Props) {
     if (!selectedId) return;
     setLoading(true);
     fetch(`/api/member-public/${selectedId}?slug=${slug}`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok && r.headers.get("content-type")?.includes("text/html")) {
+          throw new Error(`Server error ${r.status}`);
+        }
+        return r.json();
+      })
       .then((data: MemberDetail | { error: string }) => {
         if ("error" in data) setError(data.error);
         else setDetail(data);
       })
-      .catch(() => setError("Gagal memuat data anggota."))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Gagal memuat data anggota."))
       .finally(() => setLoading(false));
   }, [selectedId, slug]);
 

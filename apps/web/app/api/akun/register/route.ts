@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { eq, or }                    from "drizzle-orm";
-import { db, profiles, tenants, contacts, members, tenantMemberships } from "@jalajogja/db";
+import { db, profiles, tenants, contacts, members, tenantMemberships, user as authUser } from "@jalajogja/db";
 import { auth }                      from "@/lib/auth";
 import { normalizePhone }            from "@/lib/phone";
 
@@ -41,6 +41,15 @@ export async function POST(req: NextRequest) {
     const normalizedWhatsapp = normalizePhone(whatsapp);
     const normalizedStambuk  = stambukNumber?.trim() || null;
 
+    // ── Cek email di Better Auth sebelum signUpEmail ──────────────────────────
+    async function checkEmailTaken(): Promise<boolean> {
+      const existing = await db.query.user.findFirst({
+        where: eq(authUser.email, normalizedEmail),
+        columns: { id: true },
+      });
+      return !!existing;
+    }
+
     // ── Tenant lookup ─────────────────────────────────────────────────────────
     let registeredAtTenant: string | null = null;
     if (tenantSlug) {
@@ -79,12 +88,15 @@ export async function POST(req: NextRequest) {
         if (existingMember.betterAuthUserId)
           return NextResponse.json({ error: "Akun sudah terdaftar. Gunakan fitur lupa password." }, { status: 409 });
 
-        // Cek email sudah dipakai Better Auth user lain
+        // Cek email sudah dipakai di Better Auth
+        if (await checkEmailTaken())
+          return NextResponse.json({ error: "Email sudah terdaftar. Silakan masuk atau gunakan lupa password." }, { status: 409 });
+
         const signUpResult = await auth.api.signUpEmail({
           body: { name: existingMember.name, email: normalizedEmail, password },
         });
         if (!signUpResult?.user?.id)
-          return NextResponse.json({ error: "Gagal membuat akun. Coba lagi." }, { status: 500 });
+          return NextResponse.json({ error: "Gagal membuat akun. Email mungkin sudah terdaftar di sistem." }, { status: 500 });
 
         // Link akun ke member + daftarkan ke tenant
         await db
@@ -112,11 +124,15 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "Email atau nomor HP sudah terdaftar. Silakan masuk." }, { status: 409 });
       }
 
+      // Cek email di Better Auth (bisa saja sudah jadi admin di tenant lain)
+      if (await checkEmailTaken())
+        return NextResponse.json({ error: "Email sudah terdaftar. Silakan masuk atau gunakan lupa password." }, { status: 409 });
+
       const signUpResult = await auth.api.signUpEmail({
         body: { name: name.trim(), email: normalizedEmail, password },
       });
       if (!signUpResult?.user?.id)
-        return NextResponse.json({ error: "Gagal membuat akun. Coba lagi." }, { status: 500 });
+        return NextResponse.json({ error: "Gagal membuat akun. Email mungkin sudah terdaftar di sistem." }, { status: 500 });
 
       // Buat contacts
       const [newContact] = await db
@@ -152,11 +168,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Nomor WhatsApp sudah terdaftar." }, { status: 409 });
     }
 
+    if (await checkEmailTaken())
+      return NextResponse.json({ error: "Email sudah terdaftar. Silakan masuk atau gunakan lupa password." }, { status: 409 });
+
     const signUpResult = await auth.api.signUpEmail({
       body: { name: name.trim(), email: normalizedEmail, password },
     });
     if (!signUpResult?.user?.id)
-      return NextResponse.json({ error: "Gagal membuat akun. Coba lagi." }, { status: 500 });
+      return NextResponse.json({ error: "Gagal membuat akun. Email mungkin sudah terdaftar di sistem." }, { status: 500 });
 
     await db.insert(profiles).values({
       name:               name.trim(),
@@ -171,9 +190,9 @@ export async function POST(req: NextRequest) {
 
   } catch (err: unknown) {
     console.error("[POST /api/akun/register]", err);
-    const message = err instanceof Error ? err.message : "";
-    if (message.toLowerCase().includes("email") || message.toLowerCase().includes("duplicate"))
-      return NextResponse.json({ error: "Email sudah terdaftar." }, { status: 409 });
+    const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+    if (message.includes("email") || message.includes("duplicate") || message.includes("already exists") || message.includes("unique"))
+      return NextResponse.json({ error: "Email atau nomor HP sudah terdaftar." }, { status: 409 });
     return NextResponse.json({ error: "Terjadi kesalahan. Coba lagi." }, { status: 500 });
   }
 }
