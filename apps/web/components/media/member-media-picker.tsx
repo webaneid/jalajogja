@@ -187,7 +187,8 @@ export function MemberMediaPicker({ slug, open, onClose, onSelect }: MemberMedia
           {/* ── Tab Upload ── */}
           <TabsContent value="upload" className="m-0">
             <div className="h-[380px] flex flex-col p-6">
-              <div
+              <label
+                htmlFor="member-media-file-input"
                 className={`flex-1 border-2 border-dashed rounded-xl flex flex-col items-center
                   justify-center gap-3 cursor-pointer transition-colors
                   ${isDragging
@@ -196,7 +197,6 @@ export function MemberMediaPicker({ slug, open, onClose, onSelect }: MemberMedia
                 onDrop={handleDrop}
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
-                onClick={() => fileInputRef.current?.click()}
               >
                 {uploading ? (
                   <>
@@ -207,15 +207,16 @@ export function MemberMediaPicker({ slug, open, onClose, onSelect }: MemberMedia
                   <>
                     <UploadCloud className="h-10 w-10 text-muted-foreground" />
                     <div className="text-center">
-                      <p className="font-medium">Drag & drop foto ke sini</p>
-                      <p className="text-sm text-muted-foreground mt-1">atau klik untuk pilih file</p>
+                      <p className="font-medium">Ketuk untuk pilih foto</p>
+                      <p className="text-sm text-muted-foreground mt-1">atau drag &amp; drop di sini</p>
                     </div>
                     <p className="text-xs text-muted-foreground">JPG, PNG, WebP · Maks 10 MB</p>
                   </>
                 )}
-              </div>
+              </label>
               <input
                 ref={fileInputRef}
+                id="member-media-file-input"
                 type="file"
                 multiple={false}
                 className="hidden"
@@ -272,14 +273,13 @@ export function CoverImageField({
     <div className="space-y-2">
       <p className="text-sm font-medium">{label}</p>
       {value ? (
-        <div className="relative w-40 h-32 rounded-lg overflow-hidden border border-border group">
+        <div className="relative w-40 h-32 rounded-lg overflow-hidden border border-border">
           <Image src={value} alt={label} fill sizes="160px" className="object-cover" />
           <button
             type="button"
             onClick={() => onChange(null)}
             className="absolute top-1 right-1 w-6 h-6 bg-black/60 rounded-full flex items-center
-                       justify-center opacity-0 group-hover:opacity-100 transition-opacity
-                       hover:bg-black/80"
+                       justify-center hover:bg-black/80 transition-colors"
             title="Hapus foto"
           >
             <X className="h-3.5 w-3.5 text-white" />
