@@ -171,68 +171,72 @@ export function VariationTable({ slug, variations, attributeGroups, onChange, mi
               </div>
 
               {/* Field-field */}
-              <div className="flex-1 space-y-1.5 min-w-0">
+              <div className="flex-1 divide-y divide-border rounded-lg border border-border overflow-hidden min-w-0">
 
-                {/* Harga baris */}
-                <div className="grid grid-cols-3 gap-1.5">
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Harga</Label>
-                    <Input
-                      type="number" min={0}
-                      value={v.price}
-                      onChange={e => updateVariation(v._key, { price: e.target.value })}
-                      placeholder="0"
-                      className="h-7 text-xs px-2"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Publik</Label>
-                    <Input
-                      type="number" min={0}
-                      value={v.publicPrice}
-                      onChange={e => updateVariation(v._key, { publicPrice: e.target.value })}
-                      placeholder="—"
-                      className="h-7 text-xs px-2"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Anggota</Label>
+                {/* Harga */}
+                <div className="flex items-center gap-2 px-2 py-1.5">
+                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">Harga</span>
+                  <Input
+                    type="number" min={0}
+                    value={v.price}
+                    onChange={e => updateVariation(v._key, { price: e.target.value })}
+                    placeholder="0"
+                    className="h-6 text-xs px-2 border-0 shadow-none focus-visible:ring-0 p-0 flex-1"
+                  />
+                </div>
+
+                {/* Harga Publik */}
+                <div className="flex items-center gap-2 px-2 py-1.5">
+                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">Publik</span>
+                  <Input
+                    type="number" min={0}
+                    value={v.publicPrice}
+                    onChange={e => updateVariation(v._key, { publicPrice: e.target.value })}
+                    placeholder="—"
+                    className="h-6 text-xs px-2 border-0 shadow-none focus-visible:ring-0 p-0 flex-1"
+                  />
+                </div>
+
+                {/* Harga Anggota */}
+                <div className="flex items-center gap-2 px-2 py-1.5">
+                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">Anggota</span>
+                  <div className="flex-1 min-w-0">
                     <Input
                       type="number" min={0}
                       value={v.memberPrice}
                       onChange={e => updateVariation(v._key, { memberPrice: e.target.value })}
                       placeholder="—"
-                      className={`h-7 text-xs px-2 ${memberInvalid ? "border-destructive" : ""}`}
+                      className={`h-6 text-xs px-2 border-0 shadow-none focus-visible:ring-0 p-0 w-full ${memberInvalid ? "text-destructive" : ""}`}
                     />
                     {memberInvalid && maxMember != null && (
-                      <p className="text-[10px] text-destructive mt-0.5">
-                        Maks Rp {Math.floor(maxMember).toLocaleString("id-ID")}
+                      <p className="text-[10px] text-destructive leading-none mt-0.5">
+                        Maks {Math.floor(maxMember).toLocaleString("id-ID")}
                       </p>
                     )}
                   </div>
                 </div>
 
-                {/* Stok + SKU baris */}
-                <div className="grid grid-cols-2 gap-1.5">
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Stok</Label>
-                    <Input
-                      type="number" min={0}
-                      value={v.stock}
-                      onChange={e => updateVariation(v._key, { stock: e.target.value })}
-                      placeholder="0"
-                      className="h-7 text-xs px-2"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">SKU</Label>
-                    <Input
-                      value={v.sku}
-                      onChange={e => updateVariation(v._key, { sku: e.target.value })}
-                      placeholder="—"
-                      className="h-7 text-xs px-2"
-                    />
-                  </div>
+                {/* Stok */}
+                <div className="flex items-center gap-2 px-2 py-1.5">
+                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">Stok</span>
+                  <Input
+                    type="number" min={0}
+                    value={v.stock}
+                    onChange={e => updateVariation(v._key, { stock: e.target.value })}
+                    placeholder="0"
+                    className="h-6 text-xs px-2 border-0 shadow-none focus-visible:ring-0 p-0 flex-1"
+                  />
+                </div>
+
+                {/* SKU */}
+                <div className="flex items-center gap-2 px-2 py-1.5">
+                  <span className="text-[10px] text-muted-foreground w-14 shrink-0">SKU</span>
+                  <Input
+                    value={v.sku}
+                    onChange={e => updateVariation(v._key, { sku: e.target.value })}
+                    placeholder="—"
+                    className="h-6 text-xs px-2 border-0 shadow-none focus-visible:ring-0 p-0 flex-1"
+                  />
                 </div>
 
               </div>
