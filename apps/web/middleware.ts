@@ -38,6 +38,10 @@ export async function middleware(request: NextRequest) {
       if (res.ok) {
         const { slug } = (await res.json()) as { slug: string | null };
         if (slug) {
+          // Jika path sudah include slug (link internal dari halaman), jangan tambah lagi
+          if (pathname.startsWith(`/${slug}`)) {
+            return NextResponse.next();
+          }
           // Rewrite: ikpm.or.id/post/artikel → /pc-ikpm-jogjakarta/post/artikel (internal)
           const url = request.nextUrl.clone();
           url.pathname = `/${slug}${pathname === "/" ? "" : pathname}`;
