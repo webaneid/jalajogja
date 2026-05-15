@@ -41,6 +41,7 @@ export type PageFormProps = {
     status:   ContentStatus;
     order:    number;
     coverId:  string | null;
+    coverUrl: string | null;
     template: PageTemplate;
     seo: SeoValues;
   };
@@ -83,7 +84,7 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
 
   // Featured image
   const [coverId, setCoverId]   = useState<string | null>(initialData.coverId);
-  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [coverUrl, setCoverUrl] = useState<string | null>(initialData.coverUrl);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // Slug auto-generate

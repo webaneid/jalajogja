@@ -4,6 +4,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { notFound, redirect } from "next/navigation";
 import { PageForm } from "@/components/website/page-form";
 import type { SeoValues } from "@/components/seo/seo-panel";
+import { publicUrl } from "@/lib/minio";
 
 export default async function EditPagePage({
   params,
@@ -24,6 +25,20 @@ export default async function EditPagePage({
     .limit(1);
 
   if (!page) notFound();
+
+  // Fetch cover URL jika ada
+  let coverUrl: string | null = null;
+  if (page.coverId) {
+    const [media] = await db
+      .select({ path: schema.media.path, variants: schema.media.variants })
+      .from(schema.media)
+      .where(eq(schema.media.id, page.coverId))
+      .limit(1);
+    if (media) {
+      const vv = media.variants as Record<string, string> | null;
+      coverUrl = vv?.thumbnail ?? vv?.large ?? publicUrl(slug, media.path);
+    }
+  }
 
   const seoValues: SeoValues = {
     metaTitle:      page.metaTitle      ?? "",
@@ -55,6 +70,7 @@ export default async function EditPagePage({
           status:   page.status,
           order:    page.order,
           coverId:  page.coverId,
+          coverUrl: coverUrl,
           seo:      seoValues,
         }}
       />

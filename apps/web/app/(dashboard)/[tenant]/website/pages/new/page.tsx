@@ -36,6 +36,7 @@ export default async function PagesNewPage({
         pageSlug: "",
         content:  null,
         coverId:  null,
+        coverUrl: null,
         status:   "draft",
         order:    0,
         template: "default",
