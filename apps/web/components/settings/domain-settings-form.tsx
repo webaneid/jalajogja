@@ -147,7 +147,7 @@ export function DomainSettingsForm({
                 <span>Name</span><span>Type</span><span>Value</span>
               </div>
               <div className="grid grid-cols-[80px_60px_1fr] gap-2 text-foreground font-semibold">
-                <span>@</span><span>A</span><span>{"<IP_VPS_JALAJOGJA>"}</span>
+                <span>@</span><span>A</span><span>72.61.215.7</span>
               </div>
             </div>
             <p className="text-xs text-amber-700">
