@@ -42,7 +42,7 @@
 
 **Tiga aturan yang tidak boleh dilanggar:**
 1. **Input phone/WA** → selalu `<PhoneInput>` dari `components/ui/phone-input.tsx` — tidak boleh `<input type="tel">` biasa
-2. **Server insert/update phone/WA** → selalu `normalizePhone()` dari `lib/phone.ts` (belum dibuat, phase mendatang)
+2. **Server insert/update phone/WA** → selalu `normalizePhone()` dari `lib/phone.ts`
 3. **Display phone/WA** → selalu `displayPhone()` dari `lib/phone.ts`
 
 **Format DB: E.164** (`+6281234567890`) atau NULL. Default negara: Indonesia (+62).
@@ -241,7 +241,7 @@ src/
 ├── client.ts              ← public schema db instance
 ├── tenant-client.ts       ← factory: createTenantDb(slug)
 ├── schema/
-│   ├── public/            ← auth.ts, tenants.ts, members.ts, tenant-memberships.ts, profiles.ts (BELUM)
+│   ├── public/            ← auth.ts, tenants.ts, members.ts, tenant-memberships.ts, profiles.ts
 │   └── tenant/            ← factory tables: users, website, letters, finance, shop, settings
 │                             (members TIDAK ADA di sini — sudah dipindah ke public)
 └── helpers/
@@ -262,7 +262,7 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 - Domain routing 3 fase (path → subdomain → custom domain) — schema selesai, middleware Fase 2–3 saat front-end
 - Front-end publik Layer 1–4 — **SELESAI** (header/footer, homepage, post cards, section post, search)
 - Route group `(public)` sudah ada, donasi/event/dokumen/surat sudah render publik
-- **View Counter** — arsitektur selesai di `docs/arsitektur-views-count.md`; implementasi belum dimulai
+- **View Counter** — ✅ SELESAI: `lib/view-counter.ts` + integrasi post detail (`after()` + bot detection) + kolom admin. Arsitektur di `docs/arsitektur-views-count.md`.
 - **Gallery System** — komponen universal (Grid + Lightbox + Carousel + Picker + Tiptap Block); arsitektur di `docs/arsitektur-gallery.md`; dipakai di: produk, event, donasi, editor, landing section
 
 ### Sistem Card + Section (Universal)
@@ -278,23 +278,23 @@ Pola: `{Type}Section (fetch)` → `{Type}DesignN (layout)` → `{Type}Card (rend
 - 5 section design: Hero 3 Kolom | Klasik | Twin Columns | Trio Column | Carousel
 - URL: `/{slug}/post` (arsip) | `/{slug}/post/{postSlug}` (detail)
 
-**Produk Card + Section — ⬜ Belum**
+**Produk Card + Section — ✅ Selesai**
 - 3 variant: `grid` | `list` | `ringkas`
-- 3 section design: Grid | Showcase | Carousel
-- URL: `/{slug}/toko` (arsip) | `/{slug}/toko/{productSlug}` (detail)
-- Cover dari `images[0]` JSONB (bukan coverId)
+- 3 section design: Grid 4 kolom | Showcase 1+4 | Carousel
+- URL: `/{slug}/produk` (arsip ✅) | `/{slug}/produk/{slug}` (detail ✅) | `/produk/kategori/{slug}` (✅)
+- Cover dari `images[0]` JSONB (bukan coverId); support harga 3 tier + badge Mitra
 
-**Event Card + Section — ⬜ Belum**
-- 3 variant: `grid` | `list` | `ringkas`
-- 3 section design: Grid | Featured | Agenda
-- URL: `/{slug}/event` (arsip) | `/{slug}/event/{eventSlug}` (detail ✅ sudah ada)
-- Fetch: JOIN `event_tickets` untuk `lowestPrice`
+**Event Card + Section — ✅ Card + Section selesai; ⬜ Archive page belum**
+- 3 variant: `grid` | `list` | `ringkas` — `components/website/public/event-cards/`
+- 3 section design: Design 1 | Design 2 | Design 3 — `sections/events/`
+- Terdaftar di landing-template + section-editors + page-templates
+- URL: `/{slug}/event` (arsip ⬜ belum) | `/{slug}/event/{slug}` (detail ✅ sudah ada)
 
-**Campaign Card + Section — ⬜ Belum**
+**Campaign Card + Section — ✅ Selesai**
 - 3 variant: `grid` | `list` | `ringkas`
-- 3 section design: Grid | Featured | Compact List
-- URL: `/{slug}/donasi` (arsip) | `/{slug}/donasi/{campaignSlug}` (detail)
-- `progressPercent` pre-computed di fetch layer
+- 3 section design: Grid | Unggulan | Daftar
+- URL: `/{slug}/campaign` (arsip ✅) | `/{slug}/campaign/{slug}` (detail ✅ — tab Detail+Donatur)
+- `progressPercent` pre-computed; terkumpul selalu tampil meski tanpa target
 
 **`PostsSectionTitle`** dipakai ulang semua tipe — sudah generik (title + href + "Lihat Semua").
 **Menambah card/design/tipe baru** → lihat panduan di `docs/arsitektur-card-section.md`.
@@ -322,14 +322,18 @@ ada field link ke halaman website organisasi (nav menu, CTA section, widget area
 /{slug}/usaha/{id}              → usaha detail
 ```
 
-**File yang akan dibuat:**
+**File yang sudah dibuat (✅ SELESAI):**
 ```
 lib/public-url-registry.ts            → daftar statis + helper buildPublicUrl()
 app/api/ref/public-links/route.ts     → GET ?slug=&q=, max 5 per tipe, grouped
 components/ui/public-link-picker.tsx  → Command + Popover, debounce 300ms
 ```
 
-- **Status: ⬜ Arsitektur selesai, implementasi belum dimulai**
+**Integrasi yang sudah ada:**
+- `components/settings/website-settings-client.tsx` — nav menu builder pakai `<PublicLinkPicker>`
+- Phase 3 (section editor CTA) — belum diintegrasikan ke semua field CTA di section editor
+
+- **Status: ✅ Phase 1+2+3 (nav menu) SELESAI. Section editor CTA belum semua.**
 
 ### Widget Area System
 > Detail lengkap: **`docs/arsitektur-sidebar.md`**
@@ -346,7 +350,7 @@ Analogi `dynamic_sidebar()` di WordPress.
 - Admin route: `/{slug}/website/pengaturan` — nav item baru (gantikan Komentar coming-soon)
 - Render publik: `<WidgetArea>` SERVER component, `hidden lg:block`, `w-72`
 - DnD: `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities`
-- **Status: ⬜ Arsitektur selesai, implementasi belum dimulai**
+- **Status: ✅ SELESAI** — `components/website/public/widget-area.tsx` live di post archive + detail
 
 ## Arsitektur Shell UI Dashboard
 
@@ -393,7 +397,7 @@ app/(dashboard)/[tenant]/
 │       └── page.tsx        → CRUD kategori produk (inline create)
 ├── website/                → /{slug}/website/*
 ├── letters/                → /{slug}/letters/* (keluar, masuk, nota, template)
-├── finance/                → (belum dibuat)
+├── finance/                → Keuangan (Pemasukan, Pengeluaran, Jurnal, Akun, Laporan, Billing)
 └── settings/               → /{slug}/settings/*
 ```
 
@@ -460,7 +464,7 @@ app/(dashboard)/[tenant]/
 - [x] **Halaman publik `/produk`** — archive + filter kategori + search + pagination. URL `/produk` (bukan `/toko` — hindari konflik dashboard). TypeScript 0 errors.
 - [x] **Halaman publik `/produk/kategori/{slug}`** — arsip per kategori + breadcrumb + SEO. TypeScript 0 errors.
 - [x] **Halaman publik `/produk/{slug}`** — detail produk: gallery + variasi picker + add to cart via `addToCartAction` + produk terkait. TypeScript 0 errors.
-- [~] **EventCard + EventsSection** — belum dimulai. **DITUNDA**.
+- [x] **EventCard + EventsSection** — 3 card variant (grid/list/ringkas) + 3 section design + integrasi landing-template + section-editors. TypeScript 0 errors. **Archive page `/{slug}/event` belum dibuat.**
 - [x] **CampaignCard + CampaignsSection** — 3 variant (grid/list/ringkas), 3 design (Grid/Unggulan/Daftar), fetch layer filter tipe+kategori, terdaftar di landing page + section-editor. TypeScript 0 errors.
 - [x] **Halaman publik `/campaign`** — arsip donasi dengan filter tipe (donasi/zakat/wakaf/qurban) + kategori. URL `/campaign` (bukan `/donasi` — hindari konflik dashboard). TypeScript 0 errors.
 - [x] **Halaman publik `/campaign/{slug}`** — detail campaign + form donasi: donasi reguler (nominal chips + custom) dan qurban (hewan cards = variasi), keduanya → `addToCartAction`. Atas nama qurban di `notes`. TypeScript 0 errors.
@@ -474,7 +478,7 @@ app/(dashboard)/[tenant]/
 - [x] **Login Universal Phase 1** — SELESAI. Login, register (2-jalur: IKPM vs publik + stambuk lookup + auto-link member), forgot-password, reset-password, dashboard `/akun`. Schema `whatsapp` di `public.profiles`. TypeScript 0 errors.
 - [x] **Login Universal Phase 2** — SELESAI. Self-service profile completion wizard anggota IKPM (`/akun/lengkapi`). API routes `member-data` + `member-contact`. Banner kelengkapan data di dashboard `/akun`. Legal singleton pages (terms/privacy). TypeScript 0 errors.
 - [x] **Gallery System Phase 1–3** — `<Gallery>`, `<GalleryGrid>`, `<GalleryLightbox>`, `<GalleryPicker>`, `GalleryBlock` Tiptap, kolom `gallery` JSONB di Event + Campaign, Landing section pakai `<Gallery>`. TypeScript 0 errors. Arsitektur di `docs/arsitektur-gallery.md`. Phase 4 (masonry + carousel) belum.
-- [ ] **Public Link Picker** — autocomplete combobox untuk semua URL front-end. Arsitektur di `docs/arsitektur-public-link-picker.md`. Phase 1: `lib/public-url-registry.ts` + API `/api/ref/public-links`. Phase 2: `components/ui/public-link-picker.tsx`. Phase 3: integrasi nav-menu builder + section editor CTA.
+- [x] **Public Link Picker** — `lib/public-url-registry.ts` + `/api/ref/public-links` + `components/ui/public-link-picker.tsx` + integrasi nav-menu builder (`website-settings-client.tsx`). Sisa: field CTA di section editor belum semua pakai `<PublicLinkPicker>`.
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
 
@@ -921,6 +925,31 @@ Logika: cari yang spesifik dulu → fallback ke `general`.
 - `getFirstTenantForUser()` loop O(n) — perlu tabel `public.user_tenant_index` saat tenant > 100
 - `check-slug` endpoint perlu rate limiting per-IP (saat ini hanya referer check)
 - `getTenantAccess()` dipanggil di layout DAN page — perlu `React.cache()` saat query makin banyak
+
+## Prinsip Penggunaan CLAUDE.md
+
+> **CLAUDE.md adalah project brain, bukan source of truth untuk status fitur.**
+> Sebelum menyimpulkan fitur "belum ada", selalu verifikasi ke kode aktual.
+> Status di CLAUDE.md cenderung tertinggal — kode yang berubah lebih cepat dari dokumentasi.
+
+**Cara verifikasi cepat:**
+```bash
+# Cek file ada atau tidak
+ls apps/web/components/website/public/event-cards/
+# Cek fungsi ada atau tidak
+grep -r "normalizePhone" apps/web/lib/phone.ts
+# Cek integrasi di landing
+grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
+```
+
+**Yang sudah pernah out-of-sync (dikoreksi 2026-05-16):**
+- Public Link Picker: CLAUDE.md bilang "belum dimulai" → sudah ada 3 file + integrasi nav-menu
+- EventCard + EventsSection: CLAUDE.md bilang "DITUNDA" → 4 card + 3 designs + landing integration
+- Widget Area: CLAUDE.md bilang "belum dimulai" → `widget-area.tsx` sudah live
+- View Counter: CLAUDE.md bilang "belum dimulai" → `lib/view-counter.ts` + post integration
+- normalizePhone: CLAUDE.md bilang "belum dibuat" → `lib/phone.ts` sudah ada
+- finance/ route: CLAUDE.md bilang "(belum dibuat)" → folder lengkap dengan actions.ts, billing/, dll
+- profiles.ts: CLAUDE.md bilang "(BELUM)" → file ada di `packages/db/src/schema/public/`
 
 ## Lessons Learned
 
