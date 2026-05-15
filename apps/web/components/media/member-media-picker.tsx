@@ -77,6 +77,10 @@ export function MemberMediaPicker({ slug, open, onClose, onSelect }: MemberMedia
     async (files: FileList | File[]) => {
       setUploading(true);
       for (const file of Array.from(files)) {
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error(`${file.name} terlalu besar (maks 10 MB)`);
+          continue;
+        }
         const form = new FormData();
         form.append("file", file);
         const res = await fetch(`/api/akun/media/upload?tenant=${slug}`, {
