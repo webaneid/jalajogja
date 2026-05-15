@@ -5,6 +5,26 @@ import { PublicHeader } from "@/components/website/public/layout/public-header";
 import { PublicFooter } from "@/components/website/public/layout/public-footer";
 import { parseNavMenu } from "@/lib/nav-menu";
 import { buildTenantThemeCss, getGoogleFontsUrl } from "@/lib/theme-palette";
+import type { Metadata } from "next";
+
+type Params = Promise<{ tenant: string }>;
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { tenant: slug } = await params;
+  const tenantClient     = createTenantDb(slug);
+  const generalSettings  = await getSettings(tenantClient, "general");
+  const faviconUrl       = (generalSettings.favicon_url as string | undefined) ?? null;
+  const siteName         = (generalSettings.site_name   as string | undefined) ?? slug;
+  if (!faviconUrl) return { title: { default: siteName, template: `%s — ${siteName}` } };
+  return {
+    title: { default: siteName, template: `%s — ${siteName}` },
+    icons: {
+      icon:     faviconUrl,
+      shortcut: faviconUrl,
+      apple:    faviconUrl,
+    },
+  };
+}
 
 export default async function PublicLayout({
   children,
