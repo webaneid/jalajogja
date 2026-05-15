@@ -40,14 +40,23 @@ export async function GET(req: NextRequest) {
       }
     } else if (phone) {
       const normalized = normalizePhone(phone) ?? phone;
+      // Coba juga format lokal 08xxx — data lama di DB mungkin belum E.164
+      const localFmt = normalized.startsWith("+62") ? "0" + normalized.slice(3) : null;
 
       // Cari paralel: contacts→members DAN profiles.phone
       const [contact, profile] = await Promise.all([
         db.query.contacts.findFirst({
-          where: or(eq(contacts.phone, normalized), eq(contacts.whatsapp, normalized)),
+          where: localFmt
+            ? or(
+                eq(contacts.phone, normalized), eq(contacts.whatsapp, normalized),
+                eq(contacts.phone, localFmt),   eq(contacts.whatsapp, localFmt),
+              )
+            : or(eq(contacts.phone, normalized), eq(contacts.whatsapp, normalized)),
         }),
         db.query.profiles.findFirst({
-          where: eq(profiles.phone, normalized),
+          where: localFmt
+            ? or(eq(profiles.phone, normalized), eq(profiles.phone, localFmt))
+            : eq(profiles.phone, normalized),
           columns: { name: true },
         }),
       ]);
