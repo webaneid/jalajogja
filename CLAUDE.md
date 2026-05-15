@@ -2305,17 +2305,15 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Direktori & Statistik — penyempurnaan form wajib + statistik anggota** (sesi 2026-05-15).
+- Terakhir dikerjakan: **Bug fix gambar artikel 404 + Campaign UX improvements** (sesi 2026-05-16).
+- Sebelumnya: **Direktori & Statistik — penyempurnaan form wajib + statistik anggota** (sesi 2026-05-15).
 - Sebelumnya: **Direktori Publik — 4 halaman selesai** + **SC→CC boundary fixes** (sesi 2026-05-15).
-- Sebelumnya: **Arsitektur Direktori Publik** (perencanaan) + **RajaOngkir Tracking + Konfirmasi Terima** (2026-05-14).
 - Sesi terakhir:
-  - **SC→CC boundary fix** — `anggota/page.tsx` render prop → pass `rows` as prop; filter bar (pesantren, usaha, anggota) diekstrak ke `*FiltersClient` tersendiri. Tabel (desktop) + card list (mobile) untuk direktori anggota.
-  - **Statistik Pesantren** — tambah panel Model Pendidikan + Jenis Pondok.
-  - **Form Pesantren wajib** — 9 field wajib di `/akun/pesantren`: berdiri sejak, luas area, nama pimpinan, kurikulum, jenis pondok, model pendidikan, kategori santri, telepon, WhatsApp.
-  - **Statistik Usaha** — tambah 3 panel: Jumlah Karyawan, Jumlah Cabang Usaha, Top 10 Kabupaten/Kota.
-  - **Angkatan 1999 fix** — query group by `(graduationYear, graduationPeriod)`; label "1999 (Awal)" / "1999 (Akhir)" / "1999 (Belum ditentukan)" untuk data lama; period wajib dipilih di kedua form + tombol disabled.
-  - **Wali Santri wajib** — field `waliSantri` wajib di `/akun/lengkapi` + admin `step1-identity.tsx`; panel statistik Wali Santri di Statistik Anggota.
-  - **Statistik Anggota** — "Top 10 Provinsi" → "Top 10 Kabupaten / Kota Domisili" (JOIN `refRegencies`); tambah panel Status Domisili (permanent/temporary).
+  - **Bug fix: gambar artikel 404 di custom domain** — `media.variants` di DB menyimpan path RELATIF (bukan URL penuh). Post detail page membaca `vv?.large` langsung sebagai `<img src>` → browser resolve relative path terhadap URL artikel → 404. Fix: tambah helper `resolveMediaUrl()` di `lib/minio.ts` yang wrap semua variant path dengan `publicUrl()`. Update `post/[slug]/page.tsx` + `campaign/[slug]/page.tsx` + tambah `imageBaseUrl` context ke `renderBody()` sebagai safety net untuk gambar inline Tiptap.
+  - **Fix `renderBody()` untuk gambar inline** — tambah `RenderContext { imageBaseUrl? }` + `fixImageSrc()` di `lib/letter-render.ts`. Menangani path relatif dan localhost URL yang perlu di-replace saat production.
+  - **Fix upload mobile: validasi ukuran file** — tambah guard `file.size > 10MB` di `MemberMediaPicker.uploadFiles()` dengan toast error langsung, tanpa nunggu timeout koneksi.
+  - **Campaign cards — terkumpul selalu tampil** — sebelumnya hanya tampil jika ada `progressPercent` (butuh target). Sekarang: non-qurban selalu tampil nominal terkumpul; kalau ada target → progress bar + persentase, kalau tanpa target → teks "Terkumpul Rp X" saja. Berlaku di 3 card variant (grid/list/ringkas).
+  - **Campaign detail — dua tab (Detail + Donatur)** — progress/terkumpul sekarang tidak butuh target, hanya ikuti `showAmount` setting. Konten kiri dikemas dalam dua tab: "Detail" (deskripsi) dan "Donatur" (list donatur + nominal). Nominal diambil dari JOIN `payments` (paid only). Komponen baru: `components/donasi/public/campaign-detail-tabs.tsx`.
   - TypeScript 0 errors di semua file.
 - Ditunda: sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7), WA notif per stage.
 
@@ -3055,6 +3053,105 @@ if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
 - Tabel ini ada di Drizzle schema tapi tidak punya migration CREATE TABLE (ditambahkan langsung tanpa `drizzle-kit generate`).
 - Fix produksi: jalankan CREATE TABLE manual via psql, lalu migration 0009 yang pakai `ADD COLUMN IF NOT EXISTS` akan skip gracefully.
 - **Aturan**: setiap tambah tabel baru ke Drizzle schema → SELALU generate migration. Jangan hanya update schema file tanpa migration.
+
+### [2026-05] Bug Kritis: `media.variants` di DB = Path Relatif, Bukan URL Penuh
+
+> **ATURAN: `media.variants` (JSONB di tabel `tenant.media`) menyimpan path RELATIF — SELALU wrap dengan `publicUrl()` sebelum dipakai sebagai `src` gambar.**
+
+**Root cause**: Upload route menyimpan `variants: variantPaths` (relative) ke DB. Media list API (`/api/media/list`) sudah benar — memanggil `publicUrl()` per variant saat serve response. Tapi query langsung DB di server component **tidak** otomatis wrap — inilah sumber bug.
+
+**Gejala**: Gambar cover artikel return 404 di custom domain `ikpmjogja.com`. URL error: `https://ikpmjogja.com/pc-ikpm-jogjakarta/post/website/2026/05/[uuid]_lg.webp` — browser me-resolve path relatif terhadap URL halaman artikel, bukan terhadap MinIO.
+
+**Kode bermasalah di `post/[slug]/page.tsx`:**
+```typescript
+// SALAH — vv?.large adalah path relatif: "website/2026/05/uuid_lg.webp"
+coverUrl = vv?.large ?? vv?.original ?? publicUrl(tenantSlug, media.path);
+// Di-render sebagai <img src={coverUrl}> → 404 di custom domain
+```
+
+**Fix — gunakan `resolveMediaUrl()` dari `lib/minio.ts`:**
+```typescript
+// BENAR — resolveMediaUrl() selalu wrap dengan publicUrl()
+export function resolveMediaUrl(
+  slug: string,
+  path: string,
+  variants: Record<string, string> | null | undefined,
+  preferOrder: string[] = ["large", "original"],
+): string {
+  if (variants) {
+    for (const key of preferOrder) {
+      if (variants[key]) return publicUrl(slug, variants[key]);
+    }
+  }
+  return publicUrl(slug, path);
+}
+```
+
+**File yang menggunakan `resolveMediaUrl()` (sudah difix):**
+- `app/(public)/[tenant]/post/[slug]/page.tsx` — cover post
+- `app/(public)/[tenant]/campaign/[slug]/page.tsx` — cover campaign (di `generateMetadata`)
+- `lib/minio.ts` — definisi helper
+
+**Bedakan dua jenis variants:**
+| Source | Format | Treatment |
+|--------|--------|-----------|
+| `media.variants` (tenant.media JSONB) | Path relatif | WAJIB `publicUrl()` / `resolveMediaUrl()` |
+| `products.images[].variants` (JSONB dari MediaPicker) | URL penuh | Langsung pakai, JANGAN `publicUrl()` lagi |
+
+MediaPicker response sudah mengembalikan URL penuh karena upload route memanggil `publicUrl()` sebelum insert ke `products.images`. Jangan dobel.
+
+**POSTGRESQL JSONB LIKE gotcha (temuan saat debug):**
+PostgreSQL serialisasi JSONB dengan spasi: `"src": "..."` bukan `"src":"..."`. Query `WHERE content::text LIKE '%"src":"website/%'` → 0 rows karena tidak ada spasi. Gunakan `LIKE '%"src": "website/%'` (ada spasi setelah colon).
+
+### [2026-05] renderBody — `imageBaseUrl` Context untuk Gambar Inline Tiptap
+
+`lib/letter-render.ts` diperluas dengan `RenderContext { imageBaseUrl? }` dan `fixImageSrc()`:
+- Menangani path relatif di `<img src>` dalam konten Tiptap
+- Menangani localhost/127.0.0.1 URL yang perlu di-replace saat production
+- Signature: `renderBody(body, { imageBaseUrl })` — backward compatible
+
+**Pattern penggunaan di semua halaman yang render Tiptap content:**
+```typescript
+const imageBaseUrl = `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${slug}`;
+const html = renderBody(post.content, { imageBaseUrl });
+```
+
+Berlaku di: `post/[slug]`, `campaign/[slug]`, `produk/[slug]`, `agenda/[slug]`.
+
+### [2026-05] Campaign Cards + Detail — Terkumpul Tanpa Target
+
+**Masalah**: `collectedAmount` tidak pernah tampil di card maupun detail jika campaign tidak punya `targetAmount`. Kondisi lama: `progressPercent !== null` (card) dan `target && showAmount` (detail) → dua-duanya butuh target.
+
+**Fix pattern untuk cards** — pisahkan kondisi "ada data" dari "ada target":
+```tsx
+{campaign.campaignType !== "qurban" && (
+  <div>
+    {campaign.progressPercent !== null ? (
+      // Ada target: progress bar + persentase + amount
+    ) : (
+      // Tanpa target: cukup teks "Terkumpul Rp X"
+      <p>Terkumpul <span>{formatRp(campaign.collectedAmount)}</span></p>
+    )}
+  </div>
+)}
+```
+
+**Fix detail page** — hapus syarat `target` dari kondisi showAmount:
+```tsx
+// LAMA: butuh target DAN showAmount
+{campaign.campaignType !== "qurban" && target && campaign.showAmount && (...)}
+
+// BARU: cukup showAmount (admin setting); tampilan beda tergantung ada/tidaknya target
+{campaign.campaignType !== "qurban" && campaign.showAmount && (
+  target ? <ProgressBar ... /> : <p>Terkumpul Rp X</p>
+)}
+```
+
+**Tab Donatur** — komponen `CampaignDetailTabs` di `components/donasi/public/campaign-detail-tabs.tsx`:
+- Dua tab: "Detail" (deskripsi) + "Donatur (N)" (list dengan nominal)
+- Tab hanya muncul jika `showDonorList = true` (admin setting)
+- Nominal donatur: JOIN `payments` WHERE `source_type='donation'` AND `source_id=donations.id` AND `status='paid'`
+- Donor dari cart flow (tanpa donations record) → tidak tampil di list (hanya berkontribusi ke `collected_amount`). Ini limitasi saat ini.
 
 **VPS setup ringkas (untuk referensi deploy ulang):**
 ```
