@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and, inArray } from "drizzle-orm";
+import { rateLimitGuard }   from "@/lib/rate-limit";
 import {
   db, members, tenants, tenantMemberships,
   contacts, addresses, socialMedias, refProfessions,
@@ -14,6 +15,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const blocked = rateLimitGuard(req, "member-public", 30, 60_000);
+  if (blocked) return blocked;
+
   try {
   const { id } = await params;
   const slug = req.nextUrl.searchParams.get("slug");

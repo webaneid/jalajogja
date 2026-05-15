@@ -4,8 +4,12 @@ import { eq, or }                    from "drizzle-orm";
 import { db, profiles, tenants, contacts, members, tenantMemberships, user as authUser } from "@jalajogja/db";
 import { auth }                      from "@/lib/auth";
 import { normalizePhone }            from "@/lib/phone";
+import { rateLimitGuard }            from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
+  const blocked = rateLimitGuard(req, "register", 5, 60_000);
+  if (blocked) return blocked;
+
   try {
     const body = await req.json();
     const {

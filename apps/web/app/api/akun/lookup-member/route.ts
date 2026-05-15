@@ -2,11 +2,15 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { eq, or }                    from "drizzle-orm";
 import { db, contacts, members }     from "@jalajogja/db";
+import { rateLimitGuard }            from "@/lib/rate-limit";
 
 // GET /api/akun/lookup-member?stambuk=  |  ?email=  |  ?phone=
 // Response: { found: true, name, memberId, hasAccount } | { found: false }
 
 export async function GET(req: NextRequest) {
+  const blocked = rateLimitGuard(req, "lookup-member", 10, 60_000);
+  if (blocked) return blocked;
+
   const { searchParams } = new URL(req.url);
   const email   = searchParams.get("email")?.toLowerCase().trim();
   const phone   = searchParams.get("phone")?.trim();
