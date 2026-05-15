@@ -422,11 +422,9 @@ URL disimpan di `donations.certificate_url`.
 
 ## 11. Halaman Publik Donasi
 
-> **Belum diimplementasi.** Dicatat untuk roadmap.
-
 URL: `app/(public)/[tenant]/campaign/[slug]/page.tsx` — grup `(public)`, tanpa auth.
 
-**⚠️ DIIMPLEMENTASIKAN. Alur berbeda dari desain awal di bawah — baca catatan berikut.**
+**✅ SELESAI. Alur implementasi berbeda dari desain awal — baca catatan berikut.**
 
 ### Alur Donasi Publik — SEKARANG (cart universal)
 
