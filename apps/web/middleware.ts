@@ -27,14 +27,23 @@ export async function middleware(request: NextRequest) {
   const host = request.headers.get("host") ?? "";
 
   // ── Custom domain routing ──────────────────────────────────────────────────
-  // Jika request datang dari domain selain jalakarta.com → resolve ke tenant slug
+  // Jika request datang dari domain selain jalakarta.com → resolve ke tenant slug.
+  // Gunakan APP_INTERNAL_URL (lokal) bukan NEXT_PUBLIC_APP_URL (eksternal) agar
+  // resolve tidak perlu round-trip ke internet → lebih cepat dan tidak gagal karena
+  // koneksi eksternal. Set APP_INTERNAL_URL=http://localhost:3000 di .env.local.
   if (!isOwnHost(host) && !pathname.startsWith("/api/")) {
     try {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com";
-      const resolveUrl = new URL("/api/internal/resolve-domain", appUrl);
+      const internalUrl =
+        process.env.APP_INTERNAL_URL ??
+        process.env.NEXT_PUBLIC_APP_URL ??
+        "http://localhost:3000";
+      const resolveUrl = new URL("/api/internal/resolve-domain", internalUrl);
       resolveUrl.searchParams.set("domain", host.split(":")[0]); // strip port jika ada
 
-      const res = await fetch(resolveUrl.toString(), { cache: "no-store" });
+      const res = await fetch(resolveUrl.toString(), {
+        cache: "no-store",
+        signal: AbortSignal.timeout(3000), // timeout 3 detik — jangan blokir request terlalu lama
+      });
       if (res.ok) {
         const { slug } = (await res.json()) as { slug: string | null };
         if (slug) {

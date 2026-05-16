@@ -92,7 +92,29 @@ export async function saveDomainSettingsAction(
     })
     .where(eq(tenants.id, access.tenant.id));
 
+  // Langsung trigger verifikasi DNS — jangan tunggu cron terjadwal
+  // Fire-and-forget: error di sini tidak boleh gagalkan action
+  if (values.customDomain) {
+    void triggerDomainVerification();
+  }
+
   return {};
+}
+
+async function triggerDomainVerification() {
+  try {
+    const internalUrl =
+      process.env.APP_INTERNAL_URL ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      "http://localhost:3000";
+    const secret = process.env.CRON_SECRET;
+    await fetch(`${internalUrl}/api/cron/verify-domains`, {
+      headers: secret ? { Authorization: `Bearer ${secret}` } : {},
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    // Ignore — cron tetap jalan terjadwal sebagai fallback
+  }
 }
 
 // ── Kontak & Sosial Media ─────────────────────────────────────────────────────
