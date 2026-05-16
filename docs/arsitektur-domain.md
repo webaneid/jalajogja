@@ -17,17 +17,17 @@ Ketiga fase tidak saling menggantikan — tenant bisa punya ketiganya aktif seka
 
 ---
 
-## Cara Kerja Saat Ini (Fase 3)
+## Cara Kerja Setelah Phase A (✅ Sudah Difix — 2026-05-16)
 
 ```
 Browser buka ikpmjogja.com
   → Cloudflare terima, SSL termination di Cloudflare
   → Forward HTTP ke VPS (port 80)
-  → Nginx: ikpmjogja.com tidak match server_name manapun
-  → Nginx pakai first server block (jalakarta.com) sebagai default
-  → Proxy ke localhost:3000 dengan Host: ikpmjogja.com
+  → Nginx: catch-all default_server block → proxy ke localhost:3000
   → Next.js middleware baca Host header
-  → Fetch /api/internal/resolve-domain?domain=ikpmjogja.com
+  → Fetch http://localhost:3000/api/internal/resolve-domain?domain=ikpmjogja.com
+     (gunakan APP_INTERNAL_URL — tidak round-trip ke internet)
+  → Timeout 3 detik (AbortSignal) — tidak blokir request terlalu lama
   → DB lookup: WHERE custom_domain = 'ikpmjogja.com' AND status = 'active'
   → Jika found → rewrite ke /{slug}{pathname}
   → Jika not found → middleware pass-through → kena platform root
@@ -389,16 +389,22 @@ function normalizeDomain(input: string): string {
 
 ## Checklist Eksekusi
 
-### Fase A (Hari ini / minggu ini)
-- [ ] Cek `customDomainStatus` ikpmjogja.com via psql — pastikan `active`
-- [ ] Tambah catch-all server block di `/etc/nginx/sites-available/jalakarta.com` di VPS
-- [ ] Test `nginx -t` + reload Nginx
-- [ ] Fix logika cron `verify-domains`: `active` tidak pernah di-downgrade
-- [ ] Deploy + pastikan "kadang masuk ke platform" tidak terjadi lagi
+### Fase A ✅ SELESAI (2026-05-16)
+- [x] Cek `customDomainStatus` ikpmjogja.com via psql — hasilnya `active` ✓
+- [x] Tambah catch-all `default_server` block di `nginx.conf` (commit e3dcc63)
+- [x] Nginx di VPS di-reload — `nginx -t` sukses
+- [x] Fix middleware: gunakan `APP_INTERNAL_URL` (lokal) bukan `NEXT_PUBLIC_APP_URL`
+- [x] Fix middleware: tambah `AbortSignal.timeout(3000)` — cegah blokir request
+- [x] Fix `settings/actions.ts`: setelah save custom domain, langsung trigger cron verify (fire-and-forget)
+- [x] Tambah `APP_INTERNAL_URL=http://localhost:3000` ke `.env.local` di VPS
+- [x] Deploy + PM2 restart — build sukses
 
-### Fase B (Dokumentasi untuk admin/tenant)
-- [ ] Update teks instruksi di `/settings/domain` — wajib Cloudflare proxy
-- [ ] Tambah screenshot/diagram alur setup custom domain
+### Fase B ✅ SELESAI (2026-05-16)
+- [x] Update instruksi di `components/settings/domain-settings-form.tsx` (commit 534c158)
+  - Langkah 1: A record → IP VPS
+  - Langkah 2: Aktifkan Cloudflare proxy (ikon oranye) — WAJIB untuk HTTPS
+  - Hapus referensi "Caddy" dan "modul Front-end tersedia" yang tidak relevan
+- [ ] Deploy Phase B ke VPS (`git pull` + PM2 restart)
 
 ### Fase C (Setelah Fase A stabil)
 - [ ] Middleware: 301 redirect strip slug saat custom domain
