@@ -256,6 +256,7 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 
 ## Arsitektur Website (Dashboard CMS + Front-end Publik)
 > Detail lengkap — dashboard CMS, domain routing, front-end publik, caching, open questions: **`docs/arsitektur-website.md`**
+> Detail lengkap — tiga fase routing, masalah custom domain, roadmap perbaikan: **`docs/arsitektur-domain.md`**
 
 - Dashboard CMS (`/{slug}/website/`): posts, pages, kategori, tag — **SELESAI**
 - **Halaman Legal Singleton** — `terms` (Syarat dan Ketentuan) dan `privacy` (Kebijakan Privasi): template terkunci, satu per tenant, buat via tombol khusus di list pages, render `DefaultTemplate` di front-end
@@ -3240,4 +3241,73 @@ Berlaku di: `post/[slug]`, `campaign/[slug]`, `produk/[slug]`, `agenda/[slug]`.
 5. install bun di host → jalankan migrasi dari packages/db/
 6. setup nginx + certbot
 7. register tenant pertama via /register
+```
+
+### [2026-05] PM2 vs Docker — Pilih Satu, Jangan Keduanya
+
+**Keputusan yang dikunci**: Aplikasi dijalankan via **PM2** (`next start`), bukan Docker container.
+Docker hanya dipakai untuk PostgreSQL dan MinIO.
+
+**Konfigurasi PM2** — file `ecosystem.config.cjs` di root repo:
+```js
+module.exports = {
+  apps: [{
+    name: "jalajogja",
+    cwd: "/var/www/jalajogja/apps/web",
+    script: "node_modules/.bin/next",
+    args: "start",
+    instances: 1,
+    exec_mode: "fork",
+    max_memory_restart: "1G",
+    env: { NODE_ENV: "production", PORT: "3000" },
+  }],
+};
+```
+
+**`output: "standalone"` tidak kompatibel dengan PM2 `next start`:**
+`output: standalone` menghasilkan `.next/standalone/` yang punya server.js sendiri — berbeda dengan
+`next start` yang baca `.next/` biasa. Pakai `output: standalone` hanya di Docker multi-stage.
+Untuk PM2: hapus `output` dari `next.config.ts`, jalankan `next start` seperti biasa.
+
+**Deploy ulang dengan PM2:**
+```bash
+cd /var/www/jalajogja
+git pull
+bun run build --filter=@jalajogja/web
+pm2 restart jalajogja --update-env
+```
+
+**Jika PM2 belum setup atau perlu reset:**
+```bash
+pm2 delete jalajogja        # hapus proses lama (tidak hapus sistem)
+pm2 start ecosystem.config.cjs
+pm2 save                    # persist agar restart otomatis setelah reboot VPS
+```
+
+### [2026-05] Data Cleanup — Orphan Contacts di `public.contacts`
+
+**Masalah**: Tabel `public.contacts` bisa punya banyak baris dengan nomor HP yang sama — dari
+berbagai sesi registrasi yang gagal di tengah jalan (error, retry, dll).
+
+**Dua jenis pemakai `public.contacts`:**
+1. `public.members` — via kolom `contact_id` (satu kontak per anggota)
+2. `public.member_businesses` — via kolom `contact_id` (satu kontak per usaha)
+
+**WAJIB cek keduanya sebelum hapus contact orphan:**
+```sql
+-- Cari contact yang punya phone tertentu
+SELECT c.id, c.phone, m.name AS member_name, mb.name AS business_name
+FROM public.contacts c
+LEFT JOIN public.members m ON m.contact_id = c.id
+LEFT JOIN public.member_businesses mb ON mb.contact_id = c.id
+WHERE c.phone = '+62xxx';
+```
+
+Baris yang `member_name IS NULL` DAN `business_name IS NULL` → orphan, aman dihapus.
+Baris yang ada member atau bisnis → **JANGAN dihapus**.
+
+**Cara hapus:**
+```bash
+docker compose exec postgres psql -U jalakarta -d jalakarta -c \
+  "DELETE FROM public.contacts WHERE id IN ('uuid-1', 'uuid-2');"
 ```
