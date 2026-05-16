@@ -17,13 +17,60 @@ type Params = Promise<{ tenant: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
-  const base = await getTenantSeoBase(slug);
+  const [base, websiteSettings] = await Promise.all([
+    getTenantSeoBase(slug),
+    getSettings(createTenantDb(slug), "website"),
+  ]);
+
+  const homepageSlug = (websiteSettings.homepage_slug as string | undefined) ?? "";
+
+  // Ambil SEO fields dari page yang dipilih sebagai homepage
+  let page: {
+    metaTitle: string | null;
+    metaDesc:  string | null;
+    ogTitle:   string | null;
+    ogDescription: string | null;
+    ogImageId: string | null;
+  } | undefined;
+
+  if (homepageSlug) {
+    const tenantClient             = createTenantDb(slug);
+    const { db: tenantDb, schema } = tenantClient;
+    const rows = await tenantDb
+      .select({
+        metaTitle:     schema.pages.metaTitle,
+        metaDesc:      schema.pages.metaDesc,
+        ogTitle:       schema.pages.ogTitle,
+        ogDescription: schema.pages.ogDescription,
+        ogImageId:     schema.pages.ogImageId,
+      })
+      .from(schema.pages)
+      .where(eq(schema.pages.slug, homepageSlug))
+      .limit(1);
+    page = rows[0];
+  }
+
+  // Resolve OG image URL jika ada ogImageId di page
+  let ogImageUrl = base.logoUrl;
+  if (page?.ogImageId) {
+    const tenantClient             = createTenantDb(slug);
+    const { db: tenantDb, schema } = tenantClient;
+    const [media] = await tenantDb
+      .select({ path: schema.media.path })
+      .from(schema.media)
+      .where(eq(schema.media.id, page.ogImageId))
+      .limit(1);
+    if (media) ogImageUrl = publicUrl(slug, media.path);
+  }
+
   return buildMetadata({
-    title:       base.tagline ?? base.siteName,
-    description: base.description,
-    siteName:    base.siteName,
-    canonicalUrl: base.baseUrl,
-    ogImageUrl:  base.logoUrl,
+    title:          page?.metaTitle || base.tagline || base.siteName,
+    description:    page?.metaDesc  || base.description,
+    siteName:       base.siteName,
+    canonicalUrl:   base.baseUrl,
+    ogImageUrl,
+    ogTitle:        page?.ogTitle       || undefined,
+    ogDescription:  page?.ogDescription || undefined,
   });
 }
 
