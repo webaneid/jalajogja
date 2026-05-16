@@ -138,28 +138,50 @@ export function DomainSettingsForm({
 
         {/* Instruksi DNS — tampil saat pending atau failed */}
         {(status === "pending" || status === "failed") && customDomain && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
-            <p className="text-sm font-medium text-amber-800">
-              Tambahkan A record berikut di DNS provider kamu (Cloudflare, Niagahoster, dll.):
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-4">
+            <p className="text-sm font-semibold text-amber-800">
+              Langkah konfigurasi domain:
             </p>
-            <div className="rounded-md bg-white border font-mono text-xs p-3 space-y-1">
-              <div className="grid grid-cols-[80px_60px_1fr] gap-2 text-muted-foreground">
-                <span>Name</span><span>Type</span><span>Value</span>
-              </div>
-              <div className="grid grid-cols-[80px_60px_1fr] gap-2 text-foreground font-semibold">
-                <span>@</span><span>A</span><span>72.61.215.7</span>
+
+            {/* Langkah 1: A record */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-amber-800">
+                1. Tambahkan A record di panel DNS kamu:
+              </p>
+              <div className="rounded-md bg-white border font-mono text-xs p-3 space-y-1">
+                <div className="grid grid-cols-[80px_60px_1fr] gap-2 text-muted-foreground">
+                  <span>Name</span><span>Type</span><span>Value</span>
+                </div>
+                <div className="grid grid-cols-[80px_60px_1fr] gap-2 text-foreground font-semibold">
+                  <span>@</span><span>A</span><span>72.61.215.7</span>
+                </div>
               </div>
             </div>
-            <p className="text-xs text-amber-700">
-              Propagasi DNS biasanya membutuhkan 5 menit – 24 jam.
-              Verifikasi otomatis berjalan di background setelah kamu simpan.
+
+            {/* Langkah 2: Cloudflare proxy — WAJIB */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-amber-800">
+                2. Aktifkan Cloudflare Proxy <span className="font-semibold">(WAJIB untuk HTTPS)</span>:
+              </p>
+              <div className="rounded-md bg-white border text-xs p-3 space-y-1 text-muted-foreground">
+                <p>• Pastikan domain dikelola via <span className="font-semibold text-foreground">Cloudflare</span></p>
+                <p>• Di tab DNS Cloudflare, klik ikon awan di kolom Proxy status</p>
+                <p>• Ikon harus berwarna <span className="font-semibold text-orange-500">oranye 🟠</span> (Proxied), bukan abu-abu (DNS only)</p>
+              </div>
+              <p className="text-xs text-amber-700">
+                SSL HTTPS untuk custom domain disediakan oleh Cloudflare — tidak perlu konfigurasi tambahan di sisi server.
+                Tanpa proxy Cloudflare aktif, domain tidak akan bisa diakses via HTTPS.
+              </p>
+            </div>
+
+            <p className="text-xs text-amber-600 border-t border-amber-200 pt-3">
+              Propagasi DNS biasanya 5 menit – 24 jam. Verifikasi berjalan otomatis setelah kamu simpan.
             </p>
           </div>
         )}
 
         <p className="text-xs text-muted-foreground">
-          Custom domain aktif setelah DNS terverifikasi dan SSL ter-provisioned otomatis via Caddy.
-          Fitur ini tersedia saat modul Front-end tersedia.
+          Custom domain aktif setelah A record terverifikasi dan Cloudflare proxy diaktifkan.
         </p>
       </fieldset>
 
