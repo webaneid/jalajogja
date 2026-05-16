@@ -7,6 +7,8 @@ import { ProductCard }                   from "@/components/website/public/produ
 import { ProductArchiveClient }          from "@/components/toko/public/product-archive-client";
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
 import type { Metadata }                 from "next";
+import { getTenantSeoBase }              from "@/lib/tenant-seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { ShoppingBag, ChevronLeft, ChevronRight, ChevronRight as ChevronRightIcon } from "lucide-react";
 
 export const revalidate = 60;
@@ -34,25 +36,24 @@ async function resolveSessionType(userId: string | undefined): Promise<SessionTy
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug, categorySlug } = await params;
-  const [tenant] = await db
-    .select({ name: tenants.name })
-    .from(tenants)
-    .where(eq(tenants.slug, slug))
-    .limit(1);
-  if (!tenant) return {};
-
   const tenantClient = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
-  const [cat] = await tenantDb
-    .select({ name: schema.productCategories.name })
-    .from(schema.productCategories)
-    .where(eq(schema.productCategories.slug, categorySlug))
-    .limit(1);
-
-  return {
-    title:       `${cat?.name ?? categorySlug} — Produk ${tenant.name}`,
-    description: `Produk kategori ${cat?.name ?? categorySlug} dari ${tenant.name}`,
-  };
+  const [cat, base] = await Promise.all([
+    tenantDb
+      .select({ name: schema.productCategories.name })
+      .from(schema.productCategories)
+      .where(eq(schema.productCategories.slug, categorySlug))
+      .limit(1)
+      .then((r) => r[0]),
+    getTenantSeoBase(slug),
+  ]);
+  return buildMetadata({
+    title:        `${cat?.name ?? categorySlug} — Produk ${base.siteName}`,
+    description:  `Produk kategori ${cat?.name ?? categorySlug} dari ${base.siteName}`,
+    siteName:     base.siteName,
+    canonicalUrl: `${base.baseUrl}/produk/kategori/${categorySlug}`,
+    ogImageUrl:   base.logoUrl,
+  });
 }
 
 export default async function ProdukKategoriPage({

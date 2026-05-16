@@ -9,6 +9,9 @@ import { CalendarDays, MapPin, Globe, Building2, Navigation, ExternalLink, Video
 import { EventRegisterForm } from "@/components/event/event-register-form";
 import { renderBody } from "@/lib/letter-render";
 import { generateQrDataUrl } from "@/lib/qr-code";
+import type { Metadata } from "next";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
 
 type BankAccount = {
   id: string;
@@ -82,6 +85,33 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   online:  "Online",
   hybrid:  "Hybrid (Online + Offline)",
 };
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ tenant: string; slug: string }>;
+}): Promise<Metadata> {
+  const { tenant: slug, slug: eventSlug } = await params;
+  const tenantClient = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
+  const [event, base] = await Promise.all([
+    tenantDb
+      .select({ title: schema.events.title, description: schema.events.description })
+      .from(schema.events)
+      .where(eq(schema.events.slug, eventSlug))
+      .limit(1)
+      .then((r) => r[0]),
+    getTenantSeoBase(slug),
+  ]);
+  if (!event) return {};
+  return buildMetadata({
+    title:        event.title,
+    description:  event.description ? event.description.slice(0, 160) : undefined,
+    siteName:     base.siteName,
+    canonicalUrl: `${base.baseUrl}/agenda/${eventSlug}`,
+    ogImageUrl:   base.logoUrl,
+  });
+}
 
 export default async function PublicEventPage({
   params,
