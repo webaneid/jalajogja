@@ -2400,7 +2400,8 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
     - `cron verify-domains`: status `active` tidak pernah di-downgrade; `failed` hanya dari `pending`; setiap run catat `domainLastCheckAt` + `domainLastCheckError`
     - `saveDomainSettingsAction`: fetch existing sebelum update; domain sama + sudah `active` → pertahankan `active`, tidak trigger ulang verifikasi; hanya reset ke `pending` jika domain benar-benar berubah
   - TypeScript 0 errors di semua file.
-- Ditunda: C4 (canonical tag per page), sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7).
+- **Custom domain Phase C4** — tambah `generateMetadata` di `agenda/[slug]` + refactor `produk/kategori/[slug]` pakai `getTenantSeoBase`. Semua halaman publik kini punya canonical URL yang benar untuk custom domain maupun path mode.
+- Ditunda: sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7).
 
 ### Pattern `baseUrl` (Custom Domain)
 ```typescript
