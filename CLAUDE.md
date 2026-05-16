@@ -2384,10 +2384,9 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Custom Domain White-label URLs — Phase A/B/C** (sesi 2026-05-16).
-- Sebelumnya: **Bug fix gambar artikel 404 + Campaign UX improvements** (sesi 2026-05-16).
+- Terakhir dikerjakan: **Custom Domain Phase A2** (sesi 2026-05-16).
+- Sebelumnya: **Custom Domain White-label URLs — Phase A/B/C** (sesi 2026-05-16).
 - Sesi terakhir:
-  - **Cleanup orphan contacts** — `public.contacts` yang tidak terhubung ke `members` maupun `member_businesses` dihapus via psql.
   - **Custom domain Phase A** — Nginx `default_server` catch-all + middleware pakai `APP_INTERNAL_URL` + fire-and-forget trigger cron verify setelah save domain settings.
   - **Custom domain Phase B** — UI settings domain diupdate: instruksi Cloudflare proxy wajib (orange cloud) untuk HTTPS.
   - **Custom domain Phase C — White-label clean URLs** — implementasi selesai, TypeScript 0 errors:
@@ -2396,8 +2395,12 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
     - C2: `PublicLayout` baca `host` via `await headers()`, hitung `baseUrl`, strip slug dari navMenu hrefs
     - C3: Header (flex + classic), footer (dark + light), cart-button — semua link pakai `baseUrl` bukan hardcode `/${slug}`
     - Tambah `baseUrl: string` ke `HeaderProps` dan `FooterProps`
+  - **Custom domain Phase A2 — Stabilitas status domain** — TypeScript 0 errors, migration selesai di VPS:
+    - Kolom baru `domain_last_check_at TIMESTAMPTZ` + `domain_last_check_error TEXT` di `public.tenants`
+    - `cron verify-domains`: status `active` tidak pernah di-downgrade; `failed` hanya dari `pending`; setiap run catat `domainLastCheckAt` + `domainLastCheckError`
+    - `saveDomainSettingsAction`: fetch existing sebelum update; domain sama + sudah `active` → pertahankan `active`, tidak trigger ulang verifikasi; hanya reset ke `pending` jika domain benar-benar berubah
   - TypeScript 0 errors di semua file.
-- Ditunda: C4 (canonical tag per page), cron verify-domains jangan downgrade active→failed, sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7).
+- Ditunda: C4 (canonical tag per page), sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7).
 
 ### Pattern `baseUrl` (Custom Domain)
 ```typescript
