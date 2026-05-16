@@ -16,6 +16,7 @@ export type FooterProps = {
   navMenu:         NavItem[];
   contactSettings: ContactSettings;
   primaryColor:    string;
+  baseUrl:         string; // "" jika custom domain, "/{slug}" jika path mode
 };
 
 export const FOOTER_DESIGN_IDS = ["dark", "light"] as const;

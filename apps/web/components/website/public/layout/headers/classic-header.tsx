@@ -5,7 +5,7 @@ import { Menu, X } from "lucide-react";
 import { type NavItem, resolveNavHref } from "@/lib/nav-menu";
 import type { HeaderProps } from "@/lib/header-designs";
 
-export function ClassicHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColor }: HeaderProps) {
+export function ClassicHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColor, baseUrl }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -15,7 +15,7 @@ export function ClassicHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryC
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo + Nama */}
-          <a href={`/${tenantSlug}`} className="flex items-center gap-3 shrink-0">
+          <a href={baseUrl || "/"} className="flex items-center gap-3 shrink-0">
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoUrl} alt={siteName} className="h-10 w-auto object-contain" />

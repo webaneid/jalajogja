@@ -13,10 +13,8 @@ import { PublicButton } from "@/components/website/public/ui/public-button";
 
 function BottomNav({
   navMenu,
-  tenantSlug,
 }: {
   navMenu: NavItem[];
-  tenantSlug: string;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const main  = navMenu.slice(0, 3);
@@ -102,7 +100,7 @@ function BottomNav({
 
 // ── Search bar ────────────────────────────────────────────────────────────────
 
-function SearchBar({ tenantSlug }: { tenantSlug: string }) {
+function SearchBar({ tenantSlug, baseUrl }: { tenantSlug: string; baseUrl: string }) {
   const [query,   setQuery]   = useState("");
   const [results, setResults] = useState<null | {
     posts:    { title: string; slug: string }[];
@@ -154,7 +152,7 @@ function SearchBar({ tenantSlug }: { tenantSlug: string }) {
             <section>
               <p className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/40 font-semibold">Postingan</p>
               {results.posts.map((p) => (
-                <a key={p.slug} href={`/${tenantSlug}/post/${p.slug}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
+                <a key={p.slug} href={`${baseUrl}/post/${p.slug}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
                   {p.title}
                 </a>
               ))}
@@ -164,7 +162,7 @@ function SearchBar({ tenantSlug }: { tenantSlug: string }) {
             <section>
               <p className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/40 font-semibold">Halaman</p>
               {results.pages.map((p) => (
-                <a key={p.slug} href={`/${tenantSlug}/${p.slug}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
+                <a key={p.slug} href={`${baseUrl}/${p.slug}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
                   {p.title}
                 </a>
               ))}
@@ -174,7 +172,7 @@ function SearchBar({ tenantSlug }: { tenantSlug: string }) {
             <section>
               <p className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/40 font-semibold">Event</p>
               {results.events.map((e) => (
-                <a key={e.slug} href={`/${tenantSlug}/event/${e.slug}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
+                <a key={e.slug} href={`${baseUrl}/agenda/${e.slug}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
                   {e.name}
                 </a>
               ))}
@@ -184,7 +182,7 @@ function SearchBar({ tenantSlug }: { tenantSlug: string }) {
             <section>
               <p className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/40 font-semibold">Produk</p>
               {results.products.map((p) => (
-                <a key={p.slug} href={`/${tenantSlug}/produk/${p.slug}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
+                <a key={p.slug} href={`${baseUrl}/produk/${p.slug}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
                   {p.name}
                 </a>
               ))}
@@ -208,7 +206,7 @@ function SearchBar({ tenantSlug }: { tenantSlug: string }) {
 
 // ── User avatar / dropdown ────────────────────────────────────────────────────
 
-function UserButton({ tenantSlug }: { tenantSlug: string }) {
+function UserButton({ tenantSlug, baseUrl }: { tenantSlug: string; baseUrl: string }) {
   const { data: session }          = authClient.useSession();
   const [mounted, setMounted]      = useState(false);
   const [open, setOpen]            = useState(false);
@@ -228,10 +226,10 @@ function UserButton({ tenantSlug }: { tenantSlug: string }) {
   if (!mounted || !session) {
     return (
       <div className="flex items-center gap-2">
-        <PublicButton href={`/${tenantSlug}/login`} variant="ghost" size="sm" icon="none">
+        <PublicButton href={`${baseUrl}/login`} variant="ghost" size="sm" icon="none">
           Masuk
         </PublicButton>
-        <PublicButton href={`/${tenantSlug}/register`} variant="primary" size="sm" icon="arrow">
+        <PublicButton href={`${baseUrl}/register`} variant="primary" size="sm" icon="arrow">
           Daftar
         </PublicButton>
       </div>
@@ -273,7 +271,7 @@ function UserButton({ tenantSlug }: { tenantSlug: string }) {
             </div>
             <div className="py-1">
               <a
-                href={`/${tenantSlug}/akun`}
+                href={`${baseUrl}/akun`}
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/60 transition-colors"
               >
@@ -309,7 +307,7 @@ function UserButton({ tenantSlug }: { tenantSlug: string }) {
 
 // ── FlexHeader (main export) ──────────────────────────────────────────────────
 
-export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColor }: HeaderProps) {
+export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColor, baseUrl }: HeaderProps) {
   return (
     <>
       <header className="sticky top-0 z-50 bg-white border-b border-border shadow-sm">
@@ -317,7 +315,7 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center gap-4 h-14">
             {/* Logo */}
-            <a href={`/${tenantSlug}`} className="flex items-center gap-2.5 shrink-0">
+            <a href={baseUrl || "/"} className="flex items-center gap-2.5 shrink-0">
               {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={logoUrl} alt={siteName} className="h-12 w-auto object-contain" />
@@ -336,14 +334,14 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
             </a>
 
             {/* Search */}
-            <SearchBar tenantSlug={tenantSlug} />
+            <SearchBar tenantSlug={tenantSlug} baseUrl={baseUrl} />
 
             <div className="ml-auto flex items-center gap-2">
               {/* Keranjang belanja */}
-              <CartButton tenantSlug={tenantSlug} />
+              <CartButton tenantSlug={tenantSlug} baseUrl={baseUrl} />
 
               {/* User */}
-              <UserButton tenantSlug={tenantSlug} />
+              <UserButton tenantSlug={tenantSlug} baseUrl={baseUrl} />
             </div>
           </div>
         </div>
@@ -375,7 +373,7 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
       </header>
 
       {/* Bottom nav — hanya mobile */}
-      <BottomNav navMenu={navMenu} tenantSlug={tenantSlug} />
+      <BottomNav navMenu={navMenu} />
 
       {/* Spacer agar konten tidak tertimpa bottom nav di mobile */}
       <div className="h-14 md:hidden" />

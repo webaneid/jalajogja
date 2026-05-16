@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { createTenantDb, db, tenants, getSettings, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
 import { PublicHeader } from "@/components/website/public/layout/public-header";
 import { PublicFooter } from "@/components/website/public/layout/public-footer";
 import { parseNavMenu } from "@/lib/nav-menu";
 import { buildTenantThemeCss, getGoogleFontsUrl } from "@/lib/theme-palette";
+import { isOwnHost } from "@/lib/is-own-host";
 import type { Metadata } from "next";
 
 type Params = Promise<{ tenant: string }>;
@@ -35,6 +37,13 @@ export default async function PublicLayout({
 }) {
   const { tenant: slug } = await params;
 
+  // C2: deteksi custom domain — apakah request datang dari domain milik jalakarta atau tidak
+  const reqHeaders     = await headers();
+  const host           = reqHeaders.get("host") ?? "";
+  const isCustomDomain = !isOwnHost(host);
+  // baseUrl: "" di custom domain (white-label), "/{slug}" di path mode
+  const baseUrl        = isCustomDomain ? "" : `/${slug}`;
+
   const [tenant] = await db
     .select({
       id:       tenants.id,
@@ -64,7 +73,16 @@ export default async function PublicLayout({
   const secondaryColor = (displaySettings.secondary_color   as string | undefined) ?? "#64748b";
   const bodyFont       = (displaySettings.font              as string | undefined) ?? "Inter";
   const headingFont    = (displaySettings.heading_font      as string | undefined) ?? "Inter";
-  const navMenu        = parseNavMenu(websiteSettings.nav_menu, slug);
+  // Jika custom domain: strip slug prefix dari semua nav href agar link tampil clean
+  const rawNavMenu = parseNavMenu(websiteSettings.nav_menu, slug);
+  const navMenu    = isCustomDomain
+    ? rawNavMenu.map((item) => ({
+        ...item,
+        href: item.href.startsWith(`/${slug}/`) ? item.href.slice(`/${slug}`.length)
+            : item.href === `/${slug}`           ? "/"
+            : item.href,
+      }))
+    : rawNavMenu;
   const headerDesign   = (displaySettings.header_design     as string | undefined) ?? "flex";
   const footerDesign   = (displaySettings.footer_design     as string | undefined) ?? "dark";
 
@@ -138,6 +156,7 @@ export default async function PublicLayout({
         logoUrl={logoUrl}
         navMenu={navMenu}
         primaryColor={primaryColor}
+        baseUrl={baseUrl}
       />
 
       <main className="flex-1">
@@ -154,6 +173,7 @@ export default async function PublicLayout({
         navMenu={navMenu}
         contactSettings={enrichedContactSettings as Parameters<typeof PublicFooter>[0]["contactSettings"]}
         primaryColor={primaryColor}
+        baseUrl={baseUrl}
       />
     </div>
     </>

@@ -2384,17 +2384,41 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Bug fix gambar artikel 404 + Campaign UX improvements** (sesi 2026-05-16).
-- Sebelumnya: **Direktori & Statistik — penyempurnaan form wajib + statistik anggota** (sesi 2026-05-15).
-- Sebelumnya: **Direktori Publik — 4 halaman selesai** + **SC→CC boundary fixes** (sesi 2026-05-15).
+- Terakhir dikerjakan: **Custom Domain White-label URLs — Phase A/B/C** (sesi 2026-05-16).
+- Sebelumnya: **Bug fix gambar artikel 404 + Campaign UX improvements** (sesi 2026-05-16).
 - Sesi terakhir:
-  - **Bug fix: gambar artikel 404 di custom domain** — `media.variants` di DB menyimpan path RELATIF (bukan URL penuh). Post detail page membaca `vv?.large` langsung sebagai `<img src>` → browser resolve relative path terhadap URL artikel → 404. Fix: tambah helper `resolveMediaUrl()` di `lib/minio.ts` yang wrap semua variant path dengan `publicUrl()`. Update `post/[slug]/page.tsx` + `campaign/[slug]/page.tsx` + tambah `imageBaseUrl` context ke `renderBody()` sebagai safety net untuk gambar inline Tiptap.
-  - **Fix `renderBody()` untuk gambar inline** — tambah `RenderContext { imageBaseUrl? }` + `fixImageSrc()` di `lib/letter-render.ts`. Menangani path relatif dan localhost URL yang perlu di-replace saat production.
-  - **Fix upload mobile: validasi ukuran file** — tambah guard `file.size > 10MB` di `MemberMediaPicker.uploadFiles()` dengan toast error langsung, tanpa nunggu timeout koneksi.
-  - **Campaign cards — terkumpul selalu tampil** — sebelumnya hanya tampil jika ada `progressPercent` (butuh target). Sekarang: non-qurban selalu tampil nominal terkumpul; kalau ada target → progress bar + persentase, kalau tanpa target → teks "Terkumpul Rp X" saja. Berlaku di 3 card variant (grid/list/ringkas).
-  - **Campaign detail — dua tab (Detail + Donatur)** — progress/terkumpul sekarang tidak butuh target, hanya ikuti `showAmount` setting. Konten kiri dikemas dalam dua tab: "Detail" (deskripsi) dan "Donatur" (list donatur + nominal). Nominal diambil dari JOIN `payments` (paid only). Komponen baru: `components/donasi/public/campaign-detail-tabs.tsx`.
+  - **Cleanup orphan contacts** — `public.contacts` yang tidak terhubung ke `members` maupun `member_businesses` dihapus via psql.
+  - **Custom domain Phase A** — Nginx `default_server` catch-all + middleware pakai `APP_INTERNAL_URL` + fire-and-forget trigger cron verify setelah save domain settings.
+  - **Custom domain Phase B** — UI settings domain diupdate: instruksi Cloudflare proxy wajib (orange cloud) untuk HTTPS.
+  - **Custom domain Phase C — White-label clean URLs** — implementasi selesai, TypeScript 0 errors:
+    - Buat `lib/is-own-host.ts` — shared util antara middleware dan layout (tidak duplikasi)
+    - C1: Middleware 301 redirect `/{slug}/path` → `/path` saat request dari custom domain
+    - C2: `PublicLayout` baca `host` via `await headers()`, hitung `baseUrl`, strip slug dari navMenu hrefs
+    - C3: Header (flex + classic), footer (dark + light), cart-button — semua link pakai `baseUrl` bukan hardcode `/${slug}`
+    - Tambah `baseUrl: string` ke `HeaderProps` dan `FooterProps`
   - TypeScript 0 errors di semua file.
-- Ditunda: sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7), WA notif per stage.
+- Ditunda: C4 (canonical tag per page), cron verify-domains jangan downgrade active→failed, sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7).
+
+### Pattern `baseUrl` (Custom Domain)
+```typescript
+// Di layout.tsx — computed server-side
+const isCustomDomain = !isOwnHost(host);
+const baseUrl = isCustomDomain ? "" : `/${slug}`;
+
+// Di header/footer component
+<a href={baseUrl || "/"}>Logo</a>      // homepage
+<a href={`${baseUrl}/post`}>Artikel</a> // halaman konten
+
+// navMenu — slug di-strip di layout sebelum dikirim ke component
+const navMenu = isCustomDomain
+  ? rawNavMenu.map(item => ({ ...item,
+      href: item.href.startsWith(`/${slug}/`) ? item.href.slice(`/${slug}`.length)
+          : item.href === `/${slug}` ? "/"
+          : item.href }))
+  : rawNavMenu;
+```
+
+**Aturan**: Jangan pernah hardcode `/${tenantSlug}/...` di header/footer/cart component. Selalu pakai `${baseUrl}/...`. Ini memastikan white-label bersih di custom domain.
 
 ### Status Halaman Publik
 

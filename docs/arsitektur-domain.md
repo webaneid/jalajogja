@@ -406,14 +406,37 @@ function normalizeDomain(input: string): string {
   - Hapus referensi "Caddy" dan "modul Front-end tersedia" yang tidak relevan
 - [ ] Deploy Phase B ke VPS (`git pull` + PM2 restart)
 
-### Fase C (Setelah Fase A stabil)
-- [ ] Middleware: 301 redirect strip slug saat custom domain
-- [ ] `PublicLayout`: deteksi custom domain → `baseUrl` prop
-- [ ] Header/footer/nav: gunakan `baseUrl` bukan hardcode `/${slug}`
-- [ ] Canonical tag di semua page server component
-- [ ] Test: ikpmjogja.com/post tampil benar (bukan 404)
-- [ ] Test: ikpmjogja.com/pc-ikpm-jogjakarta/post redirect 301 ke ikpmjogja.com/post
-- [ ] Test: Google Search Console tidak ada duplicate canonical
+### Fase C ✅ SELESAI (2026-05-16)
+
+**File yang dibuat:**
+- `apps/web/lib/is-own-host.ts` — shared util (dipakai middleware + layout)
+
+**File yang diubah:**
+- `apps/web/middleware.ts` — import `isOwnHost` dari shared util + C1: 301 redirect strip slug
+- `apps/web/lib/header-designs.ts` — tambah `baseUrl: string` ke `HeaderProps`
+- `apps/web/lib/footer-designs.ts` — tambah `baseUrl: string` ke `FooterProps`
+- `apps/web/app/(public)/[tenant]/layout.tsx` — C2: deteksi custom domain via `headers()`, compute `baseUrl`, strip slug dari navMenu hrefs, pass `baseUrl` ke header+footer
+- `apps/web/components/website/public/layout/headers/flex-header.tsx` — C3: semua link pakai `baseUrl` (logo, login/register, search results, akun, cart)
+- `apps/web/components/website/public/layout/headers/classic-header.tsx` — C3: logo link pakai `baseUrl`
+- `apps/web/components/website/public/layout/footers/dark-footer.tsx` — C3: logo link pakai `baseUrl`
+- `apps/web/components/website/public/layout/footers/light-footer.tsx` — C3: logo link pakai `baseUrl`
+- `apps/web/components/website/public/layout/cart-button.tsx` — C3: cart link pakai `baseUrl`
+
+**Checklist:**
+- [x] `lib/is-own-host.ts` dibuat — tidak ada duplikasi logika antara middleware dan layout
+- [x] C1: Middleware 301 redirect strip slug saat custom domain
+- [x] C2: `PublicLayout` deteksi custom domain via `headers()` → `baseUrl` prop
+- [x] C2: `parseNavMenu` output di-strip slug prefix saat custom domain
+- [x] C3: Header, footer, cart button semua pakai `baseUrl`
+- [x] TypeScript 0 errors
+- [ ] Deploy ke VPS (`git pull` + `bun run build` + `pm2 restart`)
+- [ ] Test: `ikpmjogja.com/post` tampil benar (bukan 404)
+- [ ] Test: `ikpmjogja.com/pc-ikpm-jogjakarta/post` → redirect 301 → `ikpmjogja.com/post`
+- [ ] Test: semua nav link di header/footer tidak ada slug prefix
+
+**C4 (Canonical tag) — belum diimplementasikan:**
+Canonical tag di setiap page server component masih menggunakan `NEXT_PUBLIC_APP_URL` sebagai base.
+Ini adalah optimasi SEO yang bisa ditambahkan nanti — tidak blocker untuk white-label UX.
 
 ### Fase D (Jangka panjang, saat Cloudflare tidak cukup)
 - [ ] Evaluasi Caddy vs Nginx + manual Certbot per domain

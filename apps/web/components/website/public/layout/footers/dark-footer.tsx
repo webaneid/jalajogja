@@ -60,6 +60,7 @@ export function DarkFooter({
   navMenu,
   contactSettings,
   primaryColor,
+  baseUrl,
 }: FooterProps) {
   const cs      = contactSettings as {
     contact_email?:    string;
@@ -110,7 +111,7 @@ export function DarkFooter({
 
           {/* Kiri: Logo + Nama + Tagline + Deskripsi */}
           <div className="space-y-5">
-            <a href={`/${tenantSlug}`} className="inline-block">
+            <a href={baseUrl || "/"} className="inline-block">
               {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={logoUrl} alt={siteName} className="h-14 w-auto object-contain brightness-0 invert" />

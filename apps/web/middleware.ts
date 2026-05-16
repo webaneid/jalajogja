@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isOwnHost } from "@/lib/is-own-host";
 
 // Route yang butuh autentikasi — slug valid diikuti salah satu module path
 const PROTECTED_PATTERN = /^\/[a-z0-9-]+\/(dashboard|members|letters|finance|shop|settings)/;
@@ -9,18 +10,6 @@ const AUTH_PAGES = ["/login"];
 // Platform: semua /platform/* kecuali /platform/login
 const PLATFORM_PUBLIC = /^\/platform\/login$/;
 const PLATFORM_PROTECTED = /^\/platform(\/|$)/;
-
-// Host-host milik jalakarta — tidak perlu custom domain routing
-function isOwnHost(host: string): boolean {
-  return (
-    host === "jalakarta.com" ||
-    host === "www.jalakarta.com" ||
-    host === "app.jalakarta.com" ||
-    host.endsWith(".jalakarta.com") ||
-    host.startsWith("localhost") ||
-    host.startsWith("127.0.0.1")
-  );
-}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -47,9 +36,13 @@ export async function middleware(request: NextRequest) {
       if (res.ok) {
         const { slug } = (await res.json()) as { slug: string | null };
         if (slug) {
-          // Jika path sudah include slug (link internal dari halaman), jangan tambah lagi
-          if (pathname.startsWith(`/${slug}`)) {
-            return NextResponse.next();
+          // C1: Jika path sudah include slug → strip slug → redirect 301 ke clean URL
+          // Ini membersihkan URL bocor seperti ikpmjogja.com/pc-ikpm-jogjakarta/post
+          if (pathname.startsWith(`/${slug}/`) || pathname === `/${slug}`) {
+            const cleanPath = pathname === `/${slug}` ? "/" : pathname.slice(`/${slug}`.length);
+            const cleanUrl = request.nextUrl.clone();
+            cleanUrl.pathname = cleanPath;
+            return NextResponse.redirect(cleanUrl, 301);
           }
           // Rewrite: ikpm.or.id/post/artikel → /pc-ikpm-jogjakarta/post/artikel (internal)
           const url = request.nextUrl.clone();

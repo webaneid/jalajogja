@@ -6,7 +6,7 @@ import { ShoppingCart } from "lucide-react";
 import { getCartCountAction } from "@/app/(public)/[tenant]/cart/actions";
 import { cn } from "@/lib/utils";
 
-export function CartButton({ tenantSlug }: { tenantSlug: string }) {
+export function CartButton({ tenantSlug, baseUrl }: { tenantSlug: string; baseUrl: string }) {
   const [count, setCount]       = useState(0);
   const [, startTransition]     = useTransition();
   const pathname                = usePathname();
@@ -22,7 +22,7 @@ export function CartButton({ tenantSlug }: { tenantSlug: string }) {
 
   return (
     <a
-      href={`/${tenantSlug}/keranjang`}
+      href={`${baseUrl}/keranjang`}
       className="relative hidden md:flex items-center justify-center h-8 w-8 rounded-full hover:bg-muted/60 text-muted-foreground transition-colors"
       aria-label="Keranjang belanja"
     >

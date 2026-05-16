@@ -6,6 +6,7 @@ export type HeaderProps = {
   logoUrl:      string | null;
   navMenu:      NavItem[];
   primaryColor: string;
+  baseUrl:      string; // "" jika custom domain, "/{slug}" jika path mode
   // currentUser diambil client-side di FlexHeader via authClient.useSession()
   // TIDAK di-pass lewat props agar PublicLayout tetap ISR-safe
 };
