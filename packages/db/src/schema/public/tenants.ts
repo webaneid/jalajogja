@@ -43,7 +43,9 @@ export const tenants = pgTable("tenants", {
   customDomainStatus: text("custom_domain_status", { enum: CUSTOM_DOMAIN_STATUSES })
     .notNull()
     .default("none"),
-  customDomainVerifiedAt: timestamp("custom_domain_verified_at", { withTimezone: true }),
+  customDomainVerifiedAt:  timestamp("custom_domain_verified_at",  { withTimezone: true }),
+  domainLastCheckAt:       timestamp("domain_last_check_at",       { withTimezone: true }),
+  domainLastCheckError:    text("domain_last_check_error"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

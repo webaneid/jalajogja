@@ -19,10 +19,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Ambil semua tenant dengan status pending atau failed
+  // Ambil semua tenant dengan status pending atau failed — TIDAK proses active
+  // Status active tidak pernah di-downgrade oleh cron (hanya bisa naik: pending → active)
   const pendingTenants = await db.query.tenants.findMany({
     where: inArray(tenants.customDomainStatus, ["pending", "failed"]),
-    columns: { id: true, slug: true, customDomain: true },
+    columns: { id: true, slug: true, customDomain: true, customDomainStatus: true },
   });
 
   if (pendingTenants.length === 0) {
@@ -30,34 +31,59 @@ export async function GET(req: NextRequest) {
   }
 
   let activated = 0;
-  const results: { domain: string; status: string; ip?: string }[] = [];
+  const results: { domain: string; status: string; ip?: string; error?: string }[] = [];
+  const now = new Date();
 
   for (const tenant of pendingTenants) {
     if (!tenant.customDomain) continue;
 
     try {
       // Lookup A record domain
-      const addresses = await dns.resolve4(tenant.customDomain);
+      const addresses  = await dns.resolve4(tenant.customDomain);
       const pointsToVps = addresses.includes(VPS_IP);
 
-      results.push({ domain: tenant.customDomain, status: pointsToVps ? "active" : "failed", ip: addresses[0] });
+      results.push({ domain: tenant.customDomain, status: pointsToVps ? "active" : "pending", ip: addresses[0] });
 
+      if (pointsToVps) {
+        // DNS sudah mengarah ke VPS → aktifkan
+        await db
+          .update(tenants)
+          .set({
+            customDomainStatus:    "active",
+            customDomainVerifiedAt: now,
+            domainLastCheckAt:     now,
+            domainLastCheckError:  null,
+            updatedAt:             now,
+          })
+          .where(eq(tenants.id, tenant.id));
+        activated++;
+      } else {
+        // DNS belum mengarah ke VPS — catat hasil cek, tapi JANGAN ubah status active → failed
+        // Hanya set failed jika masih pending (belum pernah active)
+        await db
+          .update(tenants)
+          .set({
+            ...(tenant.customDomainStatus === "pending" ? { customDomainStatus: "failed" as const } : {}),
+            domainLastCheckAt:    now,
+            domainLastCheckError: `A record: ${addresses[0] ?? "tidak ada"} (expected ${VPS_IP})`,
+            updatedAt:            now,
+          })
+          .where(eq(tenants.id, tenant.id));
+      }
+    } catch (err) {
+      // DNS lookup gagal (domain tidak ada, propagasi belum selesai, atau network error)
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      results.push({ domain: tenant.customDomain, status: "error", error: errorMsg });
+
+      // Sama: hanya set failed dari pending, status active tidak disentuh
       await db
         .update(tenants)
         .set({
-          customDomainStatus:    pointsToVps ? "active" : "failed",
-          customDomainVerifiedAt: pointsToVps ? new Date() : null,
-          updatedAt:             new Date(),
+          ...(tenant.customDomainStatus === "pending" ? { customDomainStatus: "failed" as const } : {}),
+          domainLastCheckAt:    now,
+          domainLastCheckError: `DNS lookup error: ${errorMsg}`,
+          updatedAt:            now,
         })
-        .where(eq(tenants.id, tenant.id));
-
-      if (pointsToVps) activated++;
-    } catch {
-      // DNS lookup gagal (domain tidak ada, atau propagasi belum selesai)
-      results.push({ domain: tenant.customDomain, status: "failed" });
-      await db
-        .update(tenants)
-        .set({ customDomainStatus: "failed", updatedAt: new Date() })
         .where(eq(tenants.id, tenant.id));
     }
   }

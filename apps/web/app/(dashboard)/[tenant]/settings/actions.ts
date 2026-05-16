@@ -80,21 +80,43 @@ export async function saveDomainSettingsAction(
     }
   }
 
+  // Baca status existing agar tidak overwrite `active` yang sudah valid
+  const [existing] = await db
+    .select({ customDomain: tenants.customDomain, customDomainStatus: tenants.customDomainStatus })
+    .from(tenants)
+    .where(eq(tenants.id, access.tenant.id))
+    .limit(1);
+
+  const newDomain    = values.customDomain || null;
+  const domainChanged = existing?.customDomain !== newDomain;
+  const wasActive    = existing?.customDomainStatus === "active";
+
+  // Tentukan status baru:
+  // - dikosongkan → none
+  // - domain sama dan sudah active → pertahankan active (tidak trigger ulang verifikasi)
+  // - domain baru / berubah → pending (akan trigger verifikasi)
+  let newStatus: "none" | "pending" | "active";
+  if (!newDomain) {
+    newStatus = "none";
+  } else if (wasActive && !domainChanged) {
+    newStatus = "active";
+  } else {
+    newStatus = "pending";
+  }
+
   await db
     .update(tenants)
     .set({
-      subdomain:          values.subdomain    || null,
-      customDomain:       values.customDomain || null,
-      // Reset ke pending jika custom domain berubah, none jika dikosongkan
-      customDomainStatus: values.customDomain ? "pending" : "none",
-      customDomainVerifiedAt: values.customDomain ? undefined : null,
-      updatedAt: new Date(),
+      subdomain:             values.subdomain || null,
+      customDomain:          newDomain,
+      customDomainStatus:    newStatus,
+      customDomainVerifiedAt: newDomain ? undefined : null,
+      updatedAt:             new Date(),
     })
     .where(eq(tenants.id, access.tenant.id));
 
-  // Langsung trigger verifikasi DNS — jangan tunggu cron terjadwal
-  // Fire-and-forget: error di sini tidak boleh gagalkan action
-  if (values.customDomain) {
+  // Trigger verifikasi DNS hanya jika domain berubah atau belum active
+  if (newDomain && (domainChanged || !wasActive)) {
     void triggerDomainVerification();
   }
 
