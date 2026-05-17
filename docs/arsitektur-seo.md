@@ -359,7 +359,7 @@ Setelah implementasi, jalankan `bun tsc --noEmit` di `apps/web/` dan pastikan 0 
 
 | Item | Status |
 |------|--------|
-| Bug `og:type` di `lib/seo.ts` | ⬜ Menunggu approval |
-| Bug Twitter `images` format | ⬜ Menunggu approval |
-| Related Posts — query + render | ⬜ Menunggu approval |
-| Deploy ke VPS | ⬜ Setelah approval |
+| Bug `og:type` di `lib/seo.ts` | ✅ SELESAI (commit 74b7f18) |
+| Bug Twitter `images` format | ✅ SELESAI (commit 74b7f18) |
+| Related Posts — query + render | ✅ SELESAI (commit e9e6a87) |
+| Deploy ke VPS | ⬜ Jalankan `git pull` + `bun run build --filter=@jalajogja/web` + `pm2 restart jalajogja` |
