@@ -191,10 +191,9 @@ async function getRelatedPosts(
     return rows.map(r => {
       const media = r.coverId ? mediaMap.get(r.coverId) : undefined;
       const coverUrl = media ? resolveMediaUrl(tenantSlug, media.path, media.variants) : null;
-      const coverVariants = media?.variants ?? null;
       return {
         id: r.id, title: r.title, slug: r.slug, excerpt: r.excerpt,
-        coverUrl, coverVariants, coverAlt: null, coverTitle: null,
+        coverUrl, coverVariants: null, coverAlt: null, coverTitle: null,
         categoryName: r.categoryName,
         publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
         isFeatured: false,
