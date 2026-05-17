@@ -2,13 +2,15 @@ import { createHash } from "crypto";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { headers } from "next/headers";
-import { eq } from "drizzle-orm";
+import { eq, and, ne, inArray, desc } from "drizzle-orm";
 import { createTenantDb, db, tenants, getSetting, user as authUser, members } from "@jalajogja/db";
 import { resolveMediaUrl } from "@/lib/minio";
 import { renderBody } from "@/lib/letter-render";
 import { recordView, hashIp } from "@/lib/view-counter";
 import { WidgetArea } from "@/components/website/public/widget-area";
 import { PublicButton } from "@/components/website/public/ui/public-button";
+import { PostCard } from "@/components/website/public/post-cards/post-card";
+import type { PostCardData } from "@/lib/post-card-templates";
 import type { Metadata } from "next";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
@@ -66,6 +68,7 @@ async function getPost(tenantSlug: string, postSlug: string) {
       status:       schema.posts.status,
       coverId:      schema.posts.coverId,
       authorId:     schema.posts.authorId,
+      categoryId:   schema.posts.categoryId,
       publishedAt:  schema.posts.publishedAt,
       updatedAt:    schema.posts.updatedAt,
       metaTitle:    schema.posts.metaTitle,
@@ -142,10 +145,126 @@ async function getPost(tenantSlug: string, postSlug: string) {
     }
   }
 
+  // Fetch tag IDs untuk related posts
+  const tagRows = await tenantDb
+    .select({ tagId: schema.postTagPivot.tagId })
+    .from(schema.postTagPivot)
+    .where(eq(schema.postTagPivot.postId, post.id));
+  const tagIds = tagRows.map(r => r.tagId);
+
   return {
     post, coverUrl, coverAlt, coverTitle, coverCaption,
     tenantName: tenant.name, timezone, authorName, authorAvatar,
+    tagIds, categoryId: post.categoryId,
   };
+}
+
+// ── Related Posts ─────────────────────────────────────────────────────────────
+
+async function getRelatedPosts(
+  tenantClient: ReturnType<typeof createTenantDb>,
+  tenantSlug:   string,
+  currentPostId: string,
+  tagIds:       string[],
+  categoryId:   string | null,
+): Promise<{ posts: PostCardData[]; label: "Konten Terkait" | "Konten Lain" }> {
+  const { db: tenantDb, schema } = tenantClient;
+  const LIMIT = 5;
+
+  type PostRow = {
+    id: string; title: string; slug: string; excerpt: string | null;
+    coverId: string | null; publishedAt: Date | null; categoryName: string | null;
+  };
+
+  async function resolveCovers(rows: PostRow[]): Promise<PostCardData[]> {
+    const coverIds = rows.map(r => r.coverId).filter((id): id is string => id != null);
+    const mediaMap = new Map<string, { path: string; variants: Record<string, string> | null }>();
+    if (coverIds.length > 0) {
+      const mediaRows = await tenantDb
+        .select({ id: schema.media.id, path: schema.media.path, variants: schema.media.variants })
+        .from(schema.media)
+        .where(inArray(schema.media.id, coverIds));
+      for (const m of mediaRows) {
+        mediaMap.set(m.id, { path: m.path, variants: m.variants as Record<string, string> | null });
+      }
+    }
+    return rows.map(r => {
+      const media = r.coverId ? mediaMap.get(r.coverId) : undefined;
+      const coverUrl = media ? resolveMediaUrl(tenantSlug, media.path, media.variants) : null;
+      const coverVariants = media?.variants ?? null;
+      return {
+        id: r.id, title: r.title, slug: r.slug, excerpt: r.excerpt,
+        coverUrl, coverVariants, coverAlt: null, coverTitle: null,
+        categoryName: r.categoryName,
+        publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+        isFeatured: false,
+      };
+    });
+  }
+
+  const baseSelect = {
+    id:           schema.posts.id,
+    title:        schema.posts.title,
+    slug:         schema.posts.slug,
+    excerpt:      schema.posts.excerpt,
+    coverId:      schema.posts.coverId,
+    publishedAt:  schema.posts.publishedAt,
+    categoryName: schema.postCategories.name,
+  };
+
+  // Sumber 1: tag sama
+  if (tagIds.length > 0) {
+    const rows = await tenantDb
+      .selectDistinct(baseSelect)
+      .from(schema.posts)
+      .innerJoin(schema.postTagPivot, eq(schema.postTagPivot.postId, schema.posts.id))
+      .leftJoin(schema.postCategories, eq(schema.postCategories.id, schema.posts.categoryId))
+      .where(and(
+        eq(schema.posts.status, "published"),
+        ne(schema.posts.id, currentPostId),
+        inArray(schema.postTagPivot.tagId, tagIds),
+      ))
+      .orderBy(desc(schema.posts.publishedAt))
+      .limit(LIMIT);
+
+    if (rows.length > 0) {
+      return { posts: await resolveCovers(rows), label: "Konten Terkait" };
+    }
+  }
+
+  // Sumber 2: kategori sama
+  if (categoryId) {
+    const rows = await tenantDb
+      .select(baseSelect)
+      .from(schema.posts)
+      .leftJoin(schema.postCategories, eq(schema.postCategories.id, schema.posts.categoryId))
+      .where(and(
+        eq(schema.posts.status, "published"),
+        ne(schema.posts.id, currentPostId),
+        eq(schema.posts.categoryId, categoryId),
+      ))
+      .orderBy(desc(schema.posts.publishedAt))
+      .limit(LIMIT);
+
+    if (rows.length > 0) {
+      return { posts: await resolveCovers(rows), label: "Konten Lain" };
+    }
+  }
+
+  // Sumber 3: fallback global
+  const rows = await tenantDb
+    .select(baseSelect)
+    .from(schema.posts)
+    .leftJoin(schema.postCategories, eq(schema.postCategories.id, schema.posts.categoryId))
+    .where(and(
+      eq(schema.posts.status, "published"),
+      ne(schema.posts.id, currentPostId),
+    ))
+    .orderBy(desc(schema.posts.publishedAt))
+    .limit(LIMIT);
+
+  if (rows.length === 0) return { posts: [], label: "Konten Lain" };
+  return { posts: await resolveCovers(rows), label: "Konten Lain" };
 }
 
 // ── Metadata ───────────────────────────────────────────────────────────────────
@@ -194,9 +313,10 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
     }));
   }
 
-  const { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName, timezone, authorName, authorAvatar } = result;
+  const { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName, timezone, authorName, authorAvatar, tagIds, categoryId } = result;
   const imageBaseUrl = `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${tenantSlug}`;
   const html = renderBody(post.content, { imageBaseUrl });
+  const relatedPosts = await getRelatedPosts(tenantClient, tenantSlug, post.id, tagIds, categoryId);
 
   const fmtUpdated = (date: Date) =>
     new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(date);
@@ -301,6 +421,18 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
               <span>Diperbarui {fmtUpdated(post.updatedAt)}</span>
             )}
           </div>
+
+          {/* Konten Terkait */}
+          {relatedPosts.posts.length > 0 && (
+            <section className="mt-12 pt-8 border-t border-border">
+              <h2 className="text-lg font-semibold mb-4">{relatedPosts.label}</h2>
+              <div className="space-y-4">
+                {relatedPosts.posts.map(p => (
+                  <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
+                ))}
+              </div>
+            </section>
+          )}
 
           <PublicButton
             href={`/${tenantSlug}/post`}
