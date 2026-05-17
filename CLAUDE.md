@@ -3209,6 +3209,24 @@ export function resolveMediaUrl(
 
 MediaPicker response sudah mengembalikan URL penuh karena upload route memanggil `publicUrl()` sebelum insert ke `products.images`. Jangan dobel.
 
+**`PostCardData.coverVariants` — JANGAN isi dengan path relatif dari DB:**
+`PostCardData.coverVariants` harus berisi URL penuh, bukan path relatif. Komentar di type-nya:
+`"semua variant resolved URLs"`. Jika membangun `PostCardData` secara manual (misal di fungsi helper
+seperti `getRelatedPosts`), **set `coverVariants: null`** dan hanya isi `coverUrl` via `resolveMediaUrl()`.
+`pickCover()` otomatis fallback ke `coverUrl` jika `coverVariants` null atau tidak punya variant yang diminta.
+
+```typescript
+// SALAH — path relatif dari DB langsung ke coverVariants
+const coverVariants = media?.variants ?? null;   // "website/2026/05/...._sq.webp"
+return { ..., coverUrl, coverVariants };         // → 404 di custom domain
+
+// BENAR — hanya coverUrl yang di-resolve, coverVariants dikosongkan
+const coverUrl = media ? resolveMediaUrl(tenantSlug, media.path, media.variants) : null;
+return { ..., coverUrl, coverVariants: null };   // pickCover() fallback ke coverUrl
+```
+
+Berlaku di semua tempat yang membangun `PostCardData` secara manual di luar pipeline standar.
+
 **POSTGRESQL JSONB LIKE gotcha (temuan saat debug):**
 PostgreSQL serialisasi JSONB dengan spasi: `"src": "..."` bukan `"src":"..."`. Query `WHERE content::text LIKE '%"src":"website/%'` → 0 rows karena tidak ada spasi. Gunakan `LIKE '%"src": "website/%'` (ada spasi setelah colon).
 
