@@ -37,8 +37,8 @@ export interface GenerateMetadataParams {
   robots?: string | null;
   /** Locale BCP 47, default "id_ID" */
   locale?: string;
-  /** og:type, default "website" */
-  ogType?: string;
+  /** og:type, default "website" — nilai yang valid: "website" | "article" | "profile" | dll */
+  ogType?: "website" | "article" | "book" | "profile" | "music.song" | "music.album" | "music.playlist" | "music.radio_station" | "video.movie" | "video.episode" | "video.tv_show" | "video.other";
 }
 
 export interface ArticleJsonLdParams {
@@ -178,6 +178,7 @@ export function generateMetadata(params: GenerateMetadataParams): Metadata {
     title: fullTitle,
     ...(metaDesc && { description: metaDesc }),
     openGraph: {
+      type: ogType,
       title: resolvedOgTitle,
       ...(resolvedOgDesc && { description: resolvedOgDesc }),
       siteName,
@@ -191,7 +192,9 @@ export function generateMetadata(params: GenerateMetadataParams): Metadata {
       card: twitterCard,
       title: resolvedOgTitle,
       ...(resolvedOgDesc && { description: resolvedOgDesc }),
-      ...(ogImageUrl && { images: [ogImageUrl] }),
+      ...(ogImageUrl && {
+        images: [{ url: ogImageUrl, width: OG_IMAGE_WIDTH, height: OG_IMAGE_HEIGHT, alt: resolvedOgTitle }],
+      }),
     },
     robots: {
       index:  !noIndex,
