@@ -1,7 +1,8 @@
 # Evaluasi Arsitektur URL — jalakarta
 
-> Status: **Evaluasi — belum diimplementasikan**
-> Tujuan: mendokumentasikan masalah URL saat ini dan rencana perbaikan jangka panjang.
+> Status: **Evaluasi — rencana migrasi sudah tersedia**
+> Dokumen ini menjelaskan masalah dan analisis. **Rencana eksekusi ada di `docs/rencana-migrasi-url.md`**.
+> Dokumen ini akan dihapus saat Fase 4 migrasi selesai (kontennya sudah masuk ke plan).
 
 ---
 

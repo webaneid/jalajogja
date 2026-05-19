@@ -931,9 +931,9 @@ Logika: cari yang spesifik dulu → fallback ke `general`.
 - `getFirstTenantForUser()` loop O(n) — perlu tabel `public.user_tenant_index` saat tenant > 100
 - `check-slug` endpoint perlu rate limiting per-IP (saat ini hanya referer check)
 - `getTenantAccess()` dipanggil di layout DAN page — perlu `React.cache()` saat query makin banyak
-- **Arsitektur URL tidak terstruktur** — admin dashboard dan website publik berbagi namespace `/{slug}/*`, menyebabkan konflik penamaan (toko→produk, donasi→campaign, event→agenda). Solusi: prefix `/app/{slug}/*` untuk semua admin routes. Detail evaluasi: `docs/evaluasi-arsitektur-url.md`
-- **Post-login routing multi-tenant tidak deterministik** — `getFirstTenantForUser()` tidak ada `ORDER BY`, user di 2 tenant bisa dikirim ke tenant mana saja. Fix: halaman pemilih tenant, atau index `user_tenant_index` dengan priority
-- **Middleware `PROTECTED_PATTERN` tidak scalable** — hardcode nama modul satu per satu; akan rusak saat nama modul berubah atau modul baru ditambah. Fix: ganti dengan `startsWith("/app/")` setelah migrasi URL
+- **Arsitektur URL tidak terstruktur** — admin dashboard dan website publik berbagi namespace `/{slug}/*`, konflik penamaan (toko→produk, donasi→campaign, event→agenda). **Rencana migrasi matang: `docs/rencana-migrasi-url.md`**. Target: `/app/{slug}/*` untuk admin, `/{slug}/*` untuk publik. Termasuk rencana admin subdomain `admin.ikpmjogja.com`.
+- **Post-login routing multi-tenant tidak deterministik** — `getFirstTenantForUser()` tidak ada `ORDER BY`, user di 2+ tenant bisa dikirim ke tenant mana saja. Akan difix di Fase 0 migrasi URL.
+- **Middleware `PROTECTED_PATTERN` tidak scalable** — hardcode nama modul, modul baru tidak otomatis terlindungi. Selesai otomatis di Fase 1 migrasi (`startsWith("/app/")`).
 
 ## Prinsip Penggunaan CLAUDE.md
 
