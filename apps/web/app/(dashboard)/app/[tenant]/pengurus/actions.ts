@@ -37,8 +37,8 @@ export type DivisionData = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function revalidatePengurus(slug: string) {
-  revalidatePath(`/${slug}/pengurus`);
-  revalidatePath(`/${slug}/divisi`);
+  revalidatePath(`/app/${slug}/pengurus`);
+  revalidatePath(`/app/${slug}/divisi`);
 }
 
 // ─── Officer Actions ──────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ export default async function PengurusLayout({
 }) {
   const { tenant: slug } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   return (
     <div className="flex min-h-screen">

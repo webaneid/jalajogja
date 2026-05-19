@@ -15,7 +15,7 @@ export default async function SettingsRolesPage({
   if (!access) redirect("/dashboard-redirect");
 
   if (!canManageUsers(access.tenantUser)) {
-    redirect(`/${slug}/settings/general`);
+    redirect(`/app/${slug}/settings/general`);
   }
 
   const { db: tenantDb, schema } = createTenantDb(slug);

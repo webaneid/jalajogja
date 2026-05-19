@@ -6,5 +6,5 @@ export default async function DokumenPage({
   params: Promise<{ tenant: string }>;
 }) {
   const { tenant: slug } = await params;
-  redirect(`/${slug}/dokumen/semua`);
+  redirect(`/app/${slug}/dokumen/semua`);
 }

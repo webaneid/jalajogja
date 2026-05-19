@@ -21,7 +21,7 @@ export async function saveWebsiteSettingsAction(
     upsertSetting(tenantClient, "nav_menu",      "website", data.navMenu),
   ]);
 
-  revalidatePath(`/${slug}/settings/website`);
+  revalidatePath(`/app/${slug}/settings/website`);
   return { success: true };
 }
 
@@ -39,7 +39,7 @@ export async function saveDesignSettingsAction(
     upsertSetting(tenantClient, "footer_design", "display", data.footerDesign),
   ]);
 
-  revalidatePath(`/${slug}/settings/website`);
+  revalidatePath(`/app/${slug}/settings/website`);
   revalidatePath(`/${slug}`);
   return { success: true };
 }

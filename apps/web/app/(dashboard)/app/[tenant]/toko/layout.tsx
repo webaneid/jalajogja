@@ -13,8 +13,8 @@ export default async function TokoLayout({
   const { tenant: slug } = await params;
 
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
-  if (!hasReadAccess(access.tenantUser, "toko")) redirect(`/${slug}/dashboard`);
+  if (!access) redirect("/app/login");
+  if (!hasReadAccess(access.tenantUser, "toko")) redirect(`/app/${slug}/dashboard`);
 
   return (
     <div className="flex h-full">

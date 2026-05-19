@@ -6,5 +6,5 @@ export default async function BillingPage({
   params: Promise<{ tenant: string }>;
 }) {
   const { tenant: slug } = await params;
-  redirect(`/${slug}/finance/billing/invoice`);
+  redirect(`/app/${slug}/finance/billing/invoice`);
 }

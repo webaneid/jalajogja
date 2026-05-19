@@ -24,7 +24,7 @@ export default async function JurnalPage({
   const { tenant: slug } = await params;
   const { q, page } = await searchParams;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const { db, schema } = createTenantDb(slug);
   const currentPage = Math.max(1, parseInt(page ?? "1"));

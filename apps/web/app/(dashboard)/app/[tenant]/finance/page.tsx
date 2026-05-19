@@ -6,5 +6,5 @@ export default async function FinancePage({
   params: Promise<{ tenant: string }>;
 }) {
   const { tenant: slug } = await params;
-  redirect(`/${slug}/finance/dashboard`);
+  redirect(`/app/${slug}/finance/dashboard`);
 }

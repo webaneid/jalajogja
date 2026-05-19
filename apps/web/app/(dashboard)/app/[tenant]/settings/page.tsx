@@ -6,5 +6,5 @@ export default async function SettingsPage({
   params: Promise<{ tenant: string }>;
 }) {
   const { tenant: slug } = await params;
-  redirect(`/${slug}/settings/general`);
+  redirect(`/app/${slug}/settings/general`);
 }

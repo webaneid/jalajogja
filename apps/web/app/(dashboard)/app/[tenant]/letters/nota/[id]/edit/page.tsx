@@ -15,7 +15,7 @@ export default async function NotaDinasEditPage({
 }) {
   const { tenant: slug, id: letterId } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const tenantClient             = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;

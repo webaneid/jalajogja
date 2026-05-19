@@ -55,7 +55,7 @@ export async function approveMitraAction(
     .set({ status: "approved", reviewedAt: now, reviewedBy: access.tenantUser.id })
     .where(eq(schema.mitraApplications.id, applicationId));
 
-  revalidatePath(`/${slug}/toko/mitra`);
+  revalidatePath(`/app/${slug}/toko/mitra`);
   return {};
 }
 
@@ -90,7 +90,7 @@ export async function rejectMitraAction(
     })
     .where(eq(schema.mitraApplications.id, applicationId));
 
-  revalidatePath(`/${slug}/toko/mitra`);
+  revalidatePath(`/app/${slug}/toko/mitra`);
   return {};
 }
 
@@ -110,7 +110,7 @@ export async function suspendMitraAction(
     .set({ status: "suspended", suspensionReason: reason || null, updatedAt: new Date() })
     .where(eq(schema.mitras.id, mitraId));
 
-  revalidatePath(`/${slug}/toko/mitra`);
+  revalidatePath(`/app/${slug}/toko/mitra`);
   return {};
 }
 
@@ -129,7 +129,7 @@ export async function reactivateMitraAction(
     .set({ status: "active", suspensionReason: null, updatedAt: new Date() })
     .where(eq(schema.mitras.id, mitraId));
 
-  revalidatePath(`/${slug}/toko/mitra`);
+  revalidatePath(`/app/${slug}/toko/mitra`);
   return {};
 }
 

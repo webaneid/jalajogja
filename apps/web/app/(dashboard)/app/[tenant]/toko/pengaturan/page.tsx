@@ -11,7 +11,7 @@ export default async function TokoSettingsPage({
   const { tenant: slug } = await params;
 
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const settings = await getTokoSettings(slug);
 

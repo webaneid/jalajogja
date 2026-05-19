@@ -6,5 +6,5 @@ export default async function LettersPage({
   params: Promise<{ tenant: string }>;
 }) {
   const { tenant: slug } = await params;
-  redirect(`/${slug}/letters/keluar`);
+  redirect(`/app/${slug}/letters/keluar`);
 }

@@ -36,7 +36,7 @@ export default async function FulfillmentPage({
 }) {
   const { tenant: slug, invoiceId } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const { db, schema } = createTenantDb(slug);
 
@@ -68,7 +68,7 @@ export default async function FulfillmentPage({
 
   // Hanya untuk pesanan via keranjang (sourceType='cart')
   if (inv.sourceType !== "cart") {
-    redirect(`/${slug}/finance/billing/invoice/${invoiceId}`);
+    redirect(`/app/${slug}/finance/billing/invoice/${invoiceId}`);
   }
 
   const [items, shippingRows] = await Promise.all([

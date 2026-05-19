@@ -49,7 +49,7 @@ export default async function TransaksiDetailPage({
 }) {
   const { tenant: slug, id: donationId } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const { db, schema } = createTenantDb(slug);
 

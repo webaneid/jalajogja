@@ -18,7 +18,7 @@ export default async function SettingsUsersPage({
 
   // Hanya owner/ketua yang bisa akses halaman ini
   if (!canManageUsers(access.tenantUser)) {
-    redirect(`/${slug}/settings/general`);
+    redirect(`/app/${slug}/settings/general`);
   }
 
   const { db: tenantDb, schema } = createTenantDb(slug);

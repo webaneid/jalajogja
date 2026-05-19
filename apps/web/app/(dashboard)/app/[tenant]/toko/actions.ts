@@ -169,7 +169,7 @@ function slugify(text: string): string {
 }
 
 function revalidateToko(slug: string) {
-  revalidatePath(`/${slug}/toko`);
+  revalidatePath(`/app/${slug}/toko`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════════

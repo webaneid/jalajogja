@@ -6,5 +6,5 @@ export default async function TokoPage({
   params: Promise<{ tenant: string }>;
 }) {
   const { tenant: slug } = await params;
-  redirect(`/${slug}/toko/produk`);
+  redirect(`/app/${slug}/toko/produk`);
 }

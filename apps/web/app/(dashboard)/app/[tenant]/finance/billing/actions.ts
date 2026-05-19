@@ -45,8 +45,8 @@ export type ConfirmInvoicePaymentData = {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function revalidateBilling(slug: string) {
-  revalidatePath(`/${slug}/finance/billing`);
-  revalidatePath(`/${slug}/finance`);
+  revalidatePath(`/app/${slug}/finance/billing`);
+  revalidatePath(`/app/${slug}/finance`);
 }
 
 function calcSubtotal(items: InvoiceItemInput[]): number {
@@ -814,6 +814,6 @@ export async function updateFulfillmentStatusAction(
   }
 
   revalidateBilling(slug);
-  revalidatePath(`/${slug}/toko/pesanan`);
+  revalidatePath(`/app/${slug}/toko/pesanan`);
   return { success: true, data: undefined };
 }

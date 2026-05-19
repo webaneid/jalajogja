@@ -115,7 +115,7 @@ function pickIncomeAccount(
 }
 
 function revalidateFinance(slug: string) {
-  revalidatePath(`/${slug}/finance`);
+  revalidatePath(`/app/${slug}/finance`);
 }
 
 /** Wrapper untuk billing/actions.ts yang butuh resolusi akun kas + pendapatan */

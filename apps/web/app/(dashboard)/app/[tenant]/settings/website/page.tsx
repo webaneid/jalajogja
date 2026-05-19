@@ -14,7 +14,7 @@ export default async function WebsiteSettingsPage({
 }) {
   const { tenant: slug } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const tenantClient   = createTenantDb(slug);
   const { db, schema } = tenantClient;

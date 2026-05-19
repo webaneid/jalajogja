@@ -235,7 +235,7 @@ export async function createLetterAction(
       })
       .returning({ id: schema.letters.id });
 
-    revalidatePath(`/${slug}/letters/${type === "outgoing" ? "keluar" : "nota"}`);
+    revalidatePath(`/app/${slug}/letters/${type === "outgoing" ? "keluar" : "nota"}`);
     return { success: true, letterId: letter.id };
   } catch (err) {
     console.error("[createLetterAction]", err);
@@ -288,7 +288,7 @@ export async function createIncomingLetterAction(
       })
       .returning({ id: schema.letters.id });
 
-    revalidatePath(`/${slug}/letters/masuk`);
+    revalidatePath(`/app/${slug}/letters/masuk`);
     return { success: true, letterId: letter.id };
   } catch (err) {
     console.error("[createIncomingLetterAction]", err);
@@ -344,10 +344,10 @@ export async function updateLetterAction(
       .where(eq(schema.letters.id, letterId));
 
     const path = existing.type === "incoming"
-      ? `/${slug}/letters/masuk`
+      ? `/app/${slug}/letters/masuk`
       : existing.type === "internal"
-        ? `/${slug}/letters/nota`
-        : `/${slug}/letters/keluar`;
+        ? `/app/${slug}/letters/nota`
+        : `/app/${slug}/letters/keluar`;
     revalidatePath(path);
     return { success: true };
   } catch (err) {
@@ -374,7 +374,7 @@ export async function updateLetterStatusAction(
       .set({ status, updatedAt: new Date() })
       .where(eq(schema.letters.id, letterId));
 
-    revalidatePath(`/${slug}/letters`);
+    revalidatePath(`/app/${slug}/letters`);
     return { success: true };
   } catch (err) {
     console.error("[updateLetterStatusAction]", err);
@@ -403,7 +403,7 @@ export async function deleteLetterAction(
       .delete(schema.letters)
       .where(eq(schema.letters.id, letterId));
 
-    revalidatePath(`/${slug}/letters`);
+    revalidatePath(`/app/${slug}/letters`);
     return { success: true };
   } catch (err) {
     console.error("[deleteLetterAction]", err);
@@ -438,7 +438,7 @@ export async function createLetterTypeAction(
       })
       .returning({ id: schema.letterTypes.id });
 
-    revalidatePath(`/${slug}/letters/template`);
+    revalidatePath(`/app/${slug}/letters/template`);
     return { success: true, typeId: type.id };
   } catch (err) {
     console.error("[createLetterTypeAction]", err);
@@ -473,7 +473,7 @@ export async function updateLetterTypeAction(
       })
       .where(eq(schema.letterTypes.id, typeId));
 
-    revalidatePath(`/${slug}/letters/template`);
+    revalidatePath(`/app/${slug}/letters/template`);
     return { success: true };
   } catch (err) {
     console.error("[updateLetterTypeAction]", err);
@@ -504,7 +504,7 @@ export async function deleteLetterTypeAction(
       .delete(schema.letterTypes)
       .where(eq(schema.letterTypes.id, typeId));
 
-    revalidatePath(`/${slug}/letters/template`);
+    revalidatePath(`/app/${slug}/letters/template`);
     return { success: true };
   } catch (err) {
     console.error("[deleteLetterTypeAction]", err);
@@ -536,7 +536,7 @@ export async function createLetterTemplateAction(
       })
       .returning({ id: schema.letterTemplates.id });
 
-    revalidatePath(`/${slug}/letters/template`);
+    revalidatePath(`/app/${slug}/letters/template`);
     return { success: true, templateId: template.id };
   } catch (err) {
     console.error("[createLetterTemplateAction]", err);
@@ -568,7 +568,7 @@ export async function updateLetterTemplateAction(
       })
       .where(eq(schema.letterTemplates.id, templateId));
 
-    revalidatePath(`/${slug}/letters/template`);
+    revalidatePath(`/app/${slug}/letters/template`);
     return { success: true };
   } catch (err) {
     console.error("[updateLetterTemplateAction]", err);
@@ -599,7 +599,7 @@ export async function deleteLetterTemplateAction(
       .delete(schema.letterTemplates)
       .where(eq(schema.letterTemplates.id, templateId));
 
-    revalidatePath(`/${slug}/letters/template`);
+    revalidatePath(`/app/${slug}/letters/template`);
     return { success: true };
   } catch (err) {
     console.error("[deleteLetterTemplateAction]", err);
@@ -775,7 +775,7 @@ export async function signLetterAction(
       });
     }
 
-    revalidatePath(`/${slug}/letters`);
+    revalidatePath(`/app/${slug}/letters`);
     return { success: true, verificationHash };
   } catch (err) {
     console.error("[signLetterAction]", err);
@@ -801,7 +801,7 @@ export async function removeSignatureAction(
       .delete(schema.letterSignatures)
       .where(eq(schema.letterSignatures.id, signatureId));
 
-    revalidatePath(`/${slug}/letters`);
+    revalidatePath(`/app/${slug}/letters`);
     return { success: true };
   } catch (err) {
     console.error("[removeSignatureAction]", err);
@@ -877,7 +877,7 @@ export async function assignSignerSlotAction(
         .set({ officerId, role, signingToken, signingTokenExpiresAt })
         .where(eq(schema.letterSignatures.id, existing.id));
 
-      revalidatePath(`/${slug}/letters`);
+      revalidatePath(`/app/${slug}/letters`);
       return { success: true, signingToken, signatureId: existing.id };
     }
 
@@ -896,7 +896,7 @@ export async function assignSignerSlotAction(
       })
       .returning({ id: schema.letterSignatures.id });
 
-    revalidatePath(`/${slug}/letters`);
+    revalidatePath(`/app/${slug}/letters`);
     return { success: true, signingToken, signatureId: inserted.id };
   } catch (err) {
     console.error("[assignSignerSlotAction]", err);
@@ -1009,7 +1009,7 @@ export async function syncSignatureSlotsAction(
       }
     }
 
-    revalidatePath(`/${slug}/letters`);
+    revalidatePath(`/app/${slug}/letters`);
     return { success: true };
   } catch (err) {
     console.error("[syncSignatureSlotsAction]", err);
@@ -1061,7 +1061,7 @@ export async function generateSigningTokenAction(
       })
       .where(eq(schema.letterSignatures.id, signatureId));
 
-    revalidatePath(`/${slug}/letters`);
+    revalidatePath(`/app/${slug}/letters`);
     return { success: true, token };
   } catch (err) {
     console.error("[generateSigningTokenAction]", err);
@@ -1110,7 +1110,7 @@ export async function signByTokenAction(
       })
       .where(eq(schema.letterSignatures.id, sig.id));
 
-    revalidatePath(`/${slug}/letters`);
+    revalidatePath(`/app/${slug}/letters`);
     return { success: true, verificationHash };
   } catch (err) {
     console.error("[signByTokenAction]", err);
@@ -1228,8 +1228,8 @@ export async function createBulkLettersAction(
       .set({ isBulk: true, updatedAt: new Date() })
       .where(eq(schema.letters.id, parentId));
 
-    revalidatePath(`/${slug}/letters/keluar/${parentId}`);
-    revalidatePath(`/${slug}/letters/keluar`);
+    revalidatePath(`/app/${slug}/letters/keluar/${parentId}`);
+    revalidatePath(`/app/${slug}/letters/keluar`);
 
     return { success: true, count: childIds.length, childIds };
   } catch (err) {
@@ -1275,7 +1275,7 @@ export async function saveLetterConfigAction(
 
   try {
     await upsertSetting(tenantClient, "letter_config", "general", config);
-    revalidatePath(`/${slug}/letters/pengaturan`);
+    revalidatePath(`/app/${slug}/letters/pengaturan`);
     return { success: true };
   } catch (err) {
     console.error("[saveLetterConfigAction]", err);
@@ -1309,8 +1309,8 @@ export async function markAllChildrenSentAction(
       )
       .returning({ id: schema.letters.id });
 
-    revalidatePath(`/${slug}/letters/keluar/${parentId}`);
-    revalidatePath(`/${slug}/letters/keluar`);
+    revalidatePath(`/app/${slug}/letters/keluar/${parentId}`);
+    revalidatePath(`/app/${slug}/letters/keluar`);
 
     return { success: true, count: result.length };
   } catch (err) {

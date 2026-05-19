@@ -84,7 +84,7 @@ export async function createProfileAction(
     })
     .returning({ id: profiles.id });
 
-  revalidatePath(`/${slug}/accounts`);
+  revalidatePath(`/app/${slug}/accounts`);
   return { success: true, profileId: created.id };
 }
 

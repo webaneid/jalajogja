@@ -17,11 +17,11 @@ export default async function BulkLetterPage({
 }) {
   const { tenant: slug, id: letterId } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   // Hanya admin/owner yang bisa akses halaman ini
   if (!hasFullAccess(access.tenantUser, "surat")) {
-    redirect(`/${slug}/letters/keluar/${letterId}`);
+    redirect(`/app/${slug}/letters/keluar/${letterId}`);
   }
 
   const { db: tenantDb, schema } = createTenantDb(slug);

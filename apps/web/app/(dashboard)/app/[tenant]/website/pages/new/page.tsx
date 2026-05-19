@@ -25,7 +25,7 @@ export default async function PagesNewPage({
 }) {
   const { tenant: slug } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   return (
     <PageForm

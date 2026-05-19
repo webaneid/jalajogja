@@ -12,7 +12,7 @@ export default async function DonationSettingsPage({
 }) {
   const { tenant: slug } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const tenantClient = createTenantDb(slug);
   const settings     = await getSettings(tenantClient, "donasi");

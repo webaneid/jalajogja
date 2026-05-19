@@ -65,8 +65,8 @@ export type EventData = {
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 function revalidateEvent(slug: string) {
-  revalidatePath(`/${slug}/event`);
-  revalidatePath(`/${slug}/event/acara`);
+  revalidatePath(`/app/${slug}/event`);
+  revalidatePath(`/app/${slug}/event/acara`);
 }
 
 // Generate EVT-YYYYMM-NNNNN — atomic SELECT FOR UPDATE
@@ -312,7 +312,7 @@ export async function updateEventAction(
     await syncTickets(tenantDb, eventId, data.tickets);
 
     revalidateEvent(slug);
-    revalidatePath(`/${slug}/event/acara/${eventId}`);
+    revalidatePath(`/app/${slug}/event/acara/${eventId}`);
     return { success: true, data: undefined };
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("unique"))
@@ -373,8 +373,8 @@ export async function createEventCategoryAction(
       .values({ name: data.name.trim(), slug: data.slug.trim() })
       .returning({ id: schema.eventCategories.id });
 
-    revalidatePath(`/${slug}/event/kategori`);
-    revalidatePath(`/${slug}/event/acara`);
+    revalidatePath(`/app/${slug}/event/kategori`);
+    revalidatePath(`/app/${slug}/event/acara`);
     return { success: true, data: { categoryId: cat.id } };
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("unique"))
@@ -402,7 +402,7 @@ export async function updateEventCategoryAction(
       .set({ name: data.name.trim(), slug: data.slug.trim() })
       .where(eq(schema.eventCategories.id, categoryId));
 
-    revalidatePath(`/${slug}/event/kategori`);
+    revalidatePath(`/app/${slug}/event/kategori`);
     return { success: true, data: undefined };
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("unique"))
@@ -435,8 +435,8 @@ export async function deleteEventCategoryAction(
     .delete(schema.eventCategories)
     .where(eq(schema.eventCategories.id, categoryId));
 
-  revalidatePath(`/${slug}/event/kategori`);
-  revalidatePath(`/${slug}/event/acara`);
+  revalidatePath(`/app/${slug}/event/kategori`);
+  revalidatePath(`/app/${slug}/event/acara`);
   return { success: true, data: undefined };
 }
 
@@ -670,7 +670,7 @@ export async function registerForEventAction(
         }],
       });
 
-      revalidatePath(`/${slug}/event/acara/${data.eventId}`);
+      revalidatePath(`/app/${slug}/event/acara/${data.eventId}`);
       return {
         success: true,
         data: {
@@ -685,7 +685,7 @@ export async function registerForEventAction(
       };
     }
 
-    revalidatePath(`/${slug}/event/acara/${data.eventId}`);
+    revalidatePath(`/app/${slug}/event/acara/${data.eventId}`);
     return {
       success: true,
       data: { registrationId: reg.id, registrationNumber: regNumber, isPaid: true },
@@ -782,7 +782,7 @@ export async function confirmRegistrationPaymentAction(
       amount,
     });
 
-    revalidatePath(`/${slug}/event/acara/${reg.eventId}`);
+    revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
     return { success: true, data: undefined };
   } catch (err) {
     console.error("[confirmRegistrationPaymentAction]", err);
@@ -817,7 +817,7 @@ export async function approveRegistrationAction(
     .set({ status: "confirmed", updatedAt: new Date() })
     .where(eq(schema.eventRegistrations.id, registrationId));
 
-  revalidatePath(`/${slug}/event/acara/${reg.eventId}`);
+  revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
   return { success: true, data: undefined };
 }
 
@@ -857,7 +857,7 @@ export async function cancelRegistrationAction(
       sql`${schema.payments.status} != 'paid'`
     ));
 
-  revalidatePath(`/${slug}/event/acara/${reg.eventId}`);
+  revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
   return { success: true, data: undefined };
 }
 
@@ -889,8 +889,8 @@ export async function checkInRegistrationAction(
     .set({ status: "attended", checkedInAt: new Date(), checkedInBy: access.userId, updatedAt: new Date() })
     .where(eq(schema.eventRegistrations.id, registrationId));
 
-  revalidatePath(`/${slug}/event/acara/${reg.eventId}`);
-  revalidatePath(`/${slug}/event/acara/${reg.eventId}/checkin`);
+  revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
+  revalidatePath(`/app/${slug}/event/acara/${reg.eventId}/checkin`);
   return { success: true, data: undefined };
 }
 

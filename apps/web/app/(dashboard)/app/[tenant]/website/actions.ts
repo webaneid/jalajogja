@@ -110,7 +110,7 @@ export async function createPostAction(
       })
       .returning({ id: schema.posts.id });
 
-    revalidatePath(`/${slug}/website/posts`);
+    revalidatePath(`/app/${slug}/website/posts`);
     return { success: true, data: { postId: post.id } };
   } catch (err) {
     console.error("[createPostAction]", err);
@@ -165,7 +165,7 @@ export async function createPageAction(
       })
       .returning({ id: schema.pages.id });
 
-    revalidatePath(`/${slug}/website/pages`);
+    revalidatePath(`/app/${slug}/website/pages`);
     return { success: true, data: { pageId: page.id } };
   } catch (err) {
     console.error("[createPageAction]", err);
@@ -212,7 +212,7 @@ export async function createPostDraftAction(
       })
       .returning({ id: schema.posts.id });
 
-    revalidatePath(`/${slug}/website/posts`);
+    revalidatePath(`/app/${slug}/website/posts`);
     return { success: true, data: { postId: post.id } };
 
   } catch (err) {
@@ -328,8 +328,8 @@ export async function updatePostAction(
         .values(toAdd.map((tagId) => ({ postId, tagId })));
     }
 
-    revalidatePath(`/${slug}/website/posts`);
-    revalidatePath(`/${slug}/website/posts/${postId}/edit`);
+    revalidatePath(`/app/${slug}/website/posts`);
+    revalidatePath(`/app/${slug}/website/posts/${postId}/edit`);
     return { success: true, data: undefined };
 
   } catch (err) {
@@ -375,8 +375,8 @@ export async function updatePostStatusAction(
       .set({ status, publishedAt, updatedAt: new Date() })
       .where(eq(schema.posts.id, postId));
 
-    revalidatePath(`/${slug}/website/posts`);
-    revalidatePath(`/${slug}/website/posts/${postId}/edit`);
+    revalidatePath(`/app/${slug}/website/posts`);
+    revalidatePath(`/app/${slug}/website/posts/${postId}/edit`);
     return { success: true, data: undefined };
 
   } catch (err) {
@@ -415,7 +415,7 @@ export async function deletePostAction(
       .delete(schema.posts)
       .where(eq(schema.posts.id, postId));
 
-    revalidatePath(`/${slug}/website/posts`);
+    revalidatePath(`/app/${slug}/website/posts`);
     return { success: true, data: undefined };
 
   } catch (err) {
@@ -485,7 +485,7 @@ export async function createPageDraftAction(
       })
       .returning({ id: schema.pages.id });
 
-    revalidatePath(`/${slug}/website/pages`);
+    revalidatePath(`/app/${slug}/website/pages`);
     return { success: true, data: { pageId: page.id } };
 
   } catch (err) {
@@ -531,7 +531,7 @@ export async function createSingletonPageAction(
       })
       .returning({ id: schema.pages.id });
 
-    revalidatePath(`/${slug}/website/pages`);
+    revalidatePath(`/app/${slug}/website/pages`);
     return { success: true, data: { pageId: page.id } };
 
   } catch (err) {
@@ -610,8 +610,8 @@ export async function updatePageAction(
       })
       .where(eq(schema.pages.id, pageId));
 
-    revalidatePath(`/${slug}/website/pages`);
-    revalidatePath(`/${slug}/website/pages/${pageId}/edit`);
+    revalidatePath(`/app/${slug}/website/pages`);
+    revalidatePath(`/app/${slug}/website/pages/${pageId}/edit`);
     return { success: true, data: undefined };
 
   } catch (err) {
@@ -656,8 +656,8 @@ export async function updatePageStatusAction(
       .set({ status, publishedAt, updatedAt: new Date() })
       .where(eq(schema.pages.id, pageId));
 
-    revalidatePath(`/${slug}/website/pages`);
-    revalidatePath(`/${slug}/website/pages/${pageId}/edit`);
+    revalidatePath(`/app/${slug}/website/pages`);
+    revalidatePath(`/app/${slug}/website/pages/${pageId}/edit`);
     return { success: true, data: undefined };
 
   } catch (err) {
@@ -688,7 +688,7 @@ export async function deletePageAction(
 
   try {
     await db.delete(schema.pages).where(eq(schema.pages.id, pageId));
-    revalidatePath(`/${slug}/website/pages`);
+    revalidatePath(`/app/${slug}/website/pages`);
     return { success: true, data: undefined };
 
   } catch (err) {
@@ -741,7 +741,7 @@ export async function createCategoryAction(
       })
       .returning({ id: schema.postCategories.id });
 
-    revalidatePath(`/${slug}/website/categories`);
+    revalidatePath(`/app/${slug}/website/categories`);
     return { success: true, data: { categoryId: cat.id } };
 
   } catch (err) {
@@ -799,7 +799,7 @@ export async function updateCategoryAction(
       })
       .where(eq(schema.postCategories.id, categoryId));
 
-    revalidatePath(`/${slug}/website/categories`);
+    revalidatePath(`/app/${slug}/website/categories`);
     return { success: true, data: undefined };
 
   } catch (err) {
@@ -852,7 +852,7 @@ export async function deleteCategoryAction(
       .delete(schema.postCategories)
       .where(eq(schema.postCategories.id, categoryId));
 
-    revalidatePath(`/${slug}/website/categories`);
+    revalidatePath(`/app/${slug}/website/categories`);
     return { success: true, data: undefined };
 
   } catch (err) {
@@ -899,7 +899,7 @@ export async function createTagAction(
       .values({ name: data.name.trim(), slug: tagSlug })
       .returning({ id: schema.postTags.id });
 
-    revalidatePath(`/${slug}/website/categories`);
+    revalidatePath(`/app/${slug}/website/categories`);
     return { success: true, data: { tagId: tag.id } };
 
   } catch (err) {
@@ -947,7 +947,7 @@ export async function updateTagAction(
       .set({ name: data.name.trim(), slug: tagSlug })
       .where(eq(schema.postTags.id, tagId));
 
-    revalidatePath(`/${slug}/website/categories`);
+    revalidatePath(`/app/${slug}/website/categories`);
     return { success: true, data: undefined };
 
   } catch (err) {
@@ -986,7 +986,7 @@ export async function deleteTagAction(
       .delete(schema.postTags)
       .where(eq(schema.postTags.id, tagId));
 
-    revalidatePath(`/${slug}/website/categories`);
+    revalidatePath(`/app/${slug}/website/categories`);
     return { success: true, data: undefined };
 
   } catch (err) {
@@ -1010,7 +1010,7 @@ export async function saveWidgetAreaAction(
   try {
     const tenantClient = createTenantDb(slug);
     await saveWidgetArea(areaId, sections, tenantClient);
-    revalidatePath(`/${slug}/post`);
+    revalidatePath(`/app/${slug}/post`);
     return { success: true, data: undefined };
   } catch (err) {
     console.error("[saveWidgetAreaAction]", err);

@@ -19,7 +19,7 @@ export default async function PostsPage({
   const { status: statusFilter, q: query, page: pageStr } = await searchParams;
 
   const access = await getTenantAccess(slug);
-  if (!access) redirect(`/login`);
+  if (!access) redirect(`/app/login`);
 
   const { db, schema } = createTenantDb(slug);
 

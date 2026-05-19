@@ -32,7 +32,7 @@ export default async function LetterPengaturanPage({
 }) {
   const { tenant: slug } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const tenantClient = createTenantDb(slug);
 

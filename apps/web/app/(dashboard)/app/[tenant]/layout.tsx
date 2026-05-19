@@ -16,7 +16,7 @@ export default async function TenantLayout({
   // Layer 2 auth: verifikasi session nyata + akses tenant
   const session = await getCurrentSession();
   if (!session?.user) {
-    redirect(`/login?redirect=/${slug}/dashboard`);
+    redirect(`/app/login?redirect=/app/${slug}/dashboard`);
   }
 
   const access = await getTenantAccess(slug);

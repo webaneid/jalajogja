@@ -32,6 +32,6 @@ export async function saveTokoSettingsAction(
     toko_whatsapp:      values.tokoWhatsapp,
   });
 
-  revalidatePath(`/${slug}/toko/pengaturan`);
+  revalidatePath(`/app/${slug}/toko/pengaturan`);
   return {};
 }

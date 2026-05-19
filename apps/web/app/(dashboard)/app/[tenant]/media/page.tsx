@@ -18,7 +18,7 @@ export default async function MediaPage({
 
   const access = await getTenantAccess(slug);
   if (!access) redirect("/dashboard-redirect");
-  if (!hasReadAccess(access.tenantUser, "media")) redirect(`/${slug}/dashboard`);
+  if (!hasReadAccess(access.tenantUser, "media")) redirect(`/app/${slug}/dashboard`);
 
   const { db: tenantDb, schema } = createTenantDb(slug);
 

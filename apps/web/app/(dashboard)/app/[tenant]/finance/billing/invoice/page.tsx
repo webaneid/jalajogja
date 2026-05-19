@@ -15,7 +15,7 @@ export default async function BillingInvoicePage({
   const { tenant: slug }                   = await params;
   const { status, page, search }           = await searchParams;
   const access                             = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const result = await getInvoiceListAction(slug, {
     status: status ?? "all",

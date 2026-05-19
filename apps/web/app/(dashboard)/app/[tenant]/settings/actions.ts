@@ -424,7 +424,7 @@ export async function createInviteAction(
     inviteId = invite.id;
   }
 
-  revalidatePath(`/${slug}/settings/users`);
+  revalidatePath(`/app/${slug}/settings/users`);
   return { success: true, inviteId, token };
 }
 
@@ -441,7 +441,7 @@ export async function revokeInviteAction(
     .delete(schema.tenantInvites)
     .where(eq(schema.tenantInvites.id, inviteId));
 
-  revalidatePath(`/${slug}/settings/users`);
+  revalidatePath(`/app/${slug}/settings/users`);
   return { success: true };
 }
 
@@ -472,7 +472,7 @@ export async function removeUserAction(
     .delete(schema.users)
     .where(eq(schema.users.id, userId));
 
-  revalidatePath(`/${slug}/settings/users`);
+  revalidatePath(`/app/${slug}/settings/users`);
   return { success: true };
 }
 
@@ -510,7 +510,7 @@ export async function updateUserRoleAction(
     })
     .where(eq(schema.users.id, userId));
 
-  revalidatePath(`/${slug}/settings/users`);
+  revalidatePath(`/app/${slug}/settings/users`);
   return { success: true };
 }
 
@@ -536,7 +536,7 @@ export async function createCustomRoleAction(
     })
     .returning({ id: schema.customRoles.id });
 
-  revalidatePath(`/${slug}/settings/roles`);
+  revalidatePath(`/app/${slug}/settings/roles`);
   return { success: true, id: inserted.id };
 }
 
@@ -571,7 +571,7 @@ export async function updateCustomRoleAction(
     })
     .where(eq(schema.customRoles.id, roleId));
 
-  revalidatePath(`/${slug}/settings/roles`);
+  revalidatePath(`/app/${slug}/settings/roles`);
   return { success: true };
 }
 
@@ -608,7 +608,7 @@ export async function deleteCustomRoleAction(
     .delete(schema.customRoles)
     .where(eq(schema.customRoles.id, roleId));
 
-  revalidatePath(`/${slug}/settings/roles`);
+  revalidatePath(`/app/${slug}/settings/roles`);
   return { success: true };
 }
 
@@ -690,7 +690,7 @@ export async function addExistingAccountAction(
     memberId:         data.memberId,
   });
 
-  revalidatePath(`/${slug}/settings/users`);
+  revalidatePath(`/app/${slug}/settings/users`);
   return { success: true, name: memberData.name };
 }
 
@@ -752,7 +752,7 @@ export async function activateUserDirectAction(
       customRoleId:     data.role === "custom" ? (data.customRoleId ?? null) : null,
       memberId:         data.memberId,
     });
-    revalidatePath(`/${slug}/settings/users`);
+    revalidatePath(`/app/${slug}/settings/users`);
     return { success: true, name: data.name.trim() };
   }
 
@@ -810,6 +810,6 @@ export async function activateUserDirectAction(
     memberId:         data.memberId,
   });
 
-  revalidatePath(`/${slug}/settings/users`);
+  revalidatePath(`/app/${slug}/settings/users`);
   return { success: true, name: data.name.trim() };
 }

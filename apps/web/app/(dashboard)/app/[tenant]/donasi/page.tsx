@@ -6,5 +6,5 @@ export default async function DonasiPage({
   params: Promise<{ tenant: string }>;
 }) {
   const { tenant: slug } = await params;
-  redirect(`/${slug}/donasi/campaign`);
+  redirect(`/app/${slug}/donasi/campaign`);
 }

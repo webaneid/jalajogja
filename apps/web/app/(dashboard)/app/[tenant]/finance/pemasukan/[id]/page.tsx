@@ -64,7 +64,7 @@ export default async function PemasukanDetailPage({
 }) {
   const { tenant: slug, id } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const { db, schema } = createTenantDb(slug);
 

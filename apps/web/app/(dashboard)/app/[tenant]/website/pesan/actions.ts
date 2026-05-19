@@ -15,5 +15,5 @@ export async function markSubmissionReadAction(slug: string, id: string) {
     .set({ isRead: true })
     .where(eq(schema.contactSubmissions.id, id));
 
-  revalidatePath(`/${slug}/website/pesan`);
+  revalidatePath(`/app/${slug}/website/pesan`);
 }

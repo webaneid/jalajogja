@@ -37,7 +37,7 @@ export default async function MembersPage({
 
   const access = await getTenantAccess(slug);
   if (!access) redirect("/dashboard-redirect");
-  if (!hasReadAccess(access.tenantUser, "anggota")) redirect(`/${slug}/dashboard`);
+  if (!hasReadAccess(access.tenantUser, "anggota")) redirect(`/app/${slug}/dashboard`);
 
   const currentPage = Math.max(1, parseInt(page));
   const offset = (currentPage - 1) * PAGE_SIZE;

@@ -58,9 +58,9 @@ export type DonationData = {
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 function revalidateDonasi(slug: string) {
-  revalidatePath(`/${slug}/donasi`);
-  revalidatePath(`/${slug}/donasi/campaign`);
-  revalidatePath(`/${slug}/donasi/transaksi`);
+  revalidatePath(`/app/${slug}/donasi`);
+  revalidatePath(`/app/${slug}/donasi/campaign`);
+  revalidatePath(`/app/${slug}/donasi/transaksi`);
 }
 
 // Generate DON-YYYYMM-NNNNN — atomic SELECT FOR UPDATE via donation_sequences
@@ -253,7 +253,7 @@ export async function updateCampaignAction(
       .where(eq(schema.campaigns.id, campaignId));
 
     revalidateDonasi(slug);
-    revalidatePath(`/${slug}/donasi/campaign/${campaignId}`);
+    revalidatePath(`/app/${slug}/donasi/campaign/${campaignId}`);
     return { success: true, data: undefined };
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("unique"))
@@ -513,11 +513,11 @@ export async function confirmDonationAction(
 
     revalidateDonasi(slug);
     if (donation.campaignId) {
-      revalidatePath(`/${slug}/donasi/campaign/${donation.campaignId}`);
+      revalidatePath(`/app/${slug}/donasi/campaign/${donation.campaignId}`);
       // Revalidate public campaign pages
       const [c] = await db.select({ slug: schema.campaigns.slug })
         .from(schema.campaigns).where(eq(schema.campaigns.id, donation.campaignId)).limit(1);
-      if (c) revalidatePath(`/${slug}/campaign/${c.slug}`);
+      if (c) revalidatePath(`/app/${slug}/campaign/${c.slug}`);
     }
     return { success: true, data: undefined };
   } catch (err) {
@@ -548,8 +548,8 @@ export async function createCampaignCategoryAction(
       .values({ name: data.name.trim(), slug: data.slug.trim() })
       .returning({ id: schema.campaignCategories.id });
 
-    revalidatePath(`/${slug}/donasi/kategori`);
-    revalidatePath(`/${slug}/donasi/campaign`);
+    revalidatePath(`/app/${slug}/donasi/kategori`);
+    revalidatePath(`/app/${slug}/donasi/campaign`);
     return { success: true, data: { categoryId: cat.id } };
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("unique"))
@@ -577,7 +577,7 @@ export async function updateCampaignCategoryAction(
       .set({ name: data.name.trim(), slug: data.slug.trim() })
       .where(eq(schema.campaignCategories.id, categoryId));
 
-    revalidatePath(`/${slug}/donasi/kategori`);
+    revalidatePath(`/app/${slug}/donasi/kategori`);
     return { success: true, data: undefined };
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("unique"))
@@ -611,8 +611,8 @@ export async function deleteCampaignCategoryAction(
     .delete(schema.campaignCategories)
     .where(eq(schema.campaignCategories.id, categoryId));
 
-  revalidatePath(`/${slug}/donasi/kategori`);
-  revalidatePath(`/${slug}/donasi/campaign`);
+  revalidatePath(`/app/${slug}/donasi/kategori`);
+  revalidatePath(`/app/${slug}/donasi/campaign`);
   return { success: true, data: undefined };
 }
 

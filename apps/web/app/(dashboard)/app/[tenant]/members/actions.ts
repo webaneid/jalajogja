@@ -99,7 +99,7 @@ export async function createMemberAction(
       registeredVia: slug,
     });
 
-    revalidatePath(`/${slug}/members`);
+    revalidatePath(`/app/${slug}/members`);
     return { success: true, memberId: newMember.id };
 
   } catch (err) {
@@ -163,8 +163,8 @@ export async function updateMemberAction(
         )
       );
 
-    revalidatePath(`/${slug}/members`);
-    revalidatePath(`/${slug}/members/${memberId}`);
+    revalidatePath(`/app/${slug}/members`);
+    revalidatePath(`/app/${slug}/members/${memberId}`);
     return { success: true, memberId };
 
   } catch (err) {
@@ -351,7 +351,7 @@ export async function upsertMemberContactAction(
       })
       .where(eq(members.id, memberId));
 
-    revalidatePath(`/${slug}/members/${memberId}`);
+    revalidatePath(`/app/${slug}/members/${memberId}`);
     return { success: true };
 
   } catch (err) {
@@ -456,7 +456,7 @@ export async function saveMemberEducationsAction(
       );
     }
 
-    revalidatePath(`/${slug}/members/${memberId}`);
+    revalidatePath(`/app/${slug}/members/${memberId}`);
     return { success: true };
 
   } catch (err) {
@@ -567,7 +567,7 @@ export async function saveMemberOwnedPesantrenAction(
       });
     }
 
-    revalidatePath(`/${slug}/members/${memberId}`);
+    revalidatePath(`/app/${slug}/members/${memberId}`);
     return { success: true };
 
   } catch (err) {
@@ -729,7 +729,7 @@ export async function saveMemberBusinessesAction(
       });
     }
 
-    revalidatePath(`/${slug}/members/${memberId}`);
+    revalidatePath(`/app/${slug}/members/${memberId}`);
     return { success: true };
 
   } catch (err) {
@@ -759,7 +759,7 @@ export async function removeMemberFromTenantAction(
         )
       );
 
-    revalidatePath(`/${slug}/members`);
+    revalidatePath(`/app/${slug}/members`);
     return { success: true };
 
   } catch (err) {

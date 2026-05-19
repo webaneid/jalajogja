@@ -12,8 +12,8 @@ export default async function LettersLayout({
 }) {
   const { tenant: slug } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
-  if (!canAccess(access.tenantUser, "surat", "own")) redirect(`/${slug}/dashboard`);
+  if (!access) redirect("/app/login");
+  if (!canAccess(access.tenantUser, "surat", "own")) redirect(`/app/${slug}/dashboard`);
 
   return (
     <div className="flex min-h-screen">

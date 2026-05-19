@@ -11,7 +11,7 @@ export default async function MitraPage({
   const { tenant: slug } = await params;
 
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const [applications, mitras] = await Promise.all([
     getMitraApplications(slug),

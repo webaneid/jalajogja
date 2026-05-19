@@ -73,7 +73,7 @@ export async function createDocumentAction(
       .set({ currentVersionId: version.id, updatedAt: new Date() })
       .where(eq(schema.documents.id, doc.id));
 
-    revalidatePath(`/${slug}/dokumen/semua`);
+    revalidatePath(`/app/${slug}/dokumen/semua`);
     return { success: true as const, data: { documentId: doc.id } };
   } catch (e) {
     console.error("createDocumentAction:", e);
@@ -109,8 +109,8 @@ export async function updateDocumentAction(
       })
       .where(eq(schema.documents.id, docId));
 
-    revalidatePath(`/${slug}/dokumen/semua`);
-    revalidatePath(`/${slug}/dokumen/${docId}`);
+    revalidatePath(`/app/${slug}/dokumen/semua`);
+    revalidatePath(`/app/${slug}/dokumen/${docId}`);
     return { success: true as const };
   } catch (e) {
     console.error("updateDocumentAction:", e);
@@ -166,7 +166,7 @@ export async function uploadNewVersionAction(
       .set({ currentVersionId: version.id, updatedAt: new Date() })
       .where(eq(schema.documents.id, docId));
 
-    revalidatePath(`/${slug}/dokumen/${docId}`);
+    revalidatePath(`/app/${slug}/dokumen/${docId}`);
     return { success: true as const, data: { versionId: version.id, versionNumber: nextVersion } };
   } catch (e) {
     console.error("uploadNewVersionAction:", e);
@@ -208,7 +208,7 @@ export async function restoreVersionAction(
       .set({ currentVersionId: versionId, updatedAt: new Date() })
       .where(eq(schema.documents.id, docId));
 
-    revalidatePath(`/${slug}/dokumen/${docId}`);
+    revalidatePath(`/app/${slug}/dokumen/${docId}`);
     return { success: true as const };
   } catch (e) {
     console.error("restoreVersionAction:", e);
@@ -227,7 +227,7 @@ export async function deleteDocumentAction(slug: string, docId: string) {
 
   try {
     await db.delete(schema.documents).where(eq(schema.documents.id, docId));
-    revalidatePath(`/${slug}/dokumen/semua`);
+    revalidatePath(`/app/${slug}/dokumen/semua`);
     return { success: true as const };
   } catch (e) {
     console.error("deleteDocumentAction:", e);
@@ -261,7 +261,7 @@ export async function createDocumentCategoryAction(
       })
       .returning({ id: schema.documentCategories.id, name: schema.documentCategories.name });
 
-    revalidatePath(`/${slug}/dokumen/kategori`);
+    revalidatePath(`/app/${slug}/dokumen/kategori`);
     return { success: true as const, data: cat };
   } catch (e: unknown) {
     if (e instanceof Error && e.message.includes("unique")) {
@@ -300,7 +300,7 @@ export async function updateDocumentCategoryAction(
       })
       .where(eq(schema.documentCategories.id, catId));
 
-    revalidatePath(`/${slug}/dokumen/kategori`);
+    revalidatePath(`/app/${slug}/dokumen/kategori`);
     return { success: true as const };
   } catch (e) {
     console.error("updateDocumentCategoryAction:", e);
@@ -347,7 +347,7 @@ export async function deleteDocumentCategoryAction(slug: string, catId: string) 
     }
     await db.delete(schema.documentCategories).where(eq(schema.documentCategories.id, catId));
 
-    revalidatePath(`/${slug}/dokumen/kategori`);
+    revalidatePath(`/app/${slug}/dokumen/kategori`);
     return { success: true as const };
   } catch (e) {
     console.error("deleteDocumentCategoryAction:", e);

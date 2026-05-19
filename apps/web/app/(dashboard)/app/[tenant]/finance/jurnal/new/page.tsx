@@ -13,7 +13,7 @@ export default async function JurnalNewPage({
 }) {
   const { tenant: slug } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const { db, schema } = createTenantDb(slug);
 

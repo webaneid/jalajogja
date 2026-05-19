@@ -12,7 +12,7 @@ export default async function BillingInvoiceDetailPage({
 }) {
   const { tenant: slug, id } = await params;
   const access               = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const result = await getInvoiceDetailAction(slug, id);
   if (!result.success) notFound();

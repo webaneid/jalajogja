@@ -18,8 +18,8 @@ export default async function PengurusPage({
 }) {
   const { tenant: slug } = await params;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
-  if (!hasReadAccess(access.tenantUser, "pengurus")) redirect(`/${slug}/dashboard`);
+  if (!access) redirect("/app/login");
+  if (!hasReadAccess(access.tenantUser, "pengurus")) redirect(`/app/${slug}/dashboard`);
 
   const { db: tenantDb, schema } = createTenantDb(slug);
 

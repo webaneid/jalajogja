@@ -35,7 +35,7 @@ export default async function TransaksiListPage({
   const { tenant: slug } = await params;
   const { q, status }    = await searchParams;
   const access = await getTenantAccess(slug);
-  if (!access) redirect("/login");
+  if (!access) redirect("/app/login");
 
   const { db, schema } = createTenantDb(slug);
 

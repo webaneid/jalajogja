@@ -6,5 +6,5 @@ export default async function EventPage({
   params: Promise<{ tenant: string }>;
 }) {
   const { tenant: slug } = await params;
-  redirect(`/${slug}/event/acara`);
+  redirect(`/app/${slug}/event/acara`);
 }
