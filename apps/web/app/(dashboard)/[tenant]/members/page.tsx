@@ -4,6 +4,7 @@ import { UserPlus, Search } from "lucide-react";
 import { db, members, tenantMemberships } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
+import { hasReadAccess } from "@/lib/permissions";
 
 const STATUS_LABEL: Record<string, string> = {
   active: "Aktif",
@@ -36,6 +37,7 @@ export default async function MembersPage({
 
   const access = await getTenantAccess(slug);
   if (!access) redirect("/dashboard-redirect");
+  if (!hasReadAccess(access.tenantUser, "anggota")) redirect(`/${slug}/dashboard`);
 
   const currentPage = Math.max(1, parseInt(page));
   const offset = (currentPage - 1) * PAGE_SIZE;

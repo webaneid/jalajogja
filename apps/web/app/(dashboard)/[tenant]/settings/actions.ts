@@ -12,6 +12,7 @@ import type { Level, Module } from "@/lib/permissions";
 type ActionResult = { error?: string };
 type StrictActionResult = { success: true } | { success: false; error: string };
 type InviteResult = { success: true; inviteId: string; token: string } | { success: false; error: string };
+export type CustomRoleResult = { success: true; id: string } | { success: false; error: string };
 
 export type InviteFormData = {
   memberId:       string;
@@ -518,7 +519,7 @@ export async function updateUserRoleAction(
 export async function createCustomRoleAction(
   slug: string,
   data: CustomRoleFormData
-): Promise<StrictActionResult> {
+): Promise<CustomRoleResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
   if (!canManageUsers(access.tenantUser)) return { success: false, error: "Akses ditolak." };
@@ -526,14 +527,17 @@ export async function createCustomRoleAction(
   if (!data.name.trim()) return { success: false, error: "Nama role wajib diisi." };
 
   const { db: tenantDb, schema } = createTenantDb(slug);
-  await tenantDb.insert(schema.customRoles).values({
-    name:        data.name.trim(),
-    description: data.description?.trim() || null,
-    permissions: data.permissions,
-  });
+  const [inserted] = await tenantDb
+    .insert(schema.customRoles)
+    .values({
+      name:        data.name.trim(),
+      description: data.description?.trim() || null,
+      permissions: data.permissions,
+    })
+    .returning({ id: schema.customRoles.id });
 
   revalidatePath(`/${slug}/settings/roles`);
-  return { success: true };
+  return { success: true, id: inserted.id };
 }
 
 export async function updateCustomRoleAction(

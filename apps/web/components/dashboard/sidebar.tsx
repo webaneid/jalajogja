@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { SidebarNav } from "./sidebar-nav";
+import type { TenantUserForPermission } from "@/lib/permissions";
 
 type SidebarProps = {
-  slug: string;
-  orgName: string;
+  slug:       string;
+  orgName:    string;
+  tenantUser: TenantUserForPermission;
 };
 
-export function Sidebar({ slug, orgName }: SidebarProps) {
+export function Sidebar({ slug, orgName, tenantUser }: SidebarProps) {
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r bg-card">
       {/* Logo + nama organisasi */}
@@ -24,10 +26,10 @@ export function Sidebar({ slug, orgName }: SidebarProps) {
 
       {/* Navigasi modul */}
       <div className="flex-1 overflow-y-auto py-4">
-        <SidebarNav slug={slug} />
+        <SidebarNav slug={slug} tenantUser={tenantUser} />
       </div>
 
-      {/* Footer sidebar — versi app */}
+      {/* Footer sidebar */}
       <div className="border-t px-5 py-3">
         <p className="text-xs text-muted-foreground">jalakarta v0.1</p>
       </div>

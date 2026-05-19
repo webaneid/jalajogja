@@ -1,6 +1,7 @@
 import { createTenantDb, db, members, tenantMemberships } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
+import { hasReadAccess } from "@/lib/permissions";
 import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { Plus, UserCheck, UserX, PenLine } from "lucide-react";
@@ -18,6 +19,7 @@ export default async function PengurusPage({
   const { tenant: slug } = await params;
   const access = await getTenantAccess(slug);
   if (!access) redirect("/login");
+  if (!hasReadAccess(access.tenantUser, "pengurus")) redirect(`/${slug}/dashboard`);
 
   const { db: tenantDb, schema } = createTenantDb(slug);
 

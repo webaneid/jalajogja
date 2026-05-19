@@ -1,5 +1,6 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
+import { hasReadAccess } from "@/lib/permissions";
 import { KeuanganNav } from "@/components/keuangan/keuangan-nav";
 
 export default async function FinanceLayout({
@@ -13,6 +14,7 @@ export default async function FinanceLayout({
 
   const access = await getTenantAccess(slug);
   if (!access) redirect("/login");
+  if (!hasReadAccess(access.tenantUser, "keuangan")) redirect(`/${slug}/dashboard`);
 
   return (
     <div className="flex h-full">

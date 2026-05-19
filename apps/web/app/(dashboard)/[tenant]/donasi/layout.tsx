@@ -1,5 +1,6 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
+import { hasReadAccess } from "@/lib/permissions";
 import { DonasiNav } from "@/components/donasi/donasi-nav";
 
 export default async function DonasiLayout({
@@ -13,6 +14,7 @@ export default async function DonasiLayout({
 
   const access = await getTenantAccess(slug);
   if (!access) redirect("/login");
+  if (!hasReadAccess(access.tenantUser, "donasi")) redirect(`/${slug}/dashboard`);
 
   return (
     <div className="flex h-full">

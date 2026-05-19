@@ -1,5 +1,6 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
+import { hasReadAccess } from "@/lib/permissions";
 import { TokoNav } from "@/components/toko/toko-nav";
 
 export default async function TokoLayout({
@@ -13,6 +14,7 @@ export default async function TokoLayout({
 
   const access = await getTenantAccess(slug);
   if (!access) redirect("/login");
+  if (!hasReadAccess(access.tenantUser, "toko")) redirect(`/${slug}/dashboard`);
 
   return (
     <div className="flex h-full">

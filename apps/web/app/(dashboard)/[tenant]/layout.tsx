@@ -30,7 +30,7 @@ export default async function TenantLayout({
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar desktop — hidden di mobile */}
       <div className="hidden md:flex">
-        <Sidebar slug={slug} orgName={tenant.name} />
+        <Sidebar slug={slug} orgName={tenant.name} tenantUser={tenantUser} />
       </div>
 
       {/* Konten utama */}
@@ -39,7 +39,7 @@ export default async function TenantLayout({
         <header className="flex h-14 shrink-0 items-center justify-between
                            border-b bg-card px-4 md:px-6">
           {/* Hamburger mobile */}
-          <MobileSidebar slug={slug} orgName={tenant.name} />
+          <MobileSidebar slug={slug} orgName={tenant.name} tenantUser={tenantUser} />
 
           {/* Nama org — hanya muncul di mobile */}
           <span className="text-sm font-semibold md:hidden">{tenant.name}</span>

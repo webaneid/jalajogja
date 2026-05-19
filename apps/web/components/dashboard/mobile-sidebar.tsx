@@ -3,13 +3,15 @@
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Sidebar } from "./sidebar";
+import type { TenantUserForPermission } from "@/lib/permissions";
 
 type MobileSidebarProps = {
-  slug: string;
-  orgName: string;
+  slug:       string;
+  orgName:    string;
+  tenantUser: TenantUserForPermission;
 };
 
-export function MobileSidebar({ slug, orgName }: MobileSidebarProps) {
+export function MobileSidebar({ slug, orgName, tenantUser }: MobileSidebarProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -32,7 +34,7 @@ export function MobileSidebar({ slug, orgName }: MobileSidebarProps) {
             onClick={() => setOpen(false)}
           />
           <div className="fixed inset-y-0 left-0 z-40 flex">
-            <Sidebar slug={slug} orgName={orgName} />
+            <Sidebar slug={slug} orgName={orgName} tenantUser={tenantUser} />
             <button
               onClick={() => setOpen(false)}
               className="absolute right-2 top-2 rounded-md p-1 hover:bg-accent"

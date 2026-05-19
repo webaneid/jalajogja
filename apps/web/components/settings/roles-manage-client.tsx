@@ -15,6 +15,7 @@ import {
   createCustomRoleAction,
   updateCustomRoleAction,
   deleteCustomRoleAction,
+  type CustomRoleResult,
 } from "@/app/(dashboard)/[tenant]/settings/actions";
 import type { Level, Module } from "@/lib/permissions";
 
@@ -257,8 +258,9 @@ export function RolesManageClient({ slug, customRoles: initialRoles }: Props) {
         )}
       </section>
 
-      {/* ── Dialog buat/edit role ─────────────────────────────────────────── */}
+      {/* key force re-mount saat editingRole berubah → state form selalu reset */}
       <RoleDialog
+        key={editingRole?.id ?? "new"}
         slug={slug}
         open={showDialog}
         editingRole={editingRole}
@@ -302,20 +304,6 @@ function RoleDialog({
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  // Reset state when dialog opens/closes with different role
-  useState(() => {
-    setName(editingRole?.name ?? "");
-    setDescription(editingRole?.description ?? "");
-    const base = defaultPermissions();
-    if (editingRole?.permissions) {
-      for (const [k, v] of Object.entries(editingRole.permissions)) {
-        if (k in base) base[k as Module] = v as Level;
-      }
-    }
-    setPermissions(base);
-    setError("");
-  });
-
   function setLevel(module: Module, level: Level) {
     setPermissions((prev) => ({ ...prev, [module]: level }));
   }
@@ -326,14 +314,20 @@ function RoleDialog({
 
     startTransition(async () => {
       const data = { name, description, permissions };
-      const res = isEditing
-        ? await updateCustomRoleAction(slug, editingRole!.id, data)
-        : await createCustomRoleAction(slug, data);
+      let savedId: string;
 
-      if (!res.success) { setError(res.error); return; }
+      if (isEditing) {
+        const res = await updateCustomRoleAction(slug, editingRole!.id, data);
+        if (!res.success) { setError(res.error); return; }
+        savedId = editingRole!.id;
+      } else {
+        const res = await createCustomRoleAction(slug, data);
+        if (!res.success) { setError(res.error); return; }
+        savedId = res.id;
+      }
 
       onSaved({
-        id:          editingRole?.id ?? crypto.randomUUID(),
+        id:          savedId,
         name:        name.trim(),
         description: description.trim() || null,
         permissions: permissions as Record<string, string>,

@@ -1,5 +1,6 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
+import { hasReadAccess } from "@/lib/permissions";
 import { EventNav } from "@/components/event/event-nav";
 
 export default async function EventLayout({
@@ -13,6 +14,7 @@ export default async function EventLayout({
 
   const access = await getTenantAccess(slug);
   if (!access) redirect("/login");
+  if (!hasReadAccess(access.tenantUser, "event")) redirect(`/${slug}/dashboard`);
 
   return (
     <div className="flex h-full">

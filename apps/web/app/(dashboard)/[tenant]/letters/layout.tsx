@@ -1,5 +1,6 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
+import { canAccess } from "@/lib/permissions";
 import { LettersNav } from "@/components/letters/letters-nav";
 
 export default async function LettersLayout({
@@ -12,6 +13,7 @@ export default async function LettersLayout({
   const { tenant: slug } = await params;
   const access = await getTenantAccess(slug);
   if (!access) redirect("/login");
+  if (!canAccess(access.tenantUser, "surat", "own")) redirect(`/${slug}/dashboard`);
 
   return (
     <div className="flex min-h-screen">

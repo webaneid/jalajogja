@@ -1,6 +1,7 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { createTenantDb } from "@jalajogja/db";
 import { redirect } from "next/navigation";
+import { hasReadAccess } from "@/lib/permissions";
 import { publicUrl } from "@/lib/minio";
 import { MediaShell } from "@/components/media/media-shell";
 import { desc } from "drizzle-orm";
@@ -17,6 +18,7 @@ export default async function MediaPage({
 
   const access = await getTenantAccess(slug);
   if (!access) redirect("/dashboard-redirect");
+  if (!hasReadAccess(access.tenantUser, "media")) redirect(`/${slug}/dashboard`);
 
   const { db: tenantDb, schema } = createTenantDb(slug);
 

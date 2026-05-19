@@ -1,5 +1,6 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
+import { hasReadAccess } from "@/lib/permissions";
 import { WebsiteNav } from "@/components/website/website-nav";
 
 export default async function WebsiteLayout({
@@ -13,6 +14,7 @@ export default async function WebsiteLayout({
 
   const access = await getTenantAccess(slug);
   if (!access) redirect(`/login`);
+  if (!hasReadAccess(access.tenantUser, "website")) redirect(`/${slug}/dashboard`);
 
   return (
     <div className="flex h-full">
