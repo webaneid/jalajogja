@@ -102,12 +102,14 @@ export default function LoginPage() {
         </button>
       </form>
 
+      {/* Link pendaftaran dinonaktifkan sementara — aktifkan kembali dengan menghapus komentar ini
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Belum punya akun?{" "}
         <Link href="/register" className="font-medium text-primary hover:underline">
           Daftar sekarang
         </Link>
       </p>
+      */}
     </div>
   );
 }

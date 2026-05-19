@@ -1,5 +1,8 @@
 "use client";
 
+// Ubah ke true untuk membuka kembali pendaftaran tenant baru
+const REGISTRATION_OPEN = false;
+
 import { useState, useEffect, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -129,6 +132,21 @@ export default function RegisterPage() {
     taken: "text-destructive",
     invalid: "text-destructive",
   };
+
+  if (!REGISTRATION_OPEN) {
+    return (
+      <div className="rounded-xl border bg-card p-8 shadow-sm text-center space-y-4">
+        <h1 className="text-xl font-bold">Pendaftaran Ditutup Sementara</h1>
+        <p className="text-sm text-muted-foreground">
+          Pendaftaran tenant baru jalakarta sedang tidak tersedia.
+          Hubungi tim jalakarta untuk informasi lebih lanjut.
+        </p>
+        <Link href="/login" className="inline-block text-sm font-medium text-primary hover:underline">
+          Sudah punya akun? Masuk di sini
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border bg-card p-8 shadow-sm">
