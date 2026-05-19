@@ -5,19 +5,18 @@ import { getFirstTenantForUser, getCurrentSession } from "@/lib/tenant";
 export default async function DashboardRedirectPage() {
   const session = await getCurrentSession();
 
-  // Tidak ada session — kembali ke login
+  // Tidak ada session — kembali ke login admin
   if (!session?.user) {
-    redirect("/login");
+    redirect("/app/login");
   }
 
   const slug = await getFirstTenantForUser();
 
   // User punya tenant — masuk dashboard
   if (slug) {
-    redirect(`/${slug}/dashboard`);
+    redirect(`/app/${slug}/dashboard`);
   }
 
   // Edge case: user terdaftar tapi belum punya tenant
-  // (misal: proses register gagal di tengah jalan)
   redirect("/register?error=no-tenant");
 }

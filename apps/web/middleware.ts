@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isOwnHost } from "@/lib/is-own-host";
 
-// Route yang butuh autentikasi — slug valid diikuti salah satu module path
-const PROTECTED_PATTERN = /^\/[a-z0-9-]+\/(dashboard|members|letters|finance|shop|settings)/;
-
-// Route yang tidak boleh diakses kalau sudah login (auth pages)
-const AUTH_PAGES = ["/login"];
-
 // Platform: semua /platform/* kecuali /platform/login
-const PLATFORM_PUBLIC = /^\/platform\/login$/;
+const PLATFORM_PUBLIC    = /^\/platform\/login$/;
 const PLATFORM_PROTECTED = /^\/platform(\/|$)/;
 
 export async function middleware(request: NextRequest) {
@@ -17,10 +11,8 @@ export async function middleware(request: NextRequest) {
 
   // ── Custom domain routing ──────────────────────────────────────────────────
   // Jika request datang dari domain selain jalakarta.com → resolve ke tenant slug.
-  // Gunakan APP_INTERNAL_URL (lokal) bukan NEXT_PUBLIC_APP_URL (eksternal) agar
-  // resolve tidak perlu round-trip ke internet → lebih cepat dan tidak gagal karena
-  // koneksi eksternal. Set APP_INTERNAL_URL=http://localhost:3000 di .env.local.
-  if (!isOwnHost(host) && !pathname.startsWith("/api/")) {
+  // Hanya berlaku untuk public routes — admin routes (/app/) tetap di jalakarta.com.
+  if (!isOwnHost(host) && !pathname.startsWith("/api/") && !pathname.startsWith("/app/")) {
     try {
       const internalUrl =
         process.env.APP_INTERNAL_URL ??
@@ -31,27 +23,26 @@ export async function middleware(request: NextRequest) {
 
       const res = await fetch(resolveUrl.toString(), {
         cache: "no-store",
-        signal: AbortSignal.timeout(3000), // timeout 3 detik — jangan blokir request terlalu lama
+        signal: AbortSignal.timeout(3000),
       });
       if (res.ok) {
         const { slug } = (await res.json()) as { slug: string | null };
         if (slug) {
           // C1: Jika path sudah include slug → strip slug → redirect 301 ke clean URL
-          // Ini membersihkan URL bocor seperti ikpmjogja.com/pc-ikpm-jogjakarta/post
           if (pathname.startsWith(`/${slug}/`) || pathname === `/${slug}`) {
             const cleanPath = pathname === `/${slug}` ? "/" : pathname.slice(`/${slug}`.length);
             const cleanUrl = request.nextUrl.clone();
             cleanUrl.pathname = cleanPath;
             return NextResponse.redirect(cleanUrl, 301);
           }
-          // Rewrite: ikpm.or.id/post/artikel → /pc-ikpm-jogjakarta/post/artikel (internal)
+          // Rewrite: ikpmjogja.com/post/artikel → /pc-ikpm-jogjakarta/post/artikel (internal)
           const url = request.nextUrl.clone();
           url.pathname = `/${slug}${pathname === "/" ? "" : pathname}`;
           return NextResponse.rewrite(url);
         }
       }
     } catch {
-      // Gagal resolve → lanjut normal (akan 404 atau homepage)
+      // Gagal resolve → lanjut normal
     }
   }
 
@@ -64,20 +55,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // ── Tenant auth guard ──────────────────────────────────────────────────────
+  // ── Admin dashboard auth guard ─────────────────────────────────────────────
+  // Semua /app/* kecuali /app/login memerlukan sesi login
   const sessionCookie =
     request.cookies.get("better-auth.session_token") ??
     request.cookies.get("__Secure-better-auth.session_token");
 
   const isLoggedIn = !!sessionCookie;
 
-  if (PROTECTED_PATTERN.test(pathname) && !isLoggedIn) {
-    const loginUrl = new URL("/login", request.url);
+  if (pathname.startsWith("/app/") && pathname !== "/app/login" && !isLoggedIn) {
+    const loginUrl = new URL("/app/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  if (AUTH_PAGES.includes(pathname) && isLoggedIn) {
+  if (pathname === "/app/login" && isLoggedIn) {
     return NextResponse.redirect(new URL("/dashboard-redirect", request.url));
   }
 

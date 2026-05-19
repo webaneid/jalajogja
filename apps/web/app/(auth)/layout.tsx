@@ -14,7 +14,7 @@ export default async function AuthLayout({
   if (session?.user) {
     const slug = await getFirstTenantForUser();
     if (slug) {
-      redirect(`/${slug}/dashboard`);
+      redirect(`/app/${slug}/dashboard`);
     }
     // Belum punya tenant → lanjut render (tampilkan /register)
   }
