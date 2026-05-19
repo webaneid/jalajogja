@@ -1,7 +1,7 @@
 # Rencana Migrasi Arsitektur URL
 
-> Status: **FASE 1 + 2 SELESAI — commit 667d380**
-> Fase 3 (internal links di components) menunggu persetujuan eksekusi.
+> Status: **FASE 1 + 2 + 3 SELESAI — commit 2ff026e**
+> Fase 4 (cleanup + redirect 301 dari path lama) menunggu persetujuan eksekusi.
 > Evaluasi masalah yang mendasari: `docs/evaluasi-arsitektur-url.md`
 
 ---
@@ -330,7 +330,7 @@ revalidatePath(`/${slug}/X`)   → revalidatePath(`/app/${slug}/X`)
 
 ---
 
-### Fase 3 — Update Internal Links di Components
+### Fase 3 — Update Internal Links di Components ✅ SELESAI (commit 2ff026e)
 
 **Tujuan:** Semua `href`, `Link`, dan `router.push` di komponen dashboard menggunakan path baru.
 
