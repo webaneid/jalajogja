@@ -43,7 +43,7 @@ export function CreatePageButton({ slug }: { slug: string }) {
   const router = useRouter();
 
   return (
-    <Button onClick={() => router.push(`/${slug}/website/pages/new`)} className="gap-2">
+    <Button onClick={() => router.push(`/app/${slug}/website/pages/new`)} className="gap-2">
       <Plus className="h-4 w-4" />
       Halaman Baru
     </Button>
@@ -82,7 +82,7 @@ function RowActions({ page, slug }: { page: Page; slug: string }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => router.push(`/${slug}/website/pages/${page.id}/edit`)}>
+          <DropdownMenuItem onClick={() => router.push(`/app/${slug}/website/pages/${page.id}/edit`)}>
             <Pencil className="mr-2 h-4 w-4" />
             Edit
           </DropdownMenuItem>
@@ -158,13 +158,13 @@ export function SingletonPageCards({
 
   function handleOpen(template: "terms" | "privacy", existing: SingletonEntry) {
     if (existing) {
-      router.push(`/${slug}/website/pages/${existing.id}/edit`);
+      router.push(`/app/${slug}/website/pages/${existing.id}/edit`);
       return;
     }
     startTransition(async () => {
       const res = await createSingletonPageAction(slug, template);
       if (res.success) {
-        router.push(`/${slug}/website/pages/${res.data.pageId}/edit`);
+        router.push(`/app/${slug}/website/pages/${res.data.pageId}/edit`);
       } else {
         alert(res.error);
       }
@@ -262,7 +262,7 @@ export function PagesTable({ pages, slug }: { pages: Page[]; slug: string }) {
               </td>
               <td className="px-4 py-3">
                 <button
-                  onClick={() => router.push(`/${slug}/website/pages/${page.id}/edit`)}
+                  onClick={() => router.push(`/app/${slug}/website/pages/${page.id}/edit`)}
                   className="text-left hover:underline font-medium"
                 >
                   {page.title}

@@ -215,7 +215,7 @@ export default async function NotaDinasDetailPage({
       {/* Breadcrumb + Edit */}
       <div className="flex items-center justify-between">
         <Link
-          href={`/${slug}/letters/nota`}
+          href={`/app/${slug}/letters/nota`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -228,7 +228,7 @@ export default async function NotaDinasDetailPage({
             existingPdfUrl={letter.pdfUrl}
           />
           <Link
-            href={`/${slug}/letters/nota/${letterId}/edit`}
+            href={`/app/${slug}/letters/nota/${letterId}/edit`}
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
           >
             <Pencil className="h-3.5 w-3.5" />

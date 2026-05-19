@@ -60,7 +60,7 @@ export function CreateCampaignButton({ slug }: { slug: string }) {
   const router = useRouter();
 
   return (
-    <Button onClick={() => router.push(`/${slug}/donasi/campaign/new`)} size="sm">
+    <Button onClick={() => router.push(`/app/${slug}/donasi/campaign/new`)} size="sm">
       <Plus className="h-4 w-4 mr-1.5" />
       Campaign Baru
     </Button>
@@ -135,7 +135,7 @@ export function CampaignTable({
                   <tr key={c.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-3">
                       <Link
-                        href={`/${slug}/donasi/campaign/${c.id}`}
+                        href={`/app/${slug}/donasi/campaign/${c.id}`}
                         className="font-medium hover:underline"
                       >
                         {c.title}
@@ -156,7 +156,7 @@ export function CampaignTable({
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <Link href={`/${slug}/donasi/campaign/${c.id}/edit`}>
+                        <Link href={`/app/${slug}/donasi/campaign/${c.id}/edit`}>
                           <Button variant="ghost" size="icon" className="h-7 w-7">
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>

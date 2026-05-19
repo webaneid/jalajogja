@@ -100,7 +100,7 @@ export default async function WebsiteDashboardPage({
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">Post Terbaru</h2>
           <Link
-            href={`/${slug}/website/posts`}
+            href={`/app/${slug}/website/posts`}
             className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
           >
             Lihat semua <ArrowRight className="h-3.5 w-3.5" />
@@ -118,7 +118,7 @@ export default async function WebsiteDashboardPage({
               return (
                 <Link
                   key={post.id}
-                  href={`/${slug}/website/posts/${post.id}/edit`}
+                  href={`/app/${slug}/website/posts/${post.id}/edit`}
                   className={[
                     "flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors",
                     i < recentPosts.length - 1 ? "border-b border-border" : "",

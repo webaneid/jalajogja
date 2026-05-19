@@ -59,7 +59,7 @@ function mimeLabel(mime: string | null) {
 
 export function CreateDocumentButton({ slug }: { slug: string }) {
   return (
-    <Link href={`/${slug}/dokumen/new`}>
+    <Link href={`/app/${slug}/dokumen/new`}>
       <Button size="sm">
         <Plus className="h-4 w-4 mr-1" />
         Tambah Dokumen
@@ -237,7 +237,7 @@ export function DokumenListClient({
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <Link href={`/${slug}/dokumen/${doc.id}`}>
+                      <Link href={`/app/${slug}/dokumen/${doc.id}`}>
                         <Button variant="ghost" size="icon" className="h-7 w-7">
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
@@ -253,7 +253,7 @@ export function DokumenListClient({
                           </Button>
                         </a>
                       )}
-                      <Link href={`/${slug}/dokumen/${doc.id}/edit`}>
+                      <Link href={`/app/${slug}/dokumen/${doc.id}/edit`}>
                         <Button variant="ghost" size="icon" className="h-7 w-7">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>

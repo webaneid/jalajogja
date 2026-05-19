@@ -98,7 +98,7 @@ export function JournalForm({ slug, accounts }: Props) {
     startTransition(async () => {
       const res = await createJournalAction(slug, { date, description, entries: payload });
       if (res.success) {
-        router.push(`/${slug}/finance/jurnal`);
+        router.push(`/app/${slug}/finance/jurnal`);
       } else {
         setError(res.error);
       }

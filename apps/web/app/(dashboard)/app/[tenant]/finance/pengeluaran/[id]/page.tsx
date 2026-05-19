@@ -82,7 +82,7 @@ export default async function PengeluaranDetailPage({
     <div className="p-6 space-y-6 max-w-2xl">
       <div className="flex items-center justify-between">
         <Link
-          href={`/${slug}/finance/pengeluaran`}
+          href={`/app/${slug}/finance/pengeluaran`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -124,7 +124,7 @@ export default async function PengeluaranDetailPage({
         <div className="rounded-lg border border-border bg-muted/20 p-4">
           <p className="text-xs text-muted-foreground mb-1">Jurnal Akuntansi</p>
           <Link
-            href={`/${slug}/finance/jurnal`}
+            href={`/app/${slug}/finance/jurnal`}
             className="font-mono text-sm text-primary hover:underline"
           >
             {transaction.referenceNumber}

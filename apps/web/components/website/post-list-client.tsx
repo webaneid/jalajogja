@@ -45,7 +45,7 @@ export function CreateButton({ slug }: { slug: string }) {
   const router = useRouter();
 
   return (
-    <Button onClick={() => router.push(`/${slug}/website/posts/new`)} className="gap-2">
+    <Button onClick={() => router.push(`/app/${slug}/website/posts/new`)} className="gap-2">
       <Plus className="h-4 w-4" />
       Post Baru
     </Button>
@@ -71,7 +71,7 @@ export function SearchInput({
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (q.trim()) params.set("q", q.trim());
-    router.push(`/${slug}/website/posts?${params.toString()}`);
+    router.push(`/app/${slug}/website/posts?${params.toString()}`);
   }
 
   return (
@@ -122,7 +122,7 @@ function RowActions({ post, slug }: { post: Post; slug: string }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => router.push(`/${slug}/website/posts/${post.id}/edit`)}>
+          <DropdownMenuItem onClick={() => router.push(`/app/${slug}/website/posts/${post.id}/edit`)}>
             <Pencil className="mr-2 h-4 w-4" />
             Edit
           </DropdownMenuItem>
@@ -224,7 +224,7 @@ export function PostsTable({
               >
                 <td className="px-4 py-3">
                   <button
-                    onClick={() => router.push(`/${slug}/website/posts/${post.id}/edit`)}
+                    onClick={() => router.push(`/app/${slug}/website/posts/${post.id}/edit`)}
                     className="text-left hover:underline font-medium"
                   >
                     {post.title}
@@ -265,7 +265,7 @@ export function PostsTable({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => router.push(`/${slug}/website/posts?page=${page - 1}`)}
+                onClick={() => router.push(`/app/${slug}/website/posts?page=${page - 1}`)}
               >
                 Sebelumnya
               </Button>
@@ -274,7 +274,7 @@ export function PostsTable({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => router.push(`/${slug}/website/posts?page=${page + 1}`)}
+                onClick={() => router.push(`/app/${slug}/website/posts?page=${page + 1}`)}
               >
                 Berikutnya
               </Button>

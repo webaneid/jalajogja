@@ -19,7 +19,7 @@ export function UserMenu({ name, email, role }: UserMenuProps) {
   async function handleSignOut() {
     setLoading(true);
     await signOut();
-    router.push("/login");
+    router.push("/app/login");
   }
 
   return (

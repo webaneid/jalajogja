@@ -78,7 +78,7 @@ export default async function BulkLetterPage({
       {/* Breadcrumb */}
       <div className="flex items-center gap-2">
         <Link
-          href={`/${slug}/letters/keluar/${letterId}`}
+          href={`/app/${slug}/letters/keluar/${letterId}`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" />

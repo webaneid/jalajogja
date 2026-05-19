@@ -180,7 +180,7 @@ export default async function FinanceDashboardPage({
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 className="font-medium text-sm">Pemasukan Terbaru</h2>
             <Link
-              href={`/${slug}/finance/pemasukan`}
+              href={`/app/${slug}/finance/pemasukan`}
               className="text-xs text-muted-foreground hover:text-foreground"
             >
               Lihat semua →
@@ -195,7 +195,7 @@ export default async function FinanceDashboardPage({
               {recentPayments.map((p) => (
                 <li key={p.id}>
                   <Link
-                    href={`/${slug}/finance/pemasukan/${p.id}`}
+                    href={`/app/${slug}/finance/pemasukan/${p.id}`}
                     className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
                   >
                     <div>
@@ -220,7 +220,7 @@ export default async function FinanceDashboardPage({
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 className="font-medium text-sm">Pengeluaran Terbaru</h2>
             <Link
-              href={`/${slug}/finance/pengeluaran`}
+              href={`/app/${slug}/finance/pengeluaran`}
               className="text-xs text-muted-foreground hover:text-foreground"
             >
               Lihat semua →
@@ -235,7 +235,7 @@ export default async function FinanceDashboardPage({
               {recentDisbursements.map((d) => (
                 <li key={d.id}>
                   <Link
-                    href={`/${slug}/finance/pengeluaran/${d.id}`}
+                    href={`/app/${slug}/finance/pengeluaran/${d.id}`}
                     className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
                   >
                     <div>
@@ -259,21 +259,21 @@ export default async function FinanceDashboardPage({
       {/* Quick actions */}
       <div className="flex flex-wrap gap-3">
         <Link
-          href={`/${slug}/finance/pemasukan/new`}
+          href={`/app/${slug}/finance/pemasukan/new`}
           className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-colors"
         >
           <ArrowDownCircle className="h-4 w-4 text-green-500" />
           Catat Pemasukan
         </Link>
         <Link
-          href={`/${slug}/finance/pengeluaran/new`}
+          href={`/app/${slug}/finance/pengeluaran/new`}
           className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-colors"
         >
           <ArrowUpCircle className="h-4 w-4 text-red-500" />
           Catat Pengeluaran
         </Link>
         <Link
-          href={`/${slug}/finance/jurnal/new`}
+          href={`/app/${slug}/finance/jurnal/new`}
           className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-colors"
         >
           <CheckCircle2 className="h-4 w-4 text-blue-500" />

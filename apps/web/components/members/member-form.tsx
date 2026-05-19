@@ -49,7 +49,7 @@ export function MemberForm({ slug, defaultValues = {}, memberId, onSubmit }: Mem
         setError(result.error);
         return;
       }
-      router.push(`/${slug}/members/${result.memberId}`);
+      router.push(`/app/${slug}/members/${result.memberId}`);
     });
   }
 

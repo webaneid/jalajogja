@@ -207,7 +207,7 @@ export function CampaignForm({ slug, campaignId, categories, initialData, qurban
       if (campaignId === null) {
         const res = await createCampaignAction(slug, buildData());
         if (res.success) {
-          router.push(`/${slug}/donasi/campaign/${res.data.campaignId}/edit`);
+          router.push(`/app/${slug}/donasi/campaign/${res.data.campaignId}/edit`);
         } else {
           setError(res.error);
         }
@@ -224,7 +224,7 @@ export function CampaignForm({ slug, campaignId, categories, initialData, qurban
     startDeleting(async () => {
       const res = await deleteCampaignAction(slug, campaignId);
       if (res.success) {
-        router.push(`/${slug}/donasi/campaign`);
+        router.push(`/app/${slug}/donasi/campaign`);
       } else {
         setError(res.error);
       }
@@ -237,7 +237,7 @@ export function CampaignForm({ slug, campaignId, categories, initialData, qurban
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <Link
-            href={`/${slug}/donasi/campaign`}
+            href={`/app/${slug}/donasi/campaign`}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />

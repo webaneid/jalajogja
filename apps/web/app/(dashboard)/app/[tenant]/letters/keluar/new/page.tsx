@@ -103,7 +103,7 @@ export default async function SuratKeluarNewPage({
     <div className="p-6 space-y-6">
       <div className="flex items-center">
         <Link
-          href={`/${slug}/letters/keluar`}
+          href={`/app/${slug}/letters/keluar`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" />

@@ -17,7 +17,7 @@ export default async function BillingInvoiceNewPage({
     <div className="p-6 space-y-6">
       <div className="flex items-center gap-3">
         <Link
-          href={`/${slug}/finance/billing/invoice`}
+          href={`/app/${slug}/finance/billing/invoice`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />

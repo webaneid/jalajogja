@@ -137,7 +137,7 @@ export default async function FulfillmentPage({
       {/* Breadcrumb */}
       <div className="flex items-center justify-between">
         <Link
-          href={`/${slug}/toko/pesanan`}
+          href={`/app/${slug}/toko/pesanan`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -268,7 +268,7 @@ export default async function FulfillmentPage({
           <p className="text-xs text-muted-foreground">Verifikasi bukti transfer, konfirmasi manual</p>
         </div>
         <Link
-          href={`/${slug}/finance/billing/invoice/${inv.id}`}
+          href={`/app/${slug}/finance/billing/invoice/${inv.id}`}
           className="flex items-center gap-1.5 text-xs text-primary hover:underline shrink-0"
         >
           Buka Invoice

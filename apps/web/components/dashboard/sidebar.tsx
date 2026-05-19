@@ -14,7 +14,7 @@ export function Sidebar({ slug, orgName, tenantUser }: SidebarProps) {
       {/* Logo + nama organisasi */}
       <div className="flex h-14 items-center border-b px-5">
         <Link
-          href={`/${slug}/dashboard`}
+          href={`/app/${slug}/dashboard`}
           className="flex items-center gap-2 font-semibold text-foreground hover:opacity-80"
         >
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">

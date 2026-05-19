@@ -139,7 +139,7 @@ export function OfficerForm({ slug, officerId, members, divisions, customRoles, 
     startTransition(async () => {
       if (isEdit) {
         const res = await updateOfficerAction(slug, officerId!, officerData);
-        if (res.success) router.push(`/${slug}/pengurus`);
+        if (res.success) router.push(`/app/${slug}/pengurus`);
         else setError(res.error);
         return;
       }
@@ -155,7 +155,7 @@ export function OfficerForm({ slug, officerId, members, divisions, customRoles, 
         activationName:         activate ? memberName : undefined,
       });
 
-      if (res.success) router.push(`/${slug}/pengurus`);
+      if (res.success) router.push(`/app/${slug}/pengurus`);
       else setError(res.error);
     });
   }
@@ -164,7 +164,7 @@ export function OfficerForm({ slug, officerId, members, divisions, customRoles, 
     if (!confirm("Hapus pengurus ini? Jika sudah pernah menandatangani surat, gunakan 'Non-aktifkan' saja.")) return;
     startTransition(async () => {
       const res = await deleteOfficerAction(slug, officerId!);
-      if (res.success) router.push(`/${slug}/pengurus`);
+      if (res.success) router.push(`/app/${slug}/pengurus`);
       else setError(res.error);
     });
   }

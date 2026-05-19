@@ -41,7 +41,7 @@ export default async function PesananNewPage({
     <div className="p-6 space-y-6 max-w-4xl">
       <div className="flex items-center gap-3">
         <Link
-          href={`/${slug}/toko/pesanan`}
+          href={`/app/${slug}/toko/pesanan`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />

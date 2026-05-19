@@ -140,7 +140,7 @@ export default async function AcaraDetailPage({
       <div className="border-b border-border bg-card px-6 py-4">
         <div className="flex items-center gap-3">
           <Link
-            href={`/${slug}/event/acara`}
+            href={`/app/${slug}/event/acara`}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             ← Acara
@@ -176,7 +176,7 @@ export default async function AcaraDetailPage({
           <div className="flex gap-2 shrink-0">
             {event.status === "published" && (
               <Link
-                href={`/${slug}/event/acara/${eventId}/checkin`}
+                href={`/app/${slug}/event/acara/${eventId}/checkin`}
                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted transition-colors"
               >
                 <UserCheck className="h-4 w-4" />
@@ -184,7 +184,7 @@ export default async function AcaraDetailPage({
               </Link>
             )}
             <Link
-              href={`/${slug}/event/acara/${eventId}/edit`}
+              href={`/app/${slug}/event/acara/${eventId}/edit`}
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted transition-colors"
             >
               <Pencil className="h-4 w-4" />

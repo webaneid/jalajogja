@@ -32,7 +32,7 @@ export default async function NewMemberPage({
     <div className="p-6">
       {/* Breadcrumb */}
       <Link
-        href={`/${slug}/members`}
+        href={`/app/${slug}/members`}
         className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ChevronLeft className="h-4 w-4" /> Kembali ke Daftar Anggota

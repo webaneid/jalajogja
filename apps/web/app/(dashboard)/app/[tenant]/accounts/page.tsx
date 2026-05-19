@@ -87,7 +87,7 @@ export default async function AkunPage({
           </p>
         </div>
         <Link
-          href={`/${slug}/accounts/new`}
+          href={`/app/${slug}/accounts/new`}
           className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           <Plus className="h-4 w-4" />
@@ -112,7 +112,7 @@ export default async function AkunPage({
         </button>
         {q && (
           <Link
-            href={`/${slug}/accounts`}
+            href={`/app/${slug}/accounts`}
             className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
           >
             Reset
@@ -150,7 +150,7 @@ export default async function AkunPage({
                   </td>
                   <td className="px-4 py-3">
                     <Link
-                      href={`/${slug}/accounts/${row.id}`}
+                      href={`/app/${slug}/accounts/${row.id}`}
                       className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <Eye className="h-3.5 w-3.5" />
@@ -176,7 +176,7 @@ export default async function AkunPage({
               return (
                 <Link
                   key={p}
-                  href={`/${slug}/accounts${sp.size ? `?${sp}` : ""}`}
+                  href={`/app/${slug}/accounts${sp.size ? `?${sp}` : ""}`}
                   className={`rounded-md px-2.5 py-1 border text-xs ${
                     p === currentPage
                       ? "bg-foreground text-background border-foreground"

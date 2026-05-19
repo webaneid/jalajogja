@@ -245,7 +245,7 @@ export default async function EditMemberPage({
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <Link
-        href={`/${slug}/members/${memberId}`}
+        href={`/app/${slug}/members/${memberId}`}
         className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ChevronLeft className="h-4 w-4" /> Kembali ke Detail

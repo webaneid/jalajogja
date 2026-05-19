@@ -185,7 +185,7 @@ export function MemberWizard({ slug, children }: MemberWizardProps) {
   // Selesai — redirect ke halaman detail anggota
   function finishWizard() {
     if (memberId) {
-      router.push(`/${slug}/members/${memberId}`)
+      router.push(`/app/${slug}/members/${memberId}`)
     }
   }
 

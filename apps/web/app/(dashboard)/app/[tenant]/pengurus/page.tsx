@@ -106,7 +106,7 @@ export default async function PengurusPage({
           </p>
         </div>
         <Link
-          href={`/${slug}/pengurus/new`}
+          href={`/app/${slug}/pengurus/new`}
           className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" />
@@ -118,7 +118,7 @@ export default async function PengurusPage({
       {officers.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border py-16 text-center">
           <p className="text-sm text-muted-foreground">Belum ada pengurus.</p>
-          <Link href={`/${slug}/pengurus/new`} className="mt-2 inline-block text-sm text-primary hover:underline">
+          <Link href={`/app/${slug}/pengurus/new`} className="mt-2 inline-block text-sm text-primary hover:underline">
             Tambah pengurus pertama
           </Link>
         </div>
@@ -177,7 +177,7 @@ export default async function PengurusPage({
 
                         {/* Edit */}
                         <Link
-                          href={`/${slug}/pengurus/${officer.id}/edit`}
+                          href={`/app/${slug}/pengurus/${officer.id}/edit`}
                           className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
                         >
                           <PenLine className="h-4 w-4" />

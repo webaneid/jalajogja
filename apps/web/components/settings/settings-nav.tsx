@@ -37,7 +37,7 @@ export function SettingsNav({ slug }: { slug: string }) {
   return (
     <nav className="flex flex-row gap-1 overflow-x-auto lg:flex-col">
       {NAV_ITEMS.map((item) => {
-        const href = `/${slug}/settings/${item.href}`;
+        const href = `/app/${slug}/settings/${item.href}`;
         const isActive = pathname === href || pathname.startsWith(href + "/");
         const Icon = item.icon;
 

@@ -51,7 +51,7 @@ export function IncomingLetterForm({ slug, letterTypes }: Props) {
       });
 
       if (res.success) {
-        router.push(`/${slug}/letters/masuk`);
+        router.push(`/app/${slug}/letters/masuk`);
       } else {
         setError(res.error);
       }

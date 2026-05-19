@@ -109,7 +109,7 @@ export default async function PengeluaranPage({
           <p className="text-sm text-muted-foreground mt-0.5">Semua transaksi uang keluar</p>
         </div>
         <Link
-          href={`/${slug}/finance/pengeluaran/new`}
+          href={`/app/${slug}/finance/pengeluaran/new`}
           className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           <Plus className="h-4 w-4" />
@@ -170,12 +170,12 @@ export default async function PengeluaranPage({
               rows.map((row) => (
                 <tr key={row.id} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3">
-                    <Link href={`/${slug}/finance/pengeluaran/${row.id}`} className="font-mono text-xs hover:underline text-primary">
+                    <Link href={`/app/${slug}/finance/pengeluaran/${row.id}`} className="font-mono text-xs hover:underline text-primary">
                       {row.number}
                     </Link>
                   </td>
                   <td className="px-4 py-3">
-                    <Link href={`/${slug}/finance/pengeluaran/${row.id}`} className="hover:underline">
+                    <Link href={`/app/${slug}/finance/pengeluaran/${row.id}`} className="hover:underline">
                       {row.recipientName}
                     </Link>
                   </td>

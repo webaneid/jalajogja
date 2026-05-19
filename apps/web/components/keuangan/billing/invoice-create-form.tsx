@@ -89,7 +89,7 @@ export function InvoiceCreateForm({ slug }: Props) {
       });
 
       if (res.success) {
-        router.push(`/${slug}/finance/billing/invoice/${res.data.invoiceId}`);
+        router.push(`/app/${slug}/finance/billing/invoice/${res.data.invoiceId}`);
       } else {
         setError(res.error);
       }

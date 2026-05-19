@@ -62,7 +62,7 @@ export function SidebarNav({
   return (
     <nav className="flex flex-col gap-0.5 px-3">
       {visibleItems.map(({ label, icon: Icon, path }) => {
-        const href = `/${slug}/${path}`;
+        const href = `/app/${slug}/${path}`;
         const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
         return (

@@ -287,7 +287,7 @@ export default async function MemberDetailPage({
     <div className="p-6 max-w-2xl mx-auto">
       {/* Breadcrumb */}
       <Link
-        href={`/${slug}/members`}
+        href={`/app/${slug}/members`}
         className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ChevronLeft className="h-4 w-4" /> Daftar Anggota
@@ -312,7 +312,7 @@ export default async function MemberDetailPage({
         </div>
         <div className="flex gap-2 shrink-0">
           <Link
-            href={`/${slug}/members/${memberId}/edit`}
+            href={`/app/${slug}/members/${memberId}/edit`}
             className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-accent transition-colors"
           >
             <Pencil className="h-4 w-4" /> Edit

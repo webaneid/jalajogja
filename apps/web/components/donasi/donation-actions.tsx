@@ -33,7 +33,7 @@ export function DonationActions({ slug, donationId, paymentId, paymentStatus }: 
 
   return (
     <div className="flex items-center justify-end gap-1">
-      <Link href={`/${slug}/donasi/transaksi/${donationId}`}>
+      <Link href={`/app/${slug}/donasi/transaksi/${donationId}`}>
         <Button variant="ghost" size="icon" className="h-7 w-7">
           <Eye className="h-3.5 w-3.5" />
         </Button>

@@ -152,7 +152,7 @@ export default async function ProdukPage({
             return (
               <Link
                 key={product.id}
-                href={`/${slug}/toko/produk/${product.id}/edit`}
+                href={`/app/${slug}/toko/produk/${product.id}/edit`}
                 className="group rounded-lg border border-border bg-card overflow-hidden hover:border-primary/50 transition-colors"
               >
                 {/* Thumbnail */}

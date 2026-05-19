@@ -157,7 +157,7 @@ export function BulkChildrenSection({ slug, parentId, isAdmin, initialChildren }
                   {STATUS_LABELS[c.status] ?? c.status}
                 </span>
                 <Link
-                  href={`/${slug}/letters/keluar/${c.id}`}
+                  href={`/app/${slug}/letters/keluar/${c.id}`}
                   title="Buka salinan ini"
                   className="text-muted-foreground hover:text-foreground"
                 >

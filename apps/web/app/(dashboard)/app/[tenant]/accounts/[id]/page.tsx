@@ -98,7 +98,7 @@ export default async function AkunDetailPage({
     <div className="p-6 max-w-3xl space-y-5">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link href={`/${slug}/accounts`} className="flex items-center gap-1 hover:text-foreground transition-colors">
+        <Link href={`/app/${slug}/accounts`} className="flex items-center gap-1 hover:text-foreground transition-colors">
           <ChevronLeft className="h-4 w-4" />
           Akun Publik
         </Link>

@@ -136,7 +136,7 @@ export function DonationForm({ slug, campaigns, defaultCampaignId }: DonationFor
           </p>
         </div>
         <div className="flex gap-3">
-          <Link href={`/${slug}/donasi/transaksi/${success.donationId}`}>
+          <Link href={`/app/${slug}/donasi/transaksi/${success.donationId}`}>
             <Button variant="outline">Lihat Detail</Button>
           </Link>
           <Button onClick={() => {
@@ -155,7 +155,7 @@ export function DonationForm({ slug, campaigns, defaultCampaignId }: DonationFor
     <div className="p-6 max-w-xl space-y-6">
       <div className="flex items-center gap-3">
         <Link
-          href={`/${slug}/donasi/transaksi`}
+          href={`/app/${slug}/donasi/transaksi`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />

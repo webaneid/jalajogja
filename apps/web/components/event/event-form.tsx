@@ -302,7 +302,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
       if (eventId === null) {
         const res = await createEventAction(slug, data);
         if (res.success) {
-          router.push(`/${slug}/event/acara/${res.data.eventId}/edit`);
+          router.push(`/app/${slug}/event/acara/${res.data.eventId}/edit`);
         } else {
           setError(res.error);
         }
@@ -323,7 +323,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
     startDeleting(async () => {
       const res = await deleteEventAction(slug, eventId);
       if (res.success) {
-        router.push(`/${slug}/event/acara`);
+        router.push(`/app/${slug}/event/acara`);
       } else {
         setError(res.error);
       }
@@ -344,7 +344,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <Link
-            href={`/${slug}/event/acara`}
+            href={`/app/${slug}/event/acara`}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />

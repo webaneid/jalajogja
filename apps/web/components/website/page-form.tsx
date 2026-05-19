@@ -139,7 +139,7 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
       if (pageId === null) {
         const res = await createPageAction(slug, buildPayload());
         if (!res.success) { alert(res.error); return; }
-        router.push(`/${slug}/website/pages/${res.data.pageId}/edit`);
+        router.push(`/app/${slug}/website/pages/${res.data.pageId}/edit`);
       } else {
         const res = await updatePageAction(slug, pageId, buildPayload());
         if (!res.success) { alert(res.error); return; }
@@ -153,7 +153,7 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
       if (pageId === null) {
         const res = await createPageAction(slug, buildPayload(target));
         if (!res.success) { alert(res.error); return; }
-        router.push(`/${slug}/website/pages/${res.data.pageId}/edit`);
+        router.push(`/app/${slug}/website/pages/${res.data.pageId}/edit`);
         return;
       }
       const res = await updatePageAction(slug, pageId, buildPayload(target));
@@ -182,7 +182,7 @@ export function PageForm({ slug, pageId, initialData }: PageFormProps) {
       {/* Header bar */}
       <div className="flex items-center gap-3 px-6 py-3 border-b border-border bg-background sticky top-0 z-10">
         <button
-          onClick={() => router.push(`/${slug}/website/pages`)}
+          onClick={() => router.push(`/app/${slug}/website/pages`)}
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           ← Halaman

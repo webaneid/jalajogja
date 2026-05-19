@@ -133,7 +133,7 @@ export function DokumenForm({ slug, documentId, categories, initialData }: Dokum
           title, description: description || null, categoryId, visibility, tags,
         });
         if (!res.success) { setError(res.error); return; }
-        router.push(`/${slug}/dokumen/${documentId}`);
+        router.push(`/app/${slug}/dokumen/${documentId}`);
       } else {
         const data: DocumentData = {
           title,
@@ -149,7 +149,7 @@ export function DokumenForm({ slug, documentId, categories, initialData }: Dokum
         };
         const res = await createDocumentAction(slug, data);
         if (!res.success) { setError(res.error); return; }
-        router.push(`/${slug}/dokumen/${res.data.documentId}`);
+        router.push(`/app/${slug}/dokumen/${res.data.documentId}`);
       }
     });
   }

@@ -556,7 +556,7 @@ function InviteDialog({
             {customRoles.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Belum ada role kustom. Buat di{" "}
-                <a href={`/${slug}/settings/roles`} className="underline">Pengaturan Role</a>.
+                <a href={`/app/${slug}/settings/roles`} className="underline">Pengaturan Role</a>.
               </p>
             ) : (
               <Popover open={customRoleOpen} onOpenChange={setCustomRoleOpen}>

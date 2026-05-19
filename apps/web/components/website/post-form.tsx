@@ -514,7 +514,7 @@ export function PostForm({
         // Create mode — record belum ada di DB
         const res = await createPostAction(slug, buildPayload());
         if (!res.success) { alert(res.error); return; }
-        router.push(`/${slug}/website/posts/${res.data.postId}/edit`);
+        router.push(`/app/${slug}/website/posts/${res.data.postId}/edit`);
       } else {
         const res = await updatePostAction(slug, postId, buildPayload());
         if (!res.success) { alert(res.error); return; }
@@ -528,7 +528,7 @@ export function PostForm({
       if (postId === null) {
         const res = await createPostAction(slug, buildPayload(target));
         if (!res.success) { alert(res.error); return; }
-        router.push(`/${slug}/website/posts/${res.data.postId}/edit`);
+        router.push(`/app/${slug}/website/posts/${res.data.postId}/edit`);
       } else {
         const res = await updatePostAction(slug, postId, buildPayload(target));
         if (!res.success) { alert(res.error); return; }
@@ -561,7 +561,7 @@ export function PostForm({
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-3 border-b border-border bg-background sticky top-0 z-10">
         <button
-          onClick={() => router.push(`/${slug}/website/posts`)}
+          onClick={() => router.push(`/app/${slug}/website/posts`)}
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           ← Posts

@@ -71,7 +71,7 @@ export default async function EventCheckinPage({
       <div className="border-b border-border bg-card px-6 py-4 sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <Link
-            href={`/${slug}/event/acara/${eventId}`}
+            href={`/app/${slug}/event/acara/${eventId}`}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             ← Pendaftaran

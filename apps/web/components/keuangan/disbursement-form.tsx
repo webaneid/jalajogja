@@ -54,7 +54,7 @@ export function DisbursementForm({ slug }: Props) {
     startTransition(async () => {
       const res = await createDisbursementAction(slug, data);
       if (res.success) {
-        router.push(`/${slug}/finance/pengeluaran/${res.data.disbursementId}`);
+        router.push(`/app/${slug}/finance/pengeluaran/${res.data.disbursementId}`);
       } else {
         setError(res.error);
       }

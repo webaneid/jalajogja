@@ -16,7 +16,7 @@ const NAV_ITEMS = [
 
 export function WebsiteNav({ slug }: { slug: string }) {
   const pathname = usePathname();
-  const base = `/${slug}/website`;
+  const base = `/app/${slug}/website`;
 
   return (
     <nav className="w-48 shrink-0 border-r border-border bg-muted/20 py-4">

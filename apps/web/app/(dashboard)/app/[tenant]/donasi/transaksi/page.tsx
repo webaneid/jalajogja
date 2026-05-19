@@ -96,7 +96,7 @@ export default async function TransaksiListPage({
           <h1 className="text-xl font-semibold">Transaksi Donasi</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{rows.length} transaksi</p>
         </div>
-        <Link href={`/${slug}/donasi/transaksi/new`}>
+        <Link href={`/app/${slug}/donasi/transaksi/new`}>
           <Button size="sm">
             <Plus className="h-4 w-4 mr-1.5" />
             Input Donasi

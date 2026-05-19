@@ -76,7 +76,7 @@ export function LetterTemplateList({ slug, templates: initial }: Props) {
             </div>
             <div className="flex items-center gap-2 shrink-0 ml-4">
               <Link
-                href={`/${slug}/letters/template/${t.id}/edit`}
+                href={`/app/${slug}/letters/template/${t.id}/edit`}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <Pencil className="h-4 w-4" />

@@ -184,7 +184,7 @@ export function InvoiceListClient({
                   </td>
                   <td className="px-4 py-3">
                     <Link
-                      href={`/${slug}/finance/billing/invoice/${row.id}`}
+                      href={`/app/${slug}/finance/billing/invoice/${row.id}`}
                       className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <Eye className="h-3.5 w-3.5" />

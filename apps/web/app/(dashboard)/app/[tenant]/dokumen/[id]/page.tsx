@@ -96,7 +96,7 @@ export default async function DokumenDetail({
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1.5">
           <Link
-            href={`/${slug}/dokumen/semua`}
+            href={`/app/${slug}/dokumen/semua`}
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -118,7 +118,7 @@ export default async function DokumenDetail({
             )}
           </div>
         </div>
-        <Link href={`/${slug}/dokumen/${docId}/edit`}>
+        <Link href={`/app/${slug}/dokumen/${docId}/edit`}>
           <Button variant="outline" size="sm">
             <Pencil className="h-3.5 w-3.5 mr-1.5" />
             Edit

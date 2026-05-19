@@ -14,7 +14,7 @@ const NAV_ITEMS = [
 
 export function DonasiNav({ slug }: { slug: string }) {
   const pathname = usePathname();
-  const base = `/${slug}/donasi`;
+  const base = `/app/${slug}/donasi`;
 
   return (
     <nav className="w-48 shrink-0 border-r border-border bg-muted/20 py-4">

@@ -173,7 +173,7 @@ export default async function SuratKeluarEditPage({
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <Link
-          href={`/${slug}/letters/keluar/${letterId}`}
+          href={`/app/${slug}/letters/keluar/${letterId}`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -181,7 +181,7 @@ export default async function SuratKeluarEditPage({
         </Link>
         {isAdmin && !letter.isBulk && (
           <Link
-            href={`/${slug}/letters/keluar/${letterId}/bulk`}
+            href={`/app/${slug}/letters/keluar/${letterId}/bulk`}
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
           >
             <Users className="h-3.5 w-3.5" />

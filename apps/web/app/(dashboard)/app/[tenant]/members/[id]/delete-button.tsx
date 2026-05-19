@@ -22,7 +22,7 @@ export function DeleteMemberButton({
     startTransition(async () => {
       const result = await removeMemberFromTenantAction(slug, memberId);
       if (result.success) {
-        router.push(`/${slug}/members`);
+        router.push(`/app/${slug}/members`);
       }
     });
   }

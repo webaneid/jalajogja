@@ -121,7 +121,7 @@ export default async function PesananDetailPage({
       {/* Header */}
       <div className="flex items-center justify-between">
         <Link
-          href={`/${slug}/toko/pesanan`}
+          href={`/app/${slug}/toko/pesanan`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />

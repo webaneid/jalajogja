@@ -50,7 +50,7 @@ function formatDate(d: Date | null) {
 export function CreateEventButton({ slug }: { slug: string }) {
   const router = useRouter();
   return (
-    <Button size="sm" onClick={() => router.push(`/${slug}/event/acara/new`)}>
+    <Button size="sm" onClick={() => router.push(`/app/${slug}/event/acara/new`)}>
       <Plus className="h-4 w-4 mr-1" />
       Event Baru
     </Button>
@@ -141,12 +141,12 @@ export function EventTable({ slug, events: initialEvents }: { slug: string; even
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">
-                        <Link href={`/${slug}/event/acara/${event.id}`}>
+                        <Link href={`/app/${slug}/event/acara/${event.id}`}>
                           <Button variant="ghost" size="icon" className="h-8 w-8" title="Lihat pendaftaran">
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
                         </Link>
-                        <Link href={`/${slug}/event/acara/${event.id}/edit`}>
+                        <Link href={`/app/${slug}/event/acara/${event.id}/edit`}>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>

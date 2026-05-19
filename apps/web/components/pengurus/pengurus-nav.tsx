@@ -18,7 +18,7 @@ export function PengurusNav({ slug }: { slug: string }) {
         Pengurus
       </p>
       {navItems.map(({ label, icon: Icon, path }) => {
-        const href = `/${slug}/${path}`;
+        const href = `/app/${slug}/${path}`;
         const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
         return (

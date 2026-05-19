@@ -202,20 +202,20 @@ export default async function CampaignDetailPage({
       {/* Header */}
       <div className="flex items-center justify-between">
         <Link
-          href={`/${slug}/donasi/campaign`}
+          href={`/app/${slug}/donasi/campaign`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
           Campaign
         </Link>
         <div className="flex items-center gap-2">
-          <Link href={`/${slug}/donasi/campaign/${campaignId}/edit`}>
+          <Link href={`/app/${slug}/donasi/campaign/${campaignId}/edit`}>
             <Button variant="outline" size="sm">
               <Pencil className="h-3.5 w-3.5 mr-1.5" />
               Edit
             </Button>
           </Link>
-          <Link href={`/${slug}/donasi/transaksi/new?campaign=${campaignId}`}>
+          <Link href={`/app/${slug}/donasi/transaksi/new?campaign=${campaignId}`}>
             <Button size="sm">
               <Plus className="h-3.5 w-3.5 mr-1.5" />
               Input Donasi
@@ -379,7 +379,7 @@ export default async function CampaignDetailPage({
                     <tr key={`${d.invoiceId}`} className="hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-3">
                         <Link
-                          href={`/${slug}/finance/billing/invoice/${d.invoiceId}`}
+                          href={`/app/${slug}/finance/billing/invoice/${d.invoiceId}`}
                           className="font-mono text-xs text-primary hover:underline"
                         >
                           {d.invoiceNumber}

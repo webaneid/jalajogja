@@ -22,7 +22,7 @@ export function LettersNav({ slug }: { slug: string }) {
       </div>
       <nav className="flex flex-col gap-0.5 p-2">
         {navItems.map(({ label, path }) => {
-          const href = `/${slug}/letters/${path}`;
+          const href = `/app/${slug}/letters/${path}`;
           const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
           return (

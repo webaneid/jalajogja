@@ -186,7 +186,7 @@ export function BulkRecipientPicker({ slug, letterId, contacts }: Props) {
       if (res.success) {
         setResult({ count: res.count });
         // Redirect ke halaman parent setelah 1.5 detik
-        setTimeout(() => router.push(`/${slug}/letters/keluar/${letterId}`), 1500);
+        setTimeout(() => router.push(`/app/${slug}/letters/keluar/${letterId}`), 1500);
       } else {
         setError(res.error);
       }
@@ -355,7 +355,7 @@ export function BulkRecipientPicker({ slug, letterId, contacts }: Props) {
             <div className="py-10 text-center text-sm text-muted-foreground">
               Belum ada kontak tersimpan.{" "}
               <a
-                href={`/${slug}/letters/template`}
+                href={`/app/${slug}/letters/template`}
                 className="text-primary hover:underline"
               >
                 Tambah kontak di halaman Template.

@@ -125,7 +125,7 @@ export function LetterTemplateForm({ slug, templateId, defaultValues }: Props) {
         : await createLetterTemplateAction(slug, data);
 
       if (res.success) {
-        router.push(`/${slug}/letters/template`);
+        router.push(`/app/${slug}/letters/template`);
       } else {
         setError(res.error);
       }

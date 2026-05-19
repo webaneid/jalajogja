@@ -304,7 +304,7 @@ export function ProductForm({
         // Create mode — record belum ada
         const res = await createProductAction(slug, data);
         if (res.success) {
-          router.push(`/${slug}/toko/produk/${res.data.productId}/edit`);
+          router.push(`/app/${slug}/toko/produk/${res.data.productId}/edit`);
         } else {
           setError(res.error);
         }
@@ -342,7 +342,7 @@ export function ProductForm({
     startDelete(async () => {
       const res = await deleteProductAction(slug, productId);
       if (res.success) {
-        router.push(`/${slug}/toko/produk`);
+        router.push(`/app/${slug}/toko/produk`);
       } else {
         setError(res.error);
       }
@@ -364,7 +364,7 @@ export function ProductForm({
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-6 py-3">
         <button
           type="button"
-          onClick={() => router.push(`/${slug}/toko/produk`)}
+          onClick={() => router.push(`/app/${slug}/toko/produk`)}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />

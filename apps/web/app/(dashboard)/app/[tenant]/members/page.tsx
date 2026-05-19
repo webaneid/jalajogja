@@ -94,7 +94,7 @@ export default async function MembersPage({
           </p>
         </div>
         <Link
-          href={`/${slug}/members/new`}
+          href={`/app/${slug}/members/new`}
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2
                      text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
         >
@@ -125,7 +125,7 @@ export default async function MembersPage({
           </button>
           {(q || status) && (
             <Link
-              href={`/${slug}/members`}
+              href={`/app/${slug}/members`}
               className="h-9 flex items-center px-3 text-sm text-muted-foreground hover:text-foreground"
             >
               Reset
@@ -138,7 +138,7 @@ export default async function MembersPage({
           {["", "active", "inactive", "alumni"].map((s) => (
             <Link
               key={s}
-              href={`/${slug}/members?status=${s}${q ? `&q=${q}` : ""}`}
+              href={`/app/${slug}/members?status=${s}${q ? `&q=${q}` : ""}`}
               className={`h-9 rounded-md px-3 text-sm font-medium transition-colors flex items-center
                 ${status === s
                   ? "bg-primary text-primary-foreground"
@@ -173,7 +173,7 @@ export default async function MembersPage({
                 <tr key={m.id} className="hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3">
                     <Link
-                      href={`/${slug}/members/${m.id}`}
+                      href={`/app/${slug}/members/${m.id}`}
                       className="font-medium text-foreground hover:text-primary hover:underline"
                     >
                       {m.name}
@@ -204,14 +204,14 @@ export default async function MembersPage({
         <div className="mt-4 flex justify-end gap-2">
           {currentPage > 1 && (
             <Link
-              href={`/${slug}/members?page=${currentPage - 1}${q ? `&q=${q}` : ""}${status ? `&status=${status}` : ""}`}
+              href={`/app/${slug}/members?page=${currentPage - 1}${q ? `&q=${q}` : ""}${status ? `&status=${status}` : ""}`}
               className="rounded-md border bg-background px-3 py-1.5 text-sm hover:bg-accent"
             >
               ← Sebelumnya
             </Link>
           )}
           <Link
-            href={`/${slug}/members?page=${currentPage + 1}${q ? `&q=${q}` : ""}${status ? `&status=${status}` : ""}`}
+            href={`/app/${slug}/members?page=${currentPage + 1}${q ? `&q=${q}` : ""}${status ? `&status=${status}` : ""}`}
             className="rounded-md border bg-background px-3 py-1.5 text-sm hover:bg-accent"
           >
             Selanjutnya →

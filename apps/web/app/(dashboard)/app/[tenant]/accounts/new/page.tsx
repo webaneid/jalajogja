@@ -19,7 +19,7 @@ export default async function AkunNewPage({
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link
-          href={`/${slug}/accounts`}
+          href={`/app/${slug}/accounts`}
           className="flex items-center gap-1 hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />

@@ -169,7 +169,7 @@ export function PaymentForm({ slug }: Props) {
       });
 
       if (res.success) {
-        router.push(`/${slug}/finance/pemasukan/${res.data.paymentId}`);
+        router.push(`/app/${slug}/finance/pemasukan/${res.data.paymentId}`);
       } else {
         setError(res.error);
       }

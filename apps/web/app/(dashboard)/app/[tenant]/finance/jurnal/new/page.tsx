@@ -31,7 +31,7 @@ export default async function JurnalNewPage({
     <div className="p-6 space-y-6">
       <div>
         <Link
-          href={`/${slug}/finance/jurnal`}
+          href={`/app/${slug}/finance/jurnal`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
         >
           <ChevronLeft className="h-4 w-4" />

@@ -48,7 +48,7 @@ export default async function SuratMasukDetailPage({
       {/* Breadcrumb */}
       <div>
         <Link
-          href={`/${slug}/letters/masuk`}
+          href={`/app/${slug}/letters/masuk`}
           className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground w-fit"
         >
           <ChevronLeft className="h-4 w-4" />
