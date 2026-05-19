@@ -1,7 +1,7 @@
 # Rencana Migrasi Arsitektur URL
 
-> Status: **PERENCANAAN — belum ada eksekusi**
-> Dokumen ini adalah master plan. Tidak ada satu baris kode pun diubah sebelum setiap fase disetujui.
+> Status: **FASE 1 SELESAI — commit 6f81c76**
+> Fase 2 (redirect + revalidatePath) menunggu persetujuan eksekusi.
 > Evaluasi masalah yang mendasari: `docs/evaluasi-arsitektur-url.md`
 
 ---
@@ -242,7 +242,7 @@ Dokumen evaluasi sudah tidak diperlukan setelah plan ini ada. Akan dihapus di Fa
 
 ---
 
-### Fase 1 — Struktur Route Next.js
+### Fase 1 — Struktur Route Next.js ✅ SELESAI (commit 6f81c76)
 
 **Tujuan:** Pindah semua admin route ke `/app/[slug]/*` di filesystem.
 
