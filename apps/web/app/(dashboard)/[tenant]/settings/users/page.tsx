@@ -126,10 +126,11 @@ export default async function SettingsUsersPage({
   const availableMembersRaw = availableMemberIds.length > 0
     ? await db
         .select({
-          id:           members.id,
-          name:         members.name,
-          memberNumber: members.memberNumber,
-          contactId:    members.contactId,
+          id:               members.id,
+          name:             members.name,
+          memberNumber:     members.memberNumber,
+          contactId:        members.contactId,
+          betterAuthUserId: members.betterAuthUserId,
         })
         .from(members)
         .where(inArray(members.id, availableMemberIds))
@@ -155,6 +156,7 @@ export default async function SettingsUsersPage({
     name:         m.name,
     memberNumber: m.memberNumber,
     email:        m.contactId ? (contactEmailMap.get(m.contactId) ?? null) : null,
+    hasAccount:   !!m.betterAuthUserId,
   }));
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";

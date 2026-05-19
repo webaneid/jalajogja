@@ -623,6 +623,73 @@ export type ActivateResult =
   | { success: true; name: string }
   | { success: false; error: string };
 
+export type AddExistingData = {
+  memberId:      string;
+  role:          "ketua" | "sekretaris" | "bendahara" | "custom";
+  customRoleId?: string;
+};
+
+/**
+ * Beri akses dashboard ke anggota yang sudah punya akun front-end.
+ * Tidak perlu password baru — pakai betterAuthUserId yang sudah ada di public.members.
+ */
+export async function addExistingAccountAction(
+  slug: string,
+  data: AddExistingData
+): Promise<ActivateResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { success: false, error: "Hanya owner/ketua yang bisa menambah pengguna." };
+
+  if (data.role === "custom" && !data.customRoleId) {
+    return { success: false, error: "Role kustom wajib dipilih." };
+  }
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  // Validasi member ada di tenant ini
+  const [membership] = await db
+    .select({ memberId: tenantMemberships.memberId })
+    .from(tenantMemberships)
+    .where(and(
+      eq(tenantMemberships.tenantId, access.tenant.id),
+      eq(tenantMemberships.memberId, data.memberId),
+    ))
+    .limit(1);
+
+  if (!membership) return { success: false, error: "Anggota tidak ditemukan di cabang ini." };
+
+  // Ambil betterAuthUserId dan nama dari member
+  const [memberData] = await db
+    .select({ name: members.name, betterAuthUserId: members.betterAuthUserId })
+    .from(members)
+    .where(eq(members.id, data.memberId))
+    .limit(1);
+
+  if (!memberData?.betterAuthUserId) {
+    return { success: false, error: "Anggota belum punya akun front-end. Gunakan metode undang atau aktifkan langsung." };
+  }
+
+  // Cek belum jadi user di tenant ini
+  const [existing] = await tenantDb
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.memberId, data.memberId))
+    .limit(1);
+
+  if (existing) return { success: false, error: "Anggota ini sudah memiliki akses dashboard." };
+
+  await tenantDb.insert(schema.users).values({
+    betterAuthUserId: memberData.betterAuthUserId,
+    role:             data.role,
+    customRoleId:     data.role === "custom" ? (data.customRoleId ?? null) : null,
+    memberId:         data.memberId,
+  });
+
+  revalidatePath(`/${slug}/settings/users`);
+  return { success: true, name: memberData.name };
+}
+
 /**
  * Owner/ketua langsung buat akun + aktifkan pengurus tanpa kirim link.
  * Admin yang tentukan email dan password — user bisa ubah password nanti.
@@ -666,6 +733,24 @@ export async function activateUserDirectAction(
     .limit(1);
 
   if (existingByMember) return { success: false, error: "Anggota ini sudah memiliki akses dashboard." };
+
+  // Jika anggota sudah punya akun front-end, pakai langsung — jangan buat akun baru
+  const [memberRecord] = await db
+    .select({ betterAuthUserId: members.betterAuthUserId })
+    .from(members)
+    .where(eq(members.id, data.memberId))
+    .limit(1);
+
+  if (memberRecord?.betterAuthUserId) {
+    await tenantDb.insert(schema.users).values({
+      betterAuthUserId: memberRecord.betterAuthUserId,
+      role:             data.role,
+      customRoleId:     data.role === "custom" ? (data.customRoleId ?? null) : null,
+      memberId:         data.memberId,
+    });
+    revalidatePath(`/${slug}/settings/users`);
+    return { success: true, name: data.name.trim() };
+  }
 
   // Cek email sudah terdaftar di Better Auth
   const { user: authUserTable } = await import("@jalajogja/db");

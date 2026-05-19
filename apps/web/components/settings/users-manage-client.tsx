@@ -31,6 +31,7 @@ import {
   revokeInviteAction,
   removeUserAction,
   activateUserDirectAction,
+  addExistingAccountAction,
 } from "@/app/(dashboard)/[tenant]/settings/actions";
 import { Input } from "@/components/ui/input";
 
@@ -64,6 +65,7 @@ type AvailableMember = {
   name:         string;
   memberNumber: string | null;
   email:        string | null;
+  hasAccount:   boolean;
 };
 
 type CustomRole = {
@@ -401,20 +403,20 @@ function InviteDialog({
   onInviteCreated:  (token: string, invite: InviteRow) => void;
   onActivated:      (name: string, userRow: UserRow) => void;
 }) {
-  const [method, setMethod]               = useState<InviteMethod>("link");
-  const [memberId, setMemberId]           = useState("");
-  const [memberName, setMemberName]       = useState("");
-  const [memberEmail, setMemberEmail]     = useState<string | null>(null);
-  const [memberOpen, setMemberOpen]       = useState(false);
-  const [role, setRole]                   = useState<"ketua" | "sekretaris" | "bendahara" | "custom">("ketua");
-  const [customRoleId, setCustomRoleId]   = useState("");
+  const [method, setMethod]                 = useState<InviteMethod>("link");
+  const [memberId, setMemberId]             = useState("");
+  const [memberName, setMemberName]         = useState("");
+  const [memberEmail, setMemberEmail]       = useState<string | null>(null);
+  const [memberHasAccount, setMemberHasAccount] = useState(false);
+  const [memberOpen, setMemberOpen]         = useState(false);
+  const [role, setRole]                     = useState<"ketua" | "sekretaris" | "bendahara" | "custom">("ketua");
+  const [customRoleId, setCustomRoleId]     = useState("");
   const [customRoleName, setCustomRoleName] = useState("");
   const [customRoleOpen, setCustomRoleOpen] = useState(false);
-  // Field khusus metode langsung
-  const [password, setPassword]           = useState("");
-  const [showPassword, setShowPassword]   = useState(false);
-  const [error, setError]                 = useState("");
-  const [isPending, startTransition]      = useTransition();
+  const [password, setPassword]             = useState("");
+  const [showPassword, setShowPassword]     = useState(false);
+  const [error, setError]                   = useState("");
+  const [isPending, startTransition]        = useTransition();
 
   const ROLES: { value: typeof role; label: string }[] = [
     { value: "ketua",      label: "Ketua" },
@@ -424,15 +426,44 @@ function InviteDialog({
   ];
 
   function reset() {
-    setMemberId(""); setMemberName(""); setMemberEmail(null); setRole("ketua");
-    setCustomRoleId(""); setCustomRoleName("");
+    setMemberId(""); setMemberName(""); setMemberEmail(null); setMemberHasAccount(false);
+    setRole("ketua"); setCustomRoleId(""); setCustomRoleName("");
     setPassword(""); setShowPassword(false);
     setError(""); setMethod("link");
   }
 
   function handleClose() { reset(); onClose(); }
 
-  // ── Metode 1: Buat link undangan ──────────────────────────────────────────
+  // ── Path A: anggota sudah punya akun front-end — tinggal beri role ─────────
+  function handleSubmitExisting() {
+    if (!memberId) { setError("Pilih anggota terlebih dahulu."); return; }
+    if (role === "custom" && !customRoleId) { setError("Pilih role kustom."); return; }
+    setError("");
+
+    startTransition(async () => {
+      const res = await addExistingAccountAction(slug, {
+        memberId,
+        role,
+        customRoleId: role === "custom" ? customRoleId : undefined,
+      });
+
+      if (!res.success) { setError(res.error); return; }
+
+      onActivated(res.name, {
+        id:             crypto.randomUUID(),
+        name:           memberName,
+        email:          memberEmail,
+        role,
+        customRoleName: role === "custom" ? customRoleName : null,
+        memberId,
+        isCurrentUser:  false,
+        createdAt:      new Date().toISOString(),
+      });
+      reset();
+    });
+  }
+
+  // ── Path B: Kirim link undangan ────────────────────────────────────────────
   function handleSubmitLink() {
     if (!memberId) { setError("Pilih anggota terlebih dahulu."); return; }
     if (role === "custom" && !customRoleId) { setError("Pilih role kustom."); return; }
@@ -464,7 +495,7 @@ function InviteDialog({
     });
   }
 
-  // ── Metode 2: Aktifkan langsung ───────────────────────────────────────────
+  // ── Path C: Aktifkan langsung dengan password baru ─────────────────────────
   function handleSubmitDirect() {
     if (!memberId) { setError("Pilih anggota terlebih dahulu."); return; }
     if (!memberEmail) { setError("Anggota ini belum punya email. Isi dulu di data anggota."); return; }
@@ -485,7 +516,7 @@ function InviteDialog({
       if (!res.success) { setError(res.error); return; }
 
       onActivated(res.name, {
-        id:             crypto.randomUUID(), // placeholder, page will refresh
+        id:             crypto.randomUUID(),
         name:           memberName,
         email:          memberEmail,
         role,
@@ -498,6 +529,89 @@ function InviteDialog({
     });
   }
 
+  // ── Role picker (dipakai di semua path) ────────────────────────────────────
+  function RolePicker() {
+    return (
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Role</label>
+        <div className="grid grid-cols-2 gap-2">
+          {ROLES.map((r) => (
+            <button
+              key={r.value}
+              type="button"
+              onClick={() => setRole(r.value)}
+              className={`rounded-md border px-3 py-2 text-sm text-left transition-colors
+                ${role === r.value
+                  ? "border-primary bg-primary/5 text-primary font-medium"
+                  : "border-border text-muted-foreground hover:border-border/80"
+                }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+
+        {role === "custom" && (
+          <div className="space-y-1.5 mt-2">
+            {customRoles.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Belum ada role kustom. Buat di{" "}
+                <a href={`/${slug}/settings/roles`} className="underline">Pengaturan Role</a>.
+              </p>
+            ) : (
+              <Popover open={customRoleOpen} onOpenChange={setCustomRoleOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between rounded-md border border-input
+                               bg-background px-3 py-2 text-sm text-left focus:outline-none
+                               focus:ring-2 focus:ring-ring"
+                  >
+                    <span className={customRoleName ? "" : "text-muted-foreground"}>
+                      {customRoleName || "Pilih role kustom..."}
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0 w-64" align="start">
+                  <Command>
+                    <CommandInput placeholder="Cari role..." />
+                    <CommandList>
+                      <CommandEmpty>Tidak ditemukan.</CommandEmpty>
+                      {customRoles.map((r) => (
+                        <CommandItem
+                          key={r.id}
+                          value={r.name}
+                          onSelect={() => {
+                            setCustomRoleId(r.id);
+                            setCustomRoleName(r.name);
+                            setCustomRoleOpen(false);
+                          }}
+                        >
+                          {r.name}
+                        </CommandItem>
+                      ))}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const handleSubmit = memberHasAccount
+    ? handleSubmitExisting
+    : method === "link" ? handleSubmitLink : handleSubmitDirect;
+
+  const submitLabel = isPending
+    ? "Memproses..."
+    : memberHasAccount
+      ? "Beri Akses Dashboard"
+      : method === "link" ? "Buat Link Undangan" : "Aktifkan Sekarang";
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
       <DialogContent className="max-w-md">
@@ -506,40 +620,6 @@ function InviteDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* ── Toggle metode ─────────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 gap-1 rounded-lg border border-border p-1 bg-muted/30">
-            <button
-              type="button"
-              onClick={() => { setMethod("link"); setError(""); }}
-              className={`rounded-md px-3 py-2 text-sm font-medium transition-colors
-                ${method === "link"
-                  ? "bg-background shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-                }`}
-            >
-              Kirim Link Undangan
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMethod("direct"); setError(""); }}
-              className={`rounded-md px-3 py-2 text-sm font-medium transition-colors
-                ${method === "direct"
-                  ? "bg-background shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-                }`}
-            >
-              Aktifkan Langsung
-            </button>
-          </div>
-
-          {/* Deskripsi metode */}
-          <p className="text-xs text-muted-foreground">
-            {method === "link"
-              ? "Generate link 7 hari. User buka link → isi password sendiri → langsung aktif."
-              : "Admin tentukan email dan password. User bisa langsung login tanpa klik link."
-            }
-          </p>
-
           {/* ── Pilih Anggota ─────────────────────────────────────────────── */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Anggota</label>
@@ -570,7 +650,9 @@ function InviteDialog({
                           setMemberId(m.id);
                           setMemberName(m.name);
                           setMemberEmail(m.email ?? null);
+                          setMemberHasAccount(m.hasAccount);
                           setMemberOpen(false);
+                          setError("");
                         }}
                       >
                         <div className="flex flex-col">
@@ -579,11 +661,16 @@ function InviteDialog({
                             <span className="text-xs text-muted-foreground">{m.email}</span>
                           )}
                         </div>
-                        {m.memberNumber && (
-                          <span className="ml-auto text-xs text-muted-foreground font-mono shrink-0">
-                            {m.memberNumber}
-                          </span>
-                        )}
+                        <div className="ml-auto flex items-center gap-2 shrink-0">
+                          {m.hasAccount && (
+                            <span className="text-xs text-green-600 font-medium">Punya akun</span>
+                          )}
+                          {m.memberNumber && (
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {m.memberNumber}
+                            </span>
+                          )}
+                        </div>
                       </CommandItem>
                     ))}
                   </CommandList>
@@ -592,105 +679,73 @@ function InviteDialog({
             </Popover>
           </div>
 
-          {/* ── Pilih Role ────────────────────────────────────────────────── */}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Role</label>
-            <div className="grid grid-cols-2 gap-2">
-              {ROLES.map((r) => (
-                <button
-                  key={r.value}
-                  type="button"
-                  onClick={() => setRole(r.value)}
-                  className={`rounded-md border px-3 py-2 text-sm text-left transition-colors
-                    ${role === r.value
-                      ? "border-primary bg-primary/5 text-primary font-medium"
-                      : "border-border text-muted-foreground hover:border-border/80"
-                    }`}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Custom Role (jika role=custom) ────────────────────────────── */}
-          {role === "custom" && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Role Kustom</label>
-              {customRoles.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Belum ada role kustom. Buat di{" "}
-                  <a href={`/${slug}/settings/roles`} className="underline">Pengaturan Role</a>.
-                </p>
-              ) : (
-                <Popover open={customRoleOpen} onOpenChange={setCustomRoleOpen}>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className="w-full flex items-center justify-between rounded-md border border-input
-                                 bg-background px-3 py-2 text-sm text-left focus:outline-none
-                                 focus:ring-2 focus:ring-ring"
-                    >
-                      <span className={customRoleName ? "" : "text-muted-foreground"}>
-                        {customRoleName || "Pilih role kustom..."}
-                      </span>
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="p-0 w-64" align="start">
-                    <Command>
-                      <CommandInput placeholder="Cari role..." />
-                      <CommandList>
-                        <CommandEmpty>Tidak ditemukan.</CommandEmpty>
-                        {customRoles.map((r) => (
-                          <CommandItem
-                            key={r.id}
-                            value={r.name}
-                            onSelect={() => {
-                              setCustomRoleId(r.id);
-                              setCustomRoleName(r.name);
-                              setCustomRoleOpen(false);
-                            }}
-                          >
-                            {r.name}
-                          </CommandItem>
-                        ))}
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              )}
+          {/* ── Path A: sudah punya akun front-end ────────────────────────── */}
+          {memberId && memberHasAccount && (
+            <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-800">
+              <Shield className="inline h-3.5 w-3.5 mr-1.5 -mt-0.5" />
+              Anggota ini sudah punya akun. Password yang sama berlaku untuk dashboard.
             </div>
           )}
 
-          {/* ── Field khusus metode Aktifkan Langsung ────────────────────── */}
-          {method === "direct" && (
+          {/* ── Path B/C: belum punya akun — toggle metode ────────────────── */}
+          {memberId && !memberHasAccount && (
+            <>
+              <div className="grid grid-cols-2 gap-1 rounded-lg border border-border p-1 bg-muted/30">
+                <button
+                  type="button"
+                  onClick={() => { setMethod("link"); setError(""); }}
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition-colors
+                    ${method === "link"
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                    }`}
+                >
+                  Kirim Link Undangan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMethod("direct"); setError(""); }}
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition-colors
+                    ${method === "direct"
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                    }`}
+                >
+                  Aktifkan Langsung
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {method === "link"
+                  ? "Generate link 7 hari. User buka link → isi password sendiri → langsung aktif."
+                  : "Admin tentukan password. User bisa langsung login tanpa klik link."
+                }
+              </p>
+            </>
+          )}
+
+          {/* ── Role picker — selalu tampil setelah anggota dipilih ────────── */}
+          {memberId && <RolePicker />}
+
+          {/* ── Kredensial — hanya untuk path C (aktifkan langsung) ──────── */}
+          {memberId && !memberHasAccount && method === "direct" && (
             <div className="space-y-3 rounded-lg border border-border p-3 bg-muted/10">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Kredensial Akun
               </p>
 
-              {/* Email — dari data anggota, read-only */}
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Email</label>
-                {memberId ? (
-                  memberEmail ? (
-                    <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                      {memberEmail}
-                    </div>
-                  ) : (
-                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                      Anggota ini belum punya email — isi dulu di data anggota.
-                    </div>
-                  )
-                ) : (
+                {memberEmail ? (
                   <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                    Pilih anggota dulu
+                    {memberEmail}
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                    Anggota ini belum punya email — isi dulu di data anggota.
                   </div>
                 )}
               </div>
 
-              {/* Password — satu-satunya yang diisi admin */}
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Set Password</label>
                 <div className="relative">
@@ -724,14 +779,8 @@ function InviteDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={handleClose} disabled={isPending}>Batal</Button>
-          <Button
-            onClick={method === "link" ? handleSubmitLink : handleSubmitDirect}
-            disabled={isPending}
-          >
-            {isPending
-              ? "Memproses..."
-              : method === "link" ? "Buat Link Undangan" : "Aktifkan Sekarang"
-            }
+          <Button onClick={handleSubmit} disabled={isPending || !memberId}>
+            {submitLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
