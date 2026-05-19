@@ -1,7 +1,7 @@
 # Rencana Migrasi Arsitektur URL
 
-> Status: **FASE 1 SELESAI — commit 6f81c76**
-> Fase 2 (redirect + revalidatePath) menunggu persetujuan eksekusi.
+> Status: **FASE 1 + 2 SELESAI — commit 667d380**
+> Fase 3 (internal links di components) menunggu persetujuan eksekusi.
 > Evaluasi masalah yang mendasari: `docs/evaluasi-arsitektur-url.md`
 
 ---
@@ -278,7 +278,7 @@ Ini perubahan Next.js routing yang pure — URL berubah, tidak ada logic lain.
 
 ---
 
-### Fase 2 — Update Redirect dan RevalidatePath di Actions
+### Fase 2 — Update Redirect dan RevalidatePath di Actions ✅ SELESAI (commit 667d380)
 
 **Tujuan:** Semua 127 `redirect()` dan 131 `revalidatePath()` di dashboard menggunakan path baru.
 
