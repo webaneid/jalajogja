@@ -451,7 +451,7 @@ app/(dashboard)/[tenant]/
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
-- [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik + **3 jalur aktivasi** (existing account / link / langsung)
+- [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik + 3 jalur aktivasi + **sidebar filtering + 10 module guards (selesai)**
 - [x] **Modul Akun Phase 1** — `public.profiles` schema + migrasi `profile_id` ke 4 tabel transaksi (invoices, orders, donations, event_registrations). TypeScript 0 errors. Tenant existing `pc-ikpm-jogjakarta` sudah dimigrasikan manual.
 - [x] **Modul Akun Phase 2** — `resolveIdentity()` helper + update `checkoutAction`. TypeScript 0 errors.
 - [x] **Modul Akun Phase 3** — API routes selesai (front-end ditunda sampai website dibangun). 3 endpoints: register, profil (GET/PATCH/DELETE), transaksi (GET). TypeScript 0 errors.
@@ -1529,51 +1529,44 @@ Jangan pakai `sql.raw` dengan spread args — TypeScript tidak bisa inferensikan
 `inline` → browser render (PDF terbuka). `attachment` → download paksa.
 Pakai `inline` agar `<iframe>` PDF viewer berfungsi. Download tetap via `<a download>`.
 
-### [2026-04] Role System & User Management — SELESAI
+### [2026-04+05] Role System & User Management — SELESAI
 
 **Arsitektur lengkap di `docs/arsitektur-role-user.md`.**
 
-**Schema baru di tenant:**
-- `custom_roles` — nama, deskripsi, permissions (JSONB array per module), is_system flag
-- `tenant_invites` — token UUID, deliveryMethod, expiresAt, acceptedAt, memberId, customRoleId
+**Schema:** `tenant.custom_roles` + `tenant.tenant_invites` + perubahan `tenant.users` (tambah `customRoleId`)
 
-**TENANT_ROLES enum:**
-`owner|ketua|sekretaris|bendahara|custom`
-(`custom` → permissions dari `custom_roles` per tenant)
+**TENANT_ROLES:** `owner|ketua|sekretaris|bendahara|custom`
 
-**Permission Matrix:** `lib/permissions.ts`
-- 10 modul: `anggota|website|surat|keuangan|toko|donasi|event|dokumen|pengurus|pengaturan`
+**Permission System:** `lib/permissions.ts`
+- 10 modul: `website|surat|keuangan|toko|donasi|event|dokumen|anggota|media|pengurus`
 - 4 level: `full|read|own|none`
-- Helper: `canManageUsers()`, `getPermission()`, `hasPermission()`, `DEFAULT_ROLE_PERMISSIONS`
+- Helper utama: `getPermission()`, `canAccess()`, `hasFullAccess()`, `hasReadAccess()`, `canManageUsers()`, `getSuratScope()`
 
-**Tiga jalur aktivasi user (diupdate 2026-05):**
-1. **Beri Akses** — anggota sudah punya akun front-end (`members.betterAuthUserId` terisi) → pilih role saja → INSERT `tenant.users` dengan `betterAuthUserId` yang ada. Tidak ada password baru. Satu akun, dua konteks.
-2. **Kirim Link Undangan** — anggota belum punya akun → token UUID 7 hari → user klik link → isi password sendiri
-3. **Aktifkan Langsung** — anggota belum punya akun → admin set password → akun langsung aktif
+**Tiga lapisan perlindungan (semuanya aktif):**
+1. **Session** — `TenantLayout` cek login + tenant access
+2. **Module guard** — 10 modul (7 layout + 3 page) punya `redirect(/${slug}/dashboard)` jika tidak punya akses. Surat pakai `canAccess("surat","own")`, modul lain `hasReadAccess()`
+3. **Action guard** — server actions cek permission sebelum mutation
 
-**Dialog UI:** jalur ditentukan **otomatis** berdasarkan `members.betterAuthUserId`. Toggle "Link/Langsung" hanya muncul untuk anggota yang belum punya akun. Admin tidak perlu tahu kondisi teknis.
+**Sidebar filtering (aktif):** `SidebarNav` terima `tenantUser`, filter menu via `canAccess()`. Menu hanya tampil sesuai permission. Dashboard + Pengaturan selalu tampil.
 
-**Email dari data anggota — tidak pernah dari input admin:**
-Email SELALU dari `public.contacts` via `members.contactId`. Read-only di form. Server action fetch ulang dari DB (tidak percaya input client).
+**Tiga jalur aktivasi pengurus:**
+- **A — Punya akun** (`members.betterAuthUserId` terisi): `addExistingAccountAction` → INSERT `tenant.users` saja. Tidak buat akun baru.
+- **B — Link undangan**: `createInviteAction` → token UUID 7 hari → user set password sendiri di halaman `/invite?token=`
+- **C — Aktifkan langsung**: `activateUserDirectAction` → admin set password. Safety check: jika `betterAuthUserId` sudah ada → pakai langsung, tidak buat ganda.
 
-**Cross-tenant account reuse:**
-Email sudah ada di Better Auth → pakai akun yang ada → INSERT `tenant.users` saja.
-`members.betterAuthUserId` sudah ada → INSERT `tenant.users` langsung tanpa sentuh Better Auth (safety fallback).
+**Jalur ditentukan otomatis** dari `hasAccount` (dari `!!members.betterAuthUserId`). Admin tidak perlu tahu.
 
-**Invite upsert — jangan duplikat:**
-`createInviteAction` cek existing invite → update token + expiry, bukan insert baru.
+**`createCustomRoleAction`** mengembalikan `{ success: true, id }` — client pakai ID asli dari DB.
 
-**Available members filter — dua kondisi:**
-1. Belum ada di `tenant.users` (belum aktif)
-2. Tidak punya invite pending (non-expired + belum di-accept)
+**`RoleDialog`** menggunakan `key={editingRole?.id ?? "new"}` — form selalu reset saat berganti role.
 
-**Route group `(public)` untuk halaman tanpa auth:**
-`/(public)/[tenant]/invite/page.tsx` — di luar group `(dashboard)`.
+**Email selalu dari contacts:** tidak pernah dari input admin. Field read-only di form, server fetch ulang dari DB.
 
-**Bug yang sudah difix (2026-05):**
-- `settings/users/page.tsx` tidak fetch `betterAuthUserId` untuk `availableMembers` → badge "Punya akun" tidak muncul, dialog tidak deteksi jalur yang tepat. **Fix:** tambah kolom ke query, pass `hasAccount: boolean`.
-- `activateUserDirectAction`: jika anggota sudah punya `betterAuthUserId` tapi admin masuk jalur "Langsung" dengan email berbeda → buat akun ganda. **Fix:** cek `betterAuthUserId` di awal, jika ada langsung INSERT `tenant.users`.
-- `addExistingAccountAction` ditambahkan sebagai jalur resmi untuk anggota existing.
+**Invite upsert:** `createInviteAction` update token + expiry jika sudah ada, bukan insert baru.
+
+**Available members filter:** belum ada di `tenant.users` + tidak punya invite pending.
+
+**Route `/invite`:** route group `(public)` — aksesibel tanpa auth.
 
 ### [2026-04] Modul Surat — Layout TTD + Signing via URL SELESAI
 
@@ -2759,34 +2752,26 @@ Pattern: `globals.css` definisikan `.btn`, `.btn-primary`, `.btn-sm`, dll. via `
 - **Widget Area System** — ✅ SELESAI
 - **Member Media Library** — Phase 1–4 (upload foto sendiri, lihat file sendiri, MemberMediaPicker). Arsitektur: `docs/arsitektur-medialibrary.md`
 
-### [2026-05] Settings/Users — Tiga Jalur Aktivasi + Bug Fixes
+### [2026-05] Custom Role — Permission Enforcement + Dialog Fix
 
 **Arsitektur lengkap di `docs/arsitektur-role-user.md`.**
 
-**Bug 1: `hasAccount` tidak terdeteksi**
-`settings/users/page.tsx` tidak fetch `betterAuthUserId` untuk `availableMembers` — fix ini sudah ada di `pengurus/actions.ts` tapi tidak di-propagasi ke `settings/users`. Akibatnya UI selalu tampilkan form password meski anggota sudah punya akun.
-**Fix:** tambah `betterAuthUserId` ke query, pass `hasAccount: !!m.betterAuthUserId` ke client.
-**Aturan:** setiap perubahan alur aktivasi pengurus harus dicek di dua tempat: `settings/users` DAN `pengurus/`.
+**Tiga bug yang difix:**
 
-**Bug 2: Dua akun untuk satu orang di `activateUserDirectAction`**
-Jika `members.betterAuthUserId` sudah terisi tapi admin menggunakan jalur "Aktifkan Langsung" dengan email berbeda:
-- `signUpEmail` buat akun baru dengan id berbeda
-- `UPDATE members SET betterAuthUserId WHERE IS NULL` → skip (sudah ada)  
-- INSERT `tenant.users` dengan id baru → dua akun, tidak terhubung
+**1. Custom role tidak pernah diterapkan** — `SidebarNav` tampilkan semua menu tanpa filter. Semua module layout/page tidak ada guard permission. Akibatnya user dengan custom role apapun bisa akses semua modul.
+**Fix:** sidebar filter via `canAccess()` per modul; 10 modul dapat guard server-side (redirect ke `/dashboard` jika tidak punya akses).
 
-**Fix:** cek `members.betterAuthUserId` di awal action; jika sudah ada → INSERT `tenant.users` langsung, return. Ini juga jadi safety fallback.
+**2. Dialog edit tidak reset state** — `useState(() => {...})` dipakai sebagai side effect (salah) — hanya run sekali saat mount. Edit role B setelah edit role A → form masih tampil data A.
+**Fix:** `key={editingRole?.id ?? "new"}` di `<RoleDialog>` → React remount komponen saat berganti role.
 
-**Simplifikasi arsitektur: tiga jalur bukan dua**
-Jalur baru `addExistingAccountAction`:
-- Anggota sudah punya `members.betterAuthUserId` → pilih role → INSERT `tenant.users`
-- Tidak buat akun baru, tidak perlu password baru
-- Satu akun Better Auth berlaku di dua konteks: front-end + dashboard
+**3. `createCustomRoleAction` tidak return ID** — client pakai `crypto.randomUUID()` sebagai placeholder → edit langsung setelah create gagal (ID tidak ada di DB).
+**Fix:** tambah `.returning({ id })`, return `{ success: true, id }`, client pakai ID asli.
 
-**Dialog UI — jalur otomatis:**
-Toggle "Link/Langsung" hanya muncul untuk anggota yang belum punya akun. Anggota yang sudah punya akun langsung masuk jalur A (banner hijau + "Beri Akses Dashboard"). Admin tidak perlu tahu kondisi teknis akun anggota — UI menentukan jalur yang tepat.
-
-**Combobox anggota — badge "Punya akun":**
-Anggota yang `hasAccount=true` ditandai badge hijau kecil di combobox. Admin bisa langsung melihat siapa yang sudah bisa di-assign dengan satu klik.
+**Aturan yang dikunci:**
+- Sidebar filtering + server guard HARUS dikerjakan bersamaan — sidebar filter saja tidak cukup karena URL langsung bisa bypass
+- Guard surat pakai `canAccess("surat","own")` bukan `hasReadAccess` — agar bendahara (level `own`) tetap bisa akses modul surat
+- `createCustomRoleAction` harus return `id` karena optimistic update client butuh ID asli
+- Setiap perubahan alur aktivasi pengurus cek dua tempat: `settings/users` DAN `pengurus/`
 
 ### [2026-05] Login Universal Phase 2 — Self-Service Member Profile Completion
 
