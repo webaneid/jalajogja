@@ -1,7 +1,114 @@
 import type { NextConfig } from "next";
 
+// Slug pattern: huruf kecil + angka + dash, minimal 3 karakter
+// Negatif lookahead untuk path yang bukan tenant slug
+const TENANT_SLUG = "(?!api$|app$|platform$|_next$|register$|dashboard-redirect$)[a-z][a-z0-9-]+";
+
+// Admin modules yang dipindah dari /{slug}/X ke /app/{slug}/X di Fase 1
+// Redirect 301 untuk mempertahankan bookmark lama
+const ADMIN_MODULES = [
+  "dashboard",
+  "members",
+  "pengurus",
+  "divisi",
+  "accounts",
+  "media",
+  "website",
+  "letters",
+  "finance",
+  "donasi",
+  "toko",
+  "settings",
+];
+
 const nextConfig: NextConfig = {
   transpilePackages: ["@jalajogja/ui"],
+
+  async redirects() {
+    // 4a: Redirect 301 dari old admin URLs ke /app/ prefix
+    // Berlaku selama 30 hari lalu dihapus (setelah semua bookmark admin diperbarui)
+
+    // Redirect per module — root + semua subpath
+    const moduleRedirects = ADMIN_MODULES.flatMap((module) => [
+      {
+        source: `/:slug(${TENANT_SLUG})/${module}`,
+        destination: `/app/:slug/${module}`,
+        permanent: true,
+      },
+      {
+        source: `/:slug(${TENANT_SLUG})/${module}/:path*`,
+        destination: `/app/:slug/${module}/:path*`,
+        permanent: true,
+      },
+    ]);
+
+    // event — hanya subpath admin (acara, kategori)
+    // /:slug/event/[slug] dibiarkan (public compat redirect ke /agenda/[slug])
+    const eventRedirects = [
+      {
+        source: `/:slug(${TENANT_SLUG})/event/acara`,
+        destination: `/app/:slug/event/acara`,
+        permanent: true,
+      },
+      {
+        source: `/:slug(${TENANT_SLUG})/event/acara/:path*`,
+        destination: `/app/:slug/event/acara/:path*`,
+        permanent: true,
+      },
+      {
+        source: `/:slug(${TENANT_SLUG})/event/kategori`,
+        destination: `/app/:slug/event/kategori`,
+        permanent: true,
+      },
+    ];
+
+    // dokumen — hanya admin subpaths
+    // /:slug/dokumen/[id] dibiarkan (halaman publik dokumen)
+    const dokumenRedirects = [
+      {
+        source: `/:slug(${TENANT_SLUG})/dokumen`,
+        destination: `/app/:slug/dokumen`,
+        permanent: true,
+      },
+      {
+        source: `/:slug(${TENANT_SLUG})/dokumen/semua`,
+        destination: `/app/:slug/dokumen/semua`,
+        permanent: true,
+      },
+      {
+        source: `/:slug(${TENANT_SLUG})/dokumen/semua/:path*`,
+        destination: `/app/:slug/dokumen/semua/:path*`,
+        permanent: true,
+      },
+      {
+        source: `/:slug(${TENANT_SLUG})/dokumen/new`,
+        destination: `/app/:slug/dokumen/new`,
+        permanent: true,
+      },
+      {
+        source: `/:slug(${TENANT_SLUG})/dokumen/kategori`,
+        destination: `/app/:slug/dokumen/kategori`,
+        permanent: true,
+      },
+    ];
+
+    // /login → /app/login (admin login dipindah)
+    const loginRedirect = [
+      {
+        source: "/login",
+        destination: "/app/login",
+        permanent: true,
+      },
+    ];
+
+    return [
+      ...loginRedirect,
+      ...moduleRedirects,
+      ...eventRedirects,
+      ...dokumenRedirects,
+    ];
+  },
+
   images: {
     remotePatterns: [
       {

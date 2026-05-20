@@ -931,9 +931,9 @@ Logika: cari yang spesifik dulu → fallback ke `general`.
 - `getFirstTenantForUser()` loop O(n) — perlu tabel `public.user_tenant_index` saat tenant > 100
 - `check-slug` endpoint perlu rate limiting per-IP (saat ini hanya referer check)
 - `getTenantAccess()` dipanggil di layout DAN page — perlu `React.cache()` saat query makin banyak
-- **Arsitektur URL tidak terstruktur** — admin dashboard dan website publik berbagi namespace `/{slug}/*`, konflik penamaan (toko→produk, donasi→campaign, event→agenda). **Rencana migrasi matang: `docs/rencana-migrasi-url.md`**. Target: `/app/{slug}/*` untuk admin, `/{slug}/*` untuk publik. Termasuk rencana admin subdomain `admin.ikpmjogja.com`.
-- **Post-login routing multi-tenant tidak deterministik** — `getFirstTenantForUser()` tidak ada `ORDER BY`, user di 2+ tenant bisa dikirim ke tenant mana saja. Akan difix di Fase 0 migrasi URL.
-- **Middleware `PROTECTED_PATTERN` tidak scalable** — hardcode nama modul, modul baru tidak otomatis terlindungi. Selesai otomatis di Fase 1 migrasi (`startsWith("/app/")`).
+- **[SELESAI Fase 1-4] Migrasi URL** — admin dashboard dipindah ke `/app/{slug}/*`, publik tetap `/{slug}/*`. Redirect 301 dari path lama di `next.config.ts`. Fase 5 (admin subdomain `admin.ikpmjogja.com`) ditunda. Detail: `docs/rencana-migrasi-url.md`.
+- **Post-login routing multi-tenant tidak deterministik** — `getFirstTenantForUser()` tidak ada `ORDER BY`, user di 2+ tenant bisa dikirim ke tenant mana saja. Perlu difix sebelum tenant kedua aktif.
+- **Fase 5 URL migrasi** — admin subdomain custom domain (`admin.ikpmjogja.com`). Ditunda, perlu 2 minggu observasi production dulu. Detail di `docs/rencana-migrasi-url.md`.
 
 ## Prinsip Penggunaan CLAUDE.md
 

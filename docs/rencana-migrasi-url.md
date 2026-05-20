@@ -1,8 +1,8 @@
 # Rencana Migrasi Arsitektur URL
 
-> Status: **FASE 1 + 2 + 3 SELESAI — commit 2ff026e**
-> Fase 4 (cleanup + redirect 301 dari path lama) menunggu persetujuan eksekusi.
-> Evaluasi masalah yang mendasari: `docs/evaluasi-arsitektur-url.md`
+> Status: **FASE 1–4 SELESAI — commit terkini**
+> Fase 5 (admin subdomain custom domain) ditunda sampai production stable 2 minggu.
+> Dokumen evaluasi (`docs/evaluasi-arsitektur-url.md`) sudah dihapus — kontennya ada di sini.
 
 ---
 
@@ -387,7 +387,7 @@ components/settings/settings-nav.tsx
 
 ---
 
-### Fase 4 — Cleanup dan Konsolidasi
+### Fase 4 — Cleanup dan Konsolidasi ✅ SELESAI
 
 **Tujuan:** Hapus sisa-sisa workaround lama, bersihkan dokumentasi yang tidak lagi valid.
 
