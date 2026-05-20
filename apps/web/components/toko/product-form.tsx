@@ -25,7 +25,7 @@ import {
   generateVariationsAction,
   type ProductData,
   type ProductImage,
-} from "@/app/(dashboard)/[tenant]/toko/actions";
+} from "@/app/(dashboard)/app/[tenant]/toko/actions";
 
 // Lokal — tidak import dari "use server" file agar tidak jadi server action proxy
 function slugify(text: string): string {

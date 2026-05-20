@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, Search } from "lucide-react";
-import { createOrderAction, type OrderData, type OrderItemInput } from "@/app/(dashboard)/[tenant]/toko/actions";
+import { createOrderAction, type OrderData, type OrderItemInput } from "@/app/(dashboard)/app/[tenant]/toko/actions";
 
 type ProductOption = {
   id:    string;

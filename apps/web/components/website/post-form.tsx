@@ -38,8 +38,8 @@ import {
   createPostAction,
   createCategoryAction,
   createTagAction,
-} from "@/app/(dashboard)/[tenant]/website/actions";
-import type { PostFormData } from "@/app/(dashboard)/[tenant]/website/actions";
+} from "@/app/(dashboard)/app/[tenant]/website/actions";
+import type { PostFormData } from "@/app/(dashboard)/app/[tenant]/website/actions";
 import type { SeoValues } from "@/components/seo/seo-panel";
 import type { ContentStatus } from "@jalajogja/db";
 import { generateSlug } from "@/lib/seo";

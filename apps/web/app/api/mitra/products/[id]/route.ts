@@ -7,7 +7,7 @@ import { eq, and } from "drizzle-orm";
 import { db, members, createTenantDb } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
 import { getTokoSettings } from "@/lib/toko-settings";
-import type { ProductImage } from "@/app/(dashboard)/[tenant]/toko/actions";
+import type { ProductImage } from "@/app/(dashboard)/app/[tenant]/toko/actions";
 
 async function getMitraProduct(req: NextRequest, slug: string, productId: string) {
   const session = await auth.api.getSession({ headers: req.headers });

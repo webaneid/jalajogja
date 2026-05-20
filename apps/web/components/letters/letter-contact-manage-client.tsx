@@ -6,7 +6,7 @@ import {
   createLetterContactAction,
   updateLetterContactAction,
   deleteLetterContactAction,
-} from "@/app/(dashboard)/[tenant]/letters/actions";
+} from "@/app/(dashboard)/app/[tenant]/letters/actions";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
 
 type Contact = {

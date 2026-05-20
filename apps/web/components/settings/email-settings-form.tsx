@@ -7,7 +7,7 @@ import { Eye, EyeOff, Send } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { saveSmtpConfigAction } from "@/app/(dashboard)/[tenant]/settings/actions";
+import { saveSmtpConfigAction } from "@/app/(dashboard)/app/[tenant]/settings/actions";
 
 type DefaultValues = {
   host: string; port: number; user: string; password: string;

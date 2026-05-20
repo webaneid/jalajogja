@@ -8,7 +8,7 @@ import {
   updateAccountAction,
   toggleAccountActiveAction,
   type AccountData,
-} from "@/app/(dashboard)/[tenant]/finance/actions";
+} from "@/app/(dashboard)/app/[tenant]/finance/actions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 

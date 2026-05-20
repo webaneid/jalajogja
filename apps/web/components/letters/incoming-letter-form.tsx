@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createIncomingLetterAction } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { createIncomingLetterAction } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 
 type LetterType = { id: string; name: string; code: string | null };
 

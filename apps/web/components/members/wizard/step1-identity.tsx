@@ -17,7 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { createMemberAction, updateMemberAction } from "@/app/(dashboard)/[tenant]/members/actions"
+import { createMemberAction, updateMemberAction } from "@/app/(dashboard)/app/[tenant]/members/actions"
 import { RegencyCombobox } from "@/components/ui/regency-combobox"
 import type { RefProfession } from "@jalajogja/db"
 

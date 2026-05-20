@@ -31,7 +31,7 @@ import {
   deleteCampaignAction,
   type CampaignData,
   type QurbanAnimalInput,
-} from "@/app/(dashboard)/[tenant]/donasi/actions";
+} from "@/app/(dashboard)/app/[tenant]/donasi/actions";
 import { QurbanAnimalsEditor } from "@/components/donasi/qurban-animals-editor";
 import {
   ChevronLeft,

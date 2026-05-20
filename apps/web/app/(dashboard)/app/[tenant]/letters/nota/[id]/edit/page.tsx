@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { LetterForm } from "@/components/letters/letter-form";
 import type { AvailableOfficer } from "@/components/letters/signature-slot-manager";
-import type { SlotInput } from "@/app/(dashboard)/[tenant]/letters/actions";
+import type { SlotInput } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 
 export default async function NotaDinasEditPage({
   params,

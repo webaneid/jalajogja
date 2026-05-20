@@ -16,7 +16,7 @@ import {
   createDocumentAction,
   updateDocumentAction,
   type DocumentData,
-} from "@/app/(dashboard)/[tenant]/dokumen/actions";
+} from "@/app/(dashboard)/app/[tenant]/dokumen/actions";
 import {
   ChevronLeft, ChevronsUpDown, Check, FileText, X, Globe, Lock,
 } from "lucide-react";

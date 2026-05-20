@@ -5,7 +5,7 @@ import { hasFullAccess } from "@/lib/permissions";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { LetterConfigClient } from "@/components/letters/letter-config-client";
-import type { LetterConfig } from "@/app/(dashboard)/[tenant]/letters/actions";
+import type { LetterConfig } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 import { DEFAULT_LETTER_CONFIG } from "@/lib/letter-number";
 
 const DEFAULT_CONFIG: LetterConfig = {

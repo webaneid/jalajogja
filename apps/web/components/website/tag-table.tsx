@@ -19,7 +19,7 @@ import {
   createTagAction,
   updateTagAction,
   deleteTagAction,
-} from "@/app/(dashboard)/[tenant]/website/actions";
+} from "@/app/(dashboard)/app/[tenant]/website/actions";
 import { generateSlug } from "@/lib/seo";
 import type { TagItem } from "./category-manager";
 

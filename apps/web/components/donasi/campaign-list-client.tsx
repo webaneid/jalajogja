@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import {
   deleteCampaignAction,
-} from "@/app/(dashboard)/[tenant]/donasi/actions";
+} from "@/app/(dashboard)/app/[tenant]/donasi/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

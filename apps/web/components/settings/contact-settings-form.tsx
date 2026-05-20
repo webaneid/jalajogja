@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
 import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/components/ui/social-media-input";
-import { saveContactSettingsAction } from "@/app/(dashboard)/[tenant]/settings/actions";
+import { saveContactSettingsAction } from "@/app/(dashboard)/app/[tenant]/settings/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

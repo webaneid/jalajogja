@@ -20,7 +20,7 @@ import {
 import {
   saveMemberEducationsAction,
   type EducationEntryData,
-} from "@/app/(dashboard)/[tenant]/members/actions"
+} from "@/app/(dashboard)/app/[tenant]/members/actions"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

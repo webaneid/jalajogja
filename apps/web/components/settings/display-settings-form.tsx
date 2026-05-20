@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
-import { saveDisplaySettingsAction } from "@/app/(dashboard)/[tenant]/settings/actions";
+import { saveDisplaySettingsAction } from "@/app/(dashboard)/app/[tenant]/settings/actions";
 
 const BODY_FONT_OPTIONS = [
   { value: "Inter",             label: "Inter (default)"   },

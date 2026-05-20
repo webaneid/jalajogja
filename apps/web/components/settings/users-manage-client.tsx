@@ -32,7 +32,7 @@ import {
   removeUserAction,
   activateUserDirectAction,
   addExistingAccountAction,
-} from "@/app/(dashboard)/[tenant]/settings/actions";
+} from "@/app/(dashboard)/app/[tenant]/settings/actions";
 import { Input } from "@/components/ui/input";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

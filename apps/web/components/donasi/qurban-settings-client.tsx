@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveQurbanConfigAction, type QurbanConfig } from "@/app/(dashboard)/[tenant]/donasi/actions";
+import { saveQurbanConfigAction, type QurbanConfig } from "@/app/(dashboard)/app/[tenant]/donasi/actions";
 
 const ANIMALS = [
   { key: "domba",   label: "Domba"   },

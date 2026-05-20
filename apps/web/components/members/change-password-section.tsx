@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { changeUserPasswordAction } from "@/app/(dashboard)/[tenant]/members/actions";
+import { changeUserPasswordAction } from "@/app/(dashboard)/app/[tenant]/members/actions";
 import { KeyRound, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
 
 type Props = {

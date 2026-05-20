@@ -5,7 +5,7 @@
 
 import { useState, useTransition } from "react";
 import { CheckCircle2, PenLine, Shield } from "lucide-react";
-import { signByTokenAction } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { signByTokenAction } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 
 const ROLE_LABELS: Record<string, string> = {
   signer:   "Penandatangan",

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/ui/combobox";
-import { saveGeneralSettingsAction } from "@/app/(dashboard)/[tenant]/settings/actions";
+import { saveGeneralSettingsAction } from "@/app/(dashboard)/app/[tenant]/settings/actions";
 import { MediaPicker } from "@/components/media/media-picker";
 
 const TIMEZONES = [

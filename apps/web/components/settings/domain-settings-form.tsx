@@ -7,7 +7,7 @@ import { CheckCircle2, Clock, XCircle, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { saveDomainSettingsAction } from "@/app/(dashboard)/[tenant]/settings/actions";
+import { saveDomainSettingsAction } from "@/app/(dashboard)/app/[tenant]/settings/actions";
 
 type DomainStatus = "none" | "pending" | "active" | "failed";
 

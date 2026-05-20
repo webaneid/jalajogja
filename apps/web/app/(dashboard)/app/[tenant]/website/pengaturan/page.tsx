@@ -3,7 +3,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { fetchWidgetArea } from "@/lib/widget-areas";
 import { WidgetAreaBuilder } from "@/components/website/widget-area-builder";
-import { saveWidgetAreaAction } from "@/app/(dashboard)/[tenant]/website/actions";
+import { saveWidgetAreaAction } from "@/app/(dashboard)/app/[tenant]/website/actions";
 import type { SidebarSection } from "@/lib/widget-areas";
 
 export default async function WebsitePengaturanPage({

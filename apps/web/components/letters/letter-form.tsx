@@ -8,7 +8,7 @@ import {
   getNextLetterNumberAction,
   syncSignatureSlotsAction,
   type SlotInput,
-} from "@/app/(dashboard)/[tenant]/letters/actions";
+} from "@/app/(dashboard)/app/[tenant]/letters/actions";
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { RecipientCombobox, type ContactOption, type RecipientSelection } from "./recipient-combobox";
 import { SIGNATURE_LAYOUTS, SIGNATURE_LAYOUT_KEYS, type SignatureLayout, type SignatureSlot } from "@/lib/letter-signature-layout";

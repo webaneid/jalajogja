@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
 import type { AttributeGroup } from "@jalajogja/db";
-import type { ProductImage } from "@/app/(dashboard)/[tenant]/toko/actions";
+import type { ProductImage } from "@/app/(dashboard)/app/[tenant]/toko/actions";
 
 export type VariationLocal = {
   _key:        string;

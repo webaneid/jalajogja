@@ -13,7 +13,7 @@ import {
   createDocumentCategoryAction,
   updateDocumentCategoryAction,
   deleteDocumentCategoryAction,
-} from "@/app/(dashboard)/[tenant]/dokumen/actions";
+} from "@/app/(dashboard)/app/[tenant]/dokumen/actions";
 import { Plus, Pencil, Trash2, Check, ChevronsUpDown, FolderOpen, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
 

@@ -7,7 +7,7 @@ import {
   updateDivisionAction,
   deleteDivisionAction,
   type DivisionData,
-} from "@/app/(dashboard)/[tenant]/pengurus/actions";
+} from "@/app/(dashboard)/app/[tenant]/pengurus/actions";
 
 type Division = {
   id:          string;

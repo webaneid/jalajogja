@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Eye, Search, X } from "lucide-react";
-import type { InvoiceListItem } from "@/app/(dashboard)/[tenant]/finance/billing/actions";
+import type { InvoiceListItem } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

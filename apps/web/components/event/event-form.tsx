@@ -22,7 +22,7 @@ import {
   deleteEventAction,
   type EventData,
   type TicketInput,
-} from "@/app/(dashboard)/[tenant]/event/actions";
+} from "@/app/(dashboard)/app/[tenant]/event/actions";
 import {
   ChevronLeft, Check, ChevronsUpDown, ImageIcon, Plus, Trash2, ChevronDown, ChevronUp,
 } from "lucide-react";

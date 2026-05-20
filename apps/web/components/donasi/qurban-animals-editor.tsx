@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveQurbanAnimalsAction, type QurbanAnimalInput } from "@/app/(dashboard)/[tenant]/donasi/actions";
+import { saveQurbanAnimalsAction, type QurbanAnimalInput } from "@/app/(dashboard)/app/[tenant]/donasi/actions";
 
 const ANIMALS: { type: QurbanAnimalInput["animalType"]; label: string; emoji: string }[] = [
   { type: "domba",   label: "Domba",   emoji: "🐑" },

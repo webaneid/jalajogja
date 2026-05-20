@@ -22,7 +22,7 @@ import {
   deleteOfficerAction,
   toggleOfficerActiveAction,
   type OfficerData,
-} from "@/app/(dashboard)/[tenant]/pengurus/actions";
+} from "@/app/(dashboard)/app/[tenant]/pengurus/actions";
 
 export type MemberOption = {
   id:           string;

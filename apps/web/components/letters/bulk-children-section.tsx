@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { CheckCircle2, Clock, Send, Loader2, ExternalLink, FileDown } from "lucide-react";
-import { markAllChildrenSentAction } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { markAllChildrenSentAction } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 
 type ChildLetter = {
   id:           string;

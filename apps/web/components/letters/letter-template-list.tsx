@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Pencil, Trash2, FileText } from "lucide-react";
-import { deleteLetterTemplateAction } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { deleteLetterTemplateAction } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 
 type Template = {
   id:       string;

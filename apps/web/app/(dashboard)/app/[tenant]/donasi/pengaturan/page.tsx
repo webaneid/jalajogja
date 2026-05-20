@@ -3,7 +3,7 @@ import { getTenantAccess }             from "@/lib/tenant";
 import { createTenantDb, getSettings } from "@jalajogja/db";
 import { DonationSettingsClient }      from "@/components/donasi/donation-settings-client";
 import { QurbanSettingsClient }        from "@/components/donasi/qurban-settings-client";
-import type { QurbanConfig }           from "@/app/(dashboard)/[tenant]/donasi/actions";
+import type { QurbanConfig }           from "@/app/(dashboard)/app/[tenant]/donasi/actions";
 
 export default async function DonationSettingsPage({
   params,

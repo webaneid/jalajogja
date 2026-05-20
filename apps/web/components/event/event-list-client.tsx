@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, Pencil, Trash2, CalendarDays, Eye } from "lucide-react";
-import { deleteEventAction } from "@/app/(dashboard)/[tenant]/event/actions";
+import { deleteEventAction } from "@/app/(dashboard)/app/[tenant]/event/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

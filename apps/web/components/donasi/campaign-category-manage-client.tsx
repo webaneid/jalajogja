@@ -6,7 +6,7 @@ import {
   createCampaignCategoryAction,
   updateCampaignCategoryAction,
   deleteCampaignCategoryAction,
-} from "@/app/(dashboard)/[tenant]/donasi/actions";
+} from "@/app/(dashboard)/app/[tenant]/donasi/actions";
 
 function toSlug(text: string): string {
   return text

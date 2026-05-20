@@ -8,7 +8,7 @@ import {
 import {
   updateFulfillmentStatusAction,
   updateAdminShippingTrackingAction,
-} from "@/app/(dashboard)/[tenant]/finance/billing/actions";
+} from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

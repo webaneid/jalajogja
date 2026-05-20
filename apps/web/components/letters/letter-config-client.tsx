@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Image from "next/image";
 import { ImageIcon, X } from "lucide-react";
-import { saveLetterConfigAction, type LetterConfig } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { saveLetterConfigAction, type LetterConfig } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
 
 const FONTS = ["Times New Roman", "Arial", "Calibri", "Georgia", "Helvetica"];

@@ -6,7 +6,7 @@ import {
   createEventCategoryAction,
   updateEventCategoryAction,
   deleteEventCategoryAction,
-} from "@/app/(dashboard)/[tenant]/event/actions";
+} from "@/app/(dashboard)/app/[tenant]/event/actions";
 
 function toSlug(text: string): string {
   return text

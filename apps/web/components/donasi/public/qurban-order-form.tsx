@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createQurbanOrderAction, type QurbanOrderData } from "@/app/(dashboard)/[tenant]/donasi/actions";
+import { createQurbanOrderAction, type QurbanOrderData } from "@/app/(dashboard)/app/[tenant]/donasi/actions";
 
 type Animal = {
   id:         string;

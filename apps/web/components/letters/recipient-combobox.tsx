@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useRef, useTransition } from "react";
 import { Plus, X, Check, Loader2, UserRound, BookUser } from "lucide-react";
-import { createLetterContactAction } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { createLetterContactAction } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 

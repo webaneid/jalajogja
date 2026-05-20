@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   confirmPaymentAction,
   rejectPaymentAction,
-} from "@/app/(dashboard)/[tenant]/finance/actions";
+} from "@/app/(dashboard)/app/[tenant]/finance/actions";
 import { CheckCircle2, XCircle } from "lucide-react";
 
 type Props = {

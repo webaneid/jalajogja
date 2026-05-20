@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { CheckCircle2, Ticket, Loader2, Copy, Check } from "lucide-react";
-import { registerForEventAction } from "@/app/(dashboard)/[tenant]/event/actions";
+import { registerForEventAction } from "@/app/(dashboard)/app/[tenant]/event/actions";
 import { DonationPromptModal } from "@/components/event/public/donation-prompt-modal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

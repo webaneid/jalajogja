@@ -6,7 +6,7 @@ import { Plus, Trash2 } from "lucide-react";
 import {
   createJournalAction,
   type JournalEntryInput,
-} from "@/app/(dashboard)/[tenant]/finance/actions";
+} from "@/app/(dashboard)/app/[tenant]/finance/actions";
 
 type AccountOption = {
   id: string;

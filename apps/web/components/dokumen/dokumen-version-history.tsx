@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { restoreVersionAction, uploadNewVersionAction } from "@/app/(dashboard)/[tenant]/dokumen/actions";
+import { restoreVersionAction, uploadNewVersionAction } from "@/app/(dashboard)/app/[tenant]/dokumen/actions";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
 import { FileDown, RotateCcw, Upload, CheckCircle2 } from "lucide-react";
 

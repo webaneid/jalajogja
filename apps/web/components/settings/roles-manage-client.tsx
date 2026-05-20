@@ -16,7 +16,7 @@ import {
   updateCustomRoleAction,
   deleteCustomRoleAction,
   type CustomRoleResult,
-} from "@/app/(dashboard)/[tenant]/settings/actions";
+} from "@/app/(dashboard)/app/[tenant]/settings/actions";
 import type { Level, Module } from "@/lib/permissions";
 
 // ─── Constants ────────────────────────────────────────────────────────────────

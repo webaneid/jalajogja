@@ -9,7 +9,7 @@ import {
   UserCheck, Search, CheckCircle2, XCircle,
   Loader2, AlertCircle
 } from "lucide-react";
-import { checkInRegistrationAction } from "@/app/(dashboard)/[tenant]/event/actions";
+import { checkInRegistrationAction } from "@/app/(dashboard)/app/[tenant]/event/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

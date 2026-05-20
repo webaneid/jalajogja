@@ -12,7 +12,7 @@ import {
   type LabaRugiData,
   type ArusKasData,
   type BukuBesarRow,
-} from "@/app/(dashboard)/[tenant]/finance/actions";
+} from "@/app/(dashboard)/app/[tenant]/finance/actions";
 
 type AccountOption = {
   id:   string;

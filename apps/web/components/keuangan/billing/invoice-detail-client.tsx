@@ -9,7 +9,7 @@ import {
   verifySubmittedPaymentAction,
   updateAdminShippingTrackingAction,
   type InvoiceDetail,
-} from "@/app/(dashboard)/[tenant]/finance/billing/actions";
+} from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 
 type Props = {
   slug:    string;

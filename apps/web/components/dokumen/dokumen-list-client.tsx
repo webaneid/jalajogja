@@ -10,7 +10,7 @@ import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { deleteDocumentAction } from "@/app/(dashboard)/[tenant]/dokumen/actions";
+import { deleteDocumentAction } from "@/app/(dashboard)/app/[tenant]/dokumen/actions";
 import {
   Plus, Search, FileText, FileDown, Eye, Pencil, Trash2,
   ChevronsUpDown, Check, Globe, Lock,

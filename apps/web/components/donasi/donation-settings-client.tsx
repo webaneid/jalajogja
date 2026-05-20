@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { X, Plus } from "lucide-react";
-import { saveDonationSettingsAction } from "@/app/(dashboard)/[tenant]/donasi/actions";
+import { saveDonationSettingsAction } from "@/app/(dashboard)/app/[tenant]/donasi/actions";
 
 function formatRupiah(n: number): string {
   return `Rp ${n.toLocaleString("id-ID")}`;

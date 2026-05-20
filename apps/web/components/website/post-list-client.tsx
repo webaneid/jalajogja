@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Plus, MoreHorizontal, Pencil, Trash2, Eye, EyeOff, Search, BarChart2 } from "lucide-react";
-import { deletePostAction, updatePostStatusAction } from "@/app/(dashboard)/[tenant]/website/actions";
+import { deletePostAction, updatePostStatusAction } from "@/app/(dashboard)/app/[tenant]/website/actions";
 import type { ContentStatus } from "@jalajogja/db";
 
 // ── Types ─────────────────────────────────────────────────────────────────────

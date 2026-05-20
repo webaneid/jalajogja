@@ -6,7 +6,7 @@ import { Plus, Trash2 } from "lucide-react";
 import {
   createInvoiceAction,
   type InvoiceItemInput,
-} from "@/app/(dashboard)/[tenant]/finance/billing/actions";
+} from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 
 type Props = { slug: string };
 

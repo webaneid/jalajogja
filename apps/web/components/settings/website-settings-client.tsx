@@ -41,7 +41,7 @@ import {
 import {
   saveWebsiteSettingsAction,
   saveDesignSettingsAction,
-} from "@/app/(dashboard)/[tenant]/settings/website/actions";
+} from "@/app/(dashboard)/app/[tenant]/settings/website/actions";
 
 type PageOption = { slug: string; title: string };
 

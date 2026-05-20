@@ -7,7 +7,7 @@ import {
   cancelOrderAction,
   updateOrderStatusAction,
   addPaymentToOrderAction,
-} from "@/app/(dashboard)/[tenant]/toko/actions";
+} from "@/app/(dashboard)/app/[tenant]/toko/actions";
 import { CheckCircle2, XCircle, Truck, PackageCheck, CreditCard } from "lucide-react";
 
 type Props = {

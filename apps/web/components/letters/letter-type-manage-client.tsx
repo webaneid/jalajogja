@@ -6,7 +6,7 @@ import {
   createLetterTypeAction,
   updateLetterTypeAction,
   deleteLetterTypeAction,
-} from "@/app/(dashboard)/[tenant]/letters/actions";
+} from "@/app/(dashboard)/app/[tenant]/letters/actions";
 
 type LetterType = {
   id:              string;

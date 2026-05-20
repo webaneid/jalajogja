@@ -3,7 +3,7 @@
 import { useState, useTransition, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Users, BookUser, X, CheckSquare, Square, Loader2, Send } from "lucide-react";
-import { createBulkLettersAction, type BulkRecipient } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { createBulkLettersAction, type BulkRecipient } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

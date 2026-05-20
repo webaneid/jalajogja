@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveAccountMappingsAction } from "@/app/(dashboard)/[tenant]/finance/actions";
+import { saveAccountMappingsAction } from "@/app/(dashboard)/app/[tenant]/finance/actions";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 
 type AccountOption = {

@@ -18,8 +18,8 @@ import {
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { SeoPanel } from "@/components/seo/seo-panel";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
-import { updatePageAction, createPageAction } from "@/app/(dashboard)/[tenant]/website/actions";
-import type { PageFormData } from "@/app/(dashboard)/[tenant]/website/actions";
+import { updatePageAction, createPageAction } from "@/app/(dashboard)/app/[tenant]/website/actions";
+import type { PageFormData } from "@/app/(dashboard)/app/[tenant]/website/actions";
 import type { SeoValues } from "@/components/seo/seo-panel";
 import type { ContentStatus } from "@jalajogja/db";
 import { generateSlug } from "@/lib/seo";

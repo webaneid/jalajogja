@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { MemberFormData } from "@/app/(dashboard)/[tenant]/members/actions";
+import type { MemberFormData } from "@/app/(dashboard)/app/[tenant]/members/actions";
 
 type MemberFormProps = {
   slug: string;

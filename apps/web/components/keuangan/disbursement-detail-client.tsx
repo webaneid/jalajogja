@@ -6,7 +6,7 @@ import {
   approveDisbursementAction,
   markDisbursementPaidAction,
   cancelDisbursementAction,
-} from "@/app/(dashboard)/[tenant]/finance/actions";
+} from "@/app/(dashboard)/app/[tenant]/finance/actions";
 import { CheckCircle2, CreditCard, XCircle } from "lucide-react";
 
 type Props = {

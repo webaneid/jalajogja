@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Plus, Pencil, Trash2, FileText, Eye, FileDown, Copy } from "lucide-react";
-import { deleteLetterAction } from "@/app/(dashboard)/[tenant]/letters/actions";
+import { deleteLetterAction } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 
 type LetterRow = {
   id:           string;

@@ -26,7 +26,7 @@ import {
   createCategoryAction,
   updateCategoryAction,
   deleteCategoryAction,
-} from "@/app/(dashboard)/[tenant]/website/actions";
+} from "@/app/(dashboard)/app/[tenant]/website/actions";
 import { generateSlug } from "@/lib/seo";
 import type { CategoryItem } from "./category-manager";
 

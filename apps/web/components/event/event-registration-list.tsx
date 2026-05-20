@@ -13,7 +13,7 @@ import {
   approveRegistrationAction,
   confirmRegistrationPaymentAction,
   cancelRegistrationAction,
-} from "@/app/(dashboard)/[tenant]/event/actions";
+} from "@/app/(dashboard)/app/[tenant]/event/actions";
 import { EventCertificateButton } from "./event-certificate-button";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

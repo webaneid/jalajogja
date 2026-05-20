@@ -28,7 +28,7 @@ import { PhoneInput } from "@/components/ui/phone-input"
 import {
   saveMemberBusinessesAction,
   type BusinessEntryData,
-} from "@/app/(dashboard)/[tenant]/members/actions"
+} from "@/app/(dashboard)/app/[tenant]/members/actions"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

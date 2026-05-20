@@ -15,7 +15,7 @@ import {
   savePaymentAccountsAction,
   saveQrisAccountsAction,
   saveGatewayConfigAction,
-} from "@/app/(dashboard)/[tenant]/settings/actions";
+} from "@/app/(dashboard)/app/[tenant]/settings/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

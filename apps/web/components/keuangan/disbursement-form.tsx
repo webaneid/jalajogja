@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   createDisbursementAction,
   type DisbursementData,
-} from "@/app/(dashboard)/[tenant]/finance/actions";
+} from "@/app/(dashboard)/app/[tenant]/finance/actions";
 
 type Props = {
   slug: string;

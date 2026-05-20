@@ -23,7 +23,7 @@ import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/c
 import {
   upsertMemberContactAction,
   type Step2ContactData,
-} from "@/app/(dashboard)/[tenant]/members/actions"
+} from "@/app/(dashboard)/app/[tenant]/members/actions"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

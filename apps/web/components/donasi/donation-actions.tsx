@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Eye, CheckCircle2, XCircle } from "lucide-react";
-import { confirmDonationAction, cancelDonationAction } from "@/app/(dashboard)/[tenant]/donasi/actions";
+import { confirmDonationAction, cancelDonationAction } from "@/app/(dashboard)/app/[tenant]/donasi/actions";
 
 type Props = {
   slug:          string;

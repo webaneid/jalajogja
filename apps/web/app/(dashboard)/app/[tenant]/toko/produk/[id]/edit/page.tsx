@@ -4,7 +4,7 @@ import { redirect, notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { ProductForm } from "@/components/toko/product-form";
 import type { SeoValues } from "@/components/seo/seo-panel";
-import type { ProductImage } from "@/app/(dashboard)/[tenant]/toko/actions";
+import type { ProductImage } from "@/app/(dashboard)/app/[tenant]/toko/actions";
 
 const DEFAULT_SEO: SeoValues = {
   metaTitle:      "",

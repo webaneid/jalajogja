@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { saveNotificationSettingsAction } from "@/app/(dashboard)/[tenant]/settings/actions";
+import { saveNotificationSettingsAction } from "@/app/(dashboard)/app/[tenant]/settings/actions";
 
 type DefaultValues = {
   emailNewMember:        boolean;

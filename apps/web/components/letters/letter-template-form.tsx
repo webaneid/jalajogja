@@ -6,7 +6,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   createLetterTemplateAction,
   updateLetterTemplateAction,
-} from "@/app/(dashboard)/[tenant]/letters/actions";
+} from "@/app/(dashboard)/app/[tenant]/letters/actions";
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { SignatureBlock } from "@/components/letters/signature-block";
 import {

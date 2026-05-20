@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { publicUrl } from "@/lib/minio";
 import { CampaignForm } from "@/components/donasi/campaign-form";
 import type { SeoValues } from "@/components/seo/seo-panel";
-import type { QurbanAnimalInput } from "@/app/(dashboard)/[tenant]/donasi/actions";
+import type { QurbanAnimalInput } from "@/app/(dashboard)/app/[tenant]/donasi/actions";
 
 export default async function CampaignEditPage({
   params,

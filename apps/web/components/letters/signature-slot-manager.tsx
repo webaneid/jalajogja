@@ -17,8 +17,8 @@ import {
 import {
   removeSignatureAction,
   generateSigningTokenAction,
-} from "@/app/(dashboard)/[tenant]/letters/actions";
-import type { SlotInput } from "@/app/(dashboard)/[tenant]/letters/actions";
+} from "@/app/(dashboard)/app/[tenant]/letters/actions";
+import type { SlotInput } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 

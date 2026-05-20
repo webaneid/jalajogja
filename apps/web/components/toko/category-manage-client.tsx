@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Plus, X, Check } from "lucide-react";
-import { createProductCategoryAction } from "@/app/(dashboard)/[tenant]/toko/actions";
+import { createProductCategoryAction } from "@/app/(dashboard)/app/[tenant]/toko/actions";
 
 function toSlug(text: string): string {
   return text

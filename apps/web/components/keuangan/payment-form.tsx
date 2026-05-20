@@ -10,7 +10,7 @@ import {
   type PendingOrderResult,
   type ActiveCampaignResult,
   type UnpaidRegistrationResult,
-} from "@/app/(dashboard)/[tenant]/finance/actions";
+} from "@/app/(dashboard)/app/[tenant]/finance/actions";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 
 type SourceType = "manual" | "order" | "donation" | "event_registration";
