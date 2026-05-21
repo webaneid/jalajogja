@@ -113,7 +113,7 @@ export default function RegisterPage() {
         return;
       }
 
-      router.push(`/${slug}/dashboard`);
+      router.push(`/app/${slug}/dashboard`);
     });
   }
 
