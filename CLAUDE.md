@@ -2380,9 +2380,16 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Migrasi URL Fase 1–4 + deploy production** (sesi 2026-05-21).
-- Sebelumnya: **Role System — tiga jalur aktivasi + custom role enforcement** (sesi 2026-05-21).
-- Sesi terakhir:
+- Terakhir dikerjakan: **Production error fixes dari PM2 log audit** (sesi 2026-05-21, commit `cc16b5a`).
+- Sebelumnya: **Migrasi URL Fase 1–4 + deploy production** (sesi 2026-05-21).
+- Sesi terakhir (error fixes):
+  - **4 jenis error dari PM2 log difix:**
+    - `generateMetadata` di `layout.tsx` → tambah cek tenant exists sebelum query schema
+    - `getTenantSeoBase` di `lib/tenant-seo.ts` → tambah guard `!tenant?.isActive` → return fallback
+    - `akun/mitra/page.tsx` → internal fetch hanya forward `cookie` header, bukan semua headers
+    - `member-public/[id]` API → validasi UUID format sebelum query DB
+  - **"Failed to find Server Action"** — bukan bug, normal post-deploy (user perlu refresh browser)
+- Sesi sebelumnya:
   - **Pendaftaran tenant dinonaktifkan** — `(auth)/register/page.tsx` flag `REGISTRATION_OPEN = false`. Link "Daftar" di login disembunyikan (dalam komentar). Aktifkan kembali: ubah `false → true` + uncomment link.
   - **Migrasi URL Fase 1–4 selesai, di-deploy ke production:**
     - **Fase 1:** Pindah `(dashboard)/[tenant]/*` → `(dashboard)/app/[tenant]/*`. Admin dashboard sekarang di `/app/{slug}/*`. Login admin: `/app/login`. Middleware ganti `PROTECTED_PATTERN` dengan `startsWith("/app/")`.
@@ -3446,3 +3453,99 @@ Baris yang ada member atau bisnis → **JANGAN dihapus**.
 docker compose exec postgres psql -U jalakarta -d jalakarta -c \
   "DELETE FROM public.contacts WHERE id IN ('uuid-1', 'uuid-2');"
 ```
+
+### [2026-05] Bot/Scraper Errors — `generateMetadata` Harus Cek Tenant Existence
+
+**Masalah**: PM2 error log penuh dengan `relation "tenant_favicon.ico.settings" does not exist`
+dan `relation "tenant_dua-divonis-3-tahun-penjara-atas-kasus-narkoba.settings" does not exist`.
+
+**Root cause**: Bot/scraper hit URL random seperti `/favicon.ico` atau bekas URL artikel lama.
+Path segment pertama di-capture oleh `[tenant]` dynamic route. `generateMetadata` dan `getTenantSeoBase`
+langsung memanggil `createTenantDb(slug)` → `getSettings(tenantClient, "general")` **tanpa** cek
+apakah tenant dengan slug tersebut benar-benar ada di `public.tenants`.
+
+**Aturan yang dikunci:**
+> **WAJIB**: Setiap fungsi yang menerima `slug` dan akan query `tenant_{slug}.*` HARUS cek
+> `public.tenants WHERE slug = ?` dulu. Jika tenant tidak ada → return early / `notFound()`.
+
+**File yang difix (commit `cc16b5a`):**
+- `app/(public)/[tenant]/layout.tsx` — `generateMetadata` sekarang cek tenant exists sebelum `getSettings`
+- `lib/tenant-seo.ts` — `getTenantSeoBase` sekarang return fallback jika `!tenant?.isActive`
+
+**Catatan**: `PublicLayout` (main function di layout.tsx) sudah benar sejak awal — ada `if (!tenant?.isActive) notFound()`. Yang bermasalah hanya `generateMetadata` yang dieksekusi secara independen oleh Next.js sebelum layout render.
+
+**Pattern fix yang benar:**
+```typescript
+// WAJIB di generateMetadata dan semua helper yang menerima slug
+export async function generateMetadata({ params }) {
+  const { tenant: slug } = await params;
+  const [tenantRow] = await db.select({ isActive: tenants.isActive })
+    .from(tenants).where(eq(tenants.slug, slug)).limit(1);
+  if (!tenantRow?.isActive) return {};  // ← early return, jangan lanjut query schema
+  
+  const tenantClient = createTenantDb(slug);  // ← baru aman dipanggil
+  // ...
+}
+```
+
+### [2026-05] Internal Fetch di Server Component — Jangan Forward Semua Headers
+
+**Masalah**: `TypeError: fetch failed` di `app/(public)/[tenant]/akun/mitra/page.tsx` dengan
+cause `[Error [InvalidArgumentError]: invalid connection header] { code: 'UND_ERR_INVALID_ARG' }`.
+
+**Root cause**: Server component melakukan internal fetch ke API route sendiri:
+```typescript
+// SALAH — forward semua incoming request headers
+const res = await fetch(url, { headers: await headers(), cache: "no-store" });
+```
+
+Header `connection` (dan header hop-by-hop lain seperti `transfer-encoding`, `keep-alive`) adalah
+header yang **tidak boleh di-forward** ke request lain. Browser/proxy mengirimnya ke server, tapi
+server tidak boleh meneruskannya ke upstream request. `undici` (HTTP client di Node.js/Next.js)
+menolak keras header ini → `UND_ERR_INVALID_ARG`.
+
+**Fix:**
+```typescript
+// BENAR — hanya forward cookie untuk auth
+const hdrs = await headers();
+const res = await fetch(url, {
+  headers: { cookie: hdrs.get("cookie") ?? "" },
+  cache: "no-store",
+});
+```
+
+**Aturan**: Setiap server component atau server action yang melakukan internal fetch ke API route
+sendiri, **hanya forward `cookie` header** — tidak pernah `await headers()` langsung ke fetch options.
+Cukup cookie untuk meneruskan session auth.
+
+### [2026-05] UUID Validation di API Routes — Validasi Format Sebelum Query
+
+**Masalah**: `invalid input syntax for type uuid: "ikpmjogja"` — string non-UUID dikirim ke kolom
+UUID di PostgreSQL → crash langsung di driver level.
+
+**Contoh kasus**: Bot atau request manual hit `GET /api/member-public/ikpmjogja?slug=...` di mana
+`ikpmjogja` adalah tenant subdomain, bukan UUID member. Kolom `tenantMemberships.memberId` bertipe UUID.
+
+**Fix — tambah UUID regex check sebelum query:**
+```typescript
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+if (!UUID_RE.test(id)) return NextResponse.json({ error: "ID tidak valid" }, { status: 400 });
+```
+
+**Aturan**: Setiap API route yang menerima ID sebagai path param (misal `[id]`) dan ID tersebut akan
+dipakai dalam query ke kolom UUID, WAJIB validasi format UUID sebelum hit DB. Berlaku untuk:
+- `member-public/[id]` ← sudah difix
+- semua route pattern `[id]` lain yang query UUID columns
+
+### [2026-05] "Failed to find Server Action" — Normal Post-Deploy, Bukan Bug Kode
+
+**Gejala**: `[Error: Failed to find Server Action "x". This request might be from an older or newer deployment.]`
+muncul berkali-kali di PM2 error log setelah deploy.
+
+**Bukan bug kode.** Ini terjadi karena:
+- Next.js me-hash setiap server action saat build → hash berbeda di setiap deployment
+- User yang masih buka tab browser lama (versi sebelum deploy) submit form → hash lama tidak dikenal
+- Setelah user refresh browser, error ini tidak muncul lagi
+
+**Tidak perlu tindakan** kecuali error ini muncul pada URL yang baru saja dibuka (bukan tab lama).
+Jika muncul terus-menerus pada semua request baru → kemungkinan ada masalah build (action tidak ter-bundle).
