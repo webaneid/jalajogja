@@ -23,7 +23,7 @@ export default async function AkunLayout({ children, params }: Props) {
   if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
 
   const identity = await getAkunIdentity(session.user.id);
-  if (!identity) redirect(`/${slug}/dashboard`);
+  if (!identity) redirect(`/app/${slug}/dashboard`);
 
   const isMember    = identity.type === "member";
   const displayEmail = identity.email || session.user.email;

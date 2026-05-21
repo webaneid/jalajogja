@@ -18,7 +18,7 @@ export default async function AkunPage({ params }: { params: Params }) {
   if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
 
   const identity = await getAkunIdentity(session.user.id);
-  if (!identity) redirect(`/${slug}/dashboard`);
+  if (!identity) redirect(`/app/${slug}/dashboard`);
 
   const isMember     = identity.type === "member";
   const isIncomplete = isMemberDataIncomplete(identity);

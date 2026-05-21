@@ -41,7 +41,7 @@ export function InviteAcceptClient({
       const res = await acceptInviteAction(slug, token);
       if (res.success) {
         setSuccess(true);
-        setTimeout(() => router.push(`/${res.slug}/dashboard`), 1500);
+        setTimeout(() => router.push(`/app/${res.slug}/dashboard`), 1500);
       } else {
         setError(res.error);
       }
@@ -59,7 +59,7 @@ export function InviteAcceptClient({
       const res = await registerAndAcceptAction(slug, token, name, email, password);
       if (res.success) {
         setSuccess(true);
-        setTimeout(() => router.push(`/${res.slug}/dashboard`), 1500);
+        setTimeout(() => router.push(`/app/${res.slug}/dashboard`), 1500);
       } else {
         setError(res.error);
       }

@@ -24,7 +24,7 @@ export default async function AkunEventPage({ params }: { params: Params }) {
   if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun/event`);
 
   const identity = await getAkunIdentity(session.user.id);
-  if (!identity) redirect(`/${slug}/dashboard`);
+  if (!identity) redirect(`/app/${slug}/dashboard`);
 
   // Resolve identitas untuk query
   let resolvedMemberId:  string | null = null;

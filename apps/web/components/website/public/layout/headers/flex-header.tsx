@@ -280,7 +280,7 @@ function UserButton({ tenantSlug, baseUrl }: { tenantSlug: string; baseUrl: stri
               </a>
               {hasDashboard && (
                 <a
-                  href={`/${tenantSlug}/dashboard`}
+                  href={`/app/${tenantSlug}/dashboard`}
                   onClick={() => setOpen(false)}
                   className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/60 transition-colors"
                 >

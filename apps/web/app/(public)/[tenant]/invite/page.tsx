@@ -118,7 +118,7 @@ export default async function InvitePage({
               type="success"
               title="Undangan Sudah Diterima"
               message="Undangan ini sudah pernah digunakan. Silakan login ke dashboard."
-              action={<a href={`/${slug}/dashboard`} className="text-sm text-primary underline">
+              action={<a href={`/app/${slug}/dashboard`} className="text-sm text-primary underline">
                 Buka Dashboard
               </a>}
             />
@@ -170,7 +170,7 @@ export default async function InvitePage({
                   type="success"
                   title="Anda sudah memiliki akses"
                   message="Akun Anda sudah terdaftar di dashboard organisasi ini."
-                  action={<a href={`/${slug}/dashboard`} className="text-sm text-primary underline">
+                  action={<a href={`/app/${slug}/dashboard`} className="text-sm text-primary underline">
                     Buka Dashboard
                   </a>}
                 />
