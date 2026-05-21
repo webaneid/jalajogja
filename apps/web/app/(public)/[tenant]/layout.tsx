@@ -13,6 +13,15 @@ type Params = Promise<{ tenant: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
+
+  // Cek tenant exists sebelum query tenant schema — cegah DB error dari bot/scraper
+  const [tenantRow] = await db
+    .select({ isActive: tenants.isActive })
+    .from(tenants)
+    .where(eq(tenants.slug, slug))
+    .limit(1);
+  if (!tenantRow?.isActive) return {};
+
   const tenantClient     = createTenantDb(slug);
   const generalSettings  = await getSettings(tenantClient, "general");
   const faviconUrl       = (generalSettings.favicon_url as string | undefined) ?? null;

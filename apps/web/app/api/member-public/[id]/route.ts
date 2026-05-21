@@ -23,6 +23,10 @@ export async function GET(
   const slug = req.nextUrl.searchParams.get("slug");
   if (!slug) return NextResponse.json({ error: "slug diperlukan" }, { status: 400 });
 
+  // Validasi UUID format — cegah DB error jika id bukan UUID valid
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(id)) return NextResponse.json({ error: "ID tidak valid" }, { status: 400 });
+
   // 1. Resolve tenant
   const [tenant] = await db
     .select({ id: tenants.id, isActive: tenants.isActive })
