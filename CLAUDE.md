@@ -486,6 +486,8 @@ app/(dashboard)/[tenant]/
 - [x] **Public Link Picker** — `lib/public-url-registry.ts` + `/api/ref/public-links` + `components/ui/public-link-picker.tsx` + integrasi nav-menu builder (`website-settings-client.tsx`). Sisa: field CTA di section editor belum semua pakai `<PublicLinkPicker>`.
 - [ ] Add-on Marketplace UI (settings + install flow)
 - [ ] Docker deployment
+- [x] **Migrasi URL Admin** — admin dashboard pindah dari `/{slug}/*` ke `/app/{slug}/*`. Redirect 301 dari URL lama. Front-end publik tidak berubah. Detail: `docs/rencana-migrasi-url.md`.
+- [ ] **Fase 5 URL** — admin subdomain custom domain (`admin.ikpmjogja.com`). Dijadwalkan setelah 2 minggu production stable dari 2026-05-21.
 
 ## Arsitektur Media Library
 
@@ -2378,24 +2380,21 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Custom Domain Phase A2** (sesi 2026-05-16).
-- Sebelumnya: **Custom Domain White-label URLs — Phase A/B/C** (sesi 2026-05-16).
+- Terakhir dikerjakan: **Migrasi URL Fase 1–4 + deploy production** (sesi 2026-05-21).
+- Sebelumnya: **Role System — tiga jalur aktivasi + custom role enforcement** (sesi 2026-05-21).
 - Sesi terakhir:
-  - **Custom domain Phase A** — Nginx `default_server` catch-all + middleware pakai `APP_INTERNAL_URL` + fire-and-forget trigger cron verify setelah save domain settings.
-  - **Custom domain Phase B** — UI settings domain diupdate: instruksi Cloudflare proxy wajib (orange cloud) untuk HTTPS.
-  - **Custom domain Phase C — White-label clean URLs** — implementasi selesai, TypeScript 0 errors:
-    - Buat `lib/is-own-host.ts` — shared util antara middleware dan layout (tidak duplikasi)
-    - C1: Middleware 301 redirect `/{slug}/path` → `/path` saat request dari custom domain
-    - C2: `PublicLayout` baca `host` via `await headers()`, hitung `baseUrl`, strip slug dari navMenu hrefs
-    - C3: Header (flex + classic), footer (dark + light), cart-button — semua link pakai `baseUrl` bukan hardcode `/${slug}`
-    - Tambah `baseUrl: string` ke `HeaderProps` dan `FooterProps`
-  - **Custom domain Phase A2 — Stabilitas status domain** — TypeScript 0 errors, migration selesai di VPS:
-    - Kolom baru `domain_last_check_at TIMESTAMPTZ` + `domain_last_check_error TEXT` di `public.tenants`
-    - `cron verify-domains`: status `active` tidak pernah di-downgrade; `failed` hanya dari `pending`; setiap run catat `domainLastCheckAt` + `domainLastCheckError`
-    - `saveDomainSettingsAction`: fetch existing sebelum update; domain sama + sudah `active` → pertahankan `active`, tidak trigger ulang verifikasi; hanya reset ke `pending` jika domain benar-benar berubah
-  - TypeScript 0 errors di semua file.
-- **Custom domain Phase C4** — tambah `generateMetadata` di `agenda/[slug]` + refactor `produk/kategori/[slug]` pakai `getTenantSeoBase`. Semua halaman publik kini punya canonical URL yang benar untuk custom domain maupun path mode.
-- Ditunda: sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7).
+  - **Pendaftaran tenant dinonaktifkan** — `(auth)/register/page.tsx` flag `REGISTRATION_OPEN = false`. Link "Daftar" di login disembunyikan (dalam komentar). Aktifkan kembali: ubah `false → true` + uncomment link.
+  - **Migrasi URL Fase 1–4 selesai, di-deploy ke production:**
+    - **Fase 1:** Pindah `(dashboard)/[tenant]/*` → `(dashboard)/app/[tenant]/*`. Admin dashboard sekarang di `/app/{slug}/*`. Login admin: `/app/login`. Middleware ganti `PROTECTED_PATTERN` dengan `startsWith("/app/")`.
+    - **Fase 2:** 127 `redirect()` + 131 `revalidatePath()` di semua actions.ts diupdate ke `/app/` prefix.
+    - **Fase 3:** Semua `href` dan `router.push` di 9 nav components + 50+ page files + 10 admin component dirs diupdate.
+    - **Fase 4:** Redirect 301 via `next.config.ts` dari path lama ke `/app/`. Hapus `evaluasi-arsitektur-url.md`. Update CLAUDE.md + rencana-migrasi-url.md.
+    - **Fix build:** 87 import paths `@/app/(dashboard)/[tenant]/...` → `@/app/(dashboard)/app/[tenant]/...` (terlewat di Fase 3).
+    - **Fix build:** `useSearchParams()` di `/app/login` dibungkus `<Suspense>` (Next.js 15 requirement).
+  - **Fase 5 ditunda** — admin subdomain (`admin.ikpmjogja.com`) setelah 2 minggu observasi production.
+- URL admin baru: `jalakarta.com/app/{slug}/dashboard`
+- URL publik: tidak berubah (`jalakarta.com/{slug}/post`, dll)
+- Ditunda: sertifikat PDF donasi, V8 (stok check), Donasi Rutin (R1–R7), Fase 5 URL.
 
 ### Pattern `baseUrl` (Custom Domain)
 ```typescript
@@ -3133,6 +3132,34 @@ Saat registrasi: lookup email/HP di `public.contacts → public.members`. Jika c
 const session = await auth.api.getSession({ headers: await headers() });
 if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
 ```
+
+### [2026-05] Migrasi URL Admin — Lessons Learned
+
+**Arsitektur URL sebelum:** Admin dan publik berbagi `/{slug}/*` → konflik nama modul (toko vs produk, donasi vs campaign, event vs agenda).
+
+**Arsitektur URL sesudah:** Admin di `/app/{slug}/*`, publik tetap `/{slug}/*`. Tidak ada konflik lagi.
+
+**Empat kategori perubahan dalam migrasi ini (urutan penting):**
+1. **Route structure** — pindah folder di filesystem (Next.js otomatis ikut)
+2. **redirect() + revalidatePath()** — di semua `actions.ts` (bulk sed per pattern)
+3. **href + router.push** — di semua komponen dan page
+4. **import paths** — `@/app/(dashboard)/[tenant]/...` → `@/app/(dashboard)/app/[tenant]/...`
+
+**Bug yang terlewat saat audit Phase 3:**
+Import statements ke `actions.ts` menggunakan string literal yang berbeda format dari `href`. Grep pattern `href.*${slug}` tidak menangkap `from "@/app/(dashboard)/[tenant]/..."`. Harus grep terpisah untuk import paths.
+**Aturan:** Setiap kali pindah folder yang berisi `actions.ts`, selalu grep juga `from "@/app/(dashboard)/[tenant]/` untuk cari import yang mengarah ke sana.
+
+**`useSearchParams()` wajib Suspense di Next.js 15:**
+Halaman baru yang menggunakan `useSearchParams()` akan gagal build di production jika tidak dibungkus `<Suspense>`. Pattern: pisah komponen inner (pakai `useSearchParams`) dan outer (wrapper dengan `<Suspense fallback={null}>`). Berlaku untuk semua halaman client dengan `useSearchParams`.
+
+**Redirect 301 di `next.config.ts` untuk backward compat:**
+Gunakan `redirects()` di `next.config.ts` untuk handle URL lama → baru. Regex pada `:slug` perlu negative lookahead agar tidak salah match `/api`, `/app`, `/platform`. Cache browser menyimpan 301 → user perlu Incognito atau clear cache untuk test. Bukan bug jika URL baru tidak muncul di browser yang sudah pernah buka URL lama.
+
+**Deploy command (PM2):**
+```bash
+cd /var/www/jalajogja && git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env
+```
+Tidak perlu migrasi DB — migrasi URL adalah perubahan routing saja, schema tidak berubah.
 
 ### [2026-05] Deployment Production — Lessons Learned
 

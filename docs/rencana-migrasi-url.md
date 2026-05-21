@@ -1,8 +1,14 @@
 # Rencana Migrasi Arsitektur URL
 
-> Status: **FASE 1–4 SELESAI — commit terkini**
-> Fase 5 (admin subdomain custom domain) ditunda sampai production stable 2 minggu.
+> Status: **FASE 1–4 SELESAI & DEPLOYED — commit 5c5ddd0**
+> Fase 5 (admin subdomain custom domain) ditunda sampai production stable 2 minggu (mulai 2026-05-21).
 > Dokumen evaluasi (`docs/evaluasi-arsitektur-url.md`) sudah dihapus — kontennya ada di sini.
+
+**Hasil akhir:**
+- Admin dashboard: `jalakarta.com/app/{slug}/dashboard`
+- Admin login: `jalakarta.com/app/login`
+- Front-end publik: `jalakarta.com/{slug}/*` — tidak berubah
+- URL lama `/{slug}/dashboard`, `/{slug}/members`, dst → redirect 301 otomatis
 
 ---
 
