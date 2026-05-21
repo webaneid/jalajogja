@@ -3161,6 +3161,53 @@ cd /var/www/jalajogja && git pull && bun run build --filter=@jalajogja/web && pm
 ```
 Tidak perlu migrasi DB — migrasi URL adalah perubahan routing saja, schema tidak berubah.
 
+**Bug post-deploy: link admin lama di public area (ditemukan dari error mobile)**
+
+Setelah Fase 1–4 selesai dan di-deploy, muncul "client-side exception" di mobile untuk pengunjung `ikpmjogja.com`. Root cause: ada beberapa file di `(public)/` dan `components/website/public/` yang punya link ke URL admin lama (`/{slug}/dashboard`) tapi **tidak termasuk dalam scope audit Phase 3** karena audit hanya fokus ke `(dashboard)/` dan `components/dashboard/`.
+
+**File yang terlewat dan difix post-deploy:**
+
+| File | Masalah | Fix |
+|------|---------|-----|
+| `flex-header.tsx` baris 283 | Tombol "Dashboard Admin" di dropdown user → `/{tenantSlug}/dashboard` | → `/app/${tenantSlug}/dashboard` |
+| `akun/layout.tsx` | redirect pengurus ke `/${slug}/dashboard` | → `/app/${slug}/dashboard` |
+| `akun/page.tsx` | redirect pengurus ke `/${slug}/dashboard` | → `/app/${slug}/dashboard` |
+| `akun/event/page.tsx` | redirect pengurus ke `/${slug}/dashboard` | → `/app/${slug}/dashboard` |
+| `invite/page.tsx` | link "Buka Dashboard" setelah accept invite | → `/app/${slug}/dashboard` |
+| `invite/invite-accept-client.tsx` | `router.push` setelah terima undangan | → `/app/${res.slug}/dashboard` |
+| `(auth)/register/page.tsx` | redirect setelah daftar tenant baru | → `/app/${slug}/dashboard` |
+
+**Kenapa hanya mobile yang kena?**
+Pengunjung desktop kemungkinan tidak ada yang login sebagai pengurus, atau redirect 301 dari URL lama berhasil di-handle mulus. Di mobile, pengurus yang login dan klik "Dashboard Admin" di header mendapat 404 → Next.js render error page → terlihat sebagai "client-side exception".
+
+**Pola audit yang benar untuk migrasi URL serupa:**
+Setiap kali ada migrasi URL admin, grep EMPAT area berbeda:
+```bash
+# 1. redirect() dan revalidatePath() di actions
+grep -r 'redirect\|revalidatePath' app/(dashboard) --include="*.ts"
+
+# 2. href dan router.push di dashboard
+grep -r 'href=.*slug\|router\.push.*slug' app/(dashboard) components/dashboard --include="*.tsx"
+
+# 3. import paths dari actions
+grep -r 'from "@/app/(dashboard)/\[tenant\]/' components app --include="*.ts" --include="*.tsx"
+
+# 4. Link admin di public area — YANG SERING TERLEWAT
+grep -r 'slug}/dashboard\|slug}/members\|slug}/settings' \
+  app/(public) app/(auth) components/website components/akun \
+  --include="*.tsx" --include="*.ts"
+```
+
+**Checklist post-deploy untuk migrasi URL:**
+```
+[ ] Buka front-end di browser Incognito (bukan cache)
+[ ] Login sebagai pengurus → cek tombol "Dashboard Admin" di header → klik → URL benar?
+[ ] Buka link invite → terima → redirect ke dashboard benar?
+[ ] Buka /akun sebagai pengurus → redirect ke dashboard benar?
+[ ] Cek di mobile (berbeda behavior dengan desktop)
+[ ] Cek error log VPS: pm2 logs jalajogja --lines 50
+```
+
 ### [2026-05] Deployment Production — Lessons Learned
 
 **Infrastruktur:**
