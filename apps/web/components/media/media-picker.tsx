@@ -178,8 +178,12 @@ export function MediaPicker({
           ]);
           newIds.push(data.id);
         } else {
-          const err = await res.json();
-          toast.error(`Gagal upload ${file.name}: ${err.error}`);
+          let errMsg = "Gagal upload file";
+          try {
+            const err = await res.json();
+            errMsg = err.error ?? errMsg;
+          } catch { /* response bukan JSON (misal 500 plain text) */ }
+          toast.error(`Gagal upload ${file.name}: ${errMsg}`);
         }
       }
 

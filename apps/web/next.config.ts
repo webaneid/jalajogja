@@ -24,6 +24,22 @@ const ADMIN_MODULES = [
 const nextConfig: NextConfig = {
   transpilePackages: ["@jalajogja/ui"],
 
+  async rewrites() {
+    // Beberapa browser ter-cache redirect 301 lama yang salah arahkan
+    // /api/* ke /app/api/*. beforeFiles rewrite memastikan request ke /app/api/*
+    // di-forward ke /api/* SEBELUM Next.js cek route (dashboard)/app/[tenant]/*.
+    return {
+      beforeFiles: [
+        {
+          source: "/app/api/:path*",
+          destination: "/api/:path*",
+        },
+      ],
+      afterFiles: [],
+      fallback:   [],
+    };
+  },
+
   async redirects() {
     // 4a: Redirect 301 dari old admin URLs ke /app/ prefix
     // Berlaku selama 30 hari lalu dihapus (setelah semua bookmark admin diperbarui)
