@@ -1,7 +1,7 @@
 # Arsitektur Domain & Custom Domain Routing
 
-> Dokumen ini mencakup tiga fase routing domain jalajogja, analisa masalah yang ditemukan,
-> dan roadmap perbaikan. Konteks singkat domain routing ada di `docs/arsitektur-website.md` § 2.
+> Dokumen ini mencakup arsitektur teknis routing domain jalajogja.
+> Panduan operasional step-by-step untuk setup tenant baru: `docs/panduan-custom-domain.md`
 
 ---
 
@@ -9,31 +9,42 @@
 
 | Fase | Contoh URL | Status |
 |------|-----------|--------|
-| 1 — Path | `app.jalakarta.com/pc-ikpm-jogjakarta/post` | ✅ Aktif |
-| 2 — Subdomain | `ikpm.jalakarta.com/post` | ⬜ Belum |
-| 3 — Custom Domain | `ikpmjogja.com/post` | ⚠️ Parsial — lihat analisa di bawah |
+| 1 — Path | `jalakarta.com/app/pc-ikpm-jogjakarta/dashboard` (admin) | ✅ Aktif |
+| 2 — Subdomain | `ikpm.jalakarta.com/post` | ⬜ Belum diimplementasikan |
+| 3 — Custom Domain | `ikpmjogja.com/post` | ✅ Aktif (2026-05-26) |
 
 Ketiga fase tidak saling menggantikan — tenant bisa punya ketiganya aktif sekaligus.
 
 ---
 
-## Cara Kerja Setelah Phase A (✅ Sudah Difix — 2026-05-16)
+## Cara Kerja Custom Domain (✅ Aktif)
 
 ```
-Browser buka ikpmjogja.com
-  → Cloudflare terima, SSL termination di Cloudflare
-  → Forward HTTP ke VPS (port 80)
-  → Nginx: catch-all default_server block → proxy ke localhost:3000
-  → Next.js middleware baca Host header
+Browser buka https://ikpmjogja.com
+  → DNS A record → VPS IP (72.61.215.7) langsung (tanpa Cloudflare proxy)
+  → VPS port 443 → Nginx server block ikpmjogja.com (cert Let's Encrypt)
+  → Nginx proxy_pass → localhost:3000
+  → Next.js middleware baca Host header: "ikpmjogja.com"
+  → isOwnHost("ikpmjogja.com") = false → masuk custom domain routing
+  → Strip www. jika ada: "www.ikpmjogja.com" → "ikpmjogja.com"
   → Fetch http://localhost:3000/api/internal/resolve-domain?domain=ikpmjogja.com
-     (gunakan APP_INTERNAL_URL — tidak round-trip ke internet)
-  → Timeout 3 detik (AbortSignal) — tidak blokir request terlalu lama
-  → DB lookup: WHERE custom_domain = 'ikpmjogja.com' AND status = 'active'
-  → Jika found → rewrite ke /{slug}{pathname}
-  → Jika not found → middleware pass-through → kena platform root
+     (APP_INTERNAL_URL — loopback, tidak keluar ke internet)
+  → Timeout 3 detik (AbortSignal) — tidak blokir terlalu lama
+  → DB: WHERE custom_domain = 'ikpmjogja.com' AND status = 'active' AND isActive = true
+  → Jika found → slug = 'pc-ikpm-jogjakarta'
+  → Rewrite internal: /post → /pc-ikpm-jogjakarta/post
+  → Next.js render halaman untuk tenant pc-ikpm-jogjakarta
 ```
 
-**Status sekarang: bekerja secara kebetulan**, bukan by design.
+### Penanganan semua variasi URL
+
+| URL yang diketik | Nginx | Hasil |
+|---|---|---|
+| `http://ikpmjogja.com` | 301 | `https://ikpmjogja.com/` |
+| `http://www.ikpmjogja.com` | 301 | `https://ikpmjogja.com/` |
+| `https://www.ikpmjogja.com` | 301 (server block www) | `https://ikpmjogja.com/` |
+| `https://ikpmjogja.com` | proxy → Next.js | ✅ Tampil |
+| `https://ikpmjogja.com/pc-ikpm-jogjakarta/post` | proxy → middleware | 301 → `/post` (strip slug) |
 
 ---
 
@@ -42,403 +53,159 @@ Browser buka ikpmjogja.com
 ```
 apps/web/middleware.ts
   → isOwnHost(): jalakarta.com, *.jalakarta.com, localhost — skip custom domain routing
+  → Strip www. dari host sebelum lookup (www.ikpmjogja.com → ikpmjogja.com)
+  → Jika host punya www. dan slug ditemukan → redirect 301 ke apex
   → resolve custom domain via fetch ke /api/internal/resolve-domain
-  → rewrite internal ke /{slug}{pathname}
+  → Jika slug ditemukan → rewrite internal ke /{slug}{pathname}
+  → C1: jika pathname sudah include slug → redirect 301 ke clean URL
+
+apps/web/lib/is-own-host.ts
+  → Helper shared untuk middleware + PublicLayout
+  → Return true untuk: jalakarta.com, *.jalakarta.com, localhost, 127.0.0.1
 
 apps/web/app/api/internal/resolve-domain/route.ts
   → DB query: tenants WHERE custom_domain = ? AND customDomainStatus = 'active' AND isActive = true
   → Return { slug } atau { slug: null }
 
-apps/web/app/api/cron/verify-domains/route.ts
-  → DNS lookup A record per tenant (status pending/failed)
-  → Jika A record → VPS_IP (72.61.215.7): set status = 'active'
-  → Jika tidak: set status = 'failed'
-  → Dipanggil via GET /api/cron/verify-domains dengan Authorization: Bearer {CRON_SECRET}
+apps/web/app/(public)/[tenant]/layout.tsx
+  → Deteksi custom domain via headers()
+  → Compute baseUrl: "" jika custom domain, "/{slug}" jika path mode
+  → Strip slug prefix dari navMenu hrefs saat custom domain
+  → Pass baseUrl ke header + footer komponen
 
-nginx.conf
-  → server_name jalakarta.com *.jalakarta.com (port 80 + 443)
-  → server_name minio.jalakarta.com (port 443)
-  → Tidak ada catch-all / default_server untuk custom domain
+/etc/nginx/sites-available/ikpmjogja.com  (di VPS — bukan di repo)
+  → Port 80: redirect HTTP → https://ikpmjogja.com (apex, tanpa www)
+  → Port 443 www: redirect → https://ikpmjogja.com
+  → Port 443 apex: proxy ke localhost:3000, timeout 120s, max body 50M
+
+/etc/nginx/sites-available/custom-domains  (di VPS — bukan di repo)
+  → Port 80 catch-all (server_name _): redirect HTTP → HTTPS
+  → Fallback untuk domain yang belum punya server block sendiri
 
 packages/db/src/schema/public/tenants.ts
-  → custom_domain TEXT UNIQUE
-  → custom_domain_status TEXT: none | pending | active | failed
+  → custom_domain TEXT UNIQUE          — hostname saja, tanpa http://, tanpa www
+  → custom_domain_status TEXT          — none | pending | active | failed
   → custom_domain_verified_at TIMESTAMPTZ
 ```
 
 ---
 
-## Masalah yang Ditemukan
+## Infrastruktur SSL
 
-### 🔴 Masalah 1 — Nginx Tidak Punya Catch-all Custom Domain
-
-`nginx.conf` hanya punya `server_name jalakarta.com *.jalakarta.com`. Request `ikpmjogja.com`
-tidak cocok dengan server block manapun → Nginx pakai first server block sebagai default →
-secara kebetulan diproxy ke `localhost:3000`.
-
-**Risiko**: Perilaku ini tidak terdokumentasi dan bisa berubah sewaktu-waktu (misal saat kita
-tambah server block baru yang menjadi first block). Harus diganti dengan catch-all eksplisit.
-
-### 🔴 Masalah 2 — "Kadang Masuk ke Platform" (Bug Utama)
-
-**Penyebab**: `customDomainStatus` berubah antara `active` dan `failed` karena cron
-`verify-domains` menjalankan DNS lookup ulang setiap jalan. Kalau saat cron jalan ada
-DNS timeout atau blip → status diset ke `failed` → middleware tidak resolve domain →
-slug = null → middleware pass-through → path `/` tidak cocok route tenant manapun →
-**kena platform root page** (jalakarta.com homepage).
-
-**Kenapa "kadang"**: DNS lookup dari VPS tidak selalu konsisten karena:
-- DNS propagation belum selesai
-- Upstream DNS server timeout
-- Network blip di VPS saat cron jalan
-
-**Solusi**: Setelah domain pertama kali verified (`active`), jangan reset ke `failed` karena
-DNS blip. Pisahkan "monitoring" dari "status routing". Status routing hanya berubah via
-aksi eksplisit admin.
-
-### 🟡 Masalah 3 — SSL Custom Domain Bergantung Cloudflare
-
-Nginx tidak punya SSL cert untuk `ikpmjogja.com`. HTTPS bekerja karena Cloudflare sebagai
-SSL proxy (Cloudflare punya cert untuk semua domain yang lewat mereka). Jika tenant tidak
-pakai Cloudflare → HTTPS gagal → browser error.
-
-**Konsekuensi**: Semua tenant yang mau pakai custom domain **HARUS** lewat Cloudflare.
-Ini perlu didokumentasikan sebagai persyaratan, bukan optional.
-
-Alternatif jangka panjang: Caddy dengan on-demand TLS (auto-provision Let's Encrypt per domain).
-
-### 🟡 Masalah 4 — Slug Bocor ke URL Custom Domain
-
-Middleware punya guard:
-```typescript
-if (pathname.startsWith(`/${slug}`)) {
-  return NextResponse.next(); // pass-through tanpa strip slug
-}
-```
-
-Jika user dari `ikpmjogja.com` klik link internal yang generate `/pc-ikpm-jogjakarta/post/artikel`,
-middleware melihat path sudah include slug → pass-through. Browser tetap di:
-```
-ikpmjogja.com/pc-ikpm-jogjakarta/post/artikel   ← slug bocor
-```
-
-Idealnya:
-```
-ikpmjogja.com/post/artikel   ← white-label bersih
-```
-
-**Dampak SEO**: Google bisa index dua URL untuk konten yang sama — canonical issue.
-
-### 🟡 Masalah 5 — Link Internal Tidak Custom-Domain Aware
-
-Header, footer, nav menu generate link dengan slug prefix:
-```typescript
-// classic-header.tsx
-<a href={`/${tenantSlug}`}>Logo</a>
-
-// nav-menu.ts
-href = `/${slug}/post`
-href = `/${slug}/campaign`
-```
-
-Di custom domain, link ini tampil sebagai:
-```
-ikpmjogja.com/pc-ikpm-jogjakarta/post   ← tidak white-label
-```
-
-Idealnya:
-```
-ikpmjogja.com/post   ← white-label bersih
-```
-
----
-
-## Status Domain `ikpmjogja.com` Saat Ini
-
-Berdasarkan analisa (perlu dicek via psql untuk konfirmasi):
-
-```sql
-SELECT slug, custom_domain, custom_domain_status, custom_domain_verified_at
-FROM public.tenants
-WHERE custom_domain = 'ikpmjogja.com';
-```
-
-Jika `customDomainStatus` bukan `active` → penyebab langsung "kadang masuk ke platform".
-
----
-
-## Roadmap Perbaikan
-
-### Fase A — Stabilisasi (Prioritas Tinggi, Hari Ini)
-
-**A1. Tambah catch-all server block di Nginx**
-
-```nginx
-# Catch-all untuk custom domain yang lewat Cloudflare (HTTP)
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
-
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-
-    location / {
-        proxy_pass         http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header   Host              $host;
-        proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-        # Cloudflare sets X-Forwarded-Proto — teruskan ke Next.js
-        proxy_set_header   X-Forwarded-Proto $http_x_forwarded_proto;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 120s;
-        client_max_body_size 50M;
-    }
-}
-```
-
-Taruh SEBELUM server block `jalakarta.com` agar `default_server` flag tidak conflict.
-
-**A2. Fix cron verify-domains — jangan reset `active` ke `failed`**
-
-Ubah logika cron: setelah status `active`, cron hanya mencatat `last_check_at` dan
-`last_check_error` tanpa mengubah status routing. Status hanya berubah via admin action.
-
-```typescript
-// SEKARANG (salah):
-if (!pointsToVps) {
-  await db.update(tenants).set({ customDomainStatus: "failed" }) // ← ini yang bikin "kadang"
-}
-
-// YANG BENAR:
-if (pointsToVps && current.customDomainStatus !== "active") {
-  // Pertama kali verified → set active
-  await db.update(tenants).set({
-    customDomainStatus: "active",
-    customDomainVerifiedAt: new Date(),
-  });
-} else if (!pointsToVps && current.customDomainStatus === "pending") {
-  // Hanya set failed kalau masih pending (belum pernah active)
-  await db.update(tenants).set({ customDomainStatus: "failed" });
-}
-// Status "active" tidak pernah di-downgrade oleh cron
-```
-
-**Kolom tambahan yang perlu di tenants table:**
-```sql
-ALTER TABLE public.tenants
-  ADD COLUMN IF NOT EXISTS domain_last_check_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS domain_last_check_error TEXT;
-```
-
-### Fase B — Persyaratan Cloudflare (Dokumentasi, Segera)
-
-Dokumentasikan ke admin/tenant bahwa custom domain **wajib** konfigurasi:
-1. A record domain → IP VPS (72.61.215.7)
-2. Cloudflare proxy aktif (orange cloud) — untuk SSL
-
-Tanpa Cloudflare: tidak ada HTTPS → browser blokir → tidak bisa dipakai.
-
-Instruksi di `/settings/domain` perlu diperjelas:
-```
-Langkah 1: Masuk ke panel DNS domain kamu (Cloudflare/Niagahoster/GoDaddy)
-Langkah 2: Tambah A record:
-           Nama: @  |  IP: 72.61.215.7  |  TTL: Auto
-Langkah 3: Aktifkan Cloudflare Proxy (ikon awan harus oranye)
-Langkah 4: Klik "Verifikasi DNS" di halaman ini
-```
-
-### Fase C — White-label Clean URLs (Medium Term)
-
-Ini perubahan paling besar — menyentuh middleware, layout, dan link generation.
-
-**C1. Middleware: strip slug dari URL saat di custom domain**
-
-```typescript
-// Saat ini: ikpmjogja.com/pc-ikpm-jogjakarta/post → pass-through (slug bocor)
-// Yang benar: ikpmjogja.com/pc-ikpm-jogjakarta/post → redirect 301 ke ikpmjogja.com/post
-
-if (slug && pathname.startsWith(`/${slug}`)) {
-  // Strip slug → redirect ke clean URL
-  const cleanPath = pathname.slice(`/${slug}`.length) || "/";
-  const cleanUrl = request.nextUrl.clone();
-  cleanUrl.pathname = cleanPath;
-  return NextResponse.redirect(cleanUrl, 301);
-}
-```
-
-**C2. PublicLayout: deteksi custom domain → skip slug prefix di link**
-
-```typescript
-// app/(public)/[tenant]/layout.tsx
-// Tambah: deteksi apakah request dari custom domain
-
-const host = headers().get("host") ?? "";
-const isCustomDomain = !isOwnHost(host); // gunakan fungsi yang sama dengan middleware
-
-// Pass ke semua komponen sebagai context atau prop
-<PublicHeader tenantSlug={slug} baseUrl={isCustomDomain ? "" : `/${slug}`} />
-```
-
-**C3. Nav menu, header, footer: gunakan `baseUrl` prop**
-
-```typescript
-// Sebelum:
-href={`/${tenantSlug}/post`}
-
-// Sesudah:
-href={`${baseUrl}/post`}  // baseUrl = "" jika custom domain, "/{slug}" jika path mode
-```
-
-**C4. Canonical tag**
-
-```typescript
-// Di setiap page server component
-const canonicalUrl = isCustomDomain
-  ? `https://${host}${cleanPath}`
-  : `${APP_URL}/${slug}${cleanPath}`;
-
-// Di generateMetadata:
-alternates: { canonical: canonicalUrl }
-```
-
-### Fase D — Caddy untuk On-demand TLS (Jangka Panjang)
-
-Untuk skala banyak tenant custom domain tanpa Cloudflare dependency:
+SSL untuk custom domain menggunakan **Let's Encrypt via Certbot langsung di VPS**.
+Tidak melalui Cloudflare proxy.
 
 ```
-Browser → Caddy (listen :443, on-demand TLS)
-       → Caddy tanya: /api/internal/domain-allowed?domain=ikpmjogja.com
-       → Endpoint cek DB: custom_domain = ? AND status = 'active'
-       → Jika allowed: Caddy issue cert via Let's Encrypt → proxy ke localhost:3000
-       → Jika tidak allowed: Caddy reject
+/etc/letsencrypt/live/ikpmjogja.com/
+  fullchain.pem  → sertifikat + chain (dipakai nginx)
+  privkey.pem    → private key
+  → Berlaku 90 hari, auto-renew via cron certbot
+  → Cert mencakup: ikpmjogja.com DAN www.ikpmjogja.com (multi-SAN)
 ```
 
-Ini memerlukan:
-- Migrasi dari Nginx ke Caddy (atau Nginx + Caddy hybrid)
-- Endpoint baru `/api/internal/domain-allowed`
-- Caddy config `on_demand_tls` dengan `ask` URL
-
-**Tidak urgent** selama Cloudflare mandatory untuk custom domain.
-
----
-
-## Schema yang Perlu Diupdate
-
-### Saat ini (kolom di `public.tenants`)
-```
-custom_domain              TEXT UNIQUE
-custom_domain_status       TEXT: none | pending | active | failed
-custom_domain_verified_at  TIMESTAMPTZ
+**Cara issue cert untuk domain baru:**
+```bash
+sudo certbot --nginx -d DOMAIN -d www.DOMAIN
 ```
 
-### Yang perlu ditambah (Fase A)
-```sql
-ALTER TABLE public.tenants
-  ADD COLUMN IF NOT EXISTS domain_last_check_at    TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS domain_last_check_error TEXT;
-```
-
-### Jangka panjang (jika banyak domain per tenant)
-Tabel terpisah `public.tenant_domains`:
-```sql
-CREATE TABLE public.tenant_domains (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
-  hostname    TEXT NOT NULL UNIQUE,  -- lowercase, tanpa http://, tanpa trailing slash
-  type        TEXT NOT NULL DEFAULT 'custom',  -- apex | www | subdomain | custom
-  status      TEXT NOT NULL DEFAULT 'pending', -- pending | active | failed
-  is_primary  BOOLEAN NOT NULL DEFAULT false,
-  verified_at TIMESTAMPTZ,
-  last_check_at   TIMESTAMPTZ,
-  last_check_error TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-Tidak urgent sampai ada tenant yang butuh lebih dari satu custom domain.
+> Certbot validasi via HTTP challenge di port 80. Pastikan DNS A record sudah propagasi
+> dan catch-all nginx (custom-domains) tidak memblokir port 80 sebelum certbot jalan.
 
 ---
 
 ## Aturan Normalisasi Domain
 
-Domain yang disimpan ke DB harus selalu:
+Domain yang disimpan ke DB **harus selalu**:
 - Lowercase
 - Tanpa `http://` atau `https://`
 - Tanpa path (hanya hostname)
 - Tanpa trailing slash
-- Tanpa port (kecuali non-standard)
-- `www.ikpmjogja.com` dan `ikpmjogja.com` = dua record berbeda (pilih salah satu sebagai primary)
+- Tanpa port
+- Tanpa `www.` — simpan apex saja (`ikpmjogja.com`, bukan `www.ikpmjogja.com`)
 
-Implementasi saat save di `settings/domain/actions.ts`:
+Implementasi di `settings/domain/actions.ts`:
 ```typescript
 function normalizeDomain(input: string): string {
   return input
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
-    .replace(/\/.*$/, "")        // hapus path
-    .replace(/:.*$/, "")         // hapus port
-    .replace(/\.$/, "");         // hapus trailing dot
+    .replace(/^www\./, "")   // hapus www
+    .replace(/\/.*$/, "")    // hapus path
+    .replace(/:.*$/, "")     // hapus port
+    .replace(/\.$/, "");     // hapus trailing dot
 }
 ```
 
 ---
 
-## Checklist Eksekusi
+## Proses Setup Tenant Custom Domain Baru
 
-### Fase A ✅ SELESAI (2026-05-16)
-- [x] Cek `customDomainStatus` ikpmjogja.com via psql — hasilnya `active` ✓
-- [x] Tambah catch-all `default_server` block di `nginx.conf` (commit e3dcc63)
-- [x] Nginx di VPS di-reload — `nginx -t` sukses
-- [x] Fix middleware: gunakan `APP_INTERNAL_URL` (lokal) bukan `NEXT_PUBLIC_APP_URL`
-- [x] Fix middleware: tambah `AbortSignal.timeout(3000)` — cegah blokir request
-- [x] Fix `settings/actions.ts`: setelah save custom domain, langsung trigger cron verify (fire-and-forget)
-- [x] Tambah `APP_INTERNAL_URL=http://localhost:3000` ke `.env.local` di VPS
-- [x] Deploy + PM2 restart — build sukses
+Lihat panduan lengkap: **`docs/panduan-custom-domain.md`**
 
-### Fase B ✅ SELESAI (2026-05-16)
-- [x] Update instruksi di `components/settings/domain-settings-form.tsx` (commit 534c158)
-  - Langkah 1: A record → IP VPS
-  - Langkah 2: Aktifkan Cloudflare proxy (ikon oranye) — WAJIB untuk HTTPS
-  - Hapus referensi "Caddy" dan "modul Front-end tersedia" yang tidak relevan
-- [ ] Deploy Phase B ke VPS (`git pull` + PM2 restart)
+Ringkasan:
+1. Tenant: Tambah DNS A record `@` dan `www` → `72.61.215.7`
+2. Admin: Simpan domain di `/app/{slug}/settings/domain`
+3. VPS: `sudo certbot --nginx -d DOMAIN -d www.DOMAIN`
+4. VPS: Buat `/etc/nginx/sites-available/DOMAIN` dari template
+5. VPS: `sudo ln -s .../DOMAIN /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx`
+6. DB: `UPDATE tenants SET custom_domain_status = 'active' WHERE custom_domain = 'DOMAIN'`
 
-### Fase C ✅ SELESAI (2026-05-16)
+---
 
-**File yang dibuat:**
-- `apps/web/lib/is-own-host.ts` — shared util (dipakai middleware + layout)
+## Masalah yang Sudah Difix
 
-**File yang diubah:**
-- `apps/web/middleware.ts` — import `isOwnHost` dari shared util + C1: 301 redirect strip slug
-- `apps/web/lib/header-designs.ts` — tambah `baseUrl: string` ke `HeaderProps`
-- `apps/web/lib/footer-designs.ts` — tambah `baseUrl: string` ke `FooterProps`
-- `apps/web/app/(public)/[tenant]/layout.tsx` — C2: deteksi custom domain via `headers()`, compute `baseUrl`, strip slug dari navMenu hrefs, pass `baseUrl` ke header+footer
-- `apps/web/components/website/public/layout/headers/flex-header.tsx` — C3: semua link pakai `baseUrl` (logo, login/register, search results, akun, cart)
-- `apps/web/components/website/public/layout/headers/classic-header.tsx` — C3: logo link pakai `baseUrl`
-- `apps/web/components/website/public/layout/footers/dark-footer.tsx` — C3: logo link pakai `baseUrl`
-- `apps/web/components/website/public/layout/footers/light-footer.tsx` — C3: logo link pakai `baseUrl`
-- `apps/web/components/website/public/layout/cart-button.tsx` — C3: cart link pakai `baseUrl`
+### ✅ www variant tidak resolve (2026-05-26)
+**Gejala**: `www.ikpmjogja.com` → halaman salah atau error.
+**Root cause**: DB punya `ikpmjogja.com`, middleware lookup `www.ikpmjogja.com` → tidak cocok.
+**Fix**: Middleware strip `www.` sebelum lookup. Nginx redirect www → apex di level server block.
 
-**Checklist:**
-- [x] `lib/is-own-host.ts` dibuat — tidak ada duplikasi logika antara middleware dan layout
-- [x] C1: Middleware 301 redirect strip slug saat custom domain
-- [x] C2: `PublicLayout` deteksi custom domain via `headers()` → `baseUrl` prop
-- [x] C2: `parseNavMenu` output di-strip slug prefix saat custom domain
-- [x] C3: Header, footer, cart button semua pakai `baseUrl`
-- [x] TypeScript 0 errors
-- [ ] Deploy ke VPS (`git pull` + `bun run build` + `pm2 restart`)
-- [ ] Test: `ikpmjogja.com/post` tampil benar (bukan 404)
-- [ ] Test: `ikpmjogja.com/pc-ikpm-jogjakarta/post` → redirect 301 → `ikpmjogja.com/post`
-- [ ] Test: semua nav link di header/footer tidak ada slug prefix
+### ✅ HTTP tidak redirect ke HTTPS (2026-05-26)
+**Gejala**: `http://ikpmjogja.com` browsed tanpa redirect ke HTTPS.
+**Fix**: Nginx port 80 block untuk `ikpmjogja.com` sekarang return 301 ke `https://ikpmjogja.com`.
 
-**C4 (Canonical tag) — belum diimplementasikan:**
-Canonical tag di setiap page server component masih menggunakan `NEXT_PUBLIC_APP_URL` sebagai base.
-Ini adalah optimasi SEO yang bisa ditambahkan nanti — tidak blocker untuk white-label UX.
+### ✅ `proxy_read_timeout` terlalu pendek (2026-05-26)
+**Gejala**: Request yang butuh waktu lebih dari 60 detik gagal.
+**Fix**: Ditambah `proxy_read_timeout 120s` di server block port 443.
 
-### Fase D (Jangka panjang, saat Cloudflare tidak cukup)
-- [ ] Evaluasi Caddy vs Nginx + manual Certbot per domain
-- [ ] Implementasi on-demand TLS jika putuskan pakai Caddy
-- [ ] Migrasi `custom_domain` dari kolom ke tabel `tenant_domains` jika butuh multi-domain per tenant
+### ✅ Slug bocor ke URL custom domain (2026-05-16, Fase C)
+**Gejala**: `ikpmjogja.com/pc-ikpm-jogjakarta/post` — slug muncul di URL.
+**Fix**: Middleware C1 redirect strip slug. Layout C2/C3 baseUrl-aware links.
+
+---
+
+## Yang Belum Diimplementasikan
+
+### Fase 2 — Subdomain jalakarta.com
+`ikpm.jalakarta.com/post` — subdomain routing belum aktif. Middleware hanya handle
+path mode dan custom domain. Butuh: wildcard DNS `*.jalakarta.com` di Certbot +
+middleware lookup subdomain → slug.
+
+### Cron Verify-Domains yang Aman
+`app/api/cron/verify-domains/route.ts` saat ini bisa reset status `active` → `failed`
+jika DNS lookup gagal sesaat. Seharusnya: status `active` tidak pernah di-downgrade
+oleh cron. Cron hanya boleh set `active` (dari `pending`) atau catat `last_check_error`.
+**Belum difix — perlu dikerjakan sebelum ada lebih dari 3 custom domain.**
+
+### Canonical Tag Custom Domain
+`generateMetadata` di page server component masih pakai `NEXT_PUBLIC_APP_URL` sebagai base.
+Untuk SEO yang benar di custom domain, canonical harus `https://DOMAIN/path` bukan
+`https://jalakarta.com/{slug}/path`.
+
+### Fase D — On-demand TLS (Jangka Panjang)
+Saat ini setiap custom domain butuh manual: certbot + nginx config + reload.
+Untuk skala >10 tenant dengan custom domain, evaluasi **Caddy** dengan on-demand TLS:
+Caddy bisa auto-issue cert Let's Encrypt untuk domain baru tanpa SSH ke VPS.
+Tidak urgent selama tenant masih sedikit.
+
+---
+
+## Schema DB (public.tenants)
+
+```
+custom_domain              TEXT UNIQUE  — apex domain, tanpa www, tanpa http
+custom_domain_status       TEXT         — none | pending | active | failed
+custom_domain_verified_at  TIMESTAMPTZ  — kapan pertama kali diverifikasi
+```
+
+Jika di masa depan butuh multi-domain per tenant, tambah tabel `public.tenant_domains`.
