@@ -28,6 +28,8 @@ const MODULE_VARIANTS: Partial<Record<string, VariantKey[]>> = {
   shop:    ["original", "square", "square-large"],
   members: ["original", "profile"],
   akun:    ["original", "large", "square", "profile"],
+  // Kop surat (header/footer): convert ke WebP saja, ukuran asli dipertahankan
+  letters: ["original"],
 };
 
 export const DEFAULT_VARIANTS: VariantKey[] = [
