@@ -96,7 +96,9 @@ men-generate variant yang relevan. `ImageVariants` JSONB sudah handle partial va
 |--------|--------------------------|--------|
 | `shop` | `original`, `square`, `square-large` | Produk butuh square (Google Shopping, card grid + card besar). Landscape tidak relevan. |
 | `members` | `original`, `profile` | Foto profil anggota — portrait 3:4. Square/landscape tidak relevan. |
-| `website`, `event`, `donasi`, `letters`, `general` | `original`, `large`, `medium`, `thumbnail`, `square` | Konten umum: keluarga 1.91:1 untuk featured/OG + square kecil untuk avatar/thumbnail. `square-large` dan `profile` tidak dibutuhkan. |
+| `letters` | `original` | **Kop surat wajib ukuran asli** — header/footer surat tidak boleh di-crop atau di-resize sama sekali. Hanya dikonvert ke WebP. Dimensi original dipertahankan 100%. |
+| `akun` | `original`, `large`, `square`, `profile` | Upload foto anggota front-end. |
+| `website`, `event`, `donasi`, `general` | `original`, `large`, `medium`, `thumbnail`, `square` | Konten umum: keluarga 1.91:1 untuk featured/OG + square kecil untuk avatar/thumbnail. |
 
 ### Implementasi di Upload Route
 
@@ -105,7 +107,9 @@ men-generate variant yang relevan. `ImageVariants` JSONB sudah handle partial va
 export const MODULE_VARIANTS: Record<string, (keyof ProcessedVariants)[]> = {
   shop:    ["original", "square", "square-large"],
   members: ["original", "profile"],
-  // default: semua modul lain
+  letters: ["original"],   // kop surat: WAJIB ukuran asli, hanya convert WebP
+  akun:    ["original", "large", "square", "profile"],
+  // default: semua modul lain (website, event, donasi, general)
 };
 
 export const DEFAULT_VARIANTS: (keyof ProcessedVariants)[] = [

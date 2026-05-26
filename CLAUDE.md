@@ -2379,10 +2379,97 @@ Arsitektur + implementasi lengkap: `docs/arsitektur-medialibrary.md`
 
 ---
 
+### [2026-05] Bug: Browser Ter-Cache Redirect 301 ke `/app/api/*`
+
+**Gejala**: MediaPicker di `/app/{slug}/letters/pengaturan` gagal load + upload gambar.
+Browser DevTools menunjukkan request ke `/app/api/media/list` (404) dan `/app/api/media/upload` (500),
+padahal kode menggunakan URL `/api/media/list` dan `/api/media/upload` (tanpa prefix `/app/`).
+
+**Root cause berlapis:**
+1. Pada suatu titik di history, `next.config.ts` punya bug sementara sehingga path `/api/media/*`
+   dikenali sebagai `/:slug/media/*` dan di-redirect 301 ke `/app/:slug/media/*`.
+   Browser men-cache redirect 301 ini secara permanen.
+2. Meski kode sudah difix, browser tetap hit `/app/api/media/list` → Next.js routing mencocokkan
+   `(dashboard)/app/[tenant]/media` dimana `[tenant]="api"` → 404 atau 500.
+3. `media-picker.tsx` error handler memanggil `res.json()` pada response plain-text 500
+   → `SyntaxError: Unexpected token 'I', "Internal S"... is not valid JSON`
+
+**Fix:**
+- `next.config.ts` — tambah `beforeFiles` rewrite: `/app/api/:path*` → `/api/:path*`
+  (`beforeFiles` wajib, bukan `afterFiles` — karena Next.js sudah menemukan route cocok di
+  `(dashboard)/app/[tenant]/...` sebelum `afterFiles` dijalankan)
+- `media-picker.tsx` — wrap `res.json()` dengan try/catch untuk handle non-JSON response
+
+```typescript
+// next.config.ts
+async rewrites() {
+  return {
+    beforeFiles: [{ source: "/app/api/:path*", destination: "/api/:path*" }],
+    afterFiles:  [],
+    fallback:    [],
+  };
+},
+```
+
+**Pelajaran:**
+- `permanent: true` (301) → browser cache selamanya sampai ada redirect balikan atau clear cache
+- Selalu pakai `beforeFiles` untuk rewrite yang perlu jalan sebelum route matching
+- Upload error handler **wajib** handle non-JSON response (server 500 kadang return plain text)
+
+---
+
+### [2026-05] Module `letters` — Image Processor Wajib Original Size
+
+**Aturan yang dikunci**: Gambar yang diupload untuk kop surat (header/footer surat) **TIDAK BOLEH**
+di-resize atau di-crop sama sekali. Hanya dikonvert ke WebP.
+
+**Alasan**: Kop surat organisasi punya aspek rasio yang sangat bervariasi (lebar penuh landscape,
+portrait, persegi) — tidak ada satu pun preset variant yang cocok untuk semua. Resize otomatis
+akan merusak proporsi dan kualitas visual kop surat.
+
+**Implementasi** di `lib/image-processor.ts`:
+```typescript
+const MODULE_VARIANTS = {
+  letters: ["original"],  // HANYA convert ke WebP, dimensi asli dipertahankan
+  // ...
+};
+```
+
+Variant `original` builder: `sharp(inputBuffer).webp({ quality: 85 }).toBuffer()` — tanpa
+`.resize()`, tanpa `.extract()`.
+
+**Render di PDF** (`lib/letter-html.ts`): gambar di-render dengan `width: 100%; object-fit: contain`
+— melebar penuh sesuai kertas, aspek rasio terjaga, tidak ada bagian yang terpotong.
+
+**Aturan berlaku untuk semua module**: Setiap kali tambah module baru ke `MODULE_VARIANTS`,
+pertimbangkan apakah gambar perlu dipertahankan dimensi aslinya (dokumen, kop surat, logo)
+atau boleh di-crop (foto profil, thumbnail konten).
+
+---
+
+### [2026-05] Migration `member_id` — Wajib Dijalankan Sebelum Deploy
+
+`docs/migration-member-media.sql` menambah kolom `member_id` ke tabel `tenant.media` dan
+update CHECK constraint `module` untuk include `'akun'`. Jika migration belum dijalankan
+tapi kode sudah di-deploy (Drizzle schema sudah include kolom baru), semua query ke
+`tenant.media` akan error "column member_id does not exist" → uncaught exception → 500 plain-text.
+
+**Pattern**: Setiap kali kolom baru ditambah ke Drizzle schema dan ada di SELECT (`.select()` tanpa
+kolom spesifik → auto-select semua kolom), pastikan migration sudah dijalankan di production
+SEBELUM deploy kode. Urutan yang benar: **migrate DB → deploy code**, bukan sebaliknya.
+
+---
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Production error fixes dari PM2 log audit** (sesi 2026-05-21, commit `cc16b5a`).
-- Sebelumnya: **Migrasi URL Fase 1–4 + deploy production** (sesi 2026-05-21).
-- Sesi terakhir (error fixes):
+- Terakhir dikerjakan: **Fix media upload errors + letters image processor** (sesi 2026-05-27, commit `960d6fd`).
+- Sesi ini (2026-05-26–27):
+  - **Custom domain routing** — fix variasi URL ikpmjogja.com (www/http/https), docs di `docs/arsitektur-domain.md` dan `docs/panduan-custom-domain.md`.
+  - **Media upload error** di `/app/{slug}/letters/pengaturan`:
+    - Root cause 1: `migration-member-media.sql` belum dijalankan di production → `member_id` column missing → 500
+    - Root cause 2: Browser ter-cache redirect 301 lama → request ke `/app/api/media/*` bukan `/api/media/*`
+    - Fix: `beforeFiles` rewrite di `next.config.ts` + try/catch di `media-picker.tsx` error handler
+  - **Letters image processor** — module `letters` sekarang hanya generate variant `original` (convert WebP saja, tanpa resize/crop)
+- Sebelumnya (2026-05-21):
   - **4 jenis error dari PM2 log difix:**
     - `generateMetadata` di `layout.tsx` → tambah cek tenant exists sebelum query schema
     - `getTenantSeoBase` di `lib/tenant-seo.ts` → tambah guard `!tenant?.isActive` → return fallback
