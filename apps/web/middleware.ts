@@ -18,8 +18,14 @@ export async function middleware(request: NextRequest) {
         process.env.APP_INTERNAL_URL ??
         process.env.NEXT_PUBLIC_APP_URL ??
         "http://localhost:3000";
+
+      // Strip port + normalisasi: hapus www. agar 'www.ikpmjogja.com' resolve ke 'ikpmjogja.com'
+      const rawHost = host.split(":")[0];
+      const normalizedHost = rawHost.replace(/^www\./, "");
+      const hasWww = rawHost !== normalizedHost;
+
       const resolveUrl = new URL("/api/internal/resolve-domain", internalUrl);
-      resolveUrl.searchParams.set("domain", host.split(":")[0]); // strip port jika ada
+      resolveUrl.searchParams.set("domain", normalizedHost);
 
       const res = await fetch(resolveUrl.toString(), {
         cache: "no-store",
@@ -28,6 +34,13 @@ export async function middleware(request: NextRequest) {
       if (res.ok) {
         const { slug } = (await res.json()) as { slug: string | null };
         if (slug) {
+          // Jika request datang dari www.* → redirect 301 ke apex domain (tanpa www)
+          if (hasWww) {
+            const apexUrl = request.nextUrl.clone();
+            apexUrl.host = normalizedHost;
+            return NextResponse.redirect(apexUrl, 301);
+          }
+
           // C1: Jika path sudah include slug → strip slug → redirect 301 ke clean URL
           if (pathname.startsWith(`/${slug}/`) || pathname === `/${slug}`) {
             const cleanPath = pathname === `/${slug}` ? "/" : pathname.slice(`/${slug}`.length);
