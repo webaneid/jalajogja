@@ -102,15 +102,24 @@ function renderTujuanSurat(
 ): string {
   if (!showTujuan || !recipientName?.trim()) return "";
 
+  // Tampilkan organisasi hanya jika berbeda dari recipientName
+  // (mencegah duplikasi saat letter.recipient sudah berisi nama org yang sama)
+  const normName = (recipientName ?? "").trim().toLowerCase();
+  const normOrg  = (recipientOrganization ?? "").trim().toLowerCase();
+  const orgLine  = normOrg && normOrg !== normName ? recipientOrganization : null;
+
   const lines = [
     "Kepada Yth.",
     recipientName,
-    recipientTitle        || null,
-    recipientOrganization || null,
+    recipientTitle || null,
+    orgLine,
     "di Tempat",
   ].filter((l): l is string => !!l);
 
-  return `<div class="tujuan-surat">${lines.map((l) => `<p>${escapeHtml(l)}</p>`).join("")}</div>`;
+  // recipientName (baris ke-2 setelah "Kepada Yth.") di-bold
+  return `<div class="tujuan-surat">${lines.map((l, i) =>
+    i === 1 ? `<p><strong>${escapeHtml(l)}</strong></p>` : `<p>${escapeHtml(l)}</p>`
+  ).join("")}</div>`;
 }
 
 // Lebar kertas tepat per ukuran (presisi sesuai standar cetak)
@@ -245,10 +254,11 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
   const hasFooter = !!template.footerImageUrl;
 
   // Kop surat — tampil di bagian atas halaman pertama
+  // Jika ada header image: TIDAK ada kop-garis — gambar biasanya sudah punya garis sendiri
+  // Jika hanya teks: kop-garis tetap ada sebagai pemisah
   const headerSection = template.headerImageUrl
     ? `<div class="kop-surat">
         <img src="${template.headerImageUrl}" alt="Kop Surat" class="kop-img" />
-        <div class="kop-garis"></div>
        </div>`
     : `<div class="kop-surat kop-text">
         <h1 class="org-name">${escapeHtml(orgName)}</h1>
