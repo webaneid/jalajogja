@@ -217,7 +217,10 @@ export async function createOfficerWithAccountAction(
     .limit(1);
   if (!membership) return { success: false, error: "Anggota tidak ditemukan di cabang ini." };
 
-  let userId: string | null = null;
+  // authUserId = Better Auth user ID (nanoid) — untuk insert tenant.users
+  // tenantUserId = tenant.users.id (UUID) — untuk insert officers.user_id
+  let authUserId:   string | null = null;
+  let tenantUserId: string | null = null;
 
   // ── Aktivasi akun dashboard ───────────────────────────────────────────────
   if (data.activate) {
@@ -238,12 +241,12 @@ export async function createOfficerWithAccountAction(
 
     if (memberRow?.betterAuthUserId) {
       // Anggota sudah punya akun front-end → pakai langsung, tidak perlu email/password
-      userId = memberRow.betterAuthUserId;
+      authUserId = memberRow.betterAuthUserId;
 
       const [existingByAuth] = await tenantDb
         .select({ id: schema.users.id })
         .from(schema.users)
-        .where(eq(schema.users.betterAuthUserId, userId))
+        .where(eq(schema.users.betterAuthUserId, authUserId))
         .limit(1);
       if (existingByAuth) return { success: false, error: "Akun ini sudah terdaftar sebagai pengguna dashboard ini." };
     } else {
@@ -269,7 +272,7 @@ export async function createOfficerWithAccountAction(
           .where(eq(schema.users.betterAuthUserId, existingAuth.id))
           .limit(1);
         if (existingByAuth) return { success: false, error: "Email ini sudah terdaftar sebagai pengguna dashboard ini." };
-        userId = existingAuth.id;
+        authUserId = existingAuth.id;
       } else {
         const result = await auth.api.signUpEmail({
           body: {
@@ -279,23 +282,26 @@ export async function createOfficerWithAccountAction(
           },
         });
         if (!result?.user?.id) return { success: false, error: "Gagal membuat akun login." };
-        userId = result.user.id;
+        authUserId = result.user.id;
       }
 
       // Set better_auth_user_id di public.members agar pengurus bisa login front-end
       await db
         .update(members)
-        .set({ betterAuthUserId: userId! })
+        .set({ betterAuthUserId: authUserId! })
         .where(and(eq(members.id, data.memberId), isNull(members.betterAuthUserId)));
     }
 
-    // Insert ke tenant.users
-    await tenantDb.insert(schema.users).values({
-      betterAuthUserId: userId!,
+    // Insert ke tenant.users — ambil UUID yang di-generate untuk officers.user_id
+    const [insertedUser] = await tenantDb.insert(schema.users).values({
+      betterAuthUserId: authUserId!,
       memberId:         data.memberId,
       role:             data.activationRole!,
       customRoleId:     data.activationRole === "custom" ? (data.activationCustomRoleId ?? null) : null,
-    });
+    }).returning({ id: schema.users.id });
+
+    // tenantUserId (UUID) — ini yang valid untuk FK officers.user_id
+    tenantUserId = insertedUser.id;
   }
 
   // ── Buat officer record ───────────────────────────────────────────────────
@@ -311,7 +317,7 @@ export async function createOfficerWithAccountAction(
         isActive:    data.isActive,
         canSign:     data.canSign,
         sortOrder:   data.sortOrder,
-        userId,
+        userId:      tenantUserId,  // UUID dari tenant.users.id, bukan betterAuthUserId (nanoid)
       })
       .returning({ id: schema.officers.id });
 
