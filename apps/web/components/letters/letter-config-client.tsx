@@ -6,7 +6,7 @@ import { ImageIcon, X } from "lucide-react";
 import { saveLetterConfigAction, type LetterConfig } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
 
-const FONTS = ["Times New Roman", "Arial", "Calibri", "Georgia", "Helvetica"];
+const FONTS = ["Times New Roman", "Arial", "Calibri", "Georgia", "Helvetica", "Philosopher"];
 const PAPER_SIZES = ["A4", "F4", "Letter"] as const;
 
 // Dimensi kertas dalam piksel (96 DPI, standar web/Chromium)
