@@ -1999,6 +1999,57 @@ Hapus setelah konfirmasi warna sudah benar.
 untuk tampilan dashboard (jika ditambah di UI nanti). Label role ("Penandatangan") dan nama divisi
 tidak tampil di PDF — blok TTD hanya berisi: QR · Nama · Jabatan+NamaTenant.
 
+### [2026-05] PDF Surat — Design Fix & Slot Order Fix
+
+**Fix kop-garis saat ada header image:**
+`<div class="kop-garis">` selalu dirender meski header image sudah punya garis sendiri → double garis
+merusak desain kop surat. Fix: render `kop-garis` hanya di cabang teks (`!headerImageUrl`), hapus dari
+cabang image. Aturan: elemen dekoratif conditional harus selalu dicek terhadap konten yang
+menggantikannya.
+
+**Fix duplikasi nama organisasi di blok penerima:**
+`letter.recipient` (input manual) dan `mergeFields.recipient_organization` bisa berisi nama yang sama
+→ blok "Kepada Yth." tampil dua baris identik. Fix: bandingkan `normOrg !== normName`
+(case-insensitive) sebelum menambahkan `orgLine`. Pattern: selalu normalisasi dan dedup sebelum
+render array baris teks.
+
+**Fix nama penerima di-bold:**
+Nama orang yang dituju (`lines[1]` = `recipientName`) perlu emphasis visual. Fix: `i === 1 →
+<strong>`. Posisi index 1 karena lines[0] selalu "Kepada Yth.".
+
+**Bug kritis: urutan slot TTD di PDF ditentukan oleh siapa TTD duluan, bukan layout yang dikonfigurasi**
+
+**Masalah**: PDF layout "2 TTD Kiri & Kanan" menampilkan penandatangan terbalik — siapa yang TTD
+pertama muncul di kiri, padahal admin mungkin sudah mengatur slot 1 = kiri = Ketua, slot 2 = kanan =
+Sekretaris.
+
+**Root cause berlapis:**
+1. `generate-pdf/route.ts` — `rawSigs` di-fetch tanpa `ORDER BY`, lalu di-filter dan di-map tanpa
+   menyertakan `slotOrder` dan `slotSection` ke dalam objek signer
+2. `lib/letter-html.ts` — `signatureSlots` dibangun dengan `order: i + 1` (array index + 1) dan
+   `section: "main" as const` hardcoded, mengabaikan nilai dari DB
+
+**Fix:**
+- `SignerInfo` type diperluas: tambah `slotOrder: number` dan `slotSection: "main" | "witnesses"`
+- Route: sort `rawSigs` by `slotOrder` sebelum map, sertakan `slotOrder` + `slotSection` di objek signer
+- `letter-html.ts`: gunakan `s.slotOrder` dan `s.slotSection` saat membangun `signatureSlots`
+
+**Aturan**: Setiap data urutan/posisi yang dikonfigurasi admin **harus dibawa sepanjang pipeline**
+dari DB → route → builder. Jangan pernah ganti dengan array index (`i + 1`) atau hardcode konstanta
+untuk field yang punya nilai semantik dari DB.
+
+**Format tanggal per jenis surat vs global — bukan bug kode:**
+Jenis surat dengan `date_format = "masehi"` eksplisit (bukan null) akan selalu override setting global,
+bahkan jika global diset ke `masehi_hijri`. Ini perilaku yang benar (per-jenis bisa override global).
+Cara debug: query DB langsung:
+```sql
+SELECT name, date_format FROM "tenant_{slug}".letter_types;
+SELECT value->>'date_format' FROM "tenant_{slug}".settings
+  WHERE key='letter_config' AND "group"='general';
+```
+Jika jenis surat punya nilai eksplisit dan user ingin ikut global → ubah ke null ("Default") di
+`/letters/template`, bukan di kode.
+
 ### [2026-05] Bug: Link TTD "Tidak Valid" setelah officer menandatangani
 
 **Masalah**: Setelah officer TTD via link, jika link dibuka lagi → "Link Tidak Valid".
@@ -2525,7 +2576,7 @@ SEBELUM deploy kode. Urutan yang benar: **migrate DB → deploy code**, bukan se
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Sign page auth + UUID fix di pengurus** (sesi 2026-05-27).
+- Terakhir dikerjakan: **PDF surat — design fix + urutan TTD** (sesi 2026-05-27).
 - Sesi ini (2026-05-27):
   - **Fix `/pengurus/new` — "Password minimal 8 karakter" meski member sudah punya akun**: validasi email+password dipindah ke dalam cabang `else` (hanya jika belum ada akun). Commit `0df7cef`.
   - **Fix "Gagal menyimpan pengurus." — UUID vs nanoid**: variabel dipisah (`authUserId` nanoid vs `tenantUserId` UUID), UUID diambil via `.returning({ id: schema.users.id })`. Commit `80d0ed2`.
@@ -2534,6 +2585,15 @@ SEBELUM deploy kode. Urutan yang benar: **migrate DB → deploy code**, bukan se
     - `sign/[token]/page.tsx`: rewrite — inline login form jika belum login, error identitas jika bukan pemilik, signing UI jika authorized
     - `sign/[token]/sign-login-form.tsx`: komponen login kompak baru
     - `docs/arsitektur-tandatangan.md`: update keputusan "Identifikasi via link"
+  - **Fix font PDF** — Google Fonts CDN map diperluas: tambah `Lora` dan `Open Sans`. Daftar font di `letter-config-client.tsx` ganti Calibri/Helvetica ke Lora/Open Sans. Commit `9debd7e`.
+  - **Fix design PDF surat** (commit `71c85a5` + sesi ini):
+    - Garis pemisah (`kop-garis`) dihapus saat ada header image — hanya tampil pada mode teks
+    - Duplikasi nama organisasi di blok "Kepada Yth." difix: skip `orgLine` jika sama dengan `recipientName` (case-insensitive)
+    - Nama penerima pertama di-bold: `<strong>` pada index 1 di `lines` array
+  - **Fix urutan slot TTD di PDF** — posisi kiri/kanan mengikuti `slotOrder` dari DB, bukan urutan signing:
+    - Root cause: `slotOrder` dan `slotSection` dari `letter_signatures` tidak diteruskan ke builder HTML; `order` di-hardcode sebagai array index `i + 1`, dan `section` selalu `"main"`
+    - Fix: tambah `slotOrder` + `slotSection` ke tipe `SignerInfo`; route sort `rawSigs` by `slotOrder` sebelum map; `letter-html.ts` pakai `s.slotOrder` dan `s.slotSection` saat membangun `signatureSlots`
+  - **Debug format tanggal** — root cause bukan bug kode: jenis surat "Undangan" punya `date_format = "masehi"` eksplisit yang override setting global `masehi_hijri`. Fix: ubah format tanggal jenis surat ke "Default" di `/letters/template`.
 - Sesi sebelumnya (2026-05-26–27):
   - **Custom domain routing** — fix variasi URL ikpmjogja.com (www/http/https), docs di `docs/arsitektur-domain.md` dan `docs/panduan-custom-domain.md`.
   - **Media upload error** di `/app/{slug}/letters/pengaturan`:

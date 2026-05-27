@@ -146,6 +146,8 @@ type SignerInfo = {
   signedAt:         Date;
   verificationHash: string;
   slug:             string;
+  slotOrder:        number;
+  slotSection:      "main" | "witnesses";
 };
 
 type RecipientData = {
@@ -299,10 +301,10 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
   // Konversi signers ke SignatureSlot[] untuk renderSignatureBlockHtml (Layer 1)
   // Jabatan dilengkapi nama tenant agar tampil lengkap di surat resmi, misal:
   // "Ketua 1" → "Ketua 1 IKPM Cabang DI Yogyakarta"
-  const signatureSlots: (SignatureSlot & { qrDataUrl: string | null }) [] = signersWithQr.map((s, i) => ({
+  const signatureSlots: (SignatureSlot & { qrDataUrl: string | null }) [] = signersWithQr.map((s) => ({
     id:           null,
-    order:        i + 1,
-    section:      "main" as const,
+    order:        s.slotOrder,
+    section:      s.slotSection,
     officerId:    null,
     officerName:  s.name,
     position:     s.position && orgName ? `${s.position} ${orgName}` : (s.position ?? ""),

@@ -162,6 +162,7 @@ export async function POST(
   let signers: Array<{
     name: string; position: string; division: string | null;
     role: string; signedAt: Date; verificationHash: string; slug: string;
+    slotOrder: number; slotSection: "main" | "witnesses";
   }> = [];
 
   if (rawSigs.length > 0) {
@@ -191,8 +192,10 @@ export async function POST(
     const divisionMap = new Map(divisionRows.map((d) => [d.id, d.name]));
 
     // Hanya render slot yang sudah TTD (signedAt + verificationHash tidak null)
+    // Sort by slotOrder agar urutan kiri/kanan sesuai layout yang dikonfigurasi admin
     signers = rawSigs
       .filter((s) => s.signedAt !== null && s.verificationHash !== null)
+      .sort((a, b) => a.slotOrder - b.slotOrder)
       .map((s) => {
         const off = officers.find((o) => o.id === s.officerId);
         return {
@@ -203,6 +206,8 @@ export async function POST(
           signedAt:         s.signedAt as Date,
           verificationHash: s.verificationHash as string,
           slug,
+          slotOrder:        s.slotOrder,
+          slotSection:      s.slotSection as "main" | "witnesses",
         };
       });
   }
