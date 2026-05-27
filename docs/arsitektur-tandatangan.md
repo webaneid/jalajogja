@@ -526,7 +526,7 @@ Semua fitur arsitektur TTD telah diimplementasikan. Tidak ada item yang pending.
 
 - **Slot saksi**: bebas tambah tak terbatas (tidak ada batas max)
 - **Token expiry**: 30 hari sejak `syncSignatureSlotsAction`
-- **Identifikasi via link**: siapapun yang punya token bisa TTD (no login, no extra confirm)
+- **Identifikasi via link**: wajib login — cek `session.user.id === members.betterAuthUserId` + `officer.canSign = true`. Bukan siapapun yang punya token bisa TTD.
 - **Slot belum TTD di PDF**: nama + jabatan + garis `___` sebagai pengganti QR
 - **Assignment di edit page, bukan detail page**: detail hanya tampilkan status + aksi signing
 - **Layout picker di bawah body**: bukan accordion sidebar — selalu tampil

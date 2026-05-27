@@ -1,9 +1,11 @@
 "use server";
 
-import { createTenantDb, getSettings, upsertSetting } from "@jalajogja/db";
+import { createTenantDb, getSettings, upsertSetting, db, members } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
+import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { eq, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createHash, randomUUID } from "crypto";
@@ -1070,8 +1072,8 @@ export async function generateSigningTokenAction(
 }
 
 // ─── Sign by Token (halaman publik) ──────────────────────────────────────────
-// Dipanggil dari SigningPageClient — TIDAK membutuhkan login dashboard
-// Validasi: token valid + belum TTD. Officer ID sudah ada di slot.
+// Dipanggil dari SigningPageClient — membutuhkan login front-end
+// Validasi: session ada + identitas cocok + canSign = true + token valid + belum TTD
 
 export async function signByTokenAction(
   slug: string,
@@ -1080,6 +1082,10 @@ export async function signByTokenAction(
   | { success: true; verificationHash: string }
   | { success: false; error: string }
 > {
+  // Verifikasi session
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user?.id) return { success: false, error: "Anda harus login terlebih dahulu." };
+
   const { db: tenantDb, schema } = createTenantDb(slug);
 
   try {
@@ -1096,6 +1102,27 @@ export async function signByTokenAction(
       return { success: false, error: "Link tanda tangan sudah kadaluarsa." };
     }
 
+    // Verifikasi officer.canSign + identitas penandatangan
+    const [officer] = await tenantDb
+      .select({ memberId: schema.officers.memberId, canSign: schema.officers.canSign })
+      .from(schema.officers)
+      .where(eq(schema.officers.id, sig.officerId))
+      .limit(1);
+
+    if (!officer?.canSign) {
+      return { success: false, error: "Anda tidak memiliki otoritas menandatangi surat ini." };
+    }
+
+    const [memberRow] = await db
+      .select({ betterAuthUserId: members.betterAuthUserId })
+      .from(members)
+      .where(eq(members.id, officer.memberId))
+      .limit(1);
+
+    if (!memberRow?.betterAuthUserId || memberRow.betterAuthUserId !== session.user.id) {
+      return { success: false, error: "Anda tidak memiliki otoritas menandatangi surat ini." };
+    }
+
     const now              = new Date();
     const verificationHash = createHash("sha256")
       .update(`${sig.letterId}:${sig.officerId}:${now.toISOString()}`)
@@ -1106,7 +1133,7 @@ export async function signByTokenAction(
       .set({
         signedAt:         now,
         verificationHash,
-        signingToken:     null,  // Invalidate token setelah dipakai
+        // signingToken TIDAK di-null — agar link masih bisa diakses untuk lihat konfirmasi TTD
       })
       .where(eq(schema.letterSignatures.id, sig.id));
 

@@ -2003,17 +2003,17 @@ tidak tampil di PDF — blok TTD hanya berisi: QR · Nama · Jabatan+NamaTenant.
 
 **Masalah**: Setelah officer TTD via link, jika link dibuka lagi → "Link Tidak Valid".
 
-**Root cause**: `signLetterAction` meng-null-kan `signingToken` setelah signing (alasan lama:
+**Root cause**: `signByTokenAction` meng-null-kan `signingToken` setelah signing (alasan lama:
 "invalidate agar tidak bisa sign ulang"). Padahal token null = row tidak bisa ditemukan by token
 = "Link Tidak Valid" alih-alih "sudah ditandatangani".
 
 **Mengapa aman mempertahankan token setelah signing:**
-Double-sign sudah dicegah oleh `if (existing?.signedAt) return { error }` di `signLetterAction` —
+Double-sign sudah dicegah oleh `if (existing?.signedAt) return { error }` di `signByTokenAction` —
 bukan oleh nullifikasi token. Token yang tetap ada hanya memungkinkan link menampilkan halaman
 konfirmasi "sudah ditandatangani".
 
-**Fix:**
-1. `signLetterAction` — hapus `signingToken: null` dari UPDATE setelah signing
+**Fix (✅ dieksekusi):**
+1. `signByTokenAction` — hapus `signingToken: null` dari UPDATE setelah signing
 2. `generateSigningTokenAction` — hapus guard `if (sig.signedAt) return error` agar admin bisa
    pulihkan link untuk slot yang tokennya sudah terlanjur di-null; token slot signed tidak punya expiry
 3. `signature-slot-manager.tsx` — tombol "Pulihkan Link Konfirmasi" muncul di signed slot yang tokennya null
@@ -2022,6 +2022,70 @@ konfirmasi "sudah ditandatangani".
 **Untuk slot lama yang tokennya sudah di-null**: admin klik "Pulihkan Link Konfirmasi" di halaman
 detail surat → token baru di-generate → bagikan link baru ke officer → halaman tampil
 "sudah ditandatangani" dengan benar.
+
+### [2026-05] Halaman TTD — Auth + Identitas Wajib (✅ SELESAI)
+
+**Sebelumnya**: `/sign/[token]` tidak punya auth — siapapun yang punya URL bisa menandatangani surat atas nama siapapun.
+
+**Alur baru yang dikunci:**
+
+```
+Buka link /sign/{token}
+  ↓
+Cek session (auth.api.getSession)
+  ├─ Tidak ada session → tampilkan inline login form + konteks surat (perihal/nomor/nama penandatangan)
+  │    Setelah login → redirect balik ke /sign/{token}
+  │
+  └─ Ada session → verifikasi identitas + canSign
+       ├─ officer.canSign = false → "Anda tidak memiliki otoritas menandatangi surat ini"
+       ├─ members.betterAuthUserId ≠ session.user.id → "Anda tidak memiliki otoritas..."
+       └─ Cocok → tampilkan SigningPageClient (form TTD / konfirmasi sudah TTD)
+```
+
+**Identity chain**: `signing_token → letter_signatures.officer_id → officers.member_id → public.members.better_auth_user_id ↔ session.user.id`
+
+**File yang dibuat/diubah:**
+- `app/(public)/[tenant]/sign/[token]/page.tsx` — rewrite penuh dengan auth flow
+- `app/(public)/[tenant]/sign/[token]/sign-login-form.tsx` — komponen login kompak (tanpa full-page wrapper)
+- `app/(dashboard)/app/[tenant]/letters/actions.ts` — `signByTokenAction`: tambah session check + identity check + canSign check + hapus `signingToken: null`
+- `docs/arsitektur-tandatangan.md` — update keputusan "Identifikasi via link"
+
+**Aturan yang dikunci:**
+- `signByTokenAction` sekarang wajib login — double-layer security (page + action)
+- Login form di sign page adalah **inline** (bukan redirect ke `/login`) — user melihat konteks surat sebelum login
+- Setelah login, `router.push(redirectTo)` + `router.refresh()` — session terbaca di server component
+- `canSign = true` wajib di samping identitas — officer yang tidak di-centang "Dapat Menandatangani" tidak bisa TTD meski punya akun
+
+### [2026-05] Bug: UUID vs nanoid di createOfficerWithAccountAction
+
+**Masalah**: "Gagal menyimpan pengurus." tanpa output di console browser setelah fix password validation.
+
+**Root cause**: `officers.user_id` bertipe `UUID` (FK ke `tenant.users.id`), tapi kode menyimpan
+`betterAuthUserId` (nanoid, format `1bbNUBnobqznt8AZX7LqiSW92l`) ke kolom tersebut.
+PostgreSQL menolak: `invalid input syntax for type uuid`. Error tertangkap `catch` di server — tidak muncul di browser console.
+
+**Perbedaan dua identifier:**
+| Variable | Tipe | Sumber | Contoh |
+|----------|------|--------|--------|
+| `authUserId` | nanoid | `better_auth.user.id` | `1bbNUBnobqznt8AZX7LqiSW92l` |
+| `tenantUserId` | UUID | `tenant.users.id` (auto-generated) | `550e8400-e29b-41d4-a716-446655440000` |
+
+**Fix:** Pisahkan dua variabel + ambil UUID via `.returning({ id: schema.users.id })` setelah INSERT:
+```typescript
+// SALAH — langsung pakai nanoid di FK UUID
+const userId = authUserId;   // nanoid
+await tenantDb.insert(schema.officers).values({ userId });  // crash
+
+// BENAR — ambil UUID dari .returning()
+const [insertedUser] = await tenantDb.insert(schema.users).values({...})
+  .returning({ id: schema.users.id });
+const tenantUserId = insertedUser.id;   // UUID valid untuk FK
+await tenantDb.insert(schema.officers).values({ userId: tenantUserId });
+```
+
+**Aturan**: Error di `catch` block server action **tidak tampil di browser console** — tampil di server log (PM2/terminal). Setiap "Gagal menyimpan" tanpa trace → cek log server, bukan browser devtools.
+
+**Aturan UUID**: Kolom FK UUID **tidak pernah** diisi dengan Better Auth nanoid. Selalu ambil UUID dari `.returning({ id })` setelah INSERT ke tabel dengan `primaryKey: uuid().defaultRandom()`.
 
 ### [2026-05] Sistem Mitra — Phase 0–2 Selesai
 
@@ -2461,8 +2525,16 @@ SEBELUM deploy kode. Urutan yang benar: **migrate DB → deploy code**, bukan se
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix media upload errors + letters image processor** (sesi 2026-05-27, commit `960d6fd`).
-- Sesi ini (2026-05-26–27):
+- Terakhir dikerjakan: **Sign page auth + UUID fix di pengurus** (sesi 2026-05-27).
+- Sesi ini (2026-05-27):
+  - **Fix `/pengurus/new` — "Password minimal 8 karakter" meski member sudah punya akun**: validasi email+password dipindah ke dalam cabang `else` (hanya jika belum ada akun). Commit `0df7cef`.
+  - **Fix "Gagal menyimpan pengurus." — UUID vs nanoid**: variabel dipisah (`authUserId` nanoid vs `tenantUserId` UUID), UUID diambil via `.returning({ id: schema.users.id })`. Commit `80d0ed2`.
+  - **Halaman TTD `/sign/{token}` — auth + identitas wajib**:
+    - `signByTokenAction`: hapus `signingToken: null` + tambah session/identity/canSign check
+    - `sign/[token]/page.tsx`: rewrite — inline login form jika belum login, error identitas jika bukan pemilik, signing UI jika authorized
+    - `sign/[token]/sign-login-form.tsx`: komponen login kompak baru
+    - `docs/arsitektur-tandatangan.md`: update keputusan "Identifikasi via link"
+- Sesi sebelumnya (2026-05-26–27):
   - **Custom domain routing** — fix variasi URL ikpmjogja.com (www/http/https), docs di `docs/arsitektur-domain.md` dan `docs/panduan-custom-domain.md`.
   - **Media upload error** di `/app/{slug}/letters/pengaturan`:
     - Root cause 1: `migration-member-media.sql` belum dijalankan di production → `member_id` column missing → 500

@@ -1,10 +1,25 @@
-// Halaman penandatangan via link token — PUBLIC (tidak butuh login dashboard)
-// Officer buka link ini → lihat detail surat → klik "Tanda Tangan"
-// Setelah TTD → verificationHash dibuat → QR Code muncul
+// Halaman penandatangan via link token — membutuhkan login front-end
+// Alur: cek session → cek identitas + canSign → tampilkan form TTD
+// Jika belum login → tampilkan form login inline (redirect ke halaman ini setelah login)
+// Jika login tapi bukan pemilik slot → pesan akses ditolak
+import { auth }           from "@/lib/auth";
+import { headers }        from "next/headers";
 import { createTenantDb, db, members, tenants } from "@jalajogja/db";
-import { eq } from "drizzle-orm";
-import { notFound } from "next/navigation";
+import { eq }             from "drizzle-orm";
+import { notFound }       from "next/navigation";
 import { SigningPageClient } from "@/components/letters/signing-page-client";
+import { SignLoginForm }  from "./sign-login-form";
+
+function InfoCard({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-muted/5 px-4">
+      <div className="max-w-sm w-full rounded-xl border border-border bg-background p-8 text-center space-y-3">
+        <p className="text-lg font-semibold text-destructive">{title}</p>
+        <p className="text-sm text-muted-foreground">{message}</p>
+      </div>
+    </div>
+  );
+}
 
 export default async function SignPage({
   params,
@@ -20,10 +35,9 @@ export default async function SignPage({
     .where(eq(tenants.slug, slug))
     .limit(1);
 
-  if (!tenant || !tenant.isActive) notFound();
+  if (!tenant?.isActive) notFound();
 
-  const tenantClient             = createTenantDb(slug);
-  const { db: tenantDb, schema } = tenantClient;
+  const { db: tenantDb, schema } = createTenantDb(slug);
 
   // Cari slot TTD by signingToken
   const [sig] = await tenantDb
@@ -32,59 +46,60 @@ export default async function SignPage({
     .where(eq(schema.letterSignatures.signingToken, token))
     .limit(1);
 
-  // Fungsi kecil untuk tampilkan pesan status
-  function InfoCard({ title, message }: { title: string; message: string }) {
+  if (!sig) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/5 px-4">
-        <div className="max-w-sm w-full rounded-xl border border-border bg-background p-8 text-center space-y-3">
-          <p className="text-lg font-semibold text-destructive">{title}</p>
-          <p className="text-sm text-muted-foreground">{message}</p>
-        </div>
-      </div>
+      <InfoCard
+        title="Link Tidak Valid"
+        message="Link tanda tangan ini tidak ditemukan atau sudah tidak berlaku."
+      />
     );
   }
 
-  if (!sig) {
-    return <InfoCard title="Link Tidak Valid" message="Link tanda tangan ini tidak ditemukan atau sudah tidak berlaku." />;
-  }
+  // Token kadaluarsa — hanya blokir jika belum TTD
+  const isExpired =
+    sig.signingTokenExpiresAt !== null &&
+    sig.signingTokenExpiresAt !== undefined &&
+    (sig.signingTokenExpiresAt as Date) < new Date();
 
-  // Cek token kadaluarsa (sebelum sudah-TTD agar pesan lebih akurat)
-  const isExpired = sig.signingTokenExpiresAt !== null && sig.signingTokenExpiresAt !== undefined
-    && (sig.signingTokenExpiresAt as Date) < new Date();
   if (isExpired && !sig.signedAt) {
-    return <InfoCard title="Link Kadaluarsa" message="Link tanda tangan ini sudah tidak berlaku. Minta admin untuk mengirim ulang link baru." />;
+    return (
+      <InfoCard
+        title="Link Kadaluarsa"
+        message="Link tanda tangan ini sudah tidak berlaku. Minta admin untuk mengirim ulang link baru."
+      />
+    );
   }
 
-  // Ambil info officer
-  const officer = await tenantDb
+  // Ambil officer dengan canSign + member dengan betterAuthUserId
+  const [officer] = await tenantDb
     .select({
       id:         schema.officers.id,
       memberId:   schema.officers.memberId,
       position:   schema.officers.position,
       divisionId: schema.officers.divisionId,
+      canSign:    schema.officers.canSign,
     })
     .from(schema.officers)
     .where(eq(schema.officers.id, sig.officerId))
-    .limit(1)
-    .then((r) => r[0] ?? null);
+    .limit(1);
 
-  const officerName = officer
-    ? await db
-        .select({ name: members.name })
-        .from(members)
-        .where(eq(members.id, officer.memberId))
-        .limit(1)
-        .then((r) => r[0]?.name ?? "—")
-    : "—";
+  if (!officer) {
+    return (
+      <InfoCard
+        title="Data Tidak Ditemukan"
+        message="Data pengurus tidak ditemukan. Hubungi admin."
+      />
+    );
+  }
 
-  const divisionName = officer?.divisionId
-    ? await tenantDb
-        .select({ name: schema.divisions.name })
-        .from(schema.divisions)
-        .where(eq(schema.divisions.id, officer.divisionId))
-        .limit(1)
-        .then((r) => r[0]?.name ?? null)
-    : null;
+  const [memberRow] = await db
+    .select({ name: members.name, betterAuthUserId: members.betterAuthUserId })
+    .from(members)
+    .where(eq(members.id, officer.memberId))
+    .limit(1);
+
+  const officerName         = memberRow?.name ?? "—";
+  const officerBetterAuthId = memberRow?.betterAuthUserId ?? null;
 
   // Ambil info surat
   const [letter] = await tenantDb
@@ -101,12 +116,84 @@ export default async function SignPage({
 
   if (!letter) notFound();
 
+  const divisionName = officer.divisionId
+    ? await tenantDb
+        .select({ name: schema.divisions.name })
+        .from(schema.divisions)
+        .where(eq(schema.divisions.id, officer.divisionId))
+        .limit(1)
+        .then((r) => r[0]?.name ?? null)
+    : null;
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
+  // ── Cek session ───────────────────────────────────────────────────────────
+  const session = await auth.api.getSession({ headers: await headers() });
+
+  // Belum login → tampilkan form login inline dengan konteks surat
+  if (!session?.user?.id) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/5 px-4 py-12">
+        <div className="max-w-md w-full space-y-4">
+          <p className="text-center text-xs text-muted-foreground">{tenant.name}</p>
+
+          {/* Konteks surat */}
+          <div className="rounded-xl border border-border bg-background p-6 space-y-3">
+            <p className="text-sm font-semibold">Permintaan Tanda Tangan Surat</p>
+            <div className="space-y-1 text-sm">
+              <p className="text-muted-foreground">
+                Perihal:{" "}
+                <span className="text-foreground font-medium">{letter.subject}</span>
+              </p>
+              {letter.letterNumber && (
+                <p className="text-muted-foreground">
+                  Nomor:{" "}
+                  <span className="text-foreground font-mono">{letter.letterNumber}</span>
+                </p>
+              )}
+              <p className="text-muted-foreground">
+                Penandatangan:{" "}
+                <span className="text-foreground font-medium">{officerName}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Form login */}
+          <div className="rounded-xl border border-border bg-background p-6 space-y-4">
+            <div>
+              <p className="text-sm font-semibold">Masuk untuk menandatangani</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Gunakan akun IKPM yang terdaftar sebagai pengurus.
+              </p>
+            </div>
+            <SignLoginForm slug={slug} redirectTo={`/${slug}/sign/${token}`} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Verifikasi identitas + canSign ────────────────────────────────────────
+  const isCorrectUser = Boolean(officerBetterAuthId && officerBetterAuthId === session.user.id);
+  const hasCanSign    = officer.canSign === true;
+
+  if (!isCorrectUser || !hasCanSign) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/5 px-4">
+        <div className="max-w-sm w-full rounded-xl border border-border bg-background p-8 text-center space-y-3">
+          <p className="text-lg font-semibold text-destructive">Akses Ditolak</p>
+          <p className="text-sm text-muted-foreground">
+            Anda tidak memiliki otoritas menandatangi surat ini.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Authorized → tampilkan halaman TTD ───────────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/5 px-4 py-12">
       <div className="max-w-md w-full">
-        {/* Header tenant */}
         <p className="text-center text-xs text-muted-foreground mb-6">{tenant.name}</p>
 
         <SigningPageClient
@@ -119,7 +206,7 @@ export default async function SignPage({
           letterDate={letter.letterDate ?? null}
           recipient={letter.recipient ?? null}
           officerName={officerName}
-          officerPosition={officer?.position ?? null}
+          officerPosition={officer.position ?? null}
           officerDivision={divisionName}
           role={sig.role as "signer" | "approver" | "witness"}
           alreadySigned={sig.signedAt !== null}
