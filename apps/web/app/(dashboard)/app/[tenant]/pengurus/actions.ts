@@ -200,12 +200,11 @@ export async function createOfficerWithAccountAction(
   if (!data.periodStart)      return { success: false, error: "Tanggal mulai wajib diisi." };
 
   if (data.activate) {
-    if (!data.activationEmail?.trim())    return { success: false, error: "Email wajib diisi untuk aktivasi akun." };
-    if (!data.activationPassword || data.activationPassword.length < 8)
-      return { success: false, error: "Password minimal 8 karakter." };
-    if (!data.activationRole)             return { success: false, error: "Role wajib dipilih." };
+    // Role selalu wajib, terlepas dari apakah member sudah punya akun atau belum
+    if (!data.activationRole) return { success: false, error: "Role wajib dipilih." };
     if (data.activationRole === "custom" && !data.activationCustomRoleId)
       return { success: false, error: "Role kustom wajib dipilih." };
+    // Email + password divalidasi nanti di dalam cabang "belum punya akun front-end"
   }
 
   const { db: tenantDb, schema } = createTenantDb(slug);
@@ -248,8 +247,13 @@ export async function createOfficerWithAccountAction(
         .limit(1);
       if (existingByAuth) return { success: false, error: "Akun ini sudah terdaftar sebagai pengguna dashboard ini." };
     } else {
-      // Belum punya akun → wajib email + password
-      const email = data.activationEmail!.toLowerCase().trim();
+      // Belum punya akun → validasi email + password dulu
+      if (!data.activationEmail?.trim())
+        return { success: false, error: "Email wajib diisi untuk aktivasi akun." };
+      if (!data.activationPassword || data.activationPassword.length < 8)
+        return { success: false, error: "Password minimal 8 karakter." };
+
+      const email = data.activationEmail.toLowerCase().trim();
 
       // Cek email di Better Auth
       const [existingAuth] = await db
