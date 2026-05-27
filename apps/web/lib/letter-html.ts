@@ -102,11 +102,16 @@ function renderTujuanSurat(
 ): string {
   if (!showTujuan || !recipientName?.trim()) return "";
 
-  // Tampilkan organisasi hanya jika berbeda dari recipientName
-  // (mencegah duplikasi saat letter.recipient sudah berisi nama org yang sama)
-  const normName = (recipientName ?? "").trim().toLowerCase();
-  const normOrg  = (recipientOrganization ?? "").trim().toLowerCase();
-  const orgLine  = normOrg && normOrg !== normName ? recipientOrganization : null;
+  // Tampilkan organisasi hanya jika tidak sudah tercakup di name atau title
+  // Contoh: title "Anggota PC IKPM Jogjakarta" + org "PC IKPM Jogjakarta" → skip org
+  const normName  = (recipientName         ?? "").trim().toLowerCase();
+  const normTitle = (recipientTitle        ?? "").trim().toLowerCase();
+  const normOrg   = (recipientOrganization ?? "").trim().toLowerCase();
+  const orgLine   = normOrg
+    && normOrg !== normName
+    && !normTitle.includes(normOrg)
+    ? recipientOrganization
+    : null;
 
   const lines = [
     "Kepada Yth.",
