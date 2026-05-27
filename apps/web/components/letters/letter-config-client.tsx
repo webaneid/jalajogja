@@ -6,7 +6,9 @@ import { ImageIcon, X } from "lucide-react";
 import { saveLetterConfigAction, type LetterConfig } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
 
-const FONTS = ["Times New Roman", "Arial", "Calibri", "Georgia", "Helvetica", "Philosopher"];
+// Times New Roman, Georgia, Arial: system fonts — butuh fonts-liberation di VPS
+// Lora, Open Sans, Philosopher: Google Fonts — di-load via CDN, selalu tersedia di PDF
+const FONTS = ["Times New Roman", "Georgia", "Arial", "Lora", "Open Sans", "Philosopher"];
 const PAPER_SIZES = ["A4", "F4", "Letter"] as const;
 
 // Dimensi kertas dalam piksel (96 DPI, standar web/Chromium)

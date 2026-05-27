@@ -315,9 +315,13 @@ export async function buildLetterHtml(params: LetterHtmlParams): Promise<string>
     }
   );
 
-  // Font Google yang perlu di-load via CDN (sistem tidak punya font ini)
+  // Font Google yang di-load via CDN — Playwright's Chromium tidak punya font ini sebagai sistem
+  // System fonts (Times New Roman, Georgia, Arial) butuh fonts-liberation di VPS:
+  //   sudo apt-get install -y fonts-liberation
   const GOOGLE_FONTS: Record<string, string> = {
     "Philosopher": "Philosopher:ital,wght@0,400;0,700;1,400;1,700",
+    "Lora":        "Lora:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
+    "Open Sans":   "Open+Sans:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
   };
   const googleFontParam = GOOGLE_FONTS[template.bodyFont];
   const googleFontLink = googleFontParam
