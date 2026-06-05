@@ -322,6 +322,161 @@ export async function saveNotificationSettingsAction(
   return {};
 }
 
+// ── WhatsApp Gateway ──────────────────────────────────────────────────────────
+
+export type WaConnectResult = { success: true } | { success: false; error: string };
+
+/**
+ * Daftarkan device baru di GOWA untuk tenant ini.
+ * Device ID = tenant slug (unik, predictable, tidak perlu disimpan terpisah).
+ * Dipanggil saat admin klik "Hubungkan WhatsApp" untuk pertama kali.
+ */
+export async function connectWhatsAppAction(slug: string): Promise<WaConnectResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { success: false, error: "Akses ditolak." };
+
+  const serviceUrl = process.env.WHATSAPP_SERVICE_URL;
+  if (!serviceUrl) return { success: false, error: "WhatsApp service belum dikonfigurasi di server." };
+
+  const { gowaBasicAuth, WA_NOTIF_DEFAULTS } = await import("@/lib/whatsapp");
+  const auth = gowaBasicAuth();
+  const deviceId = slug;
+
+  // Coba buat device di GOWA (abaikan 409 jika sudah ada)
+  try {
+    const res = await fetch(`${serviceUrl.replace(/\/$/, "")}/devices`, {
+      method:  "POST",
+      headers: { Authorization: auth, "Content-Type": "application/json" },
+      body:    JSON.stringify({ device_id: deviceId }),
+    });
+
+    // 409 = device sudah ada → ok, lanjut
+    if (!res.ok && res.status !== 409) {
+      const text = await res.text();
+      console.error("[connectWA] GOWA error:", res.status, text);
+      return { success: false, error: "Gagal membuat device di GOWA. Cek konfigurasi server." };
+    }
+  } catch (err) {
+    console.error("[connectWA] fetch error:", err);
+    return { success: false, error: "Tidak dapat terhubung ke WhatsApp service." };
+  }
+
+  // Simpan config awal ke settings tenant
+  const tenantClient = createTenantDb(slug);
+  const { getSettings, upsertSettings: upsert } = await import("@jalajogja/db");
+  const existing = await getSettings(tenantClient, "notif");
+  const existingConfig = existing["whatsapp_config"] as Record<string, unknown> | undefined;
+
+  await upsert(tenantClient, "notif", {
+    whatsapp_config: {
+      device_id:     deviceId,
+      phone_number:  existingConfig?.phone_number ?? null,
+      verified:      existingConfig?.verified     ?? false,
+      notifications: existingConfig?.notifications ?? WA_NOTIF_DEFAULTS,
+    },
+  });
+
+  revalidatePath(`/app/${slug}/settings/notifications`);
+  return { success: true };
+}
+
+/**
+ * Konfirmasi koneksi setelah QR berhasil di-scan.
+ * Dipanggil client saat polling status mendeteksi is_logged_in = true.
+ */
+export async function confirmWaConnectionAction(
+  slug: string,
+  phoneNumber: string | null,
+): Promise<WaConnectResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const tenantClient = createTenantDb(slug);
+  const { getSettings, upsertSettings: upsert } = await import("@jalajogja/db");
+  const existing = await getSettings(tenantClient, "notif");
+  const config   = existing["whatsapp_config"] as Record<string, unknown> | undefined;
+
+  if (!config) return { success: false, error: "Config WA tidak ditemukan." };
+
+  await upsert(tenantClient, "notif", {
+    whatsapp_config: {
+      ...config,
+      verified:     true,
+      phone_number: phoneNumber ?? config.phone_number ?? null,
+    },
+  });
+
+  revalidatePath(`/app/${slug}/settings/notifications`);
+  return { success: true };
+}
+
+/**
+ * Putuskan koneksi WhatsApp — logout device dari GOWA + reset verified di DB.
+ */
+export async function disconnectWhatsAppAction(slug: string): Promise<WaConnectResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { success: false, error: "Akses ditolak." };
+
+  const serviceUrl = process.env.WHATSAPP_SERVICE_URL;
+  if (serviceUrl) {
+    const { gowaBasicAuth } = await import("@/lib/whatsapp");
+    try {
+      await fetch(`${serviceUrl.replace(/\/$/, "")}/devices/${slug}/logout`, {
+        method:  "POST",
+        headers: { Authorization: gowaBasicAuth() },
+      });
+    } catch {
+      // Lanjut hapus config lokal meski GOWA gagal
+    }
+  }
+
+  const tenantClient = createTenantDb(slug);
+  const { getSettings, upsertSettings: upsert } = await import("@jalajogja/db");
+  const existing = await getSettings(tenantClient, "notif");
+  const config   = existing["whatsapp_config"] as Record<string, unknown> | undefined;
+
+  if (config) {
+    await upsert(tenantClient, "notif", {
+      whatsapp_config: {
+        ...config,
+        verified:     false,
+        phone_number: null,
+      },
+    });
+  }
+
+  revalidatePath(`/app/${slug}/settings/notifications`);
+  return { success: true };
+}
+
+/**
+ * Simpan pengaturan toggle notifikasi WhatsApp.
+ */
+export async function saveWaNotificationSettingsAction(
+  slug: string,
+  notifications: Record<string, boolean>,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+
+  const tenantClient = createTenantDb(slug);
+  const { getSettings, upsertSettings: upsert } = await import("@jalajogja/db");
+  const existing = await getSettings(tenantClient, "notif");
+  const config   = existing["whatsapp_config"] as Record<string, unknown> | undefined;
+
+  if (!config) return { error: "WhatsApp belum dikonfigurasi." };
+
+  await upsert(tenantClient, "notif", {
+    whatsapp_config: { ...config, notifications },
+  });
+
+  revalidatePath(`/app/${slug}/settings/notifications`);
+  return {};
+}
+
 // ─── INVITE ACTIONS ──────────────────────────────────────────────────────────
 
 export async function createInviteAction(
