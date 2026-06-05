@@ -892,16 +892,21 @@ addon_usage                 → tracking penggunaan per bulan per tenant per add
 | `webhook-out` | Webhook Out | Free | coming soon |
 
 ### WhatsApp Gateway — Arsitektur
-- Library: [go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice)
-- **Hosting: sumopod** (bukan main VPS — murah, tidak membebani app server)
-- Satu service, banyak tenant — masing-masing punya `device_id` unik
-- Tenant self-service: scan QR via dashboard jalajogja → nomor WA terdaftar
-- Platform env: `WHATSAPP_SERVICE_URL`, `WHATSAPP_API_SECRET`
+> Arsitektur lengkap (infrastruktur, helper, template, peta notifikasi, rencana implementasi): **`docs/arsitektur-whatsapp.md`**
+
+- Library: [go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice) (GOWA)
+- **Hosting: Sumopod** — bukan VPS utama, Docker, datacenter Jakarta, ~Rp 15–85k/bln
+- Satu instance GOWA untuk semua tenant — dipisahkan via `device_id` unik per tenant
+- Tenant self-service: scan QR di `/settings/notifications` → nomor WA terdaftar
+- Platform env: `WHATSAPP_SERVICE_URL`, `WHATSAPP_API_USER`, `WHATSAPP_API_PASS`
+- Helper utama: `lib/whatsapp.ts` — `sendWaNotification()` + `toE164()`; **fire-and-forget** (`void`)
+- Template: `lib/wa-templates.ts` — 15+ template per event, di kode bukan di DB
 - Config per tenant di `tenant_addon_installations.config`:
   ```json
   { "device_id": "ikpm-001", "phone_number": "628xxx", "verified": true,
     "notifications": { "payment_submitted": true, "payment_confirmed": true, ... } }
   ```
+- 7 fase implementasi — **belum dimulai**, lihat `docs/arsitektur-whatsapp.md` § 12
 
 ### Quota Enforcement
 Sebelum kirim notifikasi WA:
@@ -2979,6 +2984,7 @@ Pattern: `globals.css` definisikan `.btn`, `.btn-primary`, `.btn-sm`, dll. via `
 - **View Counter** — Step 10: tampil di detail publik (≥50). Detail: `docs/arsitektur-views-count.md`
 - **Widget Area System** — ✅ SELESAI
 - **Member Media Library** — Phase 1–4 (upload foto sendiri, lihat file sendiri, MemberMediaPicker). Arsitektur: `docs/arsitektur-medialibrary.md`
+- **WhatsApp Gateway** — arsitektur SELESAI (`docs/arsitektur-whatsapp.md`), implementasi Fase 1–7 belum dimulai. Prerequisite: deploy GOWA di Sumopod + set env vars + buat `lib/whatsapp.ts` + `lib/wa-templates.ts`.
 
 ### [2026-05] Custom Role — Permission Enforcement + Dialog Fix
 
