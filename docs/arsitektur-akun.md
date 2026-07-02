@@ -510,6 +510,36 @@ Keduanya nullable. Lookup saat checkout:
       `UPDATE public.members SET better_auth_user_id = userId WHERE id = memberId AND better_auth_user_id IS NULL`
 - [x] **`activateUserDirectAction`** — sama, sudah set `better_auth_user_id`
 - [x] **`acceptInviteAction` + `registerAndAcceptAction`** — sudah set `better_auth_user_id` jika `invite.memberId` tidak null
+- [x] **Redirect loop `akun ↔ dashboard-redirect ↔ register?error=no-tenant`** — dua root cause:
+  1. `login-form.tsx`: `router.push(dest)` → stale server cache → session null → loop.
+     **Fix**: `window.location.href = dest` (full reload) untuk semua alur login.
+  2. `akun/layout.tsx`: `if (!identity) redirect('/app/${slug}/dashboard')` tanpa cek.
+     Jika user bukan pengurus tenant ini → admin layout redirect lagi → loop.
+     **Fix**: cek `tenant.users` dulu; kalau ada → admin dashboard; kalau tidak → login.
+
+### Pengurus Lama Tanpa `members.betterAuthUserId`
+Pengurus yang diaktifkan SEBELUM fix `createOfficerWithAccountAction` punya:
+- `tenant.users.betterAuthUserId` = nanoid ✅
+- `public.members.betterAuthUserId` = **null** ← menyebabkan `getAkunIdentity()` null
+
+Setelah fix `akun/layout.tsx`, mereka tetap bisa akses dashboard admin (redirect benar).
+Tapi mereka tidak bisa akses front-end `/akun` sampai `members.betterAuthUserId` diisi.
+
+Untuk backfill manual di VPS:
+```sql
+-- Cari pengurus yang belum punya betterAuthUserId di members
+SELECT m.id, m.name, tu.better_auth_user_id
+FROM public.members m
+JOIN "tenant_pc-ikpm-jogjakarta".users tu ON tu.member_id = m.id
+WHERE m.better_auth_user_id IS NULL;
+
+-- Set betterAuthUserId dari tenant.users
+UPDATE public.members m
+SET better_auth_user_id = tu.better_auth_user_id
+FROM "tenant_pc-ikpm-jogjakarta".users tu
+WHERE tu.member_id = m.id
+  AND m.better_auth_user_id IS NULL;
+```
 
 ### Tidak Akan Diimplementasi
 - Auto-create member dari front-end jika tidak ketemu di `public.members` → DILARANG.

@@ -60,29 +60,51 @@ app/(public)/[tenant]/
 
 ## Halaman Login (`/login`)
 
-### UI
+### UI — Dua Tab
 ```
-[Logo tenant / site_name]
+┌─────────────────────┬──────────────────────┐
+│  ✉ Email & Password │  💬 WhatsApp OTP     │
+└─────────────────────┴──────────────────────┘
 
-┌─────────────────────┐
-│ Email               │
-│ Password            │
-│ [Lupa password?]    │  ← link ke /forgot-password
-│                     │
-│ [  Masuk  ]         │
+Tab Email:                    Tab WhatsApp (Step 1 — nomor):
+┌─────────────────────┐       ┌─────────────────────┐
+│ Email               │       │ [🇮🇩] Nomor WhatsApp  │
+│ Password            │       │                     │
+│ [Lupa password?]    │       │ [Kirim Kode OTP]    │
+│ [  Masuk  ]         │       └─────────────────────┘
 └─────────────────────┘
+                              Tab WhatsApp (Step 2 — kode):
+                              ┌─────────────────────┐
+                              │ 1  2  3  4  5  6    │
+                              │ [  Masuk  ]          │
+                              │ Kirim ulang / Ubah nomor │
+                              └─────────────────────┘
 Belum punya akun? [Daftar sekarang]
 ```
 
-### Flow
-1. Submit email + password → `authClient.signIn.email()`
-2. Sukses → redirect ke `/{slug}/akun`
-3. Gagal → tampilkan pesan error dari Better Auth
+### Flow Email & Password
+1. Submit email + password → `authClient.signIn.email({ email, password })`
+   (tanpa `callbackURL` — hindari double redirect)
+2. Sukses → **`window.location.href = dest`** (full reload, bukan `router.push`)
+3. Gagal → tampilkan pesan error
+
+### Flow WhatsApp OTP
+1. Step 1: Input nomor WA → `POST /api/akun/send-otp` (type=`"login"`)
+2. Step 2: Input 6 digit OTP → `POST /api/akun/login-via-otp`
+3. Sukses → **`window.location.href = dest`** (full reload)
+
+### ⚠️ `window.location.href` wajib, bukan `router.push`
+`router.push` tidak trigger full page reload — Next.js App Router bisa pakai
+server component cache yang masih belum ada session → layout baca session null
+→ redirect ke login lagi → loop. `window.location.href` memastikan browser
+kirim cookie baru ke server dari awal.
+
+Ini berlaku untuk **semua alur login** di seluruh aplikasi (email, WA OTP, dll).
 
 ### Implementasi
-- File: `app/(public)/[tenant]/login/page.tsx` (client component)
-- Auth: Better Auth client `signIn.email`
-- Redirect setelah login: `/{slug}/akun` (bukan `/{slug}`)
+- File: `app/(public)/[tenant]/login/login-form.tsx` (client component)
+- `LoginMode = "email" | "whatsapp"`, `WaStep = "phone" | "otp"`
+- Redirect default: `/{slug}/akun`; bisa di-override via `?redirect=` query param
 
 ---
 
@@ -116,63 +138,67 @@ Sudah punya akun? [Masuk di sini]
 - Jika ditemukan: auto-isi nama, tampilkan banner info
 - Jika tidak: registrasi normal sebagai akun umum
 
-### Flow Registrasi
+### Flow Registrasi (✅ SELESAI termasuk OTP wajib)
 ```
-User isi form
+User pilih jalur:
+  ├─ "Anggota IKPM Gontor" → isi stambuk (opsional) + form
+  └─ "Bukan Anggota" → isi form langsung
+
+Isi form (nama, email, HP, WA, password)
   ↓
-Blur email/HP → lookup member (background, tidak blocking)
+Submit → POST /api/akun/send-otp (type="register")
+  ↓  ← OTP WAJIB, tidak bisa skip
+Tampilkan step input OTP 6 digit (inline, tidak ada halaman baru)
   ↓
-Submit form → POST /api/akun/register
+POST /api/akun/verify-otp → { valid: true }
   ↓
-Validasi: nama, email, HP, password (≥8 karakter)
-  ↓
-Cek duplikat: profiles.email + profiles.phone + profiles.whatsapp
-  ↓
-Jika email/HP cocok member:
-  → link profiles.memberId = members.id
-  → set profiles.accountType = "member"
-  → pakai nama dari members.fullName (override input jika blank)
-  ↓
-Buat Better Auth user (hash password)
-  ↓
-Insert public.profiles (betterAuthUserId, name, email, phone, whatsapp, memberId?)
-  ↓
-[DISABLED] Kirim OTP WhatsApp — skip sampai gateway aktif
+doRegister() → POST /api/akun/register:
+  - Jalur IKPM: cari member via stambuk/email/HP
+    → jika ketemu + belum punya akun: UPDATE members.better_auth_user_id
+    → jika tidak ketemu: INSERT baru ke public.members + contacts
+  - Jalur publik: INSERT public.profiles
   ↓
 Auto login via authClient.signIn.email()
   ↓
-Redirect ke /{slug}/akun
+window.location.href = /{slug}/akun
 ```
 
-### Verifikasi WhatsApp OTP (DITUNDA)
-- Kolom `profiles.phoneVerifiedAt` dan `profiles.emailVerifiedAt` belum ada — tambahkan saat diaktifkan
-- Saat aktif: setelah insert profiles → kirim OTP 6 digit ke WA → halaman verifikasi `/register/verify`
-- Saat belum aktif: langsung login tanpa verifikasi
+**OTP tidak bisa dinonaktifkan** — ini keputusan desain yang dikunci.
+OTP inline (state machine di form yang sama) — tidak ada halaman `/register/verify` terpisah.
 
 ---
 
 ## Halaman Lupa Password (`/forgot-password`)
 
-### UI
+### UI — WA OTP Only (✅ SELESAI)
 ```
-┌─────────────────────┐
-│ Masukkan email Anda  │
-│ Email               │
-│                     │
-│ [Kirim Link Reset]  │
-└─────────────────────┘
-[link kembali ke login]
+Step 1 — nomor WA:           Step 2 — kode OTP:
+┌─────────────────────┐      ┌─────────────────────┐
+│ 💬 [🇮🇩] Nomor WA   │      │  1  2  3  4  5  6   │
+│                     │      │                     │
+│ [Kirim Kode OTP]   │      │ [Verifikasi & Reset] │
+└─────────────────────┘      │ Kirim ulang / Ubah  │
+                             └─────────────────────┘
 ```
 
-### Flow
-1. Submit email → `authClient.forgetPassword({ email, redirectTo: '/{slug}/reset-password' })`
-2. Better Auth kirim email dengan link reset (SMTP dari settings tenant)
-3. Tampilkan pesan sukses: "Cek email Anda untuk link reset password"
-4. Link reset berlaku 1 jam (default Better Auth)
+### Flow (WA OTP saja — tidak ada email)
+1. Input nomor WA → `POST /api/akun/send-otp` (type=`"reset_password"`)
+2. Input 6 digit OTP → `POST /api/akun/verify-otp`
+3. Server inject token ke `public.verification` (Better Auth internal table):
+   ```typescript
+   await db.insert(verification).values({
+     identifier: `reset-password:${resetToken}`,  // format Better Auth
+     value:      betterAuthUserId,
+     expiresAt:  new Date(Date.now() + 15 * 60 * 1000),  // 15 menit
+   });
+   ```
+4. Redirect ke `/{slug}/reset-password?token={resetToken}`
+5. User input password baru → `authClient.resetPassword({ newPassword, token })`
 
-### Catatan
-- WhatsApp OTP sebagai alternatif lupa password → DITUNDA
-- Reset via HP number → DITUNDA sampai WA gateway aktif
+### Keputusan desain yang dikunci
+- Email tab dihapus — WA OTP saja. Alasan: lebih cepat, tidak butuh konfigurasi SMTP tenant.
+- Token inject langsung ke Better Auth `verification` table → `resetPassword()` client bekerja normal.
+- TTL token: 15 menit (lebih ketat dari link email 1 jam).
 
 ---
 
@@ -359,35 +385,82 @@ import { authClient } from "@/lib/auth-client";
 
 ---
 
-## Fase Implementasi
+## Status Implementasi (✅ Semua SELESAI)
 
-### Fase 1 (sekarang)
-- [x] Schema: tambah kolom `whatsapp` ke `public.profiles`
-- [ ] API: update `POST /api/akun/register` (whatsapp + member auto-link)
-- [ ] API: `GET /api/akun/lookup-member`
-- [ ] Update `PATCH /api/akun/profil` (tambah whatsapp)
-- [ ] Login page: tambah link "Lupa password?", update redirect ke `/akun`
-- [ ] Register page: tambah field WA, member lookup live, auto-fill nama
-- [ ] Forgot password page
-- [ ] Reset password page
-- [ ] Dashboard `/akun` (beranda + profil + transaksi)
+### Fase 1 — Auth Dasar
+- [x] Schema: kolom `whatsapp` di `public.profiles`
+- [x] `POST /api/akun/register` — 2 jalur (IKPM + publik) + member auto-link
+- [x] `GET /api/akun/lookup-member` — live lookup stambuk/email/HP
+- [x] Login page — dua tab: Email/Password + WhatsApp OTP
+- [x] Register page — form + OTP wajib + stambuk lookup
+- [x] Forgot password page — WA OTP only
+- [x] Reset password page — token dari OTP flow
 
-### Fase 2 (saat WA gateway aktif)
-- [ ] Tambah kolom `phone_verified_at`, `email_verified_at` ke `public.profiles`
-- [ ] Halaman `/register/verify` — input OTP 6 digit
-- [ ] `/forgot-password` via WA OTP sebagai opsi kedua
-- [ ] Endpoint: `POST /api/akun/send-otp`, `POST /api/akun/verify-otp`
+### Fase 2 — WA OTP
+- [x] `POST /api/akun/send-otp` — kirim OTP via GOWA, rate limit 1/menit
+- [x] `POST /api/akun/verify-otp` — verifikasi + tandai used
+- [x] `POST /api/akun/login-via-otp` — login tanpa password via WA
+- [x] OTP wajib di register (tidak bisa skip)
+- [x] Forgot password via WA OTP + inject ke Better Auth verification table
+
+### API & File yang Sudah Ada
+
+| File | Status |
+|------|--------|
+| `app/(public)/[tenant]/login/login-form.tsx` | ✅ Dua tab, `window.location.href` setelah login |
+| `app/(public)/[tenant]/register/register-form.tsx` | ✅ OTP wajib, state machine 3 langkah |
+| `app/(public)/[tenant]/forgot-password/page.tsx` | ✅ WA OTP only |
+| `app/(public)/[tenant]/reset-password/page.tsx` | ✅ `authClient.resetPassword()` |
+| `app/(public)/[tenant]/akun/layout.tsx` | ✅ Guard + redirect logic (lihat di bawah) |
+| `app/api/akun/register/route.ts` | ✅ 2 jalur |
+| `app/api/akun/login-via-otp/route.ts` | ✅ Cookie signing dengan `encodeURIComponent` |
+| `app/api/akun/send-otp/route.ts` | ✅ Rate limit 1/menit |
+| `app/api/akun/verify-otp/route.ts` | ✅ |
 
 ---
 
-## File yang Perlu Dibuat / Diubah
+## Catatan Teknis Kritis
 
-| File | Aksi |
-|------|------|
-| `packages/db/src/schema/public/profiles.ts` | Tambah kolom `whatsapp` |
-| `packages/db/src/helpers/create-tenant-schema.ts` | Tidak perlu (profiles di public schema) |
-| `app/api/akun/register/route.ts` | Tambah whatsapp + member auto-link |
-| `app/api/akun/lookup-member/route.ts` | BARU |
+### Cookie signing untuk login via OTP
+`app/api/akun/login-via-otp/route.ts` mereplikasi format cookie Better Auth:
+```typescript
+// WAJIB: encodeURIComponent di akhir — tanpa ini Better Auth tidak bisa verify
+async function signCookieValue(value: string, secret: string): Promise<string> {
+  const key       = await crypto.subtle.importKey("raw", ...HMAC-SHA256...);
+  const sigBytes  = await crypto.subtle.sign("HMAC", key, encode(value));
+  const signature = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
+  return encodeURIComponent(`${value}.${signature}`);
+}
+```
+Sumber: `better-call/dist/crypto.mjs` fungsi `signCookieValue`. Jika format berubah di
+versi Better Auth baru, ini perlu diupdate.
+
+### `otp_tokens.type` — migration wajib
+Tabel `public.otp_tokens` punya CHECK constraint `type IN ('register', 'reset_password', 'login')`.
+Migration: `packages/db/migrations/0017_otp_login_type.sql`.
+Jika deploy ke VPS baru tanpa migration ini, `POST /api/akun/login-via-otp` akan error.
+
+### `akun/layout.tsx` — logic redirect saat identity null
+```typescript
+const identity = await getAkunIdentity(session.user.id);
+if (!identity) {
+  // Cek apakah user adalah pengurus di tenant ini
+  const { db: tenantDb, schema } = createTenantDb(slug);
+  const [tenantUser] = await tenantDb.select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.betterAuthUserId, session.user.id)).limit(1);
+  // Pengurus → admin dashboard; selain itu → login
+  redirect(tenantUser ? `/app/${slug}/dashboard` : `/${slug}/login`);
+}
+```
+Dua kasus identity null yang berbeda treatment:
+- **Pengurus lama** (ada di `tenant.users`, belum punya `members.betterAuthUserId`) → `/app/{slug}/dashboard`
+- **User tidak dikenal** (tidak ada di mana-mana) → `/{slug}/login`
+
+Redirect langsung ke `/app/${slug}/dashboard` tanpa cek ini menyebabkan loop:
+pengurus non-anggota → admin layout cek tenant.users → redirect `/app/login`
+→ middleware: ada session → `/dashboard-redirect` → `getFirstTenantForUser()` null
+→ `/register?error=no-tenant` → loop.
 | `app/api/akun/profil/route.ts` | Tambah whatsapp di PATCH |
 | `app/(public)/[tenant]/login/page.tsx` | Tambah lupa password link, ubah redirect |
 | `app/(public)/[tenant]/register/page.tsx` | Tambah WA field + member lookup |

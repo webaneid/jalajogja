@@ -2630,11 +2630,82 @@ bukan halaman terpisah `/{slug}/register/verify`. Keuntungan:
 
 Pattern ini berlaku untuk semua multi-step flow yang tidak butuh bookmark URL per step.
 
+### [2026-07] `window.location.href` wajib setelah login — bukan `router.push`
+
+**Masalah**: Login via email/password (dan awalnya WA OTP) menggunakan `router.push(dest)`.
+Next.js App Router dapat pakai server component cache lama yang belum ada sesi → layout
+memanggil `getAkunIdentity()` → null → redirect ke login lagi → loop.
+
+**Fix**: Ganti ke `window.location.href = dest` untuk semua alur login.
+Full page reload memastikan browser kirim cookie baru ke server dari awal, tidak ada stale cache.
+
+**Aturan**: Setiap kali melakukan login (buat sesi baru), gunakan `window.location.href`, bukan:
+- `router.push()` — bisa pakai cache lama
+- `router.refresh()` — me-render ulang halaman saat ini (bukan tujuan), bisa bikin loop
+
+Berlaku di: `login-form.tsx` tab email, `login-form.tsx` tab WA OTP, semua komponen login baru.
+
+### [2026-07] `akun/layout.tsx` — pattern redirect saat identity null
+
+**Masalah**: `if (!identity) redirect('/app/${slug}/dashboard')` langsung tanpa cek menyebabkan
+loop untuk pengurus yang tidak punya `members.betterAuthUserId`:
+```
+/akun → identity null → /app/{slug}/dashboard
+→ admin layout: user bukan pengurus → /app/login
+→ middleware: punya session → /dashboard-redirect
+→ getFirstTenantForUser() null → /register?error=no-tenant
+```
+
+**Fix**: Cek `tenant.users` dulu sebelum memutuskan redirect:
+```typescript
+if (!identity) {
+  const { db: tenantDb, schema } = createTenantDb(slug);
+  const [tenantUser] = await tenantDb.select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.betterAuthUserId, session.user.id)).limit(1);
+  redirect(tenantUser ? `/app/${slug}/dashboard` : `/${slug}/login`);
+}
+```
+
+**Dua kasus yang berbeda**:
+- Ada di `tenant.users` → pengurus → ke admin dashboard (benar)
+- Tidak ada di mana-mana → user tidak dikenal → ke login (tidak loop)
+
+**Pengurus lama tanpa `members.betterAuthUserId`**: Fix di `createOfficerWithAccountAction`
+sudah memastikan pengurus BARU punya link. Untuk pengurus lama, backfill manual:
+```sql
+UPDATE public.members m
+SET better_auth_user_id = tu.better_auth_user_id
+FROM "tenant_{slug}".users tu
+WHERE tu.member_id = m.id AND m.better_auth_user_id IS NULL;
+```
+
+### [2026-07] Cookie signing WA OTP login — `encodeURIComponent` wajib
+
+`app/api/akun/login-via-otp/route.ts` membuat cookie sesi manual yang harus match format
+Better Auth. Better Auth internal (`better-call/dist/crypto.mjs`) melakukan `encodeURIComponent`
+pada hasil akhir. Tanpa ini, `getSignedCookie` di server gagal verify → sesi null.
+
+```typescript
+// WAJIB — tanpa encodeURIComponent, Better Auth tidak bisa verify cookie
+return encodeURIComponent(`${value}.${signature}`);
+```
+
+Jika versi Better Auth berubah dan format cookie-nya berubah, ini harus diupdate.
+Cara cek: lihat `node_modules/better-call/dist/crypto.mjs` fungsi `signCookieValue`.
+
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **GOWA self-hosted aktif + fix endpoint API versi latest** (sesi 2026-07-02).
+- Terakhir dikerjakan: **Auth flows WA OTP + fix redirect loop login** (sesi 2026-07-02).
 - Sesi ini (2026-07-02):
+  - **Auth flows WA OTP selesai** — login dua tab (email + WA OTP), register OTP wajib, forgot-password WA only.
+  - **Fix cookie signing** — `encodeURIComponent()` wajib di `login-via-otp/route.ts` untuk match format Better Auth.
+  - **Fix redirect loop** — `window.location.href` menggantikan `router.push` di login; `akun/layout.tsx` cek `tenant.users` sebelum redirect.
+  - **Migration 0017** wajib dijalankan di VPS: tambah `"login"` ke CHECK constraint `otp_tokens.type`.
+  - **Dokumentasi diupdate**: `docs/arsitektur-login-universal.md` (rewrite flow baru), `docs/arsitektur-akun.md` (tambah bug fixes + backfill SQL), `CLAUDE.md` (3 lessons learned baru).
+  - **GOWA self-hosted** (sesi sebelumnya, 2026-07-02): device `pc-ikpm-jogjakarta` terhubung ke +6282233322202. Fix endpoint API versi `latest`.
+- Sesi sebelumnya (2026-07-02):
   - **GOWA self-hosted berhasil diaktifkan** — device `pc-ikpm-jogjakarta` terhubung ke +6282233322202.
   - **Fix endpoint GOWA versi `latest`** — API berubah dari versi lama:
     - Create device: `POST /devices` + JSON body (bukan `POST /api/devices`)
@@ -3715,6 +3786,13 @@ git pull
 bun run build --filter=@jalajogja/web
 pm2 restart jalajogja --update-env
 ```
+
+**Migrasi DB di VPS — wajib pakai `docker compose exec` (bukan `psql` langsung):**
+`psql` tidak tersedia di VPS host karena PostgreSQL jalan di dalam Docker container.
+```bash
+docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/0017_nama_migration.sql
+```
+Urutan wajib: **migrate DB dulu → baru restart PM2**. Jangan kebalik.
 
 **Jika PM2 belum setup atau perlu reset:**
 ```bash
