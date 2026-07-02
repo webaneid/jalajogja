@@ -342,17 +342,21 @@ export async function connectWhatsAppAction(slug: string): Promise<WaConnectResu
   const { gowaBasicAuth, WA_NOTIF_DEFAULTS } = await import("@/lib/whatsapp");
   const deviceId = slug;
 
-  // Daftarkan device di GOWA — endpoint baru: POST /api/devices
-  // Abaikan 409 jika device sudah ada sebelumnya.
+  // Daftarkan device di GOWA via POST /devices.
+  // GOWA return 500 (bukan 409) untuk device yang sudah ada — kedua-duanya ok.
   try {
-    const res = await fetch(`${serviceUrl.replace(/\/$/, "")}/api/devices`, {
+    const res = await fetch(`${serviceUrl.replace(/\/$/, "")}/devices`, {
       method:  "POST",
-      headers: { Authorization: gowaBasicAuth(), "X-Device-Id": deviceId },
+      headers: { Authorization: gowaBasicAuth(), "Content-Type": "application/json" },
+      body:    JSON.stringify({ device_id: deviceId }),
     });
-    if (!res.ok && res.status !== 409) {
+    if (!res.ok) {
       const text = await res.text();
-      console.error("[connectWA] GOWA create device error:", res.status, text);
-      return { success: false, error: "Gagal membuat device di GOWA. Cek konfigurasi server." };
+      if (!text.includes("already exists")) {
+        console.error("[connectWA] GOWA create device error:", res.status, text);
+        return { success: false, error: "Gagal membuat device di GOWA. Cek konfigurasi server." };
+      }
+      // "already exists" → lanjut
     }
   } catch (err) {
     console.error("[connectWA] fetch error:", err);
