@@ -453,6 +453,37 @@ export async function disconnectWhatsAppAction(slug: string): Promise<WaConnectR
 }
 
 /**
+ * Nonaktifkan WhatsApp Gateway sepenuhnya — hapus config dari DB (kembali ke state "belum diaktifkan").
+ * Berbeda dengan disconnectWhatsAppAction yang hanya reset verified/phone.
+ */
+export async function deactivateWhatsAppAction(slug: string): Promise<WaConnectResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { success: false, error: "Akses ditolak." };
+
+  const serviceUrl = process.env.WHATSAPP_SERVICE_URL;
+  if (serviceUrl) {
+    const { gowaBasicAuth } = await import("@/lib/whatsapp");
+    try {
+      await fetch(`${serviceUrl.replace(/\/$/, "")}/app/logout`, {
+        method:  "GET",
+        headers: { Authorization: gowaBasicAuth(), "X-Device-Id": slug },
+      });
+    } catch {
+      // Lanjut hapus config lokal meski GOWA gagal
+    }
+  }
+
+  const tenantClient = createTenantDb(slug);
+  const { upsertSettings: upsert } = await import("@jalajogja/db");
+  // Hapus config sepenuhnya — set ke null agar isConfigured = false di UI
+  await upsert(tenantClient, "notif", { whatsapp_config: null });
+
+  revalidatePath(`/app/${slug}/settings/notifications`);
+  return { success: true };
+}
+
+/**
  * Simpan pengaturan toggle notifikasi WhatsApp.
  */
 export async function saveWaNotificationSettingsAction(

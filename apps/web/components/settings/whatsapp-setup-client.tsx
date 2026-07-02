@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   connectWhatsAppAction,
   confirmWaConnectionAction,
+  deactivateWhatsAppAction,
   disconnectWhatsAppAction,
   saveWaNotificationSettingsAction,
 } from "@/app/(dashboard)/app/[tenant]/settings/actions";
@@ -255,14 +256,15 @@ export function WhatsAppSetupClient({ slug, config }: Props) {
   const isVerified   = config?.verified === true;
   const phoneNumber  = config?.phone_number ?? null;
 
-  // ── Hubungkan ──────────────────────────────────────────────────────────────
+  // ── Aktifkan (buat device di GOWA, simpan config, TIDAK tampilkan QR) ────────
 
-  async function handleConnect() {
+  async function handleActivate() {
     setPending(true);
     try {
       const result = await connectWhatsAppAction(slug);
       if (!result.success) { toast.error(result.error); return; }
-      setShowQr(true);
+      toast.success("WhatsApp Gateway diaktifkan. Klik 'Scan QR' untuk menghubungkan nomor.");
+      router.refresh();
     } finally { setPending(false); }
   }
 
@@ -279,7 +281,7 @@ export function WhatsAppSetupClient({ slug, config }: Props) {
     }
   }
 
-  // ── Putuskan ───────────────────────────────────────────────────────────────
+  // ── Putuskan (dari state terhubung — reset ke "aktif tapi belum scan") ─────
 
   async function handleDisconnect() {
     if (!confirm("Putuskan koneksi WhatsApp? Notifikasi WA akan berhenti dikirim.")) return;
@@ -288,6 +290,18 @@ export function WhatsAppSetupClient({ slug, config }: Props) {
       const result = await disconnectWhatsAppAction(slug);
       if (!result.success) toast.error(result.error);
       else { toast.success("WhatsApp diputus."); router.refresh(); }
+    } finally { setPending(false); }
+  }
+
+  // ── Nonaktifkan (dari state aktif-belum-scan — hapus config sepenuhnya) ───
+
+  async function handleDeactivate() {
+    if (!confirm("Nonaktifkan WhatsApp Gateway? Config akan dihapus.")) return;
+    setPending(true);
+    try {
+      const result = await deactivateWhatsAppAction(slug);
+      if (!result.success) toast.error(result.error);
+      else { toast.success("WhatsApp Gateway dinonaktifkan."); router.refresh(); }
     } finally { setPending(false); }
   }
 
@@ -309,20 +323,24 @@ export function WhatsAppSetupClient({ slug, config }: Props) {
       <div className="flex items-start justify-between gap-4 rounded-xl border p-5">
         <div className="flex items-center gap-3">
           <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg ${
-            isVerified ? "bg-green-100" : "bg-muted"
+            isVerified ? "bg-green-100" : isConfigured ? "bg-amber-50" : "bg-muted"
           }`}>
             💬
           </div>
           <div>
             <p className="text-sm font-semibold">
-              {isVerified ? "WhatsApp Terhubung" : "WhatsApp Belum Terhubung"}
+              {isVerified
+                ? "WhatsApp Terhubung"
+                : isConfigured
+                  ? "WhatsApp Diaktifkan — Belum Tersambung"
+                  : "WhatsApp Belum Diaktifkan"}
             </p>
             <p className="text-xs text-muted-foreground">
               {isVerified && phoneNumber
-                ? `Nomor: +${phoneNumber.replace(/\D/g, "").replace(/^62/, "62")}`
+                ? `Nomor: ${phoneNumber}`
                 : isConfigured
-                  ? "Device terdaftar, belum scan QR."
-                  : "Klik Hubungkan untuk mulai setup."}
+                  ? "Scan QR untuk menghubungkan nomor WhatsApp."
+                  : "Aktifkan untuk mulai setup."}
             </p>
           </div>
         </div>
@@ -337,9 +355,18 @@ export function WhatsAppSetupClient({ slug, config }: Props) {
                 {pending ? "..." : "Putuskan"}
               </Button>
             </>
+          ) : isConfigured ? (
+            <>
+              <Button size="sm" onClick={() => setShowQr(true)} disabled={pending}>
+                Scan QR
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleDeactivate} disabled={pending}>
+                {pending ? "..." : "Nonaktifkan"}
+              </Button>
+            </>
           ) : (
-            <Button size="sm" onClick={handleConnect} disabled={pending}>
-              {pending ? "Menghubungkan..." : isConfigured ? "Scan QR" : "Hubungkan WhatsApp"}
+            <Button size="sm" onClick={handleActivate} disabled={pending}>
+              {pending ? "Mengaktifkan..." : "Aktifkan WhatsApp Gateway"}
             </Button>
           )}
         </div>
