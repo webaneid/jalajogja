@@ -108,17 +108,7 @@ const nextConfig: NextConfig = {
       },
     ];
 
-    // /login → /app/login (admin login dipindah)
-    const loginRedirect = [
-      {
-        source: "/login",
-        destination: "/app/login",
-        permanent: true,
-      },
-    ];
-
     return [
-      ...loginRedirect,
       ...moduleRedirects,
       ...eventRedirects,
       ...dokumenRedirects,
