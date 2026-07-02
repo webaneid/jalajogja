@@ -76,6 +76,13 @@ const NOTIF_GROUPS: Array<{
       { key: "letter_sign_request", label: "Permintaan tanda tangan", desc: "Kirim link TTD ke officer saat ada slot TTD baru." },
     ],
   },
+  {
+    label: "Verifikasi (OTP)",
+    items: [
+      { key: "otp_register",        label: "OTP Daftar Akun",     desc: "Kirim kode OTP 6 digit ke nomor HP saat pengguna mendaftar akun baru." },
+      { key: "otp_reset_password",  label: "OTP Reset Password",  desc: "Kirim kode OTP saat pengguna minta reset password via WhatsApp." },
+    ],
+  },
 ];
 
 // ── Toggle komponen ───────────────────────────────────────────────────────────

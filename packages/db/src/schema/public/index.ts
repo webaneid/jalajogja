@@ -25,6 +25,9 @@ export * from "./tenant-memberships";
 // ── Akun publik (universal customer identity) ──────────────────────────────────
 export * from "./profiles";
 
+// ── OTP tokens (verifikasi phone via WhatsApp) ─────────────────────────────────
+export * from "./otp-tokens";
+
 // ── Pesantren (direktori pesantren alumni Gontor, community-driven) ────────────
 export * from "./pesantren-facility-types";
 export * from "./pesantren";

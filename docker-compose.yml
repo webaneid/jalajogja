@@ -36,7 +36,27 @@ services:
       timeout: 20s
       retries: 3
 
+  # ── GOWA — WhatsApp Gateway ──────────────────────────────────────────────────
+  # Satu instance untuk semua tenant — isolasi via device_id = slug per tenant
+  # RAM: ~50MB base + ~10-30MB per tenant yang aktif terhubung
+  gowa:
+    image: aldinokemal2104/go-whatsapp-web-multidevice:latest
+    restart: unless-stopped
+    ports:
+      - "3002:3000"   # host:container — 3002 agar tidak clash dengan Next.js (3000)
+    volumes:
+      - gowa_data:/app/storages   # sesi WA persisten; tidak perlu scan ulang setelah restart
+    environment:
+      - BASIC_AUTH_CREDENTIAL=${WHATSAPP_API_USER:?err}:${WHATSAPP_API_PASS:?err}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # ── Next.js App ──────────────────────────────────────────────────────────────
+  # Catatan: production dijalankan via PM2 (bukan container ini).
+  # Container ini untuk keperluan testing Docker mode saja.
   app:
     build:
       context: .
@@ -60,12 +80,19 @@ services:
       RAJAONGKIR_PLATFORM_TIER: ${RAJAONGKIR_PLATFORM_TIER:-starter}
       PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: /usr/bin/chromium
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      # WhatsApp Gateway — untuk Docker mode (PM2 pakai localhost:3002)
+      WHATSAPP_SERVICE_URL: http://gowa:3000
+      WHATSAPP_API_USER: ${WHATSAPP_API_USER:-}
+      WHATSAPP_API_PASS: ${WHATSAPP_API_PASS:-}
     depends_on:
       postgres:
         condition: service_healthy
       minio:
         condition: service_healthy
+      gowa:
+        condition: service_healthy
 
 volumes:
   postgres_data:
   minio_data:
+  gowa_data:    # sesi WhatsApp semua tenant — backup rutin disarankan

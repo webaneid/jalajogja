@@ -10,7 +10,7 @@ import { PasswordInput }  from "@/components/ui/password-input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Users, User, Loader2, CheckCircle2, Info } from "lucide-react";
+import { Users, User, Loader2, CheckCircle2, Info, MessageCircle } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 
 type MemberLookup =
@@ -22,6 +22,7 @@ type LegalContent =
   | { found: false };
 
 type AccountPath = "member" | "public" | null;
+type Step = "path" | "form" | "verify_otp";
 
 // ── Modal legal ───────────────────────────────────────────────────────────────
 function LegalModal({ slug, template, open, onClose }: {
@@ -78,10 +79,139 @@ function LegalModal({ slug, template, open, onClose }: {
   );
 }
 
+// ── OTP Step ──────────────────────────────────────────────────────────────────
+function OtpStep({
+  phone, slug, onVerified, onBack,
+}: {
+  phone: string; slug: string;
+  onVerified: () => void; onBack: () => void;
+}) {
+  const [code,       setCode]       = useState("");
+  const [error,      setError]      = useState<string | null>(null);
+  const [isPending,  start]         = useTransition();
+  const [resending,  setResending]  = useState(false);
+  const [countdown,  setCountdown]  = useState(0);
+
+  function startCountdown() {
+    setCountdown(60);
+    const iv = setInterval(() => {
+      setCountdown(c => { if (c <= 1) { clearInterval(iv); return 0; } return c - 1; });
+    }, 1000);
+  }
+
+  async function handleResend() {
+    setResending(true);
+    setError(null);
+    try {
+      const res  = await fetch("/api/akun/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, type: "register", slug }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) { setError(data.error ?? "Gagal mengirim ulang OTP."); return; }
+      startCountdown();
+    } catch {
+      setError("Terjadi kesalahan. Coba lagi.");
+    } finally {
+      setResending(false);
+    }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (code.trim().length !== 6) { setError("Masukkan 6 digit kode OTP."); return; }
+
+    start(async () => {
+      try {
+        const res  = await fetch("/api/akun/verify-otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone, code: code.trim(), type: "register", slug }),
+        });
+        const data = await res.json() as { valid?: boolean; error?: string };
+        if (!res.ok || !data.valid) {
+          setError(data.error ?? "Kode tidak valid.");
+          return;
+        }
+        onVerified();
+      } catch {
+        setError("Terjadi kesalahan. Coba lagi.");
+      }
+    });
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <button
+          onClick={onBack}
+          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+        >
+          ← Kembali
+        </button>
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+            <MessageCircle className="h-4 w-4 text-green-600" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold leading-tight">Verifikasi WhatsApp</h1>
+            <p className="text-xs text-muted-foreground">Kode dikirim ke {phone}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-800">
+        Kode OTP 6 digit telah dikirim ke WhatsApp Anda. Berlaku 5 menit.
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="otp">Kode OTP</Label>
+          <Input
+            id="otp"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="123456"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            className="text-center text-2xl tracking-[0.5em] font-mono"
+            autoFocus
+          />
+        </div>
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
+        <Button type="submit" className="w-full" disabled={isPending || code.length !== 6}>
+          {isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Memverifikasi...</> : "Verifikasi"}
+        </Button>
+      </form>
+
+      <div className="text-center text-sm text-muted-foreground">
+        Tidak menerima kode?{" "}
+        {countdown > 0 ? (
+          <span className="text-muted-foreground">Kirim ulang dalam {countdown}d</span>
+        ) : (
+          <button
+            onClick={handleResend}
+            disabled={resending}
+            className="text-primary hover:underline font-medium disabled:opacity-50"
+          >
+            {resending ? "Mengirim..." : "Kirim ulang"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Register Page ─────────────────────────────────────────────────────────────
 export function RegisterForm({ slug }: { slug: string }) {
-  const router           = useRouter();
+  const router = useRouter();
 
+  const [step,        setStep]        = useState<Step>("path");
   const [accountPath, setAccountPath] = useState<AccountPath>(null);
 
   // Form fields
@@ -103,8 +233,7 @@ export function RegisterForm({ slug }: { slug: string }) {
   // Legal modal
   const [modalTpl, setModalTpl] = useState<"terms" | "privacy" | null>(null);
 
-  // Apakah mode KLAIM (data ditemukan di DB)
-  const isClaiming = lookup?.found === true && !lookup.hasAccount;
+  const isClaiming  = lookup?.found === true && !lookup.hasAccount;
   const claimedName = lookup?.found ? lookup.name : null;
 
   // ── Lookup anggota (debounced) ────────────────────────────────────────────
@@ -146,7 +275,7 @@ export function RegisterForm({ slug }: { slug: string }) {
     triggerLookup({ phone: val });
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────
+  // ── Submit form → cek WA → OTP atau langsung daftar ──────────────────────
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -156,42 +285,82 @@ export function RegisterForm({ slug }: { slug: string }) {
 
     start(async () => {
       try {
-        const body: Record<string, unknown> = {
-          path: accountPath,
-          name: isClaiming ? claimedName : name.trim(),
-          email, phone, password,
-          tenantSlug: slug,
-        };
+        // Cek apakah WA tersedia dan OTP register diaktifkan
+        const waRes  = await fetch(`/api/wa/available?slug=${encodeURIComponent(slug)}`);
+        const waData = await waRes.json() as { available: boolean; registerOtp: boolean };
 
-        if (accountPath === "member") {
-          if (isClaiming && lookup?.found) body.claimMemberId = lookup.memberId;
-          else if (stambuk.trim())         body.stambukNumber = stambuk.trim();
+        if (waData.available && waData.registerOtp) {
+          // Kirim OTP dulu
+          const otpRes  = await fetch("/api/akun/send-otp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone, type: "register", slug }),
+          });
+          const otpData = await otpRes.json() as { ok?: boolean; error?: string };
+          if (!otpRes.ok || !otpData.ok) {
+            setError(otpData.error ?? "Gagal mengirim OTP.");
+            return;
+          }
+          setStep("verify_otp");
+        } else {
+          // WA tidak tersedia — langsung daftar
+          await doRegister();
         }
-
-        const res  = await fetch("/api/akun/register", {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify(body),
-        });
-        const data = await res.json() as { error?: string };
-        if (!res.ok || data.error) { setError(data.error ?? "Pendaftaran gagal."); return; }
-
-        // Auto login
-        const loginRes = await authClient.signIn.email({
-          email,
-          password,
-          callbackURL: accountPath === "member" ? `/${slug}/akun/lengkapi` : `/${slug}/akun`,
-        });
-        if (loginRes.error) router.push(`/${slug}/login`);
-        else                router.push(accountPath === "member" ? `/${slug}/akun/lengkapi` : `/${slug}/akun`);
       } catch {
         setError("Terjadi kesalahan. Coba lagi.");
       }
     });
   }
 
-  // ── Step 1: Pilih jalur ───────────────────────────────────────────────────
-  if (accountPath === null) {
+  // ── Setelah OTP terverifikasi ─────────────────────────────────────────────
+  function handleOtpVerified() {
+    start(async () => {
+      try {
+        await doRegister();
+      } catch {
+        setError("Terjadi kesalahan saat mendaftar.");
+        setStep("form");
+      }
+    });
+  }
+
+  async function doRegister() {
+    const body: Record<string, unknown> = {
+      path: accountPath,
+      name: isClaiming ? claimedName : name.trim(),
+      email, phone, password,
+      tenantSlug: slug,
+    };
+
+    if (accountPath === "member") {
+      if (isClaiming && lookup?.found) body.claimMemberId = lookup.memberId;
+      else if (stambuk.trim())         body.stambukNumber = stambuk.trim();
+    }
+
+    const res  = await fetch("/api/akun/register", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(body),
+    });
+    const data = await res.json() as { error?: string };
+    if (!res.ok || data.error) {
+      setError(data.error ?? "Pendaftaran gagal.");
+      setStep("form");
+      return;
+    }
+
+    // Auto login
+    const loginRes = await authClient.signIn.email({
+      email,
+      password,
+      callbackURL: accountPath === "member" ? `/${slug}/akun/lengkapi` : `/${slug}/akun`,
+    });
+    if (loginRes.error) router.push(`/${slug}/login`);
+    else                router.push(accountPath === "member" ? `/${slug}/akun/lengkapi` : `/${slug}/akun`);
+  }
+
+  // ── Step: Pilih jalur ─────────────────────────────────────────────────────
+  if (step === "path" || accountPath === null) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm space-y-6">
@@ -202,7 +371,7 @@ export function RegisterForm({ slug }: { slug: string }) {
 
           <div className="grid grid-cols-1 gap-3">
             <button
-              onClick={() => setAccountPath("member")}
+              onClick={() => { setAccountPath("member"); setStep("form"); }}
               className="flex items-start gap-4 rounded-xl border border-border p-4 text-left hover:border-primary/60 hover:bg-primary/5 transition-all group"
             >
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
@@ -217,11 +386,11 @@ export function RegisterForm({ slug }: { slug: string }) {
             </button>
 
             <button
-              onClick={() => setAccountPath("public")}
+              onClick={() => { setAccountPath("public"); setStep("form"); }}
               className="flex items-start gap-4 rounded-xl border border-border p-4 text-left hover:border-primary/60 hover:bg-primary/5 transition-all group"
             >
               <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0 group-hover:bg-muted/60 transition-colors">
-                <User className="h-5 w-5 text-muted-foreground" />
+                <User className="h-4 w-4 text-muted-foreground" />
               </div>
               <div>
                 <p className="font-semibold text-sm">Bukan Anggota IKPM</p>
@@ -241,15 +410,41 @@ export function RegisterForm({ slug }: { slug: string }) {
     );
   }
 
-  // ── Step 2: Form registrasi ───────────────────────────────────────────────
+  // ── Step: OTP verifikasi ──────────────────────────────────────────────────
+  if (step === "verify_otp") {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-sm">
+          {error && (
+            <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <OtpStep
+            phone={phone}
+            slug={slug}
+            onVerified={handleOtpVerified}
+            onBack={() => { setStep("form"); setError(null); }}
+          />
+          {isPending && (
+            <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Membuat akun...
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step: Form registrasi ─────────────────────────────────────────────────
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm space-y-6">
 
-        {/* Header */}
         <div className="space-y-3">
           <button
-            onClick={() => { setAccountPath(null); setLookup(null); setLookupStatus("idle"); setStambuk(""); setName(""); }}
+            onClick={() => { setStep("path"); setAccountPath(null); setLookup(null); setLookupStatus("idle"); setStambuk(""); setName(""); }}
             className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
           >
             ← Kembali
@@ -271,7 +466,6 @@ export function RegisterForm({ slug }: { slug: string }) {
           </div>
         </div>
 
-        {/* Banner: data ditemukan → mode klaim */}
         {accountPath === "member" && lookup?.found && !lookup.hasAccount && (
           <div className="flex items-start gap-2.5 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-sm">
             <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
@@ -282,7 +476,6 @@ export function RegisterForm({ slug }: { slug: string }) {
           </div>
         )}
 
-        {/* Banner: akun sudah ada */}
         {accountPath === "member" && lookup?.found && lookup.hasAccount && (
           <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm">
             <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
@@ -294,7 +487,6 @@ export function RegisterForm({ slug }: { slug: string }) {
           </div>
         )}
 
-        {/* Banner: tidak ditemukan → daftar baru */}
         {accountPath === "member" && lookupStatus === "done" && !lookup?.found && (
           <div className="flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm">
             <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
@@ -306,7 +498,6 @@ export function RegisterForm({ slug }: { slug: string }) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
 
-          {/* Stambuk — hanya jalur member */}
           {accountPath === "member" && (
             <div className="space-y-1.5">
               <Label htmlFor="stambuk">
@@ -326,7 +517,6 @@ export function RegisterForm({ slug }: { slug: string }) {
             </div>
           )}
 
-          {/* Nama — read-only jika mode klaim */}
           <div className="space-y-1.5">
             <Label htmlFor="name">Nama Lengkap</Label>
             <Input
@@ -360,11 +550,14 @@ export function RegisterForm({ slug }: { slug: string }) {
 
           <div className="space-y-1.5">
             <PhoneInput
-              label="No. HP"
+              label="No. HP / WhatsApp"
               value={phone}
               onChange={handlePhoneChange}
               required
             />
+            <p className="text-xs text-muted-foreground">
+              Digunakan untuk verifikasi via WhatsApp jika tersedia.
+            </p>
           </div>
 
           <PasswordInput
@@ -388,7 +581,6 @@ export function RegisterForm({ slug }: { slug: string }) {
             autoComplete="new-password"
           />
 
-          {/* Persetujuan */}
           <div className="flex items-start gap-2.5 pt-1">
             <input
               id="agreed"

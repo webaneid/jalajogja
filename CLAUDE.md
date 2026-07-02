@@ -892,21 +892,24 @@ addon_usage                 → tracking penggunaan per bulan per tenant per add
 | `webhook-out` | Webhook Out | Free | coming soon |
 
 ### WhatsApp Gateway — Arsitektur
-> Arsitektur lengkap (infrastruktur, helper, template, peta notifikasi, rencana implementasi): **`docs/arsitektur-whatsapp.md`**
+> Arsitektur lengkap (notifikasi, template, OTP, peta event): **`docs/arsitektur-whatsapp.md`**
+> Infrastruktur, deployment, Docker, Nginx, self-hosted VPS: **`docs/arsitektur-gowa-deployment.md`**
 
 - Library: [go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice) (GOWA)
-- **Hosting: Sumopod** — bukan VPS utama, Docker, datacenter Jakarta, ~Rp 15–85k/bln
-- Satu instance GOWA untuk semua tenant — dipisahkan via `device_id` unik per tenant
-- Tenant self-service: scan QR di `/settings/notifications` → nomor WA terdaftar
-- Platform env: `WHATSAPP_SERVICE_URL`, `WHATSAPP_API_USER`, `WHATSAPP_API_PASS`
+- **Hosting: Self-hosted di VPS jalajogja** (72.61.215.7) — Docker service port 3002. Sumopod menutup layanan 2026-06-30.
+- Satu instance GOWA untuk semua tenant — dipisahkan via `device_id = slug` unik per tenant
+- Tenant self-service: scan QR di `/app/{slug}/settings/notifications` → nomor WA terdaftar
+- Platform env: `WHATSAPP_SERVICE_URL=https://gowa.jalakarta.com`, `WHATSAPP_API_USER`, `WHATSAPP_API_PASS`
 - Helper utama: `lib/whatsapp.ts` — `sendWaNotification()` + `toE164()`; **fire-and-forget** (`void`)
 - Template: `lib/wa-templates.ts` — 15+ template per event, di kode bukan di DB
-- Config per tenant di `tenant_addon_installations.config`:
+- Config per tenant di `tenant_{slug}.settings` (group="notif", key="whatsapp_config"):
   ```json
-  { "device_id": "ikpm-001", "phone_number": "628xxx", "verified": true,
+  { "device_id": "pc-ikpm-jogjakarta", "phone_number": "628xxx", "verified": true,
     "notifications": { "payment_submitted": true, "payment_confirmed": true, ... } }
   ```
-- 7 fase implementasi — **belum dimulai**, lihat `docs/arsitektur-whatsapp.md` § 12
+- 7 fase implementasi, lihat `docs/arsitektur-whatsapp.md` § 12 — **Fase 1+2 SELESAI** (2026-06-06) + **Fase 7 (OTP) SELESAI** (2026-06-30). **Fase 3–6 belum** (trigger notifikasi otomatis di event bisnis: payment, fulfillment, event, surat).
+- **OTP via WA (Fase 7)**: `public.otp_tokens` table + `/api/akun/send-otp` + `/api/akun/verify-otp` + `/api/wa/available`. Register form + forgot-password sudah terintegrasi. Toggle OTP ada di dashboard WA settings. Migration: `0016_otp_tokens.sql`.
+- ⚠️ Implementasi menyimpang dari desain: config WA tersimpan di `tenant.settings` (bukan `tenant_addon_installations`), **tidak ada quota enforcement / addon billing check** sama sekali — lihat `docs/arsitektur-whatsapp.md` § 16 untuk detail gap dan cara menutupnya.
 
 ### Quota Enforcement
 Sebelum kirim notifikasi WA:
@@ -2578,10 +2581,78 @@ tapi kode sudah di-deploy (Drizzle schema sudah include kolom baru), semua query
 kolom spesifik → auto-select semua kolom), pastikan migration sudah dijalankan di production
 SEBELUM deploy kode. Urutan yang benar: **migrate DB → deploy code**, bukan sebaliknya.
 
+### [2026-06] OTP via WhatsApp — Better Auth Token Injection Trick
+
+**Masalah**: Untuk reset password via WA, kita perlu set password baru tanpa sesi aktif.
+Better Auth tidak expose `setPassword` tanpa session. Satu-satunya cara adalah via token reset.
+
+**Solusi**: Inject langsung ke tabel `public.verification` yang dikelola Better Auth:
+```typescript
+await db.insert(verification).values({
+  id:         crypto.randomUUID(),
+  identifier: `reset-password:${resetToken}`,  // format yang dibaca Better Auth
+  value:      betterAuthUserId,
+  expiresAt:  new Date(Date.now() + 15 * 60 * 1000),
+});
+// → redirect ke /{slug}/reset-password?token={resetToken}
+// → authClient.resetPassword({ newPassword, token }) bekerja normal
+```
+
+**Kenapa aman**: Token dari `crypto.getRandomValues` (CSPRNG), TTL 15 menit, user di-lookup
+di server dari nomor HP (bukan dari input user), dan sudah melewati OTP verification sebelum inject.
+
+**Berlaku kapan saja**: Pola ini bisa dipakai untuk flow apapun yang butuh "set password tanpa login"
+— misal via email magic link kustom, SMS OTP, atau provider SSO yang tidak support password reset.
+
+### [2026-06] OTP tanpa Redis — PostgreSQL sudah cukup
+
+Jangan reflex pakai Redis untuk OTP hanya karena "OTP = TTL = Redis". PostgreSQL sudah cukup:
+- TTL via kolom `expires_at` + filter `WHERE expires_at > NOW()` di query
+- Sekali pakai via kolom `used_at` (NULL = belum, non-NULL = sudah)
+- Rate limit via `COUNT WHERE created_at > NOW() - 1 hour` — satu query, cukup cepat
+
+Redis hanya diperlukan jika OTP di-generate jutaan kali per hari (high-traffic). Untuk jalajogja,
+overhead PostgreSQL di sini tidak terasa. Jangan over-engineer sebelum ada masalah nyata.
+
+### [2026-06] OTP step inline — jangan buat halaman baru
+
+OTP step register ada di dalam `register-form.tsx` (state machine: `path → form → verify_otp`),
+bukan halaman terpisah `/{slug}/register/verify`. Keuntungan:
+- Data form (nama, email, HP, password) tetap di memori — tidak perlu kirim ulang / session storage
+- Tidak ada URL baru yang perlu di-handle di middleware / redirect logic
+- UX lebih mulus: user tidak keluar dari konteks form
+
+Pattern ini berlaku untuk semua multi-step flow yang tidak butuh bookmark URL per step.
+
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **PDF surat — design fix + urutan TTD** (sesi 2026-05-27).
+- Terakhir dikerjakan: **Arsitektur GOWA self-hosted + OTP via WA** (sesi 2026-06-30).
+- Sesi ini (2026-06-30):
+  - **Sumopod shutdown** — GOWA dipindah ke VPS jalajogja sendiri (port 3002 Docker).
+  - **Arsitektur dua level GOWA terdokumentasi**:
+    - Dokumen baru: `docs/arsitektur-gowa-deployment.md` — Docker service, Nginx subdomain `gowa.jalakarta.com`, multi-tenant via `device_id = slug`, monitoring, backup
+    - `docker-compose.yml` diupdate: tambah service `gowa` + volume `gowa_data`
+    - `docs/arsitektur-whatsapp.md` § 2.2 diupdate: Sumopod → self-hosted
+    - CLAUDE.md: bagian WA Gateway diupdate hosting info
+  - **OTP Fase 7 SELESAI** (sebelum arsitektur GOWA):
+    - `packages/db/migrations/0016_otp_tokens.sql` + Drizzle schema `otp-tokens.ts`
+    - `GET /api/wa/available` — cek toggle OTP aktif (publik, tidak butuh auth)
+    - `POST /api/akun/send-otp` — generate OTP, rate limit 3/jam, kirim via GOWA
+    - `POST /api/akun/verify-otp` — verifikasi; mode `reset_password` inject ke Better Auth `verification` table
+    - Register form: OTP step kondisional (jika `registerOtp=true`), inline di form yang sama
+    - Forgot-password: tab "Via WhatsApp" + alur OTP → redirect ke `/reset-password?token=` (halaman existing tidak diubah)
+    - `WhatsAppSetupClient`: tambah group "Verifikasi (OTP)" dengan dua toggle
+  - **Migration wajib dijalankan di production**: `psql -f packages/db/migrations/0016_otp_tokens.sql`
+  - **Setup GOWA di production VPS**:
+    ```bash
+    docker compose up -d gowa         # start container
+    # set WHATSAPP_* env vars di .env.local
+    # setup Nginx subdomain gowa.jalakarta.com
+    certbot --nginx -d gowa.jalakarta.com
+    pm2 restart jalajogja --update-env
+    ```
+- Sesi sebelumnya: **PDF surat — design fix + urutan TTD** (sesi 2026-05-27).
 - Sesi ini (2026-05-27):
   - **Fix `/pengurus/new` — "Password minimal 8 karakter" meski member sudah punya akun**: validasi email+password dipindah ke dalam cabang `else` (hanya jika belum ada akun). Commit `0df7cef`.
   - **Fix "Gagal menyimpan pengurus." — UUID vs nanoid**: variabel dipisah (`authUserId` nanoid vs `tenantUserId` UUID), UUID diambil via `.returning({ id: schema.users.id })`. Commit `80d0ed2`.
@@ -2984,7 +3055,7 @@ Pattern: `globals.css` definisikan `.btn`, `.btn-primary`, `.btn-sm`, dll. via `
 - **View Counter** — Step 10: tampil di detail publik (≥50). Detail: `docs/arsitektur-views-count.md`
 - **Widget Area System** — ✅ SELESAI
 - **Member Media Library** — Phase 1–4 (upload foto sendiri, lihat file sendiri, MemberMediaPicker). Arsitektur: `docs/arsitektur-medialibrary.md`
-- **WhatsApp Gateway** — arsitektur SELESAI (`docs/arsitektur-whatsapp.md`), implementasi Fase 1–7 belum dimulai. Prerequisite: deploy GOWA di Sumopod + set env vars + buat `lib/whatsapp.ts` + `lib/wa-templates.ts`.
+- **WhatsApp Gateway** — Fase 1+2 SELESAI (koneksi + dashboard setup) + Fase 7 SELESAI (OTP register + reset password). Fase 3–6 belum (trigger notifikasi otomatis per modul). Quota enforcement/addon billing belum diimplementasikan — lihat `docs/arsitektur-whatsapp.md` § 16.
 
 ### [2026-05] Custom Role — Permission Enforcement + Dialog Fix
 
@@ -3347,10 +3418,13 @@ Saat registrasi: lookup email/HP di `public.contacts → public.members`. Jika c
 - Return `{ found, name, memberId }` — ditampilkan sebagai banner di form registrasi
 - Auto-isi nama jika ditemukan, user bisa override
 
-**WhatsApp OTP (Fase 2 — saat gateway aktif):**
-- Kolom `phone_verified_at`, `email_verified_at` ditambah ke `profiles`
-- Endpoint: `POST /api/akun/send-otp`, `POST /api/akun/verify-otp`
-- Halaman: `/{slug}/register/verify`
+**WhatsApp OTP — ✅ SELESAI (2026-06-30):**
+- Storage: tabel `public.otp_tokens` (bukan Redis) — TTL via `expires_at`, sekali pakai via `used_at`
+- Endpoint: `POST /api/akun/send-otp`, `POST /api/akun/verify-otp`, `GET /api/wa/available`
+- Register: OTP step muncul kondisional (hanya jika admin aktifkan toggle `otp_register`)
+- Forgot-password: tab "Via WhatsApp" dengan alur OTP → inject Better Auth `verification` token → redirect `/reset-password?token=`
+- Tidak ada halaman `/register/verify` terpisah — OTP step inline di form yang sama
+- Migration wajib: `packages/db/migrations/0016_otp_tokens.sql`
 
 **Dashboard `/akun` — perbedaan member vs publik:**
 | Section | Member | Akun Umum |
