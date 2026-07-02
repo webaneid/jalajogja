@@ -339,12 +339,26 @@ export async function connectWhatsAppAction(slug: string): Promise<WaConnectResu
   const serviceUrl = process.env.WHATSAPP_SERVICE_URL;
   if (!serviceUrl) return { success: false, error: "WhatsApp service belum dikonfigurasi di server." };
 
-  const { WA_NOTIF_DEFAULTS } = await import("@/lib/whatsapp");
+  const { gowaBasicAuth, WA_NOTIF_DEFAULTS } = await import("@/lib/whatsapp");
   const deviceId = slug;
 
-  // API GOWA tidak memerlukan registrasi device terpisah —
-  // device dibuat otomatis saat QR di-scan via GET /app/login.
-  // Di sini cukup simpan config awal ke settings tenant.
+  // Daftarkan device di GOWA — endpoint baru: POST /api/devices
+  // Abaikan 409 jika device sudah ada sebelumnya.
+  try {
+    const res = await fetch(`${serviceUrl.replace(/\/$/, "")}/api/devices`, {
+      method:  "POST",
+      headers: { Authorization: gowaBasicAuth(), "Content-Type": "application/json" },
+      body:    JSON.stringify({ device_id: deviceId }),
+    });
+    if (!res.ok && res.status !== 409) {
+      const text = await res.text();
+      console.error("[connectWA] GOWA create device error:", res.status, text);
+      return { success: false, error: "Gagal membuat device di GOWA. Cek konfigurasi server." };
+    }
+  } catch (err) {
+    console.error("[connectWA] fetch error:", err);
+    return { success: false, error: "Tidak dapat terhubung ke WhatsApp service." };
+  }
 
   // Simpan config awal ke settings tenant
   const tenantClient = createTenantDb(slug);
