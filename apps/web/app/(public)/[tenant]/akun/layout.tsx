@@ -3,6 +3,8 @@ import { headers }   from "next/headers";
 import { createHash } from "crypto";
 import { auth }       from "@/lib/auth";
 import { getAkunIdentity } from "@/lib/akun-identity";
+import { createTenantDb }  from "@jalajogja/db";
+import { eq }              from "drizzle-orm";
 import { AkunNav }    from "@/components/akun/akun-nav";
 import { BadgeCheck } from "lucide-react";
 
@@ -23,7 +25,17 @@ export default async function AkunLayout({ children, params }: Props) {
   if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
 
   const identity = await getAkunIdentity(session.user.id);
-  if (!identity) redirect(`/app/${slug}/dashboard`);
+  if (!identity) {
+    // Tidak ada profil front-end — cek apakah user adalah pengurus di tenant ini
+    const { db: tenantDb, schema } = createTenantDb(slug);
+    const [tenantUser] = await tenantDb
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.betterAuthUserId, session.user.id))
+      .limit(1);
+    // Pengurus → ke admin dashboard; selain itu → login ulang
+    redirect(tenantUser ? `/app/${slug}/dashboard` : `/${slug}/login`);
+  }
 
   const isMember    = identity.type === "member";
   const displayEmail = identity.email || session.user.email;

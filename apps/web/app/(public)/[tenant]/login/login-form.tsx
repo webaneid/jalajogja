@@ -39,11 +39,12 @@ export function LoginForm({ slug, redirectTo }: { slug: string; redirectTo?: str
     e.preventDefault();
     setError(null);
     start(async () => {
-      const res = await authClient.signIn.email({ email, password, callbackURL: dest });
+      const res = await authClient.signIn.email({ email, password });
       if (res.error) {
         setError("Email atau password salah. Silakan coba lagi.");
       } else {
-        router.push(dest);
+        // Full reload agar server component baca cookie sesi terbaru (sama seperti WA OTP)
+        window.location.href = dest;
       }
     });
   }
