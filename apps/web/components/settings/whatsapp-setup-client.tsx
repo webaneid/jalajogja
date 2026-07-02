@@ -82,6 +82,7 @@ const NOTIF_GROUPS: Array<{
     items: [
       { key: "otp_register",        label: "OTP Daftar Akun",     desc: "Kirim kode OTP 6 digit ke nomor HP saat pengguna mendaftar akun baru." },
       { key: "otp_reset_password",  label: "OTP Reset Password",  desc: "Kirim kode OTP saat pengguna minta reset password via WhatsApp." },
+      { key: "otp_login",           label: "OTP Login via WA",    desc: "Izinkan pengguna masuk menggunakan kode OTP WhatsApp (tanpa password)." },
     ],
   },
 ];

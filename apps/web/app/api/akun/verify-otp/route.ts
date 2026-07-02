@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   if (!rawPhone || !code || !type || !slug) {
     return NextResponse.json({ error: "phone, code, type, dan slug wajib diisi" }, { status: 400 });
   }
-  if (type !== "register" && type !== "reset_password") {
+  if (type !== "register" && type !== "reset_password" && type !== "login") {
     return NextResponse.json({ error: "type tidak valid" }, { status: 400 });
   }
 
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     .where(and(
       eq(otpTokens.phone, phone),
       eq(otpTokens.code,  code.trim()),
-      eq(otpTokens.type,  type as "register" | "reset_password"),
+      eq(otpTokens.type,  type as "register" | "reset_password" | "login"),
       gt(otpTokens.expiresAt, now),
       isNull(otpTokens.usedAt),
     ))

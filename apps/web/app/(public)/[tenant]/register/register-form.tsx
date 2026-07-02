@@ -275,7 +275,7 @@ export function RegisterForm({ slug }: { slug: string }) {
     triggerLookup({ phone: val });
   }
 
-  // ── Submit form → cek WA → OTP atau langsung daftar ──────────────────────
+  // ── Submit form → kirim OTP (wajib) ─────────────────────────────────────
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -285,27 +285,17 @@ export function RegisterForm({ slug }: { slug: string }) {
 
     start(async () => {
       try {
-        // Cek apakah WA tersedia dan OTP register diaktifkan
-        const waRes  = await fetch(`/api/wa/available?slug=${encodeURIComponent(slug)}`);
-        const waData = await waRes.json() as { available: boolean; registerOtp: boolean };
-
-        if (waData.available && waData.registerOtp) {
-          // Kirim OTP dulu
-          const otpRes  = await fetch("/api/akun/send-otp", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ phone, type: "register", slug }),
-          });
-          const otpData = await otpRes.json() as { ok?: boolean; error?: string };
-          if (!otpRes.ok || !otpData.ok) {
-            setError(otpData.error ?? "Gagal mengirim OTP.");
-            return;
-          }
-          setStep("verify_otp");
-        } else {
-          // WA tidak tersedia — langsung daftar
-          await doRegister();
+        const otpRes  = await fetch("/api/akun/send-otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone, type: "register", slug }),
+        });
+        const otpData = await otpRes.json() as { ok?: boolean; error?: string };
+        if (!otpRes.ok || !otpData.ok) {
+          setError(otpData.error ?? "Gagal mengirim OTP ke WhatsApp. Pastikan nomor WA valid.");
+          return;
         }
+        setStep("verify_otp");
       } catch {
         setError("Terjadi kesalahan. Coba lagi.");
       }
@@ -556,7 +546,7 @@ export function RegisterForm({ slug }: { slug: string }) {
               required
             />
             <p className="text-xs text-muted-foreground">
-              Digunakan untuk verifikasi via WhatsApp jika tersedia.
+              Kode OTP verifikasi akan dikirim ke nomor WhatsApp ini.
             </p>
           </div>
 

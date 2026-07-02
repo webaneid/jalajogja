@@ -71,6 +71,9 @@ const templates: Record<string, (v: WaTemplateVars) => string> = {
 
   otp_reset_password: (v) =>
     `🔑 *Reset Password ${v.orgName}*\n\nKode OTP untuk reset password Anda: *${v.otp}*\n\nBerlaku ${v.expiry} menit. Jika bukan Anda yang meminta, abaikan pesan ini.`,
+
+  otp_login: (v) =>
+    `🔐 *Masuk ke ${v.orgName}*\n\nKode OTP login Anda: *${v.otp}*\n\nBerlaku ${v.expiry} menit. Jangan bagikan kode ini kepada siapapun.`,
 };
 
 export function renderWaTemplate(event: string, vars: WaTemplateVars): string | null {

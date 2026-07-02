@@ -21,7 +21,8 @@ export type WaNotifKey =
   | "officer_invite"
   | "letter_sign_request"
   | "otp_register"
-  | "otp_reset_password";
+  | "otp_reset_password"
+  | "otp_login";
 
 export type WaNotifConfig = {
   device_id:    string;
@@ -48,6 +49,7 @@ export const WA_NOTIF_DEFAULTS: WaNotifConfig["notifications"] = {
   letter_sign_request:     false,
   otp_register:            false,
   otp_reset_password:      false,
+  otp_login:               false,
 };
 
 type SendOptions = {

@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   if (!rawPhone || !type || !slug) {
     return NextResponse.json({ error: "phone, type, dan slug wajib diisi" }, { status: 400 });
   }
-  if (type !== "register" && type !== "reset_password") {
+  if (type !== "register" && type !== "reset_password" && type !== "login") {
     return NextResponse.json({ error: "type tidak valid" }, { status: 400 });
   }
 
@@ -80,17 +80,20 @@ export async function POST(request: NextRequest) {
 
     orgName = (generalCfg["site_name"] as string | undefined) ?? orgName;
 
-    // Verifikasi WA dikonfigurasi sebelum kirim
+    // Verifikasi WA dikonfigurasi sebelum kirim (kecuali untuk login — boleh kirim meski belum verified)
     const waCfg = notifCfg["whatsapp_config"] as WaNotifConfig | undefined;
     if (!waCfg?.device_id || !waCfg.verified) {
       return NextResponse.json({ error: "WhatsApp Gateway belum dikonfigurasi oleh admin." }, { status: 503 });
     }
+
   } catch {
     return NextResponse.json({ error: "Gagal membaca konfigurasi tenant." }, { status: 500 });
   }
 
   // ── Kirim via WA ──────────────────────────────────────────────────────────────
-  const eventKey = type === "register" ? "otp_register" : "otp_reset_password";
+  const eventKey = type === "register" ? "otp_register"
+                 : type === "login"    ? "otp_login"
+                 :                       "otp_reset_password";
   const message  = renderWaTemplate(eventKey, {
     orgName,
     otp:    code,
