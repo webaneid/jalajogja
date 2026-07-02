@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
   const deviceId = slug;
 
   try {
-    const res = await fetch(`${baseUrl}/devices/${deviceId}/login`, {
-      headers: { Authorization: gowaBasicAuth() },
+    const res = await fetch(`${baseUrl}/app/login`, {
+      headers: { Authorization: gowaBasicAuth(), "X-Device-Id": deviceId },
       cache: "no-store",
     });
 

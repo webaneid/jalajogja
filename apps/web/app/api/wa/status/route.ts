@@ -7,17 +7,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTenantAccess } from "@/lib/tenant";
 import { gowaBaseUrl, gowaBasicAuth } from "@/lib/whatsapp";
 
-type GowaStatusResult = {
-  device_id:    string;
-  is_connected: boolean;
-  is_logged_in: boolean;
-};
-
-type GowaDeviceResult = {
-  id:           string;
-  phone_number: string;
-  display_name: string;
-  state:        string;
+type GowaDeviceItem = {
+  device:    string;  // = device_id / slug
+  jid:       string;  // kosong = belum terhubung, "628xxx@s.whatsapp.net" = terhubung
+  connected: boolean;
 };
 
 export async function GET(request: NextRequest) {
@@ -31,35 +24,25 @@ export async function GET(request: NextRequest) {
   if (!baseUrl) return NextResponse.json({ isConnected: false, isLoggedIn: false, phoneNumber: null });
 
   const deviceId = slug;
-  const auth     = { Authorization: gowaBasicAuth() };
 
   try {
-    const statusRes = await fetch(`${baseUrl}/devices/${deviceId}/status`, {
-      headers: auth, cache: "no-store",
+    const res = await fetch(`${baseUrl}/app/devices`, {
+      headers: { Authorization: gowaBasicAuth(), "X-Device-Id": deviceId },
+      cache: "no-store",
     });
 
-    if (!statusRes.ok) {
-      // Device belum pernah dibuat → belum dikonfigurasi
+    if (!res.ok) {
       return NextResponse.json({ isConnected: false, isLoggedIn: false, phoneNumber: null });
     }
 
-    const statusData = await statusRes.json() as { results?: GowaStatusResult };
-    const isConnected = statusData.results?.is_connected ?? false;
-    const isLoggedIn  = statusData.results?.is_logged_in  ?? false;
+    const data = await res.json() as { results?: GowaDeviceItem[] };
+    const myDevice = (data.results ?? []).find((d) => d.device === deviceId);
 
-    // Jika sudah login, ambil phone number dari device info
-    let phoneNumber: string | null = null;
-    if (isLoggedIn) {
-      const deviceRes = await fetch(`${baseUrl}/devices/${deviceId}`, {
-        headers: auth, cache: "no-store",
-      });
-      if (deviceRes.ok) {
-        const deviceData = await deviceRes.json() as { results?: GowaDeviceResult };
-        phoneNumber = deviceData.results?.phone_number ?? null;
-      }
-    }
+    // Terhubung jika jid terisi (format: "628xxx@s.whatsapp.net")
+    const isLoggedIn  = !!(myDevice?.jid && myDevice.jid !== "");
+    const phoneNumber = isLoggedIn ? `+${myDevice!.jid.split("@")[0]}` : null;
 
-    return NextResponse.json({ isConnected, isLoggedIn, phoneNumber });
+    return NextResponse.json({ isConnected: isLoggedIn, isLoggedIn, phoneNumber });
   } catch (err) {
     console.error("[wa/status] error:", err);
     return NextResponse.json({ isConnected: false, isLoggedIn: false, phoneNumber: null });

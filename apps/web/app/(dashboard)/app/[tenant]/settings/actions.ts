@@ -339,28 +339,12 @@ export async function connectWhatsAppAction(slug: string): Promise<WaConnectResu
   const serviceUrl = process.env.WHATSAPP_SERVICE_URL;
   if (!serviceUrl) return { success: false, error: "WhatsApp service belum dikonfigurasi di server." };
 
-  const { gowaBasicAuth, WA_NOTIF_DEFAULTS } = await import("@/lib/whatsapp");
-  const auth = gowaBasicAuth();
+  const { WA_NOTIF_DEFAULTS } = await import("@/lib/whatsapp");
   const deviceId = slug;
 
-  // Coba buat device di GOWA (abaikan 409 jika sudah ada)
-  try {
-    const res = await fetch(`${serviceUrl.replace(/\/$/, "")}/devices`, {
-      method:  "POST",
-      headers: { Authorization: auth, "Content-Type": "application/json" },
-      body:    JSON.stringify({ device_id: deviceId }),
-    });
-
-    // 409 = device sudah ada → ok, lanjut
-    if (!res.ok && res.status !== 409) {
-      const text = await res.text();
-      console.error("[connectWA] GOWA error:", res.status, text);
-      return { success: false, error: "Gagal membuat device di GOWA. Cek konfigurasi server." };
-    }
-  } catch (err) {
-    console.error("[connectWA] fetch error:", err);
-    return { success: false, error: "Tidak dapat terhubung ke WhatsApp service." };
-  }
+  // API GOWA tidak memerlukan registrasi device terpisah —
+  // device dibuat otomatis saat QR di-scan via GET /app/login.
+  // Di sini cukup simpan config awal ke settings tenant.
 
   // Simpan config awal ke settings tenant
   const tenantClient = createTenantDb(slug);
@@ -423,9 +407,9 @@ export async function disconnectWhatsAppAction(slug: string): Promise<WaConnectR
   if (serviceUrl) {
     const { gowaBasicAuth } = await import("@/lib/whatsapp");
     try {
-      await fetch(`${serviceUrl.replace(/\/$/, "")}/devices/${slug}/logout`, {
-        method:  "POST",
-        headers: { Authorization: gowaBasicAuth() },
+      await fetch(`${serviceUrl.replace(/\/$/, "")}/app/logout`, {
+        method:  "GET",
+        headers: { Authorization: gowaBasicAuth(), "X-Device-Id": slug },
       });
     } catch {
       // Lanjut hapus config lokal meski GOWA gagal
