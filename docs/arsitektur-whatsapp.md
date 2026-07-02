@@ -3,11 +3,12 @@
 > Dokumen ini adalah referensi tunggal untuk semua hal terkait integrasi WhatsApp di platform jalajogja.
 > Terkoneksi dengan: `CLAUDE.md` § "WhatsApp Gateway", `docs/arsitektur-billing.md`, `docs/arsitektur-login-universal.md`, `docs/arsitektur-fulfillment.md`, `docs/arsitektur-event.md`.
 
-> **STATUS (2026-06-30): Fase 1+2 SELESAI + OTP SELESAI.**
-> Lihat § 16 "Penyimpangan dari Desain Awal" untuk daftar perbedaan antara dokumen ini dan kode aktual.
-> Bagian 3.2, 4, dan 10 di bawah ini menjelaskan **desain awal** (addon installation + quota) — kode
-> aktual saat ini **tidak** memakai `tenant_addon_installations`/`addon_usage` sama sekali. Baca § 16 dulu.
-> OTP (register + reset password via WhatsApp) — **Fase 7 sudah diimplementasikan**. Lihat § 6.7, § 8.3–8.4, § 16.6.
+> **STATUS (2026-07-02): Fase 1+2 SELESAI + OTP (Fase 7) SELESAI. Self-hosted VPS aktif dan tested.**
+> GOWA berjalan di VPS jalajogja (72.61.215.7), subdomain `gowa.jalakarta.com`.
+> Device `pc-ikpm-jogjakarta` aktif terhubung — QR scan, send message, status polling semua confirmed working.
+> Lihat § 16 "Penyimpangan dari Desain Awal" untuk perbedaan antara dokumen ini dan kode aktual.
+> Bagian 3.2, 4, dan 10 menjelaskan **desain awal** (addon installation + quota) — kode aktual tidak memakai ini. Baca § 16 dulu.
+> Fase 3–6 (trigger notifikasi otomatis per modul bisnis) belum diimplementasikan.
 
 ---
 
@@ -86,18 +87,44 @@ QR image perlu akses dari browser admin → subdomain publik diperlukan (lihat �
 ### 2.3 Topologi
 
 ```
-┌──────────────────────────────────────┐
-│  VPS Utama (72.61.215.7)             │
-│  ┌──────────────────┐                │
-│  │  Next.js (PM2)   │ ──POST /send──▶│──── Sumopod GOWA ────▶ WhatsApp
-│  │  Port 3000       │ ◀──200 OK──────│◀───────────────────────
-│  └──────────────────┘                │
-│  ┌──────────────────┐                │
-│  │  PostgreSQL       │               │
-│  │  (addon tables)   │               │
-│  └──────────────────┘                │
-└──────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  VPS Utama (72.61.215.7)                            │
+│                                                     │
+│  ┌──────────────────┐    POST /send/message         │
+│  │  Next.js (PM2)   │ ─────────────────────────────▶│
+│  │  Port 3000       │ ◀─────────────────────────────│
+│  └──────────────────┘    200 OK / ERROR             │
+│                                                     │
+│  ┌──────────────────┐    http://localhost:3002       │
+│  │  GOWA (Docker)   │ ◀─────────────────────────────│
+│  │  Port 3002       │ ─────────────────────────────▶│  WhatsApp
+│  └──────────────────┘                               │
+│                                                     │
+│  ┌──────────────────┐                               │
+│  │  PostgreSQL       │                              │
+│  │  (settings tabel) │                              │
+│  └──────────────────┘                               │
+└─────────────────────────────────────────────────────┘
+
+Browser admin → https://gowa.jalakarta.com (Nginx → localhost:3002)
+             → lihat QR image (statics/qrcode/*.png)
 ```
+
+### 2.4 GOWA API Endpoints (Confirmed Working — versi `latest` 2026-07-02)
+
+| Operasi | Method | Path | Header / Body |
+|---------|--------|------|---------------|
+| Buat device | POST | `/devices` | Body JSON: `{"device_id": "slug"}`. Return 500 jika sudah ada (treat as success) |
+| QR login | GET | `/app/login` | Header: `X-Device-Id: {slug}` |
+| List devices / status | GET | `/app/devices` | Header: `X-Device-Id: {slug}`. Cek `results[].jid` — kosong = belum connect |
+| Kirim pesan | POST | `/send/message` | Header: `X-Device-Id: {slug}`. Body: `{"phone":"628xxx@s.whatsapp.net","message":"..."}` |
+| Logout / putuskan | GET | `/app/logout` | Header: `X-Device-Id: {slug}` |
+
+**Quirks GOWA `latest`:**
+- `POST /devices` return HTTP 500 (bukan 409) untuk device yang sudah ada → kode cek `text.includes("already exists")`
+- QR link dari `/app/login` berisi `http://localhost:3002/...` → perlu rewrite ke `https://gowa.jalakarta.com/...`
+- Phone format untuk send: `628xxx@s.whatsapp.net` (tanpa `+`, dengan suffix WA)
+- Status terhubung: `jid !== ""` — format `628xxx@s.whatsapp.net` jika connected
 
 ---
 
@@ -494,13 +521,15 @@ Route: `/app/{slug}/settings/notifications` — tab "WhatsApp"
 ### 7.1 Alur Setup
 
 ```
-1. Admin klik "Tambah WhatsApp Gateway"
-2. System call API GOWA: POST /device (buat device_id baru)
-3. System tampilkan QR code dari GET /app/login?device_id=...
-4. Admin scan QR dengan nomor WA organisasi
-5. GOWA konfirmasi koneksi → verified = true di config
-6. Admin pilih toggle notifikasi yang diinginkan
-7. Admin klik Simpan
+1. Admin klik "Hubungkan WhatsApp"
+2. System call GOWA: POST /devices { device_id: slug } (idempotent — 500 jika sudah ada = ok)
+3. System simpan whatsapp_config ke tenant.settings (device_id, verified: false)
+4. Frontend tampilkan QR modal → GET /api/wa/qr → GET /app/login + X-Device-Id → QR image
+5. Admin scan QR dengan nomor WA organisasi
+6. Frontend polling GET /api/wa/status tiap 3 detik → GET /app/devices → cek jid != ""
+7. Setelah terdeteksi terhubung → confirmWaConnectionAction → verified: true, phone_number tersimpan
+8. Modal tutup, toggle notifikasi muncul
+9. Admin aktifkan toggle yang diinginkan → Simpan
 ```
 
 ### 7.2 State Machine Koneksi
@@ -691,13 +720,15 @@ if (phone) {
 
 ## 12. Rencana Implementasi (Fase)
 
-### Fase 1 — Infrastruktur (Prerequisite) — ✅ SELESAI (2026-06-06)
+### Fase 1 — Infrastruktur (Prerequisite) — ✅ SELESAI
 
-- [x] Deploy GOWA di Sumopod
+- [x] Deploy GOWA di VPS jalajogja (Docker, port 3002) — migrasi dari Sumopod 2026-07-02
+- [x] Nginx subdomain `gowa.jalakarta.com` → localhost:3002 + SSL certbot
 - [x] Set environment variables di VPS: `WHATSAPP_SERVICE_URL`, `WHATSAPP_API_USER`, `WHATSAPP_API_PASS`
 - [x] Buat `apps/web/lib/whatsapp.ts` — helper utama (lihat § 16 untuk perbedaan dari desain awal)
 - [x] Buat `apps/web/lib/wa-templates.ts` — 17 template
-- [x] Scan QR pertama kali — verifikasi koneksi
+- [x] Scan QR pertama kali — verifikasi koneksi (device `pc-ikpm-jogjakarta`, nomor +6282233322202)
+- [x] Fix endpoint GOWA versi `latest` — lihat § 2.4 untuk daftar endpoint yang benar
 
 ### Fase 2 — Dashboard Setup Admin — ✅ SELESAI (2026-06-06)
 
@@ -747,7 +778,7 @@ psql -U jalakarta -d jalakarta -f packages/db/migrations/0016_otp_tokens.sql
 ## 13. Keputusan Desain yang Dikunci
 
 1. **Satu GOWA untuk semua tenant** — dipisahkan via `device_id`, bukan instance terpisah
-2. **Hosting di Sumopod** — bukan VPS utama, menghindari beban tambahan
+2. **Self-hosted di VPS jalajogja** — GOWA adalah binary Go ringan (~50MB RAM), overhead minimal di VPS yang sama. Sumopod tutup 2026-06-30.
 3. **Fire-and-forget** — notifikasi WA tidak boleh memblokir response action utama
 4. **Template di kode** — tidak di DB, karena update template = deploy baru (lebih aman, tidak ada injection)
 5. **Add-on berbayar** — tenant harus aktifkan dan bayar untuk fitur ini
@@ -761,7 +792,7 @@ psql -U jalakarta -d jalakarta -f packages/db/migrations/0016_otp_tokens.sql
 |--------|--------|----------|
 | WhatsApp ban nomor | Gateway mati | Gunakan nomor dedicated organisasi, bukan nomor pribadi |
 | GOWA tidak support versi WA terbaru | Gateway mati | Monitor repo aldinokemal, update berkala |
-| Sumopod downtime | Notifikasi tertunda | Queue pesan di DB, retry saat kembali online (Fase 2) |
+| VPS downtime | Notifikasi tertunda | Monitor uptime VPS; GOWA auto-restart via `restart: unless-stopped` di Docker |
 | Spam ke customer | Reputasi buruk | Toggle per event + quota + opt-out mechanism |
 | Credential bocor | Security breach | Env vars di server saja, tidak pernah ke frontend |
 

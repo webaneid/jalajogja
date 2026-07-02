@@ -907,9 +907,15 @@ addon_usage                 → tracking penggunaan per bulan per tenant per add
   { "device_id": "pc-ikpm-jogjakarta", "phone_number": "628xxx", "verified": true,
     "notifications": { "payment_submitted": true, "payment_confirmed": true, ... } }
   ```
-- 7 fase implementasi, lihat `docs/arsitektur-whatsapp.md` § 12 — **Fase 1+2 SELESAI** (2026-06-06) + **Fase 7 (OTP) SELESAI** (2026-06-30). **Fase 3–6 belum** (trigger notifikasi otomatis di event bisnis: payment, fulfillment, event, surat).
+- 7 fase implementasi, lihat `docs/arsitektur-whatsapp.md` § 12 — **Fase 1+2 SELESAI** + **Fase 7 (OTP) SELESAI**. **Fase 3–6 belum** (trigger notifikasi otomatis di event bisnis: payment, fulfillment, event, surat).
 - **OTP via WA (Fase 7)**: `public.otp_tokens` table + `/api/akun/send-otp` + `/api/akun/verify-otp` + `/api/wa/available`. Register form + forgot-password sudah terintegrasi. Toggle OTP ada di dashboard WA settings. Migration: `0016_otp_tokens.sql`.
 - ⚠️ Implementasi menyimpang dari desain: config WA tersimpan di `tenant.settings` (bukan `tenant_addon_installations`), **tidak ada quota enforcement / addon billing check** sama sekali — lihat `docs/arsitektur-whatsapp.md` § 16 untuk detail gap dan cara menutupnya.
+- **GOWA API Endpoints (versi `latest`, confirmed 2026-07-02)** — lihat `docs/arsitektur-whatsapp.md` § 2.4:
+  - Create device: `POST /devices` + JSON body `{device_id}` — return 500 jika sudah ada (normal, lanjutkan)
+  - QR: `GET /app/login` + header `X-Device-Id: {slug}`
+  - Status: `GET /app/devices` + `X-Device-Id` → cek `results[].jid != ""`
+  - Send: `POST /send/message` + `X-Device-Id` (endpoint sama dari versi lama)
+  - Logout: `GET /app/logout` + `X-Device-Id`
 
 ### Quota Enforcement
 Sebelum kirim notifikasi WA:
@@ -2627,31 +2633,23 @@ Pattern ini berlaku untuk semua multi-step flow yang tidak butuh bookmark URL pe
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Arsitektur GOWA self-hosted + OTP via WA** (sesi 2026-06-30).
-- Sesi ini (2026-06-30):
-  - **Sumopod shutdown** — GOWA dipindah ke VPS jalajogja sendiri (port 3002 Docker).
-  - **Arsitektur dua level GOWA terdokumentasi**:
-    - Dokumen baru: `docs/arsitektur-gowa-deployment.md` — Docker service, Nginx subdomain `gowa.jalakarta.com`, multi-tenant via `device_id = slug`, monitoring, backup
-    - `docker-compose.yml` diupdate: tambah service `gowa` + volume `gowa_data`
-    - `docs/arsitektur-whatsapp.md` § 2.2 diupdate: Sumopod → self-hosted
-    - CLAUDE.md: bagian WA Gateway diupdate hosting info
-  - **OTP Fase 7 SELESAI** (sebelum arsitektur GOWA):
-    - `packages/db/migrations/0016_otp_tokens.sql` + Drizzle schema `otp-tokens.ts`
-    - `GET /api/wa/available` — cek toggle OTP aktif (publik, tidak butuh auth)
-    - `POST /api/akun/send-otp` — generate OTP, rate limit 3/jam, kirim via GOWA
-    - `POST /api/akun/verify-otp` — verifikasi; mode `reset_password` inject ke Better Auth `verification` table
-    - Register form: OTP step kondisional (jika `registerOtp=true`), inline di form yang sama
-    - Forgot-password: tab "Via WhatsApp" + alur OTP → redirect ke `/reset-password?token=` (halaman existing tidak diubah)
-    - `WhatsAppSetupClient`: tambah group "Verifikasi (OTP)" dengan dua toggle
-  - **Migration wajib dijalankan di production**: `psql -f packages/db/migrations/0016_otp_tokens.sql`
-  - **Setup GOWA di production VPS**:
-    ```bash
-    docker compose up -d gowa         # start container
-    # set WHATSAPP_* env vars di .env.local
-    # setup Nginx subdomain gowa.jalakarta.com
-    certbot --nginx -d gowa.jalakarta.com
-    pm2 restart jalajogja --update-env
-    ```
+- Terakhir dikerjakan: **GOWA self-hosted aktif + fix endpoint API versi latest** (sesi 2026-07-02).
+- Sesi ini (2026-07-02):
+  - **GOWA self-hosted berhasil diaktifkan** — device `pc-ikpm-jogjakarta` terhubung ke +6282233322202.
+  - **Fix endpoint GOWA versi `latest`** — API berubah dari versi lama:
+    - Create device: `POST /devices` + JSON body (bukan `POST /api/devices`)
+    - QR: `GET /app/login` + `X-Device-Id` header (bukan `GET /devices/{id}/login`)
+    - Status: `GET /app/devices` → cek `jid` field (bukan `GET /devices/{id}/status`)
+    - Send: `POST /send/message` — sama, tidak berubah
+    - Logout: `GET /app/logout` + `X-Device-Id` (bukan `POST /devices/{id}/logout`)
+    - GOWA return HTTP 500 (bukan 409) untuk device yang sudah ada → `text.includes("already exists")`
+  - **File yang diubah**: `app/api/wa/qr/route.ts`, `app/api/wa/status/route.ts`, `settings/actions.ts`
+  - **End-to-end confirmed**: QR scan → terhubung → send message via curl → SUCCESS
+  - **Dokumentasi diupdate**: `docs/arsitektur-whatsapp.md` § status, § 2.3 topologi, § 2.4 endpoint baru, § 7.1 alur setup, § 12 fase, § 13 keputusan, § 14 risiko. CLAUDE.md diupdate.
+  - **Fase 3–6 belum**: trigger notifikasi otomatis di event bisnis masih 0 caller.
+- Sesi sebelumnya (2026-06-30): **OTP via WA (Fase 7) SELESAI + Arsitektur GOWA self-hosted terdokumentasi**.
+  - `packages/db/migrations/0016_otp_tokens.sql`, send-otp + verify-otp endpoints, register + forgot-password terintegrasi.
+  - `docker-compose.yml` diupdate (service `gowa`), `docs/arsitektur-gowa-deployment.md` dibuat.
 - Sesi sebelumnya: **PDF surat — design fix + urutan TTD** (sesi 2026-05-27).
 - Sesi ini (2026-05-27):
   - **Fix `/pengurus/new` — "Password minimal 8 karakter" meski member sudah punya akun**: validasi email+password dipindah ke dalam cabang `else` (hanya jika belum ada akun). Commit `0df7cef`.
