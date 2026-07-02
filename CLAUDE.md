@@ -2709,19 +2709,27 @@ target yang tidak punya redirect balik, atau buat halaman dead-end khusus (seper
 Fix data: `docs/fix-akun-tidak-terhubung.sql` — diagnosa + backfill otomatis (via email match
 atau via tenant.users) + instruksi manual untuk yang tidak bisa dibackfill otomatis.
 
-### [2026-07] Cookie signing WA OTP login — `encodeURIComponent` wajib
+### [2026-07] Cookie signing WA OTP login — JANGAN `encodeURIComponent` saat pakai `response.cookies.set`
 
-`app/api/akun/login-via-otp/route.ts` membuat cookie sesi manual yang harus match format
-Better Auth. Better Auth internal (`better-call/dist/crypto.mjs`) melakukan `encodeURIComponent`
-pada hasil akhir. Tanpa ini, `getSignedCookie` di server gagal verify → sesi null.
+`app/api/akun/login-via-otp/route.ts` membuat cookie sesi manual. Format `signCookieValue`
+adalah `"${token}.${btoa(HMAC-SHA256(secret, token))}"` — **TANPA** `encodeURIComponent`.
 
 ```typescript
-// WAJIB — tanpa encodeURIComponent, Better Auth tidak bisa verify cookie
-return encodeURIComponent(`${value}.${signature}`);
+// BENAR — tanpa encodeURIComponent, karena response.cookies.set() sudah encode otomatis
+return `${value}.${signature}`;
 ```
 
-Jika versi Better Auth berubah dan format cookie-nya berubah, ini harus diupdate.
-Cara cek: lihat `node_modules/better-call/dist/crypto.mjs` fungsi `signCookieValue`.
+**Mengapa berbeda dengan better-call source:**
+- `better-call/dist/crypto.mjs` `signCookieValue` memang pakai `encodeURIComponent`
+- Tapi better-call pakai `_serialize()` untuk menulis Set-Cookie header SECARA LANGSUNG (raw)
+- `response.cookies.set(name, value)` di Next.js / @edge-runtime/cookies SELALU panggil
+  `encodeURIComponent(value)` sebelum menulis Set-Cookie header (lihat `stringify` di `@edge-runtime/cookies`)
+- Jika kita sudah `encodeURIComponent` lalu diserahkan ke `response.cookies.set` → DOUBLE ENCODE
+- Double encode: `+` → `%2B` → `%252B` → signature jadi 47+ chars (bukan 44) → `verifySignature` return null
+
+**Aturan**: Jika menulis cookie via `response.cookies.set()` atau `NextResponse.cookies.set()`,
+JANGAN pre-encode nilai. Jika menulis via raw `headers.append("set-cookie", ...)`, barulah
+pakai `encodeURIComponent` seperti yang dilakukan better-call.
 
 ### [2026-07] Bug: Register flow tidak atomic — orphan Better Auth account
 

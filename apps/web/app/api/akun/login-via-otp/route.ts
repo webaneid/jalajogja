@@ -120,10 +120,14 @@ async function findUserByPhone(phone: string): Promise<string | null> {
   return null;
 }
 
-// Replikasi persis better-call/dist/crypto.mjs signCookieValue:
+// Format identik better-call/dist/crypto.mjs signCookieValue:
 //   1. sign: btoa(HMAC-SHA256(secret, value))
-//   2. concat: `${value}.${signature}`
-//   3. encodeURIComponent(...)  ← WAJIB, tanpa ini Better Auth tidak bisa verify
+//   2. concat: `${value}.${signature}` — TANPA encodeURIComponent
+//
+// better-call menggunakan encodeURIComponent di signCookieValue karena
+// _serialize() menyimpan nilai cookie RAW di Set-Cookie header.
+// Tapi response.cookies.set() di Next.js SUDAH otomatis encode nilai.
+// Jika kita encode lagi → double-encode → signature verification gagal.
 async function signCookieValue(value: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -134,7 +138,7 @@ async function signCookieValue(value: string, secret: string): Promise<string> {
   );
   const sigBytes  = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
   const signature = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
-  return encodeURIComponent(`${value}.${signature}`);
+  return `${value}.${signature}`;
 }
 
 // Token 32-char hex random (cukup entropy, tidak perlu nanoid)
