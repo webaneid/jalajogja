@@ -11,7 +11,12 @@ import { db, otpTokens, profiles, members, contacts, session, user, verification
 import { eq, and, gt, isNull, sql }   from "drizzle-orm";
 import { toE164 }                     from "@/lib/whatsapp";
 
-const SESSION_COOKIE    = "better-auth.session_token";
+// Di production (HTTPS), Better Auth pakai prefix __Secure-
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#cookie_prefixes
+const IS_PROD           = process.env.NODE_ENV === "production";
+const SESSION_COOKIE    = IS_PROD
+  ? "__Secure-better-auth.session_token"
+  : "better-auth.session_token";
 const SESSION_EXPIRE_S  = 60 * 60 * 24 * 7; // 7 hari (sama dengan auth.ts config)
 
 export async function POST(request: NextRequest) {

@@ -32,6 +32,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "type tidak valid" }, { status: 400 });
   }
 
+  const validType = type as "register" | "reset_password" | "login";
+
   const phone = toE164(rawPhone);
 
   // ── Rate limiting ──────────────────────────────────────────────────────────────
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest) {
     .from(otpTokens)
     .where(and(
       eq(otpTokens.phone, phone),
-      eq(otpTokens.type, type as "register" | "reset_password"),
+      eq(otpTokens.type, validType),
       gt(otpTokens.createdAt, windowStart),
     ));
 
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
   // ── Hapus OTP lama yang belum dipakai untuk phone+type ini ───────────────────
   await db.delete(otpTokens).where(and(
     eq(otpTokens.phone, phone),
-    eq(otpTokens.type, type as "register" | "reset_password"),
+    eq(otpTokens.type, validType),
     sql`${otpTokens.usedAt} IS NULL`,
   ));
 
@@ -66,7 +68,7 @@ export async function POST(request: NextRequest) {
   await db.insert(otpTokens).values({
     phone,
     code,
-    type: type as "register" | "reset_password",
+    type: validType,
     slug,
     expiresAt,
   });
