@@ -2680,6 +2680,35 @@ FROM "tenant_{slug}".users tu
 WHERE tu.member_id = m.id AND m.better_auth_user_id IS NULL;
 ```
 
+### [2026-07] Loop /akun ↔ /login — jangan redirect ke halaman yang redirect balik
+
+**Pola loop yang terbentuk:**
+```
+/akun (layout: identity null) → /{slug}/login
+/{slug}/login (session ada, tidak ada dest) → /{slug}/akun
+LOOP
+```
+
+**Root cause**: `login/page.tsx` mengasumsikan "session ada = punya identity". Tapi ada kondisi
+di mana user punya Better Auth account yang tidak terhubung ke `public.members` maupun
+`public.profiles` (misalnya data anggota diinput admin manual sebelum user register sendiri).
+`getAkunIdentity()` return null → routing rusak.
+
+**Fix**: Buat halaman error di LUAR route `/akun/*` — misalnya `/{slug}/akun-error`.
+- Di luar route → tidak kena `akun/layout.tsx` check → tidak ada loop
+- Halaman ini tampilkan pesan + tombol sign-out → user bisa keluar lalu register ulang
+- `akun/layout.tsx` dan `akun/page.tsx` redirect ke sini kalau identity null + bukan pengurus
+
+**Aturan umum**: Jika halaman A redirect ke halaman B, dan B bisa redirect balik ke A → LOOP.
+Sebelum set redirect target, trace: apakah target bisa mengembalikan ke sini? Kalau iya, cari
+target yang tidak punya redirect balik, atau buat halaman dead-end khusus (seperti `akun-error`).
+
+**Penyebab data**: `members.better_auth_user_id` null terjadi kalau:
+1. Admin input data anggota via dashboard (tidak buat akun) → user belum pernah register
+2. Register flow ada bug yang skip `UPDATE members SET better_auth_user_id`
+Fix data: `docs/fix-akun-tidak-terhubung.sql` — diagnosa + backfill otomatis (via email match
+atau via tenant.users) + instruksi manual untuk yang tidak bisa dibackfill otomatis.
+
 ### [2026-07] Cookie signing WA OTP login — `encodeURIComponent` wajib
 
 `app/api/akun/login-via-otp/route.ts` membuat cookie sesi manual yang harus match format
@@ -2697,11 +2726,16 @@ Cara cek: lihat `node_modules/better-call/dist/crypto.mjs` fungsi `signCookieVal
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Auth flows WA OTP + fix redirect loop login** (sesi 2026-07-02).
+- Terakhir dikerjakan: **Fix loop /akun ↔ /login untuk user tanpa identity** (sesi 2026-07-02, lanjutan).
+- Sesi ini (lanjutan 2026-07-02):
+  - **Diagnosa loop baru setelah fix sebelumnya**: user anggota biasa (bukan pengurus) yang `members.betterAuthUserId` null → `getAkunIdentity()` null → `akun/layout.tsx` redirect ke `/login` → `login/page.tsx` session ada → redirect balik ke `/akun` → LOOP.
+  - **Fix**: Buat halaman `/akun-error` di luar route `/akun/*` (tidak kena layout check). Redirect dari `akun/layout.tsx` dan `akun/page.tsx` ke sini, bukan ke `/login`. Halaman ini tampilkan pesan + tombol sign-out + instruksi daftar ulang. Commit `6061e04`.
+  - **SQL diagnosa + backfill**: `docs/fix-akun-tidak-terhubung.sql` — 4 step: diagnosa, backfill via email match, backfill via tenant.users, instruksi manual.
+  - **Deploy ke VPS**: `git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env`; jalankan SQL sesuai kondisi data.
 - Sesi ini (2026-07-02):
   - **Auth flows WA OTP selesai** — login dua tab (email + WA OTP), register OTP wajib, forgot-password WA only.
   - **Fix cookie signing** — `encodeURIComponent()` wajib di `login-via-otp/route.ts` untuk match format Better Auth.
-  - **Fix redirect loop** — `window.location.href` menggantikan `router.push` di login; `akun/layout.tsx` cek `tenant.users` sebelum redirect.
+  - **Fix redirect loop awal** — `window.location.href` menggantikan `router.push` di login; `akun/layout.tsx` cek `tenant.users` sebelum redirect.
   - **Migration 0017** wajib dijalankan di VPS: tambah `"login"` ke CHECK constraint `otp_tokens.type`.
   - **Dokumentasi diupdate**: `docs/arsitektur-login-universal.md` (rewrite flow baru), `docs/arsitektur-akun.md` (tambah bug fixes + backfill SQL), `CLAUDE.md` (3 lessons learned baru).
   - **GOWA self-hosted** (sesi sebelumnya, 2026-07-02): device `pc-ikpm-jogjakarta` terhubung ke +6282233322202. Fix endpoint API versi `latest`.
