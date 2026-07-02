@@ -347,8 +347,7 @@ export async function connectWhatsAppAction(slug: string): Promise<WaConnectResu
   try {
     const res = await fetch(`${serviceUrl.replace(/\/$/, "")}/api/devices`, {
       method:  "POST",
-      headers: { Authorization: gowaBasicAuth(), "Content-Type": "application/json" },
-      body:    JSON.stringify({ device_id: deviceId }),
+      headers: { Authorization: gowaBasicAuth(), "X-Device-Id": deviceId },
     });
     if (!res.ok && res.status !== 409) {
       const text = await res.text();
