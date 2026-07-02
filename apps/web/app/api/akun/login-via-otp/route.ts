@@ -115,7 +115,10 @@ async function findUserByPhone(phone: string): Promise<string | null> {
   return null;
 }
 
-// Replikasi Better Auth signCookieValue: `${value}.${HMAC-SHA256-base64(secret, value)}`
+// Replikasi persis better-call/dist/crypto.mjs signCookieValue:
+//   1. sign: btoa(HMAC-SHA256(secret, value))
+//   2. concat: `${value}.${signature}`
+//   3. encodeURIComponent(...)  ← WAJIB, tanpa ini Better Auth tidak bisa verify
 async function signCookieValue(value: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -126,7 +129,7 @@ async function signCookieValue(value: string, secret: string): Promise<string> {
   );
   const sigBytes  = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
   const signature = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
-  return `${value}.${signature}`;
+  return encodeURIComponent(`${value}.${signature}`);
 }
 
 // Token 32-char hex random (cukup entropy, tidak perlu nanoid)

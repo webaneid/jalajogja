@@ -107,8 +107,8 @@ export function LoginForm({ slug, redirectTo }: { slug: string; redirectTo?: str
           setError(data.error ?? "Kode tidak valid.");
           return;
         }
-        router.push(dest);
-        router.refresh();
+        // Full reload — pastikan cookie baru terbaca oleh server component
+        window.location.href = dest;
       } catch {
         setError("Terjadi kesalahan. Coba lagi.");
       }
