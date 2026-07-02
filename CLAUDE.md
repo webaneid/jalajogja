@@ -2723,14 +2723,60 @@ return encodeURIComponent(`${value}.${signature}`);
 Jika versi Better Auth berubah dan format cookie-nya berubah, ini harus diupdate.
 Cara cek: lihat `node_modules/better-call/dist/crypto.mjs` fungsi `signCookieValue`.
 
+### [2026-07] Bug: Register flow tidak atomic — orphan Better Auth account
+
+**Masalah**: `POST /api/akun/register` memanggil `auth.api.signUpEmail()` dulu, kemudian
+`db.insert(profiles)` / `db.update(members)` / `db.insert(contacts)`. Jika operasi DB gagal
+setelah `signUpEmail` berhasil → akun terbentuk di `public."user"` (Better Auth) tapi tidak
+ada di `public.members` atau `public.profiles`.
+
+**Gejala**: User bisa login (Better Auth account valid), tapi `getAkunIdentity()` return null
+→ redirect loop ke `/akun-error`. User bingung karena bisa login tapi tidak bisa kemana-mana.
+
+**Fix** — `cleanupAuthUser()` helper di register route:
+```typescript
+// Hapus Better Auth account jika app-level insert/update gagal
+async function cleanupAuthUser(authUserId: string): Promise<void> {
+  await db.delete(authUser)
+    .where(eq(authUser.id, authUserId))
+    .catch(e => console.error("[register] Gagal cleanup Better Auth user:", e));
+}
+```
+
+Pattern yang benar di **semua tiga jalur** (klaim, member baru, publik):
+```typescript
+const signUpResult = await auth.api.signUpEmail({ ... });
+try {
+  await db.insert(profiles).values({ betterAuthUserId: signUpResult.user.id, ... });
+} catch (err) {
+  await cleanupAuthUser(signUpResult.user.id);  // rollback Better Auth
+  throw err;
+}
+```
+
+**Aturan**: Setiap operasi yang melibatkan `signUpEmail` WAJIB wrap app-level DB operation
+dengan try/catch + `cleanupAuthUser()`. Tanpa ini → orphan account yang tidak bisa akses
+app tapi slot email-nya "tersita" di Better Auth.
+
+**Diagnosa orphan yang sudah ada**: `docs/fix-akun-tidak-terhubung.sql`
+- Step 1: Identifikasi orphan accounts
+- Step 2: Backfill via email (via `contacts`, bukan langsung `m.email` — members tidak punya kolom email)
+- Step 3: Backfill via tenant.users
+- Step 4: Cleanup orphan yang tidak bisa di-backfill (DELETE dari `public."user"`)
+
 ---
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix loop /akun ↔ /login untuk user tanpa identity** (sesi 2026-07-02, lanjutan).
-- Sesi ini (lanjutan 2026-07-02):
+- Terakhir dikerjakan: **Fix register flow atomic + dokumentasi** (sesi 2026-07-02, lanjutan 2).
+- Sesi ini (lanjutan 2 2026-07-02):
+  - **Root cause orphan account teridentifikasi**: register tidak atomic — `signUpEmail` berhasil tapi `db.insert` bisa gagal → user bisa login tapi `getAkunIdentity()` null.
+  - **Fix register route**: `cleanupAuthUser()` helper + wrap ketiga jalur (klaim/member-baru/publik) dengan try/catch + cleanup.
+  - **Fix SQL diagnosa**: Step 2 di `docs/fix-akun-tidak-terhubung.sql` diperbaiki — `m.email` tidak ada, harus JOIN via `public.contacts`. Step 4 ditambahkan untuk cleanup orphan yang tidak bisa di-backfill.
+  - **Untuk akun wasugi@gmail.com (Wawan Sugianto)**: login dengan email berbeda dari yang terdaftar di contacts (`wawan.sugianto@gmail.com`). Setelah deploy, `/akun-error` akan tampil → sign out → daftar ulang / login dengan email yang benar.
+- Sesi sebelumnya (lanjutan 2026-07-02):
   - **Diagnosa loop baru setelah fix sebelumnya**: user anggota biasa (bukan pengurus) yang `members.betterAuthUserId` null → `getAkunIdentity()` null → `akun/layout.tsx` redirect ke `/login` → `login/page.tsx` session ada → redirect balik ke `/akun` → LOOP.
   - **Fix**: Buat halaman `/akun-error` di luar route `/akun/*` (tidak kena layout check). Redirect dari `akun/layout.tsx` dan `akun/page.tsx` ke sini, bukan ke `/login`. Halaman ini tampilkan pesan + tombol sign-out + instruksi daftar ulang. Commit `6061e04`.
-  - **SQL diagnosa + backfill**: `docs/fix-akun-tidak-terhubung.sql` — 4 step: diagnosa, backfill via email match, backfill via tenant.users, instruksi manual.
+  - **SQL diagnosa + backfill**: `docs/fix-akun-tidak-terhubung.sql` — diagnosa, backfill via email/HP/tenant.users, instruksi manual.
   - **Deploy ke VPS**: `git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env`; jalankan SQL sesuai kondisi data.
 - Sesi ini (2026-07-02):
   - **Auth flows WA OTP selesai** — login dua tab (email + WA OTP), register OTP wajib, forgot-password WA only.

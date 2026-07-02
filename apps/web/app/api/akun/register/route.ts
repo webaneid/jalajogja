@@ -6,6 +6,15 @@ import { auth }                      from "@/lib/auth";
 import { normalizePhone }            from "@/lib/phone";
 import { rateLimitGuard }            from "@/lib/rate-limit";
 
+// Cleanup Better Auth account jika app-level insert gagal.
+// Tanpa ini, signUpEmail yang berhasil + insert gagal = orphan account yang bisa
+// login tapi tidak bisa akses /akun (getAkunIdentity() null → loop).
+async function cleanupAuthUser(authUserId: string): Promise<void> {
+  await db.delete(authUser)
+    .where(eq(authUser.id, authUserId))
+    .catch(e => console.error("[register] Gagal cleanup Better Auth user:", e));
+}
+
 export async function POST(req: NextRequest) {
   const blocked = rateLimitGuard(req, "register", 5, 60_000);
   if (blocked) return blocked;
@@ -103,12 +112,17 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "Gagal membuat akun. Email mungkin sudah terdaftar di sistem." }, { status: 500 });
 
         // Link akun ke member + daftarkan ke tenant
-        await db
-          .update(members)
-          .set({ betterAuthUserId: signUpResult.user.id, updatedAt: new Date() })
-          .where(eq(members.id, claimMemberId));
-
-        await joinTenant(claimMemberId);
+        // Kalau gagal: cleanup Better Auth account agar tidak jadi orphan
+        try {
+          await db
+            .update(members)
+            .set({ betterAuthUserId: signUpResult.user.id, updatedAt: new Date() })
+            .where(eq(members.id, claimMemberId));
+          await joinTenant(claimMemberId);
+        } catch (linkErr) {
+          await cleanupAuthUser(signUpResult.user.id);
+          throw linkErr;
+        }
 
         return NextResponse.json({ success: true, mode: "claim" }, { status: 201 });
       }
@@ -138,21 +152,26 @@ export async function POST(req: NextRequest) {
       if (!signUpResult?.user?.id)
         return NextResponse.json({ error: "Gagal membuat akun. Email mungkin sudah terdaftar di sistem." }, { status: 500 });
 
-      // Buat contacts
-      const [newContact] = await db
-        .insert(contacts)
-        .values({ email: normalizedEmail, phone: normalizedPhone, whatsapp: normalizedWhatsapp })
-        .returning({ id: contacts.id });
+      // Buat contacts + member + daftar ke tenant
+      // Kalau salah satu gagal: cleanup Better Auth account agar tidak jadi orphan
+      try {
+        const [newContact] = await db
+          .insert(contacts)
+          .values({ email: normalizedEmail, phone: normalizedPhone, whatsapp: normalizedWhatsapp })
+          .returning({ id: contacts.id });
 
-      // Buat member baru + daftarkan ke tenant
-      const [newMember] = await db.insert(members).values({
-        name:             name.trim(),
-        stambukNumber:    normalizedStambuk,
-        contactId:        newContact.id,
-        betterAuthUserId: signUpResult.user.id,
-      }).returning({ id: members.id });
+        const [newMember] = await db.insert(members).values({
+          name:             name.trim(),
+          stambukNumber:    normalizedStambuk,
+          contactId:        newContact.id,
+          betterAuthUserId: signUpResult.user.id,
+        }).returning({ id: members.id });
 
-      await joinTenant(newMember.id);
+        await joinTenant(newMember.id);
+      } catch (insertErr) {
+        await cleanupAuthUser(signUpResult.user.id);
+        throw insertErr;
+      }
 
       return NextResponse.json({ success: true, mode: "new_member" }, { status: 201 });
     }
@@ -181,14 +200,20 @@ export async function POST(req: NextRequest) {
     if (!signUpResult?.user?.id)
       return NextResponse.json({ error: "Gagal membuat akun. Email mungkin sudah terdaftar di sistem." }, { status: 500 });
 
-    await db.insert(profiles).values({
-      name:               name.trim(),
-      email:              normalizedEmail,
-      phone:              normalizedPhone,
-      whatsapp:           normalizedWhatsapp,
-      betterAuthUserId:   signUpResult.user.id,
-      registeredAtTenant,
-    });
+    // Kalau insert profiles gagal: cleanup Better Auth account agar tidak jadi orphan
+    try {
+      await db.insert(profiles).values({
+        name:               name.trim(),
+        email:              normalizedEmail,
+        phone:              normalizedPhone,
+        whatsapp:           normalizedWhatsapp,
+        betterAuthUserId:   signUpResult.user.id,
+        registeredAtTenant,
+      });
+    } catch (insertErr) {
+      await cleanupAuthUser(signUpResult.user.id);
+      throw insertErr;
+    }
 
     return NextResponse.json({ success: true, mode: "public" }, { status: 201 });
 
