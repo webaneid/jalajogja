@@ -291,7 +291,10 @@ function UserButton({ tenantSlug, baseUrl }: { tenantSlug: string; baseUrl: stri
               <div className="border-t border-border my-1" />
               <button
                 type="button"
-                onClick={() => { void signOut(); setOpen(false); }}
+                onClick={() => {
+                  setOpen(false);
+                  void signOut({ fetchOptions: { onSuccess: () => { window.location.href = baseUrl || "/"; } } });
+                }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <LogOut className="h-4 w-4" />
