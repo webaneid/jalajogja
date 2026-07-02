@@ -12,7 +12,7 @@ import { renderWaTemplate }           from "@/lib/wa-templates";
 import type { WaNotifConfig }         from "@/lib/whatsapp";
 
 const OTP_TTL_MINUTES   = 5;
-const RATE_LIMIT_MAX    = 3;
+const RATE_LIMIT_MAX    = 50;  // TODO sebelum publish: turunkan ke 3
 const RATE_LIMIT_WINDOW = 60; // menit
 
 export async function POST(request: NextRequest) {
