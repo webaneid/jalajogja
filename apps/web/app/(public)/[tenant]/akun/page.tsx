@@ -18,7 +18,7 @@ export default async function AkunPage({ params }: { params: Params }) {
   if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
 
   const identity = await getAkunIdentity(session.user.id);
-  if (!identity) redirect(`/app/${slug}/dashboard`);
+  if (!identity) redirect(`/${slug}/akun-error`);  // layout sudah handle ini, ini safety fallback
 
   const isMember     = identity.type === "member";
   const isIncomplete = isMemberDataIncomplete(identity);

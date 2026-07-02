@@ -33,8 +33,8 @@ export default async function AkunLayout({ children, params }: Props) {
       .from(schema.users)
       .where(eq(schema.users.betterAuthUserId, session.user.id))
       .limit(1);
-    // Pengurus → ke admin dashboard; selain itu → login ulang
-    redirect(tenantUser ? `/app/${slug}/dashboard` : `/${slug}/login`);
+    // Pengurus → ke admin dashboard; selain itu → halaman error (bukan /login, akan loop)
+    redirect(tenantUser ? `/app/${slug}/dashboard` : `/${slug}/akun-error`);
   }
 
   const isMember    = identity.type === "member";
