@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
-import { db, tenants, addons, tenantAddonInstallations, refIkpmCabang } from "@jalajogja/db";
+import { db, tenants, addons, tenantAddonInstallations, refIkpmCabang, createTenantDb } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { ArrowLeft, Globe, ExternalLink } from "lucide-react";
 import { PlatformTenantToggle } from "@/components/platform/tenant-toggle";
 import { AddonToggle } from "./addon-toggle";
 import { LinkCabangClient } from "./link-cabang-client";
+import { CreateOwnerClient } from "./create-owner-client";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -37,6 +38,14 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
       .from(refIkpmCabang).where(eq(refIkpmCabang.id, tenant.refCabangId)).limit(1);
     linkedCabangNama = linked?.nama ?? null;
   }
+
+  // Cek apakah sudah ada owner di tenant.users
+  const { db: tenantDb, schema } = createTenantDb(slug);
+  const [firstUser] = await tenantDb
+    .select({ id: schema.users.id, role: schema.users.role })
+    .from(schema.users)
+    .limit(1);
+  const hasOwner = !!firstUser;
 
   // Semua add-on tersedia + status instalasi untuk tenant ini
   const [allAddons, installations] = await Promise.all([
@@ -166,6 +175,36 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
             currentRefNama={linkedCabangNama}
             cabangList={cabangList}
           />
+        </div>
+      )}
+
+      {/* Owner Pertama — tampil jika belum ada pengurus */}
+      {!hasOwner && (
+        <div className="rounded-xl border border-amber-300 bg-background overflow-hidden">
+          <div className="px-5 py-3 border-b border-amber-200 bg-amber-50 dark:bg-amber-950">
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Belum Ada Pengurus</p>
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+              Buat akun owner pertama agar tenant ini bisa dikelola. Owner bisa login di{" "}
+              <span className="font-mono">jalakarta.com/app/login</span>.
+            </p>
+          </div>
+          <CreateOwnerClient tenantSlug={slug} />
+        </div>
+      )}
+
+      {hasOwner && (
+        <div className="rounded-xl border border-green-200 bg-green-50 dark:bg-green-950 px-5 py-3">
+          <p className="text-sm font-medium text-green-800 dark:text-green-200">
+            Pengurus sudah ada — tenant siap dikelola via{" "}
+            <a
+              href={`${appUrl}/app/${tenant.slug}/dashboard`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+            >
+              dashboard tenant
+            </a>
+          </p>
         </div>
       )}
 

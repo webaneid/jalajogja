@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   db, tenants, platformUsers, members, tenantMemberships,
-  refIkpmCabang, createTenantSchemaInDb,
+  refIkpmCabang, createTenantSchemaInDb, createTenantDb,
+  user as authUser,
 } from "@jalajogja/db";
 import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { getPlatformSession } from "@/lib/platform-auth";
+import { auth } from "@/lib/auth";
 import type { TenantType, MarhalahPeriod } from "@jalajogja/db";
 
 async function requirePlatformSession() {
@@ -212,6 +214,89 @@ export async function toggleCabangActiveAction(id: string, active: boolean) {
 // ─────────────────────────────────────────────────────────────────────────────
 // LINK TENANT ↔ REF CABANG
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUAT OWNER PERTAMA TENANT (tanpa masuk ke dashboard tenant)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function createFirstOwnerAction(
+  tenantSlug:    string,
+  ownerName:     string,
+  ownerEmail:    string,
+  ownerPassword: string,
+): Promise<{ error: string } | { ok: true; email: string }> {
+  await requirePlatformSession();
+
+  if (!ownerName.trim() || !ownerEmail.trim() || ownerPassword.length < 8) {
+    return { error: "Nama, email, dan password (min. 8 karakter) wajib diisi." };
+  }
+
+  const normalizedEmail = ownerEmail.toLowerCase().trim();
+
+  // Pastikan tenant ada
+  const [tenant] = await db.select({ id: tenants.id, slug: tenants.slug })
+    .from(tenants).where(eq(tenants.slug, tenantSlug)).limit(1);
+  if (!tenant) return { error: "Tenant tidak ditemukan." };
+
+  // Cek email belum dipakai di Better Auth
+  const existingAuth = await db.query.user.findFirst({
+    where: eq(authUser.email, normalizedEmail),
+    columns: { id: true },
+  });
+
+  let betterAuthUserId: string;
+  let memberId: string;
+
+  if (existingAuth) {
+    // Akun Better Auth sudah ada — cari member yang terhubung
+    betterAuthUserId = existingAuth.id;
+    const existingMember = await db.query.members.findFirst({
+      where: eq(members.betterAuthUserId, betterAuthUserId),
+      columns: { id: true },
+    });
+    if (!existingMember) {
+      return { error: "Email sudah terdaftar di sistem tapi belum terhubung ke data anggota. Hubungkan manual dari halaman Akun." };
+    }
+    memberId = existingMember.id;
+  } else {
+    // Buat akun baru
+    const signUpResult = await auth.api.signUpEmail({
+      body: { name: ownerName.trim(), email: normalizedEmail, password: ownerPassword },
+    });
+    if (!signUpResult?.user?.id) {
+      return { error: "Gagal membuat akun. Email mungkin sudah terdaftar." };
+    }
+    betterAuthUserId = signUpResult.user.id;
+
+    // Buat member minimal — owner bisa lengkapi nanti via /akun/lengkapi
+    try {
+      const [newMember] = await db.insert(members).values({
+        name: ownerName.trim(),
+        betterAuthUserId,
+      }).returning({ id: members.id });
+      memberId = newMember.id;
+    } catch (err) {
+      // Rollback: hapus Better Auth account agar tidak jadi orphan
+      await db.delete(authUser).where(eq(authUser.id, betterAuthUserId)).catch(() => {});
+      return { error: "Gagal membuat data anggota: " + (err instanceof Error ? err.message : String(err)) };
+    }
+  }
+
+  // Insert ke tenant.users sebagai owner
+  const { db: tenantDb, schema } = createTenantDb(tenantSlug);
+  try {
+    await tenantDb.insert(schema.users).values({
+      betterAuthUserId,
+      memberId,
+      role: "owner",
+    }).onConflictDoNothing();
+  } catch (err) {
+    return { error: "Gagal menambahkan owner ke tenant: " + (err instanceof Error ? err.message : String(err)) };
+  }
+
+  revalidatePath(`/platform/tenants/${tenantSlug}`);
+  return { ok: true, email: normalizedEmail };
+}
 
 export async function linkTenantToCabangAction(
   tenantId: string,
