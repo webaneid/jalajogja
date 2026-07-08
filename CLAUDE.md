@@ -2998,24 +2998,100 @@ return handler.POST(modifiedReq as NextRequest);
 `visikita.com` adalah domain baru yang belum didaftarkan. Dengan fix dinamis, kedua domain
 sekarang berjalan tanpa perlu tambah env var.
 
+### [2026-07] Custom Domain Harus Diisolasi — Middleware Jangan Loloskan `/app/*`
+
+**Bug kritis**: `visikita.com/app/pc-ikpm-jogjakarta/dashboard` bisa dibuka — dashboard
+admin tenant lain terbuka dari custom domain orang lain.
+
+**Root cause**: `middleware.ts` kondisi lama:
+```typescript
+// SALAH — /app/* dikecualikan dari pemeriksaan custom domain
+if (!isOwnHost(host) && !pathname.startsWith("/api/") && !pathname.startsWith("/app/")) {
+  // custom domain routing
+}
+// → /app/* lolos ke admin auth guard → session ada → MASUK
+```
+
+**Fix**: Pisahkan penanganan `/app/*` dan `/platform/*` di custom domain — langsung redirect ke
+URL kanonik `jalakarta.com`:
+```typescript
+if (!isOwnHost(host)) {
+  // Admin/platform paths di custom domain → redirect ke jalakarta.com
+  if (pathname.startsWith("/app/") || pathname.startsWith("/platform/")) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com";
+    return NextResponse.redirect(new URL(pathname + request.nextUrl.search, appUrl).toString(), 302);
+  }
+  // API paths → pass through
+  if (pathname.startsWith("/api/")) return NextResponse.next();
+  // Public content → resolve domain + rewrite
+  // ...
+}
+```
+
+**Aturan yang dikunci:**
+- Custom domain **hanya boleh** melayani konten publik tenant mereka sendiri (`/{slug}/*`)
+- Path `/app/*` (admin dashboard) dan `/platform/*` di custom domain SELALU di-redirect ke `jalakarta.com`
+- Ini bukan hanya masalah UI — membiarkan custom domain akses `/app/*` adalah security hole: sesi cookie dari custom domain diakui oleh middleware, membuka dashboard tenant manapun
+
+**Efek domino — semua link `/app/` di area publik wajib pakai URL absolut:**
+Karena middleware kini redirect `/app/*` di custom domain, link relatif seperti
+`href="/app/${slug}/dashboard"` akan menyebabkan redirect loop di custom domain.
+Setiap link atau `redirect()` ke path admin WAJIB pakai URL absolut:
+
+```typescript
+// SALAH — relatif, jadi visikita.com/app/pc-ikpm-jogjakarta/dashboard
+href={`/app/${tenantSlug}/dashboard`}
+redirect(`/app/${slug}/dashboard`)
+
+// BENAR — absolut, selalu ke jalakarta.com
+href={`${process.env.NEXT_PUBLIC_APP_URL}/app/${tenantSlug}/dashboard`}
+redirect(`${process.env.NEXT_PUBLIC_APP_URL}/app/${slug}/dashboard`)
+```
+
+**6 file yang difix (commit `7718a36`):**
+- `middleware.ts` — root fix: redirect `/app/*` dan `/platform/*` di custom domain
+- `flex-header.tsx` — Dashboard Admin link → URL absolut
+- `akun/layout.tsx` — redirect pengurus → URL absolut
+- `akun/event/page.tsx` — redirect → URL absolut
+- `invite/page.tsx` — 2 link "Buka Dashboard" → URL absolut
+- `invite-accept-client.tsx` — `router.push` → `window.location.href = appUrl/app/...`
+
+**Pattern grep untuk audit mendatang:**
+```bash
+grep -rn '`/app/' apps/web/app/\(public\)/ apps/web/components/website/public/
+# harus return 0 baris
+```
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix login custom domain** (sesi 2026-07-08, lanjutan).
-- Sesi ini (lanjutan 2026-07-08):
-  - **Fix koreksi instruksi custom domain UI** — `/settings/domain` menampilkan Cloudflare proxy sebagai WAJIB (salah kaprah). Arsitektur aktual: Let's Encrypt langsung di VPS, Cloudflare DNS-only (grey cloud). Instruksi UI dikoreksi. Commit `6437437` (sudah ada dari sesi sebelumnya, CLAUDE.md ini di-update sesi ini).
-  - **Setup `visikita.com` sebagai custom domain** — DNS propagasi ✓ → certbot cert issued ✓ → nginx config dibuat manual ✓ → DB `custom_domain_status = 'active'` ✓ → `curl https://visikita.com` return 200 OK.
-  - **Bug teridentifikasi: login gagal di `visikita.com`** — Dua root cause:
-    1. Better Auth CSRF check menolak Origin `https://visikita.com` (tidak di trustedOrigins)
-    2. Link `forgot-password` dan `register` hardcode `/${slug}/` → URL salah di custom domain
-  - **Fix dinamis auth route** — `app/api/auth/[...all]/route.ts` diubah: intercept POST, cek custom domain aktif di DB, spoof Origin ke BETTER_AUTH_URL. Domain baru otomatis diizinkan tanpa restart. Commit `b1f017b`.
-  - **Fix link URL di login form** — Prop `baseUrl` ditambah ke `LoginForm`. Dihitung server-side via `isOwnHost(host)`. Custom domain → `baseUrl = ""`, links bersih tanpa slug prefix. Commit `b1f017b`.
-  - **TypeScript 0 errors**.
+- Terakhir dikerjakan: **Fix security custom domain — cross-tenant access** (sesi 2026-07-08, lanjutan).
+- Sesi ini (lanjutan 2 2026-07-08):
+  - **Bug kritis ditemukan: custom domain bisa akses admin dashboard tenant manapun** —
+    `visikita.com/app/pc-ikpm-jogjakarta/dashboard` terbuka karena middleware mengecualikan `/app/*`
+    dari pemeriksaan custom domain → lolos ke admin auth guard → session ada → masuk.
+  - **Root cause middleware**: `!pathname.startsWith("/app/")` di baris kondisi custom domain
+    berarti semua path `/app/*` di custom domain tidak pernah diperiksa validitas tenantnya.
+  - **Fix middleware**: path `/app/*` dan `/platform/*` di custom domain di-redirect ke
+    `jalakarta.com/app/...` (URL kanonik). Commit `7718a36`.
+  - **Fix flex-header**: Dashboard Admin link pakai URL absolut (`NEXT_PUBLIC_APP_URL/app/slug/dashboard`)
+    bukan relatif — sebelumnya jadi `visikita.com/app/pc-ikpm-jogjakarta/dashboard`.
+  - **Fix 4 file lain**: semua `redirect()` dan link `/app/...` di area publik
+    (akun/layout, akun/event/page, invite/page, invite-accept-client) diubah ke URL absolut.
+  - **TypeScript 0 errors**. Push: commit `7718a36`.
   - **Lessons Learned ditambahkan** di CLAUDE.md.
 - Deploy ke VPS:
   ```bash
   cd /var/www/jalajogja && git pull
   bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env
   ```
-  Tidak ada migration DB baru. Setelah deploy, login di `visikita.com` harus berfungsi.
+  Tidak ada migration DB baru.
+- Sesi sebelumnya (lanjutan 2026-07-08):
+  - **Fix koreksi instruksi custom domain UI** — `/settings/domain` menampilkan Cloudflare proxy sebagai WAJIB (salah kaprah). Arsitektur aktual: Let's Encrypt langsung di VPS, Cloudflare DNS-only (grey cloud). Instruksi UI dikoreksi. Commit `6437437`.
+  - **Setup `visikita.com` sebagai custom domain** — DNS propagasi ✓ → certbot cert issued ✓ → nginx config dibuat manual ✓ → DB `custom_domain_status = 'active'` ✓.
+  - **Bug teridentifikasi: login gagal di `visikita.com`** — Dua root cause:
+    1. Better Auth CSRF check menolak Origin `https://visikita.com` (tidak di trustedOrigins)
+    2. Link `forgot-password` dan `register` hardcode `/${slug}/` → URL salah di custom domain
+  - **Fix dinamis auth route** — `app/api/auth/[...all]/route.ts` diubah: intercept POST, cek custom domain aktif di DB, spoof Origin ke BETTER_AUTH_URL. Domain baru otomatis diizinkan tanpa restart. Commit `b1f017b`.
+  - **Fix link URL di login form** — Prop `baseUrl` ditambah ke `LoginForm`. Custom domain → `baseUrl = ""`. Commit `b1f017b`.
 - Sesi sebelumnya (2026-07-08):
   - **Backbone IKPM selesai** — tiga tipe tenant (cabang/marhalah/forum), `ref_ikpm_cabang` 136 cabang PP IKPM, `primary_cabang_ref_id` di members, auto-populate memberships. Commit `b739b47` + `4443d21`.
   - **Platform admin cabang** — `/platform/cabang` CRUD 136 PC IKPM resmi. Platform tenant management diupdate: list dengan filter tipe, form dinamis buat tenant baru.
