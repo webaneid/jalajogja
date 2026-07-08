@@ -69,15 +69,16 @@ export type EventFormProps = {
     coverId:            string | null;
     coverUrl:           string | null;
     tickets: Array<{
-      id?:          string;
-      name:         string;
-      description?: string;
-      price:        number;
-      quota?:       number | null;
-      isActive:     boolean;
-      saleStartsAt?: string | null;
-      saleEndsAt?:   string | null;
-      sortOrder:    number;
+      id?:                string;
+      name:               string;
+      description?:       string;
+      price:              number;
+      quota?:             number | null;
+      isActive:           boolean;
+      saleStartsAt?:      string | null;
+      saleEndsAt?:        string | null;
+      sortOrder:          number;
+      requiresMembership: boolean;
     }>;
     seo: SeoValues;
   };
@@ -171,14 +172,15 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
   const [tickets,     setTickets]     = useState<TicketLocal[]>(
     initialData.tickets.map((t) => ({
       ...t,
-      id:           t.id ?? null,
-      description:  t.description ?? "",
-      quota:        t.quota ?? null,
-      saleStartsAt: t.saleStartsAt ?? null,
-      saleEndsAt:   t.saleEndsAt   ?? null,
-      _key:         nextKey(),
-      _expanded:    false,
-      _isGratis:    (t.price ?? 0) === 0,
+      id:                 t.id ?? null,
+      description:        t.description ?? "",
+      quota:              t.quota ?? null,
+      saleStartsAt:       t.saleStartsAt ?? null,
+      saleEndsAt:         t.saleEndsAt   ?? null,
+      requiresMembership: t.requiresMembership ?? false,
+      _key:               nextKey(),
+      _expanded:          false,
+      _isGratis:          (t.price ?? 0) === 0,
     }))
   );
   const [seo,         setSeo]         = useState<SeoValues>(initialData.seo);
@@ -216,18 +218,19 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
     setTickets((prev) => [
       ...prev,
       {
-        _key:         nextKey(),
-        _expanded:    true,
-        _isGratis:    true,
-        id:           null,
-        name:         "Tiket Baru",
-        description:  "",
-        price:        0,
-        quota:        null,
-        isActive:     true,
-        saleStartsAt: null,
-        saleEndsAt:   null,
-        sortOrder:    order,
+        _key:               nextKey(),
+        _expanded:          true,
+        _isGratis:          true,
+        id:                 null,
+        name:               "Tiket Baru",
+        description:        "",
+        price:              0,
+        quota:              null,
+        isActive:           true,
+        saleStartsAt:       null,
+        saleEndsAt:         null,
+        sortOrder:          order,
+        requiresMembership: false,
       },
     ]);
   }
@@ -270,15 +273,16 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
       linkedCampaignId:  showDonationPrompt ? (linkedCampaignId ?? null) : null,
       coverId:           cover?.id ?? null,
       tickets: tickets.map((t, i) => ({
-        id:           t.id ?? undefined,
-        name:         t.name.trim() || "Tiket",
-        description:  t.description?.trim() || null,
-        price:        isNaN(t.price) ? 0 : t.price,
-        quota:        t.quota,
-        isActive:     t.isActive,
-        saleStartsAt: t.saleStartsAt || null,
-        saleEndsAt:   t.saleEndsAt   || null,
-        sortOrder:    i,
+        id:                 t.id ?? undefined,
+        name:               t.name.trim() || "Tiket",
+        description:        t.description?.trim() || null,
+        price:              isNaN(t.price) ? 0 : t.price,
+        quota:              t.quota,
+        isActive:           t.isActive,
+        saleStartsAt:       t.saleStartsAt || null,
+        saleEndsAt:         t.saleEndsAt   || null,
+        sortOrder:          i,
+        requiresMembership: t.requiresMembership,
       })),
       metaTitle:     seo.metaTitle     || null,
       metaDesc:      seo.metaDesc      || null,
@@ -775,6 +779,13 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
                         label="Tiket aktif (tersedia untuk dibeli)"
                         checked={ticket.isActive}
                         onChange={(v) => updateTicket(ticket._key, { isActive: v })}
+                      />
+
+                      <ToggleRow
+                        label="Wajib Anggota Terdaftar"
+                        hint="Hanya anggota terdaftar di cabang ini yang dapat memesan tiket ini."
+                        checked={ticket.requiresMembership}
+                        onChange={(v) => updateTicket(ticket._key, { requiresMembership: v })}
                       />
                     </div>
                   )}

@@ -12,12 +12,13 @@ import { DonationPromptModal } from "@/components/event/public/donation-prompt-m
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type TicketInfo = {
-  id:          string;
-  name:        string;
-  price:       number;
-  quota:       number | null;
-  description: string | null | undefined;
-  usedCount?:  number;  // jumlah pendaftaran aktif (untuk tampil sisa kuota di form)
+  id:                 string;
+  name:               string;
+  price:              number;
+  quota:              number | null;
+  description:        string | null | undefined;
+  usedCount?:         number;  // jumlah pendaftaran aktif (untuk tampil sisa kuota di form)
+  requiresMembership: boolean;
 };
 
 type BankAccount = {
@@ -43,6 +44,8 @@ export type EventRegisterFormProps = {
   banks:              BankAccount[];
   qrisAccounts:       QrisAccount[];
   hasPaidTicket:      boolean;
+  // Apakah user yang sedang login sudah terdaftar sebagai anggota di cabang ini
+  currentUserIsEnrolled: boolean;
   // Donation prompt (opsional — hanya jika admin aktifkan)
   donationPrompt?:    {
     campaignId:    string;
@@ -53,6 +56,8 @@ export type EventRegisterFormProps = {
   defaultAttendeeName?:  string;
   defaultAttendeePhone?: string;
   defaultAttendeeEmail?: string;
+  // URL ke halaman lengkapi keanggotaan (untuk redirect jika tiket butuh anggota)
+  baseUrl: string;
 };
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -71,10 +76,12 @@ export function EventRegisterForm({
   banks,
   qrisAccounts,
   hasPaidTicket,
+  currentUserIsEnrolled,
   donationPrompt,
   defaultAttendeeName  = "",
   defaultAttendeePhone = "",
   defaultAttendeeEmail = "",
+  baseUrl,
 }: EventRegisterFormProps) {
   // Pilihan tiket
   const [selectedTicketId, setSelectedTicketId] = useState<string>(tickets[0]?.id ?? "");
@@ -118,6 +125,12 @@ export function EventRegisterForm({
     }
     if (!selectedTicketId) {
       setError("Pilih tiket terlebih dahulu.");
+      return;
+    }
+    // Guard client-side untuk tiket wajib anggota
+    const chosenTicket = tickets.find((t) => t.id === selectedTicketId);
+    if (chosenTicket?.requiresMembership && !currentUserIsEnrolled) {
+      setError("Tiket ini hanya untuk anggota terdaftar. Silakan lengkapi data keanggotaan terlebih dahulu.");
       return;
     }
 
@@ -266,50 +279,111 @@ export function EventRegisterForm({
         <div className="space-y-2">
           <Label className="text-sm font-medium">Pilih Tiket</Label>
           <div className="space-y-2">
-            {tickets.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setSelectedTicketId(t.id)}
-                className={`w-full text-left rounded-lg border p-3 transition-colors ${
-                  selectedTicketId === t.id
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50 hover:bg-muted/30"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Ticket className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="font-medium text-sm truncate">{t.name}</span>
+            {tickets.map((t) => {
+              const memberLocked = t.requiresMembership && !currentUserIsEnrolled;
+              return memberLocked ? (
+                // Tiket terkunci — tampil tapi tidak bisa dipilih
+                <div
+                  key={t.id}
+                  className="w-full rounded-lg border border-border bg-muted/10 p-3 opacity-70"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Ticket className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="font-medium text-sm truncate">{t.name}</span>
+                      <span className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded-full font-medium">
+                        Anggota
+                      </span>
+                    </div>
+                    <span className="text-sm font-semibold shrink-0 text-muted-foreground">
+                      {t.price <= 0 ? "Gratis" : formatRupiah(t.price)}
+                    </span>
                   </div>
-                  <span className="text-sm font-semibold shrink-0">
-                    {t.price <= 0 ? "Gratis" : formatRupiah(t.price)}
-                  </span>
+                  {t.description && (
+                    <p className="mt-1 ml-6 text-xs text-muted-foreground">{t.description}</p>
+                  )}
+                  <a
+                    href={`${baseUrl}/akun/lengkapi`}
+                    className="mt-2 ml-6 text-xs text-primary hover:underline inline-flex items-center gap-1"
+                  >
+                    Lengkapi Keanggotaan →
+                  </a>
                 </div>
-                {t.description && (
-                  <p className="mt-1 ml-6 text-xs text-muted-foreground">{t.description}</p>
-                )}
-                {t.quota !== null && (
-                  <p className="mt-0.5 ml-6 text-xs text-muted-foreground">Kuota: {t.quota} orang</p>
-                )}
-              </button>
-            ))}
+              ) : (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setSelectedTicketId(t.id)}
+                  className={`w-full text-left rounded-lg border p-3 transition-colors ${
+                    selectedTicketId === t.id
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50 hover:bg-muted/30"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Ticket className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="font-medium text-sm truncate">{t.name}</span>
+                      {t.requiresMembership && (
+                        <span className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded-full font-medium">
+                          Anggota
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-sm font-semibold shrink-0">
+                      {t.price <= 0 ? "Gratis" : formatRupiah(t.price)}
+                    </span>
+                  </div>
+                  {t.description && (
+                    <p className="mt-1 ml-6 text-xs text-muted-foreground">{t.description}</p>
+                  )}
+                  {t.quota !== null && (
+                    <p className="mt-0.5 ml-6 text-xs text-muted-foreground">Kuota: {t.quota} orang</p>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
       {/* Info tiket tunggal */}
-      {tickets.length === 1 && (
-        <div className="rounded-lg border border-border bg-muted/20 p-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Ticket className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">{tickets[0].name}</span>
+      {tickets.length === 1 && (() => {
+        const t = tickets[0];
+        const memberLocked = t.requiresMembership && !currentUserIsEnrolled;
+        return memberLocked ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-700 p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Ticket className="h-4 w-4 text-amber-600" />
+                <span className="text-sm font-medium">{t.name}</span>
+              </div>
+              <span className="text-sm font-semibold">
+                {t.price <= 0 ? "Gratis" : formatRupiah(t.price)}
+              </span>
+            </div>
+            <p className="text-xs text-amber-800 dark:text-amber-200">
+              Tiket ini hanya tersedia untuk anggota terdaftar.
+            </p>
+            <a
+              href={`${baseUrl}/akun/lengkapi`}
+              className="btn btn-primary btn-sm inline-flex"
+            >
+              Lengkapi Keanggotaan →
+            </a>
           </div>
-          <span className="text-sm font-semibold">
-            {tickets[0].price <= 0 ? "Gratis" : formatRupiah(tickets[0].price)}
-          </span>
-        </div>
-      )}
+        ) : (
+          <div className="rounded-lg border border-border bg-muted/20 p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Ticket className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">{t.name}</span>
+            </div>
+            <span className="text-sm font-semibold">
+              {t.price <= 0 ? "Gratis" : formatRupiah(t.price)}
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Data Peserta */}
       <div className="space-y-3">

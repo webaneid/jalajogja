@@ -2,7 +2,7 @@
 
 import { eq, count, inArray, and, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createTenantDb, generateFinancialNumber, recordIncome, createLinkedInvoice, syncInvoicePayment, db as publicDb, members, contacts } from "@jalajogja/db";
+import { createTenantDb, generateFinancialNumber, recordIncome, createLinkedInvoice, syncInvoicePayment, db as publicDb, members, contacts, tenantMemberships, tenants } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 import { auth }           from "@/lib/auth";
@@ -16,15 +16,16 @@ type ActionResult<T = void> =
   | { success: false; error: string };
 
 export type TicketInput = {
-  id?:           string | null;
-  name:          string;
-  description?:  string | null;
-  price:         number;
-  quota?:        number | null;
-  isActive:      boolean;
-  saleStartsAt?: string | null;
-  saleEndsAt?:   string | null;
-  sortOrder:     number;
+  id?:                  string | null;
+  name:                 string;
+  description?:         string | null;
+  price:                number;
+  quota?:               number | null;
+  isActive:             boolean;
+  saleStartsAt?:        string | null;
+  saleEndsAt?:          string | null;
+  sortOrder:            number;
+  requiresMembership:   boolean;
 };
 
 export type EventData = {
@@ -143,14 +144,15 @@ async function syncTickets(
     await db
       .update(schema.eventTickets)
       .set({
-        name:         t.name.trim(),
-        description:  t.description?.trim() ?? null,
-        price:        String(t.price ?? 0),
-        quota:        t.quota ?? null,
-        isActive:     t.isActive,
-        saleStartsAt: t.saleStartsAt ? new Date(t.saleStartsAt) : null,
-        saleEndsAt:   t.saleEndsAt   ? new Date(t.saleEndsAt)   : null,
-        sortOrder:    t.sortOrder,
+        name:                 t.name.trim(),
+        description:          t.description?.trim() ?? null,
+        price:                String(t.price ?? 0),
+        quota:                t.quota ?? null,
+        isActive:             t.isActive,
+        saleStartsAt:         t.saleStartsAt ? new Date(t.saleStartsAt) : null,
+        saleEndsAt:           t.saleEndsAt   ? new Date(t.saleEndsAt)   : null,
+        sortOrder:            t.sortOrder,
+        requiresMembership:   t.requiresMembership,
       })
       .where(eq(schema.eventTickets.id, t.id!));
   }
@@ -161,14 +163,15 @@ async function syncTickets(
     await db.insert(schema.eventTickets).values(
       newTickets.map((t) => ({
         eventId,
-        name:         t.name.trim(),
-        description:  t.description?.trim() ?? null,
-        price:        String(t.price ?? 0),
-        quota:        t.quota ?? null,
-        isActive:     t.isActive,
-        saleStartsAt: t.saleStartsAt ? new Date(t.saleStartsAt) : null,
-        saleEndsAt:   t.saleEndsAt   ? new Date(t.saleEndsAt)   : null,
-        sortOrder:    t.sortOrder,
+        name:                 t.name.trim(),
+        description:          t.description?.trim() ?? null,
+        price:                String(t.price ?? 0),
+        quota:                t.quota ?? null,
+        isActive:             t.isActive,
+        saleStartsAt:         t.saleStartsAt ? new Date(t.saleStartsAt) : null,
+        saleEndsAt:           t.saleEndsAt   ? new Date(t.saleEndsAt)   : null,
+        sortOrder:            t.sortOrder,
+        requiresMembership:   t.requiresMembership,
       }))
     );
   }
@@ -572,6 +575,34 @@ export async function registerForEventAction(
     return { success: false, error: "Penjualan tiket belum dimulai." };
   if (ticket.saleEndsAt && now > ticket.saleEndsAt)
     return { success: false, error: "Penjualan tiket sudah berakhir." };
+
+  // Guard: tiket wajib anggota terdaftar
+  if (ticket.requiresMembership) {
+    if (!resolvedMemberId)
+      return { success: false, error: "Tiket ini hanya untuk anggota terdaftar. Silakan login dan lengkapi keanggotaan terlebih dahulu." };
+
+    // Cek apakah member terdaftar di tenant ini (status active atau alumni)
+    const [tenantRow] = await publicDb
+      .select({ id: tenants.id })
+      .from(tenants)
+      .where(eq(tenants.slug, slug))
+      .limit(1);
+
+    if (tenantRow) {
+      const [membership] = await publicDb
+        .select({ id: tenantMemberships.id })
+        .from(tenantMemberships)
+        .where(and(
+          eq(tenantMemberships.tenantId, tenantRow.id),
+          eq(tenantMemberships.memberId, resolvedMemberId),
+          sql`${tenantMemberships.status} IN ('active', 'alumni')`,
+        ))
+        .limit(1);
+
+      if (!membership)
+        return { success: false, error: "Tiket ini hanya untuk anggota terdaftar cabang ini. Lengkapi data keanggotaan Anda terlebih dahulu." };
+    }
+  }
 
   try {
     const regNumber = await generateRegistrationNumber(tenantDb);

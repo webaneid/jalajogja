@@ -736,9 +736,10 @@ export async function createTenantSchemaInDb(
         quota          INTEGER,
         sort_order     INTEGER       NOT NULL DEFAULT 0,
         is_active      BOOLEAN       NOT NULL DEFAULT true,
-        sale_starts_at TIMESTAMPTZ,
-        sale_ends_at   TIMESTAMPTZ,
-        created_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        sale_starts_at      TIMESTAMPTZ,
+        sale_ends_at        TIMESTAMPTZ,
+        requires_membership BOOLEAN       NOT NULL DEFAULT false,
+        created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
       )
     `));
 

@@ -1,11 +1,12 @@
 // Halaman publik event — tanpa auth, siapapun bisa akses dan mendaftar
-import { createTenantDb, db, tenants, members, contacts, profiles, getSettings } from "@jalajogja/db";
+import { createTenantDb, db, tenants, members, contacts, profiles, tenantMemberships, getSettings } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import { eq, and, or, count, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { CalendarDays, MapPin, Globe, Building2, Navigation, ExternalLink, Video, Ticket, UserCheck, CheckCircle2 } from "lucide-react";
+import { isOwnHost } from "@/lib/is-own-host";
 import { EventRegisterForm } from "@/components/event/event-register-form";
 import { renderBody } from "@/lib/letter-render";
 import { generateQrDataUrl } from "@/lib/qr-code";
@@ -129,6 +130,10 @@ export default async function PublicEventPage({
 
   if (!tenant || !tenant.isActive) notFound();
 
+  const hdrs    = await headers();
+  const host    = hdrs.get("host") ?? "";
+  const baseUrl = isOwnHost(host) ? `/${tenantSlug}` : "";
+
   const { db: tenantDb, schema } = createTenantDb(tenantSlug);
 
   // Fetch event by slug — hanya yang published
@@ -226,16 +231,17 @@ export default async function PublicEventPage({
   // Bangun info tiket untuk form (dengan sisa kuota)
   const ticketCountMap = new Map(ticketCounts.map((tc) => [tc.ticketId, tc.used]));
   const ticketsForForm = tickets.map((t) => ({
-    id:          t.id,
-    name:        t.name,
-    price:       parseFloat(String(t.price)),
-    quota:       t.quota,
-    description: t.description,
-    usedCount:   ticketCountMap.get(t.id) ?? 0,
+    id:                 t.id,
+    name:               t.name,
+    price:              parseFloat(String(t.price)),
+    quota:              t.quota,
+    description:        t.description,
+    usedCount:          ticketCountMap.get(t.id) ?? 0,
+    requiresMembership: t.requiresMembership,
   }));
 
   // Pre-fill data peserta dari session + cek sudah terdaftar
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await auth.api.getSession({ headers: hdrs });
   let defaultAttendeeName  = "";
   let defaultAttendeePhone = "";
   let defaultAttendeeEmail = "";
@@ -312,6 +318,21 @@ export default async function PublicEventPage({
         .limit(1);
       if (existing) alreadyRegistered = existing;
     }
+  }
+
+  // Cek apakah user terdaftar sebagai anggota cabang ini
+  let currentUserIsEnrolled = false;
+  if (resolvedMemberId && tenant) {
+    const [membership] = await db
+      .select({ id: tenantMemberships.id })
+      .from(tenantMemberships)
+      .where(and(
+        eq(tenantMemberships.tenantId, tenant.id),
+        eq(tenantMemberships.memberId, resolvedMemberId),
+        sql`${tenantMemberships.status} IN ('active', 'alumni')`,
+      ))
+      .limit(1);
+    currentUserIsEnrolled = !!membership;
   }
 
   // QR Code tiket digital — generate server-side jika sudah terdaftar
@@ -592,10 +613,12 @@ export default async function PublicEventPage({
                   banks={banks}
                   qrisAccounts={qrisAccounts}
                   hasPaidTicket={hasPaidTicket}
+                  currentUserIsEnrolled={currentUserIsEnrolled}
                   donationPrompt={donationPrompt}
                   defaultAttendeeName={defaultAttendeeName}
                   defaultAttendeePhone={defaultAttendeePhone}
                   defaultAttendeeEmail={defaultAttendeeEmail}
+                  baseUrl={baseUrl}
                 />
               </div>
             )}

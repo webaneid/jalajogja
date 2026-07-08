@@ -77,19 +77,20 @@ export default async function AcaraEditPage({
         coverId:            event.coverId            ?? null,
         coverUrl,
         tickets: tickets.map((t) => ({
-          id:           t.id,
-          name:         t.name,
-          description:  t.description   ?? "",
-          price:        parseFloat(String(t.price)),
-          quota:        t.quota          ?? null,
-          isActive:     t.isActive,
-          saleStartsAt: t.saleStartsAt
+          id:                 t.id,
+          name:               t.name,
+          description:        t.description   ?? "",
+          price:              parseFloat(String(t.price)),
+          quota:              t.quota          ?? null,
+          isActive:           t.isActive,
+          saleStartsAt:       t.saleStartsAt
             ? new Date(t.saleStartsAt).toISOString().slice(0, 16)
             : null,
-          saleEndsAt:   t.saleEndsAt
+          saleEndsAt:         t.saleEndsAt
             ? new Date(t.saleEndsAt).toISOString().slice(0, 16)
             : null,
-          sortOrder:    t.sortOrder,
+          sortOrder:          t.sortOrder,
+          requiresMembership: t.requiresMembership,
         })),
         seo: {
           metaTitle:      event.metaTitle     ?? "",

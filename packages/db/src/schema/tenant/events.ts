@@ -135,6 +135,9 @@ export function createEventTicketsTable(s: ReturnType<typeof pgSchema>) {
     saleStartsAt: timestamp("sale_starts_at", { withTimezone: true }),
     saleEndsAt:   timestamp("sale_ends_at",   { withTimezone: true }),
 
+    // Akses tiket — jika true, hanya anggota terdaftar di tenant ini yang bisa daftar
+    requiresMembership: boolean("requires_membership").notNull().default(false),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   }, (t) => ({
     eventIdx: index("event_tickets_event_id_idx").on(t.eventId),
