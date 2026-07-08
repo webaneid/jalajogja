@@ -31,7 +31,7 @@ export default async function MitraProdukPage({ params }: { params: Params }) {
     return (
       <div className="text-center py-12">
         <p className="text-sm text-muted-foreground">Akses ditolak. Pastikan Anda sudah terdaftar sebagai mitra aktif.</p>
-        <a href={`/${slug}/akun/mitra`} className="text-sm text-primary hover:underline mt-2 block">Kembali ke Mitra</a>
+        <a href="../" className="text-sm text-primary hover:underline mt-2 block">Kembali ke Mitra</a>
       </div>
     );
   }
@@ -48,7 +48,7 @@ export default async function MitraProdukPage({ params }: { params: Params }) {
           <h1 className="text-xl font-semibold">Produk Saya</h1>
         </div>
         <a
-          href={`/${slug}/akun/mitra/produk/new`}
+          href="new"
           className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" /> Tambah Produk
@@ -58,7 +58,7 @@ export default async function MitraProdukPage({ params }: { params: Params }) {
       {products.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border py-16 text-center">
           <p className="text-muted-foreground text-sm">Belum ada produk.</p>
-          <a href={`/${slug}/akun/mitra/produk/new`} className="text-primary text-sm hover:underline mt-1 block">
+          <a href="new" className="text-primary text-sm hover:underline mt-1 block">
             + Tambah produk pertama
           </a>
         </div>
@@ -69,7 +69,7 @@ export default async function MitraProdukPage({ params }: { params: Params }) {
             return (
               <a
                 key={p.id}
-                href={`/${slug}/akun/mitra/produk/${p.id}/edit`}
+                href={`${p.id}/edit`}
                 className="flex items-center gap-4 rounded-lg border border-border bg-card p-3 hover:border-primary/50 transition-colors"
               >
                 <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-muted">

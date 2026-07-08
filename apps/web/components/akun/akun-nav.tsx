@@ -36,11 +36,12 @@ const PUBLIC_NAV_ITEMS: NavItem[] = [
 type Props = {
   slug:     string;
   isMember: boolean;
+  baseUrl:  string;
 };
 
-export function AkunNav({ slug, isMember }: Props) {
+export function AkunNav({ slug, isMember, baseUrl }: Props) {
   const pathname = usePathname();
-  const base     = `/${slug}/akun`;
+  const base     = `${baseUrl}/akun`;
 
   const items = isMember ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
 
@@ -70,7 +71,7 @@ export function AkunNav({ slug, isMember }: Props) {
 
       <div className="pt-2 mt-2 border-t border-border">
         <button
-          onClick={() => void signOut({ fetchOptions: { onSuccess: () => { window.location.href = `/${slug}`; } } })}
+          onClick={() => void signOut({ fetchOptions: { onSuccess: () => { window.location.href = baseUrl || "/"; } } })}
           className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-destructive transition-colors"
         >
           <LogOut className="h-4 w-4 shrink-0" />

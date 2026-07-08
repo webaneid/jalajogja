@@ -2,6 +2,7 @@ import { redirect }  from "next/navigation";
 import { headers }   from "next/headers";
 import { eq, and }   from "drizzle-orm";
 import { auth }      from "@/lib/auth";
+import { isOwnHost } from "@/lib/is-own-host";
 import { db, tenantMemberships, tenants, members, refIkpmCabang } from "@jalajogja/db";
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import {
@@ -13,12 +14,15 @@ type Params = Promise<{ tenant: string }>;
 
 export default async function AkunPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
+  const hdrs    = await headers();
+  const host    = hdrs.get("host") ?? "";
+  const baseUrl = isOwnHost(host) ? `/${slug}` : "";
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
+  const session = await auth.api.getSession({ headers: hdrs });
+  if (!session?.user) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun`);
 
   const identity = await getAkunIdentity(session.user.id);
-  if (!identity) redirect(`/${slug}/akun-error`);  // layout sudah handle ini, ini safety fallback
+  if (!identity) redirect(`${baseUrl}/akun-error`);  // layout sudah handle ini, ini safety fallback
 
   const isMember     = identity.type === "member";
   const isIncomplete = isMemberDataIncomplete(identity);
@@ -78,7 +82,7 @@ export default async function AkunPage({ params }: { params: Params }) {
       {/* Banner lengkapi data */}
       {isMember && isIncomplete && (
         <a
-          href={`/${slug}/akun/lengkapi`}
+          href={`${baseUrl}/akun/lengkapi`}
           className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 p-4 hover:bg-amber-100 dark:hover:bg-amber-900 transition-colors"
         >
           <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
@@ -100,7 +104,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               <BadgeCheck className="h-4 w-4 text-primary" />
               Keanggotaan IKPM
             </div>
-            <a href={`/${slug}/akun/lengkapi`} className="text-xs text-primary hover:underline">
+            <a href={`${baseUrl}/akun/lengkapi`} className="text-xs text-primary hover:underline">
               {isIncomplete ? "Lengkapi →" : "Edit →"}
             </a>
           </div>
@@ -126,7 +130,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               <>
                 <dt className="text-muted-foreground">PC IKPM</dt>
                 <dd className="text-muted-foreground italic text-xs">
-                  <a href={`/${slug}/akun/lengkapi`} className="underline hover:text-foreground">Pilih cabang Anda →</a>
+                  <a href={`${baseUrl}/akun/lengkapi`} className="underline hover:text-foreground">Pilih cabang Anda →</a>
                 </dd>
               </>
             )}
@@ -139,7 +143,7 @@ export default async function AkunPage({ params }: { params: Params }) {
           </dl>
           {identity.memberId && (
             <div className="pt-2 border-t border-border">
-              <a href={`/${slug}/anggota/${identity.memberId}`} className="text-sm text-primary hover:underline">
+              <a href={`${baseUrl}/anggota/${identity.memberId}`} className="text-sm text-primary hover:underline">
                 Lihat profil lengkap →
               </a>
             </div>
@@ -151,9 +155,9 @@ export default async function AkunPage({ params }: { params: Params }) {
       {isMember && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[
-            { href: `/${slug}/akun/pesantren`, icon: BookOpen,   label: "Pesantren", desc: "Data keterlibatan pesantren" },
-            { href: `/${slug}/akun/usaha`,     icon: Building2,  label: "Usaha",     desc: "Data usaha & bisnis" },
-            { href: `/${slug}/akun/media`,     icon: ImageIcon,  label: "Foto Saya", desc: "Kelola foto yang Anda upload" },
+            { href: `${baseUrl}/akun/pesantren`, icon: BookOpen,   label: "Pesantren", desc: "Data keterlibatan pesantren" },
+            { href: `${baseUrl}/akun/usaha`,     icon: Building2,  label: "Usaha",     desc: "Data usaha & bisnis" },
+            { href: `${baseUrl}/akun/media`,     icon: ImageIcon,  label: "Foto Saya", desc: "Kelola foto yang Anda upload" },
           ].map(({ href, icon: Icon, label, desc }) => (
             <a key={href} href={href}
               className="flex items-center gap-3 rounded-xl border border-border p-4 hover:border-primary/50 hover:bg-muted/40 transition-all">
@@ -170,10 +174,10 @@ export default async function AkunPage({ params }: { params: Params }) {
       {/* Quick links layanan */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { href: `/${slug}/akun/transaksi`, icon: Receipt,      label: "Transaksi", desc: "Riwayat invoice & pembayaran" },
-          { href: `/${slug}/campaign`,        icon: Heart,        label: "Donasi",    desc: "Kampanye & infaq" },
-          { href: `/${slug}/agenda`,          icon: CalendarDays, label: "Agenda",    desc: "Event & kegiatan" },
-          { href: `/${slug}/produk`,          icon: ShoppingBag,  label: "Produk",    desc: "Belanja produk" },
+          { href: `${baseUrl}/akun/transaksi`, icon: Receipt,      label: "Transaksi", desc: "Riwayat invoice & pembayaran" },
+          { href: `${baseUrl}/campaign`,        icon: Heart,        label: "Donasi",    desc: "Kampanye & infaq" },
+          { href: `${baseUrl}/agenda`,          icon: CalendarDays, label: "Agenda",    desc: "Event & kegiatan" },
+          { href: `${baseUrl}/produk`,          icon: ShoppingBag,  label: "Produk",    desc: "Belanja produk" },
         ].map(({ href, icon: Icon, label, desc }) => (
           <a key={href} href={href}
             className="flex items-center gap-3 rounded-xl border border-border p-4 hover:border-primary/50 hover:bg-muted/40 transition-all">

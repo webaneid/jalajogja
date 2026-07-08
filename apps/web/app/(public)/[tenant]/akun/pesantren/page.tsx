@@ -898,7 +898,7 @@ export default function PesantrenPage() {
         Tambah Pesantren
       </button>
 
-      <a href={`/${slug}/akun`}
+      <a href="../"
         className="inline-flex items-center gap-2 rounded-lg border border-border px-5 py-2.5 text-sm font-medium hover:bg-muted transition-colors">
         <ArrowLeft className="size-4" />
         Kembali ke Dashboard

@@ -97,7 +97,7 @@ export default function AkunMediaPage() {
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <a href={`/${slug}/akun`} className="text-muted-foreground hover:text-foreground transition-colors">
+        <a href="../" className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="size-4" />
         </a>
         <div>

@@ -5,6 +5,7 @@ import { auth }       from "@/lib/auth";
 import { getAkunIdentity } from "@/lib/akun-identity";
 import { db, members, createTenantDb } from "@jalajogja/db";
 import { eq, and, isNull } from "drizzle-orm";
+import { isOwnHost }  from "@/lib/is-own-host";
 import { AkunNav }    from "@/components/akun/akun-nav";
 import { BadgeCheck } from "lucide-react";
 
@@ -20,9 +21,12 @@ function gravatar(email: string) {
 
 export default async function AkunLayout({ children, params }: Props) {
   const { tenant: slug } = await params;
+  const hdrs    = await headers();
+  const host    = hdrs.get("host") ?? "";
+  const baseUrl = isOwnHost(host) ? `/${slug}` : "";
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
+  const session = await auth.api.getSession({ headers: hdrs });
+  if (!session?.user) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun`);
 
   const identity = await getAkunIdentity(session.user.id);
   if (!identity) {
@@ -43,10 +47,10 @@ export default async function AkunLayout({ children, params }: Props) {
           eq(members.id, tenantUser.memberId),
           isNull(members.betterAuthUserId),   // jangan overwrite yang sudah ada
         ));
-      redirect(`/${slug}/akun`);              // reload — sekarang identity sudah ada
+      redirect(`${baseUrl}/akun`);              // reload — sekarang identity sudah ada
     }
 
-    redirect(`/${slug}/akun-error`);
+    redirect(`${baseUrl}/akun-error`);
   }
 
   const isMember    = identity.type === "member";
@@ -84,7 +88,7 @@ export default async function AkunLayout({ children, params }: Props) {
           </div>
 
           {/* Nav */}
-          <AkunNav slug={slug} isMember={isMember} />
+          <AkunNav slug={slug} isMember={isMember} baseUrl={baseUrl} />
         </aside>
 
         {/* ── Konten ── */}

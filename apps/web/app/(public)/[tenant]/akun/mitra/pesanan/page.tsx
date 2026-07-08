@@ -149,7 +149,7 @@ function Header({ slug }: { slug: string }) {
           </p>
         </div>
       </div>
-      <a href={`/${slug}/akun/mitra`} className="text-xs text-muted-foreground hover:text-foreground">
+      <a href="../" className="text-xs text-muted-foreground hover:text-foreground">
         ← Kembali
       </a>
     </div>
