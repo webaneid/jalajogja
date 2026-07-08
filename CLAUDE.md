@@ -2947,9 +2947,76 @@ itu sendiri — ini chicken-and-egg. Platform admin yang buat tenant harus bisa 
 admin pertama dari konteks platform. Pattern ini berlaku untuk semua resource yang punya
 "pertama kali butuh yang sudah ada dulu".
 
+### [2026-07] Login di Custom Domain — Better Auth CSRF + Hardcoded Slug Links
+
+**Gejala**: Login berhasil di `jalakarta.com/visikita/akun` dan di `ikpmjogja.com`, tapi
+GAGAL di `visikita.com`. UI menampilkan "Email atau password salah" padahal credentials benar.
+
+**Root cause 1 (utama): Better Auth CSRF check menolak request dari custom domain**
+
+`authClient` (tanpa `baseURL`) mengirim POST ke `visikita.com/api/auth/sign-in/email` dengan
+`Origin: https://visikita.com`. Better Auth cek origin ini terhadap:
+1. Origin dari `baseURL` (`https://jalakarta.com`) → tidak cocok
+2. `BETTER_AUTH_TRUSTED_ORIGINS` env var → tidak cocok jika `visikita.com` belum didaftarkan
+
+Hasilnya: Better Auth reject dengan CSRF error. Error message di client menjadi "Email atau
+password salah" karena `authClient.signIn.email()` hanya return `res.error` tanpa detail.
+
+**Fix (scalable, tidak perlu restart per domain baru)**:
+Modifikasi `app/api/auth/[...all]/route.ts` — intercept POST, cek apakah Origin adalah
+custom domain aktif di DB, jika ya spoof Origin ke `BETTER_AUTH_URL` sebelum forward ke handler.
+Cookie tetap diset untuk domain asli karena Better Auth pakai `Host` header (bukan Origin)
+untuk menentukan cookie domain. Commit `b1f017b`.
+
+```typescript
+// Spoof origin agar lolos CSRF check — Host header tidak diubah
+modifiedHeaders.set("origin", process.env.BETTER_AUTH_URL ?? "https://jalakarta.com");
+modifiedHeaders.set("referer", `${process.env.BETTER_AUTH_URL ?? ""}/`);
+const modifiedReq = new Request(req.url, { method, headers: modifiedHeaders, body, duplex: "half" });
+return handler.POST(modifiedReq as NextRequest);
+```
+
+**Root cause 2 (minor): link di `login-form.tsx` hardcode `/${slug}/`**
+
+`href={`/${slug}/forgot-password`}` dan `href={`/${slug}/register`}` di custom domain jadi:
+`visikita.com/visikita/forgot-password` (URL salah). Juga `dest = `/${slug}/akun`` → extra redirect.
+
+**Fix**: Tambah prop `baseUrl` ke `LoginForm`. Dihitung di server (page.tsx) via `isOwnHost(host)`:
+- Jalakarta.com: `baseUrl = "/${slug}"`, link = `/${slug}/forgot-password` ✓
+- Custom domain: `baseUrl = ""`, link = `/forgot-password` ✓
+
+**Aturan yang dikunci:**
+- Setiap domain baru yang ditambahkan ke sistem TIDAK perlu update env var atau restart PM2 —
+  cukup status `custom_domain_status = 'active'` di DB, handler akan langsung mengizinkan loginnya.
+- Jangan pernah hardcode `/${slug}/` di komponen publik yang mungkin dirender dari custom domain.
+  Selalu hitung `baseUrl` dari `isOwnHost(host)` di server component, lalu teruskan sebagai prop.
+- Cookie custom domain diset oleh Better Auth berdasarkan `Host` header, bukan `Origin` header —
+  spoofing Origin aman dan tidak mempengaruhi cookie domain.
+
+**Kenapa `ikpmjogja.com` bisa tapi `visikita.com` tidak:**
+`BETTER_AUTH_TRUSTED_ORIGINS` di VPS sudah include `ikpmjogja.com` (ditambahkan manual sebelumnya).
+`visikita.com` adalah domain baru yang belum didaftarkan. Dengan fix dinamis, kedua domain
+sekarang berjalan tanpa perlu tambah env var.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Backbone IKPM + Platform Admin improvements** (sesi 2026-07-08).
-- Sesi ini (2026-07-08):
+- Terakhir dikerjakan: **Fix login custom domain** (sesi 2026-07-08, lanjutan).
+- Sesi ini (lanjutan 2026-07-08):
+  - **Fix koreksi instruksi custom domain UI** — `/settings/domain` menampilkan Cloudflare proxy sebagai WAJIB (salah kaprah). Arsitektur aktual: Let's Encrypt langsung di VPS, Cloudflare DNS-only (grey cloud). Instruksi UI dikoreksi. Commit `6437437` (sudah ada dari sesi sebelumnya, CLAUDE.md ini di-update sesi ini).
+  - **Setup `visikita.com` sebagai custom domain** — DNS propagasi ✓ → certbot cert issued ✓ → nginx config dibuat manual ✓ → DB `custom_domain_status = 'active'` ✓ → `curl https://visikita.com` return 200 OK.
+  - **Bug teridentifikasi: login gagal di `visikita.com`** — Dua root cause:
+    1. Better Auth CSRF check menolak Origin `https://visikita.com` (tidak di trustedOrigins)
+    2. Link `forgot-password` dan `register` hardcode `/${slug}/` → URL salah di custom domain
+  - **Fix dinamis auth route** — `app/api/auth/[...all]/route.ts` diubah: intercept POST, cek custom domain aktif di DB, spoof Origin ke BETTER_AUTH_URL. Domain baru otomatis diizinkan tanpa restart. Commit `b1f017b`.
+  - **Fix link URL di login form** — Prop `baseUrl` ditambah ke `LoginForm`. Dihitung server-side via `isOwnHost(host)`. Custom domain → `baseUrl = ""`, links bersih tanpa slug prefix. Commit `b1f017b`.
+  - **TypeScript 0 errors**.
+  - **Lessons Learned ditambahkan** di CLAUDE.md.
+- Deploy ke VPS:
+  ```bash
+  cd /var/www/jalajogja && git pull
+  bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env
+  ```
+  Tidak ada migration DB baru. Setelah deploy, login di `visikita.com` harus berfungsi.
+- Sesi sebelumnya (2026-07-08):
   - **Backbone IKPM selesai** — tiga tipe tenant (cabang/marhalah/forum), `ref_ikpm_cabang` 136 cabang PP IKPM, `primary_cabang_ref_id` di members, auto-populate memberships. Commit `b739b47` + `4443d21`.
   - **Platform admin cabang** — `/platform/cabang` CRUD 136 PC IKPM resmi. Platform tenant management diupdate: list dengan filter tipe, form dinamis buat tenant baru.
   - **Register anggota → auto-set primary_cabang_ref_id** — daftar di tenant cabang → cabang terisi otomatis.
@@ -2958,14 +3025,6 @@ admin pertama dari konteks platform. Pattern ini berlaku untuk semua resource ya
   - **Buat owner pertama dari platform admin** — banner "Belum Ada Pengurus" di detail tenant + form nama/email/password → `createFirstOwnerAction` buat 3 record sekaligus (Better Auth + members + tenant.users). Commit `b863116`.
   - **TypeScript 0 errors** di semua perubahan.
   - **Migrations yang perlu dijalankan di VPS**: `0018_backbone_tenant_types.sql` + `0019_ref_ikpm_cabang.sql` (sudah ada di `packages/db/migrations/`).
-- Deploy ke VPS:
-  ```bash
-  cd /var/www/jalajogja && git pull
-  # Jalankan migrations baru (jika belum)
-  docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/0018_backbone_tenant_types.sql
-  docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/0019_ref_ikpm_cabang.sql
-  bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env
-  ```
 - Sesi sebelumnya (2026-07-02, lanjutan 2): **Fix register flow atomic + dokumentasi**.
 - Sesi ini (lanjutan 2 2026-07-02):
   - **Root cause orphan account teridentifikasi**: register tidak atomic — `signUpEmail` berhasil tapi `db.insert` bisa gagal → user bisa login tapi `getAkunIdentity()` null.
