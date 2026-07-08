@@ -13,9 +13,17 @@ import { MessageCircle, Loader2, Mail } from "lucide-react";
 type LoginMode = "email" | "whatsapp";
 type WaStep    = "phone" | "otp";
 
-export function LoginForm({ slug, redirectTo }: { slug: string; redirectTo?: string }) {
+export function LoginForm({
+  slug,
+  redirectTo,
+  baseUrl = `/${slug}`,
+}: {
+  slug:        string;
+  redirectTo?: string;
+  baseUrl?:    string;
+}) {
   const router = useRouter();
-  const dest   = redirectTo || `/${slug}/akun`;
+  const dest   = redirectTo || `${baseUrl}/akun`;
 
   const [mode,     setMode]     = useState<LoginMode>("email");
   const [error,    setError]    = useState<string | null>(null);
@@ -181,7 +189,7 @@ export function LoginForm({ slug, redirectTo }: { slug: string; redirectTo?: str
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
-                <a href={`/${slug}/forgot-password`} className="text-xs text-primary hover:underline">
+                <a href={`${baseUrl}/forgot-password`} className="text-xs text-primary hover:underline">
                   Lupa password?
                 </a>
               </div>
@@ -224,7 +232,7 @@ export function LoginForm({ slug, redirectTo }: { slug: string; redirectTo?: str
                 : "Kirim Kode OTP"}
             </Button>
             <p className="text-center text-xs text-muted-foreground">
-              <a href={`/${slug}/forgot-password`} className="text-primary hover:underline">
+              <a href={`${baseUrl}/forgot-password`} className="text-primary hover:underline">
                 Lupa password?
               </a>
             </p>
@@ -284,7 +292,7 @@ export function LoginForm({ slug, redirectTo }: { slug: string; redirectTo?: str
 
         <p className="text-center text-sm text-muted-foreground">
           Belum punya akun?{" "}
-          <a href={`/${slug}/register`} className="text-primary hover:underline font-medium">
+          <a href={`${baseUrl}/register`} className="text-primary hover:underline font-medium">
             Daftar sekarang
           </a>
         </p>
