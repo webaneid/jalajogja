@@ -1,10 +1,10 @@
-import { redirect }  from "next/navigation";
-import { headers }   from "next/headers";
+import { redirect }   from "next/navigation";
+import { headers }    from "next/headers";
 import { createHash } from "crypto";
 import { auth }       from "@/lib/auth";
 import { getAkunIdentity } from "@/lib/akun-identity";
-import { createTenantDb }  from "@jalajogja/db";
-import { eq }              from "drizzle-orm";
+import { db, members, createTenantDb } from "@jalajogja/db";
+import { eq, and, isNull } from "drizzle-orm";
 import { AkunNav }    from "@/components/akun/akun-nav";
 import { BadgeCheck } from "lucide-react";
 
@@ -26,16 +26,27 @@ export default async function AkunLayout({ children, params }: Props) {
 
   const identity = await getAkunIdentity(session.user.id);
   if (!identity) {
-    // Tidak ada profil front-end — cek apakah user adalah pengurus di tenant ini
+    // Tidak ada front-end identity — cek apakah ini pengurus (yang belum di-link ke members)
     const { db: tenantDb, schema } = createTenantDb(slug);
     const [tenantUser] = await tenantDb
-      .select({ id: schema.users.id })
+      .select({ memberId: schema.users.memberId })
       .from(schema.users)
       .where(eq(schema.users.betterAuthUserId, session.user.id))
       .limit(1);
-    // Pengurus → ke admin dashboard (jalakarta.com/app/..., bukan custom domain); selain itu → error
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com";
-    redirect(tenantUser ? `${appUrl}/app/${slug}/dashboard` : `/${slug}/akun-error`);
+
+    if (tenantUser?.memberId) {
+      // Pengurus yang belum punya better_auth_user_id di members → auto-link sekarang
+      // Sehingga pengurus bisa pakai front-end sebagai anggota (tidak redirect ke admin)
+      await db.update(members)
+        .set({ betterAuthUserId: session.user.id })
+        .where(and(
+          eq(members.id, tenantUser.memberId),
+          isNull(members.betterAuthUserId),   // jangan overwrite yang sudah ada
+        ));
+      redirect(`/${slug}/akun`);              // reload — sekarang identity sudah ada
+    }
+
+    redirect(`/${slug}/akun-error`);
   }
 
   const isMember    = identity.type === "member";
