@@ -455,7 +455,7 @@ app/(dashboard)/[tenant]/
 - [x] **Billing Phase 4 — Fulfillment** — 5-stage pengiriman (pending→processing→packed→shipped→delivered), `updateFulfillmentStatusAction`, halaman admin `/toko/pesanan/invoice/[invoiceId]`, `FulfillmentCard` + `FulfillmentTimeline`, lightbox bukti transfer, pelanggan lihat 5 status di `/akun/transaksi`. Detail di `docs/arsitektur-fulfillment.md`.
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
-- [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai
+- [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`)
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
 - [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik + 3 jalur aktivasi + **sidebar filtering + 10 module guards (selesai)**
 - [x] **Modul Akun Phase 1** — `public.profiles` schema + migrasi `profile_id` ke 4 tabel transaksi (invoices, orders, donations, event_registrations). TypeScript 0 errors. Tenant existing `pc-ikpm-jogjakarta` sudah dimigrasikan manual.
@@ -1624,6 +1624,98 @@ Saat modul baru butuh pembayaran, **buat kategori baru** di payment settings —
 
 #### showTicketCount: hitung per-query, bukan realtime
 `showTicketCount` di halaman publik mengambil count dari DB saat page di-render (server component). Tidak realtime — peserta lain yang baru daftar tidak langsung update hitungan. Untuk event dengan kuota ketat dan traffic tinggi, pertimbangkan revalidate lebih agresif atau polling client-side.
+
+### [2026-07] Mobile Layout Overflow — `min-h-screen` Ekstra di Public Page
+
+**Aturan**: Halaman publik (post, event, campaign, produk, dll) TIDAK BOLEH punya wrapper `<div className="min-h-screen bg-background">` sebagai elemen terluar. `PublicLayout` sudah menyediakan background dan min-height via CSS. Wrapper ekstra menyebabkan content overflow di mobile ("terlalu ke kanan frame").
+
+**Pattern yang benar** — identik untuk semua halaman detail publik:
+```tsx
+return (
+  <div className="max-w-7xl mx-auto px-4 py-8">
+    {/* breadcrumb */}
+    <div className="grid gap-6 lg:grid-cols-[1fr_360px] items-start">
+      <div className="space-y-6 min-w-0">  {/* ← min-w-0 wajib di kolom kiri */}
+        ...
+      </div>
+      <div className="lg:sticky lg:top-6 space-y-4">  {/* kolom kanan */}
+        ...
+      </div>
+    </div>
+  </div>
+);
+```
+
+**Referensi yang benar**: `app/(public)/[tenant]/post/[slug]/page.tsx` — tidak punya wrapper ekstra, langsung `max-w-7xl mx-auto`. Setiap kali layout publik baru tidak rapi di mobile, bandingkan strukturnya dengan post page ini.
+
+**`min-w-0` di kolom kiri wajib** — mencegah overflow text/konten yang tidak bisa di-wrap di dalam flex/grid child.
+
+### [2026-07] Tiket Wajib Anggota — `requires_membership` + Opsi A (Tampil, Bukan Blokir)
+
+**Fitur**: Toggle per tiket "Wajib Anggota Terdaftar" (`requires_membership BOOLEAN NOT NULL DEFAULT false`).
+Jika aktif, tiket hanya bisa dipesan oleh user yang terdaftar di `tenant_memberships` cabang ini
+(status `active` atau `alumni`).
+
+**Keputusan desain yang dikunci — Opsi A:**
+Tiket tetap tampil di halaman publik — tidak disembunyikan. User yang belum terdaftar melihat:
+- Badge "Anggota" di header tiket
+- Link "Lengkapi Keanggotaan →" (mengarah ke `${baseUrl}/akun/lengkapi`)
+- Tiket tidak bisa diklik/dipilih
+
+Ini bukan blokir total — user diundang mendaftar dulu, baru bisa beli tiket.
+
+**Dua lapisan perlindungan (wajib keduanya):**
+1. **Client-side** (`event-register-form.tsx`): guard di `handleSubmit()` mencegah submit jika tiket locked — untuk UX yang responsif
+2. **Server-side** (`registerForEventAction`): guard di action mencegah bypass via curl/Postman — query `tenant_memberships` sebelum INSERT
+
+**Pattern enrollment check di server action:**
+```typescript
+if (ticket.requiresMembership) {
+  if (!resolvedMemberId)
+    return { success: false, error: "Tiket ini hanya untuk anggota terdaftar." };
+
+  const [tenantRow] = await publicDb
+    .select({ id: tenants.id }).from(tenants)
+    .where(eq(tenants.slug, slug)).limit(1);
+
+  if (tenantRow) {
+    const [membership] = await publicDb
+      .select({ id: tenantMemberships.id })
+      .from(tenantMemberships)
+      .where(and(
+        eq(tenantMemberships.tenantId, tenantRow.id),
+        eq(tenantMemberships.memberId, resolvedMemberId),
+        sql`${tenantMemberships.status} IN ('active', 'alumni')`,
+      )).limit(1);
+    if (!membership)
+      return { success: false, error: "Tiket ini hanya untuk anggota terdaftar cabang ini." };
+  }
+}
+```
+
+**`currentUserIsEnrolled` di halaman publik:**
+Di-query di `agenda/[slug]/page.tsx` setelah `resolvedMemberId` diketahui — satu query ke
+`tenant_memberships`. Di-pass sebagai prop ke `EventRegisterForm` bersama `baseUrl` (sudah
+computed dari `isOwnHost(host)`).
+
+**Form UX ketika locked:**
+- Semua section (`Data Peserta`, `Metode Pembayaran`, `Submit`) dibungkus `{!selectedTicketLocked && ...}`
+- Untuk multi-tiket: CTA amber muncul setelah daftar tiket saat tiket terpilih locked
+- Untuk single tiket: amber block di bagian atas tiket info sudah cukup (tidak ada duplikasi CTA)
+- Auto-fill nama/HP dari session sudah bekerja via `defaultAttendeeName`/`defaultAttendeePhone` —
+  saat user enrolled, form tampil langsung dengan nama & HP terisi
+
+**Migration**: `packages/db/migrations/0020_event_ticket_requires_membership.sql` — DO $$ loop
+ALTER TABLE semua tenant aktif. Wajib dijalankan di VPS sebelum deploy kode.
+
+**File yang terlibat:**
+- `packages/db/src/schema/tenant/events.ts` — kolom baru di `createEventTicketsTable`
+- `packages/db/src/helpers/create-tenant-schema.ts` — DDL kolom baru
+- `apps/web/app/(dashboard)/app/[tenant]/event/actions.ts` — `TicketInput` + `syncTickets` + guard
+- `apps/web/app/(dashboard)/app/[tenant]/event/acara/[id]/edit/page.tsx` — pass kolom ke form
+- `apps/web/components/event/event-form.tsx` — toggle ToggleRow di TicketManager
+- `apps/web/components/event/event-register-form.tsx` — locked ticket UI + guard submit
+- `apps/web/app/(public)/[tenant]/agenda/[slug]/page.tsx` — enrollment check + props baru
 
 ### [2026-04] Modul Dokumen — SELESAI
 
@@ -3063,7 +3155,26 @@ grep -rn '`/app/' apps/web/app/\(public\)/ apps/web/components/website/public/
 ```
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix security custom domain — cross-tenant access** (sesi 2026-07-08, lanjutan).
+- Terakhir dikerjakan: **Fix UX tiket wajib anggota + fix layout mobile event** (sesi 2026-07-09, lanjutan 2).
+- Sesi ini (2026-07-09, lanjutan 2):
+  - **Fix form event: Data Peserta + Metode Pembayaran + Submit disembunyikan saat tiket locked** —
+    `selectedTicketLocked = selectedTicket?.requiresMembership && !currentUserIsEnrolled`. Semua section
+    form dibungkus `{!selectedTicketLocked && ...}`. CTA amber "Lengkapi Keanggotaan" muncul untuk
+    multi-tiket locked. Auto-fill nama/HP bekerja dari session (`defaultAttendeeName`/`defaultAttendeePhone`).
+  - **Fix layout mobile single event** — wrapper `<div className="min-h-screen bg-background">` ekstra
+    menyebabkan overflow di mobile ("terlalu ke kanan frame"). Dihapus. Struktur sekarang identik
+    dengan `post/[slug]`: `<div className="max-w-7xl mx-auto px-4 py-8">` langsung. Tambah `min-w-0`
+    ke kolom kiri. TypeScript 0 errors.
+  - **Belum di-deploy ke VPS** — migration 0020 perlu dijalankan manual sebelum deploy:
+    ```bash
+    docker compose exec -T postgres psql -U jalakarta -d jalakarta \
+      < packages/db/migrations/0020_event_ticket_requires_membership.sql
+    git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env
+    ```
+- Sesi ini (2026-07-09):
+  - **Fix `/akun` baseUrl di custom domain** — Commit `80a5e3e`.
+  - **Fitur tiket wajib anggota** (`requires_membership`) — Migration 0020. Commit `4f3c185`.
+- Sesi sebelumnya (lanjutan 2 2026-07-08): **Fix security custom domain — cross-tenant access**.
 - Sesi ini (lanjutan 2 2026-07-08):
   - **Bug kritis ditemukan: custom domain bisa akses admin dashboard tenant manapun** —
     `visikita.com/app/pc-ikpm-jogjakarta/dashboard` terbuka karena middleware mengecualikan `/app/*`

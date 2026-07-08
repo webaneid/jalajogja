@@ -112,8 +112,10 @@ export function EventRegisterForm({
 
   const [isPending, startTransition] = useTransition();
 
-  const selectedTicket = tickets.find((t) => t.id === selectedTicketId);
-  const isPaidTicket   = (selectedTicket?.price ?? 0) > 0;
+  const selectedTicket       = tickets.find((t) => t.id === selectedTicketId);
+  const isPaidTicket         = (selectedTicket?.price ?? 0) > 0;
+  // Tiket terpilih membutuhkan keanggotaan tapi user belum terdaftar
+  const selectedTicketLocked = Boolean(selectedTicket?.requiresMembership && !currentUserIsEnrolled);
   const selectedBank   = banks.find((b) => b.id === bankAccountRef);
   const selectedQris   = qrisAccounts.find((q) => q.id === qrisAccountRef);
 
@@ -385,141 +387,161 @@ export function EventRegisterForm({
         );
       })()}
 
-      {/* Data Peserta */}
-      <div className="space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="attendeeName" className="text-sm">
-            Nama Lengkap <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            id="attendeeName"
-            value={attendeeName}
-            onChange={(e) => setAttendeeName(e.target.value)}
-            placeholder="Nama peserta"
-            disabled={isPending}
-          />
+      {/* CTA Lengkapi Keanggotaan — tampil ketika tiket terpilih terkunci (multi-tiket) */}
+      {selectedTicketLocked && tickets.length > 1 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-700 p-4 space-y-2">
+          <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+            Tiket ini khusus untuk anggota terdaftar cabang ini.
+          </p>
+          <p className="text-xs text-amber-800 dark:text-amber-300">
+            Lengkapi data keanggotaan Anda terlebih dahulu untuk dapat mendaftar.
+          </p>
+          <a href={`${baseUrl}/akun/lengkapi`} className="btn btn-primary btn-sm inline-flex">
+            Lengkapi Keanggotaan →
+          </a>
         </div>
+      )}
 
-        <div className="space-y-1.5">
-          <PhoneInput
-            label="Nomor HP"
-            value={attendeePhone}
-            onChange={setAttendeePhone}
-            disabled={isPending}
-            optional
-          />
-        </div>
+      {/* Semua section di bawah hanya tampil jika tiket terpilih tidak terkunci */}
+      {!selectedTicketLocked && (
+        <>
+          {/* Data Peserta */}
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="attendeeName" className="text-sm">
+                Nama Lengkap <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="attendeeName"
+                value={attendeeName}
+                onChange={(e) => setAttendeeName(e.target.value)}
+                placeholder="Nama peserta"
+                disabled={isPending}
+              />
+            </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="attendeeEmail" className="text-sm">
-            Email
-          </Label>
-          <Input
-            id="attendeeEmail"
-            type="email"
-            value={attendeeEmail}
-            onChange={(e) => setAttendeeEmail(e.target.value)}
-            placeholder="email@contoh.com"
-            disabled={isPending}
-          />
-        </div>
-      </div>
+            <div className="space-y-1.5">
+              <PhoneInput
+                label="Nomor HP"
+                value={attendeePhone}
+                onChange={setAttendeePhone}
+                disabled={isPending}
+                optional
+              />
+            </div>
 
-      {/* Metode Pembayaran — hanya untuk tiket berbayar */}
-      {isPaidTicket && (
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">Metode Pembayaran</Label>
-
-          <div className="flex gap-2">
-            {(["transfer", "qris", "cash"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMethod(m)}
-                className={`flex-1 rounded-md border py-2 text-xs font-medium transition-colors ${
-                  method === m
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border hover:border-primary/50"
-                }`}
-              >
-                {m === "transfer" ? "Transfer" : m === "qris" ? "QRIS" : "Tunai"}
-              </button>
-            ))}
+            <div className="space-y-1.5">
+              <Label htmlFor="attendeeEmail" className="text-sm">
+                Email
+              </Label>
+              <Input
+                id="attendeeEmail"
+                type="email"
+                value={attendeeEmail}
+                onChange={(e) => setAttendeeEmail(e.target.value)}
+                placeholder="email@contoh.com"
+                disabled={isPending}
+              />
+            </div>
           </div>
 
-          {/* Pilih rekening tujuan */}
-          {method === "transfer" && banks.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Transfer ke rekening:</p>
-              {banks.map((b) => (
-                <button
-                  key={b.id}
-                  type="button"
-                  onClick={() => setBankAccountRef(b.id)}
-                  className={`w-full text-left rounded-lg border p-3 transition-colors text-sm ${
-                    bankAccountRef === b.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                >
-                  <p className="font-medium">{b.bankName} — {b.accountNumber}</p>
-                  <p className="text-xs text-muted-foreground">a.n. {b.accountName}</p>
-                </button>
-              ))}
+          {/* Metode Pembayaran — hanya untuk tiket berbayar */}
+          {isPaidTicket && (
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Metode Pembayaran</Label>
+
+              <div className="flex gap-2">
+                {(["transfer", "qris", "cash"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMethod(m)}
+                    className={`flex-1 rounded-md border py-2 text-xs font-medium transition-colors ${
+                      method === m
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    {m === "transfer" ? "Transfer" : m === "qris" ? "QRIS" : "Tunai"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Pilih rekening tujuan */}
+              {method === "transfer" && banks.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Transfer ke rekening:</p>
+                  {banks.map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => setBankAccountRef(b.id)}
+                      className={`w-full text-left rounded-lg border p-3 transition-colors text-sm ${
+                        bankAccountRef === b.id
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <p className="font-medium">{b.bankName} — {b.accountNumber}</p>
+                      <p className="text-xs text-muted-foreground">a.n. {b.accountName}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Pilih QRIS */}
+              {method === "qris" && qrisAccounts.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Bayar via QRIS:</p>
+                  {qrisAccounts.map((q) => (
+                    <button
+                      key={q.id}
+                      type="button"
+                      onClick={() => setQrisAccountRef(q.id)}
+                      className={`w-full text-left rounded-lg border p-3 transition-colors text-sm ${
+                        qrisAccountRef === q.id
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <p className="font-medium">{q.name}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {method === "transfer" && banks.length === 0 && (
+                <p className="text-xs text-muted-foreground italic">Rekening belum tersedia. Hubungi panitia.</p>
+              )}
+              {method === "qris" && qrisAccounts.length === 0 && (
+                <p className="text-xs text-muted-foreground italic">QRIS belum tersedia. Hubungi panitia.</p>
+              )}
             </div>
           )}
 
-          {/* Pilih QRIS */}
-          {method === "qris" && qrisAccounts.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Bayar via QRIS:</p>
-              {qrisAccounts.map((q) => (
-                <button
-                  key={q.id}
-                  type="button"
-                  onClick={() => setQrisAccountRef(q.id)}
-                  className={`w-full text-left rounded-lg border p-3 transition-colors text-sm ${
-                    qrisAccountRef === q.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                >
-                  <p className="font-medium">{q.name}</p>
-                </button>
-              ))}
-            </div>
+          {/* Error */}
+          {error && (
+            <p className="text-xs text-destructive">{error}</p>
           )}
 
-          {method === "transfer" && banks.length === 0 && (
-            <p className="text-xs text-muted-foreground italic">Rekening belum tersedia. Hubungi panitia.</p>
-          )}
-          {method === "qris" && qrisAccounts.length === 0 && (
-            <p className="text-xs text-muted-foreground italic">QRIS belum tersedia. Hubungi panitia.</p>
-          )}
-        </div>
+          {/* Submit */}
+          <Button
+            onClick={handleSubmit}
+            disabled={isPending || !selectedTicketId}
+            className="w-full"
+            size="sm"
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                Mendaftarkan...
+              </>
+            ) : (
+              isPaidTicket ? "Daftar & Lanjut Bayar" : "Daftar Sekarang"
+            )}
+          </Button>
+        </>
       )}
-
-      {/* Error */}
-      {error && (
-        <p className="text-xs text-destructive">{error}</p>
-      )}
-
-      {/* Submit */}
-      <Button
-        onClick={handleSubmit}
-        disabled={isPending || !selectedTicketId}
-        className="w-full"
-        size="sm"
-      >
-        {isPending ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            Mendaftarkan...
-          </>
-        ) : (
-          isPaidTicket ? "Daftar & Lanjut Bayar" : "Daftar Sekarang"
-        )}
-      </Button>
     </div>
 
     {/* Modal prompt donasi — tampil setelah registrasi gratis */}

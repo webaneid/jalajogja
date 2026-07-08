@@ -380,18 +380,17 @@ export default async function PublicEventPage({
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Breadcrumb */}
-        <div className="text-xs text-muted-foreground mb-6 flex items-center gap-2">
-          <a href={`/${tenantSlug}/agenda`} className="hover:text-foreground transition-colors">Agenda</a>
-          <span>/</span>
-          <span className="text-foreground truncate max-w-xs">{event.title}</span>
-        </div>
-        <div className="grid gap-6 lg:grid-cols-[1fr_360px] items-start">
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Breadcrumb */}
+      <div className="text-xs text-muted-foreground mb-6 flex items-center gap-2">
+        <a href={`/${tenantSlug}/agenda`} className="hover:text-foreground transition-colors">Agenda</a>
+        <span>/</span>
+        <span className="text-foreground truncate max-w-xs">{event.title}</span>
+      </div>
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px] items-start">
 
-          {/* ── Kiri: Gambar + Info + Deskripsi ── */}
-          <div className="space-y-6">
+        {/* ── Kiri: Gambar + Info + Deskripsi ── */}
+        <div className="space-y-6 min-w-0">
             {/* Cover */}
             {coverUrl && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -623,9 +622,7 @@ export default async function PublicEventPage({
               </div>
             )}
           </div>
-        </div>
-      </main>
-
+      </div>
     </div>
   );
 }
