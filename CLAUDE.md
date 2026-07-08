@@ -846,8 +846,9 @@ Package dikelola di `public.tenant_plans` dengan field `features` JSONB:
                                   Status: BELUM DIBANGUN
 
 2. platform.jalakarta.com      → admin platform (hanya tim Jalakarta, bukan pengurus tenant)
-                                  Fitur: kelola tenant, modul, add-on, backbone IKPM
-                                  Status: ✅ SELESAI
+                                  Fitur: kelola tenant, modul, add-on, backbone IKPM, cabang resmi
+                                  Login: /platform/login → JWT terpisah
+                                  Status: ✅ SELESAI (+ buat owner pertama tenant)
 
 3. jalakarta.com/app/{slug}/*  → dashboard admin tenant (pengurus IKPM Cabang/Forum/Angkatan)
                                   Status: ✅ SELESAI
@@ -895,6 +896,80 @@ public.modules
 ├── toko       → coming_soon
 └── donasi     → coming_soon
 ```
+
+## Arsitektur Backbone IKPM
+> Detail lengkap arsitektur, tiga tipe tenant, keanggotaan, forum registration: **`docs/arsitektur-backbone-ikpm.md`**
+
+### Konsep Backbone
+Backbone IKPM adalah layer data acuan statis yang menjadi pondasi federasi anggota lintas tenant.
+Berbeda dari tenant operasional, backbone adalah **master data PP IKPM** yang tidak berubah:
+- Daftar resmi 136 PC IKPM (dari struktur resmi PP IKPM)
+- Identitas tunggal anggota (satu `public.members` per orang)
+- Primary cabang tiap anggota (editable, menentukan keanggotaan otomatis)
+
+### Tiga Tipe Tenant + Schema
+```
+tenant_type: "cabang" | "marhalah" | "forum"
+```
+
+| Tipe | Keanggotaan | Auto-populate |
+|------|-------------|--------------|
+| Cabang | Otomatis jika `primary_cabang_ref_id` cocok | Ya (saat link ke ref_cabang) |
+| Marhalah | Otomatis jika `graduation_year` + `graduation_period` cocok | Ya (saat buat tenant) |
+| Forum | Manual / opt-in | Tidak |
+
+Kolom baru di `public.tenants` (migration 0018):
+- `tenant_type TEXT` — cabang/marhalah/forum
+- `marhalah_year INT` — hanya untuk tipe marhalah
+- `marhalah_period TEXT` — "awal" / "akhir" (hanya untuk angkatan 1999)
+- `parent_tenant_id UUID` — induk cabang untuk forum/marhalah (opsional)
+
+Kolom baru di `public.tenant_memberships` (migration 0018):
+- `membership_type TEXT` — "cabang" / "marhalah" / "forum"
+- `registered_via` — enum lebih lengkap: `admin | self | import | invite | auto_marhalah | auto_cabang`
+- `forum_status TEXT` — pending/approved/rejected/expired (untuk forum berbayar)
+- `approved_at`, `expires_at` — lifecycle forum membership
+
+### Tabel Referensi PC IKPM Resmi (`public.ref_ikpm_cabang`)
+Migration 0019. 136 cabang resmi PP IKPM seeded saat setup.
+
+```typescript
+ref_ikpm_cabang: { id, nama, nama_pendek, kode, kota, provinsi, is_active }
+```
+
+**Kolom FK:**
+- `public.tenants.ref_cabang_id` → link tenant cabang ke data resmi PP IKPM
+- `public.members.primary_cabang_ref_id` → cabang utama anggota (editable)
+
+**Alur auto-populate:**
+1. Platform admin buat tenant cabang → pilih PC IKPM resmi dari dropdown
+2. `createTenantAction` auto-insert `tenant_memberships` untuk semua anggota yang `primary_cabang_ref_id` = cabang tersebut
+3. Anggota update `primary_cabang_ref_id` di `/akun/lengkapi` → auto-join `tenant_memberships`
+4. Register di tenant cabang → `primary_cabang_ref_id` diset ke cabang tersebut
+
+### Platform Admin Backbone UI
+```
+/platform/cabang       → CRUD daftar PC IKPM resmi (136 cabang)
+/platform/tenants      → list tenant + filter tipe (Cabang/Marhalah/Forum) + tombol Tambah
+/platform/tenants/new  → form buat tenant: pilih tipe → form dinamis per tipe
+/platform/tenants/[slug] → detail tenant + link ke cabang resmi + buat owner pertama
+```
+
+### API Backbone
+```
+GET /api/ref/ikpm-cabang?search=&limit= → dropdown autocomplete 136 cabang
+```
+
+### Buat Owner Pertama dari Platform Admin
+Setelah buat tenant, platform admin langsung bisa buat akun owner pertama tanpa masuk ke dashboard tenant.
+Tersedia di `/platform/tenants/[slug]` — muncul banner kuning "Belum Ada Pengurus" jika `tenant.users` kosong.
+
+**`createFirstOwnerAction`** di `platform/actions.ts`:
+- Input: nama, email, password
+- Jika email sudah di Better Auth: link ke member yang ada
+- Jika email baru: `signUpEmail` → `INSERT members` → `INSERT tenant.users (role=owner)`
+- Rollback: jika `INSERT members` gagal → hapus Better Auth account (cegah orphan)
+- Setelah berhasil: banner hijau + instruksi login `jalakarta.com/app/login`
 
 ## Arsitektur Add-on System
 
@@ -2807,8 +2882,91 @@ app tapi slot email-nya "tersita" di Better Auth.
 
 ---
 
+### [2026-07] TENANT_SLUG Regex — `$` vs `(?:/|$)` di Path Context
+
+**Bug**: `platform.jalakarta.com/platform/login` redirect ke `/app/login?redirect=/app/platform/dashboard`.
+
+**Root cause**: `next.config.ts` punya `TENANT_SLUG = "(?!platform$)..."`. Regex ini diapply oleh
+path-to-regexp ke **string path penuh**, bukan per segmen. Saat path adalah `/platform/dashboard`,
+path-to-regexp menguji string `"platform/dashboard"` (setelah strip slash pertama). Pattern
+`platform$` tidak cocok karena ada `"/dashboard"` setelahnya → negative lookahead BERHASIL (salah)
+→ "platform" dianggap slug valid → `ADMIN_MODULES` redirect `"dashboard"` ke `/app/platform/dashboard`.
+
+**Fix**: Ganti `$` dengan `(?:/|$)` di semua term lookahead:
+```typescript
+// LAMA — $ tidak match di tengah string saat ada path setelahnya
+const TENANT_SLUG = "(?!api$|app$|platform$|...)..."
+
+// BARU — (?:/|$) match di boundary segmen atau akhir string
+const TENANT_SLUG = "(?!(?:api|app|platform|_next|register|dashboard-redirect)(?:/|$))[a-z][a-z0-9-]+";
+```
+
+**Aturan**: Setiap kali pakai `$` di lookahead yang dimaksudkan untuk mengecualikan satu *segmen*
+dari path multi-level, ganti dengan `(?:/|$)`. `$` hanya cocok di akhir string total, bukan
+akhir segmen.
+
+### [2026-07] `window.location.href` Wajib setelah Login di Aplikasi Multi-Domain
+
+**Bug**: Setelah login platform admin, `router.push("/platform/dashboard")` men-trigger
+next.config.ts `redirects()` yang mencocokkan `/platform/dashboard` dan men-redirect ke
+`/app/platform/dashboard` (sebelum regex fix di atas).
+
+**Lebih dalam**: Bahkan setelah regex fix, `router.push()` di Next.js App Router menggunakan client-side
+navigation yang tidak selalu mengeksekusi ulang `next.config.ts` redirects dengan benar karena
+Server Router Handler bisa pakai cached response. `window.location.href` memaksa fresh request
+ke server → server `redirects()` dieksekusi dari awal.
+
+**Aturan umum**: Setiap kali setelah operasi yang membuat atau menghancurkan sesi (login, logout),
+gunakan `window.location.href = dest` bukan `router.push(dest)`. Ini berlaku di semua auth flows:
+- Platform admin login
+- Tenant admin login
+- Front-end publik login (sudah benar via pattern ini)
+- Semua logout
+
+### [2026-07] Platform Admin — Chicken-and-Egg: Tenant Tanpa Owner
+
+**Masalah**: Platform admin buat tenant baru → tidak ada siapapun yang bisa login ke dashboard tenant.
+`createTenantAction` hanya buat schema + insert `public.tenants`, tidak buat user.
+Untuk masuk ke dashboard tenant (`/app/{slug}/dashboard`), butuh record di `tenant.users`. Tapi
+untuk membuat record di `tenant.users`, harus masuk ke dashboard dulu. LOOP.
+
+**Fix**: Tambah `createFirstOwnerAction` di `platform/actions.ts` — berjalan **dari konteks platform admin**
+(bukan tenant admin), langsung insert ke 3 tabel sekaligus:
+1. `auth.api.signUpEmail` → `public.user` (Better Auth)
+2. `db.insert(members)` → `public.members`
+3. `tenantDb.insert(schema.users)` → `tenant_{slug}.users` (role=owner)
+
+**Pattern atomic dengan rollback**: Jika step 2 atau 3 gagal → `db.delete(authUser)` agar tidak
+ada orphan account (user bisa login tapi tidak bisa akses apa-apa).
+
+**UI**: Banner kuning "Belum Ada Pengurus" muncul di `/platform/tenants/[slug]` saat `tenant.users`
+kosong. Berubah hijau setelah owner berhasil dibuat + tampilkan instruksi login.
+
+**Aturan untuk modul baru yang butuh "initial setup"**: Jangan serahkan setup owner ke tenant
+itu sendiri — ini chicken-and-egg. Platform admin yang buat tenant harus bisa langsung setup
+admin pertama dari konteks platform. Pattern ini berlaku untuk semua resource yang punya
+"pertama kali butuh yang sudah ada dulu".
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix register flow atomic + dokumentasi** (sesi 2026-07-02, lanjutan 2).
+- Terakhir dikerjakan: **Backbone IKPM + Platform Admin improvements** (sesi 2026-07-08).
+- Sesi ini (2026-07-08):
+  - **Backbone IKPM selesai** — tiga tipe tenant (cabang/marhalah/forum), `ref_ikpm_cabang` 136 cabang PP IKPM, `primary_cabang_ref_id` di members, auto-populate memberships. Commit `b739b47` + `4443d21`.
+  - **Platform admin cabang** — `/platform/cabang` CRUD 136 PC IKPM resmi. Platform tenant management diupdate: list dengan filter tipe, form dinamis buat tenant baru.
+  - **Register anggota → auto-set primary_cabang_ref_id** — daftar di tenant cabang → cabang terisi otomatis.
+  - **TENANT_SLUG regex fix** — `(?!platform$)` → `(?!platform(?:/|$))`. Platform login tidak lagi di-redirect ke `/app/login`. Commit `7870195`.
+  - **Platform login `router.push` → `window.location.href`** — full page reload agar tidak kena next.config.ts redirect rules. Commit `7870195`.
+  - **Buat owner pertama dari platform admin** — banner "Belum Ada Pengurus" di detail tenant + form nama/email/password → `createFirstOwnerAction` buat 3 record sekaligus (Better Auth + members + tenant.users). Commit `b863116`.
+  - **TypeScript 0 errors** di semua perubahan.
+  - **Migrations yang perlu dijalankan di VPS**: `0018_backbone_tenant_types.sql` + `0019_ref_ikpm_cabang.sql` (sudah ada di `packages/db/migrations/`).
+- Deploy ke VPS:
+  ```bash
+  cd /var/www/jalajogja && git pull
+  # Jalankan migrations baru (jika belum)
+  docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/0018_backbone_tenant_types.sql
+  docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/0019_ref_ikpm_cabang.sql
+  bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env
+  ```
+- Sesi sebelumnya (2026-07-02, lanjutan 2): **Fix register flow atomic + dokumentasi**.
 - Sesi ini (lanjutan 2 2026-07-02):
   - **Root cause orphan account teridentifikasi**: register tidak atomic — `signUpEmail` berhasil tapi `db.insert` bisa gagal → user bisa login tapi `getAkunIdentity()` null.
   - **Fix register route**: `cleanupAuthUser()` helper + wrap ketiga jalur (klaim/member-baru/publik) dengan try/catch + cleanup.
