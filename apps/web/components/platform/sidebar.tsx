@@ -8,12 +8,14 @@ import {
   Users,
   Package,
   Settings,
+  MapPin,
 } from "lucide-react";
 import type { PlatformUserRole } from "@jalajogja/db";
 
 const NAV_ITEMS = [
   { label: "Dashboard",  href: "/platform/dashboard", icon: LayoutDashboard },
   { label: "Tenant",     href: "/platform/tenants",   icon: Building2 },
+  { label: "PC IKPM",   href: "/platform/cabang",    icon: MapPin },
   { label: "Tim",        href: "/platform/users",     icon: Users },
   { label: "Paket",      href: "/platform/packages",  icon: Package },
   { label: "Pengaturan", href: "/platform/settings",  icon: Settings },

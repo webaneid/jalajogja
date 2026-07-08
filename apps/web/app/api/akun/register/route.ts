@@ -65,9 +65,14 @@ export async function POST(req: NextRequest) {
 
     // ── Tenant lookup ─────────────────────────────────────────────────────────
     let registeredAtTenant: string | null = null;
+    let tenantRefCabangId:  string | null = null;
     if (tenantSlug) {
-      const tenant = await db.query.tenants.findFirst({ where: eq(tenants.slug, tenantSlug) });
+      const tenant = await db.query.tenants.findFirst({
+        where:   eq(tenants.slug, tenantSlug),
+        columns: { id: true, refCabangId: true },
+      });
       registeredAtTenant = tenant?.id ?? null;
+      tenantRefCabangId  = tenant?.refCabangId ?? null;
     }
 
     // Helper: daftarkan member ke tenant (idempotent via ON CONFLICT DO NOTHING)
@@ -116,7 +121,12 @@ export async function POST(req: NextRequest) {
         try {
           await db
             .update(members)
-            .set({ betterAuthUserId: signUpResult.user.id, updatedAt: new Date() })
+            .set({
+              betterAuthUserId:   signUpResult.user.id,
+              // Auto-set cabang resmi jika daftar di tenant cabang yang punya ref
+              ...(tenantRefCabangId ? { primaryCabangRefId: tenantRefCabangId } : {}),
+              updatedAt:          new Date(),
+            })
             .where(eq(members.id, claimMemberId));
           await joinTenant(claimMemberId);
         } catch (linkErr) {
@@ -161,10 +171,12 @@ export async function POST(req: NextRequest) {
           .returning({ id: contacts.id });
 
         const [newMember] = await db.insert(members).values({
-          name:             name.trim(),
-          stambukNumber:    normalizedStambuk,
-          contactId:        newContact.id,
-          betterAuthUserId: signUpResult.user.id,
+          name:               name.trim(),
+          stambukNumber:      normalizedStambuk,
+          contactId:          newContact.id,
+          betterAuthUserId:   signUpResult.user.id,
+          // Auto-set cabang resmi dari tenant tempat mendaftar (jika cabang tenant)
+          ...(tenantRefCabangId ? { primaryCabangRefId: tenantRefCabangId } : {}),
         }).returning({ id: members.id });
 
         await joinTenant(newMember.id);

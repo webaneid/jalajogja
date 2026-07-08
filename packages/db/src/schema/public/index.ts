@@ -2,6 +2,7 @@ export * from "./auth";
 export * from "./tenants";
 
 // ── Reference tables (seed data, Kemendagri + BPS) ────────────────────────────
+export * from "./ref-ikpm-cabang";
 export * from "./ref-provinces";
 export * from "./ref-regencies";
 export * from "./ref-districts";

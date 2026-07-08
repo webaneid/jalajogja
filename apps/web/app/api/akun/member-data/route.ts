@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse }           from "next/server";
-import { eq }                                  from "drizzle-orm";
+import { eq, and }                             from "drizzle-orm";
 import {
-  db, members,
+  db, members, tenants, tenantMemberships,
   contacts, addresses, socialMedias,
-  refRegencies,
+  refRegencies, refIkpmCabang,
   createTenantDb, getSettings,
   generateMemberNumber,
 } from "@jalajogja/db";
@@ -22,7 +22,7 @@ async function getSessionMember(req: NextRequest) {
       id: true, name: true, nik: true, stambukNumber: true, gender: true,
       birthDate: true, birthRegencyId: true, birthPlaceText: true,
       graduationYear: true, graduationPeriod: true, professionId: true, memberNumber: true,
-      waliSantri: true, photoUrl: true,
+      waliSantri: true, photoUrl: true, primaryCabangRefId: true,
       contactId: true, homeAddressId: true, socialMediaId: true, domicileStatus: true,
     },
   });
@@ -142,9 +142,10 @@ export async function GET(req: NextRequest) {
       professionId:  member.professionId,
       memberNumber:  member.memberNumber,
       graduationPeriod: member.graduationPeriod ?? null,
-      waliSantri:    member.waliSantri ?? null,
-      photoUrl:      member.photoUrl ?? null,
-      domicileStatus: member.domicileStatus,
+      waliSantri:         member.waliSantri ?? null,
+      photoUrl:           member.photoUrl ?? null,
+      domicileStatus:     member.domicileStatus,
+      primaryCabangRefId: member.primaryCabangRefId ?? null,
       // Kontak
       contact,
       // Alamat
@@ -177,8 +178,9 @@ export async function PATCH(req: NextRequest) {
     graduationYear?:   number | null;
     graduationPeriod?: "awal" | "akhir" | null;
     professionId?:     number | null;
-    waliSantri?:       "gontor" | "alumni" | "lain" | "bukan" | null;
-    photoUrl?:         string | null;
+    waliSantri?:          "gontor" | "alumni" | "lain" | "bukan" | null;
+    photoUrl?:            string | null;
+    primaryCabangRefId?:  string | null;
   };
 
   if (body.name !== undefined && !body.name?.trim())
@@ -196,8 +198,9 @@ export async function PATCH(req: NextRequest) {
   if (body.graduationYear   !== undefined) updateData.graduationYear   = body.graduationYear   ?? null;
   if (body.graduationPeriod !== undefined) updateData.graduationPeriod = body.graduationPeriod ?? null;
   if (body.professionId     !== undefined) updateData.professionId     = body.professionId     ?? null;
-  if (body.waliSantri       !== undefined) updateData.waliSantri       = body.waliSantri       ?? null;
-  if (body.photoUrl         !== undefined) updateData.photoUrl         = body.photoUrl?.trim()  || null;
+  if (body.waliSantri          !== undefined) updateData.waliSantri         = body.waliSantri         ?? null;
+  if (body.photoUrl            !== undefined) updateData.photoUrl           = body.photoUrl?.trim()    || null;
+  if (body.primaryCabangRefId  !== undefined) updateData.primaryCabangRefId = body.primaryCabangRefId  ?? null;
 
   // Auto-generate No. Anggota saat birthDate diisi dan member belum punya nomor
   if (!member.memberNumber) {
@@ -206,6 +209,28 @@ export async function PATCH(req: NextRequest) {
   }
 
   await db.update(members).set(updateData).where(eq(members.id, member.id));
+
+  // Jika cabang utama berubah → auto-join tenant cabang baru jika ada
+  if (body.primaryCabangRefId) {
+    const [cabangTenant] = await db
+      .select({ id: tenants.id })
+      .from(tenants)
+      .where(and(
+        eq(tenants.refCabangId, body.primaryCabangRefId),
+        eq(tenants.isActive, true),
+      ))
+      .limit(1);
+
+    if (cabangTenant) {
+      await db.insert(tenantMemberships).values({
+        tenantId:       cabangTenant.id,
+        memberId:       member.id,
+        status:         "active",
+        registeredVia:  "auto_cabang",
+        membershipType: "cabang",
+      }).onConflictDoNothing();
+    }
+  }
 
   return NextResponse.json({ success: true });
 }

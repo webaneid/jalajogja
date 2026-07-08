@@ -1,8 +1,8 @@
 import { redirect }  from "next/navigation";
 import { headers }   from "next/headers";
-import { eq }        from "drizzle-orm";
+import { eq, and }   from "drizzle-orm";
 import { auth }      from "@/lib/auth";
-import { db, tenantMemberships, tenants, members } from "@jalajogja/db";
+import { db, tenantMemberships, tenants, members, refIkpmCabang } from "@jalajogja/db";
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
@@ -23,26 +23,53 @@ export default async function AkunPage({ params }: { params: Params }) {
   const isMember     = identity.type === "member";
   const isIncomplete = isMemberDataIncomplete(identity);
 
-  // Info keanggotaan di cabang ini
+  // Info keanggotaan
   let membershipInfo: {
-    memberNumber: string | null;
-    status:       string | null;
-    tenantName:   string | null;
+    memberNumber:    string | null;
+    status:          string | null;
+    primaryCabangNama: string | null;  // dari ref_ikpm_cabang (cabang resmi PP IKPM)
   } | null = null;
 
   if (isMember && identity.memberId) {
-    const [row] = await db
+    // Ambil member data + cabang resmi
+    const [memberRow] = await db
       .select({
-        memberNumber: members.memberNumber,
-        status:       tenantMemberships.status,
-        tenantName:   tenants.name,
+        memberNumber:    members.memberNumber,
+        primaryCabangRefId: members.primaryCabangRefId,
       })
-      .from(tenantMemberships)
-      .innerJoin(members, eq(members.id, tenantMemberships.memberId))
-      .innerJoin(tenants, eq(tenants.id, tenantMemberships.tenantId))
-      .where(eq(tenantMemberships.memberId, identity.memberId))
+      .from(members)
+      .where(eq(members.id, identity.memberId))
       .limit(1);
-    if (row) membershipInfo = row;
+
+    // Status keanggotaan dari tenant ini
+    const [membershipRow] = await db
+      .select({ status: tenantMemberships.status })
+      .from(tenantMemberships)
+      .innerJoin(tenants, eq(tenants.id, tenantMemberships.tenantId))
+      .where(and(
+        eq(tenantMemberships.memberId, identity.memberId),
+        eq(tenants.slug, slug),
+      ))
+      .limit(1);
+
+    // Nama cabang resmi dari ref_ikpm_cabang
+    let primaryCabangNama: string | null = null;
+    if (memberRow?.primaryCabangRefId) {
+      const [cabangRow] = await db
+        .select({ nama: refIkpmCabang.nama })
+        .from(refIkpmCabang)
+        .where(eq(refIkpmCabang.id, memberRow.primaryCabangRefId))
+        .limit(1);
+      primaryCabangNama = cabangRow?.nama ?? null;
+    }
+
+    if (memberRow) {
+      membershipInfo = {
+        memberNumber:      memberRow.memberNumber,
+        status:            membershipRow?.status ?? null,
+        primaryCabangNama,
+      };
+    }
   }
 
   return (
@@ -90,22 +117,23 @@ export default async function AkunPage({ params }: { params: Params }) {
                 <dd className="font-mono">{identity.stambuk}</dd>
               </>
             )}
-            {membershipInfo?.tenantName && (
+            {membershipInfo?.primaryCabangNama ? (
               <>
-                <dt className="text-muted-foreground">Cabang</dt>
-                <dd>{membershipInfo.tenantName}</dd>
+                <dt className="text-muted-foreground">PC IKPM</dt>
+                <dd>{membershipInfo.primaryCabangNama}</dd>
+              </>
+            ) : (
+              <>
+                <dt className="text-muted-foreground">PC IKPM</dt>
+                <dd className="text-muted-foreground italic text-xs">
+                  <a href={`/${slug}/akun/lengkapi`} className="underline hover:text-foreground">Pilih cabang Anda →</a>
+                </dd>
               </>
             )}
             {membershipInfo?.status && (
               <>
                 <dt className="text-muted-foreground">Status</dt>
                 <dd className="capitalize">{membershipInfo.status}</dd>
-              </>
-            )}
-            {!membershipInfo && (
-              <>
-                <dt className="text-muted-foreground">Cabang</dt>
-                <dd className="text-muted-foreground italic text-xs">Belum terdaftar di cabang ini</dd>
               </>
             )}
           </dl>

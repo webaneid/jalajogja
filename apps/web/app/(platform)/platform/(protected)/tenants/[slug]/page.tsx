@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
-import { db, tenants, addons, tenantAddonInstallations } from "@jalajogja/db";
+import { db, tenants, addons, tenantAddonInstallations, refIkpmCabang } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { ArrowLeft, Globe, ExternalLink } from "lucide-react";
 import { PlatformTenantToggle } from "@/components/platform/tenant-toggle";
 import { AddonToggle } from "./addon-toggle";
+import { LinkCabangClient } from "./link-cabang-client";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -20,6 +21,22 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
   if (!tenant) notFound();
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+
+  // Ambil daftar cabang resmi (hanya untuk tenant bertipe cabang)
+  const cabangList = tenant.tenantType === "cabang"
+    ? await db.select({ id: refIkpmCabang.id, nama: refIkpmCabang.nama })
+        .from(refIkpmCabang)
+        .where(eq(refIkpmCabang.isActive, true))
+        .orderBy(refIkpmCabang.nama)
+    : [];
+
+  // Nama cabang yang sudah terhubung (jika ada)
+  let linkedCabangNama: string | null = null;
+  if (tenant.refCabangId) {
+    const [linked] = await db.select({ nama: refIkpmCabang.nama })
+      .from(refIkpmCabang).where(eq(refIkpmCabang.id, tenant.refCabangId)).limit(1);
+    linkedCabangNama = linked?.nama ?? null;
+  }
 
   // Semua add-on tersedia + status instalasi untuk tenant ini
   const [allAddons, installations] = await Promise.all([
@@ -133,6 +150,24 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
           ))}
         </dl>
       </div>
+
+      {/* Link ke PC IKPM Resmi — hanya untuk tenant bertipe cabang */}
+      {tenant.tenantType === "cabang" && (
+        <div className="rounded-xl border border-border bg-background overflow-hidden">
+          <div className="px-5 py-3 border-b border-border">
+            <p className="text-sm font-semibold">PC IKPM Resmi</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Hubungkan tenant ini ke data resmi cabang IKPM. Anggota yang sudah mendaftar di cabang tersebut akan otomatis ditambahkan.
+            </p>
+          </div>
+          <LinkCabangClient
+            tenantId={tenant.id}
+            currentRefId={tenant.refCabangId ?? null}
+            currentRefNama={linkedCabangNama}
+            cabangList={cabangList}
+          />
+        </div>
+      )}
 
       {/* Add-on */}
       <div className="rounded-xl border border-border bg-background overflow-hidden">

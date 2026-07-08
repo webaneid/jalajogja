@@ -75,9 +75,9 @@ export const members = pgTable("members", {
     .references(() => user.id, { onDelete: "set null" }),
 
   // ── Backbone IKPM ────────────────────────────────────────────────────────────
-  // Cabang "rumah" anggota — biasanya cabang tempat pertama kali mendaftar
-  // UUID referensi ke public.tenants.id (tidak di-FK di Drizzle untuk hindari circular)
-  primaryCabangId: uuid("primary_cabang_id"),
+  // Cabang "rumah" anggota → referensi ke ref_ikpm_cabang (bukan ke tenants)
+  // Karena cabang bisa ada di daftar resmi tanpa punya tenant aktif
+  primaryCabangRefId: uuid("primary_cabang_ref_id"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -61,8 +61,11 @@ export const tenants = pgTable("tenants", {
   marhalahYear:   integer("marhalah_year"),
   marhalahPeriod: text("marhalah_period", { enum: MARHALAH_PERIODS }),
 
-  // Forum & Marhalah: FK ke tenant cabang induknya
-  parentTenantId: uuid("parent_tenant_id"),  // FK ke tenants.id (self-referential, tidak di-define via FK di Drizzle)
+  // Forum & Marhalah: FK ke tenant cabang induknya (self-referential)
+  parentTenantId: uuid("parent_tenant_id"),
+
+  // Cabang: link ke data resmi PP IKPM (nullable — tenant bisa dibuat tanpa ref)
+  refCabangId: uuid("ref_cabang_id"),  // FK ke ref_ikpm_cabang.id
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -31,8 +31,9 @@ interface MemberData {
   graduationPeriod: "awal" | "akhir" | null;
   professionId:     number | null;
   waliSantri:       "gontor" | "alumni" | "lain" | "bukan" | null;
-  memberNumber: string | null;
-  domicileStatus: "permanent" | "temporary" | null;
+  memberNumber:       string | null;
+  domicileStatus:     "permanent" | "temporary" | null;
+  primaryCabangRefId: string | null;
   contact: {
     phone: string | null; whatsapp: string | null; email: string | null;
     isPhonePublic: boolean; isWhatsappPublic: boolean; isEmailPublic: boolean;
@@ -237,7 +238,9 @@ export default function LengkapiPage() {
   const [saving, setSaving]   = React.useState(false);
   const [error, setError]     = React.useState<string | null>(null);
 
-  const [professions, setProfessions] = React.useState<Profession[]>([]);
+  const [professions,  setProfessions]  = React.useState<Profession[]>([]);
+  const [cabangList,   setCabangList]   = React.useState<{ id: string; nama: string }[]>([]);
+  const [primaryCabangRefId, setPrimaryCabangRefId] = React.useState<string>("");
 
   // ── Step 1 state ──────────────────────────────────────────────────────────
   const [photoUrl,       setPhotoUrl]       = React.useState<string | null>(null);
@@ -309,10 +312,11 @@ export default function LengkapiPage() {
   React.useEffect(() => {
     async function load() {
       try {
-        const [dataRes, profRes, eduRes] = await Promise.all([
+        const [dataRes, profRes, eduRes, cabangRes] = await Promise.all([
           fetch(`/api/akun/member-data?slug=${encodeURIComponent(slug)}`),
           fetch("/api/ref/professions"),
           fetch("/api/akun/member-education"),
+          fetch("/api/ref/ikpm-cabang"),
         ]);
 
         if (dataRes.status === 403) {
@@ -343,6 +347,13 @@ export default function LengkapiPage() {
         setGraduationPeriod((data.graduationPeriod ?? "") as "awal" | "akhir" | "");
         setProfessionId(data.professionId ?? null);
         setWaliSantri((data.waliSantri ?? "") as "gontor" | "alumni" | "lain" | "bukan" | "");
+        setPrimaryCabangRefId(data.primaryCabangRefId ?? "");
+
+        // Daftar cabang resmi
+        if (cabangRes.ok) {
+          const cabangData = await cabangRes.json();
+          setCabangList(Array.isArray(cabangData) ? cabangData : (cabangData.data ?? []));
+        }
 
         // Isi Step 2 — kontak
         setPhone(data.contact?.phone ?? "");
@@ -439,7 +450,8 @@ export default function LengkapiPage() {
           graduationYear:   graduationYear ? Number(graduationYear) : null,
           graduationPeriod: Number(graduationYear) === 1999 ? (graduationPeriod || null) : null,
           professionId:     professionId ?? null,
-          waliSantri:       waliSantri || null,
+          waliSantri:          waliSantri || null,
+          primaryCabangRefId:  primaryCabangRefId || null,
         }),
       });
       const json = await res.json();
@@ -722,6 +734,24 @@ export default function LengkapiPage() {
                 <option value="lain">Wali Santri Pesantren Lain</option>
                 <option value="bukan">Bukan Wali Santri</option>
               </select>
+            </div>
+
+            {/* PC IKPM Cabang */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">PC IKPM Cabang</label>
+              <select
+                value={primaryCabangRefId}
+                onChange={e => setPrimaryCabangRefId(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">— Pilih PC IKPM Anda —</option>
+                {cabangList.map(c => (
+                  <option key={c.id} value={c.id}>{c.nama}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                PC IKPM tempat Anda berdomisili atau bernaung. Dapat diubah jika pindah.
+              </p>
             </div>
           </div>
 
