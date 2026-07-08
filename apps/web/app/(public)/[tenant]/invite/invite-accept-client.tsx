@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter }               from "next/navigation";
 import { PasswordInput }           from "@/components/ui/password-input";
 import { acceptInviteAction, registerAndAcceptAction } from "./actions";
 
@@ -24,7 +23,6 @@ export function InviteAcceptClient({
   prefillName,
   prefillEmail,
 }: Props) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -35,13 +33,15 @@ export function InviteAcceptClient({
   const [password, setPassword] = useState("");
   const [mode, setMode]         = useState<"register" | "login_redirect">("register");
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com";
+
   function handleAccept() {
     setError("");
     startTransition(async () => {
       const res = await acceptInviteAction(slug, token);
       if (res.success) {
         setSuccess(true);
-        setTimeout(() => router.push(`/app/${res.slug}/dashboard`), 1500);
+        setTimeout(() => { window.location.href = `${appUrl}/app/${res.slug}/dashboard`; }, 1500);
       } else {
         setError(res.error);
       }
@@ -59,7 +59,7 @@ export function InviteAcceptClient({
       const res = await registerAndAcceptAction(slug, token, name, email, password);
       if (res.success) {
         setSuccess(true);
-        setTimeout(() => router.push(`/app/${res.slug}/dashboard`), 1500);
+        setTimeout(() => { window.location.href = `${appUrl}/app/${res.slug}/dashboard`; }, 1500);
       } else {
         setError(res.error);
       }

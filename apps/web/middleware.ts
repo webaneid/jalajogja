@@ -11,8 +11,20 @@ export async function middleware(request: NextRequest) {
 
   // ── Custom domain routing ──────────────────────────────────────────────────
   // Jika request datang dari domain selain jalakarta.com → resolve ke tenant slug.
-  // Hanya berlaku untuk public routes — admin routes (/app/) tetap di jalakarta.com.
-  if (!isOwnHost(host) && !pathname.startsWith("/api/") && !pathname.startsWith("/app/")) {
+  if (!isOwnHost(host)) {
+    // Path admin (/app/*) dan platform (/platform/*) pada custom domain → redirect ke jalakarta.com.
+    // Custom domain hanya boleh melayani konten publik tenant mereka sendiri.
+    if (pathname.startsWith("/app/") || pathname.startsWith("/platform/")) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com";
+      const dest   = new URL(pathname + request.nextUrl.search, appUrl);
+      return NextResponse.redirect(dest.toString(), 302);
+    }
+
+    // API paths → pass through tanpa rewrite custom domain
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.next();
+    }
+
     try {
       const internalUrl =
         process.env.APP_INTERNAL_URL ??

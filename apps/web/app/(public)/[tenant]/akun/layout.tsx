@@ -33,8 +33,9 @@ export default async function AkunLayout({ children, params }: Props) {
       .from(schema.users)
       .where(eq(schema.users.betterAuthUserId, session.user.id))
       .limit(1);
-    // Pengurus → ke admin dashboard; selain itu → halaman error (bukan /login, akan loop)
-    redirect(tenantUser ? `/app/${slug}/dashboard` : `/${slug}/akun-error`);
+    // Pengurus → ke admin dashboard (jalakarta.com/app/..., bukan custom domain); selain itu → error
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com";
+    redirect(tenantUser ? `${appUrl}/app/${slug}/dashboard` : `/${slug}/akun-error`);
   }
 
   const isMember    = identity.type === "member";
