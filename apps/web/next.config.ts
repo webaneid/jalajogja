@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 
 // Slug pattern: huruf kecil + angka + dash, minimal 3 karakter
-// Negatif lookahead untuk path yang bukan tenant slug
-const TENANT_SLUG = "(?!api$|app$|platform$|_next$|register$|dashboard-redirect$)[a-z][a-z0-9-]+";
+// Negatif lookahead pakai (?:/|$) bukan $ saja — karena regex diapply ke full path string,
+// bukan hanya segment. "platform/dashboard" → $ tidak match di akhir "platform",
+// tapi (?:/|$) match ("/" ada setelahnya) → "platform" dikecualikan dengan benar.
+const TENANT_SLUG = "(?!(?:api|app|platform|_next|register|dashboard-redirect)(?:/|$))[a-z][a-z0-9-]+";
 
 // Admin modules yang dipindah dari /{slug}/X ke /app/{slug}/X di Fase 1
 // Redirect 301 untuk mempertahankan bookmark lama

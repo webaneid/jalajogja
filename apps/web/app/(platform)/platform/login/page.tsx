@@ -1,10 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 
 export default function PlatformLoginPage() {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +21,8 @@ export default function PlatformLoginPage() {
       });
       const data = await res.json() as { ok?: boolean; error?: string };
       if (data.ok) {
-        router.push("/platform/dashboard");
+        // Gunakan full page reload agar tidak kena next.config.ts redirect rules
+        window.location.href = "/platform/dashboard";
       } else {
         setError(data.error ?? "Gagal login.");
       }
