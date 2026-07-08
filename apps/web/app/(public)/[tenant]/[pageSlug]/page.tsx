@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
+import { headers } from "next/headers";
 import { createTenantDb, db, tenants } from "@jalajogja/db";
+import { isOwnHost } from "@/lib/is-own-host";
 import { publicUrl } from "@/lib/minio";
 import { DefaultTemplate } from "@/components/website/public/default-template";
 import { LandingTemplate } from "@/components/website/public/landing-template";
@@ -82,6 +84,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function PublicPageRoute({ params }: { params: Params }) {
   const { tenant: slug, pageSlug } = await params;
+  const host    = (await headers()).get("host") ?? "";
+  const baseUrl = isOwnHost(host) ? `/${slug}` : "";
   const result = await getPage(slug, pageSlug);
   if (!result) notFound();
 
@@ -94,6 +98,7 @@ export default async function PublicPageRoute({ params }: { params: Params }) {
         body={body}
         tenantSlug={slug}
         tenantClient={tenantClient}
+        baseUrl={baseUrl}
       />
     );
   }

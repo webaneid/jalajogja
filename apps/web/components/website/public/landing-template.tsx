@@ -33,10 +33,11 @@ type HeroCardData = {
   date:  string | null;
 };
 
-async function HeroSection({ data, tenantClient, tenantSlug }: {
+async function HeroSection({ data, tenantClient, tenantSlug, baseUrl }: {
   data:         Record<string, unknown>;
   tenantClient: TenantDb;
   tenantSlug:   string;
+  baseUrl:      string;
 }) {
   const d = data as {
     eyebrow?: string;
@@ -70,7 +71,7 @@ async function HeroSection({ data, tenantClient, tenantSlug }: {
         type:  "event",
         label: "Agenda Terbaru",
         title: upcomingEvent.title,
-        href:  `/${tenantSlug}/agenda/${upcomingEvent.slug}`,
+        href:  `${baseUrl}/agenda/${upcomingEvent.slug}`,
         date:  upcomingEvent.startsAt
           ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(upcomingEvent.startsAt)
           : null,
@@ -88,7 +89,7 @@ async function HeroSection({ data, tenantClient, tenantSlug }: {
           type:  "post",
           label: "Berita Terbaru",
           title: latestPost.title,
-          href:  `/${tenantSlug}/post/${latestPost.slug}`,
+          href:  `${baseUrl}/post/${latestPost.slug}`,
           date:  latestPost.publishedAt
             ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(latestPost.publishedAt)
             : null,
@@ -206,7 +207,7 @@ async function HeroSection({ data, tenantClient, tenantSlug }: {
               {HERO_MODULES.map(({ id, path, label, desc, Icon }) => (
                 <a
                   key={id}
-                  href={`/${tenantSlug}/${path}`}
+                  href={`${baseUrl}/${path}`}
                   className="group min-w-[160px] shrink-0 lg:min-w-0 flex flex-col gap-3 p-4 rounded-xl border border-border bg-card hover:border-primary hover:bg-primary/5 transition-all duration-200"
                 >
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
@@ -430,9 +431,10 @@ type Props = {
   body:         LandingBody;
   tenantSlug:   string;
   tenantClient: TenantDb;
+  baseUrl:      string;
 };
 
-export async function LandingTemplate({ body, tenantSlug, tenantClient }: Props) {
+export async function LandingTemplate({ body, tenantSlug, tenantClient, baseUrl }: Props) {
   let contactSettings: ContactSettings = {};
 
   if (body.sections.some(s => s.type === "contact_info")) {
@@ -448,6 +450,7 @@ export async function LandingTemplate({ body, tenantSlug, tenantClient }: Props)
           tenantSlug={tenantSlug}
           tenantClient={tenantClient}
           contactSettings={contactSettings}
+          baseUrl={baseUrl}
         />
       ))}
     </>
@@ -457,15 +460,16 @@ export async function LandingTemplate({ body, tenantSlug, tenantClient }: Props)
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 function SectionRenderer({
-  section, tenantSlug, tenantClient, contactSettings,
+  section, tenantSlug, tenantClient, contactSettings, baseUrl,
 }: {
   section:         SectionItem;
   tenantSlug:      string;
   tenantClient:    TenantDb;
   contactSettings: ContactSettings;
+  baseUrl:         string;
 }) {
   switch (section.type) {
-    case "hero":         return <HeroSection data={section.data} tenantClient={tenantClient} tenantSlug={tenantSlug} />;
+    case "hero":         return <HeroSection data={section.data} tenantClient={tenantClient} tenantSlug={tenantSlug} baseUrl={baseUrl} />;
     case "posts":        return (
       <PostsSection
         data={section.data as PostsSectionData}
