@@ -468,47 +468,51 @@ Ahmad → buka forbis-ikpm.jalakarta.com/login
 
 ## Alur Pendaftaran Forum — Dikonfigurasi per Forum
 
+> **Klarifikasi penting:** Yang dimaksud pendaftaran di sini adalah **alumni IKPM yang
+> mendaftar menjadi anggota forum** (bukan forum yang membayar sesuatu). Forum adalah tenant
+> penyelenggara; alumni adalah pihak yang mendaftar dan (jika diperlukan) membayar iuran
+> keanggotaan ke forum tersebut.
+
 Forum bisa punya alur pendaftaran yang berbeda-beda. Admin forum mengatur sendiri
 via **Settings Forum** (`/app/{slug}/settings/membership`). Tidak ada alur yang
-di-hardcode — semuanya mengikuti konfigurasi yang dipilih admin.
+di-hardcode — semuanya mengikuti konfigurasi yang dipilih admin forum.
 
 ---
 
-### Tiga Mode Pendaftaran
+### Tiga Mode Pendaftaran Anggota Forum
 
 ```
 MODE 1 — GRATIS
 ───────────────
-Anggota klik "Daftar ke Forum" → langsung active
-Tidak ada invoice, tidak ada pembayaran.
-Cocok untuk: forum diskusi, komunitas terbuka.
+Alumni klik "Daftar ke Forum" → konfirmasi data → langsung active.
+Tidak ada biaya apapun.
+Cocok untuk: forum diskusi terbuka, komunitas hobi.
 
 MODE 2 — BERBAYAR (Iuran/Biaya Pendaftaran)
 ────────────────────────────────────────────
-Anggota klik "Daftar ke Forum"
-  → status: pending
-  → sistem buat invoice (source_type: 'forum_registration', amount: Rp X)
-  → anggota bayar via metode pembayaran yang dikonfigurasi forum
-  → admin konfirmasi → status: active
+Alumni klik "Daftar ke Forum"
+  → data pre-filled ditampilkan (dari cabang/marhalah)
+  → alumni konfirmasi + pilih metode bayar
+  → invoice dibuat → alumni bayar → admin forum konfirmasi → status: active
 
-Cocok untuk: forum profesional dengan akses konten eksklusif, event berbayar.
+Biaya masuk ke kas forum (bukan ke jalajogja).
+Cocok untuk: forum profesional dengan program eksklusif.
 
-MODE 3 — INFAQ (Sukarela, Minimal Tertentu)
-────────────────────────────────────────────
-Anggota klik "Daftar ke Forum"
-  → status: pending (atau active, sesuai setting "langsung_aktif")
-  → sistem buat invoice (source_type: 'forum_registration', amount: 0)
-  → anggota isi nominal infaq sendiri (minimal Rp X jika admin set)
-  → bayar → status: active
+MODE 3 — INFAQ (Sukarela)
+──────────────────────────
+Alumni klik "Daftar ke Forum"
+  → data pre-filled ditampilkan
+  → alumni isi nominal infaq sendiri (admin bisa set minimal)
+  → invoice dibuat → alumni bayar → status: active
 
-Cocok untuk: forum sosial, komunitas IKPM yang lebih ke silaturahmi.
+Cocok untuk: forum sosial, kepedulian alumni, komunitas berbasis sedekah.
 ```
 
 ---
 
-### Settings Forum (`/app/{slug}/settings/membership`)
+### Yang Perlu Dikonfigurasi Admin Forum
 
-Disimpan di `tenant_{slug}.settings` key `membership_config` group `forum`:
+Disimpan di `tenant_{slug}.settings` — key `membership_config`, group `forum`:
 
 ```json
 {
@@ -516,211 +520,96 @@ Disimpan di `tenant_{slug}.settings` key `membership_config` group `forum`:
 
   "paid": {
     "amount": 150000,
-    "label": "Iuran Tahunan Forum Bisnis",
-    "period": "annual | lifetime | once"
+    "label": "Iuran Pendaftaran Forum Bisnis",
+    "period": "once | annual | lifetime"
   },
 
   "infaq": {
     "min_amount": 50000,
-    "label": "Infaq Sukarela",
     "suggest_amounts": [50000, 100000, 250000]
   },
 
   "access_before_payment": false,
-  "auto_remind_days": 7,
-
-  "require_approval": false,
-  "approval_questions": []
+  "require_approval": false
 }
 ```
-
-**Penjelasan field:**
 
 | Field | Keterangan |
 |-------|------------|
 | `registration_mode` | Tipe alur — free / paid / infaq |
-| `paid.amount` | Nominal pasti yang harus dibayar |
-| `paid.period` | `once` = sekali seumur hidup, `annual` = ditagih tiap tahun, `lifetime` = bayar sekali berlaku selamanya |
-| `infaq.min_amount` | Minimal infaq (0 = benar-benar bebas) |
-| `infaq.suggest_amounts` | Pilihan nominal yang ditampilkan sebagai chips di UI |
-| `access_before_payment` | `true` = status active meski belum bayar, invoice tetap open. `false` = status pending sampai lunas |
-| `auto_remind_days` | Berapa hari sebelum invoice expire dikirim reminder WA |
-| `require_approval` | Jika `true`, admin harus approve dulu sebelum invoice dikirim |
-| `approval_questions` | Pertanyaan tambahan saat pendaftaran (misal: "Bidang usaha Anda?") |
+| `paid.period` | `once` = sekali, `annual` = iuran tahunan, `lifetime` = bayar sekali selamanya |
+| `access_before_payment` | `true` = langsung bisa akses forum meski belum bayar (cocok infaq). `false` = tunggu lunas dulu |
+| `require_approval` | Admin forum harus approve dulu sebelum status active |
 
 ---
 
-### Status Membership Forum
+### Status Keanggotaan Forum
 
 ```
-                    [Klik Daftar]
-                         │
-                  ┌──────▼──────┐
-                  │   pending   │  ← semua mode mulai dari sini
-                  └──────┬──────┘
-                         │
-          ┌──────────────┼──────────────┐
-          │              │              │
-       free            paid           infaq
-          │              │              │
-   langsung          buat invoice   buat invoice
-   active           Rp X            Rp 0 + input nominal
-          │              │              │
-          │         [Bayar + Konfirmasi admin]
-          │              │              │
-          └──────────────▼──────────────┘
-                  ┌──────▼──────┐
-                  │   active    │  ← bisa akses penuh forum
-                  └──────┬──────┘
-                         │
-                  ┌──────▼──────┐
-                  │  suspended  │  ← jika iuran tahunan telat bayar
-                  └─────────────┘
+[Alumni klik Daftar]
+        │
+    ┌───▼────┐
+    │ pending│
+    └───┬────┘
+        │
+   ┌────┴────────────┐
+   │                 │
+ free           paid / infaq
+   │                 │
+langsung      buat invoice
+active     alumni bayar → admin konfirmasi
+   │                 │
+   └────────┬────────┘
+        ┌───▼────┐
+        │ active │  ← bisa akses penuh konten forum
+        └───┬────┘
+            │ (jika iuran annual telat diperpanjang)
+        ┌───▼──────┐
+        │ suspended│
+        └──────────┘
 ```
 
-**Kolom tambahan di `public.tenant_memberships` untuk forum:**
-
-```sql
-ALTER TABLE public.tenant_memberships
-  ADD COLUMN forum_status      TEXT CHECK (forum_status IN
-    ('pending', 'active', 'suspended', 'rejected')),
-  ADD COLUMN forum_invoice_id  UUID,   -- FK ke tenant.invoices (nullable)
-  ADD COLUMN approved_at       TIMESTAMPTZ,
-  ADD COLUMN expires_at        TIMESTAMPTZ;  -- untuk iuran annual
-```
-
-`forum_status` hanya terisi untuk `membership_type = 'forum'`.
-Untuk cabang dan marhalah, gunakan kolom `status` yang sudah ada.
+`forum_status` hanya ada untuk `membership_type = 'forum'`.
+Cabang dan marhalah tetap pakai kolom `status` yang sudah ada.
 
 ---
 
-### UX Alur Pendaftaran Forum (dari sisi anggota)
+### UX dari Sisi Alumni
 
 ```
-Anggota buka /{forum-slug}/daftar
-
-┌─────────────────────────────────────────────┐
-│  HALAMAN PENDAFTARAN FORUM BISNIS IKPM       │
-│                                              │
-│  Data Anda (pre-filled, read-only):          │
-│  ┌──────────────────────────────────┐        │
-│  │ Nama:    Pak Ahmad               │        │
-│  │ Stambuk: 2005-xxx                │        │
-│  │ Cabang:  PC IKPM Yogyakarta      │        │
-│  │ Usaha:   Toko Batik, PT. XYZ    │        │
-│  └──────────────────────────────────┘        │
-│  [Ubah data] → ke /akun/usaha                │
-│                                              │
-│  ── Jika mode PAID ──────────────────────    │
-│  Iuran Tahunan: Rp 150.000                  │
-│  Metode bayar: [Transfer BCA] [QRIS]        │
-│                                              │
-│  ── Jika mode INFAQ ─────────────────────    │
-│  Infaq Anda (min. Rp 50.000):               │
-│  [50rb] [100rb] [250rb] [Lainnya...]        │
-│                                              │
-│  ── Jika require_approval ───────────────    │
-│  Bidang usaha yang relevan: [____________]  │
-│  Alasan bergabung: [__________________]    │
-│                                              │
-│  [✓ Saya setuju dengan aturan forum]        │
-│                                              │
-│  [Daftar Sekarang]                          │
-└─────────────────────────────────────────────┘
+Alumni buka /{forum-slug}/daftar
+  ↓
+Halaman menampilkan data pre-filled (dari data cabang/marhalah):
+  Nama, Stambuk, Cabang, Angkatan, Data Usaha yang relevan
+  → [Ubah data] mengarah ke /akun (bukan form baru di sini)
+  ↓
+Tergantung mode forum:
+  [free]  → tombol "Daftar Sekarang" → selesai
+  [paid]  → tampil nominal + pilih metode bayar → "Lanjut Bayar"
+  [infaq] → tampil chips nominal + input bebas → "Lanjut Bayar"
+  ↓
+Selesai → redirect ke /akun dengan info status keanggotaan forum
 ```
 
 ---
 
-### Integrasi dengan Billing yang Sudah Ada
+### Integrasi Billing
 
-Invoice forum registration menggunakan infrastruktur yang persis sama dengan toko/donasi/event:
+Pembayaran keanggotaan forum menggunakan **invoice yang sudah ada** — tidak perlu
+sistem baru. `source_type: 'forum_registration'` ditambahkan ke enum invoice.
+Konfirmasi bayar oleh admin forum otomatis mengubah `forum_status → active`.
 
-```typescript
-// Di joinForumAction(slug, memberId, paymentInput?)
-async function joinForumAction(slug: string, memberId: string, input: ForumJoinInput) {
-  const config = await getForumMembershipConfig(slug);
-
-  // Step 1: Buat membership dengan status pending
-  const [membership] = await tenantDb.insert(tenantMemberships).values({
-    tenantId:       tenantId,
-    memberId:       memberId,
-    membershipType: 'forum',
-    forumStatus:    config.registration_mode === 'free' ? 'active' : 'pending',
-    registeredVia:  'self',
-  }).returning();
-
-  if (config.registration_mode === 'free') return { ok: true }; // selesai
-
-  // Step 2: Buat invoice via createLinkedInvoice (billing universal)
-  const amount = config.registration_mode === 'paid'
-    ? config.paid.amount
-    : (input.infaqAmount ?? config.infaq.min_amount ?? 0);
-
-  const invoice = await createLinkedInvoice(tenantDb, {
-    sourceType:   'forum_registration',
-    sourceId:     membership.id,
-    memberId:     memberId,
-    total:        amount,
-    description:  config.paid?.label ?? config.infaq?.label ?? 'Pendaftaran Forum',
-    paymentMethod: input.paymentMethod,
-  });
-
-  // Step 3: Update membership dengan invoice ID
-  await tenantDb.update(tenantMemberships)
-    .set({ forumInvoiceId: invoice.id })
-    .where(eq(tenantMemberships.id, membership.id));
-
-  return { ok: true, invoiceId: invoice.id };
-}
-
-// Di confirmForumPaymentAction (dipanggil oleh admin saat konfirmasi bayar)
-async function onForumInvoicePaid(invoiceId: string) {
-  // Dipanggil dari syncInvoicePayment() yang sudah ada
-  await tenantDb.update(tenantMemberships)
-    .set({ forumStatus: 'active', approvedAt: new Date() })
-    .where(eq(tenantMemberships.forumInvoiceId, invoiceId));
-}
-```
-
-**`source_type: 'forum_registration'`** ditambahkan ke enum yang ada di:
-- Drizzle schema `invoices.sourceType`
-- DDL CHECK constraint di `create-tenant-schema.ts`
-- `syncInvoicePayment()` dispatch di `finance/helpers.ts`
-
-Tidak perlu tabel baru, tidak perlu payment system baru. Mesin yang sama.
+> Detail implementasi teknis (`joinForumAction`, `syncInvoicePayment` hook, iuran tahunan,
+> WA reminder) akan didokumentasikan saat Phase 4 siap dieksekusi.
 
 ---
 
-### Iuran Tahunan (Annual Renewal)
-
-Untuk forum dengan `paid.period = 'annual'`:
+### Halaman Admin Forum
 
 ```
-membership.expires_at = joined_at + 1 tahun
-
-Cron job harian (atau trigger saat login):
-  - H-7: kirim reminder WA "Iuran tahunan Forum Bisnis akan berakhir 7 hari lagi"
-  - H-0: kirim invoice renewal baru, status membership → 'pending'
-  - H+30: jika belum bayar → status → 'suspended' (tidak bisa akses konten forum)
-  - Bayar → active lagi, expires_at diperbarui +1 tahun
-```
-
-Auto-reminder menggunakan infrastruktur WA yang sudah ada (`lib/whatsapp.ts`),
-tinggal tambahkan template `forum_renewal_reminder` di `lib/wa-templates.ts`.
-
----
-
-### Halaman Admin — Kelola Anggota Forum
-
-```
-/app/{slug}/members (dengan filter membership_type=forum)
-  → Tabel: nama | cabang | status | tgl daftar | expires_at | aksi
-  → Filter: pending | active | suspended | expired
-  → Aksi: Approve | Tolak | Suspend | Perpanjang Manual
-  → Export CSV untuk laporan keanggotaan
-
-/app/{slug}/settings/membership
-  → Form konfigurasi alur pendaftaran (mode, amount, approval, dll)
+/app/{slug}/settings/membership  → konfigurasi mode + nominal + approval
+/app/{slug}/members              → list anggota forum (filter: pending/active/suspended)
+                                   aksi: Approve | Tolak | Suspend | Perpanjang
 ```
 
 ---
