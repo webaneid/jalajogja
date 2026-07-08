@@ -1,11 +1,17 @@
 # CLAUDE.md — jalajogja Project Brain
 
 ## Identitas Project
-- Nama: jalakarta
-- Klien pertama: IKPM (Ikatan Keluarga Pondok Modern Gontor)
-- Tujuan: Super-app untuk organisasi (website, surat, anggota, keuangan, toko)
-- Target: Multi-tenant SaaS — dibangun untuk IKPM, dijual ke banyak organisasi
-- Developer: Webane (familiar dengan WordPress/PHP, belajar TypeScript/Next.js)
+
+**Nama platform: Jalakarta** (folder/repo tetap `jalajogja` — jangan campur)
+
+- **Apa**: Platform ekosistem digital Ikatan Keluarga Pondok Modern Gontor (IKPM)
+- **Bukan**: SaaS generik untuk semua organisasi — ekosistem ini khusus IKPM Gontor
+- **Backbone organisasi** yang didukung (tiga tipe tenant):
+  1. **IKPM Cabang** — PC IKPM per wilayah (PC IKPM Yogyakarta, PC IKPM Jakarta, dll)
+  2. **Forum** — komunitas tematik di bawah IKPM (Forum Bisnis, Forum Olahraga, dll)
+  3. **Angkatan / Marhalah** — komunitas per tahun lulus KMI (Angkatan 2005, 1999 Awal, dll)
+- **Registrasi tenant**: hanya bisa dilakukan oleh admin platform — tidak ada self-service daftar tenant
+- **Developer**: Webane (familiar dengan WordPress/PHP, belajar TypeScript/Next.js)
 
 ## Stack
 - Runtime: Bun
@@ -833,23 +839,50 @@ Package dikelola di `public.tenant_plans` dengan field `features` JSONB:
 - Jika slug modul tidak ada di list → tampilkan "coming soon" / blokir
 - Add-on tambahan bisa dibeli terpisah di luar package
 
-### Tiga Layer Pembangunan (Urutan)
+### Empat Domain dalam Ekosistem Jalakarta
+
 ```
-1. Tenant Dashboard  → aplikasi yang dipakai organisasi
-   URL: app.jalakarta.com/{slug}/*
-   Status: SEDANG DIBANGUN
+1. jalakarta.com               → website/landing page platform Jalakarta itu sendiri
+                                  Status: BELUM DIBANGUN
 
-2. Front-end (Public) → website publik organisasi
-   URL: {slug}.jalakarta.com atau custom domain
-   Status: BELUM — setelah Tenant Dashboard selesai
+2. platform.jalakarta.com      → admin platform (hanya tim Jalakarta, bukan pengurus tenant)
+                                  Fitur: kelola tenant, modul, add-on, backbone IKPM
+                                  Status: ✅ SELESAI
 
-3. Platform Dashboard → admin jalajogja (bukan untuk tenant)
-   URL: platform.jalakarta.com
-   Status: BELUM — setelah Front-end selesai
-   Fitur: kelola tenant, modul, add-on, billing, package
+3. jalakarta.com/app/{slug}/*  → dashboard admin tenant (pengurus IKPM Cabang/Forum/Angkatan)
+                                  Status: ✅ SELESAI
+
+4. jalakarta.com/{slug}/*      → front-end publik tenant (anggota IKPM + masyarakat umum)
+   atau {custom-domain}/*        Status: ✅ SELESAI
 ```
 
-**Aturan urutan ini TIDAK boleh diubah** — Front-end dan Platform Dashboard bergantung pada keputusan arsitektur yang dibuat saat membangun Tenant Dashboard.
+**Registrasi tenant: HANYA via platform admin** — tidak ada self-service pendaftaran tenant.
+URL `/register` sudah dinonaktifkan (`REGISTRATION_OPEN = false` di `(auth)/register/page.tsx`).
+
+### Tiga Level User dalam Sistem
+
+**Level 1 — Platform Users** (`public.platform_users`)
+Tim internal Jalakarta — bukan pengurus IKPM.
+- Role: `owner | admin | staff`
+- Login di: `platform.jalakarta.com/login` — JWT terpisah (`lib/platform-auth.ts`)
+- Bisa: buat/kelola tenant, aktifkan add-on, kelola user platform
+
+**Level 2 — Tenant Users** (`tenant_{slug}.users`)
+Pengurus organisasi yang mengelola tenant masing-masing.
+- Role: `owner | ketua | sekretaris | bendahara | custom`
+- Login di: `jalakarta.com/app/login` — via Better Auth
+- WAJIB punya record di `public.members` (`tenant.users.member_id` tidak boleh NULL)
+
+**Level 3 — End Users** (`public.members` dan `public.profiles`)
+Anggota IKPM dan masyarakat umum pengguna layanan tenant.
+- Anggota IKPM (`public.members`): login di front-end tenant
+- Akun Publik (`public.profiles`): daftar sendiri, akses lebih terbatas
+- Login di: `jalakarta.com/{slug}/login`
+
+**Aturan yang tidak boleh dilanggar:**
+- Platform users ≠ tenant users — dua sistem auth terpisah (JWT vs Better Auth)
+- Pengurus wajib juga anggota IKPM (`tenant.users.member_id` tidak boleh NULL)
+- Platform admin tidak bisa login ke dashboard tenant (dan sebaliknya)
 
 ### Modul Catalog (seeded di migration 0004)
 ```
