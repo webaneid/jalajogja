@@ -32,10 +32,43 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
 
   const installedIds = new Set(installations.map(i => i.addonId));
 
+  const TYPE_LABEL: Record<string, string> = {
+    cabang: "Cabang", marhalah: "Marhalah / Angkatan", forum: "Forum",
+  };
+
+  // Ambil nama parent tenant jika ada
+  let parentTenantName: string | null = null;
+  if (tenant.parentTenantId) {
+    const [parent] = await db.select({ name: tenants.name, slug: tenants.slug })
+      .from(tenants).where(eq(tenants.id, tenant.parentTenantId)).limit(1);
+    parentTenantName = parent?.name ?? null;
+  }
+
   const rows: Array<{ label: string; value: React.ReactNode }> = [
     { label: "ID",            value: <span className="font-mono text-xs">{tenant.id}</span> },
     { label: "Slug",          value: <span className="font-mono">{tenant.slug}</span> },
     { label: "Nama",          value: tenant.name },
+    { label: "Tipe",          value: (
+      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+        tenant.tenantType === "marhalah" ? "bg-purple-100 text-purple-700"
+        : tenant.tenantType === "forum"  ? "bg-orange-100 text-orange-700"
+        :                                   "bg-blue-100 text-blue-700"
+      }`}>
+        {TYPE_LABEL[tenant.tenantType] ?? tenant.tenantType}
+      </span>
+    )},
+    ...(tenant.tenantType === "marhalah" ? [
+      { label: "Angkatan", value: tenant.marhalahYear
+        ? `${tenant.marhalahYear}${tenant.marhalahPeriod ? ` (${tenant.marhalahPeriod})` : ""}`
+        : <span className="text-muted-foreground">—</span>
+      },
+    ] : []),
+    ...(tenant.parentTenantId ? [
+      { label: "Induk", value: parentTenantName
+        ? <Link href={`/platform/tenants/${tenant.parentTenantId}`} className="hover:underline">{parentTenantName}</Link>
+        : <span className="font-mono text-xs">{tenant.parentTenantId}</span>
+      },
+    ] : []),
     { label: "Subdomain",     value: tenant.subdomain ?? <span className="text-muted-foreground">—</span> },
     { label: "Custom Domain", value: tenant.customDomain ?? <span className="text-muted-foreground">—</span> },
     { label: "Status Domain", value: (

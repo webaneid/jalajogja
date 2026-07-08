@@ -10,6 +10,12 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
+export const TENANT_TYPES = ["cabang", "marhalah", "forum"] as const;
+export type TenantType = typeof TENANT_TYPES[number];
+
+export const MARHALAH_PERIODS = ["awal", "akhir"] as const;
+export type MarhalahPeriod = typeof MARHALAH_PERIODS[number];
+
 export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "trial",
   "active",
@@ -46,6 +52,17 @@ export const tenants = pgTable("tenants", {
   customDomainVerifiedAt:  timestamp("custom_domain_verified_at",  { withTimezone: true }),
   domainLastCheckAt:       timestamp("domain_last_check_at",       { withTimezone: true }),
   domainLastCheckError:    text("domain_last_check_error"),
+
+  // ── Backbone IKPM ──────────────────────────────────────────────────────────
+  // Tipe tenant menentukan perilaku keanggotaan dan auto-populate
+  tenantType: text("tenant_type", { enum: TENANT_TYPES }).notNull().default("cabang"),
+
+  // Marhalah: angkatan tahun berapa (wajib jika tenantType = 'marhalah')
+  marhalahYear:   integer("marhalah_year"),
+  marhalahPeriod: text("marhalah_period", { enum: MARHALAH_PERIODS }),
+
+  // Forum & Marhalah: FK ke tenant cabang induknya
+  parentTenantId: uuid("parent_tenant_id"),  // FK ke tenants.id (self-referential, tidak di-define via FK di Drizzle)
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -96,7 +113,7 @@ export const tenantSubscriptionsRelations = relations(tenantSubscriptions, ({ on
 }));
 
 // Type exports
-export type Tenant = typeof tenants.$inferSelect;
+export type Tenant    = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
 export type TenantPlan = typeof tenantPlans.$inferSelect;
 export type TenantSubscription = typeof tenantSubscriptions.$inferSelect;

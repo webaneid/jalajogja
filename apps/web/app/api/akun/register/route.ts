@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
           memberId,
           status:        "active",
           joinedAt:      new Date().toISOString().split("T")[0],
-          registeredVia: "self_register",
+          registeredVia: "self",
         })
         .onConflictDoNothing();
     }

@@ -9,6 +9,12 @@ import {
 import { members } from "./members";
 import { tenants } from "./tenants";
 
+export const MEMBERSHIP_TYPES  = ["cabang", "marhalah", "forum"] as const;
+export const FORUM_STATUSES    = ["pending", "active", "suspended", "rejected"] as const;
+export const REGISTERED_VIA    = ["admin", "self", "import", "invite", "auto_marhalah", "auto_cabang"] as const;
+export type MembershipType     = typeof MEMBERSHIP_TYPES[number];
+export type ForumStatus        = typeof FORUM_STATUSES[number];
+
 // ─── Relasi anggota ↔ cabang (tenant) ───────────────────────────────────────
 // Satu anggota bisa terdaftar di banyak cabang.
 // Tenant hanya bisa lihat/akses member_id yang punya baris di sini
@@ -35,8 +41,18 @@ export const tenantMemberships = pgTable("tenant_memberships", {
   // Tanggal bergabung di cabang ini (bisa berbeda antar cabang)
   joinedAt: date("joined_at"),
 
-  // Dicatat cabang mana yang pertama kali mendaftarkan anggota ini
-  registeredVia: text("registered_via"),
+  // Dicatat jalur apa yang mendaftarkan anggota ini
+  registeredVia: text("registered_via", { enum: REGISTERED_VIA }),
+
+  // ── Backbone IKPM ──────────────────────────────────────────────────────────
+  // Tipe keanggotaan ini (cabang = otomatis, marhalah = otomatis, forum = aktif/opt-in)
+  membershipType: text("membership_type", { enum: MEMBERSHIP_TYPES }).notNull().default("cabang"),
+
+  // Kolom khusus forum (null untuk cabang + marhalah):
+  forumStatus:    text("forum_status", { enum: FORUM_STATUSES }),
+  forumInvoiceId: uuid("forum_invoice_id"),   // referensi ke invoice pembayaran forum
+  approvedAt:     timestamp("approved_at",  { withTimezone: true }),
+  expiresAt:      timestamp("expires_at",   { withTimezone: true }), // untuk iuran tahunan
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -45,5 +61,5 @@ export const tenantMemberships = pgTable("tenant_memberships", {
   uniqueMembership: unique("tenant_memberships_unique").on(t.tenantId, t.memberId),
 }));
 
-export type TenantMembership = typeof tenantMemberships.$inferSelect;
+export type TenantMembership    = typeof tenantMemberships.$inferSelect;
 export type NewTenantMembership = typeof tenantMemberships.$inferInsert;

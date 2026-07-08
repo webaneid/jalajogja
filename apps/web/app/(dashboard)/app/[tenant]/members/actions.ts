@@ -96,7 +96,7 @@ export async function createMemberAction(
       memberId: newMember.id,
       status: data.status ?? "active",
       joinedAt: data.joinedAt ?? null,
-      registeredVia: slug,
+      registeredVia: "admin",
     });
 
     revalidatePath(`/app/${slug}/members`);

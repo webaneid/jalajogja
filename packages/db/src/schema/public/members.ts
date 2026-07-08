@@ -74,6 +74,11 @@ export const members = pgTable("members", {
     .unique()
     .references(() => user.id, { onDelete: "set null" }),
 
+  // ── Backbone IKPM ────────────────────────────────────────────────────────────
+  // Cabang "rumah" anggota — biasanya cabang tempat pertama kali mendaftar
+  // UUID referensi ke public.tenants.id (tidak di-FK di Drizzle untuk hindari circular)
+  primaryCabangId: uuid("primary_cabang_id"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
