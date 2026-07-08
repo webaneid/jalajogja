@@ -146,42 +146,51 @@ export function DomainSettingsForm({
             {/* Langkah 1: A record */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-amber-800">
-                1. Tambahkan A record di panel DNS kamu:
+                1. Tambahkan dua A record di panel DNS registrar kamu:
               </p>
-              <div className="rounded-md bg-white border font-mono text-xs p-3 space-y-1">
+              <div className="rounded-md bg-white border font-mono text-xs p-3 space-y-1.5">
                 <div className="grid grid-cols-[80px_60px_1fr] gap-2 text-muted-foreground">
                   <span>Name</span><span>Type</span><span>Value</span>
                 </div>
                 <div className="grid grid-cols-[80px_60px_1fr] gap-2 text-foreground font-semibold">
                   <span>@</span><span>A</span><span>72.61.215.7</span>
                 </div>
+                <div className="grid grid-cols-[80px_60px_1fr] gap-2 text-foreground font-semibold">
+                  <span>www</span><span>A</span><span>72.61.215.7</span>
+                </div>
               </div>
             </div>
 
-            {/* Langkah 2: Cloudflare proxy — WAJIB */}
+            {/* Langkah 2: catatan Cloudflare (DNS-only) */}
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-amber-800">
-                2. Aktifkan Cloudflare Proxy <span className="font-semibold">(WAJIB untuk HTTPS)</span>:
+                2. Jika domain dikelola via Cloudflare:
               </p>
               <div className="rounded-md bg-white border text-xs p-3 space-y-1 text-muted-foreground">
-                <p>• Pastikan domain dikelola via <span className="font-semibold text-foreground">Cloudflare</span></p>
-                <p>• Di tab DNS Cloudflare, klik ikon awan di kolom Proxy status</p>
-                <p>• Ikon harus berwarna <span className="font-semibold text-orange-500">oranye 🟠</span> (Proxied), bukan abu-abu (DNS only)</p>
+                <p>• Pastikan status proxy <span className="font-semibold text-foreground">DNS only ☁️ (abu-abu)</span> — bukan Proxied 🟠</p>
+                <p>• SSL/HTTPS diurus langsung di server — tidak perlu (dan <span className="font-semibold text-foreground">tidak boleh</span>) pakai Cloudflare proxy</p>
               </div>
-              <p className="text-xs text-amber-700">
-                SSL HTTPS untuk custom domain disediakan oleh Cloudflare — tidak perlu konfigurasi tambahan di sisi server.
-                Tanpa proxy Cloudflare aktif, domain tidak akan bisa diakses via HTTPS.
+            </div>
+
+            {/* Langkah 3: hubungi admin */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-amber-800">
+                3. Setelah DNS tersimpan, hubungi admin jalakarta:
               </p>
+              <div className="rounded-md bg-white border text-xs p-3 space-y-1 text-muted-foreground">
+                <p>• Admin akan mengaktifkan HTTPS (SSL certificate) di sisi server</p>
+                <p>• Domain biasanya aktif dalam 1×24 jam setelah konfirmasi DNS propagasi</p>
+              </div>
             </div>
 
             <p className="text-xs text-amber-600 border-t border-amber-200 pt-3">
-              Propagasi DNS biasanya 5 menit – 24 jam. Verifikasi berjalan otomatis setelah kamu simpan.
+              Propagasi DNS biasanya 5 menit – 24 jam. Simpan dulu, lalu hubungi admin jalakarta untuk penyelesaian.
             </p>
           </div>
         )}
 
         <p className="text-xs text-muted-foreground">
-          Custom domain aktif setelah A record terverifikasi dan Cloudflare proxy diaktifkan.
+          Custom domain aktif setelah DNS terkonfigurasi dan diverifikasi oleh tim jalakarta.
         </p>
       </fieldset>
 
