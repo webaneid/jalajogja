@@ -6,10 +6,17 @@ jalajogja bukan hanya platform untuk satu organisasi cabang. Ini adalah **infras
 ekosistem IKPM Gontor** — satu identitas anggota berlaku di seluruh jenis organisasi IKPM:
 cabang, marhalah (angkatan), maupun forum-forum resmi di bawah IKPM Pusat.
 
-**Prinsip utama yang tidak boleh dilanggar:**
+**Dua prinsip utama yang tidak boleh dilanggar:**
 
+> **Prinsip 1 — Single Identity:**
 > Satu anggota, satu identitas. Data diisi sekali, berlaku di mana-mana.
 > Tidak ada form yang sama diketik ulang di organisasi berbeda.
+
+> **Prinsip 2 — Channel-Agnostic Registration:**
+> Dari mana pun seorang anggota masuk (via domain cabang, domain angkatan, atau bahkan
+> domain forum) — ia **otomatis terdaftar di PC IKPM Cabang dan Marhalah yang sesuai**.
+> Channel masuk tidak membatasi scope keanggotaan.
+> Satu-satunya yang butuh tindakan aktif adalah keanggotaan Forum.
 
 ---
 
@@ -44,11 +51,55 @@ IKPM Pusat
 Setiap organisasi dalam ekosistem IKPM adalah satu **tenant** di jalajogja, dibedakan via
 kolom `tenant_type` di tabel `public.tenants`.
 
-| Tipe | Slug Contoh | Siapa yang Buat | Keanggotaan | Modul Default |
-|------|------------|-----------------|-------------|---------------|
-| `cabang` | `pc-ikpm-yogyakarta` | Admin IKPM Pusat / Pengurus Cabang | Manual + upload data | Semua modul |
-| `forum` | `forbis-ikpm` | Pengurus Forum resmi | Opt-in (daftar mandiri) | Website, Event, Toko |
-| `marhalah` | `marhalah-2005` | Alumni angkatan (self-service) | **Auto-populated** dari data cabang | Website, Event, Chat |
+---
+
+### Dua Sifat Keanggotaan
+
+Ini adalah perbedaan paling fundamental dalam ekosistem backbone IKPM:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  KEANGGOTAAN OTOMATIS (Passive)                                 │
+│  ─────────────────────────────                                  │
+│  PC IKPM Cabang + Marhalah/Angkatan                             │
+│                                                                  │
+│  Berlaku dari mana pun anggota mendaftar:                        │
+│  • Daftar via domain Cabang     → ✓ Cabang + ✓ Marhalah (auto) │
+│  • Daftar via domain Marhalah   → ✓ Cabang + ✓ Marhalah (auto) │
+│  • Daftar via domain Forum      → ✓ Cabang + ✓ Marhalah (auto) │
+│  • Diimport admin               → ✓ Cabang + ✓ Marhalah (auto) │
+│                                                                  │
+│  Anggota tidak perlu melakukan apapun — sistem yang menentukan  │
+│  cabang dan angkatan dari data: primary_cabang_id + graduation_year │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  KEANGGOTAAN AKTIF (Active Opt-in)                              │
+│  ─────────────────────────────────                              │
+│  Forum-forum IKPM                                               │
+│                                                                  │
+│  Anggota HARUS klik "Daftar ke Forum ini" — tidak otomatis.    │
+│  TAPI: semua data sudah tersedia, tidak perlu ketik ulang.      │
+│                                                                  │
+│  Alurnya:                                                        │
+│  1. Login dengan akun IKPM yang sudah ada (satu klik)           │
+│  2. Klik "Daftar ke Forum Bisnis"                               │
+│  3. Konfirmasi: data usaha yang sudah ada muncul otomatis       │
+│  4. Selesai — langsung terdaftar sebagai anggota forum           │
+│                                                                  │
+│  Tidak ada form baru. Tidak ada data baru yang harus diketik.   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Tabel Perbandingan Tipe Tenant
+
+| Tipe | Slug Contoh | Sifat Keanggotaan | Trigger | Modul Default |
+|------|------------|-------------------|---------|---------------|
+| `cabang` | `pc-ikpm-yogyakarta` | **Otomatis** | Register dari mana saja | Semua modul |
+| `marhalah` | `marhalah-2005` | **Otomatis** | Register dari mana saja | Website, Event, Direktori |
+| `forum` | `forbis-ikpm` | **Aktif (opt-in)** | Klik "Daftar ke Forum" | Website, Event, Toko, Direktori |
 
 ### Aturan Kunci per Tipe
 
@@ -56,15 +107,22 @@ kolom `tenant_type` di tabel `public.tenants`.
 - Sumber data primer — semua anggota IKPM wajib terdaftar di minimal satu cabang
 - Admin bisa upload data anggota via CSV/spreadsheet (import massal dari data IKPM Pusat)
 - `primary_cabang_id` di `public.members` selalu menunjuk ke cabang utama anggota
+- **Keanggotaan bersifat otomatis** — siapapun yang mendaftar via jalur IKPM manapun
+  otomatis mendapat keanggotaan di cabang yang sesuai dengan domisili/pilihannya
 
 **Marhalah (`marhalah`):**
 - Tidak perlu ada admin aktif — bisa berupa halaman informasi alumni angkatan
-- Anggota **otomatis terdaftar** saat marhalah tenant dibuat, berdasarkan `graduation_year`
+- Anggota **otomatis terdaftar** berdasarkan `graduation_year` — baik saat marhalah tenant
+  dibuat (retroaktif untuk semua anggota yang sudah ada) maupun saat anggota baru masuk
+- **Tidak memandang dari domain mana anggota mendaftar** — yang menentukan marhalah adalah
+  tahun lulus, bukan channel registrasi
 - Jika ada dua periode (1999 Awal / 1999 Akhir), ada dua tenant marhalah terpisah
 
 **Forum (`forum`):**
-- Anggota opt-in: mendaftar sendiri, tapi verifikasi identitas sudah ada (dari data cabang)
-- Data profil, usaha, pesantren dari cabang langsung tersedia tanpa input ulang
+- **Satu-satunya tipe yang butuh tindakan aktif** dari anggota — klik "Daftar ke Forum"
+- Verifikasi identitas otomatis (sudah punya akun IKPM → langsung terverifikasi)
+- **Data profil, usaha, pesantren dari cabang/marhalah langsung tersedia** tanpa input ulang
+- Anggota hanya perlu konfirmasi: "Ya, saya ingin bergabung di forum ini"
 - Forum bisa punya struktur kepengurusan sendiri via modul Pengurus
 
 ---
@@ -91,7 +149,13 @@ public.tenant_memberships   ← RELASI — siapa terdaftar di organisasi mana
   member_id → public.members
   status: active | inactive | alumni
   joined_at
-  registered_via: 'admin' | 'self' | 'import' | 'auto_marhalah' | 'invite'
+  registered_via:
+    'admin'          → diinput manual oleh admin cabang/forum
+    'self'           → daftar sendiri di domain organisasi tersebut
+    'import'         → upload CSV massal
+    'invite'         → via link undangan
+    'auto_marhalah'  → otomatis dari graduation_year saat marhalah dibuat / anggota baru masuk
+    'auto_cabang'    → otomatis saat daftar via domain marhalah/forum (harus pilih cabang)
   membership_type: 'cabang' | 'marhalah' | 'forum'  ← BARU
 
 public.tenants
@@ -121,24 +185,84 @@ Semua data di atas diisi **satu kali** di PC IKPM Cabang manapun, lalu tersedia 
 
 ## Alur Skenario — Simulasi Kehidupan Nyata
 
-### Skenario 1: Anggota Mendaftar di PC IKPM Yogyakarta
+### Skenario 1a: Anggota Mendaftar via Domain PC IKPM Yogyakarta
 
 ```
-Pak Ahmad (stambuk 2005) mendaftar di PC IKPM Yogyakarta:
+Pak Ahmad (stambuk 2005) membuka pc-ikpm-yogyakarta.jalakarta.com dan mendaftar:
 
-1. Admin input data atau Ahmad self-register via /{slug}/register
-   → INSERT public.members { graduation_year: 2005, primary_cabang_id: pc-ikpm-yogyakarta }
-   → INSERT public.tenant_memberships { tenant_id: pc-ikpm-jogjakarta, registered_via: 'admin' }
+1. Register atau diinput admin:
+   → INSERT public.members { graduation_year: 2005, graduation_period: null }
+   → SET primary_cabang_id = 'pc-ikpm-yogyakarta'
 
-2. Ahmad mengisi data lengkap:
-   → UPDATE contacts (HP, WA, email)
-   → INSERT member_businesses (toko batik, dll)
-   → INSERT member_owned_pesantren (jika ada)
+2. Sistem OTOMATIS mendaftarkan ke cabang:
+   → INSERT tenant_memberships { tenant_id: pc-ikpm-yogyakarta,
+                                   membership_type: 'cabang',
+                                   registered_via: 'self' }
 
-SELESAI — data Ahmad tersimpan di public schema, berlaku global.
+3. Sistem OTOMATIS cek: ada tenant marhalah untuk angkatan 2005?
+   → Ada → INSERT tenant_memberships { tenant_id: marhalah-2005,
+                                         membership_type: 'marhalah',
+                                         registered_via: 'auto_marhalah' }
+   → Tidak ada → skip, nanti auto-add saat marhalah-2005 dibuat
+
+4. Ahmad mengisi data lengkap di /akun/lengkapi:
+   → contacts (HP, WA, email), member_businesses, member_owned_pesantren
+
+Ahmad sekarang terdaftar di: PC IKPM Yogyakarta ✓ + Marhalah 2005 ✓
 ```
 
-### Skenario 2: Marhalah 2005 Buat Website / Tenant
+### Skenario 1b: Anggota Mendaftar PERTAMA KALI via Domain Marhalah 2005
+
+```
+Pak Budi (stambuk 2005, belum terdaftar di cabang manapun) buka
+marhalah-2005.jalakarta.com dan mendaftar:
+
+1. Register di domain marhalah:
+   → INSERT public.members { graduation_year: 2005 }
+
+2. Sistem OTOMATIS tanya: "Anda dari cabang IKPM mana?"
+   (combobox cabang — wajib dipilih saat register jalur marhalah)
+   → Budi pilih: PC IKPM Surabaya
+
+3. Sistem OTOMATIS daftarkan ke KEDUANYA:
+   → INSERT tenant_memberships { tenant_id: marhalah-2005,
+                                   membership_type: 'marhalah',
+                                   registered_via: 'self' }
+   → INSERT tenant_memberships { tenant_id: pc-ikpm-surabaya,
+                                   membership_type: 'cabang',
+                                   registered_via: 'auto_cabang' }
+   → SET members.primary_cabang_id = 'pc-ikpm-surabaya'
+
+Budi sekarang terdaftar di: Marhalah 2005 ✓ + PC IKPM Surabaya ✓
+Channel masuk = marhalah, tapi keanggotaan cabang tetap otomatis masuk.
+```
+
+### Skenario 1c: Anggota Mendaftar PERTAMA KALI via Domain Forum Bisnis
+
+```
+Pak Candra (stambuk 2003) buka forbis-ikpm.jalakarta.com untuk ikut forum bisnis:
+
+1. Halaman forum menampilkan: "Anda perlu terdaftar di PC IKPM terlebih dahulu"
+   Form register sekaligus:
+   - Data identitas (nama, stambuk, dll)
+   - Pilih cabang: PC IKPM Jakarta
+   - Cabang + marhalah akan otomatis terisi
+
+2. Setelah submit:
+   → INSERT public.members { graduation_year: 2003 }
+   → INSERT tenant_memberships { tenant_id: pc-ikpm-jakarta,    membership_type: 'cabang' }    ← OTOMATIS
+   → INSERT tenant_memberships { tenant_id: marhalah-2003,      membership_type: 'marhalah' }  ← OTOMATIS (jika ada)
+   → INSERT tenant_memberships { tenant_id: forbis-ikpm,        membership_type: 'forum',
+                                   registered_via: 'self' }                                     ← AKTIF (forum)
+
+3. Candra langsung terdaftar di TIGA organisasi sekaligus dari satu kali daftar.
+
+Channel masuk = forum, tapi keanggotaan cabang + marhalah tetap otomatis masuk.
+```
+
+---
+
+### Skenario 2: Marhalah 2005 Buat Website / Tenant (Retroaktif)
 
 ```
 Ketua Marhalah 2005 daftar di jalajogja, buat tenant "marhalah-2005":
@@ -147,46 +271,57 @@ Ketua Marhalah 2005 daftar di jalajogja, buat tenant "marhalah-2005":
    → INSERT public.tenants { slug: 'marhalah-2005', tenant_type: 'marhalah',
                               marhalah_year: 2005, marhalah_period: null }
 
-2. Sistem AUTO-POPULATE keanggotaan marhalah:
-   → SELECT * FROM public.members
-     WHERE graduation_year = 2005
-       AND graduation_period IS NULL OR graduation_period != 'akhir'
-       AND id IN (SELECT member_id FROM tenant_memberships
-                  WHERE status IN ('active', 'alumni'))
+2. Sistem AUTO-POPULATE — semua anggota angkatan 2005 yang sudah terdaftar
+   di cabang manapun langsung dimasukkan:
 
-   → BULK INSERT public.tenant_memberships:
-     { tenant_id: marhalah-2005, member_id: ..., registered_via: 'auto_marhalah',
-       membership_type: 'marhalah' }
+   SELECT DISTINCT m.id
+   FROM public.members m
+   INNER JOIN public.tenant_memberships tm ON tm.member_id = m.id
+   INNER JOIN public.tenants t ON t.id = tm.tenant_id AND t.tenant_type = 'cabang'
+   WHERE m.graduation_year = 2005
+     AND (m.graduation_period IS NULL OR m.graduation_period = 'awal')
 
-3. Ahmad (angkatan 2005) OTOMATIS terdaftar di marhalah-2005
-   → Bisa login ke /{marhalah-2005}/akun langsung
-   → Profil, usaha, pesantren langsung tampil di direktori marhalah
-   → Tidak perlu ketik apapun lagi
+   → BULK INSERT public.tenant_memberships (N rows):
+     { tenant_id: marhalah-2005, member_id: ...,
+       registered_via: 'auto_marhalah', membership_type: 'marhalah' }
+
+3. Hasilnya:
+   → Pak Ahmad (daftar via cabang)  → OTOMATIS terdaftar di marhalah-2005
+   → Pak Budi (daftar via marhalah) → sudah ada, skip (idempotent)
+   → Semua alumni 2005 di semua cabang → masuk semua, tanpa satu pun ketik ulang
+
+Direktori marhalah langsung berisi ratusan anggota + data usaha + data pesantren mereka.
 ```
 
-### Skenario 3: Ahmad Mendaftar ke Forum Bisnis IKPM
+### Skenario 3: Ahmad Bergabung ke Forum Bisnis IKPM (Aktif, Satu Klik)
 
 ```
-Ahmad buka website Forum Bisnis IKPM (forbis-ikpm.jalakarta.com):
+Ahmad (sudah terdaftar di PC IKPM Yogyakarta + Marhalah 2005) buka
+forbis-ikpm.jalakarta.com:
 
-1. Ahmad klik "Daftar ke Forum Bisnis"
-   → Cek: apakah Ahmad punya better_auth_user_id? (sudah, dari step 1)
-   → Login langsung dengan akun yang sama
+HALAMAN UTAMA FORUM — menampilkan:
+  "Anda sudah terdaftar sebagai Alumni IKPM Gontor."
+  "Login sebagai Pak Ahmad?"  [Ya, Login]
 
-2. Isi formulir keanggotaan forum (minimal, hanya data spesifik forum):
-   → Bidang usaha yang relevan dengan forum (pilih dari data usaha yang sudah ada)
-   → Persetujuan aturan forum
-   → (Tidak perlu isi nama, kontak, alamat, usaha — sudah ada semua)
+Setelah login:
+  "Bergabunglah dengan Forum Bisnis IKPM"
+  Tampil: data usaha Ahmad yang sudah ada (Toko Batik, PT. XYZ, dll)
+  "Data ini akan terlihat oleh sesama anggota forum."
+  [Konfirmasi & Daftar ke Forum Bisnis]
 
-3. INSERT public.tenant_memberships { tenant_id: forbis-ikpm,
-                                       member_id: ahmad.id,
-                                       registered_via: 'self',
-                                       membership_type: 'forum' }
+Klik konfirmasi:
+  → INSERT tenant_memberships { tenant_id: forbis-ikpm,
+                                  member_id: ahmad.id,
+                                  registered_via: 'self',
+                                  membership_type: 'forum' }
 
-4. Ahmad langsung bisa akses:
-   → Direktori anggota Forum Bisnis (tampilkan usaha sesama anggota)
-   → Event dan webinar Forum Bisnis
-   → Group diskusi / konten forum
+Ahmad langsung bisa akses:
+  → Direktori anggota Forum Bisnis (tampilkan usaha sesama anggota)
+  → Event dan webinar Forum Bisnis
+  → Konten forum
+
+TIDAK ADA SATU PUN DATA YANG PERLU DIKETIK ULANG.
+Seluruh identitas + usaha + pesantren sudah tersedia dari data cabang/marhalah.
 ```
 
 ### Skenario 4: Upload Data Massal dari IKPM Pusat
@@ -210,6 +345,100 @@ PC IKPM Surabaya baru buat tenant, punya data 3000 anggota dalam Excel:
 3. Setelah import:
    → Anggota yang sudah punya akun langsung bisa akses /{surabaya}/akun
    → Anggota baru dapat link undangan lewat WA untuk aktivasi akun
+```
+
+---
+
+## Logika Registrasi per Channel — Panduan Implementasi
+
+Ini adalah rules yang harus selalu dijalankan saat `POST /api/akun/register` atau
+`createMemberAction` dipanggil, terlepas dari domain mana request datang.
+
+### Pseudo-code alur registrasi universal
+
+```typescript
+async function registerMember(input: RegisterInput, sourceTenantSlug: string) {
+  const sourceTenant = await getTenant(sourceTenantSlug);
+
+  // Step 1: Buat atau temukan identitas global
+  const member = await findOrCreateMember(input); // cek by stambuk/email/HP
+
+  // Step 2: SELALU daftarkan ke cabang — tidak peduli domain mana
+  // ─────────────────────────────────────────────────────────────
+  let cabangTenantId: string;
+
+  if (sourceTenant.tenantType === 'cabang') {
+    // Daftar langsung di cabang → langsung pakai cabang ini
+    cabangTenantId = sourceTenant.id;
+  } else {
+    // Daftar via marhalah atau forum → WAJIB tanya/tentukan cabangnya
+    // UI: combobox "Pilih PC IKPM Anda" saat register
+    cabangTenantId = input.selectedCabangId; // wajib diisi user
+  }
+
+  await db.insert(tenantMemberships).values({
+    tenantId:       cabangTenantId,
+    memberId:       member.id,
+    membershipType: 'cabang',
+    registeredVia:  sourceTenant.tenantType === 'cabang' ? 'self' : 'auto_cabang',
+  }).onConflictDoNothing();
+
+  await db.update(members)
+    .set({ primaryCabangId: cabangTenantId })
+    .where(and(eq(members.id, member.id), isNull(members.primaryCabangId)));
+
+  // Step 3: SELALU daftarkan ke marhalah yang sesuai graduation_year
+  // ─────────────────────────────────────────────────────────────────
+  if (member.graduationYear) {
+    const marhalahTenant = await db.select().from(tenants)
+      .where(and(
+        eq(tenants.tenantType, 'marhalah'),
+        eq(tenants.marhalahYear, member.graduationYear),
+        member.graduationPeriod
+          ? eq(tenants.marhalahPeriod, member.graduationPeriod)
+          : isNull(tenants.marhalahPeriod),
+      )).limit(1);
+
+    if (marhalahTenant.length > 0) {
+      await db.insert(tenantMemberships).values({
+        tenantId:       marhalahTenant[0].id,
+        memberId:       member.id,
+        membershipType: 'marhalah',
+        registeredVia:  'auto_marhalah',
+      }).onConflictDoNothing();
+    }
+    // Jika marhalah belum ada → keanggotaan akan di-backfill saat marhalah dibuat
+  }
+
+  // Step 4: Jika daftar via domain forum → daftarkan ke forum (aktif)
+  // ─────────────────────────────────────────────────────────────────
+  if (sourceTenant.tenantType === 'forum') {
+    await db.insert(tenantMemberships).values({
+      tenantId:       sourceTenant.id,
+      memberId:       member.id,
+      membershipType: 'forum',
+      registeredVia:  'self',
+    }).onConflictDoNothing();
+  }
+  // Catatan: untuk forum, user masih perlu klik konfirmasi di UI,
+  // tapi di level ini kita anggap sudah ada intent (mereka sudah klik dari halaman forum)
+}
+```
+
+### Aturan yang Tidak Boleh Dilanggar
+
+```
+1. Keanggotaan cabang SELALU terbentuk saat registrasi, dari channel manapun.
+   Tidak ada anggota IKPM tanpa primary_cabang_id.
+
+2. Keanggotaan marhalah SELALU dicek saat registrasi. Jika ada tenant marhalah
+   yang cocok → langsung masuk. Jika belum ada → akan diisi saat tenant marhalah dibuat.
+
+3. Forum TIDAK pernah otomatis — selalu butuh konfirmasi eksplisit dari anggota.
+   Bedanya: data sudah pre-filled, bukan ditulis ulang.
+
+4. onConflictDoNothing() WAJIB di semua INSERT tenant_memberships.
+   Registrasi di banyak tempat tidak boleh menghasilkan duplikat row.
 ```
 
 ---
