@@ -81,11 +81,14 @@ export default async function EditPostPage({
         slug={slug}
         postId={postId}
         initialData={{
-          title:      post.title,
-          postSlug:   post.slug,
-          excerpt:    post.excerpt ?? "",
-          content:    post.content,
-          status:     post.status,
+          title:       post.title,
+          postSlug:    post.slug,
+          excerpt:     post.excerpt ?? "",
+          content:     post.content,
+          status:      post.status,
+          publishedAt: post.publishedAt
+            ? new Date(post.publishedAt).toISOString().slice(0, 16)
+            : null,
           categoryId: post.categoryId,
           isFeatured: post.isFeatured,
           tagIds,

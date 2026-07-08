@@ -62,6 +62,7 @@ export type PostFormProps = {
     excerpt:     string;
     content:     string | null;
     status:      ContentStatus;
+    publishedAt: string | null;
     categoryId:  string | null;
     tagIds:      string[];
     coverId:     string | null;
@@ -451,6 +452,9 @@ export function PostForm({
   const [categoryId, setCategoryId] = useState<string>(initialData.categoryId ?? "");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialData.tagIds);
   const [status, setStatus]         = useState<ContentStatus>(initialData.status);
+  const [publishedAt, setPublishedAt] = useState<string>(
+    initialData.publishedAt ?? ""
+  );
   const [isFeatured, setIsFeatured] = useState<boolean>(initialData.isFeatured);
   const [seoValues, setSeoValues]   = useState<SeoValues>(initialData.seo);
 
@@ -494,6 +498,7 @@ export function PostForm({
       isFeatured,
       tagIds:     selectedTagIds,
       status:     overrideStatus ?? status,
+      publishedAt: publishedAt || null,
       metaTitle:      seoValues.metaTitle,
       metaDesc:       seoValues.metaDesc,
       ogTitle:        seoValues.ogTitle,
@@ -626,7 +631,15 @@ export function PostForm({
               <SidebarLabel>Status</SidebarLabel>
               <Select
                 value={status}
-                onValueChange={(val) => setStatus(val as ContentStatus)}
+                onValueChange={(val) => {
+                  const next = val as ContentStatus;
+                  setStatus(next);
+                  if (next === "published" && !publishedAt) {
+                    const now = new Date();
+                    now.setSeconds(0, 0);
+                    setPublishedAt(now.toISOString().slice(0, 16));
+                  }
+                }}
               >
                 <SelectTrigger className="w-full text-sm">
                   <SelectValue />
@@ -638,6 +651,22 @@ export function PostForm({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Tanggal Terbit — hanya tampil saat status published */}
+            {status === "published" && (
+              <div className="space-y-2">
+                <SidebarLabel>Tanggal Terbit</SidebarLabel>
+                <input
+                  type="datetime-local"
+                  value={publishedAt}
+                  onChange={(e) => setPublishedAt(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Bisa diisi mundur untuk berita lama.
+                </p>
+              </div>
+            )}
 
             <Separator />
 

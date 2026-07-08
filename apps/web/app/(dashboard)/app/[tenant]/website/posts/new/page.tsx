@@ -53,6 +53,7 @@ export default async function PostsNewPage({
         isFeatured:  false,
         tagIds:      [],
         status:      "draft",
+        publishedAt: null,
         seo:         DEFAULT_SEO,
       }}
       categories={categories}

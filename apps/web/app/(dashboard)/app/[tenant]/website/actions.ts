@@ -95,7 +95,9 @@ export async function createPostAction(
         categoryId: data.categoryId       ?? null,
         isFeatured: data.isFeatured       ?? false,
         status:     data.status           ?? "draft",
-        publishedAt: data.status === "published" ? new Date() : null,
+        publishedAt: data.status === "published"
+          ? (data.publishedAt ? new Date(data.publishedAt) : new Date())
+          : null,
         metaTitle:   data.metaTitle?.trim()  || null,
         metaDesc:    data.metaDesc?.trim()   || null,
         ogTitle:     data.ogTitle?.trim()    || null,

@@ -3155,7 +3155,14 @@ grep -rn '`/app/' apps/web/app/\(public\)/ apps/web/components/website/public/
 ```
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix UX tiket wajib anggota + fix layout mobile event** (sesi 2026-07-09, lanjutan 2).
+- Terakhir dikerjakan: **Custom publish date untuk post** (sesi 2026-07-09, lanjutan 3).
+- Sesi ini (2026-07-09, lanjutan 3):
+  - **Custom publish date untuk post** — field "Tanggal Terbit" (`datetime-local`) di sidebar editor
+    post, tampil hanya saat status = Terbit. Default ke waktu sekarang saat pertama ganti status ke
+    Terbit, tapi bisa diubah mundur (berita lama) atau maju (jadwal). Perubahan di 4 file:
+    `post-form.tsx` (state + UI + buildPayload), `posts/[id]/edit/page.tsx` (teruskan publishedAt dari DB),
+    `posts/new/page.tsx` (publishedAt: null di initialData), `actions.ts` createPostAction ikuti
+    logika updatePostAction. TypeScript 0 errors.
 - Sesi ini (2026-07-09, lanjutan 2):
   - **Fix form event: Data Peserta + Metode Pembayaran + Submit disembunyikan saat tiket locked** —
     `selectedTicketLocked = selectedTicket?.requiresMembership && !currentUserIsEnrolled`. Semua section
