@@ -1,12 +1,13 @@
 # Arsitektur Modul Event
 
-> Status: **Step 1–6 (Core) ✅ | E7 (Schema donation prompt) ✅ | E8 (EventCard+Section) ✅ | E9 (Arsip+Detail publik) ✅ | E10 (Donation Prompt UI) 🔲**
+> Status: **Step 1–6 (Core) ✅ | E7 (Schema donation prompt) ✅ | E8 (EventCard+Section) ✅ | E9 (Arsip+Detail publik) ✅ | E10 (Donation Prompt UI) ✅**
 
 > **Fitur tambahan post-Step 6:**
 > - Migration 0020 — Tiket Wajib Anggota (`requires_membership`) ✅
 > - Migration 0022 — Dynamic Custom Form Fields (`custom_form_fields`) ✅
 > - Migration 0023 — Tab Peserta & Statistik (`show_attendee_stats`, `attendee_stats_by`) ✅
-> - Migration 0024 — Donation Prompt schema (`show_donation_prompt`, `linked_campaign_id`) ✅ (migration baru)
+> - Migration 0024 — Donation Prompt schema (`show_donation_prompt`, `linked_campaign_id`) ✅
+> - Migration 0025 — Linked Product (`linked_product_id`) ✅
 
 ## Konsep
 
@@ -309,9 +310,9 @@ Toko       → /toko
 
 ---
 
-## Front-end Publik — Perencanaan (Step 7–10)
+## Front-end Publik — Step 7–10 (SELESAI)
 
-> **Status**: Belum diimplementasi. Dokumen ini adalah perencanaan lengkap.
+> **Status**: Step E7–E10 sudah diimplementasikan semua.
 
 ---
 
@@ -520,10 +521,13 @@ Step E9: Halaman Arsip + Detail
   - Redirect /event/{slug} → /agenda/{slug}
   - nav-menu.ts update: "event" → /agenda
 
-Step E10: Donation Prompt
-  - DonationPromptModal komponen (untuk post-registrasi event gratis)
-  - Keranjang update: deteksi tiket event → fetch event data → tampilkan banner
-  - DonationBannerCart komponen
+Step E10: Donation Prompt — ✅ SELESAI
+  - DonationPromptModal: tampil setelah registerForEventAction sukses (alur lama, no linked items)
+  - DonationBannerCart: tampil di /keranjang, support campaign + linkedProduct (mig 0024+0025)
+  - addEventTicketToCartAction: alur baru (event dengan linked_campaign_id/linked_product_id)
+  - Routing kondisional: hasLinkedItems → cart flow; tidak ada → registerForEventAction
+  - linkedProductId (mig 0025): satu invoice untuk tiket + donasi + produk sekaligus
+  - Catatan: event_registrations dari cart_items.notes belum dibuat otomatis saat konfirmasi invoice
 ```
 
 ---
@@ -536,10 +540,12 @@ Step E10: Donation Prompt
 | Tiket Wajib Anggota (mig 0020) | ✅ Done |
 | Dynamic Custom Form Fields (mig 0022) | ✅ Done |
 | Tab Peserta & Statistik (mig 0023) | ✅ Done |
-| **Step E7** — Schema show_donation_prompt + linked_campaign_id (mig 0024) | ✅ Schema+UI selesai |
+| **Step E7** — Schema show_donation_prompt + linked_campaign_id (mig 0024) | ✅ Done |
 | **Step E8** — EventCard + EventsSection (3 variant + 3 design) | ✅ Done |
 | **Step E9** — Archive `/agenda` + Detail `/agenda/{slug}` | ✅ Done |
-| **Step E10** — Donation Prompt UI (post-register + keranjang berbayar) | 🔲 Belum |
+| **Step E10** — Donation Prompt UI (post-register + keranjang) | ✅ Done |
+| linked_product_id (mig 0025) — satu invoice ticket+campaign+produk | ✅ Done |
+| event_registrations dari cart_items saat konfirmasi invoice | 🔲 Belum (Phase berikutnya) |
 
 ---
 

@@ -2,7 +2,7 @@
 
 import { eq, count, inArray, and, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createTenantDb, generateFinancialNumber, recordIncome, createLinkedInvoice, syncInvoicePayment, db as publicDb, members, contacts, tenantMemberships, tenants } from "@jalajogja/db";
+import { createTenantDb, generateFinancialNumber, recordIncome, createLinkedInvoice, syncInvoicePayment, db as publicDb, members, contacts, profiles, tenantMemberships, tenants } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 import { auth }           from "@/lib/auth";
@@ -541,6 +541,17 @@ export async function registerForEventAction(
           .limit(1);
         resolvedEmail = contact?.email ?? null;
       }
+    } else {
+      // Cek apakah akun publik (profiles)
+      const [profile] = await publicDb
+        .select({ id: profiles.id, email: profiles.email })
+        .from(profiles)
+        .where(eq(profiles.betterAuthUserId, session.user.id))
+        .limit(1);
+      if (profile) {
+        resolvedProfileId = profile.id;
+        if (!resolvedEmail) resolvedEmail = profile.email ?? null;
+      }
     }
   }
 
@@ -676,6 +687,7 @@ export async function registerForEventAction(
           eventId:            data.eventId,
           ticketId:           data.ticketId,
           memberId:           resolvedMemberId,
+          profileId:          resolvedProfileId,
           attendeeName:       data.attendeeName.trim(),
           attendeePhone:      normalizePhone(data.attendeePhone),
           attendeeEmail:      data.attendeeEmail?.trim().toLowerCase() ?? null,
