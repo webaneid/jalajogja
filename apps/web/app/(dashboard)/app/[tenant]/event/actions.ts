@@ -697,34 +697,11 @@ export async function registerForEventAction(
         .returning({ id: schema.eventRegistrations.id });
     });
 
-    // Tiket berbayar — buat payment record
+    // Tiket berbayar — buat invoice universal (tanpa direct payment record)
     if (!isGratis) {
-      const method     = data.method ?? "transfer";
-      const uniqueCode = method === "transfer" ? Math.floor(Math.random() * 999) + 1 : 0;
-      const total      = price + uniqueCode;
-      const payNum     = await generateFinancialNumber(tenantDb, "payment");
-
-      const [payment] = await db
-        .insert(schema.payments)
-        .values({
-          number:         payNum,
-          sourceType:     "event_registration",
-          sourceId:       reg.id,
-          amount:         String(price),
-          uniqueCode,
-          method,
-          bankAccountRef: data.bankAccountRef ?? null,
-          qrisAccountRef: data.qrisAccountRef ?? null,
-          status:         method === "cash" ? "submitted" : "pending",
-          payerName:      data.attendeeName.trim(),
-        })
-        .returning({ id: schema.payments.id });
-
-      // Fetch nama tiket untuk invoice item
       const ticketName = ticket.name ?? "Tiket Event";
 
-      // Buat invoice universal untuk registrasi berbayar
-      const { invoiceId } = await createLinkedInvoice(tenantDb, {
+      const { invoiceId, uniqueCode } = await createLinkedInvoice(tenantDb, {
         sourceType:    "event_registration",
         sourceId:      reg.id,
         customerName:  data.attendeeName.trim(),
@@ -748,8 +725,7 @@ export async function registerForEventAction(
           isPaid:             false,
           amount:             price,
           uniqueCode,
-          totalAmount:        total,
-          paymentId:          payment.id,
+          totalAmount:        price + uniqueCode,
           invoiceId,
         },
       };

@@ -72,7 +72,7 @@ export async function generateUniqueCode(tenantDb: TenantDb): Promise<number> {
 export async function createLinkedInvoice(
   tenantDb: TenantDb,
   input: CreateLinkedInvoiceInput
-): Promise<{ invoiceId: string; invoiceNumber: string }> {
+): Promise<{ invoiceId: string; invoiceNumber: string; uniqueCode: number }> {
   const { db, schema } = tenantDb;
 
   const invoiceNumber = await generateFinancialNumber(tenantDb, "invoice");
@@ -130,7 +130,7 @@ export async function createLinkedInvoice(
     );
   }
 
-  return { invoiceId: invoice.id, invoiceNumber };
+  return { invoiceId: invoice.id, invoiceNumber, uniqueCode };
 }
 
 // ─── syncInvoicePayment ───────────────────────────────────────────────────────
