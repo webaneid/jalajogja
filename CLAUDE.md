@@ -453,6 +453,7 @@ app/(dashboard)/[tenant]/
 - [x] **Billing Phase 3** — Toko + Donasi + Event semua sudah terintegrasi (invoice otomatis via `createLinkedInvoice`). Billing dashboard tampilkan badge sumber untuk semua tipe. ✅
 - [~] **Billing sisa** — item picker di invoice manual admin (produk+tiket+donasi), PDF, cicilan UI. **DITUNDA**.
 - [x] **Billing Phase 4 — Fulfillment** — 5-stage pengiriman (pending→processing→packed→shipped→delivered), `updateFulfillmentStatusAction`, halaman admin `/toko/pesanan/invoice/[invoiceId]`, `FulfillmentCard` + `FulfillmentTimeline`, lightbox bukti transfer, pelanggan lihat 5 status di `/akun/transaksi`. Detail di `docs/arsitektur-fulfillment.md`.
+- [ ] **Kode Unik Transaksi** — nominal Rp 100–999 per invoice untuk identifikasi transfer masuk. Setting toggle di `/settings/payment`. Arsitektur di `docs/arsitektur-kode-unik.md`. **BELUM DIIMPLEMENTASIKAN**.
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`) + **Tab Peserta & Statistik** (commit `9cf2b12`, migration 0023) + **E10 Donation Prompt UI** (routing kondisional cart vs direct, migration 0024+0025)
@@ -3174,7 +3175,13 @@ grep -rn '`/app/' apps/web/app/\(public\)/ apps/web/components/website/public/
 ```
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Reject Payment Action — universal untuk semua invoice** (sesi 2026-07-10).
+- Terakhir dikerjakan: **Dokumentasi Kode Unik Transaksi** (sesi 2026-07-10, lanjutan 3).
+- Sesi ini (2026-07-10, lanjutan 3):
+  - **Migrasi admin order → invoice-only flow** — `createOrderAction` tidak lagi insert ke `schema.orders`/`schema.orderItems`. Pakai `createLinkedInvoice` dengan `sourceType: "order"`. `shippingAddress` digabung ke `notes` sebelum dikirim (karena `CreateLinkedInvoiceInput` tidak punya field `shippingAddress`). `pesanan/[id]/page.tsx` diubah jadi redirect ke list. `pesanan/page.tsx` semua link menuju `pesanan/invoice/${id}`. TypeScript 0 errors. Commit `5f04c48`.
+  - **Auto-create `event_registrations` saat invoice paid** (E10 cart flow) — `confirmInvoicePaymentAction` dan `verifySubmittedPaymentAction` di `billing/actions.ts` sekarang membuat `event_registrations` otomatis untuk tiket event yang ada di invoice. Idempotent via `customFields->>'sourceInvoiceId'`. TypeScript 0 errors.
+  - **Dokumentasi kode unik transaksi** — `docs/arsitektur-kode-unik.md` dibuat. `docs/arsitektur-billing.md` dan `CLAUDE.md` diupdate untuk referensi. Implementasi belum dilakukan.
+  - **Implementasi belum dilakukan**: schema `unique_code`, helper `generateUniqueCode`, integrasi `createLinkedInvoice`, display invoice, settings UI.
+- Sesi sebelumnya (2026-07-10, lanjutan 2):
 - Sesi ini (2026-07-10, lanjutan 2):
   - **Feat: `rejectPaymentAction` universal untuk semua tipe invoice** — TypeScript 0 errors.
     - **`billing/actions.ts`**: tambah `rejectPaymentAction` (dengan invoice reset + UUID fix), update `getInvoiceDetailAction` sertakan `rejectionNote` di payment data, update `InvoiceDetail.payments` type.

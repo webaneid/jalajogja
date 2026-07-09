@@ -264,15 +264,17 @@ export async function confirmInvoicePaymentAction(
   if (inv.status === "cancelled") return { success: false, error: "Invoice dibatalkan." };
 
   const total      = parseFloat(String(inv.total));
+  const uniqueCode = inv.uniqueCode ?? 0;
+  const amountDue  = total + uniqueCode;
   const paidSoFar  = parseFloat(String(inv.paidAmount));
-  const remaining  = total - paidSoFar;
+  const remaining  = amountDue - paidSoFar;
 
   if (data.amount > remaining)
     return { success: false, error: `Jumlah melebihi sisa tagihan (Rp ${remaining.toLocaleString("id-ID")}).` };
 
   try {
     const newPaidAmount = paidSoFar + data.amount;
-    const newStatus     = newPaidAmount >= total ? "paid" : "partial";
+    const newStatus     = newPaidAmount >= amountDue ? "paid" : "partial";
 
     // Resolve akun untuk jurnal
     const { resolveAccountMappingsForBilling } = await import("../actions");
@@ -550,8 +552,10 @@ export async function verifySubmittedPaymentAction(
   const payAmount  = parseFloat(String(payment.amount));
   const paidSoFar  = parseFloat(String(inv.paidAmount));
   const total      = parseFloat(String(inv.total));
+  const uniqueCode = inv.uniqueCode ?? 0;
+  const amountDue  = total + uniqueCode;
   const newPaid    = paidSoFar + payAmount;
-  const newStatus  = newPaid >= total ? "paid" : "partial";
+  const newStatus  = newPaid >= amountDue ? "paid" : "partial";
 
   // Resolve akun untuk jurnal
   const { resolveAccountMappingsForBilling } = await import("../actions");
@@ -806,6 +810,8 @@ export type InvoiceDetail = {
   subtotal:      number;
   discount:      number;
   total:         number;
+  uniqueCode:    number;
+  amountDue:     number;
   paidAmount:    number;
   remaining:     number;
   status:        string;
@@ -897,6 +903,8 @@ export async function getInvoiceDetailAction(
   ]);
 
   const total      = parseFloat(String(inv.total));
+  const uniqueCode = inv.uniqueCode ?? 0;
+  const amountDue  = total + uniqueCode;
   const paidAmount = parseFloat(String(inv.paidAmount));
 
   return {
@@ -911,8 +919,10 @@ export async function getInvoiceDetailAction(
       subtotal:      parseFloat(String(inv.subtotal)),
       discount:      parseFloat(String(inv.discount)),
       total,
+      uniqueCode,
+      amountDue,
       paidAmount,
-      remaining:     Math.max(0, total - paidAmount),
+      remaining:     Math.max(0, amountDue - paidAmount),
       status:        inv.status,
       dueDate:       inv.dueDate,
       notes:         inv.notes,

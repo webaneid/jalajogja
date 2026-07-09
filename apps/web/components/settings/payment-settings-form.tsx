@@ -15,6 +15,7 @@ import {
   savePaymentAccountsAction,
   saveQrisAccountsAction,
   saveGatewayConfigAction,
+  saveUniqueCodeSettingAction,
 } from "@/app/(dashboard)/app/[tenant]/settings/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -41,11 +42,12 @@ type GatewayXendit   = { apiKey: string } | null;
 type GatewayIpaymu   = { va: string; apiKey: string } | null;
 
 type DefaultValues = {
-  bankAccounts: BankAccount[];
-  qrisAccounts: QrisAccount[];
-  midtrans:     GatewayMidtrans;
-  xendit:       GatewayXendit;
-  ipaymu:       GatewayIpaymu;
+  bankAccounts:      BankAccount[];
+  qrisAccounts:      QrisAccount[];
+  midtrans:          GatewayMidtrans;
+  xendit:            GatewayXendit;
+  ipaymu:            GatewayIpaymu;
+  uniqueCodeEnabled: boolean;
 };
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
@@ -307,6 +309,20 @@ export function PaymentSettingsForm({ slug, defaultValues }: { slug: string; def
       if (result.error) toast.error(result.error);
       else { toast.success("Konfigurasi gateway disimpan."); router.refresh(); }
     } finally { setSavingGateway(false); }
+  }
+
+  // ── Kode Unik ──
+  const [uniqueCodeEnabled, setUniqueCodeEnabled] = React.useState(defaultValues.uniqueCodeEnabled);
+  const [savingUniqueCode, setSavingUniqueCode] = React.useState(false);
+
+  async function handleToggleUniqueCode(enabled: boolean) {
+    setUniqueCodeEnabled(enabled);
+    setSavingUniqueCode(true);
+    try {
+      const result = await saveUniqueCodeSettingAction(slug, enabled);
+      if (result.error) { toast.error(result.error); setUniqueCodeEnabled(!enabled); }
+      else toast.success(enabled ? "Kode unik diaktifkan." : "Kode unik dinonaktifkan.");
+    } finally { setSavingUniqueCode(false); }
   }
 
   return (
@@ -610,6 +626,42 @@ export function PaymentSettingsForm({ slug, defaultValues }: { slug: string; def
           </Button>
         </Section>
       </form>
+
+      {/* ════ KODE UNIK TRANSAKSI ════ */}
+      <Section
+        title="Kode Unik Transaksi"
+        description="Tambahkan nominal unik Rp 100–999 di setiap invoice untuk memudahkan identifikasi transfer masuk."
+      >
+        <div className="flex items-start gap-4">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={uniqueCodeEnabled}
+            disabled={savingUniqueCode}
+            onClick={() => void handleToggleUniqueCode(!uniqueCodeEnabled)}
+            className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 ${
+              uniqueCodeEnabled ? "bg-primary" : "bg-muted-foreground/30"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                uniqueCodeEnabled ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+          <div>
+            <p className="text-sm font-medium">
+              {uniqueCodeEnabled ? "Aktif" : "Nonaktif"}
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Kode unik ditambahkan ke total setiap invoice baru. Dicatat sebagai bagian dari penerimaan kas.
+              {uniqueCodeEnabled && (
+                <span className="ml-1 text-green-600 font-medium">Invoice baru akan mendapat kode Rp 100–999.</span>
+              )}
+            </p>
+          </div>
+        </div>
+      </Section>
 
     </div>
   );

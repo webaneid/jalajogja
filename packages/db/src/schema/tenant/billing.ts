@@ -96,6 +96,7 @@ export function createInvoicesTable(s: ReturnType<typeof pgSchema>) {
     discount:      numeric("discount",       { precision: 15, scale: 2 }).notNull().default("0"),
     total:         numeric("total",          { precision: 15, scale: 2 }).notNull(),
     paidAmount:    numeric("paid_amount",    { precision: 15, scale: 2 }).notNull().default("0"),
+    uniqueCode:    integer("unique_code").notNull().default(0),
 
     // Alamat pengiriman (snapshot saat checkout)
     shippingAddress:    text("shipping_address"),

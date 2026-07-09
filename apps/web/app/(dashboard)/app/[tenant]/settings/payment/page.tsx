@@ -40,11 +40,12 @@ export default async function PaymentSettingsPage({
       <PaymentSettingsForm
         slug={slug}
         defaultValues={{
-          bankAccounts: (settings.bank_accounts as BankAccount[]) ?? [],
-          qrisAccounts: (settings.qris_accounts as QrisAccount[]) ?? [],
-          midtrans:     (settings.midtrans as GatewayMidtrans) ?? null,
-          xendit:       (settings.xendit   as GatewayXendit)   ?? null,
-          ipaymu:       (settings.ipaymu   as GatewayIpaymu)   ?? null,
+          bankAccounts:      (settings.bank_accounts      as BankAccount[]) ?? [],
+          qrisAccounts:      (settings.qris_accounts      as QrisAccount[]) ?? [],
+          midtrans:          (settings.midtrans            as GatewayMidtrans) ?? null,
+          xendit:            (settings.xendit              as GatewayXendit)   ?? null,
+          ipaymu:            (settings.ipaymu              as GatewayIpaymu)   ?? null,
+          uniqueCodeEnabled: (settings.unique_code_enabled as boolean) ?? false,
         }}
       />
     </div>

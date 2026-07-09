@@ -1117,6 +1117,7 @@ export async function createTenantSchemaInDb(
         discount        NUMERIC(15,2)  NOT NULL DEFAULT 0,
         total           NUMERIC(15,2)  NOT NULL,
         paid_amount     NUMERIC(15,2)  NOT NULL DEFAULT 0,
+        unique_code     INTEGER        NOT NULL DEFAULT 0,
         -- Alamat pengiriman (snapshot saat checkout)
         shipping_address  TEXT,
         shipping_city_id  INTEGER,

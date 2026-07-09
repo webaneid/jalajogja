@@ -255,6 +255,20 @@ export async function saveGatewayConfigAction(
   return {};
 }
 
+// ── Pembayaran: Kode Unik Transaksi ───────────────────────────────────────────
+export async function saveUniqueCodeSettingAction(
+  slug: string,
+  enabled: boolean
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+
+  const tenantDb = createTenantDb(slug);
+  await upsertSettings(tenantDb, "payment", { unique_code_enabled: enabled });
+  return {};
+}
+
 // ── Tampilan ──────────────────────────────────────────────────────────────────
 export async function saveDisplaySettingsAction(
   slug: string,

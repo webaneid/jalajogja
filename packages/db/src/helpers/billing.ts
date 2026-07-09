@@ -8,8 +8,9 @@
  * file "use server" manapun tanpa circular dependency.
  */
 
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { generateFinancialNumber } from "./finance";
+import { getSettings } from "./settings";
 import type { TenantDb } from "../tenant-client";
 import type { InvoiceSourceType } from "../schema/tenant/billing";
 
@@ -38,6 +39,32 @@ export type CreateLinkedInvoiceInput = {
   createdBy?:    string | null;
 };
 
+// ─── generateUniqueCode ───────────────────────────────────────────────────────
+// Cari kode Rp 100–999 yang belum dipakai oleh invoice pending/partial/waiting.
+// Return 0 jika semua kode terpakai (sangat jarang) atau fitur mati.
+
+async function generateUniqueCode(tenantDb: TenantDb): Promise<number> {
+  const { db, schema } = tenantDb;
+
+  const usedRows = await db
+    .select({ code: schema.invoices.uniqueCode })
+    .from(schema.invoices)
+    .where(
+      and(
+        sql`${schema.invoices.uniqueCode} > 0`,
+        inArray(schema.invoices.status, ["pending", "partial", "waiting_verification"])
+      )
+    );
+
+  const usedCodes = new Set(usedRows.map((r) => r.code));
+  const available: number[] = [];
+  for (let i = 100; i <= 999; i++) {
+    if (!usedCodes.has(i)) available.push(i);
+  }
+  if (available.length === 0) return 0;
+  return available[Math.floor(Math.random() * available.length)];
+}
+
 // ─── createLinkedInvoice ──────────────────────────────────────────────────────
 // Buat invoice + invoice_items untuk record dari modul mana saja.
 // Dipanggil setelah order/donation/registration berhasil disimpan.
@@ -60,6 +87,11 @@ export async function createLinkedInvoice(
     return d.toISOString().slice(0, 10);
   })();
 
+  // Kode unik: cek setting lalu generate jika aktif
+  const paymentSettings = await getSettings(tenantDb, "payment");
+  const uniqueCodeEnabled = paymentSettings["unique_code_enabled"] === true;
+  const uniqueCode = uniqueCodeEnabled ? await generateUniqueCode(tenantDb) : 0;
+
   const [invoice] = await db
     .insert(schema.invoices)
     .values({
@@ -74,6 +106,7 @@ export async function createLinkedInvoice(
       discount:      discount.toFixed(2),
       total:         total.toFixed(2),
       paidAmount:    "0",
+      uniqueCode,
       status:        "pending",
       dueDate,
       notes:         input.notes?.trim() ?? null,

@@ -45,6 +45,8 @@ export type PublicInvoiceData = {
   shippingTotal:    number;
   discount:         number;
   total:            number;
+  uniqueCode:       number;
+  amountDue:        number;
   paidAmount:       number;
   remaining:        number;
   dueDate:          string | null;
@@ -520,16 +522,33 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
           <span className="text-muted-foreground">Total Tagihan</span>
           <span className="tabular-nums font-medium">{formatRp(invoice.total)}</span>
         </div>
+        {invoice.uniqueCode > 0 && (
+          <div className="flex justify-between text-amber-700">
+            <span>Kode Unik</span>
+            <span className="tabular-nums">+{formatRp(invoice.uniqueCode)}</span>
+          </div>
+        )}
+        {invoice.uniqueCode > 0 && (
+          <div className="flex justify-between font-semibold border-t border-border pt-2">
+            <span>Total yang Harus Dibayar</span>
+            <span className="tabular-nums text-primary">{formatRp(invoice.amountDue)}</span>
+          </div>
+        )}
         <div className="flex justify-between">
           <span className="text-muted-foreground">Terbayar</span>
           <span className="tabular-nums text-green-600">{formatRp(invoice.paidAmount)}</span>
         </div>
-        <div className="flex justify-between font-semibold border-t border-border pt-2">
+        <div className={`flex justify-between font-semibold ${invoice.uniqueCode > 0 ? "" : "border-t border-border pt-2"}`}>
           <span>Sisa Tagihan</span>
           <span className={`tabular-nums ${invoice.remaining > 0 ? "text-destructive" : "text-green-600"}`}>
             {formatRp(invoice.remaining)}
           </span>
         </div>
+        {invoice.uniqueCode > 0 && invoice.remaining > 0 && (
+          <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1.5">
+            Kode unik ditambahkan untuk memudahkan identifikasi pembayaran Anda.
+          </p>
+        )}
       </div>
 
       {/* ── Metode pembayaran ── */}

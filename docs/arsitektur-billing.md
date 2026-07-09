@@ -5,6 +5,7 @@
 > - `docs/arsitektur-fulfillment.md` — 5-stage fulfillment, tracking, rencana WA notif
 > - `docs/arsitektur-addon-ongkir.md` — RajaOngkir v2, ongkos kirim per seller
 > - `docs/arsitektur-mitra.md` — shipping mitra vs tenant
+> - `docs/arsitektur-kode-unik.md` — kode unik Rp 100–999 untuk identifikasi transfer masuk
 
 ## Visi
 

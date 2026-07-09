@@ -106,9 +106,11 @@ export default async function PublicInvoicePage({ params }: Props) {
     // Lanjut tanpa rekening
   }
 
-  const total     = parseFloat(String(inv.total));
-  const paid      = parseFloat(String(inv.paidAmount));
-  const remaining = Math.max(0, total - paid);
+  const total      = parseFloat(String(inv.total));
+  const uniqueCode = inv.uniqueCode ?? 0;
+  const amountDue  = total + uniqueCode;
+  const paid       = parseFloat(String(inv.paidAmount));
+  const remaining  = Math.max(0, amountDue - paid);
 
   const submittedProofUrl = paymentRows.find(p => p.proofUrl)?.proofUrl ?? null;
   const rejectedPayment   = paymentRows.findLast(p => p.status === "rejected") ?? null;
@@ -124,6 +126,8 @@ export default async function PublicInvoicePage({ params }: Props) {
     shippingTotal:    parseFloat(String(inv.shippingTotal ?? 0)),
     discount:         parseFloat(String(inv.discount)),
     total,
+    uniqueCode,
+    amountDue,
     paidAmount:       paid,
     remaining,
     dueDate:          inv.dueDate,

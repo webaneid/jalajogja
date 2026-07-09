@@ -56,6 +56,8 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
   const [success, setSuccess]      = useState("");
 
   // Payment form state
+  const amountDue = invoice.total + (invoice.uniqueCode ?? 0);
+
   const [showPayForm, setShowPayForm]   = useState(false);
   const [payAmount,   setPayAmount]     = useState(String(Math.round(invoice.remaining)));
   const [payMethod,   setPayMethod]     = useState<"cash" | "transfer" | "qris">("cash");
@@ -255,6 +257,18 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
           <span className="text-muted-foreground">Total Tagihan</span>
           <span className="tabular-nums font-medium">{formatRp(invoice.total)}</span>
         </div>
+        {(invoice.uniqueCode ?? 0) > 0 && (
+          <>
+            <div className="flex justify-between text-amber-700">
+              <span>Kode Unik</span>
+              <span className="tabular-nums">+{formatRp(invoice.uniqueCode ?? 0)}</span>
+            </div>
+            <div className="flex justify-between font-semibold border-t border-border pt-2">
+              <span>Total yang Harus Dibayar</span>
+              <span className="tabular-nums text-primary">{formatRp(amountDue)}</span>
+            </div>
+          </>
+        )}
         <div className="flex justify-between">
           <span className="text-muted-foreground">Terbayar</span>
           <span className="tabular-nums text-green-600">{formatRp(invoice.paidAmount)}</span>
