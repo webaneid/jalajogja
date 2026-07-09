@@ -439,6 +439,14 @@ export async function verifySubmittedPaymentAction(
         for (const [cId, amt] of Object.entries(campaignAmounts)) {
           await tx.update(schema.campaigns).set({ collectedAmount: sql`collected_amount + ${String(amt)}` }).where(eq(schema.campaigns.id, cId));
         }
+
+        // Konfirmasi pendaftaran event jika invoice terhubung ke event_registration
+        if (inv.sourceType === "event_registration" && inv.sourceId) {
+          await tx
+            .update(schema.eventRegistrations)
+            .set({ status: "confirmed", updatedAt: new Date() })
+            .where(eq(schema.eventRegistrations.id, inv.sourceId));
+        }
       }
     });
 

@@ -11,18 +11,23 @@ import {
 
 type Props = { params: Promise<{ tenant: string; id: string }> };
 
-function resolvePaymentCategory(itemTypes: string[]): "donasi" | "general" {
+function resolvePaymentCategory(itemTypes: string[]): "donasi" | "event" | "general" {
   if (itemTypes.length === 0) return "general";
-  return itemTypes.every((t) => t === "donation") ? "donasi" : "general";
+  if (itemTypes.every((t) => t === "donation")) return "donasi";
+  if (itemTypes.some((t) => t === "ticket"))    return "event";
+  return "general";
 }
 
+// Cari akun dengan kategori spesifik dulu, fallback ke "general", fallback ke semua
 function filterByCategory<T extends { categories: string[] }>(
   accounts: T[],
   category: string,
 ): T[] {
   const specific = accounts.filter((a) => a.categories.includes(category));
   if (specific.length > 0) return specific;
-  return accounts.filter((a) => a.categories.includes("general"));
+  const general = accounts.filter((a) => a.categories.includes("general"));
+  if (general.length > 0) return general;
+  return accounts;
 }
 
 export default async function PublicInvoicePage({ params }: Props) {

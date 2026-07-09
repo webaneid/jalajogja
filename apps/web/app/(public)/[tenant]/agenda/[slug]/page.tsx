@@ -186,14 +186,19 @@ export default async function PublicEventPage({
   const allBanks = (bankRow?.value as BankAccount[] | null) ?? [];
   const allQris  = (qrisRow?.value  as QrisAccount[] | null) ?? [];
 
-  // Filter: cari kategori "event" dulu, fallback ke "general"
-  function filterByCategory<T extends { categories?: string[] }>(accounts: T[], category: string): T[] {
-    const specific = accounts.filter((a) => a.categories?.includes(category));
-    if (specific.length > 0) return specific;
-    return accounts.filter((a) => a.categories?.includes("general"));
+  // Filter metode pembayaran untuk event:
+  // 1. Cari yang punya kategori "event" (jika admin konfigurasi spesifik)
+  // 2. Fallback ke "general" (catch-all)
+  // 3. Fallback ke semua akun (karena tidak ada kategori "event" di settings UI saat ini)
+  function filterForEvent<T extends { categories?: string[] }>(accounts: T[]): T[] {
+    const eventSpecific = accounts.filter((a) => a.categories?.includes("event"));
+    if (eventSpecific.length > 0) return eventSpecific;
+    const general = accounts.filter((a) => a.categories?.includes("general"));
+    if (general.length > 0) return general;
+    return accounts;
   }
-  const banks        = filterByCategory(allBanks, "event");
-  const qrisAccounts = filterByCategory(allQris,  "event");
+  const banks        = filterForEvent(allBanks);
+  const qrisAccounts = filterForEvent(allQris);
 
   const hasPaidTicket = tickets.some((t) => parseFloat(String(t.price)) > 0);
 
@@ -251,6 +256,7 @@ export default async function PublicEventPage({
   let defaultAttendeePhone = "";
   let defaultAttendeeEmail = "";
   let alreadyRegistered: {
+    id:                 string;
     registrationNumber: string;
     status:             string;
     attendeeName:       string;
@@ -307,6 +313,7 @@ export default async function PublicEventPage({
     if (identityConditions.length > 0) {
       const [existing] = await tenantDb
         .select({
+          id:                 schema.eventRegistrations.id,
           registrationNumber: schema.eventRegistrations.registrationNumber,
           status:             schema.eventRegistrations.status,
           attendeeName:       schema.eventRegistrations.attendeeName,
@@ -338,6 +345,21 @@ export default async function PublicEventPage({
       ))
       .limit(1);
     currentUserIsEnrolled = !!membership;
+  }
+
+  // Jika sudah terdaftar dan masih pending → cari invoice yang belum lunas
+  let pendingInvoiceId: string | null = null;
+  if (alreadyRegistered && alreadyRegistered.status === "pending") {
+    const [inv] = await tenantDb
+      .select({ id: schema.invoices.id })
+      .from(schema.invoices)
+      .where(and(
+        eq(schema.invoices.sourceType, "event_registration"),
+        eq(schema.invoices.sourceId, alreadyRegistered.id),
+        sql`${schema.invoices.status} NOT IN ('paid', 'cancelled')`,
+      ))
+      .limit(1);
+    pendingInvoiceId = inv?.id ?? null;
   }
 
   // QR Code tiket digital — generate server-side jika sudah terdaftar
@@ -573,9 +595,30 @@ export default async function PublicEventPage({
                       </div>
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground pt-1 text-center">
-                    Tunjukkan QR ini kepada panitia saat acara
-                  </p>
+                  {/* Jika masih pending → link ke invoice untuk selesaikan pembayaran */}
+                  {alreadyRegistered.status === "pending" && (
+                    <div className="pt-2 border-t border-border space-y-2">
+                      <p className="text-xs text-amber-700 dark:text-amber-300 font-medium">
+                        Segera selesaikan pembayaran untuk mengkonfirmasi pendaftaran Anda.
+                      </p>
+                      {pendingInvoiceId ? (
+                        <a
+                          href={`${baseUrl}/invoice/${pendingInvoiceId}`}
+                          className="btn btn-primary btn-sm btn-full inline-flex justify-center"
+                        >
+                          Selesaikan Pembayaran →
+                        </a>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Hubungi panitia untuk konfirmasi pembayaran.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {alreadyRegistered.status === "confirmed" && (
+                    <p className="text-[10px] text-muted-foreground pt-1 text-center">
+                      Tunjukkan QR ini kepada panitia saat acara
+                    </p>
+                  )}
                 </div>
               </div>
             ) : tickets.length === 0 ? (
