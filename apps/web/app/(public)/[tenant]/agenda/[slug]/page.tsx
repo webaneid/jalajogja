@@ -1,7 +1,7 @@
 // Halaman publik event — tanpa auth, siapapun bisa akses dan mendaftar
 import { createTenantDb, db, tenants, members, contacts, profiles, tenantMemberships, getSettings, addresses, refRegencies, refProvinces, refProfessions } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
-import { eq, and, or, count, sql } from "drizzle-orm";
+import { eq, and, or, count, sql, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
@@ -300,7 +300,7 @@ export default async function PublicEventPage({
           homeAddressId:    members.homeAddressId,
         })
         .from(members)
-        .where(sql`${members.id} = ANY(${memberIds})`);
+        .where(inArray(members.id, memberIds));
 
       // Angkatan
       if (attendeeStatsBy.includes("angkatan")) {
@@ -323,7 +323,7 @@ export default async function PublicEventPage({
         const profNames = professionIds.length > 0
           ? await db.select({ id: refProfessions.id, name: refProfessions.name })
               .from(refProfessions)
-              .where(sql`${refProfessions.id} = ANY(${professionIds})`)
+              .where(inArray(refProfessions.id, professionIds))
           : [];
         const profMap = new Map(profNames.map(p => [p.id, p.name]));
         const freq = new Map<string, number>();
@@ -342,7 +342,7 @@ export default async function PublicEventPage({
         const addrRows = addressIds.length > 0
           ? await db.select({ id: addresses.id, regencyId: addresses.regencyId, provinceId: addresses.provinceId })
               .from(addresses)
-              .where(sql`${addresses.id} = ANY(${addressIds})`)
+              .where(inArray(addresses.id, addressIds))
           : [];
 
         const addrMap = new Map(addrRows.map(a => [a.id, a]));
@@ -351,7 +351,7 @@ export default async function PublicEventPage({
           const regencyIds = [...new Set(addrRows.map(a => a.regencyId).filter(Boolean))] as number[];
           const regNames = regencyIds.length > 0
             ? await db.select({ id: refRegencies.id, name: refRegencies.name }).from(refRegencies)
-                .where(sql`${refRegencies.id} = ANY(${regencyIds})`)
+                .where(inArray(refRegencies.id, regencyIds))
             : [];
           const regMap = new Map(regNames.map(r => [r.id, r.name]));
           const freq = new Map<string, number>();
@@ -371,7 +371,7 @@ export default async function PublicEventPage({
           const provinceIds = [...new Set(addrRows.map(a => a.provinceId).filter(Boolean))] as number[];
           const provNames = provinceIds.length > 0
             ? await db.select({ id: refProvinces.id, name: refProvinces.name }).from(refProvinces)
-                .where(sql`${refProvinces.id} = ANY(${provinceIds})`)
+                .where(inArray(refProvinces.id, provinceIds))
             : [];
           const provMap = new Map(provNames.map(p => [p.id, p.name]));
           const freq = new Map<string, number>();
