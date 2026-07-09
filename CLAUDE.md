@@ -3155,7 +3155,18 @@ grep -rn '`/app/' apps/web/app/\(public\)/ apps/web/components/website/public/
 ```
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Custom publish date untuk post** (sesi 2026-07-09, lanjutan 3).
+- Terakhir dikerjakan: **Timezone fix untuk publish date post** (sesi 2026-07-09, lanjutan 4).
+- Sesi ini (2026-07-09, lanjutan 4):
+  - **Timezone fix publishedAt post** — tiga bug sekaligus difix:
+    1. `buildPayload()` kirim `new Date(publishedAt).toISOString()` (UTC unambiguous) bukan raw
+       datetime-local string → server tidak salah parse (sebelumnya: `"2026-07-09T10:00"` tanpa tz
+       → Node.js parse sebagai UTC → selisih 7 jam di WIB)
+    2. `useState` init: konversi ISO UTC dari server ke local datetime-local format via `d.getFullYear()/
+       getMonth()/getDate()/getHours()/getMinutes()` (local methods) bukan `toISOString().slice(0,16)`
+       yang UTC → input kini tampil jam lokal yang benar
+    3. Auto-default saat ganti ke Terbit: sama — gunakan local Date methods, bukan `toISOString()`
+    4. `edit/page.tsx`: kirim full UTC ISO string ke client bukan `.slice(0,16)` (client yang konversi)
+    - Tidak ada library tambahan, tidak ada perubahan schema DB / actions.ts. TypeScript 0 errors.
 - Sesi ini (2026-07-09, lanjutan 3):
   - **Custom publish date untuk post** — field "Tanggal Terbit" (`datetime-local`) di sidebar editor
     post, tampil hanya saat status = Terbit. Default ke waktu sekarang saat pertama ganti status ke

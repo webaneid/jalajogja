@@ -86,8 +86,9 @@ export default async function EditPostPage({
           excerpt:     post.excerpt ?? "",
           content:     post.content,
           status:      post.status,
+          // Kirim full UTC ISO string — client yang konversi ke local time untuk display
           publishedAt: post.publishedAt
-            ? new Date(post.publishedAt).toISOString().slice(0, 16)
+            ? new Date(post.publishedAt).toISOString()
             : null,
           categoryId: post.categoryId,
           isFeatured: post.isFeatured,

@@ -452,9 +452,14 @@ export function PostForm({
   const [categoryId, setCategoryId] = useState<string>(initialData.categoryId ?? "");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialData.tagIds);
   const [status, setStatus]         = useState<ContentStatus>(initialData.status);
-  const [publishedAt, setPublishedAt] = useState<string>(
-    initialData.publishedAt ?? ""
-  );
+  const [publishedAt, setPublishedAt] = useState<string>(() => {
+    if (!initialData.publishedAt) return "";
+    // initialData.publishedAt adalah UTC ISO string dari server.
+    // Konversi ke format datetime-local pakai local time browser (bukan toISOString yang UTC).
+    const d = new Date(initialData.publishedAt);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
   const [isFeatured, setIsFeatured] = useState<boolean>(initialData.isFeatured);
   const [seoValues, setSeoValues]   = useState<SeoValues>(initialData.seo);
 
@@ -498,7 +503,9 @@ export function PostForm({
       isFeatured,
       tagIds:     selectedTagIds,
       status:     overrideStatus ?? status,
-      publishedAt: publishedAt || null,
+      // Konversi datetime-local (local browser time) ke UTC ISO string sebelum kirim server.
+      // new Date("2026-07-09T10:00") di browser WIB → UTC+7 → ISO "2026-07-09T03:00:00.000Z"
+      publishedAt: publishedAt ? new Date(publishedAt).toISOString() : null,
       metaTitle:      seoValues.metaTitle,
       metaDesc:       seoValues.metaDesc,
       ogTitle:        seoValues.ogTitle,
@@ -636,8 +643,11 @@ export function PostForm({
                   setStatus(next);
                   if (next === "published" && !publishedAt) {
                     const now = new Date();
-                    now.setSeconds(0, 0);
-                    setPublishedAt(now.toISOString().slice(0, 16));
+                    const pad = (n: number) => String(n).padStart(2, "0");
+                    // Gunakan local time browser — bukan toISOString() yang selalu UTC
+                    setPublishedAt(
+                      `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
+                    );
                   }
                 }}
               >
