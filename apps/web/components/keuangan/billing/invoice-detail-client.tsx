@@ -7,6 +7,7 @@ import {
   confirmInvoicePaymentAction,
   cancelInvoiceAction,
   verifySubmittedPaymentAction,
+  rejectPaymentAction,
   updateAdminShippingTrackingAction,
   type InvoiceDetail,
 } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
@@ -69,12 +70,34 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
   // Verifikasi payment submitted
   const [verifyingId, setVerifyingId]   = useState<string | null>(null);
 
+  // Tolak bukti pembayaran
+  const [rejectingId,    setRejectingId]    = useState<string | null>(null);
+  const [rejectReason,   setRejectReason]   = useState("");
+  const [rejectPending,  startRejectTr]     = useTransition();
+
   // Lightbox
   const [lightboxSrc, setLightboxSrc]  = useState<string | null>(null);
 
   // Shipping tracking
   const [resiInputs,  setResiInputs]   = useState<Record<string, string>>({});
   const [savingResi,  setSavingResi]   = useState<string | null>(null);
+
+  function handleReject(paymentId: string) {
+    if (!rejectReason.trim()) return;
+    setError("");
+    setSuccess("");
+    startRejectTr(async () => {
+      const res = await rejectPaymentAction(slug, paymentId, rejectReason.trim());
+      if (res.success) {
+        setSuccess("Bukti pembayaran berhasil ditolak. Invoice kembali ke status Menunggu Bayar.");
+        setRejectingId(null);
+        setRejectReason("");
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+    });
+  }
 
   function handleVerify(paymentId: string) {
     if (!confirm("Verifikasi bahwa pembayaran ini sudah diterima?")) return;
@@ -266,14 +289,24 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {p.status === "submitted" && (
-                      <button
-                        type="button"
-                        onClick={() => handleVerify(p.id)}
-                        disabled={pending || verifyingId === p.id}
-                        className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
-                      >
-                        {verifyingId === p.id ? "Memverifikasi..." : "✓ Verifikasi"}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleVerify(p.id)}
+                          disabled={pending || verifyingId === p.id || rejectPending}
+                          className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
+                        >
+                          {verifyingId === p.id ? "Memverifikasi..." : "✓ Verifikasi"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRejectingId(rejectingId === p.id ? null : p.id)}
+                          disabled={pending || rejectPending}
+                          className="rounded-md border border-destructive/50 px-3 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-60 transition-colors"
+                        >
+                          Tolak
+                        </button>
+                      </>
                     )}
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                       p.status === "paid"      ? "bg-green-100 text-green-700" :
@@ -287,6 +320,42 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                     </span>
                   </div>
                 </div>
+                {/* Form alasan penolakan */}
+                {rejectingId === p.id && (
+                  <div className="rounded-md border border-destructive/30 bg-red-50/40 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-destructive">Alasan Penolakan</p>
+                    <textarea
+                      rows={2}
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      placeholder="Tulis alasan penolakan untuk customer..."
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleReject(p.id)}
+                        disabled={rejectPending || !rejectReason.trim()}
+                        className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60 transition-colors"
+                      >
+                        {rejectPending ? "Menolak..." : "Tolak Bukti Ini"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setRejectingId(null); setRejectReason(""); }}
+                        className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {/* Tampilkan alasan jika sudah ditolak */}
+                {p.status === "rejected" && p.rejectionNote && (
+                  <p className="text-xs text-destructive/80 bg-red-50 rounded px-2 py-1">
+                    Alasan: {p.rejectionNote}
+                  </p>
+                )}
                 {p.proofUrl && (
                   <button
                     type="button"

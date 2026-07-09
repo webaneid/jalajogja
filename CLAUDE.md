@@ -3174,7 +3174,22 @@ grep -rn '`/app/' apps/web/app/\(public\)/ apps/web/components/website/public/
 ```
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Step E10 — Donation Prompt UI (Event Module)** (sesi 2026-07-10, lanjutan).
+- Terakhir dikerjakan: **Reject Payment Action — universal untuk semua invoice** (sesi 2026-07-10).
+- Sesi ini (2026-07-10, lanjutan 2):
+  - **Feat: `rejectPaymentAction` universal untuk semua tipe invoice** — TypeScript 0 errors.
+    - **`billing/actions.ts`**: tambah `rejectPaymentAction` (dengan invoice reset + UUID fix), update `getInvoiceDetailAction` sertakan `rejectionNote` di payment data, update `InvoiceDetail.payments` type.
+    - **`finance/actions.ts`**: fix bug `rejectedBy: access.userId` → `access.tenantUser.id` (nanoid → UUID, lesson CLAUDE.md).
+    - **`invoice-detail-client.tsx`**: tombol "Tolak" di samping "✓ Verifikasi" untuk payment berstatus `submitted`, inline form textarea alasan, tampilkan alasan jika sudah ditolak.
+    - **`invoice/[id]/page.tsx`**: query `status` + `rejectionNote` dari payments, hitung `rejectedPaymentNote` (payment rejected terakhir).
+    - **`invoice-public-client.tsx`**: field `rejectedPaymentNote` di `PublicInvoiceData`, blok oranye "Bukti pembayaran sebelumnya ditolak: [alasan]" muncul saat invoice kembali ke `pending`/`partial`/`overdue`.
+  - **Alur dikunci:**
+    - Customer upload bukti → `submitPaymentProofAction` → payment `submitted`, invoice `waiting_verification`
+    - Admin verifikasi → `verifySubmittedPaymentAction` → payment `paid`, invoice `paid/partial`
+    - Admin tolak → `rejectPaymentAction` → payment `rejected`, invoice kembali ke `pending` (jika tidak ada submitted lain)
+    - Customer melihat alasan penolakan di halaman invoice → upload ulang bukti baru
+  - **Tidak ada perubahan DB** — kolom `rejected_by`, `rejected_at`, `rejection_note` sudah ada di schema.
+  - Deploy: `git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env`
+- Sesi ini (2026-07-10, lanjutan):
 - Sesi ini (2026-07-10, lanjutan):
   - **Step E10 — Donation Prompt UI SELESAI** — Routing kondisional cart vs direct flow untuk event. TypeScript 0 errors.
     - Schema: `linked_product_id UUID` ditambah ke `events` + DDL + migration `0025_event_linked_product.sql`

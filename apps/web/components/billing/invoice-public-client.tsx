@@ -52,7 +52,8 @@ export type PublicInvoiceData = {
   createdAt:        string;
   shippingCityName: string | null;
   shippingAddress:  string | null;
-  submittedProofUrl: string | null;
+  submittedProofUrl:    string | null;
+  rejectedPaymentNote:  string | null;
   items: Array<{
     id:          string;
     name:        string;
@@ -702,6 +703,15 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
             {pending ? "Mengirim..." : "Kirim Konfirmasi"}
           </button>
         </form>
+      )}
+
+      {/* ── Bukti ditolak — tampil saat invoice kembali ke pending ── */}
+      {invoice.rejectedPaymentNote && ["pending", "partial", "overdue"].includes(invoice.status) && (
+        <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 space-y-1">
+          <p className="font-semibold text-orange-700 text-sm">Bukti pembayaran sebelumnya ditolak</p>
+          <p className="text-sm text-orange-600">{invoice.rejectedPaymentNote}</p>
+          <p className="text-xs text-orange-500 mt-1">Silakan upload ulang bukti pembayaran yang benar.</p>
+        </div>
       )}
 
       {/* ── Status final ── */}

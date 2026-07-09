@@ -287,7 +287,7 @@ export async function rejectPaymentAction(
     .update(schema.payments)
     .set({
       status:        "rejected",
-      rejectedBy:    access.userId,
+      rejectedBy:    access.tenantUser.id,
       rejectedAt:    new Date(),
       rejectionNote: reason.trim(),
       updatedAt:     new Date(),

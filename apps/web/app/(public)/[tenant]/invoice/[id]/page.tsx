@@ -63,7 +63,11 @@ export default async function PublicInvoicePage({ params }: Props) {
       .from(schema.invoiceShippingLines)
       .where(eq(schema.invoiceShippingLines.invoiceId, invoiceId)),
     tenantDb
-      .select({ proofUrl: schema.payments.proofUrl })
+      .select({
+        proofUrl:      schema.payments.proofUrl,
+        status:        schema.payments.status,
+        rejectionNote: schema.payments.rejectionNote,
+      })
       .from(schema.invoicePayments)
       .innerJoin(schema.payments, eq(schema.invoicePayments.paymentId, schema.payments.id))
       .where(eq(schema.invoicePayments.invoiceId, invoiceId))
@@ -107,6 +111,7 @@ export default async function PublicInvoicePage({ params }: Props) {
   const remaining = Math.max(0, total - paid);
 
   const submittedProofUrl = paymentRows.find(p => p.proofUrl)?.proofUrl ?? null;
+  const rejectedPayment   = paymentRows.findLast(p => p.status === "rejected") ?? null;
 
   const invoice: PublicInvoiceData = {
     id:               inv.id,
@@ -127,6 +132,7 @@ export default async function PublicInvoicePage({ params }: Props) {
     shippingCityName: inv.shippingCityName ?? null,
     shippingAddress:  inv.shippingAddress ?? null,
     submittedProofUrl,
+    rejectedPaymentNote: rejectedPayment?.rejectionNote ?? null,
     items: items.map((it) => ({
       id:          it.id,
       name:        it.name,

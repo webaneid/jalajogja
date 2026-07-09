@@ -331,6 +331,85 @@ export async function confirmInvoicePaymentAction(
   }
 }
 
+// ─── rejectPaymentAction ──────────────────────────────────────────────────────
+// Admin tolak bukti pembayaran yang di-submit customer → status rejected, invoice kembali ke pending
+
+export async function rejectPaymentAction(
+  slug:      string,
+  paymentId: string,
+  reason:    string,
+): Promise<ActionResult<void>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  if (!reason?.trim())
+    return { success: false, error: "Alasan penolakan wajib diisi." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [payment] = await db
+    .select({ id: schema.payments.id, status: schema.payments.status })
+    .from(schema.payments)
+    .where(eq(schema.payments.id, paymentId))
+    .limit(1);
+
+  if (!payment)                       return { success: false, error: "Pembayaran tidak ditemukan." };
+  if (payment.status === "paid")      return { success: false, error: "Pembayaran sudah dikonfirmasi, tidak bisa ditolak." };
+  if (payment.status === "rejected")  return { success: false, error: "Pembayaran sudah ditolak sebelumnya." };
+  if (payment.status !== "submitted") return { success: false, error: "Hanya bisa menolak bukti yang sudah di-submit customer." };
+
+  // Cari invoice terkait via invoice_payments
+  const [invLink] = await db
+    .select({ invoiceId: schema.invoicePayments.invoiceId })
+    .from(schema.invoicePayments)
+    .where(eq(schema.invoicePayments.paymentId, paymentId))
+    .limit(1);
+
+  try {
+    await db.transaction(async (tx) => {
+      // Tolak payment
+      await tx
+        .update(schema.payments)
+        .set({
+          status:        "rejected",
+          rejectedBy:    access.tenantUser.id,
+          rejectedAt:    new Date(),
+          rejectionNote: reason.trim(),
+          updatedAt:     new Date(),
+        })
+        .where(eq(schema.payments.id, paymentId));
+
+      // Kembalikan invoice ke pending agar customer bisa upload ulang
+      if (invLink?.invoiceId) {
+        const [otherSubmitted] = await tx
+          .select({ id: schema.payments.id })
+          .from(schema.invoicePayments)
+          .innerJoin(schema.payments, eq(schema.invoicePayments.paymentId, schema.payments.id))
+          .where(and(
+            eq(schema.invoicePayments.invoiceId, invLink.invoiceId),
+            eq(schema.payments.status, "submitted"),
+          ))
+          .limit(1);
+
+        if (!otherSubmitted) {
+          await tx
+            .update(schema.invoices)
+            .set({ status: "pending", updatedAt: new Date() })
+            .where(eq(schema.invoices.id, invLink.invoiceId));
+        }
+      }
+    });
+
+    revalidateBilling(slug);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[rejectPaymentAction]", err);
+    return { success: false, error: "Gagal menolak bukti pembayaran." };
+  }
+}
+
 // ─── verifySubmittedPaymentAction ────────────────────────────────────────────
 // Admin verifikasi payment yang di-submit customer → status confirmed, update paid_amount invoice
 
@@ -584,15 +663,16 @@ export type InvoiceDetail = {
     total:       number;
   }[];
   payments: {
-    id:        string;
-    amount:    number;
-    method:    string;
-    status:    string;
-    payerName: string | null;
-    payerBank: string | null;
-    payerNote: string | null;
-    proofUrl:  string | null;
-    createdAt: string;
+    id:            string;
+    amount:        number;
+    method:        string;
+    status:        string;
+    payerName:     string | null;
+    payerBank:     string | null;
+    payerNote:     string | null;
+    proofUrl:      string | null;
+    rejectionNote: string | null;
+    createdAt:     string;
   }[];
   shippingLines: {
     id:             string;
@@ -634,15 +714,16 @@ export async function getInvoiceDetailAction(
 
     db
       .select({
-        id:        schema.payments.id,
-        amount:    schema.invoicePayments.amount,
-        method:    schema.payments.method,
-        status:    schema.payments.status,
-        payerName: schema.payments.payerName,
-        payerBank: schema.payments.payerBank,
-        payerNote: schema.payments.payerNote,
-        proofUrl:  schema.payments.proofUrl,
-        createdAt: schema.payments.createdAt,
+        id:            schema.payments.id,
+        amount:        schema.invoicePayments.amount,
+        method:        schema.payments.method,
+        status:        schema.payments.status,
+        payerName:     schema.payments.payerName,
+        payerBank:     schema.payments.payerBank,
+        payerNote:     schema.payments.payerNote,
+        proofUrl:      schema.payments.proofUrl,
+        rejectionNote: schema.payments.rejectionNote,
+        createdAt:     schema.payments.createdAt,
       })
       .from(schema.invoicePayments)
       .innerJoin(schema.payments, eq(schema.invoicePayments.paymentId, schema.payments.id))
@@ -687,15 +768,16 @@ export async function getInvoiceDetailAction(
         total:       parseFloat(String(it.total)),
       })),
       payments: paymentLinks.map((p) => ({
-        id:        p.id,
-        amount:    parseFloat(String(p.amount)),
-        method:    p.method,
-        status:    p.status,
-        payerName: p.payerName ?? null,
-        payerBank: p.payerBank ?? null,
-        payerNote: p.payerNote ?? null,
-        proofUrl:  p.proofUrl ?? null,
-        createdAt: p.createdAt.toISOString(),
+        id:            p.id,
+        amount:        parseFloat(String(p.amount)),
+        method:        p.method,
+        status:        p.status,
+        payerName:     p.payerName ?? null,
+        payerBank:     p.payerBank ?? null,
+        payerNote:     p.payerNote ?? null,
+        proofUrl:      p.proofUrl ?? null,
+        rejectionNote: p.rejectionNote ?? null,
+        createdAt:     p.createdAt.toISOString(),
       })),
       shippingLines: shippingRows.map((sl) => ({
         id:             sl.id,
