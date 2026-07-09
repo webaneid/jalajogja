@@ -618,6 +618,7 @@ export default async function PublicEventPage({
                   defaultAttendeePhone={defaultAttendeePhone}
                   defaultAttendeeEmail={defaultAttendeeEmail}
                   baseUrl={baseUrl}
+                  enableCustomForm={event.enableCustomForm}
                 />
               </div>
             )}

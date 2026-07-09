@@ -3155,7 +3155,25 @@ grep -rn '`/app/' apps/web/app/\(public\)/ apps/web/components/website/public/
 ```
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Timezone fix untuk publish date post** (sesi 2026-07-09, lanjutan 4).
+- Terakhir dikerjakan: **Event Custom Form Fields (Estimasi Kedatangan + Jumlah Rombongan)** (sesi 2026-07-09, lanjutan 5).
+- Sesi ini (2026-07-09, lanjutan 5):
+  - **Fitur form tambahan event** — Toggle `enableCustomForm` per event. Dua field: Estimasi Kedatangan
+    (datetime-local → UTC ISO) + Jumlah Rombongan (number). Disimpan ke `customFields JSONB` di
+    `event_registrations`. Toggle muncul di sidebar admin event editor di bawah "Pengaturan Tampilan".
+    Field muncul di form publik hanya jika `enableCustomForm = true`. TypeScript 0 errors.
+  - **8 file diubah**: `events.ts` schema, `create-tenant-schema.ts` DDL, `actions.ts` (RegisterData type
+    + saveEventAction + registerForEventAction), `event-form.tsx` (toggle + UI preview), 
+    `event-register-form.tsx` (prop + state + UI), `agenda/[slug]/page.tsx` (pass prop),
+    `event/acara/[id]/edit/page.tsx`, `event/acara/new/page.tsx`
+  - **Migration baru**: `0021_event_custom_form.sql` — jalankan di VPS sebelum deploy
+  - **Deploy ke VPS**:
+    ```bash
+    docker compose exec -T postgres psql -U jalakarta -d jalakarta \
+      < packages/db/migrations/0020_event_ticket_requires_membership.sql
+    docker compose exec -T postgres psql -U jalakarta -d jalakarta \
+      < packages/db/migrations/0021_event_custom_form.sql
+    git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env
+    ```
 - Sesi ini (2026-07-09, lanjutan 4):
   - **Timezone fix publishedAt post** — tiga bug sekaligus difix:
     1. `buildPayload()` kirim `new Date(publishedAt).toISOString()` (UTC unambiguous) bukan raw

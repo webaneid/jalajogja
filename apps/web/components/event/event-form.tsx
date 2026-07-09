@@ -65,6 +65,7 @@ export type EventFormProps = {
     showTicketCount:    boolean;
     requireApproval:    boolean;
     showDonationPrompt: boolean;
+    enableCustomForm:   boolean;
     linkedCampaignId:   string | null;
     coverId:            string | null;
     coverUrl:           string | null;
@@ -163,6 +164,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
   const [showTicketCount,    setShowTicketCount]    = useState(initialData.showTicketCount);
   const [requireApproval,    setRequireApproval]    = useState(initialData.requireApproval);
   const [showDonationPrompt, setShowDonationPrompt] = useState(initialData.showDonationPrompt);
+  const [enableCustomForm,   setEnableCustomForm]   = useState(initialData.enableCustomForm);
   const [linkedCampaignId,   setLinkedCampaignId]   = useState<string | null>(initialData.linkedCampaignId);
   const [cover,    setCover]    = useState<CoverImage>(
     initialData.coverId && initialData.coverUrl
@@ -270,6 +272,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
       showTicketCount,
       requireApproval,
       showDonationPrompt,
+      enableCustomForm,
       linkedCampaignId:  showDonationPrompt ? (linkedCampaignId ?? null) : null,
       coverId:           cover?.id ?? null,
       tickets: tickets.map((t, i) => ({
@@ -591,6 +594,23 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
               checked={requireApproval}
               onChange={setRequireApproval}
             />
+          </div>
+
+          {/* Form Tambahan Pendaftaran */}
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <ToggleRow
+              label="Aktifkan form tambahan pendaftaran"
+              hint="Tampilkan field estimasi kedatangan dan jumlah rombongan di formulir pendaftaran"
+              checked={enableCustomForm}
+              onChange={setEnableCustomForm}
+            />
+            {enableCustomForm && (
+              <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">Field yang akan tampil:</p>
+                <p>• Estimasi Kedatangan (tanggal &amp; waktu)</p>
+                <p>• Jumlah Rombongan (jumlah orang)</p>
+              </div>
+            )}
           </div>
 
           {/* Prompt Donasi */}

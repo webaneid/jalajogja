@@ -76,6 +76,7 @@ export function createEventsTable(s: ReturnType<typeof pgSchema>) {
     showAttendeeList: boolean("show_attendee_list").notNull().default(false),
     showTicketCount:  boolean("show_ticket_count").notNull().default(true),
     requireApproval:  boolean("require_approval").notNull().default(false),
+    enableCustomForm: boolean("enable_custom_form").notNull().default(false),
 
     // Cover image — FK ke media.id via SQL
     coverId: uuid("cover_id"),

@@ -58,6 +58,8 @@ export type EventRegisterFormProps = {
   defaultAttendeeEmail?: string;
   // URL ke halaman lengkapi keanggotaan (untuk redirect jika tiket butuh anggota)
   baseUrl: string;
+  // Form tambahan — hanya tampil jika admin aktifkan
+  enableCustomForm?: boolean;
 };
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -82,6 +84,7 @@ export function EventRegisterForm({
   defaultAttendeePhone = "",
   defaultAttendeeEmail = "",
   baseUrl,
+  enableCustomForm = false,
 }: EventRegisterFormProps) {
   // Pilihan tiket
   const [selectedTicketId, setSelectedTicketId] = useState<string>(tickets[0]?.id ?? "");
@@ -90,6 +93,10 @@ export function EventRegisterForm({
   const [attendeeName,  setAttendeeName]  = useState(defaultAttendeeName);
   const [attendeePhone, setAttendeePhone] = useState(defaultAttendeePhone);
   const [attendeeEmail, setAttendeeEmail] = useState(defaultAttendeeEmail);
+
+  // Custom form fields (Estimasi Kedatangan + Jumlah Rombongan)
+  const [arrivalEstimate, setArrivalEstimate] = useState("");
+  const [groupSize,       setGroupSize]       = useState("");
 
   // Modal donation prompt (tampil setelah registrasi gratis berhasil)
   const [showDonationModal, setShowDonationModal] = useState(false);
@@ -143,6 +150,13 @@ export function EventRegisterForm({
         attendeeName,
         attendeePhone:  attendeePhone || null,
         attendeeEmail:  attendeeEmail || null,
+        // Custom form — kirim jika enableCustomForm aktif
+        arrivalEstimate: enableCustomForm && arrivalEstimate
+          ? new Date(arrivalEstimate).toISOString()
+          : null,
+        groupSize: enableCustomForm && groupSize && !isNaN(Number(groupSize)) && Number(groupSize) > 0
+          ? Number(groupSize)
+          : null,
         method:         isPaidTicket ? method : undefined,
         bankAccountRef: isPaidTicket && method === "transfer" ? bankAccountRef || null : null,
         qrisAccountRef: isPaidTicket && method === "qris"     ? qrisAccountRef || null : null,
@@ -444,6 +458,44 @@ export function EventRegisterForm({
               />
             </div>
           </div>
+
+          {/* Form Tambahan — estimasi kedatangan dan jumlah rombongan */}
+          {enableCustomForm && (
+            <div className="space-y-3 rounded-lg border border-border p-4">
+              <p className="text-sm font-semibold text-foreground">Informasi Tambahan</p>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="arrivalEstimate" className="text-sm">
+                  Estimasi Kedatangan
+                </Label>
+                <input
+                  id="arrivalEstimate"
+                  type="datetime-local"
+                  value={arrivalEstimate}
+                  onChange={(e) => setArrivalEstimate(e.target.value)}
+                  disabled={isPending}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <p className="text-xs text-muted-foreground">Perkiraan waktu kamu tiba di lokasi acara</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="groupSize" className="text-sm">
+                  Jumlah Rombongan
+                </Label>
+                <Input
+                  id="groupSize"
+                  type="number"
+                  min={1}
+                  value={groupSize}
+                  onChange={(e) => setGroupSize(e.target.value)}
+                  placeholder="Contoh: 5"
+                  disabled={isPending}
+                />
+                <p className="text-xs text-muted-foreground">Termasuk kamu sendiri, total berapa orang yang datang</p>
+              </div>
+            </div>
+          )}
 
           {/* Metode Pembayaran — hanya untuk tiket berbayar */}
           {isPaidTicket && (

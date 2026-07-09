@@ -47,6 +47,7 @@ export type EventData = {
   showTicketCount:     boolean;
   requireApproval:     boolean;
   showDonationPrompt:  boolean;
+  enableCustomForm:    boolean;
   linkedCampaignId?:   string | null;
   coverId?:            string | null;
   tickets:             TicketInput[];
@@ -216,6 +217,7 @@ export async function createEventAction(
         showTicketCount:    data.showTicketCount,
         requireApproval:    data.requireApproval,
         showDonationPrompt: data.showDonationPrompt,
+        enableCustomForm:   data.enableCustomForm,
         linkedCampaignId:   data.linkedCampaignId ?? null,
         coverId:          data.coverId                  ?? null,
         metaTitle:        data.metaTitle?.trim()       || null,
@@ -295,6 +297,7 @@ export async function updateEventAction(
         showTicketCount:    data.showTicketCount,
         requireApproval:    data.requireApproval,
         showDonationPrompt: data.showDonationPrompt,
+        enableCustomForm:   data.enableCustomForm,
         linkedCampaignId:   data.linkedCampaignId ?? null,
         coverId:          data.coverId                  ?? null,
         metaTitle:        data.metaTitle?.trim()       || null,
@@ -475,6 +478,9 @@ export type RegisterData = {
   attendeeName:  string;
   attendeePhone?: string | null;
   attendeeEmail?: string | null;
+  // Custom form fields (opsional — diisi hanya jika event.enableCustomForm = true)
+  arrivalEstimate?: string | null;  // ISO string datetime
+  groupSize?:       number | null;  // jumlah rombongan
   // Untuk tiket berbayar
   method?:          "cash" | "transfer" | "qris";
   bankAccountRef?:  string | null;
@@ -644,6 +650,11 @@ export async function registerForEventAction(
           throw new Error("Kapasitas event sudah penuh.");
       }
 
+      // Bangun customFields jika ada data custom form
+      const customFields: Record<string, unknown> = {};
+      if (data.arrivalEstimate) customFields.arrival_estimate = data.arrivalEstimate;
+      if (data.groupSize != null && data.groupSize > 0) customFields.group_size = data.groupSize;
+
       return tx
         .insert(schema.eventRegistrations)
         .values({
@@ -654,6 +665,7 @@ export async function registerForEventAction(
           attendeeName:       data.attendeeName.trim(),
           attendeePhone:      normalizePhone(data.attendeePhone),
           attendeeEmail:      data.attendeeEmail?.trim().toLowerCase() ?? null,
+          customFields:       Object.keys(customFields).length > 0 ? customFields : null,
           status:             regStatus,
         })
         .returning({ id: schema.eventRegistrations.id });
