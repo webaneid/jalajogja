@@ -593,8 +593,8 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
             </div>
           </div>
 
-          {payMethod === "transfer" && (
-            <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            {payMethod === "transfer" && (
               <div>
                 <label className={labelCls}>Bank Pengirim</label>
                 <input
@@ -605,17 +605,19 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
                   className={inputCls}
                 />
               </div>
-              <div>
-                <label className={labelCls}>Tanggal Transfer</label>
-                <input
-                  type="date"
-                  value={transferDate}
-                  onChange={(e) => setTransferDate(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
+            )}
+            <div className={payMethod === "transfer" ? "" : "col-span-2"}>
+              <label className={labelCls}>
+                {payMethod === "transfer" ? "Tanggal Transfer" : "Tanggal Pembayaran"}
+              </label>
+              <input
+                type="date"
+                value={transferDate}
+                onChange={(e) => setTransferDate(e.target.value)}
+                className={inputCls}
+              />
             </div>
-          )}
+          </div>
 
           <div>
             <label className={labelCls}>Catatan <span className="text-muted-foreground text-xs">(opsional)</span></label>
@@ -628,10 +630,10 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
             />
           </div>
 
-          {/* ── Bukti Transfer ── */}
+          {/* ── Bukti Pembayaran ── */}
           <div>
             <label className={labelCls}>
-              Bukti Transfer / Screenshot
+              {payMethod === "transfer" ? "Bukti Transfer / Screenshot" : "Screenshot QRIS / Bukti Bayar"}
               <span className="ml-1 text-muted-foreground text-xs">(opsional tapi disarankan)</span>
             </label>
 
