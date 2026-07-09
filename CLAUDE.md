@@ -455,7 +455,7 @@ app/(dashboard)/[tenant]/
 - [x] **Billing Phase 4 — Fulfillment** — 5-stage pengiriman (pending→processing→packed→shipped→delivered), `updateFulfillmentStatusAction`, halaman admin `/toko/pesanan/invoice/[invoiceId]`, `FulfillmentCard` + `FulfillmentTimeline`, lightbox bukti transfer, pelanggan lihat 5 status di `/akun/transaksi`. Detail di `docs/arsitektur-fulfillment.md`.
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
-- [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`)
+- [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`) + **Tab Peserta & Statistik** (commit `9cf2b12`, migration 0023)
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
 - [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik + 3 jalur aktivasi + **sidebar filtering + 10 module guards (selesai)**
 - [x] **Modul Akun Phase 1** — `public.profiles` schema + migrasi `profile_id` ke 4 tabel transaksi (invoices, orders, donations, event_registrations). TypeScript 0 errors. Tenant existing `pc-ikpm-jogjakarta` sudah dimigrasikan manual.
@@ -3155,7 +3155,27 @@ grep -rn '`/app/' apps/web/app/\(public\)/ apps/web/components/website/public/
 ```
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Event Custom Form Fields (Estimasi Kedatangan + Jumlah Rombongan)** (sesi 2026-07-09, lanjutan 5).
+- Terakhir dikerjakan: **Tab Peserta & Statistik Event + Fix QRIS date** (sesi 2026-07-10).
+- Sesi ini (2026-07-10):
+  - **Fix: Tanggal Pembayaran tidak muncul saat QRIS** — `invoice-public-client.tsx`: field
+    "Tanggal Transfer/Pembayaran" sebelumnya hanya tampil saat `payMethod === "transfer"`.
+    Dipisah: Bank Pengirim tetap transfer-only; Tanggal Pembayaran muncul untuk transfer maupun
+    QRIS (label dinamis, col-span-2 saat QRIS). Label bukti upload ikut menyesuaikan. Commit `eb5cf7f`.
+  - **Feat: Tab Peserta & Statistik di halaman event publik** — Migration 0023. Commit `9cf2b12`.
+    - Schema: `show_attendee_stats BOOLEAN` + `attendee_stats_by JSONB` di tabel events
+    - Event form: toggle "Tampilkan statistik peserta" + checkboxes (Angkatan/Kabupaten/Provinsi/Profesi)
+    - `EventDetailTabs` client component (`components/event/event-detail-tabs.tsx`): 3 tab
+      - Tab **Detail**: konten existing (deskripsi, lokasi, waktu)
+      - Tab **Peserta**: card ringkasan kuota (Target/Terdaftar/Sisa), tabel per tiket, daftar nama
+      - Tab **Statistik**: bar chart horizontal per breakdown (cross-schema query ke public.members)
+    - Jika hanya 1 tab aktif → tab bar tidak ditampilkan, konten langsung render (backward compat)
+  - **Migration baru**: `0023_event_attendee_stats.sql` — jalankan di VPS sebelum deploy
+  - **Deploy ke VPS**:
+    ```bash
+    docker compose exec -T postgres psql -U jalakarta -d jalakarta \
+      < packages/db/migrations/0023_event_attendee_stats.sql
+    git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env
+    ```
 - Sesi ini (2026-07-09, lanjutan 6):
   - **Dynamic Custom Fields untuk form pendaftaran event** — Refactor dari 2 field hardcoded
     (estimasi kedatangan + rombongan) menjadi sistem field dinamis. Admin bisa tambah/hapus/edit
