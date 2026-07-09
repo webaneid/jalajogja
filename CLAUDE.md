@@ -455,7 +455,7 @@ app/(dashboard)/[tenant]/
 - [x] **Billing Phase 4 — Fulfillment** — 5-stage pengiriman (pending→processing→packed→shipped→delivered), `updateFulfillmentStatusAction`, halaman admin `/toko/pesanan/invoice/[invoiceId]`, `FulfillmentCard` + `FulfillmentTimeline`, lightbox bukti transfer, pelanggan lihat 5 status di `/akun/transaksi`. Detail di `docs/arsitektur-fulfillment.md`.
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
-- [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`) + **Tab Peserta & Statistik** (commit `9cf2b12`, migration 0023)
+- [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`) + **Tab Peserta & Statistik** (commit `9cf2b12`, migration 0023) + **E10 Donation Prompt UI** (routing kondisional cart vs direct, migration 0024+0025)
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
 - [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik + 3 jalur aktivasi + **sidebar filtering + 10 module guards (selesai)**
 - [x] **Modul Akun Phase 1** — `public.profiles` schema + migrasi `profile_id` ke 4 tabel transaksi (invoices, orders, donations, event_registrations). TypeScript 0 errors. Tenant existing `pc-ikpm-jogjakarta` sudah dimigrasikan manual.
@@ -3174,7 +3174,25 @@ grep -rn '`/app/' apps/web/app/\(public\)/ apps/web/components/website/public/
 ```
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Tab Peserta & Statistik Event + Fix QRIS date** (sesi 2026-07-10).
+- Terakhir dikerjakan: **Step E10 — Donation Prompt UI (Event Module)** (sesi 2026-07-10, lanjutan).
+- Sesi ini (2026-07-10, lanjutan):
+  - **Step E10 — Donation Prompt UI SELESAI** — Routing kondisional cart vs direct flow untuk event. TypeScript 0 errors.
+    - Schema: `linked_product_id UUID` ditambah ke `events` + DDL + migration `0025_event_linked_product.sql`
+    - Baru: `addEventTicketToCartAction(slug, data)` di `event/actions.ts` — add tiket ke cart universal, simpan attendee data di `cart_items.notes` sebagai JSON
+    - `EventForm`: tambah `activeProducts` prop + product picker `<select>` di bagian Donation Prompt
+    - `EventRegisterForm`: `hasLinkedItems = !!(donationPrompt || linkedProductId)` → cart mode → `window.location.href = baseUrl/keranjang`; old mode → `registerForEventAction`
+    - `agenda/[slug]/page.tsx`: fetch `linkedProductTitle` dari DB, pass `linkedProductId` + `linkedProductTitle` ke form
+    - `DonationBannerCart`: tambah `linkedProduct` prop → bagian Produk Terkait (ShoppingBag icon + tombol outline)
+    - `keranjang/page.tsx`: fetch `linkedProductId` dari events di cart, cek sudah di cart, pass `linkedProductBanner` ke `DonationBannerCart`
+  - **Migrations yang perlu dijalankan sebelum deploy**:
+    ```bash
+    docker compose exec -T postgres psql -U jalakarta -d jalakarta \
+      < packages/db/migrations/0024_event_donation_prompt.sql
+    docker compose exec -T postgres psql -U jalakarta -d jalakarta \
+      < packages/db/migrations/0025_event_linked_product.sql
+    git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env
+    ```
+  - **Catatan belum selesai**: `event_registrations` dari `cart_items.notes` belum dibuat otomatis saat invoice dikonfirmasi — ini Phase berikutnya (trigger di payment confirmation).
 - Sesi ini (2026-07-10):
   - **Fix: Tanggal Pembayaran tidak muncul saat QRIS** — `invoice-public-client.tsx`: field
     "Tanggal Transfer/Pembayaran" sebelumnya hanya tampil saat `payMethod === "transfer"`.

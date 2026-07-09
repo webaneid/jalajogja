@@ -31,7 +31,7 @@ export default async function AcaraNewPage({
 
   const { db, schema } = createTenantDb(slug);
 
-  const [categories, activeCampaigns] = await Promise.all([
+  const [categories, activeCampaigns, activeProducts] = await Promise.all([
     db.select({ id: schema.eventCategories.id, name: schema.eventCategories.name })
       .from(schema.eventCategories)
       .orderBy(schema.eventCategories.sortOrder, schema.eventCategories.name),
@@ -39,6 +39,10 @@ export default async function AcaraNewPage({
       .from(schema.campaigns)
       .where(eq(schema.campaigns.status, "active"))
       .orderBy(desc(schema.campaigns.createdAt)),
+    db.select({ id: schema.products.id, name: schema.products.name })
+      .from(schema.products)
+      .where(eq(schema.products.status, "active"))
+      .orderBy(schema.products.name),
   ]);
 
   return (
@@ -47,6 +51,7 @@ export default async function AcaraNewPage({
       eventId={null}
       categories={categories}
       activeCampaigns={activeCampaigns}
+      activeProducts={activeProducts}
       initialData={{
         slug:             "",
         title:            "",
@@ -71,6 +76,7 @@ export default async function AcaraNewPage({
         showAttendeeStats:  false,
         attendeeStatsBy:    [],
         linkedCampaignId:   null,
+        linkedProductId:    null,
         coverId:            null,
         coverUrl:         null,
         tickets:          [],

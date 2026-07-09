@@ -9,6 +9,7 @@ import { DonationBannerCart } from "@/components/event/public/donation-banner-ca
 import { ShoppingCart } from "lucide-react";
 
 type CampaignBanner = { campaignId: string; campaignTitle: string; amounts: number[] };
+type ProductBanner  = { productId: string; productTitle: string };
 
 type Props = { params: Promise<{ tenant: string }> };
 
@@ -72,8 +73,9 @@ export default async function KeranjangPage({ params }: Props) {
     }
   }
 
-  // Cari campaign untuk banner donasi — hanya jika ada tiket berbayar di cart
+  // Cari campaign dan produk untuk banner — hanya jika ada tiket di cart
   const donationBanners: CampaignBanner[] = [];
+  let linkedProductBanner: ProductBanner | null = null;
   const ticketItems = cart?.items.filter((i) => i.itemType === "ticket") ?? [];
 
   if (ticketItems.length > 0) {
@@ -94,8 +96,9 @@ export default async function KeranjangPage({ params }: Props) {
       if (eventIds.length > 0) {
         const eventRows = await tenantDb
           .select({
-            id:              schema.events.id,
+            id:               schema.events.id,
             linkedCampaignId: schema.events.linkedCampaignId,
+            linkedProductId:  schema.events.linkedProductId,
           })
           .from(schema.events)
           .where(
@@ -132,6 +135,32 @@ export default async function KeranjangPage({ params }: Props) {
             });
           }
         }
+
+        // Cari produk terkait dari events (ambil yang pertama ditemukan)
+        const productIdFromEvent = eventRows.find((e) => e.linkedProductId)?.linkedProductId ?? null;
+        if (productIdFromEvent) {
+          // Jangan tampilkan jika produk sudah di keranjang
+          const productAlreadyInCart = cart?.items.some(
+            (i) => i.itemType === "product" && i.itemId === productIdFromEvent
+          ) ?? false;
+
+          if (!productAlreadyInCart) {
+            const [product] = await tenantDb
+              .select({ id: schema.products.id, name: schema.products.name })
+              .from(schema.products)
+              .where(
+                and(
+                  eq(schema.products.id, productIdFromEvent),
+                  eq(schema.products.status, "active"),
+                )
+              )
+              .limit(1);
+
+            if (product) {
+              linkedProductBanner = { productId: product.id, productTitle: product.name };
+            }
+          }
+        }
       }
     } catch {
       // banner diabaikan jika error
@@ -153,9 +182,13 @@ export default async function KeranjangPage({ params }: Props) {
 
         <CartClient slug={slug} cart={cart} />
 
-        {donationBanners.length > 0 && (
+        {(donationBanners.length > 0 || linkedProductBanner) && (
           <div className="mt-4">
-            <DonationBannerCart tenantSlug={slug} campaigns={donationBanners} />
+            <DonationBannerCart
+              tenantSlug={slug}
+              campaigns={donationBanners}
+              linkedProduct={linkedProductBanner}
+            />
           </div>
         )}
       </div>

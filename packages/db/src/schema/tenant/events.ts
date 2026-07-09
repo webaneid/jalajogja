@@ -110,6 +110,7 @@ export function createEventsTable(s: ReturnType<typeof pgSchema>) {
     // Prompt donasi — tampil setelah registrasi (gratis) atau di keranjang (berbayar)
     showDonationPrompt: boolean("show_donation_prompt").notNull().default(false),
     linkedCampaignId:   uuid("linked_campaign_id"),  // FK → campaigns.id via SQL
+    linkedProductId:    uuid("linked_product_id"),   // FK → products.id via SQL (opsional)
 
     // Audit
     createdBy: uuid("created_by"),  // FK → officers.id via SQL

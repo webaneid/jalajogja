@@ -18,7 +18,7 @@ export default async function AcaraEditPage({
 
   const { db, schema } = createTenantDb(slug);
 
-  const [[event], categories, tickets, activeCampaigns] = await Promise.all([
+  const [[event], categories, tickets, activeCampaigns, activeProducts] = await Promise.all([
     db.select().from(schema.events).where(eq(schema.events.id, eventId)).limit(1),
     db.select({ id: schema.eventCategories.id, name: schema.eventCategories.name })
       .from(schema.eventCategories)
@@ -31,6 +31,10 @@ export default async function AcaraEditPage({
       .from(schema.campaigns)
       .where(eq(schema.campaigns.status, "active"))
       .orderBy(desc(schema.campaigns.createdAt)),
+    db.select({ id: schema.products.id, name: schema.products.name })
+      .from(schema.products)
+      .where(eq(schema.products.status, "active"))
+      .orderBy(schema.products.name),
   ]);
 
   if (!event) notFound();
@@ -51,6 +55,7 @@ export default async function AcaraEditPage({
       eventId={eventId}
       categories={categories}
       activeCampaigns={activeCampaigns}
+      activeProducts={activeProducts}
       initialData={{
         slug:             event.slug,
         title:            event.title,
@@ -79,6 +84,7 @@ export default async function AcaraEditPage({
         showAttendeeStats:  event.showAttendeeStats,
         attendeeStatsBy:    (event.attendeeStatsBy as string[]) ?? [],
         linkedCampaignId:   event.linkedCampaignId  ?? null,
+        linkedProductId:    event.linkedProductId   ?? null,
         coverId:            event.coverId            ?? null,
         coverUrl,
         tickets: tickets.map((t) => ({

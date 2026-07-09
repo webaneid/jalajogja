@@ -722,6 +722,7 @@ export async function createTenantSchemaInDb(
         gallery                 JSONB,
         show_donation_prompt    BOOLEAN       NOT NULL DEFAULT false,
         linked_campaign_id      UUID,         -- FK → campaigns.id via ALTER (setelah campaigns dibuat)
+        linked_product_id       UUID,         -- FK → products.id via ALTER (setelah products dibuat)
         created_by              UUID          REFERENCES "${s}".officers(id) ON DELETE SET NULL,
         view_count              INTEGER       NOT NULL DEFAULT 0,
         created_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
@@ -1225,6 +1226,12 @@ export async function createTenantSchemaInDb(
       ALTER TABLE "${s}".events
         ADD CONSTRAINT events_linked_campaign_id_fk
         FOREIGN KEY (linked_campaign_id) REFERENCES "${s}".campaigns(id) ON DELETE SET NULL
+    `));
+    // FK events.linked_product_id → products.id
+    await tx.execute(sql.raw(`
+      ALTER TABLE "${s}".events
+        ADD CONSTRAINT events_linked_product_id_fk
+        FOREIGN KEY (linked_product_id) REFERENCES "${s}".products(id) ON DELETE SET NULL
     `));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_document_versions_document_id ON "${s}".document_versions(document_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_documents_category_id        ON "${s}".documents(category_id)`));

@@ -43,12 +43,14 @@ type TicketLocal = TicketInput & {
 };
 
 export type CampaignOption = { id: string; title: string };
+export type ProductOption  = { id: string; name: string };
 
 export type EventFormProps = {
   slug:            string;
   eventId:         string | null;
   categories:      CategoryOption[];
   activeCampaigns: CampaignOption[];
+  activeProducts:  ProductOption[];
   initialData: {
     slug:             string;
     title:            string;
@@ -73,6 +75,7 @@ export type EventFormProps = {
     showAttendeeStats:  boolean;
     attendeeStatsBy:    string[];
     linkedCampaignId:   string | null;
+    linkedProductId:    string | null;
     coverId:            string | null;
     coverUrl:           string | null;
     tickets: Array<{
@@ -332,7 +335,7 @@ function CustomFieldBuilder({
 
 // ─── EventForm ────────────────────────────────────────────────────────────────
 
-export function EventForm({ slug, eventId, categories, activeCampaigns, initialData }: EventFormProps) {
+export function EventForm({ slug, eventId, categories, activeCampaigns, activeProducts, initialData }: EventFormProps) {
   const router = useRouter();
 
   const [title,          setTitle]          = useState(initialData.title);
@@ -360,6 +363,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
   const [showAttendeeStats,  setShowAttendeeStats]  = useState(initialData.showAttendeeStats);
   const [attendeeStatsBy,    setAttendeeStatsBy]    = useState<string[]>(initialData.attendeeStatsBy ?? []);
   const [linkedCampaignId,   setLinkedCampaignId]   = useState<string | null>(initialData.linkedCampaignId);
+  const [linkedProductId,    setLinkedProductId]    = useState<string | null>(initialData.linkedProductId);
   const [cover,    setCover]    = useState<CoverImage>(
     initialData.coverId && initialData.coverUrl
       ? { id: initialData.coverId, url: initialData.coverUrl }
@@ -471,6 +475,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
       showAttendeeStats,
       attendeeStatsBy:   showAttendeeStats ? attendeeStatsBy : [],
       linkedCampaignId:  showDonationPrompt ? (linkedCampaignId ?? null) : null,
+      linkedProductId:   showDonationPrompt ? (linkedProductId  ?? null) : null,
       coverId:           cover?.id ?? null,
       tickets: tickets.map((t, i) => ({
         id:                 t.id ?? undefined,
@@ -846,23 +851,44 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
               label="Tampilkan prompt donasi"
               hint="Muncul setelah daftar (gratis) atau di keranjang (berbayar)"
               checked={showDonationPrompt}
-              onChange={(v) => { setShowDonationPrompt(v); if (!v) setLinkedCampaignId(null); }}
+              onChange={(v) => { setShowDonationPrompt(v); if (!v) { setLinkedCampaignId(null); setLinkedProductId(null); } }}
             />
             {showDonationPrompt && (
-              <div className="space-y-1.5 pt-1">
-                <label className="block text-xs text-muted-foreground">Campaign Donasi</label>
-                <select
-                  value={linkedCampaignId ?? ""}
-                  onChange={e => setLinkedCampaignId(e.target.value || null)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                >
-                  <option value="">Pilih campaign...</option>
-                  {activeCampaigns.map(c => (
-                    <option key={c.id} value={c.id}>{c.title}</option>
-                  ))}
-                </select>
-                {activeCampaigns.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Belum ada campaign aktif.</p>
+              <div className="space-y-3 pt-1">
+                <div className="space-y-1.5">
+                  <label className="block text-xs text-muted-foreground">Campaign Donasi (opsional)</label>
+                  <select
+                    value={linkedCampaignId ?? ""}
+                    onChange={e => setLinkedCampaignId(e.target.value || null)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="">Pilih campaign...</option>
+                    {activeCampaigns.map(c => (
+                      <option key={c.id} value={c.id}>{c.title}</option>
+                    ))}
+                  </select>
+                  {activeCampaigns.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Belum ada campaign aktif.</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs text-muted-foreground">Produk Terkait (opsional)</label>
+                  <select
+                    value={linkedProductId ?? ""}
+                    onChange={e => setLinkedProductId(e.target.value || null)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="">Pilih produk...</option>
+                    {activeProducts.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  {activeProducts.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Belum ada produk aktif.</p>
+                  )}
+                </div>
+                {!linkedCampaignId && !linkedProductId && (
+                  <p className="text-xs text-amber-600">Pilih minimal satu campaign atau produk agar prompt tampil.</p>
                 )}
               </div>
             )}

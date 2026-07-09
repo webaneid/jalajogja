@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { addToCartAction } from "@/app/(public)/[tenant]/cart/actions";
-import { Heart, X, ChevronDown } from "lucide-react";
+import { Heart, ShoppingBag, X, ChevronDown, Check } from "lucide-react";
 
 type CampaignBanner = {
   campaignId:    string;
@@ -10,38 +10,63 @@ type CampaignBanner = {
   amounts:       number[];
 };
 
+type ProductBanner = {
+  productId:    string;
+  productTitle: string;
+};
+
 type Props = {
-  tenantSlug: string;
-  campaigns:  CampaignBanner[];
+  tenantSlug:     string;
+  campaigns:      CampaignBanner[];
+  linkedProduct?: ProductBanner | null;
 };
 
 function formatRp(n: number) { return `Rp ${n.toLocaleString("id-ID")}`; }
 
-export function DonationBannerCart({ tenantSlug, campaigns }: Props) {
-  const [dismissed, setDismissed] = useState(false);
-  const [selected,  setSelected]  = useState(0);                // index campaign aktif
-  const [nominal,   setNominal]   = useState<number | null>(null);
-  const [custom,    setCustom]    = useState("");
-  const [added,     setAdded]     = useState(false);
-  const [pending,   startTransition] = useTransition();
+export function DonationBannerCart({ tenantSlug, campaigns, linkedProduct }: Props) {
+  const [dismissed,     setDismissed]     = useState(false);
+  const [selected,      setSelected]      = useState(0);
+  const [nominal,       setNominal]       = useState<number | null>(null);
+  const [custom,        setCustom]        = useState("");
+  const [donationAdded, setDonationAdded] = useState(false);
+  const [productAdded,  setProductAdded]  = useState(false);
+  const [donPending,    startDonTransition]  = useTransition();
+  const [prodPending,   startProdTransition] = useTransition();
 
-  if (dismissed || campaigns.length === 0) return null;
+  const hasCampaigns = campaigns.length > 0;
+  const hasProduct   = !!linkedProduct;
 
-  const campaign = campaigns[selected];
+  if (dismissed || (!hasCampaigns && !hasProduct)) return null;
+
+  const campaign    = hasCampaigns ? campaigns[selected] : null;
   const finalNominal = custom
     ? (parseInt(custom.replace(/\D/g, ""), 10) || 0)
     : (nominal ?? 0);
 
-  function handleAdd() {
-    if (finalNominal <= 0) return;
-    startTransition(async () => {
+  function handleAddDonation() {
+    if (!campaign || finalNominal <= 0) return;
+    startDonTransition(async () => {
       const res = await addToCartAction(tenantSlug, {
         itemType:  "donation",
         itemId:    campaign.campaignId,
         name:      campaign.campaignTitle,
         unitPrice: finalNominal,
       });
-      if (res.success) setAdded(true);
+      if (res.success) setDonationAdded(true);
+    });
+  }
+
+  function handleAddProduct() {
+    if (!linkedProduct) return;
+    startProdTransition(async () => {
+      const res = await addToCartAction(tenantSlug, {
+        itemType:  "product",
+        itemId:    linkedProduct.productId,
+        name:      linkedProduct.productTitle,
+        unitPrice: 0, // server akan resolve harga sesuai sesi
+        quantity:  1,
+      });
+      if (res.success) setProductAdded(true);
     });
   }
 
@@ -55,74 +80,108 @@ export function DonationBannerCart({ tenantSlug, campaigns }: Props) {
         <X className="h-4 w-4" />
       </button>
 
-      <div className="flex items-center gap-2 pr-6">
-        <Heart className="h-4 w-4 text-primary shrink-0" />
-        <p className="text-sm font-semibold">Ingin ikut berdonasi?</p>
-      </div>
+      {/* Bagian Donasi */}
+      {hasCampaigns && campaign && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 pr-6">
+            <Heart className="h-4 w-4 text-primary shrink-0" />
+            <p className="text-sm font-semibold">Ingin ikut berdonasi?</p>
+          </div>
 
-      {/* Pilih campaign jika lebih dari satu */}
-      {campaigns.length > 1 && (
-        <div className="relative">
-          <select
-            value={selected}
-            onChange={e => { setSelected(Number(e.target.value)); setNominal(null); setCustom(""); }}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm pr-8 appearance-none focus:outline-none focus:ring-1 focus:ring-ring"
+          {campaigns.length > 1 && (
+            <div className="relative">
+              <select
+                value={selected}
+                onChange={e => { setSelected(Number(e.target.value)); setNominal(null); setCustom(""); }}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm pr-8 appearance-none focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                {campaigns.map((c, i) => (
+                  <option key={c.campaignId} value={i}>{c.campaignTitle}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            </div>
+          )}
+
+          {campaigns.length === 1 && (
+            <p className="text-sm text-muted-foreground">{campaign.campaignTitle}</p>
+          )}
+
+          {campaign.amounts.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {campaign.amounts.map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => { setNominal(n); setCustom(""); }}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                    nominal === n && !custom
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:border-primary/50 bg-background"
+                  }`}
+                >
+                  {formatRp(n)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={custom}
+              onChange={e => { setCustom(e.target.value.replace(/\D/g, "")); setNominal(null); }}
+              placeholder="Nominal lain..."
+              className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleAddDonation}
+            disabled={donPending || finalNominal <= 0 || donationAdded}
+            className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
           >
-            {campaigns.map((c, i) => (
-              <option key={c.campaignId} value={i}>{c.campaignTitle}</option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            {donationAdded
+              ? <><Check className="h-3.5 w-3.5" /> Ditambahkan ke keranjang!</>
+              : donPending
+                ? "Menambahkan..."
+                : <><Heart className="h-3.5 w-3.5" /> {`Donasi${finalNominal > 0 ? ` ${formatRp(finalNominal)}` : ""}`}</>
+            }
+          </button>
         </div>
       )}
 
-      {/* Kampanye tunggal: label saja */}
-      {campaigns.length === 1 && (
-        <p className="text-sm text-muted-foreground">{campaign.campaignTitle}</p>
+      {/* Separator jika ada keduanya */}
+      {hasCampaigns && hasProduct && (
+        <div className="border-t border-border/60 pt-3" />
       )}
 
-      {/* Nominal chips */}
-      {campaign.amounts.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {campaign.amounts.map(n => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => { setNominal(n); setCustom(""); }}
-              className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                nominal === n && !custom
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border hover:border-primary/50 bg-background"
-              }`}
-            >
-              {formatRp(n)}
-            </button>
-          ))}
+      {/* Bagian Produk */}
+      {hasProduct && linkedProduct && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="h-4 w-4 text-primary shrink-0" />
+            <p className="text-sm font-semibold">Produk Terkait</p>
+          </div>
+          <p className="text-sm text-muted-foreground">{linkedProduct.productTitle}</p>
+          <button
+            type="button"
+            onClick={handleAddProduct}
+            disabled={prodPending || productAdded}
+            className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10 disabled:opacity-60 transition-colors"
+          >
+            {productAdded
+              ? <><Check className="h-3.5 w-3.5" /> Ditambahkan ke keranjang!</>
+              : prodPending
+                ? "Menambahkan..."
+                : <><ShoppingBag className="h-3.5 w-3.5" /> Tambah ke Keranjang</>
+            }
+          </button>
         </div>
       )}
-
-      {/* Custom nominal */}
-      <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp</span>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={custom}
-          onChange={e => { setCustom(e.target.value.replace(/\D/g, "")); setNominal(null); }}
-          placeholder="Nominal lain..."
-          className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-        />
-      </div>
-
-      <button
-        type="button"
-        onClick={handleAdd}
-        disabled={pending || finalNominal <= 0 || added}
-        className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
-      >
-        <Heart className="h-3.5 w-3.5" />
-        {added ? "Ditambahkan ke keranjang!" : pending ? "Menambahkan..." : `Donasi${finalNominal > 0 ? ` ${formatRp(finalNominal)}` : ""}`}
-      </button>
     </div>
   );
 }

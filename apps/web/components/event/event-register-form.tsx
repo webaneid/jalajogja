@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { CheckCircle2, Ticket, Loader2 } from "lucide-react";
-import { registerForEventAction } from "@/app/(dashboard)/app/[tenant]/event/actions";
+import { registerForEventAction, addEventTicketToCartAction } from "@/app/(dashboard)/app/[tenant]/event/actions";
 import { DonationPromptModal } from "@/components/event/public/donation-prompt-modal";
 import type { CustomFormField } from "@/lib/event-custom-form";
 
@@ -47,12 +47,15 @@ export type EventRegisterFormProps = {
   hasPaidTicket:      boolean;
   // Apakah user yang sedang login sudah terdaftar sebagai anggota di cabang ini
   currentUserIsEnrolled: boolean;
-  // Donation prompt (opsional — hanya jika admin aktifkan)
+  // Donation prompt (opsional — hanya jika admin aktifkan + ada linkedCampaignId)
   donationPrompt?:    {
     campaignId:    string;
     campaignTitle: string;
     amounts:       number[];
   } | null;
+  // Produk terkait (opsional — jika admin set linkedProductId)
+  linkedProductId?:    string | null;
+  linkedProductTitle?: string | null;
   // Pre-fill data dari session (member/profile)
   defaultAttendeeName?:  string;
   defaultAttendeePhone?: string;
@@ -82,6 +85,8 @@ export function EventRegisterForm({
   hasPaidTicket,
   currentUserIsEnrolled,
   donationPrompt,
+  linkedProductId   = null,
+  linkedProductTitle = null,
   defaultAttendeeName  = "",
   defaultAttendeePhone = "",
   defaultAttendeeEmail = "",
@@ -89,6 +94,8 @@ export function EventRegisterForm({
   enableCustomForm  = false,
   customFormFields  = [],
 }: EventRegisterFormProps) {
+  // Routing ke cart jika ada linked items (campaign + produk → satu invoice)
+  const hasLinkedItems = !!(donationPrompt || linkedProductId);
   // Pilihan tiket
   const [selectedTicketId, setSelectedTicketId] = useState<string>(tickets[0]?.id ?? "");
 
@@ -176,6 +183,30 @@ export function EventRegisterForm({
     }
 
     startTransition(async () => {
+      // Routing kondisional: ada linked items → cart (satu invoice); tidak ada → alur lama
+      if (hasLinkedItems) {
+        const res = await addEventTicketToCartAction(slug, {
+          eventId,
+          ticketId:           selectedTicketId,
+          attendeeName,
+          attendeePhone:      attendeePhone || null,
+          attendeeEmail:      attendeeEmail || null,
+          customFieldAnswers: Object.keys(customFieldAnswers).length > 0
+            ? (customFieldAnswers as Record<string, string | number>)
+            : undefined,
+        });
+
+        if (!res.success) {
+          setError(res.error);
+          return;
+        }
+
+        // Redirect ke keranjang (full reload agar cart cookie terbaca)
+        window.location.href = `${baseUrl}/keranjang`;
+        return;
+      }
+
+      // Alur lama (tidak ada linked items)
       const res = await registerForEventAction(slug, {
         eventId,
         ticketId:           selectedTicketId,
@@ -202,7 +233,7 @@ export function EventRegisterForm({
         invoiceId:          res.data.invoiceId,
       });
 
-      // Tampilkan modal donasi jika event gratis + admin aktifkan prompt
+      // Tampilkan modal donasi jika event gratis + admin aktifkan prompt (alur lama)
       if (!res.data.isPaid && donationPrompt) {
         setShowDonationModal(true);
       }
@@ -510,8 +541,8 @@ export function EventRegisterForm({
             </div>
           )}
 
-          {/* Metode Pembayaran — hanya untuk tiket berbayar */}
-          {isPaidTicket && (
+          {/* Metode Pembayaran — hanya untuk tiket berbayar, dan hanya di alur lama (bukan cart) */}
+          {isPaidTicket && !hasLinkedItems && (
             <div className="space-y-3">
               <Label className="text-sm font-medium">Metode Pembayaran</Label>
 
@@ -589,6 +620,19 @@ export function EventRegisterForm({
             <p className="text-xs text-destructive">{error}</p>
           )}
 
+          {/* Info keranjang — tampil saat ada linked items */}
+          {hasLinkedItems && (
+            <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground">Tiket akan ditambahkan ke keranjang</p>
+              {donationPrompt && (
+                <p>+ Kamu bisa menambahkan donasi untuk <strong>{donationPrompt.campaignTitle}</strong></p>
+              )}
+              {linkedProductId && linkedProductTitle && (
+                <p>+ Kamu bisa menambahkan <strong>{linkedProductTitle}</strong></p>
+              )}
+            </div>
+          )}
+
           {/* Submit */}
           <Button
             onClick={handleSubmit}
@@ -599,8 +643,10 @@ export function EventRegisterForm({
             {isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Mendaftarkan...
+                {hasLinkedItems ? "Menambahkan ke Keranjang..." : "Mendaftarkan..."}
               </>
+            ) : hasLinkedItems ? (
+              "Lanjut ke Keranjang →"
             ) : (
               isPaidTicket ? "Daftar & Lanjut Bayar" : "Daftar Sekarang"
             )}

@@ -557,6 +557,17 @@ export default async function PublicEventPage({
     }
   }
 
+  // Linked product data (untuk cart flow)
+  let linkedProductTitle: string | null = null;
+  if (event.showDonationPrompt && event.linkedProductId) {
+    const [product] = await tenantDb
+      .select({ name: schema.products.name })
+      .from(schema.products)
+      .where(and(eq(schema.products.id, event.linkedProductId), eq(schema.products.status, "active")))
+      .limit(1);
+    linkedProductTitle = product?.name ?? null;
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Breadcrumb */}
@@ -807,6 +818,8 @@ export default async function PublicEventPage({
                   hasPaidTicket={hasPaidTicket}
                   currentUserIsEnrolled={currentUserIsEnrolled}
                   donationPrompt={donationPrompt}
+                  linkedProductId={event.linkedProductId ?? null}
+                  linkedProductTitle={linkedProductTitle}
                   defaultAttendeeName={defaultAttendeeName}
                   defaultAttendeePhone={defaultAttendeePhone}
                   defaultAttendeeEmail={defaultAttendeeEmail}

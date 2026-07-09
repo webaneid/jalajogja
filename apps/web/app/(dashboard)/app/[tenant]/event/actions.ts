@@ -6,7 +6,7 @@ import { createTenantDb, generateFinancialNumber, recordIncome, createLinkedInvo
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
 import { auth }           from "@/lib/auth";
-import { headers }        from "next/headers";
+import { headers, cookies } from "next/headers";
 import { normalizePhone } from "@/lib/phone";
 import type { CustomFormField } from "@/lib/event-custom-form";
 
@@ -53,6 +53,7 @@ export type EventData = {
   showAttendeeStats:   boolean;
   attendeeStatsBy:     string[];
   linkedCampaignId?:   string | null;
+  linkedProductId?:    string | null;
   coverId?:            string | null;
   tickets:             TicketInput[];
   // SEO
@@ -226,6 +227,7 @@ export async function createEventAction(
         showAttendeeStats:  data.showAttendeeStats,
         attendeeStatsBy:    data.attendeeStatsBy   ?? [],
         linkedCampaignId:   data.linkedCampaignId ?? null,
+        linkedProductId:    data.linkedProductId  ?? null,
         coverId:          data.coverId                  ?? null,
         metaTitle:        data.metaTitle?.trim()       || null,
         metaDesc:         data.metaDesc?.trim()        || null,
@@ -309,6 +311,7 @@ export async function updateEventAction(
         showAttendeeStats:  data.showAttendeeStats,
         attendeeStatsBy:    data.attendeeStatsBy   ?? [],
         linkedCampaignId:   data.linkedCampaignId ?? null,
+        linkedProductId:    data.linkedProductId  ?? null,
         coverId:          data.coverId                  ?? null,
         metaTitle:        data.metaTitle?.trim()       || null,
         metaDesc:         data.metaDesc?.trim()        || null,
@@ -750,6 +753,188 @@ export async function registerForEventAction(
       return { success: false, error: err.message };
     console.error("[registerForEventAction]", err);
     return { success: false, error: "Gagal mendaftarkan peserta. Silakan coba lagi." };
+  }
+}
+
+// ─── Tambah Tiket Event ke Keranjang (public) ─────────────────────────────────
+// Dipakai saat event punya linked campaign/product (donation prompt).
+// Validasi sama seperti registerForEventAction tapi output ke cart, bukan event_registrations.
+
+export type EventCartAttendeeData = {
+  eventId:            string;
+  ticketId:           string;
+  attendeeName:       string;
+  attendeePhone?:     string | null;
+  attendeeEmail?:     string | null;
+  customFieldAnswers?: Record<string, string | number>;
+};
+
+export async function addEventTicketToCartAction(
+  slug: string,
+  data: EventCartAttendeeData
+): Promise<ActionResult<{ cartItemId: string }>> {
+  if (!data.attendeeName.trim()) return { success: false, error: "Nama peserta wajib diisi." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  // Resolve identity (session) untuk cek keanggotaan
+  let resolvedMemberId: string | null = null;
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (session?.user?.id) {
+    const [member] = await publicDb
+      .select({ id: members.id })
+      .from(members)
+      .where(eq(members.betterAuthUserId, session.user.id))
+      .limit(1);
+    if (member) resolvedMemberId = member.id;
+  }
+
+  // Validasi event masih published
+  const [event] = await db
+    .select({ id: schema.events.id, maxCapacity: schema.events.maxCapacity })
+    .from(schema.events)
+    .where(and(eq(schema.events.id, data.eventId), eq(schema.events.status, "published")))
+    .limit(1);
+  if (!event) return { success: false, error: "Event tidak ditemukan atau sudah tidak tersedia." };
+
+  // Validasi tiket aktif
+  const [ticket] = await db
+    .select()
+    .from(schema.eventTickets)
+    .where(and(
+      eq(schema.eventTickets.id,       data.ticketId),
+      eq(schema.eventTickets.eventId,  data.eventId),
+      eq(schema.eventTickets.isActive, true),
+    ))
+    .limit(1);
+  if (!ticket) return { success: false, error: "Tiket tidak ditemukan atau tidak aktif." };
+
+  const now = new Date();
+  if (ticket.saleStartsAt && now < ticket.saleStartsAt)
+    return { success: false, error: "Penjualan tiket belum dimulai." };
+  if (ticket.saleEndsAt && now > ticket.saleEndsAt)
+    return { success: false, error: "Penjualan tiket sudah berakhir." };
+
+  // Guard: tiket wajib anggota
+  if (ticket.requiresMembership) {
+    if (!resolvedMemberId)
+      return { success: false, error: "Tiket ini hanya untuk anggota terdaftar. Silakan login terlebih dahulu." };
+
+    const [tenantRow] = await publicDb
+      .select({ id: tenants.id })
+      .from(tenants)
+      .where(eq(tenants.slug, slug))
+      .limit(1);
+
+    if (tenantRow) {
+      const [membership] = await publicDb
+        .select({ id: tenantMemberships.id })
+        .from(tenantMemberships)
+        .where(and(
+          eq(tenantMemberships.tenantId, tenantRow.id),
+          eq(tenantMemberships.memberId, resolvedMemberId),
+          sql`${tenantMemberships.status} IN ('active', 'alumni')`,
+        ))
+        .limit(1);
+      if (!membership)
+        return { success: false, error: "Tiket ini hanya untuk anggota terdaftar cabang ini." };
+    }
+  }
+
+  // Soft quota check (tanpa lock — lock final ada di checkout)
+  if (ticket.quota != null) {
+    const [{ used }] = await db
+      .select({ used: count() })
+      .from(schema.eventRegistrations)
+      .where(and(
+        eq(schema.eventRegistrations.ticketId, data.ticketId),
+        sql`${schema.eventRegistrations.status} != 'cancelled'`
+      ));
+    if (Number(used) >= ticket.quota)
+      return { success: false, error: "Kuota tiket sudah habis." };
+  }
+
+  try {
+    // Cart session via cookie (replikasi logic dari cart/actions.ts)
+    const COOKIE_NAME   = "cart_session";
+    const CART_TTL_SEC  = 24 * 60 * 60;
+    const cookieStore   = await cookies();
+
+    let cartId: string;
+    const existingToken = cookieStore.get(COOKIE_NAME)?.value ?? null;
+
+    if (existingToken) {
+      const [existing] = await db
+        .select({ id: schema.carts.id, expiresAt: schema.carts.expiresAt })
+        .from(schema.carts)
+        .where(eq(schema.carts.sessionToken, existingToken))
+        .limit(1);
+
+      if (existing && existing.expiresAt > new Date()) {
+        cartId = existing.id;
+      } else {
+        const newToken  = crypto.randomUUID();
+        const expiresAt = new Date(Date.now() + CART_TTL_SEC * 1000);
+        const [cart]    = await db.insert(schema.carts).values({ sessionToken: newToken, expiresAt }).returning({ id: schema.carts.id });
+        cookieStore.set(COOKIE_NAME, newToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: CART_TTL_SEC, path: "/" });
+        cartId = cart.id;
+      }
+    } else {
+      const newToken  = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + CART_TTL_SEC * 1000);
+      const [cart]    = await db.insert(schema.carts).values({ sessionToken: newToken, expiresAt }).returning({ id: schema.carts.id });
+      cookieStore.set(COOKIE_NAME, newToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: CART_TTL_SEC, path: "/" });
+      cartId = cart.id;
+    }
+
+    // Simpan data peserta di notes sebagai JSON
+    const notes = JSON.stringify({
+      attendeeName:       data.attendeeName.trim(),
+      attendeePhone:      data.attendeePhone?.trim() ?? null,
+      attendeeEmail:      data.attendeeEmail?.trim() ?? null,
+      customFieldAnswers: data.customFieldAnswers ?? null,
+    });
+
+    const price = parseFloat(String(ticket.price));
+
+    // Jika tiket yang sama sudah di cart → update notes (attendee bisa ganti data)
+    const [existingItem] = await db
+      .select({ id: schema.cartItems.id })
+      .from(schema.cartItems)
+      .where(and(eq(schema.cartItems.cartId, cartId), eq(schema.cartItems.itemId, data.ticketId)))
+      .limit(1);
+
+    if (existingItem) {
+      await db.update(schema.cartItems).set({ notes }).where(eq(schema.cartItems.id, existingItem.id));
+      revalidatePath(`/${slug}/keranjang`);
+      return { success: true, data: { cartItemId: existingItem.id } };
+    }
+
+    const [{ cnt }] = await db
+      .select({ cnt: sql<number>`count(*)` })
+      .from(schema.cartItems)
+      .where(eq(schema.cartItems.cartId, cartId));
+
+    const [cartItem] = await db
+      .insert(schema.cartItems)
+      .values({
+        cartId,
+        itemType:  "ticket",
+        itemId:    data.ticketId,
+        name:      ticket.name,
+        unitPrice: price.toFixed(2),
+        quantity:  1,
+        notes,
+        sortOrder: Number(cnt),
+      })
+      .returning({ id: schema.cartItems.id });
+
+    revalidatePath(`/${slug}/keranjang`);
+    return { success: true, data: { cartItemId: cartItem.id } };
+  } catch (err) {
+    console.error("[addEventTicketToCartAction]", err);
+    return { success: false, error: "Gagal menambahkan tiket ke keranjang." };
   }
 }
 
