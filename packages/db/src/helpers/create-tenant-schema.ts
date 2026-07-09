@@ -701,6 +701,7 @@ export async function createTenantSchemaInDb(
         show_ticket_count       BOOLEAN       NOT NULL DEFAULT true,
         require_approval        BOOLEAN       NOT NULL DEFAULT false,
         enable_custom_form      BOOLEAN       NOT NULL DEFAULT false,
+        custom_form_fields      JSONB                  DEFAULT '[]',
         cover_id                UUID          REFERENCES "${s}".media(id) ON DELETE SET NULL,
         certificate_template_id UUID,
         meta_title              TEXT,

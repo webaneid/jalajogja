@@ -8,6 +8,7 @@ import { headers } from "next/headers";
 import { CalendarDays, MapPin, Globe, Building2, Navigation, ExternalLink, Video, Ticket, UserCheck, CheckCircle2 } from "lucide-react";
 import { isOwnHost } from "@/lib/is-own-host";
 import { EventRegisterForm } from "@/components/event/event-register-form";
+import type { CustomFormField } from "@/lib/event-custom-form";
 import { renderBody } from "@/lib/letter-render";
 import { generateQrDataUrl } from "@/lib/qr-code";
 import type { Metadata } from "next";
@@ -619,6 +620,7 @@ export default async function PublicEventPage({
                   defaultAttendeeEmail={defaultAttendeeEmail}
                   baseUrl={baseUrl}
                   enableCustomForm={event.enableCustomForm}
+                  customFormFields={(event.customFormFields as CustomFormField[]) ?? []}
                 />
               </div>
             )}

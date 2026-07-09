@@ -23,8 +23,11 @@ import {
   type EventData,
   type TicketInput,
 } from "@/app/(dashboard)/app/[tenant]/event/actions";
+import type { CustomFormField, CustomFieldType } from "@/lib/event-custom-form";
+import { labelToKey, FIELD_TYPE_LABELS } from "@/lib/event-custom-form";
 import {
   ChevronLeft, Check, ChevronsUpDown, ImageIcon, Plus, Trash2, ChevronDown, ChevronUp,
+  Pencil, GripVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +69,7 @@ export type EventFormProps = {
     requireApproval:    boolean;
     showDonationPrompt: boolean;
     enableCustomForm:   boolean;
+    customFormFields:   CustomFormField[];
     linkedCampaignId:   string | null;
     coverId:            string | null;
     coverUrl:           string | null;
@@ -139,6 +143,191 @@ function ToggleRow({ label, hint, checked, onChange }: { label: string; hint?: s
 }
 
 
+// ─── CustomFieldBuilder ───────────────────────────────────────────────────────
+
+type EditingField = {
+  mode:   "add" | "edit";
+  index?: number;       // hanya untuk mode edit
+  label:  string;
+  type:   CustomFieldType;
+  required: boolean;
+  options:  string;     // comma-separated, hanya untuk type="select"
+};
+
+const EMPTY_EDITING: EditingField = { mode: "add", label: "", type: "text", required: false, options: "" };
+
+function CustomFieldBuilder({
+  fields,
+  onChange,
+}: {
+  fields:   CustomFormField[];
+  onChange: (f: CustomFormField[]) => void;
+}) {
+  const [editing, setEditing] = useState<EditingField | null>(null);
+
+  function handleSave() {
+    if (!editing) return;
+    const label = editing.label.trim();
+    if (!label) return;
+
+    const key = labelToKey(label);
+    const field: CustomFormField = {
+      key,
+      label,
+      type:     editing.type,
+      required: editing.required,
+      ...(editing.type === "select" && editing.options.trim()
+        ? { options: editing.options.split(",").map((o) => o.trim()).filter(Boolean) }
+        : {}),
+    };
+
+    if (editing.mode === "add") {
+      // Pastikan key unik — jika duplikat tambah suffix
+      const existingKeys = fields.map((f) => f.key);
+      let finalKey = key;
+      let n = 2;
+      while (existingKeys.includes(finalKey)) { finalKey = `${key}_${n++}`; }
+      onChange([...fields, { ...field, key: finalKey }]);
+    } else if (editing.mode === "edit" && editing.index !== undefined) {
+      const updated = [...fields];
+      updated[editing.index] = field;
+      onChange(updated);
+    }
+    setEditing(null);
+  }
+
+  function handleRemove(idx: number) {
+    onChange(fields.filter((_, i) => i !== idx));
+  }
+
+  function startEdit(idx: number) {
+    const f = fields[idx];
+    setEditing({
+      mode:     "edit",
+      index:    idx,
+      label:    f.label,
+      type:     f.type,
+      required: f.required,
+      options:  f.options?.join(", ") ?? "",
+    });
+  }
+
+  return (
+    <div className="space-y-2 pt-1">
+      {/* Daftar field yang sudah ada */}
+      {fields.map((f, idx) => (
+        <div key={f.key} className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2 text-sm">
+          <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="flex-1 min-w-0 font-medium truncate">{f.label}</span>
+          <span className="text-[10px] bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-full shrink-0">
+            {FIELD_TYPE_LABELS[f.type]}
+          </span>
+          {f.required && (
+            <span className="text-[10px] bg-destructive/10 text-destructive px-1.5 py-0.5 rounded-full shrink-0">
+              Wajib
+            </span>
+          )}
+          <button type="button" onClick={() => startEdit(idx)} className="text-muted-foreground hover:text-foreground ml-1">
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={() => handleRemove(idx)} className="text-muted-foreground hover:text-destructive">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ))}
+
+      {/* Form tambah / edit field */}
+      {editing ? (
+        <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2.5">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Label</label>
+            <Input
+              value={editing.label}
+              onChange={(e) => setEditing({ ...editing, label: e.target.value })}
+              placeholder="cth: Ukuran Kaos"
+              className="h-8 text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Tipe</label>
+              <select
+                value={editing.type}
+                onChange={(e) => setEditing({ ...editing, type: e.target.value as CustomFieldType })}
+                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                {(Object.entries(FIELD_TYPE_LABELS) as [CustomFieldType, string][]).map(([val, lbl]) => (
+                  <option key={val} value={val}>{lbl}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Wajib diisi</label>
+              <div className="flex items-center h-8">
+                <button
+                  type="button"
+                  onClick={() => setEditing({ ...editing, required: !editing.required })}
+                  className={cn(
+                    "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                    editing.required ? "bg-primary" : "bg-input"
+                  )}
+                >
+                  <span className={cn(
+                    "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                    editing.required ? "translate-x-4" : "translate-x-0"
+                  )} />
+                </button>
+              </div>
+            </div>
+          </div>
+          {editing.type === "select" && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                Pilihan (pisahkan dengan koma)
+              </label>
+              <Input
+                value={editing.options}
+                onChange={(e) => setEditing({ ...editing, options: e.target.value })}
+                placeholder="S, M, L, XL, XXL"
+                className="h-8 text-sm"
+              />
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(null)}>
+              Batal
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSave}
+              disabled={!editing.label.trim()}
+            >
+              {editing.mode === "add" ? "Tambahkan" : "Simpan"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing({ ...EMPTY_EDITING })}
+          className="w-full flex items-center justify-center gap-1.5 rounded-md border border-dashed border-border py-2 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Tambah Field
+        </button>
+      )}
+
+      {fields.length === 0 && !editing && (
+        <p className="text-xs text-muted-foreground text-center py-1">
+          Belum ada field. Tambahkan field pertama.
+        </p>
+      )}
+    </div>
+  );
+}
+
+
 // ─── EventForm ────────────────────────────────────────────────────────────────
 
 export function EventForm({ slug, eventId, categories, activeCampaigns, initialData }: EventFormProps) {
@@ -165,6 +354,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
   const [requireApproval,    setRequireApproval]    = useState(initialData.requireApproval);
   const [showDonationPrompt, setShowDonationPrompt] = useState(initialData.showDonationPrompt);
   const [enableCustomForm,   setEnableCustomForm]   = useState(initialData.enableCustomForm);
+  const [customFormFields,   setCustomFormFields]   = useState<CustomFormField[]>(initialData.customFormFields ?? []);
   const [linkedCampaignId,   setLinkedCampaignId]   = useState<string | null>(initialData.linkedCampaignId);
   const [cover,    setCover]    = useState<CoverImage>(
     initialData.coverId && initialData.coverUrl
@@ -273,6 +463,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
       requireApproval,
       showDonationPrompt,
       enableCustomForm,
+      customFormFields:  enableCustomForm ? customFormFields : [],
       linkedCampaignId:  showDonationPrompt ? (linkedCampaignId ?? null) : null,
       coverId:           cover?.id ?? null,
       tickets: tickets.map((t, i) => ({
@@ -596,20 +787,19 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
             />
           </div>
 
-          {/* Form Tambahan Pendaftaran */}
+          {/* Form Tambahan Pendaftaran — dynamic field builder */}
           <div className="space-y-3 rounded-lg border border-border p-4">
             <ToggleRow
               label="Aktifkan form tambahan pendaftaran"
-              hint="Tampilkan field estimasi kedatangan dan jumlah rombongan di formulir pendaftaran"
+              hint="Tambahkan pertanyaan khusus di formulir pendaftaran (ukuran kaos, dll)"
               checked={enableCustomForm}
-              onChange={setEnableCustomForm}
+              onChange={(v) => { setEnableCustomForm(v); }}
             />
             {enableCustomForm && (
-              <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-1">
-                <p className="font-medium text-foreground">Field yang akan tampil:</p>
-                <p>• Estimasi Kedatangan (tanggal &amp; waktu)</p>
-                <p>• Jumlah Rombongan (jumlah orang)</p>
-              </div>
+              <CustomFieldBuilder
+                fields={customFormFields}
+                onChange={setCustomFormFields}
+              />
             )}
           </div>
 

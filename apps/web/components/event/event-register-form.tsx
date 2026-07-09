@@ -8,6 +8,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { CheckCircle2, Ticket, Loader2, Copy, Check } from "lucide-react";
 import { registerForEventAction } from "@/app/(dashboard)/app/[tenant]/event/actions";
 import { DonationPromptModal } from "@/components/event/public/donation-prompt-modal";
+import type { CustomFormField } from "@/lib/event-custom-form";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,8 +59,9 @@ export type EventRegisterFormProps = {
   defaultAttendeeEmail?: string;
   // URL ke halaman lengkapi keanggotaan (untuk redirect jika tiket butuh anggota)
   baseUrl: string;
-  // Form tambahan — hanya tampil jika admin aktifkan
-  enableCustomForm?: boolean;
+  // Form tambahan — hanya tampil jika admin aktifkan + ada field yang dikonfigurasi
+  enableCustomForm?:  boolean;
+  customFormFields?:  CustomFormField[];
 };
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -84,7 +86,8 @@ export function EventRegisterForm({
   defaultAttendeePhone = "",
   defaultAttendeeEmail = "",
   baseUrl,
-  enableCustomForm = false,
+  enableCustomForm  = false,
+  customFormFields  = [],
 }: EventRegisterFormProps) {
   // Pilihan tiket
   const [selectedTicketId, setSelectedTicketId] = useState<string>(tickets[0]?.id ?? "");
@@ -94,9 +97,11 @@ export function EventRegisterForm({
   const [attendeePhone, setAttendeePhone] = useState(defaultAttendeePhone);
   const [attendeeEmail, setAttendeeEmail] = useState(defaultAttendeeEmail);
 
-  // Custom form fields (Estimasi Kedatangan + Jumlah Rombongan)
-  const [arrivalEstimate, setArrivalEstimate] = useState("");
-  const [groupSize,       setGroupSize]       = useState("");
+  // Jawaban custom form fields (key → value string)
+  const [customValues, setCustomValues] = useState<Record<string, string>>({});
+  function setCustomValue(key: string, value: string) {
+    setCustomValues((prev) => ({ ...prev, [key]: value }));
+  }
 
   // Modal donation prompt (tampil setelah registrasi gratis berhasil)
   const [showDonationModal, setShowDonationModal] = useState(false);
@@ -143,23 +148,46 @@ export function EventRegisterForm({
       return;
     }
 
+    // Validasi required custom form fields
+    if (enableCustomForm && customFormFields.length > 0) {
+      for (const field of customFormFields) {
+        if (field.required && !customValues[field.key]?.trim()) {
+          setError(`Field "${field.label}" wajib diisi.`);
+          return;
+        }
+      }
+    }
+
+    // Bangun custom field answers — konversi nilai sesuai tipe
+    const customFieldAnswers: Record<string, unknown> = {};
+    if (enableCustomForm && customFormFields.length > 0) {
+      for (const field of customFormFields) {
+        const raw = customValues[field.key];
+        if (!raw && !raw?.trim()) continue;
+        if (field.type === "number") {
+          const n = Number(raw);
+          if (!isNaN(n)) customFieldAnswers[field.key] = n;
+        } else if (field.type === "datetime") {
+          // Konversi datetime-local → UTC ISO (browser parse sebagai local time)
+          const d = new Date(raw);
+          if (!isNaN(d.getTime())) customFieldAnswers[field.key] = d.toISOString();
+        } else {
+          customFieldAnswers[field.key] = raw.trim();
+        }
+      }
+    }
+
     startTransition(async () => {
       const res = await registerForEventAction(slug, {
         eventId,
-        ticketId:       selectedTicketId,
+        ticketId:           selectedTicketId,
         attendeeName,
-        attendeePhone:  attendeePhone || null,
-        attendeeEmail:  attendeeEmail || null,
-        // Custom form — kirim jika enableCustomForm aktif
-        arrivalEstimate: enableCustomForm && arrivalEstimate
-          ? new Date(arrivalEstimate).toISOString()
-          : null,
-        groupSize: enableCustomForm && groupSize && !isNaN(Number(groupSize)) && Number(groupSize) > 0
-          ? Number(groupSize)
-          : null,
-        method:         isPaidTicket ? method : undefined,
-        bankAccountRef: isPaidTicket && method === "transfer" ? bankAccountRef || null : null,
-        qrisAccountRef: isPaidTicket && method === "qris"     ? qrisAccountRef || null : null,
+        attendeePhone:      attendeePhone || null,
+        attendeeEmail:      attendeeEmail || null,
+        customFieldAnswers: Object.keys(customFieldAnswers).length > 0 ? customFieldAnswers : null,
+        method:             isPaidTicket ? method : undefined,
+        bankAccountRef:     isPaidTicket && method === "transfer" ? bankAccountRef || null : null,
+        qrisAccountRef:     isPaidTicket && method === "qris"     ? qrisAccountRef || null : null,
       });
 
       if (!res.success) {
@@ -459,41 +487,75 @@ export function EventRegisterForm({
             </div>
           </div>
 
-          {/* Form Tambahan — estimasi kedatangan dan jumlah rombongan */}
-          {enableCustomForm && (
+          {/* Form Tambahan — dynamic custom fields dari admin */}
+          {enableCustomForm && customFormFields.length > 0 && (
             <div className="space-y-3 rounded-lg border border-border p-4">
               <p className="text-sm font-semibold text-foreground">Informasi Tambahan</p>
+              {customFormFields.map((field) => {
+                const value = customValues[field.key] ?? "";
+                const inputId = `custom-${field.key}`;
+                return (
+                  <div key={field.key} className="space-y-1.5">
+                    <Label htmlFor={inputId} className="text-sm">
+                      {field.label}
+                      {field.required && <span className="text-destructive ml-0.5">*</span>}
+                    </Label>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="arrivalEstimate" className="text-sm">
-                  Estimasi Kedatangan
-                </Label>
-                <input
-                  id="arrivalEstimate"
-                  type="datetime-local"
-                  value={arrivalEstimate}
-                  onChange={(e) => setArrivalEstimate(e.target.value)}
-                  disabled={isPending}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                />
-                <p className="text-xs text-muted-foreground">Perkiraan waktu kamu tiba di lokasi acara</p>
-              </div>
+                    {field.type === "text" && (
+                      <Input
+                        id={inputId}
+                        value={value}
+                        onChange={(e) => setCustomValue(field.key, e.target.value)}
+                        placeholder={field.placeholder ?? ""}
+                        disabled={isPending}
+                      />
+                    )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="groupSize" className="text-sm">
-                  Jumlah Rombongan
-                </Label>
-                <Input
-                  id="groupSize"
-                  type="number"
-                  min={1}
-                  value={groupSize}
-                  onChange={(e) => setGroupSize(e.target.value)}
-                  placeholder="Contoh: 5"
-                  disabled={isPending}
-                />
-                <p className="text-xs text-muted-foreground">Termasuk kamu sendiri, total berapa orang yang datang</p>
-              </div>
+                    {field.type === "number" && (
+                      <Input
+                        id={inputId}
+                        type="number"
+                        min={0}
+                        value={value}
+                        onChange={(e) => setCustomValue(field.key, e.target.value)}
+                        placeholder={field.placeholder ?? ""}
+                        disabled={isPending}
+                      />
+                    )}
+
+                    {field.type === "datetime" && (
+                      <input
+                        id={inputId}
+                        type="datetime-local"
+                        value={value}
+                        onChange={(e) => setCustomValue(field.key, e.target.value)}
+                        disabled={isPending}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    )}
+
+                    {field.type === "select" && field.options && field.options.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {field.options.map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => setCustomValue(field.key, opt)}
+                            className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                              value === opt
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border hover:border-primary/50"
+                            }`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 

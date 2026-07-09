@@ -4,6 +4,7 @@ import { redirect, notFound } from "next/navigation";
 import { eq, desc } from "drizzle-orm";
 import { publicUrl } from "@/lib/minio";
 import { EventForm } from "@/components/event/event-form";
+import type { CustomFormField } from "@/lib/event-custom-form";
 import type { SeoValues } from "@/components/seo/seo-panel";
 
 export default async function AcaraEditPage({
@@ -74,6 +75,7 @@ export default async function AcaraEditPage({
         requireApproval:    event.requireApproval,
         showDonationPrompt: event.showDonationPrompt,
         enableCustomForm:   event.enableCustomForm,
+        customFormFields:   (event.customFormFields as CustomFormField[]) ?? [],
         linkedCampaignId:   event.linkedCampaignId  ?? null,
         coverId:            event.coverId            ?? null,
         coverUrl,

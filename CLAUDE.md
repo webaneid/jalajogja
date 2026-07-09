@@ -3156,22 +3156,28 @@ grep -rn '`/app/' apps/web/app/\(public\)/ apps/web/components/website/public/
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Event Custom Form Fields (Estimasi Kedatangan + Jumlah Rombongan)** (sesi 2026-07-09, lanjutan 5).
-- Sesi ini (2026-07-09, lanjutan 5):
-  - **Fitur form tambahan event** — Toggle `enableCustomForm` per event. Dua field: Estimasi Kedatangan
-    (datetime-local → UTC ISO) + Jumlah Rombongan (number). Disimpan ke `customFields JSONB` di
-    `event_registrations`. Toggle muncul di sidebar admin event editor di bawah "Pengaturan Tampilan".
-    Field muncul di form publik hanya jika `enableCustomForm = true`. TypeScript 0 errors.
-  - **8 file diubah**: `events.ts` schema, `create-tenant-schema.ts` DDL, `actions.ts` (RegisterData type
-    + saveEventAction + registerForEventAction), `event-form.tsx` (toggle + UI preview), 
-    `event-register-form.tsx` (prop + state + UI), `agenda/[slug]/page.tsx` (pass prop),
-    `event/acara/[id]/edit/page.tsx`, `event/acara/new/page.tsx`
-  - **Migration baru**: `0021_event_custom_form.sql` — jalankan di VPS sebelum deploy
+- Sesi ini (2026-07-09, lanjutan 6):
+  - **Dynamic Custom Fields untuk form pendaftaran event** — Refactor dari 2 field hardcoded
+    (estimasi kedatangan + rombongan) menjadi sistem field dinamis. Admin bisa tambah/hapus/edit
+    field bebas: tipe text/angka/pilihan/datetime, label, required, opsi pilihan (untuk type select).
+    Field disimpan di `events.custom_form_fields JSONB[]`. Jawaban disimpan di `event_registrations.custom_fields JSONB`.
+  - **10 file diubah**:
+    - `lib/event-custom-form.ts` (NEW) — type `CustomFormField` + `labelToKey()` + `FIELD_TYPE_LABELS`
+    - `packages/db/src/schema/tenant/events.ts` — kolom `customFormFields JSONB`
+    - `packages/db/src/helpers/create-tenant-schema.ts` — DDL kolom `custom_form_fields`
+    - `packages/db/migrations/0022_event_dynamic_custom_fields.sql` (NEW) — migration
+    - `actions.ts` — `EventData.customFormFields`, `RegisterData.customFieldAnswers`, update kedua action
+    - `event-form.tsx` — komponen `CustomFieldBuilder` baru + state + buildData
+    - `event-register-form.tsx` — render dinamis dari customFormFields, validasi required
+    - `agenda/[slug]/page.tsx` — pass `customFormFields` prop
+    - `acara/[id]/edit/page.tsx` — load customFormFields dari DB
+    - `acara/new/page.tsx` — default `customFormFields: []`
+  - TypeScript 0 errors.
+  - **Migration baru**: `0022_event_dynamic_custom_fields.sql` — jalankan di VPS sebelum deploy
   - **Deploy ke VPS**:
     ```bash
     docker compose exec -T postgres psql -U jalakarta -d jalakarta \
-      < packages/db/migrations/0020_event_ticket_requires_membership.sql
-    docker compose exec -T postgres psql -U jalakarta -d jalakarta \
-      < packages/db/migrations/0021_event_custom_form.sql
+      < packages/db/migrations/0022_event_dynamic_custom_fields.sql
     git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env
     ```
 - Sesi ini (2026-07-09, lanjutan 4):
