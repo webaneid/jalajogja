@@ -95,19 +95,19 @@ export default async function AkunEventPage({ params }: { params: Params }) {
     .orderBy(desc(schema.eventRegistrations.createdAt))
     .limit(50);
 
-  // Cari invoice yang terkait dengan registrasi ini (untuk link pembayaran)
+  // Cari invoice yang terkait dengan registrasi ini (untuk link pembayaran + status)
   const regIds = regs.map(r => r.id);
-  let invoiceMap: Record<string, string> = {};
+  let invoiceMap: Record<string, { id: string; status: string }> = {};
   if (regIds.length > 0) {
     const invoiceRows = await tenantDb
-      .select({ sourceId: schema.invoices.sourceId, id: schema.invoices.id })
+      .select({ sourceId: schema.invoices.sourceId, id: schema.invoices.id, status: schema.invoices.status })
       .from(schema.invoices)
       .where(and(
         sql`${schema.invoices.sourceType} = 'event_registration'`,
         inArray(schema.invoices.sourceId, regIds),
       ));
     for (const row of invoiceRows) {
-      if (row.sourceId) invoiceMap[row.sourceId] = row.id;
+      if (row.sourceId) invoiceMap[row.sourceId] = { id: row.id, status: row.status };
     }
   }
 
@@ -115,6 +115,8 @@ export default async function AkunEventPage({ params }: { params: Params }) {
   const items = await Promise.all(regs.map(async (r) => {
     const status = r.status ?? "pending";
     const isPending = status === "pending";
+    const invoice = invoiceMap[r.id] ?? null;
+    const isWaitingVerif = invoice?.status === "waiting_verification";
 
     // QR hanya untuk tiket yang sudah dikonfirmasi
     let qrDataUrl: string | null = null;
@@ -131,11 +133,17 @@ export default async function AkunEventPage({ params }: { params: Params }) {
       qrDataUrl = await generateQrDataUrl(lines, "#111827");
     }
 
+    // Label status: jika menunggu verifikasi, tampilkan label berbeda
+    const statusLabel = isWaitingVerif
+      ? "Menunggu Verifikasi"
+      : (STATUS_LABEL[status] ?? status);
+
     return {
       id:                 r.id,
       registrationNumber: r.registrationNumber,
       status,
-      statusLabel:        STATUS_LABEL[status] ?? status,
+      statusLabel,
+      invoiceStatus:      invoice?.status ?? null,
       attendeeName:       r.attendeeName,
       attendeePhone:      displayPhone(r.attendeePhone),
       attendeeEmail:      r.attendeeEmail,
@@ -144,7 +152,7 @@ export default async function AkunEventPage({ params }: { params: Params }) {
       eventSlug:          r.eventSlug ?? null,
       eventStartsAt:      r.eventStartsAt ? r.eventStartsAt.toISOString() : null,
       qrDataUrl,
-      invoiceId:          invoiceMap[r.id] ?? null,
+      invoiceId:          invoice?.id ?? null,
       tenantSlug:         slug,
     };
   }));

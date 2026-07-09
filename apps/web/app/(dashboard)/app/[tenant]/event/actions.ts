@@ -845,6 +845,109 @@ export async function confirmRegistrationPaymentAction(
   }
 }
 
+// ─── Konfirmasi pembayaran event via invoice (alur cart/publik) ───────────────
+// Dipakai saat customer submit bukti bayar melalui halaman invoice publik.
+// Payment source_type = 'invoice' (bukan 'event_registration' seperti alur lama).
+
+export async function confirmEventInvoicePaymentAction(
+  slug:      string,
+  paymentId: string,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!canConfirmPayment(access.tenantUser, "event"))
+    return { success: false, error: "Hanya admin yang bisa mengkonfirmasi pembayaran." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  const [payment] = await db
+    .select()
+    .from(schema.payments)
+    .where(eq(schema.payments.id, paymentId))
+    .limit(1);
+
+  if (!payment)                         return { success: false, error: "Pembayaran tidak ditemukan." };
+  if (payment.status === "paid")        return { success: false, error: "Pembayaran sudah diverifikasi." };
+  if (payment.sourceType !== "invoice") return { success: false, error: "Bukan pembayaran invoice." };
+  if (!payment.sourceId)                return { success: false, error: "Invoice tidak ditemukan." };
+
+  const [inv] = await db
+    .select()
+    .from(schema.invoices)
+    .where(eq(schema.invoices.id, payment.sourceId))
+    .limit(1);
+
+  if (!inv)                             return { success: false, error: "Invoice tidak ditemukan." };
+  if (inv.status === "paid")            return { success: false, error: "Invoice sudah lunas." };
+  if (inv.status === "cancelled")       return { success: false, error: "Invoice sudah dibatalkan." };
+  if (inv.sourceType !== "event_registration") return { success: false, error: "Bukan invoice event." };
+  if (!inv.sourceId)                    return { success: false, error: "Registrasi tidak ditemukan." };
+
+  const payAmount  = parseFloat(String(payment.amount));
+  const paidSoFar  = parseFloat(String(inv.paidAmount));
+  const total      = parseFloat(String(inv.total));
+  const newPaid    = paidSoFar + payAmount;
+  const newStatus  = newPaid >= total ? "paid" : "partial";
+
+  const mappings      = await resolveEventAccounts(tenantDb);
+  const cashAccountId = mappings.cash_default ?? mappings.bank_default;
+  const incomeAccountId = mappings.event_income;
+
+  if (!cashAccountId || !incomeAccountId) {
+    return {
+      success: false,
+      error: "Mapping akun belum dikonfigurasi. Atur di Keuangan → Akun → Mapping.",
+    };
+  }
+
+  try {
+    const txNumber = await generateFinancialNumber(tenantDb, "journal");
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(schema.payments)
+        .set({ status: "paid", confirmedBy: access.tenantUser.id, confirmedAt: new Date(), updatedAt: new Date() })
+        .where(eq(schema.payments.id, paymentId));
+
+      await tx
+        .update(schema.invoices)
+        .set({ paidAmount: newPaid.toFixed(2), status: newStatus, updatedAt: new Date() })
+        .where(eq(schema.invoices.id, inv.id));
+
+      if (newStatus === "paid") {
+        await recordIncome(tenantDb, {
+          date:            new Date().toISOString().slice(0, 10),
+          description:     `Pembayaran tiket event - ${inv.invoiceNumber}`,
+          referenceNumber: txNumber,
+          createdBy:       access.tenantUser.id,
+          amount:          total,
+          cashAccountId,
+          incomeAccountId,
+        });
+
+        await tx
+          .update(schema.eventRegistrations)
+          .set({ status: "confirmed", updatedAt: new Date() })
+          .where(eq(schema.eventRegistrations.id, inv.sourceId!));
+      }
+    });
+
+    // Cari eventId untuk revalidate
+    const [reg] = await db
+      .select({ eventId: schema.eventRegistrations.eventId })
+      .from(schema.eventRegistrations)
+      .where(eq(schema.eventRegistrations.id, inv.sourceId))
+      .limit(1);
+
+    if (reg?.eventId) revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[confirmEventInvoicePaymentAction]", err);
+    return { success: false, error: "Gagal mengkonfirmasi pembayaran." };
+  }
+}
+
 // ─── Setujui registrasi pending (admin — untuk requireApproval=true) ──────────
 
 export async function approveRegistrationAction(

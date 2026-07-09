@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   XCircle, UserCheck,
-  Search, Loader2, BadgeCheck, BanknoteIcon
+  Search, Loader2, BadgeCheck, BanknoteIcon, ExternalLink, ImageIcon, X as XIcon,
 } from "lucide-react";
 import {
   approveRegistrationAction,
   confirmRegistrationPaymentAction,
+  confirmEventInvoicePaymentAction,
   cancelRegistrationAction,
 } from "@/app/(dashboard)/app/[tenant]/event/actions";
 import { EventCertificateButton } from "./event-certificate-button";
@@ -31,6 +32,9 @@ export type RegistrationRow = {
   paymentId:          string | null;
   paymentStatus:      "pending" | "submitted" | "paid" | "cancelled" | null;
   paymentMethod:      string | null;
+  invoiceId:          string | null;
+  invoiceStatus:      string | null;
+  proofUrl:           string | null;
   certificateUrl:     string | null;
   createdAt:          Date;
 };
@@ -64,10 +68,11 @@ export function EventRegistrationList({
   eventId:       string;
   registrations: RegistrationRow[];
 }) {
-  const [rows,   setRows]   = useState<RegistrationRow[]>(initialRows);
-  const [search, setSearch] = useState("");
-  const [actionId, setActionId] = useState<string | null>(null);
-  const [error,    setError]    = useState<string | null>(null);
+  const [rows,      setRows]      = useState<RegistrationRow[]>(initialRows);
+  const [search,    setSearch]    = useState("");
+  const [actionId,  setActionId]  = useState<string | null>(null);
+  const [error,     setError]     = useState<string | null>(null);
+  const [proofOpen, setProofOpen] = useState<string | null>(null); // URL lightbox bukti
   const [isPending, startTransition] = useTransition();
 
   const filtered = rows.filter((r) => {
@@ -143,13 +148,24 @@ export function EventRegistrationList({
           </thead>
           <tbody className="divide-y divide-border">
             {filtered.map((reg) => {
-              const isLoading = isPending && actionId === reg.id;
-              const isPaid    = reg.paymentStatus === "paid" || reg.ticketPrice <= 0;
+              const isLoading  = isPending && actionId === reg.id;
+              const isPaid     = reg.paymentStatus === "paid" || reg.ticketPrice <= 0;
+              const isWaiting  = reg.invoiceStatus === "waiting_verification";
 
               return (
-                <tr key={reg.id} className="hover:bg-muted/20 transition-colors">
+                <tr key={reg.id} className={`hover:bg-muted/20 transition-colors ${isWaiting ? "bg-amber-50/40 dark:bg-amber-950/20" : ""}`}>
                   <td className="px-3 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
                     {reg.registrationNumber}
+                    {reg.invoiceId && (
+                      <a
+                        href={`/app/${slug}/finance/billing/invoice/${reg.invoiceId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-[10px] text-primary hover:underline mt-0.5"
+                      >
+                        Lihat Invoice <ExternalLink className="inline h-2.5 w-2.5" />
+                      </a>
+                    )}
                   </td>
                   <td className="px-3 py-3">
                     <p className="font-medium">{reg.attendeeName}</p>
@@ -177,27 +193,59 @@ export function EventRegistrationList({
                       <Badge variant={STATUS_CONFIG[reg.status].variant} className="text-xs">
                         {STATUS_CONFIG[reg.status].label}
                       </Badge>
-                      {reg.paymentStatus && reg.ticketPrice > 0 && (
+                      {reg.ticketPrice > 0 && (
                         <div className="text-xs text-muted-foreground">
-                          Bayar:{" "}
-                          {reg.paymentStatus === "paid"      ? "✓ Lunas"
-                          : reg.paymentStatus === "submitted" ? "Menunggu konfirmasi"
-                          : reg.paymentStatus === "cancelled" ? "Dibatalkan"
-                          : "Belum bayar"}
+                          {isWaiting
+                            ? <span className="font-medium text-amber-600 dark:text-amber-400">⏳ Menunggu verifikasi</span>
+                            : reg.paymentStatus === "paid"
+                            ? "✓ Lunas"
+                            : reg.paymentStatus === "cancelled"
+                            ? "Dibatalkan"
+                            : reg.invoiceId
+                            ? "Belum bayar"
+                            : "—"}
                         </div>
+                      )}
+                      {/* Thumbnail bukti bayar */}
+                      {reg.proofUrl && (
+                        <button
+                          onClick={() => setProofOpen(reg.proofUrl!)}
+                          className="flex items-center gap-1 text-[10px] text-primary hover:underline"
+                        >
+                          <ImageIcon className="h-3 w-3" />
+                          Lihat bukti
+                        </button>
                       )}
                     </div>
                   </td>
                   <td className="px-3 py-3">
-                    <div className="flex items-center justify-end gap-1.5">
+                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
                       {isLoading && (
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                       )}
 
-                      {/* Konfirmasi pembayaran */}
+                      {/* Konfirmasi pembayaran — via invoice (alur publik baru) */}
+                      {!isLoading && reg.paymentId && isWaiting && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs border-amber-500 text-amber-700 hover:bg-amber-50 dark:border-amber-400 dark:text-amber-300"
+                          title="Konfirmasi Pembayaran"
+                          onClick={() =>
+                            runAction(reg.id, () =>
+                              confirmEventInvoicePaymentAction(slug, reg.paymentId!)
+                            )
+                          }
+                        >
+                          <BanknoteIcon className="h-3 w-3 mr-1" />
+                          Konfirmasi
+                        </Button>
+                      )}
+
+                      {/* Konfirmasi pembayaran — alur lama (payment sourceType='event_registration') */}
                       {!isLoading && reg.paymentId &&
-                        reg.paymentStatus &&
-                        ["pending", "submitted"].includes(reg.paymentStatus) && (
+                        !isWaiting &&
+                        reg.paymentStatus === "submitted" && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -217,7 +265,8 @@ export function EventRegistrationList({
                       {/* Setujui pendaftaran gratis / waiting approval */}
                       {!isLoading &&
                         reg.status === "pending" &&
-                        (isPaid || reg.ticketPrice <= 0) && (
+                        (isPaid || reg.ticketPrice <= 0) &&
+                        !isWaiting && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -286,6 +335,28 @@ export function EventRegistrationList({
       <p className="text-xs text-muted-foreground">
         Menampilkan {filtered.length} dari {rows.length} pendaftar
       </p>
+
+      {/* Lightbox bukti bayar */}
+      {proofOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setProofOpen(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/80 hover:text-white"
+            onClick={() => setProofOpen(null)}
+          >
+            <XIcon className="h-6 w-6" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={proofOpen}
+            alt="Bukti Bayar"
+            className="max-w-full max-h-[85vh] rounded-lg object-contain"
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

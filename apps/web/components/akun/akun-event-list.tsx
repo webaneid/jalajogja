@@ -8,6 +8,7 @@ type EventItem = {
   registrationNumber: string;
   status:             string;
   statusLabel:        string;
+  invoiceStatus:      string | null;
   attendeeName:       string;
   attendeePhone:      string | null;
   attendeeEmail:      string | null;
@@ -23,10 +24,11 @@ type EventItem = {
 type Props = { items: EventItem[] };
 
 const STATUS_COLOR: Record<string, string> = {
-  pending:   "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
-  confirmed: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-  attended:  "bg-primary/10 text-primary",
-  cancelled: "bg-muted text-muted-foreground",
+  pending:              "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
+  waiting_verification: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+  confirmed:            "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+  attended:             "bg-primary/10 text-primary",
+  cancelled:            "bg-muted text-muted-foreground",
 };
 
 function formatDate(iso: string | null) {
@@ -61,7 +63,11 @@ export function AkunEventList({ items }: Props) {
           >
             <div className="flex items-start justify-between gap-3">
               <p className="font-semibold text-sm leading-snug">{item.eventTitle}</p>
-              <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_COLOR[item.status] ?? STATUS_COLOR.cancelled}`}>
+              <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                item.invoiceStatus === "waiting_verification"
+                  ? STATUS_COLOR.waiting_verification
+                  : (STATUS_COLOR[item.status] ?? STATUS_COLOR.cancelled)
+              }`}>
                 {item.statusLabel}
               </span>
             </div>
@@ -97,9 +103,17 @@ export function AkunEventList({ items }: Props) {
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className={`px-4 py-3 flex items-center justify-between gap-2 ${selected.status === "pending" ? "bg-amber-500" : "bg-primary"}`}>
+            <div className={`px-4 py-3 flex items-center justify-between gap-2 ${
+              selected.invoiceStatus === "waiting_verification"
+                ? "bg-blue-600"
+                : selected.status === "pending"
+                ? "bg-amber-500"
+                : "bg-primary"
+            }`}>
               <div className="flex items-center gap-2">
-                {selected.status === "pending"
+                {selected.invoiceStatus === "waiting_verification"
+                  ? <Clock className="h-4 w-4 text-white" />
+                  : selected.status === "pending"
                   ? <Clock className="h-4 w-4 text-white" />
                   : <CheckCircle2 className="h-4 w-4 text-primary-foreground" />
                 }
@@ -115,14 +129,27 @@ export function AkunEventList({ items }: Props) {
               </div>
             </div>
 
-            {/* QR Code — hanya tampil jika sudah confirmed/attended */}
-            {selected.status !== "pending" && selected.qrDataUrl ? (
-              <div className="flex justify-center py-5 bg-white dark:bg-neutral-950 border-b border-dashed border-border">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={selected.qrDataUrl} alt="QR Tiket" className="w-44 h-44" />
+            {/* Menunggu verifikasi admin */}
+            {selected.invoiceStatus === "waiting_verification" ? (
+              <div className="px-4 py-5 border-b border-dashed border-border bg-blue-50 dark:bg-blue-950/30">
+                <p className="text-sm text-blue-800 dark:text-blue-200 font-medium mb-1">
+                  Bukti pembayaran Anda sudah diterima.
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mb-3">
+                  Menunggu konfirmasi dari panitia. QR tiket akan tersedia setelah dikonfirmasi.
+                </p>
+                {selected.invoiceId && (
+                  <a
+                    href={`/${selected.tenantSlug}/invoice/${selected.invoiceId}`}
+                    className="flex items-center justify-center gap-2 w-full rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2.5 transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Lihat Invoice
+                  </a>
+                )}
               </div>
             ) : selected.status === "pending" ? (
-              /* Pending: tampilkan link ke invoice pembayaran */
+              /* Belum bayar: tampilkan link ke invoice pembayaran */
               <div className="px-4 py-5 border-b border-dashed border-border bg-amber-50 dark:bg-amber-950/30">
                 <p className="text-sm text-amber-800 dark:text-amber-200 font-medium mb-3">
                   Pendaftaran Anda menunggu pembayaran.
@@ -140,6 +167,12 @@ export function AkunEventList({ items }: Props) {
                     Hubungi panitia untuk informasi pembayaran.
                   </p>
                 )}
+              </div>
+            ) : selected.qrDataUrl ? (
+              /* Confirmed/Attended: tampilkan QR */
+              <div className="flex justify-center py-5 bg-white dark:bg-neutral-950 border-b border-dashed border-border">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={selected.qrDataUrl} alt="QR Tiket" className="w-44 h-44" />
               </div>
             ) : null}
 

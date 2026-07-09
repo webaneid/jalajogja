@@ -1,7 +1,7 @@
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
-import { eq, count, and } from "drizzle-orm";
+import { eq, count, and, inArray, sql } from "drizzle-orm";
 import Link from "next/link";
 import { CalendarDays, MapPin, Globe, Users, Pencil, Ticket, UserCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -99,23 +99,54 @@ export default async function AcaraDetailPage({
     .where(eq(schema.eventRegistrations.eventId, eventId))
     .orderBy(schema.eventRegistrations.createdAt);
 
-  // Fetch pembayaran per registrasi
-  const paymentRows = await db
-    .select({
-      id:         schema.payments.id,
-      sourceId:   schema.payments.sourceId,
-      status:     schema.payments.status,
-      method:     schema.payments.method,
-    })
-    .from(schema.payments)
-    .where(eq(schema.payments.sourceType, "event_registration"));
+  const ticketMap = new Map(tickets.map((t) => [t.id, t]));
 
-  const paymentMap = new Map(paymentRows.map((p) => [p.sourceId, p]));
-  const ticketMap  = new Map(tickets.map((t) => [t.id, t]));
+  // Query invoice per registrasi (alur cart/publik: sourceType='event_registration')
+  const regIds = rawRegs.map((r) => r.id);
+  const invoiceRows = regIds.length > 0
+    ? await db
+        .select({
+          id:       schema.invoices.id,
+          sourceId: schema.invoices.sourceId,
+          status:   schema.invoices.status,
+          invoiceNumber: schema.invoices.invoiceNumber,
+        })
+        .from(schema.invoices)
+        .where(and(
+          sql`${schema.invoices.sourceType} = 'event_registration'`,
+          inArray(schema.invoices.sourceId, regIds),
+        ))
+    : [];
+
+  // invoiceMap: regId → invoice
+  const invoiceMap = new Map(invoiceRows.map((i) => [i.sourceId, i]));
+
+  // Query payment yang sudah di-submit (sourceType='invoice', alur publik baru)
+  const invoiceIds = invoiceRows.map((i) => i.id);
+  const paymentRows = invoiceIds.length > 0
+    ? await db
+        .select({
+          id:       schema.payments.id,
+          sourceId: schema.payments.sourceId,   // invoiceId
+          status:   schema.payments.status,
+          method:   schema.payments.method,
+          proofUrl: schema.payments.proofUrl,
+        })
+        .from(schema.payments)
+        .where(and(
+          sql`${schema.payments.sourceType} = 'invoice'`,
+          inArray(schema.payments.sourceId, invoiceIds),
+          inArray(schema.payments.status, ["submitted", "paid"]),
+        ))
+    : [];
+
+  // paymentByInvoice: invoiceId → payment
+  const paymentByInvoice = new Map(paymentRows.map((p) => [p.sourceId, p]));
 
   const registrations: RegistrationRow[] = rawRegs.map((r) => {
     const ticket  = ticketMap.get(r.ticketId ?? "");
-    const payment = paymentMap.get(r.id);
+    const invoice = invoiceMap.get(r.id);
+    const payment = invoice ? paymentByInvoice.get(invoice.id) : undefined;
     return {
       id:                 r.id,
       registrationNumber: r.registrationNumber,
@@ -129,6 +160,9 @@ export default async function AcaraDetailPage({
       paymentId:          payment?.id ?? null,
       paymentStatus:      (payment?.status ?? null) as RegistrationRow["paymentStatus"],
       paymentMethod:      payment?.method ?? null,
+      invoiceId:          invoice?.id ?? null,
+      invoiceStatus:      invoice?.status ?? null,
+      proofUrl:           payment?.proofUrl ?? null,
       certificateUrl:     r.certificateUrl ?? null,
       createdAt:          r.createdAt!,
     };
