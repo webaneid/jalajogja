@@ -529,7 +529,7 @@ export async function getInvoiceListAction(
         cnt:       count(),
       })
       .from(schema.invoiceItems)
-      .where(sql`${schema.invoiceItems.invoiceId} = ANY(ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)}])`)
+      .where(inArray(schema.invoiceItems.invoiceId, ids))
       .groupBy(schema.invoiceItems.invoiceId);
 
     itemCounts = Object.fromEntries(counts.map((c) => [c.invoiceId, Number(c.cnt)]));

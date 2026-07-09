@@ -1,6 +1,12 @@
 # Arsitektur Modul Event
 
-> Status: **Step 1 (Schema) ✅ | Step 2 (UI + Actions) ✅ | Step 3 (Halaman Publik) ✅ | Step 4 (Pendaftaran Admin) ✅ | Step 5 (Check-in) ✅ | Step 6 (Sertifikat) ✅**
+> Status: **Step 1–6 (Core) ✅ | E7 (Schema donation prompt) ✅ | E8 (EventCard+Section) ✅ | E9 (Arsip+Detail publik) ✅ | E10 (Donation Prompt UI) 🔲**
+
+> **Fitur tambahan post-Step 6:**
+> - Migration 0020 — Tiket Wajib Anggota (`requires_membership`) ✅
+> - Migration 0022 — Dynamic Custom Form Fields (`custom_form_fields`) ✅
+> - Migration 0023 — Tab Peserta & Statistik (`show_attendee_stats`, `attendee_stats_by`) ✅
+> - Migration 0024 — Donation Prompt schema (`show_donation_prompt`, `linked_campaign_id`) ✅ (migration baru)
 
 ## Konsep
 
@@ -41,6 +47,11 @@ max_capacity               -- null = tidak terbatas
 show_attendee_list         -- tampilkan daftar peserta di halaman publik
 show_ticket_count          -- tampilkan sisa kuota tiket
 require_approval           -- pendaftaran perlu konfirmasi admin
+show_donation_prompt       -- tampilkan prompt donasi setelah/selama pendaftaran (migration 0024)
+linked_campaign_id FK → campaigns  -- campaign terkait untuk prompt donasi
+custom_form_fields JSONB[]  -- field form dinamis (migration 0022, type/label/required/options)
+show_attendee_stats BOOLEAN -- tampilkan tab Peserta & Statistik (migration 0023)
+attendee_stats_by JSONB[]   -- breakdown: ["angkatan","kabupaten","provinsi","profesi"]
 cover_id FK → media
 certificate_template_id    -- roadmap: FK ke letter_templates
 11 kolom SEO (sama dengan posts/campaigns)
@@ -55,6 +66,7 @@ price NUMERIC (0 = gratis)
 quota INTEGER (null = tidak terbatas)
 sort_order
 is_active BOOLEAN
+requires_membership BOOLEAN  -- tiket hanya untuk anggota terdaftar cabang (migration 0020)
 sale_starts_at, sale_ends_at  -- periode penjualan
 created_at
 ```
@@ -66,7 +78,7 @@ event_id FK → events (CASCADE DELETE)
 ticket_id FK → event_tickets
 member_id FK → public.members (nullable — publik tanpa akun)
 attendee_name, attendee_phone, attendee_email
-custom_fields JSONB  -- pertanyaan custom (roadmap)
+custom_fields JSONB  -- jawaban field dinamis (migration 0022, key=labelToKey(label), value=user input)
 status: pending | confirmed | cancelled | attended
 checked_in_at, checked_in_by  -- check-in hari-H
 certificate_url, certificate_sent_at  -- roadmap
@@ -83,18 +95,37 @@ UNIQUE (year, month)
 
 ## Alur Pembayaran Tiket
 
+### Alur Baru — Invoice Universal (alur aktif saat ini)
+
 ```
 Tiket gratis (price=0):
   → Daftar → status langsung "confirmed" (atau "pending" jika require_approval=true)
   → Tidak ada payments record
 
-Tiket berbayar:
+Tiket berbayar (alur publik via cart):
   → Daftar → INSERT event_registrations (status="pending")
-  → INSERT payments (source_type='event_registration', source_id=registration.id)
-  → Admin konfirmasi pembayaran → payments.status="paid"
-  → Jurnal: Debit Kas / Kredit Pendapatan Event (4xxx)
-  → registration.status → "confirmed"
+  → INSERT invoices (source_type='event_registration', source_id=reg.id)
+  → User upload bukti bayar → INSERT payments (source_type='invoice', source_id=invoice.id, status='submitted')
+  → invoice.status → 'waiting_verification'
+  → Admin konfirmasi → confirmEventInvoicePaymentAction(slug, paymentId)
+    → payments.status → 'paid'
+    → invoices.status → 'paid' / 'partial'
+    → recordIncome()
+    → registration.status → 'confirmed'
 ```
+
+### Alur Lama — Direct Payment (legacy, masih ada data historis)
+
+```
+Tiket berbayar (alur lama):
+  → INSERT payments (source_type='event_registration', source_id=registration.id)
+  → Admin konfirmasi → confirmRegistrationPaymentAction(slug, paymentId)
+  → payments.status → 'paid' → registration.status → 'confirmed'
+```
+
+**Dua alur ada secara bersamaan di admin detail event.** `EventRegistrationList` mendeteksi alur:
+- Invoice flow: `invoiceStatus === 'waiting_verification'` → tombol `confirmEventInvoicePaymentAction`
+- Legacy flow: `paymentStatus === 'submitted' && !isWaiting` → tombol `confirmRegistrationPaymentAction`
 
 **Akuntansi tiket berbayar:**
 - Berbeda dengan donasi yang memakai Dana Titipan (2200)
@@ -152,7 +183,8 @@ deleteEventCategoryAction(slug, categoryId)            → guard: no events in c
 registerForEventAction(slug, data: RegisterData)              → insert registration + payment (jika berbayar)
 
 // Registrasi admin
-confirmRegistrationPaymentAction(slug, paymentId)             → konfirmasi bayar → recordIncome → status confirmed
+confirmRegistrationPaymentAction(slug, paymentId)             → konfirmasi bayar LEGACY (payment.sourceType='event_registration')
+confirmEventInvoicePaymentAction(slug, paymentId)             → konfirmasi bayar BARU (payment.sourceType='invoice') — butuh permission "event"
 approveRegistrationAction(slug, registrationId)               → setujui pending (requireApproval)
 cancelRegistrationAction(slug, registrationId)                → batalkan + cancel payment jika belum bayar
 checkInRegistrationAction(slug, registrationId)               → status → attended + checkedInAt
@@ -264,10 +296,16 @@ Toko       → /toko
 
 - [x] **Step 1 — Schema**: 5 tabel baru, enums, index, DDL, ALTER TABLE tenant existing
 - [x] **Step 2 — UI + Actions**: EventForm, TicketManager, EventNav, list, CRUD kategori, sidebar
-- [x] **Step 3 — Halaman Publik**: `/(public)/[tenant]/event/[slug]` — EventRegisterForm: pilih tiket, isi data peserta, pilih metode bayar, konfirmasi
-- [x] **Step 4 — Pendaftaran Admin**: `event/acara/[id]` — stats, list pendaftaran, konfirmasi pembayaran, setujui, batalkan
+- [x] **Step 3 — Halaman Publik**: `/(public)/[tenant]/agenda/[slug]` — EventRegisterForm: pilih tiket, isi data peserta, pilih metode bayar, konfirmasi
+- [x] **Step 4 — Pendaftaran Admin**: `event/acara/[id]` — stats, list pendaftaran, konfirmasi pembayaran (dua alur), setujui, batalkan
 - [x] **Step 5 — Check-in**: `event/acara/[id]/checkin` — EventCheckinClient: search real-time, satu tombol check-in, flash konfirmasi
 - [x] **Step 6 — Sertifikat PDF**: `POST /api/events/[id]/certificate/[regId]` — HTML landscape A4, upload MinIO, EventCertificateButton di list pendaftaran
+- [x] **Mig 0020 — Tiket Wajib Anggota**: `requires_membership` per tiket + Opsi A (tampil, bukan blokir) + guard dua lapis (client + server)
+- [x] **Mig 0022 — Dynamic Custom Form Fields**: `custom_form_fields JSONB[]` di events + `custom_fields JSONB` di registrations + CustomFieldBuilder di EventForm + render dinamis di EventRegisterForm
+- [x] **Mig 0023 — Tab Peserta & Statistik**: `show_attendee_stats + attendee_stats_by` di events + EventDetailTabs (tab Detail/Peserta/Statistik) di halaman publik
+- [x] **Step E7 — Donation Prompt Schema**: `show_donation_prompt + linked_campaign_id` di events + UI di EventForm — migration 0024 untuk tenant existing
+- [x] **Step E8 — EventCard + EventsSection**: 3 variant (grid/list/ringkas) + 3 design (Grid/Utama/Agenda) di `components/website/public/event-cards/` + `sections/events/`
+- [x] **Step E9 — Halaman Arsip + Detail Publik**: `/(public)/[tenant]/agenda/page.tsx` + `/(public)/[tenant]/agenda/[slug]/page.tsx`
 
 ---
 
@@ -495,11 +533,13 @@ Step E10: Donation Prompt
 | Fitur | Status |
 |-------|--------|
 | Schema + admin UI (Step 1–6) | ✅ Done |
-| Perencanaan front-end (Step 7–10) | ✅ Terdokumentasi |
-| **Step E7** — Schema show_donation_prompt + linked_campaign_id | 🔲 Belum |
-| **Step E8** — EventCard + EventsSection (3 variant + 3 design) | 🔲 Belum |
-| **Step E9** — Archive `/agenda` + Detail `/agenda/{slug}` | 🔲 Belum |
-| **Step E10** — Donation Prompt (post-register gratis + keranjang berbayar) | 🔲 Belum |
+| Tiket Wajib Anggota (mig 0020) | ✅ Done |
+| Dynamic Custom Form Fields (mig 0022) | ✅ Done |
+| Tab Peserta & Statistik (mig 0023) | ✅ Done |
+| **Step E7** — Schema show_donation_prompt + linked_campaign_id (mig 0024) | ✅ Schema+UI selesai |
+| **Step E8** — EventCard + EventsSection (3 variant + 3 design) | ✅ Done |
+| **Step E9** — Archive `/agenda` + Detail `/agenda/{slug}` | ✅ Done |
+| **Step E10** — Donation Prompt UI (post-register + keranjang berbayar) | 🔲 Belum |
 
 ---
 

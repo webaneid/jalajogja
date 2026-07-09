@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, and, sql, ne } from "drizzle-orm";
+import { eq, and, sql, ne, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, recordIncome, generateFinancialNumber, createLinkedInvoice, syncInvoicePayment } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
@@ -457,7 +457,7 @@ export async function createOrderAction(
       status: schema.products.status,
     })
     .from(schema.products)
-    .where(sql`${schema.products.id} = ANY(${sql.raw(`ARRAY[${productIds.map((id) => `'${id}'`).join(",")}]::uuid[]`)})`);
+    .where(inArray(schema.products.id, productIds));
 
   const productMap = new Map(products.map((p) => [p.id, p]));
 

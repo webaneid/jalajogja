@@ -1740,9 +1740,28 @@ ALTER TABLE semua tenant aktif. Wajib dijalankan di VPS sebelum deploy kode.
 #### tenant.users tidak punya kolom name
 `tenant_{slug}.users` hanya punya `betterAuthUserId`, `role`, `memberId`. Untuk nama user perlu join ke `public.user WHERE id = betterAuthUserId`. Saat ini uploader name di-skip (null) — diimplementasikan nanti saat ada helper cross-schema.
 
-#### inArray untuk filter array UUID
-`inArray(column, ids)` adalah cara Drizzle yang benar untuk `WHERE column = ANY(array)`.
-Jangan pakai `sql.raw` dengan spread args — TypeScript tidak bisa inferensikan tipe.
+#### inArray untuk filter array — WAJIB, jangan pernah sql`ANY()`
+
+> **Bug fatal yang pernah terjadi (2026-07-10)**: Halaman publik event (`/agenda/{slug}`) 500 error di production.
+> Error PostgreSQL: `malformed array literal: "6e054778-fc7c-4608-a0e1-1996d64c4851"` (kode 22P02).
+> Root cause: `sql\`${members.id} = ANY(${memberIds})\`` — postgres.js mengirim array JS sebagai
+> satu nilai string (bukan array PostgreSQL `{uuid1,uuid2}`) → `array_in()` gagal parse.
+
+**Aturan mutlak:**
+```typescript
+// SALAH — postgres.js tidak serialize array JS ke array PostgreSQL dengan benar
+.where(sql`${column} = ANY(${jsArray})`)
+
+// SALAH — sql.raw() dengan string interpolation IDs = SQL injection vulnerability
+.where(sql`${column} = ANY(${sql.raw(`ARRAY[${ids.map(id => `'${id}'`).join(",")}]::uuid[]`)})`)
+
+// BENAR — generate WHERE column IN ($1, $2, $3) yang valid
+.where(inArray(column, jsArray))
+```
+
+`inArray(column, ids)` dari `drizzle-orm` adalah satu-satunya cara yang benar untuk filter array di project ini.
+Berlaku untuk semua tipe kolom: UUID, integer, text. Import: `import { inArray } from "drizzle-orm"`.
+Pastikan array tidak kosong sebelum panggil `inArray` — atau guard dengan `if (ids.length > 0)` dulu.
 
 #### Content-Disposition inline untuk PDF viewer
 `inline` → browser render (PDF terbuka). `attachment` → download paksa.
