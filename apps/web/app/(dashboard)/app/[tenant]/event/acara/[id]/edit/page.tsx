@@ -76,6 +76,8 @@ export default async function AcaraEditPage({
         showDonationPrompt: event.showDonationPrompt,
         enableCustomForm:   event.enableCustomForm,
         customFormFields:   (event.customFormFields as CustomFormField[]) ?? [],
+        showAttendeeStats:  event.showAttendeeStats,
+        attendeeStatsBy:    (event.attendeeStatsBy as string[]) ?? [],
         linkedCampaignId:   event.linkedCampaignId  ?? null,
         coverId:            event.coverId            ?? null,
         coverUrl,

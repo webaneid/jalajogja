@@ -1,14 +1,15 @@
 // Halaman publik event — tanpa auth, siapapun bisa akses dan mendaftar
-import { createTenantDb, db, tenants, members, contacts, profiles, tenantMemberships, getSettings } from "@jalajogja/db";
+import { createTenantDb, db, tenants, members, contacts, profiles, tenantMemberships, getSettings, addresses, refRegencies, refProvinces, refProfessions } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import { eq, and, or, count, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { CalendarDays, MapPin, Globe, Building2, Navigation, ExternalLink, Video, Ticket, UserCheck, CheckCircle2 } from "lucide-react";
+import { CalendarDays, MapPin, Globe, Building2, Navigation, ExternalLink, Video, Ticket, CheckCircle2 } from "lucide-react";
 import { isOwnHost } from "@/lib/is-own-host";
 import { EventRegisterForm } from "@/components/event/event-register-form";
 import type { CustomFormField } from "@/lib/event-custom-form";
+import { EventDetailTabs, type TicketStat, type AttendeeStatsData } from "@/components/event/event-detail-tabs";
 import { renderBody } from "@/lib/letter-render";
 import { generateQrDataUrl } from "@/lib/qr-code";
 import type { Metadata } from "next";
@@ -238,6 +239,156 @@ export default async function PublicEventPage({
     attendeeNames = rows.map((r) => r.name);
   }
 
+  // ── Tab Peserta: kuota per tiket (selalu fetch untuk tab, tidak tergantung showTicketCount) ──
+  type TicketCountFull = { ticketId: string; name: string; quota: number | null; used: number };
+  let ticketStatsForTab: TicketStat[] = [];
+  let confirmedCount = 0;
+
+  if (event.showAttendeeList) {
+    const usedRows = await tenantDb
+      .select({
+        ticketId: schema.eventRegistrations.ticketId,
+        used:     count(),
+      })
+      .from(schema.eventRegistrations)
+      .where(and(
+        eq(schema.eventRegistrations.eventId, event.id),
+        sql`${schema.eventRegistrations.status} IN ('confirmed','attended')`
+      ))
+      .groupBy(schema.eventRegistrations.ticketId);
+
+    const usedMap = new Map(usedRows.map((r) => [r.ticketId!, Number(r.used)]));
+    confirmedCount = usedRows.reduce((s, r) => s + Number(r.used), 0);
+
+    ticketStatsForTab = tickets.map((t) => ({
+      ticketId: t.id,
+      name:     t.name,
+      quota:    t.quota ?? null,
+      used:     usedMap.get(t.id) ?? 0,
+    }));
+  }
+
+  const totalQuota = tickets.every(t => t.quota != null)
+    ? tickets.reduce((s, t) => s + (t.quota ?? 0), 0)
+    : null;
+
+  // ── Tab Statistik: data breakdown per kategori ────────────────────────────
+  const attendeeStatsBy = (event.attendeeStatsBy as string[] | null) ?? [];
+  const emptyStats: AttendeeStatsData = { angkatan: [], kabupaten: [], provinsi: [], profesi: [] };
+  let eventStats: AttendeeStatsData = emptyStats;
+
+  if (event.showAttendeeStats && attendeeStatsBy.length > 0 && confirmedCount > 0) {
+    // Ambil semua memberId dari registrasi confirmed/attended
+    const regRows = await tenantDb
+      .select({ memberId: schema.eventRegistrations.memberId })
+      .from(schema.eventRegistrations)
+      .where(and(
+        eq(schema.eventRegistrations.eventId, event.id),
+        sql`${schema.eventRegistrations.status} IN ('confirmed','attended')`,
+        sql`${schema.eventRegistrations.memberId} IS NOT NULL`
+      ));
+
+    const memberIds = regRows.map(r => r.memberId!).filter(Boolean);
+
+    if (memberIds.length > 0) {
+      const memberRows = await db
+        .select({
+          id:               members.id,
+          graduationYear:   members.graduationYear,
+          graduationPeriod: members.graduationPeriod,
+          professionId:     members.professionId,
+          homeAddressId:    members.homeAddressId,
+        })
+        .from(members)
+        .where(sql`${members.id} = ANY(${memberIds})`);
+
+      // Angkatan
+      if (attendeeStatsBy.includes("angkatan")) {
+        const freq = new Map<string, number>();
+        for (const m of memberRows) {
+          if (!m.graduationYear) continue;
+          const label = m.graduationYear === 1999
+            ? (m.graduationPeriod === "awal" ? "1999 (Awal)" : m.graduationPeriod === "akhir" ? "1999 (Akhir)" : "1999")
+            : String(m.graduationYear);
+          freq.set(label, (freq.get(label) ?? 0) + 1);
+        }
+        eventStats.angkatan = [...freq.entries()]
+          .map(([label, count]) => ({ label, count }))
+          .sort((a, b) => a.label.localeCompare(b.label));
+      }
+
+      // Profesi
+      if (attendeeStatsBy.includes("profesi")) {
+        const professionIds = [...new Set(memberRows.map(m => m.professionId).filter(Boolean))] as number[];
+        const profNames = professionIds.length > 0
+          ? await db.select({ id: refProfessions.id, name: refProfessions.name })
+              .from(refProfessions)
+              .where(sql`${refProfessions.id} = ANY(${professionIds})`)
+          : [];
+        const profMap = new Map(profNames.map(p => [p.id, p.name]));
+        const freq = new Map<string, number>();
+        for (const m of memberRows) {
+          const label = m.professionId ? (profMap.get(m.professionId) ?? "Lainnya") : "Tidak Diisi";
+          freq.set(label, (freq.get(label) ?? 0) + 1);
+        }
+        eventStats.profesi = [...freq.entries()]
+          .map(([label, count]) => ({ label, count }))
+          .sort((a, b) => b.count - a.count);
+      }
+
+      // Kabupaten / Provinsi
+      if (attendeeStatsBy.includes("kabupaten") || attendeeStatsBy.includes("provinsi")) {
+        const addressIds = [...new Set(memberRows.map(m => m.homeAddressId).filter(Boolean))] as string[];
+        const addrRows = addressIds.length > 0
+          ? await db.select({ id: addresses.id, regencyId: addresses.regencyId, provinceId: addresses.provinceId })
+              .from(addresses)
+              .where(sql`${addresses.id} = ANY(${addressIds})`)
+          : [];
+
+        const addrMap = new Map(addrRows.map(a => [a.id, a]));
+
+        if (attendeeStatsBy.includes("kabupaten")) {
+          const regencyIds = [...new Set(addrRows.map(a => a.regencyId).filter(Boolean))] as number[];
+          const regNames = regencyIds.length > 0
+            ? await db.select({ id: refRegencies.id, name: refRegencies.name }).from(refRegencies)
+                .where(sql`${refRegencies.id} = ANY(${regencyIds})`)
+            : [];
+          const regMap = new Map(regNames.map(r => [r.id, r.name]));
+          const freq = new Map<string, number>();
+          for (const m of memberRows) {
+            if (!m.homeAddressId) continue;
+            const addr = addrMap.get(m.homeAddressId);
+            const label = addr?.regencyId ? (regMap.get(addr.regencyId) ?? "Tidak Diketahui") : "Tidak Diisi";
+            freq.set(label, (freq.get(label) ?? 0) + 1);
+          }
+          eventStats.kabupaten = [...freq.entries()]
+            .map(([label, count]) => ({ label, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 15);
+        }
+
+        if (attendeeStatsBy.includes("provinsi")) {
+          const provinceIds = [...new Set(addrRows.map(a => a.provinceId).filter(Boolean))] as number[];
+          const provNames = provinceIds.length > 0
+            ? await db.select({ id: refProvinces.id, name: refProvinces.name }).from(refProvinces)
+                .where(sql`${refProvinces.id} = ANY(${provinceIds})`)
+            : [];
+          const provMap = new Map(provNames.map(p => [p.id, p.name]));
+          const freq = new Map<string, number>();
+          for (const m of memberRows) {
+            if (!m.homeAddressId) continue;
+            const addr = addrMap.get(m.homeAddressId);
+            const label = addr?.provinceId ? (provMap.get(addr.provinceId) ?? "Tidak Diketahui") : "Tidak Diisi";
+            freq.set(label, (freq.get(label) ?? 0) + 1);
+          }
+          eventStats.provinsi = [...freq.entries()]
+            .map(([label, count]) => ({ label, count }))
+            .sort((a, b) => b.count - a.count);
+        }
+      }
+    }
+  }
+
   // Bangun info tiket untuk form (dengan sisa kuota)
   const ticketCountMap = new Map(ticketCounts.map((tc) => [tc.ticketId, tc.used]));
   const ticketsForForm = tickets.map((t) => ({
@@ -416,8 +567,18 @@ export default async function PublicEventPage({
       </div>
       <div className="grid gap-6 lg:grid-cols-[1fr_360px] items-start">
 
-        {/* ── Kiri: Gambar + Info + Deskripsi ── */}
+        {/* ── Kiri: Tab Detail / Peserta / Statistik ── */}
         <div className="space-y-6 min-w-0">
+          <EventDetailTabs
+            showAttendeeList={event.showAttendeeList}
+            showAttendeeStats={event.showAttendeeStats}
+            attendeeStatsBy={attendeeStatsBy}
+            confirmedCount={confirmedCount}
+            totalQuota={totalQuota}
+            ticketStats={ticketStatsForTab}
+            attendeeNames={attendeeNames}
+            stats={eventStats}
+            detailSlot={<>
             {/* Cover */}
             {coverUrl && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -513,24 +674,8 @@ export default async function PublicEventPage({
                 dangerouslySetInnerHTML={{ __html: renderBody(event.description, { imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${tenantSlug}` }) }}
               />
             )}
-
-            {/* Daftar peserta */}
-            {event.showAttendeeList && attendeeNames.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-sm font-semibold flex items-center gap-1.5">
-                  <UserCheck className="h-4 w-4 text-muted-foreground" />
-                  Peserta Terdaftar ({attendeeNames.length})
-                </p>
-                <div className="rounded-lg border border-border bg-card p-4">
-                  <ul className="space-y-1.5 text-sm text-muted-foreground columns-2">
-                    {attendeeNames.map((name, i) => (
-                      <li key={i} className="truncate">{name}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
-          </div>
+            </>}
+          /></div>
 
           {/* ── Kanan: Form Pendaftaran (sticky) ── */}
           <div className="lg:sticky lg:top-6 space-y-4">

@@ -73,12 +73,17 @@ export function createEventsTable(s: ReturnType<typeof pgSchema>) {
     maxCapacity: integer("max_capacity"),
 
     // Kontrol tampilan di halaman publik
-    showAttendeeList: boolean("show_attendee_list").notNull().default(false),
-    showTicketCount:  boolean("show_ticket_count").notNull().default(true),
-    requireApproval:  boolean("require_approval").notNull().default(false),
+    showAttendeeList:  boolean("show_attendee_list").notNull().default(false),
+    showTicketCount:   boolean("show_ticket_count").notNull().default(true),
+    requireApproval:   boolean("require_approval").notNull().default(false),
     enableCustomForm:  boolean("enable_custom_form").notNull().default(false),
     // definisi field custom form — array CustomFormField[]
     customFormFields:  jsonb("custom_form_fields").default([]),
+
+    // Statistik peserta — opsional, pilih breakdown yang ditampilkan
+    showAttendeeStats: boolean("show_attendee_stats").notNull().default(false),
+    // array of: "angkatan" | "kabupaten" | "provinsi" | "profesi"
+    attendeeStatsBy:   jsonb("attendee_stats_by").$type<string[]>().default([]),
 
     // Cover image — FK ke media.id via SQL
     coverId: uuid("cover_id"),

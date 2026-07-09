@@ -68,6 +68,8 @@ export default async function AcaraNewPage({
         showDonationPrompt: false,
         enableCustomForm:   false,
         customFormFields:   [],
+        showAttendeeStats:  false,
+        attendeeStatsBy:    [],
         linkedCampaignId:   null,
         coverId:            null,
         coverUrl:         null,

@@ -70,6 +70,8 @@ export type EventFormProps = {
     showDonationPrompt: boolean;
     enableCustomForm:   boolean;
     customFormFields:   CustomFormField[];
+    showAttendeeStats:  boolean;
+    attendeeStatsBy:    string[];
     linkedCampaignId:   string | null;
     coverId:            string | null;
     coverUrl:           string | null;
@@ -355,6 +357,8 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
   const [showDonationPrompt, setShowDonationPrompt] = useState(initialData.showDonationPrompt);
   const [enableCustomForm,   setEnableCustomForm]   = useState(initialData.enableCustomForm);
   const [customFormFields,   setCustomFormFields]   = useState<CustomFormField[]>(initialData.customFormFields ?? []);
+  const [showAttendeeStats,  setShowAttendeeStats]  = useState(initialData.showAttendeeStats);
+  const [attendeeStatsBy,    setAttendeeStatsBy]    = useState<string[]>(initialData.attendeeStatsBy ?? []);
   const [linkedCampaignId,   setLinkedCampaignId]   = useState<string | null>(initialData.linkedCampaignId);
   const [cover,    setCover]    = useState<CoverImage>(
     initialData.coverId && initialData.coverUrl
@@ -464,6 +468,8 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
       showDonationPrompt,
       enableCustomForm,
       customFormFields:  enableCustomForm ? customFormFields : [],
+      showAttendeeStats,
+      attendeeStatsBy:   showAttendeeStats ? attendeeStatsBy : [],
       linkedCampaignId:  showDonationPrompt ? (linkedCampaignId ?? null) : null,
       coverId:           cover?.id ?? null,
       tickets: tickets.map((t, i) => ({
@@ -785,6 +791,37 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, initialD
               checked={requireApproval}
               onChange={setRequireApproval}
             />
+            <div className="space-y-2 border-t border-border pt-3">
+              <ToggleRow
+                label="Tampilkan statistik peserta"
+                hint="Tab statistik akan muncul di halaman event publik"
+                checked={showAttendeeStats}
+                onChange={(v) => { setShowAttendeeStats(v); if (!v) setAttendeeStatsBy([]); }}
+              />
+              {showAttendeeStats && (
+                <div className="pl-2 space-y-1.5">
+                  <p className="text-xs text-muted-foreground font-medium">Statistik berdasarkan:</p>
+                  {(["angkatan", "kabupaten", "provinsi", "profesi"] as const).map((key) => (
+                    <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={attendeeStatsBy.includes(key)}
+                        onChange={(e) => {
+                          setAttendeeStatsBy(prev =>
+                            e.target.checked ? [...prev, key] : prev.filter(k => k !== key)
+                          );
+                        }}
+                        className="rounded border-input"
+                      />
+                      {key === "angkatan"  ? "Angkatan (Tahun Lulus)" :
+                       key === "kabupaten" ? "Kabupaten / Kota" :
+                       key === "provinsi"  ? "Provinsi" :
+                       "Profesi"}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Form Tambahan Pendaftaran — dynamic field builder */}

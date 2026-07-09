@@ -50,6 +50,8 @@ export type EventData = {
   showDonationPrompt:  boolean;
   enableCustomForm:    boolean;
   customFormFields:    CustomFormField[];
+  showAttendeeStats:   boolean;
+  attendeeStatsBy:     string[];
   linkedCampaignId?:   string | null;
   coverId?:            string | null;
   tickets:             TicketInput[];
@@ -221,6 +223,8 @@ export async function createEventAction(
         showDonationPrompt: data.showDonationPrompt,
         enableCustomForm:   data.enableCustomForm,
         customFormFields:   data.customFormFields ?? [],
+        showAttendeeStats:  data.showAttendeeStats,
+        attendeeStatsBy:    data.attendeeStatsBy   ?? [],
         linkedCampaignId:   data.linkedCampaignId ?? null,
         coverId:          data.coverId                  ?? null,
         metaTitle:        data.metaTitle?.trim()       || null,
@@ -302,6 +306,8 @@ export async function updateEventAction(
         showDonationPrompt: data.showDonationPrompt,
         enableCustomForm:   data.enableCustomForm,
         customFormFields:   data.customFormFields ?? [],
+        showAttendeeStats:  data.showAttendeeStats,
+        attendeeStatsBy:    data.attendeeStatsBy   ?? [],
         linkedCampaignId:   data.linkedCampaignId ?? null,
         coverId:          data.coverId                  ?? null,
         metaTitle:        data.metaTitle?.trim()       || null,
