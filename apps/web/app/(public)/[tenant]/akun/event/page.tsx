@@ -1,6 +1,6 @@
 import { redirect }     from "next/navigation";
 import { headers }      from "next/headers";
-import { eq, and, or, desc, sql } from "drizzle-orm";
+import { eq, and, or, desc, inArray, sql } from "drizzle-orm";
 import { auth }         from "@/lib/auth";
 import { db, members, contacts, profiles, createTenantDb } from "@jalajogja/db";
 import { generateQrDataUrl } from "@/lib/qr-code";
@@ -95,25 +95,47 @@ export default async function AkunEventPage({ params }: { params: Params }) {
     .orderBy(desc(schema.eventRegistrations.createdAt))
     .limit(50);
 
-  // Generate QR untuk tiap registrasi
-  const items = await Promise.all(regs.map(async (r) => {
-    const lines = [
-      `EVENT: ${r.eventTitle ?? "—"}`,
-      `TIKET: ${r.ticketName ?? "—"}`,
-      `NO: ${r.registrationNumber}`,
-      `NAMA: ${r.attendeeName}`,
-      r.attendeePhone ? `HP: ${displayPhone(r.attendeePhone)}` : null,
-      r.attendeeEmail ? `EMAIL: ${r.attendeeEmail}` : null,
-      `STATUS: ${(r.status ?? "").toUpperCase()}`,
-    ].filter(Boolean).join("\n");
+  // Cari invoice yang terkait dengan registrasi ini (untuk link pembayaran)
+  const regIds = regs.map(r => r.id);
+  let invoiceMap: Record<string, string> = {};
+  if (regIds.length > 0) {
+    const invoiceRows = await tenantDb
+      .select({ sourceId: schema.invoices.sourceId, id: schema.invoices.id })
+      .from(schema.invoices)
+      .where(and(
+        sql`${schema.invoices.sourceType} = 'event_registration'`,
+        inArray(schema.invoices.sourceId, regIds),
+      ));
+    for (const row of invoiceRows) {
+      if (row.sourceId) invoiceMap[row.sourceId] = row.id;
+    }
+  }
 
-    const qrDataUrl = await generateQrDataUrl(lines, "#111827");
+  // Generate QR untuk tiap registrasi (hanya jika sudah confirmed/attended)
+  const items = await Promise.all(regs.map(async (r) => {
+    const status = r.status ?? "pending";
+    const isPending = status === "pending";
+
+    // QR hanya untuk tiket yang sudah dikonfirmasi
+    let qrDataUrl: string | null = null;
+    if (!isPending) {
+      const lines = [
+        `EVENT: ${r.eventTitle ?? "—"}`,
+        `TIKET: ${r.ticketName ?? "—"}`,
+        `NO: ${r.registrationNumber}`,
+        `NAMA: ${r.attendeeName}`,
+        r.attendeePhone ? `HP: ${displayPhone(r.attendeePhone)}` : null,
+        r.attendeeEmail ? `EMAIL: ${r.attendeeEmail}` : null,
+        `STATUS: ${status.toUpperCase()}`,
+      ].filter(Boolean).join("\n");
+      qrDataUrl = await generateQrDataUrl(lines, "#111827");
+    }
 
     return {
       id:                 r.id,
       registrationNumber: r.registrationNumber,
-      status:             r.status ?? "pending",
-      statusLabel:        STATUS_LABEL[r.status ?? ""] ?? r.status ?? "—",
+      status,
+      statusLabel:        STATUS_LABEL[status] ?? status,
       attendeeName:       r.attendeeName,
       attendeePhone:      displayPhone(r.attendeePhone),
       attendeeEmail:      r.attendeeEmail,
@@ -122,6 +144,7 @@ export default async function AkunEventPage({ params }: { params: Params }) {
       eventSlug:          r.eventSlug ?? null,
       eventStartsAt:      r.eventStartsAt ? r.eventStartsAt.toISOString() : null,
       qrDataUrl,
+      invoiceId:          invoiceMap[r.id] ?? null,
       tenantSlug:         slug,
     };
   }));

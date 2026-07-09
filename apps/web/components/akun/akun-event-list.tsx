@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, Ticket, X, CheckCircle2 } from "lucide-react";
+import { CalendarDays, Ticket, X, CheckCircle2, Clock, ExternalLink } from "lucide-react";
 
 type EventItem = {
   id:                 string;
@@ -15,7 +15,8 @@ type EventItem = {
   eventTitle:         string;
   eventSlug:          string | null;
   eventStartsAt:      string | null;
-  qrDataUrl:          string;
+  qrDataUrl:          string | null;
+  invoiceId:          string | null;
   tenantSlug:         string;
 };
 
@@ -96,10 +97,13 @@ export function AkunEventList({ items }: Props) {
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="bg-primary px-4 py-3 flex items-center justify-between gap-2">
+            <div className={`px-4 py-3 flex items-center justify-between gap-2 ${selected.status === "pending" ? "bg-amber-500" : "bg-primary"}`}>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-primary-foreground" />
-                <p className="text-sm font-semibold text-primary-foreground">Tiket Pendaftaran</p>
+                {selected.status === "pending"
+                  ? <Clock className="h-4 w-4 text-white" />
+                  : <CheckCircle2 className="h-4 w-4 text-primary-foreground" />
+                }
+                <p className="text-sm font-semibold text-white">Tiket Pendaftaran</p>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] bg-white/20 text-white px-2 py-0.5 rounded-full font-bold">
@@ -111,11 +115,33 @@ export function AkunEventList({ items }: Props) {
               </div>
             </div>
 
-            {/* QR Code */}
-            <div className="flex justify-center py-5 bg-white dark:bg-neutral-950 border-b border-dashed border-border">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={selected.qrDataUrl} alt="QR Tiket" className="w-44 h-44" />
-            </div>
+            {/* QR Code — hanya tampil jika sudah confirmed/attended */}
+            {selected.status !== "pending" && selected.qrDataUrl ? (
+              <div className="flex justify-center py-5 bg-white dark:bg-neutral-950 border-b border-dashed border-border">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={selected.qrDataUrl} alt="QR Tiket" className="w-44 h-44" />
+              </div>
+            ) : selected.status === "pending" ? (
+              /* Pending: tampilkan link ke invoice pembayaran */
+              <div className="px-4 py-5 border-b border-dashed border-border bg-amber-50 dark:bg-amber-950/30">
+                <p className="text-sm text-amber-800 dark:text-amber-200 font-medium mb-3">
+                  Pendaftaran Anda menunggu pembayaran.
+                </p>
+                {selected.invoiceId ? (
+                  <a
+                    href={`/${selected.tenantSlug}/invoice/${selected.invoiceId}`}
+                    className="flex items-center justify-center gap-2 w-full rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2.5 transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Lihat Invoice &amp; Bayar Sekarang
+                  </a>
+                ) : (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    Hubungi panitia untuk informasi pembayaran.
+                  </p>
+                )}
+              </div>
+            ) : null}
 
             {/* Info */}
             <div className="px-4 py-4 space-y-2.5 text-sm">
@@ -151,9 +177,11 @@ export function AkunEventList({ items }: Props) {
                   </div>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground pt-1 text-center">
-                Tunjukkan QR ini kepada panitia saat acara
-              </p>
+              {selected.status !== "pending" && (
+                <p className="text-[10px] text-muted-foreground pt-1 text-center">
+                  Tunjukkan QR ini kepada panitia saat acara
+                </p>
+              )}
             </div>
           </div>
         </div>
