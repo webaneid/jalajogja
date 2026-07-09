@@ -98,7 +98,7 @@ export default async function PesananPage({
     if (overrides.q      ?? q)      sp.set("q",      overrides.q      ?? q ?? "");
     if (overrides.status ?? status) sp.set("status", overrides.status ?? status ?? "");
     if (overrides.page)             sp.set("page",   overrides.page);
-    return `/${slug}/toko/pesanan?${sp.toString()}`;
+    return `/app/${slug}/toko/pesanan?${sp.toString()}`;
   };
 
   const statuses = ["all", "pending", "waiting_verification", "partial", "paid", "cancelled"];
@@ -141,7 +141,7 @@ export default async function PesananPage({
       </div>
 
       {/* Search */}
-      <form method="GET" action={`/${slug}/toko/pesanan`}>
+      <form method="GET" action={`/app/${slug}/toko/pesanan`}>
         {status && <input type="hidden" name="status" value={status} />}
         <div className="max-w-sm">
           <input
@@ -175,11 +175,7 @@ export default async function PesananPage({
             ) : (
               rows.map((row) => {
                 const st = INV_STATUS[row.status] ?? { label: row.status, cls: "bg-zinc-100 text-zinc-500" };
-                // Admin order → detail lama; cart → halaman fulfillment
-                const isAdmin = row.sourceType === "order";
-                const detailHref = isAdmin
-                  ? `/${slug}/toko/pesanan/${row.sourceId}`
-                  : `/${slug}/toko/pesanan/invoice/${row.id}`;
+                const detailHref = `/app/${slug}/toko/pesanan/invoice/${row.id}`;
                 return (
                   <tr key={row.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-3">

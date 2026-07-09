@@ -119,7 +119,7 @@ export function OrderCreateClient({ slug, products }: Props) {
     startTransition(async () => {
       const res = await createOrderAction(slug, data);
       if (res.success) {
-        router.push(`/app/${slug}/toko/pesanan/${res.data.orderId}`);
+        router.push(`/app/${slug}/toko/pesanan/invoice/${res.data.invoiceId}`);
       } else {
         setError(res.error);
       }

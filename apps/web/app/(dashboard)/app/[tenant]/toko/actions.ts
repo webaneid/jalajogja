@@ -431,7 +431,7 @@ export async function deleteProductAction(
 export async function createOrderAction(
   slug: string,
   data: OrderData
-): Promise<ActionResult<{ orderId: string; orderNumber: string }>> {
+): Promise<ActionResult<{ invoiceId: string; invoiceNumber: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
   if (!hasFullAccess(access.tenantUser, "toko")) return { success: false as const, error: "Akses ditolak." };
@@ -443,17 +443,18 @@ export async function createOrderAction(
   if (data.discount < 0)
     return { success: false, error: "Diskon tidak boleh negatif." };
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
 
   // Ambil semua produk yang dipesan sekaligus
   const productIds = [...new Set(data.items.map((i) => i.productId))];
   const products = await db
     .select({
-      id:    schema.products.id,
-      name:  schema.products.name,
-      sku:   schema.products.sku,
-      price: schema.products.price,
-      stock: schema.products.stock,
+      id:     schema.products.id,
+      name:   schema.products.name,
+      sku:    schema.products.sku,
+      price:  schema.products.price,
+      stock:  schema.products.stock,
       status: schema.products.status,
     })
     .from(schema.products)
@@ -477,71 +478,39 @@ export async function createOrderAction(
       };
   }
 
-  // Hitung total
-  let subtotal = 0;
-  const itemRows = data.items.map((item) => {
+  // Hitung item rows untuk invoice
+  const invoiceItems = data.items.map((item) => {
     const p = productMap.get(item.productId)!;
-    const price   = parseFloat(String(p.price));
-    const itemSub = price * item.qty;
-    subtotal += itemSub;
     return {
-      productId:    item.productId,
-      productName:  p.name,
-      skuAtOrder:   p.sku ?? null,
-      qty:          item.qty,
-      priceAtOrder: price.toFixed(2),
-      subtotal:     itemSub.toFixed(2),
+      itemType:  "product" as const,
+      itemId:    item.productId,
+      name:      p.name,
+      unitPrice: parseFloat(String(p.price)),
+      quantity:  item.qty,
     };
   });
 
-  const discount = data.discount ?? 0;
-  const total    = Math.max(0, subtotal - discount);
-
   try {
-    const orderNumber = await generateOrderNumber(db, schema);
+    // Gabungkan alamat pengiriman ke notes jika ada
+    const notesWithAddress = [
+      data.shippingAddress?.trim() ? `Alamat: ${data.shippingAddress.trim()}` : null,
+      data.notes?.trim() ?? null,
+    ].filter(Boolean).join("\n") || null;
 
-    const [order] = await db
-      .insert(schema.orders)
-      .values({
-        orderNumber,
-        customerName:    data.customerName.trim(),
-        customerEmail:   data.customerEmail?.trim()  || null,
-        customerPhone:   data.customerPhone?.trim()  || null,
-        shippingAddress: data.shippingAddress?.trim()|| null,
-        status:          "pending",
-        subtotal:        subtotal.toFixed(2),
-        discount:        discount.toFixed(2),
-        total:           total.toFixed(2),
-        notes:           data.notes?.trim()          || null,
-      })
-      .returning({ id: schema.orders.id, orderNumber: schema.orders.orderNumber });
-
-    // Insert items
-    await db
-      .insert(schema.orderItems)
-      .values(itemRows.map((r) => ({ ...r, orderId: order.id })));
-
-    // Buat invoice universal untuk order ini
-    const tenantDb = createTenantDb(slug);
-    await createLinkedInvoice(tenantDb, {
+    const { invoiceId, invoiceNumber } = await createLinkedInvoice(tenantDb, {
       sourceType:    "order",
-      sourceId:      order.id,
+      sourceId:      crypto.randomUUID(),
       customerName:  data.customerName.trim(),
       customerPhone: data.customerPhone?.trim() ?? null,
       customerEmail: data.customerEmail?.trim() ?? null,
-      items: itemRows.map((r) => ({
-        itemType:  "product" as const,
-        itemId:    r.productId,
-        name:      r.productName,
-        unitPrice: parseFloat(r.priceAtOrder),
-        quantity:  r.qty,
-      })),
-      discount: discount,
-      createdBy: access.userId,
+      items:         invoiceItems,
+      discount:      data.discount ?? 0,
+      notes:         notesWithAddress,
+      createdBy:     access.userId,
     });
 
     revalidateToko(slug);
-    return { success: true, data: { orderId: order.id, orderNumber: order.orderNumber } };
+    return { success: true, data: { invoiceId, invoiceNumber } };
   } catch (err) {
     console.error("[createOrderAction]", err);
     return { success: false, error: "Gagal membuat pesanan." };

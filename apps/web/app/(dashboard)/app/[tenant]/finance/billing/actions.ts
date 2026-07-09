@@ -14,6 +14,44 @@ type ActionResult<T = void> =
   | { success: true; data: T }
   | { success: false; error: string };
 
+// ─── generateEventRegNumber ───────────────────────────────────────────────────
+// Sama dengan generateRegistrationNumber di event/actions.ts.
+// Di-duplikasi di sini agar billing tidak bergantung ke modul event.
+
+async function generateEventRegNumber(
+  tenantDb: ReturnType<typeof createTenantDb>,
+): Promise<string> {
+  const { db, schema } = tenantDb;
+  const now    = new Date();
+  const year   = now.getFullYear();
+  const month  = now.getMonth() + 1;
+  const yyyymm = `${year}${String(month).padStart(2, "0")}`;
+
+  const nextNumber = await db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(schema.eventRegistrationSequences)
+      .where(
+        sql`${schema.eventRegistrationSequences.year}  = ${year}
+        AND ${schema.eventRegistrationSequences.month} = ${month}
+        FOR UPDATE`
+      );
+
+    if (rows.length === 0) {
+      await tx.insert(schema.eventRegistrationSequences).values({ year, month, counter: 1 });
+      return 1;
+    }
+    const next = rows[0].counter + 1;
+    await tx
+      .update(schema.eventRegistrationSequences)
+      .set({ counter: next })
+      .where(eq(schema.eventRegistrationSequences.id, rows[0].id));
+    return next;
+  });
+
+  return `EVT-${yyyymm}-${String(nextNumber).padStart(5, "0")}`;
+}
+
 export type InvoiceItemInput = {
   itemType: "product" | "ticket" | "donation" | "custom";
   itemId?: string;
@@ -318,6 +356,67 @@ export async function confirmInvoicePaymentAction(
         for (const [cId, amt] of Object.entries(campaignAmounts)) {
           await tx.update(schema.campaigns).set({ collectedAmount: sql`collected_amount + ${String(amt)}` }).where(eq(schema.campaigns.id, cId));
         }
+
+        // Auto-create event_registrations dari tiket yang dibeli via cart
+        const ticketItems = await tx
+          .select({
+            itemId:      schema.invoiceItems.itemId,
+            name:        schema.invoiceItems.name,
+            description: schema.invoiceItems.description,
+          })
+          .from(schema.invoiceItems)
+          .where(and(
+            eq(schema.invoiceItems.invoiceId, invoiceId),
+            eq(schema.invoiceItems.itemType, "ticket"),
+          ));
+
+        for (const item of ticketItems) {
+          if (!item.itemId) continue;
+
+          const [existing] = await tx
+            .select({ id: schema.eventRegistrations.id })
+            .from(schema.eventRegistrations)
+            .where(and(
+              eq(schema.eventRegistrations.ticketId, item.itemId),
+              sql`${schema.eventRegistrations.customFields}->>'sourceInvoiceId' = ${invoiceId}`,
+            ))
+            .limit(1);
+          if (existing) continue;
+
+          let attendeeName  = item.name ?? "Peserta";
+          let attendeePhone: string | null = null;
+          let attendeeEmail: string | null = null;
+          let extraFields:   Record<string, unknown> | null = null;
+          try {
+            const p = JSON.parse(item.description ?? "{}") as Record<string, unknown>;
+            attendeeName  = String(p.attendeeName ?? item.name ?? "Peserta").trim();
+            attendeePhone = p.attendeePhone ? String(p.attendeePhone) : null;
+            attendeeEmail = p.attendeeEmail ? String(p.attendeeEmail) : null;
+            extraFields   = p.customFieldAnswers ? (p.customFieldAnswers as Record<string, unknown>) : null;
+          } catch { /* gunakan default */ }
+
+          const [ticket] = await tx
+            .select({ eventId: schema.eventTickets.eventId })
+            .from(schema.eventTickets)
+            .where(eq(schema.eventTickets.id, item.itemId))
+            .limit(1);
+          if (!ticket?.eventId) continue;
+
+          const regNumber = await generateEventRegNumber(tenantDb);
+
+          await tx.insert(schema.eventRegistrations).values({
+            eventId:            ticket.eventId,
+            ticketId:           item.itemId,
+            memberId:           inv.memberId ?? null,
+            profileId:          inv.profileId ?? null,
+            attendeeName,
+            attendeePhone,
+            attendeeEmail,
+            registrationNumber: regNumber,
+            status:             "confirmed",
+            customFields:       { sourceInvoiceId: invoiceId, ...(extraFields ?? {}) },
+          });
+        }
       }
 
       return payment.id;
@@ -519,12 +618,73 @@ export async function verifySubmittedPaymentAction(
           await tx.update(schema.campaigns).set({ collectedAmount: sql`collected_amount + ${String(amt)}` }).where(eq(schema.campaigns.id, cId));
         }
 
-        // Konfirmasi pendaftaran event jika invoice terhubung ke event_registration
+        // Konfirmasi pendaftaran event jika invoice terhubung ke event_registration (alur lama)
         if (inv.sourceType === "event_registration" && inv.sourceId) {
           await tx
             .update(schema.eventRegistrations)
             .set({ status: "confirmed", updatedAt: new Date() })
             .where(eq(schema.eventRegistrations.id, inv.sourceId));
+        }
+
+        // Auto-create event_registrations dari tiket yang dibeli via cart (E10 flow)
+        const ticketItems = await tx
+          .select({
+            itemId:      schema.invoiceItems.itemId,
+            name:        schema.invoiceItems.name,
+            description: schema.invoiceItems.description,
+          })
+          .from(schema.invoiceItems)
+          .where(and(
+            eq(schema.invoiceItems.invoiceId, inv.id),
+            eq(schema.invoiceItems.itemType, "ticket"),
+          ));
+
+        for (const item of ticketItems) {
+          if (!item.itemId) continue;
+
+          const [existing] = await tx
+            .select({ id: schema.eventRegistrations.id })
+            .from(schema.eventRegistrations)
+            .where(and(
+              eq(schema.eventRegistrations.ticketId, item.itemId),
+              sql`${schema.eventRegistrations.customFields}->>'sourceInvoiceId' = ${inv.id}`,
+            ))
+            .limit(1);
+          if (existing) continue;
+
+          let attendeeName  = item.name ?? "Peserta";
+          let attendeePhone: string | null = null;
+          let attendeeEmail: string | null = null;
+          let extraFields:   Record<string, unknown> | null = null;
+          try {
+            const p = JSON.parse(item.description ?? "{}") as Record<string, unknown>;
+            attendeeName  = String(p.attendeeName ?? item.name ?? "Peserta").trim();
+            attendeePhone = p.attendeePhone ? String(p.attendeePhone) : null;
+            attendeeEmail = p.attendeeEmail ? String(p.attendeeEmail) : null;
+            extraFields   = p.customFieldAnswers ? (p.customFieldAnswers as Record<string, unknown>) : null;
+          } catch { /* gunakan default */ }
+
+          const [ticket] = await tx
+            .select({ eventId: schema.eventTickets.eventId })
+            .from(schema.eventTickets)
+            .where(eq(schema.eventTickets.id, item.itemId))
+            .limit(1);
+          if (!ticket?.eventId) continue;
+
+          const regNumber = await generateEventRegNumber(tenantDb);
+
+          await tx.insert(schema.eventRegistrations).values({
+            eventId:            ticket.eventId,
+            ticketId:           item.itemId,
+            memberId:           inv.memberId ?? null,
+            profileId:          inv.profileId ?? null,
+            attendeeName,
+            attendeePhone,
+            attendeeEmail,
+            registrationNumber: regNumber,
+            status:             "confirmed",
+            customFields:       { sourceInvoiceId: inv.id, ...(extraFields ?? {}) },
+          });
         }
       }
     });
