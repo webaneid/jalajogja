@@ -244,7 +244,7 @@ export function GeneralSettingsForm({
       onClose={() => setMediaPickerOpen(false)}
       onSelect={(media) => {
         if (pickerTarget === "logo") set("logoUrl")(media.url);
-        if (pickerTarget === "favicon") set("faviconUrl")(media.url);
+        if (pickerTarget === "favicon") set("faviconUrl")(media.variants?.square ?? media.url);
         setMediaPickerOpen(false);
       }}
       module="general"
