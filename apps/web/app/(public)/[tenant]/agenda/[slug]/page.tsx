@@ -186,10 +186,14 @@ export default async function PublicEventPage({
   const allBanks = (bankRow?.value as BankAccount[] | null) ?? [];
   const allQris  = (qrisRow?.value  as QrisAccount[] | null) ?? [];
 
-  // Filter: "donasi" atau "general" sebagai fallback pembayaran event
-  // TODO: tambah kategori "event" di settings payment saat ada tiket berbayar
-  const banks        = allBanks.filter((b) => b.categories?.includes("donasi") || b.categories?.includes("general"));
-  const qrisAccounts = allQris.filter((q)  => q.categories?.includes("donasi") || q.categories?.includes("general"));
+  // Filter: cari kategori "event" dulu, fallback ke "general"
+  function filterByCategory<T extends { categories?: string[] }>(accounts: T[], category: string): T[] {
+    const specific = accounts.filter((a) => a.categories?.includes(category));
+    if (specific.length > 0) return specific;
+    return accounts.filter((a) => a.categories?.includes("general"));
+  }
+  const banks        = filterByCategory(allBanks, "event");
+  const qrisAccounts = filterByCategory(allQris,  "event");
 
   const hasPaidTicket = tickets.some((t) => parseFloat(String(t.price)) > 0);
 

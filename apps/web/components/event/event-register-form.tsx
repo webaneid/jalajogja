@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { CheckCircle2, Ticket, Loader2, Copy, Check } from "lucide-react";
+import { CheckCircle2, Ticket, Loader2 } from "lucide-react";
 import { registerForEventAction } from "@/app/(dashboard)/app/[tenant]/event/actions";
 import { DonationPromptModal } from "@/components/event/public/donation-prompt-modal";
 import type { CustomFormField } from "@/lib/event-custom-form";
@@ -113,13 +113,13 @@ export function EventRegisterForm({
 
   // State UI
   const [error,   setError]   = useState<string | null>(null);
-  const [copied,  setCopied]  = useState(false);
   const [success, setSuccess] = useState<{
     registrationNumber: string;
     isPaid:             boolean;
     amount?:            number;
     uniqueCode?:        number;
     totalAmount?:       number;
+    invoiceId?:         string;
   } | null>(null);
 
   const [isPending, startTransition] = useTransition();
@@ -128,8 +128,6 @@ export function EventRegisterForm({
   const isPaidTicket         = (selectedTicket?.price ?? 0) > 0;
   // Tiket terpilih membutuhkan keanggotaan tapi user belum terdaftar
   const selectedTicketLocked = Boolean(selectedTicket?.requiresMembership && !currentUserIsEnrolled);
-  const selectedBank   = banks.find((b) => b.id === bankAccountRef);
-  const selectedQris   = qrisAccounts.find((q) => q.id === qrisAccountRef);
 
   function handleSubmit() {
     setError(null);
@@ -201,19 +199,13 @@ export function EventRegisterForm({
         amount:             res.data.amount,
         uniqueCode:         res.data.uniqueCode,
         totalAmount:        res.data.totalAmount,
+        invoiceId:          res.data.invoiceId,
       });
 
       // Tampilkan modal donasi jika event gratis + admin aktifkan prompt
       if (!res.data.isPaid && donationPrompt) {
         setShowDonationModal(true);
       }
-    });
-  }
-
-  function handleCopy(text: string) {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     });
   }
 
@@ -243,71 +235,30 @@ export function EventRegisterForm({
           </div>
         )}
 
-        {/* Transfer — tampilkan instruksi pembayaran */}
-        {!success.isPaid && success.amount !== undefined && method === "transfer" && (
+        {/* Tiket berbayar — arahkan ke halaman pembayaran invoice */}
+        {!success.isPaid && success.amount !== undefined && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3 text-sm dark:bg-amber-950 dark:border-amber-700">
             <p className="font-semibold text-amber-800 dark:text-amber-200">Selesaikan Pembayaran</p>
-            <div className="space-y-2 text-amber-900 dark:text-amber-100">
-              <p>
-                Transfer sebesar{" "}
-                <span className="font-bold text-base">{formatRupiah(success.totalAmount ?? success.amount)}</span>
-                {(success.uniqueCode ?? 0) > 0 && (
-                  <span className="text-xs ml-1">
-                    (termasuk kode unik{" "}
-                    <span className="font-mono">{success.uniqueCode}</span>)
-                  </span>
-                )}
-              </p>
-              {selectedBank && (
-                <div className="rounded-md bg-white dark:bg-black/20 border border-amber-200 dark:border-amber-800 p-3 space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground">{selectedBank.bankName}</p>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-semibold">{selectedBank.accountNumber}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(selectedBank.accountNumber)}
-                      className="text-amber-600 hover:text-amber-800"
-                    >
-                      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    </button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">a.n. {selectedBank.accountName}</p>
-                </div>
-              )}
-              <p className="text-xs">Setelah transfer, tunggu konfirmasi dari panitia.</p>
-            </div>
-          </div>
-        )}
-
-        {/* QRIS — tampilkan gambar */}
-        {!success.isPaid && success.amount !== undefined && method === "qris" && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3 text-sm dark:bg-amber-950 dark:border-amber-700">
-            <p className="font-semibold text-amber-800 dark:text-amber-200">Selesaikan Pembayaran via QRIS</p>
             <p className="text-amber-900 dark:text-amber-100">
-              Scan QRIS dan bayar sebesar{" "}
-              <span className="font-bold">{formatRupiah(success.totalAmount ?? success.amount)}</span>
+              Total:{" "}
+              <span className="font-bold text-base">{formatRupiah(success.totalAmount ?? success.amount)}</span>
+              {(success.uniqueCode ?? 0) > 0 && (
+                <span className="text-xs ml-1">
+                  (termasuk kode unik{" "}
+                  <span className="font-mono">{success.uniqueCode}</span>)
+                </span>
+              )}
             </p>
-            {selectedQris?.imageUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={selectedQris.imageUrl}
-                alt="QRIS"
-                className="w-48 mx-auto rounded-lg border border-amber-200"
-              />
+            {success.invoiceId ? (
+              <a
+                href={`${baseUrl}/invoice/${success.invoiceId}`}
+                className="inline-flex items-center gap-1.5 rounded-md bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-800 transition-colors"
+              >
+                Konfirmasi Pembayaran →
+              </a>
+            ) : (
+              <p className="text-xs text-amber-700 dark:text-amber-300">Hubungi panitia untuk konfirmasi pembayaran.</p>
             )}
-            <p className="text-xs text-amber-700 dark:text-amber-300">
-              Nama QRIS: {selectedQris?.name ?? "—"}
-            </p>
-          </div>
-        )}
-
-        {/* Cash */}
-        {!success.isPaid && success.amount !== undefined && method === "cash" && (
-          <div className="rounded-lg border border-blue-300 bg-blue-50 p-4 text-sm dark:bg-blue-950 dark:border-blue-700">
-            <p className="font-semibold text-blue-800 dark:text-blue-200">Pembayaran Tunai</p>
-            <p className="text-blue-900 dark:text-blue-100 mt-1">
-              Bayar sebesar <span className="font-bold">{formatRupiah(success.amount)}</span> kepada panitia saat acara.
-            </p>
           </div>
         )}
       </div>

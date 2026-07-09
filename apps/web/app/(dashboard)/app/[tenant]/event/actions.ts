@@ -501,6 +501,7 @@ export async function registerForEventAction(
   uniqueCode?:        number;
   totalAmount?:       number;
   paymentId?:         string;
+  invoiceId?:         string;
 }>> {
   if (!data.attendeeName.trim())
     return { success: false, error: "Nama peserta wajib diisi." };
@@ -702,7 +703,7 @@ export async function registerForEventAction(
       const ticketName = ticket.name ?? "Tiket Event";
 
       // Buat invoice universal untuk registrasi berbayar
-      await createLinkedInvoice(tenantDb, {
+      const { invoiceId } = await createLinkedInvoice(tenantDb, {
         sourceType:    "event_registration",
         sourceId:      reg.id,
         customerName:  data.attendeeName.trim(),
@@ -728,6 +729,7 @@ export async function registerForEventAction(
           uniqueCode,
           totalAmount:        total,
           paymentId:          payment.id,
+          invoiceId,
         },
       };
     }
