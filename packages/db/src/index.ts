@@ -35,6 +35,7 @@ export {
 export {
   createLinkedInvoice,
   syncInvoicePayment,
+  generateUniqueCode,
   type LinkedInvoiceItem,
   type CreateLinkedInvoiceInput,
 } from "./helpers/billing";

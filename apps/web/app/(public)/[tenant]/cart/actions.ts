@@ -3,8 +3,8 @@
 import { cookies, headers } from "next/headers";
 import { eq, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db, resolveIdentity } from "@jalajogja/db";
-import { createTenantDb, generateFinancialNumber } from "@jalajogja/db";
+import { db, resolveIdentity, generateUniqueCode } from "@jalajogja/db";
+import { createTenantDb, generateFinancialNumber, getSettings } from "@jalajogja/db";
 import { tenants } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import { auth } from "@/lib/auth";
@@ -442,6 +442,11 @@ export async function checkoutAction(
       return d.toISOString().slice(0, 10);
     })();
 
+    // Cek setting kode unik dan generate jika aktif
+    const paymentSettings    = await getSettings(tenantDb, "payment");
+    const uniqueCodeEnabled  = paymentSettings["unique_code_enabled"] === true;
+    const uniqueCode         = uniqueCodeEnabled ? await generateUniqueCode(tenantDb) : 0;
+
     const [invoice] = await tdb
       .insert(schema.invoices)
       .values({
@@ -457,6 +462,7 @@ export async function checkoutAction(
         shippingTotal:    shippingTotal.toFixed(2),
         discount:         "0",
         total:            total.toFixed(2),
+        uniqueCode,
         paidAmount:       "0",
         shippingCityId:   shipping?.cityId    ?? null,
         shippingCityName: shipping?.cityName  ?? null,

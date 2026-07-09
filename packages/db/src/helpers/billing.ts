@@ -43,7 +43,7 @@ export type CreateLinkedInvoiceInput = {
 // Cari kode Rp 100–999 yang belum dipakai oleh invoice pending/partial/waiting.
 // Return 0 jika semua kode terpakai (sangat jarang) atau fitur mati.
 
-async function generateUniqueCode(tenantDb: TenantDb): Promise<number> {
+export async function generateUniqueCode(tenantDb: TenantDb): Promise<number> {
   const { db, schema } = tenantDb;
 
   const usedRows = await db
