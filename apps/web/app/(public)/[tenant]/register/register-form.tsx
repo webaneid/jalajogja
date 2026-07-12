@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Users, User, Loader2, CheckCircle2, Info, MessageCircle } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
+import type { OrgLabels } from "@/lib/tenant-org-label";
 
 type MemberLookup =
   | { found: true;  name: string; memberId: string; hasAccount: boolean }
@@ -208,7 +209,7 @@ function OtpStep({
 }
 
 // ── Register Page ─────────────────────────────────────────────────────────────
-export function RegisterForm({ slug }: { slug: string }) {
+export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: OrgLabels }) {
   const router = useRouter();
 
   const [step,        setStep]        = useState<Step>("path");
@@ -368,9 +369,9 @@ export function RegisterForm({ slug }: { slug: string }) {
                 <Users className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="font-semibold text-sm">Anggota IKPM Gontor</p>
+                <p className="font-semibold text-sm">{orgLabels.memberLabel}</p>
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                  Saya alumni Pondok Modern Gontor / anggota IKPM
+                  {orgLabels.memberDescription}
                 </p>
               </div>
             </button>
@@ -383,9 +384,9 @@ export function RegisterForm({ slug }: { slug: string }) {
                 <User className="h-4 w-4 text-muted-foreground" />
               </div>
               <div>
-                <p className="font-semibold text-sm">Bukan Anggota IKPM</p>
+                <p className="font-semibold text-sm">{orgLabels.nonMemberLabel}</p>
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                  Saya masyarakat umum yang ingin menggunakan layanan ini
+                  {orgLabels.nonMemberDescription}
                 </p>
               </div>
             </button>
@@ -450,7 +451,7 @@ export function RegisterForm({ slug }: { slug: string }) {
             <div>
               <h1 className="text-lg font-bold leading-tight">Daftar Akun</h1>
               <p className="text-xs text-muted-foreground">
-                {accountPath === "member" ? "Anggota IKPM Gontor" : "Masyarakat Umum"}
+                {accountPath === "member" ? orgLabels.memberLabel : orgLabels.nonMemberLabel}
               </p>
             </div>
           </div>
