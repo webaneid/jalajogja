@@ -359,8 +359,21 @@ export async function confirmInvoicePaymentAction(
           await tx.update(schema.campaigns).set({ collectedAmount: sql`collected_amount + ${String(amt)}` }).where(eq(schema.campaigns.id, cId));
         }
 
-        // Auto-create event_registrations dari tiket yang dibeli via cart
-        const ticketItems = await tx
+        // Konfirmasi pendaftaran event jika invoice terhubung ke event_registration (alur lama)
+        if (inv.sourceType === "event_registration" && inv.sourceId) {
+          await tx
+            .update(schema.eventRegistrations)
+            .set({ status: "confirmed", updatedAt: new Date() })
+            .where(eq(schema.eventRegistrations.id, inv.sourceId));
+        }
+
+        // Auto-create event_registrations dari tiket yang dibeli via cart.
+        // WAJIB skip untuk sourceType="event_registration" — alur lama (registerForEventAction)
+        // sudah insert eventRegistrations langsung sebelum invoice dibuat dan statusnya
+        // di-update di blok di atas. Tanpa guard ini, invoice yang sama juga punya
+        // invoiceItem itemType="ticket" → loop ini insert DUPLIKAT dengan nama = nama tiket
+        // (bukan nama peserta asli), karena description item itu tidak diisi JSON attendee.
+        const ticketItems = inv.sourceType === "cart" ? await tx
           .select({
             itemId:      schema.invoiceItems.itemId,
             name:        schema.invoiceItems.name,
@@ -370,7 +383,7 @@ export async function confirmInvoicePaymentAction(
           .where(and(
             eq(schema.invoiceItems.invoiceId, invoiceId),
             eq(schema.invoiceItems.itemType, "ticket"),
-          ));
+          )) : [];
 
         for (const item of ticketItems) {
           if (!item.itemId) continue;
@@ -630,8 +643,10 @@ export async function verifySubmittedPaymentAction(
             .where(eq(schema.eventRegistrations.id, inv.sourceId));
         }
 
-        // Auto-create event_registrations dari tiket yang dibeli via cart (E10 flow)
-        const ticketItems = await tx
+        // Auto-create event_registrations dari tiket yang dibeli via cart (E10 flow).
+        // Skip untuk sourceType="event_registration" — sudah ditangani blok di atas.
+        // Lihat komentar sama di confirmInvoicePaymentAction untuk alasan lengkap.
+        const ticketItems = inv.sourceType === "cart" ? await tx
           .select({
             itemId:      schema.invoiceItems.itemId,
             name:        schema.invoiceItems.name,
@@ -641,7 +656,7 @@ export async function verifySubmittedPaymentAction(
           .where(and(
             eq(schema.invoiceItems.invoiceId, inv.id),
             eq(schema.invoiceItems.itemType, "ticket"),
-          ));
+          )) : [];
 
         for (const item of ticketItems) {
           if (!item.itemId) continue;

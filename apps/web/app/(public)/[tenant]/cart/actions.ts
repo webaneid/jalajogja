@@ -549,6 +549,7 @@ export async function submitPaymentProofAction(
     const [inv] = await tdb
       .select({ id: schema.invoices.id, customerName: schema.invoices.customerName,
                 total: schema.invoices.total, paidAmount: schema.invoices.paidAmount,
+                uniqueCode: schema.invoices.uniqueCode,
                 invoiceNumber: schema.invoices.invoiceNumber, status: schema.invoices.status })
       .from(schema.invoices)
       .where(eq(schema.invoices.id, invoiceId))
@@ -558,7 +559,10 @@ export async function submitPaymentProofAction(
     if (inv.status === "paid")         return { success: false, error: "Invoice sudah lunas." };
     if (inv.status === "cancelled")    return { success: false, error: "Invoice sudah dibatalkan." };
 
-    const remaining = parseFloat(String(inv.total)) - parseFloat(String(inv.paidAmount));
+    // Wajib sertakan kode unik — tanpa ini payment yang tercatat selalu kurang dari amountDue,
+    // invoice tidak pernah naik status "paid" (lihat lesson CLAUDE.md § Kode Unik Transaksi)
+    const amountDue = parseFloat(String(inv.total)) + (inv.uniqueCode ?? 0);
+    const remaining = amountDue - parseFloat(String(inv.paidAmount));
     if (remaining <= 0) return { success: false, error: "Invoice sudah lunas." };
 
     const payNumber = await generateFinancialNumber(tenantDb, "payment");
