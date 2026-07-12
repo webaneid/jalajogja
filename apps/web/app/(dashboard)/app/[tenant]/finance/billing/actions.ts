@@ -263,19 +263,7 @@ export async function confirmInvoicePaymentAction(
   if (inv.status === "paid")     return { success: false, error: "Invoice sudah lunas." };
   if (inv.status === "cancelled") return { success: false, error: "Invoice dibatalkan." };
 
-  const total      = parseFloat(String(inv.total));
-  const uniqueCode = inv.uniqueCode ?? 0;
-  const amountDue  = total + uniqueCode;
-  const paidSoFar  = parseFloat(String(inv.paidAmount));
-  const remaining  = amountDue - paidSoFar;
-
-  if (data.amount > remaining)
-    return { success: false, error: `Jumlah melebihi sisa tagihan (Rp ${remaining.toLocaleString("id-ID")}).` };
-
   try {
-    const newPaidAmount = paidSoFar + data.amount;
-    const newStatus     = newPaidAmount >= amountDue ? "paid" : "partial";
-
     // Resolve akun untuk jurnal
     const { resolveAccountMappingsForBilling } = await import("../actions");
     const { cashAccountId, incomeAccountId } = await resolveAccountMappingsForBilling(
@@ -291,6 +279,30 @@ export async function confirmInvoicePaymentAction(
 
     // Jalankan atomik dalam transaction
     const paymentId = await db.transaction(async (tx) => {
+      // Lock baris invoice — cegah race condition klik ganda / retry menghasilkan
+      // dua payment untuk satu konfirmasi (pattern sama dengan lock kuota tiket event)
+      const [lockedInv] = await tx
+        .select()
+        .from(schema.invoices)
+        .where(sql`${schema.invoices.id} = ${invoiceId} FOR UPDATE`)
+        .limit(1);
+
+      if (!lockedInv) throw new Error("Invoice tidak ditemukan.");
+      if (lockedInv.status === "paid")      throw new Error("Invoice sudah lunas.");
+      if (lockedInv.status === "cancelled") throw new Error("Invoice dibatalkan.");
+
+      const total      = parseFloat(String(lockedInv.total));
+      const uniqueCode = lockedInv.uniqueCode ?? 0;
+      const amountDue  = total + uniqueCode;
+      const paidSoFar  = parseFloat(String(lockedInv.paidAmount));
+      const remaining  = amountDue - paidSoFar;
+
+      if (data.amount > remaining)
+        throw new Error(`Jumlah melebihi sisa tagihan (Rp ${remaining.toLocaleString("id-ID")}).`);
+
+      const newPaidAmount = paidSoFar + data.amount;
+      const newStatus     = newPaidAmount >= amountDue ? "paid" : "partial";
+
       const payNum = await generateFinancialNumber(tenantDb, "payment");
 
       const [payment] = await tx
@@ -440,6 +452,8 @@ export async function confirmInvoicePaymentAction(
     revalidateBilling(slug);
     return { success: true, data: { paymentId } };
   } catch (err) {
+    if (err instanceof Error && (err.message.includes("lunas") || err.message.includes("dibatalkan") || err.message.includes("melebihi sisa tagihan")))
+      return { success: false, error: err.message };
     console.error("[confirmInvoicePaymentAction]", err);
     return { success: false, error: "Gagal mencatat pembayaran." };
   }
