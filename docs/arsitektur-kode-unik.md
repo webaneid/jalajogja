@@ -4,13 +4,13 @@
 > - `docs/arsitektur-billing.md` — alur invoice universal, cart, checkout
 > - `docs/arsitektur-keuangan.md` — double-entry journal, account mapping
 
-**Status implementasi:**
-- Schema + migration: ⬜ Belum
-- Helper `generateUniqueCode`: ⬜ Belum
-- Integrasi `createLinkedInvoice`: ⬜ Belum
-- Display invoice publik + admin: ⬜ Belum
-- Update konfirmasi pembayaran: ⬜ Belum
-- Settings UI toggle: ⬜ Belum
+**Status implementasi: ✅ SELESAI** (commit `769599a`, `0d1f767`, lanjut fix bug di `64eeea5`, `141776e` — 2026-07-12)
+- Schema + migration: ✅ Selesai
+- Helper `generateUniqueCode`: ✅ Selesai
+- Integrasi `createLinkedInvoice`: ✅ Selesai
+- Display invoice publik + admin: ✅ Selesai
+- Update konfirmasi pembayaran: ✅ Selesai (termasuk fix bug `submitPaymentProofAction` — lihat § 12)
+- Settings UI toggle: ✅ Selesai
 
 ---
 
@@ -210,7 +210,11 @@ Banner kecil jika kode unik aktif:
 
 ### Customer upload bukti (`submitPaymentProofAction`)
 
-- Tidak ada perubahan logic
+- **Rencana awal salah** — dokumen ini semula bilang "tidak ada perubahan logic",
+  padahal `submitPaymentProofAction` MEMBUAT payment record sendiri dengan
+  `amount = remaining` hasil hitungnya sendiri. Rencana ini lupa bahwa hitungan
+  itu juga wajib include `uniqueCode`, bukan cuma tampilan UI. Bug nyata terjadi
+  akibat ini — lihat § 12.
 - UI tampil "Transfer sejumlah Rp 490.523" (bukan Rp 490.000) agar customer
   tidak salah transfer
 
@@ -295,4 +299,82 @@ Fitur baru hanya berlaku untuk invoice yang dibuat setelah setting diaktifkan.
 
 ## 12. Lessons Learned
 
-*(Akan diisi setelah implementasi)*
+### [2026-07-12] Bug: `submitPaymentProofAction` tidak include `uniqueCode`
+
+**Gejala**: Customer submit bukti transfer via halaman invoice publik (upload
+bukti), admin verifikasi → invoice nyangkut status **"partial"** terus meski
+customer sudah transfer sesuai nominal yang ditampilkan di layar (yang sudah
+benar, termasuk kode unik).
+
+**Root cause**: Halaman invoice publik (`invoice-public-client.tsx` +
+`invoice/[id]/page.tsx`) menghitung `remaining = (total + uniqueCode) - paid`
+dengan BENAR untuk *tampilan*. Tapi `submitPaymentProofAction` (server action
+yang benar-benar mencatat `payments.amount`) menghitung ulang `remaining`
+sendiri secara independen — dan versi ini LUPA menambahkan `uniqueCode`:
+
+```typescript
+// SALAH — sebelum fix
+const remaining = parseFloat(String(inv.total)) - parseFloat(String(inv.paidAmount));
+
+// BENAR — setelah fix
+const amountDue = parseFloat(String(inv.total)) + (inv.uniqueCode ?? 0);
+const remaining = amountDue - parseFloat(String(inv.paidAmount));
+```
+
+Akibatnya payment yang tercatat SELALU kurang persis sejumlah kode unik
+(Rp 100–999), padahal customer sudah transfer nominal yang benar. Admin
+verifikasi payment tersebut → invoice tetap `partial` karena `paid_amount`
+tidak pernah mencapai `amount_due`.
+
+**Efek berantai ke Bug #2 (nama peserta event hilang)**: Auto-create
+`event_registrations` dari tiket yang dibeli via cart hanya jalan di dalam
+blok `if (newStatus === "paid")`. Karena bug di atas membuat status selalu
+nyangkut `partial`, peserta yang beli tiket event via cart **tidak pernah**
+tercatat di `event_registrations` — meski sudah bayar (kurang persis sejumlah
+kode unik). Nama peserta "hilang" dari daftar padahal invoice-nya ada.
+
+**Aturan yang dikunci**: setiap tempat yang MENGHITUNG ULANG `remaining`/
+`amountDue` dari invoice (bukan cuma menampilkannya) — baik di server action
+maupun di helper — WAJIB selalu pakai `total + uniqueCode`, jangan pernah
+`total` saja. Ada 3 titik yang harus konsisten: `confirmInvoicePaymentAction`
+(admin manual), `verifySubmittedPaymentAction` (admin verifikasi), dan
+`submitPaymentProofAction` (customer submit) — kalau salah satu lupa, invoice
+nyangkut partial selamanya.
+
+### [2026-07-12] Bug: Loop auto-create tiket jalan tanpa guard `sourceType`
+
+Loop yang mengubah invoice item `itemType="ticket"` jadi `event_registrations`
+(di `confirmInvoicePaymentAction` + `verifySubmittedPaymentAction`) berjalan
+untuk SEMUA invoice, termasuk invoice dari alur lama (`registerForEventAction`,
+`sourceType="event_registration"`) yang **sudah** insert `event_registrations`
+langsung sebelum invoice dibuat. Invoice alur lama itu juga punya invoiceItem
+`itemType="ticket"` (dari `createLinkedInvoice`) — tanpa guard, loop ini insert
+ENTRI DUPLIKAT dengan nama = nama tiket (bukan nama peserta asli), karena
+`description` item itu tidak pernah diisi JSON attendee.
+
+**Fix**: loop auto-create hanya jalan jika `inv.sourceType === "cart"`. Untuk
+`sourceType === "event_registration"`, status registrasi di-update di blok
+terpisah (`UPDATE event_registrations SET status='confirmed'`) — blok ini
+sebelumnya ada di `verifySubmittedPaymentAction` tapi HILANG di
+`confirmInvoicePaymentAction`, sudah disamakan.
+
+### [2026-07-12] Bug: Race condition klik ganda "Konfirmasi Pembayaran"
+
+`confirmInvoicePaymentAction` membaca status invoice SEBELUM masuk
+`db.transaction()` dan tidak mengunci baris. Dua request hampir bersamaan
+(klik ganda admin, atau retry karena network lambat) bisa sama-sama lolos
+pengecekan "belum lunas" sebelum salah satu commit → 2 payment untuk 1
+pembayaran nyata, invoice jadi over-paid.
+
+**Fix**: validasi status + hitung `remaining` dipindah ke DALAM transaction,
+invoice di-lock via `SELECT ... WHERE id = ? FOR UPDATE` sebelum insert
+payment — pattern yang sama dengan lock kuota tiket event
+(`docs/arsitektur-event.md` § SELECT FOR UPDATE). Kasus nyata: invoice
+`620-INV-202607-00014` (tenant visikita) sempat ke-double-confirm, payment
+duplikat dihapus manual + `paid_amount`/`status` di-recompute — lihat
+`docs/diagnosa-double-payment.sql` untuk query diagnosa yang dipakai.
+
+**Aturan**: setiap action yang mengubah state "sekali jalan" (status → paid,
+konfirmasi, dll) berdasarkan baca-lalu-tulis pada baris yang sama WAJIB kunci
+baris itu di dalam transaction — jangan andalkan `disabled={pending}` di
+client saja, itu tidak mencegah race condition di server.

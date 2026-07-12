@@ -453,7 +453,7 @@ app/(dashboard)/[tenant]/
 - [x] **Billing Phase 3** — Toko + Donasi + Event semua sudah terintegrasi (invoice otomatis via `createLinkedInvoice`). Billing dashboard tampilkan badge sumber untuk semua tipe. ✅
 - [~] **Billing sisa** — item picker di invoice manual admin (produk+tiket+donasi), PDF, cicilan UI. **DITUNDA**.
 - [x] **Billing Phase 4 — Fulfillment** — 5-stage pengiriman (pending→processing→packed→shipped→delivered), `updateFulfillmentStatusAction`, halaman admin `/toko/pesanan/invoice/[invoiceId]`, `FulfillmentCard` + `FulfillmentTimeline`, lightbox bukti transfer, pelanggan lihat 5 status di `/akun/transaksi`. Detail di `docs/arsitektur-fulfillment.md`.
-- [ ] **Kode Unik Transaksi** — nominal Rp 100–999 per invoice untuk identifikasi transfer masuk. Setting toggle di `/settings/payment`. Arsitektur di `docs/arsitektur-kode-unik.md`. **BELUM DIIMPLEMENTASIKAN**.
+- [x] **Kode Unik Transaksi** — nominal Rp 100–999 per invoice untuk identifikasi transfer masuk. Setting toggle di `/settings/payment`. Arsitektur di `docs/arsitektur-kode-unik.md`. **SELESAI** — bug `submitPaymentProofAction` tidak include kode unik (invoice nyangkut partial) + bug race condition double-payment sudah difix (2026-07-12).
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`) + **Tab Peserta & Statistik** (commit `9cf2b12`, migration 0023) + **E10 Donation Prompt UI** (routing kondisional cart vs direct, migration 0024+0025)
@@ -3174,9 +3174,126 @@ grep -rn '`/app/' apps/web/app/\(public\)/ apps/web/components/website/public/
 # harus return 0 baris
 ```
 
+### [2026-07-12] Bug Kode Unik + Peserta Event Hilang — Root Cause Sama
+
+> Detail lengkap + kode: **`docs/arsitektur-kode-unik.md` § 12 Lessons Learned**
+
+**Dua gejala yang dilaporkan user ternyata satu akar masalah:**
+1. Nama peserta yang daftar event via cart tidak masuk ke `event_registrations`
+2. Invoice nyangkut status "partial" meski customer sudah transfer sesuai nominal yang ditampilkan
+
+**Root cause**: `submitPaymentProofAction` (customer upload bukti transfer di
+halaman invoice publik) menghitung ulang `remaining` SENDIRI secara independen
+dari tampilan (yang sudah benar) — dan lupa menambahkan `uniqueCode`:
+`remaining = total - paidAmount` (SALAH) alih-alih `remaining = (total +
+uniqueCode) - paidAmount` (BENAR). Payment yang tercatat selalu kurang persis
+sejumlah kode unik → invoice tidak pernah capai status "paid" → blok auto-create
+`event_registrations` dari tiket cart (yang di-gate `if (newStatus === "paid")`)
+tidak pernah jalan → nama peserta hilang.
+
+**Bug turunan yang juga ditemukan & difix sekaligus:**
+- Loop auto-create tiket jalan tanpa guard `sourceType` → invoice dari alur lama
+  (`registerForEventAction`) bisa dapat entri `event_registrations` DUPLIKAT
+  dengan nama = nama tiket (bukan nama peserta asli)
+- `confirmInvoicePaymentAction` tidak update status `event_registrations` untuk
+  alur lama (blok ini cuma ada di `verifySubmittedPaymentAction`) — disamakan
+- Race condition klik ganda "Konfirmasi Pembayaran" → 2 payment untuk 1
+  pembayaran nyata (invoice `620-INV-202607-00014` tenant visikita kena ini) —
+  fix: `SELECT ... FOR UPDATE` lock invoice row di dalam transaction
+
+**Aturan yang dikunci**: setiap tempat yang MENGHITUNG ULANG `remaining`/
+`amountDue` invoice (bukan cuma menampilkan) wajib pakai `total + uniqueCode`,
+tidak pernah `total` saja. Ada 3 titik yang harus konsisten:
+`confirmInvoicePaymentAction`, `verifySubmittedPaymentAction`,
+`submitPaymentProofAction`.
+
+**Bug UI terpisah yang ditemukan+difix di sesi yang sama**: item invoice
+bertipe tiket (data peserta cart tersimpan sebagai JSON di kolom
+`description`) tampil sebagai JSON mentah di halaman invoice admin dan publik
+— bukan nama/HP/email yang terbaca. Fix: `parseTicketAttendee()` +
+`humanizeFieldKey()` + `formatFieldValue()` di `lib/event-custom-form.ts`,
+dipakai bersama oleh `invoice-detail-client.tsx` (admin) dan
+`invoice-public-client.tsx` (publik).
+
+### [2026-07-12] Bug SEO: Meta Description Halaman Event Bocorin JSON Mentah
+
+Pattern yang sama dengan bug `renderBody` sebelumnya (lihat lesson
+`[2026-04] renderBody — prosemirror-model tidak server-safe`), tapi kali ini
+di SEO bukan di render konten: `generateMetadata` halaman event publik
+(`/agenda/{slug}`) melakukan `event.description.slice(0, 160)` langsung ke
+kolom `description` yang isinya Tiptap JSON — meta description dan
+`og:description` jadi `{"type":"doc","content":[...]}` mentah, bukan teks.
+
+**Ditemukan juga**: field SEO khusus yang sudah ada di schema
+(`metaTitle`, `metaDesc`, `ogTitle`, `ogDescription`) sama sekali tidak
+dipakai di `generateMetadata` event — padahal semua halaman single lain
+(post, produk, campaign, page, pesantren, usaha) sudah benar pakai field ini.
+Cover event juga tidak pernah dipakai untuk `og:image` (selalu fallback ke
+logo tenant).
+
+**Fix**: `tiptapToPlainText()` baru di `lib/seo.ts` — ekstrak plain text dari
+Tiptap JSON secara rekursif, dipakai sebagai fallback description hanya kalau
+`metaDesc` kosong. `generateMetadata` event sekarang pakai
+`metaTitle`/`metaDesc`/`ogTitle`/`ogDescription` + cover event untuk
+`og:image`, `ogType: "article"`.
+
+**Aturan**: field konten yang diisi via Tiptap editor (content/description/body)
+JANGAN PERNAH di-`slice()` langsung untuk keperluan apapun di luar Tiptap
+renderer (`renderBody`) — baik untuk SEO, notifikasi, atau preview. Selalu
+ekstrak plain text dulu, atau pakai field `metaDesc`/`excerpt` khusus yang
+memang plain text.
+
+### [2026-07-12] Tab Peserta Event Publik — Tabel Responsif No/Nama/Provinsi
+
+Tab "Peserta" di halaman event publik (`EventDetailTabs`, § fitur
+`showAttendeeList`) sebelumnya cuma daftar nama 2 kolom tanpa info tambahan.
+Diubah jadi tabel dengan kolom No/Nama/Provinsi (desktop) + card list
+(mobile) — pattern responsif yang sama dengan `AnggotaDirectoryClient`
+(`hidden md:block` untuk tabel, `md:hidden` untuk card).
+
+Provinsi di-resolve dari `eventRegistrations.memberId → members.homeAddressId
+→ addresses.provinceId → refProvinces.name` — pattern query yang sama persis
+dengan yang sudah dipakai di tab Statistik (breakdown domisili). Peserta tanpa
+`memberId` (akun publik/guest) tampil provinsi "—".
+
+### [2026-07-12] Label Organisasi Dinamis di Halaman Register per Tipe Tenant
+
+Halaman `/{slug}/register` hardcode "Anggota IKPM Gontor" di semua tenant,
+padahal ada 3 tipe tenant (cabang/marhalah/forum — lihat § Arsitektur Backbone
+IKPM) dengan konteks yang beda-beda. Forum seperti "Visi Kita" tidak relevan
+disebut IKPM; marhalah lebih pas disebut per angkatan.
+
+**Fix**: `resolveOrgLabels()` baru di `lib/tenant-org-label.ts`:
+- Cabang → "Anggota {nama tenant}" (nama tenant biasanya sudah include "IKPM",
+  mis. "PC IKPM Yogyakarta")
+- Marhalah → "Anggota Angkatan {tahun}" (+ "(Awal)"/"(Akhir)" khusus 1999,
+  pattern sama dengan lesson graduationPeriod)
+- Forum → "Anggota {nama tenant}" tanpa embel-embel IKPM
+
+`register/page.tsx` fetch `tenant_type` + `name` dari `public.tenants`,
+resolve label di server component, teruskan sebagai props ke `RegisterForm`.
+4 titik teks statis diganti dinamis. Field "Nomor Induk Gontor" dan teks
+"anggota IKPM baru" TIDAK diubah — itu memang universal (identitas global
+IKPM di `public.members`), bukan spesifik tenant.
+
+**Aturan untuk copy/label di halaman lain**: kalau ada teks yang menyebut
+"IKPM" secara hardcode di halaman publik yang bisa diakses tenant tipe
+forum/marhalah, pertimbangkan apakah perlu di-dinamiskan lewat
+`resolveOrgLabels()` juga.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Dokumentasi Kode Unik Transaksi** (sesi 2026-07-10, lanjutan 3).
-- Sesi ini (2026-07-10, lanjutan 3):
+- Terakhir dikerjakan: **Fix bug kode unik + peserta event hilang + SEO event + register label dinamis** (sesi 2026-07-12).
+- Sesi ini (2026-07-12):
+  - **Fix root cause bug ganda (kode unik hilang + peserta event tidak masuk)** — `submitPaymentProofAction` tidak include `uniqueCode` saat hitung `remaining` → payment tercatat selalu kurang, invoice nyangkut "partial" → auto-create `event_registrations` (di-gate `newStatus==="paid"`) tidak pernah jalan untuk tiket via cart. Detail lengkap: `docs/arsitektur-kode-unik.md` § 12. Commit `64eeea5`.
+  - **Fix bug turunan**: loop auto-create tiket sekarang guard `sourceType==="cart"` (cegah duplikat nama=nama tiket untuk alur lama) + `confirmInvoicePaymentAction` update status `event_registrations` untuk alur lama (sebelumnya cuma ada di `verifySubmittedPaymentAction`). Commit `64eeea5`.
+  - **Fix race condition double-payment** — `confirmInvoicePaymentAction` sekarang `SELECT ... FOR UPDATE` lock invoice row di dalam transaction sebelum insert payment. Data invoice `620-INV-202607-00014` (tenant visikita) yang sempat ke-double-confirm dikoreksi manual via `docs/diagnosa-double-payment.sql`. Commit `141776e`.
+  - **Fix UI**: item invoice tiket tampil JSON mentah → sekarang di-parse jadi nama/HP/email/custom field rapi (`parseTicketAttendee` di `lib/event-custom-form.ts`), dipakai di invoice admin + publik. Commit `e80d73d`.
+  - **Feat**: icon rantai (invoice publik) + mata (detail) di list `/finance/billing/invoice`, icon-only tanpa label. Commit `d595b28`.
+  - **Fix SEO event**: `generateMetadata` halaman `/agenda/{slug}` slice() Tiptap JSON mentah jadi meta description → ditambah `tiptapToPlainText()` di `lib/seo.ts` + pakai field `metaTitle`/`metaDesc`/`ogTitle`/`ogDescription`/cover event yang sebelumnya tidak dipakai sama sekali. Halaman single lain (post/produk/campaign/page/pesantren/usaha) sudah dicek, semua benar. Commit `e20321c`.
+  - **Feat**: tab Peserta event publik jadi tabel No/Nama/Provinsi responsif (desktop tabel, mobile card). Provinsi resolve dari `memberId → homeAddressId → provinceId` (pattern sama dengan tab Statistik). Commit `8586942`.
+  - **Feat**: label organisasi dinamis di halaman register (`resolveOrgLabels()` di `lib/tenant-org-label.ts`) — cabang/marhalah/forum dapat teks "Anggota ..." yang sesuai, bukan hardcode "Anggota IKPM Gontor". Commit `aaa215f`.
+  - Semua TypeScript 0 errors. Semua sudah push ke GitHub; deploy VPS: `git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env` (tidak ada migration DB baru).
+- Sesi sebelumnya (2026-07-10, lanjutan 3):
   - **Migrasi admin order → invoice-only flow** — `createOrderAction` tidak lagi insert ke `schema.orders`/`schema.orderItems`. Pakai `createLinkedInvoice` dengan `sourceType: "order"`. `shippingAddress` digabung ke `notes` sebelum dikirim (karena `CreateLinkedInvoiceInput` tidak punya field `shippingAddress`). `pesanan/[id]/page.tsx` diubah jadi redirect ke list. `pesanan/page.tsx` semua link menuju `pesanan/invoice/${id}`. TypeScript 0 errors. Commit `5f04c48`.
   - **Auto-create `event_registrations` saat invoice paid** (E10 cart flow) — `confirmInvoicePaymentAction` dan `verifySubmittedPaymentAction` di `billing/actions.ts` sekarang membuat `event_registrations` otomatis untuk tiket event yang ada di invoice. Idempotent via `customFields->>'sourceInvoiceId'`. TypeScript 0 errors.
   - **Dokumentasi kode unik transaksi** — `docs/arsitektur-kode-unik.md` dibuat. `docs/arsitektur-billing.md` dan `CLAUDE.md` diupdate untuk referensi. Implementasi belum dilakukan.
