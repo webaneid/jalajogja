@@ -4,6 +4,7 @@ import { useState, useTransition, useEffect, useCallback, useRef } from "react";
 import { Check, Copy, Download, ImagePlus, X, Loader2 } from "lucide-react";
 import { submitPaymentProofAction } from "@/app/(public)/[tenant]/cart/actions";
 import { compressImage } from "@/lib/client-image-compress";
+import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
 
 export type BankAccountPublic = {
   id:            string;
@@ -58,6 +59,7 @@ export type PublicInvoiceData = {
   rejectedPaymentNote:  string | null;
   items: Array<{
     id:          string;
+    itemType:    string;
     name:        string;
     description: string | null;
     unitPrice:   number;
@@ -430,17 +432,31 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {invoice.items.map((item) => (
+            {invoice.items.map((item) => {
+              const attendee = parseTicketAttendee(item.itemType, item.description);
+              return (
               <tr key={item.id}>
                 <td className="px-4 py-3">
                   <p className="font-medium">{item.name}</p>
-                  {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
+                  {attendee ? (
+                    <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                      {attendee.attendeeName && (
+                        <p>Peserta: <span className="text-foreground">{attendee.attendeeName}</span></p>
+                      )}
+                      {attendee.customFieldAnswers && Object.entries(attendee.customFieldAnswers).map(([k, v]) => (
+                        <p key={k}>{humanizeFieldKey(k)}: {formatFieldValue(v)}</p>
+                      ))}
+                    </div>
+                  ) : (
+                    item.description && <p className="text-xs text-muted-foreground">{item.description}</p>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-center text-muted-foreground">{item.quantity}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{formatRp(item.unitPrice)}</td>
                 <td className="px-4 py-3 text-right tabular-nums font-medium">{formatRp(item.total)}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
           <tfoot className="bg-muted/20 text-sm">
             {(invoice.discount > 0 || invoice.shippingTotal > 0) && (

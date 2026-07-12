@@ -139,6 +139,7 @@ export default async function PublicInvoicePage({ params }: Props) {
     rejectedPaymentNote: rejectedPayment?.rejectionNote ?? null,
     items: items.map((it) => ({
       id:          it.id,
+      itemType:    it.itemType,
       name:        it.name,
       description: it.description,
       unitPrice:   parseFloat(String(it.unitPrice)),
