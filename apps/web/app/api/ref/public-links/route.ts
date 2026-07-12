@@ -12,6 +12,7 @@ import {
   tenantMemberships,
   memberOwnedPesantren,
   memberBusinesses,
+  memberProfessionals,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import {
@@ -25,6 +26,7 @@ import {
   buildCampaignUrl,
   buildPesantrenUrl,
   buildUsahaUrl,
+  buildProfesionalUrl,
   type PublicLink,
 } from "@/lib/public-url-registry";
 
@@ -64,6 +66,7 @@ export async function GET(req: NextRequest) {
     campaigns,
     pesantrenList,
     usahaList,
+    profesionalList,
   ] = await Promise.all([
     // Halaman CMS
     tdb.select({ slug: schema.pages.slug, title: schema.pages.title })
@@ -128,6 +131,17 @@ export async function GET(req: NextRequest) {
       ))
       .where(and(eq(memberBusinesses.isActive, true), ilike(memberBusinesses.name, qLike)))
       .limit(LIMIT),
+
+    // Profesional (public schema, scope ke tenant)
+    db.select({ id: memberProfessionals.id, title: memberProfessionals.title, professionType: memberProfessionals.professionType })
+      .from(memberProfessionals)
+      .innerJoin(members, eq(members.id, memberProfessionals.memberId))
+      .innerJoin(tenantMemberships, and(
+        eq(tenantMemberships.memberId, members.id),
+        eq(tenantMemberships.tenantId, tenantId),
+      ))
+      .where(and(eq(memberProfessionals.isActive, true), ilike(memberProfessionals.professionType, qLike)))
+      .limit(LIMIT),
   ]);
 
   const dynamicLinks: PublicLink[] = [
@@ -140,6 +154,7 @@ export async function GET(req: NextRequest) {
     ...campaigns.map(c => ({ label: c.title, url: buildCampaignUrl(slug, c.slug),      group: "Donasi",          type: "campaign"         as const })),
     ...pesantrenList.map(p => ({ label: p.name, url: buildPesantrenUrl(slug, p.id),    group: "Direktori",       type: "pesantren"        as const })),
     ...usahaList.map(u => ({ label: u.name,  url: buildUsahaUrl(slug, u.id),           group: "Direktori",       type: "usaha"            as const })),
+    ...profesionalList.map(p => ({ label: [p.title, p.professionType].filter(Boolean).join(" "), url: buildProfesionalUrl(slug, p.id), group: "Direktori", type: "profesional" as const })),
   ];
 
   return NextResponse.json({ links: [...staticLinks, ...dynamicLinks] });

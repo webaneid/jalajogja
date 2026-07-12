@@ -4,11 +4,12 @@ import { refRegencies } from "./ref-regencies";
 import { refDistricts } from "./ref-districts";
 import { refVillages } from "./ref-villages";
 
-// Helper table reusable — dipakai oleh members (rumah) dan member_businesses (usaha)
-// Semua kolom wilayah nullable: user mungkin hanya tahu sampai kabupaten/kota
+// Helper table reusable — dipakai oleh members (rumah), member_businesses (usaha),
+// dan member_professionals (profesional). Semua kolom wilayah nullable: user mungkin
+// hanya tahu sampai kabupaten/kota
 export const addresses = pgTable("addresses", {
   id: uuid("id").primaryKey().defaultRandom(),
-  label: text("label", { enum: ["rumah", "kantor", "usaha"] }),
+  label: text("label", { enum: ["rumah", "kantor", "usaha", "profesional"] }),
   detail: text("detail"),          // Nama jalan, nomor, RT/RW, gedung, lantai, dll
   provinceId: integer("province_id").references(() => refProvinces.id),
   regencyId: integer("regency_id").references(() => refRegencies.id),

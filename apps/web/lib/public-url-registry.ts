@@ -10,7 +10,8 @@ export type PublicLinkType =
   | "product-category"
   | "campaign"
   | "pesantren"
-  | "usaha";
+  | "usaha"
+  | "profesional";
 
 export type PublicLink = {
   label: string;
@@ -40,6 +41,7 @@ export const STATIC_ROUTES: StaticRoute[] = [
   { label: "Direktori Anggota",   path: s => `/${s}/anggota`,       group: "Direktori",     icon: "Users" },
   { label: "Direktori Pesantren", path: s => `/${s}/pesantren`,     group: "Direktori",     icon: "School" },
   { label: "Direktori Usaha",     path: s => `/${s}/usaha`,         group: "Direktori",     icon: "Briefcase" },
+  { label: "Direktori Profesional", path: s => `/${s}/profesional`, group: "Direktori",     icon: "Briefcase" },
   { label: "Statistik",           path: s => `/${s}/statistik`,     group: "Direktori",     icon: "BarChart2" },
   // Transaksi
   { label: "Keranjang Belanja",   path: s => `/${s}/keranjang`,     group: "Transaksi",     icon: "ShoppingCart" },
@@ -91,6 +93,9 @@ export function buildPesantrenUrl(slug: string, id: string) {
 }
 export function buildUsahaUrl(slug: string, id: string) {
   return `/${slug}/usaha/${id}`;
+}
+export function buildProfesionalUrl(slug: string, id: string) {
+  return `/${slug}/profesional/${id}`;
 }
 
 // ── Label grup yang konsisten ───────────────────────────────────────────────────

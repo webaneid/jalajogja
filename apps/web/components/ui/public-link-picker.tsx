@@ -42,6 +42,7 @@ function LinkIcon({ type, group, className }: { type: PublicLinkType; group: str
     "campaign":         <Heart className={cls} />,
     "pesantren":        <School className={cls} />,
     "usaha":            <Briefcase className={cls} />,
+    "profesional":      <Briefcase className={cls} />,
   };
   return <>{icons[type] ?? <Globe className={cls} />}</>;
 }

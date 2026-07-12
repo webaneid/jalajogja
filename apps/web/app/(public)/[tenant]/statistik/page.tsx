@@ -3,12 +3,12 @@ import { eq, and, inArray, sql } from "drizzle-orm";
 import {
   db, members, tenants, tenantMemberships,
   addresses, refRegencies, refProfessions,
-  memberBusinesses, memberOwnedPesantren,
+  memberBusinesses, memberOwnedPesantren, memberProfessionals,
 } from "@jalajogja/db";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import type { Metadata } from "next";
-import { Users, School, Briefcase } from "lucide-react";
+import { Users, School, Briefcase, IdCard } from "lucide-react";
 
 export const revalidate = 300;
 
@@ -174,8 +174,16 @@ export default async function StatistikPage({ params }: { params: Params }) {
     .from(memberOwnedPesantren)
     .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberOwnedPesantren.memberId), scopeClause));
 
+  // Punya data profesional
+  const punyaProfesionalRows = await db
+    .select({ total: sql<number>`count(distinct ${memberProfessionals.memberId})` })
+    .from(memberProfessionals)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberProfessionals.memberId), scopeClause))
+    .where(eq(memberProfessionals.isActive, true));
+
   const punyaUsahaTotal    = Number(punyaUsahaRows[0]?.total    ?? 0);
   const punyaPesantrenTotal = Number(punyaPesantrenRows[0]?.total ?? 0);
+  const punyaProfesionalTotal = Number(punyaProfesionalRows[0]?.total ?? 0);
 
   // ── Stats Pesantren ────────────────────────────────────────────────────────
 
@@ -291,6 +299,44 @@ export default async function StatistikPage({ params }: { params: Params }) {
     .orderBy(sql`count(*) desc`)
     .limit(10);
 
+  // ── Stats Profesional ──────────────────────────────────────────────────────
+
+  const totalProfesionalRows = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(memberProfessionals)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberProfessionals.memberId), scopeClause))
+    .where(eq(memberProfessionals.isActive, true));
+
+  const totalProfesional = Number(totalProfesionalRows[0]?.total ?? 0);
+
+  const kategoriProfesionalRows = await db
+    .select({ category: memberProfessionals.professionCategory, total: sql<number>`count(*)` })
+    .from(memberProfessionals)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberProfessionals.memberId), scopeClause))
+    .where(eq(memberProfessionals.isActive, true))
+    .groupBy(memberProfessionals.professionCategory)
+    .orderBy(sql`count(*) desc`);
+
+  const jenisProfesionalRows = await db
+    .select({ type: memberProfessionals.professionType, total: sql<number>`count(*)` })
+    .from(memberProfessionals)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberProfessionals.memberId), scopeClause))
+    .where(eq(memberProfessionals.isActive, true))
+    .groupBy(memberProfessionals.professionType)
+    .orderBy(sql`count(*) desc`)
+    .limit(10);
+
+  const kabupatenProfesionalRows = await db
+    .select({ regency: refRegencies.name, total: sql<number>`count(*)` })
+    .from(memberProfessionals)
+    .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberProfessionals.memberId), scopeClause))
+    .leftJoin(addresses,    eq(addresses.id,    memberProfessionals.addressId))
+    .leftJoin(refRegencies, eq(refRegencies.id, addresses.regencyId))
+    .where(and(eq(memberProfessionals.isActive, true), sql`${refRegencies.id} IS NOT NULL`))
+    .groupBy(refRegencies.name)
+    .orderBy(sql`count(*) desc`)
+    .limit(10);
+
   // ── Format helpers ─────────────────────────────────────────────────────────
 
   const genderLabel: Record<string, string> = { male: "Laki-laki", female: "Perempuan" };
@@ -312,7 +358,7 @@ export default async function StatistikPage({ params }: { params: Params }) {
         <div>
           <h1 className="text-3xl font-bold">Statistik</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Data statistik anggota, pesantren, dan usaha {tenant.name}
+            Data statistik anggota, pesantren, usaha, dan profesional {tenant.name}
           </p>
         </div>
 
@@ -330,6 +376,8 @@ export default async function StatistikPage({ params }: { params: Params }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard label="Memiliki Pesantren" value={punyaPesantrenTotal}
               sub={totalAnggota > 0 ? `${Math.round(punyaPesantrenTotal / totalAnggota * 100)}% dari total` : undefined} />
+            <StatCard label="Memiliki Data Profesional" value={punyaProfesionalTotal}
+              sub={totalAnggota > 0 ? `${Math.round(punyaProfesionalTotal / totalAnggota * 100)}% dari total` : undefined} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -483,6 +531,41 @@ export default async function StatistikPage({ params }: { params: Params }) {
               <BarList
                 items={kabupatenUsahaRows.map(r => ({ label: r.regency ?? "Tidak diketahui", value: Number(r.total) }))}
                 total={totalUsaha}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* ── Statistik Profesional ─────────────────────────────────────── */}
+        <section className="space-y-6">
+          <SectionTitle icon={IdCard} title="Statistik Profesional" />
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard label="Total Data Profesional" value={totalProfesional} />
+            <StatCard label="Anggota Profesional"     value={punyaProfesionalTotal}
+              sub={totalAnggota > 0 ? `${Math.round(punyaProfesionalTotal / totalAnggota * 100)}% dari total anggota` : undefined} />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="rounded-xl border border-border p-5 space-y-4">
+              <p className="text-sm font-semibold">Distribusi Kategori Profesi</p>
+              <BarList
+                items={kategoriProfesionalRows.map(r => ({ label: r.category, value: Number(r.total) }))}
+                total={totalProfesional}
+              />
+            </div>
+            <div className="rounded-xl border border-border p-5 space-y-4">
+              <p className="text-sm font-semibold">Top 10 Jenis Profesi</p>
+              <BarList
+                items={jenisProfesionalRows.map(r => ({ label: r.type, value: Number(r.total) }))}
+                total={totalProfesional}
+              />
+            </div>
+            <div className="rounded-xl border border-border p-5 space-y-4">
+              <p className="text-sm font-semibold">Top 10 Kabupaten / Kota</p>
+              <BarList
+                items={kabupatenProfesionalRows.map(r => ({ label: r.regency ?? "Tidak diketahui", value: Number(r.total) }))}
+                total={totalProfesional}
               />
             </div>
           </div>
