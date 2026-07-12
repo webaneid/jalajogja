@@ -32,7 +32,7 @@ type Props = {
   confirmedCount:    number;
   totalQuota:        number | null;  // null = tidak terbatas
   ticketStats:       TicketStat[];
-  attendeeNames:     string[];
+  attendees:         { name: string; province: string | null }[];
   // data statistik
   stats:             AttendeeStatsData;
   // slot konten detail (dari server component)
@@ -75,7 +75,7 @@ export function EventDetailTabs({
   confirmedCount,
   totalQuota,
   ticketStats,
-  attendeeNames,
+  attendees,
   stats,
   detailSlot,
 }: Props) {
@@ -179,18 +179,53 @@ export function EventDetailTabs({
             </div>
           )}
 
-          {/* Daftar nama */}
-          {attendeeNames.length > 0 ? (
+          {/* Daftar peserta */}
+          {attendees.length > 0 ? (
             <div className="space-y-2">
               <p className="text-sm font-medium text-muted-foreground">
-                Daftar Nama ({attendeeNames.length})
+                Daftar Peserta ({attendees.length})
               </p>
-              <div className="rounded-lg border border-border bg-card p-4">
-                <ul className="columns-2 space-y-1 text-sm text-muted-foreground">
-                  {attendeeNames.map((name, i) => (
-                    <li key={i} className="truncate">{name}</li>
-                  ))}
-                </ul>
+
+              {/* Desktop: tabel */}
+              <div className="hidden md:block rounded-lg border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/40 text-left">
+                      <th className="px-4 py-2.5 font-medium text-muted-foreground w-14">No</th>
+                      <th className="px-4 py-2.5 font-medium text-muted-foreground">Nama</th>
+                      <th className="px-4 py-2.5 font-medium text-muted-foreground">Provinsi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {attendees.map((a, i) => (
+                      <tr key={i}>
+                        <td className="px-4 py-2.5 text-muted-foreground">{i + 1}</td>
+                        <td className="px-4 py-2.5 font-medium">{a.name}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">
+                          {a.province ?? <span className="text-muted-foreground/40">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile: card */}
+              <div className="md:hidden space-y-2">
+                {attendees.map((a, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 rounded-lg border border-border px-4 py-2.5"
+                  >
+                    <span className="text-xs text-muted-foreground w-6 shrink-0">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{a.name}</p>
+                      {a.province && (
+                        <p className="text-xs text-muted-foreground truncate">{a.province}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ) : (

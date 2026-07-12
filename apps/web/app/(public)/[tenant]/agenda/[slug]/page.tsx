@@ -223,12 +223,13 @@ export default async function PublicEventPage({
     ticketCounts = rows.map((r) => ({ ticketId: r.ticketId!, used: Number(r.used) }));
   }
 
-  // ── showAttendeeList: ambil nama peserta yang confirmed/attended ──────────
-  let attendeeNames: string[] = [];
+  // ── showAttendeeList: ambil nama + provinsi peserta yang confirmed/attended ──
+  type AttendeeRow = { name: string; province: string | null };
+  let attendees: AttendeeRow[] = [];
 
   if (event.showAttendeeList) {
     const rows = await tenantDb
-      .select({ name: schema.eventRegistrations.attendeeName })
+      .select({ name: schema.eventRegistrations.attendeeName, memberId: schema.eventRegistrations.memberId })
       .from(schema.eventRegistrations)
       .where(and(
         eq(schema.eventRegistrations.eventId, event.id),
@@ -236,7 +237,40 @@ export default async function PublicEventPage({
       ))
       .orderBy(schema.eventRegistrations.attendeeName);
 
-    attendeeNames = rows.map((r) => r.name);
+    const memberIdsForList = [...new Set(rows.map(r => r.memberId).filter(Boolean))] as string[];
+    const provinceByMemberId = new Map<string, string>();
+
+    if (memberIdsForList.length > 0) {
+      const memberAddrRows = await db
+        .select({ id: members.id, homeAddressId: members.homeAddressId })
+        .from(members)
+        .where(inArray(members.id, memberIdsForList));
+
+      const addressIdsForList = [...new Set(memberAddrRows.map(m => m.homeAddressId).filter(Boolean))] as string[];
+      const addrRowsForList = addressIdsForList.length > 0
+        ? await db.select({ id: addresses.id, provinceId: addresses.provinceId }).from(addresses)
+            .where(inArray(addresses.id, addressIdsForList))
+        : [];
+      const addrMapForList = new Map(addrRowsForList.map(a => [a.id, a.provinceId]));
+
+      const provinceIdsForList = [...new Set(addrRowsForList.map(a => a.provinceId).filter(Boolean))] as number[];
+      const provRowsForList = provinceIdsForList.length > 0
+        ? await db.select({ id: refProvinces.id, name: refProvinces.name }).from(refProvinces)
+            .where(inArray(refProvinces.id, provinceIdsForList))
+        : [];
+      const provNameMapForList = new Map(provRowsForList.map(p => [p.id, p.name]));
+
+      for (const m of memberAddrRows) {
+        const provinceId = m.homeAddressId ? addrMapForList.get(m.homeAddressId) : null;
+        const name = provinceId ? provNameMapForList.get(provinceId) : null;
+        if (name) provinceByMemberId.set(m.id, name);
+      }
+    }
+
+    attendees = rows.map((r) => ({
+      name:     r.name,
+      province: r.memberId ? (provinceByMemberId.get(r.memberId) ?? null) : null,
+    }));
   }
 
   // ── Tab Peserta: kuota per tiket (selalu fetch untuk tab, tidak tergantung showTicketCount) ──
@@ -587,7 +621,7 @@ export default async function PublicEventPage({
             confirmedCount={confirmedCount}
             totalQuota={totalQuota}
             ticketStats={ticketStatsForTab}
-            attendeeNames={attendeeNames}
+            attendees={attendees}
             stats={eventStats}
             detailSlot={<>
             {/* Cover */}
