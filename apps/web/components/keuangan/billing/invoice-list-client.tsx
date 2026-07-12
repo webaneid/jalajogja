@@ -1,11 +1,9 @@
 "use client";
 
-"use client";
-
 import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { Eye, Search, X } from "lucide-react";
+import { Eye, Link2, Search, X } from "lucide-react";
 import type { InvoiceListItem } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -183,13 +181,24 @@ export function InvoiceListClient({
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <Link
-                      href={`/app/${slug}/finance/billing/invoice/${row.id}`}
-                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                      Detail
-                    </Link>
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href={`/app/${slug}/finance/billing/invoice/${row.id}`}
+                        title="Detail"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Link>
+                      <Link
+                        href={`/${slug}/invoice/${row.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Invoice Publik"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Link2 className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))
