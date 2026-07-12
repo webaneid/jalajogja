@@ -1,6 +1,6 @@
 // Halaman publik event — tanpa auth, siapapun bisa akses dan mendaftar
 import { createTenantDb, db, tenants, members, contacts, profiles, tenantMemberships, getSettings, addresses, refRegencies, refProvinces, refProfessions } from "@jalajogja/db";
-import { publicUrl } from "@/lib/minio";
+import { publicUrl, resolveMediaUrl } from "@/lib/minio";
 import { eq, and, or, count, sql, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -14,7 +14,7 @@ import { renderBody } from "@/lib/letter-render";
 import { generateQrDataUrl } from "@/lib/qr-code";
 import type { Metadata } from "next";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
-import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { generateMetadata as buildMetadata, tiptapToPlainText } from "@/lib/seo";
 
 type BankAccount = {
   id: string;
@@ -99,7 +99,15 @@ export async function generateMetadata({
   const { db: tenantDb, schema } = tenantClient;
   const [event, base] = await Promise.all([
     tenantDb
-      .select({ title: schema.events.title, description: schema.events.description })
+      .select({
+        title:         schema.events.title,
+        description:   schema.events.description,
+        metaTitle:     schema.events.metaTitle,
+        metaDesc:      schema.events.metaDesc,
+        ogTitle:       schema.events.ogTitle,
+        ogDescription: schema.events.ogDescription,
+        coverId:       schema.events.coverId,
+      })
       .from(schema.events)
       .where(eq(schema.events.slug, eventSlug))
       .limit(1)
@@ -107,12 +115,30 @@ export async function generateMetadata({
     getTenantSeoBase(slug),
   ]);
   if (!event) return {};
+
+  let ogImage = base.logoUrl;
+  if (event.coverId) {
+    const [media] = await tenantDb
+      .select({ path: schema.media.path, variants: schema.media.variants })
+      .from(schema.media)
+      .where(eq(schema.media.id, event.coverId))
+      .limit(1);
+    if (media) ogImage = resolveMediaUrl(slug, media.path, media.variants as Record<string, string> | null);
+  }
+
+  // Konten (description) tersimpan sebagai Tiptap JSON — wajib diekstrak plain
+  // text dulu sebelum jadi meta description, jangan slice() JSON mentahnya.
+  const plainDescription = event.metaDesc || tiptapToPlainText(event.description).slice(0, 160) || undefined;
+
   return buildMetadata({
-    title:        event.title,
-    description:  event.description ? event.description.slice(0, 160) : undefined,
-    siteName:     base.siteName,
-    canonicalUrl: `${base.baseUrl}/agenda/${eventSlug}`,
-    ogImageUrl:   base.logoUrl,
+    title:         event.metaTitle || event.title,
+    description:   plainDescription,
+    siteName:      base.siteName,
+    canonicalUrl:  `${base.baseUrl}/agenda/${eventSlug}`,
+    ogImageUrl:    ogImage,
+    ogTitle:       event.ogTitle || undefined,
+    ogDescription: event.ogDescription || undefined,
+    ogType:        "article",
   });
 }
 

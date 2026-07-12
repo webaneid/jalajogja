@@ -110,6 +110,36 @@ export const truncateTitle = (t: string) => truncateForSeo(t, TITLE_MAX_LENGTH);
 export const truncateDesc  = (t: string) => truncateForSeo(t, DESC_MAX_LENGTH);
 
 /**
+ * Ekstrak plain text dari konten Tiptap JSON — untuk fallback meta description
+ * saat field metaDesc/ogDescription kosong. Field konten (posts.content,
+ * events.description, dll) disimpan sebagai Tiptap JSON, BUKAN plain text —
+ * jangan pernah slice() string-nya langsung, hasilnya JSON mentah di meta tag.
+ * Fallback: jika bukan JSON valid, anggap sudah plain text.
+ */
+type TiptapTextNode = { type?: string; text?: string; content?: TiptapTextNode[] };
+
+function collectTiptapText(node: TiptapTextNode, parts: string[]): void {
+  if (node.text) parts.push(node.text);
+  if (node.content) {
+    for (const child of node.content) collectTiptapText(child, parts);
+    if (node.type && node.type !== "text") parts.push(" ");
+  }
+}
+
+export function tiptapToPlainText(body: string | null | undefined): string {
+  if (!body) return "";
+  try {
+    const parsed = JSON.parse(body) as TiptapTextNode;
+    if (parsed && typeof parsed === "object" && (parsed.type || parsed.content)) {
+      const parts: string[] = [];
+      collectTiptapText(parsed, parts);
+      return parts.join("").replace(/\s+/g, " ").trim();
+    }
+  } catch { /* bukan JSON — anggap plain text */ }
+  return body.trim();
+}
+
+/**
  * Generate URL-friendly slug dari judul.
  * Normalisasi diakritik (ä→a, é→e, dll), hapus karakter non-alfanumerik.
  */
