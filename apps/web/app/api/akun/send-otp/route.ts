@@ -8,7 +8,8 @@ import { NextRequest, NextResponse }  from "next/server";
 import { db, otpTokens, createTenantDb, getSettings } from "@jalajogja/db";
 import { eq, and, gt, count, sql }   from "drizzle-orm";
 import { sendWaNotification, toE164 } from "@/lib/whatsapp";
-import { renderWaTemplate }           from "@/lib/wa-templates";
+import { renderTemplateString }       from "@/lib/wa-templates";
+import { resolveWaTemplateText }      from "@/lib/wa-notify";
 import type { WaNotifConfig }         from "@/lib/whatsapp";
 
 const OTP_TTL_MINUTES   = 5;
@@ -75,10 +76,10 @@ export async function POST(request: NextRequest) {
 
   // ── Ambil nama organisasi dari settings ───────────────────────────────────────
   let orgName = "Aplikasi";
+  const tenantClient = createTenantDb(slug);
   try {
-    const tenantClient = createTenantDb(slug);
-    const generalCfg   = await getSettings(tenantClient, "general");
-    const notifCfg     = await getSettings(tenantClient, "notif");
+    const generalCfg = await getSettings(tenantClient, "general");
+    const notifCfg    = await getSettings(tenantClient, "notif");
 
     orgName = (generalCfg["site_name"] as string | undefined) ?? orgName;
 
@@ -96,11 +97,12 @@ export async function POST(request: NextRequest) {
   const eventKey = type === "register" ? "otp_register"
                  : type === "login"    ? "otp_login"
                  :                       "otp_reset_password";
-  const message  = renderWaTemplate(eventKey, {
+  const tpl      = await resolveWaTemplateText(tenantClient, eventKey);
+  const message  = tpl ? renderTemplateString(tpl, {
     orgName,
     otp:    code,
     expiry: String(OTP_TTL_MINUTES),
-  });
+  }) : null;
 
   if (!message) {
     return NextResponse.json({ error: "Template WA tidak ditemukan." }, { status: 500 });

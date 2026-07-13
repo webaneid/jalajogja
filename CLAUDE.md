@@ -1016,7 +1016,8 @@ addon_usage                 → tracking penggunaan per bulan per tenant per add
   { "device_id": "pc-ikpm-jogjakarta", "phone_number": "628xxx", "verified": true,
     "notifications": { "payment_submitted": true, "payment_confirmed": true, ... } }
   ```
-- 7 fase implementasi, lihat `docs/arsitektur-whatsapp.md` § 12 — **Fase 1+2 SELESAI** + **Fase 7 (OTP) SELESAI**. **Fase 3–6 belum** (trigger notifikasi otomatis di event bisnis: payment, fulfillment, event, surat).
+- 7 fase implementasi, lihat `docs/arsitektur-whatsapp.md` § 12 — **Fase 1+2 SELESAI** + **Fase 7 (OTP) SELESAI** + **Fase 3 (Billing) SELESAI (2026-07-13)**. **Fase 4–6 belum** (fulfillment, event, surat).
+- **Teks notifikasi WA sekarang editable per tenant** — default seed di `lib/wa-templates.ts` (`WA_TEMPLATE_DEFAULTS`, sintaks `{{var}}` string-replace, bukan eval JS), override tersimpan di `tenant.settings` (group="notif", key="wa_message_templates"). Resolusi custom→default via `resolveWaTemplateText()` di `lib/wa-notify.ts`. UI: tombol "Edit Teks" per notifikasi di `/settings/notifications` → `WhatsAppSetupClient` → `saveWaTemplateAction`/`resetWaTemplateAction`.
 - **OTP via WA (Fase 7)**: `public.otp_tokens` table + `/api/akun/send-otp` + `/api/akun/verify-otp` + `/api/wa/available`. Register form + forgot-password sudah terintegrasi. Toggle OTP ada di dashboard WA settings. Migration: `0016_otp_tokens.sql`.
 - ⚠️ Implementasi menyimpang dari desain: config WA tersimpan di `tenant.settings` (bukan `tenant_addon_installations`), **tidak ada quota enforcement / addon billing check** sama sekali — lihat `docs/arsitektur-whatsapp.md` § 16 untuk detail gap dan cara menutupnya.
 - **GOWA API Endpoints (versi `latest`, confirmed 2026-07-02)** — lihat `docs/arsitektur-whatsapp.md` § 2.4:
@@ -3400,9 +3401,89 @@ Usaha, sub-item Profesional) sebagai piloting sebelum digeneralisasi ke halaman 
 (Usaha/Pesantren/Profesional directory pages) yang saat ini masih pakai text-list manual.
 **Belum dieksekusi**: migrasi halaman publik lain ke `<SocialLinks>` — tunggu konfirmasi user.
 
+### [2026-07-13] WhatsApp Notification Fase 3 (Billing) + Template Editable per Tenant
+
+**Riset dulu, jangan asumsi dari dokumen**: sebelum eksekusi, `grep -rln "sendWaNotification"` di
+seluruh `apps/web/app` + `apps/web/lib` hanya menemukan 1 caller (endpoint OTP) — padahal
+`docs/arsitektur-whatsapp.md` sudah menulis rencana lengkap "Peta Notifikasi per Modul" dan daftar
+cron reminder. Cron `invoice-reminder`/`event-reminder` yang disebut docs ternyata **tidak pernah
+dibuat** (`find apps/web/app/api/cron` hanya `cleanup-images` + `verify-domains`). Prinsip
+"CLAUDE.md/docs adalah project brain, bukan source of truth status fitur" berlaku juga untuk docs
+turunan (`arsitektur-*.md`) — selalu verifikasi ke kode, bukan cuma baca dokumen arsitektur.
+
+**Helper terpusat `lib/wa-notify.ts` — cegah drift orgName/URL di banyak caller**: alasan dibuatnya
+(bukan langsung panggil `sendWaNotification` di tiap action): kalau tiap 5+ titik notifikasi
+reimplementasi sendiri cara ambil `orgName` dan bangun URL invoice, risiko besar salah satu titik
+lupa pakai URL absolut (`NEXT_PUBLIC_APP_URL`) dan malah hardcode `/${slug}/...` — persis pola bug
+yang sudah pernah terjadi untuk custom domain (lihat lesson "Custom Domain Harus Diisolasi"). Satu
+helper `notifyWa()` yang wajib dipakai semua caller menutup kelas bug ini di titik tunggal.
+
+**Template WA dari fungsi JS ke string `{{var}}` — supaya bisa jadi seed database**: sebelumnya
+`lib/wa-templates.ts` berisi `Record<string, (v) => string>` (fungsi JS dengan `${v.name}`). Untuk
+membuat teks bisa diedit tenant dari dashboard, representasi default harus berupa **string murni**
+yang sama persis dipakai sebagai (a) fallback kode dan (b) isi awal textarea editor. Fungsi JS tidak
+bisa ditampilkan sebagai teks yang diedit manusia — string dengan placeholder `{{var}}` bisa.
+`renderTemplateString()` melakukan **string replace murni** (`tpl.replace(/\{\{(\w+)\}\}/g, ...)`),
+bukan `eval`/`Function()` — aman dari code injection meski teksnya diedit admin.
+
+**Override tersimpan di `tenant.settings`, bukan tabel baru**: konsisten dengan `whatsapp_config`
+yang sudah lebih dulu ada di sana (group="notif"). Key baru `wa_message_templates` — JSONB
+`Partial<Record<WaNotifKey,string>>`, cuma isi key yang dikustomisasi. Tidak perlu migration DDL.
+
+**Resolusi custom→default satu fungsi, dipakai dua caller**: `resolveWaTemplateText(tenantDb, event)`
+dipakai oleh `notifyWa()` (notifikasi bisnis) DAN `send-otp/route.ts` (OTP) — supaya kalau nanti ada
+titik notifikasi baru, tidak reimplementasi ulang logic "cek override dulu, fallback default".
+
+**Regresi minor yang disengaja (didokumentasikan, bukan dilupakan)**: 2 template lama
+(`order_shipped`, `letter_sign_request`) sebelumnya punya interpolasi kondisional JS
+(`${v.trackingUrl ? "\n\nPantau: "+v.trackingUrl : ""}`) — baris hanya muncul kalau variabelnya ada.
+Sintaks `{{var}}` string-replace tidak support kondisional. Diterima sebagai trade-off karena kedua
+notifikasi itu belum ada caller sama sekali (masuk fase mendatang) — saat wiring nanti, caller wajib
+selalu isi variabel itu dengan nilai wajar (jangan andalkan baris auto-hilang).
+
+**Aturan untuk notifikasi WA baru ke depan**: SELALU panggil lewat `notifyWa()` dari
+`lib/wa-notify.ts` (bukan `sendWaNotification()` langsung) di business-logic actions — kecuali kasus
+khusus seperti OTP yang punya guard tambahan (rate limit, verified-check sebelum kirim) di mana
+pemanggilan manual `resolveWaTemplateText` + `sendWaNotification` masih dibenarkan.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Direktori Profesional (implementasi penuh) + audit & fix profil anggota** (sesi 2026-07-13).
-- Sesi ini (2026-07-13):
+- Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
+- Sesi ini (2026-07-13, lanjutan — WA Notification):
+  - **Riset arsitektur sebelum eksekusi**: baca ulang `docs/arsitektur-whatsapp.md`, `-billing.md`,
+    `-event.md`, `-product.md`, `-donasi-alur.md` + verifikasi kode aktual (bukan cuma dokumen, karena
+    dokumen bisa basi — `grep sendWaNotification` ketemu 0 caller bisnis, cron `invoice-reminder`/
+    `event-reminder` yang disebut docs ternyata tidak pernah dibuat). Temuan: 3 pertanyaan user
+    (invoice-on-checkout WA, payment reminder, donasi/merchandise di event checkout) — jawaban:
+    WA checkout belum ada sama sekali, reminder belum ada sama sekali, donasi/merchandise event
+    (E10) SUDAH ada (1 campaign + 1 produk tetap per event, routing ke cart, banner di `/keranjang`).
+  - **Fase A — Notifikasi Billing SELESAI**: helper baru `lib/wa-notify.ts` (`notifyWa`, `waAppUrl`,
+    `waRupiah`, `resolveOrgName`) — satu titik untuk resolve orgName + format URL absolut + format
+    Rupiah, supaya tidak reimplementasi beda-beda di tiap action (root cause bug custom-domain lama).
+    5 titik notifikasi dipasang: `checkoutAction`→`invoice_created`, `submitPaymentProofAction`→
+    `payment_submitted`, `confirmInvoicePaymentAction`+`verifySubmittedPaymentAction`→
+    `payment_confirmed`, `rejectPaymentAction`→`payment_rejected`. Semua fire-and-forget
+    (`void notifyWa(...)`), tidak pernah menggagalkan transaksi utama.
+  - **Teks notifikasi WA — editable per tenant (fitur baru, atas permintaan user)**: refactor
+    `lib/wa-templates.ts` dari fungsi JS (`${v.name}`) ke string dengan placeholder `{{var}}`
+    (`WA_TEMPLATE_DEFAULTS` + `renderTemplateString()` — string replace murni, bukan eval JS).
+    Override tersimpan di `tenant.settings` (group="notif", key="wa_message_templates") — tanpa
+    migration, pakai infrastruktur settings JSONB yang sudah ada. `resolveWaTemplateText()` di
+    `wa-notify.ts`: custom tenant → fallback default kode. Dipakai baik oleh `notifyWa()` maupun
+    endpoint OTP (`send-otp/route.ts`) — teks OTP pun ikut editable. UI: tombol "Edit Teks" per
+    notifikasi di `/settings/notifications` → `WhatsAppSetupClient` (komponen baru `NotifItemRow`)
+    → `saveWaTemplateAction`/`resetWaTemplateAction` di `settings/actions.ts`. Badge "kustom" +
+    tombol "Reset ke Default" muncul saat sudah dikustomisasi.
+  - **Catatan minor**: 2 template lama (`order_shipped`, `letter_sign_request`) sebelumnya punya
+    baris kondisional (mis. resi hanya muncul kalau ada). Sintaks `{{var}}` baru tidak support
+    kondisional — baris itu akan selalu tampil (kosong jika var tidak diisi). Belum berdampak
+    karena kedua notifikasi itu belum ada caller-nya (masuk Fase 4/6 mendatang) — perlu diperhatikan
+    saat wiring nanti agar caller selalu isi variabel dengan nilai wajar.
+  - TypeScript 0 errors, full production build sukses di setiap tahap.
+  - **Fase B (cron `invoice-reminder` + `event-reminder`) dan Fase 4-6 (event/donasi/fulfillment/surat
+    notif) BELUM dikerjakan** — menyusul sesi berikutnya. Pola cron sudah dikonfirmasi: HTTP GET +
+    header `x-cron-secret`/`Authorization: Bearer` dicek `CRON_SECRET`, dipicu crontab VPS via `curl`
+    (sama seperti `cleanup-images`/`verify-domains` yang sudah ada).
+- Sesi sebelumnya (2026-07-13):
   - **Fitur Direktori Profesional — implementasi penuh 8 step** sesuai `docs/arsitektur-profesional.md`
     (perencanaan dari sesi sebelumnya): schema `member_professionals` + migration `0027`, curated list
     `lib/professional-types.ts` + `ProfessionTypeCombobox`, API self-service, halaman `/akun/profesional`
@@ -4029,7 +4110,7 @@ Pattern: `globals.css` definisikan `.btn`, `.btn-primary`, `.btn-sm`, dll. via `
 - **View Counter** — Step 10: tampil di detail publik (≥50). Detail: `docs/arsitektur-views-count.md`
 - **Widget Area System** — ✅ SELESAI
 - **Member Media Library** — Phase 1–4 (upload foto sendiri, lihat file sendiri, MemberMediaPicker). Arsitektur: `docs/arsitektur-medialibrary.md`
-- **WhatsApp Gateway** — Fase 1+2 SELESAI (koneksi + dashboard setup) + Fase 7 SELESAI (OTP register + reset password). Fase 3–6 belum (trigger notifikasi otomatis per modul). Quota enforcement/addon billing belum diimplementasikan — lihat `docs/arsitektur-whatsapp.md` § 16.
+- **WhatsApp Gateway** — Fase 1+2 SELESAI (koneksi + dashboard setup) + Fase 7 SELESAI (OTP register + reset password) + Fase 3 SELESAI (notifikasi billing: invoice_created, payment_submitted, payment_confirmed, payment_rejected). Teks semua notifikasi editable per tenant via `/settings/notifications`. Fase 4–6 belum (fulfillment, event, surat) — lihat `docs/arsitektur-whatsapp.md` § 12. Cron reminder (`invoice_reminder`, `event_reminder`) belum dibuat. Quota enforcement/addon billing belum diimplementasikan — lihat `docs/arsitektur-whatsapp.md` § 16.
 
 ### [2026-05] Custom Role — Permission Enforcement + Dialog Fix
 

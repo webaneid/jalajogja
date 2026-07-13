@@ -7,6 +7,7 @@ import { createTenantDb, generateFinancialNumber } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { recordIncome } from "@jalajogja/db";
+import { notifyWa, waRupiah } from "@/lib/wa-notify";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -449,6 +450,16 @@ export async function confirmInvoicePaymentAction(
       return payment.id;
     });
 
+    void notifyWa({
+      slug, tenantDb, event: "payment_confirmed",
+      phone: inv.customerPhone,
+      vars: {
+        name:          inv.customerName,
+        invoiceNumber: inv.invoiceNumber,
+        amount:        waRupiah(data.amount),
+      },
+    });
+
     revalidateBilling(slug);
     return { success: true, data: { paymentId } };
   } catch (err) {
@@ -475,7 +486,8 @@ export async function rejectPaymentAction(
   if (!reason?.trim())
     return { success: false, error: "Alasan penolakan wajib diisi." };
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
 
   const [payment] = await db
     .select({ id: schema.payments.id, status: schema.payments.status })
@@ -488,10 +500,16 @@ export async function rejectPaymentAction(
   if (payment.status === "rejected")  return { success: false, error: "Pembayaran sudah ditolak sebelumnya." };
   if (payment.status !== "submitted") return { success: false, error: "Hanya bisa menolak bukti yang sudah di-submit customer." };
 
-  // Cari invoice terkait via invoice_payments
+  // Cari invoice terkait via invoice_payments (join langsung untuk dapat data notifikasi)
   const [invLink] = await db
-    .select({ invoiceId: schema.invoicePayments.invoiceId })
+    .select({
+      invoiceId:     schema.invoicePayments.invoiceId,
+      customerName:  schema.invoices.customerName,
+      customerPhone: schema.invoices.customerPhone,
+      invoiceNumber: schema.invoices.invoiceNumber,
+    })
     .from(schema.invoicePayments)
+    .innerJoin(schema.invoices, eq(schema.invoices.id, schema.invoicePayments.invoiceId))
     .where(eq(schema.invoicePayments.paymentId, paymentId))
     .limit(1);
 
@@ -529,6 +547,18 @@ export async function rejectPaymentAction(
         }
       }
     });
+
+    if (invLink) {
+      void notifyWa({
+        slug, tenantDb, event: "payment_rejected",
+        phone: invLink.customerPhone,
+        vars: {
+          name:          invLink.customerName,
+          invoiceNumber: invLink.invoiceNumber,
+          reason:        reason.trim(),
+        },
+      });
+    }
 
     revalidateBilling(slug);
     return { success: true, data: undefined };
@@ -720,6 +750,16 @@ export async function verifySubmittedPaymentAction(
           });
         }
       }
+    });
+
+    void notifyWa({
+      slug, tenantDb, event: "payment_confirmed",
+      phone: inv.customerPhone,
+      vars: {
+        name:          inv.customerName,
+        invoiceNumber: inv.invoiceNumber,
+        amount:        waRupiah(payAmount),
+      },
     });
 
     revalidateBilling(slug);

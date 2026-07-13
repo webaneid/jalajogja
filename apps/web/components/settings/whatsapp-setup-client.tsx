@@ -10,8 +10,11 @@ import {
   deactivateWhatsAppAction,
   disconnectWhatsAppAction,
   saveWaNotificationSettingsAction,
+  saveWaTemplateAction,
+  resetWaTemplateAction,
 } from "@/app/(dashboard)/app/[tenant]/settings/actions";
 import type { WaNotifKey } from "@/lib/whatsapp";
+import { WA_TEMPLATE_DEFAULTS } from "@/lib/wa-templates";
 
 // ── Tipe ──────────────────────────────────────────────────────────────────────
 
@@ -23,8 +26,9 @@ type WaConfig = {
 } | null;
 
 type Props = {
-  slug:   string;
-  config: WaConfig;
+  slug:      string;
+  config:    WaConfig;
+  templates: Record<string, string>;   // override kustom per event, key = WaNotifKey
 };
 
 // ── Daftar toggle notifikasi ─────────────────────────────────────────────────
@@ -87,33 +91,124 @@ const NOTIF_GROUPS: Array<{
   },
 ];
 
-// ── Toggle komponen ───────────────────────────────────────────────────────────
+// ── Row: toggle + editor teks kustom ─────────────────────────────────────────
 
-function Toggle({
-  label, desc, checked, onChange, disabled,
+function extractPlaceholders(tpl: string): string[] {
+  const found = tpl.match(/\{\{(\w+)\}\}/g) ?? [];
+  return Array.from(new Set(found.map((m) => m.slice(2, -2))));
+}
+
+function NotifItemRow({
+  slug, item, checked, onToggle, disabled,
+  customText, onSaved,
 }: {
-  label: string; desc: string; checked: boolean;
-  onChange: (v: boolean) => void; disabled?: boolean;
+  slug:       string;
+  item:       { key: WaNotifKey; label: string; desc: string };
+  checked:    boolean;
+  onToggle:   (v: boolean) => void;
+  disabled?:  boolean;
+  customText: string | undefined;
+  onSaved:    (key: WaNotifKey, text: string | undefined) => void;
 }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const defaultTpl              = WA_TEMPLATE_DEFAULTS[item.key] ?? "";
+  const [draft, setDraft]       = React.useState(customText ?? defaultTpl);
+  const [saving, setSaving]     = React.useState(false);
+  const isCustom                = customText !== undefined;
+  const placeholders             = extractPlaceholders(defaultTpl);
+
+  React.useEffect(() => {
+    setDraft(customText ?? defaultTpl);
+  }, [customText, defaultTpl]);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const result = await saveWaTemplateAction(slug, item.key, draft);
+      if (result.error) { toast.error(result.error); return; }
+      toast.success("Teks notifikasi disimpan.");
+      onSaved(item.key, draft.trim());
+    } finally { setSaving(false); }
+  }
+
+  async function handleReset() {
+    setSaving(true);
+    try {
+      const result = await resetWaTemplateAction(slug, item.key);
+      if (result.error) { toast.error(result.error); return; }
+      toast.success("Teks dikembalikan ke default.");
+      setDraft(defaultTpl);
+      onSaved(item.key, undefined);
+    } finally { setSaving(false); }
+  }
+
   return (
-    <label className="flex cursor-pointer items-start justify-between gap-4 rounded-lg border p-3.5 transition-colors hover:bg-accent/30 select-none">
-      <div className="space-y-0.5">
-        <p className="text-sm font-medium text-foreground">{label}</p>
-        <p className="text-xs text-muted-foreground">{desc}</p>
+    <div className="rounded-lg border transition-colors hover:bg-accent/20">
+      <div className="flex items-start justify-between gap-4 p-3.5">
+        <label className="flex flex-1 cursor-pointer items-start gap-3 select-none">
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <p className="text-sm font-medium text-foreground">
+              {item.label}
+              {isCustom && (
+                <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                  kustom
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground">{item.desc}</p>
+          </div>
+        </label>
+        <div className="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            className="text-xs text-primary underline-offset-2 hover:underline"
+          >
+            {expanded ? "Tutup" : "Edit Teks"}
+          </button>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={checked}
+            disabled={disabled}
+            onClick={() => onToggle(!checked)}
+            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${
+              checked ? "bg-primary" : "bg-input"
+            }`}
+          >
+            <span className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
+          </button>
+        </div>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${
-          checked ? "bg-primary" : "bg-input"
-        }`}
-      >
-        <span className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
-      </button>
-    </label>
+
+      {expanded && (
+        <div className="space-y-2 border-t bg-muted/20 p-3.5">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={5}
+            className="w-full rounded-md border bg-background p-2.5 text-xs font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          {placeholders.length > 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              Variabel tersedia: {placeholders.map((p) => (
+                <code key={p} className="mx-0.5 rounded bg-muted px-1 py-0.5">{`{{${p}}}`}</code>
+              ))}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleSave} disabled={saving || !draft.trim()}>
+              {saving ? "Menyimpan..." : "Simpan Teks"}
+            </Button>
+            {isCustom && (
+              <Button size="sm" variant="outline" onClick={handleReset} disabled={saving}>
+                Reset ke Default
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -244,7 +339,7 @@ function QrModal({
 
 // ── Komponen utama ────────────────────────────────────────────────────────────
 
-export function WhatsAppSetupClient({ slug, config }: Props) {
+export function WhatsAppSetupClient({ slug, config, templates }: Props) {
   const router                  = useRouter();
   const [pending, setPending]   = React.useState(false);
   const [showQr, setShowQr]     = React.useState(false);
@@ -252,6 +347,7 @@ export function WhatsAppSetupClient({ slug, config }: Props) {
     config?.notifications ?? {},
   );
   const [savingNotifs, setSavingNotifs] = React.useState(false);
+  const [templateOverrides, setTemplateOverrides] = React.useState<Record<string, string>>(templates);
 
   const isConfigured = !!config;
   const isVerified   = config?.verified === true;
@@ -390,13 +486,22 @@ export function WhatsAppSetupClient({ slug, config }: Props) {
                 {group.label}
               </legend>
               {group.items.map((item) => (
-                <Toggle
+                <NotifItemRow
                   key={item.key}
-                  label={item.label}
-                  desc={item.desc}
+                  slug={slug}
+                  item={item}
                   checked={notifs[item.key] ?? false}
-                  onChange={(v) => setNotifs((prev) => ({ ...prev, [item.key]: v }))}
+                  onToggle={(v) => setNotifs((prev) => ({ ...prev, [item.key]: v }))}
                   disabled={savingNotifs}
+                  customText={templateOverrides[item.key]}
+                  onSaved={(key, text) => {
+                    setTemplateOverrides((prev) => {
+                      const next = { ...prev };
+                      if (text === undefined) delete next[key];
+                      else next[key] = text;
+                      return next;
+                    });
+                  }}
                 />
               ))}
             </fieldset>

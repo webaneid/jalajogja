@@ -523,6 +523,57 @@ export async function saveWaNotificationSettingsAction(
   return {};
 }
 
+/**
+ * Simpan teks kustom untuk satu event notifikasi WA (override default kode).
+ */
+export async function saveWaTemplateAction(
+  slug:  string,
+  event: string,
+  text:  string,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+
+  const trimmed = text.trim();
+  if (!trimmed) return { error: "Teks tidak boleh kosong." };
+
+  const tenantClient = createTenantDb(slug);
+  const { getSettings, upsertSettings: upsert } = await import("@jalajogja/db");
+  const existing  = await getSettings(tenantClient, "notif");
+  const templates = (existing["wa_message_templates"] as Record<string, string> | undefined) ?? {};
+
+  await upsert(tenantClient, "notif", {
+    wa_message_templates: { ...templates, [event]: trimmed },
+  });
+
+  revalidatePath(`/app/${slug}/settings/notifications`);
+  return {};
+}
+
+/**
+ * Hapus override teks kustom untuk satu event — kembali pakai default kode.
+ */
+export async function resetWaTemplateAction(
+  slug:  string,
+  event: string,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+
+  const tenantClient = createTenantDb(slug);
+  const { getSettings, upsertSettings: upsert } = await import("@jalajogja/db");
+  const existing  = await getSettings(tenantClient, "notif");
+  const templates = { ...((existing["wa_message_templates"] as Record<string, string> | undefined) ?? {}) };
+  delete templates[event];
+
+  await upsert(tenantClient, "notif", { wa_message_templates: templates });
+
+  revalidatePath(`/app/${slug}/settings/notifications`);
+  return {};
+}
+
 // ─── INVITE ACTIONS ──────────────────────────────────────────────────────────
 
 export async function createInviteAction(

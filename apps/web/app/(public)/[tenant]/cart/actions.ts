@@ -8,6 +8,7 @@ import { createTenantDb, generateFinancialNumber, getSettings } from "@jalajogja
 import { tenants } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import { auth } from "@/lib/auth";
+import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -520,6 +521,18 @@ export async function checkoutAction(
     const cookieStore = await cookies();
     cookieStore.delete(COOKIE_NAME);
 
+    void notifyWa({
+      slug, tenantDb, event: "invoice_created",
+      phone: normalizePhone(customer.phone),
+      vars: {
+        name:          customerName,
+        invoiceNumber,
+        amount:        waRupiah(total),
+        dueDate,
+        invoiceUrl:    waAppUrl(slug, `/invoice/${invoice.id}`),
+      },
+    });
+
     return { success: true, data: { invoiceId: invoice.id, invoiceNumber } };
   } catch (err) {
     console.error("[checkoutAction]", err);
@@ -548,6 +561,7 @@ export async function submitPaymentProofAction(
 
     const [inv] = await tdb
       .select({ id: schema.invoices.id, customerName: schema.invoices.customerName,
+                customerPhone: schema.invoices.customerPhone,
                 total: schema.invoices.total, paidAmount: schema.invoices.paidAmount,
                 uniqueCode: schema.invoices.uniqueCode,
                 invoiceNumber: schema.invoices.invoiceNumber, status: schema.invoices.status })
@@ -598,6 +612,16 @@ export async function submitPaymentProofAction(
       .update(schema.invoices)
       .set({ status: "waiting_verification", updatedAt: new Date() })
       .where(eq(schema.invoices.id, invoiceId));
+
+    void notifyWa({
+      slug, tenantDb, event: "payment_submitted",
+      phone: inv.customerPhone,
+      vars: {
+        name:          inv.customerName,
+        invoiceNumber: inv.invoiceNumber,
+        amount:        waRupiah(remaining),
+      },
+    });
 
     return { success: true, data: { paymentId: payment.id } };
   } catch (err) {

@@ -25,8 +25,9 @@ export default async function NotificationsSettingsPage({
     whatsappEnabled: boolean;
   };
 
-  const notif     = (settings.notifications as NotifConfig) ?? null;
-  const waConfig  = (settings["whatsapp_config"] as WaNotifConfig | undefined) ?? null;
+  const notif       = (settings.notifications as NotifConfig) ?? null;
+  const waConfig    = (settings["whatsapp_config"] as WaNotifConfig | undefined) ?? null;
+  const waTemplates = (settings["wa_message_templates"] as Record<string, string> | undefined) ?? {};
 
   return (
     <div className="space-y-8">
@@ -63,7 +64,7 @@ export default async function NotificationsSettingsPage({
             Membutuhkan konfigurasi GOWA di server.
           </p>
         </div>
-        <WhatsAppSetupClient slug={slug} config={waConfig} />
+        <WhatsAppSetupClient slug={slug} config={waConfig} templates={waTemplates} />
       </section>
     </div>
   );
