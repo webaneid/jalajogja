@@ -3281,9 +3281,151 @@ IKPM di `public.members`), bukan spesifik tenant.
 forum/marhalah, pertimbangkan apakah perlu di-dinamiskan lewat
 `resolveOrgLabels()` juga.
 
+### [2026-07-13] Fitur Direktori Profesional — Implementasi Penuh
+
+> Arsitektur lengkap: **`docs/arsitektur-profesional.md`** (perencanaan + implementasi, semua
+> keputusan desain terkunci).
+
+Entitas baru `public.member_professionals` — pola identik `member_businesses` &
+`member_owned_pesantren` (self-reported, helper FK `contacts`/`addresses`/`social_medias` reused,
+tidak ada moderasi admin). Riset BPS KBJI 2014 (Golongan Pokok 2 "Profesional", basis ISCO-08)
+untuk 7 kategori. **Struktur 3 level** (bukan 2) hasil diskusi eksplisit dengan user — jangan
+disederhanakan lagi:
+1. `professionCategory` — enum 7 nilai (dropdown biasa)
+2. `professionType` — jenis profesi SPESIFIK (combobox kurasi per kategori + bisa ketik custom).
+   **Setiap profesi entitas terpisah** — Pengacara≠Notaris, Dokter≠Perawat≠Bidan, Akuntan≠Konsultan.
+   Feedback eksplisit: `ref_professions` yang melumping ("Dokter / Tenaga Kesehatan") JANGAN ditiru.
+3. `specialization` — teks bebas opsional untuk detail lanjut (mis. "Spesialis Anak")
+
+**File utama**: `packages/db/src/schema/public/member-professionals.ts`,
+`lib/professional-types.ts` (daftar kurasi §2.5 arsitektur, gampang ditambah karena hidup di kode),
+`components/ui/profession-type-combobox.tsx` (creatable combobox, fully controlled — sempat ada bug
+duplikasi state lokal vs prop `value` yang bisa stale saat form reset, sudah difix jadi single
+source of truth dari `value` prop langsung).
+
+Halaman: self-service `/akun/profesional` (three-view, copy pola `usaha-client.tsx`), direktori
+publik `/profesional` + `/profesional/[id]`, breakdown "Profesional per Kategori" di `/statistik`.
+
+**Data `ref_professions` existing dicek langsung production sebelum implementasi** — kategori
+"Profesional" (4 entri lumped) tervalidasi konsisten dengan skema baru, 2 celah (Pendidikan &
+Akademik, Teknologi Informasi) diisi sebagai kategori baru. `ref_professions` dan
+`members.profession_id` **tidak diubah sama sekali** — dua sistem tetap independen.
+
+### [2026-07-13] Bug: Field Wajib Tanpa Indikator Visual — "Tombol Tidak Muncul"
+
+**Gejala dilaporkan user**: tombol "Simpan & Lanjutkan" di `/akun/lengkapi` Step 1 kadang "tidak
+muncul". **Root cause**: field itu SELALU dirender, tapi disabled (opacity-50, tidak bisa diklik)
+kalau field wajib kosong — dan 4 dari 6 field wajib (Jenis Kelamin, Tanggal Lahir, Tahun Lulus KMI,
+Profesi) TIDAK punya tanda asterisk (*) merah, cuma "Wali Santri" yang benar. User tidak tahu field
+mana yang wajib diisi, tombol tetap redup tanpa penjelasan (beda dari Step 2/3 yang tervalidasi
+saat diklik dan tampilkan `setError` — Step 1 di-`disabled` langsung, jadi tidak pernah ter-klik,
+tidak pernah dapat pesan error).
+
+**Fix**: `FieldWrap`/`TextInput`/`SelectNative` (helper lokal di file itu) ditambah prop `required`
+yang render asterisk, mirror pattern `PhoneInput` yang sudah benar.
+
+**Aturan berlaku di SEMUA form seluruh aplikasi**: kalau sebuah field diperiksa di kondisi
+`disabled={... || !field}` pada tombol submit, field itu WAJIB punya indikator visual (asterisk
+merah) di labelnya. Tombol yang di-disable tanpa penjelasan terlihat seperti bug, bukan seperti
+form yang belum lengkap. Audit form lain di aplikasi untuk pola serupa jika ada laporan serupa.
+
+### [2026-07-13] PC IKPM Cabang — 3 Bug Sekaligus (Cache, Form Gap, UX)
+
+**Investigasi 4-titik** (simpan → tampil → form admin → UX) menemukan 3 bug independen:
+
+1. **Cache RSC basi di `/akun`**: navigasi akhir wizard `/akun/lengkapi` pakai `router.push()`
+   bukan reload penuh — Next.js App Router bisa sajikan RSC cache dari SEBELUM data disimpan,
+   terutama kalau user sempat buka `/akun` dulu (alur normal, ada banner "Lengkapi Data" di sana).
+   Fix: `window.location.href` (pattern yang sama dengan lesson "window.location.href wajib
+   setelah login" — berlaku juga untuk navigasi pasca-mutasi data, bukan cuma auth).
+2. **Form admin `members/new` + `members/[id]/edit` TIDAK PUNYA field PC IKPM sama sekali** — hanya
+   bisa diisi lewat self-service `/akun/lengkapi`. Kalau admin yang input/edit member, field ini
+   selamanya kosong. Ditambahkan ke `step1-identity.tsx` + `MemberFormData`/`sanitize()` di
+   `members/actions.ts` + prop `cabangList` dialirkan dari server page yang fetch `ref_ikpm_cabang`.
+3. **136 opsi PC IKPM pakai `<select>` polos** tanpa search — diganti `<Combobox>`.
+
+**Aturan**: kalau field ada di self-service (`/akun/*`) tapi juga masuk akal diisi admin, WAJIB cek
+apakah form admin (`members/new`, `members/[id]/edit`) punya field yang sama. Dua form ini mudah
+drift karena dikembangkan terpisah — `step1-identity.tsx` (admin) dan `akun/lengkapi/page.tsx`
+(self-service) punya struktur field yang mirip tapi TIDAK saling sinkron otomatis.
+
+### [2026-07-13] Card "Keanggotaan" di `/anggota/[id]` — PC IKPM Selalu Tampil, Marhalah/Forum Kondisional
+
+Row "Cabang" (cuma nampilkan tenant yang sedang dibuka di URL — bisa salah/tidak lengkap untuk
+anggota multi-tenant) diganti blok "Anggota" dengan 2 sumber data berbeda sengaja:
+- **PC IKPM** — dari `members.primaryCabangRefId → ref_ikpm_cabang.nama` (tabel referensi).
+  **Selalu tampil**, bahkan kalau PC IKPM itu belum onboard jadi tenant di sistem — karena semua
+  136 PC IKPM resmi ada di `ref_ikpm_cabang` terlepas dari status tenant-nya.
+- **Marhalah & Forum** — dari `tenant_memberships JOIN tenants WHERE tenant_type IN
+  ('marhalah','forum')`. **Hanya tampil kalau tenant-nya memang ada dan anggota tergabung** —
+  beda sumber data karena marhalah/forum secara konsep MEMANG hanya eksis kalau tenant-nya dibuat.
+
+**Aturan**: jangan campur "data dari reference table" (selalu ada, independen dari tenant) dengan
+"data dari tenant_memberships" (bergantung tenant eksis) dalam satu query/sumber yang sama — dua
+hal ini punya siklus hidup berbeda dan harus di-query terpisah.
+
+**Drive-by fix**: query `Status`/`Bergabung` di halaman yang sama sebelumnya TIDAK filter
+`tenantId` (cuma `memberId`) — untuk anggota yang ikut banyak tenant, bisa ambil baris
+`tenant_memberships` dari tenant yang salah. Sudah ditambah `and(eq(memberId), eq(tenantId))`.
+
+**Bug turunan**: `joinedAt` bisa NULL untuk anggota yang auto-join lewat `primaryCabangRefId` (jalur
+itu tidak set tanggal eksplisit) — "Tanggal Bergabung" jadi hilang. Fix: fallback ke
+`tenantMemberships.createdAt` (kolom `defaultNow()`, selalu terisi) kalau `joinedAt` null.
+
+### [2026-07-13] Komponen `SocialLinks` — react-icons untuk Brand Icon
+
+**Masalah lama**: lucide-react (semua versi yang dicoba, termasuk v1.8.0) TIDAK mengekspor icon
+brand sosial media (Facebook, Instagram, LinkedIn, TikTok) sama sekali — cuma ada `Globe` (generik)
+dan `X` (huruf X polos, kebetulan cocok untuk platform X/Twitter). Solusi lama "pakai Globe untuk
+semua platform" (lesson lama, superseded) bikin semua ikon sosmed terlihat sama, tidak bisa
+dibedakan platform mana yang mana.
+
+**Fix**: install `react-icons` (`react-icons/fa6` — Font Awesome 6 punya semua brand icon yang
+dibutuhkan: `FaFacebook`, `FaInstagram`, `FaLinkedin`, `FaXTwitter`, `FaTiktok`, `FaGlobe`,
+`FaYoutube`). Komponen baru `components/ui/social-links.tsx` — universal "sekali panggil dipakai
+di mana saja" (analogi WordPress function), UI icon-only bulat, terima `value` dengan shape yang
+sama dengan `SocialMediaValue` (`social-media-input.tsx`, komponen input-nya).
+
+**Href per platform** (beda format per field, harus dikonversi):
+```
+instagram → https://instagram.com/{username}       (value = username tanpa @)
+facebook  → value langsung kalau sudah URL, else https://facebook.com/{value}
+twitter   → https://x.com/{username}                (value = username tanpa @)
+tiktok    → https://tiktok.com/@{username}           (value = username tanpa @)
+linkedin, youtube, website → value langsung (sudah URL penuh)
+```
+
+**Status implementasi**: baru diterapkan di `/anggota/[id]` (3 lokasi: Media Sosial utama, sub-item
+Usaha, sub-item Profesional) sebagai piloting sebelum digeneralisasi ke halaman publik lain
+(Usaha/Pesantren/Profesional directory pages) yang saat ini masih pakai text-list manual.
+**Belum dieksekusi**: migrasi halaman publik lain ke `<SocialLinks>` — tunggu konfirmasi user.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix bug kode unik + peserta event hilang + SEO event + register label dinamis** (sesi 2026-07-12).
-- Sesi ini (2026-07-12):
+- Terakhir dikerjakan: **Direktori Profesional (implementasi penuh) + audit & fix profil anggota** (sesi 2026-07-13).
+- Sesi ini (2026-07-13):
+  - **Fitur Direktori Profesional — implementasi penuh 8 step** sesuai `docs/arsitektur-profesional.md`
+    (perencanaan dari sesi sebelumnya): schema `member_professionals` + migration `0027`, curated list
+    `lib/professional-types.ts` + `ProfessionTypeCombobox`, API self-service, halaman `/akun/profesional`
+    (three-view), card menu di `/akun`, direktori publik `/profesional` + `/profesional/[id]`,
+    Public Link Picker, breakdown statistik. TypeScript 0 errors, build production sukses. Commit `2a3aa64`.
+  - **Fix bug field wajib tanpa asterisk** di `/akun/lengkapi` Step 1 (Jenis Kelamin, Tanggal Lahir,
+    Tahun Lulus KMI, Profesi) — tombol "Simpan & Lanjutkan" disabled tanpa penjelasan visual.
+  - **Fix 3 bug PC IKPM Cabang**: cache RSC basi di `/akun` (`router.push`→`window.location.href`),
+    field PC IKPM sama sekali tidak ada di form admin `members/new`+`members/[id]/edit` (ditambahkan),
+    `<select>` 136 opsi tanpa search (diganti `<Combobox>`). Commit `9faab81`.
+  - **Card "Keanggotaan" di `/anggota/[id]` direstrukturisasi** — PC IKPM (dari `primaryCabangRefId`,
+    selalu tampil) + Marhalah/Forum (dari `tenant_memberships`, kondisional tenant eksis) menggantikan
+    row "Cabang" tunggal yang cuma nampilkan tenant di URL. Drive-by fix: query Status/Bergabung
+    sebelumnya tidak filter `tenantId`. Commit `9faab81`.
+  - **Audit `/anggota/[id]` ketemu 2 gap**: Wali Santri tidak pernah ditampilkan (dipindah ke Data
+    Pribadi), section Profesional belum terintegrasi (ditambahkan). Fix Tanggal Bergabung hilang
+    (fallback ke `tenantMemberships.createdAt` saat `joinedAt` null). Commit `b2f9770`.
+  - **Komponen baru `<SocialLinks>`** (`components/ui/social-links.tsx`) — install `react-icons` untuk
+    brand icon asli (lucide-react tidak punya sama sekali). Diterapkan di `/anggota/[id]` (3 lokasi)
+    sebagai piloting, belum digeneralisasi ke halaman publik lain (nunggu konfirmasi user). Commit `b2f9770`.
+  - Semua TypeScript 0 errors, full production build sukses di tiap tahap. Semua sudah push ke GitHub;
+    deploy VPS terakhir butuh `bun install` juga (dependency baru `react-icons`), bukan cuma build.
+- Sesi sebelumnya (2026-07-12):
   - **Fix root cause bug ganda (kode unik hilang + peserta event tidak masuk)** — `submitPaymentProofAction` tidak include `uniqueCode` saat hitung `remaining` → payment tercatat selalu kurang, invoice nyangkut "partial" → auto-create `event_registrations` (di-gate `newStatus==="paid"`) tidak pernah jalan untuk tiket via cart. Detail lengkap: `docs/arsitektur-kode-unik.md` § 12. Commit `64eeea5`.
   - **Fix bug turunan**: loop auto-create tiket sekarang guard `sourceType==="cart"` (cegah duplikat nama=nama tiket untuk alur lama) + `confirmInvoicePaymentAction` update status `event_registrations` untuk alur lama (sebelumnya cuma ada di `verifySubmittedPaymentAction`). Commit `64eeea5`.
   - **Fix race condition double-payment** — `confirmInvoicePaymentAction` sekarang `SELECT ... FOR UPDATE` lock invoice row di dalam transaction sebelum insert payment. Data invoice `620-INV-202607-00014` (tenant visikita) yang sempat ke-double-confirm dikoreksi manual via `docs/diagnosa-double-payment.sql`. Commit `141776e`.
@@ -3664,10 +3806,10 @@ Return type yang benar: `sql<string>` (PostgreSQL aggregate selalu string) → p
 Direktori publik HANYA tampilkan anggota cabang ini — bukan semua anggota IKPM lintas cabang.
 Tanpa JOIN ini → data bocor lintas tenant.
 
-**`lucide-react` tidak punya `Instagram` dan `Youtube` icon:**
-Versi v0.503 yang dipakai tidak mengeksport social media brand icons.
-Fix: gunakan `Globe` sebagai pengganti universal untuk semua platform sosial media.
-Aturan: jangan import icon yang tidak tersedia, selalu cek dengan `tsc` sebelum commit.
+**`lucide-react` tidak punya icon brand sosial media — SUPERSEDED, lihat lesson [2026-07-13]:**
+Solusi lama "pakai `Globe` sebagai pengganti universal" sudah digantikan komponen
+`<SocialLinks>` + `react-icons` (icon brand asli per platform). Lihat lesson
+"Komponen SocialLinks — react-icons untuk brand icon" di bawah.
 
 **Statistik — sequential query, bukan Promise.all destructuring:**
 Promise.all dengan destructuring array membuat TypeScript kehilangan inference tipe per-index.
