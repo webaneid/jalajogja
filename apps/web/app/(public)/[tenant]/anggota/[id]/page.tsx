@@ -6,14 +6,15 @@ import { auth }               from "@/lib/auth";
 import { displayPhone }       from "@/lib/phone";
 import {
   db, members, contacts, addresses, socialMedias, refProfessions, refIkpmCabang,
-  memberBusinesses, memberEducations, memberPesantren, pesantren,
+  memberBusinesses, memberEducations, memberPesantren, pesantren, memberProfessionals,
   tenantMemberships, tenants, refProvinces, refRegencies, refDistricts, refVillages,
 } from "@jalajogja/db";
 import {
   BadgeCheck, Phone, Mail, MessageCircle, MapPin,
   Globe, Building2, BookOpen, GraduationCap, User, Calendar,
-  CreditCard, Hash,
+  CreditCard, Hash, Briefcase,
 } from "lucide-react";
+import { SocialLinks } from "@/components/ui/social-links";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
@@ -48,6 +49,10 @@ function Row({ label, value }: { label: string; value?: string | null }) {
 
 const GENDER_LABEL: Record<string, string> = { male: "Laki-laki", female: "Perempuan" };
 const DOMICILE_LABEL: Record<string, string> = { permanent: "Domisili Tetap", temporary: "Sementara / Perantau" };
+const WALI_SANTRI_LABEL: Record<string, string> = {
+  gontor: "Wali Santri PM Gontor", alumni: "Wali Santri PM Alumni Gontor",
+  lain: "Wali Santri Pesantren Lain", bukan: "Bukan Wali Santri",
+};
 const PERAN_LABEL: Record<string, string> = {
   alumni: "Alumni / Santri", pengajar: "Pengajar", pengurus: "Pengurus",
   pengasuh: "Pengasuh", pendiri: "Pendiri", lainnya: "Lainnya",
@@ -69,7 +74,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
       birthPlaceText: true, graduationYear: true, graduationPeriod: true,
       professionId: true, domicileStatus: true, betterAuthUserId: true,
       contactId: true, homeAddressId: true, socialMediaId: true, photoUrl: true,
-      primaryCabangRefId: true,
+      primaryCabangRefId: true, waliSantri: true,
     },
   });
   if (!memberRow) notFound();
@@ -147,11 +152,19 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
 
   const [membership] = tenant
     ? await db
-        .select({ status: tenantMemberships.status, joinedAt: tenantMemberships.joinedAt })
+        .select({
+          status:    tenantMemberships.status,
+          joinedAt:  tenantMemberships.joinedAt,
+          createdAt: tenantMemberships.createdAt,
+        })
         .from(tenantMemberships)
         .where(and(eq(tenantMemberships.memberId, memberId), eq(tenantMemberships.tenantId, tenant.id)))
         .limit(1)
     : [null];
+
+  // joinedAt bisa NULL (mis. anggota yang auto-join lewat primaryCabangRefId
+  // tidak set tanggal eksplisit) — fallback ke createdAt row-nya (selalu terisi)
+  const bergabungDate = membership?.joinedAt ?? membership?.createdAt ?? null;
 
   // PC IKPM resmi (dari ref_ikpm_cabang) — selalu tampil, tidak tergantung tenant ada atau tidak
   const primaryCabang = memberRow.primaryCabangRefId
@@ -206,6 +219,20 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
       b.socialMediaId ? db.query.socialMedias.findFirst({ where: eq(socialMedias.id, b.socialMediaId) }) : null,
     ]);
     return { ...b, contact: bContact, social: bSocial };
+  }));
+
+  // Data Profesional (dengan kontak + sosmed per entri)
+  const professionals = await db
+    .select()
+    .from(memberProfessionals)
+    .where(eq(memberProfessionals.memberId, memberId));
+
+  const professionalDetails = await Promise.all(professionals.map(async p => {
+    const [pContact, pSocial] = await Promise.all([
+      p.contactId     ? db.query.contacts.findFirst({ where: eq(contacts.id, p.contactId) }) : null,
+      p.socialMediaId ? db.query.socialMedias.findFirst({ where: eq(socialMedias.id, p.socialMediaId) }) : null,
+    ]);
+    return { ...p, contact: pContact, social: pSocial };
   }));
 
   const displayEmail = contact?.email ?? session.user.email;
@@ -263,8 +290,8 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
 
         <dl className="space-y-2 pt-3 mt-1 border-t border-border">
           <Row label="Status"           value={membership?.status ? membership.status.charAt(0).toUpperCase() + membership.status.slice(1) : undefined} />
-          <Row label="Bergabung"        value={membership?.joinedAt
-            ? new Intl.DateTimeFormat("id-ID", { year:"numeric", month:"long", day:"numeric" }).format(new Date(membership.joinedAt))
+          <Row label="Bergabung"        value={bergabungDate
+            ? new Intl.DateTimeFormat("id-ID", { year:"numeric", month:"long", day:"numeric" }).format(new Date(bergabungDate))
             : undefined}
           />
         </dl>
@@ -285,6 +312,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
             : undefined}
           />
           <Row label="Profesi"         value={profession?.name} />
+          <Row label="Wali Santri"     value={memberRow.waliSantri ? WALI_SANTRI_LABEL[memberRow.waliSantri] : undefined} />
         </dl>
       </Section>
 
@@ -330,15 +358,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
       {/* ── Sosial Media ── */}
       {social && (social.instagram || social.facebook || social.twitter || social.linkedin || social.youtube || social.tiktok || social.website) && (
         <Section title="Media Sosial" icon={Globe}>
-          <dl className="space-y-2">
-            <Row label="Instagram" value={social.instagram ? `@${social.instagram}` : null} />
-            <Row label="Facebook"  value={social.facebook} />
-            <Row label="Twitter / X" value={social.twitter ? `@${social.twitter}` : null} />
-            <Row label="LinkedIn"  value={social.linkedin} />
-            <Row label="YouTube"   value={social.youtube} />
-            <Row label="TikTok"    value={social.tiktok ? `@${social.tiktok}` : null} />
-            <Row label="Website"   value={social.website} />
-          </dl>
+          <SocialLinks value={social} />
         </Section>
       )}
 
@@ -404,12 +424,39 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
                     <Row label="Email"   value={b.contact?.email} />
                   </div>
                 )}
-                {(b.social?.instagram || b.social?.website) && (
-                  <div className="space-y-0.5">
-                    {b.social?.instagram && <Row label="Instagram" value={`@${b.social.instagram}`} />}
-                    {b.social?.website   && <Row label="Website"   value={b.social.website} />}
+                {b.social && <SocialLinks value={b.social} size="sm" />}
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* ── Profesional ── */}
+      {professionalDetails.length > 0 && (
+        <Section title="Profesional" icon={Briefcase}>
+          <div className="space-y-4">
+            {professionalDetails.map((p, i) => (
+              <div key={i} className="text-sm space-y-1.5 pb-4 border-b border-border last:border-0 last:pb-0">
+                <p className="font-semibold">
+                  {[p.title, p.professionType].filter(Boolean).join(" ")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {p.professionCategory}{p.specialization ? ` · ${p.specialization}` : ""}
+                </p>
+                {p.institution    && <p className="text-xs">Institusi: {p.institution}</p>}
+                {p.employmentType && <p className="text-xs text-muted-foreground">{p.employmentType}</p>}
+                {(p.licenseType || p.licenseNumber) && (
+                  <p className="text-xs text-muted-foreground">
+                    {[p.licenseType, p.licenseNumber].filter(Boolean).join(" — ")}
+                  </p>
+                )}
+                {(p.contact?.phone || p.contact?.email) && (
+                  <div className="space-y-0.5 pt-1">
+                    <Row label="Telepon" value={displayPhone(p.contact?.phone)} />
+                    <Row label="Email"   value={p.contact?.email} />
                   </div>
                 )}
+                {p.social && <SocialLinks value={p.social} size="sm" />}
               </div>
             ))}
           </div>
@@ -427,7 +474,10 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
         <a href={`/${slug}/akun/usaha`} className="rounded-xl border border-border p-3 text-center text-sm hover:bg-muted/40 transition-colors">
           Edit Data Usaha
         </a>
-        <a href={`/${slug}/akun`} className="rounded-xl border border-border p-3 text-center text-sm hover:bg-muted/40 transition-colors text-muted-foreground">
+        <a href={`/${slug}/akun/profesional`} className="rounded-xl border border-border p-3 text-center text-sm hover:bg-muted/40 transition-colors">
+          Edit Data Profesional
+        </a>
+        <a href={`/${slug}/akun`} className="rounded-xl border border-border p-3 text-center text-sm hover:bg-muted/40 transition-colors text-muted-foreground col-span-2">
           ← Dashboard
         </a>
       </div>
