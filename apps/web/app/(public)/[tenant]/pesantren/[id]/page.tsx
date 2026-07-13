@@ -9,12 +9,13 @@ import Image    from "next/image";
 import Link     from "next/link";
 import type { Metadata } from "next";
 import {
-  School, MapPin, Phone, MessageCircle, Mail, Globe,
+  School, MapPin, Phone, MessageCircle, Mail,
   Users, BookOpen, ChevronLeft,
 } from "lucide-react";
 import { displayPhone } from "@/lib/phone";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { SocialLinks } from "@/components/ui/social-links";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
@@ -252,17 +253,7 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
         )}
 
         {/* Social media */}
-        {Object.keys(socials).length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {socials.instagram && <a href={`https://instagram.com/${socials.instagram}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors"><Globe size={12} />@{socials.instagram}</a>}
-            {socials.youtube   && <a href={socials.youtube}                               target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors"><Globe size={12} />YouTube</a>}
-            {socials.facebook  && <a href={`https://facebook.com/${socials.facebook}`}   target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors"><Globe size={12} />Facebook</a>}
-            {socials.tiktok    && <a href={`https://tiktok.com/@${socials.tiktok}`}      target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors"><Globe size={12} />@{socials.tiktok}</a>}
-            {socials.twitter   && <a href={`https://twitter.com/${socials.twitter}`}     target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors"><Globe size={12} />@{socials.twitter}</a>}
-            {socials.linkedin  && <a href={socials.linkedin}                              target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors"><Globe size={12} />LinkedIn</a>}
-            {socials.website   && <a href={socials.website}                               target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors"><Globe size={12} />Website</a>}
-          </div>
-        )}
+        {Object.keys(socials).length > 0 && <SocialLinks value={socials} />}
 
         {/* Pemilik */}
         <div className="rounded-xl border border-border p-5">

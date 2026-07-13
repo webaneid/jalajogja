@@ -5,8 +5,9 @@ import Image from "next/image";
 import Link  from "next/link";
 import {
   X, Loader2, Phone, MessageCircle, Mail, MapPin,
-  Globe, Briefcase, School, Users, ChevronRight,
+  Briefcase, School, Users, Eye,
 } from "lucide-react";
+import { SocialLinks } from "@/components/ui/social-links";
 
 const GENDER_LABEL: Record<string, string> = {
   male:   "Laki-laki",
@@ -85,14 +86,6 @@ function Avatar({ name, photoUrl, size = 36 }: { name: string; photoUrl?: string
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_LABEL[status] ?? { label: status, cls: "bg-muted text-muted-foreground border-border" };
-  return (
-    <span className={`inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full border ${s.cls}`}>
-      {s.label}
-    </span>
-  );
-}
 
 export function AnggotaDirectoryClient({ slug, rows, hasFilter }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -167,7 +160,6 @@ export function AnggotaDirectoryClient({ slug, rows, hasFilter }: Props) {
               <th className="px-4 py-3 font-semibold w-[90px]">Angkatan</th>
               <th className="px-4 py-3 font-semibold">Profesi</th>
               <th className="px-4 py-3 font-semibold">Domisili</th>
-              <th className="px-4 py-3 font-semibold w-[80px]">Status</th>
               <th className="px-4 py-3 w-[40px]" />
             </tr>
           </thead>
@@ -207,13 +199,9 @@ export function AnggotaDirectoryClient({ slug, rows, hasFilter }: Props) {
                     : <span className="text-muted-foreground/40">—</span>
                   }
                 </td>
-                {/* Status */}
-                <td className="px-4 py-3">
-                  <StatusBadge status={m.memberStatus} />
-                </td>
                 {/* Action */}
                 <td className="px-3 py-3 text-right">
-                  <ChevronRight size={15} className="text-muted-foreground/40 group-hover:text-primary transition-colors inline" />
+                  <Eye size={15} className="text-muted-foreground/40 group-hover:text-primary transition-colors inline" />
                 </td>
               </tr>
             ))}
@@ -246,16 +234,15 @@ export function AnggotaDirectoryClient({ slug, rows, hasFilter }: Props) {
                   <span className="text-xs text-muted-foreground">{m.domicileProvince}</span>
                 )}
               </div>
-              <div className="flex items-center gap-2 mt-1">
-                <StatusBadge status={m.memberStatus} />
-                {m.graduationYear && (
+              {m.graduationYear && (
+                <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-muted-foreground/60">
                     {m.graduationYear}{m.graduationPeriod ? ` (${m.graduationPeriod})` : ""}
                   </span>
-                )}
-              </div>
+                </div>
+              )}
             </div>
-            <ChevronRight size={16} className="text-muted-foreground/40 shrink-0 group-hover:text-primary transition-colors" />
+            <Eye size={16} className="text-muted-foreground/40 shrink-0 group-hover:text-primary transition-colors" />
           </button>
         ))}
       </div>
@@ -365,52 +352,7 @@ export function AnggotaDirectoryClient({ slug, rows, hasFilter }: Props) {
                     </div>
                   )}
 
-                  {Object.keys(detail.socials).length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {detail.socials.instagram && (
-                        <a href={`https://instagram.com/${detail.socials.instagram}`} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors">
-                          <Globe size={12} /> <span>@{detail.socials.instagram}</span>
-                        </a>
-                      )}
-                      {detail.socials.youtube && (
-                        <a href={detail.socials.youtube} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors">
-                          <Globe size={12} /> YouTube
-                        </a>
-                      )}
-                      {detail.socials.website && (
-                        <a href={detail.socials.website} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors">
-                          <Globe size={12} /> Website
-                        </a>
-                      )}
-                      {detail.socials.linkedin && (
-                        <a href={detail.socials.linkedin} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors">
-                          <Globe size={12} /> LinkedIn
-                        </a>
-                      )}
-                      {detail.socials.facebook && (
-                        <a href={`https://facebook.com/${detail.socials.facebook}`} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors">
-                          <Globe size={12} /> Facebook
-                        </a>
-                      )}
-                      {detail.socials.tiktok && (
-                        <a href={`https://tiktok.com/@${detail.socials.tiktok}`} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors">
-                          <Globe size={12} /> @{detail.socials.tiktok}
-                        </a>
-                      )}
-                      {detail.socials.twitter && (
-                        <a href={`https://twitter.com/${detail.socials.twitter}`} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted/50 transition-colors">
-                          <Globe size={12} /> @{detail.socials.twitter}
-                        </a>
-                      )}
-                    </div>
-                  )}
+                  {Object.keys(detail.socials).length > 0 && <SocialLinks value={detail.socials} />}
 
                   {detail.businesses.length > 0 && (
                     <div className="space-y-2">
