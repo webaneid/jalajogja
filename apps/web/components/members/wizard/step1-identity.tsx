@@ -37,6 +37,7 @@ export interface Step1DefaultValues {
   graduationPeriod?: "awal" | "akhir"
   professionId?:     number
   waliSantri?:       "gontor" | "alumni" | "lain" | "bukan"
+  primaryCabangRefId?: string
   status?: "active" | "inactive" | "alumni"
   joinedAt?: string
 }
@@ -44,6 +45,8 @@ export interface Step1DefaultValues {
 interface Step1Props {
   slug: string
   professions: RefProfession[]
+  /** Daftar PC IKPM resmi (ref_ikpm_cabang) untuk combobox */
+  cabangList: { id: string; nama: string }[]
   onSuccess: (memberId: string) => void
   /** Jika ada memberId → mode edit (pakai updateMemberAction) */
   memberId?: string
@@ -289,11 +292,12 @@ const CURRENT_YEAR = new Date().getFullYear()
 
 // ─── Step 1: Identitas ────────────────────────────────────────────────────────
 
-export function Step1Identity({ slug, professions, onSuccess, memberId: editMemberId, defaultValues }: Step1Props) {
+export function Step1Identity({ slug, professions, cabangList, onSuccess, memberId: editMemberId, defaultValues }: Step1Props) {
   // Combobox state — diinit dari defaultValues jika mode edit
   const [gender, setGender] = React.useState<string | undefined>(defaultValues?.gender)
   const [status, setStatus] = React.useState<string>(defaultValues?.status ?? "active")
   const [professionId, setProfessionId] = React.useState<number | undefined>(defaultValues?.professionId)
+  const [primaryCabangRefId, setPrimaryCabangRefId] = React.useState<string | undefined>(defaultValues?.primaryCabangRefId)
 
   // Tempat lahir
   const [birthType,        setBirthType]        = React.useState<"id" | "ln">(defaultValues?.birthType ?? "id")
@@ -342,6 +346,7 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
       graduationPeriod: Number(graduationYear) === 1999 ? (graduationPeriod || undefined) : undefined,
       professionId,
       waliSantri: (waliSantri || undefined) as "gontor" | "alumni" | "lain" | "bukan" | undefined,
+      primaryCabangRefId,
       status:   (status as "active" | "inactive" | "alumni") || "active",
       joinedAt: (fd.get("joinedAt") as string) || undefined,
     }
@@ -548,6 +553,17 @@ export function Step1Identity({ slug, professions, onSuccess, memberId: editMemb
             <option value="bukan">Bukan Wali Santri</option>
           </select>
         </div>
+
+        {/* PC IKPM Cabang */}
+        <SimpleCombobox
+          label="PC IKPM Cabang"
+          optional
+          placeholder="Cari PC IKPM..."
+          items={cabangList.map((c) => ({ value: c.id, label: c.nama }))}
+          value={primaryCabangRefId}
+          onSelect={setPrimaryCabangRefId}
+          disabled={loading}
+        />
       </div>
 
       {/* ── Status Keanggotaan + Tanggal Bergabung ── */}

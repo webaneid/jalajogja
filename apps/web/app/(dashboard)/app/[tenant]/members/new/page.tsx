@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { eq, asc } from "drizzle-orm";
-import { db, refProfessions, tenants } from "@jalajogja/db";
+import { db, refProfessions, refIkpmCabang, tenants } from "@jalajogja/db";
 import { MemberWizardShell } from "@/components/members/wizard/member-wizard-shell";
 
 export default async function NewMemberPage({
@@ -11,8 +11,8 @@ export default async function NewMemberPage({
 }) {
   const { tenant: slug } = await params;
 
-  // Fetch tenant + professions secara paralel — keduanya statis/jarang berubah
-  const [tenantRow, professions] = await Promise.all([
+  // Fetch tenant + professions + cabang resmi secara paralel — semuanya statis/jarang berubah
+  const [tenantRow, professions, cabangList] = await Promise.all([
     db
       .select({ id: tenants.id, name: tenants.name })
       .from(tenants)
@@ -23,6 +23,11 @@ export default async function NewMemberPage({
       .select()
       .from(refProfessions)
       .orderBy(asc(refProfessions.order), asc(refProfessions.name)),
+    db
+      .select({ id: refIkpmCabang.id, nama: refIkpmCabang.nama })
+      .from(refIkpmCabang)
+      .where(eq(refIkpmCabang.isActive, true))
+      .orderBy(asc(refIkpmCabang.nama)),
   ]);
 
   // Seharusnya tidak terjadi — layout sudah verifikasi tenant valid
@@ -45,6 +50,7 @@ export default async function NewMemberPage({
         tenantId={tenantRow.id}
         tenantName={tenantRow.name}
         professions={professions}
+        cabangList={cabangList}
       />
     </div>
   );

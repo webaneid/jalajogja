@@ -37,6 +37,7 @@ export type MemberFormData = {
   graduationPeriod?: "awal" | "akhir"; // khusus angkatan 1999
   professionId?:     number;           // FK ke ref_professions
   waliSantri?:       "gontor" | "alumni" | "lain" | "bukan";
+  primaryCabangRefId?: string;         // FK ke ref_ikpm_cabang — PC IKPM resmi anggota
   // Data keanggotaan cabang
   status?: "active" | "inactive" | "alumni";
   joinedAt?: string;           // YYYY-MM-DD
@@ -61,6 +62,7 @@ function sanitize(data: MemberFormData) {
     graduationPeriod: data.graduationYear === 1999 ? (data.graduationPeriod ?? null) : null,
     professionId:     data.professionId ?? null,
     waliSantri:       data.waliSantri ?? null,
+    primaryCabangRefId: data.primaryCabangRefId ?? null,
   };
 }
 

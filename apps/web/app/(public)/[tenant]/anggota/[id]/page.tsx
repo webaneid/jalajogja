@@ -1,11 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import { createHash }         from "crypto";
 import { headers }            from "next/headers";
-import { eq }                 from "drizzle-orm";
+import { eq, and }            from "drizzle-orm";
 import { auth }               from "@/lib/auth";
 import { displayPhone }       from "@/lib/phone";
 import {
-  db, members, contacts, addresses, socialMedias, refProfessions,
+  db, members, contacts, addresses, socialMedias, refProfessions, refIkpmCabang,
   memberBusinesses, memberEducations, memberPesantren, pesantren,
   tenantMemberships, tenants, refProvinces, refRegencies, refDistricts, refVillages,
 } from "@jalajogja/db";
@@ -69,6 +69,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
       birthPlaceText: true, graduationYear: true, graduationPeriod: true,
       professionId: true, domicileStatus: true, betterAuthUserId: true,
       contactId: true, homeAddressId: true, socialMediaId: true, photoUrl: true,
+      primaryCabangRefId: true,
     },
   });
   if (!memberRow) notFound();
@@ -140,7 +141,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
     ? await db.query.socialMedias.findFirst({ where: eq(socialMedias.id, memberRow.socialMediaId) })
     : null;
 
-  // Keanggotaan di cabang ini
+  // Keanggotaan di cabang ini (tenant yang sedang dibuka di URL)
   const [tenant] = await db.select({ id: tenants.id, name: tenants.name })
     .from(tenants).where(eq(tenants.slug, slug)).limit(1);
 
@@ -148,9 +149,27 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
     ? await db
         .select({ status: tenantMemberships.status, joinedAt: tenantMemberships.joinedAt })
         .from(tenantMemberships)
-        .where(eq(tenantMemberships.memberId, memberId))
+        .where(and(eq(tenantMemberships.memberId, memberId), eq(tenantMemberships.tenantId, tenant.id)))
         .limit(1)
     : [null];
+
+  // PC IKPM resmi (dari ref_ikpm_cabang) — selalu tampil, tidak tergantung tenant ada atau tidak
+  const primaryCabang = memberRow.primaryCabangRefId
+    ? await db.query.refIkpmCabang.findFirst({
+        where: eq(refIkpmCabang.id, memberRow.primaryCabangRefId),
+        columns: { nama: true },
+      })
+    : null;
+
+  // Marhalah & Forum — hanya tampil jika anggota memang tergabung di tenant tipe tsb
+  const orgMemberships = await db
+    .select({ tenantName: tenants.name, tenantType: tenants.tenantType })
+    .from(tenantMemberships)
+    .innerJoin(tenants, eq(tenants.id, tenantMemberships.tenantId))
+    .where(eq(tenantMemberships.memberId, memberId));
+
+  const marhalahList = orgMemberships.filter(m => m.tenantType === "marhalah");
+  const forumList     = orgMemberships.filter(m => m.tenantType === "forum");
 
   // Pendidikan
   const educations = await db
@@ -220,13 +239,29 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
           className="text-xs text-primary hover:underline shrink-0">Edit →</a>
       </div>
 
-      {/* ── Keanggotaan IKPM ── */}
-      <Section title="Keanggotaan IKPM" icon={BadgeCheck}>
+      {/* ── Keanggotaan ── */}
+      <Section title="Keanggotaan" icon={BadgeCheck}>
         <dl className="space-y-2">
           <Row label="No. ID IKPM Gontor" value={memberRow.memberNumber} />
           <Row label="No. Stambuk Gontor" value={memberRow.stambukNumber} />
           <Row label="NIK"              value={memberRow.nik} />
-          <Row label="Cabang"           value={tenant?.name} />
+        </dl>
+
+        {/* Anggota — afiliasi organisasi, lintas tenant */}
+        <div className="pt-3 mt-1 border-t border-border space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground">Anggota</p>
+          <dl className="space-y-2">
+            <Row label="PC IKPM" value={primaryCabang?.nama ?? "Belum diatur"} />
+            {marhalahList.map(m => (
+              <Row key={m.tenantName} label="Marhalah" value={m.tenantName} />
+            ))}
+            {forumList.map(f => (
+              <Row key={f.tenantName} label="Forum" value={f.tenantName} />
+            ))}
+          </dl>
+        </div>
+
+        <dl className="space-y-2 pt-3 mt-1 border-t border-border">
           <Row label="Status"           value={membership?.status ? membership.status.charAt(0).toUpperCase() + membership.status.slice(1) : undefined} />
           <Row label="Bergabung"        value={membership?.joinedAt
             ? new Intl.DateTimeFormat("id-ID", { year:"numeric", month:"long", day:"numeric" }).format(new Date(membership.joinedAt))

@@ -10,6 +10,7 @@ import { WilayahSelect }    from "@/components/ui/wilayah-select";
 import type { WilayahValue } from "@/components/ui/wilayah-select";
 import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/components/ui/social-media-input";
 import { RegencyCombobox } from "@/components/ui/regency-combobox";
+import { Combobox } from "@/components/ui/combobox";
 import { CoverImageField } from "@/components/media/member-media-picker";
 import { PhoneInput }      from "@/components/ui/phone-input";
 import { Search, ChevronDown, Plus, X } from "lucide-react";
@@ -56,12 +57,13 @@ interface Profession { id: number; name: string }
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
 function FieldWrap({
-  label, optional, children,
-}: { label: string; optional?: boolean; children: React.ReactNode }) {
+  label, optional, required, children,
+}: { label: string; optional?: boolean; required?: boolean; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-sm font-medium">
         {label}
+        {required && <span className="text-destructive ml-0.5">*</span>}
         {optional && <span className="text-muted-foreground font-normal ml-1">(opsional)</span>}
       </label>
       {children}
@@ -70,10 +72,11 @@ function FieldWrap({
 }
 
 function TextInput(props: React.ComponentProps<"input"> & { label: string; optional?: boolean }) {
-  const { label, optional, ...rest } = props;
+  const { label, optional, required, ...rest } = props;
   return (
-    <FieldWrap label={label} optional={optional}>
+    <FieldWrap label={label} optional={optional} required={required}>
       <input
+        required={required}
         className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         {...rest}
       />
@@ -82,10 +85,11 @@ function TextInput(props: React.ComponentProps<"input"> & { label: string; optio
 }
 
 function SelectNative(props: React.ComponentProps<"select"> & { label: string; optional?: boolean }) {
-  const { label, optional, ...rest } = props;
+  const { label, optional, required, ...rest } = props;
   return (
-    <FieldWrap label={label} optional={optional}>
+    <FieldWrap label={label} optional={optional} required={required}>
       <select
+        required={required}
         className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         {...rest}
       />
@@ -158,7 +162,7 @@ function ProfessionCombobox({
 
   return (
     <div className="flex flex-col gap-1.5" ref={wrapRef}>
-      <label className="text-sm font-medium">Profesi</label>
+      <label className="text-sm font-medium">Profesi<span className="text-destructive ml-0.5">*</span></label>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
         <input
@@ -531,7 +535,9 @@ export default function LengkapiPage() {
       });
       const json = await res.json();
       if (!res.ok) { setError(json.error ?? "Gagal menyimpan."); return; }
-      router.push(`/${slug}/akun`);
+      // Reload penuh (bukan router.push) — pastikan /akun tidak menampilkan RSC cache basi
+      // dari sebelum data disimpan (lihat lesson window.location.href wajib setelah mutasi data)
+      window.location.href = `/${slug}/akun`;
     } finally {
       setSaving(false);
     }
@@ -612,6 +618,7 @@ export default function LengkapiPage() {
 
             <SelectNative
               label="Jenis Kelamin"
+              required
               value={gender}
               onChange={e => setGender(e.target.value as "male" | "female" | "")}
             >
@@ -622,6 +629,7 @@ export default function LengkapiPage() {
 
             <TextInput
               label="Tanggal Lahir"
+              required
               type="date"
               value={birthDate}
               onChange={e => setBirthDate(e.target.value)}
@@ -676,6 +684,7 @@ export default function LengkapiPage() {
             <div className="space-y-2">
               <TextInput
                 label="Tahun Lulus KMI / Keluar PM Gontor"
+                required
                 type="number"
                 min={1920}
                 max={new Date().getFullYear()}
@@ -739,16 +748,14 @@ export default function LengkapiPage() {
             {/* PC IKPM Cabang */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">PC IKPM Cabang</label>
-              <select
+              <Combobox
+                options={cabangList.map(c => ({ value: c.id, label: c.nama }))}
                 value={primaryCabangRefId}
-                onChange={e => setPrimaryCabangRefId(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="">— Pilih PC IKPM Anda —</option>
-                {cabangList.map(c => (
-                  <option key={c.id} value={c.id}>{c.nama}</option>
-                ))}
-              </select>
+                onValueChange={setPrimaryCabangRefId}
+                placeholder="Cari PC IKPM Anda..."
+                searchPlaceholder="Ketik nama PC IKPM..."
+                emptyText="PC IKPM tidak ditemukan."
+              />
               <p className="text-xs text-muted-foreground">
                 PC IKPM tempat Anda berdomisili atau bernaung. Dapat diubah jika pindah.
               </p>

@@ -17,6 +17,7 @@ interface MemberEditShellProps {
   tenantId: string
   tenantName: string
   professions: RefProfession[]
+  cabangList: { id: string; nama: string }[]
   defaultStep1: Step1DefaultValues
   defaultStep2: Step2DefaultValues
   defaultEducations: EducationEntry[]
@@ -40,6 +41,7 @@ export function MemberEditShell({
   tenantId,
   tenantName,
   professions,
+  cabangList,
   defaultStep1,
   defaultStep2,
   defaultEducations,
@@ -102,6 +104,7 @@ export function MemberEditShell({
           <Step1Identity
             slug={slug}
             professions={professions}
+            cabangList={cabangList}
             memberId={memberId}
             defaultValues={defaultStep1}
             onSuccess={(id) => handleSuccess(id)}

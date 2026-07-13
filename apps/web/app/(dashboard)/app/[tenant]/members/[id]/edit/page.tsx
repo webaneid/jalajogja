@@ -13,6 +13,7 @@ import {
   memberEducations,
   memberBusinesses,
   refProfessions,
+  refIkpmCabang,
   refRegencies,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
@@ -34,7 +35,7 @@ export default async function EditMemberPage({
   if (!access) redirect("/dashboard-redirect");
 
   // Ambil semua data anggota secara paralel
-  const [memberRow, professions, educations, businesses, tenantRow] = await Promise.all([
+  const [memberRow, professions, cabangList, educations, businesses, tenantRow] = await Promise.all([
     // Data identitas + kontak/alamat/sosmed
     db
       .select({
@@ -50,6 +51,7 @@ export default async function EditMemberPage({
         graduationPeriod: members.graduationPeriod,
         professionId:     members.professionId,
         waliSantri:       members.waliSantri,
+        primaryCabangRefId: members.primaryCabangRefId,
         betterAuthUserId: members.betterAuthUserId,
         // Kontak
         contactId: members.contactId,
@@ -101,6 +103,13 @@ export default async function EditMemberPage({
       .select()
       .from(refProfessions)
       .orderBy(asc(refProfessions.order), asc(refProfessions.name)),
+
+    // Daftar PC IKPM resmi untuk combobox
+    db
+      .select({ id: refIkpmCabang.id, nama: refIkpmCabang.nama })
+      .from(refIkpmCabang)
+      .where(eq(refIkpmCabang.isActive, true))
+      .orderBy(asc(refIkpmCabang.nama)),
 
     // Riwayat pendidikan
     db
@@ -176,6 +185,7 @@ export default async function EditMemberPage({
     graduationPeriod: (memberRow.graduationPeriod as "awal" | "akhir") ?? undefined,
     professionId:     memberRow.professionId     ?? undefined,
     waliSantri: (memberRow.waliSantri as "gontor" | "alumni" | "lain" | "bukan") ?? undefined,
+    primaryCabangRefId: memberRow.primaryCabangRefId ?? undefined,
     status: (memberRow.status as "active" | "inactive" | "alumni") ?? "active",
     joinedAt: memberRow.joinedAt ?? undefined,
   };
@@ -260,6 +270,7 @@ export default async function EditMemberPage({
         tenantId={access.tenant.id}
         tenantName={tenantRow?.name ?? slug}
         professions={professions}
+        cabangList={cabangList}
         defaultStep1={defaultStep1}
         defaultStep2={defaultStep2}
         defaultEducations={defaultEducations}

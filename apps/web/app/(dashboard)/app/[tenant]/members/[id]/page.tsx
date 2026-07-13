@@ -14,6 +14,7 @@ import {
   memberBusinesses,
   memberOwnedPesantren,
   refProfessions,
+  refIkpmCabang,
   refRegencies,
   refProvinces,
   refDistricts,
@@ -119,6 +120,7 @@ export default async function MemberDetailPage({
         birthProvinceName: refProvinces.name,
         graduationYear: members.graduationYear,
         professionName: refProfessions.name,
+        primaryCabangNama: refIkpmCabang.nama,
         domicileStatus: members.domicileStatus,
         // Kontak
         phone: contacts.phone,
@@ -155,6 +157,7 @@ export default async function MemberDetailPage({
       .leftJoin(addresses,      eq(addresses.id,      members.homeAddressId))
       .leftJoin(socialMedias,   eq(socialMedias.id,   members.socialMediaId))
       .leftJoin(refProfessions, eq(refProfessions.id, members.professionId))
+      .leftJoin(refIkpmCabang,  eq(refIkpmCabang.id,  members.primaryCabangRefId))
       .leftJoin(refRegencies,   eq(refRegencies.id,   members.birthRegencyId))
       .leftJoin(refProvinces,   eq(refProvinces.id,   refRegencies.provinceId))
       .leftJoin(addrDistricts,  eq(addrDistricts.id,  addresses.districtId))
@@ -331,6 +334,7 @@ export default async function MemberDetailPage({
           <Row label="Tanggal Lahir" value={birthDateFormatted} />
           <Row label="Tahun Lulus Gontor" value={row.graduationYear?.toString()} />
           <Row label="Profesi"       value={row.professionName} />
+          <Row label="PC IKPM Cabang" value={row.primaryCabangNama} />
         </dl>
       </Section>
 

@@ -10,6 +10,7 @@ interface MemberWizardShellProps {
   tenantId: string
   tenantName: string
   professions: RefProfession[]
+  cabangList: { id: string; nama: string }[]
 }
 
 export function MemberWizardShell({
@@ -17,6 +18,7 @@ export function MemberWizardShell({
   tenantId,
   tenantName,
   professions,
+  cabangList,
 }: MemberWizardShellProps) {
   return (
     <MemberWizard slug={slug}>
@@ -26,6 +28,7 @@ export function MemberWizardShell({
             <Step1Identity
               slug={slug}
               professions={professions}
+              cabangList={cabangList}
               onSuccess={onStep1Success}
             />
           )}
