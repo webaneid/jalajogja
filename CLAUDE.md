@@ -1074,6 +1074,23 @@ Logika: cari yang spesifik dulu → fallback ke `general`.
   Fase 5 (admin subdomain) yang masih tertunda. **Belum dijadwalkan** — tunggu instruksi user untuk
   mulai sesi ini secara eksplisit, jangan dieksekusi proaktif.
 
+- **[RENCANA] Invoice jatuh tempo — tidak ada konsekuensi otomatis (dicatat 2026-07-15)**:
+  Ditemukan saat verifikasi cron `invoice-reminder` — status invoice **tidak pernah** otomatis
+  berubah ke `overdue` setelah `due_date` lewat (grep konfirmasi: nol `UPDATE ... SET status =
+  'overdue'` di seluruh kode), meski kolom status & UI (badge merah "Jatuh Tempo") sudah siap
+  menampilkannya. Invoice yang telat tetap diam di `pending`/`partial` selamanya sampai dibayar
+  atau admin batalkan manual — tidak ada pengingat susulan (cron cuma H-1 sekali), tidak ada denda,
+  tidak ada auto-cancel. `dueDate` sendiri **hardcoded +3 hari** di dua tempat: `checkoutAction`
+  (cart/actions.ts) dan `createLinkedInvoice` (packages/db/src/helpers/billing.ts).
+  **Keputusan user**: biarkan seperti sekarang (customer boleh bayar kapan saja) — TAPI rencanakan
+  ke depan: tambah setting di `/settings/payment` supaya **admin bisa atur sendiri** (1) berapa hari
+  jatuh tempo invoice (ganti hardcoded +3 hari), (2) apakah invoice yang lewat jatuh tempo di-auto-
+  cancel atau tidak (dan setelah berapa hari). Kalau nanti dikerjakan: perlu key baru di settings
+  group `"payment"` (mis. `invoice_due_days`, `invoice_auto_cancel_enabled`,
+  `invoice_auto_cancel_days`), cron baru untuk transisi status + auto-cancel (perhatikan: auto-
+  cancel invoice tiket/produk perlu lepas kuota/stok yang ter-reserve, ikuti pola
+  `cancelInvoiceAction` yang sudah ada). **Belum dijadwalkan eksekusi** — tunggu instruksi user.
+
 ## Prinsip Penggunaan CLAUDE.md
 
 > **CLAUDE.md adalah project brain, bukan source of truth untuk status fitur.**

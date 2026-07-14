@@ -723,7 +723,19 @@ A: Belum di scope ini. `invoices.discount` kolom sudah ada, implementasi promo c
 - [ ] Invoice PDF (Playwright)
 - [ ] Program Cicilan UI
 - [ ] Laporan Piutang Outstanding
-- [ ] Notifikasi WA per fulfillment stage (rencana di `docs/arsitektur-fulfillment.md`)
+- [x] Notifikasi WA per fulfillment stage — ✅ SELESAI 2026-07-15 (commit `876fe91`), lihat
+      `docs/arsitektur-whatsapp.md` § 6.2
 - [ ] RajaOngkir tracking proxy `/api/ongkir/track` (rencana di `docs/arsitektur-fulfillment.md`)
 - [ ] Tombol "Konfirmasi Terima" di sisi pelanggan
 - [ ] Invoice Aging Report
+- [ ] **[RENCANA] Setting jatuh tempo invoice yang bisa diatur admin** — dicatat 2026-07-15.
+      Saat ini `due_date` hardcoded +3 hari (di `checkoutAction` DAN `createLinkedInvoice` helper),
+      dan invoice yang lewat jatuh tempo **tidak punya konsekuensi otomatis apapun** — status tidak
+      pernah pindah ke `overdue` (meski kolom + UI badge merah sudah siap), tidak ada pengingat
+      susulan setelah cron H-1, tidak ada denda, tidak ada auto-cancel. Customer boleh bayar kapan
+      saja — ini **keputusan disengaja untuk sekarang** (biarkan seperti ini), tapi ke depan mau
+      ditambah setting di `/settings/payment`: (1) admin atur sendiri berapa hari jatuh tempo
+      (ganti hardcoded +3), (2) toggle auto-cancel invoice yang lewat jatuh tempo + berapa hari.
+      Kalau dikerjakan: key baru di settings group `"payment"`, cron baru transisi status +
+      auto-cancel (perlu lepas kuota/stok ter-reserve, ikuti pola `cancelInvoiceAction`). Detail
+      lengkap di CLAUDE.md § Technical Debt. **Belum dijadwalkan eksekusi.**
