@@ -5,6 +5,7 @@ import { auth }      from "@/lib/auth";
 import { isOwnHost } from "@/lib/is-own-host";
 import { db, tenantMemberships, tenants, members, refIkpmCabang } from "@jalajogja/db";
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
+import { resolveOrgLabels } from "@/lib/tenant-org-label";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
   ShoppingBag, AlertCircle, Building2, BookOpen, ImageIcon, Briefcase,
@@ -33,6 +34,7 @@ export default async function AkunPage({ params }: { params: Params }) {
     status:          string | null;
     primaryCabangNama: string | null;  // dari ref_ikpm_cabang (cabang resmi PP IKPM)
   } | null = null;
+  let orgMemberLabel = "Keanggotaan IKPM";
 
   if (isMember && identity.memberId) {
     // Ambil member data + cabang resmi
@@ -45,9 +47,15 @@ export default async function AkunPage({ params }: { params: Params }) {
       .where(eq(members.id, identity.memberId))
       .limit(1);
 
-    // Status keanggotaan dari tenant ini
+    // Status keanggotaan + info tenant (untuk label dinamis) dari tenant ini
     const [membershipRow] = await db
-      .select({ status: tenantMemberships.status })
+      .select({
+        status:         tenantMemberships.status,
+        tenantName:     tenants.name,
+        tenantType:     tenants.tenantType,
+        marhalahYear:   tenants.marhalahYear,
+        marhalahPeriod: tenants.marhalahPeriod,
+      })
       .from(tenantMemberships)
       .innerJoin(tenants, eq(tenants.id, tenantMemberships.tenantId))
       .where(and(
@@ -55,6 +63,15 @@ export default async function AkunPage({ params }: { params: Params }) {
         eq(tenants.slug, slug),
       ))
       .limit(1);
+
+    if (membershipRow) {
+      orgMemberLabel = resolveOrgLabels({
+        name:           membershipRow.tenantName,
+        tenantType:     (membershipRow.tenantType as "cabang" | "marhalah" | "forum") ?? "cabang",
+        marhalahYear:   membershipRow.marhalahYear ?? null,
+        marhalahPeriod: (membershipRow.marhalahPeriod as "awal" | "akhir" | null) ?? null,
+      }).memberLabel;
+    }
 
     // Nama cabang resmi dari ref_ikpm_cabang
     let primaryCabangNama: string | null = null;
@@ -102,7 +119,7 @@ export default async function AkunPage({ params }: { params: Params }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 font-semibold text-sm">
               <BadgeCheck className="h-4 w-4 text-primary" />
-              Keanggotaan IKPM
+              {orgMemberLabel}
             </div>
             <a href={`${baseUrl}/akun/lengkapi`} className="text-xs text-primary hover:underline">
               {isIncomplete ? "Lengkapi →" : "Edit →"}

@@ -6,10 +6,18 @@ import Image             from "next/image";
 import { UploadCloud, Loader2, Trash2, ArrowLeft } from "lucide-react";
 import { toast }         from "sonner";
 import { compressImage } from "@/lib/client-image-compress";
+import { isOwnHost }     from "@/lib/is-own-host";
 import type { MemberMediaItem } from "@/components/media/member-media-picker";
 
 export default function AkunMediaPage() {
   const { tenant: slug } = useParams<{ tenant: string }>();
+
+  // Default asumsi domain sendiri (kasus dominan) — SSR dan render klien pertama sama
+  // persis (tidak ada hydration mismatch), lalu dikoreksi via effect jika ternyata custom domain
+  const [baseUrl, setBaseUrl] = useState(`/${slug}`);
+  useEffect(() => {
+    if (!isOwnHost(window.location.host)) setBaseUrl("");
+  }, []);
 
   const [media, setMedia]       = useState<MemberMediaItem[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -97,7 +105,7 @@ export default function AkunMediaPage() {
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <a href="../" className="text-muted-foreground hover:text-foreground transition-colors">
+        <a href={`${baseUrl}/akun`} className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="size-4" />
         </a>
         <div>

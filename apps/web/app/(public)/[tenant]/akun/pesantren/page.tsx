@@ -13,6 +13,7 @@ import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select
 import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/components/ui/social-media-input";
 import Image from "next/image";
 import { CoverImageField } from "@/components/media/member-media-picker";
+import { isOwnHost } from "@/lib/is-own-host";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -666,6 +667,13 @@ export default function PesantrenPage() {
   const params = useParams<{ tenant: string }>();
   const slug   = params.tenant;
 
+  // Default asumsi domain sendiri (kasus dominan) — SSR dan render klien pertama sama
+  // persis (tidak ada hydration mismatch), lalu dikoreksi via effect jika ternyata custom domain
+  const [baseUrl, setBaseUrl] = React.useState(`/${slug}`);
+  React.useEffect(() => {
+    if (!isOwnHost(window.location.host)) setBaseUrl("");
+  }, []);
+
   const [entries,      setEntries]      = React.useState<Entry[]>([]);
   const [loading,      setLoading]      = React.useState(true);
   const [saving,       setSaving]       = React.useState(false);
@@ -898,7 +906,7 @@ export default function PesantrenPage() {
         Tambah Pesantren
       </button>
 
-      <a href="../"
+      <a href={`${baseUrl}/akun`}
         className="inline-flex items-center gap-2 rounded-lg border border-border px-5 py-2.5 text-sm font-medium hover:bg-muted transition-colors">
         <ArrowLeft className="size-4" />
         Kembali ke Dashboard

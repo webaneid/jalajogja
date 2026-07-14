@@ -3,11 +3,12 @@ import { headers }    from "next/headers";
 import { createHash } from "crypto";
 import { auth }       from "@/lib/auth";
 import { getAkunIdentity } from "@/lib/akun-identity";
-import { db, members, createTenantDb } from "@jalajogja/db";
+import { db, members, tenants, createTenantDb } from "@jalajogja/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { isOwnHost }  from "@/lib/is-own-host";
 import { AkunNav }    from "@/components/akun/akun-nav";
 import { BadgeCheck } from "lucide-react";
+import { resolveOrgLabels } from "@/lib/tenant-org-label";
 
 type Props = {
   children: React.ReactNode;
@@ -57,6 +58,30 @@ export default async function AkunLayout({ children, params }: Props) {
   const displayEmail = identity.email || session.user.email;
   const avatarUrl    = identity.photoUrl ?? gravatar(displayEmail);
 
+  // Label keanggotaan dinamis sesuai tipe + nama tenant (cabang/marhalah/forum)
+  let memberBadgeLabel = "Anggota IKPM";
+  if (isMember) {
+    const [tenantRow] = await db
+      .select({
+        name:           tenants.name,
+        tenantType:     tenants.tenantType,
+        marhalahYear:   tenants.marhalahYear,
+        marhalahPeriod: tenants.marhalahPeriod,
+      })
+      .from(tenants)
+      .where(eq(tenants.slug, slug))
+      .limit(1);
+
+    if (tenantRow) {
+      memberBadgeLabel = resolveOrgLabels({
+        name:           tenantRow.name,
+        tenantType:     (tenantRow.tenantType as "cabang" | "marhalah" | "forum") ?? "cabang",
+        marhalahYear:   tenantRow.marhalahYear ?? null,
+        marhalahPeriod: (tenantRow.marhalahPeriod as "awal" | "akhir" | null) ?? null,
+      }).memberLabel;
+    }
+  }
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="flex gap-8 items-start">
@@ -83,7 +108,7 @@ export default async function AkunLayout({ children, params }: Props) {
                 : "bg-muted text-muted-foreground"
             }`}>
               {isMember && <BadgeCheck className="h-3 w-3" />}
-              {isMember ? "Anggota IKPM" : "Akun Publik"}
+              {isMember ? memberBadgeLabel : "Akun Publik"}
             </span>
           </div>
 
@@ -102,7 +127,7 @@ export default async function AkunLayout({ children, params }: Props) {
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                 isMember ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
               }`}>
-                {isMember ? "Anggota IKPM" : "Akun Publik"}
+                {isMember ? memberBadgeLabel : "Akun Publik"}
               </span>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers  } from "next/headers";
 import { auth }     from "@/lib/auth";
+import { isOwnHost } from "@/lib/is-own-host";
 import { Package, Plus } from "lucide-react";
 
 type Params = Promise<{ tenant: string }>;
@@ -18,20 +19,22 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default async function MitraProdukPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
+  const hdrs    = await headers();
+  const baseUrl = isOwnHost(hdrs.get("host") ?? "") ? `/${slug}` : "";
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun/mitra/produk`);
+  const session = await auth.api.getSession({ headers: hdrs });
+  if (!session?.user) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun/mitra/produk`);
 
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_APP_URL}/api/mitra/products?slug=${slug}`,
-    { headers: await headers(), cache: "no-store" },
+    { headers: hdrs, cache: "no-store" },
   );
 
   if (!res.ok) {
     return (
       <div className="text-center py-12">
         <p className="text-sm text-muted-foreground">Akses ditolak. Pastikan Anda sudah terdaftar sebagai mitra aktif.</p>
-        <a href="../" className="text-sm text-primary hover:underline mt-2 block">Kembali ke Mitra</a>
+        <a href={`${baseUrl}/akun/mitra`} className="text-sm text-primary hover:underline mt-2 block">Kembali ke Mitra</a>
       </div>
     );
   }

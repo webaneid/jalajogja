@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, User, Receipt, ClipboardList,
-  BookOpen, Building2, Store, CalendarDays, LogOut,
+  BookOpen, Building2, Briefcase, Store, CalendarDays, LogOut,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 
@@ -20,9 +20,10 @@ const MEMBER_NAV_ITEMS: NavItem[] = [
   { href: "/transaksi", label: "Transaksi", icon: Receipt,         memberOnly: false },
   { href: "/event",     label: "Event",     icon: CalendarDays,    memberOnly: false },
   { href: "/lengkapi",  label: "Data Diri", icon: ClipboardList,   memberOnly: false },
-  { href: "/pesantren", label: "Pesantren", icon: BookOpen,        memberOnly: false },
-  { href: "/usaha",     label: "Usaha",     icon: Building2,       memberOnly: false },
-  { href: "/mitra",     label: "Mitra",     icon: Store,           memberOnly: false },
+  { href: "/pesantren",   label: "Pesantren",   icon: BookOpen,   memberOnly: false },
+  { href: "/usaha",       label: "Usaha",       icon: Building2,  memberOnly: false },
+  { href: "/profesional", label: "Profesional", icon: Briefcase,  memberOnly: false },
+  { href: "/mitra",       label: "Mitra",       icon: Store,      memberOnly: false },
 ];
 
 const PUBLIC_NAV_ITEMS: NavItem[] = [

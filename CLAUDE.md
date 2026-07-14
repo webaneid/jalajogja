@@ -3604,6 +3604,59 @@ clear cache / buka Incognito untuk melihat perbaikan — server-side fix saja ti
 browser yang sudah cache redirect permanen sebelumnya (pola sama dengan lesson lama "Browser
 Ter-Cache Redirect 301 ke `/app/api/*`").
 
+### [2026-07-14] Bug Sistemik: `href="../"` di 6 Halaman `/akun/*` Salah Resolve
+
+**Gejala dilaporkan user**: tombol "Kembali ke Dashboard" di `/akun/pesantren`, `/akun/usaha`,
+`/akun/profesional` mengarah ke homepage tenant (`visikita.com`), bukan `/akun`.
+
+**Root cause — matematika resolusi URL relatif (RFC 3986)**: `href="../"` TIDAK berarti "naik satu
+level dari halaman saat ini" seperti intuisi umum. Aturan sebenarnya: "direktori" dari URL adalah
+semua segment KECUALI yang terakhir (`/akun/usaha` → direktori `/akun/`), lalu `../` naik SATU
+LEVEL LAGI dari direktori itu. Hasilnya `../` dari path 2-segment (`/akun/usaha`, `/akun/media`)
+selalu mendarat di **root domain** (`/`), dan dari path 3-segment (`/akun/mitra/pesanan`,
+`/akun/mitra/produk`) mendarat di **`/akun/`** (bukan `/akun/mitra` yang jadi tujuan wajar tombol
+"Kembali"). Pola `href="../"` untuk tombol "kembali ke level atas" HAMPIR SELALU salah — ia selalu
+melompat satu level LEBIH JAUH dari yang dimaksud.
+
+**6 file terkena** (ditemukan via `grep -rln 'href="\.\./"'` di seluruh `/akun/*`):
+`akun/usaha/usaha-client.tsx`, `akun/pesantren/page.tsx`, `akun/profesional/profesional-client.tsx`,
+`akun/media/page.tsx`, `akun/mitra/pesanan/page.tsx`, `akun/mitra/produk/page.tsx` — user cuma
+laporkan 3, sisanya ditemukan proaktif karena pola bug identik.
+
+**Fix**: ganti semua ke path eksplisit `${baseUrl}/akun` (2-segment pages) atau
+`${baseUrl}/akun/mitra` (3-segment sub-pages) — TIDAK PERNAH mengandalkan `../` untuk navigasi
+"kembali" di aplikasi ini. `baseUrl` dihitung sesuai pattern custom-domain yang sudah dikunci
+(`isOwnHost(host) ? "/${slug}" : ""`).
+
+**Server component vs full-client component — dua pendekatan baseUrl:**
+- Server page (`usaha/page.tsx`, `profesional/page.tsx`, `mitra/*/page.tsx`) → hitung `baseUrl` via
+  `headers()` + `isOwnHost()`, teruskan sebagai prop ke client component.
+- Full-client page (`pesantren/page.tsx` pakai `"use client"` dari awal, tidak ada server wrapper;
+  `media/page.tsx` sama) → TIDAK bisa akses `headers()`. Pattern: `useState(`/${slug}`)` sebagai
+  default (asumsi domain sendiri, kasus dominan) — SSR dan render klien PERTAMA sama persis
+  (tidak ada hydration mismatch warning) — lalu dikoreksi via `useEffect` yang cek
+  `isOwnHost(window.location.host)` HANYA jika ternyata custom domain. Jangan pernah mulai dari
+  default `""` lalu koreksi ke `/${slug}` — itu menyebabkan flash redirect salah sebelum effect
+  jalan untuk kasus dominan (jalakarta.com).
+
+**Aturan berlaku ke depan**: JANGAN PERNAH pakai `href="../"` atau `href="./"` untuk tombol
+navigasi "kembali" di halaman manapun — matematikanya gampang salah dan sulit di-review sekilas.
+Selalu bangun path eksplisit dari `baseUrl` + path absolut yang jelas maksudnya.
+
+### [2026-07-14] Label Keanggotaan Dinamis di `/akun` — Reuse `resolveOrgLabels()`
+
+Card "Keanggotaan IKPM" di `/akun` dan badge "Anggota IKPM" di sidebar (`akun/layout.tsx`) tadinya
+hardcode teks generik, padahal `lib/tenant-org-label.ts` (`resolveOrgLabels()`) sudah ada sejak
+sesi label dinamis di halaman register — fungsi ini sudah menghasilkan label yang tepat per tipe
+tenant: `Anggota {tenant.name}` (cabang/forum) atau `Anggota Angkatan {tahun}` (marhalah). Fix:
+reuse fungsi yang sama di `akun/page.tsx` (fetch `tenants.tenantType/marhalahYear/marhalahPeriod`
+via JOIN `tenantMemberships`) dan `akun/layout.tsx` (fetch tenant row terpisah, hanya saat
+`isMember`). Tidak ada field baru di DB — murni pakai kolom yang sudah ada dari fitur backbone IKPM.
+
+**Aturan**: kalau ada teks "IKPM" hardcode baru muncul di halaman lain yang tenant-nya bisa
+cabang/marhalah/forum, cek dulu apakah `resolveOrgLabels()` sudah bisa dipakai sebelum menulis
+ulang logic serupa.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

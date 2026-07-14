@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { isOwnHost } from "@/lib/is-own-host";
 import { db, members, createTenantDb } from "@jalajogja/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { ShoppingBag } from "lucide-react";
@@ -10,15 +11,17 @@ type Params = Promise<{ tenant: string }>;
 
 export default async function MitraPesananPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
+  const hdrs    = await headers();
+  const baseUrl = isOwnHost(hdrs.get("host") ?? "") ? `/${slug}` : "";
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user?.id) redirect(`/${slug}/login?redirect=/${slug}/akun/mitra/pesanan`);
+  const session = await auth.api.getSession({ headers: hdrs });
+  if (!session?.user?.id) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun/mitra/pesanan`);
 
   const member = await db.query.members.findFirst({
     where: eq(members.betterAuthUserId, session.user.id),
     columns: { id: true },
   });
-  if (!member) redirect(`/${slug}/akun`);
+  if (!member) redirect(`${baseUrl}/akun`);
 
   const { db: tdb, schema } = createTenantDb(slug);
 
@@ -29,7 +32,7 @@ export default async function MitraPesananPage({ params }: { params: Params }) {
     .where(and(eq(schema.mitras.memberId, member.id), eq(schema.mitras.status, "active")))
     .limit(1);
 
-  if (!mitra) redirect(`/${slug}/akun/mitra`);
+  if (!mitra) redirect(`${baseUrl}/akun/mitra`);
 
   // Ambil semua invoice yang mengandung item dari mitra ini
   const mitraItemRows = await tdb
@@ -50,7 +53,7 @@ export default async function MitraPesananPage({ params }: { params: Params }) {
   if (invoiceIds.length === 0) {
     return (
       <div className="space-y-6">
-        <Header slug={slug} />
+        <Header baseUrl={baseUrl} />
         <MitraPesananClient slug={slug} orders={[]} />
       </div>
     );
@@ -131,13 +134,13 @@ export default async function MitraPesananPage({ params }: { params: Params }) {
 
   return (
     <div className="space-y-6">
-      <Header slug={slug} />
+      <Header baseUrl={baseUrl} />
       <MitraPesananClient slug={slug} orders={orders} />
     </div>
   );
 }
 
-function Header({ slug }: { slug: string }) {
+function Header({ baseUrl }: { baseUrl: string }) {
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -149,7 +152,7 @@ function Header({ slug }: { slug: string }) {
           </p>
         </div>
       </div>
-      <a href="../" className="text-xs text-muted-foreground hover:text-foreground">
+      <a href={`${baseUrl}/akun/mitra`} className="text-xs text-muted-foreground hover:text-foreground">
         ← Kembali
       </a>
     </div>

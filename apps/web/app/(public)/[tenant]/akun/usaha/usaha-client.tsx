@@ -591,7 +591,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
 
 // ─── Main: UsahaClient ────────────────────────────────────────────────────────
 
-export function UsahaClient({ slug }: { slug: string }) {
+export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }) {
   const [entries,     setEntries]     = React.useState<Entry[]>([]);
   const [loading,     setLoading]     = React.useState(true);
   const [saving,      setSaving]      = React.useState(false);
@@ -836,7 +836,7 @@ export function UsahaClient({ slug }: { slug: string }) {
       </button>
 
       {/* Back to dashboard */}
-      <a href="../"
+      <a href={`${baseUrl}/akun`}
         className="inline-flex items-center gap-2 rounded-lg border border-border px-5 py-2.5 text-sm font-medium hover:bg-muted transition-colors">
         <ArrowLeft className="size-4" />
         Kembali ke Dashboard
