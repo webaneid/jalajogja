@@ -3,12 +3,15 @@
 > Dokumen ini adalah referensi tunggal untuk semua hal terkait integrasi WhatsApp di platform jalajogja.
 > Terkoneksi dengan: `CLAUDE.md` § "WhatsApp Gateway", `docs/arsitektur-billing.md`, `docs/arsitektur-login-universal.md`, `docs/arsitektur-fulfillment.md`, `docs/arsitektur-event.md`.
 
-> **STATUS (2026-07-02): Fase 1+2 SELESAI + OTP (Fase 7) SELESAI. Self-hosted VPS aktif dan tested.**
+> **STATUS (2026-07-15): Fase 1, 2, 3, 4, 5, 7 SELESAI + cron reminder SELESAI. Fase 6 SEBAGIAN
+> SELESAI (surat ✅, anggota/pengurus 🔲 belum). Self-hosted VPS aktif dan tested.**
 > GOWA berjalan di VPS jalajogja (72.61.215.7), subdomain `gowa.jalakarta.com`.
 > Device `pc-ikpm-jogjakarta` aktif terhubung — QR scan, send message, status polling semua confirmed working.
-> Lihat § 16 "Penyimpangan dari Desain Awal" untuk perbedaan antara dokumen ini dan kode aktual.
+> Lihat § 16 "Penyimpangan dari Desain Awal" untuk perbedaan antara dokumen ini dan kode aktual —
+> termasuk § 16.8 (template editable per tenant + `notifyWa()` wrapper, ditambahkan di luar rencana awal).
 > Bagian 3.2, 4, dan 10 menjelaskan **desain awal** (addon installation + quota) — kode aktual tidak memakai ini. Baca § 16 dulu.
-> Fase 3–6 (trigger notifikasi otomatis per modul bisnis) belum diimplementasikan.
+> **Belum dikerjakan**: `member_welcome` + `officer_invite` (§ 6.5), quota enforcement (§ 16.2 — sengaja
+> ditunda atas permintaan user 2026-07-15).
 
 ---
 
@@ -214,6 +217,12 @@ Satu row per tenant per bulan. `count` naik +1 setiap pesan terkirim berhasil.
 
 ## 4. Helper Pengiriman — `lib/whatsapp.ts`
 
+> ⚠️ **Kode di bawah ini adalah DESAIN AWAL — lihat § 16.1, 16.2, 16.3 untuk perbedaan dari kode
+> aktual** (tidak ada quota/addon_installations check di `sendWaNotification()` aktual). Untuk
+> memanggil notifikasi dari business logic, **jangan** panggil `sendWaNotification()` langsung —
+> pakai wrapper `notifyWa()` dari `lib/wa-notify.ts` (lihat § 16.8) yang sudah handle resolve
+> orgName, URL absolut, dan template editable sekaligus.
+
 File ini adalah **satu-satunya** entry point untuk kirim WA. Tidak ada fetch langsung ke GOWA dari kode lain.
 
 ```typescript
@@ -350,6 +359,11 @@ export function toE164(phone: string): string {
 
 ## 5. Template Pesan per Event
 
+> ⚠️ **Kode di bawah masih format LAMA** (fungsi JS `(v) => string`, sebelum direfaktor jadi
+> editable). Kode aktual: `WA_TEMPLATE_DEFAULTS` adalah `Record<string, string>` dengan placeholder
+> `{{var}}`, di-render via `renderTemplateString()`. Isi teksnya sama persis (cuma sintaksnya
+> berubah dari `${v.x}` ke `{{x}}`) — lihat § 16.8 untuk detail lengkap + alasan perubahan.
+
 Semua template ada di `lib/wa-templates.ts`. Format: teks biasa (tidak ada HTML).
 WhatsApp mendukung bold `*teks*`, italic `_teks_`, monospace `` `teks` ``.
 
@@ -437,19 +451,23 @@ export function renderWaTemplate(event: string, vars: WaTemplateVars): string | 
 
 ## 6. Peta Notifikasi per Modul
 
-### 6.1 Billing & Pembayaran
+### 6.1 Billing & Pembayaran — ✅ SELESAI (2026-07-13/14, commit `e93318b`)
 
 | Event | Trigger | Penerima | Template |
 |-------|---------|----------|----------|
 | Bukti bayar diterima | `submitPaymentProofAction` | Customer | `payment_submitted` |
 | Pembayaran dikonfirmasi | `verifySubmittedPaymentAction` / `confirmInvoicePaymentAction` | Customer | `payment_confirmed` |
-| Pembayaran ditolak | Admin reject | Customer | `payment_rejected` |
+| Pembayaran ditolak | `rejectPaymentAction` | Customer | `payment_rejected` |
 | Invoice baru | `checkoutAction` | Customer | `invoice_created` |
-| Invoice jatuh tempo H-1 | Cron job | Customer | `invoice_reminder` |
+| Invoice jatuh tempo H-1 | Cron `invoice-reminder` | Customer | `invoice_reminder` |
 
-**Nomor tujuan:** dari `profiles.phone` atau `members.contacts.whatsapp` via `resolveIdentity()`
+**Nomor tujuan (kode aktual — berbeda dari desain awal):** BUKAN live lookup `resolveIdentity()`
+saat kirim notifikasi — melainkan **snapshot** `invoices.customerPhone` yang sudah tersimpan saat
+invoice dibuat (di-resolve sekali oleh `resolveIdentity()` di dalam `checkoutAction`, lalu disimpan
+ke kolom `customer_phone`). Semua notifikasi billing berikutnya (submitted/confirmed/rejected)
+tinggal baca kolom itu — tidak resolve ulang identitas tiap kali kirim notif.
 
-### 6.2 Toko / Fulfillment
+### 6.2 Toko / Fulfillment — ✅ SELESAI (2026-07-15, commit `876fe91`)
 
 | Event | Trigger | Penerima | Template |
 |-------|---------|----------|----------|
@@ -457,35 +475,73 @@ export function renderWaTemplate(event: string, vars: WaTemplateVars): string | 
 | Pesanan dikirim | `updateFulfillmentStatusAction` (→ shipped) | Customer | `order_shipped` |
 | Pesanan selesai | `updateFulfillmentStatusAction` (→ delivered) | Customer | `order_delivered` |
 
-### 6.3 Event
+Stage `packed` sengaja TIDAK punya notifikasi (tidak ada template untuk itu). `trackingUrl` di
+template diisi link halaman invoice publik (`/invoice/{id}`), BUKAN link tracking resi asli —
+RajaOngkir tracking proxy (`/api/ongkir/track`) belum dibuat (technical debt terpisah, lihat
+`docs/arsitektur-fulfillment.md`).
+
+### 6.3 Event — ✅ SELESAI (2026-07-15, commit `876fe91`)
 
 | Event | Trigger | Penerima | Template |
 |-------|---------|----------|----------|
-| Registrasi berhasil | `registerForEventAction` | Peserta | `event_registered` |
-| Pengingat H-1 | Cron job | Peserta confirmed | `event_reminder` |
-| Sertifikat siap | `generateCertificateAction` (selesai upload MinIO) | Peserta attended | `event_certificate_ready` |
+| Registrasi berhasil (alur direct) | `registerForEventAction` | Peserta | `event_registered` |
+| Registrasi berhasil (alur cart/E10) | Auto-create block di `confirmInvoicePaymentAction` / `verifySubmittedPaymentAction` | Peserta | `event_registered` |
+| Pengingat H-1 | Cron `event-reminder` | Peserta confirmed | `event_reminder` |
+| Sertifikat siap | `POST /api/events/[id]/certificate/[regId]` (selesai upload MinIO) | Peserta attended | `event_certificate_ready` |
 
-### 6.4 Donasi
+**`event_registered` sengaja punya DUA trigger berbeda** (bukan duplikat, dua alur berbeda):
+1. Alur **direct** (bukan cart) — `registerForEventAction` fire segera setelah insert registrasi
+   (gratis maupun berbayar). Satu-satunya touchpoint untuk alur ini karena `createLinkedInvoice`
+   (dipakai di sini untuk tiket berbayar) hidup di `packages/db` — package terpisah yang **tidak
+   bisa** import `apps/web/lib/wa-notify.ts` (arah dependency: apps/web → packages/db, bukan
+   sebaliknya). Tiket berbayar via alur direct karena itu tidak pernah dapat `invoice_created`.
+2. Alur **cart (E10 donation prompt)** — auto-create block di dua fungsi konfirmasi pembayaran
+   billing, fire setelah `event_registrations` ter-insert dari tiket cart. Titik PERTAMA nomor
+   registrasi ada untuk alur ini (tidak ada sebelumnya) — TIDAK redundan dengan `payment_confirmed`
+   generik yang fire di titik yang sama (pesan beda: satu soal pembayaran, satu soal detail tiket).
+
+### 6.4 Donasi — ✅ SELESAI (2026-07-15, commit `876fe91`)
 
 | Event | Trigger | Penerima | Template |
 |-------|---------|----------|----------|
-| Donasi diterima | `checkoutAction` (itemType=donation) | Donatur | `donation_received` |
-| Donasi dikonfirmasi | `verifySubmittedPaymentAction` | Donatur | `payment_confirmed` |
+| Donasi diterima | `submitPaymentProofAction` (per item `itemType='donation'`) | Donatur | `donation_received` |
+| Donasi dikonfirmasi | `verifySubmittedPaymentAction` / `confirmInvoicePaymentAction` | Donatur | `payment_confirmed` |
 
-### 6.5 Anggota & Pengurus
+**Trigger `donation_received` beda dari rencana awal di atas** (yang menyebut `checkoutAction`) —
+dipindah ke `submitPaymentProofAction` karena teks template eksplisit *"telah kami terima dan
+**sedang diverifikasi**"* — semantiknya cocok dengan tahap submit-bukti-bayar, bukan tahap
+checkout/buat-invoice (belum ada apa-apa yang "diterima" saat itu). Query invoice diambil per
+`invoice_items WHERE itemType='donation'` (satu invoice bisa campur produk+tiket+donasi),
+`campaignName` = `item.name` (sudah snapshot nama campaign sejak `addToCartAction`, tidak perlu
+JOIN ke tabel campaigns).
+
+**Scope yang sengaja tidak disentuh**: `createDonationAction`/`confirmDonationAction`
+(`donasi/actions.ts`) — jalur admin manual untuk donasi offline/cash. Ini alur **legacy**
+(`donations` table historis, lihat § "Donasi = Alur Cart Universal" di CLAUDE.md) — donatur via
+cart (jalur aktif) sudah tercakup penuh di atas.
+
+### 6.5 Anggota & Pengurus — 🔲 BELUM DIKERJAKAN
 
 | Event | Trigger | Penerima | Template |
 |-------|---------|----------|----------|
 | Anggota baru | `createMemberAction` | Anggota | `member_welcome` |
 | Undangan pengurus | `createInviteAction` | Calon pengurus | `officer_invite` |
 
-### 6.6 Surat
+Template sudah ada di `wa-templates.ts`, toggle sudah ada di dashboard settings, tapi **belum ada
+pemanggilan `notifyWa()` di kode manapun** — dicek via grep 2026-07-15, nol hasil. Ini satu-satunya
+bagian dari 6 modul § 6 yang masih pending setelah Fase 3-6 selesai (§ 12).
+
+### 6.6 Surat — ✅ SELESAI (2026-07-15, commit `876fe91`)
 
 | Event | Trigger | Penerima | Template |
 |-------|---------|----------|----------|
-| Permintaan TTD | `syncSignatureSlotsAction` (slot baru) | Officer (per slot) | `letter_sign_request` |
+| Permintaan TTD | `syncSignatureSlotsAction` (slot dapat token baru) | Officer (per slot) | `letter_sign_request` |
 
-**Catatan:** Kirim hanya ke officer yang punya slot baru (token baru di-generate). Officer yang tokennya tidak berubah tidak dapat notif ulang.
+**Catatan:** Kirim hanya ke officer yang slotnya dapat token BARU (insert slot baru / officer
+berubah / token hilang). Officer yang tokennya dipertahankan (officer sama, link lama masih
+berlaku) TIDAK dapat notif ulang. Resolusi nomor: `officers.memberId → public.members.contactId →
+public.contacts.(whatsapp || phone)` — 3-level cross-schema lookup, di-batch (bukan per-officer
+query) untuk efisiensi saat ada banyak slot dalam satu surat.
 
 ### 6.7 Auth / OTP — ✅ SELESAI (2026-06-30)
 
@@ -633,32 +689,43 @@ Body: { phone: string, code: string, type: "register" | "reset_password", slug: 
 
 ---
 
-## 9. Cron Jobs
+## 9. Cron Jobs — ✅ SELESAI (2026-07-14/15, commit `8ae10ff`)
 
-Dua cron job yang perlu dijadwalkan (via `CronCreate` di aplikasi atau crontab di VPS):
+Dua cron job, dijadwalkan via **crontab VPS** (bukan `CronCreate` platform — belum ada mekanisme
+in-app untuk cron per-tenant). Auth: header `x-cron-secret` dicek terhadap `process.env.CRON_SECRET`,
+pola sama dengan `cleanup-images`/`verify-domains` yang sudah lebih dulu ada.
 
 ### 9.1 Invoice Reminder (Harian)
 
 ```
-Schedule: 0 8 * * *   (setiap hari jam 8 pagi)
+Schedule: 0 8 * * *   (setiap hari jam 8 pagi, dikonfigurasi manual via crontab -e)
 File: apps/web/app/api/cron/invoice-reminder/route.ts
 
-Logic:
-- Cari semua invoice dengan status != "paid" dan due_date = TOMORROW
-- Untuk setiap invoice: kirim notif ke nomor customer
+Logic (kode aktual — lebih ketat dari rencana awal):
+- Per tenant aktif, cari invoice dengan status IN ('pending', 'partial') — BUKAN "!= paid"
+  (menghindari kirim reminder ke invoice waiting_verification/cancelled/overdue yang tidak relevan)
+  DAN due_date = TOMORROW
+- amount dihitung (total + uniqueCode) - paidAmount — sisa tagihan sesungguhnya, bukan total mentah
+  (konsisten dengan aturan kode unik yang dikunci di docs/arsitektur-kode-unik.md)
+- Untuk setiap invoice dengan customerPhone: kirim notif via notifyWa()
 ```
 
 ### 9.2 Event Reminder (Harian)
 
 ```
-Schedule: 0 9 * * *   (setiap hari jam 9 pagi)
+Schedule: 0 9 * * *   (setiap hari jam 9 pagi, dikonfigurasi manual via crontab -e)
 File: apps/web/app/api/cron/event-reminder/route.ts
 
 Logic:
-- Cari semua event dengan date = TOMORROW
-- Cari semua registrasi confirmed untuk event tersebut
-- Kirim pengingat ke tiap peserta
+- Per tenant aktif, cari event status='published' dengan starts_at::date = TOMORROW
+- Per event, cari registrasi status='confirmed'
+- eventDate diformat timezone Asia/Jakarta eksplisit + suffix "WIB"
+- Kirim pengingat ke tiap peserta dengan attendeePhone via notifyWa()
 ```
+
+**Tidak ada safety-gate tanggal di kedua cron ini** (beda dengan `cleanup-member-media-legacy` yang
+punya `CLEANUP_CUTOFF` hardcoded) — begitu dijadwalkan di crontab, langsung aktif kirim notifikasi
+H-1 real. Sudah dijadwalkan di VPS production per 2026-07-15.
 
 ---
 
@@ -686,7 +753,23 @@ Tidak ada retry otomatis. Admin melihat quota di dashboard.
 
 ## 11. Integrasi ke Action yang Sudah Ada
 
-Contoh integrasi ke `verifySubmittedPaymentAction` (billing):
+> ⚠️ **Contoh di bawah pakai API LAMA** (`sendWaNotification` + `renderWaTemplate` langsung). Kode
+> aktual di `verifySubmittedPaymentAction` (dan semua titik notifikasi lain sejak Fase 3) pakai
+> `notifyWa()` dari `lib/wa-notify.ts` — jauh lebih ringkas, tidak perlu `toE164()`/`formatRupiah()`
+> manual. Contoh kode aktual:
+> ```typescript
+> import { notifyWa, waRupiah } from "@/lib/wa-notify";
+>
+> void notifyWa({
+>   slug, tenantDb, event: "payment_confirmed",
+>   phone: inv.customerPhone,   // sudah E.164 sejak disimpan saat checkout
+>   vars: { name: inv.customerName, invoiceNumber: inv.invoiceNumber, amount: waRupiah(data.amount) },
+> });
+> ```
+> `orgName` TIDAK perlu diisi manual — `notifyWa()` resolve otomatis dari settings tenant kalau
+> tidak disertakan di `vars`. Lihat § 16.8 untuk detail lengkap.
+
+Contoh integrasi lama (desain awal, sudah tidak dipakai) ke `verifySubmittedPaymentAction` (billing):
 
 ```typescript
 // Di apps/web/app/(dashboard)/app/[tenant]/finance/billing/actions.ts
@@ -711,10 +794,10 @@ if (phone) {
 // void = fire-and-forget, tidak memblokir response admin
 ```
 
-**Aturan penting:**
-- `void sendWaNotification(...)` — selalu fire-and-forget, JANGAN await di action utama
+**Aturan penting (tetap berlaku di kode aktual):**
+- `void notifyWa(...)` — selalu fire-and-forget, JANGAN await di action utama
 - Kegagalan WA tidak boleh menyebabkan action utama gagal
-- Log error WA terpisah dari log bisnis
+- Log error WA terpisah dari log bisnis (`notifyWa()` sudah `try/catch` internal + `console.error`)
 
 ---
 
@@ -736,27 +819,36 @@ if (phone) {
 - [x] API: `GET /api/wa/qr` dan `GET /api/wa/status`
 - [x] Server actions: `connectWhatsAppAction`, `confirmWaConnectionAction`, `disconnectWhatsAppAction`, `saveWaNotificationSettingsAction`
 
-### Fase 3 — Notifikasi Billing (Prioritas Tertinggi)
+### Fase 3 — Notifikasi Billing — ✅ SELESAI (2026-07-13/14, commit `e93318b`)
 
-- [ ] `submitPaymentProofAction` → `payment_submitted`
-- [ ] `verifySubmittedPaymentAction` → `payment_confirmed`
-- [ ] `confirmInvoicePaymentAction` → `payment_confirmed`
+- [x] `checkoutAction` → `invoice_created`
+- [x] `submitPaymentProofAction` → `payment_submitted`
+- [x] `verifySubmittedPaymentAction` → `payment_confirmed`
+- [x] `confirmInvoicePaymentAction` → `payment_confirmed`
+- [x] `rejectPaymentAction` → `payment_rejected`
+- [x] **Bonus di luar rencana awal**: teks semua notifikasi jadi editable per tenant
+      (`tenant.settings` key=`wa_message_templates`) — lihat § 13 poin 4 yang diupdate
 
-### Fase 4 — Notifikasi Toko & Fulfillment
+### Fase 4 — Notifikasi Toko & Fulfillment — ✅ SELESAI (2026-07-15, commit `876fe91`)
 
-- [ ] `updateFulfillmentStatusAction` → `order_shipped` saat shipped
+- [x] `updateFulfillmentStatusAction` → `order_processing` saat processing
+- [x] `updateFulfillmentStatusAction` → `order_shipped` saat shipped
+- [x] `updateFulfillmentStatusAction` → `order_delivered` saat delivered
 
-### Fase 5 — Notifikasi Event & Donasi
+### Fase 5 — Notifikasi Event & Donasi — ✅ SELESAI (2026-07-15, commit `876fe91`)
 
-- [ ] `registerForEventAction` → `event_registered`
-- [ ] `checkoutAction` (itemType=donation) → `donation_received`
-- [ ] Cron: invoice reminder + event reminder
+- [x] `registerForEventAction` → `event_registered` (alur direct)
+- [x] Auto-create block `confirmInvoicePaymentAction`/`verifySubmittedPaymentAction` → `event_registered` (alur cart/E10)
+- [x] `POST /api/events/[id]/certificate/[regId]` → `event_certificate_ready`
+- [x] `submitPaymentProofAction` (bukan `checkoutAction` — lihat § 6.4) → `donation_received`
+- [x] Cron `invoice-reminder` + `event-reminder` — SELESAI di § 9 (commit `8ae10ff`, dikerjakan
+      terpisah sebagai "Fase B" sebelum Fase 4-6 dimulai)
 
-### Fase 6 — Notifikasi Organisasi
+### Fase 6 — Notifikasi Organisasi — SEBAGIAN SELESAI (2026-07-15)
 
-- [ ] `syncSignatureSlotsAction` → `letter_sign_request` (per slot baru)
-- [ ] `createMemberAction` → `member_welcome`
-- [ ] `createInviteAction` → `officer_invite`
+- [x] `syncSignatureSlotsAction` → `letter_sign_request` (slot dapat token baru) — commit `876fe91`
+- [ ] `createMemberAction` → `member_welcome` — **belum dikerjakan**
+- [ ] `createInviteAction` → `officer_invite` — **belum dikerjakan**
 
 ### Fase 7 — OTP via WA — ✅ SELESAI (2026-06-30)
 
@@ -780,9 +872,15 @@ psql -U jalakarta -d jalakarta -f packages/db/migrations/0016_otp_tokens.sql
 1. **Satu GOWA untuk semua tenant** — dipisahkan via `device_id`, bukan instance terpisah
 2. **Self-hosted di VPS jalajogja** — GOWA adalah binary Go ringan (~50MB RAM), overhead minimal di VPS yang sama. Sumopod tutup 2026-06-30.
 3. **Fire-and-forget** — notifikasi WA tidak boleh memblokir response action utama
-4. **Template di kode** — tidak di DB, karena update template = deploy baru (lebih aman, tidak ada injection)
-5. **Add-on berbayar** — tenant harus aktifkan dan bayar untuk fitur ini
-6. **Nomor dari DB** — tidak pernah dari form input user pada saat kirim; selalu dari `contacts.whatsapp` atau `contacts.phone` yang sudah tersimpan dan divalidasi
+4. ~~**Template di kode** — tidak di DB~~ — **DIREVISI 2026-07-13** (commit `e93318b`): teks
+   template sekarang **editable per tenant**. Default seed tetap di kode (`WA_TEMPLATE_DEFAULTS` di
+   `lib/wa-templates.ts`, format string `{{var}}` — bukan lagi fungsi JS), tapi admin bisa override
+   via UI `/settings/notifications` → tersimpan `tenant.settings` key=`wa_message_templates`.
+   Render pakai `renderTemplateString()` — **string replace murni, bukan `eval`/`Function()`** —
+   tetap aman dari code injection meski teksnya bisa diedit admin. Lihat § 16.8.
+5. **Add-on berbayar** — tenant harus aktifkan dan bayar untuk fitur ini **(belum diimplementasikan
+   — lihat § 16.2, saat ini gratis/unlimited untuk semua tenant yang setup sendiri)**
+6. **Nomor dari DB** — tidak pernah dari form input user pada saat kirim; selalu dari `contacts.whatsapp` atau `contacts.phone` yang sudah tersimpan dan divalidasi. Untuk notifikasi billing, dari snapshot `invoices.customerPhone` (lihat § 6.1).
 
 ---
 
@@ -909,3 +1007,49 @@ Frontend di-redirect ke `/{slug}/reset-password?token={token}` → halaman exist
 
 **Aman?** Ya — token di-generate via `crypto.getRandomValues` (CSPRNG), TTL 15 menit,
 lookup user dilakukan di server (bukan dari input user), double-cek via OTP sebelum inject.
+
+### 16.8 `notifyWa()` wrapper + template editable per tenant (ditambahkan 2026-07-13/15)
+
+**Desain awal** (§ 4): satu fungsi `sendWaNotification(opts)` dipanggil langsung dari business
+logic, `message` (teks final) dikirim sebagai parameter — caller bertanggung jawab render template
+sendiri sebelum memanggil.
+
+**Kode aktual**: business-logic actions (billing, event, fulfillment, surat) **tidak pernah**
+memanggil `sendWaNotification()` langsung — semua lewat wrapper baru `apps/web/lib/wa-notify.ts`:
+
+```typescript
+notifyWa({ slug, tenantDb, event, phone, vars }) → void
+```
+
+Alasan wrapper ini dibuat: kalau tiap titik notifikasi (5+ titik di Fase 3 saja, total belasan
+setelah Fase 4-6) reimplementasi sendiri cara ambil `orgName` dan bangun URL absolut, risiko besar
+salah satu titik lupa pakai `NEXT_PUBLIC_APP_URL` dan malah hardcode `/${slug}/...` — persis pola
+bug yang sudah pernah terjadi untuk custom domain (lihat lesson CLAUDE.md "Custom Domain Harus
+Diisolasi"). Isi wrapper:
+- `resolveOrgName(tenantDb, slug)` — baca `site_name` dari settings, fallback ke slug
+- `waAppUrl(slug, path)` — selalu bangun URL absolut (`NEXT_PUBLIC_APP_URL` + `/{slug}{path}`)
+- `waRupiah(amount)` — format `toLocaleString("id-ID")` konsisten
+- `resolveWaTemplateText(tenantDb, event)` — cek override tenant dulu, fallback default kode
+
+**Template jadi editable per tenant** (deviasi dari § 13 poin 4 desain awal): `lib/wa-templates.ts`
+direfaktor dari `Record<string, (v) => string>` (fungsi JS) ke `Record<string, string>`
+(`WA_TEMPLATE_DEFAULTS`, placeholder `{{var}}`). `renderTemplateString(tpl, vars)` — string replace
+murni via regex `\{\{(\w+)\}\}`, **bukan `eval`/`Function()`** — placeholder yang tidak ada di
+`vars` diganti string kosong, bukan error. Override tersimpan `tenant.settings` group=`"notif"`
+key=`"wa_message_templates"` (JSONB `Partial<Record<WaNotifKey,string>>`). UI: tombol "Edit Teks"
+per notifikasi di `WhatsAppSetupClient` (`/settings/notifications`) → `saveWaTemplateAction`/
+`resetWaTemplateAction` (`settings/actions.ts`). Badge "kustom" + tombol "Reset ke Default" saat
+sudah dikustomisasi.
+
+**Regresi minor diterima sebagai trade-off**: 2 template lama (`order_shipped`,
+`letter_sign_request`) sebelumnya (§ 5 di atas, versi lama fungsi JS) punya interpolasi kondisional
+(`${v.trackingUrl ? "\n\nPantau: "+v.trackingUrl : ""}`) — baris hanya muncul kalau variabelnya
+terisi. Sintaks `{{var}}` string-replace baru **tidak support kondisional** — baris itu sekarang
+selalu tampil (kosong kalau variabel tidak diisi). Ditutup dengan caller SELALU mengisi variabel
+itu dengan nilai wajar (`resolvedTrackingNumber` fallback string kosong di fulfillment,
+`letterNumber ?? "-"` di surat) — bukan mengandalkan baris auto-hilang seperti versi lama.
+
+**Exception yang tetap sah pakai `sendWaNotification()` langsung** (bukan lewat `notifyWa()`):
+endpoint OTP (`send-otp/route.ts`) — punya guard tambahan (rate limit, verified-check) sebelum
+kirim yang tidak cocok dipaksakan ke wrapper generik. Tetap pakai `resolveWaTemplateText()` yang
+sama untuk template editable, jadi teks OTP pun ikut bisa dikustomisasi tenant.
