@@ -45,6 +45,17 @@ const nextConfig: NextConfig = {
   async redirects() {
     // 4a: Redirect 301 dari old admin URLs ke /app/ prefix
     // Berlaku selama 30 hari lalu dihapus (setelah semua bookmark admin diperbarui)
+    //
+    // WAJIB dibatasi host jalakarta.com (`has: [{ type: "host", ... }]`) — redirects()
+    // Next.js berjalan SEBELUM middleware.ts (urutan: headers → redirects → middleware →
+    // rewrites), jadi tanpa guard host, aturan ini tidak tahu bedanya custom domain vs
+    // domain sendiri. Bug nyata yang pernah terjadi: di custom domain (mis. visikita.com),
+    // halaman publik `/akun/media` hanya 2 segment path ("akun" + "media") — persis cocok
+    // pola `/:slug/media` di sini (menyangka "akun" adalah tenant slug) → redirect permanen
+    // ke `/app/akun/media` (bukan tenant valid) → bounce ke login admin. Redirect legacy ini
+    // memang hanya relevan untuk bookmark lama di domain sendiri — custom domain tidak
+    // pernah punya path admin lama sama sekali.
+    const ownHostOnly = [{ type: "host" as const, value: "jalakarta.com" }];
 
     // Redirect per module — root + semua subpath
     const moduleRedirects = ADMIN_MODULES.flatMap((module) => [
@@ -52,11 +63,13 @@ const nextConfig: NextConfig = {
         source: `/:slug(${TENANT_SLUG})/${module}`,
         destination: `/app/:slug/${module}`,
         permanent: true,
+        has: ownHostOnly,
       },
       {
         source: `/:slug(${TENANT_SLUG})/${module}/:path*`,
         destination: `/app/:slug/${module}/:path*`,
         permanent: true,
+        has: ownHostOnly,
       },
     ]);
 
@@ -67,16 +80,19 @@ const nextConfig: NextConfig = {
         source: `/:slug(${TENANT_SLUG})/event/acara`,
         destination: `/app/:slug/event/acara`,
         permanent: true,
+        has: ownHostOnly,
       },
       {
         source: `/:slug(${TENANT_SLUG})/event/acara/:path*`,
         destination: `/app/:slug/event/acara/:path*`,
         permanent: true,
+        has: ownHostOnly,
       },
       {
         source: `/:slug(${TENANT_SLUG})/event/kategori`,
         destination: `/app/:slug/event/kategori`,
         permanent: true,
+        has: ownHostOnly,
       },
     ];
 
@@ -87,26 +103,31 @@ const nextConfig: NextConfig = {
         source: `/:slug(${TENANT_SLUG})/dokumen`,
         destination: `/app/:slug/dokumen`,
         permanent: true,
+        has: ownHostOnly,
       },
       {
         source: `/:slug(${TENANT_SLUG})/dokumen/semua`,
         destination: `/app/:slug/dokumen/semua`,
         permanent: true,
+        has: ownHostOnly,
       },
       {
         source: `/:slug(${TENANT_SLUG})/dokumen/semua/:path*`,
         destination: `/app/:slug/dokumen/semua/:path*`,
         permanent: true,
+        has: ownHostOnly,
       },
       {
         source: `/:slug(${TENANT_SLUG})/dokumen/new`,
         destination: `/app/:slug/dokumen/new`,
         permanent: true,
+        has: ownHostOnly,
       },
       {
         source: `/:slug(${TENANT_SLUG})/dokumen/kategori`,
         destination: `/app/:slug/dokumen/kategori`,
         permanent: true,
+        has: ownHostOnly,
       },
     ];
 

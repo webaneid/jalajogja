@@ -3547,6 +3547,50 @@ dianggap "early exit UX", bukan jaminan korektnes. Pattern ini sudah berulang 3x
 (payment confirm, cart checkout, event registration) — kemungkinan besar akan muncul lagi di modul
 baru manapun yang punya konsep "kuota" atau "satu per orang".
 
+### [2026-07-14] Bug Kritis: `next.config.ts redirects()` Salah Tangkap Path Publik di Custom Domain
+
+**Gejala dilaporkan user**: buka `visikita.com/akun/media` (custom domain) → network tab
+menunjukkan `308 Permanent Redirect (from disk cache)` → akhirnya mendarat di
+`jalakarta.com/app/login?redirect=/app/akun/media`. Kalau user sedang login sesi admin di
+jalakarta.com, malah nyasar ke dashboard tenant lain (tenant tempat dia kebetulan jadi owner).
+
+**Root cause — urutan eksekusi Next.js**: `redirects()` di `next.config.ts` berjalan **SEBELUM**
+`middleware.ts` (urutan resmi Next.js: `headers → redirects → middleware → rewrites`). Redirect
+legacy dari migrasi URL admin Fase 1-4 (`docs/rencana-migrasi-url.md`) — dibuat untuk
+backward-compat bookmark lama `jalakarta.com/{slug}/media` → `jalakarta.com/app/{slug}/media` —
+punya pola:
+```
+source: `/:slug(${TENANT_SLUG})/media`   → destination: `/app/:slug/media`
+```
+Redirect ini **tidak tahu apa-apa soal custom domain** (jalan sebelum middleware yang punya logic
+`isOwnHost()`). Di custom domain, halaman publik `/akun/media` (route `(public)/[tenant]/akun/media`)
+diakses TANPA prefix slug — path-nya cuma 2 segment: `akun` + `media`. Pola redirect di atas
+menyangka `akun` adalah tenant slug (`TENANT_SLUG` regex cocok — huruf kecil valid) → match →
+redirect PERMANEN (301, browser cache selamanya) ke `/app/akun/media`, yang bukan tenant asli.
+
+**Ini bug untuk SEMUA custom domain tenant**, bukan cuma cache browser satu user — meski cache
+308 permanen memperparah (sekali kena, browser tidak pernah tanya server lagi sampai cache
+dibersihkan manual). Modul lain di `ADMIN_MODULES` (`settings`, `finance`, `toko`, `donasi`,
+`website`, dll) berpotensi collision serupa kalau suatu saat ada route publik `/akun/{nama-yang-sama}`.
+
+**Fix**: tambah kondisi `has: [{ type: "host", value: "jalakarta.com" }]` ke SEMUA redirect
+legacy admin (`moduleRedirects`, `eventRedirects`, `dokumenRedirects`) — redirect bookmark-lama ini
+memang cuma relevan di domain sendiri; custom domain tidak pernah punya path admin lama sama sekali.
+
+**Aturan yang dikunci**: setiap kali menambah `redirects()` di `next.config.ts` yang berbasis pola
+`/:slug/...` (bukan prefix eksplisit `/app/` atau `/platform/`), WAJIB pertimbangkan apakah pola
+itu bisa collision dengan path publik di custom domain (di mana slug implisit dari domain, path
+jadi lebih pendek satu segment). Kalau redirect itu hanya untuk keperluan domain sendiri (bookmark
+admin lama, dll), WAJIB tambah `has: [{ type: "host", value: "jalakarta.com" }]`. `redirects()`
+next.config.ts TIDAK bisa diandalkan untuk tahu bedanya custom domain vs domain sendiri — logic
+itu hanya ada di `middleware.ts` (`isOwnHost()`), dan `redirects()` jalan SEBELUM middleware.
+
+**Konsekuensi cache untuk user yang sudah kena**: perbaikan config tidak otomatis membersihkan
+cache 308 yang sudah tersimpan di browser user. User yang sudah pernah kena harus hard refresh /
+clear cache / buka Incognito untuk melihat perbaikan — server-side fix saja tidak cukup untuk
+browser yang sudah cache redirect permanen sebelumnya (pola sama dengan lesson lama "Browser
+Ter-Cache Redirect 301 ke `/app/api/*`").
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
