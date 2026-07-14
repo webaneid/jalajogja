@@ -47,7 +47,7 @@ export const WA_TEMPLATE_DEFAULTS: Record<string, string> = {
     "🎫 *Pendaftaran Event Berhasil*\n\nHalo {{name}}, pendaftaran Anda untuk *{{eventName}}* telah diterima.\n\nNomor Registrasi: *{{regNumber}}*\n🗓 {{eventDate}}\n📍 {{location}}\n\nDetail: {{eventUrl}}",
 
   event_reminder:
-    "📅 *Pengingat Event Besok*\n\nHalo {{name}}, jangan lupa!\n\n*{{eventName}}*\n🗓 {{eventDate}}\n📍 {{location}}\n\nNomor Registrasi: *{{regNumber}}*",
+    "📅 *Pengingat Event Besok*\n\nHalo {{name}}, jangan lupa!\n\n*{{eventName}}*\n🗓 {{eventDate}}\n📍 {{location}}\n\nNomor Registrasi: *{{regNumber}}*\n\nDetail: {{eventUrl}}",
 
   event_certificate_ready:
     "🏆 *Sertifikat Siap Diunduh*\n\nHalo {{name}}, sertifikat kehadiran untuk *{{eventName}}* sudah tersedia.\n\nUnduh sertifikat Anda: {{certUrl}}",

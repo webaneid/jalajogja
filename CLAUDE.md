@@ -3723,6 +3723,29 @@ safety-gate `CLEANUP_CUTOFF = 2026-08-13` hardcoded di kode — endpoint return 
 tanpa hapus apapun kalau dipanggil sebelum tanggal itu. Aman deploy + jadwalkan crontab kapan
 saja (pola sama `cleanup-images`, header `x-cron-secret`) — gate ada di kode, bukan di jadwal.
 
+### [2026-07-14] WhatsApp Notification Fase B — Cron Reminder Selesai
+
+`app/api/cron/invoice-reminder/route.ts` (baru) — harian, per tenant aktif query
+`invoices WHERE status IN (pending,partial) AND due_date = besok` → kirim `invoice_reminder`.
+`amount` dihitung `(total + uniqueCode) - paidAmount` (sisa tagihan sesungguhnya, konsisten
+dengan aturan kode unik yang sudah dikunci — bukan `total` mentah).
+
+`app/api/cron/event-reminder/route.ts` (baru) — harian, per tenant aktif query
+`events WHERE status='published' AND starts_at::date = besok`, lalu per event query
+`event_registrations WHERE status='confirmed'` → kirim `event_reminder` per peserta.
+`eventDate` diformat `Asia/Jakarta` timezone eksplisit + suffix "WIB" (event Indonesia).
+Template `event_reminder` ditambah `{{eventUrl}}` (sebelumnya tidak ada link sama sekali).
+
+Kedua cron pakai pola auth yang sama (`x-cron-secret` header) dan `notifyWa()` dari
+`lib/wa-notify.ts` — otomatis skip kalau toggle notifikasi belum diaktifkan admin tenant
+(dicek di dalam `sendWaNotification`), tidak perlu guard tambahan di level cron.
+
+**Belum dijadwalkan di crontab VPS** — perlu ditambahkan manual (`crontab -e`), sama seperti
+`cleanup-member-media-legacy`. Tidak ada safety-gate tanggal di kedua cron ini (beda dengan
+cleanup-member-media-legacy) — begitu dijadwalkan, langsung aktif kirim notifikasi H-1.
+
+**Fase 4-6 (fulfillment/event-registered/donasi/surat notif) masih belum dikerjakan.**
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
