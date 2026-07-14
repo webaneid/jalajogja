@@ -350,25 +350,9 @@ export async function checkoutAction(
     const tenantDb = createTenantDb(slug);
     const { db: tdb, schema } = tenantDb;
 
-    // Ambil cart
-    const [cart] = await tdb
-      .select({ id: schema.carts.id })
-      .from(schema.carts)
-      .where(eq(schema.carts.sessionToken, token))
-      .limit(1);
-
-    if (!cart) return { success: false, error: "Keranjang tidak ditemukan atau sudah kadaluarsa." };
-
-    const cartItems = await tdb
-      .select()
-      .from(schema.cartItems)
-      .where(eq(schema.cartItems.cartId, cart.id))
-      .orderBy(schema.cartItems.sortOrder);
-
-    if (!cartItems.length) return { success: false, error: "Keranjang kosong." };
-
     // ── Lookup identitas via resolveIdentity ─────────────────────────────────
     // Urutan: session login → public.profiles → public.members → guest
+    // Query ke public schema — di luar transaction tenant di bawah (koneksi/DB berbeda).
     const session = await auth.api.getSession({ headers: await headers() });
     const identity = await resolveIdentity(db, {
       betterAuthUserId: session?.user?.id ?? null,
@@ -384,138 +368,169 @@ export async function checkoutAction(
       customerName = customer.phone?.trim() || customer.email?.trim() || "Guest";
     }
 
-    // ── Re-fetch harga untuk item dengan itemId (produk/tiket) ──────────────
-    const resolvedItems: Array<{
-      itemType:  string;
-      itemId:    string | null;
-      name:      string;
-      notes:     string | null;
-      unitPrice: number;
-      quantity:  number;
-      mitraId:   string | null;
-    }> = [];
+    const paymentSettings   = await getSettings(tenantDb, "payment");
+    const uniqueCodeEnabled = paymentSettings["unique_code_enabled"] === true;
 
-    for (const item of cartItems) {
-      let unitPrice = parseFloat(String(item.unitPrice));
-      let mitraId: string | null = null;
+    // ── Transaction: lock cart FOR UPDATE mencegah double-checkout dari klik ganda /
+    // double-tap / retry jaringan. Request kedua yang datang hampir bersamaan akan
+    // menunggu lock cart ini, lalu menemukan cart_items sudah kosong (sudah diproses
+    // request pertama) dan berhenti tanpa membuat invoice duplikat.
+    // Pattern sama dengan lock invoice di confirmInvoicePaymentAction (billing/actions.ts).
+    type TxResult =
+      | { error: string }
+      | { invoiceId: string; invoiceNumber: string; total: number; dueDate: string };
 
-      if (item.itemId) {
-        if (item.itemType === "product") {
-          const [prod] = await tdb
-            .select({ price: schema.products.price, name: schema.products.name, mitraId: schema.products.mitraId })
-            .from(schema.products)
-            .where(eq(schema.products.id, item.itemId))
-            .limit(1);
-          if (prod) {
-            unitPrice = parseFloat(String(prod.price));
-            mitraId   = prod.mitraId ?? null;
+    const txResult: TxResult = await tdb.transaction(async (tx) => {
+      const [lockedCart] = await tx
+        .select({ id: schema.carts.id })
+        .from(schema.carts)
+        .where(sql`${schema.carts.sessionToken} = ${token} FOR UPDATE`)
+        .limit(1);
+
+      if (!lockedCart) return { error: "Keranjang tidak ditemukan atau sudah kadaluarsa." };
+
+      const cartItems = await tx
+        .select()
+        .from(schema.cartItems)
+        .where(eq(schema.cartItems.cartId, lockedCart.id))
+        .orderBy(schema.cartItems.sortOrder);
+
+      if (!cartItems.length) return { error: "Keranjang kosong atau sudah diproses." };
+
+      // Re-fetch harga untuk item dengan itemId (produk/tiket)
+      const resolvedItems: Array<{
+        itemType:  string;
+        itemId:    string | null;
+        name:      string;
+        notes:     string | null;
+        unitPrice: number;
+        quantity:  number;
+        mitraId:   string | null;
+      }> = [];
+
+      for (const item of cartItems) {
+        let unitPrice = parseFloat(String(item.unitPrice));
+        let mitraId: string | null = null;
+
+        if (item.itemId) {
+          if (item.itemType === "product") {
+            const [prod] = await tx
+              .select({ price: schema.products.price, name: schema.products.name, mitraId: schema.products.mitraId })
+              .from(schema.products)
+              .where(eq(schema.products.id, item.itemId))
+              .limit(1);
+            if (prod) {
+              unitPrice = parseFloat(String(prod.price));
+              mitraId   = prod.mitraId ?? null;
+            }
+          } else if (item.itemType === "ticket") {
+            const [ticket] = await tx
+              .select({ price: schema.eventTickets.price, name: schema.eventTickets.name })
+              .from(schema.eventTickets)
+              .where(eq(schema.eventTickets.id, item.itemId))
+              .limit(1);
+            if (ticket) { unitPrice = parseFloat(String(ticket.price)); }
           }
-        } else if (item.itemType === "ticket") {
-          const [ticket] = await tdb
-            .select({ price: schema.eventTickets.price, name: schema.eventTickets.name })
-            .from(schema.eventTickets)
-            .where(eq(schema.eventTickets.id, item.itemId))
-            .limit(1);
-          if (ticket) { unitPrice = parseFloat(String(ticket.price)); }
         }
+
+        resolvedItems.push({
+          itemType:  item.itemType,
+          itemId:    item.itemId,
+          name:      item.name,
+          notes:     item.notes ?? null,
+          unitPrice,
+          quantity:  item.quantity,
+          mitraId,
+        });
       }
 
-      resolvedItems.push({
-        itemType:  item.itemType,
-        itemId:    item.itemId,
-        name:      item.name,
-        notes:     item.notes ?? null,
-        unitPrice,
-        quantity:  item.quantity,
-        mitraId,
-      });
-    }
+      // ── Buat invoice ─────────────────────────────────────────────────────────
+      const invoiceNumber  = await generateFinancialNumber(tenantDb, "invoice");
+      const subtotal       = resolvedItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0);
+      const shippingTotal  = shipping?.lines.reduce((s, l) => s + l.cost, 0) ?? 0;
+      const total          = subtotal + shippingTotal;
 
-    // ── Buat invoice ─────────────────────────────────────────────────────────
-    const invoiceNumber  = await generateFinancialNumber(tenantDb, "invoice");
-    const subtotal       = resolvedItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0);
-    const shippingTotal  = shipping?.lines.reduce((s, l) => s + l.cost, 0) ?? 0;
-    const total          = subtotal + shippingTotal;
+      const dueDate = (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 3);
+        return d.toISOString().slice(0, 10);
+      })();
 
-    const dueDate = (() => {
-      const d = new Date();
-      d.setDate(d.getDate() + 3);
-      return d.toISOString().slice(0, 10);
-    })();
+      const uniqueCode = uniqueCodeEnabled ? await generateUniqueCode(tenantDb) : 0;
 
-    // Cek setting kode unik dan generate jika aktif
-    const paymentSettings    = await getSettings(tenantDb, "payment");
-    const uniqueCodeEnabled  = paymentSettings["unique_code_enabled"] === true;
-    const uniqueCode         = uniqueCodeEnabled ? await generateUniqueCode(tenantDb) : 0;
+      const [invoice] = await tx
+        .insert(schema.invoices)
+        .values({
+          invoiceNumber,
+          sourceType:       "cart",
+          sourceId:         lockedCart.id,
+          customerName,
+          customerPhone:    normalizePhone(customer.phone),
+          customerEmail:    customer.email?.trim() ?? null,
+          memberId,
+          profileId,
+          subtotal:         subtotal.toFixed(2),
+          shippingTotal:    shippingTotal.toFixed(2),
+          discount:         "0",
+          total:            total.toFixed(2),
+          uniqueCode,
+          paidAmount:       "0",
+          shippingCityId:   shipping?.cityId    ?? null,
+          shippingCityName: shipping?.cityName  ?? null,
+          shippingAddress:  shipping?.address   ?? null,
+          status:           "pending",
+          dueDate,
+          notes:            customer.notes?.trim() ?? null,
+          createdBy:        null,
+        })
+        .returning({ id: schema.invoices.id });
 
-    const [invoice] = await tdb
-      .insert(schema.invoices)
-      .values({
-        invoiceNumber,
-        sourceType:       "cart",
-        sourceId:         cart.id,
-        customerName,
-        customerPhone:    normalizePhone(customer.phone),
-        customerEmail:    customer.email?.trim() ?? null,
-        memberId,
-        profileId,
-        subtotal:         subtotal.toFixed(2),
-        shippingTotal:    shippingTotal.toFixed(2),
-        discount:         "0",
-        total:            total.toFixed(2),
-        uniqueCode,
-        paidAmount:       "0",
-        shippingCityId:   shipping?.cityId    ?? null,
-        shippingCityName: shipping?.cityName  ?? null,
-        shippingAddress:  shipping?.address   ?? null,
-        status:           "pending",
-        dueDate,
-        notes:            customer.notes?.trim() ?? null,
-        createdBy:        null,
-      })
-      .returning({ id: schema.invoices.id });
-
-    // Insert invoice items (dengan seller info untuk mitra)
-    await tdb.insert(schema.invoiceItems).values(
-      resolvedItems.map((item, i) => ({
-        invoiceId:   invoice.id,
-        itemType:    item.itemType as "product" | "ticket" | "donation" | "custom",
-        itemId:      item.itemId ?? null,
-        name:        item.name,
-        description: item.notes ?? null,
-        unitPrice:   item.unitPrice.toFixed(2),
-        quantity:    item.quantity,
-        total:       (item.unitPrice * item.quantity).toFixed(2),
-        sortOrder:   i,
-        sellerType:  (item.mitraId ? "mitra" : "tenant") as "tenant" | "mitra",
-        sellerId:    item.mitraId ?? null,
-      }))
-    );
-
-    // Insert shipping lines (jika ada)
-    if (shipping && shipping.lines.length > 0) {
-      await tdb.insert(schema.invoiceShippingLines).values(
-        shipping.lines.map(line => ({
-          invoiceId:      invoice.id,
-          sellerType:     line.sellerType,
-          sellerId:       line.sellerId ?? null,
-          sellerName:     line.sellerName,
-          originCityId:   line.originCityId,
-          originCityName: line.originCityName,
-          courier:        line.courier,
-          service:        line.service,
-          serviceDesc:    line.serviceDesc ?? null,
-          etd:            line.etd ?? null,
-          weightGram:     line.weightGram,
-          cost:           line.cost.toFixed(2),
-          status:         "pending" as const,
+      // Insert invoice items (dengan seller info untuk mitra)
+      await tx.insert(schema.invoiceItems).values(
+        resolvedItems.map((item, i) => ({
+          invoiceId:   invoice.id,
+          itemType:    item.itemType as "product" | "ticket" | "donation" | "custom",
+          itemId:      item.itemId ?? null,
+          name:        item.name,
+          description: item.notes ?? null,
+          unitPrice:   item.unitPrice.toFixed(2),
+          quantity:    item.quantity,
+          total:       (item.unitPrice * item.quantity).toFixed(2),
+          sortOrder:   i,
+          sellerType:  (item.mitraId ? "mitra" : "tenant") as "tenant" | "mitra",
+          sellerId:    item.mitraId ?? null,
         }))
       );
-    }
 
-    // Hapus cart setelah checkout berhasil
-    await tdb.delete(schema.cartItems).where(eq(schema.cartItems.cartId, cart.id));
-    await tdb.delete(schema.carts).where(eq(schema.carts.id, cart.id));
+      // Insert shipping lines (jika ada)
+      if (shipping && shipping.lines.length > 0) {
+        await tx.insert(schema.invoiceShippingLines).values(
+          shipping.lines.map(line => ({
+            invoiceId:      invoice.id,
+            sellerType:     line.sellerType,
+            sellerId:       line.sellerId ?? null,
+            sellerName:     line.sellerName,
+            originCityId:   line.originCityId,
+            originCityName: line.originCityName,
+            courier:        line.courier,
+            service:        line.service,
+            serviceDesc:    line.serviceDesc ?? null,
+            etd:            line.etd ?? null,
+            weightGram:     line.weightGram,
+            cost:           line.cost.toFixed(2),
+            status:         "pending" as const,
+          }))
+        );
+      }
+
+      // Hapus cart setelah checkout berhasil — masih dalam lock yang sama
+      await tx.delete(schema.cartItems).where(eq(schema.cartItems.cartId, lockedCart.id));
+      await tx.delete(schema.carts).where(eq(schema.carts.id, lockedCart.id));
+
+      return { invoiceId: invoice.id, invoiceNumber, total, dueDate };
+    });
+
+    if ("error" in txResult) return { success: false, error: txResult.error };
 
     // Hapus cookie cart
     const cookieStore = await cookies();
@@ -526,14 +541,14 @@ export async function checkoutAction(
       phone: normalizePhone(customer.phone),
       vars: {
         name:          customerName,
-        invoiceNumber,
-        amount:        waRupiah(total),
-        dueDate,
-        invoiceUrl:    waAppUrl(slug, `/invoice/${invoice.id}`),
+        invoiceNumber: txResult.invoiceNumber,
+        amount:        waRupiah(txResult.total),
+        dueDate:       txResult.dueDate,
+        invoiceUrl:    waAppUrl(slug, `/invoice/${txResult.invoiceId}`),
       },
     });
 
-    return { success: true, data: { invoiceId: invoice.id, invoiceNumber } };
+    return { success: true, data: { invoiceId: txResult.invoiceId, invoiceNumber: txResult.invoiceNumber } };
   } catch (err) {
     console.error("[checkoutAction]", err);
     return { success: false, error: "Gagal membuat invoice. Coba lagi." };
