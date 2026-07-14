@@ -225,8 +225,9 @@ export function CampaignDetailClient({
                 Ya, lihat program lain
               </button>
               <button type="button"
-                onClick={() => void handleExpressCheckout()}
-                className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+                disabled={pending}
+                onClick={() => startTransition(handleExpressCheckout)}
+                className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
               >
                 Tidak, lanjut bayar →
               </button>
@@ -255,8 +256,9 @@ export function CampaignDetailClient({
                 Daftar Akun
               </button>
               <button type="button"
-                onClick={() => void handleExpressCheckout()}
-                className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+                disabled={pending}
+                onClick={() => startTransition(handleExpressCheckout)}
+                className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
               >
                 Lanjut Tanpa Akun →
               </button>

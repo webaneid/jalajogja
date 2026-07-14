@@ -555,8 +555,11 @@ export async function registerForEventAction(
     }
   }
 
-  // Guard double-daftar: cek via OR (memberId ATAU email) agar registrasi lama tetap terdeteksi
-  const identityOr = [];
+  // Guard double-daftar: cek via OR (memberId ATAU email) agar registrasi lama tetap terdeteksi.
+  // Cek awal ini hanya early-exit cepat untuk UX — pengecekan definitif (anti race condition)
+  // diulang lagi di dalam transaction setelah lock tiket (lihat di bawah), karena dua request
+  // yang datang hampir bersamaan bisa sama-sama lolos cek di sini sebelum salah satunya insert.
+  const identityOr: ReturnType<typeof eq>[] = [];
   if (resolvedMemberId) identityOr.push(eq(schema.eventRegistrations.memberId, resolvedMemberId));
   if (resolvedEmail)    identityOr.push(eq(schema.eventRegistrations.attendeeEmail, resolvedEmail));
 
@@ -648,6 +651,23 @@ export async function registerForEventAction(
         .where(sql`${schema.eventTickets.id} = ${data.ticketId} FOR UPDATE`)
         .limit(1);
 
+      // Ulangi cek double-daftar SETELAH lock — menutup race condition klik ganda/double-tap.
+      // Request kedua yang tadi lolos cek awal (sebelum ada yang insert) sekarang akan
+      // menemukan registrasi dari request pertama sudah tercatat (request pertama sudah
+      // commit duluan karena antre di lock yang sama).
+      if (identityOr.length > 0) {
+        const [existingLocked] = await tx
+          .select({ id: schema.eventRegistrations.id })
+          .from(schema.eventRegistrations)
+          .where(and(
+            eq(schema.eventRegistrations.eventId, data.eventId),
+            sql`${schema.eventRegistrations.status} != 'cancelled'`,
+            or(...identityOr),
+          ))
+          .limit(1);
+        if (existingLocked) throw new Error("Kamu sudah terdaftar di event ini.");
+      }
+
       // Cek kuota tiket (di dalam transaction, setelah lock)
       if (ticket.quota != null) {
         const [{ used }] = await tx
@@ -737,7 +757,7 @@ export async function registerForEventAction(
       data: { registrationId: reg.id, registrationNumber: regNumber, isPaid: true },
     };
   } catch (err) {
-    if (err instanceof Error && (err.message.includes("Kuota") || err.message.includes("Kapasitas")))
+    if (err instanceof Error && (err.message.includes("Kuota") || err.message.includes("Kapasitas") || err.message.includes("sudah terdaftar")))
       return { success: false, error: err.message };
     console.error("[registerForEventAction]", err);
     return { success: false, error: "Gagal mendaftarkan peserta. Silakan coba lagi." };

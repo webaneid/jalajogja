@@ -3489,14 +3489,63 @@ Cart tunggal (1 tiket) adalah pola traffic dominan untuk pendaftaran event, jadi
 menutup kasus yang benar-benar terjadi tanpa membuka risiko baru di kasus campuran (jarang, dan
 kalaupun terjadi duplikat, admin tetap bisa `cancelInvoiceAction` manual di dashboard).
 
-**Aturan untuk deteksi duplikat serupa di modul lain**: kalau nanti ada laporan serupa di
-donasi/produk, pola yang sama bisa dipakai — tapi jangan generalize ke SEMUA jenis cart tanpa
-mikirkan mixed-cart deadlock case di atas dulu.
-
 **Diagnosa data**: jangan asumsi race condition dari gejala "2 invoice mirip" saja — SELALU cek
 `created_at` kedua invoice. Selisih milidetik/detik → race condition (lock). Selisih menit/jam →
 kemungkinan besar bukan race condition, tapi UX/behavioral duplicate (customer re-attempt) yang
 butuh fix berbeda (deteksi duplikat berbasis identity, bukan locking).
+
+### [2026-07-14] Audit Duplikasi Transaksi — Produk & Donasi (Lanjutan)
+
+Setelah fix di atas, diminta pastikan Toko (produk) dan Donasi juga aman dari kelas bug yang sama.
+Hasil audit — **satu fungsi `checkoutAction`, tiga pemanggil**:
+
+```
+grep -rl "checkoutAction" apps/web/app apps/web/components
+→ cart/actions.ts (definisi)
+→ components/billing/checkout-form.tsx     (cart: produk + tiket + campuran)
+→ components/donasi/public/campaign-detail-client.tsx  (donasi "express checkout")
+```
+
+**Kesimpulan kunci**: karena produk, donasi, dan tiket-via-cart semuanya lewat SATU fungsi
+`checkoutAction` yang sama, fix lock `FOR UPDATE` di atas **otomatis berlaku untuk ketiganya** —
+tidak perlu logic terpisah per modul untuk race-condition class of bug. Ini konsekuensi langsung
+dari prinsip Billing Universal ("satu infrastruktur, dua pintu masuk") yang sudah dikunci sejak
+awal — modul Toko/Donasi/Event bukan implementasi checkout sendiri-sendiri.
+
+**Client-side hardening tambahan (ditemukan gap, difix)**: `campaign-detail-client.tsx` —
+tombol "Tidak, lanjut bayar →" dan "Lanjut Tanpa Akun →" (express checkout donasi) memanggil
+`handleExpressCheckout()` langsung via `onClick={() => void handleExpressCheckout()}`, TANPA
+`disabled={pending}` — beda dengan tombol "Tambah ke Keranjang"/"Donasi" di file yang sama yang
+sudah pakai `useTransition` + `disabled={pending}`. Fix: pakai `startTransition(handleExpressCheckout)`
++ `disabled={pending}`, konsisten dengan tombol lain. Ini pure UX hardening (server-side lock sudah
+cukup untuk korektnes) — tapi tetap penting untuk hindari request sia-sia dan flicker UI.
+`checkout-form.tsx` (produk/cart) sudah benar sejak awal, tidak ada perubahan.
+
+**Celah race-condition KEDUA ditemukan — di luar cakupan pertanyaan awal, tapi kelas bug sama**:
+`registerForEventAction` (alur pendaftaran tiket event LANGSUNG, bukan lewat cart — dipakai untuk
+tiket gratis atau saat event tidak punya linked campaign/product) sudah punya guard "sudah
+terdaftar" (cek `eventId` + `memberId`/`attendeeEmail`), TAPI dicek **sebelum** transaction lock.
+Dua request nyaris bersamaan bisa sama-sama lolos cek itu sebelum salah satunya insert → 2
+registrasi (dan 2 invoice untuk tiket berbayar, via `createLinkedInvoice`). Fix: cek yang sama
+diulang LAGI di dalam transaction, tepat setelah lock `FOR UPDATE` pada baris tiket (lock yang
+sudah ada sebelumnya untuk validasi kuota) — request kedua yang antre di lock yang sama akan
+melihat insert request pertama begitu keduanya boleh jalan berurutan.
+
+**Keputusan scope yang disengaja (dua tempat)**:
+1. Deteksi duplikat tiket di `checkoutAction` (cart) HANYA untuk cart berisi 1 item tiket —
+   cart campuran (tiket+produk/donasi) tidak dicek, hindari deadlock UX (lihat entri sebelumnya).
+2. Deteksi duplikat di `registerForEventAction` (alur langsung) di-scope ke lock **per-tiket**
+   (bukan per-event) — kalau customer coba daftar 2 tiket BEDA jenis untuk event yang sama secara
+   konkuren, race masih mungkin terjadi (edge case sangat jarang). Trade-off diterima karena
+   skenario dominan (klik ganda tiket yang sama) sudah tertutup, dan menaikkan lock ke level event
+   berisiko konflik locking dengan cek kuota per-tiket yang sudah ada.
+
+**Aturan untuk modul checkout/registrasi baru ke depan**: SETIAP kali ada aksi yang (a) insert
+row unik-per-identitas dan (b) punya guard "sudah ada sebelumnya" via SELECT biasa, guard itu WAJIB
+diulang di dalam transaction SETELAH lock diperoleh — SELECT di luar transaction hanya boleh
+dianggap "early exit UX", bukan jaminan korektnes. Pattern ini sudah berulang 3x di project
+(payment confirm, cart checkout, event registration) — kemungkinan besar akan muncul lagi di modul
+baru manapun yang punya konsep "kuota" atau "satu per orang".
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
