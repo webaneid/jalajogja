@@ -3715,8 +3715,13 @@ lagi dipakai untuk fetch). `usaha-client.tsx`, `profesional-client.tsx`, `pesant
 korektnes). Perlu cron terpisah atau extend `cleanup-images` untuk scan `member_media` juga — belum
 diprioritaskan, masukkan ke follow-up kalau storage MinIO mulai terasa penuh.
 
-**Step 4 (cron cleanup legacy `tenant.media` 30 hari) BELUM dieksekusi** — sesuai rencana, jangan
-jalankan sebelum 30 hari dari tanggal migrasi backfill (`0028_member_media_global.sql`).
+**Step 4 (cron cleanup legacy `tenant.media`) — KODE SELESAI (2026-07-14)**:
+`app/api/cron/cleanup-member-media-legacy/route.ts` — batch-check referensi ke 4 kolom
+(`members.photo_url`, `member_businesses.cover_url`, `member_professionals.cover_url`,
+`member_owned_pesantren.cover_url`) per-tenant sebelum hapus, skip kalau masih dipakai. Hard
+safety-gate `CLEANUP_CUTOFF = 2026-08-13` hardcoded di kode — endpoint return `{skipped:true}`
+tanpa hapus apapun kalau dipanggil sebelum tanggal itu. Aman deploy + jadwalkan crontab kapan
+saja (pola sama `cleanup-images`, header `x-cron-secret`) — gate ada di kode, bukan di jadwal.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).

@@ -329,8 +329,9 @@ Phase 4 — Halaman /akun/media (opsional)
 
 ## 3. Member Media Library — Fase Global Cross-Tenant
 
-> **Status: Step 1-3 ✅ SELESAI (2026-07-14).** Step 4 (cron cleanup legacy 30 hari) **BELUM** —
-> dijadwalkan terpisah, jangan dieksekusi sebelum 30 hari observasi dari tanggal migrasi.
+> **Status: Step 1-4 ✅ SEMUA KODE SELESAI (2026-07-14).** Cron cleanup (Step 4) sudah ditulis
+> dengan hard safety-gate tanggal — **tidak akan menghapus apapun sampai 2026-08-13**, meski
+> di-deploy dan dijadwalkan crontab sekarang. Jadwalkan crontab-nya kapan saja, aman.
 
 ### Masalah yang Ditemukan
 
@@ -486,12 +487,15 @@ Step 3 — Verifikasi
   3b. Test: CoverImageField di usaha/pesantren/profesional/lengkapi masih berfungsi normal
   3c. Test: hapus foto dari tenant B, file fisik di bucket tenant A benar-benar terhapus
 
-Step 4 — Cron Cleanup Legacy (setelah 30 hari observasi, BUKAN langsung deploy bareng Step 1-3)
+Step 4 — Cron Cleanup Legacy — ✅ KODE SELESAI, hard safety-gate tanggal 2026-08-13
   4a. app/api/cron/cleanup-member-media-legacy/route.ts — untuk setiap tenant, ambil
-      tenant.media WHERE module='akun' AND created_at < (tanggal migrasi - 30 hari)
+      tenant.media WHERE module='akun'
   4b. Per row: cek URL (path + tiap variant) terhadap 4 kolom referensi
       (members.photo_url, member_businesses.cover_url, member_professionals.cover_url,
       member_owned_pesantren.cover_url) — SKIP kalau ditemukan di manapun
   4c. Kalau tidak dipakai di manapun → deleteFile() dari bucket asal + DELETE row tenant.media
-  4d. Jadwalkan via crontab VPS harian, pola sama dengan cleanup-images (x-cron-secret header)
+  4d. CLEANUP_CUTOFF = 2026-08-13 hardcoded di route — endpoint return {skipped:true} tanpa
+      hapus apapun kalau dipanggil sebelum tanggal itu. Boleh deploy + jadwalkan crontab
+      kapan saja (harian), pola sama dengan cleanup-images (x-cron-secret header) — aman
+      karena gate tanggal ada di kode, bukan di jadwal crontab
 ```
