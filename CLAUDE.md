@@ -1060,6 +1060,19 @@ Logika: cari yang spesifik dulu → fallback ke `general`.
 - **[SELESAI Fase 1-4] Migrasi URL** — admin dashboard dipindah ke `/app/{slug}/*`, publik tetap `/{slug}/*`. Redirect 301 dari path lama di `next.config.ts`. Fase 5 (admin subdomain `admin.ikpmjogja.com`) ditunda. Detail: `docs/rencana-migrasi-url.md`.
 - **Post-login routing multi-tenant tidak deterministik** — `getFirstTenantForUser()` tidak ada `ORDER BY`, user di 2+ tenant bisa dikirim ke tenant mana saja. Perlu difix sebelum tenant kedua aktif.
 - **Fase 5 URL migrasi** — admin subdomain custom domain (`admin.ikpmjogja.com`). Ditunda, perlu 2 minggu observasi production dulu. Detail di `docs/rencana-migrasi-url.md`.
+- **[RENCANA] Sesi khusus evaluasi ulang arsitektur domain/URL secara menyeluruh** — diminta user
+  2026-07-14 setelah bug redirect legacy salah tangkap path publik di custom domain (lihat lesson
+  "next.config.ts redirects() Salah Tangkap Path Publik di Custom Domain"). Empat entitas domain
+  yang perlu dipetakan ulang secara sistematis dan didokumentasikan sebagai satu sumber kebenaran:
+  1. `jalakarta.com` — landing page platform (belum dibangun)
+  2. `platform.jalakarta.com` — admin platform (tim Jalakarta)
+  3. `jalakarta.com/app/{slug}/*` — dashboard admin tenant
+  4. `jalakarta.com/{slug}/*` **atau** `{custom-domain}/*` — front-end publik tenant
+  Fokus evaluasi: konflik path (kasus `/akun/media` vs `/:slug/media` legacy redirect adalah contoh
+  nyata), urutan eksekusi Next.js (`redirects → middleware → rewrites`) dan implikasinya ke custom
+  domain, konsistensi `has: host` guard di semua redirect/rewrite yang path-based, serta status
+  Fase 5 (admin subdomain) yang masih tertunda. **Belum dijadwalkan** — tunggu instruksi user untuk
+  mulai sesi ini secara eksplisit, jangan dieksekusi proaktif.
 
 ## Prinsip Penggunaan CLAUDE.md
 
