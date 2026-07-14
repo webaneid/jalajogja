@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { eq }                        from "drizzle-orm";
-import { db, members, memberEducations } from "@jalajogja/db";
+import { db, members, memberEducations, contacts, createTenantDb } from "@jalajogja/db";
 import { auth }                      from "@/lib/auth";
+import { notifyWa, waAppUrl }        from "@/lib/wa-notify";
 
 async function getSessionMember(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
   if (error || !member) return NextResponse.json({ error }, { status });
 
   const body = await req.json() as {
+    slug?:    string;   // tenant tempat wizard diisi — untuk WA gateway member_welcome
     entries: {
       level:           string;
       institutionName: string;
@@ -77,6 +79,44 @@ export async function POST(req: NextRequest) {
             "Gontor Putri 4"|"Gontor Putri 5"|"Gontor Putri 6"|null,
         }))
       );
+    }
+
+    // Kirim WA "Selamat Datang" — sekali seumur hidup, saat wizard 3-step /akun/lengkapi
+    // pertama kali selesai (step ini adalah step terakhir). Idempotent via welcomeSentAt.
+    if (body.slug) {
+      const [memberRow] = await db
+        .select({
+          name:          members.name,
+          memberNumber:  members.memberNumber,
+          contactId:     members.contactId,
+          welcomeSentAt: members.welcomeSentAt,
+        })
+        .from(members)
+        .where(eq(members.id, member.id))
+        .limit(1);
+
+      if (memberRow && !memberRow.welcomeSentAt && memberRow.contactId) {
+        const [contact] = await db
+          .select({ phone: contacts.phone, whatsapp: contacts.whatsapp })
+          .from(contacts)
+          .where(eq(contacts.id, memberRow.contactId))
+          .limit(1);
+        const phone = contact?.whatsapp || contact?.phone || null;
+
+        if (phone) {
+          const tenantDb = createTenantDb(body.slug);
+          void notifyWa({
+            slug: body.slug, tenantDb, event: "member_welcome",
+            phone,
+            vars: {
+              name:         memberRow.name,
+              memberNumber: memberRow.memberNumber ?? "-",
+              profileUrl:   waAppUrl(body.slug, "/akun"),
+            },
+          });
+          await db.update(members).set({ welcomeSentAt: new Date() }).where(eq(members.id, member.id));
+        }
+      }
     }
 
     return NextResponse.json({ success: true });

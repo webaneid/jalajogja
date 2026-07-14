@@ -3811,6 +3811,29 @@ dipasangi `notifyWa()`, jangan asumsikan variabel bernama `tenantDb` selalu tipe
 **Status akhir**: Semua 6 fase WhatsApp Notification (1,2,3,4,5,6,7 minus quota enforcement) sudah
 lengkap dari sisi kode. TypeScript 0 error, build sukses di setiap tahap.
 
+### [2026-07-15] `member_welcome` — Trigger di Selesainya Wizard `/akun/lengkapi` (Step 3)
+
+**Klarifikasi user**: `member_welcome` tadinya di rencana Fase 6 dikaitkan ke `createMemberAction`
+(admin tambah anggota) — TAPI Step 1 wizard admin tidak punya field nomor HP sama sekali (nomor
+baru diisi Step 2, seringkali sesi terpisah). Ditemukan saat investigasi, dikonfirmasi user: trigger
+yang benar adalah **selesainya wizard self-service 3-step `/akun/lengkapi`** (Data Identitas →
+Kontak & Alamat → Riwayat Pendidikan) — bukan saat admin tambah anggota.
+
+**Kolom baru**: `public.members.welcome_sent_at` (nullable timestamp, migration
+`0029_member_welcome_sent_at.sql`) — flag idempoten, **tidak pernah di-reset**. Mencegah kirim
+berulang setiap kali member kembali edit data pendidikan setelah onboarding pertama selesai.
+
+**Implementasi**: `POST /api/akun/member-education` (endpoint Step 3, step TERAKHIR wizard) — sudah
+menerima param baru `slug` (endpoint ini sebelumnya sama sekali tidak tenant-aware, hanya identity
+via session). Setelah save sukses: kalau `welcomeSentAt IS NULL` DAN `contactId` sudah ada (Step 2
+selesai) DAN ada nomor telepon → kirim `notifyWa(event:"member_welcome")` → set `welcomeSentAt =
+NOW()`. `profileUrl` di template mengarah ke `/akun` (dashboard), bukan balik ke `/akun/lengkapi`.
+
+**Aturan pola**: endpoint API akun (`/api/akun/*`) yang sebelumnya "identity-only" (auth via
+session saja, tidak butuh `slug`) — begitu perlu kirim notifikasi WA, WAJIB ditambah param `slug`
+dari client (client selalu punya `slug` dari `useParams()`/URL path tenant), karena `notifyWa()`
+butuh tenant context untuk resolve WA gateway + config.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

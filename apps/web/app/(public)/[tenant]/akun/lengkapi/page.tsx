@@ -520,6 +520,7 @@ export default function LengkapiPage() {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
+          slug: slug,
           entries: eduEntries
             .filter(e => e.institutionName.trim())
             .map(e => ({

@@ -67,6 +67,11 @@ export const members = pgTable("members", {
     enum: ["gontor", "alumni", "lain", "bukan"],
   }),
 
+  // Kapan pesan WA "Selamat Datang" (member_welcome) terkirim — NULL = belum pernah.
+  // Sekali terisi TIDAK PERNAH di-reset (idempotent, cegah kirim berulang saat member
+  // edit ulang data pendidikan/kontak setelah onboarding selesai).
+  welcomeSentAt: timestamp("welcome_sent_at", { withTimezone: true }),
+
   // ── Login front-end ──────────────────────────────────────────────────────────
   // Diisi saat anggota aktivasi akun login (via register atau admin aktifkan)
   // null = belum punya login; diisi = bisa login di front-end semua tenant
