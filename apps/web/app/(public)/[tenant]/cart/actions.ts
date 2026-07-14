@@ -1,7 +1,7 @@
 "use server";
 
 import { cookies, headers } from "next/headers";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, or, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, resolveIdentity, generateUniqueCode } from "@jalajogja/db";
 import { createTenantDb, generateFinancialNumber, getSettings } from "@jalajogja/db";
@@ -378,6 +378,7 @@ export async function checkoutAction(
     // Pattern sama dengan lock invoice di confirmInvoicePaymentAction (billing/actions.ts).
     type TxResult =
       | { error: string }
+      | { duplicate: true; invoiceId: string; invoiceNumber: string }
       | { invoiceId: string; invoiceNumber: string; total: number; dueDate: string };
 
     const txResult: TxResult = await tdb.transaction(async (tx) => {
@@ -396,6 +397,46 @@ export async function checkoutAction(
         .orderBy(schema.cartItems.sortOrder);
 
       if (!cartItems.length) return { error: "Keranjang kosong atau sudah diproses." };
+
+      // ── Deteksi duplikat registrasi tiket event ─────────────────────────────
+      // Kasus nyata: customer checkout tiket, ragu berhasil, checkout ulang tiket yang
+      // sama beberapa menit kemudian → 2 invoice terpisah untuk 1 tiket yang sama.
+      // Dibatasi ke cart yang HANYA berisi 1 tiket (kasus paling umum) — cart campuran
+      // (tiket + produk/donasi) tidak dicek, untuk hindari deadlock saat customer memang
+      // ingin bayar item lain sekaligus meski tiketnya sudah pernah dibuatkan invoice.
+      const soleItem = cartItems.length === 1 ? cartItems[0] : null;
+      if (soleItem?.itemType === "ticket" && soleItem.itemId) {
+        const normalizedPhone = normalizePhone(customer.phone);
+        const emailTrim       = customer.email?.trim() || null;
+
+        const identityConditions = [
+          memberId  ? eq(schema.invoices.memberId, memberId)          : null,
+          profileId ? eq(schema.invoices.profileId, profileId)        : null,
+          normalizedPhone ? eq(schema.invoices.customerPhone, normalizedPhone) : null,
+          emailTrim ? eq(schema.invoices.customerEmail, emailTrim)    : null,
+        ].filter((c): c is NonNullable<typeof c> => c !== null);
+
+        if (identityConditions.length > 0) {
+          const [dup] = await tx
+            .select({ id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber })
+            .from(schema.invoices)
+            .innerJoin(schema.invoiceItems, eq(schema.invoiceItems.invoiceId, schema.invoices.id))
+            .where(and(
+              eq(schema.invoiceItems.itemType, "ticket"),
+              eq(schema.invoiceItems.itemId, soleItem.itemId),
+              inArray(schema.invoices.status, ["pending", "waiting_verification", "partial"]),
+              or(...identityConditions),
+            ))
+            .limit(1);
+
+          if (dup) {
+            // Bersihkan cart (tiket duplikat tidak jadi dibuat) lalu arahkan ke invoice lama
+            await tx.delete(schema.cartItems).where(eq(schema.cartItems.cartId, lockedCart.id));
+            await tx.delete(schema.carts).where(eq(schema.carts.id, lockedCart.id));
+            return { duplicate: true, invoiceId: dup.id, invoiceNumber: dup.invoiceNumber };
+          }
+        }
+      }
 
       // Re-fetch harga untuk item dengan itemId (produk/tiket)
       const resolvedItems: Array<{
@@ -532,9 +573,15 @@ export async function checkoutAction(
 
     if ("error" in txResult) return { success: false, error: txResult.error };
 
-    // Hapus cookie cart
+    // Hapus cookie cart (berlaku juga untuk kasus duplikat — cart sudah dibersihkan di tx)
     const cookieStore = await cookies();
     cookieStore.delete(COOKIE_NAME);
+
+    // Duplikat: arahkan ke invoice lama yang belum lunas, tidak perlu notif baru
+    // (invoice lama sudah dapat notifikasi invoice_created saat pertama kali dibuat)
+    if ("duplicate" in txResult) {
+      return { success: true, data: { invoiceId: txResult.invoiceId, invoiceNumber: txResult.invoiceNumber } };
+    }
 
     void notifyWa({
       slug, tenantDb, event: "invoice_created",

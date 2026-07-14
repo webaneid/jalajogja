@@ -3446,6 +3446,58 @@ selalu isi variabel itu dengan nilai wajar (jangan andalkan baris auto-hilang).
 khusus seperti OTP yang punya guard tambahan (rate limit, verified-check sebelum kirim) di mana
 pemanggilan manual `resolveWaTemplateText` + `sendWaNotification` masih dibenarkan.
 
+### [2026-07-14] Bug Kritis: `checkoutAction` Bisa Buat Invoice Duplikat — 2 Root Cause Berbeda
+
+**Gejala production**: 2 invoice terbentuk untuk pelanggan dan tiket event yang sama
+(`620-INV-202607-00017` + `00018`, tenant `visikita`, kedua-duanya `sourceType='cart'`). Efek
+domino: WA `invoice_created` ikut terkirim 2x (dipicu per invoice yang terbentuk).
+
+**Root cause #1 — race condition tanpa lock (fixed)**: `checkoutAction` (`cart/actions.ts`)
+SELECT cart di awal, baru DELETE cart di paling akhir — di antaranya ada banyak `await`
+(resolveIdentity, lookup harga, generate nomor invoice, beberapa INSERT). Dua request yang datang
+hampir bersamaan (klik ganda, double-tap, retry jaringan) sama-sama melihat cart masih ada →
+sama-sama sukses buat invoice dari isi cart yang sama.
+
+**Fix #1**: Bungkus seluruh alur (lock cart → cek isi → hitung harga → insert invoice → hapus cart)
+dalam satu `tdb.transaction()` dengan `SELECT ... FOR UPDATE` mengunci baris cart via
+`session_token`. Request kedua yang datang hampir bersamaan menunggu lock, lalu menemukan
+`cart_items` sudah kosong (sudah diproses request pertama) → berhenti dengan pesan "Keranjang
+kosong atau sudah diproses", tanpa invoice duplikat. Pattern identik dengan lock invoice di
+`confirmInvoicePaymentAction` (lihat lesson kode unik/double-payment sebelumnya).
+
+**Investigasi lanjutan — kasus nyata TERNYATA bukan race condition**: setelah cek data production,
+dua invoice yang dilaporkan berjarak **16 menit** (bukan hitungan detik) dengan `unique_code`
+berbeda — bukti dua kali pemanggilan `checkoutAction` yang benar-benar terpisah, bukan request
+konkuren. Root cause sebenarnya: pelanggan checkout tiket event, ragu transaksinya berhasil (tidak
+ada indikasi jelas "Anda sudah punya invoice ini"), lalu checkout ulang tiket yang sama beberapa
+menit kemudian dengan cart session baru — sistem tidak tahu ini permintaan yang sama.
+
+**Root cause #2 — tidak ada deteksi "sudah checkout tiket ini sebelumnya" (fixed)**: Ditambahkan
+pengecekan duplikat DI DALAM transaction yang sama, sebelum insert invoice: jika cart **hanya
+berisi 1 tiket event** (`cartItems.length === 1 && itemType === 'ticket'`), cek apakah sudah ada
+invoice `status IN ('pending','waiting_verification','partial')` untuk `itemId` (ticket) yang sama,
+match identity via `memberId` ATAU `profileId` ATAU `customerPhone` ATAU `customerEmail` (OR, bukan
+AND — salah satu cocok sudah dianggap orang yang sama). Kalau ketemu → cart dibersihkan, **tidak
+buat invoice baru**, langsung kembalikan `invoiceId` invoice lama (klien redirect ke situ seolah
+checkout sukses, transparan buat user).
+
+**Keputusan scope yang disengaja — HANYA cart dengan 1 item**: deteksi duplikat TIDAK diterapkan
+untuk cart campuran (tiket + produk/donasi sekaligus). Alasan: kalau diterapkan ke semua cart,
+customer yang sudah checkout tiket sebelumnya tapi SEKARANG mau checkout tiket+donasi bareng akan
+selalu di-redirect ke invoice lama dan tidak pernah bisa menyelesaikan donasinya — deadlock UX.
+Cart tunggal (1 tiket) adalah pola traffic dominan untuk pendaftaran event, jadi trade-off ini
+menutup kasus yang benar-benar terjadi tanpa membuka risiko baru di kasus campuran (jarang, dan
+kalaupun terjadi duplikat, admin tetap bisa `cancelInvoiceAction` manual di dashboard).
+
+**Aturan untuk deteksi duplikat serupa di modul lain**: kalau nanti ada laporan serupa di
+donasi/produk, pola yang sama bisa dipakai — tapi jangan generalize ke SEMUA jenis cart tanpa
+mikirkan mixed-cart deadlock case di atas dulu.
+
+**Diagnosa data**: jangan asumsi race condition dari gejala "2 invoice mirip" saja — SELALU cek
+`created_at` kedua invoice. Selisih milidetik/detik → race condition (lock). Selisih menit/jam →
+kemungkinan besar bukan race condition, tapi UX/behavioral duplicate (customer re-attempt) yang
+butuh fix berbeda (deteksi duplikat berbasis identity, bukan locking).
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
