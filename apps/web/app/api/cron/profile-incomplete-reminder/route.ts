@@ -89,13 +89,14 @@ export async function GET(request: NextRequest) {
     const slug      = m.welcomeSentTenantSlug;
     const tenantDb   = createTenantDb(slug);
 
+    const profileUrl = await waAppUrl(slug, "/akun");
     void notifyWa({
       slug, tenantDb, event: "profile_incomplete_reminder",
       phone,
       vars: {
         name:        m.name,
         missingList: missing.join("\n"),
-        profileUrl:  waAppUrl(slug, "/akun"),
+        profileUrl,
       },
     });
 

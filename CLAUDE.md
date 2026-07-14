@@ -3883,6 +3883,39 @@ seperti `invoice-reminder`/`event-reminder` (yang perlu loop karena data invoice
 **Belum dijadwalkan di crontab VPS** — perlu ditambahkan manual sama seperti cron lain,
 `0 10 * * * curl ... /api/cron/profile-incomplete-reminder`.
 
+### [2026-07-15] Bug: Link WA Selalu `jalakarta.com`, Tidak Pernah Custom Domain Tenant
+
+**Gejala dilaporkan user**: link invoice yang dikirim via WA selalu `jalakarta.com/{slug}/invoice/...`,
+padahal tenant sudah punya custom domain aktif (mis. `visikita.com`).
+
+**Root cause**: `waAppUrl(slug, path)` di `lib/wa-notify.ts` — komentarnya sendiri menyebut soal
+custom domain ("Jangan pernah hardcode `/${slug}/...`"), tapi fungsinya SENDIRI adalah pure
+synchronous function yang TIDAK PERNAH query `public.tenants.custom_domain` — selalu return
+`${NEXT_PUBLIC_APP_URL}/{slug}{path}` apa adanya. Ironis: helper yang dibuat khusus untuk
+"mencegah bug URL custom domain" (lihat lesson sebelumnya soal ini) ternyata sendiri kena bug yang
+persis sama karena tidak pernah benar-benar cek status custom domain tenant.
+
+**Fix**: `waAppUrl()` diubah jadi `async` — query `public.tenants WHERE slug=X` untuk
+`customDomain` + `customDomainStatus`. Kalau custom domain **aktif**
+(`customDomainStatus === "active"`) → return `https://{customDomain}{path}` (tanpa prefix slug,
+konsisten dengan pola `baseUrl` yang dipakai halaman web publik). Kalau tidak → fallback ke
+`jalakarta.com/{slug}{path}` seperti sebelumnya. Fail-safe: kalau query gagal (try/catch) →
+fallback juga, supaya notifikasi tidak pernah gagal terkirim gara-gara lookup custom domain error.
+
+**Efek domino — 9 titik pemanggilan perlu `await`**: karena `waAppUrl()` sekarang async, semua
+caller (`cart/actions.ts`, `event/actions.ts`, `billing/actions.ts` ×3, `letters/actions.ts`,
+`member-education/route.ts`, 3× cron routes) perlu di-`await`. Pola yang dipakai: kalau titik
+pemanggilan berada SEBELUM `void notifyWa(...)` dalam alur yang sepenuhnya sinkron sampai situ →
+bungkus keduanya dalam `void (async () => { ... })()` supaya tetap fire-and-forget murni (tidak
+menambah latency ke transaksi utama). Kalau sudah berada di dalam `for` loop yang sudah melakukan
+`await` lain sebelumnya (mis. fetch `eventDetail`) → `await waAppUrl(...)` langsung tanpa wrapper
+tambahan (konsisten dengan blocking pattern yang sudah ada di loop itu).
+
+**Aturan ke depan**: setiap fungsi helper yang membangun URL publik tenant (bukan cuma `waAppUrl`)
+WAJIB benar-benar query status custom domain — jangan cukup menulis komentar peringatan tanpa
+implementasi aktual. Kalau ada helper serupa lain yang ditemukan (search: URL builder dengan
+`NEXT_PUBLIC_APP_URL` hardcoded), audit apakah sama-sama kena bug ini.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

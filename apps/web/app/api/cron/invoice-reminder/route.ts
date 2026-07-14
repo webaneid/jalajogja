@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
       const uniqueCode = inv.uniqueCode ?? 0;
       const remaining  = (total + uniqueCode) - parseFloat(String(inv.paidAmount));
 
+      const invoiceUrl = await waAppUrl(tenant.slug, `/invoice/${inv.id}`);
       void notifyWa({
         slug: tenant.slug, tenantDb, event: "invoice_reminder",
         phone: inv.customerPhone,
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
           invoiceNumber: inv.invoiceNumber,
           amount:        waRupiah(remaining),
           dueDate:       inv.dueDate ?? tomorrowStr,
-          invoiceUrl:    waAppUrl(tenant.slug, `/invoice/${inv.id}`),
+          invoiceUrl,
         },
       });
       notified++;

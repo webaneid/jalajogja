@@ -1056,6 +1056,7 @@ export async function syncSignatureSlotsAction(
         const phone   = contact?.whatsapp || contact?.phone || null;
         if (!member || !phone) continue;
 
+        const signUrl = await waAppUrl(slug, `/sign/${n.token}`);
         void notifyWa({
           slug, tenantDb: tenantClient, event: "letter_sign_request",
           phone,
@@ -1063,7 +1064,7 @@ export async function syncSignatureSlotsAction(
             name:          member.name,
             letterSubject: letterRow?.subject ?? "-",
             letterNumber:  letterRow?.letterNumber ?? "-",
-            signUrl:       waAppUrl(slug, `/sign/${n.token}`),
+            signUrl,
           },
         });
       }

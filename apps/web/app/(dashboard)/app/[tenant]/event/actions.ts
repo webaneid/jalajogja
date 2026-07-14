@@ -734,18 +734,21 @@ export async function registerForEventAction(
     // Notifikasi WA — konfirmasi pendaftaran diterima. Fire di sini (bukan setelah
     // payment confirm) karena ini satu-satunya touchpoint untuk alur direct (bukan cart) —
     // tiket berbayar via cart sudah dapat invoice_created+payment_confirmed generik.
-    void notifyWa({
-      slug, tenantDb, event: "event_registered",
-      phone: normalizePhone(data.attendeePhone),
-      vars: {
-        name:      data.attendeeName.trim(),
-        eventName: event.title,
-        eventDate: formatEventDateWib(event.startsAt),
-        location:  event.location ?? "-",
-        regNumber: regNumber,
-        eventUrl:  waAppUrl(slug, `/agenda/${event.slug}`),
-      },
-    });
+    void (async () => {
+      const eventUrl = await waAppUrl(slug, `/agenda/${event.slug}`);
+      void notifyWa({
+        slug, tenantDb, event: "event_registered",
+        phone: normalizePhone(data.attendeePhone),
+        vars: {
+          name:      data.attendeeName.trim(),
+          eventName: event.title,
+          eventDate: formatEventDateWib(event.startsAt),
+          location:  event.location ?? "-",
+          regNumber: regNumber,
+          eventUrl,
+        },
+      });
+    })();
 
     // Tiket berbayar — buat invoice universal (tanpa direct payment record)
     if (!isGratis) {

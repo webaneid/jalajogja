@@ -494,6 +494,7 @@ export async function confirmInvoicePaymentAction(
         .limit(1);
       if (!eventDetail) continue;
 
+      const eventUrl = await waAppUrl(slug, `/agenda/${eventDetail.slug}`);
       void notifyWa({
         slug, tenantDb, event: "event_registered",
         phone: reg.attendeePhone,
@@ -503,7 +504,7 @@ export async function confirmInvoicePaymentAction(
           eventDate: formatEventDateWib(eventDetail.startsAt),
           location:  eventDetail.location ?? "-",
           regNumber: reg.regNumber,
-          eventUrl:  waAppUrl(slug, `/agenda/${eventDetail.slug}`),
+          eventUrl,
         },
       });
     }
@@ -821,6 +822,7 @@ export async function verifySubmittedPaymentAction(
         .limit(1);
       if (!eventDetail) continue;
 
+      const eventUrl = await waAppUrl(slug, `/agenda/${eventDetail.slug}`);
       void notifyWa({
         slug, tenantDb, event: "event_registered",
         phone: reg.attendeePhone,
@@ -830,7 +832,7 @@ export async function verifySubmittedPaymentAction(
           eventDate: formatEventDateWib(eventDetail.startsAt),
           location:  eventDetail.location ?? "-",
           regNumber: reg.regNumber,
-          eventUrl:  waAppUrl(slug, `/agenda/${eventDetail.slug}`),
+          eventUrl,
         },
       });
     }
@@ -1242,17 +1244,20 @@ export async function updateFulfillmentStatusAction(
                 : null;
 
   if (waEvent) {
-    void notifyWa({
-      slug, tenantDb, event: waEvent,
-      phone: inv.customerPhone,
-      vars: {
-        name:            inv.customerName,
-        orderNumber:     inv.invoiceNumber,
-        courier:         line.courier.toUpperCase(),
-        trackingNumber:  resolvedTrackingNumber,
-        trackingUrl:     waAppUrl(slug, `/invoice/${line.invoiceId}`),
-      },
-    });
+    void (async () => {
+      const trackingUrl = await waAppUrl(slug, `/invoice/${line.invoiceId}`);
+      void notifyWa({
+        slug, tenantDb, event: waEvent,
+        phone: inv.customerPhone,
+        vars: {
+          name:            inv.customerName,
+          orderNumber:     inv.invoiceNumber,
+          courier:         line.courier.toUpperCase(),
+          trackingNumber:  resolvedTrackingNumber,
+          trackingUrl,
+        },
+      });
+    })();
   }
 
   revalidateBilling(slug);

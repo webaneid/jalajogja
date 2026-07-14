@@ -105,15 +105,18 @@ export async function POST(req: NextRequest) {
 
         if (phone) {
           const tenantDb = createTenantDb(body.slug);
-          void notifyWa({
-            slug: body.slug, tenantDb, event: "member_welcome",
-            phone,
-            vars: {
-              name:         memberRow.name,
-              memberNumber: memberRow.memberNumber ?? "-",
-              profileUrl:   waAppUrl(body.slug, "/akun"),
-            },
-          });
+          void (async () => {
+            const profileUrl = await waAppUrl(body.slug!, "/akun");
+            void notifyWa({
+              slug: body.slug!, tenantDb, event: "member_welcome",
+              phone,
+              vars: {
+                name:         memberRow.name,
+                memberNumber: memberRow.memberNumber ?? "-",
+                profileUrl,
+              },
+            });
+          })();
           await db.update(members)
             .set({ welcomeSentAt: new Date(), welcomeSentTenantSlug: body.slug })
             .where(eq(members.id, member.id));

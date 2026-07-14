@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
       for (const reg of registrations) {
         if (!reg.attendeePhone) continue;
 
+        const eventUrl = await waAppUrl(tenant.slug, `/agenda/${event.slug}`);
         void notifyWa({
           slug: tenant.slug, tenantDb, event: "event_reminder",
           phone: reg.attendeePhone,
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
             eventDate: `${eventDate} WIB`,
             location:  event.location ?? "-",
             regNumber: reg.registrationNumber,
-            eventUrl:  waAppUrl(tenant.slug, `/agenda/${event.slug}`),
+            eventUrl,
           },
         });
         notified++;

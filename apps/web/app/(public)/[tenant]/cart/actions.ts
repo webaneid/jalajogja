@@ -583,17 +583,20 @@ export async function checkoutAction(
       return { success: true, data: { invoiceId: txResult.invoiceId, invoiceNumber: txResult.invoiceNumber } };
     }
 
-    void notifyWa({
-      slug, tenantDb, event: "invoice_created",
-      phone: normalizePhone(customer.phone),
-      vars: {
-        name:          customerName,
-        invoiceNumber: txResult.invoiceNumber,
-        amount:        waRupiah(txResult.total),
-        dueDate:       txResult.dueDate,
-        invoiceUrl:    waAppUrl(slug, `/invoice/${txResult.invoiceId}`),
-      },
-    });
+    void (async () => {
+      const invoiceUrl = await waAppUrl(slug, `/invoice/${txResult.invoiceId}`);
+      void notifyWa({
+        slug, tenantDb, event: "invoice_created",
+        phone: normalizePhone(customer.phone),
+        vars: {
+          name:          customerName,
+          invoiceNumber: txResult.invoiceNumber,
+          amount:        waRupiah(txResult.total),
+          dueDate:       txResult.dueDate,
+          invoiceUrl,
+        },
+      });
+    })();
 
     return { success: true, data: { invoiceId: txResult.invoiceId, invoiceNumber: txResult.invoiceNumber } };
   } catch (err) {

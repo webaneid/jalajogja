@@ -5,7 +5,8 @@
 // dengan cara yang berbeda-beda (sumber bug yang sudah pernah terjadi untuk URL custom domain).
 
 import type { TenantDb } from "@jalajogja/db";
-import { getSettings } from "@jalajogja/db";
+import { getSettings, db, tenants } from "@jalajogja/db";
+import { eq } from "drizzle-orm";
 import { sendWaNotification, type WaNotifKey } from "@/lib/whatsapp";
 import { WA_TEMPLATE_DEFAULTS, renderTemplateString, type WaTemplateVars } from "@/lib/wa-templates";
 
@@ -31,8 +32,29 @@ const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com").rep
 // URL absolut ke halaman publik tenant — WAJIB dipakai untuk semua link di pesan WA.
 // Jangan pernah hardcode `/${slug}/...` di caller — custom domain redirect middleware
 // menolak path admin/relatif yang salah bentuk (lihat lesson CLAUDE.md § custom domain).
-export function waAppUrl(slug: string, path: string): string {
+//
+// Tenant-aware: kalau tenant punya custom domain AKTIF (custom_domain_status='active'),
+// link dibangun pakai domain sendiri tanpa prefix slug (mis. https://visikita.com/invoice/123)
+// — bukan selalu jalakarta.com/{slug}/... Fallback ke jalakarta.com kalau custom domain
+// tidak ada/belum aktif, atau kalau lookup gagal (fail-safe, jangan sampai notifikasi gagal
+// terkirim gara-gara query custom domain error).
+export async function waAppUrl(slug: string, path: string): Promise<string> {
   const p = path.startsWith("/") ? path : `/${path}`;
+
+  try {
+    const [row] = await db
+      .select({ customDomain: tenants.customDomain, customDomainStatus: tenants.customDomainStatus })
+      .from(tenants)
+      .where(eq(tenants.slug, slug))
+      .limit(1);
+
+    if (row?.customDomain && row.customDomainStatus === "active") {
+      return `https://${row.customDomain}${p}`;
+    }
+  } catch {
+    // fall through ke default jalakarta.com di bawah
+  }
+
   return `${APP_URL}/${slug}${p}`;
 }
 
