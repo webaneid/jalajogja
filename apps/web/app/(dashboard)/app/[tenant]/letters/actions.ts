@@ -1,14 +1,15 @@
 "use server";
 
-import { createTenantDb, getSettings, upsertSetting, db, members } from "@jalajogja/db";
+import { createTenantDb, getSettings, upsertSetting, db, members, contacts } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createHash, randomUUID } from "crypto";
+import { notifyWa, waAppUrl } from "@/lib/wa-notify";
 import {
   resolveLetterNumberFormat,
   resolveSequenceCategory,
@@ -933,7 +934,8 @@ export async function syncSignatureSlotsAction(
     return { success: false, error: "Tidak punya izin mengatur penandatangan." };
   }
 
-  const { db: tenantDb, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
 
   try {
     // Ambil semua slot existing (termasuk signed) — butuh officerId + signingToken untuk perbandingan
@@ -953,6 +955,10 @@ export async function syncSignatureSlotsAction(
       signingToken:          randomUUID(),
       signingTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
+
+    // Kumpulkan slot yang dapat token BARU (insert baru / officer berubah / token hilang)
+    // untuk dikirimi notifikasi WA setelah semua slot diproses.
+    const toNotify: Array<{ officerId: string; token: string }> = [];
 
     for (const slot of desired) {
       const existingSlot = existing.find(
@@ -977,17 +983,24 @@ export async function syncSignatureSlotsAction(
         // Officer sama   → pertahankan token lama agar link yang sudah dikirim tetap berlaku
         const officerChanged = existingSlot.officerId !== slot.officerId;
         const tokenMissing   = !existingSlot.signingToken;
+        const needsNewToken  = officerChanged || tokenMissing;
 
+        const newTok = needsNewToken ? newToken() : null;
         await tenantDb
           .update(schema.letterSignatures)
           .set({
             officerId: slot.officerId,
             role:      slot.role,
-            ...(officerChanged || tokenMissing ? newToken() : {}),
+            ...(newTok ?? {}),
           })
           .where(eq(schema.letterSignatures.id, existingSlot.id));
+
+        if (newTok) {
+          toNotify.push({ officerId: slot.officerId, token: newTok.signingToken });
+        }
       } else {
         // Insert baru — selalu generate token
+        const tokenFields = newToken();
         await tenantDb
           .insert(schema.letterSignatures)
           .values({
@@ -996,8 +1009,10 @@ export async function syncSignatureSlotsAction(
             role:        slot.role,
             slotOrder:   slot.order,
             slotSection: slot.section,
-            ...newToken(),
+            ...tokenFields,
           });
+
+        toNotify.push({ officerId: slot.officerId, token: tokenFields.signingToken });
       }
     }
 
@@ -1008,6 +1023,49 @@ export async function syncSignatureSlotsAction(
         await tenantDb
           .delete(schema.letterSignatures)
           .where(eq(schema.letterSignatures.id, e.id));
+      }
+    }
+
+    // Notifikasi WA ke officer yang dapat link TTD baru
+    if (toNotify.length > 0) {
+      const [letterRow] = await tenantDb
+        .select({ subject: schema.letters.subject, letterNumber: schema.letters.letterNumber })
+        .from(schema.letters)
+        .where(eq(schema.letters.id, letterId))
+        .limit(1);
+
+      const officerIds = toNotify.map((n) => n.officerId);
+      const officerRows = await tenantDb
+        .select({ id: schema.officers.id, memberId: schema.officers.memberId })
+        .from(schema.officers)
+        .where(inArray(schema.officers.id, officerIds));
+
+      const memberIds = [...new Set(officerRows.map((o) => o.memberId))];
+      const memberRows = memberIds.length > 0
+        ? await db.select({ id: members.id, name: members.name, contactId: members.contactId }).from(members).where(inArray(members.id, memberIds))
+        : [];
+      const contactIds = memberRows.map((m) => m.contactId).filter((id): id is string => !!id);
+      const contactRows = contactIds.length > 0
+        ? await db.select({ id: contacts.id, phone: contacts.phone, whatsapp: contacts.whatsapp }).from(contacts).where(inArray(contacts.id, contactIds))
+        : [];
+
+      for (const n of toNotify) {
+        const officer = officerRows.find((o) => o.id === n.officerId);
+        const member  = officer ? memberRows.find((m) => m.id === officer.memberId) : undefined;
+        const contact = member?.contactId ? contactRows.find((c) => c.id === member.contactId) : undefined;
+        const phone   = contact?.whatsapp || contact?.phone || null;
+        if (!member || !phone) continue;
+
+        void notifyWa({
+          slug, tenantDb: tenantClient, event: "letter_sign_request",
+          phone,
+          vars: {
+            name:          member.name,
+            letterSubject: letterRow?.subject ?? "-",
+            letterNumber:  letterRow?.letterNumber ?? "-",
+            signUrl:       waAppUrl(slug, `/sign/${n.token}`),
+          },
+        });
       }
     }
 

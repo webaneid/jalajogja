@@ -7,7 +7,7 @@ import { createTenantDb, generateFinancialNumber } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { recordIncome } from "@jalajogja/db";
-import { notifyWa, waRupiah } from "@/lib/wa-notify";
+import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +51,17 @@ async function generateEventRegNumber(
   });
 
   return `EVT-${yyyymm}-${String(nextNumber).padStart(5, "0")}`;
+}
+
+// Sama dengan formatEventDateWib di event/actions.ts — di-duplikasi agar billing
+// tidak bergantung ke modul event (pola sama dengan generateEventRegNumber di atas).
+function formatEventDateWib(date: Date | null): string {
+  if (!date) return "-";
+  return `${date.toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  })} WIB`;
 }
 
 export type InvoiceItemInput = {
@@ -278,6 +289,12 @@ export async function confirmInvoicePaymentAction(
       };
     }
 
+    // Kumpulkan registrasi tiket baru (dari auto-create block di bawah) untuk
+    // dikirimi notifikasi WA setelah transaction selesai (side-effect di luar tx).
+    const newEventRegs: Array<{
+      eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null;
+    }> = [];
+
     // Jalankan atomik dalam transaction
     const paymentId = await db.transaction(async (tx) => {
       // Lock baris invoice — cegah race condition klik ganda / retry menghasilkan
@@ -444,6 +461,8 @@ export async function confirmInvoicePaymentAction(
             status:             "confirmed",
             customFields:       { sourceInvoiceId: invoiceId, ...(extraFields ?? {}) },
           });
+
+          newEventRegs.push({ eventId: ticket.eventId, regNumber, attendeeName, attendeePhone });
         }
       }
 
@@ -459,6 +478,35 @@ export async function confirmInvoicePaymentAction(
         amount:        waRupiah(data.amount),
       },
     });
+
+    // Notifikasi tiket event baru yang ter-auto-create dari cart — titik pertama
+    // customer dapat nomor registrasi. Lookup detail event per registrasi (biasanya 1).
+    for (const reg of newEventRegs) {
+      const [eventDetail] = await db
+        .select({
+          title:    schema.events.title,
+          slug:     schema.events.slug,
+          startsAt: schema.events.startsAt,
+          location: schema.events.location,
+        })
+        .from(schema.events)
+        .where(eq(schema.events.id, reg.eventId))
+        .limit(1);
+      if (!eventDetail) continue;
+
+      void notifyWa({
+        slug, tenantDb, event: "event_registered",
+        phone: reg.attendeePhone,
+        vars: {
+          name:      reg.attendeeName,
+          eventName: eventDetail.title,
+          eventDate: formatEventDateWib(eventDetail.startsAt),
+          location:  eventDetail.location ?? "-",
+          regNumber: reg.regNumber,
+          eventUrl:  waAppUrl(slug, `/agenda/${eventDetail.slug}`),
+        },
+      });
+    }
 
     revalidateBilling(slug);
     return { success: true, data: { paymentId } };
@@ -627,6 +675,12 @@ export async function verifySubmittedPaymentAction(
     };
   }
 
+  // Kumpulkan registrasi tiket baru (dari auto-create block di bawah) untuk
+  // dikirimi notifikasi WA setelah transaction selesai (side-effect di luar tx).
+  const newEventRegs: Array<{
+    eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null;
+  }> = [];
+
   try {
     await db.transaction(async (tx) => {
       // Konfirmasi payment
@@ -748,9 +802,38 @@ export async function verifySubmittedPaymentAction(
             status:             "confirmed",
             customFields:       { sourceInvoiceId: inv.id, ...(extraFields ?? {}) },
           });
+
+          newEventRegs.push({ eventId: ticket.eventId, regNumber, attendeeName, attendeePhone });
         }
       }
     });
+
+    for (const reg of newEventRegs) {
+      const [eventDetail] = await db
+        .select({
+          title:    schema.events.title,
+          slug:     schema.events.slug,
+          startsAt: schema.events.startsAt,
+          location: schema.events.location,
+        })
+        .from(schema.events)
+        .where(eq(schema.events.id, reg.eventId))
+        .limit(1);
+      if (!eventDetail) continue;
+
+      void notifyWa({
+        slug, tenantDb, event: "event_registered",
+        phone: reg.attendeePhone,
+        vars: {
+          name:      reg.attendeeName,
+          eventName: eventDetail.title,
+          eventDate: formatEventDateWib(eventDetail.startsAt),
+          location:  eventDetail.location ?? "-",
+          regNumber: reg.regNumber,
+          eventUrl:  waAppUrl(slug, `/agenda/${eventDetail.slug}`),
+        },
+      });
+    }
 
     void notifyWa({
       slug, tenantDb, event: "payment_confirmed",
@@ -1089,7 +1172,8 @@ export async function updateFulfillmentStatusAction(
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
 
   const [line] = await db
     .select({
@@ -1098,6 +1182,7 @@ export async function updateFulfillmentStatusAction(
       sellerType:     schema.invoiceShippingLines.sellerType,
       status:         schema.invoiceShippingLines.status,
       trackingNumber: schema.invoiceShippingLines.trackingNumber,
+      courier:        schema.invoiceShippingLines.courier,
     })
     .from(schema.invoiceShippingLines)
     .where(eq(schema.invoiceShippingLines.id, shippingLineId))
@@ -1108,7 +1193,12 @@ export async function updateFulfillmentStatusAction(
 
   // Cek invoice sudah lunas sebelum mulai proses
   const [inv] = await db
-    .select({ status: schema.invoices.status })
+    .select({
+      status:        schema.invoices.status,
+      invoiceNumber: schema.invoices.invoiceNumber,
+      customerName:  schema.invoices.customerName,
+      customerPhone: schema.invoices.customerPhone,
+    })
     .from(schema.invoices)
     .where(eq(schema.invoices.id, line.invoiceId))
     .limit(1);
@@ -1123,9 +1213,12 @@ export async function updateFulfillmentStatusAction(
     return { success: false, error: "Urutan status tidak valid." };
   }
 
+  let resolvedTrackingNumber = line.trackingNumber ?? "";
+
   if (newStatus === "shipped") {
     const resi = (trackingNumber ?? "").trim() || (line.trackingNumber ?? "");
     if (!resi) return { success: false, error: "Nomor resi wajib diisi sebelum mengubah status ke Dikirim." };
+    resolvedTrackingNumber = resi;
     await db
       .update(schema.invoiceShippingLines)
       .set({ status: "shipped", trackingNumber: resi, shippedAt: new Date(), updatedAt: new Date() })
@@ -1140,6 +1233,26 @@ export async function updateFulfillmentStatusAction(
       .update(schema.invoiceShippingLines)
       .set({ status: newStatus, updatedAt: new Date() })
       .where(eq(schema.invoiceShippingLines.id, shippingLineId));
+  }
+
+  // Notifikasi WA — hanya untuk stage yang punya template (processing/shipped/delivered, bukan packed)
+  const waEvent = newStatus === "processing" ? "order_processing"
+                : newStatus === "shipped"    ? "order_shipped"
+                : newStatus === "delivered"  ? "order_delivered"
+                : null;
+
+  if (waEvent) {
+    void notifyWa({
+      slug, tenantDb, event: waEvent,
+      phone: inv.customerPhone,
+      vars: {
+        name:            inv.customerName,
+        orderNumber:     inv.invoiceNumber,
+        courier:         line.courier.toUpperCase(),
+        trackingNumber:  resolvedTrackingNumber,
+        trackingUrl:     waAppUrl(slug, `/invoice/${line.invoiceId}`),
+      },
+    });
   }
 
   revalidateBilling(slug);

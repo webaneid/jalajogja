@@ -9,6 +9,16 @@ import { auth }           from "@/lib/auth";
 import { headers, cookies } from "next/headers";
 import { normalizePhone } from "@/lib/phone";
 import type { CustomFormField } from "@/lib/event-custom-form";
+import { notifyWa, waAppUrl } from "@/lib/wa-notify";
+
+function formatEventDateWib(date: Date | null): string {
+  if (!date) return "-";
+  return `${date.toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  })} WIB`;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -581,6 +591,10 @@ export async function registerForEventAction(
   const [event] = await db
     .select({
       id:              schema.events.id,
+      slug:            schema.events.slug,
+      title:           schema.events.title,
+      startsAt:        schema.events.startsAt,
+      location:        schema.events.location,
       requireApproval: schema.events.requireApproval,
       maxCapacity:     schema.events.maxCapacity,
     })
@@ -715,6 +729,22 @@ export async function registerForEventAction(
           status:             regStatus,
         })
         .returning({ id: schema.eventRegistrations.id });
+    });
+
+    // Notifikasi WA — konfirmasi pendaftaran diterima. Fire di sini (bukan setelah
+    // payment confirm) karena ini satu-satunya touchpoint untuk alur direct (bukan cart) —
+    // tiket berbayar via cart sudah dapat invoice_created+payment_confirmed generik.
+    void notifyWa({
+      slug, tenantDb, event: "event_registered",
+      phone: normalizePhone(data.attendeePhone),
+      vars: {
+        name:      data.attendeeName.trim(),
+        eventName: event.title,
+        eventDate: formatEventDateWib(event.startsAt),
+        location:  event.location ?? "-",
+        regNumber: regNumber,
+        eventUrl:  waAppUrl(slug, `/agenda/${event.slug}`),
+      },
     });
 
     // Tiket berbayar — buat invoice universal (tanpa direct payment record)

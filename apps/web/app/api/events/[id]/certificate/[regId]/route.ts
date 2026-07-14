@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { chromium } from "playwright";
 import { getTenantAccess } from "@/lib/tenant";
 import { uploadFile, publicUrl, buildPath, ensureBucket } from "@/lib/minio";
+import { notifyWa } from "@/lib/wa-notify";
 
 // ─── HTML Builder sertifikat ──────────────────────────────────────────────────
 
@@ -302,6 +303,16 @@ export async function POST(
     .update(schema.eventRegistrations)
     .set({ certificateUrl: certUrl, certificateSentAt: new Date(), updatedAt: new Date() })
     .where(eq(schema.eventRegistrations.id, registrationId));
+
+  void notifyWa({
+    slug, tenantDb: tenantClient, event: "event_certificate_ready",
+    phone: reg.attendeePhone,
+    vars: {
+      name:      reg.attendeeName,
+      eventName: event.title,
+      certUrl,
+    },
+  });
 
   return NextResponse.json({ success: true, certificateUrl: certUrl }, { status: 200 });
 }

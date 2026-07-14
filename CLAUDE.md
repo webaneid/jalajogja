@@ -3744,7 +3744,72 @@ Kedua cron pakai pola auth yang sama (`x-cron-secret` header) dan `notifyWa()` d
 `cleanup-member-media-legacy`. Tidak ada safety-gate tanggal di kedua cron ini (beda dengan
 cleanup-member-media-legacy) — begitu dijadwalkan, langsung aktif kirim notifikasi H-1.
 
-**Fase 4-6 (fulfillment/event-registered/donasi/surat notif) masih belum dikerjakan.**
+### [2026-07-15] WhatsApp Notification Fase 4-6 — Semua Fase Notifikasi Selesai
+
+**Fase 4 — Fulfillment**: `updateFulfillmentStatusAction` (billing/actions.ts) sekarang fetch
+`customerName`/`customerPhone`/`invoiceNumber` sekaligus dengan cek status invoice, dan kirim
+`order_processing`/`order_shipped`/`order_delivered` sesuai `newStatus` (stage `packed` sengaja
+tidak punya notifikasi — tidak ada template untuk itu). `trackingUrl` diarahkan ke halaman invoice
+publik (`/invoice/{id}`) — bukan tracking resi asli karena RajaOngkir tracking proxy belum ada
+(tercatat sebagai technical debt terpisah).
+
+**Fase 5 — Event**: `event_registered` dikirim di **dua titik berbeda** secara sengaja (bukan
+duplikat, dua alur yang beda):
+1. `registerForEventAction` (alur direct/legacy, bukan cart) — fire SEGERA setelah insert
+   registrasi (gratis maupun berbayar, pending maupun confirmed). Ini satu-satunya touchpoint
+   untuk alur ini karena `createLinkedInvoice` (dipakai di sini) hidup di `packages/db` — package
+   terpisah yang TIDAK BISA import `apps/web/lib/wa-notify.ts` (apps/web depends on packages/db,
+   bukan sebaliknya) — jadi tiket berbayar via alur direct tidak dapat `invoice_created` sama
+   sekali, `event_registered` menutup gap itu.
+2. Auto-create block di `confirmInvoicePaymentAction` + `verifySubmittedPaymentAction`
+   (billing/actions.ts, alur cart E10) — fire SETELAH `event_registrations` ter-insert dari cart
+   ticket saat payment dikonfirmasi. Ini titik PERTAMA nomor registrasi ada untuk alur cart (tidak
+   ada sebelumnya), jadi natural untuk kasih tahu customer nomor registrasinya di sini — TIDAK
+   redundan dengan `payment_confirmed` generik yang sudah fire di titik yang sama (pesan beda:
+   satu soal pembayaran, satu soal detail tiket/event).
+
+Pola implementasi: `newEventRegs: Array<{...}>` dikumpulkan DI DALAM transaction (lewat closure),
+lookup detail event + fire `notifyWa` SETELAH transaction commit (side-effect di luar tx, pola sama
+dengan `payment_confirmed` yang sudah ada). `formatEventDateWib()` di-duplikasi di
+`event/actions.ts` DAN `billing/actions.ts` — sengaja, pola sama dengan `generateEventRegNumber`
+yang sudah duplikat sebelumnya ("agar billing tidak bergantung ke modul event").
+
+`event_certificate_ready` — ditambahkan di `api/events/[id]/certificate/[regId]/route.ts` setelah
+`certificateUrl` di-update, sebelum response.
+
+**Fase 5 — Donasi**: `donation_received` fire di `submitPaymentProofAction` (cart/actions.ts),
+ALASAN dipilih di titik ini (bukan `payment_confirmed`): template bahasanya eksplisit
+"telah kami terima dan **sedang diverifikasi**" — cocok dengan tahap submit-bukti, bukan tahap
+sudah-terkonfirmasi. Query `invoice_items WHERE itemType='donation'` per invoice (invoice bisa
+campur produk+tiket+donasi) — satu notifikasi per row donasi, `campaignName` = `item.name` (sudah
+berisi nama campaign sejak `addToCartAction`, tidak perlu JOIN ke tabel campaigns).
+
+**Keputusan scope disengaja**: `createDonationAction`/`confirmDonationAction` (admin manual entry,
+`donasi/actions.ts`) SENGAJA TIDAK disentuh — ini jalur **legacy** untuk donasi offline/cash yang
+diinput admin langsung (lihat lesson "Donasi = Alur Cart Universal" — `donations` tabel legacy,
+alur publik aktif sepenuhnya via cart). Fokus di jalur cart yang aktif dipakai publik.
+
+**Fase 6 — Surat**: `letter_sign_request` ditambahkan di `syncSignatureSlotsAction`
+(letters/actions.ts) — fire HANYA saat slot signature dapat **token baru** (insert slot baru, atau
+officer berubah, atau token hilang) — TIDAK fire kalau token dipertahankan (officer sama, link lama
+masih berlaku, tidak perlu notifikasi ulang). Resolusi phone officer: `officers.memberId →
+public.members.contactId → public.contacts.(whatsapp||phone)` — 3-level lookup batched (bukan
+per-officer query) untuk efisiensi.
+
+**Bug ditemukan+difix saat implementasi**: `syncSignatureSlotsAction` sebelumnya destructure
+`const { db: tenantDb, schema } = createTenantDb(slug)` di awal fungsi — artinya `tenantDb` di
+fungsi itu SUDAH raw db instance, BUKAN objek `TenantDb` utuh `{db, schema}` yang dibutuhkan
+`notifyWa()`. TypeScript langsung menangkap ini (`missing properties db, schema`). Fix: simpan
+`tenantClient = createTenantDb(slug)` dulu, baru destructure `{db: tenantDb, schema} = tenantClient`,
+pakai `tenantClient` (bukan `tenantDb`) saat panggil `notifyWa()`. **Ini persis lesson lama**
+"Pattern: getSettings butuh TenantDb lengkap, bukan raw db" — kesalahan yang sama berulang di
+konteks berbeda (notifyWa, bukan getSettings) — aturan generalisasi: **fungsi manapun yang
+menerima parameter `tenantDb: TenantDb` (bukan raw db) WAJIB dicek variabel yang dikirim benar-benar
+objek `{db, schema}` utuh, bukan hasil destructure `.db` saja** — cek ini di SETIAP file yang mau
+dipasangi `notifyWa()`, jangan asumsikan variabel bernama `tenantDb` selalu tipe yang benar.
+
+**Status akhir**: Semua 6 fase WhatsApp Notification (1,2,3,4,5,6,7 minus quota enforcement) sudah
+lengkap dari sisi kode. TypeScript 0 error, build sukses di setiap tahap.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).

@@ -685,6 +685,29 @@ export async function submitPaymentProofAction(
       },
     });
 
+    // Notifikasi terpisah untuk item donasi di invoice ini (invoice bisa campur
+    // produk+tiket+donasi) — "Donasi Diterima" mengucap terima kasih per campaign,
+    // di luar payment_submitted generik di atas.
+    const donationItems = await tdb
+      .select({ name: schema.invoiceItems.name, total: schema.invoiceItems.total })
+      .from(schema.invoiceItems)
+      .where(and(
+        eq(schema.invoiceItems.invoiceId, invoiceId),
+        eq(schema.invoiceItems.itemType, "donation"),
+      ));
+
+    for (const item of donationItems) {
+      void notifyWa({
+        slug, tenantDb, event: "donation_received",
+        phone: inv.customerPhone,
+        vars: {
+          name:         inv.customerName,
+          campaignName: item.name,
+          amount:       waRupiah(item.total),
+        },
+      });
+    }
+
     return { success: true, data: { paymentId: payment.id } };
   } catch (err) {
     console.error("[submitPaymentProofAction]", err);
