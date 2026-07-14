@@ -21,6 +21,7 @@ export * from "./member-educations";
 export * from "./member-businesses";
 export * from "./member-owned-pesantren";
 export * from "./member-professionals";
+export * from "./member-media";
 export * from "./member-domicile-requests";
 export * from "./tenant-memberships";
 

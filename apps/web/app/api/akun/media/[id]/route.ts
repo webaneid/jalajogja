@@ -1,8 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and }                   from "drizzle-orm";
-import { db, members }               from "@jalajogja/db";
-import { createTenantDb }            from "@jalajogja/db";
+import { db, members, memberMedia }  from "@jalajogja/db";
 import { auth }                      from "@/lib/auth";
 import { deleteFile }                from "@/lib/minio";
 
@@ -17,8 +16,10 @@ async function getSessionMember(req: NextRequest) {
   return { error: null, status: 200 as const, member };
 }
 
-// DELETE /api/akun/media/{id}?tenant={slug}
-// Guard: pastikan media.member_id = member.id — tidak bisa hapus file orang lain
+// DELETE /api/akun/media/{id}
+// Guard: pastikan member_media.member_id = member.id — tidak bisa hapus file orang lain.
+// File fisik dihapus dari bucket sourceTenantSlug (bukan dari query param — file bisa
+// berasal dari tenant manapun, lihat docs/arsitektur-medialibrary.md § 3).
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -26,16 +27,16 @@ export async function DELETE(
   const { error, status, member } = await getSessionMember(req);
   if (error) return NextResponse.json({ error }, { status });
 
-  const slug = req.nextUrl.searchParams.get("tenant");
-  if (!slug) return NextResponse.json({ error: "tenant required" }, { status: 400 });
-
   const { id } = await params;
-  const { db: tenantDb, schema } = createTenantDb(slug);
 
-  const [file] = await tenantDb
-    .select({ path: schema.media.path, variants: schema.media.variants })
-    .from(schema.media)
-    .where(and(eq(schema.media.id, id), eq(schema.media.memberId, member!.id)))
+  const [file] = await db
+    .select({
+      path:             memberMedia.path,
+      variants:         memberMedia.variants,
+      sourceTenantSlug: memberMedia.sourceTenantSlug,
+    })
+    .from(memberMedia)
+    .where(and(eq(memberMedia.id, id), eq(memberMedia.memberId, member!.id)))
     .limit(1);
 
   if (!file) {
@@ -46,8 +47,8 @@ export async function DELETE(
     ? (Object.values(file.variants).filter(Boolean) as string[])
     : [file.path];
 
-  await Promise.allSettled(pathsToDelete.map(p => deleteFile(slug, p)));
-  await tenantDb.delete(schema.media).where(and(eq(schema.media.id, id), eq(schema.media.memberId, member!.id)));
+  await Promise.allSettled(pathsToDelete.map(p => deleteFile(file.sourceTenantSlug, p)));
+  await db.delete(memberMedia).where(and(eq(memberMedia.id, id), eq(memberMedia.memberId, member!.id)));
 
   return NextResponse.json({ success: true });
 }

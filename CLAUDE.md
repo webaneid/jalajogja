@@ -3657,6 +3657,67 @@ via JOIN `tenantMemberships`) dan `akun/layout.tsx` (fetch tenant row terpisah, 
 cabang/marhalah/forum, cek dulu apakah `resolveOrgLabels()` sudah bisa dipakai sebelum menulis
 ulang logic serupa.
 
+### [2026-07-14] Member Media Library — Jadi Global Cross-Tenant (Step 1-3 Selesai)
+
+> Arsitektur lengkap: `docs/arsitektur-medialibrary.md` § 3
+
+**Masalah**: user melaporkan foto usaha/profesional yang sudah diupload tidak muncul di
+`/akun/media`. Root cause: `member_businesses`/`member_professionals`/`member_owned_pesantren`
+(data) sudah **global** (`public` schema, satu row per member lintas semua tenant), tapi
+**foto pendukungnya** (`tenant_{slug}.media`, kolom `member_id`, hasil desain Phase 1-4 lama)
+terkunci ke **tenant tempat upload dilakukan**. Upload di tenant A hanya query-able saat browsing
+tenant A — mismatch dengan prinsip "1 akun anggota IKPM berlaku di semua tenant".
+
+**Solusi yang dipilih (dari 3 opsi yang dibandingkan)**: tabel metadata baru `public.member_media`
+— **global**, dengan kolom `source_tenant_slug` menunjuk bucket MinIO asal. **File fisik TIDAK
+PERNAH dipindah** — hanya metadata-nya yang jadi global. Ini jauh lebih murah/aman dibanding
+memindahkan file ke bucket baru (yang butuh copy fisik semua file + downtime risk), dan benar-benar
+menyelesaikan akar masalah (beda dengan opsi "aggregate query N-tenant saat load" yang cuma
+menyamarkan gejala, upload baru tetap "terjebak" per tenant).
+
+**3 keputusan yang dikunci** (jangan diubah tanpa alasan kuat):
+1. **Bukti transfer TETAP TERPISAH** dari media library — alasan user: invoice publik sengaja tidak
+   wajib login (guest checkout), upload bukti bayar harus tetap bisa tanpa akun member. Tidak
+   pernah digabung ke `member_media` (yang scoped by `member_id`, wajib ada akun).
+2. **Upload baru tetap ke bucket tenant tempat sedang browsing** — tidak ada perubahan pada logic
+   fisik upload (`uploadFile()`, `processImage()` identik seperti sebelumnya). Yang berubah HANYA
+   baris INSERT metadata: target `public.member_media` (bukan `tenant.media`).
+3. **Row lama di `tenant.media` dibiarkan 30 hari**, cron cleanup (Step 4, **belum dieksekusi**)
+   WAJIB cek dulu apakah foto masih dipakai di `members.photo_url`/`member_businesses.cover_url`/
+   `member_professionals.cover_url`/`member_owned_pesantren.cover_url` sebelum benar-benar hapus —
+   skip kalau masih dipakai di manapun.
+
+**Perubahan teknis (Step 1-3, sudah dieksekusi, commit menyusul):**
+- `packages/db/src/schema/public/member-media.ts` (baru) — tabel `member_media`, FK asli ke
+  `public.members` (bukan TEXT non-FK seperti `tenant.media.memberId` — karena sekarang SAMA-SAMA
+  di public schema, FK cross-schema tidak lagi jadi masalah)
+- `packages/db/migrations/0028_member_media_global.sql` (baru) — CREATE TABLE + backfill via
+  `DO $$ ... LOOP` semua tenant aktif (skip tenant yang belum punya kolom `member_id` di
+  `tenant.media`, guard untuk tenant sangat lama)
+- `app/api/akun/media/upload/route.ts` — INSERT target pindah ke `memberMedia` (public), file fisik
+  tetap upload ke bucket `tenant-{slug}` seperti biasa (tidak berubah)
+- `app/api/akun/media/route.ts` (GET) — query `memberMedia WHERE member_id = X` TANPA filter tenant
+  sama sekali; setiap row resolve URL via `publicUrl(row.sourceTenantSlug, row.path)` — bukan dari
+  slug di query param. Param `?tenant=` sekarang diabaikan (dipertahankan di caller untuk backward
+  compat, tidak breaking)
+- `app/api/akun/media/[id]/route.ts` (DELETE) — guard `member_id` tetap wajib, hapus file fisik
+  pakai `sourceTenantSlug` dari row (bukan dari query param) — penting karena file bisa di bucket
+  tenant manapun
+
+**Tidak ada breaking change di komponen** — `MemberMediaPicker`/`CoverImageField` tetap kirim prop
+`slug` yang sama seperti sebelumnya (maknanya berubah jadi "tenant tujuan upload FILE BARU", bukan
+lagi dipakai untuk fetch). `usaha-client.tsx`, `profesional-client.tsx`, `pesantren/page.tsx`,
+`lengkapi/page.tsx` — nol perubahan diperlukan.
+
+**Gap yang belum ditutup (dicatat, bukan dilupakan)**: cron `cleanup-images` (hapus `_ori` setelah
+10 hari) hanya scan `tenant_{slug}.media` — TIDAK menjangkau `public.member_media` yang baru. File
+`_ori` dari upload member sekarang tidak pernah dibersihkan otomatis (minor storage leak, bukan bug
+korektnes). Perlu cron terpisah atau extend `cleanup-images` untuk scan `member_media` juga — belum
+diprioritaskan, masukkan ke follow-up kalau storage MinIO mulai terasa penuh.
+
+**Step 4 (cron cleanup legacy `tenant.media` 30 hari) BELUM dieksekusi** — sesuai rencana, jangan
+jalankan sebelum 30 hari dari tanggal migrasi backfill (`0028_member_media_global.sql`).
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

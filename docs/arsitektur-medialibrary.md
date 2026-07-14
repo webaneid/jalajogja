@@ -323,4 +323,175 @@ Phase 4 — Halaman /akun/media (opsional)
 | Manual Crop | ✅ Selesai |
 | **Member upload API** | ✅ Selesai (Phase 1-2) |
 | **MemberMediaPicker** | ✅ Selesai (Phase 3) |
-| **Halaman /akun/media** | ✅ Selesai (Phase 4) |
+| **Halaman /akun/media** | ✅ Selesai (Phase 4) — **tapi lihat § 3, ada gap arsitektur** |
+
+---
+
+## 3. Member Media Library — Fase Global Cross-Tenant
+
+> **Status: Step 1-3 ✅ SELESAI (2026-07-14).** Step 4 (cron cleanup legacy 30 hari) **BELUM** —
+> dijadwalkan terpisah, jangan dieksekusi sebelum 30 hari observasi dari tanggal migrasi.
+
+### Masalah yang Ditemukan
+
+Desain Phase 1-4 (§ 2 di atas) menyimpan `member_id` di kolom `tenant_{slug}.media` — **per-tenant
+schema**. Keputusan ini sengaja dibuat ("Kolom baru `member_id` di `tenant.media`" dipilih di atas
+opsi "Tabel terpisah `public.member_media`") karena saat itu belum ada requirement eksplisit soal
+akses lintas tenant.
+
+Sekarang ketahuan ada **mismatch nyata** dengan bagian lain arsitektur yang sudah dikunci:
+
+| Entitas | Lokasi schema | Scope |
+|---------|--------------|-------|
+| `member_businesses` (data usaha) | `public` | **Global** — satu row per member, semua tenant |
+| `member_professionals` (data profesional) | `public` | **Global** — satu row per member, semua tenant |
+| `member_owned_pesantren` (data pesantren) | `public` | **Global** — satu row per member, semua tenant |
+| `public.members.photo_url` (foto profil) | `public` | **Global** |
+| `tenant_{slug}.media` (file foto-nya sendiri) | **per-tenant** | **Terkunci ke tenant tempat upload** |
+
+Semua data di atas (usaha/pesantren/profesional/profil) sesuai prinsip "satu akun anggota IKPM
+berlaku di semua tenant" — **tapi foto pendukungnya tidak ikut prinsip yang sama**. Kalau anggota
+upload foto usaha saat browsing `ikpmjogja.com`, file itu masuk `tenant_ikpmjogja.media`. Data
+usahanya sendiri tetap tampil di tenant manapun (karena globalnya di `public.member_businesses`,
+dan `cover_url` yang disimpan adalah URL absolut MinIO — tetap resolve dengan benar di tenant
+manapun). Tapi ketika anggota buka `/akun/media` di tenant LAIN (mis. `visikita.com`), API
+`GET /api/akun/media?tenant=visikita` query ke `tenant_visikita.media WHERE member_id = X` — foto
+yang di-upload di `tenant_ikpmjogja.media` **tidak pernah muncul**, meski itu identitas yang sama.
+
+**Bukti transfer/pembayaran** — dikonfirmasi TIDAK PERNAH masuk tabel `media` sama sekali (baik
+tenant maupun global), by design (`docs/arsitektur-billing.md`: `POST /api/invoice/proof-upload`
+upload langsung ke MinIO tanpa record DB apapun). Ini bukan bug — item terpisah untuk didiskusikan
+di § "Open Question" di bawah, bukan bagian dari fix utama.
+
+### Opsi yang Dipertimbangkan
+
+| Opsi | Cara Kerja | Migrasi Data | Kompleksitas | Trade-off |
+|------|-----------|--------------|---------------|-----------|
+| **A — Full global bucket** | Bucket MinIO baru khusus (mis. `member-media`), pindahkan SEMUA file existing dari bucket per-tenant ke bucket baru | **Berat** — copy file fisik antar bucket untuk semua tenant, downtime risk, perlu update URL di `cover_url` existing yang sudah tersimpan | Tinggi | Paling "bersih" secara arsitektur, tapi risiko migrasi tinggi & effort besar untuk manfaat yang sama dengan Opsi C |
+| **B — Aggregate query N-tenant saat load** *(sempat ditawarkan sebagai "fix cepat", ditolak user)* | `/akun/media` query ke SEMUA tenant tempat member terdaftar (via `tenant_memberships`), gabungkan hasil di aplikasi | Tidak perlu migrasi data | Sedang, tapi lambat (N query per load, makin banyak tenant makin lambat) | Upload baru tetap "terjebak" di tenant tempat upload — tidak benar-benar menyelesaikan akar masalah, hanya menyamarkan gejala |
+| **C — Metadata global, file tetap di tempatnya (RECOMMENDED)** | Tabel baru `public.member_media` (metadata only) dengan kolom `source_tenant_slug` menunjuk bucket asal. File FISIK tetap di bucket tenant tempat upload — TIDAK PERNAH dipindah. Upload baru langsung insert ke tabel global (bukan `tenant.media`) | **Ringan** — hanya migrasi METADATA (SQL `INSERT...SELECT` per tenant), tidak ada file yang dipindah, tidak ada downtime | Sedang | File tetap "tersebar" di banyak bucket secara fisik (tidak masalah — hanya masalah kalau tenant asalnya suatu saat dihapus total, yang saat ini tidak didukung sistem) |
+
+**Opsi C direkomendasikan** — memenuhi kebutuhan "media tetap satu, dibuka dimana saja" tanpa
+migrasi data fisik yang berisiko. `cover_url` yang sudah tersimpan di `member_businesses` dkk tidak
+perlu diubah sama sekali (masih URL absolut yang valid, file-nya tidak pindah).
+
+### Desain Opsi C — Detail
+
+#### Schema Baru: `public.member_media`
+
+```sql
+CREATE TABLE public.member_media (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_id           UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+  source_tenant_slug  TEXT NOT NULL,        -- bucket MinIO tempat file fisik berada ("tenant-{slug}")
+  filename            TEXT NOT NULL,
+  original_name       TEXT NOT NULL,
+  mime_type           TEXT NOT NULL,
+  size                INTEGER NOT NULL,
+  path                TEXT NOT NULL,        -- path relatif di bucket source_tenant_slug
+  variants            JSONB,                -- sama seperti tenant.media.variants
+  processing_status   TEXT NOT NULL DEFAULT 'done',
+  original_mime       TEXT,
+  original_expires_at TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_member_media_member_id ON public.member_media(member_id);
+```
+
+Drizzle: file baru `packages/db/src/schema/public/member-media.ts`, pola sama dengan
+`member-businesses.ts` (public schema table biasa, FK asli ke `public.members` karena SAMA-SAMA di
+public schema — beda dengan `tenant.media.memberId` yang harus TEXT non-FK karena cross-schema).
+
+#### Perubahan API
+
+| Route | Perubahan |
+|-------|-----------|
+| `POST /api/akun/media/upload?tenant={slug}` | File tetap fisik upload ke bucket `tenant-{slug}` (TIDAK BERUBAH — reuse `uploadFile()`, `processImage()` apa adanya). Yang berubah: baris INSERT terakhir target `public.member_media` (bukan `tenant.media`), isi `sourceTenantSlug: slug` |
+| `GET /api/akun/media?tenant={slug}` | Query `public.member_media WHERE member_id = X` — **hapus filter tenant sepenuhnya**, `tenant` param jadi tidak relevan untuk READ (boleh tetap diterima untuk backward compat sementara, tapi diabaikan). Setiap row resolve URL via `publicUrl(row.sourceTenantSlug, row.path)` — BUKAN `publicUrl(slug, ...)` dari query param |
+| `DELETE /api/akun/media/{id}?tenant={slug}` | Query row dari `public.member_media`, guard `member_id = X`, hapus file fisik via `deleteFile(row.sourceTenantSlug, row.path)` — pakai slug ASLI dari row, bukan dari query param |
+
+#### Perubahan Komponen
+
+- `MemberMediaPicker` / `CoverImageField` — prop `slug` tetap ada, tapi maknanya berubah: HANYA
+  dipakai sebagai "tenant bucket tujuan upload FILE BARU", tidak lagi dipakai untuk fetch (fetch
+  otomatis cross-tenant). Tidak ada breaking change di call-site (`usaha-client.tsx`,
+  `profesional-client.tsx`, `pesantren/page.tsx`, `lengkapi/page.tsx` semua tetap kirim `slug` yang
+  sama seperti sekarang).
+- `lib/minio.ts` — tidak perlu fungsi baru; `publicUrl(slug, path)` sudah generic per-slug, tinggal
+  dipanggil dengan `sourceTenantSlug` dari row alih-alih `slug` dari URL saat ini.
+
+#### Migrasi Data Existing
+
+Untuk setiap tenant aktif, migrasi METADATA saja (bukan file):
+
+```sql
+INSERT INTO public.member_media
+  (member_id, source_tenant_slug, filename, original_name, mime_type, size, path,
+   variants, processing_status, original_mime, original_expires_at, created_at)
+SELECT
+  member_id::uuid, '{slug}', filename, original_name, mime_type, size, path,
+  variants, processing_status, original_mime, original_expires_at, created_at
+FROM "tenant_{slug}".media
+WHERE module = 'akun' AND member_id IS NOT NULL;
+```
+
+Dijalankan per tenant (loop di script migrasi, sama pola dengan migration lain di project — lihat
+`docs/migration-*.sql` untuk referensi format). **Row lama di `tenant_{slug}.media` TIDAK dihapus**
+— dibiarkan sebagai arsip/rollback safety net, sudah otomatis invisible dari admin media library
+(admin filter `WHERE member_id IS NULL`) jadi tidak mengganggu apapun kalau dibiarkan.
+
+### Keputusan Final (dikunci 2026-07-14)
+
+1. **Bukti transfer pembayaran — TETAP TERPISAH**, tidak ikut `member_media`. Alasan user: halaman
+   invoice publik sengaja tidak mewajibkan login (guest checkout, lihat § "Q&A Keputusan Desain" di
+   `docs/arsitektur-billing.md`) — upload bukti bayar harus tetap bisa dilakukan tanpa akun member.
+   Menyatukannya ke `member_media` (yang scoped by `member_id`) akan memaksa ada login, bertentangan
+   dengan alur guest checkout yang sudah dikunci. `POST /api/invoice/proof-upload` **tidak disentuh**.
+
+2. **Bucket upload file baru — tenant tempat sedang browsing saat upload.** Tidak ada perubahan
+   pada logic fisik upload (`uploadFile()`, `processImage()` tetap seperti sekarang) — hanya baris
+   INSERT metadata yang pindah tujuan ke `public.member_media`.
+
+3. **Row lama di `tenant.media` — dibiarkan 30 hari, HANYA dihapus setelah dipastikan tidak
+   sedang dipakai.** Sebelum hapus row + file fisik, cron cleanup WAJIB cek apakah URL file
+   tersebut masih direferensikan di salah satu dari:
+   - `public.members.photo_url`
+   - `public.member_businesses.cover_url`
+   - `public.member_professionals.cover_url`
+   - `public.member_owned_pesantren.cover_url`
+   Kalau URL (hasil `publicUrl(source_tenant_slug, path)` atau salah satu `variants`) ditemukan di
+   kolom manapun di atas → **skip, jangan hapus** (masih dipakai sebagai cover aktif). Kalau tidak
+   ditemukan di manapun DAN `created_at` (di `tenant.media`, row lama) sudah lewat 30 hari dari
+   tanggal migrasi Step 1c → aman dihapus (row DB + file fisik MinIO). Cron baru:
+   `app/api/cron/cleanup-member-media-legacy/route.ts`, pola sama dengan `cleanup-images` yang
+   sudah ada (`x-cron-secret` header, jalan harian via crontab VPS).
+
+### Urutan Eksekusi (Rencana, Final)
+
+```
+Step 1 — Schema
+  1a. Drizzle schema public/member-media.ts
+  1b. Migration SQL: CREATE TABLE public.member_media + index
+  1c. Migration SQL: backfill dari semua tenant_{slug}.media WHERE module='akun'
+      (catat timestamp migrasi — jadi acuan hitung mundur 30 hari di Step 4)
+
+Step 2 — API
+  2a. POST /api/akun/media/upload — ubah target INSERT ke public.member_media
+  2b. GET /api/akun/media — ubah query + resolve URL pakai source_tenant_slug per row
+  2c. DELETE /api/akun/media/[id] — ubah query + delete pakai source_tenant_slug per row
+
+Step 3 — Verifikasi
+  3a. Test: upload di tenant A, cek muncul di /akun/media tenant B (cross-tenant confirmed)
+  3b. Test: CoverImageField di usaha/pesantren/profesional/lengkapi masih berfungsi normal
+  3c. Test: hapus foto dari tenant B, file fisik di bucket tenant A benar-benar terhapus
+
+Step 4 — Cron Cleanup Legacy (setelah 30 hari observasi, BUKAN langsung deploy bareng Step 1-3)
+  4a. app/api/cron/cleanup-member-media-legacy/route.ts — untuk setiap tenant, ambil
+      tenant.media WHERE module='akun' AND created_at < (tanggal migrasi - 30 hari)
+  4b. Per row: cek URL (path + tiap variant) terhadap 4 kolom referensi
+      (members.photo_url, member_businesses.cover_url, member_professionals.cover_url,
+      member_owned_pesantren.cover_url) — SKIP kalau ditemukan di manapun
+  4c. Kalau tidak dipakai di manapun → deleteFile() dari bucket asal + DELETE row tenant.media
+  4d. Jadwalkan via crontab VPS harian, pola sama dengan cleanup-images (x-cron-secret header)
+```

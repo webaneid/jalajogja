@@ -1,8 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse }                              from "next/server";
 import { eq }                                                    from "drizzle-orm";
-import { db, members }                                           from "@jalajogja/db";
-import { createTenantDb }                                        from "@jalajogja/db";
+import { db, members, memberMedia }                              from "@jalajogja/db";
 import { auth }                                                  from "@/lib/auth";
 import { uploadFile, deleteFile, ensureBucket, publicUrl }       from "@/lib/minio";
 import { shouldBypass, processImage, getVariantsForModule, type VariantKey } from "@/lib/image-processor";
@@ -72,8 +71,6 @@ export async function POST(req: NextRequest) {
   const uuid   = randomUUID();
   await ensureBucket(slug);
 
-  const { db: tenantDb, schema } = createTenantDb(slug);
-
   const now      = new Date();
   const yearMonth = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}`;
   const basePath  = `akun/${member!.id}/${yearMonth}`;
@@ -84,14 +81,16 @@ export async function POST(req: NextRequest) {
     const filePath = `${basePath}/${filename}`;
     await uploadFile(slug, filePath, buffer, file.type);
 
-    const [media] = await tenantDb.insert(schema.media).values({
+    // File fisik tetap di bucket tenant-{slug} (tidak berubah) — metadata sekarang
+    // global di public.member_media, bukan per-tenant. Lihat docs/arsitektur-medialibrary.md § 3.
+    const [media] = await db.insert(memberMedia).values({
+      memberId:         member!.id,
+      sourceTenantSlug: slug,
       filename,
       originalName:     file.name,
       mimeType:         file.type,
       size:             file.size,
       path:             filePath,
-      module:           "akun",
-      memberId:         member!.id,
       processingStatus: "bypass",
     }).returning();
 
@@ -139,15 +138,15 @@ export async function POST(req: NextRequest) {
   const primaryPath = variantPaths[primaryKey];
   const filename    = path.basename(primaryPath);
 
-  const [media] = await tenantDb.insert(schema.media).values({
+  const [media] = await db.insert(memberMedia).values({
+    memberId:          member!.id,
+    sourceTenantSlug:  slug,
     filename,
     originalName:      file.name,
     mimeType:          "image/webp",
     originalMime:      file.type,
     size:              (allVariants[primaryKey]?.length ?? 0),
     path:              primaryPath,
-    module:            "akun",
-    memberId:          member!.id,
     variants:          variantPaths,
     processingStatus:  "done",
     originalExpiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
