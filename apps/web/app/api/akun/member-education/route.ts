@@ -114,7 +114,9 @@ export async function POST(req: NextRequest) {
               profileUrl:   waAppUrl(body.slug, "/akun"),
             },
           });
-          await db.update(members).set({ welcomeSentAt: new Date() }).where(eq(members.id, member.id));
+          await db.update(members)
+            .set({ welcomeSentAt: new Date(), welcomeSentTenantSlug: body.slug })
+            .where(eq(members.id, member.id));
         }
       }
     }

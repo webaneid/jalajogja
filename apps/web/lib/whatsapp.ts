@@ -18,6 +18,7 @@ export type WaNotifKey =
   | "event_certificate_ready"
   | "donation_received"
   | "member_welcome"
+  | "profile_incomplete_reminder"
   | "officer_invite"
   | "letter_sign_request"
   | "otp_register"
@@ -45,6 +46,7 @@ export const WA_NOTIF_DEFAULTS: WaNotifConfig["notifications"] = {
   event_certificate_ready: false,
   donation_received:       false,
   member_welcome:          false,
+  profile_incomplete_reminder: false,
   officer_invite:          false,
   letter_sign_request:     false,
   otp_register:            false,

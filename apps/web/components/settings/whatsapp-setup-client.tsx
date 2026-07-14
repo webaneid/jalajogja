@@ -71,7 +71,8 @@ const NOTIF_GROUPS: Array<{
   {
     label: "Anggota & Pengurus",
     items: [
-      { key: "member_welcome", label: "Sambutan anggota baru", desc: "Kirim ke anggota baru saat berhasil didaftarkan." },
+      { key: "member_welcome", label: "Sambutan anggota baru", desc: "Kirim saat anggota menyelesaikan wizard lengkapi data (/akun/lengkapi)." },
+      { key: "profile_incomplete_reminder", label: "Pengingat lengkapi profil", desc: "Kirim sekali, 2 minggu setelah bergabung, jika riwayat pendidikan kosong atau usaha/pesantren/profesional kosong semua." },
       { key: "officer_invite", label: "Undangan pengurus",     desc: "Kirim link aktivasi ke calon pengurus saat diundang." },
     ],
   },

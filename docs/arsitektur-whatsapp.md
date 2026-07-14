@@ -4,13 +4,14 @@
 > Terkoneksi dengan: `CLAUDE.md` § "WhatsApp Gateway", `docs/arsitektur-billing.md`, `docs/arsitektur-login-universal.md`, `docs/arsitektur-fulfillment.md`, `docs/arsitektur-event.md`.
 
 > **STATUS (2026-07-15): Fase 1, 2, 3, 4, 5, 7 SELESAI + cron reminder SELESAI. Fase 6 SEBAGIAN
-> SELESAI (surat ✅, anggota/pengurus 🔲 belum). Self-hosted VPS aktif dan tested.**
+> SELESAI (surat ✅, member_welcome ✅ + profile_incomplete_reminder ✅ [fitur baru di luar rencana
+> awal], officer_invite 🔲 belum). Self-hosted VPS aktif dan tested.**
 > GOWA berjalan di VPS jalajogja (72.61.215.7), subdomain `gowa.jalakarta.com`.
 > Device `pc-ikpm-jogjakarta` aktif terhubung — QR scan, send message, status polling semua confirmed working.
 > Lihat § 16 "Penyimpangan dari Desain Awal" untuk perbedaan antara dokumen ini dan kode aktual —
 > termasuk § 16.8 (template editable per tenant + `notifyWa()` wrapper, ditambahkan di luar rencana awal).
 > Bagian 3.2, 4, dan 10 menjelaskan **desain awal** (addon installation + quota) — kode aktual tidak memakai ini. Baca § 16 dulu.
-> **Belum dikerjakan**: `member_welcome` + `officer_invite` (§ 6.5), quota enforcement (§ 16.2 — sengaja
+> **Belum dikerjakan**: `officer_invite` (§ 6.5), quota enforcement (§ 16.2 — sengaja
 > ditunda atas permintaan user 2026-07-15).
 
 ---
@@ -520,16 +521,30 @@ JOIN ke tabel campaigns).
 (`donations` table historis, lihat § "Donasi = Alur Cart Universal" di CLAUDE.md) — donatur via
 cart (jalur aktif) sudah tercakup penuh di atas.
 
-### 6.5 Anggota & Pengurus — 🔲 BELUM DIKERJAKAN
+### 6.5 Anggota & Pengurus — SEBAGIAN SELESAI (2026-07-15)
 
 | Event | Trigger | Penerima | Template |
 |-------|---------|----------|----------|
-| Anggota baru | `createMemberAction` | Anggota | `member_welcome` |
-| Undangan pengurus | `createInviteAction` | Calon pengurus | `officer_invite` |
+| Anggota baru | `POST /api/akun/member-education` (step 3 wizard `/akun/lengkapi` selesai) | Anggota | `member_welcome` |
+| Pengingat lengkapi profil | Cron `profile-incomplete-reminder` (14 hari setelah welcome, sekali kirim) | Anggota | `profile_incomplete_reminder` |
+| Undangan pengurus | `createInviteAction` | Calon pengurus | `officer_invite` — **belum dikerjakan** |
 
-Template sudah ada di `wa-templates.ts`, toggle sudah ada di dashboard settings, tapi **belum ada
-pemanggilan `notifyWa()` di kode manapun** — dicek via grep 2026-07-15, nol hasil. Ini satu-satunya
-bagian dari 6 modul § 6 yang masih pending setelah Fase 3-6 selesai (§ 12).
+**`member_welcome` trigger BERUBAH dari rencana awal** (yang menyebut `createMemberAction`, alur
+admin) — dipindah ke selesainya wizard self-service `/akun/lengkapi` karena Step 1 admin wizard
+tidak punya field nomor HP sama sekali (nomor baru diisi Step 2, seringkali sesi terpisah) — tidak
+ada nomor tujuan valid di titik `createMemberAction`. Kolom idempoten `members.welcome_sent_at` +
+`members.welcome_sent_tenant_slug` (migration `0029` + `0030`) mencegah kirim berulang.
+
+**`profile_incomplete_reminder` — fitur baru di luar 7 fase rencana awal**, muncul dari diskusi
+`member_welcome`. Kondisi kirim (dikunci setelah klarifikasi berulang dengan user): riwayat
+pendidikan kosong ATAU (usaha DAN pesantren DAN profesional kosong semua). Cron
+`app/api/cron/profile-incomplete-reminder/route.ts` — **tidak loop per tenant** (beda dari
+invoice-reminder/event-reminder) karena data member semuanya di `public` schema, cukup satu scan
+global + batch-count 4 tabel. Kirim via `welcome_sent_tenant_slug` (tenant yang sama dengan saat
+welcome dulu terkirim). Sekali kirim saja (`profile_reminder_sent_at` flag), bukan berulang.
+
+`officer_invite` (`createInviteAction`) masih genuinely belum dikerjakan — dicek via grep
+2026-07-15, nol hasil `notifyWa()` di file itu.
 
 ### 6.6 Surat — ✅ SELESAI (2026-07-15, commit `876fe91`)
 
@@ -847,7 +862,10 @@ if (phone) {
 ### Fase 6 — Notifikasi Organisasi — SEBAGIAN SELESAI (2026-07-15)
 
 - [x] `syncSignatureSlotsAction` → `letter_sign_request` (slot dapat token baru) — commit `876fe91`
-- [ ] `createMemberAction` → `member_welcome` — **belum dikerjakan**
+- [x] `POST /api/akun/member-education` (step 3 wizard) → `member_welcome` — trigger dipindah dari
+      `createMemberAction` (lihat § 6.5 untuk alasan)
+- [x] Cron `profile-incomplete-reminder` → `profile_incomplete_reminder` — **fitur baru di luar
+      rencana awal**, lihat § 6.5
 - [ ] `createInviteAction` → `officer_invite` — **belum dikerjakan**
 
 ### Fase 7 — OTP via WA — ✅ SELESAI (2026-06-30)

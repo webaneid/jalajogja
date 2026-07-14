@@ -71,6 +71,13 @@ export const members = pgTable("members", {
   // Sekali terisi TIDAK PERNAH di-reset (idempotent, cegah kirim berulang saat member
   // edit ulang data pendidikan/kontak setelah onboarding selesai).
   welcomeSentAt: timestamp("welcome_sent_at", { withTimezone: true }),
+  // Tenant tempat member_welcome dikirim — dipakai lagi sebagai WA gateway untuk
+  // pengingat lengkapi profil (cron profile-incomplete-reminder), supaya konsisten
+  // kirim dari "rumah" yang sama setiap kali (bukan tenant acak/pertama yang WA aktif).
+  welcomeSentTenantSlug: text("welcome_sent_tenant_slug"),
+  // Kapan pengingat "lengkapi profil" (profile_incomplete_reminder) terkirim — NULL =
+  // belum pernah. Sekali kirim saja (bukan berulang), lihat docs/arsitektur-whatsapp.md § 6.5.
+  profileReminderSentAt: timestamp("profile_reminder_sent_at", { withTimezone: true }),
 
   // ── Login front-end ──────────────────────────────────────────────────────────
   // Diisi saat anggota aktivasi akun login (via register atau admin aktifkan)

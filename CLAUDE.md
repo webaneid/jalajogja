@@ -3834,6 +3834,38 @@ session saja, tidak butuh `slug`) — begitu perlu kirim notifikasi WA, WAJIB di
 dari client (client selalu punya `slug` dari `useParams()`/URL path tenant), karena `notifyWa()`
 butuh tenant context untuk resolve WA gateway + config.
 
+### [2026-07-15] `profile_incomplete_reminder` — Notifikasi WA Baru (di Luar Rencana Awal)
+
+Fitur baru diminta user saat diskusi `member_welcome`, bukan bagian dari 7 fase yang sudah
+direncanakan sebelumnya — cron pengingat lengkapi profil (pendidikan/usaha/pesantren/profesional),
+sekali kirim, 14 hari setelah `member_welcome` terkirim.
+
+**Kondisi kirim** (dikunci setelah beberapa putaran klarifikasi dengan user — jangan diubah tanpa
+alasan kuat, gampang disalahpahami): kirim jika **riwayat pendidikan kosong** ATAU **usaha DAN
+pesantren DAN profesional kosong SEMUA**. Bukan "OR sederhana 4 kategori" — pendidikan diperlakukan
+sebagai kondisi independen, sementara usaha/pesantren/profesional diperlakukan sebagai SATU
+kelompok (harus kosong SEMUA baru dianggap "belum melengkapi", cukup salah satu terisi = lolos).
+
+**2 kolom baru di `public.members`** (migration `0030_member_profile_reminder.sql`):
+- `welcome_sent_tenant_slug` — tenant yang dipakai kirim `member_welcome`, dipakai LAGI sebagai WA
+  gateway untuk reminder ini (konsisten "kirim dari rumah yang sama"), diisi di endpoint
+  `/api/akun/member-education` bersamaan dengan `welcome_sent_at`
+- `profile_reminder_sent_at` — flag idempoten, sekali kirim saja (bukan berulang tiap 14 hari)
+
+**Cron baru**: `app/api/cron/profile-incomplete-reminder/route.ts` — **TIDAK loop per tenant**
+seperti `invoice-reminder`/`event-reminder` (yang perlu loop karena data invoice/event ada di
+`tenant_{slug}` schema) — data pendidikan/usaha/pesantren/profesional semuanya di **public schema**
+(global), jadi cukup SATU scan `public.members` + batch-count 4 tabel sekaligus via `groupBy`
+(bukan query per-member, untuk efisiensi kalau kandidat banyak).
+
+**WaNotifKey baru**: `profile_incomplete_reminder` — ditambah ke `lib/whatsapp.ts`
+(`WaNotifKey` type + `WA_NOTIF_DEFAULTS`), `lib/wa-templates.ts` (template baru, var
+`{{missingList}}` dibangun manual di cron sebagai daftar bullet), toggle dashboard di
+`WhatsAppSetupClient` NOTIF_GROUPS group "Anggota & Pengurus".
+
+**Belum dijadwalkan di crontab VPS** — perlu ditambahkan manual sama seperti cron lain,
+`0 10 * * * curl ... /api/cron/profile-incomplete-reminder`.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
