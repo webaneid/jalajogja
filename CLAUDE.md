@@ -4121,6 +4121,20 @@ verifikasi ini (eksekusi query nyata di luar UI saat tidak ada kredensial admin 
 lebih murah daripada menunggu error di production dan sebaiknya diulang untuk halaman data-berat
 berikutnya yang tidak bisa di-browser-test langsung.
 
+**Bug deploy kedua: `bun add --filter=@jalajogja/web recharts` salah taruh dependency di ROOT
+package.json, bukan `apps/web/package.json`** — build lokal tetap lolos (hoisting dari root
+`node_modules` masih resolve via Node module walk-up), tapi build VPS gagal
+`Module not found: Can't resolve 'recharts'`. Root cause pasti tidak dikonfirmasi (kemungkinan
+proses `bun install` di VPS tidak dijalankan ulang / environment lain), tapi diperbaiki permanen
+dengan cara yang benar: `recharts` dipindah ke `apps/web/package.json` dependencies langsung
+(package yang benar-benar mengimpornya), dihapus dari root. **Aturan**: dependency WAJIB
+dideklarasikan di `package.json` workspace yang benar-benar mengimpornya (`apps/web`,
+`packages/db`, dst) — root `package.json` bukan tempat parkir dependency baru meski `bun add
+--filter=` kadang salah taruh di sana. Root package.json project ini sudah lama punya beberapa
+dependency legacy di sana (`lucide-react`, `jsqr`, dll) yang seharusnya juga di `apps/web` — TIDAK
+disentuh di sesi ini (di luar scope, sudah terlanjur bekerja via hoisting, risiko regresi kalau
+dipindah tanpa alasan mendesak), tapi jangan tambah entry baru ke pola lama ini.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
