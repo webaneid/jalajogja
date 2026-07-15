@@ -3,8 +3,8 @@ export const dynamic = "force-dynamic";
 // Cek status mitra + eligibility untuk anggota IKPM yang sedang login
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
-import { db, members, memberBusinesses, tenantMemberships, createTenantDb } from "@jalajogja/db";
+import { eq, and, sql } from "drizzle-orm";
+import { db, members, memberBusinesses, tenantMemberships, tenants, createTenantDb } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
 import { getTokoSettings } from "@/lib/toko-settings";
 
@@ -22,15 +22,23 @@ export async function GET(req: NextRequest) {
   });
   if (!member) return NextResponse.json({ error: "Bukan anggota IKPM" }, { status: 403 });
 
-  // Cek membership di tenant ini
-  const membership = await db.query.tenantMemberships.findFirst({
-    where: and(
-      eq(tenantMemberships.memberId, member.id),
-      // Note: tenantMemberships juga punya tenantId, kita perlu lookup slug → tenantId
-    ),
-  });
+  // Mitra terikat cabang — wajib anggota terdaftar (active/alumni) di tenant ini
+  const [tenantRow] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.slug, slug))
+    .limit(1);
 
-  // Ambil tenantId dari slug
+  const isTenantMember = tenantRow
+    ? !!(await db.query.tenantMemberships.findFirst({
+        where: and(
+          eq(tenantMemberships.tenantId, tenantRow.id),
+          eq(tenantMemberships.memberId, member.id),
+          sql`${tenantMemberships.status} IN ('active', 'alumni')`,
+        ),
+      }))
+    : false;
+
   const { db: tenantDb, schema } = createTenantDb(slug);
 
   // Ambil status mitra + application
@@ -81,6 +89,7 @@ export async function GET(req: NextRequest) {
     // Eligibility checks
     eligibility: {
       isMitraEnabled:  settings.mitraEnabled,
+      isTenantMember,
       hasBusinesses:   businesses.length > 0,
       alreadyMitra:    !!mitra,
       hasPending:      !!application,

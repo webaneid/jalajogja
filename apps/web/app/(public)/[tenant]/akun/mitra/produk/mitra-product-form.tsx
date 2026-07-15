@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import { Label  } from "@/components/ui/label";
 import { Input  } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GalleryPicker } from "@/components/gallery/gallery-picker";
+import { isOwnHost } from "@/lib/is-own-host";
 import type { GalleryItem } from "@/lib/gallery";
 
 type Props = {
@@ -27,6 +28,11 @@ export function MitraProductForm({ slug, settings, product }: Props) {
   const router  = useRouter();
   const isEdit  = !!product;
 
+  const [baseUrl, setBaseUrl] = useState(`/${slug}`);
+  useEffect(() => {
+    if (!isOwnHost(window.location.host)) setBaseUrl("");
+  }, []);
+
   const [name,        setName]        = useState(product?.name        ?? "");
   const [prodSlug,    setProdSlug]    = useState(product?.slug        ?? "");
   const [price,       setPrice]       = useState(product?.price       ? Number(product.price)       : 0);
@@ -36,6 +42,7 @@ export function MitraProductForm({ slug, settings, product }: Props) {
   const [description, setDescription] = useState(product?.description ?? "");
   const [images,      setImages]      = useState<GalleryItem[]>(product?.images ?? []);
   const [submitting,  setSubmitting]  = useState(false);
+  const [deleting,    setDeleting]    = useState(false);
   const [error,       setError]       = useState<string | null>(null);
 
   const komisiNominal    = price > 0 ? Math.round(price * settings.minKomisiMitra / 100) : 0;
@@ -64,12 +71,23 @@ export function MitraProductForm({ slug, settings, product }: Props) {
     const data = await res.json() as { error?: string };
     setSubmitting(false);
     if (data.error) { setError(data.error); return; }
-    router.push(`/${slug}/akun/mitra/produk`);
+    router.push(`${baseUrl}/akun/mitra/produk`);
+  }
+
+  async function handleDelete() {
+    if (!product) return;
+    if (!confirm(`Hapus produk "${product.name}"? Tindakan ini tidak bisa dibatalkan.`)) return;
+    setDeleting(true);
+    const res  = await fetch(`/api/mitra/products/${product.id}?slug=${slug}`, { method: "DELETE" });
+    const data = await res.json() as { error?: string };
+    setDeleting(false);
+    if (data.error) { setError(data.error); return; }
+    router.push(`${baseUrl}/akun/mitra/produk`);
   }
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8 space-y-6">
-      <a href={`/${slug}/akun/mitra/produk`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+      <a href={`${baseUrl}/akun/mitra/produk`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Kembali ke Produk
       </a>
 
@@ -151,9 +169,22 @@ export function MitraProductForm({ slug, settings, product }: Props) {
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
-        <Button type="submit" disabled={submitting} className="w-full">
+        <Button type="submit" disabled={submitting || deleting} className="w-full">
           {submitting ? "Menyimpan..." : isEdit ? "Simpan Perubahan" : "Tambah Produk"}
         </Button>
+
+        {isEdit && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={submitting || deleting}
+            onClick={() => void handleDelete()}
+            className="w-full text-destructive border-destructive/30 hover:bg-destructive/10"
+          >
+            <Trash2 className="h-4 w-4 mr-1.5" />
+            {deleting ? "Menghapus..." : "Hapus Produk"}
+          </Button>
+        )}
       </form>
     </div>
   );

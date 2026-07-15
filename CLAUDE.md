@@ -3964,6 +3964,58 @@ menyebabkan efek permanen (insert payment, insert registrasi, dll) wajib punya D
 Ini pattern ke-4 di project yang kena kelas bug sama: payment confirm admin, cart checkout,
 event registration, dan sekarang payment proof submission customer.
 
+### [2026-07-15] Audit `/akun/mitra` — Crash Bug + Security Gap + UI Gap
+
+User curiga halaman `/akun/mitra/produk*` "belum digarap". Audit terhadap
+`docs/arsitektur-mitra.md` vs kode aktual menemukan fitur SUDAH diimplementasikan (Phase 0–2 +
+sebagian Phase 3 shipping), tapi 3 kelas bug nyata membuatnya terasa rusak/belum jadi:
+
+**1. Bug crash — pengulangan bug header-forwarding yang sudah pernah difix di file tetangga.**
+`produk/page.tsx`, `produk/new/page.tsx`, `produk/[id]/edit/page.tsx` melakukan internal fetch ke
+`/api/mitra/*` dengan `{ headers: hdrs }` atau `{ headers: await headers() }` — meneruskan SELURUH
+incoming request `Headers` (termasuk `connection`, hop-by-hop header terlarang) ke fetch keluar.
+Ini persis root cause `UND_ERR_INVALID_ARG` / "TypeError: fetch failed" yang sudah didokumentasikan
+dan difix di `akun/mitra/page.tsx` (lihat lesson "Internal Fetch di Server Component") — tapi 3 file
+saudaranya tidak ikut difix saat itu. Mengunjungi "Produk Saya", "Tambah Produk", atau "Edit Produk"
+sebagai mitra kemungkinan besar crash 500 — ini kemungkinan penyebab utama kesan "belum digarap".
+**Fix**: ganti semua ke `{ headers: { cookie: hdrs.get("cookie") ?? "" } }`, pola yang sama dengan
+`akun/mitra/page.tsx` yang sudah benar.
+
+**2. Security gap — syarat "mitra terikat cabang" tidak pernah ditegakkan.**
+`docs/arsitektur-mitra.md` mengunci: "Mitra hanya bisa mendaftar di tenant yang mana dia terdaftar
+sebagai anggota (`tenant_memberships`)". Tapi `GET /api/mitra/status` menghitung variabel
+`membership` dengan query yang secara eksplisit belum lengkap (ada komentar TODO: "tenantMemberships
+juga punya tenantId, kita perlu lookup slug → tenantId") dan variabelnya **tidak pernah dipakai** di
+response. `POST /api/mitra/apply` bahkan tidak punya pengecekan ini sama sekali. Akibatnya: anggota
+IKPM dari cabang manapun bisa mendaftar jadi mitra di toko cabang lain mana saja — melanggar
+keputusan arsitektur yang sudah dikunci. **Fix**: kedua route sekarang query `tenants.id` dari slug
+lalu cek `tenantMemberships` (tenantId + memberId + status IN active/alumni) — pattern yang sama
+dengan guard `requires_membership` di modul Event. `status/route.ts` expose `eligibility.isTenantMember`
+untuk UI; `apply/route.ts` menolak dengan 403 di server (baris pertahanan sesungguhnya).
+`page.tsx` sekarang tampilkan pesan "Khusus Anggota Cabang Ini" dan sembunyikan form pendaftaran
+kalau `!isTenantMember`.
+
+**3. UI gap — endpoint ada, tombolnya tidak.**
+`DELETE /api/mitra/apply` (batalkan pengajuan) dan `DELETE /api/mitra/products/[id]` (hapus produk)
+sudah ada di backend sejak awal, tapi tidak ada satupun tombol di UI yang memanggilnya. Anggota
+yang pengajuannya pending tidak bisa membatalkan; mitra tidak bisa menghapus produknya sendiri dari
+form edit. **Fix**: komponen baru `mitra-cancel-button.tsx` (client, confirm + DELETE + `router.refresh()`)
+dipasang di section "Pengajuan Sedang Diproses"; tombol "Hapus Produk" ditambahkan di
+`mitra-product-form.tsx` (hanya muncul saat `isEdit`).
+
+**4. Drive-by fix — inkonsistensi `baseUrl` custom domain.**
+`page.tsx`, `apply/page.tsx`, `mitra-product-form.tsx` hardcode `/${slug}/...` di href/redirect —
+padahal file saudaranya (`produk/page.tsx`, `pesanan/page.tsx`) sudah benar pakai pola `baseUrl`.
+Diselaraskan: server component pakai `isOwnHost(hdrs.get("host"))`, full-client component
+(`apply/page.tsx`, `mitra-product-form.tsx`, tidak ada server wrapper) pakai pola
+`useState(`/${slug}`)` default + koreksi di `useEffect` via `isOwnHost(window.location.host)` —
+identik dengan pola yang sudah dikunci di lesson `href="../"` sebelumnya.
+
+**Aturan yang ditegaskan ulang**: setiap kali sebuah fitur punya beberapa halaman/route yang serupa
+(sibling files), fix bug di salah satu file **wajib** dicek juga di file-file lain yang punya pola
+identik — bug header-forwarding di sesi ini seharusnya sudah ditemukan sekaligus saat fix pertama
+kali di `akun/mitra/page.tsx`, bukan menunggu laporan user di file tetangga.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

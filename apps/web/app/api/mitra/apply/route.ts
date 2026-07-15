@@ -3,8 +3,8 @@ export const dynamic = "force-dynamic";
 // DELETE /api/mitra/apply — batalkan pengajuan pending
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
-import { db, members, memberBusinesses, createTenantDb } from "@jalajogja/db";
+import { eq, and, sql } from "drizzle-orm";
+import { db, members, memberBusinesses, tenantMemberships, tenants, createTenantDb } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
 import { getTokoSettings } from "@/lib/toko-settings";
 
@@ -31,6 +31,28 @@ export async function POST(req: NextRequest) {
 
   const settings = await getTokoSettings(slug);
   if (!settings.mitraEnabled) return NextResponse.json({ error: "Sistem mitra belum diaktifkan di toko ini" }, { status: 403 });
+
+  // Mitra terikat cabang — wajib anggota terdaftar (active/alumni) di tenant ini
+  const [tenantRow] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.slug, slug))
+    .limit(1);
+  if (!tenantRow) return NextResponse.json({ error: "Cabang tidak ditemukan" }, { status: 404 });
+
+  const membership = await db.query.tenantMemberships.findFirst({
+    where: and(
+      eq(tenantMemberships.tenantId, tenantRow.id),
+      eq(tenantMemberships.memberId, member.id),
+      sql`${tenantMemberships.status} IN ('active', 'alumni')`,
+    ),
+  });
+  if (!membership) {
+    return NextResponse.json(
+      { error: "Anda hanya bisa mendaftar mitra di cabang tempat Anda terdaftar sebagai anggota." },
+      { status: 403 },
+    );
+  }
 
   // Validasi business milik member dan aktif
   const [business] = await db

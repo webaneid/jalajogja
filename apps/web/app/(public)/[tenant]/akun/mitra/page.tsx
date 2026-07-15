@@ -1,16 +1,19 @@
 import { redirect } from "next/navigation";
 import { headers  } from "next/headers";
 import { auth }     from "@/lib/auth";
+import { isOwnHost } from "@/lib/is-own-host";
 import { Handshake, CheckCircle2, Clock, PauseCircle, Package, ShoppingBag } from "lucide-react";
+import { MitraCancelApplyButton } from "./mitra-cancel-button";
 
 type Params = Promise<{ tenant: string }>;
 
 export default async function AkunMitraPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
 
-  const hdrs   = await headers();
+  const hdrs    = await headers();
+  const baseUrl = isOwnHost(hdrs.get("host") ?? "") ? `/${slug}` : "";
   const session = await auth.api.getSession({ headers: hdrs });
-  if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun/mitra`);
+  if (!session?.user) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun/mitra`);
 
   // Fetch status dari API — hanya kirim cookie, bukan semua headers (hop-by-hop headers seperti
   // "connection" tidak boleh di-forward ke internal fetch dan menyebabkan UND_ERR_INVALID_ARG)
@@ -33,7 +36,10 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
     businesses: { id: string; name: string; brand: string | null }[];
     hasBusinesses: boolean;
     settings: { mitraEnabled: boolean; mitraMaxProducts: number; minKomisiMitra: number };
-    eligibility: { isMitraEnabled: boolean; hasBusinesses: boolean; alreadyMitra: boolean; hasPending: boolean };
+    eligibility: {
+      isMitraEnabled: boolean; isTenantMember: boolean;
+      hasBusinesses: boolean; alreadyMitra: boolean; hasPending: boolean;
+    };
   };
 
   const { mitra, pendingApplication, eligibility, settings } = data;
@@ -51,6 +57,16 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
           <p className="font-medium">Sistem Mitra Belum Aktif</p>
           <p className="text-sm text-muted-foreground">
             Toko IKPM cabang ini belum membuka pendaftaran mitra. Cek kembali nanti.
+          </p>
+        </div>
+      )}
+
+      {/* Bukan anggota cabang ini — mitra terikat cabang tempat terdaftar */}
+      {eligibility.isMitraEnabled && !eligibility.isTenantMember && !mitra && (
+        <div className="rounded-xl border border-border bg-muted/30 p-6 text-center space-y-2">
+          <p className="font-medium">Khusus Anggota Cabang Ini</p>
+          <p className="text-sm text-muted-foreground">
+            Pendaftaran mitra hanya terbuka untuk anggota IKPM yang terdaftar di cabang ini.
           </p>
         </div>
       )}
@@ -80,7 +96,7 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
           {mitra.status === "active" && (
             <div className="grid grid-cols-2 gap-3">
               <a
-                href={`/${slug}/akun/mitra/produk`}
+                href={`${baseUrl}/akun/mitra/produk`}
                 className="rounded-xl border border-border bg-card p-4 hover:border-primary/50 transition-colors space-y-1"
               >
                 <Package className="h-5 w-5 text-muted-foreground" />
@@ -88,7 +104,7 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
                 <p className="text-xs text-muted-foreground">{mitra.productCount} produk</p>
               </a>
               <a
-                href={`/${slug}/akun/mitra/pesanan`}
+                href={`${baseUrl}/akun/mitra/pesanan`}
                 className="rounded-xl border border-border bg-card p-4 hover:border-primary/50 transition-colors space-y-1"
               >
                 <ShoppingBag className="h-5 w-5 text-muted-foreground" />
@@ -96,7 +112,7 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
                 <p className="text-xs text-muted-foreground">Input resi pengiriman</p>
               </a>
               <a
-                href={`/${slug}/akun/mitra/produk/new`}
+                href={`${baseUrl}/akun/mitra/produk/new`}
                 className="col-span-2 rounded-xl border border-dashed border-border p-4 hover:border-primary transition-colors flex items-center justify-center gap-2 text-muted-foreground hover:text-primary"
               >
                 <span className="text-xl">+</span>
@@ -109,7 +125,7 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
 
       {/* Sedang menunggu */}
       {eligibility.isMitraEnabled && !mitra && pendingApplication && (
-        <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-5 space-y-2">
+        <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-5 space-y-3">
           <div className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-yellow-600" />
             <p className="font-semibold text-yellow-700">Pengajuan Sedang Diproses</p>
@@ -121,11 +137,12 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
             Diajukan: {new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" })
               .format(new Date(pendingApplication.appliedAt))}
           </p>
+          <MitraCancelApplyButton slug={slug} />
         </div>
       )}
 
       {/* Belum mendaftar — tampilkan form jika eligible */}
-      {eligibility.isMitraEnabled && !mitra && !pendingApplication && (
+      {eligibility.isMitraEnabled && eligibility.isTenantMember && !mitra && !pendingApplication && (
         <div className="space-y-4">
           {!eligibility.hasBusinesses ? (
             <div className="rounded-xl border border-border bg-muted/30 p-5 space-y-3">
@@ -134,7 +151,7 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
                 Untuk mendaftar sebagai mitra, Anda perlu mengisi data usaha terlebih dahulu.
               </p>
               <a
-                href={`/${slug}/akun/usaha`}
+                href={`${baseUrl}/akun/usaha`}
                 className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 Isi Data Usaha
@@ -154,7 +171,7 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
                 </ul>
               </div>
               <a
-                href={`/${slug}/akun/mitra/apply`}
+                href={`${baseUrl}/akun/mitra/apply`}
                 className="w-full flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
               >
                 <Handshake className="h-4 w-4" />

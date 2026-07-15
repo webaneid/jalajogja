@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { Handshake } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label  } from "@/components/ui/label";
+import { isOwnHost } from "@/lib/is-own-host";
 
 type Business = { id: string; name: string; brand: string | null };
 type City     = {
@@ -21,6 +22,11 @@ export default function MitraApplyPage() {
   const router = useRouter();
   const params = useParams<{ tenant: string }>();
   const slug   = params.tenant;
+
+  const [baseUrl, setBaseUrl] = useState(`/${slug}`);
+  useEffect(() => {
+    if (!isOwnHost(window.location.host)) setBaseUrl("");
+  }, []);
 
   const [businesses,    setBusinesses]    = useState<Business[]>([]);
   const [businessId,    setBusinessId]    = useState("");
@@ -77,7 +83,7 @@ export default function MitraApplyPage() {
     const data = await res.json() as { error?: string };
     setSubmitting(false);
     if (data.error) { setError(data.error); return; }
-    router.push(`/${slug}/akun/mitra`);
+    router.push(`${baseUrl}/akun/mitra`);
   }
 
   if (loading) return <div className="p-8 text-center text-sm text-muted-foreground">Memuat...</div>;

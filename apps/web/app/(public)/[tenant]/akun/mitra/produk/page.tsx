@@ -27,7 +27,7 @@ export default async function MitraProdukPage({ params }: { params: Params }) {
 
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_APP_URL}/api/mitra/products?slug=${slug}`,
-    { headers: hdrs, cache: "no-store" },
+    { headers: { cookie: hdrs.get("cookie") ?? "" }, cache: "no-store" },
   );
 
   if (!res.ok) {

@@ -8,13 +8,14 @@ type Params = Promise<{ tenant: string }>;
 export default async function MitraProdukNewPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
 
-  const session = await auth.api.getSession({ headers: await headers() });
+  const hdrs = await headers();
+  const session = await auth.api.getSession({ headers: hdrs });
   if (!session?.user) redirect(`/${slug}/login`);
 
   // Fetch settings untuk kalkulasi harga
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_APP_URL}/api/mitra/status?slug=${slug}`,
-    { headers: await headers(), cache: "no-store" },
+    { headers: { cookie: hdrs.get("cookie") ?? "" }, cache: "no-store" },
   );
   const data = await res.json() as { settings: { minKomisiMitra: number; mitraMaxProducts: number } };
 

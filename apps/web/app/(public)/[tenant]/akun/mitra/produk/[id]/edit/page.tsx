@@ -9,14 +9,16 @@ type Params = Promise<{ tenant: string; id: string }>;
 export default async function MitraProdukEditPage({ params }: { params: Params }) {
   const { tenant: slug, id: productId } = await params;
 
-  const session = await auth.api.getSession({ headers: await headers() });
+  const hdrs = await headers();
+  const session = await auth.api.getSession({ headers: hdrs });
   if (!session?.user) redirect(`/${slug}/login`);
 
+  const cookieHeader = { cookie: hdrs.get("cookie") ?? "" };
   const [statusRes, prodRes] = await Promise.all([
     fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/mitra/status?slug=${slug}`,
-      { headers: await headers(), cache: "no-store" }),
+      { headers: cookieHeader, cache: "no-store" }),
     fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/mitra/products?slug=${slug}`,
-      { headers: await headers(), cache: "no-store" }),
+      { headers: cookieHeader, cache: "no-store" }),
   ]);
 
   if (!statusRes.ok || !prodRes.ok) redirect(`/${slug}/akun/mitra/produk`);
