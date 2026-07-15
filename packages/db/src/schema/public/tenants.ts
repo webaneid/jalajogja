@@ -26,7 +26,9 @@ export const subscriptionStatusEnum = pgEnum("subscription_status", [
 // ── Status verifikasi custom domain ──────────────────────────────────────────
 // none     → tenant belum set custom domain
 // pending  → tenant sudah isi domain, instruksi DNS sudah ditampilkan, belum diverifikasi
-// active   → DNS sudah propagate + SSL sudah provisioned via Caddy
+// active   → DNS sudah propagate ke VPS (dicek cron verify-domains). TIDAK berarti SSL sudah
+//            live — itu tetap langkah manual Nginx+Certbot terpisah di VPS, lihat
+//            docs/arsitektur-domain.md § 6
 // failed   → verifikasi gagal (DNS salah / timeout)
 export const CUSTOM_DOMAIN_STATUSES = ["none", "pending", "active", "failed"] as const;
 export type CustomDomainStatus = typeof CUSTOM_DOMAIN_STATUSES[number];
@@ -40,11 +42,14 @@ export const tenants = pgTable("tenants", {
   logoUrl: text("logo_url"),
   isActive: boolean("is_active").notNull().default(true),
 
-  // ── Domain & Routing (3 Fase) ───────────────────────────────────────────────
-  // Fase 1: app.jalajogja.com/{slug}           → pakai slug di atas, selalu ada
-  // Fase 2: {subdomain}.jalajogja.com          → wildcard DNS *.jalajogja.com
-  // Fase 3: ikpm.or.id                         → A record → VPS IP, SSL via Caddy
-  subdomain: text("subdomain").unique(),              // Fase 2 — null = fallback ke slug
+  // ── Domain & Routing (3 Fase — detail lengkap: docs/arsitektur-domain.md) ───
+  // Fase 1: jalakarta.com/{slug}/* (publik) + jalakarta.com/app/{slug}/* (admin)
+  //         → pakai slug di atas, selalu aktif
+  // Fase 2: {subdomain}.jalakarta.com          → BELUM DIIMPLEMENTASIKAN. Kolom subdomain
+  //         di bawah ada + ada input UI-nya, tapi tidak dibaca di manapun oleh kode routing.
+  // Fase 3: ikpm.or.id                         → A record → VPS IP, SSL via Certbot manual
+  //         (bukan Caddy — lihat catatan status di bawah)
+  subdomain: text("subdomain").unique(),              // Fase 2 — MATI TOTAL, lihat komentar di atas
   customDomain: text("custom_domain").unique(),       // Fase 3 — null = belum set
   customDomainStatus: text("custom_domain_status", { enum: CUSTOM_DOMAIN_STATUSES })
     .notNull()

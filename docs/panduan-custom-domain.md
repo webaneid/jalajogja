@@ -160,16 +160,29 @@ sudo systemctl reload nginx
 
 ---
 
-## Langkah 6 — Admin Jalakarta: Update Status Domain ke Active
+## Langkah 6 — Status Domain ke Active (Otomatis)
 
-Di database, update status domain tenant ke `active`. Bisa via psql langsung:
+**Tidak perlu langkah manual** — status di DB naik dari `pending` ke `active` otomatis begitu DNS
+sudah mengarah ke VPS. Dipicu dua cara: (1) langsung saat tenant menyimpan domain di
+`/app/{slug}/settings/domain` (fire-and-forget, cek instan), dan (2) cron terjadwal
+(`app/api/cron/verify-domains/route.ts`) sebagai fallback kalau pengecekan instan gagal/timeout.
+**Tidak ada tombol "Verifikasi DNS" di UI** — tidak dibutuhkan karena sudah otomatis.
+
+Kalau setelah DNS propagasi (Langkah 1) status masih `pending` lebih dari beberapa menit, cek via
+psql untuk debug (bukan langkah wajib):
 
 ```bash
 docker compose exec postgres psql -U jalakarta -d jalakarta -c \
-  "UPDATE public.tenants SET custom_domain_status = 'active' WHERE custom_domain = 'ikpmjogja.com';"
+  "SELECT custom_domain, custom_domain_status, domain_last_check_error FROM public.tenants WHERE custom_domain = 'ikpmjogja.com';"
 ```
 
-Atau via halaman `/app/{slug}/settings/domain` jika sudah ada tombol "Verifikasi DNS".
+`domain_last_check_error` akan berisi pesan error DNS terakhir (mis. "A record: X (expected
+72.61.215.7)") kalau memang belum resolve dengan benar. Force-update manual via `UPDATE ... SET
+custom_domain_status = 'active'` hanya untuk situasi darurat/debug — bukan alur normal.
+
+**Penting**: status `active` di DB hanya berarti DNS sudah benar — **tidak berarti HTTPS sudah
+live**. Langkah 3–5 di atas (Certbot + Nginx) tetap wajib dilakukan manual terpisah, independen
+dari status DB ini.
 
 ---
 

@@ -4204,6 +4204,34 @@ antar section rawan menghasilkan referensi ke section yang berubah nomor/hilang 
 penulisan itu sendiri, terutama saat konten dipadatkan dari versi lama. Baca ulang dengan mode
 "cari yang salah", bukan "baca ulang untuk konfirmasi", sebelum menyatakan dokumen final.
 
+### [2026-07-16] Eksekusi Roadmap Domain Fase 1 — Koreksi Dokumen/Komentar Basi
+
+Mulai eksekusi bertahap roadmap `docs/arsitektur-domain.md` § 9 (SOP: baca CLAUDE.md dulu → per
+fase → cek `tsc`/build sebelum lanjut fase berikutnya → dokumentasikan sebelum fase berikutnya →
+sinkron dokumentasi+kode sebelum commit/push). **Fase 1 = item #2+#3 roadmap**, keduanya
+dokumentasi/komentar saja, zero risk terhadap perilaku aplikasi:
+
+- `packages/db/src/schema/public/tenants.ts` — komentar salah "SSL sudah provisioned via Caddy"
+  (baris 29, sekarang dikoreksi: DNS-check saja, SSL tetap manual Certbot+Nginx). Sekalian ditemukan
+  komentar terkait yang salah nama domain — `app.jalajogja.com`/`{subdomain}.jalajogja.com`
+  (mencampur nama repo `jalajogja` dengan brand domain publik `jalakarta.com`, pelanggaran langsung
+  aturan penamaan yang sudah dikunci di CLAUDE.md — "Identitas Project"). Kedua komentar dikoreksi bersamaan
+  karena satu kelas masalah (dokumentasi inline yang tidak pernah diupdate seiring project berjalan).
+- `docs/panduan-custom-domain.md` — Langkah 6 ditulis ulang: sebelumnya menyuruh admin update status
+  domain manual via psql atau "tombol Verifikasi DNS" yang tidak pernah ada di UI. Alur sebenarnya
+  sudah otomatis (trigger saat simpan domain + cron fallback) sejak lama — panduan cuma telat
+  diupdate. psql sekarang diposisikan sebagai jalur debug/darurat, bukan langkah wajib.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build --filter=@jalajogja/web` — 0 error, sesuai SOP
+"cek error type sebelum boleh lanjut fase berikutnya". `docs/arsitektur-domain.md` § 9 (tabel
+roadmap) dan § 8.4/8.6 diupdate status jadi ✅ Selesai bersamaan dengan commit ini — sinkron
+dokumentasi-kode, bukan menyusul di sesi lain.
+
+**Fase berikutnya (belum dieksekusi)**: item #4 (nasib `tenants.subdomain`) butuh keputusan user
+dulu — implementasi Fase 2 subdomain routing sungguhan, atau sembunyikan field dari UI settings
+sampai siap dikerjakan. Tidak dieksekusi sepihak karena mengubah perilaku produk, bukan sekadar
+koreksi dokumentasi.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

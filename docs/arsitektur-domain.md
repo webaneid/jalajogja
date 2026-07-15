@@ -384,15 +384,18 @@ Tidak ada satu helper/hook bersama untuk `isOwnHost(host) ? "/${slug}" : ""` —
 pola `useState`+`useEffect` yang sudah dikunci di beberapa lesson CLAUDE.md), dipakai ulang di semua
 titik. **Tidak dieksekusi di sesi ini** — murni dicatat sebagai risiko struktural.
 
-### 8.4 Komentar "SSL via Caddy" di schema — salah, harus dikoreksi
+### 8.4 ✅ Fixed (Fase 1, 2026-07-16): Komentar "SSL via Caddy" + nama domain salah di schema
 
-`packages/db/src/schema/public/tenants.ts` baris 29 dan 46 punya komentar yang menyebut "SSL sudah
-provisioned via Caddy" untuk status `active`. **Tidak ada Caddy di manapun** dalam infrastruktur
-nyata (nginx.conf, deployment-guide.md, panduan-custom-domain.md, cron verify-domains — semua murni
-Nginx + Certbot manual, lihat § 6). Caddy cuma disebut sebagai **usulan masa depan** (§ 6.1)
-kalau jumlah tenant custom domain sudah besar — bukan yang dipakai sekarang. Komentar ini
-kemungkinan sisa draft desain awal yang tidak pernah diupdate. **Perlu dikoreksi** (perubahan
-komentar saja, zero risk — kandidat quick-fix di § 9).
+`packages/db/src/schema/public/tenants.ts` baris 29 dan 46 (sebelum fix) punya komentar yang
+menyebut "SSL sudah provisioned via Caddy" untuk status `active`. **Tidak ada Caddy di manapun**
+dalam infrastruktur nyata (nginx.conf, deployment-guide.md, panduan-custom-domain.md, cron
+verify-domains — semua murni Nginx + Certbot manual, lihat § 6). Caddy cuma disebut sebagai
+**usulan masa depan** (§ 6.1) kalau jumlah tenant custom domain sudah besar — bukan yang dipakai
+sekarang. Sekalian ditemukan (dan difix) komentar terkait yang salah menyebut domain sebagai
+`app.jalajogja.com` / `{subdomain}.jalajogja.com` — mencampur nama repo (`jalajogja`) dengan brand
+domain publik (`jalakarta.com`), pelanggaran langsung terhadap aturan penamaan yang sudah dikunci
+di CLAUDE.md ("Repo/folder = jalajogja; brand/domain publik = jalakarta"). Komentar-komentar ini
+kemungkinan sisa draft desain awal yang tidak pernah diupdate seiring project berjalan.
 
 ### 8.5 Rencana "Fase 5" lama (`docs/rencana-migrasi-url.md`) — kontradiksi internal, jangan diadopsi mentah
 
@@ -404,32 +407,32 @@ Cloudflare). Kalau Opsi A (§ 7.1) dipilih, pendekatan SSL-nya harus mengikuti p
 khusus untuk satu fitur ini — itu akan membuat dua pendekatan SSL berbeda dalam satu sistem, sumber
 kebingungan operasional baru.
 
-### 8.6 `docs/panduan-custom-domain.md` — sebut tombol "Verifikasi DNS" yang tidak pernah ada
+### 8.6 ✅ Fixed (Fase 1, 2026-07-16): `docs/panduan-custom-domain.md` sebut tombol yang tidak ada
 
 Dokumen panduan itu (dan sisa CLAUDE.md draft lama) menyebut tombol manual "Verifikasi DNS" di UI
 settings domain. **Tidak pernah diimplementasikan** — yang ada adalah trigger otomatis
 (`triggerDomainVerification()`, fire-and-forget) tiap kali admin menyimpan domain baru/berubah, plus
-cron terjadwal sebagai fallback. UI tidak butuh tombol manual karena sudah otomatis. Panduan perlu
-dikoreksi agar tidak menjanjikan tombol yang tidak ada (operator VPS yang mengikuti panduan bisa
-bingung mencari tombol yang tidak ada).
+cron terjadwal sebagai fallback. UI tidak butuh tombol manual karena sudah otomatis. Langkah 6
+panduan ditulis ulang untuk menjelaskan alur otomatis ini, dengan psql sebagai jalur debug/darurat
+saja — bukan langkah wajib.
 
 ---
 
-## 9. Roadmap — Belum Disetujui, Menunggu Arahan User
+## 9. Roadmap — Eksekusi Bertahap (SOP: baca CLAUDE.md → per-fase → tsc → dokumentasi → commit)
 
-Diurutkan dari risiko paling rendah ke paling tinggi. **Tidak ada satupun yang dieksekusi di sesi
-ini** — daftar ini adalah bahan diskusi.
+Diurutkan dari risiko paling rendah ke paling tinggi. Dieksekusi bertahap per fase mulai
+2026-07-16 — status per item diupdate langsung di tabel ini setiap fase selesai.
 
-| # | Item | Risiko | Effort | Blocking? |
+| # | Item | Risiko | Effort | Status |
 |---|------|--------|--------|-----------|
-| 1 | ✅ **Selesai (2026-07-16)** — fix footer branding leak (§ 5.1) | Sangat rendah — 1 baris kondisional × 2 file | Menit | — |
-| 2 | Koreksi komentar "Caddy" di schema (§ 8.4) | Nol — cuma komentar | Menit | Tidak |
-| 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada | Nol — dokumentasi saja | Menit | Tidak |
-| 4 | Putuskan nasib `tenants.subdomain` (§ 2) — implementasi Fase 2 sungguhan, ATAU sembunyikan field dari UI settings sampai siap dikerjakan | Rendah kalau opsi "sembunyikan", tinggi kalau opsi "implementasikan Fase 2" | Menit (sembunyikan) vs hari (implementasi penuh) | Tidak, tapi field aktif menyesatkan admin sekarang |
-| 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas ~15 file, butuh regresi testing tiap halaman publik | Beberapa jam | Tidak, tapi mengurangi risiko bug berulang ke depan |
-| 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru, Opsi B (path) + auth cross-domain sudah diputuskan (§ 7.3, semua ✅) | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | Tidak lagi terblokir keputusan produk — **tapi wajib cek collision slug `admin` di production dulu (§ 7.1) sebelum baris kode pertama**, dan sinyal "mulai" eksplisit dari user tetap jadi syarat (lihat § 7.3 poin 2) |
+| 1 | Fix footer branding leak (§ 5.1) | Sangat rendah | Menit | ✅ **Selesai (2026-07-16)** |
+| 2 | Koreksi komentar "Caddy" + nama domain salah (`jalajogja.com`→`jalakarta.com`) di schema (§ 8.4) | Nol — cuma komentar | Menit | ✅ **Selesai (Fase 1, 2026-07-16)** |
+| 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada, jelaskan alur otomatis | Nol — dokumentasi saja | Menit | ✅ **Selesai (Fase 1, 2026-07-16)** |
+| 4 | Putuskan nasib `tenants.subdomain` (§ 2) — implementasi Fase 2 sungguhan, ATAU sembunyikan field dari UI settings sampai siap dikerjakan | Rendah kalau opsi "sembunyikan", tinggi kalau opsi "implementasikan Fase 2" | Menit (sembunyikan) vs hari (implementasi penuh) | ⬜ Menunggu keputusan user (implementasi vs sembunyikan) sebelum Fase 2 eksekusi dimulai |
+| 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas ~15 file, butuh regresi testing tiap halaman publik | Beberapa jam | ⬜ Belum dimulai |
+| 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru, Opsi B (path) + auth cross-domain sudah diputuskan (§ 7.3, semua ✅) | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | ⬜ Belum dimulai — wajib cek collision slug `admin` di production dulu (§ 7.1) |
 
-**Rekomendasi urutan eksekusi** (kalau/ketika disetujui): #1–#3 bisa langsung sekaligus (murah,
-independen, nol risiko). #4 butuh keputusan cepat (implementasi vs sembunyikan) tapi bukan pekerjaan
-besar. #5 best dilakukan sebagai satu PR terpisah dengan testing menyeluruh. #6 menunggu jawaban
-§ 7.3 sebelum baris kode pertama ditulis.
+**Urutan eksekusi**: #1–#3 selesai (Fase 1, murah/independen/nol risiko). #4 butuh keputusan cepat
+user (implementasi vs sembunyikan) sebelum lanjut. #5 satu fase tersendiri dengan testing
+menyeluruh. #6 menunggu hasil cek collision slug `admin` di production sebelum baris kode pertama
+ditulis — keputusan produk (§ 7.3) sudah tuntas.
