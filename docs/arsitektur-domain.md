@@ -375,15 +375,28 @@ ternyata otomatis terselesaikan sekaligus di sub-fase 1 — lihat poin 3 di bawa
      error dan melempar user keluar ke `jalakarta.com` begitu diklik. Detail lengkap: § 8.1.
      **Fix — Opsi C**: guard blanket `/app/*` di custom domain diberi pengecualian — `/app/{slug}/*`
      BOLEH render langsung (tidak diredirect) kalau `{slug}` di path itu cocok dengan slug yang
-     di-resolve dari Host header request ini sendiri (variabel dihitung SEKALI per request,
-     `resolveCustomDomainSlug(host)`, dibandingkan ke `pathname.split("/")[2]`). Begitu cocok,
-     eksekusi TIDAK `return` — jatuh alami ke guard cookie `/app/*` standar yang sudah ada di bagian
-     bawah middleware (baris ~150), diperlakukan identik dengan request `/app/*` di `jalakarta.com`.
-     **Konsekuensi yang disetujui user**: address bar berubah dari `/admin/...` ke `/app/{slug}/...`
-     begitu user klik menu pertama kali (karena href-nya memang literal begitu, dan middleware tidak
-     bisa memaksa browser menampilkan URL berbeda dari yang di-klik pada client-side navigation) —
-     TAPI branding (§ 5.3, berbasis Host header, bukan path) dan "tetap di domain sendiri" tetap
-     terjaga penuh meski path-nya bukan `/admin/...` lagi.
+     di-resolve dari Host header request ini sendiri (`resolveCustomDomainSlug(host)`, dibandingkan
+     ke `pathname.split("/")[2]`).
+   - 🐛 **Bug susulan dari fix Opsi C di atas, ditemukan langsung setelah deploy, difix sama hari**:
+     link sidebar tidak lagi kena CORS, tapi 404 semua (`/app/visikita/pengurus` dst). **Root
+     cause**: implementasi awal Opsi C "tidak `return`, biarkan jatuh ke guard cookie di bawah" itu
+     SALAH — kode di antara blok `/app/*` dan bagian bawah fungsi (guard cookie standar) BUKAN
+     kosong, ada blok resolve-domain PUBLIK (untuk konten publik biasa) yang masih di dalam
+     `if (!isOwnHost(host))` yang sama. Tanpa `return` eksplisit, eksekusi jatuh ke blok itu dan
+     salah rewrite `/app/visikita/pengurus` jadi `/visikita/app/visikita/pengurus` (4 segmen,
+     hasil gabungan slug ganda) — tidak match route manapun → 404. **Fix**: `return
+     NextResponse.next()` eksplisit ditambahkan, PLUS guard cookie sesi (`better-auth.session_token`)
+     dicek proaktif di cabang ini sendiri (bukan mengandalkan fall-through ke guard di bawah yang
+     toh tidak pernah tercapai) — kalau belum login, redirect ke `/login` di domain custom itu
+     sendiri (pola sama seperti cabang `/admin`), bukan biarkan layout dashboard yang redirect
+     relatif (yang akan menghasilkan hop tambahan sia-sia: `visikita.com/app/login` dulu, baru
+     terlempar lagi ke `jalakarta.com/app/login`).
+   - **Konsekuensi yang disetujui user** (tetap berlaku setelah kedua fix di atas): address bar
+     berubah dari `/admin/...` ke `/app/{slug}/...` begitu user klik menu pertama kali (karena
+     href-nya memang literal begitu, dan middleware tidak bisa memaksa browser menampilkan URL
+     berbeda dari yang di-klik pada client-side navigation) — TAPI branding (§ 5.3, berbasis Host
+     header, bukan path) dan "tetap di domain sendiri" tetap terjaga penuh meski path-nya bukan
+     `/admin/...` lagi.
 2. ✅ **Branding dashboard (dieksekusi 2026-07-16)** — sesuai Prinsip #2 di § 1, dashboard yang
    diakses lewat `ikpmjogja.com/admin/*` sekarang tenant-branded (logo + `primary_color` CSS
    variable + footer "jalakarta v0.1" tersembunyi), kondisional berdasar deteksi `Host` header di

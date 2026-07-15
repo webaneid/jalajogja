@@ -101,8 +101,29 @@ export async function middleware(request: NextRequest) {
         const dest   = new URL(pathname + request.nextUrl.search, appUrl);
         return NextResponse.redirect(dest.toString(), 302);
       }
-      // Lanjut (tidak return) — jatuh ke guard cookie /app/* standar di bawah, sama seperti
-      // request /app/* di jalakarta.com sendiri.
+
+      // allowOwnApp true — WAJIB return eksplisit di sini. Tanpa return, eksekusi jatuh ke blok
+      // resolve-domain PUBLIK di bawah (masih di dalam if (!isOwnHost)), yang salah rewrite jadi
+      // /{slug}/app/{slug}/... (4 segmen, tidak match route manapun → 404 — bug nyata yang
+      // ditemukan saat uji manual, lihat § 8.1 dokumen).
+      //
+      // Cermin guard cookie /app/* standar (di bawah, di luar blok custom domain) di sini juga —
+      // kalau cuma next() polos lalu biarkan layout (dashboard)/app/[tenant]/layout.tsx yang
+      // redirect(), hasilnya `/app/login` RELATIF yang di-resolve browser ke visikita.com/app/login
+      // dulu (1 hop sia-sia + redundant dengan pathSlug="login" yang pasti gagal cocok), baru
+      // dari situ terlempar lagi ke jalakarta.com. Dicek proaktif di sini → 1 hop langsung ke
+      // /login DI DOMAIN INI SENDIRI (sama seperti cabang /admin di atas), konsisten & lebih cepat.
+      const sessionCookie =
+        request.cookies.get("better-auth.session_token") ??
+        request.cookies.get("__Secure-better-auth.session_token");
+      if (!sessionCookie) {
+        const loginUrl = request.nextUrl.clone();
+        loginUrl.pathname = "/login";
+        loginUrl.search   = "";
+        loginUrl.searchParams.set("redirect", pathname);
+        return NextResponse.redirect(loginUrl, 302);
+      }
+      return NextResponse.next();
     }
 
     // API paths → pass through tanpa rewrite custom domain

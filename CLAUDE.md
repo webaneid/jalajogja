@@ -4449,6 +4449,32 @@ penjelasan jujur — jangan diam-diam eksekusi pilihan lama yang ternyata boros,
 diam-diam ganti ke opsi baru tanpa izin. Sampaikan trade-off, biarkan user memutuskan ulang dengan
 informasi lengkap.
 
+### [2026-07-16] Bug Susulan Opsi C: "Tidak `return`" Salah Asumsi Soal Kode Setelahnya
+
+Deploy pertama Opsi C menghilangkan CORS error (benar), tapi menggantinya dengan 404 di semua link
+dashboard (`/app/visikita/pengurus` dst). Ditemukan dan difix di hari yang sama.
+
+**Root cause**: implementasi awal menulis "kalau `allowOwnApp` true, JANGAN `return` — biarkan jatuh
+ke guard cookie `/app/*` standar yang sudah ada di bagian bawah fungsi middleware". Asumsi ini SALAH
+— antara blok itu dan guard cookie di bagian bawah, MASIH ADA kode lain yang juga berada di dalam
+`if (!isOwnHost(host)) { ... }` yang sama: blok resolve-domain untuk KONTEN PUBLIK biasa. Tanpa
+`return` eksplisit, eksekusi jatuh ke blok itu, bukan ke guard cookie yang dimaksud — dan blok
+publik itu salah rewrite `/app/visikita/pengurus` jadi `/visikita/app/visikita/pengurus` (concat
+slug + pathname asli, 4 segmen, tidak match route manapun) → 404.
+
+**Fix**: `return NextResponse.next()` eksplisit ditambahkan tepat setelah verifikasi
+`allowOwnApp`+cookie sesi selesai — TIDAK mengandalkan fall-through sama sekali. Guard cookie sesi
+juga dipindah jadi dicek LANGSUNG di cabang ini (duplikasi kecil dari guard standar di bawah),
+bukan berharap eksekusi "nyasar" ke sana.
+
+**Aturan yang ditegaskan (generalisasi dari bug ini)**: dalam fungsi middleware/handler panjang
+dengan banyak `if` block bersarang, **JANGAN PERNAH mengandalkan "tidak return = otomatis lanjut ke
+kode yang saya maksud"** — trace ulang SECARA EKSPLISIT kode apa saja yang ada di antara titik saat
+ini dan titik yang dituju, terutama kalau keduanya berada di dalam blok kondisional yang sama
+(seperti `if (!isOwnHost(host)) { ... }` di sini). Kalau tujuannya adalah "lewati semua kode lain di
+blok ini, lanjut ke kode SETELAH blok ini", satu-satunya cara yang benar adalah `return` eksplisit
+dengan response yang sesuai (`NextResponse.next()`) — bukan mengandalkan fall-through implisit.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
