@@ -4146,6 +4146,27 @@ dependency legacy di sana (`lucide-react`, `jsqr`, dll) yang seharusnya juga di 
 disentuh di sesi ini (di luar scope, sudah terlanjur bekerja via hoisting, risiko regresi kalau
 dipindah tanpa alasan mendesak), tapi jangan tambah entry baru ke pola lama ini.
 
+### [2026-07-16] Fix Footer Branding Leak ke Custom Domain (Item #1 Roadmap `arsitektur-domain.md`)
+
+**Fix**: `dark-footer.tsx` + `light-footer.tsx` — baris atribusi "Jalakarta — developed with ❤️ by
+Webane" dibungkus `{baseUrl !== "" && (...)}`. `baseUrl` sudah tersedia sebagai prop di kedua
+komponen (dipakai untuk href logo) — cuma belum dipakai untuk gate baris ini. Baris "© {tahun}
+{siteName}. All rights reserved." TIDAK diubah — tetap tampil di semua mode (itu copyright tenant
+sendiri, bukan atribusi platform).
+
+**Konteks**: temuan dari sesi evaluasi arsitektur domain menyeluruh (lihat entri sebelumnya +
+`docs/arsitektur-domain.md`) — satu-satunya kebocoran identitas Jalakarta yang ditemukan aktif di
+custom domain tenant, melanggar prinsip "satu domain = satu identitas" yang baru dikunci. Semua
+permukaan lain (header, SEO canonical/OG, halaman login) sudah benar sejak awal.
+
+**Keputusan produk terkait dicatat sekaligus** (§ 7.3 `arsitektur-domain.md`, untuk fitur
+Admin-on-Custom-Domain yang BELUM dieksekusi): Opsi B (path-based, `{custom-domain}/admin`) dipilih
+atas subdomain-based — nol SSL/DNS tambahan per tenant. Auth cross-domain: sesi terpisah per domain
+(login manual) sebagai pendekatan awal — preferensi user "SSO kalau bisa, kalau tidak ya sudah,
+login manual saja" secara teknis paling murah dipenuhi dengan sesi terpisah (cookie native memang
+tidak bisa dibaca lintas domain berbeda). **Kedua keputusan ini planning saja — implementasi
+Admin-on-Custom-Domain sendiri belum dijadwalkan.**
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

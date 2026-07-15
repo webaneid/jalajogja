@@ -190,7 +190,10 @@ export function DarkFooter({
       <div className="bg-black/30 border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-500">
           <span>© {year} {siteName}. All rights reserved.</span>
-          <span>Jalakarta &mdash; developed with ❤️ by <span className="text-gray-400 font-semibold">Webane</span></span>
+          {/* Atribusi Jalakarta hanya tampil di domain sendiri — custom domain harus murni tenant-branded */}
+          {baseUrl !== "" && (
+            <span>Jalakarta &mdash; developed with ❤️ by <span className="text-gray-400 font-semibold">Webane</span></span>
+          )}
         </div>
       </div>
     </footer>

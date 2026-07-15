@@ -176,7 +176,7 @@ is_active                   BOOLEAN NOT NULL DEFAULT true  — ikut jadi syarat 
 
 ## 5. Branding per Domain — Audit Kebocoran
 
-### 5.1 🔴 Temuan aktif: footer bocor identitas Jalakarta ke custom domain
+### 5.1 ✅ Fixed (2026-07-16): footer bocor identitas Jalakarta ke custom domain
 
 `components/website/public/layout/footers/dark-footer.tsx` dan `light-footer.tsx`, baris copyright,
 **tanpa syarat apapun** (tidak dicek `isCustomDomain`/`baseUrl` sama sekali padahal `baseUrl` sudah
@@ -186,17 +186,17 @@ tersedia sebagai prop di komponen yang sama):
 <span>Jalakarta &mdash; developed with ❤️ by <span className="...">Webane</span></span>
 ```
 
-Tampil identik di `jalakarta.com/{slug}/*` **dan** `{custom-domain}/*`. Ini **melanggar Prinsip #2**
-di § 1 secara langsung — satu-satunya kebocoran identitas Jalakarta yang ditemukan aktif di
-front-end publik hari ini. Semua permukaan lain yang diaudit (header, SEO canonical/OG URL di
-`lib/tenant-seo.ts`, halaman login) **sudah benar** — bercabang berdasarkan
+Sebelumnya tampil identik di `jalakarta.com/{slug}/*` **dan** `{custom-domain}/*`. Ini melanggar
+Prinsip #2 di § 1 secara langsung — satu-satunya kebocoran identitas Jalakarta yang ditemukan aktif
+di front-end publik. Semua permukaan lain yang diaudit (header, SEO canonical/OG URL di
+`lib/tenant-seo.ts`, halaman login) sudah benar sejak awal — bercabang berdasarkan
 `customDomainStatus === "active"` dengan tepat.
 
-**Perbaikan yang direkomendasikan** (disetujui arahnya 2026-07-16, **eksekusi ditahan dulu** —
-user minta bahas semua temuan dulu sebelum ada perubahan kode sama sekali, termasuk fix sekecil
-ini): baris atribusi hanya tampil kalau `!baseUrl` salah, yaitu **tampilkan hanya di domain sendiri**
-(`baseUrl !== ""`), sembunyikan total di custom domain. Fix kecil, aman, satu baris kondisional per
-file footer. Menunggu sinyal eksekusi terpisah dari user.
+**Fix dieksekusi 2026-07-16**: baris atribusi sekarang dibungkus `{baseUrl !== "" && (...)}` di
+`dark-footer.tsx` dan `light-footer.tsx` — tampil hanya di domain sendiri (`baseUrl` berisi
+`/{slug}`), disembunyikan total saat `baseUrl === ""` (custom domain). Baris "© {tahun} {siteName}.
+All rights reserved." tidak diubah — tetap tampil di kedua mode karena itu memang copyright milik
+tenant sendiri, bukan atribusi platform.
 
 ### 5.2 Duplikasi `baseUrl` — bukan kebocoran, tapi sumber bug berulang
 
@@ -305,20 +305,30 @@ Dengan Opsi B terpilih, tetap ada 3 pekerjaan yang wajib berbarengan, bukan cuma
    digunakan ulang), dan footer sidebar "jalakarta v0.1" perlu jadi kondisional
    (disembunyikan atau diganti neutral) saat diakses lewat custom domain. Ini pekerjaan riil, bukan
    sekadar routing — didetilkan di § 5.3.
-3. **Auth cookie/session**: perlu dipastikan cookie sesi admin tenant (`better-auth.session_token`)
-   bisa berlaku lintas `jalakarta.com/app/{slug}` DAN `ikpmjogja.com/admin` — atau didesain sebagai
-   dua sesi terpisah (login ulang per domain). Ini keputusan produk, bukan cuma teknis — perlu
-   diklarifikasi ke user sebelum implementasi (apakah admin yang sudah login di `jalakarta.com/app/`
-   otomatis juga "login" saat buka `ikpmjogja.com/admin`, atau harus login ulang).
+3. **Auth cookie/session** — **dijawab, lihat § 7.3**: sesi terpisah per domain (login manual di
+   `{custom-domain}/admin` meski sudah login di `jalakarta.com/app/{slug}`) adalah pendekatan awal
+   yang dipilih — cookie `better-auth.session_token` di `jalakarta.com` memang tidak bisa dibaca
+   dari domain lain (batas browser), jadi ini juga pilihan paling murah dan konsisten dengan
+   preferensi user ("SSO kalau bisa, kalau tidak bisa login manual tidak masalah").
 
 ### 7.3 Status keputusan (update 2026-07-16)
 
 - ✅ Opsi A vs B (§ 7.1) — **dijawab: Opsi B (path-based)**.
-- ⬜ Prioritas eksekusi — user 2026-07-16 minta **tahan semua eksekusi kode dulu** (termasuk fix
-  footer § 5.1 yang murah/independen), bahas semua temuan lebih dulu sebelum baris kode pertama.
-  Belum ada sinyal "mulai kerjakan" untuk item manapun di § 9.
-- ⬜ Auth cross-domain (§ 7.2 poin 3) — sesi tunggal atau login terpisah per domain? **Belum dijawab
-  user**, masih perlu diklarifikasi sebelum implementasi § 7.2 dimulai.
+- ✅ Item #1 roadmap (fix footer, § 9) — **dieksekusi**, lihat § 5.1. Item lain di § 9 masih
+  menunggu sinyal eksekusi terpisah dari user.
+- ✅ Auth cross-domain (§ 7.2 poin 3) — **dijawab: best-effort SSO, fallback boleh login manual.**
+  Preferensi user: kalau admin sudah login di `jalakarta.com/app/{slug}`, idealnya otomatis
+  ter-anggap login juga saat buka `{custom-domain}/admin` — TAPI kalau secara teknis tidak
+  memungkinkan (skema cookie berbeda domain, browser modern makin ketat soal third-party/
+  cross-site cookie), tidak masalah user login ulang manual di `{custom-domain}/admin`. Ini
+  BUKAN persyaratan keras — jangan korbankan kesederhanaan/keamanan demi mengejar SSO sempurna.
+  Implikasi teknis: opsi realistis yang konsisten dengan preferensi ini adalah sesi terpisah per
+  domain (login manual, paling sederhana & aman — cookie `better-auth.session_token` di
+  `jalakarta.com` secara native TIDAK bisa dibaca dari domain lain, itu batas browser bukan
+  pilihan desain) — bukan named-session-sharing lintas domain yang butuh mekanisme tambahan
+  (mis. token exchange, cross-domain hop). Kalau nanti dieksekusi, mulai dari sesi terpisah dulu
+  (paling murah, sudah sesuai fallback yang diizinkan user) — SSO lintas domain bisa jadi
+  peningkatan lanjutan, bukan syarat awal.
 
 ---
 
@@ -394,7 +404,7 @@ ini** — daftar ini adalah bahan diskusi.
 
 | # | Item | Risiko | Effort | Blocking? |
 |---|------|--------|--------|-----------|
-| 1 | Fix footer branding leak (§ 5.1) — sembunyikan atribusi Jalakarta di custom domain | Sangat rendah — 1 baris kondisional × 2 file | Menit | Tidak — independen |
+| 1 | ✅ **Selesai (2026-07-16)** — fix footer branding leak (§ 5.1) | Sangat rendah — 1 baris kondisional × 2 file | Menit | — |
 | 2 | Koreksi komentar "Caddy" di schema (§ 8.4) | Nol — cuma komentar | Menit | Tidak |
 | 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada | Nol — dokumentasi saja | Menit | Tidak |
 | 4 | Putuskan nasib `tenants.subdomain` (§ 2) — implementasi Fase 2 sungguhan, ATAU sembunyikan field dari UI settings sampai siap dikerjakan | Rendah kalau opsi "sembunyikan", tinggi kalau opsi "implementasikan Fase 2" | Menit (sembunyikan) vs hari (implementasi penuh) | Tidak, tapi field aktif menyesatkan admin sekarang |
