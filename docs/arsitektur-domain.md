@@ -308,13 +308,12 @@ dengan apex+www yang sudah ada).
 - Kekurangan: perlu hati-hati path-collision dengan konten publik tenant. **Konfirmasi konkret**:
   `app/(public)/[tenant]/[pageSlug]/page.tsx` adalah catch-all 1-segmen untuk halaman CMS
   (`/{pageSlug}` → di-rewrite middleware jadi `/{slug}/{pageSlug}`) — persis namespace path yang
-  sama dengan `/admin` kalau prefix ini dipakai. Kalau ada tenant yang PERNAH membuat halaman/post/
-  produk/campaign/event dengan slug persis `admin`, path itu akan tabrakan dengan reservasi baru
-  ini. **Wajib dicek ke database production sebelum implementasi** (query slug `= 'admin'` di
-  `posts`, `pages`, `products`, `campaigns`, `events` semua tenant schema — dicek di data dev lokal
-  2026-07-16, nol collision ditemukan, tapi dev ≠ production). Kalau ternyata ada collision nyata di
-  production, tenant tersebut perlu diberi tahu untuk mengganti slug sebelum fitur ini di-enable
-  untuknya, atau reservasi path perlu dipilih nama yang lebih tidak-lazim (`/_admin`, dst).
+  sama dengan `/admin` kalau prefix ini dipakai.
+
+  ✅ **Dicek ke database production (2026-07-16)**: query dijalankan lintas SEMUA tenant aktif
+  (loop dinamis per schema `tenant_{slug}`, cek kolom `slug = 'admin'` di tabel `posts`, `pages`,
+  `products`, `campaigns`, `events`) — **nol collision ditemukan**. Prasyarat wajib § 7 poin 1
+  terpenuhi, jalan untuk mulai implementasi Opsi B tidak ada lagi yang menghalangi dari sisi ini.
 
 **✅ Keputusan (2026-07-16)**: user memilih **Opsi B — path-based** (`{custom-domain}/admin/*`).
 Alasan: nol SSL tambahan, nol DNS tambahan per tenant, konsisten dengan filosofi "custom domain =
@@ -443,7 +442,7 @@ Diurutkan dari risiko paling rendah ke paling tinggi. Dieksekusi bertahap per fa
 | 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada, jelaskan alur otomatis | Nol — dokumentasi saja | Menit | ✅ **Selesai (Fase 1, 2026-07-16)** |
 | 4 | Nasib `tenants.subdomain` (§ 2) — user pilih sembunyikan field dari UI settings sampai Fase 2 siap dikerjakan | Rendah | Menit | ✅ **Selesai (Fase 2, 2026-07-16)** |
 | 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas 16 file | Beberapa jam | ✅ **Selesai (Fase 3, 2026-07-16)** |
-| 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru, Opsi B (path) + auth cross-domain sudah diputuskan (§ 7.3, semua ✅) | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | ⬜ Belum dimulai — wajib cek collision slug `admin` di production dulu (§ 7.1) |
+| 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru, Opsi B (path) + auth cross-domain sudah diputuskan, cek collision production ✅ nol hasil | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | ⬜ Belum dimulai — semua prasyarat terpenuhi, tinggal eksekusi (butuh sub-fase sendiri: middleware → branding dashboard → auth) |
 
 **Urutan eksekusi**: #1–#3 selesai (Fase 1, murah/independen/nol risiko). #4 butuh keputusan cepat
 user (implementasi vs sembunyikan) sebelum lanjut. #5 satu fase tersendiri dengan testing
