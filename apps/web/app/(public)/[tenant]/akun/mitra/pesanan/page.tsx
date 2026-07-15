@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
-import { isOwnHost } from "@/lib/is-own-host";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { db, members, createTenantDb } from "@jalajogja/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { ShoppingBag } from "lucide-react";
@@ -12,7 +12,7 @@ type Params = Promise<{ tenant: string }>;
 export default async function MitraPesananPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
   const hdrs    = await headers();
-  const baseUrl = isOwnHost(hdrs.get("host") ?? "") ? `/${slug}` : "";
+  const baseUrl = await resolveBaseUrl(slug);
 
   const session = await auth.api.getSession({ headers: hdrs });
   if (!session?.user?.id) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun/mitra/pesanan`);

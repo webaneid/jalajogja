@@ -1,7 +1,7 @@
 import { redirect }    from "next/navigation";
 import { headers }     from "next/headers";
 import { auth }        from "@/lib/auth";
-import { isOwnHost }   from "@/lib/is-own-host";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { LoginForm }   from "./login-form";
 
 type Params       = Promise<{ tenant: string }>;
@@ -19,8 +19,7 @@ export default async function LoginPage({
 
   // Tentukan baseUrl: custom domain → "" (no prefix), jalakarta.com → "/{slug}"
   const reqHeaders  = await headers();
-  const host        = (reqHeaders.get("x-forwarded-host") ?? reqHeaders.get("host") ?? "");
-  const baseUrl     = isOwnHost(host) ? `/${slug}` : "";
+  const baseUrl     = await resolveBaseUrl(slug);
   const defaultDest = `${baseUrl}/akun`;
 
   // Jika sudah login → langsung ke akun (atau URL tujuan)

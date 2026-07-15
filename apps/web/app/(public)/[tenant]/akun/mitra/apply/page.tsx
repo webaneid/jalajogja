@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { Handshake } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label  } from "@/components/ui/label";
-import { isOwnHost } from "@/lib/is-own-host";
+import { useBaseUrl } from "@/lib/use-base-url";
 
 type Business = { id: string; name: string; brand: string | null };
 type City     = {
@@ -23,10 +23,7 @@ export default function MitraApplyPage() {
   const params = useParams<{ tenant: string }>();
   const slug   = params.tenant;
 
-  const [baseUrl, setBaseUrl] = useState(`/${slug}`);
-  useEffect(() => {
-    if (!isOwnHost(window.location.host)) setBaseUrl("");
-  }, []);
+  const baseUrl = useBaseUrl(slug);
 
   const [businesses,    setBusinesses]    = useState<Business[]>([]);
   const [businessId,    setBusinessId]    = useState("");

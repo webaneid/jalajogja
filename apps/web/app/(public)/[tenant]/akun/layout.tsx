@@ -5,7 +5,7 @@ import { auth }       from "@/lib/auth";
 import { getAkunIdentity } from "@/lib/akun-identity";
 import { db, members, tenants, createTenantDb } from "@jalajogja/db";
 import { eq, and, isNull } from "drizzle-orm";
-import { isOwnHost }  from "@/lib/is-own-host";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { AkunNav }    from "@/components/akun/akun-nav";
 import { BadgeCheck } from "lucide-react";
 import { resolveOrgLabels } from "@/lib/tenant-org-label";
@@ -23,8 +23,7 @@ function gravatar(email: string) {
 export default async function AkunLayout({ children, params }: Props) {
   const { tenant: slug } = await params;
   const hdrs    = await headers();
-  const host    = hdrs.get("host") ?? "";
-  const baseUrl = isOwnHost(host) ? `/${slug}` : "";
+  const baseUrl = await resolveBaseUrl(slug);
 
   const session = await auth.api.getSession({ headers: hdrs });
   if (!session?.user) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun`);

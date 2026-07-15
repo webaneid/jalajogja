@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { Label  } from "@/components/ui/label";
 import { Input  } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GalleryPicker } from "@/components/gallery/gallery-picker";
-import { isOwnHost } from "@/lib/is-own-host";
+import { useBaseUrl } from "@/lib/use-base-url";
 import type { GalleryItem } from "@/lib/gallery";
 
 type Props = {
@@ -28,10 +28,7 @@ export function MitraProductForm({ slug, settings, product }: Props) {
   const router  = useRouter();
   const isEdit  = !!product;
 
-  const [baseUrl, setBaseUrl] = useState(`/${slug}`);
-  useEffect(() => {
-    if (!isOwnHost(window.location.host)) setBaseUrl("");
-  }, []);
+  const baseUrl = useBaseUrl(slug);
 
   const [name,        setName]        = useState(product?.name        ?? "");
   const [prodSlug,    setProdSlug]    = useState(product?.slug        ?? "");

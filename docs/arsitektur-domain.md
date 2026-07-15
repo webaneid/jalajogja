@@ -201,18 +201,30 @@ di front-end publik. Semua permukaan lain yang diaudit (header, SEO canonical/OG
 All rights reserved." tidak diubah — tetap tampil di kedua mode karena itu memang copyright milik
 tenant sendiri, bukan atribusi platform.
 
-### 5.2 Duplikasi `baseUrl` — bukan kebocoran, tapi sumber bug berulang
+### 5.2 ✅ Fixed (Fase 3, 2026-07-16): Duplikasi `baseUrl` dikonsolidasi
 
-Pola `isOwnHost(host) ? "/${slug}" : ""` dihitung ulang secara independen di ~15 file server
-component berbeda (plus beberapa client component dengan pola `useState` + `useEffect` yang setara)
-di seluruh `app/(public)/[tenant]/**`. Tidak ada satu sumber kebenaran/helper bersama yang
-di-inject sekali dari layout dan dipakai ulang — setiap halaman baru mengulang komputasi sendiri.
+Sebelumnya pola `isOwnHost(host) ? "/${slug}" : ""` dihitung ulang secara independen di 16 file
+(server component + client component dengan pola `useState`+`useEffect` yang setara) di seluruh
+`app/(public)/[tenant]/**`. Tidak ada satu sumber kebenaran/helper bersama — setiap halaman baru
+mengulang komputasi sendiri, konsisten dengan pola bug yang berulang beberapa kali di histori
+project (lesson CLAUDE.md "Bug Sistemik: `href="../"` di 6 Halaman", "Custom Domain Harus
+Diisolasi", dst).
 
-Ini **konsisten dengan pola bug yang berulang beberapa kali di histori project** (lihat lesson
-CLAUDE.md "Bug Sistemik: `href="../"` di 6 Halaman", "Custom Domain Harus Diisolasi", dst) — setiap
-kali developer (manusia atau AI) lupa menambahkan pengecekan ini di halaman baru, hasilnya adalah
-link `/{slug}/...` yang hardcode bocor ke custom domain. Bukan bug yang aktif sekarang, tapi
-**risiko struktural** yang terus berulang karena tidak ada satu titik pemaksaan.
+**Fix**: dua helper baru —
+- `lib/resolve-base-url.ts` — `resolveBaseUrl(slug)`, server-only (pakai `next/headers`). Sekalian
+  memperbaiki satu inkonsistensi: sekarang selalu cek `x-forwarded-host` dulu (proxy-aware,
+  sebelumnya cuma dilakukan di `login/page.tsx`, sekarang berlaku universal di semua 12 server
+  component yang memakainya).
+- `lib/use-base-url.ts` — `useBaseUrl(slug)`, `"use client"`, untuk 4 client component yang tidak
+  punya akses `next/headers()` (pola default `/${slug}` lalu koreksi via `useEffect`, dipertahankan
+  identik dari implementasi sebelumnya).
+
+Semua 16 titik lama (`app/(public)/[tenant]/layout.tsx`, `page.tsx`, `[pageSlug]/page.tsx`,
+`agenda/[slug]/page.tsx`, `login/page.tsx`, `akun/layout.tsx`, `akun/page.tsx`,
+`akun/profesional/page.tsx`, `akun/usaha/page.tsx`, `akun/pesantren/page.tsx`,
+`akun/media/page.tsx`, dan 5 file di `akun/mitra/**`) diganti memanggil helper ini. Satu-satunya
+sisa pemanggil `isOwnHost()` langsung di tree ini sekarang hanya `resolve-base-url.ts` dan
+`use-base-url.ts` sendiri.
 
 ### 5.3 Admin dashboard tenant — branding hari ini (relevan untuk § 7)
 
@@ -380,12 +392,10 @@ Ditemukan lewat audit langsung ke kode — bukan asumsi. Dicatat di sini supaya 
 - Dokumen lama **tidak menyebut sama sekali** guard `/app/*`/`/platform/*` di custom domain (§ 3.2
   poin 1a) — karena guard itu ditambahkan setelahnya (2026-07-08). Sudah dimasukkan di versi ini.
 
-### 8.3 Duplikasi `baseUrl` (§ 5.2) — bukan bug, tapi flag untuk pekerjaan rumah
+### 8.3 ✅ Fixed (Fase 3, 2026-07-16): Duplikasi `baseUrl`
 
-Tidak ada satu helper/hook bersama untuk `isOwnHost(host) ? "/${slug}" : ""` — dihitung ulang di
-~15 file. Kandidat refactor: satu helper di `lib/` (server) + satu hook di `lib/` (client dengan
-pola `useState`+`useEffect` yang sudah dikunci di beberapa lesson CLAUDE.md), dipakai ulang di semua
-titik. **Tidak dieksekusi di sesi ini** — murni dicatat sebagai risiko struktural.
+Lihat § 5.2 untuk detail fix — `lib/resolve-base-url.ts` (server) + `lib/use-base-url.ts` (client),
+16 titik lama dikonsolidasi.
 
 ### 8.4 ✅ Fixed (Fase 1, 2026-07-16): Komentar "SSL via Caddy" + nama domain salah di schema
 
@@ -432,7 +442,7 @@ Diurutkan dari risiko paling rendah ke paling tinggi. Dieksekusi bertahap per fa
 | 2 | Koreksi komentar "Caddy" + nama domain salah (`jalajogja.com`→`jalakarta.com`) di schema (§ 8.4) | Nol — cuma komentar | Menit | ✅ **Selesai (Fase 1, 2026-07-16)** |
 | 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada, jelaskan alur otomatis | Nol — dokumentasi saja | Menit | ✅ **Selesai (Fase 1, 2026-07-16)** |
 | 4 | Nasib `tenants.subdomain` (§ 2) — user pilih sembunyikan field dari UI settings sampai Fase 2 siap dikerjakan | Rendah | Menit | ✅ **Selesai (Fase 2, 2026-07-16)** |
-| 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas ~15 file, butuh regresi testing tiap halaman publik | Beberapa jam | ⬜ Belum dimulai |
+| 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas 16 file | Beberapa jam | ✅ **Selesai (Fase 3, 2026-07-16)** |
 | 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru, Opsi B (path) + auth cross-domain sudah diputuskan (§ 7.3, semua ✅) | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | ⬜ Belum dimulai — wajib cek collision slug `admin` di production dulu (§ 7.1) |
 
 **Urutan eksekusi**: #1–#3 selesai (Fase 1, murah/independen/nol risiko). #4 butuh keputusan cepat

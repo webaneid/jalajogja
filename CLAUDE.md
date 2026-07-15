@@ -4253,6 +4253,42 @@ lebih murah daripada menghapus lalu membangun ulang nanti. Yang dihapus cuma bag
 **Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error. `docs/arsitektur-domain.md` § 2 dan § 9
 diupdate status jadi ✅ Selesai bersamaan dengan commit.
 
+### [2026-07-16] Eksekusi Roadmap Domain Fase 3 — Konsolidasi `baseUrl` (16 File)
+
+Item #5 roadmap `docs/arsitektur-domain.md` § 9 — refactor teknis murni (bukan keputusan produk),
+dilanjutkan langsung tanpa perlu tanya user lagi sesuai arahan "eksekusi bertahap".
+
+**2 helper baru**:
+- `lib/resolve-base-url.ts` — `resolveBaseUrl(slug)`, async, server-only (`next/headers`). Cek
+  `x-forwarded-host` dulu baru `host` — sebelumnya cuma `login/page.tsx` yang proxy-aware, sekarang
+  berlaku universal (perbaikan kecil sekalian, bukan cuma dedup).
+- `lib/use-base-url.ts` — `useBaseUrl(slug)`, `"use client"`, hook untuk komponen yang tidak punya
+  akses `next/headers()`. Pola `useState(/${slug}) + useEffect koreksi` dipertahankan identik dari
+  implementasi lama di tiap file (bukan pola baru).
+
+**16 file diupdate** (semua pemanggil `isOwnHost()` langsung di `app/(public)/[tenant]/**` sebelum
+fase ini): `layout.tsx`, `page.tsx`, `[pageSlug]/page.tsx`, `agenda/[slug]/page.tsx`, `login/page.tsx`,
+`akun/layout.tsx`, `akun/page.tsx`, `akun/profesional/page.tsx`, `akun/usaha/page.tsx`,
+`akun/pesantren/page.tsx`, `akun/media/page.tsx`, dan 5 file di `akun/mitra/**`.
+
+**Kehati-hatian saat refactor mekanis lintas banyak file** — 3 jebakan yang dicek satu-satu per
+file sebelum edit (bukan cari-ganti membabi buta):
+1. Variabel `host`/`hdrs` kadang dipakai lagi di tempat lain dalam file yang sama (mis. untuk
+   `auth.api.getSession({ headers: hdrs })` atau forward cookie ke internal fetch) — di file-file
+   ini `headers()` call TETAP dipertahankan terpisah dari `resolveBaseUrl()`, cuma baris
+   `isOwnHost(host) ? ... : ...`-nya yang diganti. Bukan hapus `headers()` secara membabi buta.
+2. `useEffect` import kadang masih dipakai untuk hal lain di client component yang sama (mis. debounce
+   search, fetch on mount) — dicek per file mana yang aman dihapus dari import dan mana yang harus
+   dipertahankan.
+3. `layout.tsx` punya turunan `isCustomDomain` dari `baseUrl` yang dipakai lagi di tempat lain (strip
+   prefix nav menu) — diganti `baseUrl === ""` (setara secara logis, satu sumber, bukan hitung ulang
+   `isOwnHost()` kedua kalinya).
+
+**Verifikasi**: `tsc --noEmit` (0 error, 16 file sekaligus) + `bun run build` (sukses) + grep akhir
+`isOwnHost(` di seluruh `app/(public)/[tenant]/` — nol hasil (satu-satunya pemanggil tersisa ada di
+2 helper baru itu sendiri). `docs/arsitektur-domain.md` § 5.2/8.3/9 diupdate status ✅ Selesai
+bersamaan dengan commit.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

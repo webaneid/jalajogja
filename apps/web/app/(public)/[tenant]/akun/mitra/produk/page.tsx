@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers  } from "next/headers";
 import { auth }     from "@/lib/auth";
-import { isOwnHost } from "@/lib/is-own-host";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { Package, Plus } from "lucide-react";
 
 type Params = Promise<{ tenant: string }>;
@@ -20,7 +20,7 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function MitraProdukPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
   const hdrs    = await headers();
-  const baseUrl = isOwnHost(hdrs.get("host") ?? "") ? `/${slug}` : "";
+  const baseUrl = await resolveBaseUrl(slug);
 
   const session = await auth.api.getSession({ headers: hdrs });
   if (!session?.user) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun/mitra/produk`);

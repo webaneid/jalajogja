@@ -1,12 +1,11 @@
 import { notFound } from "next/navigation";
-import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { createTenantDb, db, tenants, getSettings, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
 import { PublicHeader } from "@/components/website/public/layout/public-header";
 import { PublicFooter } from "@/components/website/public/layout/public-footer";
 import { parseNavMenu } from "@/lib/nav-menu";
 import { buildTenantThemeCss, getGoogleFontsUrl } from "@/lib/theme-palette";
-import { isOwnHost } from "@/lib/is-own-host";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import type { Metadata } from "next";
 
 type Params = Promise<{ tenant: string }>;
@@ -46,12 +45,9 @@ export default async function PublicLayout({
 }) {
   const { tenant: slug } = await params;
 
-  // C2: deteksi custom domain — apakah request datang dari domain milik jalakarta atau tidak
-  const reqHeaders     = await headers();
-  const host           = reqHeaders.get("host") ?? "";
-  const isCustomDomain = !isOwnHost(host);
   // baseUrl: "" di custom domain (white-label), "/{slug}" di path mode
-  const baseUrl        = isCustomDomain ? "" : `/${slug}`;
+  const baseUrl        = await resolveBaseUrl(slug);
+  const isCustomDomain = baseUrl === "";
 
   const [tenant] = await db
     .select({

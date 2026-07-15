@@ -2,7 +2,7 @@ import { redirect }  from "next/navigation";
 import { headers }   from "next/headers";
 import { eq, and }   from "drizzle-orm";
 import { auth }      from "@/lib/auth";
-import { isOwnHost } from "@/lib/is-own-host";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { db, tenantMemberships, tenants, members, refIkpmCabang } from "@jalajogja/db";
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import { resolveOrgLabels } from "@/lib/tenant-org-label";
@@ -16,8 +16,7 @@ type Params = Promise<{ tenant: string }>;
 export default async function AkunPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
   const hdrs    = await headers();
-  const host    = hdrs.get("host") ?? "";
-  const baseUrl = isOwnHost(host) ? `/${slug}` : "";
+  const baseUrl = await resolveBaseUrl(slug);
 
   const session = await auth.api.getSession({ headers: hdrs });
   if (!session?.user) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun`);

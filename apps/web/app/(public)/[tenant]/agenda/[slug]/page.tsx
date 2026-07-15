@@ -6,7 +6,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { CalendarDays, MapPin, Globe, Building2, Navigation, ExternalLink, Video, Ticket, CheckCircle2 } from "lucide-react";
-import { isOwnHost } from "@/lib/is-own-host";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { EventRegisterForm } from "@/components/event/event-register-form";
 import type { CustomFormField } from "@/lib/event-custom-form";
 import { EventDetailTabs, type TicketStat, type AttendeeStatsData } from "@/components/event/event-detail-tabs";
@@ -159,8 +159,7 @@ export default async function PublicEventPage({
   if (!tenant || !tenant.isActive) notFound();
 
   const hdrs    = await headers();
-  const host    = hdrs.get("host") ?? "";
-  const baseUrl = isOwnHost(host) ? `/${tenantSlug}` : "";
+  const baseUrl = await resolveBaseUrl(tenantSlug);
 
   const { db: tenantDb, schema } = createTenantDb(tenantSlug);
 

@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
-import { headers } from "next/headers";
 import { createTenantDb, db, tenants, getSettings } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
-import { isOwnHost } from "@/lib/is-own-host";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { DefaultTemplate } from "@/components/website/public/default-template";
 import { LandingTemplate } from "@/components/website/public/landing-template";
 import { ContactTemplate } from "@/components/website/public/contact-template";
@@ -78,8 +77,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function PublicHomePage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
-  const host    = (await headers()).get("host") ?? "";
-  const baseUrl = isOwnHost(host) ? `/${slug}` : "";
+  const baseUrl = await resolveBaseUrl(slug);
 
   const [tenant] = await db
     .select({ id: tenants.id, name: tenants.name, isActive: tenants.isActive })

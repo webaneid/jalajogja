@@ -1,7 +1,7 @@
 import { auth }    from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { isOwnHost } from "@/lib/is-own-host";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { ProfesionalClient } from "./profesional-client";
 
 export default async function ProfesionalPage({
@@ -11,7 +11,7 @@ export default async function ProfesionalPage({
 }) {
   const { tenant: slug } = await params;
   const hdrs    = await headers();
-  const baseUrl = isOwnHost(hdrs.get("host") ?? "") ? `/${slug}` : "";
+  const baseUrl = await resolveBaseUrl(slug);
 
   const session = await auth.api.getSession({ headers: hdrs });
   if (!session?.user) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun/profesional`);

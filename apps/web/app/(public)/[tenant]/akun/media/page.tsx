@@ -6,18 +6,12 @@ import Image             from "next/image";
 import { UploadCloud, Loader2, Trash2, ArrowLeft } from "lucide-react";
 import { toast }         from "sonner";
 import { compressImage } from "@/lib/client-image-compress";
-import { isOwnHost }     from "@/lib/is-own-host";
+import { useBaseUrl }    from "@/lib/use-base-url";
 import type { MemberMediaItem } from "@/components/media/member-media-picker";
 
 export default function AkunMediaPage() {
   const { tenant: slug } = useParams<{ tenant: string }>();
-
-  // Default asumsi domain sendiri (kasus dominan) — SSR dan render klien pertama sama
-  // persis (tidak ada hydration mismatch), lalu dikoreksi via effect jika ternyata custom domain
-  const [baseUrl, setBaseUrl] = useState(`/${slug}`);
-  useEffect(() => {
-    if (!isOwnHost(window.location.host)) setBaseUrl("");
-  }, []);
+  const baseUrl = useBaseUrl(slug);
 
   const [media, setMedia]       = useState<MemberMediaItem[]>([]);
   const [loading, setLoading]   = useState(true);

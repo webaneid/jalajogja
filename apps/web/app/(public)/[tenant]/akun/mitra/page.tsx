@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers  } from "next/headers";
 import { auth }     from "@/lib/auth";
-import { isOwnHost } from "@/lib/is-own-host";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { Handshake, CheckCircle2, Clock, PauseCircle, Package, ShoppingBag } from "lucide-react";
 import { MitraCancelApplyButton } from "./mitra-cancel-button";
 
@@ -11,7 +11,7 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
   const { tenant: slug } = await params;
 
   const hdrs    = await headers();
-  const baseUrl = isOwnHost(hdrs.get("host") ?? "") ? `/${slug}` : "";
+  const baseUrl = await resolveBaseUrl(slug);
   const session = await auth.api.getSession({ headers: hdrs });
   if (!session?.user) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun/mitra`);
 
