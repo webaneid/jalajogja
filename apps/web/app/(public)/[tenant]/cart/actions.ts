@@ -624,59 +624,87 @@ export async function submitPaymentProofAction(
     const tenantDb = createTenantDb(slug);
     const { db: tdb, schema } = tenantDb;
 
-    const [inv] = await tdb
-      .select({ id: schema.invoices.id, customerName: schema.invoices.customerName,
-                customerPhone: schema.invoices.customerPhone,
-                total: schema.invoices.total, paidAmount: schema.invoices.paidAmount,
-                uniqueCode: schema.invoices.uniqueCode,
-                invoiceNumber: schema.invoices.invoiceNumber, status: schema.invoices.status })
-      .from(schema.invoices)
-      .where(eq(schema.invoices.id, invoiceId))
-      .limit(1);
+    // Guard "sudah waiting_verification" DI LUAR transaction hanya early-exit UX cepat —
+    // jaminan korektnes yang sebenarnya ada di guard KEDUA di dalam transaction setelah lock
+    // (pola sama dengan checkoutAction/confirmInvoicePaymentAction — lihat lesson CLAUDE.md
+    // "guard sudah ada sebelumnya WAJIB diulang di dalam transaction setelah lock").
+    type TxResult =
+      | { error: string }
+      | { paymentId: string; customerName: string; customerPhone: string | null;
+          invoiceNumber: string; remaining: number };
 
-    if (!inv)                          return { success: false, error: "Invoice tidak ditemukan." };
-    if (inv.status === "paid")         return { success: false, error: "Invoice sudah lunas." };
-    if (inv.status === "cancelled")    return { success: false, error: "Invoice sudah dibatalkan." };
+    const txResult: TxResult = await tdb.transaction(async (tx) => {
+      const [lockedInv] = await tx
+        .select({ id: schema.invoices.id, customerName: schema.invoices.customerName,
+                  customerPhone: schema.invoices.customerPhone,
+                  total: schema.invoices.total, paidAmount: schema.invoices.paidAmount,
+                  uniqueCode: schema.invoices.uniqueCode,
+                  invoiceNumber: schema.invoices.invoiceNumber, status: schema.invoices.status })
+        .from(schema.invoices)
+        .where(sql`${schema.invoices.id} = ${invoiceId} FOR UPDATE`)
+        .limit(1);
 
-    // Wajib sertakan kode unik — tanpa ini payment yang tercatat selalu kurang dari amountDue,
-    // invoice tidak pernah naik status "paid" (lihat lesson CLAUDE.md § Kode Unik Transaksi)
-    const amountDue = parseFloat(String(inv.total)) + (inv.uniqueCode ?? 0);
-    const remaining = amountDue - parseFloat(String(inv.paidAmount));
-    if (remaining <= 0) return { success: false, error: "Invoice sudah lunas." };
+      if (!lockedInv) return { error: "Invoice tidak ditemukan." };
+      if (lockedInv.status === "paid")      return { error: "Invoice sudah lunas." };
+      if (lockedInv.status === "cancelled") return { error: "Invoice sudah dibatalkan." };
+      if (lockedInv.status === "waiting_verification")
+        return { error: "Bukti pembayaran Anda sedang diverifikasi admin. Mohon tunggu, tidak perlu kirim ulang." };
 
-    const payNumber = await generateFinancialNumber(tenantDb, "payment");
+      // Wajib sertakan kode unik — tanpa ini payment yang tercatat selalu kurang dari amountDue,
+      // invoice tidak pernah naik status "paid" (lihat lesson CLAUDE.md § Kode Unik Transaksi)
+      const amountDue = parseFloat(String(lockedInv.total)) + (lockedInv.uniqueCode ?? 0);
+      const remaining = amountDue - parseFloat(String(lockedInv.paidAmount));
+      if (remaining <= 0) return { error: "Invoice sudah lunas." };
 
-    const [payment] = await tdb
-      .insert(schema.payments)
-      .values({
-        number:       payNumber,
-        sourceType:   "invoice",
-        sourceId:     invoiceId,
-        amount:       remaining.toFixed(2),
-        uniqueCode:   0,
-        method:       data.method,
-        status:       "submitted",
-        transferDate: data.transferDate ?? null,
-        proofUrl:     data.proofUrl ?? null,
-        payerName:    data.payerName?.trim() ?? inv.customerName,
-        payerBank:    data.payerBank?.trim() ?? null,
-        payerNote:    data.notes?.trim() ?? null,
-        submittedAt:  new Date(),
-      })
-      .returning({ id: schema.payments.id });
+      const payNumber = await generateFinancialNumber(tenantDb, "payment");
 
-    // Link ke invoice
-    await tdb.insert(schema.invoicePayments).values({
-      invoiceId,
-      paymentId: payment.id,
-      amount:    remaining.toFixed(2),
+      const [payment] = await tx
+        .insert(schema.payments)
+        .values({
+          number:       payNumber,
+          sourceType:   "invoice",
+          sourceId:     invoiceId,
+          amount:       remaining.toFixed(2),
+          uniqueCode:   0,
+          method:       data.method,
+          status:       "submitted",
+          transferDate: data.transferDate ?? null,
+          proofUrl:     data.proofUrl ?? null,
+          payerName:    data.payerName?.trim() ?? lockedInv.customerName,
+          payerBank:    data.payerBank?.trim() ?? null,
+          payerNote:    data.notes?.trim() ?? null,
+          submittedAt:  new Date(),
+        })
+        .returning({ id: schema.payments.id });
+
+      // Link ke invoice
+      await tx.insert(schema.invoicePayments).values({
+        invoiceId,
+        paymentId: payment.id,
+        amount:    remaining.toFixed(2),
+      });
+
+      // Update status invoice → waiting_verification
+      await tx
+        .update(schema.invoices)
+        .set({ status: "waiting_verification", updatedAt: new Date() })
+        .where(eq(schema.invoices.id, invoiceId));
+
+      return {
+        paymentId:     payment.id,
+        customerName:  lockedInv.customerName,
+        customerPhone: lockedInv.customerPhone,
+        invoiceNumber: lockedInv.invoiceNumber,
+        remaining,
+      };
     });
 
-    // Update status invoice → waiting_verification
-    await tdb
-      .update(schema.invoices)
-      .set({ status: "waiting_verification", updatedAt: new Date() })
-      .where(eq(schema.invoices.id, invoiceId));
+    if ("error" in txResult) return { success: false, error: txResult.error };
+
+    const inv = { customerName: txResult.customerName, customerPhone: txResult.customerPhone,
+                   invoiceNumber: txResult.invoiceNumber };
+    const remaining = txResult.remaining;
+    const payment   = { id: txResult.paymentId };
 
     void notifyWa({
       slug, tenantDb, event: "payment_submitted",

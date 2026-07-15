@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Check, Copy, Download, ImagePlus, X, Loader2 } from "lucide-react";
 import { submitPaymentProofAction } from "@/app/(public)/[tenant]/cart/actions";
 import { compressImage } from "@/lib/client-image-compress";
@@ -302,6 +303,7 @@ function PaymentMethodCard({
 
 // ─── InvoicePublicClient ──────────────────────────────────────────────────────
 export function InvoicePublicClient({ slug, invoice }: Props) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error,   setError]        = useState("");
   const [success, setSuccess]      = useState("");
@@ -373,6 +375,10 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
       if (res.success) {
         setSuccess("Konfirmasi pembayaran berhasil dikirim. Admin akan memverifikasi dalam 1×24 jam.");
         setShowPayForm(false);
+        // Refresh data invoice dari server — status sekarang "waiting_verification",
+        // supaya tombol "Konfirmasi Pembayaran" tidak muncul lagi (cegah submit ganda
+        // kalau customer klik tombol yang sama sekali lagi tanpa reload manual).
+        router.refresh();
       } else {
         setError(res.error);
       }

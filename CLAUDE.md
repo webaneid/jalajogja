@@ -3916,6 +3916,54 @@ WAJIB benar-benar query status custom domain — jangan cukup menulis komentar p
 implementasi aktual. Kalau ada helper serupa lain yang ditemukan (search: URL builder dengan
 `NEXT_PUBLIC_APP_URL` hardcoded), audit apakah sama-sama kena bug ini.
 
+### [2026-07-15] Bug: Double Konfirmasi Pembayaran — `submitPaymentProofAction` Tanpa Guard + Lock
+
+**Masalah**: Customer bisa submit bukti pembayaran dua kali untuk invoice yang sama — hasilnya
+2 baris `payments` dengan `status: 'submitted'` untuk satu invoice, admin melihat dua bukti
+transfer padahal cuma transfer sekali.
+
+**Root cause berlapis (server + client):**
+
+1. **Server — tidak ada guard status, tidak ada lock**: `submitPaymentProofAction` di
+   `app/(public)/[tenant]/cart/actions.ts` langsung INSERT payment baru + UPDATE invoice tanpa
+   cek dulu apakah invoice sudah `waiting_verification` (artinya sudah ada submission yang
+   menunggu admin verifikasi). Dua request nyaris bersamaan (double-click submit, browser retry)
+   sama-sama lolos.
+2. **Client — status invoice tidak pernah di-refresh setelah submit**: `invoice-public-client.tsx`
+   tidak pernah memanggil `router.refresh()` setelah submit sukses. `canPay` dihitung dari prop
+   `invoice.status` yang stale (`["pending","partial","overdue"].includes(status)`) → tombol
+   "Konfirmasi Pembayaran" tetap muncul dan bisa diklik lagi meski invoice sudah
+   `waiting_verification` di DB.
+
+**Fix:**
+- `submitPaymentProofAction` dibungkus `tdb.transaction()` dengan `SELECT ... FOR UPDATE` lock
+  pada baris invoice sebelum insert payment — pattern yang sama dengan
+  `confirmInvoicePaymentAction` dan `checkoutAction` (lihat lesson race condition sebelumnya).
+  Guard eksplisit di dalam transaction, SETELAH lock diperoleh:
+  ```typescript
+  if (lockedInv.status === "waiting_verification") {
+    return { error: "Bukti pembayaran Anda sedang diverifikasi admin. Mohon tunggu, tidak perlu kirim ulang." };
+  }
+  ```
+  Semua insert (`payments`, `invoicePayments`) dan update status invoice dipindah ke dalam
+  transaction yang sama. Return value pakai discriminated union `TxResult` (`{error} | {data}`)
+  — dicek dengan `if ("error" in txResult)` setelah transaction selesai. `notifyWa()` tetap di
+  luar transaction (fire-and-forget, tidak boleh menambah latency transaksi).
+- `invoice-public-client.tsx`: tambah `useRouter()` + `router.refresh()` di `handleSubmitProof`
+  pada branch sukses (setelah `setShowPayForm(false)`), supaya prop `invoice.status` ter-update
+  dari server dan `canPay` langsung `false` setelah submit.
+
+**Aturan yang dikunci (perluasan pattern lock+guard yang sudah berulang di project ini)**:
+setiap aksi customer-facing yang bisa dipicu ulang (klik ganda, retry jaringan, tab ganda) DAN
+menyebabkan efek permanen (insert payment, insert registrasi, dll) wajib punya DUA lapis:
+1. **Server**: transaction + `FOR UPDATE` lock + guard status diulang setelah lock (bukan cuma
+   dicek sebelum transaction dimulai)
+2. **Client**: `router.refresh()` (atau setara) setelah mutasi sukses, supaya UI state tidak
+   stale dan tombol aksi tidak terlihat "masih bisa diklik" padahal servernya sudah menolak
+
+Ini pattern ke-4 di project yang kena kelas bug sama: payment confirm admin, cart checkout,
+event registration, dan sekarang payment proof submission customer.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
