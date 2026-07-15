@@ -4106,6 +4106,21 @@ card, WAJIB pakai `<StatCard>`/`<ModuleCard>` dari `components/dashboard/` — j
 direfactor untuk pakai komponen ini di sesi ini (di luar scope) — kandidat cleanup terpisah kalau
 diminta nanti.
 
+**Bug runtime ditemukan saat verifikasi (bukan oleh `tsc`/build)**: `sql\`... >= ${startOfMonth}\`` —
+interpolasi objek JS `Date` mentah ke dalam raw `sql` template tag (drizzle-orm) crash di driver
+`postgres.js` saat binding parameter: `TypeError: The "string" argument must be of type string or an
+instance of Buffer or ArrayBuffer. Received an instance of Date`. **`tsc --noEmit` dan `next build`
+lolos sepenuhnya** — TypeScript tidak tahu ini SQL yang dikirim ke driver, error hanya muncul saat
+query benar-benar dieksekusi ke DB. Fix: `${startOfMonth.toISOString()}` — string, bukan Date, di
+dalam raw `sql\`...\``. **Aturan**: `gte(column, dateObj)` / `lte(column, dateObj)` (typed drizzle API)
+aman menerima `Date` mentah — drizzle yang serialize. Tapi begitu Date diselipkan ke raw `sql\`...\``
+template (biasanya karena butuh `COALESCE`/ekspresi custom yang tidak ada helper typed-nya), WAJIB
+`.toISOString()` dulu. Ditemukan dengan cara menjalankan ke-21 query dashboard secara langsung
+(bukan lewat browser) terhadap data lokal `pc-ikpm-jogjakarta` via script sekali-pakai — pola
+verifikasi ini (eksekusi query nyata di luar UI saat tidak ada kredensial admin untuk browser-test)
+lebih murah daripada menunggu error di production dan sebaiknya diulang untuk halaman data-berat
+berikutnya yang tidak bisa di-browser-test langsung.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

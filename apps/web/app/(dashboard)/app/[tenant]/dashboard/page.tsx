@@ -85,7 +85,7 @@ export default async function TenantDashboardPage({
       .where(and(
         eq(tenantMemberships.tenantId, access.tenant.id),
         inArray(tenantMemberships.status, ["active", "alumni"]),
-        sql`COALESCE(${tenantMemberships.joinedAt}, ${tenantMemberships.createdAt}) >= ${startOfMonth}`,
+        sql`COALESCE(${tenantMemberships.joinedAt}, ${tenantMemberships.createdAt}) >= ${startOfMonth.toISOString()}`,
       )),
 
     // Keuangan
