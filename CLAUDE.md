@@ -4016,6 +4016,34 @@ identik dengan pola yang sudah dikunci di lesson `href="../"` sebelumnya.
 identik — bug header-forwarding di sesi ini seharusnya sudah ditemukan sekaligus saat fix pertama
 kali di `akun/mitra/page.tsx`, bukan menunggu laporan user di file tetangga.
 
+### [2026-07-15] Footer — Ikon Sosial Media Konsolidasi ke `<SocialLinks>`
+
+**Masalah**: `dark-footer.tsx` dan `light-footer.tsx` masing-masing punya implementasi ikon sosial
+media sendiri (`SOCIAL_BRAND_COLORS` + `SOCIAL_SVG_PATHS` + `SocialIcon` — SVG path tangan, duplikat
+persis di dua file), terpisah dari `<SocialLinks>` (`components/ui/social-links.tsx`, react-icons
+Font Awesome, sudah dipakai di `/anggota/[id]` sejak lesson `[2026-07-13] Komponen SocialLinks`).
+Dua implementasi berbeda untuk hal yang sama = ikon di footer tidak konsisten dengan ikon di
+direktori publik, dan SVG path tangan lebih rawan tidak akurat dibanding icon set resmi.
+
+**Fix — generalisasi `<SocialLinks>` jadi satu-satunya sumber ikon sosmed di seluruh aplikasi:**
+- Tambah platform `whatsapp` (`FaWhatsapp`) ke `SocialLinksValue` + `PLATFORMS` — sebelumnya hanya
+  7 platform (tanpa whatsapp), padahal footer butuh ini (dibangun dari `contact_whatsapp` sebagai
+  URL `wa.me` penuh, `buildHref` pass-through sama seperti linkedin/youtube).
+- Tambah prop `variant?: "outline" | "brand"` — `"outline"` (default) = gaya monokrom berbingkai
+  yang sudah ada (dipakai di `/anggota/[id]`, tidak berubah tampilannya). `"brand"` = latar bulat
+  warna resmi per platform (dipindah dari footer: `SOCIAL_BRAND_COLORS` sekarang di-export dari
+  `social-links.tsx`) — dipakai khusus di footer agar tetap "berwarna sesuai logo".
+- `dark-footer.tsx` + `light-footer.tsx`: hapus ~35 baris SVG path tangan + `SocialIcon` per file,
+  ganti dengan `<SocialLinks value={socialsRaw} variant="brand" size="md" className="pt-1" />`.
+- Platform `telegram` (ada di kode SVG lama tapi tidak pernah bisa diisi — `SocialMediaInput` di
+  `/settings/contact` tidak punya field telegram) SENGAJA tidak dibawa ke `SocialLinks` — konsolidasi
+  ini menyelaraskan kode dengan kapabilitas nyata, bukan mempertahankan dead code.
+
+**Aturan**: `<SocialLinks>` dari `components/ui/social-links.tsx` adalah satu-satunya komponen ikon
+sosial media di aplikasi ini — jangan pernah tulis ulang SVG path atau daftar warna brand di
+komponen lain. Kalau butuh gaya visual berbeda (misal footer perlu warna, halaman lain perlu
+monokrom), tambah varian baru via prop `variant`, bukan implementasi paralel.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
