@@ -4336,6 +4336,41 @@ kB). `docs/arsitektur-domain.md` § 7.2/7.3/9 diupdate status bersamaan dengan c
 dari 3 selesai, sub-fase 2 (branding dashboard tenant-branded di `/admin/*`, § 5.3) dan sub-fase 3
 (auth, ternyata sudah otomatis terselesaikan di sub-fase 1) dicatat statusnya di roadmap.
 
+### [2026-07-16] Item #6 Sub-fase 2 — Branding Dashboard Admin Kondisional per Domain
+
+Sub-fase terakhir dari 3 (middleware+auth sudah selesai di sub-fase 1). Dashboard admin
+sebelumnya SELALU platform-generic (avatar inisial `bg-primary` Jalakarta, tanpa logo tenant,
+footer statis "jalakarta v0.1", tanpa injeksi CSS tema tenant sama sekali) — beda dengan
+`PublicLayout` yang sudah tenant-branded penuh untuk front-end publik.
+
+**Fix — kondisional, bukan selalu-aktif** (sesuai Prinsip #1: domain sendiri boleh co-branding
+Jalakarta, custom domain tidak boleh sama sekali):
+- `(dashboard)/app/[tenant]/layout.tsx` deteksi `isCustomDomainAdmin` dari `Host` header
+  (`!isOwnHost(host)`) — reliable karena rewrite middleware sub-fase 1 tidak mengubah `Host`,
+  cuma `pathname`. Akses via `jalakarta.com/app/{slug}/*` → tidak berubah sama sekali. Akses via
+  `{custom-domain}/admin/*` → fetch `general.logo_url` + `display.primary_color` tenant, inject
+  `<style>` scoped ke class baru `.tenant-admin-branded` (override `--primary`/`--primary-foreground`).
+- `foregroundFor()` di `lib/theme-palette.ts` di-export (sebelumnya private) — dipakai ulang untuk
+  hitung warna teks kontras di atas `primary_color`, bukan reimplementasi logic WCAG luminance yang
+  sudah ada.
+- `Sidebar`/`MobileSidebar`: prop baru `logoUrl` (render `<img>` tenant kalau ada, fallback ke
+  huruf inisial seperti semula) + `showPlatformFooter` (sembunyikan "jalakarta v0.1" saat
+  tenant-branded).
+
+**Scope sengaja dibatasi** — cuma logo + primary color + hilangkan atribusi platform, TIDAK ikut
+font/secondary color/tema penuh seperti `buildTenantThemeCss()` di front-end publik. Dashboard
+admin tetap prioritaskan konsistensi UI internal (pengurus yang kelola banyak tenant familiar
+dengan satu layout) di atas replikasi brand penuh — beda tujuan dari front-end publik yang memang
+harus terasa 100% milik tenant untuk pengunjung awam. Scope ini sudah ditetapkan di dokumen
+sebelum implementasi dimulai (§ 7.2 poin 2), bukan penyempitan sepihak saat coding.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error. `docs/arsitektur-domain.md` §
+5.3/7.2/7.3/9 diupdate status ✅ Selesai untuk seluruh item #6 (ketiga sub-fase) bersamaan dengan
+commit — **roadmap domain (9 item) sekarang 100% selesai dari sisi kode**. Rekomendasi eksplisit
+dicatat di § 9: uji manual di production dengan 1 tenant custom domain nyata sebelum dianggap
+production-ready penuh — belum ada automated end-to-end test untuk alur `/admin/*` lengkap
+(routing + auth + branding sekaligus).
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

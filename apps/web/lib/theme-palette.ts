@@ -19,7 +19,7 @@ function luminance(r: number, g: number, b: number): number {
 }
 
 // Warna teks (hitam/putih) untuk latar warna tertentu — kontras ≥ 4.5:1
-function foregroundFor(hex: string): string {
+export function foregroundFor(hex: string): string {
   const rgb = hexToRgb(hex);
   if (!rgb) return "#ffffff";
   const lum = luminance(...rgb);

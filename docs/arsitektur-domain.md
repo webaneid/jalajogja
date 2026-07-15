@@ -226,20 +226,31 @@ Semua 16 titik lama (`app/(public)/[tenant]/layout.tsx`, `page.tsx`, `[pageSlug]
 sisa pemanggil `isOwnHost()` langsung di tree ini sekarang hanya `resolve-base-url.ts` dan
 `use-base-url.ts` sendiri.
 
-### 5.3 Admin dashboard tenant — branding hari ini (relevan untuk § 7)
+### 5.3 ✅ Fixed (sub-fase 2, 2026-07-16): Admin dashboard kini kondisional tenant-branded
 
-Dashboard admin (`/app/{slug}/*`) hari ini **sepenuhnya platform-generic**, bukan tenant-branded:
-- Sidebar tampilkan `orgName` (teks nama tenant) — tapi kotak avatar inisialnya pakai
-  `bg-primary` (warna tema Jalakarta sendiri, BUKAN `primary_color` milik tenant).
-- **Tidak ada logo tenant** yang dirender di manapun di dashboard — hanya huruf inisial.
-- Footer sidebar: teks statis `"jalakarta v0.1"`.
-- Tidak ada injeksi CSS variable tema tenant (`buildTenantThemeCss`) sama sekali — beda dengan
-  `PublicLayout` yang sudah melakukan ini untuk front-end publik.
+**Sebelumnya**: dashboard admin (`/app/{slug}/*`) selalu platform-generic — avatar inisial pakai
+`bg-primary` Jalakarta (bukan `primary_color` tenant), tidak ada logo tenant di manapun, footer
+sidebar statis `"jalakarta v0.1"`, tidak ada injeksi CSS variable tema tenant sama sekali (beda
+dengan `PublicLayout` yang sudah melakukannya untuk front-end publik).
 
-Ini **bukan bug** — dashboard admin memang secara sengaja platform-chrome karena selama ini hanya
-hidup di `jalakarta.com/app/{slug}/*` (Prinsip #1: domain sendiri boleh co-branding Jalakarta).
-**Tapi** ini jadi pekerjaan rumah nyata kalau § 7 (Admin-on-Custom-Domain) dieksekusi — dashboard
-perlu diberi kemampuan tenant-branding yang saat ini sama sekali tidak ada infrastrukturnya.
+**Fix**: `(dashboard)/app/[tenant]/layout.tsx` sekarang deteksi `isCustomDomainAdmin` dari `Host`
+header request (`!isOwnHost(host)` — reliable karena rewrite middleware tidak mengubah `Host`,
+cuma `pathname`). **Kondisional, bukan selalu-aktif** — sesuai Prinsip #1 di § 1 (domain sendiri
+boleh co-branding Jalakarta, custom domain tidak boleh sama sekali):
+- `isOwnHost` (akses via `jalakarta.com/app/{slug}/*`) → tetap platform-generic seperti semula,
+  tidak berubah sama sekali.
+- `!isOwnHost` (akses via `{custom-domain}/admin/*`) → fetch `general.logo_url` +
+  `display.primary_color` tenant, inject `<style>` scoped ke class `.tenant-admin-branded`
+  (override `--primary`/`--primary-foreground`, dihitung via `foregroundFor()` — diexport dari
+  `lib/theme-palette.ts`, dipakai ulang bukan reimplementasi), render logo tenant (bukan huruf
+  inisial) di `Sidebar`/`MobileSidebar`, dan sembunyikan footer `"jalakarta v0.1"` (prop baru
+  `showPlatformFooter`).
+
+**Scope yang disengaja dibatasi** — cuma logo + primary color + hilangkan atribusi platform, TIDAK
+termasuk font/secondary color/tema penuh seperti `buildTenantThemeCss()` untuk front-end publik.
+Admin dashboard tetap prioritaskan konsistensi UI internal (readability, familiar layout untuk
+pengurus yang mengelola banyak tenant) di atas replikasi brand penuh — beda tujuan dengan front-end
+publik yang memang harus terasa 100% milik tenant untuk pengunjung awam.
 
 ---
 
@@ -283,13 +294,13 @@ dokumen ini (§ 7.1, § 8.4) tidak menunjuk ke tempat kosong.
 
 ---
 
-## 7. Admin-on-Custom-Domain — Fitur yang Belum Dibangun, Perlu Direncanakan
+## 7. Admin-on-Custom-Domain — ✅ Selesai (2026-07-16)
 
-Ini permintaan eksplisit user (skenario #1 di pesan awal sesi). **Belum ada satupun kode untuk ini
-hari ini** — bahkan justru ada guard aktif (§ 3.2, poin 1a) yang **memblokir** ini terjadi secara
-tidak sengaja. Rencana lama (`docs/rencana-migrasi-url.md`, "Fase 5") sudah menuliskan proposal
-teknis, tapi **stale dan punya kontradiksi internal** yang harus diluruskan dulu sebelum diadopsi
-(§ 8.5).
+Permintaan eksplisit user (skenario #1 di pesan awal sesi evaluasi domain). Sebelum sesi ini
+**belum ada satupun kode untuk ini** — bahkan ada guard aktif (§ 3.2, poin 1a) yang secara sengaja
+**memblokir** ini terjadi (dipasang 2026-07-08 untuk menutup celah keamanan lain). Rencana lama
+(`docs/rencana-migrasi-url.md`, "Fase 5") sudah menuliskan proposal teknis, tapi **stale dan punya
+kontradiksi internal** (§ 8.5) — TIDAK diadopsi mentah, direncanakan ulang dari nol di dokumen ini.
 
 ### 7.1 Dua opsi arsitektur — **Opsi B dipilih user 2026-07-16**
 
@@ -323,8 +334,8 @@ disimpan di dokumen ini sebagai catatan alternatif kalau nanti arsitektur SSL be
 
 ### 7.2 Yang wajib dikerjakan bersamaan, bukan cuma routing
 
-Dengan Opsi B terpilih, ada 3 pekerjaan — sub-fase 1 (middleware) sudah dieksekusi 2026-07-16,
-sub-fase 2 (branding) dan 3 (auth) menyusul:
+Dengan Opsi B terpilih, ada 3 pekerjaan — ketiganya sudah dieksekusi 2026-07-16 (sub-fase 3, auth,
+ternyata otomatis terselesaikan sekaligus di sub-fase 1 — lihat poin 3 di bawah):
 
 1. ✅ **Middleware (dieksekusi 2026-07-16)** — `middleware.ts`, cabang baru khusus
    `pathname === "/admin" || pathname.startsWith("/admin/")` di dalam blok custom domain,
@@ -354,12 +365,10 @@ sub-fase 2 (branding) dan 3 (auth) menyusul:
      routing, jalur paling kritis di seluruh aplikasi) demi menghindari duplikasi kecil dianggap
      risiko lebih besar daripada manfaatnya, konsisten dengan pola duplikasi-demi-isolasi yang
      sudah berulang di project ini (`generateEventRegNumber`, `formatEventDateWib`, dst).
-2. ⬜ **Branding dashboard (belum dieksekusi)** — sesuai Prinsip #2 di § 1, dashboard yang diakses lewat
-   `ikpmjogja.com/admin/*` WAJIB tenant-branded — logo, `primary_color` via CSS variable
-   (`buildTenantThemeCss`, infrastruktur yang sudah ada untuk front-end publik tinggal
-   digunakan ulang), dan footer sidebar "jalakarta v0.1" perlu jadi kondisional
-   (disembunyikan atau diganti neutral) saat diakses lewat custom domain. Ini pekerjaan riil, bukan
-   sekadar routing — didetilkan di § 5.3.
+2. ✅ **Branding dashboard (dieksekusi 2026-07-16)** — sesuai Prinsip #2 di § 1, dashboard yang
+   diakses lewat `ikpmjogja.com/admin/*` sekarang tenant-branded (logo + `primary_color` CSS
+   variable + footer "jalakarta v0.1" tersembunyi), kondisional berdasar deteksi `Host` header di
+   layout. Detail implementasi lengkap: § 5.3.
 3. ✅ **Auth cookie/session (terjawab di keputusan, terimplementasi sekaligus di sub-fase 1)** —
    sesi terpisah per domain: login via `{custom-domain}/login` (bukan `jalakarta.com/app/login`)
    menghasilkan cookie yang sudah otomatis valid untuk `{custom-domain}/admin/*`, tanpa mekanisme
@@ -466,7 +475,7 @@ Diurutkan dari risiko paling rendah ke paling tinggi. Dieksekusi bertahap per fa
 | 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada, jelaskan alur otomatis | Nol — dokumentasi saja | Menit | ✅ **Selesai (Fase 1, 2026-07-16)** |
 | 4 | Nasib `tenants.subdomain` (§ 2) — user pilih sembunyikan field dari UI settings sampai Fase 2 siap dikerjakan | Rendah | Menit | ✅ **Selesai (Fase 2, 2026-07-16)** |
 | 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas 16 file | Beberapa jam | ✅ **Selesai (Fase 3, 2026-07-16)** |
-| 6 | Admin-on-Custom-Domain (§ 7), 3 sub-fase: middleware → branding dashboard → auth | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | 🟡 **Sebagian**: sub-fase 1 (middleware routing + auth cookie) ✅ **selesai (2026-07-16)**. Sub-fase 2 (branding dashboard tenant-branded di `/admin/*`) ⬜ belum dimulai. |
+| 6 | Admin-on-Custom-Domain (§ 7), 3 sub-fase: middleware → branding dashboard → auth | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | ✅ **Selesai (2026-07-16)** — semua 3 sub-fase (middleware+auth, branding dashboard) dieksekusi. Rekomendasi: uji manual di production dengan 1 tenant custom domain sebelum dianggap production-ready penuh (belum ada automated test end-to-end untuk fitur ini). |
 
 **Urutan eksekusi**: #1–#3 selesai (Fase 1, murah/independen/nol risiko). #4 butuh keputusan cepat
 user (implementasi vs sembunyikan) sebelum lanjut. #5 satu fase tersendiri dengan testing

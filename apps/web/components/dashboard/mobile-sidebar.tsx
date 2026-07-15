@@ -9,9 +9,11 @@ type MobileSidebarProps = {
   slug:       string;
   orgName:    string;
   tenantUser: TenantUserForPermission;
+  logoUrl?:   string | null;
+  showPlatformFooter?: boolean;
 };
 
-export function MobileSidebar({ slug, orgName, tenantUser }: MobileSidebarProps) {
+export function MobileSidebar({ slug, orgName, tenantUser, logoUrl = null, showPlatformFooter = true }: MobileSidebarProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -34,7 +36,13 @@ export function MobileSidebar({ slug, orgName, tenantUser }: MobileSidebarProps)
             onClick={() => setOpen(false)}
           />
           <div className="fixed inset-y-0 left-0 z-40 flex">
-            <Sidebar slug={slug} orgName={orgName} tenantUser={tenantUser} />
+            <Sidebar
+              slug={slug}
+              orgName={orgName}
+              tenantUser={tenantUser}
+              logoUrl={logoUrl}
+              showPlatformFooter={showPlatformFooter}
+            />
             <button
               onClick={() => setOpen(false)}
               className="absolute right-2 top-2 rounded-md p-1 hover:bg-accent"
