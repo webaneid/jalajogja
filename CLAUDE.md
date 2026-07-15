@@ -4289,6 +4289,53 @@ file sebelum edit (bukan cari-ganti membabi buta):
 2 helper baru itu sendiri). `docs/arsitektur-domain.md` § 5.2/8.3/9 diupdate status ✅ Selesai
 bersamaan dengan commit.
 
+### [2026-07-16] Item #6 Sub-fase 1 — Middleware Admin-on-Custom-Domain (Opsi B)
+
+Setelah cek collision slug `admin` di production (nol hasil, § 7.1 dokumen), user pilih lanjut
+langsung ke implementasi sub-fase middleware (dari 3 sub-fase: middleware → branding → auth).
+Fitur SECURITY-SENSITIVE — dikerjakan hati-hati, tsc+build dicek sebelum commit seperti biasa.
+
+**`middleware.ts` — cabang baru di dalam blok custom domain** (`!isOwnHost(host)`), ditempatkan
+SEBELUM guard blanket `/app/*`+`/platform/*` yang sudah ada (guard lama TIDAK diubah — carve-out
+sempit dan eksplisit untuk `pathname === "/admin" || pathname.startsWith("/admin/")` saja):
+
+1. Resolve slug SELALU dari `Host` header request ini sendiri (fungsi baru
+   `resolveCustomDomainSlug()`, reuse endpoint `/api/internal/resolve-domain` yang sama dengan
+   flow publik) — TIDAK PERNAH dari path. Ini kunci keamanannya: `/admin/*` di sebuah custom
+   domain cuma bisa membuka dashboard tenant PEMILIK domain itu, tidak pernah tenant lain — kelas
+   celah yang sama persis dengan yang ditutup 2026-07-08 untuk `/app/*` biasa (lesson "Custom
+   Domain Harus Diisolasi").
+2. Guard cookie sesi (`better-auth.session_token`) dicek proaktif di cabang ini juga, mencerminkan
+   guard `/app/*` yang sudah ada — bukan cuma diserahkan ke layout dashboard (yang tetap jalan
+   sebagai lapis kedua/defense-in-depth karena rewrite tetap merender route yang sama).
+3. Kalau `slug` tidak resolve (domain belum/tidak aktif) → fallback `jalakarta.com/app/login`
+   (tidak ada konteks tenant untuk diarahkan kemana pun di domain itu).
+4. Kalau resolve sukses tapi belum login → rewrite ke `/app/{slug}{restPath}`.
+
+**Temuan penting yang menyederhanakan implementasi**: visitor belum login di-redirect ke `/login`
+**di domain custom itu sendiri** (bukan `jalakarta.com/app/login`), dan ini langsung bekerja tanpa
+menyentuh `login-form.tsx` sama sekali, karena dua infrastruktur yang sudah lebih dulu ada saling
+melengkapi: (a) cookie sesi Better Auth di-scope oleh `Host` header saat proses login (sudah difix
+sesi sebelumnya, lesson "Login di Custom Domain — Better Auth CSRF") — jadi login via
+`{custom-domain}/login` otomatis menghasilkan cookie yang valid untuk `{custom-domain}/admin/*`
+juga; (b) `login-form.tsx` sudah punya `window.location.href = redirectTo || baseUrl/akun` — begitu
+saja sudah mendarat balik ke path admin asli setelah login sukses. **Ini sekaligus jawaban natural
+untuk keputusan "auth cross-domain: sesi terpisah per domain" (§ 7.3) — tidak perlu bangun
+mekanisme SSO/token-exchange apapun, infrastruktur existing sudah cukup.**
+
+**Duplikasi kecil yang disengaja**: `resolveCustomDomainSlug()` menduplikasi ~15 baris logic fetch
+yang sudah ada di blok resolve-domain publik di bawahnya dalam file yang sama, alih-alih di-share
+lewat refactor. Trade-off sadar: custom domain content routing adalah jalur PALING kritis di
+seluruh aplikasi (kalau rusak, semua tenant dengan custom domain langsung down) — mengubahnya demi
+menghindari duplikasi ~15 baris dianggap risiko lebih besar daripada manfaatnya. Konsisten dengan
+pola duplikasi-demi-isolasi yang sudah berulang di project ini (`generateEventRegNumber`,
+`formatEventDateWib`, dst — selalu didokumentasikan eksplisit, bukan kelupaan).
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error, bundle middleware naik wajar (32.9→33.1
+kB). `docs/arsitektur-domain.md` § 7.2/7.3/9 diupdate status bersamaan dengan commit — sub-fase 1
+dari 3 selesai, sub-fase 2 (branding dashboard tenant-branded di `/admin/*`, § 5.3) dan sub-fase 3
+(auth, ternyata sudah otomatis terselesaikan di sub-fase 1) dicatat statusnya di roadmap.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

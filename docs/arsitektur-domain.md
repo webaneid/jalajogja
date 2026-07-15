@@ -323,25 +323,49 @@ disimpan di dokumen ini sebagai catatan alternatif kalau nanti arsitektur SSL be
 
 ### 7.2 Yang wajib dikerjakan bersamaan, bukan cuma routing
 
-Dengan Opsi B terpilih, tetap ada 3 pekerjaan yang wajib berbarengan, bukan cuma buka middleware guard:
+Dengan Opsi B terpilih, ada 3 pekerjaan — sub-fase 1 (middleware) sudah dieksekusi 2026-07-16,
+sub-fase 2 (branding) dan 3 (auth) menyusul:
 
-1. **Middleware**: buka guard `/app/*`/`/platform/*`-redirect (§ 3.2 poin 1a) secara terkontrol —
-   HANYA untuk path admin yang cocok dengan tenant PEMILIK custom domain tersebut (bukan buka untuk
-   semua custom domain mengakses `/app/{slug-lain}` — itu justru mengulang celah keamanan yang baru
-   saja ditutup di § 8.1). Perlu resolve slug dari custom domain dulu (sudah ada mekanismenya, § 3.2
-   poin 1c), baru izinkan `/admin/*` di path itu di-rewrite ke `/app/{slug-yang-sama}/*` — TIDAK
-   PERNAH ke slug lain.
-2. **Branding dashboard**: sesuai Prinsip #2 di § 1, dashboard yang diakses lewat
+1. ✅ **Middleware (dieksekusi 2026-07-16)** — `middleware.ts`, cabang baru khusus
+   `pathname === "/admin" || pathname.startsWith("/admin/")` di dalam blok custom domain,
+   ditempatkan SEBELUM guard blanket `/app/*`+`/platform/*` yang sudah ada (bukan mengubahnya —
+   carve-out sempit dan eksplisit, blanket guard tetap utuh untuk semua path lain).
+   - Slug SELALU di-resolve dari `Host` header request (fungsi baru `resolveCustomDomainSlug()`,
+     reuse endpoint `/api/internal/resolve-domain` yang sama dengan flow publik, § 3.2 poin 1c) —
+     TIDAK PERNAH dari path. Ini yang menjamin `/admin/*` di sebuah custom domain hanya bisa
+     me-rewrite ke `/app/{slug-pemilik-domain-ini}/*`, tidak pernah slug lain — kelas celah yang
+     sama persis dengan yang ditutup di § 8.1 untuk `/app/*` biasa.
+   - Guard cookie sesi (`better-auth.session_token`) dicek proaktif di cabang ini juga (cermin
+     persis guard `/app/*` yang sudah ada di bawah) — bukan cuma diserahkan ke
+     `(dashboard)/app/[tenant]/layout.tsx` (yang tetap jalan sebagai lapis kedua/defense-in-depth,
+     karena rewrite tetap merender route yang sama).
+   - **Temuan penting saat implementasi**: visitor belum login di-redirect ke `/login` DI DOMAIN
+     CUSTOM ITU SENDIRI (bukan `jalakarta.com/app/login`) dengan `?redirect={pathname-admin-asli}`.
+     Ini bekerja tanpa perubahan apapun di `login-form.tsx` karena dua alasan yang sudah lebih dulu
+     ada: (a) cookie sesi Better Auth di-scope oleh `Host` header saat proses login (lihat lesson
+     "Login di Custom Domain — Better Auth CSRF"), jadi login via `{custom-domain}/login`
+     menghasilkan cookie yang valid untuk `{custom-domain}/admin/*` juga; (b) `login-form.tsx` sudah
+     `window.location.href = redirectTo || baseUrl/akun` — otomatis mendarat balik ke path admin
+     asli setelah login sukses. Kasus `!slug` (domain belum/tidak aktif, tidak ada konteks tenant
+     sama sekali) tetap fallback ke `jalakarta.com/app/login` — tidak ada tenant untuk diarahkan.
+   - **Duplikasi kecil yang disengaja**: `resolveCustomDomainSlug()` menduplikasi ~15 baris logic
+     fetch-ke-resolve-domain yang sudah ada di blok publik-content di bawahnya, alih-alih di-share.
+     Trade-off sadar untuk sesi ini — mengubah kode yang sudah bekerja (custom domain content
+     routing, jalur paling kritis di seluruh aplikasi) demi menghindari duplikasi kecil dianggap
+     risiko lebih besar daripada manfaatnya, konsisten dengan pola duplikasi-demi-isolasi yang
+     sudah berulang di project ini (`generateEventRegNumber`, `formatEventDateWib`, dst).
+2. ⬜ **Branding dashboard (belum dieksekusi)** — sesuai Prinsip #2 di § 1, dashboard yang diakses lewat
    `ikpmjogja.com/admin/*` WAJIB tenant-branded — logo, `primary_color` via CSS variable
    (`buildTenantThemeCss`, infrastruktur yang sudah ada untuk front-end publik tinggal
    digunakan ulang), dan footer sidebar "jalakarta v0.1" perlu jadi kondisional
    (disembunyikan atau diganti neutral) saat diakses lewat custom domain. Ini pekerjaan riil, bukan
    sekadar routing — didetilkan di § 5.3.
-3. **Auth cookie/session** — **dijawab, lihat § 7.3**: sesi terpisah per domain (login manual di
-   `{custom-domain}/admin` meski sudah login di `jalakarta.com/app/{slug}`) adalah pendekatan awal
-   yang dipilih — cookie `better-auth.session_token` di `jalakarta.com` memang tidak bisa dibaca
-   dari domain lain (batas browser), jadi ini juga pilihan paling murah dan konsisten dengan
-   preferensi user ("SSO kalau bisa, kalau tidak bisa login manual tidak masalah").
+3. ✅ **Auth cookie/session (terjawab di keputusan, terimplementasi sekaligus di sub-fase 1)** —
+   sesi terpisah per domain: login via `{custom-domain}/login` (bukan `jalakarta.com/app/login`)
+   menghasilkan cookie yang sudah otomatis valid untuk `{custom-domain}/admin/*`, tanpa mekanisme
+   SSO tambahan apapun — persis realisasi dari preferensi user ("SSO kalau bisa, kalau tidak bisa
+   login manual tidak masalah") memakai infrastruktur yang sudah ada (Better Auth cookie scoping
+   by Host header, sudah difix di sesi sebelumnya untuk custom domain login secara umum).
 
 ### 7.3 Status keputusan (update 2026-07-16)
 
@@ -442,7 +466,7 @@ Diurutkan dari risiko paling rendah ke paling tinggi. Dieksekusi bertahap per fa
 | 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada, jelaskan alur otomatis | Nol — dokumentasi saja | Menit | ✅ **Selesai (Fase 1, 2026-07-16)** |
 | 4 | Nasib `tenants.subdomain` (§ 2) — user pilih sembunyikan field dari UI settings sampai Fase 2 siap dikerjakan | Rendah | Menit | ✅ **Selesai (Fase 2, 2026-07-16)** |
 | 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas 16 file | Beberapa jam | ✅ **Selesai (Fase 3, 2026-07-16)** |
-| 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru, Opsi B (path) + auth cross-domain sudah diputuskan, cek collision production ✅ nol hasil | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | ⬜ Belum dimulai — semua prasyarat terpenuhi, tinggal eksekusi (butuh sub-fase sendiri: middleware → branding dashboard → auth) |
+| 6 | Admin-on-Custom-Domain (§ 7), 3 sub-fase: middleware → branding dashboard → auth | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | 🟡 **Sebagian**: sub-fase 1 (middleware routing + auth cookie) ✅ **selesai (2026-07-16)**. Sub-fase 2 (branding dashboard tenant-branded di `/admin/*`) ⬜ belum dimulai. |
 
 **Urutan eksekusi**: #1–#3 selesai (Fase 1, murah/independen/nol risiko). #4 butuh keputusan cepat
 user (implementasi vs sembunyikan) sebelum lanjut. #5 satu fase tersendiri dengan testing
