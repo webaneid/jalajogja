@@ -1061,19 +1061,30 @@ Logika: cari yang spesifik dulu → fallback ke `general`.
 - **[SELESAI Fase 1-4] Migrasi URL** — admin dashboard dipindah ke `/app/{slug}/*`, publik tetap `/{slug}/*`. Redirect 301 dari path lama di `next.config.ts`. Fase 5 (admin subdomain `admin.ikpmjogja.com`) ditunda. Detail: `docs/rencana-migrasi-url.md`.
 - **Post-login routing multi-tenant tidak deterministik** — `getFirstTenantForUser()` tidak ada `ORDER BY`, user di 2+ tenant bisa dikirim ke tenant mana saja. Perlu difix sebelum tenant kedua aktif.
 - **Fase 5 URL migrasi** — admin subdomain custom domain (`admin.ikpmjogja.com`). Ditunda, perlu 2 minggu observasi production dulu. Detail di `docs/rencana-migrasi-url.md`.
-- **[RENCANA] Sesi khusus evaluasi ulang arsitektur domain/URL secara menyeluruh** — diminta user
-  2026-07-14 setelah bug redirect legacy salah tangkap path publik di custom domain (lihat lesson
-  "next.config.ts redirects() Salah Tangkap Path Publik di Custom Domain"). Empat entitas domain
-  yang perlu dipetakan ulang secara sistematis dan didokumentasikan sebagai satu sumber kebenaran:
-  1. `jalakarta.com` — landing page platform (belum dibangun)
-  2. `platform.jalakarta.com` — admin platform (tim Jalakarta)
-  3. `jalakarta.com/app/{slug}/*` — dashboard admin tenant
-  4. `jalakarta.com/{slug}/*` **atau** `{custom-domain}/*` — front-end publik tenant
-  Fokus evaluasi: konflik path (kasus `/akun/media` vs `/:slug/media` legacy redirect adalah contoh
-  nyata), urutan eksekusi Next.js (`redirects → middleware → rewrites`) dan implikasinya ke custom
-  domain, konsistensi `has: host` guard di semua redirect/rewrite yang path-based, serta status
-  Fase 5 (admin subdomain) yang masih tertunda. **Belum dijadwalkan** — tunggu instruksi user untuk
-  mulai sesi ini secara eksplisit, jangan dieksekusi proaktif.
+- **[SELESAI ANALISIS, EKSEKUSI BELUM] Evaluasi arsitektur domain/URL menyeluruh (2026-07-16)** —
+  sesi yang diminta di catatan `[RENCANA]` 2026-07-14 sudah dieksekusi (analisis saja, TIDAK ada
+  perubahan kode). Hasil lengkap: **`docs/arsitektur-domain.md`** ditulis ulang total (versi lama
+  2026-05-26 punya beberapa klaim basi — dikoreksi, lihat § 8 dokumen tsb). Prinsip yang dikunci:
+  **"satu domain = satu identitas, tidak boleh menyeberang"**. Temuan utama:
+  - 🔴 **Bug branding aktif**: footer publik (`dark-footer.tsx`+`light-footer.tsx`) menampilkan
+    "Jalakarta — developed with ❤️ by Webane" TANPA syarat — bocor ke custom domain tenant meski
+    `baseUrl` prop untuk deteksi ini sudah tersedia di komponen yang sama. Belum difix.
+  - `tenants.subdomain` (Fase 2) ada kolom + ada input UI di `/settings/domain`, tapi **mati total**
+    — tidak dibaca di manapun dalam kode routing. Menyesatkan admin yang mengisinya.
+  - Duplikasi `isOwnHost(host) ? "/${slug}" : ""` dihitung ulang independen di ~15 file — bukan bug
+    aktif, tapi pola berulang di balik beberapa bug custom-domain yang sudah pernah terjadi.
+  - Komentar "SSL via Caddy" di `packages/db/src/schema/public/tenants.ts` (baris 29, 46) salah —
+    infrastruktur nyata 100% Nginx+Certbot manual, Caddy cuma usulan masa depan belum dipakai.
+  - **Admin-on-Custom-Domain** (skenario diminta user: dashboard admin tenant via custom domain
+    sendiri) — fitur belum ada sama sekali, malah ada guard aktif (sejak 2026-07-08) yang
+    memblokirnya. Dokumen berisi 2 opsi arsitektur (subdomain `admin.{domain}` vs path
+    `{domain}/admin`) + 3 keputusan produk yang perlu dijawab user sebelum implementasi (lihat
+    § 7.3 dokumen). Rencana lama "Fase 5" (`docs/rencana-migrasi-url.md`) punya kontradiksi internal
+    (usul Cloudflare proxy, bertentangan dengan pendekatan DNS-only+Certbot yang sudah berjalan) —
+    jangan diadopsi mentah-mentah.
+  Roadmap prioritas (§ 9 dokumen) — **semua menunggu arahan user, belum ada yang dieksekusi**: fix
+  footer (murah, independen) → koreksi 2 komentar/dokumen basi → putuskan nasib `subdomain` →
+  konsolidasi `baseUrl` → Admin-on-Custom-Domain (butuh keputusan produk dulu).
 
 - **[RENCANA] Invoice jatuh tempo — tidak ada konsekuensi otomatis (dicatat 2026-07-15)**:
   Ditemukan saat verifikasi cron `invoice-reminder` — status invoice **tidak pernah** otomatis

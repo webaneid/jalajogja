@@ -1,211 +1,403 @@
-# Arsitektur Domain & Custom Domain Routing
+# Arsitektur Domain — Satu Sumber Kebenaran
 
-> Dokumen ini mencakup arsitektur teknis routing domain jalajogja.
-> Panduan operasional step-by-step untuk setup tenant baru: `docs/panduan-custom-domain.md`
-
----
-
-## Tiga Fase Routing
-
-| Fase | Contoh URL | Status |
-|------|-----------|--------|
-| 1 — Path | `jalakarta.com/app/pc-ikpm-jogjakarta/dashboard` (admin) | ✅ Aktif |
-| 2 — Subdomain | `ikpm.jalakarta.com/post` | ⬜ Belum diimplementasikan |
-| 3 — Custom Domain | `ikpmjogja.com/post` | ✅ Aktif (2026-05-26) |
-
-Ketiga fase tidak saling menggantikan — tenant bisa punya ketiganya aktif sekaligus.
+> **Status dokumen**: hasil audit menyeluruh 2026-07-16 (verifikasi langsung ke kode, bukan asumsi
+> dari dokumen lama). Ini adalah dokumen **perencanaan** — belum ada eksekusi kode dari sesi ini.
+> Menggantikan versi sebelumnya (2026-05-26) yang sudah basi di beberapa klaim penting (lihat
+> § 8 "Ralat Terhadap Dokumen Lama").
+>
+> **Mandat**: sesi ini diminta eksplisit oleh user 2026-07-16, menindaklanjuti catatan
+> `[RENCANA]` di `CLAUDE.md` (dicatat 2026-07-14 setelah bug redirect custom domain nyata) yang
+> sengaja tidak dieksekusi proaktif sampai user minta langsung.
+>
+> Panduan operasional step-by-step (setup tenant baru): `docs/panduan-custom-domain.md`
+> (juga butuh koreksi minor, lihat § 8).
 
 ---
 
-## Cara Kerja Custom Domain (✅ Aktif)
+## 1. Prinsip yang Mengikat
 
-```
-Browser buka https://ikpmjogja.com
-  → DNS A record → VPS IP (72.61.215.7) langsung (tanpa Cloudflare proxy)
-  → VPS port 443 → Nginx server block ikpmjogja.com (cert Let's Encrypt)
-  → Nginx proxy_pass → localhost:3000
-  → Next.js middleware baca Host header: "ikpmjogja.com"
-  → isOwnHost("ikpmjogja.com") = false → masuk custom domain routing
-  → Strip www. jika ada: "www.ikpmjogja.com" → "ikpmjogja.com"
-  → Fetch http://localhost:3000/api/internal/resolve-domain?domain=ikpmjogja.com
-     (APP_INTERNAL_URL — loopback, tidak keluar ke internet)
-  → Timeout 3 detik (AbortSignal) — tidak blokir terlalu lama
-  → DB: WHERE custom_domain = 'ikpmjogja.com' AND status = 'active' AND isActive = true
-  → Jika found → slug = 'pc-ikpm-jogjakarta'
-  → Rewrite internal: /post → /pc-ikpm-jogjakarta/post
-  → Next.js render halaman untuk tenant pc-ikpm-jogjakarta
-```
+> **Satu domain = satu identitas.** Identitas satu domain tidak boleh menyeberang ke domain lain.
 
-### Penanganan semua variasi URL
+Diterjemahkan jadi tiga aturan konkret yang mengikat setiap keputusan desain di dokumen ini:
 
-| URL yang diketik | Nginx | Hasil |
-|---|---|---|
-| `http://ikpmjogja.com` | 301 | `https://ikpmjogja.com/` |
-| `http://www.ikpmjogja.com` | 301 | `https://ikpmjogja.com/` |
-| `https://www.ikpmjogja.com` | 301 (server block www) | `https://ikpmjogja.com/` |
-| `https://ikpmjogja.com` | proxy → Next.js | ✅ Tampil |
-| `https://ikpmjogja.com/pc-ikpm-jogjakarta/post` | proxy → middleware | 301 → `/post` (strip slug) |
+1. **Domain sendiri (`jalakarta.com` dan turunannya) = identitas Jalakarta.** Boleh menampilkan
+   co-branding Jalakarta (nama platform, atribusi, link ke dashboard admin) karena secara literal
+   pengunjung sedang berada di properti Jalakarta.
+2. **Custom domain tenant = identitas tenant, murni.** Begitu pengunjung berada di domain milik
+   tenant (`ikpmjogja.com`, `visikita.com`, dst), **tidak boleh ada jejak identitas Jalakarta yang
+   terlihat** — bukan cuma URL (sudah benar sejak Fase C), tapi juga teks, warna, dan brand apapun
+   yang tampil ke pengunjung. Ini berlaku untuk **setiap permukaan** yang nanti berjalan di atas
+   custom domain — front-end publik hari ini, dan admin dashboard kalau/ketika dibangun di atas
+   custom domain (§ 7).
+3. **Path admin (`/app/*`, `/platform/*`) tidak pernah diservis dari custom domain**, kecuali via
+   mekanisme eksplisit yang dirancang khusus (§ 7) — bukan kebetulan lolos dari guard yang ada.
+
+Prinsip #2 punya konsekuensi eksplisit yang jadi temuan utama audit ini: **kalau nanti admin
+dashboard tenant dibangun di atas custom domain, ia WAJIB ikut menjadi tenant-branded sepenuhnya**
+(logo, warna, tanpa atribusi Jalakarta) — bukan cuma soal routing/URL. Dashboard admin hari ini
+sama sekali belum punya infrastruktur untuk itu (§ 6.3) — ini bagian dari yang perlu direncanakan,
+bukan sekadar "tinggal buka domainnya".
 
 ---
 
-## File yang Terlibat
+## 2. Empat Entitas Domain — Peta Kebenaran Saat Ini
 
-```
-apps/web/middleware.ts
-  → isOwnHost(): jalakarta.com, *.jalakarta.com, localhost — skip custom domain routing
-  → Strip www. dari host sebelum lookup (www.ikpmjogja.com → ikpmjogja.com)
-  → Jika host punya www. dan slug ditemukan → redirect 301 ke apex
-  → resolve custom domain via fetch ke /api/internal/resolve-domain
-  → Jika slug ditemukan → rewrite internal ke /{slug}{pathname}
-  → C1: jika pathname sudah include slug → redirect 301 ke clean URL
+| # | Entitas | Alamat hari ini | Status | Bisa custom domain? |
+|---|---------|------------------|--------|----------------------|
+| 1 | **Landing page platform** | `jalakarta.com` (root) | ❌ **Belum dibangun** — `apps/web/app/page.tsx` cuma stub `<h1>Jalagon</h1>`, tanpa metadata/redirect | Tidak relevan (ini domain Jalakarta sendiri) |
+| 2 | **Admin platform (tim Jalakarta)** | `jalakarta.com/platform/*` — *juga* reachable via `platform.jalakarta.com/platform/*` (lihat catatan di bawah) | ✅ Selesai, auth `platform_session` cookie terpisah | Tidak relevan — ini internal tool Jalakarta |
+| 3 | **Admin dashboard tenant** | `jalakarta.com/app/{slug}/*` | ✅ Selesai (path-only) | ❌ **Tidak bisa** — middleware aktif memblokir & redirect 302 ke `jalakarta.com` kalau diakses dari custom domain manapun |
+| 4 | **Front-end publik tenant** | `jalakarta.com/{slug}/*` **atau** `{custom-domain}/*` | ✅ Selesai, dual-mode | ✅ **Bisa** — tapi ada 1 celah branding aktif (§ 5.1) |
 
-apps/web/lib/is-own-host.ts
-  → Helper shared untuk middleware + PublicLayout
-  → Return true untuk: jalakarta.com, *.jalakarta.com, localhost, 127.0.0.1
+**Catatan penting soal #2**: `platform.jalakarta.com` **bukan** contoh routing subdomain→konten
+seperti yang dibayangkan untuk Fase 2. Ia jalan karena `*.jalakarta.com` sudah wildcard DNS ke VPS
+yang sama, dan `isOwnHost()` (§ 3.3) menganggap semua subdomain `*.jalakarta.com` sebagai "milik
+sendiri" — routing tetap 100% path-based (`/platform/login`, dst), tidak ada logic yang membaca
+subdomain untuk menentukan konten. Jadi `jalakarta.com/platform/login` dan
+`platform.jalakarta.com/platform/login` betul-betul me-render halaman yang sama, bukan dua rute
+berbeda. Ini bukan bug — hanya perlu dipahami agar tidak dikira ada routing subdomain yang sudah
+jalan padahal belum (lihat Fase 2, § 7.1).
 
-apps/web/app/api/internal/resolve-domain/route.ts
-  → DB query: tenants WHERE custom_domain = ? AND customDomainStatus = 'active' AND isActive = true
-  → Return { slug } atau { slug: null }
-
-apps/web/app/(public)/[tenant]/layout.tsx
-  → Deteksi custom domain via headers()
-  → Compute baseUrl: "" jika custom domain, "/{slug}" jika path mode
-  → Strip slug prefix dari navMenu hrefs saat custom domain
-  → Pass baseUrl ke header + footer komponen
-
-/etc/nginx/sites-available/ikpmjogja.com  (di VPS — bukan di repo)
-  → Port 80: redirect HTTP → https://ikpmjogja.com (apex, tanpa www)
-  → Port 443 www: redirect → https://ikpmjogja.com
-  → Port 443 apex: proxy ke localhost:3000, timeout 120s, max body 50M
-
-/etc/nginx/sites-available/custom-domains  (di VPS — bukan di repo)
-  → Port 80 catch-all (server_name _): redirect HTTP → HTTPS
-  → Fallback untuk domain yang belum punya server block sendiri
-
-packages/db/src/schema/public/tenants.ts
-  → custom_domain TEXT UNIQUE          — hostname saja, tanpa http://, tanpa www
-  → custom_domain_status TEXT          — none | pending | active | failed
-  → custom_domain_verified_at TIMESTAMPTZ
-```
+**Kolom DB `tenants.subdomain`**: ada, dan ada input field-nya di `/app/{slug}/settings/domain`,
+**tapi tidak pernah dibaca di manapun** dalam kode routing (middleware, `resolve-domain`, atau file
+manapun). Field ini **mati total** — admin bisa mengisinya dan melihat UI menyimpannya sukses, tapi
+tidak berefek apapun. Ini kandidat perbaikan prioritas tinggi karena berpotensi menyesatkan admin
+(lihat § 7.1 dan § 8).
 
 ---
 
-## Infrastruktur SSL
+## 3. Pipeline Request — Urutan Eksekusi Persis
 
-SSL untuk custom domain menggunakan **Let's Encrypt via Certbot langsung di VPS**.
-Tidak melalui Cloudflare proxy.
+Next.js App Router mengeksekusi dalam urutan tetap: **`headers()` config → `redirects()` →
+`middleware.ts` → `rewrites()`**. Urutan ini krusial dan sudah pernah jadi sumber bug produksi nyata
+(§ 8.1) — setiap aturan baru WAJIB mempertimbangkan di lapisan mana ia berjalan dan apakah lapisan
+itu tahu bedanya custom domain vs domain sendiri.
+
+### 3.1 Lapisan 1 — `next.config.ts: redirects()` (jalan SEBELUM middleware)
+
+Redirect legacy (301, bookmark lama dari migrasi URL admin Fase 1–4) untuk 11 modul
+(`dashboard, members, pengurus, divisi, accounts, media, website, letters, finance, donasi, toko,
+settings`) dari pola lama `/{slug}/{module}` ke `/app/{slug}/{module}`.
+
+**Wajib** di-guard `has: [{ type: "host", value: "jalakarta.com" }]` — karena lapisan ini berjalan
+SEBELUM middleware, ia **tidak tahu** apa itu custom domain. Tanpa guard, pattern
+`/:slug(TENANT_SLUG)/media` bisa salah menangkap path publik 2-segmen di custom domain manapun
+(persis bug yang pernah terjadi ke `visikita.com/akun/media`, § 8.1).
+
+**Celah minor yang perlu diawasi** (bukan bug aktif, tapi rapuh): guard `has.value: "jalakarta.com"`
+adalah string literal apex saja — tidak mencakup `www.jalakarta.com` atau `app.jalakarta.com`/subdomain
+`*.jalakarta.com` lain yang `isOwnHost()` juga anggap "milik sendiri". Selama slug tenant tidak pernah
+diservis dari subdomain-subdomain itu ini aman, tapi kalau nanti ada fitur yang mengarahkan traffic
+tenant ke `app.jalakarta.com/{slug}/...`, redirect legacy ini akan diam-diam tidak berlaku di sana.
+
+Rewrite tambahan: `/app/api/:path*` → `/api/:path*` (beforeFiles) — perbaikan permanen untuk browser
+yang meng-cache redirect 301 lama yang salah.
+
+### 3.2 Lapisan 2 — `middleware.ts` (jalan setelah redirects, sebelum rewrites)
 
 ```
-/etc/letsencrypt/live/ikpmjogja.com/
-  fullchain.pem  → sertifikat + chain (dipakai nginx)
-  privkey.pem    → private key
-  → Berlaku 90 hari, auto-renew via cron certbot
-  → Cert mencakup: ikpmjogja.com DAN www.ikpmjogja.com (multi-SAN)
+1. isOwnHost(host)?
+   ├─ TIDAK (custom domain) →
+   │    a. pathname mulai /app/ atau /platform/? → 302 redirect ke jalakarta.com + path yang sama
+   │    b. pathname mulai /api/? → lolos apa adanya (route API urus sendiri konteks tenant)
+   │    c. lainnya (konten publik) →
+   │         - strip "www." dari host
+   │         - fetch (loopback, timeout 3s) → /api/internal/resolve-domain?domain=...
+   │         - DB: custom_domain = ? AND custom_domain_status = 'active' AND is_active = true
+   │         - kalau host punya www → 301 redirect ke apex (tanpa www)
+   │         - kalau path sudah kebetulan diawali /{slug}/ → 301 strip slug (C1, cegah slug bocor ke URL)
+   │         - lainnya → REWRITE internal (bukan redirect) ke /{slug}{path} — URL bar tetap bersih
+   │         - resolve gagal/timeout → lanjut apa adanya (biasanya berujung 404 dari [tenant] dynamic route)
+   └─ YA (own host) → lanjut ke guard auth di bawah
+
+2. Guard /platform/* — cek cookie platform_session (auth terpisah dari tenant)
+3. Guard /app/*     — cek cookie better-auth.session_token (atau varian __Secure-)
+4. Lainnya → next()
 ```
 
-**Cara issue cert untuk domain baru:**
-```bash
-sudo certbot --nginx -d DOMAIN -d www.DOMAIN
-```
+Poin #1a adalah **guard eksplisit yang mewujudkan Prinsip #3** di § 1 — ditambahkan 2026-07-08
+setelah ditemukan custom domain bisa membuka dashboard admin tenant lain (celah keamanan nyata,
+lihat § 8.1). Ini yang harus dibongkar/di-scope-ulang secara hati-hati kalau Admin-on-Custom-Domain
+(§ 7) jadi dibangun — bukan dihapus begitu saja.
 
-> Certbot validasi via HTTP challenge di port 80. Pastikan DNS A record sudah propagasi
-> dan catch-all nginx (custom-domains) tidak memblokir port 80 sebelum certbot jalan.
+### 3.3 `isOwnHost()` — definisi "milik sendiri"
 
----
-
-## Aturan Normalisasi Domain
-
-Domain yang disimpan ke DB **harus selalu**:
-- Lowercase
-- Tanpa `http://` atau `https://`
-- Tanpa path (hanya hostname)
-- Tanpa trailing slash
-- Tanpa port
-- Tanpa `www.` — simpan apex saja (`ikpmjogja.com`, bukan `www.ikpmjogja.com`)
-
-Implementasi di `settings/domain/actions.ts`:
 ```typescript
-function normalizeDomain(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")   // hapus www
-    .replace(/\/.*$/, "")    // hapus path
-    .replace(/:.*$/, "")     // hapus port
-    .replace(/\.$/, "");     // hapus trailing dot
-}
+// apps/web/lib/is-own-host.ts
+host === "jalakarta.com" ||
+host === "www.jalakarta.com" ||
+host === "app.jalakarta.com" ||
+host.endsWith(".jalakarta.com") ||   // mencakup semua subdomain, termasuk platform.
+host.startsWith("localhost") ||
+host.startsWith("127.0.0.1")
 ```
 
----
+Satu-satunya sumber kebenaran untuk "apakah host ini identitas Jalakarta". Dipanggil independen di
+**~15 titik berbeda** di seluruh `app/(public)/[tenant]/**` untuk menghitung `baseUrl` (lihat § 5.2)
+— duplikasi ini sendiri adalah risiko (§ 8.3).
 
-## Proses Setup Tenant Custom Domain Baru
+### 3.4 Lapisan 3 — `next.config.ts: rewrites()`
 
-Lihat panduan lengkap: **`docs/panduan-custom-domain.md`**
-
-Ringkasan:
-1. Tenant: Tambah DNS A record `@` dan `www` → `72.61.215.7`
-2. Admin: Simpan domain di `/app/{slug}/settings/domain`
-3. VPS: `sudo certbot --nginx -d DOMAIN -d www.DOMAIN`
-4. VPS: Buat `/etc/nginx/sites-available/DOMAIN` dari template
-5. VPS: `sudo ln -s .../DOMAIN /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx`
-6. DB: `UPDATE tenants SET custom_domain_status = 'active' WHERE custom_domain = 'DOMAIN'`
+Cuma satu aturan (`beforeFiles`, sudah disebut di § 3.1) — `middleware.ts` sendiri melakukan
+rewrite-nya lewat `NextResponse.rewrite()`, bukan lewat config `rewrites()`.
 
 ---
 
-## Masalah yang Sudah Difix
-
-### ✅ www variant tidak resolve (2026-05-26)
-**Gejala**: `www.ikpmjogja.com` → halaman salah atau error.
-**Root cause**: DB punya `ikpmjogja.com`, middleware lookup `www.ikpmjogja.com` → tidak cocok.
-**Fix**: Middleware strip `www.` sebelum lookup. Nginx redirect www → apex di level server block.
-
-### ✅ HTTP tidak redirect ke HTTPS (2026-05-26)
-**Gejala**: `http://ikpmjogja.com` browsed tanpa redirect ke HTTPS.
-**Fix**: Nginx port 80 block untuk `ikpmjogja.com` sekarang return 301 ke `https://ikpmjogja.com`.
-
-### ✅ `proxy_read_timeout` terlalu pendek (2026-05-26)
-**Gejala**: Request yang butuh waktu lebih dari 60 detik gagal.
-**Fix**: Ditambah `proxy_read_timeout 120s` di server block port 443.
-
-### ✅ Slug bocor ke URL custom domain (2026-05-16, Fase C)
-**Gejala**: `ikpmjogja.com/pc-ikpm-jogjakarta/post` — slug muncul di URL.
-**Fix**: Middleware C1 redirect strip slug. Layout C2/C3 baseUrl-aware links.
-
----
-
-## Yang Belum Diimplementasikan
-
-### Fase 2 — Subdomain jalakarta.com
-`ikpm.jalakarta.com/post` — subdomain routing belum aktif. Middleware hanya handle
-path mode dan custom domain. Butuh: wildcard DNS `*.jalakarta.com` di Certbot +
-middleware lookup subdomain → slug.
-
-### Cron Verify-Domains yang Aman
-`app/api/cron/verify-domains/route.ts` saat ini bisa reset status `active` → `failed`
-jika DNS lookup gagal sesaat. Seharusnya: status `active` tidak pernah di-downgrade
-oleh cron. Cron hanya boleh set `active` (dari `pending`) atau catat `last_check_error`.
-**Belum difix — perlu dikerjakan sebelum ada lebih dari 3 custom domain.**
-
-### Canonical Tag Custom Domain
-`generateMetadata` di page server component masih pakai `NEXT_PUBLIC_APP_URL` sebagai base.
-Untuk SEO yang benar di custom domain, canonical harus `https://DOMAIN/path` bukan
-`https://jalakarta.com/{slug}/path`.
-
-### Fase D — On-demand TLS (Jangka Panjang)
-Saat ini setiap custom domain butuh manual: certbot + nginx config + reload.
-Untuk skala >10 tenant dengan custom domain, evaluasi **Caddy** dengan on-demand TLS:
-Caddy bisa auto-issue cert Let's Encrypt untuk domain baru tanpa SSH ke VPS.
-Tidak urgent selama tenant masih sedikit.
-
----
-
-## Schema DB (public.tenants)
+## 4. Skema Database (`public.tenants`)
 
 ```
-custom_domain              TEXT UNIQUE  — apex domain, tanpa www, tanpa http
-custom_domain_status       TEXT         — none | pending | active | failed
-custom_domain_verified_at  TIMESTAMPTZ  — kapan pertama kali diverifikasi
+slug                       TEXT UNIQUE NOT NULL  — identitas path-mode & nama schema tenant_{slug}
+subdomain                  TEXT UNIQUE            — Fase 2, MATI TOTAL (§ 2), tidak dibaca kode manapun
+custom_domain               TEXT UNIQUE            — apex domain saja, tanpa www/http/port
+custom_domain_status        TEXT NOT NULL DEFAULT 'none'
+                              enum: none | pending | active | failed
+custom_domain_verified_at   TIMESTAMPTZ
+domain_last_check_at        TIMESTAMPTZ            — timestamp cron terakhir cek DNS
+domain_last_check_error     TEXT                   — pesan error DNS check terakhir (nullable)
+is_active                   BOOLEAN NOT NULL DEFAULT true  — ikut jadi syarat resolve-domain
 ```
 
-Jika di masa depan butuh multi-domain per tenant, tambah tabel `public.tenant_domains`.
+**Transisi status** (`saveDomainSettingsAction`, hanya bisa dipicu tenant sendiri dari
+`/app/{slug}/settings/domain`):
+- Domain dikosongkan → `none`, `custom_domain_verified_at` di-reset `null`.
+- Domain baru/berubah → `pending`, memicu `triggerDomainVerification()` (fire-and-forget, fallback
+  ke cron terjadwal kalau gagal).
+- Domain tidak berubah dan sebelumnya sudah `active` → tetap `active`, tidak re-trigger verifikasi.
+
+**Transisi status oleh cron** (`app/api/cron/verify-domains/route.ts`, DNS A-record check saja,
+**tidak cek SSL/HTTP**):
+- Hanya memproses tenant dengan status `pending` atau `failed` — **`active` tidak pernah disentuh**
+  (sudah benar di kode saat ini — dokumen lama mengklaim ini masih bug, itu klaim basi, lihat § 8.2).
+- `pending` → `active` kalau A record cocok VPS IP.
+- `pending` → `failed` kalau tidak cocok/gagal lookup. `failed` yang sudah `failed` tetap `failed`
+  (idempotent, cuma refresh timestamp+error).
+
+---
+
+## 5. Branding per Domain — Audit Kebocoran
+
+### 5.1 🔴 Temuan aktif: footer bocor identitas Jalakarta ke custom domain
+
+`components/website/public/layout/footers/dark-footer.tsx` dan `light-footer.tsx`, baris copyright,
+**tanpa syarat apapun** (tidak dicek `isCustomDomain`/`baseUrl` sama sekali padahal `baseUrl` sudah
+tersedia sebagai prop di komponen yang sama):
+
+```tsx
+<span>Jalakarta &mdash; developed with ❤️ by <span className="...">Webane</span></span>
+```
+
+Tampil identik di `jalakarta.com/{slug}/*` **dan** `{custom-domain}/*`. Ini **melanggar Prinsip #2**
+di § 1 secara langsung — satu-satunya kebocoran identitas Jalakarta yang ditemukan aktif di
+front-end publik hari ini. Semua permukaan lain yang diaudit (header, SEO canonical/OG URL di
+`lib/tenant-seo.ts`, halaman login) **sudah benar** — bercabang berdasarkan
+`customDomainStatus === "active"` dengan tepat.
+
+**Perbaikan yang direkomendasikan** (belum dieksekusi — lihat § 9): baris atribusi hanya tampil
+kalau `!baseUrl` salah, yaitu **tampilkan hanya di domain sendiri** (`baseUrl !== ""`), sembunyikan
+total di custom domain. Fix kecil, aman, satu baris kondisional per file footer.
+
+### 5.2 Duplikasi `baseUrl` — bukan kebocoran, tapi sumber bug berulang
+
+Pola `isOwnHost(host) ? "/${slug}" : ""` dihitung ulang secara independen di ~15 file server
+component berbeda (plus beberapa client component dengan pola `useState` + `useEffect` yang setara)
+di seluruh `app/(public)/[tenant]/**`. Tidak ada satu sumber kebenaran/helper bersama yang
+di-inject sekali dari layout dan dipakai ulang — setiap halaman baru mengulang komputasi sendiri.
+
+Ini **konsisten dengan pola bug yang berulang beberapa kali di histori project** (lihat lesson
+CLAUDE.md "Bug Sistemik: `href="../"` di 6 Halaman", "Custom Domain Harus Diisolasi", dst) — setiap
+kali developer (manusia atau AI) lupa menambahkan pengecekan ini di halaman baru, hasilnya adalah
+link `/{slug}/...` yang hardcode bocor ke custom domain. Bukan bug yang aktif sekarang, tapi
+**risiko struktural** yang terus berulang karena tidak ada satu titik pemaksaan.
+
+### 5.3 Admin dashboard tenant — branding hari ini (relevan untuk § 7)
+
+Dashboard admin (`/app/{slug}/*`) hari ini **sepenuhnya platform-generic**, bukan tenant-branded:
+- Sidebar tampilkan `orgName` (teks nama tenant) — tapi kotak avatar inisialnya pakai
+  `bg-primary` (warna tema Jalakarta sendiri, BUKAN `primary_color` milik tenant).
+- **Tidak ada logo tenant** yang dirender di manapun di dashboard — hanya huruf inisial.
+- Footer sidebar: teks statis `"jalakarta v0.1"`.
+- Tidak ada injeksi CSS variable tema tenant (`buildTenantThemeCss`) sama sekali — beda dengan
+  `PublicLayout` yang sudah melakukan ini untuk front-end publik.
+
+Ini **bukan bug** — dashboard admin memang secara sengaja platform-chrome karena selama ini hanya
+hidup di `jalakarta.com/app/{slug}/*` (Prinsip #1: domain sendiri boleh co-branding Jalakarta).
+**Tapi** ini jadi pekerjaan rumah nyata kalau § 7 (Admin-on-Custom-Domain) dieksekusi — dashboard
+perlu diberi kemampuan tenant-branding yang saat ini sama sekali tidak ada infrastrukturnya.
+
+---
+
+## 6. Infrastruktur SSL & DNS (Custom Domain Front-end)
+
+100% terverifikasi konsisten dengan dokumen lama di bagian ini — tidak ada perubahan.
+
+```
+Tenant tambah DNS A record: @ → 72.61.215.7, www → 72.61.215.7 (DNS-only, TANPA proxy Cloudflare)
+  ↓
+Admin simpan domain di /app/{slug}/settings/domain → status: pending
+  ↓
+Cron verify-domains (dipicu otomatis saat simpan + terjadwal berkala) → cek A record via DNS lookup
+  ↓ (kalau cocok VPS IP)
+status → active (OTOMATIS, murni dari DB)
+  ↓
+[MANUAL, di luar kode — VPS/manusia]
+sudo certbot --nginx -d DOMAIN -d www.DOMAIN
+buat /etc/nginx/sites-available/DOMAIN dari template, symlink, nginx -t, reload
+```
+
+**Penting**: status DB `active` **tidak menjamin** Nginx+Certbot sudah benar-benar dikonfigurasi —
+dua proses ini independen. Status `active` cuma berarti "DNS sudah mengarah ke VPS", bukan "domain
+sudah live secara HTTPS". Admin/Jalakarta tim tetap harus menjalankan langkah manual Nginx+Certbot
+terpisah. Ini bukan bug, tapi perlu dipahami sebagai keterbatasan yang disengaja (belum diautomasi).
+
+Tidak ada Caddy di manapun dalam infrastruktur nyata — semua murni Nginx + Certbot manual per
+domain. (Ada komentar salah di schema yang menyebut Caddy — lihat § 8.4.)
+
+---
+
+## 7. Admin-on-Custom-Domain — Fitur yang Belum Dibangun, Perlu Direncanakan
+
+Ini permintaan eksplisit user (skenario #1 di pesan awal sesi). **Belum ada satupun kode untuk ini
+hari ini** — bahkan justru ada guard aktif (§ 3.2, poin 1a) yang **memblokir** ini terjadi secara
+tidak sengaja. Rencana lama (`docs/rencana-migrasi-url.md`, "Fase 5") sudah menuliskan proposal
+teknis, tapi **stale dan punya kontradiksi internal** yang harus diluruskan dulu sebelum diadopsi
+(§ 8.5).
+
+### 7.1 Dua opsi arsitektur yang perlu diputuskan user sebelum implementasi
+
+**Opsi A — Subdomain di atas custom domain tenant**: `admin.ikpmjogja.com` → dashboard admin
+tenant tersebut.
+- Kelebihan: tidak butuh path tambahan, jelas terpisah dari front-end publik (`ikpmjogja.com`).
+- Kekurangan: butuh SSL cert TERPISAH untuk `admin.{domain}` (satu lagi certbot run manual per
+  tenant, di atas yang sudah ada untuk apex+www) — makin menambah beban manual SSL yang sudah jadi
+  masalah skalabilitas (§ 6, § 8.4's usulan Caddy jangka panjang). Tenant juga harus tambah DNS
+  record ketiga (`admin` → VPS IP).
+
+**Opsi B — Path di atas custom domain tenant**: `ikpmjogja.com/admin/*` atau
+`ikpmjogja.com/app/*` (path saja, cert sama dengan apex+www yang sudah ada).
+- Kelebihan: **tidak butuh SSL cert tambahan** — satu cert (apex+www, sudah ada) menutupi semua
+  path termasuk `/admin`. Tidak ada DNS record tambahan.
+- Kekurangan: perlu hati-hati path-collision dengan konten publik tenant (mis. kalau tenant punya
+  halaman publik bernama `/admin` — sama persis kelas masalah yang membuat bug `/akun/media` di
+  § 8.1 terjadi). Perlu regex/guard path yang solid seperti `TENANT_SLUG` di § 3.1, dipindahkan ke
+  konteks middleware yang menangani custom domain.
+
+**Rekomendasi awal** (untuk didiskusikan, bukan keputusan final): **Opsi B** secara signifikan
+lebih murah dari sisi operasional (nol SSL tambahan, nol DNS tambahan per tenant) dan konsisten
+dengan filosofi "custom domain = satu sertifikat, semua di baliknya" yang sudah berjalan untuk
+front-end publik. Opsi A hanya masuk akal kalau ke depan mau full-Caddy (§ 6) di mana isu SSL
+tambahan hilang otomatis (wildcard/on-demand cert).
+
+### 7.2 Yang wajib dikerjakan bersamaan, bukan cuma routing
+
+Kalau Opsi B dipilih, tetap ada 3 pekerjaan yang wajib berbarengan, bukan cuma buka middleware guard:
+
+1. **Middleware**: buka guard `/app/*`/`/platform/*`-redirect (§ 3.2 poin 1a) secara terkontrol —
+   HANYA untuk path admin yang cocok dengan tenant PEMILIK custom domain tersebut (bukan buka untuk
+   semua custom domain mengakses `/app/{slug-lain}` — itu justru mengulang celah keamanan yang baru
+   saja ditutup di § 8.1). Perlu resolve slug dari custom domain dulu (sudah ada mekanismenya, § 3.2
+   poin 1c), baru izinkan `/admin/*` di path itu di-rewrite ke `/app/{slug-yang-sama}/*` — TIDAK
+   PERNAH ke slug lain.
+2. **Branding dashboard**: sesuai Prinsip #2 di § 1, dashboard yang diakses lewat
+   `ikpmjogja.com/admin/*` WAJIB tenant-branded — logo, `primary_color` via CSS variable
+   (`buildTenantThemeCss`, infrastruktur yang sudah ada untuk front-end publik tinggal
+   digunakan ulang), dan footer sidebar "jalakarta v0.1" perlu jadi kondisional
+   (disembunyikan atau diganti neutral) saat diakses lewat custom domain. Ini pekerjaan riil, bukan
+   sekadar routing — didetilkan di § 5.3.
+3. **Auth cookie/session**: perlu dipastikan cookie sesi admin tenant (`better-auth.session_token`)
+   bisa berlaku lintas `jalakarta.com/app/{slug}` DAN `ikpmjogja.com/admin` — atau didesain sebagai
+   dua sesi terpisah (login ulang per domain). Ini keputusan produk, bukan cuma teknis — perlu
+   diklarifikasi ke user sebelum implementasi (apakah admin yang sudah login di `jalakarta.com/app/`
+   otomatis juga "login" saat buka `ikpmjogja.com/admin`, atau harus login ulang).
+
+### 7.3 Status: BELUM ADA KEPUTUSAN — jangan eksekusi sebelum 3 hal ini dijawab user
+
+- Opsi A vs B (§ 7.1) — atau kombinasi (support keduanya)?
+- Prioritas: apakah ini lebih penting dari menutup celah branding footer (§ 5.1, jauh lebih murah
+  dan berisiko rendah — bisa dikerjakan sekarang independen dari keputusan besar ini)?
+- Auth cross-domain (§ 7.2 poin 3) — sesi tunggal atau login terpisah per domain?
+
+---
+
+## 8. Ralat Terhadap Dokumen/Kode Lama
+
+Ditemukan lewat audit langsung ke kode — bukan asumsi. Dicatat di sini supaya tidak terulang.
+
+### 8.1 Riwayat bug nyata yang relevan (untuk konteks, bukan yang perlu difix lagi)
+
+- **2026-07-08**: custom domain bisa membuka dashboard admin tenant LAIN
+  (`visikita.com/app/pc-ikpm-jogjakarta/dashboard` bisa dibuka). Fix: guard middleware § 3.2 poin
+  1a. Efek domino: semua link `/app/{slug}/...` di area publik wajib pakai URL absolut
+  (`NEXT_PUBLIC_APP_URL`), bukan relatif.
+- **2026-07-14**: `next.config.ts redirects()` (legacy admin bookmark) salah menangkap
+  `visikita.com/akun/media` (2 segmen path, kebetulan cocok pola `/:slug/media`) → redirect ke admin
+  login. Fix: guard `has: host jalakarta.com` di § 3.1. **Ini bug yang memicu permintaan sesi
+  evaluasi domain ini.**
+
+### 8.2 Klaim basi di `docs/arsitektur-domain.md` versi lama (2026-05-26) — sudah dikoreksi di sini
+
+- ~~"Cron Verify-Domains yang Aman — belum difix, cron bisa downgrade `active` → `failed`"~~ — SALAH.
+  Kode cron sudah benar sejak commit `7b7138b` (2026-05-16), **10 hari sebelum** dokumen lama itu
+  ditulis. `active` tidak pernah disentuh cron. Klaim ini murni basi, sudah dihapus di § 4 versi ini.
+- ~~"Canonical Tag Custom Domain masih pakai `NEXT_PUBLIC_APP_URL`"~~ — SALAH untuk kode saat ini.
+  `lib/tenant-seo.ts` sudah bercabang benar: `customDomainStatus === "active"` →
+  `https://{customDomain}`, else fallback `{appUrl}/{slug}`. Sudah benar di § 5.1 (SEO tidak masuk
+  daftar temuan aktif — hanya footer yang bocor).
+- Dokumen lama **tidak menyebut sama sekali** guard `/app/*`/`/platform/*` di custom domain (§ 3.2
+  poin 1a) — karena guard itu ditambahkan setelahnya (2026-07-08). Sudah dimasukkan di versi ini.
+
+### 8.3 Duplikasi `baseUrl` (§ 5.2) — bukan bug, tapi flag untuk pekerjaan rumah
+
+Tidak ada satu helper/hook bersama untuk `isOwnHost(host) ? "/${slug}" : ""` — dihitung ulang di
+~15 file. Kandidat refactor: satu helper di `lib/` (server) + satu hook di `lib/` (client dengan
+pola `useState`+`useEffect` yang sudah dikunci di beberapa lesson CLAUDE.md), dipakai ulang di semua
+titik. **Tidak dieksekusi di sesi ini** — murni dicatat sebagai risiko struktural.
+
+### 8.4 Komentar "SSL via Caddy" di schema — salah, harus dikoreksi
+
+`packages/db/src/schema/public/tenants.ts` baris 29 dan 46 punya komentar yang menyebut "SSL sudah
+provisioned via Caddy" untuk status `active`. **Tidak ada Caddy di manapun** dalam infrastruktur
+nyata (nginx.conf, deployment-guide.md, panduan-custom-domain.md, cron verify-domains — semua murni
+Nginx + Certbot manual, lihat § 6). Caddy cuma disebut sebagai **usulan masa depan** (§ 6, "Fase D")
+kalau jumlah tenant custom domain sudah besar — bukan yang dipakai sekarang. Komentar ini
+kemungkinan sisa draft desain awal yang tidak pernah diupdate. **Perlu dikoreksi** (perubahan
+komentar saja, zero risk — kandidat quick-fix di § 9).
+
+### 8.5 Rencana "Fase 5" lama (`docs/rencana-migrasi-url.md`) — kontradiksi internal, jangan diadopsi mentah
+
+Proposal lama untuk admin subdomain (`admin.{customdomain}`) merekomendasikan **Cloudflare orange-
+cloud proxy** untuk menangani SSL-nya — ini **bertentangan langsung** dengan seluruh pendekatan
+custom domain yang sudah berjalan (§ 6: DNS-only/grey-cloud, SSL manual via Certbot di VPS, bukan
+Cloudflare). Kalau Opsi A (§ 7.1) dipilih, pendekatan SSL-nya harus mengikuti pola yang sudah ada
+(Certbot manual per subdomain admin), **bukan** memperkenalkan Cloudflare proxy sebagai pengecualian
+khusus untuk satu fitur ini — itu akan membuat dua pendekatan SSL berbeda dalam satu sistem, sumber
+kebingungan operasional baru.
+
+### 8.6 `docs/panduan-custom-domain.md` — sebut tombol "Verifikasi DNS" yang tidak pernah ada
+
+Dokumen panduan itu (dan sisa CLAUDE.md draft lama) menyebut tombol manual "Verifikasi DNS" di UI
+settings domain. **Tidak pernah diimplementasikan** — yang ada adalah trigger otomatis
+(`triggerDomainVerification()`, fire-and-forget) tiap kali admin menyimpan domain baru/berubah, plus
+cron terjadwal sebagai fallback. UI tidak butuh tombol manual karena sudah otomatis. Panduan perlu
+dikoreksi agar tidak menjanjikan tombol yang tidak ada (operator VPS yang mengikuti panduan bisa
+bingung mencari tombol yang tidak ada).
+
+---
+
+## 9. Roadmap — Belum Disetujui, Menunggu Arahan User
+
+Diurutkan dari risiko paling rendah ke paling tinggi. **Tidak ada satupun yang dieksekusi di sesi
+ini** — daftar ini adalah bahan diskusi.
+
+| # | Item | Risiko | Effort | Blocking? |
+|---|------|--------|--------|-----------|
+| 1 | Fix footer branding leak (§ 5.1) — sembunyikan atribusi Jalakarta di custom domain | Sangat rendah — 1 baris kondisional × 2 file | Menit | Tidak — independen |
+| 2 | Koreksi komentar "Caddy" di schema (§ 8.4) | Nol — cuma komentar | Menit | Tidak |
+| 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada | Nol — dokumentasi saja | Menit | Tidak |
+| 4 | Putuskan nasib `tenants.subdomain` (§ 2) — implementasi Fase 2 sungguhan, ATAU sembunyikan field dari UI settings sampai siap dikerjakan | Rendah kalau opsi "sembunyikan", tinggi kalau opsi "implementasikan Fase 2" | Menit (sembunyikan) vs hari (implementasi penuh) | Tidak, tapi field aktif menyesatkan admin sekarang |
+| 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas ~15 file, butuh regresi testing tiap halaman publik | Beberapa jam | Tidak, tapi mengurangi risiko bug berulang ke depan |
+| 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru), butuh keputusan produk dulu (§ 7.3) | Hari, plus SSL/DNS manual per tenant kalau Opsi A | **Ya — butuh 3 keputusan user di § 7.3 dulu** |
+
+**Rekomendasi urutan eksekusi** (kalau/ketika disetujui): #1–#3 bisa langsung sekaligus (murah,
+independen, nol risiko). #4 butuh keputusan cepat (implementasi vs sembunyikan) tapi bukan pekerjaan
+besar. #5 best dilakukan sebagai satu PR terpisah dengan testing menyeluruh. #6 menunggu jawaban
+§ 7.3 sebelum baris kode pertama ditulis.
