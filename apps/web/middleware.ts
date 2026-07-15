@@ -71,7 +71,10 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(loginUrl, 302);
       }
 
-      const restPath = pathname === "/admin" ? "" : pathname.slice("/admin".length);
+      // "/app/{slug}" bare (tanpa sub-path) BUKAN route valid — tidak ada page.tsx di sana
+      // (dashboard admin selalu diakses via /app/{slug}/dashboard). "/admin" bare wajib
+      // di-map ke /dashboard, bukan diteruskan apa adanya.
+      const restPath = pathname === "/admin" || pathname === "/admin/" ? "/dashboard" : pathname.slice("/admin".length);
       const url = request.nextUrl.clone();
       url.pathname = `/app/${slug}${restPath}`;
       return NextResponse.rewrite(url);

@@ -365,6 +365,11 @@ ternyata otomatis terselesaikan sekaligus di sub-fase 1 — lihat poin 3 di bawa
      routing, jalur paling kritis di seluruh aplikasi) demi menghindari duplikasi kecil dianggap
      risiko lebih besar daripada manfaatnya, konsisten dengan pola duplikasi-demi-isolasi yang
      sudah berulang di project ini (`generateEventRegNumber`, `formatEventDateWib`, dst).
+   - 🐛 **Bug ditemukan saat uji manual production, difix sama hari**: `/admin` bare (tanpa
+     sub-path) 404 — `restPath` kosong menghasilkan target `/app/{slug}` bare, yang **tidak pernah
+     jadi route valid** (tidak ada `page.tsx` di root `(dashboard)/app/[tenant]/`, dashboard selalu
+     diakses eksplisit via `/dashboard`). Fix: `/admin` dan `/admin/` bare di-map eksplisit ke
+     `/app/{slug}/dashboard`.
 2. ✅ **Branding dashboard (dieksekusi 2026-07-16)** — sesuai Prinsip #2 di § 1, dashboard yang
    diakses lewat `ikpmjogja.com/admin/*` sekarang tenant-branded (logo + `primary_color` CSS
    variable + footer "jalakarta v0.1" tersembunyi), kondisional berdasar deteksi `Host` header di

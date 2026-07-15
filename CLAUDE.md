@@ -4371,6 +4371,31 @@ dicatat di § 9: uji manual di production dengan 1 tenant custom domain nyata se
 production-ready penuh — belum ada automated end-to-end test untuk alur `/admin/*` lengkap
 (routing + auth + branding sekaligus).
 
+### [2026-07-16] Bug ditemukan saat uji manual: `visikita.com/admin` 404 — `/app/{slug}` bare bukan route valid
+
+Persis rekomendasi "uji manual production" di atas langsung menemukan bug nyata — bukti kenapa
+rekomendasi itu ditulis eksplisit, bukan formalitas. `visikita.com/admin` (path bare, tanpa
+sub-path) → 404.
+
+**Root cause**: `apps/web/app/(dashboard)/app/[tenant]/` **tidak punya `page.tsx` di root** —
+hanya `layout.tsx` + subfolder (`dashboard/`, `members/`, dst). `/app/{slug}` (bare) **tidak pernah
+jadi route valid sejak migrasi URL Fase 1** — dashboard selalu diakses via `/app/{slug}/dashboard`
+secara eksplisit di semua link internal (sidebar, dst), tidak pernah ada fallback redirect bare→
+dashboard baik di `next.config.ts` maupun middleware. Middleware `/admin` (sub-fase 1) yang baru
+dibuat menghitung `restPath = pathname === "/admin" ? "" : ...` → untuk `/admin` bare, target jadi
+`/app/{slug}` (bare) → 404, mewarisi gap yang sudah lama ada tapi baru sekarang punya entry point
+publik yang benar-benar dipakai (sebelumnya tidak ada yang pernah mengarah ke path bare itu).
+
+**Fix**: `restPath = pathname === "/admin" || pathname === "/admin/" ? "/dashboard" : pathname.slice(...)`
+— bare `/admin` di-map eksplisit ke `/app/{slug}/dashboard`, bukan diteruskan apa adanya.
+
+**Aturan**: sebelum membuat rewrite/redirect baru ke sebuah base path, **selalu verifikasi base
+path itu sendiri (tanpa sub-path apapun) benar-benar punya `page.tsx`** — jangan asumsikan
+"tentu ada root page-nya" untuk route group yang sudah lama ada. Route group besar yang sudah
+matang (seperti dashboard admin di sini) kerap TIDAK punya root page kalau semua akses internalnya
+selalu eksplisit ke sub-route tertentu — gap ini baru kelihatan saat ada entry point BARU yang
+mengasumsikan base path itu valid.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
