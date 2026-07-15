@@ -420,6 +420,7 @@ app/(dashboard)/[tenant]/
 - [x] Database schema (public + tenant schema)
 - [x] Auth system (login, register, multi-role)
 - [x] Shell UI (sidebar, header, user menu, mobile drawer)
+- [x] **Dashboard Admin `/app/{slug}/dashboard`** — ringkasan live lintas modul (KPI, grafik tren 30 hari, perlu tindakan, quick actions). Detail di lesson `[2026-07-16]` di bawah.
 - [x] Modul Anggota (list, tambah, detail, edit, hapus dari cabang)
 - [x] Member Wizard 4-step (identitas, kontak+alamat, pendidikan, usaha)
 - [x] Domain routing schema (subdomain + custom_domain + status columns)
@@ -4043,6 +4044,67 @@ direktori publik, dan SVG path tangan lebih rawan tidak akurat dibanding icon se
 sosial media di aplikasi ini — jangan pernah tulis ulang SVG path atau daftar warna brand di
 komponen lain. Kalau butuh gaya visual berbeda (misal footer perlu warna, halaman lain perlu
 monokrom), tambah varian baru via prop `variant`, bukan implementasi paralel.
+
+### [2026-07-16] Dashboard Admin `/app/{slug}/dashboard` — Refactor Total dari Placeholder
+
+**Sebelumnya**: halaman ini murni placeholder sejak awal proyek — 4 stat card hardcode `"—"`,
+tanpa satu pun query DB, plus `href` masih pola URL lama (`/${slug}/members` tanpa prefix `/app/`,
+sisa sebelum migrasi URL admin Fase 1-4). User eksplisit: "kita belum sama sekali bikin dashboard".
+
+**Keputusan yang dikonfirmasi user via `AskUserQuestion` sebelum eksekusi:**
+1. **Tambah grafik tren** — install `recharts` (dependency chart pertama di seluruh project, tidak
+   ada sebelumnya sama sekali, termasuk di `/finance/laporan` yang murni tabel/angka).
+2. **Semua modul selalu tampil**, TIDAK difilter per role/permission (`canAccess()`/`hasReadAccess()`
+   dari `lib/permissions.ts` sengaja TIDAK dipakai di sini) — beda dengan `sidebar-nav.tsx` yang
+   memang memfilter menu per role. Bendahara pun melihat ringkasan Anggota, Toko, dst.
+
+**Struktur halaman baru** (`dashboard/page.tsx`, rewrite total):
+1. KPI row (4 `StatCard`): Total Anggota (+delta bulan ini), Saldo Kas Bulan Ini, Perlu Tindakan
+   (agregat), Event Mendatang 7 Hari
+2. Grafik tren Pemasukan vs Pengeluaran 30 hari (`IncomeExpenseChart`, client component recharts
+   `AreaChart`)
+3. Daftar "Perlu Tindakan" — 5 jenis action item lintas modul (invoice menunggu verifikasi, disbursement
+   menunggu approval, registrasi event pending, stok produk rendah, pengajuan mitra pending), hanya baris
+   dengan count > 0 yang tampil
+4. Grid 7 `ModuleCard` (Keuangan, Anggota, Toko, Donasi, Event, Surat, Website+Media)
+5. Quick actions — 6 link ke halaman "buat baru" yang sudah diverifikasi ada
+
+**Komponen baru reusable** (project sebelumnya TIDAK punya `StatCard` sama sekali — semua halaman
+termasuk `finance/dashboard/page.tsx` hand-roll markup stat card sendiri):
+- `components/dashboard/stat-card.tsx` — KPI card dengan prop `tone` (neutral/positive/negative/warning)
+- `components/dashboard/module-card.tsx` — card ringkasan modul, `children` bebas + link "Lihat Semua"
+- `components/dashboard/income-expense-chart.tsx` — `"use client"`, wrapper tipis recharts
+
+**Query gabungan `Promise.all` 21 query, bukan sequential**: beda dari pola `finance/dashboard/page.tsx`
+(sequential `await` satu-satu) — di sini jumlah query jauh lebih banyak (lintas 7+ modul) jadi
+paralelisasi penting untuk latency halaman. Query Anggota lewat `db` (public schema,
+`tenantMemberships` scoped `tenantId = access.tenant.id`) — SEMUA query lain lewat `createTenantDb(slug)`.
+Jangan tertukar dua sumber ini (lihat lesson lama soal ini di bagian Members module).
+
+**Formula "Saldo Kas" dan "Perlu Tindakan (Keuangan)" di-replikasi PERSIS dari `finance/dashboard/page.tsx`**
+(bukan diimpor — file itu tidak mengekspor logicnya sebagai fungsi) — pola duplikasi kecil yang sudah
+berulang beberapa kali di project ini (`generateEventRegNumber`, `formatEventDateWib`), diterima supaya
+modul dashboard baru tidak bergantung ke internal file `finance/dashboard/page.tsx`.
+
+**Tren 30 hari — `GROUP BY DATE(...)`, bukan 30 query terpisah per hari**: 2 query (`payments` +
+`disbursements`) masing-masing `GROUP BY DATE(confirmed_at/paid_at)`, hasil di-map ke `Map<string,number>`
+lalu diisi ke array 30 hari penuh (hari tanpa transaksi = 0) di server sebelum dikirim ke client chart
+component. Helper `normalizeDay()` menyamakan hasil grouping ke `"YYYY-MM-DD"` — perlu karena postgres.js
+bisa mengembalikan `DATE()` sebagai JS `Date` object atau string tergantung driver, jangan asumsikan salah satu.
+
+**Simplifikasi yang disengaja (dicatat, bukan lupa)**:
+- Grouping tren pakai `DATE()` PostgreSQL (UTC-based), bukan `Asia/Jakarta` timezone-aware — cukup untuk
+  grafik tren, TIDAK untuk laporan keuangan resmi (itu tetap di `/finance/laporan`).
+- Threshold stok rendah di-hardcode `≤5` — belum ada setting per tenant untuk ini di manapun.
+- "Pendaftaran event menunggu konfirmasi" dan link "Perlu Tindakan" lain diarahkan ke halaman list
+  modul (bukan halaman filtered khusus) untuk item yang memang belum punya filter cross-entity di UI
+  (event registrations tidak query-able lintas-event dari satu halaman manapun saat ini).
+
+**Aturan untuk halaman ringkasan/dashboard baru ke depan**: kalau butuh stat card atau module summary
+card, WAJIB pakai `<StatCard>`/`<ModuleCard>` dari `components/dashboard/` — jangan hand-roll markup
+`rounded-xl border ... p-5` lagi seperti pola lama. `finance/dashboard/page.tsx` sengaja TIDAK
+direfactor untuk pakai komponen ini di sesi ini (di luar scope) — kandidat cleanup terpisah kalau
+diminta nanti.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
