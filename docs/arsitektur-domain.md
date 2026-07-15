@@ -370,6 +370,20 @@ ternyata otomatis terselesaikan sekaligus di sub-fase 1 — lihat poin 3 di bawa
      jadi route valid** (tidak ada `page.tsx` di root `(dashboard)/app/[tenant]/`, dashboard selalu
      diakses eksplisit via `/dashboard`). Fix: `/admin` dan `/admin/` bare di-map eksplisit ke
      `/app/{slug}/dashboard`.
+   - 🐛🔴 **Bug lebih besar ditemukan saat uji manual lanjutan, difix sama hari (Opsi C)**: setelah
+     bug bare-path di atas difix, dashboard TAMPIL tapi seluruh link sidebar/navigasi memicu CORS
+     error dan melempar user keluar ke `jalakarta.com` begitu diklik. Detail lengkap: § 8.1.
+     **Fix — Opsi C**: guard blanket `/app/*` di custom domain diberi pengecualian — `/app/{slug}/*`
+     BOLEH render langsung (tidak diredirect) kalau `{slug}` di path itu cocok dengan slug yang
+     di-resolve dari Host header request ini sendiri (variabel dihitung SEKALI per request,
+     `resolveCustomDomainSlug(host)`, dibandingkan ke `pathname.split("/")[2]`). Begitu cocok,
+     eksekusi TIDAK `return` — jatuh alami ke guard cookie `/app/*` standar yang sudah ada di bagian
+     bawah middleware (baris ~150), diperlakukan identik dengan request `/app/*` di `jalakarta.com`.
+     **Konsekuensi yang disetujui user**: address bar berubah dari `/admin/...` ke `/app/{slug}/...`
+     begitu user klik menu pertama kali (karena href-nya memang literal begitu, dan middleware tidak
+     bisa memaksa browser menampilkan URL berbeda dari yang di-klik pada client-side navigation) —
+     TAPI branding (§ 5.3, berbasis Host header, bukan path) dan "tetap di domain sendiri" tetap
+     terjaga penuh meski path-nya bukan `/admin/...` lagi.
 2. ✅ **Branding dashboard (dieksekusi 2026-07-16)** — sesuai Prinsip #2 di § 1, dashboard yang
    diakses lewat `ikpmjogja.com/admin/*` sekarang tenant-branded (logo + `primary_color` CSS
    variable + footer "jalakarta v0.1" tersembunyi), kondisional berdasar deteksi `Host` header di
@@ -416,6 +430,20 @@ Ditemukan lewat audit langsung ke kode — bukan asumsi. Dicatat di sini supaya 
   `visikita.com/akun/media` (2 segmen path, kebetulan cocok pola `/:slug/media`) → redirect ke admin
   login. Fix: guard `has: host jalakarta.com` di § 3.1. **Ini bug yang memicu permintaan sesi
   evaluasi domain ini.**
+- **2026-07-16, ditemukan saat uji manual production sub-fase 1+2**: `visikita.com/admin/*` render,
+  tapi SEMUA link sidebar/navigasi di dalamnya memicu CORS error ("Redirect is not allowed for a
+  preflight request") dan gagal — klik menu apapun akan melempar user keluar dari `visikita.com`.
+  **Root cause**: seluruh dashboard admin (ratusan file di `(dashboard)/app/[tenant]/**`) hardcode
+  path absolut `/app/{slug}/...` untuk link/redirect/revalidatePath — wajar karena selama ini cuma
+  pernah hidup di `jalakarta.com`. Saat dirender via rewrite `/admin/*` di custom domain, browser
+  meresolve path absolut itu terhadap origin SAAT INI (`visikita.com`, bukan `jalakarta.com`) —
+  Next.js Link prefetch langsung memicu fetch ke `visikita.com/app/{slug}/...`, yang kena guard
+  blanket "`/app/*` di custom domain → redirect jalakarta.com" (§ 3.2 poin 1a) — redirect lintas
+  origin di tengah CORS preflight = diblokir browser. **Fix: Opsi C** (§ 7.2 poin 1) — izinkan
+  `/app/{slug-pemilik-domain-ini}/*` render langsung di custom domain (bukan diredirect), verifikasi
+  tetap dari Host header. Trade-off disetujui user: address bar berubah ke `/app/{slug}/...` setelah
+  klik menu pertama (bukan tetap `/admin/...`), demi menghindari refactor total ratusan file yang
+  besarnya sebanding migrasi URL Fase 1-4.
 
 ### 8.2 Klaim basi di `docs/arsitektur-domain.md` versi lama (2026-05-26) — sudah dikoreksi di sini
 

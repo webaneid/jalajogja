@@ -4396,6 +4396,59 @@ matang (seperti dashboard admin di sini) kerap TIDAK punya root page kalau semua
 selalu eksplisit ke sub-route tertentu — gap ini baru kelihatan saat ada entry point BARU yang
 mengasumsikan base path itu valid.
 
+### [2026-07-16] Bug Besar Kedua: CORS Error di Semua Link Dashboard — Opsi C, Bukan Refactor Total
+
+Setelah bug bare-path di atas difix, uji manual lanjutan menemukan masalah jauh lebih besar:
+**seluruh link sidebar/navigasi di dalam `/admin/*` memicu CORS error** ("Redirect is not allowed
+for a preflight request") dan melempar user keluar ke `jalakarta.com` begitu diklik — bukan cuma
+kosmetik, ini merusak TUJUAN UTAMA fitur (tetap di domain sendiri).
+
+**Root cause**: seluruh dashboard admin (ratusan file di `(dashboard)/app/[tenant]/**` — sidebar,
+semua modul, semua server action) hardcode path absolut `/app/{slug}/...` untuk link/redirect/
+revalidatePath — wajar, karena sampai sesi ini dashboard cuma pernah hidup di `jalakarta.com`. Saat
+dirender via rewrite `/admin/*` di custom domain, browser meresolve path absolut itu terhadap
+**origin saat ini** (`visikita.com`, bukan `jalakarta.com`) — Next.js Link prefetch (IntersectionObserver)
+langsung memicu fetch ke `visikita.com/app/{slug}/...`, yang kena guard blanket "`/app/*` di custom
+domain → redirect jalakarta.com" yang sudah ada sejak sub-fase 1 — redirect lintas-origin di tengah
+CORS preflight request = diblokir browser (CORS melarang redirect pada preflight, bukan cuma pada
+request sesungguhnya).
+
+**Dua opsi yang dipertimbangkan** (dipresentasikan ke user via `AskUserQuestion`, bukan diputuskan
+sepihak — perubahan sebesar ini butuh keputusan user):
+- **(A) Refactor total**: terapkan pola `baseUrl`-aware ke semua link/redirect di seluruh dashboard
+  admin — sebanding migrasi URL Fase 1-4 dulu (127 `redirect()` + 131 `revalidatePath()`), effort
+  multi-sesi.
+- **(C) Opsi C** (ditemukan setelah user awalnya memilih opsi A, dibawa kembali karena secara
+  fungsional setara dengan effort jauh lebih kecil): izinkan `/app/{slug}/*` render LANGSUNG di
+  custom domain (tidak diredirect) asal `{slug}` di path cocok dengan slug yang di-resolve dari
+  `Host` header request itu sendiri — verifikasi TETAP by-Host, bukan by-path, jadi tidak membuka
+  celah cross-tenant apapun (kelas keamanan yang sama dijaga persis seperti guard `/admin/*`).
+  Karena semua link dashboard SUDAH menulis format `/app/{slug}/...`, begitu format itu diizinkan
+  render, SEMUA link otomatis jalan tanpa satu file pun disentuh.
+
+**User memilih ulang ke Opsi C** setelah kedua opsi dijelaskan dengan trade-off yang jujur — bukan
+saya putuskan sendiri meski awalnya user sempat memilih opsi A (refactor total) sebelum opsi C
+ditemukan/dipresentasikan.
+
+**Implementasi Opsi C**: `middleware.ts`, di dalam blok custom domain, guard blanket `/app/*` diberi
+pengecualian — hitung `ownSlug = await resolveCustomDomainSlug(host)` dan `pathSlug =
+pathname.split("/")[2]`, kalau cocok → **tidak** `return` (biarkan eksekusi jatuh alami ke guard
+cookie `/app/*` standar yang sudah ada di bagian bawah fungsi middleware, diperlakukan identik
+dengan request `/app/*` di `jalakarta.com` sendiri).
+
+**Trade-off yang disetujui secara eksplisit**: address bar berubah dari `/admin/...` ke
+`/app/{slug}/...` begitu user klik menu pertama kali — middleware tidak bisa memaksa browser
+menampilkan URL berbeda dari yang tertulis di `href` pada client-side navigation (fakta teknis, bukan
+keterbatasan implementasi yang bisa dihindari tanpa refactor). **Branding (Host-header-based, § 5.3)
+dan "tetap di domain sendiri" tetap terjaga penuh** meski path berubah — tujuan fungsional utama
+fitur ini tercapai, cuma bukan lewat address bar yang konsisten estetis.
+
+**Aturan yang ditegaskan**: kalau menemukan opsi baru yang secara fungsional setara tapi jauh lebih
+kecil scope-nya SETELAH user sudah memilih opsi yang lebih besar, **bawa kembali ke user** dengan
+penjelasan jujur — jangan diam-diam eksekusi pilihan lama yang ternyata boros, tapi juga jangan
+diam-diam ganti ke opsi baru tanpa izin. Sampaikan trade-off, biarkan user memutuskan ulang dengan
+informasi lengkap.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

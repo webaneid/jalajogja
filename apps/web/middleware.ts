@@ -80,12 +80,29 @@ export async function middleware(request: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
-    // Path admin (/app/*) dan platform (/platform/*) pada custom domain → redirect ke jalakarta.com.
-    // Custom domain hanya boleh melayani konten publik tenant mereka sendiri (+ /admin/* di atas).
+    // Path admin (/app/*) dan platform (/platform/*) pada custom domain → redirect ke jalakarta.com,
+    // KECUALI /app/{slug}/* untuk slug PEMILIK domain ini sendiri (Opsi C, docs/arsitektur-domain.md
+    // § 7.2). Alasan: seluruh dashboard admin (ratusan file — sidebar, semua modul, semua server
+    // action) hardcode link/redirect sebagai path absolut /app/{slug}/... — refactor total supaya
+    // /admin/* konsisten di address bar sebanding migrasi URL Fase 1-4 dulu (127+131 referensi).
+    // Dengan membiarkan /app/{slug-sendiri}/* render langsung, semua link itu otomatis jalan tanpa
+    // disentuh satu file pun — trade-off: address bar berubah ke /app/{slug}/... setelah klik menu
+    // pertama (bukan tetap /admin/...), tapi tenant tetap di domain sendiri & branding tetap tampil.
+    // Verifikasi tetap dari Host header (bukan path) — tenant lain tetap tidak bisa diakses.
     if (pathname.startsWith("/app/") || pathname.startsWith("/platform/")) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com";
-      const dest   = new URL(pathname + request.nextUrl.search, appUrl);
-      return NextResponse.redirect(dest.toString(), 302);
+      let allowOwnApp = false;
+      if (pathname.startsWith("/app/")) {
+        const ownSlug  = await resolveCustomDomainSlug(host);
+        const pathSlug = pathname.split("/")[2];
+        allowOwnApp = !!ownSlug && pathSlug === ownSlug;
+      }
+      if (!allowOwnApp) {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com";
+        const dest   = new URL(pathname + request.nextUrl.search, appUrl);
+        return NextResponse.redirect(dest.toString(), 302);
+      }
+      // Lanjut (tidak return) — jatuh ke guard cookie /app/* standar di bawah, sama seperti
+      // request /app/* di jalakarta.com sendiri.
     }
 
     // API paths → pass through tanpa rewrite custom domain
