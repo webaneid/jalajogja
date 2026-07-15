@@ -58,11 +58,14 @@ subdomain untuk menentukan konten. Jadi `jalakarta.com/platform/login` dan
 berbeda. Ini bukan bug — hanya perlu dipahami agar tidak dikira ada routing subdomain yang sudah
 jalan padahal belum (lihat Fase 2, § 7.1).
 
-**Kolom DB `tenants.subdomain`**: ada, dan ada input field-nya di `/app/{slug}/settings/domain`,
-**tapi tidak pernah dibaca di manapun** dalam kode routing (middleware, `resolve-domain`, atau file
-manapun). Field ini **mati total** — admin bisa mengisinya dan melihat UI menyimpannya sukses, tapi
-tidak berefek apapun. Ini kandidat perbaikan prioritas tinggi karena berpotensi menyesatkan admin
-(lihat § 7.1 dan § 8).
+**Kolom DB `tenants.subdomain`**: ada, **tapi tidak pernah dibaca di manapun** dalam kode routing
+(middleware, `resolve-domain`, atau file manapun) — Fase 2 tidak pernah diimplementasikan.
+
+✅ **Fixed (Fase 2 roadmap, 2026-07-16)**: input field-nya di `/app/{slug}/settings/domain` yang
+sebelumnya aktif (mengesankan fitur ini jalan padahal tidak) sudah diganti catatan statis "Segera
+hadir" — user eksplisit memilih opsi "sembunyikan dulu" atas "implementasikan sungguhan" (§ 9 item
+#4). Kolom DB dan pass-through nilai lama di `saveDomainSettingsAction` tetap dipertahankan (tidak
+menghapus data), hanya UI edit yang dinonaktifkan.
 
 ---
 
@@ -428,7 +431,7 @@ Diurutkan dari risiko paling rendah ke paling tinggi. Dieksekusi bertahap per fa
 | 1 | Fix footer branding leak (§ 5.1) | Sangat rendah | Menit | ✅ **Selesai (2026-07-16)** |
 | 2 | Koreksi komentar "Caddy" + nama domain salah (`jalajogja.com`→`jalakarta.com`) di schema (§ 8.4) | Nol — cuma komentar | Menit | ✅ **Selesai (Fase 1, 2026-07-16)** |
 | 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada, jelaskan alur otomatis | Nol — dokumentasi saja | Menit | ✅ **Selesai (Fase 1, 2026-07-16)** |
-| 4 | Putuskan nasib `tenants.subdomain` (§ 2) — implementasi Fase 2 sungguhan, ATAU sembunyikan field dari UI settings sampai siap dikerjakan | Rendah kalau opsi "sembunyikan", tinggi kalau opsi "implementasikan Fase 2" | Menit (sembunyikan) vs hari (implementasi penuh) | ⬜ Menunggu keputusan user (implementasi vs sembunyikan) sebelum Fase 2 eksekusi dimulai |
+| 4 | Nasib `tenants.subdomain` (§ 2) — user pilih sembunyikan field dari UI settings sampai Fase 2 siap dikerjakan | Rendah | Menit | ✅ **Selesai (Fase 2, 2026-07-16)** |
 | 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas ~15 file, butuh regresi testing tiap halaman publik | Beberapa jam | ⬜ Belum dimulai |
 | 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru, Opsi B (path) + auth cross-domain sudah diputuskan (§ 7.3, semua ✅) | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | ⬜ Belum dimulai — wajib cek collision slug `admin` di production dulu (§ 7.1) |
 

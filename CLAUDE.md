@@ -4232,6 +4232,27 @@ dulu — implementasi Fase 2 subdomain routing sungguhan, atau sembunyikan field
 sampai siap dikerjakan. Tidak dieksekusi sepihak karena mengubah perilaku produk, bukan sekadar
 koreksi dokumentasi.
 
+### [2026-07-16] Eksekusi Roadmap Domain Fase 2 — Sembunyikan Field Subdomain yang Mati Total
+
+User memilih opsi "sembunyikan dulu" untuk item #4 roadmap (bukan implementasi Fase 2 sungguhan —
+itu pekerjaan berjam-jam, di luar scope fase murah/cepat ini).
+
+**Fix**: `components/settings/domain-settings-form.tsx` — fieldset "Subdomain jalakarta" (input
+aktif + `useState` + onChange) diganti catatan statis "Segera hadir — subdomain belum bisa
+diaktifkan. Gunakan Custom Domain di bawah untuk sekarang." `defaultValues.subdomain` tetap
+di-pass-through (bukan hardcode kosong) saat memanggil `saveDomainSettingsAction` — supaya tidak
+diam-diam menghapus data existing kalau ada tenant yang kebetulan pernah mengisinya. Kolom DB dan
+server action TIDAK diubah — cuma UI edit yang dimatikan. `settings/domain/page.tsx` deskripsi
+halaman ikut disesuaikan ("subdomain jalakarta segera hadir").
+
+**Kenapa bukan hapus total**: field ini kandidat diaktifkan lagi begitu Fase 2 (routing subdomain
+sungguhan) dikerjakan — mempertahankan kolom DB + plumbing server action (yang sudah benar) jauh
+lebih murah daripada menghapus lalu membangun ulang nanti. Yang dihapus cuma bagian yang
+**menyesatkan** (input yang terlihat berfungsi padahal tidak).
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error. `docs/arsitektur-domain.md` § 2 dan § 9
+diupdate status jadi ✅ Selesai bersamaan dengan commit.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

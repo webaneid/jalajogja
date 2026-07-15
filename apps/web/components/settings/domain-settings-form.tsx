@@ -34,7 +34,6 @@ export function DomainSettingsForm({
 }) {
   const router = useRouter();
   const [pending,      setPending]      = React.useState(false);
-  const [subdomain,    setSubdomain]    = React.useState(defaultValues.subdomain);
   const [customDomain, setCustomDomain] = React.useState(defaultValues.customDomain);
   const [status,       setStatus]       = React.useState<DomainStatus>(defaultValues.customDomainStatus);
 
@@ -44,7 +43,10 @@ export function DomainSettingsForm({
     e.preventDefault();
     setPending(true);
     try {
-      const result = await saveDomainSettingsAction(slug, { subdomain, customDomain });
+      // Subdomain (Fase 2) belum diimplementasikan di routing — field disembunyikan dari UI,
+      // pass-through nilai lama saja (bukan hardcode kosong) agar tidak diam-diam menghapus
+      // data existing kalau ada. Lihat docs/arsitektur-domain.md § 2 dan § 9 item #4.
+      const result = await saveDomainSettingsAction(slug, { subdomain: defaultValues.subdomain, customDomain });
       if (result.error) {
         toast.error(result.error);
       } else {
@@ -78,29 +80,16 @@ export function DomainSettingsForm({
         </p>
       </fieldset>
 
-      {/* ── Subdomain jalakarta ── */}
+      {/* ── Subdomain jalakarta (Fase 2) — belum diimplementasikan, field disembunyikan
+             sampai routing subdomain benar-benar dibangun. Detail: docs/arsitektur-domain.md § 9 #4 */}
       <fieldset className="space-y-3">
         <legend className="w-full border-b pb-1.5 text-sm font-semibold text-foreground">
           Subdomain jalakarta
         </legend>
-        <div className="space-y-2">
-          <Label htmlFor="subdomain">Subdomain</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              id="subdomain"
-              value={subdomain}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))
-              }
-              placeholder={slug}
-              disabled={pending}
-              className="max-w-[200px] font-mono"
-            />
-            <span className="text-sm text-muted-foreground">.jalakarta.com</span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Kosongkan untuk pakai slug default ({slug}.jalakarta.com).
-            Fitur ini aktif saat modul Front-end tersedia.
+        <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-3">
+          <p className="text-sm text-muted-foreground">
+            Segera hadir — subdomain (<span className="font-mono">{slug}.jalakarta.com</span>)
+            belum bisa diaktifkan. Gunakan Custom Domain di bawah untuk sekarang.
           </p>
         </div>
       </fieldset>
