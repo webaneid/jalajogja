@@ -867,7 +867,9 @@ URL `/register` sudah dinonaktifkan (`REGISTRATION_OPEN = false` di `(auth)/regi
 **Level 1 — Platform Users** (`public.platform_users`)
 Tim internal Jalakarta — bukan pengurus IKPM.
 - Role: `owner | admin | staff`
-- Login di: `platform.jalakarta.com/login` — JWT terpisah (`lib/platform-auth.ts`)
+- Login di: `/platform/login` — path-based, jalan sama persis dari `jalakarta.com/platform/login`
+  maupun `platform.jalakarta.com/platform/login` (subdomain cuma wildcard DNS, bukan routing
+  terpisah — lihat `docs/arsitektur-domain.md` § 2). JWT terpisah (`lib/platform-auth.ts`)
 - Bisa: buat/kelola tenant, aktifkan add-on, kelola user platform
 
 **Level 2 — Tenant Users** (`tenant_{slug}.users`)
@@ -1061,30 +1063,31 @@ Logika: cari yang spesifik dulu → fallback ke `general`.
 - **[SELESAI Fase 1-4] Migrasi URL** — admin dashboard dipindah ke `/app/{slug}/*`, publik tetap `/{slug}/*`. Redirect 301 dari path lama di `next.config.ts`. Fase 5 (admin subdomain `admin.ikpmjogja.com`) ditunda. Detail: `docs/rencana-migrasi-url.md`.
 - **Post-login routing multi-tenant tidak deterministik** — `getFirstTenantForUser()` tidak ada `ORDER BY`, user di 2+ tenant bisa dikirim ke tenant mana saja. Perlu difix sebelum tenant kedua aktif.
 - **Fase 5 URL migrasi** — admin subdomain custom domain (`admin.ikpmjogja.com`). Ditunda, perlu 2 minggu observasi production dulu. Detail di `docs/rencana-migrasi-url.md`.
-- **[SELESAI ANALISIS, EKSEKUSI BELUM] Evaluasi arsitektur domain/URL menyeluruh (2026-07-16)** —
-  sesi yang diminta di catatan `[RENCANA]` 2026-07-14 sudah dieksekusi (analisis saja, TIDAK ada
-  perubahan kode). Hasil lengkap: **`docs/arsitektur-domain.md`** ditulis ulang total (versi lama
-  2026-05-26 punya beberapa klaim basi — dikoreksi, lihat § 8 dokumen tsb). Prinsip yang dikunci:
-  **"satu domain = satu identitas, tidak boleh menyeberang"**. Temuan utama:
-  - 🔴 **Bug branding aktif**: footer publik (`dark-footer.tsx`+`light-footer.tsx`) menampilkan
-    "Jalakarta — developed with ❤️ by Webane" TANPA syarat — bocor ke custom domain tenant meski
-    `baseUrl` prop untuk deteksi ini sudah tersedia di komponen yang sama. Belum difix.
+- **[EVALUASI DOMAIN SELESAI, SEBAGIAN DIEKSEKUSI] Arsitektur domain/URL menyeluruh (2026-07-16)** —
+  sesi yang diminta di catatan `[RENCANA]` 2026-07-14. Hasil: **`docs/arsitektur-domain.md`** ditulis
+  ulang total (versi lama 2026-05-26 punya beberapa klaim basi — dikoreksi, lihat § 8 dokumen tsb).
+  Prinsip yang dikunci: **"satu domain = satu identitas, tidak boleh menyeberang"**. Status per
+  temuan (update setelah re-review 2026-07-16 sore — dokumen sempat punya referensi rusak/§ yang
+  tidak ada, sudah dibenahi juga, lihat lesson terpisah di bawah):
+  - ✅ **Fixed**: footer publik (`dark-footer.tsx`+`light-footer.tsx`) yang bocor "Jalakarta —
+    developed with ❤️ by Webane" ke custom domain — sudah dibungkus `{baseUrl !== "" && ...}`.
   - `tenants.subdomain` (Fase 2) ada kolom + ada input UI di `/settings/domain`, tapi **mati total**
-    — tidak dibaca di manapun dalam kode routing. Menyesatkan admin yang mengisinya.
+    — tidak dibaca di manapun dalam kode routing. Menyesatkan admin yang mengisinya. **Belum difix.**
   - Duplikasi `isOwnHost(host) ? "/${slug}" : ""` dihitung ulang independen di ~15 file — bukan bug
-    aktif, tapi pola berulang di balik beberapa bug custom-domain yang sudah pernah terjadi.
+    aktif, tapi pola berulang di balik beberapa bug custom-domain yang sudah pernah terjadi. **Belum
+    dikonsolidasi.**
   - Komentar "SSL via Caddy" di `packages/db/src/schema/public/tenants.ts` (baris 29, 46) salah —
-    infrastruktur nyata 100% Nginx+Certbot manual, Caddy cuma usulan masa depan belum dipakai.
+    infrastruktur nyata 100% Nginx+Certbot manual. **Belum dikoreksi.**
   - **Admin-on-Custom-Domain** (skenario diminta user: dashboard admin tenant via custom domain
-    sendiri) — fitur belum ada sama sekali, malah ada guard aktif (sejak 2026-07-08) yang
-    memblokirnya. Dokumen berisi 2 opsi arsitektur (subdomain `admin.{domain}` vs path
-    `{domain}/admin`) + 3 keputusan produk yang perlu dijawab user sebelum implementasi (lihat
-    § 7.3 dokumen). Rencana lama "Fase 5" (`docs/rencana-migrasi-url.md`) punya kontradiksi internal
-    (usul Cloudflare proxy, bertentangan dengan pendekatan DNS-only+Certbot yang sudah berjalan) —
-    jangan diadopsi mentah-mentah.
-  Roadmap prioritas (§ 9 dokumen) — **semua menunggu arahan user, belum ada yang dieksekusi**: fix
-  footer (murah, independen) → koreksi 2 komentar/dokumen basi → putuskan nasib `subdomain` →
-  konsolidasi `baseUrl` → Admin-on-Custom-Domain (butuh keputusan produk dulu).
+    sendiri) — fitur belum ada kodenya sama sekali, ada guard aktif (sejak 2026-07-08) yang
+    memblokirnya. **2 dari 2 keputusan produk sudah dijawab user** (§ 7.3 dokumen): Opsi B
+    (path-based, `{custom-domain}/admin/*`) dipilih atas subdomain-based; auth cross-domain pakai
+    sesi terpisah per domain (login manual) sebagai pendekatan awal. **Implementasi belum dimulai**
+    — masih perlu cek collision slug `admin` di database production dulu (§ 7.1 dokumen) sebelum
+    baris kode pertama, dan sinyal "mulai" eksplisit dari user.
+  Roadmap sisa (§ 9 dokumen): koreksi 2 komentar/dokumen basi (murah) → putuskan nasib `subdomain`
+  → konsolidasi `baseUrl` → Admin-on-Custom-Domain (implementasi, sudah tidak terblokir keputusan
+  produk tapi tetap fitur besar security-sensitive).
 
 - **[RENCANA] Invoice jatuh tempo — tidak ada konsekuensi otomatis (dicatat 2026-07-15)**:
   Ditemukan saat verifikasi cron `invoice-reminder` — status invoice **tidak pernah** otomatis
@@ -4166,6 +4169,40 @@ atas subdomain-based — nol SSL/DNS tambahan per tenant. Auth cross-domain: ses
 login manual saja" secara teknis paling murah dipenuhi dengan sesi terpisah (cookie native memang
 tidak bisa dibaca lintas domain berbeda). **Kedua keputusan ini planning saja — implementasi
 Admin-on-Custom-Domain sendiri belum dijadwalkan.**
+
+### [2026-07-16] Re-review `docs/arsitektur-domain.md` — 4 Referensi/Klaim Rusak Ditemukan & Dibenahi
+
+User eksplisit minta dokumen dicek ulang sebelum eksekusi domain lanjutan ("agar tidak terjadi
+error lagi"). Bukan sekadar baca ulang — hasil audit kritis menemukan dokumen yang baru ditulis
+sendiri **sudah punya cacat** yang berpotensi menyesatkan eksekusi berikutnya:
+
+1. **Referensi rusak**: § 1 menunjuk ke "§ 6.3" yang tidak ada (§ 6 tidak punya subsection
+   bernomor). Seharusnya § 5.3 (bagian yang benar-benar membahas branding dashboard admin).
+2. **Konten hilang yang masih direferensikan**: § 7.1 dan § 8.4 menyebut "§ 6, 'Fase D'" (usulan
+   Caddy jangka panjang) — tapi saat menulis ulang dokumen, konten Fase D dari versi lama tidak
+   ikut dibawa, jadi referensinya menunjuk ke tempat kosong. Fix: tambah § 6.1 berisi konten itu.
+3. **Ambiguitas keputusan yang belum benar-benar final**: § 7.1 Opsi B menyebut DUA kemungkinan
+   path (`{domain}/admin/*` ATAU `{domain}/app/*`) tanpa memilih satu — meski bagian "Keputusan"
+   di bawahnya sudah menyebut path tunggal. Fix: pilih `/admin/*` secara eksplisit, hapus alternatif
+   `/app/*` yang menggantung.
+4. **Klaim teknis tidak diverifikasi**: Opsi B disebut berisiko "path-collision dengan konten
+   publik tenant" tanpa bukti konkret. Diverifikasi: `app/(public)/[tenant]/[pageSlug]/page.tsx`
+   memang catch-all 1-segmen yang PASTI bentrok kalau ada tenant dengan slug post/page/produk/
+   campaign/event persis `admin`. Dicek ke DB dev lokal (nol collision) — **tapi belum dicek ke
+   production**, dicatat eksplisit sebagai syarat wajib sebelum implementasi (bukan asumsi "aman").
+
+**Staleness lintas dokumen juga ditemukan**: entri ringkasan di CLAUDE.md sendiri (bagian
+"Evaluasi arsitektur domain/URL") masih bilang footer "Belum difix" dan "semua menunggu arahan
+user" — padahal keduanya sudah berubah di sesi yang sama. Diperbaiki bersamaan. Juga ditemukan
+`platform.jalakarta.com/login` (tanpa segmen `/platform`) di section "Tiga Level User" — URL yang
+sebenarnya tidak pernah ada (rute asli `/platform/login`, path-based, kebetulan bisa diakses dari
+subdomain manapun karena wildcard DNS, bukan karena ada routing terpisah). Diperbaiki.
+
+**Aturan yang ditegaskan**: dokumen arsitektur yang ditulis dalam SATU sesi tetap wajib di-review
+ulang sebelum dianggap "siap eksekusi" — menulis dokumen panjang dengan banyak cross-reference
+antar section rawan menghasilkan referensi ke section yang berubah nomor/hilang saat proses
+penulisan itu sendiri, terutama saat konten dipadatkan dari versi lama. Baca ulang dengan mode
+"cari yang salah", bukan "baca ulang untuk konfirmasi", sebelum menyatakan dokumen final.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).

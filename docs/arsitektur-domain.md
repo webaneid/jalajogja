@@ -35,7 +35,7 @@ Diterjemahkan jadi tiga aturan konkret yang mengikat setiap keputusan desain di 
 Prinsip #2 punya konsekuensi eksplisit yang jadi temuan utama audit ini: **kalau nanti admin
 dashboard tenant dibangun di atas custom domain, ia WAJIB ikut menjadi tenant-branded sepenuhnya**
 (logo, warna, tanpa atribusi Jalakarta) — bukan cuma soal routing/URL. Dashboard admin hari ini
-sama sekali belum punya infrastruktur untuk itu (§ 6.3) — ini bagian dari yang perlu direncanakan,
+sama sekali belum punya infrastruktur untuk itu (§ 5.3) — ini bagian dari yang perlu direncanakan,
 bukan sekadar "tinggal buka domainnya".
 
 ---
@@ -254,6 +254,18 @@ terpisah. Ini bukan bug, tapi perlu dipahami sebagai keterbatasan yang disengaja
 Tidak ada Caddy di manapun dalam infrastruktur nyata — semua murni Nginx + Certbot manual per
 domain. (Ada komentar salah di schema yang menyebut Caddy — lihat § 8.4.)
 
+### 6.1 Fase D (usulan jangka panjang, belum dikerjakan) — Caddy on-demand TLS
+
+Setiap custom domain baru hari ini butuh intervensi manual VPS (certbot + nginx config + reload).
+Untuk skala >10 tenant dengan custom domain, opsi jangka panjang yang sudah pernah diusulkan (di
+dokumen lama, dipertahankan di sini sebagai catatan — **belum ada keputusan atau jadwal**): migrasi
+reverse-proxy dari Nginx+Certbot manual ke **Caddy dengan on-demand TLS**, yang bisa auto-issue
+sertifikat Let's Encrypt untuk domain baru tanpa SSH ke VPS sama sekali. Ini akan mengubah alur di
+atas secara signifikan (dan berpotensi mengubah kalkulasi biaya Opsi A vs B di § 7.1, karena SSL
+tambahan untuk subdomain jadi hampir gratis di bawah Caddy). **Tidak urgent selagi jumlah tenant
+custom domain masih sedikit** — dicatat di sini murni supaya referensi "Fase D" dari bagian lain
+dokumen ini (§ 7.1, § 8.4) tidak menunjuk ke tempat kosong.
+
 ---
 
 ## 7. Admin-on-Custom-Domain — Fitur yang Belum Dibangun, Perlu Direncanakan
@@ -271,23 +283,29 @@ tenant tersebut.
 - Kelebihan: tidak butuh path tambahan, jelas terpisah dari front-end publik (`ikpmjogja.com`).
 - Kekurangan: butuh SSL cert TERPISAH untuk `admin.{domain}` (satu lagi certbot run manual per
   tenant, di atas yang sudah ada untuk apex+www) — makin menambah beban manual SSL yang sudah jadi
-  masalah skalabilitas (§ 6, § 8.4's usulan Caddy jangka panjang). Tenant juga harus tambah DNS
+  masalah skalabilitas (§ 6.1, usulan Caddy jangka panjang). Tenant juga harus tambah DNS
   record ketiga (`admin` → VPS IP).
 
-**Opsi B — Path di atas custom domain tenant**: `ikpmjogja.com/admin/*` atau
-`ikpmjogja.com/app/*` (path saja, cert sama dengan apex+www yang sudah ada).
+**Opsi B — Path di atas custom domain tenant**: `ikpmjogja.com/admin/*` (path saja, cert sama
+dengan apex+www yang sudah ada).
 - Kelebihan: **tidak butuh SSL cert tambahan** — satu cert (apex+www, sudah ada) menutupi semua
   path termasuk `/admin`. Tidak ada DNS record tambahan.
-- Kekurangan: perlu hati-hati path-collision dengan konten publik tenant (mis. kalau tenant punya
-  halaman publik bernama `/admin` — sama persis kelas masalah yang membuat bug `/akun/media` di
-  § 8.1 terjadi). Perlu regex/guard path yang solid seperti `TENANT_SLUG` di § 3.1, dipindahkan ke
-  konteks middleware yang menangani custom domain.
+- Kekurangan: perlu hati-hati path-collision dengan konten publik tenant. **Konfirmasi konkret**:
+  `app/(public)/[tenant]/[pageSlug]/page.tsx` adalah catch-all 1-segmen untuk halaman CMS
+  (`/{pageSlug}` → di-rewrite middleware jadi `/{slug}/{pageSlug}`) — persis namespace path yang
+  sama dengan `/admin` kalau prefix ini dipakai. Kalau ada tenant yang PERNAH membuat halaman/post/
+  produk/campaign/event dengan slug persis `admin`, path itu akan tabrakan dengan reservasi baru
+  ini. **Wajib dicek ke database production sebelum implementasi** (query slug `= 'admin'` di
+  `posts`, `pages`, `products`, `campaigns`, `events` semua tenant schema — dicek di data dev lokal
+  2026-07-16, nol collision ditemukan, tapi dev ≠ production). Kalau ternyata ada collision nyata di
+  production, tenant tersebut perlu diberi tahu untuk mengganti slug sebelum fitur ini di-enable
+  untuknya, atau reservasi path perlu dipilih nama yang lebih tidak-lazim (`/_admin`, dst).
 
 **✅ Keputusan (2026-07-16)**: user memilih **Opsi B — path-based** (`{custom-domain}/admin/*`).
 Alasan: nol SSL tambahan, nol DNS tambahan per tenant, konsisten dengan filosofi "custom domain =
 satu sertifikat, semua di baliknya" yang sudah berjalan untuk front-end publik. Opsi A (subdomain)
 disimpan di dokumen ini sebagai catatan alternatif kalau nanti arsitektur SSL berubah jadi full-Caddy
-(§ 6), tapi **bukan arah yang akan dikerjakan**.
+(§ 6.1), tapi **bukan arah yang akan dikerjakan**.
 
 ### 7.2 Yang wajib dikerjakan bersamaan, bukan cuma routing
 
@@ -371,7 +389,7 @@ titik. **Tidak dieksekusi di sesi ini** — murni dicatat sebagai risiko struktu
 `packages/db/src/schema/public/tenants.ts` baris 29 dan 46 punya komentar yang menyebut "SSL sudah
 provisioned via Caddy" untuk status `active`. **Tidak ada Caddy di manapun** dalam infrastruktur
 nyata (nginx.conf, deployment-guide.md, panduan-custom-domain.md, cron verify-domains — semua murni
-Nginx + Certbot manual, lihat § 6). Caddy cuma disebut sebagai **usulan masa depan** (§ 6, "Fase D")
+Nginx + Certbot manual, lihat § 6). Caddy cuma disebut sebagai **usulan masa depan** (§ 6.1)
 kalau jumlah tenant custom domain sudah besar — bukan yang dipakai sekarang. Komentar ini
 kemungkinan sisa draft desain awal yang tidak pernah diupdate. **Perlu dikoreksi** (perubahan
 komentar saja, zero risk — kandidat quick-fix di § 9).
@@ -409,7 +427,7 @@ ini** — daftar ini adalah bahan diskusi.
 | 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada | Nol — dokumentasi saja | Menit | Tidak |
 | 4 | Putuskan nasib `tenants.subdomain` (§ 2) — implementasi Fase 2 sungguhan, ATAU sembunyikan field dari UI settings sampai siap dikerjakan | Rendah kalau opsi "sembunyikan", tinggi kalau opsi "implementasikan Fase 2" | Menit (sembunyikan) vs hari (implementasi penuh) | Tidak, tapi field aktif menyesatkan admin sekarang |
 | 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas ~15 file, butuh regresi testing tiap halaman publik | Beberapa jam | Tidak, tapi mengurangi risiko bug berulang ke depan |
-| 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru, Opsi B (path) sudah dipilih | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | **Ya — masih butuh jawaban auth cross-domain (§ 7.3) sebelum mulai** |
+| 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru, Opsi B (path) + auth cross-domain sudah diputuskan (§ 7.3, semua ✅) | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | Tidak lagi terblokir keputusan produk — **tapi wajib cek collision slug `admin` di production dulu (§ 7.1) sebelum baris kode pertama**, dan sinyal "mulai" eksplisit dari user tetap jadi syarat (lihat § 7.3 poin 2) |
 
 **Rekomendasi urutan eksekusi** (kalau/ketika disetujui): #1–#3 bisa langsung sekaligus (murah,
 independen, nol risiko). #4 butuh keputusan cepat (implementasi vs sembunyikan) tapi bukan pekerjaan
