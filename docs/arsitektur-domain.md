@@ -192,9 +192,11 @@ front-end publik hari ini. Semua permukaan lain yang diaudit (header, SEO canoni
 `lib/tenant-seo.ts`, halaman login) **sudah benar** — bercabang berdasarkan
 `customDomainStatus === "active"` dengan tepat.
 
-**Perbaikan yang direkomendasikan** (belum dieksekusi — lihat § 9): baris atribusi hanya tampil
-kalau `!baseUrl` salah, yaitu **tampilkan hanya di domain sendiri** (`baseUrl !== ""`), sembunyikan
-total di custom domain. Fix kecil, aman, satu baris kondisional per file footer.
+**Perbaikan yang direkomendasikan** (disetujui arahnya 2026-07-16, **eksekusi ditahan dulu** —
+user minta bahas semua temuan dulu sebelum ada perubahan kode sama sekali, termasuk fix sekecil
+ini): baris atribusi hanya tampil kalau `!baseUrl` salah, yaitu **tampilkan hanya di domain sendiri**
+(`baseUrl !== ""`), sembunyikan total di custom domain. Fix kecil, aman, satu baris kondisional per
+file footer. Menunggu sinyal eksekusi terpisah dari user.
 
 ### 5.2 Duplikasi `baseUrl` — bukan kebocoran, tapi sumber bug berulang
 
@@ -262,7 +264,7 @@ tidak sengaja. Rencana lama (`docs/rencana-migrasi-url.md`, "Fase 5") sudah menu
 teknis, tapi **stale dan punya kontradiksi internal** yang harus diluruskan dulu sebelum diadopsi
 (§ 8.5).
 
-### 7.1 Dua opsi arsitektur yang perlu diputuskan user sebelum implementasi
+### 7.1 Dua opsi arsitektur — **Opsi B dipilih user 2026-07-16**
 
 **Opsi A — Subdomain di atas custom domain tenant**: `admin.ikpmjogja.com` → dashboard admin
 tenant tersebut.
@@ -281,15 +283,15 @@ tenant tersebut.
   § 8.1 terjadi). Perlu regex/guard path yang solid seperti `TENANT_SLUG` di § 3.1, dipindahkan ke
   konteks middleware yang menangani custom domain.
 
-**Rekomendasi awal** (untuk didiskusikan, bukan keputusan final): **Opsi B** secara signifikan
-lebih murah dari sisi operasional (nol SSL tambahan, nol DNS tambahan per tenant) dan konsisten
-dengan filosofi "custom domain = satu sertifikat, semua di baliknya" yang sudah berjalan untuk
-front-end publik. Opsi A hanya masuk akal kalau ke depan mau full-Caddy (§ 6) di mana isu SSL
-tambahan hilang otomatis (wildcard/on-demand cert).
+**✅ Keputusan (2026-07-16)**: user memilih **Opsi B — path-based** (`{custom-domain}/admin/*`).
+Alasan: nol SSL tambahan, nol DNS tambahan per tenant, konsisten dengan filosofi "custom domain =
+satu sertifikat, semua di baliknya" yang sudah berjalan untuk front-end publik. Opsi A (subdomain)
+disimpan di dokumen ini sebagai catatan alternatif kalau nanti arsitektur SSL berubah jadi full-Caddy
+(§ 6), tapi **bukan arah yang akan dikerjakan**.
 
 ### 7.2 Yang wajib dikerjakan bersamaan, bukan cuma routing
 
-Kalau Opsi B dipilih, tetap ada 3 pekerjaan yang wajib berbarengan, bukan cuma buka middleware guard:
+Dengan Opsi B terpilih, tetap ada 3 pekerjaan yang wajib berbarengan, bukan cuma buka middleware guard:
 
 1. **Middleware**: buka guard `/app/*`/`/platform/*`-redirect (§ 3.2 poin 1a) secara terkontrol —
    HANYA untuk path admin yang cocok dengan tenant PEMILIK custom domain tersebut (bukan buka untuk
@@ -309,12 +311,14 @@ Kalau Opsi B dipilih, tetap ada 3 pekerjaan yang wajib berbarengan, bukan cuma b
    diklarifikasi ke user sebelum implementasi (apakah admin yang sudah login di `jalakarta.com/app/`
    otomatis juga "login" saat buka `ikpmjogja.com/admin`, atau harus login ulang).
 
-### 7.3 Status: BELUM ADA KEPUTUSAN — jangan eksekusi sebelum 3 hal ini dijawab user
+### 7.3 Status keputusan (update 2026-07-16)
 
-- Opsi A vs B (§ 7.1) — atau kombinasi (support keduanya)?
-- Prioritas: apakah ini lebih penting dari menutup celah branding footer (§ 5.1, jauh lebih murah
-  dan berisiko rendah — bisa dikerjakan sekarang independen dari keputusan besar ini)?
-- Auth cross-domain (§ 7.2 poin 3) — sesi tunggal atau login terpisah per domain?
+- ✅ Opsi A vs B (§ 7.1) — **dijawab: Opsi B (path-based)**.
+- ⬜ Prioritas eksekusi — user 2026-07-16 minta **tahan semua eksekusi kode dulu** (termasuk fix
+  footer § 5.1 yang murah/independen), bahas semua temuan lebih dulu sebelum baris kode pertama.
+  Belum ada sinyal "mulai kerjakan" untuk item manapun di § 9.
+- ⬜ Auth cross-domain (§ 7.2 poin 3) — sesi tunggal atau login terpisah per domain? **Belum dijawab
+  user**, masih perlu diklarifikasi sebelum implementasi § 7.2 dimulai.
 
 ---
 
@@ -395,7 +399,7 @@ ini** — daftar ini adalah bahan diskusi.
 | 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada | Nol — dokumentasi saja | Menit | Tidak |
 | 4 | Putuskan nasib `tenants.subdomain` (§ 2) — implementasi Fase 2 sungguhan, ATAU sembunyikan field dari UI settings sampai siap dikerjakan | Rendah kalau opsi "sembunyikan", tinggi kalau opsi "implementasikan Fase 2" | Menit (sembunyikan) vs hari (implementasi penuh) | Tidak, tapi field aktif menyesatkan admin sekarang |
 | 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas ~15 file, butuh regresi testing tiap halaman publik | Beberapa jam | Tidak, tapi mengurangi risiko bug berulang ke depan |
-| 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru), butuh keputusan produk dulu (§ 7.3) | Hari, plus SSL/DNS manual per tenant kalau Opsi A | **Ya — butuh 3 keputusan user di § 7.3 dulu** |
+| 6 | Admin-on-Custom-Domain (§ 7) — fitur besar baru, Opsi B (path) sudah dipilih | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | **Ya — masih butuh jawaban auth cross-domain (§ 7.3) sebelum mulai** |
 
 **Rekomendasi urutan eksekusi** (kalau/ketika disetujui): #1–#3 bisa langsung sekaligus (murah,
 independen, nol risiko). #4 butuh keputusan cepat (implementasi vs sembunyikan) tapi bukan pekerjaan
