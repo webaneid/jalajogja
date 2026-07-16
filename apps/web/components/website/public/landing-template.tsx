@@ -1,234 +1,23 @@
-import { desc, eq, gt, and } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
 import { getSettings } from "@jalajogja/db";
-import { Heart, CalendarDays, FolderOpen, Users, ArrowRight } from "lucide-react";
 import type { SectionItem, SectionType, LandingBody, PostsSectionData } from "@/lib/page-templates";
 import type { PostsSectionDesignId } from "@/lib/posts-section-designs";
 import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
 import type { CampaignsSectionData, CampaignsSectionDesignId } from "@/lib/campaigns-section-designs";
 import type { EventsSectionData, EventsSectionDesignId } from "@/lib/events-section-designs";
+import type { HeroSectionData, HeroSectionDesignId } from "@/lib/hero-section-designs";
 import { PostsSection } from "@/components/website/public/sections/posts/posts-section";
 import { ProductsSection } from "@/components/website/public/sections/products/products-section";
 import { CampaignsSection } from "@/components/website/public/sections/campaigns/campaigns-section";
 import { EventsSection } from "@/components/website/public/sections/events/events-section";
+import { HeroSection } from "@/components/website/public/sections/hero/hero-section";
 import { Gallery } from "@/components/gallery/gallery";
 import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import { PostsSectionTitle } from "@/components/website/public/sections/posts/posts-section-title";
+import { renderAccentTitle } from "@/lib/render-accent-title";
 
 // ─── Section renderers ────────────────────────────────────────────────────────
-
-const HERO_MODULES = [
-  { id: "campaign", path: "campaign", label: "Donasi",       desc: "Program & infaq",       Icon: Heart },
-  { id: "agenda",   path: "agenda",   label: "Agenda",       desc: "Agenda & kegiatan",     Icon: CalendarDays },
-  { id: "dokumen",  path: "dokumen",  label: "Dokumen",      desc: "Arsip & laporan",       Icon: FolderOpen },
-  { id: "anggota",  path: "anggota",  label: "Data Anggota", desc: "Direktori anggota",     Icon: Users },
-] as const;
-
-type HeroCardData = {
-  type:  "event" | "post";
-  label: string;
-  title: string;
-  href:  string;
-  date:  string | null;
-};
-
-async function HeroSection({ data, tenantClient, tenantSlug, baseUrl }: {
-  data:         Record<string, unknown>;
-  tenantClient: TenantDb;
-  tenantSlug:   string;
-  baseUrl:      string;
-}) {
-  const d = data as {
-    eyebrow?: string;
-    title?: string;
-    subtitle?: string;
-    ctaLabel?: string;
-    ctaUrl?: string;
-    ctaSecondaryLabel?: string;
-    ctaSecondaryUrl?: string;
-    imageUrl?: string;
-    showModuleStrip?: boolean;
-  };
-
-  const hasImage = !!d.imageUrl;
-
-  // Fetch floating card: event mendatang → berita terbaru
-  let heroCard: HeroCardData | null = null;
-  if (hasImage) {
-    const { db: tenantDb, schema } = tenantClient;
-    const now = new Date();
-
-    const [upcomingEvent] = await tenantDb
-      .select({ title: schema.events.title, slug: schema.events.slug, startsAt: schema.events.startsAt })
-      .from(schema.events)
-      .where(and(eq(schema.events.status, "published"), gt(schema.events.startsAt, now)))
-      .orderBy(schema.events.startsAt)
-      .limit(1);
-
-    if (upcomingEvent) {
-      heroCard = {
-        type:  "event",
-        label: "Agenda Terbaru",
-        title: upcomingEvent.title,
-        href:  `${baseUrl}/agenda/${upcomingEvent.slug}`,
-        date:  upcomingEvent.startsAt
-          ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(upcomingEvent.startsAt)
-          : null,
-      };
-    } else {
-      const [latestPost] = await tenantDb
-        .select({ title: schema.posts.title, slug: schema.posts.slug, publishedAt: schema.posts.publishedAt })
-        .from(schema.posts)
-        .where(eq(schema.posts.status, "published"))
-        .orderBy(desc(schema.posts.publishedAt))
-        .limit(1);
-
-      if (latestPost) {
-        heroCard = {
-          type:  "post",
-          label: "Berita Terbaru",
-          title: latestPost.title,
-          href:  `${baseUrl}/post/${latestPost.slug}`,
-          date:  latestPost.publishedAt
-            ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(latestPost.publishedAt)
-            : null,
-        };
-      }
-    }
-  }
-
-  return (
-    <section className="py-10 md:py-16 px-4 overflow-hidden">
-      <div className="max-w-7xl mx-auto">
-        {/* Mobile dengan gambar: gambar di atas, teks di bawah */}
-        <div className={`grid grid-cols-1 items-center gap-8 ${hasImage ? "lg:grid-cols-2 lg:gap-16" : ""}`}>
-
-          {/* Gambar — ditampilkan PERTAMA di mobile jika ada */}
-          {hasImage && (
-            <div className="lg:hidden flex justify-center order-first">
-              <div className="relative w-full max-w-sm">
-                <div className="absolute -inset-3 rounded-3xl bg-primary/5 -z-10" />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={d.imageUrl!}
-                  alt={d.title ?? ""}
-                  className="w-full aspect-[4/3] object-cover rounded-2xl shadow-xl"
-                />
-                {heroCard && (
-                  <a
-                    href={heroCard.href}
-                    className="absolute bottom-3 left-3 right-3 bg-primary text-primary-foreground rounded-xl px-3 py-2 no-underline hover:opacity-90 transition-opacity"
-                  >
-                    <p className="text-[10px] font-mono uppercase tracking-widest opacity-75 mb-0.5">
-                      {heroCard.label}
-                    </p>
-                    <p className="text-xs font-semibold leading-snug line-clamp-1">
-                      {heroCard.title}
-                    </p>
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Teks */}
-          <div className={`space-y-5 ${!hasImage ? "max-w-2xl mx-auto text-center" : ""}`}>
-            {d.eyebrow && (
-              <div className={`flex items-center gap-2.5 text-xs font-mono uppercase tracking-widest text-muted-foreground ${!hasImage ? "justify-center" : ""}`}>
-                <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />
-                {d.eyebrow}
-              </div>
-            )}
-            {d.title && (
-              <h1 className="text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-bold leading-[1.1] tracking-tight">
-                {d.title}
-              </h1>
-            )}
-            {d.subtitle && (
-              <p className={`text-base sm:text-lg text-muted-foreground leading-relaxed ${!hasImage ? "mx-auto" : ""} max-w-lg`}>
-                {d.subtitle}
-              </p>
-            )}
-            {(d.ctaLabel || d.ctaSecondaryLabel) && (
-              <div className={`flex gap-3 flex-wrap pt-1 ${!hasImage ? "justify-center" : ""}`}>
-                {d.ctaLabel && d.ctaUrl && (
-                  <PublicButton href={d.ctaUrl as string} variant="primary" size="lg">
-                    {d.ctaLabel as string}
-                  </PublicButton>
-                )}
-                {d.ctaSecondaryLabel && d.ctaSecondaryUrl && (
-                  <PublicButton href={d.ctaSecondaryUrl as string} variant="ghost" size="lg" icon="none">
-                    {d.ctaSecondaryLabel as string}
-                  </PublicButton>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Gambar — desktop only (kanan) */}
-          {hasImage && (
-            <div className="hidden lg:flex justify-end">
-              <div className="relative w-full max-w-xs sm:max-w-sm">
-                <div className="absolute -inset-4 rounded-3xl bg-primary/5 -z-10" />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={d.imageUrl!}
-                  alt={d.title ?? ""}
-                  className="w-full aspect-[3/4] object-cover rounded-2xl shadow-xl"
-                />
-
-                {/* Floating card — event mendatang atau berita terbaru */}
-                {heroCard && (
-                  <a
-                    href={heroCard.href}
-                    className="absolute bottom-4 left-4 right-4 bg-primary text-primary-foreground rounded-2xl px-4 py-3 no-underline hover:opacity-90 transition-opacity"
-                  >
-                    <p className="text-[10px] font-mono uppercase tracking-widest opacity-75 mb-1">
-                      {heroCard.label}
-                    </p>
-                    <p className="text-sm font-semibold leading-snug line-clamp-2">
-                      {heroCard.title}
-                    </p>
-                    {heroCard.date && (
-                      <p className="text-[11px] opacity-70 mt-1.5">{heroCard.date}</p>
-                    )}
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Module strip — aktif via showModuleStrip */}
-        {d.showModuleStrip && (
-          <div className="mt-12 pt-8 border-t border-border">
-            <div className="flex gap-3 overflow-x-auto pb-1 lg:grid lg:grid-cols-4 lg:overflow-visible">
-              {HERO_MODULES.map(({ id, path, label, desc, Icon }) => (
-                <a
-                  key={id}
-                  href={`${baseUrl}/${path}`}
-                  className="group min-w-[160px] shrink-0 lg:min-w-0 flex flex-col gap-3 p-4 rounded-xl border border-border bg-card hover:border-primary hover:bg-primary/5 transition-all duration-200"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                    <Icon className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-sm">{label}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{desc}</p>
-                  </div>
-                  <div className="flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100 translate-x-0 group-hover:translate-x-0.5 transition-all">
-                    Lihat semua <ArrowRight className="w-3 h-3" />
-                  </div>
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
 
 function GallerySection({ data }: { data: Record<string, unknown> }) {
   const d = data as {
@@ -307,13 +96,6 @@ function FeaturesSection({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-function renderCtaTitle(text: string) {
-  const parts = text.split(/\*([^*]+)\*/);
-  return parts.map((part, i) =>
-    i % 2 === 1 ? <em key={i}>{part}</em> : <span key={i}>{part}</span>
-  );
-}
-
 function CtaSection({ data }: { data: Record<string, unknown> }) {
   const d = data as { title?: string; subtitle?: string; ctaLabel?: string; ctaUrl?: string };
 
@@ -334,7 +116,7 @@ function CtaSection({ data }: { data: Record<string, unknown> }) {
             className="font-normal mb-6 max-w-[900px]"
             style={{ fontSize: "clamp(48px, 6vw, 88px)", lineHeight: 0.95 }}
           >
-            {renderCtaTitle(d.title)}
+            {renderAccentTitle(d.title)}
           </h2>
         )}
         {d.subtitle && (
@@ -469,7 +251,15 @@ function SectionRenderer({
   baseUrl:         string;
 }) {
   switch (section.type) {
-    case "hero":         return <HeroSection data={section.data} tenantClient={tenantClient} tenantSlug={tenantSlug} baseUrl={baseUrl} />;
+    case "hero":         return (
+      <HeroSection
+        data={section.data as HeroSectionData}
+        variant={(section.variant ?? "1") as HeroSectionDesignId}
+        tenantClient={tenantClient}
+        tenantSlug={tenantSlug}
+        baseUrl={baseUrl}
+      />
+    );
     case "posts":        return (
       <PostsSection
         data={section.data as PostsSectionData}

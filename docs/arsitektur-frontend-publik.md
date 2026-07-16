@@ -65,8 +65,10 @@ Poin yang wajib diketahui:
 
 Homepage tenant (dan halaman CMS bertemplate `landing`) dibangun via **drag & drop section
 builder** di dashboard (`@dnd-kit`) — admin susun section dari katalog (Hero, Posts, Products,
-Events, Campaigns, Gallery, dan lainnya), tiap section punya beberapa pilihan **design** (mis.
-Posts Section punya 5 desain: Hero 3 Kolom, Klasik, Twin Columns, Trio Column, Carousel).
+Events, Campaigns, Gallery, dan lainnya). Sebagian besar tipe section punya beberapa pilihan
+**design** (mis. Posts Section punya 5 desain: Hero 3 Kolom, Klasik, Twin Columns, Trio Column,
+Carousel; Hero section punya 2 desain: Klasik, Full-Bleed Modern — ditambahkan 2026-07-16, lihat
+§ 4). Sisanya (Gallery, About, Features, CTA, Contact Info, Stats, Divider) masih 1 desain tetap.
 
 **File kunci**:
 ```
@@ -83,10 +85,10 @@ lengkap di dokumen tsb — jangan duplikasi logic ini di tempat lain.
 
 ## 4. Sistem Card + Section — Pola Universal
 
-**Satu arsitektur berlaku untuk SEMUA tipe konten publik**: Post, Produk, Event, Campaign/Donasi.
-Pola: `{Type}Section (fetch data)` → `{Type}Design N (layout grid/carousel/dll)` → `{Type}Card
-(render satu item)`. Kalau menambah tipe konten baru atau desain baru, ikuti pola ini — jangan
-reinvent.
+**Satu arsitektur berlaku untuk SEMUA tipe konten publik yang berupa LISTING**: Post, Produk, Event,
+Campaign/Donasi. Pola: `{Type}Section (fetch data)` → `{Type}Design N (layout grid/carousel/dll)`
+→ `{Type}Card (render satu item)`. Kalau menambah tipe konten listing baru atau desain baru, ikuti
+pola ini — jangan reinvent.
 
 **Dokumen detail (pola umum)**: `docs/arsitektur-card-section.md`
 **Dokumen detail per tipe**:
@@ -99,6 +101,13 @@ reinvent.
 
 `PostsSectionTitle` (heading + dashed line + "Lihat Semua ›") dipakai ulang oleh semua tipe — sudah
 generik, jangan buat header section baru per tipe.
+
+**Hero section pakai dispatcher yang sama (`{Type}Section → {Type}Design N`) tapi BUKAN listing** —
+tidak ada konsep "Card" karena hero cuma satu banner, bukan daftar item berulang. 2 desain: `1`
+Klasik (banner + 2 CTA + kartu mengambang event/berita), `2` Full-Bleed Modern (gambar penuh layar +
+overlay gelap). File: `components/website/public/sections/hero/`, registry:
+`lib/hero-section-designs.ts`. Ditambahkan 2026-07-16 — sebelumnya hero cuma 1 desain hardcoded
+tanpa sistem variant sama sekali (satu-satunya section type yang belum ikut pola ini).
 
 ---
 

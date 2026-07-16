@@ -289,6 +289,18 @@ type LandingBody = {
 | `stats` | Statistik | items[{number,label}] max 4 | — |
 | `divider` | Pemisah / Spacer | height, bgColor | — |
 
+> ⚠️ **Tabel di atas dan § "Wireframe Tiap Section" di bawah adalah dokumen perencanaan lama —
+> field name aktual sudah berbeda** (mis. `hero` field asli: `eyebrow, title, subtitle, ctaLabel,
+> ctaUrl, ctaSecondaryLabel, ctaSecondaryUrl, imageUrl, showModuleStrip` — bukan `bgImageUrl,
+> bgColor` seperti tertulis). Sumber kebenaran field data: `lib/hero-section-designs.ts` (`type
+> HeroSectionData`) dan file setara untuk tipe lain (`lib/posts-section-designs.ts`, dst).
+>
+> **Hero sekarang punya 2 desain** (ditambahkan 2026-07-16, lihat lesson CLAUDE.md tanggal sama):
+> `1` Klasik (desain asli, sebelumnya satu-satunya) dan `2` Full-Bleed Modern. File:
+> `components/website/public/sections/hero/{hero-section,hero-design-1,hero-design-2}.tsx`, picker
+> desain di `HeroEditor` (`components/website/section-editors.tsx`) — pola identik dengan picker
+> `posts`/`products`/`events`/`campaigns` yang sudah lebih dulu ada.
+
 #### Default Sections saat Template Dipilih
 
 Saat admin pilih template `landing` untuk pertama kali, langsung ada 3 section default:

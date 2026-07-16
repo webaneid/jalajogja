@@ -18,6 +18,7 @@ import {
 import { PlusIcon, Trash2, ImageIcon, X } from "lucide-react";
 import type { SectionType } from "@/lib/page-templates";
 import { POSTS_SECTION_DESIGNS, POSTS_SECTION_DESIGN_IDS } from "@/lib/posts-section-designs";
+import { HERO_SECTION_DESIGNS, HERO_SECTION_DESIGN_IDS } from "@/lib/hero-section-designs";
 import { MediaPicker } from "@/components/media/media-picker";
 import type { MediaItem } from "@/components/media/media-picker";
 import { GalleryPicker } from "@/components/gallery/gallery-picker";
@@ -42,7 +43,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
 
-function HeroEditor({ data, onChange, tenantSlug }: EditorProps) {
+function HeroEditor({ data, onChange, variant, onVariantChange, tenantSlug }: EditorProps) {
   const d = data as {
     eyebrow?: string; title?: string; subtitle?: string;
     ctaLabel?: string; ctaUrl?: string;
@@ -51,6 +52,7 @@ function HeroEditor({ data, onChange, tenantSlug }: EditorProps) {
   };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const [pickerOpen, setPickerOpen] = useState(false);
+  const activeVariant = variant ?? "1";
 
   function handleMediaSelect(media: MediaItem) {
     const url = media.variants?.profile ?? media.variants?.large ?? media.url;
@@ -124,6 +126,30 @@ function HeroEditor({ data, onChange, tenantSlug }: EditorProps) {
           <span className="text-xs">Tampilkan strip Donasi · Event · Toko · Dokumen · Kabar</span>
         </label>
       </Field>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Design Layout</Label>
+        <div className="grid grid-cols-1 gap-2">
+          {HERO_SECTION_DESIGN_IDS.map((id) => {
+            const meta = HERO_SECTION_DESIGNS[id];
+            const isActive = activeVariant === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onVariantChange?.(id)}
+                className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+                  isActive
+                    ? "border-primary bg-primary/5 text-primary font-medium"
+                    : "border-border hover:border-primary/40 text-foreground"
+                }`}
+              >
+                <span className="font-medium">{id}. {meta.label}</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">{meta.description}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

@@ -4676,6 +4676,73 @@ dev server penuh untuk cek tampilan sungguhan.
 
 **Sisa pekerjaan**: hero section (bagian ke-3 dari desain yang sama) belum diambil.
 
+### [2026-07-16] Hero Section — dari 0 Varian ke Sistem Design Registry (Bagian ke-3 + Perbaikan Gap)
+
+Sebelum bagian ke-3 (hero) dari `design-refs/jalakarta-v2/` diambil, user tanya "kita sudah punya
+berapa variasi hero?" — jawabannya **NOL**. Beda dari Posts/Produk/Event/Campaign yang masing-masing
+sudah punya registry `lib/{type}-section-designs.ts` + 3-5 pilihan desain sejak awal, `HeroSection`
+selama ini **inline langsung di `landing-template.tsx`**, hardcoded satu layout, `HeroEditor` tidak
+punya picker desain sama sekali — satu-satunya section type yang belum ikut pola universal
+Card+Section (`docs/arsitektur-frontend-publik.md` § 4). User eksplisit minta ini "diperbaiki"
+sebelum lanjut ambil desain baru — jadi task ini gabungan **perbaikan gap arsitektur lama** +
+**tambah desain baru dari referensi**, bukan cuma yang kedua.
+
+**Refactor (gap lama)**:
+- `lib/hero-section-designs.ts` (baru) — registry persis pola `posts-section-designs.ts`:
+  `HeroSectionData` (field sama persis dengan yang sudah ada, tidak ada field baru),
+  `HERO_SECTION_DESIGN_IDS = ["1","2"]`, `HERO_SECTION_DESIGNS` (label+deskripsi), plus
+  `HERO_MODULES` (data strip 4 modul, dipindah dari const lokal di landing-template.tsx supaya bisa
+  dipakai bersama oleh kedua desain) dan `HeroCardData`/`HeroDesignProps` types.
+- `components/website/public/sections/hero/` (baru, folder mengikuti pola `sections/posts/` dst):
+  `hero-section.tsx` (dispatcher async — fetch `heroCard` sekali, dispatch by `variant`),
+  `hero-design-1.tsx` (ekstraksi 1:1 dari implementasi lama — **tidak ada perubahan visual/behavior**
+  untuk tenant yang sudah pakai hero, murni pemindahan kode), `hero-design-2.tsx` (baru).
+- `landing-template.tsx` — inline `HeroSection` (196 baris) dihapus total, diganti import dari lokasi
+  baru; dispatch `case "hero"` sekarang pass `variant={(section.variant ?? "1") as
+  HeroSectionDesignId}` — pola identik persis dengan `posts`/`products`/`events`/`campaigns` yang
+  sudah lebih dulu benar. Import `desc/eq/gt/and` (drizzle-orm) dan 4 ikon lucide yang cuma dipakai
+  inline HeroSection lama ikut dihapus (tidak ada lagi pemakai lain di file itu, dicek via grep
+  sebelum hapus — bukan asumsi).
+- `components/website/section-editors.tsx` — `HeroEditor` sekarang terima `variant, onVariantChange`
+  dari `EditorProps` (props ini SUDAH di-passthrough generik dari `SectionEditDialog` ke semua
+  editor sejak awal — cuma `HeroEditor` yang belum memanfaatkannya), tambah blok picker desain
+  (button list radio-style) — copy persis UI block yang sama dari `PostsEditor`.
+
+**Kenapa aman tanpa migrasi DB**: `createSection()` di `lib/page-templates.ts` SELALU set
+`variant: "1"` untuk section baru sejak awal ditulis — termasuk hero, meski field itu selama ini
+diabaikan oleh kode render. Jadi semua landing page existing yang sudah punya section hero **sudah**
+tersimpan dengan `variant: "1"` di database — begitu kode baru deploy, otomatis ke-resolve sebagai
+Desain 1 (Klasik) yang perilakunya identik dengan sebelumnya. Zero data migration, zero breaking
+change untuk tenant existing.
+
+**Hero Design 2 (Full-Bleed Modern)** — sumber ide dari `design-refs/jalakarta-v2/`, TIDAK ada field
+data baru ditambahkan ke `HeroSectionData` (dipakai bersama persis dengan Desain 1) — cukup dirender
+berbeda: gambar `imageUrl` full-bleed sebagai background section (fallback gradasi
+`neutral-900→primary/40` kalau kosong, bukan dipaksa selalu ada gambar), scrim gradient gelap untuk
+keterbacaan teks putih, CTA sekunder pakai `variant="light"` (PublicButton — literally didesain
+untuk "kontras di section gelap/hero" per CLAUDE.md § Public Button System, bukan kebetulan cocok).
+**Fitur dari sumber yang SENGAJA tidak diikuti**: tagline slider (prev/next arrow siklus 3 teks) —
+data model kita cuma 1 `subtitle` string, bukan array taglines, dan stats bar yang di sumber
+overlap di bawah hero — itu section terpisah (`stats` section type SUDAH ada sejak awal), bukan
+bagian hero, jadi tidak digabung supaya section boundary tetap bersih.
+
+**`renderAccentTitle()` diekstrak jadi shared helper** (`lib/render-accent-title.tsx`) — sebelumnya
+`renderCtaTitle()` cuma fungsi lokal 4 baris di `landing-template.tsx` dipakai `CtaSection` (sintaks
+`*teks*` → `<em>`). Dipakai ulang di `hero-design-2.tsx` untuk aksen judul, BUKAN duplikasi —
+berbeda dari pola "duplikasi demi isolasi" yang biasa dipakai di project ini (mis. tiap
+header/footer file self-contained): helper ini pure string-parsing tanpa efek samping/DB, risiko
+share mendekati nol, jadi di-share sesuai akal sehat, bukan default duplikasi.
+
+**Verifikasi**: `tsc --noEmit` (0 error, termasuk setelah penghapusan import besar-besaran di
+`landing-template.tsx` — dicek ulang tidak ada pemakai lain sebelum hapus) + `bun run build` sukses.
+**Belum diverifikasi visual di browser** — sama seperti header/footer sebelumnya.
+
+**Trilogi selesai**: header (Pill), footer (Modern), hero (Full-Bleed Modern) — ketiganya dari
+sumber desain yang sama (`design-refs/jalakarta-v2/`), independen satu sama lain (bisa dikombinasi
+bebas dengan desain manapun, bukan 1 paket "tema"). Sisa dari desain sumber ini yang belum diambil
+(section Ekosistem/rail horizontal, Berita dual-layout, Toko grid, dll) — lihat isi lengkap di
+`design-refs/jalakarta-v2/decoded.html` kalau user minta lanjut lagi nanti.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
