@@ -19,12 +19,13 @@ export type FooterProps = {
   baseUrl:         string; // "" jika custom domain, "/{slug}" jika path mode
 };
 
-export const FOOTER_DESIGN_IDS = ["dark", "light"] as const;
+export const FOOTER_DESIGN_IDS = ["dark", "light", "modern"] as const;
 export type FooterDesignId = typeof FOOTER_DESIGN_IDS[number];
 
 export const FOOTER_DESIGN_LABELS: Record<FooterDesignId, string> = {
-  dark:  "Gelap",
-  light: "Terang",
+  dark:   "Gelap",
+  light:  "Terang",
+  modern: "Modern (Melengkung)",
 };
 
 export const FOOTER_DESIGNS: Record<FooterDesignId, {
@@ -38,5 +39,9 @@ export const FOOTER_DESIGNS: Record<FooterDesignId, {
   light: {
     label:       "Terang",
     description: "Background putih, teks gelap. Struktur identik dengan desain Gelap.",
+  },
+  modern: {
+    label:       "Modern (Melengkung)",
+    description: "Kartu gelap dengan sudut atas melengkung, 1 baris 3-kolom (brand+sosmed | nav | kontak).",
   },
 };

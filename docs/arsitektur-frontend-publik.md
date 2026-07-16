@@ -42,8 +42,9 @@ lewat sini — kalau ada bug lintas-halaman (branding, nav, font), cek di sini d
 
 ## 2. Header & Footer
 
-Tiga desain header (`classic-header.tsx`, `flex-header.tsx`, `pill-header.tsx`) dan dua desain
-footer (`dark-footer.tsx`, `light-footer.tsx`) — dipilih admin via `/app/{slug}/settings/display`.
+Tiga desain header (`classic-header.tsx`, `flex-header.tsx`, `pill-header.tsx`) dan tiga desain
+footer (`dark-footer.tsx`, `light-footer.tsx`, `modern-footer.tsx`) — dipilih admin via
+`/app/{slug}/settings/display`.
 Semua dapat CSS variables tema tenant dari `PublicLayout` (bukan prop-drilling manual per
 komponen). Katalog ini akan terus bertambah — lihat `design-refs/README.md` untuk alur kerja
 menambah variasi desain baru dari referensi eksternal.

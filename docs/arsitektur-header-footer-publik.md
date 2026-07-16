@@ -252,8 +252,9 @@ Footer adalah server component — tidak butuh session.
 
 | Design ID | Label | Status |
 |-----------|-------|--------|
-| `dark` | Gelap (default) | ⚠️ Ada — layout LAMA (3 kolom datar), perlu refactor ke layout baru |
-| `light` | Terang | ⬜ Belum dieksekusi — layout identik dark, hanya warna berbeda |
+| `dark` | Gelap (default) | ✅ Selesai — lihat § "Status Implementasi" |
+| `light` | Terang | ✅ Selesai — struktur identik dark, hanya warna berbeda |
+| `modern` | Modern (Melengkung) | ✅ Selesai (2026-07-16) — lihat § "Desain 3: Modern Footer (Melengkung)" |
 
 ---
 
@@ -403,6 +404,47 @@ tampil ke user; lihat CLAUDE.md § Identitas Project).
 (`{baseUrl !== "" && (...)}`) — "satu domain = satu identitas", custom domain tenant tidak boleh
 menampilkan identitas Jalakarta sama sekali. Baris "© {year} {siteName}." tetap tampil di kedua
 mode karena itu copyright tenant sendiri. Detail: `docs/arsitektur-domain.md` § 5.1.
+
+---
+
+## Desain 3: Modern Footer (Melengkung)
+
+> Ditambahkan 2026-07-16, sumber ide dari `design-refs/jalakarta-v2/` (lihat `design-refs/README.md`
+> untuk alur kerja mengambil desain dari referensi eksternal), diambil bersamaan dengan header
+> "Pill (Modern)" — sama-sama satu sesi ekstraksi dari desain sumber yang sama, tapi dua design ID
+> independen (bisa dipakai campur dengan header manapun, tidak dipaketkan jadi satu "tema").
+
+File: `footers/modern-footer.tsx`. Server component (sama seperti Dark/Light — tidak butuh session).
+Ekstraksi data (email/phone/whatsapp/address/socials) **identik** dengan `DarkFooter`/`LightFooter`
+— fungsi `normalizePhone()` sengaja tetap diduplikasi (bukan di-share) mengikuti pola yang sama
+sejak desain Dark/Light dulu (masing-masing file header/footer self-contained).
+
+```
+╭──────────────────────────────────────────────╮  ← sudut atas melengkung (rounded-t-[32px])
+│ [J] Nama          NAVIGASI          KONTAK    │
+│ deskripsi…        · Item             alamat   │
+│ (●)(●)(●) sosmed  · Item             hp·email │
+├──────────────────────────────────────────────┤
+│ © {year} {siteName}    Jalakarta — dev by ... │
+╰──────────────────────────────────────────────╯
+```
+
+**Beda dengan Dark/Light (bukan cuma warna)**:
+- **Layout 1 baris 3-kolom** (`grid md:grid-cols-3`) — Dark/Light pakai 2 section 2-baris
+  (identitas+social CTA lalu nav+kontak terpisah oleh separator). Modern lebih ringkas/padat.
+- **Sudut atas melengkung** (`rounded-t-[32px] overflow-hidden`) — kesan "kartu mengambang" di atas
+  konten sebelumnya, bukan footer persegi penuh lebar seperti 2 desain lain.
+- Logo mark kotak `rounded-lg` (konsisten dengan badge kotak di `pill-header.tsx` — dua komponen ini
+  dirancang match secara visual meski technically independen, boleh dipakai terpisah).
+- Kontak diringkas jadi 1 baris (`{phone} · {email}`), bukan list `<li>` bericon seperti Dark/Light.
+
+**Warna/font tidak disalin dari sumber** — sama seperti header Pill, `bg-primary`/
+`text-primary-foreground` untuk logo mark, tidak ada hex hardcoded dari mockup asli. Background
+gelap (`bg-neutral-900`) sengaja hardcoded (bukan CSS variable tema) — konsisten dengan konvensi
+`DarkFooter` yang juga hardcode `bg-gray-900`, bukan penyimpangan baru.
+
+**Atribusi Jalakarta**: pattern `{baseUrl !== "" && (...)}` yang sama persis dengan Dark/Light —
+lihat § "Custom domain" di atas dan `docs/arsitektur-domain.md` § 5.1.
 
 ---
 
@@ -586,6 +628,7 @@ Step 10 — tsc --noEmit → 0 errors
 | `/(public)/[tenant]/login` + `/register` dummy | ✅ Selesai |
 | Mobile bottom navigation bar | ✅ Selesai (dalam FlexHeader) |
 | `headers/pill-header.tsx` (Desain 3, § "Desain 3: Pill Header") | ✅ Selesai (2026-07-16) |
+| `footers/modern-footer.tsx` (Desain 3, § "Desain 3: Modern Footer") | ✅ Selesai (2026-07-16) |
 | Notifikasi lonceng | ⬜ Menunggu Modul Pengumuman |
 
 ### Catatan Bug Fix & UI Decisions

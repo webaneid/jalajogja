@@ -4646,6 +4646,36 @@ jalakarta-v2/decoded.html` (hasil decode, sudah plain HTML terbaca) dan `assets-
 sengaja DIPERTAHANKAN di repo (bukan dihapus setelah dipakai) supaya sesi berikutnya tidak perlu
 decode ulang dari file bundle mentah.
 
+### [2026-07-16] Footer Baru "Modern (Melengkung)" — Bagian ke-2 dari `design-refs/jalakarta-v2/`
+
+Lanjutan langsung dari lesson header "Pill (Modern)" di atas — bagian kedua (footer) dari urutan
+header→footer→hero yang diminta user. Sumber desain, alur decode, dan aturan "ambil struktur bukan
+warna/font mentah" identik dengan lesson sebelumnya, tidak diulang di sini.
+
+**`footers/modern-footer.tsx`** (design id `"modern"`, label "Modern (Melengkung)") — terdaftar ke
+`lib/footer-designs.ts` (`FOOTER_DESIGN_IDS`) + `public-footer.tsx` (`case` baru), pola identik
+dengan cara `dark`/`light` terdaftar. Beda utama dari `dark`/`light` yang sudah ada BUKAN cuma warna
+(dark vs light itu sendiri sudah cuma beda warna, struktur identik) — `modern` beda **layout**: 1
+baris grid 3-kolom (brand+sosmed | nav | kontak) dengan sudut atas melengkung (`rounded-t-[32px]`),
+menggantikan pola 2-section-2-baris (identitas+social CTA lalu nav+kontak, dipisah `border-t`) yang
+dipakai `dark`/`light`. Ekstraksi data kontak (email/phone/whatsapp/address/socials via
+`SocialLinks`) disalin persis dari `DarkFooter` — termasuk duplikasi lokal `normalizePhone()`,
+mengikuti pola self-contained yang sudah ada sejak `dark-footer.tsx`/`light-footer.tsx` (setiap file
+header/footer independen, tidak saling import helper satu sama lain).
+
+**Header `pill-header.tsx` dan footer `modern-footer.tsx` dirancang match secara visual** (logo mark
+kotak `rounded-lg`/`rounded-xl` di keduanya, dari sumber desain yang sama) **tapi technically
+independen** — admin boleh pasang header Pill dengan footer Dark, atau header Classic dengan footer
+Modern, kombinasi bebas. Ini konsisten dengan prinsip "komponen lepas, campur-cocok" yang sudah
+dikunci sejak awal (bukan "tema" berpasangan wajib ala WordPress) — lihat diskusi di
+`docs/arsitektur-frontend-publik.md` § 4 soal kenapa pendekatan ini dipilih di atas theme engine.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build --filter=@jalajogja/web` — 0 error, build sukses.
+**Belum diverifikasi visual di browser** — sama seperti header, environment sesi ini tidak punya
+dev server penuh untuk cek tampilan sungguhan.
+
+**Sisa pekerjaan**: hero section (bagian ke-3 dari desain yang sama) belum diambil.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
