@@ -91,18 +91,36 @@ export function HeroDesign2({ data: d, heroCard, funfacts }: Props) {
       </div>
 
       {/* Funfact — aktif via showModuleStrip, statistik live dari DB (bukan strip kartu modul
-          seperti Desain 1). Gaya visual disamakan dengan StatsSection yang sudah ada di app. */}
+          seperti Desain 1). Gaya visual disamakan dengan StatsSection yang sudah ada di app.
+          Dua posisi (funfactStyle): "inline" (default) mengalir normal, "floating" menggantung
+          menimpa batas bawah gambar hero via negative margin — sumber ide design-refs/jalakarta-v2/
+          (stat bar overlap), lihat design-refs/README.md. */}
       {d.showModuleStrip && funfacts.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 pt-10 pb-2">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
-            {funfacts.map((f) => (
-              <div key={f.id}>
-                <div className="text-3xl font-bold text-primary">{f.number}</div>
-                <div className="text-sm text-muted-foreground mt-1">{f.label}</div>
+        d.funfactStyle === "floating" ? (
+          <div className="relative z-10 -mt-14 md:-mt-20 mx-4 md:mx-auto md:max-w-5xl">
+            <div className="bg-background rounded-3xl shadow-2xl px-6 py-6 md:px-10 md:py-8">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
+                {funfacts.map((f) => (
+                  <div key={f.id}>
+                    <div className="text-3xl font-bold text-primary">{f.number}</div>
+                    <div className="text-sm text-muted-foreground mt-1">{f.label}</div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="max-w-7xl mx-auto px-4 pt-10 pb-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
+              {funfacts.map((f) => (
+                <div key={f.id}>
+                  <div className="text-3xl font-bold text-primary">{f.number}</div>
+                  <div className="text-sm text-muted-foreground mt-1">{f.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
       )}
     </section>
   );

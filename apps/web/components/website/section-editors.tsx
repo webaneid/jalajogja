@@ -18,7 +18,7 @@ import {
 import { PlusIcon, Trash2, ImageIcon, X } from "lucide-react";
 import type { SectionType } from "@/lib/page-templates";
 import { POSTS_SECTION_DESIGNS, POSTS_SECTION_DESIGN_IDS } from "@/lib/posts-section-designs";
-import { HERO_SECTION_DESIGNS, HERO_SECTION_DESIGN_IDS, FUNFACT_CATALOG, FUNFACT_IDS } from "@/lib/hero-section-designs";
+import { HERO_SECTION_DESIGNS, HERO_SECTION_DESIGN_IDS, FUNFACT_CATALOG, FUNFACT_IDS, FUNFACT_STYLE_IDS, FUNFACT_STYLE_LABELS } from "@/lib/hero-section-designs";
 import { MODULE_CATALOG, MODULE_IDS, type ModuleId } from "@/lib/module-strip-designs";
 import { MediaPicker } from "@/components/media/media-picker";
 import type { MediaItem } from "@/components/media/media-picker";
@@ -50,6 +50,7 @@ function HeroEditor({ data, onChange, variant, onVariantChange, tenantSlug }: Ed
     ctaLabel?: string; ctaUrl?: string;
     ctaSecondaryLabel?: string; ctaSecondaryUrl?: string;
     imageUrl?: string; showModuleStrip?: boolean; funfactItems?: string[];
+    funfactStyle?: typeof FUNFACT_STYLE_IDS[number];
   };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -137,29 +138,53 @@ function HeroEditor({ data, onChange, variant, onVariantChange, tenantSlug }: Ed
             <span className="text-xs">Tampilkan statistik (maks 4, dihitung otomatis dari data)</span>
           </label>
           {d.showModuleStrip && (
-            <div className="grid grid-cols-2 gap-2">
-              {FUNFACT_IDS.map((id) => {
-                const isChecked = funfactItems.includes(id);
-                const disabled  = !isChecked && funfactItems.length >= 4;
-                return (
-                  <label
-                    key={id}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${
-                      isChecked ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
-                    } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      disabled={disabled}
-                      onChange={() => toggleFunfact(id)}
-                      className="w-4 h-4 accent-primary"
-                    />
-                    {FUNFACT_CATALOG[id].label}
-                  </label>
-                );
-              })}
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                {FUNFACT_IDS.map((id) => {
+                  const isChecked = funfactItems.includes(id);
+                  const disabled  = !isChecked && funfactItems.length >= 4;
+                  return (
+                    <label
+                      key={id}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${
+                        isChecked ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                      } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        disabled={disabled}
+                        onChange={() => toggleFunfact(id)}
+                        className="w-4 h-4 accent-primary"
+                      />
+                      {FUNFACT_CATALOG[id].label}
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Posisi Funfact</Label>
+                <div className="grid grid-cols-1 gap-2">
+                  {FUNFACT_STYLE_IDS.map((style) => {
+                    const isActive = (d.funfactStyle ?? "inline") === style;
+                    return (
+                      <button
+                        key={style}
+                        type="button"
+                        onClick={() => u("funfactStyle", style)}
+                        className={`text-left px-3 py-2 rounded-lg border text-xs transition-colors ${
+                          isActive
+                            ? "border-primary bg-primary/5 text-primary font-medium"
+                            : "border-border hover:border-primary/40 text-foreground"
+                        }`}
+                      >
+                        {FUNFACT_STYLE_LABELS[style]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
           )}
         </Field>
       ) : (

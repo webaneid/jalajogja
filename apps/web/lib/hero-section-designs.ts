@@ -13,6 +13,7 @@ export type HeroSectionData = {
   // modul, seperti sejak awal). Desain 2 = tampilkan Funfact (statistik live dari funfactItems).
   showModuleStrip?:   boolean;
   funfactItems?:      string[]; // FunfactId[], maks 4 — HANYA dipakai Desain 2, diabaikan Desain 1
+  funfactStyle?:      FunfactStyle; // HANYA dipakai Desain 2
 };
 
 export const HERO_SECTION_DESIGN_IDS = ["1", "2"] as const;
@@ -82,4 +83,15 @@ export type FunfactResult = {
   id:     FunfactId;
   number: string;
   label:  string;
+};
+
+// Posisi tampilan Funfact — "inline" = mengalir normal di bawah gambar hero (default).
+// "floating" = kartu menggantung, menimpa batas bawah gambar hero (margin negatif), sumber ide
+// design-refs/jalakarta-v2/ (stat bar overlap), lihat design-refs/README.md.
+export const FUNFACT_STYLE_IDS = ["inline", "floating"] as const;
+export type FunfactStyle = typeof FUNFACT_STYLE_IDS[number];
+
+export const FUNFACT_STYLE_LABELS: Record<FunfactStyle, string> = {
+  inline:   "Biasa (di bawah gambar)",
+  floating: "Mengambang (menimpa batas bawah gambar)",
 };

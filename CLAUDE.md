@@ -4865,6 +4865,38 @@ lama TIDAK dihapus, cuma nambah). `FUNFACT_CATALOG` (10 metrik) di `hero-section
 2 file registry) + `bun run build` sukses. `git diff --stat hero-design-1.tsx` dikonfirmasi KOSONG
 (nol baris berubah) — syarat eksplisit dari user terpenuhi. Belum diverifikasi visual di browser.
 
+### [2026-07-16] Funfact — 2 Posisi Tampilan (`funfactStyle`: inline vs floating)
+
+Lanjutan langsung dari fitur Funfact di atas. User lihat referensi `design-refs/jalakarta-v2/`
+punya stat bar yang **menggantung menimpa batas bawah hero** (`margin-top:-40px` di sumber asli —
+teknik "kartu mengambang" yang sama dengan kartu event/berita yang sudah ada), beda dari funfact
+yang sudah dibangun (mengalir normal di bawah gambar). Diminta jadi 2 opsi posisi yang bisa dipilih
+admin, bukan ganti total.
+
+**Field baru** `funfactStyle?: FunfactStyle` (`"inline" | "floating"`) di `HeroSectionData`
+(`lib/hero-section-designs.ts`) — default `"inline"` kalau tidak diisi (fallback `??`, tidak perlu
+migrasi data existing). `FUNFACT_STYLE_IDS` + `FUNFACT_STYLE_LABELS` di file yang sama.
+
+**Render di `hero-design-2.tsx`** — dua cabang:
+- `"inline"` (default, tidak berubah dari sebelumnya) — `max-w-7xl mx-auto px-4 pt-10 pb-2`, grid
+  polos, mengalir normal di bawah blok gambar hero.
+- `"floating"` (baru) — `relative z-10 -mt-14 md:-mt-20 mx-4 md:mx-auto md:max-w-5xl` lalu kartu
+  `bg-background rounded-3xl shadow-2xl` di dalamnya. **Teknik negative margin, BUKAN
+  `position: absolute`** — ditanya eksplisit oleh user ("posisinya absolut gitu kan?"), dijelaskan
+  trade-off-nya: negative margin tetap ikut alur dokumen normal (lebih aman untuk responsive,
+  tidak perlu atur lebar/tinggi manual seperti absolute), tapi menghasilkan visual "menggantung/
+  menimpa" yang identik — ini teknik yang sebenarnya dipakai sumber referensi aslinya juga
+  (`margin-top:-40px`), bukan `position:absolute`. `overflow-hidden` di `<section>` pembungkus
+  tidak masalah karena kartu floating tetap ada DALAM bounds section (overlap ke area hero di
+  atasnya, bukan keluar section).
+
+**Editor**: toggle 2-pilihan (button list, pola sama dengan Design Layout picker) muncul di bawah
+checklist metrik funfact, HANYA saat Funfact aktif (`d.showModuleStrip === true`) — kalau Funfact
+dimatikan, toggle posisi ikut tersembunyi (tidak relevan).
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error. `hero-design-1.tsx` dikonfirmasi lagi
+tetap kosong perubahannya (fitur ini 100% scoped ke Desain 2). Belum diverifikasi visual di browser.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

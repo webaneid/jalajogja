@@ -307,6 +307,11 @@ type LandingBody = {
 > modul yang tadinya cuma bisa hidup di hero sekarang JUGA tersedia sebagai section landing
 > independen (`modules`, `lib/module-strip-designs.ts`, katalog 8 modul) — lihat
 > `docs/arsitektur-frontend-publik.md` § 4.
+>
+> **Funfact punya 2 posisi tampilan** (`funfactStyle`, ditambahkan 2026-07-16, sesi sama): `inline`
+> (default) — mengalir normal di bawah gambar hero. `floating` — kartu menggantung menimpa batas
+> bawah gambar hero via negative margin (`-mt-14 md:-mt-20`), sumber ide stat-bar-overlap di
+> `design-refs/jalakarta-v2/`. Toggle di `HeroEditor`, cuma muncul saat Funfact aktif.
 
 #### Default Sections saat Template Dipilih
 
