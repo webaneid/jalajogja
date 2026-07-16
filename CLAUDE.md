@@ -4475,6 +4475,32 @@ ini dan titik yang dituju, terutama kalau keduanya berada di dalam blok kondisio
 blok ini, lanjut ke kode SETELAH blok ini", satu-satunya cara yang benar adalah `return` eksplisit
 dengan response yang sesuai (`NextResponse.next()`) — bukan mengandalkan fall-through implisit.
 
+### [2026-07-16] Dokumentasi Arsitektur — Pisahkan "Riwayat Debugging" dari "Cara Kerja Final"
+
+Setelah 3 bug berurutan ditemukan+difix dalam satu sesi uji manual (Admin-on-Custom-Domain, lihat
+entri di atas), `docs/arsitektur-domain.md` § 7 sempat jadi "battle log" — daftar bernomor yang
+mencampur "ini desainnya" dengan "lalu ketemu bug, difix, ketemu bug lagi, difix lagi" secara
+inline. Pembaca baru (termasuk sesi Claude berikutnya) harus mem-replay seluruh riwayat debugging
+di kepala hanya untuk memahami perilaku akhir yang benar — padahal riwayat itu sudah tidak relevan
+untuk operasional, hanya relevan untuk pembelajaran.
+
+**Fix**: pisahkan dua audiens berbeda ke dua tempat berbeda:
+- **§ 7.2 (baru, "Implementasi Final")** — HANYA mendeskripsikan cara kerja final: alur routing
+  (diagram ASCII bernomor), keamanan, auth cross-domain, branding, trade-off yang disetujui. Tidak
+  ada satu kalimat pun tentang "awalnya salah begini, lalu..." — ditulis seolah tidak pernah ada
+  bug sama sekali, karena dari sudut pandang operasional sekarang memang tidak ada.
+- **§ 8.1 ("Riwayat bug nyata")** — daftar bernomor ringkas (root cause + fix, 2-3 baris per bug)
+  untuk konteks/pembelajaran, ditutup pointer eksplisit "Deskripsi lengkap cara kerja FINAL (bukan
+  riwayat perbaikannya): § 7.2." — supaya pembaca yang butuh operasional tidak nyasar ke sini.
+
+**Aturan untuk dokumentasi arsitektur ke depan**: setelah sesi debugging yang menghasilkan beberapa
+iterasi fix untuk fitur yang sama, WAJIB dilakukan pass terpisah "convert to final-state" sebelum
+dianggap selesai — jangan biarkan dokumen tumbuh sebagai log kronologis selamanya. Kronologi bug
+tetap berharga (pola yang sama bisa terulang di fitur lain, § 8.1 sudah beberapa kali jadi rujukan
+begitu), tapi taruh di section terpisah yang eksplisit ditandai "untuk konteks, bukan operasional" —
+jangan campur dengan deskripsi cara kerja yang harus dibaca cepat oleh siapapun yang menyentuh
+fitur ini di masa depan.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

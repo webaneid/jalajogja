@@ -1,7 +1,9 @@
 # Arsitektur Domain — Satu Sumber Kebenaran
 
 > **Status dokumen**: hasil audit menyeluruh 2026-07-16 (verifikasi langsung ke kode, bukan asumsi
-> dari dokumen lama). Ini adalah dokumen **perencanaan** — belum ada eksekusi kode dari sesi ini.
+> dari dokumen lama), diikuti eksekusi bertahap (§ 9) — **seluruh roadmap (6 item) sudah selesai
+> dan dikonfirmasi bekerja di production**, termasuk Admin-on-Custom-Domain (§ 7) yang diuji manual
+> langsung di `visikita.com/admin` sampai berhasil login + navigasi dashboard tanpa error.
 > Menggantikan versi sebelumnya (2026-05-26) yang sudah basi di beberapa klaim penting (lihat
 > § 8 "Ralat Terhadap Dokumen Lama").
 >
@@ -46,7 +48,7 @@ bukan sekadar "tinggal buka domainnya".
 |---|---------|------------------|--------|----------------------|
 | 1 | **Landing page platform** | `jalakarta.com` (root) | ❌ **Belum dibangun** — `apps/web/app/page.tsx` cuma stub `<h1>Jalagon</h1>`, tanpa metadata/redirect | Tidak relevan (ini domain Jalakarta sendiri) |
 | 2 | **Admin platform (tim Jalakarta)** | `jalakarta.com/platform/*` — *juga* reachable via `platform.jalakarta.com/platform/*` (lihat catatan di bawah) | ✅ Selesai, auth `platform_session` cookie terpisah | Tidak relevan — ini internal tool Jalakarta |
-| 3 | **Admin dashboard tenant** | `jalakarta.com/app/{slug}/*` | ✅ Selesai (path-only) | ❌ **Tidak bisa** — middleware aktif memblokir & redirect 302 ke `jalakarta.com` kalau diakses dari custom domain manapun |
+| 3 | **Admin dashboard tenant** | `jalakarta.com/app/{slug}/*` **atau** `{custom-domain}/admin/*` (entry) → `{custom-domain}/app/{slug}/*` (setelah navigasi pertama) | ✅ Selesai, dual-mode | ✅ **Bisa** — lewat `/admin/*` (§ 7), khusus untuk slug pemilik domain itu sendiri, tidak pernah tenant lain |
 | 4 | **Front-end publik tenant** | `jalakarta.com/{slug}/*` **atau** `{custom-domain}/*` | ✅ Selesai, dual-mode | ✅ **Bisa** — tapi ada 1 celah branding aktif (§ 5.1) |
 
 **Catatan penting soal #2**: `platform.jalakarta.com` **bukan** contoh routing subdomain→konten
@@ -332,81 +334,75 @@ satu sertifikat, semua di baliknya" yang sudah berjalan untuk front-end publik. 
 disimpan di dokumen ini sebagai catatan alternatif kalau nanti arsitektur SSL berubah jadi full-Caddy
 (§ 6.1), tapi **bukan arah yang akan dikerjakan**.
 
-### 7.2 Yang wajib dikerjakan bersamaan, bukan cuma routing
+### 7.2 Implementasi Final — Routing, Auth, Branding
 
-Dengan Opsi B terpilih, ada 3 pekerjaan — ketiganya sudah dieksekusi 2026-07-16 (sub-fase 3, auth,
-ternyata otomatis terselesaikan sekaligus di sub-fase 1 — lihat poin 3 di bawah):
+✅ **Diuji manual di production (`visikita.com`) sampai berhasil**: login lewat domain sendiri,
+navigasi sidebar tanpa error, branding tenant tampil. Tiga bug sempat ditemukan+difix berurutan
+selama proses ini di hari yang sama — riwayat lengkapnya (untuk konteks debugging, bukan hal yang
+perlu difix lagi) ada di § 8.1. Bagian ini mendeskripsikan **cara kerja final**, bukan urutan
+perbaikannya.
 
-1. ✅ **Middleware (dieksekusi 2026-07-16)** — `middleware.ts`, cabang baru khusus
-   `pathname === "/admin" || pathname.startsWith("/admin/")` di dalam blok custom domain,
-   ditempatkan SEBELUM guard blanket `/app/*`+`/platform/*` yang sudah ada (bukan mengubahnya —
-   carve-out sempit dan eksplisit, blanket guard tetap utuh untuk semua path lain).
-   - Slug SELALU di-resolve dari `Host` header request (fungsi baru `resolveCustomDomainSlug()`,
-     reuse endpoint `/api/internal/resolve-domain` yang sama dengan flow publik, § 3.2 poin 1c) —
-     TIDAK PERNAH dari path. Ini yang menjamin `/admin/*` di sebuah custom domain hanya bisa
-     me-rewrite ke `/app/{slug-pemilik-domain-ini}/*`, tidak pernah slug lain — kelas celah yang
-     sama persis dengan yang ditutup di § 8.1 untuk `/app/*` biasa.
-   - Guard cookie sesi (`better-auth.session_token`) dicek proaktif di cabang ini juga (cermin
-     persis guard `/app/*` yang sudah ada di bawah) — bukan cuma diserahkan ke
-     `(dashboard)/app/[tenant]/layout.tsx` (yang tetap jalan sebagai lapis kedua/defense-in-depth,
-     karena rewrite tetap merender route yang sama).
-   - **Temuan penting saat implementasi**: visitor belum login di-redirect ke `/login` DI DOMAIN
-     CUSTOM ITU SENDIRI (bukan `jalakarta.com/app/login`) dengan `?redirect={pathname-admin-asli}`.
-     Ini bekerja tanpa perubahan apapun di `login-form.tsx` karena dua alasan yang sudah lebih dulu
-     ada: (a) cookie sesi Better Auth di-scope oleh `Host` header saat proses login (lihat lesson
-     "Login di Custom Domain — Better Auth CSRF"), jadi login via `{custom-domain}/login`
-     menghasilkan cookie yang valid untuk `{custom-domain}/admin/*` juga; (b) `login-form.tsx` sudah
-     `window.location.href = redirectTo || baseUrl/akun` — otomatis mendarat balik ke path admin
-     asli setelah login sukses. Kasus `!slug` (domain belum/tidak aktif, tidak ada konteks tenant
-     sama sekali) tetap fallback ke `jalakarta.com/app/login` — tidak ada tenant untuk diarahkan.
-   - **Duplikasi kecil yang disengaja**: `resolveCustomDomainSlug()` menduplikasi ~15 baris logic
-     fetch-ke-resolve-domain yang sudah ada di blok publik-content di bawahnya, alih-alih di-share.
-     Trade-off sadar untuk sesi ini — mengubah kode yang sudah bekerja (custom domain content
-     routing, jalur paling kritis di seluruh aplikasi) demi menghindari duplikasi kecil dianggap
-     risiko lebih besar daripada manfaatnya, konsisten dengan pola duplikasi-demi-isolasi yang
-     sudah berulang di project ini (`generateEventRegNumber`, `formatEventDateWib`, dst).
-   - 🐛 **Bug ditemukan saat uji manual production, difix sama hari**: `/admin` bare (tanpa
-     sub-path) 404 — `restPath` kosong menghasilkan target `/app/{slug}` bare, yang **tidak pernah
-     jadi route valid** (tidak ada `page.tsx` di root `(dashboard)/app/[tenant]/`, dashboard selalu
-     diakses eksplisit via `/dashboard`). Fix: `/admin` dan `/admin/` bare di-map eksplisit ke
-     `/app/{slug}/dashboard`.
-   - 🐛🔴 **Bug lebih besar ditemukan saat uji manual lanjutan, difix sama hari (Opsi C)**: setelah
-     bug bare-path di atas difix, dashboard TAMPIL tapi seluruh link sidebar/navigasi memicu CORS
-     error dan melempar user keluar ke `jalakarta.com` begitu diklik. Detail lengkap: § 8.1.
-     **Fix — Opsi C**: guard blanket `/app/*` di custom domain diberi pengecualian — `/app/{slug}/*`
-     BOLEH render langsung (tidak diredirect) kalau `{slug}` di path itu cocok dengan slug yang
-     di-resolve dari Host header request ini sendiri (`resolveCustomDomainSlug(host)`, dibandingkan
-     ke `pathname.split("/")[2]`).
-   - 🐛 **Bug susulan dari fix Opsi C di atas, ditemukan langsung setelah deploy, difix sama hari**:
-     link sidebar tidak lagi kena CORS, tapi 404 semua (`/app/visikita/pengurus` dst). **Root
-     cause**: implementasi awal Opsi C "tidak `return`, biarkan jatuh ke guard cookie di bawah" itu
-     SALAH — kode di antara blok `/app/*` dan bagian bawah fungsi (guard cookie standar) BUKAN
-     kosong, ada blok resolve-domain PUBLIK (untuk konten publik biasa) yang masih di dalam
-     `if (!isOwnHost(host))` yang sama. Tanpa `return` eksplisit, eksekusi jatuh ke blok itu dan
-     salah rewrite `/app/visikita/pengurus` jadi `/visikita/app/visikita/pengurus` (4 segmen,
-     hasil gabungan slug ganda) — tidak match route manapun → 404. **Fix**: `return
-     NextResponse.next()` eksplisit ditambahkan, PLUS guard cookie sesi (`better-auth.session_token`)
-     dicek proaktif di cabang ini sendiri (bukan mengandalkan fall-through ke guard di bawah yang
-     toh tidak pernah tercapai) — kalau belum login, redirect ke `/login` di domain custom itu
-     sendiri (pola sama seperti cabang `/admin`), bukan biarkan layout dashboard yang redirect
-     relatif (yang akan menghasilkan hop tambahan sia-sia: `visikita.com/app/login` dulu, baru
-     terlempar lagi ke `jalakarta.com/app/login`).
-   - **Konsekuensi yang disetujui user** (tetap berlaku setelah kedua fix di atas): address bar
-     berubah dari `/admin/...` ke `/app/{slug}/...` begitu user klik menu pertama kali (karena
-     href-nya memang literal begitu, dan middleware tidak bisa memaksa browser menampilkan URL
-     berbeda dari yang di-klik pada client-side navigation) — TAPI branding (§ 5.3, berbasis Host
-     header, bukan path) dan "tetap di domain sendiri" tetap terjaga penuh meski path-nya bukan
-     `/admin/...` lagi.
-2. ✅ **Branding dashboard (dieksekusi 2026-07-16)** — sesuai Prinsip #2 di § 1, dashboard yang
-   diakses lewat `ikpmjogja.com/admin/*` sekarang tenant-branded (logo + `primary_color` CSS
-   variable + footer "jalakarta v0.1" tersembunyi), kondisional berdasar deteksi `Host` header di
-   layout. Detail implementasi lengkap: § 5.3.
-3. ✅ **Auth cookie/session (terjawab di keputusan, terimplementasi sekaligus di sub-fase 1)** —
-   sesi terpisah per domain: login via `{custom-domain}/login` (bukan `jalakarta.com/app/login`)
-   menghasilkan cookie yang sudah otomatis valid untuk `{custom-domain}/admin/*`, tanpa mekanisme
-   SSO tambahan apapun — persis realisasi dari preferensi user ("SSO kalau bisa, kalau tidak bisa
-   login manual tidak masalah") memakai infrastruktur yang sudah ada (Better Auth cookie scoping
-   by Host header, sudah difix di sesi sebelumnya untuk custom domain login secara umum).
+**Alur routing** (`middleware.ts`, di dalam blok `!isOwnHost(host)`, urutan pengecekan persis):
+
+```
+1. pathname === "/admin" atau mulai "/admin/" ?
+     → resolve slug dari Host header (resolveCustomDomainSlug(), reuse endpoint yang sama
+       dengan flow konten publik, § 3.2 poin 1c)
+     → slug tidak ketemu (domain belum/tidak aktif) → redirect jalakarta.com/app/login
+     → slug ketemu, belum ada cookie sesi → redirect ke /login DI DOMAIN INI SENDIRI,
+       ?redirect={pathname-admin-asli}
+     → slug ketemu, sudah ada cookie sesi → REWRITE internal ke /app/{slug}/dashboard (kalau
+       path bare "/admin") atau /app/{slug}{restPath} (kalau ada sub-path) — return, selesai.
+
+2. pathname mulai "/app/" atau "/platform/" ?
+     → untuk "/app/{X}/...": resolve slug dari Host header, bandingkan {X} dengan slug itu
+     → {X} === slug pemilik domain ini → cek cookie sesi:
+         - belum ada → redirect ke /login DI DOMAIN INI SENDIRI (sama seperti cabang 1)
+         - sudah ada → return NextResponse.next() — request diproses APA ADANYA oleh
+           Next.js App Router, identik dengan /app/{slug}/... di jalakarta.com sendiri
+     → {X} !== slug (tenant lain) ATAU path "/platform/*" → redirect ke jalakarta.com
+       (guard keamanan lama, tidak berubah)
+
+3. Sisanya (konten publik, /api/*, dst) → tidak berubah dari sebelumnya.
+```
+
+**Keamanan**: slug SELALU di-resolve dari `Host` header request ini sendiri, TIDAK PERNAH dari
+path — inilah yang menjamin baik `/admin/*` maupun `/app/{slug}/*` di sebuah custom domain hanya
+bisa mengakses dashboard tenant PEMILIK domain itu, tidak pernah tenant lain (kelas celah yang
+sama persis dengan yang ditutup 2026-07-08 untuk guard `/app/*` awal, § 8.1). Cookie sesi dicek
+proaktif di kedua cabang (mencerminkan guard `/app/*` standar yang sudah ada untuk jalakarta.com)
+— `(dashboard)/app/[tenant]/layout.tsx` tetap jadi lapis kedua/defense-in-depth di belakangnya.
+
+**Auth cross-domain — terselesaikan tanpa mekanisme tambahan**: login lewat `{custom-domain}/login`
+(bukan `jalakarta.com/app/login`) menghasilkan cookie Better Auth yang di-scope ke `Host` header
+saat proses login (fix sesi sebelumnya, lesson "Login di Custom Domain — Better Auth CSRF") — jadi
+otomatis valid untuk `{custom-domain}/admin/*` dan `{custom-domain}/app/{slug}/*` juga.
+`login-form.tsx` sudah `window.location.href = redirectTo || baseUrl/akun` sejak awal — tidak ada
+satu baris pun yang perlu diubah di sana untuk mendukung alur ini. Ini persis realisasi dari
+preferensi user "SSO kalau bisa, kalau tidak bisa login manual tidak masalah" (§ 7.3) — sesi
+terpisah per domain, tanpa token-exchange atau mekanisme SSO baru.
+
+**Branding dashboard** — sesuai Prinsip #2 di § 1, dashboard yang diakses lewat custom domain
+(baik via `/admin/*` maupun `/app/{slug}/*` setelah navigasi) tenant-branded: logo +
+`primary_color` CSS variable + footer "jalakarta v0.1" tersembunyi. Deteksi berbasis `Host` header
+di layout (§ 5.3) — independen dari path, jadi tetap konsisten meski address bar berubah dari
+`/admin/...` ke `/app/{slug}/...` (lihat trade-off di bawah).
+
+**Trade-off yang disetujui secara eksplisit oleh user**: address bar berubah dari `/admin/...` ke
+`/app/{slug}/...` begitu user klik menu sidebar pertama kali. Ini bukan bug — seluruh dashboard
+admin (ratusan file) menulis href/redirect sebagai path absolut `/app/{slug}/...`, dan browser
+selalu menampilkan URL persis seperti yang tertulis di `href` pada client-side navigation
+(middleware tidak bisa mengintervensi ini). Alternatifnya (refactor total ratusan file supaya URL
+`/admin/...` konsisten selamanya) dipertimbangkan tapi ditolak — effort-nya sebanding migrasi URL
+Fase 1-4 dulu, untuk manfaat yang murni kosmetik. Fungsi utama (tetap di domain sendiri, branding
+tampil, keamanan terjaga) tercapai penuh terlepas dari path mana yang tampil di address bar.
+
+**Duplikasi kecil yang disengaja**: `resolveCustomDomainSlug()` (fungsi baru di `middleware.ts`)
+menduplikasi ~15 baris logic fetch-ke-resolve-domain yang sudah ada di blok konten-publik di bawahnya,
+alih-alih di-share lewat refactor. Trade-off sadar — custom domain content routing adalah jalur
+paling kritis di seluruh aplikasi, mengubahnya demi menghindari duplikasi kecil dianggap risiko
+lebih besar daripada manfaatnya. Konsisten dengan pola duplikasi-demi-isolasi yang sudah berulang
+di project ini (`generateEventRegNumber`, `formatEventDateWib`, dst).
 
 ### 7.3 Status keputusan (update 2026-07-16)
 
@@ -443,20 +439,27 @@ Ditemukan lewat audit langsung ke kode — bukan asumsi. Dicatat di sini supaya 
   `visikita.com/akun/media` (2 segmen path, kebetulan cocok pola `/:slug/media`) → redirect ke admin
   login. Fix: guard `has: host jalakarta.com` di § 3.1. **Ini bug yang memicu permintaan sesi
   evaluasi domain ini.**
-- **2026-07-16, ditemukan saat uji manual production sub-fase 1+2**: `visikita.com/admin/*` render,
-  tapi SEMUA link sidebar/navigasi di dalamnya memicu CORS error ("Redirect is not allowed for a
-  preflight request") dan gagal — klik menu apapun akan melempar user keluar dari `visikita.com`.
-  **Root cause**: seluruh dashboard admin (ratusan file di `(dashboard)/app/[tenant]/**`) hardcode
-  path absolut `/app/{slug}/...` untuk link/redirect/revalidatePath — wajar karena selama ini cuma
-  pernah hidup di `jalakarta.com`. Saat dirender via rewrite `/admin/*` di custom domain, browser
-  meresolve path absolut itu terhadap origin SAAT INI (`visikita.com`, bukan `jalakarta.com`) —
-  Next.js Link prefetch langsung memicu fetch ke `visikita.com/app/{slug}/...`, yang kena guard
-  blanket "`/app/*` di custom domain → redirect jalakarta.com" (§ 3.2 poin 1a) — redirect lintas
-  origin di tengah CORS preflight = diblokir browser. **Fix: Opsi C** (§ 7.2 poin 1) — izinkan
-  `/app/{slug-pemilik-domain-ini}/*` render langsung di custom domain (bukan diredirect), verifikasi
-  tetap dari Host header. Trade-off disetujui user: address bar berubah ke `/app/{slug}/...` setelah
-  klik menu pertama (bukan tetap `/admin/...`), demi menghindari refactor total ratusan file yang
-  besarnya sebanding migrasi URL Fase 1-4.
+- **2026-07-16, tiga bug berurutan ditemukan+difix saat uji manual production Admin-on-Custom-Domain
+  (§ 7)** — semua di hari yang sama, sampai fitur dikonfirmasi bekerja end-to-end di `visikita.com`:
+  1. `/admin` bare (tanpa sub-path) → 404. Root cause: target rewrite `/app/{slug}` bare bukan route
+     valid (tidak ada `page.tsx` di root `(dashboard)/app/[tenant]/`). Fix: map eksplisit ke
+     `/app/{slug}/dashboard`.
+  2. Setelah #1 difix, dashboard tampil tapi SEMUA link sidebar memicu CORS error ("Redirect is not
+     allowed for a preflight request") dan melempar user ke `jalakarta.com`. Root cause: seluruh
+     dashboard admin (ratusan file) hardcode href/redirect sebagai path absolut `/app/{slug}/...` —
+     browser meresolve ini terhadap origin SAAT INI (`visikita.com`), memicu guard blanket
+     `/app/*`→redirect-jalakarta.com di tengah CORS preflight. Fix: **Opsi C** — izinkan
+     `/app/{slug-pemilik-domain-ini}/*` render langsung (bukan diredirect) kalau slug cocok dengan
+     Host header — dipilih atas refactor total ratusan file (effort sebanding migrasi Fase 1-4)
+     setelah trade-off dipresentasikan ke user.
+  3. Deploy fix #2 menghilangkan CORS tapi menggantinya dengan 404 di semua link yang sama. Root
+     cause: implementasi awal Opsi C "tidak `return`, biarkan jatuh ke guard cookie di bawah" salah
+     — ada blok resolve-domain publik DI ANTARANYA (sama-sama di dalam `if (!isOwnHost(host))`),
+     tanpa `return` eksplisit eksekusi jatuh ke situ dan salah rewrite jadi
+     `/{slug}/app/{slug}/...` (4 segmen) → 404. Fix: `return NextResponse.next()` eksplisit +
+     guard cookie sesi dicek langsung di cabang itu sendiri.
+
+  Deskripsi lengkap cara kerja FINAL (bukan riwayat perbaikannya): § 7.2.
 
 ### 8.2 Klaim basi di `docs/arsitektur-domain.md` versi lama (2026-05-26) — sudah dikoreksi di sini
 
@@ -521,7 +524,7 @@ Diurutkan dari risiko paling rendah ke paling tinggi. Dieksekusi bertahap per fa
 | 3 | Koreksi `docs/panduan-custom-domain.md` (§ 8.6) — hapus klaim tombol yang tidak ada, jelaskan alur otomatis | Nol — dokumentasi saja | Menit | ✅ **Selesai (Fase 1, 2026-07-16)** |
 | 4 | Nasib `tenants.subdomain` (§ 2) — user pilih sembunyikan field dari UI settings sampai Fase 2 siap dikerjakan | Rendah | Menit | ✅ **Selesai (Fase 2, 2026-07-16)** |
 | 5 | Konsolidasi duplikasi `baseUrl` (§ 5.2/8.3) jadi satu helper/hook bersama | Sedang — refactor lintas 16 file | Beberapa jam | ✅ **Selesai (Fase 3, 2026-07-16)** |
-| 6 | Admin-on-Custom-Domain (§ 7), 3 sub-fase: middleware → branding dashboard → auth | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | ✅ **Selesai (2026-07-16)** — semua 3 sub-fase (middleware+auth, branding dashboard) dieksekusi. Rekomendasi: uji manual di production dengan 1 tenant custom domain sebelum dianggap production-ready penuh (belum ada automated test end-to-end untuk fitur ini). |
+| 6 | Admin-on-Custom-Domain (§ 7), 3 sub-fase: middleware → branding dashboard → auth | Tinggi — security-sensitive (celah 2026-07-08 harus tidak terulang dalam bentuk baru) | Hari | ✅ **Selesai + diuji manual production (2026-07-16)** — semua sub-fase dieksekusi, 3 bug ditemukan+difix saat uji manual (§ 8.1), dikonfirmasi bekerja end-to-end di `visikita.com` (login + navigasi dashboard + branding). Belum ada automated test — kalau ada perubahan middleware/dashboard di masa depan, ulangi uji manual serupa sebelum deploy. |
 
 **Urutan eksekusi**: #1–#3 selesai (Fase 1, murah/independen/nol risiko). #4 butuh keputusan cepat
 user (implementasi vs sembunyikan) sebelum lanjut. #5 satu fase tersendiri dengan testing
