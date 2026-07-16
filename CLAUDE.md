@@ -261,6 +261,9 @@ src/
 Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 
 ## Arsitektur Website (Dashboard CMS + Front-end Publik)
+> **Peta/indeks SEMUA dokumen front-end publik** (header, footer, landing, post, card+section,
+> direktori, akun, SEO, gallery, dll — 13 dokumen dirangkai jadi satu peta rute + struktur file):
+> **`docs/arsitektur-frontend-publik.md`** — mulai dari sini kalau kerja di front-end publik.
 > Detail lengkap — dashboard CMS, domain routing, front-end publik, caching, open questions: **`docs/arsitektur-website.md`**
 > Detail lengkap — tiga fase routing, masalah custom domain, roadmap perbaikan: **`docs/arsitektur-domain.md`**
 > SEO helper, bug `og:type` + Twitter images, rencana Related Posts: **`docs/arsitektur-seo.md`**
