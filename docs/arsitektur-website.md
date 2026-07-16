@@ -300,6 +300,13 @@ type LandingBody = {
 > `components/website/public/sections/hero/{hero-section,hero-design-1,hero-design-2}.tsx`, picker
 > desain di `HeroEditor` (`components/website/section-editors.tsx`) — pola identik dengan picker
 > `posts`/`products`/`events`/`campaigns` yang sudah lebih dulu ada.
+>
+> **`showModuleStrip` beda arti per desain** (ditambahkan 2026-07-16, sesi sama): Desain 1 = strip
+> kartu modul (`HERO_MODULES`, tetap seperti sebelumnya, tidak berubah). Desain 2 = Funfact —
+> statistik live dari DB (`FUNFACT_CATALOG`, maks 4 dipilih admin), bukan diketik manual. Strip
+> modul yang tadinya cuma bisa hidup di hero sekarang JUGA tersedia sebagai section landing
+> independen (`modules`, `lib/module-strip-designs.ts`, katalog 8 modul) — lihat
+> `docs/arsitektur-frontend-publik.md` § 4.
 
 #### Default Sections saat Template Dipilih
 

@@ -1,14 +1,19 @@
-import { ArrowRight, ChevronDown } from "lucide-react";
-import { HERO_MODULES, type HeroDesignProps } from "@/lib/hero-section-designs";
+import { ChevronDown } from "lucide-react";
+import type { HeroDesignProps, FunfactResult } from "@/lib/hero-section-designs";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import { renderAccentTitle } from "@/lib/render-accent-title";
 
 // Desain 2 — Full-Bleed Modern. Sumber ide: design-refs/jalakarta-v2/ (lihat design-refs/README.md).
-// Struktur & bahasa diadaptasi, bukan disalin mentah — tidak ada field data baru (pakai
-// HeroSectionData yang sama persis dengan Desain 1), gradient/scrim disederhanakan dari sumber
-// (tanpa tagline slider — data model kita cuma 1 subtitle, bukan array taglines).
+// Struktur & bahasa diadaptasi, bukan disalin mentah — tidak ada field data baru selain
+// funfactItems (pakai HeroSectionData yang sama dengan Desain 1), gradient/scrim disederhanakan
+// dari sumber (tanpa tagline slider — data model kita cuma 1 subtitle, bukan array taglines).
+//
+// Beda dari Desain 1: showModuleStrip DI SINI berarti "tampilkan Funfact" (statistik live dari
+// DB, dihitung di hero-section.tsx), BUKAN strip kartu modul — lihat lib/hero-section-designs.ts.
 
-export function HeroDesign2({ data: d, baseUrl, heroCard }: HeroDesignProps) {
+type Props = HeroDesignProps & { funfacts: FunfactResult[] };
+
+export function HeroDesign2({ data: d, heroCard, funfacts }: Props) {
   const hasImage = !!d.imageUrl;
 
   return (
@@ -85,27 +90,16 @@ export function HeroDesign2({ data: d, baseUrl, heroCard }: HeroDesignProps) {
         </div>
       </div>
 
-      {/* Module strip — aktif via showModuleStrip, ditempatkan setelah blok gambar (bukan menimpanya) */}
-      {d.showModuleStrip && (
+      {/* Funfact — aktif via showModuleStrip, statistik live dari DB (bukan strip kartu modul
+          seperti Desain 1). Gaya visual disamakan dengan StatsSection yang sudah ada di app. */}
+      {d.showModuleStrip && funfacts.length > 0 && (
         <div className="max-w-7xl mx-auto px-4 pt-10 pb-2">
-          <div className="flex gap-3 overflow-x-auto pb-1 lg:grid lg:grid-cols-4 lg:overflow-visible">
-            {HERO_MODULES.map(({ id, path, label, desc, Icon }) => (
-              <a
-                key={id}
-                href={`${baseUrl}/${path}`}
-                className="group min-w-[160px] shrink-0 lg:min-w-0 flex flex-col gap-3 p-4 rounded-xl border border-border bg-card hover:border-primary hover:bg-primary/5 transition-all duration-200"
-              >
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                  <Icon className="w-5 h-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-sm">{label}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{desc}</p>
-                </div>
-                <div className="flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100 translate-x-0 group-hover:translate-x-0.5 transition-all">
-                  Lihat semua <ArrowRight className="w-3 h-3" />
-                </div>
-              </a>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
+            {funfacts.map((f) => (
+              <div key={f.id}>
+                <div className="text-3xl font-bold text-primary">{f.number}</div>
+                <div className="text-sm text-muted-foreground mt-1">{f.label}</div>
+              </div>
             ))}
           </div>
         </div>

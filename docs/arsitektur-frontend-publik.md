@@ -109,6 +109,20 @@ overlay gelap). File: `components/website/public/sections/hero/`, registry:
 `lib/hero-section-designs.ts`. Ditambahkan 2026-07-16 — sebelumnya hero cuma 1 desain hardcoded
 tanpa sistem variant sama sekali (satu-satunya section type yang belum ikut pola ini).
 
+**Field `showModuleStrip` berarti berbeda per desain hero** (ditambahkan 2026-07-16) — di Desain 1
+tetap berarti "tampilkan strip kartu modul" (4 item tetap: Donasi/Agenda/Dokumen/Anggota, dari
+`HERO_MODULES`). Di Desain 2, field YANG SAMA berarti "tampilkan Funfact": statistik yang dihitung
+live dari database (bukan diketik manual admin) — admin pilih maks 4 metrik dari katalog 10 pilihan
+(`FUNFACT_CATALOG` di `lib/hero-section-designs.ts`), query per metrik ada di
+`sections/hero/hero-section.tsx`. Desain 1 sama sekali tidak disentuh oleh perubahan ini.
+
+**Section "Strip Modul" independen** (`modules`, ditambahkan 2026-07-16) — strip modul yang tadinya
+cuma bisa hidup di dalam hero sekarang bisa ditambah sebagai section landing page tersendiri, admin
+pilih modul mana saja dari katalog 8 modul (4 modul lama + Usaha/Profesional/Pesantren/Toko yang
+sebelumnya tidak pernah bisa ditonjolkan). Katalog: `lib/module-strip-designs.ts` (`MODULE_CATALOG`
+— sengaja terpisah dari `HERO_MODULES`, tidak dibagi). Render: `sections/modules/modules-section.tsx`.
+Single-design (tidak ada variant), konsisten dengan `about_text`/`features`/`stats`.
+
 ---
 
 ## 5. Widget Area (Sidebar)

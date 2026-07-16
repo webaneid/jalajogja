@@ -20,7 +20,7 @@ export const SINGLETON_SLUGS: Record<string, string> = {
 
 export const SECTION_TYPES = [
   "hero", "posts", "products", "events", "campaigns", "gallery", "about_text",
-  "features", "cta", "contact_info", "stats", "divider",
+  "features", "cta", "contact_info", "stats", "divider", "modules",
 ] as const;
 
 export type SectionType = typeof SECTION_TYPES[number];
@@ -38,6 +38,7 @@ export const SECTION_LABELS: Record<SectionType, string> = {
   contact_info: "Info Kontak",
   stats:        "Statistik",
   divider:      "Pemisah / Spacer",
+  modules:      "Strip Modul",
 };
 
 export type SectionItem = {
@@ -60,7 +61,7 @@ export type LandingBody = {
 
 // Default data per section type
 const SECTION_DEFAULTS: Record<SectionType, Record<string, unknown>> = {
-  hero:         { eyebrow: "", title: "", subtitle: "", ctaLabel: "Pelajari Lebih", ctaUrl: "#", ctaSecondaryLabel: "", ctaSecondaryUrl: "", imageUrl: "", showModuleStrip: false },
+  hero:         { eyebrow: "", title: "", subtitle: "", ctaLabel: "Pelajari Lebih", ctaUrl: "#", ctaSecondaryLabel: "", ctaSecondaryUrl: "", imageUrl: "", showModuleStrip: false, funfactItems: [] },
   posts:        { title: "Berita & Pengumuman", count: 6 },
   products:     { title: "Produk Terbaru", count: 8, categoryId: null },
   events:       { title: "Event Mendatang", count: 3 },
@@ -72,6 +73,7 @@ const SECTION_DEFAULTS: Record<SectionType, Record<string, unknown>> = {
   contact_info: {},
   stats:        { items: [] },
   divider:      { height: 64, bgColor: "" },
+  modules:      { title: "", items: [] },
 };
 
 export function createSection(type: SectionType): SectionItem {

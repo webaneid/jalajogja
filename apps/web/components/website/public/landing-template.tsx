@@ -6,11 +6,13 @@ import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/product
 import type { CampaignsSectionData, CampaignsSectionDesignId } from "@/lib/campaigns-section-designs";
 import type { EventsSectionData, EventsSectionDesignId } from "@/lib/events-section-designs";
 import type { HeroSectionData, HeroSectionDesignId } from "@/lib/hero-section-designs";
+import type { ModulesSectionData } from "@/lib/module-strip-designs";
 import { PostsSection } from "@/components/website/public/sections/posts/posts-section";
 import { ProductsSection } from "@/components/website/public/sections/products/products-section";
 import { CampaignsSection } from "@/components/website/public/sections/campaigns/campaigns-section";
 import { EventsSection } from "@/components/website/public/sections/events/events-section";
 import { HeroSection } from "@/components/website/public/sections/hero/hero-section";
+import { ModulesSection } from "@/components/website/public/sections/modules/modules-section";
 import { Gallery } from "@/components/gallery/gallery";
 import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
 import { PublicButton } from "@/components/website/public/ui/public-button";
@@ -299,6 +301,7 @@ function SectionRenderer({
     case "contact_info": return <ContactInfoSection   settings={contactSettings} />;
     case "stats":        return <StatsSection         data={section.data} />;
     case "divider":      return <DividerSection       data={section.data} />;
+    case "modules":       return <ModulesSection       data={section.data as ModulesSectionData} baseUrl={baseUrl} />;
     default:             return null;
   }
 }

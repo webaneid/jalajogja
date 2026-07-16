@@ -212,6 +212,23 @@ function ProductsWireframe() {
   );
 }
 
+function ModulesWireframe() {
+  return (
+    <div className="w-full h-full bg-gray-100 rounded flex flex-col gap-1.5 p-2">
+      <div className="w-1/2 h-2.5 bg-gray-400 rounded mb-1" />
+      <div className="grid grid-cols-4 gap-1.5 flex-1">
+        {[0,1,2,3].map((i) => (
+          <div key={i} className="bg-gray-200 rounded flex flex-col gap-1 p-1.5">
+            <div className="w-5 h-5 bg-gray-400 rounded" />
+            <div className="w-full h-1.5 bg-gray-300 rounded" />
+            <div className="w-3/4 h-1 bg-gray-200 rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Map type → component ──────────────────────────────────────────────────────
 
 const WIREFRAME_MAP: Record<SectionType, React.FC> = {
@@ -227,6 +244,7 @@ const WIREFRAME_MAP: Record<SectionType, React.FC> = {
   contact_info: ContactInfoWireframe,
   stats:        StatsWireframe,
   divider:      DividerWireframe,
+  modules:      ModulesWireframe,
 };
 
 // ── Public exports ────────────────────────────────────────────────────────────

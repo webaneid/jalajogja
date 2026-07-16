@@ -4788,6 +4788,83 @@ uncommitted yang relevan, bukan cuma yang di request terbaru.
 untuk seluruh 4 fix. Belum diverifikasi visual di browser (keterbatasan environment sesi ini yang
 sudah dicatat berulang di lesson-lesson sebelumnya — tidak diulang detailnya di sini).
 
+### [2026-07-16] Strip Modul Jadi Section Independen + Funfact Dinamis di Hero Desain 2
+
+User minta strip 4-modul yang tadinya cuma bisa hidup di dalam hero (`showModuleStrip` boolean,
+`HERO_MODULES` hardcoded 4 item) dipisah jadi section landing sendiri yang dinamis (admin pilih
+modul dari katalog lebih lengkap — tenant sekarang juga punya direktori Usaha/Profesional/
+Pesantren yang tidak pernah bisa ditonjolkan lewat strip lama). User eksplisit koreksi rencana awal
+(yang tadinya mau hapus `showModuleStrip` sepenuhnya): **boolean-nya JANGAN dihapus** — tetap ada,
+tapi diinterpretasi beda per desain hero: **Desain 1 (Klasik) tidak disentuh sama sekali** (strip
+modul lama, perilaku identik); **Desain 2 (Full-Bleed Modern)** — toggle yang SAMA sekarang berarti
+"Funfact": statistik dihitung LIVE dari database (bukan diketik manual admin), admin pilih maks 4
+dari katalog metrik. Instruksi eksplisit: **abaikan referensi visual `design-refs/jalakarta-v2/`**
+untuk fitur ini — gaya visual funfact mengikuti `StatsSection` yang sudah ada di app.
+
+**Alur kerja sesi ini**: karena scope-nya besar (arsitektur baru + banyak file), masuk **Plan Mode**
+dulu — 1 Explore agent riset paralel (pattern `stats` section, query cross-schema direktori publik,
+konvensi icon), lalu draft plan lengkap, verifikasi manual nama kolom/tabel via grep langsung
+(bukan cuma percaya laporan agent), baru `ExitPlanMode` untuk approval user sebelum mulai coding.
+
+**Section "Strip Modul" baru (`modules`)** — independen dari hero, terdaftar sebagai section type
+biasa (`lib/page-templates.ts`), sama seperti `posts`/`products`/dst:
+- `lib/module-strip-designs.ts` (baru) — `MODULE_CATALOG` 8 modul (Donasi/Toko/Event/Dokumen/
+  Anggota/Usaha/Profesional/Pesantren). **Sengaja file TERPISAH dari `HERO_MODULES`** di
+  `hero-section-designs.ts` — supaya hero Desain 1 benar-benar nol dependency baru, konsisten
+  dengan instruksi "jangan sentuh hero lama". Icon Usaha pakai `Building2` (bukan `Briefcase` yang
+  dipakai halaman `/usaha` sendiri) — dua icon beda supaya tidak collide visual dengan Profesional
+  dalam satu strip yang sama.
+- `sections/modules/modules-section.tsx` (baru) — render markup KARTU YANG SAMA PERSIS dengan strip
+  modul lama di hero, disalin sebagai render independen (bukan di-share via import) — alasan sama:
+  isolasi total dari hero lama.
+- `ModulesEditor` di `section-editors.tsx` — checklist multi-select, tanpa reorder (MVP, urutan
+  render ikut urutan tetap `MODULE_CATALOG`).
+- `ModulesWireframe` di `section-wireframes.tsx` — wajib ditambahkan karena `WIREFRAME_MAP` dan
+  `EDITOR_MAP` bertipe `Record<SectionType, ...>` — TypeScript menolak build kalau lupa (exhaustive
+  check otomatis, bukan langkah manual yang bisa kelewat tanpa ketahuan).
+
+**Funfact di Hero Desain 2** — field `funfactItems?: string[]` baru di `HeroSectionData` (field
+lama TIDAK dihapus, cuma nambah). `FUNFACT_CATALOG` (10 metrik) di `hero-section-designs.ts`:
+- **Bug ditemukan+difix saat implementasi**: deklarasi awal `FUNFACT_CATALOG: Record<string, {label:
+  string}>` — anotasi tipe eksplisit ini MENGHILANGKAN literal key inference (`keyof` dari
+  `Record<string,...>` = `string`, bukan union 10 key spesifik) → `switch(id)` di resolver TypeScript
+  tidak bisa membuktikan exhaustive → error "Function lacks ending return statement". Fix: hapus
+  anotasi tipe, pakai `as const` saja (pola sama dengan `HERO_MODULES`/`MODULE_CATALOG`) — biarkan
+  TypeScript infer literal type dari object literal. **Aturan digeneralisasi**: kalau butuh
+  `keyof typeof X` menghasilkan union literal (bukan `string` polos) untuk exhaustiveness checking
+  di switch statement, JANGAN kasih anotasi tipe eksplisit yang lebih lebar (`Record<string,...>`)
+  ke `X` — biarkan inferensi TypeScript jalan natural, pakai `as const` kalau perlu.
+- `fetchFunfacts()` di `sections/hero/hero-section.tsx` — dipanggil HANYA kalau
+  `variant==="2" && showModuleStrip && funfactItems.length`. 4 metrik (anggota/usaha/pesantren/
+  profesional) butuh JOIN cross-schema ke `public.tenantMemberships` — pola query disalin PERSIS
+  dari `app/(public)/[tenant]/{usaha,pesantren,profesional,anggota}/page.tsx` (verifikasi manual
+  nama kolom sebelum coding, bukan asumsi dari research agent). `tenants.id` di-resolve LAZY (cuma
+  query kalau ada metrik yang butuh) via `SELECT id FROM tenants WHERE slug=...`. 6 metrik lain
+  (campaign/donasi_rp/event/produk/dokumen/post) query tenant-schema langsung, kolom status/
+  visibility per tabel: `campaigns.status='active'`, `events.status='published'`,
+  `products.status='active'`, `documents.visibility='public'`, `posts.status='published'`.
+- `donasi_rp` pakai pattern `sql<string>\`coalesce(sum(...),0)\`` (established lesson lama, PostgreSQL
+  aggregate selalu return string) + `formatRp()` dari `lib/campaign-card-templates.ts` — reuse, tidak
+  reimplementasi formatter Rupiah baru.
+- **Caching**: tidak ada penambahan apapun — homepage tenant sudah ISR-cached (~120 detik) dari
+  infrastruktur `[pageSlug]` yang sudah ada, jadi funfact otomatis tidak dihitung ulang tiap request.
+- Render funfact di `hero-design-2.tsx`: grid 4 kolom, gaya visual DISAMAKAN dengan `StatsSection`
+  yang sudah ada di `landing-template.tsx` (`text-3xl font-bold text-primary` + `text-sm
+  text-muted-foreground`) — bukan gaya kartu modul, dan bukan meniru mockup `design-refs/jalakarta-v2/`
+  (instruksi eksplisit user untuk mengabaikannya).
+- `HeroEditor` di `section-editors.tsx` — field "Strip Modul" sekarang bercabang `activeVariant ===
+  "2"` (checklist funfact, maks 4 — checkbox lain di-disable begitu 4 terpilih) vs default (checkbox
+  strip modul lama, TIDAK berubah). Pola percabangan-per-variant ini sudah ada presedennya di
+  `PostsEditor` (`isHero`/`isTrio` conditional rendering) — bukan pola baru.
+- **Drive-by fix**: label checkbox "Strip Modul" Desain 1 sebelumnya salah tulis "Donasi · Event ·
+  Toko · Dokumen · Kabar" (isi placeholder lama dari sesi sebelumnya) padahal `HERO_MODULES` yang
+  sesungguhnya cuma Donasi/Agenda/Dokumen/Anggota — dikoreksi jadi teks yang cocok dengan strip yang
+  benar-benar dirender.
+
+**Verifikasi**: `tsc --noEmit` (0 error, termasuk exhaustiveness check `Record<SectionType,...>` di
+2 file registry) + `bun run build` sukses. `git diff --stat hero-design-1.tsx` dikonfirmasi KOSONG
+(nol baris berubah) — syarat eksplisit dari user terpenuhi. Belum diverifikasi visual di browser.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

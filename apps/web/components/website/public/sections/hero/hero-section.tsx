@@ -1,6 +1,12 @@
-import { desc, eq, gt, and } from "drizzle-orm";
-import type { TenantDb } from "@jalajogja/db";
-import type { HeroSectionData, HeroSectionDesignId, HeroCardData } from "@/lib/hero-section-designs";
+import { desc, eq, and, gt, count, sql, inArray } from "drizzle-orm";
+import {
+  db, tenants, members, tenantMemberships,
+  memberBusinesses, memberOwnedPesantren, memberProfessionals,
+  type TenantDb,
+} from "@jalajogja/db";
+import type { HeroSectionData, HeroSectionDesignId, HeroCardData, FunfactId, FunfactResult } from "@/lib/hero-section-designs";
+import { FUNFACT_CATALOG, FUNFACT_MAX } from "@/lib/hero-section-designs";
+import { formatRp } from "@/lib/campaign-card-templates";
 import { HeroDesign1 } from "./hero-design-1";
 import { HeroDesign2 } from "./hero-design-2";
 
@@ -12,14 +18,17 @@ type Props = {
   baseUrl:      string;
 };
 
-export async function HeroSection({ data, variant, tenantClient, baseUrl }: Props) {
+export async function HeroSection({ data, variant, tenantClient, tenantSlug, baseUrl }: Props) {
   const heroCard = data.imageUrl ? await fetchHeroCard(tenantClient, baseUrl) : null;
-  const props = { data, baseUrl, heroCard };
 
-  switch (variant) {
-    case "2": return <HeroDesign2 {...props} />;
-    default:  return <HeroDesign1 {...props} />;
+  if (variant === "2") {
+    const funfacts = data.showModuleStrip && data.funfactItems?.length
+      ? await fetchFunfacts(tenantClient, tenantSlug, data.funfactItems)
+      : [];
+    return <HeroDesign2 data={data} baseUrl={baseUrl} heroCard={heroCard} funfacts={funfacts} />;
   }
+
+  return <HeroDesign1 data={data} baseUrl={baseUrl} heroCard={heroCard} />;
 }
 
 // Kartu mengambang — event mendatang, fallback ke berita terbaru. Dipakai kedua desain.
@@ -66,4 +75,126 @@ async function fetchHeroCard(tenantClient: TenantDb, baseUrl: string): Promise<H
   }
 
   return null;
+}
+
+// Funfact — HANYA Hero Desain 2. Statistik dihitung live, admin cuma pilih metrik mana yang
+// ditampilkan (maks 4). Metrik anggota/usaha/pesantren/profesional butuh public.tenants.id
+// (cross-schema join) — resolve sekali, lazy (hanya kalau ada metrik yang butuh).
+async function fetchFunfacts(
+  tenantClient: TenantDb,
+  tenantSlug:   string,
+  ids:          string[],
+): Promise<FunfactResult[]> {
+  const { db: tenantDb, schema } = tenantClient;
+  const validIds = ids.filter((id): id is FunfactId => id in FUNFACT_CATALOG).slice(0, FUNFACT_MAX);
+  if (validIds.length === 0) return [];
+
+  const NEEDS_TENANT_ID: FunfactId[] = ["anggota", "usaha", "pesantren", "profesional"];
+  const needsTenantId = validIds.some(id => NEEDS_TENANT_ID.includes(id));
+  const tenantRow = needsTenantId
+    ? (await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, tenantSlug)).limit(1))[0]
+    : null;
+
+  async function resolveOne(id: FunfactId): Promise<FunfactResult> {
+    const label = FUNFACT_CATALOG[id].label;
+
+    switch (id) {
+      case "anggota": {
+        if (!tenantRow) return { id, number: "0", label };
+        const [row] = await db
+          .select({ total: count() })
+          .from(members)
+          .innerJoin(tenantMemberships, and(
+            eq(tenantMemberships.memberId, members.id),
+            eq(tenantMemberships.tenantId, tenantRow.id),
+            inArray(tenantMemberships.status, ["active", "alumni"]),
+          ));
+        return { id, number: String(row?.total ?? 0), label };
+      }
+      case "usaha": {
+        if (!tenantRow) return { id, number: "0", label };
+        const [row] = await db
+          .select({ total: count() })
+          .from(memberBusinesses)
+          .innerJoin(members, eq(members.id, memberBusinesses.memberId))
+          .innerJoin(tenantMemberships, and(
+            eq(tenantMemberships.memberId, members.id),
+            eq(tenantMemberships.tenantId, tenantRow.id),
+            inArray(tenantMemberships.status, ["active", "alumni"]),
+          ))
+          .where(eq(memberBusinesses.isActive, true));
+        return { id, number: String(row?.total ?? 0), label };
+      }
+      case "pesantren": {
+        if (!tenantRow) return { id, number: "0", label };
+        const [row] = await db
+          .select({ total: count() })
+          .from(memberOwnedPesantren)
+          .innerJoin(members, eq(members.id, memberOwnedPesantren.memberId))
+          .innerJoin(tenantMemberships, and(
+            eq(tenantMemberships.memberId, members.id),
+            eq(tenantMemberships.tenantId, tenantRow.id),
+            inArray(tenantMemberships.status, ["active", "alumni"]),
+          ));
+        return { id, number: String(row?.total ?? 0), label };
+      }
+      case "profesional": {
+        if (!tenantRow) return { id, number: "0", label };
+        const [row] = await db
+          .select({ total: count() })
+          .from(memberProfessionals)
+          .innerJoin(members, eq(members.id, memberProfessionals.memberId))
+          .innerJoin(tenantMemberships, and(
+            eq(tenantMemberships.memberId, members.id),
+            eq(tenantMemberships.tenantId, tenantRow.id),
+            inArray(tenantMemberships.status, ["active", "alumni"]),
+          ))
+          .where(eq(memberProfessionals.isActive, true));
+        return { id, number: String(row?.total ?? 0), label };
+      }
+      case "campaign": {
+        const [row] = await tenantDb
+          .select({ total: count() })
+          .from(schema.campaigns)
+          .where(eq(schema.campaigns.status, "active"));
+        return { id, number: String(row?.total ?? 0), label };
+      }
+      case "donasi_rp": {
+        const [row] = await tenantDb
+          .select({ total: sql<string>`coalesce(sum(${schema.campaigns.collectedAmount}),0)` })
+          .from(schema.campaigns);
+        return { id, number: formatRp(row?.total ?? "0"), label };
+      }
+      case "event": {
+        const [row] = await tenantDb
+          .select({ total: count() })
+          .from(schema.events)
+          .where(eq(schema.events.status, "published"));
+        return { id, number: String(row?.total ?? 0), label };
+      }
+      case "produk": {
+        const [row] = await tenantDb
+          .select({ total: count() })
+          .from(schema.products)
+          .where(eq(schema.products.status, "active"));
+        return { id, number: String(row?.total ?? 0), label };
+      }
+      case "dokumen": {
+        const [row] = await tenantDb
+          .select({ total: count() })
+          .from(schema.documents)
+          .where(eq(schema.documents.visibility, "public"));
+        return { id, number: String(row?.total ?? 0), label };
+      }
+      case "post": {
+        const [row] = await tenantDb
+          .select({ total: count() })
+          .from(schema.posts)
+          .where(eq(schema.posts.status, "published"));
+        return { id, number: String(row?.total ?? 0), label };
+      }
+    }
+  }
+
+  return Promise.all(validIds.map(resolveOne));
 }

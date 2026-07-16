@@ -18,7 +18,8 @@ import {
 import { PlusIcon, Trash2, ImageIcon, X } from "lucide-react";
 import type { SectionType } from "@/lib/page-templates";
 import { POSTS_SECTION_DESIGNS, POSTS_SECTION_DESIGN_IDS } from "@/lib/posts-section-designs";
-import { HERO_SECTION_DESIGNS, HERO_SECTION_DESIGN_IDS } from "@/lib/hero-section-designs";
+import { HERO_SECTION_DESIGNS, HERO_SECTION_DESIGN_IDS, FUNFACT_CATALOG, FUNFACT_IDS } from "@/lib/hero-section-designs";
+import { MODULE_CATALOG, MODULE_IDS, type ModuleId } from "@/lib/module-strip-designs";
 import { MediaPicker } from "@/components/media/media-picker";
 import type { MediaItem } from "@/components/media/media-picker";
 import { GalleryPicker } from "@/components/gallery/gallery-picker";
@@ -48,11 +49,20 @@ function HeroEditor({ data, onChange, variant, onVariantChange, tenantSlug }: Ed
     eyebrow?: string; title?: string; subtitle?: string;
     ctaLabel?: string; ctaUrl?: string;
     ctaSecondaryLabel?: string; ctaSecondaryUrl?: string;
-    imageUrl?: string; showModuleStrip?: boolean;
+    imageUrl?: string; showModuleStrip?: boolean; funfactItems?: string[];
   };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const [pickerOpen, setPickerOpen] = useState(false);
   const activeVariant = variant ?? "1";
+  const funfactItems  = d.funfactItems ?? [];
+
+  function toggleFunfact(id: string) {
+    if (funfactItems.includes(id)) {
+      u("funfactItems", funfactItems.filter(x => x !== id));
+    } else if (funfactItems.length < 4) {
+      u("funfactItems", [...funfactItems, id]);
+    }
+  }
 
   function handleMediaSelect(media: MediaItem) {
     const url = media.variants?.profile ?? media.variants?.large ?? media.url;
@@ -115,17 +125,56 @@ function HeroEditor({ data, onChange, variant, onVariantChange, tenantSlug }: Ed
           />
         )}
       </Field>
-      <Field label="Strip Modul">
-        <label className="flex items-center gap-2.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={d.showModuleStrip ?? false}
-            onChange={(e) => u("showModuleStrip", e.target.checked)}
-            className="w-4 h-4 accent-primary"
-          />
-          <span className="text-xs">Tampilkan strip Donasi · Event · Toko · Dokumen · Kabar</span>
-        </label>
-      </Field>
+      {activeVariant === "2" ? (
+        <Field label="Funfact">
+          <label className="flex items-center gap-2.5 cursor-pointer mb-2">
+            <input
+              type="checkbox"
+              checked={d.showModuleStrip ?? false}
+              onChange={(e) => u("showModuleStrip", e.target.checked)}
+              className="w-4 h-4 accent-primary"
+            />
+            <span className="text-xs">Tampilkan statistik (maks 4, dihitung otomatis dari data)</span>
+          </label>
+          {d.showModuleStrip && (
+            <div className="grid grid-cols-2 gap-2">
+              {FUNFACT_IDS.map((id) => {
+                const isChecked = funfactItems.includes(id);
+                const disabled  = !isChecked && funfactItems.length >= 4;
+                return (
+                  <label
+                    key={id}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${
+                      isChecked ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                    } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      disabled={disabled}
+                      onChange={() => toggleFunfact(id)}
+                      className="w-4 h-4 accent-primary"
+                    />
+                    {FUNFACT_CATALOG[id].label}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </Field>
+      ) : (
+        <Field label="Strip Modul">
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={d.showModuleStrip ?? false}
+              onChange={(e) => u("showModuleStrip", e.target.checked)}
+              className="w-4 h-4 accent-primary"
+            />
+            <span className="text-xs">Tampilkan strip Donasi · Agenda · Dokumen · Data Anggota</span>
+          </label>
+        </Field>
+      )}
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">Design Layout</Label>
         <div className="grid grid-cols-1 gap-2">
@@ -636,6 +685,51 @@ function ProductsEditor({ data, onChange }: EditorProps) {
   );
 }
 
+// ── Modules (Strip Modul) ──────────────────────────────────────────────────────
+
+function ModulesEditor({ data, onChange }: EditorProps) {
+  const d = data as { title?: string; items?: string[] };
+  const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+  const selected = d.items ?? [];
+
+  function toggle(id: ModuleId) {
+    u("items", selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
+  }
+
+  return (
+    <div className="space-y-3">
+      <Field label="Judul Section (opsional)">
+        <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Jelajahi Layanan Kami" />
+      </Field>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Pilih Modul yang Ditampilkan</Label>
+        <div className="grid grid-cols-2 gap-2">
+          {MODULE_IDS.map((id) => {
+            const mod = MODULE_CATALOG[id];
+            const isChecked = selected.includes(id);
+            return (
+              <label
+                key={id}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${
+                  isChecked ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => toggle(id)}
+                  className="w-4 h-4 accent-primary"
+                />
+                {mod.label}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Editor Map ────────────────────────────────────────────────────────────────
 
 const EDITOR_MAP: Record<SectionType, React.FC<EditorProps>> = {
@@ -651,6 +745,7 @@ const EDITOR_MAP: Record<SectionType, React.FC<EditorProps>> = {
   contact_info: ContactInfoEditor,
   stats:        StatsEditor,
   divider:      DividerEditor,
+  modules:      ModulesEditor,
 };
 
 // ── Public Export ─────────────────────────────────────────────────────────────

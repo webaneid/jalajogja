@@ -9,7 +9,10 @@ export type HeroSectionData = {
   ctaSecondaryLabel?: string;
   ctaSecondaryUrl?:   string;
   imageUrl?:          string;
+  // showModuleStrip berarti beda per desain: Desain 1 = tampilkan HERO_MODULES (strip kartu
+  // modul, seperti sejak awal). Desain 2 = tampilkan Funfact (statistik live dari funfactItems).
   showModuleStrip?:   boolean;
+  funfactItems?:      string[]; // FunfactId[], maks 4 — HANYA dipakai Desain 2, diabaikan Desain 1
 };
 
 export const HERO_SECTION_DESIGN_IDS = ["1", "2"] as const;
@@ -29,7 +32,10 @@ export const HERO_SECTION_DESIGNS: Record<HeroSectionDesignId, {
   },
 };
 
-// Data statis strip modul — dipakai bersama oleh semua desain hero yang mengaktifkan showModuleStrip
+// Data statis strip modul — HANYA dipakai Hero Desain 1 (Klasik). Desain 2 pakai Funfact
+// (FUNFACT_CATALOG di bawah) untuk slot yang sama, bukan strip modul ini lagi.
+// Untuk strip modul independen (di luar hero), lihat lib/module-strip-designs.ts — katalog
+// terpisah dan lebih lengkap (8 modul), sengaja tidak dibagi dengan konstanta ini.
 export const HERO_MODULES = [
   { id: "campaign", path: "campaign", label: "Donasi",       desc: "Program & infaq",       Icon: Heart },
   { id: "agenda",   path: "agenda",   label: "Agenda",       desc: "Agenda & kegiatan",     Icon: CalendarDays },
@@ -49,4 +55,31 @@ export type HeroDesignProps = {
   data:      HeroSectionData;
   baseUrl:   string;
   heroCard:  HeroCardData | null;
+};
+
+// ── Funfact — HANYA Hero Desain 2 ───────────────────────────────────────────────
+// Statistik dihitung live dari database (bukan diketik manual admin) — admin cuma pilih
+// metrik mana yang mau ditampilkan (maks 4). Query per metrik ada di sections/hero/hero-section.tsx.
+
+export const FUNFACT_CATALOG = {
+  anggota:     { label: "Total Anggota" },
+  campaign:    { label: "Program Donasi Aktif" },
+  donasi_rp:   { label: "Total Donasi Terkumpul" },
+  event:       { label: "Event Terlaksana" },
+  produk:      { label: "Produk Tersedia" },
+  dokumen:     { label: "Dokumen Publik" },
+  post:        { label: "Artikel Diterbitkan" },
+  usaha:       { label: "Usaha Terdaftar" },
+  pesantren:   { label: "Pesantren Terdaftar" },
+  profesional: { label: "Profesional Terdaftar" },
+} as const;
+
+export type FunfactId = keyof typeof FUNFACT_CATALOG;
+export const FUNFACT_IDS = Object.keys(FUNFACT_CATALOG) as FunfactId[];
+export const FUNFACT_MAX = 4;
+
+export type FunfactResult = {
+  id:     FunfactId;
+  number: string;
+  label:  string;
 };
