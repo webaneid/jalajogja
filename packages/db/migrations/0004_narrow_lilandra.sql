@@ -24,7 +24,7 @@ ON CONFLICT (slug) DO NOTHING;
 --> statement-breakpoint
 -- ── Seed: Package Awal ───────────────────────────────────────────────────────
 -- features JSONB: { "modules": [...slug], "addons": [...slug] }
--- Package dirancang di front-end jalajogja, dijual ke organisasi.
+-- Package dirancang di front-end jalakarta, dijual ke organisasi.
 -- tenant_plans yang sudah ada dipakai sebagai "package".
 INSERT INTO "tenant_plans" (name, max_members, features, price_monthly) VALUES
   (

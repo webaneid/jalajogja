@@ -2,7 +2,7 @@
 
 ## Visi
 
-jalajogja bukan hanya platform untuk satu organisasi cabang. Ini adalah **infrastruktur backbone
+jalakarta bukan hanya platform untuk satu organisasi cabang. Ini adalah **infrastruktur backbone
 ekosistem IKPM Gontor** — satu identitas anggota berlaku di seluruh jenis organisasi IKPM:
 cabang, marhalah (angkatan), maupun forum-forum resmi di bawah IKPM Pusat.
 
@@ -48,7 +48,7 @@ IKPM Pusat
 
 ## Tiga Tipe Tenant
 
-Setiap organisasi dalam ekosistem IKPM adalah satu **tenant** di jalajogja, dibedakan via
+Setiap organisasi dalam ekosistem IKPM adalah satu **tenant** di jalakarta, dibedakan via
 kolom `tenant_type` di tabel `public.tenants`.
 
 ---
@@ -265,7 +265,7 @@ Channel masuk = forum, tapi keanggotaan cabang + marhalah tetap otomatis masuk.
 ### Skenario 2: Marhalah 2005 Buat Website / Tenant (Retroaktif)
 
 ```
-Ketua Marhalah 2005 daftar di jalajogja, buat tenant "marhalah-2005":
+Ketua Marhalah 2005 daftar di jalakarta, buat tenant "marhalah-2005":
 
 1. Buat tenant:
    → INSERT public.tenants { slug: 'marhalah-2005', tenant_type: 'marhalah',
@@ -495,7 +495,7 @@ Alumni klik "Daftar ke Forum"
   → alumni konfirmasi + pilih metode bayar
   → invoice dibuat → alumni bayar → admin forum konfirmasi → status: active
 
-Biaya masuk ke kas forum (bukan ke jalajogja).
+Biaya masuk ke kas forum (bukan ke jalakarta).
 Cocok untuk: forum profesional dengan program eksklusif.
 
 MODE 3 — INFAQ (Sukarela)
@@ -789,7 +789,7 @@ async function autoAddToMarhalah(memberId: string, year: number, period?: string
 
 ## Fitur Import Data Anggota (Cabang)
 
-Karena data IKPM Cabang resmi sudah tersedia di IKPM Pusat, jalajogja menyediakan
+Karena data IKPM Cabang resmi sudah tersedia di IKPM Pusat, jalakarta menyediakan
 mekanisme import massal:
 
 ### Format CSV yang Diterima

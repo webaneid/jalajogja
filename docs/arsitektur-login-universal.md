@@ -1,4 +1,4 @@
-# Arsitektur Login Universal — jalajogja
+# Arsitektur Login Universal — jalakarta
 
 Login, registrasi, lupa password, dan dashboard akun publik yang berlaku seragam
 untuk **semua tenant** — baik untuk anggota IKPM maupun akun publik umum.
@@ -9,7 +9,7 @@ untuk **semua tenant** — baik untuk anggota IKPM maupun akun publik umum.
 
 | Prinsip | Penjelasan |
 |---------|-----------|
-| **One identity** | Satu akun login berlaku di semua tenant (domain jalajogja) |
+| **One identity** | Satu akun login berlaku di semua tenant (domain jalakarta) |
 | **Two tiers** | `member` = alumni IKPM verifikasi admin; `akun` = publik umum mandiri |
 | **OTP-ready** | Kolom `whatsapp` ada di schema; verifikasi WA OTP diaktifkan saat gateway tersedia |
 | **Auto-link** | Daftar dengan email/HP yang cocok data member → otomatis terhubung tanpa langkah manual |

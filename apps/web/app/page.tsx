@@ -1,7 +1,7 @@
 export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center">
-      <h1 className="text-4xl font-bold">Jalagon</h1>
+      <h1 className="text-4xl font-bold">Jalakarta</h1>
     </main>
   );
 }

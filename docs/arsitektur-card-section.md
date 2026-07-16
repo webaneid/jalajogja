@@ -1,4 +1,4 @@
-# Arsitektur Card + Section System — jalajogja
+# Arsitektur Card + Section System — jalakarta
 
 Dokumen ini mendefinisikan sistem **Card + Section** yang berlaku untuk semua tipe konten
 di front-end publik: Post, Produk, Event, dan Donasi/Campaign.

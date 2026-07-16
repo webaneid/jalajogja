@@ -1,4 +1,4 @@
-# Arsitektur Gallery System — jalajogja
+# Arsitektur Gallery System — jalakarta
 
 Sistem gallery universal yang dapat dipakai di mana saja: produk, event, donasi,
 block editor (post/page), dan landing page section — tanpa implementasi ulang.

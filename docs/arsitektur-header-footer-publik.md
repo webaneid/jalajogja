@@ -1,4 +1,4 @@
-# Arsitektur Header & Footer Publik — jalajogja
+# Arsitektur Header & Footer Publik — jalakarta
 
 Dokumen ini mendefinisikan sistem header dan footer multi-desain untuk front-end publik tenant.
 Merupakan perluasan dari **Bagian 5 `arsitektur-website.md`** (Public Layout) yang sebelumnya hanya
@@ -359,11 +359,17 @@ Kiri:  © {year} {siteName}. All rights reserved.
 Kanan: Jalakarta — developed with ❤️ by Webane
 ```
 
-**Nama platform**: **Jalakarta** (bukan jalajogja — sedang dalam proses rebranding).
+**Nama platform**: **Jalakarta** (folder/repo tetap `jalajogja` — nama internal, tidak pernah
+tampil ke user; lihat CLAUDE.md § Identitas Project).
 
 ```tsx
 <span>Jalakarta &mdash; developed with ❤️ by <span className="font-semibold">Webane</span></span>
 ```
+
+**Custom domain**: baris atribusi ini disembunyikan sepenuhnya di custom domain tenant
+(`{baseUrl !== "" && (...)}`) — "satu domain = satu identitas", custom domain tenant tidak boleh
+menampilkan identitas Jalakarta sama sekali. Baris "© {year} {siteName}." tetap tampil di kedua
+mode karena itu copyright tenant sendiri. Detail: `docs/arsitektur-domain.md` § 5.1.
 
 ---
 

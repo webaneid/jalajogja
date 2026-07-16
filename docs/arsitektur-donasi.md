@@ -824,7 +824,7 @@ Setiap periode (cron harian):
 
 **Model: reminder-based, bukan auto-debit.**
 Auto-debit membutuhkan integrasi rekening bank atau payment gateway recurring.
-Sistem jalajogja menggunakan konfirmasi manual → reminder adalah pilihan yang realistis.
+Sistem jalakarta menggunakan konfirmasi manual → reminder adalah pilihan yang realistis.
 Auto-debit bisa ditambahkan di fase berikutnya jika gateway mendukung.
 
 ---

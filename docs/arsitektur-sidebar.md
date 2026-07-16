@@ -1,4 +1,4 @@
-# Arsitektur Widget Area — jalajogja
+# Arsitektur Widget Area — jalakarta
 
 Sistem **named widget area** — area konten yang bisa dikonfigurasi admin via
 drag-and-drop section builder, dan bisa di-drop di mana saja di front-end publik

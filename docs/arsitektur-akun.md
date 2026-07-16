@@ -1,4 +1,4 @@
-# Arsitektur Akun — jalajogja
+# Arsitektur Akun — jalakarta
 
 > Status: **SELESAI** — arsitektur sudah diimplementasikan. Dokumen ini adalah referensi utama.
 
@@ -8,7 +8,7 @@
 
 > Ini bukan sekadar keputusan teknis — ini adalah identitas sistem.
 
-jalajogja adalah super-app komunitas IKPM. Semua yang punya akses ke sistem — baik di
+jalakarta adalah super-app komunitas IKPM. Semua yang punya akses ke sistem — baik di
 front-end maupun dashboard — adalah bagian dari ekosistem IKPM, dengan hierarki yang jelas:
 
 **Pengurus adalah anggota IKPM yang sedang bertugas.**
@@ -27,7 +27,7 @@ Mereka adalah alumni Gontor yang dipercaya mengelola organisasi untuk satu perio
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  SUPER ADMIN JALAJOGJA (platform level)                         │
+│  SUPER ADMIN JALAKARTA (platform level)                         │
 │  ✓ Akses semua tenant    ✓ Kelola modul, billing, paket         │
 │  Data: platform terpisah — bukan bagian dari tenant schema      │
 │  Tidak dibahas di dokumen ini                                   │
@@ -54,7 +54,7 @@ Mereka adalah alumni Gontor yang dipercaya mengelola organisasi untuk satu perio
 
 ## Visi
 
-jalajogja adalah super-app untuk ekosistem IKPM (alumni Pondok Modern Gontor). Ada dua
+jalakarta adalah super-app untuk ekosistem IKPM (alumni Pondok Modern Gontor). Ada dua
 kategori pengguna yang bisa berinteraksi dengan front-end publik tenant:
 
 1. **Anggota IKPM** — alumni Gontor, identitas dikelola admin, bisa diangkat jadi pengurus

@@ -1,4 +1,4 @@
-# Arsitektur Data Profesional — jalajogja
+# Arsitektur Data Profesional — jalakarta
 
 > **Status: 📋 PERENCANAAN SELESAI, SIAP EKSEKUSI — belum diimplementasikan.**
 > Semua keputusan desain sudah dikunci (lihat § 12), termasuk struktur 3 level kategori/jenis/spesialisasi

@@ -1,5 +1,5 @@
 -- ── Migration 0010: platform_users ──────────────────────────────────────────
--- Tabel untuk admin internal jalajogja (terpisah dari public.user / Better Auth)
+-- Tabel untuk admin internal jalakarta (terpisah dari public.user / Better Auth)
 
 CREATE TABLE IF NOT EXISTS public.platform_users (
   id            TEXT         PRIMARY KEY DEFAULT gen_random_uuid()::text,

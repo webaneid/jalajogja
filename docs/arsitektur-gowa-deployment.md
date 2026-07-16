@@ -1,6 +1,6 @@
-# Arsitektur GOWA Self-Hosted — jalajogja
+# Arsitektur GOWA Self-Hosted — jalakarta
 
-> Dokumen ini membahas **infrastruktur dan deployment** GOWA di VPS jalajogja.
+> Dokumen ini membahas **infrastruktur dan deployment** GOWA di VPS jalakarta.
 > Untuk arsitektur notifikasi, template, OTP, dan integrasi modul → lihat `docs/arsitektur-whatsapp.md`.
 
 ---
@@ -9,7 +9,7 @@
 
 GOWA ([go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice))
 sebelumnya di-hosting di **Sumopod** (layanan pihak ketiga). Per 2026-06-30, Sumopod menutup layanan
-untuk workload ini. Solusi: pindah ke **VPS jalajogja sendiri** (72.61.215.7).
+untuk workload ini. Solusi: pindah ke **VPS jalakarta sendiri** (72.61.215.7).
 
 **Kenapa tidak ganti ke SaaS lain (Fonnte, WAblas, dll)?**
 - Kode sudah terikat ke GOWA API — ganti provider = ganti `lib/whatsapp.ts` + semua endpoint

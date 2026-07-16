@@ -46,7 +46,7 @@ bukan sekadar "tinggal buka domainnya".
 
 | # | Entitas | Alamat hari ini | Status | Bisa custom domain? |
 |---|---------|------------------|--------|----------------------|
-| 1 | **Landing page platform** | `jalakarta.com` (root) | ❌ **Belum dibangun** — `apps/web/app/page.tsx` cuma stub `<h1>Jalagon</h1>`, tanpa metadata/redirect | Tidak relevan (ini domain Jalakarta sendiri) |
+| 1 | **Landing page platform** | `jalakarta.com` (root) | ❌ **Belum dibangun** — `apps/web/app/page.tsx` cuma stub `<h1>Jalakarta</h1>`, tanpa metadata/redirect (label brand sudah dikoreksi 2026-07-16 — sebelumnya salah tulis "Jalagon", nama brand lama yang sudah tidak dipakai) | Tidak relevan (ini domain Jalakarta sendiri) |
 | 2 | **Admin platform (tim Jalakarta)** | `jalakarta.com/platform/*` — *juga* reachable via `platform.jalakarta.com/platform/*` (lihat catatan di bawah) | ✅ Selesai, auth `platform_session` cookie terpisah | Tidak relevan — ini internal tool Jalakarta |
 | 3 | **Admin dashboard tenant** | `jalakarta.com/app/{slug}/*` **atau** `{custom-domain}/admin/*` (entry) → `{custom-domain}/app/{slug}/*` (setelah navigasi pertama) | ✅ Selesai, dual-mode | ✅ **Bisa** — lewat `/admin/*` (§ 7), khusus untuk slug pemilik domain itu sendiri, tidak pernah tenant lain |
 | 4 | **Front-end publik tenant** | `jalakarta.com/{slug}/*` **atau** `{custom-domain}/*` | ✅ Selesai, dual-mode | ✅ **Bisa** — tapi ada 1 celah branding aktif (§ 5.1) |

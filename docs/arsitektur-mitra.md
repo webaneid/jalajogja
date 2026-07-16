@@ -1,4 +1,4 @@
-# Arsitektur Sistem Mitra — jalajogja
+# Arsitektur Sistem Mitra — jalakarta
 
 Dokumen ini mendefinisikan sistem **Mitra** — mekanisme bagi anggota IKPM untuk
 berjualan produk di toko tenant sebagai mitra resmi.

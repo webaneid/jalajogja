@@ -15,7 +15,7 @@ import { socialMedias } from "./social-medias";
 
 // ─── Direktori pesantren milik/dikelola alumni Gontor (anggota IKPM) ──────────
 // Community-driven: anggota IKPM bisa submit (submitted_by), status draft sampai
-// diverifikasi super admin jalajogja (is_verified = true, status = 'aktif').
+// diverifikasi super admin jalakarta (is_verified = true, status = 'aktif').
 // Bukan direktori pesantren umum Indonesia — fokus pada pesantren yang ada
 // keterlibatan alumni Gontor sebagai pengasuh, pendiri, atau pengajar.
 export const pesantren = pgTable("pesantren", {

@@ -24,7 +24,7 @@ export const ADDON_STATUSES = [
 ] as const;
 export type AddonStatus = typeof ADDON_STATUSES[number];
 
-// ─── Katalog Add-on (dikelola jalajogja platform) ─────────────────────────────
+// ─── Katalog Add-on (dikelola jalakarta platform) ─────────────────────────────
 // Seed data: lihat migration 0003 — daftar add-on awal sudah di-insert otomatis
 // Add-on baru: tambah row di tabel ini via platform admin atau migration
 

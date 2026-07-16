@@ -18,7 +18,7 @@ import { user } from "./auth";
 
 // ─── Tabel pusat identitas anggota — lintas semua tenant ─────────────────────
 // Satu record = satu orang nyata. Tidak duplikat antar cabang.
-// Hanya jalajogja super admin yang bisa akses semua baris.
+// Hanya jalakarta super admin yang bisa akses semua baris.
 // Tenant hanya bisa akses baris yang terhubung via tenant_memberships.
 export const members = pgTable("members", {
   id: uuid("id").primaryKey().defaultRandom(),

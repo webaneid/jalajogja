@@ -1,4 +1,4 @@
-# Arsitektur View Counter — jalajogja
+# Arsitektur View Counter — jalakarta
 
 Sistem untuk menghitung berapa kali sebuah konten dilihat pengunjung,
 dengan deduplikasi berbasis IP sehingga 1 IP tidak bisa menambah hitungan

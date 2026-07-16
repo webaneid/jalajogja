@@ -109,7 +109,7 @@ INSERT INTO "addons" (slug, name, description, category, is_free, price_monthly,
   (
     'webhook-out',
     'Webhook Out',
-    'Kirim event jalajogja ke sistem eksternal (n8n, Zapier, custom endpoint).',
+    'Kirim event jalakarta ke sistem eksternal (n8n, Zapier, custom endpoint).',
     'integration', true, NULL, NULL, NULL, 'coming_soon'
   )
 ON CONFLICT (slug) DO NOTHING;

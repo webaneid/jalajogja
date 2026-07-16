@@ -1,10 +1,10 @@
-# Arsitektur Template Card Post — jalajogja
+# Arsitektur Template Card Post — jalakarta
 
 Dokumen ini mendefinisikan sistem **Template Card Post** — komponen card reusable untuk
 menampilkan post/artikel di mana saja: blog archive, landing page section, search results,
 related posts, dan semua tampilan lain yang membutuhkan list post.
 
-Konsep analog WordPress: `get_template_part('content', 'klasik')` → di jalajogja ini menjadi
+Konsep analog WordPress: `get_template_part('content', 'klasik')` → di jalakarta ini menjadi
 `<PostCard post={post} variant="klasik" tenantSlug={slug} />`.
 
 ---

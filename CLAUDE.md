@@ -138,7 +138,7 @@ import { PublicButton } from "@/components/website/public/ui/public-button";
 - Multi-tenant: schema isolation per tenant (bukan row-level tenant_id)
 - **Member data: terpusat di `public.members`** — bukan di tenant schema
 - **Akses member: dikontrol via `public.tenant_memberships`** — tenant hanya lihat member mereka sendiri
-- Super admin jalajogja: akses semua `public.members` tanpa filter
+- Super admin jalakarta: akses semua `public.members` tanpa filter
 - Payment: semua butuh konfirmasi manual (cash/transfer/QRIS/gateway)
 - Storage: self-hosted MinIO di VPS
 - Auth: Better Auth dengan Drizzle adapter
@@ -199,13 +199,13 @@ Satu user bisa akses multiple tenant. Mapping role per tenant ada di `tenant_{sl
 ### Arsitektur Akun: Tiga Level Akses
 > Detail lengkap: **`docs/arsitektur-akun.md`**
 
-jalajogja punya **tiga level akses** yang berbeda entitas, berbeda tabel, berbeda lifecycle.
+jalakarta punya **tiga level akses** yang berbeda entitas, berbeda tabel, berbeda lifecycle.
 **PRINSIP UTAMA (tidak boleh dilanggar):**
 
 > Pengurus adalah anggota IKPM yang sedang bertugas — bukan entitas terpisah.
 > Satu akun Better Auth berlaku di dua konteks: dashboard (saat menjabat) + front-end (selamanya).
 
-**Super Admin jalajogja** (platform level) — terpisah dari sistem tenant, tidak dibahas di sini.
+**Super Admin jalakarta** (platform level) — terpisah dari sistem tenant, tidak dibahas di sini.
 
 **Level 1 — Pengurus** (subset Anggota IKPM, per tenant)
 - Anggota IKPM yang diangkat owner/super admin, masa jabatan terbatas
@@ -604,7 +604,7 @@ app/(dashboard)/[tenant]/settings/
 │
 ├── Domain (/settings/domain)         ← BARU
 │   ├── Default URL (read-only): app.jalakarta.com/{slug}
-│   ├── Subdomain jalajogja: [input].jalakarta.com
+│   ├── Subdomain jalakarta: [input].jalakarta.com
 │   ├── Custom Domain: input domain + status badge
 │   │   ├── Status: none | pending | active | failed
 │   │   ├── Instruksi DNS: "Tambahkan A record: {domain} → {IP_VPS}"
@@ -617,8 +617,8 @@ app/(dashboard)/[tenant]/settings/
 │   ├── Alamat (WilayahSelect — sama seperti di wizard member)
 │   ├── Instagram, Facebook, YouTube, TikTok, LinkedIn
 │   └── Website resmi organisasi
-│       └── CATATAN: field "website" di sini = URL eksternal org (bukan jalajogja)
-│           Domain jalajogja dikelola di /settings/domain
+│       └── CATATAN: field "website" di sini = URL eksternal org (bukan jalakarta)
+│           Domain jalakarta dikelola di /settings/domain
 │
 ├── Pembayaran (/settings/payment)
 │   ├── Rekening Bank (dynamic list: add/edit/remove)
@@ -807,7 +807,7 @@ Tabel `donations` adalah legacy — hanya berisi data historis sebelum migrasi k
 ## Visi Super-App & Arsitektur Platform
 
 ### Konsep Utama
-jalajogja adalah super-app untuk organisasi — bukan satu aplikasi monolitik, melainkan **ekosistem modular** di mana organisasi memilih fitur sesuai kebutuhan.
+jalakarta adalah super-app untuk organisasi — bukan satu aplikasi monolitik, melainkan **ekosistem modular** di mana organisasi memilih fitur sesuai kebutuhan.
 
 ### Modul vs Add-on — Perbedaan Kunci
 | | Modul | Add-on |
@@ -984,7 +984,7 @@ Tersedia di `/platform/tenants/[slug]` — muncul banner kuning "Belum Ada Pengu
 
 ### Schema (public)
 ```
-addons                      → katalog semua add-on tersedia (dikelola jalajogja)
+addons                      → katalog semua add-on tersedia (dikelola jalakarta)
 tenant_addon_installations  → tenant mana install add-on apa + config + quota
 addon_usage                 → tracking penggunaan per bulan per tenant per add-on
 ```
@@ -1008,7 +1008,7 @@ addon_usage                 → tracking penggunaan per bulan per tenant per add
 > Infrastruktur, deployment, Docker, Nginx, self-hosted VPS: **`docs/arsitektur-gowa-deployment.md`**
 
 - Library: [go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice) (GOWA)
-- **Hosting: Self-hosted di VPS jalajogja** (72.61.215.7) — Docker service port 3002. Sumopod menutup layanan 2026-06-30.
+- **Hosting: Self-hosted di VPS jalakarta** (72.61.215.7) — Docker service port 3002. Sumopod menutup layanan 2026-06-30.
 - Satu instance GOWA untuk semua tenant — dipisahkan via `device_id = slug` unik per tenant
 - Tenant self-service: scan QR di `/app/{slug}/settings/notifications` → nomor WA terdaftar
 - Platform env: `WHATSAPP_SERVICE_URL=https://gowa.jalakarta.com`, `WHATSAPP_API_USER`, `WHATSAPP_API_PASS`
@@ -2186,7 +2186,7 @@ const res = await fetch("/api/auth/request-password-reset", {
 
 **Konsep yang benar (dikunci oleh owner project):**
 
-jalajogja adalah super-app komunitas IKPM. Ada tiga level akses yang berbeda entitas:
+jalakarta adalah super-app komunitas IKPM. Ada tiga level akses yang berbeda entitas:
 
 1. **Pengurus** = anggota IKPM yang diangkat, satu-satunya yang bisa login dashboard
 2. **Anggota IKPM** = alumni Gontor, login front-end saja, bisa diangkat jadi pengurus
@@ -2883,7 +2883,7 @@ Jangan reflex pakai Redis untuk OTP hanya karena "OTP = TTL = Redis". PostgreSQL
 - Sekali pakai via kolom `used_at` (NULL = belum, non-NULL = sudah)
 - Rate limit via `COUNT WHERE created_at > NOW() - 1 hour` — satu query, cukup cepat
 
-Redis hanya diperlukan jika OTP di-generate jutaan kali per hari (high-traffic). Untuk jalajogja,
+Redis hanya diperlukan jika OTP di-generate jutaan kali per hari (high-traffic). Untuk jalakarta,
 overhead PostgreSQL di sini tidak terasa. Jangan over-engineer sebelum ada masalah nyata.
 
 ### [2026-06] OTP step inline — jangan buat halaman baru
@@ -4500,6 +4500,87 @@ tetap berharga (pola yang sama bisa terulang di fitur lain, § 8.1 sudah beberap
 begitu), tapi taruh di section terpisah yang eksplisit ditandai "untuk konteks, bukan operasional" —
 jangan campur dengan deskripsi cara kerja yang harus dibaca cepat oleh siapapun yang menyentuh
 fitur ini di masa depan.
+
+### [2026-07-16] Audit Branding — Nol "Jalajogja"/"Jalagon" di Luar Folder/Git/VPS
+
+User eksplisit: aplikasi harus konsisten bernama **Jalakarta** di semua permukaan — dua nama brand
+lama ("jalajogja", "jalagon") tidak boleh muncul lagi, KECUALI di tiga kategori yang sengaja
+dipertahankan: nama folder/repo, konfigurasi git, dan path/kredensial di VPS. Audit dilakukan
+dengan grep case-insensitive menyeluruh (`jalajogja`, `Jalagon`) di seluruh repo, bukan hanya
+front-end — mencakup juga dokumentasi (`docs/*.md`, `CLAUDE.md`, `AGENTS.md`) sesuai permintaan
+eksplisit user.
+
+**Ditemukan & difix (bocor ke user/pembaca):**
+- `apps/web/app/layout.tsx` — `metadata.title = "Jalajogja"` — **browser tab title di SETIAP
+  halaman non-tenant** (root, platform, admin fallback). Fix → `"Jalakarta"`.
+- `apps/web/app/page.tsx` — stub landing page `<h1>Jalagon</h1>` (brand lama sebelum "jalajogja"
+  bahkan, dua generasi nama lama sekaligus). Fix → `<h1>Jalakarta</h1>`.
+- `apps/web/app/(platform)/platform/(protected)/users/new/page.tsx` — placeholder input email
+  `"email@jalajogja.com"`. Fix → `"email@jalakarta.com"`.
+- `packages/db/migrations/0003_military_ken_ellis.sql` — **bukan cuma komentar, ini SEED DATA**:
+  `addons.description` untuk add-on `webhook-out` berisi teks "Kirim event jalajogja ke sistem
+  eksternal..." — string ini ter-INSERT ke production DB dan tampil di halaman katalog add-on admin
+  (`/app/{slug}/settings/addons`). Fix di file migration (untuk instalasi baru) — **row yang sudah
+  ada di production DB TIDAK ikut berubah otomatis**, perlu `UPDATE public.addons SET description =
+  '...' WHERE slug = 'webhook-out'` manual jika ingin data production juga dikoreksi (belum
+  dieksekusi — perlu akses VPS yang tidak tersedia dari environment ini).
+- Komentar kode di `packages/db/src/helpers/finance.ts`, `schema/public/{addons,index,members,
+  modules,pesantren}.ts` — semua menyebut "jalajogja" sebagai brand/platform (bukan folder), diganti
+  "jalakarta".
+- Komentar di 5 file migration lain (`0004`, `0005`, `0006`, `0010`) — termasuk `0005` yang secara
+  historis salah menulis domain planning sebagai `app.jalajogja.com`/`*.jalajogja.com` (persis pola
+  bug yang sama dengan yang sudah pernah difix di `tenants.ts` schema comment, lihat lesson
+  Fase 1 domain roadmap) — dikoreksi ke `jalakarta.com`.
+- **21 judul dokumen** `docs/arsitektur-*.md` — pola `# Judul — jalajogja` di baris pertama, diganti
+  `— jalakarta` secara massal (title-line only, bukan isi dokumen).
+- Puluhan baris prosa brand-reference tersebar di `arsitektur-backbone-ikpm.md`, `arsitektur-akun.md`
+  (termasuk ASCII diagram box `SUPER ADMIN JALAJOGJA`), `arsitektur-donasi.md`,
+  `arsitektur-keanggotaan.md`, `arsitektur-login-universal.md`, `arsitektur-keuangan.md`,
+  `arsitektur-template-post-card.md`, `arsitektur-gowa-deployment.md`, `arsitektur-whatsapp.md`,
+  `arsitektur-website.md` (termasuk contoh domain stale `app.jalajogja.com`/`{subdomain}.jalajogja.com`
+  di tabel Fase 1-2 dan snippet kode `host === "app.jalajogja.com"`) — semua diganti "jalakarta".
+- `docs/arsitektur-header-footer-publik.md` — pernyataan "bukan jalajogja — sedang dalam proses
+  rebranding" (menyiratkan proses belum selesai) diganti frasa final yang konsisten dengan CLAUDE.md
+  ("folder/repo tetap `jalajogja` — nama internal, tidak pernah tampil ke user"), sekaligus
+  ditambahkan catatan cross-reference ke § 5.1 `arsitektur-domain.md` (baris atribusi footer memang
+  disembunyikan di custom domain — dokumen ini sebelumnya tidak menyebutkan itu sama sekali, stale).
+- `AGENTS.md` (file instruksi untuk agent Codex, duplikat lama dari CLAUDE.md, terakhir diupdate
+  2026-05-16) — set fix identik: title tidak diubah, tapi baris "Identitas Project" yang sebelumnya
+  cuma `- Nama: jalakarta` (tanpa penjelasan folder/repo) diperkuat jadi frasa penuh yang sama dengan
+  CLAUDE.md; 11 baris prosa brand-reference lain diganti dengan pola line-targeted sed yang sama.
+- `docs/arsitektur-domain.md:49` — deskripsi stub landing page yang menyebut `<h1>Jalagon</h1>`
+  sekarang stale setelah fix di atas — diupdate untuk mencerminkan kondisi kode terkini + catatan
+  historis bahwa itu nama brand lama.
+
+**Sengaja DIPERTAHANKAN (masuk 3 kategori eksklusi user):**
+- **Folder/package**: `@jalajogja/db`, `@jalajogja/web`, `@jalajogja/types`, `@jalajogja/ui` (npm
+  workspace specifier, ratusan file import) — mengubah ini setara refactor sekelas migrasi Fase 1-4
+  URL, dan bertentangan langsung dengan keputusan terkunci "folder/repo tetap jalajogja — jangan
+  campur". `package.json`/`bun.lock` "name" field, sama alasan.
+- **VPS**: `/var/www/jalajogja` (semua bentuk), `pm2 (restart|delete|logs) jalajogja` (nama proses
+  PM2, match `ecosystem.config.cjs`), `POSTGRES_USER`/`POSTGRES_DB` default fallback di
+  `docker-compose.yml` dan `.env.example`, docker volume name `jalajogja_gowa_data`/
+  `jalajogja_minio_data`, `WHATSAPP_API_USER=jalajogja` (kredensial Basic Auth GOWA yang benar-benar
+  dipakai di VPS — mengganti teks doc tanpa mengganti env var production akan bikin dokumentasi
+  menyesatkan, bukan lebih benar).
+- **Git**: `git clone .../jalajogja.git` di `docs/deployment-guide.md`.
+- **Historical record yang sengaja mengutip teks salah**: 3 tempat di CLAUDE.md/`arsitektur-domain.md`
+  §8.4 yang mendokumentasikan bug lama (`app.jalajogja.com` yang ditemukan+difix) — mengubah kutipan
+  "before"-nya akan merusak keakuratan catatan sejarah bug tsb, jadi dibiarkan sebagai string literal
+  di dalam backtick.
+- `# CLAUDE.md/AGENTS.md — jalajogja Project Brain` (judul dokumen) + baris "Nama platform: Jalakarta
+  (folder/repo tetap `jalajogja` — jangan campur)" — ini JUSTRU dokumentasi eksplisit tentang
+  konvensi penamaan itu sendiri, bukan pelanggarannya.
+
+**Verifikasi**: `tsc --noEmit` 0 error, `bun run build --filter=@jalajogja/web` sukses. Grep akhir
+(`jalajogja` case-insensitive minus known-exception patterns) hanya menyisakan baris yang masuk 3
+kategori eksklusi di atas — nol "Jalagon" tersisa di manapun kecuali satu catatan historis yang
+sengaja menyebutnya sebagai nama brand yang sudah tidak dipakai.
+
+**Aturan ke depan**: setiap teks baru yang menyebut nama brand platform ke pembaca/user (UI, docs,
+komentar kode yang menjelaskan "milik siapa" sesuatu) WAJIB pakai "Jalakarta" — bukan "jalajogja"
+atau "jalagon". Pengecualian hanya untuk: import specifier `@jalajogja/*`, path `/var/www/jalajogja`,
+proses PM2 `jalajogja`, nama database/user Postgres default, dan git remote/clone URL.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).

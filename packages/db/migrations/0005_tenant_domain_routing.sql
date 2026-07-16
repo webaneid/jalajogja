@@ -1,6 +1,6 @@
 -- ── Tenant Domain & Routing — 3 Fase ──────────────────────────────────────────
--- Fase 1: app.jalajogja.com/{slug}           → pakai slug (sudah ada, tidak berubah)
--- Fase 2: {subdomain}.jalajogja.com          → wildcard DNS *.jalajogja.com
+-- Fase 1: app.jalakarta.com/{slug}           → pakai slug (sudah ada, tidak berubah)
+-- Fase 2: {subdomain}.jalakarta.com          → wildcard DNS *.jalakarta.com
 -- Fase 3: ikpm.or.id                         → A record → VPS IP, SSL via Caddy
 --
 -- Rename kolom domain → custom_domain (lebih eksplisit, beda dari subdomain)
@@ -9,7 +9,7 @@
 ALTER TABLE "tenants" RENAME COLUMN "domain" TO "custom_domain";
 --> statement-breakpoint
 
--- Fase 2: subdomain jalajogja (ikpm.jalajogja.com)
+-- Fase 2: subdomain jalakarta (ikpm.jalakarta.com)
 -- null = fallback ke slug di middleware
 ALTER TABLE "tenants" ADD COLUMN "subdomain" text;
 --> statement-breakpoint

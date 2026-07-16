@@ -1,4 +1,4 @@
-# Arsitektur Section Post — jalajogja
+# Arsitektur Section Post — jalakarta
 
 Dokumen ini mendefinisikan sistem **Section Post** — container yang menampilkan kumpulan
 post dalam berbagai layout design, dengan filter kategori, dan menggunakan **Post Card Template**

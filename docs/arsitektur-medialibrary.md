@@ -1,4 +1,4 @@
-# Arsitektur Media Library — jalajogja
+# Arsitektur Media Library — jalakarta
 
 Dokumen ini mencakup dua scope:
 1. **Admin Media Library** — sudah ada dan berjalan (`/{slug}/media`)

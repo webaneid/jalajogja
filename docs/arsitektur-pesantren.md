@@ -1,4 +1,4 @@
-# Arsitektur Data Pesantren — jalajogja
+# Arsitektur Data Pesantren — jalakarta
 
 > Status: **SELESAI** — sudah dieksekusi dan ter-commit (commit `dbc933e`).
 

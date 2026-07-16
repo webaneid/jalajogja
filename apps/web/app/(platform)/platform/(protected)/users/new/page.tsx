@@ -49,7 +49,7 @@ export default function NewPlatformUserPage() {
         </div>
         <div>
           <label className={labelCls}>Email</label>
-          <input name="email" type="email" required className={inputCls} placeholder="email@jalajogja.com" />
+          <input name="email" type="email" required className={inputCls} placeholder="email@jalakarta.com" />
         </div>
         <div>
           <label className={labelCls}>Password</label>

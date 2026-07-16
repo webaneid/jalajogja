@@ -1,8 +1,8 @@
-# Arsitektur Keanggotaan — jalajogja / Ekosistem IKPM Gontor
+# Arsitektur Keanggotaan — jalakarta / Ekosistem IKPM Gontor
 
 ## Visi
 
-jalajogja bukan hanya platform per-cabang. Ini adalah **ekosistem IKPM Gontor** — satu
+jalakarta bukan hanya platform per-cabang. Ini adalah **ekosistem IKPM Gontor** — satu
 identitas anggota berlaku di seluruh cabang. Seorang alumni Gontor yang terdaftar di
 IKPM Jogja bisa berbelanja produk IKPM Jakarta, berdonasi ke IKPM Surabaya, atau
 mendaftar event IKPM Bandung — **tanpa membuat akun baru**.
@@ -69,7 +69,7 @@ Guest Tenant tidak menambah keanggotaan — hanya meninggalkan rekam jejak trans
 | Transaksi (beli, donasi, event) | ✓ — via checkout HP/email atau login universal |
 | Riwayat transaksi tersimpan atas nama member_id | ✓ |
 
-### Super Admin jalajogja
+### Super Admin jalakarta
 
 | Aksi | Bisa? |
 |------|-------|
@@ -109,7 +109,7 @@ User buka halaman event / donasi / produk
 ### Jalur 2 — Login Universal (via front-end)
 
 ```
-Member login di front-end jalajogja (session Better Auth universal)
+Member login di front-end jalakarta (session Better Auth universal)
 → Bisa browse semua tenant
 → Checkout otomatis ter-link ke member_id (tidak perlu isi HP/email lagi)
 → Invoice/donasi/registrasi event tercatat atas nama member tersebut
@@ -333,7 +333,7 @@ Wizard untuk tambah anggota baru. Step 1 wajib (buat record), Step 2–4 opsiona
 
 ### Keputusan Besar: Sentralisasi Data Anggota
 
-**Konteks**: Visi jalajogja sebagai ekosistem big data alumni Gontor lintas cabang IKPM.
+**Konteks**: Visi jalakarta sebagai ekosistem big data alumni Gontor lintas cabang IKPM.
 
 **Keputusan**: Member data di `public` schema, akses dikontrol application-level. Tenant hanya query member via JOIN `tenant_memberships`. Member bisa bertransaksi di tenant lain tanpa daftar ulang — guest checkout lookup via HP/email.
 

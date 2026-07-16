@@ -3,7 +3,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Jalajogja",
+  title: "Jalakarta",
   description: "Super-app untuk organisasi",
 };
 

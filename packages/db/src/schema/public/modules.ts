@@ -5,7 +5,7 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 
-// ─── Katalog Modul (dikelola jalajogja platform) ──────────────────────────────
+// ─── Katalog Modul (dikelola jalakarta platform) ──────────────────────────────
 // Modul = fitur utama aplikasi. Dimasukkan ke package yang dijual ke tenant.
 // Berbeda dengan Add-on yang bersifat ekstensi opsional.
 //

@@ -1,4 +1,4 @@
-# Arsitektur Modul Produk (Toko) — jalajogja
+# Arsitektur Modul Produk (Toko) — jalakarta
 
 Dokumen ini mendefinisikan arsitektur lengkap modul Toko: dashboard admin (CRUD produk,
 pesanan, kategori) dan front-end publik (listing + detail produk).

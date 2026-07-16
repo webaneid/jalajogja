@@ -118,7 +118,7 @@ export async function recordTransfer(
 
 // ─── Generate Nomor Dokumen Keuangan ──────────────────────────────────────────
 // Format: 620-PAY-YYYYMM-NNNNN | 620-DIS-YYYYMM-NNNNN | 620-JNL-YYYYMM-NNNNN
-// "620" adalah prefix rahasia jalajogja — jangan diubah
+// "620" adalah prefix rahasia jalakarta — jangan diubah
 // Atomic increment via SELECT FOR UPDATE — aman untuk concurrent requests
 
 const DOC_TYPE_PREFIX: Record<string, string> = {

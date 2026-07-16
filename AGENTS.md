@@ -1,7 +1,7 @@
 # AGENTS.md — jalajogja Project Brain
 
 ## Identitas Project
-- Nama: jalakarta
+- **Nama platform: Jalakarta** (folder/repo tetap `jalajogja` — jangan campur)
 - Klien pertama: IKPM (Ikatan Keluarga Pondok Modern Gontor)
 - Tujuan: Super-app untuk organisasi (website, surat, anggota, keuangan, toko)
 - Target: Multi-tenant SaaS — dibangun untuk IKPM, dijual ke banyak organisasi
@@ -132,7 +132,7 @@ import { PublicButton } from "@/components/website/public/ui/public-button";
 - Multi-tenant: schema isolation per tenant (bukan row-level tenant_id)
 - **Member data: terpusat di `public.members`** — bukan di tenant schema
 - **Akses member: dikontrol via `public.tenant_memberships`** — tenant hanya lihat member mereka sendiri
-- Super admin jalajogja: akses semua `public.members` tanpa filter
+- Super admin jalakarta: akses semua `public.members` tanpa filter
 - Payment: semua butuh konfirmasi manual (cash/transfer/QRIS/gateway)
 - Storage: self-hosted MinIO di VPS
 - Auth: Better Auth dengan Drizzle adapter
@@ -193,13 +193,13 @@ Satu user bisa akses multiple tenant. Mapping role per tenant ada di `tenant_{sl
 ### Arsitektur Akun: Tiga Level Akses
 > Detail lengkap: **`docs/arsitektur-akun.md`**
 
-jalajogja punya **tiga level akses** yang berbeda entitas, berbeda tabel, berbeda lifecycle.
+jalakarta punya **tiga level akses** yang berbeda entitas, berbeda tabel, berbeda lifecycle.
 **PRINSIP UTAMA (tidak boleh dilanggar):**
 
 > Pengurus adalah anggota IKPM yang sedang bertugas — bukan entitas terpisah.
 > Satu akun Better Auth berlaku di dua konteks: dashboard (saat menjabat) + front-end (selamanya).
 
-**Super Admin jalajogja** (platform level) — terpisah dari sistem tenant, tidak dibahas di sini.
+**Super Admin jalakarta** (platform level) — terpisah dari sistem tenant, tidak dibahas di sini.
 
 **Level 1 — Pengurus** (subset Anggota IKPM, per tenant)
 - Anggota IKPM yang diangkat owner/super admin, masa jabatan terbatas
@@ -585,7 +585,7 @@ app/(dashboard)/[tenant]/settings/
 │
 ├── Domain (/settings/domain)         ← BARU
 │   ├── Default URL (read-only): app.jalakarta.com/{slug}
-│   ├── Subdomain jalajogja: [input].jalakarta.com
+│   ├── Subdomain jalakarta: [input].jalakarta.com
 │   ├── Custom Domain: input domain + status badge
 │   │   ├── Status: none | pending | active | failed
 │   │   ├── Instruksi DNS: "Tambahkan A record: {domain} → {IP_VPS}"
@@ -598,8 +598,8 @@ app/(dashboard)/[tenant]/settings/
 │   ├── Alamat (WilayahSelect — sama seperti di wizard member)
 │   ├── Instagram, Facebook, YouTube, TikTok, LinkedIn
 │   └── Website resmi organisasi
-│       └── CATATAN: field "website" di sini = URL eksternal org (bukan jalajogja)
-│           Domain jalajogja dikelola di /settings/domain
+│       └── CATATAN: field "website" di sini = URL eksternal org (bukan jalakarta)
+│           Domain jalakarta dikelola di /settings/domain
 │
 ├── Pembayaran (/settings/payment)
 │   ├── Rekening Bank (dynamic list: add/edit/remove)
@@ -787,7 +787,7 @@ key="primary_color", group="display",  value="#2563eb"
 ## Visi Super-App & Arsitektur Platform
 
 ### Konsep Utama
-jalajogja adalah super-app untuk organisasi — bukan satu aplikasi monolitik, melainkan **ekosistem modular** di mana organisasi memilih fitur sesuai kebutuhan.
+jalakarta adalah super-app untuk organisasi — bukan satu aplikasi monolitik, melainkan **ekosistem modular** di mana organisasi memilih fitur sesuai kebutuhan.
 
 ### Modul vs Add-on — Perbedaan Kunci
 | | Modul | Add-on |
@@ -831,7 +831,7 @@ Package dikelola di `public.tenant_plans` dengan field `features` JSONB:
    URL: {slug}.jalakarta.com atau custom domain
    Status: BELUM — setelah Tenant Dashboard selesai
 
-3. Platform Dashboard → admin jalajogja (bukan untuk tenant)
+3. Platform Dashboard → admin jalakarta (bukan untuk tenant)
    URL: platform.jalakarta.com
    Status: BELUM — setelah Front-end selesai
    Fitur: kelola tenant, modul, add-on, billing, package
@@ -860,7 +860,7 @@ public.modules
 
 ### Schema (public)
 ```
-addons                      → katalog semua add-on tersedia (dikelola jalajogja)
+addons                      → katalog semua add-on tersedia (dikelola jalakarta)
 tenant_addon_installations  → tenant mana install add-on apa + config + quota
 addon_usage                 → tracking penggunaan per bulan per tenant per add-on
 ```
@@ -883,7 +883,7 @@ addon_usage                 → tracking penggunaan per bulan per tenant per add
 - Library: [go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice)
 - **Hosting: sumopod** (bukan main VPS — murah, tidak membebani app server)
 - Satu service, banyak tenant — masing-masing punya `device_id` unik
-- Tenant self-service: scan QR via dashboard jalajogja → nomor WA terdaftar
+- Tenant self-service: scan QR via dashboard jalakarta → nomor WA terdaftar
 - Platform env: `WHATSAPP_SERVICE_URL`, `WHATSAPP_API_SECRET`
 - Config per tenant di `tenant_addon_installations.config`:
   ```json
@@ -1877,7 +1877,7 @@ const res = await fetch("/api/auth/request-password-reset", {
 
 **Konsep yang benar (dikunci oleh owner project):**
 
-jalajogja adalah super-app komunitas IKPM. Ada tiga level akses yang berbeda entitas:
+jalakarta adalah super-app komunitas IKPM. Ada tiga level akses yang berbeda entitas:
 
 1. **Pengurus** = anggota IKPM yang diangkat, satu-satunya yang bisa login dashboard
 2. **Anggota IKPM** = alumni Gontor, login front-end saja, bisa diangkat jadi pengurus

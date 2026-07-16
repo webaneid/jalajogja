@@ -1,4 +1,4 @@
-# Arsitektur Modul Keuangan — jalajogja
+# Arsitektur Modul Keuangan — jalakarta
 
 **Status: DIIMPLEMENTASIKAN (2026-04)**
 - Core (Pemasukan, Pengeluaran, Jurnal, Akun): ✅ Selesai
@@ -163,7 +163,7 @@ UNIQUE(budgetId, accountId)
 620-JNL-202504-00001   → Jurnal (termasuk jurnal otomatis dari payment/disbursement)
 ```
 
-Prefix `620` adalah kode internal jalajogja — konsisten di semua dokumen keuangan.
+Prefix `620` adalah kode internal jalakarta — konsisten di semua dokumen keuangan.
 
 ---
 

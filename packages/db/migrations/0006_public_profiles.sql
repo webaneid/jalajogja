@@ -1,5 +1,5 @@
 -- ── Modul Akun: public.profiles ────────────────────────────────────────────────
--- Identitas universal untuk siapapun yang bertransaksi di ekosistem jalajogja.
+-- Identitas universal untuk siapapun yang bertransaksi di ekosistem jalakarta.
 -- Bukan hanya alumni IKPM — pembeli umum, donatur, peserta event punya satu ID
 -- yang berlaku lintas semua tenant.
 --

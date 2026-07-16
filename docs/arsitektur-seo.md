@@ -1,4 +1,4 @@
-# Arsitektur SEO — jalajogja
+# Arsitektur SEO — jalakarta
 
 Dokumen ini mencakup:
 1. **Arsitektur SEO saat ini** — file yang sudah ada dan perannya

@@ -1,4 +1,4 @@
-# Arsitektur Global Image System — jalajogja
+# Arsitektur Global Image System — jalakarta
 
 Dokumen ini mendefinisikan sistem gambar global: konversi WebP, auto-crop ke variant standar,
 penyimpanan di MinIO, dan pembersihan file original.

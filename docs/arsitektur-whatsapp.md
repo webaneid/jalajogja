@@ -1,12 +1,12 @@
-# Arsitektur WhatsApp Gateway — jalajogja
+# Arsitektur WhatsApp Gateway — jalakarta
 
-> Dokumen ini adalah referensi tunggal untuk semua hal terkait integrasi WhatsApp di platform jalajogja.
+> Dokumen ini adalah referensi tunggal untuk semua hal terkait integrasi WhatsApp di platform jalakarta.
 > Terkoneksi dengan: `CLAUDE.md` § "WhatsApp Gateway", `docs/arsitektur-billing.md`, `docs/arsitektur-login-universal.md`, `docs/arsitektur-fulfillment.md`, `docs/arsitektur-event.md`.
 
 > **STATUS (2026-07-15): Fase 1, 2, 3, 4, 5, 7 SELESAI + cron reminder SELESAI. Fase 6 SEBAGIAN
 > SELESAI (surat ✅, member_welcome ✅ + profile_incomplete_reminder ✅ [fitur baru di luar rencana
 > awal], officer_invite 🔲 belum). Self-hosted VPS aktif dan tested.**
-> GOWA berjalan di VPS jalajogja (72.61.215.7), subdomain `gowa.jalakarta.com`.
+> GOWA berjalan di VPS jalakarta (72.61.215.7), subdomain `gowa.jalakarta.com`.
 > Device `pc-ikpm-jogjakarta` aktif terhubung — QR scan, send message, status polling semua confirmed working.
 > Lihat § 16 "Penyimpangan dari Desain Awal" untuk perbedaan antara dokumen ini dan kode aktual —
 > termasuk § 16.8 (template editable per tenant + `notifyWa()` wrapper, ditambahkan di luar rencana awal).
@@ -19,7 +19,7 @@
 ## 1. Visi & Tujuan
 
 WhatsApp adalah kanal komunikasi utama di Indonesia — penetrasinya jauh lebih tinggi dari email.
-jalajogja mengintegrasikan WA sebagai lapisan notifikasi universal yang:
+jalakarta mengintegrasikan WA sebagai lapisan notifikasi universal yang:
 
 1. **Meningkatkan konversi** — konfirmasi pembayaran real-time vs email yang sering diabaikan
 2. **Mengurangi beban admin** — notifikasi otomatis menggantikan pesan manual
@@ -50,10 +50,10 @@ aldinokemal2104/go-whatsapp-web-multidevice:latest
 - Basic Auth header: `Authorization: Basic base64(user:pass)`
 - `device_id` dikirim via query param atau header `X-Device-Id`
 
-### 2.2 Hosting: Self-Hosted di VPS jalajogja
+### 2.2 Hosting: Self-Hosted di VPS jalakarta
 
 > **Update 2026-06-30**: Sumopod (hosting sebelumnya) telah menutup layanan.
-> GOWA sekarang berjalan di **VPS jalajogja yang sama** (72.61.215.7) via Docker.
+> GOWA sekarang berjalan di **VPS jalakarta yang sama** (72.61.215.7) via Docker.
 >
 > Detail lengkap deployment, Nginx config, langkah setup, monitoring:
 > → **`docs/arsitektur-gowa-deployment.md`**
@@ -820,7 +820,7 @@ if (phone) {
 
 ### Fase 1 — Infrastruktur (Prerequisite) — ✅ SELESAI
 
-- [x] Deploy GOWA di VPS jalajogja (Docker, port 3002) — migrasi dari Sumopod 2026-07-02
+- [x] Deploy GOWA di VPS jalakarta (Docker, port 3002) — migrasi dari Sumopod 2026-07-02
 - [x] Nginx subdomain `gowa.jalakarta.com` → localhost:3002 + SSL certbot
 - [x] Set environment variables di VPS: `WHATSAPP_SERVICE_URL`, `WHATSAPP_API_USER`, `WHATSAPP_API_PASS`
 - [x] Buat `apps/web/lib/whatsapp.ts` — helper utama (lihat § 16 untuk perbedaan dari desain awal)
@@ -888,7 +888,7 @@ psql -U jalakarta -d jalakarta -f packages/db/migrations/0016_otp_tokens.sql
 ## 13. Keputusan Desain yang Dikunci
 
 1. **Satu GOWA untuk semua tenant** — dipisahkan via `device_id`, bukan instance terpisah
-2. **Self-hosted di VPS jalajogja** — GOWA adalah binary Go ringan (~50MB RAM), overhead minimal di VPS yang sama. Sumopod tutup 2026-06-30.
+2. **Self-hosted di VPS jalakarta** — GOWA adalah binary Go ringan (~50MB RAM), overhead minimal di VPS yang sama. Sumopod tutup 2026-06-30.
 3. **Fire-and-forget** — notifikasi WA tidak boleh memblokir response action utama
 4. ~~**Template di kode** — tidak di DB~~ — **DIREVISI 2026-07-13** (commit `e93318b`): teks
    template sekarang **editable per tenant**. Default seed tetap di kode (`WA_TEMPLATE_DEFAULTS` di
@@ -1006,7 +1006,7 @@ yang melakukan setup sendiri — ini adalah keadaan aktual produksi per 2026-06-
 - TTL diimplementasikan via kolom `expires_at` + filter `> NOW()` di query
 - "Sekali pakai" via kolom `used_at` (NULL = belum dipakai)
 - Rate limit via `COUNT WHERE created_at > NOW() - 1 hour`
-- Ini cukup untuk volume jalajogja — Redis hanya diperlukan jika load sangat tinggi
+- Ini cukup untuk volume jalakarta — Redis hanya diperlukan jika load sangat tinggi
 
 ### 16.7 Reset password via WA — inject ke `public.verification` (Better Auth trick)
 

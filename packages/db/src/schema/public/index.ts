@@ -43,5 +43,5 @@ export * from "./addons";
 export * from "./tenant-addon-installations";
 export * from "./addon-usage";
 
-// ── Platform admin users (jalajogja internal team) ────────────────────────────
+// ── Platform admin users (jalakarta internal team) ────────────────────────────
 export * from "./platform-users";

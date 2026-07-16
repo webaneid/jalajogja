@@ -1,4 +1,4 @@
-# Arsitektur Website — jalajogja
+# Arsitektur Website — jalakarta
 
 Dokumen ini mencakup dua hal berbeda yang saling berkaitan:
 1. **Dashboard CMS** — modul admin untuk kelola konten (posts, pages, kategori, tag)
@@ -122,8 +122,8 @@ Tiga fase hidup bersamaan — tidak saling menggantikan. Tenant bisa punya ketig
 
 | Fase | URL | Status | Catatan |
 |------|-----|--------|---------|
-| 1 — Path | `app.jalajogja.com/{slug}` | **Aktif sekarang** | Default, selalu ada |
-| 2 — Subdomain | `{subdomain}.jalajogja.com` | Implementasi saat Front-end | Wildcard DNS `*.jalajogja.com` |
+| 1 — Path | `app.jalakarta.com/{slug}` | **Aktif sekarang** | Default, selalu ada |
+| 2 — Subdomain | `{subdomain}.jalakarta.com` | Implementasi saat Front-end | Wildcard DNS `*.jalakarta.com` |
 | 3 — Custom Domain | `ikpm.or.id` | Implementasi saat Front-end | A record → VPS IP, SSL via Caddy |
 
 ### Cara Kerja Custom Domain (White-label)
@@ -137,7 +137,7 @@ Request flow:
   → Forward ke Next.js app
   → Middleware baca Host header: "ikpm.or.id"
   → DB lookup: SELECT slug FROM tenants WHERE custom_domain = 'ikpm.or.id'
-  → Render tenant "ikpm" — jalajogja.com tidak terlihat sama sekali
+  → Render tenant "ikpm" — jalakarta.com tidak terlihat sama sekali
 ```
 
 **Tidak perlu NS server sendiri** — cukup minta tenant ganti A record di Cloudflare/Niagahoster/dll.
@@ -146,10 +146,10 @@ Request flow:
 ```typescript
 const host = request.headers.get("host")
 
-if (host === "app.jalajogja.com") {
+if (host === "app.jalakarta.com") {
   slug = pathname.split("/")[1]              // Fase 1: dari path
-} else if (host.endsWith(".jalajogja.com")) {
-  slug = host.replace(".jalajogja.com", "")  // Fase 2: dari subdomain
+} else if (host.endsWith(".jalakarta.com")) {
+  slug = host.replace(".jalakarta.com", "")  // Fase 2: dari subdomain
 } else {
   slug = await db.query(                     // Fase 3: lookup DB
     "SELECT slug FROM tenants WHERE custom_domain = $1", [host])
@@ -169,7 +169,7 @@ custom_domain_verified_at  → timestamp saat verifikasi berhasil
 ```
 1. Tenant buka /{slug}/settings/domain
 2. Isi form: "ikpm.or.id"
-3. jalajogja simpan → custom_domain_status = 'pending'
+3. jalakarta simpan → custom_domain_status = 'pending'
 4. Tampilkan instruksi: "Tambahkan A record: ikpm.or.id → A → {IP_VPS}"
 5. Background job verifikasi DNS
 6. Jika OK → custom_domain_status = 'active', custom_domain_verified_at = now()
