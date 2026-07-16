@@ -231,11 +231,17 @@ FlexHeader).
 
 - Logo mark: badge kotak `rounded-xl` (bukan lingkaran seperti Flex/Classic) — sinyal visual
   pembeda utama antar desain.
+- **Teks nama tenant di sebelah logo HANYA fallback** — kalau `logoUrl` terisi, cuma logo yang
+  tampil (tidak ada teks berdampingan). Teks (badge inisial + nama) baru muncul kalau tenant belum
+  upload logo. Fix eksplisit user (2026-07-16, evaluasi desain) — sebelumnya logo dan teks selalu
+  tampil bersamaan.
 - Nav menu: kapsul (`bg-muted/60 rounded-full p-1`, tiap item `rounded-full`) — desktop only.
 - Ikon bulat berbingkai (search, cart) — search membuka **overlay dialog terpusat** (bukan input
   inline seperti FlexHeader), reuse endpoint `/api/search` yang sama, debounce 300ms identik.
 - Mobile: **overlay full-screen** (bukan bottom-nav seperti FlexHeader, bukan drawer seperti
-  Classic) — nav item besar 2xl bold, tombol Masuk/Daftar atau Akun Saya di bawah.
+  Classic) — nav item `text-[17px] font-normal` (bukan besar/bold — dikoreksi 2026-07-16 dari
+  `text-2xl font-bold` awal yang dianggap terlalu berat), dibingkai `border-t` di atas list +
+  `border-b` per item, `py-4` proporsional. Tombol Masuk/Daftar atau Akun Saya di bawah list.
 - `CartButton` diberi prop `className="flex"` untuk override default `hidden md:flex` — desain ini
   sengaja menampilkan cart di semua ukuran layar (beda dari 2 desain lain). Prop `className`
   ditambahkan ke `CartButton` sebagai perubahan additive (default tetap `hidden md:flex` kalau
@@ -436,6 +442,10 @@ sejak desain Dark/Light dulu (masing-masing file header/footer self-contained).
   konten sebelumnya, bukan footer persegi penuh lebar seperti 2 desain lain.
 - Logo mark kotak `rounded-lg` (konsisten dengan badge kotak di `pill-header.tsx` — dua komponen ini
   dirancang match secara visual meski technically independen, boleh dipakai terpisah).
+- **Teks nama tenant di sebelah logo HANYA fallback** — sama seperti `pill-header.tsx`: `logoUrl`
+  terisi → cuma logo, teks disembunyikan. Kosong → badge inisial + teks tetap tampil. Fix eksplisit
+  user (2026-07-16, evaluasi desain). Baris "© {year} {siteName}" TIDAK ikut disembunyikan — itu
+  bukan pasangan logo.
 - Kontak diringkas jadi 1 baris (`{phone} · {email}`), bukan list `<li>` bericon seperti Dark/Light.
 
 **Warna/font tidak disalin dari sumber** — sama seperti header Pill, `bg-primary`/

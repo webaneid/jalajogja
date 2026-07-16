@@ -274,22 +274,24 @@ function MobileOverlay({
         </button>
       </div>
       <nav className="flex-1 overflow-y-auto px-4 py-6 flex flex-col">
-        {navMenu.map((item) => {
-          const href  = resolveNavHref(item);
-          const isExt = item.external ?? false;
-          return (
-            <a
-              key={item.id}
-              href={href}
-              target={isExt ? "_blank" : undefined}
-              rel={isExt ? "noopener noreferrer" : undefined}
-              onClick={onClose}
-              className="border-b border-border py-3.5 font-bold text-2xl"
-            >
-              {item.label}
-            </a>
-          );
-        })}
+        <div className="border-t border-border flex flex-col">
+          {navMenu.map((item) => {
+            const href  = resolveNavHref(item);
+            const isExt = item.external ?? false;
+            return (
+              <a
+                key={item.id}
+                href={href}
+                target={isExt ? "_blank" : undefined}
+                rel={isExt ? "noopener noreferrer" : undefined}
+                onClick={onClose}
+                className="border-b border-border py-4 font-normal text-[17px]"
+              >
+                {item.label}
+              </a>
+            );
+          })}
+        </div>
         {!session?.user && (
           <div className="flex gap-2 mt-6">
             <PublicButton href={`${baseUrl}/login`} variant="outline-dark" size="md" icon="none" className="flex-1 justify-center">
@@ -323,19 +325,21 @@ export function PillHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-md border-b border-border">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center gap-4 h-16">
-            {/* Logo */}
+            {/* Logo — nama tenant HANYA tampil sebagai fallback saat belum upload logo */}
             <a href={baseUrl || "/"} className="flex items-center gap-2.5 shrink-0">
               {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={logoUrl} alt={siteName} className="h-10 w-auto object-contain" />
               ) : (
-                <span className="h-9 w-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-bold text-base shrink-0">
-                  {siteName.charAt(0).toUpperCase()}
-                </span>
+                <>
+                  <span className="h-9 w-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-bold text-base shrink-0">
+                    {siteName.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="font-bold text-sm tracking-tight hidden sm:block max-w-[160px] line-clamp-1">
+                    {siteName}
+                  </span>
+                </>
               )}
-              <span className="font-bold text-sm tracking-tight hidden sm:block max-w-[160px] line-clamp-1">
-                {siteName}
-              </span>
             </a>
 
             {/* Nav — pill container, desktop only */}

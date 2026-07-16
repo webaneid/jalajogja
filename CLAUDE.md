@@ -4743,6 +4743,51 @@ bebas dengan desain manapun, bukan 1 paket "tema"). Sisa dari desain sumber ini 
 (section Ekosistem/rail horizontal, Berita dual-layout, Toko grid, dll) — lihat isi lengkap di
 `design-refs/jalakarta-v2/decoded.html` kalau user minta lanjut lagi nanti.
 
+### [2026-07-16] Evaluasi Desain Trilogi — 4 Fix dari Feedback User Langsung
+
+Setelah header Pill + footer Modern + hero Full-Bleed Modern selesai dibangun, user minta
+"evaluasi" — 4 titik feedback konkret, semuanya CSS/markup murni, tidak ada perubahan data model
+atau server logic:
+
+**1. Logo vs teks nama tenant — kalau logo ada, teks disembunyikan total** (`pill-header.tsx` +
+`modern-footer.tsx`). Sebelumnya logo DAN teks nama tenant selalu tampil berdampingan. Sekarang:
+`logoUrl` terisi → cuma logo. `logoUrl` kosong (tenant belum upload) → fallback badge inisial +
+teks tetap tampil (satu-satunya cara identitas tenant terbaca tanpa logo). Baris "© {tahun}
+{siteName}" di footer TIDAK ikut disembunyikan — itu bukan pasangan logo, beda konteks.
+
+**2. Hero Design 2 kurang tinggi** — `min-h-[480px] sm:min-h-[560px] lg:min-h-[640px]` →
+`min-h-[560px] sm:min-h-[680px] lg:min-h-[800px]`. Breakpoint terbesar sekarang tepat di 800px
+sesuai angka yang diminta user, breakpoint kecil ikut naik proporsional (bukan cuma ganti angka
+terbesar) supaya rasio antar breakpoint tetap masuk akal.
+
+**3. Kartu mengambang hero Design 2 menempel ke ujung** — sebelumnya `right-4 bottom-0
+translate-y-1/2` (nempel ke tepi kanan + separuh badan straddle garis batas bawah section, nyaris
+menyentuh sudut). Fix: `right-10 lg:right-16 bottom-10 lg:bottom-14` tanpa `translate-y-1/2` —
+kartu sekarang benar-benar mengambang di DALAM area gambar hero dengan jarak jelas dari kanan
+maupun bawah, bukan nempel ke frame.
+
+**4. Nav mobile Pill Header terlalu besar** (`MobileOverlay` di `pill-header.tsx`) —
+`font-bold text-2xl` (24px, tebal) dianggap kasar/berat untuk mobile menu. Fix: `font-normal
+text-[17px]` (regular, 17px) + `py-4` (dari `py-3.5`, sedikit lebih lega). Ditambah `border-t
+border-border` pada wrapper list (sebelumnya cuma `border-b` per item — list nampak "menggantung"
+tanpa batas atas yang jelas) — sekarang list nav punya bingkai atas+bawah yang rapi, tiap item
+tetap dipisah `border-b` seperti sebelumnya.
+
+**Alur kerja sesi ini beda dari biasanya**: user eksplisit minta "edit dulu, jangan di-push" untuk
+titik feedback #1 (logo/teks) — dieksekusi + `tsc` dicek, TAPI TIDAK di-commit/push saat itu,
+menunggu review user. Baru setelah user lanjut kasih 3 feedback lagi (hero height, kartu
+mengambang, nav mobile) dan bilang "cek error, dokumentasi, dan commit push" — baru semua 4 fix
+(termasuk yang tertunda) di-commit+push sekaligus dalam satu commit. **Aturan yang ditegaskan**:
+kalau user bilang "jangan di-push" secara eksplisit, itu instruksi SEKALI PAKAI untuk giliran itu
+saja — bukan mode permanen sampai instruksi baru "boleh push" diberikan secara eksplisit. Begitu
+user memberi sinyal lanjut komit (baik eksplisit "commit push" atau implisit lewat permintaan baru
+yang mengasumsikan kerjaan sebelumnya sudah final), commit boleh jalan mencakup SEMUA perubahan
+uncommitted yang relevan, bukan cuma yang di request terbaru.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build --filter=@jalajogja/web` — 0 error, build sukses
+untuk seluruh 4 fix. Belum diverifikasi visual di browser (keterbatasan environment sesi ini yang
+sudah dicatat berulang di lesson-lesson sebelumnya — tidak diulang detailnya di sini).
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

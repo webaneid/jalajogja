@@ -13,7 +13,7 @@ export function HeroDesign2({ data: d, baseUrl, heroCard }: HeroDesignProps) {
 
   return (
     <section className="overflow-hidden">
-      <div className="relative min-h-[480px] sm:min-h-[560px] lg:min-h-[640px] flex items-center">
+      <div className="relative min-h-[560px] sm:min-h-[680px] lg:min-h-[800px] flex items-center">
         {/* Background — gambar full-bleed atau fallback gradasi warna tenant */}
         {hasImage ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -62,11 +62,13 @@ export function HeroDesign2({ data: d, baseUrl, heroCard }: HeroDesignProps) {
             )}
           </div>
 
-          {/* Kartu mengambang — event mendatang atau berita terbaru */}
+          {/* Kartu mengambang — event mendatang atau berita terbaru. Sengaja diberi jarak dari
+              sisi kanan/bawah hero (bukan bottom-0/right-0) supaya benar-benar terlihat
+              "mengambang" di atas gambar, bukan menempel ke ujung frame. */}
           {heroCard && (
             <a
               href={heroCard.href}
-              className="hidden md:block absolute right-4 bottom-0 translate-y-1/2 bg-white text-foreground rounded-2xl shadow-xl px-4 py-3 max-w-xs no-underline hover:opacity-90 transition-opacity"
+              className="hidden md:block absolute right-10 lg:right-16 bottom-10 lg:bottom-14 bg-white text-foreground rounded-2xl shadow-xl px-4 py-3 max-w-xs no-underline hover:opacity-90 transition-opacity"
             >
               <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">
                 {heroCard.label}

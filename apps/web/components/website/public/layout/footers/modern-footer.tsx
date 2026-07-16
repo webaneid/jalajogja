@@ -60,18 +60,20 @@ export function ModernFooter({
     <footer className="bg-neutral-900 text-white rounded-t-[32px] overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 pt-12 pb-10 grid grid-cols-1 md:grid-cols-3 gap-8">
 
-        {/* Brand + deskripsi + social */}
+        {/* Brand + deskripsi + social — nama tenant HANYA tampil sebagai fallback saat belum upload logo */}
         <div>
           <a href={baseUrl || "/"} className="inline-flex items-center gap-2.5 mb-3">
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoUrl} alt={siteName} className="h-9 w-auto object-contain brightness-0 invert" />
             ) : (
-              <span className="h-8 w-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm shrink-0">
-                {siteName.charAt(0).toUpperCase()}
-              </span>
+              <>
+                <span className="h-8 w-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm shrink-0">
+                  {siteName.charAt(0).toUpperCase()}
+                </span>
+                <span className="font-bold text-sm">{siteName}</span>
+              </>
             )}
-            <span className="font-bold text-sm">{siteName}</span>
           </a>
           {description && (
             <p className="text-sm text-white/65 max-w-[36ch] mb-4 leading-relaxed">{description}</p>
