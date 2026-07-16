@@ -1,0 +1,42 @@
+[
+  {
+    "uuid": "43baf11c-8558-4519-9afa-e3a289005095",
+    "mime": "application/javascript",
+    "size": 288
+  },
+  {
+    "uuid": "1fe196ff-9771-47f9-b2c0-c46df1434b03",
+    "mime": "text/javascript",
+    "size": 23808
+  },
+  {
+    "uuid": "8dd014a0-a482-4a80-939a-b8021c14cf15",
+    "mime": "text/javascript",
+    "size": 28216
+  },
+  {
+    "uuid": "53393330-3b20-4b03-afdf-e1d1d82585e1",
+    "mime": "text/javascript",
+    "size": 5712
+  },
+  {
+    "uuid": "172b32de-869d-4dbd-8312-b4dbc8e6530c",
+    "mime": "text/javascript",
+    "size": 58224
+  },
+  {
+    "uuid": "ba971888-d3c4-4b3f-bbde-3d695fd03802",
+    "mime": "font/woff2",
+    "size": 17624
+  },
+  {
+    "uuid": "eab10140-d23f-4242-a539-179e79e29cd0",
+    "mime": "font/woff2",
+    "size": 43564
+  },
+  {
+    "uuid": "a2c163eb-48ac-4819-b056-b9280c615e3f",
+    "mime": "font/woff2",
+    "size": 46588
+  }
+]

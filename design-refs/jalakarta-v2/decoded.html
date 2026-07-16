@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="1fe196ff-9771-47f9-b2c0-c46df1434b03"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet>
+
+<style>/* Modernist — design-system tokens and component classes. This file is the source of truth for the system's look; retune it here and see readme.md. */
+/* vietnamese */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("ba971888-d3c4-4b3f-bbde-3d695fd03802") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("eab10140-d23f-4242-a539-179e79e29cd0") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("a2c163eb-48ac-4819-b056-b9280c615e3f") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("ba971888-d3c4-4b3f-bbde-3d695fd03802") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("eab10140-d23f-4242-a539-179e79e29cd0") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("a2c163eb-48ac-4819-b056-b9280c615e3f") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 800;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("ba971888-d3c4-4b3f-bbde-3d695fd03802") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 800;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("eab10140-d23f-4242-a539-179e79e29cd0") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 800;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("a2c163eb-48ac-4819-b056-b9280c615e3f") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+
+:root {
+  --color-bg: #f3f2f2;
+  --color-surface: #eae9e9;
+  --color-text: #201e1d;
+  --color-accent: #ec3013;
+  --color-accent-2: #e15b47;
+  --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+
+  /* Tonal ramps — generated in OKLCH on one shared lightness scale, so the
+     same step of any role matches the others in visual value. */
+  --color-neutral-100: #f8f4f4;
+  --color-neutral-200: #eae7e7;
+  --color-neutral-300: #d7d3d3;
+  --color-neutral-400: #bab6b6;
+  --color-neutral-500: #9b9797;
+  --color-neutral-600: #7d7979;
+  --color-neutral-700: #605d5d;
+  --color-neutral-800: #444141;
+  --color-neutral-900: #2d2b2b;
+
+  --color-accent-100: #fff2ef;
+  --color-accent-200: #ffe0d9;
+  --color-accent-300: #ffc4b8;
+  --color-accent-400: #ff9783;
+  --color-accent-500: #ff563c;
+  --color-accent-600: #dd2b0f;
+  --color-accent-700: #ae1800;
+  --color-accent-800: #7c1405;
+  --color-accent-900: #4d170e;
+
+  --color-accent-2-100: #fff2ef;
+  --color-accent-2-200: #ffe0da;
+  --color-accent-2-300: #ffc4b9;
+  --color-accent-2-400: #ff9784;
+  --color-accent-2-500: #ef6853;
+  --color-accent-2-600: #c94b39;
+  --color-accent-2-700: #9e3526;
+  --color-accent-2-800: #71261b;
+  --color-accent-2-900: #471d16;
+
+  --font-heading: "Archivo", system-ui, sans-serif;
+  --font-heading-weight: 800;
+  --font-body: "Archivo", system-ui, sans-serif;
+
+  --space-1: 4.0px;
+  --space-2: 8.0px;
+  --space-3: 12.0px;
+  --space-4: 16.0px;
+  --space-6: 24.0px;
+  --space-8: 32.0px;
+
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+
+  /* Elevation — derived from the ground: soft ink-tinted shadows on a
+     light theme, a hairline edge + ambient darkness on a dark one. */
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+h1, h2, h3, h4 { font-family: var(--font-heading); font-weight: var(--font-heading-weight); }
+
+.grayscale{filter:grayscale(1) contrast(1.08)}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Components — built with the tokens above. Plain CSS
+   on plain HTML: no JavaScript, no build step. Each class is documented in
+   readme.md and demonstrated in foundations/ and components/.
+   ══════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; font-size: 15px; line-height: 1.55; font-weight: 400; }
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  line-height: 1.12; letter-spacing: -0.015em; margin: 0 0 var(--space-2);
+}
+h1 { font-size: 42px; }
+h2 { font-size: 32px; }
+h3 { font-size: 25px; }
+h4 { font-size: 20px; }
+h5 { font-size: 16px; }
+h6 { font-size: 13px; }
+h6 { letter-spacing: 0.08em; text-transform: uppercase; }
+p { margin: 0 0 var(--space-3); }
+a { color: var(--color-accent); text-underline-offset: 3px; }
+img { display: block; max-width: 100%; }
+figure { margin: 0; }
+figcaption {
+  font-size: 11px; margin-top: var(--space-1);
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+.text-muted { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+
+/* — rules — */
+.hr {
+  height: 2px; border: 0; margin: var(--space-4) 0;
+  background: var(--color-divider);
+}
+
+/* — buttons — */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; text-decoration: none;
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 14px; line-height: 1.2; color: var(--color-text); /* matches the .input's 14px —
+     the pair sits side by side in sign-up rows */
+  background: transparent; border: 1px solid transparent;
+  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  border-radius: var(--radius-md);
+}
+.btn svg { display: block; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--color-accent); color: var(--color-bg); }
+.btn-primary:hover { background: var(--color-accent-600); }
+.btn-primary:active { background: var(--color-accent-700); }
+.btn-secondary { border-color: var(--color-divider); }
+.btn-secondary:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.btn-secondary:active { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+.btn-ghost { color: var(--color-accent); padding-inline: var(--space-1); }
+.btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.btn-ghost:active { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.btn-icon { width: 36px; height: 36px; padding: 0; }
+.btn-block { width: 100%; margin-top: var(--space-2); justify-content: flex-start; text-align: left; }
+
+/* — forms — */
+.field > label {
+  display: block; font-size: 12px; margin-bottom: 5px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.input {
+  width: 100%; min-height: 36px; padding: 6px 10px; font: inherit;
+  font-size: 14px; color: var(--color-text); caret-color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+}
+.input:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+textarea.input { min-height: 90px; resize: vertical; }
+.radio { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.radio input, .seg-opt input {
+  position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+}
+.radio .dot {
+  width: 16px; height: 16px; flex: none; border-radius: 50%;
+  border: 1.5px solid var(--color-divider);
+}
+.radio:hover .dot { border-color: var(--color-accent); }
+.radio input:checked + .dot {
+  border-color: var(--color-accent); background: var(--color-accent);
+  box-shadow: inset 0 0 0 4px var(--color-bg);
+}
+.radio input:focus-visible + .dot { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.seg {
+  display: inline-flex; overflow: hidden;
+  border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+}
+.seg-opt {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; font-size: 13px; cursor: pointer;
+}
+.seg-opt + .seg-opt { border-left: 1px solid var(--color-divider); }
+.seg-opt:has(input:checked) { background: var(--color-accent); color: var(--color-bg); }
+.seg-opt:not(:has(input:checked)):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.seg-opt:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
+/* — cards — */
+.card {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-surface);
+}
+.card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent); }
+.card-title {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 17px; line-height: 1.2;
+}
+.card-body { margin: 0; font-size: 13px; opacity: 0.8; flex: 1; }
+.card-meta {
+  display: flex; align-items: center; gap: 6px; font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+}
+.elev-sm { box-shadow: var(--shadow-sm); }
+.elev-md { box-shadow: var(--shadow-md); }
+.elev-lg { box-shadow: var(--shadow-lg); }
+
+/* — tags — */
+.tag {
+  display: inline-flex; align-items: center; font-size: 11px;
+  letter-spacing: 0.02em; padding: 3px 10px;
+  border-radius: calc(var(--radius-md) * 0.75);
+}
+.tag-accent { background: var(--color-accent-100); color: var(--color-accent-800); }
+.tag-accent-2 { background: var(--color-accent-2-100); color: var(--color-accent-2-800); }
+.tag-neutral { background: var(--color-neutral-100); color: var(--color-neutral-800); }
+.tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent); }
+
+/* — navigation — */
+.nav {
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 2px solid var(--color-divider);
+}
+.nav-brand {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 18px; margin-right: auto;
+}
+.nav a { color: inherit; text-decoration: none; font-size: 14px; }
+.nav a:hover, .nav a[aria-current='page'] { color: var(--color-accent); }
+
+/* — tables — */
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th {
+  text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  padding: var(--space-2); border-bottom: 2px solid var(--color-divider);
+}
+.table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-divider);
+}
+.table tbody tr:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+
+/* — dialog — */
+.dialog-backdrop {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+}
+.dialog {
+  width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
+}
+.dialog-title {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 20px;
+}
+.dialog-body { font-size: 14px; opacity: 0.85; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+
+</style>
+<script src="43baf11c-8558-4519-9afa-e3a289005095"></script>
+<script src="8dd014a0-a482-4a80-939a-b8021c14cf15"></script>
+<style>
+body{margin:0}
+a{color:var(--color-accent);text-decoration:none}
+a:hover{color:var(--color-accent-600)}
+@keyframes jkSlideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@keyframes jkFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes jkToastIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes jkBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+.jk-rail::-webkit-scrollbar{display:none}
+.jk-eco-card:hover .jk-eco-scale{transform:scale(1.06)}
+.jk-lift{transition:transform .25s ease,box-shadow .25s ease}
+.jk-lift:hover{transform:translateY(-6px);box-shadow:var(--shadow-lg)}
+</style>
+</helmet>
+
+<div style="font-family:var(--font-body);background:var(--color-bg);color:var(--color-text);min-height:100vh;position:relative;overflow-x:hidden">
+
+<header style="position:fixed;top:0;left:0;right:0;z-index:50;background:{{ headerBg }};backdrop-filter:{{ headerBlur }};box-shadow:{{ headerShadow }};transition:background .25s ease,box-shadow .25s ease">
+  <div style="max-width:1360px;margin:0 auto;padding:14px {{ sidePad }};display:flex;align-items:center;gap:var(--space-4)">
+    <div style="display:flex;align-items:center;gap:9px">
+      <span style="background:var(--color-accent);color:#fff;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-weight:800;font-size:16px;flex:none">J</span>
+      <span style="font-family:var(--font-heading);font-weight:800;font-size:17px;letter-spacing:-.01em;color:{{ headerText }}">JALAKARTA</span>
+    </div>
+    <sc-if value="{{ showDesktopNav }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:2px;margin-left:var(--space-6);background:{{ navPillBg }};border-radius:999px;padding:4px">
+        <a href="#ekosistem" style="padding:9px 16px;border-radius:999px;font-size:13px;font-weight:700;color:{{ headerText }}">Ekosistem</a>
+        <a href="#berita" style="padding:9px 16px;border-radius:999px;font-size:13px;font-weight:700;color:{{ headerText }}">Berita</a>
+        <a href="#donasi" style="padding:9px 16px;border-radius:999px;font-size:13px;font-weight:700;color:{{ headerText }}">Donasi</a>
+        <a href="#toko" style="padding:9px 16px;border-radius:999px;font-size:13px;font-weight:700;color:{{ headerText }}">Toko</a>
+      </div>
+    </sc-if>
+    <div style="display:flex;align-items:center;gap:var(--space-2);margin-left:{{ navSpacerMargin }}">
+      <button type="button" style="width:38px;height:38px;border-radius:999px;border:1px solid {{ headerBorder }};background:transparent;color:{{ headerText }};display:flex;align-items:center;justify-content:center;cursor:pointer" aria-label="Cari" sc-camel-on-click="{{ openSearch }}"><svg width="17" height="17" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"></path><path d="m21 21-4.3-4.3"></path></svg></button>
+      <button type="button" style="width:38px;height:38px;border-radius:999px;border:1px solid {{ headerBorder }};background:transparent;color:{{ headerText }};display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer" aria-label="Keranjang" sc-camel-on-click="{{ openCart }}">
+        <svg width="17" height="17" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+        <sc-if value="{{ hasCartItems }}" hint-placeholder-val="{{ false }}">
+          <span style="position:absolute;top:-3px;right:-3px;background:var(--color-accent);color:#fff;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 3px">{{ cartCount }}</span>
+        </sc-if>
+      </button>
+      <sc-if value="{{ showDesktopNav }}" hint-placeholder-val="{{ true }}">
+        <button type="button" class="btn" style="border-radius:999px;border:1px solid {{ headerBorder }};color:{{ headerText }}" sc-camel-on-click="{{ openLogin }}">Masuk</button>
+        <button type="button" class="btn btn-primary" style="border-radius:999px" sc-camel-on-click="{{ openRegister }}">Daftar</button>
+      </sc-if>
+      <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}">
+        <button type="button" style="width:38px;height:38px;border-radius:999px;border:1px solid {{ headerBorder }};background:transparent;color:{{ headerText }};display:flex;align-items:center;justify-content:center;cursor:pointer" aria-label="Menu" sc-camel-on-click="{{ toggleMobileMenu }}"><svg width="17" height="17" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button>
+      </sc-if>
+    </div>
+  </div>
+</header>
+
+<sc-if value="{{ mobileMenuOpen }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:60;background:var(--color-bg);animation:jkFadeIn .15s ease;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;padding:14px var(--space-4);border-bottom:2px solid var(--color-divider)">
+      <span style="font-family:var(--font-heading);font-weight:800;font-size:17px">JALAKARTA</span>
+      <div style="margin-left:auto"></div>
+      <button type="button" style="width:38px;height:38px;border-radius:999px;border:1px solid var(--color-divider);background:transparent;display:flex;align-items:center;justify-content:center" aria-label="Tutup" sc-camel-on-click="{{ toggleMobileMenu }}"><svg width="17" height="17" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+    </div>
+    <div style="display:flex;flex-direction:column;padding:var(--space-6) var(--space-4);gap:0;font-family:var(--font-heading);font-weight:800;font-size:30px">
+      <a href="#ekosistem" style="border-bottom:2px solid var(--color-divider);padding:var(--space-3) 0" sc-camel-on-click="{{ toggleMobileMenu }}">Ekosistem</a>
+      <a href="#berita" style="border-bottom:2px solid var(--color-divider);padding:var(--space-3) 0" sc-camel-on-click="{{ toggleMobileMenu }}">Berita</a>
+      <a href="#donasi" style="border-bottom:2px solid var(--color-divider);padding:var(--space-3) 0" sc-camel-on-click="{{ toggleMobileMenu }}">Donasi</a>
+      <a href="#toko" style="padding:var(--space-3) 0" sc-camel-on-click="{{ toggleMobileMenu }}">Toko</a>
+      <div style="display:flex;gap:var(--space-2);margin-top:var(--space-6)">
+        <button type="button" class="btn btn-secondary btn-block" style="border-radius:999px;justify-content:center" sc-camel-on-click="{{ openLogin }}">Masuk</button>
+        <button type="button" class="btn btn-primary btn-block" style="border-radius:999px;justify-content:center" sc-camel-on-click="{{ openRegister }}">Daftar</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<main>
+
+<section style="position:relative;height:{{ heroHeight }};overflow:hidden">
+  <image-slot id="hero-img" shape="rect" placeholder="Foto suasana warga Jakarta" style="width:100%;height:100%"></image-slot>
+  <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,18,17,.55) 0%,rgba(20,18,17,.35) 40%,rgba(20,18,17,.85) 100%);pointer-events:none"></div>
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:{{ heroPad }}">
+    <div style="max-width:1360px;margin:0 auto;width:100%">
+      <span style="display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.14);color:#fff;padding:7px 16px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-bottom:var(--space-4)"><span style="width:6px;height:6px;border-radius:999px;background:var(--color-accent-400)"></span>Jalakarta · Jaringan Warga</span>
+      <h1 style="color:#fff;font-size:{{ heroTitleSize }};line-height:.98;letter-spacing:-.02em;margin:0 0 var(--space-4)">Satu Jaring,<br><span style="font-style:italic;color:var(--color-accent-300);font-weight:800">Sejuta Kontribusi.</span></h1>
+      <p style="color:rgba(255,255,255,.82);font-size:16px;max-width:52ch;margin-bottom:var(--space-6)">{{ heroTagline }}</p>
+      <div style="display:flex;gap:var(--space-3);flex-wrap:wrap;align-items:center">
+        <button type="button" class="btn btn-primary" style="border-radius:999px;padding:12px 26px" sc-camel-on-click="{{ openRegister }}">Daftar Anggota</button>
+        <button type="button" class="btn" style="border-radius:999px;border:1px solid rgba(255,255,255,.4);color:#fff;padding:12px 26px" sc-camel-on-click="{{ scrollToEco }}">Jelajahi Program</button>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;right:{{ sidePad }};bottom:28px;display:flex;gap:8px">
+    <button type="button" style="width:38px;height:38px;border-radius:999px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.08);color:#fff;cursor:pointer" sc-camel-on-click="{{ prevTagline }}">←</button>
+    <button type="button" style="width:38px;height:38px;border-radius:999px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.08);color:#fff;cursor:pointer" sc-camel-on-click="{{ nextTagline }}">→</button>
+  </div>
+  <div style="position:absolute;left:50%;bottom:16px;transform:translateX(-50%);color:rgba(255,255,255,.7);animation:jkBounce 1.8s ease-in-out infinite">
+    <svg width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg>
+  </div>
+</section>
+
+<section style="max-width:1200px;margin:0 auto;padding:0 {{ sidePad }};position:relative;z-index:2">
+  <div style="background:var(--color-bg);border-radius:24px;box-shadow:var(--shadow-lg);margin-top:-40px;padding:var(--space-6) var(--space-4);display:grid;grid-template-columns:{{ statCols }}">
+    <div style="text-align:center;{{ statBorder }}"><div style="font-family:var(--font-heading);font-weight:800;font-size:clamp(26px,3vw,38px)">3.400+</div><div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-top:4px">Anggota</div></div>
+    <div style="text-align:center;{{ statBorder }}"><div style="font-family:var(--font-heading);font-weight:800;font-size:clamp(26px,3vw,38px)">42</div><div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-top:4px">Wilayah</div></div>
+    <div style="text-align:center;{{ statBorder }}"><div style="font-family:var(--font-heading);font-weight:800;font-size:clamp(26px,3vw,38px)">127</div><div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-top:4px">Program</div></div>
+    <div style="text-align:center"><div style="font-family:var(--font-heading);font-weight:800;font-size:clamp(26px,3vw,38px);color:var(--color-accent)">Rp1,8M</div><div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-top:4px">Donasi Tersalurkan</div></div>
+  </div>
+</section>
+
+<section id="ekosistem" style="max-width:1360px;margin:0 auto;padding:var(--space-8) {{ sidePad }} var(--space-6)">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:var(--space-5);gap:var(--space-4);flex-wrap:wrap">
+    <div>
+      <h6 style="color:var(--color-accent);margin-bottom:var(--space-2)">EKOSISTEM KAMI</h6>
+      <h2 style="margin:0;font-size:clamp(24px,3.4vw,36px)">Membangun Jaringan yang <span style="font-style:italic;color:var(--color-accent)">Kokoh</span></h2>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button type="button" style="width:40px;height:40px;border-radius:999px;border:1px solid var(--color-divider);background:transparent;cursor:pointer" sc-camel-on-click="{{ scrollEcoLeft }}">←</button>
+      <button type="button" style="width:40px;height:40px;border-radius:999px;border:1px solid var(--color-divider);background:transparent;cursor:pointer" sc-camel-on-click="{{ scrollEcoRight }}">→</button>
+    </div>
+  </div>
+  <div class="jk-rail" ref="{{ ecoRailRef }}" style="display:flex;gap:var(--space-4);overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px">
+    <sc-for list="{{ ecoItems }}" as="item" hint-placeholder-count="5">
+      <div class="jk-eco-card" style="flex:none;width:min(260px,70vw);aspect-ratio:3/4;position:relative;border-radius:22px;overflow:hidden;scroll-snap-align:start;cursor:pointer" sc-camel-on-click="{{ item.onClick }}">
+        <div class="jk-eco-scale" style="width:100%;height:100%;transition:transform .4s ease">
+          <image-slot id="{{ item.imgId }}" shape="rect" placeholder="{{ item.imgPlaceholder }}" style="width:100%;height:100%"></image-slot>
+        </div>
+        <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(20,18,17,.85) 100%);pointer-events:none"></div>
+        <div style="position:absolute;left:16px;bottom:16px;right:16px;display:flex;align-items:flex-end;justify-content:space-between">
+          <span style="color:#fff;font-family:var(--font-heading);font-weight:800;font-size:16px">{{ item.label }}</span>
+          <span style="width:32px;height:32px;border-radius:999px;background:#fff;color:var(--color-text);display:flex;align-items:center;justify-content:center;flex:none"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"></path><path d="M7 7h10v10"></path></svg></span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</section>
+
+<section id="tentang" style="max-width:1360px;margin:0 auto;padding:var(--space-6) {{ sidePad }} var(--space-8)">
+  <div style="background:var(--color-neutral-900);color:#fff;border-radius:32px;padding:{{ storyPad }};display:flex;flex-direction:{{ storyDir }};gap:var(--space-8)">
+    <div style="flex:1.2">
+      <span style="display:inline-flex;background:rgba(255,255,255,.1);color:var(--color-accent-300);padding:6px 14px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-bottom:var(--space-4)">Perjalanan Kami</span>
+      <svg width="34" height="34" sc-camel-view-box="0 0 24 24" fill="var(--color-accent)" style="margin-bottom:var(--space-3)"><path d="M9.5 4C6 4 3.5 6.7 3.5 10.2c0 3.2 2.2 5.6 5.2 5.9-.3 1.7-1.7 3-3.4 3.4l.4 1.5c3-.6 5.4-2.9 5.9-6.4.3-2 .1-4-1-5.8C9.7 7.1 8.2 6 6.6 5.7 7.3 4.9 8.4 4.4 9.5 4.4Zm10.5 0c-3.5 0-6 2.7-6 6.2 0 3.2 2.2 5.6 5.2 5.9-.3 1.7-1.7 3-3.4 3.4l.4 1.5c3-.6 5.4-2.9 5.9-6.4.3-2 .1-4-1-5.8-.9-1.7-2.4-2.8-4-3.1.7-.8 1.8-1.3 2.9-1.3Z"></path></svg>
+      <h2 style="font-size:clamp(24px,3vw,32px);font-style:italic;line-height:1.25;margin-bottom:var(--space-4);max-width:22ch">"{{ storyQuote }}"</h2>
+      <div style="display:flex;align-items:center;gap:10px">
+        <image-slot id="story-avatar" shape="circle" placeholder="Foto" style="width:44px;height:44px"></image-slot>
+        <div><div style="font-weight:800;font-size:13px">{{ storyAuthor }}</div><div style="opacity:.6;font-size:12px">{{ storyRole }}</div></div>
+      </div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:var(--space-4)">
+      <div style="display:inline-flex;gap:4px;background:rgba(255,255,255,.08);border-radius:999px;padding:4px;align-self:flex-start">
+        <sc-for list="{{ storyTabs }}" as="tab" hint-placeholder-count="3">
+          <button type="button" style="border:0;padding:9px 16px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;background:{{ tab.bg }};color:{{ tab.color }}" sc-camel-on-click="{{ tab.onClick }}">{{ tab.label }}</button>
+        </sc-for>
+      </div>
+      <p style="opacity:.8;font-size:14px;line-height:1.7;margin:0">{{ activeStoryDesc }}</p>
+    </div>
+  </div>
+</section>
+
+<section id="berita" style="max-width:1360px;margin:0 auto;padding:var(--space-6) {{ sidePad }} var(--space-8)">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-5)">
+    <h2 style="margin:0">Berita &amp; Pengumuman</h2>
+    <a href="#" sc-camel-on-click="{{ openSearch }}" style="font-size:12px;font-weight:800;background:var(--color-neutral-100);padding:8px 16px;border-radius:999px">Lihat Semua →</a>
+  </div>
+
+  <sc-if value="{{ isNewsFeatured }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;gap:var(--space-5);flex-direction:{{ newsFeaturedDir }}">
+      <div class="jk-lift" style="flex:1.3;position:relative;border-radius:24px;overflow:hidden;aspect-ratio:{{ newsFeaturedAspect }};cursor:pointer" sc-camel-on-click="{{ featuredNews.onOpen }}">
+        <image-slot id="{{ featuredNews.imgId }}" shape="rect" placeholder="{{ featuredNews.imgPlaceholder }}" style="width:100%;height:100%"></image-slot>
+        <div style="position:absolute;inset:0;background:linear-gradient(0deg,rgba(20,18,17,.85),transparent 55%)"></div>
+        <div style="position:absolute;left:22px;right:22px;bottom:20px">
+          <span class="tag {{ featuredNews.tagClass }}" style="border-radius:999px;margin-bottom:10px">{{ featuredNews.tag }}</span>
+          <div style="color:#fff;font-family:var(--font-heading);font-weight:800;font-size:22px;line-height:1.2;margin-top:8px">{{ featuredNews.title }}</div>
+          <div style="color:rgba(255,255,255,.7);font-size:12px;margin-top:6px">{{ featuredNews.date }}</div>
+        </div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column">
+        <sc-for list="{{ rankedNews }}" as="item" hint-placeholder-count="4">
+          <div style="display:flex;gap:var(--space-3);align-items:center;padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider);cursor:pointer" sc-camel-on-click="{{ item.onOpen }}">
+            <span style="font-family:var(--font-heading);font-weight:800;font-size:26px;color:var(--color-neutral-300);flex:none;width:36px">{{ item.rank }}</span>
+            <div style="min-width:0">
+              <span class="tag tag-neutral" style="border-radius:999px;font-size:10px">{{ item.tag }}</span>
+              <div style="font-weight:700;font-size:14px;margin-top:6px;line-height:1.3">{{ item.title }}</div>
+              <div class="text-muted" style="font-size:11px;margin-top:4px">{{ item.date }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isNewsGrid }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:{{ newsGridCols }};gap:var(--space-4)">
+      <sc-for list="{{ news }}" as="item" hint-placeholder-count="5">
+        <div class="jk-lift" style="cursor:pointer;border-radius:20px;overflow:hidden;background:var(--color-neutral-100)" sc-camel-on-click="{{ item.onOpen }}">
+          <image-slot id="{{ item.imgId }}" shape="rect" placeholder="{{ item.imgPlaceholder }}" style="width:100%;aspect-ratio:4/3"></image-slot>
+          <div style="padding:var(--space-3)">
+            <span class="tag {{ item.tagClass }}" style="border-radius:999px">{{ item.tag }}</span>
+            <div class="card-title" style="font-size:15px;margin-top:8px">{{ item.title }}</div>
+            <div class="card-meta" style="margin-top:4px">{{ item.date }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</section>
+
+<section id="donasi" style="max-width:1360px;margin:0 auto;padding:var(--space-6) {{ sidePad }}">
+  <div style="position:relative;border-radius:28px;overflow:hidden;margin-bottom:var(--space-6)">
+    <image-slot id="donation-hero-img" shape="rect" placeholder="Foto penerima manfaat donasi" style="width:100%;height:{{ donationHeroHeight }}"></image-slot>
+    <div class="card" style="position:absolute;{{ donationCardPos }};width:min(340px,88%);background:#fff;border-radius:22px;box-shadow:var(--shadow-lg);padding:var(--space-5)">
+      <span class="tag tag-accent" style="border-radius:999px;align-self:flex-start">Dampak Sosial</span>
+      <div style="font-family:var(--font-heading);font-weight:800;font-size:22px;margin:8px 0">Menjangkau yang Membutuhkan</div>
+      <p style="font-size:13px;opacity:.75;margin:0 0 var(--space-3)">Menghadirkan bantuan nyata untuk warga Jakarta yang membutuhkan, dari pendidikan hingga tanggap bencana.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:var(--space-3)">
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:30px;height:30px;border-radius:999px;background:var(--color-accent-100);color:var(--color-accent-700);display:flex;align-items:center;justify-content:center;flex:none"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg></span><span style="font-size:12px;font-weight:700">Pendidikan</span></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:30px;height:30px;border-radius:999px;background:var(--color-accent-100);color:var(--color-accent-700);display:flex;align-items:center;justify-content:center;flex:none"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"></path></svg></span><span style="font-size:12px;font-weight:700">Kesehatan</span></div>
+      </div>
+      <button type="button" class="btn btn-primary btn-block" style="border-radius:999px;justify-content:center" sc-camel-on-click="{{ scrollToDonasiList }}">Lihat Semua Program</button>
+    </div>
+  </div>
+
+  <div id="donasi-list" style="display:grid;grid-template-columns:{{ donationCols }};gap:var(--space-4)">
+    <sc-for list="{{ campaigns }}" as="item" hint-placeholder-count="3">
+      <div class="jk-lift" style="background:var(--color-neutral-100);border-radius:22px;padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="width:38px;height:38px;border-radius:999px;background:#fff;display:flex;align-items:center;justify-content:center;flex:none;color:var(--color-accent)">
+            <sc-if value="{{ item.isSocial }}" hint-placeholder-val="{{ true }}"><svg width="17" height="17" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"></path></svg></sc-if>
+            <sc-if value="{{ item.isPendidikan }}" hint-placeholder-val="{{ false }}"><svg width="17" height="17" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg></sc-if>
+            <sc-if value="{{ item.isBencana }}" hint-placeholder-val="{{ false }}"><svg width="17" height="17" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 16h.01"></path></svg></sc-if>
+          </span>
+          <span class="tag tag-neutral" style="border-radius:999px">{{ item.category }}</span>
+        </div>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:17px">{{ item.title }}</div>
+        <div style="height:8px;background:var(--color-neutral-300);border-radius:999px;overflow:hidden"><div style="height:100%;width:{{ item.pct }}%;background:var(--color-accent);border-radius:999px"></div></div>
+        <div class="card-meta">Terkumpul <strong style="color:var(--color-text)">{{ item.collected }}</strong> dari {{ item.goal }}</div>
+        <button type="button" class="btn btn-primary btn-block" style="border-radius:999px;justify-content:center" sc-camel-on-click="{{ item.onDonate }}">Donasi Sekarang</button>
+      </div>
+    </sc-for>
+  </div>
+</section>
+
+<section id="toko" style="max-width:1360px;margin:0 auto;padding:var(--space-8) {{ sidePad }}">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-5)">
+    <h2 style="margin:0">Toko Jalakarta</h2>
+    <a href="#" sc-camel-on-click="{{ openSearch }}" style="font-size:12px;font-weight:800;background:var(--color-neutral-100);padding:8px 16px;border-radius:999px">Lihat Semua →</a>
+  </div>
+  <div style="display:grid;grid-template-columns:{{ shopCols }};gap:var(--space-4);align-items:start">
+    <sc-for list="{{ products }}" as="item" hint-placeholder-count="4">
+      <div class="jk-lift" style="grid-column:{{ item.span }};background:var(--color-neutral-100);border-radius:22px;position:relative;cursor:pointer" sc-camel-on-click="{{ item.onOpen }}">
+        <div style="position:relative;border-radius:22px 22px 0 0;overflow:hidden">
+          <div style="position:absolute;left:14px;top:14px;z-index:2;width:34px;height:34px;border-radius:999px;background:#fff;display:flex;align-items:center;justify-content:center;color:var(--color-accent)">
+            <sc-if value="{{ item.isKaos }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m20.38 3.46 1.94 3.32a1 1 0 0 1-.4 1.36l-3.65 2.15a1 1 0 0 1-1.36-.4L16 8l-1 13H9L8 8l-.91 1.89a1 1 0 0 1-1.36.4L2.08 8.14a1 1 0 0 1-.4-1.36l1.94-3.32A2 2 0 0 1 5.34 2.5H8a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2h2.66a2 2 0 0 1 1.72.96Z"></path></svg></sc-if>
+            <sc-if value="{{ item.isAksesoris }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg></sc-if>
+            <sc-if value="{{ item.isBuku }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"></path></svg></sc-if>
+          </div>
+          <image-slot id="{{ item.imgId }}" shape="rect" placeholder="{{ item.imgPlaceholder }}" style="width:100%;aspect-ratio:{{ item.imgAspect }}"></image-slot>
+        </div>
+        <div style="padding:var(--space-4)">
+          <div class="card-title" style="font-size:15px;margin-bottom:4px">{{ item.name }}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:19px;color:var(--color-accent)">{{ item.priceLabel }}</div>
+            <button type="button" style="width:34px;height:34px;border-radius:999px;background:var(--color-text);color:#fff;border:0;font-size:18px;cursor:pointer" sc-camel-on-click="{{ item.onQuickAdd }}">+</button>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</section>
+
+<section style="max-width:1360px;margin:var(--space-6) auto var(--space-8);padding:0 {{ sidePad }}">
+  <div style="position:relative;background:var(--color-neutral-100);border-radius:32px;padding:64px var(--space-6);text-align:center;overflow:hidden">
+    <sc-if value="{{ showGhostText }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;left:-.05em;bottom:-.12em;font-family:var(--font-heading);font-weight:800;font-size:clamp(60px,11vw,150px);line-height:1;color:var(--color-neutral-200);white-space:nowrap;pointer-events:none;z-index:0">GABUNG</div>
+    </sc-if>
+    <div style="position:relative">
+      <h2 style="font-size:clamp(28px,4vw,44px);margin-bottom:var(--space-3)">Bangun Kota Bersama Kami</h2>
+      <p style="opacity:.75;max-width:52ch;margin:0 auto var(--space-6)">Temukan program, komunitas, atau cara berkontribusi yang paling cocok untukmu.</p>
+      <div style="max-width:520px;margin:0 auto;display:flex;gap:8px;background:#fff;border-radius:999px;padding:6px;box-shadow:var(--shadow-md)">
+        <input class="input" style="border:0;background:transparent;flex:1" placeholder="Cari program, misal: pendidikan..." value="{{ searchQuery }}" sc-camel-on-change="{{ onSearchChange }}">
+        <button type="button" class="btn btn-primary" style="border-radius:999px" sc-camel-on-click="{{ openSearch }}">Cari</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer style="background:var(--color-neutral-900);color:#fff;border-radius:32px 32px 0 0;overflow:hidden">
+  <div style="max-width:1360px;margin:0 auto;padding:var(--space-8) {{ sidePad }} var(--space-6);display:grid;grid-template-columns:{{ footerCols }};gap:var(--space-6)">
+    <div>
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:var(--space-3)">
+        <span style="background:var(--color-accent);color:#fff;width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-weight:800;font-size:14px">J</span>
+        <span style="font-family:var(--font-heading);font-weight:800;font-size:15px">JALAKARTA</span>
+      </div>
+      <p style="opacity:.65;font-size:13px;max-width:36ch;margin-bottom:var(--space-4)">Jaringan warga dan komunitas Jakarta yang menghimpun kolaborasi lintas wilayah untuk gotong royong dan kemandirian usaha.</p>
+      <div style="display:flex;gap:var(--space-2)">
+        <a href="#" style="width:36px;height:36px;border-radius:999px;border:1px solid rgba(255,255,255,.25);color:#fff;display:flex;align-items:center;justify-content:center" aria-label="Facebook"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3Z"></path></svg></a>
+        <a href="#" style="width:36px;height:36px;border-radius:999px;border:1px solid rgba(255,255,255,.25);color:#fff;display:flex;align-items:center;justify-content:center" aria-label="Instagram"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12a10 10 0 1 0 20 0 10 10 0 1 0-20 0Z"></path><path d="M8 12a4 4 0 1 0 8 0 4 4 0 1 0-8 0Z"></path><path d="M16.5 7.5h.001"></path></svg></a>
+        <a href="#" style="width:36px;height:36px;border-radius:999px;border:1px solid rgba(255,255,255,.25);color:#fff;display:flex;align-items:center;justify-content:center" aria-label="WhatsApp"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"></path></svg></a>
+      </div>
+    </div>
+    <div>
+      <h6 style="color:#fff;opacity:.55;margin-bottom:var(--space-3)">NAVIGASI</h6>
+      <div style="display:flex;flex-direction:column;gap:var(--space-2);font-size:14px">
+        <a href="#ekosistem" style="color:#fff;opacity:.85">Ekosistem</a>
+        <a href="#berita" style="color:#fff;opacity:.85">Berita</a>
+        <a href="#donasi" style="color:#fff;opacity:.85">Donasi</a>
+        <a href="#toko" style="color:#fff;opacity:.85">Toko</a>
+      </div>
+    </div>
+    <div>
+      <h6 style="color:#fff;opacity:.55;margin-bottom:var(--space-3)">KONTAK</h6>
+      <p style="opacity:.8;font-size:13px;margin-bottom:var(--space-2)">Kantor Sekretariat, Menteng, Jakarta Pusat, DKI Jakarta 10310</p>
+      <p style="opacity:.8;font-size:13px">021 555 0192 · halo@jalakarta.id</p>
+    </div>
+  </div>
+  <div style="border-top:1px solid rgba(255,255,255,.12);padding:var(--space-3) {{ sidePad }};font-size:11px;opacity:.5">© 2026 Jalakarta. Seluruh hak cipta dilindungi.</div>
+</footer>
+
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:200;background:var(--color-neutral-900);color:#fff;padding:12px 22px;border-radius:999px;box-shadow:var(--shadow-lg);font-size:14px;animation:jkToastIn .2s ease">{{ toast }}</div>
+</sc-if>
+
+<sc-if value="{{ overlaySearch }}" hint-placeholder-val="{{ false }}">
+  <div class="dialog-backdrop" style="align-items:flex-start;z-index:100" sc-camel-on-click="{{ closeOverlay }}">
+    <div class="dialog" style="width:min(560px,100%);margin-top:8vh;border-radius:24px" sc-camel-on-click="{{ stopClick }}">
+      <div style="display:flex;align-items:center;gap:var(--space-2);background:var(--color-neutral-100);border-radius:999px;padding:6px 8px 6px 16px">
+        <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"></path><path d="m21 21-4.3-4.3"></path></svg>
+        <input class="input" style="border:0;background:transparent;font-size:16px" placeholder="Cari berita, produk, atau kegiatan..." value="{{ searchQuery }}" sc-camel-on-change="{{ onSearchChange }}" sc-camel-auto-focus="{{ true }}">
+        <button type="button" style="width:32px;height:32px;border-radius:999px;border:0;background:#fff;cursor:pointer" sc-camel-on-click="{{ closeOverlay }}">✕</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:var(--space-1);max-height:50vh;overflow-y:auto">
+        <sc-if value="{{ hasSearchResults }}" hint-placeholder-val="{{ true }}">
+          <sc-for list="{{ searchResults }}" as="r" hint-placeholder-count="4">
+            <div style="padding:10px 12px;border-radius:14px;display:flex;align-items:center;gap:var(--space-2);cursor:pointer" sc-camel-on-click="{{ r.onOpen }}">
+              <span class="tag tag-neutral" style="border-radius:999px">{{ r.kind }}</span>
+              <span style="font-size:14px">{{ r.title }}</span>
+            </div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{ hasNoSearchResults }}" hint-placeholder-val="{{ false }}">
+          <p class="text-muted" style="padding:var(--space-2)">Tidak ada hasil untuk "{{ searchQuery }}".</p>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ overlayLogin }}" hint-placeholder-val="{{ false }}">
+  <div class="dialog-backdrop" style="z-index:100" sc-camel-on-click="{{ closeOverlay }}">
+    <div class="dialog" style="border-radius:24px" sc-camel-on-click="{{ stopClick }}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="dialog-title">Masuk ke Jalakarta</div>
+        <button type="button" style="width:32px;height:32px;border-radius:999px;border:0;background:var(--color-neutral-200);cursor:pointer" sc-camel-on-click="{{ closeOverlay }}">✕</button>
+      </div>
+      <div class="field"><label>Email</label><input class="input" style="border-radius:14px" type="email" placeholder="nama@email.com" value="{{ loginEmail }}" sc-camel-on-change="{{ onLoginEmailChange }}"></div>
+      <div class="field"><label>Kata Sandi</label><input class="input" style="border-radius:14px" type="password" placeholder="••••••••" value="{{ loginPassword }}" sc-camel-on-change="{{ onLoginPasswordChange }}"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary" style="border-radius:999px" sc-camel-on-click="{{ closeOverlay }}">Batal</button>
+        <button type="button" class="btn btn-primary" style="border-radius:999px" sc-camel-on-click="{{ submitLogin }}">Masuk</button>
+      </div>
+      <p class="text-muted" style="font-size:13px;text-align:center">Belum punya akun? <a href="#" sc-camel-on-click="{{ openRegister }}">Daftar di sini</a></p>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ overlayRegister }}" hint-placeholder-val="{{ false }}">
+  <div class="dialog-backdrop" style="z-index:100" sc-camel-on-click="{{ closeOverlay }}">
+    <div class="dialog" style="border-radius:24px" sc-camel-on-click="{{ stopClick }}">
+      <sc-if value="{{ registerSuccess }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="dialog-title">Pendaftaran Berhasil</div>
+          <button type="button" style="width:32px;height:32px;border-radius:999px;border:0;background:var(--color-neutral-200);cursor:pointer" sc-camel-on-click="{{ closeOverlay }}">✕</button>
+        </div>
+        <div class="dialog-body">Terima kasih, {{ registerName }}. Data anggota kamu telah kami terima dan akan diverifikasi tim Jalakarta dalam 1x24 jam.</div>
+        <div class="dialog-actions"><button type="button" class="btn btn-primary" style="border-radius:999px" sc-camel-on-click="{{ closeOverlay }}">Selesai</button></div>
+      </sc-if>
+      <sc-if value="{{ registerFormVisible }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="dialog-title">Daftar Anggota</div>
+          <button type="button" style="width:32px;height:32px;border-radius:999px;border:0;background:var(--color-neutral-200);cursor:pointer" sc-camel-on-click="{{ closeOverlay }}">✕</button>
+        </div>
+        <div class="field"><label>Nama Lengkap</label><input class="input" style="border-radius:14px" placeholder="Nama kamu" value="{{ registerName }}" sc-camel-on-change="{{ onRegisterNameChange }}"></div>
+        <div class="field"><label>Email</label><input class="input" style="border-radius:14px" type="email" placeholder="nama@email.com" value="{{ registerEmail }}" sc-camel-on-change="{{ onRegisterEmailChange }}"></div>
+        <div class="field"><label>No. WhatsApp</label><input class="input" style="border-radius:14px" placeholder="08xx xxxx xxxx" value="{{ registerPhone }}" sc-camel-on-change="{{ onRegisterPhoneChange }}"></div>
+        <div class="field"><label>Domisili</label><input class="input" style="border-radius:14px" placeholder="Kecamatan, Jakarta" value="{{ registerDomisili }}" sc-camel-on-change="{{ onRegisterDomisiliChange }}"></div>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-secondary" style="border-radius:999px" sc-camel-on-click="{{ closeOverlay }}">Batal</button>
+          <button type="button" class="btn btn-primary" style="border-radius:999px" disabled="{{ registerDisabled }}" sc-camel-on-click="{{ submitRegister }}">Daftar Sekarang</button>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ overlayDonation }}" hint-placeholder-val="{{ false }}">
+  <div class="dialog-backdrop" style="z-index:100" sc-camel-on-click="{{ closeOverlay }}">
+    <div class="dialog" style="border-radius:24px" sc-camel-on-click="{{ stopClick }}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="dialog-title">{{ donationDialogTitle }}</div>
+        <button type="button" style="width:32px;height:32px;border-radius:999px;border:0;background:var(--color-neutral-200);cursor:pointer" sc-camel-on-click="{{ closeOverlay }}">✕</button>
+      </div>
+
+      <sc-if value="{{ donationStep1 }}" hint-placeholder-val="{{ true }}">
+        <div class="card-meta">Untuk: <strong style="color:var(--color-text)">{{ selectedCampaignTitle }}</strong></div>
+        <div class="field"><label>Pilih Nominal</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-2)">
+            <sc-for list="{{ donationPresets }}" as="p" hint-placeholder-count="4">
+              <button type="button" class="btn {{ p.btnClass }}" style="border-radius:999px" sc-camel-on-click="{{ p.onSelect }}">{{ p.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+        <div class="field"><label>Atau Nominal Lain (Rp)</label><input class="input" style="border-radius:14px" type="number" placeholder="150000" value="{{ donationCustomAmount }}" sc-camel-on-change="{{ onDonationCustomChange }}"></div>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-secondary" style="border-radius:999px" sc-camel-on-click="{{ closeOverlay }}">Batal</button>
+          <button type="button" class="btn btn-primary" style="border-radius:999px" disabled="{{ donationAmountInvalid }}" sc-camel-on-click="{{ goDonationStep2 }}">Lanjutkan</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ donationStep2 }}" hint-placeholder-val="{{ false }}">
+        <div class="card-meta">Donasi <strong style="color:var(--color-text)">{{ donationAmountLabel }}</strong> untuk {{ selectedCampaignTitle }}</div>
+        <div class="field"><label>Nama</label><input class="input" style="border-radius:14px" placeholder="Nama kamu (atau kosongkan jika anonim)" value="{{ donationName }}" sc-camel-on-change="{{ onDonationNameChange }}"></div>
+        <div class="field"><label>Email</label><input class="input" style="border-radius:14px" type="email" placeholder="nama@email.com" value="{{ donationEmail }}" sc-camel-on-change="{{ onDonationEmailChange }}"></div>
+        <div class="field"><label>Pesan (opsional)</label><textarea class="input" style="border-radius:14px" placeholder="Semoga bermanfaat..." value="{{ donationMessage }}" sc-camel-on-change="{{ onDonationMessageChange }}"></textarea></div>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-secondary" style="border-radius:999px" sc-camel-on-click="{{ goDonationStep1 }}">Kembali</button>
+          <button type="button" class="btn btn-primary" style="border-radius:999px" sc-camel-on-click="{{ submitDonation }}">Konfirmasi Donasi</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ donationStep3 }}" hint-placeholder-val="{{ false }}">
+        <div class="dialog-body">Terima kasih{{ donationThanksName }}! Donasi kamu sebesar <strong style="color:var(--color-text)">{{ donationAmountLabel }}</strong> untuk {{ selectedCampaignTitle }} telah kami catat.</div>
+        <div class="dialog-actions"><button type="button" class="btn btn-primary" style="border-radius:999px" sc-camel-on-click="{{ closeOverlay }}">Tutup</button></div>
+      </sc-if>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ overlayProduct }}" hint-placeholder-val="{{ false }}">
+  <div class="dialog-backdrop" style="z-index:100" sc-camel-on-click="{{ closeOverlay }}">
+    <div class="dialog" style="width:min(520px,100%);border-radius:24px" sc-camel-on-click="{{ stopClick }}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="dialog-title">{{ selectedProductName }}</div>
+        <button type="button" style="width:32px;height:32px;border-radius:999px;border:0;background:var(--color-neutral-200);cursor:pointer" sc-camel-on-click="{{ closeOverlay }}">✕</button>
+      </div>
+      <image-slot id="{{ selectedProductImgId }}" shape="rounded" radius="18" placeholder="Foto produk" style="width:100%;aspect-ratio:4/3"></image-slot>
+      <div style="font-weight:800;font-size:20px;color:var(--color-accent)">{{ selectedProductPriceLabel }}</div>
+      <div class="dialog-body">{{ selectedProductDesc }}</div>
+      <div class="field"><label>Jumlah</label>
+        <div style="display:flex;align-items:center;gap:var(--space-2)">
+          <button type="button" style="width:32px;height:32px;border-radius:999px;border:1px solid var(--color-divider);background:transparent;cursor:pointer" sc-camel-on-click="{{ decProductQty }}">−</button>
+          <span style="min-width:24px;text-align:center;font-weight:700">{{ productQty }}</span>
+          <button type="button" style="width:32px;height:32px;border-radius:999px;border:1px solid var(--color-divider);background:transparent;cursor:pointer" sc-camel-on-click="{{ incProductQty }}">+</button>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary" style="border-radius:999px" sc-camel-on-click="{{ closeOverlay }}">Batal</button>
+        <button type="button" class="btn btn-primary" style="border-radius:999px" sc-camel-on-click="{{ addSelectedToCart }}">Tambah ke Keranjang</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ overlayNews }}" hint-placeholder-val="{{ false }}">
+  <div class="dialog-backdrop" style="z-index:100" sc-camel-on-click="{{ closeOverlay }}">
+    <div class="dialog" style="width:min(640px,100%);max-height:84vh;overflow-y:auto;border-radius:24px" sc-camel-on-click="{{ stopClick }}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="tag {{ selectedArticleTagClass }}" style="border-radius:999px">{{ selectedArticleTag }}</span>
+        <button type="button" style="width:32px;height:32px;border-radius:999px;border:0;background:var(--color-neutral-200);cursor:pointer" sc-camel-on-click="{{ closeOverlay }}">✕</button>
+      </div>
+      <image-slot id="{{ selectedArticleImgId }}" shape="rounded" radius="18" placeholder="Foto berita" style="width:100%;aspect-ratio:16/9"></image-slot>
+      <div class="dialog-title">{{ selectedArticleTitle }}</div>
+      <div class="card-meta">{{ selectedArticleDate }}</div>
+      <div class="dialog-body">{{ selectedArticleBody }}</div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ overlayCart }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:100;background:color-mix(in srgb, var(--color-neutral-900) 45%, transparent)" sc-camel-on-click="{{ closeOverlay }}">
+    <div style="position:absolute;top:0;right:0;bottom:0;width:min(400px,100%);background:var(--color-bg);box-shadow:var(--shadow-lg);border-radius:24px 0 0 24px;animation:jkSlideIn .2s ease;display:flex;flex-direction:column" sc-camel-on-click="{{ stopClick }}">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:var(--space-4);border-bottom:2px solid var(--color-divider)">
+        <div class="dialog-title">Keranjang</div>
+        <button type="button" style="width:32px;height:32px;border-radius:999px;border:0;background:var(--color-neutral-200);cursor:pointer" sc-camel-on-click="{{ closeOverlay }}">✕</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)">
+        <sc-if value="{{ hasCartItems }}" hint-placeholder-val="{{ false }}">
+          <sc-for list="{{ cartItems }}" as="c" hint-placeholder-count="2">
+            <div style="display:flex;gap:var(--space-3)">
+              <image-slot id="{{ c.imgId }}" shape="rounded" radius="14" placeholder="Produk" style="width:64px;height:64px;flex:none"></image-slot>
+              <div style="flex:1">
+                <div style="font-weight:700;font-size:14px">{{ c.name }}</div>
+                <div class="text-muted" style="font-size:13px">{{ c.priceLabel }} × {{ c.qty }}</div>
+                <div style="display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-1)">
+                  <button type="button" style="width:26px;height:26px;border-radius:999px;border:1px solid var(--color-divider);background:transparent;cursor:pointer" sc-camel-on-click="{{ c.onDec }}">−</button>
+                  <span style="font-size:13px">{{ c.qty }}</span>
+                  <button type="button" style="width:26px;height:26px;border-radius:999px;border:1px solid var(--color-divider);background:transparent;cursor:pointer" sc-camel-on-click="{{ c.onInc }}">+</button>
+                  <button type="button" class="btn btn-ghost" style="margin-left:auto;font-size:12px" sc-camel-on-click="{{ c.onRemove }}">Hapus</button>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{ hasNoCartItems }}" hint-placeholder-val="{{ true }}">
+          <p class="text-muted">Keranjang kamu masih kosong.</p>
+        </sc-if>
+      </div>
+      <div style="padding:var(--space-4);border-top:2px solid var(--color-divider)">
+        <div style="display:flex;justify-content:space-between;font-weight:800;margin-bottom:var(--space-3)"><span>Total</span><span>{{ cartTotalLabel }}</span></div>
+        <button type="button" class="btn btn-primary btn-block" style="border-radius:999px;justify-content:center" disabled="{{ hasNoCartItems }}" sc-camel-on-click="{{ checkoutCart }}">Checkout</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;newsLayout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;featured&quot;,&quot;options&quot;:[&quot;featured&quot;,&quot;grid&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;showGhostText&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+
+class Component extends DCLogic {
+  state = {
+    windowWidth: 1280,
+    scrolled: false,
+    mobileMenuOpen: false,
+    overlay: 'none',
+    searchQuery: '',
+    cart: [],
+    selectedProductId: null,
+    selectedArticleId: null,
+    selectedCampaignId: null,
+    productQty: 1,
+    donationStep: 1,
+    donationAmount: null,
+    donationCustomAmount: '',
+    donationName: '',
+    donationEmail: '',
+    donationMessage: '',
+    registerName: '',
+    registerEmail: '',
+    registerPhone: '',
+    registerDomisili: '',
+    registerSuccess: false,
+    loginEmail: '',
+    loginPassword: '',
+    toast: null,
+    taglineIndex: 0,
+    activeStoryTab: 0,
+  };
+
+  ecoRailRef = React.createRef();
+
+  taglines = [
+    'Jaringan warga dan komunitas Jakarta untuk gotong royong, usaha bersama, dan pengabdian kota.',
+    'Dari kelurahan ke kelurahan, kami merajut kepedulian jadi aksi nyata.',
+    'Satu data, satu jaring, satu tujuan: Jakarta yang saling menjaga.',
+  ];
+
+  ecoItemsRaw = [
+    { id: 'e1', label: 'Komunitas Wilayah', imgId: 'eco-1', imgPlaceholder: 'Foto komunitas wilayah' },
+    { id: 'e2', label: 'Usaha & UMKM', imgId: 'eco-2', imgPlaceholder: 'Foto pelaku UMKM' },
+    { id: 'e3', label: 'Pendidikan', imgId: 'eco-3', imgPlaceholder: 'Foto kegiatan pendidikan' },
+    { id: 'e4', label: 'Aksi Sosial', imgId: 'eco-4', imgPlaceholder: 'Foto aksi sosial' },
+    { id: 'e5', label: 'Ruang Digital', imgId: 'eco-5', imgPlaceholder: 'Foto ruang digital' },
+  ];
+
+  storyTabsRaw = [
+    { id: 0, label: 'Awal Mula', desc: 'Bermula dari kumpulan kecil warga yang saling membantu di satu kelurahan, Jalakarta tumbuh dari kepercayaan dan gotong royong sederhana.' },
+    { id: 1, label: 'Berkembang', desc: 'Jaringan meluas ke puluhan wilayah, menghubungkan komunitas, pelaku usaha, dan relawan lintas Jakarta dalam satu wadah.' },
+    { id: 2, label: 'Masa Depan', desc: 'Kini kami membangun ekosistem digital dan program berkelanjutan agar dampak Jalakarta terus tumbuh bersama kota.' },
+  ];
+
+  news = [
+    { id: 'n1', tag: 'Khutbah', tagClass: 'tag-accent', title: 'Refleksi Idul Adha: Menghidupkan Kembali Makna Berbagi', date: '30 Mei 2026', imgId: 'news-1', imgPlaceholder: 'Foto khutbah Idul Adha', body: 'Dalam khutbah yang disampaikan di hadapan ratusan anggota, pentingnya berbagi dan kepedulian sosial kembali ditegaskan sebagai fondasi utama gerakan Jalakarta di tengah kota.' },
+    { id: 'n2', tag: 'Kabar', tagClass: 'tag-neutral', title: 'Qurban Jalakarta 1447 H Disalurkan ke 12 Titik di Jakarta', date: '30 Mei 2026', imgId: 'news-2', imgPlaceholder: 'Foto penyaluran qurban', body: 'Sebanyak 38 hewan qurban berhasil dihimpun dan disalurkan ke 12 titik penerima manfaat tersebar di lima wilayah kota, melibatkan lebih dari 150 relawan anggota.' },
+    { id: 'n3', tag: 'Sejarah', tagClass: 'tag-accent-2', title: 'Menelusuri Jejak Perintis Gerakan Sosial Betawi', date: '15 Mei 2026', imgId: 'news-3', imgPlaceholder: 'Foto arsip sejarah', body: 'Sebuah catatan singkat tentang tokoh-tokoh yang merintis semangat gotong royong warga Jakarta, jauh sebelum istilah komunitas menjadi populer.' },
+    { id: 'n4', tag: 'Kabar', tagClass: 'tag-neutral', title: 'Silaturahmi Akbar 2026: Merajut Jaringan Antar Wilayah', date: '17 Mei 2026', imgId: 'news-4', imgPlaceholder: 'Foto silaturahmi akbar', body: 'Acara tahunan ini mempertemukan perwakilan anggota dari 42 wilayah untuk merumuskan program kolaborasi lintas komunitas di tahun mendatang.' },
+    { id: 'n5', tag: 'Kabar', tagClass: 'tag-neutral', title: 'Etalase UMKM Anggota Tumbuh 40% di Triwulan Ini', date: '17 Mei 2026', imgId: 'news-5', imgPlaceholder: 'Foto UMKM anggota', body: 'Program pendampingan usaha kecil yang digagas Jalakarta mencatat pertumbuhan omzet rata-rata 40% di antara pelaku usaha anggota pada triwulan terakhir.' },
+  ];
+
+  products = [
+    { id: 'p1', category: 'Kaos', name: 'Kaos Jalakarta Edisi Perdana', price: 120000, imgId: 'product-1', imgPlaceholder: 'Foto kaos Jalakarta', desc: 'Kaos katun combed 30s warna hitam dengan sablon logo Jalakarta, tersedia ukuran S–XXL.', span: 'span 2', imgAspect: '2/1' },
+    { id: 'p2', category: 'Aksesoris', name: 'Totebag Kanvas Jalakarta', price: 75000, imgId: 'product-2', imgPlaceholder: 'Foto totebag kanvas', desc: 'Totebag kanvas tebal 12oz dengan cetak logo Jalakarta, cocok untuk kegiatan sehari-hari.', span: 'span 1', imgAspect: '1/1' },
+    { id: 'p3', category: 'Buku', name: 'Buku Saku "Jejak Jalakarta"', price: 95000, imgId: 'product-3', imgPlaceholder: 'Foto buku saku', desc: 'Kumpulan catatan perjalanan dan kisah anggota Jalakarta dalam merawat gotong royong warga kota.', span: 'span 1', imgAspect: '1/1' },
+    { id: 'p4', category: 'Aksesoris', name: 'Pin Enamel Logo Jalakarta', price: 35000, imgId: 'product-4', imgPlaceholder: 'Foto pin enamel', desc: 'Pin enamel keras dengan detail logo Jalakarta, ukuran 3cm, dilengkapi kemasan kartu.', span: 'span 1', imgAspect: '1/1' },
+  ];
+
+  campaigns = [
+    { id: 'c1', category: 'Sosial', title: 'Dana Kemanusiaan Mingguan', collectedNum: 2450000, goalNum: 5000000, imgId: 'campaign-1', imgPlaceholder: 'Foto kegiatan sosial' },
+    { id: 'c2', category: 'Pendidikan', title: 'Beasiswa Anak Anggota', collectedNum: 8100000, goalNum: 15000000, imgId: 'campaign-2', imgPlaceholder: 'Foto kegiatan pendidikan' },
+    { id: 'c3', category: 'Bencana', title: 'Bantuan Bencana Sigap', collectedNum: 1200000, goalNum: 3000000, imgId: 'campaign-3', imgPlaceholder: 'Foto tanggap bencana' },
+  ];
+
+  donationPresetsRaw = [50000, 100000, 250000, 500000];
+
+  componentDidMount() {
+    this.updateWidth = () => this.setState({ windowWidth: window.innerWidth });
+    this.updateWidth();
+    window.addEventListener('resize', this.updateWidth);
+    this.updateScroll = () => this.setState(s => (window.scrollY > 40) !== s.scrolled ? { scrolled: window.scrollY > 40 } : null);
+    window.addEventListener('scroll', this.updateScroll, { passive: true });
+  }
+  componentWillUnmount() {
+    window.removeEventListener('resize', this.updateWidth);
+    window.removeEventListener('scroll', this.updateScroll);
+  }
+
+  fmt(n) { return 'Rp' + Math.round(n).toLocaleString('id-ID'); }
+
+  closeOverlay = () => this.setState({ overlay: 'none', donationStep: 1, registerSuccess: false, productQty: 1 });
+  stopClick = (e) => e.stopPropagation();
+  toggleMobileMenu = () => this.setState(s => ({ mobileMenuOpen: !s.mobileMenuOpen }));
+  openSearch = () => this.setState({ overlay: 'search', mobileMenuOpen: false });
+  openLogin = () => this.setState({ overlay: 'login', mobileMenuOpen: false });
+  openRegister = () => this.setState({ overlay: 'register', mobileMenuOpen: false, registerSuccess: false });
+  openCart = () => this.setState({ overlay: 'cart', mobileMenuOpen: false });
+  scrollToEco = () => { const el = document.getElementById('ekosistem'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  scrollToDonasiList = () => { const el = document.getElementById('donasi-list'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+  scrollEcoLeft = () => { if (this.ecoRailRef.current) this.ecoRailRef.current.scrollBy({ left: -280, behavior: 'smooth' }); };
+  scrollEcoRight = () => { if (this.ecoRailRef.current) this.ecoRailRef.current.scrollBy({ left: 280, behavior: 'smooth' }); };
+  prevTagline = () => this.setState(s => ({ taglineIndex: (s.taglineIndex - 1 + this.taglines.length) % this.taglines.length }));
+  nextTagline = () => this.setState(s => ({ taglineIndex: (s.taglineIndex + 1) % this.taglines.length }));
+  setStoryTab = (id) => this.setState({ activeStoryTab: id });
+
+  onSearchChange = (e) => this.setState({ searchQuery: e.target.value });
+  onLoginEmailChange = (e) => this.setState({ loginEmail: e.target.value });
+  onLoginPasswordChange = (e) => this.setState({ loginPassword: e.target.value });
+  submitLogin = () => { this.setState({ overlay: 'none', toast: 'Berhasil masuk sebagai ' + (this.state.loginEmail || 'anggota') }); this.clearToastSoon(); };
+
+  onRegisterNameChange = (e) => this.setState({ registerName: e.target.value });
+  onRegisterEmailChange = (e) => this.setState({ registerEmail: e.target.value });
+  onRegisterPhoneChange = (e) => this.setState({ registerPhone: e.target.value });
+  onRegisterDomisiliChange = (e) => this.setState({ registerDomisili: e.target.value });
+  submitRegister = () => this.setState({ registerSuccess: true });
+
+  openArticle = (id) => this.setState({ overlay: 'news', selectedArticleId: id });
+  openProduct = (id) => this.setState({ overlay: 'product', selectedProductId: id, productQty: 1 });
+  openDonation = (id) => this.setState({ overlay: 'donation', selectedCampaignId: id, donationStep: 1, donationAmount: null, donationCustomAmount: '' });
+
+  selectDonationAmount = (amt) => this.setState({ donationAmount: amt, donationCustomAmount: '' });
+  onDonationCustomChange = (e) => this.setState({ donationCustomAmount: e.target.value, donationAmount: null });
+  goDonationStep2 = () => this.setState({ donationStep: 2 });
+  goDonationStep1 = () => this.setState({ donationStep: 1 });
+  onDonationNameChange = (e) => this.setState({ donationName: e.target.value });
+  onDonationEmailChange = (e) => this.setState({ donationEmail: e.target.value });
+  onDonationMessageChange = (e) => this.setState({ donationMessage: e.target.value });
+  submitDonation = () => this.setState({ donationStep: 3 });
+
+  incProductQty = () => this.setState(s => ({ productQty: s.productQty + 1 }));
+  decProductQty = () => this.setState(s => ({ productQty: Math.max(1, s.productQty - 1) }));
+
+  addSelectedToCart = () => {
+    const product = this.products.find(p => p.id === this.state.selectedProductId);
+    if (!product) return;
+    this.setState(s => {
+      const existing = s.cart.find(c => c.id === product.id);
+      let cart;
+      if (existing) cart = s.cart.map(c => c.id === product.id ? { ...c, qty: c.qty + s.productQty } : c);
+      else cart = [...s.cart, { id: product.id, qty: s.productQty }];
+      return { cart, overlay: 'none', productQty: 1, toast: product.name + ' ditambahkan ke keranjang' };
+    });
+    this.clearToastSoon();
+  };
+  quickAddToCart = (id) => {
+    const product = this.products.find(p => p.id === id);
+    if (!product) return;
+    this.setState(s => {
+      const existing = s.cart.find(c => c.id === id);
+      const cart = existing ? s.cart.map(c => c.id === id ? { ...c, qty: c.qty + 1 } : c) : [...s.cart, { id, qty: 1 }];
+      return { cart, toast: product.name + ' ditambahkan ke keranjang' };
+    });
+    this.clearToastSoon();
+  };
+  incCartQty = (id) => this.setState(s => ({ cart: s.cart.map(c => c.id === id ? { ...c, qty: c.qty + 1 } : c) }));
+  decCartQty = (id) => this.setState(s => ({ cart: s.cart.map(c => c.id === id ? { ...c, qty: Math.max(1, c.qty - 1) } : c) }));
+  removeCartItem = (id) => this.setState(s => ({ cart: s.cart.filter(c => c.id !== id) }));
+  checkoutCart = () => { this.setState({ overlay: 'none', cart: [], toast: 'Pesanan berhasil dibuat, cek email untuk instruksi pembayaran' }); this.clearToastSoon(); };
+
+  clearToastSoon = () => { clearTimeout(this._toastTimer); this._toastTimer = setTimeout(() => this.setState({ toast: null }), 2800); };
+
+  renderVals() {
+    const s = this.state;
+    const isMobile = s.windowWidth < 860;
+    const sidePad = isMobile ? '20px' : '48px';
+
+    const newsLayout = this.props.newsLayout ?? 'featured';
+    const showGhostText = this.props.showGhostText ?? true;
+
+    const ecoItems = this.ecoItemsRaw.map(e => ({ ...e, onClick: () => {} }));
+
+    const storyTabs = this.storyTabsRaw.map(t => ({
+      label: t.label, onClick: () => this.setStoryTab(t.id),
+      bg: s.activeStoryTab === t.id ? 'var(--color-accent)' : 'transparent',
+      color: s.activeStoryTab === t.id ? '#fff' : 'rgba(255,255,255,.75)',
+    }));
+    const activeStoryDesc = this.storyTabsRaw[s.activeStoryTab].desc;
+
+    const news = this.news.map(n => ({ ...n, onOpen: () => this.openArticle(n.id) }));
+    const featuredNews = news[0];
+    const rankedNews = news.slice(1).map((n, i) => ({ ...n, rank: '0' + (i + 1) }));
+
+    const products = this.products.map(p => ({
+      ...p, priceLabel: this.fmt(p.price), onOpen: () => this.openProduct(p.id),
+      onQuickAdd: (e) => { e.stopPropagation(); this.quickAddToCart(p.id); },
+      isKaos: p.category === 'Kaos', isAksesoris: p.category === 'Aksesoris', isBuku: p.category === 'Buku',
+      span: isMobile ? 'span 1' : p.span,
+    }));
+    const campaigns = this.campaigns.map(c => ({
+      ...c, collected: this.fmt(c.collectedNum), goal: this.fmt(c.goalNum),
+      pct: Math.min(100, Math.round((c.collectedNum / c.goalNum) * 100)),
+      onDonate: () => this.openDonation(c.id),
+      isSocial: c.category === 'Sosial', isPendidikan: c.category === 'Pendidikan', isBencana: c.category === 'Bencana',
+    }));
+
+    const cartItems = s.cart.map(c => {
+      const p = this.products.find(x => x.id === c.id);
+      return { id: c.id, imgId: p.imgId, name: p.name, priceLabel: this.fmt(p.price), qty: c.qty,
+        onInc: () => this.incCartQty(c.id), onDec: () => this.decCartQty(c.id), onRemove: () => this.removeCartItem(c.id) };
+    });
+    const cartCount = s.cart.reduce((a, c) => a + c.qty, 0);
+    const cartTotalNum = s.cart.reduce((a, c) => { const p = this.products.find(x => x.id === c.id); return a + (p ? p.price * c.qty : 0); }, 0);
+
+    const query = s.searchQuery.trim().toLowerCase();
+    const searchPool = [
+      ...this.news.map(n => ({ kind: 'Berita', title: n.title, onOpen: () => { this.setState({ overlay: 'none' }); this.openArticle(n.id); } })),
+      ...this.products.map(p => ({ kind: 'Produk', title: p.name, onOpen: () => { this.setState({ overlay: 'none' }); this.openProduct(p.id); } })),
+      ...this.campaigns.map(c => ({ kind: 'Donasi', title: c.title, onOpen: () => { this.setState({ overlay: 'none' }); this.openDonation(c.id); } })),
+    ];
+    const searchResults = (query ? searchPool.filter(r => r.title.toLowerCase().includes(query)) : searchPool).slice(0, 8);
+
+    const selectedProduct = this.products.find(p => p.id === s.selectedProductId);
+    const selectedArticle = this.news.find(n => n.id === s.selectedArticleId);
+    const selectedCampaign = this.campaigns.find(c => c.id === s.selectedCampaignId);
+
+    const donationAmountNum = s.donationAmount ?? (parseInt(s.donationCustomAmount, 10) || 0);
+    const donationPresets = this.donationPresetsRaw.map(v => ({
+      label: this.fmt(v), btnClass: s.donationAmount === v ? 'btn-primary' : 'btn-secondary',
+      onSelect: () => this.selectDonationAmount(v),
+    }));
+
+    return {
+      sidePad, isMobile, showDesktopNav: !isMobile,
+      navSpacerMargin: isMobile ? '0' : 'auto',
+      headerBg: s.scrolled ? 'var(--color-bg)' : 'transparent',
+      headerBlur: s.scrolled ? 'none' : 'blur(0px)',
+      headerShadow: s.scrolled ? 'var(--shadow-sm)' : 'none',
+      headerText: s.scrolled ? 'var(--color-text)' : '#fff',
+      headerBorder: s.scrolled ? 'var(--color-divider)' : 'rgba(255,255,255,.4)',
+      navPillBg: s.scrolled ? 'var(--color-neutral-100)' : 'rgba(255,255,255,.12)',
+
+      mobileMenuOpen: s.mobileMenuOpen, toggleMobileMenu: this.toggleMobileMenu,
+      openSearch: this.openSearch, openLogin: this.openLogin, openRegister: this.openRegister, openCart: this.openCart,
+      scrollToEco: this.scrollToEco, scrollToDonasiList: this.scrollToDonasiList,
+      scrollEcoLeft: this.scrollEcoLeft, scrollEcoRight: this.scrollEcoRight, ecoRailRef: this.ecoRailRef,
+      hasCartItems: cartCount > 0, hasNoCartItems: cartCount === 0, cartCount, cartItems, cartTotalLabel: this.fmt(cartTotalNum),
+      checkoutCart: this.checkoutCart,
+
+      heroHeight: isMobile ? '560px' : 'min(82vh,720px)',
+      heroPad: isMobile ? '90px 20px 0' : '0 48px',
+      heroTitleSize: isMobile ? '46px' : 'clamp(56px,6.5vw,92px)',
+      heroTagline: this.taglines[s.taglineIndex],
+      prevTagline: this.prevTagline, nextTagline: this.nextTagline,
+
+      statCols: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)',
+      statBorder: isMobile ? 'border-bottom:1px solid var(--color-divider);padding-bottom:var(--space-3);margin-bottom:var(--space-3)' : 'border-right:1px solid var(--color-divider)',
+
+      ecoItems,
+
+      storyPad: isMobile ? 'var(--space-6) var(--space-4)' : '56px',
+      storyDir: isMobile ? 'column' : 'row',
+      storyTabs, activeStoryDesc,
+      storyQuote: 'Merawat kota adalah tanggung jawab bersama, bukan tugas segelintir orang.',
+      storyAuthor: 'Rina Wulandari', storyRole: 'Ketua Jalakarta',
+
+      isNewsFeatured: newsLayout === 'featured', isNewsGrid: newsLayout === 'grid',
+      newsFeaturedDir: isMobile ? 'column' : 'row', newsFeaturedAspect: isMobile ? '4/3' : '5/6',
+      newsGridCols: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)',
+      featuredNews, rankedNews, news,
+
+      donationHeroHeight: isMobile ? '320px' : '440px',
+      donationCardPos: isMobile ? 'left:16px;right:16px;bottom:-40px' : 'right:48px;bottom:40px',
+      donationCols: isMobile ? '1fr' : 'repeat(3,1fr)',
+      campaigns,
+
+      shopCols: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)',
+      products,
+
+      showGhostText,
+
+      footerCols: isMobile ? '1fr' : '1.4fr 1fr 1fr',
+
+      overlaySearch: s.overlay === 'search', overlayLogin: s.overlay === 'login', overlayRegister: s.overlay === 'register',
+      overlayDonation: s.overlay === 'donation', overlayProduct: s.overlay === 'product', overlayNews: s.overlay === 'news', overlayCart: s.overlay === 'cart',
+      closeOverlay: this.closeOverlay, stopClick: this.stopClick,
+
+      searchQuery: s.searchQuery, onSearchChange: this.onSearchChange,
+      hasSearchResults: searchResults.length > 0, hasNoSearchResults: searchResults.length === 0, searchResults,
+
+      loginEmail: s.loginEmail, loginPassword: s.loginPassword,
+      onLoginEmailChange: this.onLoginEmailChange, onLoginPasswordChange: this.onLoginPasswordChange, submitLogin: this.submitLogin,
+
+      registerFormVisible: !s.registerSuccess, registerSuccess: s.registerSuccess,
+      registerName: s.registerName, registerEmail: s.registerEmail, registerPhone: s.registerPhone, registerDomisili: s.registerDomisili,
+      registerDisabled: !(s.registerName && s.registerEmail && s.registerPhone),
+      onRegisterNameChange: this.onRegisterNameChange, onRegisterEmailChange: this.onRegisterEmailChange,
+      onRegisterPhoneChange: this.onRegisterPhoneChange, onRegisterDomisiliChange: this.onRegisterDomisiliChange, submitRegister: this.submitRegister,
+
+      donationDialogTitle: s.donationStep === 3 ? 'Terima Kasih!' : 'Donasi',
+      donationStep1: s.donationStep === 1, donationStep2: s.donationStep === 2, donationStep3: s.donationStep === 3,
+      selectedCampaignTitle: selectedCampaign ? selectedCampaign.title : '',
+      donationPresets, donationCustomAmount: s.donationCustomAmount, onDonationCustomChange: this.onDonationCustomChange,
+      donationAmountInvalid: donationAmountNum <= 0,
+      donationAmountLabel: this.fmt(donationAmountNum),
+      goDonationStep1: this.goDonationStep1, goDonationStep2: this.goDonationStep2,
+      donationName: s.donationName, donationEmail: s.donationEmail, donationMessage: s.donationMessage,
+      onDonationNameChange: this.onDonationNameChange, onDonationEmailChange: this.onDonationEmailChange, onDonationMessageChange: this.onDonationMessageChange,
+      submitDonation: this.submitDonation, donationThanksName: s.donationName ? (', ' + s.donationName) : '',
+
+      selectedProductName: selectedProduct ? selectedProduct.name : '',
+      selectedProductImgId: selectedProduct ? selectedProduct.imgId : 'product-x',
+      selectedProductPriceLabel: selectedProduct ? this.fmt(selectedProduct.price) : '',
+      selectedProductDesc: selectedProduct ? selectedProduct.desc : '',
+      productQty: s.productQty, incProductQty: this.incProductQty, decProductQty: this.decProductQty, addSelectedToCart: this.addSelectedToCart,
+
+      selectedArticleTag: selectedArticle ? selectedArticle.tag : '',
+      selectedArticleTagClass: selectedArticle ? selectedArticle.tagClass : 'tag-neutral',
+      selectedArticleImgId: selectedArticle ? selectedArticle.imgId : 'news-x',
+      selectedArticleTitle: selectedArticle ? selectedArticle.title : '',
+      selectedArticleDate: selectedArticle ? selectedArticle.date : '',
+      selectedArticleBody: selectedArticle ? selectedArticle.body : '',
+
+      toast: s.toast,
+    };
+  }
+}
+
+</script>
+
+
+</body></html>

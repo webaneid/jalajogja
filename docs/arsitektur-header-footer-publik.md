@@ -213,6 +213,39 @@ kompatibel dengan registry.
 
 ---
 
+## Desain 3: Pill Header (Modern)
+
+> Ditambahkan 2026-07-16, sumber ide dari `design-refs/jalakarta-v2/` (lihat
+> `design-refs/README.md` untuk alur kerja mengambil desain dari referensi eksternal — bukan
+> disalin mentah, hanya diambil struktur/bahasanya, direkonstruksi jadi komponen React biasa
+> memakai CSS variable tema tenant, bukan warna hardcoded dari sumbernya).
+
+File: `headers/pill-header.tsx`. Client component (butuh session untuk `UserMenu`, sama seperti
+FlexHeader).
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ [J] Nama    ( Nav Item · Nav Item · Nav Item )   (🔍)(🛒)(👤)  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- Logo mark: badge kotak `rounded-xl` (bukan lingkaran seperti Flex/Classic) — sinyal visual
+  pembeda utama antar desain.
+- Nav menu: kapsul (`bg-muted/60 rounded-full p-1`, tiap item `rounded-full`) — desktop only.
+- Ikon bulat berbingkai (search, cart) — search membuka **overlay dialog terpusat** (bukan input
+  inline seperti FlexHeader), reuse endpoint `/api/search` yang sama, debounce 300ms identik.
+- Mobile: **overlay full-screen** (bukan bottom-nav seperti FlexHeader, bukan drawer seperti
+  Classic) — nav item besar 2xl bold, tombol Masuk/Daftar atau Akun Saya di bawah.
+- `CartButton` diberi prop `className="flex"` untuk override default `hidden md:flex` — desain ini
+  sengaja menampilkan cart di semua ukuran layar (beda dari 2 desain lain). Prop `className`
+  ditambahkan ke `CartButton` sebagai perubahan additive (default tetap `hidden md:flex` kalau
+  tidak di-pass, jadi FlexHeader/ClassicHeader tidak terpengaruh).
+- Warna sepenuhnya lewat `bg-primary`/`text-primary-foreground` (CSS variable tema tenant) — tidak
+  ada hex hardcoded dari desain sumber. Font mengikuti `--font-heading`/`--font-body` tenant seperti
+  header lain, tidak memaksa font "Archivo" dari sumber.
+
+---
+
 ## Desain Footer
 
 Footer adalah server component — tidak butuh session.
@@ -552,6 +585,7 @@ Step 10 — tsc --noEmit → 0 errors
 | `/settings/website` section pilih desain + `saveDesignSettingsAction` | ✅ Selesai |
 | `/(public)/[tenant]/login` + `/register` dummy | ✅ Selesai |
 | Mobile bottom navigation bar | ✅ Selesai (dalam FlexHeader) |
+| `headers/pill-header.tsx` (Desain 3, § "Desain 3: Pill Header") | ✅ Selesai (2026-07-16) |
 | Notifikasi lonceng | ⬜ Menunggu Modul Pengumuman |
 
 ### Catatan Bug Fix & UI Decisions

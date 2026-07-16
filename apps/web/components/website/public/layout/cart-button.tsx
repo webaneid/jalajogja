@@ -6,7 +6,16 @@ import { ShoppingCart } from "lucide-react";
 import { getCartCountAction } from "@/app/(public)/[tenant]/cart/actions";
 import { cn } from "@/lib/utils";
 
-export function CartButton({ tenantSlug, baseUrl }: { tenantSlug: string; baseUrl: string }) {
+export function CartButton({
+  tenantSlug,
+  baseUrl,
+  className = "hidden md:flex",
+}: {
+  tenantSlug: string;
+  baseUrl:    string;
+  /** Kelas visibilitas responsif — default desktop-only agar backward compatible dengan header lama */
+  className?: string;
+}) {
   const [count, setCount]       = useState(0);
   const [, startTransition]     = useTransition();
   const pathname                = usePathname();
@@ -23,7 +32,10 @@ export function CartButton({ tenantSlug, baseUrl }: { tenantSlug: string; baseUr
   return (
     <a
       href={`${baseUrl}/keranjang`}
-      className="relative hidden md:flex items-center justify-center h-8 w-8 rounded-full hover:bg-muted/60 text-muted-foreground transition-colors"
+      className={cn(
+        "relative items-center justify-center h-8 w-8 rounded-full hover:bg-muted/60 text-muted-foreground transition-colors",
+        className,
+      )}
       aria-label="Keranjang belanja"
     >
       <ShoppingCart className="h-4 w-4" />

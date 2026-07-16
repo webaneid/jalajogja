@@ -4585,6 +4585,67 @@ komentar kode yang menjelaskan "milik siapa" sesuatu) WAJIB pakai "Jalakarta" �
 atau "jalagon". Pengecualian hanya untuk: import specifier `@jalajogja/*`, path `/var/www/jalajogja`,
 proses PM2 `jalajogja`, nama database/user Postgres default, dan git remote/clone URL.
 
+### [2026-07-16] Header Baru "Pill (Modern)" — Alur Kerja Ambil Desain dari Referensi Eksternal
+
+**Konteks**: user diskusi soal keragaman desain antar tenant tanpa mengorbankan performa (lihat
+`docs/arsitektur-frontend-publik.md` § 4 untuk hasil diskusi arah "tambah variasi komponen" vs
+"theme engine terpisah" — opsi pertama dipilih). User punya 1 desain landing page lengkap yang
+dibuat pakai tool AI design terpisah ("Claude design"), minta diambil per-bagian: header dulu, lalu
+footer, lalu hero.
+
+**Folder `design-refs/` dibuat** (root repo, di luar `apps/` — Next.js tidak pernah membaca folder
+ini, nol dampak build) sebagai tempat parkir file sumber desain + `README.md` yang mendokumentasikan
+alur kerja untuk sesi mendatang: satu folder per desain, source file taruh di situ, Claude Code baca
+lalu **pecah per bagian** (bukan ambil 1 file jadi 1 "tema" utuh) — konsisten dengan arsitektur kita
+yang berbasis komponen lepas (header/footer/section independen, bukan theme monolitik ala WordPress).
+
+**Format file sumber ternyata bukan HTML biasa**: file `.html` yang di-download dari tool AI design
+tsb adalah **self-contained "bundle"** — HTML asli + semua asset (font, JS) di-encode base64 di dalam
+`<script type="__bundler/manifest">` (JSON per-UUID asset) dan `<script type="__bundler/template">`
+(JSON STRING berisi seluruh markup, di-unpack via JS saat file dibuka di browser). Membaca file
+mentahnya langsung tidak berguna — markup asli tidak terlihat, ter-escape di dalam JSON string.
+**Cara decode**: parse kedua script tag itu sebagai JSON (regex extract by `type` attribute), dump
+`template` JSON string apa adanya ke file `.html` baru (sudah unescaped otomatis oleh `JSON.parse`).
+Script sekali-pakai ditulis ke `/tmp` (bukan disimpan permanen — bukan bagian dari alur kerja
+standar, cukup didokumentasikan di sini kalau pola file sejenis muncul lagi).
+
+**Desain sumber juga bukan React/HTML polos** — pakai sintaks templating kustom milik tool tsb
+(`{{ variable }}`, `<sc-if>`, `<sc-for>`, `sc-camel-on-click`, `<image-slot>`, class `Component
+extends DCLogic` dengan `state`). **Tidak bisa disalin-tempel jadi kode kita** — yang diambil cuma
+struktur DOM, class Tailwind-equivalent, token desain (warna/spacing/radius), dan urutan elemen;
+logic interaktif (cart, search, dialog) dibangun ulang pakai infrastruktur kita sendiri (server
+action, `authClient`, dst), bukan port logic `DCLogic` sumbernya.
+
+**Header baru: `pill-header.tsx`** (design id `"pill"`, label "Pill (Modern)") — dipasang ke
+`lib/header-designs.ts` (tambah ke `HEADER_DESIGN_IDS`) + `public-header.tsx` (tambah `case`), pola
+identik dengan cara `flex`/`classic` terdaftar — TIDAK ada perubahan di `website-settings-client.tsx`
+karena picker UI sudah generik (map atas `HEADER_DESIGN_IDS`). Detail visual: logo badge kotak
+(`rounded-xl`, beda dari 2 desain lain yang lingkaran), nav kapsul, ikon bulat search/cart, search
+sebagai **overlay dialog** (bukan input inline seperti FlexHeader), mobile pakai **overlay
+full-screen** (bukan bottom-nav/drawer seperti 2 desain lain) — dokumentasi lengkap di
+`docs/arsitektur-header-footer-publik.md` § "Desain 3: Pill Header (Modern)".
+
+**Warna/font TIDAK disalin dari sumber** — desain sumber pakai warna aksen merah-oranye hardcoded
+(`#ec3013`) dan font "Archivo"; header baru kita 100% pakai `bg-primary`/`text-primary-foreground`
+(CSS variable tema tenant) dan warisi `--font-heading`/`--font-body` seperti header lain — supaya
+otomatis ikut warna/font organisasi manapun yang memilihnya, bukan terkunci ke tampilan mockup asli.
+**Aturan ini berlaku untuk footer dan hero yang menyusul**: ambil struktur/bahasa desain, bukan nilai
+warna/font mentahnya.
+
+**`CartButton` diberi prop opsional `className`** (default `"hidden md:flex"`, sama persis perilaku
+lama) — perubahan additive supaya header baru bisa override jadi selalu tampil (`className="flex"`)
+tanpa mengubah perilaku `FlexHeader`/`ClassicHeader` yang sudah ada dan tidak pass prop ini.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build --filter=@jalajogja/web` — 0 error, build sukses.
+**Belum diverifikasi visual di browser** — environment sesi ini tidak punya Docker/Postgres lokal
+untuk jalankan dev server penuh + login admin untuk pilih desain baru di `/settings/website`. User
+perlu cek tampilan sungguhan di dev machine sendiri sebelum dianggap final secara visual.
+
+**Sisa pekerjaan dari desain yang sama**: footer dan hero section belum diambil — `design-refs/
+jalakarta-v2/decoded.html` (hasil decode, sudah plain HTML terbaca) dan `assets-manifest.json`
+sengaja DIPERTAHANKAN di repo (bukan dihapus setelah dipakai) supaya sesi berikutnya tidak perlu
+decode ulang dari file bundle mentah.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
