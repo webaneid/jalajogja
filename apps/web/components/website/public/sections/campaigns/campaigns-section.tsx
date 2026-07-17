@@ -1,14 +1,14 @@
 import { eq, desc, and, inArray } from "drizzle-orm";
-import type { TenantDb } from "@jalajogja/db";
+import { getSettings, type TenantDb } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import { buildProgressInfoBlock, type CampaignCardData } from "@/lib/campaign-card-templates";
 import { resolveQurbanInfoBlocks } from "@/lib/campaign-info-block";
 import { resolveDonorCounts } from "@/lib/campaign-donor-count";
 import type { CampaignsSectionData, CampaignsSectionDesignId, CampaignsSectionProps } from "@/lib/campaigns-section-designs";
+import { CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS, type CampaignArchiveCardDesignId } from "@/lib/campaign-archive-card-designs";
 import { CampaignsDesign1 } from "./campaigns-design-1";
 import { CampaignsDesign2 } from "./campaigns-design-2";
 import { CampaignsDesign3 } from "./campaigns-design-3";
-import { CampaignsDesign4 } from "./campaigns-design-4";
 
 type Props = {
   data:         CampaignsSectionData;
@@ -113,12 +113,20 @@ export async function CampaignsSection({ data, variant, tenantClient, tenantSlug
   }
 
   const campaigns = await fetchCampaigns(tenantClient, data, tenantSlug);
-  const props: CampaignsSectionProps = { data, campaigns, tenantSlug, sectionTitle, filterHref };
+
+  // Desain kartu untuk "Grid Donasi" (Desain 1) — ikut setting Desain Kartu Arsip yang aktif,
+  // bukan pilihan terpisah. Lihat docs/arsitektur-donasi.md § 14o.
+  const donasiSettings   = await getSettings(tenantClient, "donasi");
+  const archiveDesignRaw = donasiSettings.campaign_archive_design as { design?: string } | undefined;
+  const cardDesign: CampaignArchiveCardDesignId = CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS.includes(archiveDesignRaw?.design as CampaignArchiveCardDesignId)
+    ? (archiveDesignRaw!.design as CampaignArchiveCardDesignId)
+    : "1";
+
+  const props: CampaignsSectionProps = { data, campaigns, tenantSlug, sectionTitle, filterHref, cardDesign };
 
   switch (variant) {
     case "2": return <CampaignsDesign2 {...props} />;
     case "3": return <CampaignsDesign3 {...props} />;
-    case "4": return <CampaignsDesign4 {...props} />;
     default:  return <CampaignsDesign1 {...props} />;
   }
 }

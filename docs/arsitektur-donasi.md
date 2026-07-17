@@ -1812,11 +1812,25 @@ langkah ini, digantikan file-file baru di atas (nama berbeda: `campaign-archive-
 
 ---
 
-### 14n. Desain 2 — Modern Capsule (Card + Section Landing)
+### 14n. Desain 2 — Modern Capsule (Card + Section Landing) — REVISI, lihat § 14o
 
-> **Status: SELESAI — diimplementasikan 2026-07-17.** Sumber desain:
-> `design-refs/Bantuanku/Bantuanku Landing.html`, section "Aksi Prioritas" (baris ~384–502) —
-> card `<article class="... rounded-3xl overflow-hidden shadow-soft lift">`.
+> **Status: SUPERSEDED 2026-07-17, di hari yang sama.** Bagian "dua manifestasi, satu komponen
+> kartu" di bawah — Desain 4 TERPISAH di registry landing section — adalah **salah paham**.
+> Dikoreksi user: *"design card yang kita buat untuk arsip itu adalah card design untuk section
+> donasi, sehingga konsisten antara card di section landingpage dan card ketika menjadi
+> arsip... kecuali nanti kita bikin design section donasi yang mengharuskan atau membutuhkan
+> card custom."* Maksud sebenarnya: Desain Kartu Arsip (Klasik/Modern Capsule) adalah **satu
+> sumber kebenaran** untuk tampilan card campaign — section landing "Grid Donasi" (layout paling
+> generik, bukan featured/list) WAJIB otomatis ikut setting itu, BUKAN punya pilihan "Desain 4"
+> terpisah sendiri. Lihat § 14o untuk versi final. Isi di bawah dipertahankan sebagai catatan
+> sejarah — jangan diikuti untuk implementasi baru.
+
+Sumber desain: `design-refs/Bantuanku/Bantuanku Landing.html`, section "Aksi Prioritas"
+(baris ~384–502) — card `<article class="... rounded-3xl overflow-hidden shadow-soft lift">`.
+Bagian ini (komponen `CampaignCardCapsule`, keputusan "ambil visual bukan mesin", info block
+reuse § 14k, CTA via `<span class="btn ...">`) **semuanya tetap benar dan dibawa ke § 14o tanpa
+perubahan** — yang direvisi HANYA cara Desain 2 dipasang ke landing section (bukan komponen
+kartunya sendiri).
 
 **Keputusan yang dikunci — ambil visual, bukan "mesin"**: card sumber punya badge urgensi
 ("MENDESAK" merah berkedip / "PRIORITAS" kuning) di pojok kiri-atas gambar. Dikonfirmasi user:
@@ -1981,6 +1995,73 @@ bukan elemen interaktif — precedent baru untuk CTA di dalam card, lihat penjel
    `createPageAction`/`createPageDraftAction`/`createSingletonPageAction`/`deletePageAction` di
    file yang sama juga tidak revalidate halaman publik — dampaknya lebih kecil (create biasanya
    draft dulu; delete pada page published masih akan kena gap serupa) tapi belum disentuh.
+
+---
+
+### 14o. Desain Kartu Arsip = Satu Sumber Kebenaran untuk "Grid Donasi" Landing — Final
+
+> **Status: SELESAI — diimplementasikan 2026-07-17.** Revisi § 14n setelah user mengoreksi
+> kesalahpahaman "Desain 4 terpisah di landing section".
+
+**Prinsip yang dikunci**: setting "Desain Kartu Arsip" (§ 14m — Klasik / Modern Capsule) adalah
+**satu sumber kebenaran** untuk tampilan card campaign di mana pun kartu itu berbentuk GRID
+generik — arsip `/campaign`, "Campaign Lainnya", **dan** section landing "Grid Donasi" (Desain 1
+di `CampaignsSectionDesignId`). Ketiganya otomatis konsisten begitu admin ganti setting di
+`/donasi/pengaturan` — tidak ada pilihan kartu terpisah lagi di landing section.
+
+**Section landing lain TIDAK ikut prinsip ini** (dan memang tidak seharusnya) — dikonfirmasi
+lewat kalimat user sendiri *"kecuali nanti kita bikin design section donasi yang mengharuskan
+atau membutuhkan card custom"*:
+- **Desain 2 "Campaign Unggulan"** — TIDAK disentuh. Layout-nya (1 featured besar + 2 kecil di
+  samping) sudah punya markup featured sendiri (`campaigns-design-2.tsx`, tidak pernah pakai
+  `CampaignCard`/`CampaignCardCapsule` untuk slot featured) — inilah persis skenario "card custom"
+  yang dikecualikan user. Tetap independen dari setting arsip.
+- **Desain 3 "Daftar Donasi"** — TIDAK perlu diubah. Sudah pakai `<CampaignCard variant="list">`
+  yang SECARA STRUKTURAL SAMA dengan `CampaignCardList` yang dipakai mobile-fallback di kedua
+  desain arsip (Klasik dan Capsule) — "list" adalah infrastruktur yang sudah dibagi bersama sejak
+  § 14n, jadi Desain 3 sudah otomatis konsisten tanpa perlu perubahan kode.
+
+**Perubahan dari § 14n (yang di-revert)**:
+- `CampaignsSectionDesignId` **kembali ke 3 opsi** (`["1","2","3"]`) — `"4"` dihapus dari registry.
+- `CampaignsDesign4` (komponen) **dihapus total** — bukan disimpan sebagai dead code, karena
+  merepresentasikan pendekatan yang salah, bukan cadangan yang mungkin berguna nanti.
+- `CampaignsEditor` picker "Design Layout" **tetap ada** (ini bagian yang benar dari § 14n — bug
+  pre-existing "admin tidak pernah bisa pilih desain section" tetap perlu difix) — cuma sekarang
+  menampilkan 3 opsi lagi, bukan 4.
+
+**Implementasi — `CampaignsDesign1` jadi design-aware**:
+```typescript
+// campaigns-section.tsx — fetch tambahan HANYA untuk pass ke Desain 1
+const donasiSettings   = await getSettings(tenantClient, "donasi");
+const archiveDesignRaw = donasiSettings.campaign_archive_design as { design?: string } | undefined;
+const cardDesign: CampaignArchiveCardDesignId = CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS.includes(archiveDesignRaw?.design as CampaignArchiveCardDesignId)
+  ? (archiveDesignRaw!.design as CampaignArchiveCardDesignId) : "1";
+// CampaignsSectionProps += cardDesign (dipakai HANYA oleh CampaignsDesign1, Desain 2/3 abaikan)
+```
+```tsx
+// campaigns-design-1.tsx — dispatch internal berdasarkan cardDesign, bukan hardcode CampaignCard
+{cardDesign === "2" ? (
+  <CampaignCardCapsule campaign={c} tenantSlug={tenantSlug} />
+) : (
+  <CampaignCard campaign={c} variant="grid" tenantSlug={tenantSlug} />
+)}
+```
+Berlaku untuk KEDUA blok (desktop grid DAN mobile slider) — kartu yang tampil di slider mobile
+juga ikut Capsule kalau itu yang aktif, bukan cuma desktop.
+
+**File yang dihapus**: `components/website/public/sections/campaigns/campaigns-design-4.tsx`.
+
+**File yang diubah**: `lib/campaigns-section-designs.ts` (revert ke 3 ID, update deskripsi Desain
+1 jadi menyebut "ikut Desain Kartu Arsip yang aktif"), `campaigns-section.tsx` (fetch
+`cardDesign`, hapus dispatch case "4", hapus import `CampaignsDesign4`),
+`campaigns-design-1.tsx` (terima prop `cardDesign`, dispatch internal Capsule vs Grid biasa).
+
+**Aturan yang dikunci untuk desain kartu campaign masa depan**: setiap kali ada card style baru
+(bukan LAYOUT baru) ditambah ke registry arsip (§ 14m), WAJIB juga otomatis tersedia di section
+landing "Grid Donasi" — JANGAN membuat entry registry landing terpisah untuk pilihan card style
+yang sama. Registry landing (`CampaignsSectionDesignId`) hanya untuk LAYOUT yang benar-benar
+berbeda struktur (featured+kecil, list, dst) — bukan untuk variasi tampilan kartu di dalam grid
+generik, itu domainnya registry arsip (§ 14m).
 
 ---
 ## 15. Fitur Qurban

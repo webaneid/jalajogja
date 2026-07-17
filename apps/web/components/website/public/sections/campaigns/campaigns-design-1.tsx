@@ -1,8 +1,20 @@
 import { PostsSectionTitle } from "../posts/posts-section-title";
 import { CampaignCard } from "@/components/website/public/campaign-cards/campaign-card";
+import { CampaignCardCapsule } from "@/components/website/public/campaign-cards/campaign-card-capsule";
+import type { CampaignCardData } from "@/lib/campaign-card-templates";
 import type { CampaignsSectionProps } from "@/lib/campaigns-section-designs";
 
-export function CampaignsDesign1({ campaigns, tenantSlug, sectionTitle, filterHref }: CampaignsSectionProps) {
+// "Grid Donasi" — satu-satunya layout section landing yang berbentuk grid generik (bukan
+// featured/list custom), jadi WAJIB ikut setting "Desain Kartu Arsip" (§ 14m/14o) — bukan
+// pilihan kartu terpisah. `cardDesign` menentukan kartu grid mana yang dipakai, berlaku untuk
+// desktop grid MAUPUN slider mobile.
+function renderCard(c: CampaignCardData, tenantSlug: string, cardDesign: CampaignsSectionProps["cardDesign"]) {
+  return cardDesign === "2"
+    ? <CampaignCardCapsule campaign={c} tenantSlug={tenantSlug} />
+    : <CampaignCard campaign={c} variant="grid" tenantSlug={tenantSlug} />;
+}
+
+export function CampaignsDesign1({ campaigns, tenantSlug, sectionTitle, filterHref, cardDesign }: CampaignsSectionProps) {
   if (campaigns.length === 0) return null;
   return (
     <section className="py-10 px-4">
@@ -12,7 +24,7 @@ export function CampaignsDesign1({ campaigns, tenantSlug, sectionTitle, filterHr
         {/* Desktop: Grid 3 kolom */}
         <div className="hidden md:grid grid-cols-3 gap-5">
           {campaigns.map(c => (
-            <CampaignCard key={c.id} campaign={c} variant="grid" tenantSlug={tenantSlug} />
+            <div key={c.id}>{renderCard(c, tenantSlug, cardDesign)}</div>
           ))}
         </div>
 
@@ -23,7 +35,7 @@ export function CampaignsDesign1({ campaigns, tenantSlug, sectionTitle, filterHr
         >
           {campaigns.map(c => (
             <div key={c.id} className="flex-none w-[75%] sm:w-[45%] snap-start">
-              <CampaignCard campaign={c} variant="grid" tenantSlug={tenantSlug} />
+              {renderCard(c, tenantSlug, cardDesign)}
             </div>
           ))}
         </div>

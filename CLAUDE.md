@@ -460,7 +460,7 @@ app/(dashboard)/[tenant]/
 - [x] **Billing Phase 4 — Fulfillment** — 5-stage pengiriman (pending→processing→packed→shipped→delivered), `updateFulfillmentStatusAction`, halaman admin `/toko/pesanan/invoice/[invoiceId]`, `FulfillmentCard` + `FulfillmentTimeline`, lightbox bukti transfer, pelanggan lihat 5 status di `/akun/transaksi`. Detail di `docs/arsitektur-fulfillment.md`.
 - [x] **Kode Unik Transaksi** — nominal Rp 100–999 per invoice untuk identifikasi transfer masuk. Setting toggle di `/settings/payment`. Arsitektur di `docs/arsitektur-kode-unik.md`. **SELESAI** — bug `submitPaymentProofAction` tidak include kode unik (invoice nyangkut partial) + bug race condition double-payment sudah difix (2026-07-12).
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
-- [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori) + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/donasi/pengaturan`, pola sama Hero/Strip Modul — setiap desain WAJIB grid desktop/list mobile, § 14m — § 14j dan § 14l dua putaran koreksi sebelumnya, keduanya superseded) + **Info Block Polimorfik** (slot info card yang beda per tipe campaign — progress bar vs harga+ketersediaan qurban, terbuka untuk sub-tipe qurban baru nanti seperti patungan/tabungan) — § 14k + **Desain 2 "Modern Capsule"** (card + section landing, sumber `design-refs/Bantuanku/`, donor count, sekaligus fix bug pre-existing `CampaignsEditor` yang belum pernah punya picker Design Layout) — § 14n
+- [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori) + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/donasi/pengaturan`, pola sama Hero/Strip Modul — setiap desain WAJIB grid desktop/list mobile, § 14m — § 14j dan § 14l dua putaran koreksi sebelumnya, keduanya superseded) + **Info Block Polimorfik** (slot info card yang beda per tipe campaign — progress bar vs harga+ketersediaan qurban, terbuka untuk sub-tipe qurban baru nanti seperti patungan/tabungan) — § 14k + **Desain 2 "Modern Capsule"** (card, sumber `design-refs/Bantuanku/`, donor count) — setting arsip adalah satu sumber kebenaran, section landing "Grid Donasi" otomatis ikut (bukan pilihan terpisah) — § 14o, § 14n ditandai superseded — sekalian fix bug pre-existing `CampaignsEditor` yang belum pernah punya picker Design Layout
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`) + **Tab Peserta & Statistik** (commit `9cf2b12`, migration 0023) + **E10 Donation Prompt UI** (routing kondisional cart vs direct, migration 0024+0025)
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
 - [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik + 3 jalur aktivasi + **sidebar filtering + 10 module guards (selesai)**
@@ -5270,6 +5270,52 @@ sudah terbukti berfungsi (di sini: `landing-builder.tsx` dipakai SEMUA section t
 plumbing itu terbukti benar, root cause pasti ada di tempat lain yang lebih spesifik ke gejala
 yang dilaporkan (di sini: satu-satunya perbedaan Campaigns dari fitur lain yang "sudah OK" adalah
 archive punya `revalidatePath` eksplisit sementara landing page section builder tidak).
+
+### [2026-07-17] "Desain 4" Landing Section Dihapus — Salah Paham Kedua di Fitur yang Sama
+
+> Detail lengkap: **`docs/arsitektur-donasi.md` § 14o** (§ 14n bagian "dua manifestasi" ditandai
+> SUPERSEDED, dipertahankan sebagai catatan sejarah)
+
+Setelah fix `revalidatePath` (entri sebelumnya) di-deploy dan dikonfirmasi user, muncul ronde
+klarifikasi KEDUA untuk fitur Modern Capsule yang sama: user sempat menulis penjelasan panjang
+lalu salah klik hingga hilang, lalu menulis ulang lebih ringkas — *"design card yang kita buat
+untuk arsip itu adalah card design untuk section donasi, sehingga konsisten antara card di
+section landingpage dan card ketika menjadi arsip... kecuali nanti kita bikin design section
+donasi yang mengharuskan atau membutuhkan card custom."*
+
+**Yang sebenarnya diinginkan sejak awal** (baru jelas di ronde kedua): setting "Desain Kartu
+Arsip" (§ 14m, Klasik/Modern Capsule) adalah **satu sumber kebenaran** — section landing "Grid
+Donasi" harus OTOMATIS ikut setting itu, BUKAN dapat pilihan "Desain 4" terpisah sendiri di
+registry landing section (yang saya bangun sebelumnya, § 14n). Perbedaannya konseptual: "Grid
+Donasi" cuma LAYOUT (grid generik) — kartu di dalamnya seharusnya mengikuti keputusan
+tampilan-kartu yang sudah ada, bukan jadi keputusan baru yang berdiri sendiri.
+
+**Batas yang dikonfirmasi user sendiri** (bukan saya asumsikan): section landing dengan LAYOUT
+custom (Desain 2 "Campaign Unggulan" — 1 featured besar + 2 kecil, markup sendiri bukan reuse
+`CampaignCard`) **tetap independen**, tidak ikut aturan ini — persis skenario "card custom" yang
+disebut user sendiri sebagai pengecualian. Desain 3 "Daftar Donasi" ternyata SUDAH otomatis
+konsisten tanpa perlu diubah — dia pakai `CampaignCardList` yang sudah jadi infrastruktur bersama
+sejak § 14n (mobile-fallback archive Klasik MAUPUN Capsule sama-sama reuse komponen List yang
+sama).
+
+**Fix**: `CampaignsSectionDesignId` revert ke 3 opsi (`"4"` dihapus dari registry), komponen
+`campaigns-design-4.tsx` **dihapus total** (bukan diarsipkan — merepresentasikan pendekatan
+salah, bukan cadangan berguna). `CampaignsDesign1` sekarang terima prop `cardDesign` (dari
+`CampaignsSection` yang fetch `campaign_archive_design` — persis setting yang sama dipakai
+`campaign/page.tsx`) dan dispatch internal `CampaignCardCapsule` vs `CampaignCard variant="grid"`
+untuk KEDUA blok (desktop grid dan slider mobile) — bukan cuma desktop. Picker "Design Layout" di
+`CampaignsEditor` (bug pre-existing yang difix bersamaan di § 14n) **tetap dipertahankan** — itu
+bagian yang benar, cuma sekarang menampilkan 3 opsi lagi.
+
+**Pelajaran tentang fitur "desain kartu" yang mungkin dipakai di banyak tempat**: sebelum
+menambahkan pilihan desain baru ke SEBUAH registry, tanya dulu — apakah ini benar-benar pilihan
+LAYOUT yang berbeda struktur, atau cuma variasi tampilan KARTU di dalam layout yang sudah ada?
+Kalau yang kedua, jangan buat entry registry baru di tempat lain untuk hal yang sama — cari
+sumber kebenaran tunggal (di sini: setting arsip) dan hubungkan tempat lain ke situ, seperti yang
+akhirnya dilakukan di § 14o. Instruksi awal user ("bikin design card 2... dan pastikan juga...
+section landingpage") sebenarnya SUDAH mengisyaratkan "card" (bukan "section design") sebagai
+satuan yang dipindah — kata "card" vs "section design" adalah petunjuk yang terlewat di
+percobaan pertama.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
