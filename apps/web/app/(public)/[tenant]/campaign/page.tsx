@@ -1,10 +1,10 @@
 import { notFound }           from "next/navigation";
 import { eq, desc, and, inArray } from "drizzle-orm";
-import { createTenantDb, db, tenants, getSettings } from "@jalajogja/db";
+import { createTenantDb, db, tenants } from "@jalajogja/db";
 import { publicUrl }          from "@/lib/minio";
 import { CampaignCard }       from "@/components/website/public/campaign-cards/campaign-card";
-import type { CampaignCardData, CampaignCardVariant } from "@/lib/campaign-card-templates";
-import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_CARD_VARIANTS, buildProgressInfoBlock } from "@/lib/campaign-card-templates";
+import type { CampaignCardData } from "@/lib/campaign-card-templates";
+import { CAMPAIGN_TYPE_LABELS, buildProgressInfoBlock } from "@/lib/campaign-card-templates";
 import { resolveQurbanInfoBlocks } from "@/lib/campaign-info-block";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
@@ -111,13 +111,6 @@ export default async function CampaignArchivePage({
     };
   });
 
-  // Desain kartu arsip (Grid/List/Ringkas) — default setting tenant, lihat § 14j
-  const donasiSettings = await getSettings(tenantClient, "donasi");
-  const cardDesignRaw   = donasiSettings.campaign_card_design as { variant?: string } | undefined;
-  const cardVariant: CampaignCardVariant = CAMPAIGN_CARD_VARIANTS.includes(cardDesignRaw?.variant as CampaignCardVariant)
-    ? (cardDesignRaw!.variant as CampaignCardVariant)
-    : "grid";
-
   // Semua kategori + tipe untuk filter chips
   const categories = await tenantDb.select({ id: schema.campaignCategories.id, name: schema.campaignCategories.name, slug: schema.campaignCategories.slug })
     .from(schema.campaignCategories).orderBy(schema.campaignCategories.name);
@@ -182,11 +175,20 @@ export default async function CampaignArchivePage({
             <p className="text-sm">Belum ada campaign aktif.</p>
           </div>
         ) : (
-          <div className={cardVariant === "list" ? "flex flex-col" : "grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5"}>
-            {campaigns.map(c => (
-              <CampaignCard key={c.id} campaign={c} variant={cardVariant} tenantSlug={slug} />
-            ))}
-          </div>
+          <>
+            {/* Desktop: Grid 3 kolom */}
+            <div className="hidden md:grid grid-cols-3 gap-5">
+              {campaigns.map(c => (
+                <CampaignCard key={c.id} campaign={c} variant="grid" tenantSlug={slug} />
+              ))}
+            </div>
+            {/* Mobile: List — lebih mudah dibaca daripada grid sempit di layar kecil */}
+            <div className="md:hidden flex flex-col">
+              {campaigns.map(c => (
+                <CampaignCard key={c.id} campaign={c} variant="list" tenantSlug={slug} />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

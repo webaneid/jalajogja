@@ -9,8 +9,8 @@ import { CampaignDetailClient } from "@/components/donasi/public/campaign-detail
 import { CampaignDetailTabs }  from "@/components/donasi/public/campaign-detail-tabs";
 import type { DonorEntry }     from "@/components/donasi/public/campaign-detail-tabs";
 import { CampaignCard }        from "@/components/website/public/campaign-cards/campaign-card";
-import type { CampaignCardData, CampaignCardVariant } from "@/lib/campaign-card-templates";
-import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS, CAMPAIGN_CARD_VARIANTS, buildProgressInfoBlock } from "@/lib/campaign-card-templates";
+import type { CampaignCardData } from "@/lib/campaign-card-templates";
+import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS, buildProgressInfoBlock } from "@/lib/campaign-card-templates";
 import { resolveQurbanInfoBlocks } from "@/lib/campaign-info-block";
 import type { Metadata }       from "next";
 import { ChevronRight } from "lucide-react";
@@ -198,12 +198,6 @@ export default async function CampaignDetailPage({ params }: { params: Params })
     recommendedAmounts = dc?.recommended_amounts ?? [10000, 25000, 50000, 100000];
   }
 
-  // Desain kartu "Campaign Lainnya" — default setting tenant, lihat § 14j
-  const cardDesignRaw = donasiSettings.campaign_card_design as { variant?: string } | undefined;
-  const cardVariant: CampaignCardVariant = CAMPAIGN_CARD_VARIANTS.includes(cardDesignRaw?.variant as CampaignCardVariant)
-    ? (cardDesignRaw!.variant as CampaignCardVariant)
-    : "grid";
-
   // Kampanye terkait (kategori sama)
   let relatedCampaigns: CampaignCardData[] = [];
   if (campaign.categoryId) {
@@ -339,9 +333,16 @@ export default async function CampaignDetailPage({ params }: { params: Params })
         {relatedCampaigns.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Campaign Lainnya</h2>
-            <div className={cardVariant === "list" ? "flex flex-col" : "grid grid-cols-1 sm:grid-cols-3 gap-4"}>
+            {/* Desktop: Grid 3 kolom */}
+            <div className="hidden md:grid grid-cols-3 gap-4">
               {relatedCampaigns.map(c => (
-                <CampaignCard key={c.id} campaign={c} variant={cardVariant} tenantSlug={slug} />
+                <CampaignCard key={c.id} campaign={c} variant="grid" tenantSlug={slug} />
+              ))}
+            </div>
+            {/* Mobile: List */}
+            <div className="md:hidden flex flex-col">
+              {relatedCampaigns.map(c => (
+                <CampaignCard key={c.id} campaign={c} variant="list" tenantSlug={slug} />
               ))}
             </div>
           </section>

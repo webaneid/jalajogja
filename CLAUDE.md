@@ -460,7 +460,7 @@ app/(dashboard)/[tenant]/
 - [x] **Billing Phase 4 — Fulfillment** — 5-stage pengiriman (pending→processing→packed→shipped→delivered), `updateFulfillmentStatusAction`, halaman admin `/toko/pesanan/invoice/[invoiceId]`, `FulfillmentCard` + `FulfillmentTimeline`, lightbox bukti transfer, pelanggan lihat 5 status di `/akun/transaksi`. Detail di `docs/arsitektur-fulfillment.md`.
 - [x] **Kode Unik Transaksi** — nominal Rp 100–999 per invoice untuk identifikasi transfer masuk. Setting toggle di `/settings/payment`. Arsitektur di `docs/arsitektur-kode-unik.md`. **SELESAI** — bug `submitPaymentProofAction` tidak include kode unik (invoice nyangkut partial) + bug race condition double-payment sudah difix (2026-07-12).
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
-- [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori) + **Desain Kartu Arsip** (setting Grid/List/Ringkas di `/donasi/pengaturan`) + **Info Block Polimorfik** (slot info card yang beda per tipe campaign — progress bar vs harga+ketersediaan qurban, terbuka untuk sub-tipe qurban baru nanti seperti patungan/tabungan) — § 14j–14k
+- [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori) + **Layout Kartu Responsif** (Grid desktop / List mobile di arsip, Slider mobile khusus section landing — otomatis via breakpoint, BUKAN setting admin, § 14l — setting § 14j sempat dibangun lalu dihapus di hari yang sama) + **Info Block Polimorfik** (slot info card yang beda per tipe campaign — progress bar vs harga+ketersediaan qurban, terbuka untuk sub-tipe qurban baru nanti seperti patungan/tabungan) — § 14k
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`) + **Tab Peserta & Statistik** (commit `9cf2b12`, migration 0023) + **E10 Donation Prompt UI** (routing kondisional cart vs direct, migration 0024+0025)
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
 - [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik + 3 jalur aktivasi + **sidebar filtering + 10 module guards (selesai)**
@@ -5063,6 +5063,37 @@ sub-tipe data (bukan cuma beda layout visual), JANGAN reflex bikin komponen card
 sub-tipe. Cek dulu apakah cukup satu slot kecil polimorfik (discriminated union + fungsi render
 kecil switch-by-kind) di dalam badan card yang sudah ada — jauh lebih murah dirawat kalau sub-tipe
 akan terus bertambah, dan tidak mengalikan jumlah file dengan jumlah varian layout yang sudah ada.
+
+### [2026-07-17] Setting Grid/List/Ringkas Dihapus — Diganti Layout Responsif Otomatis
+
+> Detail lengkap: **`docs/arsitektur-donasi.md` § 14l** (§ 14j dipertahankan sebagai catatan sejarah,
+> ditandai DIHAPUS — jangan diikuti untuk implementasi baru)
+
+Di hari yang sama fitur "Desain Kartu Arsip" (§ 14j, setting admin pilih Grid/List/Ringkas) selesai
+dibangun, user coba lalu minta dihapus — masalah aslinya bukan soal admin butuh MEMILIH desain,
+tapi murni soal **grid 3-4 kolom sulit dibaca di layar HP**. Itu masalah breakpoint responsif, bukan
+masalah yang butuh pilihan manual admin.
+
+**Fix — revert penuh setting, ganti dual-render CSS breakpoint**: `/campaign` (arsip) dan
+"Campaign Lainnya" sekarang SELALU Grid di desktop (`hidden md:grid`) dan SELALU List di mobile
+(`md:hidden`) — kedua blok markup di-render sekaligus di server, Tailwind yang menentukan mana yang
+tampil (pola sama `AnggotaDirectoryClient`: tabel desktop / card mobile). Section Campaign di
+landing page (Desain 1) dapat treatment BEDA untuk mobile: **slider horizontal** (scroll-snap CSS
+murni, tanpa tombol, tanpa `"use client"`) — bukan List, karena section landing punya ruang
+vertikal terbatas dan konteksnya "promosi" bukan "arsip penuh".
+
+**File yang dihapus** (bukan cuma diubah): `campaign-card-design-settings-client.tsx`,
+`saveCampaignCardDesignAction`, section 3 di `/donasi/pengaturan`, baca-tulis setting
+`campaign_card_design`. `CAMPAIGN_CARD_VARIANTS`/`CampaignCardVariant` di
+`lib/campaign-card-templates.ts` TIDAK dihapus — masih dipakai internal untuk membedakan render
+Grid vs List, cuma lapisan "admin choice"-nya yang dicabut.
+
+**Pelajaran**: ketika user minta "setting untuk pilih desain", jangan selalu asumsikan yang
+dibutuhkan memang KEMAMPUAN MEMILIH — kadang gejalanya adalah masalah responsif/breakpoint yang
+tidak butuh keputusan admin sama sekali, tinggal ketahuan setelah fitur sungguhan dicoba di
+device nyata. Wajar dan murah untuk direvisi total di hari yang sama begitu gejala sesungguhnya
+lebih jelas — jangan pertahankan setting yang sudah terlanjur dibangun hanya karena sayang
+kerjaannya, kalau user sudah eksplisit bilang solusi yang lebih sederhana lebih pas.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).

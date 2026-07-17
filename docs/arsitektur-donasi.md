@@ -1428,11 +1428,16 @@ Step D4: Front-end halaman publik
 
 ---
 
-### 14j. Desain Kartu Arsip (Default Grid/List/Ringkas)
+### 14j. Desain Kartu Arsip (Default Grid/List/Ringkas) — DIGANTIKAN, lihat § 14l
 
-> **Status: SELESAI — diimplementasikan 2026-07-17.** Rencana awal ditulis sesuai permintaan user
-> ("buat perencanaan dulu di arsitektur donasi... biar mudah evaluasi dan penambahannya") sebelum
-> eksekusi kode dimulai.
+> **Status: DIHAPUS 2026-07-17, di hari yang sama dengan implementasi.** Setelah dicoba, user minta
+> setting ini dihapus — layout kartu arsip sekarang **selalu Grid** (desktop) dan **selalu List**
+> (mobile) secara otomatis via breakpoint CSS, bukan pilihan admin. Section terbaru: **§ 14l**.
+> Bagian di bawah ini dipertahankan sebagai catatan sejarah (kenapa awalnya dibangun sebagai
+> setting) — jangan diikuti untuk implementasi baru, ikuti § 14l.
+
+Rencana awal ditulis sesuai permintaan user ("buat perencanaan dulu di arsitektur donasi... biar
+mudah evaluasi dan penambahannya") sebelum eksekusi kode dimulai.
 
 **Latar belakang**
 
@@ -1683,6 +1688,76 @@ Step CQ4: Uji manual: campaign umum tetap tampil progress bar seperti sebelumnya
   diganti `<CampaignCardInfoBlock info={campaign.infoBlock} layout="..." />`
 - 3 titik fetch (`campaign/page.tsx`, `campaign/[slug]/page.tsx`, `campaigns-section.tsx`) — tambah
   batch resolve `qurbanInfoMap` untuk campaign qurban di hasil query, `infoBlock` dihitung per row
+
+---
+
+### 14l. Layout Kartu Responsif (Grid Desktop / List Mobile / Slider Landing) — Pengganti § 14j
+
+> **Status: SELESAI — diimplementasikan 2026-07-17.** Menggantikan setting admin § 14j (dihapus
+> di hari yang sama) setelah dicoba user — grid 3 kolom di layar sempit dinilai sulit dibaca,
+> setting manual dianggap tidak perlu untuk masalah yang sebenarnya murni soal breakpoint.
+
+**Keputusan**: layout kartu campaign sekarang **otomatis mengikuti ukuran layar**, bukan pilihan
+admin. Tidak ada lagi setting di `/donasi/pengaturan` untuk ini.
+
+| Konteks | Desktop (≥768px, `md:`) | Mobile (<768px) |
+|---|---|---|
+| Arsip `/campaign` | Grid 3 kolom | List (vertikal, satu kolom) |
+| "Campaign Lainnya" (`/campaign/{slug}`) | Grid 3 kolom | List |
+| Section Campaign di landing page (Desain 1 "Grid Donasi") | Grid 3 kolom | **Slider horizontal** (scroll-snap, bukan list) |
+
+**Kenapa landing page beda dari arsip**: arsip adalah halaman penuh dengan banyak campaign — List
+(satu kolom penuh, scroll vertikal) paling mudah dibaca di HP. Section landing page punya ruang
+terbatas (bagian dari homepage yang lebih panjang) — slider horizontal lebih hemat tempat vertikal
+dan lebih sesuai konvensi "section promosi" (mirip pola carousel yang sudah dipakai section Post/
+Produk lain). Dua kebutuhan berbeda, dua treatment berbeda — bukan inkonsistensi.
+
+**Implementasi — pola dual-render, bukan JS/device-detection**:
+```tsx
+{/* Desktop */}
+<div className="hidden md:grid grid-cols-3 gap-5">
+  {campaigns.map(c => <CampaignCard key={c.id} campaign={c} variant="grid" tenantSlug={slug} />)}
+</div>
+{/* Mobile */}
+<div className="md:hidden flex flex-col">
+  {campaigns.map(c => <CampaignCard key={c.id} campaign={c} variant="list" tenantSlug={slug} />)}
+</div>
+```
+Kedua blok di-render sekaligus di server (SSR-safe, tidak ada hydration mismatch), Tailwind
+`hidden`/`md:hidden` yang menentukan mana yang tampil — pola yang sama dengan
+`AnggotaDirectoryClient` (tabel desktop vs card mobile, lihat § arsitektur direktori publik).
+**Bukan** `useState` + `window.innerWidth` — CSS breakpoint selalu lebih murah dan tidak perlu
+`"use client"`.
+
+**Slider landing page** (`campaigns-design-1.tsx`, Desain 1 saja — Desain 2 "Campaign Unggulan"
+dan Desain 3 "Daftar Donasi" TIDAK disentuh, sudah punya treatment mobile yang wajar sebelumnya):
+```tsx
+<div className="md:hidden flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 [&::-webkit-scrollbar]:hidden"
+     style={{ scrollbarWidth: "none" }}>
+  {campaigns.map(c => (
+    <div key={c.id} className="flex-none w-[75%] sm:w-[45%] snap-start">
+      <CampaignCard campaign={c} variant="grid" tenantSlug={tenantSlug} />
+    </div>
+  ))}
+</div>
+```
+Murni CSS scroll-snap, tanpa tombol prev/next (swipe alami di mobile, beda dengan rail Strip Modul
+Desain 2 yang punya tombol karena dipakai juga di desktop). `variant="grid"` dipertahankan di dalam
+slider (bukan `list`) karena bentuk kartu grid — cover besar + info di bawah — lebih pas untuk kartu
+lebar-tetap yang di-scroll horizontal; `list` (horizontal thumbnail kecil) tidak cocok untuk itu.
+
+**File yang dihapus** (fitur § 14j di-revert penuh):
+- `components/donasi/campaign-card-design-settings-client.tsx` — dihapus
+- `saveCampaignCardDesignAction` di `donasi/actions.ts` — dihapus
+- Section 3 "Desain Kartu Arsip" di `donasi/pengaturan/page.tsx` — dihapus, kembali ke 2 section
+- Baca-tulis setting `campaign_card_design` di `campaign/page.tsx` dan `campaign/[slug]/page.tsx`
+  — dihapus, diganti dual-render statis di atas
+
+**Yang TIDAK berubah**: § 14k (info block polimorfik untuk isi qurban vs progress bar) tetap utuh
+dan tidak terpengaruh — dua sumbu itu tetap independen. `CAMPAIGN_CARD_VARIANTS`/`CampaignCardVariant`
+di `lib/campaign-card-templates.ts` juga tidak dihapus (masih dipakai `CampaignCard` dispatcher
+untuk membedakan render Grid vs List secara internal) — yang dihapus HANYA lapisan
+"admin choice" di atasnya.
 
 ---
 
