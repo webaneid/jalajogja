@@ -6,7 +6,7 @@ import {
 } from "@jalajogja/db";
 import { getImageUrl } from "@/lib/image-url";
 import {
-  MODULE_CATALOG, MODULES_NO_AUTO_PHOTO,
+  MODULE_CATALOG, MODULES_NO_AUTO_PHOTO, normalizeModuleItems,
   type ModulesSectionData, type ModuleItemConfig, type ModuleId, type ModuleSectionDesignId,
 } from "@/lib/module-strip-designs";
 import { ModulesDesign1 } from "./modules-design-1";
@@ -25,7 +25,8 @@ type Props = {
 };
 
 export async function ModulesSection({ data, variant, tenantClient, tenantSlug, baseUrl }: Props) {
-  const items = (data.items ?? []).filter((item): item is ModuleItemConfig & { id: ModuleId } => item.id in MODULE_CATALOG);
+  const items = normalizeModuleItems(data.items)
+    .filter((item): item is ModuleItemConfig & { id: ModuleId } => item.id in MODULE_CATALOG);
   if (items.length === 0) return null;
 
   if (variant === "2") {

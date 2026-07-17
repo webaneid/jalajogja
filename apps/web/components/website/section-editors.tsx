@@ -21,7 +21,7 @@ import { POSTS_SECTION_DESIGNS, POSTS_SECTION_DESIGN_IDS } from "@/lib/posts-sec
 import { HERO_SECTION_DESIGNS, HERO_SECTION_DESIGN_IDS, FUNFACT_CATALOG, FUNFACT_IDS, FUNFACT_STYLE_IDS, FUNFACT_STYLE_LABELS } from "@/lib/hero-section-designs";
 import {
   MODULE_CATALOG, MODULE_IDS, MODULE_SECTION_DESIGN_IDS, MODULE_SECTION_DESIGNS, MODULES_NO_AUTO_PHOTO,
-  type ModuleId, type ModuleItemConfig, type ModuleSectionDesignId,
+  normalizeModuleItems, type ModuleId, type ModuleSectionDesignId,
 } from "@/lib/module-strip-designs";
 import { MediaPicker } from "@/components/media/media-picker";
 import type { MediaItem } from "@/components/media/media-picker";
@@ -716,9 +716,9 @@ function ProductsEditor({ data, onChange }: EditorProps) {
 // ── Modules (Strip Modul) ──────────────────────────────────────────────────────
 
 function ModulesEditor({ data, onChange, variant, onVariantChange, tenantSlug }: EditorProps) {
-  const d = data as { title?: string; items?: ModuleItemConfig[] };
+  const d = data as { title?: string; items?: unknown };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
-  const selected      = d.items ?? [];
+  const selected      = normalizeModuleItems(d.items);
   const activeVariant = (variant ?? "1") as ModuleSectionDesignId;
   const [pickerForId, setPickerForId] = useState<ModuleId | null>(null);
 
@@ -774,7 +774,7 @@ function ModulesEditor({ data, onChange, variant, onVariantChange, tenantSlug }:
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Foto per Modul (opsional)</Label>
           <div className="space-y-1.5">
-            {selected.map((item) => {
+            {selected.filter(item => item.id in MODULE_CATALOG).map((item) => {
               const mod        = MODULE_CATALOG[item.id as ModuleId];
               const noAutoPhoto = MODULES_NO_AUTO_PHOTO.includes(item.id as ModuleId);
               return (

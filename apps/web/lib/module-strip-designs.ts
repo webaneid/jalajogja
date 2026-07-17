@@ -18,6 +18,23 @@ export type ModulesSectionData = {
   items: ModuleItemConfig[];
 };
 
+// Backward-compat: sebelum Desain 2 ditambahkan (2026-07-17), `items` disimpan sebagai `string[]`
+// biasa (daftar ID modul saja, tanpa foto). Data lama yang sudah tersimpan (JSONB di pages.body)
+// tidak ikut migrasi otomatis — helper ini menormalkan KEDUA bentuk saat dibaca, supaya section
+// yang sudah dikonfigurasi sebelum perubahan ini tidak tiba-tiba kosong/rusak.
+export function normalizeModuleItems(raw: unknown): ModuleItemConfig[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item): ModuleItemConfig | null => {
+      if (typeof item === "string") return { id: item };
+      if (item && typeof item === "object" && typeof (item as { id?: unknown }).id === "string") {
+        return item as ModuleItemConfig;
+      }
+      return null;
+    })
+    .filter((item): item is ModuleItemConfig => item !== null);
+}
+
 export const MODULE_CATALOG = {
   donasi:      { path: "campaign",    label: "Donasi",          desc: "Program & infaq",       Icon: Heart },
   toko:        { path: "produk",      label: "Toko",            desc: "Belanja produk",         Icon: Store },

@@ -4964,6 +4964,49 @@ dokumentasi.
 kolom/tabel sudah diverifikasi manual saat riset+plan, bukan ditebak saat coding). Belum
 diverifikasi visual di browser.
 
+### [2026-07-17] Bug Review Pasca-Commit: Backward-Compat `items` string[] → object[]
+
+User minta cek ulang error/bug setelah commit Desain 2 Strip Modul di atas. Re-review manual
+(bukan cuma `tsc`) menemukan **1 bug nyata, bukan hipotetis**: sesi ini mengubah bentuk
+`ModulesSectionData.items` dari `string[]` jadi `ModuleItemConfig[]` (object, supaya bisa bawa
+foto custom). Section "Strip Modul" dibuat SEHARI sebelumnya dan **user sudah sempat mengetes dan
+mengonfigurasinya** (percakapan sebelumnya di sesi ini — user tanya kenapa "toko, event" tidak
+muncul di list, artinya sempat menambah+centang modul) — jadi ada kemungkinan nyata data tersimpan
+di format LAMA (`string[]`) di database tenant testing.
+
+**Efeknya kalau tidak difix**: `item.id` pada elemen string bernilai `undefined` (string tidak
+punya properti `.id`) →
+- Di `modules-section.tsx`: filter `item.id in MODULE_CATALOG` selalu `false` → SEMUA item
+  ter-filter habis → section render `null` (hilang total, tanpa error, silent).
+- Di `ModulesEditor`: `selected.some(item => item.id === id)` selalu `false` → checklist yang
+  sebelumnya sudah dicentang admin tampil KOSONG semua saat dibuka lagi.
+
+**Fix**: `normalizeModuleItems()` baru di `lib/module-strip-designs.ts` — terima `unknown`, handle
+KEDUA bentuk (`string` → `{id: string}`, object valid → pass-through, apapun selain itu →
+dibuang). Dipakai di titik baca `data.items` di `modules-section.tsx` DAN `ModulesEditor`. Begitu
+admin buka+simpan ulang section manapun yang masih format lama, otomatis ter-normalisasi ke format
+baru saat disimpan (self-healing, tanpa migration script terpisah).
+
+**2 fix kecil tambahan dari review yang sama**:
+- `modules-design-2.tsx` — rail scroll cuma sembunyi scrollbar di Firefox
+  (`style={{scrollbarWidth:"none"}}`), tidak di Chrome/Safari. Ditemukan juga: class `scrollbar-hide`
+  yang dipakai di file LAIN (`products-design-3.tsx`) ternyata **tidak pernah didefinisikan di
+  manapun** (dead class, no-op) — bukan bug yang saya buat, di luar scope untuk difix sekarang,
+  tapi dicatat di sini supaya tidak dikira sengaja ditiru. Fix di file saya sendiri: tambah
+  `[&::-webkit-scrollbar]:hidden` (Tailwind arbitrary selector, tidak butuh definisi CSS terpisah).
+- `ModulesEditor` — list "Foto per Modul" sekarang filter `item.id in MODULE_CATALOG` sebelum
+  render, mencegah crash kalau ada ID modul yang sudah tidak valid di data tersimpan (defensive,
+  tidak bisa terjadi lewat alur UI normal saat ini, tapi murah untuk dicegah).
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error.
+
+**Pelajaran umum**: saat mengubah bentuk data JSONB untuk section/fitur yang BARU dibuat di sesi
+yang sama, jangan asumsikan "belum ada yang pakai" hanya karena fiturnya baru — kalau user sempat
+mengetesnya (bahkan cuma centang-centang di editor tanpa publish), data lama sudah tersimpan.
+Selalu tambahkan normalisasi baca yang backward-compatible, atau tanya eksplisit ke user apakah
+sudah pernah menyimpan data dengan bentuk lama, sebelum menganggap breaking change "aman tanpa
+migrasi".
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
