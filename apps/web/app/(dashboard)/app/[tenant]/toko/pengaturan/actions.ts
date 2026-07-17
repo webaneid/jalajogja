@@ -1,10 +1,11 @@
 "use server";
 
-import { createTenantDb, upsertSettings } from "@jalajogja/db";
+import { createTenantDb, upsertSettings, upsertSetting } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
-import { canManageUsers } from "@/lib/permissions";
+import { canManageUsers, hasFullAccess } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import type { TokoSettings } from "@/lib/toko-settings";
+import { PRODUCT_ARCHIVE_CARD_DESIGN_IDS, type ProductArchiveCardDesignId } from "@/lib/product-archive-card-designs";
 
 type ActionResult = { error?: string };
 
@@ -32,6 +33,27 @@ export async function saveTokoSettingsAction(
     toko_whatsapp:      values.tokoWhatsapp,
   });
 
+  revalidatePath(`/app/${slug}/toko/pengaturan`);
+  return {};
+}
+
+// ─── Desain Kartu Arsip — docs/arsitektur-product.md ──────────────────────────
+
+export async function saveProductArchiveDesignAction(
+  slug:   string,
+  design: ProductArchiveCardDesignId,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { error: "Akses ditolak." };
+
+  if (!PRODUCT_ARCHIVE_CARD_DESIGN_IDS.includes(design))
+    return { error: "Pilihan desain tidak valid." };
+
+  const tenantDb = createTenantDb(slug);
+  await upsertSetting(tenantDb, "product_archive_design", "toko", { design });
+
+  revalidatePath(`/${slug}/produk`);
   revalidatePath(`/app/${slug}/toko/pengaturan`);
   return {};
 }

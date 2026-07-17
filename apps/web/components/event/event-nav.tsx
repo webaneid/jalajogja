@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { CalendarDays, FolderOpen } from "lucide-react";
+import { CalendarDays, FolderOpen, Settings } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: "Acara",    icon: CalendarDays, path: "/acara"    },
-  { label: "Kategori", icon: FolderOpen,   path: "/kategori" },
+  { label: "Acara",      icon: CalendarDays, path: "/acara"      },
+  { label: "Kategori",   icon: FolderOpen,   path: "/kategori"   },
+  { label: "Pengaturan", icon: Settings,     path: "/pengaturan" },
 ] as const;
 
 export function EventNav({ slug }: { slug: string }) {

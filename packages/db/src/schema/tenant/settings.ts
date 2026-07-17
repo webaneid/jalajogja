@@ -21,6 +21,7 @@ export const SETTING_GROUPS = [
   "keuangan",  // account mappings untuk jurnal otomatis
   "toko",      // pengaturan toko: mitra, komisi, info toko
   "donasi",    // pengaturan donasi: rekomendasi nominal
+  "event",     // pengaturan event: desain kartu arsip
 ] as const;
 export type SettingGroup = typeof SETTING_GROUPS[number];
 

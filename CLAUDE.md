@@ -476,10 +476,10 @@ app/(dashboard)/[tenant]/
 - [~] **Produk Variasi V8** — validasi stok server-side saat add to cart. **DITUNDA**.
 - [~] **ProductCard Phase 3 Mitra** — integrasi fetch publik (JOIN mitras) + order commission snapshot + filter seller_type admin. **DITUNDA**.
 - [x] **Sistem Harga Berlapis** — 3 tier: `price` (tidak login) → `public_price` (siapapun yang login) → `member_price` (anggota IKPM seluruh dunia). Schema Drizzle + DDL + form admin + ProductCard + `resolvePrice()` helper. Berlaku untuk tenant dan mitra. TypeScript 0 errors.
-- [x] **Halaman publik `/produk`** — archive + filter kategori + search + pagination. URL `/produk` (bukan `/toko` — hindari konflik dashboard). TypeScript 0 errors.
+- [x] **Halaman publik `/produk`** — archive + filter kategori + search + pagination. URL `/produk` (bukan `/toko` — hindari konflik dashboard). TypeScript 0 errors. + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/toko/pengaturan`, pola sama Donasi § 14m — 3 titik: arsip, kategori, "Produk Lainnya") — `docs/arsitektur-product.md`
 - [x] **Halaman publik `/produk/kategori/{slug}`** — arsip per kategori + breadcrumb + SEO. TypeScript 0 errors.
 - [x] **Halaman publik `/produk/{slug}`** — detail produk: gallery + variasi picker + add to cart via `addToCartAction` + produk terkait. TypeScript 0 errors.
-- [x] **EventCard + EventsSection** — 3 card variant (grid/list/ringkas) + 3 section design + integrasi landing-template + section-editors. Archive `/{slug}/agenda` + detail `/{slug}/agenda/{slug}` ✅. TypeScript 0 errors.
+- [x] **EventCard + EventsSection** — 3 card variant (grid/list/ringkas) + 3 section design + integrasi landing-template + section-editors. Archive `/{slug}/agenda` + detail `/{slug}/agenda/{slug}` ✅. TypeScript 0 errors. + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/app/{slug}/event/pengaturan` — halaman baru, pola sama Donasi § 14m) — `docs/arsitektur-event.md`, migration `0031_settings_group_event.sql` wajib jalan di VPS dulu
 - [x] **CampaignCard + CampaignsSection** — 3 variant (grid/list/ringkas), 3 design (Grid/Unggulan/Daftar), fetch layer filter tipe+kategori, terdaftar di landing page + section-editor. TypeScript 0 errors.
 - [x] **Halaman publik `/campaign`** — arsip donasi dengan filter tipe (donasi/zakat/wakaf/qurban) + kategori. URL `/campaign` (bukan `/donasi` — hindari konflik dashboard). TypeScript 0 errors.
 - [x] **Halaman publik `/campaign/{slug}`** — detail campaign + form donasi: donasi reguler (nominal chips + custom) dan qurban (hewan cards = variasi), keduanya → `addToCartAction`. Atas nama qurban di `notes`. TypeScript 0 errors.
@@ -5109,6 +5109,70 @@ total" vs "restrukturisasi fitur ini" saat instruksi user memakai frasa yang bis
 (seperti "bisa dihapus saja" yang ternyata merujuk ke SEBAGIAN pilihan, bukan keseluruhan sistem),
 lebih aman **tanya ulang secara eksplisit** sebelum menghapus file/kode — terutama kalau fitur
 yang dihapus baru saja selesai dibangun di sesi yang sama.
+
+### [2026-07-17] Registry Desain Kartu Arsip Diterapkan ke Event + Produk
+
+> Detail lengkap: **`docs/arsitektur-event.md` § "Registry Desain Kartu Arsip"**,
+> **`docs/arsitektur-product.md` § "Registry Desain Kartu Arsip"**
+
+Pola yang baru selesai dikunci untuk Donasi (§ 14m di atas) diterapkan ke 2 modul lain yang punya
+arsitektur Card+Section identik — Event (`/agenda`) dan Produk/Toko (`/produk`). Post SENGAJA
+tidak disentuh (permintaan eksplisit user — beda sistem, 6 variant card + 5 section design, lebih
+kompleks, ditangani terpisah nanti).
+
+**Koreksi proses di tengah kerjaan**: user menegur eksplisit ("jangan lupa, selalu cek claude.md
+dan pastikan selalu buat dokumentasi sebelum eksekusi, jangan luput itu") saat saya mulai riset
+kode Event/Produk tanpa menulis rencana ke `docs/arsitektur-event.md`/`docs/arsitektur-product.md`
+dulu — padahal untuk Donasi saya SUDAH konsisten menulis plan-doc dulu sebelum eksekusi. Begitu
+pindah modul di sesi yang sama, kebiasaan itu tidak otomatis terbawa. **Fix**: berhenti, tulis
+rencana lengkap ke kedua file docs (konsep, gap infrastruktur, file yang akan dibuat/diubah,
+urutan implementasi) — BARU lanjut baca kode/eksekusi. Disimpan sebagai memory
+`feedback_docs_before_code.md` supaya ini otomatis diingatkan di sesi berikutnya juga.
+
+**Gap yang ditemukan saat riset (dan kenapa 3 modul beda usaha)**:
+- **Donasi**: grup setting `"donasi"` sudah ada — 0 migration DB.
+- **Toko**: grup setting `"toko"` sudah ada (Sistem Mitra) — 0 migration DB. Tapi halaman
+  `/toko/pengaturan` pakai pola form BERBEDA dari Donasi (satu `TokoSettings` object + satu tombol
+  simpan untuk semua field, bukan beberapa `<section>` independen) — solusi: TIDAK memaksakan
+  section baru masuk ke object yang sudah ada, cukup tambah `<section>` independen baru di bawah
+  form yang sudah ada, dengan action+state sendiri. Dua gaya form boleh hidup berdampingan di satu
+  halaman pengaturan yang sama.
+- **Event**: grup setting `"event"` **belum ada sama sekali** — perlu (1) tambah ke
+  `SETTING_GROUPS` const, (2) update DDL CHECK constraint di `create-tenant-schema.ts`, (3)
+  migration SQL baru (`0031_settings_group_event.sql`, pola `DO $$ LOOP` per-tenant seperti
+  `0020_event_ticket_requires_membership.sql`) — WAJIB dijalankan di VPS sebelum deploy kode yang
+  menulis ke grup ini. Event juga belum punya halaman `/event/pengaturan` sama sekali — dibuat
+  dari nol (page + actions + nav item baru "Pengaturan" di `event-nav.tsx`).
+
+**Jumlah titik sentuh publik berbeda per modul** (jangan asumsikan seragam):
+- Event: **1 titik** — `/agenda` saja. Tidak ada halaman kategori terpisah (filter kategori pakai
+  query param `?category=`, bukan sub-route), tidak ada section "Event Lainnya" di halaman detail.
+- Donasi: **2 titik** — arsip `/campaign` + "Campaign Lainnya" di detail.
+- Produk: **3 titik** — arsip `/produk`, arsip kategori `/produk/kategori/{slug}` (sub-route
+  sendiri, beda dari Event), dan "Produk Lainnya" di detail. Semua 3 titik pakai fetch logic
+  yang hampir identik (copy-paste query builder) — konsisten dengan pola lama di modul ini.
+
+**`ProductArchiveCards` dispatcher perlu terusin `sessionType`** — satu-satunya dispatcher dari 3
+modul ini yang punya prop tambahan (Campaign dan Event tidak punya konsep tier harga per sesi
+login). Kalau lupa terusin, `ProductCard` fallback ke `sessionType="none"` (default parameter) →
+harga member/publik tidak resolve dengan benar walau user sudah login. Selalu cek signature
+`{Type}Card` dispatcher yang di-copy sebelum asumsikan propsnya sama persis dengan Campaign.
+
+**Kolom grid Desain 1 TIDAK diseragamkan ke 3 kolom** — Produk mempertahankan 4 kolom desktop
+(sesuai desain existing sebelum fitur ini), Campaign/Event tetap 3. Yang diseragamkan cuma
+PERILAKU RESPONSIF-nya (grid desktop/list mobile), bukan kepadatan visualnya — kepadatan grid
+adalah keputusan desain per-konteks yang independen dari mekanisme responsifnya.
+
+**Permission guard untuk setting BARU dibedakan dari setting LAMA di modul yang sama**: Toko
+punya 2 action sekarang — `saveTokoSettingsAction` (existing, guard `canManageUsers` = owner/ketua
+saja, karena berisi komisi mitra yang sensitif finansial) dan `saveProductArchiveDesignAction`
+(baru, guard `hasFullAccess(u, "toko")` = siapapun dengan akses penuh modul toko, karena cuma
+setting tampilan). Jangan otomatis re-use guard yang paling ketat di file yang sama kalau setting
+barunya punya tingkat sensitivitas yang beda — pilih guard sesuai levelnya sendiri.
+
+**Verifikasi**: `tsc --noEmit` dijalankan 2× (setelah Event selesai, sebelum lanjut Produk — sesuai
+urutan di dokumen § "Urutan Implementasi" masing-masing modul) + `bun run build` full di akhir.
+0 error di kedua titik cek.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).

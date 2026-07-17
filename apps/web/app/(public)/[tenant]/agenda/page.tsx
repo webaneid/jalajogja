@@ -1,9 +1,10 @@
 import { notFound }           from "next/navigation";
 import { eq, gte, and, inArray, desc } from "drizzle-orm";
-import { createTenantDb, db, tenants } from "@jalajogja/db";
+import { createTenantDb, db, tenants, getSettings } from "@jalajogja/db";
 import { publicUrl }          from "@/lib/minio";
-import { EventCard }          from "@/components/website/public/event-cards/event-card";
+import { EventArchiveCards }  from "@/components/website/public/event-cards/event-archive-cards";
 import type { EventCardData } from "@/lib/event-card-templates";
+import { EVENT_ARCHIVE_CARD_DESIGN_IDS, type EventArchiveCardDesignId } from "@/lib/event-archive-card-designs";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import type { Metadata }      from "next";
@@ -113,6 +114,13 @@ export default async function AgendaArchivePage({
     .select({ id: schema.eventCategories.id, name: schema.eventCategories.name, slug: schema.eventCategories.slug })
     .from(schema.eventCategories).orderBy(schema.eventCategories.sortOrder, schema.eventCategories.name);
 
+  // Desain kartu arsip — lihat docs/arsitektur-event.md
+  const eventSettings    = await getSettings(tenantClient, "event");
+  const archiveDesignRaw = eventSettings.event_archive_design as { design?: string } | undefined;
+  const archiveDesign: EventArchiveCardDesignId = EVENT_ARCHIVE_CARD_DESIGN_IDS.includes(archiveDesignRaw?.design as EventArchiveCardDesignId)
+    ? (archiveDesignRaw!.design as EventArchiveCardDesignId)
+    : "1";
+
   const pageTitle = categoryName ?? "Agenda";
 
   return (
@@ -176,11 +184,7 @@ export default async function AgendaArchivePage({
             <p className="text-sm">Belum ada event{!showAll ? " mendatang" : ""}.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {events.map(e => (
-              <EventCard key={e.id} event={e} variant="grid" tenantSlug={slug} />
-            ))}
-          </div>
+          <EventArchiveCards design={archiveDesign} events={events} tenantSlug={slug} />
         )}
       </div>
     </div>

@@ -574,3 +574,87 @@ Berlaku untuk semua input conditional di seluruh aplikasi.
 
 ### payments.source_type
 Drizzle enum `PAYMENT_SOURCE_TYPES` DAN DDL CHECK constraint di `create-tenant-schema.ts` harus diperbarui bersamaan saat menambah source_type baru. Jika hanya update salah satu → runtime error saat insert.
+
+---
+
+## Registry Desain Kartu Arsip (Grid Desktop / List Mobile)
+
+> **Status: SELESAI — diimplementasikan 2026-07-17.** Mengikuti pola yang sudah selesai dibangun
+> untuk modul Donasi (`docs/arsitektur-donasi.md` § 14j–14m — bentuk final, § 14j dan § 14l di
+> sana adalah draft yang sudah superseded, jangan diikuti). **Migration
+> `packages/db/migrations/0031_settings_group_event.sql` wajib dijalankan di VPS sebelum deploy**
+> — menambah `'event'` ke CHECK constraint `settings.group` (grup baru, belum pernah dipakai
+> modul Event sebelumnya, beda dari Donasi/Toko yang grupnya sudah ada duluan).
+
+**Latar belakang**: `EventCard` (`components/website/public/event-cards/event-card.tsx`) sudah
+punya 3 variant layout — `grid` | `list` | `ringkas` (`lib/event-card-templates.ts`). Halaman
+arsip `/agenda` hardcode `variant="grid"` (baris ~181), tanpa cara mengubahnya, dan grid
+`grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` di layar sempit sama kurang nyamannya seperti yang
+sudah dialami di modul Donasi sebelum diperbaiki.
+
+**Keputusan yang dibawa dari § 14m Donasi (bukan didesain ulang)**:
+- Setting **tetap ada** di halaman pengaturan modul — bukan dihapus, bukan hardcode tunggal.
+- Setting berbentuk **registry bernomor** ("Desain 1", nanti "Desain 2" dst), pola sama
+  Header/Footer/Hero/Strip Modul/Campaign — BUKAN pilihan Grid/List/Ringkas langsung ke admin.
+- **Aturan wajib untuk SETIAP desain di registry ini, sekarang dan nanti**: grid di desktop
+  (`md:` ke atas), list di mobile (di bawah `md:`) — baseline konstrain, bukan pilihan per-desain.
+- Dua blok markup (grid desktop + list mobile) di-render SEKALIGUS di server via CSS breakpoint
+  (`hidden md:grid` + `md:hidden`) — bukan JS/`window.innerWidth`, SSR-safe, tanpa `"use client"`.
+
+**Gap infrastruktur yang perlu ditutup dulu (beda dari Donasi)**: grup setting `"event"` **belum
+ada** di `SETTING_GROUPS` (`packages/db/src/schema/tenant/settings.ts`) — Donasi sudah punya grup
+`"donasi"` sejak awal jadi tidak perlu migration DDL, tapi Event perlu:
+1. Tambah `"event"` ke `SETTING_GROUPS` const.
+2. Update DDL CHECK constraint string di `create-tenant-schema.ts` (untuk tenant baru).
+3. Migration SQL baru (`packages/db/migrations/003X_settings_group_event.sql`) — `DO $$ LOOP`
+   semua tenant aktif, `ALTER TABLE ... DROP CONSTRAINT settings_group_check, ADD CONSTRAINT
+   settings_group_check CHECK ("group" IN (...))` termasuk `'event'` — pola sama migration
+   `0020_event_ticket_requires_membership.sql` (loop per-tenant via `public.tenants WHERE
+   is_active = true`). **Wajib dijalankan di VPS sebelum deploy kode** yang menulis ke grup ini.
+
+**File yang akan dibuat**:
+```
+lib/event-archive-card-designs.ts                                    → registry (pola campaign-archive-card-designs.ts)
+components/website/public/event-cards/event-archive-cards-design-1.tsx → Desain 1: grid desktop/list mobile
+components/website/public/event-cards/event-archive-cards.tsx        → dispatcher
+app/(dashboard)/app/[tenant]/event/pengaturan/page.tsx                → halaman baru, belum ada sama sekali
+app/(dashboard)/app/[tenant]/event/pengaturan/actions.ts              → saveEventArchiveDesignAction
+components/event/event-archive-design-form.tsx                       → picker client component
+```
+
+**File yang akan diubah**:
+```
+packages/db/src/schema/tenant/settings.ts        → SETTING_GROUPS += "event"
+packages/db/src/helpers/create-tenant-schema.ts  → CHECK constraint string += 'event'
+components/event/event-nav.tsx                   → tambah item nav "Pengaturan"
+app/(public)/[tenant]/agenda/page.tsx             → baca setting, dispatch via EventArchiveCards
+```
+
+**Setting** — group `event` (baru), key `event_archive_design`:
+```json
+key   = "event_archive_design"
+group = "event"
+value = { "design": "1" }
+```
+
+**Titik sentuh publik — hanya 1** (beda dari Donasi yang punya 2, dan Produk yang punya 3):
+Event tidak punya halaman "kategori" terpisah dengan URL sendiri (filter kategori di `/agenda`
+pakai query param `?category=`, bukan sub-route), dan tidak punya section "Event Lainnya" di
+halaman detail `/agenda/{slug}` (dicek: grep `EventCard`/`Lainnya`/`Terkait` di file itu nihil).
+Jadi cuma `/agenda/page.tsx` yang perlu diubah.
+
+**Urutan implementasi**:
+```
+Step EV1: Migration DB — tambah "event" ke SETTING_GROUPS + DDL + migration SQL, jalankan di VPS
+Step EV2: Registry + dispatcher + Desain 1 (copy pola campaign-archive-cards-design-1.tsx,
+          ganti CampaignCard→EventCard, sesuaikan jumlah kolom grid jika perlu)
+Step EV3: event/pengaturan/ (page + actions + nav item baru "Pengaturan" di event-nav.tsx)
+Step EV4: agenda/page.tsx — baca setting, ganti hardcode variant="grid" jadi EventArchiveCards
+Step EV5: tsc --noEmit + build, verifikasi 0 error sebelum lanjut ke modul Produk
+```
+
+**Realisasi**: rencana di atas diikuti tanpa deviasi. Kolom grid dipertahankan 3 (sama dengan
+grid existing `/agenda` sebelumnya) — tidak perlu disesuaikan. `hasFullAccess(access.tenantUser,
+"event")` dipakai untuk guard `saveEventArchiveDesignAction` (bukan `canManageUsers`, konsisten
+dengan pola Donasi — setting tampilan bukan setting sensitif finansial). Migration 0031 **belum
+dijalankan di VPS** — jalankan sebelum deploy build ini.

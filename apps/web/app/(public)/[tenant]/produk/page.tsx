@@ -1,11 +1,12 @@
 import { notFound }                      from "next/navigation";
 import { eq, desc, and, inArray, min, max, ilike, sql } from "drizzle-orm";
-import { createTenantDb, db, tenants, members, memberBusinesses } from "@jalajogja/db";
+import { createTenantDb, db, tenants, members, memberBusinesses, getSettings } from "@jalajogja/db";
 import { auth }                          from "@/lib/auth";
 import { headers }                       from "next/headers";
-import { ProductCard }                   from "@/components/website/public/product-cards/product-card";
+import { ProductArchiveCards }           from "@/components/website/public/product-cards/product-archive-cards";
 import { ProductArchiveClient }          from "@/components/toko/public/product-archive-client";
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
+import { PRODUCT_ARCHIVE_CARD_DESIGN_IDS, type ProductArchiveCardDesignId } from "@/lib/product-archive-card-designs";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import type { Metadata }                 from "next";
@@ -204,6 +205,13 @@ export default async function ProdukArchivePage({
 
   const basePath = `/${slug}/produk`;
 
+  // Desain kartu arsip — lihat docs/arsitektur-product.md
+  const tokoSettings     = await getSettings(tenantClient, "toko");
+  const archiveDesignRaw = tokoSettings.product_archive_design as { design?: string } | undefined;
+  const archiveDesign: ProductArchiveCardDesignId = PRODUCT_ARCHIVE_CARD_DESIGN_IDS.includes(archiveDesignRaw?.design as ProductArchiveCardDesignId)
+    ? (archiveDesignRaw!.design as ProductArchiveCardDesignId)
+    : "1";
+
   return (
     <div className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
@@ -231,11 +239,7 @@ export default async function ProdukArchivePage({
             <p className="text-sm">Belum ada produk{search ? ` untuk "${search}"` : ""}.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {products.map(p => (
-              <ProductCard key={p.id} product={p} variant="grid" tenantSlug={slug} sessionType={sessionType} />
-            ))}
-          </div>
+          <ProductArchiveCards design={archiveDesign} products={products} tenantSlug={slug} sessionType={sessionType} />
         )}
 
         {/* Pagination */}

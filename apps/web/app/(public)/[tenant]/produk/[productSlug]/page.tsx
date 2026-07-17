@@ -1,12 +1,13 @@
 import { notFound }                from "next/navigation";
 import { eq, desc, and, inArray, min, max } from "drizzle-orm";
-import { createTenantDb, db, tenants, members, memberBusinesses } from "@jalajogja/db";
+import { createTenantDb, db, tenants, members, memberBusinesses, getSettings } from "@jalajogja/db";
 import { auth }                   from "@/lib/auth";
 import { headers }                from "next/headers";
 import { renderBody }             from "@/lib/letter-render";
 import { ProductDetailClient }    from "@/components/toko/public/product-detail-client";
-import { ProductCard }            from "@/components/website/public/product-cards/product-card";
+import { ProductArchiveCards }    from "@/components/website/public/product-cards/product-archive-cards";
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
+import { PRODUCT_ARCHIVE_CARD_DESIGN_IDS, type ProductArchiveCardDesignId } from "@/lib/product-archive-card-designs";
 import type { Metadata }          from "next";
 import type { ProductVariationData, AttributeGroup, ViewerImage } from "@/components/toko/public/product-detail-client";
 import { ChevronRight }           from "lucide-react";
@@ -291,6 +292,13 @@ export default async function ProdukDetailPage({ params }: { params: Params }) {
     });
   }
 
+  // Desain kartu "Produk Lainnya" — lihat docs/arsitektur-product.md
+  const tokoSettings     = await getSettings(tenantClient, "toko");
+  const archiveDesignRaw = tokoSettings.product_archive_design as { design?: string } | undefined;
+  const archiveDesign: ProductArchiveCardDesignId = PRODUCT_ARCHIVE_CARD_DESIGN_IDS.includes(archiveDesignRaw?.design as ProductArchiveCardDesignId)
+    ? (archiveDesignRaw!.design as ProductArchiveCardDesignId)
+    : "1";
+
   return (
     <div className="py-10 px-4">
       <div className="max-w-7xl mx-auto space-y-12">
@@ -335,11 +343,7 @@ export default async function ProdukDetailPage({ params }: { params: Params }) {
         {relatedProducts.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Produk Lainnya</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {relatedProducts.map(p => (
-                <ProductCard key={p.id} product={p} variant="grid" tenantSlug={slug} sessionType={sessionType} />
-              ))}
-            </div>
+            <ProductArchiveCards design={archiveDesign} products={relatedProducts} tenantSlug={slug} sessionType={sessionType} />
           </section>
         )}
 

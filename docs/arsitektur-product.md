@@ -1101,3 +1101,95 @@ Phase V — Produk Variasi
 | Phase P3 — `/{slug}/produk/{slug}` detail simple | ✅ Selesai |
 | Phase P4 — detail variasi picker + add to cart variasi | ✅ Selesai |
 | Phase P5 — SEO metadata per halaman | ✅ Selesai |
+| **Registry Desain Kartu Arsip** (§ di bawah) | ✅ Selesai |
+
+---
+
+## Registry Desain Kartu Arsip (Grid Desktop / List Mobile)
+
+> **Status: SELESAI — diimplementasikan 2026-07-17.** Mengikuti pola yang sudah selesai dibangun
+> untuk modul Donasi (`docs/arsitektur-donasi.md` § 14j–14m — bentuk final) dan Event
+> (`docs/arsitektur-event.md`, section serupa), dikerjakan sekaligus dalam satu sesi. Tidak ada
+> migration DB baru — grup setting `toko` sudah ada sejak Sistem Mitra.
+
+**Latar belakang**: `ProductCard` (`components/website/public/product-cards/product-card.tsx`)
+sudah punya 3 variant — `grid` | `list` | `ringkas` (`lib/product-card-templates.ts`). **3 titik**
+publik hardcode `variant="grid"`, lebih banyak dari Donasi (2 titik) maupun Event (1 titik):
+- `/produk` (arsip utama) — `produk/page.tsx` baris ~236
+- `/produk/kategori/{slug}` (arsip per kategori) — `produk/kategori/[categorySlug]/page.tsx` baris ~242
+- `/produk/{slug}` bagian "Produk Lainnya" (related products) — `produk/[productSlug]/page.tsx` baris ~340
+
+Ketiganya pakai grid **4 kolom di desktop** (`grid-cols-2 sm:grid-cols-3 md:grid-cols-4`) — beda
+dari Campaign/Event yang 3 kolom. Desain 1 Produk **mempertahankan 4 kolom** (bukan diseragamkan
+ke 3) — kepadatan grid per modul adalah keputusan visual existing yang sudah tepat untuk konteksnya
+masing-masing (produk biasanya lebih banyak & lebih kecil daripada campaign/event), tidak perlu
+diubah hanya karena sedang menyeragamkan pola RESPONSIF-nya.
+
+**Keputusan yang dibawa dari § 14m Donasi (bukan didesain ulang)**:
+- Setting **tetap ada** — registry bernomor ("Desain 1", nanti "Desain 2" dst) di halaman
+  `/toko/pengaturan`, BUKAN pilihan Grid/List/Ringkas langsung, dan BUKAN dihapus.
+- **Aturan wajib untuk SETIAP desain di registry ini, sekarang dan nanti**: grid di desktop, list
+  di mobile — baseline konstrain untuk seluruh keluarga desain.
+- Dual-render CSS breakpoint (`hidden md:grid` + `md:hidden`), SSR-safe, tanpa `"use client"`.
+
+**Tidak ada gap infrastruktur** (beda dari Event): grup setting `"toko"` **sudah ada** di
+`SETTING_GROUPS` sejak Sistem Mitra dibangun — tidak perlu migration DDL baru, cukup key baru
+`product_archive_design` di grup yang sudah ada.
+
+**Halaman pengaturan sudah ada, tapi pola form-nya berbeda dari Donasi** — `/toko/pengaturan`
+(`toko/pengaturan/page.tsx` + `toko-settings-form.tsx` + `toko/pengaturan/actions.ts`) pakai SATU
+form besar dengan SATU state object (`TokoSettings`) dan SATU tombol simpan untuk semua field
+sekaligus (Sistem Mitra + Info Toko) — beda dari Donasi yang punya beberapa `<section>` independen
+masing-masing dengan state dan tombol simpan sendiri. **Keputusan**: TIDAK memaksakan section baru
+masuk ke `TokoSettings` object yang sudah ada (itu akan memaksa refactor form yang sudah berjalan
+baik) — section "Desain Kartu Arsip" ditambah sebagai `<section>` BARU yang independen di bawah
+`<TokoSettingsForm>` di `toko/pengaturan/page.tsx`, dengan komponen + action + state-nya sendiri,
+persis pola yang dipakai Donasi. Dua gaya form (satu form besar vs beberapa section independen)
+boleh hidup berdampingan di halaman yang sama — tidak perlu diseragamkan.
+
+**File yang akan dibuat**:
+```
+lib/product-archive-card-designs.ts                                      → registry
+components/website/public/product-cards/product-archive-cards-design-1.tsx → Desain 1: grid 4 kolom desktop / list mobile
+components/website/public/product-cards/product-archive-cards.tsx        → dispatcher (perlu terusin sessionType)
+app/(dashboard)/app/[tenant]/toko/pengaturan/product-archive-design-form.tsx → picker client component (colocated, pola toko-settings-form.tsx)
+```
+
+**File yang akan diubah**:
+```
+app/(dashboard)/app/[tenant]/toko/pengaturan/actions.ts  → tambah saveProductArchiveDesignAction
+app/(dashboard)/app/[tenant]/toko/pengaturan/page.tsx    → tambah section baru di bawah TokoSettingsForm
+app/(public)/[tenant]/produk/page.tsx                     → baca setting, dispatch via ProductArchiveCards
+app/(public)/[tenant]/produk/kategori/[categorySlug]/page.tsx → sama
+app/(public)/[tenant]/produk/[productSlug]/page.tsx       → sama, untuk "Produk Lainnya"
+```
+
+**Setting** — group `toko` (sudah ada), key baru:
+```json
+key   = "product_archive_design"
+group = "toko"
+value = { "design": "1" }
+```
+
+**Dispatcher perlu terusin `sessionType`** (beda dari Campaign/Event yang tidak punya prop ini) —
+`ProductArchiveCards` props: `{ design, products, tenantSlug, sessionType }`, diteruskan apa
+adanya ke `<ProductCard sessionType={sessionType}>` di dalam Desain 1 — tier harga (price/
+publicPrice/memberPrice) tetap resolve dengan benar di kedua breakpoint (grid dan list sama-sama
+butuh `sessionType`, bukan cuma salah satu).
+
+**Urutan implementasi**:
+```
+Step PR1: Registry + dispatcher (dengan sessionType) + Desain 1 (copy pola campaign, 4 kolom bukan 3)
+Step PR2: product-archive-design-form.tsx + saveProductArchiveDesignAction + section baru di
+          toko/pengaturan/page.tsx (di bawah TokoSettingsForm yang sudah ada, tidak diubah)
+Step PR3: 3 titik publik (produk/page.tsx, kategori/[slug]/page.tsx, [productSlug]/page.tsx)
+          — baca setting sekali, dispatch via ProductArchiveCards, ganti hardcode variant="grid"
+Step PR4: tsc --noEmit + build, verifikasi 0 error
+```
+
+**Realisasi**: rencana di atas diikuti tanpa deviasi. `product-archive-design-form.tsx` colocated
+di folder `toko/pengaturan/` (bukan `components/toko/`) — pola sama `toko-settings-form.tsx` yang
+sudah ada di situ. `hasFullAccess(access.tenantUser, "toko")` dipakai untuk guard
+`saveProductArchiveDesignAction` (bukan `canManageUsers` yang dipakai `saveTokoSettingsAction` —
+setting tampilan tidak sesensitif konfigurasi komisi mitra, jadi tidak perlu dibatasi ke
+owner/ketua saja). Tidak ada migration DB — grup `toko` sudah ada.
