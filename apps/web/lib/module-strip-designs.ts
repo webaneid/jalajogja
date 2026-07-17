@@ -5,9 +5,17 @@ import { Heart, Store, CalendarDays, FolderOpen, Users, Building2, Briefcase, Sc
 // tersentuh oleh perubahan di file ini). Icon Usaha pakai Building2 (bukan Briefcase yang
 // dipakai halaman /usaha sendiri) supaya tidak collide visual dengan Profesional dalam satu strip.
 
+// Satu item strip: modul yang dipilih + foto custom opsional. Kalau imageUrl kosong, Desain 2
+// (Foto) auto-fallback ke foto item terbaru modul itu (lihat resolveModuleImages di
+// modules-section.tsx) — kecuali modul termasuk MODULES_NO_AUTO_PHOTO.
+export type ModuleItemConfig = {
+  id:        string; // ModuleId
+  imageUrl?: string;
+};
+
 export type ModulesSectionData = {
   title?: string;
-  items: string[]; // ModuleId[]
+  items: ModuleItemConfig[];
 };
 
 export const MODULE_CATALOG = {
@@ -24,3 +32,27 @@ export const MODULE_CATALOG = {
 export type ModuleId = keyof typeof MODULE_CATALOG;
 
 export const MODULE_IDS = Object.keys(MODULE_CATALOG) as ModuleId[];
+
+// ── Desain 2 — Kartu Foto Overlay ────────────────────────────────────────────────
+
+export const MODULE_SECTION_DESIGN_IDS = ["1", "2"] as const;
+export type ModuleSectionDesignId = typeof MODULE_SECTION_DESIGN_IDS[number];
+
+export const MODULE_SECTION_DESIGNS: Record<ModuleSectionDesignId, {
+  label:       string;
+  description: string;
+}> = {
+  "1": {
+    label:       "Ikon",
+    description: "Kartu ikon + label + deskripsi, tanpa foto.",
+  },
+  "2": {
+    label:       "Foto",
+    description: "Kartu foto overlay, bisa di-scroll — custom foto atau otomatis dari item terbaru.",
+  },
+};
+
+// Modul yang TIDAK punya fallback foto otomatis: dokumen (tidak ada kolom foto sama sekali di
+// schema — cuma file PDF), anggota (ada photoUrl tapi sengaja diskip — foto pribadi individu,
+// bukan representatif organisasi, keputusan user 2026-07-17).
+export const MODULES_NO_AUTO_PHOTO: ModuleId[] = ["dokumen", "anggota"];

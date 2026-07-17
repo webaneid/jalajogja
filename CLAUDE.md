@@ -4897,6 +4897,73 @@ dimatikan, toggle posisi ikut tersembunyi (tidak relevan).
 **Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error. `hero-design-1.tsx` dikonfirmasi lagi
 tetap kosong perubahannya (fitur ini 100% scoped ke Desain 2). Belum diverifikasi visual di browser.
 
+### [2026-07-17] Strip Modul Desain 2 — Kartu Foto Overlay + Fallback Foto Berlapis
+
+User minta Desain 2 untuk section "Strip Modul" (dibangun kemarin, single-design icon-only) — kartu
+foto overlay ala rail "Ekosistem" di `design-refs/jalakarta-v2/`. Permintaan berkembang saat diskusi:
+bukan cuma upload foto manual, tapi **fallback berlapis** — foto custom → kalau kosong, otomatis
+foto dari item TERBARU modul itu (Donasi → cover campaign aktif terbaru, dst) → kalau masih kosong,
+gradasi+ikon (dummy yang sudah ada). User tanya duluan "berarti nambah database ya?" — jawaban:
+**tidak**, semua tetap JSONB di `pages.body` seperti section lain, cuma struktur `items` berubah
+dari `string[]` jadi array object (bawa foto custom opsional).
+
+**Alur kerja**: masuk Plan Mode lagi (2x dalam sesi ini) — 1 Explore agent riset kelayakan foto per
+8 modul (cek kolom di 6 tabel berbeda: campaigns, products, events, documents, members,
+member_businesses/professionals/owned_pesantren), lalu `AskUserQuestion` untuk 1 keputusan produk
+yang genuinely ambigu (foto Anggota — privasi), baru tulis plan lengkap dan `ExitPlanMode`.
+
+**Temuan riset penting — 2 modul TIDAK bisa auto-fallback**:
+- **Dokumen**: schema `documents` sama sekali tidak punya kolom foto/thumbnail — cuma referensi
+  file PDF (`currentVersionId → document_versions.fileId`). Bukan keputusan desain, murni
+  keterbatasan data — tidak ada foto untuk diambil.
+- **Anggota**: `members.photoUrl` ADA secara teknis, tapi user (ditanya via `AskUserQuestion`)
+  pilih **skip auto-fallback** — foto pribadi satu individu bukan representasi organisasi yang
+  pantas untuk kartu promosi, beda konteks dengan foto usaha/event/produk yang memang representatif.
+  Kedua modul ini masuk konstanta `MODULES_NO_AUTO_PHOTO` di `lib/module-strip-designs.ts` — admin
+  masih bisa upload foto custom untuk keduanya, cuma tidak ada fallback otomatis.
+
+**Field foto per modul TERNYATA tidak seragam** — 3 pola berbeda ditemukan saat riset (bukan
+diasumsikan sama semua):
+- Campaigns/Events: `coverId` → FK ke `media`, perlu resolve via `getImageUrl()` (helper yang
+  sudah ada di `lib/image-url.ts`, reuse langsung — sama persis pola yang dipakai halaman publik
+  `/campaign` dan `/agenda`).
+- Products: `images` JSONB array, `images[0].variants.large` atau `.url` sudah URL penuh (lesson
+  lama: "images JSONB dari MediaPicker sudah URL penuh — jangan `publicUrl()` lagi").
+- Usaha/Profesional/Pesantren (public schema, member_businesses/professionals/owned_pesantren):
+  `coverUrl` — sudah URL penuh, query cross-schema via JOIN `tenantMemberships` (pola identik
+  `fetchFunfacts` di `hero-section.tsx`, termasuk lazy-resolve `tenants.id`, reuse langsung).
+
+**Query "item terbaru" juga beda semantik per tipe** (bukan asal `ORDER BY createdAt DESC` semua):
+- Donasi/Toko: `status='active'`, `ORDER BY createdAt DESC` (campaign/produk aktif terbaru dibuat).
+- Event: `status='published' AND startsAt > NOW()`, `ORDER BY startsAt ASC` — **event MENDATANG
+  terdekat**, bukan "terbaru dibuat" — pola sama persis `heroCard` di hero (konsisten dengan
+  keputusan lama: untuk event, "relevan" = akan datang, bukan kapan record dibuat).
+- Semua query filter `IS NOT NULL` pada kolom foto SEBELUM `ORDER BY ... LIMIT 1` — supaya yang
+  terpilih adalah entri terbaru YANG PUNYA foto, bukan sekadar entri terbaru apa adanya (entri
+  terbaru tanpa foto akan terlewat, entri lebih lama tapi punya foto yang dipakai).
+
+**Struktur file** — pola dispatcher yang identik persis dengan Hero (`ModulesSection` sekarang jadi
+async dispatcher, bukan komponen presentasional murni seperti sebelumnya):
+- `modules-design-1.tsx` (baru) — ekstraksi 1:1 dari `ModulesSection` versi kemarin, zero
+  perubahan visual, cuma dipindah lokasi + terima props `title`/`items`/`baseUrl` alih-alih `data`.
+- `modules-design-2.tsx` (baru) — `"use client"` (rail scroll perlu ref+onClick tombol prev/next),
+  murni presentasional, terima `imageUrl` yang SUDAH resolved dari dispatcher (tidak query DB
+  sendiri) — pola sama `HeroDesign2` yang terima `funfacts` sudah jadi.
+- `modules-section.tsx` — dispatcher + `resolveModuleImages()`, sekarang butuh `tenantClient`+
+  `tenantSlug` (sebelumnya cuma `data`+`baseUrl`) — `landing-template.tsx` diupdate untuk pass itu.
+
+**Editor** (`ModulesEditor` di `section-editors.tsx`) — perubahan terbesar dari semua editor section
+sejauh ini: checklist modul sekarang per-item punya tombol "Upload Foto" sendiri (state
+`pickerForId: ModuleId | null` — SATU `MediaPicker` dipakai bergantian untuk semua item, bukan satu
+picker per item, supaya tidak render N dialog sekaligus), plus keterangan status tiap item ("Foto
+custom" / "Otomatis dari item terbaru" / "Tanpa foto — otomatis gradasi+ikon" untuk 2 modul
+`MODULES_NO_AUTO_PHOTO`) — supaya admin paham kenapa Dokumen/Anggota beda perlakuan tanpa perlu baca
+dokumentasi.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error dari percobaan pertama (semua nama
+kolom/tabel sudah diverifikasi manual saat riset+plan, bukan ditebak saat coding). Belum
+diverifikasi visual di browser.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

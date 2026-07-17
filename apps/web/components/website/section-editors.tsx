@@ -19,7 +19,10 @@ import { PlusIcon, Trash2, ImageIcon, X } from "lucide-react";
 import type { SectionType } from "@/lib/page-templates";
 import { POSTS_SECTION_DESIGNS, POSTS_SECTION_DESIGN_IDS } from "@/lib/posts-section-designs";
 import { HERO_SECTION_DESIGNS, HERO_SECTION_DESIGN_IDS, FUNFACT_CATALOG, FUNFACT_IDS, FUNFACT_STYLE_IDS, FUNFACT_STYLE_LABELS } from "@/lib/hero-section-designs";
-import { MODULE_CATALOG, MODULE_IDS, type ModuleId } from "@/lib/module-strip-designs";
+import {
+  MODULE_CATALOG, MODULE_IDS, MODULE_SECTION_DESIGN_IDS, MODULE_SECTION_DESIGNS, MODULES_NO_AUTO_PHOTO,
+  type ModuleId, type ModuleItemConfig, type ModuleSectionDesignId,
+} from "@/lib/module-strip-designs";
 import { MediaPicker } from "@/components/media/media-picker";
 import type { MediaItem } from "@/components/media/media-picker";
 import { GalleryPicker } from "@/components/gallery/gallery-picker";
@@ -712,13 +715,28 @@ function ProductsEditor({ data, onChange }: EditorProps) {
 
 // ── Modules (Strip Modul) ──────────────────────────────────────────────────────
 
-function ModulesEditor({ data, onChange }: EditorProps) {
-  const d = data as { title?: string; items?: string[] };
+function ModulesEditor({ data, onChange, variant, onVariantChange, tenantSlug }: EditorProps) {
+  const d = data as { title?: string; items?: ModuleItemConfig[] };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
-  const selected = d.items ?? [];
+  const selected      = d.items ?? [];
+  const activeVariant = (variant ?? "1") as ModuleSectionDesignId;
+  const [pickerForId, setPickerForId] = useState<ModuleId | null>(null);
+
+  function isChecked(id: ModuleId) {
+    return selected.some(item => item.id === id);
+  }
 
   function toggle(id: ModuleId) {
-    u("items", selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
+    u("items", isChecked(id) ? selected.filter(item => item.id !== id) : [...selected, { id }]);
+  }
+
+  function setItemImage(id: ModuleId, imageUrl: string) {
+    u("items", selected.map(item => item.id === id ? { ...item, imageUrl } : item));
+  }
+
+  function handleMediaSelect(id: ModuleId, media: MediaItem) {
+    setItemImage(id, media.variants?.large ?? media.url);
+    setPickerForId(null);
   }
 
   return (
@@ -730,23 +748,106 @@ function ModulesEditor({ data, onChange }: EditorProps) {
         <Label className="text-xs text-muted-foreground">Pilih Modul yang Ditampilkan</Label>
         <div className="grid grid-cols-2 gap-2">
           {MODULE_IDS.map((id) => {
-            const mod = MODULE_CATALOG[id];
-            const isChecked = selected.includes(id);
+            const mod     = MODULE_CATALOG[id];
+            const checked = isChecked(id);
             return (
               <label
                 key={id}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${
-                  isChecked ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                  checked ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
                 }`}
               >
                 <input
                   type="checkbox"
-                  checked={isChecked}
+                  checked={checked}
                   onChange={() => toggle(id)}
                   className="w-4 h-4 accent-primary"
                 />
                 {mod.label}
               </label>
+            );
+          })}
+        </div>
+      </div>
+
+      {activeVariant === "2" && selected.length > 0 && (
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Foto per Modul (opsional)</Label>
+          <div className="space-y-1.5">
+            {selected.map((item) => {
+              const mod        = MODULE_CATALOG[item.id as ModuleId];
+              const noAutoPhoto = MODULES_NO_AUTO_PHOTO.includes(item.id as ModuleId);
+              return (
+                <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-xs">
+                  {item.imageUrl ? (
+                    <img src={item.imageUrl} alt="" className="w-10 h-10 rounded object-cover shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 rounded bg-muted shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{mod.label}</p>
+                    <p className="text-muted-foreground truncate">
+                      {item.imageUrl
+                        ? "Foto custom"
+                        : noAutoPhoto
+                          ? "Tanpa foto — otomatis gradasi+ikon"
+                          : "Otomatis dari item terbaru"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => tenantSlug && setPickerForId(item.id as ModuleId)}
+                    disabled={!tenantSlug}
+                    className="shrink-0 px-2 py-1 rounded-md border border-border hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+                  >
+                    Upload Foto
+                  </button>
+                  {item.imageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => u("items", selected.map(x => x.id === item.id ? { id: x.id } : x))}
+                      className="shrink-0 px-1.5 py-1 rounded-md border border-border hover:border-destructive hover:text-destructive transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {tenantSlug && (
+            <MediaPicker
+              slug={tenantSlug}
+              open={pickerForId !== null}
+              onClose={() => setPickerForId(null)}
+              onSelect={(media) => pickerForId && handleMediaSelect(pickerForId, media)}
+              module="website"
+              accept={["image/"]}
+            />
+          )}
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Design Layout</Label>
+        <div className="grid grid-cols-1 gap-2">
+          {MODULE_SECTION_DESIGN_IDS.map((id) => {
+            const meta = MODULE_SECTION_DESIGNS[id];
+            const isActive = activeVariant === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onVariantChange?.(id)}
+                className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+                  isActive
+                    ? "border-primary bg-primary/5 text-primary font-medium"
+                    : "border-border hover:border-primary/40 text-foreground"
+                }`}
+              >
+                <span className="font-medium">{id}. {meta.label}</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">{meta.description}</span>
+              </button>
             );
           })}
         </div>

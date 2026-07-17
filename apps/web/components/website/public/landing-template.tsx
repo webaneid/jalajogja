@@ -6,7 +6,7 @@ import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/product
 import type { CampaignsSectionData, CampaignsSectionDesignId } from "@/lib/campaigns-section-designs";
 import type { EventsSectionData, EventsSectionDesignId } from "@/lib/events-section-designs";
 import type { HeroSectionData, HeroSectionDesignId } from "@/lib/hero-section-designs";
-import type { ModulesSectionData } from "@/lib/module-strip-designs";
+import type { ModulesSectionData, ModuleSectionDesignId } from "@/lib/module-strip-designs";
 import { PostsSection } from "@/components/website/public/sections/posts/posts-section";
 import { ProductsSection } from "@/components/website/public/sections/products/products-section";
 import { CampaignsSection } from "@/components/website/public/sections/campaigns/campaigns-section";
@@ -301,7 +301,15 @@ function SectionRenderer({
     case "contact_info": return <ContactInfoSection   settings={contactSettings} />;
     case "stats":        return <StatsSection         data={section.data} />;
     case "divider":      return <DividerSection       data={section.data} />;
-    case "modules":       return <ModulesSection       data={section.data as ModulesSectionData} baseUrl={baseUrl} />;
+    case "modules":       return (
+      <ModulesSection
+        data={section.data as ModulesSectionData}
+        variant={(section.variant ?? "1") as ModuleSectionDesignId}
+        tenantClient={tenantClient}
+        tenantSlug={tenantSlug}
+        baseUrl={baseUrl}
+      />
+    );
     default:             return null;
   }
 }
