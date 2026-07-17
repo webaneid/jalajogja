@@ -1193,3 +1193,34 @@ sudah ada di situ. `hasFullAccess(access.tenantUser, "toko")` dipakai untuk guar
 `saveProductArchiveDesignAction` (bukan `canManageUsers` yang dipakai `saveTokoSettingsAction` —
 setting tampilan tidak sesensitif konfigurasi komisi mitra, jadi tidak perlu dibatasi ke
 owner/ketua saja). Tidak ada migration DB — grup `toko` sudah ada.
+
+### Coupling ke Landing Section "Grid Produk" + Fix Mobile Slider (§ menyusul § 14o Donasi)
+
+> **Status: SELESAI — diimplementasikan 2026-07-17.** Menerapkan prinsip § 14o
+> (`docs/arsitektur-donasi.md`): setting "Desain Kartu Arsip" satu sumber kebenaran, landing
+> section "Grid X" otomatis ikut.
+
+**Dua perubahan sekaligus di `ProductsDesign1` ("Grid Produk", landing section)**:
+
+1. **Coupling** — terima prop `cardDesign` (fetch dari `product_archive_design`, sama seperti
+   Event). Registry arsip Produk baru 1 desain ("Klasik") — dispatch untuk sekarang selalu 1
+   cabang, murni plumbing untuk desain masa depan (identik alasan dengan Event).
+2. **Fix mobile — bug nyata, bukan cuma plumbing**: `ProductsDesign1` SEBELUM perubahan ini
+   TIDAK PUNYA treatment mobile sama sekali — satu `<div className="grid grid-cols-2 sm:grid-cols-3
+   lg:grid-cols-4">` tanpa pemisahan breakpoint, persis bug "grid sempit di HP" yang sama seperti
+   yang dulu dialami Campaign sebelum § 14l. Dikonfirmasi user: disamakan dengan Campaign — **grid
+   desktop / slider mobile** (bukan list seperti Event, yang sengaja dipertahankan berbeda).
+
+**Kolom grid desktop dipertahankan 4** (bukan diseragamkan ke 3 seperti Campaign/Event) — sama
+alasan dengan § "Registry Desain Kartu Arsip" di atas: kepadatan grid adalah keputusan visual
+per-modul yang independen dari mekanisme responsifnya.
+
+**File yang diubah**: `lib/products-section-designs.ts` (`ProductsSectionProps += cardDesign`),
+`products-section.tsx` (fetch `product_archive_design`, pass `cardDesign`), `products-design-1.tsx`
+(terima `cardDesign` + tambah blok `hidden md:grid` desktop / `md:hidden` slider mobile,
+pola sama persis `campaigns-design-1.tsx`).
+
+**Drive-by fix di luar scope literal permintaan**: `ProductsEditor` (`section-editors.tsx`) juga
+punya bug pre-existing sama persis — tidak pernah destructure `variant`/`onVariantChange`, admin
+tidak pernah bisa pilih "Showcase"/"Carousel Produk" dari UI. Difix bersamaan (tambah "Design
+Layout" picker, pola identik `CampaignsEditor`/`EventsEditor`).

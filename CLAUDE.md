@@ -476,10 +476,10 @@ app/(dashboard)/[tenant]/
 - [~] **Produk Variasi V8** — validasi stok server-side saat add to cart. **DITUNDA**.
 - [~] **ProductCard Phase 3 Mitra** — integrasi fetch publik (JOIN mitras) + order commission snapshot + filter seller_type admin. **DITUNDA**.
 - [x] **Sistem Harga Berlapis** — 3 tier: `price` (tidak login) → `public_price` (siapapun yang login) → `member_price` (anggota IKPM seluruh dunia). Schema Drizzle + DDL + form admin + ProductCard + `resolvePrice()` helper. Berlaku untuk tenant dan mitra. TypeScript 0 errors.
-- [x] **Halaman publik `/produk`** — archive + filter kategori + search + pagination. URL `/produk` (bukan `/toko` — hindari konflik dashboard). TypeScript 0 errors. + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/toko/pengaturan`, pola sama Donasi § 14m — 3 titik: arsip, kategori, "Produk Lainnya") — `docs/arsitektur-product.md`
+- [x] **Halaman publik `/produk`** — archive + filter kategori + search + pagination. URL `/produk` (bukan `/toko` — hindari konflik dashboard). TypeScript 0 errors. + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/toko/pengaturan`, pola sama Donasi § 14m — 3 titik: arsip, kategori, "Produk Lainnya") + **Coupling ke landing "Grid Produk"** (satu sumber kebenaran, plus fix mobile slider yang sebelumnya tidak ada + fix picker Design Layout `ProductsEditor`) — `docs/arsitektur-product.md`
 - [x] **Halaman publik `/produk/kategori/{slug}`** — arsip per kategori + breadcrumb + SEO. TypeScript 0 errors.
 - [x] **Halaman publik `/produk/{slug}`** — detail produk: gallery + variasi picker + add to cart via `addToCartAction` + produk terkait. TypeScript 0 errors.
-- [x] **EventCard + EventsSection** — 3 card variant (grid/list/ringkas) + 3 section design + integrasi landing-template + section-editors. Archive `/{slug}/agenda` + detail `/{slug}/agenda/{slug}` ✅. TypeScript 0 errors. + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/app/{slug}/event/pengaturan` — halaman baru, pola sama Donasi § 14m) — `docs/arsitektur-event.md`, migration `0031_settings_group_event.sql` wajib jalan di VPS dulu
+- [x] **EventCard + EventsSection** — 3 card variant (grid/list/ringkas) + 3 section design + integrasi landing-template + section-editors. Archive `/{slug}/agenda` + detail `/{slug}/agenda/{slug}` ✅. TypeScript 0 errors. + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/app/{slug}/event/pengaturan` — halaman baru, pola sama Donasi § 14m) + **Coupling ke landing "Grid Event"** (satu sumber kebenaran, mobile tetap list sesuai keputusan user, plus fix picker Design Layout `EventsEditor`) — `docs/arsitektur-event.md`, migration `0031_settings_group_event.sql` wajib jalan di VPS dulu
 - [x] **CampaignCard + CampaignsSection** — 3 variant (grid/list/ringkas), 3 design (Grid/Unggulan/Daftar), fetch layer filter tipe+kategori, terdaftar di landing page + section-editor. TypeScript 0 errors.
 - [x] **Halaman publik `/campaign`** — arsip donasi dengan filter tipe (donasi/zakat/wakaf/qurban) + kategori. URL `/campaign` (bukan `/donasi` — hindari konflik dashboard). TypeScript 0 errors.
 - [x] **Halaman publik `/campaign/{slug}`** — detail campaign + form donasi: donasi reguler (nominal chips + custom) dan qurban (hewan cards = variasi), keduanya → `addToCartAction`. Atas nama qurban di `notes`. TypeScript 0 errors.
@@ -5316,6 +5316,49 @@ akhirnya dilakukan di § 14o. Instruksi awal user ("bikin design card 2... dan p
 section landingpage") sebenarnya SUDAH mengisyaratkan "card" (bukan "section design") sebagai
 satuan yang dipindah — kata "card" vs "section design" adalah petunjuk yang terlewat di
 percobaan pertama.
+
+### [2026-07-17] Prinsip § 14o Diterapkan ke Event + Produk — Plus 2 Drive-By Fix
+
+> Detail lengkap: **`docs/arsitektur-event.md`** § "Coupling ke Landing Section Grid Event",
+> **`docs/arsitektur-product.md`** § "Coupling ke Landing Section Grid Produk"
+
+User minta prinsip yang baru dikunci di § 14o (setting Desain Kartu Arsip = satu sumber
+kebenaran, landing "Grid X" otomatis ikut) diterapkan ke Event dan Produk juga. Diklarifikasi
+lewat `AskUserQuestion` (setelah 2 ronde salah paham sebelumnya di fitur yang sama — kali ini
+tanya dulu sebelum eksekusi): mobile treatment landing section BEDA per modul secara sengaja —
+**Produk → slider** (sama seperti Campaign), **Event → tetap list** (perilaku existing
+`EventsDesign1` sudah dianggap benar, tidak diubah). Bukti bahwa 3 modul boleh punya treatment
+berbeda selama masing-masing punya alasan, bukan harus 100% seragam.
+
+**Karena Event dan Produk baru punya 1 desain arsip masing-masing** (`"1"` saja di
+`EVENT_ARCHIVE_CARD_DESIGN_IDS`/`PRODUCT_ARCHIVE_CARD_DESIGN_IDS`), coupling-nya untuk SEKARANG
+murni plumbing (dispatch selalu jatuh ke 1 cabang, nol perubahan visual) — nilainya baru terasa
+nanti kalau Desain 2 ditambah ke salah satu registry arsip itu, otomatis ikut ke landing tanpa
+kode tambahan. Pola ini (bangun infrastruktur sebelum ada isinya, karena arsitekturnya sudah
+terbukti di modul lain) beda dari biasanya "tunggu sampai benar-benar dibutuhkan" — dibenarkan di
+sini karena BIAYA implementasinya kecil (beberapa baris fetch+dispatch) dan MANFAATnya besar
+(konsistensi 3 modul, tidak perlu refactor ulang nanti).
+
+**`ProductsDesign1` — bug nyata ditemukan+difix, bukan cuma plumbing**: section ini TIDAK PUNYA
+treatment mobile sama sekali sebelum fix ini (`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4`
+polos, tanpa breakpoint split) — persis bug "grid sempit di HP" yang dulu dialami Campaign
+sebelum § 14l. Ditemukan SAAT mengerjakan permintaan user (bukan dicari-cari), difix sekalian
+sesuai jawaban user (slider, sama seperti Campaign).
+
+**2 drive-by fix sekaligus — bug pre-existing IDENTIK dengan `CampaignsEditor` sebelum § 14n**:
+`EventsEditor` dan `ProductsEditor` (`section-editors.tsx`) SAMA-SAMA tidak pernah destructure
+`variant`/`onVariantChange` — admin tidak pernah bisa memilih "Event Utama"/"Agenda" atau
+"Showcase"/"Carousel Produk" dari UI section builder, padahal registry 3-desain masing-masing
+sudah lama ada. Difix bersamaan (tambah blok "Design Layout" picker, pola identik). **Pola
+berulang**: begitu satu bug ketemu di satu `{Type}Editor`, WAJIB cek apakah `{Type}Editor` lain
+yang serupa (Events/Products/Campaigns semua di file yang sama, `section-editors.tsx`) punya bug
+kelas yang sama — jangan tunggu laporan terpisah per modul.
+
+**`getSettings`/`TenantDb` — import gabungan value+type dalam satu baris**: pola
+`import { getSettings, type TenantDb } from "@jalajogja/db";` dipakai di 3 file fetch-layer
+section (`campaigns-section.tsx`, `events-section.tsx`, `products-section.tsx`) — sebelumnya
+hanya `import type { TenantDb }`, sekarang perlu `getSettings` (value) juga. TypeScript
+mengizinkan mixed value+type import dalam satu statement — tidak perlu 2 baris import terpisah.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).

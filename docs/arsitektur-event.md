@@ -658,3 +658,34 @@ grid existing `/agenda` sebelumnya) — tidak perlu disesuaikan. `hasFullAccess(
 "event")` dipakai untuk guard `saveEventArchiveDesignAction` (bukan `canManageUsers`, konsisten
 dengan pola Donasi — setting tampilan bukan setting sensitif finansial). Migration 0031 **belum
 dijalankan di VPS** — jalankan sebelum deploy build ini.
+
+### Coupling ke Landing Section "Grid Event" (§ menyusul Desain Kartu Arsip Donasi § 14o)
+
+> **Status: SELESAI — diimplementasikan 2026-07-17.** Menerapkan prinsip yang dikunci di
+> `docs/arsitektur-donasi.md` § 14o: setting "Desain Kartu Arsip" adalah satu sumber kebenaran,
+> section landing "Grid X" WAJIB otomatis ikut, bukan pilihan terpisah.
+
+`EventsDesign1` ("Grid Event", landing section) sekarang terima prop `cardDesign` — di-fetch oleh
+`EventsSection` dari setting `event_archive_design` yang sama dipakai `/agenda`. Karena registry
+arsip Event baru punya **1 desain** ("Klasik"), dispatch di `EventsDesign1` untuk saat ini selalu
+jatuh ke `default` (perilaku identik sebelum perubahan) — ini murni **plumbing untuk masa depan**:
+begitu Desain 2 ditambah ke `lib/event-archive-card-designs.ts`, landing section otomatis ikut
+tanpa kode tambahan, persis seperti yang terjadi di Campaign.
+
+**Mobile TIDAK diubah** — dikonfirmasi eksplisit oleh user: `EventsDesign1` sudah pakai
+`variant="list"` di bawah breakpoint `sm:` (bukan grid sempit) sejak awal, treatment ini sudah
+dianggap benar dan dipertahankan apa adanya. Beda dari Campaign (landing = slider) dan Produk
+(landing baru ditambah slider) — Event landing SENGAJA tetap list, bukan diseragamkan jadi
+slider. Tiga modul boleh punya treatment mobile landing yang berbeda, tidak masalah.
+
+**File yang diubah**: `lib/events-section-designs.ts` (`EventsSectionProps += cardDesign`),
+`events-section.tsx` (fetch `event_archive_design`, pass `cardDesign`), `events-design-1.tsx`
+(terima `cardDesign`, dispatch internal — untuk sekarang selalu 1 cabang).
+
+**Drive-by fix di luar scope literal permintaan**: `EventsEditor` (`section-editors.tsx`) ternyata
+punya bug pre-existing yang SAMA PERSIS dengan `CampaignsEditor` sebelum § 14n — tidak pernah
+destructure `variant`/`onVariantChange`, jadi admin tidak pernah bisa memilih "Event Utama"/
+"Agenda" dari UI, selalu terkunci ke Desain 1. Difix bersamaan (tambah blok "Design Layout"
+picker, pola identik) karena secara langsung melayani tujuan "berlaku untuk semua card design" —
+kalau tidak, admin tetap tidak bisa memanfaatkan registry 3-desain section Event yang sudah lama
+ada.

@@ -1,7 +1,8 @@
 import { eq, desc, and, inArray, min, max } from "drizzle-orm";
-import type { TenantDb } from "@jalajogja/db";
+import { getSettings, type TenantDb } from "@jalajogja/db";
 import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
 import type { ProductCardData } from "@/lib/product-card-templates";
+import { PRODUCT_ARCHIVE_CARD_DESIGN_IDS, type ProductArchiveCardDesignId } from "@/lib/product-archive-card-designs";
 import { ProductsDesign1 } from "./products-design-1";
 import { ProductsDesign2 } from "./products-design-2";
 import { ProductsDesign3 } from "./products-design-3";
@@ -167,7 +168,16 @@ export async function ProductsSection({ data, variant, tenantClient, tenantSlug 
   }
 
   const products = await fetchProducts(tenantClient, data, tenantSlug);
-  const props = { data, products, tenantSlug, sectionTitle, filterHref };
+
+  // Desain kartu untuk "Grid Produk" — ikut setting Desain Kartu Arsip yang aktif.
+  // Lihat docs/arsitektur-product.md § "Coupling ke Landing Section Grid Produk".
+  const tokoSettings     = await getSettings(tenantClient, "toko");
+  const archiveDesignRaw = tokoSettings.product_archive_design as { design?: string } | undefined;
+  const cardDesign: ProductArchiveCardDesignId = PRODUCT_ARCHIVE_CARD_DESIGN_IDS.includes(archiveDesignRaw?.design as ProductArchiveCardDesignId)
+    ? (archiveDesignRaw!.design as ProductArchiveCardDesignId)
+    : "1";
+
+  const props = { data, products, tenantSlug, sectionTitle, filterHref, cardDesign };
 
   switch (variant) {
     case "2": return <ProductsDesign2 {...props} />;

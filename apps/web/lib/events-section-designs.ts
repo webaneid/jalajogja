@@ -1,4 +1,5 @@
 import type { EventCardData } from "./event-card-templates";
+import type { EventArchiveCardDesignId } from "./event-archive-card-designs";
 
 export type EventsSectionData = {
   title:        string;
@@ -28,4 +29,5 @@ export type EventsSectionProps = {
   tenantSlug:   string;
   sectionTitle: string;
   filterHref:   string;
+  cardDesign:   EventArchiveCardDesignId;   // dipakai HANYA oleh EventsDesign1 — ikut Desain Kartu Arsip
 };

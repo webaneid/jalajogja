@@ -1,8 +1,9 @@
 import { eq, desc, and, gte, inArray } from "drizzle-orm";
-import type { TenantDb } from "@jalajogja/db";
+import { getSettings, type TenantDb } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import type { EventCardData } from "@/lib/event-card-templates";
 import type { EventsSectionData, EventsSectionDesignId, EventsSectionProps } from "@/lib/events-section-designs";
+import { EVENT_ARCHIVE_CARD_DESIGN_IDS, type EventArchiveCardDesignId } from "@/lib/event-archive-card-designs";
 import { EventsDesign1 } from "./events-design-1";
 import { EventsDesign2 } from "./events-design-2";
 import { EventsDesign3 } from "./events-design-3";
@@ -122,7 +123,16 @@ export async function EventsSection({ data, variant, tenantClient, tenantSlug }:
   }
 
   const events = await fetchEvents(tenantClient, data, tenantSlug);
-  const props: EventsSectionProps = { data, events, tenantSlug, sectionTitle, filterHref };
+
+  // Desain kartu untuk "Grid Event" — ikut setting Desain Kartu Arsip yang aktif.
+  // Lihat docs/arsitektur-event.md § "Coupling ke Landing Section Grid Event".
+  const eventSettings    = await getSettings(tenantClient, "event");
+  const archiveDesignRaw = eventSettings.event_archive_design as { design?: string } | undefined;
+  const cardDesign: EventArchiveCardDesignId = EVENT_ARCHIVE_CARD_DESIGN_IDS.includes(archiveDesignRaw?.design as EventArchiveCardDesignId)
+    ? (archiveDesignRaw!.design as EventArchiveCardDesignId)
+    : "1";
+
+  const props: EventsSectionProps = { data, events, tenantSlug, sectionTitle, filterHref, cardDesign };
 
   switch (variant) {
     case "2": return <EventsDesign2 {...props} />;

@@ -20,6 +20,8 @@ import type { SectionType } from "@/lib/page-templates";
 import { POSTS_SECTION_DESIGNS, POSTS_SECTION_DESIGN_IDS } from "@/lib/posts-section-designs";
 import { HERO_SECTION_DESIGNS, HERO_SECTION_DESIGN_IDS, FUNFACT_CATALOG, FUNFACT_IDS, FUNFACT_STYLE_IDS, FUNFACT_STYLE_LABELS } from "@/lib/hero-section-designs";
 import { CAMPAIGNS_SECTION_DESIGNS, CAMPAIGNS_SECTION_DESIGN_IDS } from "@/lib/campaigns-section-designs";
+import { EVENTS_SECTION_DESIGNS, EVENTS_SECTION_DESIGN_IDS } from "@/lib/events-section-designs";
+import { PRODUCTS_SECTION_DESIGNS, PRODUCTS_SECTION_DESIGN_IDS } from "@/lib/products-section-designs";
 import {
   MODULE_CATALOG, MODULE_IDS, MODULE_SECTION_DESIGN_IDS, MODULE_SECTION_DESIGNS, MODULES_NO_AUTO_PHOTO,
   normalizeModuleItems, type ModuleId, type ModuleSectionDesignId,
@@ -386,9 +388,10 @@ function PostsEditor({ data, onChange, variant, onVariantChange, tenantSlug }: E
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
-function EventsEditor({ data, onChange }: EditorProps) {
+function EventsEditor({ data, onChange, variant, onVariantChange }: EditorProps) {
   const d = data as { title?: string; count?: number; upcomingOnly?: boolean };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+  const activeVariant = variant ?? "1";
   return (
     <div className="space-y-3">
       <Field label="Judul Section">
@@ -413,6 +416,30 @@ function EventsEditor({ data, onChange }: EditorProps) {
           </SelectContent>
         </Select>
       </Field>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Design Layout</Label>
+        <div className="grid grid-cols-1 gap-2">
+          {EVENTS_SECTION_DESIGN_IDS.map((id) => {
+            const meta = EVENTS_SECTION_DESIGNS[id];
+            const isActive = activeVariant === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onVariantChange?.(id)}
+                className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+                  isActive
+                    ? "border-primary bg-primary/5 text-primary font-medium"
+                    : "border-border hover:border-primary/40 text-foreground"
+                }`}
+              >
+                <span className="font-medium">{id}. {meta.label}</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">{meta.description}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -719,9 +746,10 @@ function DividerEditor({ data, onChange }: EditorProps) {
 
 // ── Products ──────────────────────────────────────────────────────────────────
 
-function ProductsEditor({ data, onChange }: EditorProps) {
+function ProductsEditor({ data, onChange, variant, onVariantChange }: EditorProps) {
   const d = data as { title?: string; count?: number; categoryId?: string | null };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+  const activeVariant = variant ?? "1";
   return (
     <div className="space-y-3">
       <Field label="Judul Section">
@@ -735,6 +763,30 @@ function ProductsEditor({ data, onChange }: EditorProps) {
         </select>
       </Field>
       <p className="text-xs text-muted-foreground">Filter kategori dapat dikonfigurasi setelah section disimpan.</p>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Design Layout</Label>
+        <div className="grid grid-cols-1 gap-2">
+          {PRODUCTS_SECTION_DESIGN_IDS.map((id) => {
+            const meta = PRODUCTS_SECTION_DESIGNS[id];
+            const isActive = activeVariant === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onVariantChange?.(id)}
+                className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+                  isActive
+                    ? "border-primary bg-primary/5 text-primary font-medium"
+                    : "border-border hover:border-primary/40 text-foreground"
+                }`}
+              >
+                <span className="font-medium">{id}. {meta.label}</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">{meta.description}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { ProductCardData } from "./product-card-templates";
+import type { ProductArchiveCardDesignId } from "./product-archive-card-designs";
 
 export type ProductsSectionData = {
   title:      string;
@@ -27,4 +28,5 @@ export type ProductsSectionProps = {
   tenantSlug:  string;
   sectionTitle: string;
   filterHref:  string;
+  cardDesign:  ProductArchiveCardDesignId;   // dipakai HANYA oleh ProductsDesign1 — ikut Desain Kartu Arsip
 };
