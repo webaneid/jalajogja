@@ -309,6 +309,7 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
   const [success, setSuccess]      = useState("");
 
   const [showPayForm,  setShowPayForm]  = useState(false);
+  const [payAmount,    setPayAmount]    = useState(String(invoice.remaining));
   const [payerName,    setPayerName]    = useState(invoice.customerName);
   const [payMethod,    setPayMethod]    = useState<"transfer" | "qris">("transfer");
   const [payerBank,    setPayerBank]    = useState("");
@@ -363,8 +364,18 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
   function handleSubmitProof(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    const amountNum = parseInt(payAmount.replace(/\D/g, ""), 10);
+    if (!amountNum || amountNum <= 0) {
+      setError("Nominal transfer harus diisi dengan benar.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Pastikan nominal yang Anda tulis (${formatRp(amountNum)}) sama persis dengan bukti transfer. Lanjut kirim konfirmasi?`
+    );
+    if (!confirmed) return;
     startTransition(async () => {
       const res = await submitPaymentProofAction(slug, invoice.id, {
+        amount:       amountNum,
         method:       payMethod,
         payerName:    payerName,
         payerBank:    payerBank.trim() || undefined,
@@ -603,6 +614,24 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
       {showPayForm && canPay && (
         <form onSubmit={handleSubmitProof} className="rounded-lg border border-border p-4 space-y-4">
           <p className="text-sm font-semibold">Konfirmasi Pembayaran</p>
+
+          <div>
+            <label className={labelCls}>Nominal Transfer</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rp</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value.replace(/\D/g, ""))}
+                className={`${inputCls} pl-9`}
+                required
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Default sesuai sisa tagihan — ubah kalau nominal transfer Anda beda (mencicil atau lebih).
+            </p>
+          </div>
 
           <div>
             <label className={labelCls}>Nama Pengirim</label>

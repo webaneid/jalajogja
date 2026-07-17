@@ -612,6 +612,7 @@ export async function submitPaymentProofAction(
   slug: string,
   invoiceId: string,
   data: {
+    amount:       number;   // WAJIB — nominal yang customer klaim sudah ditransfer, lihat docs/arsitektur-billing.md § "Nominal Pembayaran Terlihat + Bisa Diedit"
     method:       "cash" | "transfer" | "qris";
     payerName?:   string;
     payerBank?:   string;
@@ -621,6 +622,9 @@ export async function submitPaymentProofAction(
   }
 ): Promise<ActionResult<{ paymentId: string }>> {
   try {
+    if (!data.amount || data.amount <= 0)
+      return { success: false, error: "Nominal transfer harus lebih dari 0." };
+
     const tenantDb = createTenantDb(slug);
     const { db: tdb, schema } = tenantDb;
 
@@ -631,7 +635,7 @@ export async function submitPaymentProofAction(
     type TxResult =
       | { error: string }
       | { paymentId: string; customerName: string; customerPhone: string | null;
-          invoiceNumber: string; remaining: number };
+          invoiceNumber: string; amount: number };
 
     const txResult: TxResult = await tdb.transaction(async (tx) => {
       const [lockedInv] = await tx
@@ -650,8 +654,9 @@ export async function submitPaymentProofAction(
       if (lockedInv.status === "waiting_verification")
         return { error: "Bukti pembayaran Anda sedang diverifikasi admin. Mohon tunggu, tidak perlu kirim ulang." };
 
-      // Wajib sertakan kode unik — tanpa ini payment yang tercatat selalu kurang dari amountDue,
-      // invoice tidak pernah naik status "paid" (lihat lesson CLAUDE.md § Kode Unik Transaksi)
+      // Cek masih ada sisa tagihan (bukan menentukan nominal payment — itu dari data.amount,
+      // lihat docs/arsitektur-billing.md § "Nominal Pembayaran Terlihat + Bisa Diedit").
+      // Wajib sertakan kode unik di amountDue — lihat lesson CLAUDE.md § Kode Unik Transaksi.
       const amountDue = parseFloat(String(lockedInv.total)) + (lockedInv.uniqueCode ?? 0);
       const remaining = amountDue - parseFloat(String(lockedInv.paidAmount));
       if (remaining <= 0) return { error: "Invoice sudah lunas." };
@@ -664,7 +669,7 @@ export async function submitPaymentProofAction(
           number:       payNumber,
           sourceType:   "invoice",
           sourceId:     invoiceId,
-          amount:       remaining.toFixed(2),
+          amount:       data.amount.toFixed(2),
           uniqueCode:   0,
           method:       data.method,
           status:       "submitted",
@@ -681,7 +686,7 @@ export async function submitPaymentProofAction(
       await tx.insert(schema.invoicePayments).values({
         invoiceId,
         paymentId: payment.id,
-        amount:    remaining.toFixed(2),
+        amount:    data.amount.toFixed(2),
       });
 
       // Update status invoice → waiting_verification
@@ -695,7 +700,7 @@ export async function submitPaymentProofAction(
         customerName:  lockedInv.customerName,
         customerPhone: lockedInv.customerPhone,
         invoiceNumber: lockedInv.invoiceNumber,
-        remaining,
+        amount:        data.amount,
       };
     });
 
@@ -703,8 +708,8 @@ export async function submitPaymentProofAction(
 
     const inv = { customerName: txResult.customerName, customerPhone: txResult.customerPhone,
                    invoiceNumber: txResult.invoiceNumber };
-    const remaining = txResult.remaining;
-    const payment   = { id: txResult.paymentId };
+    const submittedAmount = txResult.amount;
+    const payment          = { id: txResult.paymentId };
 
     void notifyWa({
       slug, tenantDb, event: "payment_submitted",
@@ -712,7 +717,7 @@ export async function submitPaymentProofAction(
       vars: {
         name:          inv.customerName,
         invoiceNumber: inv.invoiceNumber,
-        amount:        waRupiah(remaining),
+        amount:        waRupiah(submittedAmount),
       },
     });
 

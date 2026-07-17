@@ -621,13 +621,17 @@ export async function rejectPaymentAction(
 // Admin verifikasi payment yang di-submit customer → status confirmed, update paid_amount invoice
 
 export async function verifySubmittedPaymentAction(
-  slug:      string,
-  paymentId: string,
+  slug:           string,
+  paymentId:      string,
+  verifiedAmount: number,   // WAJIB — admin bisa koreksi dari nominal yang customer submit, lihat docs/arsitektur-billing.md § "Nominal Pembayaran Terlihat + Bisa Diedit"
 ): Promise<ActionResult<void>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
   if (!hasFullAccess(access.tenantUser, "keuangan"))
     return { success: false, error: "Akses ditolak." };
+
+  if (!verifiedAmount || verifiedAmount <= 0)
+    return { success: false, error: "Nominal terverifikasi harus lebih dari 0." };
 
   const tenantDb = createTenantDb(slug);
   const { db, schema } = tenantDb;
@@ -655,12 +659,11 @@ export async function verifySubmittedPaymentAction(
   if (inv.status === "paid")   return { success: false, error: "Invoice sudah lunas." };
   if (inv.status === "cancelled") return { success: false, error: "Invoice sudah dibatalkan." };
 
-  const payAmount  = parseFloat(String(payment.amount));
   const paidSoFar  = parseFloat(String(inv.paidAmount));
   const total      = parseFloat(String(inv.total));
   const uniqueCode = inv.uniqueCode ?? 0;
   const amountDue  = total + uniqueCode;
-  const newPaid    = paidSoFar + payAmount;
+  const newPaid    = paidSoFar + verifiedAmount;
   const newStatus  = newPaid >= amountDue ? "paid" : "partial";
 
   // Resolve akun untuk jurnal
@@ -684,16 +687,28 @@ export async function verifySubmittedPaymentAction(
 
   try {
     await db.transaction(async (tx) => {
-      // Konfirmasi payment
+      // Konfirmasi payment — amount di-update ke nominal yang admin verifikasi (bisa beda
+      // dari yang customer submit, lihat docs/arsitektur-billing.md § "Nominal Pembayaran
+      // Terlihat + Bisa Diedit")
       await tx
         .update(schema.payments)
         .set({
+          amount:      verifiedAmount.toFixed(2),
           status:      "paid",
           confirmedBy: access.tenantUser.id,
           confirmedAt: new Date(),
           updatedAt:   new Date(),
         })
         .where(eq(schema.payments.id, paymentId));
+
+      // invoice_payments ikut disesuaikan supaya konsisten dengan payments.amount di atas
+      await tx
+        .update(schema.invoicePayments)
+        .set({ amount: verifiedAmount.toFixed(2) })
+        .where(and(
+          eq(schema.invoicePayments.invoiceId, inv.id),
+          eq(schema.invoicePayments.paymentId, paymentId),
+        ));
 
       // Update invoice paid_amount + status
       await tx
@@ -843,7 +858,7 @@ export async function verifySubmittedPaymentAction(
       vars: {
         name:          inv.customerName,
         invoiceNumber: inv.invoiceNumber,
-        amount:        waRupiah(payAmount),
+        amount:        waRupiah(verifiedAmount),
       },
     });
 

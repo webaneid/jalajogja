@@ -5360,6 +5360,56 @@ section (`campaigns-section.tsx`, `events-section.tsx`, `products-section.tsx`) 
 hanya `import type { TenantDb }`, sekarang perlu `getSettings` (value) juga. TypeScript
 mengizinkan mixed value+type import dalam satu statement — tidak perlu 2 baris import terpisah.
 
+### [2026-07-17] Nominal Pembayaran Tidak Pernah Ditanya/Bisa Dikoreksi — Prasyarat Cicilan
+
+> Detail lengkap: **`docs/arsitektur-billing.md` § "Nominal Pembayaran Terlihat + Bisa Diedit"**
+
+User minta rencana fitur Cicilan (installment) — sebelum masuk ke situ, user tanya duluan:
+"di konfirmasi pembayaran itu jumlah pembayarannya ditulis gk bro?" — sinyal bagus bahwa mereka
+mengecek prasyarat sebelum melangkah, bukan asumsi semuanya sudah beres. Jawabannya memang TIDAK,
+dan ini bug nyata (bukan cuma UX kosmetik): `submitPaymentProofAction` (customer submit bukti
+transfer) TIDAK PERNAH menerima nominal dari customer — form publik cuma minta nama pengirim,
+bank, tanggal, bukti foto. Server SELALU menghitung `payment.amount = remaining` (sisa tagihan)
+secara otomatis, mengasumsikan customer transfer PAS sejumlah itu. `verifySubmittedPaymentAction`
+(admin verifikasi) juga cuma terima `paymentId` — admin cuma bisa terima nilai asumsi itu mentah2
+via tombol "✓ Verifikasi", atau tolak total via "Tolak" (customer submit ulang dari nol) — tidak
+ada jalan tengah untuk koreksi.
+
+**Kenapa ini prasyarat wajib untuk Cicilan**: cicilan = customer bayar SEBAGIAN berkali-kali.
+Kalau sistem tidak bisa menangkap "customer bilang saya transfer segini" secara akurat dan admin
+tidak bisa mengoreksi kalau meleset, riwayat cicilan di invoice akan salah dari transaksi pertama.
+
+**Fix**: nominal jadi **field eksplisit yang terlihat DAN bisa diedit** di dua sisi:
+- Customer (`invoice-public-client.tsx`) — input "Nominal Transfer" baru di form submit bukti,
+  default = `invoice.remaining`, bisa diubah bebas (mencicil = kurang dari remaining, kelebihan
+  bayar = lebih — user eksplisit: "ada yg tf lebih soalnya", jadi TIDAK ada batas atas).
+- Admin (`invoice-detail-client.tsx`) — tombol "✓ Verifikasi" yang sebelumnya langsung
+  `confirm()` + panggil action, sekarang buka **form inline** (pola sama form "Tolak" yang sudah
+  ada di komponen yang sama) dengan nominal ter-prefill dari yang customer submit, admin bisa
+  koreksi sambil bandingkan ke foto bukti transfer di bawahnya sebelum klik "Konfirmasi". User
+  eksplisit: "kalau tidak [bisa diedit] bahaya meski lebih 100 atau kurang" — makanya validasi
+  cuma `> 0`, tidak ada pembulatan atau toleransi yang menyembunyikan selisih kecil.
+
+**Konsistensi data**: `payments.amount` (dikoreksi admin) dan `invoice_payments.amount`
+(junction table, diisi saat submit) sekarang SELALU disinkronkan — kalau admin koreksi nominal
+saat verifikasi, KEDUA kolom di-update bersamaan, supaya tidak ada dua sumber kebenaran yang
+beda untuk payment yang sama.
+
+**Di luar scope, sengaja tidak disentuh**: `confirmInvoicePaymentAction` (admin input pembayaran
+MANUAL, bukan dari submission customer) sudah benar sejak awal — sudah punya parameter `amount`
+eksplisit dengan validasi. Penanganan refund/kelebihan bayar juga di luar scope — dicatat sebagai
+pembahasan terpisah kalau nanti dibutuhkan, tidak diselesaikan sekarang.
+
+**Tambahan kecil setelah review user**: popup `window.confirm()` di `handleSubmitProof`
+(`invoice-public-client.tsx`) sebelum submit — *"Pastikan nominal yang Anda tulis (Rp X) sama
+persis dengan bukti transfer. Lanjut kirim konfirmasi?"* — Batal = tidak jadi kirim, OK = lanjut
+proses seperti biasa. Native `confirm()` dipilih apa adanya (bukan modal custom) — tidak ada
+precedent AlertDialog di komponen customer-facing manapun di app ini, dan use-case-nya cuma
+gate satu kali sebelum submit, bukan UI persisten.
+
+**Status**: sudah di-commit dan push (user sempat minta tunda push satu putaran untuk review
+dulu, sudah dikonfirmasi lanjut).
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

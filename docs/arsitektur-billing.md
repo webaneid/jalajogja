@@ -577,6 +577,98 @@ Lightbox juga tersedia di halaman invoice publik `/{slug}/invoice/{id}`:
 
 ---
 
+### Nominal Pembayaran Terlihat + Bisa Diedit — Prasyarat Cicilan
+
+> **Status: SELESAI — diimplementasikan 2026-07-17.** Ditemukan saat diskusi perencanaan fitur
+> Cicilan (belum ada dokumen terpisah) — user tanya duluan: "di konfirmasi pembayaran itu jumlah
+> pembayarannya ditulis gk bro?" — jawabannya TIDAK, dan ini gap nyata yang wajib dibenahi
+> SEBELUM Cicilan dibangun (cicilan = bayar sebagian berkali-kali, butuh nominal akurat per
+> transaksi).
+
+**Bug yang ditemukan** (baca kode langsung, bukan asumsi): `submitPaymentProofAction`
+(`cart/actions.ts`) TIDAK menerima `amount` dari customer sama sekali — form publik
+(`invoice-public-client.tsx`) cuma minta nama pengirim, bank, tanggal, catatan, foto bukti.
+Server SELALU menghitung `payment.amount = remaining` (sisa tagihan, `total + uniqueCode -
+paidAmount`) — bukan angka yang customer benar-benar transfer. `verifySubmittedPaymentAction`
+juga cuma menerima `paymentId` — admin tidak bisa mengoreksi, cuma bisa terima nilai asumsi
+tadi (via tombol "✓ Verifikasi") atau tolak total (via "Tolak", customer submit ulang dari nol).
+
+**Kenapa berbahaya** (dikonfirmasi user): customer bisa transfer KURANG dari sisa tagihan
+(nyicil sendiri secara tidak resmi, atau salah kirim) atau LEBIH (kelebihan bayar) — sistem
+sekarang tidak punya cara menangkap kenyataan itu, invoice bisa tercatat lunas padahal kurang,
+atau kelebihan bayar hilang begitu saja tanpa tercatat.
+
+**Keputusan yang dikunci** (dikonfirmasi user): nominal **terlihat** (bukan tersembunyi di
+balik kalkulasi otomatis) dan **bisa diedit** — baik oleh customer (saat submit bukti) maupun
+admin (saat verifikasi, karena "kalau tidak bisa edit, bahaya meski cuma beda 100 atau kurang").
+Default tetap `remaining` (perilaku existing dipertahankan sebagai nilai awal) — cuma sekarang
+BUKAN nilai terkunci.
+
+**Perubahan customer-facing** (`submitPaymentProofAction` + `invoice-public-client.tsx`):
+```typescript
+// Tambah field amount ke parameter data — WAJIB diisi, bukan optional
+submitPaymentProofAction(slug, invoiceId, {
+  amount: number,       // BARU — customer isi sendiri, default state = invoice.remaining
+  method: "cash" | "transfer" | "qris",
+  payerName?, payerBank?, transferDate?, proofUrl?, notes?,
+})
+```
+Validasi server: `amount > 0` (tidak ada batas atas — user eksplisit bilang "ada yg tf lebih",
+overpayment harus bisa dicatat apa adanya, bukan ditolak). `payments.amount` diisi dari
+`data.amount`, bukan `remaining` yang dihitung sistem.
+
+UI form (`invoice-public-client.tsx`): input nominal baru (currency-formatted, mirip pola input
+Rupiah yang sudah dipakai di form donasi/checkout lain di app ini) — muncul di bagian atas form,
+`defaultValue`/state awal = `invoice.remaining`, `onChange` bebas diubah user.
+
+**Perubahan admin-facing** (`verifySubmittedPaymentAction` + `invoice-detail-client.tsx`):
+```typescript
+// Tambah parameter verifiedAmount — admin lihat p.amount (submitted customer) sebagai default,
+// bisa dikoreksi sebelum konfirmasi
+verifySubmittedPaymentAction(slug, paymentId, verifiedAmount: number)
+```
+`payments.amount` di-UPDATE ke `verifiedAmount` (bukan dipertahankan nilai submit customer) saat
+verifikasi — nilai yang admin konfirmasi jadi satu-satunya sumber kebenaran final, dipakai untuk
+`invoice.paidAmount += verifiedAmount` (bukan `payment.amount` lama). Validasi: `verifiedAmount >
+0`, tidak ada batas atas (overpayment tetap sah, dicatat apa adanya — tidak menangani refund
+kelebihan bayar di scope ini, itu pembahasan terpisah kalau dibutuhkan nanti).
+
+UI (`invoice-detail-client.tsx`): tombol "✓ Verifikasi" yang sekarang langsung `confirm()` +
+panggil action, diganti jadi buka form inline kecil (pola sama form "Tolak" yang sudah ada di
+komponen yang sama) — input nominal ter-prefill dari `p.amount`, admin edit kalau perlu, baru
+klik "Konfirmasi" untuk memanggil action dengan nominal final.
+
+**Di luar scope bagian ini** (dicatat, bukan lupa):
+- `confirmInvoicePaymentAction` (admin input manual, BUKAN dari submit customer) — **sudah benar**
+  sejak awal, sudah punya parameter `data.amount` eksplisit dengan validasi `> 0`. Tidak disentuh.
+- Penanganan refund/pengembalian kelebihan bayar — di luar scope, dicatat sebagai potensi
+  pembahasan terpisah kalau nanti dibutuhkan.
+- Fitur Cicilan itu sendiri (`installment_plans`/`installment_schedules`) — menyusul SETELAH
+  bagian ini selesai, dibangun di atas fondasi nominal-akurat yang dibenahi di sini.
+
+**Urutan implementasi**:
+```
+Step PA1: submitPaymentProofAction — tambah param amount (wajib), validasi >0, isi payments.amount
+          dari data.amount (bukan remaining)
+Step PA2: invoice-public-client.tsx — input nominal baru di form, default = invoice.remaining
+Step PA3: verifySubmittedPaymentAction — tambah param verifiedAmount, update payments.amount saat
+          verifikasi, pakai verifiedAmount untuk invoice.paidAmount (bukan payment.amount lama)
+Step PA4: invoice-detail-client.tsx — ganti confirm() jadi form inline (pola sama form Tolak),
+          input ter-prefill dari p.amount, admin bisa edit sebelum konfirmasi
+Step PA5: tsc --noEmit + build, verifikasi 0 error
+```
+
+**Realisasi**: rencana diikuti tanpa deviasi. Tambahan yang tidak eksplisit ditulis di rencana
+tapi dilakukan untuk konsistensi: `invoice_payments.amount` (junction table) ikut di-`UPDATE`
+saat admin verifikasi, supaya tidak ada nilai basi (nominal submit customer) yang tersisa di
+tabel itu setelah admin mengoreksi nominalnya — `payments.amount` dan `invoice_payments.amount`
+untuk payment yang sama sekarang selalu identik. Notifikasi WA `payment_submitted` dan
+`payment_confirmed` disesuaikan memakai nominal yang sebenarnya (submitted/verified), bukan lagi
+`remaining` hasil kalkulasi sistem. `confirmInvoicePaymentAction` (jalur admin input manual)
+tidak disentuh — sudah benar sejak awal.
+
+---
+
 ## Fulfillment Pengiriman (Toko — Produk Fisik)
 
 > Detail arsitektur lengkap: **`docs/arsitektur-fulfillment.md`**

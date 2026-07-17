@@ -70,8 +70,12 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
   const [showCancel,  setShowCancel]    = useState(false);
   const [cancelNote,  setCancelNote]    = useState("");
 
-  // Verifikasi payment submitted
-  const [verifyingId, setVerifyingId]   = useState<string | null>(null);
+  // Verifikasi payment submitted — form inline (pola sama dengan Tolak di bawah), admin bisa
+  // koreksi nominal sebelum konfirmasi, lihat docs/arsitektur-billing.md § "Nominal Pembayaran
+  // Terlihat + Bisa Diedit"
+  const [verifyingId,   setVerifyingId]   = useState<string | null>(null);  // payment id yang form-nya terbuka
+  const [verifyAmount,  setVerifyAmount]  = useState("");
+  const [verifyPending, startVerifyTr]    = useTransition();
 
   // Tolak bukti pembayaran
   const [rejectingId,    setRejectingId]    = useState<string | null>(null);
@@ -102,20 +106,36 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
     });
   }
 
-  function handleVerify(paymentId: string) {
-    if (!confirm("Verifikasi bahwa pembayaran ini sudah diterima?")) return;
+  // Buka/tutup form verifikasi inline — prefill nominal dari yang customer submit
+  function toggleVerifyForm(paymentId: string, currentAmount: number) {
     setError("");
     setSuccess("");
+    if (verifyingId === paymentId) {
+      setVerifyingId(null);
+      return;
+    }
     setVerifyingId(paymentId);
-    startTransition(async () => {
-      const res = await verifySubmittedPaymentAction(slug, paymentId);
+    setVerifyAmount(String(Math.round(currentAmount)));
+  }
+
+  function handleVerify(paymentId: string) {
+    const amountNum = parseInt(verifyAmount.replace(/\D/g, ""), 10);
+    if (!amountNum || amountNum <= 0) {
+      setError("Nominal terverifikasi harus diisi dengan benar.");
+      return;
+    }
+    setError("");
+    setSuccess("");
+    startVerifyTr(async () => {
+      const res = await verifySubmittedPaymentAction(slug, paymentId, amountNum);
       if (res.success) {
         setSuccess("Pembayaran berhasil diverifikasi.");
+        setVerifyingId(null);
+        setVerifyAmount("");
         router.refresh();
       } else {
         setError(res.error);
       }
-      setVerifyingId(null);
     });
   }
 
@@ -323,11 +343,11 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                       <>
                         <button
                           type="button"
-                          onClick={() => handleVerify(p.id)}
-                          disabled={pending || verifyingId === p.id || rejectPending}
+                          onClick={() => toggleVerifyForm(p.id, p.amount)}
+                          disabled={verifyPending || rejectPending}
                           className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
                         >
-                          {verifyingId === p.id ? "Memverifikasi..." : "✓ Verifikasi"}
+                          ✓ Verifikasi
                         </button>
                         <button
                           type="button"
@@ -351,6 +371,42 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                     </span>
                   </div>
                 </div>
+                {/* Form verifikasi — nominal ter-prefill dari yang customer submit, admin bisa koreksi */}
+                {verifyingId === p.id && (
+                  <div className="rounded-md border border-green-600/30 bg-green-50/40 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-green-700">Konfirmasi Nominal Diterima</p>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rp</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={verifyAmount}
+                        onChange={(e) => setVerifyAmount(e.target.value.replace(/\D/g, ""))}
+                        className="w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Default sesuai yang customer submit — cocokkan dengan bukti transfer di bawah sebelum konfirmasi.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleVerify(p.id)}
+                        disabled={verifyPending}
+                        className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
+                      >
+                        {verifyPending ? "Memverifikasi..." : "Konfirmasi"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setVerifyingId(null); setVerifyAmount(""); }}
+                        className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {/* Form alasan penolakan */}
                 {rejectingId === p.id && (
                   <div className="rounded-md border border-destructive/30 bg-red-50/40 p-3 space-y-2">
