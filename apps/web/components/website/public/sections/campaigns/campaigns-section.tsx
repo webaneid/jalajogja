@@ -3,10 +3,12 @@ import type { TenantDb } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
 import { buildProgressInfoBlock, type CampaignCardData } from "@/lib/campaign-card-templates";
 import { resolveQurbanInfoBlocks } from "@/lib/campaign-info-block";
+import { resolveDonorCounts } from "@/lib/campaign-donor-count";
 import type { CampaignsSectionData, CampaignsSectionDesignId, CampaignsSectionProps } from "@/lib/campaigns-section-designs";
 import { CampaignsDesign1 } from "./campaigns-design-1";
 import { CampaignsDesign2 } from "./campaigns-design-2";
 import { CampaignsDesign3 } from "./campaigns-design-3";
+import { CampaignsDesign4 } from "./campaigns-design-4";
 
 type Props = {
   data:         CampaignsSectionData;
@@ -62,6 +64,7 @@ async function fetchCampaigns(
   // Batch resolve info block qurban — satu query untuk semua campaign qurban di halaman ini
   const qurbanIds     = rows.filter(r => r.campaignType === "qurban").map(r => r.id);
   const qurbanInfoMap = await resolveQurbanInfoBlocks(tenantClient, qurbanIds);
+  const donorCountMap = await resolveDonorCounts(tenantClient, rows.map(r => r.id));
 
   return rows.map(r => {
     const collected = parseFloat(r.collectedAmount ?? "0");
@@ -82,6 +85,7 @@ async function fetchCampaigns(
       infoBlock:       r.campaignType === "qurban"
         ? (qurbanInfoMap.get(r.id) ?? { kind: "qurban_habis" as const })
         : buildProgressInfoBlock(collected, target),
+      donorCount:      donorCountMap.get(r.id) ?? 0,
     };
   });
 }
@@ -114,6 +118,7 @@ export async function CampaignsSection({ data, variant, tenantClient, tenantSlug
   switch (variant) {
     case "2": return <CampaignsDesign2 {...props} />;
     case "3": return <CampaignsDesign3 {...props} />;
+    case "4": return <CampaignsDesign4 {...props} />;
     default:  return <CampaignsDesign1 {...props} />;
   }
 }

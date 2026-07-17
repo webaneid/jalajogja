@@ -6,6 +6,7 @@ import { CampaignArchiveCards } from "@/components/website/public/campaign-cards
 import type { CampaignCardData } from "@/lib/campaign-card-templates";
 import { CAMPAIGN_TYPE_LABELS, buildProgressInfoBlock } from "@/lib/campaign-card-templates";
 import { resolveQurbanInfoBlocks } from "@/lib/campaign-info-block";
+import { resolveDonorCounts } from "@/lib/campaign-donor-count";
 import { CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS, type CampaignArchiveCardDesignId } from "@/lib/campaign-archive-card-designs";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
@@ -89,6 +90,7 @@ export default async function CampaignArchivePage({
   // Batch resolve info block qurban — satu query untuk semua campaign qurban di arsip ini
   const qurbanIds     = rows.filter(r => r.campaignType === "qurban").map(r => r.id);
   const qurbanInfoMap = await resolveQurbanInfoBlocks(tenantClient, qurbanIds);
+  const donorCountMap = await resolveDonorCounts(tenantClient, rows.map(r => r.id));
 
   const campaigns: CampaignCardData[] = rows.map(r => {
     const collected = parseFloat(r.collectedAmount ?? "0");
@@ -109,6 +111,7 @@ export default async function CampaignArchivePage({
       infoBlock:       r.campaignType === "qurban"
         ? (qurbanInfoMap.get(r.id) ?? { kind: "qurban_habis" as const })
         : buildProgressInfoBlock(collected, target),
+      donorCount:      donorCountMap.get(r.id) ?? 0,
     };
   });
 

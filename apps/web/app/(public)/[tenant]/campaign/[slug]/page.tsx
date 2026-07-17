@@ -12,6 +12,7 @@ import { CampaignArchiveCards } from "@/components/website/public/campaign-cards
 import type { CampaignCardData } from "@/lib/campaign-card-templates";
 import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS, buildProgressInfoBlock } from "@/lib/campaign-card-templates";
 import { resolveQurbanInfoBlocks } from "@/lib/campaign-info-block";
+import { resolveDonorCounts } from "@/lib/campaign-donor-count";
 import { CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS, type CampaignArchiveCardDesignId } from "@/lib/campaign-archive-card-designs";
 import type { Metadata }       from "next";
 import { ChevronRight } from "lucide-react";
@@ -233,6 +234,7 @@ export default async function CampaignDetailPage({ params }: { params: Params })
     // Batch resolve info block qurban — satu query untuk semua related campaign qurban
     const qurbanIds     = filteredRows.filter(r => r.campaignType === "qurban").map(r => r.id);
     const qurbanInfoMap = await resolveQurbanInfoBlocks(tenantClient, qurbanIds);
+    const donorCountMap = await resolveDonorCounts(tenantClient, filteredRows.map(r => r.id));
 
     relatedCampaigns = filteredRows.map(r => {
       const col = parseFloat(r.collectedAmount ?? "0");
@@ -250,6 +252,7 @@ export default async function CampaignDetailPage({ params }: { params: Params })
         infoBlock:       r.campaignType === "qurban"
           ? (qurbanInfoMap.get(r.id) ?? { kind: "qurban_habis" as const })
           : buildProgressInfoBlock(col, tgt),
+        donorCount:      donorCountMap.get(r.id) ?? 0,
       };
     });
   }

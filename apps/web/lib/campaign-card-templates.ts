@@ -23,6 +23,7 @@ export type CampaignCardData = {
   endsAt:          string | null;    // ISO string
   isRecurring:     boolean;
   infoBlock:       CampaignCardInfoBlock;   // dipakai CampaignCardGrid/List/Ringkas — lihat § 14k
+  donorCount:      number;   // jumlah transaksi donasi paid (dual-source) — dipakai CampaignCardCapsule, § 14n
 };
 
 // Bangun info block "progress" dari data yang sudah difetch — dipakai untuk semua campaign non-qurban

@@ -1811,6 +1811,153 @@ langkah ini, digantikan file-file baru di atas (nama berbeda: `campaign-archive-
 `campaign-card-design-*`, `campaign_archive_design` bukan `campaign_card_design`).
 
 ---
+
+### 14n. Desain 2 — Modern Capsule (Card + Section Landing)
+
+> **Status: SELESAI — diimplementasikan 2026-07-17.** Sumber desain:
+> `design-refs/Bantuanku/Bantuanku Landing.html`, section "Aksi Prioritas" (baris ~384–502) —
+> card `<article class="... rounded-3xl overflow-hidden shadow-soft lift">`.
+
+**Keputusan yang dikunci — ambil visual, bukan "mesin"**: card sumber punya badge urgensi
+("MENDESAK" merah berkedip / "PRIORITAS" kuning) di pojok kiri-atas gambar. Dikonfirmasi user:
+sistem kita tidak punya konsep urgensi/prioritas campaign — **badge ini TIDAK diambil sama
+sekali**. Info yang ditampilkan murni yang sudah kita punya: progress terkumpul/target, hari
+tersisa, jumlah donatur. Badge kategori (kanan-atas gambar) tetap diambil — reuse
+`CAMPAIGN_TYPE_LABELS`/`CAMPAIGN_TYPE_COLORS` + `categoryName` yang sudah ada.
+
+**Dua manifestasi, satu komponen kartu** — persis pola Desain 1 (Klasik):
+
+| Konteks | Registry | Desktop | Mobile |
+|---|---|---|---|
+| Arsip `/campaign` + "Campaign Lainnya" | `CampaignArchiveCardDesignId` (§ 14m) — tambah `"2"` | Grid 3 kolom (kartu Capsule) | **List** (reuse `CampaignCardList` yang sudah ada — sama seperti Desain 1, cuma tampilan grid desktop yang beda per desain, mobile-list infrastruktur dibagi) |
+| Section Campaign landing page | `CampaignsSectionDesignId` (§ 11b) — tambah `"4"`, label "Modern Capsule" | Grid 3 kolom (kartu Capsule) | **Slider horizontal** (scroll-snap, pola sama persis `campaigns-design-1.tsx` yang sudah dibangun untuk Desain 1 Klasik) |
+
+Dua registry ini **tetap independen** (lihat tabel "Dua registry desain campaign" di § 14m) — admin
+bisa pilih Desain 2 di `/donasi/pengaturan` (arsip) tanpa memengaruhi section landing page, dan
+sebaliknya. Yang disatukan cuma KOMPONEN KARTU-nya (`CampaignCardCapsule`) — dipakai bersama oleh
+kedua manifestasi supaya tidak ada 2 implementasi visual yang sama persis.
+
+**Field data baru — `CampaignCardData.donorCount: number`** (aditif, tidak mengubah field lain):
+```typescript
+// lib/campaign-card-templates.ts
+export type CampaignCardData = {
+  // ...field existing tidak berubah (termasuk infoBlock dari § 14k)...
+  donorCount: number;   // jumlah transaksi donasi paid — dual-source, lihat resolver di bawah
+};
+```
+`donorCount` adalah **jumlah transaksi**, bukan strict distinct-by-identity (konsisten dengan
+donor list yang sudah ada di halaman detail campaign — juga tidak dedup by identity, lihat
+lesson "Donasi = Alur Cart Universal, Qurban = Variasi Hewan" di CLAUDE.md).
+
+**Batch resolver — dual-source, sama prinsip dengan `resolveQurbanInfoBlocks`** (baru,
+`lib/campaign-donor-count.ts`):
+```typescript
+export async function resolveDonorCounts(
+  tenantClient: TenantDb,
+  campaignIds:  string[],
+): Promise<Map<string, number>> {
+  // Source 1 (legacy): donations JOIN payments WHERE source_type='donation' AND status='paid'
+  //   GROUP BY donations.campaign_id
+  // Source 2 (cart, sumber utama): invoice_items JOIN invoices WHERE invoices.status='paid'
+  //   AND invoice_items.item_type='donation' AND invoice_items.item_id IN (campaignIds)
+  //   GROUP BY invoice_items.item_id
+  // → jumlahkan count dari kedua source per campaignId, kembalikan sebagai Map
+}
+```
+Kolom yang sudah diverifikasi manual sebelum coding (bukan tebakan): `payments.sourceType`,
+`payments.sourceId`, `payments.status` (enum termasuk `"paid"`); `invoiceItems.itemType`,
+`invoiceItems.itemId`, `invoices.status` (enum termasuk `"paid"`); `donations.campaignId`.
+
+**`donorCount` ditambahkan ke SEMUA 3 titik fetch yang sudah ada `infoBlock`** (§ 14k) — archive
+`/campaign`, related "Campaign Lainnya", dan `CampaignsSection` fetch layer — satu tambahan batch
+query per titik, pola sama `qurbanInfoMap`.
+
+**Komponen baru `CampaignCardCapsule`** (`components/website/public/campaign-cards/campaign-card-capsule.tsx`):
+```
+┌─────────────────────────────┐
+│ [ Cover, rounded-3xl atas ]  │  ← lebih membulat dari Desain 1 (rounded-xl) — sesuai nama
+│                    Kategori ▸│  ← badge kanan-atas SAJA (tidak ada badge urgensi kiri-atas)
+│                               │
+│ Judul campaign (bold, lg)     │
+│ Deskripsi singkat (line-clamp)│
+│                               │
+│ Rp 78.500.000    dari Rp 120jt│  ← <CampaignCardInfoBlock info={infoBlock} layout="grid" />
+│ ▓▓▓▓▓▓▓░░░░                   │     (REUSE § 14k — qurban otomatis dapat harga+ketersediaan
+│                               │      di sini juga, bukan progress bar, tanpa kode tambahan)
+│ 🕐 24 hari lagi  👥 1.240 donatur│  ← baris meta baru, HANYA untuk info.kind==="progress"
+│                               │     (qurban: skip donorCount, "hari lagi" tetap tampil kalau ada)
+│ [   Donasi Sekarang   ]       │  ← CTA full-width, teks "Pilih Hewan" untuk qurban
+└─────────────────────────────┘
+```
+- Warna/font 100% CSS variable tema tenant (`bg-card`, `text-foreground`, `text-muted-foreground`,
+  `bg-primary`) — BUKAN warna hardcoded sumber (`bg-white`, `text-ink`, `text-ink-soft`, dst),
+  sesuai aturan `design-refs/README.md`.
+- Info block area **REUSE `<CampaignCardInfoBlock>` dari § 14k** — bukan reimplementasi progress
+  bar sendiri. Ini otomatis memberi Desain 2 dukungan qurban (harga+chip+slot) tanpa kode
+  tambahan, karena infoBlock sudah polimorfik.
+
+**CTA di dalam card yang sudah jadi `<a>` — pola baru, tidak ada precedent sebelumnya**: SEMUA
+card existing (`CampaignCardGrid/List/Ringkas`, `ProductCard*`, `EventCard*`) adalah satu `<a>`
+besar tanpa elemen interaktif di dalamnya. Card Capsule butuh tombol CTA visual di dalam card yang
+sama — nested `<a>`/`<button>` di dalam `<a>` adalah HTML tidak valid. **Keputusan**: CTA
+dirender sebagai `<span className="btn btn-primary btn-md w-full">` (bukan `<a>`/`<button>`
+sungguhan) — murni visual, mengikuti "Cara 1 — CSS class langsung... untuk HTML/JSX non-interaktif"
+dari sistem Public Button (CLAUDE.md § Public Button System). Klik di mana saja pada card
+(termasuk area tombol) tetap navigasi ke halaman detail via `<a>` pembungkus — tombol bukan
+elemen klik terpisah, murni sinyal visual "ini yang bisa diklik" seperti card lain yang sudah ada.
+
+**File yang akan dibuat**:
+```
+lib/campaign-donor-count.ts                                            → resolveDonorCounts()
+components/website/public/campaign-cards/campaign-card-capsule.tsx     → kartu Capsule
+components/website/public/campaign-cards/campaign-archive-cards-design-2.tsx → grid desktop/list mobile
+components/website/public/sections/campaigns/campaigns-design-4.tsx    → grid desktop/slider mobile
+```
+
+**File yang akan diubah**:
+```
+lib/campaign-card-templates.ts        → CampaignCardData += donorCount
+lib/campaign-archive-card-designs.ts  → += "2", label "Modern Capsule"
+lib/campaigns-section-designs.ts      → += "4", label "Modern Capsule"
+campaign-archive-cards.tsx            → case "2" → CampaignArchiveCardsDesign2
+campaigns-section.tsx                 → case "4" → CampaignsDesign4; fetchCampaigns += donorCount
+campaign/page.tsx                     → resolveDonorCounts + isi donorCount di map
+campaign/[slug]/page.tsx              → sama untuk relatedCampaigns
+```
+
+**Urutan implementasi**:
+```
+Step MC1: resolveDonorCounts() + CampaignCardData.donorCount + isi di 3 titik fetch
+Step MC2: CampaignCardCapsule (reuse CampaignCardInfoBlock § 14k untuk area progress/qurban)
+Step MC3: CampaignArchiveCardsDesign2 (grid Capsule desktop / CampaignCardList mobile)
+          + registry campaign-archive-card-designs.ts += "2" + dispatcher case
+Step MC4: CampaignsDesign4 (grid Capsule desktop / slider mobile, copy pola campaigns-design-1.tsx)
+          + registry campaigns-section-designs.ts += "4" + dispatcher case
+Step MC5: tsc --noEmit + build, verifikasi 0 error; cek manual /donasi/pengaturan
+          menampilkan 2 opsi desain, keduanya bisa dipilih dan tersimpan
+```
+
+**Temuan tambahan di luar rencana awal — `CampaignsEditor` tidak pernah punya picker Design
+Layout**: saat mengerjakan Step MC4, ditemukan `CampaignsEditor` (`section-editors.tsx`, editor
+section builder landing page) TIDAK PERNAH mendestructure `variant`/`onVariantChange` dari
+`EditorProps` — berbeda dari `HeroEditor`/`PostsEditor`/`ModulesEditor` yang semuanya punya blok
+"Design Layout" picker. Artinya sejak `CampaignsSectionDesignId` registry dibuat (§ 11b, 3 desain:
+Grid Donasi/Campaign Unggulan/Daftar Donasi), admin **tidak pernah punya cara memilih desain
+mana pun dari UI** — section baru selalu diam-diam terkunci ke Desain 1 (default `variant: "1"`
+dari `createSection()`). Ini bug pre-existing, bukan diperkenalkan sesi ini — tapi kalau tidak
+difix sekaligus, Desain 4 "Modern Capsule" yang baru dibangun juga tidak akan pernah bisa dipilih
+admin, membuat pekerjaan Step MC4 sia-sia dari sisi UI. **Fix**: tambah blok "Design Layout"
+picker ke `CampaignsEditor`, pola identik Hero/Posts/Modules — sekarang admin bisa pilih ke-4
+desain section Campaign dari UI section builder.
+
+**Realisasi**: rencana MC1–MC5 diikuti tanpa deviasi lain selain temuan `CampaignsEditor` di
+atas. `resolveDonorCounts()` (`lib/campaign-donor-count.ts`) — 2 query batch (legacy `donations`+
+`payments`, cart `invoiceItems`+`invoices`), dijumlahkan per campaignId ke satu Map, dipanggil di
+3 titik fetch existing (archive, related, section builder). CTA "Donasi Sekarang"/"Pilih Hewan"
+di `CampaignCardCapsule` pakai `<span className="btn btn-primary btn-md btn-full">` (visual saja,
+bukan elemen interaktif — precedent baru untuk CTA di dalam card, lihat penjelasan di atas).
+
+---
 ## 15. Fitur Qurban
 
 Qurban **bukan entitas terpisah** — ia adalah campaign dengan `campaign_type = 'qurban'`.

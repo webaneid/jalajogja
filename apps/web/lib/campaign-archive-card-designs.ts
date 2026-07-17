@@ -6,12 +6,16 @@
 // grid di desktop (md: ke atas), list di mobile (di bawah md:) — bukan pilihan per-desain,
 // tapi baseline yang harus diikuti desain manapun yang ditambah ke sini nanti.
 
-export const CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS = ["1"] as const;
+export const CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS = ["1", "2"] as const;
 export type CampaignArchiveCardDesignId = typeof CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS[number];
 
 export const CAMPAIGN_ARCHIVE_CARD_DESIGNS: Record<CampaignArchiveCardDesignId, { label: string; description: string }> = {
   "1": {
     label:       "Klasik",
     description: "Grid 3 kolom di desktop, List satu kolom di mobile.",
+  },
+  "2": {
+    label:       "Modern Capsule",
+    description: "Kartu bulat modern dengan progress + jumlah donatur. Grid di desktop, List di mobile.",
   },
 };

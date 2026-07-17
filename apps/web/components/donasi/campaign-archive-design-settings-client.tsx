@@ -72,7 +72,7 @@ export function CampaignArchiveDesignSettingsClient({
             </button>
           );
         })}
-        {CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS.length === 1 && (
+        {(CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS.length as number) === 1 && (
           <p className="text-xs text-muted-foreground italic">
             Belum ada desain alternatif — akan ditambah di sini nanti.
           </p>

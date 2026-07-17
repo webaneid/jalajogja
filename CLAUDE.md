@@ -460,7 +460,7 @@ app/(dashboard)/[tenant]/
 - [x] **Billing Phase 4 — Fulfillment** — 5-stage pengiriman (pending→processing→packed→shipped→delivered), `updateFulfillmentStatusAction`, halaman admin `/toko/pesanan/invoice/[invoiceId]`, `FulfillmentCard` + `FulfillmentTimeline`, lightbox bukti transfer, pelanggan lihat 5 status di `/akun/transaksi`. Detail di `docs/arsitektur-fulfillment.md`.
 - [x] **Kode Unik Transaksi** — nominal Rp 100–999 per invoice untuk identifikasi transfer masuk. Setting toggle di `/settings/payment`. Arsitektur di `docs/arsitektur-kode-unik.md`. **SELESAI** — bug `submitPaymentProofAction` tidak include kode unik (invoice nyangkut partial) + bug race condition double-payment sudah difix (2026-07-12).
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
-- [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori) + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/donasi/pengaturan`, pola sama Hero/Strip Modul — setiap desain WAJIB grid desktop/list mobile, cuma 1 desain sekarang, § 14m — § 14j dan § 14l dua putaran koreksi sebelumnya, keduanya superseded) + **Info Block Polimorfik** (slot info card yang beda per tipe campaign — progress bar vs harga+ketersediaan qurban, terbuka untuk sub-tipe qurban baru nanti seperti patungan/tabungan) — § 14k
+- [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori) + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/donasi/pengaturan`, pola sama Hero/Strip Modul — setiap desain WAJIB grid desktop/list mobile, § 14m — § 14j dan § 14l dua putaran koreksi sebelumnya, keduanya superseded) + **Info Block Polimorfik** (slot info card yang beda per tipe campaign — progress bar vs harga+ketersediaan qurban, terbuka untuk sub-tipe qurban baru nanti seperti patungan/tabungan) — § 14k + **Desain 2 "Modern Capsule"** (card + section landing, sumber `design-refs/Bantuanku/`, donor count, sekaligus fix bug pre-existing `CampaignsEditor` yang belum pernah punya picker Design Layout) — § 14n
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`) + **Tab Peserta & Statistik** (commit `9cf2b12`, migration 0023) + **E10 Donation Prompt UI** (routing kondisional cart vs direct, migration 0024+0025)
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
 - [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik + 3 jalur aktivasi + **sidebar filtering + 10 module guards (selesai)**
@@ -5173,6 +5173,64 @@ barunya punya tingkat sensitivitas yang beda — pilih guard sesuai levelnya sen
 **Verifikasi**: `tsc --noEmit` dijalankan 2× (setelah Event selesai, sebelum lanjut Produk — sesuai
 urutan di dokumen § "Urutan Implementasi" masing-masing modul) + `bun run build` full di akhir.
 0 error di kedua titik cek.
+
+### [2026-07-17] Desain 2 "Modern Capsule" — Ambil Visual dari Referensi, Bukan "Mesin"-nya
+
+> Detail lengkap: **`docs/arsitektur-donasi.md` § 14n**
+
+User upload folder desain baru `design-refs/Bantuanku/` (HTML biasa, bukan format bundler seperti
+`jalakarta-v2/` sebelumnya — tidak perlu decode) dan minta card dari section "Aksi Prioritas"
+diambil sebagai "Desain 2 — Modern Capsule" untuk campaign, dengan syarat: mobile jadi List di
+arsip, tapi jadi Slider saat dipakai di section landing page (persis pola Desain 1 sebelumnya).
+
+**Klarifikasi penting sebelum eksekusi**: card sumber punya badge urgensi ("MENDESAK"/"PRIORITAS")
+— sistem kita TIDAK punya konsep urgensi campaign. Ditanya via `AskUserQuestion` (opsi: otomatis
+dari sisa hari / field admin manual baru / skip total), user jawab lebih tegas dari 3 opsi yang
+ditawarkan: *"yg kita ambil design card-nya, bukan mesin-nya... jadi kita ada donasi saja"* —
+prinsip pemisahan **visual vs business-logic** dari referensi desain, konsisten dengan
+`design-refs/README.md` ("warna/font hardcoded → diganti tema tenant") tapi diperluas ke level
+konseptual: fitur yang TIDAK ADA datanya di sistem kita tidak dipaksakan hanya karena ada di
+referensi visual — bukan cuma soal warna/font.
+
+**Satu komponen kartu, dua manifestasi** (pola yang sama sudah dipakai Desain 1 sejak awal, tinggal
+direplikasi): `CampaignCardCapsule` dipakai bersama oleh registry arsip (`CampaignArchiveCardDesignId
++= "2"`, grid desktop/List mobile — List REUSE `CampaignCardList` yang sudah ada, bukan versi
+Capsule yang di-squeeze) DAN registry section landing (`CampaignsSectionDesignId += "4"`, grid
+desktop/**Slider** mobile). Dua registry tetap independen (§ 14m) — cuma komponen KARTU-nya yang
+dibagi, bukan pilihan desainnya.
+
+**Field data baru `donorCount`** — batch resolver dual-source (`lib/campaign-donor-count.ts`),
+pola identik `resolveQurbanInfoBlocks`: source legacy (`donations`+`payments` status paid) +
+source cart (`invoiceItems`+`invoices` status paid), dijumlahkan per campaign. Bukan strict
+distinct-by-identity — konsisten dengan donor list yang sudah ada di halaman detail (juga tidak
+dedup).
+
+**Info block area REUSE `<CampaignCardInfoBlock>` (§ 14k), bukan reimplementasi progress bar
+sendiri** — konsekuensi langsung: Desain 2 otomatis dapat dukungan qurban (harga+ketersediaan
+hewan, bukan progress bar Rp) tanpa satu baris kode qurban-spesifik ditulis di
+`CampaignCardCapsule`. Ini bukti nyata kenapa keputusan "info block polimorfik" (§ 14k, bukan card
+terpisah per tipe) terbukti tepat — desain visual baru bisa numpang infrastruktur info yang sudah
+ada, alih-alih harus reimplementasi qurban-awareness dari nol setiap kali ada desain kartu baru.
+
+**CTA di dalam card yang sudah `<a>` — precedent baru**: semua card existing di app ini (Campaign/
+Produk/Event, ketiga variant masing-masing) adalah SATU `<a>` besar tanpa elemen interaktif di
+dalamnya. Card Capsule butuh tombol CTA visual ("Donasi Sekarang") di dalam card yang sama —
+nested `<a>`/`<button>` di dalam `<a>` adalah HTML tidak valid. Fix: `<span className="btn
+btn-primary btn-md btn-full">` — visual saja (via sistem Public Button "Cara 1 — CSS class
+langsung"), klik di mana pun pada card (termasuk area tombol) tetap navigasi lewat `<a>`
+pembungkus. **Aturan untuk card baru ke depan**: kalau butuh CTA visual di dalam card-as-link,
+selalu pakai `<span className="btn ...">`, jangan `<a>`/`<button>` sungguhan bersarang.
+
+**Bug pre-existing ditemukan+difix sekaligus**: `CampaignsEditor` (section builder editor) tidak
+pernah destructure `variant`/`onVariantChange` dari `EditorProps` — beda dari `HeroEditor`/
+`PostsEditor`/`ModulesEditor` yang semua punya blok "Design Layout" picker. Artinya SEJAK
+`CampaignsSectionDesignId` registry dibuat (3 desain, § 11b, jauh sebelum sesi ini), admin TIDAK
+PERNAH bisa memilih desain section Campaign dari UI — selalu diam-diam terkunci ke Desain 1
+default. Kalau tidak difix bersamaan, Desain 4 "Modern Capsule" yang baru dibangun juga tidak akan
+pernah bisa dipilih dari UI — pekerjaan sia-sia. **Aturan**: sebelum menambah desain baru ke
+registry manapun yang sudah ada > 1 pilihan lama, WAJIB verifikasi picker UI-nya benar-benar
+berfungsi (bukan asumsi "kalau ada 3 desain terdaftar, berarti sudah bisa dipilih") — cek
+`{Type}Editor` di `section-editors.tsx` benar-benar merender blok "Design Layout".
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).

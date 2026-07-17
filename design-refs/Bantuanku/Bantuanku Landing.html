@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bantuanku — Sedekah, Zakat, Wakaf & Donasi Online</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Tweakable defaults block — host can rewrite this file
+  window.__TWEAK_DEFAULTS__ = /*EDITMODE-BEGIN*/{
+    "primary": "#0B6A5B",
+    "primaryDark": "#085044",
+    "primaryLight": "#E8F2EF"
+  }/*EDITMODE-END*/;
+
+  const t = window.__TWEAK_DEFAULTS__;
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Poppins', 'system-ui', 'sans-serif'],
+        },
+        colors: {
+          primary: {
+            DEFAULT: t.primary,
+            dark: t.primaryDark,
+            light: t.primaryLight,
+            50:  '#F1F8F6',
+            100: '#E0EFEB',
+            200: '#BFDFD7',
+            500: t.primary,
+            600: t.primaryDark,
+            700: '#06372E',
+          },
+          cream: {
+            DEFAULT: '#FBF7F0',
+            100: '#FDFAF4',
+            200: '#F6EFE2',
+          },
+          ink: {
+            DEFAULT: '#1F2A28',
+            soft: '#4B5957',
+            mute: '#8C9794',
+          },
+        },
+        borderRadius: {
+          '4xl': '2rem',
+        },
+        boxShadow: {
+          'soft': '0 6px 24px -8px rgba(11,106,91,0.15), 0 2px 8px -2px rgba(11,106,91,0.06)',
+          'softer': '0 2px 12px -4px rgba(11,106,91,0.08)',
+          'lift': '0 20px 40px -16px rgba(11,106,91,0.25)',
+        }
+      }
+    }
+  };
+</script>
+<style>
+  :root {
+    --primary: #0B6A5B;
+    --primary-dark: #085044;
+    --primary-light: #E8F2EF;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Poppins', sans-serif;
+    color: #1F2A28;
+    background: #FDFAF4;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Soft cream noise texture */
+  .bg-grain {
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(11,106,91,0.04) 0, transparent 35%),
+      radial-gradient(circle at 80% 60%, rgba(217,168,85,0.06) 0, transparent 40%);
+  }
+  /* Reveal on scroll */
+  .reveal { opacity: 0; transform: translateY(24px); transition: opacity .8s ease, transform .8s ease; }
+  .reveal.in { opacity: 1; transform: translateY(0); }
+  .reveal-d1 { transition-delay: .08s; }
+  .reveal-d2 { transition-delay: .16s; }
+  .reveal-d3 { transition-delay: .24s; }
+  .reveal-d4 { transition-delay: .32s; }
+
+  /* Marquee for trust badges */
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .marquee-track { animation: marquee 30s linear infinite; }
+
+  /* Subtle hover lift */
+  .lift { transition: transform .4s cubic-bezier(.2,.8,.2,1), box-shadow .4s ease; }
+  .lift:hover { transform: translateY(-4px); }
+
+  /* Progress bar shine */
+  .progress-bar { position: relative; overflow: hidden; }
+  .progress-bar::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.4), transparent);
+    transform: translateX(-100%);
+    animation: shine 2.5s ease-in-out infinite;
+  }
+  @keyframes shine { 50% { transform: translateX(200%); } 100% { transform: translateX(200%); } }
+
+  /* Hide scrollbar for horizontal scrolls */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Floating card animation */
+  @keyframes float-y {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  .float-slow { animation: float-y 6s ease-in-out infinite; }
+
+  /* Hero parallax-like image overlay */
+  .hero-img-mask {
+    -webkit-mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+  }
+
+  /* Button styles */
+  .btn-primary {
+    background: var(--primary);
+    color: white;
+    transition: all .3s ease;
+  }
+  .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 12px 24px -8px rgba(11,106,91,.4); }
+
+  /* Section label */
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .375rem .875rem;
+    border-radius: 999px;
+    background: var(--primary-light);
+    color: var(--primary-dark);
+    font-size: .75rem; font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .eyebrow::before {
+    content: ''; width: 6px; height: 6px; border-radius: 999px; background: var(--primary);
+  }
+
+  /* Decorative dotted border */
+  .dotted-divider {
+    background-image: radial-gradient(circle, rgba(11,106,91,.25) 1px, transparent 1.5px);
+    background-size: 12px 2px;
+    background-repeat: repeat-x;
+    background-position: center;
+    height: 2px;
+  }
+</style>
+</head>
+<body class="overflow-x-hidden">
+
+<!-- ================== HEADER ================== -->
+<header id="site-header" class="sticky top-0 z-40 bg-cream-100/85 backdrop-blur-md border-b border-primary/5">
+  <div class="max-w-7xl mx-auto px-5 lg:px-8 h-16 lg:h-20 flex items-center justify-between">
+    <a href="#" class="flex items-center gap-2 group">
+      <span class="w-9 h-9 rounded-xl bg-primary text-white grid place-items-center font-bold text-lg shadow-soft group-hover:rotate-6 transition-transform">B</span>
+      <span class="font-bold text-lg lg:text-xl tracking-tight text-ink">Bantuan<span class="text-primary">ku</span></span>
+    </a>
+
+    <nav class="hidden lg:flex items-center gap-8 text-sm font-medium text-ink-soft">
+      <a href="#program" class="hover:text-primary transition-colors">Program</a>
+      <a href="#qurban" class="hover:text-primary transition-colors">Qurban</a>
+      <a href="#mengapa" class="hover:text-primary transition-colors">Mengapa Kami</a>
+      <a href="#kontak" class="hover:text-primary transition-colors">Kontak</a>
+    </nav>
+
+    <div class="flex items-center gap-2">
+      <a href="#" class="hidden sm:inline-flex text-sm font-medium text-ink-soft hover:text-primary px-3 py-2">Masuk</a>
+      <a href="#donasi" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        Donasi
+      </a>
+      <button id="mobile-menu-btn" class="lg:hidden w-10 h-10 grid place-items-center rounded-full hover:bg-primary/5" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile menu -->
+  <div id="mobile-menu" class="hidden lg:hidden border-t border-primary/5 bg-cream-100">
+    <nav class="flex flex-col px-5 py-4 gap-1 text-base font-medium">
+      <a href="#program" class="py-2.5 text-ink-soft">Program</a>
+      <a href="#qurban" class="py-2.5 text-ink-soft">Qurban</a>
+      <a href="#mengapa" class="py-2.5 text-ink-soft">Mengapa Kami</a>
+      <a href="#kontak" class="py-2.5 text-ink-soft">Kontak</a>
+      <a href="#" class="py-2.5 text-ink-soft border-t border-primary/5 mt-2">Masuk</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ================== HERO ================== -->
+<section class="relative bg-cream-100 bg-grain overflow-hidden">
+  <!-- Decorative blobs -->
+  <div class="absolute -top-24 -right-24 w-96 h-96 bg-primary/5 rounded-full blur-3xl" aria-hidden="true"></div>
+  <div class="absolute top-40 -left-32 w-80 h-80 bg-amber-200/20 rounded-full blur-3xl" aria-hidden="true"></div>
+
+  <div class="relative max-w-7xl mx-auto px-5 lg:px-8 pt-10 lg:pt-16 pb-16 lg:pb-24">
+    <div class="grid lg:grid-cols-12 gap-10 lg:gap-12 items-center">
+      <!-- Left content -->
+      <div class="lg:col-span-7 text-center lg:text-left">
+        <div class="reveal inline-flex items-center gap-2 bg-white rounded-full pl-1.5 pr-4 py-1.5 shadow-softer">
+          <span class="bg-primary text-white text-xs font-semibold px-2.5 py-1 rounded-full">Baru</span>
+          <span class="text-xs lg:text-sm text-ink-soft">Salurkan Zakat Fitrah 1447 H — <span class="font-semibold text-primary">cek di sini</span></span>
+        </div>
+
+        <h1 class="reveal reveal-d1 mt-6 text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-extrabold leading-[1.05] tracking-tight text-ink">
+          Jadi Alasan Mereka
+          <span class="relative inline-block">
+            <span class="relative z-10">Tersenyum</span>
+            <svg class="absolute -bottom-2 left-0 w-full" viewBox="0 0 200 12" fill="none" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M2 8 Q 50 2, 100 6 T 198 5" stroke="currentColor" class="text-primary/30" stroke-width="4" stroke-linecap="round" fill="none"/>
+            </svg>
+          </span>
+          <br/>Lebar Hari Ini.
+        </h1>
+
+        <p class="reveal reveal-d2 mt-6 text-base lg:text-lg text-ink-soft max-w-xl mx-auto lg:mx-0 leading-relaxed">
+          Setiap rupiah yang kamu titipkan adalah harapan baru — untuk anak yatim,
+          dhuafa, dan saudara kita yang sedang berjuang. Mulai dari Rp10.000.
+        </p>
+
+        <div class="reveal reveal-d3 mt-8 flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start">
+          <a href="#donasi" class="btn-primary inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full font-semibold text-base shadow-soft">
+            Donasi Sekarang
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a href="#program" class="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full font-semibold text-base text-ink border border-ink/10 hover:border-primary hover:text-primary transition-colors bg-white">
+            Lihat Program
+          </a>
+        </div>
+
+        <!-- Trust indicators -->
+        <div class="reveal reveal-d4 mt-10 flex items-center gap-6 justify-center lg:justify-start">
+          <div class="flex -space-x-2">
+            <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=80&h=80&fit=crop&crop=face" class="w-9 h-9 rounded-full border-2 border-cream-100 object-cover" alt="Donatur">
+            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop&crop=face" class="w-9 h-9 rounded-full border-2 border-cream-100 object-cover" alt="Donatur">
+            <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&h=80&fit=crop&crop=face" class="w-9 h-9 rounded-full border-2 border-cream-100 object-cover" alt="Donatur">
+            <img src="https://images.unsplash.com/photo-1463453091185-61582044d556?w=80&h=80&fit=crop&crop=face" class="w-9 h-9 rounded-full border-2 border-cream-100 object-cover" alt="Donatur">
+            <span class="w-9 h-9 rounded-full border-2 border-cream-100 bg-primary text-white text-[10px] font-semibold grid place-items-center">+12k</span>
+          </div>
+          <div class="text-left">
+            <div class="flex gap-0.5 text-amber-400">
+              ★★★★★
+            </div>
+            <p class="text-xs text-ink-soft">12.450+ donatur telah bergabung</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right visual -->
+      <div class="lg:col-span-5 relative">
+        <div class="reveal reveal-d2 relative">
+          <!-- Main image -->
+          <div class="relative rounded-[2.5rem] overflow-hidden shadow-lift aspect-[4/5]">
+            <img src="https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&h=1000&fit=crop"
+                 alt="Anak-anak tersenyum"
+                 class="w-full h-full object-cover">
+            <div class="absolute inset-0 bg-gradient-to-t from-primary-dark/40 via-transparent to-transparent"></div>
+          </div>
+
+          <!-- Floating stat card 1 -->
+          <div class="float-slow absolute -left-4 lg:-left-10 top-12 bg-white rounded-2xl shadow-soft p-4 w-48">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-primary/10 grid place-items-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-primary"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              </div>
+              <div>
+                <p class="text-xs text-ink-mute">Terkumpul</p>
+                <p class="font-bold text-ink">Rp 1.2 M</p>
+              </div>
+            </div>
+            <div class="mt-3 h-1.5 bg-primary/10 rounded-full overflow-hidden progress-bar">
+              <div class="h-full bg-primary rounded-full" style="width: 72%"></div>
+            </div>
+          </div>
+
+          <!-- Floating stat card 2 -->
+          <div class="float-slow absolute -right-4 lg:-right-8 bottom-16 bg-white rounded-2xl shadow-soft p-4 w-52" style="animation-delay: -2s">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="w-10 h-10 rounded-xl bg-amber-100 grid place-items-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-amber-600"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <div>
+                <p class="text-xs text-ink-mute">Penerima manfaat</p>
+                <p class="font-bold text-ink">3.420 jiwa</p>
+              </div>
+            </div>
+            <p class="text-[11px] text-ink-soft">Tersebar di 12 provinsi</p>
+          </div>
+
+          <!-- Decorative tag -->
+          <div class="float-slow absolute -bottom-4 left-1/2 -translate-x-1/2 bg-primary text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lift" style="animation-delay: -4s">
+            ❤️ Insya Allah amanah & transparan
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================== QUICK ACTION BAR ================== -->
+<section class="relative -mt-8 lg:-mt-16 z-10">
+  <div class="max-w-6xl mx-auto px-5 lg:px-8">
+    <div class="reveal bg-white rounded-3xl shadow-soft p-3 lg:p-4 grid grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-3">
+      <!-- Zakat (highlighted) -->
+      <a href="#" class="group relative bg-primary text-white rounded-2xl p-4 lg:p-5 flex items-center gap-3 lift overflow-hidden">
+        <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-white/10 rounded-full"></div>
+        <div class="relative w-11 h-11 rounded-xl bg-white/15 grid place-items-center shrink-0">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </div>
+        <div class="relative">
+          <p class="text-xs opacity-80">Tunaikan</p>
+          <p class="font-semibold text-base lg:text-lg">Zakat</p>
+        </div>
+      </a>
+      <!-- Sedekah -->
+      <a href="#" class="group bg-cream rounded-2xl p-4 lg:p-5 flex items-center gap-3 lift hover:bg-primary/5">
+        <div class="w-11 h-11 rounded-xl bg-amber-100 grid place-items-center shrink-0">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-amber-700"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        </div>
+        <div>
+          <p class="text-xs text-ink-mute">Berbagi</p>
+          <p class="font-semibold text-base lg:text-lg text-ink">Sedekah</p>
+        </div>
+      </a>
+      <!-- Wakaf -->
+      <a href="#" class="group bg-cream rounded-2xl p-4 lg:p-5 flex items-center gap-3 lift hover:bg-primary/5">
+        <div class="w-11 h-11 rounded-xl bg-emerald-100 grid place-items-center shrink-0">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-emerald-700"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </div>
+        <div>
+          <p class="text-xs text-ink-mute">Amal jariyah</p>
+          <p class="font-semibold text-base lg:text-lg text-ink">Wakaf Tunai</p>
+        </div>
+      </a>
+      <!-- Qurban -->
+      <a href="#qurban" class="group bg-cream rounded-2xl p-4 lg:p-5 flex items-center gap-3 lift hover:bg-primary/5">
+        <div class="w-11 h-11 rounded-xl bg-rose-100 grid place-items-center shrink-0">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-rose-700"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        </div>
+        <div>
+          <p class="text-xs text-ink-mute">Idul Adha</p>
+          <p class="font-semibold text-base lg:text-lg text-ink">Paket Qurban</p>
+        </div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ================== TRUST MARQUEE ================== -->
+<section class="py-10 lg:py-14 bg-cream-100 mt-10">
+  <div class="max-w-7xl mx-auto px-5 lg:px-8">
+    <p class="text-center text-xs text-ink-mute uppercase tracking-widest mb-6 font-medium">Mitra & Media yang Mempercayai Kami</p>
+    <div class="overflow-hidden relative">
+      <div class="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-cream-100 to-transparent z-10"></div>
+      <div class="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-cream-100 to-transparent z-10"></div>
+      <div class="marquee-track flex gap-12 lg:gap-16 items-center w-max">
+        <!-- Logos placeholder x2 for seamless loop -->
+        <span class="text-xl lg:text-2xl font-bold text-ink-mute/50 whitespace-nowrap">BAZNAS</span>
+        <span class="text-xl lg:text-2xl font-serif italic text-ink-mute/50 whitespace-nowrap">Tribun News</span>
+        <span class="text-xl lg:text-2xl font-bold tracking-wider text-ink-mute/50 whitespace-nowrap">DETIK</span>
+        <span class="text-xl lg:text-2xl font-light text-ink-mute/50 whitespace-nowrap">KOMPAS.com</span>
+        <span class="text-xl lg:text-2xl font-bold text-ink-mute/50 whitespace-nowrap">MUI</span>
+        <span class="text-xl lg:text-2xl font-serif text-ink-mute/50 whitespace-nowrap">Republika</span>
+        <span class="text-xl lg:text-2xl font-bold text-ink-mute/50 whitespace-nowrap">BAZNAS</span>
+        <span class="text-xl lg:text-2xl font-serif italic text-ink-mute/50 whitespace-nowrap">Tribun News</span>
+        <span class="text-xl lg:text-2xl font-bold tracking-wider text-ink-mute/50 whitespace-nowrap">DETIK</span>
+        <span class="text-xl lg:text-2xl font-light text-ink-mute/50 whitespace-nowrap">KOMPAS.com</span>
+        <span class="text-xl lg:text-2xl font-bold text-ink-mute/50 whitespace-nowrap">MUI</span>
+        <span class="text-xl lg:text-2xl font-serif text-ink-mute/50 whitespace-nowrap">Republika</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================== PROGRAM UNGGULAN & MENDESAK ================== -->
+<section id="program" class="py-16 lg:py-24 bg-cream-100">
+  <div class="max-w-7xl mx-auto px-5 lg:px-8">
+    <div class="reveal flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-10">
+      <div>
+        <span class="eyebrow">Aksi Prioritas</span>
+        <h2 class="mt-3 text-3xl lg:text-5xl font-bold tracking-tight text-ink">
+          Program Unggulan <br class="hidden sm:block"/>
+          <span class="text-primary">& Mendesak</span>
+        </h2>
+        <p class="mt-3 text-ink-soft max-w-xl">Saudara-saudara kita membutuhkan uluran tanganmu hari ini. Setiap donasi dihitung dan disalurkan langsung ke penerima.</p>
+      </div>
+      <a href="#" class="hidden lg:inline-flex items-center gap-2 text-primary font-semibold hover:gap-3 transition-all">
+        Lihat semua program
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6">
+      <!-- Card 1 -->
+      <article class="reveal bg-white rounded-3xl overflow-hidden shadow-soft lift">
+        <div class="relative h-52 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=600&h=400&fit=crop" class="w-full h-full object-cover" alt="Pendidikan anak yatim">
+          <span class="absolute top-3 left-3 bg-rose-500 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>
+            MENDESAK
+          </span>
+          <span class="absolute top-3 right-3 bg-white/90 backdrop-blur text-ink text-xs font-semibold px-3 py-1.5 rounded-full">Pendidikan</span>
+        </div>
+        <div class="p-5 lg:p-6">
+          <h3 class="font-bold text-lg leading-snug text-ink">Beasiswa Pendidikan untuk 200 Anak Yatim Pelosok</h3>
+          <p class="mt-2 text-sm text-ink-soft line-clamp-2">Bantu mereka tetap sekolah dengan menyediakan seragam, buku, dan biaya bulanan.</p>
+
+          <div class="mt-4">
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="font-semibold text-primary">Rp 78.500.000</span>
+              <span class="text-ink-mute">dari Rp 120 juta</span>
+            </div>
+            <div class="h-2 bg-primary/10 rounded-full overflow-hidden">
+              <div class="h-full bg-primary rounded-full" style="width: 65%"></div>
+            </div>
+            <div class="flex items-center justify-between mt-3 text-xs text-ink-mute">
+              <span>🕐 24 hari lagi</span>
+              <span>👥 1.240 donatur</span>
+            </div>
+          </div>
+
+          <button class="mt-5 w-full btn-primary py-3 rounded-full font-semibold text-sm">Donasi Sekarang</button>
+        </div>
+      </article>
+
+      <!-- Card 2 -->
+      <article class="reveal reveal-d1 bg-white rounded-3xl overflow-hidden shadow-soft lift">
+        <div class="relative h-52 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=600&h=400&fit=crop&sat=-50" class="w-full h-full object-cover" alt="Pangan untuk dhuafa">
+          <span class="absolute top-3 left-3 bg-amber-500 text-white text-xs font-bold px-3 py-1.5 rounded-full">PRIORITAS</span>
+          <span class="absolute top-3 right-3 bg-white/90 backdrop-blur text-ink text-xs font-semibold px-3 py-1.5 rounded-full">Pangan</span>
+        </div>
+        <div class="p-5 lg:p-6">
+          <h3 class="font-bold text-lg leading-snug text-ink">Sedekah Makan: 1.000 Paket Sembako untuk Dhuafa</h3>
+          <p class="mt-2 text-sm text-ink-soft line-clamp-2">Sebulan kebutuhan pokok untuk satu keluarga dhuafa, dimulai dari Rp150.000.</p>
+
+          <div class="mt-4">
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="font-semibold text-primary">Rp 42.300.000</span>
+              <span class="text-ink-mute">dari Rp 75 juta</span>
+            </div>
+            <div class="h-2 bg-primary/10 rounded-full overflow-hidden">
+              <div class="h-full bg-primary rounded-full" style="width: 56%"></div>
+            </div>
+            <div class="flex items-center justify-between mt-3 text-xs text-ink-mute">
+              <span>🕐 12 hari lagi</span>
+              <span>👥 892 donatur</span>
+            </div>
+          </div>
+
+          <button class="mt-5 w-full btn-primary py-3 rounded-full font-semibold text-sm">Donasi Sekarang</button>
+        </div>
+      </article>
+
+      <!-- Card 3 -->
+      <article class="reveal reveal-d2 bg-white rounded-3xl overflow-hidden shadow-soft lift">
+        <div class="relative h-52 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=600&h=400&fit=crop" class="w-full h-full object-cover" alt="Bantuan medis">
+          <span class="absolute top-3 left-3 bg-rose-500 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>
+            MENDESAK
+          </span>
+          <span class="absolute top-3 right-3 bg-white/90 backdrop-blur text-ink text-xs font-semibold px-3 py-1.5 rounded-full">Kesehatan</span>
+        </div>
+        <div class="p-5 lg:p-6">
+          <h3 class="font-bold text-lg leading-snug text-ink">Bantu Biaya Operasi untuk Adik Aisyah</h3>
+          <p class="mt-2 text-sm text-ink-soft line-clamp-2">Penyakit jantung bawaan butuh tindakan segera. Sedikit dari kita berarti banyak.</p>
+
+          <div class="mt-4">
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="font-semibold text-primary">Rp 156.700.000</span>
+              <span class="text-ink-mute">dari Rp 180 juta</span>
+            </div>
+            <div class="h-2 bg-primary/10 rounded-full overflow-hidden">
+              <div class="h-full bg-primary rounded-full" style="width: 87%"></div>
+            </div>
+            <div class="flex items-center justify-between mt-3 text-xs text-ink-mute">
+              <span>🕐 5 hari lagi</span>
+              <span>👥 2.108 donatur</span>
+            </div>
+          </div>
+
+          <button class="mt-5 w-full btn-primary py-3 rounded-full font-semibold text-sm">Donasi Sekarang</button>
+        </div>
+      </article>
+    </div>
+
+    <a href="#" class="lg:hidden mt-8 inline-flex items-center gap-2 text-primary font-semibold">
+      Lihat semua program
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </a>
+  </div>
+</section>
+
+<!-- ================== PROGRAM KAMI GRID ================== -->
+<section class="py-16 lg:py-24 bg-cream-200/50">
+  <div class="max-w-7xl mx-auto px-5 lg:px-8">
+    <div class="reveal text-center mb-12">
+      <span class="eyebrow">Kategori</span>
+      <h2 class="mt-3 text-3xl lg:text-5xl font-bold tracking-tight text-ink">Program Kami</h2>
+      <p class="mt-3 text-ink-soft max-w-2xl mx-auto">Pilih bidang yang paling dekat di hatimu. Setiap program dikelola transparan dan disalurkan tepat sasaran.</p>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6">
+      <!-- Each program card -->
+      <a href="#" class="reveal group bg-white rounded-3xl overflow-hidden shadow-softer lift block">
+        <div class="relative h-44 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1497486751825-1233686d5d80?w=600&h=400&fit=crop" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="">
+          <span class="absolute top-3 left-3 bg-white/90 backdrop-blur text-primary text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">Pendidikan</span>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-lg text-ink leading-snug">Sekolah untuk Anak Pesisir & Pelosok</h3>
+          <p class="mt-2 text-sm text-ink-soft line-clamp-2">Akses pendidikan layak untuk generasi penerus di daerah 3T.</p>
+          <div class="mt-4 inline-flex items-center gap-1.5 text-sm text-primary font-semibold">Donasi <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        </div>
+      </a>
+
+      <a href="#" class="reveal reveal-d1 group bg-white rounded-3xl overflow-hidden shadow-softer lift block">
+        <div class="relative h-44 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?w=600&h=400&fit=crop" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="">
+          <span class="absolute top-3 left-3 bg-white/90 backdrop-blur text-primary text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">Yatim</span>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-lg text-ink leading-snug">Santunan Anak Yatim & Piatu</h3>
+          <p class="mt-2 text-sm text-ink-soft line-clamp-2">Pemenuhan kebutuhan sehari-hari, sandang, dan kasih sayang.</p>
+          <div class="mt-4 inline-flex items-center gap-1.5 text-sm text-primary font-semibold">Donasi <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        </div>
+      </a>
+
+      <a href="#" class="reveal reveal-d2 group bg-white rounded-3xl overflow-hidden shadow-softer lift block">
+        <div class="relative h-44 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=600&h=400&fit=crop" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="">
+          <span class="absolute top-3 left-3 bg-white/90 backdrop-blur text-primary text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">Pangan</span>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-lg text-ink leading-snug">Dapur Umum & Sembako Dhuafa</h3>
+          <p class="mt-2 text-sm text-ink-soft line-clamp-2">Memastikan tidak ada yang tidur dalam keadaan lapar malam ini.</p>
+          <div class="mt-4 inline-flex items-center gap-1.5 text-sm text-primary font-semibold">Donasi <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        </div>
+      </a>
+
+      <a href="#" class="reveal group bg-white rounded-3xl overflow-hidden shadow-softer lift block">
+        <div class="relative h-44 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1576765608535-5f04d1e3f289?w=600&h=400&fit=crop" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="">
+          <span class="absolute top-3 left-3 bg-white/90 backdrop-blur text-primary text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">Kesehatan</span>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-lg text-ink leading-snug">Bantuan Medis & Pengobatan</h3>
+          <p class="mt-2 text-sm text-ink-soft line-clamp-2">Kemudahan akses kesehatan untuk keluarga tidak mampu.</p>
+          <div class="mt-4 inline-flex items-center gap-1.5 text-sm text-primary font-semibold">Donasi <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        </div>
+      </a>
+
+      <a href="#" class="reveal reveal-d1 group bg-white rounded-3xl overflow-hidden shadow-softer lift block">
+        <div class="relative h-44 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1542810634-71277d95dcbb?w=600&h=400&fit=crop" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="">
+          <span class="absolute top-3 left-3 bg-white/90 backdrop-blur text-primary text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">Wakaf</span>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-lg text-ink leading-snug">Wakaf Tunai untuk Masjid & Pesantren</h3>
+          <p class="mt-2 text-sm text-ink-soft line-clamp-2">Amal jariyah yang pahalanya mengalir hingga akhir masa.</p>
+          <div class="mt-4 inline-flex items-center gap-1.5 text-sm text-primary font-semibold">Donasi <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        </div>
+      </a>
+
+      <a href="#" class="reveal reveal-d2 group bg-white rounded-3xl overflow-hidden shadow-softer lift block">
+        <div class="relative h-44 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1587653263995-422546a7a569?w=600&h=400&fit=crop" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="">
+          <span class="absolute top-3 left-3 bg-white/90 backdrop-blur text-primary text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">Bencana</span>
+        </div>
+        <div class="p-5">
+          <h3 class="font-bold text-lg text-ink leading-snug">Tanggap Bencana & Kemanusiaan</h3>
+          <p class="mt-2 text-sm text-ink-soft line-clamp-2">Respons cepat untuk korban bencana di seluruh nusantara.</p>
+          <div class="mt-4 inline-flex items-center gap-1.5 text-sm text-primary font-semibold">Donasi <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        </div>
+      </a>
+    </div>
+
+    <div class="reveal mt-10 flex justify-center">
+      <a href="#" class="inline-flex items-center gap-2 px-7 py-3.5 rounded-full font-semibold text-sm text-primary bg-white border border-primary/15 hover:bg-primary hover:text-white transition-all">
+        Lihat Semua Kategori
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ================== PAKET QURBAN ================== -->
+<section id="qurban" class="py-16 lg:py-24 bg-cream relative overflow-hidden">
+  <!-- Decorative pattern -->
+  <div class="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-primary/5 to-transparent" aria-hidden="true"></div>
+
+  <div class="max-w-7xl mx-auto px-5 lg:px-8 relative">
+    <div class="reveal text-center mb-12">
+      <span class="eyebrow">Idul Adha 1447 H</span>
+      <h2 class="mt-3 text-3xl lg:text-5xl font-bold tracking-tight text-ink">Paket Qurban</h2>
+      <p class="mt-3 text-ink-soft max-w-2xl mx-auto">Hewan qurban berkualitas, didistribusikan ke pelosok negeri yang paling membutuhkan. Pilih paket sesuai niatmu.</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-5 lg:gap-6">
+      <!-- Kambing -->
+      <article class="reveal bg-white rounded-3xl overflow-hidden shadow-soft lift">
+        <div class="relative h-48 bg-gradient-to-br from-amber-50 to-amber-100 grid place-items-center overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1551431009-a802eeec77b1?w=600&h=400&fit=crop" class="w-full h-full object-cover" alt="Kambing Qurban">
+          <span class="absolute top-3 left-3 bg-white text-amber-700 text-xs font-bold px-3 py-1.5 rounded-full">PALING POPULER</span>
+        </div>
+        <div class="p-6">
+          <h3 class="font-bold text-xl text-ink">Kambing Standar</h3>
+          <p class="mt-1 text-sm text-ink-soft">≥ 25 kg • untuk 1 pequrban</p>
+          <p class="mt-5 text-3xl font-extrabold text-primary">Rp 2.450.000</p>
+          <ul class="mt-4 space-y-2 text-sm text-ink-soft">
+            <li class="flex gap-2"><span class="text-primary">✓</span> Hewan sehat & sesuai syariat</li>
+            <li class="flex gap-2"><span class="text-primary">✓</span> Distribusi pelosok 12+ provinsi</li>
+            <li class="flex gap-2"><span class="text-primary">✓</span> Laporan + dokumentasi</li>
+          </ul>
+          <button class="mt-6 w-full btn-primary py-3 rounded-full font-semibold text-sm">Pilih Paket</button>
+        </div>
+      </article>
+
+      <!-- Sapi 1/7 (highlighted) -->
+      <article class="reveal reveal-d1 bg-primary text-white rounded-3xl overflow-hidden shadow-lift lift relative">
+        <div class="absolute -top-12 -right-12 w-40 h-40 bg-white/10 rounded-full"></div>
+        <div class="absolute -bottom-16 -left-16 w-48 h-48 bg-white/5 rounded-full"></div>
+        <div class="relative h-48 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1546445317-29f4545e9d53?w=600&h=400&fit=crop" class="w-full h-full object-cover" alt="Sapi Qurban">
+          <span class="absolute top-3 left-3 bg-amber-400 text-amber-900 text-xs font-bold px-3 py-1.5 rounded-full">REKOMENDASI</span>
+        </div>
+        <div class="p-6 relative">
+          <h3 class="font-bold text-xl">Sapi 1/7</h3>
+          <p class="mt-1 text-sm text-white/80">Patungan • untuk 1 pequrban</p>
+          <p class="mt-5 text-3xl font-extrabold">Rp 3.150.000</p>
+          <ul class="mt-4 space-y-2 text-sm text-white/90">
+            <li class="flex gap-2"><span class="text-amber-300">✓</span> Bobot ≥ 250 kg, sesuai syariat</li>
+            <li class="flex gap-2"><span class="text-amber-300">✓</span> Disembelih H-1 hingga H+3 Idul Adha</li>
+            <li class="flex gap-2"><span class="text-amber-300">✓</span> Sertifikat digital & dokumentasi</li>
+          </ul>
+          <button class="mt-6 w-full bg-white text-primary py-3 rounded-full font-semibold text-sm hover:bg-cream transition-colors">Pilih Paket</button>
+        </div>
+      </article>
+
+      <!-- Sapi 1 ekor -->
+      <article class="reveal reveal-d2 bg-white rounded-3xl overflow-hidden shadow-soft lift">
+        <div class="relative h-48 overflow-hidden">
+          <img src="https://images.unsplash.com/photo-1605379399642-870262d3d051?w=600&h=400&fit=crop" class="w-full h-full object-cover" alt="Sapi Premium">
+          <span class="absolute top-3 left-3 bg-white text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-full">PREMIUM</span>
+        </div>
+        <div class="p-6">
+          <h3 class="font-bold text-xl text-ink">Sapi 1 Ekor</h3>
+          <p class="mt-1 text-sm text-ink-soft">Untuk 7 pequrban / keluarga besar</p>
+          <p class="mt-5 text-3xl font-extrabold text-primary">Rp 22.000.000</p>
+          <ul class="mt-4 space-y-2 text-sm text-ink-soft">
+            <li class="flex gap-2"><span class="text-primary">✓</span> Bobot ≥ 280 kg, kualitas terbaik</li>
+            <li class="flex gap-2"><span class="text-primary">✓</span> Distribusi nasional + prioritas pelosok</li>
+            <li class="flex gap-2"><span class="text-primary">✓</span> Laporan keluarga + sertifikat</li>
+          </ul>
+          <button class="mt-6 w-full btn-primary py-3 rounded-full font-semibold text-sm">Pilih Paket</button>
+        </div>
+      </article>
+    </div>
+
+    <div class="reveal mt-10 flex justify-center">
+      <a href="#" class="inline-flex items-center gap-2 px-7 py-3.5 rounded-full font-semibold text-sm text-primary bg-white border border-primary/15 hover:bg-primary hover:text-white transition-all">
+        Lihat Semua Paket Qurban
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ================== STATS / TRUST ================== -->
+<section class="py-16 lg:py-24 bg-primary text-white relative overflow-hidden">
+  <!-- Decorative islamic pattern -->
+  <div class="absolute inset-0 opacity-10" aria-hidden="true">
+    <svg class="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <defs>
+        <pattern id="pattern-1" width="20" height="20" patternUnits="userSpaceOnUse">
+          <circle cx="10" cy="10" r="0.5" fill="white"/>
+        </pattern>
+      </defs>
+      <rect width="100" height="100" fill="url(#pattern-1)"/>
+    </svg>
+  </div>
+  <div class="absolute -top-32 -left-32 w-96 h-96 bg-white/5 rounded-full blur-3xl"></div>
+  <div class="absolute -bottom-32 -right-32 w-96 h-96 bg-amber-300/10 rounded-full blur-3xl"></div>
+
+  <div class="max-w-7xl mx-auto px-5 lg:px-8 relative">
+    <div class="reveal text-center mb-12">
+      <span class="inline-flex items-center gap-2 bg-white/10 backdrop-blur text-white text-xs font-semibold px-4 py-2 rounded-full uppercase tracking-wider">
+        ✦ Dampak Bersama
+      </span>
+      <h2 class="mt-3 text-3xl lg:text-5xl font-bold tracking-tight">Kepercayaan Anda, <br class="sm:hidden"/>Amanah Kami</h2>
+      <p class="mt-3 text-white/80 max-w-xl mx-auto">Setiap angka adalah cerita. Setiap donasi adalah doa yang sampai.</p>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+      <div class="reveal text-center p-6 rounded-3xl bg-white/5 backdrop-blur border border-white/10">
+        <div class="w-12 h-12 mx-auto rounded-2xl bg-white/10 grid place-items-center mb-4">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        </div>
+        <p class="text-4xl lg:text-5xl font-extrabold tracking-tight" data-counter="100" data-suffix="+">0+</p>
+        <p class="text-sm text-white/70 mt-2">Program Aktif</p>
+      </div>
+      <div class="reveal reveal-d1 text-center p-6 rounded-3xl bg-white/5 backdrop-blur border border-white/10">
+        <div class="w-12 h-12 mx-auto rounded-2xl bg-white/10 grid place-items-center mb-4">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <p class="text-4xl lg:text-5xl font-extrabold tracking-tight" data-counter="5" data-suffix="+">0+</p>
+        <p class="text-sm text-white/70 mt-2">Tahun Pengalaman</p>
+      </div>
+      <div class="reveal reveal-d2 text-center p-6 rounded-3xl bg-white/5 backdrop-blur border border-white/10">
+        <div class="w-12 h-12 mx-auto rounded-2xl bg-white/10 grid place-items-center mb-4">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </div>
+        <p class="text-4xl lg:text-5xl font-extrabold tracking-tight"><span data-counter="10" data-suffix="">0</span>Jt+</p>
+        <p class="text-sm text-white/70 mt-2">Donasi Tersalurkan</p>
+      </div>
+      <div class="reveal reveal-d3 text-center p-6 rounded-3xl bg-white/5 backdrop-blur border border-white/10">
+        <div class="w-12 h-12 mx-auto rounded-2xl bg-white/10 grid place-items-center mb-4">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        </div>
+        <p class="text-4xl lg:text-5xl font-extrabold tracking-tight"><span data-counter="12" data-suffix="">0</span>Rb+</p>
+        <p class="text-sm text-white/70 mt-2">Donatur Setia</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================== MENGAPA MEMILIH BANTUANKU ================== -->
+<section id="mengapa" class="py-16 lg:py-24 bg-cream-100">
+  <div class="max-w-7xl mx-auto px-5 lg:px-8">
+    <div class="reveal text-center mb-14">
+      <span class="eyebrow">Komitmen Kami</span>
+      <h2 class="mt-3 text-3xl lg:text-5xl font-bold tracking-tight text-ink">Mengapa Memilih <span class="text-primary">Bantuanku?</span></h2>
+      <p class="mt-3 text-ink-soft max-w-xl mx-auto">Tiga hal yang kami pegang teguh dalam setiap rupiah yang Anda titipkan.</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 lg:gap-8 relative">
+      <!-- Connecting dotted line -->
+      <div class="hidden md:block absolute top-12 left-[20%] right-[20%] dotted-divider"></div>
+
+      <div class="reveal text-center bg-white rounded-3xl p-7 lg:p-8 shadow-softer relative">
+        <div class="w-16 h-16 mx-auto mb-5 rounded-2xl bg-primary/10 grid place-items-center text-2xl">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-primary"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        <h3 class="text-xl font-bold text-ink">Resmi & Terpercaya</h3>
+        <p class="mt-2 text-sm text-ink-soft leading-relaxed">Berbadan hukum yayasan resmi, terdaftar di Kemensos & diaudit lembaga independen setiap tahun.</p>
+      </div>
+
+      <div class="reveal reveal-d1 text-center bg-white rounded-3xl p-7 lg:p-8 shadow-softer relative">
+        <div class="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-100 grid place-items-center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-amber-700"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <h3 class="text-xl font-bold text-ink">Transparan</h3>
+        <p class="mt-2 text-sm text-ink-soft leading-relaxed">Setiap rupiah dilaporkan terbuka — penyaluran, dokumentasi foto, dan testimoni penerima manfaat.</p>
+      </div>
+
+      <div class="reveal reveal-d2 text-center bg-white rounded-3xl p-7 lg:p-8 shadow-softer relative">
+        <div class="w-16 h-16 mx-auto mb-5 rounded-2xl bg-emerald-100 grid place-items-center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-emerald-700"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <h3 class="text-xl font-bold text-ink">Tepat Sasaran</h3>
+        <p class="mt-2 text-sm text-ink-soft leading-relaxed">Tim lapangan tersebar di 12+ provinsi untuk memastikan donasi sampai ke yang paling membutuhkan.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================== FINAL CTA ================== -->
+<section id="donasi" class="py-16 lg:py-24 bg-cream-100">
+  <div class="max-w-7xl mx-auto px-5 lg:px-8">
+    <div class="reveal relative bg-gradient-to-br from-primary to-primary-dark rounded-[2rem] lg:rounded-[2.5rem] overflow-hidden p-8 lg:p-16">
+      <!-- Decorative -->
+      <div class="absolute -top-20 -right-20 w-72 h-72 bg-amber-300/15 rounded-full blur-3xl"></div>
+      <div class="absolute -bottom-20 -left-20 w-72 h-72 bg-white/5 rounded-full blur-3xl"></div>
+      <div class="absolute top-8 right-8 opacity-10">
+        <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      </div>
+
+      <div class="relative grid lg:grid-cols-12 gap-8 items-center">
+        <div class="lg:col-span-7 text-white">
+          <span class="inline-flex items-center gap-2 bg-white/10 backdrop-blur text-white text-xs font-semibold px-4 py-2 rounded-full uppercase tracking-wider">
+            ✦ Sekarang juga
+          </span>
+          <h2 class="mt-4 text-3xl lg:text-5xl xl:text-6xl font-extrabold tracking-tight leading-[1.05]">
+            Mulai Berbagi <br/>Kebaikan Hari Ini.
+          </h2>
+          <p class="mt-4 text-white/85 max-w-xl text-base lg:text-lg">Tidak ada nominal yang terlalu kecil. Yang penting konsisten dan dari hati. Mulai dari Rp10.000 saja.</p>
+        </div>
+
+        <div class="lg:col-span-5 flex flex-col gap-3">
+          <a href="#" class="group bg-white text-primary px-6 py-4 rounded-2xl font-semibold flex items-center justify-between hover:bg-cream transition-colors shadow-soft">
+            <span class="flex items-center gap-3">
+              <span class="w-10 h-10 rounded-xl bg-primary/10 grid place-items-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              </span>
+              Donasi Sekarang
+            </span>
+            <svg class="group-hover:translate-x-1 transition-transform" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a href="#" class="group bg-white/10 backdrop-blur text-white border border-white/20 px-6 py-4 rounded-2xl font-semibold flex items-center justify-between hover:bg-white/15 transition-colors">
+            <span class="flex items-center gap-3">
+              <span class="w-10 h-10 rounded-xl bg-white/15 grid place-items-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+              </span>
+              Pelajari Cara Kerjanya
+            </span>
+            <svg class="group-hover:translate-x-1 transition-transform" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================== FOOTER ================== -->
+<footer id="kontak" class="bg-primary-dark text-white pt-16 pb-8">
+  <div class="max-w-7xl mx-auto px-5 lg:px-8">
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-10">
+      <div class="lg:col-span-1">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="w-9 h-9 rounded-xl bg-white text-primary grid place-items-center font-bold text-lg">B</span>
+          <span class="font-bold text-lg">Bantuanku</span>
+        </div>
+        <p class="text-sm text-white/70 leading-relaxed">Platform donasi online terpercaya untuk Zakat, Sedekah, Wakaf, dan Qurban. Amanah, transparan, tepat sasaran.</p>
+        <div class="mt-5 flex gap-3">
+          <a href="#" aria-label="Instagram" class="w-9 h-9 rounded-full bg-white/10 grid place-items-center hover:bg-white/20 transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+          </a>
+          <a href="#" aria-label="Facebook" class="w-9 h-9 rounded-full bg-white/10 grid place-items-center hover:bg-white/20 transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+          </a>
+          <a href="#" aria-label="YouTube" class="w-9 h-9 rounded-full bg-white/10 grid place-items-center hover:bg-white/20 transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/></svg>
+          </a>
+          <a href="#" aria-label="TikTok" class="w-9 h-9 rounded-full bg-white/10 grid place-items-center hover:bg-white/20 transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.28a8.16 8.16 0 0 0 4.77 1.52V6.35a4.85 4.85 0 0 1-1.84-.66z"/></svg>
+          </a>
+        </div>
+      </div>
+
+      <div>
+        <h4 class="font-semibold text-sm uppercase tracking-wider mb-4">Program</h4>
+        <ul class="space-y-2.5 text-sm text-white/70">
+          <li><a href="#" class="hover:text-white transition-colors">Zakat</a></li>
+          <li><a href="#" class="hover:text-white transition-colors">Sedekah</a></li>
+          <li><a href="#" class="hover:text-white transition-colors">Wakaf Tunai</a></li>
+          <li><a href="#" class="hover:text-white transition-colors">Qurban</a></li>
+          <li><a href="#" class="hover:text-white transition-colors">Bantuan Yatim</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h4 class="font-semibold text-sm uppercase tracking-wider mb-4">Tentang</h4>
+        <ul class="space-y-2.5 text-sm text-white/70">
+          <li><a href="#" class="hover:text-white transition-colors">Profil Yayasan</a></li>
+          <li><a href="#" class="hover:text-white transition-colors">Laporan Keuangan</a></li>
+          <li><a href="#" class="hover:text-white transition-colors">Legalitas</a></li>
+          <li><a href="#" class="hover:text-white transition-colors">Karir</a></li>
+          <li><a href="#" class="hover:text-white transition-colors">Berita</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h4 class="font-semibold text-sm uppercase tracking-wider mb-4">Kontak</h4>
+        <ul class="space-y-2.5 text-sm text-white/70">
+          <li class="flex gap-2"><span>📞</span> 0812-3456-7890</li>
+          <li class="flex gap-2"><span>✉️</span> halo@bantuanku.org</li>
+          <li class="flex gap-2"><span>📍</span> Jl. Kebaikan No.7, Jakarta</li>
+        </ul>
+        <div class="mt-5">
+          <p class="text-xs text-white/60 mb-2">Subscribe newsletter:</p>
+          <form class="flex gap-2">
+            <input type="email" placeholder="Email kamu" class="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-2.5 text-sm placeholder-white/50 focus:outline-none focus:border-white/50">
+            <button class="bg-white text-primary px-4 py-2.5 rounded-full text-sm font-semibold hover:bg-cream transition-colors">→</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-12 pt-6 border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-white/60">
+      <p>© 2026 Yayasan Bantuanku. Seluruh hak cipta dilindungi.</p>
+      <div class="flex gap-5">
+        <a href="#" class="hover:text-white transition-colors">Kebijakan Privasi</a>
+        <a href="#" class="hover:text-white transition-colors">Syarat & Ketentuan</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- ================== TWEAKS PANEL ================== -->
+<div id="tweaks-root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="tweaks-app.jsx"></script>
+
+<script>
+  // ===== Mobile menu =====
+  document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+    document.getElementById('mobile-menu').classList.toggle('hidden');
+  });
+
+  // ===== Scroll reveal =====
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -50px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  // ===== Counter animations =====
+  const counterIO = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const el = e.target;
+        const target = parseInt(el.dataset.counter, 10);
+        const suffix = el.dataset.suffix || '';
+        let current = 0;
+        const duration = 1400;
+        const start = performance.now();
+        const tick = (now) => {
+          const t = Math.min(1, (now - start) / duration);
+          const eased = 1 - Math.pow(1 - t, 3);
+          current = Math.floor(target * eased);
+          el.textContent = current + suffix;
+          if (t < 1) requestAnimationFrame(tick);
+          else el.textContent = target + suffix;
+        };
+        requestAnimationFrame(tick);
+        counterIO.unobserve(el);
+      }
+    });
+  }, { threshold: 0.5 });
+  document.querySelectorAll('[data-counter]').forEach(el => counterIO.observe(el));
+
+  // ===== Subtle hero parallax on scroll =====
+  const heroImg = document.querySelector('.hero-img-mask');
+  // not used; we keep float-slow for the floating cards.
+</script>
+
+</body>
+</html>

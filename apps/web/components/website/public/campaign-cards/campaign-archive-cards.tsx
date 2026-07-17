@@ -1,6 +1,7 @@
 import type { CampaignCardData } from "@/lib/campaign-card-templates";
 import type { CampaignArchiveCardDesignId } from "@/lib/campaign-archive-card-designs";
 import { CampaignArchiveCardsDesign1 } from "./campaign-archive-cards-design-1";
+import { CampaignArchiveCardsDesign2 } from "./campaign-archive-cards-design-2";
 
 type Props = {
   design:     CampaignArchiveCardDesignId;
@@ -13,6 +14,7 @@ type Props = {
 // komponen campaign-archive-cards-design-N.tsx baru (ikuti pola Design1 — grid desktop/list mobile).
 export function CampaignArchiveCards({ design, campaigns, tenantSlug }: Props) {
   switch (design) {
-    default: return <CampaignArchiveCardsDesign1 campaigns={campaigns} tenantSlug={tenantSlug} />;
+    case "2": return <CampaignArchiveCardsDesign2 campaigns={campaigns} tenantSlug={tenantSlug} />;
+    default:  return <CampaignArchiveCardsDesign1 campaigns={campaigns} tenantSlug={tenantSlug} />;
   }
 }
