@@ -8,10 +8,11 @@ import { publicUrl, resolveMediaUrl } from "@/lib/minio";
 import { CampaignDetailClient } from "@/components/donasi/public/campaign-detail-client";
 import { CampaignDetailTabs }  from "@/components/donasi/public/campaign-detail-tabs";
 import type { DonorEntry }     from "@/components/donasi/public/campaign-detail-tabs";
-import { CampaignCard }        from "@/components/website/public/campaign-cards/campaign-card";
+import { CampaignArchiveCards } from "@/components/website/public/campaign-cards/campaign-archive-cards";
 import type { CampaignCardData } from "@/lib/campaign-card-templates";
 import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS, buildProgressInfoBlock } from "@/lib/campaign-card-templates";
 import { resolveQurbanInfoBlocks } from "@/lib/campaign-info-block";
+import { CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS, type CampaignArchiveCardDesignId } from "@/lib/campaign-archive-card-designs";
 import type { Metadata }       from "next";
 import { ChevronRight } from "lucide-react";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
@@ -198,6 +199,12 @@ export default async function CampaignDetailPage({ params }: { params: Params })
     recommendedAmounts = dc?.recommended_amounts ?? [10000, 25000, 50000, 100000];
   }
 
+  // Desain kartu "Campaign Lainnya" — lihat docs/arsitektur-donasi.md § 14l
+  const archiveDesignRaw = donasiSettings.campaign_archive_design as { design?: string } | undefined;
+  const archiveDesign: CampaignArchiveCardDesignId = CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS.includes(archiveDesignRaw?.design as CampaignArchiveCardDesignId)
+    ? (archiveDesignRaw!.design as CampaignArchiveCardDesignId)
+    : "1";
+
   // Kampanye terkait (kategori sama)
   let relatedCampaigns: CampaignCardData[] = [];
   if (campaign.categoryId) {
@@ -333,18 +340,7 @@ export default async function CampaignDetailPage({ params }: { params: Params })
         {relatedCampaigns.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Campaign Lainnya</h2>
-            {/* Desktop: Grid 3 kolom */}
-            <div className="hidden md:grid grid-cols-3 gap-4">
-              {relatedCampaigns.map(c => (
-                <CampaignCard key={c.id} campaign={c} variant="grid" tenantSlug={slug} />
-              ))}
-            </div>
-            {/* Mobile: List */}
-            <div className="md:hidden flex flex-col">
-              {relatedCampaigns.map(c => (
-                <CampaignCard key={c.id} campaign={c} variant="list" tenantSlug={slug} />
-              ))}
-            </div>
+            <CampaignArchiveCards design={archiveDesign} campaigns={relatedCampaigns} tenantSlug={slug} />
           </section>
         )}
 

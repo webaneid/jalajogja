@@ -1691,76 +1691,126 @@ Step CQ4: Uji manual: campaign umum tetap tampil progress bar seperti sebelumnya
 
 ---
 
-### 14l. Layout Kartu Responsif (Grid Desktop / List Mobile / Slider Landing) — Pengganti § 14j
+### 14l. Layout Kartu Responsif — REVISI, salah paham scope, lihat § 14m
 
-> **Status: SELESAI — diimplementasikan 2026-07-17.** Menggantikan setting admin § 14j (dihapus
-> di hari yang sama) setelah dicoba user — grid 3 kolom di layar sempit dinilai sulit dibaca,
-> setting manual dianggap tidak perlu untuk masalah yang sebenarnya murni soal breakpoint.
+> **Status: SUPERSEDED 2026-07-17, di hari yang sama.** Versi ini menghapus TOTAL setting admin
+> (§ 14j) dan menggantinya dengan layout hardcode tunggal. **Ini salah paham** — user
+> mengoreksi: setting-nya bukan mau dihapus, tapi mau **direstrukturisasi** jadi registry desain
+> bernomor (pola sama Hero/Strip Modul: "Desain 1", nanti nambah "Desain 2" dst), dan ATURAN
+> grid-desktop/list-mobile berlaku sebagai **baseline wajib untuk setiap desain di registry itu**
+> — bukan alasan untuk meniadakan pilihan admin sama sekali. Lihat § 14m untuk versi final.
+> Isi asli di bawah ini dipertahankan sebagai catatan sejarah — jangan diikuti untuk implementasi.
 
-**Keputusan**: layout kartu campaign sekarang **otomatis mengikuti ukuran layar**, bukan pilihan
-admin. Tidak ada lagi setting di `/donasi/pengaturan` untuk ini.
+**Keputusan (versi ini, sudah tidak berlaku)**: layout kartu campaign otomatis mengikuti ukuran
+layar, tidak ada setting sama sekali di `/donasi/pengaturan` untuk ini.
 
 | Konteks | Desktop (≥768px, `md:`) | Mobile (<768px) |
 |---|---|---|
 | Arsip `/campaign` | Grid 3 kolom | List (vertikal, satu kolom) |
 | "Campaign Lainnya" (`/campaign/{slug}`) | Grid 3 kolom | List |
-| Section Campaign di landing page (Desain 1 "Grid Donasi") | Grid 3 kolom | **Slider horizontal** (scroll-snap, bukan list) |
+| Section Campaign di landing page (Desain 1 "Grid Donasi") | Grid 3 kolom | Slider horizontal (scroll-snap, bukan list) |
 
-**Kenapa landing page beda dari arsip**: arsip adalah halaman penuh dengan banyak campaign — List
-(satu kolom penuh, scroll vertikal) paling mudah dibaca di HP. Section landing page punya ruang
-terbatas (bagian dari homepage yang lebih panjang) — slider horizontal lebih hemat tempat vertikal
-dan lebih sesuai konvensi "section promosi" (mirip pola carousel yang sudah dipakai section Post/
-Produk lain). Dua kebutuhan berbeda, dua treatment berbeda — bukan inkonsistensi.
+**Yang tetap benar dan dibawa ke § 14m tanpa perubahan**: tabel di atas (grid desktop/list mobile
+untuk arsip+related, slider khusus landing page Desain 1), pola dual-render CSS breakpoint
+(`hidden md:grid` + `md:hidden`, bukan JS/device-detection), dan implementasi slider landing page
+di `campaigns-design-1.tsx` — semua itu TIDAK diubah oleh § 14m, cuma dibungkus ulang jadi
+"Desain 1" di dalam registry, bukan dihapus.
 
-**Implementasi — pola dual-render, bukan JS/device-detection**:
-```tsx
-{/* Desktop */}
-<div className="hidden md:grid grid-cols-3 gap-5">
-  {campaigns.map(c => <CampaignCard key={c.id} campaign={c} variant="grid" tenantSlug={slug} />)}
-</div>
-{/* Mobile */}
-<div className="md:hidden flex flex-col">
-  {campaigns.map(c => <CampaignCard key={c.id} campaign={c} variant="list" tenantSlug={slug} />)}
-</div>
-```
-Kedua blok di-render sekaligus di server (SSR-safe, tidak ada hydration mismatch), Tailwind
-`hidden`/`md:hidden` yang menentukan mana yang tampil — pola yang sama dengan
-`AnggotaDirectoryClient` (tabel desktop vs card mobile, lihat § arsitektur direktori publik).
-**Bukan** `useState` + `window.innerWidth` — CSS breakpoint selalu lebih murah dan tidak perlu
-`"use client"`.
-
-**Slider landing page** (`campaigns-design-1.tsx`, Desain 1 saja — Desain 2 "Campaign Unggulan"
-dan Desain 3 "Daftar Donasi" TIDAK disentuh, sudah punya treatment mobile yang wajar sebelumnya):
-```tsx
-<div className="md:hidden flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 [&::-webkit-scrollbar]:hidden"
-     style={{ scrollbarWidth: "none" }}>
-  {campaigns.map(c => (
-    <div key={c.id} className="flex-none w-[75%] sm:w-[45%] snap-start">
-      <CampaignCard campaign={c} variant="grid" tenantSlug={tenantSlug} />
-    </div>
-  ))}
-</div>
-```
-Murni CSS scroll-snap, tanpa tombol prev/next (swipe alami di mobile, beda dengan rail Strip Modul
-Desain 2 yang punya tombol karena dipakai juga di desktop). `variant="grid"` dipertahankan di dalam
-slider (bukan `list`) karena bentuk kartu grid — cover besar + info di bawah — lebih pas untuk kartu
-lebar-tetap yang di-scroll horizontal; `list` (horizontal thumbnail kecil) tidak cocok untuk itu.
-
-**File yang dihapus** (fitur § 14j di-revert penuh):
-- `components/donasi/campaign-card-design-settings-client.tsx` — dihapus
-- `saveCampaignCardDesignAction` di `donasi/actions.ts` — dihapus
-- Section 3 "Desain Kartu Arsip" di `donasi/pengaturan/page.tsx` — dihapus, kembali ke 2 section
-- Baca-tulis setting `campaign_card_design` di `campaign/page.tsx` dan `campaign/[slug]/page.tsx`
-  — dihapus, diganti dual-render statis di atas
-
-**Yang TIDAK berubah**: § 14k (info block polimorfik untuk isi qurban vs progress bar) tetap utuh
-dan tidak terpengaruh — dua sumbu itu tetap independen. `CAMPAIGN_CARD_VARIANTS`/`CampaignCardVariant`
-di `lib/campaign-card-templates.ts` juga tidak dihapus (masih dipakai `CampaignCard` dispatcher
-untuk membedakan render Grid vs List secara internal) — yang dihapus HANYA lapisan
-"admin choice" di atasnya.
+**Yang salah dan dikoreksi § 14m**: penghapusan total section "Desain Kartu Arsip" +
+`saveCampaignCardDesignAction` + client component picker. Seharusnya direstrukturisasi (rename
+konsep dari "pilih Grid/List/Ringkas" jadi "pilih Desain 1/2/3..."), bukan dihapus.
 
 ---
 
+### 14m. Registry Desain Kartu Arsip (Bernomor, Bukan Grid/List/Ringkas) — Final
+
+> **Status: SELESAI — diimplementasikan 2026-07-17.** Versi final setelah 2 putaran koreksi
+> (§ 14j → § 14l → § 14m). Pola sama `HERO_SECTION_DESIGNS`/`MODULE_SECTION_DESIGNS`: registry
+> desain bernomor, cuma 1 desain sekarang, terbuka untuk desain baru nanti.
+
+**Konsep yang dikunci**: setting di `/donasi/pengaturan` **tetap ada** — bukan Grid/List/Ringkas
+lagi (itu detail implementasi internal, bukan pilihan admin), tapi **"Desain 1", "Desain 2", dst**
+— identik pola dengan Header/Footer/Hero/Strip Modul yang sudah dibangun sesi-sesi sebelumnya.
+Sekarang baru ada **1 desain** ("Desain 1 — Klasik"), yang isinya persis apa yang sudah dibangun
+di § 14l (Grid desktop / List mobile).
+
+**Aturan wajib untuk SEMUA desain di registry ini, sekarang dan nanti** (ditegaskan eksplisit oleh
+user): *"setiap design grid dalam kontek donasi sifatnya: grid ketika di desktop, dan list ketika
+di mobile."* Ini bukan properti Desain 1 saja — ini **konstrain baseline** yang harus diikuti
+desain manapun yang ditambah ke registry ini nanti (Desain 2, 3, dst boleh beda dari sisi visual
+kartunya — warna, badge, susunan info — tapi WAJIB tetap grid di desktop dan list di mobile,
+tidak boleh grid-sempit di kedua breakpoint).
+
+**Registry** (`lib/campaign-archive-card-designs.ts`, baru):
+```typescript
+export const CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS = ["1"] as const;
+export type CampaignArchiveCardDesignId = typeof CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS[number];
+
+export const CAMPAIGN_ARCHIVE_CARD_DESIGNS: Record<CampaignArchiveCardDesignId, { label: string; description: string }> = {
+  "1": { label: "Klasik", description: "Grid 3 kolom di desktop, List satu kolom di mobile." },
+};
+```
+
+**Dispatcher** (pola sama `hero-section.tsx`/`modules-section.tsx`):
+```
+components/website/public/campaign-cards/
+├── campaign-archive-cards.tsx           → dispatcher, switch(design) { default: Design1 }
+└── campaign-archive-cards-design-1.tsx  → isi asli § 14l (grid desktop / list mobile)
+```
+Nambah desain baru nanti = tambah 1 ID + 1 komponen `campaign-archive-cards-design-N.tsx` yang
+WAJIB tetap ikuti aturan grid-desktop/list-mobile di atas + 1 `case` di dispatcher — tidak perlu
+ubah `campaign/page.tsx` atau `campaign/[slug]/page.tsx` sama sekali.
+
+**Setting** — group `donasi`, key baru (ganti nama dari `campaign_card_design` di § 14j yang sudah
+tidak dipakai, supaya jelas bedanya secara semantik — value lama berbentuk `{variant}`, ini
+`{design}`):
+```json
+key   = "campaign_archive_design"
+group = "donasi"
+value = { "design": "1" }
+```
+
+**Server action** — `donasi/actions.ts`: `saveCampaignArchiveDesignAction(slug, design)`, validasi
+`CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS.includes(design)`, `upsertSetting(..., "campaign_archive_design", "donasi", { design })`.
+
+**UI picker** — `components/donasi/campaign-archive-design-settings-client.tsx` (baru, gantikan
+file § 14j yang sudah dihapus): radio-card list dari `CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS`, label
+"Desain {id} — {meta.label}". Karena baru 1 opsi, tampil catatan italic "Belum ada desain
+alternatif — akan ditambah di sini nanti" — supaya admin paham ini BUKAN bug/UI kosong, tapi
+memang baru 1 desain, sama seperti pesan yang sudah dipakai di picker Header/Footer saat baru 1-2
+opsi tersedia.
+
+**File yang dipakai bersama di dua halaman publik** (archive + related campaigns) — SATU
+dispatcher, bukan diduplikasi:
+```tsx
+// campaign/page.tsx & campaign/[slug]/page.tsx — pola sama persis
+const donasiSettings   = await getSettings(tenantClient, "donasi");
+const archiveDesignRaw = donasiSettings.campaign_archive_design as { design?: string } | undefined;
+const archiveDesign     = CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS.includes(archiveDesignRaw?.design as CampaignArchiveCardDesignId)
+  ? (archiveDesignRaw!.design as CampaignArchiveCardDesignId) : "1";
+// ...
+<CampaignArchiveCards design={archiveDesign} campaigns={campaigns} tenantSlug={slug} />
+```
+
+**Yang TIDAK berubah dari § 14l**: slider mobile khusus landing page (`campaigns-design-1.tsx`,
+Desain 1 landing SECTION — beda registry dari registry ini, lihat catatan di bawah) tetap sama
+persis. § 14k (info block polimorfik qurban) tidak tersentuh sama sekali.
+
+**Dua registry desain campaign yang TIDAK BOLEH TERTUKAR** (nama mirip, konteks beda):
+| Registry | File | Untuk | Desain saat ini |
+|---|---|---|---|
+| `CampaignArchiveCardDesignId` | `lib/campaign-archive-card-designs.ts` | Kartu di `/campaign` (arsip) + "Campaign Lainnya" | 1 ("Klasik") |
+| `CampaignsSectionDesignId` | `lib/campaigns-section-designs.ts` | Section Campaign di landing page (sudah ada sejak § 11b) | 3 ("Grid Donasi"/"Campaign Unggulan"/"Daftar Donasi") |
+
+Keduanya independen — mengubah setting arsip TIDAK memengaruhi section landing page, dan
+sebaliknya. Kalau nanti nambah desain baru, pastikan nambah ke registry yang benar sesuai
+konteksnya (arsip vs landing section).
+
+**File yang dihapus dari § 14l** (revert sebagian): tidak ada — § 14l sudah dihapus totalnya di
+langkah ini, digantikan file-file baru di atas (nama berbeda: `campaign-archive-*` bukan
+`campaign-card-design-*`, `campaign_archive_design` bukan `campaign_card_design`).
+
+---
 ## 15. Fitur Qurban
 
 Qurban **bukan entitas terpisah** — ia adalah campaign dengan `campaign_type = 'qurban'`.
