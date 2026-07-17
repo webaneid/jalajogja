@@ -1,5 +1,6 @@
 import type { CampaignCardData } from "@/lib/campaign-card-templates";
-import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS, formatRp } from "@/lib/campaign-card-templates";
+import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS } from "@/lib/campaign-card-templates";
+import { CampaignCardInfoBlock } from "./campaign-card-info-block";
 import { Heart } from "lucide-react";
 
 export function CampaignCardList({ campaign, tenantSlug }: { campaign: CampaignCardData; tenantSlug: string }) {
@@ -32,22 +33,7 @@ export function CampaignCardList({ campaign, tenantSlug }: { campaign: CampaignC
         <h3 className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
           {campaign.title}
         </h3>
-        {campaign.campaignType !== "qurban" && (
-          <div className="flex items-center gap-2">
-            {campaign.progressPercent !== null ? (
-              <>
-                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full" style={{ width: `${campaign.progressPercent}%` }} />
-                </div>
-                <span className="text-xs text-muted-foreground shrink-0">{formatRp(campaign.collectedAmount)}</span>
-              </>
-            ) : (
-              <span className="text-xs text-muted-foreground">
-                Terkumpul: <span className="font-medium text-foreground">{formatRp(campaign.collectedAmount)}</span>
-              </span>
-            )}
-          </div>
-        )}
+        <CampaignCardInfoBlock info={campaign.infoBlock} layout="list" />
       </div>
     </a>
   );

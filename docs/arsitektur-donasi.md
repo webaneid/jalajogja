@@ -1428,6 +1428,264 @@ Step D4: Front-end halaman publik
 
 ---
 
+### 14j. Desain Kartu Arsip (Default Grid/List/Ringkas)
+
+> **Status: SELESAI — diimplementasikan 2026-07-17.** Rencana awal ditulis sesuai permintaan user
+> ("buat perencanaan dulu di arsitektur donasi... biar mudah evaluasi dan penambahannya") sebelum
+> eksekusi kode dimulai.
+
+**Latar belakang**
+
+`CampaignCard` (`components/website/public/campaign-cards/campaign-card.tsx`) sudah punya 3 variant
+layout yang lengkap dan siap render — `grid` | `list` | `ringkas` — didefinisikan di
+`lib/campaign-card-templates.ts` (`CAMPAIGN_CARD_VARIANTS`, `CAMPAIGN_CARD_VARIANT_LABELS`,
+`CAMPAIGN_CARD_VARIANT_DESCRIPTIONS`). Variant ini SELAMA INI hanya bisa dipilih **per-instance** di
+landing page section builder (`CampaignsSection` — admin pilih variant saat susun section landing).
+
+Dua tempat lain memanggil `<CampaignCard>` dengan **hardcode** `variant="grid"`, tanpa cara
+mengubahnya sama sekali:
+- `app/(public)/[tenant]/campaign/page.tsx` (arsip publik `/campaign`) — baris ~172
+- `app/(public)/[tenant]/campaign/[slug]/page.tsx` (bagian "Campaign Lainnya" / related campaigns
+  di halaman detail) — baris ~330
+
+**Keputusan yang dikunci** (dikonfirmasi user via klarifikasi 2026-07-17, dipilih dari 2 opsi yang
+dipresentasikan):
+
+> Setting baru **hanya memilih salah satu dari 3 layout yang SUDAH ADA** (Grid/List/Ringkas) sebagai
+> default untuk kedua tempat hardcode di atas. **Bukan** membangun sumbu "desain visual baru"
+> (beda dengan pola Header/Footer/Hero/Strip Modul di `docs/arsitektur-frontend-publik.md` /
+> `docs/arsitektur-strip-modul.md` yang tumbuh multi-desain dengan komponen render terpisah per
+> desain). Infrastruktur render (`CampaignCard` dispatcher + 3 komponen `CampaignCardGrid/List/
+> Ringkas`) sudah lengkap sejak § 11b — **tidak perlu kode render baru**, murni menghubungkan
+> setting yang belum ada ke pemanggilan yang sudah hardcode.
+
+Tidak ada precedent serupa di modul lain (dicek eksplisit: `/toko/pengaturan` tidak punya setting
+desain kartu produk — `/produk` archive juga hardcode `variant="grid"`, tapi itu di luar scope
+permintaan ini, dicatat sebagai potensi kerja serupa di masa depan kalau diminta).
+
+**Data — settings baru, group `donasi`** (group ini sudah ada di CHECK constraint sejak § 14a/14b,
+tidak perlu migration DDL baru):
+```json
+key   = "campaign_card_design"
+group = "donasi"
+value = { "variant": "grid" }
+```
+Default `"grid"` kalau key belum pernah disimpan — perilaku sekarang (hardcode grid) tidak berubah
+untuk tenant yang belum pernah membuka halaman pengaturan ini. Fitur ini non-breaking / opt-in.
+
+**UI — section baru di `/donasi/pengaturan`**
+
+Ditambahkan sebagai section ketiga (setelah Nominal Rekomendasi dan Qurban), pola sama Design Layout
+picker yang sudah dipakai di Hero/Posts/Strip Modul (radio card, bukan `<select>` — konsisten
+standar Combobox/pilihan visual project ini):
+
+```
+┌───────────────────────────────────────────────────────────┐
+│  Desain Kartu Arsip                                         │
+│  Tampilan kartu campaign di halaman /campaign (arsip)        │
+│  dan bagian "Campaign Lainnya" di halaman detail.            │
+│  Tidak memengaruhi section Campaign yang sudah disusun        │
+│  manual di landing page — itu tetap independen.               │
+│                                                               │
+│  ( ) Grid      Cover + judul + progress bar + badge tipe.     │
+│                Cocok untuk grid 3 kolom.                      │
+│  ( ) List      Horizontal, thumbnail kecil + progress mini.   │
+│  ( ) Ringkas   Cover + judul + progress tipis, padat.          │
+│                                                               │
+│  [Simpan]                                                     │
+└───────────────────────────────────────────────────────────┘
+```
+Label dan deskripsi tiap opsi **reuse langsung** dari `CAMPAIGN_CARD_VARIANT_LABELS` dan
+`CAMPAIGN_CARD_VARIANT_DESCRIPTIONS` (`lib/campaign-card-templates.ts`) — tidak ditulis ulang.
+
+**Server action** — `donasi/actions.ts`, pola identik `saveDonationSettingsAction`:
+```typescript
+saveCampaignCardDesignAction(slug, variant: CampaignCardVariant)
+  → validasi variant termasuk CAMPAIGN_CARD_VARIANTS
+  → upsertSetting(tenantDb, "campaign_card_design", "donasi", { variant })
+```
+
+**Perubahan pemanggil (2 titik, baca setting sebelum render)**:
+- `campaign/page.tsx` — fetch `getSettings(tenantClient, "donasi")`, ambil
+  `settings.campaign_card_design?.variant ?? "grid"`, pass ke `<CampaignCard variant={...}>`
+  menggantikan hardcode `"grid"`.
+- `campaign/[slug]/page.tsx` — sama, untuk section "Campaign Lainnya" (related campaigns).
+
+**Di luar scope (dicatat eksplisit, bukan lupa)**:
+- Section builder landing page (`CampaignsSection`) **tetap independen** — admin masih pilih variant
+  sendiri per section instance saat susun landing page, TIDAK otomatis mengikuti default baru ini.
+  Setting ini murni untuk halaman arsip/detail publik yang sebelumnya tidak configurable sama sekali.
+- Setting Grid/List/Ringkas ini **hanya berlaku untuk campaign non-qurban** — lihat § 14k, card
+  qurban dispatch otomatis berdasarkan tipe, di luar 3 pilihan layout ini.
+- Toko (`/produk` archive, `ProductCard`) punya gap serupa (hardcode `variant="grid"`, tidak ada
+  setting) — di luar scope sesi ini, dicatat sebagai kandidat kerja serupa di masa depan.
+
+**Urutan implementasi**:
+```
+Step CD1: saveCampaignCardDesignAction (donasi/actions.ts) + baca setting di 2 halaman publik
+          (campaign/page.tsx, campaign/[slug]/page.tsx) — ganti hardcode "grid"
+Step CD2: UI picker di /donasi/pengaturan (3 opsi radio card, reuse label/deskripsi existing)
+Step CD3: Uji manual: ganti setting → /campaign dan /campaign/{slug} ikut berubah;
+          section builder landing page TIDAK terpengaruh (tetap independen, verifikasi eksplisit)
+```
+
+**File yang dibuat/diubah:**
+- `lib/campaign-card-templates.ts` — tambah `CAMPAIGN_CARD_VARIANT_*` reuse (tidak berubah),
+  `infoBlock` field (lihat § 14k)
+- `components/donasi/campaign-card-design-settings-client.tsx` (baru) — picker 3 opsi
+- `donasi/actions.ts` — `saveCampaignCardDesignAction`
+- `donasi/pengaturan/page.tsx` — section ketiga "Desain Kartu Arsip"
+- `campaign/page.tsx` — baca setting, ganti hardcode `variant="grid"`; wrapper grid berubah jadi
+  `flex flex-col` khusus untuk variant `list` (perlu, karena `CampaignCardList` didesain untuk
+  layout vertikal `border-t` antar item, bukan grid cell)
+- `campaign/[slug]/page.tsx` — sama untuk section "Campaign Lainnya"
+
+---
+
+### 14k. Info Block Polimorfik (Bukan Card Terpisah) — Revisi
+
+> **Status: SELESAI — diimplementasikan 2026-07-17.** Merevisi draf pertama (dispatch card terpisah
+> per tipe) setelah didiskusikan ulang dengan user 2026-07-17. **§14k versi awal (card qurban
+> terpisah) DIBATALKAN** — diganti pendekatan di bawah ini.
+
+**Kenapa direvisi**: draf pertama membuat `CampaignCardQurban` sebagai komponen berdiri sendiri,
+lepas dari Grid/List/Ringkas. User menunjukkan qurban akan terus berkembang — bukan cuma "beli 1
+ekor", tapi juga **patungan** (sudah ada fondasi schema-nya: `qurban_sapi_groups`) dan **tabungan**
+qurban (belum ada schema-nya sama sekali, rencana masa depan) — kemungkinan akan terus bertambah
+sub-tipe lain. Kalau tiap sub-tipe dapat komponen card sendiri, dikalikan 3 layout (Grid/List/
+Ringkas) kalau nanti perlu ikut opsi § 14j juga, jumlah file berlipat cepat dan makin sulit dirawat.
+
+**Pendekatan yang benar**: badan card (cover, badge, judul, posisi CTA) **tetap satu** untuk semua
+tipe campaign — yang berbeda cuma **satu slot kecil di tengah** ("info block") yang sebelumnya
+selalu progress bar. Slot ini jadi polimorfik: switch berdasarkan `kind`, bukan berdasarkan
+komponen card yang berbeda. Analogi WordPress: bukan `content-{type}.php` (template penuh
+terpisah), tapi `get_template_part('parts/info-block', $kind)` — *partial* kecil yang di-*include*
+beda-beda di dalam `content.php` yang sama.
+
+```
+CampaignCardGrid / CampaignCardList / CampaignCardRingkas (tidak berubah strukturnya):
+  [ Cover ] [ Badge ] [ Judul ] → <InfoBlock data={campaign.infoBlock} /> ← SATU-SATUNYA yang beda
+  → [ CTA ]
+```
+
+`variant` (§ 14j, Grid/List/Ringkas) dan `infoBlock.kind` (tipe informasi) jadi **dua sumbu
+independen** — kombinasi bebas. Campaign qurban tetap bisa tampil sebagai Grid, List, atau Ringkas
+sesuai setting § 14j; yang berubah cuma bagian tengahnya.
+
+**`CampaignCardInfoBlock` — discriminated union, terbuka untuk sub-tipe baru**:
+```typescript
+// lib/campaign-card-templates.ts — pengganti progressPercent/collectedAmount polos
+type CampaignCardInfoBlock =
+  | { kind: "progress"; collected: number; target: number | null; percent: number | null }
+    // donasi/infaq/zakat/wakaf — progress bar seperti sekarang (perilaku tidak berubah)
+  | { kind: "qurban_tersedia"; minPrice: number; availableTypes: QurbanAnimalType[]; remainingSlots: number }
+    // qurban umum (beli individu/patungan sapi campur) — dari qurban_animals, dibangun sekarang
+  | { kind: "qurban_habis" };
+    // semua hewan qurban campaign ini habis/nonaktif — dibangun sekarang, fallback dari kind di atas
+
+// SUDAH DIANTISIPASI, BELUM DIBANGUN (schema belum ada, tunggu fitur sungguhan):
+//  | { kind: "qurban_patungan"; pricePerSlot: number; filledSlots: number; totalSlots: number }
+//  | { kind: "qurban_tabungan"; targetAmount: number; savedAmount: number; percent: number }
+```
+
+Menambah sub-tipe baru nanti (patungan sebagai tampilan terpisah dari "tersedia umum", tabungan,
+dst) = tambah satu varian union + satu `case` di fungsi render info block — **tidak** menyentuh
+`CampaignCardGrid`/`List`/`Ringkas` sama sekali, dan tidak menambah file card baru.
+
+**Isi tampilan tiap `kind`** (di dalam badan card yang sama, apapun layout § 14j yang aktif):
+```
+kind="progress" (existing, tidak berubah):
+  ▓▓▓▓▓▓▓▓░░░░  62% · Terkumpul Rp 12.400.000 dari Rp 20.000.000
+
+kind="qurban_tersedia" (baru, dibangun sekarang):
+  Mulai dari Rp 2.500.000
+  🐐 Kambing   🐄 Sapi        (chip jenis hewan yang stock > booked)
+  Sisa 12 slot
+
+kind="qurban_habis" (baru, dibangun sekarang):
+  Hewan qurban untuk campaign ini sudah habis
+```
+CTA tetap ikut `campaignType` seperti sekarang (bukan bagian dari info block) — "Pilih Hewan →"
+untuk qurban, "Donasi Sekarang →" untuk lainnya. Ini styling kecil di level card, bukan union baru.
+
+**Fungsi render info block** — satu tempat, dipakai oleh ketiga layout:
+```typescript
+// components/website/public/campaign-cards/campaign-card-info-block.tsx (baru)
+export function CampaignCardInfoBlock({ info }: { info: CampaignCardInfoBlock }) {
+  switch (info.kind) {
+    case "progress":         return <ProgressBarBlock ... />;   // ekstraksi dari kode existing
+    case "qurban_tersedia":  return <QurbanAvailableBlock ... />;
+    case "qurban_habis":     return <QurbanSoldOutBlock ... />;
+  }
+}
+```
+`CampaignCardGrid`/`List`/`Ringkas` masing-masing ganti blok `{campaign.campaignType !== "qurban"
+&& (...)}` yang sekarang ada (hardcode progress bar, hide untuk qurban) dengan
+`<CampaignCardInfoBlock info={campaign.infoBlock} />` — refactor kecil, bukan penambahan
+percabangan baru per layout.
+
+**Data yang perlu ditarik ke fetch layer** (mengganti `progressPercent`/`collectedAmount` polos di
+`CampaignCardData` dengan field `infoBlock` — perlu resolve di titik yang sama tempat
+`CampaignCardData[]` dirakit, lihat 3 titik di bawah):
+```typescript
+// Untuk campaign non-qurban: infoBlock = { kind: "progress", collected, target, percent }
+// (data yang sama yang sudah difetch sekarang, cuma dibungkus jadi union)
+
+// Untuk campaign qurban — query tambahan HANYA saat campaignType === "qurban":
+SELECT animal_type, price, stock, booked
+FROM qurban_animals
+WHERE campaign_id = :id AND is_active = true AND stock > booked
+ORDER BY price ASC
+// Hasil kosong → infoBlock = { kind: "qurban_habis" }
+// Hasil ada    → infoBlock = { kind: "qurban_tersedia", minPrice: baris[0].price,
+//                               availableTypes: distinct(animal_type),
+//                               remainingSlots: sum(stock - booked) }
+```
+
+**Titik fetch yang perlu diperluas** (3 titik yang sudah merakit `CampaignCardData[]`):
+- `campaign/page.tsx` (arsip)
+- `campaign/[slug]/page.tsx` (related campaigns)
+- Fetch layer `CampaignsSection` (landing page section builder)
+
+**Di luar scope § 14k (untuk sekarang)**:
+- `qurban_patungan` dan `qurban_tabungan` sebagai `kind` terpisah — union sudah didesain terbuka
+  untuk ini, tapi TIDAK dibangun sekarang (tabungan belum ada schema-nya sama sekali; patungan
+  masih bisa direpresentasikan cukup baik oleh `qurban_tersedia` untuk saat ini). Dibangun nanti
+  kalau fitur sungguhan sudah dirancang — cukup tambah 1 varian union + 1 `case`, tidak perlu
+  redesain ulang seperti draf pertama.
+- Tidak mengubah alur beli/pilih hewan di halaman detail campaign — § 14k murni soal tampilan CARD
+  di arsip/related/section, bukan form pembelian.
+
+**Urutan implementasi**:
+```
+Step CQ1: CampaignCardInfoBlock type (union) + komponen render (ProgressBarBlock ekstraksi dari
+          kode existing + QurbanAvailableBlock + QurbanSoldOutBlock baru)
+Step CQ2: Perluas 3 titik fetch (archive, related, section builder) — resolve infoBlock per
+          campaign (progress utk umum, query qurban_animals utk qurban)
+Step CQ3: CampaignCardGrid/List/Ringkas — ganti blok progress-bar-hardcode dengan
+          <CampaignCardInfoBlock info={campaign.infoBlock} />; sesuaikan teks CTA per campaignType
+Step CQ4: Uji manual: campaign umum tetap tampil progress bar seperti sebelumnya (regresi check);
+          campaign qurban tampil harga+chip+slot di ketiga layout (Grid/List/Ringkas — verifikasi
+          kombinasi bebas dengan setting § 14j)
+```
+
+**File yang dibuat/diubah:**
+- `lib/campaign-card-templates.ts` — `CampaignCardInfoBlock` union, `QurbanAnimalType`,
+  `buildProgressInfoBlock()`, `buildQurbanInfoBlock()` (pure, tanpa query DB); `CampaignCardData`
+  dapat field `infoBlock` baru. `progressPercent`/`collectedAmount`/`targetAmount` **dipertahankan**
+  (tidak dihapus) — dipakai featured-hero block `campaigns-design-2.tsx` yang di luar scope § 14k
+  (di luar 3 titik fetch card biasa, render manual sendiri, tidak disentuh sesi ini)
+- `lib/campaign-info-block.ts` (baru) — `resolveQurbanInfoBlocks()`, batch query (satu `inArray`
+  query untuk semua campaign qurban di satu halaman, bukan N+1)
+- `components/website/public/campaign-cards/campaign-card-info-block.tsx` (baru) — render polimorfik
+  berdasarkan `info.kind`, parameter `layout` untuk menyesuaikan bentuk per Grid/List/Ringkas
+- `campaign-card-grid.tsx` / `-list.tsx` / `-ringkas.tsx` — blok `{campaignType !== "qurban" && (...)}`
+  diganti `<CampaignCardInfoBlock info={campaign.infoBlock} layout="..." />`
+- 3 titik fetch (`campaign/page.tsx`, `campaign/[slug]/page.tsx`, `campaigns-section.tsx`) — tambah
+  batch resolve `qurbanInfoMap` untuk campaign qurban di hasil query, `infoBlock` dihitung per row
+
+---
+
 ## 15. Fitur Qurban
 
 Qurban **bukan entitas terpisah** — ia adalah campaign dengan `campaign_type = 'qurban'`.

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createTenantDb, recordIncome, generateFinancialNumber, createLinkedInvoice, syncInvoicePayment, upsertSetting, getSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
+import { CAMPAIGN_CARD_VARIANTS, type CampaignCardVariant } from "@/lib/campaign-card-templates";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -671,6 +672,27 @@ export async function saveDonationSettingsAction(
     recommended_amounts: sorted,
   });
 
+  revalidateDonasi(slug);
+  return { success: true };
+}
+
+// ─── Desain Kartu Arsip (Grid/List/Ringkas) — docs/arsitektur-donasi.md § 14j ─────────────────
+
+export async function saveCampaignCardDesignAction(
+  slug:    string,
+  variant: CampaignCardVariant,
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "donasi")) return { success: false, error: "Akses ditolak." };
+
+  if (!CAMPAIGN_CARD_VARIANTS.includes(variant))
+    return { success: false, error: "Pilihan desain tidak valid." };
+
+  const tenantClient = createTenantDb(slug);
+  await upsertSetting(tenantClient, "campaign_card_design", "donasi", { variant });
+
+  revalidatePath(`/${slug}/campaign`);
   revalidateDonasi(slug);
   return { success: true };
 }

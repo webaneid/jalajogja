@@ -1,5 +1,6 @@
 import type { CampaignCardData } from "@/lib/campaign-card-templates";
-import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS, formatRp, daysRemaining } from "@/lib/campaign-card-templates";
+import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS, daysRemaining } from "@/lib/campaign-card-templates";
+import { CampaignCardInfoBlock } from "./campaign-card-info-block";
 import { Heart } from "lucide-react";
 
 export function CampaignCardGrid({ campaign, tenantSlug }: { campaign: CampaignCardData; tenantSlug: string }) {
@@ -44,26 +45,10 @@ export function CampaignCardGrid({ campaign, tenantSlug }: { campaign: CampaignC
           {campaign.title}
         </h3>
 
-        {/* Progress / Terkumpul */}
-        {campaign.campaignType !== "qurban" && (
-          <div className="mt-auto space-y-1.5">
-            {campaign.progressPercent !== null ? (
-              <>
-                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full" style={{ width: `${campaign.progressPercent}%` }} />
-                </div>
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">{formatRp(campaign.collectedAmount)}</span>
-                  <span>{campaign.progressPercent}%</span>
-                </div>
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Terkumpul <span className="font-semibold text-foreground">{formatRp(campaign.collectedAmount)}</span>
-              </p>
-            )}
-          </div>
-        )}
+        {/* Info block — progress bar (umum) atau harga+ketersediaan (qurban), lihat § 14k */}
+        <div className="mt-auto">
+          <CampaignCardInfoBlock info={campaign.infoBlock} layout="grid" />
+        </div>
 
         {days !== null && (
           <p className="text-xs text-muted-foreground mt-auto">

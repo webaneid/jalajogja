@@ -1,7 +1,8 @@
 import { eq, desc, and, inArray } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
 import { publicUrl } from "@/lib/minio";
-import type { CampaignCardData } from "@/lib/campaign-card-templates";
+import { buildProgressInfoBlock, type CampaignCardData } from "@/lib/campaign-card-templates";
+import { resolveQurbanInfoBlocks } from "@/lib/campaign-info-block";
 import type { CampaignsSectionData, CampaignsSectionDesignId, CampaignsSectionProps } from "@/lib/campaigns-section-designs";
 import { CampaignsDesign1 } from "./campaigns-design-1";
 import { CampaignsDesign2 } from "./campaigns-design-2";
@@ -58,6 +59,10 @@ async function fetchCampaigns(
     mediaRows.forEach(m => coverMap.set(m.id, publicUrl(tenantSlug, m.path)));
   }
 
+  // Batch resolve info block qurban — satu query untuk semua campaign qurban di halaman ini
+  const qurbanIds     = rows.filter(r => r.campaignType === "qurban").map(r => r.id);
+  const qurbanInfoMap = await resolveQurbanInfoBlocks(tenantClient, qurbanIds);
+
   return rows.map(r => {
     const collected = parseFloat(r.collectedAmount ?? "0");
     const target    = r.targetAmount ? parseFloat(r.targetAmount) : null;
@@ -74,6 +79,9 @@ async function fetchCampaigns(
       progressPercent: target ? Math.min(100, Math.round((collected / target) * 100)) : null,
       endsAt:          r.endsAt ? r.endsAt.toISOString() : null,
       isRecurring:     false, // Phase R: akan diisi saat kolom is_recurring ditambahkan
+      infoBlock:       r.campaignType === "qurban"
+        ? (qurbanInfoMap.get(r.id) ?? { kind: "qurban_habis" as const })
+        : buildProgressInfoBlock(collected, target),
     };
   });
 }

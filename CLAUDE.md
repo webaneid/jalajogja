@@ -460,7 +460,7 @@ app/(dashboard)/[tenant]/
 - [x] **Billing Phase 4 — Fulfillment** — 5-stage pengiriman (pending→processing→packed→shipped→delivered), `updateFulfillmentStatusAction`, halaman admin `/toko/pesanan/invoice/[invoiceId]`, `FulfillmentCard` + `FulfillmentTimeline`, lightbox bukti transfer, pelanggan lihat 5 status di `/akun/transaksi`. Detail di `docs/arsitektur-fulfillment.md`.
 - [x] **Kode Unik Transaksi** — nominal Rp 100–999 per invoice untuk identifikasi transfer masuk. Setting toggle di `/settings/payment`. Arsitektur di `docs/arsitektur-kode-unik.md`. **SELESAI** — bug `submitPaymentProofAction` tidak include kode unik (invoice nyangkut partial) + bug race condition double-payment sudah difix (2026-07-12).
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
-- [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori)
+- [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori) + **Desain Kartu Arsip** (setting Grid/List/Ringkas di `/donasi/pengaturan`) + **Info Block Polimorfik** (slot info card yang beda per tipe campaign — progress bar vs harga+ketersediaan qurban, terbuka untuk sub-tipe qurban baru nanti seperti patungan/tabungan) — § 14j–14k
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`) + **Tab Peserta & Statistik** (commit `9cf2b12`, migration 0023) + **E10 Donation Prompt UI** (routing kondisional cart vs direct, migration 0024+0025)
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
 - [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik + 3 jalur aktivasi + **sidebar filtering + 10 module guards (selesai)**
@@ -5007,6 +5007,62 @@ mengetesnya (bahkan cuma centang-centang di editor tanpa publish), data lama sud
 Selalu tambahkan normalisasi baca yang backward-compatible, atau tanya eksplisit ke user apakah
 sudah pernah menyimpan data dengan bentuk lama, sebelum menganggap breaking change "aman tanpa
 migrasi".
+
+### [2026-07-17] Desain Kartu Campaign — Setting Grid/List/Ringkas + Info Block Polimorfik
+
+> Arsitektur lengkap: **`docs/arsitektur-donasi.md` § 14j–14k**
+
+User minta card donasi bisa "diubah-ubah desainnya" dan dijadikan default tenant-wide via
+`/donasi/pengaturan`. Klarifikasi scope penting via `AskUserQuestion`: `CampaignCard` TERNYATA
+sudah punya 3 variant layout (`grid`/`list`/`ringkas`, lengkap sejak § 11b) tapi cuma bisa dipilih
+per-instance di section builder landing page — dua tempat lain (`/campaign` arsip,
+"Campaign Lainnya" di halaman detail) hardcode `variant="grid"` tanpa setting. User pilih opsi
+sempit: expose 3 variant yang SUDAH ADA sebagai default, bukan bikin sumbu desain visual baru.
+
+**Putaran kedua — pertanyaan "berapa varian card qurban?"**: dari analogi WordPress user
+(`content-donasi.php` yang di-*include* berulang), draf pertama saya membuat `CampaignCardQurban`
+sebagai **komponen berdiri sendiri** (dispatch by `campaignType`, bukan by `variant`) — dilempar ke
+user, TAPI direvisi lagi setelah user menunjukkan qurban akan terus berkembang (patungan, 1 ekor
+penuh, tabungan — makin banyak sub-tipe ke depan). Card terpisah per sub-tipe × 3 layout = ledakan
+kombinasi file. User secara eksplisit minta pendapat saya ("menurutmu lebih baik...?") — saya
+rekomendasikan dan implementasikan **info block polimorfik**: badan card (cover/badge/judul/CTA)
+tetap SATU untuk semua tipe, cuma satu slot kecil di tengah yang polimorfik.
+
+**Arsitektur final — dua sumbu independen**:
+```
+CampaignCardGrid/List/Ringkas (badan card, tidak pernah berubah struktur):
+  [Cover][Badge][Judul] → <CampaignCardInfoBlock info={campaign.infoBlock} layout="..."/> → [hari tersisa]
+```
+- Sumbu 1 (`variant`, § 14j) — layout: Grid/List/Ringkas, dipilih admin di `/donasi/pengaturan`
+- Sumbu 2 (`infoBlock.kind`, § 14k) — isi info: `progress` (donasi umum) | `qurban_tersedia`
+  (harga mulai dari + chip hewan + sisa slot) | `qurban_habis`. **Union sengaja dibiarkan terbuka**
+  untuk `qurban_patungan`/`qurban_tabungan` nanti — tabungan belum ada schema-nya sama sekali,
+  tidak dibangun sekarang, cukup tambah 1 varian union + 1 `case` render nanti, TIDAK perlu
+  redesain card lagi.
+
+**`CampaignCardData.infoBlock` dihitung di 3 titik fetch** (bukan di komponen render) — pola batch
+query untuk hindari N+1: `resolveQurbanInfoBlocks(tenantClient, qurbanCampaignIds[])` di
+`lib/campaign-info-block.ts` — SATU query `inArray(qurbanAnimals.campaignId, ids)` untuk semua
+campaign qurban di satu halaman sekaligus, bukan query per-campaign dalam loop.
+
+**Field lama (`progressPercent`/`collectedAmount`/`targetAmount`) SENGAJA dipertahankan** di
+`CampaignCardData`, tidak dihapus — dipakai `campaigns-design-2.tsx` (featured-hero block landing
+page section) yang me-render manual sendiri di luar `CampaignCard`/3 titik fetch card biasa.
+Menghapusnya akan memaksa refactor file itu juga — di luar scope sesi ini, aditif lebih aman.
+
+**`CampaignCardList` butuh wrapper berbeda dari Grid/Ringkas**: `CampaignCardList` didesain untuk
+layout vertikal (`border-t first:border-0` antar item) — kalau dipaksa masuk `grid grid-cols-3`
+(wrapper yang dipakai Grid/Ringkas), tampilannya rusak (tiap "baris" terjepit ke dalam grid cell).
+Fix: wrapper archive/related page jadi kondisional — `variant === "list" ? "flex flex-col" :
+"grid grid-cols-..."`. Ini bukan scope creep, tapi syarat KOREKTNES supaya setting Grid/List/Ringkas
+benar-benar berfungsi untuk ketiga pilihannya, bukan cuma Grid/Ringkas.
+
+**Aturan yang dikunci untuk fitur "card dengan info bervariasi" ke depan**: kalau sebuah tipe entity
+(campaign, nanti mungkin produk/event) butuh menampilkan informasi yang beda-beda tergantung
+sub-tipe data (bukan cuma beda layout visual), JANGAN reflex bikin komponen card terpisah per
+sub-tipe. Cek dulu apakah cukup satu slot kecil polimorfik (discriminated union + fungsi render
+kecil switch-by-kind) di dalam badan card yang sudah ada — jauh lebih murah dirawat kalau sub-tipe
+akan terus bertambah, dan tidak mengalikan jumlah file dengan jumlah varian layout yang sudah ada.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).

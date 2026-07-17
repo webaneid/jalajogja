@@ -1,10 +1,11 @@
 import { notFound }           from "next/navigation";
 import { eq, desc, and, inArray } from "drizzle-orm";
-import { createTenantDb, db, tenants } from "@jalajogja/db";
+import { createTenantDb, db, tenants, getSettings } from "@jalajogja/db";
 import { publicUrl }          from "@/lib/minio";
 import { CampaignCard }       from "@/components/website/public/campaign-cards/campaign-card";
-import type { CampaignCardData } from "@/lib/campaign-card-templates";
-import { CAMPAIGN_TYPE_LABELS } from "@/lib/campaign-card-templates";
+import type { CampaignCardData, CampaignCardVariant } from "@/lib/campaign-card-templates";
+import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_CARD_VARIANTS, buildProgressInfoBlock } from "@/lib/campaign-card-templates";
+import { resolveQurbanInfoBlocks } from "@/lib/campaign-info-block";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import type { Metadata }      from "next";
@@ -84,6 +85,10 @@ export default async function CampaignArchivePage({
     media.forEach(m => coverMap.set(m.id, publicUrl(slug, m.path)));
   }
 
+  // Batch resolve info block qurban — satu query untuk semua campaign qurban di arsip ini
+  const qurbanIds     = rows.filter(r => r.campaignType === "qurban").map(r => r.id);
+  const qurbanInfoMap = await resolveQurbanInfoBlocks(tenantClient, qurbanIds);
+
   const campaigns: CampaignCardData[] = rows.map(r => {
     const collected = parseFloat(r.collectedAmount ?? "0");
     const target    = r.targetAmount ? parseFloat(r.targetAmount) : null;
@@ -100,8 +105,18 @@ export default async function CampaignArchivePage({
       progressPercent: target ? Math.min(100, Math.round((collected / target) * 100)) : null,
       endsAt:          r.endsAt ? r.endsAt.toISOString() : null,
       isRecurring:     false,
+      infoBlock:       r.campaignType === "qurban"
+        ? (qurbanInfoMap.get(r.id) ?? { kind: "qurban_habis" as const })
+        : buildProgressInfoBlock(collected, target),
     };
   });
+
+  // Desain kartu arsip (Grid/List/Ringkas) — default setting tenant, lihat § 14j
+  const donasiSettings = await getSettings(tenantClient, "donasi");
+  const cardDesignRaw   = donasiSettings.campaign_card_design as { variant?: string } | undefined;
+  const cardVariant: CampaignCardVariant = CAMPAIGN_CARD_VARIANTS.includes(cardDesignRaw?.variant as CampaignCardVariant)
+    ? (cardDesignRaw!.variant as CampaignCardVariant)
+    : "grid";
 
   // Semua kategori + tipe untuk filter chips
   const categories = await tenantDb.select({ id: schema.campaignCategories.id, name: schema.campaignCategories.name, slug: schema.campaignCategories.slug })
@@ -167,9 +182,9 @@ export default async function CampaignArchivePage({
             <p className="text-sm">Belum ada campaign aktif.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
+          <div className={cardVariant === "list" ? "flex flex-col" : "grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5"}>
             {campaigns.map(c => (
-              <CampaignCard key={c.id} campaign={c} variant="grid" tenantSlug={slug} />
+              <CampaignCard key={c.id} campaign={c} variant={cardVariant} tenantSlug={slug} />
             ))}
           </div>
         )}

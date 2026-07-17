@@ -9,8 +9,9 @@ import { CampaignDetailClient } from "@/components/donasi/public/campaign-detail
 import { CampaignDetailTabs }  from "@/components/donasi/public/campaign-detail-tabs";
 import type { DonorEntry }     from "@/components/donasi/public/campaign-detail-tabs";
 import { CampaignCard }        from "@/components/website/public/campaign-cards/campaign-card";
-import type { CampaignCardData } from "@/lib/campaign-card-templates";
-import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS } from "@/lib/campaign-card-templates";
+import type { CampaignCardData, CampaignCardVariant } from "@/lib/campaign-card-templates";
+import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS, CAMPAIGN_CARD_VARIANTS, buildProgressInfoBlock } from "@/lib/campaign-card-templates";
+import { resolveQurbanInfoBlocks } from "@/lib/campaign-info-block";
 import type { Metadata }       from "next";
 import { ChevronRight } from "lucide-react";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
@@ -188,13 +189,20 @@ export default async function CampaignDetailPage({ params }: { params: Params })
     };
   }
 
+  const donasiSettings = await getSettings(tenantClient, "donasi");
+
   // Nominal rekomendasi untuk donasi reguler
   let recommendedAmounts: number[] = [];
   if (campaign.campaignType !== "qurban") {
-    const donasiSettings = await getSettings(tenantClient, "donasi");
     const dc = donasiSettings.donation_config as { recommended_amounts?: number[] } | undefined;
     recommendedAmounts = dc?.recommended_amounts ?? [10000, 25000, 50000, 100000];
   }
+
+  // Desain kartu "Campaign Lainnya" — default setting tenant, lihat § 14j
+  const cardDesignRaw = donasiSettings.campaign_card_design as { variant?: string } | undefined;
+  const cardVariant: CampaignCardVariant = CAMPAIGN_CARD_VARIANTS.includes(cardDesignRaw?.variant as CampaignCardVariant)
+    ? (cardDesignRaw!.variant as CampaignCardVariant)
+    : "grid";
 
   // Kampanye terkait (kategori sama)
   let relatedCampaigns: CampaignCardData[] = [];
@@ -219,24 +227,30 @@ export default async function CampaignDetailPage({ params }: { params: Params })
       media.forEach(m => relCoverMap.set(m.id, publicUrl(slug, m.path)));
     }
 
-    relatedCampaigns = relRows
-      .filter(r => r.id !== campaign.id)
-      .slice(0, 3)
-      .map(r => {
-        const col = parseFloat(r.collectedAmount ?? "0");
-        const tgt = r.targetAmount ? parseFloat(r.targetAmount) : null;
-        return {
-          id:              r.id, title: r.title, slug: r.slug, description: r.description,
-          campaignType:    (r.campaignType ?? "donasi") as CampaignCardData["campaignType"],
-          coverUrl:        r.coverId ? (relCoverMap.get(r.coverId) ?? null) : null,
-          categoryName:    r.categoryName ?? null,
-          targetAmount:    r.targetAmount ?? null,
-          collectedAmount: String(col),
-          progressPercent: tgt ? Math.min(100, Math.round((col / tgt) * 100)) : null,
-          endsAt:          r.endsAt ? r.endsAt.toISOString() : null,
-          isRecurring:     false,
-        };
-      });
+    const filteredRows = relRows.filter(r => r.id !== campaign.id).slice(0, 3);
+
+    // Batch resolve info block qurban — satu query untuk semua related campaign qurban
+    const qurbanIds     = filteredRows.filter(r => r.campaignType === "qurban").map(r => r.id);
+    const qurbanInfoMap = await resolveQurbanInfoBlocks(tenantClient, qurbanIds);
+
+    relatedCampaigns = filteredRows.map(r => {
+      const col = parseFloat(r.collectedAmount ?? "0");
+      const tgt = r.targetAmount ? parseFloat(r.targetAmount) : null;
+      return {
+        id:              r.id, title: r.title, slug: r.slug, description: r.description,
+        campaignType:    (r.campaignType ?? "donasi") as CampaignCardData["campaignType"],
+        coverUrl:        r.coverId ? (relCoverMap.get(r.coverId) ?? null) : null,
+        categoryName:    r.categoryName ?? null,
+        targetAmount:    r.targetAmount ?? null,
+        collectedAmount: String(col),
+        progressPercent: tgt ? Math.min(100, Math.round((col / tgt) * 100)) : null,
+        endsAt:          r.endsAt ? r.endsAt.toISOString() : null,
+        isRecurring:     false,
+        infoBlock:       r.campaignType === "qurban"
+          ? (qurbanInfoMap.get(r.id) ?? { kind: "qurban_habis" as const })
+          : buildProgressInfoBlock(col, tgt),
+      };
+    });
   }
 
   const typeColor = CAMPAIGN_TYPE_COLORS[campaign.campaignType] ?? "bg-primary/10 text-primary";
@@ -325,9 +339,9 @@ export default async function CampaignDetailPage({ params }: { params: Params })
         {relatedCampaigns.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Campaign Lainnya</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className={cardVariant === "list" ? "flex flex-col" : "grid grid-cols-1 sm:grid-cols-3 gap-4"}>
               {relatedCampaigns.map(c => (
-                <CampaignCard key={c.id} campaign={c} variant="grid" tenantSlug={slug} />
+                <CampaignCard key={c.id} campaign={c} variant={cardVariant} tenantSlug={slug} />
               ))}
             </div>
           </section>
