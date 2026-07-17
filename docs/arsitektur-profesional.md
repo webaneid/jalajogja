@@ -322,7 +322,8 @@ dasar isi "Dokter" di `profession_id`, `member_professionals` isi kredensial med
 
 ## 6. Keputusan: `profession_category` Enum Baru, Bukan Reuse `ref_professions`
 
-**Data aktual `ref_professions`** (dicek langsung di production, 2026-07-12) — 25 entri, 11 kategori:
+**Data aktual `ref_professions`** (dicek langsung di production, 2026-07-12; +1 entri 2026-07-17 —
+migration `0032_ref_profession_ojek_online.sql`) — 26 entri, 11 kategori:
 
 | Kategori | Entri |
 |----------|-------|
@@ -336,7 +337,7 @@ dasar isi "Dokter" di `profession_id`, `member_professionals` isi kredensial med
 | Politik & Sosial | Politisi/Anggota DPRD-DPR, Aktivis/LSM |
 | **Profesional** | **Dokter/Tenaga Kesehatan, Pengacara/Notaris, Arsitek/Insinyur, Akuntan/Konsultan** |
 | Swasta | Karyawan Swasta |
-| Wirausaha | Pengusaha/Wiraswasta |
+| Wirausaha | Pengusaha/Wiraswasta, **Ojek Online / Driver Online** |
 
 **Temuan kunci**: kategori `"Profesional"` yang sudah ada (4 entri) **cocok persis** dengan 4 dari 6
 subgolongan KBJI Golongan Pokok 2 yang diusulkan di § 2.3 — validasi bahwa skema 7-kategori di
