@@ -5232,6 +5232,45 @@ registry manapun yang sudah ada > 1 pilihan lama, WAJIB verifikasi picker UI-nya
 berfungsi (bukan asumsi "kalau ada 3 desain terdaftar, berarti sudah bisa dipilih") — cek
 `{Type}Editor` di `section-editors.tsx` benar-benar merender blok "Design Layout".
 
+### [2026-07-17] Bug: `updatePageAction` Tidak Pernah Revalidate Halaman Publik
+
+> Detail lengkap: **`docs/arsitektur-donasi.md` § 14n** (bagian "Evaluasi user pasca-implementasi")
+
+User laporkan Desain 4 "Modern Capsule" sudah dipilih+disimpan di section builder landing page,
+tapi front-end publik masih tampil desain lama. Diagnosa SEBELUM asumsi bug picker: trace ulang
+`landing-builder.tsx` (`handleVariantChange` → `commit` → `onChange`) — plumbing generik ini
+identik dengan Hero/Posts/Modules yang sudah terbukti jalan, jadi kemungkinan besar bukan di situ.
+Root cause sebenarnya: `updatePageAction` (`website/actions.ts`, dipanggil form builder landing
+page) **cuma** `revalidatePath` ke 2 path ADMIN (`/app/{slug}/website/pages*`) — TIDAK PERNAH ke
+halaman publik. Beda dengan `saveCampaignArchiveDesignAction` (§ 14m, dibuat sesi sebelumnya) yang
+sudah benar eksplisit `revalidatePath(\`/\${slug}/campaign\`)`. Landing page jadi 100% bergantung
+ISR `revalidate = 60` — kalau dicek < 60 detik setelah simpan, terasa "tidak update sama sekali".
+
+**Fix**: `updatePageAction` + `updatePageStatusAction` ditambah
+`revalidatePath(\`/\${slug}\`)` (cover kasus halaman ini adalah homepage — homepage ditentukan
+oleh setting `homepage_slug`, BUKAN slug tetap seperti "beranda") +
+`revalidatePath(\`/\${slug}/\${slug_halaman}\`)` (cover kasus halaman biasa via
+`[pageSlug]/page.tsx`). Fix ini generik untuk SEMUA section type (Hero/Posts/Modules/Campaigns/
+dst) — bukan cuma Modern Capsule, karena gap-nya di level action, bukan di level fitur manapun.
+
+**Belum difix (dicatat, di luar scope)**: `createPageAction`/`createPageDraftAction`/
+`createSingletonPageAction`/`deletePageAction` di file yang sama juga tidak revalidate halaman
+publik. Dampak lebih kecil (create biasanya draft dulu) tapi `deletePageAction` pada page yang
+sudah published tetap kena gap serupa — tunggu instruksi user untuk fase berikutnya.
+
+**Aturan yang ditegaskan**: setiap server action yang mengubah data yang dibaca halaman PUBLIK
+(bukan cuma admin) WAJIB `revalidatePath` ke path publiknya juga — jangan cukup revalidate path
+admin lalu berasumsi ISR timer akan "menyusul sendiri". Kalau ragu apakah sebuah action
+butuh revalidate publik, cek: apakah ada halaman `(public)/[tenant]/...` yang query tabel yang
+sama? Kalau ya, wajib direvalidate eksplisit, bukan diserahkan ke ISR.
+
+**Cara mendiagnosis "kelihatannya bug fitur baru" yang ternyata bug lama**: sebelum menyalahkan
+kode yang baru saja ditulis, trace ulang plumbing generik yang dipakai bersama fitur lain yang
+sudah terbukti berfungsi (di sini: `landing-builder.tsx` dipakai SEMUA section type) — kalau
+plumbing itu terbukti benar, root cause pasti ada di tempat lain yang lebih spesifik ke gejala
+yang dilaporkan (di sini: satu-satunya perbedaan Campaigns dari fitur lain yang "sudah OK" adalah
+archive punya `revalidatePath` eksplisit sementara landing page section builder tidak).
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

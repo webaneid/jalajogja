@@ -1,6 +1,7 @@
 import type { CampaignCardData } from "@/lib/campaign-card-templates";
 import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS, daysRemaining } from "@/lib/campaign-card-templates";
 import { CampaignCardInfoBlock } from "./campaign-card-info-block";
+import { tiptapToPlainText } from "@/lib/seo";
 import { Heart } from "lucide-react";
 
 // Desain 2 — Modern Capsule. Sumber ide: design-refs/Bantuanku/Bantuanku Landing.html,
@@ -13,6 +14,7 @@ export function CampaignCardCapsule({ campaign, tenantSlug }: { campaign: Campai
   const typeColor = CAMPAIGN_TYPE_COLORS[campaign.campaignType] ?? "bg-primary/10 text-primary";
   const ctaLabel  = campaign.campaignType === "qurban" ? "Pilih Hewan" : "Donasi Sekarang";
   const showMeta  = campaign.infoBlock.kind === "progress" && (days !== null || campaign.donorCount > 0);
+  const descriptionText = tiptapToPlainText(campaign.description);
 
   return (
     <a
@@ -44,8 +46,8 @@ export function CampaignCardCapsule({ campaign, tenantSlug }: { campaign: Campai
           <h3 className="font-bold text-lg leading-snug line-clamp-2 group-hover:text-primary transition-colors">
             {campaign.title}
           </h3>
-          {campaign.description && (
-            <p className="mt-1.5 text-sm text-muted-foreground line-clamp-2">{campaign.description}</p>
+          {descriptionText && (
+            <p className="mt-1.5 text-sm text-muted-foreground line-clamp-2">{descriptionText}</p>
           )}
         </div>
 

@@ -614,6 +614,11 @@ export async function updatePageAction(
 
     revalidatePath(`/app/${slug}/website/pages`);
     revalidatePath(`/app/${slug}/website/pages/${pageId}/edit`);
+    // Halaman publik — root (kalau ini homepage) + path slug-nya sendiri. Tanpa ini, perubahan
+    // (termasuk pilihan Design Layout section builder) baru muncul setelah ISR 60s berlalu.
+    revalidatePath(`/${slug}`);
+    revalidatePath(`/${slug}/${newSlug}`);
+    if (existing.slug !== newSlug) revalidatePath(`/${slug}/${existing.slug}`);
     return { success: true, data: undefined };
 
   } catch (err) {
@@ -640,7 +645,7 @@ export async function updatePageStatusAction(
   const { db, schema } = createTenantDb(slug);
 
   const [existing] = await db
-    .select({ id: schema.pages.id, publishedAt: schema.pages.publishedAt })
+    .select({ id: schema.pages.id, slug: schema.pages.slug, publishedAt: schema.pages.publishedAt })
     .from(schema.pages)
     .where(eq(schema.pages.id, pageId))
     .limit(1);
@@ -660,6 +665,8 @@ export async function updatePageStatusAction(
 
     revalidatePath(`/app/${slug}/website/pages`);
     revalidatePath(`/app/${slug}/website/pages/${pageId}/edit`);
+    revalidatePath(`/${slug}`);
+    revalidatePath(`/${slug}/${existing.slug}`);
     return { success: true, data: undefined };
 
   } catch (err) {

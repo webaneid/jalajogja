@@ -1957,6 +1957,31 @@ atas. `resolveDonorCounts()` (`lib/campaign-donor-count.ts`) — 2 query batch (
 di `CampaignCardCapsule` pakai `<span className="btn btn-primary btn-md btn-full">` (visual saja,
 bukan elemen interaktif — precedent baru untuk CTA di dalam card, lihat penjelasan di atas).
 
+**Evaluasi user pasca-implementasi — 2 bug ditemukan, keduanya sudah difix**:
+
+1. **Deskripsi tampil sebagai JSON Tiptap mentah** — `CampaignCardCapsule` adalah kartu campaign
+   PERTAMA yang benar-benar merender `description` (Grid/List/Ringkas existing tidak pernah
+   menampilkan deskripsi sama sekali, jadi bug ini baru bisa muncul sekarang). Fix:
+   `tiptapToPlainText(campaign.description)` dari `lib/seo.ts` (sudah ada sejak fix SEO event) —
+   pola yang sama berulang kali muncul di project ini (`renderBody` untuk render HTML lengkap,
+   `tiptapToPlainText` untuk plain text ringkas) — field manapun yang diisi via Tiptap editor
+   TIDAK PERNAH boleh di-render langsung sebagai string.
+2. **Section landing page belum menampilkan Desain 4 setelah dipilih+disimpan** — root cause
+   BUKAN bug di picker (`CampaignsEditor`/`landing-builder.tsx` plumbing generik terverifikasi
+   benar, identik dengan Hero/Posts/Modules yang sudah berfungsi). Root cause: `updatePageAction`
+   (server action yang dipanggil form builder landing page) **tidak pernah** `revalidatePath` ke
+   halaman PUBLIK — cuma revalidate 2 path admin (`/app/{slug}/website/pages*`). Beda dengan
+   `saveCampaignArchiveDesignAction` (§ 14m) yang eksplisit `revalidatePath(\`/\${slug}/campaign\`)`
+   — landing page 100% bergantung ke ISR `revalidate = 60` yang bisa terasa "tidak update" kalau
+   dicek dalam <60 detik setelah simpan. **Fix**: `updatePageAction` + `updatePageStatusAction`
+   ditambah `revalidatePath(\`/\${slug}\`)` (cover kasus ini homepage) +
+   `revalidatePath(\`/\${slug}/\${slug_halaman}\`)` (cover kasus page biasa) — berlaku untuk
+   SEMUA section type, bukan cuma Campaigns, karena gap-nya ada di level action bukan di level
+   fitur Modern Capsule. **Belum difix** (di luar scope sesi ini, dicatat untuk nanti):
+   `createPageAction`/`createPageDraftAction`/`createSingletonPageAction`/`deletePageAction` di
+   file yang sama juga tidak revalidate halaman publik — dampaknya lebih kecil (create biasanya
+   draft dulu; delete pada page published masih akan kena gap serupa) tapi belum disentuh.
+
 ---
 ## 15. Fitur Qurban
 
