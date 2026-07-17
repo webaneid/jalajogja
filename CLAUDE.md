@@ -262,11 +262,12 @@ Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
 
 ## Arsitektur Website (Dashboard CMS + Front-end Publik)
 > **Peta/indeks SEMUA dokumen front-end publik** (header, footer, landing, post, card+section,
-> direktori, akun, SEO, gallery, dll — 13 dokumen dirangkai jadi satu peta rute + struktur file):
+> direktori, akun, SEO, gallery, dll — 14 dokumen dirangkai jadi satu peta rute + struktur file):
 > **`docs/arsitektur-frontend-publik.md`** — mulai dari sini kalau kerja di front-end publik.
 > Detail lengkap — dashboard CMS, domain routing, front-end publik, caching, open questions: **`docs/arsitektur-website.md`**
 > Detail lengkap — tiga fase routing, masalah custom domain, roadmap perbaikan: **`docs/arsitektur-domain.md`**
 > SEO helper, bug `og:type` + Twitter images, rencana Related Posts: **`docs/arsitektur-seo.md`**
+> Section "Strip Modul" (katalog 8 modul, 2 desain, fallback foto berlapis): **`docs/arsitektur-strip-modul.md`**
 
 - Dashboard CMS (`/{slug}/website/`): posts, pages, kategori, tag — **SELESAI**
 - **Halaman Legal Singleton** — `terms` (Syarat dan Ketentuan) dan `privacy` (Kebijakan Privasi): template terkunci, satu per tenant, buat via tombol khusus di list pages, render `DefaultTemplate` di front-end

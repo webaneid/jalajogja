@@ -116,23 +116,12 @@ live dari database (bukan diketik manual admin) — admin pilih maks 4 metrik da
 (`FUNFACT_CATALOG` di `lib/hero-section-designs.ts`), query per metrik ada di
 `sections/hero/hero-section.tsx`. Desain 1 sama sekali tidak disentuh oleh perubahan ini.
 
-**Section "Strip Modul" independen** (`modules`, ditambahkan 2026-07-16) — strip modul yang tadinya
-cuma bisa hidup di dalam hero sekarang bisa ditambah sebagai section landing page tersendiri, admin
-pilih modul mana saja dari katalog 8 modul (4 modul lama + Usaha/Profesional/Pesantren/Toko yang
-sebelumnya tidak pernah bisa ditonjolkan). Katalog: `lib/module-strip-designs.ts` (`MODULE_CATALOG`
-— sengaja terpisah dari `HERO_MODULES`, tidak dibagi). Render: `sections/modules/modules-section.tsx`.
-
-**Punya 2 desain** (ditambahkan 2026-07-17): `1` Ikon (asli, icon+label+desc, tanpa foto) dan `2`
-Foto — kartu overlay portrait bisa di-scroll, sumber ide section "Ekosistem" di
-`design-refs/jalakarta-v2/`. Desain 2 punya **fallback foto berlapis**: foto custom yang diupload
-admin per modul → kalau kosong, otomatis foto dari item TERBARU modul itu (mis. Donasi → cover
-campaign aktif terbaru, Toko → cover produk aktif terbaru, Usaha/Profesional/Pesantren → `coverUrl`
-entri terbaru tenant ini) → kalau masih kosong, gradasi+ikon (dummy). Dua modul di-skip dari
-fallback otomatis (`MODULES_NO_AUTO_PHOTO`): **Dokumen** (tidak ada kolom foto sama sekali di
-schema) dan **Anggota** (ada `photoUrl` tapi sengaja diskip — privasi, keputusan eksplisit user,
-foto pribadi individu tidak representatif untuk kartu promosi organisasi). Resolver:
-`resolveModuleImages()` di `modules-section.tsx`, pola query sama dengan `fetchFunfacts()` di
-`hero-section.tsx`.
+**Section "Strip Modul" independen** (`modules`, ditambahkan 2026-07-16, 2 desain sejak
+2026-07-17) — strip modul yang tadinya cuma bisa hidup di dalam hero sekarang jadi section landing
+page tersendiri, admin pilih dari katalog 8 modul (4 modul lama + Usaha/Profesional/Pesantren/Toko
+yang sebelumnya tidak pernah bisa ditonjolkan), 2 desain (Ikon / Foto dengan fallback foto
+berlapis otomatis). **Dokumen detail penuh**: `docs/arsitektur-strip-modul.md` — katalog, kedua
+desain, tabel fallback foto per modul, data model, editor, struktur file.
 
 ---
 

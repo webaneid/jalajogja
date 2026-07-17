@@ -305,8 +305,8 @@ type LandingBody = {
 > kartu modul (`HERO_MODULES`, tetap seperti sebelumnya, tidak berubah). Desain 2 = Funfact —
 > statistik live dari DB (`FUNFACT_CATALOG`, maks 4 dipilih admin), bukan diketik manual. Strip
 > modul yang tadinya cuma bisa hidup di hero sekarang JUGA tersedia sebagai section landing
-> independen (`modules`, `lib/module-strip-designs.ts`, katalog 8 modul) — lihat
-> `docs/arsitektur-frontend-publik.md` § 4.
+> independen (`modules`, `lib/module-strip-designs.ts`, katalog 8 modul, 2 desain) — detail penuh
+> di `docs/arsitektur-strip-modul.md`.
 >
 > **Funfact punya 2 posisi tampilan** (`funfactStyle`, ditambahkan 2026-07-16, sesi sama): `inline`
 > (default) — mengalir normal di bawah gambar hero. `floating` — kartu menggantung menimpa batas
