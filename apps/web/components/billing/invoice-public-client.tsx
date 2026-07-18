@@ -103,9 +103,14 @@ function formatRp(n: number) {
   }).format(n);
 }
 
+// timeZone eksplisit WAJIB — komponen ini "use client", di-SSR di server (bisa TZ UTC/beda)
+// lalu di-hydrate di browser (TZ lokal visitor). Tanpa timeZone eksplisit, toLocaleDateString()
+// bisa hasilkan tanggal beda antara server-render dan client-hydration → React error #418
+// (hydration text mismatch). Semua tanggal invoice diinterpretasikan sebagai WIB, konsisten
+// dengan lokasi organisasi — bukan mengikuti timezone visitor.
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("id-ID", {
-    day: "2-digit", month: "long", year: "numeric",
+    day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta",
   });
 }
 
@@ -538,7 +543,7 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
                   {line.shippedAt && (
                     <span className="ml-2 text-muted-foreground font-normal">
                       · Dikirim {new Date(line.shippedAt).toLocaleDateString("id-ID", {
-                        day: "numeric", month: "short", year: "numeric",
+                        day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta",
                       })}
                     </span>
                   )}

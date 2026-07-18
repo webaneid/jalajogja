@@ -46,8 +46,10 @@ function formatRp(n: number) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 }
 
+// timeZone eksplisit WAJIB — komponen ini "use client", rentan hydration mismatch (React
+// error #418) kalau TZ server dan browser beda. Lihat komentar sama di invoice-public-client.tsx.
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+  return new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta" });
 }
 
 export function InvoiceDetailClient({ slug, invoice }: Props) {
@@ -619,7 +621,7 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                     Resi: <span className="font-mono font-medium">{sl.trackingNumber}</span>
                     {sl.shippedAt && (
                       <span className="ml-2 text-muted-foreground">
-                        · Dikirim {new Date(sl.shippedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                        · Dikirim {new Date(sl.shippedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" })}
                       </span>
                     )}
                   </p>

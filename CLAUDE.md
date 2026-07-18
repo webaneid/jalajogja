@@ -5410,6 +5410,49 @@ gate satu kali sebelum submit, bukan UI persisten.
 **Status**: sudah di-commit dan push (user sempat minta tunda push satu putaran untuk review
 dulu, sudah dikonfirmasi lanjut).
 
+### [2026-07-18] Halaman Invoice Publik — Tanpa Login by Design + Fix Hydration Mismatch
+
+User tanya dua hal sekaligus: (1) apakah konfirmasi pembayaran wajib login/terikat user tertentu,
+(2) React error #418 (hydration mismatch) di console saat testing alur ini.
+
+**Jawaban (1) — dikonfirmasi via baca kode langsung**: `/{slug}/invoice/{id}`
+(`app/(public)/[tenant]/invoice/[id]/page.tsx`) dan `submitPaymentProofAction` (`cart/actions.ts`)
+**TIDAK ADA pengecekan session/login sama sekali** — akses murni via UUID invoice di URL. Siapa
+pun yang punya link bisa lihat invoice DAN submit bukti pembayaran untuk invoice itu. Ini **bukan
+bug, tapi keputusan arsitektur yang sudah lama dikunci** — billing universal sengaja mendukung
+guest checkout (donasi/beli tanpa akun), konsisten dengan `member_id`/`profile_id` yang nullable
+di `invoices` sejak awal. Risiko nyata terbatas karena admin tetap verifikasi manual sebelum
+uang dianggap masuk (lihat entri sebelumnya) — worst case orang lain submit bukti palsu untuk
+invoice yang bukan miliknya, admin tinggal "Tolak", bukan langsung ke-kredit. Kalau mau diperketat
+(mis. rate-limit submission per invoice, atau cocokkan session dengan `memberId`/`profileId` kalau
+ada), itu perubahan terpisah yang perlu didiskusikan — belum dieksekusi sesi ini.
+
+**Jawaban (2) — diagnosis dari baca kode, bukan reproduksi live (tidak ada browser di environment
+ini)**: React error #418 = hydration text mismatch (konten teks beda antara HTML hasil SSR dan
+render pertama di client). Kandidat kuat: `formatDate()` di `invoice-public-client.tsx` DAN
+`invoice-detail-client.tsx` (`keuangan/billing/`) — keduanya `"use client"` (di-SSR di server LALU
+di-hydrate di browser) tapi `toLocaleDateString("id-ID", {...})` dipanggil **tanpa `timeZone`
+eksplisit** — hasilnya bergantung timezone runtime, yang BISA beda antara server (VPS, kemungkinan
+UTC) dan browser visitor (WIB, atau timezone lain untuk anggota diaspora). Kalau timestamp jatuh
+dekat batas hari dalam salah satu TZ, tanggal yang dirender bisa beda antara SSR dan hydration →
+persis error #418. **Fix**: tambah `timeZone: "Asia/Jakarta"` eksplisit di semua pemanggilan
+`toLocaleDateString` di kedua file (termasuk yang inline untuk tanggal resi pengiriman) — tanggal
+transaksi selalu diinterpretasikan sebagai WIB, konsisten dengan lokasi organisasi, bukan
+mengikuti timezone visitor.
+
+**Catatan kejujuran**: fix ini diagnosis terbaik dari review kode (chunk `777e0331-...js` di stack
+trace user cocok dengan chunk React runtime, bukan kode aplikasi spesifik — jadi trace-nya sendiri
+tidak menunjuk file yang salah, cuma konfirmasi "ada hydration mismatch di suatu tempat"). Bukan
+bug baru dari sesi ini — pattern `toLocaleDateString` tanpa `timeZone` ini sudah ada sejak modul
+Billing dibangun. Kalau setelah fix ini error masih muncul, perlu info tambahan dari user: URL
+persis halaman mana yang error, supaya bisa ditelusuri ke komponen yang benar-benar jadi sumbernya
+(bukan asumsi dari stack trace minified saja).
+
+**Aturan yang ditegaskan**: setiap `toLocaleDateString`/`toLocaleTimeString` di komponen
+`"use client"` yang menampilkan tanggal transaksi (invoice, payment, resi, dll) WAJIB pakai
+`timeZone: "Asia/Jakarta"` eksplisit — jangan andalkan default runtime, karena server dan browser
+visitor tidak dijamin timezone yang sama.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
