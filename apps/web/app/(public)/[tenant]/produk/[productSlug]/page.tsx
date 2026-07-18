@@ -13,6 +13,8 @@ import type { ProductVariationData, AttributeGroup, ViewerImage } from "@/compon
 import { ChevronRight }           from "lucide-react";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
+import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
 
 export const revalidate = 60;
 
@@ -299,12 +301,21 @@ export default async function ProdukDetailPage({ params }: { params: Params }) {
     ? (archiveDesignRaw!.design as ProductArchiveCardDesignId)
     : "1";
 
+  // Shell mobile — lihat lesson CLAUDE.md "Mobile Single-Page Shell" / post/[slug]/page.tsx
+  // sebagai pola referensi.
+  const [relativeBaseUrl, seoBase] = await Promise.all([
+    resolveBaseUrl(slug),
+    getTenantSeoBase(slug),
+  ]);
+  const navMenu = await getPublicNavMenu(tenantClient, slug, relativeBaseUrl);
+  const pageUrl = `${seoBase.baseUrl}/produk/${productSlug}`;
+
   return (
     <div className="py-10 px-4">
       <div className="max-w-7xl mx-auto space-y-12">
 
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        {/* Breadcrumb — desktop saja, mobile sudah punya tombol back di overlay */}
+        <nav className="hidden md:flex items-center gap-1.5 text-sm text-muted-foreground">
           <a href={`/${slug}/produk`} className="hover:text-foreground transition-colors">Produk</a>
           {row.categoryName && row.categorySlug && (
             <>
@@ -326,6 +337,10 @@ export default async function ProdukDetailPage({ params }: { params: Params }) {
           productImages={productImages}
           sessionType={sessionType}
           tenantSlug={slug}
+          backHref={`${relativeBaseUrl}/produk`}
+          navMenu={navMenu}
+          siteName={tenant.name}
+          pageUrl={pageUrl}
         />
 
         {/* Deskripsi */}

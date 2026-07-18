@@ -23,6 +23,7 @@ import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
 import { CategoryPill } from "@/components/website/public/single/category-pill";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
+import { CampaignMobileDonationBar } from "@/components/donasi/public/campaign-mobile-donation-bar";
 
 export const revalidate = 60;
 
@@ -273,6 +274,30 @@ export default async function CampaignDetailPage({ params }: { params: Params })
   const navMenu = await getPublicNavMenu(tenantClient, slug, relativeBaseUrl);
   const pageUrl = `${seoBase.baseUrl}/campaign/${campaignSlug}`;
 
+  // Konten panel donasi — SAMA PERSIS dipakai di kolom kanan desktop (sticky) dan di dalam
+  // bottom sheet mobile (CampaignMobileDonationBar), supaya CampaignDetailClient (form
+  // donasi/qurban, cukup kompleks — phone lookup, popup state machine) tidak terduplikasi.
+  const donationPanelContent = (
+    <>
+      <h2 className="font-semibold mb-4">
+        {campaign.campaignType === "qurban" ? "Pesan Qurban" : "Donasi Sekarang"}
+      </h2>
+      <CampaignDetailClient
+        campaignId={campaign.id}
+        campaignTitle={campaign.title}
+        campaignType={campaign.campaignType as "donasi"|"zakat"|"wakaf"|"qurban"}
+        tenantSlug={slug}
+        recommendedAmounts={recommendedAmounts}
+        qurbanAnimals={qurbanAnimals}
+        slaughterFees={slaughterFees}
+        defaultName={defaultName}
+        isLoggedIn={!!session?.user?.id}
+        memberPhone={memberPhone}
+        memberEmail={memberEmail}
+      />
+    </>
+  );
+
   return (
     <>
       {/* ── Mobile shell — gambar full-bleed + overlay back/menu, urutan beda dari desktop ── */}
@@ -350,26 +375,14 @@ export default async function CampaignDetailPage({ params }: { params: Params })
             />
           </div>
 
-          {/* Kanan: form */}
+          {/* Kanan: form — desktop sticky (tidak diubah) + mobile bottom sheet */}
           <div className="lg:col-span-2">
-            <div className="sticky top-6 rounded-xl border border-border bg-card p-5">
-              <h2 className="font-semibold mb-4">
-                {campaign.campaignType === "qurban" ? "Pesan Qurban" : "Donasi Sekarang"}
-              </h2>
-              <CampaignDetailClient
-                campaignId={campaign.id}
-                campaignTitle={campaign.title}
-                campaignType={campaign.campaignType as "donasi"|"zakat"|"wakaf"|"qurban"}
-                tenantSlug={slug}
-                recommendedAmounts={recommendedAmounts}
-                qurbanAnimals={qurbanAnimals}
-                slaughterFees={slaughterFees}
-                defaultName={defaultName}
-                isLoggedIn={!!session?.user?.id}
-                memberPhone={memberPhone}
-                memberEmail={memberEmail}
-              />
+            <div className="hidden md:block sticky top-6 rounded-xl border border-border bg-card p-5">
+              {donationPanelContent}
             </div>
+            <CampaignMobileDonationBar campaignType={campaign.campaignType}>
+              {donationPanelContent}
+            </CampaignMobileDonationBar>
           </div>
         </div>
 

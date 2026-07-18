@@ -1,0 +1,65 @@
+"use client";
+
+import { useState } from "react";
+import { ChevronUp } from "lucide-react";
+
+type Props = {
+  collapsedBar: React.ReactNode;   // konten baris ringkas, selalu tampil, seluruh area jadi tombol toggle
+  children:     React.ReactNode;   // konten penuh saat expanded
+};
+
+// Bottom sheet generik untuk shell mobile halaman single (event/donasi/produk) — bar ringkas
+// nempel di bawah layar, tap untuk expand jadi sheet penuh. Diekstrak dari
+// EventMobileTicketBar supaya mekanisme sheet (posisi, animasi, backdrop) dipakai bersama
+// lintas modul — yang beda per modul cuma isi `collapsedBar` (QR mini/harga/dll) dan
+// `children` (form pendaftaran/form donasi/panel beli).
+//
+// Animasi max-height (bukan translate) — karena elemen tetap bottom:0 sementara max-height
+// tumbuh, sisi ATAS sheet yang naik (bukan geser dari luar layar), menghasilkan efek
+// "naik/melebar" tanpa perlu portal atau ukur tinggi konten via JS.
+//
+// Konten TIDAK di-unmount saat collapse — cuma di-clip via overflow-hidden pada wrapper luar,
+// supaya state form di dalam `children` (pilihan tiket/nominal/variasi, dst) tidak hilang
+// setiap kali sheet ditutup-buka.
+export function MobileActionSheet({ collapsedBar, children }: Props) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="md:hidden">
+      {/* Spacer — cegah konten terakhir ketutupan bar collapsed */}
+      <div className="h-24" />
+
+      {expanded && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/40"
+          onClick={() => setExpanded(false)}
+        />
+      )}
+
+      <div
+        className={`fixed bottom-0 left-0 right-0 z-[71] bg-background rounded-t-2xl border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.12)] overflow-hidden transition-[max-height] duration-300 ease-out ${
+          expanded ? "max-h-[85vh]" : "max-h-24"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full flex items-center gap-3 px-4 py-3"
+        >
+          {collapsedBar}
+          <ChevronUp
+            size={18}
+            className={`text-muted-foreground shrink-0 transition-transform duration-300 ${expanded ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        <div
+          className="overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+          style={{ maxHeight: "calc(85vh - 60px)" }}
+        >
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}

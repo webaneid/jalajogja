@@ -5901,6 +5901,59 @@ pakai (Python/bash) yang operasi di level baris file lebih aman daripada Edit to
 nyata di browser (sentuhan expand/collapse harus dirasakan langsung) — user diminta cek di
 device/browser sendiri.
 
+### [2026-07-18] Bottom Sheet Digeneralisasi ke Campaign + Produk — `MobileActionSheet` Primitif Baru
+
+User eksplisit senang dengan bottom sheet tiket Event, minta pola sama untuk Donasi dan Produk
+("gass bro"). Sebelum menduplikasi ~70 baris mekanisme sheet 2× lagi, `EventMobileTicketBar`
+diekstrak jadi 2 layer: primitif generik `components/website/public/single/mobile-action-sheet.tsx`
+(`MobileActionSheet` — posisi/animasi/backdrop/spacer, terima `collapsedBar` + `children`) +
+`EventMobileTicketBar` jadi thin wrapper di atasnya (bangun `collapsedBar` QR/status ATAU
+harga/CTA, delegasikan sisanya). Beda dari chrome (topbar/gambar/kategori/share) yang TIDAK
+bisa disatukan karena data tiap tipe beda jauh — mekanisme SHEET-nya sendiri (expand/collapse,
+posisi, animasi) memang identik lintas 3 modul, jadi kali ini benar-benar reuse penuh, bukan
+duplikasi yang disamarkan.
+
+**Campaign** (`campaign/[slug]/page.tsx` + `components/donasi/public/campaign-mobile-donation-bar.tsx`):
+Konten kolom kanan (`<h2>...</h2><CampaignDetailClient .../>`, ~20 baris tapi `CampaignDetailClient`
+sendiri 486 baris dengan phone-lookup + popup state machine) diekstrak jadi variable
+`donationPanelContent`, dipakai identik di desktop (sticky, tidak berubah) dan
+`CampaignMobileDonationBar` (mobile). **Collapsed bar TIDAK live** (beda dari Produk di bawah) —
+selalu CTA statis "Donasi Sekarang"/"Pesan Qurban", karena state nominal-terpilih hidup di
+DALAM `CampaignDetailClient` dan sengaja TIDAK diangkat naik ke parent (hindari refactor invasif
+ke komponen kompleks yang sudah berfungsi) — trade-off disadari, bukan keterbatasan yang
+tidak disengaja.
+
+**Produk** (`produk/[productSlug]/page.tsx` + `components/toko/public/product-detail-client.tsx`) —
+INI beda dari Event/Campaign: produk BELUM PERNAH dapat mobile shell sama sekali (dilewati di
+Fase 2 atas permintaan user). Jadi sekaligus dikerjakan: (a) shell mobile dasar (gallery
+full-bleed pengganti gambar tunggal, kategori, judul, share) DAN (b) bottom sheet beli.
+
+**Kenapa `ProductDetailClient` di-refactor IN-PLACE (bukan dipecah jadi komponen gallery +
+komponen buy-panel terpisah)**: gallery (`ProductImageViewer`) butuh `displayImages` yang
+bereaksi ke `activeVariation` (state `selected` di parent) — state SAMA dipakai untuk harga,
+stok, dan disabled-state tombol beli. Memecah jadi 2 komponen terpisah berarti harus
+"mengangkat" state itu ke parent baru (page.tsx, Server Component — tidak bisa punya state) atau
+context — jauh lebih invasif daripada mempertahankan SATU component dengan 2 blok JSX (`hidden
+md:grid` desktop lama tidak berubah + `md:hidden` shell mobile baru) yang SAMA-SAMA membaca
+state yang sama. Pola ini persis `articleBody`/`ticketPanelContent` — ekstrak JSX ke variable,
+bukan pecah komponen, kalau yang dibagi cuma TAMPILAN sementara STATE-nya harus tetap satu
+sumber.
+
+**Konsekuensi bagus dari desain ini**: collapsed bar Produk **live** mengikuti `activeVariation` —
+begitu user pilih varian di dalam sheet yang sedang expanded, harga di collapsed bar (begitu
+di-collapse lagi) otomatis ikut update, TANPA kerja tambahan — murni karena baik collapsed bar
+maupun sheet content membaca `displayPrice` yang sama dari satu component. Ini beda sengaja dari
+Event/Campaign (collapsed bar statis) — bukan inkonsistensi, tapi konsekuensi alami dari siapa
+yang "memegang" state di masing-masing kasus.
+
+**5 prop baru wajib di `ProductDetailClient`** (`backHref`/`navMenu`/`siteName`/`pageUrl`) — TIDAK
+dibuat opsional (beda dari `DefaultTemplate`) karena cuma ADA SATU caller
+(`produk/[productSlug]/page.tsx`, dicek via grep sebelum ubah signature) — tidak ada risiko
+memaksa breaking change ke caller lain yang tidak siap.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error untuk ketiga perubahan (extract
+primitif, Campaign, Produk). Belum diverifikasi visual/interaksi nyata di browser.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
