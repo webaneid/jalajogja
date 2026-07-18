@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, createTenantDb, tenants } from "@jalajogja/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
+import { getTenantTimezone, anchorTodayUtc } from "@/lib/tenant-timezone";
 
 // Kirim pengingat WA H-1 sebelum invoice jatuh tempo — dipicu crontab VPS harian.
 // Auth via x-cron-secret header, pola sama dengan cleanup-images/verify-domains.
@@ -10,10 +11,6 @@ export async function GET(request: NextRequest) {
   if (request.headers.get("x-cron-secret") !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
 
   const activeTenants = await db
     .select({ slug: tenants.slug })
@@ -25,6 +22,13 @@ export async function GET(request: NextRequest) {
   for (const tenant of activeTenants) {
     const tenantDb = createTenantDb(tenant.slug);
     const { db: tdb, schema } = tenantDb;
+
+    // "Besok" WAJIB dihitung per-tenant dari kalender timezone tenant tsb — lihat penjelasan
+    // sama di event-reminder/route.ts.
+    const tenantTimezone = await getTenantTimezone(tenantDb);
+    const tomorrow = anchorTodayUtc(tenantTimezone);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
 
     const dueInvoices = await tdb
       .select({

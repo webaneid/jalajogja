@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { db, tenants } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import { createTenantDb, getSettings, findEligibleInstallmentPlan } from "@jalajogja/db";
+import { getTenantTimezone } from "@/lib/tenant-timezone";
 import {
   InvoicePublicClient,
   type PublicInvoiceData,
@@ -52,7 +53,7 @@ export default async function PublicInvoicePage({ params }: Props) {
 
   if (!inv) notFound();
 
-  const [items, shippingRows, paymentRows, scheduleRows, eligibleInstallmentPlan] = await Promise.all([
+  const [items, shippingRows, paymentRows, scheduleRows, eligibleInstallmentPlan, tenantTimezone] = await Promise.all([
     tenantDb
       .select()
       .from(schema.invoiceItems)
@@ -78,6 +79,7 @@ export default async function PublicInvoicePage({ params }: Props) {
           .orderBy(schema.installmentSchedules.termNumber)
       : Promise.resolve([]),
     findEligibleInstallmentPlan(tenantClient, invoiceId),
+    getTenantTimezone(tenantClient),
   ]);
 
   const paymentCategory = resolvePaymentCategory(items.map((it) => it.itemType));
@@ -181,7 +183,7 @@ export default async function PublicInvoicePage({ params }: Props) {
         <div className="mb-6">
           <p className="text-sm text-muted-foreground">{tenant.name}</p>
         </div>
-        <InvoicePublicClient slug={slug} invoice={invoice} eligibleInstallmentPlan={eligibleInstallmentPlan} />
+        <InvoicePublicClient slug={slug} invoice={invoice} eligibleInstallmentPlan={eligibleInstallmentPlan} timezone={tenantTimezone} />
       </div>
     </main>
   );

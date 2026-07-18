@@ -9,6 +9,7 @@ import { tenants } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import { auth } from "@/lib/auth";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
+import { getTenantTimezone, anchorTodayUtc, todayInTz } from "@/lib/tenant-timezone";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -370,6 +371,7 @@ export async function checkoutAction(
 
     const paymentSettings   = await getSettings(tenantDb, "payment");
     const uniqueCodeEnabled = paymentSettings["unique_code_enabled"] === true;
+    const tenantTimezone    = await getTenantTimezone(tenantDb);
 
     // ── Transaction: lock cart FOR UPDATE mencegah double-checkout dari klik ganda /
     // double-tap / retry jaringan. Request kedua yang datang hampir bersamaan akan
@@ -491,9 +493,10 @@ export async function checkoutAction(
       const shippingTotal  = shipping?.lines.reduce((s, l) => s + l.cost, 0) ?? 0;
       const total          = subtotal + shippingTotal;
 
+      // Anchor ke kalender timezone tenant, bukan UTC mentah — lihat lib/tenant-timezone.ts.
       const dueDate = (() => {
-        const d = new Date();
-        d.setDate(d.getDate() + 3);
+        const d = anchorTodayUtc(tenantTimezone);
+        d.setUTCDate(d.getUTCDate() + 3);
         return d.toISOString().slice(0, 10);
       })();
 
@@ -771,6 +774,7 @@ export async function convertInvoiceToInstallmentAction(
   try {
     const tenantDb = createTenantDb(slug);
     const { db: tdb, schema } = tenantDb;
+    const tenantTimezone = await getTenantTimezone(tenantDb);
 
     type TxResult = { error: string } | { firstDueDate: string };
 
@@ -825,15 +829,10 @@ export async function convertInvoiceToInstallmentAction(
       const perTerm   = Math.round(total / plan.installmentCount);
       const lastTerm  = total - perTerm * (plan.installmentCount - 1); // serap sisa pembulatan
 
-      // "Hari ini" WAJIB dihitung dari kalender WIB, bukan `new Date().toISOString()` mentah —
-      // itu UTC, selisih 7 jam dari WIB. Jam 00:00-06:59 WIB jatuh di TANGGAL SEBELUMNYA
-      // menurut UTC → termin 1 bisa ke-generate dengan due_date "kemarin" dan langsung
-      // "Terlambat" begitu invoice baru saja dikonversi. Anchor ke UTC-midnight yang MEWAKILI
-      // tanggal kalender WIB hari ini, baru increment via setUTCDate — aman dari pergeseran zona
-      // waktu karena Indonesia tidak punya DST.
-      const wibTodayStr        = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
-      const [wY, wM, wD]       = wibTodayStr.split("-").map(Number);
-      const today               = new Date(Date.UTC(wY, wM - 1, wD));
+      // "Hari ini" WAJIB dihitung dari kalender timezone TENANT (bukan hardcode WIB, bukan
+      // `new Date().toISOString()` mentah — itu UTC, bisa geser tanggal). Lihat
+      // lib/tenant-timezone.ts untuk detail alasan + implementasi anchorTodayUtc().
+      const today = anchorTodayUtc(tenantTimezone);
 
       const paymentSettings   = await getSettings(tenantDb, "payment");
       const uniqueCodeEnabled = paymentSettings["unique_code_enabled"] === true;

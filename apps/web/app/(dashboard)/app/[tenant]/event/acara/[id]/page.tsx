@@ -7,13 +7,14 @@ import { CalendarDays, MapPin, Globe, Users, Pencil, Ticket, UserCheck } from "l
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EventRegistrationList, type RegistrationRow } from "@/components/event/event-registration-list";
+import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone";
 
-function formatDate(d: Date | null) {
+function formatDate(d: Date | null, timezone: string) {
   if (!d) return "—";
-  return new Intl.DateTimeFormat("id-ID", {
+  return formatInTz(d, timezone, {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
     hour: "2-digit", minute: "2-digit",
-  }).format(new Date(d));
+  });
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -39,7 +40,9 @@ export default async function AcaraDetailPage({
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
+  const tenantTimezone = await getTenantTimezone(tenantClient);
 
   const [[event], tickets] = await Promise.all([
     db.select().from(schema.events).where(eq(schema.events.id, eventId)).limit(1),
@@ -197,7 +200,7 @@ export default async function AcaraDetailPage({
             <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
               <span className="inline-flex items-center gap-1">
                 <CalendarDays className="h-3.5 w-3.5" />
-                {formatDate(event.startsAt)}
+                {formatDate(event.startsAt, tenantTimezone)}
               </span>
               {event.location && (
                 <span className="inline-flex items-center gap-1">
@@ -277,6 +280,7 @@ export default async function AcaraDetailPage({
             slug={slug}
             eventId={eventId}
             registrations={registrations}
+            timezone={tenantTimezone}
           />
         </div>
       </main>

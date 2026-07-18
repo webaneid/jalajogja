@@ -13,6 +13,7 @@ import type { PgTransaction } from "drizzle-orm/pg-core";
 import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import { generateFinancialNumber } from "./finance";
 import { getSettings } from "./settings";
+import { getTenantTimezone, anchorTodayUtc } from "./tenant-timezone";
 import type { TenantDb } from "../tenant-client";
 import type { InvoiceSourceType } from "../schema/tenant/billing";
 
@@ -238,11 +239,14 @@ export async function createLinkedInvoice(
   const discount = input.discount ?? 0;
   const total    = Math.max(0, subtotal - discount);
 
-  const dueDate = input.dueDate ?? (() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 3);
-    return d.toISOString().slice(0, 10);
-  })();
+  // Anchor ke kalender timezone tenant, bukan UTC mentah — lihat helpers/tenant-timezone.ts.
+  let dueDate = input.dueDate;
+  if (!dueDate) {
+    const tenantTimezone = await getTenantTimezone(tenantDb);
+    const d = anchorTodayUtc(tenantTimezone);
+    d.setUTCDate(d.getUTCDate() + 3);
+    dueDate = d.toISOString().slice(0, 10);
+  }
 
   // Kode unik: cek setting lalu generate jika aktif
   const paymentSettings = await getSettings(tenantDb, "payment");

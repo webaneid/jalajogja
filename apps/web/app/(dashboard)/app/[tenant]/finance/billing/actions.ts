@@ -8,6 +8,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { recordIncome } from "@jalajogja/db";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
+import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz } from "@/lib/tenant-timezone";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,13 +56,13 @@ async function generateEventRegNumber(
 
 // Sama dengan formatEventDateWib di event/actions.ts — di-duplikasi agar billing
 // tidak bergantung ke modul event (pola sama dengan generateEventRegNumber di atas).
-function formatEventDateWib(date: Date | null): string {
+// timezone dinamis dari getTenantTimezone (bukan hardcode) — lihat lib/tenant-timezone.ts.
+function formatEventDateWib(date: Date | null, timezone: string): string {
   if (!date) return "-";
-  return `${date.toLocaleString("id-ID", {
-    timeZone: "Asia/Jakarta",
+  return `${formatInTz(date, timezone, {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
     hour: "2-digit", minute: "2-digit",
-  })} WIB`;
+  })} ${tzLabel(timezone)}`;
 }
 
 export type InvoiceItemInput = {
@@ -130,15 +131,17 @@ export async function createInvoiceAction(
   const { db, schema } = tenantDb;
 
   try {
+    const tenantTimezone = await getTenantTimezone(tenantDb);
     const invoiceNumber = await generateFinancialNumber(tenantDb, "invoice");
     const subtotal  = calcSubtotal(data.items);
     const discount  = data.discount ?? 0;
     const total     = Math.max(0, subtotal - discount);
 
-    // Default due date: 3 hari dari sekarang
+    // Default due date: 3 hari dari sekarang, anchor ke kalender timezone tenant (bukan UTC
+    // mentah — lihat lib/tenant-timezone.ts, pola sama fix cicilan sebelumnya).
     const dueDate = data.dueDate ?? (() => {
-      const d = new Date();
-      d.setDate(d.getDate() + 3);
+      const d = anchorTodayUtc(tenantTimezone);
+      d.setUTCDate(d.getUTCDate() + 3);
       return d.toISOString().slice(0, 10);
     })();
 
@@ -321,6 +324,10 @@ export async function confirmInvoicePaymentAction(
       eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null;
     }> = [];
 
+    // Tanggal jurnal WAJIB kalender timezone tenant, bukan UTC mentah — fetch sekali di
+    // luar transaction (read-only, tidak perlu ikut terkunci).
+    const tenantTimezone = await getTenantTimezone(tenantDb);
+
     // Jalankan atomik dalam transaction
     const paymentId = await db.transaction(async (tx) => {
       // Lock baris invoice — cegah race condition klik ganda / retry menghasilkan
@@ -395,7 +402,7 @@ export async function confirmInvoicePaymentAction(
       if (newStatus === "paid") {
         const txNum = await generateFinancialNumber(tenantDb, "journal");
         await recordIncome(tenantDb, {
-          date:            new Date().toISOString().slice(0, 10),
+          date:            todayInTz(tenantTimezone),
           description:     `Pelunasan invoice ${inv.invoiceNumber}`,
           referenceNumber: txNum,
           createdBy:       access.tenantUser.id,
@@ -512,32 +519,35 @@ export async function confirmInvoicePaymentAction(
 
     // Notifikasi tiket event baru yang ter-auto-create dari cart — titik pertama
     // customer dapat nomor registrasi. Lookup detail event per registrasi (biasanya 1).
-    for (const reg of newEventRegs) {
-      const [eventDetail] = await db
-        .select({
-          title:    schema.events.title,
-          slug:     schema.events.slug,
-          startsAt: schema.events.startsAt,
-          location: schema.events.location,
-        })
-        .from(schema.events)
-        .where(eq(schema.events.id, reg.eventId))
-        .limit(1);
-      if (!eventDetail) continue;
+    // tenantTimezone reuse dari fetch di awal function (sebelum transaction).
+    if (newEventRegs.length > 0) {
+      for (const reg of newEventRegs) {
+        const [eventDetail] = await db
+          .select({
+            title:    schema.events.title,
+            slug:     schema.events.slug,
+            startsAt: schema.events.startsAt,
+            location: schema.events.location,
+          })
+          .from(schema.events)
+          .where(eq(schema.events.id, reg.eventId))
+          .limit(1);
+        if (!eventDetail) continue;
 
-      const eventUrl = await waAppUrl(slug, `/agenda/${eventDetail.slug}`);
-      void notifyWa({
-        slug, tenantDb, event: "event_registered",
-        phone: reg.attendeePhone,
-        vars: {
-          name:      reg.attendeeName,
-          eventName: eventDetail.title,
-          eventDate: formatEventDateWib(eventDetail.startsAt),
-          location:  eventDetail.location ?? "-",
-          regNumber: reg.regNumber,
-          eventUrl,
-        },
-      });
+        const eventUrl = await waAppUrl(slug, `/agenda/${eventDetail.slug}`);
+        void notifyWa({
+          slug, tenantDb, event: "event_registered",
+          phone: reg.attendeePhone,
+          vars: {
+            name:      reg.attendeeName,
+            eventName: eventDetail.title,
+            eventDate: formatEventDateWib(eventDetail.startsAt, tenantTimezone),
+            location:  eventDetail.location ?? "-",
+            regNumber: reg.regNumber,
+            eventUrl,
+          },
+        });
+      }
     }
 
     revalidateBilling(slug);
@@ -848,6 +858,10 @@ export async function verifySubmittedPaymentAction(
   let notifyCustomerPhone: string | null = null;
   let notifyInvoiceNumber = "";
 
+  // Tanggal jurnal WAJIB kalender timezone tenant, bukan UTC mentah — fetch sekali di luar
+  // transaction (read-only, tidak perlu ikut terkunci).
+  const tenantTimezone = await getTenantTimezone(tenantDb);
+
   try {
     await db.transaction(async (tx) => {
       // Lock payment DULU — cegah race dengan rejectPaymentAction (atau verify ganda) pada
@@ -925,7 +939,7 @@ export async function verifySubmittedPaymentAction(
       if (newStatus === "paid") {
         const txNum = await generateFinancialNumber(tenantDb, "journal");
         await recordIncome(tenantDb, {
-          date:            new Date().toISOString().slice(0, 10),
+          date:            todayInTz(tenantTimezone),
           description:     `Pelunasan invoice ${inv.invoiceNumber}`,
           referenceNumber: txNum,
           createdBy:       access.tenantUser.id,
@@ -1025,32 +1039,34 @@ export async function verifySubmittedPaymentAction(
       }
     });
 
-    for (const reg of newEventRegs) {
-      const [eventDetail] = await db
-        .select({
-          title:    schema.events.title,
-          slug:     schema.events.slug,
-          startsAt: schema.events.startsAt,
-          location: schema.events.location,
-        })
-        .from(schema.events)
-        .where(eq(schema.events.id, reg.eventId))
-        .limit(1);
-      if (!eventDetail) continue;
+    if (newEventRegs.length > 0) {
+      for (const reg of newEventRegs) {
+        const [eventDetail] = await db
+          .select({
+            title:    schema.events.title,
+            slug:     schema.events.slug,
+            startsAt: schema.events.startsAt,
+            location: schema.events.location,
+          })
+          .from(schema.events)
+          .where(eq(schema.events.id, reg.eventId))
+          .limit(1);
+        if (!eventDetail) continue;
 
-      const eventUrl = await waAppUrl(slug, `/agenda/${eventDetail.slug}`);
-      void notifyWa({
-        slug, tenantDb, event: "event_registered",
-        phone: reg.attendeePhone,
-        vars: {
-          name:      reg.attendeeName,
-          eventName: eventDetail.title,
-          eventDate: formatEventDateWib(eventDetail.startsAt),
-          location:  eventDetail.location ?? "-",
-          regNumber: reg.regNumber,
-          eventUrl,
-        },
-      });
+        const eventUrl = await waAppUrl(slug, `/agenda/${eventDetail.slug}`);
+        void notifyWa({
+          slug, tenantDb, event: "event_registered",
+          phone: reg.attendeePhone,
+          vars: {
+            name:      reg.attendeeName,
+            eventName: eventDetail.title,
+            eventDate: formatEventDateWib(eventDetail.startsAt, tenantTimezone),
+            location:  eventDetail.location ?? "-",
+            regNumber: reg.regNumber,
+            eventUrl,
+          },
+        });
+      }
     }
 
     void notifyWa({

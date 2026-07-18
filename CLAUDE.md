@@ -6242,6 +6242,202 @@ unik → submit bukti termin 1 → admin verifikasi → termin auto-lunas) perlu
 machine sendiri. **Fase C (cron reminder H-1) tetap DEFERRED**, rencana lama masih relevan
 apa adanya (tidak terpengaruh perubahan arsitektur ini).
 
+### [2026-07-19] Fitur Cicilan — 4 Bug Ditemukan Saat Testing Manual Lokal (Semua Difix)
+
+> Ditemukan user langsung dari testing manual di dev machine (bukan dari audit kode) —
+> begitu Fase B Revisi "selesai" secara implementasi, jalan sungguhan langsung memunculkan
+> 4 bug nyata + 1 masalah data lokal (bukan bug kode). Detail teknis: `docs/arsitektur-billing.md`
+> § "4 Bug Ditemukan Saat Testing Manual".
+
+**Bug 1 — Termin 1 langsung "Terlambat" begitu invoice baru dikonversi jadi cicilan**:
+`convertInvoiceToInstallmentAction` hitung "hari ini" via `new Date().toISOString().slice(0,10)`
+— murni UTC. Server dev berjalan di WIB (UTC+7); jam 05:04 WIB = 22:04 UTC HARI SEBELUMNYA.
+Setiap konversi yang terjadi jam 00:00–06:59 WIB menghasilkan termin 1 dengan `due_date`
+kemarin → langsung overdue. **Fix**: anchor "hari ini" ke kalender WIB dulu
+(`new Date().toLocaleDateString("en-CA", {timeZone:"Asia/Jakarta"})` → parse jadi
+`Date.UTC(y,m-1,d)`), baru hitung offset termin berikutnya via `setUTCDate` dari anchor itu
+— aman karena Indonesia tidak punya DST.
+
+**Bug 2 — Badge "Terlambat" bisa salah tergantung timezone browser/server (turunan Bug 1)**:
+`new Date(s.dueDate) < new Date(new Date().toDateString())` mencampur Date object dari dua
+sumber timezone berbeda (dueDate string diparse sebagai UTC-midnight; `toDateString()` pakai
+timezone LOKAL browser/server). **Fix**: bandingkan string `"YYYY-MM-DD"` langsung
+(`s.dueDate < todayWib`), bukan Date object — dua tempat (`invoice-public-client.tsx` DAN
+`invoice-detail-client.tsx`).
+
+**Bug 3 — QRIS dinamis terkunci ke `invoice.remaining` (sisa SELURUH invoice), bukan
+nominal termin**: customer scan QRIS untuk bayar 1 termin (mis. Rp 50.000) malah dikunci ke
+total semua termin belum lunas (mis. Rp 500.000) — kelewat saat update field "Nominal
+Transfer" sebelumnya, prop QRIS-nya tidak ikut disentuh. **Fix**: `PaymentMethodCard` terima
+prop `payAmount` eksplisit (`amountNum > 0 ? amountNum : Number(defaultPayAmount)` — ikut
+apa yang sedang diketik di form), diteruskan ke `QrisDisplay`, bukan hardcode
+`invoice.remaining`.
+
+**Bug 4 — Field "Nominal Transfer" (dan akibatnya QRIS Bug 3) nyangkut ke nominal LAMA
+setelah invoice baru saja dikonversi**: `payAmount` di-`useState(defaultPayAmount)` HANYA
+dihitung sekali saat komponen mount. `convertInvoiceToInstallmentAction` sukses →
+`router.refresh()` → Next.js kirim `invoice` prop BARU ke komponen client yang SAMA (tidak
+remount) → state `payAmount` lama (dihitung sebelum invoice jadi cicilan) tetap nyangkut.
+**Fix**: `useEffect` + `prevDefaultRef` — sync `payAmount` ke `defaultPayAmount` terbaru
+HANYA kalau `payAmount` saat ini masih PERSIS SAMA dengan default sebelumnya (bukan
+`payAmount` vs `defaultPayAmount` langsung — itu akan clobber edit manual customer):
+```typescript
+const prevDefaultRef = useRef(defaultPayAmount);
+useEffect(() => {
+  if (defaultPayAmount !== prevDefaultRef.current) {
+    if (payAmount === prevDefaultRef.current) setPayAmount(defaultPayAmount);
+    prevDefaultRef.current = defaultPayAmount;
+  }
+}, [defaultPayAmount, payAmount]);
+```
+
+**Aturan digeneralisasi dari Bug 1+2**: setiap kali kode MENGHITUNG (bukan cuma
+menampilkan) tanggal "hari ini" atau membandingkan tanggal untuk LOGIC BISNIS (bukan display
+biasa yang sudah punya aturan `timeZone` eksplisit sejak lama), WAJIB anchor ke kalender WIB
+dulu — `new Date().toISOString()` mentah SELALU salah pada jam 00:00–06:59 WIB. **Bug ini
+kemungkinan besar berulang di tempat lain** — grep `toISOString().slice(0, 10)` menemukan
+~12 titik lain di codebase yang menghitung "hari ini"/offset tanggal untuk keperluan non-
+display (default `dueDate` invoice +3 hari di `createLinkedInvoice`, tanggal jurnal
+keuangan di berbagai `actions.ts`, cron `event-reminder`/`invoice-reminder`) — **BELUM
+diaudit/difix**, di luar scope sesi ini, dicatat sebagai technical debt yang perlu
+diperhatikan kalau ada laporan bug tanggal serupa di modul lain.
+
+**Aturan digeneralisasi dari Bug 4**: komponen client dengan state yang di-inisialisasi dari
+props via `useState(propDerivedValue)` TIDAK OTOMATIS ikut berubah kalau prop berubah tanpa
+remount — `router.refresh()` mengirim prop baru ke instance komponen yang SAMA, bukan
+memaksa remount. Kalau state semacam ini harus selalu mencerminkan prop terbaru (kecuali
+user sudah mengedit manual), WAJIB sync via `useEffect` yang membandingkan terhadap nilai
+DEFAULT SEBELUMNYA (via `useRef`) — bukan `state !== newDefault` langsung, yang akan
+menimpa edit manual user setiap render.
+
+**Bug 5 (bukan bug kode) — DB lokal `installment_plans`/`installment_schedules` berstruktur
+SANGAT LAMA/legacy**: kolom `down_payment_pct`, `installment_number`, `paid_amount` per-baris
+— sama sekali beda dari skema yang dipakai kode saat ini (`source_id`, `total_amount`,
+`term_number`, `payment_id`). DB lokal dibuat dari versi `create-tenant-schema.ts` yang jauh
+lebih lama dan tidak pernah di-refresh; tidak ada migration yang men-transform struktur lama
+(migration 0033 cuma `ADD COLUMN IF NOT EXISTS unique_code`, tidak menyentuh base structure).
+Fix: kedua tabel (kosong, aman) di-`DROP`+`CREATE ULANG` manual sesuai DDL current. **Aturan
+untuk sesi mendatang**: kalau error `column X does not exist` muncul di tabel yang
+"harusnya" sudah lama ada, jangan asumsikan cuma kurang 1 migration `ADD COLUMN` — cek dulu
+`\d tablename` di DB lokal, bandingkan strukturnya PENUH terhadap Drizzle schema/DDL saat
+ini, karena bisa jadi base structure-nya sendiri sudah legacy total.
+
+**Deploy note**: keempat bug (1-4) sudah ter-fix di kode sebelum sempat di-deploy ke VPS —
+kemungkinan besar VPS TIDAK PERNAH mengalami Bug 1/2/3/4 dalam bentuk yang terlihat user
+(karena baru dites di lokal sebelum push), tapi tetap berpotensi kena Bug 1/2 kalau VPS juga
+UTC dan konversi terjadi jam 00:00-06:59 WIB — fix sudah ikut dalam commit yang sama,
+otomatis aman begitu VPS deploy versi terbaru.
+
+### [2026-07-19] Arsitektur Timezone Tenant — Akhirnya Benar-Benar Dipakai (Modul Event + Invoice/Billing)
+
+> Kelanjutan langsung dari 4 bug cicilan di atas — user minta audit lebih luas: "cek arsitektur
+> timezone kita... focus pada modul event dan invoice dulu... kayanya timezone ada settingnya,
+> jadi harus diterapkan dengan benar." Rencana lengkap:
+> `/Users/webane/.claude/plans/polished-moseying-shell.md`.
+
+**Temuan kunci sebelum eksekusi**: setting timezone per-tenant (`/settings/general`, combobox
+WIB/WITA/WIT/UTC, key `"timezone"` group `"general"`) **sudah ada infrastrukturnya sejak lama**
+tapi **hampir sepenuhnya dead** — cuma SATU pemakai nyata di seluruh codebase
+(`post/[slug]/page.tsx`, halaman detail artikel publik). Semua tempat lain (event, invoice,
+cron) hardcode `"Asia/Jakarta"` secara langsung, tidak pernah membaca setting yang tersimpan.
+
+**Bug jauh lebih parah ditemukan di modul Event yang TIDAK terkait fitur cicilan sama
+sekali**: form admin (`EventForm`) mengirim string `datetime-local` MENTAH (mis.
+`"2026-07-19T19:00"`, wall-clock tanpa offset) ke server action, yang langsung
+`new Date(data.startsAt)`. Karena action ini `"use server"` (jalan di SERVER, bukan browser),
+Node.js men-parse string tanpa offset itu sebagai LOCAL TIME SERVER (biasanya UTC di VPS) —
+"jam 19:00" yang dimaksud admin bisa tersimpan sebagai 02:00 WIB KEESOKAN HARINYA. **Ini bukan
+geser 1 hari seperti bug tanggal cicilan — ini geser 7+ JAM**, dan berlaku untuk SEMUA field
+waktu event (`starts_at`, `ends_at`, `sale_starts_at`, `sale_ends_at`). Polanya SUDAH pernah
+di-fix untuk field lain (custom `publishedAt` post, lihat lesson "[2026-07-09] Timezone fix
+publishedAt post") — tapi generalisasinya ke modul Event terlewat sampai sesi ini.
+
+**Keputusan dikunci via `AskUserQuestion`**: input jam di form (misal "19:00") diinterpretasikan
+sebagai jam tsb di **timezone yang di-setting TENANT** (`/settings/general`) — BUKAN timezone
+browser admin. Kalau tenant set Jakarta, "19:00" selalu berarti 19:00 WIB, terlepas dari
+lokasi fisik admin yang mengetik (relevan untuk admin yang kerja remote dari luar zona tenant).
+
+**Solusi: fixed-offset math, BUKAN parsing timezone-aware generik** — karena Indonesia
+**TIDAK PUNYA DST** (WIB/WITA/WIT = offset TETAP +7/+8/+9 sepanjang tahun), cukup lookup table
+statis. `Intl.DateTimeFormat` BISA format instant→wall-clock-string di timezone manapun
+(dipakai untuk SEMUA display), tapi TIDAK punya cara native mengonversi wall-clock-string+nama-
+zona → instant UTC (`Temporal` API belum stabil) — makanya untuk PARSING input datetime-local,
+dipakai fixed-offset arithmetic manual, bukan `Intl` trick.
+
+**Helper terpusat baru** — `packages/db/src/helpers/tenant-timezone.ts` (BUKAN di
+`apps/web/lib/`, meski dipakai luas di apps/web — alasan: `createLinkedInvoice`
+`packages/db/src/helpers/billing.ts` JUGA butuh fungsi ini untuk default `dueDate`, dan
+`packages/db` tidak boleh depend ke `apps/web`). `apps/web/lib/tenant-timezone.ts` jadi
+thin re-export shim dari `@jalajogja/db` supaya import path `@/lib/tenant-timezone` yang
+sudah dipakai di puluhan file tidak perlu diubah:
+```typescript
+export async function getTenantTimezone(tenantDb: TenantDb): Promise<string>   // baca setting, fallback WIB
+export function tzLabel(timezone: string): string                              // "Asia/Jakarta" → "WIB"
+export function todayInTz(timezone: string): string                            // "hari ini" YYYY-MM-DD, utk LOGIC
+export function anchorTodayUtc(timezone: string): Date                         // UTC-midnight anchor, utk +N hari
+export function localDatetimeToUtcIso(localValue: string, timezone: string): string  // input form → UTC ISO
+export function utcIsoToLocalDatetime(isoValue: string, timezone: string): string    // UTC → prefill form
+export function formatInTz(date, timezone: string, opts): string               // display, timezone dinamis
+```
+
+**Pola thread prop ke Client Component** — Client Component (`EventForm`,
+`InvoicePublicClient`, `InvoiceDetailClient`, semua card component publik, dll) TIDAK bisa
+`await getTenantTimezone()` sendiri (butuh DB, server-only). Server Component pemanggil
+WAJIB fetch `tenantTimezone` sekali via `getTenantTimezone(tenantClient)` — **ingat lesson
+lama "getSettings butuh TenantDb lengkap, bukan raw db"**: simpan `const tenantClient =
+createTenantDb(slug)` dulu SEBELUM destructure `{db, schema}` — lalu teruskan sebagai prop
+`timezone`/`tenantTimezone` ke Client Component. Pola ini di-thread SANGAT DALAM di beberapa
+tempat — contoh ekstrem: `agenda/page.tsx` (arsip, fetch) → `EventArchiveCards` → `EventArchiveCardsDesign1`
+→ `EventCard` (dispatcher variant) → `EventCardGrid`/`List`/`Ringkas` → `formatEventDate` — 5
+lapis komponen, `timezone` di-thread di setiap lapis sebagai prop biasa (bukan Context, demi
+konsistensi dengan pola prop-threading yang sudah established di seluruh codebase ini).
+
+**Cakupan fix — semua titik yang MENGHITUNG (bukan cuma menampilkan) "hari ini" untuk logic
+bisnis** (pola sama bug cicilan, `new Date().toISOString().slice(0,10)` = UTC mentah):
+`createLinkedInvoice` (`packages/db/src/helpers/billing.ts`), `checkoutAction`
+(`cart/actions.ts`), `createInvoiceAction` (`finance/billing/actions.ts`) — 3 default `dueDate`
++3 hari duplikat; `confirmInvoicePaymentAction` + `verifySubmittedPaymentAction`
+(`finance/billing/actions.ts`) + `confirmRegistrationPaymentAction` +
+`confirmEventInvoicePaymentAction` (`event/actions.ts`) — 4 tanggal jurnal `recordIncome`;
+`convertInvoiceToInstallmentAction` (`cart/actions.ts`) — generalisasi hardcode WIB yang
+baru dibuat sesi sebelumnya jadi dinamis; **`event-reminder/route.ts` + `invoice-reminder/route.ts`**
+— PALING KRITIS karena cron loop SEMUA tenant aktif: `tomorrowStr` sekarang dihitung DI DALAM
+loop per-tenant (bukan sekali di luar loop) karena tiap tenant bisa beda timezone.
+
+**Cakupan fix — semua titik DISPLAY tanpa `timeZone` eksplisit atau hardcode**:
+`formatEventDateWib` (duplikat di `event/actions.ts` + `finance/billing/actions.ts`, pola
+duplikasi yang SUDAH didokumentasikan sebelumnya — "billing tidak bergantung ke modul event"
+— dipertahankan, cuma parameternya jadi dinamis), `event-card-templates.ts` (`formatEventDate`,
+dipakai SSR arsip DAN landing section, 2 rantai component terpisah: `EventArchiveCards` untuk
+`/agenda`, `EventsSection`+`EventsDesign1/2/3` untuk landing), `agenda/[slug]/page.tsx`
+(`TZ` const → dinamis), `event/acara/[id]/page.tsx` + `checkin/page.tsx` (server component),
+`api/events/[id]/certificate/[regId]/route.ts` (sertifikat PDF), plus 3 client component
+lebih rendah prioritas (`event-list-client.tsx`, `event-registration-list.tsx`,
+`event-checkin-client.tsx`) — tetap dirapikan untuk konsistensi meski risikonya lebih kecil
+(browser admin Indonesia kemungkinan besar WIB juga).
+
+**`invoice-public-client.tsx` + `invoice-detail-client.tsx`** — `formatDate`/`isOverdue`/
+`todayWib` (termasuk bagian Jadwal Cicilan yang baru dibuat sesi sebelumnya) semua diubah dari
+hardcode `"Asia/Jakarta"` jadi terima `timezone` sebagai prop baru. Page pemanggil
+(`invoice/[id]/page.tsx` publik, `finance/billing/invoice/[id]/page.tsx` admin) fetch
+`getTenantTimezone` dan teruskan.
+
+**Verifikasi**: `tsc --noEmit` dicek berkali-kali per sub-fase (bukan sekali di akhir) — total
+zero error di setiap checkpoint, di KEDUA package (`apps/web` dan `packages/db` terpisah,
+karena helper baru ditempatkan di `packages/db`). Grep akhir memastikan **nol** sisa hardcode
+`"Asia/Jakarta"` di kedua modul, dan setiap `toISOString().slice(0,10)` yang masih ada
+dikonfirmasi SATU PER SATU adalah konversi akhir dari Date yang SUDAH di-anchor via
+`anchorTodayUtc()` (aman), bukan `new Date()` mentah (yang buggy). Tidak ada migrasi DB baru —
+infrastruktur setting timezone sudah lengkap sejak awal, sesi ini murni membuatnya benar-benar
+dipakai. **Tidak bisa dites otomatis end-to-end** (perlu ganti jam sistem / timezone tenant
+sungguhan) — user diminta uji manual: buat event jam 19:00 → cek DB tersimpan sebagai jam yang
+benar, buka form edit → field jam harus tampil 19:00 lagi (bukan geser), ganti setting tenant
+ke WITA → event baru jam 19:00 harus tersimpan sebagai 11:00 UTC (19:00 WITA = UTC+8).
+
+**Technical debt yang TETAP di luar scope** (dicatat eksplisit, jangan dikira "lupa"): modul
+Surat/Letters dan modul lain di luar Event+Invoice belum diaudit sama sekali untuk pola bug
+yang sama — kandidat sesi terpisah kalau ada laporan bug tanggal/jam serupa di sana.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

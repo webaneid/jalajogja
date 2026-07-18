@@ -3,6 +3,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { eq, desc } from "drizzle-orm";
 import { EventForm } from "@/components/event/event-form";
+import { getTenantTimezone } from "@/lib/tenant-timezone";
 import type { SeoValues } from "@/components/seo/seo-panel";
 
 const DEFAULT_SEO: SeoValues = {
@@ -29,9 +30,10 @@ export default async function AcaraNewPage({
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
 
-  const [categories, activeCampaigns, activeProducts] = await Promise.all([
+  const [categories, activeCampaigns, activeProducts, tenantTimezone] = await Promise.all([
     db.select({ id: schema.eventCategories.id, name: schema.eventCategories.name })
       .from(schema.eventCategories)
       .orderBy(schema.eventCategories.sortOrder, schema.eventCategories.name),
@@ -43,6 +45,7 @@ export default async function AcaraNewPage({
       .from(schema.products)
       .where(eq(schema.products.status, "active"))
       .orderBy(schema.products.name),
+    getTenantTimezone(tenantClient),
   ]);
 
   return (
@@ -52,6 +55,7 @@ export default async function AcaraNewPage({
       categories={categories}
       activeCampaigns={activeCampaigns}
       activeProducts={activeProducts}
+      tenantTimezone={tenantTimezone}
       initialData={{
         slug:             "",
         title:            "",

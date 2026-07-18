@@ -25,6 +25,7 @@ import {
 } from "@/app/(dashboard)/app/[tenant]/event/actions";
 import type { CustomFormField, CustomFieldType } from "@/lib/event-custom-form";
 import { labelToKey, FIELD_TYPE_LABELS } from "@/lib/event-custom-form";
+import { localDatetimeToUtcIso, tzLabel } from "@/lib/tenant-timezone";
 import {
   ChevronLeft, Check, ChevronsUpDown, ImageIcon, Plus, Trash2, ChevronDown, ChevronUp,
   Pencil, GripVertical,
@@ -51,6 +52,9 @@ export type EventFormProps = {
   categories:      CategoryOption[];
   activeCampaigns: CampaignOption[];
   activeProducts:  ProductOption[];
+  // Timezone tenant aktif (dari /settings/general) — SEMUA input jam mulai/selesai/jual tiket
+  // di form ini diinterpretasikan sebagai jam DI TIMEZONE INI, bukan timezone browser admin.
+  tenantTimezone:  string;
   initialData: {
     slug:             string;
     title:            string;
@@ -335,7 +339,7 @@ function CustomFieldBuilder({
 
 // ─── EventForm ────────────────────────────────────────────────────────────────
 
-export function EventForm({ slug, eventId, categories, activeCampaigns, activeProducts, initialData }: EventFormProps) {
+export function EventForm({ slug, eventId, categories, activeCampaigns, activeProducts, tenantTimezone, initialData }: EventFormProps) {
   const router = useRouter();
 
   const [title,          setTitle]          = useState(initialData.title);
@@ -458,8 +462,12 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
       categoryId:       categoryId ?? null,
       eventType,
       status,
-      startsAt:         startsAt  || null,
-      endsAt:           endsAt    || null,
+      // Input "datetime-local" (wall-clock tanpa offset) WAJIB dikonversi ke UTC ISO string
+      // di sini — diinterpretasikan sebagai jam DI TIMEZONE TENANT (tenantTimezone), bukan
+      // timezone browser admin (keputusan dikunci). Server action tinggal `new Date(iso)`
+      // langsung, aman karena string sudah unambiguous (ada offset "Z").
+      startsAt:         startsAt  ? localDatetimeToUtcIso(startsAt, tenantTimezone) : null,
+      endsAt:           endsAt    ? localDatetimeToUtcIso(endsAt,   tenantTimezone) : null,
       location:         showLocation   ? location.trim()       || null : null,
       locationDetail:   showLocation   ? locationDetail.trim() || null : null,
       mapsUrl:          showLocation   ? mapsUrl.trim()        || null : null,
@@ -484,8 +492,8 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
         price:              isNaN(t.price) ? 0 : t.price,
         quota:              t.quota,
         isActive:           t.isActive,
-        saleStartsAt:       t.saleStartsAt || null,
-        saleEndsAt:         t.saleEndsAt   || null,
+        saleStartsAt:       t.saleStartsAt ? localDatetimeToUtcIso(t.saleStartsAt, tenantTimezone) : null,
+        saleEndsAt:         t.saleEndsAt   ? localDatetimeToUtcIso(t.saleEndsAt,   tenantTimezone) : null,
         sortOrder:          i,
         requiresMembership: t.requiresMembership,
       })),
@@ -674,9 +682,12 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
             </div>
 
             {/* Waktu */}
+            <p className="text-xs text-muted-foreground -mb-1">
+              Jam mengikuti timezone tenant: <span className="font-medium">{tzLabel(tenantTimezone)}</span>
+            </p>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="startsAt">Waktu Mulai</Label>
+                <Label htmlFor="startsAt">Waktu Mulai ({tzLabel(tenantTimezone)})</Label>
                 <Input
                   id="startsAt"
                   type="datetime-local"
@@ -685,7 +696,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="endsAt">Waktu Selesai</Label>
+                <Label htmlFor="endsAt">Waktu Selesai ({tzLabel(tenantTimezone)})</Label>
                 <Input
                   id="endsAt"
                   type="datetime-local"
@@ -1029,7 +1040,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
-                          <Label className="text-xs">Mulai Dijual</Label>
+                          <Label className="text-xs">Mulai Dijual ({tzLabel(tenantTimezone)})</Label>
                           <Input
                             type="datetime-local"
                             value={ticket.saleStartsAt ?? ""}
@@ -1038,7 +1049,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs">Berhenti Dijual</Label>
+                          <Label className="text-xs">Berhenti Dijual ({tzLabel(tenantTimezone)})</Label>
                           <Input
                             type="datetime-local"
                             value={ticket.saleEndsAt ?? ""}

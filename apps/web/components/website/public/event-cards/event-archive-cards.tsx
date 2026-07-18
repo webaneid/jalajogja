@@ -6,13 +6,14 @@ type Props = {
   design:     EventArchiveCardDesignId;
   events:     EventCardData[];
   tenantSlug: string;
+  timezone:   string;
 };
 
 // Dispatcher desain kartu arsip event — dipakai di /agenda (arsip).
 // Nambah desain baru: tambah ID di lib/event-archive-card-designs.ts + case di sini +
 // komponen event-archive-cards-design-N.tsx baru (ikuti pola Design1 — grid desktop/list mobile).
-export function EventArchiveCards({ design, events, tenantSlug }: Props) {
+export function EventArchiveCards({ design, events, tenantSlug, timezone }: Props) {
   switch (design) {
-    default: return <EventArchiveCardsDesign1 events={events} tenantSlug={tenantSlug} />;
+    default: return <EventArchiveCardsDesign1 events={events} tenantSlug={tenantSlug} timezone={timezone} />;
   }
 }

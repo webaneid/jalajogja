@@ -7,22 +7,24 @@ import { EventCard } from "./event-card";
 export function EventArchiveCardsDesign1({
   events,
   tenantSlug,
+  timezone,
 }: {
   events:     EventCardData[];
   tenantSlug: string;
+  timezone:   string;
 }) {
   return (
     <>
       {/* Desktop: Grid 3 kolom */}
       <div className="hidden md:grid grid-cols-3 gap-5">
         {events.map(e => (
-          <EventCard key={e.id} event={e} variant="grid" tenantSlug={tenantSlug} />
+          <EventCard key={e.id} event={e} variant="grid" tenantSlug={tenantSlug} timezone={timezone} />
         ))}
       </div>
       {/* Mobile: List */}
       <div className="md:hidden flex flex-col">
         {events.map(e => (
-          <EventCard key={e.id} event={e} variant="list" tenantSlug={tenantSlug} />
+          <EventCard key={e.id} event={e} variant="list" tenantSlug={tenantSlug} timezone={timezone} />
         ))}
       </div>
     </>

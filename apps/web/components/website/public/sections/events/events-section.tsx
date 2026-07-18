@@ -1,5 +1,6 @@
 import { eq, desc, and, gte, inArray } from "drizzle-orm";
 import { getSettings, type TenantDb } from "@jalajogja/db";
+import { getTenantTimezone } from "@/lib/tenant-timezone";
 import { publicUrl } from "@/lib/minio";
 import type { EventCardData } from "@/lib/event-card-templates";
 import type { EventsSectionData, EventsSectionDesignId, EventsSectionProps } from "@/lib/events-section-designs";
@@ -132,7 +133,9 @@ export async function EventsSection({ data, variant, tenantClient, tenantSlug }:
     ? (archiveDesignRaw!.design as EventArchiveCardDesignId)
     : "1";
 
-  const props: EventsSectionProps = { data, events, tenantSlug, sectionTitle, filterHref, cardDesign };
+  const timezone = await getTenantTimezone(tenantClient);
+
+  const props: EventsSectionProps = { data, events, tenantSlug, sectionTitle, filterHref, cardDesign, timezone };
 
   switch (variant) {
     case "2": return <EventsDesign2 {...props} />;

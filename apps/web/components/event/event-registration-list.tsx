@@ -52,9 +52,9 @@ function formatRupiah(n: number) {
   return "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
 }
 
-function formatDate(d: Date | null) {
+function formatDate(d: Date | null, timezone: string) {
   if (!d) return "—";
-  return new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(d));
+  return new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: timezone }).format(new Date(d));
 }
 
 // ─── EventRegistrationList ────────────────────────────────────────────────────
@@ -63,10 +63,12 @@ export function EventRegistrationList({
   slug,
   eventId,
   registrations: initialRows,
+  timezone,
 }: {
   slug:          string;
   eventId:       string;
   registrations: RegistrationRow[];
+  timezone:      string;
 }) {
   const [rows,      setRows]      = useState<RegistrationRow[]>(initialRows);
   const [search,    setSearch]    = useState("");
@@ -186,7 +188,7 @@ export function EventRegistrationList({
                     )}
                   </td>
                   <td className="px-3 py-3 hidden md:table-cell text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDate(reg.createdAt)}
+                    {formatDate(reg.createdAt, timezone)}
                   </td>
                   <td className="px-3 py-3">
                     <div className="space-y-1">

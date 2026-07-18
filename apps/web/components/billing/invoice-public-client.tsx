@@ -92,9 +92,10 @@ export type EligibleInstallmentPlanPublic = {
 };
 
 type Props = {
-  slug:    string;
-  invoice: PublicInvoiceData;
+  slug:     string;
+  invoice:  PublicInvoiceData;
   eligibleInstallmentPlan: EligibleInstallmentPlanPublic | null;
+  timezone: string;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -124,11 +125,12 @@ function formatRp(n: number) {
 // timeZone eksplisit WAJIB — komponen ini "use client", di-SSR di server (bisa TZ UTC/beda)
 // lalu di-hydrate di browser (TZ lokal visitor). Tanpa timeZone eksplisit, toLocaleDateString()
 // bisa hasilkan tanggal beda antara server-render dan client-hydration → React error #418
-// (hydration text mismatch). Semua tanggal invoice diinterpretasikan sebagai WIB, konsisten
-// dengan lokasi organisasi — bukan mengikuti timezone visitor.
-function formatDate(iso: string) {
+// (hydration text mismatch). Semua tanggal invoice diinterpretasikan sebagai timezone TENANT
+// (dari /settings/general, diteruskan sebagai prop — bukan hardcode WIB, bukan mengikuti
+// timezone visitor).
+function formatDate(iso: string, timezone: string) {
   return new Date(iso).toLocaleDateString("id-ID", {
-    day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta",
+    day: "2-digit", month: "long", year: "numeric", timeZone: timezone,
   });
 }
 
@@ -337,7 +339,7 @@ function findNextUnpaidTerm(schedules: PublicInvoiceData["installmentSchedules"]
 }
 
 // ─── InvoicePublicClient ──────────────────────────────────────────────────────
-export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan }: Props) {
+export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, timezone }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error,   setError]        = useState("");
@@ -500,7 +502,7 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan }: 
               {STATUS_LABELS[invoice.status] ?? invoice.status}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground">Dibuat {formatDate(invoice.createdAt)}</p>
+          <p className="text-sm text-muted-foreground">Dibuat {formatDate(invoice.createdAt, timezone)}</p>
         </div>
       </div>
 
@@ -524,7 +526,7 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan }: 
         {invoice.dueDate && (
           <p className="text-sm">
             <span className="text-muted-foreground">Jatuh tempo: </span>
-            {formatDate(invoice.dueDate + "T00:00:00")}
+            {formatDate(invoice.dueDate + "T00:00:00", timezone)}
           </p>
         )}
       </div>
@@ -630,7 +632,7 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan }: 
                   {line.shippedAt && (
                     <span className="ml-2 text-muted-foreground font-normal">
                       · Dikirim {new Date(line.shippedAt).toLocaleDateString("id-ID", {
-                        day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta",
+                        day: "numeric", month: "short", year: "numeric", timeZone: timezone,
                       })}
                     </span>
                   )}
@@ -710,7 +712,7 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan }: 
             {invoice.installmentSchedules.map((s) => {
               // Perbandingan string "YYYY-MM-DD" langsung, bukan Date object — hindari bug
               // timezone (dueDate vs "hari ini" browser bisa beda TZ → false "Terlambat").
-              const todayWib = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+              const todayWib = new Date().toLocaleDateString("en-CA", { timeZone: timezone });
               const isOverdue = s.status === "pending" && s.dueDate < todayWib;
               const isNext = nextUnpaidTerm?.id === s.id;
               const transferAmount = s.amount + (s.uniqueCode ?? 0);
@@ -719,7 +721,7 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan }: 
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">Termin {s.termNumber}</p>
-                      <p className="text-xs text-muted-foreground">{formatDate(s.dueDate + "T00:00:00")}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(s.dueDate + "T00:00:00", timezone)}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="tabular-nums">{formatRp(s.amount)}</span>

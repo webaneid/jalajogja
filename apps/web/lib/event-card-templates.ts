@@ -35,13 +35,15 @@ export const EVENT_TYPE_COLORS: Record<string, string> = {
   hybrid:  "bg-purple-100 text-purple-700",
 };
 
-export function formatEventDate(iso: string | null): { day: string; month: string; full: string } {
+// `timezone` WAJIB eksplisit — tanpa ini `getDate()`/`toLocaleDateString()` ikut timezone
+// proses server (biasanya UTC di VPS), event dini hari WIB bisa tampil tanggal mundur 1 hari.
+export function formatEventDate(iso: string | null, timezone: string): { day: string; month: string; full: string } {
   if (!iso) return { day: "?", month: "?", full: "TBA" };
   const d = new Date(iso);
   return {
-    day:   d.getDate().toString(),
-    month: d.toLocaleDateString("id-ID", { month: "short" }),
-    full:  d.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }),
+    day:   new Intl.DateTimeFormat("id-ID", { day: "numeric", timeZone: timezone }).format(d),
+    month: new Intl.DateTimeFormat("id-ID", { month: "short",  timeZone: timezone }).format(d),
+    full:  new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: timezone }).format(d),
   };
 }
 

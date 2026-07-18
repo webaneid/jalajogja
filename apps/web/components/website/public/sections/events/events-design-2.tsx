@@ -4,12 +4,12 @@ import { formatEventDate, formatTicketPrice, EVENT_TYPE_LABELS, EVENT_TYPE_COLOR
 import type { EventsSectionProps } from "@/lib/events-section-designs";
 import { CalendarDays, MapPin } from "lucide-react";
 
-export function EventsDesign2({ events, tenantSlug, sectionTitle, filterHref }: EventsSectionProps) {
+export function EventsDesign2({ events, tenantSlug, sectionTitle, filterHref, timezone }: EventsSectionProps) {
   if (events.length === 0) return null;
 
   const featured  = events[0]!;
   const rest      = events.slice(1, 4);
-  const date      = formatEventDate(featured.startsAt);
+  const date      = formatEventDate(featured.startsAt, timezone);
   const typeColor = EVENT_TYPE_COLORS[featured.eventType] ?? "bg-muted text-muted-foreground";
 
   return (
@@ -20,7 +20,7 @@ export function EventsDesign2({ events, tenantSlug, sectionTitle, filterHref }: 
         {/* ── MOBILE: full list ── */}
         <div className="sm:hidden divide-y divide-border">
           {events.map(e => (
-            <EventCard key={e.id} event={e} variant="list" tenantSlug={tenantSlug} />
+            <EventCard key={e.id} event={e} variant="list" tenantSlug={tenantSlug} timezone={timezone} />
           ))}
         </div>
 
@@ -78,7 +78,7 @@ export function EventsDesign2({ events, tenantSlug, sectionTitle, filterHref }: 
           {rest.length > 0 && (
             <div className="divide-y divide-border">
               {rest.map(e => (
-                <EventCard key={e.id} event={e} variant="list" tenantSlug={tenantSlug} />
+                <EventCard key={e.id} event={e} variant="list" tenantSlug={tenantSlug} timezone={timezone} />
               ))}
             </div>
           )}

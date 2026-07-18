@@ -9,6 +9,7 @@ import { chromium } from "playwright";
 import { getTenantAccess } from "@/lib/tenant";
 import { uploadFile, publicUrl, buildPath, ensureBucket } from "@/lib/minio";
 import { notifyWa } from "@/lib/wa-notify";
+import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone";
 
 // ─── HTML Builder sertifikat ──────────────────────────────────────────────────
 
@@ -254,11 +255,10 @@ export async function POST(
   const orgName   = (generalSettings["site_name"] as string | undefined) ?? tenantRow?.name ?? "";
   const orgLogo   = (generalSettings["logo_url"]  as string | undefined) ?? null;
 
-  // Format tanggal event
+  // Format tanggal event — timezone dinamis dari setting tenant, bukan timezone server.
+  const tenantTimezone = await getTenantTimezone(tenantClient);
   const eventDate = event.startsAt
-    ? new Intl.DateTimeFormat("id-ID", {
-        day: "numeric", month: "long", year: "numeric",
-      }).format(new Date(event.startsAt))
+    ? formatInTz(event.startsAt, tenantTimezone, { day: "numeric", month: "long", year: "numeric" })
     : "";
 
   const html = buildCertificateHtml({

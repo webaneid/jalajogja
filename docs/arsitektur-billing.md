@@ -611,6 +611,85 @@ dijalankan di VPS SEBELUM deploy kode.
 **Belum**: Fase C (cron reminder H-1 jatuh tempo termin + WA template baru) — tetap deferred,
 rencana lama masih relevan apa adanya.
 
+### 4 Bug Ditemukan Saat Testing Manual (2026-07-19) — Semua Sudah Difix
+
+Setelah kode di atas "SELESAI" dari sisi implementasi, testing manual di dev machine lokal
+menemukan 4 bug nyata (di luar bug data lokal terpisah, lihat bagian "Bug Lokal — Bukan Bug
+Kode" di bawah). Lesson lengkap: CLAUDE.md "[2026-07-19] Fitur Cicilan — 4 Bug Ditemukan Saat
+Testing Manual".
+
+1. **Termin 1 langsung "Terlambat" begitu invoice baru saja dikonversi** —
+   `convertInvoiceToInstallmentAction` menghitung "hari ini" via `new Date().toISOString()`
+   (UTC murni). WIB = UTC+7, jadi jam 00:00–06:59 WIB masih tanggal KEMARIN di UTC — termin 1
+   ke-generate dengan `due_date` = kemarin, langsung overdue. Fix: anchor ke tanggal kalender
+   WIB dulu (`toLocaleDateString("en-CA", {timeZone:"Asia/Jakarta"})`), baru hitung offset
+   termin berikutnya via `setUTCDate` dari anchor UTC-midnight itu.
+2. **Badge "Terlambat" bisa salah tergantung timezone browser/server** — perbandingan lama
+   `new Date(dueDate) < new Date(new Date().toDateString())` mencampur Date object dari
+   sumber timezone berbeda. Fix: bandingkan STRING `"YYYY-MM-DD"` langsung (`s.dueDate <
+   todayWib`), bukan Date object — di kedua komponen (`invoice-public-client.tsx` dan
+   `invoice-detail-client.tsx`).
+3. **QRIS dinamis terkunci ke `invoice.remaining` (sisa SELURUH invoice), bukan nominal
+   termin** — customer scan QRIS untuk bayar 1 termin malah dikunci ke total semua termin
+   yang belum lunas. `PaymentMethodCard` sekarang terima prop `payAmount` eksplisit (ikut
+   nominal yang sedang diketik di field "Nominal Transfer"), bukan hardcode
+   `invoice.remaining`.
+4. **Field "Nominal Transfer" (dan akibatnya QRIS di atas) nyangkut ke nominal LAMA setelah
+   invoice baru saja dikonversi jadi cicilan** — `payAmount` di-`useState(defaultPayAmount)`
+   cuma dihitung sekali saat komponen mount. `router.refresh()` setelah konversi mengirim
+   prop `invoice` baru ke komponen yang SAMA (tanpa remount) — state lama tetap nyangkut ke
+   default sebelum-cicilan. Fix: `useEffect` yang sync `payAmount` ke `defaultPayAmount`
+   terbaru, tapi HANYA kalau `payAmount` masih persis sama dengan default sebelumnya (supaya
+   edit manual customer tidak ketimpa).
+
+**Pola umum dari bug #1+#2**: setiap kali kode MENGHITUNG (bukan cuma menampilkan) tanggal
+"hari ini" atau membandingkan tanggal untuk logic bisnis (bukan display biasa), WAJIB anchor
+ke kalender WIB — `new Date().toISOString()` mentah SELALU salah kalau dieksekusi jam
+00:00–06:59 WIB. Bug ini KEMUNGKINAN BESAR juga ada di tempat lain di codebase (grep
+`toISOString().slice(0, 10)` untuk "hari ini"/offset tanggal menemukan ~12 titik lain,
+termasuk default `dueDate` invoice +3 hari di `createLinkedInvoice` dan tanggal jurnal
+keuangan) — BELUM diaudit/difix di sesi ini, di luar scope, dicatat sebagai technical debt.
+
+**Pola umum dari bug #4**: komponen client dengan state yang di-inisialisasi dari props lewat
+`useState(propDerivedValue)` TIDAK otomatis ikut berubah kalau prop berubah tanpa remount
+(`router.refresh()` tidak remount, cuma kirim prop baru). Kalau state itu harus selalu
+mencerminkan prop terbaru (kecuali user sudah mengedit manual), sync via `useEffect` yang
+membandingkan ke nilai default SEBELUMNYA (bukan nilai state saat ini) — pola yang sama
+persis dengan cara membedakan "sudah diedit" vs "belum diedit" di form manapun.
+
+### Bug Lokal — Bukan Bug Kode
+
+Saat testing pertama kali di dev machine lokal, `installment_plans`/`installment_schedules`
+di database lokal ternyata masih berstruktur SANGAT LAMA — kolom `down_payment_pct`,
+`installment_number`, `paid_amount` per-termin, dll — sama sekali beda dari skema yang
+dipakai kode saat ini (`source_id`, `total_amount`, `term_number`, `payment_id`). Ini bukan
+bug kode — DB lokal itu dibuat dari versi `create-tenant-schema.ts` yang jauh lebih lama dan
+tidak pernah di-refresh, dan tidak ada migration yang men-transform struktur lama tersebut
+(migration 0033 cuma `ADD COLUMN IF NOT EXISTS`, tidak menyentuh base structure). Fix:
+kedua tabel di-`DROP`+`CREATE ulang` manual sesuai DDL current di `create-tenant-schema.ts`
+(tabel kosong, aman). **Kalau dev lain mengalami error serupa** (`column X does not exist`
+pada tabel yang harusnya sudah lama ada), cek dulu apakah strukturnya benar-benar legacy
+seperti ini sebelum asumsi cuma kurang migration `ADD COLUMN`.
+
+### Timezone — Semua Perhitungan Tanggal Mengikuti Setting Tenant (SELESAI, 2026-07-19)
+
+> Detail lengkap (root cause, desain helper, cakupan fix di modul Event+Invoice): CLAUDE.md
+> "[2026-07-19] Arsitektur Timezone Tenant — Akhirnya Benar-Benar Dipakai".
+
+Audit lanjutan dari 4 bug cicilan di atas menemukan pola yang sama berulang di banyak tempat:
+default `dueDate` invoice (+3 hari, 3 lokasi duplikat: `createLinkedInvoice`, `checkoutAction`,
+`createInvoiceAction`), tanggal jurnal `recordIncome` saat konfirmasi/verifikasi pembayaran,
+dan cron `invoice-reminder` (hitung "besok" HARUS per-tenant di dalam loop, bukan sekali di
+luar loop — tiap tenant bisa beda timezone). Semua diganti dari `new Date().toISOString()`
+(UTC mentah) ke helper `anchorTodayUtc(tenantTimezone)`/`todayInTz(tenantTimezone)` di
+`packages/db/src/helpers/tenant-timezone.ts` (re-export via `@/lib/tenant-timezone` di
+apps/web). `convertInvoiceToInstallmentAction` (yang sebelumnya hardcode `"Asia/Jakarta"`)
+ikut digeneralisasi baca setting tenant yang sesungguhnya.
+
+`invoice-public-client.tsx` + `invoice-detail-client.tsx` — `formatDate`/`isOverdue`/
+`todayWib` (termasuk bagian Jadwal Cicilan) sekarang terima `timezone` sebagai prop dari page
+pemanggil (bukan hardcode), konsisten dengan setting `/settings/general` tenant.
+
 ---
 
 ## Server Actions (billing/actions.ts)

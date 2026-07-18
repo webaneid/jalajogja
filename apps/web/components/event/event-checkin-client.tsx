@@ -28,9 +28,11 @@ type RegistrationItem = {
 export function EventCheckinClient({
   slug,
   registrations: initialRows,
+  timezone,
 }: {
   slug:          string;
   registrations: RegistrationItem[];
+  timezone:      string;
 }) {
   const [rows,   setRows]   = useState<RegistrationItem[]>(initialRows);
   const [search, setSearch] = useState("");
@@ -158,7 +160,7 @@ export function EventCheckinClient({
                 </div>
                 {isAttended && reg.checkedInAt && (
                   <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
-                    Hadir {new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit" }).format(new Date(reg.checkedInAt))}
+                    Hadir {new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: timezone }).format(new Date(reg.checkedInAt))}
                   </p>
                 )}
               </div>

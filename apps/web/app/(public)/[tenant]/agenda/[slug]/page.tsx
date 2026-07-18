@@ -19,6 +19,7 @@ import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 import { EventMobileTicketBar } from "@/components/event/event-mobile-ticket-bar";
+import { getTenantTimezone, tzLabel } from "@/lib/tenant-timezone";
 
 type BankAccount = {
   id: string;
@@ -35,27 +36,26 @@ type QrisAccount = {
   categories: string[];
 };
 
-const TZ = "Asia/Jakarta";
-
-function fmtTime(d: Date) {
-  return new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TZ }).format(d);
+function fmtTime(d: Date, timezone: string) {
+  return new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: timezone }).format(d);
 }
 
 // Tanggal pintar: hari sama → jam range; bulan sama → hari-hari range; beda bulan → full range
-function formatEventDateRange(startsAt: Date | null, endsAt: Date | null): string {
+function formatEventDateRange(startsAt: Date | null, endsAt: Date | null, timezone: string): string {
   if (!startsAt) return "—";
 
   const s = new Date(startsAt);
   const e = endsAt ? new Date(endsAt) : null;
+  const label = tzLabel(timezone);
 
   const opts = (o: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat("id-ID", { ...o, timeZone: TZ });
+    new Intl.DateTimeFormat("id-ID", { ...o, timeZone: timezone });
 
   const sDateFull = opts({ weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(s);
 
-  if (!e) return `${sDateFull}, Pukul ${fmtTime(s)} WIB`;
+  if (!e) return `${sDateFull}, Pukul ${fmtTime(s, timezone)} ${label}`;
 
-  // Bandingkan komponen tanggal di timezone WIB
+  // Bandingkan komponen tanggal di timezone tenant
   const [sDay, sMonth, sYear] = [
     opts({ day: "numeric" }).format(s),
     opts({ month: "long"  }).format(s),
@@ -67,19 +67,19 @@ function formatEventDateRange(startsAt: Date | null, endsAt: Date | null): strin
     opts({ year: "numeric" }).format(e),
   ];
 
-  const sTimeStr = fmtTime(s);
-  const eTimeStr = fmtTime(e);
+  const sTimeStr = fmtTime(s, timezone);
+  const eTimeStr = fmtTime(e, timezone);
 
   if (sDay === eDay && sMonth === eMonth && sYear === eYear) {
     // Hari yang sama
-    return `${sDateFull}, Pukul ${sTimeStr} - ${eTimeStr} WIB`;
+    return `${sDateFull}, Pukul ${sTimeStr} - ${eTimeStr} ${label}`;
   }
 
   if (sMonth === eMonth && sYear === eYear) {
     // Beda hari, bulan sama
     const sWeekday = opts({ weekday: "long" }).format(s);
     const eWeekday = opts({ weekday: "long" }).format(e);
-    return `${sWeekday} - ${eWeekday}, ${sDay} - ${eDay} ${sMonth} ${sYear}, Pukul ${sTimeStr} - ${eTimeStr} WIB`;
+    return `${sWeekday} - ${eWeekday}, ${sDay} - ${eDay} ${sMonth} ${sYear}, Pukul ${sTimeStr} - ${eTimeStr} ${label}`;
   }
 
   // Beda bulan
@@ -167,6 +167,7 @@ export default async function PublicEventPage({
 
   const tenantClient = createTenantDb(tenantSlug);
   const { db: tenantDb, schema } = tenantClient;
+  const tenantTimezone = await getTenantTimezone(tenantClient);
 
   // Fetch event by slug — hanya yang published
   const [event] = await tenantDb
@@ -652,7 +653,7 @@ export default async function PublicEventPage({
       )}
       <div className="flex items-start gap-2.5">
         <CalendarDays className="h-4 w-4 mt-0.5 shrink-0" />
-        <span>{formatEventDateRange(event.startsAt, event.endsAt)}</span>
+        <span>{formatEventDateRange(event.startsAt, event.endsAt, tenantTimezone)}</span>
       </div>
       {(event.eventType === "offline" || event.eventType === "hybrid") && event.location && (
         <div className="flex items-start gap-2.5">

@@ -9,6 +9,7 @@ import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import type { Metadata }      from "next";
 import { CalendarDays }       from "lucide-react";
+import { getTenantTimezone }  from "@/lib/tenant-timezone";
 
 export const revalidate = 60;
 
@@ -36,6 +37,7 @@ export default async function AgendaArchivePage({
 
   const tenantClient             = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
+  const tenantTimezone           = await getTenantTimezone(tenantClient);
 
   // Resolve filter kategori
   let categoryId: string | null = null;
@@ -184,7 +186,7 @@ export default async function AgendaArchivePage({
             <p className="text-sm">Belum ada event{!showAll ? " mendatang" : ""}.</p>
           </div>
         ) : (
-          <EventArchiveCards design={archiveDesign} events={events} tenantSlug={slug} />
+          <EventArchiveCards design={archiveDesign} events={events} tenantSlug={slug} timezone={tenantTimezone} />
         )}
       </div>
     </div>

@@ -38,10 +38,10 @@ const TYPE_MAP: Record<string, string> = {
   hybrid:  "Hybrid",
 };
 
-function formatDate(d: Date | null) {
+function formatDate(d: Date | null, timezone: string) {
   if (!d) return "-";
   return new Intl.DateTimeFormat("id-ID", {
-    day: "numeric", month: "short", year: "numeric",
+    day: "numeric", month: "short", year: "numeric", timeZone: timezone,
   }).format(new Date(d));
 }
 
@@ -59,7 +59,7 @@ export function CreateEventButton({ slug }: { slug: string }) {
 
 // ─── EventTable ───────────────────────────────────────────────────────────────
 
-export function EventTable({ slug, events: initialEvents }: { slug: string; events: Event[] }) {
+export function EventTable({ slug, events: initialEvents, timezone }: { slug: string; events: Event[]; timezone: string }) {
   const [events,  setEvents]  = useState<Event[]>(initialEvents);
   const [search,  setSearch]  = useState("");
   const [delId,   setDelId]   = useState<string | null>(null);
@@ -134,7 +134,7 @@ export function EventTable({ slug, events: initialEvents }: { slug: string; even
                       {TYPE_MAP[event.eventType] ?? event.eventType}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                      {formatDate(event.startsAt)}
+                      {formatDate(event.startsAt, timezone)}
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={st.variant}>{st.label}</Badge>

@@ -689,3 +689,26 @@ destructure `variant`/`onVariantChange`, jadi admin tidak pernah bisa memilih "E
 picker, pola identik) karena secara langsung melayani tujuan "berlaku untuk semua card design" —
 kalau tidak, admin tetap tidak bisa memanfaatkan registry 3-desain section Event yang sudah lama
 ada.
+
+### Timezone — Semua Input & Tampilan Jam Mengikuti Setting Tenant (SELESAI, 2026-07-19)
+
+> Detail lengkap (root cause, desain helper, cakupan fix): CLAUDE.md
+> "[2026-07-19] Arsitektur Timezone Tenant — Akhirnya Benar-Benar Dipakai".
+
+Bug kritis ditemukan: `EventForm` kirim string `datetime-local` mentah (tanpa offset) ke server
+action, yang langsung `new Date(string)` — di server (biasanya UTC), ini bisa menggeser jam
+event **7+ jam** dari yang dimaksud admin. Semua field waktu (`starts_at`, `ends_at`,
+`sale_starts_at`, `sale_ends_at`) rawan bug ini.
+
+**Fix**: input form dikonversi ke UTC ISO via `localDatetimeToUtcIso(value, tenantTimezone)`
+SEBELUM dikirim ke server (di client, `EventForm.buildData()`) — diinterpretasikan sesuai
+timezone yang di-setting tenant di `/settings/general` (WIB/WITA/WIT/UTC), BUKAN timezone
+browser admin. Form edit prefill via `utcIsoToLocalDatetime()` kebalikannya. Semua tampilan
+tanggal/jam event (kartu publik, detail admin, check-in, sertifikat, cron reminder) juga
+diubah dari hardcode `"Asia/Jakarta"` jadi dinamis mengikuti setting tenant, di-thread sebagai
+prop `timezone` dari server page ke seluruh rantai komponen (termasuk 5-lapis
+`EventArchiveCards` → ... → `EventCard` → `EventCardGrid`).
+
+Helper terpusat: `packages/db/src/helpers/tenant-timezone.ts` (re-export dari
+`@/lib/tenant-timezone` di apps/web) — `getTenantTimezone`, `localDatetimeToUtcIso`,
+`utcIsoToLocalDatetime`, `formatInTz`, `todayInTz`, `anchorTodayUtc`.

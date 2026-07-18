@@ -2,8 +2,8 @@ import type { EventCardData } from "@/lib/event-card-templates";
 import { formatEventDate, formatTicketPrice, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS } from "@/lib/event-card-templates";
 import { MapPin } from "lucide-react";
 
-export function EventCardList({ event, tenantSlug }: { event: EventCardData; tenantSlug: string }) {
-  const date      = formatEventDate(event.startsAt);
+export function EventCardList({ event, tenantSlug, timezone }: { event: EventCardData; tenantSlug: string; timezone: string }) {
+  const date      = formatEventDate(event.startsAt, timezone);
   const typeColor = EVENT_TYPE_COLORS[event.eventType] ?? "bg-muted text-muted-foreground";
 
   return (

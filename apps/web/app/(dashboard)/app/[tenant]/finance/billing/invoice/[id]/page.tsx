@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { getInvoiceDetailAction } from "../../actions";
 import { InvoiceDetailClient } from "@/components/keuangan/billing/invoice-detail-client";
+import { createTenantDb } from "@jalajogja/db";
+import { getTenantTimezone } from "@/lib/tenant-timezone";
 
 export default async function BillingInvoiceDetailPage({
   params,
@@ -14,7 +16,10 @@ export default async function BillingInvoiceDetailPage({
   const access               = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
 
-  const result = await getInvoiceDetailAction(slug, id);
+  const [result, tenantTimezone] = await Promise.all([
+    getInvoiceDetailAction(slug, id),
+    getTenantTimezone(createTenantDb(slug)),
+  ]);
   if (!result.success) notFound();
 
   return (
@@ -29,7 +34,7 @@ export default async function BillingInvoiceDetailPage({
         </Link>
       </div>
 
-      <InvoiceDetailClient slug={slug} invoice={result.data} />
+      <InvoiceDetailClient slug={slug} invoice={result.data} timezone={tenantTimezone} />
     </div>
   );
 }

@@ -30,4 +30,5 @@ export type EventsSectionProps = {
   sectionTitle: string;
   filterHref:   string;
   cardDesign:   EventArchiveCardDesignId;   // dipakai HANYA oleh EventsDesign1 — ikut Desain Kartu Arsip
+  timezone:     string;                     // timezone tenant aktif, untuk formatEventDate/EventCard
 };

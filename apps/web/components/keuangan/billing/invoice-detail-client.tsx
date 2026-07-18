@@ -16,8 +16,9 @@ import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/e
 import { compressImage } from "@/lib/client-image-compress";
 
 type Props = {
-  slug:    string;
-  invoice: InvoiceDetail;
+  slug:     string;
+  invoice:  InvoiceDetail;
+  timezone: string;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -50,11 +51,12 @@ function formatRp(n: number) {
 
 // timeZone eksplisit WAJIB — komponen ini "use client", rentan hydration mismatch (React
 // error #418) kalau TZ server dan browser beda. Lihat komentar sama di invoice-public-client.tsx.
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta" });
+// timezone dinamis dari prop (setting tenant), bukan hardcode WIB.
+function formatDate(iso: string, timezone: string) {
+  return new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric", timeZone: timezone });
 }
 
-export function InvoiceDetailClient({ slug, invoice }: Props) {
+export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error,   setError]        = useState("");
@@ -307,7 +309,7 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
               {STATUS_LABELS[invoice.status] ?? invoice.status}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground">Dibuat {formatDate(invoice.createdAt)}</p>
+          <p className="text-sm text-muted-foreground">Dibuat {formatDate(invoice.createdAt, timezone)}</p>
         </div>
       </div>
 
@@ -323,7 +325,7 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
         {invoice.dueDate && (
           <p className="text-sm">
             <span className="text-muted-foreground">Jatuh tempo: </span>
-            {formatDate(invoice.dueDate + "T00:00:00")}
+            {formatDate(invoice.dueDate + "T00:00:00", timezone)}
           </p>
         )}
       </div>
@@ -427,7 +429,7 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
             {invoice.installmentSchedules.map((s) => {
               // Perbandingan string "YYYY-MM-DD" langsung, bukan Date object — hindari bug
               // timezone (dueDate vs "hari ini" browser bisa beda TZ → false "Terlambat").
-              const todayWib = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+              const todayWib = new Date().toLocaleDateString("en-CA", { timeZone: timezone });
               const isOverdue = s.status === "pending" && s.dueDate < todayWib;
               const isNext = nextUnpaidTerm?.id === s.id;
               return (
@@ -439,7 +441,7 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                         <span className="ml-2 text-xs font-mono text-muted-foreground">kode {s.uniqueCode}</span>
                       )}
                     </p>
-                    <p className="text-xs text-muted-foreground">{formatDate(s.dueDate)}</p>
+                    <p className="text-xs text-muted-foreground">{formatDate(s.dueDate, timezone)}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="tabular-nums">{formatRp(s.amount)}</span>
@@ -472,7 +474,7 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                       {METHOD_LABELS[p.method] ?? p.method}
                       {p.payerBank && ` · ${p.payerBank}`}
                       {p.payerName && ` · a.n. ${p.payerName}`}
-                      {" · "}{formatDate(p.createdAt)}
+                      {" · "}{formatDate(p.createdAt, timezone)}
                     </p>
                     {p.payerNote && (
                       <p className="text-xs text-muted-foreground italic mt-0.5">{p.payerNote}</p>
@@ -916,7 +918,7 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                     Resi: <span className="font-mono font-medium">{sl.trackingNumber}</span>
                     {sl.shippedAt && (
                       <span className="ml-2 text-muted-foreground">
-                        · Dikirim {new Date(sl.shippedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" })}
+                        · Dikirim {new Date(sl.shippedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: timezone })}
                       </span>
                     )}
                   </p>

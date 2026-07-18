@@ -3,8 +3,8 @@ import { formatEventDate, formatTicketPrice } from "@/lib/event-card-templates";
 import { CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function EventCardRingkas({ event, tenantSlug, className }: { event: EventCardData; tenantSlug: string; className?: string }) {
-  const date = formatEventDate(event.startsAt);
+export function EventCardRingkas({ event, tenantSlug, className, timezone }: { event: EventCardData; tenantSlug: string; className?: string; timezone: string }) {
+  const date = formatEventDate(event.startsAt, timezone);
 
   return (
     <a

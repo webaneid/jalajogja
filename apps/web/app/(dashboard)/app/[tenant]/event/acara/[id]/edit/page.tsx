@@ -4,6 +4,7 @@ import { redirect, notFound } from "next/navigation";
 import { eq, desc } from "drizzle-orm";
 import { publicUrl } from "@/lib/minio";
 import { EventForm } from "@/components/event/event-form";
+import { getTenantTimezone, utcIsoToLocalDatetime } from "@/lib/tenant-timezone";
 import type { CustomFormField } from "@/lib/event-custom-form";
 import type { SeoValues } from "@/components/seo/seo-panel";
 
@@ -16,9 +17,10 @@ export default async function AcaraEditPage({
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
 
-  const [[event], categories, tickets, activeCampaigns, activeProducts] = await Promise.all([
+  const [[event], categories, tickets, activeCampaigns, activeProducts, tenantTimezone] = await Promise.all([
     db.select().from(schema.events).where(eq(schema.events.id, eventId)).limit(1),
     db.select({ id: schema.eventCategories.id, name: schema.eventCategories.name })
       .from(schema.eventCategories)
@@ -35,6 +37,7 @@ export default async function AcaraEditPage({
       .from(schema.products)
       .where(eq(schema.products.status, "active"))
       .orderBy(schema.products.name),
+    getTenantTimezone(tenantClient),
   ]);
 
   if (!event) notFound();
@@ -56,6 +59,7 @@ export default async function AcaraEditPage({
       categories={categories}
       activeCampaigns={activeCampaigns}
       activeProducts={activeProducts}
+      tenantTimezone={tenantTimezone}
       initialData={{
         slug:             event.slug,
         title:            event.title,
@@ -64,10 +68,10 @@ export default async function AcaraEditPage({
         eventType:        event.eventType         as "offline" | "online" | "hybrid",
         status:           event.status            as "draft" | "published" | "cancelled" | "completed",
         startsAt:         event.startsAt
-          ? new Date(event.startsAt).toISOString().slice(0, 16)
+          ? utcIsoToLocalDatetime(event.startsAt.toISOString(), tenantTimezone)
           : null,
         endsAt:           event.endsAt
-          ? new Date(event.endsAt).toISOString().slice(0, 16)
+          ? utcIsoToLocalDatetime(event.endsAt.toISOString(), tenantTimezone)
           : null,
         location:         event.location          ?? "",
         locationDetail:   event.locationDetail    ?? "",
@@ -95,10 +99,10 @@ export default async function AcaraEditPage({
           quota:              t.quota          ?? null,
           isActive:           t.isActive,
           saleStartsAt:       t.saleStartsAt
-            ? new Date(t.saleStartsAt).toISOString().slice(0, 16)
+            ? utcIsoToLocalDatetime(t.saleStartsAt.toISOString(), tenantTimezone)
             : null,
           saleEndsAt:         t.saleEndsAt
-            ? new Date(t.saleEndsAt).toISOString().slice(0, 16)
+            ? utcIsoToLocalDatetime(t.saleEndsAt.toISOString(), tenantTimezone)
             : null,
           sortOrder:          t.sortOrder,
           requiresMembership: t.requiresMembership,

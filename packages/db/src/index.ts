@@ -44,6 +44,19 @@ export {
   type EligibleInstallmentPlan,
 } from "./helpers/billing";
 
+// Timezone tenant — satu sumber kebenaran untuk Event, Invoice/Billing, cron. Lihat
+// packages/db/src/helpers/tenant-timezone.ts untuk penjelasan kenapa ditempatkan di sini
+// (bukan apps/web/lib) — createLinkedInvoice juga memakainya.
+export {
+  getTenantTimezone,
+  tzLabel,
+  todayInTz,
+  anchorTodayUtc,
+  localDatetimeToUtcIso,
+  utcIsoToLocalDatetime,
+  formatInTz,
+} from "./helpers/tenant-timezone";
+
 // Identity resolution — lookup profile/member dari phone/email/session
 export {
   resolveIdentity,

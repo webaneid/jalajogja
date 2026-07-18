@@ -3,6 +3,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { desc } from "drizzle-orm";
 import { CreateEventButton, EventTable } from "@/components/event/event-list-client";
+import { getTenantTimezone } from "@/lib/tenant-timezone";
 
 export default async function AcaraListPage({
   params,
@@ -13,7 +14,9 @@ export default async function AcaraListPage({
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
+  const tenantTimezone = await getTenantTimezone(tenantClient);
 
   const events = await db
     .select({
@@ -42,7 +45,7 @@ export default async function AcaraListPage({
         <CreateEventButton slug={slug} />
       </div>
 
-      <EventTable slug={slug} events={events} />
+      <EventTable slug={slug} events={events} timezone={tenantTimezone} />
     </div>
   );
 }

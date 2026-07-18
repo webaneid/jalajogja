@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { CalendarDays } from "lucide-react";
 import { EventCheckinClient } from "@/components/event/event-checkin-client";
+import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone";
 
 export default async function EventCheckinPage({
   params,
@@ -15,7 +16,9 @@ export default async function EventCheckinPage({
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
+  const tenantTimezone = await getTenantTimezone(tenantClient);
 
   const [[event], tickets] = await Promise.all([
     db
@@ -58,12 +61,9 @@ export default async function EventCheckinPage({
     checkedInAt:        r.checkedInAt ?? null,
   }));
 
-  const formatDate = (d: Date | null) => {
-    if (!d) return "";
-    return new Intl.DateTimeFormat("id-ID", {
-      weekday: "long", day: "numeric", month: "long", year: "numeric",
-    }).format(new Date(d));
-  };
+  const formatDate = (d: Date | null) => formatInTz(d, tenantTimezone, {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
 
   return (
     <div className="flex flex-col h-full">
@@ -89,7 +89,7 @@ export default async function EventCheckinPage({
       </div>
 
       <main className="flex-1 overflow-y-auto p-6">
-        <EventCheckinClient slug={slug} registrations={registrations} />
+        <EventCheckinClient slug={slug} registrations={registrations} timezone={tenantTimezone} />
       </main>
     </div>
   );

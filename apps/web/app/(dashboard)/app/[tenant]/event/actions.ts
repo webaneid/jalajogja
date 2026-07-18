@@ -10,14 +10,14 @@ import { headers, cookies } from "next/headers";
 import { normalizePhone } from "@/lib/phone";
 import type { CustomFormField } from "@/lib/event-custom-form";
 import { notifyWa, waAppUrl } from "@/lib/wa-notify";
+import { getTenantTimezone, formatInTz, tzLabel, todayInTz } from "@/lib/tenant-timezone";
 
-function formatEventDateWib(date: Date | null): string {
+function formatEventDateWib(date: Date | null, timezone: string): string {
   if (!date) return "-";
-  return `${date.toLocaleString("id-ID", {
-    timeZone: "Asia/Jakarta",
+  return `${formatInTz(date, timezone, {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
     hour: "2-digit", minute: "2-digit",
-  })} WIB`;
+  })} ${tzLabel(timezone)}`;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -735,14 +735,17 @@ export async function registerForEventAction(
     // payment confirm) karena ini satu-satunya touchpoint untuk alur direct (bukan cart) —
     // tiket berbayar via cart sudah dapat invoice_created+payment_confirmed generik.
     void (async () => {
-      const eventUrl = await waAppUrl(slug, `/agenda/${event.slug}`);
+      const [eventUrl, tenantTimezone] = await Promise.all([
+        waAppUrl(slug, `/agenda/${event.slug}`),
+        getTenantTimezone(tenantDb),
+      ]);
       void notifyWa({
         slug, tenantDb, event: "event_registered",
         phone: normalizePhone(data.attendeePhone),
         vars: {
           name:      data.attendeeName.trim(),
           eventName: event.title,
-          eventDate: formatEventDateWib(event.startsAt),
+          eventDate: formatEventDateWib(event.startsAt, tenantTimezone),
           location:  event.location ?? "-",
           regNumber: regNumber,
           eventUrl,
@@ -1027,9 +1030,10 @@ export async function confirmRegistrationPaymentAction(
   const amount = parseFloat(String(payment.amount));
 
   try {
+    const tenantTimezone = await getTenantTimezone(tenantDb);
     const txNumber = await generateFinancialNumber(tenantDb, "journal");
     const transaction = await recordIncome(tenantDb, {
-      date:            new Date().toISOString().slice(0, 10),
+      date:            todayInTz(tenantTimezone),
       description:     `Pembayaran tiket event ${payment.number}`,
       referenceNumber: txNumber,
       createdBy:       access.userId,
@@ -1128,6 +1132,7 @@ export async function confirmEventInvoicePaymentAction(
   }
 
   try {
+    const tenantTimezone = await getTenantTimezone(tenantDb);
     const txNumber = await generateFinancialNumber(tenantDb, "journal");
 
     await db.transaction(async (tx) => {
@@ -1143,7 +1148,7 @@ export async function confirmEventInvoicePaymentAction(
 
       if (newStatus === "paid") {
         await recordIncome(tenantDb, {
-          date:            new Date().toISOString().slice(0, 10),
+          date:            todayInTz(tenantTimezone),
           description:     `Pembayaran tiket event - ${inv.invoiceNumber}`,
           referenceNumber: txNumber,
           createdBy:       access.tenantUser.id,
