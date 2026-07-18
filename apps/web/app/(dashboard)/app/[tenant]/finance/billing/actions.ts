@@ -230,20 +230,46 @@ export async function cancelInvoiceAction(
 
   if (!inv) return { success: false, error: "Invoice tidak ditemukan." };
   if (inv.status === "paid") return { success: false, error: "Invoice yang sudah lunas tidak bisa dibatalkan." };
+  if (inv.status === "waiting_verification")
+    return { success: false, error: "Ada bukti pembayaran yang sedang menunggu verifikasi — verifikasi atau tolak dulu sebelum membatalkan invoice." };
   if (parseFloat(String(inv.paidAmount)) > 0)
     return { success: false, error: "Invoice yang sudah ada pembayaran tidak bisa dibatalkan langsung. Refund dulu pembayarannya." };
 
-  await db
-    .update(schema.invoices)
-    .set({
-      status:    "cancelled",
-      notes:     reason.trim() || null,
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.invoices.id, invoiceId));
+  try {
+    await db.transaction(async (tx) => {
+      // Lock + re-cek status DI DALAM transaction — cegah race dengan customer yang submit
+      // bukti pembayaran (submitPaymentProofAction) tepat di antara SELECT dan UPDATE di atas
+      // (pola sama dengan lock invoice di confirmInvoicePaymentAction/verifySubmittedPaymentAction).
+      const [lockedInv] = await tx
+        .select({ status: schema.invoices.status, paidAmount: schema.invoices.paidAmount })
+        .from(schema.invoices)
+        .where(sql`${schema.invoices.id} = ${invoiceId} FOR UPDATE`)
+        .limit(1);
+      if (!lockedInv) throw new Error("Invoice tidak ditemukan.");
+      if (lockedInv.status === "paid") throw new Error("Invoice yang sudah lunas tidak bisa dibatalkan.");
+      if (lockedInv.status === "waiting_verification")
+        throw new Error("Ada bukti pembayaran yang sedang menunggu verifikasi — verifikasi atau tolak dulu sebelum membatalkan invoice.");
+      if (parseFloat(String(lockedInv.paidAmount)) > 0)
+        throw new Error("Invoice yang sudah ada pembayaran tidak bisa dibatalkan langsung. Refund dulu pembayarannya.");
 
-  revalidateBilling(slug);
-  return { success: true, data: undefined };
+      await tx
+        .update(schema.invoices)
+        .set({
+          status:    "cancelled",
+          notes:     reason.trim() || null,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.invoices.id, invoiceId));
+    });
+
+    revalidateBilling(slug);
+    return { success: true, data: undefined };
+  } catch (err) {
+    if (err instanceof Error && (err.message.includes("lunas") || err.message.includes("menunggu verifikasi") || err.message.includes("Refund")))
+      return { success: false, error: err.message };
+    console.error("[cancelInvoiceAction]", err);
+    return { success: false, error: "Gagal membatalkan invoice." };
+  }
 }
 
 // ─── confirmInvoicePaymentAction ──────────────────────────────────────────────
@@ -556,6 +582,7 @@ export async function rejectPaymentAction(
       customerName:  schema.invoices.customerName,
       customerPhone: schema.invoices.customerPhone,
       invoiceNumber: schema.invoices.invoiceNumber,
+      paidAmount:    schema.invoices.paidAmount,
     })
     .from(schema.invoicePayments)
     .innerJoin(schema.invoices, eq(schema.invoices.id, schema.invoicePayments.invoiceId))
@@ -564,6 +591,16 @@ export async function rejectPaymentAction(
 
   try {
     await db.transaction(async (tx) => {
+      // Lock payment DULU — cegah race dengan verifySubmittedPaymentAction (atau tolak ganda)
+      // pada payment yang sama (klik ganda, dua admin/tab berbeda).
+      const [lockedPayment] = await tx
+        .select({ status: schema.payments.status })
+        .from(schema.payments)
+        .where(sql`${schema.payments.id} = ${paymentId} FOR UPDATE`)
+        .limit(1);
+      if (!lockedPayment || lockedPayment.status !== "submitted")
+        throw new Error("Pembayaran sudah diproses sebelumnya (mungkin baru saja diverifikasi/ditolak admin lain).");
+
       // Tolak payment
       await tx
         .update(schema.payments)
@@ -576,7 +613,10 @@ export async function rejectPaymentAction(
         })
         .where(eq(schema.payments.id, paymentId));
 
-      // Kembalikan invoice ke pending agar customer bisa upload ulang
+      // Kembalikan invoice ke status semula agar customer bisa upload ulang — "partial" kalau
+      // sudah ada pembayaran terkonfirmasi sebelumnya (paidAmount > 0), "pending" kalau belum
+      // sama sekali. Jangan selalu "pending" — invoice yang sudah punya history partial payment
+      // tidak boleh kehilangan status itu hanya karena SATU submission tambahan ditolak.
       if (invLink?.invoiceId) {
         const [otherSubmitted] = await tx
           .select({ id: schema.payments.id })
@@ -589,9 +629,18 @@ export async function rejectPaymentAction(
           .limit(1);
 
         if (!otherSubmitted) {
+          // Baca ulang paidAmount DI DALAM tx (bukan pakai invLink.paidAmount yang direkam
+          // sebelum transaction) — hindari status revert salah kalau ada confirmInvoicePaymentAction
+          // lain yang mengubah paidAmount konkuren dengan reject ini.
+          const [freshInv] = await tx
+            .select({ paidAmount: schema.invoices.paidAmount })
+            .from(schema.invoices)
+            .where(eq(schema.invoices.id, invLink.invoiceId))
+            .limit(1);
+          const revertStatus = parseFloat(String(freshInv?.paidAmount ?? 0)) > 0 ? "partial" : "pending";
           await tx
             .update(schema.invoices)
-            .set({ status: "pending", updatedAt: new Date() })
+            .set({ status: revertStatus, updatedAt: new Date() })
             .where(eq(schema.invoices.id, invLink.invoiceId));
         }
       }
@@ -612,6 +661,8 @@ export async function rejectPaymentAction(
     revalidateBilling(slug);
     return { success: true, data: undefined };
   } catch (err) {
+    if (err instanceof Error && err.message.includes("sudah diproses"))
+      return { success: false, error: err.message };
     console.error("[rejectPaymentAction]", err);
     return { success: false, error: "Gagal menolak bukti pembayaran." };
   }
@@ -684,6 +735,21 @@ export async function updatePaymentEvidenceAction(
     if (data.payerNote    !== undefined) updateSet.payerNote    = data.payerNote.trim() || null;
 
     await db.transaction(async (tx) => {
+      // Re-cek status DI DALAM transaction (setelah lock) hanya kalau nominal ikut diedit —
+      // guard di atas (sebelum tx) hanya early-exit UX, race window nyata: admin buka form Edit
+      // saat status masih "submitted", lalu admin lain memverifikasi (→ "paid") sebelum form ini
+      // disimpan. Field lain (proof/metadata) aman diedit di status manapun, tidak perlu lock.
+      if (data.amount !== undefined) {
+        const [lockedPayment] = await tx
+          .select({ status: schema.payments.status })
+          .from(schema.payments)
+          .where(sql`${schema.payments.id} = ${paymentId} FOR UPDATE`)
+          .limit(1);
+        if (!lockedPayment) throw new Error("Pembayaran tidak ditemukan.");
+        if (lockedPayment.status === "paid")
+          throw new Error("Nominal pembayaran yang sudah dikonfirmasi tidak bisa diubah — sudah tercatat di buku besar keuangan.");
+      }
+
       await tx.update(schema.payments).set(updateSet).where(eq(schema.payments.id, paymentId));
 
       // Sinkronkan invoice_payments.amount juga — cegah nilai basi tersisa di tabel
@@ -700,6 +766,8 @@ export async function updatePaymentEvidenceAction(
     revalidateBilling(slug);
     return { success: true, data: undefined };
   } catch (err) {
+    if (err instanceof Error && (err.message.includes("tercatat di buku besar") || err.message.includes("tidak ditemukan")))
+      return { success: false, error: err.message };
     console.error("[updatePaymentEvidenceAction]", err);
     return { success: false, error: "Gagal menyimpan perubahan." };
   }
@@ -724,7 +792,10 @@ export async function verifySubmittedPaymentAction(
   const tenantDb = createTenantDb(slug);
   const { db, schema } = tenantDb;
 
-  // Fetch payment + invoice dalam satu query
+  // Fetch payment + invoice — HANYA early-exit UX cepat + ambil payment.method untuk resolve
+  // mapping akun. Jaminan korektnes sebenarnya ada di lock+recheck di dalam transaction di
+  // bawah (pola sama dengan checkoutAction/confirmInvoicePaymentAction — lihat lesson CLAUDE.md
+  // "guard sudah ada sebelumnya WAJIB diulang di dalam transaction setelah lock").
   const [payment] = await db
     .select()
     .from(schema.payments)
@@ -737,22 +808,15 @@ export async function verifySubmittedPaymentAction(
   if (payment.sourceType !== "invoice") return { success: false, error: "Bukan pembayaran invoice." };
   if (!payment.sourceId)                return { success: false, error: "Invoice tidak ditemukan." };
 
-  const [inv] = await db
-    .select()
+  const [invEarly] = await db
+    .select({ id: schema.invoices.id, status: schema.invoices.status })
     .from(schema.invoices)
     .where(eq(schema.invoices.id, payment.sourceId))
     .limit(1);
 
-  if (!inv)                    return { success: false, error: "Invoice tidak ditemukan." };
-  if (inv.status === "paid")   return { success: false, error: "Invoice sudah lunas." };
-  if (inv.status === "cancelled") return { success: false, error: "Invoice sudah dibatalkan." };
-
-  const paidSoFar  = parseFloat(String(inv.paidAmount));
-  const total      = parseFloat(String(inv.total));
-  const uniqueCode = inv.uniqueCode ?? 0;
-  const amountDue  = total + uniqueCode;
-  const newPaid    = paidSoFar + verifiedAmount;
-  const newStatus  = newPaid >= amountDue ? "paid" : "partial";
+  if (!invEarly)                       return { success: false, error: "Invoice tidak ditemukan." };
+  if (invEarly.status === "paid")      return { success: false, error: "Invoice sudah lunas." };
+  if (invEarly.status === "cancelled") return { success: false, error: "Invoice sudah dibatalkan." };
 
   // Resolve akun untuk jurnal
   const { resolveAccountMappingsForBilling } = await import("../actions");
@@ -773,8 +837,47 @@ export async function verifySubmittedPaymentAction(
     eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null;
   }> = [];
 
+  // Diisi dari dalam transaction (data invoice yang sudah dikunci) — dipakai untuk notifikasi
+  // WA setelah commit, tanpa perlu baca ulang invoice di luar tx.
+  let notifyCustomerName  = "";
+  let notifyCustomerPhone: string | null = null;
+  let notifyInvoiceNumber = "";
+
   try {
     await db.transaction(async (tx) => {
+      // Lock payment DULU — cegah race dengan rejectPaymentAction (atau verify ganda) pada
+      // payment yang sama (klik ganda, dua admin/tab berbeda memproses submission yang sama).
+      const [lockedPayment] = await tx
+        .select({ status: schema.payments.status })
+        .from(schema.payments)
+        .where(sql`${schema.payments.id} = ${paymentId} FOR UPDATE`)
+        .limit(1);
+      if (!lockedPayment || lockedPayment.status !== "submitted")
+        throw new Error("Pembayaran sudah diproses sebelumnya (mungkin baru saja diverifikasi/ditolak admin lain).");
+
+      // Lock invoice — cegah race pada invoice.paidAmount dengan confirmInvoicePaymentAction /
+      // checkoutAction / payment lain di invoice yang sama (pola sama dengan lock invoice di
+      // confirmInvoicePaymentAction).
+      const [inv] = await tx
+        .select()
+        .from(schema.invoices)
+        .where(sql`${schema.invoices.id} = ${payment.sourceId} FOR UPDATE`)
+        .limit(1);
+      if (!inv)                       throw new Error("Invoice tidak ditemukan.");
+      if (inv.status === "paid")      throw new Error("Invoice sudah lunas.");
+      if (inv.status === "cancelled") throw new Error("Invoice sudah dibatalkan.");
+
+      notifyCustomerName  = inv.customerName;
+      notifyCustomerPhone = inv.customerPhone;
+      notifyInvoiceNumber = inv.invoiceNumber;
+
+      const paidSoFar  = parseFloat(String(inv.paidAmount));
+      const total      = parseFloat(String(inv.total));
+      const uniqueCode = inv.uniqueCode ?? 0;
+      const amountDue  = total + uniqueCode;
+      const newPaid    = paidSoFar + verifiedAmount;
+      const newStatus  = newPaid >= amountDue ? "paid" : "partial";
+
       // Konfirmasi payment — amount di-update ke nominal yang admin verifikasi (bisa beda
       // dari yang customer submit, lihat docs/arsitektur-billing.md § "Nominal Pembayaran
       // Terlihat + Bisa Diedit")
@@ -942,10 +1045,10 @@ export async function verifySubmittedPaymentAction(
 
     void notifyWa({
       slug, tenantDb, event: "payment_confirmed",
-      phone: inv.customerPhone,
+      phone: notifyCustomerPhone,
       vars: {
-        name:          inv.customerName,
-        invoiceNumber: inv.invoiceNumber,
+        name:          notifyCustomerName,
+        invoiceNumber: notifyInvoiceNumber,
         amount:        waRupiah(verifiedAmount),
       },
     });
@@ -953,6 +1056,8 @@ export async function verifySubmittedPaymentAction(
     revalidateBilling(slug);
     return { success: true, data: undefined };
   } catch (err) {
+    if (err instanceof Error && (err.message.includes("sudah diproses") || err.message.includes("lunas") || err.message.includes("dibatalkan")))
+      return { success: false, error: err.message };
     console.error("[verifySubmittedPaymentAction]", err);
     return { success: false, error: "Gagal memverifikasi pembayaran." };
   }

@@ -5626,6 +5626,97 @@ yang sudah dipakai untuk KALKULASI di tempat lain (nominal → paidAmount → ju
 diedit selama belum ada downstream effect yang sudah terjadi. Jangan buat satu tombol "Edit" yang
 mengizinkan semua field tanpa pembedaan ini.
 
+### [2026-07-18] Audit Proaktif — 4 Race Condition Ditemukan di `verifySubmittedPaymentAction`/`rejectPaymentAction`/`cancelInvoiceAction`/`updatePaymentEvidenceAction`
+
+User minta review menyeluruh arsitektur konfirmasi pembayaran sebelum lanjut fitur lain — bukan
+laporan bug dari user, murni audit proaktif. Ditemukan 4 celah race condition yang SEMUANYA
+mengikuti kelas bug yang sama persis dengan yang sudah berulang kali dikunci sebelumnya di
+project ini (checkoutAction, event registration, submitPaymentProofAction — lihat lesson
+"Bug Kritis: `checkoutAction` Bisa Buat Invoice Duplikat" dan "Double Konfirmasi Pembayaran"):
+**SELECT check di luar transaction cuma early-exit UX, bukan jaminan korektnes — guard WAJIB
+diulang di dalam transaction SETELAH lock `FOR UPDATE` diperoleh.** Dua fungsi (`confirmInvoicePaymentAction`,
+`submitPaymentProofAction`) SUDAH benar sejak sesi-sesi sebelumnya; empat fungsi lain TERNYATA
+belum pernah dapat perlakuan sama — celah ini sudah ada sejak fungsi-fungsi itu dibuat, bukan
+regresi dari perubahan sesi ini (kecuali `updatePaymentEvidenceAction`, yang memang baru dibuat
+sesi ini dan langsung kena kelas bug yang sama).
+
+**1. `verifySubmittedPaymentAction` — TIDAK ADA lock sama sekali (celah paling serius).**
+Payment DAN invoice dibaca dengan `SELECT` biasa SEBELUM `db.transaction()` dimulai, lalu
+`paidSoFar`/`newPaid`/`newStatus` dihitung dari nilai yang dibaca sebelum lock apapun diperoleh —
+transaction di dalamnya cuma melakukan UPDATE tanpa pernah re-lock/re-verify. Race nyata:
+(a) dua submitted payment untuk invoice yang sama diverifikasi hampir bersamaan (dua admin/dua
+tab) → keduanya baca `paidAmount` lama yang sama → yang commit belakangan MENIMPA (lost update)
+kontribusi payment yang commit duluan, `invoice.paidAmount` jadi kurang dari seharusnya meski
+KEDUA payment tercatat `status=paid`; (b) race dengan `confirmInvoicePaymentAction`/
+`checkoutAction` lain di invoice yang sama, kelas masalah sama.
+**Fix**: restrukturisasi — payment DAN invoice di-lock `FOR UPDATE` DI DALAM transaction,
+`paidSoFar`/`total`/`uniqueCode` dihitung dari baris yang sudah dikunci (bukan dari read sebelum
+tx). Guard re-check: `lockedPayment.status !== "submitted"` → throw pesan spesifik "Pembayaran
+sudah diproses sebelumnya".
+
+**2. `rejectPaymentAction` — sama, tidak ada lock pada payment sebelum UPDATE.**
+Race dengan `verifySubmittedPaymentAction` pada PAYMENT YANG SAMA: kalau dua admin klik
+"✓ Verifikasi" dan "Tolak" nyaris bersamaan pada satu submitted payment yang sama, keduanya baca
+`status="submitted"` yang masih valid → keduanya proses → last-write-wins pada kolom
+`payments.status` bisa menghasilkan payment yang **sudah terjurnal (income tercatat, invoice
+paidAmount ter-update) TAPI statusnya "rejected"** — audit trail rusak, dan invoice bisa
+ter-revert ke "pending"/"partial" padahal jurnal sudah membukukan pelunasan. **Fix**: lock
+payment `FOR UPDATE` + re-check status di dalam transaction sebelum update ke "rejected".
+
+**Bug kedua di fungsi yang sama, ditemukan sekalian (bukan race condition, murni logic salah)**:
+invoice yang direject submission-nya SELALU di-revert ke status `"pending"`, tanpa mempedulikan
+apakah invoice itu sebenarnya sudah punya `paidAmount > 0` dari pembayaran PARTIAL sebelumnya
+(skenario: invoice partial-paid → customer submit LAGI untuk sisa tagihan → admin tolak submission
+kedua ini → invoice seharusnya balik ke `"partial"`, bukan `"pending"` — kalau `"pending"`, badge
+UI jadi salah/menyesatkan meski `remaining` tetap terhitung benar dari `paidAmount`). **Fix**:
+`revertStatus = paidAmount > 0 ? "partial" : "pending"` — dan `paidAmount` dibaca ULANG di dalam
+transaction (bukan pakai snapshot sebelum tx) supaya tidak stale kalau ada
+`confirmInvoicePaymentAction` lain yang mengubah `paidAmount` konkuren dengan reject ini.
+
+**3. `cancelInvoiceAction` — dua celah sekaligus.**
+(a) Guard status HANYA blok `"paid"` dan `paidAmount > 0` — TIDAK blok status
+`"waiting_verification"`. Invoice dengan bukti pembayaran yang sedang menunggu verifikasi
+(`paidAmount` masih 0, submission pertama belum pernah diverifikasi) bisa dibatalkan admin tanpa
+peringatan apapun — bukti transfer customer jadi "hilang secara efektif" (invoice cancelled,
+payment submission tetap ada tapi tidak pernah ada yang memprosesnya, customer tidak tahu). **Fix**:
+tambah guard `status === "waiting_verification"` → tolak dengan pesan eksplisit "Ada bukti
+pembayaran yang sedang menunggu verifikasi — verifikasi atau tolak dulu". (b) Race: SELECT-check
+lalu UPDATE tanpa transaction/lock sama sekali — customer bisa submit bukti PERSIS di antara
+SELECT dan UPDATE cancel, invoice ter-cancel meski submission barusan masuk. **Fix**: bungkus
+seluruh alur (SELECT + validasi + UPDATE) dalam satu transaction dengan `FOR UPDATE` lock +
+re-check status di dalamnya — pola sama dengan 2 fix di atas.
+
+**4. `updatePaymentEvidenceAction` (baru dibuat sesi ini, di turn sebelumnya) — kena kelas bug
+sama persis, ditemukan+difix di turn yang sama saat ditulis ulang untuk audit ini.** Guard
+`payment.status === "paid"` (blokir edit nominal) dibaca SEBELUM transaction — race window: admin
+buka form Edit saat payment masih "submitted", admin lain memverifikasi (→"paid") SEBELUM form
+pertama disimpan → guard di client lolos (baca status lama), server juga lolos (baca status lama
+di luar tx) → nominal bisa ter-update padahal payment-nya sudah "paid" dan sudah terjurnal — persis
+skenario yang coba dicegah fitur ini. **Fix**: kalau `data.amount !== undefined`, lock payment
+`FOR UPDATE` DI DALAM transaction dan re-check `status !== "paid"` sebelum UPDATE. Field lain
+(proofUrl/metadata) tetap tanpa lock — aman di status manapun, tidak ada race yang berarti.
+
+**Observasi TIDAK difix (dicatat, bukan diabaikan begitu saja):**
+- `confirmInvoicePaymentAction` (admin input manual langsung, mis. cash) MEMBLOKIR
+  `data.amount > remaining` — sementara `submitPaymentProofAction` (customer submit) SENGAJA
+  TIDAK punya batas atas (user eksplisit: "ada yg tf lebih soalnya"). Inkonsistensi ini
+  KEMUNGKINAN disengaja (admin entry manual = nominal yang benar-benar diterima admin, tidak
+  masuk akal dicatat lebih dari yang ditagih; beda dengan transfer bank customer yang bisa salah
+  kirim lebih) — dibiarkan apa adanya, bukan dianggap bug tanpa konfirmasi user.
+- Kalau invoice punya submitted payment yang MASIH menunggu verifikasi (`status=waiting_verification`,
+  `paidAmount=0`), lalu admin melakukan `confirmInvoicePaymentAction` (entry manual terpisah, mis.
+  customer bayar cash padahal sudah submit bukti transfer) yang membawa invoice ke `"partial"`/
+  `"paid"` — status invoice akan berubah dari `"waiting_verification"` tanpa payment submission
+  yang menunggu itu pernah diproses (tidak diverifikasi maupun ditolak). Panel "Menunggu
+  Verifikasi" di halaman publik customer akan hilang (karena bergantung `invoice.status`), padahal
+  masih ada 1 payment row berstatus `submitted` yang mengambang tanpa resolusi. Edge case gabungan
+  dua alur pembayaran berbeda di invoice yang sama — jarang terjadi, TIDAK difix di sesi ini
+  (butuh keputusan produk: apakah manual entry harus auto-reject submission yang menggantung, atau
+  diblokir sampai submission diproses dulu — mirip pola guard baru di `cancelInvoiceAction`).
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error setelah keempat fix. Tidak ada
+migration DB — murni penambahan lock+guard di level aplikasi.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

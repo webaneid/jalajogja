@@ -565,9 +565,24 @@ body: file (image/jpeg|png|webp|heic, maks 8 MB)
 | `pending` | Dibuat, belum ada aksi | System saat invoice dibuat |
 | `submitted` | Customer klaim sudah bayar + upload bukti | Customer via submitPaymentProofAction |
 | `paid` | Terverifikasi — uang sudah masuk | Admin via verifySubmittedPaymentAction ATAU confirmInvoicePaymentAction |
-| `rejected` | Admin tolak bukti | Admin (belum ada UI, planned) |
+| `rejected` | Admin tolak bukti | Admin via rejectPaymentAction (tombol "Tolak" di invoice detail) |
 | `cancelled` | Dibatalkan | System |
 | `refunded` | Dikembalikan via disbursement | System |
+
+### Concurrency Safety — Lock + Re-check Wajib di Semua Aksi Status-Changing
+
+> **Status: SELESAI — audit + fix 2026-07-18.** Detail lengkap tiap temuan: lesson CLAUDE.md
+> "Audit Proaktif — 4 Race Condition Ditemukan".
+
+Semua aksi yang mengubah `payments.status` atau `invoices.status`/`paidAmount` WAJIB pola ini:
+1. SELECT biasa di luar transaction — cuma early-exit UX cepat (pesan error tanpa nunggu lock)
+2. `SELECT ... FOR UPDATE` DI DALAM `db.transaction()` — lock baris yang akan diubah
+3. Re-verifikasi status/kondisi SETELAH lock diperoleh — baru boleh lanjut UPDATE
+
+Berlaku di: `confirmInvoicePaymentAction`, `verifySubmittedPaymentAction`, `rejectPaymentAction`,
+`cancelInvoiceAction`, `submitPaymentProofAction` (cart/actions.ts), `updatePaymentEvidenceAction`
+(khusus saat `amount` ikut diedit). Kalau menambah aksi baru yang mengubah status pembayaran/invoice,
+WAJIB ikuti pola yang sama — jangan andalkan SELECT di luar transaction sebagai jaminan korektnes.
 
 ### Display di Admin Invoice Detail
 
