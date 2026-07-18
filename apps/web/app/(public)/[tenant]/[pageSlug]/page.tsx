@@ -12,6 +12,7 @@ import { getSettings } from "@jalajogja/db";
 import type { Metadata } from "next";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
 
 export const revalidate = 60;
 
@@ -127,12 +128,20 @@ export default async function PublicPageRoute({ params }: { params: Params }) {
   }
 
   // terms + privacy + default + about: render Tiptap HTML
+  const [navMenu, seoBase] = await Promise.all([
+    getPublicNavMenu(tenantClient, slug, baseUrl),
+    getTenantSeoBase(slug),
+  ]);
   return (
     <DefaultTemplate
       title={page.title}
       content={page.content}
       coverUrl={coverUrl}
       updatedAt={page.updatedAt}
+      backHref={baseUrl || "/"}
+      navMenu={navMenu}
+      siteName={tenantName}
+      pageUrl={`${seoBase.baseUrl}/${pageSlug}`}
     />
   );
 }

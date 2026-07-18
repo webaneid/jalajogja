@@ -18,6 +18,11 @@ import type { Metadata }       from "next";
 import { ChevronRight } from "lucide-react";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
+import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
+import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
+import { CategoryPill } from "@/components/website/public/single/category-pill";
+import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 
 export const revalidate = 60;
 
@@ -259,12 +264,38 @@ export default async function CampaignDetailPage({ params }: { params: Params })
 
   const typeColor = CAMPAIGN_TYPE_COLORS[campaign.campaignType] ?? "bg-primary/10 text-primary";
 
+  // Shell mobile — lihat lesson CLAUDE.md "Mobile Single-Page Shell" / post/[slug]/page.tsx
+  // sebagai pola referensi.
+  const [relativeBaseUrl, seoBase] = await Promise.all([
+    resolveBaseUrl(slug),
+    getTenantSeoBase(slug),
+  ]);
+  const navMenu = await getPublicNavMenu(tenantClient, slug, relativeBaseUrl);
+  const pageUrl = `${seoBase.baseUrl}/campaign/${campaignSlug}`;
+
   return (
+    <>
+      {/* ── Mobile shell — gambar full-bleed + overlay back/menu, urutan beda dari desktop ── */}
+      <div className="md:hidden">
+        <SingleFeatureImage
+          src={coverUrl}
+          alt={campaign.title}
+          backHref={`${relativeBaseUrl}/campaign`}
+          navMenu={navMenu}
+          siteName={tenant.name}
+        />
+        <div className="px-4 pt-4 space-y-3">
+          <CategoryPill label={CAMPAIGN_TYPE_LABELS[campaign.campaignType]} />
+          <h1 className="text-2xl font-bold leading-tight">{campaign.title}</h1>
+          <SocialShareCard url={pageUrl} title={campaign.title} />
+        </div>
+      </div>
+
     <div className="py-10 px-4">
       <div className="max-w-7xl mx-auto space-y-8">
 
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        {/* Breadcrumb — desktop saja, mobile sudah punya tombol back di overlay */}
+        <nav className="hidden md:flex items-center gap-1.5 text-sm text-muted-foreground">
           <a href={`/${slug}/campaign`} className="hover:text-foreground transition-colors">Donasi</a>
           <ChevronRight className="h-3.5 w-3.5" />
           <span className="text-foreground font-medium line-clamp-1">{campaign.title}</span>
@@ -273,16 +304,19 @@ export default async function CampaignDetailPage({ params }: { params: Params })
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           {/* Kiri: info */}
           <div className="lg:col-span-3 space-y-5">
-            {coverUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={coverUrl} alt={campaign.title} className="w-full rounded-xl object-cover aspect-video" />
-            )}
+            {/* Cover + Badge + Judul — DESKTOP SAJA, mobile sudah render sendiri di shell atas */}
+            <div className="hidden md:block space-y-5">
+              {coverUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={coverUrl} alt={campaign.title} className="w-full rounded-xl object-cover aspect-video" />
+              )}
 
-            <div className="space-y-2">
-              <span className={`inline-block text-xs font-medium px-2.5 py-1 rounded-full ${typeColor}`}>
-                {CAMPAIGN_TYPE_LABELS[campaign.campaignType]}
-              </span>
-              <h1 className="text-2xl font-bold">{campaign.title}</h1>
+              <div className="space-y-2">
+                <span className={`inline-block text-xs font-medium px-2.5 py-1 rounded-full ${typeColor}`}>
+                  {CAMPAIGN_TYPE_LABELS[campaign.campaignType]}
+                </span>
+                <h1 className="text-2xl font-bold">{campaign.title}</h1>
+              </div>
             </div>
 
             {/* Terkumpul / Progress — selalu tampil untuk non-qurban jika showAmount aktif */}
@@ -349,5 +383,6 @@ export default async function CampaignDetailPage({ params }: { params: Params })
 
       </div>
     </div>
+    </>
   );
 }

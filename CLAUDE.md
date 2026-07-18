@@ -5717,11 +5717,11 @@ skenario yang coba dicegah fitur ini. **Fix**: kalau `data.amount !== undefined`
 **Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error setelah keempat fix. Tidak ada
 migration DB — murni penambahan lock+guard di level aplikasi.
 
-### [2026-07-18] Mobile Single-Page Shell — Fondasi + Post SELESAI, 4 Halaman Lagi Menyusul (WIP)
+### [2026-07-18] Mobile Single-Page Shell — Post+Event+Campaign+Page Generik SELESAI, Produk Menyusul (WIP)
 
-> **Status: SEBAGIAN — jangan anggap 5 halaman semua sudah dikerjakan.** Baru **Post**. Event,
-> Campaign, Produk, dan halaman generik (`[pageSlug]`) BELUM disentuh — direncanakan menyusul
-> di sesi/turn berikutnya, satu-per-satu ("pelan-pelan", permintaan eksplisit user).
+> **Status: 4 dari 5 selesai.** Post, Event (agenda), Campaign (donasi), dan halaman generik
+> (`[pageSlug]` template default) SUDAH diwire. **Produk BELUM** — sengaja diminta terakhir oleh
+> user ("gass bro.. event, page, dan donasi campaign" — produk tidak disebut, menyusul terpisah).
 
 User eksplisit tidak suka tampilan mobile saat ini — "tidak aplikasi banget", cuma responsif
 (reflow CSS), bukan genuinely berbeda dari desktop. Rencana lengkap (breakpoint, 2 putaran
@@ -5799,6 +5799,45 @@ internal href/backHref) — dua "baseUrl" berbeda konsep di codebase ini, jangan
 **Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error (setelah fix client/server boundary
 di atas). Belum diverifikasi visual di browser — user diminta cek langsung di dev machine
 sendiri, plus interaksi scroll hide/reveal butuh dirasakan langsung, tidak bisa dicek dari kode.
+
+**Event (`agenda/[slug]/page.tsx`, 895 baris, paling kompleks dari kelimanya)**: berbeda dari
+Post — `EventDetailTabs`/form registrasi/kartu tiket QR (kolom kanan sticky) **TIDAK
+diduplikasi** ke blok mobile, tetap SATU render yang dipakai bersama kedua breakpoint (grid
+`lg:grid-cols-[1fr_360px]` sudah collapse 1 kolom otomatis di bawah `lg`). Yang di-duplikasi
+HANYA "cover+judul+meta" — porsi itu di dalam `detailSlot` (prop `EventDetailTabs`) dibungkus
+`hidden md:block`, mobile dapat versi barunya sendiri di luar grid. Baris meta (penyelenggara/
+waktu/lokasi/online/maps) diekstrak jadi variable `metaRows` dipakai identik di kedua tempat —
+pola sama `articleBody` di Post. Tidak ada category pill (event belum fetch data kategori sama
+sekali di halaman ini, di luar scope untuk ditambah sekarang — desktop juga tidak menampilkannya).
+Bug kecil ditemukan+difix saat wiring: `const { db: tenantDb, schema } = createTenantDb(slug)`
+langsung destructure tanpa simpan objek utuh — `getPublicNavMenu` butuh `TenantDb` lengkap
+(`{db,schema}`), bukan cuma `db` — diubah jadi `const tenantClient = createTenantDb(slug); const
+{db:tenantDb,schema} = tenantClient;` (persis lesson lama "getSettings butuh TenantDb lengkap").
+
+**Campaign (`campaign/[slug]/page.tsx`)**: sama pola — progress bar/`CampaignDetailTabs`/form
+donasi (`CampaignDetailClient`)/related campaigns TIDAK diduplikasi (grid `lg:grid-cols-5` sudah
+collapse 1 kolom di bawah `lg`), hanya cover+badge+judul yang dibungkus `hidden md:block` +
+diduplikasi ke mobile head. Category pill mobile pakai `CategoryPill` generik (SATU style
+`bg-primary` solid) — BUKAN `CAMPAIGN_TYPE_COLORS` per-tipe yang dipakai versi desktop (donasi/
+zakat/wakaf/qurban beda warna) — keputusan disengaja untuk konsistensi visual lintas 5 halaman
+(prioritas "satu pola dipakai bersama" di atas mempertahankan distingsi warna per-tipe di mobile).
+
+**Halaman generik (`[pageSlug]/page.tsx` → `DefaultTemplate`)**: keempat prop baru
+(`backHref`/`navMenu`/`siteName`/`pageUrl`) dibuat **OPSIONAL**, bukan wajib — alasan: komponen
+yang sama JUGA dipanggil dari `app/(public)/[tenant]/page.tsx` (root homepage, kalau tenant
+kebetulan set homepage-nya pakai template "default" bukan "landing"). Homepage `/{slug}` TIDAK
+pernah match `isSingleMobileRoute` (0 segmen setelah strip baseUrl) — header situs SELALU tetap
+tampil di sana. Kalau shell mobile baru DIPAKSA aktif juga di homepage, overlay
+back+menu (`position:fixed top:0`) akan tumpang-tindih dengan header asli yang tetap dirender
+(dua elemen berebut posisi top:0, salah satu ketutupan). **Fix**: `showMobileShell = navMenu !==
+undefined` — homepage (`page.tsx`) TIDAK mengirim prop-prop baru sama sekali → `DefaultTemplate`
+fallback ke rendering LAMA (satu blok, tanpa split breakpoint, sama seperti sebelum sesi ini).
+Hanya `[pageSlug]/page.tsx` (halaman single generik sungguhan) yang mengirim prop lengkap → dapat
+shell mobile baru. **Aturan**: kalau komponen shared dipakai dari lebih dari satu route dengan
+kebutuhan chrome yang beda, JANGAN paksa satu perilaku — pakai optional props + flag turunan
+(`props !== undefined`) untuk percabangan eksplisit, bukan asumsi semua caller ingin hal yang sama.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error untuk ketiga halaman tambahan ini.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).

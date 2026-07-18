@@ -15,6 +15,9 @@ import { generateQrDataUrl } from "@/lib/qr-code";
 import type { Metadata } from "next";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { generateMetadata as buildMetadata, tiptapToPlainText } from "@/lib/seo";
+import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
+import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
+import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 
 type BankAccount = {
   id: string;
@@ -161,7 +164,8 @@ export default async function PublicEventPage({
   const hdrs    = await headers();
   const baseUrl = await resolveBaseUrl(tenantSlug);
 
-  const { db: tenantDb, schema } = createTenantDb(tenantSlug);
+  const tenantClient = createTenantDb(tenantSlug);
+  const { db: tenantDb, schema } = tenantClient;
 
   // Fetch event by slug — hanya yang published
   const [event] = await tenantDb
@@ -627,10 +631,87 @@ export default async function PublicEventPage({
     linkedProductTitle = product?.name ?? null;
   }
 
+  // Shell mobile — lihat lesson CLAUDE.md "Mobile Single-Page Shell" / post/[slug]/page.tsx
+  // sebagai pola referensi.
+  const [navMenu, seoBase] = await Promise.all([
+    getPublicNavMenu(tenantClient, tenantSlug, baseUrl),
+    getTenantSeoBase(tenantSlug),
+  ]);
+  const pageUrl = `${seoBase.baseUrl}/agenda/${eventSlug}`;
+
+  // Baris meta (penyelenggara/waktu/lokasi/online/maps) — dipakai identik di mobile head
+  // BARU dan di detailSlot desktop (yang lama, di bawah, sekarang hidden md:block).
+  const metaRows = (
+    <div className="space-y-2.5 text-sm text-muted-foreground">
+      {event.organizerName && (
+        <div className="flex items-start gap-2.5">
+          <Building2 className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>{event.organizerName}</span>
+        </div>
+      )}
+      <div className="flex items-start gap-2.5">
+        <CalendarDays className="h-4 w-4 mt-0.5 shrink-0" />
+        <span>{formatEventDateRange(event.startsAt, event.endsAt)}</span>
+      </div>
+      {(event.eventType === "offline" || event.eventType === "hybrid") && event.location && (
+        <div className="flex items-start gap-2.5">
+          <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>{event.location}</span>
+        </div>
+      )}
+      {(event.eventType === "online" || event.eventType === "hybrid") && (
+        <div className="flex items-start gap-2.5">
+          <Video className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>{EVENT_TYPE_LABELS[event.eventType]}</span>
+        </div>
+      )}
+      {event.locationDetail && (
+        <div className="flex items-start gap-2.5">
+          <Navigation className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>{event.locationDetail}</span>
+        </div>
+      )}
+      {event.mapsUrl && (event.eventType === "offline" || event.eventType === "hybrid") && (
+        <div className="flex items-start gap-2.5">
+          <Globe className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+          <a href={event.mapsUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+            Lihat di Google Maps
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      )}
+      {event.onlineLink && (event.eventType === "online" || event.eventType === "hybrid") && (
+        <div className="flex items-start gap-2.5">
+          <ExternalLink className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+          <a href={event.onlineLink} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all">
+            {event.onlineLink}
+          </a>
+        </div>
+      )}
+    </div>
+  );
+
   return (
+    <>
+      {/* ── Mobile shell — gambar full-bleed + overlay back/menu, urutan beda dari desktop ── */}
+      <div className="md:hidden">
+        <SingleFeatureImage
+          src={coverUrl}
+          alt={event.title}
+          backHref={`${baseUrl}/agenda`}
+          navMenu={navMenu}
+          siteName={tenant.name}
+        />
+        <div className="px-4 pt-4 space-y-3">
+          <h1 className="text-2xl font-bold leading-tight">{event.title}</h1>
+          {metaRows}
+          <SocialShareCard url={pageUrl} title={event.title} />
+        </div>
+      </div>
+
     <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Breadcrumb */}
-      <div className="text-xs text-muted-foreground mb-6 flex items-center gap-2">
+      {/* Breadcrumb — desktop saja, mobile sudah punya tombol back di overlay */}
+      <div className="hidden md:flex text-xs text-muted-foreground mb-6 items-center gap-2">
         <a href={`/${tenantSlug}/agenda`} className="hover:text-foreground transition-colors">Agenda</a>
         <span>/</span>
         <span className="text-foreground truncate max-w-xs">{event.title}</span>
@@ -649,95 +730,23 @@ export default async function PublicEventPage({
             attendees={attendees}
             stats={eventStats}
             detailSlot={<>
-            {/* Cover */}
-            {coverUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={coverUrl}
-                alt={event.title}
-                className="w-full aspect-video object-cover rounded-xl border border-border"
-              />
-            )}
-
-            {/* Judul + Meta */}
-            <div className="space-y-4">
-              <h1 className="text-2xl font-bold leading-tight">{event.title}</h1>
-
-              {/* Satu baris per informasi */}
-              <div className="space-y-2.5 text-sm text-muted-foreground">
-
-                {/* Penyelenggara */}
-                {event.organizerName && (
-                  <div className="flex items-start gap-2.5">
-                    <Building2 className="h-4 w-4 mt-0.5 shrink-0" />
-                    <span>{event.organizerName}</span>
-                  </div>
-                )}
-
-                {/* Waktu pelaksanaan */}
-                <div className="flex items-start gap-2.5">
-                  <CalendarDays className="h-4 w-4 mt-0.5 shrink-0" />
-                  <span>{formatEventDateRange(event.startsAt, event.endsAt)}</span>
-                </div>
-
-                {/* Tempat (offline/hybrid) */}
-                {(event.eventType === "offline" || event.eventType === "hybrid") && event.location && (
-                  <div className="flex items-start gap-2.5">
-                    <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
-                    <span>{event.location}</span>
-                  </div>
-                )}
-
-                {/* Online (online/hybrid) */}
-                {(event.eventType === "online" || event.eventType === "hybrid") && (
-                  <div className="flex items-start gap-2.5">
-                    <Video className="h-4 w-4 mt-0.5 shrink-0" />
-                    <span>{EVENT_TYPE_LABELS[event.eventType]}</span>
-                  </div>
-                )}
-
-                {/* Alamat detail */}
-                {event.locationDetail && (
-                  <div className="flex items-start gap-2.5">
-                    <Navigation className="h-4 w-4 mt-0.5 shrink-0" />
-                    <span>{event.locationDetail}</span>
-                  </div>
-                )}
-
-                {/* Google Maps */}
-                {event.mapsUrl && (event.eventType === "offline" || event.eventType === "hybrid") && (
-                  <div className="flex items-start gap-2.5">
-                    <Globe className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
-                    <a
-                      href={event.mapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline inline-flex items-center gap-1"
-                    >
-                      Lihat di Google Maps
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
-                )}
-
-                {/* Link bergabung online */}
-                {event.onlineLink && (event.eventType === "online" || event.eventType === "hybrid") && (
-                  <div className="flex items-start gap-2.5">
-                    <ExternalLink className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
-                    <a
-                      href={event.onlineLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline break-all"
-                    >
-                      {event.onlineLink}
-                    </a>
-                  </div>
-                )}
+            {/* Cover + Judul + Meta — DESKTOP SAJA, mobile sudah render sendiri di shell atas */}
+            <div className="hidden md:block space-y-4">
+              {coverUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={coverUrl}
+                  alt={event.title}
+                  className="w-full aspect-video object-cover rounded-xl border border-border"
+                />
+              )}
+              <div className="space-y-4">
+                <h1 className="text-2xl font-bold leading-tight">{event.title}</h1>
+                {metaRows}
               </div>
             </div>
 
-            {/* Deskripsi */}
+            {/* Deskripsi — tampil di mobile & desktop */}
             {event.description && (
               <div
                 className="prose prose-sm max-w-none text-foreground [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base"
@@ -891,5 +900,6 @@ export default async function PublicEventPage({
           </div>
       </div>
     </div>
+    </>
   );
 }
