@@ -5535,6 +5535,63 @@ sumber sinyal visual — tambahkan state lokal optimis yang langsung `true` begi
 supaya user tidak melihat halaman "diam" selama refresh berlangsung. `router.refresh()` tetap
 dipanggil sebagai sumber kebenaran final, state lokal hanya untuk jeda visual.
 
+### [2026-07-18] Root Cause Sesungguhnya React Error #418 — `Intl.NumberFormat({style:"currency"})` ICU/CLDR Version Mismatch
+
+**Laporan susulan**: error #418 tetap muncul, kali ini di halaman ADMIN
+(`/finance/billing/invoice/[id]`), bukan halaman publik yang sudah "difix" (timeZone) di lesson
+sebelumnya. Ini sinyal kuat bahwa diagnosis timeZone BENAR untuk sebagian kasus tapi BUKAN
+satu-satunya penyebab — halaman admin ini sudah punya `timeZone: "Asia/Jakarta"` eksplisit di
+semua `toLocaleDateString()`, tapi errornya tetap terjadi.
+
+**Root cause sesungguhnya, dikonfirmasi dengan bukti (bukan tebakan)**: fungsi `formatRp()` di
+hampir semua komponen billing/keuangan pakai `new Intl.NumberFormat("id-ID", {style: "currency",
+currency: "IDR", maximumFractionDigits: 0}).format(n)`. Dicek langsung: karakter ANTARA "Rp" dan
+angka yang dihasilkan `style:"currency"` adalah **U+00A0 (NO-BREAK SPACE)**, bukan spasi ASCII
+biasa — dan keberadaan/ketiadaan karakter ini **bergantung versi ICU/CLDR** yang di-bundle di
+runtime Node.js. Node.js di VPS production (kemungkinan versi LTS yang lebih lama, `node:20-slim`
+per `apps/web/Dockerfile` meski app jalan via PM2 bukan Docker — versi Node host bisa beda lagi)
+punya snapshot ICU/CLDR yang di-pin saat build Node itu sendiri, sedangkan browser (Chrome/Firefox)
+meng-update data CLDR-nya sendiri secara independen dan hampir selalu lebih baru. Kalau versi ICU
+antara server-render dan client-hydrate berbeda cukup jauh, `Intl.NumberFormat({style:"currency"})`
+bisa menghasilkan teks yang berbeda persis (ada/tidaknya NBSP, atau posisi simbol mata uang) —
+setiap kemunculan `formatRp(...)` di JSX sebagai text node langsung memicu React error #418.
+
+**Kenapa ini BUKAN penyebab bukti transfer hilang**: error ini murni soal *rendering teks di
+browser* setelah hydration — tidak menyentuh data yang tersimpan di DB atau file di MinIO sama
+sekali. `proofUrl`/`payments.proof_url` tetap tersimpan benar terlepas dari bug ini. Dua masalah
+ini kebetulan muncul berdekatan tapi independen; sudah dikonfirmasi ke user bahwa fix bukti
+transfer (Sharp/WebP) tidak berkaitan dengan fix ini.
+
+**Fix**: 14 komponen `"use client"` yang punya fungsi `formatRp`/`formatRupiah`/`fmt`-sejenis
+diubah dari `Intl.NumberFormat({style:"currency", currency:"IDR", ...}).format(n)` menjadi
+`"Rp " + Intl.NumberFormat({maximumFractionDigits/minimumFractionDigits: 0}).format(n)` —
+literal `"Rp "` pakai spasi ASCII biasa (U+0020, TIDAK locale-dependent), dan `Intl.NumberFormat`
+hanya dipakai untuk grouping digit (`style:"decimal"`, default) yang jauh lebih stabil lintas versi
+ICU dibanding aturan penempatan+spasi simbol mata uang di `style:"currency"` (yang CLDR ubah-ubah
+antar versi). File yang diubah: `invoice-detail-client.tsx`, `invoice-list-client.tsx`,
+`invoice-public-client.tsx`, `cart-client.tsx`, `checkout-form.tsx`, `laporan-client.tsx`,
+`fulfillment-client.tsx`, `order-create-client.tsx`, `campaign-list-client.tsx`,
+`event-register-form.tsx`, `event-registration-list.tsx`, `income-expense-chart.tsx`,
+`akun/mitra/pesanan/pesanan-client.tsx`, `akun/transaksi/page.tsx` (yang terakhir ini "use client"
+meski namanya `page.tsx`).
+
+**8 file lain dengan pattern sama SENGAJA TIDAK disentuh** — semuanya pure Server Component (tidak
+ada `"use client"`, contoh: `dashboard/page.tsx`, `accounts/[id]/page.tsx`,
+`donasi/transaksi/[id]/page.tsx`, `toko/pesanan/page.tsx`, dll). Server Component murni tidak
+pernah di-hydrate ulang di client — HTML dari server itu yang tampil apa adanya, tidak ada proses
+"pencocokan" dengan render kedua di browser, jadi tidak mungkin kena #418 untuk teks yang benar-benar
+hanya dirender di server. Mengubahnya tidak salah tapi tidak perlu — dibiarkan scoped ke yang
+benar-benar berisiko.
+
+**Aturan yang dikunci**: `Intl.NumberFormat(locale, {style:"currency", currency:...})` **TIDAK
+BOLEH** dipakai di komponen `"use client"` mana pun di project ini — hasil formatnya tidak stabil
+lintas versi ICU/CLDR server vs browser. Selalu bangun manual: literal simbol mata uang + spasi
+ASCII + `Intl.NumberFormat(locale, {style:"decimal", ...})` (atau tanpa `style` sama sekali, default
+sudah `decimal`) untuk grouping digit saja. Ini melengkapi (bukan menggantikan) aturan
+`timeZone: "Asia/Jakarta"` eksplisit dari lesson sebelumnya — keduanya sama-sama kelas "SSR/CSR
+formatting yang environment-dependent", dan keduanya harus dicek setiap kali komponen client baru
+menampilkan tanggal ATAU uang.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

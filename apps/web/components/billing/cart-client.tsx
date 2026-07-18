@@ -15,9 +15,7 @@ type Props = {
 };
 
 function formatRp(n: number) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency", currency: "IDR", maximumFractionDigits: 0,
-  }).format(n);
+  return "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
 }
 
 export function CartClient({ slug, cart }: Props) {

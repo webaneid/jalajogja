@@ -45,7 +45,7 @@ const STATUS_IDX: Record<string, number> = {
 };
 
 function fmt(n: number) {
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+  return "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
 }
 
 // ─── FulfillmentTimeline ──────────────────────────────────────────────────────

@@ -41,7 +41,7 @@ type ReportData =
   | { type: "buku_besar"; data: BukuBesarRow[] };
 
 function formatRp(n: number) {
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
+  return "Rp " + new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0 }).format(n);
 }
 
 function formatDate(s: string) {

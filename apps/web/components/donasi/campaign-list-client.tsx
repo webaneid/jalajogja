@@ -35,9 +35,7 @@ type Campaign = {
 function formatRupiah(amount: string | null) {
   if (!amount) return null;
   const n = parseFloat(amount);
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency", currency: "IDR", minimumFractionDigits: 0,
-  }).format(n);
+  return "Rp " + new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0 }).format(n);
 }
 
 const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {

@@ -9,7 +9,7 @@ import type { InvoiceListItem } from "@/app/(dashboard)/app/[tenant]/finance/bil
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatRp(n: number) {
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+  return "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
 }
 
 function formatDate(iso: string) {

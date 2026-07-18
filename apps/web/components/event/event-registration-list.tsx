@@ -49,7 +49,7 @@ const STATUS_CONFIG: Record<RegistrationRow["status"], { label: string; variant:
 };
 
 function formatRupiah(n: number) {
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+  return "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
 }
 
 function formatDate(d: Date | null) {

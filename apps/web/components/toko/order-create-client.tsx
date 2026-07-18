@@ -87,7 +87,7 @@ export function OrderCreateClient({ slug, products }: Props) {
   const total         = Math.max(0, subtotal - discountNum);
 
   function formatRupiah(n: number) {
-    return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
+    return "Rp " + new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0 }).format(n);
   }
 
   function handleSubmit(e: React.FormEvent) {
