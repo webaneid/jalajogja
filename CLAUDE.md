@@ -5839,6 +5839,68 @@ kebutuhan chrome yang beda, JANGAN paksa satu perilaku — pakai optional props 
 
 **Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error untuk ketiga halaman tambahan ini.
 
+### [2026-07-18] Event Mobile — Kolom Tiket Jadi Bottom Sheet (Expand/Collapse)
+
+User minta lebih jauh dari sekadar shell mobile generik: kolom "Kanan" event (form
+pendaftaran / kartu tiket QR — sebelumnya sticky sidebar desktop yang collapse jadi block
+biasa di mobile) diubah jadi **bottom sheet** — bar ringkas nempel di bawah layar, tap untuk
+expand jadi panel penuh. Diminta eksplisit: "jadikan tiket ... static dibawah", border-radius
+proporsional di atas, kalau sudah terdaftar QR kecil kiri+info kanan, kalau belum terdaftar
+CTA yang bisa "naik atau melebar" saat di-tap.
+
+**Komponen baru**: `components/event/event-mobile-ticket-bar.tsx` (`"use client"`,
+`EventMobileTicketBar`) — HANYA di-pakai di Event untuk saat ini (donasi/produk konsepnya
+serupa, menyusul terpisah, belum dikerjakan).
+
+**Desain interaksi yang dikunci:**
+- Bar collapsed: `fixed bottom-0 z-[71]`, `rounded-t-2xl`, tinggi `max-h-24`. Sudah terdaftar
+  → QR mini (`w-12 h-12`) kiri + status/no.registrasi kanan. Belum terdaftar → label harga
+  termurah ("Gratis"/"Mulai Rp X", dihitung server-side dari `tickets` array) + badge
+  "Daftar". Tap di mana saja pada bar (bukan cuma tombol) untuk toggle expand.
+- Expand: `max-h-[85vh]`, animasi `transition-[max-height] duration-300` — TEKNIK KUNCI:
+  karena elemen tetap `bottom:0` sementara `max-height` tumbuh, sisi ATAS sheet yang bergerak
+  naik (bukan geser dari luar layar) — inilah yang menghasilkan efek "naik/melebar" yang
+  diminta user, tanpa perlu portal atau ukur tinggi konten via JS.
+- **Konten TIDAK di-unmount saat collapse** — cuma di-clip via `overflow-hidden` pada wrapper
+  luar, `EventRegisterForm` (dan semua state form di dalamnya: pilihan tiket, data peserta,
+  dll) tetap hidup di DOM meski bar sedang collapsed. Kalau di-unmount setiap toggle, user
+  yang sudah mulai isi form lalu tidak sengaja collapse-lalu-expand lagi akan kehilangan
+  semua isian — bug UX yang harus dicegah dari awal desain, bukan ditambal belakangan.
+- Backdrop `bg-black/40` (pola REUSE dari `flex-header.tsx`'s drawer "Lainnya" — bukan
+  komponen baru dari nol) muncul saat expanded, tap backdrop = collapse lagi.
+- Safe-area iPhone: `pb-[max(1rem,env(safe-area-inset-bottom))]` di area scroll konten
+  (bukan `pb-safe` — class itu ADA di `flex-header.tsx` tapi TERNYATA dead/no-op, tidak ada
+  definisi CSS untuk `pb-safe` di manapun di project, Tailwind v4 tidak generate utility itu
+  secara default. Tidak diperbaiki di file asalnya — di luar scope sesi ini — tapi di
+  komponen BARU ini dipakai teknik yang benar-benar berfungsi: `env(safe-area-inset-bottom)`
+  arbitrary value).
+
+**Refactor pendukung** (`agenda/[slug]/page.tsx`): konten kolom kanan (kartu QR ATAU form
+pendaftaran+info kuota — ~140 baris JSX) diekstrak jadi SATU variable `ticketPanelContent`,
+dipakai identik di DUA tempat: kolom sticky desktop (`hidden md:block`, tidak berubah) DAN
+sebagai `children` dari `EventMobileTicketBar` (mobile) — pola sama `articleBody`/`metaRows`
+dari halaman-halaman sebelumnya, sekali lagi mencegah duplikasi logic form/QR yang kompleks.
+
+**Edge case dijaga eksplisit**: kalau `tickets.length === 0` (pendaftaran belum dibuka) DAN
+belum terdaftar, `EventMobileTicketBar` (dengan badge "Daftar") **tidak dirender** — diganti
+`ticketPanelContent` inline biasa (cukup notice "Pendaftaran belum dibuka") tanpa bottom
+sheet. Alasan: CTA "Daftar" pada bar yang selalu tampil akan menjanjikan aksi yang sebenarnya
+tidak ada — user tap, expand, ternyata cuma pesan "belum dibuka". Diputuskan skip bottom
+sheet sama sekali untuk kasus ini alih-alih mengubah teks CTA-nya (lebih jujur ke user).
+
+**Ekstraksi dengan script Python, bukan Edit manual**: JSX yang dipindah (~140 baris ternary
+3-cabang) terlalu besar+kompleks untuk direplikasi manual dengan aman (risiko salah ketik saat
+menyalin ulang isi form yang panjang). Dipakai script Python sekali-pakai yang baca file,
+potong-tempel berdasarkan nomor baris presisi (sudah diverifikasi via `grep -n` dulu), tulis
+ulang file — lalu HASIL akhirnya tetap diverifikasi `tsc`+`build` seperti biasa. **Pola untuk
+sesi mendatang**: kalau butuh "pindahkan blok JSX besar dari lokasi A ke variable B" dan
+blok itu terlalu panjang untuk ditranskrip ulang dengan tangan tanpa risiko, script sekali-
+pakai (Python/bash) yang operasi di level baris file lebih aman daripada Edit tool manual.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error. Belum diverifikasi visual/interaksi
+nyata di browser (sentuhan expand/collapse harus dirasakan langsung) — user diminta cek di
+device/browser sendiri.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

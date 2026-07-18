@@ -18,6 +18,7 @@ import { generateMetadata as buildMetadata, tiptapToPlainText } from "@/lib/seo"
 import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
+import { EventMobileTicketBar } from "@/components/event/event-mobile-ticket-bar";
 
 type BankAccount = {
   id: string;
@@ -691,73 +692,21 @@ export default async function PublicEventPage({
     </div>
   );
 
-  return (
+  // Nominal tiket termurah untuk CTA bottom-sheet mobile saat belum terdaftar — "Gratis" kalau
+  // ada tiket seharga 0, else "Mulai Rp X" (format aman hydration — literal "Rp " + toLocaleString,
+  // BUKAN Intl.NumberFormat style:"currency", lihat lesson CLAUDE.md soal ICU/CLDR mismatch).
+  const minTicketPrice = tickets.length > 0
+    ? Math.min(...tickets.map((t) => parseFloat(String(t.price))))
+    : null;
+  const ticketPriceLabel = minTicketPrice === null ? null
+    : minTicketPrice === 0 ? "Gratis"
+    : `Mulai Rp ${minTicketPrice.toLocaleString("id-ID")}`;
+
+  // Konten panel tiket — SAMA PERSIS dipakai di kolom kanan desktop (sticky) dan di dalam
+  // bottom sheet mobile (EventMobileTicketBar) — supaya EventRegisterForm/kartu QR tidak
+  // terduplikasi jadi dua render terpisah dengan state berbeda.
+  const ticketPanelContent = (
     <>
-      {/* ── Mobile shell — gambar full-bleed + overlay back/menu, urutan beda dari desktop ── */}
-      <div className="md:hidden">
-        <SingleFeatureImage
-          src={coverUrl}
-          alt={event.title}
-          backHref={`${baseUrl}/agenda`}
-          navMenu={navMenu}
-          siteName={tenant.name}
-        />
-        <div className="px-4 pt-4 space-y-3">
-          <h1 className="text-2xl font-bold leading-tight">{event.title}</h1>
-          {metaRows}
-          <SocialShareCard url={pageUrl} title={event.title} />
-        </div>
-      </div>
-
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Breadcrumb — desktop saja, mobile sudah punya tombol back di overlay */}
-      <div className="hidden md:flex text-xs text-muted-foreground mb-6 items-center gap-2">
-        <a href={`/${tenantSlug}/agenda`} className="hover:text-foreground transition-colors">Agenda</a>
-        <span>/</span>
-        <span className="text-foreground truncate max-w-xs">{event.title}</span>
-      </div>
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px] items-start">
-
-        {/* ── Kiri: Tab Detail / Peserta / Statistik ── */}
-        <div className="space-y-6 min-w-0">
-          <EventDetailTabs
-            showAttendeeList={event.showAttendeeList}
-            showAttendeeStats={event.showAttendeeStats}
-            attendeeStatsBy={attendeeStatsBy}
-            confirmedCount={confirmedCount}
-            totalQuota={totalQuota}
-            ticketStats={ticketStatsForTab}
-            attendees={attendees}
-            stats={eventStats}
-            detailSlot={<>
-            {/* Cover + Judul + Meta — DESKTOP SAJA, mobile sudah render sendiri di shell atas */}
-            <div className="hidden md:block space-y-4">
-              {coverUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={coverUrl}
-                  alt={event.title}
-                  className="w-full aspect-video object-cover rounded-xl border border-border"
-                />
-              )}
-              <div className="space-y-4">
-                <h1 className="text-2xl font-bold leading-tight">{event.title}</h1>
-                {metaRows}
-              </div>
-            </div>
-
-            {/* Deskripsi — tampil di mobile & desktop */}
-            {event.description && (
-              <div
-                className="prose prose-sm max-w-none text-foreground [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base"
-                dangerouslySetInnerHTML={{ __html: renderBody(event.description, { imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${tenantSlug}` }) }}
-              />
-            )}
-            </>}
-          /></div>
-
-          {/* ── Kanan: Form Pendaftaran (sticky) ── */}
-          <div className="lg:sticky lg:top-6 space-y-4">
             {alreadyRegistered ? (
               /* Tiket digital — QR + info peserta */
               <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -897,7 +846,102 @@ export default async function PublicEventPage({
                 />
               </div>
             )}
+    </>
+  );
+
+  return (
+    <>
+      {/* ── Mobile shell — gambar full-bleed + overlay back/menu, urutan beda dari desktop ── */}
+      <div className="md:hidden">
+        <SingleFeatureImage
+          src={coverUrl}
+          alt={event.title}
+          backHref={`${baseUrl}/agenda`}
+          navMenu={navMenu}
+          siteName={tenant.name}
+        />
+        <div className="px-4 pt-4 space-y-3">
+          <h1 className="text-2xl font-bold leading-tight">{event.title}</h1>
+          {metaRows}
+          <SocialShareCard url={pageUrl} title={event.title} />
+        </div>
+      </div>
+
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Breadcrumb — desktop saja, mobile sudah punya tombol back di overlay */}
+      <div className="hidden md:flex text-xs text-muted-foreground mb-6 items-center gap-2">
+        <a href={`/${tenantSlug}/agenda`} className="hover:text-foreground transition-colors">Agenda</a>
+        <span>/</span>
+        <span className="text-foreground truncate max-w-xs">{event.title}</span>
+      </div>
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px] items-start">
+
+        {/* ── Kiri: Tab Detail / Peserta / Statistik ── */}
+        <div className="space-y-6 min-w-0">
+          <EventDetailTabs
+            showAttendeeList={event.showAttendeeList}
+            showAttendeeStats={event.showAttendeeStats}
+            attendeeStatsBy={attendeeStatsBy}
+            confirmedCount={confirmedCount}
+            totalQuota={totalQuota}
+            ticketStats={ticketStatsForTab}
+            attendees={attendees}
+            stats={eventStats}
+            detailSlot={<>
+            {/* Cover + Judul + Meta — DESKTOP SAJA, mobile sudah render sendiri di shell atas */}
+            <div className="hidden md:block space-y-4">
+              {coverUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={coverUrl}
+                  alt={event.title}
+                  className="w-full aspect-video object-cover rounded-xl border border-border"
+                />
+              )}
+              <div className="space-y-4">
+                <h1 className="text-2xl font-bold leading-tight">{event.title}</h1>
+                {metaRows}
+              </div>
+            </div>
+
+            {/* Deskripsi — tampil di mobile & desktop */}
+            {event.description && (
+              <div
+                className="prose prose-sm max-w-none text-foreground [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base"
+                dangerouslySetInnerHTML={{ __html: renderBody(event.description, { imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${tenantSlug}` }) }}
+              />
+            )}
+            </>}
+          /></div>
+
+          {/* ── Kanan — desktop (sticky), tidak diubah ── */}
+          <div className="hidden md:block lg:sticky lg:top-6 space-y-4">
+            {ticketPanelContent}
           </div>
+
+          {/* ── Kanan — mobile ── */}
+          {alreadyRegistered || tickets.length > 0 ? (
+            /* Bottom sheet — expand saat tap. Hanya dipakai kalau memang ada aksi
+               (sudah terdaftar, atau tiket tersedia untuk didaftar) — supaya CTA
+               "Daftar" tidak menjanjikan sesuatu yang tidak ada. */
+            <EventMobileTicketBar
+              registered={!!alreadyRegistered}
+              qrSrc={ticketQrDataUrl}
+              statusLabel={
+                alreadyRegistered?.status === "pending"   ? "Menunggu" :
+                alreadyRegistered?.status === "confirmed" ? "Dikonfirmasi" :
+                alreadyRegistered?.status === "attended"  ? "Sudah Hadir" :
+                alreadyRegistered?.status
+              }
+              regNumber={alreadyRegistered?.registrationNumber}
+              priceLabel={ticketPriceLabel}
+            >
+              {ticketPanelContent}
+            </EventMobileTicketBar>
+          ) : (
+            /* Pendaftaran belum dibuka — tampil inline, bukan bottom sheet */
+            <div className="md:hidden">{ticketPanelContent}</div>
+          )}
       </div>
     </div>
     </>
