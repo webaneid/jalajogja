@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { getInvoiceListAction } from "../actions";
 import { InvoiceListClient } from "@/components/keuangan/billing/invoice-list-client";
+import { BillingTabs } from "@/components/keuangan/billing/billing-tabs";
 
 export default async function BillingInvoicePage({
   params,
@@ -42,6 +43,8 @@ export default async function BillingInvoicePage({
           Buat Invoice
         </Link>
       </div>
+
+      <BillingTabs slug={slug} active="invoice" />
 
       <InvoiceListClient
         slug={slug}

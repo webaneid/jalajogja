@@ -1475,3 +1475,365 @@ export async function updateFulfillmentStatusAction(
   revalidatePath(`/app/${slug}/toko/pesanan`);
   return { success: true, data: undefined };
 }
+
+// ─── Installment Plans (Cicilan) ───────────────────────────────────────────────
+// Program cicilan — scope Fase A/B: tiket event saja (sourceType='event', sourceId=
+// event_tickets.id). Donasi/qurban menyusul terpisah nanti — lihat plan cicilan.
+// Invoice hasil enroll TETAP sourceType='event_registration' seperti tiket biasa (bukan
+// sourceType baru) — cukup installmentPlanId yang membedakan, jadi hook existing di
+// confirmInvoicePaymentAction/verifySubmittedPaymentAction (confirm eventRegistrations saat
+// lunas) otomatis berlaku tanpa disentuh.
+
+export type EventTicketOption = {
+  eventId:    string;
+  eventTitle: string;
+  ticketId:   string;
+  ticketName: string;
+  price:      number;
+};
+
+export async function getEventTicketOptionsAction(
+  slug: string,
+): Promise<ActionResult<EventTicketOption[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+  const rows = await db
+    .select({
+      eventId:    schema.events.id,
+      eventTitle: schema.events.title,
+      ticketId:   schema.eventTickets.id,
+      ticketName: schema.eventTickets.name,
+      price:      schema.eventTickets.price,
+    })
+    .from(schema.eventTickets)
+    .innerJoin(schema.events, eq(schema.events.id, schema.eventTickets.eventId))
+    .where(and(eq(schema.eventTickets.isActive, true), eq(schema.events.status, "published")))
+    .orderBy(desc(schema.events.startsAt));
+
+  return {
+    success: true,
+    data: rows.map((r) => ({ ...r, price: parseFloat(String(r.price)) })),
+  };
+}
+
+export type InstallmentPlanListItem = {
+  id:               string;
+  name:             string;
+  eventTitle:       string | null;
+  ticketName:       string | null;
+  totalAmount:      number | null;
+  installmentCount: number;
+  intervalDays:     number;
+  isActive:         boolean;
+  isPublished:      boolean;
+  enrolledCount:    number;
+  createdAt:        string;
+};
+
+export async function getInstallmentPlanListAction(
+  slug: string,
+): Promise<ActionResult<InstallmentPlanListItem[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const rows = await db
+    .select({
+      id:               schema.installmentPlans.id,
+      name:             schema.installmentPlans.name,
+      sourceType:       schema.installmentPlans.sourceType,
+      sourceId:         schema.installmentPlans.sourceId,
+      totalAmount:      schema.installmentPlans.totalAmount,
+      installmentCount: schema.installmentPlans.installmentCount,
+      intervalDays:     schema.installmentPlans.intervalDays,
+      isActive:         schema.installmentPlans.isActive,
+      isPublished:      schema.installmentPlans.isPublished,
+      createdAt:        schema.installmentPlans.createdAt,
+    })
+    .from(schema.installmentPlans)
+    .orderBy(desc(schema.installmentPlans.createdAt));
+
+  const ticketIds = [...new Set(rows.filter((r) => r.sourceType === "event" && r.sourceId).map((r) => r.sourceId as string))];
+  const ticketMap = new Map<string, { ticketName: string; eventTitle: string }>();
+  if (ticketIds.length > 0) {
+    const tRows = await db
+      .select({
+        id:         schema.eventTickets.id,
+        ticketName: schema.eventTickets.name,
+        eventTitle: schema.events.title,
+      })
+      .from(schema.eventTickets)
+      .innerJoin(schema.events, eq(schema.events.id, schema.eventTickets.eventId))
+      .where(inArray(schema.eventTickets.id, ticketIds));
+    tRows.forEach((t) => ticketMap.set(t.id, { ticketName: t.ticketName, eventTitle: t.eventTitle }));
+  }
+
+  const planIds = rows.map((r) => r.id);
+  let enrolledMap: Record<string, number> = {};
+  if (planIds.length > 0) {
+    const counts = await db
+      .select({ planId: schema.invoices.installmentPlanId, cnt: count() })
+      .from(schema.invoices)
+      .where(inArray(schema.invoices.installmentPlanId, planIds))
+      .groupBy(schema.invoices.installmentPlanId);
+    enrolledMap = Object.fromEntries(counts.map((c) => [c.planId as string, Number(c.cnt)]));
+  }
+
+  return {
+    success: true,
+    data: rows.map((r) => ({
+      id:               r.id,
+      name:             r.name,
+      eventTitle:       r.sourceId ? (ticketMap.get(r.sourceId)?.eventTitle ?? null) : null,
+      ticketName:       r.sourceId ? (ticketMap.get(r.sourceId)?.ticketName ?? null) : null,
+      totalAmount:      r.totalAmount != null ? parseFloat(String(r.totalAmount)) : null,
+      installmentCount: r.installmentCount,
+      intervalDays:     r.intervalDays,
+      isActive:         r.isActive,
+      isPublished:      r.isPublished,
+      enrolledCount:    enrolledMap[r.id] ?? 0,
+      createdAt:        r.createdAt.toISOString(),
+    })),
+  };
+}
+
+export type CreateInstallmentPlanData = {
+  name:              string;
+  description?:      string;
+  ticketId:          string;   // event_tickets.id — jadi installment_plans.source_id
+  totalAmount:       number;
+  installmentCount:  number;
+  intervalDays:      number;
+};
+
+function validateInstallmentPlanData(data: CreateInstallmentPlanData): string | null {
+  if (!data.name.trim())                          return "Nama program wajib diisi.";
+  if (!data.ticketId)                              return "Tiket wajib dipilih.";
+  if (!data.totalAmount || data.totalAmount <= 0)  return "Total nominal harus lebih dari 0.";
+  if (!data.installmentCount || data.installmentCount < 2) return "Jumlah termin minimal 2.";
+  if (!data.intervalDays || data.intervalDays < 1) return "Interval hari minimal 1.";
+  return null;
+}
+
+export async function createInstallmentPlanAction(
+  slug: string,
+  data: CreateInstallmentPlanData,
+): Promise<ActionResult<{ id: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const validationError = validateInstallmentPlanData(data);
+  if (validationError) return { success: false, error: validationError };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [ticket] = await db
+    .select({ id: schema.eventTickets.id })
+    .from(schema.eventTickets)
+    .where(eq(schema.eventTickets.id, data.ticketId))
+    .limit(1);
+  if (!ticket) return { success: false, error: "Tiket tidak ditemukan." };
+
+  const [plan] = await db
+    .insert(schema.installmentPlans)
+    .values({
+      name:             data.name.trim(),
+      description:      data.description?.trim() || null,
+      sourceType:       "event",
+      sourceId:         data.ticketId,
+      totalAmount:      data.totalAmount.toFixed(2),
+      installmentCount: data.installmentCount,
+      intervalDays:     data.intervalDays,
+      isActive:         false,
+      isPublished:      false,
+    })
+    .returning({ id: schema.installmentPlans.id });
+
+  revalidateBilling(slug);
+  return { success: true, data: { id: plan.id } };
+}
+
+export async function updateInstallmentPlanAction(
+  slug:   string,
+  planId: string,
+  data:   CreateInstallmentPlanData,
+): Promise<ActionResult<void>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const validationError = validateInstallmentPlanData(data);
+  if (validationError) return { success: false, error: validationError };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [existing] = await db
+    .select({ id: schema.installmentPlans.id })
+    .from(schema.installmentPlans)
+    .where(eq(schema.installmentPlans.id, planId))
+    .limit(1);
+  if (!existing) return { success: false, error: "Program tidak ditemukan." };
+
+  await db
+    .update(schema.installmentPlans)
+    .set({
+      name:             data.name.trim(),
+      description:      data.description?.trim() || null,
+      sourceId:         data.ticketId,
+      totalAmount:      data.totalAmount.toFixed(2),
+      installmentCount: data.installmentCount,
+      intervalDays:     data.intervalDays,
+      updatedAt:        new Date(),
+    })
+    .where(eq(schema.installmentPlans.id, planId));
+
+  revalidateBilling(slug);
+  return { success: true, data: undefined };
+}
+
+export async function toggleInstallmentPlanAction(
+  slug:   string,
+  planId: string,
+  field:  "isActive" | "isPublished",
+): Promise<ActionResult<{ value: boolean }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+  const [plan] = await db
+    .select({ isActive: schema.installmentPlans.isActive, isPublished: schema.installmentPlans.isPublished })
+    .from(schema.installmentPlans)
+    .where(eq(schema.installmentPlans.id, planId))
+    .limit(1);
+  if (!plan) return { success: false, error: "Program tidak ditemukan." };
+
+  const newValue = field === "isActive" ? !plan.isActive : !plan.isPublished;
+  await db
+    .update(schema.installmentPlans)
+    .set(field === "isActive" ? { isActive: newValue } : { isPublished: newValue })
+    .where(eq(schema.installmentPlans.id, planId));
+
+  revalidateBilling(slug);
+  return { success: true, data: { value: newValue } };
+}
+
+export type InstallmentPlanDetail = {
+  id:               string;
+  name:             string;
+  description:      string | null;
+  eventTitle:       string | null;
+  ticketName:       string | null;
+  ticketId:         string | null;
+  totalAmount:      number | null;
+  installmentCount: number;
+  intervalDays:     number;
+  isActive:         boolean;
+  isPublished:      boolean;
+  createdAt:        string;
+  perTermAmount:    number | null;
+  invoices: Array<{
+    id:            string;
+    invoiceNumber: string;
+    customerName:  string;
+    total:         number;
+    paidAmount:    number;
+    status:        string;
+    paidTerms:     number;
+    totalTerms:    number;
+  }>;
+};
+
+export async function getInstallmentPlanDetailAction(
+  slug:   string,
+  planId: string,
+): Promise<ActionResult<InstallmentPlanDetail>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [plan] = await db
+    .select()
+    .from(schema.installmentPlans)
+    .where(eq(schema.installmentPlans.id, planId))
+    .limit(1);
+  if (!plan) return { success: false, error: "Program tidak ditemukan." };
+
+  let eventTitle: string | null = null;
+  let ticketName: string | null = null;
+  if (plan.sourceType === "event" && plan.sourceId) {
+    const [t] = await db
+      .select({ ticketName: schema.eventTickets.name, eventTitle: schema.events.title })
+      .from(schema.eventTickets)
+      .innerJoin(schema.events, eq(schema.events.id, schema.eventTickets.eventId))
+      .where(eq(schema.eventTickets.id, plan.sourceId))
+      .limit(1);
+    if (t) { eventTitle = t.eventTitle; ticketName = t.ticketName; }
+  }
+
+  const invRows = await db
+    .select({
+      id:            schema.invoices.id,
+      invoiceNumber: schema.invoices.invoiceNumber,
+      customerName:  schema.invoices.customerName,
+      total:         schema.invoices.total,
+      paidAmount:    schema.invoices.paidAmount,
+      status:        schema.invoices.status,
+    })
+    .from(schema.invoices)
+    .where(eq(schema.invoices.installmentPlanId, planId))
+    .orderBy(desc(schema.invoices.createdAt));
+
+  const invIds = invRows.map((r) => r.id);
+  let paidTermsMap: Record<string, number> = {};
+  if (invIds.length > 0) {
+    const paidCounts = await db
+      .select({ invoiceId: schema.installmentSchedules.invoiceId, cnt: count() })
+      .from(schema.installmentSchedules)
+      .where(and(
+        inArray(schema.installmentSchedules.invoiceId, invIds),
+        eq(schema.installmentSchedules.status, "paid"),
+      ))
+      .groupBy(schema.installmentSchedules.invoiceId);
+    paidTermsMap = Object.fromEntries(paidCounts.map((c) => [c.invoiceId, Number(c.cnt)]));
+  }
+
+  const totalAmount = plan.totalAmount != null ? parseFloat(String(plan.totalAmount)) : null;
+
+  return {
+    success: true,
+    data: {
+      id:               plan.id,
+      name:             plan.name,
+      description:      plan.description,
+      eventTitle,
+      ticketName,
+      ticketId:         plan.sourceType === "event" ? plan.sourceId : null,
+      totalAmount,
+      installmentCount: plan.installmentCount,
+      intervalDays:     plan.intervalDays,
+      isActive:         plan.isActive,
+      isPublished:      plan.isPublished,
+      createdAt:        plan.createdAt.toISOString(),
+      perTermAmount:    totalAmount != null ? Math.round(totalAmount / plan.installmentCount) : null,
+      invoices: invRows.map((r) => ({
+        id:            r.id,
+        invoiceNumber: r.invoiceNumber,
+        customerName:  r.customerName,
+        total:         parseFloat(String(r.total)),
+        paidAmount:    parseFloat(String(r.paidAmount)),
+        status:        r.status,
+        paidTerms:     paidTermsMap[r.id] ?? 0,
+        totalTerms:    plan.installmentCount,
+      })),
+    },
+  };
+}

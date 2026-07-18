@@ -463,15 +463,50 @@ Saat payment di invoice dikonfirmasi:
 
 ## Program Cicilan — Detail
 
-Cicilan **tidak tampil di front-end** kecuali admin aktifkan dan publish program
-tertentu.
+> **Status: Fase A SELESAI (2026-07-18) — admin CRUD program. Fase B (enrollment publik +
+> settlement) dan Fase C (reminder) BELUM.** Rencana lengkap + riset:
+> `/Users/webane/.claude/plans/polished-moseying-shell.md`. Lesson CLAUDE.md
+> "[2026-07-18] Fitur Cicilan — Fase A Selesai".
 
-Contoh use case: **Nabung Qurban 2025**
-- Total: Rp 3.000.000
-- 10x cicilan @ Rp 300.000/bulan
-- Admin buat `installment_plans` → aktifkan → publish
-- User daftar → invoice dibuat + `installment_schedules` 10 baris
-- Setiap bulan: user bayar Rp 300.000 → finance konfirmasi → 1 termin lunas
+Cicilan **tidak tampil di front-end** kecuali admin aktifkan DAN publish program tertentu.
+
+**Scope yang dikunci (klarifikasi user, bukan asumsi)**: cicilan HANYA untuk **tiket event**
+di Fase A/B ini — donasi biasa tidak butuh cicilan (donasi = pemberian, bukan pembelian).
+Qurban (pola sama, nanti diterapkan lagi) eksplisit di luar scope sesi ini, menyusul terpisah.
+
+`installment_plans.sourceType='event'` → `sourceId` = **ID tiket** (`event_tickets.id`),
+BUKAN ID event — satu event bisa punya beberapa tiket harga beda, tiap tiket bisa punya
+program cicilan sendiri. Total nominal (`totalAmount`) SELALU ditentukan admin (bukan
+customer pilih bebas) — divalidasi wajib di action, meski kolom DB nullable.
+
+**Invoice hasil enroll TETAP `sourceType='event_registration'`** (sama seperti tiket biasa
+non-cicilan) — TIDAK ada `sourceType` baru. Yang membedakan cukup `invoices.installmentPlanId`
+(kolom yang sudah ada sejak awal). Konsekuensi bagus: hook existing di
+`confirmInvoicePaymentAction`/`verifySubmittedPaymentAction` ("kalau sourceType
+event_registration DAN invoice lunas → confirm eventRegistrations") **otomatis berlaku untuk
+cicilan tanpa kode tambahan** — event_registration baru "confirmed" begitu SELURUH termin
+lunas (bukan begitu daftar).
+
+**Settlement termin — waterfall FIFO** (Fase B, direncanakan): setiap kali
+`invoices.paidAmount` bertambah, `installment_schedules` ditandai lunas berurutan (termin 1,
+2, dst) sejauh nominal kumulatif mencukupi — customer TIDAK memilih "saya bayar termin
+keberapa" saat submit bukti, pembayaran otomatis mengalir ke termin tertua dulu.
+
+Contoh use case (nanti, di luar scope Fase A/B): **Nabung Qurban 2025** — Total Rp 3.000.000,
+10x cicilan @ Rp 300.000/bulan, terhubung ke campaign qurban bukan event. Pola aplikasinya
+akan mirip (settlement waterfall, dst) tapi butuh `sourceType='campaign'` + penyesuaian
+enrollment (lewat `CampaignDetailClient`, bukan `EventRegisterForm`) — dikerjakan terpisah.
+
+### Fase A — Admin CRUD (SELESAI)
+
+- `finance/billing/actions.ts`: `getEventTicketOptionsAction`, `getInstallmentPlanListAction`,
+  `getInstallmentPlanDetailAction`, `createInstallmentPlanAction`,
+  `updateInstallmentPlanAction`, `toggleInstallmentPlanAction`.
+- `finance/billing/cicilan/{page,new/page,[id]/page}.tsx` — list + create + detail (toggle
+  aktif/publish + tabel invoice terdaftar dengan progres termin).
+- `components/keuangan/billing/billing-tabs.tsx` — tab ringan "Invoice | Cicilan" di kedua
+  halaman (BUKAN nav shell `BillingNav` terpisah seperti sketsa lama — struktur folder
+  `finance/billing/` sebenarnya flat, `page.tsx` cuma redirect).
 
 ---
 

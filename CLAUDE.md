@@ -5954,6 +5954,63 @@ memaksa breaking change ke caller lain yang tidak siap.
 **Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error untuk ketiga perubahan (extract
 primitif, Campaign, Produk). Belum diverifikasi visual/interaksi nyata di browser.
 
+### [2026-07-18] Fitur Cicilan — Fase A Selesai (Fondasi Admin CRUD), Fase B+C Menyusul
+
+> Rencana lengkap 3 fase + riset + keputusan desain: `/Users/webane/.claude/plans/polished-moseying-shell.md`
+> (baca dulu sebelum lanjut Fase B/C di sesi berikutnya).
+
+Skema `installment_plans`/`installment_schedules` sudah ADA sejak awal modul Billing (tabel +
+DDL lengkap), tapi nol kode aplikasi pernah menyentuhnya — user minta dimatangkan. Dua
+klarifikasi scope dari user (bukan asumsi saya): **(1) BUKAN donasi** — "Donasi gk ada
+cicilan dong.. event dulu aja.. nanti bisa dipakai di tempat lain.. bisa di qurban" — jadi
+scope Fase A/B: **tiket event saja**; qurban (nanti dipakai lagi dengan pola sama) eksplisit
+DI LUAR SCOPE sesi ini. **(2) Admin tentukan total pasti** — bukan customer pilih nominal
+bebas.
+
+**Temuan riset penting yang mengubah rencana**: sempat dikira perlu migrasi
+`sourceType='installment'` baru di `invoices` — TERNYATA TIDAK PERLU. Invoice hasil enroll
+cicilan tetap `sourceType='event_registration'` (sama seperti tiket biasa), cukup
+`invoices.installmentPlanId` (kolom yang SUDAH ADA) yang membedakan — artinya hook existing
+di `confirmInvoicePaymentAction`/`verifySubmittedPaymentAction` ("kalau sourceType event_reg
+DAN invoice lunas → confirm eventRegistrations") **otomatis berlaku untuk cicilan tanpa
+disentuh sama sekali**. **Nol migrasi DB untuk Fase A dan Fase B** — murni kode aplikasi di
+atas skema yang sudah lengkap.
+
+**Keputusan desain yang saya kunci (bukan di skema, saya tetapkan eksplisit)**:
+`installment_plans.sourceId` untuk `sourceType='event'` = **ID tiket** (`event_tickets.id`),
+BUKAN ID event — supaya satu event dengan banyak tiket beda harga bisa punya program cicilan
+berbeda per tiket, dan supaya bisa reuse pola lock-kuota `FOR UPDATE` yang sudah ada di
+`registerForEventAction` saat Fase B nanti.
+
+**Fase A (selesai, murni admin — belum ada apa pun di front-end publik)**:
+- `finance/billing/actions.ts` — tambah `getEventTicketOptionsAction` (list tiket aktif utk
+  picker), `getInstallmentPlanListAction`/`Detail`, `createInstallmentPlanAction`,
+  `updateInstallmentPlanAction` (siap dipakai, belum ada UI edit — hemat scope Fase A),
+  `toggleInstallmentPlanAction(planId, "isActive"|"isPublished")`. Validasi wajib:
+  `totalAmount>0`, `installmentCount>=2`, `intervalDays>=1`.
+- `finance/billing/cicilan/` — 3 halaman baru: list (toggle langsung di tabel), `new/` (form:
+  Combobox pilih event+tiket — label gabungan `"{event} — {tiket} (Rp X)"` — + total + jumlah
+  termin + interval, preview kira-kira per-termin live di form), `[id]/` (detail: info program
+  + toggle + tabel invoice terdaftar dengan progres "3/10 termin").
+- **`BillingTabs`** komponen baru (`components/keuangan/billing/billing-tabs.tsx`) —
+  penghubung Invoice↔Cicilan. Ditemukan saat riset: dokumen lama mensketsakan `BillingNav`
+  sub-shell terpisah untuk billing, TERNYATA struktur aktual flat (`billing/page.tsx` cuma
+  redirect ke `/invoice`, tidak ada nav shell) — jadi dibuat tab ringan 2 pilihan, bukan
+  layout baru, menyesuaikan yang benar-benar ada di kode (bukan dokumen lama yang basi).
+
+**Fase B (BELUM dikerjakan)** — enrollment publik (`enrollInstallmentPlanAction` di
+`event/actions.ts`, reuse `createLinkedInvoice` + insert `installment_schedules`), settlement
+waterfall FIFO di confirm/verify payment action, UI "Tersedia Cicilan" di halaman event
+publik, section "Jadwal Cicilan" di invoice detail admin+publik.
+
+**Fase C (BELUM dikerjakan)** — cron reminder H-1 jatuh tempo termin (clone
+`invoice-reminder`), `WaNotifKey` baru `installment_reminder`.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error, 3 rute baru terkonfirmasi muncul
+di output build (`/finance/billing/cicilan`, `/cicilan/[id]`, `/cicilan/new`). Belum bisa
+dites nyata (butuh setidaknya 1 event dengan tiket aktif di data lokal/production untuk coba
+buat program) — user diminta cek tampilan admin dulu sebelum saya lanjut Fase B.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
