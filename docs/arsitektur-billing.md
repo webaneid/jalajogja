@@ -583,6 +583,45 @@ Lightbox juga tersedia di halaman invoice publik `/{slug}/invoice/{id}`:
 
 ---
 
+### Admin Edit Bukti Transfer + Metadata Payment
+
+> **Status: SELESAI — 2026-07-18.** Diminta user setelah insiden bukti transfer gagal terlampir
+> (bug HEIC, lihat lesson CLAUDE.md di atas) — sebagai jalan recovery kalau kejadian serupa
+> terulang: admin bisa tambah/ganti bukti transfer dan koreksi data pengirim langsung dari
+> halaman invoice, tanpa perlu minta customer submit ulang dari nol.
+
+**Action baru**: `updatePaymentEvidenceAction(slug, paymentId, data)` di
+`finance/billing/actions.ts` — `data: { amount?, proofUrl?, payerName?, payerBank?,
+transferDate?, payerNote? }`, semua field opsional (hanya field yang diisi yang di-UPDATE).
+
+**Keputusan yang dikunci — nominal TIDAK bisa diedit untuk payment `status="paid"`:**
+Payment yang sudah dikonfirmasi sudah tercatat di `invoice.paidAmount` DAN jurnal double-entry
+(`recordIncome` dipanggil dengan `invoice.total` saat invoice mencapai lunas — bukan
+`payment.amount` per baris). Mengubah `payment.amount` setelah itu tidak akan pernah tercermin
+di jurnal yang sudah dibuat, dan `sum(payments.amount)` bisa jadi tidak sinkron dengan
+`invoice.paidAmount` tanpa ada mekanisme koreksi. Server menolak dengan pesan eksplisit:
+"Nominal pembayaran yang sudah dikonfirmasi tidak bisa diubah — sudah tercatat di buku besar
+keuangan." UI juga men-disable input nominal (dengan keterangan yang sama) saat status `paid`.
+
+Untuk status lain (`submitted`, `rejected`, dll — belum pernah masuk `invoice.paidAmount`/jurnal),
+nominal AMAN diedit — `payments.amount` dan `invoice_payments.amount` di-update bersamaan (pola
+sama dengan `verifySubmittedPaymentAction`), `invoice.paidAmount` tidak tersentuh sama sekali
+(memang belum pernah dihitung ke situ untuk status non-paid).
+
+**Bukti transfer (`proofUrl`) dan metadata (nama/bank/tanggal/catatan) SELALU aman diedit di
+status manapun** — murni evidentiary, tidak pernah dipakai untuk hitung apapun di ledger.
+
+**UI** (`invoice-detail-client.tsx`): tombol "✎ Edit" tampil di SETIAP baris riwayat pembayaran
+(tidak digate status, beda dari "✓ Verifikasi"/"Tolak" yang hanya untuk `submitted`) — membuka
+form inline (pola sama form Verifikasi/Tolak yang sudah ada): nominal (disabled kalau `paid`),
+nama pengirim, bank, tanggal transfer, catatan, dan upload bukti (reuse endpoint yang sama
+`/api/invoice/proof-upload`, termasuk konversi Sharp/WebP-nya). Baris payment tanpa `proofUrl`
+menampilkan hint kuning "⚠ Belum ada bukti transfer terlampir — klik Edit untuk menambahkan" —
+supaya kasus yang memicu permintaan fitur ini (bukti hilang, admin tidak sadar) langsung terlihat
+tanpa perlu scroll/cek manual satu-satu.
+
+---
+
 ### Nominal Pembayaran Terlihat + Bisa Diedit — Prasyarat Cicilan
 
 > **Status: SELESAI — diimplementasikan 2026-07-17.** Ditemukan saat diskusi perencanaan fitur

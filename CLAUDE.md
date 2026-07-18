@@ -5592,6 +5592,40 @@ sudah `decimal`) untuk grouping digit saja. Ini melengkapi (bukan menggantikan) 
 formatting yang environment-dependent", dan keduanya harus dicek setiap kali komponen client baru
 menampilkan tanggal ATAU uang.
 
+### [2026-07-18] Admin Edit Bukti Transfer + Metadata Payment — Nominal Diblok Kalau Sudah `paid`
+
+User minta jalan recovery: kalau insiden bukti-transfer-hilang (lesson HEIC di atas) terulang,
+admin harus bisa tambah/ganti bukti dan koreksi data pengirim langsung dari halaman invoice tanpa
+minta customer submit ulang. Diminta juga bisa edit nominal.
+
+**Keputusan yang dikunci**: nominal payment yang statusnya sudah `"paid"` **TIDAK BOLEH diedit**
+lewat fitur ini — payment itu sudah tercatat di `invoice.paidAmount` DAN jurnal double-entry
+(`recordIncome` dipanggil dengan `invoice.total` saat invoice lunas, bukan `payment.amount` per
+baris — lihat `docs/arsitektur-keuangan.md`). Mengizinkan edit nominal setelah itu akan membuat
+`sum(payments.amount)` menyimpang dari `invoice.paidAmount`/jurnal tanpa mekanisme koreksi apapun
+— kelas bug yang sama dengan prinsip "kolom yang sudah jadi bagian catatan resmi (signed_at,
+confirmed_at, dst) tidak boleh diubah diam-diam dari jalur lain" yang sudah berulang kali dikunci
+di project ini. Untuk status lain (`submitted`, `rejected` — belum pernah masuk
+`invoice.paidAmount`/jurnal), nominal AMAN diedit.
+
+**Action baru**: `updatePaymentEvidenceAction(slug, paymentId, {amount?, proofUrl?, payerName?,
+payerBank?, transferDate?, payerNote?})` — semua field opsional, cuma yang diisi yang di-UPDATE.
+Server validasi ulang guard `paid` (bukan cuma disable di client) — pertahanan sesungguhnya ada
+di action, UI disable cuma UX.
+
+**UI** (`invoice-detail-client.tsx`): tombol "✎ Edit" di SETIAP baris riwayat pembayaran (tidak
+digate status, beda dari "✓ Verifikasi"/"Tolak" yang cuma untuk `submitted`) — form inline reuse
+endpoint upload yang sama (`/api/invoice/proof-upload`, termasuk konversi Sharp/WebP dari fix
+sebelumnya). Baris tanpa `proofUrl` dapat hint kuning "⚠ Belum ada bukti transfer terlampir" —
+supaya kasus yang memicu fitur ini (bukti hilang, admin tidak sadar) langsung kelihatan tanpa
+harus scroll/cek satu-satu.
+
+**Aturan yang ditegaskan**: setiap fitur "edit data yang sudah dikonfirmasi" WAJIB dipilah per
+field — field yang murni evidentiary (foto, nama, catatan) selalu aman diedit kapan saja; field
+yang sudah dipakai untuk KALKULASI di tempat lain (nominal → paidAmount → jurnal) hanya boleh
+diedit selama belum ada downstream effect yang sudah terjadi. Jangan buat satu tombol "Edit" yang
+mengizinkan semua field tanpa pembedaan ini.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

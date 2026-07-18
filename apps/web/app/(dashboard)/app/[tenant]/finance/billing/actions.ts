@@ -617,6 +617,94 @@ export async function rejectPaymentAction(
   }
 }
 
+// ─── updatePaymentEvidenceAction ─────────────────────────────────────────────
+// Admin edit bukti transfer + metadata payment yang SUDAH ADA — untuk kasus bukti
+// gagal terlampir (mis. bug upload HEIC lama) atau data pengirim salah ketik.
+//
+// Nominal HANYA bisa diedit jika status payment BUKAN "paid". Payment yang sudah
+// dikonfirmasi (paid) sudah tercatat di invoice.paidAmount DAN jurnal double-entry
+// (recordIncome memakai invoice.total saat invoice lunas, bukan payment.amount per
+// baris) — mengubah payment.amount setelah itu membuat data tidak sinkron dengan
+// buku besar tanpa ada mekanisme koreksi jurnal. Lihat CLAUDE.md § "BUG KRITIS:
+// signed_at DEFAULT NOW()" dan lesson double-entry lain — prinsip yang sama: field
+// yang sudah jadi bagian dari catatan resmi (di sini: jurnal) tidak boleh diubah
+// diam-diam dari jalur lain.
+//
+// Bukti transfer (proofUrl) dan metadata (nama/bank/tanggal/catatan) SELALU aman
+// diedit di status manapun — murni evidentiary, tidak pernah dipakai untuk hitung
+// apapun di ledger.
+
+export type UpdatePaymentEvidenceData = {
+  amount?:       number;
+  proofUrl?:     string | null;
+  payerName?:    string;
+  payerBank?:    string;
+  transferDate?: string;
+  payerNote?:    string;
+};
+
+export async function updatePaymentEvidenceAction(
+  slug:      string,
+  paymentId: string,
+  data:      UpdatePaymentEvidenceData,
+): Promise<ActionResult<void>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  const [payment] = await db
+    .select({ id: schema.payments.id, status: schema.payments.status })
+    .from(schema.payments)
+    .where(eq(schema.payments.id, paymentId))
+    .limit(1);
+
+  if (!payment) return { success: false, error: "Pembayaran tidak ditemukan." };
+
+  if (data.amount !== undefined) {
+    if (!data.amount || data.amount <= 0)
+      return { success: false, error: "Nominal harus lebih dari 0." };
+    if (payment.status === "paid")
+      return {
+        success: false,
+        error: "Nominal pembayaran yang sudah dikonfirmasi tidak bisa diubah — sudah tercatat di buku besar keuangan.",
+      };
+  }
+
+  try {
+    const updateSet: Record<string, unknown> = { updatedAt: new Date() };
+    if (data.amount       !== undefined) updateSet.amount       = data.amount.toFixed(2);
+    if (data.proofUrl     !== undefined) updateSet.proofUrl     = data.proofUrl;
+    if (data.payerName    !== undefined) updateSet.payerName    = data.payerName.trim() || null;
+    if (data.payerBank    !== undefined) updateSet.payerBank    = data.payerBank.trim() || null;
+    if (data.transferDate !== undefined) updateSet.transferDate = data.transferDate || null;
+    if (data.payerNote    !== undefined) updateSet.payerNote    = data.payerNote.trim() || null;
+
+    await db.transaction(async (tx) => {
+      await tx.update(schema.payments).set(updateSet).where(eq(schema.payments.id, paymentId));
+
+      // Sinkronkan invoice_payments.amount juga — cegah nilai basi tersisa di tabel
+      // junction (pola sama dengan verifySubmittedPaymentAction saat admin koreksi
+      // nominal di titik verifikasi).
+      if (data.amount !== undefined) {
+        await tx
+          .update(schema.invoicePayments)
+          .set({ amount: data.amount.toFixed(2) })
+          .where(eq(schema.invoicePayments.paymentId, paymentId));
+      }
+    });
+
+    revalidateBilling(slug);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[updatePaymentEvidenceAction]", err);
+    return { success: false, error: "Gagal menyimpan perubahan." };
+  }
+}
+
 // ─── verifySubmittedPaymentAction ────────────────────────────────────────────
 // Admin verifikasi payment yang di-submit customer → status confirmed, update paid_amount invoice
 
@@ -1005,6 +1093,7 @@ export type InvoiceDetail = {
     payerName:     string | null;
     payerBank:     string | null;
     payerNote:     string | null;
+    transferDate:  string | null;
     proofUrl:      string | null;
     rejectionNote: string | null;
     createdAt:     string;
@@ -1056,6 +1145,7 @@ export async function getInvoiceDetailAction(
         payerName:     schema.payments.payerName,
         payerBank:     schema.payments.payerBank,
         payerNote:     schema.payments.payerNote,
+        transferDate:  schema.payments.transferDate,
         proofUrl:      schema.payments.proofUrl,
         rejectionNote: schema.payments.rejectionNote,
         createdAt:     schema.payments.createdAt,
@@ -1114,6 +1204,7 @@ export async function getInvoiceDetailAction(
         payerName:     p.payerName ?? null,
         payerBank:     p.payerBank ?? null,
         payerNote:     p.payerNote ?? null,
+        transferDate:  p.transferDate ?? null,
         proofUrl:      p.proofUrl ?? null,
         rejectionNote: p.rejectionNote ?? null,
         createdAt:     p.createdAt.toISOString(),

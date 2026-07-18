@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { X, ImagePlus, Loader2, Check } from "lucide-react";
 import {
   confirmInvoicePaymentAction,
   cancelInvoiceAction,
   verifySubmittedPaymentAction,
   rejectPaymentAction,
+  updatePaymentEvidenceAction,
   updateAdminShippingTrackingAction,
   type InvoiceDetail,
 } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
+import { compressImage } from "@/lib/client-image-compress";
 
 type Props = {
   slug:    string;
@@ -84,6 +86,23 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
   const [rejectReason,   setRejectReason]   = useState("");
   const [rejectPending,  startRejectTr]     = useTransition();
 
+  // Edit bukti transfer + metadata payment — untuk kasus bukti gagal terlampir
+  // (bug upload lama) atau data pengirim salah ketik. Tersedia di status manapun;
+  // nominal ikut disable oleh server kalau status sudah "paid" (lihat
+  // updatePaymentEvidenceAction — sudah tercatat di jurnal, tidak boleh diubah diam-diam).
+  const [editingId,         setEditingId]         = useState<string | null>(null);
+  const [editAmount,        setEditAmount]        = useState("");
+  const [editPayerName,     setEditPayerName]     = useState("");
+  const [editPayerBank,     setEditPayerBank]     = useState("");
+  const [editTransferDate,  setEditTransferDate]  = useState("");
+  const [editPayerNote,     setEditPayerNote]     = useState("");
+  const [editProofUrl,      setEditProofUrl]      = useState<string | null>(null);
+  const [editProofPreview,  setEditProofPreview]  = useState<string | null>(null);
+  const [editUploadingProof, setEditUploadingProof] = useState(false);
+  const [editUploadError,    setEditUploadError]    = useState("");
+  const [editPending,       startEditTr]          = useTransition();
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
   // Lightbox
   const [lightboxSrc, setLightboxSrc]  = useState<string | null>(null);
 
@@ -134,6 +153,81 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
         setSuccess("Pembayaran berhasil diverifikasi.");
         setVerifyingId(null);
         setVerifyAmount("");
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+    });
+  }
+
+  // Buka/tutup form edit bukti+metadata — prefill dari data payment yang ada
+  function toggleEditForm(p: InvoiceDetail["payments"][number]) {
+    setError("");
+    setSuccess("");
+    if (editingId === p.id) {
+      setEditingId(null);
+      return;
+    }
+    setEditingId(p.id);
+    setEditAmount(String(Math.round(p.amount)));
+    setEditPayerName(p.payerName ?? "");
+    setEditPayerBank(p.payerBank ?? "");
+    setEditTransferDate(p.transferDate ?? "");
+    setEditPayerNote(p.payerNote ?? "");
+    setEditProofUrl(p.proofUrl ?? null);
+    setEditProofPreview(p.proofUrl ?? null);
+    setEditUploadError("");
+  }
+
+  async function handleEditProofFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEditUploadError("");
+    setEditProofUrl(null);
+    setEditProofPreview(URL.createObjectURL(file));
+    setEditUploadingProof(true);
+    try {
+      const compressed = await compressImage(file, { maxDimension: 1600, quality: 0.80 });
+      const fd = new FormData();
+      fd.append("file", compressed);
+      const res  = await fetch(`/api/invoice/proof-upload?tenant=${slug}&invoiceId=${invoice.id}`, {
+        method: "POST", body: fd,
+      });
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        setEditUploadError(data.error ?? "Gagal upload bukti.");
+      } else {
+        setEditProofUrl(data.url);
+        setEditProofPreview(data.url);
+      }
+    } catch {
+      setEditUploadError("Gagal upload bukti.");
+    }
+    setEditUploadingProof(false);
+  }
+
+  function handleSaveEdit(p: InvoiceDetail["payments"][number]) {
+    const amountNum = parseInt(editAmount.replace(/\D/g, ""), 10);
+    if (!amountNum || amountNum <= 0) {
+      setError("Nominal harus diisi dengan benar.");
+      return;
+    }
+    setError("");
+    setSuccess("");
+    startEditTr(async () => {
+      const res = await updatePaymentEvidenceAction(slug, p.id, {
+        // Nominal hanya dikirim kalau berubah DAN status bukan "paid" — server tetap
+        // validasi ulang, ini cuma menghindari kirim field yang pasti ditolak.
+        amount:       p.status !== "paid" ? amountNum : undefined,
+        proofUrl:     editProofUrl,
+        payerName:    editPayerName,
+        payerBank:    editPayerBank,
+        transferDate: editTransferDate,
+        payerNote:    editPayerNote,
+      });
+      if (res.success) {
+        setSuccess("Data pembayaran berhasil diperbarui.");
+        setEditingId(null);
         router.refresh();
       } else {
         setError(res.error);
@@ -361,6 +455,15 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                         </button>
                       </>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => toggleEditForm(p)}
+                      disabled={editPending}
+                      className="rounded-md border border-border px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-60 transition-colors"
+                      title="Edit bukti transfer / nominal / data pengirim"
+                    >
+                      ✎ Edit
+                    </button>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                       p.status === "paid"      ? "bg-green-100 text-green-700" :
                       p.status === "submitted" ? "bg-blue-100 text-blue-700" :
@@ -373,6 +476,9 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                     </span>
                   </div>
                 </div>
+                {!p.proofUrl && editingId !== p.id && (
+                  <p className="text-xs text-amber-600">⚠ Belum ada bukti transfer terlampir — klik &quot;Edit&quot; untuk menambahkan.</p>
+                )}
                 {/* Form verifikasi — nominal ter-prefill dari yang customer submit, admin bisa koreksi */}
                 {verifyingId === p.id && (
                   <div className="rounded-md border border-green-600/30 bg-green-50/40 p-3 space-y-2">
@@ -439,13 +545,156 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                     </div>
                   </div>
                 )}
+                {/* Form edit bukti transfer + metadata — tersedia di status manapun */}
+                {editingId === p.id && (
+                  <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Edit Data Pembayaran</p>
+
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Nominal</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rp</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={editAmount}
+                          onChange={(e) => setEditAmount(e.target.value.replace(/\D/g, ""))}
+                          disabled={p.status === "paid"}
+                          className="w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60 disabled:bg-muted"
+                        />
+                      </div>
+                      {p.status === "paid" && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Nominal yang sudah dikonfirmasi tidak bisa diubah — sudah tercatat di buku besar keuangan.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium mb-1">Nama Pengirim</label>
+                        <input
+                          type="text"
+                          value={editPayerName}
+                          onChange={(e) => setEditPayerName(e.target.value)}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1">Bank</label>
+                        <input
+                          type="text"
+                          value={editPayerBank}
+                          onChange={(e) => setEditPayerBank(e.target.value)}
+                          placeholder="BCA, BRI..."
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Tanggal Transfer</label>
+                      <input
+                        type="date"
+                        value={editTransferDate}
+                        onChange={(e) => setEditTransferDate(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Catatan</label>
+                      <input
+                        type="text"
+                        value={editPayerNote}
+                        onChange={(e) => setEditPayerNote(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Bukti Transfer</label>
+                      {!editProofPreview ? (
+                        <label className="flex flex-col items-center gap-1.5 rounded-md border-2 border-dashed border-border px-4 py-4 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground cursor-pointer transition-colors">
+                          <ImagePlus size={20} />
+                          <span>Klik untuk pilih/ganti foto</span>
+                          <input
+                            ref={editFileInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                            onChange={handleEditProofFileChange}
+                            className="hidden"
+                          />
+                        </label>
+                      ) : (
+                        <div className="relative rounded-md overflow-hidden border border-border">
+                          <button
+                            type="button"
+                            onClick={() => editProofPreview && setLightboxSrc(editProofPreview)}
+                            className="block w-full"
+                            disabled={editUploadingProof}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={editProofPreview}
+                              alt="Bukti transfer"
+                              className="w-full max-h-48 object-contain bg-muted/20 cursor-zoom-in"
+                            />
+                          </button>
+                          {editUploadingProof && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-background/70">
+                              <Loader2 size={24} className="animate-spin text-primary" />
+                            </div>
+                          )}
+                          {!editUploadingProof && (
+                            <button
+                              type="button"
+                              onClick={() => { setEditProofUrl(null); setEditProofPreview(null); if (editFileInputRef.current) editFileInputRef.current.value = ""; }}
+                              className="absolute top-2 right-2 rounded-full bg-background/80 p-1 text-muted-foreground hover:text-destructive border border-border"
+                              title="Hapus foto"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                          {editProofUrl && !editUploadingProof && (
+                            <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-xs text-white">
+                              <Check size={12} />
+                              Terupload
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {editUploadError && (
+                        <p className="mt-1 text-xs text-destructive">⚠ {editUploadError}</p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveEdit(p)}
+                        disabled={editPending || editUploadingProof}
+                        className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
+                      >
+                        {editPending ? "Menyimpan..." : "Simpan"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(null)}
+                        className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {/* Tampilkan alasan jika sudah ditolak */}
                 {p.status === "rejected" && p.rejectionNote && (
                   <p className="text-xs text-destructive/80 bg-red-50 rounded px-2 py-1">
                     Alasan: {p.rejectionNote}
                   </p>
                 )}
-                {p.proofUrl && (
+                {p.proofUrl && editingId !== p.id && (
                   <button
                     type="button"
                     onClick={() => setLightboxSrc(p.proofUrl)}
