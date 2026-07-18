@@ -6011,6 +6011,38 @@ di output build (`/finance/billing/cicilan`, `/cicilan/[id]`, `/cicilan/new`). B
 dites nyata (butuh setidaknya 1 event dengan tiket aktif di data lokal/production untuk coba
 buat program) — user diminta cek tampilan admin dulu sebelum saya lanjut Fase B.
 
+**Gap discoverability ditemukan saat user testing**: user mencari pengaturan cicilan DI DALAM
+halaman edit event (sejajar dengan "Donation Prompt"/"Produk Terkait" yang memang ada di
+sana) — padahal cicilan sengaja dibuat modul TERPISAH di Finance → Billing → Cicilan. Wajar
+membingungkan karena semua pengaturan tiket lain (kuota, wajib anggota, custom form) memang
+menyatu di form event. User diberi 2 opsi (tambah link pintasan dari edit event, atau
+biarkan) — **memilih dibiarkan seperti sekarang** (opsi B), jadi TIDAK ada shortcut yang
+ditambahkan. Dicatat supaya sesi mendatang tidak mengira ini "belum sempat dikerjakan" —
+ini keputusan sadar user.
+
+**2 perbaikan admin diminta user setelah testing, dikerjakan sebelum lanjut Fase B:**
+1. **Edit program cicilan** — `updateInstallmentPlanAction` sudah ada sejak Fase A tapi
+   TIDAK ADA UI-nya. Ditambahkan: `finance/billing/cicilan/[id]/edit/page.tsx` + tombol
+   "Edit" di halaman detail. `InstallmentPlanForm` diperluas jadi dual-mode (create/edit)
+   via prop opsional `planId`+`initialValues` — bukan bikin komponen form terpisah.
+2. **Total Nominal auto-terisi dari harga tiket** — sebelumnya admin harus ketik ulang angka
+   yang sebenarnya sudah ada di data tiket (`event_tickets.price`). Fix: `handleTicketChange`
+   di form — begitu tiket dipilih di combobox, `totalAmount` langsung di-set dari
+   `ticket.price` (TIDAK di-lock, tetap bisa diedit manual sesudahnya kalau admin mau tambah
+   biaya admin dll). Berlaku sama di create maupun edit (satu handler dipakai bersama).
+
+**Bug TypeScript ditemukan+difix saat edit-mode**: `createInstallmentPlanAction` return
+`ActionResult<{id:string}>`, `updateInstallmentPlanAction` return `ActionResult<void>` — kalau
+hasil kedua dipilih via satu ternary lalu di-assign ke `res` yang sama
+(`const res = isEdit ? await update(...) : await create(...)`), TypeScript melebarkan tipe
+`res.data` jadi union `void | {id:string}` dan `res.data.id` gagal type-check meski di
+runtime aman (branch `isEdit` tidak pernah butuh `.id`). **Fix**: pecah jadi 2 blok `if/else`
+terpisah (bukan satu variable `res` dari ternary) — masing-masing branch punya tipe `res`
+sendiri yang benar. **Aturan**: kalau dua Server Action punya bentuk `ActionResult<T>` yang
+beda (satu `void`, satu ada payload), JANGAN satukan pemanggilannya dalam satu ternary
+lalu simpan ke variable bersama — pecah jadi branch terpisah supaya TypeScript bisa narrow
+dengan benar.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

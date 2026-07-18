@@ -28,15 +28,23 @@ export default async function CicilanDetailPage({
 
   return (
     <div className="p-6 max-w-3xl space-y-6">
-      <div>
+      <div className="flex items-start justify-between">
+        <div>
+          <Link
+            href={`/app/${slug}/finance/billing/cicilan`}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← Kembali ke Cicilan
+          </Link>
+          <h1 className="text-xl font-semibold mt-1">{plan.name}</h1>
+          {plan.description && <p className="text-sm text-muted-foreground mt-0.5">{plan.description}</p>}
+        </div>
         <Link
-          href={`/app/${slug}/finance/billing/cicilan`}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          href={`/app/${slug}/finance/billing/cicilan/${plan.id}/edit`}
+          className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
         >
-          ← Kembali ke Cicilan
+          Edit
         </Link>
-        <h1 className="text-xl font-semibold mt-1">{plan.name}</h1>
-        {plan.description && <p className="text-sm text-muted-foreground mt-0.5">{plan.description}</p>}
       </div>
 
       <div className="rounded-lg border border-border bg-card p-5 space-y-3">

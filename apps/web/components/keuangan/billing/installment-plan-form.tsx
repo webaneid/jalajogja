@@ -3,11 +3,25 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
-import { createInstallmentPlanAction, type EventTicketOption } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
+import {
+  createInstallmentPlanAction, updateInstallmentPlanAction, type EventTicketOption,
+} from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
+
+type InitialValues = {
+  name:             string;
+  description:      string;
+  ticketId:         string;
+  totalAmount:      number;
+  installmentCount: number;
+  intervalDays:     number;
+};
 
 type Props = {
   slug:          string;
   ticketOptions: EventTicketOption[];
+  // Kalau diisi → mode edit (update, redirect ke detail). Kalau tidak → mode create.
+  planId?:        string;
+  initialValues?: InitialValues;
 };
 
 function formatRp(n: number) {
@@ -17,22 +31,32 @@ function formatRp(n: number) {
 const inputCls = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
 const labelCls = "block text-sm font-medium mb-1";
 
-export function InstallmentPlanForm({ slug, ticketOptions }: Props) {
+export function InstallmentPlanForm({ slug, ticketOptions, planId, initialValues }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const isEdit = !!planId;
 
-  const [name, setName]                     = useState("");
-  const [description, setDescription]       = useState("");
-  const [ticketId, setTicketId]             = useState("");
-  const [totalAmount, setTotalAmount]       = useState("");
-  const [installmentCount, setInstallmentCount] = useState("10");
-  const [intervalDays, setIntervalDays]     = useState("30");
+  const [name, setName]                         = useState(initialValues?.name ?? "");
+  const [description, setDescription]           = useState(initialValues?.description ?? "");
+  const [ticketId, setTicketId]                 = useState(initialValues?.ticketId ?? "");
+  const [totalAmount, setTotalAmount]           = useState(initialValues ? String(initialValues.totalAmount) : "");
+  const [installmentCount, setInstallmentCount] = useState(initialValues ? String(initialValues.installmentCount) : "10");
+  const [intervalDays, setIntervalDays]         = useState(initialValues ? String(initialValues.intervalDays) : "30");
 
   const ticketComboOptions: ComboboxOption[] = ticketOptions.map((t) => ({
     value: t.ticketId,
     label: `${t.eventTitle} — ${t.ticketName} (${formatRp(t.price)})`,
   }));
+
+  // Total Nominal otomatis ikut harga tiket yang dipilih — admin tidak perlu ketik ulang
+  // angka yang sudah ada di data tiket. Tetap bisa diedit manual sesudahnya (mis. mau
+  // tambah biaya admin) — auto-fill bukan lock.
+  function handleTicketChange(newTicketId: string) {
+    setTicketId(newTicketId);
+    const ticket = ticketOptions.find((t) => t.ticketId === newTicketId);
+    if (ticket) setTotalAmount(String(Math.round(ticket.price)));
+  }
 
   const totalNum  = parseInt(totalAmount.replace(/\D/g, ""), 10) || 0;
   const countNum  = parseInt(installmentCount, 10) || 0;
@@ -42,18 +66,22 @@ export function InstallmentPlanForm({ slug, ticketOptions }: Props) {
     e.preventDefault();
     setError("");
     startTransition(async () => {
-      const res = await createInstallmentPlanAction(slug, {
+      const data = {
         name,
         description: description.trim() || undefined,
         ticketId,
         totalAmount:      totalNum,
         installmentCount: countNum,
         intervalDays:     parseInt(intervalDays, 10) || 0,
-      });
-      if (res.success) {
-        router.push(`/app/${slug}/finance/billing/cicilan/${res.data.id}`);
+      };
+      if (isEdit) {
+        const res = await updateInstallmentPlanAction(slug, planId!, data);
+        if (res.success) router.push(`/app/${slug}/finance/billing/cicilan/${planId}`);
+        else setError(res.error);
       } else {
-        setError(res.error);
+        const res = await createInstallmentPlanAction(slug, data);
+        if (res.success) router.push(`/app/${slug}/finance/billing/cicilan/${res.data.id}`);
+        else setError(res.error);
       }
     });
   }
@@ -80,7 +108,7 @@ export function InstallmentPlanForm({ slug, ticketOptions }: Props) {
         <Combobox
           options={ticketComboOptions}
           value={ticketId}
-          onValueChange={setTicketId}
+          onValueChange={handleTicketChange}
           placeholder="Pilih event + tiket..."
           searchPlaceholder="Cari event/tiket..."
           emptyText="Tidak ada tiket aktif ditemukan."
@@ -100,6 +128,9 @@ export function InstallmentPlanForm({ slug, ticketOptions }: Props) {
             onChange={(e) => setTotalAmount(e.target.value.replace(/\D/g, ""))}
             className={`${inputCls} pl-9`} required />
         </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Otomatis terisi dari harga tiket yang dipilih — ubah manual kalau perlu (mis. tambah biaya admin).
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -126,7 +157,7 @@ export function InstallmentPlanForm({ slug, ticketOptions }: Props) {
         disabled={pending || !ticketId}
         className="rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
       >
-        {pending ? "Menyimpan..." : "Simpan Program"}
+        {pending ? "Menyimpan..." : isEdit ? "Simpan Perubahan" : "Simpan Program"}
       </button>
     </form>
   );
