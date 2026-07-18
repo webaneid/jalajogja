@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { createTenantDb, db, tenants, getSettings, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
-import { PublicHeader } from "@/components/website/public/layout/public-header";
+import { HeaderVisibility } from "@/components/website/public/layout/header-visibility";
 import { PublicFooter } from "@/components/website/public/layout/public-footer";
 import { parseNavMenu } from "@/lib/nav-menu";
 import { buildTenantThemeCss, getGoogleFontsUrl } from "@/lib/theme-palette";
@@ -154,7 +154,7 @@ export default async function PublicLayout({
       <style dangerouslySetInnerHTML={{ __html: themeCss }} />
 
     <div className="public-layout min-h-screen flex flex-col">
-      <PublicHeader
+      <HeaderVisibility
         designId={headerDesign as import("@/lib/header-designs").HeaderDesignId}
         tenantSlug={slug}
         siteName={siteName}

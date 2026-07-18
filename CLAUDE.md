@@ -5717,6 +5717,89 @@ skenario yang coba dicegah fitur ini. **Fix**: kalau `data.amount !== undefined`
 **Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error setelah keempat fix. Tidak ada
 migration DB — murni penambahan lock+guard di level aplikasi.
 
+### [2026-07-18] Mobile Single-Page Shell — Fondasi + Post SELESAI, 4 Halaman Lagi Menyusul (WIP)
+
+> **Status: SEBAGIAN — jangan anggap 5 halaman semua sudah dikerjakan.** Baru **Post**. Event,
+> Campaign, Produk, dan halaman generik (`[pageSlug]`) BELUM disentuh — direncanakan menyusul
+> di sesi/turn berikutnya, satu-per-satu ("pelan-pelan", permintaan eksplisit user).
+
+User eksplisit tidak suka tampilan mobile saat ini — "tidak aplikasi banget", cuma responsif
+(reflow CSS), bukan genuinely berbeda dari desktop. Rencana lengkap (breakpoint, 2 putaran
+klarifikasi UX, pathname-matcher exclusion-list) ada di
+`/Users/webane/.claude/plans/polished-moseying-shell.md` — baca itu dulu sebelum lanjut kalau
+sesi berikutnya mau meneruskan pekerjaan ini.
+
+**Breakpoint: `md:hidden`/`hidden md:block` (768px)** — SAMA dengan breakpoint switch mobile/
+desktop yang sudah dipakai ketiga header (Flex/Classic/Pill), BUKAN `lg:` yang dipakai untuk
+collapse sidebar/grid dua-kolom di halaman-halaman single ini. Desktop/tablet ≥768px di halaman
+yang sudah dikerjakan **tidak diubah sama sekali** — JSX lama dibungkus `hidden md:block` apa
+adanya, blok mobile baru ditambahkan sebagai `md:hidden`.
+
+**Komponen baru** (`components/website/public/single/`):
+- `single-mobile-topbar.tsx` — overlay back(chevron bulat)+menu(bulat solid primary+putih),
+  `position:fixed`, scroll-direction listener (`useEffect`+`requestAnimationFrame` throttle):
+  hide saat scroll-down, **reveal lagi saat scroll-up sedikit (~8px)** — dikonfirmasi user via
+  2 putaran `AskUserQuestion` (awalnya dikira cukup "absolute scroll away", ternyata user mau
+  pola hide-on-down/reveal-on-up seperti banyak app). Transparan (bg hitam/30 blur di tombol
+  back) saat masih di atas gambar (`scrolledPastTop=false`), dapat backdrop
+  `bg-background/95 backdrop-blur-md` begitu discroll (`scrolledPastTop=true`, supaya kontras
+  di atas teks body bukan gambar). Tombol menu buka drawer nav MANDIRI (bukan reuse state
+  internal header — header punya drawer sendiri per desain, tidak bisa di-trigger dari luar).
+- `single-feature-image.tsx` — wrapper full-bleed (TANPA `px-4`, satu-satunya elemen tanpa
+  padding standar), terima `src` (post/event/campaign/page) ATAU `children` (produk — gallery
+  `ProductImageViewer` menggantikan `<img>` polos).
+- `category-pill.tsx` — capsule kecil `bg-primary text-white` (SENGAJA beda dari pill kategori
+  desktop yang subtle `bg-primary/10 text-primary` — permintaan eksplisit user untuk mobile).
+- `social-share-card.tsx` — WhatsApp/Facebook/X (icon dari `react-icons/fa6`, pola sama
+  `<SocialLinks>`)/Salin Link (pola sama `CopyButton` di `invoice-public-client.tsx`). **Baru
+  dibuat dari nol** — sebelumnya TIDAK ADA komponen share sama sekali di codebase.
+- **Zero custom CSS ditambahkan ke `globals.css`** — semua Tailwind utility class, konsisten
+  dengan pola styling project (dicek eksplisit atas permintaan user: "pastikan minim css, pake
+  reused css class").
+
+**Header situs disembunyikan otomatis di mobile untuk 5 pola URL single-page** — BUKAN dengan
+menghapus/tidak-merender header (tetap ada di DOM, cuma `hidden md:block`), lewat wrapper baru
+`components/website/public/layout/header-visibility.tsx` (`"use client"`, `usePathname()`).
+Deteksi "apakah rute ini single-page" via exclusion-list nama folder static di
+`app/(public)/[tenant]/` (bukan whitelist single-page — supaya generic `[pageSlug]` otomatis
+kebaca tanpa perlu tahu semua slug halaman yang mungkin ada):
+```
+agenda, akun, akun-error, anggota, campaign, cart, checkout, dokumen, event, forgot-password,
+invite, invoice, keranjang, login, pesantren, post, produk, profesional, register,
+reset-password, sign, statistik, usaha, verify
+```
+**PENTING**: kalau ada folder route STATIC baru ditambah ke `app/(public)/[tenant]/` nanti,
+WAJIB update list ini juga di `header-visibility.tsx` — kalau lupa, halaman baru itu akan
+salah-kena treatment "single-page" (header hilang di mobile) padahal seharusnya bukan.
+
+**`lib/nav-menu.ts` vs `lib/get-public-nav-menu.ts` — kenapa dipisah (bug ditemukan+difix saat
+build pertama)**: `nav-menu.ts` diimpor JUGA oleh client component
+(`website-settings-client.tsx`, admin nav menu builder). Sempat ditambah
+`import { getSettings, type TenantDb } from "@jalajogja/db"` LANGSUNG di `nav-menu.ts` untuk
+fungsi baru `getPublicNavMenu` — build production GAGAL (`Module not found: fs`/`perf_hooks`)
+karena `@jalajogja/db` menarik postgres client (Node-only) ke CLIENT bundle. **Fix**: fungsi
+`getPublicNavMenu` (butuh DB) dipindah ke file BARU `lib/get-public-nav-menu.ts` (`import
+"server-only"` di baris pertama), `nav-menu.ts` tetap murni types + pure function
+(`parseNavMenu`, client-safe). **Aturan yang ditegaskan**: setiap kali sebuah `lib/*.ts` file
+dipakai BAIK oleh server component MAUPUN client component, jangan pernah tambah import value
+dari `@jalajogja/db` (atau package server-only lain) langsung ke file itu — pisahkan fungsi yang
+butuh DB ke file baru bertanda `import "server-only"`. `tsc --noEmit` TIDAK menangkap bug ini
+(cuma type-check, tidak tahu soal client/server bundle boundary) — cuma `next build` yang
+mendeteksinya. **Jangan cuma andalkan `tsc` untuk perubahan yang menyentuh file lintas client/
+server** — selalu `bun run build` juga sebelum menganggap selesai.
+
+**Post** (`post/[slug]/page.tsx`) — SELESAI, pola referensi untuk 4 halaman berikutnya: body
+artikel (excerpt+content+footer+related+"Kembali") diekstrak jadi 1 variable JSX
+(`articleBody`) dipakai identik di kedua blok desktop & mobile — supaya prose/tiptap rendering
+logic tidak terduplikasi, cuma bagian ATAS (cover/kategori/judul/meta/author) yang beda urutan
+per breakpoint. `pageUrl` untuk share pakai `getTenantSeoBase(slug).baseUrl` (ABSOLUTE URL,
+`https://...`) — beda dari `resolveBaseUrl(slug)` (RELATIVE, `""`/`/{slug}`, dipakai untuk
+internal href/backHref) — dua "baseUrl" berbeda konsep di codebase ini, jangan tertukar.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error (setelah fix client/server boundary
+di atas). Belum diverifikasi visual di browser — user diminta cek langsung di dev machine
+sendiri, plus interaksi scroll hide/reveal butuh dirasakan langsung, tidak bisa dicek dari kode.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

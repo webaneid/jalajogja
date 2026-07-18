@@ -1,4 +1,8 @@
 // ─── Nav Menu Types — dipakai admin settings + PublicHeader ──────────────────
+// PENTING: file ini diimpor juga oleh client component (website-settings-client.tsx).
+// JANGAN pernah tambah import value dari "@jalajogja/db" di sini — itu menarik
+// postgres client (fs/perf_hooks, Node-only) ke dalam client bundle dan bikin build gagal.
+// Fungsi yang butuh DB (getPublicNavMenu) ada di file terpisah: get-public-nav-menu.ts.
 
 export type NavItem = {
   id:        string;

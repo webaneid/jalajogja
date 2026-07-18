@@ -14,6 +14,11 @@ import type { PostCardData } from "@/lib/post-card-templates";
 import type { Metadata } from "next";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
+import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
+import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
+import { CategoryPill } from "@/components/website/public/single/category-pill";
+import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 
 export const revalidate = 60;
 
@@ -320,133 +325,189 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
   const fmtUpdated = (date: Date) =>
     new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(date);
 
+  // Shell mobile — header situs disembunyikan (lihat HeaderVisibility), diganti overlay
+  // back+menu di atas cover. Lihat docs/arsitektur-frontend-publik.md § "Mobile Single-Page Shell".
+  const [relativeBaseUrl, seoBase] = await Promise.all([
+    resolveBaseUrl(tenantSlug),
+    getTenantSeoBase(tenantSlug),
+  ]);
+  const navMenu  = await getPublicNavMenu(tenantClient, tenantSlug, relativeBaseUrl);
+  const pageUrl  = `${seoBase.baseUrl}/post/${postSlug}`;
+
+  // Body artikel — SAMA PERSIS dipakai di blok desktop maupun mobile, cuma urutan bagian
+  // ATAS (cover/kategori/judul/meta) yang beda per breakpoint.
+  const articleBody = (
+    <>
+      {/* Excerpt */}
+      {post.excerpt && (
+        <p className="text-muted-foreground text-base leading-relaxed mb-6 font-medium">
+          {post.excerpt}
+        </p>
+      )}
+
+      {/* Content */}
+      <div
+        className="prose prose-sm max-w-none
+          [&_p]:my-3 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-8 [&_h2]:mb-3
+          [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-6 [&_h3]:mb-2
+          [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6
+          [&_li]:my-1 [&_a]:text-primary [&_a]:underline
+          [&_blockquote]:border-l-4 [&_blockquote]:border-border [&_blockquote]:pl-4
+          [&_blockquote]:italic [&_blockquote]:text-muted-foreground
+          [&_pre]:bg-muted [&_pre]:rounded [&_pre]:p-4 [&_pre]:overflow-x-auto
+          [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-sm"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+
+      {/* Footer */}
+      <div className="mt-12 pt-6 border-t border-border text-xs text-muted-foreground flex items-center justify-between">
+        <span>Diterbitkan oleh {tenantName}</span>
+        {post.updatedAt && post.updatedAt !== post.publishedAt && (
+          <span>Diperbarui {fmtUpdated(post.updatedAt)}</span>
+        )}
+      </div>
+
+      {/* Konten Terkait */}
+      {relatedPosts.posts.length > 0 && (
+        <section className="mt-12 pt-8 border-t border-border">
+          <h2 className="text-lg font-semibold mb-4">{relatedPosts.label}</h2>
+          <div className="space-y-4">
+            {relatedPosts.posts.map(p => (
+              <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <PublicButton
+        href={`/${tenantSlug}/post`}
+        variant="ghost" size="sm" iconLeft="chevron" icon="none"
+        className="mt-6"
+      >
+        Kembali ke Blog
+      </PublicButton>
+    </>
+  );
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-10">
-      <div className="flex gap-10">
-        {/* Main article */}
-        <article className="flex-1 min-w-0">
-          {/* Breadcrumb */}
-          <div className="text-xs text-muted-foreground mb-6 flex items-center gap-2">
-            <a href={`/${tenantSlug}/post`} className="hover:text-foreground transition-colors">Postingan</a>
-            <span>/</span>
-            <span className="text-foreground truncate max-w-xs">{post.title}</span>
-          </div>
-
-          {/* ── Post Header ── */}
-          <div className="mb-8 space-y-3">
-            {/* 1. Kategori */}
-            {post.categoryName && (
+    <>
+      {/* ── Mobile shell — beda dari desktop, bukan cuma reflow ── */}
+      <div className="md:hidden">
+        <SingleFeatureImage
+          src={coverUrl}
+          alt={coverAlt ?? post.title}
+          backHref={`${relativeBaseUrl}/post`}
+          navMenu={navMenu}
+          siteName={tenantName}
+        />
+        <div className="px-4 pt-4 space-y-3">
+          {post.categoryName && <CategoryPill label={post.categoryName} />}
+          <h1 className="text-2xl font-bold tracking-tight leading-tight">{post.title}</h1>
+          {post.publishedAt && (
+            <p className="text-sm text-muted-foreground">{formatPostDate(post.publishedAt, timezone)}</p>
+          )}
+          {authorName && (
+            <div className="flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={authorAvatar ?? `https://www.gravatar.com/avatar/?d=mp&s=64`}
+                alt={authorName}
+                width={40}
+                height={40}
+                className="w-10 h-10 rounded-full object-cover ring-2 ring-border"
+              />
               <div>
-                <span className="px-2.5 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium">
-                  {post.categoryName}
-                </span>
+                <p className="text-sm font-semibold leading-tight">{authorName}</p>
+                <p className="text-xs text-muted-foreground">Tim Redaksi</p>
               </div>
-            )}
+            </div>
+          )}
+          <SocialShareCard url={pageUrl} title={post.title} />
+        </div>
+        <div className="px-4 pt-6">{articleBody}</div>
+      </div>
 
-            {/* 2. Judul */}
-            <h1 className="text-3xl font-bold tracking-tight leading-tight">{post.title}</h1>
+      {/* ── Desktop/tablet — TIDAK DIUBAH ── */}
+      <div className="hidden md:block max-w-7xl mx-auto px-4 py-10">
+        <div className="flex gap-10">
+          {/* Main article */}
+          <article className="flex-1 min-w-0">
+            {/* Breadcrumb */}
+            <div className="text-xs text-muted-foreground mb-6 flex items-center gap-2">
+              <a href={`/${tenantSlug}/post`} className="hover:text-foreground transition-colors">Postingan</a>
+              <span>/</span>
+              <span className="text-foreground truncate max-w-xs">{post.title}</span>
+            </div>
 
-            {/* 3. Meta date */}
-            {post.publishedAt && (
-              <p className="text-sm text-muted-foreground">
-                {formatPostDate(post.publishedAt, timezone)}
-              </p>
-            )}
-
-            {/* 4. Author */}
-            {authorName && (
-              <div className="flex items-center gap-3 pt-1">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={authorAvatar ?? `https://www.gravatar.com/avatar/?d=mp&s=64`}
-                  alt={authorName}
-                  width={40}
-                  height={40}
-                  className="w-10 h-10 rounded-full object-cover ring-2 ring-border"
-                />
+            {/* ── Post Header ── */}
+            <div className="mb-8 space-y-3">
+              {/* 1. Kategori */}
+              {post.categoryName && (
                 <div>
-                  <p className="text-sm font-semibold leading-tight">{authorName}</p>
-                  <p className="text-xs text-muted-foreground">Tim Redaksi</p>
+                  <span className="px-2.5 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium">
+                    {post.categoryName}
+                  </span>
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* Cover */}
-          {coverUrl && (
-            <figure className="mb-8">
-              <div className="rounded-xl overflow-hidden border border-border">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={coverUrl}
-                  alt={coverAlt ?? post.title}
-                  title={coverTitle ?? undefined}
-                  className="w-full aspect-video object-cover"
-                />
-              </div>
-              {coverCaption && (
-                <figcaption className="mt-2 text-center text-xs text-muted-foreground italic px-2">
-                  {coverCaption}
-                </figcaption>
               )}
-            </figure>
-          )}
 
-          {/* Excerpt */}
-          {post.excerpt && (
-            <p className="text-muted-foreground text-base leading-relaxed mb-6 font-medium">
-              {post.excerpt}
-            </p>
-          )}
+              {/* 2. Judul */}
+              <h1 className="text-3xl font-bold tracking-tight leading-tight">{post.title}</h1>
 
-          {/* Content */}
-          <div
-            className="prose prose-sm max-w-none
-              [&_p]:my-3 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-8 [&_h2]:mb-3
-              [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-6 [&_h3]:mb-2
-              [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6
-              [&_li]:my-1 [&_a]:text-primary [&_a]:underline
-              [&_blockquote]:border-l-4 [&_blockquote]:border-border [&_blockquote]:pl-4
-              [&_blockquote]:italic [&_blockquote]:text-muted-foreground
-              [&_pre]:bg-muted [&_pre]:rounded [&_pre]:p-4 [&_pre]:overflow-x-auto
-              [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-sm"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+              {/* 3. Meta date */}
+              {post.publishedAt && (
+                <p className="text-sm text-muted-foreground">
+                  {formatPostDate(post.publishedAt, timezone)}
+                </p>
+              )}
 
-          {/* Footer */}
-          <div className="mt-12 pt-6 border-t border-border text-xs text-muted-foreground flex items-center justify-between">
-            <span>Diterbitkan oleh {tenantName}</span>
-            {post.updatedAt && post.updatedAt !== post.publishedAt && (
-              <span>Diperbarui {fmtUpdated(post.updatedAt)}</span>
+              {/* 4. Author */}
+              {authorName && (
+                <div className="flex items-center gap-3 pt-1">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={authorAvatar ?? `https://www.gravatar.com/avatar/?d=mp&s=64`}
+                    alt={authorName}
+                    width={40}
+                    height={40}
+                    className="w-10 h-10 rounded-full object-cover ring-2 ring-border"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold leading-tight">{authorName}</p>
+                    <p className="text-xs text-muted-foreground">Tim Redaksi</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Cover */}
+            {coverUrl && (
+              <figure className="mb-8">
+                <div className="rounded-xl overflow-hidden border border-border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={coverUrl}
+                    alt={coverAlt ?? post.title}
+                    title={coverTitle ?? undefined}
+                    className="w-full aspect-video object-cover"
+                  />
+                </div>
+                {coverCaption && (
+                  <figcaption className="mt-2 text-center text-xs text-muted-foreground italic px-2">
+                    {coverCaption}
+                  </figcaption>
+                )}
+              </figure>
             )}
+
+            {articleBody}
+          </article>
+
+          {/* Sidebar */}
+          <div className="w-72 shrink-0 hidden lg:block">
+            <WidgetArea id="default-sidebar" tenantClient={tenantClient} tenantSlug={tenantSlug} />
           </div>
-
-          {/* Konten Terkait */}
-          {relatedPosts.posts.length > 0 && (
-            <section className="mt-12 pt-8 border-t border-border">
-              <h2 className="text-lg font-semibold mb-4">{relatedPosts.label}</h2>
-              <div className="space-y-4">
-                {relatedPosts.posts.map(p => (
-                  <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          <PublicButton
-            href={`/${tenantSlug}/post`}
-            variant="ghost" size="sm" iconLeft="chevron" icon="none"
-            className="mt-6"
-          >
-            Kembali ke Blog
-          </PublicButton>
-        </article>
-
-        {/* Sidebar */}
-        <div className="w-72 shrink-0 hidden lg:block">
-          <WidgetArea id="default-sidebar" tenantClient={tenantClient} tenantSlug={tenantSlug} />
         </div>
       </div>
-    </div>
+    </>
   );
 }
