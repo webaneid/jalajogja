@@ -9,7 +9,7 @@ import { tenants } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import { auth } from "@/lib/auth";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
-import { getTenantTimezone, anchorTodayUtc, todayInTz } from "@/lib/tenant-timezone";
+import { getTenantTimezone, anchorTodayUtc, todayInTz } from "@/lib/tenant-timezone.server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -10,7 +10,7 @@ import { headers, cookies } from "next/headers";
 import { normalizePhone } from "@/lib/phone";
 import type { CustomFormField } from "@/lib/event-custom-form";
 import { notifyWa, waAppUrl } from "@/lib/wa-notify";
-import { getTenantTimezone, formatInTz, tzLabel, todayInTz } from "@/lib/tenant-timezone";
+import { getTenantTimezone, formatInTz, tzLabel, todayInTz } from "@/lib/tenant-timezone.server";
 
 function formatEventDateWib(date: Date | null, timezone: string): string {
   if (!date) return "-";

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { db, tenants } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import { createTenantDb, getSettings, findEligibleInstallmentPlan } from "@jalajogja/db";
-import { getTenantTimezone } from "@/lib/tenant-timezone";
+import { getTenantTimezone } from "@/lib/tenant-timezone.server";
 import {
   InvoicePublicClient,
   type PublicInvoiceData,

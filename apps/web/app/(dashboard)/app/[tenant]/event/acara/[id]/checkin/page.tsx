@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { CalendarDays } from "lucide-react";
 import { EventCheckinClient } from "@/components/event/event-checkin-client";
-import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone";
+import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone.server";
 
 export default async function EventCheckinPage({
   params,

@@ -5,7 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import { getInvoiceDetailAction } from "../../actions";
 import { InvoiceDetailClient } from "@/components/keuangan/billing/invoice-detail-client";
 import { createTenantDb } from "@jalajogja/db";
-import { getTenantTimezone } from "@/lib/tenant-timezone";
+import { getTenantTimezone } from "@/lib/tenant-timezone.server";
 
 export default async function BillingInvoiceDetailPage({
   params,

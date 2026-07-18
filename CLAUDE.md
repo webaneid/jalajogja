@@ -6438,6 +6438,63 @@ ke WITA → event baru jam 19:00 harus tersimpan sebagai 11:00 UTC (19:00 WITA =
 Surat/Letters dan modul lain di luar Event+Invoice belum diaudit sama sekali untuk pola bug
 yang sama — kandidat sesi terpisah kalau ada laporan bug tanggal/jam serupa di sana.
 
+### [2026-07-19] Bug Deploy VPS: `apps/web/lib/tenant-timezone.ts` Menarik Postgres Client ke Client Bundle
+
+> Ditemukan user langsung dari log build VPS setelah commit timezone di atas — `tsc --noEmit`
+> lolos bersih (dicek berkali-kali sepanjang sesi), tapi `next build` sungguhan di VPS gagal
+> total: `Module not found: Can't resolve 'net'/'tls'/'perf_hooks'/'fs'`.
+
+**Root cause — PERSIS lesson lama** ("Bug: Browser Ter-Cache Redirect..." bukan ini, yang
+relevan: pola client/server boundary dari `nav-menu.ts`/`get-public-nav-menu.ts`): `apps/web/lib/
+tenant-timezone.ts` awalnya cuma re-export SEMUA dari `@jalajogja/db` (termasuk
+`getTenantTimezone` yang butuh `getSetting`/DB). `event-form.tsx` ("use client", butuh
+`localDatetimeToUtcIso`+`tzLabel` untuk konversi input datetime-local di browser) import dari
+file itu — begitu SATU client component import APA PUN dari file yang re-export
+`@jalajogja/db`, seluruh package ikut tertarik ke bundle browser, termasuk `postgres-client.ts`
+yang butuh Node built-in modules. **Ini TIDAK bisa di-tree-shake** karena `@jalajogja/db`'s
+`index.ts` punya top-level side-effect import (`./client.ts` membuat koneksi Postgres
+instance saat module di-load) — bukan soal named-export mana yang dipakai, tapi package
+ENTRY POINT-nya sendiri yang tidak aman diimpor dari client sama sekali.
+
+**Kenapa `tsc --noEmit` tidak menangkap ini**: TypeScript cuma cek TIPE, tidak tahu soal
+bundler boundary (client vs server bundle di Next.js App Router). Bug ini HANYA muncul saat
+`next build` sungguhan (webpack/turbopack production bundling) — `tsc` bersih sama sekali
+tidak menjamin build produksi aman kalau ada file yang dipakai lintas client/server boundary.
+
+**Fix — split file jadi 2, ulangi pola `nav-menu.ts`/`get-public-nav-menu.ts` persis**:
+- `apps/web/lib/tenant-timezone.ts` — HANYA fungsi pure (`tzLabel`, `todayInTz`,
+  `anchorTodayUtc`, `localDatetimeToUtcIso`, `utcIsoToLocalDatetime`, `formatInTz`) —
+  diimplementasikan LANGSUNG di sini (duplikat dari `packages/db/src/helpers/tenant-
+  timezone.ts`, bukan re-export), **ZERO import dari `@jalajogja/db`**. Aman dipakai client
+  maupun server.
+- `apps/web/lib/tenant-timezone.server.ts` (baru) — `import "server-only";` di baris pertama
+  + `export { getTenantTimezone } from "@jalajogja/db";` + re-export ulang fungsi pure (supaya
+  file server cukup 1 import line). `"server-only"` package memaksa build ERROR EKSPLISIT
+  (bukan silent module-not-found yang membingungkan) kalau ada client component yang nekat
+  import dari file ini di masa depan.
+- **16 file server** (semua Server Component/Server Action/API route/cron yang butuh
+  `getTenantTimezone`) diubah import path dari `"@/lib/tenant-timezone"` →
+  `"@/lib/tenant-timezone.server"` — mekanis via `sed` (pola replace identik di semua file,
+  diverifikasi ulang dengan grep sebelum+sesudah). `event-form.tsx` (satu-satunya client
+  component pemakai) TETAP `"@/lib/tenant-timezone"` tanpa `.server` — sekarang aman karena
+  file itu sudah zero-dependency ke `@jalajogja/db`.
+
+**Verifikasi ketat**: setelah fix, `bun run build --filter=@jalajogja/web` (build PRODUKSI
+sungguhan, bukan cuma `tsc`) dijalankan lokal untuk konfirmasi — sukses. **Aturan mutlak**:
+build produksi WAJIB dimatikan dev server dulu (`.next` cache konflik, lesson lama juga) —
+matikan proses port 6202, `rm -rf apps/web/.next`, baru `bun run build`, baru nyalakan lagi
+`bun run dev` setelah build selesai diverifikasi.
+
+**Aturan digeneralisasi (PENGULANGAN dari lesson `nav-menu.ts`, ditegaskan lagi karena
+terulang)**: SETIAP kali membuat file `lib/*.ts` BARU yang akan dipakai lintas client DAN
+server component, WAJIB cek dari awal: apakah file itu (atau apa pun yang di-`export ... from`
+di dalamnya) mengimpor `@jalajogja/db` secara langsung ATAU transitif? Kalau ya, split dari
+awal jadi `nama.ts` (pure, client-safe) + `nama.server.ts` (`import "server-only"`, DB-
+touching) — JANGAN tunggu sampai ketahuan lewat build gagal di VPS. `tsc --noEmit` TIDAK
+CUKUP untuk memverifikasi ini — kalau ragu, jalankan `bun run build` sungguhan (dengan dev
+server dimatikan dulu) sebelum push perubahan yang menyentuh `lib/*.ts` baru yang dipakai
+client component.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):

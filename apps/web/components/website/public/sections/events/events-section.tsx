@@ -1,6 +1,6 @@
 import { eq, desc, and, gte, inArray } from "drizzle-orm";
 import { getSettings, type TenantDb } from "@jalajogja/db";
-import { getTenantTimezone } from "@/lib/tenant-timezone";
+import { getTenantTimezone } from "@/lib/tenant-timezone.server";
 import { publicUrl } from "@/lib/minio";
 import type { EventCardData } from "@/lib/event-card-templates";
 import type { EventsSectionData, EventsSectionDesignId, EventsSectionProps } from "@/lib/events-section-designs";

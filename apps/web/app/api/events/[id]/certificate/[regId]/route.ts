@@ -9,7 +9,7 @@ import { chromium } from "playwright";
 import { getTenantAccess } from "@/lib/tenant";
 import { uploadFile, publicUrl, buildPath, ensureBucket } from "@/lib/minio";
 import { notifyWa } from "@/lib/wa-notify";
-import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone";
+import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone.server";
 
 // ─── HTML Builder sertifikat ──────────────────────────────────────────────────
 

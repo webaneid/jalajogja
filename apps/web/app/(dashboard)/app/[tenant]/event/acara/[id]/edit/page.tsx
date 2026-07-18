@@ -4,7 +4,7 @@ import { redirect, notFound } from "next/navigation";
 import { eq, desc } from "drizzle-orm";
 import { publicUrl } from "@/lib/minio";
 import { EventForm } from "@/components/event/event-form";
-import { getTenantTimezone, utcIsoToLocalDatetime } from "@/lib/tenant-timezone";
+import { getTenantTimezone, utcIsoToLocalDatetime } from "@/lib/tenant-timezone.server";
 import type { CustomFormField } from "@/lib/event-custom-form";
 import type { SeoValues } from "@/components/seo/seo-panel";
 

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, createTenantDb, tenants } from "@jalajogja/db";
 import { eq, and, sql } from "drizzle-orm";
 import { notifyWa, waAppUrl } from "@/lib/wa-notify";
-import { getTenantTimezone, anchorTodayUtc, formatInTz, tzLabel } from "@/lib/tenant-timezone";
+import { getTenantTimezone, anchorTodayUtc, formatInTz, tzLabel } from "@/lib/tenant-timezone.server";
 
 // Kirim pengingat WA H-1 sebelum event berlangsung — dipicu crontab VPS harian.
 // Auth via x-cron-secret header, pola sama dengan cleanup-images/verify-domains.

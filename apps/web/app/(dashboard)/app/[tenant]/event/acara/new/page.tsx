@@ -3,7 +3,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { eq, desc } from "drizzle-orm";
 import { EventForm } from "@/components/event/event-form";
-import { getTenantTimezone } from "@/lib/tenant-timezone";
+import { getTenantTimezone } from "@/lib/tenant-timezone.server";
 import type { SeoValues } from "@/components/seo/seo-panel";
 
 const DEFAULT_SEO: SeoValues = {

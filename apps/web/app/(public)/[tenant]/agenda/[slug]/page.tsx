@@ -19,7 +19,7 @@ import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 import { EventMobileTicketBar } from "@/components/event/event-mobile-ticket-bar";
-import { getTenantTimezone, tzLabel } from "@/lib/tenant-timezone";
+import { getTenantTimezone, tzLabel } from "@/lib/tenant-timezone.server";
 
 type BankAccount = {
   id: string;

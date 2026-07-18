@@ -8,7 +8,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { recordIncome } from "@jalajogja/db";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
-import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz } from "@/lib/tenant-timezone";
+import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz } from "@/lib/tenant-timezone.server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -9,7 +9,7 @@ import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import type { Metadata }      from "next";
 import { CalendarDays }       from "lucide-react";
-import { getTenantTimezone }  from "@/lib/tenant-timezone";
+import { getTenantTimezone }  from "@/lib/tenant-timezone.server";
 
 export const revalidate = 60;
 

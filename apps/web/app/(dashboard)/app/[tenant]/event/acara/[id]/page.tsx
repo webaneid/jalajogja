@@ -7,7 +7,7 @@ import { CalendarDays, MapPin, Globe, Users, Pencil, Ticket, UserCheck } from "l
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EventRegistrationList, type RegistrationRow } from "@/components/event/event-registration-list";
-import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone";
+import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone.server";
 
 function formatDate(d: Date | null, timezone: string) {
   if (!d) return "—";

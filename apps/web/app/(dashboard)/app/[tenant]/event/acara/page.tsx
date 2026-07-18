@@ -3,7 +3,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { desc } from "drizzle-orm";
 import { CreateEventButton, EventTable } from "@/components/event/event-list-client";
-import { getTenantTimezone } from "@/lib/tenant-timezone";
+import { getTenantTimezone } from "@/lib/tenant-timezone.server";
 
 export default async function AcaraListPage({
   params,
