@@ -74,6 +74,13 @@ export type PublicInvoiceData = {
   shippingLines:  PublicShippingLine[];
   bankAccounts:   BankAccountPublic[];
   qrisAccounts:   QrisAccountPublic[];
+  installmentSchedules: Array<{
+    id:         string;
+    termNumber: number;
+    dueDate:    string;
+    amount:     number;
+    status:     string;
+  }>;
 };
 
 type Props = {
@@ -603,6 +610,36 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
           </p>
         )}
       </div>
+
+      {/* ── Jadwal Cicilan ── */}
+      {invoice.installmentSchedules.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Jadwal Cicilan</p>
+          <div className="rounded-lg border border-border divide-y divide-border">
+            {invoice.installmentSchedules.map((s) => {
+              const isOverdue = s.status === "pending" && new Date(s.dueDate) < new Date(new Date().toDateString());
+              return (
+                <div key={s.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                  <div>
+                    <p className="font-medium">Termin {s.termNumber}</p>
+                    <p className="text-xs text-muted-foreground">{formatDate(s.dueDate + "T00:00:00")}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums">{formatRp(s.amount)}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      s.status === "paid" ? "bg-green-100 text-green-700"
+                      : isOverdue ? "bg-red-100 text-red-700"
+                      : "bg-yellow-100 text-yellow-700"
+                    }`}>
+                      {s.status === "paid" ? "Lunas" : isOverdue ? "Terlambat" : "Menunggu"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Metode pembayaran ── */}
       {canPay && (

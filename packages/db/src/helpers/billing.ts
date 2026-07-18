@@ -37,6 +37,7 @@ export type CreateLinkedInvoiceInput = {
   dueDate?:      string;  // YYYY-MM-DD, default +3 hari
   notes?:        string | null;
   createdBy?:    string | null;
+  installmentPlanId?: string | null;  // program cicilan — lihat docs/arsitektur-billing.md
 };
 
 // ─── generateUniqueCode ───────────────────────────────────────────────────────
@@ -111,6 +112,7 @@ export async function createLinkedInvoice(
       dueDate,
       notes:         input.notes?.trim() ?? null,
       createdBy:     input.createdBy ?? null,
+      installmentPlanId: input.installmentPlanId ?? null,
     })
     .returning({ id: schema.invoices.id });
 

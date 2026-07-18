@@ -414,6 +414,36 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
         </div>
       </div>
 
+      {/* ── Jadwal Cicilan ──────────────────────────────────────────────── */}
+      {invoice.installmentSchedules.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide text-xs">Jadwal Cicilan</p>
+          <div className="rounded-lg border border-border divide-y divide-border">
+            {invoice.installmentSchedules.map((s) => {
+              const isOverdue = s.status === "pending" && new Date(s.dueDate) < new Date(new Date().toDateString());
+              return (
+                <div key={s.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                  <div>
+                    <p className="font-medium">Termin {s.termNumber}</p>
+                    <p className="text-xs text-muted-foreground">{formatDate(s.dueDate)}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums">{formatRp(s.amount)}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      s.status === "paid" ? "bg-green-100 text-green-700"
+                      : isOverdue ? "bg-red-100 text-red-700"
+                      : "bg-muted text-muted-foreground"
+                    }`}>
+                      {s.status === "paid" ? "Lunas" : isOverdue ? "Terlambat" : "Menunggu"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Riwayat pembayaran ──────────────────────────────────────────── */}
       {invoice.payments.length > 0 && (
         <div className="space-y-2">

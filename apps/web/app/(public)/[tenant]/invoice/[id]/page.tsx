@@ -52,7 +52,7 @@ export default async function PublicInvoicePage({ params }: Props) {
 
   if (!inv) notFound();
 
-  const [items, shippingRows, paymentRows] = await Promise.all([
+  const [items, shippingRows, paymentRows, scheduleRows] = await Promise.all([
     tenantDb
       .select()
       .from(schema.invoiceItems)
@@ -72,6 +72,11 @@ export default async function PublicInvoicePage({ params }: Props) {
       .innerJoin(schema.payments, eq(schema.invoicePayments.paymentId, schema.payments.id))
       .where(eq(schema.invoicePayments.invoiceId, invoiceId))
       .orderBy(schema.payments.createdAt),
+    inv.installmentPlanId
+      ? tenantDb.select().from(schema.installmentSchedules)
+          .where(eq(schema.installmentSchedules.invoiceId, invoiceId))
+          .orderBy(schema.installmentSchedules.termNumber)
+      : Promise.resolve([]),
   ]);
 
   const paymentCategory = resolvePaymentCategory(items.map((it) => it.itemType));
@@ -159,6 +164,13 @@ export default async function PublicInvoicePage({ params }: Props) {
     })),
     bankAccounts,
     qrisAccounts,
+    installmentSchedules: scheduleRows.map((s) => ({
+      id:         s.id,
+      termNumber: s.termNumber,
+      dueDate:    s.dueDate,
+      amount:     parseFloat(String(s.amount)),
+      status:     s.status,
+    })),
   };
 
   return (

@@ -386,6 +386,28 @@ export async function confirmInvoicePaymentAction(
         })
         .where(eq(schema.invoices.id, invoiceId));
 
+      // Settlement cicilan — waterfall FIFO: tandai installment_schedules lunas berurutan
+      // (termin 1, 2, dst) sejauh newPaidAmount kumulatif mencukupi. Lihat
+      // docs/arsitektur-billing.md § "Program Cicilan" — customer TIDAK memilih termin mana
+      // yang dibayar, pembayaran otomatis mengalir ke termin tertua dulu.
+      if (lockedInv.installmentPlanId) {
+        const schedules = await tx
+          .select()
+          .from(schema.installmentSchedules)
+          .where(eq(schema.installmentSchedules.invoiceId, invoiceId))
+          .orderBy(schema.installmentSchedules.termNumber);
+
+        let cumulative = 0;
+        for (const sch of schedules) {
+          cumulative += parseFloat(String(sch.amount));
+          if (sch.status === "paid") continue;
+          if (newPaidAmount + 0.01 < cumulative) break; // belum cukup untuk termin ini
+          await tx.update(schema.installmentSchedules)
+            .set({ status: "paid", paymentId: payment.id, paidAt: new Date() })
+            .where(eq(schema.installmentSchedules.id, sch.id));
+        }
+      }
+
       // Jurnal double-entry (hanya jika lunas — partial tidak jurnal dulu)
       if (newStatus === "paid") {
         const txNum = await generateFinancialNumber(tenantDb, "journal");
@@ -911,6 +933,25 @@ export async function verifySubmittedPaymentAction(
         })
         .where(eq(schema.invoices.id, inv.id));
 
+      // Settlement cicilan — waterfall FIFO, sama persis dengan confirmInvoicePaymentAction.
+      if (inv.installmentPlanId) {
+        const schedules = await tx
+          .select()
+          .from(schema.installmentSchedules)
+          .where(eq(schema.installmentSchedules.invoiceId, inv.id))
+          .orderBy(schema.installmentSchedules.termNumber);
+
+        let cumulative = 0;
+        for (const sch of schedules) {
+          cumulative += parseFloat(String(sch.amount));
+          if (sch.status === "paid") continue;
+          if (newPaid + 0.01 < cumulative) break;
+          await tx.update(schema.installmentSchedules)
+            .set({ status: "paid", paymentId, paidAt: new Date() })
+            .where(eq(schema.installmentSchedules.id, sch.id));
+        }
+      }
+
       // Jurnal double-entry saat lunas
       if (newStatus === "paid") {
         const txNum = await generateFinancialNumber(tenantDb, "journal");
@@ -1215,6 +1256,13 @@ export type InvoiceDetail = {
     shippedAt:      string | null;
     status:         "pending" | "processing" | "packed" | "shipped" | "delivered";
   }[];
+  installmentSchedules: {
+    id:          string;
+    termNumber:  number;
+    dueDate:     string;
+    amount:      number;
+    status:      string;
+  }[];
 };
 
 export async function getInvoiceDetailAction(
@@ -1234,7 +1282,7 @@ export async function getInvoiceDetailAction(
 
   if (!inv) return { success: false, error: "Invoice tidak ditemukan." };
 
-  const [items, paymentLinks, shippingRows] = await Promise.all([
+  const [items, paymentLinks, shippingRows, scheduleRows] = await Promise.all([
     db
       .select()
       .from(schema.invoiceItems)
@@ -1264,6 +1312,12 @@ export async function getInvoiceDetailAction(
       .select()
       .from(schema.invoiceShippingLines)
       .where(eq(schema.invoiceShippingLines.invoiceId, invoiceId)),
+
+    inv.installmentPlanId
+      ? db.select().from(schema.installmentSchedules)
+          .where(eq(schema.installmentSchedules.invoiceId, invoiceId))
+          .orderBy(schema.installmentSchedules.termNumber)
+      : Promise.resolve([]),
   ]);
 
   const total      = parseFloat(String(inv.total));
@@ -1325,6 +1379,13 @@ export async function getInvoiceDetailAction(
         trackingNumber: sl.trackingNumber ?? null,
         shippedAt:      sl.shippedAt?.toISOString() ?? null,
         status:         sl.status as "pending" | "processing" | "packed" | "shipped" | "delivered",
+      })),
+      installmentSchedules: scheduleRows.map((s) => ({
+        id:         s.id,
+        termNumber: s.termNumber,
+        dueDate:    s.dueDate,
+        amount:     parseFloat(String(s.amount)),
+        status:     s.status,
       })),
     },
   };

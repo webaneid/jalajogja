@@ -463,10 +463,10 @@ Saat payment di invoice dikonfirmasi:
 
 ## Program Cicilan — Detail
 
-> **Status: Fase A SELESAI (2026-07-18) — admin CRUD program. Fase B (enrollment publik +
-> settlement) dan Fase C (reminder) BELUM.** Rencana lengkap + riset:
-> `/Users/webane/.claude/plans/polished-moseying-shell.md`. Lesson CLAUDE.md
-> "[2026-07-18] Fitur Cicilan — Fase A Selesai".
+> **Status: Fase A + B SELESAI (2026-07-18) — admin CRUD, enrollment publik, settlement
+> waterfall, tampilan jadwal termin di invoice admin+publik. Fase C (reminder H-1) BELUM.**
+> Rencana lengkap + riset: `/Users/webane/.claude/plans/polished-moseying-shell.md`. Lesson
+> CLAUDE.md "[2026-07-18] Fitur Cicilan — Fase A/B Selesai".
 
 Cicilan **tidak tampil di front-end** kecuali admin aktifkan DAN publish program tertentu.
 
@@ -487,10 +487,13 @@ event_registration DAN invoice lunas → confirm eventRegistrations") **otomatis
 cicilan tanpa kode tambahan** — event_registration baru "confirmed" begitu SELURUH termin
 lunas (bukan begitu daftar).
 
-**Settlement termin — waterfall FIFO** (Fase B, direncanakan): setiap kali
-`invoices.paidAmount` bertambah, `installment_schedules` ditandai lunas berurutan (termin 1,
-2, dst) sejauh nominal kumulatif mencukupi — customer TIDAK memilih "saya bayar termin
-keberapa" saat submit bukti, pembayaran otomatis mengalir ke termin tertua dulu.
+**Settlement termin — waterfall FIFO** (Fase B, SELESAI): setiap kali `invoices.paidAmount`
+bertambah (di `confirmInvoicePaymentAction` DAN `verifySubmittedPaymentAction`, DI DALAM
+transaction yang sama yang sudah mengunci invoice), `installment_schedules` ditandai lunas
+berurutan (termin 1, 2, dst) sejauh nominal kumulatif mencukupi — customer TIDAK memilih
+"saya bayar termin keberapa" saat submit bukti, pembayaran otomatis mengalir ke termin
+tertua dulu. Termin terakhir menyerap sisa pembulatan pembagian `total/count` supaya jumlah
+seluruh termin persis sama dengan `totalAmount`.
 
 Contoh use case (nanti, di luar scope Fase A/B): **Nabung Qurban 2025** — Total Rp 3.000.000,
 10x cicilan @ Rp 300.000/bulan, terhubung ke campaign qurban bukan event. Pola aplikasinya
@@ -504,9 +507,33 @@ enrollment (lewat `CampaignDetailClient`, bukan `EventRegisterForm`) — dikerja
   `updateInstallmentPlanAction`, `toggleInstallmentPlanAction`.
 - `finance/billing/cicilan/{page,new/page,[id]/page}.tsx` — list + create + detail (toggle
   aktif/publish + tabel invoice terdaftar dengan progres termin).
+- `finance/billing/cicilan/[id]/edit/page.tsx` — edit program (reuse `InstallmentPlanForm`
+  dual-mode create/edit). Total Nominal auto-terisi dari harga tiket yang dipilih.
 - `components/keuangan/billing/billing-tabs.tsx` — tab ringan "Invoice | Cicilan" di kedua
   halaman (BUKAN nav shell `BillingNav` terpisah seperti sketsa lama — struktur folder
   `finance/billing/` sebenarnya flat, `page.tsx` cuma redirect).
+
+### Fase B — Enrollment Publik + Settlement (SELESAI)
+
+- `event/actions.ts`: `enrollInstallmentPlanAction(slug, {planId, attendeeName, attendeePhone,
+  attendeeEmail})` — lock tiket `FOR UPDATE` + cek kuota (reuse pola `registerForEventAction`),
+  insert `event_registrations` status selalu `"pending"`, `createLinkedInvoice` dengan
+  `installmentPlanId`, insert N baris `installment_schedules`.
+- `packages/db/src/helpers/billing.ts`: `CreateLinkedInvoiceInput` tambah field opsional
+  `installmentPlanId?: string | null` (perubahan aditif, tidak breaking caller lain).
+- Settlement waterfall FIFO ditambahkan ke `confirmInvoicePaymentAction` DAN
+  `verifySubmittedPaymentAction` (`finance/billing/actions.ts`) — duplikat di kedua fungsi
+  (bukan diekstrak ke helper bersama), konsisten dengan pola campaign-sync/event-confirm yang
+  sudah lebih dulu duplikat di kedua fungsi ini.
+- `components/event/event-installment-enroll.tsx` — card "Tersedia Cicilan" di halaman event
+  publik, muncul kalau ada plan aktif+published untuk salah satu tiket event & user belum
+  terdaftar. Collapsed by default, expand jadi form kecil (nama/HP/email) saat diklik.
+- Jadwal Cicilan (tabel termin + status Lunas/Menunggu/Terlambat) ditampilkan di invoice
+  detail admin (`invoice-detail-client.tsx`) DAN publik (`invoice-public-client.tsx`) — status
+  "Terlambat" dihitung on-the-fly (`pending` + due_date lewat), tidak ada cron yang menulis
+  ulang kolom status.
+
+**Belum**: Fase C (cron reminder H-1 jatuh tempo termin + WA template baru).
 
 ---
 

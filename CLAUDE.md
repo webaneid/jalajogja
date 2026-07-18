@@ -6043,6 +6043,58 @@ beda (satu `void`, satu ada payload), JANGAN satukan pemanggilannya dalam satu t
 lalu simpan ke variable bersama — pecah jadi branch terpisah supaya TypeScript bisa narrow
 dengan benar.
 
+### [2026-07-18] Fitur Cicilan — Fase B Selesai (Enrollment Publik + Settlement Waterfall)
+
+> Fase A (admin CRUD) selesai sesi sebelumnya hari yang sama. Rencana lengkap:
+> `/Users/webane/.claude/plans/polished-moseying-shell.md`.
+
+**`enrollInstallmentPlanAction`** (`event/actions.ts`, publik, tanpa `getTenantAccess` — pola
+sama `registerForEventAction`): terima `planId` (bukan `ticketId` — resolve tiket dari
+`plan.sourceId`), validasi `plan.isActive && plan.isPublished`, lock tiket `FOR UPDATE` +
+cek kuota (REUSE pola exact dari `registerForEventAction`, dicopy bukan di-refactor jadi
+helper bersama — kelas duplikasi "demi isolasi" yang sudah berulang di project ini), insert
+`event_registrations` status **selalu "pending"** (bukan "confirmed" — sesuai Keputusan Desain
+#2 di plan), `createLinkedInvoice` dengan `installmentPlanId` (field baru, aditif, di
+`packages/db/src/helpers/billing.ts` — `CreateLinkedInvoiceInput.installmentPlanId?`), lalu
+insert N baris `installment_schedules` (`term 1` jatuh tempo HARI INI, term berikutnya
+`+intervalDays×i`, **termin terakhir menyerap sisa pembulatan** — `lastTerm = total - perTerm
+× (count-1)`, bukan `perTerm` biasa, supaya jumlah seluruh termin PERSIS sama dengan
+`totalAmount`).
+
+**Settlement waterfall FIFO** ditambahkan ke KEDUA `confirmInvoicePaymentAction` DAN
+`verifySubmittedPaymentAction` — SETELAH `invoices.paidAmount` di-update, DI DALAM transaction
+yang SUDAH mengunci invoice (tidak perlu lock tambahan): `if (lockedInv.installmentPlanId)` →
+`SELECT installment_schedules ORDER BY term_number` → loop, `cumulative += term.amount`, skip
+kalau sudah `status='paid'`, `break` begitu `newPaidAmount < cumulative` (belum cukup untuk
+termin ini), else UPDATE `status='paid', paymentId, paidAt=now()`. Logic DIDUPLIKASI di kedua
+fungsi (bukan diekstrak ke helper bersama) — konsisten dengan pola yang SUDAH ada di kedua
+fungsi ini untuk campaign-sync dan event-registration-confirm (dua action ini memang sengaja
+independen sejak awal, lihat lesson race-condition audit sebelumnya).
+
+**UI enrollment** (`components/event/event-installment-enroll.tsx`, baru) — card "Tersedia
+Cicilan: {nama program}" muncul di `agenda/[slug]/page.tsx` HANYA kalau `!alreadyRegistered
+&& installmentPlan` (installmentPlan di-resolve server-side: cari plan `isActive+isPublished`
+yang `sourceId`-nya cocok salah satu tiket event ini). Card collapsed by default (cuma judul +
+ringkasan + tombol "Daftar"), expand jadi form kecil (nama/HP/email) saat diklik — POLA
+BERBEDA dari bottom sheet Fase sebelumnya (bukan `MobileActionSheet`, cuma toggle
+show/hide biasa, karena ini bukan panel "beli utama" event, cuma opsi ALTERNATIF di samping
+form tiket normal yang sudah ada bottom sheet-nya sendiri).
+
+**Jadwal Cicilan ditampilkan di invoice detail — admin DAN publik**: `getInvoiceDetailAction`
++ query halaman invoice publik SAMA-SAMA ditambah fetch `installment_schedules` (hanya kalau
+`invoice.installmentPlanId` ada — pakai ternary `cond ? db.select(...) : Promise.resolve([])`
+di dalam `Promise.all`, TypeScript otomatis infer union `never[] | RowType[]` yang aman
+dipakai). Status "Terlambat" dihitung ON-THE-FLY di kedua tempat (`status==='pending' &&
+dueDate < today`) — TIDAK ada cron yang menulis ulang kolom `status` (Keputusan Desain #5).
+
+**Belum dikerjakan**: Fase C (cron reminder H-1 + WA template baru). User diminta coba alur
+penuh (daftar cicilan → lihat invoice dengan jadwal termin → admin konfirmasi pembayaran →
+termin ke-1 otomatis "Lunas") di browser dulu sebelum lanjut Fase C — mekanisme settlement
+khususnya TIDAK BISA diverifikasi dari kode saja, perlu transaksi nyata.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error. Nol migrasi DB (semua tabel/kolom
+sudah ada sejak awal modul Billing, persis seperti Fase A).
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
