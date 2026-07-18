@@ -3,7 +3,7 @@
 import { cookies, headers } from "next/headers";
 import { eq, and, or, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db, resolveIdentity, generateUniqueCode } from "@jalajogja/db";
+import { db, resolveIdentity, generateUniqueCode, generateInstallmentScheduleCode, settleInstallmentSchedules } from "@jalajogja/db";
 import { createTenantDb, generateFinancialNumber, getSettings } from "@jalajogja/db";
 import { tenants } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
@@ -748,6 +748,141 @@ export async function submitPaymentProofAction(
   } catch (err) {
     console.error("[submitPaymentProofAction]", err);
     return { success: false, error: "Gagal mengirim konfirmasi pembayaran." };
+  }
+}
+
+// ─── convertInvoiceToInstallmentAction (public) ───────────────────────────────
+// Ubah invoice yang SUDAH ADA (dibuat via alur checkout normal, tidak berubah) menjadi
+// cicilan — analog diskon/kupon: transformasi metode PEMBAYARAN, bukan jalur pendaftaran
+// terpisah. Lihat docs/arsitektur-billing.md § "Program Cicilan — Konversi Invoice".
+//
+// Boleh dipanggil kapan saja selama invoice belum lunas — TERMASUK setelah sudah ada
+// partial payment. Total selalu dipecah dari invoice.total yang SEBENARNYA (bukan
+// plan.totalAmount, yang cuma saran tampilan admin saat program dibuat) — lihat keputusan
+// dikunci di plan cicilan. Kalau invoice sudah pernah dibayar sebagian sebelum konversi,
+// settleInstallmentSchedules dijalankan sekali pakai paidAmount saat ini, otomatis
+// menandai termin awal lunas dari histori pembayaran itu.
+
+export async function convertInvoiceToInstallmentAction(
+  slug: string,
+  invoiceId: string,
+  planId: string,
+): Promise<ActionResult<void>> {
+  try {
+    const tenantDb = createTenantDb(slug);
+    const { db: tdb, schema } = tenantDb;
+
+    type TxResult = { error: string } | { firstDueDate: string };
+
+    const txResult: TxResult = await tdb.transaction(async (tx) => {
+      const [lockedInv] = await tx
+        .select()
+        .from(schema.invoices)
+        .where(sql`${schema.invoices.id} = ${invoiceId} FOR UPDATE`)
+        .limit(1);
+
+      if (!lockedInv) return { error: "Invoice tidak ditemukan." };
+      if (lockedInv.status === "paid")
+        return { error: "Invoice sudah lunas, tidak bisa diubah jadi cicilan." };
+      if (lockedInv.status === "cancelled")
+        return { error: "Invoice sudah dibatalkan." };
+      if (lockedInv.installmentPlanId)
+        return { error: "Invoice ini sudah menjadi cicilan." };
+
+      const [plan] = await tx
+        .select()
+        .from(schema.installmentPlans)
+        .where(eq(schema.installmentPlans.id, planId))
+        .limit(1);
+      if (!plan) return { error: "Program cicilan tidak ditemukan." };
+      if (!plan.isActive || !plan.isPublished)
+        return { error: "Program cicilan sedang tidak tersedia." };
+      if (plan.installmentCount < 2)
+        return { error: "Program cicilan belum dikonfigurasi dengan benar." };
+
+      // Re-cek eligibility DI DALAM lock — jangan cuma percaya hasil eligibility-check
+      // sebelumnya di halaman (pola lock+guard yang berulang di project ini).
+      if (plan.sourceType === "event" && plan.sourceId) {
+        const [matchedItem] = await tx
+          .select({ id: schema.invoiceItems.id })
+          .from(schema.invoiceItems)
+          .where(
+            and(
+              eq(schema.invoiceItems.invoiceId, invoiceId),
+              eq(schema.invoiceItems.itemType, "ticket"),
+              eq(schema.invoiceItems.itemId, plan.sourceId)
+            )
+          )
+          .limit(1);
+        if (!matchedItem)
+          return { error: "Program cicilan ini tidak berlaku untuk invoice ini." };
+      }
+
+      // SELALU total invoice yang sebenarnya — bukan plan.totalAmount (keputusan dikunci,
+      // menghindari skenario harga tiket berubah sejak program dibuat).
+      const total     = parseFloat(String(lockedInv.total));
+      const paidSoFar = parseFloat(String(lockedInv.paidAmount));
+      const perTerm   = Math.round(total / plan.installmentCount);
+      const lastTerm  = total - perTerm * (plan.installmentCount - 1); // serap sisa pembulatan
+      const today     = new Date();
+
+      const paymentSettings   = await getSettings(tenantDb, "payment");
+      const uniqueCodeEnabled = paymentSettings["unique_code_enabled"] === true;
+
+      const pickedCodes = new Set<number>();
+      const scheduleRows: Array<{
+        invoiceId: string; installmentPlanId: string; termNumber: number;
+        dueDate: string; amount: string; uniqueCode: number | null;
+      }> = [];
+
+      for (let i = 0; i < plan.installmentCount; i++) {
+        const termNumber = i + 1;
+        const dueDate = new Date(today);
+        dueDate.setDate(dueDate.getDate() + plan.intervalDays * i);
+
+        let code: number | null = null;
+        if (uniqueCodeEnabled) {
+          const generated = await generateInstallmentScheduleCode(tenantDb, pickedCodes);
+          if (generated > 0) { code = generated; pickedCodes.add(generated); }
+        }
+
+        scheduleRows.push({
+          invoiceId,
+          installmentPlanId: plan.id,
+          termNumber,
+          dueDate:    dueDate.toISOString().slice(0, 10),
+          amount:     (termNumber === plan.installmentCount ? lastTerm : perTerm).toFixed(2),
+          uniqueCode: code,
+        });
+      }
+
+      await tx.insert(schema.installmentSchedules).values(scheduleRows);
+
+      await tx
+        .update(schema.invoices)
+        .set({
+          installmentPlanId: plan.id,
+          dueDate:            scheduleRows[0].dueDate,
+          updatedAt:          new Date(),
+        })
+        .where(eq(schema.invoices.id, invoiceId));
+
+      // Kalau sudah ada partial payment sebelum konversi — auto-lunas-kan termin awal.
+      if (paidSoFar > 0) {
+        await settleInstallmentSchedules(tx, schema, invoiceId, paidSoFar, null);
+      }
+
+      return { firstDueDate: scheduleRows[0].dueDate };
+    });
+
+    if ("error" in txResult) return { success: false, error: txResult.error };
+
+    revalidatePath(`/${slug}/invoice/${invoiceId}`);
+    revalidatePath(`/app/${slug}/finance/billing/invoice/${invoiceId}`);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[convertInvoiceToInstallmentAction]", err);
+    return { success: false, error: "Gagal mengubah invoice menjadi cicilan." };
   }
 }
 

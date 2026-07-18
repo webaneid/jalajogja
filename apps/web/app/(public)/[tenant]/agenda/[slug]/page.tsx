@@ -19,7 +19,6 @@ import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 import { EventMobileTicketBar } from "@/components/event/event-mobile-ticket-bar";
-import { EventInstallmentEnroll } from "@/components/event/event-installment-enroll";
 
 type BankAccount = {
   id: string;
@@ -190,37 +189,6 @@ export default async function PublicEventPage({
       eq(schema.eventTickets.isActive, true)
     ))
     .orderBy(schema.eventTickets.sortOrder);
-
-  // Program cicilan (Fitur Cicilan Fase B) — cek apakah salah satu tiket event ini
-  // punya program aktif+published. Scope saat ini: 1 tiket = paling banyak 1 program aktif
-  // ditampilkan (ambil yang pertama ketemu) — cukup untuk kasus nyata sekarang.
-  let installmentPlan: {
-    id: string; name: string; totalAmount: number; installmentCount: number;
-    intervalDays: number; ticketId: string; ticketName: string;
-  } | null = null;
-  if (tickets.length > 0) {
-    const ticketIds = tickets.map((t) => t.id);
-    const [plan] = await tenantDb
-      .select()
-      .from(schema.installmentPlans)
-      .where(and(
-        eq(schema.installmentPlans.sourceType, "event"),
-        inArray(schema.installmentPlans.sourceId, ticketIds),
-        eq(schema.installmentPlans.isActive, true),
-        eq(schema.installmentPlans.isPublished, true),
-      ))
-      .limit(1);
-    if (plan?.totalAmount) {
-      const matchedTicket = tickets.find((t) => t.id === plan.sourceId);
-      if (matchedTicket) {
-        installmentPlan = {
-          id: plan.id, name: plan.name, totalAmount: parseFloat(String(plan.totalAmount)),
-          installmentCount: plan.installmentCount, intervalDays: plan.intervalDays,
-          ticketId: matchedTicket.id, ticketName: matchedTicket.name,
-        };
-      }
-    }
-  }
 
   // Fetch cover image URL jika ada
   let coverUrl: string | null = null;
@@ -877,21 +845,6 @@ export default async function PublicEventPage({
                   customFormFields={(event.customFormFields as CustomFormField[]) ?? []}
                 />
               </div>
-            )}
-
-            {/* Program cicilan (Fitur Cicilan Fase B) — tampil kalau tersedia + belum daftar */}
-            {!alreadyRegistered && installmentPlan && (
-              <EventInstallmentEnroll
-                slug={tenantSlug}
-                planId={installmentPlan.id}
-                planName={installmentPlan.name}
-                totalAmount={installmentPlan.totalAmount}
-                installmentCount={installmentPlan.installmentCount}
-                intervalDays={installmentPlan.intervalDays}
-                defaultName={defaultAttendeeName}
-                defaultPhone={defaultAttendeePhone}
-                defaultEmail={defaultAttendeeEmail}
-              />
             )}
     </>
   );

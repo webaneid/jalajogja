@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { db, tenants } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
-import { createTenantDb, getSettings } from "@jalajogja/db";
+import { createTenantDb, getSettings, findEligibleInstallmentPlan } from "@jalajogja/db";
 import {
   InvoicePublicClient,
   type PublicInvoiceData,
@@ -52,7 +52,7 @@ export default async function PublicInvoicePage({ params }: Props) {
 
   if (!inv) notFound();
 
-  const [items, shippingRows, paymentRows, scheduleRows] = await Promise.all([
+  const [items, shippingRows, paymentRows, scheduleRows, eligibleInstallmentPlan] = await Promise.all([
     tenantDb
       .select()
       .from(schema.invoiceItems)
@@ -77,6 +77,7 @@ export default async function PublicInvoicePage({ params }: Props) {
           .where(eq(schema.installmentSchedules.invoiceId, invoiceId))
           .orderBy(schema.installmentSchedules.termNumber)
       : Promise.resolve([]),
+    findEligibleInstallmentPlan(tenantClient, invoiceId),
   ]);
 
   const paymentCategory = resolvePaymentCategory(items.map((it) => it.itemType));
@@ -170,6 +171,7 @@ export default async function PublicInvoicePage({ params }: Props) {
       dueDate:    s.dueDate,
       amount:     parseFloat(String(s.amount)),
       status:     s.status,
+      uniqueCode: s.uniqueCode ?? null,
     })),
   };
 
@@ -179,7 +181,7 @@ export default async function PublicInvoicePage({ params }: Props) {
         <div className="mb-6">
           <p className="text-sm text-muted-foreground">{tenant.name}</p>
         </div>
-        <InvoicePublicClient slug={slug} invoice={invoice} />
+        <InvoicePublicClient slug={slug} invoice={invoice} eligibleInstallmentPlan={eligibleInstallmentPlan} />
       </div>
     </main>
   );

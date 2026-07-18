@@ -197,6 +197,12 @@ export function createInstallmentSchedulesTable(s: ReturnType<typeof pgSchema>) 
     paymentId:          uuid("payment_id"),  // diisi saat termin ini dibayar
     paidAt:             timestamp("paid_at", { withTimezone: true }),
     status:             text("status", { enum: INSTALLMENT_SCHEDULE_STATUSES }).notNull().default("pending"),
+    // Kode unik Rp 100-999 KHUSUS untuk termin ini — murni alat bantu identifikasi manual
+    // admin di mutasi rekening (satu invoice cicilan menerima banyak transfer terpisah dari
+    // waktu ke waktu, beda dari invoices.uniqueCode yang cuma sekali untuk bayar lunas
+    // sekaligus). TIDAK PERNAH dihitung sebagai bagian dari nominal cicilan — `amount` di atas
+    // selalu angka bersih. Null kalau unique_code_enabled dimatikan admin.
+    uniqueCode:         integer("unique_code"),
   }, (t) => ({
     invoiceIdx: index("installment_schedules_invoice_id_idx").on(t.invoiceId),
     dueDateIdx: index("installment_schedules_due_date_idx").on(t.dueDate, t.status),

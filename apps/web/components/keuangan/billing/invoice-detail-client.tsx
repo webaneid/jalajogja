@@ -63,6 +63,11 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
   // Payment form state
   const amountDue = invoice.total + (invoice.uniqueCode ?? 0);
 
+  // Termin cicilan belum lunas paling awal — dipakai untuk prefill "✓ Verifikasi" dengan
+  // angka BERSIH (tanpa kode unik termin), bukan payment.amount mentah yang customer submit
+  // (kemungkinan berisi kode). Lihat docs/arsitektur-billing.md § "Program Cicilan".
+  const nextUnpaidTerm = invoice.installmentSchedules.find((s) => s.status !== "paid") ?? null;
+
   const [showPayForm, setShowPayForm]   = useState(false);
   const [payAmount,   setPayAmount]     = useState(String(Math.round(invoice.remaining)));
   const [payMethod,   setPayMethod]     = useState<"cash" | "transfer" | "qris">("cash");
@@ -421,10 +426,16 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
           <div className="rounded-lg border border-border divide-y divide-border">
             {invoice.installmentSchedules.map((s) => {
               const isOverdue = s.status === "pending" && new Date(s.dueDate) < new Date(new Date().toDateString());
+              const isNext = nextUnpaidTerm?.id === s.id;
               return (
-                <div key={s.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                <div key={s.id} className={`px-4 py-2.5 flex items-center justify-between text-sm ${isNext ? "bg-primary/5" : ""}`}>
                   <div>
-                    <p className="font-medium">Termin {s.termNumber}</p>
+                    <p className="font-medium">
+                      Termin {s.termNumber}
+                      {s.uniqueCode != null && (
+                        <span className="ml-2 text-xs font-mono text-muted-foreground">kode {s.uniqueCode}</span>
+                      )}
+                    </p>
                     <p className="text-xs text-muted-foreground">{formatDate(s.dueDate)}</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -469,7 +480,7 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                       <>
                         <button
                           type="button"
-                          onClick={() => toggleVerifyForm(p.id, p.amount)}
+                          onClick={() => toggleVerifyForm(p.id, nextUnpaidTerm ? nextUnpaidTerm.amount : p.amount)}
                           disabled={verifyPending || rejectPending}
                           className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
                         >
@@ -524,7 +535,9 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
                       />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Default sesuai yang customer submit — cocokkan dengan bukti transfer di bawah sebelum konfirmasi.
+                      {nextUnpaidTerm
+                        ? `Default sesuai nominal termin ${nextUnpaidTerm.termNumber} (angka bersih, TANPA kode unik ${nextUnpaidTerm.uniqueCode ?? ""}) — kode unik hanya alat bantu identifikasi di rekening, jangan ikut dicatat sebagai bagian cicilan.`
+                        : "Default sesuai yang customer submit — cocokkan dengan bukti transfer di bawah sebelum konfirmasi."}
                     </p>
                     <div className="flex gap-2">
                       <button

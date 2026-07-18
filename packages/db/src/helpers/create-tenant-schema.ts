@@ -1182,6 +1182,7 @@ export async function createTenantSchemaInDb(
         paid_at             TIMESTAMPTZ,
         status              TEXT           NOT NULL DEFAULT 'pending'
                                            CHECK (status IN ('pending','paid','overdue')),
+        unique_code         INTEGER,
         UNIQUE (invoice_id, term_number)
       )
     `));

@@ -36,8 +36,12 @@ export {
   createLinkedInvoice,
   syncInvoicePayment,
   generateUniqueCode,
+  generateInstallmentScheduleCode,
+  settleInstallmentSchedules,
+  findEligibleInstallmentPlan,
   type LinkedInvoiceItem,
   type CreateLinkedInvoiceInput,
+  type EligibleInstallmentPlan,
 } from "./helpers/billing";
 
 // Identity resolution — lookup profile/member dari phone/email/session

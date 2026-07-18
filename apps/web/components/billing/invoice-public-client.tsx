@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Download, ImagePlus, X, Loader2 } from "lucide-react";
-import { submitPaymentProofAction } from "@/app/(public)/[tenant]/cart/actions";
+import { submitPaymentProofAction, convertInvoiceToInstallmentAction } from "@/app/(public)/[tenant]/cart/actions";
 import { compressImage } from "@/lib/client-image-compress";
 import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
 import {
@@ -80,12 +80,21 @@ export type PublicInvoiceData = {
     dueDate:    string;
     amount:     number;
     status:     string;
+    uniqueCode: number | null;
   }>;
+};
+
+export type EligibleInstallmentPlanPublic = {
+  id:               string;
+  name:             string;
+  installmentCount: number;
+  intervalDays:     number;
 };
 
 type Props = {
   slug:    string;
   invoice: PublicInvoiceData;
+  eligibleInstallmentPlan: EligibleInstallmentPlanPublic | null;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -315,15 +324,30 @@ function PaymentMethodCard({
   );
 }
 
+// Termin belum lunas paling awal — dipakai untuk default "Nominal Transfer" dan highlight
+// di Jadwal Cicilan. null kalau invoice bukan cicilan atau semua termin sudah lunas.
+function findNextUnpaidTerm(schedules: PublicInvoiceData["installmentSchedules"]) {
+  return schedules.find((s) => s.status !== "paid") ?? null;
+}
+
 // ─── InvoicePublicClient ──────────────────────────────────────────────────────
-export function InvoicePublicClient({ slug, invoice }: Props) {
+export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error,   setError]        = useState("");
   const [success, setSuccess]      = useState("");
 
+  const nextUnpaidTerm = findNextUnpaidTerm(invoice.installmentSchedules);
+  const isInstallment   = invoice.installmentSchedules.length > 0;
+  // Untuk cicilan: default nominal = termin berikutnya + kode unik termin itu (bukan seluruh
+  // sisa invoice) — tetap bebas diedit, customer boleh transfer lebih untuk lunasi beberapa
+  // termin sekaligus (waterfall settlement menangani otomatis).
+  const defaultPayAmount = nextUnpaidTerm
+    ? String(nextUnpaidTerm.amount + (nextUnpaidTerm.uniqueCode ?? 0))
+    : String(invoice.remaining);
+
   const [showPayForm,  setShowPayForm]  = useState(false);
-  const [payAmount,    setPayAmount]    = useState(String(invoice.remaining));
+  const [payAmount,    setPayAmount]    = useState(defaultPayAmount);
   const [payerName,    setPayerName]    = useState(invoice.customerName);
   const [payMethod,    setPayMethod]    = useState<"transfer" | "qris">("transfer");
   const [payerBank,    setPayerBank]    = useState("");
@@ -347,6 +371,26 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
 
   const canPay = ["pending", "partial", "overdue"].includes(invoice.status) && !justSubmitted;
   const showWaitingPanel = invoice.status === "waiting_verification" || justSubmitted;
+
+  // ── Ubah jadi Cicilan — cicilan adalah metode PEMBAYARAN (analog diskon/kupon), bukan
+  // jalur pendaftaran terpisah. Invoice yang sudah ada (dari checkout normal) diubah di sini.
+  const [convertConfirmOpen, setConvertConfirmOpen] = useState(false);
+  const [convertPending, startConvertTransition]    = useTransition();
+  const [convertError, setConvertError]             = useState("");
+
+  function doConvertToInstallment() {
+    if (!eligibleInstallmentPlan) return;
+    setConvertConfirmOpen(false);
+    setConvertError("");
+    startConvertTransition(async () => {
+      const res = await convertInvoiceToInstallmentAction(slug, invoice.id, eligibleInstallmentPlan.id);
+      if (res.success) {
+        router.refresh();
+      } else {
+        setConvertError(res.error);
+      }
+    });
+  }
 
   async function handleProofFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -611,35 +655,91 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
         )}
       </div>
 
+      {/* ── Prompt "Ubah jadi Cicilan" — cicilan sebagai metode pembayaran, bukan jalur
+           pendaftaran terpisah. Hanya tampil kalau ada program cocok DAN invoice belum
+           cicilan DAN masih bisa dibayar. ── */}
+      {eligibleInstallmentPlan && !isInstallment && canPay && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-primary">Tersedia Cicilan: {eligibleInstallmentPlan.name}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Bayar dalam {eligibleInstallmentPlan.installmentCount}× termin, setiap{" "}
+              {eligibleInstallmentPlan.intervalDays} hari — total tagihan tetap sama, hanya dipecah.
+            </p>
+          </div>
+          {convertError && (
+            <p className="text-xs text-destructive">{convertError}</p>
+          )}
+          <button
+            type="button"
+            onClick={() => setConvertConfirmOpen(true)}
+            disabled={convertPending}
+            className="rounded-md border border-primary bg-background px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-60"
+          >
+            {convertPending ? "Memproses..." : "Ubah jadi Cicilan"}
+          </button>
+        </div>
+      )}
+
       {/* ── Jadwal Cicilan ── */}
-      {invoice.installmentSchedules.length > 0 && (
+      {isInstallment && (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Jadwal Cicilan</p>
           <div className="rounded-lg border border-border divide-y divide-border">
             {invoice.installmentSchedules.map((s) => {
               const isOverdue = s.status === "pending" && new Date(s.dueDate) < new Date(new Date().toDateString());
+              const isNext = nextUnpaidTerm?.id === s.id;
+              const transferAmount = s.amount + (s.uniqueCode ?? 0);
               return (
-                <div key={s.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
-                  <div>
-                    <p className="font-medium">Termin {s.termNumber}</p>
-                    <p className="text-xs text-muted-foreground">{formatDate(s.dueDate + "T00:00:00")}</p>
+                <div key={s.id} className={`px-4 py-2.5 text-sm ${isNext ? "bg-primary/5" : ""}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Termin {s.termNumber}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(s.dueDate + "T00:00:00")}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="tabular-nums">{formatRp(s.amount)}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        s.status === "paid" ? "bg-green-100 text-green-700"
+                        : isOverdue ? "bg-red-100 text-red-700"
+                        : "bg-yellow-100 text-yellow-700"
+                      }`}>
+                        {s.status === "paid" ? "Lunas" : isOverdue ? "Terlambat" : "Menunggu"}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="tabular-nums">{formatRp(s.amount)}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      s.status === "paid" ? "bg-green-100 text-green-700"
-                      : isOverdue ? "bg-red-100 text-red-700"
-                      : "bg-yellow-100 text-yellow-700"
-                    }`}>
-                      {s.status === "paid" ? "Lunas" : isOverdue ? "Terlambat" : "Menunggu"}
-                    </span>
-                  </div>
+                  {isNext && s.uniqueCode != null && (
+                    <p className="mt-1.5 text-xs font-medium text-primary bg-primary/10 rounded px-2 py-1 inline-block">
+                      Transfer: {formatRp(transferAmount)} (termasuk kode unik {s.uniqueCode} — untuk
+                      identifikasi, bukan tambahan tagihan)
+                    </p>
+                  )}
                 </div>
               );
             })}
           </div>
         </div>
       )}
+
+      {/* ── Dialog konfirmasi ubah jadi cicilan ── */}
+      <AlertDialog open={convertConfirmOpen} onOpenChange={setConvertConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ubah Invoice Jadi Cicilan?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Total tagihan tetap sama ({formatRp(invoice.total)}), hanya dipecah menjadi{" "}
+              {eligibleInstallmentPlan?.installmentCount}× termin. Anda tetap bisa membayar
+              lebih cepat kapan saja.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={doConvertToInstallment} disabled={convertPending}>
+              {convertPending ? "Memproses..." : "Ya, Ubah jadi Cicilan"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Metode pembayaran ── */}
       {canPay && (
@@ -686,7 +786,9 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
               />
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Default sesuai sisa tagihan — ubah kalau nominal transfer Anda beda (mencicil atau lebih).
+              {isInstallment
+                ? "Default sesuai termin berikutnya (termasuk kode unik) — ubah kalau nominal transfer Anda beda."
+                : "Default sesuai sisa tagihan — ubah kalau nominal transfer Anda beda (mencicil atau lebih)."}
             </p>
           </div>
 

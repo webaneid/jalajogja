@@ -3,7 +3,7 @@
 import { eq, and, desc, sql, count, inArray } from "drizzle-orm";
 import type { InvoiceStatus } from "@jalajogja/db";
 import { revalidatePath } from "next/cache";
-import { createTenantDb, generateFinancialNumber } from "@jalajogja/db";
+import { createTenantDb, generateFinancialNumber, settleInstallmentSchedules } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { recordIncome } from "@jalajogja/db";
@@ -386,26 +386,9 @@ export async function confirmInvoicePaymentAction(
         })
         .where(eq(schema.invoices.id, invoiceId));
 
-      // Settlement cicilan — waterfall FIFO: tandai installment_schedules lunas berurutan
-      // (termin 1, 2, dst) sejauh newPaidAmount kumulatif mencukupi. Lihat
-      // docs/arsitektur-billing.md § "Program Cicilan" — customer TIDAK memilih termin mana
-      // yang dibayar, pembayaran otomatis mengalir ke termin tertua dulu.
+      // Settlement cicilan — waterfall FIFO, lihat docs/arsitektur-billing.md § "Program Cicilan"
       if (lockedInv.installmentPlanId) {
-        const schedules = await tx
-          .select()
-          .from(schema.installmentSchedules)
-          .where(eq(schema.installmentSchedules.invoiceId, invoiceId))
-          .orderBy(schema.installmentSchedules.termNumber);
-
-        let cumulative = 0;
-        for (const sch of schedules) {
-          cumulative += parseFloat(String(sch.amount));
-          if (sch.status === "paid") continue;
-          if (newPaidAmount + 0.01 < cumulative) break; // belum cukup untuk termin ini
-          await tx.update(schema.installmentSchedules)
-            .set({ status: "paid", paymentId: payment.id, paidAt: new Date() })
-            .where(eq(schema.installmentSchedules.id, sch.id));
-        }
+        await settleInstallmentSchedules(tx, schema, invoiceId, newPaidAmount, payment.id);
       }
 
       // Jurnal double-entry (hanya jika lunas — partial tidak jurnal dulu)
@@ -935,21 +918,7 @@ export async function verifySubmittedPaymentAction(
 
       // Settlement cicilan — waterfall FIFO, sama persis dengan confirmInvoicePaymentAction.
       if (inv.installmentPlanId) {
-        const schedules = await tx
-          .select()
-          .from(schema.installmentSchedules)
-          .where(eq(schema.installmentSchedules.invoiceId, inv.id))
-          .orderBy(schema.installmentSchedules.termNumber);
-
-        let cumulative = 0;
-        for (const sch of schedules) {
-          cumulative += parseFloat(String(sch.amount));
-          if (sch.status === "paid") continue;
-          if (newPaid + 0.01 < cumulative) break;
-          await tx.update(schema.installmentSchedules)
-            .set({ status: "paid", paymentId, paidAt: new Date() })
-            .where(eq(schema.installmentSchedules.id, sch.id));
-        }
+        await settleInstallmentSchedules(tx, schema, inv.id, newPaid, paymentId);
       }
 
       // Jurnal double-entry saat lunas
@@ -1262,6 +1231,7 @@ export type InvoiceDetail = {
     dueDate:     string;
     amount:      number;
     status:      string;
+    uniqueCode:  number | null;
   }[];
 };
 
@@ -1386,6 +1356,7 @@ export async function getInvoiceDetailAction(
         dueDate:    s.dueDate,
         amount:     parseFloat(String(s.amount)),
         status:     s.status,
+        uniqueCode: s.uniqueCode ?? null,
       })),
     },
   };

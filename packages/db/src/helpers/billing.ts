@@ -8,11 +8,23 @@
  * file "use server" manapun tanpa circular dependency.
  */
 
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, type ExtractTablesWithRelations } from "drizzle-orm";
+import type { PgTransaction } from "drizzle-orm/pg-core";
+import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import { generateFinancialNumber } from "./finance";
 import { getSettings } from "./settings";
 import type { TenantDb } from "../tenant-client";
 import type { InvoiceSourceType } from "../schema/tenant/billing";
+
+// Tipe transaction callback param dari TenantDb["db"].transaction(async (tx) => ...) —
+// `tx` (PgTransaction) TIDAK structurally assignable ke TenantDb["db"] penuh (beda `$client`
+// requirement), jadi helper yang menerima `tx` dari transaction existing WAJIB pakai tipe ini,
+// bukan TenantDb["db"].
+type TenantTx = PgTransaction<
+  PostgresJsQueryResultHKT,
+  Record<string, unknown>,
+  ExtractTablesWithRelations<Record<string, unknown>>
+>;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,6 +76,150 @@ export async function generateUniqueCode(tenantDb: TenantDb): Promise<number> {
   }
   if (available.length === 0) return 0;
   return available[Math.floor(Math.random() * available.length)];
+}
+
+// ─── generateInstallmentScheduleCode ─────────────────────────────────────────
+// Sama pola dengan generateUniqueCode(), tapi namespace TERPISAH: cek keunikan
+// terhadap installment_schedules.unique_code (bukan invoices.unique_code) —
+// dua tabel beda kolom, satu code bisa dipakai bersamaan di keduanya tanpa konflik
+// karena maknanya beda (invoice = sekali bayar lunas, termin = per transfer cicilan).
+
+// `extraExclude` — kode yang sudah dipilih dalam batch yang sama (belum ter-INSERT ke DB
+// saat fungsi ini dipanggil lagi untuk termin berikutnya) — WAJIB diisi saat generate
+// banyak kode sekaligus dalam satu loop (lihat convertInvoiceToInstallmentAction), kalau
+// tidak dua termin dalam invoice yang sama bisa dapat kode identik.
+
+export async function generateInstallmentScheduleCode(
+  tenantDb: TenantDb,
+  extraExclude?: Set<number>,
+): Promise<number> {
+  const { db, schema } = tenantDb;
+
+  const usedRows = await db
+    .select({ code: schema.installmentSchedules.uniqueCode })
+    .from(schema.installmentSchedules)
+    .where(
+      and(
+        sql`${schema.installmentSchedules.uniqueCode} IS NOT NULL`,
+        eq(schema.installmentSchedules.status, "pending")
+      )
+    );
+
+  const usedCodes = new Set(usedRows.map((r) => r.code));
+  if (extraExclude) for (const c of extraExclude) usedCodes.add(c);
+
+  const available: number[] = [];
+  for (let i = 100; i <= 999; i++) {
+    if (!usedCodes.has(i)) available.push(i);
+  }
+  if (available.length === 0) return 0;
+  return available[Math.floor(Math.random() * available.length)];
+}
+
+// ─── settleInstallmentSchedules ───────────────────────────────────────────────
+// Waterfall FIFO: tandai installment_schedules lunas berurutan (termin 1, 2, dst)
+// sejauh newPaidAmount kumulatif mencukupi. Customer TIDAK memilih termin mana yang
+// dibayar — pembayaran otomatis mengalir ke termin tertua dulu. Dipanggil dari 3 tempat:
+// confirmInvoicePaymentAction, verifySubmittedPaymentAction (setelah paid_amount invoice
+// di-update), dan convertInvoiceToInstallmentAction (setelah jadwal termin baru dibuat,
+// untuk auto-lunas-kan termin awal kalau invoice sudah pernah dibayar sebagian sebelum
+// dikonversi). `tx` HARUS transaction object yang sedang mengunci baris invoice terkait
+// (FOR UPDATE) — fungsi ini tidak membuka transaction sendiri.
+//
+// paymentId nullable: saat dipanggil dari convertInvoiceToInstallmentAction, termin yang
+// auto-lunas dari histori pembayaran SEBELUM konversi tidak punya satu payment spesifik
+// yang bisa diatribusikan per termin — dibiarkan null (approksimasi yang disengaja).
+
+export async function settleInstallmentSchedules(
+  tx: TenantTx,
+  schema: TenantDb["schema"],
+  invoiceId: string,
+  newPaidAmount: number,
+  paymentId: string | null,
+): Promise<void> {
+  const schedules = await tx
+    .select()
+    .from(schema.installmentSchedules)
+    .where(eq(schema.installmentSchedules.invoiceId, invoiceId))
+    .orderBy(schema.installmentSchedules.termNumber);
+
+  let cumulative = 0;
+  for (const sch of schedules) {
+    cumulative += parseFloat(String(sch.amount));
+    if (sch.status === "paid") continue;
+    if (newPaidAmount + 0.01 < cumulative) break; // belum cukup untuk termin ini
+    await tx.update(schema.installmentSchedules)
+      .set({ status: "paid", paymentId, paidAt: new Date() })
+      .where(eq(schema.installmentSchedules.id, sch.id));
+  }
+}
+
+// ─── findEligibleInstallmentPlan ──────────────────────────────────────────────
+// Cek apakah sebuah invoice bisa diubah jadi cicilan: belum installmentPlanId, belum
+// lunas/dibatalkan, dan salah satu item tiketnya cocok dengan program cicilan aktif+
+// published (installment_plans.sourceType='event', sourceId=eventTickets.id). Dipakai
+// untuk render prompt "Ubah jadi Cicilan" di halaman invoice publik, DAN dipanggil lagi
+// di dalam transaction saat konversi sungguhan terjadi (jangan cuma percaya hasil di sini).
+
+export type EligibleInstallmentPlan = {
+  id:               string;
+  name:             string;
+  installmentCount: number;
+  intervalDays:     number;
+};
+
+export async function findEligibleInstallmentPlan(
+  tenantDb: TenantDb,
+  invoiceId: string,
+): Promise<EligibleInstallmentPlan | null> {
+  const { db, schema } = tenantDb;
+
+  const [inv] = await db
+    .select({
+      status:             schema.invoices.status,
+      installmentPlanId:  schema.invoices.installmentPlanId,
+    })
+    .from(schema.invoices)
+    .where(eq(schema.invoices.id, invoiceId))
+    .limit(1);
+
+  if (!inv) return null;
+  if (inv.installmentPlanId) return null; // sudah cicilan
+  if (inv.status === "paid" || inv.status === "cancelled") return null;
+
+  const ticketItems = await db
+    .select({ itemId: schema.invoiceItems.itemId })
+    .from(schema.invoiceItems)
+    .where(
+      and(
+        eq(schema.invoiceItems.invoiceId, invoiceId),
+        eq(schema.invoiceItems.itemType, "ticket")
+      )
+    );
+
+  const ticketIds = ticketItems.map((i) => i.itemId).filter((id): id is string => !!id);
+  if (ticketIds.length === 0) return null;
+
+  const [plan] = await db
+    .select()
+    .from(schema.installmentPlans)
+    .where(
+      and(
+        eq(schema.installmentPlans.sourceType, "event"),
+        inArray(schema.installmentPlans.sourceId, ticketIds),
+        eq(schema.installmentPlans.isActive, true),
+        eq(schema.installmentPlans.isPublished, true)
+      )
+    )
+    .limit(1);
+
+  if (!plan) return null;
+  return {
+    id:               plan.id,
+    name:             plan.name,
+    installmentCount: plan.installmentCount,
+    intervalDays:     plan.intervalDays,
+  };
 }
 
 // ─── createLinkedInvoice ──────────────────────────────────────────────────────

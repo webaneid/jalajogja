@@ -463,44 +463,96 @@ Saat payment di invoice dikonfirmasi:
 
 ## Program Cicilan — Detail
 
-> **Status: Fase A + B SELESAI (2026-07-18) — admin CRUD, enrollment publik, settlement
-> waterfall, tampilan jadwal termin di invoice admin+publik. Fase C (reminder H-1) BELUM.**
+> **Status: Fase A + B (revisi final) SELESAI (2026-07-19) — admin CRUD, konversi invoice
+> jadi cicilan, settlement waterfall, kode unik per termin, tampilan jadwal termin di invoice
+> admin+publik. Fase C (reminder H-1) BELUM.**
 > Rencana lengkap + riset: `/Users/webane/.claude/plans/polished-moseying-shell.md`. Lesson
-> CLAUDE.md "[2026-07-18] Fitur Cicilan — Fase A/B Selesai".
+> CLAUDE.md "[2026-07-19] Fitur Cicilan — Fase B Revisi: Cicilan Sebagai Metode Pembayaran".
+> **Versi Fase B pertama (enrollment via card terpisah di halaman event) SUDAH DIBUANG** —
+> lesson CLAUDE.md yang membahasnya ditandai SUPERSEDED, jangan diikuti kalau masih terbaca
+> di riwayat lama.
 
 Cicilan **tidak tampil di front-end** kecuali admin aktifkan DAN publish program tertentu.
 
 **Scope yang dikunci (klarifikasi user, bukan asumsi)**: cicilan HANYA untuk **tiket event**
-di Fase A/B ini — donasi biasa tidak butuh cicilan (donasi = pemberian, bukan pembelian).
+di fase ini — donasi biasa tidak butuh cicilan (donasi = pemberian, bukan pembelian).
 Qurban (pola sama, nanti diterapkan lagi) eksplisit di luar scope sesi ini, menyusul terpisah.
 
 `installment_plans.sourceType='event'` → `sourceId` = **ID tiket** (`event_tickets.id`),
 BUKAN ID event — satu event bisa punya beberapa tiket harga beda, tiap tiket bisa punya
-program cicilan sendiri. Total nominal (`totalAmount`) SELALU ditentukan admin (bukan
-customer pilih bebas) — divalidasi wajib di action, meski kolom DB nullable.
+program cicilan sendiri. `totalAmount` di form admin **HANYA saran/default tampilan** saat
+program dibuat — TIDAK PERNAH jadi acuan otoritatif saat konversi sungguhan (lihat prinsip
+di bawah).
 
-**Invoice hasil enroll TETAP `sourceType='event_registration'`** (sama seperti tiket biasa
-non-cicilan) — TIDAK ada `sourceType` baru. Yang membedakan cukup `invoices.installmentPlanId`
-(kolom yang sudah ada sejak awal). Konsekuensi bagus: hook existing di
-`confirmInvoicePaymentAction`/`verifySubmittedPaymentAction` ("kalau sourceType
-event_registration DAN invoice lunas → confirm eventRegistrations") **otomatis berlaku untuk
-cicilan tanpa kode tambahan** — event_registration baru "confirmed" begitu SELURUH termin
-lunas (bukan begitu daftar).
+### Prinsip Arsitektur — Cicilan = Metode Pembayaran, Bukan Jalur Pendaftaran
 
-**Settlement termin — waterfall FIFO** (Fase B, SELESAI): setiap kali `invoices.paidAmount`
-bertambah (di `confirmInvoicePaymentAction` DAN `verifySubmittedPaymentAction`, DI DALAM
-transaction yang sama yang sudah mengunci invoice), `installment_schedules` ditandai lunas
+**Ini keputusan paling penting di fitur ini, hasil koreksi user setelah versi pertama sempat
+dibangun dan ditolak.** Analog langsung dengan diskon/kupon: cicilan adalah transformasi yang
+terjadi pada invoice yang SUDAH ADA, bukan cabang khusus di titik pendaftaran/checkout.
+
+```
+Checkout/Registrasi (TIDAK BERUBAH, tidak tahu-menahu soal cicilan)
+  → invoice normal terbentuk seperti biasa
+  → customer buka halaman invoice publik (/invoice/{id})
+  → kalau ada program cicilan aktif+published yang cocok dengan item tiket di invoice ini
+    DAN invoice belum installmentPlanId DAN belum lunas
+    → tampil prompt "Ubah jadi Cicilan"
+  → customer klik → convertInvoiceToInstallmentAction → invoice YANG SAMA jadi berjadwal termin
+```
+
+**Boleh dikonversi kapan saja selama belum lunas** — TERMASUK setelah invoice sudah dibayar
+sebagian (partial payment). Jadwal N-termin selalu dibangun dari `invoice.total` UTUH (bukan
+sisa), lalu `settleInstallmentSchedules` dijalankan SEKALI langsung setelah jadwal dibuat,
+memakai `paidAmount` invoice SAAT ITU — otomatis menandai lunas berapa pun termin awal yang
+tertutup oleh histori pembayaran sebelum konversi. Total yang dipecah **SELALU
+`invoice.total` yang sebenarnya**, bukan `plan.totalAmount` — kalau harga tiket sudah berubah
+sejak program dibuat, tidak ada penolakan/mismatch check sama sekali, konversi tetap jalan
+memakai angka invoice yang riil.
+
+**Invoice hasil konversi TETAP `sourceType` aslinya** (biasanya `event_registration`) — TIDAK
+ada `sourceType` baru. Yang membedakan cukup `invoices.installmentPlanId`. Konsekuensi bagus:
+hook existing "kalau sourceType event_registration DAN invoice lunas → confirm
+eventRegistrations" **otomatis berlaku untuk cicilan tanpa kode tambahan** — registrasi baru
+"confirmed" begitu SELURUH termin lunas.
+
+**Settlement termin — waterfall FIFO**: setiap kali `invoices.paidAmount` bertambah (di
+`confirmInvoicePaymentAction`, `verifySubmittedPaymentAction`, DAN
+`convertInvoiceToInstallmentAction` — tiga pemanggil `settleInstallmentSchedules`, fungsi
+shared di `packages/db/src/helpers/billing.ts`), `installment_schedules` ditandai lunas
 berurutan (termin 1, 2, dst) sejauh nominal kumulatif mencukupi — customer TIDAK memilih
-"saya bayar termin keberapa" saat submit bukti, pembayaran otomatis mengalir ke termin
-tertua dulu. Termin terakhir menyerap sisa pembulatan pembagian `total/count` supaya jumlah
-seluruh termin persis sama dengan `totalAmount`.
+"saya bayar termin keberapa". Termin terakhir menyerap sisa pembulatan pembagian
+`total/count` supaya jumlah seluruh termin persis sama dengan `total`.
 
-Contoh use case (nanti, di luar scope Fase A/B): **Nabung Qurban 2025** — Total Rp 3.000.000,
+### Kode Unik PER TERMIN — Beda dari `invoices.uniqueCode`
+
+Satu invoice cicilan menerima **N transfer terpisah** di waktu berbeda (satu per termin) —
+`invoices.uniqueCode` (sekali per invoice, ditambahkan ke total sekali di awal) tidak
+membantu identifikasi termin ke-2 dst, dan berisiko tabrakan nominal kalau banyak customer
+punya program yang sama (nominal termin identik, transfer di hari yang sama).
+
+**Desain**: kolom baru `installment_schedules.unique_code INTEGER` (nullable) — SATU kode
+PER TERMIN, di-generate sekali saat termin dibuat (saat konversi), permanen. Customer
+diinstruksikan transfer `amount + kode` (mis. "Termin 3 — Rp 35.000 — transfer Rp 35.347").
+
+**Kode TIDAK PERNAH dihitung sebagai bagian dari cicilan** — `installment_schedules.amount`
+selalu angka bersih, waterfall settlement & jurnal selalu pakai angka bersih itu. Kode murni
+alat bantu identifikasi manual admin di mutasi rekening: begitu admin cocokkan mutasi
+Rp 35.347 dengan termin 3, saat konfirmasi di sistem admin input **Rp 35.000** (bukan
+35.347) — selisih receh TIDAK PERNAH masuk ke sistem pembukuan. Ini **beda filosofi
+sengaja** dari `invoices.uniqueCode` (yang memang ikut jadi bagian `amountDue`/`paidAmount`
+riil) — cicilan butuh total N-termin PERSIS sama dengan `invoice.total`, kalau kode ikut
+terhitung di tiap termin totalnya akan meleset.
+
+Scope kode per-termin: **cicilan saja** (dikonfirmasi eksplisit) — invoice biasa/non-cicilan
+tetap pakai mekanisme `invoices.uniqueCode` lama, tidak digeneralisasi.
+
+Contoh use case (nanti, di luar scope sesi ini): **Nabung Qurban 2025** — Total Rp 3.000.000,
 10x cicilan @ Rp 300.000/bulan, terhubung ke campaign qurban bukan event. Pola aplikasinya
-akan mirip (settlement waterfall, dst) tapi butuh `sourceType='campaign'` + penyesuaian
-enrollment (lewat `CampaignDetailClient`, bukan `EventRegisterForm`) — dikerjakan terpisah.
+akan mirip (konversi invoice, settlement waterfall, kode per termin) tapi butuh
+`sourceType='campaign'` + prompt konversi di halaman campaign/invoice donasi — dikerjakan
+terpisah.
 
-### Fase A — Admin CRUD (SELESAI)
+### Fase A — Admin CRUD (SELESAI, tidak berubah oleh revisi Fase B)
 
 - `finance/billing/actions.ts`: `getEventTicketOptionsAction`, `getInstallmentPlanListAction`,
   `getInstallmentPlanDetailAction`, `createInstallmentPlanAction`,
@@ -508,32 +560,56 @@ enrollment (lewat `CampaignDetailClient`, bukan `EventRegisterForm`) — dikerja
 - `finance/billing/cicilan/{page,new/page,[id]/page}.tsx` — list + create + detail (toggle
   aktif/publish + tabel invoice terdaftar dengan progres termin).
 - `finance/billing/cicilan/[id]/edit/page.tsx` — edit program (reuse `InstallmentPlanForm`
-  dual-mode create/edit). Total Nominal auto-terisi dari harga tiket yang dipilih.
+  dual-mode create/edit). Total Nominal auto-terisi dari harga tiket yang dipilih (saran
+  tampilan saja, lihat catatan "Total mana yang dipecah" di atas).
 - `components/keuangan/billing/billing-tabs.tsx` — tab ringan "Invoice | Cicilan" di kedua
   halaman (BUKAN nav shell `BillingNav` terpisah seperti sketsa lama — struktur folder
   `finance/billing/` sebenarnya flat, `page.tsx` cuma redirect).
 
-### Fase B — Enrollment Publik + Settlement (SELESAI)
+### Fase B — Konversi Invoice + Settlement + Kode Unik Termin (SELESAI, revisi final)
 
-- `event/actions.ts`: `enrollInstallmentPlanAction(slug, {planId, attendeeName, attendeePhone,
-  attendeeEmail})` — lock tiket `FOR UPDATE` + cek kuota (reuse pola `registerForEventAction`),
-  insert `event_registrations` status selalu `"pending"`, `createLinkedInvoice` dengan
-  `installmentPlanId`, insert N baris `installment_schedules`.
-- `packages/db/src/helpers/billing.ts`: `CreateLinkedInvoiceInput` tambah field opsional
-  `installmentPlanId?: string | null` (perubahan aditif, tidak breaking caller lain).
-- Settlement waterfall FIFO ditambahkan ke `confirmInvoicePaymentAction` DAN
-  `verifySubmittedPaymentAction` (`finance/billing/actions.ts`) — duplikat di kedua fungsi
-  (bukan diekstrak ke helper bersama), konsisten dengan pola campaign-sync/event-confirm yang
-  sudah lebih dulu duplikat di kedua fungsi ini.
-- `components/event/event-installment-enroll.tsx` — card "Tersedia Cicilan" di halaman event
-  publik, muncul kalau ada plan aktif+published untuk salah satu tiket event & user belum
-  terdaftar. Collapsed by default, expand jadi form kecil (nama/HP/email) saat diklik.
-- Jadwal Cicilan (tabel termin + status Lunas/Menunggu/Terlambat) ditampilkan di invoice
-  detail admin (`invoice-detail-client.tsx`) DAN publik (`invoice-public-client.tsx`) — status
-  "Terlambat" dihitung on-the-fly (`pending` + due_date lewat), tidak ada cron yang menulis
-  ulang kolom status.
+- `packages/db/src/helpers/billing.ts` — 3 fungsi baru:
+  - `findEligibleInstallmentPlan(tenantDb, invoiceId)` — cek eligibility (belum
+    `installmentPlanId`, belum lunas/dibatalkan, item tiket cocok plan aktif+published).
+    Dipanggil di halaman invoice publik (render prompt) DAN diulang lagi di dalam lock
+    transaction saat konversi sungguhan.
+  - `generateInstallmentScheduleCode(tenantDb, extraExclude?)` — generator kode unik per
+    termin, namespace terpisah dari `generateUniqueCode()` (target `installment_schedules`
+    bukan `invoices`). Parameter `extraExclude` WAJIB dipakai saat generate banyak kode
+    sekaligus dalam satu konversi (N termin) — mencegah 2 termin di invoice yang sama dapat
+    kode identik (DB query saja tidak cukup karena kode-kode itu belum ter-INSERT).
+  - `settleInstallmentSchedules(tx, schema, invoiceId, newPaidAmount, paymentId)` — waterfall
+    FIFO yang diekstrak dari 2 salinan duplikat versi pertama, sekarang SATU fungsi dipanggil
+    3 tempat (confirm, verify, convert). `tx` bertipe `PgTransaction<...>` (diimpor langsung
+    dari `drizzle-orm/pg-core` — TIDAK bisa pakai `TenantDb["db"]`, beda shape karena
+    `PostgresJsDatabase` mensyaratkan `$client` yang tidak ada di transaction callback param).
+- `apps/web/app/(public)/[tenant]/cart/actions.ts` — `convertInvoiceToInstallmentAction(slug,
+  invoiceId, planId)`, public, pola lock `FOR UPDATE` sama dengan `submitPaymentProofAction`:
+  lock invoice → validasi status+belum-cicilan+plan aktif+eligibility re-check → hitung N
+  termin dari `invoice.total` ASLI → generate kode unik per termin (skip kalau
+  `unique_code_enabled` mati) → insert `installment_schedules` → `UPDATE invoices SET
+  installmentPlanId` → `settleInstallmentSchedules` pakai `paidAmount` saat ini.
+- `components/billing/invoice-public-client.tsx` — card "Tersedia Cicilan: {nama program}" +
+  tombol "Ubah jadi Cicilan" (`AlertDialog` konfirmasi) muncul kalau eligible+belum
+  cicilan+masih bisa dibayar. Jadwal Cicilan diperluas: highlight termin belum-lunas paling
+  awal dengan instruksi transfer termasuk kode. "Nominal Transfer" default kondisional:
+  invoice cicilan → termin berikutnya (`amount+kode`); invoice biasa → `invoice.remaining`
+  (tidak berubah).
+- `components/keuangan/billing/invoice-detail-client.tsx` — kolom kode unik di tabel Jadwal
+  Cicilan + highlight termin berikutnya. Tombol "✓ Verifikasi" prefill dari
+  `nextUnpaidTerm.amount` (angka bersih tanpa kode) untuk invoice cicilan — invoice biasa
+  tetap prefill dari `payment.amount` seperti sebelumnya.
 
-**Belum**: Fase C (cron reminder H-1 jatuh tempo termin + WA template baru).
+**Dihapus total dari versi pertama** (bukan dikomentari): `enrollInstallmentPlanAction`
+(`event/actions.ts`), `components/event/event-installment-enroll.tsx`, blok query+render
+terkait di `agenda/[slug]/page.tsx`. Halaman event publik sekarang kembali tidak tahu-menahu
+soal cicilan sama sekali — cicilan sepenuhnya hidup di sisi invoice.
+
+**Migration**: `packages/db/migrations/0033_installment_schedule_unique_code.sql` — WAJIB
+dijalankan di VPS SEBELUM deploy kode.
+
+**Belum**: Fase C (cron reminder H-1 jatuh tempo termin + WA template baru) — tetap deferred,
+rencana lama masih relevan apa adanya.
 
 ---
 
