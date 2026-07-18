@@ -245,9 +245,15 @@ function QrisDisplay({
 function PaymentMethodCard({
   slug,
   invoice,
+  payAmount,
 }: {
-  slug:    string;
-  invoice: PublicInvoiceData;
+  slug:      string;
+  invoice:   PublicInvoiceData;
+  // Nominal yang dikunci ke QR — untuk cicilan HARUS termin saat ini (amount+kode), BUKAN
+  // invoice.remaining (seluruh sisa termin lain). Dinamis mengikuti input "Nominal Transfer"
+  // kalau form sudah dibuka dan diedit customer, supaya QR selalu sinkron dengan yang mau
+  // dikirim.
+  payAmount: number;
 }) {
   const hasBanks = invoice.bankAccounts.length > 0;
   const hasQris  = invoice.qrisAccounts.length  > 0;
@@ -284,7 +290,7 @@ function PaymentMethodCard({
             key={invoice.qrisAccounts[activeQris]?.id}
             slug={slug}
             qris={invoice.qrisAccounts[activeQris]!}
-            amount={invoice.remaining}
+            amount={payAmount}
             invoiceNumber={invoice.invoiceNumber}
           />
           <p className="text-xs text-muted-foreground">
@@ -746,7 +752,11 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan }: 
 
       {/* ── Metode pembayaran ── */}
       {canPay && (
-        <PaymentMethodCard slug={slug} invoice={invoice} />
+        <PaymentMethodCard
+          slug={slug}
+          invoice={invoice}
+          payAmount={amountNum > 0 ? amountNum : Number(defaultPayAmount)}
+        />
       )}
 
       {/* ── Catatan ── */}
