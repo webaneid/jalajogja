@@ -354,6 +354,21 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan }: 
 
   const [showPayForm,  setShowPayForm]  = useState(false);
   const [payAmount,    setPayAmount]    = useState(defaultPayAmount);
+
+  // `payAmount` diinisialisasi sekali saat mount — tidak otomatis ikut berubah kalau invoice
+  // baru saja dikonversi jadi cicilan (router.refresh() mengirim prop baru ke komponen yang
+  // SAMA, tanpa remount, state lama tetap nyangkut). Sync ulang di sini, bukan cuma saat form
+  // dibuka — supaya QRIS (yang render SEBELUM form dibuka) juga langsung dapat nominal benar.
+  // Bandingkan ke default SEBELUMNYA (bukan payAmount langsung) supaya edit manual customer
+  // tidak ketimpa kalau mereka sengaja ubah nominal sebelum defaultPayAmount berubah.
+  const prevDefaultRef = useRef(defaultPayAmount);
+  useEffect(() => {
+    if (defaultPayAmount !== prevDefaultRef.current) {
+      if (payAmount === prevDefaultRef.current) setPayAmount(defaultPayAmount);
+      prevDefaultRef.current = defaultPayAmount;
+    }
+  }, [defaultPayAmount, payAmount]);
+
   const [payerName,    setPayerName]    = useState(invoice.customerName);
   const [payMethod,    setPayMethod]    = useState<"transfer" | "qris">("transfer");
   const [payerBank,    setPayerBank]    = useState("");
