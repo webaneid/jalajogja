@@ -527,9 +527,15 @@ body: file (image/jpeg|png|webp|heic, maks 8 MB)
 
 - **Publik** — tidak butuh session/auth; siapapun yang punya `invoiceId` bisa upload
 - Validasi: invoice harus ada, status bukan `paid`/`cancelled`
-- File disimpan ke MinIO bucket `tenant-{slug}` di path `payments/{invoiceId}/{uuid}.{ext}`
+- **Image processing via Sharp (SELESAI, 2026-07-18)** — file di-decode dari ISI BYTE (bukan MIME
+  type/ekstensi nama file, yang tidak reliable untuk foto HEIC dari galeri iPhone) lalu dipaksa
+  konversi ke WebP (`.rotate()` auto-orientasi EXIF + `.resize(1600,1600,{fit:"inside"})` +
+  `.webp({quality:85})`). Alasan: HEIC bisa berhasil ter-upload tapi tidak native-viewable di
+  kebanyakan browser desktop — admin melihat "tidak ada bukti" meski `proofUrl` valid tersimpan.
+  Lihat lesson CLAUDE.md `[2026-07-18] Bug: Bukti Transfer Gagal Upload Diam-Diam`.
+- File disimpan ke MinIO bucket `tenant-{slug}` di path `payments/{invoiceId}/{uuid}.webp` (selalu
+  `.webp`, format input asli tidak lagi relevan setelah konversi)
 - Response: `{ url: string }` — URL lengkap MinIO
-- **Tidak ada image processing** (tidak buat variant WebP) — foto bukti disimpan as-is
 - Tidak ada record di tabel `media` — URL disimpan langsung di `payments.proof_url`
 
 ### Alur Dua Tahap: Customer Submit → Admin Verifikasi
@@ -666,6 +672,29 @@ untuk payment yang sama sekarang selalu identik. Notifikasi WA `payment_submitte
 `payment_confirmed` disesuaikan memakai nominal yang sebenarnya (submitted/verified), bukan lagi
 `remaining` hasil kalkulasi sistem. `confirmInvoicePaymentAction` (jalur admin input manual)
 tidak disentuh — sudah benar sejak awal.
+
+---
+
+### Halaman Publik — Dialog Konfirmasi Elegan + Status "Diverifikasi" Instan
+
+> **Status: SELESAI — 2026-07-18.** Ditemukan lewat pengetesan langsung oleh user setelah fitur
+> nominal-terlihat di atas selesai. Detail root cause + fix: lihat lesson CLAUDE.md
+> `[2026-07-18] Konfirmasi Pembayaran Publik — window.confirm() Diganti AlertDialog + Status
+> "Diverifikasi" Instan`.
+
+Dua perbaikan di `invoice-public-client.tsx`:
+
+1. **Dialog konfirmasi sebelum submit** — `window.confirm()` (native browser) diganti `<AlertDialog>`
+   (`components/ui/alert-dialog.tsx`, shadcn/Radix). `handleSubmitProof` (submit form) sekarang
+   hanya validasi nominal lalu `setConfirmOpen(true)`; pengiriman sesungguhnya di `doSubmitProof()`,
+   dipanggil dari tombol `AlertDialogAction` di dalam dialog.
+2. **Status "sedang diverifikasi" tampil instan** — state lokal `justSubmitted` di-set `true`
+   segera setelah `submitPaymentProofAction` sukses, tidak menunggu `router.refresh()`. Panel
+   status biru sekarang dikondisikan `invoice.status === "waiting_verification" || justSubmitted`
+   — customer langsung melihat konfirmasi visual yang jelas ("Konfirmasi pembayaran sudah kami
+   terima... Anda tidak perlu mengirim ulang"), bukan halaman yang terkesan diam menunggu refresh.
+   `canPay` juga ditambah `&& !justSubmitted` untuk mencegah tombol submit re-muncul sebelum
+   `invoice.status` dari server benar-benar ter-refresh.
 
 ---
 

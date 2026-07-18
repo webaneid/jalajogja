@@ -1,21 +1,14 @@
 export const dynamic = "force-dynamic";
 // POST /api/invoice/proof-upload?tenant=&invoiceId=
 // Upload bukti transfer/QRIS — tidak perlu auth, cukup punya invoiceId
-// File disimpan ke MinIO: payments/{invoiceId}/{uuid}.{ext}
+// File disimpan ke MinIO: payments/{invoiceId}/{uuid}.webp
 
 import { NextRequest, NextResponse } from "next/server";
 import { createTenantDb } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import { uploadFile, ensureBucket, publicUrl } from "@/lib/minio";
 import { randomUUID } from "crypto";
-
-const ALLOWED_TYPES: Record<string, string> = {
-  "image/jpeg":    "jpg",
-  "image/png":     "png",
-  "image/webp":    "webp",
-  "image/heic":    "heic",
-  "image/heif":    "heif",
-};
+import sharp from "sharp";
 
 const MAX_SIZE = 8 * 1024 * 1024; // 8 MB
 
@@ -53,10 +46,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Ukuran file maksimal 8 MB" }, { status: 400 });
   }
 
-  const ext = ALLOWED_TYPES[file.type];
-  if (!ext) {
+  // Konversi ke WebP di SERVER via Sharp — sengaja tidak lagi bergantung pada file.type dari
+  // browser (yang kadang kosong untuk foto HEIC dari galeri iPhone) atau kompresi client-side
+  // (yang gagal diam-diam kalau browser tidak bisa decode HEIC ke canvas). Sharp mendeteksi
+  // format dari isi file, bukan header MIME. Output SELALU WebP — format yang bisa ditampilkan
+  // browser manapun, beda dari HEIC yang tidak native-viewable di kebanyakan browser desktop
+  // (upload HEIC bisa "berhasil" tapi fotonya tidak pernah tampil buat admin).
+  let webpBuffer: Buffer;
+  try {
+    const inputBuffer = Buffer.from(await file.arrayBuffer());
+    webpBuffer = await sharp(inputBuffer)
+      .rotate() // auto-orientasi dari EXIF — penting untuk foto dari HP
+      .resize(1600, 1600, { fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 85 })
+      .toBuffer();
+  } catch (err) {
+    console.error("[proof-upload] Gagal proses gambar:", err);
     return NextResponse.json(
-      { error: "Format tidak didukung. Gunakan JPG, PNG, WebP, atau HEIC." },
+      { error: "Foto tidak bisa diproses. Coba screenshot foto lalu unggah ulang, atau gunakan format JPG/PNG." },
       { status: 400 },
     );
   }
@@ -64,9 +71,8 @@ export async function POST(req: NextRequest) {
   try {
     await ensureBucket(slug);
     const uuid     = randomUUID();
-    const filePath = `payments/${invoiceId}/${uuid}.${ext}`;
-    const buffer   = Buffer.from(await file.arrayBuffer());
-    await uploadFile(slug, filePath, buffer, file.type);
+    const filePath = `payments/${invoiceId}/${uuid}.webp`;
+    await uploadFile(slug, filePath, webpBuffer, "image/webp");
     return NextResponse.json({ url: publicUrl(slug, filePath) }, { status: 201 });
   } catch (err) {
     console.error("[proof-upload]", err);

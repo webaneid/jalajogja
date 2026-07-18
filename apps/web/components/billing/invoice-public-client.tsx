@@ -6,6 +6,10 @@ import { Check, Copy, Download, ImagePlus, X, Loader2 } from "lucide-react";
 import { submitPaymentProofAction } from "@/app/(public)/[tenant]/cart/actions";
 import { compressImage } from "@/lib/client-image-compress";
 import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export type BankAccountPublic = {
   id:            string;
@@ -329,7 +333,15 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
 
   const [lightboxSrc, setLightboxSrc]      = useState<string | null>(null);
 
-  const canPay = ["pending", "partial", "overdue"].includes(invoice.status);
+  // Dialog konfirmasi sebelum kirim — dulu window.confirm() (native, terlihat "notifikasi HTML
+  // jelek" menurut feedback user), sekarang AlertDialog custom yang konsisten dengan desain app.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  // Ditandai true SEGERA setelah submit sukses — tidak menunggu router.refresh() selesai supaya
+  // customer langsung lihat status "sedang diverifikasi" tanpa jeda / halaman terkesan diam.
+  const [justSubmitted, setJustSubmitted] = useState(false);
+
+  const canPay = ["pending", "partial", "overdue"].includes(invoice.status) && !justSubmitted;
+  const showWaitingPanel = invoice.status === "waiting_verification" || justSubmitted;
 
   async function handleProofFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -366,18 +378,22 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  const amountNum = parseInt(payAmount.replace(/\D/g, ""), 10);
+
   function handleSubmitProof(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    const amountNum = parseInt(payAmount.replace(/\D/g, ""), 10);
     if (!amountNum || amountNum <= 0) {
       setError("Nominal transfer harus diisi dengan benar.");
       return;
     }
-    const confirmed = window.confirm(
-      `Pastikan nominal yang Anda tulis (${formatRp(amountNum)}) sama persis dengan bukti transfer. Lanjut kirim konfirmasi?`
-    );
-    if (!confirmed) return;
+    // Buka dialog konfirmasi elegan — pengiriman sesungguhnya terjadi di doSubmitProof()
+    // saat user menekan tombol "Ya, Kirim Konfirmasi" di dalam AlertDialog.
+    setConfirmOpen(true);
+  }
+
+  function doSubmitProof() {
+    setConfirmOpen(false);
     startTransition(async () => {
       const res = await submitPaymentProofAction(slug, invoice.id, {
         amount:       amountNum,
@@ -391,9 +407,10 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
       if (res.success) {
         setSuccess("Konfirmasi pembayaran berhasil dikirim. Admin akan memverifikasi dalam 1×24 jam.");
         setShowPayForm(false);
-        // Refresh data invoice dari server — status sekarang "waiting_verification",
-        // supaya tombol "Konfirmasi Pembayaran" tidak muncul lagi (cegah submit ganda
-        // kalau customer klik tombol yang sama sekali lagi tanpa reload manual).
+        // Tandai langsung — panel "sedang diverifikasi" tampil seketika tanpa menunggu
+        // router.refresh() (yang bisa terasa lambat/diam di koneksi lambat).
+        setJustSubmitted(true);
+        // Tetap refresh data invoice dari server sebagai sumber kebenaran final.
         router.refresh();
       } else {
         setError(res.error);
@@ -766,7 +783,13 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
             )}
 
             {uploadError && (
-              <p className="mt-1 text-xs text-destructive">{uploadError}</p>
+              <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+                <p className="text-xs font-medium text-destructive">⚠ Foto gagal terkirim: {uploadError}</p>
+                <p className="text-xs text-destructive/80 mt-0.5">
+                  Anda tetap bisa kirim konfirmasi tanpa foto, tapi disarankan coba unggah ulang
+                  (atau screenshot foto lalu unggah ulang kalau format tidak didukung).
+                </p>
+              </div>
             )}
           </div>
 
@@ -801,23 +824,27 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
           <p className="font-semibold text-destructive">Invoice ini telah dibatalkan.</p>
         </div>
       )}
-      {invoice.status === "waiting_verification" && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
+      {showWaitingPanel && (
+        <div className="rounded-lg border-2 border-blue-300 bg-blue-50 p-5 space-y-3 shadow-sm">
           <div className="text-center">
-            <p className="font-semibold text-blue-700">Pembayaran sedang diverifikasi.</p>
-            <p className="text-sm text-blue-600 mt-1">Admin akan mengkonfirmasi dalam 1×24 jam.</p>
+            <Loader2 size={28} className="mx-auto mb-2 text-blue-600 animate-spin" />
+            <p className="font-semibold text-blue-700 text-base">Pembayaran Anda Sedang Diverifikasi</p>
+            <p className="text-sm text-blue-600 mt-1">
+              Konfirmasi pembayaran sudah kami terima. Admin akan memeriksa dan mengonfirmasi
+              dalam 1×24 jam — Anda tidak perlu mengirim ulang.
+            </p>
           </div>
-          {invoice.submittedProofUrl && (
+          {(invoice.submittedProofUrl ?? proofUrl) && (
             <div className="space-y-1">
               <p className="text-xs text-blue-600 font-medium text-center">Bukti yang dikirim:</p>
               <button
                 type="button"
-                onClick={() => setLightboxSrc(invoice.submittedProofUrl)}
+                onClick={() => setLightboxSrc(invoice.submittedProofUrl ?? proofUrl)}
                 className="block mx-auto"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={invoice.submittedProofUrl}
+                  src={invoice.submittedProofUrl ?? proofUrl ?? undefined}
                   alt="Bukti transfer"
                   className="max-h-48 rounded-md border border-blue-200 object-contain bg-white hover:opacity-90 transition-opacity cursor-zoom-in"
                 />
@@ -827,6 +854,26 @@ export function InvoicePublicClient({ slug, invoice }: Props) {
           )}
         </div>
       )}
+
+      {/* ── Dialog konfirmasi kirim ── */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Kirim Konfirmasi Pembayaran?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Pastikan nominal yang Anda tulis <strong>({formatRp(amountNum || 0)})</strong> sama
+              persis dengan nominal di bukti transfer. Setelah dikirim, admin akan memverifikasi
+              pembayaran Anda.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Periksa Lagi</AlertDialogCancel>
+            <AlertDialogAction onClick={doSubmitProof} disabled={pending}>
+              {pending ? "Mengirim..." : "Ya, Kirim Konfirmasi"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Lightbox ── */}
       {lightboxSrc && (

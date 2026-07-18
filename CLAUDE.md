@@ -5453,6 +5453,88 @@ persis halaman mana yang error, supaya bisa ditelusuri ke komponen yang benar-be
 `timeZone: "Asia/Jakarta"` eksplisit — jangan andalkan default runtime, karena server dan browser
 visitor tidak dijamin timezone yang sama.
 
+### [2026-07-18] Bug: Bukti Transfer Gagal Upload Diam-Diam — HEIC MIME Type Kosong
+
+User laporkan "ada konfirmasi pembayaran, tapi tidak ada bukti transfer dilampirkan". Root cause
+ditemukan di `/api/invoice/proof-upload` (`route.ts`): validasi tipe file HANYA mengandalkan
+`ALLOWED_TYPES[file.type]` — banyak HP (terutama foto HEIC dari **galeri** iPhone, bukan hasil
+jepret kamera langsung) melaporkan `file.type` sebagai **string kosong** ke browser, bukan
+`image/heic`. Server menolak upload dengan `{error: "Format tidak didukung..."}`, tapi karena
+bukti transfer OPSIONAL, customer tetap bisa lanjut submit form tanpa foto — dan pesan errornya
+cuma teks kecil (`text-xs`) di bawah area upload, gampang terlewat terutama di mobile. Hasilnya:
+customer MENGIRA sudah upload (mereka lihat preview foto sebelum upload gagal), tapi payment
+tersimpan dengan `proofUrl: null`.
+
+**Fix awal (dua lapis, SUPERSEDED — lihat update di bawah)**:
+1. Server — fallback ke ekstensi nama file kalau MIME type kosong/tidak dikenali `ALLOWED_TYPES`.
+2. Client — pesan error upload di-upgrade dari teks kecil jadi kotak peringatan (⚠) yang jelas.
+
+**UPDATE (lanjutan sesi sama) — diagnosis lebih lengkap, root cause sesungguhnya:**
+
+Laporan susulan user lebih detail: foto "terlihat berhasil upload", WA notifikasi terkirim, TAPI
+admin tetap tidak melihat bukti terlampir. Ini tidak cocok dengan diagnosis MIME-kosong (yang akan
+menyebabkan upload gagal terlihat oleh customer, bukan "terlihat berhasil"). Diagnosis yang benar:
+**foto HEIC BISA berhasil ter-upload (MIME/ekstensi terbaca), tapi HEIC tidak native-viewable di
+kebanyakan browser DESKTOP** — `proofUrl` tersimpan valid di `payments.proof_url`, tapi `<img
+src="...heic">` di admin dashboard render blank/broken. Customer (biasa buka dari HP, browser HP
+sering bisa render HEIC) mengira sukses; admin (buka dari desktop) melihat "tidak ada bukti".
+
+**Fix final — `apps/web/app/api/invoice/proof-upload/route.ts` ditulis ulang total**: pakai `sharp`
+(sudah jadi dependency project, dipakai juga di `lib/image-processor.ts`) untuk decode ISI FILE
+(bukan tebak dari MIME/ekstensi) lalu **konversi paksa ke WebP** (`.rotate()` auto-orientasi EXIF +
+`.resize(1600,1600,{fit:"inside"})` + `.webp({quality:85})`) sebelum upload ke MinIO. Ini
+menghapus total ketergantungan pada `file.type`/nama file — Sharp baca byte asli, dan output SELALU
+format yang bisa ditampilkan browser manapun (termasuk desktop admin). Kalau Sharp gagal decode
+(file corrupt/bukan gambar sama sekali) → pesan jelas: "Foto tidak bisa diproses. Coba screenshot
+foto lalu unggah ulang, atau gunakan format JPG/PNG."
+
+**Aturan yang ditegaskan (revisi)**: untuk upload foto dari sumber tak terkontrol (HP customer,
+tidak ada jaminan format), JANGAN percaya `file.type` atau ekstensi nama file sama sekali — kalau
+ada Sharp/library image-processing di project, selalu decode+convert di server ke format universal
+(WebP) sebagai satu-satunya sumber kebenaran format, bukan sekadar validasi MIME yang lebih longgar.
+Poin lama soal "kegagalan field opsional harus terlihat jelas ke user" tetap berlaku dan sudah
+diterapkan di client (kotak peringatan ⚠), tapi TIDAK CUKUP sendirian — perbedaan render antar
+browser (HEIC di desktop vs mobile) adalah kelas bug terpisah yang butuh normalisasi FORMAT di
+server, bukan cuma UI yang lebih jelas.
+
+### [2026-07-18] Konfirmasi Pembayaran Publik — `window.confirm()` Diganti AlertDialog + Status "Diverifikasi" Instan
+
+**Koreksi eksplisit user**: dialog konfirmasi sebelum submit bukti transfer sebelumnya pakai
+`window.confirm()` (native browser). User menegaskan permintaan awalnya ("popup konfirmasi") berarti
+**modal custom yang elegan**, bukan "notifikasi HTML jelek" bawaan browser — dan native confirm juga
+dicurigai mengganggu alur redirect/state di beberapa browser mobile.
+
+**Fix — `invoice-public-client.tsx`**: `window.confirm()` diganti `<AlertDialog>` (shadcn/Radix,
+`components/ui/alert-dialog.tsx` — sudah ada di codebase, dipakai di tempat lain, sekarang dipakai
+juga di halaman publik). `handleSubmitProof` (submit form) sekarang cuma validasi nominal lalu
+`setConfirmOpen(true)` — pengiriman sesungguhnya dipindah ke `doSubmitProof()`, dipanggil dari
+`AlertDialogAction onClick`. Radix `AlertDialogAction` otomatis menutup dialog saat diklik (tidak
+di-`preventDefault`), jadi tidak perlu penanganan close manual selain reset state.
+
+**Fix kedua — status "sedang diverifikasi" tidak terlihat / halaman terkesan diam**: sebelumnya,
+setelah submit sukses, satu-satunya sinyal visual adalah banner hijau kecil di atas + menunggu
+`router.refresh()` (yang bisa terasa lambat/koneksi jelek) untuk memunculkan panel biru
+"Pembayaran sedang diverifikasi" (panel itu dikondisikan `invoice.status === "waiting_verification"`
+dari prop server, BUKAN dari state lokal — jadi ada jeda sebelum tampil).
+
+Fix: state baru `justSubmitted` di-set `true` **segera** setelah `submitPaymentProofAction` sukses
+(tidak menunggu refresh). Kondisi render panel diubah jadi `showWaitingPanel = invoice.status ===
+"waiting_verification" || justSubmitted` — tampil INSTAN. Panel juga diperbesar/dipertegas (ikon
+spinner + border lebih tebal + copy lebih jelas: "Konfirmasi pembayaran sudah kami terima... Anda
+tidak perlu mengirim ulang"). `canPay` (yang mengontrol tombol "Konfirmasi Pembayaran" + form) juga
+ditambah `&& !justSubmitted` — mencegah tombol submit re-muncul sebelum `router.refresh()` landing
+mengubah `invoice.status` yang sesungguhnya (pure UX guard; server tetap validator utama).
+
+**Bukti foto di panel waiting**: `invoice.submittedProofUrl ?? proofUrl` — fallback ke state lokal
+`proofUrl` (dari upload yang baru saja terjadi) untuk kasus `justSubmitted=true` tapi
+`invoice.submittedProofUrl` dari server prop belum ter-refresh.
+
+**Aturan yang ditegaskan**: setiap kali sebuah aksi async sukses dan UI-nya bergantung pada
+`router.refresh()` untuk menampilkan status barunya, JANGAN andalkan refresh sebagai satu-satunya
+sumber sinyal visual — tambahkan state lokal optimis yang langsung `true` begitu action sukses,
+supaya user tidak melihat halaman "diam" selama refresh berlangsung. `router.refresh()` tetap
+dipanggil sebagai sumber kebenaran final, state lokal hanya untuk jeda visual.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
