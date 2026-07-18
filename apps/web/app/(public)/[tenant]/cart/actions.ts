@@ -824,7 +824,16 @@ export async function convertInvoiceToInstallmentAction(
       const paidSoFar = parseFloat(String(lockedInv.paidAmount));
       const perTerm   = Math.round(total / plan.installmentCount);
       const lastTerm  = total - perTerm * (plan.installmentCount - 1); // serap sisa pembulatan
-      const today     = new Date();
+
+      // "Hari ini" WAJIB dihitung dari kalender WIB, bukan `new Date().toISOString()` mentah —
+      // itu UTC, selisih 7 jam dari WIB. Jam 00:00-06:59 WIB jatuh di TANGGAL SEBELUMNYA
+      // menurut UTC → termin 1 bisa ke-generate dengan due_date "kemarin" dan langsung
+      // "Terlambat" begitu invoice baru saja dikonversi. Anchor ke UTC-midnight yang MEWAKILI
+      // tanggal kalender WIB hari ini, baru increment via setUTCDate — aman dari pergeseran zona
+      // waktu karena Indonesia tidak punya DST.
+      const wibTodayStr        = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+      const [wY, wM, wD]       = wibTodayStr.split("-").map(Number);
+      const today               = new Date(Date.UTC(wY, wM - 1, wD));
 
       const paymentSettings   = await getSettings(tenantDb, "payment");
       const uniqueCodeEnabled = paymentSettings["unique_code_enabled"] === true;
@@ -838,7 +847,7 @@ export async function convertInvoiceToInstallmentAction(
       for (let i = 0; i < plan.installmentCount; i++) {
         const termNumber = i + 1;
         const dueDate = new Date(today);
-        dueDate.setDate(dueDate.getDate() + plan.intervalDays * i);
+        dueDate.setUTCDate(dueDate.getUTCDate() + plan.intervalDays * i);
 
         let code: number | null = null;
         if (uniqueCodeEnabled) {

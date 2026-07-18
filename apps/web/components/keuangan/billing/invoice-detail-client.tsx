@@ -425,7 +425,10 @@ export function InvoiceDetailClient({ slug, invoice }: Props) {
           <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide text-xs">Jadwal Cicilan</p>
           <div className="rounded-lg border border-border divide-y divide-border">
             {invoice.installmentSchedules.map((s) => {
-              const isOverdue = s.status === "pending" && new Date(s.dueDate) < new Date(new Date().toDateString());
+              // Perbandingan string "YYYY-MM-DD" langsung, bukan Date object — hindari bug
+              // timezone (dueDate vs "hari ini" browser bisa beda TZ → false "Terlambat").
+              const todayWib = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+              const isOverdue = s.status === "pending" && s.dueDate < todayWib;
               const isNext = nextUnpaidTerm?.id === s.id;
               return (
                 <div key={s.id} className={`px-4 py-2.5 flex items-center justify-between text-sm ${isNext ? "bg-primary/5" : ""}`}>
