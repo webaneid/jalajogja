@@ -1115,10 +1115,6 @@ export async function confirmEventInvoicePaymentAction(
   if (!inv.sourceId)                    return { success: false, error: "Registrasi tidak ditemukan." };
 
   const payAmount  = parseFloat(String(payment.amount));
-  const paidSoFar  = parseFloat(String(inv.paidAmount));
-  const total      = parseFloat(String(inv.total));
-  const newPaid    = paidSoFar + payAmount;
-  const newStatus  = newPaid >= total ? "paid" : "partial";
 
   const mappings      = await resolveEventAccounts(tenantDb);
   const cashAccountId = mappings.cash_default ?? mappings.bank_default;
@@ -1136,6 +1132,21 @@ export async function confirmEventInvoicePaymentAction(
     const txNumber = await generateFinancialNumber(tenantDb, "journal");
 
     await db.transaction(async (tx) => {
+      // Lock invoice — cegah race dengan pemanggil lain (checkoutAction/finance/billing) pada
+      // invoice yang sama, pola sama dengan confirmInvoicePaymentAction.
+      const [lockedInv] = await tx
+        .select()
+        .from(schema.invoices)
+        .where(sql`${schema.invoices.id} = ${inv.id} FOR UPDATE`)
+        .limit(1);
+      if (!lockedInv || lockedInv.status === "paid" || lockedInv.status === "cancelled") return;
+
+      const paidSoFar  = parseFloat(String(lockedInv.paidAmount));
+      const total      = parseFloat(String(lockedInv.total));
+      const uniqueCode = lockedInv.uniqueCode ?? 0;
+      const newPaid    = paidSoFar + payAmount;
+      const newStatus  = newPaid >= (total + uniqueCode) ? "paid" : "partial";
+
       await tx
         .update(schema.payments)
         .set({ status: "paid", confirmedBy: access.tenantUser.id, confirmedAt: new Date(), updatedAt: new Date() })
@@ -1147,12 +1158,16 @@ export async function confirmEventInvoicePaymentAction(
         .where(eq(schema.invoices.id, inv.id));
 
       if (newStatus === "paid") {
+        // Bukukan nominal SESUNGGUHNYA yang diterima (termasuk kelebihan bayar), dikurangi
+        // uniqueCode invoice-level saja — konsisten dengan confirmInvoicePaymentAction di
+        // finance/billing/actions.ts. Lihat docs/arsitektur-billing.md § "Overpayment Juga Dijurnal".
+        const journalAmount = Math.max(0, newPaid - uniqueCode);
         await recordIncome(tenantDb, {
           date:            todayInTz(tenantTimezone),
           description:     `Pembayaran tiket event - ${inv.invoiceNumber}`,
           referenceNumber: txNumber,
           createdBy:       access.tenantUser.id,
-          amount:          total,
+          amount:          journalAmount,
           cashAccountId,
           incomeAccountId,
         });

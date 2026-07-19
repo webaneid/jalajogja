@@ -311,28 +311,37 @@ export async function syncInvoicePayment(
 ): Promise<void> {
   const { db, schema } = tenantDb;
 
-  const [inv] = await db
-    .select({
-      id:         schema.invoices.id,
-      total:      schema.invoices.total,
-      paidAmount: schema.invoices.paidAmount,
-      status:     schema.invoices.status,
-    })
-    .from(schema.invoices)
-    .where(and(
-      eq(schema.invoices.sourceType, opts.sourceType as InvoiceSourceType),
-      eq(schema.invoices.sourceId,   opts.sourceId)
-    ))
-    .limit(1);
-
-  if (!inv || inv.status === "paid" || inv.status === "cancelled") return;
-
-  const total         = parseFloat(String(inv.total));
-  const prevPaid      = parseFloat(String(inv.paidAmount));
-  const newPaidAmount = Math.min(total, prevPaid + opts.amount);
-  const newStatus     = newPaidAmount >= total ? "paid" : "partial";
-
   await db.transaction(async (tx) => {
+    // Lock baris invoice — cegah race dengan pemanggil syncInvoicePayment lain untuk invoice
+    // yang sama (pola sama dengan lock invoice di confirmInvoicePaymentAction/
+    // verifySubmittedPaymentAction — lihat lesson CLAUDE.md soal race condition confirm payment).
+    const [inv] = await tx
+      .select({
+        id:         schema.invoices.id,
+        total:      schema.invoices.total,
+        paidAmount: schema.invoices.paidAmount,
+        status:     schema.invoices.status,
+      })
+      .from(schema.invoices)
+      .where(and(
+        eq(schema.invoices.sourceType, opts.sourceType as InvoiceSourceType),
+        eq(schema.invoices.sourceId,   opts.sourceId)
+      ))
+      .for("update")
+      .limit(1);
+
+    if (!inv || inv.status === "paid" || inv.status === "cancelled") return;
+
+    const total    = parseFloat(String(inv.total));
+    const prevPaid = parseFloat(String(inv.paidAmount));
+    // TIDAK di-cap ke `total` — nominal yang benar-benar diterima (termasuk kelebihan bayar,
+    // jika ada) HARUS tercatat apa adanya, konsisten dengan prinsip fidelitas nominal yang
+    // dikunci 2026-07-19 (lihat docs/arsitektur-billing.md § "Overpayment Juga Dijurnal").
+    // Caller (toko/donasi/event confirm action) sudah menjurnal opts.amount persis, jadi
+    // invoices.paidAmount WAJIB match, bukan disamarkan lebih rendah lewat Math.min().
+    const newPaidAmount = prevPaid + opts.amount;
+    const newStatus     = newPaidAmount >= total ? "paid" : "partial";
+
     // Link payment ke invoice jika belum
     const existing = await tx
       .select({ id: schema.invoicePayments.id })

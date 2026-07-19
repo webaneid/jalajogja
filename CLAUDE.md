@@ -6807,21 +6807,78 @@ penyimpangan dari ekspektasi — jangan gabungkan "menampilkan default" dengan "
 data" dalam satu langkah, karena begitu digabung, pengguna (di sini: admin) tidak lagi tahu
 apakah yang mereka lihat itu FAKTA (apa yang dikirim) atau OPINI SISTEM (apa yang seharusnya).
 
+### [2026-07-19] Overpayment Juga Dijurnal — Audit Menyeluruh 6 Titik Konfirmasi Invoice di Seluruh Aplikasi
+
+> User menegaskan tata kelola administrasi: "jangan sampai terjadi perbedaan antara jumlah
+> dalam rekening, dan jumlah dalam laporan di aplikasi admin... jika user menulis konfirmasi
+> dengan nominal lebih atau kurang itu harus benar-benar tercatat dalam billing di admin
+> dashboard yang sesuai." Ditanya spesifik lewat AskUserQuestion apakah kelebihan bayar (yang
+> sudah akurat di Billing dashboard) juga perlu masuk laporan keuangan FORMAL (Buku Besar/
+> Neraca/Laba Rugi) — user pilih: **ya, harus masuk juga**. Detail lengkap:
+> `docs/arsitektur-billing.md` § "Overpayment Juga Dijurnal".
+
+**Root cause**: `recordIncome(tenantDb, {amount: total, ...})` di 2 fungsi
+(`confirmInvoicePaymentAction`, `verifySubmittedPaymentAction`) SELALU membukukan nilai NOMINAL
+invoice, bukan yang sungguhan diterima — untuk overpayment (baru diizinkan penuh di keputusan
+sebelumnya), kelebihan bayar tidak pernah sampai ke jurnal formal. Fix: formula baru
+`journalAmount = Math.max(0, newPaidAmount - uniqueCode)` — `uniqueCode` HANYA kode invoice-
+level (identifier sistem, bukan pendapatan; untuk cicilan sudah 0 sejak konversi). Kasus normal
+(pembayaran pas) hasilnya IDENTIK dengan sebelumnya (`= total`) — nol regresi, hanya skenario
+overpay yang berubah (sekarang ikut terjurnal, bukan diam-diam terpotong).
+
+**Audit menyeluruh (grep `recordIncome` di SELURUH app, 6 titik) menemukan bug KETIGA yang
+SAMA SEKALI TIDAK terkait sesi cicilan** — `confirmEventInvoicePaymentAction` (`event/actions.ts`),
+jalur konfirmasi invoice tiket event dari tab "Peserta" (`event-registration-list.tsx`, PARALEL
+dengan `finance/billing/actions.ts` tapi kodenya duplikat sendiri, tidak reuse) — punya bug
+IDENTIK (`amount: total` fixed) DAN gap tambahan: **tidak pernah mengunci baris invoice (`FOR
+UPDATE`) sama sekali** — race-condition risk yang sudah dipatch di semua titik konfirmasi lain
+sejak sesi-sesi sebelumnya, tapi terlewat di fungsi ini. Kedua gap difix bersamaan.
+
+**3 titik lain (`confirmRegistrationPaymentAction` alur event langsung, + fungsi sejenis di
+`toko/actions.ts`/`donasi/actions.ts`/`finance/actions.ts`) TERNYATA SUDAH BENAR sejak awal**
+— semuanya menjurnal `amount = parseFloat(payment.amount)` langsung (bukan `total` tetap).
+TAPI ditemukan gap KEEMPAT di jalur yang SAMA: ketiganya memanggil `syncInvoicePayment()`
+(`packages/db/src/helpers/billing.ts`) untuk sinkron `invoices.paidAmount` — fungsi ini
+TERNYATA meng-cap `newPaidAmount` via `Math.min(total, ...)`, DAN tidak pernah locking baris
+invoice sama sekali. Efeknya gap ARAH BERLAWANAN dari yang lain: jurnal & `payments.amount`
+sudah akurat (termasuk overpay), tapi `invoices.paidAmount` (yang dipakai Billing dashboard)
+bisa UNDER-report untuk overpayment via jalur ini. Fix: `Math.min()` dihapus + `.for("update")`
+lock ditambahkan.
+
+**Total 4 gap ditemukan dan difix dalam SATU audit menyeluruh** (bukan cuma yang diminta user
+secara eksplisit) — semuanya kelas yang sama: "nominal sesungguhnya vs nominal yang tercatat/
+terjurnal bisa berbeda", tapi di 4 lapisan/arah berbeda (jurnal formal 2×, race-condition
+locking 2×). Setelah fix: `payments.amount`, `invoice_payments.amount`, `invoices.paidAmount`,
+dan jurnal double-entry SEKARANG konsisten di SEMUA 6 jalur konfirmasi invoice di aplikasi —
+rekening bank = Billing dashboard = laporan keuangan formal.
+
+**Aturan digeneralisasi**: ketika user meminta audit "menyeluruh" pada suatu KELAS masalah
+(di sini: akurasi nominal pembayaran), JANGAN batasi pencarian ke file/fungsi yang sedang aktif
+dikerjakan sesi ini — grep pola/fungsi kunci (`recordIncome`, `syncInvoicePayment`) di
+SELURUH codebase untuk menemukan jalur PARALEL/DUPLIKAT yang mungkin punya bug kelas sama tapi
+luput dari perhatian karena hidup di modul lain. Di project ini, pola "satu konsep dikerjakan
+ulang secara independen di beberapa modul" (billing invoice vs event registration langsung vs
+toko/donasi legacy) sudah berulang kali jadi sumber inkonsistensi — audit menyeluruh HARUS
+melintasi batas modul, bukan berhenti di modul yang sedang menjadi fokus kerja.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Notifikasi WhatsApp untuk Program Cicilan — 5 event baru** (sesi
-  2026-07-19), lalu 6 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
+  2026-07-19), lalu 7 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
   di-nolkan saat konversi cicilan**, **fix 4 Server Action billing tanpa `hasReadAccess`
   guard**, **fix form "Konfirmasi Pembayaran" manual admin default ke sisa tagihan penuh**,
   **fix form "✓ Verifikasi" sendiri yang blind ke satu termin (abaikan overpayment)**,
-  **keputusan produk: overpayment selalu diizinkan + peringatan non-blocking**, dan **fix
-  prinsip fidelitas — hapus pengurangan kode unik otomatis dari default Verifikasi** (fix
-  putaran sebelumnya sendiri yang melanggar prinsip ini, dikoreksi lagi atas penegasan
-  eksplisit user). Lihat 6 lesson di atas untuk detail lengkap. Fitur sudah live di production:
-  kode deployed, migration 0033 jalan, cron `installment-reminder` terjadwal jam 08:15
-  (diverifikasi respons `{"notified":0}`), toggle notifikasi sudah diaktifkan admin di tenant
-  `visikita`. **3 fix TERBARU (overpayment + 2 kali putaran fidelitas nominal) belum di-deploy
-  ke VPS** — masih di local, sudah commit — cek status sebelum lanjut. Belum ada uji nyata
-  end-to-end (menunggu invoice cicilan pertama beneran).
+  **keputusan produk: overpayment selalu diizinkan + peringatan non-blocking**, **fix
+  prinsip fidelitas — hapus pengurangan kode unik otomatis dari default Verifikasi**, dan
+  **overpayment juga dijurnal + audit menyeluruh 6 titik konfirmasi invoice (ditemukan+difix
+  4 gap, termasuk 2 di luar sesi cicilan sama sekali: `confirmEventInvoicePaymentAction` +
+  `syncInvoicePayment`)**. Lihat 7 lesson di atas untuk detail lengkap. Fitur inti (notifikasi
+  WA 5 event + cron) sudah live di production sejak komit pertama sesi ini: migration 0033
+  jalan, cron `installment-reminder` terjadwal jam 08:15 (diverifikasi respons `{"notified":0}`),
+  toggle notifikasi sudah diaktifkan admin di tenant `visikita`. **Rangkaian fix akurasi
+  nominal (overpayment-allowed, fidelitas nominal, jurnal overpayment, syncInvoicePayment,
+  confirmEventInvoicePaymentAction) BELUM di-deploy ke VPS** — cek `git status`/`git log`
+  sebelum lanjut untuk pastikan semua sudah commit+push+deploy. Belum ada uji nyata end-to-end
+  (menunggu invoice cicilan pertama beneran).
 - Sesi sebelumnya: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
   - **Riset arsitektur sebelum eksekusi**: baca ulang `docs/arsitektur-whatsapp.md`, `-billing.md`,

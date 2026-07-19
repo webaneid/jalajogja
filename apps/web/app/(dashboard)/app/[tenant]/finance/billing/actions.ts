@@ -413,12 +413,19 @@ export async function confirmInvoicePaymentAction(
       // Jurnal double-entry (hanya jika lunas — partial tidak jurnal dulu)
       if (newStatus === "paid") {
         const txNum = await generateFinancialNumber(tenantDb, "journal");
+        // Bukukan nominal SESUNGGUHNYA yang diterima (termasuk kelebihan bayar, jika ada) —
+        // dikurangi uniqueCode invoice-level saja (identifier sistem, bukan pendapatan; TIDAK
+        // dikurangi lagi untuk cicilan karena uniqueCode invoice sudah 0 sejak konversi).
+        // Keputusan produk (2026-07-19): "kelebihan nominal harus muncul di laporan keuangan
+        // formal juga, supaya rekening bank dan laporan sama persis" — lihat
+        // docs/arsitektur-billing.md § "Overpayment Juga Dijurnal".
+        const journalAmount = Math.max(0, newPaidAmount - uniqueCode);
         await recordIncome(tenantDb, {
           date:            todayInTz(tenantTimezone),
           description:     `Pelunasan invoice ${inv.invoiceNumber}`,
           referenceNumber: txNum,
           createdBy:       access.tenantUser.id,
-          amount:          total,
+          amount:          journalAmount,
           cashAccountId,
           incomeAccountId,
         });
@@ -988,12 +995,16 @@ export async function verifySubmittedPaymentAction(
       // Jurnal double-entry saat lunas
       if (newStatus === "paid") {
         const txNum = await generateFinancialNumber(tenantDb, "journal");
+        // Bukukan nominal SESUNGGUHNYA yang diterima (termasuk kelebihan bayar) — dikurangi
+        // uniqueCode invoice-level saja. Lihat komentar sama di confirmInvoicePaymentAction +
+        // docs/arsitektur-billing.md § "Overpayment Juga Dijurnal".
+        const journalAmount = Math.max(0, newPaid - uniqueCode);
         await recordIncome(tenantDb, {
           date:            todayInTz(tenantTimezone),
           description:     `Pelunasan invoice ${inv.invoiceNumber}`,
           referenceNumber: txNum,
           createdBy:       access.tenantUser.id,
-          amount:          total,
+          amount:          journalAmount,
           cashAccountId,
           incomeAccountId,
         });

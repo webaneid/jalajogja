@@ -846,21 +846,122 @@ Pembayaran manual DAN Verifikasi):
 - `confirmInvoicePaymentAction` — guard `if (data.amount > remaining) throw ...` **DIHAPUS**.
   Overpayment sekarang diizinkan penuh (server), matching `verifySubmittedPaymentAction` yang
   sudah lama tidak punya batasan ini. Lower bound (`data.amount <= 0` ditolak) tidak berubah.
-- Jurnal (`recordIncome`) TETAP membukukan `total` invoice saja (bukan `newPaidAmount` atau
-  `data.amount`) — kelebihan nominal TERCATAT di `payments.amount` (jejak audit, uang benar-
-  benar diterima) tapi TIDAK diakui sebagai pendapatan melebihi nilai invoice, konsisten dengan
-  "kelebihan nominal di luar tanggung jawab kami".
 - `amountWarning(entered, expected)` — helper baru di `invoice-detail-client.tsx`, murni
   client-side, non-blocking. `expected` = `payExpected` (`nextUnpaidTerm.amount` untuk cicilan,
-  `invoice.remaining` untuk invoice biasa) di form Konfirmasi Pembayaran; `verifyDefaultFor(p)`
-  di form Verifikasi. Warning re-render live setiap kali admin mengetik, tidak pernah mencegah
-  submit.
+  `invoice.remaining` untuk invoice biasa) di form Konfirmasi Pembayaran; `verifyExpected()`
+  (bukan default field — lihat § "Prinsip Terkunci: Fidelitas" di bawah) di form Verifikasi.
+  Warning re-render live setiap kali admin mengetik, tidak pernah mencegah submit.
+- Perlakuan jurnal untuk kelebihan bayar **DIREVISI** setelah keputusan produk susulan — lihat
+  § "Overpayment Juga Dijurnal" di bawah (SUPERSEDED: paragraf jurnal versi awal di sini yang
+  bilang "TETAP membukukan total saja" sudah tidak berlaku).
 
 **Kenapa tidak diterapkan ke form customer publik (`invoice-public-client.tsx`)**: keputusan ini
 scoped ke form ADMIN saja (Konfirmasi Pembayaran + Verifikasi) — form submit bukti transfer
 customer sudah punya UX berbeda (`AlertDialog` konfirmasi sebelum submit, § "Nominal Pembayaran
 Terlihat + Bisa Diedit") dan sudah tidak pernah punya batas atas sejak awal. Kalau nanti user
 minta warning yang sama juga di sisi customer, itu perubahan terpisah.
+
+### Prinsip Terkunci: Fidelitas ke Nominal yang Customer Submit — Nol Perhitungan Otomatis (2026-07-19)
+
+> Ditegaskan eksplisit oleh user: "Apa yang tertulis di konfirmasi pembayaran, nominal itulah
+> yang harus dikirim ke admin, jangan sampai ada gap nominal dibuat otomatis dan tidak sesuai
+> dengan yang user kirim via konfirmasi form. itu bahaya."
+
+**Audit ulang menemukan fix di atas sendiri MELANGGAR prinsip ini** — default form "✓ Verifikasi"
+(`verifyDefaultFor`, versi lama) menghitung `payment.amount - (nextUnpaidTerm.uniqueCode ?? 0)`,
+secara diam-diam MENGURANGI nominal dari yang customer sungguhan submit & konfirmasi (via dialog
+"Pastikan nominal Anda sama persis dengan bukti transfer" di halaman publik). Kalau admin tidak
+sadar dan langsung konfirmasi, yang tercatat BUKAN nominal yang customer benar-benar kirim.
+
+**Fix**: `verifyDefaultFor` dihapus total, diganti default = `payment.amount` PERSIS (nol
+pengurangan apa pun). Referensi "nominal seharusnya" dipindah ke fungsi terpisah
+`verifyExpected()` = `term.amount + kode` (cicilan) atau `invoice.remaining` (non-cicilan) —
+HANYA dipakai sebagai pembanding di `amountWarning()`, TIDAK PERNAH menyentuh nilai yang
+sungguhan dikirim ke server.
+
+**Prinsip permanen untuk SEMUA form nominal admin di aplikasi ini**:
+1. DEFAULT field = selalu nilai sumber paling dekat kebenaran (nominal yang customer submit,
+   kalau ada). Sistem TIDAK PERNAH "membetulkan" nominal atas nama admin secara diam-diam.
+2. Peringatan (`amountWarning`) = satu-satunya mekanisme yang boleh membandingkan nominal
+   terhadap ekspektasi sistem dan memberi tahu admin — tidak pernah mengubah nilai field.
+3. Admin selalu punya kendali penuh untuk koreksi manual berdasar informasi yang benar, bukan
+   dikoreksi otomatis tanpa sepengetahuan mereka.
+
+**Diaudit ulang, dikonfirmasi TIDAK ada gap serupa di tempat lain**: `toggleEditForm` (form
+"✎ Edit" bukti+metadata) sudah benar sejak awal. `handleVerify`/`handlePay` mengirim persis apa
+yang ada di state field ke server. Grep pola `amount - uniqueCode` di seluruh komponen billing —
+nol hasil lain selain yang sudah difix.
+
+### Overpayment Juga Dijurnal — Rekonsiliasi Rekening Bank = Laporan Keuangan Formal (2026-07-19)
+
+> Keputusan susulan setelah audit fidelitas di atas — user secara eksplisit menegaskan tata
+> kelola administrasi butuh akurasi total: "jangan sampai terjadi perbedaan antara jumlah dalam
+> rekening, dan jumlah dalam laporan di aplikasi admin." Ditanya spesifik apakah kelebihan bayar
+> (yang sudah akurat di halaman Billing/Detail Invoice) juga harus tercermin di laporan keuangan
+> FORMAL (Buku Besar/Neraca/Laba Rugi, bukan cuma Billing) — user pilih **"Kelebihan juga harus
+> masuk laporan keuangan."**
+
+**Root cause sebelumnya**: `recordIncome(tenantDb, {amount: total, ...})` — jurnal SELALU
+membukukan nilai NOMINAL invoice (`total`), bukan nominal yang SUNGGUHAN diterima. Untuk
+pembayaran pas/tepat, ini sudah benar (tidak ada bedanya). Tapi untuk overpayment (yang sekarang
+DIIZINKAN penuh per keputusan sebelumnya), kelebihan bayar TIDAK PERNAH sampai ke jurnal —
+rekening bank menerima lebih, tapi Buku Besar/Laba Rugi hanya mengakui sejumlah tagihan. Gap
+persis yang dikhawatirkan user, meski di lapisan berbeda (laporan formal, bukan Billing
+dashboard yang sudah lebih dulu akurat).
+
+**Fix — formula jurnal baru, diterapkan di SEMUA titik konfirmasi invoice**:
+```typescript
+const journalAmount = Math.max(0, newPaidAmount - uniqueCode);
+```
+`newPaidAmount` = akumulasi SESUNGGUHNYA yang diterima (termasuk kelebihan, kalau ada).
+`uniqueCode` = **HANYA** kode unik INVOICE-LEVEL (identifier sistem-generated, bukan pendapatan —
+prinsip yang sudah dikunci sejak fitur Kode Unik pertama kali dibuat, dan untuk cicilan sudah
+0 sejak `convertInvoiceToInstallmentAction` menolkannya saat konversi). Formula ini TIDAK
+mencoba mengurangi kode unik PER TERMIN cicilan dari `paidAmount` — kalau admin tidak sengaja
+membiarkan kode termin ikut tercatat (karena default sekarang tidak lagi auto-strip, lihat
+prinsip fidelitas di atas), itu akan ikut terjurnal sebagai bagian "kelebihan" — trade-off yang
+disengaja, konsisten dengan prinsip "percaya nominal yang admin konfirmasi, jangan tebak-tebak
+niatnya" (sistem tidak bisa membedakan "kelebihan bayar genuine" vs "kode unik yang lupa
+dikurangi" — keduanya sama-sama tanggung jawab admin, dibantu `amountWarning` sebagai sinyal).
+
+**Verifikasi formula tidak regresi untuk kasus normal**: pembayaran pas/tepat → `newPaidAmount =
+total + uniqueCode` (non-cicilan) atau `= total` (cicilan, uniqueCode sudah 0) →
+`journalAmount = total` di kedua kasus — IDENTIK dengan perilaku SEBELUM fix ini. Hanya
+skenario overpay yang berubah (sekarang jurnal ikut lebih besar, sebelumnya diam-diam terpotong
+ke `total`).
+
+**Diterapkan di 3 titik** (SEMUA jalur konfirmasi invoice yang sudah/berpotensi menjurnal —
+diaudit menyeluruh via grep `recordIncome` di seluruh app, bukan cuma modul yang sedang
+dikerjakan sesi ini):
+1. `confirmInvoicePaymentAction` (`finance/billing/actions.ts`)
+2. `verifySubmittedPaymentAction` (`finance/billing/actions.ts`)
+3. `confirmEventInvoicePaymentAction` (`event/actions.ts`) — jalur TERPISAH untuk konfirmasi
+   invoice tiket event dari tab "Peserta" (`event-registration-list.tsx`), paralel dengan
+   `finance/billing/actions.ts` tapi kodenya duplikat sendiri (tidak reuse). Ditemukan saat
+   audit menyeluruh — punya bug identik (`amount: total` fixed) DAN gap tambahan: TIDAK
+   mengunci baris invoice (`FOR UPDATE`) sebelum update, race-condition risk yang sudah
+   dipatch di semua titik konfirmasi lain sejak sesi-sesi sebelumnya. Kedua gap sekarang
+   difix bersamaan (lock ditambah + formula jurnal disamakan).
+
+**Tidak diubah (sudah benar sejak awal, dikonfirmasi via audit)**: `confirmRegistrationPaymentAction`
+(`event/actions.ts`, alur registrasi LANGSUNG bukan cart), + fungsi sejenis di
+`toko/actions.ts`/`donasi/actions.ts` — semuanya menjurnal `amount = parseFloat(payment.amount)`
+langsung (bukan `total` tetap) — SUDAH akurat tanpa perlu fix. Tapi ketiganya memanggil
+`syncInvoicePayment()` (`packages/db/src/helpers/billing.ts`) untuk sinkron ke tabel `invoices`
+— fungsi ini TERNYATA meng-cap `newPaidAmount` via `Math.min(total, ...)`, artinya
+`invoices.paidAmount` (dipakai Billing dashboard) bisa lebih RENDAH dari yang sungguhan
+tercatat di `payments`/jurnal untuk overpayment via jalur ini — gap DI ARAH BERLAWANAN
+(Billing dashboard yang under-report, bukan jurnal). **Sudah difix**: `Math.min()` dihapus +
+ditambah `FOR UPDATE` lock (fungsi ini sebelumnya tidak locking sama sekali).
+
+**Kesimpulan audit menyeluruh**: SEMUA jalur konfirmasi pembayaran invoice di seluruh aplikasi
+(6 titik: `confirmInvoicePaymentAction`, `verifySubmittedPaymentAction`,
+`confirmEventInvoicePaymentAction`, `confirmRegistrationPaymentAction` + `syncInvoicePayment`,
+toko, donasi) sekarang konsisten — nominal yang benar-benar diterima (termasuk kelebihan)
+tercermin akurat di: `payments.amount`, `invoice_payments.amount`, `invoices.paidAmount`, DAN
+jurnal double-entry (Buku Besar/Neraca/Laba Rugi). Rekening bank = Billing dashboard = laporan
+keuangan formal, tiga-tiganya sekarang harus selalu sinkron untuk pembayaran yang dikonfirmasi
+lewat jalur manapun.
 
 ### 4 Bug Ditemukan Saat Testing Manual (2026-07-19) — Semua Sudah Difix
 
