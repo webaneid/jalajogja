@@ -250,6 +250,7 @@ export function LandingBuilder({ value, onChange, tenantSlug }: Props) {
       )}
 
       <DndContext
+        id="landing-section-dnd"
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}

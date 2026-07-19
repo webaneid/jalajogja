@@ -28,8 +28,9 @@ export function FooterBottomNav({ designId, navMenu, baseUrl }: Props) {
 
   return (
     <>
-      <BottomNav navMenu={navMenu} />
-      <div className="h-14 md:hidden" />
+      <BottomNav navMenu={navMenu} baseUrl={baseUrl} />
+      {/* h-20 (bukan h-14) — bar sekarang h-16 + pt-3 (76px) karena tombol Beranda melayang */}
+      <div className="h-20 md:hidden" />
     </>
   );
 }

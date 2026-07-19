@@ -8,7 +8,12 @@ export type PublicLinkType =
   | "post-tag"
   | "product"
   | "product-category"
+  | "event"
+  | "event-category"
   | "campaign"
+  | "campaign-category"
+  | "document"
+  | "document-category"
   | "pesantren"
   | "usaha"
   | "profesional";
@@ -37,6 +42,7 @@ export const STATIC_ROUTES: StaticRoute[] = [
   { label: "Agenda / Event",      path: s => `/${s}/agenda`,        group: "Halaman Utama", icon: "Calendar" },
   { label: "Direktori Produk",    path: s => `/${s}/produk`,        group: "Halaman Utama", icon: "ShoppingBag" },
   { label: "Donasi & Campaign",   path: s => `/${s}/campaign`,      group: "Halaman Utama", icon: "Heart" },
+  { label: "Arsip Dokumen",       path: s => `/${s}/dokumen`,       group: "Halaman Utama", icon: "FolderOpen" },
   // Direktori
   { label: "Direktori Anggota",   path: s => `/${s}/anggota`,       group: "Direktori",     icon: "Users" },
   { label: "Direktori Pesantren", path: s => `/${s}/pesantren`,     group: "Direktori",     icon: "School" },
@@ -85,8 +91,26 @@ export function buildProductUrl(slug: string, productSlug: string) {
 export function buildProductCategoryUrl(slug: string, catSlug: string) {
   return `/${slug}/produk/kategori/${catSlug}`;
 }
+export function buildEventUrl(slug: string, eventSlug: string) {
+  return `/${slug}/agenda/${eventSlug}`;
+}
+export function buildEventCategoryUrl(slug: string, catSlug: string) {
+  return `/${slug}/agenda?category=${catSlug}`;
+}
 export function buildCampaignUrl(slug: string, campaignSlug: string) {
   return `/${slug}/campaign/${campaignSlug}`;
+}
+export function buildCampaignCategoryUrl(slug: string, catSlug: string) {
+  return `/${slug}/campaign?category=${catSlug}`;
+}
+export function buildDocumentUrl(slug: string, id: string) {
+  return `/${slug}/dokumen/view/${id}`;
+}
+// Kuirk: dokumen/page.tsx filter categoryId langsung dengan raw query param ("category"),
+// BUKAN resolve slug→id seperti post/event/campaign — jadi builder ini WAJIB pakai id
+// kategori, bukan slug-nya (document_categories punya slug, tapi tidak dipakai di sini).
+export function buildDocumentCategoryUrl(slug: string, categoryId: string) {
+  return `/${slug}/dokumen?category=${categoryId}`;
 }
 export function buildPesantrenUrl(slug: string, id: string) {
   return `/${slug}/pesantren/${id}`;
@@ -111,5 +135,10 @@ export const LINK_GROUP_LABELS: Record<string, string> = {
   "Tag Post":         "Tag Post",
   "Produk":           "Produk",
   "Kategori Produk":  "Kategori Produk",
+  "Agenda":           "Agenda",
+  "Kategori Agenda":  "Kategori Agenda",
   "Donasi":           "Donasi",
+  "Kategori Donasi":  "Kategori Donasi",
+  "Dokumen":          "Dokumen",
+  "Kategori Dokumen": "Kategori Dokumen",
 };

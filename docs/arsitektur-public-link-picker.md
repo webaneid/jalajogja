@@ -1,21 +1,31 @@
 # Arsitektur Public Link Picker
 
 Komponen autocomplete universal untuk memilih URL front-end publik.
-Dipakai di mana saja admin perlu mengisi link ke halaman website organisasi.
+Dipakai di mana saja admin perlu mengisi link ke halaman website organisasi (nav menu header/
+footer, CTA landing section, dan tempat lain di masa depan).
+
+> **Status: ✅ Selesai (2026-07-20)** — semua modul terakomodir (Post, Produk, Event, Campaign,
+> Dokumen, Pages, Pesantren, Usaha, Profesional) + rute statis lengkap termasuk arsip Dokumen +
+> field CTA Hero/CTA section sudah pakai picker ini + arsitektur custom domain sudah benar untuk
+> SEMUA titik render (nav menu DAN section CTA). Riwayat sebelum tanggal ini: dokumen ini sempat
+> jauh lebih dulu ditulis sebagai rencana (checklist § 8 lama semua `[ ]`) sebelum implementasi
+> nav menu benar-benar dikerjakan — kalau nemu referensi lama yang bilang "belum dimulai", itu
+> stale, ikuti dokumen ini.
 
 ---
 
 ## 1. Latar Belakang & Tujuan
 
 Admin sering perlu memilih URL front-end — saat membangun nav menu, mengisi CTA landing section,
-mengatur widget sidebar, atau mengisi link di mana saja. Saat ini admin harus hafal atau mengetik URL
-manual, rawan typo, dan tidak tahu halaman mana yang tersedia.
+mengatur widget sidebar, atau mengisi link di mana saja. Tanpa alat bantu, admin harus hafal atau
+mengetik URL manual, rawan typo, dan tidak tahu halaman/konten mana yang tersedia.
 
 **`PublicLinkPicker`** adalah combobox autocomplete yang:
 - Menampilkan semua URL front-end yang tersedia (statis + konten dari DB)
-- Dapat dicari berdasarkan nama/judul konten
+- Dapat dicari berdasarkan nama/judul konten (server-side search, bukan client-side filter)
 - Mengelompokkan hasil berdasarkan tipe (Halaman, Postingan, Produk, dst)
-- Mengembalikan URL siap pakai (path relatif terhadap domain)
+- Mengembalikan URL siap pakai — **selalu dengan prefix `/{slug}`** (lihat § 9 untuk kenapa dan
+  bagaimana ini tetap benar di custom domain)
 
 ---
 
@@ -30,9 +40,11 @@ manual, rawan typo, dan tidak tahu halaman mana yang tersedia.
 | Agenda / Event | `/{slug}/agenda` | Halaman Utama |
 | Direktori Produk | `/{slug}/produk` | Halaman Utama |
 | Donasi & Campaign | `/{slug}/campaign` | Halaman Utama |
+| Arsip Dokumen | `/{slug}/dokumen` | Halaman Utama |
 | Direktori Anggota | `/{slug}/anggota` | Direktori |
 | Direktori Pesantren | `/{slug}/pesantren` | Direktori |
 | Direktori Usaha | `/{slug}/usaha` | Direktori |
+| Direktori Profesional | `/{slug}/profesional` | Direktori |
 | Statistik | `/{slug}/statistik` | Direktori |
 | Keranjang Belanja | `/{slug}/keranjang` | Transaksi |
 | Login | `/{slug}/login` | Akun |
@@ -40,24 +52,31 @@ manual, rawan typo, dan tidak tahu halaman mana yang tersedia.
 | Dashboard Akun | `/{slug}/akun` | Akun |
 | Riwayat Transaksi | `/{slug}/akun/transaksi` | Akun |
 
-### 2b. Konten Dinamis (difetch dari DB saat pencarian)
+### 2b. Konten Dinamis (difetch dari DB saat pencarian, `q` wajib diisi)
 
 | Tipe Konten | URL Pattern | Search Field | Sumber DB |
 |-------------|-------------|--------------|-----------|
-| Halaman (Page) | `/{slug}/{pageSlug}` | title, slug | `tenant.pages WHERE status='published'` |
-| Post individual | `/{slug}/post/{postSlug}` | title, slug | `tenant.posts WHERE status='published'` |
+| Halaman (Page) | `/{slug}/{pageSlug}` | title | `tenant.pages WHERE status='published'` |
+| Post individual | `/{slug}/post/{postSlug}` | title | `tenant.posts WHERE status='published'` |
 | Post by Kategori | `/{slug}/post?category={catSlug}` | category name | `tenant.post_categories` |
 | Post by Tag | `/{slug}/post?tag={tagSlug}` | tag name | `tenant.post_tags` |
-| Produk | `/{slug}/produk/{productSlug}` | name, slug | `tenant.products WHERE status='active'` |
-| Kategori Produk | `/{slug}/produk/kategori/{catSlug}` | name, slug | `tenant.product_categories` |
-| Campaign / Donasi | `/{slug}/campaign/{campaignSlug}` | title, slug | `tenant.campaigns WHERE status='active'` |
-| Pesantren | `/{slug}/pesantren/{id}` | name | `public.member_owned_pesantren` |
-| Usaha / Bisnis | `/{slug}/usaha/{id}` | name | `public.member_businesses WHERE is_active=true` |
+| Produk | `/{slug}/produk/{productSlug}` | name | `tenant.products WHERE status='active'` |
+| Kategori Produk | `/{slug}/produk/kategori/{catSlug}` | name | `tenant.product_categories` |
+| **Event individual** | `/{slug}/agenda/{eventSlug}` | title | `tenant.events WHERE status='published'` |
+| **Event by Kategori** | `/{slug}/agenda?category={catSlug}` | category name | `tenant.event_categories` |
+| Campaign / Donasi | `/{slug}/campaign/{campaignSlug}` | title | `tenant.campaigns WHERE status='active'` |
+| **Campaign by Kategori** | `/{slug}/campaign?category={catSlug}` | category name | `tenant.campaign_categories` |
+| **Dokumen individual** | `/{slug}/dokumen/view/{id}` | title | `tenant.documents WHERE visibility='public'` |
+| **Dokumen by Kategori** | `/{slug}/dokumen?category={catId}` | category name | `tenant.document_categories` — **catatan: `id`, bukan `slug`, lihat § 2d** |
+| Pesantren | `/{slug}/pesantren/{id}` | name | `public.member_owned_pesantren` (scope tenant via `tenant_memberships`) |
+| Usaha / Bisnis | `/{slug}/usaha/{id}` | name | `public.member_businesses WHERE is_active=true` (scope tenant) |
+| Profesional | `/{slug}/profesional/{id}` | title + professionType | `public.member_professionals WHERE is_active=true` (scope tenant) |
 
-### 2c. Rute Sistem (ditampilkan di picker khusus konteks, bukan di general picker)
+Baris **bold** adalah yang ditambahkan pada refactor 2026-07-20 — sebelumnya modul Event dan
+Dokumen tidak terakomodir sama sekali (bahkan arsip statis Dokumen absen), dan Campaign belum
+punya cara link ke kategori spesifik.
 
-Rute-rute di bawah ini bersifat sistem — tidak dimasukkan ke general picker karena berisi slug/token dinamis
-yang tidak bisa dipilih tanpa data spesifik:
+### 2c. Rute Sistem (tidak dimasukkan ke picker — token/ID dinamis yang tidak bisa "dicari")
 
 | URL | Keterangan |
 |-----|------------|
@@ -65,10 +84,21 @@ yang tidak bisa dipilih tanpa data spesifik:
 | `/{slug}/verify/{hash}` | Verifikasi TTD surat — hash unik per signature |
 | `/{slug}/invite` | Terima undangan pengurus — hanya dari email |
 | `/{slug}/invoice/{id}` | Invoice publik — ID unik per transaksi |
-| `/{slug}/dokumen/view/{id}` | Dokumen publik — ID unik per dokumen |
-| `/{slug}/produk/{productSlug}/...` | Varian produk — dihandle oleh detail produk |
+| `/{slug}/checkout` | Step alur transaksi — butuh cart state, tidak masuk akal jadi tujuan nav |
+| `/{slug}/forgot-password`, `/reset-password` | Utilitas auth, bukan halaman konten |
 | `/{slug}/anggota/{id}` | Profil pribadi anggota — auth-protected, owner only |
-| `/{slug}/akun/...` | Sub-halaman akun — tidak dilink dari nav |
+| `/{slug}/akun/...` (selain `/akun` dan `/akun/transaksi`) | Sub-halaman akun — tidak dilink dari nav |
+
+### 2d. Kuirk teknis — kategori Dokumen pakai ID, bukan slug
+
+`document_categories` **punya** kolom `slug` (unique) — tapi halaman `/dokumen` (`dokumen/page.tsx`)
+memfilter dengan `eq(documents.categoryId, category)`, artinya query param `?category=` di
+halaman itu harus diisi **UUID `id`** kategori, bukan slug-nya. Semua modul lain (post, event,
+campaign) konsisten resolve slug→id di server sebelum filter. Dokumen adalah satu-satunya
+pengecualian saat ini — builder `buildDocumentCategoryUrl()` WAJIB mengikuti perilaku nyata
+halaman itu (pakai `id`), bukan konsisten-dipaksa ke pola slug seperti yang lain. Kalau nanti
+`dokumen/page.tsx` direfactor untuk resolve-by-slug (menyamakan pola), builder ini ikut diupdate
+bersamaan — jangan biarkan keduanya drift.
 
 ---
 
@@ -76,65 +106,69 @@ yang tidak bisa dipilih tanpa data spesifik:
 
 ### `GET /api/ref/public-links?slug={tenantSlug}&q={query}`
 
-**Auth**: Tidak butuh auth — hanya dipakai di admin dashboard, API key-nya implisit dari session middleware.
-Namun untuk keamanan, gunakan `getTenantAccess(slug)` di route handler.
+**Auth**: `getTenantAccess(slug)` — hanya admin tenant ini yang bisa cari konten tenant ini.
+Return 401 kalau tidak ada akses valid.
 
 **Query params:**
 - `slug` (required) — tenant slug
-- `q` (optional) — search query, min 1 karakter. Jika kosong, hanya rute statis yang dikembalikan.
-- `types` (optional) — comma-separated filter tipe: `page,post,product,campaign,pesantren,usaha`
+- `q` (optional) — search query.
 
 **Response:**
 ```typescript
-type PublicLink = {
-  label:    string;   // nama tampil, e.g. "Panduan Anggota Baru"
-  url:      string;   // full path, e.g. "/ikpm/post/panduan-anggota-baru"
-  group:    string;   // nama grup, e.g. "Postingan"
-  type:     PublicLinkType;
-  meta?:    string;   // info tambahan, e.g. nama kategori, tanggal publish
-};
-
-type PublicLinksResponse = {
-  links:  PublicLink[];
-  total:  number;
-};
+type PublicLinksResponse = { links: PublicLink[] };
+// TIDAK ada field `total` — cukup panjang array `links`.
 ```
 
-**`PublicLinkType`:**
-```typescript
-type PublicLinkType =
-  | "static"          // rute statis (beranda, post, agenda, dll)
-  | "page"            // halaman statis tenant
-  | "post"            // post individual
-  | "post-category"   // filter post by kategori
-  | "post-tag"        // filter post by tag
-  | "product"         // produk individual
-  | "product-category"// kategori produk
-  | "campaign"        // campaign/donasi individual
-  | "pesantren"       // pesantren detail
-  | "usaha";          // usaha detail
-```
+**Logika pencarian — dua kelas konten, dua perilaku berbeda (dikunci 2026-07-20, lihat § 3a):**
+1. **Rute statis** — selalu disertakan, difilter `label.toLowerCase().includes(q)` bila `q` ada
+   (murni in-memory, tidak query DB).
+2. **Konten "browsable"** (7 tabel: `pages`, `post_categories`, `post_tags`,
+   `product_categories`, `event_categories`, `campaign_categories`, `document_categories`) —
+   **SELALU di-query**, terlepas `q` kosong atau tidak. Kalau `q` kosong → `WHERE` diskip
+   (`.where(q ? ilike(...) : undefined)`, atau untuk `pages` yang punya filter status tambahan:
+   `q ? and(status, ilike) : status saja`), ambil SEMUA baris (sampai `BROWSE_LIMIT=50`). Kalau
+   `q` ada → filter `ilike` seperti biasa.
+3. **Konten yang bisa terus bertambah** (8 tabel: posts, products, events, campaigns, documents,
+   pesantren, usaha, profesional) — **HANYA di-query kalau `q` ada** (`!q ? Promise.resolve([])
+   : tdb.select(...)`) — listnya bisa panjang (ratusan post/produk), tidak masuk akal ditampilkan
+   semua di awal.
+4. Semua hasil digabung, TIDAK ada sorting/grouping tambahan di server — pengelompokan per
+   `group` dilakukan di komponen (client-side, `Array.reduce`).
 
-**Logika pencarian:**
-1. Selalu sertakan rute statis yang match (filter by label, case-insensitive)
-2. Jika `q` ada → query DB parallel untuk semua tipe konten:
-   - `ILIKE '%{q}%'` pada title/name
-   - `LIMIT 5` per tipe untuk performa
-3. Total hasil max: 5 statis + 5×8 tipe = ~45 baris per response
-4. Urutkan: statis dulu, lalu per grup alphabetical
+Catatan: dokumen sebelumnya di sini mengklaim ada parameter `types` (comma-separated filter) dan
+respons `{links, total}` — **keduanya tidak pernah diimplementasikan**, dihapus dari dokumen ini
+supaya tidak menyesatkan. Kalau kebutuhan filter-per-tipe muncul nanti (mis. picker khusus untuk
+CTA yang cuma boleh link ke Post/Halaman), tambahkan `types` sungguhan saat itu — jangan asumsikan
+sudah ada.
 
-**Contoh response untuk `q=panduan`:**
-```json
-{
-  "links": [
-    { "label": "Arsip Postingan", "url": "/ikpm/post", "group": "Halaman Utama", "type": "static" },
-    { "label": "Panduan Anggota Baru", "url": "/ikpm/post/panduan-anggota-baru", "group": "Postingan", "type": "post", "meta": "12 Jan 2025" },
-    { "label": "Panduan Daftar Mitra", "url": "/ikpm/post/panduan-daftar-mitra", "group": "Postingan", "type": "post", "meta": "3 Feb 2025" },
-    { "label": "Panduan Usaha", "url": "/ikpm/campaign/panduan-usaha", "group": "Donasi", "type": "campaign" }
-  ],
-  "total": 4
-}
-```
+### 3a. Kenapa Halaman + Taksonomi "Selalu Tampil" tapi Konten Lain Tidak
+
+**Perilaku awal** (sebelum diperbaiki): query kosong → HANYA rute statis, nol query DB — semua
+konten dinamis (termasuk kategori/tag/halaman) baru muncul setelah user mengetik sesuatu yang
+match nama kontennya persis. User melaporkan kebingungan nyata dalam 2 giliran terpisah: (1) buka
+picker nav menu, klik cari "kategori"/"tag" (ekspektasi wajar: browsing semua kategori/tag yang
+ada) → hasil kosong, karena pencarian mencocokkan `q` terhadap NAMA kategori/tag ("Berita",
+"Olahraga"), bukan kata "kategori" itu sendiri; (2) setelah kategori/tag difix, user tanya lagi —
+"halaman yang sudah dibuat juga tidak ada" — gap yang sama persis, cuma belum kepikiran di
+putaran pertama.
+
+**Perbaikan**: pisahkan konten dinamis jadi dua kelas berbeda perlakuan (bukan berdasar "jenisnya
+apa", tapi "seberapa besar list-nya secara realistis"):
+- **Browsable** (halaman CMS + SEMUA taksonomi kategori/tag lintas modul) — jumlahnya per tenant
+  realistis KECIL (belasan sampai puluhan, bukan ratusan) dan bersifat kurasi admin (jarang
+  berubah, dibuat sengaja satu-satu) — aman dan BERGUNA ditampilkan SEMUANYA begitu popover
+  dibuka, persis seperti rute statis. `BROWSE_LIMIT=50` sebagai jaring pengaman, bukan mekanisme
+  filter utama.
+- **Wajib dicari** (post/produk/event/campaign/dokumen/pesantren/usaha/profesional) — jumlahnya
+  BISA besar dan terus bertambah sebagai output rutin (artikel baru, produk baru, dst) — TETAP
+  wajib `q` dulu, `LIMIT=6` tetap berlaku.
+
+**Aturan untuk tipe baru ke depan**: kalau menambah tipe konten baru ke picker ini, tanya dulu —
+"kalau tenant ini eksis 2 tahun, realistis list ini berjumlah puluhan (browsable) atau bisa
+ratusan (wajib dicari)?" — BUKAN "ini konten atau taksonomi?" (halaman CMS bukan taksonomi tapi
+tetap browsable, karena jumlahnya tetap kecil). Browsable masuk grup query "selalu tampil"
+(`BROWSE_LIMIT`), sisanya masuk grup "wajib `q`" (`LIMIT`, gated `!q ? Promise.resolve([]) :
+...`).
 
 ---
 
@@ -142,64 +176,57 @@ type PublicLinkType =
 
 **Lokasi:** `components/ui/public-link-picker.tsx`
 
-**Interface:**
 ```typescript
-type PublicLinkPickerProps = {
-  slug:          string;            // tenant slug
-  value?:        string;            // URL yang sedang dipilih
-  onChange:      (url: string) => void;
-  placeholder?:  string;            // default: "Cari halaman atau konten..."
-  types?:        PublicLinkType[];  // filter tipe (opsional)
-  className?:    string;
-  disabled?:     boolean;
+type Props = {
+  slug:         string;
+  value?:       string;
+  onChange:     (url: string) => void;
+  placeholder?: string;
+  className?:   string;
+  disabled?:    boolean;
 };
 ```
 
 **UX Behavior:**
-- Input berisi URL yang dipilih (editable) — user bisa ketik URL manual
-- Klik input → Popover terbuka dengan list rute statis
-- Ketik ≥ 1 karakter → debounce 300ms → fetch `/api/ref/public-links`
-- Hasil dikelompokkan per `group` dengan header grup (separator di Command)
-- Keyboard: ↑↓ navigate list, Enter pilih, Escape tutup
-- Ikon: setiap tipe punya ikon lucide yang berbeda (lihat tabel di bawah)
-- Pilih item → onChange dipanggil dengan URL → Popover tutup
+- Trigger adalah tombol yang menampilkan URL terpilih (atau placeholder) + ikon Globe + tombol X
+  untuk clear.
+- Klik → Popover terbuka, langsung fetch dengan query kosong — dapat rute statis + SEMUA halaman
+  CMS + SEMUA taksonomi (kategori/tag lintas modul), lihat § 3a.
+- Ketik → debounce 300ms → fetch `/api/ref/public-links?slug=&q=`.
+- `Command shouldFilter={false}` — **TIDAK mengandalkan filter client-side `cmdk`**, semua
+  matching dilakukan server-side. Ini penting: beda dengan `components/ui/combobox.tsx` (bug
+  yang sudah difix 2026-07-20 — `CommandItem value` sempat diisi ID bukan label, membuat
+  pencarian tidak pernah match) — `PublicLinkPicker` dari awal desainnya sudah kebal dari kelas
+  bug itu karena `shouldFilter=false` membuat nilai `CommandItem.value` (diisi `link.url`, juga
+  bukan label) tidak pernah dipakai untuk filtering sama sekali.
+- Hasil dikelompokkan per `group` di client (`Array.reduce`), masing-masing render sebagai
+  `CommandGroup` dengan heading.
+- Ikon per tipe (lihat tabel di bawah) + `StaticIcon` khusus untuk rute statis (mapping by label).
+- Ada input "Atau ketik URL manual..." di bagian bawah popover — untuk anchor (`#section`), URL
+  eksternal, atau override manual. Tetap tersedia setelah refactor ini, tidak dihapus.
 
-**Ikon per tipe:**
-| Type | Icon | Lucide |
-|------|------|--------|
-| static | sesuai rute | Globe / Home / List |
-| page | FileText | `FileText` |
-| post | Newspaper | `Newspaper` |
-| post-category | Tag | `Tag` |
-| post-tag | Hash | `Hash` |
-| product | ShoppingBag | `ShoppingBag` |
-| product-category | Layers | `Layers` |
-| campaign | Heart | `Heart` |
-| pesantren | School | `School` |
-| usaha | Briefcase | `Briefcase` |
+**Ikon per tipe** (`components/ui/public-link-picker.tsx`, fungsi `LinkIcon`):
 
-**UI Wireframe:**
-```
-┌────────────────────────────────────────────┐
-│ 🔗 /ikpm/post/panduan-anggota-baru    ✕   │ ← input (editable URL)
-└────────────────────────────────────────────┘
-  ┌──────────────────────────────────────────┐
-  │ Cari halaman atau konten...               │ ← search input dalam popover
-  ├──────────────────────────────────────────┤
-  │ HALAMAN UTAMA                             │
-  │   🏠 Beranda                    /ikpm/    │
-  │   📰 Arsip Postingan           /ikpm/post │
-  │   📅 Agenda / Event          /ikpm/agenda │
-  ├──────────────────────────────────────────┤
-  │ POSTINGAN                                 │
-  │   📄 Panduan Anggota Baru    12 Jan 2025  │
-  │   📄 Info Musyawarah         3 Feb 2025   │
-  ├──────────────────────────────────────────┤
-  │ KATEGORI POST                             │
-  │   🏷 Pengumuman              4 post       │
-  │   🏷 Kegiatan                12 post      │
-  └──────────────────────────────────────────┘
-```
+| Type | Lucide Icon |
+|------|-------------|
+| static | (lihat `StaticIcon`, mapping per label) |
+| page | `FileText` |
+| post | `Newspaper` |
+| post-category | `Tag` |
+| post-tag | `Hash` |
+| product | `ShoppingBag` |
+| product-category | `Layers` |
+| **event** | `Calendar` |
+| **event-category** | `Tag` |
+| campaign | `Heart` |
+| **campaign-category** | `Tag` |
+| **document** | `FileDown` |
+| **document-category** | `Tag` |
+| pesantren | `School` |
+| usaha | `Briefcase` |
+| profesional | `Briefcase` |
+
+Baris **bold** = ditambah 2026-07-20.
 
 ---
 
@@ -207,150 +234,161 @@ type PublicLinkPickerProps = {
 
 ```
 apps/web/
-├── app/api/ref/
-│   └── public-links/
-│       └── route.ts              ← GET /api/ref/public-links?slug=&q=
+├── app/api/ref/public-links/route.ts   ← GET /api/ref/public-links?slug=&q=
 ├── lib/
-│   └── public-url-registry.ts   ← daftar rute statis + helper buildPublicUrl()
-└── components/ui/
-    └── public-link-picker.tsx    ← komponen combobox
+│   ├── public-url-registry.ts          ← rute statis + PublicLinkType + URL builders
+│   └── strip-tenant-prefix.ts          ← helper murni, lihat § 9
+└── components/ui/public-link-picker.tsx ← komponen combobox
 ```
 
 ---
 
 ## 6. `lib/public-url-registry.ts`
 
-Mendefinisikan semua rute statis dan helper membangun URL konten dinamis.
-
 ```typescript
-export type StaticRoute = {
-  label:  string;
-  path:   (slug: string) => string;
-  group:  string;
-  icon:   string; // nama ikon lucide
+export type PublicLinkType =
+  | "static" | "page" | "post" | "post-category" | "post-tag"
+  | "product" | "product-category"
+  | "event" | "event-category"
+  | "campaign" | "campaign-category"
+  | "document" | "document-category"
+  | "pesantren" | "usaha" | "profesional";
+
+export type PublicLink = {
+  label: string;
+  url:   string;
+  group: string;
+  type:  PublicLinkType;
 };
 
-export const STATIC_ROUTES: StaticRoute[] = [
-  { label: "Beranda",              path: s => `/${s}/`,             group: "Halaman Utama", icon: "Home" },
-  { label: "Arsip Postingan",      path: s => `/${s}/post`,         group: "Halaman Utama", icon: "Newspaper" },
-  { label: "Agenda / Event",       path: s => `/${s}/agenda`,       group: "Halaman Utama", icon: "Calendar" },
-  { label: "Direktori Produk",     path: s => `/${s}/produk`,       group: "Halaman Utama", icon: "ShoppingBag" },
-  { label: "Donasi & Campaign",    path: s => `/${s}/campaign`,     group: "Halaman Utama", icon: "Heart" },
-  { label: "Direktori Anggota",    path: s => `/${s}/anggota`,      group: "Direktori",     icon: "Users" },
-  { label: "Direktori Pesantren",  path: s => `/${s}/pesantren`,    group: "Direktori",     icon: "School" },
-  { label: "Direktori Usaha",      path: s => `/${s}/usaha`,        group: "Direktori",     icon: "Briefcase" },
-  { label: "Statistik",            path: s => `/${s}/statistik`,    group: "Direktori",     icon: "BarChart2" },
-  { label: "Keranjang Belanja",    path: s => `/${s}/keranjang`,    group: "Transaksi",     icon: "ShoppingCart" },
-  { label: "Login",                path: s => `/${s}/login`,        group: "Akun",          icon: "LogIn" },
-  { label: "Register",             path: s => `/${s}/register`,     group: "Akun",          icon: "UserPlus" },
-  { label: "Dashboard Akun",       path: s => `/${s}/akun`,         group: "Akun",          icon: "LayoutDashboard" },
-  { label: "Riwayat Transaksi",    path: s => `/${s}/akun/transaksi`, group: "Akun",        icon: "Receipt" },
-];
+// STATIC_ROUTES — 16 entries (lihat § 2a)
+// getStaticLinks(slug, q?) — filter in-memory by label
 
-// Helpers untuk URL konten dinamis
-export function buildPostUrl(slug: string, postSlug: string)           { return `/${slug}/post/${postSlug}`; }
-export function buildPostCategoryUrl(slug: string, catSlug: string)    { return `/${slug}/post?category=${catSlug}`; }
-export function buildPostTagUrl(slug: string, tagSlug: string)         { return `/${slug}/post?tag=${tagSlug}`; }
-export function buildProductUrl(slug: string, productSlug: string)     { return `/${slug}/produk/${productSlug}`; }
-export function buildProductCategoryUrl(slug: string, catSlug: string) { return `/${slug}/produk/kategori/${catSlug}`; }
-export function buildCampaignUrl(slug: string, campaignSlug: string)   { return `/${slug}/campaign/${campaignSlug}`; }
-export function buildPageUrl(slug: string, pageSlug: string)           { return `/${slug}/${pageSlug}`; }
-export function buildPesantrenUrl(slug: string, id: string)            { return `/${slug}/pesantren/${id}`; }
-export function buildUsahaUrl(slug: string, id: string)                { return `/${slug}/usaha/${id}`; }
+// Builder URL konten dinamis — semua SELALU return path berprefix "/{slug}/..."
+// (lihat § 9 kenapa ini benar meski tenant punya custom domain aktif)
+buildPageUrl(slug, pageSlug)
+buildPostUrl(slug, postSlug)
+buildPostCategoryUrl(slug, catSlug)
+buildPostTagUrl(slug, tagSlug)
+buildProductUrl(slug, productSlug)
+buildProductCategoryUrl(slug, catSlug)
+buildEventUrl(slug, eventSlug)                    // → /{slug}/agenda/{eventSlug}
+buildEventCategoryUrl(slug, catSlug)               // → /{slug}/agenda?category={catSlug}
+buildCampaignUrl(slug, campaignSlug)
+buildCampaignCategoryUrl(slug, catSlug)            // → /{slug}/campaign?category={catSlug}
+buildDocumentUrl(slug, id)                         // → /{slug}/dokumen/view/{id}
+buildDocumentCategoryUrl(slug, categoryId)         // → /{slug}/dokumen?category={categoryId} — ID, bukan slug (§ 2d)
+buildPesantrenUrl(slug, id)
+buildUsahaUrl(slug, id)
+buildProfesionalUrl(slug, id)
 ```
 
 ---
 
 ## 7. Penggunaan
 
-### Di nav menu builder (`/settings/navigation`)
+### Di nav menu builder (`/app/{slug}/settings/website`)
 
 ```tsx
-// Sebelum: dropdown pilih type (page/post/event/toko/donasi/custom)
-// Sesudah: PublicLinkPicker untuk semua type yang bisa dinavigasi
-<PublicLinkPicker
-  slug={tenantSlug}
-  value={item.href}
-  onChange={(url) => updateItem(item.id, { href: url })}
-/>
+// components/settings/website-settings-client.tsx → NavItemRow
+<PublicLinkPicker slug={slug} value={item.href} onChange={(url) => u({ href: url })} />
 ```
 
-### Di section editor (CTA / "Lihat Semua" link)
+### Di section editor CTA (Hero + CTA section) — ✅ selesai 2026-07-20
 
 ```tsx
-<PublicLinkPicker
-  slug={tenantSlug}
-  value={section.data.viewAllHref}
-  onChange={(url) => updateSection({ ...section.data, viewAllHref: url })}
-  placeholder="URL tombol 'Lihat Semua'..."
-  types={["page", "post", "post-category", "static"]}
-/>
+// components/website/section-editors.tsx → HeroEditor, CtaEditor
+<PublicLinkPicker slug={tenantSlug ?? ""} value={d.ctaUrl ?? ""} onChange={(url) => u("ctaUrl", url)} />
 ```
 
-### Di widget area builder
+Sebelumnya field ini `<Input>` teks bebas — sekarang picker, TAPI tetap ada fallback "ketik URL
+manual" di dalam popovernya sendiri (§ 4), jadi anchor (`#section`) dan URL eksternal tetap bisa
+diisi persis seperti sebelumnya. Nilai yang tersimpan sekarang konsisten berprefix `/{slug}/...`
+kalau dipilih dari daftar — makanya § 9 (stripping saat render) jadi wajib, bukan opsional.
 
-```tsx
-<PublicLinkPicker
-  slug={tenantSlug}
-  value={widget.linkHref}
-  onChange={(url) => updateWidget({ ...widget, linkHref: url })}
-  placeholder="Link 'Lihat Semua'..."
-/>
-```
+### Widget area builder — belum ada field href
+
+Phase 1 widget area (`docs/arsitektur-sidebar.md`) baru punya section type `posts` (filter
+recent/popular/category/tag) — tidak ada field CTA/link manual sama sekali saat ini, jadi tidak
+ada yang perlu diintegrasikan di sini. Kalau nanti section type baru butuh link (mis. CTA banner
+di sidebar), pakai pola yang sama seperti § di atas.
 
 ---
 
-## 8. Rencana Implementasi
+## 8. Status Implementasi
 
-### Phase 1 — Data Layer
-- [ ] `lib/public-url-registry.ts` — daftar statis + helper URL builder
-- [ ] `GET /api/ref/public-links/route.ts` — endpoint pencarian
-
-### Phase 2 — Komponen
-- [ ] `components/ui/public-link-picker.tsx` — combobox Command + Popover
-
-### Phase 3 — Integrasi
-- [ ] Nav menu builder di `/settings/navigation` (saat diimplementasikan)
-- [ ] Section editor CTA links
-- [ ] Widget area builder
-- [ ] Semua field `href` / `url` di admin yang menunjuk ke front-end
+| Fase | Item | Status |
+|---|---|---|
+| Data layer | `lib/public-url-registry.ts` — 16 rute statis + 15 tipe dinamis | ✅ |
+| Data layer | `GET /api/ref/public-links` | ✅ |
+| Komponen | `components/ui/public-link-picker.tsx` | ✅ |
+| Integrasi | Nav menu builder (`/settings/website`) | ✅ |
+| Integrasi | Section editor CTA (Hero 2 tombol + CTA section 1 tombol) | ✅ (2026-07-20) |
+| Integrasi | Widget area builder | Tidak relevan — belum ada field href sama sekali (§ 7) |
+| Cakupan modul | Post, Produk, Pages | ✅ sejak awal |
+| Cakupan modul | Event (detail + kategori) | ✅ (2026-07-20, sebelumnya 0% — gap total) |
+| Cakupan modul | Campaign (kategori) | ✅ (2026-07-20, detail sudah ada sebelumnya) |
+| Cakupan modul | Dokumen (arsip statis + detail + kategori) | ✅ (2026-07-20, sebelumnya 0% — gap total) |
+| Cakupan modul | Pesantren, Usaha, Profesional | ✅ sejak awal |
+| Custom domain | Render-side stripping — nav menu | ✅ sejak lama (`layout.tsx`) |
+| Custom domain | Render-side stripping — Hero/CTA section | ✅ (2026-07-20, sebelumnya BUG — lihat § 9) |
 
 ---
 
-## 9. Catatan Desain
+## 9. Custom Domain — Href Harus Di-strip di TITIK RENDER, Bukan di Titik Simpan
 
-### URL manual tetap bisa diketik
-Input adalah editable text field — user tidak dipaksa pilih dari dropdown.
-Ini penting untuk URL eksternal, URL dengan anchor (`#section`), atau URL custom.
+### Prinsip
 
-### Tidak validasi URL di komponen
-Validasi (URL valid/tidak, halaman exist/tidak) dilakukan di level yang lebih tinggi.
-Komponen hanya mengembalikan string yang dipilih atau diketik user.
+`PublicLinkPicker` **selalu** menyimpan/mengembalikan URL berprefix `/{slug}/...` — ini benar dan
+tidak berubah, karena admin selalu mengedit dari `jalakarta.com/app/{slug}/...` (dashboard admin
+tidak pernah bisa diakses dari custom domain tenant, lihat `docs/arsitektur-domain.md` § "Custom
+Domain Harus Diisolasi"). Jadi nilai yang tersimpan di DB (JSONB `nav_menu`, atau `section.data.
+ctaUrl`) SELALU mengandung prefix `/{slug}`.
 
-### Kelompok post-category dan post-tag menggunakan query param — bukan path
-`/{slug}/post?category={catSlug}` — bukan `/{slug}/post/kategori/{catSlug}`.
-Ini sesuai implementasi actual di `PostsSection` — jangan buat route baru untuk ini.
+Masalahnya: kalau tenant itu **juga** punya custom domain aktif, saat website publiknya dirender
+di `visikita.com` (bukan `jalakarta.com/visikita/...`), URL manapun yang masih membawa prefix
+`/visikita/...` akan salah — linknya jadi `visikita.com/visikita/post/...` (dobel slug, 404).
 
-### Scope query ke tenant aktif
-API endpoint wajib `getTenantAccess(slug)` — hanya admin tenant ini yang bisa cari konten tenant ini.
-Endpoint tidak perlu auth level super-admin.
+**Prinsip yang dikunci**: stripping prefix `/{slug}` **TIDAK PERNAH** dilakukan di titik simpan
+(picker/admin) — SELALU dilakukan di titik RENDER (server component publik), persis sesudah
+`baseUrl`/`isCustomDomain` diketahui. Ini konsisten dengan pola `baseUrl` yang sudah dikunci di
+seluruh front-end publik sejak lama (`docs/arsitektur-domain.md` § 5.2).
 
-### Revalidasi tidak diperlukan
-API ini real-time (no-cache) — konten DB bisa berubah kapan saja.
-Gunakan `cache: "no-store"` di fetch component.
+### Helper: `lib/strip-tenant-prefix.ts`
 
-### Nama grup harus konsisten di seluruh aplikasi
+```typescript
+// Pure function, aman dipakai client maupun server — tidak ada dependency Node/DB.
+export function stripTenantPrefix(href: string, slug: string): string {
+  if (href === `/${slug}`) return "/";
+  if (href.startsWith(`/${slug}/`)) return href.slice(`/${slug}`.length);
+  return href; // anchor "#...", URL eksternal, atau path yang memang tidak berprefix — dibiarkan
+}
+```
 
-| Grup | Isi |
-|------|-----|
-| Halaman Utama | Rute statis utama (homepage, post, agenda, produk, campaign) |
-| Halaman | Pages dari CMS (tenant.pages) |
-| Postingan | Posts individual |
-| Kategori Post | Filter post berdasarkan kategori |
-| Tag Post | Filter post berdasarkan tag |
-| Produk | Produk individual |
-| Kategori Produk | Filter produk berdasarkan kategori |
-| Donasi | Campaign/donasi individual |
-| Direktori | Rute direktori statis + konten direktori |
-| Transaksi | Keranjang, invoice, checkout |
-| Akun | Login, register, dashboard akun |
+Fungsi ini AMAN dipanggil ke SEMUA jenis href tanpa perlu tahu dulu apakah nilainya berasal dari
+picker atau diketik manual — kalau tidak match pola `/{slug}` atau `/{slug}/...`, dikembalikan
+apa adanya (jadi anchor/URL eksternal tidak pernah rusak oleh fungsi ini).
+
+### Titik-titik yang WAJIB memanggil ini (daftar kanonik — update kalau nambah integrasi baru)
+
+| Titik render | File | Kondisi |
+|---|---|---|
+| Nav menu header/footer | `app/(public)/[tenant]/layout.tsx` | `isCustomDomain ? strip(href) : href` per item |
+| Hero CTA (2 tombol) | `components/website/public/sections/hero/hero-section.tsx` | Strip `data.ctaUrl`/`data.ctaSecondaryUrl` sebelum diteruskan ke `HeroDesign1`/`HeroDesign2` — satu titik untuk kedua desain, tidak diulang di masing-masing file desain |
+| CTA section (1 tombol) | `components/website/public/landing-template.tsx` (`CtaSection`) | Butuh `baseUrl` + `tenantSlug` sebagai props baru (sebelumnya cuma terima `data`) |
+
+**Bug yang ditemukan+difix 2026-07-20**: sebelum ini, `CtaSection` dan Hero design components
+memakai `d.ctaUrl`/`d.ctaSecondaryUrl` **mentah** tanpa stripping apa pun — `baseUrl` memang
+sudah jadi prop di `HeroSection`, tapi cuma dipakai untuk membangun href kartu "Agenda Terbaru"/
+"Berita Terbaru" (`fetchHeroCard`), TIDAK PERNAH dipakai untuk CTA button. Selama field CTA masih
+`<Input>` bebas, ini "aman" secara kebetulan (admin biasanya isi manual tanpa prefix slug, hasil
+kebetulan konsisten meski secara teknis salah di path-mode juga). Begitu field ini diganti
+`PublicLinkPicker` (yang SELALU mengembalikan `/{slug}/...`), bug ini akan langsung nyata di
+custom domain — makanya fix stripping ini WAJIB masuk BERSAMAAN dengan migrasi Hero/CTA ke
+picker, bukan disusulkan nanti.
+
+**Aturan untuk integrasi `PublicLinkPicker` berikutnya** (kalau ada field baru yang memakainya di
+masa depan — widget area CTA, dsb): begitu field itu dirender di sisi publik, WAJIB tambah entry
+baru ke tabel di atas + panggil `stripTenantPrefix()` di titik render-nya. Jangan asumsikan "URL
+dari picker pasti sudah benar" — picker cuma menjamin URL itu benar untuk PATH MODE
+(`jalakarta.com/{slug}/...`), custom domain selalu butuh strip eksplisit terpisah.

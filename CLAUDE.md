@@ -7446,13 +7446,227 @@ sukses (dev server dimatikan dulu, `.next` dibersihkan, sesuai SOP). Commit+push
 setelah dokumentasi ini — instruksi awal "jangan push dulu" (berlaku di 4 lesson sebelumnya)
 **dicabut eksplisit oleh user** di pesan yang sama dengan permintaan dokumentasi ini.
 
+### [2026-07-20] Bug: Combobox Generik Cari Berdasar UUID, Bukan Label — Pencarian Selalu Gagal
+
+User laporkan search PC IKPM Cabang di `/akun/lengkapi` tidak menemukan hasil meski datanya ada.
+Root cause: `components/ui/combobox.tsx` — `<CommandItem value={opt.value}>` mengisi `value` cmdk
+(dasar filter bawaan `cmdk`) dengan **UUID** opsi (`opt.value`, mis. ID cabang), bukan
+**label**-nya (`opt.label`, nama cabang). `cmdk` mencocokkan teks yang diketik terhadap `value`
+itu — ketik "Yogyakarta" dibandingkan ke string UUID acak → tidak pernah match, meski
+`shouldFilter` aktif dan datanya benar-benar ada. Bug ini bukan cuma di 1 field — berlaku untuk
+SEMUA pemakai `Combobox` generik (Settings timezone/font, form usaha/pesantren, dll) di mana
+`value !== label`.
+
+**Fix**: `value={opt.label}` (untuk filtering) + `onSelect={() => onValueChange(opt.value)}`
+(ambil ID via closure, bukan dari parameter `onSelect` cmdk) — pola yang PERSIS sudah dipakai
+benar di 2 implementasi combobox LAIN yang sudah lama ada (`SimpleCombobox` di
+`members/wizard/step1-identity.tsx`, dan Combobox lokal di `wilayah-select.tsx`) — keduanya tidak
+pernah kena bug ini karena sudah benar sejak awal. Fix di SATU file (`combobox.tsx`) otomatis
+memperbaiki semua 10+ pemakainya sekaligus.
+
+**Aturan digeneralisasi**: setiap kali membuat/mereview Combobox berbasis `cmdk`
+(`CommandItem value=...`), `value` WAJIB berisi teks yang ingin dicocokkan pencarian (label),
+BUKAN identifier internal (ID/UUID/enum-code) — resolve ID sesungguhnya via closure di
+`onSelect`, jangan andalkan parameter yang dikirim balik oleh `cmdk`. `PublicLinkPicker`
+(`components/ui/public-link-picker.tsx`) TIDAK kena bug ini — desainnya dari awal pakai
+`shouldFilter={false}` + pencarian server-side, jadi nilai `CommandItem.value` (diisi `link.url`)
+tidak pernah dipakai untuk filtering sama sekali.
+
+### [2026-07-20] Public Link Picker — Semua Modul Terakomodir + Fix Arsitektur URL Custom Domain
+
+> Arsitektur lengkap (setelah refactor ini): **`docs/arsitektur-public-link-picker.md`** — ditulis
+> ulang total, dokumen versi lama basi (checklist § 8 semua `[ ]` padahal Fase 1-3 nav menu sudah
+> lama selesai, field `types`/`total` di API diklaim ada padahal tidak pernah diimplementasikan).
+
+User minta audit sebelum refactor lebih jauh: "cek dulu aja apakah ada informasi arsitektur",
+lalu "cek juga apakah semua modul sudah terakomodir? donasi, event, product, dokumen, category
+post, pages, dll", lalu "ok mari kita refactoring... pastikan semua modul terakomodir.. cek juga
+arsitektur url agar support custom domain dengan perfect."
+
+**Gap modul ditemukan (audit sebelum eksekusi, bandingkan registry vs seluruh folder
+`app/(public)/[tenant]/`)**: 3 modul TIDAK terakomodir sama sekali di
+`lib/public-url-registry.ts`/`api/ref/public-links`:
+1. **Event/Agenda** — detail individual (`/agenda/{slug}`) sama sekali tidak ada tipe-nya di
+   registry, padahal Post/Produk/Campaign semua sudah punya. (`/event/{slug}` yang sempat
+   dikira rute aktif ternyata cuma redirect lama ke `/agenda/{slug}`.)
+2. **Campaign** — kategori (`/campaign?category={slug}`) belum ada, meski detail campaign
+   individual sudah lama ada.
+3. **Dokumen** — modul ini TOTAL tidak terakomodir, bahkan arsip statisnya (`/dokumen`) tidak
+   terdaftar sebagai rute statis sama sekali, apalagi detail (`/dokumen/view/{id}`) dan kategori.
+
+**Kuirk ditemukan saat riset**: `document_categories` punya kolom `slug`, TAPI
+`dokumen/page.tsx` filter kategorinya `eq(documents.categoryId, category)` — pakai **UUID id**
+langsung dari query param, BUKAN resolve slug→id seperti pola post/event/campaign yang
+konsisten. `buildDocumentCategoryUrl()` dibuat mengikuti perilaku NYATA halaman itu (pakai id),
+dicatat eksplisit di dokumen supaya kalau nanti `dokumen/page.tsx` diseragamkan ke pola slug,
+builder-nya diupdate bersamaan — jangan biarkan drift.
+
+**Fix — 5 tipe baru + 1 rute statis baru** ditambah ke `lib/public-url-registry.ts` +
+`app/api/ref/public-links/route.ts` (5 query paralel baru, total sekarang 12 query) +
+`components/ui/public-link-picker.tsx` (ikon baru): `event`, `event-category`, `campaign-category`,
+`document`, `document-category`, plus static route "Arsip Dokumen" (`/dokumen`).
+
+**Bug arsitektur custom domain ditemukan+difix — bagian TERPENTING dari sesi ini**: setelah
+memutuskan sekalian menuntaskan Fase 3 lama (field CTA Hero + CTA section masih `<Input>` teks
+bebas, belum pakai `PublicLinkPicker`), ditemukan gap nyata: `PublicLinkPicker` SELALU
+mengembalikan URL berprefix `/{slug}/...` (karena admin selalu edit dari `jalakarta.com/app/
+{slug}/...`, tidak pernah dari custom domain — sudah diisolasi sejak lama). Nav menu SUDAH benar
+menangani ini (`layout.tsx` strip prefix `/{slug}` sebelum render kalau `isCustomDomain`) — TAPI
+`HeroSection`/`CtaSection` (dua-duanya merender `d.ctaUrl`/`d.ctaSecondaryUrl` mentah ke
+`<PublicButton href=...>`) **TIDAK PERNAH melakukan stripping serupa** — `baseUrl` sudah jadi
+prop di `HeroSection` tapi cuma dipakai untuk href kartu "Agenda Terbaru"/"Berita Terbaru", tidak
+pernah untuk CTA button. Selama field itu masih `<Input>` bebas ini "aman" secara kebetulan
+(kalaupun admin ngetik manual, kemungkinan besar dia tidak tahu soal konvensi prefix slug) — tapi
+begitu diganti `PublicLinkPicker` yang SELALU mengembalikan `/{slug}/...`, bug ini akan langsung
+nyata: di custom domain, tombol CTA akan mengarah ke `visikita.com/visikita/campaign/...`
+(dobel-slug, 404) — persis kelas bug yang sudah berulang kali muncul & difix di sepanjang
+riwayat project ini untuk hardcoded link lain.
+
+**Fix**: helper murni baru `lib/strip-tenant-prefix.ts` (`stripTenantPrefix(href, slug)`, zero
+dependency, aman client maupun server — cukup string match `/{slug}` / `/{slug}/...`, selain itu
+dikembalikan apa adanya sehingga anchor `#section` dan URL eksternal tidak pernah tersentuh).
+Diterapkan di 3 titik render (daftar kanonik disimpan di dokumen arsitektur § 9, WAJIB diupdate
+kalau ada integrasi `PublicLinkPicker` baru ke depan):
+1. `layout.tsx` (nav menu) — direfactor pakai helper shared ini (DRY, perilaku identik, sebelumnya
+   logic inline sendiri).
+2. `hero-section.tsx` — strip `data.ctaUrl`/`data.ctaSecondaryUrl` SEKALI di dispatcher (sebelum
+   diteruskan ke `HeroDesign1`/`HeroDesign2`), bukan diulang di masing-masing file desain.
+3. `landing-template.tsx` (`CtaSection`) — ditambah prop `baseUrl`+`tenantSlug` (sebelumnya cuma
+   terima `data`), strip `ctaUrl` sebelum dirender.
+
+**Aturan digeneralisasi**: `PublicLinkPicker` HANYA menjamin URL yang dikembalikannya benar untuk
+PATH MODE (`jalakarta.com/{slug}/...`) — TIDAK PERNAH menjamin kebenarannya di custom domain.
+Setiap kali field baru diintegrasikan ke picker ini (widget area, dst — belum ada field href
+sama sekali di sana saat ini, tapi akan ada suatu saat), titik RENDER-nya di sisi publik WAJIB
+memanggil `stripTenantPrefix()` — jangan asumsikan "URL dari picker pasti sudah benar", karena
+justru sumber string-nya (konsisten `/{slug}/...`) itulah yang butuh transformasi tambahan di
+custom domain, sama seperti nav menu selama ini.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Belum diverifikasi visual di browser
+(khususnya: coba search Event/Dokumen/kategori Campaign di picker, dan coba render Hero/CTA
+section di tenant dengan custom domain aktif) — direkomendasikan dicoba user sebelum dianggap
+100% final, terutama bagian custom domain karena area ini historically rawan regresi diam-diam.
+
+### [2026-07-20] Public Link Picker — "Browsable" vs "Wajib Dicari", 2 Putaran Koreksi User
+
+Setelah refactor picker (lesson di atas) di-deploy ke dev, user coba langsung dan bilang search
+kategori/tag tidak ketemu — TERNYATA bukan bug: mereka mengetik "kategori"/"tag" (nama TIPE
+konten), sedangkan pencarian mencocokkan `q` terhadap NAMA SEBENARNYA kategori/tag ("Berita",
+"Olahraga", dikonfirmasi via query langsung ke DB lokal). Tapi user menegaskan lebih jauh: **mau
+kategori (dan tag) BENAR-BENAR ADA** begitu popover dibuka, tanpa perlu ketik apa pun dulu —
+sama seperti rute statis.
+
+**Fix (putaran 1)**: pisahkan konten dinamis jadi 2 kelas query di `/api/ref/public-links`:
+- **Selalu di-fetch** (kategori/tag lintas 5 modul: post/produk/event/campaign/dokumen) — kalau
+  `q` kosong, `.where()` diskip sepenuhnya (`qLike ? ilike(...) : undefined`), ambil SEMUA baris
+  sampai `BROWSE_LIMIT=50` (bukan cuma limit pencarian 6).
+- **Wajib `q` dulu** (post/produk/event/campaign/dokumen INDIVIDUAL + pesantren/usaha/profesional)
+  — tetap gated `!qLike ? Promise.resolve([]) : tdb.select(...)`, karena listnya bisa panjang.
+
+**Putaran 2 (koreksi susulan)**: user tanya lagi "halaman yang sudah dibuat juga tidak ada?" —
+gap yang SAMA PERSIS, cuma belum kepikiran untuk `pages` di putaran pertama. Root cause pola
+pikir yang salah: saya sempat mengelompokkan berdasarkan "ini taksonomi atau konten individual?"
+— padahal kriteria yang benar adalah **"realistis berapa banyak per tenant?"**. Halaman CMS
+(seperti kategori/tag) jumlahnya KECIL dan admin-curated (beberapa sampai puluhan halaman: Tentang,
+Kontak, FAQ, dst) — BUKAN taksonomi, tapi tetap masuk akal di-browse semua. Fix: pindahkan `pages`
+dari grup "wajib q" ke grup "selalu fetch", rename konstanta `TAXONOMY_LIMIT` → `BROWSE_LIMIT`
+(supaya namanya tidak lagi menyiratkan "cuma untuk taksonomi").
+
+**Aturan digeneralisasi**: kriteria "browsable vs wajib dicari" untuk field autocomplete
+BUKAN "apa jenis kontennya" (taksonomi/halaman/produk/dst) — tapi **"kalau tenant ini eksis
+bertahun-tahun, realistis list ini tetap puluhan (aman di-browse semua) atau bisa jadi ratusan
+(wajib dicari)?"**. Setiap kali menambah tipe konten baru ke picker manapun di aplikasi ini, tanya
+pertanyaan itu dulu — jangan asumsikan berdasarkan kategori konseptual semata, karena halaman CMS
+membuktikan sebuah "konten individual" (bukan taksonomi) bisa tetap browsable kalau jumlahnya
+realistis kecil.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error di kedua putaran fix. Doc
+`docs/arsitektur-public-link-picker.md` § 3/3a ditulis ulang untuk mencerminkan kriteria yang
+benar (bukan cuma "taksonomi"), termasuk halaman CMS di grup browsable.
+
+### [2026-07-20] BottomNav — Ikon Generik `Link2` Diganti Resolusi Per-Href + Redesain Floating Home
+
+User minta 2 hal sekaligus: (1) ikon per item BottomNav (tab nav situs di footer mobile, desain
+"Flex") harus SAMA dengan ikon yang dipakai `PublicLinkPicker` — sebelumnya SEMUA item render ikon
+generik `Link2`, terlepas link-nya menunjuk ke apa; (2) redesain visual — tombol Beranda melayang
+di tengah (floating action button style), bar melengkung, primary color + ikon putih.
+
+**Root cause ikon generik**: `NavItem` (`lib/nav-menu.ts`) cuma simpan `{id, label, href,
+external, order}` — TIDAK ADA field `type`, sejak migrasi dari model lama berbasis `type` (yang
+didokumentasikan di `docs/arsitektur-header-footer-publik.md` sebagai `NAV_TYPE_ICONS` — ternyata
+dokumen itu SUDAH LAMA STALE, kode aslinya sudah tidak eksis, ditemukan+dikoreksi sekalian). Tanpa
+`type`, `BottomNav` tidak pernah bisa lookup ikon secara langsung seperti `PublicLinkPicker` yang
+punya `PublicLink.type` pasti dari API.
+
+**Fix — modul ikon bersama baru**: `components/ui/public-link-icon.tsx` — SATU sumber kebenaran
+tabel ikon-per-tipe (dipindah dari duplikasi lokal di `public-link-picker.tsx`), dengan DUA fungsi
+resolve:
+- `iconForType(type, group)` — dipakai `PublicLinkPicker`, `type` sudah pasti dari API.
+- `iconForHref(href, baseUrl)` — dipakai `BottomNav`, infer tipe dari SEGMEN PERTAMA path
+  (`/post`→Newspaper, `/agenda`→Calendar, dst — mengikuti pola builder `public-url-registry.ts`
+  secara terbalik). Bekerja untuk nav item hasil pilih picker MAUPUN item lama/manual — TIDAK
+  butuh migrasi data, karena inferensi murni dari string href yang sudah tersimpan.
+
+**Redesain visual**: tombol Beranda SELALU tampil sebagai floating button di tengah bar
+(`absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2`, `bg-primary text-white`,
+`ring-[6px] ring-white` sebagai halo pemisah dari bar) — TIDAK diambil dari `nav_menu` (item yang
+kebetulan juga menunjuk beranda otomatis difilter via `isHomeHref()`, cegah duplikat). Item
+`nav_menu` lain dibagi 2 kiri + 2 kanan (celah tengah `w-16` untuk ruang tombol), sisanya tetap ke
+drawer "Lainnya" (ikonnya juga di-resolve sekarang, sebelumnya generik).
+
+**Koreksi putaran 2 (user coba langsung, 2 masukan)**:
+1. **Kiri 2 vs kanan 3 tidak seimbang** — implementasi awal: `left = items.slice(0,2)`,
+   `right = rest.slice(0,2)` (2 item), lalu tombol "Lainnya" DITAMBAHKAN lagi setelah `right` di
+   baris flex yang sama → kalau item > 4, kanan jadi 3 ikon (2 nav + Lainnya) vs kiri 2 — bukan
+   bug logic, murni salah hitung slot saat desain awal. Fix: cap `mainItems = items.slice(0,3)`
+   (maks 3 item nav ASLI, bukan 4), `left = mainItems.slice(0,2)`, `right = mainItems.slice(2,3)`
+   (0 atau 1 item) — tombol "Lainnya" (kalau ada overflow) mengisi slot ke-2 kanan, sehingga
+   kanan selalu ≤2 sama seperti kiri.
+2. **Floating button menonjol 50%, diminta 15-20%** — `-translate-y-1/2` (persentase CSS
+   transform relatif ke tinggi elemen ITU SENDIRI, bukan ke parent) menempatkan PUSAT tombol
+   persis di garis atas bar → separuh tinggi (50%) selalu di atas garis, separuh di bawah. Fix:
+   `-translate-y-[15%]` — geser naik cuma 15% dari tinggi elemen, sehingga cuma "puncak kecil"
+   yang menonjol di atas bar, sisanya (85%) visually duduk DI DALAM area bar (tetap kelihatan
+   penuh karena elemen `absolute` selalu dicat di atas sibling `static` terlepas urutan DOM —
+   bukan ketutup). Tambah `z-10` eksplisit + `ring-4` (dari `ring-[6px]`) untuk proporsi yang
+   lebih pas di ukuran tonjolan baru yang lebih kecil.
+
+Ini kelas kesalahan desain "pilih pola CSS yang GAMPANG ditulis (`-translate-y-1/2` = simetris,
+`slice(0,2)+slice(0,2)` = simetris terlihat) tapi TIDAK memverifikasi hasil visualnya sesuai
+spesifikasi user yang sebenarnya" — perlu diingat: tidak ada browser di environment ini untuk
+verifikasi visual sebelum user coba sendiri, jadi WAJIB baca ulang spesifikasi user kata-per-kata
+(bukan menerka pola "yang biasanya begini") saat tidak bisa verifikasi visual langsung.
+
+**Bug yang diantisipasi dari lesson sesi ini sendiri**: bar jadi lebih tinggi (`h-16`+`pt-3`=76px,
+sebelumnya `h-14`=56px) — spacer di `footer-bottom-nav.tsx` WAJIB ikut naik (`h-14`→`h-20`),
+kalau tidak persis mengulang bug "spacer tidak match tinggi elemen fixed" yang sudah ditemukan
+4× di sesi-sesi sebelumnya (§ `docs/arsitektur-mobile-shell.md`). Dicek dan difix BERSAMAAN,
+bukan menunggu laporan bug lagi.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error. Doc `docs/arsitektur-header-footer-
+publik.md` bagian "Icons per NavItemType"/wireframe lama (stale, dari model `type`-based) ditulis
+ulang total. `docs/arsitektur-mobile-shell.md` § 3 ditambah catatan perubahan tinggi spacer. Belum
+diverifikasi visual di browser — desain floating button perlu dicoba langsung untuk konfirmasi
+proporsi (ukuran 64px, overlap, halo ring) terasa pas di device sungguhan, bukan cuma dari kode.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Dokumentasi mobile shell dikonsolidasi ke `docs/arsitektur-mobile-
-  shell.md`** (lihat lesson di atas) — SEMUA pekerjaan mobile UI sesi ini (sticky bar keranjang/
+- Terakhir dikerjakan: **Koreksi proporsi BottomNav** (lihat lesson "Koreksi putaran 2" di atas)
+  — user coba desain floating-home pertama, minta 2 perbaikan: kiri/kanan diseimbangkan jadi
+  maks 2-2 (sebelumnya bisa 2 vs 3 kalau item > 4), dan tonjolan tombol Beranda dikecilkan dari
+  50% jadi 15% tinggi elemen. `tsc`+build bersih. Belum di-commit/push, menunggu user coba lagi
+  di browser.
+- Sesi sebelumnya: **BottomNav redesain awal (floating Beranda + ikon per-href) + Public Link
+  Picker jadi browsable untuk kategori/tag/halaman** (lihat lesson di atas) — proporsi awalnya
+  ternyata belum pas (lihat entri di atas untuk koreksinya).
+- Sesi sebelumnya: **Fix bug Combobox generik (cari-berdasar-UUID) + refactor Public Link
+  Picker** (lihat lesson di atas) — belum di-commit/push, menunggu user coba di browser dulu
+  (search PC IKPM di `/akun/lengkapi`, search Event/Dokumen/kategori Campaign di nav menu builder,
+  dan CTA Hero/CTA section di tenant custom domain).
+- Sesi sebelumnya: **Dokumentasi mobile shell dikonsolidasi ke `docs/arsitektur-mobile-
+  shell.md`** (lihat lesson di atas) — SEMUA pekerjaan mobile UI sesi itu (sticky bar keranjang/
   checkout, fix BottomNav global, header icon search+cart, Dialog+MobileActionSheet invoice, dan
   4× fix bug spacer) sudah **di-commit dan di-push**. `tsc`+build bersih di titik commit.
-  Lanjutan yang diminta user tapi BELUM dimulai: "refactoring pelan2 front-end lagi" — belum ada
-  arahan spesifik, tunggu instruksi lanjutan dari user sebelum memilih target refactor.
 - Sesi sebelumnya: **Fix "Kirim Konfirmasi" tidak merespons** (lihat lesson di atas) —
   bug LANGSUNG dari refactor Dialog+MobileActionSheet sebelumnya: dua Radix overlay (form
   Dialog/Sheet + AlertDialog konfirmasi) aktif bersamaan, saling ganggu (desktop: z-50 vs z-50

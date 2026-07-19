@@ -1,62 +1,110 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, Menu, X, ChevronDown, User, LogOut, Link2, LayoutDashboard } from "lucide-react";
+import { Search, Menu, X, ChevronDown, User, LogOut, Home, LayoutDashboard } from "lucide-react";
 import { authClient, signOut } from "@/lib/auth-client";
 import { type NavItem, resolveNavHref } from "@/lib/nav-menu";
 import type { HeaderProps } from "@/lib/header-designs";
 import { CartButton } from "@/components/website/public/layout/cart-button";
 import { checkDashboardAccessAction, getAkunAvatarAction } from "@/app/(public)/[tenant]/actions";
 import { PublicButton } from "@/components/website/public/ui/public-button";
+import { iconForHref } from "@/components/ui/public-link-icon";
 
-// ── Mobile bottom nav — maks 3 item + "Lainnya" ──────────────────────────────
+// ── Mobile bottom nav — Beranda melayang di tengah + maks 4 item + "Lainnya" ────────────────
 // Diekspor (dipakai `footer-bottom-nav.tsx`) — dirender OLEH LAYOUT SETELAH footer, BUKAN di
 // sini bersama <header>. Spacer-nya (h-14) harus reserve ruang di PALING BAWAH halaman (setelah
 // {children} + footer), bukan tepat di bawah header — kalau dibundel di sini, spacer nyangkut
 // di ATAS {children} karena FlexHeader dirender sebelum <main> oleh PublicLayout. Lihat lesson
 // CLAUDE.md soal bug ini (kelas sama dengan bug spacer /keranjang & /checkout).
+//
+// Ikon per item di-resolve dari pola href (iconForHref, lihat public-link-icon.tsx) — NavItem
+// tidak simpan metadata type, hanya href string, jadi tidak bisa lookup langsung seperti
+// PublicLinkPicker. Tabel ikonnya SAMA (satu sumber kebenaran), cuma cara resolve-nya beda.
+
+function isHomeHref(href: string, baseUrl: string): boolean {
+  return href === "/" || href === baseUrl || href === `${baseUrl}/`;
+}
+
+function NavIconLink({ item, baseUrl, onClick }: { item: NavItem; baseUrl: string; onClick?: () => void }) {
+  const href = resolveNavHref(item);
+  const Icon = iconForHref(href, baseUrl);
+  return (
+    <a
+      href={href}
+      target={item.external ? "_blank" : undefined}
+      rel={item.external ? "noopener noreferrer" : undefined}
+      onClick={onClick}
+      className="flex flex-col items-center gap-1 px-2 py-1 text-muted-foreground hover:text-foreground transition-colors"
+    >
+      <Icon className="h-5 w-5" />
+      <span className="text-[10px] leading-tight truncate max-w-[56px] text-center">
+        {item.label}
+      </span>
+    </a>
+  );
+}
 
 export function BottomNav({
   navMenu,
+  baseUrl,
 }: {
   navMenu: NavItem[];
+  baseUrl: string;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const main  = navMenu.slice(0, 3);
-  const extra = navMenu.slice(3);
+
+  // Beranda selalu tampil sebagai tombol melayang di tengah — item navMenu yang juga menunjuk
+  // ke beranda difilter agar tidak duplikat. Maks 3 item menu asli ditampilkan (kiri 2 + kanan 1),
+  // slot ke-4 (kanan) SELALU direservasi untuk "Lainnya" kalau ada overflow — supaya kiri/kanan
+  // selalu seimbang 2-2, bukan kiri 2 vs kanan 3 seperti sebelumnya.
+  const items         = navMenu.filter((item) => !isHomeHref(resolveNavHref(item), baseUrl));
+  const mainItems     = items.slice(0, 3);
+  const extra         = items.slice(3);
+  const hasMore       = extra.length > 0;
+  const left          = mainItems.slice(0, 2);
+  const right         = mainItems.slice(2, 3);
+  const homeHref      = baseUrl === "" ? "/" : `${baseUrl}/`;
 
   return (
     <>
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border">
-        <div className="flex items-center justify-around h-14">
-          {main.map((item) => {
-            const href = resolveNavHref(item);
-            return (
-              <a
-                key={item.id}
-                href={href}
-                target={item.external ? "_blank" : undefined}
-                rel={item.external ? "noopener noreferrer" : undefined}
-                className="flex flex-col items-center gap-0.5 px-3 py-1 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Link2 className="h-5 w-5" />
-                <span className="text-[10px] leading-tight truncate max-w-[52px] text-center">
-                  {item.label}
-                </span>
-              </a>
-            );
-          })}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50">
+        <div className="relative">
+          {/* Beranda — tombol melayang, HANYA ~15% tingginya yang overlap di atas garis bar
+              (bukan 50% — -translate-y-[15%] menggeser naik 15% dari tinggi elemen itu sendiri,
+              bukan 15% dari parent, karena persentase pada CSS transform relatif ke reference
+              box elemen sendiri) */}
+          <a
+            href={homeHref}
+            aria-label="Beranda"
+            className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-[15%] flex h-16 w-16 items-center justify-center rounded-full bg-primary text-white shadow-lg ring-4 ring-white transition-transform active:scale-95"
+          >
+            <Home className="h-6 w-6" />
+          </a>
 
-          {extra.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setDrawerOpen(true)}
-              className="flex flex-col items-center gap-0.5 px-3 py-1 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Menu className="h-5 w-5" />
-              <span className="text-[10px]">Lainnya</span>
-            </button>
-          )}
+          <div className="bg-white border-t border-border rounded-t-3xl shadow-[0_-8px_24px_rgba(0,0,0,0.08)] pt-3">
+            <div className="flex items-center justify-around h-16 px-1">
+              {left.map((item) => (
+                <NavIconLink key={item.id} item={item} baseUrl={baseUrl} />
+              ))}
+
+              <div className="w-16 shrink-0" aria-hidden="true" />
+
+              {right.map((item) => (
+                <NavIconLink key={item.id} item={item} baseUrl={baseUrl} />
+              ))}
+
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(true)}
+                  className="flex flex-col items-center gap-1 px-2 py-1 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Menu className="h-5 w-5" />
+                  <span className="text-[10px]">Lainnya</span>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </nav>
 
@@ -81,6 +129,7 @@ export function BottomNav({
             <nav className="px-4 py-2 space-y-0.5 max-h-80 overflow-y-auto">
               {extra.map((item) => {
                 const href = resolveNavHref(item);
+                const Icon = iconForHref(href, baseUrl);
                 return (
                   <a
                     key={item.id}
@@ -90,7 +139,7 @@ export function BottomNav({
                     onClick={() => setDrawerOpen(false)}
                     className="flex items-center gap-3 px-2 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-lg transition-colors"
                   >
-                    <Link2 className="h-4 w-4 shrink-0" />
+                    <Icon className="h-4 w-4 shrink-0" />
                     {item.label}
                   </a>
                 );

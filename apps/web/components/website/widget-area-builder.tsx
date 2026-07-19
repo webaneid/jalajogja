@@ -99,7 +99,7 @@ export function WidgetAreaBuilder({ areaId, initial, categories, tags, onSave }:
 
   return (
     <div className="space-y-4">
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext id="widget-area-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
           {sections.map(section => (
             <SortableSection

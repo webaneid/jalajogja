@@ -30,6 +30,7 @@ import { MediaPicker } from "@/components/media/media-picker";
 import type { MediaItem } from "@/components/media/media-picker";
 import { GalleryPicker } from "@/components/gallery/gallery-picker";
 import type { GalleryItem } from "@/lib/gallery";
+import { PublicLinkPicker } from "@/components/ui/public-link-picker";
 
 type EditorProps = {
   data:             Record<string, unknown>;
@@ -91,13 +92,13 @@ function HeroEditor({ data, onChange, variant, onVariantChange, tenantSlug }: Ed
       <Field label="Tombol Utama">
         <div className="grid grid-cols-2 gap-2">
           <Input value={d.ctaLabel ?? ""} onChange={(e) => u("ctaLabel", e.target.value)} placeholder="Teks tombol" />
-          <Input value={d.ctaUrl ?? ""} onChange={(e) => u("ctaUrl", e.target.value)} placeholder="URL / #" />
+          <PublicLinkPicker slug={tenantSlug ?? ""} value={d.ctaUrl ?? ""} onChange={(url) => u("ctaUrl", url)} placeholder="Pilih halaman atau URL..." />
         </div>
       </Field>
       <Field label="Tombol Kedua (opsional)">
         <div className="grid grid-cols-2 gap-2">
           <Input value={d.ctaSecondaryLabel ?? ""} onChange={(e) => u("ctaSecondaryLabel", e.target.value)} placeholder="Teks tombol" />
-          <Input value={d.ctaSecondaryUrl ?? ""} onChange={(e) => u("ctaSecondaryUrl", e.target.value)} placeholder="URL / #" />
+          <PublicLinkPicker slug={tenantSlug ?? ""} value={d.ctaSecondaryUrl ?? ""} onChange={(url) => u("ctaSecondaryUrl", url)} placeholder="Pilih halaman atau URL..." />
         </div>
       </Field>
       <Field label="Gambar (dari Media Library)">
@@ -652,7 +653,7 @@ function FeaturesEditor({ data, onChange }: EditorProps) {
 
 // ── CTA ───────────────────────────────────────────────────────────────────────
 
-function CtaEditor({ data, onChange }: EditorProps) {
+function CtaEditor({ data, onChange, tenantSlug }: EditorProps) {
   const d = data as { title?: string; subtitle?: string; ctaLabel?: string; ctaUrl?: string };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   return (
@@ -666,7 +667,7 @@ function CtaEditor({ data, onChange }: EditorProps) {
       <Field label="Tombol">
         <div className="grid grid-cols-2 gap-2">
           <Input value={d.ctaLabel ?? ""} onChange={(e) => u("ctaLabel", e.target.value)} placeholder="Teks tombol" />
-          <Input value={d.ctaUrl ?? ""} onChange={(e) => u("ctaUrl", e.target.value)} placeholder="URL / #" />
+          <PublicLinkPicker slug={tenantSlug ?? ""} value={d.ctaUrl ?? ""} onChange={(url) => u("ctaUrl", url)} placeholder="Pilih halaman atau URL..." />
         </div>
       </Field>
       <p className="text-[11px] text-muted-foreground">Background otomatis menggunakan warna sekunder tenant.</p>

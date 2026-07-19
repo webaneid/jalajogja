@@ -153,9 +153,16 @@ Dua row terpisah. Komponen ini `"use client"` — mengambil session via `authCli
 - Kanan: "Masuk" + "Daftar" jika belum login, atau dropdown user jika sudah login
 - Separator antara TopBar dan NavBar: `border-gray-200` (lebih terang dari search `border-gray-300`)
 
-### Mobile — Bottom Navigation Bar
+### Mobile — Bottom Navigation Bar (redesain 2026-07-20)
 
-Header mobile tidak menampilkan NavBar. Sebagai gantinya: **fixed bottom navigation bar**.
+> Status sebelumnya ✅ Selesai (dalam FlexHeader) — REDESAIN total 2026-07-20, konten di bawah
+> ini menggantikan versi lama sepenuhnya (wireframe + "Icons per NavItemType" lama dihapus,
+> keduanya sudah basi sejak `NavItem` migrasi dari model `type`-based ke href-only, lihat
+> `parseNavMenu` di `lib/nav-menu.ts`).
+
+Header mobile tidak menampilkan NavBar. Sebagai gantinya: **fixed bottom navigation bar** dengan
+tombol **Beranda melayang di tengah** (floating action button style — bg-primary, ikon putih,
+overlap di atas garis bar, dikelilingi `ring-[6px] ring-white` sebagai halo pemisah).
 
 ```
 ┌────────────────────────────────────┐
@@ -164,36 +171,50 @@ Header mobile tidak menampilkan NavBar. Sebagai gantinya: **fixed bottom navigat
 
 ...konten halaman...
 
-┌────────────────────────────────────┐
-│  🏠       📰       🛒      ☰      │  ← Bottom nav fixed
-│ Home    Berita    Toko    Lainnya  │
-└────────────────────────────────────┘
+                ╭────╮
+        ┌───────┤ 🏠 ├───────┐          ← tombol Beranda melayang (bg-primary, overlap)
+        │       ╰────╯       │
+┌───────┴─────────────┴──────┴────────┐
+│  📰    🛒         🎫    ☰           │  ← bar rounded-t-3xl, shadow
+│Berita  Toko      Event  Lainnya     │
+└──────────────────────────────────────┘
 ```
 
-- Maks 3 item pertama dari `nav_menu` + slot "Lainnya" (icon Menu)
-- Tombol "Lainnya" → drawer slide-up berisi sisa menu
+- **Beranda** SELALU tampil sebagai tombol melayang di tengah — tidak diambil dari `nav_menu`
+  (item `nav_menu` yang kebetulan juga menunjuk ke beranda otomatis difilter, cegah duplikat)
+- Maks 2 item kiri + 2 item kanan dari `nav_menu` (setelah beranda difilter) + slot "Lainnya"
+  (icon Menu) kalau masih ada sisa
+- Tombol "Lainnya" → drawer slide-up berisi sisa menu, ikon per item tetap di-resolve (bukan
+  generik lagi)
 - Breakpoint: bottom nav aktif di `< md` (< 768px), NavBar aktif di `>= md`
-- Icons pakai **lucide-react** (bukan emoji) via mapping `NAV_TYPE_ICONS` di `lib/nav-menu.ts`
+- Bar: `bg-white rounded-t-3xl border-t border-border shadow-[0_-8px_24px_rgba(0,0,0,0.08)]`,
+  tinggi `h-16` + `pt-3` (total 76px — spacer di `footer-bottom-nav.tsx` WAJIB `h-20`, bukan
+  `h-14` lama, lihat `docs/arsitektur-mobile-shell.md`)
 
 ---
 
-## Icons per NavItemType
+## Ikon Nav Item — Satu Sumber Kebenaran dengan `PublicLinkPicker`
 
-Mapping di `lib/nav-menu.ts` (lucide-react):
+**File**: `components/ui/public-link-icon.tsx` — dipakai BERSAMA oleh `PublicLinkPicker`
+(`components/ui/public-link-picker.tsx`) dan `BottomNav` (`headers/flex-header.tsx`). Sebelumnya
+setiap item bottom nav render ikon generik `Link2` — karena `NavItem` (`lib/nav-menu.ts`) hanya
+menyimpan `{id, label, href, external, order}`, TIDAK ADA field `type` sejak migrasi dari model
+lama `NAV_TYPE_ICONS` (yang didokumentasikan salah di versi lama section ini — field itu sudah
+lama tidak eksis di kode).
 
-```typescript
-import { FileText, Newspaper, Calendar, ShoppingBag, Heart, Link2 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+**Dua cara resolve ikon, dari file yang sama**:
+- `iconForType(type, group)` — dipakai `PublicLinkPicker`, `type` sudah pasti diketahui langsung
+  dari respons `/api/ref/public-links` (§ lihat `docs/arsitektur-public-link-picker.md`).
+- `iconForHref(href, baseUrl)` — dipakai `BottomNav`, infer tipe dari pola SEGMEN PERTAMA path
+  (`/post` → Newspaper, `/agenda` → Calendar, `/produk` → ShoppingBag, dst — mengikuti pola
+  builder `lib/public-url-registry.ts` secara terbalik). Bekerja untuk nav item hasil pilih dari
+  picker MAUPUN yang diketik manual/item lama — tidak butuh migrasi data apa pun, karena inferensi
+  murni dari string href yang sudah tersimpan.
 
-export const NAV_TYPE_ICONS: Record<NavItemType, LucideIcon> = {
-  page:   FileText,
-  blog:   Newspaper,
-  event:  Calendar,
-  toko:   ShoppingBag,
-  donasi: Heart,
-  custom: Link2,
-};
-```
+**Aturan**: kalau menambah tipe konten baru ke `PublicLinkType` (lihat
+`docs/arsitektur-public-link-picker.md`), WAJIB tambah entry ikonnya juga di
+`public-link-icon.tsx` — SATU tempat, otomatis berlaku untuk picker DAN bottom nav sekaligus.
+Jangan pernah menulis ulang tabel ikon terpisah di komponen lain.
 
 ---
 

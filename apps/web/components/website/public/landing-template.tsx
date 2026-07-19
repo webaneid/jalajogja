@@ -18,6 +18,7 @@ import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import { PostsSectionTitle } from "@/components/website/public/sections/posts/posts-section-title";
 import { renderAccentTitle } from "@/lib/render-accent-title";
+import { stripTenantPrefix } from "@/lib/strip-tenant-prefix";
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
@@ -98,8 +99,11 @@ function FeaturesSection({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-function CtaSection({ data }: { data: Record<string, unknown> }) {
+function CtaSection({ data, baseUrl, tenantSlug }: { data: Record<string, unknown>; baseUrl: string; tenantSlug: string }) {
   const d = data as { title?: string; subtitle?: string; ctaLabel?: string; ctaUrl?: string };
+  // ctaUrl (dari PublicLinkPicker) selalu berprefix "/{slug}/..." — strip di custom domain.
+  // Lihat docs/arsitektur-public-link-picker.md § 9.
+  const ctaUrl = d.ctaUrl && baseUrl === "" ? stripTenantPrefix(d.ctaUrl, tenantSlug) : d.ctaUrl;
 
   return (
     <section className="relative overflow-hidden px-4 bg-secondary text-secondary-foreground" style={{ paddingTop: 96, paddingBottom: 96 }}>
@@ -126,8 +130,8 @@ function CtaSection({ data }: { data: Record<string, unknown> }) {
             {d.subtitle}
           </p>
         )}
-        {d.ctaLabel && d.ctaUrl && (
-          <PublicButton href={d.ctaUrl as string} variant="light" size="lg">
+        {d.ctaLabel && ctaUrl && (
+          <PublicButton href={ctaUrl} variant="light" size="lg">
             {d.ctaLabel as string}
           </PublicButton>
         )}
@@ -297,7 +301,7 @@ function SectionRenderer({
     case "gallery":      return <GallerySection       data={section.data} />;
     case "about_text":   return <AboutTextSection     data={section.data} />;
     case "features":     return <FeaturesSection      data={section.data} />;
-    case "cta":          return <CtaSection           data={section.data} />;
+    case "cta":          return <CtaSection           data={section.data} baseUrl={baseUrl} tenantSlug={tenantSlug} />;
     case "contact_info": return <ContactInfoSection   settings={contactSettings} />;
     case "stats":        return <StatsSection         data={section.data} />;
     case "divider":      return <DividerSection       data={section.data} />;

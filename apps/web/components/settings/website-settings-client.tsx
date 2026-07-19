@@ -276,6 +276,7 @@ export function WebsiteSettingsClient({
         </div>
 
         <DndContext
+          id="nav-menu-dnd"
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}

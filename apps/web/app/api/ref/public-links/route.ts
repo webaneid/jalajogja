@@ -23,14 +23,20 @@ import {
   buildPostTagUrl,
   buildProductUrl,
   buildProductCategoryUrl,
+  buildEventUrl,
+  buildEventCategoryUrl,
   buildCampaignUrl,
+  buildCampaignCategoryUrl,
+  buildDocumentUrl,
+  buildDocumentCategoryUrl,
   buildPesantrenUrl,
   buildUsahaUrl,
   buildProfesionalUrl,
   type PublicLink,
 } from "@/lib/public-url-registry";
 
-const LIMIT = 6;
+const LIMIT        = 6;   // konten yang bisa banyak (post/produk/event/dst) — wajib search dulu
+const BROWSE_LIMIT = 50;  // list pendek & admin-curated (halaman, kategori, tag) — aman ditampilkan semua tanpa search
 
 export async function GET(req: NextRequest) {
   const slug = req.nextUrl.searchParams.get("slug") ?? "";
@@ -46,24 +52,28 @@ export async function GET(req: NextRequest) {
   // Rute statis — selalu tampil (filter by q jika ada)
   const staticLinks = getStaticLinks(slug, q || undefined);
 
-  // Jika query kosong, kembalikan hanya statis
-  if (!q) {
-    return NextResponse.json({ links: staticLinks });
-  }
-
-  const qLike        = `%${q}%`;
-  const tenantClient = createTenantDb(slug);
+  const qLike         = q ? `%${q}%` : null;
+  const tenantClient  = createTenantDb(slug);
   const { db: tdb, schema } = tenantClient;
 
-  // Fetch semua konten dinamis secara paralel
+  // Fetch semua konten dinamis secara paralel.
+  // Halaman + taksonomi (kategori/tag) SELALU di-fetch — list-nya pendek & admin-curated
+  // (LIMIT 50), jadi aman langsung tampil begitu popover dibuka tanpa perlu ketik dulu, persis
+  // seperti rute statis. Konten yang bisa terus bertambah (post/produk/event/campaign/dokumen/
+  // pesantren/usaha/profesional) TETAP butuh `q` dulu — listnya bisa panjang.
   const [
     pages,
-    posts,
     postCats,
     postTags,
-    products,
     productCats,
+    eventCats,
+    campaignCats,
+    documentCats,
+    posts,
+    products,
+    events,
     campaigns,
+    documents,
     pesantrenList,
     usahaList,
     profesionalList,
@@ -71,47 +81,77 @@ export async function GET(req: NextRequest) {
     // Halaman CMS
     tdb.select({ slug: schema.pages.slug, title: schema.pages.title })
       .from(schema.pages)
-      .where(and(eq(schema.pages.status, "published"), ilike(schema.pages.title, qLike)))
-      .limit(LIMIT),
-
-    // Post individual
-    tdb.select({ slug: schema.posts.slug, title: schema.posts.title })
-      .from(schema.posts)
-      .where(and(eq(schema.posts.status, "published"), ilike(schema.posts.title, qLike)))
-      .limit(LIMIT),
+      .where(qLike ? and(eq(schema.pages.status, "published"), ilike(schema.pages.title, qLike)) : eq(schema.pages.status, "published"))
+      .limit(BROWSE_LIMIT),
 
     // Kategori post
     tdb.select({ slug: schema.postCategories.slug, name: schema.postCategories.name })
       .from(schema.postCategories)
-      .where(ilike(schema.postCategories.name, qLike))
-      .limit(LIMIT),
+      .where(qLike ? ilike(schema.postCategories.name, qLike) : undefined)
+      .limit(BROWSE_LIMIT),
 
     // Tag post
     tdb.select({ slug: schema.postTags.slug, name: schema.postTags.name })
       .from(schema.postTags)
-      .where(ilike(schema.postTags.name, qLike))
-      .limit(LIMIT),
-
-    // Produk
-    tdb.select({ slug: schema.products.slug, name: schema.products.name })
-      .from(schema.products)
-      .where(and(eq(schema.products.status, "active"), ilike(schema.products.name, qLike)))
-      .limit(LIMIT),
+      .where(qLike ? ilike(schema.postTags.name, qLike) : undefined)
+      .limit(BROWSE_LIMIT),
 
     // Kategori produk
     tdb.select({ slug: schema.productCategories.slug, name: schema.productCategories.name })
       .from(schema.productCategories)
-      .where(ilike(schema.productCategories.name, qLike))
+      .where(qLike ? ilike(schema.productCategories.name, qLike) : undefined)
+      .limit(BROWSE_LIMIT),
+
+    // Kategori event
+    tdb.select({ slug: schema.eventCategories.slug, name: schema.eventCategories.name })
+      .from(schema.eventCategories)
+      .where(qLike ? ilike(schema.eventCategories.name, qLike) : undefined)
+      .limit(BROWSE_LIMIT),
+
+    // Kategori campaign
+    tdb.select({ slug: schema.campaignCategories.slug, name: schema.campaignCategories.name })
+      .from(schema.campaignCategories)
+      .where(qLike ? ilike(schema.campaignCategories.name, qLike) : undefined)
+      .limit(BROWSE_LIMIT),
+
+    // Kategori dokumen (URL builder pakai id, bukan slug — lihat § 2d dokumen arsitektur)
+    tdb.select({ id: schema.documentCategories.id, name: schema.documentCategories.name })
+      .from(schema.documentCategories)
+      .where(qLike ? ilike(schema.documentCategories.name, qLike) : undefined)
+      .limit(BROWSE_LIMIT),
+
+    // Post individual — hanya kalau ada query
+    !qLike ? Promise.resolve([]) : tdb.select({ slug: schema.posts.slug, title: schema.posts.title })
+      .from(schema.posts)
+      .where(and(eq(schema.posts.status, "published"), ilike(schema.posts.title, qLike)))
       .limit(LIMIT),
 
-    // Campaign / donasi
-    tdb.select({ slug: schema.campaigns.slug, title: schema.campaigns.title })
+    // Produk — hanya kalau ada query
+    !qLike ? Promise.resolve([]) : tdb.select({ slug: schema.products.slug, name: schema.products.name })
+      .from(schema.products)
+      .where(and(eq(schema.products.status, "active"), ilike(schema.products.name, qLike)))
+      .limit(LIMIT),
+
+    // Event individual — hanya kalau ada query
+    !qLike ? Promise.resolve([]) : tdb.select({ slug: schema.events.slug, title: schema.events.title })
+      .from(schema.events)
+      .where(and(eq(schema.events.status, "published"), ilike(schema.events.title, qLike)))
+      .limit(LIMIT),
+
+    // Campaign / donasi — hanya kalau ada query
+    !qLike ? Promise.resolve([]) : tdb.select({ slug: schema.campaigns.slug, title: schema.campaigns.title })
       .from(schema.campaigns)
       .where(and(eq(schema.campaigns.status, "active"), ilike(schema.campaigns.title, qLike)))
       .limit(LIMIT),
 
-    // Pesantren (public schema, scope ke tenant)
-    db.select({ id: memberOwnedPesantren.id, name: memberOwnedPesantren.name })
+    // Dokumen individual — hanya yang visibility publik, hanya kalau ada query
+    !qLike ? Promise.resolve([]) : tdb.select({ id: schema.documents.id, title: schema.documents.title })
+      .from(schema.documents)
+      .where(and(eq(schema.documents.visibility, "public"), ilike(schema.documents.title, qLike)))
+      .limit(LIMIT),
+
+    // Pesantren (public schema, scope ke tenant) — hanya kalau ada query
+    !qLike ? Promise.resolve([]) : db.select({ id: memberOwnedPesantren.id, name: memberOwnedPesantren.name })
       .from(memberOwnedPesantren)
       .innerJoin(members, eq(members.id, memberOwnedPesantren.memberId))
       .innerJoin(tenantMemberships, and(
@@ -121,8 +161,8 @@ export async function GET(req: NextRequest) {
       .where(ilike(memberOwnedPesantren.name, qLike))
       .limit(LIMIT),
 
-    // Usaha (public schema, scope ke tenant)
-    db.select({ id: memberBusinesses.id, name: memberBusinesses.name })
+    // Usaha (public schema, scope ke tenant) — hanya kalau ada query
+    !qLike ? Promise.resolve([]) : db.select({ id: memberBusinesses.id, name: memberBusinesses.name })
       .from(memberBusinesses)
       .innerJoin(members, eq(members.id, memberBusinesses.memberId))
       .innerJoin(tenantMemberships, and(
@@ -132,8 +172,8 @@ export async function GET(req: NextRequest) {
       .where(and(eq(memberBusinesses.isActive, true), ilike(memberBusinesses.name, qLike)))
       .limit(LIMIT),
 
-    // Profesional (public schema, scope ke tenant)
-    db.select({ id: memberProfessionals.id, title: memberProfessionals.title, professionType: memberProfessionals.professionType })
+    // Profesional (public schema, scope ke tenant) — hanya kalau ada query
+    !qLike ? Promise.resolve([]) : db.select({ id: memberProfessionals.id, title: memberProfessionals.title, professionType: memberProfessionals.professionType })
       .from(memberProfessionals)
       .innerJoin(members, eq(members.id, memberProfessionals.memberId))
       .innerJoin(tenantMemberships, and(
@@ -151,7 +191,12 @@ export async function GET(req: NextRequest) {
     ...postTags.map(t => ({ label: t.name, url: buildPostTagUrl(slug, t.slug),         group: "Tag Post",        type: "post-tag"         as const })),
     ...products.map(p => ({ label: p.name, url: buildProductUrl(slug, p.slug),         group: "Produk",          type: "product"          as const })),
     ...productCats.map(c => ({ label: c.name, url: buildProductCategoryUrl(slug, c.slug), group: "Kategori Produk", type: "product-category" as const })),
+    ...events.map(e => ({ label: e.title, url: buildEventUrl(slug, e.slug),            group: "Agenda",          type: "event"            as const })),
+    ...eventCats.map(c => ({ label: c.name, url: buildEventCategoryUrl(slug, c.slug),  group: "Kategori Agenda", type: "event-category"   as const })),
     ...campaigns.map(c => ({ label: c.title, url: buildCampaignUrl(slug, c.slug),      group: "Donasi",          type: "campaign"         as const })),
+    ...campaignCats.map(c => ({ label: c.name, url: buildCampaignCategoryUrl(slug, c.slug), group: "Kategori Donasi", type: "campaign-category" as const })),
+    ...documents.map(d => ({ label: d.title, url: buildDocumentUrl(slug, d.id),        group: "Dokumen",         type: "document"         as const })),
+    ...documentCats.map(c => ({ label: c.name, url: buildDocumentCategoryUrl(slug, c.id), group: "Kategori Dokumen", type: "document-category" as const })),
     ...pesantrenList.map(p => ({ label: p.name, url: buildPesantrenUrl(slug, p.id),    group: "Direktori",       type: "pesantren"        as const })),
     ...usahaList.map(u => ({ label: u.name,  url: buildUsahaUrl(slug, u.id),           group: "Direktori",       type: "usaha"            as const })),
     ...profesionalList.map(p => ({ label: [p.title, p.professionType].filter(Boolean).join(" "), url: buildProfesionalUrl(slug, p.id), group: "Direktori", type: "profesional" as const })),

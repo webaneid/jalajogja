@@ -188,6 +188,7 @@ export function LinktreeEditor({ value, onChange }: Props) {
         </p>
 
         <DndContext
+          id="linktree-dnd"
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}

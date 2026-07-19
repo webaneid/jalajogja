@@ -7,6 +7,7 @@ import { FooterBottomNav } from "@/components/website/public/layout/footer-botto
 import { parseNavMenu } from "@/lib/nav-menu";
 import { buildTenantThemeCss, getGoogleFontsUrl } from "@/lib/theme-palette";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
+import { stripTenantPrefix } from "@/lib/strip-tenant-prefix";
 import type { Metadata } from "next";
 
 type Params = Promise<{ tenant: string }>;
@@ -82,12 +83,7 @@ export default async function PublicLayout({
   // Jika custom domain: strip slug prefix dari semua nav href agar link tampil clean
   const rawNavMenu = parseNavMenu(websiteSettings.nav_menu, slug);
   const navMenu    = isCustomDomain
-    ? rawNavMenu.map((item) => ({
-        ...item,
-        href: item.href.startsWith(`/${slug}/`) ? item.href.slice(`/${slug}`.length)
-            : item.href === `/${slug}`           ? "/"
-            : item.href,
-      }))
+    ? rawNavMenu.map((item) => ({ ...item, href: stripTenantPrefix(item.href, slug) }))
     : rawNavMenu;
   const headerDesign   = (displaySettings.header_design     as string | undefined) ?? "flex";
   const footerDesign   = (displaySettings.footer_design     as string | undefined) ?? "dark";

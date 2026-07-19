@@ -10,63 +10,23 @@ import {
 } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Home, Newspaper, Calendar, ShoppingBag, Heart, Users,
-  School, Briefcase, BarChart2, ShoppingCart, LogIn, UserPlus,
-  LayoutDashboard, Receipt, FileText, Hash, Tag, Layers, Globe,
-  ChevronDown, X,
-} from "lucide-react";
+import { Globe, ChevronDown, X } from "lucide-react";
 import type { PublicLinkType, PublicLink } from "@/lib/public-url-registry";
+import { iconForType, iconForStaticLabel } from "@/components/ui/public-link-icon";
 import { cn } from "@/lib/utils";
 
-// Ikon per tipe dan grup
+// Ikon per tipe/grup/label — lihat components/ui/public-link-icon.tsx (satu-satunya sumber
+// kebenaran, dipakai bersama oleh BottomNav mobile juga).
 function LinkIcon({ type, group, className }: { type: PublicLinkType; group: string; className?: string }) {
   const cls = cn("h-3.5 w-3.5 shrink-0 text-muted-foreground", className);
-  if (type === "static") {
-    const g = group;
-    if (g === "Akun") {
-      return <LayoutDashboard className={cls} />;
-    }
-    if (g === "Transaksi") return <ShoppingCart className={cls} />;
-    if (g === "Direktori") return <Users className={cls} />;
-    return <Globe className={cls} />;
-  }
-  const icons: Record<PublicLinkType, React.ReactNode> = {
-    "static":           <Globe className={cls} />,
-    "page":             <FileText className={cls} />,
-    "post":             <Newspaper className={cls} />,
-    "post-category":    <Tag className={cls} />,
-    "post-tag":         <Hash className={cls} />,
-    "product":          <ShoppingBag className={cls} />,
-    "product-category": <Layers className={cls} />,
-    "campaign":         <Heart className={cls} />,
-    "pesantren":        <School className={cls} />,
-    "usaha":            <Briefcase className={cls} />,
-    "profesional":      <Briefcase className={cls} />,
-  };
-  return <>{icons[type] ?? <Globe className={cls} />}</>;
+  const Icon = iconForType(type, group);
+  return <Icon className={cls} />;
 }
 
-// Ikon spesifik untuk rute statis
 function StaticIcon({ label, className }: { label: string; className?: string }) {
   const cls = cn("h-3.5 w-3.5 shrink-0 text-muted-foreground", className);
-  const map: Record<string, React.ReactNode> = {
-    "Beranda":              <Home className={cls} />,
-    "Arsip Postingan":      <Newspaper className={cls} />,
-    "Agenda / Event":       <Calendar className={cls} />,
-    "Direktori Produk":     <ShoppingBag className={cls} />,
-    "Donasi & Campaign":    <Heart className={cls} />,
-    "Direktori Anggota":    <Users className={cls} />,
-    "Direktori Pesantren":  <School className={cls} />,
-    "Direktori Usaha":      <Briefcase className={cls} />,
-    "Statistik":            <BarChart2 className={cls} />,
-    "Keranjang Belanja":    <ShoppingCart className={cls} />,
-    "Login":                <LogIn className={cls} />,
-    "Register":             <UserPlus className={cls} />,
-    "Dashboard Akun":       <LayoutDashboard className={cls} />,
-    "Riwayat Transaksi":    <Receipt className={cls} />,
-  };
-  return <>{map[label] ?? <Globe className={cls} />}</>;
+  const Icon = iconForStaticLabel(label);
+  return <Icon className={cls} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

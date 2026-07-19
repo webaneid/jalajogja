@@ -98,6 +98,15 @@ satu-satunya pemanggilnya sekarang. `FooterBottomNav` sendiri client component y
 kondisi di § 2 (`designId !== "flex"` → null, `isSingleMobileRoute` → null,
 `hasOwnMobileActionBar` → null) sebelum render.
 
+**Update 2026-07-20 — redesain visual + spacer berubah tinggi**: `BottomNav` direnovasi total
+(tombol Beranda melayang di tengah, ikon per item di-resolve dari href alih-alih generik `Link2`
+— detail penuh di `docs/arsitektur-header-footer-publik.md` § "Mobile — Bottom Navigation Bar").
+Bar sekarang lebih tinggi (`h-16` + `pt-3` = 76px, sebelumnya `h-14` = 56px) — spacer di
+`footer-bottom-nav.tsx` ikut disesuaikan ke `h-20`. **Setiap kali visual `BottomNav` diubah lagi
+ke depan, WAJIB cek ulang tinggi spacer ini** — persis aturan § 5 di dokumen ini (spacer harus
+selalu match tinggi elemen fixed sungguhan), berlaku juga untuk komponen yang sudah lama ada,
+bukan cuma yang baru dibuat.
+
 **Aturan untuk desain header BARU** (kalau nanti ada desain ke-4 dst yang juga butuh tab
 navigasi bawah ala BottomNav): JANGAN bundel tab nav + spacer-nya di dalam file header itu
 sendiri. Ekspor komponennya, render dari `FooterBottomNav` (atau turunan generik yang serupa),

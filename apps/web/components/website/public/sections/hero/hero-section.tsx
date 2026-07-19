@@ -7,6 +7,7 @@ import {
 import type { HeroSectionData, HeroSectionDesignId, HeroCardData, FunfactId, FunfactResult } from "@/lib/hero-section-designs";
 import { FUNFACT_CATALOG, FUNFACT_MAX } from "@/lib/hero-section-designs";
 import { formatRp } from "@/lib/campaign-card-templates";
+import { stripTenantPrefix } from "@/lib/strip-tenant-prefix";
 import { HeroDesign1 } from "./hero-design-1";
 import { HeroDesign2 } from "./hero-design-2";
 
@@ -21,14 +22,25 @@ type Props = {
 export async function HeroSection({ data, variant, tenantClient, tenantSlug, baseUrl }: Props) {
   const heroCard = data.imageUrl ? await fetchHeroCard(tenantClient, baseUrl) : null;
 
+  // CTA URL (dari PublicLinkPicker) selalu berprefix "/{slug}/..." — strip di custom domain,
+  // satu titik untuk kedua desain. Lihat docs/arsitektur-public-link-picker.md § 9.
+  const isCustomDomain = baseUrl === "";
+  const strippedData: HeroSectionData = isCustomDomain
+    ? {
+        ...data,
+        ctaUrl:          data.ctaUrl          ? stripTenantPrefix(data.ctaUrl, tenantSlug)          : data.ctaUrl,
+        ctaSecondaryUrl: data.ctaSecondaryUrl ? stripTenantPrefix(data.ctaSecondaryUrl, tenantSlug) : data.ctaSecondaryUrl,
+      }
+    : data;
+
   if (variant === "2") {
     const funfacts = data.showModuleStrip && data.funfactItems?.length
       ? await fetchFunfacts(tenantClient, tenantSlug, data.funfactItems)
       : [];
-    return <HeroDesign2 data={data} baseUrl={baseUrl} heroCard={heroCard} funfacts={funfacts} />;
+    return <HeroDesign2 data={strippedData} baseUrl={baseUrl} heroCard={heroCard} funfacts={funfacts} />;
   }
 
-  return <HeroDesign1 data={data} baseUrl={baseUrl} heroCard={heroCard} />;
+  return <HeroDesign1 data={strippedData} baseUrl={baseUrl} heroCard={heroCard} />;
 }
 
 // Kartu mengambang — event mendatang, fallback ke berita terbaru. Dipakai kedua desain.
