@@ -353,10 +353,12 @@ export async function confirmInvoicePaymentAction(
       const uniqueCode = lockedInv.uniqueCode ?? 0;
       const amountDue  = total + uniqueCode;
       const paidSoFar  = parseFloat(String(lockedInv.paidAmount));
-      const remaining  = amountDue - paidSoFar;
 
-      if (data.amount > remaining)
-        throw new Error(`Jumlah melebihi sisa tagihan (Rp ${remaining.toLocaleString("id-ID")}).`);
+      // Overpayment DIIZINKAN — keputusan produk (2026-07-19): kelebihan nominal di luar
+      // tanggung jawab platform, klien sudah diberi peringatan non-blocking di UI sebelum
+      // submit (lihat payExpected/verifyExpected di invoice-detail-client.tsx). Journal tetap
+      // hanya membukukan `total` (bukan newPaidAmount) — kelebihan tercatat di payments.amount
+      // sebagai jejak audit, tapi tidak diakui sebagai pendapatan melebihi nilai invoice.
 
       const newPaidAmount = paidSoFar + data.amount;
       const newStatus     = newPaidAmount >= amountDue ? "paid" : "partial";
@@ -592,7 +594,7 @@ export async function confirmInvoicePaymentAction(
     revalidateBilling(slug);
     return { success: true, data: { paymentId } };
   } catch (err) {
-    if (err instanceof Error && (err.message.includes("lunas") || err.message.includes("dibatalkan") || err.message.includes("melebihi sisa tagihan")))
+    if (err instanceof Error && (err.message.includes("lunas") || err.message.includes("dibatalkan")))
       return { success: false, error: err.message };
     console.error("[confirmInvoicePaymentAction]", err);
     return { success: false, error: "Gagal mencatat pembayaran." };

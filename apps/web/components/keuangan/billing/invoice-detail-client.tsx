@@ -56,6 +56,21 @@ function formatDate(iso: string, timezone: string) {
   return new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric", timeZone: timezone });
 }
 
+// Peringatan non-blocking (bukan validasi keras) saat nominal yang diketik admin beda dari
+// yang diharapkan — keputusan produk 2026-07-19: kurang → beri tahu, lebih → tetap boleh
+// dicatat tapi beri tahu kelebihan di luar tanggung jawab kami. Field tetap bebas diedit,
+// warning ini murni informasional (tidak mencegah submit).
+function amountWarning(entered: number, expected: number): string | null {
+  if (!entered || expected <= 0) return null;
+  if (entered < expected) {
+    return `⚠ Angka yang Anda masukkan kurang dari nominal yang seharusnya (${formatRp(expected)}).`;
+  }
+  if (entered > expected) {
+    return `ℹ Nominal yang Anda catat lebih dari tagihan (${formatRp(expected)}). Kelebihan nominal di luar tanggung jawab kami — tetap boleh dicatat.`;
+  }
+  return null;
+}
+
 export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -80,6 +95,10 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
     if (!nextUnpaidTerm) return payment.amount;
     return Math.max(0, payment.amount - (nextUnpaidTerm.uniqueCode ?? 0));
   }
+
+  // Nominal yang "seharusnya" dicatat via form Konfirmasi Pembayaran manual — dipakai baik
+  // untuk default field maupun untuk warning kurang/lebih (amountWarning).
+  const payExpected = nextUnpaidTerm ? nextUnpaidTerm.amount : invoice.remaining;
 
   const [showPayForm, setShowPayForm]   = useState(false);
   // Nilai awal tidak penting (form belum tampil) — nilai SESUNGGUHNYA di-set oleh
@@ -286,7 +305,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
       setShowPayForm(false);
       return;
     }
-    setPayAmount(String(Math.round(nextUnpaidTerm ? nextUnpaidTerm.amount : invoice.remaining)));
+    setPayAmount(String(Math.round(payExpected)));
     setShowPayForm(true);
   }
 
@@ -575,6 +594,12 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                         ? `Default = nominal yang customer submit (Rp ${formatRp(p.amount).replace("Rp ", "")}) dikurangi kode unik termin ${nextUnpaidTerm.termNumber} (${nextUnpaidTerm.uniqueCode ?? "-"}) — kode unik hanya alat bantu identifikasi di rekening, jangan ikut dicatat sebagai bagian cicilan. Kalau customer bayar untuk beberapa termin sekaligus, default ini otomatis ikut lebih besar — cocokkan dengan bukti transfer sebelum konfirmasi.`
                         : "Default sesuai yang customer submit — cocokkan dengan bukti transfer di bawah sebelum konfirmasi."}
                     </p>
+                    {(() => {
+                      const warn = amountWarning(parseInt(verifyAmount.replace(/\D/g, ""), 10) || 0, verifyDefaultFor(p));
+                      return warn ? (
+                        <p className={`text-xs font-medium ${warn.startsWith("⚠") ? "text-amber-700" : "text-blue-700"}`}>{warn}</p>
+                      ) : null;
+                    })()}
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -849,6 +874,12 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                 ? `Default sesuai nominal termin ${nextUnpaidTerm.termNumber} (angka bersih, TANPA kode unik${nextUnpaidTerm.uniqueCode ? ` ${nextUnpaidTerm.uniqueCode}` : ""}) — jangan catat sisa tagihan penuh kecuali memang menerima pelunasan sekaligus. Sisa tagihan total: ${formatRp(invoice.remaining)}.`
                 : `Sisa tagihan: ${formatRp(invoice.remaining)}`}
             </p>
+            {(() => {
+              const warn = amountWarning(parseInt(payAmount.replace(/\D/g, ""), 10) || 0, payExpected);
+              return warn ? (
+                <p className={`text-xs font-medium mt-1 ${warn.startsWith("⚠") ? "text-amber-700" : "text-blue-700"}`}>{warn}</p>
+              ) : null;
+            })()}
           </div>
 
           <div>

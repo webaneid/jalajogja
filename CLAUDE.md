@@ -6738,16 +6738,6 @@ dibackfill manual di lokal (`UPDATE invoices SET unique_code = 0 WHERE installme
 NOT NULL AND unique_code > 0`) — setelah backfill, card itu otomatis hilang. Production dicek
 ulang — tetap 0 invoice cicilan, tidak perlu backfill.
 
-**Temuan tambahan, BELUM difix (butuh keputusan produk user, bukan diubah sepihak)**:
-`confirmInvoicePaymentAction` (form manual "Konfirmasi Pembayaran") punya guard
-`if (data.amount > remaining) throw ...` — MENOLAK kalau admin mencoba mencatat nominal LEBIH
-BESAR dari sisa tagihan, berlaku UNIVERSAL (cicilan maupun bukan, bukan regresi baru, pre-
-existing dari sebelum sesi cicilan). Kalau admin genuinely perlu mencatat overpayment MANUAL
-(bukan dari verifikasi bukti customer), form ini akan menolak. `verifySubmittedPaymentAction`
-("✓ Verifikasi") TIDAK punya batasan ini — overpayment via jalur verifikasi bukti customer
-sudah bekerja benar. Dicatat sebagai pertanyaan produk terbuka, BUKAN bug yang diperbaiki
-sepihak.
-
 **Aturan digeneralisasi (diperkuat, karena bug #2 lolos dari audit PERTAMA)**: kalau sebuah
 fitur punya DUA ATAU LEBIH jalur UI yang secara konseptual melakukan hal yang sama tapi via
 komponen/handler BERBEDA, dan salah satu jalur SUDAH terlihat "benar" (sudah menyebut variabel
@@ -6761,20 +6751,40 @@ temuan pertama.
 **Data production**: dicek ulang di kedua putaran — masih 0 invoice cicilan di kedua tenant,
 belum ada kerusakan data nyata.
 
+### [2026-07-19] Keputusan Produk: Overpayment Selalu Diizinkan + Peringatan Non-Blocking (Bukan Ditolak)
+
+Menjawab pertanyaan terbuka di lesson sebelumnya (`confirmInvoicePaymentAction` sebelumnya
+MENOLAK nominal yang melebihi sisa tagihan), user memutuskan aturan baru: **kurang dari nominal
+seharusnya → tampil peringatan; lebih dari nominal seharusnya → tetap boleh dicatat, tapi
+tampil peringatan "Kelebihan nominal di luar tanggung jawab kami."** Berlaku di kedua form admin
+(Konfirmasi Pembayaran manual + Verifikasi), field tetap bebas diedit di kedua kondisi.
+
+**Implementasi**: guard `if (data.amount > remaining) throw ...` di `confirmInvoicePaymentAction`
+**dihapus total** (server sekarang izinkan overpayment, matching `verifySubmittedPaymentAction`
+yang sudah lama begitu). Jurnal TETAP membukukan `total` invoice saja (bukan nominal aktual yang
+lebih besar) — kelebihan tercatat di `payments.amount` sebagai jejak audit, tapi tidak diakui
+sebagai pendapatan melebihi nilai invoice. `amountWarning(entered, expected)` — helper baru
+client-side murni, di `invoice-detail-client.tsx`, live re-render setiap admin mengetik, TIDAK
+PERNAH memblokir submit. Detail lengkap: `docs/arsitektur-billing.md` § "Keputusan Produk:
+Overpayment Selalu Diizinkan".
+
+**Scope**: HANYA form admin — form submit bukti customer (`invoice-public-client.tsx`) tidak
+disentuh (sudah punya UX beda, AlertDialog konfirmasi, sudah lama tanpa batas atas).
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Notifikasi WhatsApp untuk Program Cicilan — 5 event baru** (sesi
-  2026-07-19), lalu 4 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
+  2026-07-19), lalu 5 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
   di-nolkan saat konversi cicilan**, **fix 4 Server Action billing tanpa `hasReadAccess`
-  guard**, **fix form "Konfirmasi Pembayaran" manual admin default ke sisa tagihan penuh**, dan
-  **fix form "✓ Verifikasi" sendiri yang blind ke satu termin (abaikan overpayment)** — 2 bug
-  terakhir dilaporkan/diminta diverifikasi langsung oleh user. Lihat 4 lesson di atas untuk
-  detail lengkap. Fitur sudah live di production: kode deployed, migration 0033 jalan, cron
+  guard**, **fix form "Konfirmasi Pembayaran" manual admin default ke sisa tagihan penuh**,
+  **fix form "✓ Verifikasi" sendiri yang blind ke satu termin (abaikan overpayment)**, dan
+  **keputusan produk: overpayment selalu diizinkan + peringatan non-blocking (guard penolakan
+  di `confirmInvoicePaymentAction` dihapus)** — 3 temuan terakhir dilaporkan/diminta
+  diverifikasi/diputuskan langsung oleh user. Lihat 5 lesson di atas untuk detail lengkap.
+  Fitur sudah live di production: kode deployed, migration 0033 jalan, cron
   `installment-reminder` terjadwal jam 08:15 (diverifikasi respons `{"notified":0}`), toggle
-  notifikasi sudah diaktifkan admin di tenant `visikita`. **Pertanyaan produk terbuka
-  (belum dijawab user)**: apakah `confirmInvoicePaymentAction` (form manual) perlu diizinkan
-  mencatat overpayment juga (saat ini menolak keras)? Belum ada uji nyata end-to-end (menunggu
-  invoice cicilan pertama beneran). Cek `git status` sebelum lanjut — perlu dipastikan semua fix
-  terbaru sudah commit+push.
+  notifikasi sudah diaktifkan admin di tenant `visikita`. Fix overpayment+warning TERBARU belum
+  di-deploy ke VPS (masih di local, sudah commit — cek status sebelum lanjut). Belum ada uji
+  nyata end-to-end (menunggu invoice cicilan pertama beneran).
 - Sesi sebelumnya: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
   - **Riset arsitektur sebelum eksekusi**: baca ulang `docs/arsitektur-whatsapp.md`, `-billing.md`,

@@ -793,18 +793,36 @@ unique_code > 0`) — setelah backfill, card "Kode Unik" di atas otomatis hilang
 dan admin hanya melihat kode yang benar (per termin, di tabel Jadwal Cicilan + hint form
 Verifikasi/Konfirmasi). Production dicek ulang — tetap 0 invoice cicilan, tidak perlu backfill.
 
-**Temuan tambahan, BELUM difix (butuh keputusan produk, bukan bug sepihak untuk diubah)**:
-`confirmInvoicePaymentAction` (form "Konfirmasi Pembayaran" manual, dipakai untuk mencatat
-pembayaran tunai dll TANPA submission customer) punya guard eksplisit
-`if (data.amount > remaining) throw ...` — MENOLAK jika admin mencoba mencatat nominal LEBIH
-BESAR dari sisa tagihan. Ini berlaku UNIVERSAL (cicilan maupun bukan), TIDAK selektif merusak
-cicilan saja — jadi bukan "bug yang sama muncul di tempat lain" secara teknis, tapi tetap
-relevan dengan kekhawatiran user soal overpayment: kalau admin genuinely perlu mencatat
-overpayment MANUAL (bukan dari verifikasi bukti customer), form ini akan menolak dengan pesan
-"Jumlah melebihi sisa tagihan". `verifySubmittedPaymentAction` (jalur "✓ Verifikasi") TIDAK
-punya batasan ini — overpayment via jalur verifikasi bukti customer SUDAH bekerja benar tanpa
-perlu perubahan. Pola ini sudah ada SEBELUM sesi cicilan (bukan regresi baru) — dicatat sebagai
-keputusan produk yang perlu dikonfirmasi user, bukan diubah sepihak.
+### Keputusan Produk: Overpayment Selalu Diizinkan + Peringatan Non-Blocking (2026-07-19)
+
+Menjawab temuan di atas (`confirmInvoicePaymentAction` sebelumnya MENOLAK nominal yang melebihi
+sisa tagihan), user memutuskan aturan baru yang berlaku di SEMUA form nominal admin (Konfirmasi
+Pembayaran manual DAN Verifikasi):
+
+> Kurang dari nominal seharusnya → tampil peringatan "Angka yang Anda masukkan kurang dari
+> nominal". Lebih dari nominal seharusnya → **tetap boleh dicatat**, tapi tampil peringatan
+> "Nominal yang Anda kirim lebih dari tagihan. Kelebihan nominal di luar tanggung jawab kami."
+> Field tetap bebas diedit di kedua kondisi — peringatan murni informasional, TIDAK memblokir.
+
+**Implementasi:**
+- `confirmInvoicePaymentAction` — guard `if (data.amount > remaining) throw ...` **DIHAPUS**.
+  Overpayment sekarang diizinkan penuh (server), matching `verifySubmittedPaymentAction` yang
+  sudah lama tidak punya batasan ini. Lower bound (`data.amount <= 0` ditolak) tidak berubah.
+- Jurnal (`recordIncome`) TETAP membukukan `total` invoice saja (bukan `newPaidAmount` atau
+  `data.amount`) — kelebihan nominal TERCATAT di `payments.amount` (jejak audit, uang benar-
+  benar diterima) tapi TIDAK diakui sebagai pendapatan melebihi nilai invoice, konsisten dengan
+  "kelebihan nominal di luar tanggung jawab kami".
+- `amountWarning(entered, expected)` — helper baru di `invoice-detail-client.tsx`, murni
+  client-side, non-blocking. `expected` = `payExpected` (`nextUnpaidTerm.amount` untuk cicilan,
+  `invoice.remaining` untuk invoice biasa) di form Konfirmasi Pembayaran; `verifyDefaultFor(p)`
+  di form Verifikasi. Warning re-render live setiap kali admin mengetik, tidak pernah mencegah
+  submit.
+
+**Kenapa tidak diterapkan ke form customer publik (`invoice-public-client.tsx`)**: keputusan ini
+scoped ke form ADMIN saja (Konfirmasi Pembayaran + Verifikasi) — form submit bukti transfer
+customer sudah punya UX berbeda (`AlertDialog` konfirmasi sebelum submit, § "Nominal Pembayaran
+Terlihat + Bisa Diedit") dan sudah tidak pernah punya batas atas sejak awal. Kalau nanti user
+minta warning yang sama juga di sisi customer, itu perubahan terpisah.
 
 ### 4 Bug Ditemukan Saat Testing Manual (2026-07-19) — Semua Sudah Difix
 
