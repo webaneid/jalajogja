@@ -23,7 +23,12 @@ export type WaNotifKey =
   | "letter_sign_request"
   | "otp_register"
   | "otp_reset_password"
-  | "otp_login";
+  | "otp_login"
+  | "installment_converted"
+  | "installment_payment_submitted"
+  | "installment_payment_confirmed"
+  | "installment_reminder"
+  | "installment_due_today";
 
 export type WaNotifConfig = {
   device_id:    string;
@@ -52,6 +57,11 @@ export const WA_NOTIF_DEFAULTS: WaNotifConfig["notifications"] = {
   otp_register:            false,
   otp_reset_password:      false,
   otp_login:               false,
+  installment_converted:          false,
+  installment_payment_submitted:  false,
+  installment_payment_confirmed:  false,
+  installment_reminder:           false,
+  installment_due_today:          false,
 };
 
 type SendOptions = {

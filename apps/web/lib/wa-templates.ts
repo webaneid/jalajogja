@@ -83,6 +83,23 @@ export const WA_TEMPLATE_DEFAULTS: Record<string, string> = {
 
   otp_login:
     "🔐 *Masuk ke {{orgName}}*\n\nKode OTP login Anda: *{{otp}}*\n\nBerlaku {{expiry}} menit. Jangan bagikan kode ini kepada siapapun.",
+
+  // ── Cicilan ───────────────────────────────────────────────────────────────────
+
+  installment_converted:
+    "📆 *Invoice Diubah Jadi Cicilan*\n\nHalo {{name}}, invoice *{{invoiceNumber}}* sekarang bisa dibayar bertahap.\n\n🔢 {{installmentCount}}× cicilan, setiap {{intervalDays}} hari\n💰 Per termin: *Rp {{perTermAmount}}*\n📋 Sisa tagihan: *Rp {{remaining}}*\n🗓 Termin pertama jatuh tempo: {{dueDate}}\n\nCek riwayat pembayaran: {{invoiceUrl}}",
+
+  installment_payment_submitted:
+    "✅ *Bukti Pembayaran Cicilan Diterima*\n\nHalo {{name}}, bukti pembayaran cicilan untuk invoice *{{invoiceNumber}}* sudah kami terima.\n\nNominal: *Rp {{amount}}*\n\nAdmin sedang memverifikasi. Cek status: {{invoiceUrl}}",
+
+  installment_payment_confirmed:
+    "🎉 *Pembayaran Termin Dikonfirmasi*\n\nHalo {{name}}, pembayaran cicilan Anda untuk *{{invoiceNumber}}* sudah dikonfirmasi.\n\n✅ Termin {{termsPaid}} dari {{installmentCount}} lunas\n📋 Sisa tagihan: *Rp {{remaining}}*\n🗓 Termin berikutnya jatuh tempo: {{nextDueDate}} (*Rp {{nextAmount}}*)\n\nCek riwayat: {{invoiceUrl}}",
+
+  installment_reminder:
+    "⏰ *Pengingat Cicilan — Besok Jatuh Tempo*\n\nHalo {{name}}, termin {{termNumber}} dari {{installmentCount}} untuk invoice *{{invoiceNumber}}* jatuh tempo besok ({{dueDate}}).\n\n💰 Yang harus dibayar: *Rp {{amount}}*\n📋 Sisa total tagihan: *Rp {{remaining}}*\n\nBayar sekarang: {{invoiceUrl}}",
+
+  installment_due_today:
+    "🔔 *Waktunya Bayar Cicilan*\n\nHalo {{name}}, hari ini termin {{termNumber}} dari {{installmentCount}} untuk invoice *{{invoiceNumber}}* jatuh tempo.\n\n💰 Yang harus dibayar: *Rp {{amount}}*\n📋 Sisa total tagihan: *Rp {{remaining}}*\n\nBayar sekarang: {{invoiceUrl}}",
 };
 
 // Ganti semua {{key}} dengan vars[key] — string replace murni, tidak pernah eval JS.

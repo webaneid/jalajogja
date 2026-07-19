@@ -324,6 +324,13 @@ export async function confirmInvoicePaymentAction(
       eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null;
     }> = [];
 
+    // Diisi di dalam transaction jika invoice ini adalah cicilan — dipakai SETELAH commit
+    // untuk kirim notifikasi progres termin (pola sama dengan newEventRegs di atas).
+    // Object holder (bukan `let` union) — mutasi property, hindari TS narrowing-quirk pada
+    // `let` yang di-reassign hanya di dalam closure async.
+    const installmentInfo: { installmentPlanId: string | null; newPaidAmount: number; newStatus: string } =
+      { installmentPlanId: null, newPaidAmount: 0, newStatus: "" };
+
     // Tanggal jurnal WAJIB kalender timezone tenant, bukan UTC mentah — fetch sekali di
     // luar transaction (read-only, tidak perlu ikut terkunci).
     const tenantTimezone = await getTenantTimezone(tenantDb);
@@ -396,6 +403,9 @@ export async function confirmInvoicePaymentAction(
       // Settlement cicilan — waterfall FIFO, lihat docs/arsitektur-billing.md § "Program Cicilan"
       if (lockedInv.installmentPlanId) {
         await settleInstallmentSchedules(tx, schema, invoiceId, newPaidAmount, payment.id);
+        installmentInfo.installmentPlanId = lockedInv.installmentPlanId;
+        installmentInfo.newPaidAmount     = newPaidAmount;
+        installmentInfo.newStatus         = newStatus;
       }
 
       // Jurnal double-entry (hanya jika lunas — partial tidak jurnal dulu)
@@ -516,6 +526,35 @@ export async function confirmInvoicePaymentAction(
         amount:        waRupiah(data.amount),
       },
     });
+
+    // Tambahan khusus cicilan — TIDAK menggantikan payment_confirmed di atas, dan HANYA
+    // dikirim jika masih ada termin tersisa (pelunasan penuh cukup notifikasi standar).
+    if (installmentInfo.installmentPlanId && installmentInfo.newStatus !== "paid") {
+      const schedules = await db
+        .select()
+        .from(schema.installmentSchedules)
+        .where(eq(schema.installmentSchedules.invoiceId, invoiceId))
+        .orderBy(schema.installmentSchedules.termNumber);
+      const termsPaid = schedules.filter((s) => s.status === "paid").length;
+      const nextTerm  = schedules.find((s) => s.status !== "paid");
+      if (nextTerm) {
+        const invoiceUrl = await waAppUrl(slug, `/invoice/${invoiceId}`);
+        void notifyWa({
+          slug, tenantDb, event: "installment_payment_confirmed",
+          phone: inv.customerPhone,
+          vars: {
+            name:             inv.customerName,
+            invoiceNumber:    inv.invoiceNumber,
+            termsPaid:        String(termsPaid),
+            installmentCount: String(schedules.length),
+            remaining:        waRupiah(parseFloat(String(inv.total)) - installmentInfo.newPaidAmount),
+            nextDueDate:      nextTerm.dueDate,
+            nextAmount:       waRupiah(parseFloat(String(nextTerm.amount)) + (nextTerm.uniqueCode ?? 0)),
+            invoiceUrl,
+          },
+        });
+      }
+    }
 
     // Notifikasi tiket event baru yang ter-auto-create dari cart — titik pertama
     // customer dapat nomor registrasi. Lookup detail event per registrasi (biasanya 1).
@@ -858,6 +897,11 @@ export async function verifySubmittedPaymentAction(
   let notifyCustomerPhone: string | null = null;
   let notifyInvoiceNumber = "";
 
+  // Diisi di dalam transaction jika invoice ini adalah cicilan — object holder (bukan `let`
+  // union) untuk hindari TS narrowing-quirk pada reassignment di dalam closure async.
+  const installmentInfo: { installmentPlanId: string | null; newPaid: number; total: number; newStatus: string } =
+    { installmentPlanId: null, newPaid: 0, total: 0, newStatus: "" };
+
   // Tanggal jurnal WAJIB kalender timezone tenant, bukan UTC mentah — fetch sekali di luar
   // transaction (read-only, tidak perlu ikut terkunci).
   const tenantTimezone = await getTenantTimezone(tenantDb);
@@ -933,6 +977,10 @@ export async function verifySubmittedPaymentAction(
       // Settlement cicilan — waterfall FIFO, sama persis dengan confirmInvoicePaymentAction.
       if (inv.installmentPlanId) {
         await settleInstallmentSchedules(tx, schema, inv.id, newPaid, paymentId);
+        installmentInfo.installmentPlanId = inv.installmentPlanId;
+        installmentInfo.newPaid           = newPaid;
+        installmentInfo.total             = total;
+        installmentInfo.newStatus         = newStatus;
       }
 
       // Jurnal double-entry saat lunas
@@ -1078,6 +1126,35 @@ export async function verifySubmittedPaymentAction(
         amount:        waRupiah(verifiedAmount),
       },
     });
+
+    // Tambahan khusus cicilan — TIDAK menggantikan payment_confirmed di atas, dan HANYA
+    // dikirim jika masih ada termin tersisa (pelunasan penuh cukup notifikasi standar).
+    if (installmentInfo.installmentPlanId && installmentInfo.newStatus !== "paid") {
+      const schedules = await db
+        .select()
+        .from(schema.installmentSchedules)
+        .where(eq(schema.installmentSchedules.invoiceId, payment.sourceId))
+        .orderBy(schema.installmentSchedules.termNumber);
+      const termsPaid = schedules.filter((s) => s.status === "paid").length;
+      const nextTerm  = schedules.find((s) => s.status !== "paid");
+      if (nextTerm) {
+        const invoiceUrl = await waAppUrl(slug, `/invoice/${payment.sourceId}`);
+        void notifyWa({
+          slug, tenantDb, event: "installment_payment_confirmed",
+          phone: notifyCustomerPhone,
+          vars: {
+            name:             notifyCustomerName,
+            invoiceNumber:    notifyInvoiceNumber,
+            termsPaid:        String(termsPaid),
+            installmentCount: String(schedules.length),
+            remaining:        waRupiah(installmentInfo.total - installmentInfo.newPaid),
+            nextDueDate:      nextTerm.dueDate,
+            nextAmount:       waRupiah(parseFloat(String(nextTerm.amount)) + (nextTerm.uniqueCode ?? 0)),
+            invoiceUrl,
+          },
+        });
+      }
+    }
 
     revalidateBilling(slug);
     return { success: true, data: undefined };

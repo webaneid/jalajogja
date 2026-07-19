@@ -463,11 +463,12 @@ Saat payment di invoice dikonfirmasi:
 
 ## Program Cicilan — Detail
 
-> **Status: Fase A + B (revisi final) SELESAI (2026-07-19) — admin CRUD, konversi invoice
+> **Status: Fase A + B (revisi final) + C SELESAI (2026-07-19) — admin CRUD, konversi invoice
 > jadi cicilan, settlement waterfall, kode unik per termin, tampilan jadwal termin di invoice
-> admin+publik. Fase C (reminder H-1) BELUM.**
+> admin+publik, notifikasi WA (5 event) + cron reminder H-1/hari-H.**
 > Rencana lengkap + riset: `/Users/webane/.claude/plans/polished-moseying-shell.md`. Lesson
-> CLAUDE.md "[2026-07-19] Fitur Cicilan — Fase B Revisi: Cicilan Sebagai Metode Pembayaran".
+> CLAUDE.md "[2026-07-19] Fitur Cicilan — Fase B Revisi: Cicilan Sebagai Metode Pembayaran" +
+> "[2026-07-19] Notifikasi WhatsApp untuk Program Cicilan — 5 Event Baru".
 > **Versi Fase B pertama (enrollment via card terpisah di halaman event) SUDAH DIBUANG** —
 > lesson CLAUDE.md yang membahasnya ditandai SUPERSEDED, jangan diikuti kalau masih terbaca
 > di riwayat lama.
@@ -608,8 +609,43 @@ soal cicilan sama sekali — cicilan sepenuhnya hidup di sisi invoice.
 **Migration**: `packages/db/migrations/0033_installment_schedule_unique_code.sql` — WAJIB
 dijalankan di VPS SEBELUM deploy kode.
 
-**Belum**: Fase C (cron reminder H-1 jatuh tempo termin + WA template baru) — tetap deferred,
-rencana lama masih relevan apa adanya.
+### Fase C — Notifikasi WA + Cron Reminder (SELESAI, 2026-07-19)
+
+> Lesson lengkap CLAUDE.md "[2026-07-19] Notifikasi WhatsApp untuk Program Cicilan — 5 Event Baru".
+
+5 event baru (`installment_converted`, `installment_payment_submitted`,
+`installment_payment_confirmed`, `installment_reminder`, `installment_due_today`) — grup UI
+"Cicilan" di `/settings/notifications`, nol migrasi DB (JSONB `tenant.settings` seperti semua
+notifikasi WA lain). `installment_payment_confirmed` hanya dikirim kalau MASIH ADA termin
+tersisa (`newStatus !== "paid"`) — pelunasan penuh cukup `payment_confirmed`/`event_registered`
+standar (tidak diubah, sudah otomatis benar sejak Fase B). Cron baru terpisah
+`app/api/cron/installment-reminder/route.ts` (H-1 dan hari-H per termin) — terpisah dari
+`invoice-reminder` karena `invoices.dueDate` di-freeze ke termin pertama saja, tidak pernah
+diupdate untuk termin ke-2 dst. **Belum dijadwalkan di crontab VPS.**
+
+### Bug Ditemukan Saat Audit Pra-Commit (2026-07-19) — `invoices.uniqueCode` Tidak Pernah Di-nolkan Saat Konversi
+
+**Root cause**: `confirmInvoicePaymentAction`/`verifySubmittedPaymentAction`/
+`getInvoiceDetailAction`/halaman invoice publik SEMUA menghitung `amountDue = total +
+invoices.uniqueCode` untuk menentukan kapan invoice lunas (`newStatus = "paid"`). Tapi
+`convertInvoiceToInstallmentAction` tidak pernah menyentuh `invoices.uniqueCode` — kode yang
+sudah ter-generate saat invoice PERTAMA dibuat (checkout normal, sebelum tahu-menahu soal
+cicilan) tetap menempel. Jumlah seluruh termin cicilan by design PERSIS sama dengan `total`
+(TANPA kode invoice-level — lihat § "Kode Unik PER TERMIN" di atas) — jadi kalau
+`unique_code_enabled` aktif saat invoice dibuat, `amountDue` SELALU lebih besar dari jumlah
+yang bisa dicapai lewat pembayaran cicilan murni. **Konsekuensi**: invoice cicilan tidak
+PERNAH bisa mencapai status `"paid"` meski semua termin sudah `status='paid'` — event
+registration tidak pernah `confirmed`, dan (temuan langsung terkait sesi ini) notifikasi
+`installment_payment_confirmed` akan terus terkirim tanpa henti karena guard `newStatus !==
+"paid"` tidak pernah `false`.
+
+**Fix**: `convertInvoiceToInstallmentAction` sekarang set `uniqueCode: 0` di UPDATE invoice
+yang sama dengan `installmentPlanId` — konsisten dengan prinsip yang sudah didokumentasikan
+("kode invoice-level tidak relevan lagi begitu cicilan aktif, digantikan kode per termin").
+Tidak ada migrasi DB (murni logic aplikasi). **Invoice cicilan yang sudah dikonversi SEBELUM
+fix ini** (kalau ada, di production/lokal) mungkin masih punya `uniqueCode` tersisa — perlu
+`UPDATE invoices SET unique_code = 0 WHERE installment_plan_id IS NOT NULL` manual per tenant
+kalau ditemukan laporan invoice cicilan yang "stuck" di partial walau semua termin lunas.
 
 ### 4 Bug Ditemukan Saat Testing Manual (2026-07-19) — Semua Sudah Difix
 

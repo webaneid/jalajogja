@@ -3,9 +3,9 @@
 > Dokumen ini adalah referensi tunggal untuk semua hal terkait integrasi WhatsApp di platform jalakarta.
 > Terkoneksi dengan: `CLAUDE.md` § "WhatsApp Gateway", `docs/arsitektur-billing.md`, `docs/arsitektur-login-universal.md`, `docs/arsitektur-fulfillment.md`, `docs/arsitektur-event.md`.
 
-> **STATUS (2026-07-15): Fase 1, 2, 3, 4, 5, 7 SELESAI + cron reminder SELESAI. Fase 6 SEBAGIAN
-> SELESAI (surat ✅, member_welcome ✅ + profile_incomplete_reminder ✅ [fitur baru di luar rencana
-> awal], officer_invite 🔲 belum). Self-hosted VPS aktif dan tested.**
+> **STATUS (2026-07-19): Fase 1, 2, 3, 4, 5, 7, 8 (Cicilan) SELESAI + cron reminder SELESAI.
+> Fase 6 SEBAGIAN SELESAI (surat ✅, member_welcome ✅ + profile_incomplete_reminder ✅ [fitur
+> baru di luar rencana awal], officer_invite 🔲 belum). Self-hosted VPS aktif dan tested.**
 > GOWA berjalan di VPS jalakarta (72.61.215.7), subdomain `gowa.jalakarta.com`.
 > Device `pc-ikpm-jogjakarta` aktif terhubung — QR scan, send message, status polling semua confirmed working.
 > Lihat § 16 "Penyimpangan dari Desain Awal" untuk perbedaan antara dokumen ini dan kode aktual —
@@ -583,6 +583,32 @@ di `/app/{slug}/settings/notifications`.
 4. Server cari `betterAuthUserId` dari nomor → inject token ke `public.verification`
 5. Redirect ke `/{slug}/reset-password?token={token}` → halaman reset existing bekerja normal
 
+### 6.8 Cicilan — ✅ SELESAI (2026-07-19)
+
+> Detail lengkap: `docs/arsitektur-billing.md` § "Program Cicilan — Detail" → "Fase C".
+> Lesson CLAUDE.md "[2026-07-19] Notifikasi WhatsApp untuk Program Cicilan — 5 Event Baru".
+
+| Event | Trigger | Penerima | Template |
+|-------|---------|----------|----------|
+| Invoice diubah jadi cicilan | `convertInvoiceToInstallmentAction` | Customer | `installment_converted` |
+| Bukti bayar termin diterima | `submitPaymentProofAction` (tambahan, jika `installmentPlanId` terisi) | Customer | `installment_payment_submitted` |
+| Pembayaran termin dikonfirmasi | `confirmInvoicePaymentAction` / `verifySubmittedPaymentAction` (tambahan, HANYA jika masih ada termin tersisa) | Customer | `installment_payment_confirmed` |
+| Pengingat termin H-1 | Cron `installment-reminder` | Customer | `installment_reminder` |
+| Pengingat termin hari ini | Cron `installment-reminder` | Customer | `installment_due_today` |
+
+**Pelunasan penuh cicilan TIDAK dapat notifikasi khusus** — cukup `payment_confirmed` +
+`event_registered` standar (sudah otomatis benar sejak Fase B, keputusan eksplisit user: "kalau
+lunas ya notifikasi standar seperti biasa"). Guard `newStatus !== "paid"` di
+`installment_payment_confirmed` bergantung pada `invoices.uniqueCode` di-nolkan saat konversi
+(bug ditemukan+difix di audit pra-commit sesi ini — lihat `arsitektur-billing.md`) — tanpa fix
+itu, invoice cicilan tidak pernah benar-benar mencapai `newStatus === "paid"` dan notifikasi ini
+akan terkirim berulang tanpa henti.
+
+Cron `app/api/cron/installment-reminder/route.ts` — **terpisah** dari `invoice-reminder` karena
+`invoices.dueDate` di-freeze ke termin pertama saja saat konversi (tidak pernah diupdate untuk
+termin ke-2 dst) — reminder termin ke-2 dst hanya bisa dideteksi dari
+`installment_schedules.due_date`. **Belum dijadwalkan di crontab VPS.**
+
 ---
 
 ## 7. Dashboard Admin — Setup & Konfigurasi
@@ -882,6 +908,19 @@ if (phone) {
 ```bash
 psql -U jalakarta -d jalakarta -f packages/db/migrations/0016_otp_tokens.sql
 ```
+
+### Fase 8 — Notifikasi Cicilan — ✅ SELESAI (2026-07-19)
+
+- [x] `convertInvoiceToInstallmentAction` → `installment_converted`
+- [x] `submitPaymentProofAction` (tambahan) → `installment_payment_submitted`
+- [x] `confirmInvoicePaymentAction`/`verifySubmittedPaymentAction` (tambahan, hanya jika masih
+      ada termin tersisa) → `installment_payment_confirmed`
+- [x] Cron baru `installment-reminder` → `installment_reminder` (H-1) + `installment_due_today` (hari-H)
+- [x] Fix pendamping: `convertInvoiceToInstallmentAction` nolkan `invoices.uniqueCode` saat
+      konversi (bug ditemukan saat audit pra-commit — tanpa ini invoice cicilan tidak pernah
+      benar-benar mencapai `newStatus === "paid"`, lihat `docs/arsitektur-billing.md`)
+
+**Belum dijadwalkan di crontab VPS** — perlu ditambahkan manual setelah deploy, pola sama cron lain.
 
 ---
 

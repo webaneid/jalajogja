@@ -638,7 +638,7 @@ export async function submitPaymentProofAction(
     type TxResult =
       | { error: string }
       | { paymentId: string; customerName: string; customerPhone: string | null;
-          invoiceNumber: string; amount: number };
+          invoiceNumber: string; amount: number; installmentPlanId: string | null };
 
     const txResult: TxResult = await tdb.transaction(async (tx) => {
       const [lockedInv] = await tx
@@ -646,7 +646,8 @@ export async function submitPaymentProofAction(
                   customerPhone: schema.invoices.customerPhone,
                   total: schema.invoices.total, paidAmount: schema.invoices.paidAmount,
                   uniqueCode: schema.invoices.uniqueCode,
-                  invoiceNumber: schema.invoices.invoiceNumber, status: schema.invoices.status })
+                  invoiceNumber: schema.invoices.invoiceNumber, status: schema.invoices.status,
+                  installmentPlanId: schema.invoices.installmentPlanId })
         .from(schema.invoices)
         .where(sql`${schema.invoices.id} = ${invoiceId} FOR UPDATE`)
         .limit(1);
@@ -699,11 +700,12 @@ export async function submitPaymentProofAction(
         .where(eq(schema.invoices.id, invoiceId));
 
       return {
-        paymentId:     payment.id,
-        customerName:  lockedInv.customerName,
-        customerPhone: lockedInv.customerPhone,
-        invoiceNumber: lockedInv.invoiceNumber,
-        amount:        data.amount,
+        paymentId:         payment.id,
+        customerName:      lockedInv.customerName,
+        customerPhone:     lockedInv.customerPhone,
+        invoiceNumber:     lockedInv.invoiceNumber,
+        amount:            data.amount,
+        installmentPlanId: lockedInv.installmentPlanId,
       };
     });
 
@@ -723,6 +725,21 @@ export async function submitPaymentProofAction(
         amount:        waRupiah(submittedAmount),
       },
     });
+
+    // Tambahan khusus cicilan — TIDAK menggantikan payment_submitted di atas.
+    if (txResult.installmentPlanId) {
+      const invoiceUrl = await waAppUrl(slug, `/invoice/${invoiceId}`);
+      void notifyWa({
+        slug, tenantDb, event: "installment_payment_submitted",
+        phone: inv.customerPhone,
+        vars: {
+          name:          inv.customerName,
+          invoiceNumber: inv.invoiceNumber,
+          amount:        waRupiah(submittedAmount),
+          invoiceUrl,
+        },
+      });
+    }
 
     // Notifikasi terpisah untuk item donasi di invoice ini (invoice bisa campur
     // produk+tiket+donasi) — "Donasi Diterima" mengucap terima kasih per campaign,
@@ -776,7 +793,18 @@ export async function convertInvoiceToInstallmentAction(
     const { db: tdb, schema } = tenantDb;
     const tenantTimezone = await getTenantTimezone(tenantDb);
 
-    type TxResult = { error: string } | { firstDueDate: string };
+    type TxResult =
+      | { error: string }
+      | {
+          firstDueDate:      string;
+          customerName:      string | null;
+          customerPhone:     string | null;
+          invoiceNumber:     string;
+          perTermAmount:     number;
+          remaining:         number;
+          installmentCount:  number;
+          intervalDays:      number;
+        };
 
     const txResult: TxResult = await tdb.transaction(async (tx) => {
       const [lockedInv] = await tx
@@ -866,11 +894,18 @@ export async function convertInvoiceToInstallmentAction(
 
       await tx.insert(schema.installmentSchedules).values(scheduleRows);
 
+      // uniqueCode invoice-level di-nolkan — begitu cicilan aktif, "bayar sekali lunas
+      // total+kode" tidak lagi berlaku (digantikan kode PER TERMIN di atas). Tanpa ini,
+      // amountDue (= total + uniqueCode lama) di confirmInvoicePaymentAction/
+      // verifySubmittedPaymentAction TIDAK PERNAH tercapai oleh sum(term.amount) yang cuma
+      // = total — invoice macet permanen di status "partial" walau semua termin lunas
+      // (event tidak pernah confirmed, dan notifikasi pelunasan standar tidak pernah kirim).
       await tx
         .update(schema.invoices)
         .set({
           installmentPlanId: plan.id,
           dueDate:            scheduleRows[0].dueDate,
+          uniqueCode:          0,
           updatedAt:          new Date(),
         })
         .where(eq(schema.invoices.id, invoiceId));
@@ -880,13 +915,43 @@ export async function convertInvoiceToInstallmentAction(
         await settleInstallmentSchedules(tx, schema, invoiceId, paidSoFar, null);
       }
 
-      return { firstDueDate: scheduleRows[0].dueDate };
+      return {
+        firstDueDate:     scheduleRows[0].dueDate,
+        customerName:     lockedInv.customerName,
+        customerPhone:    lockedInv.customerPhone,
+        invoiceNumber:    lockedInv.invoiceNumber,
+        perTermAmount:    perTerm,
+        remaining:        total - paidSoFar,
+        installmentCount: plan.installmentCount,
+        intervalDays:     plan.intervalDays,
+      };
     });
 
     if ("error" in txResult) return { success: false, error: txResult.error };
 
     revalidatePath(`/${slug}/invoice/${invoiceId}`);
     revalidatePath(`/app/${slug}/finance/billing/invoice/${invoiceId}`);
+
+    if (txResult.customerPhone) {
+      const invoiceUrl = await waAppUrl(slug, `/invoice/${invoiceId}`);
+      void notifyWa({
+        slug,
+        tenantDb,
+        event: "installment_converted",
+        phone: txResult.customerPhone,
+        vars: {
+          name:             txResult.customerName ?? "Pelanggan",
+          invoiceNumber:    txResult.invoiceNumber,
+          installmentCount: String(txResult.installmentCount),
+          intervalDays:     String(txResult.intervalDays),
+          perTermAmount:    waRupiah(txResult.perTermAmount),
+          remaining:        waRupiah(txResult.remaining),
+          dueDate:          txResult.firstDueDate,
+          invoiceUrl,
+        },
+      });
+    }
+
     return { success: true, data: undefined };
   } catch (err) {
     console.error("[convertInvoiceToInstallmentAction]", err);

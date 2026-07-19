@@ -90,6 +90,16 @@ const NOTIF_GROUPS: Array<{
       { key: "otp_login",           label: "OTP Login via WA",    desc: "Izinkan pengguna masuk menggunakan kode OTP WhatsApp (tanpa password)." },
     ],
   },
+  {
+    label: "Cicilan",
+    items: [
+      { key: "installment_converted",         label: "Invoice diubah jadi cicilan",    desc: "Kirim rincian cicilan (durasi, nominal per-termin, sisa tagihan) saat invoice dikonversi." },
+      { key: "installment_payment_submitted", label: "Bukti bayar termin diterima",    desc: "Tambahan di samping notifikasi bukti bayar biasa, khusus untuk invoice cicilan." },
+      { key: "installment_payment_confirmed", label: "Pembayaran termin dikonfirmasi", desc: "Tambahan di samping notifikasi pembayaran dikonfirmasi, hanya jika masih ada termin tersisa." },
+      { key: "installment_reminder",          label: "Pengingat termin H-1",           desc: "Kirim sehari sebelum sebuah termin jatuh tempo." },
+      { key: "installment_due_today",         label: "Pengingat termin hari ini",      desc: "Kirim di hari jatuh tempo sebuah termin." },
+    ],
+  },
 ];
 
 // ── Row: toggle + editor teks kustom ─────────────────────────────────────────

@@ -6495,8 +6495,163 @@ CUKUP untuk memverifikasi ini — kalau ragu, jalankan `bun run build` sungguhan
 server dimatikan dulu) sebelum push perubahan yang menyentuh `lib/*.ts` baru yang dipakai
 client component.
 
+### [2026-07-19] Notifikasi WhatsApp untuk Program Cicilan — 5 Event Baru
+
+> Arsitektur lengkap notifikasi WA: lihat § "Arsitektur Add-on System → WhatsApp Gateway" di atas.
+> Plan lengkap sesi ini disimpan di `/Users/webane/.claude/plans/polished-moseying-shell.md`.
+
+Fitur cicilan (konversi invoice, settlement waterfall FIFO, kode unik per termin) sudah
+berjalan sejak Fase A+B, tapi **belum punya satu pun notifikasi WA khusus** — customer
+mengonversi invoice jadi cicilan tanpa pemberitahuan detail (durasi, nominal per-termin, sisa
+tagihan), dan progres pembayaran per-termin tidak diberi tahu sama sekali. User eksplisit
+minta 5 titik notifikasi TAPI dengan satu batas jelas: **pelunasan penuh cicilan memakai
+notifikasi STANDAR yang sudah ada, bukan notifikasi baru** — "kalau lunas ya notifikasi
+standar seperti biasa, jangan bikin notif khusus baru".
+
+**5 event baru** (`WaNotifKey` di `lib/whatsapp.ts` + template di `lib/wa-templates.ts` grup
+`// ── Cicilan ──` + toggle UI grup baru "Cicilan" di `whatsapp-setup-client.tsx`) — pola SOP
+3-lapis yang sudah established, **nol migrasi DB** (semua JSONB di `tenant.settings`):
+- `installment_converted` — sekali, saat invoice berhasil dikonversi jadi cicilan. Kirim
+  durasi (`installmentCount`×`intervalDays`), nominal per-termin, sisa tagihan (formula
+  KHUSUS, lihat di bawah), tanggal jatuh tempo termin pertama, URL invoice.
+- `installment_payment_submitted` — **tambahan**, dikirim SETELAH `payment_submitted`
+  generik yang tidak diubah, hanya kalau `invoices.installmentPlanId` terisi.
+- `installment_payment_confirmed` — **tambahan**, dikirim SETELAH `payment_confirmed`
+  generik, **HANYA jika `newStatus !== "paid"`** (masih ada termin tersisa). Progres
+  (`termsPaid`/`installmentCount`), sisa tagihan, termin berikutnya (tanggal+nominal).
+- `installment_reminder` (H-1) / `installment_due_today` (hari-H) — dikirim cron baru,
+  placeholder identik keduanya (cuma judul beda).
+
+**Kenapa "pelunasan penuh = notifikasi standar" TIDAK butuh kode tambahan sama sekali** —
+diverifikasi dari kode aktual sebelum coding, bukan diasumsikan:
+1. `payment_confirmed` generik SUDAH dikirim tanpa syarat status (partial maupun paid) — jadi
+   pelunasan penuh otomatis dapat notif ini.
+2. Blok auto-create `event_registrations` (dan `notifyWa event_registered` di dalamnya) untuk
+   tiket event SUDAH dibungkus `if (newStatus === "paid")` — begitu termin TERAKHIR cicilan
+   membuat status jadi `"paid"`, blok ini jalan PERSIS seperti invoice tiket non-cicilan yang
+   lunas sekali bayar. Tidak ada percabangan `installmentPlanId` yang perlu ditambah di sini.
+
+**Formula "sisa pembayaran" KHUSUS konteks cicilan — beda dari invoice biasa**:
+`remaining = total - paidAmount` (murni, TANPA `invoices.uniqueCode` level-invoice). Beda dari
+formula invoice biasa (`(total + uniqueCode) - paidAmount`) karena begitu cicilan aktif, tidak
+ada lagi skenario "bayar sekali lunas total+kode" — kode unik yang relevan cuma kode PER
+TERMIN (`installment_schedules.uniqueCode`), yang juga tidak dihitung sebagai bagian nominal
+cicilan (`amount` di tabel schedule selalu angka bersih, lihat komentar di
+`packages/db/src/schema/tenant/billing.ts`). "Yang harus dibayarkan" (nominal satu termin
+spesifik, di reminder/due-today/converted) = `term.amount + (term.uniqueCode ?? 0)`.
+
+**`settleInstallmentSchedules` return `void`** — tidak expose termin mana yang baru lunas.
+Daripada ubah signature fungsi shared yang dipakai 3 tempat, `confirmInvoicePaymentAction` dan
+`verifySubmittedPaymentAction` **re-query `installment_schedules` SETELAH transaction commit**
+(pakai `db` biasa, bukan `tx` — pola sama semua `notifyWa` lain di kedua fungsi ini) untuk
+hitung `termsPaid` dan cari termin berikutnya yang belum lunas.
+
+**Bug TypeScript: `let x: T | null = null` yang di-reassign HANYA di dalam closure async
+`db.transaction()` dinarrow jadi `never` oleh TypeScript saat diakses SETELAH transaction**
+(bukan `T | null` seperti yang diharapkan dari deklarasi eksplisit). Terjadi 2× di sesi ini
+(`confirmInvoicePaymentAction` dan `verifySubmittedPaymentAction`). **Fix**: ganti pola dari
+`let` union-reassignment ke **object holder dengan default value** (bukan `null`) yang
+di-mutate property-nya di dalam closure — persis pola `newEventRegs.push(...)` (array) yang
+SUDAH established dan aman di kode yang sama, cuma diperluas ke object:
+```typescript
+// SALAH — let dengan union type, reassign di dalam tx callback → never saat dipakai di luar
+let installmentInfo: { installmentPlanId: string; ... } | null = null;
+await db.transaction(async (tx) => { installmentInfo = { ... }; });
+if (installmentInfo && installmentInfo.newStatus !== "paid") { ... } // TS2339: never
+
+// BENAR — object holder dengan default sentinel, MUTASI property (bukan reassignment variable)
+const installmentInfo: { installmentPlanId: string | null; newStatus: string } =
+  { installmentPlanId: null, newStatus: "" };
+await db.transaction(async (tx) => {
+  installmentInfo.installmentPlanId = lockedInv.installmentPlanId;
+  installmentInfo.newStatus         = newStatus;
+});
+if (installmentInfo.installmentPlanId && installmentInfo.newStatus !== "paid") { ... } // OK
+```
+**Aturan digeneralisasi**: setiap kali butuh "keluarkan data dari dalam `db.transaction(async
+(tx) => {...})` untuk dipakai setelah commit" (pola side-effect yang SUDAH berulang di project
+— `newEventRegs`, `firstDueDate`, dst), JANGAN pakai `let variable: T | null = null` yang
+di-reassign di dalam closure. Selalu pakai array (`.push()`) untuk daftar, atau object holder
+dengan default sentinel value (mutasi property, bukan reassign variable) untuk single value.
+
+**Cron baru `app/api/cron/installment-reminder/route.ts`** — TERPISAH dari `invoice-reminder`
+yang sudah ada, karena `invoices.dueDate` di-freeze ke tanggal termin PERTAMA saja saat
+konversi (`convertInvoiceToInstallmentAction` set sekali, tidak pernah diupdate lagi) — termin
+ke-2 dst hanya terdeteksi dari `installment_schedules.due_date`. Query: JOIN
+`installment_schedules` + `invoices` + `installment_plans` (untuk `installmentCount`), filter
+`status != 'paid'` AND `due_date IN (todayStr, tomorrowStr)`, `todayStr`/`tomorrowStr` dihitung
+DI DALAM loop per-tenant via `getTenantTimezone`+`anchorTodayUtc` (pola sama
+`event-reminder`/`invoice-reminder` — cron loop SEMUA tenant aktif, tiap tenant bisa beda
+timezone). Efek samping yang diterima (tidak di-dedup, di luar scope): untuk termin PERTAMA,
+`invoice-reminder` (baca dari `invoices.dueDate`) dan `installment-reminder` (baca dari
+`installment_schedules.due_date`) bisa SAMA-SAMA match H-1 termin 1 → customer terima 2 WA
+mirip (generic + cicilan) hari itu. Diterima karena kedua invoice-reminder maupun
+installment-reminder sama-sama "tambahan info", tidak salah data — cuma redundan sekali di
+awal siklus cicilan.
+
+**Verifikasi**: `tsc --noEmit` bersih di setiap sub-fase. **`bun run build --filter=@jalajogja/web`
+PENUH dijalankan di akhir** (dev server dimatikan dulu, `.next` dibersihkan) — sesuai aturan
+baru dari lesson bug deploy VPS sebelumnya, meski sesi ini tidak menambah `lib/*.ts` baru yang
+dipakai client (semua perubahan di server actions + 1 cron route baru) — build sukses,
+`/api/cron/installment-reminder` terkonfirmasi muncul di output build. Tidak ada migrasi DB
+baru. **Tidak bisa dites otomatis end-to-end** (butuh WA gateway aktif + nomor real) — belum
+diverifikasi manual oleh user. **Cron baru belum dijadwalkan di crontab VPS** — perlu
+ditambahkan manual setelah deploy: `curl -H "x-cron-secret: ..." https://jalakarta.com/api/cron/installment-reminder`,
+pola sama cron lain.
+
+### [2026-07-19] Bug Ditemukan Saat Audit Pra-Commit: `invoices.uniqueCode` Tidak Pernah Di-nolkan Saat Konversi ke Cicilan
+
+> Ditemukan lewat instruksi eksplisit user "recheck antara arsitektur dan aktual implemented
+> code, apakah ada bug atau gap antar keduanya" — SEBELUM commit fitur notifikasi WA cicilan di
+> atas. Bukan laporan user, murni audit silang docs vs kode.
+
+**Root cause**: `confirmInvoicePaymentAction`, `verifySubmittedPaymentAction`,
+`getInvoiceDetailAction`, dan halaman invoice publik SEMUA menghitung `amountDue = total +
+invoices.uniqueCode` untuk menentukan kapan invoice benar-benar lunas (`newStatus = "paid"`).
+Tapi `convertInvoiceToInstallmentAction` (Fase B) tidak pernah menyentuh `invoices.uniqueCode`
+— kode itu sudah ter-generate saat invoice PERTAMA dibuat via checkout normal (sebelum tahu-
+menahu soal cicilan, `checkoutAction` nol awareness terhadap installment plan). Jumlah SELURUH
+termin cicilan by design PERSIS sama dengan `total` saja (kode per-termin sengaja TIDAK dihitung
+sebagai bagian nominal, lihat § "Kode Unik PER TERMIN" di `docs/arsitektur-billing.md`) — jadi
+kalau `unique_code_enabled` aktif saat invoice pertama dibuat, `amountDue` (`total + kode lama`)
+SELALU lebih besar dari jumlah maksimum yang bisa dicapai lewat pembayaran cicilan murni.
+
+**Konsekuensi runtime**: invoice cicilan **tidak pernah** bisa mencapai status `"paid"` meski
+SEMUA termin sudah `status='paid'` — event registration tidak pernah `confirmed`, campaign
+`collected_amount` tidak pernah sync, dan (temuan yang langsung relevan ke fitur sesi ini)
+notifikasi `installment_payment_confirmed` yang baru dibuat akan **terkirim berulang tanpa
+henti** setiap kali admin konfirmasi termin — karena guard `newStatus !== "paid"` tidak pernah
+`false`, bahkan setelah termin terakhir lunas. Ini bertentangan langsung dengan requirement user
+"kalau lunas ya notifikasi standar seperti biasa, jangan bikin notif khusus baru" — tanpa fix
+ini, invoice cicilan TIDAK PERNAH benar-benar "lunas" dari sudut pandang sistem.
+
+**Fix**: `convertInvoiceToInstallmentAction` sekarang set `uniqueCode: 0` di UPDATE invoice yang
+sama dengan `installmentPlanId` — konsisten dengan prinsip yang sudah dikunci sebelumnya (kode
+invoice-level tidak relevan lagi begitu cicilan aktif, digantikan sepenuhnya oleh kode per
+termin). Kolom `invoices.uniqueCode` adalah `integer NOT NULL DEFAULT 0` — set ke `0` valid
+tanpa perlu migrasi apapun.
+
+**Data lama berpotensi masih rusak**: invoice cicilan yang sudah dikonversi SEBELUM fix ini
+(kalau ada di production/lokal) mungkin masih punya `uniqueCode` tersisa dan "stuck" di status
+partial walau semua termin lunas. Perlu `UPDATE invoices SET unique_code = 0 WHERE
+installment_plan_id IS NOT NULL` manual per tenant kalau ditemukan laporan invoice cicilan yang
+tidak kunjung "lunas".
+
+**Aturan digeneralisasi**: setiap kali sebuah invoice bertransformasi dari SATU model pembayaran
+ke model LAIN (di sini: "bayar sekali lunas + kode invoice-level" → "bayar N kali + kode per
+termin"), field/kolom yang jadi bagian formula "amountDue"/"lunas" di model LAMA WAJIB
+di-reset/dinetralkan eksplisit di titik transformasi — jangan asumsikan field itu otomatis
+"tidak relevan lagi" hanya karena logic BARU tidak membacanya. Field lama tetap dibaca oleh
+SEMUA titik yang menghitung status invoice (confirm, verify, display admin, display publik) —
+kalau tidak dinetralkan, field itu jadi residual yang diam-diam merusak transisi status di
+model baru.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
+- Terakhir dikerjakan: **Notifikasi WhatsApp untuk Program Cicilan — 5 event baru** + **fix bug
+  `invoices.uniqueCode` tidak di-nolkan saat konversi cicilan** (ditemukan via audit pra-commit,
+  sesi 2026-07-19). Lihat 2 lesson di atas untuk detail lengkap. Sudah di-commit+push. Belum
+  dites manual end-to-end (butuh WA gateway aktif), cron baru belum dijadwalkan di crontab VPS.
+- Sesi sebelumnya: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
   - **Riset arsitektur sebelum eksekusi**: baca ulang `docs/arsitektur-whatsapp.md`, `-billing.md`,
     `-event.md`, `-product.md`, `-donasi-alur.md` + verifikasi kode aktual (bukan cuma dokumen, karena
