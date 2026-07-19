@@ -7638,6 +7638,18 @@ spesifikasi user yang sebenarnya" — perlu diingat: tidak ada browser di enviro
 verifikasi visual sebelum user coba sendiri, jadi WAJIB baca ulang spesifikasi user kata-per-kata
 (bukan menerka pola "yang biasanya begini") saat tidak bisa verifikasi visual langsung.
 
+**Koreksi putaran 3 — ikon Halaman (Page) masih fallback ke ikon rantai `Link2`**: `iconForHref`
+punya `SEGMENT_TYPE` (post/agenda/produk/campaign/pesantren/usaha/profesional, masing-masing
+punya prefix segmen path TETAP) dan `SEGMENT_STATIC_ICON` (anggota/statistik/keranjang/login/
+register/akun) — tapi halaman CMS (`buildPageUrl` = `/{slug}/{pageSlug}`) TIDAK PUNYA prefix
+segmen tetap sama sekali, jadi tidak pernah match salah satu dari dua tabel itu, selalu jatuh ke
+fallback generik `Link2`. **Fix**: karena `/{slug}/{pageSlug}` adalah SATU-SATUNYA rute wildcard
+1-segmen di seluruh registry (semua rute lain yang dikenal sudah eksplisit dicek di atas), setiap
+href 1-segmen yang tidak match apa pun di atas HAMPIR PASTI halaman CMS — default-kan ke ikon
+`FileText` (sama seperti `LINK_TYPE_ICONS.page`), bukan `Link2`. Href >1 segmen yang tidak dikenal,
+anchor `#...`, atau URL eksternal tetap fallback `Link2` (kasus itu memang ambigu, tidak bisa
+di-infer dengan percaya diri).
+
 **Bug yang diantisipasi dari lesson sesi ini sendiri**: bar jadi lebih tinggi (`h-16`+`pt-3`=76px,
 sebelumnya `h-14`=56px) — spacer di `footer-bottom-nav.tsx` WAJIB ikut naik (`h-14`→`h-20`),
 kalau tidak persis mengulang bug "spacer tidak match tinggi elemen fixed" yang sudah ditemukan
@@ -7651,11 +7663,18 @@ diverifikasi visual di browser — desain floating button perlu dicoba langsung 
 proporsi (ukuran 64px, overlap, halo ring) terasa pas di device sungguhan, bukan cuma dari kode.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Koreksi proporsi BottomNav** (lihat lesson "Koreksi putaran 2" di atas)
+- Terakhir dikerjakan: **Fix ikon Halaman (Page) di BottomNav — fallback ke `FileText` bukan
+  `Link2`** (lihat lesson "Koreksi putaran 3" di atas) — `iconForHref` sebelumnya tidak punya
+  aturan untuk rute `/{slug}/{pageSlug}` (halaman CMS tidak punya prefix segmen tetap), selalu
+  jatuh ke ikon rantai generik. Fix: href 1-segmen yang tidak match rute manapun yang dikenal
+  di-default-kan ke ikon Halaman (satu-satunya rute wildcard 1-segmen di registry). `tsc`+build
+  bersih. Dokumentasi (`docs/arsitektur-header-footer-publik.md`) diperbarui SEKALIGUS untuk
+  mencerminkan state FINAL (proporsi 2-2 + tonjolan 15% dari koreksi putaran 2, bukan draft
+  pertama) — **sudah di-commit dan di-push** atas instruksi eksplisit user.
+- Sesi sebelumnya: **Koreksi proporsi BottomNav** (lihat lesson "Koreksi putaran 2" di atas)
   — user coba desain floating-home pertama, minta 2 perbaikan: kiri/kanan diseimbangkan jadi
   maks 2-2 (sebelumnya bisa 2 vs 3 kalau item > 4), dan tonjolan tombol Beranda dikecilkan dari
-  50% jadi 15% tinggi elemen. `tsc`+build bersih. Belum di-commit/push, menunggu user coba lagi
-  di browser.
+  50% jadi 15% tinggi elemen.
 - Sesi sebelumnya: **BottomNav redesain awal (floating Beranda + ikon per-href) + Public Link
   Picker jadi browsable untuk kategori/tag/halaman** (lihat lesson di atas) — proporsi awalnya
   ternyata belum pas (lihat entri di atas untuk koreksinya).

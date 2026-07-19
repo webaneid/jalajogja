@@ -108,5 +108,13 @@ export function iconForHref(href: string, baseUrl: string): LucideIconType {
   const type = SEGMENT_TYPE[first];
   if (type) return LINK_TYPE_ICONS[type];
 
-  return SEGMENT_STATIC_ICON[first] ?? Link2; // rute statis lain, anchor, atau URL eksternal
+  if (SEGMENT_STATIC_ICON[first]) return SEGMENT_STATIC_ICON[first];
+
+  // Satu segmen yang tidak match rute manapun yang dikenal → hampir pasti halaman CMS
+  // (buildPageUrl = "/{slug}/{pageSlug}", satu-satunya rute wildcard 1-segmen di registry —
+  // setiap rute lain yang dikenal sudah dicek eksplisit di atas). Sisanya (>1 segmen tidak
+  // dikenal, anchor "#...", URL eksternal) baru jatuh ke ikon generik.
+  if (segments.length === 1) return FileText;
+
+  return Link2;
 }

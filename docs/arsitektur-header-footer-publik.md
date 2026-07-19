@@ -158,11 +158,14 @@ Dua row terpisah. Komponen ini `"use client"` — mengambil session via `authCli
 > Status sebelumnya ✅ Selesai (dalam FlexHeader) — REDESAIN total 2026-07-20, konten di bawah
 > ini menggantikan versi lama sepenuhnya (wireframe + "Icons per NavItemType" lama dihapus,
 > keduanya sudah basi sejak `NavItem` migrasi dari model `type`-based ke href-only, lihat
-> `parseNavMenu` di `lib/nav-menu.ts`).
+> `parseNavMenu` di `lib/nav-menu.ts`). Deskripsi di bawah adalah state FINAL setelah 2 putaran
+> koreksi proporsi dari user (lihat CLAUDE.md § "Koreksi putaran 2/3" untuk riwayatnya) — bukan
+> draft pertama, jangan ambil versi commit lama sebagai rujukan.
 
 Header mobile tidak menampilkan NavBar. Sebagai gantinya: **fixed bottom navigation bar** dengan
-tombol **Beranda melayang di tengah** (floating action button style — bg-primary, ikon putih,
-overlap di atas garis bar, dikelilingi `ring-[6px] ring-white` sebagai halo pemisah).
+tombol **Beranda melayang di tengah** (floating action button style — `bg-primary`, ikon putih,
+HANYA ~15% tinggi elemennya yang menonjol di atas garis bar — bukan 50% — dikelilingi `ring-4
+ring-white` sebagai halo pemisah).
 
 ```
 ┌────────────────────────────────────┐
@@ -171,19 +174,21 @@ overlap di atas garis bar, dikelilingi `ring-[6px] ring-white` sebagai halo pemi
 
 ...konten halaman...
 
-                ╭────╮
-        ┌───────┤ 🏠 ├───────┐          ← tombol Beranda melayang (bg-primary, overlap)
-        │       ╰────╯       │
-┌───────┴─────────────┴──────┴────────┐
-│  📰    🛒         🎫    ☰           │  ← bar rounded-t-3xl, shadow
-│Berita  Toko      Event  Lainnya     │
-└──────────────────────────────────────┘
+                 ╭──╮
+        ┌────────┤🏠├────────┐         ← Beranda, cuma puncak kecil menonjol (~15%)
+┌───────┴────────╰──╯────────┴────────┐
+│  📰       🛒              🎫  ☰    │  ← bar rounded-t-3xl, shadow
+│Berita    Toko            Event Lainnya│
+└────────────────────────────────────────┘
 ```
 
 - **Beranda** SELALU tampil sebagai tombol melayang di tengah — tidak diambil dari `nav_menu`
   (item `nav_menu` yang kebetulan juga menunjuk ke beranda otomatis difilter, cegah duplikat)
-- Maks 2 item kiri + 2 item kanan dari `nav_menu` (setelah beranda difilter) + slot "Lainnya"
-  (icon Menu) kalau masih ada sisa
+- **Maks 3 item menu ASLI** ditampilkan (bukan 4) — kiri 2, kanan 1. Slot ke-2 kanan SELALU
+  direservasi untuk tombol "Lainnya" kalau masih ada sisa item — jadi kiri:kanan selalu ≤2:2,
+  tidak pernah 2:3 (bug awal, sudah difix). Kalau item ≤3 total dan tidak ada sisa, "Lainnya"
+  tidak dirender sama sekali (kanan bisa 0-1 item, wajar tidak simetris kalau memang kontennya
+  sedikit)
 - Tombol "Lainnya" → drawer slide-up berisi sisa menu, ikon per item tetap di-resolve (bukan
   generik lagi)
 - Breakpoint: bottom nav aktif di `< md` (< 768px), NavBar aktif di `>= md`
@@ -210,6 +215,12 @@ lama tidak eksis di kode).
   builder `lib/public-url-registry.ts` secara terbalik). Bekerja untuk nav item hasil pilih dari
   picker MAUPUN yang diketik manual/item lama — tidak butuh migrasi data apa pun, karena inferensi
   murni dari string href yang sudah tersimpan.
+
+**Fallback halaman CMS (`/{slug}/{pageSlug}`)**: rute ini TIDAK PUNYA prefix segmen tetap seperti
+`post`/`agenda`/dst — jadi tidak pernah match tabel `SEGMENT_TYPE`/`SEGMENT_STATIC_ICON` manapun.
+Karena ini SATU-SATUNYA rute wildcard 1-segmen di seluruh registry, `iconForHref` default-kan
+href 1-segmen yang tidak dikenal ke ikon `FileText` (ikon Halaman) — bukan ikon generik `Link2`.
+Href >1 segmen yang tidak dikenal, anchor `#...`, atau URL eksternal tetap fallback ke `Link2`.
 
 **Aturan**: kalau menambah tipe konten baru ke `PublicLinkType` (lihat
 `docs/arsitektur-public-link-picker.md`), WAJIB tambah entry ikonnya juga di
