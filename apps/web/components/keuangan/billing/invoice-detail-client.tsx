@@ -65,10 +65,21 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
   // Payment form state
   const amountDue = invoice.total + (invoice.uniqueCode ?? 0);
 
-  // Termin cicilan belum lunas paling awal — dipakai untuk prefill "✓ Verifikasi" dengan
-  // angka BERSIH (tanpa kode unik termin), bukan payment.amount mentah yang customer submit
-  // (kemungkinan berisi kode). Lihat docs/arsitektur-billing.md § "Program Cicilan".
+  // Termin cicilan belum lunas paling awal. Dipakai untuk prefill "✓ Verifikasi" — HARUS
+  // dihitung dari payment.amount SESUNGGUHNYA yang customer submit (dikurangi kode unik
+  // termin), BUKAN blind nextUnpaidTerm.amount begitu saja. Kalau customer overpay (mis.
+  // sengaja bayar 2 termin sekaligus), default yang blind ke SATU termin akan under-credit
+  // customer secara diam-diam — bug yang dilaporkan user, lihat lesson CLAUDE.md § kode unik.
+  // Lihat docs/arsitektur-billing.md § "Program Cicilan".
   const nextUnpaidTerm = invoice.installmentSchedules.find((s) => s.status !== "paid") ?? null;
+
+  // Default nominal verifikasi cicilan: submitted amount dikurangi kode unik termin (kode
+  // TIDAK PERNAH bagian dari nominal cicilan) — bukan nextUnpaidTerm.amount tetap, supaya
+  // overpayment/pembayaran gabungan beberapa termin tetap tercermin benar di default.
+  function verifyDefaultFor(payment: InvoiceDetail["payments"][number]): number {
+    if (!nextUnpaidTerm) return payment.amount;
+    return Math.max(0, payment.amount - (nextUnpaidTerm.uniqueCode ?? 0));
+  }
 
   const [showPayForm, setShowPayForm]   = useState(false);
   // Nilai awal tidak penting (form belum tampil) — nilai SESUNGGUHNYA di-set oleh
@@ -505,7 +516,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                       <>
                         <button
                           type="button"
-                          onClick={() => toggleVerifyForm(p.id, nextUnpaidTerm ? nextUnpaidTerm.amount : p.amount)}
+                          onClick={() => toggleVerifyForm(p.id, verifyDefaultFor(p))}
                           disabled={verifyPending || rejectPending}
                           className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
                         >
@@ -561,7 +572,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {nextUnpaidTerm
-                        ? `Default sesuai nominal termin ${nextUnpaidTerm.termNumber} (angka bersih, TANPA kode unik ${nextUnpaidTerm.uniqueCode ?? ""}) — kode unik hanya alat bantu identifikasi di rekening, jangan ikut dicatat sebagai bagian cicilan.`
+                        ? `Default = nominal yang customer submit (Rp ${formatRp(p.amount).replace("Rp ", "")}) dikurangi kode unik termin ${nextUnpaidTerm.termNumber} (${nextUnpaidTerm.uniqueCode ?? "-"}) — kode unik hanya alat bantu identifikasi di rekening, jangan ikut dicatat sebagai bagian cicilan. Kalau customer bayar untuk beberapa termin sekaligus, default ini otomatis ikut lebih besar — cocokkan dengan bukti transfer sebelum konfirmasi.`
                         : "Default sesuai yang customer submit — cocokkan dengan bukti transfer di bawah sebelum konfirmasi."}
                     </p>
                     <div className="flex gap-2">

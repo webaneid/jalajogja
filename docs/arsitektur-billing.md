@@ -697,7 +697,7 @@ fix ini** (kalau ada, di production/lokal) mungkin masih punya `uniqueCode` ters
 `UPDATE invoices SET unique_code = 0 WHERE installment_plan_id IS NOT NULL` manual per tenant
 kalau ditemukan laporan invoice cicilan yang "stuck" di partial walau semua termin lunas.
 
-### Bug Ditemukan Dari Laporan User (2026-07-19) — Form "Konfirmasi Pembayaran" Manual Admin Default ke Sisa Tagihan PENUH, Bukan Nominal Termin
+### Bug Ditemukan Dari Laporan User (2026-07-19) — Nominal & Kode Unik Salah di Form Konfirmasi Admin (2 Bug Terpisah)
 
 **Gejala yang dilaporkan**: teks konfirmasi (nomor termin, kode unik) sudah benar, tapi nominal
 yang ter-submit dan tercatat di halaman admin adalah nominal **pelunasan penuh**, bukan
@@ -742,6 +742,69 @@ di handler toggle-nya sendiri.
 
 **Data production**: dicek — 0 invoice cicilan di kedua tenant, jadi bug ini belum sempat
 menimbulkan kerusakan data nyata (kemungkinan besar ditemukan user saat testing di lokal).
+
+#### Bug ke-2 (lebih halus) — Default form "✓ Verifikasi" SENDIRI blind ke satu termin, abaikan nominal yang customer benar-benar submit
+
+Setelah fix di atas, user eksplisit minta dipastikan lagi: apakah masalah serupa terjadi di
+jalur LAIN (bukan cicilan), khususnya skenario **customer membayar lebih** (overpayment,
+misalnya sengaja transfer sekaligus untuk 2 termin) — dan apakah **kode unik yang tampil ke
+admin** memang kode unik cicilan yang benar, bukan kode unik "pelunasan penuh" (invoice-level).
+Audit ulang ini menemukan bug KEDUA, terpisah dari yang di atas, di form "✓ Verifikasi" itu
+sendiri (`toggleVerifyForm`) — form yang SEBELUMNYA dikira sudah benar sejak awal.
+
+**Root cause**: `toggleVerifyForm(paymentId, nextUnpaidTerm ? nextUnpaidTerm.amount : p.amount)`
+— untuk invoice cicilan, default SELALU `nextUnpaidTerm.amount` (nominal SATU termin saja),
+**mengabaikan sepenuhnya `p.amount`** (nominal yang CUSTOMER SESUNGGUHNYA submit lewat halaman
+publik). Kalau customer overpay — misalnya sengaja transfer Rp 70.000 untuk menutup 2 termin
+@Rp 33.334 sekaligus — form Verifikasi TETAP menampilkan default Rp 33.334 (cuma 1 termin),
+BUKAN Rp 70.000 yang sebenarnya diterima. Kalau admin tidak sadar dan langsung klik
+"Konfirmasi", customer di-**under-credit** diam-diam: hanya 1 termin tercatat lunas meski
+mereka sudah bayar untuk 2, dan Rp 36.666 sisanya "hilang" dari pembukuan (tidak pernah masuk
+`invoice.paidAmount` sama sekali, karena admin hanya mengonfirmasi Rp 33.334, bukan Rp 70.000
+yang sungguhan mereka terima).
+
+**Ini KEBALIKAN dari bug pertama** (yang over-credit dengan mencatat TERLALU BANYAK) — bug ini
+under-credit dengan mencatat TERLALU SEDIKIT. Sama-sama berakar dari default yang tidak
+mencerminkan realita transaksi, di dua form berbeda.
+
+**Fix**: `verifyDefaultFor(payment)` baru — default sekarang dihitung dari
+`payment.amount - (nextUnpaidTerm.uniqueCode ?? 0)` (nominal yang CUSTOMER SUNGGUH-SUNGGUH
+submit, dikurangi kode unik termin) — BUKAN `nextUnpaidTerm.amount` yang blind mengasumsikan
+selalu tepat satu termin. Untuk kasus normal (customer transfer persis `term.amount+kode`),
+hasilnya identik dengan sebelumnya (`term.amount`) — TIDAK ada regresi. Untuk kasus overpay,
+hasilnya otomatis ikut lebih besar dan benar (mis. Rp 70.000 − kode = ~Rp 69.653, mendekati 2×
+nominal termin, waterfall settlement lalu otomatis menutup 2 termin sekaligus). Hint teks
+diperluas menjelaskan asal perhitungan default + peringatan "kalau customer bayar untuk
+beberapa termin sekaligus, default ini otomatis ikut lebih besar".
+
+**Kode unik yang "salah" — root cause TERNYATA sama dengan bug `uniqueCode` yang sudah difix
+sebelumnya, dikonfirmasi via data lokal**: dicek invoice cicilan test lokal
+(`620-INV-202607-00002`) — kolom `invoices.unique_code` masih **106** (kode invoice-level LAMA,
+dari SEBELUM invoice ini dikonversi ke cicilan, sebelum fix `uniqueCode: 0` di
+`convertInvoiceToInstallmentAction` diterapkan), sementara kode PER TERMIN yang sesungguhnya di
+`installment_schedules` sama sekali berbeda (termin 1=260, termin 2=545, termin 3=905, dst).
+Card ringkasan "Kode Unik" di bagian ATAS halaman admin (`invoice.uniqueCode`, line ~420) SEMPAT
+menampilkan 106 (kode "pelunasan penuh" invoice-level, sudah tidak relevan sejak cicilan aktif)
+— PERSIS gejala yang dilaporkan user. **Ini bukan bug kode baru** — murni DATA LAMA yang belum
+ter-backfill, karena fix `uniqueCode: 0` (sesi audit sebelumnya) hanya berlaku untuk konversi
+BARU, tidak retroaktif ke invoice yang sudah dikonversi sebelumnya. **Sudah dibackfill manual**
+di lokal (`UPDATE invoices SET unique_code = 0 WHERE installment_plan_id IS NOT NULL AND
+unique_code > 0`) — setelah backfill, card "Kode Unik" di atas otomatis hilang (guard `> 0`),
+dan admin hanya melihat kode yang benar (per termin, di tabel Jadwal Cicilan + hint form
+Verifikasi/Konfirmasi). Production dicek ulang — tetap 0 invoice cicilan, tidak perlu backfill.
+
+**Temuan tambahan, BELUM difix (butuh keputusan produk, bukan bug sepihak untuk diubah)**:
+`confirmInvoicePaymentAction` (form "Konfirmasi Pembayaran" manual, dipakai untuk mencatat
+pembayaran tunai dll TANPA submission customer) punya guard eksplisit
+`if (data.amount > remaining) throw ...` — MENOLAK jika admin mencoba mencatat nominal LEBIH
+BESAR dari sisa tagihan. Ini berlaku UNIVERSAL (cicilan maupun bukan), TIDAK selektif merusak
+cicilan saja — jadi bukan "bug yang sama muncul di tempat lain" secara teknis, tapi tetap
+relevan dengan kekhawatiran user soal overpayment: kalau admin genuinely perlu mencatat
+overpayment MANUAL (bukan dari verifikasi bukti customer), form ini akan menolak dengan pesan
+"Jumlah melebihi sisa tagihan". `verifySubmittedPaymentAction` (jalur "✓ Verifikasi") TIDAK
+punya batasan ini — overpayment via jalur verifikasi bukti customer SUDAH bekerja benar tanpa
+perlu perubahan. Pola ini sudah ada SEBELUM sesi cicilan (bukan regresi baru) — dicatat sebagai
+keputusan produk yang perlu dikonfirmasi user, bukan diubah sepihak.
 
 ### 4 Bug Ditemukan Saat Testing Manual (2026-07-19) — Semua Sudah Difix
 

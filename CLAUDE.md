@@ -6691,50 +6691,90 @@ di baliknya otomatis aman". Pola audit yang berguna: dalam satu file actions.ts,
 guard di action MUTASI vs action READ — kalau MUTASI konsisten pakai `hasFullAccess(...)` tapi
 READ cuma `getTenantAccess(...)` tanpa level check, itu sinyal kuat ada gap yang sama.
 
-### [2026-07-19] Bug Dilaporkan User: Form "Konfirmasi Pembayaran" Manual Admin Default ke Sisa Tagihan PENUH
+### [2026-07-19] Bug Dilaporkan User: Nominal & Kode Unik Salah di Form Konfirmasi Admin (2 Bug Terpisah)
 
-> Laporan user: "konfirmasi tertulis sesuai cicilan dan kode unik sudah benar, tetapi nominal
-> yang terkirim dan tertulis di laman admin adalah nominal full paid." Detail lengkap:
-> `docs/arsitektur-billing.md` § "Bug Ditemukan Dari Laporan User — Form Konfirmasi Pembayaran
-> Manual Admin".
+> Laporan user pertama: "konfirmasi tertulis sesuai cicilan dan kode unik sudah benar, tetapi
+> nominal yang terkirim dan tertulis di laman admin adalah nominal full paid." Laporan kedua
+> (setelah fix pertama, user eksplisit minta dipastikan lebih jauh): "harus dipastikan apakah
+> itu juga terjadi di konfirmasi lain (overpayment)... kode unik yang terkirim ke admin adalah
+> kode unik ketika full paid, bukan kode unik cicilannya." Detail lengkap:
+> `docs/arsitektur-billing.md` § "Bug Ditemukan Dari Laporan User — Nominal & Kode Unik Salah
+> di Form Konfirmasi Admin".
 
-**Root cause**: `InvoiceDetailClient` punya DUA form pencatat pembayaran — "✓ Verifikasi"
-(untuk payment yang customer submit, SUDAH cicilan-aware sejak awal via `toggleVerifyForm`) dan
-"Konfirmasi Pembayaran" (form manual admin, mis. untuk tunai — `payAmount` HANYA
-`useState(String(Math.round(invoice.remaining)))`, TIDAK PERNAH mempertimbangkan
-`nextUnpaidTerm`). `invoice.remaining` = sisa tagihan TOTAL lintas semua termin yang belum
-lunas — kalau admin memakai form manual ini untuk mencatat SATU termin (mis. tunai Rp 33.334
-dari total 3×Rp 33.334) tanpa menyadari & mengoreksi angka pre-filled, submit mencatat
-`payments.amount = 100.000` (seluruh sisa) → `newStatus` langsung `"paid"` →
-`settleInstallmentSchedules` menandai LUNAS semua termin sekaligus, padahal uang yang diterima
-cuma untuk termin pertama.
+**Bug #1 — form "Konfirmasi Pembayaran" manual (untuk tunai dll, TANPA submission customer)**:
+`payAmount` HANYA `useState(String(Math.round(invoice.remaining)))`, TIDAK PERNAH
+mempertimbangkan `nextUnpaidTerm` — default-nya SELALU sisa tagihan TOTAL lintas semua termin,
+bukan nominal satu termin. Admin yang mencatat SATU termin bisa tanpa sadar mengonfirmasi
+seluruh sisa tagihan → `settleInstallmentSchedules` menandai LUNAS semua termin sekaligus,
+padahal uang yang diterima cuma untuk termin pertama. **Over-credit** customer.
+Fix: `togglePayForm()` — reset `payAmount` ke `nextUnpaidTerm.amount` SETIAP kali form dibuka.
 
-**Fix**: `togglePayForm()` baru — SETIAP kali form dibuka (bukan cuma initializer `useState`
-yang jalan sekali saat mount), `payAmount` di-reset ke `nextUnpaidTerm.amount` (angka bersih,
-tanpa kode) untuk invoice cicilan, else `invoice.remaining` seperti semula. Hint teks di bawah
-field diperluas dengan nomor termin + peringatan eksplisit untuk cicilan.
+**Bug #2 (lebih halus, ditemukan di putaran audit KEDUA) — form "✓ Verifikasi" SENDIRI**: kode
+lama `toggleVerifyForm(paymentId, nextUnpaidTerm ? nextUnpaidTerm.amount : p.amount)` — untuk
+invoice cicilan, default SELALU `nextUnpaidTerm.amount` (nominal SATU termin blind), MENGABAIKAN
+`p.amount` (nominal yang CUSTOMER SESUNGGUHNYA submit). Kalau customer overpay (mis. sengaja
+transfer untuk 2 termin sekaligus, Rp 70.000 alih-alih Rp 33.334), form tetap default ke
+Rp 33.334 — kalau admin tidak sadar dan langsung konfirmasi, customer **under-credit** diam-diam:
+hanya 1 termin tercatat lunas meski sudah bayar untuk 2. **Ini kebalikan dari Bug #1** (under-
+credit, bukan over-credit) — sama-sama berakar dari default yang tidak mencerminkan realita
+transaksi, di form yang SEBELUMNYA dikira sudah benar sejak awal (justru bug ini yang paling
+gampang lolos audit pertama, karena permukaannya "terlihat" sudah cicilan-aware).
 
-**Aturan digeneralisasi**: kalau sebuah fitur (di sini: cicilan) punya DUA ATAU LEBIH jalur UI
-yang secara konseptual melakukan hal yang sama (mencatat pembayaran) tapi via komponen/handler
-BERBEDA, setiap kali salah satu jalur di-fix untuk suatu edge case (cicilan-awareness), WAJIB
-cek SEMUA jalur lain yang serupa — jangan asumsikan fix di satu tempat otomatis berlaku di
-tempat lain yang terlihat mirip. Bug ini persis kelas yang sama dengan lesson lama "Audit
-Proaktif — 4 Race Condition..." dan "Header Baru — cek sibling files" — satu jalur benar bukan
-jaminan jalur kembarannya juga benar.
+Fix: `verifyDefaultFor(payment)` — default sekarang `payment.amount - (nextUnpaidTerm.uniqueCode
+?? 0)` (nominal SUNGGUHAN yang customer submit, dikurangi kode unik termin) — BUKAN
+`nextUnpaidTerm.amount` yang blind mengasumsikan tepat satu termin. Kasus normal: hasil identik
+dengan sebelumnya (zero regresi). Kasus overpay: hasil otomatis ikut lebih besar dan benar.
 
-**Data production**: dicek ulang — masih 0 invoice cicilan di kedua tenant, bug ini belum
-sempat merusak data nyata.
+**Kode unik "salah" — root cause TERNYATA sama dengan bug `uniqueCode` yang sudah difix di
+sesi sebelumnya, dikonfirmasi via data lokal**: invoice cicilan test lokal
+(`620-INV-202607-00002`) masih punya `invoices.unique_code = 106` (kode invoice-level LAMA dari
+SEBELUM invoice ini dikonversi, sebelum fix `uniqueCode: 0` di
+`convertInvoiceToInstallmentAction` diterapkan) — sementara kode PER TERMIN sesungguhnya di
+`installment_schedules` sama sekali berbeda (termin 1=260, 2=545, 3=905, dst). Card ringkasan
+"Kode Unik" di ATAS halaman admin (`invoice.uniqueCode`) sempat menampilkan 106 — PERSIS gejala
+yang dilaporkan. **Bukan bug kode baru** — murni DATA LAMA yang belum ter-backfill (fix
+`uniqueCode: 0` sebelumnya hanya berlaku untuk konversi BARU, tidak retroaktif). Sudah
+dibackfill manual di lokal (`UPDATE invoices SET unique_code = 0 WHERE installment_plan_id IS
+NOT NULL AND unique_code > 0`) — setelah backfill, card itu otomatis hilang. Production dicek
+ulang — tetap 0 invoice cicilan, tidak perlu backfill.
+
+**Temuan tambahan, BELUM difix (butuh keputusan produk user, bukan diubah sepihak)**:
+`confirmInvoicePaymentAction` (form manual "Konfirmasi Pembayaran") punya guard
+`if (data.amount > remaining) throw ...` — MENOLAK kalau admin mencoba mencatat nominal LEBIH
+BESAR dari sisa tagihan, berlaku UNIVERSAL (cicilan maupun bukan, bukan regresi baru, pre-
+existing dari sebelum sesi cicilan). Kalau admin genuinely perlu mencatat overpayment MANUAL
+(bukan dari verifikasi bukti customer), form ini akan menolak. `verifySubmittedPaymentAction`
+("✓ Verifikasi") TIDAK punya batasan ini — overpayment via jalur verifikasi bukti customer
+sudah bekerja benar. Dicatat sebagai pertanyaan produk terbuka, BUKAN bug yang diperbaiki
+sepihak.
+
+**Aturan digeneralisasi (diperkuat, karena bug #2 lolos dari audit PERTAMA)**: kalau sebuah
+fitur punya DUA ATAU LEBIH jalur UI yang secara konseptual melakukan hal yang sama tapi via
+komponen/handler BERBEDA, dan salah satu jalur SUDAH terlihat "benar" (sudah menyebut variabel
+cicilan yang tepat), JANGAN berhenti di situ — verifikasi FORMULA-nya, bukan cuma keberadaan
+kesadaran cicilan-nya. `nextUnpaidTerm.amount` (blind, asumsi selalu 1 termin) TERLIHAT seperti
+fix yang benar tapi sebenarnya mengabaikan input real (`p.amount`) — persis kelas bug yang lolos
+audit sekali jalan. Kalau user memberi sinyal "pastikan lebih jauh" setelah fix pertama, itu
+bukan basa-basi — audit ulang dengan asumsi "mungkin masih ada yang lain", bukan berhenti di
+temuan pertama.
+
+**Data production**: dicek ulang di kedua putaran — masih 0 invoice cicilan di kedua tenant,
+belum ada kerusakan data nyata.
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Notifikasi WhatsApp untuk Program Cicilan — 5 event baru** (sesi
-  2026-07-19), lalu 3 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
+  2026-07-19), lalu 4 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
   di-nolkan saat konversi cicilan**, **fix 4 Server Action billing tanpa `hasReadAccess`
-  guard**, dan **fix form "Konfirmasi Pembayaran" manual admin default ke sisa tagihan penuh**
-  (dilaporkan langsung oleh user). Lihat 4 lesson di atas untuk detail lengkap. Fitur sudah live
-  di production: kode deployed, migration 0033 jalan, cron `installment-reminder` terjadwal jam
-  08:15 (diverifikasi respons `{"notified":0}`), toggle notifikasi sudah diaktifkan admin di
-  tenant `visikita`. Belum ada uji nyata end-to-end (menunggu invoice cicilan pertama beneran).
-  Cek `git status` sebelum lanjut — perlu dipastikan semua fix terbaru sudah commit+push.
+  guard**, **fix form "Konfirmasi Pembayaran" manual admin default ke sisa tagihan penuh**, dan
+  **fix form "✓ Verifikasi" sendiri yang blind ke satu termin (abaikan overpayment)** — 2 bug
+  terakhir dilaporkan/diminta diverifikasi langsung oleh user. Lihat 4 lesson di atas untuk
+  detail lengkap. Fitur sudah live di production: kode deployed, migration 0033 jalan, cron
+  `installment-reminder` terjadwal jam 08:15 (diverifikasi respons `{"notified":0}`), toggle
+  notifikasi sudah diaktifkan admin di tenant `visikita`. **Pertanyaan produk terbuka
+  (belum dijawab user)**: apakah `confirmInvoicePaymentAction` (form manual) perlu diizinkan
+  mencatat overpayment juga (saat ini menolak keras)? Belum ada uji nyata end-to-end (menunggu
+  invoice cicilan pertama beneran). Cek `git status` sebelum lanjut — perlu dipastikan semua fix
+  terbaru sudah commit+push.
 - Sesi sebelumnya: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
   - **Riset arsitektur sebelum eksekusi**: baca ulang `docs/arsitektur-whatsapp.md`, `-billing.md`,
