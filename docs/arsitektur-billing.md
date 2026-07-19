@@ -697,6 +697,52 @@ fix ini** (kalau ada, di production/lokal) mungkin masih punya `uniqueCode` ters
 `UPDATE invoices SET unique_code = 0 WHERE installment_plan_id IS NOT NULL` manual per tenant
 kalau ditemukan laporan invoice cicilan yang "stuck" di partial walau semua termin lunas.
 
+### Bug Ditemukan Dari Laporan User (2026-07-19) — Form "Konfirmasi Pembayaran" Manual Admin Default ke Sisa Tagihan PENUH, Bukan Nominal Termin
+
+**Gejala yang dilaporkan**: teks konfirmasi (nomor termin, kode unik) sudah benar, tapi nominal
+yang ter-submit dan tercatat di halaman admin adalah nominal **pelunasan penuh**, bukan
+nominal satu termin.
+
+**Root cause**: `InvoiceDetailClient` (`components/keuangan/billing/invoice-detail-client.tsx`)
+punya DUA form berbeda untuk mencatat pembayaran, dan hanya SATU yang cicilan-aware:
+- **"✓ Verifikasi"** (untuk payment yang customer submit via halaman publik) — `verifyAmount`
+  di-seed lewat `toggleVerifyForm(paymentId, nextUnpaidTerm ? nextUnpaidTerm.amount : p.amount)`
+  — BENAR, sudah cicilan-aware sejak awal.
+- **"Konfirmasi Pembayaran"** (form manual, untuk admin mencatat pembayaran yang TIDAK melalui
+  submission customer — mis. tunai diterima langsung) — `payAmount` HANYA
+  `useState(String(Math.round(invoice.remaining)))`, sama sekali TIDAK mempertimbangkan
+  `nextUnpaidTerm`. `invoice.remaining` = sisa tagihan TOTAL lintas semua termin yang belum
+  lunas, bukan nominal SATU termin. Form ini tetap tampil dan bisa dipakai untuk invoice cicilan
+  (tidak ada guard `installmentPlanId` yang menyembunyikannya).
+
+**Konsekuensi**: admin yang memakai form "Konfirmasi Pembayaran" untuk mencatat penerimaan SATU
+termin cicilan (mis. tunai Rp 33.334 untuk termin 1 dari 3) akan melihat field pre-filled
+dengan sisa tagihan TOTAL (Rp 100.000, jumlah 3 termin) — kalau tidak disadari dan dikoreksi
+manual, submit akan mencatat `payments.amount = 100.000`, `invoice.paidAmount` langsung
+melompat ke `amountDue`, `newStatus` langsung `"paid"`, dan `settleInstallmentSchedules`
+menandai LUNAS semua termin sekaligus — padahal uang yang benar-benar diterima cuma untuk
+termin pertama.
+
+**Fix**: `togglePayForm()` baru — SETIAP kali form dibuka (bukan cuma sekali saat mount),
+`payAmount` di-reset ke `nextUnpaidTerm.amount` (angka bersih, tanpa kode — konsisten dengan
+form Verifikasi) jika invoice ini cicilan, else `invoice.remaining` seperti semula. Hint teks di
+bawah field diperluas: untuk invoice cicilan, tampilkan nomor termin + peringatan eksplisit
+"jangan catat sisa tagihan penuh kecuali memang menerima pelunasan sekaligus" + tetap tampilkan
+sisa tagihan total sebagai info (bukan default).
+
+**Kenapa fix pakai reset-on-open, bukan cuma perbaiki initializer**: `payAmount` adalah
+`useState` di level komponen yang PERSISTEN sepanjang hidup komponen — memperbaiki nilai awal
+`useState(...)` saja tidak cukup kalau admin membuka-tutup form berkali-kali untuk termin yang
+berbeda-beda (`nextUnpaidTerm` berubah setiap `router.refresh()` setelah termin sebelumnya
+lunas, tapi `useState` initializer cuma jalan sekali saat mount). Pola sama dengan fix
+`payAmount` di sisi customer (`invoice-public-client.tsx`, § "4 Bug Ditemukan Saat Testing
+Manual" bug #4) — cuma di sana dipakai `useEffect`+`useRef` karena formnya selalu tampil
+(tidak toggle buka/tutup); di sini form toggle buka/tutup jadi titik reset paling natural ada
+di handler toggle-nya sendiri.
+
+**Data production**: dicek — 0 invoice cicilan di kedua tenant, jadi bug ini belum sempat
+menimbulkan kerusakan data nyata (kemungkinan besar ditemukan user saat testing di lokal).
+
 ### 4 Bug Ditemukan Saat Testing Manual (2026-07-19) — Semua Sudah Difix
 
 Setelah kode di atas "SELESAI" dari sisi implementasi, testing manual di dev machine lokal

@@ -6691,15 +6691,50 @@ di baliknya otomatis aman". Pola audit yang berguna: dalam satu file actions.ts,
 guard di action MUTASI vs action READ — kalau MUTASI konsisten pakai `hasFullAccess(...)` tapi
 READ cuma `getTenantAccess(...)` tanpa level check, itu sinyal kuat ada gap yang sama.
 
+### [2026-07-19] Bug Dilaporkan User: Form "Konfirmasi Pembayaran" Manual Admin Default ke Sisa Tagihan PENUH
+
+> Laporan user: "konfirmasi tertulis sesuai cicilan dan kode unik sudah benar, tetapi nominal
+> yang terkirim dan tertulis di laman admin adalah nominal full paid." Detail lengkap:
+> `docs/arsitektur-billing.md` § "Bug Ditemukan Dari Laporan User — Form Konfirmasi Pembayaran
+> Manual Admin".
+
+**Root cause**: `InvoiceDetailClient` punya DUA form pencatat pembayaran — "✓ Verifikasi"
+(untuk payment yang customer submit, SUDAH cicilan-aware sejak awal via `toggleVerifyForm`) dan
+"Konfirmasi Pembayaran" (form manual admin, mis. untuk tunai — `payAmount` HANYA
+`useState(String(Math.round(invoice.remaining)))`, TIDAK PERNAH mempertimbangkan
+`nextUnpaidTerm`). `invoice.remaining` = sisa tagihan TOTAL lintas semua termin yang belum
+lunas — kalau admin memakai form manual ini untuk mencatat SATU termin (mis. tunai Rp 33.334
+dari total 3×Rp 33.334) tanpa menyadari & mengoreksi angka pre-filled, submit mencatat
+`payments.amount = 100.000` (seluruh sisa) → `newStatus` langsung `"paid"` →
+`settleInstallmentSchedules` menandai LUNAS semua termin sekaligus, padahal uang yang diterima
+cuma untuk termin pertama.
+
+**Fix**: `togglePayForm()` baru — SETIAP kali form dibuka (bukan cuma initializer `useState`
+yang jalan sekali saat mount), `payAmount` di-reset ke `nextUnpaidTerm.amount` (angka bersih,
+tanpa kode) untuk invoice cicilan, else `invoice.remaining` seperti semula. Hint teks di bawah
+field diperluas dengan nomor termin + peringatan eksplisit untuk cicilan.
+
+**Aturan digeneralisasi**: kalau sebuah fitur (di sini: cicilan) punya DUA ATAU LEBIH jalur UI
+yang secara konseptual melakukan hal yang sama (mencatat pembayaran) tapi via komponen/handler
+BERBEDA, setiap kali salah satu jalur di-fix untuk suatu edge case (cicilan-awareness), WAJIB
+cek SEMUA jalur lain yang serupa — jangan asumsikan fix di satu tempat otomatis berlaku di
+tempat lain yang terlihat mirip. Bug ini persis kelas yang sama dengan lesson lama "Audit
+Proaktif — 4 Race Condition..." dan "Header Baru — cek sibling files" — satu jalur benar bukan
+jaminan jalur kembarannya juga benar.
+
+**Data production**: dicek ulang — masih 0 invoice cicilan di kedua tenant, bug ini belum
+sempat merusak data nyata.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Notifikasi WhatsApp untuk Program Cicilan — 5 event baru** (sesi
-  2026-07-19), lalu 2 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
-  di-nolkan saat konversi cicilan** dan **fix 4 Server Action billing tanpa `hasReadAccess`
-  guard**. Lihat 3 lesson di atas untuk detail lengkap. Sudah di-commit (permission fix belum
-  di-push — cek status git sebelum lanjut). Fitur sudah live di production: kode deployed,
-  migration 0033 jalan, cron `installment-reminder` terjadwal jam 08:15 (diverifikasi respons
-  `{"notified":0}`), toggle notifikasi sudah diaktifkan admin di tenant `visikita`. Belum ada
-  uji nyata end-to-end (menunggu invoice cicilan pertama beneran).
+  2026-07-19), lalu 3 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
+  di-nolkan saat konversi cicilan**, **fix 4 Server Action billing tanpa `hasReadAccess`
+  guard**, dan **fix form "Konfirmasi Pembayaran" manual admin default ke sisa tagihan penuh**
+  (dilaporkan langsung oleh user). Lihat 4 lesson di atas untuk detail lengkap. Fitur sudah live
+  di production: kode deployed, migration 0033 jalan, cron `installment-reminder` terjadwal jam
+  08:15 (diverifikasi respons `{"notified":0}`), toggle notifikasi sudah diaktifkan admin di
+  tenant `visikita`. Belum ada uji nyata end-to-end (menunggu invoice cicilan pertama beneran).
+  Cek `git status` sebelum lanjut — perlu dipastikan semua fix terbaru sudah commit+push.
 - Sesi sebelumnya: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
   - **Riset arsitektur sebelum eksekusi**: baca ulang `docs/arsitektur-whatsapp.md`, `-billing.md`,

@@ -71,6 +71,11 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
   const nextUnpaidTerm = invoice.installmentSchedules.find((s) => s.status !== "paid") ?? null;
 
   const [showPayForm, setShowPayForm]   = useState(false);
+  // Nilai awal tidak penting (form belum tampil) — nilai SESUNGGUHNYA di-set oleh
+  // togglePayForm() setiap kali form dibuka, cicilan-aware (angka bersih termin berikutnya,
+  // BUKAN invoice.remaining penuh). Tanpa ini, admin yang catat pembayaran manual (mis. tunai)
+  // untuk SATU termin bisa tanpa sadar mengonfirmasi SELURUH sisa tagihan sekaligus — bug
+  // nyata yang dilaporkan user, lihat lesson CLAUDE.md.
   const [payAmount,   setPayAmount]     = useState(String(Math.round(invoice.remaining)));
   const [payMethod,   setPayMethod]     = useState<"cash" | "transfer" | "qris">("cash");
   const [payBank,     setPayBank]       = useState("");
@@ -258,6 +263,21 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
 
   const canPay    = !["paid", "cancelled"].includes(invoice.status) && invoice.remaining > 0;
   const canCancel = !["paid", "cancelled"].includes(invoice.status);
+
+  // Buka/tutup form "Konfirmasi Pembayaran" manual — SETIAP kali dibuka, payAmount di-reset
+  // ke default yang benar saat itu (cicilan-aware). Jangan andalkan useState initializer saja
+  // (nilainya statis dari saat mount, tidak ikut berubah walau invoice/nextUnpaidTerm berubah
+  // setelah router.refresh() dari transaksi sebelumnya).
+  function togglePayForm() {
+    setError("");
+    setSuccess("");
+    if (showPayForm) {
+      setShowPayForm(false);
+      return;
+    }
+    setPayAmount(String(Math.round(nextUnpaidTerm ? nextUnpaidTerm.amount : invoice.remaining)));
+    setShowPayForm(true);
+  }
 
   function handlePay(e: React.FormEvent) {
     e.preventDefault();
@@ -777,7 +797,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
           {canPay && (
             <button
               type="button"
-              onClick={() => setShowPayForm((v) => !v)}
+              onClick={togglePayForm}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               {showPayForm ? "Tutup Form" : "Konfirmasi Pembayaran"}
@@ -813,7 +833,11 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                 required
               />
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Sisa tagihan: {formatRp(invoice.remaining)}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {nextUnpaidTerm
+                ? `Default sesuai nominal termin ${nextUnpaidTerm.termNumber} (angka bersih, TANPA kode unik${nextUnpaidTerm.uniqueCode ? ` ${nextUnpaidTerm.uniqueCode}` : ""}) — jangan catat sisa tagihan penuh kecuali memang menerima pelunasan sekaligus. Sisa tagihan total: ${formatRp(invoice.remaining)}.`
+                : `Sisa tagihan: ${formatRp(invoice.remaining)}`}
+            </p>
           </div>
 
           <div>
