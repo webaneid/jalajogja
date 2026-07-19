@@ -2,16 +2,17 @@ import Link from "next/link";
 
 type Props = {
   slug:   string;
-  active: "invoice" | "cicilan";
+  active: "invoice" | "cicilan" | "voucher";
 };
 
-// Tab kecil penghubung Invoice <-> Cicilan — billing tidak punya sub-nav shell terpisah
-// (struktur folder finance/billing/ flat, page.tsx cuma redirect ke /invoice), jadi
-// penghubungnya cukup tab ringan di kedua halaman, bukan layout baru.
+// Tab kecil penghubung Invoice <-> Cicilan <-> Voucher — billing tidak punya sub-nav shell
+// terpisah (struktur folder finance/billing/ flat, page.tsx cuma redirect ke /invoice), jadi
+// penghubungnya cukup tab ringan di setiap halaman, bukan layout baru.
 export function BillingTabs({ slug, active }: Props) {
   const tabs = [
     { key: "invoice" as const,  label: "Invoice", href: `/app/${slug}/finance/billing/invoice` },
     { key: "cicilan" as const,  label: "Cicilan",  href: `/app/${slug}/finance/billing/cicilan` },
+    { key: "voucher" as const,  label: "Voucher",  href: `/app/${slug}/finance/billing/voucher` },
   ];
 
   return (

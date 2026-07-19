@@ -6,6 +6,8 @@
 > - `docs/arsitektur-addon-ongkir.md` — RajaOngkir v2, ongkos kirim per seller
 > - `docs/arsitektur-mitra.md` — shipping mitra vs tenant
 > - `docs/arsitektur-kode-unik.md` — kode unik Rp 100–999 untuk identifikasi transfer masuk
+> - `docs/arsitektur-voucher.md` — diskon & voucher berkode, memotong `invoice_items.total`
+>   PER ITEM (bukan invoice keseluruhan), termasuk kasus voucher 100% → checkout Rp 0 auto-lunas
 
 ## Visi
 
@@ -164,6 +166,9 @@ due_date       DATE NULL             -- batas bayar (default +3 hari dari create
 notes          TEXT NULL
 pdf_url        TEXT NULL             -- setelah generate PDF
 installment_plan_id UUID NULL        -- FK → installment_plans.id (program cicilan)
+voucher_id            UUID NULL      -- FK → vouchers.id, lihat docs/arsitektur-voucher.md
+voucher_code          TEXT NULL      -- snapshot kode, tetap kebaca meski voucher dihapus nanti
+voucher_discount_total NUMERIC(15,2) NOT NULL DEFAULT 0  -- = Σ invoice_items.discount_amount
 created_by     UUID NULL             -- admin yang buat (null = dari front-end/guest)
 created_at     TIMESTAMP
 updated_at     TIMESTAMP
@@ -172,17 +177,23 @@ updated_at     TIMESTAMP
 ### `invoice_items`
 
 ```sql
-id          UUID PK
-invoice_id  UUID NOT NULL            -- FK → invoices.id CASCADE DELETE
-item_type   TEXT NOT NULL            -- 'product' | 'ticket' | 'donation' | 'custom'
-item_id     UUID NULL                -- referensi ke sumber
-name        TEXT NOT NULL            -- snapshot nama
-description TEXT NULL
-unit_price  NUMERIC(15,2) NOT NULL
-quantity    INTEGER NOT NULL DEFAULT 1
-total       NUMERIC(15,2) NOT NULL   -- unit_price * quantity
-sort_order  INTEGER NOT NULL DEFAULT 0
+id              UUID PK
+invoice_id      UUID NOT NULL        -- FK → invoices.id CASCADE DELETE
+item_type       TEXT NOT NULL        -- 'product' | 'ticket' | 'donation' | 'custom'
+item_id         UUID NULL            -- referensi ke sumber
+name            TEXT NOT NULL        -- snapshot nama
+description     TEXT NULL
+unit_price      NUMERIC(15,2) NOT NULL
+quantity        INTEGER NOT NULL DEFAULT 1
+discount_amount NUMERIC(15,2) NOT NULL DEFAULT 0  -- potongan voucher baris ini (nominal, bukan %)
+voucher_id      UUID NULL            -- FK → vouchers.id
+total           NUMERIC(15,2) NOT NULL   -- (unit_price * quantity) - discount_amount, clamp ≥ 0
+sort_order      INTEGER NOT NULL DEFAULT 0
 ```
+
+> **Diskon memotong `invoice_items.total` PER BARIS, bukan `invoices.discount` (kolom lama, murni
+> untuk invoice manual admin).** `invoices.discount` TIDAK PERNAH diisi oleh alur voucher — lihat
+> `docs/arsitektur-voucher.md` untuk alasan dan alur lengkap.
 
 ### `invoice_payments`
 
@@ -1421,7 +1432,9 @@ Cart item menyimpan snapshot harga, jadi harga di cart tidak stale.
 A: Belum. Semua IDR. Dipertimbangkan di versi berikutnya.
 
 **Q: Diskon kode promo?**
-A: Belum di scope ini. `invoices.discount` kolom sudah ada, implementasi promo code menyusul.
+A: ✅ Selesai (Fase 1, berkode) — lihat `docs/arsitektur-voucher.md`. Memotong `invoice_items.total`
+per item yang ditarget, bukan `invoices.discount` (kolom lama tetap murni untuk invoice manual
+admin). Diskon otomatis tanpa kode adalah Fase 2, belum direncanakan detail.
 
 ---
 
@@ -1463,10 +1476,21 @@ A: Belum di scope ini. `invoices.discount` kolom sudah ada, implementasi promo c
 - [x] Link pesanan list → fulfillment page
 > Detail: **`docs/arsitektur-fulfillment.md`**
 
+### Diskon & Voucher (Fase 1)
+- [x] Schema `vouchers` + `voucher_redemptions` + kolom baru `invoices`/`invoice_items`
+- [x] Resolver murni `packages/db/src/helpers/voucher.ts` (findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount)
+- [x] Integrasi `checkoutAction` — potongan per-item, Rp 0 auto-lunas, kode unik di-skip saat total=0
+- [x] UI preview + input kode di `checkout-form.tsx` (bukan halaman keranjang — lihat § UI di `docs/arsitektur-voucher.md`)
+- [x] Admin CRUD `/finance/billing/voucher/*` + tab `BillingTabs`
+- [x] `cancelInvoiceAction` — rollback `usedCount` + tandai redemption `cancelledAt`
+- [ ] Migrasi `0034_vouchers.sql` **belum dijalankan di VPS** — wajib sebelum deploy
+- [ ] Belum dites manual end-to-end di browser
+> Detail lengkap: **`docs/arsitektur-voucher.md`**
+
 ### Belum Dimulai
 - [ ] Invoice PDF (Playwright)
-- [ ] Program Cicilan UI
 - [ ] Laporan Piutang Outstanding
+- [ ] Diskon otomatis tanpa kode + target produk mitra (Voucher Fase 2) — lihat § 10 `docs/arsitektur-voucher.md`
 - [x] Notifikasi WA per fulfillment stage — ✅ SELESAI 2026-07-15 (commit `876fe91`), lihat
       `docs/arsitektur-whatsapp.md` § 6.2
 - [ ] RajaOngkir tracking proxy `/api/ongkir/track` (rencana di `docs/arsitektur-fulfillment.md`)

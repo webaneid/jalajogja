@@ -7,6 +7,7 @@ import { createTenantDb, generateFinancialNumber, settleInstallmentSchedules } f
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, hasReadAccess } from "@/lib/permissions";
 import { recordIncome } from "@jalajogja/db";
+import { normalizePhone } from "@/lib/phone";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz } from "@/lib/tenant-timezone.server";
 
@@ -244,7 +245,11 @@ export async function cancelInvoiceAction(
       // bukti pembayaran (submitPaymentProofAction) tepat di antara SELECT dan UPDATE di atas
       // (pola sama dengan lock invoice di confirmInvoicePaymentAction/verifySubmittedPaymentAction).
       const [lockedInv] = await tx
-        .select({ status: schema.invoices.status, paidAmount: schema.invoices.paidAmount })
+        .select({
+          status:     schema.invoices.status,
+          paidAmount: schema.invoices.paidAmount,
+          voucherId:  schema.invoices.voucherId,
+        })
         .from(schema.invoices)
         .where(sql`${schema.invoices.id} = ${invoiceId} FOR UPDATE`)
         .limit(1);
@@ -263,6 +268,24 @@ export async function cancelInvoiceAction(
           updatedAt: new Date(),
         })
         .where(eq(schema.invoices.id, invoiceId));
+
+      // Voucher dipakai invoice ini → kembalikan kuotanya. usedCount di-decrement (tidak
+      // pernah minus via GREATEST), redemption ditandai cancelledAt (bukan dihapus — audit
+      // trail tetap utuh, cuma tidak dihitung lagi ke usageLimit/usageLimitPerCustomer).
+      if (lockedInv.voucherId) {
+        await tx
+          .update(schema.vouchers)
+          .set({ usedCount: sql`GREATEST(${schema.vouchers.usedCount} - 1, 0)`, updatedAt: new Date() })
+          .where(eq(schema.vouchers.id, lockedInv.voucherId));
+        await tx
+          .update(schema.voucherRedemptions)
+          .set({ cancelledAt: new Date() })
+          .where(and(
+            eq(schema.voucherRedemptions.voucherId, lockedInv.voucherId),
+            eq(schema.voucherRedemptions.invoiceId, invoiceId),
+            sql`${schema.voucherRedemptions.cancelledAt} IS NULL`,
+          ));
+      }
     });
 
     revalidateBilling(slug);
@@ -1979,6 +2002,402 @@ export async function getInstallmentPlanDetailAction(
         status:        r.status,
         paidTerms:     paidTermsMap[r.id] ?? 0,
         totalTerms:    plan.installmentCount,
+      })),
+    },
+  };
+}
+
+// ─── Voucher (Diskon & Voucher — Fase 1: berkode, target milik tenant) ─────────
+// Lihat docs/arsitektur-voucher.md untuk arsitektur lengkap. Prinsip kunci: diskon memotong
+// harga PER ITEM (invoice_items.total), tidak pernah invoice keseluruhan — resolusi & validasi
+// sesungguhnya dilakukan di checkoutAction (cart/actions.ts), file ini murni CRUD admin.
+
+export type VoucherTargetOption = {
+  value: string;        // itemId — product.id / eventTickets.id / campaign.id / qurbanAnimal.id
+  label: string;
+  price: number | null;
+};
+
+export async function getVoucherTargetOptionsAction(
+  slug:       string,
+  targetType: "product" | "ticket" | "donation",
+): Promise<ActionResult<VoucherTargetOption[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasReadAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  if (targetType === "product") {
+    const rows = await db
+      .select({ id: schema.products.id, name: schema.products.name, price: schema.products.price })
+      .from(schema.products)
+      .where(and(eq(schema.products.status, "active"), sql`${schema.products.mitraId} IS NULL`))
+      .orderBy(desc(schema.products.createdAt));
+    return {
+      success: true,
+      data: rows.map((r) => ({ value: r.id, label: r.name, price: parseFloat(String(r.price)) })),
+    };
+  }
+
+  if (targetType === "ticket") {
+    const rows = await db
+      .select({
+        id:         schema.eventTickets.id,
+        ticketName: schema.eventTickets.name,
+        eventTitle: schema.events.title,
+        price:      schema.eventTickets.price,
+      })
+      .from(schema.eventTickets)
+      .innerJoin(schema.events, eq(schema.events.id, schema.eventTickets.eventId))
+      .where(and(eq(schema.eventTickets.isActive, true), eq(schema.events.status, "published")))
+      .orderBy(desc(schema.events.startsAt));
+    return {
+      success: true,
+      data: rows.map((r) => ({
+        value: r.id, label: `${r.eventTitle} — ${r.ticketName}`, price: parseFloat(String(r.price)),
+      })),
+    };
+  }
+
+  // donation — campaign biasa (itemId = campaign.id) + varian qurban (itemId = qurban_animal.id),
+  // sesuai semantik itemId yang benar-benar dipakai cart (lihat lib addToCartAction di public cart).
+  const campaigns = await db
+    .select({ id: schema.campaigns.id, title: schema.campaigns.title, campaignType: schema.campaigns.campaignType })
+    .from(schema.campaigns)
+    .where(eq(schema.campaigns.status, "active"))
+    .orderBy(desc(schema.campaigns.createdAt));
+
+  const regularOptions: VoucherTargetOption[] = campaigns
+    .filter((c) => c.campaignType !== "qurban")
+    .map((c) => ({ value: c.id, label: `Donasi: ${c.title}`, price: null }));
+
+  const qurbanCampaignIds = campaigns.filter((c) => c.campaignType === "qurban").map((c) => c.id);
+  let animalOptions: VoucherTargetOption[] = [];
+  if (qurbanCampaignIds.length > 0) {
+    const titleMap = new Map(campaigns.map((c) => [c.id, c.title]));
+    const animals = await db
+      .select({
+        id: schema.qurbanAnimals.id, animalType: schema.qurbanAnimals.animalType,
+        campaignId: schema.qurbanAnimals.campaignId, price: schema.qurbanAnimals.price,
+      })
+      .from(schema.qurbanAnimals)
+      .where(and(
+        inArray(schema.qurbanAnimals.campaignId, qurbanCampaignIds),
+        eq(schema.qurbanAnimals.isActive, true),
+      ));
+    animalOptions = animals.map((a) => ({
+      value: a.id,
+      label: `Qurban: ${titleMap.get(a.campaignId) ?? "?"} — ${a.animalType}`,
+      price: parseFloat(String(a.price)),
+    }));
+  }
+
+  return { success: true, data: [...regularOptions, ...animalOptions] };
+}
+
+export type VoucherListItem = {
+  id:                     string;
+  code:                   string;
+  name:                   string;
+  discountType:           "percentage" | "fixed";
+  discountValue:          number;
+  targetType:             "product" | "ticket" | "donation";
+  targetCount:            number; // 0 = berlaku untuk semua item tipe ini
+  usageLimit:             number | null;
+  usedCount:              number;
+  isActive:               boolean;
+  validFrom:              string | null;
+  validUntil:             string | null;
+  createdAt:              string;
+};
+
+export async function getVoucherListAction(
+  slug: string,
+): Promise<ActionResult<VoucherListItem[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasReadAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+  const rows = await db
+    .select()
+    .from(schema.vouchers)
+    .orderBy(desc(schema.vouchers.createdAt));
+
+  return {
+    success: true,
+    data: rows.map((r) => ({
+      id:            r.id,
+      code:          r.code,
+      name:          r.name,
+      discountType:  r.discountType,
+      discountValue: parseFloat(String(r.discountValue)),
+      targetType:    r.targetType,
+      targetCount:   ((r.targetItemIds as string[]) ?? []).length,
+      usageLimit:    r.usageLimit,
+      usedCount:     r.usedCount,
+      isActive:      r.isActive,
+      validFrom:     r.validFrom?.toISOString()  ?? null,
+      validUntil:    r.validUntil?.toISOString() ?? null,
+      createdAt:     r.createdAt.toISOString(),
+    })),
+  };
+}
+
+export type VoucherFormData = {
+  code:                   string;
+  name:                   string;
+  description?:           string;
+  discountType:           "percentage" | "fixed";
+  discountValue:          number;
+  targetType:             "product" | "ticket" | "donation";
+  targetItemIds:          string[];
+  usageLimit?:            number | null;
+  usageLimitPerCustomer?: number | null;
+  restrictPhone?:         string | null;
+  restrictEmail?:         string | null;
+  validFrom?:             string | null; // ISO date
+  validUntil?:            string | null; // ISO date
+};
+
+function validateVoucherData(data: VoucherFormData): string | null {
+  if (!data.code.trim())                          return "Kode voucher wajib diisi.";
+  if (!/^[A-Z0-9_-]+$/i.test(data.code.trim()))    return "Kode voucher hanya boleh huruf, angka, - dan _.";
+  if (!data.name.trim())                           return "Nama voucher wajib diisi.";
+  if (!data.discountValue || data.discountValue <= 0) return "Nilai diskon harus lebih dari 0.";
+  if (data.discountType === "percentage" && data.discountValue > 100)
+    return "Diskon persentase tidak boleh lebih dari 100%.";
+  if (data.usageLimit != null && data.usageLimit < 1) return "Batas pemakaian minimal 1.";
+  if (data.usageLimitPerCustomer != null && data.usageLimitPerCustomer < 1)
+    return "Batas pemakaian per orang minimal 1.";
+  if (data.validFrom && data.validUntil && new Date(data.validFrom) > new Date(data.validUntil))
+    return "Tanggal mulai tidak boleh setelah tanggal berakhir.";
+  return null;
+}
+
+export async function createVoucherAction(
+  slug: string,
+  data: VoucherFormData,
+): Promise<ActionResult<{ id: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const validationError = validateVoucherData(data);
+  if (validationError) return { success: false, error: validationError };
+
+  const { db, schema } = createTenantDb(slug);
+
+  try {
+    const [voucher] = await db
+      .insert(schema.vouchers)
+      .values({
+        code:                  data.code.trim().toUpperCase(),
+        name:                  data.name.trim(),
+        description:           data.description?.trim() || null,
+        discountType:          data.discountType,
+        discountValue:         data.discountValue.toFixed(2),
+        targetType:            data.targetType,
+        targetItemIds:         data.targetItemIds,
+        usageLimit:            data.usageLimit ?? null,
+        usageLimitPerCustomer: data.usageLimitPerCustomer ?? null,
+        restrictPhone:         data.restrictPhone ? normalizePhone(data.restrictPhone) : null,
+        restrictEmail:         data.restrictEmail?.trim().toLowerCase() || null,
+        validFrom:             data.validFrom  ? new Date(data.validFrom)  : null,
+        validUntil:            data.validUntil ? new Date(data.validUntil) : null,
+        createdBy:             access.tenantUser.id,
+      })
+      .returning({ id: schema.vouchers.id });
+
+    revalidateBilling(slug);
+    revalidatePath(`/app/${slug}/finance/billing/voucher`);
+    return { success: true, data: { id: voucher.id } };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("vouchers_code") || msg.includes("duplicate key"))
+      return { success: false, error: "Kode voucher sudah dipakai — gunakan kode lain." };
+    console.error("[createVoucherAction]", err);
+    return { success: false, error: "Gagal membuat voucher." };
+  }
+}
+
+export async function updateVoucherAction(
+  slug:      string,
+  voucherId: string,
+  data:      VoucherFormData,
+): Promise<ActionResult<void>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const validationError = validateVoucherData(data);
+  if (validationError) return { success: false, error: validationError };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [existing] = await db
+    .select({ id: schema.vouchers.id })
+    .from(schema.vouchers)
+    .where(eq(schema.vouchers.id, voucherId))
+    .limit(1);
+  if (!existing) return { success: false, error: "Voucher tidak ditemukan." };
+
+  try {
+    await db
+      .update(schema.vouchers)
+      .set({
+        code:                  data.code.trim().toUpperCase(),
+        name:                  data.name.trim(),
+        description:           data.description?.trim() || null,
+        discountType:          data.discountType,
+        discountValue:         data.discountValue.toFixed(2),
+        targetType:            data.targetType,
+        targetItemIds:         data.targetItemIds,
+        usageLimit:            data.usageLimit ?? null,
+        usageLimitPerCustomer: data.usageLimitPerCustomer ?? null,
+        restrictPhone:         data.restrictPhone ? normalizePhone(data.restrictPhone) : null,
+        restrictEmail:         data.restrictEmail?.trim().toLowerCase() || null,
+        validFrom:             data.validFrom  ? new Date(data.validFrom)  : null,
+        validUntil:            data.validUntil ? new Date(data.validUntil) : null,
+        updatedAt:             new Date(),
+      })
+      .where(eq(schema.vouchers.id, voucherId));
+
+    revalidateBilling(slug);
+    revalidatePath(`/app/${slug}/finance/billing/voucher`);
+    return { success: true, data: undefined };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("vouchers_code") || msg.includes("duplicate key"))
+      return { success: false, error: "Kode voucher sudah dipakai — gunakan kode lain." };
+    console.error("[updateVoucherAction]", err);
+    return { success: false, error: "Gagal menyimpan voucher." };
+  }
+}
+
+export async function toggleVoucherActiveAction(
+  slug:      string,
+  voucherId: string,
+): Promise<ActionResult<{ value: boolean }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+  const [voucher] = await db
+    .select({ isActive: schema.vouchers.isActive })
+    .from(schema.vouchers)
+    .where(eq(schema.vouchers.id, voucherId))
+    .limit(1);
+  if (!voucher) return { success: false, error: "Voucher tidak ditemukan." };
+
+  const newValue = !voucher.isActive;
+  await db
+    .update(schema.vouchers)
+    .set({ isActive: newValue, updatedAt: new Date() })
+    .where(eq(schema.vouchers.id, voucherId));
+
+  revalidateBilling(slug);
+  revalidatePath(`/app/${slug}/finance/billing/voucher`);
+  return { success: true, data: { value: newValue } };
+}
+
+export type VoucherDetail = {
+  id:                     string;
+  code:                   string;
+  name:                   string;
+  description:            string | null;
+  discountType:           "percentage" | "fixed";
+  discountValue:          number;
+  targetType:             "product" | "ticket" | "donation";
+  targetItemIds:          string[];
+  usageLimit:             number | null;
+  usageLimitPerCustomer:  number | null;
+  usedCount:              number;
+  restrictPhone:          string | null;
+  restrictEmail:          string | null;
+  validFrom:              string | null;
+  validUntil:             string | null;
+  isActive:               boolean;
+  createdAt:              string;
+  redemptions: Array<{
+    id:            string;
+    invoiceId:     string;
+    invoiceNumber: string;
+    customerName:  string;
+    discountTotal: number;
+    cancelledAt:   string | null;
+    createdAt:     string;
+  }>;
+};
+
+export async function getVoucherDetailAction(
+  slug:      string,
+  voucherId: string,
+): Promise<ActionResult<VoucherDetail>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasReadAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [voucher] = await db
+    .select()
+    .from(schema.vouchers)
+    .where(eq(schema.vouchers.id, voucherId))
+    .limit(1);
+  if (!voucher) return { success: false, error: "Voucher tidak ditemukan." };
+
+  const redemptionRows = await db
+    .select({
+      id:            schema.voucherRedemptions.id,
+      invoiceId:     schema.voucherRedemptions.invoiceId,
+      discountTotal: schema.voucherRedemptions.discountTotal,
+      cancelledAt:   schema.voucherRedemptions.cancelledAt,
+      createdAt:     schema.voucherRedemptions.createdAt,
+      invoiceNumber: schema.invoices.invoiceNumber,
+      customerName:  schema.invoices.customerName,
+    })
+    .from(schema.voucherRedemptions)
+    .innerJoin(schema.invoices, eq(schema.invoices.id, schema.voucherRedemptions.invoiceId))
+    .where(eq(schema.voucherRedemptions.voucherId, voucherId))
+    .orderBy(desc(schema.voucherRedemptions.createdAt));
+
+  return {
+    success: true,
+    data: {
+      id:                    voucher.id,
+      code:                  voucher.code,
+      name:                  voucher.name,
+      description:           voucher.description,
+      discountType:          voucher.discountType,
+      discountValue:         parseFloat(String(voucher.discountValue)),
+      targetType:            voucher.targetType,
+      targetItemIds:         (voucher.targetItemIds as string[]) ?? [],
+      usageLimit:            voucher.usageLimit,
+      usageLimitPerCustomer: voucher.usageLimitPerCustomer,
+      usedCount:             voucher.usedCount,
+      restrictPhone:         voucher.restrictPhone,
+      restrictEmail:         voucher.restrictEmail,
+      validFrom:             voucher.validFrom?.toISOString()  ?? null,
+      validUntil:            voucher.validUntil?.toISOString() ?? null,
+      isActive:              voucher.isActive,
+      createdAt:             voucher.createdAt.toISOString(),
+      redemptions: redemptionRows.map((r) => ({
+        id:            r.id,
+        invoiceId:     r.invoiceId,
+        invoiceNumber: r.invoiceNumber,
+        customerName:  r.customerName,
+        discountTotal: parseFloat(String(r.discountTotal)),
+        cancelledAt:   r.cancelledAt?.toISOString() ?? null,
+        createdAt:     r.createdAt.toISOString(),
       })),
     },
   };

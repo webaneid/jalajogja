@@ -44,6 +44,16 @@ export {
   type EligibleInstallmentPlan,
 } from "./helpers/billing";
 
+// Voucher helpers — Diskon & Voucher Fase 1, lihat docs/arsitektur-voucher.md
+export {
+  findVoucherByCode,
+  countCustomerRedemptions,
+  computeVoucherDiscount,
+  type ResolvedCartItemForVoucher,
+  type VoucherRow,
+  type VoucherApplicationResult,
+} from "./helpers/voucher";
+
 // Timezone tenant — satu sumber kebenaran untuk Event, Invoice/Billing, cron. Lihat
 // packages/db/src/helpers/tenant-timezone.ts untuk penjelasan kenapa ditempatkan di sini
 // (bukan apps/web/lib) — createLinkedInvoice juga memakainya.

@@ -459,6 +459,7 @@ app/(dashboard)/[tenant]/
 - [~] **Billing sisa** — item picker di invoice manual admin (produk+tiket+donasi), PDF, cicilan UI. **DITUNDA**.
 - [x] **Billing Phase 4 — Fulfillment** — 5-stage pengiriman (pending→processing→packed→shipped→delivered), `updateFulfillmentStatusAction`, halaman admin `/toko/pesanan/invoice/[invoiceId]`, `FulfillmentCard` + `FulfillmentTimeline`, lightbox bukti transfer, pelanggan lihat 5 status di `/akun/transaksi`. Detail di `docs/arsitektur-fulfillment.md`.
 - [x] **Kode Unik Transaksi** — nominal Rp 100–999 per invoice untuk identifikasi transfer masuk. Setting toggle di `/settings/payment`. Arsitektur di `docs/arsitektur-kode-unik.md`. **SELESAI** — bug `submitPaymentProofAction` tidak include kode unik (invoice nyangkut partial) + bug race condition double-payment sudah difix (2026-07-12).
+- [x] **Diskon & Voucher (Fase 1 — berkode)** — memotong `invoice_items.total` PER ITEM (produk/tiket/donasi/qurban), tidak pernah invoice keseluruhan. Voucher 100% → checkout Rp 0 auto-lunas TANPA kode unik. Admin CRUD `/finance/billing/voucher/*`, preview+input kode di halaman checkout publik. Arsitektur di `docs/arsitektur-voucher.md`. **Kode SELESAI (2026-07-19)** — migration `0034_vouchers.sql` belum dijalankan di VPS, belum dites manual end-to-end. Fase 2 (diskon otomatis tanpa kode, target mitra) **DITUNDA**.
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori) + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/donasi/pengaturan`, pola sama Hero/Strip Modul — setiap desain WAJIB grid desktop/list mobile, § 14m — § 14j dan § 14l dua putaran koreksi sebelumnya, keduanya superseded) + **Info Block Polimorfik** (slot info card yang beda per tipe campaign — progress bar vs harga+ketersediaan qurban, terbuka untuk sub-tipe qurban baru nanti seperti patungan/tabungan) — § 14k + **Desain 2 "Modern Capsule"** (card, sumber `design-refs/Bantuanku/`, donor count) — setting arsip adalah satu sumber kebenaran, section landing "Grid Donasi" otomatis ikut (bukan pilihan terpisah) — § 14o, § 14n ditandai superseded — sekalian fix bug pre-existing `CampaignsEditor` yang belum pernah punya picker Design Layout
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`) + **Tab Peserta & Statistik** (commit `9cf2b12`, migration 0023) + **E10 Donation Prompt UI** (routing kondisional cart vs direct, migration 0024+0025)
@@ -6861,8 +6862,119 @@ ulang secara independen di beberapa modul" (billing invoice vs event registratio
 toko/donasi legacy) sudah berulang kali jadi sumber inkonsistensi — audit menyeluruh HARUS
 melintasi batas modul, bukan berhenti di modul yang sedang menjadi fokus kerja.
 
+### [2026-07-19] Diskon & Voucher (Fase 1) — Perencanaan Matang Dulu, Baru Eksekusi 6 Fase
+
+> Arsitektur lengkap: **`docs/arsitektur-voucher.md`**. Konteks: langsung menyusul rangkaian
+> audit akurasi nominal cicilan (lesson-lesson di atas) — user eksplisit minta perencanaan
+> matang ditulis dulu ("jangan eksekusi apapun sebelum punya perencanaan yang matang") sebelum
+> satu baris kode pun ditulis, plus minta arsitekturnya "dikembangkan lebih kritis" bukan cuma
+> diimplementasi literal dari instruksi awal.
+
+**Dua prinsip non-negotiable yang dikunci user dari awal**:
+1. Diskon/voucher memotong harga ITEM SPESIFIK (produk/tiket/donasi/qurban) yang ditarget, bukan
+   pernah invoice secara keseluruhan — beli kaos+ikut event, hanya kaos yang terpotong.
+2. Voucher 100% harus bisa membuat tagihan Rp 0, DAN pada kondisi itu kode unik transaksi
+   (`docs/arsitektur-kode-unik.md`) tidak boleh muncul sama sekali — "jangan sampai ada gap kode
+   unik tetap muncul" meski tagihan nol.
+
+**Riset SEBELUM menulis rencana menemukan 2 celah keamanan harga pre-existing yang TIDAK
+diperkenalkan fitur ini, sengaja dicatat lalu di-scope-out**: (a) produk variable mengirim
+`itemId = product_variations.id` ke cart, tapi `checkoutAction` re-fetch harga dengan
+`WHERE products.id = itemId` — tidak pernah match, diam-diam jatuh balik ke snapshot harga cart
+yang tidak tervalidasi; (b) item donasi/qurban tidak pernah di-re-fetch harga sama sekali. Kedua
+celah ini murni ditemukan sebagai efek samping riset arsitektur voucher (yang butuh paham betul
+titik resolusi harga existing) — direkomendasikan sebagai audit terpisah, TIDAK dikerjakan sesi
+ini (di luar topik yang diminta).
+
+**Dua keputusan scope dikunci via `AskUserQuestion` sebelum kode ditulis** (user pilih opsi
+"Recommended" di kedua pertanyaan): Fase 1 hanya target produk **milik tenant** (mitra
+dikecualikan — sistem komisi mitra untuk alur invoice/cart universal belum dibangun sama sekali,
+memotong harga produk mitra tanpa mekanisme kompensasi = memotong pendapatan mereka sepihak);
+Fase 1 hanya voucher **berkode** (diskon otomatis tanpa kode = Fase 2, menyusul).
+
+**Reuse resolusi harga, bukan reimplement**: resolver voucher (`packages/db/src/helpers/
+voucher.ts`) beroperasi SETELAH `unitPrice` final sudah di-resolve oleh loop existing
+`checkoutAction` — tidak punya jalur "cari harga dari DB" sendiri. Dipecah 3 fungsi murni
+(`findVoucherByCode`, `countCustomerRedemptions`, `computeVoucherDiscount`) supaya bisa dipakai
+identik oleh preview (baca saja, tanpa lock) maupun checkout sungguhan (dengan lock `FOR UPDATE`,
+di dalam transaction) — pola pemisahan read-vs-write yang sama sekali tidak duplikasi logic.
+
+**Rp 0 auto-lunas mewarisi PERSIS pola `if (newStatus==="paid")` yang sudah established** di
+`confirmInvoicePaymentAction`/`verifySubmittedPaymentAction` — sync campaign `collectedAmount`,
+auto-create `event_registrations` dari tiket cart, notifikasi WA — TAPI tanpa `recordIncome`
+sama sekali (guard eksplisit `total > 0` sebelum jurnal, karena nominal 0 = tidak ada uang masuk
+untuk dicatat). Ini jadi salinan KETIGA dari blok efek-samping-invoice-lunas — didokumentasikan
+eksplisit sebagai duplikasi yang disengaja (pola sama `generateEventRegNumber`), bukan lupa
+refactor; salinan KEEMPAT nanti baru jadi sinyal untuk ekstraksi ke helper bersama.
+
+**Deviasi dari rencana awal, ditemukan+diputuskan SAAT eksekusi (bukan direncanakan)**: rencana
+awal menaruh input kode voucher di halaman **keranjang** (`/keranjang`). Saat baca kode
+`cart-client.tsx` dan `checkout-form.tsx`, ternyata arsitektur publik memisahkan dua halaman —
+keranjang cuma daftar item + link `<a>` ke `/checkout`, TIDAK PERNAH memanggil `checkoutAction`;
+`checkout-form.tsx` (di halaman **checkout**) satu-satunya yang memanggilnya, dan SUDAH
+mengumpulkan `phone`/`email` di Step 1 (berguna untuk validasi voucher personal). Menaruh input
+voucher di keranjang akan butuh mekanisme tambahan bawa kode lintas-navigasi (cookie/query param)
+yang sama sekali tidak perlu kalau ditaruh langsung di checkout. **Aturan yang ditegaskan (lagi)**:
+sebelum menulis komponen UI sesuai rencana yang ditulis di awal sesi Plan Mode, verifikasi dulu
+struktur file aktualnya — rencana yang ditulis sebelum membaca detail implementasi existing bisa
+saja mengasumsikan struktur yang ternyata berbeda; pragmatisme saat eksekusi (menaruh fitur di
+tempat yang secara arsitektur lebih tepat) lebih penting daripada kepatuhan literal ke rencana.
+
+**Kode unik per invoice vs kelas bug yang sama sekali baru**: syarat `total > 0` sebelum
+`generateUniqueCode()` dipanggil (§ langkah 6 alur checkout) adalah SATU-SATUNYA perubahan yang
+dibutuhkan untuk menutup permintaan eksplisit user soal "kode unik tidak boleh muncul di tagihan
+Rp 0" — tidak perlu percabangan lain di manapun, karena seluruh sistem kode unik SUDAH murni
+kondisional terhadap variabel `uniqueCode` (0 = tidak ada kode, sistem lama sudah menghormati
+ini di semua titik display).
+
+**Target picker untuk `targetType='donation'` — semantik itemId qurban vs campaign biasa,
+BUKAN diasumsikan sama**: donasi biasa punya `invoice_items.itemId = campaigns.id`, tapi qurban
+punya `itemId = qurban_animals.id` (varian per-hewan, bukan campaign-nya langsung — lihat
+`docs/arsitektur-donasi.md`). Kalau admin men-target ID campaign qurban (bukan ID hewan
+individualnya), voucher TIDAK AKAN PERNAH match item di cart manapun (silent no-op). Fix: picker
+target untuk tipe donasi menampilkan DUA sumber sekaligus — campaign biasa DAN varian qurban per-
+hewan dengan label eksplisit ("Donasi: X" vs "Qurban: X — kambing") — supaya admin men-target ID
+yang benar-benar dipakai sebagai `itemId` di cart, bukan ID yang terlihat masuk akal secara
+konseptual tapi tidak pernah cocok secara teknis.
+
+**Pembatalan invoice — voucher usedCount WAJIB "dikembalikan", bukan permanen ter-pakai**:
+`cancelInvoiceAction` (yang sudah punya lock `FOR UPDATE` + re-check status dari audit sesi
+sebelumnya) ditambah blok voucher: `GREATEST(usedCount - 1, 0)` (jaga-jaga tidak pernah minus)
++ tandai `voucher_redemptions.cancelledAt` (BUKAN dihapus — audit trail tetap utuh, cuma tidak
+dihitung lagi ke `usageLimitPerCustomer` via filter `cancelledAt IS NULL` di
+`countCustomerRedemptions`). Tanpa ini, customer yang batal transaksi kehilangan kuota voucher
+mereka selamanya meski transaksinya tidak pernah benar-benar terjadi.
+
+**Alur kerja 6 fase, verifikasi bertahap** (pola SOP project yang sudah established, ditegaskan
+lagi): Fase A (schema+helper) → B (integrasi checkoutAction) → C (UI checkout) → D (admin CRUD)
+→ E (rollback pembatalan) → F (dokumentasi) — `tsc --noEmit` di KEDUA package
+(`apps/web`+`packages/db`) dicek di setiap fase, `bun run build` penuh (dev server dimatikan
+dulu, `.next` dibersihkan) dijalankan setelah UI selesai (Fase D) dan lagi di akhir — bukan
+ditunda sampai semuanya "selesai" baru dicek sekali.
+
+**Status akhir sesi**: kode SELESAI (nol error `tsc`, build produksi sukses, 4 route admin baru
+terkonfirmasi muncul di build output). **Migration `0034_vouchers.sql` BELUM dijalankan di VPS**
+dan **belum ada satu pun skenario diverifikasi manual di browser** (§ 9 `docs/arsitektur-
+voucher.md` — 7 skenario tercantum, semua masih checklist kosong) — murni verifikasi statis
+sejauh ini, konsisten dengan keterbatasan environment sesi ini yang sudah dicatat berulang di
+lesson-lesson lain (tidak ada Docker/Postgres/browser lokal untuk uji end-to-end).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Notifikasi WhatsApp untuk Program Cicilan — 5 event baru** (sesi
+- Terakhir dikerjakan: **Diskon & Voucher (Fase 1 — berkode)** — perencanaan matang (Plan Mode +
+  2× `AskUserQuestion`) lalu eksekusi 6 fase penuh: schema+helper murni, integrasi
+  `checkoutAction` (potongan per-item, Rp 0 auto-lunas, kode unik di-skip saat total=0), UI
+  preview+input kode voucher (ditaruh di `checkout-form.tsx`, BUKAN halaman keranjang seperti
+  rencana awal — lihat lesson di atas untuk alasan), admin CRUD `/finance/billing/voucher/*`
+  lengkap (list/new/edit/detail + target picker multi-select), dan rollback `usedCount`+
+  redemption saat invoice dibatalkan. Dokumentasi baru `docs/arsitektur-voucher.md` + update
+  `docs/arsitektur-billing.md` (skema `invoice_items`/`invoices` + Q&A) + lesson CLAUDE.md di
+  atas. **Belum di-commit/push** — `tsc`+build sudah bersih di kedua package, tapi migration
+  `0034_vouchers.sql` belum jalan di VPS dan nol skenario dites manual di browser (lihat § 9
+  `docs/arsitektur-voucher.md`). Sebelum lanjut ke modul berikutnya: commit+push, jalankan
+  migration di VPS SEBELUM deploy kode, lalu minta user coba alur penuh (buat voucher →
+  checkout pakai kode → cek potongan per-item → coba voucher 100% → cek pembatalan
+  mengembalikan kuota).
+- Sesi sebelumnya: **Notifikasi WhatsApp untuk Program Cicilan — 5 event baru** (sesi
   2026-07-19), lalu 7 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
   di-nolkan saat konversi cicilan**, **fix 4 Server Action billing tanpa `hasReadAccess`
   guard**, **fix form "Konfirmasi Pembayaran" manual admin default ke sisa tagihan penuh**,

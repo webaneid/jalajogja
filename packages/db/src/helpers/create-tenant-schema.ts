@@ -1048,6 +1048,36 @@ export async function createTenantSchemaInDb(
       )
     `));
 
+    // ── Vouchers (Diskon & Voucher — Fase 1: berkode, target tenant-only) ────
+    // Lihat docs/arsitektur-voucher.md. targetItemIds kosong = berlaku semua item tipe ini.
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".vouchers (
+        id                       UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        code                     TEXT           NOT NULL UNIQUE,
+        name                     TEXT           NOT NULL,
+        description              TEXT,
+        discount_type            TEXT           NOT NULL
+                                                 CHECK (discount_type IN ('percentage','fixed')),
+        discount_value           NUMERIC(15,2)  NOT NULL,
+        target_type              TEXT           NOT NULL
+                                                 CHECK (target_type IN ('product','ticket','donation')),
+        target_item_ids          JSONB          NOT NULL DEFAULT '[]',
+        usage_limit              INTEGER,
+        usage_limit_per_customer INTEGER,
+        used_count               INTEGER        NOT NULL DEFAULT 0,
+        restrict_phone           TEXT,
+        restrict_email           TEXT,
+        valid_from               TIMESTAMPTZ,
+        valid_until               TIMESTAMPTZ,
+        is_active                BOOLEAN        NOT NULL DEFAULT TRUE,
+        created_by               UUID           REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        created_at               TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+        updated_at               TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_vouchers_code ON "${s}".vouchers(code)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_vouchers_is_active ON "${s}".vouchers(is_active)`));
+
     // ── 32. Installment Plans ─────────────────────────────────────────────
     // Program cicilan (mis. Nabung Qurban). Default hidden — admin aktifkan manual.
     await tx.execute(sql.raw(`
@@ -1128,6 +1158,9 @@ export async function createTenantSchemaInDb(
         notes           TEXT,
         pdf_url         TEXT,
         installment_plan_id UUID       REFERENCES "${s}".installment_plans(id) ON DELETE SET NULL,
+        voucher_id            UUID           REFERENCES "${s}".vouchers(id) ON DELETE SET NULL,
+        voucher_code           TEXT,
+        voucher_discount_total NUMERIC(15,2)  NOT NULL DEFAULT 0,
         created_by      UUID           REFERENCES "${s}".users(id) ON DELETE SET NULL,
         created_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW()
@@ -1151,7 +1184,10 @@ export async function createTenantSchemaInDb(
         -- Seller info (untuk grouping ongkir per penjual)
         seller_type TEXT           NOT NULL DEFAULT 'tenant'
                                    CHECK (seller_type IN ('tenant','mitra')),
-        seller_id   UUID
+        seller_id   UUID,
+        -- Diskon/voucher (per baris — TIDAK PERNAH memotong invoice secara keseluruhan)
+        discount_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+        voucher_id      UUID          REFERENCES "${s}".vouchers(id) ON DELETE SET NULL
       )
     `));
 
@@ -1167,6 +1203,25 @@ export async function createTenantSchemaInDb(
         UNIQUE (invoice_id, payment_id)
       )
     `));
+
+    // ── Voucher Redemptions (audit trail pemakaian voucher) ────────────────
+    // Satu row per invoice yang memakai voucher. cancelled_at diisi kalau invoice terkait
+    // dibatalkan (lihat cancelInvoiceAction) — row TIDAK dihapus, cuma tidak dihitung lagi
+    // ke usage_limit_per_customer.
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".voucher_redemptions (
+        id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        voucher_id     UUID           NOT NULL REFERENCES "${s}".vouchers(id) ON DELETE CASCADE,
+        invoice_id     UUID           NOT NULL REFERENCES "${s}".invoices(id) ON DELETE CASCADE,
+        customer_phone TEXT,
+        customer_email TEXT,
+        discount_total NUMERIC(15,2)  NOT NULL,
+        cancelled_at   TIMESTAMPTZ,
+        created_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_voucher_redemptions_voucher ON "${s}".voucher_redemptions(voucher_id)`));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_voucher_redemptions_invoice ON "${s}".voucher_redemptions(invoice_id)`));
 
     // ── 37. Installment Schedules ──────────────────────────────────────────
     // Jadwal termin cicilan per invoice. Dibuat otomatis saat invoice ikut program cicilan.

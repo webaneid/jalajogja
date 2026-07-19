@@ -9,6 +9,7 @@ import {
   date,
   index,
   unique,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 export const SHIPPING_STATUSES = ["pending", "processing", "packed", "shipped", "delivered"] as const;
@@ -35,6 +36,13 @@ export type InvoiceStatus = typeof INVOICE_STATUSES[number];
 
 export const INSTALLMENT_SCHEDULE_STATUSES = ["pending", "paid", "overdue"] as const;
 export type InstallmentScheduleStatus = typeof INSTALLMENT_SCHEDULE_STATUSES[number];
+
+// Diskon & Voucher — Fase 1 (berkode, target tenant-only). Lihat docs/arsitektur-voucher.md.
+export const VOUCHER_DISCOUNT_TYPES = ["percentage", "fixed"] as const;
+export type VoucherDiscountType = typeof VOUCHER_DISCOUNT_TYPES[number];
+
+export const VOUCHER_TARGET_TYPES = ["product", "ticket", "donation"] as const;
+export type VoucherTargetType = typeof VOUCHER_TARGET_TYPES[number];
 
 // ─── carts ────────────────────────────────────────────────────────────────────
 // Keranjang belanja sementara (TTL 24 jam). Guest via session_token cookie httpOnly.
@@ -113,6 +121,12 @@ export function createInvoicesTable(s: ReturnType<typeof pgSchema>) {
     // Program cicilan (optional)
     installmentPlanId: uuid("installment_plan_id"), // FK → installment_plans.id via SQL
 
+    // Voucher (optional) — lihat docs/arsitektur-voucher.md. Snapshot code dipertahankan
+    // meski voucher dihapus nanti (voucherId null tapi voucherCode tetap kebaca di invoice lama).
+    voucherId:            uuid("voucher_id"), // FK → vouchers.id via SQL
+    voucherCode:           text("voucher_code"),
+    voucherDiscountTotal:  numeric("voucher_discount_total", { precision: 15, scale: 2 }).notNull().default("0"),
+
     createdBy: uuid("created_by"),  // FK → users.id via SQL (null = dari front-end/guest)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -141,6 +155,10 @@ export function createInvoiceItemsTable(s: ReturnType<typeof pgSchema>) {
     // Seller info (untuk grouping per penjual di ongkir)
     sellerType: text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull().default("tenant"),
     sellerId:   uuid("seller_id"),          // null jika tenant, mitra.id jika mitra
+    // Diskon/voucher per baris — TIDAK PERNAH memotong invoice secara keseluruhan, lihat
+    // docs/arsitektur-voucher.md. total = (unitPrice*quantity) - discountAmount, di-clamp >= 0.
+    discountAmount: numeric("discount_amount", { precision: 15, scale: 2 }).notNull().default("0"),
+    voucherId:      uuid("voucher_id"), // FK → vouchers.id via SQL
   }, (t) => ({
     invoiceIdx: index("invoice_items_invoice_id_idx").on(t.invoiceId),
   }));
@@ -160,6 +178,66 @@ export function createInvoicePaymentsTable(s: ReturnType<typeof pgSchema>) {
     invoiceIdx: index("invoice_payments_invoice_id_idx").on(t.invoiceId),
     paymentIdx: index("invoice_payments_payment_id_idx").on(t.paymentId),
     uniq:       unique().on(t.invoiceId, t.paymentId),
+  }));
+}
+
+// ─── vouchers ─────────────────────────────────────────────────────────────────
+// Diskon & Voucher Fase 1 — berkode, target tenant-only. Memotong harga PER ITEM
+// (invoice_items.total), TIDAK PERNAH invoice secara keseluruhan. targetItemIds kosong =
+// berlaku untuk semua item bertipe targetType (difilter tenant-only di resolver, lihat
+// packages/db/src/helpers/voucher.ts). Lihat docs/arsitektur-voucher.md.
+
+export function createVouchersTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("vouchers", {
+    id:          uuid("id").primaryKey().defaultRandom(),
+    code:        text("code").notNull().unique(),   // disimpan UPPERCASE, dibandingkan case-insensitive
+    name:        text("name").notNull(),            // label internal admin, bukan ditampilkan ke customer
+    description: text("description"),
+
+    discountType:  text("discount_type", { enum: VOUCHER_DISCOUNT_TYPES }).notNull(),
+    discountValue: numeric("discount_value", { precision: 15, scale: 2 }).notNull(),
+
+    targetType:    text("target_type", { enum: VOUCHER_TARGET_TYPES }).notNull(),
+    targetItemIds: jsonb("target_item_ids").$type<string[]>().notNull().default([]),
+
+    usageLimit:             integer("usage_limit"),
+    usageLimitPerCustomer:  integer("usage_limit_per_customer"),
+    usedCount:              integer("used_count").notNull().default(0),
+
+    restrictPhone: text("restrict_phone"), // E.164, voucher personal (mis. hadiah lomba)
+    restrictEmail: text("restrict_email"),
+
+    validFrom:  timestamp("valid_from",  { withTimezone: true }),
+    validUntil: timestamp("valid_until", { withTimezone: true }),
+    isActive:   boolean("is_active").notNull().default(true),
+
+    createdBy: uuid("created_by"), // FK → users.id via SQL
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  }, (t) => ({
+    codeIdx:     index("vouchers_code_idx").on(t.code),
+    isActiveIdx: index("vouchers_is_active_idx").on(t.isActive),
+  }));
+}
+
+// ─── voucher_redemptions ────────────────────────────────────────────────────────
+// Audit trail pemakaian voucher — satu row per invoice yang memakai voucher. WAJIB ada
+// (bukan cukup usedCount counter) karena usageLimitPerCustomer butuh hitung per nomor HP/email,
+// dan cancelInvoiceAction butuh row spesifik untuk "dikembalikan" (cancelledAt, bukan hapus).
+
+export function createVoucherRedemptionsTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("voucher_redemptions", {
+    id:            uuid("id").primaryKey().defaultRandom(),
+    voucherId:     uuid("voucher_id").notNull(), // FK → vouchers.id CASCADE via SQL
+    invoiceId:     uuid("invoice_id").notNull(), // FK → invoices.id CASCADE via SQL
+    customerPhone: text("customer_phone"),
+    customerEmail: text("customer_email"),
+    discountTotal: numeric("discount_total", { precision: 15, scale: 2 }).notNull(),
+    cancelledAt:   timestamp("cancelled_at", { withTimezone: true }), // diisi saat invoice dibatalkan
+    createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  }, (t) => ({
+    voucherIdx: index("voucher_redemptions_voucher_id_idx").on(t.voucherId),
+    invoiceIdx: index("voucher_redemptions_invoice_id_idx").on(t.invoiceId),
   }));
 }
 
@@ -246,6 +324,8 @@ export type CartItemsTable                = ReturnType<typeof createCartItemsTab
 export type InvoicesTable                 = ReturnType<typeof createInvoicesTable>;
 export type InvoiceItemsTable             = ReturnType<typeof createInvoiceItemsTable>;
 export type InvoicePaymentsTable          = ReturnType<typeof createInvoicePaymentsTable>;
+export type VouchersTable                 = ReturnType<typeof createVouchersTable>;
+export type VoucherRedemptionsTable       = ReturnType<typeof createVoucherRedemptionsTable>;
 export type InstallmentPlansTable         = ReturnType<typeof createInstallmentPlansTable>;
 export type InstallmentSchedulesTable     = ReturnType<typeof createInstallmentSchedulesTable>;
 export type InvoiceShippingLinesTable     = ReturnType<typeof createInvoiceShippingLinesTable>;

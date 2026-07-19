@@ -5,11 +5,15 @@ import { eq, and, or, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, resolveIdentity, generateUniqueCode, generateInstallmentScheduleCode, settleInstallmentSchedules } from "@jalajogja/db";
 import { createTenantDb, generateFinancialNumber, getSettings } from "@jalajogja/db";
+import {
+  findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount,
+  type VoucherApplicationResult, type ResolvedCartItemForVoucher,
+} from "@jalajogja/db";
 import { tenants } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import { auth } from "@/lib/auth";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
-import { getTenantTimezone, anchorTodayUtc, todayInTz } from "@/lib/tenant-timezone.server";
+import { getTenantTimezone, anchorTodayUtc, todayInTz, formatInTz, tzLabel } from "@/lib/tenant-timezone.server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,6 +100,52 @@ export type CheckoutShippingData = {
 
 const COOKIE_NAME = "cart_session";
 const CART_TTL_HOURS = 24;
+
+// Sama dengan generateRegistrationNumber di event/actions.ts / generateEventRegNumber di
+// finance/billing/actions.ts — di-duplikasi agar cart tidak bergantung ke modul lain (pola
+// yang sama sudah dipakai berulang di project ini). Dipakai HANYA untuk checkout Rp 0 (voucher
+// 100%) yang auto-lunas tiket event tanpa lewat confirmInvoicePaymentAction.
+async function generateEventRegNumber(
+  tenantDb: ReturnType<typeof createTenantDb>,
+): Promise<string> {
+  const { db: tdb, schema } = tenantDb;
+  const now    = new Date();
+  const year   = now.getFullYear();
+  const month  = now.getMonth() + 1;
+  const yyyymm = `${year}${String(month).padStart(2, "0")}`;
+
+  const nextNumber = await tdb.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(schema.eventRegistrationSequences)
+      .where(
+        sql`${schema.eventRegistrationSequences.year}  = ${year}
+        AND ${schema.eventRegistrationSequences.month} = ${month}
+        FOR UPDATE`
+      );
+
+    if (rows.length === 0) {
+      await tx.insert(schema.eventRegistrationSequences).values({ year, month, counter: 1 });
+      return 1;
+    }
+    const next = rows[0].counter + 1;
+    await tx
+      .update(schema.eventRegistrationSequences)
+      .set({ counter: next })
+      .where(eq(schema.eventRegistrationSequences.id, rows[0].id));
+    return next;
+  });
+
+  return `EVT-${yyyymm}-${String(nextNumber).padStart(5, "0")}`;
+}
+
+function formatEventDateWib(date: Date | null, timezone: string): string {
+  if (!date) return "-";
+  return `${formatInTz(date, timezone, {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  })} ${tzLabel(timezone)}`;
+}
 
 async function getSessionToken(): Promise<string | null> {
   const cookieStore = await cookies();
@@ -195,6 +245,100 @@ export async function getCartAction(slug: string): Promise<ActionResult<CartData
   } catch (err) {
     console.error("[getCartAction]", err);
     return { success: false, error: "Gagal memuat keranjang." };
+  }
+}
+
+// ─── previewVoucherAction ──────────────────────────────────────────────────────
+// Preview murni untuk tampilan di halaman keranjang — TIDAK mengunci voucher row, TIDAK
+// menaikkan usedCount, TIDAK mutasi apa pun. Boleh sedikit stale (race window sampai checkout
+// sungguhan) — checkoutAction SELALU re-validasi dari nol di dalam transaction-nya sendiri
+// (§ Alur Checkout, docs/arsitektur-voucher.md). `customer` opsional karena halaman keranjang
+// biasanya belum tentu sudah tahu nomor HP/email customer (baru diisi di langkah checkout) —
+// kalau kosong, validasi restrictPhone/restrictEmail/usageLimitPerCustomer di-skip untuk
+// preview (tetap divalidasi penuh saat checkout sungguhan).
+export type VoucherPreview = {
+  valid:           boolean;
+  error?:          string;
+  voucherName?:    string;
+  perItemDiscount?: Record<string, number>; // cartItemId -> nominal potongan
+  totalDiscount?:   number;
+};
+
+export async function previewVoucherAction(
+  slug: string,
+  code: string,
+  customer?: { phone?: string; email?: string },
+): Promise<ActionResult<VoucherPreview>> {
+  try {
+    const token = await getSessionToken();
+    if (!token) return { success: true, data: { valid: false, error: "Keranjang tidak ditemukan." } };
+
+    const { db: tenantDb, schema } = createTenantDb(slug);
+
+    const [cart] = await tenantDb
+      .select({ id: schema.carts.id })
+      .from(schema.carts)
+      .where(eq(schema.carts.sessionToken, token))
+      .limit(1);
+    if (!cart) return { success: true, data: { valid: false, error: "Keranjang tidak ditemukan." } };
+
+    const cartItems = await tenantDb
+      .select()
+      .from(schema.cartItems)
+      .where(eq(schema.cartItems.cartId, cart.id))
+      .orderBy(schema.cartItems.sortOrder);
+    if (!cartItems.length) return { success: true, data: { valid: false, error: "Keranjang kosong." } };
+
+    const voucherRow = await findVoucherByCode(tenantDb, schema, code, false);
+    if (!voucherRow) return { success: true, data: { valid: false, error: "Kode voucher tidak ditemukan." } };
+
+    const normalizedPhone = customer?.phone ? normalizePhone(customer.phone) : null;
+    const emailTrim       = customer?.email?.trim() || null;
+
+    const existingRedemptions = await countCustomerRedemptions(tenantDb, schema, voucherRow.id, {
+      phone: normalizedPhone, email: emailTrim,
+    });
+
+    // Re-fetch harga + mitraId per item (SAMA seperti loop resolusi di checkoutAction) — supaya
+    // preview TIDAK pernah menampilkan diskon untuk produk mitra yang nanti dikecualikan saat
+    // checkout sungguhan (staleness harga boleh, staleness "berlaku/tidaknya diskon" tidak boleh).
+    const voucherResolvedItems: ResolvedCartItemForVoucher[] = [];
+    for (const item of cartItems) {
+      let unitPrice = parseFloat(String(item.unitPrice));
+      let mitraId: string | null = null;
+      if (item.itemId) {
+        if (item.itemType === "product") {
+          const [prod] = await tenantDb
+            .select({ price: schema.products.price, mitraId: schema.products.mitraId })
+            .from(schema.products).where(eq(schema.products.id, item.itemId)).limit(1);
+          if (prod) { unitPrice = parseFloat(String(prod.price)); mitraId = prod.mitraId ?? null; }
+        } else if (item.itemType === "ticket") {
+          const [ticket] = await tenantDb
+            .select({ price: schema.eventTickets.price })
+            .from(schema.eventTickets).where(eq(schema.eventTickets.id, item.itemId)).limit(1);
+          if (ticket) unitPrice = parseFloat(String(ticket.price));
+        }
+      }
+      voucherResolvedItems.push({ itemType: item.itemType, itemId: item.itemId, unitPrice, quantity: item.quantity, mitraId });
+    }
+
+    const result = computeVoucherDiscount(
+      voucherRow, { phone: normalizedPhone, email: emailTrim }, existingRedemptions, voucherResolvedItems,
+    );
+    if ("error" in result) return { success: true, data: { valid: false, error: result.error } };
+
+    const perItemDiscount: Record<string, number> = {};
+    result.perItemDiscount.forEach((discount, index) => {
+      perItemDiscount[cartItems[index].id] = discount;
+    });
+
+    return {
+      success: true,
+      data: { valid: true, voucherName: result.voucher.name, perItemDiscount, totalDiscount: result.totalDiscount },
+    };
+  } catch (err) {
+    console.error("[previewVoucherAction]", err);
+    return { success: false, error: "Gagal memeriksa voucher." };
   }
 }
 
@@ -338,7 +482,8 @@ export async function clearCartAction(slug: string): Promise<ActionResult> {
 export async function checkoutAction(
   slug: string,
   customer: CheckoutCustomerData,
-  shipping?: CheckoutShippingData
+  shipping?: CheckoutShippingData,
+  voucherCode?: string,
 ): Promise<ActionResult<{ invoiceId: string; invoiceNumber: string }>> {
   if (!customer.phone?.trim() && !customer.email?.trim()) {
     return { success: false, error: "Nomor HP atau email wajib diisi." };
@@ -381,7 +526,11 @@ export async function checkoutAction(
     type TxResult =
       | { error: string }
       | { duplicate: true; invoiceId: string; invoiceNumber: string }
-      | { invoiceId: string; invoiceNumber: string; total: number; dueDate: string };
+      | {
+          invoiceId: string; invoiceNumber: string; total: number; dueDate: string;
+          isFullyPaid: boolean; voucherDiscountTotal: number;
+          newEventRegs: Array<{ eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null }>;
+        };
 
     const txResult: TxResult = await tdb.transaction(async (tx) => {
       const [lockedCart] = await tx
@@ -487,11 +636,47 @@ export async function checkoutAction(
         });
       }
 
+      // ── Resolusi voucher (opsional) — SETELAH resolvedItems (unitPrice FINAL) siap, jangan
+      // pernah reimplement resolusi harga sendiri di sini. Lihat docs/arsitektur-voucher.md.
+      // Lock voucher row (forUpdate) di dalam transaction yang sama dengan lock cart — cegah
+      // race dua checkout bersamaan sama-sama lolos cek usageLimit voucher yang sama.
+      let voucherApplication: VoucherApplicationResult | null = null;
+      const normalizedCustomerPhone = normalizePhone(customer.phone);
+      const customerEmailTrim       = customer.email?.trim() || null;
+
+      if (voucherCode?.trim()) {
+        const voucherRow = await findVoucherByCode(tx, schema, voucherCode, true);
+        if (!voucherRow) return { error: "Kode voucher tidak ditemukan." };
+
+        const existingRedemptions = await countCustomerRedemptions(tx, schema, voucherRow.id, {
+          phone: normalizedCustomerPhone, email: customerEmailTrim,
+        });
+
+        const voucherResolvedItems: ResolvedCartItemForVoucher[] = resolvedItems.map((it) => ({
+          itemType: it.itemType, itemId: it.itemId, unitPrice: it.unitPrice,
+          quantity: it.quantity, mitraId: it.mitraId,
+        }));
+
+        const result = computeVoucherDiscount(
+          voucherRow, { phone: normalizedCustomerPhone, email: customerEmailTrim },
+          existingRedemptions, voucherResolvedItems,
+        );
+        if ("error" in result) return { error: result.error };
+        voucherApplication = result;
+      }
+
       // ── Buat invoice ─────────────────────────────────────────────────────────
       const invoiceNumber  = await generateFinancialNumber(tenantDb, "invoice");
-      const subtotal       = resolvedItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0);
+      const subtotal       = resolvedItems.reduce((s, it, i) => {
+        const discount  = voucherApplication?.perItemDiscount.get(i) ?? 0;
+        const lineTotal = Math.max(0, it.unitPrice * it.quantity - discount);
+        return s + lineTotal;
+      }, 0);
       const shippingTotal  = shipping?.lines.reduce((s, l) => s + l.cost, 0) ?? 0;
       const total          = subtotal + shippingTotal;
+      // Voucher 100% (atau kombinasi diskon+ongkir Rp 0) → invoice langsung lunas tanpa
+      // langkah bayar sama sekali. Lihat docs/arsitektur-voucher.md § "Checkout Rp 0".
+      const isFullyPaid    = total <= 0;
 
       // Anchor ke kalender timezone tenant, bukan UTC mentah — lihat lib/tenant-timezone.ts.
       const dueDate = (() => {
@@ -500,7 +685,9 @@ export async function checkoutAction(
         return d.toISOString().slice(0, 10);
       })();
 
-      const uniqueCode = uniqueCodeEnabled ? await generateUniqueCode(tenantDb) : 0;
+      // Kode unik TIDAK PERNAH digenerate untuk tagihan Rp 0 — tidak ada apa pun yang perlu
+      // ditransfer, jadi tidak ada gunanya kode identifikasi transfer. Lihat docs/arsitektur-voucher.md.
+      const uniqueCode = (uniqueCodeEnabled && total > 0) ? await generateUniqueCode(tenantDb) : 0;
 
       const [invoice] = await tx
         .insert(schema.invoices)
@@ -509,42 +696,68 @@ export async function checkoutAction(
           sourceType:       "cart",
           sourceId:         lockedCart.id,
           customerName,
-          customerPhone:    normalizePhone(customer.phone),
-          customerEmail:    customer.email?.trim() ?? null,
+          customerPhone:    normalizedCustomerPhone,
+          customerEmail:    customerEmailTrim,
           memberId,
           profileId,
           subtotal:         subtotal.toFixed(2),
           shippingTotal:    shippingTotal.toFixed(2),
-          discount:         "0",
+          discount:         "0", // field lama, murni admin-manual — voucher TIDAK memakainya
           total:            total.toFixed(2),
           uniqueCode,
-          paidAmount:       "0",
+          paidAmount:       isFullyPaid ? total.toFixed(2) : "0",
           shippingCityId:   shipping?.cityId    ?? null,
           shippingCityName: shipping?.cityName  ?? null,
           shippingAddress:  shipping?.address   ?? null,
-          status:           "pending",
+          status:           isFullyPaid ? "paid" : "pending",
           dueDate,
           notes:            customer.notes?.trim() ?? null,
           createdBy:        null,
+          voucherId:            voucherApplication?.voucher.id ?? null,
+          voucherCode:           voucherApplication?.voucher.code ?? null,
+          voucherDiscountTotal:  (voucherApplication?.totalDiscount ?? 0).toFixed(2),
         })
         .returning({ id: schema.invoices.id });
 
-      // Insert invoice items (dengan seller info untuk mitra)
+      // Insert invoice items (dengan seller info untuk mitra + diskon per baris)
       await tx.insert(schema.invoiceItems).values(
-        resolvedItems.map((item, i) => ({
-          invoiceId:   invoice.id,
-          itemType:    item.itemType as "product" | "ticket" | "donation" | "custom",
-          itemId:      item.itemId ?? null,
-          name:        item.name,
-          description: item.notes ?? null,
-          unitPrice:   item.unitPrice.toFixed(2),
-          quantity:    item.quantity,
-          total:       (item.unitPrice * item.quantity).toFixed(2),
-          sortOrder:   i,
-          sellerType:  (item.mitraId ? "mitra" : "tenant") as "tenant" | "mitra",
-          sellerId:    item.mitraId ?? null,
-        }))
+        resolvedItems.map((item, i) => {
+          const discountAmount = voucherApplication?.perItemDiscount.get(i) ?? 0;
+          const lineTotal      = Math.max(0, item.unitPrice * item.quantity - discountAmount);
+          return {
+            invoiceId:   invoice.id,
+            itemType:    item.itemType as "product" | "ticket" | "donation" | "custom",
+            itemId:      item.itemId ?? null,
+            name:        item.name,
+            description: item.notes ?? null,
+            unitPrice:   item.unitPrice.toFixed(2),
+            quantity:    item.quantity,
+            total:       lineTotal.toFixed(2),
+            sortOrder:   i,
+            sellerType:  (item.mitraId ? "mitra" : "tenant") as "tenant" | "mitra",
+            sellerId:    item.mitraId ?? null,
+            discountAmount: discountAmount.toFixed(2),
+            voucherId:      discountAmount > 0 ? (voucherApplication?.voucher.id ?? null) : null,
+          };
+        })
       );
+
+      // Catat pemakaian voucher — lock yang sama dari resolusi di atas mencegah race
+      // dua checkout bersamaan sama-sama lolos cek usageLimit voucher yang sama.
+      if (voucherApplication) {
+        await tx
+          .update(schema.vouchers)
+          .set({ usedCount: sql`${schema.vouchers.usedCount} + 1`, updatedAt: new Date() })
+          .where(eq(schema.vouchers.id, voucherApplication.voucher.id));
+
+        await tx.insert(schema.voucherRedemptions).values({
+          voucherId:     voucherApplication.voucher.id,
+          invoiceId:     invoice.id,
+          customerPhone: normalizedCustomerPhone,
+          customerEmail: customerEmailTrim,
+          discountTotal: voucherApplication.totalDiscount.toFixed(2),
+        });
+      }
 
       // Insert shipping lines (jika ada)
       if (shipping && shipping.lines.length > 0) {
@@ -567,11 +780,81 @@ export async function checkoutAction(
         );
       }
 
+      // ── Efek samping "invoice langsung lunas" (Rp 0) — pola SAMA PERSIS dengan blok
+      // `if (newStatus === "paid")` di confirmInvoicePaymentAction (finance/billing/actions.ts),
+      // duplikasi disengaja (checkoutAction tidak boleh bergantung ke modul finance/billing).
+      // TIDAK ada jurnal (recordIncome) — nominal 0, tidak ada uang masuk untuk dicatat.
+      const newEventRegs: Array<{ eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null }> = [];
+
+      if (isFullyPaid) {
+        // Sync collected_amount kampanye donasi — pakai resolvedItems (sudah di-hitung net-of-
+        // diskon di atas), TIDAK re-query invoiceItems (item yang baru di-insert masih di
+        // transaction yang sama, lebih murah pakai data yang sudah ada di memory).
+        const campaignAmounts: Record<string, number> = {};
+        resolvedItems.forEach((item, i) => {
+          if (item.itemType !== "donation" || !item.itemId) return;
+          const discountAmount = voucherApplication?.perItemDiscount.get(i) ?? 0;
+          const lineTotal      = Math.max(0, item.unitPrice * item.quantity - discountAmount);
+          campaignAmounts[item.itemId] = (campaignAmounts[item.itemId] ?? 0) + lineTotal;
+        });
+        for (const [cId, amt] of Object.entries(campaignAmounts)) {
+          await tx.update(schema.campaigns)
+            .set({ collectedAmount: sql`collected_amount + ${String(amt)}` })
+            .where(eq(schema.campaigns.id, cId));
+        }
+
+        // Auto-create event_registrations dari tiket — attendee data ada di item.notes (JSON),
+        // pola sama dengan parsing invoiceItems.description di confirmInvoicePaymentAction.
+        for (const item of resolvedItems) {
+          if (item.itemType !== "ticket" || !item.itemId) continue;
+
+          let attendeeName  = item.name ?? "Peserta";
+          let attendeePhone: string | null = null;
+          let attendeeEmail: string | null = null;
+          let extraFields:   Record<string, unknown> | null = null;
+          try {
+            const p = JSON.parse(item.notes ?? "{}") as Record<string, unknown>;
+            attendeeName  = String(p.attendeeName ?? item.name ?? "Peserta").trim();
+            attendeePhone = p.attendeePhone ? String(p.attendeePhone) : null;
+            attendeeEmail = p.attendeeEmail ? String(p.attendeeEmail) : null;
+            extraFields   = p.customFieldAnswers ? (p.customFieldAnswers as Record<string, unknown>) : null;
+          } catch { /* gunakan default */ }
+
+          const [ticket] = await tx
+            .select({ eventId: schema.eventTickets.eventId })
+            .from(schema.eventTickets)
+            .where(eq(schema.eventTickets.id, item.itemId))
+            .limit(1);
+          if (!ticket?.eventId) continue;
+
+          const regNumber = await generateEventRegNumber(tenantDb);
+
+          await tx.insert(schema.eventRegistrations).values({
+            eventId:            ticket.eventId,
+            ticketId:           item.itemId,
+            memberId:           memberId ?? null,
+            profileId:          profileId ?? null,
+            attendeeName,
+            attendeePhone,
+            attendeeEmail,
+            registrationNumber: regNumber,
+            status:             "confirmed",
+            customFields:       { sourceInvoiceId: invoice.id, ...(extraFields ?? {}) },
+          });
+
+          newEventRegs.push({ eventId: ticket.eventId, regNumber, attendeeName, attendeePhone });
+        }
+      }
+
       // Hapus cart setelah checkout berhasil — masih dalam lock yang sama
       await tx.delete(schema.cartItems).where(eq(schema.cartItems.cartId, lockedCart.id));
       await tx.delete(schema.carts).where(eq(schema.carts.id, lockedCart.id));
 
-      return { invoiceId: invoice.id, invoiceNumber, total, dueDate };
+      return {
+        invoiceId: invoice.id, invoiceNumber, total, dueDate, isFullyPaid,
+        voucherDiscountTotal: voucherApplication?.totalDiscount ?? 0,
+        newEventRegs,
+      };
     });
 
     if ("error" in txResult) return { success: false, error: txResult.error };
@@ -588,17 +871,56 @@ export async function checkoutAction(
 
     void (async () => {
       const invoiceUrl = await waAppUrl(slug, `/invoice/${txResult.invoiceId}`);
-      void notifyWa({
-        slug, tenantDb, event: "invoice_created",
-        phone: normalizePhone(customer.phone),
-        vars: {
-          name:          customerName,
-          invoiceNumber: txResult.invoiceNumber,
-          amount:        waRupiah(txResult.total),
-          dueDate:       txResult.dueDate,
-          invoiceUrl,
-        },
-      });
+
+      if (txResult.isFullyPaid) {
+        // Voucher 100% (atau kombinasi diskon+ongkir Rp 0) — invoice sudah langsung lunas,
+        // TIDAK ada apa pun yang perlu dibayar. Notifikasi STANDAR (payment_confirmed), bukan
+        // notifikasi baru — pola sama dengan "pelunasan penuh cicilan" yang sudah dikunci.
+        void notifyWa({
+          slug, tenantDb, event: "payment_confirmed",
+          phone: normalizePhone(customer.phone),
+          vars: {
+            name:          customerName,
+            invoiceNumber: txResult.invoiceNumber,
+            amount:        waRupiah(0),
+          },
+        });
+
+        for (const reg of txResult.newEventRegs) {
+          const [eventDetail] = await tdb
+            .select({ title: schema.events.title, slug: schema.events.slug, startsAt: schema.events.startsAt, location: schema.events.location })
+            .from(schema.events)
+            .where(eq(schema.events.id, reg.eventId))
+            .limit(1);
+          if (!eventDetail) continue;
+
+          const eventUrl = await waAppUrl(slug, `/agenda/${eventDetail.slug}`);
+          void notifyWa({
+            slug, tenantDb, event: "event_registered",
+            phone: reg.attendeePhone,
+            vars: {
+              name:      reg.attendeeName,
+              eventName: eventDetail.title,
+              eventDate: formatEventDateWib(eventDetail.startsAt, tenantTimezone),
+              location:  eventDetail.location ?? "-",
+              regNumber: reg.regNumber,
+              eventUrl,
+            },
+          });
+        }
+      } else {
+        void notifyWa({
+          slug, tenantDb, event: "invoice_created",
+          phone: normalizePhone(customer.phone),
+          vars: {
+            name:          customerName,
+            invoiceNumber: txResult.invoiceNumber,
+            amount:        waRupiah(txResult.total),
+            dueDate:       txResult.dueDate,
+            invoiceUrl,
+          },
+        });
+      }
     })();
 
     return { success: true, data: { invoiceId: txResult.invoiceId, invoiceNumber: txResult.invoiceNumber } };

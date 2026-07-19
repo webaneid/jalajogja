@@ -4,10 +4,12 @@ import { useState, useEffect, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   checkoutAction,
+  previewVoucherAction,
   type CartData,
   type SellerGroup,
   type CheckoutShippingLine,
   type CheckoutShippingData,
+  type VoucherPreview,
 } from "@/app/(public)/[tenant]/cart/actions";
 import { PhoneInput } from "@/components/ui/phone-input";
 
@@ -91,6 +93,12 @@ export function CheckoutForm({
   const [name,  setName]  = useState(defaults?.name  ?? "");
   const [notes, setNotes] = useState("");
 
+  // Voucher — preview murni (baca saja, tidak mengunci/menaikkan usedCount). Checkout sungguhan
+  // selalu re-validasi dari nol di dalam transaction-nya sendiri (lihat cart/actions.ts).
+  const [voucherInput,   setVoucherInput]   = useState("");
+  const [voucherPreview, setVoucherPreview] = useState<VoucherPreview | null>(null);
+  const [voucherPending, startVoucherTransition] = useTransition();
+
   // Step 2 — kota tujuan
   const [destCity,     setDestCity]     = useState<{ id: number; name: string } | null>(null);
   const [address,      setAddress]      = useState("");
@@ -161,21 +169,45 @@ export function CheckoutForm({
   }, [slug, addonCouriers]);
 
   // Kalkulasi total
-  const shippingTotal = Object.values(groupStates).reduce((s, gs) => s + (gs.selected?.cost ?? 0), 0);
-  const grandTotal    = cart.subtotal + shippingTotal;
-  const allSelected   = sellerGroups.every(g => !!groupStates[g.key]?.selected);
+  const shippingTotal      = Object.values(groupStates).reduce((s, gs) => s + (gs.selected?.cost ?? 0), 0);
+  const voucherDiscount    = voucherPreview?.valid ? (voucherPreview.totalDiscount ?? 0) : 0;
+  const discountedSubtotal = Math.max(0, cart.subtotal - voucherDiscount);
+  const grandTotal         = discountedSubtotal + shippingTotal;
+  const allSelected        = sellerGroups.every(g => !!groupStates[g.key]?.selected);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   function doCheckout(shippingData?: CheckoutShippingData) {
     startTransition(async () => {
-      const res = await checkoutAction(slug, { phone, email, name, method: "transfer", notes }, shippingData);
+      const res = await checkoutAction(
+        slug,
+        { phone, email, name, method: "transfer", notes },
+        shippingData,
+        voucherPreview?.valid ? voucherInput.trim() : undefined,
+      );
       if (res.success) {
         router.push(`/${slug}/invoice/${res.data.invoiceId}`);
       } else {
         setError(res.error);
       }
     });
+  }
+
+  function handleApplyVoucher() {
+    const code = voucherInput.trim();
+    if (!code) { setVoucherPreview({ valid: false, error: "Masukkan kode voucher." }); return; }
+    startVoucherTransition(async () => {
+      const res = await previewVoucherAction(slug, code, {
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+      });
+      setVoucherPreview(res.success ? res.data : { valid: false, error: res.error });
+    });
+  }
+
+  function handleRemoveVoucher() {
+    setVoucherPreview(null);
+    setVoucherInput("");
   }
 
   function handleStep1Next() {
@@ -496,7 +528,7 @@ export function CheckoutForm({
                 ? "Memproses…"
                 : needsShipping
                   ? "Lanjut — Pilih Tujuan Pengiriman →"
-                  : `Buat Invoice — ${formatRp(cart.subtotal)}`}
+                  : `Buat Invoice — ${formatRp(discountedSubtotal)}`}
             </button>
           )}
 
@@ -533,18 +565,75 @@ export function CheckoutForm({
       <div className="rounded-lg border border-border p-5 space-y-3 sticky top-4">
         <p className="font-semibold text-sm">Ringkasan Pesanan</p>
         <div className="divide-y divide-border">
-          {cart.items.map((item) => (
-            <div key={item.id} className="flex justify-between py-2 text-sm gap-2">
-              <span className="text-muted-foreground truncate">{item.name} × {item.quantity}</span>
-              <span className="tabular-nums shrink-0">{formatRp(item.unitPrice * item.quantity)}</span>
-            </div>
-          ))}
+          {cart.items.map((item) => {
+            const lineTotal    = item.unitPrice * item.quantity;
+            const itemDiscount = voucherPreview?.valid ? (voucherPreview.perItemDiscount?.[item.id] ?? 0) : 0;
+            return (
+              <div key={item.id} className="flex justify-between py-2 text-sm gap-2">
+                <span className="text-muted-foreground truncate">{item.name} × {item.quantity}</span>
+                {itemDiscount > 0 ? (
+                  <span className="text-right shrink-0">
+                    <span className="block text-xs text-muted-foreground line-through">{formatRp(lineTotal)}</span>
+                    <span className="tabular-nums text-green-600 font-medium">{formatRp(lineTotal - itemDiscount)}</span>
+                  </span>
+                ) : (
+                  <span className="tabular-nums shrink-0">{formatRp(lineTotal)}</span>
+                )}
+              </div>
+            );
+          })}
         </div>
+
+        {/* Voucher */}
+        {voucherPreview?.valid ? (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs">
+            <span className="text-green-700 truncate">
+              Voucher <strong>{voucherInput.trim().toUpperCase()}</strong> — {voucherPreview.voucherName}
+            </span>
+            <button
+              type="button"
+              onClick={handleRemoveVoucher}
+              className="text-green-700 hover:underline shrink-0"
+            >
+              Hapus
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={voucherInput}
+                onChange={(e) => { setVoucherInput(e.target.value.toUpperCase()); setVoucherPreview(null); }}
+                placeholder="Kode voucher"
+                className={`${inputCls} text-sm`}
+              />
+              <button
+                type="button"
+                onClick={handleApplyVoucher}
+                disabled={voucherPending || !voucherInput.trim()}
+                className="shrink-0 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50 transition-colors"
+              >
+                {voucherPending ? "…" : "Terapkan"}
+              </button>
+            </div>
+            {voucherPreview && !voucherPreview.valid && (
+              <p className="text-xs text-destructive">{voucherPreview.error}</p>
+            )}
+          </div>
+        )}
 
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">Subtotal</span>
           <span className="tabular-nums">{formatRp(cart.subtotal)}</span>
         </div>
+
+        {voucherPreview?.valid && (
+          <div className="flex justify-between text-sm text-green-600">
+            <span>Diskon Voucher</span>
+            <span className="tabular-nums">− {formatRp(voucherDiscount)}</span>
+          </div>
+        )}
 
         {step === 3 && sellerGroups.map(g => {
           const sel = groupStates[g.key]?.selected;
@@ -558,7 +647,7 @@ export function CheckoutForm({
 
         <div className="flex justify-between font-semibold border-t border-border pt-3">
           <span>Total</span>
-          <span className="tabular-nums">{formatRp(step === 3 ? grandTotal : cart.subtotal)}</span>
+          <span className="tabular-nums">{formatRp(step === 3 ? grandTotal : discountedSubtotal)}</span>
         </div>
       </div>
     </div>
