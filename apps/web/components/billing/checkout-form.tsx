@@ -266,6 +266,7 @@ export function CheckoutForm({
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
+    <>
     <div className="grid gap-6 lg:grid-cols-[1fr_360px] items-start">
       {/* ── Form kiri ── */}
       <div className="space-y-5">
@@ -505,103 +506,106 @@ export function CheckoutForm({
           </div>
         )}
 
-        {/* ── Kode Voucher — di kolom kiri (bukan ringkasan kanan) supaya tetap terlihat
-             SEBELUM tombol submit di mobile, di mana kolom kanan stack di bawah tombol. ── */}
-        <div className="rounded-lg border border-border p-4">
-          <p className="text-sm font-medium mb-2">Punya Kode Voucher?</p>
-          {voucherPreview?.valid ? (
-            <div className="flex items-center justify-between gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs">
-              <span className="text-green-700 truncate">
-                Voucher <strong>{voucherInput.trim().toUpperCase()}</strong> — {voucherPreview.voucherName}
-              </span>
-              <button
-                type="button"
-                onClick={handleRemoveVoucher}
-                className="text-green-700 hover:underline shrink-0"
-              >
-                Hapus
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={voucherInput}
-                  onChange={(e) => { setVoucherInput(e.target.value.toUpperCase()); setVoucherPreview(null); }}
-                  placeholder="Kode voucher"
-                  className={`${inputCls} text-sm`}
-                />
-                <button
-                  type="button"
-                  onClick={handleApplyVoucher}
-                  disabled={voucherPending || !voucherInput.trim()}
-                  className="shrink-0 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50 transition-colors"
-                >
-                  {voucherPending ? "…" : "Terapkan"}
-                </button>
-              </div>
-              {voucherPreview && !voucherPreview.valid && (
-                <p className="text-xs text-destructive">{voucherPreview.error}</p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* ── Tombol navigasi ── */}
-        <div className="flex gap-3">
-          {step > 1 && (
-            <button
-              type="button"
-              onClick={() => { setError(""); setStep(prev => (prev - 1) as 1 | 2 | 3); }}
-              className="shrink-0 rounded-md border border-border px-4 py-2.5 text-sm hover:bg-muted transition-colors"
-            >
-              ← Kembali
-            </button>
-          )}
-
-          {step === 1 && (
-            <button
-              type="button"
-              onClick={handleStep1Next}
-              disabled={pending}
-              className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
-            >
-              {pending
-                ? "Memproses…"
-                : needsShipping
-                  ? "Lanjut — Pilih Tujuan Pengiriman →"
-                  : `Buat Invoice — ${formatRp(discountedSubtotal)}`}
-            </button>
-          )}
-
-          {step === 2 && (
-            <button
-              type="button"
-              onClick={handleStep2Next}
-              className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-            >
-              Lanjut — Pilih Jasa Pengiriman →
-            </button>
-          )}
-
-          {step === 3 && (
-            <button
-              type="button"
-              onClick={handleStep3Submit}
-              disabled={pending || !allSelected}
-              className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
-            >
-              {pending ? "Memproses…" : `Buat Invoice — ${formatRp(grandTotal)}`}
-            </button>
-          )}
-        </div>
-
         {step === 1 && (
           <p className="text-xs text-muted-foreground">
             Metode pembayaran (transfer / QRIS) dipilih setelah invoice dibuat.
           </p>
         )}
+
+        {/* ── Kode Voucher + Tombol navigasi — sticky di bawah layar saat mobile (konsisten
+             dengan shell mobile event/donasi/produk), kembali ke alur normal di desktop.
+             `mt-0` sama alasannya dengan spacer di atas (cuma relevan saat fixed di mobile —
+             saat md:static di desktop, md:space-y-5 di bawah tetap mengatur gap seperti biasa). ── */}
+        <div className="fixed inset-x-0 bottom-0 z-40 mt-0 space-y-3 border-t border-border bg-background p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] md:static md:inset-auto md:z-auto md:mt-5 md:space-y-5 md:border-0 md:bg-transparent md:p-0 md:pb-0 md:shadow-none">
+          <div className="rounded-lg border border-border p-4">
+            <p className="text-sm font-medium mb-2">Punya Kode Voucher?</p>
+            {voucherPreview?.valid ? (
+              <div className="flex items-center justify-between gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs">
+                <span className="text-green-700 truncate">
+                  Voucher <strong>{voucherInput.trim().toUpperCase()}</strong> — {voucherPreview.voucherName}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleRemoveVoucher}
+                  className="text-green-700 hover:underline shrink-0"
+                >
+                  Hapus
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={voucherInput}
+                    onChange={(e) => { setVoucherInput(e.target.value.toUpperCase()); setVoucherPreview(null); }}
+                    placeholder="Kode voucher"
+                    className={`${inputCls} text-sm`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyVoucher}
+                    disabled={voucherPending || !voucherInput.trim()}
+                    className="shrink-0 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50 transition-colors"
+                  >
+                    {voucherPending ? "…" : "Terapkan"}
+                  </button>
+                </div>
+                {voucherPreview && !voucherPreview.valid && (
+                  <p className="text-xs text-destructive">{voucherPreview.error}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3">
+            {step > 1 && (
+              <button
+                type="button"
+                onClick={() => { setError(""); setStep(prev => (prev - 1) as 1 | 2 | 3); }}
+                className="shrink-0 rounded-md border border-border px-4 py-2.5 text-sm hover:bg-muted transition-colors"
+              >
+                ← Kembali
+              </button>
+            )}
+
+            {step === 1 && (
+              <button
+                type="button"
+                onClick={handleStep1Next}
+                disabled={pending}
+                className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
+              >
+                {pending
+                  ? "Memproses…"
+                  : needsShipping
+                    ? "Lanjut — Pilih Tujuan Pengiriman →"
+                    : `Buat Invoice — ${formatRp(discountedSubtotal)}`}
+              </button>
+            )}
+
+            {step === 2 && (
+              <button
+                type="button"
+                onClick={handleStep2Next}
+                className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Lanjut — Pilih Jasa Pengiriman →
+              </button>
+            )}
+
+            {step === 3 && (
+              <button
+                type="button"
+                onClick={handleStep3Submit}
+                disabled={pending || !allSelected}
+                className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
+              >
+                {pending ? "Memproses…" : `Buat Invoice — ${formatRp(grandTotal)}`}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── Ringkasan kanan ── */}
@@ -655,5 +659,15 @@ export function CheckoutForm({
         </div>
       </div>
     </div>
+
+    {/* Spacer — WAJIB di sini, SETELAH grid ditutup (bukan di dalam kolom kiri) — di mobile,
+        grid stack jadi 1 kolom dan kolom kanan "Ringkasan Pesanan" masih render SETELAH kolom
+        kiri (termasuk bar sticky yang isinya). Kalau spacer ditaruh di dalam kolom kiri, ia
+        nyangkut di ATAS Ringkasan Pesanan alih-alih di paling bawah tempat bar sticky
+        sungguhan berada (bug yang sama dengan yang ditemukan di /keranjang — lihat lesson
+        CLAUDE.md). Bar sticky sendiri (fixed di mobile) tidak perlu dipindah — position:fixed
+        selalu render di viewport bottom terlepas dari posisi DOM-nya. */}
+    <div className="h-48 md:hidden mt-0" />
+    </>
   );
 }

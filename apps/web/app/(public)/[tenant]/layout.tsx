@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { createTenantDb, db, tenants, getSettings, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
 import { HeaderVisibility } from "@/components/website/public/layout/header-visibility";
 import { PublicFooter } from "@/components/website/public/layout/public-footer";
+import { FooterBottomNav } from "@/components/website/public/layout/footer-bottom-nav";
 import { parseNavMenu } from "@/lib/nav-menu";
 import { buildTenantThemeCss, getGoogleFontsUrl } from "@/lib/theme-palette";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
@@ -178,6 +179,14 @@ export default async function PublicLayout({
         navMenu={navMenu}
         contactSettings={enrichedContactSettings as Parameters<typeof PublicFooter>[0]["contactSettings"]}
         primaryColor={primaryColor}
+        baseUrl={baseUrl}
+      />
+
+      {/* BottomNav (FlexHeader) + spacer-nya — WAJIB dirender di sini (setelah footer), bukan
+          dibundel dengan <HeaderVisibility> di atas. Lihat komentar di footer-bottom-nav.tsx. */}
+      <FooterBottomNav
+        designId={headerDesign as import("@/lib/header-designs").HeaderDesignId}
+        navMenu={navMenu}
         baseUrl={baseUrl}
       />
     </div>

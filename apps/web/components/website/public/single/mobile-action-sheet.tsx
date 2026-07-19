@@ -1,11 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronUp } from "lucide-react";
 
 type Props = {
   collapsedBar: React.ReactNode;   // konten baris ringkas, selalu tampil, seluruh area jadi tombol toggle
   children:     React.ReactNode;   // konten penuh saat expanded
+  /** Opsional — set `true` (mis. dari state dialog lain yang akan dibuka) untuk memaksa sheet
+   *  collapse. Dipakai supaya sheet ini tidak menutupi dialog/modal LAIN yang dibuka di atasnya
+   *  (z-71 di sini lebih tinggi dari z-50 shadcn Dialog/AlertDialog — tanpa collapse, dialog itu
+   *  akan render TERSEMBUNYI di baliknya, terlihat seperti "tidak ada respons" saat diklik).
+   *  Tidak dipakai (undefined) → sheet murni self-managed seperti sebelumnya, backward compatible. */
+  collapseSignal?: boolean;
 };
 
 // Bottom sheet generik untuk shell mobile halaman single (event/donasi/produk) — bar ringkas
@@ -21,8 +27,12 @@ type Props = {
 // Konten TIDAK di-unmount saat collapse — cuma di-clip via overflow-hidden pada wrapper luar,
 // supaya state form di dalam `children` (pilihan tiket/nominal/variasi, dst) tidak hilang
 // setiap kali sheet ditutup-buka.
-export function MobileActionSheet({ collapsedBar, children }: Props) {
+export function MobileActionSheet({ collapsedBar, children, collapseSignal }: Props) {
   const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (collapseSignal) setExpanded(false);
+  }, [collapseSignal]);
 
   return (
     <div className="md:hidden">

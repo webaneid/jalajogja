@@ -15,7 +15,7 @@ type Props = {
 // Melekat di gambar fitur saat halaman dibuka (transparan, tanpa backdrop) — ikut ter-scroll
 // ke atas bersama gambar saat user scroll ke bawah, lalu otomatis muncul lagi mengambang
 // (dengan backdrop, karena saat itu posisinya di atas body teks bukan gambar) begitu user
-// scroll ke atas sedikit saja. Lihat docs/arsitektur-frontend-publik.md § "Mobile Single-Page Shell".
+// scroll ke atas sedikit saja. Lihat docs/arsitektur-mobile-shell.md.
 export function SingleMobileTopBar({ backHref, navMenu, siteName }: Props) {
   const router = useRouter();
   const [revealed,       setRevealed]       = useState(true);

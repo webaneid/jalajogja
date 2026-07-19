@@ -10,8 +10,13 @@ import { checkDashboardAccessAction, getAkunAvatarAction } from "@/app/(public)/
 import { PublicButton } from "@/components/website/public/ui/public-button";
 
 // ── Mobile bottom nav — maks 3 item + "Lainnya" ──────────────────────────────
+// Diekspor (dipakai `footer-bottom-nav.tsx`) — dirender OLEH LAYOUT SETELAH footer, BUKAN di
+// sini bersama <header>. Spacer-nya (h-14) harus reserve ruang di PALING BAWAH halaman (setelah
+// {children} + footer), bukan tepat di bawah header — kalau dibundel di sini, spacer nyangkut
+// di ATAS {children} karena FlexHeader dirender sebelum <main> oleh PublicLayout. Lihat lesson
+// CLAUDE.md soal bug ini (kelas sama dengan bug spacer /keranjang & /checkout).
 
-function BottomNav({
+export function BottomNav({
   navMenu,
 }: {
   navMenu: NavItem[];
@@ -95,6 +100,154 @@ function BottomNav({
         </div>
       )}
     </>
+  );
+}
+
+// ── Search overlay mobile — dialog terpusat, dipicu dari ikon search header ──────────────
+// Duplikasi sengaja dari SearchBar di bawah (fetch logic sama) — SearchBar didesain untuk
+// input inline desktop (hidden md:block), overlay ini untuk trigger ikon mobile. Pola sama
+// dengan file header lain di project ini (tiap desain self-contained, lihat pill-header.tsx).
+
+function MobileSearchOverlay({
+  tenantSlug,
+  baseUrl,
+  onClose,
+}: {
+  tenantSlug: string;
+  baseUrl:    string;
+  onClose:    () => void;
+}) {
+  const [query,   setQuery]   = useState("");
+  const [results, setResults] = useState<null | {
+    posts:    { title: string; slug: string }[];
+    pages:    { title: string; slug: string }[];
+    events:   { name: string; slug: string }[];
+    products: { name: string; slug: string; price: number }[];
+    members:  { name: string; memberNumber: string }[];
+  }>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    if (query.length < 2) { setResults(null); return; }
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/search?slug=${encodeURIComponent(tenantSlug)}&q=${encodeURIComponent(query)}`
+        );
+        if (res.ok) setResults(await res.json());
+      } catch { /* ignore */ }
+    }, 300);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [query, tenantSlug]);
+
+  const total = results
+    ? results.posts.length + results.pages.length + results.events.length +
+      results.products.length + results.members.length
+    : 0;
+
+  return (
+    <div
+      className="md:hidden fixed inset-0 z-[100] bg-black/40 flex items-start justify-center pt-[8vh] px-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xl bg-background rounded-3xl shadow-lg overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 bg-muted/60 rounded-full mx-3 mt-3 px-4 py-2.5">
+          <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cari berita, produk, atau kegiatan..."
+            className="flex-1 bg-transparent text-sm focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Tutup"
+            className="h-7 w-7 rounded-full bg-background flex items-center justify-center shrink-0"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className="max-h-[50vh] overflow-y-auto p-3">
+          {total === 0 && query.length >= 2 && (
+            <p className="text-sm text-muted-foreground px-2 py-3">Tidak ada hasil untuk &quot;{query}&quot;.</p>
+          )}
+          {results?.posts.map((p) => (
+            <a key={p.slug} href={`${baseUrl}/post/${p.slug}`} className="flex items-center gap-2 px-2 py-2.5 rounded-xl text-sm hover:bg-muted/60 transition-colors">
+              <span className="text-[10px] uppercase tracking-wide bg-muted rounded-full px-2 py-0.5 text-muted-foreground shrink-0">Post</span>
+              {p.title}
+            </a>
+          ))}
+          {results?.pages.map((p) => (
+            <a key={p.slug} href={`${baseUrl}/${p.slug}`} className="flex items-center gap-2 px-2 py-2.5 rounded-xl text-sm hover:bg-muted/60 transition-colors">
+              <span className="text-[10px] uppercase tracking-wide bg-muted rounded-full px-2 py-0.5 text-muted-foreground shrink-0">Halaman</span>
+              {p.title}
+            </a>
+          ))}
+          {results?.events.map((ev) => (
+            <a key={ev.slug} href={`${baseUrl}/agenda/${ev.slug}`} className="flex items-center gap-2 px-2 py-2.5 rounded-xl text-sm hover:bg-muted/60 transition-colors">
+              <span className="text-[10px] uppercase tracking-wide bg-muted rounded-full px-2 py-0.5 text-muted-foreground shrink-0">Event</span>
+              {ev.name}
+            </a>
+          ))}
+          {results?.products.map((p) => (
+            <a key={p.slug} href={`${baseUrl}/produk/${p.slug}`} className="flex items-center gap-2 px-2 py-2.5 rounded-xl text-sm hover:bg-muted/60 transition-colors">
+              <span className="text-[10px] uppercase tracking-wide bg-muted rounded-full px-2 py-0.5 text-muted-foreground shrink-0">Produk</span>
+              {p.name}
+            </a>
+          ))}
+          {results?.members.map((m) => (
+            <div key={m.memberNumber} className="flex items-center gap-2 px-2 py-2.5 text-sm text-muted-foreground">
+              <span className="text-[10px] uppercase tracking-wide bg-muted rounded-full px-2 py-0.5 shrink-0">Anggota</span>
+              {m.name} <span className="text-xs">#{m.memberNumber}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Ikon mobile — search + keranjang saja, flat hitam-putih dengan border tipis (bukan kapsul
+// warna). Menu navigasi TETAP di bawah (BottomNav/footer, tidak disentuh) — bukan di header.
+// Style sama dengan IconButton di pill-header.tsx, disalin ke sini (pola self-contained per
+// file header, bukan di-share).
+
+function MobileHeaderIcons({
+  tenantSlug,
+  baseUrl,
+  onSearchClick,
+}: {
+  tenantSlug:    string;
+  baseUrl:       string;
+  onSearchClick: () => void;
+}) {
+  return (
+    <div className="flex md:hidden items-center gap-2">
+      <button
+        type="button"
+        onClick={onSearchClick}
+        aria-label="Cari"
+        className="flex items-center justify-center h-8 w-8 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+      >
+        <Search className="h-4 w-4" />
+      </button>
+      <CartButton
+        tenantSlug={tenantSlug}
+        baseUrl={baseUrl}
+        className="relative flex items-center justify-center h-8 w-8 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+      />
+    </div>
   );
 }
 
@@ -309,8 +462,12 @@ function UserButton({ tenantSlug, baseUrl }: { tenantSlug: string; baseUrl: stri
 }
 
 // ── FlexHeader (main export) ──────────────────────────────────────────────────
+// Catatan: `<BottomNav>` TIDAK dirender di sini — lihat komentar di definisi `BottomNav` di
+// atas dan `footer-bottom-nav.tsx` (dirender oleh PublicLayout SETELAH footer).
 
 export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColor, baseUrl }: HeaderProps) {
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+
   return (
     <>
       <header className="sticky top-0 z-50 bg-white border-b border-border shadow-sm">
@@ -340,7 +497,15 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
             <SearchBar tenantSlug={tenantSlug} baseUrl={baseUrl} />
 
             <div className="ml-auto flex items-center gap-2">
-              {/* Keranjang belanja */}
+              {/* Ikon mobile — search + keranjang (desktop pakai SearchBar inline + CartButton
+                  biasa di bawah, jadi ini md:hidden). Menu navigasi tetap di BottomNav bawah. */}
+              <MobileHeaderIcons
+                tenantSlug={tenantSlug}
+                baseUrl={baseUrl}
+                onSearchClick={() => setMobileSearchOpen(true)}
+              />
+
+              {/* Keranjang belanja — desktop saja (mobile: di dalam kapsul di atas) */}
               <CartButton tenantSlug={tenantSlug} baseUrl={baseUrl} />
 
               {/* User */}
@@ -375,11 +540,13 @@ export function FlexHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
         )}
       </header>
 
-      {/* Bottom nav — hanya mobile */}
-      <BottomNav navMenu={navMenu} />
-
-      {/* Spacer agar konten tidak tertimpa bottom nav di mobile */}
-      <div className="h-14 md:hidden" />
+      {mobileSearchOpen && (
+        <MobileSearchOverlay
+          tenantSlug={tenantSlug}
+          baseUrl={baseUrl}
+          onClose={() => setMobileSearchOpen(false)}
+        />
+      )}
     </>
   );
 }

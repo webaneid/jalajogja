@@ -326,7 +326,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
     new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(date);
 
   // Shell mobile — header situs disembunyikan (lihat HeaderVisibility), diganti overlay
-  // back+menu di atas cover. Lihat docs/arsitektur-frontend-publik.md § "Mobile Single-Page Shell".
+  // back+menu di atas cover. Lihat docs/arsitektur-mobile-shell.md.
   const [relativeBaseUrl, seoBase] = await Promise.all([
     resolveBaseUrl(tenantSlug),
     getTenantSeoBase(tenantSlug),

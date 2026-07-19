@@ -4,6 +4,7 @@ import { db, tenants, getSettings } from "@jalajogja/db";
 import { eq, inArray, and } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { CartClient } from "@/components/billing/cart-client";
+import { CartMobileBar } from "@/components/billing/cart-mobile-bar";
 import type { CartData, CartItem } from "@/app/(public)/[tenant]/cart/actions";
 import { DonationBannerCart } from "@/components/event/public/donation-banner-cart";
 import { ShoppingCart } from "lucide-react";
@@ -190,6 +191,12 @@ export default async function KeranjangPage({ params }: Props) {
               linkedProduct={linkedProductBanner}
             />
           </div>
+        )}
+
+        {/* Elemen PALING TERAKHIR di halaman — WAJIB, supaya spacer sticky bar tidak nyangkut
+            di tengah (sebelum banner donasi/produk di atas). Lihat lesson CLAUDE.md. */}
+        {cart && cart.items.length > 0 && (
+          <CartMobileBar slug={slug} subtotal={cart.subtotal} />
         )}
       </div>
     </main>

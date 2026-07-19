@@ -362,6 +362,13 @@ export default async function ProdukDetailPage({ params }: { params: Params }) {
           </section>
         )}
 
+        {/* Spacer — elemen PALING TERAKHIR di halaman, cegah "Deskripsi Produk"/"Produk Lainnya"
+            di atas ketutupan bar collapsed MobileActionSheet (yang render di dalam
+            ProductDetailClient di atas, bukan di sini — spacer lokal MobileActionSheet sendiri
+            tidak cukup karena kedua section ini render SETELAHNYA). Tinggi cocok dengan
+            collapsed bar (h-24 di mobile-action-sheet.tsx). Lihat lesson CLAUDE.md. */}
+        <div className="h-24 md:hidden" />
+
       </div>
     </div>
   );

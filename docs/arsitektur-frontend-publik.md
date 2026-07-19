@@ -58,6 +58,12 @@ Poin yang wajib diketahui:
   total di custom domain tenant (`baseUrl !== ""` gate) — lihat `docs/arsitektur-domain.md` § 5.1
 - User menu (dropdown login) render "Akun Saya" untuk semua user login, "Dashboard Admin" hanya
   untuk user yang punya `tenant.users` record (dicek client-side agar layout tetap ISR-safe)
+- **Mobile shell** — header disembunyikan total di halaman single-item (post/agenda/campaign/
+  produk detail + halaman generik), diganti overlay back+menu (`SingleMobileTopBar`); tab nav
+  bawah (`BottomNav`) dirender terpisah dari header itu sendiri, setelah footer, via
+  `FooterBottomNav`. Aturan lengkap + kelas bug "spacer harus jadi elemen terakhir di HALAMAN
+  bukan di komponen" (sudah terbukti berulang 4× dalam satu sesi): **`docs/arsitektur-mobile-shell.md`**
+  — WAJIB dibaca sebelum menambah elemen `fixed bottom-0` baru manapun di front-end publik.
 
 ---
 
@@ -312,6 +318,11 @@ bukan di sini:
 - **Mobile**: tidak boleh ada wrapper `<div className="min-h-screen bg-background">` ekstra di
   halaman detail — `PublicLayout` sudah menyediakannya. Lihat lesson "Mobile Layout Overflow" di
   CLAUDE.md.
+- **Mobile shell — sticky bar & spacer**: `md:hidden` berarti "hidden MULAI md ke atas" (bukan
+  "hidden di mobile") — kesalahan baca ini sumber bug berulang. Setiap spacer pasangan elemen
+  `fixed bottom-0` WAJIB jadi elemen paling terakhir di HALAMAN (bukan cuma di komponen) — kalau
+  ada konten lain yang render setelahnya, spacer nyangkut di tengah dan konten itu tidak
+  terlindungi. Tiga pola fix + checklist lengkap: **`docs/arsitektur-mobile-shell.md`**.
 - **Konten Tiptap JSON** (description/body/content): selalu lewat `renderBody()`
   (`lib/letter-render.ts`) sebelum ditampilkan — tidak pernah `dangerouslySetInnerHTML` langsung
   atau `.slice()` untuk SEO/preview.

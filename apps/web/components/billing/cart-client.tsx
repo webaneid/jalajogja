@@ -106,14 +106,17 @@ export function CartClient({ slug, cart }: Props) {
         ))}
       </div>
 
-      {/* Total */}
-      <div className="flex justify-between items-center rounded-lg border border-border bg-muted/10 px-4 py-3">
-        <span className="font-semibold">Total</span>
-        <span className="tabular-nums font-semibold text-lg">{formatRp(cart.subtotal)}</span>
-      </div>
-
-      {/* Checkout button */}
-      <div className="pt-2">
+      {/* Total + Checkout — desktop saja. Versi mobile (sticky) ada TERPISAH di
+          <CartMobileBar>, WAJIB dirender oleh halaman (page.tsx) sebagai elemen PALING
+          TERAKHIR di halaman — bukan di sini — karena halaman keranjang punya konten
+          TAMBAHAN setelah CartClient (banner donasi/produk terkait). Kalau versi sticky
+          ditaruh di dalam CartClient, spacer-nya nyangkut di TENGAH halaman (sebelum banner
+          itu), bukan di paling bawah tempat ia seharusnya berada (lihat lesson CLAUDE.md). */}
+      <div className="hidden md:block space-y-4">
+        <div className="flex justify-between items-center rounded-lg border border-border bg-muted/10 px-4 py-3">
+          <span className="font-semibold">Total</span>
+          <span className="tabular-nums font-semibold text-lg">{formatRp(cart.subtotal)}</span>
+        </div>
         <a
           href={`/${slug}/checkout`}
           className="block w-full rounded-md bg-primary px-4 py-3 text-center text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"

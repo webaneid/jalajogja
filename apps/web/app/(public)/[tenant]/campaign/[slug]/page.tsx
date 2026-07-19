@@ -394,6 +394,13 @@ export default async function CampaignDetailPage({ params }: { params: Params })
           </section>
         )}
 
+        {/* Spacer — elemen PALING TERAKHIR di halaman, cegah konten "Campaign Lainnya" di atas
+            ketutupan bar collapsed MobileActionSheet (yang render di dalam kolom "Kanan: form"
+            di atas, bukan di sini — spacer lokal MobileActionSheet sendiri tidak cukup karena
+            section ini render SETELAHNYA). Tinggi cocok dengan collapsed bar (h-24 di
+            mobile-action-sheet.tsx). Lihat lesson CLAUDE.md soal kelas bug ini. */}
+        <div className="h-24 md:hidden" />
+
       </div>
     </div>
     </>

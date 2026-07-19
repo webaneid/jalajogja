@@ -7068,17 +7068,461 @@ benar".
 **Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build` sukses. Belum
 diverifikasi visual di browser oleh Claude — user diminta konfirmasi setelah reload.
 
+### [2026-07-19] Sticky Bottom Bar Mobile — Keranjang + Checkout, dan Konflik dengan BottomNav FlexHeader
+
+User minta `/keranjang` (Total + "Lanjut ke Checkout") dan `/checkout` (voucher + "Buat Invoice")
+konsisten dengan pola sticky-bottom-bar yang sudah dipakai di halaman single event/donasi/produk
+— tapi eksplisit **hanya untuk mobile**, desktop tidak berubah.
+
+**Dua pendekatan berbeda dipakai, sengaja, tergantung apakah kontennya interaktif:**
+- `checkout-form.tsx` (voucher input + tombol submit multi-step, PUNYA state) — SATU set elemen,
+  posisi ditoggle via Tailwind responsive classes (`fixed inset-x-0 bottom-0 ... md:static
+  md:inset-auto ...`) pada wrapper yang sama. TIDAK diduplikasi — kalau dibungkus
+  `hidden md:block` + `md:hidden` seperti pola single-page shell, akan menghasilkan 2 `<input>`
+  independen terikat ke state yang sama (fragile: autofill, focus, aksesibilitas).
+- `cart-client.tsx` (Total + link statis, TIDAK PUNYA state selain angka) — diduplikasi murni
+  (`hidden md:block` desktop asli tidak disentuh + `md:hidden` versi sticky mobile terpisah) —
+  aman karena kontennya cuma teks + `<a>` tanpa interaksi kompleks, dan mengikuti pola
+  duplikasi-chrome yang sudah established di modul lain (Event/Campaign/Produk header chrome).
+
+**Aturan untuk elemen sticky-bottom baru ke depan**: kalau elemen berisi INPUT/FORM STATE, pakai
+teknik reposisi CSS pada satu set elemen (seperti checkout-form). Kalau elemen murni DISPLAY +
+link/tombol tanpa state, duplikasi per breakpoint boleh (lebih mudah dibaca, tidak ada state
+sharing issue).
+
+**Bug ditemukan SEBELUM sempat jadi bug nyata** (dicek proaktif, bukan dilaporkan user): FlexHeader
+(salah satu dari 3 desain header) punya `BottomNav` — tab navigasi situs yang FIXED di
+`bottom-0 z-50` di SEMUA halaman mobile kecuali yang di-treat sebagai "single mobile route" (lihat
+`header-visibility.tsx`, `STATIC_TOP_SEGMENTS`). `/keranjang` dan `/checkout` SENGAJA ADA di
+`STATIC_TOP_SEGMENTS` (bukan halaman single-item, header harus tetap terlihat penuh) — artinya
+BottomNav TIDAK disembunyikan di kedua halaman itu, dan akan rebutan ruang `bottom-0` dengan bar
+aksi baru yang baru saja dibangun (sticky Total+Checkout, sticky Voucher+Buat Invoice).
+
+**Fix — BUKAN menyembunyikan seluruh header** (itu akan menghilangkan topbar/logo/keranjang-icon/
+user-menu, kemunduran navigasi tanpa penggantinya seperti `SingleMobileTopBar` di halaman single):
+`flex-header.tsx` sekarang deteksi `pathname` (via `usePathname()`, dengan strip `baseUrl` sama
+seperti `header-visibility.tsx`) — kalau segmen tunggal path adalah `"keranjang"` atau
+`"checkout"` (`PAGES_WITH_OWN_MOBILE_ACTION_BAR`), `<BottomNav>` (DAN spacer `h-14`-nya) TIDAK
+dirender sama sekali. Header (topbar/logo/cart-icon/user-menu) tetap tampil normal — hanya tab
+navigasi generik di bawah yang digantikan bar aksi milik halaman itu sendiri.
+
+**Kenapa baru ketahuan sekarang, bukan sejak Mobile Single-Page Shell dibangun**: sepanjang fitur
+shell mobile sebelumnya (Event/Campaign/Produk detail), SEMUA halaman yang dapat bottom sheet
+JUGA masuk kategori "single mobile route" yang menyembunyikan SELURUH header (termasuk
+BottomNav-nya) — jadi konflik ini tidak pernah muncul karena BottomNav memang selalu absen di
+halaman-halaman itu. `/keranjang`/`/checkout` adalah kasus PERTAMA di project ini yang butuh
+sticky bottom bar SENDIRI sambil header tetap harus terlihat penuh — pola baru, bukan cuma reuse.
+
+**Aturan digeneralisasi**: setiap kali menambah elemen `fixed bottom-0` baru ke halaman publik
+manapun, WAJIB grep `fixed.*bottom-0` di `components/website/public/` dulu untuk cek elemen
+fixed-bottom lain yang mungkin masih aktif di halaman itu (di project ini per sesi ini: hanya
+`flex-header.tsx` BottomNav dan `mobile-action-sheet.tsx` yang relevan) — jangan asumsikan
+`bottom-0` selalu kosong hanya karena testing di header design lain (Classic/Pill) tidak
+menunjukkan masalah.
+
+**Bug susulan ditemukan user sendiri (via pertanyaan, bukan laporan bug langsung)**: user tanya
+"`h-24 md:hidden` itu artinya `display:none` di mobile?" — jawaban sebenarnya kebalikannya:
+`md:hidden` berarti "hidden MULAI breakpoint `md` KE ATAS" (hidden di desktop), BUKAN "hidden di
+mobile". Di bawah `md`, class itu tidak berlaku sama sekali → div spacer render normal
+(`display:block` default), menempati `h-24`/`h-44` (96px/176px) sebagai ruang kosong — ini
+MEMANG disengaja (mencegah konten terakhir ketutupan bar sticky), tapi user benar bahwa jaraknya
+terasa lebih lebar dari seharusnya. **Root cause nyata**: spacer & bar sticky ditaruh SEBAGAI
+CHILD dari container `space-y-4`/`space-y-5` (cart-client.tsx / checkout-form.tsx) — Tailwind
+`space-y-*` menambah `margin-top` ke SEMUA child kecuali yang pertama (dan child terakhir untuk
+margin-bottom versi lama, tapi versi baru pakai `:not(:last-child)` untuk margin-bottom — intinya
+spacer BUKAN child pertama, jadi kena `margin-top` tambahan 16-20px yang TIDAK diperhitungkan
+saat menentukan tinggi spacer) — jarak kosong jadi lebih lebar dari `h-24`/`h-44` itu sendiri.
+
+**Fix beda pendekatan tergantung struktur DOM sekitarnya**:
+- `cart-client.tsx` — tidak ada grid, jadi spacer+bar dipindah TOTAL keluar dari `<div
+  className="space-y-4">` (jadi sibling-nya via React Fragment `<>...</>`), aman karena flow
+  linear biasa. Height spacer disesuaikan lebih presisi: `h-24`→`h-20` (dihitung ulang dari
+  tinggi konten bar sesungguhnya: padding+baris teks+tombol ≈ 77-80px).
+- `checkout-form.tsx` — spacer+bar ada DI DALAM grid track kolom kiri (`grid
+  lg:grid-cols-[1fr_360px]`) — TIDAK bisa dipindah keluar dari `<div className="space-y-5">`
+  begitu saja karena akan lepas dari track grid kolom kiri (auto-placement grid akan
+  menempatkannya di baris baru merentangi kedua kolom, merusak layout desktop). Fix pakai teknik
+  berbeda: tambah `mt-0` eksplisit pada spacer & bar (menimpa margin dari `space-y-5`) +
+  `md:mt-5` pada bar (mengembalikan gap yang benar saat kembali ke `md:static` di desktop).
+  Height spacer disesuaikan: `h-44`→`h-48` (192px, dihitung ulang dari tinggi voucher-card +
+  gap + button-row + padding).
+
+**Kenapa `mt-0` DIJAMIN menang lawan `space-y-5`, bukan soal urutan CSS**: dicek langsung di CSS
+hasil build — Tailwind v4 membungkus rule `space-y-*` dengan `:where(...)` (spesifisitas 0),
+sementara `.mt-0{margin-top:0}` adalah class selector biasa (spesifisitas normal). `:where()`
+SELALU kalah dari selector non-`:where()` manapun terlepas urutan di stylesheet — inilah alasan
+resmi Tailwind membungkus utility `space-y`/`space-x` dengan `:where()` sejak v3.3, supaya utility
+margin/padding lain SELALU bisa menimpanya tanpa perlu `!important`. Aturan untuk kasus serupa ke
+depan: kalau sebuah elemen anak dari container `space-y-*`/`space-x-*` butuh margin yang beda dari
+default gap kontainer (termasuk 0), cukup tambah `mt-0`/`ml-0` dst secara eksplisit — TIDAK perlu
+restrukturisasi DOM kalau elemen itu terikat pada grid/flex track tertentu yang tidak boleh
+dipindah.
+
+**Bug KEDUA di gap yang sama, ditemukan setelah user tes ulang mengira fix `mt-0` sudah cukup**:
+gap MASIH lebar di `/keranjang`, tapi kali ini di lokasi yang salah — di ANTARA daftar belanjaan
+dan section "ingin ikut donasi" (`DonationBannerCart`), BUKAN di paling bawah halaman tempat bar
+sticky berada. Root cause: `keranjang/page.tsx` merender `<CartClient>` LALU
+`<DonationBannerCart>` SETELAHNYA (kondisional, kalau ada campaign/produk terkait tiket di cart).
+Spacer `h-20` yang saya taruh sebagai elemen TERAKHIR di dalam `CartClient` sendiri hanya jadi
+elemen terakhir MILIK KOMPONEN itu — bukan elemen terakhir di HALAMAN, karena
+`DonationBannerCart` masih dirender SETELAH `<CartClient>` oleh page-nya. Spacer + bar sticky
+akhirnya nyangkut di TENGAH alur halaman (sebelum banner donasi), meninggalkan gap kosong besar
+di tempat yang salah, sementara bar sticky sungguhan tetap `fixed` benar di viewport bottom
+(independen dari DOM position) — tapi TIDAK ADA spacer sungguhan menjaga bagian PALING BAWAH
+halaman (banner donasi) supaya tidak ketutupan bar.
+
+**Fix**: spacer + bar sticky DIKELUARKAN TOTAL dari `CartClient` jadi komponen berdiri sendiri
+`cart-mobile-bar.tsx` (`CartMobileBar`, murni display + link, tanpa state → tidak perlu
+`"use client"`), dirender oleh `keranjang/page.tsx` sebagai elemen PALING TERAKHIR di halaman —
+SETELAH blok `DonationBannerCart`, bukan cuma setelah `CartClient`. `CartClient` sendiri kembali
+ke bentuk semula (Total+CTA `hidden md:block`, desktop-only, TIDAK ADA logic mobile sticky sama
+sekali di dalamnya).
+
+**Aturan digeneralisasi (pelajaran paling penting dari kedua bug gap ini)**: elemen "spacer +
+sticky bar" WAJIB ditaruh sebagai anak PALING TERAKHIR dari SELURUH HALAMAN (page.tsx), BUKAN
+sekadar anak terakhir dari SATU KOMPONEN yang kebetulan dirender di tengah halaman. Sebelum
+menaruh spacer+bar sticky di dalam sebuah komponen, WAJIB cek page.tsx pemanggilnya: apakah
+komponen itu benar-benar elemen TERAKHIR yang dirender di halaman, atau apakah masih ada konten
+lain (banner, related items, dst) yang dirender SETELAHNYA? Kalau ada, spacer+bar HARUS
+diekstrak ke komponen terpisah dan dirender ulang oleh page.tsx di titik yang benar-benar
+terakhir — jangan asumsikan "komponen utama halaman" = "konten terakhir di halaman".
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build` sukses, dicek langsung di
+CSS hasil build bahwa `.mt-0` benar-benar ter-generate sebagai class biasa (bukan `:where()`).
+Belum diverifikasi visual di browser (termasuk belum dicoba dengan tenant yang benar-benar pakai
+FlexHeader — perlu dicek tenant mana yang pakai desain apa sebelum klaim "sudah pasti tidak
+konflik" secara visual, bukan cuma secara logic kode). **User minta jangan push dulu** — sudah
+dikerjakan tapi TIDAK di-commit/push, menunggu user coba di browser dan konfirmasi.
+
+### [2026-07-20] Audit Menyeluruh Spacer `md:hidden` — Bug GLOBAL di Header + 2 Halaman Detail Lain
+
+User tanya balik setelah fix `/keranjang`: "berarti kita mau cek halaman perhalaman atau kamu
+bisa cari masing2 halaman?" — sinyal untuk audit SISTEMATIS (grep seluruh codebase), bukan
+menunggu laporan satu-satu. Ditemukan 2 kelas masalah tambahan, satu di antaranya GLOBAL
+(berdampak ke SEMUA halaman publik, bukan cuma billing).
+
+**Bug GLOBAL — `<div className="h-14 md:hidden" />` (spacer BottomNav FlexHeader) nempel di
+BAWAH HEADER di SEMUA halaman, bukan di paling bawah halaman.** `flex-header.tsx` sebelumnya
+membundel `<header>`, `<BottomNav>` (tab navigasi situs, `fixed bottom-0 z-50`), DAN spacer-nya
+dalam SATU return — dan `FlexHeader` (via `HeaderVisibility`) dirender oleh `PublicLayout`
+SEBELUM `<main>{children}</main>` DAN sebelum `<PublicFooter>`. Spacer yang seharusnya reserve
+ruang di PALING BAWAH halaman (tempat `BottomNav` sungguhan berada secara visual) malah nempel
+tepat di bawah `<header>` — di ATAS seluruh konten halaman — karena itu posisinya di DOM.
+Ini bug PRA-EXISTING (bukan diperkenalkan sesi cart/checkout), berdampak ke SEMUA halaman
+publik tenant manapun yang memakai desain header "Flex" — tidak pernah ketahuan sebelumnya
+karena secara visual terlihat "cuma jarak antara header dan konten", mudah disalahartikan
+sebagai spacing desain yang disengaja alih-alih bug.
+
+**Fix**: `BottomNav` diekspor dari `flex-header.tsx` (bukan lagi private function), TIDAK
+dirender di dalam `FlexHeader` sama sekali. Komponen baru `footer-bottom-nav.tsx`
+(`FooterBottomNav`) — client component pakai `usePathname()`, replikasi 2 kondisi hiding yang
+sebelumnya court hidup terpisah (`isSingleMobileRoute` dari `header-visibility.tsx` +
+`hasOwnMobileActionBar` yang baru ditambah sesi sticky-bar sebelumnya) — DIEKSTRAK ke file
+shared baru `lib/mobile-route-checks.ts` supaya kedua kondisi ini tidak drift antara
+`header-visibility.tsx` (kontrol visibility SELURUH header) dan `footer-bottom-nav.tsx` (kontrol
+visibility BottomNav+spacer saja). `PublicLayout` (`app/(public)/[tenant]/layout.tsx`) sekarang
+render `<FooterBottomNav>` SETELAH `<PublicFooter>` — spacer akhirnya benar-benar jadi elemen
+PALING TERAKHIR di setiap halaman, terlepas panjang konten halaman itu.
+
+**2 bug tambahan ditemukan via subagent riset (dibaca, bukan diedit, sebelum saya putuskan fix)**
+— pola SAMA PERSIS dengan bug `/keranjang` sebelumnya (spacer jadi anak terakhir KOMPONEN, bukan
+anak terakhir HALAMAN), pada 2 dari 3 halaman yang pakai `MobileActionSheet`
+(event/campaign/produk detail):
+- **`/agenda/[slug]` (event) — DIKONFIRMASI AMAN**, tidak ada bug. `EventMobileTicketBar` memang
+  betul-betul elemen terakhir di halaman itu.
+- **`/campaign/[slug]` — BUG**. `CampaignMobileDonationBar` ada di dalam kolom "Kanan: form"
+  (grid), tapi section "Campaign Lainnya" (related campaigns) render SETELAH grid itu ditutup.
+- **`/produk/[productSlug]` — BUG**. `ProductDetailClient` (berisi `MobileActionSheet` di
+  dalamnya) diikuti section "Deskripsi Produk" DAN "Produk Lainnya" (related products).
+
+**Fix untuk kedua halaman**: BUKAN memodifikasi `MobileActionSheet` (komponen dipakai 3 fitur,
+salah satu — Event — sudah terbukti benar, riskan diutak-atik) — cukup tambah
+`<div className="h-24 md:hidden" />` (menyamai tinggi collapsed bar `MobileActionSheet`, lihat
+`mobile-action-sheet.tsx`) sebagai elemen PALING TERAKHIR di masing-masing halaman (setelah
+section related items), memastikan konten "Campaign Lainnya"/"Deskripsi Produk & Produk
+Lainnya" juga terlindung dari ketutupan bar sticky. **Trade-off yang diterima, tidak dibenahi**:
+`MobileActionSheet` tetap punya spacer LOKALNYA sendiri (h-24) tertanam di tengah halaman (di
+dalam kolom form) — jadi sekarang ada DUA blank spacer di halaman campaign/produk (satu di
+tengah dari MobileActionSheet, satu di ujung dari fix baru ini). Redundan tapi tidak salah
+secara visual (malah bisa dibaca sebagai jeda alami antara form dan "X Lainnya") — dianggap
+lebih aman daripada refactor `MobileActionSheet` yang berisiko merusak kasus Event yang sudah
+benar.
+
+**Aturan digeneralisasi (final, gabungan dari SEMUA bug spacer sesi ini)**: setiap kali sebuah
+komponen berisi pasangan "spacer blank + elemen fixed", WAJIB tanya dua hal sebelum menaruhnya:
+(1) apakah komponen ini benar-benar elemen TERAKHIR di halaman/layout yang memanggilnya (bukan
+cuma "komponen utama"nya)? (2) apakah komponen ini anak dari sebuah container `space-y-*` yang
+akan menambah margin tak terduga? Kalau jawaban (1) tidak pasti "ya", JANGAN taruh spacer di
+dalam komponen — render spacer terpisah di titik yang benar-benar terakhir (page.tsx atau
+layout.tsx), meski itu berarti mengekstrak komponen kecil terpisah seperti `CartMobileBar`/
+`FooterBottomNav`.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build` sukses (3 putaran
+build terpisah — global header fix, lalu campaign/produk fix). Belum diverifikasi visual di
+browser untuk KEEMPAT halaman (keranjang sudah dikonfirmasi user placement-nya benar sebelum
+sesi ini berlanjut ke temuan baru; checkout, campaign, produk BELUM dicoba user). **User minta
+jangan push dulu** — semua perubahan (termasuk sesi-sesi sebelumnya di topik yang sama) masih
+di working tree, belum commit/push.
+
+### [2026-07-20] FlexHeader Mobile — Search/Cart Hilang di Topbar, 2 Putaran Desain
+
+**Gejala**: di desain header "Flex" (2 baris), mobile TIDAK punya akses search maupun cart di
+topbar — `SearchBar` outer div `hidden md:block` (search TIDAK PERNAH render di mobile sama
+sekali), `CartButton` default `className="hidden md:flex"`. Yang tersisa di topbar mobile HANYA
+logo + `UserButton` (avatar/login-daftar). Menu navigasi TETAP ada di mobile — via `BottomNav`
+(tab bar di footer, lihat lesson global-header-spacer sebelumnya) — jadi bukan "menu hilang",
+cuma search+cart yang benar-benar tidak ada aksesnya sama sekali di mobile.
+
+**Putaran 1 (DITOLAK user, jangan diulang)**: kapsul (`rounded-full bg-primary`) berisi 3 ikon
+(search+cart+menu), menu sebagai tombol paling menonjol (lingkaran putih solid), search+cart
+lingkaran putih transparan ("kaca"). User: *"hahaha sepertinya tidak menarik haha... kayanya di
+atas memang yang tepat memang flat aja, cukup 2 aja bro.. keranjang belanja dan search saja,
+menu kita tetap di bawah"* — lalu diperjelas lagi: *"flat yang saya maksud hitam putih saja..
+kasih border tipis saja warna grey atau apa gitu.."*. Pelajaran: instruksi desain awal user
+("bisa tuh dibikin jadi misal...") bersifat EKSPLORATIF ("misal" = "for example"), bukan
+spesifikasi final — jangan investasi berlebihan (3 komponen: capsule+overlay+drawer) sebelum
+konfirmasi arah visual, terutama untuk permintaan UI yang dijelaskan lewat deskripsi teks
+panjang tanpa mockup/referensi visual konkret.
+
+**Putaran 2 (FINAL, diimplementasikan)**: HANYA 2 ikon (search, cart) — flat, hitam-putih,
+border tipis abu-abu (`border border-border`), TANPA warna primary sama sekali. Menu navigasi
+TIDAK ditambah ke header — tetap di `BottomNav` (footer) seperti sebelumnya, di luar scope
+(user eksplisit: *"menu kita tetap di bawah"*, dan sebelumnya sudah bilang footer nav
+"kita blm bahas itu" saat putaran 1). Style disalin PERSIS dari `IconButton` yang SUDAH ADA di
+`pill-header.tsx` (`h-9 w-9 rounded-full border border-border text-muted-foreground
+hover:text-foreground hover:bg-muted/60`) — bukan desain baru, REUSE pola yang sudah established
+dan terbukti di desain header lain.
+
+**Implementasi final** (`flex-header.tsx`, komponen tetap DI FILE INI — pola self-contained per
+header design, sama seperti `pill-header.tsx` yang juga self-contained):
+- `MobileHeaderIcons` — `flex md:hidden items-center gap-2`, 2 tombol lingkaran `h-8 w-8 border
+  border-border text-muted-foreground hover:bg-muted/60`: search (buka `MobileSearchOverlay`),
+  cart (REUSE `<CartButton>` existing, `className` di-override match style search).
+- `MobileSearchOverlay` — dialog terpusat (fetch `/api/search`) — DIDUPLIKASI dari
+  `SearchOverlay` di `pill-header.tsx`, konsisten konvensi "tiap file header self-contained".
+- `MobileMenuDrawer` (putaran 1) — **DIHAPUS TOTAL**, bukan disembunyikan/dikomentari — kode
+  mati tidak dipertahankan begitu jelas tidak dipakai.
+- `cart-button.tsx`'s `badgeClassName` prop (ditambah putaran 1 untuk kontras badge di atas
+  capsule primary) — **DIREVERT** ke hardcode original `bg-primary text-primary-foreground`,
+  karena badge sekarang di atas tombol flat/bordered (bukan bg-primary lagi) jadi kontrasnya
+  otomatis aman tanpa perlu override. Prop yang jadi tidak terpakai dihapus, bukan dibiarkan
+  sebagai fleksibilitas spekulatif (prinsip project: jangan tambah abstraksi di luar kebutuhan).
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build` sukses (2 build
+terpisah — putaran 1 lalu putaran 2/final). Belum diverifikasi visual di browser. **User minta
+jangan push dulu** (masih berlaku dari sesi sebelumnya) — semua perubahan topik
+header/cart/checkout sesi ini masih di working tree.
+
+### [2026-07-20] Invoice Publik — Konfirmasi Pembayaran: Dialog (Desktop) + Bottom Sheet (Mobile)
+
+**Masalah**: tombol "Konfirmasi Pembayaran" di `/invoice/[id]` sebelumnya toggle inline (form
+muncul/hilang di bawah tombol, `showPayForm` state) — user: kurang ada "trigger" yang jelas,
+baik di mobile (harus scroll cari tombolnya) maupun desktop (form muncul diam-diam di tengah
+halaman tanpa penekanan visual, gampang tidak disadari user).
+
+**Fix — dua treatment beda per breakpoint, SATU konten form yang sama** (`paymentFormFields`,
+JSX di-assign ke variable di dalam IIFE `{canPay && (() => {...})()}` supaya form fields —
+lengkap dengan semua state/handler yang sudah ada, tidak ditulis ulang — bisa dipakai identik
+oleh Dialog maupun MobileActionSheet tanpa duplikasi logic):
+- **Desktop** (`hidden md:block`): tombol biasa → buka **Dialog** (shadcn `dialog.tsx`, BEDA
+  dari `AlertDialog` yang sudah dipakai untuk konfirmasi "Ya, Kirim" — `Dialog` untuk form
+  input, `AlertDialog` tetap untuk konfirmasi ya/tidak setelah submit, keduanya hidup
+  berdampingan di file yang sama untuk tujuan berbeda).
+- **Mobile**: `MobileActionSheet` (komponen yang SUDAH ADA, dipakai Event/Campaign/Produk) —
+  bar collapsed "Konfirmasi Pembayaran" (teks primary, bold) selalu nempel di bawah layar
+  selama `canPay`, tap → naik/expand jadi form penuh. Field yang sama, state yang sama.
+- **Notifikasi baru** (diminta eksplisit): banner `bg-primary text-primary-foreground` di
+  BAGIAN PALING ATAS form (baik di Dialog maupun sheet) — "Pastikan pembayaran Anda sesuai
+  dengan jumlah invoice sebelum mengirim konfirmasi."
+
+**`showPayForm` dihapus total, diganti `payDialogOpen`** (desktop-only, kontrol `Dialog`).
+Mobile TIDAK butuh state eksternal — `MobileActionSheet` sudah py `expanded` state sendiri,
+mandiri. Ditemukan+dihapus SAAT refactor: `doSubmitProof()` (handler sukses submit) punya
+`setShowPayForm(false)` yang jadi orphan reference — TIDAK diganti `setPayDialogOpen(false)`,
+karena `justSubmitted=true` (baris setelahnya) sudah membuat `canPay` jadi `false`, dan SELURUH
+blok `{canPay && (...)}` (termasuk Dialog dan MobileActionSheet di dalamnya) otomatis unmount —
+menutup keduanya tanpa kode tambahan.
+
+**Bug kelas yang SAMA ditemukan LAGI (4× dalam sesi ini — keranjang, campaign, produk, sekarang
+invoice) — `MobileActionSheet` bukan elemen terakhir di halaman.** Setelah blok konfirmasi
+pembayaran, halaman masih render "Bukti ditolak" (kalau ada) / "Status final" (paid/cancelled) /
+"Menunggu Verifikasi" (`showWaitingPanel`) — semua BISA render SETELAH `MobileActionSheet` dalam
+DOM. Spacer lokal sheet sendiri (`h-24` di dalam `mobile-action-sheet.tsx`) tidak melindungi
+panel-panel itu. Fix: pola established — tambah `{canPay && <div className="h-24 md:hidden" />}`
+sebagai elemen PALING TERAKHIR sebelum `</div>` penutup component, TIDAK memodifikasi
+`MobileActionSheet` bersama (dipakai 3 fitur lain yang sudah terbukti benar).
+
+**Aturan digeneralisasi (final, setelah 4× kejadian)**: `MobileActionSheet` HAMPIR SELALU butuh
+spacer pengaman TAMBAHAN di titik yang benar-benar terakhir pada halaman yang memakainya —
+JANGAN PERNAH asumsikan sheet ini "aman dipakai di mana saja" tanpa mengecek dulu apakah ada
+konten LAIN yang render setelah titik penempatannya. Ini sekarang pola default yang harus dicek
+setiap kali `MobileActionSheet` dipakai di halaman baru, bukan exception.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build` sukses. Belum
+diverifikasi visual di browser. **User minta jangan push dulu** (masih berlaku) — belum
+commit/push.
+
+### [2026-07-20] Bug: "Kirim Konfirmasi" Tidak Merespons — Dua Radix Dialog Terbuka Bersamaan
+
+User tes di lokal SEGERA setelah refactor Dialog+MobileActionSheet di atas: klik "Kirim
+Konfirmasi" (submit form) tidak terjadi apa-apa — persis akibat langsung dari refactor barusan,
+bukan bug lama.
+
+**Root cause**: `handleSubmitProof` (submit form pembayaran) membuka `AlertDialog` konfirmasi
+("Kirim Konfirmasi Pembayaran?") — TAPI form itu sendiri sekarang hidup DI DALAM `Dialog` (desktop)
+atau `MobileActionSheet` (mobile) yang MASIH TERBUKA saat AlertDialog dibuka. Dua masalah beda
+per platform:
+- **Desktop**: `Dialog` (form) dan `AlertDialog` (konfirmasi) SAMA-SAMA `z-50` — dua Radix root
+  terpisah aktif bersamaan biasa bentrok soal focus-trap/pointer-events, AlertDialog jadi
+  terkesan tidak merespons klik meski secara teknis "terbuka".
+- **Mobile**: `MobileActionSheet` pakai `z-[71]` (LEBIH TINGGI dari `z-50` AlertDialog) —
+  AlertDialog benar-benar RENDER TERSEMBUNYI TOTAL di belakang sheet yang masih expanded, user
+  klik "Ya, Kirim Konfirmasi" tapi sebenarnya mengklik AREA SHEET yang masih terbuka di atasnya.
+
+**Fix**:
+- `handleSubmitProof`: `setPayDialogOpen(false)` DULU sebelum `setConfirmOpen(true)` — desktop
+  Dialog form tertutup dulu, giliran AlertDialog satu-satunya modal aktif.
+- `mobile-action-sheet.tsx`: prop baru opsional `collapseSignal?: boolean` — `useEffect` yang
+  collapse sheet begitu `collapseSignal` jadi `true`. Opsional/backward-compatible — pemakai
+  lain (`EventMobileTicketBar`/`CampaignMobileDonationBar`/produk) yang tidak passing prop ini
+  sama sekali tidak terpengaruh.
+- `invoice-public-client.tsx`: `<MobileActionSheet collapseSignal={confirmOpen}>` — begitu
+  `confirmOpen` jadi `true` (AlertDialog mau dibuka), sheet otomatis collapse duluan.
+
+**Aturan digeneralisasi**: kalau sebuah form/panel yang hidup DI DALAM satu overlay (Dialog/
+Sheet/Drawer) perlu memicu overlay KEDUA (konfirmasi, dst) saat submit — overlay PERTAMA WAJIB
+ditutup dulu (atau dipaksa collapse) SEBELUM overlay kedua dibuka. Jangan biarkan dua overlay
+Radix aktif bersamaan tanpa pertimbangan z-index/focus-trap eksplisit — gejalanya SERING berupa
+"klik tidak merespons" (bukan crash/error yang mudah didiagnosis dari console), gampang disangka
+bug lain yang tidak berhubungan.
+
+**Sekalian ditingkatkan** (diminta user): notifikasi sukses submit — teks diubah jadi lebih
+personal ("Terima kasih! Konfirmasi pembayaran Anda telah dikirim dan sedang menunggu
+verifikasi.") + `window.scrollTo({top:0, behavior:"smooth"})` dipanggil begitu sukses, supaya
+banner hijau (yang render dekat header invoice, di ATAS halaman) pasti terlihat customer
+meski mereka submit dari Dialog/sheet yang posisinya di tengah/bawah layar.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build` sukses. Belum
+diverifikasi visual di browser oleh Claude (dilaporkan user dari testing lokal mereka sendiri,
+fix berdasarkan diagnosis kode + pemahaman perilaku Radix, BUKAN reproduksi visual langsung —
+user diminta konfirmasi ulang setelah reload).
+
+### [2026-07-20] Dokumentasi Mobile Shell Dikonsolidasi — `docs/arsitektur-mobile-shell.md`
+
+Setelah 4× bug spacer identik (§ lesson-lesson di atas: keranjang, checkout, campaign, produk,
+invoice) + 1 bug global (`BottomNav` FlexHeader) dalam SATU sesi, user eksplisit minta seluruh
+pelajaran ini didokumentasikan dengan benar SEBELUM commit — bukan cukup ditinggal sebagai log
+kronologis CLAUDE.md (yang memang berguna untuk riwayat, tapi bukan referensi operasional yang
+gampang ditemukan saat mengerjakan fitur baru).
+
+**Dibuat**: `docs/arsitektur-mobile-shell.md` — dokumen baru, konsolidasi PENUH dari nol (bukan
+cuma link balik ke CLAUDE.md): klarifikasi semantik `md:hidden`, dua skema header mobile
+(`isSingleMobileRoute` vs `hasOwnMobileActionBar`), arsitektur `BottomNav`/`FooterBottomNav`,
+primitif `MobileActionSheet` + `collapseSignal`, **aturan inti** "spacer wajib jadi elemen
+PALING TERAKHIR di HALAMAN, bukan di komponen" dengan 3 pola fix (A/B/C) + tabel kapan pakai
+yang mana, teknik `mt-0` vs `space-y-*` (`:where()` spesifisitas 0), z-index nested Radix
+overlay, riwayat bug (§ 8, ringkas — pointer ke CLAUDE.md untuk detail penuh), **checklist wajib**
+sebelum menambah elemen `fixed bottom-0` baru, dan tabel inventaris spacer saat ini per halaman.
+
+**Ditemukan sekalian saat audit**: 4 komentar kode (`post/[slug]/page.tsx`,
+`single-mobile-topbar.tsx`, `mobile-route-checks.ts`) mereferensikan
+`docs/arsitektur-frontend-publik.md § "Mobile Single-Page Shell"` — section itu **TIDAK PERNAH
+ADA** di dokumen tsb (dicek via grep, nol match) sejak komentar itu ditulis di sesi-sesi
+sebelumnya — pointer ke tempat yang tidak eksis. Difix: 3 komentar diarahkan ulang ke
+`docs/arsitektur-mobile-shell.md` (dokumen baru yang sekarang benar-benar berisi kontennya), dan
+`docs/arsitektur-frontend-publik.md` § 2 + § 12 ditambah bullet pointer eksplisit ke dokumen
+baru — supaya siapa pun yang mulai dari index utama front-end publik (§ 2/12) langsung
+diarahkan ke tempat yang benar, bukan cuma yang baca komentar kode.
+
+**Aturan yang ditegaskan untuk sesi mendatang**: dokumen index (`arsitektur-frontend-publik.md`)
+BOLEH menyebut nama section di dokumen detail dalam komentar kode SEBAGAI REFERENSI, tapi kalau
+dokumen detailnya belum benar-benar ditulis (baru rencana/niat), JANGAN tulis referensi eksplisit
+seolah-olah section itu sudah ada — tulis dulu isinya (atau minimal placeholder yang jujur), baru
+referensikan dari kode. Referensi ke tempat yang tidak ada lebih buruk daripada tidak ada
+referensi sama sekali, karena terlihat meyakinkan padahal menyesatkan.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan, sesuai SOP). Commit+push dieksekusi
+setelah dokumentasi ini — instruksi awal "jangan push dulu" (berlaku di 4 lesson sebelumnya)
+**dicabut eksplisit oleh user** di pesan yang sama dengan permintaan dokumentasi ini.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Migrasi voucher di lokal + fix bug UX input tersembunyi** — migration
+- Terakhir dikerjakan: **Dokumentasi mobile shell dikonsolidasi ke `docs/arsitektur-mobile-
+  shell.md`** (lihat lesson di atas) — SEMUA pekerjaan mobile UI sesi ini (sticky bar keranjang/
+  checkout, fix BottomNav global, header icon search+cart, Dialog+MobileActionSheet invoice, dan
+  4× fix bug spacer) sudah **di-commit dan di-push**. `tsc`+build bersih di titik commit.
+  Lanjutan yang diminta user tapi BELUM dimulai: "refactoring pelan2 front-end lagi" — belum ada
+  arahan spesifik, tunggu instruksi lanjutan dari user sebelum memilih target refactor.
+- Sesi sebelumnya: **Fix "Kirim Konfirmasi" tidak merespons** (lihat lesson di atas) —
+  bug LANGSUNG dari refactor Dialog+MobileActionSheet sebelumnya: dua Radix overlay (form
+  Dialog/Sheet + AlertDialog konfirmasi) aktif bersamaan, saling ganggu (desktop: z-50 vs z-50
+  focus-trap konflik; mobile: z-71 sheet MENUTUPI z-50 AlertDialog total). Fix: `setPayDialogOpen
+  (false)` sebelum buka AlertDialog (desktop) + prop baru `collapseSignal` di
+  `mobile-action-sheet.tsx` (opsional, backward-compatible) yang dipakai `invoice-public-
+  client.tsx` untuk paksa collapse sheet begitu AlertDialog mau dibuka. Sekalian: notifikasi
+  sukses diperjelas teksnya + auto-scroll ke atas supaya pasti terlihat. `tsc`+build bersih.
+  **User minta jangan push dulu** (masih berlaku) — belum commit/push.
+- Sesi sebelumnya: **Konfirmasi Pembayaran invoice publik — Dialog (desktop) + bottom sheet
+  (mobile)** (lihat lesson di atas) — `showPayForm` toggle inline diganti `Dialog` shadcn
+  (desktop) + `MobileActionSheet` existing (mobile), konten form sama (`paymentFormFields`
+  di-share via IIFE, tidak dobel logic). Banner baru `bg-primary text-primary-foreground` di
+  atas form. Bug kelas KE-4 (sama dengan keranjang/campaign/produk sebelumnya) — spacer
+  `MobileActionSheet` tidak melindungi "Bukti ditolak"/"Status final"/"Menunggu Verifikasi" yang
+  render setelahnya — difix dengan trailing spacer `h-24 md:hidden`, pola SEKARANG DIANGGAP
+  DEFAULT wajib dicek tiap kali `MobileActionSheet` dipakai di halaman baru. `tsc`+build bersih.
+  **User minta jangan push dulu** (masih berlaku) — belum commit/push.
+- Sesi sebelumnya: **Ikon search+cart mobile di FlexHeader, 2 putaran desain** (lihat lesson
+  di atas) — search & cart sebelumnya sama sekali tidak ada di topbar mobile "Flex" (hanya
+  logo+avatar). Putaran 1: kapsul bulat bg-primary + 3 ikon (search/cart/menu) — DITOLAK user
+  ("tidak menarik", "flat aja"). Putaran 2 (final): HANYA 2 ikon (search+cart), flat hitam-putih
+  border tipis abu-abu — style disalin dari `IconButton` yang sudah ada di `pill-header.tsx`.
+  Menu navigasi TIDAK ditambah ke header (tetap di `BottomNav`/footer, di luar scope — user
+  eksplisit). `MobileMenuDrawer` (putaran 1) dihapus total, `cart-button.tsx`'s
+  `badgeClassName` prop (putaran 1, untuk kontras di atas capsule primary) di-revert karena
+  tidak relevan lagi di desain flat. `tsc`+build bersih (2×, satu per putaran). **User minta
+  jangan push dulu** (masih berlaku) — belum commit/push.
+- Sesi sebelumnya: **Sticky bottom bar mobile untuk `/keranjang` + `/checkout`** (lihat
+  lesson di atas) — Total+"Lanjut ke Checkout" (cart) dan Voucher+"Buat Invoice" (checkout)
+  sekarang nempel di bawah layar saat mobile, konsisten dengan pola single-page shell
+  event/donasi/produk, TIDAK berubah di desktop. Sekalian ditemukan+difix konflik laten:
+  `BottomNav` FlexHeader (fixed bottom-0 z-50, tab navigasi situs) tidak pernah disembunyikan di
+  `/keranjang`/`/checkout` (dua halaman itu sengaja TIDAK termasuk "single mobile route" yang
+  menyembunyikan header) — akan rebutan ruang dengan bar aksi baru. Fix: `flex-header.tsx`
+  sembunyikan `BottomNav` SAJA (bukan seluruh header) khusus di dua halaman itu. Susulan: user
+  tanya soal `h-24 md:hidden` (dikira `display:none` di mobile, sebenarnya kebalikannya — hidden
+  di DESKTOP) yang mengarah ke bug nyata: spacer+bar sticky kena `margin-top` tambahan dari
+  `space-y-4`/`space-y-5` parent (bukan child pertama) → jarak kosong lebih lebar dari
+  diniatkan. Fix beda per file: cart (tanpa grid) → spacer+bar dipindah keluar via Fragment;
+  checkout (di dalam grid track kolom kiri, tidak bisa dipindah) → `mt-0` eksplisit menimpa
+  `space-y-5` (Tailwind v4 space-y pakai `:where()` spesifisitas 0, dicek langsung di CSS hasil
+  build — `mt-0` dijamin menang). Susulan KEDUA: user tes ulang, gap MASIH lebar tapi di lokasi
+  salah — antara cart items dan `DonationBannerCart`, bukan di paling bawah. Root cause: spacer
+  di dalam `CartClient` cuma jadi elemen terakhir MILIK KOMPONEN, bukan elemen terakhir di
+  HALAMAN (`keranjang/page.tsx` render `DonationBannerCart` SETELAH `CartClient`). Fix: spacer+
+  bar sticky diekstrak jadi komponen berdiri sendiri `CartMobileBar`, dirender page.tsx sebagai
+  elemen PALING TERAKHIR (setelah banner donasi, bukan cuma setelah CartClient). Susulan KETIGA
+  (lihat lesson lengkap di atas): user minta audit SISTEMATIS, bukan tunggu laporan satu-satu.
+  Ditemukan+difix bug GLOBAL — spacer BottomNav `h-14` FlexHeader dibundel dengan `<header>`,
+  nempel di bawah header di SEMUA halaman publik (bukan di paling bawah tempat BottomNav
+  sungguhan berada). Fix: `BottomNav` diekstrak dari `flex-header.tsx`, dirender via komponen
+  baru `FooterBottomNav` yang dipanggil `layout.tsx` SETELAH `<PublicFooter>`; logic hiding
+  (`isSingleMobileRoute`+`hasOwnMobileActionBar`) diekstrak ke `lib/mobile-route-checks.ts`
+  supaya tidak drift antar 2 file. Plus 2 bug SAMA di halaman lain (ditemukan via subagent
+  riset): `/campaign/[slug]` dan `/produk/[productSlug]` — section "X Lainnya" render setelah
+  kolom `MobileActionSheet`, jadi spacer lokalnya tidak melindungi konten itu. Fix: tambah
+  spacer `h-24 md:hidden` sebagai elemen PALING TERAKHIR di kedua halaman (bukan modif
+  `MobileActionSheet` yang dipakai 3 fitur, salah satu — Event — sudah terbukti benar). `tsc`+
+  build bersih (4 kali build terpisah sepanjang sesi ini). **User minta jangan push dulu** —
+  SEMUA perubahan (cart+checkout+header+campaign+produk) masih di working tree, belum
+  commit/push, menunggu user coba di browser dan konfirmasi.
+- Sesi sebelumnya: **Migrasi voucher di lokal + fix bug UX input tersembunyi** — migration
   `0034_vouchers.sql` dijalankan manual via `psql` ke DB lokal (native Postgres, bukan Docker —
   `postgres://webane@localhost/jalajogja`), dikonfirmasi tabel+kolom baru ada. User laporkan bug
   nyata dari testing langsung: input kode voucher tidak pernah ditemukan sampai invoice terbentuk
   — root cause layout 2-kolom `checkout-form.tsx` (input di kolom kanan, jatuh di bawah tombol
   submit saat mobile stack). Fix: widget interaktif dipindah ke kolom kiri sebelum tombol
-  navigasi, kolom kanan sisakan baris display "Diskon Voucher" saja. `tsc`+build bersih.
-  **Belum di-commit/push** — dan **belum diverifikasi visual di browser** (keterbatasan
-  environment sesi ini, user perlu reload dan konfirmasi tampilan baru). Migration VPS masih
-  belum dijalankan juga.
+  navigasi, kolom kanan sisakan baris display "Diskon Voucher" saja. **Sudah di-commit+push**
+  (commit `2533e0b`).
 - Sesi sebelumnya: **Audit voucher pasca-deploy** — 4 bug/gap ditemukan+difix: email
   case-sensitivity di resolver, invoice detail (admin+publik+list) yang tidak pernah menampilkan
   info voucher (plus bug turunan subtotal dobel-potong saat memperbaikinya), validFrom/validUntil

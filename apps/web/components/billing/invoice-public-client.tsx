@@ -10,6 +10,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { MobileActionSheet } from "@/components/website/public/single/mobile-action-sheet";
 
 export type BankAccountPublic = {
   id:            string;
@@ -357,7 +361,9 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
     ? String(nextUnpaidTerm.amount + (nextUnpaidTerm.uniqueCode ?? 0))
     : String(invoice.remaining);
 
-  const [showPayForm,  setShowPayForm]  = useState(false);
+  // Kontrol Dialog konfirmasi pembayaran DESKTOP saja — mobile pakai MobileActionSheet
+  // (state expand/collapse-nya sendiri, mandiri, lihat render di bawah).
+  const [payDialogOpen, setPayDialogOpen] = useState(false);
   const [payAmount,    setPayAmount]    = useState(defaultPayAmount);
 
   // `payAmount` diinisialisasi sekali saat mount — tidak otomatis ikut berubah kalau invoice
@@ -462,6 +468,13 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
       setError("Nominal transfer harus diisi dengan benar.");
       return;
     }
+    // Tutup Dialog form pembayaran DULU (desktop) — dua Radix dialog terbuka bersamaan
+    // (Dialog form + AlertDialog konfirmasi) sama-sama z-50, saling ganggu focus-trap/
+    // pointer-events, AlertDialog jadi terkesan "tidak ada respons" saat diklik. Mobile:
+    // MobileActionSheet dipaksa collapse via collapseSignal (lihat render di bawah) — z-71
+    // sheet lebih tinggi dari z-50 AlertDialog, tanpa collapse AlertDialog akan tersembunyi
+    // total di baliknya.
+    setPayDialogOpen(false);
     // Buka dialog konfirmasi elegan — pengiriman sesungguhnya terjadi di doSubmitProof()
     // saat user menekan tombol "Ya, Kirim Konfirmasi" di dalam AlertDialog.
     setConfirmOpen(true);
@@ -480,8 +493,13 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
         notes:        payNotes.trim() || undefined,
       });
       if (res.success) {
-        setSuccess("Konfirmasi pembayaran berhasil dikirim. Admin akan memverifikasi dalam 1×24 jam.");
-        setShowPayForm(false);
+        setSuccess("Terima kasih! Konfirmasi pembayaran Anda telah dikirim dan sedang menunggu verifikasi.");
+        // Banner sukses render di ATAS halaman (dekat header invoice) — kalau user submit dari
+        // Dialog/sheet yang posisinya di tengah/bawah layar, banner ini bisa luput dari
+        // pandangan tanpa scroll. Paksa scroll ke atas supaya notifikasi PASTI terlihat.
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        // canPay otomatis jadi false begitu justSubmitted true di bawah — Dialog/MobileActionSheet
+        // (dibungkus {canPay && ...}) ikut unmount otomatis, tidak perlu tutup manual.
         // Tandai langsung — panel "sedang diverifikasi" tampil seketika tanpa menunggu
         // router.refresh() (yang bisa terasa lambat/diam di koneksi lambat).
         setJustSubmitted(true);
@@ -808,25 +826,20 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
         </div>
       )}
 
-      {/* ── Tombol konfirmasi ── */}
-      {canPay && (
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowPayForm((v) => !v)}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            {showPayForm ? "Tutup" : "Konfirmasi Pembayaran"}
-          </button>
-        </div>
-      )}
+      {/* ── Konfirmasi pembayaran — desktop: popup Dialog (trigger jelas, bukan toggle
+           inline). Mobile: bottom sheet (MobileActionSheet, konsisten dengan shell mobile
+           event/donasi/produk) — bar collapsed selalu nempel di bawah, tap untuk naik/expand
+           jadi form penuh. Keduanya pakai konten form yang SAMA (paymentFormFields di bawah),
+           supaya logic/state tidak pernah didup dua tempat. ── */}
+      {canPay && (() => {
+        const paymentFormFields = (
+          <form onSubmit={handleSubmitProof} className="space-y-4">
+            {/* Notifikasi — diminta tampil menonjol, bg warna utama + teks putih */}
+            <div className="rounded-md bg-primary px-4 py-3 text-sm font-medium text-primary-foreground">
+              Pastikan pembayaran Anda sesuai dengan jumlah invoice sebelum mengirim konfirmasi.
+            </div>
 
-      {/* ── Form konfirmasi ── */}
-      {showPayForm && canPay && (
-        <form onSubmit={handleSubmitProof} className="rounded-lg border border-border p-4 space-y-4">
-          <p className="text-sm font-semibold">Konfirmasi Pembayaran</p>
-
-          <div>
+            <div>
             <label className={labelCls}>Nominal Transfer</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rp</span>
@@ -992,7 +1005,45 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
             {pending ? "Mengirim..." : "Kirim Konfirmasi"}
           </button>
         </form>
-      )}
+        );
+
+        return (
+          <>
+            {/* Desktop — tombol biasa + Dialog popup */}
+            <div className="hidden md:block">
+              <button
+                type="button"
+                onClick={() => setPayDialogOpen(true)}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Konfirmasi Pembayaran
+              </button>
+            </div>
+            <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
+              <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Konfirmasi Pembayaran</DialogTitle>
+                </DialogHeader>
+                {paymentFormFields}
+              </DialogContent>
+            </Dialog>
+
+            {/* Mobile — bottom sheet, bar collapsed selalu nempel di bawah layar.
+                collapseSignal={confirmOpen} — paksa collapse begitu AlertDialog "Kirim
+                Konfirmasi?" mau dibuka, supaya tidak tersembunyi di balik sheet (z-71 > z-50). */}
+            <MobileActionSheet
+              collapsedBar={
+                <span className="flex-1 text-left text-sm font-semibold text-primary">
+                  Konfirmasi Pembayaran
+                </span>
+              }
+              collapseSignal={confirmOpen}
+            >
+              <div className="pb-2">{paymentFormFields}</div>
+            </MobileActionSheet>
+          </>
+        );
+      })()}
 
       {/* ── Bukti ditolak — tampil saat invoice kembali ke pending ── */}
       {invoice.rejectedPaymentNote && ["pending", "partial", "overdue"].includes(invoice.status) && (
@@ -1088,6 +1139,12 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
           />
         </div>
       )}
+
+      {/* Spacer — elemen PALING TERAKHIR, cegah konten di atas (Bukti ditolak/Status final/
+          Menunggu verifikasi, yang render SETELAH MobileActionSheet di atas) ketutupan bar
+          collapsed-nya. Spacer lokal MobileActionSheet sendiri tidak cukup karena panel-panel
+          itu render SETELAHNYA. Lihat lesson CLAUDE.md soal kelas bug ini. */}
+      {canPay && <div className="h-24 md:hidden" />}
     </div>
   );
 }
