@@ -5,13 +5,14 @@
 > - `docs/arsitektur-kode-unik.md` — kode unik transaksi (interaksi dengan voucher 100% di § 8)
 > - `docs/arsitektur-keuangan.md` — double-entry journal (interaksi dengan checkout Rp 0 di § 6)
 
-**Status implementasi: ✅ Fase 1 SELESAI** (2026-07-19)
+**Status implementasi: ✅ Fase 1 SELESAI + audit pasca-implementasi SELESAI** (2026-07-19)
 - Schema + migration (`0034_vouchers.sql`) + `create-tenant-schema.ts`: ✅ Selesai
 - Helper resolver murni (`packages/db/src/helpers/voucher.ts`): ✅ Selesai
 - Integrasi `checkoutAction` (resolusi, potongan per-item, Rp 0 auto-lunas, kode unik): ✅ Selesai
 - UI input kode voucher + preview live: ✅ Selesai (di halaman **checkout**, bukan keranjang — lihat § 7)
 - Admin CRUD (`/app/{slug}/finance/billing/voucher/*`): ✅ Selesai
 - Pembatalan invoice → rollback kuota voucher: ✅ Selesai
+- Audit docs-vs-kode + 4 bug/gap ditemukan+difix: ✅ Selesai — lihat § 11
 - **Belum dijalankan di VPS**: migrasi `0034_vouchers.sql` — WAJIB dijalankan sebelum deploy kode
   (urutan standar project: migrate DB dulu, baru restart PM2)
 - **Belum dites manual di browser** — semua verifikasi sejauh ini `tsc --noEmit` + `bun run build`
@@ -338,6 +339,15 @@ kepemilikan ke mitra, baris itu tetap tidak terpotong saat checkout sungguhan.
 7. Dua tab browser mencoba checkout dengan voucher `usageLimit=1` yang sama nyaris bersamaan →
    hanya satu yang berhasil (lock `FOR UPDATE` pada `vouchers` row menahan yang kedua sampai yang
    pertama commit, lalu re-check `usedCount` di dalam transaction menolaknya).
+8. Buka invoice hasil checkout dengan voucher — baik di dashboard admin
+   (`/finance/billing/invoice/[id]`) maupun halaman publik (`/invoice/[id]`) — pastikan baris
+   "Diskon Voucher (KODE): -Rp X" muncul, angka Subtotal/Diskon/Total konsisten (Subtotal −
+   Diskon = jumlah sebelum ongkir, bukan dipotong dobel), dan badge kode voucher tampil di list
+   admin (§ 11 poin 2).
+9. Voucher personal dengan `restrictEmail` diisi huruf kecil semua (mis. `john@x.com`), customer
+   checkout dengan email huruf besar (`John@X.com`) → voucher tetap diterima (§ 11 poin 1).
+10. Voucher dengan `validUntil` = hari ini → masih bisa dipakai sampai akhir hari (tenant
+    timezone), bukan expire pagi hari (§ 11 poin 3).
 
 ---
 
@@ -363,3 +373,100 @@ kepemilikan ke mitra, baris itu tetap tidak terpotong saat checkout sungguhan.
    **sudah ada sebelum fitur voucher**, tidak diperkenalkan oleh fitur ini. Direkomendasikan
    sebagai audit keamanan harga terpisah, **belum dieksekusi**.
 7. **Komisi mitra untuk voucher** — tidak relevan karena mitra dikecualikan Fase 1.
+
+---
+
+## 11. Audit Pasca-Implementasi — 4 Bug/Gap Ditemukan+Difix (2026-07-19)
+
+User eksplisit minta re-check dokumentasi vs kode aktual + cari bug/gap sebelum lanjut fitur
+berikutnya. Audit menyeluruh (resolver, checkoutAction, admin CRUD, DDL vs Drizzle schema,
+invoice display) menemukan 4 masalah nyata — semua sudah difix di sesi yang sama:
+
+**1. Bug — `restrictEmail` dibandingkan case-sensitive, padahal disimpan lowercase.**
+`createVoucherAction`/`updateVoucherAction` menyimpan `restrictEmail` via `.toLowerCase()`, tapi
+`computeVoucherDiscount()` dan `countCustomerRedemptions()` membandingkan terhadap
+`customer.email` yang HANYA di-`.trim()` (tidak di-lowercase) di kedua caller (`checkoutAction`
+dan `previewVoucherAction`). Customer yang mengetik email dengan casing berbeda dari yang
+tersimpan (mis. `John@Example.com` vs `john@example.com`) akan ditolak voucher personal yang
+seharusnya berlaku untuknya — dan sebaliknya, dua submission dengan casing email berbeda bisa
+dihitung sebagai "orang berbeda" oleh `usageLimitPerCustomer`, membuka celah bypass limit.
+**Fix**: normalisasi HANYA di titik perbandingan (bukan di titik simpan `customerEmail`, supaya
+casing asli tetap tersimpan untuk display) — `computeVoucherDiscount` bandingkan
+`customer.email?.toLowerCase()`, `countCustomerRedemptions` pakai `sql\`lower(...)\`` di kedua sisi.
+Kedua fungsi ini satu-satunya sumber kebenaran dipakai baik preview maupun checkout sungguhan,
+jadi fix ini otomatis berlaku di kedua alur tanpa perlu sentuh caller.
+
+**2. Gap — Invoice detail (admin DAN publik) tidak pernah menampilkan kode voucher/potongan yang
+dipakai**, meski data-nya tersimpan lengkap di DB (`invoices.voucherCode`,
+`invoices.voucherDiscountTotal`, `invoice_items.discountAmount`). `getInvoiceDetailAction`,
+`InvoiceDetail` type, halaman publik `/invoice/[id]`, dan `PublicInvoiceData` type semuanya hanya
+membaca `invoices.discount` (field LEGACY untuk invoice manual admin) — voucher sama sekali tidak
+tersentuh. Admin yang buka invoice hasil checkout dengan voucher tidak akan tahu potongan itu
+berasal dari mana, dan customer tidak melihat konfirmasi kode voucher mereka terpakai.
+**Fix**: `voucherCode`+`voucherDiscountTotal` ditambah ke `InvoiceDetail`/`PublicInvoiceData` +
+query terkait; `discountAmount` per-baris ditambah ke `items[]` di kedua type. UI: baris
+"Diskon Voucher (KODE): -Rp X" di footer tabel item (admin `invoice-detail-client.tsx` + publik
+`invoice-public-client.tsx`), badge kecil "− Rp X voucher" di bawah `item.total` untuk baris yang
+kena potongan, dan badge kode voucher di list admin (`invoice-list-client.tsx` — `InvoiceListItem`
+ditambah `voucherCode`).
+
+**Bug turunan yang ditemukan SAAT mengerjakan fix #2**: draf pertama menampilkan
+`Subtotal: invoice.subtotal` lalu `Diskon Voucher: -voucherDiscountTotal` — TAPI
+`invoices.subtotal` untuk invoice hasil checkout SUDAH net-of-voucher (dihitung
+`Σ(unitPrice*qty - discountAmount)` di `checkoutAction`, § 4), BEDA dari `invoices.discount`
+(legacy, invoice manual admin) yang dipotong DARI subtotal gross. Menampilkan keduanya berjajar
+seolah subtotal itu gross akan memotong diskon DUA KALI secara visual (angka tidak akan pernah
+cocok ke `invoice.total`). **Fix**: rekonstruksi subtotal gross untuk tampilan —
+`invoice.subtotal + invoice.voucherDiscountTotal` — SEBELUM menampilkan baris "Diskon Voucher".
+Untuk invoice tanpa voucher (`voucherDiscountTotal = 0`), formula ini otomatis kembali ke
+`invoice.subtotal` apa adanya — zero regresi ke tampilan invoice manual admin yang sudah ada.
+
+**3. Gap — `validFrom`/`validUntil` di-parse sebagai UTC mentah, bukan dianchor ke timezone
+tenant.** `new Date("2026-07-19")` (dari `<input type="date">`) = tengah malam UTC = jam 07:00 WIB
+— voucher yang "berlaku sampai 19 Juli" akan expire jam 7 pagi WIB tanggal itu, bukan akhir hari
+seperti yang dimaksud admin. Ini melanggar aturan yang SUDAH dikunci sesi-sesi sebelumnya di
+project ini ("setiap kode yang menghitung/membandingkan tanggal untuk LOGIC BISNIS wajib anchor
+ke kalender timezone tenant, bukan UTC mentah — lihat `lib/tenant-timezone.ts`"), yang sebelumnya
+sudah diterapkan ke modul Event dan Invoice/Billing tapi terlewat di Voucher (dibangun setelah
+aturan itu dikunci, seharusnya sudah otomatis ikut sejak awal). **Fix**: helper baru
+`resolveVoucherDateRange()` di `finance/billing/actions.ts` — `validFrom` dianchor ke `00:00`
+tenant-local, `validUntil` ke `23:59` tenant-local (supaya "berlaku sampai tanggal X" berarti bisa
+dipakai sepanjang tanggal X), keduanya via `localDatetimeToUtcIso()` yang sudah ada. Dipanggil di
+`createVoucherAction`+`updateVoucherAction` setelah fetch `getTenantTimezone(tenantDb)`.
+
+**4. Defensif — `usageLimit`/`usageLimitPerCustomer` tidak divalidasi terhadap `NaN`.**
+`parseInt("abc", 10)` = `NaN`, dan `NaN < 1` di JavaScript evaluasi `false` — input non-numerik
+dari client bisa lolos `validateVoucherData` (yang cuma cek `< 1`) dan berpotensi bikin
+`db.insert()` gagal dengan pesan generik "Gagal membuat voucher." tanpa penjelasan jelas ke admin
+kenapa. Severity rendah (field `type="number"` sudah membatasi sebagian besar input tidak valid
+di browser modern, dan kegagalan tetap ter-`catch`, tidak merusak data), tapi murah untuk
+ditutup. **Fix**: `validateVoucherData` sekarang cek `Number.isNaN(...) || ... < 1` untuk kedua
+field.
+
+**Yang DICEK dan TERKONFIRMASI AMAN (tidak butuh fix)**:
+- DDL (`create-tenant-schema.ts`) vs migration (`0034_vouchers.sql`) vs Drizzle schema
+  (`billing.ts`) — kolom, tipe, default, FK, urutan pembuatan tabel (vouchers dibuat SEBELUM
+  invoices/invoice_items yang mereferensikannya) semua konsisten.
+- `restrictPhone` — TIDAK kena bug case-sensitivity yang sama (nomor telepon dinormalisasi via
+  `normalizePhone()` di SEMUA titik simpan maupun banding, E.164 tidak punya masalah casing).
+- Interaksi dengan cicilan (`convertInvoiceToInstallmentAction`) — selalu memecah dari
+  `invoice.total` yang sebenarnya (net-of-voucher), tidak butuh perubahan.
+- Kode unik (`generateUniqueCode`) — syarat `total > 0` sudah menutup kasus voucher 100% dengan
+  benar sejak Fase B, dikonfirmasi ulang di kode aktual.
+
+**Yang DICATAT tapi TIDAK difix (severity rendah/di luar scope permintaan)**:
+- `VoucherTargetPicker` mem-fetch opsi HANYA item aktif/published — kalau item yang sudah
+  ditarget sebelumnya berubah jadi non-aktif, chip-nya "menghilang" dari tampilan saat admin
+  membuka form edit (walau `targetItemIds` di data tetap utuh, tidak ikut terhapus). Kosmetik,
+  bukan bug data.
+- Duplikat-tiket detection di `checkoutAction` (§ Alur Checkout langkah "Deteksi duplikat")
+  berjalan SEBELUM resolusi voucher — kalau customer kena jalur redirect-ke-invoice-lama ini
+  sambil membawa kode voucher valid, kode itu diam-diam tidak pernah dipakai/divalidasi (redirect
+  ke invoice lama yang dibuat tanpa voucher). Skenario sangat jarang (duplikat tiket + voucher
+  bersamaan), tidak diubah — mengubah urutan deteksi berisiko melemahkan proteksi anti-duplikat
+  yang sudah terbukti berfungsi.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan, sesuai SOP project). Migration
+`0034_vouchers.sql` tetap belum dijalankan di VPS — audit ini murni perbaikan kode, tidak
+mengubah struktur skema.

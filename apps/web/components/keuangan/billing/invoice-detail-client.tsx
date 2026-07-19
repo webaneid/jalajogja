@@ -421,23 +421,46 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                 </td>
                 <td className="px-4 py-3 text-center text-muted-foreground">{item.quantity}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{formatRp(item.unitPrice)}</td>
-                <td className="px-4 py-3 text-right tabular-nums font-medium">{formatRp(item.total)}</td>
+                <td className="px-4 py-3 text-right tabular-nums font-medium">
+                  {formatRp(item.total)}
+                  {item.discountAmount > 0 && (
+                    <span className="block text-xs font-normal text-green-600">
+                      − {formatRp(item.discountAmount)} voucher
+                    </span>
+                  )}
+                </td>
               </tr>
               );
             })}
           </tbody>
           <tfoot className="bg-muted/20 text-sm">
+            {/* invoice.subtotal SUDAH net-of-voucher (checkoutAction hitung subtotal setelah
+                potongan per item) — beda dari invoice.discount (legacy, admin-manual) yang
+                dipotong DARI subtotal gross. Rekonstruksi gross di sini supaya baris "Subtotal"
+                selalu tampil sebelum potongan apa pun, tidak pernah dipotong dobel. */}
+            {(invoice.discount > 0 || invoice.voucherDiscountTotal > 0) && (
+              <tr>
+                <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Subtotal</td>
+                <td className="px-4 py-2 text-right tabular-nums">
+                  {formatRp(invoice.subtotal + invoice.voucherDiscountTotal)}
+                </td>
+              </tr>
+            )}
             {invoice.discount > 0 && (
-              <>
-                <tr>
-                  <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Subtotal</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatRp(invoice.subtotal)}</td>
-                </tr>
-                <tr>
-                  <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Diskon</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-green-600">- {formatRp(invoice.discount)}</td>
-                </tr>
-              </>
+              <tr>
+                <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Diskon</td>
+                <td className="px-4 py-2 text-right tabular-nums text-green-600">- {formatRp(invoice.discount)}</td>
+              </tr>
+            )}
+            {invoice.voucherDiscountTotal > 0 && (
+              <tr>
+                <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">
+                  Diskon Voucher {invoice.voucherCode && <span className="font-mono">({invoice.voucherCode})</span>}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums text-green-600">
+                  − {formatRp(invoice.voucherDiscountTotal)}
+                </td>
+              </tr>
             )}
             <tr className="font-semibold">
               <td colSpan={3} className="px-4 py-3 text-right">Total</td>

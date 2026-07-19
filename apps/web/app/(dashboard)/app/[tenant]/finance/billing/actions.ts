@@ -9,7 +9,7 @@ import { hasFullAccess, hasReadAccess } from "@/lib/permissions";
 import { recordIncome } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
-import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz } from "@/lib/tenant-timezone.server";
+import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz, localDatetimeToUtcIso } from "@/lib/tenant-timezone.server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1215,6 +1215,7 @@ export type InvoiceListItem = {
   dueDate:       string | null;
   createdAt:     string;
   itemCount:     number;
+  voucherCode:   string | null;
 };
 
 export async function getInvoiceListAction(
@@ -1255,6 +1256,7 @@ export async function getInvoiceListAction(
         status:        schema.invoices.status,
         dueDate:       schema.invoices.dueDate,
         createdAt:     schema.invoices.createdAt,
+        voucherCode:   schema.invoices.voucherCode,
       })
       .from(schema.invoices)
       .where(where)
@@ -1296,6 +1298,7 @@ export async function getInvoiceListAction(
         dueDate:       r.dueDate,
         createdAt:     r.createdAt.toISOString(),
         itemCount:     itemCounts[r.id] ?? 0,
+        voucherCode:   r.voucherCode ?? null,
       })),
     },
   };
@@ -1312,6 +1315,8 @@ export type InvoiceDetail = {
   customerEmail: string | null;
   subtotal:      number;
   discount:      number;
+  voucherCode:           string | null;
+  voucherDiscountTotal:  number;
   total:         number;
   uniqueCode:    number;
   amountDue:     number;
@@ -1329,6 +1334,7 @@ export type InvoiceDetail = {
     description: string | null;
     unitPrice:   number;
     quantity:    number;
+    discountAmount: number;
     total:       number;
   }[];
   payments: {
@@ -1439,6 +1445,8 @@ export async function getInvoiceDetailAction(
       customerEmail: inv.customerEmail,
       subtotal:      parseFloat(String(inv.subtotal)),
       discount:      parseFloat(String(inv.discount)),
+      voucherCode:           inv.voucherCode ?? null,
+      voucherDiscountTotal:  parseFloat(String(inv.voucherDiscountTotal ?? "0")),
       total,
       uniqueCode,
       amountDue,
@@ -1456,6 +1464,7 @@ export async function getInvoiceDetailAction(
         description: it.description,
         unitPrice:   parseFloat(String(it.unitPrice)),
         quantity:    it.quantity,
+        discountAmount: parseFloat(String(it.discountAmount ?? "0")),
         total:       parseFloat(String(it.total)),
       })),
       payments: paymentLinks.map((p) => ({
@@ -2170,12 +2179,28 @@ function validateVoucherData(data: VoucherFormData): string | null {
   if (!data.discountValue || data.discountValue <= 0) return "Nilai diskon harus lebih dari 0.";
   if (data.discountType === "percentage" && data.discountValue > 100)
     return "Diskon persentase tidak boleh lebih dari 100%.";
-  if (data.usageLimit != null && data.usageLimit < 1) return "Batas pemakaian minimal 1.";
-  if (data.usageLimitPerCustomer != null && data.usageLimitPerCustomer < 1)
+  if (data.usageLimit != null && (Number.isNaN(data.usageLimit) || data.usageLimit < 1))
+    return "Batas pemakaian minimal 1.";
+  if (data.usageLimitPerCustomer != null && (Number.isNaN(data.usageLimitPerCustomer) || data.usageLimitPerCustomer < 1))
     return "Batas pemakaian per orang minimal 1.";
   if (data.validFrom && data.validUntil && new Date(data.validFrom) > new Date(data.validUntil))
     return "Tanggal mulai tidak boleh setelah tanggal berakhir.";
   return null;
+}
+
+// Input <input type="date"> ("2026-07-19") WAJIB dianchor ke kalender timezone TENANT — bukan
+// UTC mentah (`new Date("2026-07-19")` = tengah malam UTC = jam 07:00 WIB, voucher expire
+// lebih awal dari yang dimaksud admin). Sama seperti aturan due_date/jadwal cicilan yang
+// sudah dikunci — lihat lib/tenant-timezone.ts. validUntil dianchor ke 23:59 (bukan 00:00)
+// supaya "berlaku sampai tanggal X" berarti bisa dipakai sepanjang tanggal X.
+function resolveVoucherDateRange(
+  data:            Pick<VoucherFormData, "validFrom" | "validUntil">,
+  tenantTimezone:  string,
+): { validFrom: Date | null; validUntil: Date | null } {
+  return {
+    validFrom:  data.validFrom  ? new Date(localDatetimeToUtcIso(`${data.validFrom}T00:00`,  tenantTimezone)) : null,
+    validUntil: data.validUntil ? new Date(localDatetimeToUtcIso(`${data.validUntil}T23:59`, tenantTimezone)) : null,
+  };
 }
 
 export async function createVoucherAction(
@@ -2190,9 +2215,13 @@ export async function createVoucherAction(
   const validationError = validateVoucherData(data);
   if (validationError) return { success: false, error: validationError };
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
 
   try {
+    const tenantTimezone = await getTenantTimezone(tenantDb);
+    const { validFrom, validUntil } = resolveVoucherDateRange(data, tenantTimezone);
+
     const [voucher] = await db
       .insert(schema.vouchers)
       .values({
@@ -2207,8 +2236,7 @@ export async function createVoucherAction(
         usageLimitPerCustomer: data.usageLimitPerCustomer ?? null,
         restrictPhone:         data.restrictPhone ? normalizePhone(data.restrictPhone) : null,
         restrictEmail:         data.restrictEmail?.trim().toLowerCase() || null,
-        validFrom:             data.validFrom  ? new Date(data.validFrom)  : null,
-        validUntil:            data.validUntil ? new Date(data.validUntil) : null,
+        validFrom, validUntil,
         createdBy:             access.tenantUser.id,
       })
       .returning({ id: schema.vouchers.id });
@@ -2238,7 +2266,8 @@ export async function updateVoucherAction(
   const validationError = validateVoucherData(data);
   if (validationError) return { success: false, error: validationError };
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
 
   const [existing] = await db
     .select({ id: schema.vouchers.id })
@@ -2248,6 +2277,9 @@ export async function updateVoucherAction(
   if (!existing) return { success: false, error: "Voucher tidak ditemukan." };
 
   try {
+    const tenantTimezone = await getTenantTimezone(tenantDb);
+    const { validFrom, validUntil } = resolveVoucherDateRange(data, tenantTimezone);
+
     await db
       .update(schema.vouchers)
       .set({
@@ -2262,8 +2294,7 @@ export async function updateVoucherAction(
         usageLimitPerCustomer: data.usageLimitPerCustomer ?? null,
         restrictPhone:         data.restrictPhone ? normalizePhone(data.restrictPhone) : null,
         restrictEmail:         data.restrictEmail?.trim().toLowerCase() || null,
-        validFrom:             data.validFrom  ? new Date(data.validFrom)  : null,
-        validUntil:            data.validUntil ? new Date(data.validUntil) : null,
+        validFrom, validUntil,
         updatedAt:             new Date(),
       })
       .where(eq(schema.vouchers.id, voucherId));

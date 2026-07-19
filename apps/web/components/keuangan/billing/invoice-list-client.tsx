@@ -166,7 +166,12 @@ export function InvoiceListClient({
                   </td>
                   <td className="px-4 py-3">
                     <p className="font-medium">{row.customerName}</p>
-                    <p className="text-xs text-muted-foreground">{row.itemCount} item</p>
+                    <p className="text-xs text-muted-foreground">
+                      {row.itemCount} item
+                      {row.voucherCode && (
+                        <span className="ml-1.5 font-mono text-green-600">· {row.voucherCode}</span>
+                      )}
+                    </p>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{formatRp(row.total)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">

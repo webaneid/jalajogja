@@ -133,6 +133,8 @@ export default async function PublicInvoicePage({ params }: Props) {
     subtotal:         parseFloat(String(inv.subtotal)),
     shippingTotal:    parseFloat(String(inv.shippingTotal ?? 0)),
     discount:         parseFloat(String(inv.discount)),
+    voucherCode:          inv.voucherCode ?? null,
+    voucherDiscountTotal: parseFloat(String(inv.voucherDiscountTotal ?? "0")),
     total,
     uniqueCode,
     amountDue,
@@ -152,6 +154,7 @@ export default async function PublicInvoicePage({ params }: Props) {
       description: it.description,
       unitPrice:   parseFloat(String(it.unitPrice)),
       quantity:    it.quantity,
+      discountAmount: parseFloat(String(it.discountAmount ?? "0")),
       total:       parseFloat(String(it.total)),
     })),
     shippingLines: shippingRows.map((sl) => ({

@@ -50,6 +50,8 @@ export type PublicInvoiceData = {
   subtotal:         number;
   shippingTotal:    number;
   discount:         number;
+  voucherCode:          string | null;
+  voucherDiscountTotal: number;
   total:            number;
   uniqueCode:       number;
   amountDue:        number;
@@ -69,6 +71,7 @@ export type PublicInvoiceData = {
     description: string | null;
     unitPrice:   number;
     quantity:    number;
+    discountAmount: number;
     total:       number;
   }>;
   shippingLines:  PublicShippingLine[];
@@ -564,17 +567,28 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
                 </td>
                 <td className="px-4 py-3 text-center text-muted-foreground">{item.quantity}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{formatRp(item.unitPrice)}</td>
-                <td className="px-4 py-3 text-right tabular-nums font-medium">{formatRp(item.total)}</td>
+                <td className="px-4 py-3 text-right tabular-nums font-medium">
+                  {formatRp(item.total)}
+                  {item.discountAmount > 0 && (
+                    <span className="block text-xs font-normal text-green-600">
+                      − {formatRp(item.discountAmount)} voucher
+                    </span>
+                  )}
+                </td>
               </tr>
               );
             })}
           </tbody>
           <tfoot className="bg-muted/20 text-sm">
-            {(invoice.discount > 0 || invoice.shippingTotal > 0) && (
+            {/* invoice.subtotal SUDAH net-of-voucher — rekonstruksi gross supaya baris
+                "Subtotal" tidak pernah dipotong dobel oleh baris "Diskon Voucher" di bawahnya. */}
+            {(invoice.discount > 0 || invoice.voucherDiscountTotal > 0 || invoice.shippingTotal > 0) && (
               <>
                 <tr>
                   <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Subtotal</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatRp(invoice.subtotal)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">
+                    {formatRp(invoice.subtotal + invoice.voucherDiscountTotal)}
+                  </td>
                 </tr>
                 {invoice.shippingTotal > 0 && (
                   <tr>
@@ -586,6 +600,16 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
                   <tr>
                     <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Diskon</td>
                     <td className="px-4 py-2 text-right tabular-nums text-green-600">- {formatRp(invoice.discount)}</td>
+                  </tr>
+                )}
+                {invoice.voucherDiscountTotal > 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">
+                      Diskon Voucher {invoice.voucherCode && <span className="font-mono">({invoice.voucherCode})</span>}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-green-600">
+                      − {formatRp(invoice.voucherDiscountTotal)}
+                    </td>
                   </tr>
                 )}
               </>

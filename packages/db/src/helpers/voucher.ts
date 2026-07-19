@@ -110,9 +110,14 @@ export async function countCustomerRedemptions(
 ): Promise<number> {
   if (!customer.phone && !customer.email) return 0;
 
+  // Email dibandingkan case-insensitive (lower() di kedua sisi) — customerEmail yang tersimpan
+  // di voucher_redemptions TIDAK dijamin lowercase (mengikuti casing asli input customer),
+  // jadi normalisasi dilakukan di titik query, bukan di titik simpan.
   const identityConditions = [
     customer.phone ? eq(schema.voucherRedemptions.customerPhone, customer.phone) : null,
-    customer.email ? eq(schema.voucherRedemptions.customerEmail, customer.email) : null,
+    customer.email
+      ? sql`lower(${schema.voucherRedemptions.customerEmail}) = ${customer.email.toLowerCase()}`
+      : null,
   ].filter((c): c is NonNullable<typeof c> => c !== null);
 
   const [{ cnt }] = await db
@@ -150,7 +155,10 @@ export function computeVoucherDiscount(
   if (voucher.restrictPhone && voucher.restrictPhone !== customer.phone) {
     return { error: "Voucher ini hanya berlaku untuk nomor HP tertentu." };
   }
-  if (voucher.restrictEmail && voucher.restrictEmail !== customer.email) {
+  // restrictEmail tersimpan lowercase (createVoucherAction/updateVoucherAction sudah
+  // .toLowerCase() saat simpan) — customer.email yang dikirim checkout TIDAK dijamin
+  // lowercase (cuma di-trim), jadi bandingkan case-insensitive di sini.
+  if (voucher.restrictEmail && voucher.restrictEmail !== customer.email?.toLowerCase()) {
     return { error: "Voucher ini hanya berlaku untuk email tertentu." };
   }
 

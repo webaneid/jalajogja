@@ -6959,8 +6959,91 @@ voucher.md` — 7 skenario tercantum, semua masih checklist kosong) — murni ve
 sejauh ini, konsisten dengan keterbatasan environment sesi ini yang sudah dicatat berulang di
 lesson-lesson lain (tidak ada Docker/Postgres/browser lokal untuk uji end-to-end).
 
+### [2026-07-19] Audit Voucher Pasca-Deploy — 4 Bug/Gap Ditemukan+Difix Sebelum Lanjut Modul Baru
+
+> Detail lengkap: **`docs/arsitektur-voucher.md` § 11**. User eksplisit minta re-check docs vs
+> kode aktual + cari bug/gap sebelum lanjut fitur berikutnya — pola yang sudah berulang di
+> project ini (bandingkan lesson cicilan "4 Bug Ditemukan Saat Testing Manual" dan audit
+> `recordIncome`/`syncInvoicePayment" sebelumnya): fitur yang "selesai secara implementasi" belum
+> tentu bebas bug sampai benar-benar diaudit ulang sebagai satu kesatuan.
+
+**1. Bug — `restrictEmail` dibandingkan case-sensitive padahal disimpan lowercase.** Server
+action simpan `.toLowerCase()`, tapi resolver (`computeVoucherDiscount`/`countCustomerRedemptions`
+di `voucher.ts`) membandingkan terhadap `customer.email` yang cuma di-`.trim()` di KEDUA caller
+(`checkoutAction` dan `previewVoucherAction`). Customer ketik email beda casing dari yang
+tersimpan → voucher personal ditolak keliru; dua submission beda casing bisa lolos sebagai "orang
+berbeda" → bypass `usageLimitPerCustomer`. **Fix**: normalisasi HANYA di titik banding (bukan di
+titik simpan `customerEmail`, casing asli tetap dipertahankan untuk display) — satu fix di
+`voucher.ts` otomatis berlaku ke preview MAUPUN checkout karena keduanya reuse fungsi yang sama.
+
+**2. Gap — invoice detail (admin & publik) tidak pernah menampilkan kode voucher/potongan**
+meski datanya lengkap tersimpan (`invoices.voucherCode`/`voucherDiscountTotal`,
+`invoice_items.discountAmount`) — `getInvoiceDetailAction`/`InvoiceDetail` type dan halaman
+publik `/invoice/[id]`/`PublicInvoiceData` cuma baca `invoices.discount` (field legacy invoice
+manual admin). **Bug turunan ditemukan SAAT mengerjakan fix ini**: draf pertama menampilkan
+`Subtotal: invoice.subtotal` lalu `Diskon Voucher: -voucherDiscountTotal` berjajar — TAPI
+`invoices.subtotal` untuk invoice hasil checkout SUDAH net-of-voucher (beda dari `invoices.discount`
+legacy yang dipotong dari subtotal gross) — kalau ditampilkan apa adanya, diskon terpotong DUA
+KALI secara visual, angka tidak akan pernah cocok ke `invoice.total`. **Fix**: rekonstruksi
+subtotal gross untuk tampilan (`invoice.subtotal + invoice.voucherDiscountTotal`) SEBELUM
+menampilkan baris diskon — untuk invoice tanpa voucher formula ini otomatis kembali ke
+`invoice.subtotal` apa adanya (zero regresi ke invoice manual admin).
+
+**Aturan digeneralisasi dari bug turunan #2**: kalau sebuah invoice bisa punya DUA field diskon
+independen dengan semantik BEDA terhadap `subtotal` (satu dipotong dari gross, satu sudah baked-in
+sebagai net) — SELALU rekonstruksi basis yang konsisten (gross) sebelum menampilkan keduanya
+berjajar di satu tabel. Jangan asumsikan semua kolom "subtotal" di sistem yang sama berarti hal
+yang sama, terutama kalau kolom itu dipakai dua alur berbeda (admin-manual vs cart-checkout) yang
+dibangun di waktu berbeda.
+
+**3. Gap — `validFrom`/`validUntil` di-parse UTC mentah, bukan dianchor ke timezone tenant.**
+`new Date("2026-07-19")` = tengah malam UTC = jam 07:00 WIB — voucher "berlaku sampai 19 Juli"
+expire jam 7 pagi WIB, bukan akhir hari. Ini PERSIS aturan yang sudah dikunci sesi-sesi
+sebelumnya untuk modul Event dan Invoice/Billing ("setiap kode yang menghitung/membandingkan
+tanggal untuk LOGIC BISNIS wajib anchor ke kalender timezone tenant") — terlewat di Voucher
+karena dibangun setelah aturan itu dikunci tapi sebelum diaudit silang. **Fix**: helper
+`resolveVoucherDateRange()` — `validFrom` → `00:00` tenant-local, `validUntil` → `23:59`
+tenant-local, via `localDatetimeToUtcIso()` yang sudah ada (tidak perlu helper baru).
+
+**4. Defensif — `usageLimit`/`usageLimitPerCustomer` tidak divalidasi terhadap `NaN`**
+(`parseInt("abc",10)=NaN`, dan `NaN < 1` evaluasi `false` di JS, lolos validasi lama). Fix murah:
+`Number.isNaN(...) || ... < 1`.
+
+**Yang dicek dan dikonfirmasi AMAN**: DDL vs migration vs Drizzle schema (kolom/tipe/FK/urutan
+tabel semua konsisten), `restrictPhone` (tidak kena bug sejenis — `normalizePhone()` E.164 tidak
+punya masalah casing), interaksi cicilan (`convertInvoiceToInstallmentAction` selalu pakai
+`invoice.total` net-of-voucher, tidak butuh perubahan), kode unik (`total > 0` guard sudah benar
+sejak Fase B).
+
+**Yang dicatat tapi TIDAK difix (severity rendah, di luar scope)**: `VoucherTargetPicker` fetch
+opsi HANYA item aktif/published — item yang jadi non-aktif setelah ditarget "menghilang" dari
+tampilan form edit meski datanya utuh (kosmetik). Duplikat-tiket detection di `checkoutAction`
+jalan SEBELUM resolusi voucher — kalau customer kena redirect-ke-invoice-lama sambil bawa kode
+voucher valid, kode itu diam-diam tidak pernah divalidasi/dipakai (skenario sangat jarang,
+mengubah urutan deteksi berisiko melemahkan proteksi anti-duplikat yang sudah terbukti berfungsi).
+
+**Pola audit yang terbukti berguna (generalisasi proses, bukan cuma temuan)**: baca ulang setiap
+titik yang MEMBANDINGKAN dua nilai yang datang dari sumber berbeda (di sini: email tersimpan vs
+email input customer) dan setiap titik yang MENGHITUNG tanggal/waktu untuk logic bisnis —
+keduanya kelas bug yang sudah berulang kali muncul terpisah-pisah di project ini sepanjang
+sejarah (bug tanggal WIB/UTC di cicilan, bug format Rupiah ICU/CLDR, sekarang bug casing email)
+— begitu satu instance ditemukan di modul manapun, worth grep pola serupa di fitur BARU yang baru
+saja dibangun sebelum dianggap selesai, bukan hanya menunggu laporan bug user.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Migration `0034_vouchers.sql` tetap
+belum dijalankan di VPS — audit ini murni perbaikan kode aplikasi, tidak mengubah skema.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Diskon & Voucher (Fase 1 — berkode)** — perencanaan matang (Plan Mode +
+- Terakhir dikerjakan: **Audit voucher pasca-deploy** (lihat lesson di atas) — 4 bug/gap
+  ditemukan+difix: email case-sensitivity di resolver, invoice detail (admin+publik+list) yang
+  tidak pernah menampilkan info voucher (plus bug turunan subtotal dobel-potong saat
+  memperbaikinya), validFrom/validUntil UTC-mentah, NaN guard limit pemakaian. `tsc`+build bersih
+  di kedua package. **Belum di-commit/push** — dan poin dari sesi sebelumnya masih berlaku:
+  migration `0034_vouchers.sql` belum jalan di VPS, nol skenario dites manual di browser (§ 9
+  `docs/arsitektur-voucher.md`, sekarang 10 skenario setelah 3 ditambah untuk temuan audit ini).
+  Sebelum lanjut ke modul berikutnya: commit+push, jalankan migration di VPS SEBELUM deploy kode.
+- Sesi sebelumnya: **Diskon & Voucher (Fase 1 — berkode)** — perencanaan matang (Plan Mode +
   2× `AskUserQuestion`) lalu eksekusi 6 fase penuh: schema+helper murni, integrasi
   `checkoutAction` (potongan per-item, Rp 0 auto-lunas, kode unik di-skip saat total=0), UI
   preview+input kode voucher (ditaruh di `checkout-form.tsx`, BUKAN halaman keranjang seperti
@@ -6968,12 +7051,7 @@ lesson-lesson lain (tidak ada Docker/Postgres/browser lokal untuk uji end-to-end
   lengkap (list/new/edit/detail + target picker multi-select), dan rollback `usedCount`+
   redemption saat invoice dibatalkan. Dokumentasi baru `docs/arsitektur-voucher.md` + update
   `docs/arsitektur-billing.md` (skema `invoice_items`/`invoices` + Q&A) + lesson CLAUDE.md di
-  atas. **Belum di-commit/push** — `tsc`+build sudah bersih di kedua package, tapi migration
-  `0034_vouchers.sql` belum jalan di VPS dan nol skenario dites manual di browser (lihat § 9
-  `docs/arsitektur-voucher.md`). Sebelum lanjut ke modul berikutnya: commit+push, jalankan
-  migration di VPS SEBELUM deploy kode, lalu minta user coba alur penuh (buat voucher →
-  checkout pakai kode → cek potongan per-item → coba voucher 100% → cek pembatalan
-  mengembalikan kuota).
+  atas.
 - Sesi sebelumnya: **Notifikasi WhatsApp untuk Program Cicilan — 5 event baru** (sesi
   2026-07-19), lalu 7 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
   di-nolkan saat konversi cicilan**, **fix 4 Server Action billing tanpa `hasReadAccess`

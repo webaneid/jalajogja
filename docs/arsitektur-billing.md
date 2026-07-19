@@ -1483,6 +1483,9 @@ admin). Diskon otomatis tanpa kode adalah Fase 2, belum direncanakan detail.
 - [x] UI preview + input kode di `checkout-form.tsx` (bukan halaman keranjang — lihat § UI di `docs/arsitektur-voucher.md`)
 - [x] Admin CRUD `/finance/billing/voucher/*` + tab `BillingTabs`
 - [x] `cancelInvoiceAction` — rollback `usedCount` + tandai redemption `cancelledAt`
+- [x] Audit docs-vs-kode pasca-implementasi — 4 bug/gap ditemukan+difix (email case-sensitivity,
+      invoice detail tidak tampilkan voucher, validFrom/validUntil UTC-mentah, NaN guard) — lihat
+      `docs/arsitektur-voucher.md` § 11
 - [ ] Migrasi `0034_vouchers.sql` **belum dijalankan di VPS** — wajib sebelum deploy
 - [ ] Belum dites manual end-to-end di browser
 > Detail lengkap: **`docs/arsitektur-voucher.md`**
