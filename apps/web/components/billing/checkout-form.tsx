@@ -505,6 +505,49 @@ export function CheckoutForm({
           </div>
         )}
 
+        {/* ── Kode Voucher — di kolom kiri (bukan ringkasan kanan) supaya tetap terlihat
+             SEBELUM tombol submit di mobile, di mana kolom kanan stack di bawah tombol. ── */}
+        <div className="rounded-lg border border-border p-4">
+          <p className="text-sm font-medium mb-2">Punya Kode Voucher?</p>
+          {voucherPreview?.valid ? (
+            <div className="flex items-center justify-between gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs">
+              <span className="text-green-700 truncate">
+                Voucher <strong>{voucherInput.trim().toUpperCase()}</strong> — {voucherPreview.voucherName}
+              </span>
+              <button
+                type="button"
+                onClick={handleRemoveVoucher}
+                className="text-green-700 hover:underline shrink-0"
+              >
+                Hapus
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={voucherInput}
+                  onChange={(e) => { setVoucherInput(e.target.value.toUpperCase()); setVoucherPreview(null); }}
+                  placeholder="Kode voucher"
+                  className={`${inputCls} text-sm`}
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyVoucher}
+                  disabled={voucherPending || !voucherInput.trim()}
+                  className="shrink-0 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50 transition-colors"
+                >
+                  {voucherPending ? "…" : "Terapkan"}
+                </button>
+              </div>
+              {voucherPreview && !voucherPreview.valid && (
+                <p className="text-xs text-destructive">{voucherPreview.error}</p>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* ── Tombol navigasi ── */}
         <div className="flex gap-3">
           {step > 1 && (
@@ -583,45 +626,6 @@ export function CheckoutForm({
             );
           })}
         </div>
-
-        {/* Voucher */}
-        {voucherPreview?.valid ? (
-          <div className="flex items-center justify-between gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs">
-            <span className="text-green-700 truncate">
-              Voucher <strong>{voucherInput.trim().toUpperCase()}</strong> — {voucherPreview.voucherName}
-            </span>
-            <button
-              type="button"
-              onClick={handleRemoveVoucher}
-              className="text-green-700 hover:underline shrink-0"
-            >
-              Hapus
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-1">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={voucherInput}
-                onChange={(e) => { setVoucherInput(e.target.value.toUpperCase()); setVoucherPreview(null); }}
-                placeholder="Kode voucher"
-                className={`${inputCls} text-sm`}
-              />
-              <button
-                type="button"
-                onClick={handleApplyVoucher}
-                disabled={voucherPending || !voucherInput.trim()}
-                className="shrink-0 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50 transition-colors"
-              >
-                {voucherPending ? "…" : "Terapkan"}
-              </button>
-            </div>
-            {voucherPreview && !voucherPreview.valid && (
-              <p className="text-xs text-destructive">{voucherPreview.error}</p>
-            )}
-          </div>
-        )}
 
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">Subtotal</span>

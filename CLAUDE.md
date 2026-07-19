@@ -7034,15 +7034,55 @@ saja dibangun sebelum dianggap selesai, bukan hanya menunggu laporan bug user.
 sukses (dev server dimatikan dulu, `.next` dibersihkan). Migration `0034_vouchers.sql` tetap
 belum dijalankan di VPS — audit ini murni perbaikan kode aplikasi, tidak mengubah skema.
 
+### [2026-07-19] Migrasi Lokal + Bug UX Nyata: Input Voucher Tersembunyi di Bawah Tombol Submit
+
+> Detail lengkap: **`docs/arsitektur-voucher.md` § 12**
+
+Setelah migration `0034_vouchers.sql` dijalankan manual di lokal (`psql` langsung ke
+`postgres://webane@localhost/jalajogja` — DB dev bukan Docker, beda dari VPS), user buat voucher
+lalu coba checkout sungguhan → melapor tidak pernah menemukan tempat input kode voucher sampai
+invoice terbentuk.
+
+**Root cause**: input voucher ditaruh di kolom KANAN (`checkout-form.tsx`, panel "Ringkasan
+Pesanan", `grid lg:grid-cols-[1fr_360px]`). Tanpa `order` eksplisit, grid mempertahankan urutan
+DOM saat stack jadi 1 kolom di mobile — form+tombol submit (kolom kiri) render duluan, ringkasan+
+voucher (kolom kanan) baru MENYUSUL di bawahnya. Customer wajar berhenti begitu melihat tombol
+"Buat Invoice", tidak pernah scroll melewatinya.
+
+**Fix**: pindahkan widget INTERAKTIF (input+tombol Terapkan+badge applied+error) ke kolom KIRI,
+diletakkan di luar kondisi `step === X` manapun (tetap tampil di semua step, persis sebelumnya)
+tepat sebelum blok "Tombol navigasi" — dijamin muncul SEBELUM tombol submit di urutan baca apa
+pun. Kolom kanan hanya menyisakan baris "Diskon Voucher: -Rp X" sebagai DISPLAY read-only.
+
+**Aturan digeneralisasi**: form checkout 2-kolom (form kiri + ringkasan kanan) yang collapse ke
+1 kolom di mobile — elemen INTERAKTIF yang wajib ditemukan sebelum submit (kode voucher, metode
+bayar, dll) tidak boleh ditaruh di kolom ringkasan/kanan, karena kolom itu SELALU jatuh setelah
+kolom kiri (termasuk tombolnya) begitu di-stack mobile. Kolom kanan aman hanya untuk elemen
+display-only yang tidak butuh aksi user sebelum submit. Ini sinyal juga bahwa layout 2-kolom yang
+dibangun SEBELUM sebuah elemen interaktif baru ditambahkan (di sini: checkout-form.tsx sudah ada
+sebelum voucher) rawan menyembunyikan elemen baru itu di kolom yang salah — cek urutan visual
+mobile SETIAP kali menambah elemen interaktif baru ke layout 2-kolom existing, jangan asumsikan
+"ditaruh di panel yang secara konsep paling related" otomatis berarti "terlihat di urutan yang
+benar".
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build` sukses. Belum
+diverifikasi visual di browser oleh Claude — user diminta konfirmasi setelah reload.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Audit voucher pasca-deploy** (lihat lesson di atas) — 4 bug/gap
-  ditemukan+difix: email case-sensitivity di resolver, invoice detail (admin+publik+list) yang
-  tidak pernah menampilkan info voucher (plus bug turunan subtotal dobel-potong saat
-  memperbaikinya), validFrom/validUntil UTC-mentah, NaN guard limit pemakaian. `tsc`+build bersih
-  di kedua package. **Belum di-commit/push** — dan poin dari sesi sebelumnya masih berlaku:
-  migration `0034_vouchers.sql` belum jalan di VPS, nol skenario dites manual di browser (§ 9
-  `docs/arsitektur-voucher.md`, sekarang 10 skenario setelah 3 ditambah untuk temuan audit ini).
-  Sebelum lanjut ke modul berikutnya: commit+push, jalankan migration di VPS SEBELUM deploy kode.
+- Terakhir dikerjakan: **Migrasi voucher di lokal + fix bug UX input tersembunyi** — migration
+  `0034_vouchers.sql` dijalankan manual via `psql` ke DB lokal (native Postgres, bukan Docker —
+  `postgres://webane@localhost/jalajogja`), dikonfirmasi tabel+kolom baru ada. User laporkan bug
+  nyata dari testing langsung: input kode voucher tidak pernah ditemukan sampai invoice terbentuk
+  — root cause layout 2-kolom `checkout-form.tsx` (input di kolom kanan, jatuh di bawah tombol
+  submit saat mobile stack). Fix: widget interaktif dipindah ke kolom kiri sebelum tombol
+  navigasi, kolom kanan sisakan baris display "Diskon Voucher" saja. `tsc`+build bersih.
+  **Belum di-commit/push** — dan **belum diverifikasi visual di browser** (keterbatasan
+  environment sesi ini, user perlu reload dan konfirmasi tampilan baru). Migration VPS masih
+  belum dijalankan juga.
+- Sesi sebelumnya: **Audit voucher pasca-deploy** — 4 bug/gap ditemukan+difix: email
+  case-sensitivity di resolver, invoice detail (admin+publik+list) yang tidak pernah menampilkan
+  info voucher (plus bug turunan subtotal dobel-potong saat memperbaikinya), validFrom/validUntil
+  UTC-mentah, NaN guard limit pemakaian. Lihat lesson di atas + `docs/arsitektur-voucher.md` § 11.
 - Sesi sebelumnya: **Diskon & Voucher (Fase 1 — berkode)** — perencanaan matang (Plan Mode +
   2× `AskUserQuestion`) lalu eksekusi 6 fase penuh: schema+helper murni, integrasi
   `checkoutAction` (potongan per-item, Rp 0 auto-lunas, kode unik di-skip saat total=0), UI

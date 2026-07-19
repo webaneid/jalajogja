@@ -13,10 +13,10 @@
 - Admin CRUD (`/app/{slug}/finance/billing/voucher/*`): ✅ Selesai
 - Pembatalan invoice → rollback kuota voucher: ✅ Selesai
 - Audit docs-vs-kode + 4 bug/gap ditemukan+difix: ✅ Selesai — lihat § 11
-- **Belum dijalankan di VPS**: migrasi `0034_vouchers.sql` — WAJIB dijalankan sebelum deploy kode
-  (urutan standar project: migrate DB dulu, baru restart PM2)
-- **Belum dites manual di browser** — semua verifikasi sejauh ini `tsc --noEmit` + `bun run build`
-  di kedua package. Skenario manual (§ 9) belum dicoba end-to-end.
+- Migrasi `0034_vouchers.sql` sudah dijalankan di **lokal** (`pc-ikpm-jogjakarta`) — **belum di VPS**
+- Bug UX ditemukan dari testing langsung user: input voucher tidak terlihat di alur checkout
+  (tersembunyi di kolom kanan, jatuh di bawah tombol submit saat mobile) — ✅ Difix, lihat § 12
+- Sisa skenario manual (§ 9) masih perlu dicoba end-to-end setelah fix § 12 dikonfirmasi user
 
 Fase 2 (diskon otomatis tanpa kode, target produk mitra, target per kategori) — **belum
 direncanakan detail**, lihat § 10 "Di Luar Scope Fase 1".
@@ -470,3 +470,38 @@ field.
 sukses (dev server dimatikan dulu, `.next` dibersihkan, sesuai SOP project). Migration
 `0034_vouchers.sql` tetap belum dijalankan di VPS — audit ini murni perbaikan kode, tidak
 mengubah struktur skema.
+
+---
+
+## 12. Bug Ditemukan Dari Testing Langsung User (2026-07-19) — Input Voucher Tidak Terlihat
+
+Setelah migrasi dijalankan di lokal, user langsung mencoba alur penuh (buat voucher → checkout)
+dan melaporkan: sampai invoice terbentuk, tidak pernah menemukan tempat memasukkan kode voucher.
+
+**Root cause**: input kode voucher (§ 7) ditaruh di panel "Ringkasan Pesanan" — kolom KANAN dari
+`grid lg:grid-cols-[1fr_360px]` di `checkout-form.tsx`. Di layout 2-kolom ini urutan DOM = urutan
+render kolom kiri dulu (form + tombol navigasi), baru kolom kanan (ringkasan). Grid tanpa `order`
+eksplisit mempertahankan urutan DOM saat stack jadi 1 kolom di mobile (`grid-cols-1` default,
+`lg:` baru mengaktifkan 2 kolom) — artinya di mobile, urutan visual jadi: form → tombol
+"Buat Invoice" → (scroll lebih jauh) → ringkasan pesanan → input voucher. Customer wajar berhenti
+begitu melihat tombol submit, tidak pernah scroll melewatinya untuk menemukan input voucher yang
+"tersembunyi" di bawah.
+
+**Fix**: input kode voucher (card "Punya Kode Voucher?", lengkap dengan badge applied/hapus dan
+pesan error) dipindah ke KOLOM KIRI — ditaruh setelah konten per-step (Step 1/2/3, apapun step
+aktif) dan SEBELUM blok "Tombol navigasi", di luar kondisi `step === X` manapun (sama seperti
+sebelumnya, tetap tampil di semua step). Kolom kanan (Ringkasan Pesanan) sekarang HANYA
+menyisakan baris "Diskon Voucher: -Rp X" sebagai display read-only (bukan input) — tetap
+konsisten menampilkan potongan begitu voucher diterapkan, tapi interaksinya sendiri sekarang
+dijamin muncul SEBELUM tombol submit di urutan baca apa pun (mobile maupun desktop).
+
+**Aturan digeneralisasi**: untuk form checkout/pembayaran dengan layout 2-kolom (form kiri +
+ringkasan kanan) yang di-collapse jadi 1 kolom di mobile, elemen INTERAKTIF yang wajib
+ditemukan SEBELUM tombol submit (kode voucher, pilihan metode bayar, dll) tidak boleh ditaruh di
+kolom ringkasan/kanan — kolom itu di mobile selalu jatuh SETELAH seluruh kolom kiri termasuk
+tombol submit-nya. Kolom kanan aman untuk elemen DISPLAY-ONLY (breakdown harga, daftar item)
+yang tidak butuh aksi user sebelum submit.
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` sukses. Belum
+diverifikasi visual di browser oleh Claude (keterbatasan environment) — user diminta konfirmasi
+tampilan baru sudah sesuai setelah reload.
