@@ -80,20 +80,26 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
   // Payment form state
   const amountDue = invoice.total + (invoice.uniqueCode ?? 0);
 
-  // Termin cicilan belum lunas paling awal. Dipakai untuk prefill "✓ Verifikasi" — HARUS
-  // dihitung dari payment.amount SESUNGGUHNYA yang customer submit (dikurangi kode unik
-  // termin), BUKAN blind nextUnpaidTerm.amount begitu saja. Kalau customer overpay (mis.
-  // sengaja bayar 2 termin sekaligus), default yang blind ke SATU termin akan under-credit
-  // customer secara diam-diam — bug yang dilaporkan user, lihat lesson CLAUDE.md § kode unik.
-  // Lihat docs/arsitektur-billing.md § "Program Cicilan".
+  // Termin cicilan belum lunas paling awal — dipakai untuk hint teks + referensi pembanding
+  // amountWarning() di form "✓ Verifikasi" (BUKAN untuk mengubah default field, lihat aturan
+  // di bawah). Lihat docs/arsitektur-billing.md § "Program Cicilan".
   const nextUnpaidTerm = invoice.installmentSchedules.find((s) => s.status !== "paid") ?? null;
 
-  // Default nominal verifikasi cicilan: submitted amount dikurangi kode unik termin (kode
-  // TIDAK PERNAH bagian dari nominal cicilan) — bukan nextUnpaidTerm.amount tetap, supaya
-  // overpayment/pembayaran gabungan beberapa termin tetap tercermin benar di default.
-  function verifyDefaultFor(payment: InvoiceDetail["payments"][number]): number {
-    if (!nextUnpaidTerm) return payment.amount;
-    return Math.max(0, payment.amount - (nextUnpaidTerm.uniqueCode ?? 0));
+  // ATURAN MUTLAK (2026-07-19, ditegaskan eksplisit oleh user setelah insiden gap nominal):
+  // default form "✓ Verifikasi" WAJIB persis sama dengan payment.amount — nominal yang CUSTOMER
+  // SESUNGGUHNYA submit via form konfirmasi. TIDAK ADA pengurangan/perhitungan otomatis apa pun
+  // (dulu sempat dikurangi kode unik termin di sini — itu SALAH, menciptakan gap diam-diam
+  // antara yang customer konfirmasi kirim dan yang tercatat ke admin — berbahaya). Kalau nominal
+  // yang customer submit berbeda dari yang "seharusnya" (term.amount+kode), itu tanggung jawab
+  // amountWarning() untuk memberi tahu admin secara eksplisit — BUKAN tanggung jawab kode ini
+  // untuk diam-diam "membetulkan" angkanya. Admin yang punya keputusan akhir untuk koreksi.
+
+  // Nominal yang "seharusnya" ditransfer customer untuk termin berikutnya (term.amount + kode
+  // unik termin) — HANYA dipakai sebagai referensi pembanding di amountWarning(), TIDAK PERNAH
+  // dipakai sebagai default field (lihat aturan di atas).
+  function verifyExpected(): number {
+    if (!nextUnpaidTerm) return invoice.remaining;
+    return nextUnpaidTerm.amount + (nextUnpaidTerm.uniqueCode ?? 0);
   }
 
   // Nominal yang "seharusnya" dicatat via form Konfirmasi Pembayaran manual — dipakai baik
@@ -535,7 +541,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                       <>
                         <button
                           type="button"
-                          onClick={() => toggleVerifyForm(p.id, verifyDefaultFor(p))}
+                          onClick={() => toggleVerifyForm(p.id, p.amount)}
                           disabled={verifyPending || rejectPending}
                           className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
                         >
@@ -591,11 +597,11 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {nextUnpaidTerm
-                        ? `Default = nominal yang customer submit (Rp ${formatRp(p.amount).replace("Rp ", "")}) dikurangi kode unik termin ${nextUnpaidTerm.termNumber} (${nextUnpaidTerm.uniqueCode ?? "-"}) — kode unik hanya alat bantu identifikasi di rekening, jangan ikut dicatat sebagai bagian cicilan. Kalau customer bayar untuk beberapa termin sekaligus, default ini otomatis ikut lebih besar — cocokkan dengan bukti transfer sebelum konfirmasi.`
-                        : "Default sesuai yang customer submit — cocokkan dengan bukti transfer di bawah sebelum konfirmasi."}
+                        ? `Default = PERSIS nominal yang customer submit (tidak dikurangi apa pun). Termin ${nextUnpaidTerm.termNumber} seharusnya Rp ${formatRp(nextUnpaidTerm.amount).replace("Rp ", "")} + kode unik ${nextUnpaidTerm.uniqueCode ?? "-"} — kalau nominal ini termasuk kode unik, kurangi manual sebelum konfirmasi (kode bukan bagian dari nominal cicilan).`
+                        : "Default = PERSIS nominal yang customer submit — cocokkan dengan bukti transfer di bawah sebelum konfirmasi."}
                     </p>
                     {(() => {
-                      const warn = amountWarning(parseInt(verifyAmount.replace(/\D/g, ""), 10) || 0, verifyDefaultFor(p));
+                      const warn = amountWarning(parseInt(verifyAmount.replace(/\D/g, ""), 10) || 0, verifyExpected());
                       return warn ? (
                         <p className={`text-xs font-medium ${warn.startsWith("⚠") ? "text-amber-700" : "text-blue-700"}`}>{warn}</p>
                       ) : null;

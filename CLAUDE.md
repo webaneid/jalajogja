@@ -6771,20 +6771,57 @@ Overpayment Selalu Diizinkan".
 **Scope**: HANYA form admin — form submit bukti customer (`invoice-public-client.tsx`) tidak
 disentuh (sudah punya UX beda, AlertDialog konfirmasi, sudah lama tanpa batas atas).
 
+### [2026-07-19] Prinsip Terkunci: Fidelitas ke Nominal Customer — Nol Perhitungan Otomatis di Default Field
+
+> User menegaskan eksplisit: "Apa yang tertulis di konfirmasi pembayaran, nominal itulah yang
+> harus dikirim ke admin, jangan sampai ada gap nominal dibuat otomatis dan tidak sesuai dengan
+> yang user kirim via konfirmasi form. itu bahaya." Detail lengkap: `docs/arsitektur-billing.md`
+> § "Prinsip Terkunci: Fidelitas ke Nominal yang Customer Submit".
+
+**Audit ulang menemukan fix SEBELUMNYA sendiri (`verifyDefaultFor`, lesson di atas) MELANGGAR
+prinsip ini** — default form "✓ Verifikasi" diam-diam MENGURANGI `payment.amount` (nominal yang
+customer sungguhan submit & konfirmasi via dialog "Pastikan nominal Anda sama persis dengan
+bukti transfer") dengan kode unik termin, menghasilkan angka BERBEDA dari yang customer kirim.
+Kalau admin tidak sadar dan langsung konfirmasi, yang tercatat BUKAN nominal yang customer
+benar-benar kirim — persis gap berbahaya yang dimaksud user, dan IRONISNYA diperkenalkan oleh
+fix cicilan-awareness SAYA SENDIRI di putaran audit sebelumnya.
+
+**Fix**: `verifyDefaultFor` dihapus total, diganti default = `payment.amount` PERSIS (nol
+pengurangan). Referensi "nominal seharusnya" dipindah ke fungsi terpisah `verifyExpected()` —
+HANYA dipakai sebagai pembanding di `amountWarning()`, TIDAK PERNAH menyentuh nilai yang
+sungguhan dikirim ke server.
+
+**Prinsip permanen yang sekarang berlaku untuk SEMUA form nominal admin**:
+1. DEFAULT field = selalu nilai sumber paling dekat kebenaran (nominal yang customer submit,
+   kalau ada). Sistem TIDAK PERNAH "membetulkan" nominal atas nama admin secara diam-diam.
+2. Peringatan (`amountWarning`) = satu-satunya mekanisme yang boleh membandingkan nominal
+   terhadap ekspektasi sistem dan memberi tahu admin — tidak pernah mengubah nilai field.
+3. Admin selalu punya kendali penuh untuk koreksi manual berdasar informasi yang benar.
+
+**Aturan digeneralisasi (kelas bug KETIGA di area yang sama, semuanya soal nominal form
+admin)**: "membersihkan"/"membetulkan" data secara otomatis sebelum ditampilkan ke pengguna
+yang akan mengonfirmasinya adalah anti-pattern berbahaya di alur finansial — bahkan kalau
+tujuannya baik (memastikan angka "bersih" untuk pembukuan). Selalu tampilkan SUMBER ASLI apa
+adanya sebagai default, dan pakai lapisan peringatan terpisah untuk menyampaikan
+penyimpangan dari ekspektasi — jangan gabungkan "menampilkan default" dengan "membetulkan
+data" dalam satu langkah, karena begitu digabung, pengguna (di sini: admin) tidak lagi tahu
+apakah yang mereka lihat itu FAKTA (apa yang dikirim) atau OPINI SISTEM (apa yang seharusnya).
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Notifikasi WhatsApp untuk Program Cicilan — 5 event baru** (sesi
-  2026-07-19), lalu 5 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
+  2026-07-19), lalu 6 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
   di-nolkan saat konversi cicilan**, **fix 4 Server Action billing tanpa `hasReadAccess`
   guard**, **fix form "Konfirmasi Pembayaran" manual admin default ke sisa tagihan penuh**,
-  **fix form "✓ Verifikasi" sendiri yang blind ke satu termin (abaikan overpayment)**, dan
-  **keputusan produk: overpayment selalu diizinkan + peringatan non-blocking (guard penolakan
-  di `confirmInvoicePaymentAction` dihapus)** — 3 temuan terakhir dilaporkan/diminta
-  diverifikasi/diputuskan langsung oleh user. Lihat 5 lesson di atas untuk detail lengkap.
-  Fitur sudah live di production: kode deployed, migration 0033 jalan, cron
-  `installment-reminder` terjadwal jam 08:15 (diverifikasi respons `{"notified":0}`), toggle
-  notifikasi sudah diaktifkan admin di tenant `visikita`. Fix overpayment+warning TERBARU belum
-  di-deploy ke VPS (masih di local, sudah commit — cek status sebelum lanjut). Belum ada uji
-  nyata end-to-end (menunggu invoice cicilan pertama beneran).
+  **fix form "✓ Verifikasi" sendiri yang blind ke satu termin (abaikan overpayment)**,
+  **keputusan produk: overpayment selalu diizinkan + peringatan non-blocking**, dan **fix
+  prinsip fidelitas — hapus pengurangan kode unik otomatis dari default Verifikasi** (fix
+  putaran sebelumnya sendiri yang melanggar prinsip ini, dikoreksi lagi atas penegasan
+  eksplisit user). Lihat 6 lesson di atas untuk detail lengkap. Fitur sudah live di production:
+  kode deployed, migration 0033 jalan, cron `installment-reminder` terjadwal jam 08:15
+  (diverifikasi respons `{"notified":0}`), toggle notifikasi sudah diaktifkan admin di tenant
+  `visikita`. **3 fix TERBARU (overpayment + 2 kali putaran fidelitas nominal) belum di-deploy
+  ke VPS** — masih di local, sudah commit — cek status sebelum lanjut. Belum ada uji nyata
+  end-to-end (menunggu invoice cicilan pertama beneran).
 - Sesi sebelumnya: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
   - **Riset arsitektur sebelum eksekusi**: baca ulang `docs/arsitektur-whatsapp.md`, `-billing.md`,

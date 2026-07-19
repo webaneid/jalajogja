@@ -793,6 +793,44 @@ unique_code > 0`) — setelah backfill, card "Kode Unik" di atas otomatis hilang
 dan admin hanya melihat kode yang benar (per termin, di tabel Jadwal Cicilan + hint form
 Verifikasi/Konfirmasi). Production dicek ulang — tetap 0 invoice cicilan, tidak perlu backfill.
 
+### Prinsip Terkunci: Fidelitas ke Nominal yang Customer Submit — Nol Perhitungan Otomatis (2026-07-19)
+
+> Ditegaskan eksplisit oleh user setelah fix di atas: "Apa yang tertulis di konfirmasi
+> pembayaran, nominal itulah yang harus dikirim ke admin, jangan sampai ada gap nominal dibuat
+> otomatis dan tidak sesuai dengan yang user kirim via konfirmasi form. itu bahaya."
+
+**Audit ulang menemukan tepat fix di atas (`verifyDefaultFor`) MELANGGAR prinsip ini** — default
+form "✓ Verifikasi" menghitung `payment.amount - (nextUnpaidTerm.uniqueCode ?? 0)`, secara diam-
+diam MENGURANGI nominal dari yang customer sungguhan submit (misalnya customer submit
+Rp 33.681 = term.amount+kode, form Verifikasi menampilkan default Rp 33.334 — angka BERBEDA).
+Kalau admin tidak sadar dan langsung klik "Konfirmasi", yang tercatat ke sistem BUKAN nominal
+yang customer benar-benar kirim & konfirmasi (via dialog "Pastikan nominal Anda sama persis
+dengan bukti transfer" di halaman publik) — persis gap berbahaya yang dimaksud user.
+
+**Fix**: `verifyDefaultFor` **dihapus**, diganti default = `payment.amount` PERSIS (tanpa
+pengurangan apa pun). Referensi "nominal yang seharusnya" (untuk `amountWarning` saja, BUKAN
+untuk default field) dipindah ke fungsi terpisah `verifyExpected()` = `term.amount + kode`
+(untuk cicilan) atau `invoice.remaining` (non-cicilan) — HANYA dipakai sebagai pembanding
+peringatan, tidak pernah menyentuh nilai yang benar-benar akan dikirim ke server.
+
+**Pemisahan tanggung jawab yang sekarang berlaku (prinsip permanen untuk seluruh form nominal
+admin di aplikasi ini)**:
+1. **DEFAULT field** = SELALU nilai sumber yang paling dekat dengan kebenaran (nominal yang
+   customer submit, kalau ada; kalau tidak ada — seperti form Konfirmasi Pembayaran manual
+   tanpa submission customer — baru boleh pakai nominal yang dihitung sistem, mis. nominal
+   termin berikutnya).
+2. **PERINGATAN (amountWarning)** = satu-satunya mekanisme yang boleh membandingkan nominal
+   terhadap "apa yang seharusnya" dan memberi tahu admin kalau beda — TIDAK PERNAH mengubah
+   nilai field secara diam-diam.
+3. Admin selalu punya kendali penuh untuk mengoreksi manual — sistem TIDAK PERNAH "membetulkan"
+   nominal atas nama admin tanpa sepengetahuan mereka.
+
+**Diaudit ulang, dikonfirmasi TIDAK ada gap serupa di tempat lain**: `toggleEditForm` (form
+"✎ Edit" bukti+metadata) sudah benar sejak awal (`setEditAmount(p.amount)`, tanpa modifikasi).
+`handleVerify`/`handlePay` mengirim persis apa yang ada di state field ke server, tanpa
+komputasi tambahan. Grep pola `amount - uniqueCode` di seluruh komponen billing — nol hasil
+lain selain yang sudah difix.
+
 ### Keputusan Produk: Overpayment Selalu Diizinkan + Peringatan Non-Blocking (2026-07-19)
 
 Menjawab temuan di atas (`confirmInvoicePaymentAction` sebelumnya MENOLAK nominal yang melebihi
