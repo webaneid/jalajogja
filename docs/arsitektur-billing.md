@@ -607,7 +607,8 @@ terkait di `agenda/[slug]/page.tsx`. Halaman event publik sekarang kembali tidak
 soal cicilan sama sekali — cicilan sepenuhnya hidup di sisi invoice.
 
 **Migration**: `packages/db/migrations/0033_installment_schedule_unique_code.sql` — WAJIB
-dijalankan di VPS SEBELUM deploy kode.
+dijalankan di VPS SEBELUM deploy kode. **Dikonfirmasi sudah jalan di production** (2026-07-19,
+verifikasi langsung via SSH — kolom `unique_code` ada di `installment_schedules` kedua tenant).
 
 ### Fase C — Notifikasi WA + Cron Reminder (SELESAI, 2026-07-19)
 
@@ -621,7 +622,56 @@ tersisa (`newStatus !== "paid"`) — pelunasan penuh cukup `payment_confirmed`/`
 standar (tidak diubah, sudah otomatis benar sejak Fase B). Cron baru terpisah
 `app/api/cron/installment-reminder/route.ts` (H-1 dan hari-H per termin) — terpisah dari
 `invoice-reminder` karena `invoices.dueDate` di-freeze ke termin pertama saja, tidak pernah
-diupdate untuk termin ke-2 dst. **Belum dijadwalkan di crontab VPS.**
+diupdate untuk termin ke-2 dst.
+
+**Status deploy production (diverifikasi 2026-07-19 via SSH langsung ke VPS)**: kode di commit
+yang sama dengan yang di-push, migration 0033 sudah jalan di kedua tenant aktif
+(`pc-ikpm-jogjakarta`, `visikita`), cron sudah dijadwalkan admin (`15 8 * * *`, diverifikasi
+respons `{"notified":0}` — wajar karena belum ada invoice cicilan sungguhan), GOWA gateway
+sehat, dan toggle notifikasi sudah diaktifkan admin di tenant `visikita`. **Fitur sudah
+sepenuhnya live** — belum ada uji nyata end-to-end (menunggu invoice cicilan pertama).
+
+### Keamanan — Audit Server Action Permission Guard (2026-07-19)
+
+> Ditemukan+difix di sesi audit pra-dokumentasi ini, terpisah dari bug `uniqueCode` di atas.
+
+**Temuan**: 4 Server Action READ (`getInvoiceListAction`, `getInvoiceDetailAction`,
+`getInstallmentPlanListAction`, `getInstallmentPlanDetailAction`) hanya memeriksa
+`getTenantAccess(slug)` (user valid di tenant ini, role APAPUN) — TIDAK memeriksa
+`hasReadAccess(access.tenantUser, "keuangan")`. Ini berbeda dari SEMUA action MUTASI di file
+yang sama (`createInvoiceAction`, `confirmInvoicePaymentAction`, `createInstallmentPlanAction`,
+dst) yang konsisten memakai `hasFullAccess(access.tenantUser, "keuangan")`.
+
+**Dampak nyata**: keempat action ini mengembalikan data sensitif — nama+HP+email customer,
+nominal transaksi, URL foto bukti transfer, dan (untuk installment) progres cicilan per
+invoice. `finance/layout.tsx` (layout modul, membungkus SEMUA halaman `/finance/*`) SUDAH
+benar memeriksa `hasReadAccess(...,"keuangan")` dan redirect kalau gagal — tapi ini HANYA
+menutup jalur "navigasi via UI". Next.js Server Actions adalah endpoint POST yang bisa dipanggil
+langsung (devtools/curl dengan cookie sesi valid) TANPA pernah membuka halaman yang
+memanggilnya — jadi guard di layout TIDAK melindungi pemanggilan langsung ke action.
+
+**Siapa yang sebenarnya terpapar**: 4 role sistem (`owner`, `ketua`, `sekretaris`, `bendahara`)
+semuanya sudah punya `keuangan` minimal `"read"` (lihat `lib/permissions.ts` `SYSTEM_PERMISSIONS`)
+— jadi TIDAK ADA user existing yang terdampak/berubah aksesnya. Yang benar-benar terpapar
+adalah **custom role** (fitur Role System, admin bisa buat role dengan `keuangan: "none"` untuk
+staf yang sengaja tidak boleh lihat data finansial, mis. staf khusus modul Anggota/Event) — user
+dengan role custom seperti itu SEBENARNYA masih bisa memanggil keempat action ini langsung dan
+membaca seluruh data invoice+cicilan tenant, melanggar batasan yang admin sudah set eksplisit.
+
+**Fix**: tambah `if (!hasReadAccess(access.tenantUser, "keuangan")) return {success:false,
+error:"Akses ditolak."};` ke keempat action, pola identik dengan guard mutasi yang sudah ada.
+`getEventTicketOptionsAction` (dipakai picker tiket saat admin buat program cicilan) SENGAJA
+TIDAK ditambah guard — datanya (nama tiket+harga) sudah publik lewat halaman event manapun,
+tidak ada kebocoran baru.
+
+**Tidak diperluas ke seluruh aplikasi** — pola yang sama (READ actions tanpa
+`hasReadAccess`/`hasFullAccess`, hanya `getTenantAccess`) SANGAT MUNGKIN ada di modul lain
+(`toko`, `donasi`, `event`, dll — belum diaudit). **Ditemukan juga 2 MUTATION action tanpa
+guard permission sama sekali** di file yang sama, di luar scope fitur cicilan:
+`updateAdminShippingTrackingAction` dan `updateFulfillmentStatusAction` (keduanya urusan
+resi/status pengiriman toko) — hanya cek `getTenantAccess`, tidak ada `hasFullAccess`. Dicatat
+sebagai technical debt terpisah, **BELUM difix** sesi ini — audit sengaja dibatasi ke bagian
+cicilan+billing-read yang langsung terkait instruksi user ("khusus di bagian ini saja").
 
 ### Bug Ditemukan Saat Audit Pra-Commit (2026-07-19) — `invoices.uniqueCode` Tidak Pernah Di-nolkan Saat Konversi
 

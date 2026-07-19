@@ -5,7 +5,7 @@ import type { InvoiceStatus } from "@jalajogja/db";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, generateFinancialNumber, settleInstallmentSchedules } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
-import { hasFullAccess } from "@/lib/permissions";
+import { hasFullAccess, hasReadAccess } from "@/lib/permissions";
 import { recordIncome } from "@jalajogja/db";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz } from "@/lib/tenant-timezone.server";
@@ -1187,6 +1187,8 @@ export async function getInvoiceListAction(
 ): Promise<ActionResult<{ rows: InvoiceListItem[]; total: number }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasReadAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
   const PAGE_SIZE = 20;
@@ -1334,6 +1336,8 @@ export async function getInvoiceDetailAction(
 ): Promise<ActionResult<InvoiceDetail>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasReadAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -1662,6 +1666,8 @@ export async function getInstallmentPlanListAction(
 ): Promise<ActionResult<InstallmentPlanListItem[]>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasReadAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 
@@ -1882,6 +1888,8 @@ export async function getInstallmentPlanDetailAction(
 ): Promise<ActionResult<InstallmentPlanDetail>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasReadAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
 
   const { db, schema } = createTenantDb(slug);
 

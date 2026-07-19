@@ -6646,11 +6646,60 @@ SEMUA titik yang menghitung status invoice (confirm, verify, display admin, disp
 kalau tidak dinetralkan, field itu jadi residual yang diam-diam merusak transisi status di
 model baru.
 
+### [2026-07-19] Audit Keamanan Pasca-Deploy: 4 Server Action Billing Tanpa `hasReadAccess` Guard
+
+> Diminta user setelah fitur cicilan live di production: "cek antara implemented code dan
+> arsitektur keduanya harus singkron... cek juga jika ada bug... atau celah keamanan... khusus
+> di bagian ini saja terlebih dahulu." Detail lengkap: `docs/arsitektur-billing.md` §
+> "Keamanan — Audit Server Action Permission Guard".
+
+**Temuan**: `getInvoiceListAction`, `getInvoiceDetailAction`, `getInstallmentPlanListAction`,
+`getInstallmentPlanDetailAction` (semua di `finance/billing/actions.ts`) hanya cek
+`getTenantAccess(slug)` (user valid di tenant, role apapun) — TIDAK cek
+`hasReadAccess(access.tenantUser, "keuangan")`. SEMUA mutation action di file yang sama
+(`confirmInvoicePaymentAction`, `createInstallmentPlanAction`, dst) konsisten pakai
+`hasFullAccess(...,"keuangan")` — read actions-nya yang jadi outlier.
+
+**Kenapa ini nyata, bukan cuma teoretis**: `finance/layout.tsx` (membungkus semua halaman
+`/finance/*`) SUDAH benar redirect kalau `!hasReadAccess(...,"keuangan")` — tapi guard di
+layout HANYA menutup jalur navigasi UI. Next.js Server Action adalah endpoint POST yang bisa
+dipanggil LANGSUNG (curl/devtools dengan cookie sesi valid) tanpa pernah membuka halaman yang
+memanggilnya — guard layout tidak melindungi pemanggilan langsung ke action. 4 role SISTEM
+(owner/ketua/sekretaris/bendahara) semua sudah punya `keuangan` minimal `"read"` jadi TIDAK ada
+user existing yang berubah aksesnya — tapi **custom role** (fitur Role System, admin bisa set
+`keuangan: "none"` untuk staf yang sengaja dibatasi) benar-benar bisa bypass batasan itu dan
+baca nama+HP+email customer, nominal transaksi, URL bukti transfer, progres cicilan — data yang
+admin sudah eksplisit putuskan TIDAK boleh mereka lihat.
+
+**Fix**: tambah `if (!hasReadAccess(access.tenantUser, "keuangan")) return {success:false,
+error:"Akses ditolak."}` ke keempat action, pola identik guard mutasi yang sudah ada.
+`getEventTicketOptionsAction` SENGAJA tidak disentuh (nama tiket+harga sudah publik di halaman
+event manapun, tidak ada kebocoran baru).
+
+**Ditemukan tapi TIDAK difix (di luar scope "khusus di bagian ini")**: 2 mutation action di
+file yang sama, `updateAdminShippingTrackingAction` dan `updateFulfillmentStatusAction`
+(fulfillment/resi toko), sama sekali tanpa guard permission apapun selain `getTenantAccess` —
+technical debt terpisah, dicatat untuk audit lanjutan.
+
+**Aturan digeneralisasi**: guard permission di LAYOUT/PAGE level (yang mengontrol apa yang
+ter-render ke browser) TIDAK PERNAH cukup sebagai satu-satunya lapis pertahanan untuk Server
+Action — Server Action adalah endpoint jaringan tersendiri yang bisa dipanggil independen dari
+halaman manapun. Setiap Server Action yang mengembalikan data sensitif (finansial, PII, bukti
+pembayaran) WAJIB punya guard permission sendiri di dalam fungsinya, sama ketatnya dengan
+action mutasi di modul yang sama — jangan asumsikan "kalau halamannya sudah dilindungi, action
+di baliknya otomatis aman". Pola audit yang berguna: dalam satu file actions.ts, bandingkan
+guard di action MUTASI vs action READ — kalau MUTASI konsisten pakai `hasFullAccess(...)` tapi
+READ cuma `getTenantAccess(...)` tanpa level check, itu sinyal kuat ada gap yang sama.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Notifikasi WhatsApp untuk Program Cicilan — 5 event baru** + **fix bug
-  `invoices.uniqueCode` tidak di-nolkan saat konversi cicilan** (ditemukan via audit pra-commit,
-  sesi 2026-07-19). Lihat 2 lesson di atas untuk detail lengkap. Sudah di-commit+push. Belum
-  dites manual end-to-end (butuh WA gateway aktif), cron baru belum dijadwalkan di crontab VPS.
+- Terakhir dikerjakan: **Notifikasi WhatsApp untuk Program Cicilan — 5 event baru** (sesi
+  2026-07-19), lalu 2 putaran audit pasca-deploy: **fix bug `invoices.uniqueCode` tidak
+  di-nolkan saat konversi cicilan** dan **fix 4 Server Action billing tanpa `hasReadAccess`
+  guard**. Lihat 3 lesson di atas untuk detail lengkap. Sudah di-commit (permission fix belum
+  di-push — cek status git sebelum lanjut). Fitur sudah live di production: kode deployed,
+  migration 0033 jalan, cron `installment-reminder` terjadwal jam 08:15 (diverifikasi respons
+  `{"notified":0}`), toggle notifikasi sudah diaktifkan admin di tenant `visikita`. Belum ada
+  uji nyata end-to-end (menunggu invoice cicilan pertama beneran).
 - Sesi sebelumnya: **WhatsApp Notification Fase 3 (Billing) + teks notifikasi editable per tenant** (sesi 2026-07-13).
 - Sesi ini (2026-07-13, lanjutan — WA Notification):
   - **Riset arsitektur sebelum eksekusi**: baca ulang `docs/arsitektur-whatsapp.md`, `-billing.md`,
