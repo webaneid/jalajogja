@@ -8009,8 +8009,20 @@ koneksi. Aplikasi kita tidak pernah pakai dashboard itu, selalu API langsung den
 **Tidak ada perbaikan kode** — WhatsApp eksplisit bilang restriksi ini "cannot be bypassed by
 the API", retry otomatis tidak membantu. Mitigasi cuma satu: kirim beberapa pesan manual dari
 HP yang ditautkan ke beberapa kontak dulu setelah pairing device baru, jangan langsung andalkan
-OTP otomatis ke kontak benar-benar baru di jam-jam pertama. Dicatat sebagai **known limitation
-platform WhatsApp** (§ 14.1 arsitektur-whatsapp.md), bukan technical debt yang perlu ditutup.
+OTP otomatis ke kontak benar-benar baru di jam-jam pertama. Restriksi ini **sementara** — hilang
+sendiri begitu nomor punya riwayat pengiriman wajar, bukan masalah permanen. Dicatat sebagai
+**known limitation platform WhatsApp** (§ 14.1 arsitektur-whatsapp.md), bukan technical debt.
+
+**Pertanyaan susulan user**: apakah penyebabnya karena jalakarta.com pakai SATU instance GOWA
+untuk SEMUA tenant (beda dengan project lain user yang punya GOWA server terpisah per device,
+URL beda-beda)? **Jawaban: tidak terkait sama sekali** — restriksi 463 beroperasi di level
+NOMOR/AKUN WhatsApp itu sendiri (pesan error eksplisit menyalahkan "the sending account", bukan
+server/IP). WhatsApp Web protocol tidak mengekspos info hosting ke WhatsApp — satu GOWA server
+menjalankan 5 device via `X-Device-Id` terlihat SAMA PERSIS dari sudut pandang WhatsApp dengan
+5 server terpisah 1-device masing-masing. Pindah ke server terpisah per tenant TIDAK akan
+mencegah/mempercepat lolos dari restriksi ini. Arsitektur "satu GOWA server untuk semua tenant"
+(keputusan sejak awal § 2) TETAP dipertahankan — tidak ada alasan berubah dari temuan ini.
+Detail lengkap: § 14.3 `docs/arsitektur-whatsapp.md`.
 
 **Temuan sampingan berguna**: GOWA versi yang di-deploy TERNYATA sudah punya endpoint gaya baru
 per-device (`GET /devices/{id}/status`, `POST /devices/{id}/reconnect`, `DELETE /devices/{id}`)

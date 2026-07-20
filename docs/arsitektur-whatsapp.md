@@ -1024,6 +1024,38 @@ dashboard itu tidak relevan sama sekali untuk kita. Jangan jadikan tampilan itu 
 diagnosa — pakai `GET /devices/{id}/status` (endpoint gaya baru, per-device) untuk cek live
 status sungguhan.
 
+### 14.3 Satu GOWA Server untuk Semua Tenant — TIDAK Berkontribusi ke Reach-Out Timelock
+
+**Pertanyaan susulan user**: apakah restriksi 463 (§ 14.1) terjadi karena jalakarta.com pakai
+**satu instance GOWA yang sama** untuk semua tenant (multi-device via `X-Device-Id` di satu
+server), berbeda dengan project lain milik user yang punya **GOWA server terpisah per device**
+(URL berbeda-beda, mis. `gowa-xxx.cgk-hello.sumopod.my.id` vs `gowa-yyy.cgk-moto.sumopod.my.id`)?
+
+**Jawaban: TIDAK terkait.** Restriksi reach-out timelock beroperasi di level **nomor/akun
+WhatsApp itu sendiri** — pesan error dari WhatsApp eksplisit menyalahkan "the sending
+**account**", bukan server/IP. WhatsApp Web protocol (yang dipakai `whatsmeow`, library inti
+GOWA) tidak mengekspos informasi "server hosting apa" ke WhatsApp — dari sudut pandang WhatsApp,
+satu GOWA server yang menjalankan 5 device secara paralel via `X-Device-Id` terlihat SAMA PERSIS
+dengan 5 GOWA server terpisah yang masing-masing menjalankan 1 device — keduanya sama-sama
+"5 sesi WhatsApp Web independen". Memindahkan tenant ke server GOWA sendiri-sendiri **tidak akan
+mencegah/mempercepat lolos dari restriksi ini** — nomor yang baru ditautkan tetap akan kena,
+di server manapun dia dijalankan.
+
+**Arsitektur "satu GOWA server untuk semua tenant" tetap dipertahankan** (keputusan sejak awal,
+§ 2 — "Satu instance GOWA untuk semua tenant... dipisahkan via `device_id = slug`") — alasan
+isolasi kegagalan (kalau 1 server down, semua tenant kena) BUKAN alasan yang relevan untuk kasus
+ini, karena bukan penyebab masalahnya. Kemungkinan besar setup "server terpisah per device" di
+project lain user dibangun untuk kebutuhan berbeda (isolasi kegagalan, atau dibuat sebelum GOWA
+versi kita punya dukungan multi-device via `X-Device-Id`) — bukan untuk menghindari reach-out
+timelock.
+
+**Catatan kejujuran**: WhatsApp tidak mempublikasikan algoritma anti-spam-nya secara detail —
+tidak bisa dipastikan 100% bahwa reputasi IP/server tidak pernah jadi faktor sekunder sama
+sekali. Tapi berdasarkan pesan error yang eksplisit ("the sending account"), dan fakta bahwa
+banyak pengguna sah WhatsApp Web resmi connect dari IP data center/cloud yang sama tanpa masalah
+kolektif, faktor utama yang terdokumentasi adalah reputasi NOMOR itu sendiri, bukan
+infrastruktur hosting-nya.
+
 ---
 
 ## 15. Koneksi ke File Lain
