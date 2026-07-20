@@ -138,19 +138,20 @@ export async function POST(req: NextRequest) {
       }
 
       // ── Mode DAFTAR BARU: belum ada di public.members ───────────────────────
-      // Cek duplikat email/phone di contacts
-      const dupContact = await db.query.contacts.findFirst({
-        where: or(eq(contacts.email, normalizedEmail), eq(contacts.phone, normalizedPhone)),
-      });
-      if (dupContact) {
-        // Apakah sudah linked ke member?
-        const linkedMember = await db.query.members.findFirst({
-          where: eq(members.contactId, dupContact.id),
-          columns: { id: true, betterAuthUserId: true },
-        });
-        if (linkedMember?.betterAuthUserId)
-          return NextResponse.json({ error: "Email atau nomor HP sudah terdaftar. Silakan masuk." }, { status: 409 });
-      }
+      // Cek duplikat email/phone — JOIN langsung ke members, JANGAN cari contact dulu.
+      // Satu email/nomor bisa muncul di banyak baris contacts (member sendiri, usaha,
+      // pesantren, profesional — masing-masing self-reported dengan contactId sendiri).
+      // Cari contact dulu lalu member terpisah bisa memilih baris yang TIDAK terhubung
+      // ke members sama sekali → duplikat lolos tidak terdeteksi meski emailnya sudah
+      // dipakai anggota lain yang sudah punya akun.
+      const [linkedMember] = await db
+        .select({ id: members.id, betterAuthUserId: members.betterAuthUserId })
+        .from(members)
+        .innerJoin(contacts, eq(contacts.id, members.contactId))
+        .where(or(eq(contacts.email, normalizedEmail), eq(contacts.phone, normalizedPhone)))
+        .limit(1);
+      if (linkedMember?.betterAuthUserId)
+        return NextResponse.json({ error: "Email atau nomor HP sudah terdaftar. Silakan masuk." }, { status: 409 });
 
       // Cek email di Better Auth (bisa saja sudah jadi admin di tenant lain)
       if (await checkEmailTaken())

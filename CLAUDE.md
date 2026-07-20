@@ -8257,12 +8257,53 @@ helper untuk entitas berbeda. Selalu JOIN dari sisi ENTITAS TARGET (di sini: `me
 helper, bukan sebaliknya — supaya filter "harus terhubung ke entitas ini" terjadi di level SQL
 (INNER JOIN), bukan diasumsikan benar dari "contact pertama yang ketemu".
 
+### [2026-07-21] Audit Lanjutan: Bug Sama Ditemukan Lagi di Register — Duplikat Lolos Tak Terdeteksi
+
+**Konfirmasi user**: setelah fix `lookup-member` di atas, user menegaskan requirement eksplisit —
+verifikasi donasi HARUS strict ke `members` (dan `profiles` sebagai fallback publik), TIDAK
+BOLEH pernah mencocokkan nomor yang cuma ada di data usaha/pesantren/profesional. Dikonfirmasi
+fix sebelumnya SUDAH benar secara struktural (`INNER JOIN members↔contacts` = hanya bisa
+mencocokkan contact yang ADA di kolom `members.contactId` — kolom itu terpisah total dari
+`member_businesses.contactId` dst, jadi tidak mungkin nyasar).
+
+**Audit menyeluruh** (grep pola `contacts.findFirst` + `eq(members.contactId, ...)` di seluruh
+`apps/web`) menemukan **satu lagi instance bug yang sama persis**, di `api/akun/register/route.ts`
+— pengecekan duplikat email/HP saat registrasi baru: `contacts.findFirst({where:
+or(email,phone)})` lalu `members.findFirst({where: eq(members.contactId, dupContact.id)})`
+TERPISAH. Dampaknya LEBIH SERIUS dari bug donasi: kalau `dupContact` yang terpilih kebetulan
+baris usaha/profesional (bukan yang terhubung ke `members`), pengecekan "sudah terdaftar" GAGAL
+mendeteksi — **orang bisa membuat akun KEDUA meski email/HP-nya sudah dipakai anggota lain yang
+sudah punya akun**, karena `linkedMember` jadi `undefined` (pengecekan duplikat di-skip).
+
+**Fix**: pola sama — ganti jadi `SELECT ... FROM members INNER JOIN contacts ... WHERE
+contacts.email = X OR contacts.phone = Y LIMIT 1`, hapus variabel `dupContact` perantara.
+
+**Audit lokasi lain**: semua pemakaian `contacts.findFirst` lain di codebase (`anggota/[id]/
+page.tsx`, `api/akun/profil/route.ts`, `lib/akun-identity.ts`) dikonfirmasi AMAN — semuanya
+mulai dari `contactId` milik entitas yang SUDAH diketahui (`member.contactId`,
+`business.contactId`, dst — fetch by primary key langsung), bukan mencari berdasarkan nilai yang
+bisa dipakai bersama (email/HP) lintas banyak baris. `lib/find-user-by-phone.ts` sudah lebih
+dulu benar (JOIN pattern, dipakai lesson sebelumnya).
+
+**Aturan digeneralisasi (diperkuat)**: kelas bug ini ("cari row di tabel helper dulu, baru cari
+entitas pemiliknya terpisah") TIDAK CUKUP diperbaiki di SATU titik yang dilaporkan — begitu
+ditemukan sekali, WAJIB grep pola yang sama (`{helperTable}.findFirst` diikuti
+`eq({entitas}.{fk}, hasil_pencarian_pertama)`) di SELURUH codebase, karena pola yang sama
+kemungkinan besar di-copy-paste ke tempat lain yang punya kebutuhan serupa (di sini: lookup dan
+register sama-sama butuh "cari member by phone/email", ditulis terpisah, sama-sama salah).
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build` sukses.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix bug sesungguhnya `lookup-member` — JOIN langsung ke members,
+- Terakhir dikerjakan: **Audit lanjutan menemukan bug sama di `register/route.ts`** (lihat
+  lesson di atas) — pengecekan duplikat email/HP saat registrasi bisa lolos kalau contact yang
+  kepilih adalah baris usaha/profesional, bukan yang terhubung member. Sudah difix dengan pola
+  JOIN yang sama. Audit lokasi lain dikonfirmasi aman. `tsc`+build bersih. Belum di-commit/push.
+- Sesi sebelumnya: **Fix bug sesungguhnya `lookup-member` — JOIN langsung ke members,
   bukan cari contact dulu** (lihat lesson di atas) — nomor HP yang dipakai di >1 profil
   (member+usaha+profesional) sebelumnya bisa salah pilih contact yang tidak terhubung member.
-  Diverifikasi lewat query manual ke production DB sebelum deploy. `tsc`+build bersih. Belum
-  di-commit/push.
+  Diverifikasi lewat query manual ke production DB sebelum deploy. Sudah di-commit dan
+  di-push (`38b8146`).
 - Sesi sebelumnya: **Fix bug rate-limit lookup-member + keputusan tunda fallback email
   notifikasi bisnis** (lihat lesson di atas) — `campaign-detail-client.tsx` dan
   `register-form.tsx` sekarang cek `res.ok` sebelum simpulkan "tidak ditemukan". Sudah
