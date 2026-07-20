@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useTransition, useRef } from "react";
+import { useState, useTransition, useRef, useEffect } from "react";
 import { use }           from "react";
 import { useRouter }     from "next/navigation";
 import { Button }        from "@/components/ui/button";
 import { Input }         from "@/components/ui/input";
 import { Label }         from "@/components/ui/label";
-import { MessageCircle, Loader2 } from "lucide-react";
+import { MessageCircle, Loader2, Mail } from "lucide-react";
 import { PhoneInput }    from "@/components/ui/phone-input";
 
 type Params = Promise<{ tenant: string }>;
-type Step   = "phone" | "otp";
+type Step   = "phone" | "otp" | "email" | "email_sent";
 
 export default function ForgotPasswordPage({ params }: { params: Params }) {
   const { tenant: slug } = use(params);
@@ -19,12 +19,52 @@ export default function ForgotPasswordPage({ params }: { params: Params }) {
   const [step,      setStep]      = useState<Step>("phone");
   const [phone,     setPhone]     = useState("");
   const [otp,       setOtp]       = useState("");
+  const [regEmail,  setRegEmail]  = useState("");
   const [error,     setError]     = useState<string | null>(null);
   const [notRegistered, setNotRegistered] = useState(false);
   const [pending,   start]        = useTransition();
   const [sending,   setSending]   = useState(false);
   const [countdown, setCountdown] = useState(0);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // WA Gateway bisa down/dibatasi WhatsApp (lihat docs/arsitektur-whatsapp.md § 14.1) —
+  // reset password TIDAK BOLEH ikut buntu karenanya. Beda dengan registrasi, di sini
+  // TIDAK BOLEH skip verifikasi sama sekali (siapa pun bisa reset password orang lain
+  // kalau cukup modal nomor HP-nya) — fallback-nya wajib verifikasi lain: email.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/wa/available?slug=${encodeURIComponent(slug)}`, { cache: "no-store" })
+      .then(res => res.json())
+      .then((data: { resetOtp?: boolean }) => {
+        if (!cancelled && !data.resetOtp) setStep("email");
+      })
+      .catch(() => { if (!cancelled) setStep("email"); });
+    return () => { cancelled = true; };
+  }, [slug]);
+
+  function handleEmailSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    start(async () => {
+      try {
+        const res = await fetch("/api/auth/request-password-reset", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({
+            email:      regEmail.trim(),
+            redirectTo: `/${slug}/reset-password`,
+          }),
+        });
+        if (!res.ok) {
+          setError("Gagal mengirim email reset. Coba lagi beberapa saat.");
+          return;
+        }
+        setStep("email_sent");
+      } catch {
+        setError("Terjadi kesalahan. Coba lagi.");
+      }
+    });
+  }
 
   function startCountdown() {
     setCountdown(60);
@@ -112,14 +152,19 @@ export default function ForgotPasswordPage({ params }: { params: Params }) {
       <div className="w-full max-w-sm space-y-6">
 
         <div className="text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 mx-auto mb-3">
-            <MessageCircle className="h-6 w-6 text-green-600" />
+          <div className={`flex h-12 w-12 items-center justify-center rounded-full mx-auto mb-3 ${
+            step === "email" || step === "email_sent" ? "bg-blue-100" : "bg-green-100"
+          }`}>
+            {step === "email" || step === "email_sent"
+              ? <Mail className="h-6 w-6 text-blue-600" />
+              : <MessageCircle className="h-6 w-6 text-green-600" />}
           </div>
           <h1 className="text-2xl font-bold">Lupa Password</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {step === "phone"
-              ? "Masukkan nomor WhatsApp Anda untuk menerima kode verifikasi."
-              : `Kode OTP telah dikirim ke ${phone}`}
+            {step === "phone"        ? "Masukkan nomor WhatsApp Anda untuk menerima kode verifikasi." :
+             step === "otp"          ? `Kode OTP telah dikirim ke ${phone}` :
+             step === "email"        ? "Verifikasi WhatsApp sementara tidak tersedia — masukkan email akun Anda, kami kirim tautan reset password." :
+                                        "Tautan reset password sudah dikirim."}
           </p>
         </div>
 
@@ -200,6 +245,37 @@ export default function ForgotPasswordPage({ params }: { params: Params }) {
                 Ubah nomor
               </button>
             </div>
+          </div>
+        )}
+
+        {/* ── Fallback: WA tidak tersedia → verifikasi via email ────────────── */}
+        {step === "email" && (
+          <form onSubmit={handleEmailSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="reset-email">Email</Label>
+              <Input
+                id="reset-email"
+                type="email"
+                value={regEmail}
+                onChange={(e) => setRegEmail(e.target.value)}
+                placeholder="nama@email.com"
+                required
+                autoFocus
+              />
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" className="w-full" disabled={pending}>
+              {pending
+                ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Mengirim...</>
+                : "Kirim Tautan Reset"}
+            </Button>
+          </form>
+        )}
+
+        {step === "email_sent" && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            Kalau email <strong>{regEmail}</strong> terdaftar, kami sudah kirim tautan reset
+            password ke sana. Cek inbox (dan folder spam) — tautan berlaku 1 jam.
           </div>
         )}
 

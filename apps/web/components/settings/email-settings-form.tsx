@@ -7,7 +7,7 @@ import { Eye, EyeOff, Send } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { saveSmtpConfigAction } from "@/app/(dashboard)/app/[tenant]/settings/actions";
+import { saveSmtpConfigAction, sendTestEmailAction } from "@/app/(dashboard)/app/[tenant]/settings/actions";
 
 type DefaultValues = {
   host: string; port: number; user: string; password: string;
@@ -42,16 +42,19 @@ export function EmailSettingsForm({
   }
 
   async function handleTest() {
-    if (!values.host || !values.user) {
-      toast.error("Isi host dan user terlebih dahulu.");
+    if (!values.host || !values.user || !values.password) {
+      toast.error("Isi host, user, dan password terlebih dahulu.");
       return;
     }
     setTesting(true);
     toast.info("Mengirim email test...");
-    // TODO: implement test email server action
-    await new Promise((r) => setTimeout(r, 1500));
-    toast.success("Email test berhasil dikirim. Cek inbox kamu.");
-    setTesting(false);
+    try {
+      const result = await sendTestEmailAction(slug, values);
+      if (result.error) toast.error(result.error);
+      else toast.success("Email test berhasil dikirim. Cek inbox kamu.");
+    } finally {
+      setTesting(false);
+    }
   }
 
   return (

@@ -317,6 +317,41 @@ export async function saveSmtpConfigAction(
   return {};
 }
 
+/**
+ * Kirim email test pakai konfigurasi SMTP yang SEDANG DIISI di form (bukan yang
+ * tersimpan di DB) — supaya admin bisa cek sebelum klik Simpan.
+ */
+export async function sendTestEmailAction(
+  slug: string,
+  values: {
+    host: string;
+    port: number;
+    user: string;
+    password: string;
+    fromName: string;
+    fromEmail: string;
+  }
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+
+  const { getCurrentSession } = await import("@/lib/tenant");
+  const session = await getCurrentSession();
+  const targetEmail = session?.user?.email ?? (values.fromEmail || values.user);
+  if (!targetEmail) return { error: "Tidak ada alamat tujuan — isi Email Pengirim dulu." };
+
+  const { sendTenantMail } = await import("@/lib/mail");
+  const result = await sendTenantMail(values, {
+    to:      targetEmail,
+    subject: "Email Test — Konfigurasi SMTP",
+    html:    `<p>Ini email test dari pengaturan SMTP tenant <strong>${slug}</strong>. Kalau Anda menerima ini, konfigurasi SMTP sudah benar.</p>`,
+  });
+
+  if (!result.ok) return { error: result.error };
+  return {};
+}
+
 // ── Notifikasi ────────────────────────────────────────────────────────────────
 export async function saveNotificationSettingsAction(
   slug: string,

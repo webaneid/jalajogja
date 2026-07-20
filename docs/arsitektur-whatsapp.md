@@ -1002,6 +1002,13 @@ melonggar seiring waktu begitu nomor membangun riwayat pengiriman yang wajar (bu
 spam massal ke kontak asing). **Tidak ada cara memperbaikinya dari sisi kode** — mengulang
 retry otomatis TIDAK akan membantu selama restriksi masih aktif.
 
+**Fallback level aplikasi SUDAH dibangun (2026-07-21)** — supaya insiden ban seperti ini tidak
+lagi membuat registrasi/reset-password buntu total di tenant yang kena. Lihat
+`docs/arsitektur-login-universal.md` § Registrasi + § Lupa Password: registrasi otomatis skip
+OTP (langsung daftar tanpa verifikasi nomor) via `GET /api/wa/available`, reset password fallback
+ke email native Better Auth (`lib/mail.ts` `sendPlatformMail()`, SMTP env var platform) — bukan
+skip verifikasi (reset password tetap wajib diverifikasi, cuma medianya beralih ke email).
+
 ### 14.2 Multi-Device GOWA — Genuinely Konkuren, Bukan "Satu Aktif dalam Satu Waktu"
 
 **Klarifikasi arsitektur** (ditanyakan user 2026-07-20, dikonfirmasi via dokumentasi resmi

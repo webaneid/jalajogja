@@ -138,7 +138,18 @@ Sudah punya akun? [Masuk di sini]
 - Jika ditemukan: auto-isi nama, tampilkan banner info
 - Jika tidak: registrasi normal sebagai akun umum
 
-### Flow Registrasi (✅ SELESAI termasuk OTP wajib)
+### Flow Registrasi (✅ SELESAI — OTP kondisional otomatis, 2026-07-21)
+
+> **SUPERSEDED**: kalimat "OTP tidak bisa dinonaktifkan" di bawah ini pernah jadi keputusan
+> terkunci, tapi direvisi setelah insiden nyata 2026-07-20 (`docs/arsitektur-whatsapp.md` §
+> 14.1) — nomor WA sebuah tenant kena restriksi WhatsApp, registrasi di tenant itu buntu total
+> tanpa fallback. Sekarang OTP registrasi otomatis di-skip kalau WA tidak tersedia — BUKAN via
+> toggle manual yang bisa lupa dinyalakan admin saat kejadian, tapi via pengecekan live setiap
+> submit ke `GET /api/wa/available` (endpoint ini sebenarnya SUDAH dibuat sejak awal untuk
+> tujuan ini — komentarnya sendiri bilang "dipakai oleh register form dan forgot-password untuk
+> memutuskan apakah tampilkan OTP step" — tapi tidak pernah benar-benar dipanggil sampai fix
+> ini).
+
 ```
 User pilih jalur:
   ├─ "Anggota IKPM Gontor" → isi stambuk (opsional) + form
@@ -146,11 +157,10 @@ User pilih jalur:
 
 Isi form (nama, email, HP, WA, password)
   ↓
-Submit → POST /api/akun/send-otp (type="register")
-  ↓  ← OTP WAJIB, tidak bisa skip
-Tampilkan step input OTP 6 digit (inline, tidak ada halaman baru)
-  ↓
-POST /api/akun/verify-otp → { valid: true }
+Submit → GET /api/wa/available?slug=X → { registerOtp: boolean }
+  ├─ registerOtp = true  → POST /api/akun/send-otp (type="register")
+  │                         → step input OTP 6 digit → verify-otp → doRegister()
+  └─ registerOtp = false → doRegister() LANGSUNG, tanpa verifikasi nomor sama sekali
   ↓
 doRegister() → POST /api/akun/register:
   - Jalur IKPM: cari member via stambuk/email/HP
@@ -163,14 +173,42 @@ Auto login via authClient.signIn.email()
 window.location.href = /{slug}/akun
 ```
 
-**OTP tidak bisa dinonaktifkan** — ini keputusan desain yang dikunci.
+**Kenapa aman skip verifikasi nomor saat fallback**: registrasi bukan aksi sensitif — tidak ada
+yang bisa "diambil alih" hanya dengan tahu nomor HP orang lain, beda dengan reset password (lihat
+di bawah). Risiko terburuk: seseorang daftar dengan nomor yang bukan miliknya — sama persis
+risiko yang sudah diterima SEBELUM fitur OTP register pernah ada.
 OTP inline (state machine di form yang sama) — tidak ada halaman `/register/verify` terpisah.
 
 ---
 
 ## Halaman Lupa Password (`/forgot-password`)
 
-### UI — WA OTP Only (✅ SELESAI)
+### UI — WA OTP + Fallback Email (✅ SELESAI, direvisi 2026-07-21)
+
+> **SUPERSEDED**: "Email tab dihapus — WA OTP saja" (di bawah) adalah keputusan lama, direvisi
+> setelah insiden WA ban 2026-07-20 (`docs/arsitektur-whatsapp.md` § 14.1). Beda dengan
+> registrasi, reset password **TIDAK BOLEH** skip verifikasi sama sekali saat WA down — itu
+> lubang keamanan (siapa saja bisa reset password orang lain cuma modal nomor HP-nya). Fallback-
+> nya WAJIB verifikasi lain: email, via jalur native Better Auth (`sendResetPassword`, sebelumnya
+> tidak pernah dikonfigurasi sama sekali — `POST /api/auth/request-password-reset` akan selalu
+> error `RESET_PASSWORD_DISABLED` tanpa ini).
+
+```
+Step 1 — cek /api/wa/available:
+  ├─ resetOtp = true  → alur WA OTP (seperti semula, lihat di bawah)
+  └─ resetOtp = false → step berubah otomatis ke form EMAIL:
+       Input email → POST /api/auth/request-password-reset
+                      { email, redirectTo: /{slug}/reset-password }
+                      ↓
+       Better Auth generate token → emailAndPassword.sendResetPassword()
+       di lib/auth.ts → sendPlatformMail() (lib/mail.ts, SMTP env var platform)
+                      ↓
+       "Kalau email terdaftar, cek inbox" (pesan generik, cegah user enumeration)
+                      ↓
+       User klik link di email → /{slug}/reset-password?token=X (flow sama seperti WA)
+```
+
+**Alur WA OTP (kalau tersedia) — tidak berubah dari sebelumnya:**
 ```
 Step 1 — nomor WA:           Step 2 — kode OTP:
 ┌─────────────────────┐      ┌─────────────────────┐
@@ -180,8 +218,6 @@ Step 1 — nomor WA:           Step 2 — kode OTP:
 └─────────────────────┘      │ Kirim ulang / Ubah  │
                              └─────────────────────┘
 ```
-
-### Flow (WA OTP saja — tidak ada email)
 1. Input nomor WA → `POST /api/akun/send-otp` (type=`"reset_password"`)
 2. Input 6 digit OTP → `POST /api/akun/verify-otp`
 3. Server inject token ke `public.verification` (Better Auth internal table):
@@ -196,9 +232,18 @@ Step 1 — nomor WA:           Step 2 — kode OTP:
 5. User input password baru → `authClient.resetPassword({ newPassword, token })`
 
 ### Keputusan desain yang dikunci
-- Email tab dihapus — WA OTP saja. Alasan: lebih cepat, tidak butuh konfigurasi SMTP tenant.
-- Token inject langsung ke Better Auth `verification` table → `resetPassword()` client bekerja normal.
-- TTL token: 15 menit (lebih ketat dari link email 1 jam).
+- Deteksi WA/email OTOMATIS via `/api/wa/available` — bukan toggle manual, supaya tidak
+  tergantung admin sadar+bertindak saat kejadian (mirip pola register).
+- Fallback email pakai SMTP **platform** (env var `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`,
+  `lib/mail.ts` `sendPlatformMail()`), BUKAN SMTP per-tenant (`settings.smtp_config`) — alasan:
+  ini jalur auth-critical, harus selalu jalan terlepas tenant sudah setting SMTP sendiri atau
+  belum. SMTP per-tenant (`/settings/email`) tetap ada terpisah, untuk notifikasi bisnis
+  bermerek tenant (anggota baru, pembayaran) — dua concern berbeda, dua transport berbeda.
+- Token inject langsung ke Better Auth `verification` table (jalur WA) → `resetPassword()`
+  client bekerja normal. TTL token WA: 15 menit. Token dari jalur email native Better Auth: 1 jam
+  (default Better Auth, tidak di-override).
+- Kalau `/api/wa/available` gagal di-fetch sama sekali (network error) → default ke jalur email
+  juga (fail-safe ke arah yang paling mungkin masih berfungsi).
 
 ---
 

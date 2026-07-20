@@ -276,7 +276,11 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
     triggerLookup({ phone: val });
   }
 
-  // ── Submit form → kirim OTP (wajib) ─────────────────────────────────────
+  // ── Submit form → kirim OTP kalau WA tersedia, kalau tidak daftar langsung ──
+  // WA Gateway bisa down/dibatasi WhatsApp (lihat docs/arsitektur-whatsapp.md § 14.1) —
+  // registrasi TIDAK BOLEH ikut buntu karenanya. Cek /api/wa/available (endpoint yang
+  // memang dibuat untuk ini, sebelumnya tidak pernah dipanggil) setiap submit — bukan
+  // toggle manual yang bisa lupa dinyalakan admin saat kejadian.
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -286,6 +290,16 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
 
     start(async () => {
       try {
+        const availRes  = await fetch(`/api/wa/available?slug=${encodeURIComponent(slug)}`, { cache: "no-store" });
+        const availData = await availRes.json() as { registerOtp?: boolean };
+
+        if (!availData.registerOtp) {
+          // WA tidak tersedia / OTP registrasi belum diaktifkan admin → daftar langsung
+          // tanpa verifikasi nomor, persis alur sebelum fitur OTP ada.
+          await doRegister();
+          return;
+        }
+
         const otpRes  = await fetch("/api/akun/send-otp", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

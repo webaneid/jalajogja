@@ -8032,11 +8032,92 @@ memanggil delete apa pun, cuma logout — konsisten dengan lesson sebelumnya, ta
 opsi kalau suatu saat "Nonaktifkan" ingin benar-benar hapus device dari GOWA, bukan cuma
 putus sesi). Dicatat di § 2.4 dokumen arsitektur, belum diintegrasikan ke kode.
 
+### [2026-07-21] Fallback Registrasi + Reset Password Saat WA Gateway Down — SMTP Platform Baru
+
+> Konteks: langsung menyusul insiden ban WA nomor `pc-ikpm-jogjakarta` (lesson di atas). User
+> sadar risiko sistemik: registrasi & lupa-password **wajib** WA, tidak ada jalan lain kalau WA
+> down/dibatasi lagi ke depan (dan ini AKAN terulang — lihat § 14.1 `docs/arsitektur-whatsapp.md`,
+> restriksi WhatsApp bisa kena tenant manapun, bukan cuma sekali kejadian).
+
+**Temuan sebelum eksekusi**: endpoint `GET /api/wa/available` **sudah ada sejak lama**, komentar
+di kode-nya sendiri eksplisit bilang "dipakai oleh register form dan forgot-password untuk
+memutuskan apakah tampilkan OTP step" — tapi grep membuktikan **tidak pernah dipanggil dari
+manapun**. Infrastruktur untuk fallback ini sebenarnya sudah direncanakan sejak awal, cuma tidak
+pernah benar-benar disambungkan. Ditemukan juga: `lib/auth.ts` (Better Auth) **tidak punya
+`sendResetPassword` callback sama sekali** — `POST /api/auth/request-password-reset` akan SELALU
+error `RESET_PASSWORD_DISABLED` (dikonfirmasi baca source Better Auth 1.6.2 langsung, bukan
+tebakan). Dan seluruh sistem "Email/SMTP" di `/settings/email` ternyata **facade murni** —
+`nodemailer` bahkan belum terinstall di project, tombol "Kirim Test Email" cuma
+`// TODO: implement test email server action` (tunggu 1.5 detik, selalu tampil "berhasil" tanpa
+kirim apa pun). Dicek juga: 0 baris `smtp_config` tersimpan di DB kedua tenant produksi — jadi
+tidak ada regresi terhadap konfigurasi existing.
+
+**Keputusan arsitektur — DUA transport SMTP terpisah, bukan satu** (dikonfirmasi via
+`AskUserQuestion`, user pilih "keduanya sekaligus"):
+1. **`sendPlatformMail()`** (`lib/mail.ts`) — SMTP dari **env var server** (`SMTP_HOST`/
+   `SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`), satu akun untuk SEMUA tenant. Dipakai HANYA
+   untuk hal **auth-critical** yang harus selalu jalan terlepas tenant sudah setting SMTP sendiri
+   atau belum: `sendResetPassword` Better Auth. **Kredensial tidak pernah disimpan di DB** —
+   murni server-side env, konsisten dengan pola `WHATSAPP_API_PASS` dst.
+2. **`sendTenantMail()`** (`lib/mail.ts`) — SMTP milik tenant sendiri (`settings.smtp_config`,
+   form `/settings/email` yang sudah ada), untuk notifikasi bisnis bermerek tenant (anggota baru,
+   pembayaran). Sekarang genuinely berfungsi — `sendTestEmailAction` baru dipasang ke tombol
+   "Kirim Test Email" (mengirim ke email admin yang sedang login, via `getCurrentSession()`).
+
+**Kenapa dua transport, bukan satu**: kalau reset-password ikut bergantung ke SMTP TENANT
+(`smtp_config`), fallback-nya sendiri jadi rapuh — sama persis kelas masalah yang baru saja
+terjadi dengan WA (satu titik kegagalan per tenant). SMTP platform sengaja independen dari
+konfigurasi tenant manapun.
+
+**Register — fallback aman (skip verifikasi total), Reset Password — fallback wajib verifikasi
+lain (tidak boleh skip)**: dua flow ini punya profil risiko BEDA, ditangani BEDA:
+- `register-form.tsx` — `handleSubmit` sekarang cek `GET /api/wa/available` (live, setiap
+  submit — BUKAN toggle manual yang bisa lupa dinyalakan admin saat kejadian) → kalau
+  `registerOtp: false`, `doRegister()` dipanggil LANGSUNG tanpa verifikasi nomor sama sekali —
+  persis alur sebelum fitur OTP register pernah ada. **Aman** karena registrasi bukan aksi
+  sensitif (tidak ada yang bisa diambil alih hanya dengan tahu nomor HP orang lain).
+- `forgot-password/page.tsx` — **TIDAK BOLEH** skip verifikasi (kalau boleh, siapa saja bisa
+  reset password orang lain cuma modal nomor HP-nya — lubang keamanan nyata). `useEffect` cek
+  `resetOtp` dari `/api/wa/available` saat mount → kalau `false`, `step` otomatis pindah ke form
+  EMAIL baru (`step: "email"` → `POST /api/auth/request-password-reset` → Better Auth
+  `sendResetPassword` → `sendPlatformMail()`) — verifikasi TETAP wajib, cuma medianya beralih.
+  Fail-safe: kalau fetch `/api/wa/available` sendiri gagal (network error) → default ke email
+  juga (arah yang paling mungkin masih hidup).
+
+**Aturan digeneralisasi**: kalau sebuah flow AUTH punya SATU jalur verifikasi (di sini: WA OTP)
+dan jalur itu bisa down karena faktor eksternal (ban platform, service down, dst) — WAJIB
+dibedakan dulu: apakah aksi di baliknya SENSITIF (bisa disalahgunakan tanpa verifikasi — reset
+password, ganti email, dst → butuh fallback verifikasi LAIN, tidak boleh di-skip) atau TIDAK
+sensitif (registrasi baru, konfirmasi kontak opsional → aman di-skip sepenuhnya saat channel
+utama down). Jangan pukul rata "kalau OTP gagal, ya sudah lewati saja" untuk SEMUA flow — itu
+baru benar untuk kelas pertama, berbahaya untuk kelas kedua.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db`. `bun run build` sukses
+(dev server dimatikan dulu, `.next` dibersihkan) — dicek eksplisit `lib/mail.ts` (pakai
+`import "server-only"`) tidak bocor ke client bundle, konsisten dengan lesson lama soal
+client/server boundary. **Env var `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`
+BELUM diset di VPS** — user diminta menambahkannya sendiri langsung di `.env.local` server
+(App Password Gmail, BUKAN password akun biasa — butuh 2-Step Verification aktif dulu di akun
+Google-nya) — kredensial ini TIDAK PERNAH diminta/ditempel ke chat, sesuai prinsip jangan pernah
+memasukkan secret ke transcript. Sampai env var itu diisi, `isPlatformMailConfigured()` return
+`false` dan `sendResetPassword` diam-diam gagal (di-log ke server, TIDAK melempar error ke
+Better Auth's response — pesan generik "cek email Anda" tetap tampil ke user, konsisten dengan
+anti-user-enumeration Better Auth) — reset password lewat email baru benar-benar terkirim
+setelah env var diisi + PM2 di-restart. Belum dites end-to-end (butuh env var + kejadian nyata
+WA down untuk trigger fallback, atau uji manual dengan mematikan toggle `otp_register`/
+`otp_reset_password` admin sementara).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Diagnosa OTP 503 — root cause WhatsApp error 463 reach-out timelock,
-  bukan bug kode** (lihat lesson di atas) — murni investigasi via SSH+log GOWA, TIDAK ADA
-  perubahan kode. Dokumentasi ditambah di `docs/arsitektur-whatsapp.md` § 14.1/14.2/2.4 +
-  CLAUDE.md. Belum ada commit untuk sesi ini (dokumentasi menunggu instruksi push).
+- Terakhir dikerjakan: **Fallback email untuk registrasi + reset password saat WA Gateway
+  down** (lihat lesson di atas) — `lib/mail.ts` baru (dua transport: platform via env var untuk
+  auth-critical, tenant via `smtp_config` untuk notifikasi bisnis), Better Auth `sendResetPassword`
+  di-wire, register-form.tsx skip OTP otomatis saat WA unavailable, forgot-password/page.tsx
+  fallback ke form email, "Kirim Test Email" diperbaiki jadi sungguhan. `tsc`+build bersih di
+  kedua package. Belum di-commit/push — menunggu instruksi. **Env var SMTP platform belum diset
+  di VPS** (perlu ditambahkan user sendiri, App Password Gmail).
+- Sesi sebelumnya: **Diagnosa OTP 503 — root cause WhatsApp error 463 reach-out timelock,
+  bukan bug kode** (lihat lesson di atas) — murni investigasi via SSH+log GOWA. Sudah di-commit
+  dan di-push (`10ee3fd`, `8e7acf9`).
 - Sesi sebelumnya: **Fix crash `deactivateWhatsAppAction` — `settings.value` JSONB NOT
   NULL tidak boleh ditulis `null`** (lihat lesson di atas) — helper `deleteSetting()` baru,
   ganti `upsertSettings(..., {whatsapp_config: null})` jadi DELETE row. Sudah di-commit dan
