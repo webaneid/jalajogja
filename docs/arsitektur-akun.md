@@ -340,6 +340,41 @@ app/(public)/[tenant]/
 
 ---
 
+## Mobile "App Mode" + Kartu Anggota (2026-07-21)
+
+> Detail teknis lengkap (spacer, z-index, skema header): `docs/arsitektur-mobile-shell.md` § 2.3.
+
+Di layar mobile (`<768px`), SELURUH `/akun/*` (semua kedalaman) beralih ke tampilan "app mode"
+mandiri — terinspirasi referensi desain fintech (`design-refs/akun/design-mobile-akun.jpg`,
+konsep visual saja, TIDAK ditiru literal — tidak ada saldo/deposit/withdraw/beneficiary, itu
+konsep bank yang tidak relevan untuk platform ini):
+
+- **Header situs + `BottomNav` situs disembunyikan total** (dideteksi via
+  `isAkunAppMode(pathname, baseUrl)`, `lib/mobile-route-checks.ts`), diganti chrome milik
+  `/akun` sendiri.
+- **`AkunMobileHeader`** (`components/akun/mobile/akun-mobile-header.tsx`) — avatar + "Halo,
+  {nama}" + badge label (org member label / "Akun Publik") + ikon lonceng notifikasi
+  **non-fungsi** (belum ada sistem notifikasi in-app — murni visual, keputusan sadar, bukan
+  belum sempat, lihat sesi 2026-07-21).
+- **`MemberCard`** (`components/akun/mobile/member-card.tsx`) — kartu identitas bergaya "kartu
+  anggota", HANYA tampil di dashboard (`akun/page.tsx`, bagian mobile-only). Warna ikut tema
+  tenant (`bg-primary`/`text-primary-foreground`, CSS var — BUKAN warna hardcode dari mockup
+  referensi). Isi: logo+nama tenant, nama anggota, No. Anggota (mono, meniru "nomor kartu"),
+  PC IKPM cabang, badge status. Varian `type==="public"` lebih sederhana (tanpa No. Anggota/PC
+  IKPM — akun publik tidak punya data itu).
+- **`AkunBottomNav`** (`components/akun/mobile/akun-bottom-nav.tsx`) — bottom tab bar khusus
+  akun: 3 tab utama (Beranda/Transaksi/Profil) + tombol "Lainnya" (drawer slide-up berisi sisa
+  item nav + tombol Keluar). Daftar item nav **diimpor dari `akun-nav.tsx`**
+  (`MEMBER_NAV_ITEMS`/`PUBLIC_NAV_ITEMS`, di-export supaya sidebar desktop dan bottom nav mobile
+  tidak punya 2 daftar independen yang bisa drift).
+
+**Desktop (`≥768px`) TIDAK DISENTUH SAMA SEKALI** — sidebar+konten existing di
+`akun/layout.tsx`/`akun/page.tsx` tetap identik seperti sebelum fitur ini. Perubahan 100%
+di-scope via `hidden md:block`/`hidden md:flex` (desktop) vs `md:hidden` (mobile) — pola split
+yang sama dipakai di halaman detail Event/Campaign/Produk sebelumnya.
+
+---
+
 ## Data Usaha Anggota (`/akun/usaha`)
 
 ### Arsitektur Penyimpanan

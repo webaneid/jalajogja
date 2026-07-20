@@ -43,3 +43,13 @@ export function hasOwnMobileActionBar(pathname: string, baseUrl: string): boolea
   const segments = segmentsOf(pathname, baseUrl);
   return segments.length === 1 && PAGES_WITH_OWN_MOBILE_ACTION_BAR.has(segments[0]);
 }
+
+// Skema KETIGA (beda dari isSingleMobileRoute yang khusus "detail+gambar" dan
+// hasOwnMobileActionBar yang cuma sembunyikan BottomNav) — SELURUH /akun/* (semua kedalaman:
+// /akun, /akun/profil, /akun/mitra/pesanan, dst) jadi "app mode" sendiri di mobile: header
+// situs DAN BottomNav situs disembunyikan total, diganti header+bottom-nav milik akun sendiri
+// (lihat components/akun/mobile/). docs/arsitektur-mobile-shell.md § 2.
+export function isAkunAppMode(pathname: string, baseUrl: string): boolean {
+  const segments = segmentsOf(pathname, baseUrl);
+  return segments[0] === "akun";
+}

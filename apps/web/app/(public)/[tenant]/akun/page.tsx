@@ -3,9 +3,10 @@ import { headers }   from "next/headers";
 import { eq, and }   from "drizzle-orm";
 import { auth }      from "@/lib/auth";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
-import { db, tenantMemberships, tenants, members, refIkpmCabang } from "@jalajogja/db";
+import { createTenantDb, getSettings, db, tenantMemberships, tenants, members, refIkpmCabang } from "@jalajogja/db";
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import { resolveOrgLabels } from "@/lib/tenant-org-label";
+import { MemberCard } from "@/components/akun/mobile/member-card";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
   ShoppingBag, AlertCircle, Building2, BookOpen, ImageIcon, Briefcase,
@@ -92,25 +93,34 @@ export default async function AkunPage({ params }: { params: Params }) {
     }
   }
 
-  return (
-    <div className="space-y-6">
+  // Branding tenant (logo+nama) — untuk MemberCard mobile saja
+  const tenantClient    = createTenantDb(slug);
+  const generalSettings = await getSettings(tenantClient, "general");
+  const logoUrl          = (generalSettings.logo_url  as string | undefined) ?? null;
+  const siteName          = (generalSettings.site_name as string | undefined) ?? slug;
 
-      {/* Banner lengkapi data */}
-      {isMember && isIncomplete && (
-        <a
-          href={`${baseUrl}/akun/lengkapi`}
-          className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 p-4 hover:bg-amber-100 dark:hover:bg-amber-900 transition-colors"
-        >
-          <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Data Keanggotaan Belum Lengkap</p>
-            <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
-              Lengkapi data diri agar profil keanggotaan terdaftar dengan benar.
-            </p>
-          </div>
-          <span className="text-xs text-amber-700 dark:text-amber-300 font-medium shrink-0 mt-0.5">Lengkapi →</span>
-        </a>
-      )}
+  const completeBanner = isMember && isIncomplete && (
+    <a
+      href={`${baseUrl}/akun/lengkapi`}
+      className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 p-4 hover:bg-amber-100 dark:hover:bg-amber-900 transition-colors"
+    >
+      <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Data Keanggotaan Belum Lengkap</p>
+        <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+          Lengkapi data diri agar profil keanggotaan terdaftar dengan benar.
+        </p>
+      </div>
+      <span className="text-xs text-amber-700 dark:text-amber-300 font-medium shrink-0 mt-0.5">Lengkapi →</span>
+    </a>
+  );
+
+  return (
+    <>
+    {/* ══════════ Desktop (≥md) — TIDAK diubah ══════════ */}
+    <div className="hidden md:block space-y-6">
+
+      {completeBanner}
 
       {/* Info keanggotaan (anggota saja) */}
       {isMember && (
@@ -207,5 +217,81 @@ export default async function AkunPage({ params }: { params: Params }) {
         ))}
       </div>
     </div>
+
+    {/* ══════════ Mobile (<md) — kartu anggota + quick actions ══════════ */}
+    <div className="md:hidden space-y-4">
+
+      {completeBanner}
+
+      <MemberCard
+        type={identity.type}
+        name={identity.name}
+        photoUrl={identity.photoUrl}
+        memberNumber={membershipInfo?.memberNumber ?? null}
+        stambuk={identity.stambuk}
+        primaryCabangNama={membershipInfo?.primaryCabangNama ?? null}
+        orgLabel={isMember ? orgMemberLabel : "Akun Publik"}
+        logoUrl={logoUrl}
+        siteName={siteName}
+      />
+
+      {/* 3 quick action utama */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { href: `${baseUrl}/akun/transaksi`, icon: Receipt,  label: "Transaksi" },
+          { href: `${baseUrl}/akun/profil`,    icon: BadgeCheck, label: "Profil" },
+          { href: `${baseUrl}/campaign`,       icon: Heart,    label: "Donasi" },
+        ].map(({ href, icon: Icon, label }) => (
+          <a key={href} href={href}
+            className="flex flex-col items-center gap-2 rounded-xl border border-border py-3 hover:border-primary/50 hover:bg-muted/40 transition-all">
+            <Icon className="h-5 w-5 text-primary" />
+            <span className="text-xs font-medium">{label}</span>
+          </a>
+        ))}
+      </div>
+
+      {/* Menu cepat data anggota — horizontal scroll, ikon bulat (anggota saja) */}
+      {isMember && (
+        <div>
+          <p className="mb-2 text-sm font-semibold">Menu Cepat</p>
+          <div className="flex gap-4 overflow-x-auto pb-1">
+            {[
+              { href: `${baseUrl}/akun/pesantren`,   icon: BookOpen,   label: "Pesantren" },
+              { href: `${baseUrl}/akun/usaha`,       icon: Building2,  label: "Usaha" },
+              { href: `${baseUrl}/akun/profesional`, icon: Briefcase,  label: "Profesional" },
+              { href: `${baseUrl}/akun/media`,       icon: ImageIcon,  label: "Foto Saya" },
+            ].map(({ href, icon: Icon, label }) => (
+              <a key={href} href={href} className="flex shrink-0 flex-col items-center gap-1.5 w-16">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="text-center text-[11px] leading-tight text-muted-foreground">{label}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Layanan lain */}
+      <div>
+        <p className="mb-2 text-sm font-semibold">Layanan</p>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { href: `${baseUrl}/agenda`, icon: CalendarDays, label: "Agenda", desc: "Event & kegiatan" },
+            { href: `${baseUrl}/produk`, icon: ShoppingBag,  label: "Produk", desc: "Belanja produk" },
+          ].map(({ href, icon: Icon, label, desc }) => (
+            <a key={href} href={href}
+              className="flex items-center gap-3 rounded-xl border border-border p-3 hover:border-primary/50 hover:bg-muted/40 transition-all">
+              <Icon className="h-5 w-5 text-primary shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{label}</p>
+                <p className="truncate text-xs text-muted-foreground">{desc}</p>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+    </>
   );
 }

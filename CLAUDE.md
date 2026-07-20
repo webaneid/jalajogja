@@ -8294,11 +8294,73 @@ register sama-sama butuh "cari member by phone/email", ditulis terpisah, sama-sa
 
 **Verifikasi**: `tsc --noEmit` bersih + `bun run build` sukses.
 
+### [2026-07-21] Refactor `/akun` Mobile — "App Mode" + Kartu Anggota
+
+> Arsitektur lengkap: `docs/arsitektur-akun.md` § "Mobile 'App Mode' + Kartu Anggota" +
+> `docs/arsitektur-mobile-shell.md` § 2.3 (skema header baru).
+
+User bawa referensi desain (`design-refs/akun/design-mobile-akun.jpg`, mockup app fintech) —
+eksplisit: "cuma referensi visual, bukan ditiru literal", inti permintaan: mau ada "kartu
+anggota" saat user login. Masuk Plan Mode (scope besar: komponen baru + skema header baru) —
+riset `docs/arsitektur-akun.md` + kode `akun/layout.tsx`/`akun/page.tsx`/`akun-nav.tsx` +
+`docs/arsitektur-mobile-shell.md`, lalu 2 putaran `AskUserQuestion` sebelum tulis kode:
+1. **"App mode" penuh** (dipilih, bukan "konten saja") — header situs + `BottomNav` situs
+   disembunyikan total di `/akun` mobile, diganti header+bottom-nav milik akun sendiri.
+2. **Berlaku SEMUA `/akun/*`** (bukan cuma dashboard) — konsistensi, tidak "keluar-masuk"
+   app-mode saat pindah antar sub-halaman.
+3. **Bell notifikasi**: tampil tapi non-fungsi (belum ada sistem notifikasi in-app).
+
+**Temuan kunci saat riset — `isSingleMobileRoute` TIDAK bisa dipakai untuk akun**:
+fungsi itu (§ 2.1 `docs/arsitektur-mobile-shell.md`) hardcoded ke pattern SPESIFIK
+(post/agenda/campaign/produk 2-segmen, atau 1-segmen generik di luar `STATIC_TOP_SEGMENTS`) dan
+didesain untuk skema "detail+gambar" (overlay back+menu di atas hero image) — bukan skema
+"greeting header app-like" yang dibutuhkan akun, dan tidak generic terhadap KEDALAMAN path
+(`/akun/mitra/pesanan` 3-segmen tidak akan pernah match pattern 2-segmen yang ada). Solusinya
+fungsi BARU `isAkunAppMode(pathname, baseUrl)` — cek generic `segments[0] === "akun"`, independen
+dari `isSingleMobileRoute`, dua-duanya di-OR di `header-visibility.tsx` dan `footer-bottom-nav.tsx`.
+`"akun"` TETAP di `STATIC_TOP_SEGMENTS` (bukan dihapus) — supaya `isSingleMobileRoute` tidak ikut
+salah proses `/akun`, dua mekanisme independen.
+
+**Komponen baru** (`components/akun/mobile/`): `AkunMobileHeader` (server, avatar+sapaan+bell
+statis), `MemberCard` (server, warna `bg-primary`/`text-primary-foreground` — ikut tema tenant
+OTOMATIS via CSS var, BUKAN warna hardcode dari mockup referensi — hanya di dashboard, varian
+`type==="public"` lebih sederhana), `AkunBottomNav` (client, 3 tab utama + drawer "Lainnya",
+POLA STRUKTUR diadaptasi dari `BottomNav` situs tapi TANPA tombol melayang — itu gimmick
+branding situs, tidak relevan di app-mode akun).
+
+**`MEMBER_NAV_ITEMS`/`PUBLIC_NAV_ITEMS` di-export dari `akun-nav.tsx`** (sebelumnya module-scope
+private) — dipakai ULANG oleh `AkunBottomNav`, bukan diketik ulang, cegah drift 2 daftar
+independen (sidebar desktop vs bottom-nav mobile) — pola yang sudah berkali-kali ditegaskan di
+sesi-sesi sebelumnya untuk kasus serupa (nav item list, template default, dst).
+
+**Spacer (§ 5 `docs/arsitektur-mobile-shell.md`)** — kasus PALING AMAN dari semua pola yang ada
+di dokumen: `akun/layout.tsx` sepenuhnya mengontrol akhir tree untuk SEMUA `/akun/*` (mobile
+block: `AkunMobileHeader` → `{children}` → `AkunBottomNav`, tidak ada sibling di luar file itu
+yang render setelahnya) — spacer dibundle langsung di dalam `AkunBottomNav` (Pola A), tidak
+perlu trailing spacer terpisah seperti kasus campaign/produk/invoice sebelumnya.
+
+**Desktop (`≥md`) TIDAK disentuh sama sekali** — `akun/layout.tsx`+`akun/page.tsx` desktop
+block dibungkus `hidden md:block`/`hidden md:flex` PERSIS konten lama, cuma dipindah posisi
+(bukan diubah isinya) — mobile dapat blok BARU `md:hidden` dengan data YANG SAMA (`identity`,
+`membershipInfo`, dll — tidak ada query tambahan kecuali fetch `logo_url`/`site_name` dari
+settings `general` untuk `MemberCard`).
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` sukses (dev
+server dimatikan dulu, `.next` dibersihkan) — semua 16 route `/akun/*` terkonfirmasi muncul di
+build output. `grep "fixed.*bottom-0"` di area akun → cuma SATU elemen (`AkunBottomNav`
+sendiri), tidak ada konflik dengan elemen fixed lain. Belum diverifikasi visual di browser
+(keterbatasan environment sesi ini, sudah berulang kali dicatat) — user perlu cek langsung
+sebelum dianggap final, terutama proporsi `MemberCard` dan interaksi drawer "Lainnya".
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Audit lanjutan menemukan bug sama di `register/route.ts`** (lihat
+- Terakhir dikerjakan: **Refactor `/akun` mobile — "App mode" + kartu anggota** (lihat lesson
+  di atas) — skema header baru (`isAkunAppMode`), 3 komponen baru
+  (`AkunMobileHeader`/`MemberCard`/`AkunBottomNav`), desktop tidak disentuh. `tsc`+build bersih.
+  Belum di-commit/push.
+- Sesi sebelumnya: **Audit lanjutan menemukan bug sama di `register/route.ts`** (lihat
   lesson di atas) — pengecekan duplikat email/HP saat registrasi bisa lolos kalau contact yang
   kepilih adalah baris usaha/profesional, bukan yang terhubung member. Sudah difix dengan pola
-  JOIN yang sama. Audit lokasi lain dikonfirmasi aman. `tsc`+build bersih. Belum di-commit/push.
+  JOIN yang sama. Audit lokasi lain dikonfirmasi aman. Sudah di-commit dan di-push (`e0801dc`).
 - Sesi sebelumnya: **Fix bug sesungguhnya `lookup-member` — JOIN langsung ke members,
   bukan cari contact dulu** (lihat lesson di atas) — nomor HP yang dipakai di >1 profil
   (member+usaha+profesional) sebelumnya bisa salah pilih contact yang tidak terhubung member.

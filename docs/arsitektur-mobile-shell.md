@@ -60,14 +60,28 @@ ini), tapi `BottomNav` (tab navigasi situs generik, § 3) disembunyikan supaya t
 ruang `bottom-0` dengan bar aksi milik halaman itu sendiri (Total+Checkout, Voucher+Buat
 Invoice).
 
-**Kedua fungsi ini WAJIB diimpor dari `lib/mobile-route-checks.ts`** oleh siapa pun yang butuh
-logic serupa — JANGAN copy-paste ulang logic pathname-parsing di file baru. Dipakai oleh
-`header-visibility.tsx` (§ 2.1) dan `footer-bottom-nav.tsx` (§ 2.2, § 3).
+### 2.3 `isAkunAppMode(pathname, baseUrl)` — skema KETIGA: "app mode" mandiri (2026-07-21)
+
+Untuk **SELURUH `/akun/*`** (semua kedalaman: `/akun`, `/akun/profil`, `/akun/mitra/pesanan`,
+dst — dicek murni `segments[0] === "akun"`, generic prefix, BUKAN pattern spesifik seperti
+`isSingleMobileRoute`) — header situs DAN `BottomNav` situs disembunyikan TOTAL di mobile,
+diganti chrome milik `/akun` sendiri: `AkunMobileHeader` (avatar+sapaan+bell non-fungsi) +
+`AkunBottomNav` (bottom tab bar khusus akun: Beranda/Transaksi/Profil + drawer "Lainnya" untuk
+sisa item). Beda dari § 2.1 (`isSingleMobileRoute`) yang didesain untuk halaman DETAIL dengan
+gambar fitur (overlay back+menu di atas gambar) — akun bukan pola itu, butuh header app-like
+sungguhan (greeting, bukan sekadar back button). Komponen: `components/akun/mobile/`.
+
+**Kedua fungsi § 2.1/2.2 + `isAkunAppMode` WAJIB diimpor dari `lib/mobile-route-checks.ts`**
+oleh siapa pun yang butuh logic serupa — JANGAN copy-paste ulang logic pathname-parsing di file
+baru. Dipakai oleh `header-visibility.tsx` (sembunyikan header — cek SEMUA TIGA kondisi) dan
+`footer-bottom-nav.tsx` (sembunyikan BottomNav situs — cek SEMUA TIGA kondisi juga).
 
 **WAJIB diupdate kalau ada folder route static baru** ditambah ke `app/(public)/[tenant]/` —
 `STATIC_TOP_SEGMENTS` (di file yang sama) adalah daftar semua top-level route yang BUKAN
 halaman single-item generik. Kalau lupa update, halaman baru itu salah dikategorikan sebagai
-"single mobile route" dan headernya hilang di mobile tanpa alasan.
+"single mobile route" dan headernya hilang di mobile tanpa alasan. `"akun"` TETAP ada di daftar
+ini (supaya `isSingleMobileRoute` tidak salah proses `/akun`) — `isAkunAppMode` independen,
+dicek terpisah, bukan pengganti entry di `STATIC_TOP_SEGMENTS`.
 
 ---
 
@@ -367,6 +381,7 @@ Sebelum menambah elemen fixed baru di halaman publik manapun:
 | `/produk/[productSlug]` | `produk/[productSlug]/page.tsx` (trailing) | C | ✅ Terverifikasi (kode) |
 | `/invoice/[id]` | `invoice-public-client.tsx` (trailing) | C | ✅ Terverifikasi (kode) |
 | `/agenda/[slug]` (event) | — | — | ✅ Sudah benar sejak awal, tidak butuh fix |
+| `/akun/*` (semua kedalaman) | `akun-bottom-nav.tsx` (dibundel dalam komponen) | A (kasus paling aman — layout.tsx penuh kontrol akhir tree) | ✅ Terverifikasi (kode) |
 
 **"Terverifikasi (kode)"** berarti: logic sudah benar berdasarkan pembacaan struktur JSX +
 `tsc`/`build` bersih, TAPI **belum dikonfirmasi visual di browser oleh siapa pun** per tanggal

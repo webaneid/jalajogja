@@ -3,16 +3,16 @@
 import { usePathname } from "next/navigation";
 import { PublicHeader } from "./public-header";
 import type { HeaderProps, HeaderDesignId } from "@/lib/header-designs";
-import { isSingleMobileRoute } from "@/lib/mobile-route-checks";
+import { isSingleMobileRoute, isAkunAppMode } from "@/lib/mobile-route-checks";
 
 type Props = HeaderProps & { designId?: HeaderDesignId };
 
 export function HeaderVisibility(props: Props) {
   const pathname = usePathname();
-  const isSingle = isSingleMobileRoute(pathname, props.baseUrl);
+  const hideOnMobile = isSingleMobileRoute(pathname, props.baseUrl) || isAkunAppMode(pathname, props.baseUrl);
 
   return (
-    <div className={isSingle ? "hidden md:block" : ""}>
+    <div className={hideOnMobile ? "hidden md:block" : ""}>
       <PublicHeader {...props} />
     </div>
   );

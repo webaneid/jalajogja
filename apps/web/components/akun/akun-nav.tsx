@@ -7,14 +7,16 @@ import {
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 
-type NavItem = {
+export type NavItem = {
   href:       string;
   label:      string;
   icon:       React.ElementType;
   memberOnly: boolean;
 };
 
-const MEMBER_NAV_ITEMS: NavItem[] = [
+// Di-export — dipakai ulang oleh AkunBottomNav (components/akun/mobile/akun-bottom-nav.tsx)
+// supaya daftar item nav TIDAK diketik ulang di dua tempat (cegah drift sidebar vs bottom nav).
+export const MEMBER_NAV_ITEMS: NavItem[] = [
   { href: "",           label: "Beranda",   icon: LayoutDashboard, memberOnly: false },
   { href: "/profil",    label: "Profil",    icon: User,            memberOnly: false },
   { href: "/transaksi", label: "Transaksi", icon: Receipt,         memberOnly: false },
@@ -26,7 +28,7 @@ const MEMBER_NAV_ITEMS: NavItem[] = [
   { href: "/mitra",       label: "Mitra",       icon: Store,      memberOnly: false },
 ];
 
-const PUBLIC_NAV_ITEMS: NavItem[] = [
+export const PUBLIC_NAV_ITEMS: NavItem[] = [
   { href: "",           label: "Beranda",   icon: LayoutDashboard, memberOnly: false },
   { href: "/profil",    label: "Profil",    icon: User,            memberOnly: false },
   { href: "/transaksi", label: "Transaksi", icon: Receipt,         memberOnly: false },

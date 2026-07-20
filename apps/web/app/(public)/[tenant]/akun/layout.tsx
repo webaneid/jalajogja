@@ -7,6 +7,8 @@ import { db, members, tenants, createTenantDb } from "@jalajogja/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { AkunNav }    from "@/components/akun/akun-nav";
+import { AkunMobileHeader } from "@/components/akun/mobile/akun-mobile-header";
+import { AkunBottomNav }    from "@/components/akun/mobile/akun-bottom-nav";
 import { BadgeCheck } from "lucide-react";
 import { resolveOrgLabels } from "@/lib/tenant-org-label";
 
@@ -82,58 +84,64 @@ export default async function AkunLayout({ children, params }: Props) {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      <div className="flex gap-8 items-start">
+    <>
+      {/* ── Desktop (≥md) — TIDAK diubah ── */}
+      <div className="hidden md:block max-w-5xl mx-auto px-4 py-8">
+        <div className="flex gap-8 items-start">
 
-        {/* ── Sidebar ── */}
-        <aside className="hidden md:flex flex-col w-56 shrink-0 gap-4 sticky top-6">
-          {/* Avatar + nama */}
-          <div className="flex flex-col items-center gap-2 px-2 py-4 text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={avatarUrl}
-              alt={identity.name}
-              width={56}
-              height={56}
-              className="w-14 h-14 rounded-full ring-2 ring-border object-cover"
-            />
-            <div className="min-w-0 w-full">
-              <p className="font-semibold text-sm truncate">{identity.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{displayEmail}</p>
-            </div>
-            <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
-              isMember
-                ? "bg-primary/10 text-primary"
-                : "bg-muted text-muted-foreground"
-            }`}>
-              {isMember && <BadgeCheck className="h-3 w-3" />}
-              {isMember ? memberBadgeLabel : "Akun Publik"}
-            </span>
-          </div>
-
-          {/* Nav */}
-          <AkunNav slug={slug} isMember={isMember} baseUrl={baseUrl} />
-        </aside>
-
-        {/* ── Konten ── */}
-        <div className="flex-1 min-w-0">
-          {/* Mobile: nama user di atas konten */}
-          <div className="flex items-center gap-3 mb-6 md:hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={avatarUrl} alt={identity.name} className="w-10 h-10 rounded-full ring-2 ring-border" />
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm truncate">{identity.name}</p>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                isMember ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+          {/* ── Sidebar ── */}
+          <aside className="flex flex-col w-56 shrink-0 gap-4 sticky top-6">
+            {/* Avatar + nama */}
+            <div className="flex flex-col items-center gap-2 px-2 py-4 text-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={avatarUrl}
+                alt={identity.name}
+                width={56}
+                height={56}
+                className="w-14 h-14 rounded-full ring-2 ring-border object-cover"
+              />
+              <div className="min-w-0 w-full">
+                <p className="font-semibold text-sm truncate">{identity.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{displayEmail}</p>
+              </div>
+              <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                isMember
+                  ? "bg-primary/10 text-primary"
+                  : "bg-muted text-muted-foreground"
               }`}>
+                {isMember && <BadgeCheck className="h-3 w-3" />}
                 {isMember ? memberBadgeLabel : "Akun Publik"}
               </span>
             </div>
-          </div>
 
-          {children}
+            {/* Nav */}
+            <AkunNav slug={slug} isMember={isMember} baseUrl={baseUrl} />
+          </aside>
+
+          {/* ── Konten ── */}
+          <div className="flex-1 min-w-0">
+            {children}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* ── Mobile (<md) — "app mode": header+bottom-nav sendiri, site chrome disembunyikan
+          via isAkunAppMode (lib/mobile-route-checks.ts). Spacer dibundle di AkunBottomNav
+          sendiri (elemen PALING TERAKHIR di sini — {children} lalu AkunBottomNav, tidak ada
+          sibling lain di luar file ini yang render setelah layout — kasus paling aman dari
+          pola spacer, lihat docs/arsitektur-mobile-shell.md § 5.3 Pola A). ── */}
+      <div className="md:hidden">
+        <AkunMobileHeader
+          name={identity.name}
+          avatarUrl={avatarUrl}
+          badgeLabel={isMember ? memberBadgeLabel : "Akun Publik"}
+        />
+        <div className="px-4 py-4">
+          {children}
+        </div>
+        <AkunBottomNav slug={slug} baseUrl={baseUrl} isMember={isMember} />
+      </div>
+    </>
   );
 }

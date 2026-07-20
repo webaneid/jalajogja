@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { BottomNav } from "./headers/flex-header";
 import type { NavItem } from "@/lib/nav-menu";
 import type { HeaderDesignId } from "@/lib/header-designs";
-import { isSingleMobileRoute, hasOwnMobileActionBar } from "@/lib/mobile-route-checks";
+import { isSingleMobileRoute, hasOwnMobileActionBar, isAkunAppMode } from "@/lib/mobile-route-checks";
 
 type Props = {
   designId: HeaderDesignId;
@@ -25,6 +25,7 @@ export function FooterBottomNav({ designId, navMenu, baseUrl }: Props) {
   if (designId !== "flex") return null;
   if (isSingleMobileRoute(pathname, baseUrl)) return null;
   if (hasOwnMobileActionBar(pathname, baseUrl)) return null;
+  if (isAkunAppMode(pathname, baseUrl)) return null; // /akun/* punya bottom nav sendiri
 
   return (
     <>
