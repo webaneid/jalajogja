@@ -6,9 +6,10 @@ export const dynamic = "force-dynamic";
 //                         → return { valid: true, token: string }
 
 import { NextRequest, NextResponse }           from "next/server";
-import { db, otpTokens, profiles, members, contacts, verification } from "@jalajogja/db";
-import { eq, and, gt, isNull, sql }            from "drizzle-orm";
+import { db, otpTokens, verification }         from "@jalajogja/db";
+import { eq, and, gt, isNull }                 from "drizzle-orm";
 import { toE164 }                              from "@/lib/whatsapp";
+import { findUserByPhone }                     from "@/lib/find-user-by-phone";
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
 
   // ── Jika reset password: inject ke Better Auth verification table ─────────────
   if (type === "reset_password") {
-    const betterAuthUserId = await findBetterAuthUserByPhone(phone);
+    const betterAuthUserId = await findUserByPhone(phone);
     if (!betterAuthUserId) {
       return NextResponse.json(
         { error: "Nomor ini tidak terdaftar di akun manapun." },
@@ -81,27 +82,6 @@ export async function POST(request: NextRequest) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function findBetterAuthUserByPhone(phone: string): Promise<string | null> {
-  // Cek di public.profiles (akun publik)
-  const [profile] = await db
-    .select({ betterAuthUserId: profiles.betterAuthUserId })
-    .from(profiles)
-    .where(and(eq(profiles.phone, phone), isNull(profiles.deletedAt)))
-    .limit(1);
-  if (profile?.betterAuthUserId) return profile.betterAuthUserId;
-
-  // Cek di public.contacts → public.members (anggota IKPM)
-  const [member] = await db
-    .select({ betterAuthUserId: members.betterAuthUserId })
-    .from(members)
-    .innerJoin(contacts, eq(contacts.id, members.contactId))
-    .where(eq(sql`COALESCE(${contacts.whatsapp}, ${contacts.phone})`, phone))
-    .limit(1);
-  if (member?.betterAuthUserId) return member.betterAuthUserId;
-
-  return null;
-}
 
 function generateToken24(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(18));

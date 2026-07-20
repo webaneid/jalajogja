@@ -87,6 +87,10 @@ export async function GET(req: NextRequest) {
         found: true,
         name:  profileFound.name,
         type:  "profile",
+        // Profil publik SELALU berarti akun sudah ada (beda dari `members`, yang bisa eksis
+        // tanpa akun login) — tanpa ini, client's `isClaiming` (`!hasAccount`) salah anggap
+        // nomor ini "bisa diklaim" padahal sudah terdaftar sebagai akun publik.
+        hasAccount: true,
       });
     }
 

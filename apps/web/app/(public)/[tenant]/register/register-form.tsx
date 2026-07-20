@@ -15,7 +15,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import type { OrgLabels } from "@/lib/tenant-org-label";
 
 type MemberLookup =
-  | { found: true;  name: string; memberId: string; hasAccount: boolean }
+  | { found: true;  name: string; hasAccount: boolean; memberId?: string; type?: "member" | "profile" }
   | { found: false };
 
 type LegalContent =
@@ -471,7 +471,7 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
           <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm">
             <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
             <p className="text-amber-800">
-              Akun untuk <span className="font-semibold">{lookup.name}</span> sudah terdaftar.{" "}
+              Nomor sudah terdaftar.{" "}
               <a href={`/${slug}/login`} className="underline font-medium">Masuk</a> atau{" "}
               <a href={`/${slug}/forgot-password`} className="underline font-medium">lupa password</a>.
             </p>
@@ -482,7 +482,7 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
           <div className="flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm">
             <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
             <p className="text-blue-800">
-              Data belum ditemukan. Anda akan didaftarkan sebagai anggota IKPM baru.
+              Anda dapat menggunakan Nomor induk ini untuk pendaftaran.
             </p>
           </div>
         )}
@@ -541,7 +541,7 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
 
           <div className="space-y-1.5">
             <PhoneInput
-              label="No. HP / WhatsApp"
+              label="Nomor WhatsApp"
               value={phone}
               onChange={handlePhoneChange}
               required

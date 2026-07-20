@@ -10,6 +10,7 @@ import { eq, and, gt, count, sql }   from "drizzle-orm";
 import { sendWaNotification, toE164 } from "@/lib/whatsapp";
 import { renderTemplateString }       from "@/lib/wa-templates";
 import { resolveWaTemplateText }      from "@/lib/wa-notify";
+import { findUserByPhone }            from "@/lib/find-user-by-phone";
 import type { WaNotifConfig }         from "@/lib/whatsapp";
 
 const OTP_TTL_MINUTES   = 5;
@@ -36,6 +37,21 @@ export async function POST(request: NextRequest) {
   const validType = type as "register" | "reset_password" | "login";
 
   const phone = toE164(rawPhone);
+
+  // ── Login: tolak sebelum kirim OTP kalau nomor belum terdaftar di akun manapun —
+  // cegah kirim WA sia-sia (biaya + membingungkan user yang OTP-nya tidak akan pernah valid,
+  // karena login-via-otp toh akan menolaknya lagi di titik verifikasi). "register" &
+  // "reset_password" TIDAK dicek di sini — register memang untuk nomor baru; reset_password
+  // di luar scope perubahan ini.
+  if (validType === "login") {
+    const existingUserId = await findUserByPhone(phone);
+    if (!existingUserId) {
+      return NextResponse.json(
+        { error: "Nomor ini belum terdaftar di akun manapun." },
+        { status: 404 },
+      );
+    }
+  }
 
   // ── Rate limiting ──────────────────────────────────────────────────────────────
   const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW * 60 * 1000);

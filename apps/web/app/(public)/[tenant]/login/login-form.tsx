@@ -27,6 +27,7 @@ export function LoginForm({
 
   const [mode,     setMode]     = useState<LoginMode>("email");
   const [error,    setError]    = useState<string | null>(null);
+  const [notRegistered, setNotRegistered] = useState(false);
 
   // ── Email/password state ──────────────────────────────────────────────────
   const [email,    setEmail]    = useState("");
@@ -72,6 +73,7 @@ export function LoginForm({
   async function sendOtp(ph: string): Promise<boolean> {
     setSending(true);
     setError(null);
+    setNotRegistered(false);
     try {
       const res  = await fetch("/api/akun/send-otp", {
         method:  "POST",
@@ -79,7 +81,18 @@ export function LoginForm({
         body:    JSON.stringify({ phone: ph, type: "login", slug }),
       });
       const data = await res.json() as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) { setError(data.error ?? "Gagal mengirim OTP."); return false; }
+      if (!res.ok || !data.ok) {
+        if (res.status === 404) {
+          // notRegistered menampilkan blok dengan tautan /register (step "phone"); error jadi
+          // fallback teks polos kalau ini terpicu dari tombol "Kirim ulang" di step "otp" (blok
+          // notRegistered khusus tidak dirender di step itu — kasus langka, tetap harus terlihat).
+          setNotRegistered(true);
+          setError("Nomor Anda belum terdaftar.");
+          return false;
+        }
+        setError(data.error ?? "Gagal mengirim OTP.");
+        return false;
+      }
       startCountdown();
       return true;
     } catch {
@@ -127,8 +140,15 @@ export function LoginForm({
   function switchMode(m: LoginMode) {
     setMode(m);
     setError(null);
+    setNotRegistered(false);
     setWaStep("phone");
     setOtp("");
+  }
+
+  function handlePhoneInputChange(val: string) {
+    setPhone(val);
+    setNotRegistered(false);
+    setError(null);
   }
 
   return (
@@ -218,14 +238,20 @@ export function LoginForm({
               <PhoneInput
                 label="Nomor WhatsApp"
                 value={phone}
-                onChange={setPhone}
+                onChange={handlePhoneInputChange}
                 required
               />
               <p className="text-xs text-muted-foreground">
                 Kode OTP 6 digit akan dikirim ke WhatsApp Anda.
               </p>
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {notRegistered && (
+              <p className="text-sm text-destructive">
+                Nomor Anda belum terdaftar, silakan mendaftar melalui{" "}
+                <a href={`${baseUrl}/register`} className="underline font-medium">tautan ini</a>.
+              </p>
+            )}
+            {!notRegistered && error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={waPending || sending}>
               {(waPending || sending)
                 ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Mengirim...</>

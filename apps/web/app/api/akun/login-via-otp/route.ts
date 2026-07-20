@@ -7,9 +7,10 @@ export const dynamic = "force-dynamic";
 // — format yang identik dengan Better Auth internals (lihat better-auth/dist/crypto/index.mjs)
 
 import { NextRequest, NextResponse }  from "next/server";
-import { db, otpTokens, profiles, members, contacts, session, user, verification } from "@jalajogja/db";
-import { eq, and, gt, isNull, sql }   from "drizzle-orm";
+import { db, otpTokens, session, user, verification } from "@jalajogja/db";
+import { eq, and, gt, isNull }        from "drizzle-orm";
 import { toE164 }                     from "@/lib/whatsapp";
+import { findUserByPhone }            from "@/lib/find-user-by-phone";
 
 // Di production (HTTPS), Better Auth pakai prefix __Secure-
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#cookie_prefixes
@@ -98,27 +99,6 @@ export async function POST(request: NextRequest) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function findUserByPhone(phone: string): Promise<string | null> {
-  // Cek di public.profiles (akun publik)
-  const [profile] = await db
-    .select({ betterAuthUserId: profiles.betterAuthUserId })
-    .from(profiles)
-    .where(and(eq(profiles.phone, phone), isNull(profiles.deletedAt)))
-    .limit(1);
-  if (profile?.betterAuthUserId) return profile.betterAuthUserId;
-
-  // Cek di public.contacts → public.members (anggota IKPM)
-  const [member] = await db
-    .select({ betterAuthUserId: members.betterAuthUserId })
-    .from(members)
-    .innerJoin(contacts, eq(contacts.id, members.contactId))
-    .where(eq(sql`COALESCE(${contacts.whatsapp}, ${contacts.phone})`, phone))
-    .limit(1);
-  if (member?.betterAuthUserId) return member.betterAuthUserId;
-
-  return null;
-}
 
 // Format identik better-call/dist/crypto.mjs signCookieValue:
 //   1. sign: btoa(HMAC-SHA256(secret, value))

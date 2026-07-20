@@ -7662,15 +7662,79 @@ ulang total. `docs/arsitektur-mobile-shell.md` § 3 ditambah catatan perubahan t
 diverifikasi visual di browser — desain floating button perlu dicoba langsung untuk konfirmasi
 proporsi (ukuran 64px, overlap, halo ring) terasa pas di device sungguhan, bukan cuma dari kode.
 
+### [2026-07-20] Refactor Login/Register — Wording + Cegah Kirim OTP ke Nomor Tak Terdaftar
+
+User minta 4 perbaikan sekaligus di alur register/login berbasis WA OTP:
+
+1. **Wording stambuk tidak ketemu** (`register-form.tsx`) — "Data belum ditemukan. Anda akan
+   didaftarkan sebagai anggota IKPM baru." dianggap rancu (menyiratkan pendaftaran OTOMATIS
+   terjadi, padahal ini cuma info status lookup, bukan aksi). Diganti: "Anda dapat menggunakan
+   Nomor induk ini untuk pendaftaran."
+2. **Label field** — "No. HP / WhatsApp" → "Nomor WhatsApp" (`register-form.tsx`; `login-form.tsx`
+   dan `forgot-password/page.tsx` SUDAH benar sejak awal, cuma register yang ketinggalan).
+3. **Notifikasi "sudah terdaftar" bocorkan nama** — blok `lookup.hasAccount===true` sebelumnya
+   "Akun untuk **{nama}** sudah terdaftar..." — diganti "Nomor sudah terdaftar. Masuk atau lupa
+   password." (nama dihapus, murni privasi — tidak ada alasan bagi siapa pun yang iseng mencoba-
+   coba nomor untuk tahu nama pemiliknya).
+4. **Login WA OTP kirim ke nomor manapun tanpa cek dulu** — `send-otp` (type=login) sebelumnya
+   SELALU generate+kirim OTP terlepas nomor terdaftar atau tidak; baru ditolak belakangan di
+   `login-via-otp` (setelah OTP diverifikasi) — artinya OTP TERLANJUR terkirim (biaya WA + user
+   bingung "kok dapat kode tapi gak bisa login"). Fix: `send-otp` sekarang cek registrasi
+   SEBELUM generate/kirim, kalau tidak ketemu → 404 tanpa kirim apa pun. Client (`login-form.tsx`)
+   deteksi status 404 → tampilkan "Nomor Anda belum terdaftar, silakan mendaftar melalui
+   [tautan ini]" dengan LINK sungguhan ke `${baseUrl}/register` (bukan teks polos — perlu state
+   terpisah `notRegistered` karena pesan generik `{error}` di JSX cuma render string, tidak bisa
+   sisipi `<a>`).
+
+**Dedup ditemukan sekaligus (bukan diminta, tapi jelas perlu)**: "cari akun by nomor HP"
+(`public.profiles` dulu, lalu `public.contacts→public.members`) ternyata SUDAH terduplikasi
+PERSIS identik 2× (`login-via-otp/route.ts` dan `verify-otp/route.ts`) sebelum perubahan ini —
+dan feature #4 di atas butuh logic yang SAMA PERSIS lagi (kali ke-3). Diekstrak ke
+`lib/find-user-by-phone.ts`, dipakai oleh SEMUA TIGA route (`send-otp` baru, `login-via-otp` dan
+`verify-otp` dua-duanya direfactor pakai helper ini, duplikat lokal dihapus). File ini aman tanpa
+guard `"server-only"` — cuma pernah diimpor dari `route.ts` (server-only secara struktural by
+Next.js convention), beda dari kasus `nav-menu.ts`/`tenant-timezone.ts` yang butuh split karena
+DIPAKAI JUGA oleh client component.
+
+**Bug ditemukan+difix sekaligus saat investigasi (bukan diminta eksplisit, tapi langsung relevan
+ke ask #3)**: `GET /api/akun/lookup-member?phone=` — cabang `profileFound` (match ke akun publik
+`public.profiles`, BUKAN member IKPM) TIDAK PERNAH menyertakan field `hasAccount` sama sekali di
+response — client `MemberLookup` type mendeklarasikannya WAJIB ada (`hasAccount: boolean`), jadi
+di runtime nilainya `undefined` (falsy). Akibatnya `isClaiming = lookup?.found && !lookup.
+hasAccount` salah anggap nomor yang SUDAH terdaftar sebagai akun publik sebagai "member belum
+diklaim" — form menampilkan alur klaim yang salah, bukan "sudah terdaftar". Fix: cabang
+`profileFound` sekarang eksplisit `hasAccount: true` (profil publik SELALU berarti akun sudah
+ada, beda dari `members` yang bisa eksis tanpa `betterAuthUserId`). Client type disesuaikan
+(`memberId`/`type` jadi optional, `hasAccount` tetap wajib pada `found:true`).
+
+**Keputusan scope yang SENGAJA tidak diperluas** (dicatat, bukan lupa): (a) pengecekan duplikat
+nomor WA saat register HANYA aktif di jalur "member" (IKPM) — jalur "public" (bukan anggota)
+masih belum ada live-check nomor duplikat sama sekali, karena `handlePhoneChange` sejak awal
+di-gate `accountPath === "member"`. Memperluas ke jalur public butuh koordinasi tambahan
+(`isClaiming` HARUS ikut di-gate `accountPath==="member"` juga, kalau tidak jalur public bisa
+salah masuk mode "klaim member" kalau nomornya kebetulan cocok member belum-terklaim) — di luar
+scope literal yang diminta, belum dieksekusi, dicatat sebagai follow-up kalau diminta. (b) Cek
+registrasi sebelum kirim OTP HANYA diterapkan untuk `type==="login"` — `type==="register"` memang
+untuk nomor baru (tidak boleh ditolak), `type==="reset_password"` (dipakai `forgot-password/
+page.tsx`) TIDAK disentuh meski secara logis punya masalah yang sama (OTP terkirim ke nomor tak
+terdaftar sebelum baru ditolak di `verify-otp`) — user cuma minta soal "masuk/login" secara
+eksplisit, reset password di luar scope literal permintaan ini.
+
+**Verifikasi**: `tsc --noEmit` bersih di apps/web + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Belum diverifikasi visual/end-to-end di
+browser (perlu WA gateway aktif untuk benar-benar kirim OTP) — user diminta coba alur penuh:
+register dengan stambuk kosong/isi, register dengan nomor yang sudah terdaftar, login WA OTP ke
+nomor terdaftar vs tidak terdaftar.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix ikon Halaman (Page) di BottomNav — fallback ke `FileText` bukan
-  `Link2`** (lihat lesson "Koreksi putaran 3" di atas) — `iconForHref` sebelumnya tidak punya
-  aturan untuk rute `/{slug}/{pageSlug}` (halaman CMS tidak punya prefix segmen tetap), selalu
-  jatuh ke ikon rantai generik. Fix: href 1-segmen yang tidak match rute manapun yang dikenal
-  di-default-kan ke ikon Halaman (satu-satunya rute wildcard 1-segmen di registry). `tsc`+build
-  bersih. Dokumentasi (`docs/arsitektur-header-footer-publik.md`) diperbarui SEKALIGUS untuk
-  mencerminkan state FINAL (proporsi 2-2 + tonjolan 15% dari koreksi putaran 2, bukan draft
-  pertama) — **sudah di-commit dan di-push** atas instruksi eksplisit user.
+- Terakhir dikerjakan: **Refactor login/register — wording + cegah kirim OTP ke nomor tak
+  terdaftar** (lihat lesson di atas) — 4 perbaikan: wording stambuk-tidak-ketemu, label "Nomor
+  WhatsApp", pesan "sudah terdaftar" tanpa nama, dan `send-otp` (login) sekarang cek registrasi
+  SEBELUM kirim (bukan setelah). Sekalian dedup 2 salinan identik "cari akun by phone" jadi
+  `lib/find-user-by-phone.ts` + fix bug `hasAccount` hilang untuk match akun publik. `tsc`+build
+  bersih. Belum di-commit/push, menunggu user coba alur penuh (butuh WA gateway aktif).
+- Sesi sebelumnya: **Fix ikon Halaman (Page) di BottomNav — fallback ke `FileText` bukan
+  `Link2`** (lihat lesson di atas) — sudah di-commit dan di-push.
 - Sesi sebelumnya: **Koreksi proporsi BottomNav** (lihat lesson "Koreksi putaran 2" di atas)
   — user coba desain floating-home pertama, minta 2 perbaikan: kiri/kanan diseimbangkan jadi
   maks 2-2 (sebelumnya bisa 2 vs 3 kalau item > 4), dan tonjolan tombol Beranda dikecilkan dari
