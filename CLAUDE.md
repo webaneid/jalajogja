@@ -8095,26 +8095,53 @@ baru benar untuk kelas pertama, berbahaya untuk kelas kedua.
 **Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db`. `bun run build` sukses
 (dev server dimatikan dulu, `.next` dibersihkan) — dicek eksplisit `lib/mail.ts` (pakai
 `import "server-only"`) tidak bocor ke client bundle, konsisten dengan lesson lama soal
-client/server boundary. **Env var `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`
-BELUM diset di VPS** — user diminta menambahkannya sendiri langsung di `.env.local` server
-(App Password Gmail, BUKAN password akun biasa — butuh 2-Step Verification aktif dulu di akun
-Google-nya) — kredensial ini TIDAK PERNAH diminta/ditempel ke chat, sesuai prinsip jangan pernah
-memasukkan secret ke transcript. Sampai env var itu diisi, `isPlatformMailConfigured()` return
-`false` dan `sendResetPassword` diam-diam gagal (di-log ke server, TIDAK melempar error ke
-Better Auth's response — pesan generik "cek email Anda" tetap tampil ke user, konsisten dengan
-anti-user-enumeration Better Auth) — reset password lewat email baru benar-benar terkirim
-setelah env var diisi + PM2 di-restart. Belum dites end-to-end (butuh env var + kejadian nyata
-WA down untuk trigger fallback, atau uji manual dengan mematikan toggle `otp_register`/
-`otp_reset_password` admin sementara).
+client/server boundary. Sudah di-commit dan di-push (`c2cff8e`).
+
+### [2026-07-21] Deploy SMTP Platform ke VPS — 3 Gotcha Ditemukan Saat Setup Nyata
+
+**Gotcha 1 — dependency baru butuh `bun install` ulang, bukan cuma `git pull`:**
+Deploy pertama gagal build: `Module not found: Can't resolve 'nodemailer'`. `git pull` menarik
+`package.json`/`bun.lock` yang sudah berubah, tapi **tidak otomatis menginstall** paket baru —
+`bun install` (di ROOT monorepo, bukan di `apps/web`) wajib dijalankan dulu sebelum `bun run build`
+setiap kali ada dependency baru di commit yang di-deploy. Bukan hal baru (sudah pola lama), tapi
+perlu diingatkan ulang karena SOP deploy yang biasa dipakai (`git pull && bun run build && pm2
+restart`) tidak selalu menyertakan `bun install` secara eksplisit.
+
+**Gotcha 2 — App Password Google berspasi + format `Nama <email>` merusak parsing `.env.local`:**
+Google menampilkan App Password sebagai `abcd efgh ijkl mnop` (4 kelompok, ada spasi) untuk
+keterbacaan. Ditulis apa adanya (tanpa quote) ke `.env.local` → merusak baris berikutnya. Sama,
+`SMTP_FROM="Jalakarta" <email>` (quote cuma di sebagian value) juga tidak valid. **Fix**:
+`SMTP_PASS` tanpa spasi sama sekali (`abcdefghijklmnop`, App Password Google tetap valid tanpa
+spasi — spasinya cuma kosmetik saat ditampilkan). `SMTP_FROM` — SATU pasang quote membungkus
+SELURUH value: `SMTP_FROM="Jalakarta <email>"`.
+
+**Gotcha 3 — `pm2 env <id>` BUKAN cara yang benar untuk verifikasi env var Next.js:**
+Sempat menyesatkan diagnosa — `pm2 env 0 | grep SMTP` return KOSONG meski `.env.local` sudah
+benar. Root cause: `.env.local` dibaca **Next.js sendiri** secara internal (via `@next/env`, style
+dotenv) saat aplikasi boot — BUKAN via PM2 meng-inject OS-level environment variable ke child
+process. `pm2 env <id>` cuma menampilkan environment yang PM2 SENDIRI suntikkan (dari
+`ecosystem.config.cjs` atau shell tempat PM2 dijalankan) — tidak pernah mencakup apa yang dimuat
+Next.js dari file `.env.local` di dalam proses Node.js-nya sendiri. **Cara verifikasi yang
+benar**: `node --env-file=.env.local -e "console.log(process.env.SMTP_HOST)"` (Node 20.6+ punya
+flag native `--env-file`, parsing-nya sama-sama dotenv-style seperti yang dipakai Next.js) — atau
+langsung tes fungsional (kirim email test sungguhan via nodemailer) alih-alih inspeksi env var
+tidak langsung. **Verifikasi akhir dilakukan begini** — kirim email test langsung dari server via
+`node --env-file=.env.local -e "..."` memanggil `nodemailer.createTransport()` persis config yang
+sama dengan `lib/mail.ts` → **SUKSES**, email diterima nyata di `webane.com@gmail.com`. SMTP
+platform dikonfirmasi berfungsi end-to-end.
+
+**Aturan digeneralisasi**: `pm2 env <id>` HANYA valid untuk debug env var yang PM2 sendiri
+suntikkan (biasanya dari `ecosystem.config.cjs`) — untuk env var yang dimuat framework (Next.js
+`.env.local`, atau mekanisme serupa framework lain), verifikasi dari SISI FRAMEWORK/APLIKASI-nya
+(`node --env-file=`, atau tes fungsional langsung), bukan dari sisi process manager.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fallback email untuk registrasi + reset password saat WA Gateway
-  down** (lihat lesson di atas) — `lib/mail.ts` baru (dua transport: platform via env var untuk
-  auth-critical, tenant via `smtp_config` untuk notifikasi bisnis), Better Auth `sendResetPassword`
-  di-wire, register-form.tsx skip OTP otomatis saat WA unavailable, forgot-password/page.tsx
-  fallback ke form email, "Kirim Test Email" diperbaiki jadi sungguhan. `tsc`+build bersih di
-  kedua package. Belum di-commit/push — menunggu instruksi. **Env var SMTP platform belum diset
-  di VPS** (perlu ditambahkan user sendiri, App Password Gmail).
+- Terakhir dikerjakan: **Deploy SMTP platform ke VPS + 3 gotcha ditemukan+difix saat setup
+  nyata** (lihat lesson di atas) — nodemailer perlu `bun install` ulang (bukan cuma git pull),
+  App Password/`.env.local` syntax gotcha (spasi + quote parsial), `pm2 env` bukan cara benar
+  verifikasi env Next.js. **Dikonfirmasi berfungsi end-to-end** — email test sungguhan terkirim
+  via SMTP platform. Murni deployment/verifikasi, tidak ada perubahan kode baru di sesi ini —
+  hanya update dokumentasi CLAUDE.md, menunggu instruksi commit.
 - Sesi sebelumnya: **Diagnosa OTP 503 — root cause WhatsApp error 463 reach-out timelock,
   bukan bug kode** (lihat lesson di atas) — murni investigasi via SSH+log GOWA. Sudah di-commit
   dan di-push (`10ee3fd`, `8e7acf9`).
