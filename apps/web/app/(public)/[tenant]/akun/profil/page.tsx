@@ -5,7 +5,8 @@ import { use }    from "react";
 import { Button } from "@/components/ui/button";
 import { Input }  from "@/components/ui/input";
 import { Label }  from "@/components/ui/label";
-import { CheckCircle2, Loader2, Eye, EyeOff } from "lucide-react";
+import { CheckCircle2, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { useBaseUrl } from "@/lib/use-base-url";
 
 type Params = Promise<{ tenant: string }>;
 
@@ -18,6 +19,7 @@ type ProfileData = {
 
 export default function ProfilPage({ params }: { params: Params }) {
   const { tenant: slug } = use(params);
+  const baseUrl = useBaseUrl(slug);
 
   const [data,       setData]       = useState<ProfileData | null>(null);
   const [name,       setName]       = useState("");
@@ -216,6 +218,12 @@ export default function ProfilPage({ params }: { params: Params }) {
           </Button>
         </form>
       </section>
+
+      <a href={`${baseUrl}/akun`}
+        className="inline-flex items-center gap-2 rounded-lg border border-border px-5 py-2.5 text-sm font-medium hover:bg-muted transition-colors">
+        <ArrowLeft className="size-4" />
+        Kembali ke Dashboard
+      </a>
     </div>
   );
 }

@@ -221,19 +221,24 @@ export default async function AkunPage({ params }: { params: Params }) {
     {/* ══════════ Mobile (<md) — kartu anggota + quick actions ══════════ */}
     <div className="md:hidden space-y-4">
 
-      {completeBanner}
-
-      <MemberCard
-        type={identity.type}
-        name={identity.name}
-        photoUrl={identity.photoUrl}
-        memberNumber={membershipInfo?.memberNumber ?? null}
-        stambuk={identity.stambuk}
-        primaryCabangNama={membershipInfo?.primaryCabangNama ?? null}
-        orgLabel={isMember ? orgMemberLabel : "Akun Publik"}
-        logoUrl={logoUrl}
-        siteName={siteName}
-      />
+      {/* Ditarik naik (-mt-16) — overlap ke area gradasi AkunMobileHeader yang sengaja
+          dilebarkan (pb-20), supaya kartu tampak mengambang di atas gradasi. HANYA blok
+          pertama ini yang ditarik — space-y-4 di parent tidak kena (first child tidak dapat
+          margin-top dari space-y sama sekali, jadi -mt-16 di sini tidak konflik). */}
+      <div className="-mt-16 space-y-4">
+        {completeBanner}
+        <MemberCard
+          type={identity.type}
+          name={identity.name}
+          photoUrl={identity.photoUrl}
+          memberNumber={membershipInfo?.memberNumber ?? null}
+          stambuk={identity.stambuk}
+          primaryCabangNama={membershipInfo?.primaryCabangNama ?? null}
+          orgLabel={isMember ? orgMemberLabel : "Akun Publik"}
+          logoUrl={logoUrl}
+          siteName={siteName}
+        />
+      </div>
 
       {/* 3 quick action utama */}
       <div className="grid grid-cols-3 gap-3">

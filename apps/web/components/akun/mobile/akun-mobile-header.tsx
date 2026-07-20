@@ -12,7 +12,11 @@ type Props = {
 
 export function AkunMobileHeader({ name, avatarUrl, badgeLabel }: Props) {
   return (
-    <div className="flex items-center justify-between gap-3 bg-primary px-4 pb-6 pt-5 text-primary-foreground">
+    // Gradasi primary→secondary + padding-bottom lebar SENGAJA (bukan tinggi wajar untuk
+    // konten header semata) — area ini "melebar" ke bawah supaya MemberCard (akun/page.tsx,
+    // ditarik naik via -mt-14) tampak mengambang di atas gradasi, gradasinya terasa menyambung
+    // sampai ke tengah kartu. Lihat docs/arsitektur-akun.md § Mobile App Mode.
+    <div className="flex items-center justify-between gap-3 bg-gradient-to-b from-primary to-secondary px-4 pb-20 pt-5 text-primary-foreground">
       <div className="flex items-center gap-3 min-w-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

@@ -13,7 +13,8 @@ import { RegencyCombobox } from "@/components/ui/regency-combobox";
 import { Combobox } from "@/components/ui/combobox";
 import { CoverImageField } from "@/components/media/member-media-picker";
 import { PhoneInput }      from "@/components/ui/phone-input";
-import { Search, ChevronDown, Plus, X } from "lucide-react";
+import { Search, ChevronDown, Plus, X, ArrowLeft } from "lucide-react";
+import { useBaseUrl } from "@/lib/use-base-url";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -233,9 +234,10 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function LengkapiPage() {
-  const params = useParams<{ tenant: string }>();
-  const slug   = params.tenant;
-  const router = useRouter();
+  const params  = useParams<{ tenant: string }>();
+  const slug    = params.tenant;
+  const router  = useRouter();
+  const baseUrl = useBaseUrl(slug);
 
   const [step, setStep]       = React.useState(1);
   const [loading, setLoading] = React.useState(true);
@@ -564,6 +566,11 @@ export default function LengkapiPage() {
         <p className="text-sm text-muted-foreground mt-1">
           Isi data diri agar profil keanggotaan Anda lengkap dan terverifikasi.
         </p>
+        <a href={`${baseUrl}/akun`}
+          className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-5 py-2.5 text-sm font-medium hover:bg-muted transition-colors">
+          <ArrowLeft className="size-4" />
+          Kembali ke Dashboard
+        </a>
       </div>
 
       <StepIndicator current={step} total={3} />

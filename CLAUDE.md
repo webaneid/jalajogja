@@ -8376,11 +8376,49 @@ dipindah ke section "Layanan" (di bawah Agenda+Produk yang sudah ada, jadi baris
 
 **Verifikasi**: `tsc --noEmit` bersih + `bun run build` sukses.
 
+### [2026-07-21] Gradasi Header Mobile + Tombol "Kembali ke Dashboard" di 4 Halaman Akun
+
+**1. Gradasi `AkunMobileHeader`** — `bg-primary` polos diganti `bg-gradient-to-b from-primary
+to-secondary` (kedua CSS var sudah bagian sistem tema tenant, `theme-palette.ts` — otomatis
+ikut warna tenant, tidak perlu fetch manual). Padding bawah dilebarkan (`pb-6` → `pb-20`) supaya
+area gradasi cukup tinggi untuk "menyambung" ke `MemberCard` di bawahnya.
+
+**Teknik overlap kartu**: `MemberCard` (+ `completeBanner` di atasnya) dibungkus
+`<div className="-mt-16 space-y-4">` di `akun/page.tsx` — menarik naik SPESIFIK blok pertama
+itu ke area gradasi yang sudah dilebarkan, sehingga kartu tampak mengambang di atas gradasi
+(pola umum di app fintech/banking: hero band berwarna + kartu overlap). Sengaja HANYA blok
+pertama yang ditarik (bukan seluruh `space-y-4` mobile) — elemen setelahnya (quick actions,
+Menu Cepat, Layanan) tetap flow normal. Aman terhadap `space-y-4` margin-leak (§ 6
+`docs/arsitektur-mobile-shell.md`) karena FIRST CHILD tidak pernah dapat margin-top dari
+`space-y-*` sama sekali — tidak perlu `mt-0` override.
+
+**2. Tombol "Kembali ke Dashboard" di 4 halaman** (`/akun/profil`, `/akun/lengkapi`,
+`/akun/transaksi`, `/akun/media`) — pola PERSIS disalin dari yang sudah ada di
+`pesantren/page.tsx`/`usaha-client.tsx` (`<a href={baseUrl+"/akun"}>` + `ArrowLeft` + outline
+button style) — bukan komponen baru, styling manual disalin identik untuk konsistensi visual.
+3 dari 4 halaman (`profil`/`transaksi`/`lengkapi`) belum punya `baseUrl` sama sekali sebelumnya
+— ditambah via `useBaseUrl(slug)` (`lib/use-base-url.ts`, hook client yang sudah ada untuk
+kasus ini). `media/page.tsx` sudah punya `baseUrl`+ikon panah kecil di atas (breadcrumb-style,
+dipertahankan) — tombol lengkap ditambahkan di BAWAH sebagai tambahan, bukan pengganti.
+
+**Penempatan berbeda sesuai struktur halaman** (bukan copy-paste posisi buta): 3 halaman
+sederhana (`profil`/`transaksi`/`media`) — tombol di PALING BAWAH konten (sama persis posisi di
+pesantren/usaha). `lengkapi` (wizard 3-step) — tombol di HEADER (persisten di semua step,
+karena "paling bawah" berubah-ubah tergantung step yang aktif, tidak masuk akal untuk wizard).
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build` sukses. Belum diverifikasi visual di
+browser (efek gradasi+overlap kartu — proporsi `-mt-16` mungkin perlu disesuaikan setelah
+dilihat langsung, keterbatasan environment sesi ini yang sudah berulang kali dicatat).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Disambiguasi label Profil → Info Login / Data Diri → Edit Profil**
-  (lihat lesson di atas) — rename di `akun-nav.tsx` (satu sumber, propagate otomatis ke
-  desktop+mobile) + restructure quick-action mobile (Donasi pindah ke Layanan). `tsc`+build
+- Terakhir dikerjakan: **Gradasi header mobile + tombol Kembali ke Dashboard di 4 halaman
+  akun** (lihat lesson di atas) — `AkunMobileHeader` gradasi primary→secondary + `MemberCard`
+  overlap via `-mt-16`, tombol back ditambahkan ke profil/lengkapi/transaksi/media. `tsc`+build
   bersih. Belum di-commit/push.
+- Sesi sebelumnya: **Disambiguasi label Profil → Info Login / Data Diri → Edit Profil**
+  (lihat lesson di atas) — rename di `akun-nav.tsx` (satu sumber, propagate otomatis ke
+  desktop+mobile) + restructure quick-action mobile (Donasi pindah ke Layanan). Sudah di-commit
+  dan di-push (`096fdbd`).
 - Sesi sebelumnya: **Refactor `/akun` mobile — "App mode" + kartu anggota** (lihat lesson
   di atas) — skema header baru (`isAkunAppMode`), 3 komponen baru
   (`AkunMobileHeader`/`MemberCard`/`AkunBottomNav`), desktop tidak disentuh. Sudah di-commit

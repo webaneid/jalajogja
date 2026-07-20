@@ -4,10 +4,11 @@ import { useState, useEffect, useTransition } from "react";
 import { use }                 from "react";
 import {
   Loader2, Package, Heart, Ticket, Truck, CheckCircle2, Clock,
-  Settings2, PackageCheck, ExternalLink, MapPin, ChevronDown, ChevronUp,
+  Settings2, PackageCheck, ExternalLink, MapPin, ChevronDown, ChevronUp, ArrowLeft,
 } from "lucide-react";
 import Link from "next/link";
 import { confirmDeliveryAction } from "@/app/(public)/[tenant]/actions";
+import { useBaseUrl } from "@/lib/use-base-url";
 
 type Params = Promise<{ tenant: string }>;
 
@@ -333,6 +334,7 @@ function OrderCard({ order, slug }: { order: Order; slug: string }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function TransaksiPage({ params }: { params: Params }) {
   const { tenant: slug } = use(params);
+  const baseUrl = useBaseUrl(slug);
 
   const [orders,  setOrders]  = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -373,6 +375,12 @@ export default function TransaksiPage({ params }: { params: Params }) {
           <OrderCard key={order.id} order={order} slug={slug} />
         ))}
       </div>
+
+      <a href={`${baseUrl}/akun`}
+        className="inline-flex items-center gap-2 rounded-lg border border-border px-5 py-2.5 text-sm font-medium hover:bg-muted transition-colors">
+        <ArrowLeft className="size-4" />
+        Kembali ke Dashboard
+      </a>
     </div>
   );
 }
