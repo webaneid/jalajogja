@@ -437,6 +437,7 @@ export default function LengkapiPage() {
     if (Number(graduationYear) === 1999 && !graduationPeriod) { setError("Angkatan 1999 wajib memilih periode: Awal atau Akhir."); return; }
     if (!professionId)    { setError("Profesi wajib dipilih."); return; }
     if (!waliSantri)      { setError("Status wali santri wajib dipilih."); return; }
+    if (!primaryCabangRefId) { setError("PC IKPM Cabang wajib dipilih."); return; }
     setSaving(true); setError(null);
     try {
       const res = await fetch("/api/akun/member-data", {
@@ -748,7 +749,7 @@ export default function LengkapiPage() {
 
             {/* PC IKPM Cabang */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">PC IKPM Cabang</label>
+              <label className="text-sm font-medium">PC IKPM Cabang <span className="text-destructive">*</span></label>
               <Combobox
                 options={cabangList.map(c => ({ value: c.id, label: c.nama }))}
                 value={primaryCabangRefId}
@@ -766,7 +767,7 @@ export default function LengkapiPage() {
           <div className="flex justify-end pt-4">
             <button
               onClick={saveStep1}
-              disabled={saving || !name.trim() || !gender || !birthDate || !graduationYear || (Number(graduationYear) === 1999 && !graduationPeriod) || !professionId || !waliSantri}
+              disabled={saving || !name.trim() || !gender || !birthDate || !graduationYear || (Number(graduationYear) === 1999 && !graduationPeriod) || !professionId || !waliSantri || !primaryCabangRefId}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

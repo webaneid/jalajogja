@@ -7744,11 +7744,37 @@ benar-benar kirim OTP) — user diminta coba alur penuh: register dengan stambuk
 register dengan nomor yang sudah terdaftar, login WA OTP ke nomor terdaftar vs tidak terdaftar,
 DAN forgot-password ke nomor tidak terdaftar.
 
+### [2026-07-20] PC IKPM Cabang Diwajibkan di `/akun/lengkapi`
+
+User: "ikpm cabang itu diwajibkan, karena dia muara ikpm-nya" — lalu klarifikasi "maksud saya
+dalam form lengkapi profil" (bukan form admin `members/new`/`edit`, meski field yang sama juga
+ada di sana sejak lesson "[2026-07-13] PC IKPM Cabang — 3 Bug Sekaligus"). Field `primaryCabangRefId`
+di `/akun/lengkapi` Step 1 sebelumnya opsional (tidak ada asterisk, tidak masuk kondisi `disabled`
+tombol, tidak ada `setError` check) — sekarang wajib, mengikuti pola PERSIS yang sudah dikunci di
+lesson "[2026-07-13] Bug: Field Wajib Tanpa Indikator Visual": (1) asterisk merah di label, (2)
+masuk kondisi `disabled` tombol "Simpan & Lanjutkan", (3) `setError("PC IKPM Cabang wajib
+dipilih.")` eksplisit di `saveStep1()` sebelum submit — tiga lapis yang sama dengan semua field
+wajib lain di step ini (nama/gender/tanggal lahir/tahun lulus/profesi/wali santri).
+
+**Scope sengaja TIDAK diperluas ke form admin** (`members/new`/`members/[id]/edit`) — user
+eksplisit bilang "form lengkapi profil" saja. Form admin biarkan tetap opsional untuk sekarang
+(masuk akal: admin kadang input data awal anggota sebelum tahu cabangnya, self-service adalah
+titik di mana data ini SEHARUSNYA sudah lengkap).
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Perluas guard OTP ke forgot-password** (lihat lesson di atas, bagian
-  "Susulan") — `send-otp` sekarang cek registrasi untuk `login` MAUPUN `reset_password`, tidak
-  cuma login. `forgot-password/page.tsx` dapat UI "Nomor Anda belum terdaftar, silakan mendaftar
-  melalui tautan ini" identik `login-form.tsx`. `tsc`+build bersih. Belum di-commit/push.
+- Terakhir dikerjakan: **PC IKPM Cabang diwajibkan di `/akun/lengkapi`** (lihat lesson di atas)
+  — asterisk + disabled-guard + `setError` eksplisit, mengikuti pola field wajib yang sudah ada.
+  Scope sengaja tidak diperluas ke form admin (user eksplisit minta "form lengkapi profil" saja).
+  `tsc`+build bersih. Belum di-commit/push.
+- Sesi sebelumnya: **Perluas guard OTP ke forgot-password** (lihat lesson di atas) — `send-otp`
+  sekarang cek registrasi untuk `login` MAUPUN `reset_password`, tidak cuma login.
+  `forgot-password/page.tsx` dapat UI "Nomor Anda belum terdaftar, silakan mendaftar melalui
+  tautan ini" identik `login-form.tsx`. Sudah di-commit dan di-push (`1b8ba22`).
+- Sesi sebelumnya: **Refactor login/register — wording + cegah kirim OTP ke nomor tak
+  terdaftar** (lihat lesson di atas) — 4 perbaikan: wording stambuk-tidak-ketemu, label "Nomor
+  WhatsApp", pesan "sudah terdaftar" tanpa nama, dan `send-otp` (login) sekarang cek registrasi
 - Sesi sebelumnya: **Refactor login/register — wording + cegah kirim OTP ke nomor tak
   terdaftar** (lihat lesson di atas) — 4 perbaikan: wording stambuk-tidak-ketemu, label "Nomor
   WhatsApp", pesan "sudah terdaftar" tanpa nama, dan `send-otp` (login) sekarang cek registrasi
