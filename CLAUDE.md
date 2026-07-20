@@ -7763,8 +7763,77 @@ titik di mana data ini SEHARUSNYA sudah lengkap).
 
 **Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error.
 
+### [2026-07-20] Bug: QR WhatsApp Tidak Muncul — GOWA `/statics/qrcode/*` Butuh Auth yang Browser Tidak Bisa Kirim
+
+User laporkan 2 masalah berurutan pada tenant `pc-ikpm-jogjakarta`:
+
+**Masalah 1 — device WA "hilang" setelah nonaktif+aktifkan ulang**: didiagnosis via SSH+curl
+langsung ke GOWA (`gowa.jalakarta.com`) — `GET /app/devices` (dengan `X-Device-Id` header)
+awalnya cuma menampilkan `visikita`, TIDAK ADA `pc-ikpm-jogjakarta`, meski DB tenant sudah
+punya `whatsapp_config.device_id` tersimpan (bukti `connectWhatsAppAction` sempat berjalan
+"sukses" tanpa error). Root cause: GOWA sempat punya sisa state device yang tidak konsisten
+setelah dihapus (`POST /devices` merespons seolah "already exists" — kondisi yang KODE KITA
+sengaja anggap aman/lanjut, sesuai dokumentasi GOWA yang memang return 500 utk device yang
+sudah ada — tapi device itu ternyata tidak benar-benar usable/listed). **Fix darurat**:
+memanggil ulang `POST /devices` secara manual via curl langsung ke GOWA berhasil membuat device
+fresh (`state: "disconnected"`) — device sekarang ada dan siap di-pairing.
+
+**Masalah 2 (root cause SEBENARNYA dari "QR tidak muncul", ditemukan setelah Masalah 1 selesai)**:
+user laporkan Mixed Content warning — `qr_link` dari GOWA mengembalikan `http://
+gowa.jalakarta.com/statics/qrcode/scan-qr-{uuid}.png` (scheme HTTP, bukan HTTPS) padahal
+endpoint publik GOWA sesungguhnya HTTPS (GOWA di belakang reverse proxy tidak tahu skema
+eksternal yang dipakai). `app/api/wa/qr/route.ts` SEBELUMNYA cuma sanitasi kasus
+`startsWith("/")` (relatif) atau `includes("localhost"/"127.0.0.1")` — TIDAK menangkap kasus
+absolute URL dengan hostname BENAR tapi scheme salah, jadi `http://` mentah lolos apa adanya
+ke client, yang di-embed sebagai `<img src={qrLink}>`.
+
+**Investigasi lanjutan (curl langsung, BUKAN cuma baca kode) mengungkap masalah yang JAUH lebih
+dalam dari sekadar scheme**: `/statics/qrcode/*.png` di GOWA **selalu** butuh header
+`Authorization: Basic ...` DAN `X-Device-Id` — dikonfirmasi via 4 percobaan curl berurutan
+(tanpa auth → 401; dengan auth tapi tanpa X-Device-Id → 400 "DEVICE_ID_REQUIRED"; fresh QR +
+kedua header sekaligus, immediate → 200 PNG asli). **Ini artinya URL mentah dari GOWA TIDAK
+PERNAH bisa langsung di-embed sebagai `<img src>` di browser SAMA SEKALI** — bukan cuma soal
+http vs https — karena tag `<img>` tidak bisa mengirim header custom. Mixed-content warning yang
+user lihat di console cuma GEJALA SEKUNDER (Chrome upgrade otomatis ke https, request tetap
+gagal 401 setelahnya) — bukan akar masalah sesungguhnya.
+
+**Fix**: `app/api/wa/qr/route.ts` sekarang FETCH bytes gambar QR di SERVER (dengan
+`Authorization`+`X-Device-Id` yang benar, path di-resolve ulang terhadap `baseUrl` kita sendiri
+— bukan percaya origin dari GOWA sama sekali), konversi ke base64 data URL, kembalikan
+`qrDataUrl` (ganti nama dari `qrLink`) ke client. `WhatsAppSetupClient`'s `QrModal` sekarang
+baca `data.qrDataUrl` — `<img src={qrUrl}>` tidak berubah sama sekali (data URL bekerja
+identik dengan URL eksternal untuk elemen `<img>`, tidak ada request browser terpisah lagi).
+
+**Pola diagnosis yang terbukti krusial**: `tsc`/baca-kode saja TIDAK CUKUP untuk bug integrasi
+eksternal seperti ini — root cause sesungguhnya (auth requirement, bukan cuma scheme) hanya
+ketahuan setelah SSH ke VPS dan curl LANGSUNG ke GOWA dengan berbagai kombinasi header/query,
+membandingkan status code persis (401 vs 400 vs 200) untuk mempersempit penyebab. Diagnosis dari
+membaca kode saja akan berhenti di "oh, cuma perlu fix scheme http→https" — yang TIDAK akan
+memperbaiki bug sama sekali karena akar masalahnya adalah auth, bukan scheme.
+
+**Aturan digeneralisasi**: kalau ada field `url`/`link` yang datang dari SERVICE EKSTERNAL
+(GOWA, RajaOngkir, dst) dan akan di-embed LANGSUNG di browser (`<img src>`, `<a href>`, iframe),
+JANGAN asumsikan URL itu publicly-fetchable tanpa kredensial — verifikasi dengan curl langsung
+apakah endpoint itu genuinely bisa diakses TANPA header/auth khusus yang browser tidak bisa
+kirim. Kalau butuh auth, satu-satunya cara aman adalah proxy/fetch di server kita sendiri
+(dengan kredensial yang kita simpan), lalu kirim hasil akhirnya (bytes/data URL) ke client —
+JANGAN PERNAH meneruskan URL mentah dari service eksternal yang butuh auth ke browser.
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error. Device `pc-ikpm-jogjakarta` sudah
+dipastikan ada di GOWA (via curl manual selama investigasi) dan QR image sudah dikonfirmasi
+bisa di-fetch dengan header yang benar (PNG 512×512 asli) — TAPI alur end-to-end lewat browser
+sungguhan (buka `/app/pc-ikpm-jogjakarta/settings/notifications` → klik Scan QR → lihat gambar
+muncul → scan pakai HP) belum diverifikasi visual, perlu dicoba user setelah deploy.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **PC IKPM Cabang diwajibkan di `/akun/lengkapi`** (lihat lesson di atas)
+- Terakhir dikerjakan: **Fix QR WhatsApp tidak muncul — proxy gambar di server, bukan URL
+  mentah dari GOWA** (lihat lesson di atas) — `api/wa/qr/route.ts` sekarang fetch bytes QR
+  server-side (dengan auth yang benar) dan kembalikan base64 data URL, bukan meneruskan URL
+  eksternal GOWA yang butuh Basic Auth+X-Device-Id (tidak bisa dikirim browser via `<img>`).
+  Sekalian ditemukan+difix device `pc-ikpm-jogjakarta` yang sempat hilang dari GOWA (dibuat
+  ulang manual via curl saat investigasi). `tsc`+build bersih. Belum di-commit/push, belum
+  di-deploy ke VPS — ini bug PRODUCTION AKTIF, prioritas tinggi untuk deploy segera.
+- Sesi sebelumnya: **PC IKPM Cabang diwajibkan di `/akun/lengkapi`** (lihat lesson di atas)
   — asterisk + disabled-guard + `setError` eksplisit, mengikuti pola field wajib yang sudah ada.
   Scope sengaja tidak diperluas ke form admin (user eksplisit minta "form lengkapi profil" saja).
   `tsc`+build bersih. Belum di-commit/push.

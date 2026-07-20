@@ -247,11 +247,11 @@ function QrModal({
     setQrError(null);
     try {
       const res = await fetch(`/api/wa/qr?slug=${encodeURIComponent(slug)}`, { cache: "no-store" });
-      const data = await res.json() as { qrLink?: string; qrDuration?: number; error?: string };
+      const data = await res.json() as { qrDataUrl?: string; qrDuration?: number; error?: string };
       if (!res.ok || data.error) {
         setQrError(data.error ?? "Gagal memuat QR code.");
       } else {
-        setQrUrl(data.qrLink ?? null);
+        setQrUrl(data.qrDataUrl ?? null);
         setCountdown(data.qrDuration ?? 30);
       }
     } catch {
