@@ -7824,15 +7824,61 @@ dipastikan ada di GOWA (via curl manual selama investigasi) dan QR image sudah d
 bisa di-fetch dengan header yang benar (PNG 512×512 asli) — TAPI alur end-to-end lewat browser
 sungguhan (buka `/app/pc-ikpm-jogjakarta/settings/notifications` → klik Scan QR → lihat gambar
 muncul → scan pakai HP) belum diverifikasi visual, perlu dicoba user setelah deploy.
+Commit+push: `5352de1`. Deploy ke VPS **dilakukan MANUAL oleh user sendiri** (bukan Claude) atas
+permintaan eksplisit — bukan bagian dari SOP otomatis sesi ini.
+
+### [2026-07-20] `connectWhatsAppAction` — Dari "Percaya Response GOWA" ke "Verifikasi + Retry"
+
+**Pertanyaan kritis dari user setelah fix QR di atas**: "apa yang menyebabkan tidak bisa create
+new device? apakah itu juga sudah diperbaiki? karena problemnya kalau kita selesaikan manual,
+nanti akan terjadi lagi." Jawaban jujur saat ditanya: **belum** — device `pc-ikpm-jogjakarta`
+yang sempat hilang sebelumnya HANYA dipulihkan manual via curl langsung selama investigasi
+(lihat lesson QR di atas), kode `connectWhatsAppAction` itu sendiri BELUM disentuh — celah yang
+menyebabkan kegagalan silent (`POST /devices` direspons GOWA seolah "already exists" padahal
+device TIDAK genuinely listed/usable) akan terulang persis sama kalau device hilang lagi.
+
+**Fix**: `connectWhatsAppAction` sekarang punya helper lokal `existsOnGowa()` — verifikasi
+via `GET /app/devices` (dengan header `X-Device-Id`, sama seperti yang dipakai `/api/wa/qr`)
+bahwa `deviceId` BENAR-BENAR muncul di `results[]`, bukan cuma percaya status response
+`POST /devices`. Alur baru:
+1. `POST /devices` seperti biasa (branch "already exists" tetap dianggap non-fatal, TAPI
+   sekarang lanjut ke verifikasi, bukan langsung dianggap sukses).
+2. `existsOnGowa()` — kalau device TIDAK listed, retry SEKALI (`POST /devices` lagi + verifikasi
+   ulang) — cukup untuk menutup celah race/inkonsistensi GOWA yang jadi penyebab bug ini.
+3. Kalau MASIH tidak listed setelah retry → return error eksplisit ke admin ("Device WhatsApp
+   tidak berhasil dibuat di server GOWA. Coba lagi beberapa saat, atau hubungi admin platform.")
+   — TIDAK LAGI melaporkan sukses secara diam-diam seperti sebelumnya.
+
+**`deactivateWhatsAppAction` SENGAJA TIDAK disentuh** — perilakunya sudah benar: tujuannya
+mereset STATE KITA SENDIRI (config lokal), bukan menunggu konfirmasi GOWA — upaya logout ke
+GOWA boleh gagal (device sudah tidak ada, dst), config lokal tetap harus di-wipe supaya UI
+kembali ke state "belum dikonfigurasi". Menambah verifikasi di sana justru kontraproduktif.
+
+**Aturan digeneralisasi**: kalau integrasi ke service eksternal punya respons "sudah ada,
+lanjutkan saja" yang SENGAJA dianggap non-fatal (pola umum untuk idempotency) — jangan berhenti
+di situ. Response "sudah ada" TIDAK SAMA dengan "genuinely ada dan bisa dipakai" — service
+eksternal bisa punya state internal yang tidak konsisten (soft-delete, cache basi, dst).
+Tambahkan verifikasi READ terpisah setelah operasi WRITE/CREATE, terutama untuk resource yang
+kegagalannya baru ketahuan user JAUH kemudian (di sini: baru ketahuan saat QR tidak bisa
+di-scan, bukan saat klik "Aktifkan").
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error. Belum dicoba ulang skenario asli
+(hapus device di GOWA → nonaktifkan → aktifkan lagi dari UI) untuk konfirmasi retry logic
+benar-benar menutup celah — device saat ini justru SUDAH ada di GOWA (dari investigasi
+sebelumnya), jadi jalur "retry" belum ter-exercise oleh kondisi nyata, hanya oleh code review.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix QR WhatsApp tidak muncul — proxy gambar di server, bukan URL
+- Terakhir dikerjakan: **`connectWhatsAppAction` — verifikasi + retry, bukan cuma percaya GOWA**
+  (lihat lesson di atas) — menjawab pertanyaan user "apakah root cause device hilang sudah
+  diperbaiki, atau cuma dipatch manual?" (jawabannya: cuma dipatch manual sebelumnya, SEKARANG
+  sudah diperbaiki di kode). `tsc`+build bersih. Belum di-commit/push.
+- Sesi sebelumnya: **Fix QR WhatsApp tidak muncul — proxy gambar di server, bukan URL
   mentah dari GOWA** (lihat lesson di atas) — `api/wa/qr/route.ts` sekarang fetch bytes QR
   server-side (dengan auth yang benar) dan kembalikan base64 data URL, bukan meneruskan URL
   eksternal GOWA yang butuh Basic Auth+X-Device-Id (tidak bisa dikirim browser via `<img>`).
   Sekalian ditemukan+difix device `pc-ikpm-jogjakarta` yang sempat hilang dari GOWA (dibuat
-  ulang manual via curl saat investigasi). `tsc`+build bersih. Belum di-commit/push, belum
-  di-deploy ke VPS — ini bug PRODUCTION AKTIF, prioritas tinggi untuk deploy segera.
+  ulang manual via curl saat investigasi). Sudah di-commit dan di-push (`5352de1`) — deploy ke
+  VPS dilakukan manual oleh user sendiri, bukan Claude.
 - Sesi sebelumnya: **PC IKPM Cabang diwajibkan di `/akun/lengkapi`** (lihat lesson di atas)
   — asterisk + disabled-guard + `setError` eksplisit, mengikuti pola field wajib yang sudah ada.
   Scope sengaja tidak diperluas ke form admin (user eksplisit minta "form lengkapi profil" saja).

@@ -354,12 +354,31 @@ export async function connectWhatsAppAction(slug: string): Promise<WaConnectResu
   if (!serviceUrl) return { success: false, error: "WhatsApp service belum dikonfigurasi di server." };
 
   const { gowaBasicAuth, WA_NOTIF_DEFAULTS } = await import("@/lib/whatsapp");
+  const baseUrl  = serviceUrl.replace(/\/$/, "");
   const deviceId = slug;
 
+  // Cek apakah device_id sungguh-sungguh terdaftar & listed di GOWA (bukan cuma percaya
+  // response POST /devices — pernah ditemukan kasus device dihapus di GOWA, lalu POST
+  // merespons seolah "already exists" padahal device TIDAK benar-benar listed/usable).
+  async function existsOnGowa(): Promise<boolean> {
+    try {
+      const res  = await fetch(`${baseUrl}/app/devices`, {
+        headers: { Authorization: gowaBasicAuth(), "X-Device-Id": deviceId },
+        cache:   "no-store",
+      });
+      if (!res.ok) return false;
+      const data = await res.json() as { results?: { device: string }[] };
+      return (data.results ?? []).some((d) => d.device === deviceId);
+    } catch {
+      return false;
+    }
+  }
+
   // Daftarkan device di GOWA via POST /devices.
-  // GOWA return 500 (bukan 409) untuk device yang sudah ada — kedua-duanya ok.
+  // GOWA return 500 (bukan 409) untuk device yang sudah ada — kedua-duanya SECARA RESPONS ok,
+  // tapi TIDAK dijadikan jaminan device benar-benar usable — selalu diverifikasi ulang di bawah.
   try {
-    const res = await fetch(`${serviceUrl.replace(/\/$/, "")}/devices`, {
+    const res = await fetch(`${baseUrl}/devices`, {
       method:  "POST",
       headers: { Authorization: gowaBasicAuth(), "Content-Type": "application/json" },
       body:    JSON.stringify({ device_id: deviceId }),
@@ -370,11 +389,33 @@ export async function connectWhatsAppAction(slug: string): Promise<WaConnectResu
         console.error("[connectWA] GOWA create device error:", res.status, text);
         return { success: false, error: "Gagal membuat device di GOWA. Cek konfigurasi server." };
       }
-      // "already exists" → lanjut
+      // "already exists" → lanjut ke verifikasi, JANGAN langsung dianggap sukses
     }
   } catch (err) {
     console.error("[connectWA] fetch error:", err);
     return { success: false, error: "Tidak dapat terhubung ke WhatsApp service." };
+  }
+
+  // Verifikasi device benar-benar listed. Kalau tidak, coba SEKALI lagi (POST + verifikasi
+  // ulang) — cukup untuk menutup celah race/inkonsistensi GOWA yang sebelumnya bikin device
+  // "hilang secara diam-diam" meski UI melaporkan sukses.
+  if (!(await existsOnGowa())) {
+    try {
+      await fetch(`${baseUrl}/devices`, {
+        method:  "POST",
+        headers: { Authorization: gowaBasicAuth(), "Content-Type": "application/json" },
+        body:    JSON.stringify({ device_id: deviceId }),
+      });
+    } catch {
+      // lanjut ke verifikasi ulang di bawah — kalau fetch ini gagal, existsOnGowa() akan gagal juga
+    }
+    if (!(await existsOnGowa())) {
+      console.error("[connectWA] Device tidak terverifikasi listed di GOWA setelah retry:", deviceId);
+      return {
+        success: false,
+        error: "Device WhatsApp tidak berhasil dibuat di server GOWA. Coba lagi beberapa saat, atau hubungi admin platform.",
+      };
+    }
   }
 
   // Simpan config awal ke settings tenant
