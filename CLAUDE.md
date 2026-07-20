@@ -7867,11 +7867,65 @@ di-scan, bukan saat klik "Aktifkan").
 benar-benar menutup celah — device saat ini justru SUDAH ada di GOWA (dari investigasi
 sebelumnya), jadi jalur "retry" belum ter-exercise oleh kondisi nyata, hanya oleh code review.
 
+### [2026-07-20] Halaman Notifikasi WA — Hapus Toggle Dead "Aktifkan WhatsApp" + Perjelas Card Gateway
+
+**Keluhan user**: dua card di `/settings/notifications` yang sama-sama menyebut "aktifkan/
+nonaktifkan WhatsApp" — card #1 "Notifikasi WhatsApp" (toggle "Aktifkan WhatsApp" + badge
+"Butuh add-on") dan card #2 "WhatsApp Gateway" (tombol Aktifkan/Scan QR/Putuskan/Nonaktifkan).
+User toggle card #1 off→on, buka `gowa.jalakarta.com`, device tidak berubah sama sekali — benar
+curiga ada yang tidak nyambung, plus bingung apa bedanya "Nonaktifkan" di state "diaktifkan
+belum tersambung" dengan "Putuskan" di state "terhubung".
+
+**Root cause dikonfirmasi via grep**: `values.whatsappEnabled` (card #1, tersimpan di
+`settings.notifications.whatsappEnabled`) **tidak pernah dibaca di mana pun** — bukan di
+`sendWaNotification` (`lib/whatsapp.ts`), bukan di tempat lain manapun. Gate pengiriman WA
+sesungguhnya HANYA 3 hal, semuanya dari card #2: `config.device_id` (ada/tidak),
+`config.verified` (true setelah QR discan), `config.notifications[event]` (toggle per-jenis
+notifikasi). Card #1 adalah sisa desain lama yang mengasumsikan ada alur install add-on formal
+(`tenant_addon_installations`) — TIDAK PERNAH selesai dibangun (sudah didokumentasikan sebagai
+gap di § "WhatsApp Gateway" — "tidak ada quota enforcement/addon billing check sama sekali").
+Toggle-nya cuma tulis ke DB, dibaca oleh nol konsumen.
+
+**Fix — hapus dead code, bukan disembunyikan**: fieldset "Notifikasi WhatsApp" + toggle
+"Aktifkan WhatsApp" dihapus total dari `NotificationsSettingsForm` (`DefaultValues` type ikut
+dirampingkan, `saveNotificationSettingsAction` signature disesuaikan — cuma 1 caller, aman
+diubah). `notifications/page.tsx` — `NotifConfig` type dan default values disesuaikan.
+
+**Card #2 (`WhatsAppSetupClient`) dipertegas jadi SATU-SATUNYA sumber kebenaran**:
+- Deskripsi header section diubah eksplisit: "Satu-satunya sakelar untuk notifikasi WhatsApp —
+  status di kartu di bawah ini... menentukan apakah pesan benar-benar terkirim."
+- Tambah blok `<ol>` 3-langkah (Aktifkan → device dibuat di GOWA; Scan QR → nomor ditautkan;
+  Putuskan/Nonaktifkan → HANYA logout+hapus config lokal) — highlight langkah aktif via
+  `isConfigured`/`isVerified`.
+- Confirm dialog "Putuskan" dan "Nonaktifkan" diperjelas: keduanya **TIDAK PERNAH menghapus
+  device dari server GOWA** (tidak ada endpoint delete-device yang dipanggil kode kita — GOWA
+  cuma di-logout via `/app/logout`, device row-nya tetap ada) — device baru dihapus kalau admin
+  menghapusnya manual langsung di GOWA. Ini menjawab observasi user "ketika di non aktifkan
+  juga tidak terhapus device-nya" — itu memang perilaku yang disengaja (bukan bug): "Nonaktifkan"
+  reset ke status "Belum Diaktifkan" secara LOKAL saja, supaya "Aktifkan" berikutnya idempotent
+  (pakai device yang sama, bukan bikin baru — konsisten dengan verifikasi `existsOnGowa()` yang
+  baru ditambah di lesson sebelumnya).
+
+**Aturan digeneralisasi**: kalau ditemukan field/toggle yang di-*write* ke DB tapi grep
+menunjukkan nol *read* di seluruh codebase (di luar file yang menulisnya sendiri) — itu dead
+code, bukan "fitur belum lengkap yang boleh dibiarkan". Hapus total (ikuti pola project:
+`MobileMenuDrawer` dan komponen mati lain sebelumnya juga dihapus, bukan dikomentari) — jangan
+biarkan UI menjanjikan kontrol yang tidak benar-benar mengontrol apa pun, itu sumber kebingungan
+user yang nyata (persis kasus ini).
+
+**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error, `/app/[tenant]/settings/notifications`
+terkonfirmasi muncul di build output. Tidak ada migration DB (field `whatsappEnabled` di JSONB
+`settings.notifications` cukup berhenti ditulis — data lama yang masih menyimpan field itu tidak
+apa-apa dibiarkan, tidak pernah dibaca lagi).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **`connectWhatsAppAction` — verifikasi + retry, bukan cuma percaya GOWA**
+- Terakhir dikerjakan: **Hapus toggle dead "Aktifkan WhatsApp" (card #1) + perjelas card
+  "WhatsApp Gateway" jadi satu-satunya sumber kebenaran** (lihat lesson di atas) — `tsc`+build
+  bersih. Belum di-commit/push.
+- Sesi sebelumnya: **`connectWhatsAppAction` — verifikasi + retry, bukan cuma percaya GOWA**
   (lihat lesson di atas) — menjawab pertanyaan user "apakah root cause device hilang sudah
   diperbaiki, atau cuma dipatch manual?" (jawabannya: cuma dipatch manual sebelumnya, SEKARANG
-  sudah diperbaiki di kode). `tsc`+build bersih. Belum di-commit/push.
+  sudah diperbaiki di kode). `tsc`+build bersih. Sudah di-commit dan di-push (`5206ac7`).
 - Sesi sebelumnya: **Fix QR WhatsApp tidak muncul — proxy gambar di server, bukan URL
   mentah dari GOWA** (lihat lesson di atas) — `api/wa/qr/route.ts` sekarang fetch bytes QR
   server-side (dengan auth yang benar) dan kembalikan base64 data URL, bukan meneruskan URL

@@ -324,7 +324,6 @@ export async function saveNotificationSettingsAction(
     emailNewMember: boolean;
     emailPaymentIn: boolean;
     emailPaymentConfirmed: boolean;
-    whatsappEnabled: boolean;
   }
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);

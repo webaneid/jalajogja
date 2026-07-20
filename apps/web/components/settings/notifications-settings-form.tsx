@@ -10,7 +10,6 @@ type DefaultValues = {
   emailNewMember:        boolean;
   emailPaymentIn:        boolean;
   emailPaymentConfirmed: boolean;
-  whatsappEnabled:       boolean;
 };
 
 function Toggle({
@@ -114,31 +113,6 @@ export function NotificationsSettingsForm({
           onChange={set("emailPaymentConfirmed")}
           disabled={pending}
         />
-      </fieldset>
-
-      {/* WhatsApp */}
-      <fieldset className="space-y-3">
-        <legend className="w-full border-b pb-1.5 text-sm font-semibold text-foreground">
-          Notifikasi WhatsApp
-        </legend>
-
-        <Toggle
-          label="Aktifkan WhatsApp"
-          description="Notifikasi via WhatsApp membutuhkan add-on WhatsApp aktif."
-          checked={values.whatsappEnabled}
-          onChange={set("whatsappEnabled")}
-          disabled={pending}
-          badge={
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-              Butuh add-on
-            </span>
-          }
-        />
-        {values.whatsappEnabled && (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-            Pastikan add-on WhatsApp sudah diinstall dan terhubung di halaman Add-on.
-          </p>
-        )}
       </fieldset>
 
       <Button type="submit" disabled={pending}>

@@ -22,7 +22,6 @@ export default async function NotificationsSettingsPage({
     emailNewMember: boolean;
     emailPaymentIn: boolean;
     emailPaymentConfirmed: boolean;
-    whatsappEnabled: boolean;
   };
 
   const notif       = (settings.notifications as NotifConfig) ?? null;
@@ -50,7 +49,6 @@ export default async function NotificationsSettingsPage({
             emailNewMember:        notif?.emailNewMember        ?? true,
             emailPaymentIn:        notif?.emailPaymentIn        ?? true,
             emailPaymentConfirmed: notif?.emailPaymentConfirmed ?? true,
-            whatsappEnabled:       notif?.whatsappEnabled       ?? false,
           }}
         />
       </section>
@@ -60,8 +58,10 @@ export default async function NotificationsSettingsPage({
         <div className="border-b pb-1.5">
           <h3 className="text-sm font-semibold">WhatsApp Gateway</h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Notifikasi otomatis via WhatsApp ke anggota, pelanggan, dan pengurus.
-            Membutuhkan konfigurasi GOWA di server.
+            Satu-satunya sakelar untuk notifikasi WhatsApp — status di kartu di bawah ini
+            (Belum Diaktifkan / Diaktifkan — Belum Tersambung / Terhubung) menentukan apakah
+            pesan benar-benar terkirim. Toggle per-notifikasi di bawah hanya aktif setelah
+            status &quot;Terhubung&quot;.
           </p>
         </div>
         <WhatsAppSetupClient slug={slug} config={waConfig} templates={waTemplates} />

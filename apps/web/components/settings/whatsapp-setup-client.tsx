@@ -392,7 +392,12 @@ export function WhatsAppSetupClient({ slug, config, templates }: Props) {
   // ── Putuskan (dari state terhubung — reset ke "aktif tapi belum scan") ─────
 
   async function handleDisconnect() {
-    if (!confirm("Putuskan koneksi WhatsApp? Notifikasi WA akan berhenti dikirim.")) return;
+    if (!confirm(
+      "Putuskan koneksi WhatsApp?\n\n" +
+      "Nomor HP akan di-logout dari WhatsApp Web (perlu scan QR ulang untuk sambung lagi) " +
+      "dan semua notifikasi WA berhenti terkirim. Device tetap ada di server GOWA — " +
+      "tidak perlu 'Aktifkan' ulang, cukup 'Scan QR' lagi.",
+    )) return;
     setPending(true);
     try {
       const result = await disconnectWhatsAppAction(slug);
@@ -404,7 +409,12 @@ export function WhatsAppSetupClient({ slug, config, templates }: Props) {
   // ── Nonaktifkan (dari state aktif-belum-scan — hapus config sepenuhnya) ───
 
   async function handleDeactivate() {
-    if (!confirm("Nonaktifkan WhatsApp Gateway? Config akan dihapus.")) return;
+    if (!confirm(
+      "Nonaktifkan WhatsApp Gateway?\n\n" +
+      "Pengaturan lokal (device ID, toggle notifikasi) dihapus dan kembali ke status " +
+      "'Belum Diaktifkan'. Device di server GOWA TIDAK dihapus — kalau 'Aktifkan' lagi " +
+      "nanti, sistem akan pakai device yang sama (bukan bikin baru).",
+    )) return;
     setPending(true);
     try {
       const result = await deactivateWhatsAppAction(slug);
@@ -479,6 +489,21 @@ export function WhatsAppSetupClient({ slug, config, templates }: Props) {
           )}
         </div>
       </div>
+
+      {/* ── Penjelasan tiga langkah, biar kepastian kapan device dibuat/dihapus jelas ─── */}
+      <ol className="space-y-1.5 rounded-lg border border-dashed px-4 py-3 text-xs text-muted-foreground">
+        <li className={isConfigured ? "text-foreground" : ""}>
+          <strong>1. Aktifkan</strong> — device baru DIBUAT di server GOWA untuk tenant ini.
+        </li>
+        <li className={isVerified ? "text-foreground" : ""}>
+          <strong>2. Scan QR</strong> — nomor WhatsApp ditautkan ke device tersebut.
+        </li>
+        <li>
+          <strong>Putuskan / Nonaktifkan</strong> — hanya logout nomor + hapus pengaturan lokal.
+          Device di GOWA <strong>tidak pernah dihapus</strong> oleh tombol manapun di sini —
+          scan QR lagi kapan saja untuk menyambung ulang tanpa perlu Aktifkan dari nol.
+        </li>
+      </ol>
 
       {/* ── Info jika belum ada env vars ────────────────────────────────── */}
       {!process.env.NEXT_PUBLIC_WA_CONFIGURED && !isConfigured && (
