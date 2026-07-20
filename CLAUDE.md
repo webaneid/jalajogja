@@ -7918,10 +7918,67 @@ terkonfirmasi muncul di build output. Tidak ada migration DB (field `whatsappEna
 `settings.notifications` cukup berhenti ditulis — data lama yang masih menyimpan field itu tidak
 apa-apa dibiarkan, tidak pernah dibaca lagi).
 
+### [2026-07-20] Bug Kritis: `deactivateWhatsAppAction` Crash — `settings.value` JSONB NOT NULL
+
+**Gejala production**: setelah deploy fix card WhatsApp di atas, user coba klik "Nonaktifkan"
+untuk device `pc-ikpm-jogjakarta` (yang ternyata TIDAK PERNAH benar-benar tercipta di GOWA
+meski admin UI menampilkan status "Diaktifkan" — data lokal stale dari sesi lama sebelum
+`existsOnGowa()` verification ada) → browser console: `Uncaught (in promise) Error: An error
+occurred in the Server Components render...` (digest disembunyikan di production build).
+
+**Root cause**: `deactivateWhatsAppAction` (`settings/actions.ts`) menulis
+`upsertSettings(tenantClient, "notif", { whatsapp_config: null })` untuk "menghapus" config —
+TAPI kolom `tenant_{slug}.settings.value` bertipe **`jsonb("value").notNull()`**
+(`packages/db/src/schema/tenant/settings.ts`). Drizzle mengirim literal SQL `NULL` untuk value
+JS `null` → PostgreSQL menolak dengan `null value in column "value" violates not-null
+constraint` → exception tidak tertangkap di dalam Server Action → Next.js production build
+menyembunyikan detail (by design, security) → muncul sebagai error generik yang tidak
+informatif di console customer/admin.
+
+**Kenapa baru ketahuan sekarang**: ini SATU-SATUNYA tempat di seluruh codebase yang menulis
+`null` sebagai *top-level value* ke `upsertSetting`/`upsertSettings` (diverifikasi via grep
+menyeluruh — semua occurrence `: null` lain di file settings/donasi/letters/widget-areas
+adalah field NESTED di dalam object JSONB, yang aman karena JSONB boleh berisi null di
+dalamnya, cuma kolomnya sendiri yang tidak boleh SQL NULL). Bug laten sejak fitur WhatsApp
+Gateway dibuat — baru ter-trigger sekarang karena "Nonaktifkan" untuk device yang sebenarnya
+tidak pernah ter-create baru benar-benar dicoba end-to-end.
+
+**Fix**: `deleteSetting(tenantDb, key, group)` — helper baru di `packages/db/src/helpers/
+settings.ts` (DELETE row, bukan UPDATE value ke null) + di-export dari `@jalajogja/db` barrel.
+`deactivateWhatsAppAction` diganti pakai `deleteSetting(tenantClient, "whatsapp_config",
+"notif")`. Setelah row dihapus, `getSettings()` otomatis tidak mengembalikan key itu sama
+sekali (`Object.fromEntries` dari hasil SELECT) → `settings["whatsapp_config"]` jadi
+`undefined` → `isConfigured = !!config` di UI otomatis `false`, tanpa perubahan lain diperlukan.
+
+**Aturan digeneralisasi**: setiap kolom `jsonb(...).notNull()` — pola yang dipakai project ini
+untuk SEMUA `settings.value` — TIDAK PERNAH boleh ditulis `null` untuk "mengosongkan"/"hapus"
+sebuah key. Kalau maksudnya "reset ke tidak ada", **hapus row-nya** (`deleteSetting`), bukan
+`upsert(..., null)`. Berlaku untuk fitur settings manapun ke depan yang butuh alur "aktifkan →
+nonaktifkan sepenuhnya" (bukan sekadar reset ke object kosong `{}`).
+
+**Catatan terpisah soal device `pc-ikpm-jogjakarta` yang stale**: fix `existsOnGowa()`
+verification (lesson sebelumnya) HANYA berjalan di titik `connectWhatsAppAction` (create baru)
+— tidak retroaktif memvalidasi config yang SUDAH tersimpan sebelumnya. Data lokal tenant ini
+kemungkinan besar peninggalan sesi investigasi sebelumnya (device sempat dibuat manual via
+curl, lalu hilang lagi dari GOWA — mungkin container GOWA restart/redeploy tanpa persistent
+volume). Alur pemulihan setelah fix ini deploy: klik "Nonaktifkan" (sekarang berhasil, tidak
+crash) → config lokal bersih → klik "Aktifkan WhatsApp Gateway" lagi → `connectWhatsAppAction`
+membuat device BARU + verifikasi `existsOnGowa()` memastikan kali ini benar-benar tercipta.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` (dua package terpisah,
+karena `deleteSetting` ditambah di `packages/db`) + `bun run build --filter=@jalajogja/web`
+sukses. Belum diverifikasi end-to-end di production (butuh user coba ulang alur Nonaktifkan →
+Aktifkan → Scan QR setelah deploy) — tapi root cause exception sudah pasti (PostgreSQL NOT NULL
+constraint adalah kesalahan yang deterministik, bukan tebakan).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Hapus toggle dead "Aktifkan WhatsApp" (card #1) + perjelas card
+- Terakhir dikerjakan: **Fix crash `deactivateWhatsAppAction` — `settings.value` JSONB NOT
+  NULL tidak boleh ditulis `null`** (lihat lesson di atas) — helper `deleteSetting()` baru,
+  ganti `upsertSettings(..., {whatsapp_config: null})` jadi DELETE row. `tsc`+build bersih
+  di kedua package. Belum di-commit/push.
+- Sesi sebelumnya: **Hapus toggle dead "Aktifkan WhatsApp" (card #1) + perjelas card
   "WhatsApp Gateway" jadi satu-satunya sumber kebenaran** (lihat lesson di atas) — `tsc`+build
-  bersih. Belum di-commit/push.
+  bersih. Sudah di-commit dan di-push (`f8eedd1`).
 - Sesi sebelumnya: **`connectWhatsAppAction` — verifikasi + retry, bukan cuma percaya GOWA**
   (lihat lesson di atas) — menjawab pertanyaan user "apakah root cause device hilang sudah
   diperbaiki, atau cuma dipatch manual?" (jawabannya: cuma dipatch manual sebelumnya, SEKARANG

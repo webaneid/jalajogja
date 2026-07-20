@@ -29,6 +29,7 @@ export {
   getSetting,
   upsertSetting,
   upsertSettings,
+  deleteSetting,
 } from "./helpers/settings";
 
 // Billing helpers — buat + sync invoice dari modul mana saja

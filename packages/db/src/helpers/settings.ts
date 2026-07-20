@@ -70,3 +70,21 @@ export async function upsertSettings(
     )
   );
 }
+
+// Hapus satu setting (key + group). WAJIB dipakai untuk "kosongkan" sebuah setting —
+// kolom settings.value bertipe JSONB NOT NULL, jadi upsertSetting(..., null) akan
+// selalu gagal (constraint violation). Kalau maksudnya "reset ke kosong", hapus row-nya.
+export async function deleteSetting(
+  { db, schema }: TenantDb,
+  key: string,
+  group: SettingGroup
+): Promise<void> {
+  await db
+    .delete(schema.settings)
+    .where(
+      and(
+        eq(schema.settings.key, key),
+        eq(schema.settings.group, group)
+      )
+    );
+}

@@ -529,9 +529,10 @@ export async function deactivateWhatsAppAction(slug: string): Promise<WaConnectR
   }
 
   const tenantClient = createTenantDb(slug);
-  const { upsertSettings: upsert } = await import("@jalajogja/db");
-  // Hapus config sepenuhnya — set ke null agar isConfigured = false di UI
-  await upsert(tenantClient, "notif", { whatsapp_config: null });
+  const { deleteSetting } = await import("@jalajogja/db");
+  // Hapus row setting sepenuhnya (bukan set value ke null — settings.value bertipe
+  // JSONB NOT NULL, upsert dengan null akan selalu gagal constraint violation).
+  await deleteSetting(tenantClient, "whatsapp_config", "notif");
 
   revalidatePath(`/app/${slug}/settings/notifications`);
   return { success: true };
