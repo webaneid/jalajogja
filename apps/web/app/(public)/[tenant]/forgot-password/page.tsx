@@ -20,6 +20,7 @@ export default function ForgotPasswordPage({ params }: { params: Params }) {
   const [phone,     setPhone]     = useState("");
   const [otp,       setOtp]       = useState("");
   const [error,     setError]     = useState<string | null>(null);
+  const [notRegistered, setNotRegistered] = useState(false);
   const [pending,   start]        = useTransition();
   const [sending,   setSending]   = useState(false);
   const [countdown, setCountdown] = useState(0);
@@ -39,6 +40,7 @@ export default function ForgotPasswordPage({ params }: { params: Params }) {
   async function sendOtp(ph: string): Promise<boolean> {
     setSending(true);
     setError(null);
+    setNotRegistered(false);
     try {
       const res  = await fetch("/api/akun/send-otp", {
         method:  "POST",
@@ -46,7 +48,17 @@ export default function ForgotPasswordPage({ params }: { params: Params }) {
         body:    JSON.stringify({ phone: ph, type: "reset_password", slug }),
       });
       const data = await res.json() as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) { setError(data.error ?? "Gagal mengirim OTP."); return false; }
+      if (!res.ok || !data.ok) {
+        if (res.status === 404) {
+          // notRegistered menampilkan blok dengan tautan /register (step "phone"); error jadi
+          // fallback teks polos kalau ini terpicu dari tombol "Kirim ulang" di step "otp".
+          setNotRegistered(true);
+          setError("Nomor Anda belum terdaftar.");
+          return false;
+        }
+        setError(data.error ?? "Gagal mengirim OTP.");
+        return false;
+      }
       startCountdown();
       return true;
     } catch {
@@ -64,6 +76,12 @@ export default function ForgotPasswordPage({ params }: { params: Params }) {
       const ok = await sendOtp(phone);
       if (ok) setStep("otp");
     });
+  }
+
+  function handlePhoneInputChange(val: string) {
+    setPhone(val);
+    setNotRegistered(false);
+    setError(null);
   }
 
   function handleOtpSubmit(e: React.FormEvent) {
@@ -112,11 +130,17 @@ export default function ForgotPasswordPage({ params }: { params: Params }) {
               <PhoneInput
                 label="Nomor WhatsApp"
                 value={phone}
-                onChange={setPhone}
+                onChange={handlePhoneInputChange}
                 required
               />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {notRegistered && (
+              <p className="text-sm text-destructive">
+                Nomor Anda belum terdaftar, silakan mendaftar melalui{" "}
+                <a href={`/${slug}/register`} className="underline font-medium">tautan ini</a>.
+              </p>
+            )}
+            {!notRegistered && error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={pending || sending}>
               {(pending || sending)
                 ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Mengirim OTP...</>
@@ -170,7 +194,7 @@ export default function ForgotPasswordPage({ params }: { params: Params }) {
               )}{" "}
               ·{" "}
               <button
-                onClick={() => { setStep("phone"); setOtp(""); setError(null); }}
+                onClick={() => { setStep("phone"); setOtp(""); setError(null); setNotRegistered(false); }}
                 className="text-muted-foreground hover:text-foreground"
               >
                 Ubah nomor

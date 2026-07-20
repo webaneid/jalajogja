@@ -7707,32 +7707,54 @@ diklaim" — form menampilkan alur klaim yang salah, bukan "sudah terdaftar". Fi
 ada, beda dari `members` yang bisa eksis tanpa `betterAuthUserId`). Client type disesuaikan
 (`memberId`/`type` jadi optional, `hasAccount` tetap wajib pada `found:true`).
 
-**Keputusan scope yang SENGAJA tidak diperluas** (dicatat, bukan lupa): (a) pengecekan duplikat
+**Keputusan scope yang SENGAJA tidak diperluas** (dicatat, bukan lupa): pengecekan duplikat
 nomor WA saat register HANYA aktif di jalur "member" (IKPM) — jalur "public" (bukan anggota)
 masih belum ada live-check nomor duplikat sama sekali, karena `handlePhoneChange` sejak awal
 di-gate `accountPath === "member"`. Memperluas ke jalur public butuh koordinasi tambahan
 (`isClaiming` HARUS ikut di-gate `accountPath==="member"` juga, kalau tidak jalur public bisa
 salah masuk mode "klaim member" kalau nomornya kebetulan cocok member belum-terklaim) — di luar
-scope literal yang diminta, belum dieksekusi, dicatat sebagai follow-up kalau diminta. (b) Cek
-registrasi sebelum kirim OTP HANYA diterapkan untuk `type==="login"` — `type==="register"` memang
-untuk nomor baru (tidak boleh ditolak), `type==="reset_password"` (dipakai `forgot-password/
-page.tsx`) TIDAK disentuh meski secara logis punya masalah yang sama (OTP terkirim ke nomor tak
-terdaftar sebelum baru ditolak di `verify-otp`) — user cuma minta soal "masuk/login" secara
-eksplisit, reset password di luar scope literal permintaan ini.
+scope literal yang diminta, belum dieksekusi, dicatat sebagai follow-up kalau diminta.
+
+**Susulan (giliran sama, user tanya balik)**: cek registrasi sebelum kirim OTP TADINYA hanya
+diterapkan untuk `type==="login"` — sengaja tidak diperluas ke `type==="reset_password"`
+(`forgot-password/page.tsx`) karena "di luar scope literal" permintaan pertama. User langsung
+tanya balik: apakah forgot-password juga sudah dijaga sama? Jawabannya belum — root cause dan
+solusinya PERSIS SAMA (OTP terlanjur terkirim ke nomor tak terdaftar, baru ditolak belakangan di
+`verify-otp`), jadi cukup perluas kondisi guard di `send-otp` (`validType === "login" ||
+validType === "reset_password"`) — TIDAK perlu helper/logic baru, sudah pakai `findUserByPhone`
+yang sama. `forgot-password/page.tsx` dapat pola UI identik `login-form.tsx`: state
+`notRegistered` + blok pesan bertaut ke `/register` (bukan teks polos digabung ke `{error}` biasa,
+karena butuh elemen `<a>` sungguhan). `verify-otp/route.ts`'s cek `reset_password` yang sudah ada
+sejak awal TIDAK dihapus — tetap jadi lapis pertahanan kedua (defense-in-depth) kalau
+`verify-otp` dipanggil langsung tanpa lewat `send-otp` dulu.
+
+**Pelajaran**: kalau instruksi awal user eksplisit membatasi scope ke SATU flow ("masuk/login")
+padahal root cause-nya generik dan ada flow LAIN yang identik persis (reset_password sama-sama
+"kirim OTP by phone, verified belakangan"), catat eksplisit sebagai keputusan sengaja (sudah
+dilakukan) — TAPI juga wajar untuk user menanyakan balik apakah flow serupa lain sudah ikut
+terlindungi. Pola ini (fix di 1 tempat → user tanya "yang lain juga?") sudah berulang beberapa
+kali di sesi-sesi sebelumnya (bug spacer mobile, `DndContext`, dll) — kalau root cause SUDAH
+diidentifikasi generik, pertimbangkan menyebutkan proaktif tempat lain yang secara struktural
+identik saat melaporkan hasil, bukan menunggu ditanya balik.
 
 **Verifikasi**: `tsc --noEmit` bersih di apps/web + `bun run build --filter=@jalajogja/web`
-sukses (dev server dimatikan dulu, `.next` dibersihkan). Belum diverifikasi visual/end-to-end di
-browser (perlu WA gateway aktif untuk benar-benar kirim OTP) — user diminta coba alur penuh:
-register dengan stambuk kosong/isi, register dengan nomor yang sudah terdaftar, login WA OTP ke
-nomor terdaftar vs tidak terdaftar.
+sukses (dev server dimatikan dulu, `.next` dibersihkan) — dijalankan 2× (fix awal + fix susulan
+forgot-password). Belum diverifikasi visual/end-to-end di browser (perlu WA gateway aktif untuk
+benar-benar kirim OTP) — user diminta coba alur penuh: register dengan stambuk kosong/isi,
+register dengan nomor yang sudah terdaftar, login WA OTP ke nomor terdaftar vs tidak terdaftar,
+DAN forgot-password ke nomor tidak terdaftar.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Refactor login/register — wording + cegah kirim OTP ke nomor tak
+- Terakhir dikerjakan: **Perluas guard OTP ke forgot-password** (lihat lesson di atas, bagian
+  "Susulan") — `send-otp` sekarang cek registrasi untuk `login` MAUPUN `reset_password`, tidak
+  cuma login. `forgot-password/page.tsx` dapat UI "Nomor Anda belum terdaftar, silakan mendaftar
+  melalui tautan ini" identik `login-form.tsx`. `tsc`+build bersih. Belum di-commit/push.
+- Sesi sebelumnya: **Refactor login/register — wording + cegah kirim OTP ke nomor tak
   terdaftar** (lihat lesson di atas) — 4 perbaikan: wording stambuk-tidak-ketemu, label "Nomor
   WhatsApp", pesan "sudah terdaftar" tanpa nama, dan `send-otp` (login) sekarang cek registrasi
   SEBELUM kirim (bukan setelah). Sekalian dedup 2 salinan identik "cari akun by phone" jadi
-  `lib/find-user-by-phone.ts` + fix bug `hasAccount` hilang untuk match akun publik. `tsc`+build
-  bersih. Belum di-commit/push, menunggu user coba alur penuh (butuh WA gateway aktif).
+  `lib/find-user-by-phone.ts` + fix bug `hasAccount` hilang untuk match akun publik. Sudah
+  di-commit dan di-push (`09ffe48`).
 - Sesi sebelumnya: **Fix ikon Halaman (Page) di BottomNav — fallback ke `FileText` bukan
   `Link2`** (lihat lesson di atas) — sudah di-commit dan di-push.
 - Sesi sebelumnya: **Koreksi proporsi BottomNav** (lihat lesson "Koreksi putaran 2" di atas)

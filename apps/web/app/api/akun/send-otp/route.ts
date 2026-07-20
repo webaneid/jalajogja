@@ -38,12 +38,11 @@ export async function POST(request: NextRequest) {
 
   const phone = toE164(rawPhone);
 
-  // ── Login: tolak sebelum kirim OTP kalau nomor belum terdaftar di akun manapun —
-  // cegah kirim WA sia-sia (biaya + membingungkan user yang OTP-nya tidak akan pernah valid,
-  // karena login-via-otp toh akan menolaknya lagi di titik verifikasi). "register" &
-  // "reset_password" TIDAK dicek di sini — register memang untuk nomor baru; reset_password
-  // di luar scope perubahan ini.
-  if (validType === "login") {
+  // ── Login & reset password: tolak sebelum kirim OTP kalau nomor belum terdaftar di akun
+  // manapun — cegah kirim WA sia-sia (biaya + membingungkan user yang OTP-nya tidak akan pernah
+  // valid, karena login-via-otp/verify-otp toh akan menolaknya lagi di titik verifikasi).
+  // "register" TIDAK dicek di sini — itu memang untuk nomor baru.
+  if (validType === "login" || validType === "reset_password") {
     const existingUserId = await findUserByPhone(phone);
     if (!existingUserId) {
       return NextResponse.json(
