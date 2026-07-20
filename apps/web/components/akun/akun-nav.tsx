@@ -16,12 +16,17 @@ export type NavItem = {
 
 // Di-export — dipakai ulang oleh AkunBottomNav (components/akun/mobile/akun-bottom-nav.tsx)
 // supaya daftar item nav TIDAK diketik ulang di dua tempat (cegah drift sidebar vs bottom nav).
+//
+// Label "Profil" vs "Data Diri" sengaja diubah jadi "Info Login" vs "Edit Profil" (2026-07-21)
+// — disambiguasi: /akun/profil = kredensial login (email, password, h1 halaman itu sendiri
+// SUDAH "Info Login" sejak lama, nav label-nya yang baru menyusul konsisten), /akun/lengkapi
+// (member) atau /akun/data (publik) = data pribadi (nama, tanggal lahir, dst).
 export const MEMBER_NAV_ITEMS: NavItem[] = [
-  { href: "",           label: "Beranda",   icon: LayoutDashboard, memberOnly: false },
-  { href: "/profil",    label: "Profil",    icon: User,            memberOnly: false },
-  { href: "/transaksi", label: "Transaksi", icon: Receipt,         memberOnly: false },
-  { href: "/event",     label: "Event",     icon: CalendarDays,    memberOnly: false },
-  { href: "/lengkapi",  label: "Data Diri", icon: ClipboardList,   memberOnly: false },
+  { href: "",           label: "Beranda",     icon: LayoutDashboard, memberOnly: false },
+  { href: "/profil",    label: "Info Login",  icon: User,            memberOnly: false },
+  { href: "/transaksi", label: "Transaksi",   icon: Receipt,         memberOnly: false },
+  { href: "/event",     label: "Event",       icon: CalendarDays,    memberOnly: false },
+  { href: "/lengkapi",  label: "Edit Profil", icon: ClipboardList,   memberOnly: false },
   { href: "/pesantren",   label: "Pesantren",   icon: BookOpen,   memberOnly: false },
   { href: "/usaha",       label: "Usaha",       icon: Building2,  memberOnly: false },
   { href: "/profesional", label: "Profesional", icon: Briefcase,  memberOnly: false },
@@ -29,11 +34,11 @@ export const MEMBER_NAV_ITEMS: NavItem[] = [
 ];
 
 export const PUBLIC_NAV_ITEMS: NavItem[] = [
-  { href: "",           label: "Beranda",   icon: LayoutDashboard, memberOnly: false },
-  { href: "/profil",    label: "Profil",    icon: User,            memberOnly: false },
-  { href: "/transaksi", label: "Transaksi", icon: Receipt,         memberOnly: false },
-  { href: "/event",     label: "Event",     icon: CalendarDays,    memberOnly: false },
-  { href: "/data",      label: "Data Diri", icon: ClipboardList,   memberOnly: false },
+  { href: "",           label: "Beranda",     icon: LayoutDashboard, memberOnly: false },
+  { href: "/profil",    label: "Info Login",  icon: User,            memberOnly: false },
+  { href: "/transaksi", label: "Transaksi",   icon: Receipt,         memberOnly: false },
+  { href: "/event",     label: "Event",       icon: CalendarDays,    memberOnly: false },
+  { href: "/data",      label: "Edit Profil", icon: ClipboardList,   memberOnly: false },
 ];
 
 type Props = {

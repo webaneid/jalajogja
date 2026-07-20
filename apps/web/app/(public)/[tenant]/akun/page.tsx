@@ -9,7 +9,7 @@ import { resolveOrgLabels } from "@/lib/tenant-org-label";
 import { MemberCard } from "@/components/akun/mobile/member-card";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
-  ShoppingBag, AlertCircle, Building2, BookOpen, ImageIcon, Briefcase,
+  ShoppingBag, AlertCircle, Building2, BookOpen, ImageIcon, Briefcase, ClipboardList,
 } from "lucide-react";
 
 type Params = Promise<{ tenant: string }>;
@@ -238,9 +238,9 @@ export default async function AkunPage({ params }: { params: Params }) {
       {/* 3 quick action utama */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { href: `${baseUrl}/akun/transaksi`, icon: Receipt,  label: "Transaksi" },
-          { href: `${baseUrl}/akun/profil`,    icon: BadgeCheck, label: "Profil" },
-          { href: `${baseUrl}/campaign`,       icon: Heart,    label: "Donasi" },
+          { href: `${baseUrl}/akun/transaksi`, icon: Receipt,      label: "Transaksi" },
+          { href: `${baseUrl}/akun/profil`,    icon: BadgeCheck,   label: "Info Login" },
+          { href: `${baseUrl}/akun/${isMember ? "lengkapi" : "data"}`, icon: ClipboardList, label: "Edit Profil" },
         ].map(({ href, icon: Icon, label }) => (
           <a key={href} href={href}
             className="flex flex-col items-center gap-2 rounded-xl border border-border py-3 hover:border-primary/50 hover:bg-muted/40 transition-all">
@@ -277,8 +277,9 @@ export default async function AkunPage({ params }: { params: Params }) {
         <p className="mb-2 text-sm font-semibold">Layanan</p>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { href: `${baseUrl}/agenda`, icon: CalendarDays, label: "Agenda", desc: "Event & kegiatan" },
-            { href: `${baseUrl}/produk`, icon: ShoppingBag,  label: "Produk", desc: "Belanja produk" },
+            { href: `${baseUrl}/agenda`,   icon: CalendarDays, label: "Agenda", desc: "Event & kegiatan" },
+            { href: `${baseUrl}/produk`,   icon: ShoppingBag,  label: "Produk", desc: "Belanja produk" },
+            { href: `${baseUrl}/campaign`, icon: Heart,        label: "Donasi", desc: "Kampanye & infaq" },
           ].map(({ href, icon: Icon, label, desc }) => (
             <a key={href} href={href}
               className="flex items-center gap-3 rounded-xl border border-border p-3 hover:border-primary/50 hover:bg-muted/40 transition-all">

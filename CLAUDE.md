@@ -8352,11 +8352,39 @@ sendiri), tidak ada konflik dengan elemen fixed lain. Belum diverifikasi visual 
 (keterbatasan environment sesi ini, sudah berulang kali dicatat) — user perlu cek langsung
 sebelum dianggap final, terutama proporsi `MemberCard` dan interaksi drawer "Lainnya".
 
+### [2026-07-21] Disambiguasi Label "Profil" vs "Data Diri" — Info Login vs Edit Profil
+
+**Masalah**: "Profil" dipakai untuk DUA hal berbeda di nav — `/akun/profil` (kredensial login:
+email, password — h1 halaman itu SUDAH lama bilang "Info Login", cuma label nav-nya yang belum
+konsisten) vs `/akun/lengkapi`|`/akun/data` (data pribadi: nama, tanggal lahir, dst, berlabel
+"Data Diri" di nav). User: ganti jadi **"Info Login"** (untuk `/profil`) dan **"Edit Profil"**
+(untuk `/lengkapi`|`/data`) — supaya tidak ambigu.
+
+**Fix — satu sumber kebenaran, otomatis propagate ke semua permukaan**: label diubah di
+`MEMBER_NAV_ITEMS`/`PUBLIC_NAV_ITEMS` (`akun-nav.tsx`, di-export sesi sebelumnya) — karena
+`AkunBottomNav` (tab utama + drawer "Lainnya") dan `AkunNav` (sidebar desktop) SAMA-SAMA
+render `item.label` dinamis dari array yang sama, rename di SATU tempat otomatis konsisten di:
+sidebar desktop, tab bottom-nav mobile, drawer "Lainnya" mobile — TANPA perlu sentuh 3 file
+terpisah. Ini bukti langsung manfaat "export array, jangan duplikasi" dari sesi sebelumnya.
+
+**Perubahan tambahan di `akun/page.tsx` (mobile quick-actions, hanya bisa diubah di sini —
+bukan bagian array yang di-share)**: 3 tombol aksi cepat berubah dari `Transaksi/Profil/Donasi`
+→ `Transaksi/Info Login/Edit Profil` (href tombol ketiga kondisional
+`${isMember ? "lengkapi" : "data"}`, sama seperti pola href nav item). "Donasi" TIDAK dihapus —
+dipindah ke section "Layanan" (di bawah Agenda+Produk yang sudah ada, jadi baris ke-2 grid
+2-kolom) — masih ada, cuma pindah posisi sesuai permintaan user.
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build` sukses.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Refactor `/akun` mobile — "App mode" + kartu anggota** (lihat lesson
+- Terakhir dikerjakan: **Disambiguasi label Profil → Info Login / Data Diri → Edit Profil**
+  (lihat lesson di atas) — rename di `akun-nav.tsx` (satu sumber, propagate otomatis ke
+  desktop+mobile) + restructure quick-action mobile (Donasi pindah ke Layanan). `tsc`+build
+  bersih. Belum di-commit/push.
+- Sesi sebelumnya: **Refactor `/akun` mobile — "App mode" + kartu anggota** (lihat lesson
   di atas) — skema header baru (`isAkunAppMode`), 3 komponen baru
-  (`AkunMobileHeader`/`MemberCard`/`AkunBottomNav`), desktop tidak disentuh. `tsc`+build bersih.
-  Belum di-commit/push.
+  (`AkunMobileHeader`/`MemberCard`/`AkunBottomNav`), desktop tidak disentuh. Sudah di-commit
+  dan di-push (`f506c9b`).
 - Sesi sebelumnya: **Audit lanjutan menemukan bug sama di `register/route.ts`** (lihat
   lesson di atas) — pengecekan duplikat email/HP saat registrasi bisa lolos kalau contact yang
   kepilih adalah baris usaha/profesional, bukan yang terhubung member. Sudah difix dengan pola
