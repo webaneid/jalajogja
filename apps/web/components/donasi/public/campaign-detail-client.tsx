@@ -91,7 +91,11 @@ export function CampaignDetailClient({
     setPhoneLoading(true);
     const timer = setTimeout(async () => {
       try {
-        const res  = await fetch(`/api/akun/lookup-member?phone=${encodeURIComponent(phone)}`);
+        const res = await fetch(`/api/akun/lookup-member?phone=${encodeURIComponent(phone)}`);
+        // Rate-limited (429) atau error server lain — JANGAN perlakukan sebagai "tidak
+        // ditemukan". Tanpa cek ini, body error ({error:"..."}) punya found=undefined
+        // (falsy) → nama donatur ikut dikosongkan diam-diam tanpa pesan apa pun ke user.
+        if (!res.ok) return;
         const data = await res.json() as { found: boolean; name?: string };
         if (data.found && data.name) {
           setIsKnown(true);

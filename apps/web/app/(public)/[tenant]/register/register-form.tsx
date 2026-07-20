@@ -245,6 +245,9 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
       try {
         const qs  = new URLSearchParams(params).toString();
         const res = await fetch(`/api/akun/lookup-member?${qs}`);
+        // Rate-limited (429) atau error server lain — jangan perlakukan sebagai "tidak
+        // ditemukan" (body error punya found=undefined, falsy → salah kesimpulan).
+        if (!res.ok) return; // finally di bawah tetap set lookupStatus="done"
         const data = await res.json() as MemberLookup;
         setLookup(data);
         if (data.found && !name.trim()) setName(data.name);

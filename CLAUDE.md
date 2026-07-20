@@ -8161,10 +8161,70 @@ paksa balik.
 
 **Verifikasi**: `tsc --noEmit` bersih + `bun run build` sukses. Belum di-commit/push.
 
+### [2026-07-21] Bug: Rate-Limit (429) Diperlakukan Sebagai "Nomor Tidak Ditemukan" — Nama Donatur Kosong Diam-Diam
+
+**Laporan user**: di halaman campaign `donasi-rutin-mingguan-ikpm-jogja-charity`, masukin nomor
+HP tapi Nama Lengkap tidak auto-muncul — padahal fitur "Phone First" (lookup otomatis, isi nama
+kalau nomor sudah terdaftar, bahkan tanpa login) sudah dikunci sebagai desain sejak lama.
+
+**Diagnosa**: dites LANGSUNG ke production — API `/api/akun/lookup-member?phone=` dan database-
+nya terbukti BENAR (curl dengan nomor terdaftar sungguhan → `{"found":true,"name":"..."}`,
+HTTP 200). Bug-nya bukan di backend, tapi di **client-side error handling**:
+`campaign-detail-client.tsx` (dan `register-form.tsx` — pola identik) memanggil
+`/api/akun/lookup-member` lalu langsung `res.json()` TANPA cek `res.ok` dulu. Endpoint ini
+punya `rateLimitGuard(req, "lookup-member", 10, 60_000)` — 10 request/menit per IP. Kalau
+limit kena (gampang terjadi kalau user retype/koreksi nomor beberapa kali dalam sesi
+pendek — debounce 500ms, tapi tiap "jeda ketik" = 1 request baru), response jadi
+`{error:"Terlalu banyak permintaan..."}` dengan status 429 — client TIDAK cek status ini,
+langsung baca `data.found` yang `undefined` (falsy) → diperlakukan SAMA PERSIS dengan "nomor
+tidak terdaftar" → `setDonorName("")` — nama dikosongkan diam-diam, TANPA pesan error apa pun
+ke user. User tidak tahu itu rate-limit, cuma lihat "nama kok tidak muncul".
+
+**Fix**: tambah `if (!res.ok) return;` (skip update state, jangan simpulkan apa-apa) SEBELUM
+`res.json()` di kedua caller (`campaign-detail-client.tsx`, `register-form.tsx`). Prinsip:
+"gagal diketahui status-nya" (network error, rate limit, 500) HARUS diperlakukan beda dari
+"sudah pasti tidak ditemukan" (200 + `found:false`) — jangan disamakan.
+
+**Aturan digeneralisasi**: setiap `fetch()` ke API yang responsnya dipakai untuk KESIMPULAN
+bisnis (found/not-found, valid/invalid, dst) WAJIB cek `res.ok` sebelum parse body sebagai
+data sukses — kalau tidak, body error (`{error: "..."}`) ikut ter-parse dan field yang
+diharapkan (`data.found`, dst) selalu `undefined`/falsy, gampang salah disimpulkan sebagai
+"negatif" alih-alih "gagal". Pola ini WAJIB dicek di setiap caller endpoint yang punya
+`rateLimitGuard` — audit lain yang belum dicek: cek semua caller endpoint publik lain yang
+mungkin kena pola sama (belum dilakukan, di luar 2 titik yang ditemukan sesi ini).
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build` sukses. Belum dikonfirmasi ini PERSIS
+skenario yang user alami (bisa juga nomor yang dites memang belum terdaftar) — tapi bug ini
+nyata dan sudah pasti ada terlepas dari itu, ditutup sekalian.
+
+### [2026-07-21] Keputusan: Fallback Email untuk Notifikasi Bisnis (Donasi/Pembayaran/dll) — DITUNDA
+
+User tanya apakah SEMUA notifikasi WA (bukan cuma auth) juga perlu fallback ke email saat WA
+mati. **Beda mendasar dari fallback auth yang sudah dibangun**: alur donasi/checkout tamu
+("Phone First", `docs/arsitektur-donasi-alur.md`) SENGAJA cuma minta nomor HP, bukan email —
+untuk donatur tamu yang tidak dikenali sistem (`isKnown=false`), **tidak ada alamat email untuk
+dikirimi apa pun** sama sekali, terlepas WA hidup atau mati. Fallback email cuma bisa menutup
+sebagian kasus (member/akun yang emailnya sudah tersimpan), bukan semua. Scope juga jauh lebih
+besar dari auth: ~24 `WaNotifKey` event tersebar di ~10 file caller `notifyWa()`.
+
+**Keputusan (via `AskUserQuestion`)**: **ditunda** — alasan: auth (login/daftar/lupa-password)
+adalah yang PALING kritis (kalau buntu, user benar-benar tidak bisa masuk sistem sama sekali)
+dan sudah tertutup. Notifikasi bisnis kalau gagal terkirim masih bisa dicek manual di dashboard
+admin (invoice list, status pembayaran, dst) — tidak menghalangi transaksi berjalan, cuma
+mengurangi kenyamanan. Dicatat di sini sebagai keputusan SADAR, bukan terlupa — kalau nanti mau
+dikerjakan, opsi yang sempat dibahas: (a) scope terbatas — cuma untuk penerima yang emailnya
+diketahui, reuse teks WA existing (`wa-templates.ts`) sebagai isi email, tidak perlu 24 template
+baru; (b) scope penuh — sekalian wajibkan email di form donasi/checkout tamu (mengubah UX "cukup
+HP" yang baru dikunci).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Tab WhatsApp OTP login dinonaktifkan otomatis saat WA tidak tersedia**
+- Terakhir dikerjakan: **Fix bug rate-limit lookup-member + keputusan tunda fallback email
+  notifikasi bisnis** (lihat 2 lesson di atas) — `campaign-detail-client.tsx` dan
+  `register-form.tsx` sekarang cek `res.ok` sebelum simpulkan "tidak ditemukan". `tsc`+build
+  bersih. Belum di-commit/push.
+- Sesi sebelumnya: **Tab WhatsApp OTP login dinonaktifkan otomatis saat WA tidak tersedia**
   (lihat lesson di atas) — melengkapi audit konsistensi 3 titik auth (register/login/forgot-
-  password) yang dipicu pertanyaan user. `tsc`+build bersih. Belum di-commit/push.
+  password) yang dipicu pertanyaan user. Sudah di-commit dan di-push (`053b628`).
 - Sesi sebelumnya: **Deploy SMTP platform ke VPS + 3 gotcha ditemukan+difix saat setup
   nyata** (lihat lesson di atas) — nodemailer perlu `bun install` ulang (bukan cuma git pull),
   App Password/`.env.local` syntax gotcha (spasi + quote parsial), `pm2 env` bukan cara benar
