@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useRef } from "react";
+import { useState, useTransition, useRef, useEffect } from "react";
 import { authClient }              from "@/lib/auth-client";
 import { useRouter }               from "next/navigation";
 import { Button }          from "@/components/ui/button";
@@ -28,6 +28,25 @@ export function LoginForm({
   const [mode,     setMode]     = useState<LoginMode>("email");
   const [error,    setError]    = useState<string | null>(null);
   const [notRegistered, setNotRegistered] = useState(false);
+
+  // null = belum diketahui (masih cek /api/wa/available) — tab tetap tampil normal sampai
+  // jelas, supaya tidak flicker untuk kasus normal (WA aktif). Kalau false, tab dinonaktifkan
+  // (bukan disembunyikan — Email & Password tetap ada sebagai jalur utama yang selalu jalan).
+  const [waLoginAvailable, setWaLoginAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/wa/available?slug=${encodeURIComponent(slug)}`, { cache: "no-store" })
+      .then(res => res.json())
+      .then((data: { loginOtp?: boolean }) => {
+        if (!cancelled) {
+          setWaLoginAvailable(!!data.loginOtp);
+          if (!data.loginOtp) setMode("email"); // paksa balik kalau sempat di tab WA
+        }
+      })
+      .catch(() => { if (!cancelled) { setWaLoginAvailable(false); setMode("email"); } });
+    return () => { cancelled = true; };
+  }, [slug]);
 
   // ── Email/password state ──────────────────────────────────────────────────
   const [email,    setEmail]    = useState("");
@@ -179,7 +198,9 @@ export function LoginForm({
           <button
             type="button"
             onClick={() => switchMode("whatsapp")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors ${
+            disabled={waLoginAvailable === false}
+            title={waLoginAvailable === false ? "Sementara tidak tersedia" : undefined}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               mode === "whatsapp"
                 ? "bg-green-600 text-white"
                 : "bg-background text-muted-foreground hover:bg-muted"
@@ -187,6 +208,9 @@ export function LoginForm({
           >
             <MessageCircle className="h-3.5 w-3.5" />
             WhatsApp OTP
+            {waLoginAvailable === false && (
+              <span className="text-[10px] font-normal">(tidak tersedia)</span>
+            )}
           </button>
         </div>
 

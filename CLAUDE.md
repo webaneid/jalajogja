@@ -8135,13 +8135,41 @@ suntikkan (biasanya dari `ecosystem.config.cjs`) — untuk env var yang dimuat f
 `.env.local`, atau mekanisme serupa framework lain), verifikasi dari SISI FRAMEWORK/APLIKASI-nya
 (`node --env-file=`, atau tes fungsional langsung), bukan dari sisi process manager.
 
+### [2026-07-21] Tab "WhatsApp OTP" di Login — Konsistensi Terakhir dari Audit Fallback WA
+
+**Pertanyaan user saat audit ulang**: "tab login by otp ketika whatsapp tidak aktif ganti
+alternatif apa?" — jawaban jujurnya sebelum fix ini: **tidak ada alternatif otomatis** — tab
+"WhatsApp OTP" di `login-form.tsx` tidak pernah cek `/api/wa/available` sama sekali, beda dengan
+register/forgot-password yang sudah dibenahi. Risiko di sini LEBIH RENDAH dari dua flow lain
+(tab "Email & Password" sudah jadi default aktif sejak awal, jadi tidak pernah benar-benar
+buntu) — tapi tetap tidak konsisten: user yang klik tab WA saat gateway down cuma lihat error
+generik, tidak diarahkan kembali ke tab yang jelas-jelas ada di sebelahnya.
+
+**Fix**: `/api/wa/available` diperluas — tambah field `loginOtp` (sebelumnya cuma
+`registerOtp`+`resetOtp`). `login-form.tsx` — `useEffect` cek availability saat mount, tab
+"WhatsApp OTP" di-**disable** (bukan disembunyikan — Email & Password tetap terlihat sebagai
+opsi utama yang selalu jalan) + label `(tidak tersedia)` kalau `loginOtp: false`. Kalau user
+entah bagaimana sudah ada di tab WA saat status resolve jadi unavailable → `setMode("email")`
+paksa balik.
+
+**Ringkasan status akhir 3 titik auth setelah audit user (2026-07-21)**:
+| Flow | Saat WA aktif | Saat WA tidak tersedia |
+|---|---|---|
+| Registrasi | OTP WA wajib | **Tanpa verifikasi sama sekali** — langsung daftar |
+| Login | Tab Email+Password DAN tab WA OTP, dua-duanya aktif | Tab WA OTP **disabled**, Email+Password tetap jalan (tidak pernah berubah — sudah aman sejak awal) |
+| Lupa Password | OTP WA wajib | Form otomatis beralih ke **email (link Better Auth)** — verifikasi TETAP wajib, medianya beralih |
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build` sukses. Belum di-commit/push.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Deploy SMTP platform ke VPS + 3 gotcha ditemukan+difix saat setup
+- Terakhir dikerjakan: **Tab WhatsApp OTP login dinonaktifkan otomatis saat WA tidak tersedia**
+  (lihat lesson di atas) — melengkapi audit konsistensi 3 titik auth (register/login/forgot-
+  password) yang dipicu pertanyaan user. `tsc`+build bersih. Belum di-commit/push.
+- Sesi sebelumnya: **Deploy SMTP platform ke VPS + 3 gotcha ditemukan+difix saat setup
   nyata** (lihat lesson di atas) — nodemailer perlu `bun install` ulang (bukan cuma git pull),
   App Password/`.env.local` syntax gotcha (spasi + quote parsial), `pm2 env` bukan cara benar
   verifikasi env Next.js. **Dikonfirmasi berfungsi end-to-end** — email test sungguhan terkirim
-  via SMTP platform. Murni deployment/verifikasi, tidak ada perubahan kode baru di sesi ini —
-  hanya update dokumentasi CLAUDE.md, menunggu instruksi commit.
+  via SMTP platform. Sudah di-commit dan di-push (`7d8669f`).
 - Sesi sebelumnya: **Diagnosa OTP 503 — root cause WhatsApp error 463 reach-out timelock,
   bukan bug kode** (lihat lesson di atas) — murni investigasi via SSH+log GOWA. Sudah di-commit
   dan di-push (`10ee3fd`, `8e7acf9`).

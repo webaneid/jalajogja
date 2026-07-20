@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 // GET /api/wa/available?slug={slug}
 // Cek apakah WA gateway aktif untuk tenant ini + toggle OTP mana yang diaktifkan.
-// Dipakai oleh register form dan forgot-password untuk memutuskan apakah tampilkan OTP step.
+// Dipakai oleh register form, forgot-password, dan login form untuk memutuskan apakah
+// tampilkan OTP step / tab WhatsApp OTP.
 // Endpoint publik — tidak butuh auth, aman karena hanya return boolean.
 
 import { NextRequest, NextResponse } from "next/server";
@@ -25,8 +26,9 @@ export async function GET(request: NextRequest) {
     const available     = !!(config?.device_id && config.verified);
     const registerOtp   = available && !!(config?.notifications?.otp_register);
     const resetOtp      = available && !!(config?.notifications?.otp_reset_password);
+    const loginOtp       = available && !!(config?.notifications?.otp_login);
 
-    return NextResponse.json({ available, registerOtp, resetOtp });
+    return NextResponse.json({ available, registerOtp, resetOtp, loginOtp });
   } catch {
     return NextResponse.json({ available: false });
   }
