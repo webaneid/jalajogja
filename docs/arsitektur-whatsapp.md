@@ -129,6 +129,19 @@ Browser admin → https://gowa.jalakarta.com (Nginx → localhost:3002)
 - QR link dari `/app/login` berisi `http://localhost:3002/...` → perlu rewrite ke `https://gowa.jalakarta.com/...`
 - Phone format untuk send: `628xxx@s.whatsapp.net` (tanpa `+`, dengan suffix WA)
 - Status terhubung: `jid !== ""` — format `628xxx@s.whatsapp.net` jika connected
+- `GET /app/devices` **TIDAK di-filter oleh `X-Device-Id`** — selalu return SEMUA device
+  terdaftar terlepas header apa yang dikirim (dikonfirmasi 2026-07-20). Header itu tetap WAJIB
+  dikirim (server menolak 400 tanpanya), tapi jangan berharap response-nya ter-scope.
+
+**Endpoint gaya baru (ditemukan 2026-07-20, tersedia di versi GOWA yang deploy saat ini —
+BELUM dipakai kode kita, dicatat untuk referensi diagnosa/future work):**
+
+| Operasi | Method | Path | Keterangan |
+|---------|--------|------|------------|
+| List devices | GET | `/devices` | Sertakan `state` per device (`"logged_in"`, dst) — lebih informatif dari `/app/devices` |
+| Status 1 device | GET | `/devices/{id}/status` | `{is_connected, is_logged_in}` — **per-device sungguhan**, dipakai untuk diagnosa § 14.2 |
+| Reconnect | POST | `/devices/{id}/reconnect` | Paksa reconnect device yang sesinya stale |
+| Hapus device | DELETE | `/devices/{id}` | **Belum pernah dipakai kode kita** — `connectWhatsAppAction`/`deactivateWhatsAppAction` cuma logout (`/app/logout`), tidak pernah delete. Kandidat kalau nanti mau "Nonaktifkan" benar-benar menghapus device dari GOWA, bukan cuma logout. |
 
 ---
 
@@ -950,6 +963,66 @@ psql -U jalakarta -d jalakarta -f packages/db/migrations/0016_otp_tokens.sql
 | VPS downtime | Notifikasi tertunda | Monitor uptime VPS; GOWA auto-restart via `restart: unless-stopped` di Docker |
 | Spam ke customer | Reputasi buruk | Toggle per event + quota + opt-out mechanism |
 | Credential bocor | Security breach | Env vars di server saja, tidak pernah ke frontend |
+| **Nomor baru diblokir WA (§ 14.1)** | **OTP/notifikasi gagal untuk kontak baru** | **Kirim pesan manual dari HP dulu ke beberapa kontak sebelum mengandalkan OTP otomatis; tunggu beberapa hari** |
+
+### 14.1 WhatsApp "Reach-Out Timelock" (Error 463) — Nomor Baru Diblokir Kirim ke Kontak Baru
+
+**Ditemukan 2026-07-20** saat diagnosa laporan user: OTP login gagal (503) khusus di tenant
+`pc-ikpm-jogjakarta`, padahal di tenant `visikita` (nomor WA sudah lama aktif sejak 2026-07-08)
+normal. Root cause dikonfirmasi langsung dari log container GOWA (`docker compose logs gowa`),
+persis di jam yang sama dengan percobaan gagal:
+
+```
+level=error msg="Panic recovered in middleware: WhatsApp rejected this send with error 463
+(reach-out timelock). This is WhatsApp's server-side anti-spam restriction on starting new
+chats and cannot be bypassed by the API. It usually means there is no prior conversation with
+this recipient, or the sending account is temporarily restricted from reaching new contacts...
+Newly-linked or low-activity numbers are affected most."
+```
+
+**Ini BUKAN bug di kode kita, BUKAN pula masalah arsitektur multi-device GOWA** — ini
+**restriksi anti-spam dari WhatsApp sendiri** yang berlaku di level platform, di luar kendali
+GOWA maupun aplikasi kita ("cannot be bypassed by the API"). Nomor WA yang **baru saja
+ditautkan** (device `pc-ikpm-jogjakarta` dibuat ulang jam 16:53, percobaan OTP gagal jam 16:55 —
+selisih 2 menit) diblokir WhatsApp dari memulai percakapan BARU dengan kontak yang belum pernah
+mengirim pesan ke nomor itu duluan. Ini SANGAT relevan untuk alur OTP — by design, target OTP
+(customer yang login) hampir selalu kontak yang belum pernah chat dengan nomor WA organisasi.
+
+**Verifikasi yang membedakan "device tidak terhubung" vs "kena reach-out timelock"**: dites
+langsung via `POST /send/message` — kirim ke NOMOR SENDIRI (nomor yang sama dengan device itu
+sendiri) berhasil (`200 OK`, karena bukan "kontak baru" dari sudut pandang WhatsApp), tapi
+mengirim ke nomor customer BARU tetap kena 463 selama restriksi belum reda. Kalau butuh
+diagnosa serupa di masa depan: cek `docker compose logs gowa | grep -i "463\|reach-out"` dulu
+sebelum curiga ke kode aplikasi atau konfigurasi `verified`/`device_id`.
+
+**Mitigasi (sesuai saran WhatsApp sendiri di pesan error)**: kirim beberapa pesan manual dari HP
+yang ditautkan ke beberapa kontak dulu setelah pairing baru, jangan langsung andalkan OTP
+otomatis ke kontak yang benar-benar baru dalam beberapa jam/hari pertama. Restriksi ini
+melonggar seiring waktu begitu nomor membangun riwayat pengiriman yang wajar (bukan langsung
+spam massal ke kontak asing). **Tidak ada cara memperbaikinya dari sisi kode** — mengulang
+retry otomatis TIDAK akan membantu selama restriksi masih aktif.
+
+### 14.2 Multi-Device GOWA — Genuinely Konkuren, Bukan "Satu Aktif dalam Satu Waktu"
+
+**Klarifikasi arsitektur** (ditanyakan user 2026-07-20, dikonfirmasi via dokumentasi resmi
+[aldinokemal/go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice)
++ tes langsung ke instance produksi): **YA, setiap device_id benar-benar independen dan bisa
+aktif bersamaan** — GOWA menjalankan satu `whatsmeow.Client` terpisah per device, di-route via
+header `X-Device-Id`, TIDAK ada batasan "cuma satu device aktif dalam satu waktu". Dikonfirmasi
+langsung: `GET /devices/{id}/status` untuk `pc-ikpm-jogjakarta` DAN `visikita` sama-sama
+`is_connected: true, is_logged_in: true` secara bersamaan, dan `POST /send/message` ke
+keduanya sukses independen satu sama lain.
+
+**Label "Use" / "Selected" yang terlihat di dashboard `gowa.jalakarta.com`** adalah UI STATE
+milik dashboard bawaan GOWA itu sendiri (komponen frontend `DeviceManager.js` — "manages the
+selection state... to update the global device context") — murni menentukan device mana yang
+sedang DITAMPILKAN/dikelola di tab dashboard itu saat itu (mis. untuk generate QR baru dari
+UI-nya sendiri), **SAMA SEKALI TIDAK MEREPRESENTASIKAN** apakah device tersebut sedang bisa
+mengirim pesan via API. Aplikasi kita TIDAK PERNAH memakai dashboard GOWA untuk operasional —
+semua panggilan API kita selalu eksplisit membawa `X-Device-Id`, jadi status "Use"/"Selected" di
+dashboard itu tidak relevan sama sekali untuk kita. Jangan jadikan tampilan itu sebagai sinyal
+diagnosa — pakai `GET /devices/{id}/status` (endpoint gaya baru, per-device) untuk cek live
+status sungguhan.
 
 ---
 

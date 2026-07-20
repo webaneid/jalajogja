@@ -7971,11 +7971,64 @@ sukses. Belum diverifikasi end-to-end di production (butuh user coba ulang alur 
 Aktifkan → Scan QR setelah deploy) — tapi root cause exception sudah pasti (PostgreSQL NOT NULL
 constraint adalah kesalahan yang deterministik, bukan tebakan).
 
+### [2026-07-20] Diagnosa OTP Gagal 503 di Tenant Baru — WhatsApp Error 463 "Reach-Out Timelock", Bukan Bug Kode
+
+> Detail lengkap + tabel endpoint GOWA gaya baru: `docs/arsitektur-whatsapp.md` § 14.1–14.2,
+> § 2.4.
+
+User laporkan OTP login gagal 503 di `ikpmjogja.com` (tenant `pc-ikpm-jogjakarta`) tapi normal
+di `visikita.com`, disertai 2 pertanyaan arsitektur: (1) apakah GOWA multi-device benar-benar
+bisa banyak device aktif bersamaan, (2) apa arti status "Use"/"Selected" yang terlihat di
+dashboard `gowa.jalakarta.com`. Diagnosa dilakukan via SSH langsung ke VPS (kredensial GOWA
+di-`source` dari `.env.local` lalu dipakai inline di curl — TIDAK PERNAH di-echo/print) —
+bukan tebakan dari baca kode saja, konsisten dengan lesson lama soal bug integrasi eksternal.
+
+**Root cause SESUNGGUHNYA, dikonfirmasi dari log `docker compose logs gowa`**: WhatsApp
+**menolak** pengiriman dengan error 463 "reach-out timelock" — restriksi anti-spam PLATFORM
+WHATSAPP SENDIRI terhadap nomor yang baru ditautkan/rendah aktivitas yang mencoba mengirim ke
+kontak yang belum pernah chat duluan dengan nomor itu ("cannot be bypassed by the API"). Device
+`pc-ikpm-jogjakarta` baru dibuat ulang jam 16:53 (recovery dari bug `existsOnGowa()` sesi
+sebelumnya), percobaan OTP gagal jam 16:55 — 2 menit kemudian, tepat pola "nomor baru".
+`visikita` sudah aktif sejak 2026-07-08 (~12 hari, riwayat pengiriman established) → tidak kena.
+
+**BUKAN masalah kode/config kita** — dicek satu-satu dan semuanya benar: `whatsapp_config`
+tenant ini `verified: true`, `device_id` cocok, `otp_login: true`. `GET /devices/{id}/status`
+GOWA juga menunjukkan KEDUANYA `is_connected: true, is_logged_in: true` secara bersamaan (bukti
+langsung multi-device GENUINELY konkuren, bukan "cuma satu aktif dalam satu waktu" — dikonfirmasi
+juga dari dokumentasi resmi `aldinokemal/go-whatsapp-web-multidevice`). Kirim tes manual ke
+NOMOR SENDIRI via `POST /send/message` sukses (bukan "kontak baru" dari sudut pandang WhatsApp)
+— justru inilah yang sempat mengecoh sebelum log GOWA dicek dan menemukan error 463 yang
+sesungguhnya terjadi saat mengirim ke customer (kontak benar-benar baru).
+
+**Label "Use"/"Selected" di dashboard GOWA — TIDAK relevan untuk sistem kita**: itu murni UI
+STATE dashboard bawaan GOWA (`DeviceManager.js` frontend-nya sendiri, menentukan device mana
+yang sedang ditampilkan di tab dashboard itu) — sama sekali tidak merepresentasikan status live
+koneksi. Aplikasi kita tidak pernah pakai dashboard itu, selalu API langsung dengan
+`X-Device-Id` eksplisit — status di sana tidak pernah jadi sinyal diagnosa yang valid.
+
+**Tidak ada perbaikan kode** — WhatsApp eksplisit bilang restriksi ini "cannot be bypassed by
+the API", retry otomatis tidak membantu. Mitigasi cuma satu: kirim beberapa pesan manual dari
+HP yang ditautkan ke beberapa kontak dulu setelah pairing device baru, jangan langsung andalkan
+OTP otomatis ke kontak benar-benar baru di jam-jam pertama. Dicatat sebagai **known limitation
+platform WhatsApp** (§ 14.1 arsitektur-whatsapp.md), bukan technical debt yang perlu ditutup.
+
+**Temuan sampingan berguna**: GOWA versi yang di-deploy TERNYATA sudah punya endpoint gaya baru
+per-device (`GET /devices/{id}/status`, `POST /devices/{id}/reconnect`, `DELETE /devices/{id}`)
+yang JAUH lebih informatif dari `/app/devices`/`/app/logout` yang dipakai kode kita sekarang —
+termasuk `DELETE /devices/{id}` yang genuinely menghapus device (kode kita SAAT INI tidak pernah
+memanggil delete apa pun, cuma logout — konsisten dengan lesson sebelumnya, tapi sekarang ada
+opsi kalau suatu saat "Nonaktifkan" ingin benar-benar hapus device dari GOWA, bukan cuma
+putus sesi). Dicatat di § 2.4 dokumen arsitektur, belum diintegrasikan ke kode.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix crash `deactivateWhatsAppAction` — `settings.value` JSONB NOT
+- Terakhir dikerjakan: **Diagnosa OTP 503 — root cause WhatsApp error 463 reach-out timelock,
+  bukan bug kode** (lihat lesson di atas) — murni investigasi via SSH+log GOWA, TIDAK ADA
+  perubahan kode. Dokumentasi ditambah di `docs/arsitektur-whatsapp.md` § 14.1/14.2/2.4 +
+  CLAUDE.md. Belum ada commit untuk sesi ini (dokumentasi menunggu instruksi push).
+- Sesi sebelumnya: **Fix crash `deactivateWhatsAppAction` — `settings.value` JSONB NOT
   NULL tidak boleh ditulis `null`** (lihat lesson di atas) — helper `deleteSetting()` baru,
-  ganti `upsertSettings(..., {whatsapp_config: null})` jadi DELETE row. `tsc`+build bersih
-  di kedua package. Belum di-commit/push.
+  ganti `upsertSettings(..., {whatsapp_config: null})` jadi DELETE row. Sudah di-commit dan
+  di-push (`3fefc0b`).
 - Sesi sebelumnya: **Hapus toggle dead "Aktifkan WhatsApp" (card #1) + perjelas card
   "WhatsApp Gateway" jadi satu-satunya sumber kebenaran** (lihat lesson di atas) — `tsc`+build
   bersih. Sudah di-commit dan di-push (`f8eedd1`).
