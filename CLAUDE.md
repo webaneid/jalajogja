@@ -8217,11 +8217,56 @@ diketahui, reuse teks WA existing (`wa-templates.ts`) sebagai isi email, tidak p
 baru; (b) scope penuh — sekalian wajibkan email di form donasi/checkout tamu (mengubah UX "cukup
 HP" yang baru dikunci).
 
+### [2026-07-21] Bug Sesungguhnya: `lookup-member` Ambil Contact Sembarang, Bukan yang Terhubung Member
+
+**Setelah fix rate-limit di atas, user tetap tidak ketemu** — dan nomor yang dites terkonfirmasi
+BENAR nomor terdaftar milik user sendiri (Wawan Sugianto). Diagnosa lanjutan: curl langsung
+`?phone=+6285210626455` → `{"found":false}` bersih (HTTP 200, bukan rate-limit). Cek DB
+langsung: nomor ini muncul di **5 baris `contacts` berbeda**. Root cause: `lookup-member`
+mencari contact dulu (`contacts.findFirst({where: or(phone,whatsapp)})` — TANPA `orderBy`,
+hasil tidak deterministik/bisa salah pilih), BARU cari member via `contactId` itu. Kalau
+`findFirst()` kebetulan mengembalikan salah satu dari 5 baris yang **bukan** yang terhubung ke
+`members`, pencarian member gagal — meski orangnya sungguh terdaftar.
+
+**Bukan data sampah** — dicek satu-satu, 3 dari 5 contact itu SAH, masing-masing terhubung ke
+entitas SENDIRI-SENDIRI: `members` (akun utama), `member_businesses` (usaha), dan
+`member_professionals` (profesional) — arsitektur yang memang mengizinkan satu nomor HP dipakai
+di beberapa profil self-reported berbeda (lihat § "Data Cleanup — Orphan Contacts" — pola sama,
+tapi kali ini SEBAGIAN besar bukan orphan). Cuma 2 dari 5 yang genuinely orphan (sisa registrasi
+gagal). Konsekuensinya: `contacts.findFirst()` TANPA JOIN eksplisit ke `members` pada dasarnya
+selalu berisiko salah pilih begitu satu nomor dipakai di >1 profil — bukan kasus langka.
+
+**Fix**: query diubah dari "cari contact → cari member by contactId" (dua langkah, rawan salah
+pilih) menjadi **JOIN langsung** `members INNER JOIN contacts ON contacts.id = members.contactId
+WHERE contacts.phone/whatsapp = X` — INNER JOIN secara struktural memfilter HANYA contact yang
+benar-benar terhubung ke `members`, jadi baris usaha/profesional/orphan otomatis tidak pernah
+ikut terpilih. Diterapkan di kedua jalur (`email` dan `phone`) di
+`app/api/akun/lookup-member/route.ts`. Jalur `profiles` TIDAK perlu diubah — `profiles.phone`
+kolom langsung, tidak lewat `contacts`, jadi tidak kena masalah yang sama.
+
+**Verifikasi**: query JOIN yang sama dites LANGSUNG ke database production via SQL manual
+SEBELUM deploy → mengembalikan member yang benar (`Wawan Sugianto`). `tsc --noEmit` bersih +
+`bun run build` sukses.
+
+**Aturan digeneralisasi**: kapan pun ada tabel helper yang di-referensi oleh LEBIH DARI SATU
+entitas berbeda (di sini: `contacts` dipakai `members`, `member_businesses`,
+`member_professionals`, `member_owned_pesantren` — semua punya `contactId` sendiri-sendiri) —
+mencari row di tabel helper itu dulu (`findFirst`) baru mencari entitas yang mereferensikannya
+adalah pola YANG SALAH kalau nilai yang dicari (di sini: nomor HP) bisa muncul di banyak baris
+helper untuk entitas berbeda. Selalu JOIN dari sisi ENTITAS TARGET (di sini: `members`) ke tabel
+helper, bukan sebaliknya — supaya filter "harus terhubung ke entitas ini" terjadi di level SQL
+(INNER JOIN), bukan diasumsikan benar dari "contact pertama yang ketemu".
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix bug rate-limit lookup-member + keputusan tunda fallback email
-  notifikasi bisnis** (lihat 2 lesson di atas) — `campaign-detail-client.tsx` dan
-  `register-form.tsx` sekarang cek `res.ok` sebelum simpulkan "tidak ditemukan". `tsc`+build
-  bersih. Belum di-commit/push.
+- Terakhir dikerjakan: **Fix bug sesungguhnya `lookup-member` — JOIN langsung ke members,
+  bukan cari contact dulu** (lihat lesson di atas) — nomor HP yang dipakai di >1 profil
+  (member+usaha+profesional) sebelumnya bisa salah pilih contact yang tidak terhubung member.
+  Diverifikasi lewat query manual ke production DB sebelum deploy. `tsc`+build bersih. Belum
+  di-commit/push.
+- Sesi sebelumnya: **Fix bug rate-limit lookup-member + keputusan tunda fallback email
+  notifikasi bisnis** (lihat lesson di atas) — `campaign-detail-client.tsx` dan
+  `register-form.tsx` sekarang cek `res.ok` sebelum simpulkan "tidak ditemukan". Sudah
+  di-commit dan di-push (`877126c`).
 - Sesi sebelumnya: **Tab WhatsApp OTP login dinonaktifkan otomatis saat WA tidak tersedia**
   (lihat lesson di atas) — melengkapi audit konsistensi 3 titik auth (register/login/forgot-
   password) yang dipicu pertanyaan user. Sudah di-commit dan di-push (`053b628`).

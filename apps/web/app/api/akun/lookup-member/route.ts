@@ -31,28 +31,37 @@ export async function GET(req: NextRequest) {
         columns: { id: true, name: true, betterAuthUserId: true },
       });
     } else if (email) {
-      const contact = await db.query.contacts.findFirst({ where: eq(contacts.email, email) });
-      if (contact) {
-        member = await db.query.members.findFirst({
-          where: eq(members.contactId, contact.id),
-          columns: { id: true, name: true, betterAuthUserId: true },
-        });
-      }
+      // JOIN langsung ke members — JANGAN cari contact dulu lalu member terpisah.
+      // Satu nomor/email bisa punya BEBERAPA baris contacts (member sendiri, usaha,
+      // pesantren, profesional — masing-masing self-reported dengan contactId sendiri).
+      // contacts.findFirst() tanpa JOIN bisa memilih baris yang TIDAK terhubung ke
+      // members sama sekali → member tidak ketemu meski orangnya sungguh terdaftar.
+      const [row] = await db
+        .select({ id: members.id, name: members.name, betterAuthUserId: members.betterAuthUserId })
+        .from(members)
+        .innerJoin(contacts, eq(contacts.id, members.contactId))
+        .where(eq(contacts.email, email))
+        .limit(1);
+      member = row;
     } else if (phone) {
       const normalized = normalizePhone(phone) ?? phone;
       // Coba juga format lokal 08xxx — data lama di DB mungkin belum E.164
       const localFmt = normalized.startsWith("+62") ? "0" + normalized.slice(3) : null;
+      const phoneCond = localFmt
+        ? or(
+            eq(contacts.phone, normalized), eq(contacts.whatsapp, normalized),
+            eq(contacts.phone, localFmt),   eq(contacts.whatsapp, localFmt),
+          )
+        : or(eq(contacts.phone, normalized), eq(contacts.whatsapp, normalized));
 
-      // Cari paralel: contacts→members DAN profiles.phone
-      const [contact, profile] = await Promise.all([
-        db.query.contacts.findFirst({
-          where: localFmt
-            ? or(
-                eq(contacts.phone, normalized), eq(contacts.whatsapp, normalized),
-                eq(contacts.phone, localFmt),   eq(contacts.whatsapp, localFmt),
-              )
-            : or(eq(contacts.phone, normalized), eq(contacts.whatsapp, normalized)),
-        }),
+      // Cari paralel: members (JOIN contacts, sama alasan seperti jalur email di atas)
+      // DAN profiles.phone (kolom langsung, tidak lewat contacts — aman tanpa JOIN)
+      const [memberRows, profile] = await Promise.all([
+        db.select({ id: members.id, name: members.name, betterAuthUserId: members.betterAuthUserId })
+          .from(members)
+          .innerJoin(contacts, eq(contacts.id, members.contactId))
+          .where(phoneCond)
+          .limit(1),
         db.query.profiles.findFirst({
           where: localFmt
             ? or(eq(profiles.phone, normalized), eq(profiles.phone, localFmt))
@@ -61,12 +70,7 @@ export async function GET(req: NextRequest) {
         }),
       ]);
 
-      if (contact) {
-        member = await db.query.members.findFirst({
-          where: eq(members.contactId, contact.id),
-          columns: { id: true, name: true, betterAuthUserId: true },
-        });
-      }
+      member = memberRows[0];
 
       // Profiles sebagai fallback — hanya dipakai jika member tidak ditemukan
       if (!member && profile) profileFound = profile;
