@@ -340,6 +340,8 @@ export async function linkTenantToCabangAction(
 
 // ── Branding default IKPM (platform-wide, fallback untuk cabang belum onboard) ─
 
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
 export async function updatePlatformBrandingAction(
   formData: FormData,
 ): Promise<{ error: string } | { ok: true }> {
@@ -348,12 +350,14 @@ export async function updatePlatformBrandingAction(
   const defaultOrgName = ((formData.get("defaultOrgName") as string) ?? "").trim() || "IKPM Gontor";
   const defaultLogoUrlRaw = ((formData.get("defaultLogoUrl") as string) ?? "").trim();
   const defaultLogoUrl = defaultLogoUrlRaw || null;
+  const defaultColorRaw = ((formData.get("defaultColor") as string) ?? "").trim();
+  const defaultColor = HEX_COLOR_RE.test(defaultColorRaw) ? defaultColorRaw : "#2563eb";
 
   await db.insert(platformSettings)
-    .values({ id: "default", defaultOrgName, defaultLogoUrl, updatedAt: new Date() })
+    .values({ id: "default", defaultOrgName, defaultLogoUrl, defaultColor, updatedAt: new Date() })
     .onConflictDoUpdate({
       target: platformSettings.id,
-      set:    { defaultOrgName, defaultLogoUrl, updatedAt: new Date() },
+      set:    { defaultOrgName, defaultLogoUrl, defaultColor, updatedAt: new Date() },
     });
 
   revalidatePath("/platform/settings");

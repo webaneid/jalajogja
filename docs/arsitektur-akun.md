@@ -385,9 +385,11 @@ karena kebetulan browsing `visikita.com/akun`.
 
 **Helper terpusat**: `apps/web/lib/resolve-akun-branding.ts` — `resolveAkunBranding(memberId,
 browsedSlug)`, dipanggil independen oleh `akun/layout.tsx` (badge label sidebar+header mobile)
-dan `akun/page.tsx` (badge label "Info keanggotaan" desktop + logo/nama `MemberCard` mobile) —
-TIDAK di-`cache()`, konsisten dengan pola duplikasi query session/identity yang sudah ada di
-kedua file itu sejak awal.
+dan `akun/page.tsx` (badge label "Info keanggotaan" desktop + logo/nama/warna `MemberCard`
+mobile) — TIDAK di-`cache()`, konsisten dengan pola duplikasi query session/identity yang sudah
+ada di kedua file itu sejak awal. Return type `ResolvedAkunBranding` punya 4 field: `logoUrl`,
+`orgName`, `memberLabel`, `primaryColor` — **ketiganya (logo, nama, warna) SELALU dari tenant
+hasil resolusi yang SAMA**, tidak pernah campur (mis. logo dari tenant A tapi warna dari tenant B).
 
 **4 langkah resolusi, urut**:
 1. **Genuine member tenant yang sedang dibrowsing** — cek `tenant_memberships` untuk
@@ -436,6 +438,50 @@ tunggal, selalu overwrite) + input teks nama organisasi, disimpan via
 - `akun/page.tsx`'s `membershipInfo.primaryCabangNama` — sama seperti di atas, independen tenant.
 - `akun/page.tsx`'s `membershipInfo.status`/`memberNumber` — fakta "status SAYA DI TENANT INI",
   secara semantik memang harus tetap scoped ke tenant yang dibrowsing (beda konsep dari branding).
+
+### Resolusi Warna Kartu Anggota (2026-07-21, susulan)
+
+**Pertanyaan user**: warna `MemberCard` juga harus ikut resolusi yang sama dengan logo/nama —
+kalau saya genuine anggota IKPM Jogjakarta, kartu pakai warna IKPM Jogjakarta; kalau saya JUGA
+genuine anggota Visikita (angkatan) dan sedang browsing di sana, pakai warna Visikita; kalau saya
+BUKAN anggota Visikita, kartu tetap pakai warna cabang saya sendiri (bukan warna Visikita yang
+sedang dibrowsing) — atau warna default IKPM kalau cabang saya belum onboard.
+
+**Masalah sebelum fix**: `MemberCard` pakai class Tailwind `bg-primary`/`text-primary-foreground`
+begitu saja — dua class ini resolve ke CSS variable `--primary`/`--primary-foreground` yang
+di-inject **page-wide** oleh `PublicLayout` (`buildTenantThemeCss()`, `.public-layout` scope) untuk
+tenant yang SEDANG DIBROWSING. Artinya meski logo+nama sudah benar (hasil resolusi § di atas),
+warna kartu tetap ikut tenant yang dibrowsing — bisa beda dari logo+nama yang ditampilkan,
+inkonsisten.
+
+**Fix — CSS custom property di-override LOKAL di root `MemberCard`, bukan ubah tema halaman**:
+```tsx
+const cardVars = {
+  "--primary":            color,               // hex dari resolveAkunBranding().primaryColor
+  "--primary-foreground": foregroundFor(color), // lib/theme-palette.ts, sudah ada, export
+} as CSSProperties;
+
+<div className="... bg-primary text-primary-foreground ..." style={cardVars}>
+```
+CSS custom property yang di-set via inline `style` pada sebuah elemen **cascade ke semua
+children**, dan **menang** atas nilai yang di-set `.public-layout` di ancestor lebih atas (CSS
+variable resolve dari deklarasi TERDEKAT). Jadi seluruh JSX `MemberCard` yang sudah pakai
+`bg-primary`/`text-primary-foreground`/`bg-primary-foreground/15`/dst **otomatis** ikut warna
+LOKAL ini — tidak perlu ubah satu class pun di isi kartu. `foregroundFor()` (WCAG contrast
+hitam/putih) dipakai lagi, sama seperti dipakai `buildTenantThemeCss()` untuk halaman.
+
+**`resolveAkunBranding()` diperluas** — setiap langkah resolusi (genuine tenant / home tenant)
+SEKARANG JUGA fetch `getSettings(createTenantDb(resolvedSlug), "display").primary_color` (helper
+lokal `getTenantPrimaryColor()`, default `"#2563eb"` kalau tenant belum set warna — sama dengan
+default yang dipakai `/settings/display`). Fallback platform (langkah 3) pakai
+`platformSettings.defaultColor` (kolom baru, migration `0036_platform_settings_color.sql`, default
+`#2563eb`). Akun publik (di luar `resolveAkunBranding`) fetch warna tenant yang dibrowsing langsung
+di `akun/page.tsx`, konsisten dengan logo/nama publik yang juga selalu ikut tenant dibrowsing.
+
+**`/platform/settings`** — card "Branding Default IKPM" ditambah color picker (`type="color"` +
+input hex, pola sama `display-settings-form.tsx`), disimpan lewat `updatePlatformBrandingAction`
+yang sekarang validasi format `^#[0-9a-fA-F]{6}$` (fallback ke `#2563eb` kalau tidak valid,
+bukan reject — form tetap tersimpan).
 
 ---
 

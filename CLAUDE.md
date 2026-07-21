@@ -8591,8 +8591,62 @@ dimatikan dulu, `.next` dibersihkan). Tidak ada migrasi DB. Belum diverifikasi v
 kecil sungguhan lalu cek `logo_url` yang tersimpan) — keterbatasan environment sesi ini, perlu
 dicoba user.
 
+### [2026-07-21] Resolusi Warna Kartu Anggota — Perluasan `resolveAkunBranding()`
+
+> Detail lengkap: **`docs/arsitektur-akun.md` § "Resolusi Warna Kartu Anggota"**
+
+**Pertanyaan user, langsung membuktikan resolusi branding logo/nama sebelumnya belum lengkap**:
+warna `MemberCard` harus ikut aturan resolusi yang SAMA — genuine anggota tenant dibrowsing →
+warna tenant itu; bukan genuine anggota → warna cabang sendiri (kalau onboard) atau warna default
+IKPM platform (kalau belum). User juga langsung sadar sendiri: "warnanya blm ada di pengaturan
+branding ikpm di platform" — gap yang sama persis ditemukan tanpa perlu saya jelaskan dulu.
+
+**Root cause sebelum fix**: `MemberCard` pakai `bg-primary`/`text-primary-foreground` — dua class
+Tailwind yang resolve ke CSS var `--primary`/`--primary-foreground` yang di-inject PAGE-WIDE oleh
+`PublicLayout` untuk tenant yang SEDANG DIBROWSING (`buildTenantThemeCss()`, `.public-layout`
+scope). Jadi meski logo+nama sudah benar hasil resolusi (fix sesi sebelumnya), warna kartu tetap
+"nyasar" ikut tenant yang dibrowsing — inkonsisten dengan logo/nama yang ditampilkan.
+
+**Fix — CSS custom property di-override LOKAL di root `MemberCard`** (BUKAN reimplementasi warna
+manual per-elemen):
+```tsx
+const cardVars = { "--primary": color, "--primary-foreground": foregroundFor(color) } as CSSProperties;
+<div className="... bg-primary text-primary-foreground ..." style={cardVars}>
+```
+CSS var yang di-set via inline `style` pada sebuah elemen cascade ke SEMUA children dan MENANG
+atas nilai `.public-layout` di ancestor lebih atas (resolve dari deklarasi terdekat) — jadi
+SELURUH JSX kartu yang sudah pakai `bg-primary`/`text-primary-foreground`/`bg-primary-foreground/
+15`/dst otomatis ikut warna lokal, TANPA ubah satu class pun di isi kartu. `foregroundFor()`
+(`lib/theme-palette.ts`, sudah di-export sejak lesson lama, WCAG contrast hitam/putih) dipakai
+ulang — bukan fungsi baru.
+
+**`resolveAkunBranding()` diperluas** — return type tambah `primaryColor`. Setiap langkah resolusi
+fetch warna dari TENANT YANG SAMA dengan logo/nama-nya (helper lokal `getTenantPrimaryColor()` →
+`getSettings(createTenantDb(slug), "display").primary_color`, default `#2563eb`) — **prinsip
+kunci: logo, nama, DAN warna tidak pernah campur dari tenant berbeda**. Kolom baru
+`platform_settings.default_color` (migration `0036`, default `#2563eb` — sama dengan default
+warna tenant baru di `/settings/display`, konsisten) untuk fallback platform. Akun publik (di
+luar `resolveAkunBranding`, tidak punya konsep cabang) fetch warna tenant dibrowsing langsung.
+
+**`/platform/settings`** — card "Branding Default IKPM" ditambah color picker (pola sama
+`display-settings-form.tsx`: `type="color"` + hex text input). `updatePlatformBrandingAction`
+validasi format hex (`^#[0-9a-fA-F]{6}$`), fallback ke `#2563eb` kalau tidak valid (bukan reject
+form).
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` + `bun run build` sukses
+(dev server dimatikan dulu, `.next` dibersihkan). Migration `0036` dijalankan di lokal, kolom
+`default_color` terkonfirmasi ada dengan nilai `#2563eb`. **Belum dijalankan di VPS. Belum
+diverifikasi visual** (belum coba browsing sebagai member lintas-tenant untuk lihat warna kartu
+berubah sesuai skenario) — perlu dicoba user.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Image System Phase D3 — Guard Upscale** (lihat lesson di atas) — fix
+- Terakhir dikerjakan: **Resolusi Warna Kartu Anggota** (lihat lesson di atas) —
+  `resolveAkunBranding()` diperluas dengan `primaryColor`, `MemberCard` override CSS var
+  `--primary`/`--primary-foreground` LOKAL via inline `style` (bukan ikut tema page-wide
+  `.public-layout`). Kolom baru `platform_settings.default_color` (migration `0036`) + color
+  picker di `/platform/settings`. `tsc`+build bersih, migration jalan di lokal. **Belum
+  di-commit/push, belum diverifikasi visual.**
+- Sesi sebelumnya: **Image System Phase D3 — Guard Upscale** (lihat lesson di atas) — fix
   bug logo/favicon dipaksa upscale+crop ke ukuran variant konten (large 1200×630, dst).
   `fitsWithoutUpscale()` baru di `lib/image-processor.ts`, 2 route upload disesuaikan
   (`throw` → `return` untuk variant yang sengaja dilewati). Tidak retroaktif (permintaan

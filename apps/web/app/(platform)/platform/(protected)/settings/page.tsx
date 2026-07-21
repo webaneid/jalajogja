@@ -18,6 +18,7 @@ export default async function PlatformSettingsPage() {
         <BrandingSettingsForm
           initialOrgName={brandingRow?.defaultOrgName ?? "IKPM Gontor"}
           initialLogoUrl={brandingRow?.defaultLogoUrl ?? null}
+          initialColor={brandingRow?.defaultColor ?? "#2563eb"}
         />
       </div>
 

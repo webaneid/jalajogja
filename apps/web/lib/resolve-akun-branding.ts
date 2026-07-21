@@ -1,13 +1,23 @@
 import { and, eq } from "drizzle-orm";
-import { db, members, tenants, tenantMemberships, platformSettings } from "@jalajogja/db";
+import { db, members, tenants, tenantMemberships, platformSettings, createTenantDb, getSettings } from "@jalajogja/db";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { resolveOrgLabels } from "@/lib/tenant-org-label";
+
+const DEFAULT_COLOR = "#2563eb"; // sama dengan default warna tenant baru (settings/display)
+
+async function getTenantPrimaryColor(slug: string): Promise<string> {
+  const tenantClient = createTenantDb(slug);
+  const displaySettings = await getSettings(tenantClient, "display");
+  return (displaySettings.primary_color as string | undefined) || DEFAULT_COLOR;
+}
 
 // Resolusi branding kartu anggota `/akun` — TIDAK selalu tenant yang sedang dibrowsing.
 // Lihat docs/arsitektur-akun.md § Resolusi Branding Kartu Anggota untuk konteks lengkap.
 //
 // Prinsip "1 ID for all": member bisa browsing /akun di tenant manapun meski bukan
-// anggota genuine tenant itu. Urutan resolusi:
+// anggota genuine tenant itu. Urutan resolusi (berlaku sama untuk logo, nama, DAN
+// warna — ketiganya selalu diambil dari tenant hasil resolusi yang SAMA, tidak pernah
+// campur, mis. logo dari tenant A tapi warna dari tenant B):
 //   1. Genuine member tenant yang sedang dibrowsing (ada baris tenant_memberships,
 //      APAPUN membershipType-nya — kolom itu tidak pernah dipakai sebagai filter
 //      di manapun di codebase, jadi "ada baris" = genuine member) → pakai branding
@@ -22,9 +32,10 @@ import { resolveOrgLabels } from "@/lib/tenant-org-label";
 // cabang, selalu pakai tenant yang sedang dibrowsing (lihat caller).
 
 export type ResolvedAkunBranding = {
-  logoUrl:     string | null;
-  orgName:     string;
-  memberLabel: string;
+  logoUrl:      string | null;
+  orgName:      string;
+  memberLabel:  string;
+  primaryColor: string; // hex, mis. "#2563eb"
 };
 
 export async function resolveAkunBranding(
@@ -54,7 +65,10 @@ export async function resolveAkunBranding(
       .limit(1);
 
     if (membership) {
-      const seo = await getTenantSeoBase(browsedSlug);
+      const [seo, primaryColor] = await Promise.all([
+        getTenantSeoBase(browsedSlug),
+        getTenantPrimaryColor(browsedSlug),
+      ]);
       return {
         logoUrl: seo.logoUrl,
         orgName: browsedTenant.name,
@@ -64,6 +78,7 @@ export async function resolveAkunBranding(
           marhalahYear:   browsedTenant.marhalahYear ?? null,
           marhalahPeriod: (browsedTenant.marhalahPeriod as "awal" | "akhir" | null) ?? null,
         }).memberLabel,
+        primaryColor,
       };
     }
   }
@@ -92,7 +107,10 @@ export async function resolveAkunBranding(
       .limit(1);
 
     if (homeTenant) {
-      const seo = await getTenantSeoBase(homeTenant.slug);
+      const [seo, primaryColor] = await Promise.all([
+        getTenantSeoBase(homeTenant.slug),
+        getTenantPrimaryColor(homeTenant.slug),
+      ]);
       return {
         logoUrl: seo.logoUrl,
         orgName: homeTenant.name,
@@ -102,6 +120,7 @@ export async function resolveAkunBranding(
           marhalahYear:   homeTenant.marhalahYear ?? null,
           marhalahPeriod: (homeTenant.marhalahPeriod as "awal" | "akhir" | null) ?? null,
         }).memberLabel,
+        primaryColor,
       };
     }
   }
@@ -115,8 +134,9 @@ export async function resolveAkunBranding(
 
   const orgName = platformRow?.defaultOrgName ?? "IKPM Gontor";
   return {
-    logoUrl:     platformRow?.defaultLogoUrl ?? null,
+    logoUrl:      platformRow?.defaultLogoUrl ?? null,
     orgName,
-    memberLabel: `Anggota ${orgName}`,
+    memberLabel:  `Anggota ${orgName}`,
+    primaryColor: platformRow?.defaultColor ?? DEFAULT_COLOR,
   };
 }

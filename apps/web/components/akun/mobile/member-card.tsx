@@ -1,7 +1,16 @@
+import type { CSSProperties } from "react";
+import { foregroundFor } from "@/lib/theme-palette";
+
 // Kartu identitas anggota — inspirasi visual dari design-refs/akun/design-mobile-akun.jpg
-// (kartu bank pada mockup fintech), TAPI warna diambil dari tema tenant (--primary CSS var,
-// via bg-primary/text-primary-foreground — TIDAK hardcode warna mockup), bukan ditiru literal.
-// Server component murni — semua data sudah di-resolve di page.tsx pemanggilnya.
+// (kartu bank pada mockup fintech), bukan ditiru literal.
+//
+// Warna kartu = warna tenant HASIL RESOLUSI (`resolveAkunBranding`, lib/resolve-akun-branding.ts)
+// — BUKAN warna halaman `.public-layout` yang sedang dibrowsing. Dua hal ini bisa beda: kartu
+// bisa menampilkan branding "cabang rumah" member meski dia sedang browsing tenant lain (lihat
+// docs/arsitektur-akun.md § Resolusi Branding Kartu Anggota). Karena itu warna di-override LOKAL
+// via CSS custom property di root div (`style`), bukan hardcode Tailwind — `bg-primary`/
+// `text-primary-foreground`/`bg-primary-foreground/*` yang sudah ada di JSX di bawah otomatis
+// resolve ke nilai LOKAL ini (CSS var cascade ke children), tanpa perlu ubah satu class pun.
 type Props = {
   type:         "member" | "public";
   name:         string;
@@ -10,15 +19,23 @@ type Props = {
   stambuk:      string | null;
   logoUrl:      string | null;
   siteName:     string;
+  color:        string; // hex, dari resolveAkunBranding().primaryColor
 };
 
 export function MemberCard({
-  type, name, memberNumber, stambuk, logoUrl, siteName,
+  type, name, memberNumber, stambuk, logoUrl, siteName, color,
 }: Props) {
   const isMember = type === "member";
+  const cardVars = {
+    "--primary":            color,
+    "--primary-foreground": foregroundFor(color),
+  } as CSSProperties;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-primary p-5 text-primary-foreground shadow-lg">
+    <div
+      className="relative overflow-hidden rounded-2xl bg-primary p-5 text-primary-foreground shadow-lg"
+      style={cardVars}
+    >
       {/* Aksen dekoratif — lingkaran transparan, murni visual */}
       <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-primary-foreground/10" />
       <div className="pointer-events-none absolute -bottom-10 -right-2 h-24 w-24 rounded-full bg-primary-foreground/10" />

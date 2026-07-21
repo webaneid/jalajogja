@@ -6,6 +6,7 @@ export const platformSettings = pgTable("platform_settings", {
   id:             text("id").primaryKey(),
   defaultLogoUrl: text("default_logo_url"),
   defaultOrgName: text("default_org_name").notNull().default("IKPM Gontor"),
+  defaultColor:   text("default_color").notNull().default("#2563eb"),
   updatedAt:      timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -3,7 +3,7 @@ import { headers }   from "next/headers";
 import { eq, and }   from "drizzle-orm";
 import { auth }      from "@/lib/auth";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
-import { db, tenantMemberships, tenants, members, refIkpmCabang } from "@jalajogja/db";
+import { db, tenantMemberships, tenants, members, refIkpmCabang, createTenantDb, getSettings } from "@jalajogja/db";
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import { resolveAkunBranding } from "@/lib/resolve-akun-branding";
 import { getTenantSeoBase }    from "@/lib/tenant-seo";
@@ -86,15 +86,21 @@ export default async function AkunPage({ params }: { params: Params }) {
   // punya konsep cabang, selalu pakai tenant yang sedang dibrowsing.
   let logoUrl: string | null;
   let siteName: string;
+  let primaryColor: string;
   if (isMember && identity.memberId) {
     const branding = await resolveAkunBranding(identity.memberId, slug);
     logoUrl        = branding.logoUrl;
     siteName       = branding.orgName;
     orgMemberLabel = branding.memberLabel;
+    primaryColor   = branding.primaryColor;
   } else {
-    const seo = await getTenantSeoBase(slug);
-    logoUrl  = seo.logoUrl;
-    siteName = seo.siteName;
+    const [seo, displaySettings] = await Promise.all([
+      getTenantSeoBase(slug),
+      getSettings(createTenantDb(slug), "display"),
+    ]);
+    logoUrl      = seo.logoUrl;
+    siteName     = seo.siteName;
+    primaryColor = (displaySettings.primary_color as string | undefined) || "#2563eb";
   }
 
   const completeBanner = isMember && isIncomplete && (
@@ -233,6 +239,7 @@ export default async function AkunPage({ params }: { params: Params }) {
           stambuk={identity.stambuk}
           logoUrl={logoUrl}
           siteName={siteName}
+          color={primaryColor}
         />
       </div>
 

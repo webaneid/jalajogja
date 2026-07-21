@@ -10,15 +10,17 @@ import { updatePlatformBrandingAction } from "../actions";
 type Props = {
   initialOrgName: string;
   initialLogoUrl: string | null;
+  initialColor:   string;
 };
 
 // Form branding default IKPM — fallback untuk MemberCard `/akun` saat cabang resmi
 // member belum onboard jadi tenant. Lihat docs/arsitektur-akun.md § Resolusi Branding
 // Kartu Anggota. Upload logo langsung ke /api/platform/settings/upload-logo (path fixed,
 // bukan bagian modul media tenant — tidak pakai MediaPicker).
-export function BrandingSettingsForm({ initialOrgName, initialLogoUrl }: Props) {
+export function BrandingSettingsForm({ initialOrgName, initialLogoUrl, initialColor }: Props) {
   const [orgName, setOrgName] = useState(initialOrgName);
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
+  const [color, setColor]     = useState(initialColor);
   const [uploading, setUploading] = useState(false);
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -51,6 +53,7 @@ export function BrandingSettingsForm({ initialOrgName, initialLogoUrl }: Props) 
       const form = new FormData();
       form.append("defaultOrgName", orgName);
       form.append("defaultLogoUrl", logoUrl ?? "");
+      form.append("defaultColor", color);
       const res = await updatePlatformBrandingAction(form);
       if ("error" in res) {
         toast.error(res.error);
@@ -110,6 +113,25 @@ export function BrandingSettingsForm({ initialOrgName, initialLogoUrl }: Props) 
           onChange={(e) => setOrgName(e.target.value)}
           placeholder="IKPM Gontor"
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="defaultColor">Warna</Label>
+        <div className="flex items-center gap-3">
+          <input
+            id="defaultColor"
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            className="h-9 w-16 cursor-pointer rounded-md border border-input bg-background p-1"
+          />
+          <Input
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            placeholder="#2563eb"
+            className="max-w-[120px] font-mono"
+          />
+        </div>
       </div>
 
       <Button type="button" size="sm" disabled={pending || uploading} onClick={handleSave}>
