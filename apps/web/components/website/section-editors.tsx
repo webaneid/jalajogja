@@ -31,6 +31,13 @@ import type { MediaItem } from "@/components/media/media-picker";
 import { GalleryPicker } from "@/components/gallery/gallery-picker";
 import type { GalleryItem } from "@/lib/gallery";
 import { PublicLinkPicker } from "@/components/ui/public-link-picker";
+import {
+  CTA_TEXT_ALIGN_IDS, CTA_TEXT_ALIGN_LABELS,
+  CTA_BACKGROUND_IDS, CTA_BACKGROUND_LABELS,
+  CTA_WIDTH_IDS, CTA_WIDTH_LABELS,
+  CTA_BUTTON_POSITION_IDS, CTA_BUTTON_POSITION_LABELS,
+  type CtaSectionData,
+} from "@/lib/cta-section-designs";
 
 type EditorProps = {
   data:             Record<string, unknown>;
@@ -652,10 +659,54 @@ function FeaturesEditor({ data, onChange }: EditorProps) {
 }
 
 // ── CTA ───────────────────────────────────────────────────────────────────────
+// Sub-opsi kompak (align/bg/lebar/posisi tombol) — bukan picker "Design Layout" penuh, karena
+// CTA tetap Design 1 tunggal. Lihat docs/arsitektur-cta-section.md § 1.
+
+function OptionRow<T extends string>({
+  label, ids, labels, value, onChange,
+}: {
+  label:    string;
+  ids:      readonly T[];
+  labels:   Record<T, string>;
+  value:    T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <div className="flex flex-wrap gap-1.5">
+        {ids.map((id) => {
+          const isActive = value === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onChange(id)}
+              className={`px-2.5 py-1.5 rounded-md border text-xs transition-colors ${
+                isActive
+                  ? "border-primary bg-primary/5 text-primary font-medium"
+                  : "border-border hover:border-primary/40 text-foreground"
+              }`}
+            >
+              {labels[id]}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function CtaEditor({ data, onChange, tenantSlug }: EditorProps) {
-  const d = data as { title?: string; subtitle?: string; ctaLabel?: string; ctaUrl?: string };
+  const d = data as CtaSectionData;
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+
+  const textAlign      = d.textAlign ?? "left";
+  const background     = d.background ?? "secondary";
+  const width           = d.width ?? "full";
+  const boxedRadius     = d.boxedRadius ?? true;
+  const buttonPosition = d.buttonPosition ?? "below";
+
   return (
     <div className="space-y-3">
       <Field label="Judul (gunakan *teks* untuk bagian miring)">
@@ -664,13 +715,39 @@ function CtaEditor({ data, onChange, tenantSlug }: EditorProps) {
       <Field label="Deskripsi">
         <Textarea value={d.subtitle ?? ""} onChange={(e) => u("subtitle", e.target.value)} placeholder="Kalimat pendukung..." rows={2} />
       </Field>
-      <Field label="Tombol">
+      <Field label="Tombol Utama">
         <div className="grid grid-cols-2 gap-2">
           <Input value={d.ctaLabel ?? ""} onChange={(e) => u("ctaLabel", e.target.value)} placeholder="Teks tombol" />
           <PublicLinkPicker slug={tenantSlug ?? ""} value={d.ctaUrl ?? ""} onChange={(url) => u("ctaUrl", url)} placeholder="Pilih halaman atau URL..." />
         </div>
       </Field>
-      <p className="text-[11px] text-muted-foreground">Background otomatis menggunakan warna sekunder tenant.</p>
+      <Field label="Tombol Kedua (opsional, gaya outline)">
+        <div className="grid grid-cols-2 gap-2">
+          <Input value={d.ctaSecondaryLabel ?? ""} onChange={(e) => u("ctaSecondaryLabel", e.target.value)} placeholder="Teks tombol" />
+          <PublicLinkPicker slug={tenantSlug ?? ""} value={d.ctaSecondaryUrl ?? ""} onChange={(url) => u("ctaSecondaryUrl", url)} placeholder="Pilih halaman atau URL..." />
+        </div>
+      </Field>
+
+      <OptionRow label="Posisi Teks" ids={CTA_TEXT_ALIGN_IDS} labels={CTA_TEXT_ALIGN_LABELS}
+        value={textAlign} onChange={(v) => u("textAlign", v)} />
+      <OptionRow label="Background" ids={CTA_BACKGROUND_IDS} labels={CTA_BACKGROUND_LABELS}
+        value={background} onChange={(v) => u("background", v)} />
+      <OptionRow label="Lebar" ids={CTA_WIDTH_IDS} labels={CTA_WIDTH_LABELS}
+        value={width} onChange={(v) => u("width", v)} />
+      {width === "boxed" && (
+        <Field label="Sudut Kotak">
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input type="checkbox" checked={boxedRadius} onChange={(e) => u("boxedRadius", e.target.checked)} className="w-4 h-4 accent-primary" />
+            <span className="text-xs">Sudut membulat (rounded)</span>
+          </label>
+        </Field>
+      )}
+      <OptionRow label="Posisi Tombol" ids={CTA_BUTTON_POSITION_IDS} labels={CTA_BUTTON_POSITION_LABELS}
+        value={buttonPosition} onChange={(v) => u("buttonPosition", v)} />
+
+      <p className="text-[11px] text-muted-foreground">
+        Tombol utama otomatis kontras dengan background yang dipilih.
+      </p>
     </div>
   );
 }

@@ -15,6 +15,7 @@ export type PublicButtonVariant =
   | "light"            // bg putih — kontras di section gelap/berwarna
   | "outline-primary"  // border primer — alternatif ringan
   | "outline-dark"     // border gelap — netral
+  | "outline-light"    // border ikut currentColor — tombol kedua di atas bg berwarna arbitrary
   | "ghost"            // tanpa border — navigasi/link halus
   | "danger";          // merah — aksi destruktif
 
@@ -49,6 +50,7 @@ const VARIANT_DEFAULT_ICON: Record<PublicButtonVariant, PublicButtonIconName> = 
   "light":           "arrow",
   "outline-primary": "chevron",
   "outline-dark":    "move",
+  "outline-light":   "arrow-up",
   "ghost":           "chevron",
   "danger":          "trash",
 };

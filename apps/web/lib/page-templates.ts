@@ -69,7 +69,7 @@ const SECTION_DEFAULTS: Record<SectionType, Record<string, unknown>> = {
   gallery:      { title: "Galeri Foto", items: [] },
   about_text:   { title: "Tentang Kami", body: "", imageUrl: "", imagePosition: "right" },
   features:     { title: "Keunggulan Kami", items: [] },
-  cta:          { title: "", subtitle: "", ctaLabel: "Hubungi Kami", ctaUrl: "#" },
+  cta:          { title: "", subtitle: "", ctaLabel: "Hubungi Kami", ctaUrl: "#", ctaSecondaryLabel: "", ctaSecondaryUrl: "", textAlign: "left", background: "secondary", width: "full", boxedRadius: true, buttonPosition: "below" },
   contact_info: {},
   stats:        { items: [] },
   divider:      { height: 64, bgColor: "" },

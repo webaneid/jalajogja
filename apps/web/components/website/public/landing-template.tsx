@@ -16,9 +16,11 @@ import { ModulesSection } from "@/components/website/public/sections/modules/mod
 import { Gallery } from "@/components/gallery/gallery";
 import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
 import { PublicButton } from "@/components/website/public/ui/public-button";
+import type { PublicButtonVariant } from "@/components/website/public/ui/public-button";
 import { PostsSectionTitle } from "@/components/website/public/sections/posts/posts-section-title";
 import { renderAccentTitle } from "@/lib/render-accent-title";
 import { stripTenantPrefix } from "@/lib/strip-tenant-prefix";
+import type { CtaSectionData } from "@/lib/cta-section-designs";
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
@@ -99,43 +101,96 @@ function FeaturesSection({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+// Section CTA — tetap "Design 1" tunggal, 4 axis sub-opsi (textAlign, background, width,
+// buttonPosition) sebagai flat field, bukan section.variant baru. Arsitektur lengkap:
+// docs/arsitektur-cta-section.md
 function CtaSection({ data, baseUrl, tenantSlug }: { data: Record<string, unknown>; baseUrl: string; tenantSlug: string }) {
-  const d = data as { title?: string; subtitle?: string; ctaLabel?: string; ctaUrl?: string };
+  const d = data as CtaSectionData;
+
   // ctaUrl (dari PublicLinkPicker) selalu berprefix "/{slug}/..." — strip di custom domain.
   // Lihat docs/arsitektur-public-link-picker.md § 9.
-  const ctaUrl = d.ctaUrl && baseUrl === "" ? stripTenantPrefix(d.ctaUrl, tenantSlug) : d.ctaUrl;
+  const resolveUrl = (url?: string) => (url && baseUrl === "" ? stripTenantPrefix(url, tenantSlug) : url);
+  const ctaUrl          = resolveUrl(d.ctaUrl);
+  const ctaSecondaryUrl = resolveUrl(d.ctaSecondaryUrl);
 
-  return (
-    <section className="relative overflow-hidden px-4 bg-secondary text-secondary-foreground" style={{ paddingTop: 96, paddingBottom: 96 }}>
-      {/* Radial gradient overlay — subtle depth */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 10% 30%, rgba(255,255,255,0.08) 0, transparent 40%), radial-gradient(circle at 90% 70%, rgba(0,0,0,0.1) 0, transparent 40%)",
-        }}
-      />
+  const textAlign      = d.textAlign ?? "left";
+  const background     = d.background ?? "secondary";
+  const width           = d.width ?? "full";
+  const boxedRadius     = d.boxedRadius ?? true;
+  const buttonPosition = d.buttonPosition ?? "below";
 
-      <div className="relative max-w-7xl mx-auto">
+  const isPrimaryBg = background === "primary";
+  const isBoxed     = width === "boxed";
+  const isBeside    = buttonPosition === "beside";
+
+  const bgClass = isPrimaryBg ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground";
+  const primaryVariant: PublicButtonVariant = isPrimaryBg ? "secondary" : "light";
+
+  const alignItemsCls = textAlign === "center" ? "items-center" : textAlign === "right" ? "items-end" : "items-start";
+  const textAlignCls  = textAlign === "center" ? "text-center"  : textAlign === "right" ? "text-right"  : "text-left";
+  const justifyCls    = textAlign === "center" ? "justify-center" : textAlign === "right" ? "justify-end" : "justify-start";
+
+  const hasPrimaryBtn   = !!(d.ctaLabel && ctaUrl);
+  const hasSecondaryBtn = !!(d.ctaSecondaryLabel && ctaSecondaryUrl);
+  const buttonsNode = (hasPrimaryBtn || hasSecondaryBtn) ? (
+    <div className={`flex flex-wrap gap-3 ${isBeside ? "shrink-0" : justifyCls}`}>
+      {hasPrimaryBtn && (
+        <PublicButton href={ctaUrl!} variant={primaryVariant} size="lg">
+          {d.ctaLabel}
+        </PublicButton>
+      )}
+      {hasSecondaryBtn && (
+        <PublicButton href={ctaSecondaryUrl!} variant="outline-light" size="lg">
+          {d.ctaSecondaryLabel}
+        </PublicButton>
+      )}
+    </div>
+  ) : null;
+
+  const content = (
+    <div className={`relative flex flex-col ${isBeside ? "md:flex-row md:items-center md:justify-between gap-8" : `${alignItemsCls} gap-4`}`}>
+      <div className={isBeside ? `flex-1 min-w-0 ${textAlignCls}` : textAlignCls}>
         {d.title && (
-          <h2
-            className="font-normal mb-6 max-w-[900px]"
-            style={{ fontSize: "clamp(48px, 6vw, 88px)", lineHeight: 0.95 }}
-          >
+          <h2 className={`text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-bold leading-[1.1] tracking-tight mb-4 ${!isBeside ? "max-w-[900px]" : ""}`}>
             {renderAccentTitle(d.title)}
           </h2>
         )}
         {d.subtitle && (
-          <p className="text-lg max-w-xl mb-8 opacity-85 leading-relaxed">
+          <p className={`text-lg opacity-85 leading-relaxed ${!isBeside ? "max-w-xl" : ""}`}>
             {d.subtitle}
           </p>
         )}
-        {d.ctaLabel && ctaUrl && (
-          <PublicButton href={ctaUrl} variant="light" size="lg">
-            {d.ctaLabel as string}
-          </PublicButton>
-        )}
+        {!isBeside && buttonsNode && <div className="mt-6">{buttonsNode}</div>}
       </div>
+      {isBeside && buttonsNode}
+    </div>
+  );
+
+  const gradientOverlay = (
+    <div
+      className="absolute inset-0 pointer-events-none"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle at 10% 30%, rgba(255,255,255,0.08) 0, transparent 40%), radial-gradient(circle at 90% 70%, rgba(0,0,0,0.1) 0, transparent 40%)",
+      }}
+    />
+  );
+
+  if (isBoxed) {
+    return (
+      <section className="px-4 py-14">
+        <div className={`relative overflow-hidden max-w-7xl mx-auto px-6 py-14 sm:px-12 sm:py-16 ${bgClass} ${boxedRadius ? "rounded-3xl" : ""}`}>
+          {gradientOverlay}
+          {content}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className={`relative overflow-hidden px-4 ${bgClass}`} style={{ paddingTop: 96, paddingBottom: 96 }}>
+      {gradientOverlay}
+      <div className="relative max-w-7xl mx-auto">{content}</div>
     </section>
   );
 }

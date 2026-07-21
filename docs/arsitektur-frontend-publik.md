@@ -129,6 +129,13 @@ yang sebelumnya tidak pernah bisa ditonjolkan), 2 desain (Ikon / Foto dengan fal
 berlapis otomatis). **Dokumen detail penuh**: `docs/arsitektur-strip-modul.md` — katalog, kedua
 desain, tabel fallback foto per modul, data model, editor, struktur file.
 
+**Section CTA — tetap Design 1 tunggal, 4 axis sub-opsi** (ditambahkan 2026-07-22) — beda dari
+Hero/Posts/Modules yang punya beberapa `variant` bernomor, CTA memilih tidak membelah jadi Design 2
+karena variasinya (align teks, background secondary/primary, lebar full/boxed, posisi tombol
+below/beside) adalah kombinasi bebas dalam satu layout, bukan struktur JSX berbeda. Tombol kedua
+(baru, sebelumnya CTA cuma 1 tombol) pakai variant `PublicButton` baru `outline-light` (border
+`currentColor`, bukan CSS var tetap). **Dokumen detail penuh**: `docs/arsitektur-cta-section.md`.
+
 ---
 
 ## 5. Widget Area (Sidebar)

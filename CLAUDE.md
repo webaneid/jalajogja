@@ -8804,11 +8804,112 @@ dikonfirmasi via `\d`. **Belum dijalankan di VPS.** Belum diverifikasi visual di
 dialog form, upload OG image, lihat hasil di `<head>` halaman publik) — user perlu coba langsung.
 
 **Seluruh roadmap SEO (docs/arsitektur-seo.md) sekarang 100% selesai dari sisi kode — Fase 1, 2,
-3, dan perbaikan `invoice/[id]` noindex.** Migration `0037`+`0038`+`0039` (3 file) perlu dijalankan
-berurutan di VPS sebelum deploy kode ini.
+3, dan perbaikan `invoice/[id]` noindex.** Migration `0037`+`0038`+`0039` sudah dijalankan di VPS
+dan kode sudah live — **DEPLOY SELESAI 2026-07-21**, dikonfirmasi via build sukses + log bersih +
+`curl` 200 OK setelah sempat gagal build pertama (lihat catatan "Gotcha Deploy" di bawah).
+
+### [2026-07-21] Gotcha Deploy: Build Gagal Diam-Diam Karena Command Menyatu di Terminal
+
+Saat deploy Fase 1-3 SEO ke VPS, `bun run build --filter=@jalajogja/web` dan `pm2 restart
+jalajogja --update-env` sempat ter-paste/tereksekusi menyatu di satu baris terminal tanpa jeda —
+build tidak sempat selesai (atau outputnya tidak sempat tertangkap), tapi `pm2 restart` tetap
+jalan terhadap `.next/` yang lama/tidak lengkap. Gejala: `pm2 logs` menunjukkan `Cannot find
+module '.next/server/middleware-manifest.json'` + restart counter (`↺`) sudah di angka ratusan
+(crash-loop). **Diagnosa yang benar**: jalankan `bun run build` SENDIRIAN dulu, tunggu sampai
+muncul `Tasks: 1 successful, 1 total`, verifikasi `ls -la apps/web/.next/server/middleware-
+manifest.json` benar-benar ada dengan timestamp baru, BARU `pm2 restart`. Setelah itu cek stabil
+via `pm2 flush` (bersihkan log lama) → `pm2 logs` (harus kosong di percobaan berikutnya) →
+`pm2 list` (restart counter tidak naik lagi) → `curl -I http://localhost:3000` (200 OK).
+
+**Aturan untuk instruksi deploy ke depan**: SELALU minta user jalankan command build TERPISAH
+dari command restart (jangan gabung di satu balasan/blok tanpa penekanan "tunggu sampai selesai
+dulu") — dan SELALU sertakan langkah verifikasi (`ls` file target build, `pm2 list` restart
+counter stabil, `curl` response) sebagai bagian dari instruksi, bukan cuma "jalankan lalu restart".
+Restart counter yang sudah tinggi (ratusan) BUKAN indikasi masalah BARU — itu bisa jadi akumulasi
+lama; yang penting dicek adalah apakah angka itu **naik lagi** setelah restart terbaru.
+
+### [2026-07-22] Section CTA — 4 Axis Sub-Opsi + Tombol Kedua, Tetap "Design 1" Tunggal
+
+> Detail lengkap: **`docs/arsitektur-cta-section.md`**
+
+Permintaan user (dengan referensi gambar `design-refs/sections/cta/cta-design-2.jpg`): perkaya
+section CTA landing page dengan opsi align teks (kiri/tengah/kanan), background (sekunder/
+primary), lebar (full/boxed + radius toggle), dan posisi tombol (bawah/samping teks) — TAPI
+eksplisit semua tetap masuk **"Design 1"**, BUKAN jadi Design 2 terpisah seperti pola Hero/Modules.
+Alasan user: opsi-opsi ini kombinasi tampilan dalam satu layout, bukan struktur JSX berbeda total.
+
+**Riset dulu (bukan asumsi)**: sebelum tulis kode, dibaca penuh implementasi CTA existing
+(`landing-template.tsx`) — ternyata CTA SATU-SATUNYA title di seluruh sistem section yang size-nya
+lewat inline `style={{fontSize: "clamp(...)"}}` (bukan Tailwind class), dan CTA belum pernah punya
+`CtaSectionData` type khusus (anonymous inline type, drift-prone). Juga dikonfirmasi: `CtaEditor`
+tidak pernah dapat `variant`/`onVariantChange` — tidak ada picker "Design Layout" untuk CTA sejak
+awal (beda dari Hero/Posts/Modules).
+
+**Sebelum eksekusi, 1 titik ambigu ditanyakan via `AskUserQuestion`** (bukan diasumsikan): apakah
+"tombol kedua" (disebut user sebagai "shadow button") HANYA muncul saat `background=primary`
+(bacaan literal instruksi), atau selalu tersedia di editor apapun kombinasi axis lain. User pilih
+**selalu tersedia** — field `ctaSecondaryLabel`/`ctaSecondaryUrl` selalu ada di editor (kosong =
+tidak dirender), pola sama dengan "Tombol Kedua (opsional)" yang sudah ada di Hero editor.
+
+**Variant `PublicButton` baru: `outline-light`** — border+teks pakai `color: inherit` +
+`border-color: currentColor` (BUKAN CSS var tetap seperti `outline-primary`/`outline-dark` yang
+sudah ada, keduanya salah kalau dipakai di atas bg berwarna arbitrary karena hover-nya fill-flip
+ke warna CSS var tetap). `currentColor` mewarisi `text-secondary-foreground`/`text-primary-
+foreground` dari section pembungkus — otomatis benar untuk warna tenant apa pun (termasuk tenant
+dengan warna terang yang `foregroundFor()` hasilkan teks gelap, bukan cuma asumsi "selalu putih").
+Icon default `arrow-up` (`ArrowUpRight`, ↗) — cocok dengan "Learn More ↗" di referensi gambar.
+Ditambahkan sebagai variant KE-9, nol perubahan ke 8 variant existing. Ditemukan sekalian saat
+baca `cn()` composition logic di `public-button.tsx`: special-case `outline-primary`/`outline-dark`
+di situ TERNYATA redundan (`btn-${variant}` generic fallback menghasilkan string identik) — jadi
+`outline-light` baru tidak butuh special-case tambahan, otomatis jatuh ke fallback yang sudah ada.
+
+**Judul CTA disamakan persis dengan Hero Design 1**: `text-3xl sm:text-4xl md:text-5xl xl:text-6xl
+font-bold leading-[1.1] tracking-tight` — mengganti inline `clamp(48px,6vw,88px)`+`font-normal`
+lama. `renderAccentTitle()` (sintaks `*teks*`) tidak berubah.
+
+**Layout "boxed" vs "full"**: `full` (default) — `<section>` sendiri yang punya `bgClass` +
+`overflow-hidden`, full-bleed edge-to-edge persis perilaku lama. `boxed` — `<section>` luar
+transparan (ikut bg halaman) + padding, box di dalamnya (`max-w-7xl mx-auto`) yang punya bgClass +
+optional `rounded-3xl`. Radial gradient overlay dan `content` (title/subtitle/tombol) di-share
+lewat 1 variable JSX dipakai kedua cabang — bukan diduplikasi, karena benar-benar identik antara
+boxed/full (cuma wrapper luar yang beda), berbeda dari pola "duplikasi demi isolasi" yang biasa
+dipakai project ini untuk hal yang BOLEH divergen ke depan.
+
+**Layout "beside" (posisi tombol di samping teks)**: `flex md:flex-row md:items-center
+md:justify-between gap-8` — teks kolom kiri (`flex-1 min-w-0`), tombol kolom kanan (`shrink-0`).
+`textAlign` di mode ini HANYA pengaruhi align teks di kolom teksnya sendiri — TIDAK menggeser
+posisi kolom tombol (didokumentasikan eksplisit sebagai keputusan, bukan celah tak terpikirkan).
+
+**Data shape baru** (`lib/cta-section-designs.ts`, type `CtaSectionData` — menutup gap "CTA tidak
+pernah punya type khusus" sekalian): 5 field baru (`ctaSecondaryLabel`, `ctaSecondaryUrl`,
+`textAlign`, `background`, `width`, `boxedRadius`, `buttonPosition` — total 7) semuanya opsional
+dengan fallback `?? "<default>"` di titik baca (render DAN editor) — section CTA existing manapun
+(data lama tanpa field-field ini) otomatis resolve ke tampilan PERSIS sebelum perubahan ini, **nol
+migrasi data**, konsisten pola yang sudah berkali-kali dipakai project ini untuk field baru non-
+breaking (funfactStyle, showModuleStrip, dst).
+
+**Editor**: helper lokal baru `OptionRow<T>` (button-row kompak 2-3 pilihan, BEDA dari picker
+"Design Layout" yang list-vertikal-dengan-deskripsi di Hero/Posts/Modules — axis CTA cuma toggle
+singkat, bukan alternatif layout penuh) dipakai 4× dalam `CtaEditor`. Toggle `boxedRadius`
+kondisional — cuma dirender saat `width==="boxed"` (tidak relevan untuk full-bleed).
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB — murni data JSON di
+kolom `pages.body` yang sudah ada. Belum diverifikasi visual di browser — user perlu cek kombinasi
+axis di `/app/{slug}/website/pengaturan` setelah deploy.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fase 3 SEO — Tabel `seo_page_overrides` + Halaman Admin Baru** (lihat
+- Terakhir dikerjakan: **Section CTA — 4 axis sub-opsi + tombol kedua** (lihat lesson di atas) —
+  tetap "Design 1" tunggal (bukan Design 2 baru, keputusan eksplisit user). `lib/cta-section-
+  designs.ts` baru (`CtaSectionData` + 4 registry axis: textAlign/background/width/buttonPosition),
+  variant `PublicButton` baru `outline-light` (border `currentColor`, bukan CSS var tetap) untuk
+  tombol kedua yang sebelumnya tidak ada, judul disamakan persis Hero Design 1
+  (`text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-bold`, ganti dari inline `clamp()` lama).
+  `CtaSection` (landing-template.tsx) dan `CtaEditor` (section-editors.tsx) ditulis ulang, helper
+  `OptionRow` baru untuk 4 toggle kompak. `tsc`+build bersih. Nol migrasi DB. **Belum di-commit/
+  push** (menunggu checkpoint ini), **belum diverifikasi visual di browser** — user perlu cek
+  kombinasi axis di section builder setelah deploy.
+- Sesi sebelumnya: **Fase 3 SEO — Tabel `seo_page_overrides` + Halaman Admin Baru** (lihat
   lesson di atas) — tabel tenant-scoped baru (migration `0039`), `lib/seo-page-keys.ts` (16
   pageKey tetap) + `lib/get-page-seo-override.ts` (helper server-only), halaman admin baru
   `/app/{slug}/settings/seo` (list+dialog, pola `RolesManageClient`), nav item "SEO" baru di
@@ -8818,12 +8919,8 @@ berurutan di VPS sebelum deploy kode ini.
   Component murni sehingga logic form-nya diekstrak ke file client baru supaya `generateMetadata`
   bisa dipasang di `page.tsx` (Server Component). Sekalian dieksekusi: `invoice/[id]` dapat
   `generateMetadata` baru dengan `robots: noindex` hardcode (bukan lewat sistem override).
-  `tsc`+build bersih (dicek bertahap), migration `0039` jalan di lokal, tabel+FK+CHECK
-  dikonfirmasi via `\d`. **Belum di-commit/push** (menunggu checkpoint ini — akan digabung
-  dengan Fase 1+2 yang juga masih uncommitted), **migration `0037`+`0038`+`0039` belum dijalankan
-  di VPS**. **Seluruh roadmap SEO (`docs/arsitektur-seo.md`) sekarang selesai dari sisi kode** —
-  belum ada verifikasi visual di browser untuk ketiga fase (butuh login admin + cek tampilan
-  `<head>` halaman publik, di luar kemampuan environment ini).
+  **Sudah di-commit+push+deploy ke VPS** (lihat catatan "Gotcha Deploy" di atas — build sempat
+  gagal diam-diam di percobaan pertama, sudah teratasi, dikonfirmasi via `curl` 200 OK).
 - Sesi sebelumnya: **Resolusi Warna Kartu Anggota** (lihat lesson di atas) —
   `resolveAkunBranding()` diperluas dengan `primaryColor`, `MemberCard` override CSS var
   `--primary`/`--primary-foreground` LOKAL via inline `style` (bukan ikut tema page-wide

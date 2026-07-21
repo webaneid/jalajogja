@@ -148,6 +148,18 @@
     &:active { opacity: 0.9; transform: translateY(0); }
   }
 
+  /* ── Variant: Outline Light (border ikut currentColor — untuk bg berwarna
+     arbitrary seperti CTA primary/secondary, BUKAN CSS var tetap seperti
+     outline-primary/outline-dark) ─────────────────────────────────────── */
+  .btn-outline-light {
+    background-color: transparent;
+    color: inherit;
+    border-color: currentColor;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 10%);
+    &:hover  { background-color: color-mix(in srgb, currentColor 12%, transparent); transform: translateY(-1px); }
+    &:active { background-color: color-mix(in srgb, currentColor 20%, transparent); transform: translateY(0); }
+  }
+
   /* ── Variant: Ghost (navigasi halus, tanpa border) ────────────────────── */
   .btn-ghost {
     background-color: transparent;
