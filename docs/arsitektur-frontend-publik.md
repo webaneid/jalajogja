@@ -145,6 +145,16 @@ catalog.ts`), BUKAN seluruh library (~1700+, terlalu berisik untuk konteks bisni
 nama icon HARUS diverifikasi dulu terhadap `.d.ts` package yang terinstall, banyak nama populer
 di versi lucide-react lama (`CheckCircle2`, `BarChart3`, `HelpCircle`) sudah di-rename di v1.8.0.
 
+**Section Tentang Kami — tetap Design 1 tunggal, standar background BARU 5-opsi** (ditambahkan
+2026-07-22) — SELALU 2 kolom 50/50 (perubahan struktural disengaja dari layout lama yang tidak
+proporsional). Section PERTAMA yang pakai `lib/section-background.ts` (`none`/`light`/`primary`/
+`secondary`/`dark`) — standar ini DIKUNCI untuk section BARU ke depan, TAPI sengaja TIDAK
+diretrofit ke CTA/Keunggulan yang sudah lebih dulu selesai. Mode deskripsi teks-biasa atau
+list-repeater (reuse `IconPicker`+tipe icon dari Keunggulan/Layanan, tanpa card/border — cuma
+opsi garis pemisah). Tombol baru (section ini sebelumnya tidak punya tombol sama sekali). Rasio
+gambar square/profile murni CSS `aspect-ratio` — TIDAK menambah variant baru ke pipeline gambar.
+**Dokumen detail penuh**: `docs/arsitektur-tentang-kami-section.md`.
+
 ---
 
 ## 5. Widget Area (Sidebar)

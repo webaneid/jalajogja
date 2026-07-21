@@ -8965,17 +8965,83 @@ sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB. Belum d
 visual di browser — user perlu cek kombinasi axis DAN icon picker (search, grid, seleksi) di
 section builder setelah deploy.
 
+### [2026-07-22] Section Tentang Kami — Standar Background Baru + Kolom 50/50 + Tombol Baru
+
+> Detail lengkap: **`docs/arsitektur-tentang-kami-section.md`**
+
+Lanjutan langsung dari Keunggulan/Layanan (sesi yang sama). Berbeda dari CTA/Features (yang
+defaultnya 100% preservasi tampilan lama), section ini punya perubahan visual DISENGAJA untuk
+data existing — konsekuensi langsung dari instruksi eksplisit "kolom: SELALU 2 kolom 50/50" (kata
+"selalu" = bukan opsi, struktur tetap) — beda dari implementasi lama yang `flex-1` (teks) +
+`md:w-80` (gambar fix 320px), TIDAK PERNAH 50/50. Section existing otomatis pindah ke grid 50/50
+baru begitu deploy — didokumentasikan eksplisit sebagai perubahan disengaja (§ 4 dokumen), bukan
+kelalaian backward-compat seperti pola CTA/Features sebelumnya.
+
+**Standar background baru 5-opsi** (`none`/`light`/`primary`/`secondary`/`dark`,
+`lib/section-background.ts`) — user eksplisit menyatakan "selalu seperti ini untuk background
+kedepannya" (jadi standar section BARU). **Ditanya via `AskUserQuestion` apakah retrofit ke
+CTA/Features sekarang juga** — user pilih TIDAK, biarkan keduanya seperti sekarang (baru saja
+selesai, tidak perlu ditambah risiko). Helper `resolveSectionBgClass()` +
+`resolveOutlineButtonVariant()` dirancang REUSABLE — section berikutnya yang butuh background
+standar tinggal impor, bukan redefinisi ulang tiap kali (persis pola `OptionRow` yang sudah
+terbukti manfaatnya di Keunggulan/Layanan).
+
+**Koreksi user di tengah diskusi — pelajaran tentang jangan asumsi istilah teknis**: rencana awal
+saya mengusulkan opsi rasio gambar "square" dan "4:3", plus (sebagai opsi B yang saya rekomendasikan
+TIDAK) kemungkinan menambah variant pemrosesan gambar baru. User koreksi: **"ukuran profile
+maksudnya bro .. jgn bikin varian baru.. kayanya kita ada ukuran profil foto apa tidak ada varian
+yg sedikit panjang kebawah bro?"** — ternyata yang dimaksud BUKAN "4:3" (rasio landscape) tapi
+**"profile"** (rasio POTRET 3:4, "panjang ke bawah") — variant yang SUDAH ADA di `lib/image-
+processor.ts` (300×400, dipakai foto profil anggota) sejak lama. Verifikasi cepat konfirmasi:
+`profile: {width:300, height:400}` — 3:4, persis. **Solusi final: CSS-only** — `imageRatio:
+"square"|"profile"` cuma menentukan class `aspect-square`/`aspect-[3/4]` di tampilan + `object-
+cover`, sumber gambar TETAP `variants.large`/`variants.medium` seperti sebelumnya (modul `website`
+yang dipakai `MediaPicker` di sini bahkan tidak generate variant `profile` secara fisik — tidak
+masalah, karena CSS `object-cover` yang melakukan crop visual, bukan file yang harus sudah
+berbentuk pas). **Nol perubahan ke `lib/image-processor.ts`** — tepat sesuai "jangan bikin varian
+baru". Pelajaran: kalau user menyebut istilah yang terdengar generik ("4:3") tapi konteksnya
+(project sudah punya sistem image variant established) menunjukkan kemungkinan mereka merujuk ke
+KONSEP YANG SUDAH ADA dengan nama berbeda, cek dulu istilah yang sudah dipakai di codebase
+sebelum mengusulkan solusi baru — di sini untungnya user sendiri yang mengoreksi sebelum eksekusi,
+tapi idealnya saya yang harus curiga duluan ("app ini sudah punya sistem variant gambar mapan,
+mungkin '4:3' yang dimaksud user sebenarnya salah satu variant yang sudah ada").
+
+**Tombol baru** (section ini sebelumnya TIDAK PUNYA tombol sama sekali) — `<PublicLinkPicker>`
+di editor (pola sama CTA/Hero), render `<PublicButton variant={resolveOutlineButtonVariant(
+background)}>` — variant OTOMATIS kontras: `outline-light` (dari sistem CTA, border `currentColor`)
+kalau background berwarna, `outline-dark` kalau netral. Bukti lanjutan manfaat `outline-light`
+yang dibuat untuk CTA — sekarang dipakai ulang oleh section ketiga tanpa modifikasi.
+
+**Mode deskripsi teks/list** — list-repeater REUSE LANGSUNG tipe icon (`FeaturesIconStyle` dkk)
+dan komponen `<IconPicker>` dari Keunggulan/Layanan TANPA modifikasi — tapi item list SENGAJA
+TIDAK punya card/border/background (beda dari Keunggulan/Layanan yang punya kartu berbingkai) —
+sesuai instruksi literal "tidak memiliki border untuk box, cuma border bottom aja diaktifkan
+atau tidak" — satu-satunya elemen visual antar-item adalah toggle `listDividers` (garis pemisah).
+
+**Verifikasi**: `tsc --noEmit` bersih dari percobaan pertama + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB, nol perubahan pipeline
+gambar. Belum diverifikasi visual di browser — user perlu cek kombinasi axis, terutama transisi
+layout lama→50/50 pada section existing, setelah deploy.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Section Keunggulan/Layanan — 5 axis + Icon Picker baru** (lihat lesson
+- Terakhir dikerjakan: **Section Tentang Kami — standar background baru + kolom 50/50 + tombol
+  baru** (lihat lesson di atas) — tetap "Design 1" tunggal. `lib/section-background.ts` baru
+  (standar 5-opsi none/light/primary/secondary/dark, REUSABLE untuk section berikutnya, SENGAJA
+  tidak diretrofit ke CTA/Features). Kolom SELALU 2 50/50 (perubahan struktural disengaja, bukan
+  preservasi — beda dari CTA/Features). Tombol baru (`outline-light` dari CTA di-reuse). Mode
+  deskripsi teks/list (list reuse icon Keunggulan/Layanan, tanpa card — cuma toggle divider).
+  Rasio gambar square/profile murni CSS (koreksi user: BUKAN "4:3", tapi "profile" yang sudah
+  ada — nol variant baru). `tsc`+build bersih. Nol migrasi DB. **Belum di-commit/push** (menunggu
+  checkpoint ini), **belum diverifikasi visual di browser**.
+- Sesi sebelumnya: **Section Keunggulan/Layanan — 5 axis + Icon Picker baru** (lihat lesson
   di atas) — tetap "Design 1" tunggal. Field icon (dulu `<Input>` emoji bebas) diganti
   `<IconPicker>` baru (`components/ui/icon-picker.tsx`) — grid searchable dari `lib/icon-catalog.ts`
   (~120 icon kurasi, SEMUA diverifikasi manual terhadap `.d.ts` lucide-react@1.8.0 yang benar-
   benar terinstall — banyak nama populer versi lama sudah di-rename). `lib/features-section-
   designs.ts` baru (`FeaturesSectionData` + 9 registry axis). Semua default dipilih untuk PERSIS
   mereplikasi tampilan lama (backward compat penuh KECUALI icon — emoji lama fallback diam-diam
-  ke icon default, satu-satunya titik non-backward-compat, didokumentasikan eksplisit). `tsc`+
-  build bersih. Nol migrasi DB. **Belum di-commit/push** (menunggu checkpoint ini — akan digabung
-  1 commit dengan fix lebar CTA di bawah), **belum diverifikasi visual di browser**.
+  ke icon default, satu-satunya titik non-backward-compat, didokumentasikan eksplisit).
+  **Sudah di-commit+push** (`06d3c6a`).
 - Sesi sebelumnya: **Section CTA — 4 axis sub-opsi + tombol kedua** (lihat lesson di atas) —
   tetap "Design 1" tunggal (bukan Design 2 baru, keputusan eksplisit user). `lib/cta-section-
   designs.ts` baru (`CtaSectionData` + 4 registry axis: textAlign/background/width/buttonPosition),

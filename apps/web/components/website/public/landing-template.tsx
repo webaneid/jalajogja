@@ -23,6 +23,8 @@ import { stripTenantPrefix } from "@/lib/strip-tenant-prefix";
 import type { CtaSectionData } from "@/lib/cta-section-designs";
 import type { FeaturesSectionData } from "@/lib/features-section-designs";
 import { resolveIcon } from "@/lib/icon-catalog";
+import type { AboutSectionData } from "@/lib/about-section-designs";
+import { resolveSectionBgClass, resolveOutlineButtonVariant } from "@/lib/section-background";
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
@@ -53,28 +55,121 @@ function GallerySection({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-function AboutTextSection({ data }: { data: Record<string, unknown> }) {
-  const d = data as { title?: string; body?: string; imageUrl?: string; imagePosition?: string };
-  const imgRight = (d.imagePosition ?? "right") === "right";
+// Section Tentang Kami — tetap "Design 1" tunggal, selalu 2 kolom 50/50 (bukan opsi, struktur
+// tetap). Sub-opsi: background (standar baru, lib/section-background.ts), lebar, align vertikal
+// teks, mode deskripsi teks/list, posisi+rasio gambar. Arsitektur lengkap:
+// docs/arsitektur-tentang-kami-section.md
+function AboutTextSection({ data, baseUrl, tenantSlug }: { data: Record<string, unknown>; baseUrl: string; tenantSlug: string }) {
+  const d = data as AboutSectionData;
+
+  const resolveUrl = (url?: string) => (url && baseUrl === "" ? stripTenantPrefix(url, tenantSlug) : url);
+  const ctaUrl = resolveUrl(d.ctaUrl);
+
+  const background     = d.background ?? "none";
+  const width           = d.width ?? "full";
+  const textVAlign      = d.textVAlign ?? "center";
+  const descMode        = d.descMode ?? "text";
+  const listDividers    = d.listDividers ?? false;
+  const iconStyle       = d.iconStyle ?? "plain";
+  const iconColor       = d.iconColor ?? "primary";
+  const iconShape       = d.iconShape ?? "square-radius";
+  const imagePosition   = d.imagePosition ?? "right";
+  const imageRatio      = d.imageRatio ?? "square";
+  const imageRadius     = d.imageRadius ?? true;
+
+  const isBoxed = width === "boxed";
+  const bgClass = resolveSectionBgClass(background);
+  const ctaVariant = resolveOutlineButtonVariant(background);
+
+  const gridAlignCls = textVAlign === "top" ? "items-start" : textVAlign === "bottom" ? "items-end" : "items-center";
+  const textOrderCls  = imagePosition === "left" ? "md:order-2" : "md:order-1";
+  const imageOrderCls = imagePosition === "left" ? "md:order-1" : "md:order-2";
+
+  const iconBoxShapeCls =
+    iconShape === "rounded" ? "rounded-full" :
+    iconShape === "square"  ? "rounded-none" :
+    "rounded-xl";
+
+  const items = d.items ?? [];
+
+  const listBlock = (
+    <div className={listDividers ? "divide-y divide-border" : "space-y-6"}>
+      {items.map((item, i) => {
+        const Icon = resolveIcon(item.icon);
+        const iconNode = iconStyle === "colored" ? (
+          <div className={`inline-flex h-11 w-11 shrink-0 items-center justify-center ${iconBoxShapeCls} ${
+            iconColor === "secondary" ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"
+          }`}>
+            <Icon className="h-5 w-5" />
+          </div>
+        ) : (
+          <Icon className="h-6 w-6 shrink-0 text-primary" />
+        );
+        return (
+          <div key={i} className={`flex gap-4 ${listDividers ? "py-5 first:pt-0 last:pb-0" : ""}`}>
+            {iconNode}
+            <div className="min-w-0">
+              {item.title && <h3 className="font-semibold mb-1">{item.title}</h3>}
+              {item.desc && <p className="text-sm opacity-80 leading-relaxed">{item.desc}</p>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const hasButton = !!(d.ctaLabel && ctaUrl);
+
+  const textColumn = (
+    <div className={`space-y-4 ${textOrderCls}`}>
+      {d.eyebrow && <p className="text-xs font-semibold uppercase tracking-widest text-primary">{d.eyebrow}</p>}
+      {d.title && <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold leading-tight tracking-tight">{d.title}</h2>}
+      {descMode === "text"
+        ? (d.body && <p className="text-base opacity-80 leading-relaxed whitespace-pre-line">{d.body}</p>)
+        : listBlock}
+      {hasButton && (
+        <div className="pt-2">
+          <PublicButton href={ctaUrl!} variant={ctaVariant}>
+            {d.ctaLabel}
+          </PublicButton>
+        </div>
+      )}
+    </div>
+  );
+
+  const imageColumn = (
+    <div className={imageOrderCls}>
+      {d.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={d.imageUrl}
+          alt={d.title ?? "Tentang Kami"}
+          className={`w-full object-cover ${imageRatio === "profile" ? "aspect-[3/4]" : "aspect-square"} ${imageRadius ? "rounded-2xl" : "rounded-none"}`}
+        />
+      )}
+    </div>
+  );
+
+  const grid = (
+    <div className={`grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 ${gridAlignCls}`}>
+      {textColumn}
+      {imageColumn}
+    </div>
+  );
+
+  if (isBoxed) {
+    return (
+      <section className="px-4 py-14">
+        <div className={`max-w-7xl mx-auto px-6 py-12 sm:px-10 sm:py-14 rounded-3xl ${bgClass}`}>
+          {grid}
+        </div>
+      </section>
+    );
+  }
 
   return (
-    <section className="py-14 px-4">
-      <div className="max-w-7xl mx-auto">
-        {d.title && <PostsSectionTitle title={d.title} />}
-        <div className={`flex flex-col ${imgRight ? "md:flex-row" : "md:flex-row-reverse"} items-center gap-10`}>
-          <div className="flex-1">
-            {d.body && <p className="text-muted-foreground leading-relaxed whitespace-pre-line">{d.body}</p>}
-          </div>
-          {d.imageUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={d.imageUrl}
-              alt={d.title ?? "Tentang Kami"}
-              className="w-full md:w-80 rounded-xl object-cover"
-            />
-          )}
-        </div>
-      </div>
+    <section className={`py-14 px-4 ${bgClass}`}>
+      <div className="max-w-7xl mx-auto">{grid}</div>
     </section>
   );
 }
@@ -440,7 +535,7 @@ function SectionRenderer({
       />
     );
     case "gallery":      return <GallerySection       data={section.data} />;
-    case "about_text":   return <AboutTextSection     data={section.data} />;
+    case "about_text":   return <AboutTextSection     data={section.data} baseUrl={baseUrl} tenantSlug={tenantSlug} />;
     case "features":     return <FeaturesSection      data={section.data} />;
     case "cta":          return <CtaSection           data={section.data} baseUrl={baseUrl} tenantSlug={tenantSlug} />;
     case "contact_info": return <ContactInfoSection   settings={contactSettings} />;

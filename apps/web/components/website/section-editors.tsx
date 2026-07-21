@@ -52,6 +52,15 @@ import {
 } from "@/lib/features-section-designs";
 import { IconPicker } from "@/components/ui/icon-picker";
 import { DEFAULT_ICON_NAME } from "@/lib/icon-catalog";
+import {
+  ABOUT_WIDTH_IDS, ABOUT_WIDTH_LABELS,
+  ABOUT_TEXT_VALIGN_IDS, ABOUT_TEXT_VALIGN_LABELS,
+  ABOUT_DESC_MODE_IDS, ABOUT_DESC_MODE_LABELS,
+  ABOUT_IMAGE_POSITION_IDS, ABOUT_IMAGE_POSITION_LABELS,
+  ABOUT_IMAGE_RATIO_IDS, ABOUT_IMAGE_RATIO_LABELS,
+  SECTION_BACKGROUND_IDS, SECTION_BACKGROUND_LABELS,
+  type AboutSectionData, type AboutListItem,
+} from "@/lib/about-section-designs";
 
 type EditorProps = {
   data:             Record<string, unknown>;
@@ -556,19 +565,105 @@ function GalleryEditor({ data, onChange, tenantSlug }: EditorProps) {
 
 // ── About Text ────────────────────────────────────────────────────────────────
 
+// Sub-opsi kompak (background/lebar/align teks/mode deskripsi/posisi+rasio gambar) — bukan
+// picker "Design Layout" penuh, Tentang Kami tetap Design 1 tunggal, selalu 2 kolom 50/50 (bukan
+// opsi). Lihat docs/arsitektur-tentang-kami-section.md
+
 function AboutTextEditor({ data, onChange, tenantSlug }: EditorProps) {
-  const d = data as { title?: string; body?: string; imageUrl?: string; imagePosition?: string };
+  const d = data as AboutSectionData;
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  const items: AboutListItem[] = d.items ?? [];
+  const updateItems = (arr: AboutListItem[]) => u("items", arr);
+
+  const background     = d.background ?? "none";
+  const width           = d.width ?? "full";
+  const textVAlign      = d.textVAlign ?? "center";
+  const descMode        = d.descMode ?? "text";
+  const listDividers    = d.listDividers ?? false;
+  const iconStyle       = d.iconStyle ?? "plain";
+  const iconColor       = d.iconColor ?? "primary";
+  const iconShape       = d.iconShape ?? "square-radius";
+  const imagePosition   = d.imagePosition ?? "right";
+  const imageRatio      = d.imageRatio ?? "square";
+  const imageRadius     = d.imageRadius ?? true;
+
   return (
     <div className="space-y-3">
-      <Field label="Judul">
+      <Field label="Judul Kecil (eyebrow, opsional)">
+        <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="WE BUILD PLACES" />
+      </Field>
+      <Field label="Judul Besar (opsional)">
         <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Tentang Kami" />
       </Field>
-      <Field label="Isi Teks">
-        <Textarea value={d.body ?? ""} onChange={(e) => u("body", e.target.value)} placeholder="Deskripsi organisasi..." rows={5} />
+
+      <OptionRow label="Mode Deskripsi" ids={ABOUT_DESC_MODE_IDS} labels={ABOUT_DESC_MODE_LABELS}
+        value={descMode} onChange={(v) => u("descMode", v)} />
+
+      {descMode === "text" ? (
+        <Field label="Isi Teks">
+          <Textarea value={d.body ?? ""} onChange={(e) => u("body", e.target.value)} placeholder="Deskripsi organisasi..." rows={5} />
+        </Field>
+      ) : (
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Item List (maks 6)</Label>
+          {items.map((item, i) => (
+            <div key={i} className="border rounded-lg p-2 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <IconPicker
+                  value={item.icon}
+                  onChange={(name) => { const n=[...items]; n[i]={...item,icon:name}; updateItems(n); }}
+                  className="w-32 h-7 shrink-0 text-xs"
+                />
+                <Input
+                  value={item.title}
+                  onChange={(e) => { const n=[...items]; n[i]={...item,title:e.target.value}; updateItems(n); }}
+                  placeholder="Judul"
+                  className="flex-1 h-7 text-xs"
+                />
+                <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0"
+                  onClick={() => updateItems(items.filter((_,j)=>j!==i))}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+              <Textarea value={item.desc}
+                onChange={(e) => { const n=[...items]; n[i]={...item,desc:e.target.value}; updateItems(n); }}
+                placeholder="Deskripsi singkat" rows={2} className="text-xs" />
+            </div>
+          ))}
+          {items.length < 6 && (
+            <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 text-xs"
+              onClick={() => updateItems([...items, { icon: DEFAULT_ICON_NAME, title: "", desc: "" }])}>
+              <PlusIcon className="h-3.5 w-3.5" /> Tambah Item
+            </Button>
+          )}
+          <Field label="Pemisah Antar Item">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={listDividers} onChange={(e) => u("listDividers", e.target.checked)} className="w-4 h-4 accent-primary" />
+              <span className="text-xs">Tampilkan garis pemisah (border bawah)</span>
+            </label>
+          </Field>
+          <OptionRow label="Tampilan Icon" ids={FEATURES_ICON_STYLE_IDS} labels={FEATURES_ICON_STYLE_LABELS}
+            value={iconStyle} onChange={(v) => u("iconStyle", v)} />
+          {iconStyle === "colored" && (
+            <>
+              <OptionRow label="Warna Icon" ids={FEATURES_ICON_COLOR_IDS} labels={FEATURES_ICON_COLOR_LABELS}
+                value={iconColor} onChange={(v) => u("iconColor", v)} />
+              <OptionRow label="Bentuk Background Icon" ids={FEATURES_ICON_SHAPE_IDS} labels={FEATURES_ICON_SHAPE_LABELS}
+                value={iconShape} onChange={(v) => u("iconShape", v)} />
+            </>
+          )}
+        </div>
+      )}
+
+      <Field label="Tombol (opsional)">
+        <div className="grid grid-cols-2 gap-2">
+          <Input value={d.ctaLabel ?? ""} onChange={(e) => u("ctaLabel", e.target.value)} placeholder="Teks tombol" />
+          <PublicLinkPicker slug={tenantSlug ?? ""} value={d.ctaUrl ?? ""} onChange={(url) => u("ctaUrl", url)} placeholder="Pilih halaman atau URL..." />
+        </div>
       </Field>
+
       <Field label="Gambar">
         {d.imageUrl ? (
           <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-muted">
@@ -606,15 +701,25 @@ function AboutTextEditor({ data, onChange, tenantSlug }: EditorProps) {
           />
         )}
       </Field>
-      <Field label="Posisi Gambar">
-        <Select value={d.imagePosition ?? "right"} onValueChange={(v) => u("imagePosition", v)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="left">Kiri</SelectItem>
-            <SelectItem value="right">Kanan</SelectItem>
-          </SelectContent>
-        </Select>
+      <OptionRow label="Posisi Gambar" ids={ABOUT_IMAGE_POSITION_IDS} labels={ABOUT_IMAGE_POSITION_LABELS}
+        value={imagePosition} onChange={(v) => u("imagePosition", v)} />
+      <OptionRow label="Rasio Gambar" ids={ABOUT_IMAGE_RATIO_IDS} labels={ABOUT_IMAGE_RATIO_LABELS}
+        value={imageRatio} onChange={(v) => u("imageRatio", v)} />
+      <Field label="Sudut Gambar">
+        <label className="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" checked={imageRadius} onChange={(e) => u("imageRadius", e.target.checked)} className="w-4 h-4 accent-primary" />
+          <span className="text-xs">Sudut membulat (rounded)</span>
+        </label>
       </Field>
+
+      <div className="border-t border-border pt-3 space-y-3">
+        <OptionRow label="Background Section" ids={SECTION_BACKGROUND_IDS} labels={SECTION_BACKGROUND_LABELS}
+          value={background} onChange={(v) => u("background", v)} />
+        <OptionRow label="Lebar" ids={ABOUT_WIDTH_IDS} labels={ABOUT_WIDTH_LABELS}
+          value={width} onChange={(v) => u("width", v)} />
+        <OptionRow label="Posisi Teks (vertikal)" ids={ABOUT_TEXT_VALIGN_IDS} labels={ABOUT_TEXT_VALIGN_LABELS}
+          value={textVAlign} onChange={(v) => u("textVAlign", v)} />
+      </div>
     </div>
   );
 }
