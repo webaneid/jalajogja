@@ -270,7 +270,7 @@ export async function deleteDocumentAction(slug: string, docId: string) {
 
 export async function createDocumentCategoryAction(
   slug: string,
-  data: { name: string; parentId?: string | null },
+  data: { name: string; parentId?: string | null; metaTitle?: string | null; metaDesc?: string | null },
 ) {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false as const, error: "Unauthorized" };
@@ -286,9 +286,11 @@ export async function createDocumentCategoryAction(
     const [cat] = await db
       .insert(schema.documentCategories)
       .values({
-        name:     data.name.trim(),
-        slug:     catSlug,
-        parentId: data.parentId || null,
+        name:      data.name.trim(),
+        slug:      catSlug,
+        parentId:  data.parentId || null,
+        metaTitle: data.metaTitle || null,
+        metaDesc:  data.metaDesc  || null,
       })
       .returning({ id: schema.documentCategories.id, name: schema.documentCategories.name });
 
@@ -308,7 +310,7 @@ export async function createDocumentCategoryAction(
 export async function updateDocumentCategoryAction(
   slug:   string,
   catId:  string,
-  data:   { name: string; parentId?: string | null; sortOrder?: number },
+  data:   { name: string; parentId?: string | null; sortOrder?: number; metaTitle?: string | null; metaDesc?: string | null },
 ) {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false as const, error: "Unauthorized" };
@@ -328,6 +330,8 @@ export async function updateDocumentCategoryAction(
         slug:      catSlug,
         parentId:  data.parentId || null,
         sortOrder: data.sortOrder ?? 0,
+        metaTitle: data.metaTitle || null,
+        metaDesc:  data.metaDesc  || null,
       })
       .where(eq(schema.documentCategories.id, catId));
 

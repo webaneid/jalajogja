@@ -35,13 +35,15 @@ async function resolveSessionType(userId: string | undefined): Promise<SessionTy
   return member ? "member" : "public";
 }
 
+// SEO ringan (Fase 2, docs/arsitektur-seo.md § 3.2) — kalau kategori punya metaTitle/metaDesc,
+// pakai itu; kalau tidak, tetap format template lama ("{nama} — Produk {siteName}").
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug, categorySlug } = await params;
   const tenantClient = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
   const [cat, base] = await Promise.all([
     tenantDb
-      .select({ name: schema.productCategories.name })
+      .select({ name: schema.productCategories.name, metaTitle: schema.productCategories.metaTitle, metaDesc: schema.productCategories.metaDesc })
       .from(schema.productCategories)
       .where(eq(schema.productCategories.slug, categorySlug))
       .limit(1)
@@ -49,8 +51,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     getTenantSeoBase(slug),
   ]);
   return buildMetadata({
-    title:        `${cat?.name ?? categorySlug} — Produk ${base.siteName}`,
-    description:  `Produk kategori ${cat?.name ?? categorySlug} dari ${base.siteName}`,
+    title:        cat?.metaTitle || `${cat?.name ?? categorySlug} — Produk ${base.siteName}`,
+    description:  cat?.metaDesc  || `Produk kategori ${cat?.name ?? categorySlug} dari ${base.siteName}`,
     siteName:     base.siteName,
     canonicalUrl: `${base.baseUrl}/produk/kategori/${categorySlug}`,
     ogImageUrl:   base.logoUrl,

@@ -38,6 +38,9 @@ export function createProductCategoriesTable(s: ReturnType<typeof pgSchema>) {
     name: text("name").notNull(),
     parentId: uuid("parent_id"), // self-referential, FK via SQL migration
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // SEO ringan (Fase 2, docs/arsitektur-seo.md § 3.2) — dipakai di /produk/kategori/[slug]
+    metaTitle: text("meta_title"),
+    metaDesc:  text("meta_desc"),
   });
 }
 

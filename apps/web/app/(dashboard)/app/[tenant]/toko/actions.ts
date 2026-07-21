@@ -839,7 +839,7 @@ export async function updateOrderStatusAction(
 
 export async function createProductCategoryAction(
   slug: string,
-  data: { name: string; slug: string; parentId?: string | null }
+  data: { name: string; slug: string; parentId?: string | null; metaTitle?: string | null; metaDesc?: string | null }
 ): Promise<ActionResult<{ categoryId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
@@ -861,9 +861,11 @@ export async function createProductCategoryAction(
   const [cat] = await db
     .insert(schema.productCategories)
     .values({
-      name:     data.name.trim(),
-      slug:     data.slug.trim(),
-      parentId: data.parentId ?? null,
+      name:      data.name.trim(),
+      slug:      data.slug.trim(),
+      parentId:  data.parentId ?? null,
+      metaTitle: data.metaTitle || null,
+      metaDesc:  data.metaDesc  || null,
     })
     .returning({ id: schema.productCategories.id });
 

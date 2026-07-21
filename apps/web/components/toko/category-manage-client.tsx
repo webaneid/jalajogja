@@ -19,6 +19,8 @@ type Category = {
   name:         string;
   slug:         string;
   productCount: number;
+  metaTitle?:   string | null;
+  metaDesc?:    string | null;
 };
 
 type Props = {
@@ -30,6 +32,11 @@ export function CategoryManageClient({ slug, initialCategories }: Props) {
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [showForm,   setShowForm]   = useState(false);
   const [name,       setName]       = useState("");
+  // SEO ringan (Fase 2, docs/arsitektur-seo.md § 3.2) — HANYA di form tambah, karena
+  // modul ini belum punya kapabilitas edit kategori sama sekali (di luar scope Fase 2
+  // untuk membangunnya — bukan gap khusus SEO, sudah begitu sejak awal)
+  const [metaTitle,  setMetaTitle]  = useState("");
+  const [metaDesc,   setMetaDesc]   = useState("");
   const [error,      setError]      = useState("");
   const [pending, startTransition]  = useTransition();
 
@@ -43,6 +50,8 @@ export function CategoryManageClient({ slug, initialCategories }: Props) {
       const res = await createProductCategoryAction(slug, {
         name: trimmedName,
         slug: toSlug(trimmedName),
+        metaTitle: metaTitle.trim() || null,
+        metaDesc:  metaDesc.trim()  || null,
       });
 
       if (res.success) {
@@ -53,9 +62,11 @@ export function CategoryManageClient({ slug, initialCategories }: Props) {
             name:         trimmedName,
             slug:         toSlug(trimmedName),
             productCount: 0,
+            metaTitle,
+            metaDesc,
           },
         ]);
-        setName("");
+        setName(""); setMetaTitle(""); setMetaDesc("");
         setShowForm(false);
       } else {
         setError(res.error);
@@ -95,6 +106,29 @@ export function CategoryManageClient({ slug, initialCategories }: Props) {
               placeholder="mis. Pakaian, Aksesoris"
               className="w-full mt-0.5 rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-muted-foreground">SEO — Meta Title (opsional)</label>
+              <input
+                type="text"
+                value={metaTitle}
+                onChange={(e) => setMetaTitle(e.target.value)}
+                placeholder="Kosongkan untuk pakai default"
+                className="w-full mt-0.5 rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">SEO — Meta Description (opsional)</label>
+              <input
+                type="text"
+                value={metaDesc}
+                onChange={(e) => setMetaDesc(e.target.value)}
+                placeholder="Kosongkan untuk pakai default"
+                className="w-full mt-0.5 rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
           </div>
 
 {error && <p className="text-xs text-destructive">{error}</p>}

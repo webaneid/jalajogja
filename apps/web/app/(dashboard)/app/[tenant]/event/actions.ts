@@ -384,7 +384,7 @@ export async function deleteEventAction(
 
 export async function createEventCategoryAction(
   slug: string,
-  data: { name: string; slug: string }
+  data: { name: string; slug: string; metaTitle?: string | null; metaDesc?: string | null }
 ): Promise<ActionResult<{ categoryId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
@@ -399,7 +399,10 @@ export async function createEventCategoryAction(
   try {
     const [cat] = await db
       .insert(schema.eventCategories)
-      .values({ name: data.name.trim(), slug: data.slug.trim() })
+      .values({
+        name: data.name.trim(), slug: data.slug.trim(),
+        metaTitle: data.metaTitle || null, metaDesc: data.metaDesc || null,
+      })
       .returning({ id: schema.eventCategories.id });
 
     revalidatePath(`/app/${slug}/event/kategori`);
@@ -416,7 +419,7 @@ export async function createEventCategoryAction(
 export async function updateEventCategoryAction(
   slug: string,
   categoryId: string,
-  data: { name: string; slug: string }
+  data: { name: string; slug: string; metaTitle?: string | null; metaDesc?: string | null }
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
@@ -428,7 +431,10 @@ export async function updateEventCategoryAction(
   try {
     await db
       .update(schema.eventCategories)
-      .set({ name: data.name.trim(), slug: data.slug.trim() })
+      .set({
+        name: data.name.trim(), slug: data.slug.trim(),
+        metaTitle: data.metaTitle || null, metaDesc: data.metaDesc || null,
+      })
       .where(eq(schema.eventCategories.id, categoryId));
 
     revalidatePath(`/app/${slug}/event/kategori`);

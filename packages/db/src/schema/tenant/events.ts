@@ -36,6 +36,9 @@ export function createEventCategoriesTable(s: ReturnType<typeof pgSchema>) {
     slug:      text("slug").notNull().unique(),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // SEO ringan (Fase 2, docs/arsitektur-seo.md § 3.2) — override arsip agenda terfilter (?category=)
+    metaTitle: text("meta_title"),
+    metaDesc:  text("meta_desc"),
   });
 }
 

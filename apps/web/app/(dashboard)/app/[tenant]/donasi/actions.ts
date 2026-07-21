@@ -531,7 +531,7 @@ export async function confirmDonationAction(
 
 export async function createCampaignCategoryAction(
   slug: string,
-  data: { name: string; slug: string }
+  data: { name: string; slug: string; metaTitle?: string | null; metaDesc?: string | null }
 ): Promise<ActionResult<{ categoryId: string }>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
@@ -546,7 +546,10 @@ export async function createCampaignCategoryAction(
   try {
     const [cat] = await db
       .insert(schema.campaignCategories)
-      .values({ name: data.name.trim(), slug: data.slug.trim() })
+      .values({
+        name: data.name.trim(), slug: data.slug.trim(),
+        metaTitle: data.metaTitle || null, metaDesc: data.metaDesc || null,
+      })
       .returning({ id: schema.campaignCategories.id });
 
     revalidatePath(`/app/${slug}/donasi/kategori`);
@@ -563,7 +566,7 @@ export async function createCampaignCategoryAction(
 export async function updateCampaignCategoryAction(
   slug: string,
   categoryId: string,
-  data: { name: string; slug: string }
+  data: { name: string; slug: string; metaTitle?: string | null; metaDesc?: string | null }
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
@@ -575,7 +578,10 @@ export async function updateCampaignCategoryAction(
   try {
     await db
       .update(schema.campaignCategories)
-      .set({ name: data.name.trim(), slug: data.slug.trim() })
+      .set({
+        name: data.name.trim(), slug: data.slug.trim(),
+        metaTitle: data.metaTitle || null, metaDesc: data.metaDesc || null,
+      })
       .where(eq(schema.campaignCategories.id, categoryId));
 
     revalidatePath(`/app/${slug}/donasi/kategori`);

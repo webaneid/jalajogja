@@ -26,6 +26,8 @@ type CategoryRow = {
   parentId: string | null;
   sortOrder: number;
   docCount: number;
+  metaTitle: string | null;
+  metaDesc:  string | null;
 };
 
 // ─── DokumenCategoryClient ────────────────────────────────────────────────────
@@ -46,6 +48,9 @@ export function DokumenCategoryClient({
   const [formParent, setFormParent] = useState<string | null>(null);
   const [parentOpen, setParentOpen] = useState(false);
   const [error,      setError]      = useState<string | null>(null);
+  // SEO ringan (Fase 2, docs/arsitektur-seo.md § 3.2) — override title/desc arsip dokumen terfilter
+  const [metaTitle,  setMetaTitle]  = useState("");
+  const [metaDesc,   setMetaDesc]   = useState("");
 
   const roots    = categories.filter((c) => c.parentId === null);
   const children = (parentId: string) => categories.filter((c) => c.parentId === parentId);
@@ -54,6 +59,8 @@ export function DokumenCategoryClient({
     setEditId(cat.id);
     setFormName(cat.name);
     setFormParent(cat.parentId);
+    setMetaTitle(cat.metaTitle ?? "");
+    setMetaDesc(cat.metaDesc ?? "");
     setError(null);
   }
 
@@ -61,6 +68,8 @@ export function DokumenCategoryClient({
     setEditId(null);
     setFormName("");
     setFormParent(null);
+    setMetaTitle("");
+    setMetaDesc("");
     setError(null);
   }
 
@@ -68,10 +77,12 @@ export function DokumenCategoryClient({
     setError(null);
     if (!formName.trim()) { setError("Nama wajib diisi."); return; }
 
+    const seoFields = { metaTitle: metaTitle.trim() || null, metaDesc: metaDesc.trim() || null };
+
     startTransition(async () => {
       const res = editId
-        ? await updateDocumentCategoryAction(slug, editId, { name: formName, parentId: formParent })
-        : await createDocumentCategoryAction(slug, { name: formName, parentId: formParent });
+        ? await updateDocumentCategoryAction(slug, editId, { name: formName, parentId: formParent, ...seoFields })
+        : await createDocumentCategoryAction(slug, { name: formName, parentId: formParent, ...seoFields });
 
       if (!res.success) { setError(res.error); return; }
       cancelEdit();
@@ -191,6 +202,26 @@ export function DokumenCategoryClient({
             </Popover>
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">SEO — Meta Title (opsional)</Label>
+            <Input
+              value={metaTitle}
+              onChange={(e) => setMetaTitle(e.target.value)}
+              placeholder="Kosongkan untuk pakai default"
+              className="h-8 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">SEO — Meta Description (opsional)</Label>
+            <Input
+              value={metaDesc}
+              onChange={(e) => setMetaDesc(e.target.value)}
+              placeholder="Kosongkan untuk pakai default"
+              className="h-8 text-sm"
+            />
+          </div>
+        </div>
         {error && <p className="text-xs text-destructive">{error}</p>}
         <div className="flex gap-2">
           <Button size="sm" onClick={handleSubmit} disabled={isPending}>
@@ -255,6 +286,26 @@ export function DokumenCategoryClient({
                   </Command>
                 </PopoverContent>
               </Popover>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">SEO — Meta Title (opsional)</Label>
+              <Input
+                value={metaTitle}
+                onChange={(e) => setMetaTitle(e.target.value)}
+                placeholder="Kosongkan untuk pakai default"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">SEO — Meta Description (opsional)</Label>
+              <Input
+                value={metaDesc}
+                onChange={(e) => setMetaDesc(e.target.value)}
+                placeholder="Kosongkan untuk pakai default"
+                className="h-8 text-sm"
+              />
             </div>
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}

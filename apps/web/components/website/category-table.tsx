@@ -43,6 +43,8 @@ function AddForm({
   const [isPending, startTransition] = useTransition();
   const [name, setName]       = useState("");
   const [parentId, setParentId] = useState("none");
+  const [metaTitle, setMetaTitle] = useState("");
+  const [metaDesc, setMetaDesc]   = useState("");
   const [error, setError]     = useState("");
 
   function handleSubmit(e: React.FormEvent) {
@@ -53,45 +55,67 @@ function AddForm({
       const res = await createCategoryAction(slug, {
         name: name.trim(),
         parentId: parentId === "none" ? null : parentId,
+        metaTitle: metaTitle.trim() || null,
+        metaDesc:  metaDesc.trim()  || null,
       });
       if (!res.success) { setError(res.error); return; }
       setName("");
       setParentId("none");
+      setMetaTitle("");
+      setMetaDesc("");
       router.refresh();
     });
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2 items-start flex-wrap">
-      <div className="flex-1 min-w-48">
+    <form onSubmit={handleSubmit} className="space-y-2">
+      <div className="flex gap-2 items-start flex-wrap">
+        <div className="flex-1 min-w-48">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nama kategori baru..."
+            className="h-9"
+            disabled={isPending}
+          />
+          {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+        </div>
+
+        <Select value={parentId} onValueChange={setParentId} disabled={isPending}>
+          <SelectTrigger className="h-9 w-48">
+            <SelectValue placeholder="Parent (opsional)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Tanpa parent</SelectItem>
+            {parents.map((cat) => (
+              <SelectItem key={cat.id} value={cat.id}>
+                {cat.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button type="submit" size="sm" className="h-9 gap-1.5" disabled={isPending}>
+          <Plus className="h-4 w-4" />
+          {isPending ? "Menambah..." : "Tambah"}
+        </Button>
+      </div>
+      <div className="flex gap-2 flex-wrap">
         <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nama kategori baru..."
-          className="h-9"
+          value={metaTitle}
+          onChange={(e) => setMetaTitle(e.target.value)}
+          placeholder="SEO — Meta Title (opsional)"
+          className="h-8 text-xs flex-1 min-w-40"
           disabled={isPending}
         />
-        {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+        <Input
+          value={metaDesc}
+          onChange={(e) => setMetaDesc(e.target.value)}
+          placeholder="SEO — Meta Description (opsional)"
+          className="h-8 text-xs flex-1 min-w-40"
+          disabled={isPending}
+        />
       </div>
-
-      <Select value={parentId} onValueChange={setParentId} disabled={isPending}>
-        <SelectTrigger className="h-9 w-48">
-          <SelectValue placeholder="Parent (opsional)" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="none">Tanpa parent</SelectItem>
-          {parents.map((cat) => (
-            <SelectItem key={cat.id} value={cat.id}>
-              {cat.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <Button type="submit" size="sm" className="h-9 gap-1.5" disabled={isPending}>
-        <Plus className="h-4 w-4" />
-        {isPending ? "Menambah..." : "Tambah"}
-      </Button>
     </form>
   );
 }
@@ -114,6 +138,8 @@ function EditRow({
   const [name, setName]       = useState(cat.name);
   const [catSlug, setCatSlug] = useState(cat.slug);
   const [parentId, setParentId] = useState(cat.parentId ?? "none");
+  const [metaTitle, setMetaTitle] = useState(cat.metaTitle ?? "");
+  const [metaDesc, setMetaDesc]   = useState(cat.metaDesc ?? "");
   const [slugEdited, setSlugEdited] = useState(false);
   const [error, setError]     = useState("");
 
@@ -130,6 +156,8 @@ function EditRow({
         name: name.trim(),
         slug: catSlug,
         parentId: parentId === "none" ? null : parentId,
+        metaTitle: metaTitle.trim() || null,
+        metaDesc:  metaDesc.trim()  || null,
       });
       if (!res.success) { setError(res.error); return; }
       router.refresh();
@@ -172,6 +200,22 @@ function EditRow({
                 ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="flex gap-2 flex-wrap mt-2">
+          <Input
+            value={metaTitle}
+            onChange={(e) => setMetaTitle(e.target.value)}
+            placeholder="SEO — Meta Title (opsional)"
+            className="h-8 text-xs flex-1 min-w-40"
+            disabled={isPending}
+          />
+          <Input
+            value={metaDesc}
+            onChange={(e) => setMetaDesc(e.target.value)}
+            placeholder="SEO — Meta Description (opsional)"
+            className="h-8 text-xs flex-1 min-w-40"
+            disabled={isPending}
+          />
         </div>
       </td>
       <td className="px-4 py-2 text-right">

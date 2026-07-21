@@ -29,6 +29,8 @@ function AddForm({ slug }: { slug: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [name, setName] = useState("");
+  const [metaTitle, setMetaTitle] = useState("");
+  const [metaDesc, setMetaDesc]   = useState("");
   const [error, setError] = useState("");
 
   function handleSubmit(e: React.FormEvent) {
@@ -36,29 +38,51 @@ function AddForm({ slug }: { slug: string }) {
     if (!name.trim()) { setError("Nama wajib diisi."); return; }
     setError("");
     startTransition(async () => {
-      const res = await createTagAction(slug, { name: name.trim() });
+      const res = await createTagAction(slug, {
+        name: name.trim(),
+        metaTitle: metaTitle.trim() || null,
+        metaDesc:  metaDesc.trim()  || null,
+      });
       if (!res.success) { setError(res.error); return; }
-      setName("");
+      setName(""); setMetaTitle(""); setMetaDesc("");
       router.refresh();
     });
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2 items-start flex-wrap">
-      <div className="flex-1 min-w-48">
+    <form onSubmit={handleSubmit} className="space-y-2">
+      <div className="flex gap-2 items-start flex-wrap">
+        <div className="flex-1 min-w-48">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nama tag baru..."
+            className="h-9"
+            disabled={isPending}
+          />
+          {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+        </div>
+        <Button type="submit" size="sm" className="h-9 gap-1.5" disabled={isPending}>
+          <Plus className="h-4 w-4" />
+          {isPending ? "Menambah..." : "Tambah"}
+        </Button>
+      </div>
+      <div className="flex gap-2 flex-wrap">
         <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nama tag baru..."
-          className="h-9"
+          value={metaTitle}
+          onChange={(e) => setMetaTitle(e.target.value)}
+          placeholder="SEO — Meta Title (opsional)"
+          className="h-8 text-xs flex-1 min-w-40"
           disabled={isPending}
         />
-        {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+        <Input
+          value={metaDesc}
+          onChange={(e) => setMetaDesc(e.target.value)}
+          placeholder="SEO — Meta Description (opsional)"
+          className="h-8 text-xs flex-1 min-w-40"
+          disabled={isPending}
+        />
       </div>
-      <Button type="submit" size="sm" className="h-9 gap-1.5" disabled={isPending}>
-        <Plus className="h-4 w-4" />
-        {isPending ? "Menambah..." : "Tambah"}
-      </Button>
     </form>
   );
 }
@@ -78,6 +102,8 @@ function EditRow({
   const [isPending, startTransition] = useTransition();
   const [name, setName]       = useState(tag.name);
   const [tagSlug, setTagSlug] = useState(tag.slug);
+  const [metaTitle, setMetaTitle] = useState(tag.metaTitle ?? "");
+  const [metaDesc, setMetaDesc]   = useState(tag.metaDesc ?? "");
   const [slugEdited, setSlugEdited] = useState(false);
   const [error, setError]     = useState("");
 
@@ -93,6 +119,8 @@ function EditRow({
       const res = await updateTagAction(slug, tag.id, {
         name: name.trim(),
         slug: tagSlug,
+        metaTitle: metaTitle.trim() || null,
+        metaDesc:  metaDesc.trim()  || null,
       });
       if (!res.success) { setError(res.error); return; }
       router.refresh();
@@ -118,6 +146,22 @@ function EditRow({
             className="h-7 text-xs font-mono"
             disabled={isPending}
           />
+          <div className="flex gap-2">
+            <Input
+              value={metaTitle}
+              onChange={(e) => setMetaTitle(e.target.value)}
+              placeholder="SEO — Meta Title (opsional)"
+              className="h-7 text-xs flex-1"
+              disabled={isPending}
+            />
+            <Input
+              value={metaDesc}
+              onChange={(e) => setMetaDesc(e.target.value)}
+              placeholder="SEO — Meta Description (opsional)"
+              className="h-7 text-xs flex-1"
+              disabled={isPending}
+            />
+          </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
       </td>

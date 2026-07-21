@@ -3,6 +3,8 @@ import { eq, and, ilike, isNotNull } from "drizzle-orm";
 import { createTenantDb, db, tenants } from "@jalajogja/db";
 import { FileText, FolderOpen, Search, FileDown, Eye } from "lucide-react";
 import type { Metadata } from "next";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 
 export const revalidate = 60;
 
@@ -10,14 +12,33 @@ type Params       = Promise<{ tenant: string }>;
 type SearchParams = Promise<{ q?: string; category?: string }>;
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────
+// SEO ringan per kategori (Fase 2, docs/arsitektur-seo.md § 3.2) — kalau ?category= aktif
+// (kuirk: nilainya ID, bukan slug — lihat komentar buildDocumentCategoryUrl di
+// lib/public-url-registry.ts) dan kategori itu punya metaTitle/metaDesc, timpa default.
+// Sebelumnya halaman ini tidak pakai buildMetadata sama sekali (title polos, tanpa OG/canonical).
 
-export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
-  const [tenant] = await db
-    .select({ name: tenants.name, isActive: tenants.isActive })
-    .from(tenants).where(eq(tenants.slug, slug)).limit(1);
-  if (!tenant?.isActive) return {};
-  return { title: `Dokumen — ${tenant.name}` };
+  const { category }     = await searchParams;
+  const base = await getTenantSeoBase(slug);
+
+  let title       = `Dokumen — ${base.siteName}`;
+  let description: string | undefined;
+  let canonicalUrl = `${base.baseUrl}/dokumen`;
+
+  if (category) {
+    const { db: tenantDb, schema } = createTenantDb(slug);
+    const [cat] = await tenantDb
+      .select({ name: schema.documentCategories.name, metaTitle: schema.documentCategories.metaTitle, metaDesc: schema.documentCategories.metaDesc })
+      .from(schema.documentCategories).where(eq(schema.documentCategories.id, category)).limit(1);
+    if (cat) {
+      title        = cat.metaTitle || `Dokumen ${cat.name} — ${base.siteName}`;
+      description  = cat.metaDesc || undefined;
+      canonicalUrl = `${base.baseUrl}/dokumen?category=${category}`;
+    }
+  }
+
+  return buildMetadata({ title, description, siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

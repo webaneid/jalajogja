@@ -28,6 +28,9 @@ export function createDocumentCategoriesTable(s: ReturnType<typeof pgSchema>) {
     parentId:  uuid("parent_id"),           // FK → self via SQL DDL (nullable)
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // SEO ringan (Fase 2, docs/arsitektur-seo.md § 3.2) — override arsip dokumen terfilter (?category=)
+    metaTitle: text("meta_title"),
+    metaDesc:  text("meta_desc"),
   });
 }
 

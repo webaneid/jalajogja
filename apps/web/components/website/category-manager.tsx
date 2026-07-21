@@ -13,6 +13,8 @@ export type CategoryItem = {
   slug: string;
   parentId: string | null;
   postCount: number;
+  metaTitle: string | null;
+  metaDesc:  string | null;
 };
 
 export type TagItem = {
@@ -20,6 +22,8 @@ export type TagItem = {
   name: string;
   slug: string;
   postCount: number;
+  metaTitle: string | null;
+  metaDesc:  string | null;
 };
 
 // ── CategoryManager ───────────────────────────────────────────────────────────

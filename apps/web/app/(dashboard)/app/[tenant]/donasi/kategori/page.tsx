@@ -20,6 +20,8 @@ export default async function KategoriDonasiPage({
       id:            schema.campaignCategories.id,
       name:          schema.campaignCategories.name,
       slug:          schema.campaignCategories.slug,
+      metaTitle:     schema.campaignCategories.metaTitle,
+      metaDesc:      schema.campaignCategories.metaDesc,
       campaignCount: sql<number>`COUNT(${schema.campaigns.id})::int`,
     })
     .from(schema.campaignCategories)
@@ -31,6 +33,8 @@ export default async function KategoriDonasiPage({
       schema.campaignCategories.id,
       schema.campaignCategories.name,
       schema.campaignCategories.slug,
+      schema.campaignCategories.metaTitle,
+      schema.campaignCategories.metaDesc,
     )
     .orderBy(schema.campaignCategories.sortOrder, schema.campaignCategories.name);
 
@@ -45,7 +49,7 @@ export default async function KategoriDonasiPage({
 
       <CampaignCategoryManageClient
         slug={slug}
-        initialCategories={categories as { id: string; name: string; slug: string; campaignCount: number }[]}
+        initialCategories={categories as { id: string; name: string; slug: string; campaignCount: number; metaTitle: string | null; metaDesc: string | null }[]}
       />
     </div>
   );

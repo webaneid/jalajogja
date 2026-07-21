@@ -169,6 +169,20 @@ title hardcode yang sudah ada sekarang (`"Berita & Artikel"`, dst — TIDAK diha
 `product_categories.metaTitle` ada → pakai, kalau tidak → tetap format hardcode
 `"{nama} — Produk {siteName}"` seperti sekarang.
 
+**Temuan saat eksekusi (2026-07-21) — 2 penyesuaian dari rencana awal:**
+1. **`/post` arsip TIDAK PUNYA mekanisme filter kategori/tag via query param sama sekali** —
+   berbeda dari asumsi awal (yang mengira semua 4 modul sudah filter via `?category=`/`?tag=` di
+   halaman arsip yang sama). `agenda`/`campaign`/`dokumen` memang sudah punya filter aktif;
+   `post/page.tsx` cuma list flat 50 post terbaru tanpa filter apa pun. Ini gap FITUR (bukan SEO),
+   di luar scope Fase 2 — `post_categories`/`post_tags` tetap dapat kolom `metaTitle`/`metaDesc`
+   (untuk dipakai nanti kalau fitur filter post dibangun), tapi `generateMetadata` `post/page.tsx`
+   TIDAK diubah (tidak ada konteks kategori aktif untuk dibaca).
+2. **`product_categories` tidak punya `updateProductCategoryAction` sama sekali** — modul ini
+   sejak awal cuma bisa CREATE kategori, tidak ada UI/action edit/delete. Field SEO ditambahkan
+   HANYA ke form "Tambah Kategori" (satu-satunya titik input yang ada) — TIDAK membangun
+   kapabilitas edit dari nol (itu gap pre-existing di luar scope SEO, bukan sesuatu yang perlu
+   ditutup untuk menyelesaikan Fase 2).
+
 ### 3.3 Prinsip C — Tabel `seo_page_overrides` + Halaman Pengaturan Admin Baru
 
 **Tabel baru** (tenant-scoped, `packages/db/src/schema/tenant/`):
@@ -301,7 +315,7 @@ merge dengan default yang sudah ada: `title: override?.metaTitle || "{title hard
 |---|---|
 | Audit menyeluruh (dokumen ini) | ✅ Selesai (2026-07-21) |
 | Fase 1 — Dokumen | ✅ Selesai (2026-07-21) — migration `0037_documents_seo_columns.sql` |
-| Fase 2 — Taksonomi | ⬜ Belum |
+| Fase 2 — Taksonomi | ✅ Selesai (2026-07-21) — migration `0038_taxonomy_seo_columns.sql`. `/post` arsip TERNYATA belum punya filter kategori/tag sama sekali (gap terpisah, di luar scope) — dilewati. |
 | Fase 3 — Page Overrides | ⬜ Belum |
 | `invoice/[id]` noindex | ⬜ Belum |
 

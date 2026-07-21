@@ -8696,14 +8696,63 @@ guard `doc.visibility !== "public" → return {}` (dokumen internal tidak pernah
 dimatikan dulu, `.next` dibersihkan). Migration `0037` dijalankan di lokal, 11 kolom + FK + 2
 CHECK constraint dikonfirmasi via `\d`. **Belum dijalankan di VPS.**
 
+### [2026-07-21] Fase 2 SEO — 6 Tabel Taksonomi + 2 Penyesuaian Ditemukan Saat Eksekusi
+
+> Detail lengkap: **`docs/arsitektur-seo.md` § 3.2**
+
+**Riset dulu (1 Explore agent)** — petakan lokasi PERSIS form CRUD + action untuk 6 tabel
+(`post_categories`, `post_tags`, `product_categories`, `event_categories`,
+`campaign_categories`, `document_categories`) sebelum eksekusi, sesuai pola project ini. Semua 6
+tabel ditambah 2 kolom RINGAN (`meta_title`, `meta_desc` — bukan 11-field penuh seperti Kelas A,
+sesuai keputusan arsitektur: kategori bukan konten utuh, `SeoPanel` 3-tab overkill untuk form
+inline kecil) — schema + DDL + migration `0038_taxonomy_seo_columns.sql` (satu file, `DO $$` loop
+ganda: per-tenant × per-tabel via `FOREACH tbl IN ARRAY[...]`).
+
+**2 temuan yang mengubah rencana SAAT eksekusi (bukan diasumsikan sejak awal)**:
+1. **`/post` arsip TIDAK PUNYA filter kategori/tag via query param sama sekali** — beda dari
+   asumsi awal (dikira semua 4 modul archive sudah filter `?category=`/`?tag=` seperti
+   agenda/campaign/dokumen). `post/page.tsx` ternyata cuma list flat 50 post tanpa
+   `searchParams` apa pun — bahkan tanpa `PostCard`/`PostsSection` component pattern yang
+   didokumentasikan CLAUDE.md untuk modul post lain (kemungkinan implementasi lama yang belum
+   di-upgrade). Ini GAP FITUR (bukan SEO), di luar scope — kolom `metaTitle`/`metaDesc` di
+   `post_categories`/`post_tags` tetap ditambahkan (siap dipakai nanti), tapi
+   `post/page.tsx`'s `generateMetadata` TIDAK disentuh (tidak ada konteks kategori aktif untuk
+   dibaca sama sekali).
+2. **`product_categories` tidak punya `updateProductCategoryAction`** — modul toko sejak awal
+   cuma bisa CREATE kategori, nol UI edit/delete. Field SEO ditambahkan HANYA ke form "Tambah
+   Kategori" — TIDAK membangun kapabilitas edit dari nol (gap pre-existing di luar scope SEO).
+
+**4 pola konsumen berbeda ditemukan** (bukan semua 5 halaman arsip seragam):
+- Agenda/Campaign/Dokumen — filter via query param DI HALAMAN ARSIP YANG SAMA (bukan rute
+  terpisah) → `generateMetadata` ditambah parameter `searchParams` (sebelumnya SEMUA 4 file
+  cuma terima `{ params }`, meski default export-nya SUDAH terima `searchParams` — ketidak-
+  sesuaian yang tidak disadari sebelum riset).
+- Produk — SATU-SATUNYA yang punya rute terpisah `/produk/kategori/[slug]` — title-nya
+  SEBELUMNYA sudah dinamis (nama kategori dari DB) tapi FORMAT-nya hardcode; sekarang override
+  `metaTitle`/`metaDesc` kalau admin isi, fallback ke format lama kalau tidak.
+- Dokumen — kuirk tambahan: filter `?category=` di sini pakai ID kategori, bukan slug (beda
+  dari 3 modul lain) — konsisten dengan kuirk yang sudah didokumentasikan di
+  `lib/public-url-registry.ts`. Sekalian di-upgrade dari `{title}` polos (tanpa `buildMetadata`,
+  tanpa description/OG/canonical sama sekali) ke `buildMetadata()` penuh seperti 3 modul lain.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package (12+ file diubah dalam satu batch, nol
+error) + `bun run build --filter=@jalajogja/web` sukses (dev server dimatikan dulu, `.next`
+dibersihkan). Migration `0038` dijalankan di lokal, 6 tabel × 2 kolom dikonfirmasi via query
+`information_schema.columns`. **Belum dijalankan di VPS.**
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Arsitektur SEO Menyeluruh + Fase 1 (Dokumen)** (lihat lesson di atas) —
-  `docs/arsitektur-seo.md` ditulis ulang total (3 kelas halaman, audit lengkap via 2 Explore
-  agent). Fase 1 SELESAI: 11 kolom SEO di `documents` (migration `0037`), `SeoPanel` dipasang di
-  `dokumen-form.tsx`, `generateMetadata` baru di `dokumen/view/[id]/page.tsx`. `tsc`+build bersih,
-  migration jalan di lokal. **Belum di-commit/push** (menunggu Fase 2+3 atau checkpoint
-  berikutnya), **belum dijalankan di VPS**. Fase 2 (taksonomi 6 tabel) dan Fase 3 (page overrides
-  + halaman admin baru) BELUM dikerjakan — lanjutkan sesuai roadmap di `docs/arsitektur-seo.md`.
+- Terakhir dikerjakan: **Fase 2 SEO — 6 Tabel Taksonomi** (lihat lesson di atas) — `meta_title`+
+  `meta_desc` ditambah ke `post_categories`, `post_tags`, `product_categories`,
+  `event_categories`, `campaign_categories`, `document_categories` (migration `0038`), dikawat ke
+  6 admin CRUD UI berbeda gaya + 4 `generateMetadata` publik (agenda/campaign/dokumen/produk-
+  kategori) baca konteks kategori dari query param. 2 penyesuaian ditemukan saat eksekusi:
+  `/post` arsip tidak punya filter kategori sama sekali (gap fitur, di luar scope, kolom SEO
+  tetap ditambahkan untuk dipakai nanti), `product_categories` tidak punya action update (field
+  SEO cuma di form create). `tsc`+build bersih, migration jalan di lokal, 6×2 kolom dikonfirmasi.
+  **Belum di-commit/push** (menunggu checkpoint ini), **belum dijalankan di VPS**. Fase 1
+  (Dokumen) juga masih belum di-commit — akan digabung dalam commit yang sama. Fase 3 (page
+  overrides + halaman admin `/settings/seo` baru untuk login/register/checkout/dst) BELUM
+  dikerjakan — lanjutkan sesuai roadmap di `docs/arsitektur-seo.md` § 3.3 dan § 4.
 - Sesi sebelumnya: **Resolusi Warna Kartu Anggota** (lihat lesson di atas) —
   `resolveAkunBranding()` diperluas dengan `primaryColor`, `MemberCard` override CSS var
   `--primary`/`--primary-foreground` LOKAL via inline `style` (bukan ikut tema page-wide

@@ -20,19 +20,23 @@ export default async function CategoriesPage({
   const [rawCategories, rawTags] = await Promise.all([
     db
       .select({
-        id:       schema.postCategories.id,
-        name:     schema.postCategories.name,
-        slug:     schema.postCategories.slug,
-        parentId: schema.postCategories.parentId,
+        id:        schema.postCategories.id,
+        name:      schema.postCategories.name,
+        slug:      schema.postCategories.slug,
+        parentId:  schema.postCategories.parentId,
+        metaTitle: schema.postCategories.metaTitle,
+        metaDesc:  schema.postCategories.metaDesc,
       })
       .from(schema.postCategories)
       .orderBy(asc(schema.postCategories.name)),
 
     db
       .select({
-        id:   schema.postTags.id,
-        name: schema.postTags.name,
-        slug: schema.postTags.slug,
+        id:        schema.postTags.id,
+        name:      schema.postTags.name,
+        slug:      schema.postTags.slug,
+        metaTitle: schema.postTags.metaTitle,
+        metaDesc:  schema.postTags.metaDesc,
       })
       .from(schema.postTags)
       .orderBy(asc(schema.postTags.name)),

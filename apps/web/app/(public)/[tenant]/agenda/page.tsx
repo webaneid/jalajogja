@@ -16,10 +16,30 @@ export const revalidate = 60;
 type Params       = Promise<{ tenant: string }>;
 type SearchParams  = Promise<{ category?: string; all?: string }>;
 
-export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+// SEO ringan per kategori (Fase 2, docs/arsitektur-seo.md § 3.2) — kalau ?category= aktif dan
+// kategori itu punya metaTitle/metaDesc, timpa default hardcode "Agenda & Event".
+export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  const { category }     = await searchParams;
   const base = await getTenantSeoBase(slug);
-  return buildMetadata({ title: "Agenda & Event", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/agenda` });
+
+  let title       = "Agenda & Event";
+  let description: string | undefined;
+  let canonicalUrl = `${base.baseUrl}/agenda`;
+
+  if (category) {
+    const { db: tenantDb, schema } = createTenantDb(slug);
+    const [cat] = await tenantDb
+      .select({ name: schema.eventCategories.name, metaTitle: schema.eventCategories.metaTitle, metaDesc: schema.eventCategories.metaDesc })
+      .from(schema.eventCategories).where(eq(schema.eventCategories.slug, category)).limit(1);
+    if (cat) {
+      title        = cat.metaTitle || `Agenda ${cat.name}`;
+      description  = cat.metaDesc || undefined;
+      canonicalUrl = `${base.baseUrl}/agenda?category=${category}`;
+    }
+  }
+
+  return buildMetadata({ title, description, siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl });
 }
 
 export default async function AgendaArchivePage({

@@ -20,6 +20,8 @@ export default async function KategoriEventPage({
       id:         schema.eventCategories.id,
       name:       schema.eventCategories.name,
       slug:       schema.eventCategories.slug,
+      metaTitle:  schema.eventCategories.metaTitle,
+      metaDesc:   schema.eventCategories.metaDesc,
       eventCount: sql<number>`COUNT(${schema.events.id})::int`,
     })
     .from(schema.eventCategories)
@@ -31,6 +33,8 @@ export default async function KategoriEventPage({
       schema.eventCategories.id,
       schema.eventCategories.name,
       schema.eventCategories.slug,
+      schema.eventCategories.metaTitle,
+      schema.eventCategories.metaDesc,
     )
     .orderBy(schema.eventCategories.sortOrder, schema.eventCategories.name);
 
@@ -45,7 +49,7 @@ export default async function KategoriEventPage({
 
       <EventCategoryManageClient
         slug={slug}
-        initialCategories={categories as { id: string; name: string; slug: string; eventCount: number }[]}
+        initialCategories={categories as { id: string; name: string; slug: string; eventCount: number; metaTitle: string | null; metaDesc: string | null }[]}
       />
     </div>
   );

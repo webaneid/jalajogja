@@ -20,10 +20,31 @@ type SearchParams  = Promise<{ type?: string; category?: string }>;
 
 const VALID_TYPES = ["donasi", "zakat", "wakaf", "qurban"] as const;
 
-export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+// SEO ringan per kategori (Fase 2, docs/arsitektur-seo.md § 3.2) — kalau ?category= aktif dan
+// kategori itu punya metaTitle/metaDesc, timpa default hardcode "Donasi & Infaq". Filter `type`
+// (donasi/zakat/wakaf/qurban) di luar scope Fase 2 — tidak ada tabel kategori untuk itu.
+export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  const { category }     = await searchParams;
   const base = await getTenantSeoBase(slug);
-  return buildMetadata({ title: "Donasi & Infaq", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/campaign` });
+
+  let title       = "Donasi & Infaq";
+  let description: string | undefined;
+  let canonicalUrl = `${base.baseUrl}/campaign`;
+
+  if (category) {
+    const { db: tenantDb, schema } = createTenantDb(slug);
+    const [cat] = await tenantDb
+      .select({ name: schema.campaignCategories.name, metaTitle: schema.campaignCategories.metaTitle, metaDesc: schema.campaignCategories.metaDesc })
+      .from(schema.campaignCategories).where(eq(schema.campaignCategories.slug, category)).limit(1);
+    if (cat) {
+      title        = cat.metaTitle || `Donasi ${cat.name}`;
+      description  = cat.metaDesc || undefined;
+      canonicalUrl = `${base.baseUrl}/campaign?category=${category}`;
+    }
+  }
+
+  return buildMetadata({ title, description, siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl });
 }
 
 export default async function CampaignArchivePage({

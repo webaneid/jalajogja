@@ -23,6 +23,8 @@ type Category = {
   name:       string;
   slug:       string;
   eventCount: number;
+  metaTitle?: string | null;
+  metaDesc?:  string | null;
 };
 
 type Props = {
@@ -36,6 +38,11 @@ export function EventCategoryManageClient({ slug, initialCategories }: Props) {
   const [editingId,  setEditingId]  = useState<string | null>(null);
   const [name,       setName]       = useState("");
   const [editName,   setEditName]   = useState("");
+  // SEO ringan (Fase 2, docs/arsitektur-seo.md § 3.2)
+  const [metaTitle,     setMetaTitle]     = useState("");
+  const [metaDesc,      setMetaDesc]      = useState("");
+  const [editMetaTitle, setEditMetaTitle] = useState("");
+  const [editMetaDesc,  setEditMetaDesc]  = useState("");
   const [error,      setError]      = useState("");
   const [editError,  setEditError]  = useState("");
   const [pending,    startTransition] = useTransition();
@@ -48,13 +55,16 @@ export function EventCategoryManageClient({ slug, initialCategories }: Props) {
     setError("");
 
     startTransition(async () => {
-      const res = await createEventCategoryAction(slug, { name: name.trim(), slug: toSlug(name) });
+      const res = await createEventCategoryAction(slug, {
+        name: name.trim(), slug: toSlug(name),
+        metaTitle: metaTitle.trim() || null, metaDesc: metaDesc.trim() || null,
+      });
       if (res.success) {
         setCategories((prev) => [
           ...prev,
-          { id: res.data.categoryId, name: name.trim(), slug: toSlug(name), eventCount: 0 },
+          { id: res.data.categoryId, name: name.trim(), slug: toSlug(name), eventCount: 0, metaTitle, metaDesc },
         ]);
-        setName("");
+        setName(""); setMetaTitle(""); setMetaDesc("");
         setShowForm(false);
       } else {
         setError(res.error);
@@ -67,6 +77,8 @@ export function EventCategoryManageClient({ slug, initialCategories }: Props) {
   function startEdit(cat: Category) {
     setEditingId(cat.id);
     setEditName(cat.name);
+    setEditMetaTitle(cat.metaTitle ?? "");
+    setEditMetaDesc(cat.metaDesc ?? "");
     setEditError("");
   }
 
@@ -79,11 +91,15 @@ export function EventCategoryManageClient({ slug, initialCategories }: Props) {
       const res = await updateEventCategoryAction(slug, cat.id, {
         name: editName.trim(),
         slug: toSlug(editName),
+        metaTitle: editMetaTitle.trim() || null,
+        metaDesc:  editMetaDesc.trim()  || null,
       });
       if (res.success) {
         setCategories((prev) =>
           prev.map((c) =>
-            c.id === cat.id ? { ...c, name: editName.trim(), slug: toSlug(editName) } : c
+            c.id === cat.id
+              ? { ...c, name: editName.trim(), slug: toSlug(editName), metaTitle: editMetaTitle, metaDesc: editMetaDesc }
+              : c
           )
         );
         setEditingId(null);
@@ -129,21 +145,37 @@ export function EventCategoryManageClient({ slug, initialCategories }: Props) {
             {editingId === cat.id ? (
               <form
                 onSubmit={(e) => handleUpdate(e, cat)}
-                className="flex-1 flex items-center gap-2"
+                className="flex-1 space-y-2"
               >
-                <input
-                  autoFocus
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="flex-1 h-8 rounded-md border border-border bg-background px-3 text-sm"
-                />
-                {editError && <span className="text-xs text-destructive">{editError}</span>}
-                <button type="submit" disabled={pending} className="text-primary hover:opacity-70">
-                  <Check className="h-4 w-4" />
-                </button>
-                <button type="button" onClick={() => setEditingId(null)} className="text-muted-foreground hover:text-foreground">
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="flex-1 h-8 rounded-md border border-border bg-background px-3 text-sm"
+                  />
+                  {editError && <span className="text-xs text-destructive">{editError}</span>}
+                  <button type="submit" disabled={pending} className="text-primary hover:opacity-70">
+                    <Check className="h-4 w-4" />
+                  </button>
+                  <button type="button" onClick={() => setEditingId(null)} className="text-muted-foreground hover:text-foreground">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    value={editMetaTitle}
+                    onChange={(e) => setEditMetaTitle(e.target.value)}
+                    placeholder="SEO — Meta Title (opsional)"
+                    className="h-8 rounded-md border border-border bg-background px-3 text-xs"
+                  />
+                  <input
+                    value={editMetaDesc}
+                    onChange={(e) => setEditMetaDesc(e.target.value)}
+                    placeholder="SEO — Meta Description (opsional)"
+                    className="h-8 rounded-md border border-border bg-background px-3 text-xs"
+                  />
+                </div>
               </form>
             ) : (
               <>
@@ -173,29 +205,45 @@ export function EventCategoryManageClient({ slug, initialCategories }: Props) {
 
       {/* Add form */}
       {showForm ? (
-        <form onSubmit={handleAdd} className="flex items-center gap-2">
-          <input
-            autoFocus
-            placeholder="Nama kategori baru..."
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="flex-1 h-9 rounded-md border border-border bg-background px-3 text-sm"
-          />
-          {error && <span className="text-xs text-destructive">{error}</span>}
-          <button
-            type="submit"
-            disabled={pending}
-            className="h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
-          >
-            Simpan
-          </button>
-          <button
-            type="button"
-            onClick={() => { setShowForm(false); setName(""); setError(""); }}
-            className="h-9 px-3 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground"
-          >
-            Batal
-          </button>
+        <form onSubmit={handleAdd} className="space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              placeholder="Nama kategori baru..."
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="flex-1 h-9 rounded-md border border-border bg-background px-3 text-sm"
+            />
+            {error && <span className="text-xs text-destructive">{error}</span>}
+            <button
+              type="submit"
+              disabled={pending}
+              className="h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              Simpan
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowForm(false); setName(""); setMetaTitle(""); setMetaDesc(""); setError(""); }}
+              className="h-9 px-3 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground"
+            >
+              Batal
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              value={metaTitle}
+              onChange={(e) => setMetaTitle(e.target.value)}
+              placeholder="SEO — Meta Title (opsional)"
+              className="h-8 rounded-md border border-border bg-background px-3 text-xs"
+            />
+            <input
+              value={metaDesc}
+              onChange={(e) => setMetaDesc(e.target.value)}
+              placeholder="SEO — Meta Description (opsional)"
+              className="h-8 rounded-md border border-border bg-background px-3 text-xs"
+            />
+          </div>
         </form>
       ) : (
         <button

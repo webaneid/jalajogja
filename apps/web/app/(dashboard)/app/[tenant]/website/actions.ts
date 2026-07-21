@@ -714,6 +714,8 @@ export type CategoryFormData = {
   name: string;
   slug?: string;
   parentId?: string | null;
+  metaTitle?: string | null;
+  metaDesc?:  string | null;
 };
 
 // ─── CREATE CATEGORY ──────────────────────────────────────────────────────────
@@ -744,9 +746,11 @@ export async function createCategoryAction(
     const [cat] = await db
       .insert(schema.postCategories)
       .values({
-        name:     data.name.trim(),
-        slug:     catSlug,
-        parentId: data.parentId ?? null,
+        name:      data.name.trim(),
+        slug:      catSlug,
+        parentId:  data.parentId ?? null,
+        metaTitle: data.metaTitle || null,
+        metaDesc:  data.metaDesc  || null,
       })
       .returning({ id: schema.postCategories.id });
 
@@ -802,9 +806,11 @@ export async function updateCategoryAction(
     await db
       .update(schema.postCategories)
       .set({
-        name:     data.name.trim(),
-        slug:     catSlug,
-        parentId: data.parentId ?? null,
+        name:      data.name.trim(),
+        slug:      catSlug,
+        parentId:  data.parentId ?? null,
+        metaTitle: data.metaTitle || null,
+        metaDesc:  data.metaDesc  || null,
       })
       .where(eq(schema.postCategories.id, categoryId));
 
@@ -877,6 +883,8 @@ export async function deleteCategoryAction(
 export type TagFormData = {
   name: string;
   slug?: string;
+  metaTitle?: string | null;
+  metaDesc?:  string | null;
 };
 
 // ─── CREATE TAG ───────────────────────────────────────────────────────────────
@@ -905,7 +913,10 @@ export async function createTagAction(
   try {
     const [tag] = await db
       .insert(schema.postTags)
-      .values({ name: data.name.trim(), slug: tagSlug })
+      .values({
+        name: data.name.trim(), slug: tagSlug,
+        metaTitle: data.metaTitle || null, metaDesc: data.metaDesc || null,
+      })
       .returning({ id: schema.postTags.id });
 
     revalidatePath(`/app/${slug}/website/categories`);
@@ -953,7 +964,10 @@ export async function updateTagAction(
   try {
     await db
       .update(schema.postTags)
-      .set({ name: data.name.trim(), slug: tagSlug })
+      .set({
+        name: data.name.trim(), slug: tagSlug,
+        metaTitle: data.metaTitle || null, metaDesc: data.metaDesc || null,
+      })
       .where(eq(schema.postTags.id, tagId));
 
     revalidatePath(`/app/${slug}/website/categories`);

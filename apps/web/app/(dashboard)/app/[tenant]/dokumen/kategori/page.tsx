@@ -24,6 +24,8 @@ export default async function DokumenKategori({
       slug:      schema.documentCategories.slug,
       parentId:  schema.documentCategories.parentId,
       sortOrder: schema.documentCategories.sortOrder,
+      metaTitle: schema.documentCategories.metaTitle,
+      metaDesc:  schema.documentCategories.metaDesc,
     })
     .from(schema.documentCategories)
     .orderBy(schema.documentCategories.sortOrder, schema.documentCategories.name);

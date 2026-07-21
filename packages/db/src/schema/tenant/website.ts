@@ -64,6 +64,10 @@ export function createPostCategoriesTable(s: ReturnType<typeof pgSchema>) {
     name: text("name").notNull(),
     parentId: uuid("parent_id"), // self-referential, FK via SQL migration
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // SEO ringan (Fase 2, docs/arsitektur-seo.md § 3.2) — override title/desc arsip post
+    // terfilter kategori ini (query param ?category=), fallback ke title hardcode kalau kosong
+    metaTitle: text("meta_title"),
+    metaDesc:  text("meta_desc"),
   });
 }
 
@@ -113,6 +117,9 @@ export function createPostTagsTable(s: ReturnType<typeof pgSchema>) {
     slug: text("slug").notNull().unique(),
     name: text("name").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // SEO ringan (Fase 2) — override title/desc arsip post terfilter tag ini (?tag=)
+    metaTitle: text("meta_title"),
+    metaDesc:  text("meta_desc"),
   });
 }
 
