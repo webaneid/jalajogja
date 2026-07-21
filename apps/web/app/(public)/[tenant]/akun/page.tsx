@@ -3,9 +3,10 @@ import { headers }   from "next/headers";
 import { eq, and }   from "drizzle-orm";
 import { auth }      from "@/lib/auth";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
-import { createTenantDb, getSettings, db, tenantMemberships, tenants, members, refIkpmCabang } from "@jalajogja/db";
+import { db, tenantMemberships, tenants, members, refIkpmCabang } from "@jalajogja/db";
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
-import { resolveOrgLabels } from "@/lib/tenant-org-label";
+import { resolveAkunBranding } from "@/lib/resolve-akun-branding";
+import { getTenantSeoBase }    from "@/lib/tenant-seo";
 import { MemberCard } from "@/components/akun/mobile/member-card";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
@@ -47,15 +48,10 @@ export default async function AkunPage({ params }: { params: Params }) {
       .where(eq(members.id, identity.memberId))
       .limit(1);
 
-    // Status keanggotaan + info tenant (untuk label dinamis) dari tenant ini
+    // Status keanggotaan SAYA DI TENANT INI — fakta per-tenant, scoped ke browsed
+    // tenant secara sengaja (beda dari branding, lihat resolveAkunBranding di bawah)
     const [membershipRow] = await db
-      .select({
-        status:         tenantMemberships.status,
-        tenantName:     tenants.name,
-        tenantType:     tenants.tenantType,
-        marhalahYear:   tenants.marhalahYear,
-        marhalahPeriod: tenants.marhalahPeriod,
-      })
+      .select({ status: tenantMemberships.status })
       .from(tenantMemberships)
       .innerJoin(tenants, eq(tenants.id, tenantMemberships.tenantId))
       .where(and(
@@ -63,15 +59,6 @@ export default async function AkunPage({ params }: { params: Params }) {
         eq(tenants.slug, slug),
       ))
       .limit(1);
-
-    if (membershipRow) {
-      orgMemberLabel = resolveOrgLabels({
-        name:           membershipRow.tenantName,
-        tenantType:     (membershipRow.tenantType as "cabang" | "marhalah" | "forum") ?? "cabang",
-        marhalahYear:   membershipRow.marhalahYear ?? null,
-        marhalahPeriod: (membershipRow.marhalahPeriod as "awal" | "akhir" | null) ?? null,
-      }).memberLabel;
-    }
 
     // Nama cabang resmi dari ref_ikpm_cabang
     let primaryCabangNama: string | null = null;
@@ -93,11 +80,22 @@ export default async function AkunPage({ params }: { params: Params }) {
     }
   }
 
-  // Branding tenant (logo+nama) — untuk MemberCard mobile saja
-  const tenantClient    = createTenantDb(slug);
-  const generalSettings = await getSettings(tenantClient, "general");
-  const logoUrl          = (generalSettings.logo_url  as string | undefined) ?? null;
-  const siteName          = (generalSettings.site_name as string | undefined) ?? slug;
+  // Branding — untuk MemberCard mobile + badge "Info keanggotaan" desktop.
+  // Anggota IKPM: resolusi bukan selalu tenant yang sedang dibrowsing (lihat
+  // docs/arsitektur-akun.md § Resolusi Branding Kartu Anggota). Akun publik: tidak
+  // punya konsep cabang, selalu pakai tenant yang sedang dibrowsing.
+  let logoUrl: string | null;
+  let siteName: string;
+  if (isMember && identity.memberId) {
+    const branding = await resolveAkunBranding(identity.memberId, slug);
+    logoUrl        = branding.logoUrl;
+    siteName       = branding.orgName;
+    orgMemberLabel = branding.memberLabel;
+  } else {
+    const seo = await getTenantSeoBase(slug);
+    logoUrl  = seo.logoUrl;
+    siteName = seo.siteName;
+  }
 
   const completeBanner = isMember && isIncomplete && (
     <a

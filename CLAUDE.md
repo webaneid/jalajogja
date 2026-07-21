@@ -8459,8 +8459,100 @@ blok DESKTOP ("Info keanggotaan" card, baris PC IKPM) yang tidak disentuh sama s
 **Verifikasi**: `tsc --noEmit` bersih (mengonfirmasi tidak ada pemanggil lain yang masih
 mengharap 2 prop yang dihapus) + `bun run build` sukses.
 
+### [2026-07-21] MemberCard Baris Bawah — "Nama Anggota" Ternyata Pengulangan, Diganti Identitas Organisasi
+
+**Koreksi susulan langsung dari user** setelah restrukturisasi bottom-row di atas: baris "Nama
+Anggota: {nama}" (echo nama yang SUDAH tampil besar di tengah kartu) dianggap pengulangan —
+"karena nama di tengah tetap ada, jadi pengulangan kalau dibawahnya kita kasih nama juga".
+
+**Fix**: baris bawah-kiri diganti teks statis "Ikatan Keluarga" (label kecil, uppercase) /
+"Pondok Modern Gontor" (nama lengkap IKPM) — bukan data dinamis apa pun, murni identitas
+organisasi payung. Badge nama tenant (kanan, generik, dari lesson sebelumnya) TIDAK berubah.
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build` sukses. **Instruksi eksplisit user saat
+itu: "jangan push dulu ya"** — perubahan sempat tertahan uncommitted sampai sesi lanjutan
+berikutnya (lihat lesson Resolusi Branding di bawah, di mana komit akhirnya dilakukan bersamaan
+dengan pekerjaan lanjutan).
+
+### [2026-07-21] Resolusi Branding Kartu Anggota — Bukan Selalu Tenant yang Sedang Dibrowsing
+
+> Arsitektur lengkap: **`docs/arsitektur-akun.md` § "Resolusi Branding Kartu Anggota"**
+
+**Masalah konseptual ditemukan user, bukan bug laporan**: `MemberCard` (fitur sesi sebelumnya)
+mengambil logo+nama SELALU dari tenant yang sedang dibrowsing — salah di bawah prinsip "1 ID for
+all" platform ini. Contoh eksplisit user: alumnus yang BUKAN "Angkatan 1999 Akhir" (bukan anggota
+genuine tenant "Visikita") tidak seharusnya melihat badge "Visikita" hanya karena kebetulan
+browsing `visikita.com/akun`. User eksplisit minta proses penuh sebelum eksekusi: baca CLAUDE.md
+→ Plan Mode (2 Explore agent riset paralel: skema backbone + infra platform admin) → tulis
+dokumentasi arsitektur → baru implementasi.
+
+**Temuan riset kunci yang menjawab pertanyaan terbuka sesi sebelumnya**: `tenant_memberships.
+membershipType` (cabang/marhalah/forum) **tidak pernah dipakai sebagai filter WHERE di manapun**
+di seluruh codebase (grep menyeluruh, hanya dipakai sebagai VALUE saat INSERT). Jadi "ada baris
+`tenant_memberships` untuk (member, tenant)" = genuine member, apapun tipenya — resolusi TIDAK
+perlu membedakan tipe membership sama sekali.
+
+**Helper baru `apps/web/lib/resolve-akun-branding.ts`** — `resolveAkunBranding(memberId,
+browsedSlug)`, 4 langkah urut: (1) genuine member tenant yang dibrowsing → pakai branding tenant
+itu; (2) bukan genuine member → cari cabang resmi via `members.primaryCabangRefId → tenants WHERE
+refCabangId=X AND isActive=true`; (3) cabang resmi belum onboard tenant sama sekali → fallback ke
+`public.platform_settings` (tabel baru, singleton row, dikelola dari `/platform/settings`); (4)
+akun publik (bukan member) — TIDAK lewat helper ini sama sekali, selalu pakai tenant yang
+dibrowsing (tidak ada konsep cabang untuk akun publik).
+
+**3 titik pemanggil diperbaiki sekaligus** (bukan cuma `MemberCard` yang dikeluhkan user — 2
+titik lain ditemukan kena bug identik saat riset, scope perluasan yang dicatat eksplisit di
+plan sebelum eksekusi): `akun/page.tsx`'s `orgMemberLabel` (badge desktop) + `logoUrl`/`siteName`
+(`MemberCard` mobile), dan `akun/layout.tsx`'s `memberBadgeLabel` (dipakai BERSAMA sidebar
+desktop dan `AkunMobileHeader` mobile — satu query, dua tempat render). **TIDAK disentuh** (sudah
+benar sejak awal): `anggota/[id]/page.tsx` (PC IKPM dari `primaryCabangRefId` langsung, Marhalah
+& Forum dari `tenant_memberships` lintas SEMUA tenant yang diikuti — independen tenant yang
+dibrowsing), dan `membershipInfo.status`/`memberNumber` di `akun/page.tsx` (fakta "status SAYA DI
+TENANT INI", semantiknya memang harus scoped ke tenant yang dibrowsing, beda dari branding).
+
+**Infrastruktur platform-level baru** (sebelumnya genuinely tidak ada sama sekali — dikonfirmasi
+riset): tabel `public.platform_settings` (migration `0035_platform_settings.sql`, singleton row
+`id="default"`, kolom `defaultLogoUrl`+`defaultOrgName`), bucket MinIO baru `platform-assets`
+(fungsi baru `platformPublicUrl`/`uploadPlatformFile`/`ensurePlatformBucket` di `lib/minio.ts`,
+TERPISAH TOTAL dari fungsi tenant yang ada — `lib/minio.ts` sebelumnya 100% ter-couple ke
+`slug` tenant, `tenantBucket(slug) → "tenant-{slug}"`), route upload
+`POST /api/platform/settings/upload-logo` (sharp → WebP 480×480, path FIXED `branding/logo.webp`,
+selalu overwrite — bukan bagian modul media tenant, tanpa variant system), dan card baru
+"Branding Default IKPM" di `/platform/settings` (sebelumnya cuma berisi status env var
+RajaOngkir) — form + action `updatePlatformBrandingAction` mengikuti persis pola
+`createCabangAction` yang sudah ada (`requirePlatformSession()` → FormData → `db.insert/update`
+→ `revalidatePath`).
+
+**Simplifikasi yang disengaja**: tidak ada cascading fallback logo (tenant hasil resolusi ADA
+tapi belum upload logo sendiri → TIDAK ikut fallback ke platform default, `MemberCard` sudah
+punya fallback badge-huruf untuk `logoUrl=null`). Efek samping menguntungkan: kalau auto-join
+`tenant_memberships` pernah gagal untuk cabang yang sebenarnya sudah match, langkah 2 (via
+`primaryCabangRefId`) menemukan tenant yang SAMA — self-healing, hasil akhir tetap benar.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` (schema baru + barrel
+export). `bun run build --filter=@jalajogja/web` sukses (dev server dimatikan dulu, `.next`
+dibersihkan, sesuai SOP). Migration `0035` dijalankan di lokal (`psql` native,
+`postgres://webane@localhost/jalajogja`) — dikonfirmasi baris singleton ter-seed. **Belum
+dijalankan di VPS** — wajib sebelum deploy, pola standar project ini. **Verifikasi visual
+(upload logo di `/platform/settings`, cek badge `/akun` berubah sesuai skenario "bukan anggota
+genuine tenant yang dibrowsing") belum dilakukan** — perlu dicoba user di 3 skenario: member
+genuine di tenant sendiri, member browsing tenant lain (bukan cabang/marhalah/forum sendiri),
+dan akun publik di tenant manapun (harus tidak berubah dari perilaku sebelumnya).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **MemberCard restrukturisasi bottom-row + generalisasi tenant** (lihat
+- Terakhir dikerjakan: **Resolusi Branding Kartu Anggota + Branding Default IKPM platform-level**
+  (lihat lesson di atas) — `resolveAkunBranding()` helper baru (4 langkah: genuine member tenant
+  dibrowsing → cabang resmi member via `primaryCabangRefId` → fallback `platform_settings` →
+  akun publik selalu tenant dibrowsing), diterapkan ke 3 titik (`akun/page.tsx` ×2 +
+  `akun/layout.tsx`). Tabel baru `public.platform_settings` (migration `0035`, dijalankan di
+  lokal) + bucket MinIO baru `platform-assets` + card "Branding Default IKPM" di
+  `/platform/settings`. Proses penuh sesuai instruksi user: baca CLAUDE.md → Plan Mode (2
+  Explore agent) → dokumentasi arsitektur (`docs/arsitektur-akun.md`) → eksekusi. `tsc`+build
+  bersih. **Migration belum dijalankan di VPS, belum di-commit/push** (menunggu verifikasi
+  visual user — 3 skenario di lesson di atas). Sekalian mencatat lesson MemberCard bottom-row
+  "Ikatan Keluarga"/"Pondok Modern Gontor" dari sesi sebelumnya yang sempat tertunda
+  didokumentasikan (kode sudah ada, cuma catatan CLAUDE.md yang menyusul).
+- Sesi sebelumnya: **MemberCard restrukturisasi bottom-row + generalisasi tenant** (lihat
   lesson di atas) — logo `w-17`, badge top-right dihapus, No. Anggota 20px, baris bawah jadi
   "Nama Anggota" + badge nama tenant generik (bukan hardcode PC IKPM). `tsc`+build bersih. Sudah
   di-commit dan di-push.

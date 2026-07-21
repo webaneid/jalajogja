@@ -129,3 +129,49 @@ export async function ensureBucket(slug: string): Promise<void> {
     await s3.send(new PutBucketPolicyCommand({ Bucket: bucket, Policy: policy }));
   }
 }
+
+// ── Aset platform-level (bukan per-tenant) ───────────────────────────────────
+// Dipakai untuk branding default IKPM (logo fallback) yang dikelola dari
+// /platform/settings — terpisah total dari bucket tenant di atas.
+
+const PLATFORM_BUCKET = "platform-assets";
+
+export function platformPublicUrl(path: string): string {
+  const base = process.env.MINIO_PUBLIC_URL ?? "http://localhost:9000";
+  return `${base}/${PLATFORM_BUCKET}/${path}`;
+}
+
+export async function uploadPlatformFile(
+  path: string,
+  body: Buffer | Uint8Array,
+  contentType: string,
+): Promise<void> {
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: PLATFORM_BUCKET,
+      Key: path,
+      Body: body,
+      ContentType: contentType,
+    }),
+  );
+}
+
+export async function ensurePlatformBucket(): Promise<void> {
+  try {
+    await s3.send(new HeadBucketCommand({ Bucket: PLATFORM_BUCKET }));
+  } catch {
+    await s3.send(new CreateBucketCommand({ Bucket: PLATFORM_BUCKET }));
+    const policy = JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Effect: "Allow",
+          Principal: { AWS: ["*"] },
+          Action: ["s3:GetObject"],
+          Resource: [`arn:aws:s3:::${PLATFORM_BUCKET}/*`],
+        },
+      ],
+    });
+    await s3.send(new PutBucketPolicyCommand({ Bucket: PLATFORM_BUCKET, Policy: policy }));
+  }
+}

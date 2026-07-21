@@ -1,11 +1,24 @@
+import { eq } from "drizzle-orm";
+import { db, platformSettings } from "@jalajogja/db";
 import { TestRajaOngkirButton } from "./sync-cities-button";
+import { BrandingSettingsForm } from "./branding-settings-form";
 
 export default async function PlatformSettingsPage() {
+  const [brandingRow] = await db.select().from(platformSettings)
+    .where(eq(platformSettings.id, "default")).limit(1);
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold">Pengaturan Platform</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Konfigurasi platform global jalakarta</p>
+      </div>
+
+      <div className="rounded-xl border border-border bg-background p-5">
+        <BrandingSettingsForm
+          initialOrgName={brandingRow?.defaultOrgName ?? "IKPM Gontor"}
+          initialLogoUrl={brandingRow?.defaultLogoUrl ?? null}
+        />
       </div>
 
       <div className="rounded-xl border border-border bg-background p-5 space-y-4">

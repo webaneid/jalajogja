@@ -359,9 +359,10 @@ konsep bank yang tidak relevan untuk platform ini):
 - **`MemberCard`** (`components/akun/mobile/member-card.tsx`) — kartu identitas bergaya "kartu
   anggota", HANYA tampil di dashboard (`akun/page.tsx`, bagian mobile-only). Warna ikut tema
   tenant (`bg-primary`/`text-primary-foreground`, CSS var — BUKAN warna hardcode dari mockup
-  referensi). Isi: logo+nama tenant, nama anggota, No. Anggota (mono, meniru "nomor kartu"),
-  PC IKPM cabang, badge status. Varian `type==="public"` lebih sederhana (tanpa No. Anggota/PC
-  IKPM — akun publik tidak punya data itu).
+  referensi). Isi: logo+nama **hasil resolusi branding** (lihat § "Resolusi Branding Kartu
+  Anggota" di bawah — TIDAK selalu tenant yang sedang dibrowsing), nama anggota, No. Anggota
+  (mono, meniru "nomor kartu"), badge status. Varian `type==="public"` lebih sederhana (tanpa
+  No. Anggota — akun publik tidak punya data itu).
 - **`AkunBottomNav`** (`components/akun/mobile/akun-bottom-nav.tsx`) — bottom tab bar khusus
   akun: 3 tab utama (Beranda/Transaksi/Profil) + tombol "Lainnya" (drawer slide-up berisi sisa
   item nav + tombol Keluar). Daftar item nav **diimpor dari `akun-nav.tsx`**
@@ -372,6 +373,69 @@ konsep bank yang tidak relevan untuk platform ini):
 `akun/layout.tsx`/`akun/page.tsx` tetap identik seperti sebelum fitur ini. Perubahan 100%
 di-scope via `hidden md:block`/`hidden md:flex` (desktop) vs `md:hidden` (mobile) — pola split
 yang sama dipakai di halaman detail Event/Campaign/Produk sebelumnya.
+
+### Resolusi Branding Kartu Anggota (2026-07-21)
+
+**Masalah**: implementasi awal `MemberCard` (di atas) mengambil logo+nama SELALU dari tenant
+yang sedang dibrowsing (`getSettings(createTenantDb(browsedSlug), "general")`). Ini salah secara
+konseptual — platform ini "1 ID for all": satu akun bisa browsing `/akun` di tenant MANAPUN,
+terlepas apakah dia genuine anggota tenant itu. Contoh nyata: alumnus yang BUKAN "Angkatan 1999
+Akhir" (bukan anggota genuine tenant "Visikita") tidak seharusnya melihat badge "Visikita" hanya
+karena kebetulan browsing `visikita.com/akun`.
+
+**Helper terpusat**: `apps/web/lib/resolve-akun-branding.ts` — `resolveAkunBranding(memberId,
+browsedSlug)`, dipanggil independen oleh `akun/layout.tsx` (badge label sidebar+header mobile)
+dan `akun/page.tsx` (badge label "Info keanggotaan" desktop + logo/nama `MemberCard` mobile) —
+TIDAK di-`cache()`, konsisten dengan pola duplikasi query session/identity yang sudah ada di
+kedua file itu sejak awal.
+
+**4 langkah resolusi, urut**:
+1. **Genuine member tenant yang sedang dibrowsing** — cek `tenant_memberships` untuk
+   `(memberId, browsedTenantId)`. Kalau ADA baris → pakai branding tenant itu (perilaku sebelum
+   fix ini, tidak berubah untuk kasus ini). **Kolom `membershipType` (cabang/marhalah/forum)
+   TIDAK dicek** — dikonfirmasi via grep menyeluruh, kolom itu tidak pernah dipakai sebagai
+   filter WHERE di manapun di seluruh codebase, hanya sebagai value saat INSERT. Jadi "ada baris"
+   = genuine member, apapun tipenya. Ini yang membuat contoh "Angkatan 1999 Akhir" di atas
+   otomatis benar: kalau member itu GENUINE ikut angkatan itu (ada baris `tenant_memberships`
+   `membershipType='marhalah'` untuk tenant Visikita), badge Visikita MEMANG seharusnya tampil.
+2. **Bukan genuine member tenant yang dibrowsing** → cari tenant cabang resmi member sendiri:
+   `members.primaryCabangRefId → tenants WHERE refCabangId = X AND isActive = true`. Kalau
+   ketemu → pakai branding tenant cabang resmi itu (bukan tenant yang sedang dibrowsing).
+3. **Cabang resmi member belum onboard jadi tenant sama sekali** (`primaryCabangRefId` ada tapi
+   tidak ada tenant dengan `refCabangId` yang cocok, atau `primaryCabangRefId` belum diisi) →
+   fallback ke **branding default platform** (`public.platform_settings`, lihat di bawah).
+4. **Akun publik** (`identity.type === "public"`) — TIDAK lewat `resolveAkunBranding` sama sekali,
+   selalu pakai tenant yang sedang dibrowsing langsung via `getTenantSeoBase(slug)` — akun publik
+   tidak punya konsep "cabang sendiri".
+
+Simplifikasi yang disengaja: TIDAK ada cascading fallback logo kalau tenant hasil resolusi
+(langkah 2) ADA tapi belum upload logo sendiri — `MemberCard` sudah punya fallback badge-huruf
+untuk `logoUrl=null`, itu cukup, tidak perlu query tambahan ke platform default.
+
+Efek samping yang menguntungkan: kalau auto-join `tenant_memberships` pernah gagal untuk cabang
+yang sebenarnya sudah match (`refCabangId` cocok tapi baris membership belum pernah ter-insert),
+langkah 2 akan menemukan tenant yang SAMA lewat `primaryCabangRefId` — hasil akhirnya tetap
+benar meski langkah 1 gagal mendeteksinya sebagai "genuine member".
+
+**Tabel baru `public.platform_settings`** (`packages/db/migrations/0035_platform_settings.sql`)
+— singleton row (`id="default"`, di-seed via migration), kolom `defaultLogoUrl` +
+`defaultOrgName` (default `"IKPM Gontor"`). Dikelola dari `/platform/settings` (halaman platform
+admin yang sudah ada — sebelumnya cuma berisi status env var RajaOngkir, sekarang ditambah card
+"Branding Default IKPM"): upload logo via `POST /api/platform/settings/upload-logo` (path FIXED
+`branding/logo.webp` di bucket MinIO BARU `platform-assets` — terpisah total dari bucket
+`tenant-{slug}`, lihat `apps/web/lib/minio.ts` fungsi `platformPublicUrl`/`uploadPlatformFile`/
+`ensurePlatformBucket`; konversi via `sharp` ke WebP 480×480, TANPA variant system tenant — aset
+tunggal, selalu overwrite) + input teks nama organisasi, disimpan via
+`updatePlatformBrandingAction` (`(platform)/platform/(protected)/actions.ts`, pola identik
+`createCabangAction` yang sudah ada).
+
+**TIDAK disentuh** (sudah benar sejak awal, tidak kena bug ini):
+- `anggota/[id]/page.tsx` — "PC IKPM" sudah diambil langsung dari `primaryCabangRefId →
+  ref_ikpm_cabang.nama` (independen tenant manapun); "Marhalah & Forum" sudah dari
+  `tenant_memberships` lintas SEMUA tenant yang diikuti member (bukan cuma tenant yang dibrowsing).
+- `akun/page.tsx`'s `membershipInfo.primaryCabangNama` — sama seperti di atas, independen tenant.
+- `akun/page.tsx`'s `membershipInfo.status`/`memberNumber` — fakta "status SAYA DI TENANT INI",
+  secara semantik memang harus tetap scoped ke tenant yang dibrowsing (beda konsep dari branding).
 
 ---
 

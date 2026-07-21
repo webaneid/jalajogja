@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import {
   db, tenants, platformUsers, members, tenantMemberships,
   refIkpmCabang, createTenantSchemaInDb, createTenantDb,
-  user as authUser,
+  user as authUser, platformSettings,
 } from "@jalajogja/db";
 import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -336,4 +336,26 @@ export async function linkTenantToCabangAction(
 
   revalidatePath(`/platform/tenants/${updated.slug}`);
   return { ok: true, populated };
+}
+
+// ── Branding default IKPM (platform-wide, fallback untuk cabang belum onboard) ─
+
+export async function updatePlatformBrandingAction(
+  formData: FormData,
+): Promise<{ error: string } | { ok: true }> {
+  await requirePlatformSession();
+
+  const defaultOrgName = ((formData.get("defaultOrgName") as string) ?? "").trim() || "IKPM Gontor";
+  const defaultLogoUrlRaw = ((formData.get("defaultLogoUrl") as string) ?? "").trim();
+  const defaultLogoUrl = defaultLogoUrlRaw || null;
+
+  await db.insert(platformSettings)
+    .values({ id: "default", defaultOrgName, defaultLogoUrl, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: platformSettings.id,
+      set:    { defaultOrgName, defaultLogoUrl, updatedAt: new Date() },
+    });
+
+  revalidatePath("/platform/settings");
+  return { ok: true };
 }

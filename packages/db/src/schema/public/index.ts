@@ -45,3 +45,4 @@ export * from "./addon-usage";
 
 // ── Platform admin users (jalakarta internal team) ────────────────────────────
 export * from "./platform-users";
+export * from "./platform-settings";

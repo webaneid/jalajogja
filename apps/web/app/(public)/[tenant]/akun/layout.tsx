@@ -3,14 +3,14 @@ import { headers }    from "next/headers";
 import { createHash } from "crypto";
 import { auth }       from "@/lib/auth";
 import { getAkunIdentity } from "@/lib/akun-identity";
-import { db, members, tenants, createTenantDb } from "@jalajogja/db";
+import { db, members, createTenantDb } from "@jalajogja/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { AkunNav }    from "@/components/akun/akun-nav";
 import { AkunMobileHeader } from "@/components/akun/mobile/akun-mobile-header";
 import { AkunBottomNav }    from "@/components/akun/mobile/akun-bottom-nav";
 import { BadgeCheck } from "lucide-react";
-import { resolveOrgLabels } from "@/lib/tenant-org-label";
+import { resolveAkunBranding } from "@/lib/resolve-akun-branding";
 
 type Props = {
   children: React.ReactNode;
@@ -59,28 +59,12 @@ export default async function AkunLayout({ children, params }: Props) {
   const displayEmail = identity.email || session.user.email;
   const avatarUrl    = identity.photoUrl ?? gravatar(displayEmail);
 
-  // Label keanggotaan dinamis sesuai tipe + nama tenant (cabang/marhalah/forum)
+  // Label keanggotaan — bukan selalu tenant yang sedang dibrowsing, lihat
+  // docs/arsitektur-akun.md § Resolusi Branding Kartu Anggota.
   let memberBadgeLabel = "Anggota IKPM";
-  if (isMember) {
-    const [tenantRow] = await db
-      .select({
-        name:           tenants.name,
-        tenantType:     tenants.tenantType,
-        marhalahYear:   tenants.marhalahYear,
-        marhalahPeriod: tenants.marhalahPeriod,
-      })
-      .from(tenants)
-      .where(eq(tenants.slug, slug))
-      .limit(1);
-
-    if (tenantRow) {
-      memberBadgeLabel = resolveOrgLabels({
-        name:           tenantRow.name,
-        tenantType:     (tenantRow.tenantType as "cabang" | "marhalah" | "forum") ?? "cabang",
-        marhalahYear:   tenantRow.marhalahYear ?? null,
-        marhalahPeriod: (tenantRow.marhalahPeriod as "awal" | "akhir" | null) ?? null,
-      }).memberLabel;
-    }
+  if (isMember && identity.memberId) {
+    const branding = await resolveAkunBranding(identity.memberId, slug);
+    memberBadgeLabel = branding.memberLabel;
   }
 
   return (

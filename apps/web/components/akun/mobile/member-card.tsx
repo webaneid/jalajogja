@@ -52,16 +52,17 @@ export function MemberCard({
         )}
       </div>
 
-      {/* Baris bawah — "Nama Anggota" (echo nama, pola kartu bank yang menampilkan nama
-          pemegang kartu di bagian bawah) + badge nama organisasi (generik sesuai tenant —
-          BUKAN hardcode "PC IKPM {cabang}", supaya cocok untuk tenant tipe apa pun: cabang,
-          marhalah, forum, dst — mis. "Visikita"). */}
+      {/* Baris bawah — nama SUDAH tampil besar di tengah, jadi bagian ini bukan echo nama lagi
+          (dulu begitu, tapi jadi pengulangan) — sekarang identitas organisasi IKPM secara
+          statis ("Ikatan Keluarga" / "Pondok Modern Gontor", nama lengkap IKPM), + badge nama
+          tenant generik (bukan hardcode "PC IKPM {cabang}", supaya cocok untuk tenant tipe apa
+          pun: cabang, marhalah, forum, dst — mis. "Visikita"). */}
       <div className="relative mt-5 flex items-end justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-wide text-primary-foreground/60">
-            {isMember ? "Nama Anggota" : "Nama"}
+            Ikatan Keluarga
           </p>
-          <p className="truncate text-xs font-medium">{name}</p>
+          <p className="truncate text-xs font-medium">Pondok Modern Gontor</p>
         </div>
         <span className="shrink-0 rounded-full bg-primary-foreground/15 px-2.5 py-1 text-[10px] font-medium">
           {siteName}
