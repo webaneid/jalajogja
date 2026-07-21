@@ -25,6 +25,7 @@ import {
   createDocumentVersionsTable,
 } from "./documents";
 import { createSettingsTable, createMenusTable, createMenuItemsTable } from "./settings";
+import { createSeoPageOverridesTable } from "./seo";
 import { createMitraApplicationsTable, createMitrasTable } from "./mitra";
 import {
   createCartsTable,
@@ -108,6 +109,8 @@ function buildTenantSchema(slug: string) {
     settings: createSettingsTable(s),
     menus: createMenusTable(s),
     menuItems: createMenuItemsTable(s),
+    // SEO — override halaman tanpa "rumah" tabel (Fase 3, docs/arsitektur-seo.md § 3.3)
+    seoPageOverrides: createSeoPageOverridesTable(s),
     // Billing — universal cart → invoice → payment
     carts:                  createCartsTable(s),
     cartItems:              createCartItemsTable(s),
@@ -145,3 +148,4 @@ export * from "./documents";
 export * from "./settings";
 export * from "./billing";
 export * from "./mitra";
+export * from "./seo";

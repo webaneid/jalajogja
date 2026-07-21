@@ -8,6 +8,10 @@ import { getAkunIdentity } from "@/lib/akun-identity";
 import { CheckoutForm } from "@/components/billing/checkout-form";
 import type { CartData, CartItem, SellerGroup } from "@/app/(public)/[tenant]/cart/actions";
 import type { CheckoutDefaults } from "@/components/billing/checkout-form";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getPageSeoOverride } from "@/lib/get-page-seo-override";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import type { Metadata } from "next";
 
 type Props = { params: Promise<{ tenant: string }> };
 
@@ -16,6 +20,23 @@ type RajaOngkirConfig = {
   origin_city_name?: string;
   couriers?:         string[];
 };
+
+// SEO Fase 3 (docs/arsitektur-seo.md § 3.3) — sebelumnya tidak punya generateMetadata sama sekali.
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { tenant: slug } = await params;
+  const base = await getTenantSeoBase(slug);
+  const override = await getPageSeoOverride(createTenantDb(slug), slug, "checkout");
+  return buildMetadata({
+    title:         override?.metaTitle || "Checkout",
+    description:   override?.metaDesc || undefined,
+    ogTitle:       override?.ogTitle || undefined,
+    ogDescription: override?.ogDescription || undefined,
+    siteName:      base.siteName,
+    ogImageUrl:    override?.ogImageUrl || base.logoUrl,
+    canonicalUrl:  `${base.baseUrl}/checkout`,
+    robots:        override?.robots || undefined,
+  });
+}
 
 export default async function CheckoutPage({ params }: Props) {
   const { tenant: slug } = await params;

@@ -3,6 +3,7 @@ import { db, tenants } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import { createTenantDb, getSettings, findEligibleInstallmentPlan } from "@jalajogja/db";
 import { getTenantTimezone } from "@/lib/tenant-timezone.server";
+import type { Metadata } from "next";
 import {
   InvoicePublicClient,
   type PublicInvoiceData,
@@ -11,6 +12,12 @@ import {
 } from "@/components/billing/invoice-public-client";
 
 type Props = { params: Promise<{ tenant: string; id: string }> };
+
+// SEO (docs/arsitektur-seo.md § 3.4) — data transaksi privat per-invoice. Tidak butuh title/
+// desc custom, cukup dicegah ter-index — hardcode langsung, BUKAN lewat sistem override Fase 3.
+export async function generateMetadata(): Promise<Metadata> {
+  return { robots: { index: false, follow: false, googleBot: { index: false, follow: false } } };
+}
 
 function resolvePaymentCategory(itemTypes: string[]): "donasi" | "event" | "general" {
   if (itemTypes.length === 0) return "general";

@@ -5,6 +5,7 @@ import { FileText, FolderOpen, Search, FileDown, Eye } from "lucide-react";
 import type { Metadata } from "next";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 
 export const revalidate = 60;
 
@@ -15,19 +16,22 @@ type SearchParams = Promise<{ q?: string; category?: string }>;
 // SEO ringan per kategori (Fase 2, docs/arsitektur-seo.md § 3.2) — kalau ?category= aktif
 // (kuirk: nilainya ID, bukan slug — lihat komentar buildDocumentCategoryUrl di
 // lib/public-url-registry.ts) dan kategori itu punya metaTitle/metaDesc, timpa default.
-// Sebelumnya halaman ini tidak pakai buildMetadata sama sekali (title polos, tanpa OG/canonical).
+// Selain itu jatuh ke override page-wide (Fase 3, § 3.3), lalu fallback hardcode
+// "Dokumen — {siteName}".
 
 export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
   const { category }     = await searchParams;
   const base = await getTenantSeoBase(slug);
+  const tenantClient = createTenantDb(slug);
 
-  let title       = `Dokumen — ${base.siteName}`;
-  let description: string | undefined;
+  const override = await getPageSeoOverride(tenantClient, slug, "dokumen-archive");
+  let title       = override?.metaTitle || `Dokumen — ${base.siteName}`;
+  let description = override?.metaDesc || undefined;
   let canonicalUrl = `${base.baseUrl}/dokumen`;
 
   if (category) {
-    const { db: tenantDb, schema } = createTenantDb(slug);
+    const { db: tenantDb, schema } = tenantClient;
     const [cat] = await tenantDb
       .select({ name: schema.documentCategories.name, metaTitle: schema.documentCategories.metaTitle, metaDesc: schema.documentCategories.metaDesc })
       .from(schema.documentCategories).where(eq(schema.documentCategories.id, category)).limit(1);
@@ -38,7 +42,15 @@ export async function generateMetadata({ params, searchParams }: { params: Param
     }
   }
 
-  return buildMetadata({ title, description, siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl });
+  return buildMetadata({
+    title, description,
+    ogTitle:       override?.ogTitle || undefined,
+    ogDescription: override?.ogDescription || undefined,
+    siteName:      base.siteName,
+    ogImageUrl:    override?.ogImageUrl || base.logoUrl,
+    canonicalUrl,
+    robots:        override?.robots || undefined,
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

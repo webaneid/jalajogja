@@ -7,6 +7,7 @@ import type { EventCardData } from "@/lib/event-card-templates";
 import { EVENT_ARCHIVE_CARD_DESIGN_IDS, type EventArchiveCardDesignId } from "@/lib/event-archive-card-designs";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata }      from "next";
 import { CalendarDays }       from "lucide-react";
 import { getTenantTimezone }  from "@/lib/tenant-timezone.server";
@@ -17,18 +18,22 @@ type Params       = Promise<{ tenant: string }>;
 type SearchParams  = Promise<{ category?: string; all?: string }>;
 
 // SEO ringan per kategori (Fase 2, docs/arsitektur-seo.md § 3.2) — kalau ?category= aktif dan
-// kategori itu punya metaTitle/metaDesc, timpa default hardcode "Agenda & Event".
+// kategori itu punya metaTitle/metaDesc, timpa default. Selain itu jatuh ke override page-wide
+// (Fase 3, § 3.3), lalu fallback hardcode "Agenda & Event". ogTitle/ogDescription/ogImageUrl/
+// robots SELALU dari override page-wide — kategori (Fase 2) tidak punya field itu sendiri.
 export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
   const { category }     = await searchParams;
   const base = await getTenantSeoBase(slug);
+  const tenantClient = createTenantDb(slug);
 
-  let title       = "Agenda & Event";
-  let description: string | undefined;
+  const override = await getPageSeoOverride(tenantClient, slug, "agenda-archive");
+  let title       = override?.metaTitle || "Agenda & Event";
+  let description = override?.metaDesc || undefined;
   let canonicalUrl = `${base.baseUrl}/agenda`;
 
   if (category) {
-    const { db: tenantDb, schema } = createTenantDb(slug);
+    const { db: tenantDb, schema } = tenantClient;
     const [cat] = await tenantDb
       .select({ name: schema.eventCategories.name, metaTitle: schema.eventCategories.metaTitle, metaDesc: schema.eventCategories.metaDesc })
       .from(schema.eventCategories).where(eq(schema.eventCategories.slug, category)).limit(1);
@@ -39,7 +44,15 @@ export async function generateMetadata({ params, searchParams }: { params: Param
     }
   }
 
-  return buildMetadata({ title, description, siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl });
+  return buildMetadata({
+    title, description,
+    ogTitle:       override?.ogTitle || undefined,
+    ogDescription: override?.ogDescription || undefined,
+    siteName:      base.siteName,
+    ogImageUrl:    override?.ogImageUrl || base.logoUrl,
+    canonicalUrl,
+    robots:        override?.robots || undefined,
+  });
 }
 
 export default async function AgendaArchivePage({

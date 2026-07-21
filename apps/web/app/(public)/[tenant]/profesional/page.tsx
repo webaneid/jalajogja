@@ -3,11 +3,13 @@ import { eq, and, or, inArray, ilike, count } from "drizzle-orm";
 import {
   db, members, tenants, tenantMemberships,
   memberProfessionals, addresses, refProvinces, refRegencies,
+  createTenantDb,
 } from "@jalajogja/db";
 import Image     from "next/image";
 import Link      from "next/link";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata } from "next";
 import { Briefcase, MapPin } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";
@@ -26,7 +28,17 @@ type SearchParams = Promise<{
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
   const base = await getTenantSeoBase(slug);
-  return buildMetadata({ title: "Direktori Profesional", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/profesional` });
+  const override = await getPageSeoOverride(createTenantDb(slug), slug, "profesional-archive");
+  return buildMetadata({
+    title:         override?.metaTitle || "Direktori Profesional",
+    description:   override?.metaDesc || undefined,
+    ogTitle:       override?.ogTitle || undefined,
+    ogDescription: override?.ogDescription || undefined,
+    siteName:      base.siteName,
+    ogImageUrl:    override?.ogImageUrl || base.logoUrl,
+    canonicalUrl:  `${base.baseUrl}/profesional`,
+    robots:        override?.robots || undefined,
+  });
 }
 
 export default async function ProfesionalDirectoryPage({

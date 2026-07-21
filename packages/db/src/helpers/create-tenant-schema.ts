@@ -1361,6 +1361,22 @@ export async function createTenantSchemaInDb(
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_shipping_invoice_id ON "${s}".invoice_shipping_lines(invoice_id)`));
     await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_invoice_shipping_seller     ON "${s}".invoice_shipping_lines(seller_type, seller_id)`));
 
+    // ── 39. SEO Page Overrides (Fase 3, docs/arsitektur-seo.md § 3.3) ───────
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".seo_page_overrides (
+        id              UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+        page_key        TEXT           NOT NULL UNIQUE,
+        meta_title      TEXT,
+        meta_desc       TEXT,
+        og_title        TEXT,
+        og_description  TEXT,
+        og_image_id     UUID           REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        robots          TEXT           CHECK (robots IN ('index,follow','noindex','noindex,nofollow')),
+        updated_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+      )
+    `));
+    await tx.execute(sql.raw(`CREATE INDEX IF NOT EXISTS idx_seo_page_overrides_page_key ON "${s}".seo_page_overrides(page_key)`));
+
     // ── Default Data ───────────────────────────────────────────────────────
     await tx.execute(sql.raw(`
       INSERT INTO "${s}".accounts (code, name, type) VALUES

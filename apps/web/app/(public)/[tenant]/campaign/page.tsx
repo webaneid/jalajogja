@@ -10,6 +10,7 @@ import { resolveDonorCounts } from "@/lib/campaign-donor-count";
 import { CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS, type CampaignArchiveCardDesignId } from "@/lib/campaign-archive-card-designs";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata }      from "next";
 import { Heart }              from "lucide-react";
 
@@ -21,19 +22,22 @@ type SearchParams  = Promise<{ type?: string; category?: string }>;
 const VALID_TYPES = ["donasi", "zakat", "wakaf", "qurban"] as const;
 
 // SEO ringan per kategori (Fase 2, docs/arsitektur-seo.md § 3.2) — kalau ?category= aktif dan
-// kategori itu punya metaTitle/metaDesc, timpa default hardcode "Donasi & Infaq". Filter `type`
-// (donasi/zakat/wakaf/qurban) di luar scope Fase 2 — tidak ada tabel kategori untuk itu.
+// kategori itu punya metaTitle/metaDesc, timpa default. Selain itu jatuh ke override page-wide
+// (Fase 3, § 3.3), lalu fallback hardcode "Donasi & Infaq". Filter `type` (donasi/zakat/wakaf/
+// qurban) di luar scope — tidak ada tabel kategori untuk itu.
 export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
   const { category }     = await searchParams;
   const base = await getTenantSeoBase(slug);
+  const tenantClient = createTenantDb(slug);
 
-  let title       = "Donasi & Infaq";
-  let description: string | undefined;
+  const override = await getPageSeoOverride(tenantClient, slug, "campaign-archive");
+  let title       = override?.metaTitle || "Donasi & Infaq";
+  let description = override?.metaDesc || undefined;
   let canonicalUrl = `${base.baseUrl}/campaign`;
 
   if (category) {
-    const { db: tenantDb, schema } = createTenantDb(slug);
+    const { db: tenantDb, schema } = tenantClient;
     const [cat] = await tenantDb
       .select({ name: schema.campaignCategories.name, metaTitle: schema.campaignCategories.metaTitle, metaDesc: schema.campaignCategories.metaDesc })
       .from(schema.campaignCategories).where(eq(schema.campaignCategories.slug, category)).limit(1);
@@ -44,7 +48,15 @@ export async function generateMetadata({ params, searchParams }: { params: Param
     }
   }
 
-  return buildMetadata({ title, description, siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl });
+  return buildMetadata({
+    title, description,
+    ogTitle:       override?.ogTitle || undefined,
+    ogDescription: override?.ogDescription || undefined,
+    siteName:      base.siteName,
+    ogImageUrl:    override?.ogImageUrl || base.logoUrl,
+    canonicalUrl,
+    robots:        override?.robots || undefined,
+  });
 }
 
 export default async function CampaignArchivePage({

@@ -3,9 +3,11 @@ import { eq, and, inArray, ilike, sql, count } from "drizzle-orm";
 import {
   db, members, tenants, tenantMemberships,
   addresses, refProvinces, refRegencies, refProfessions,
+  createTenantDb,
 } from "@jalajogja/db";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata } from "next";
 import { PublicButton }  from "@/components/website/public/ui/public-button";
 import { AnggotaDirectoryClient } from "@/components/anggota/anggota-directory-client";
@@ -21,7 +23,17 @@ type SearchParams = Promise<{ q?: string; provinsi?: string; angkatan?: string; 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
   const base = await getTenantSeoBase(slug);
-  return buildMetadata({ title: "Direktori Anggota", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/anggota` });
+  const override = await getPageSeoOverride(createTenantDb(slug), slug, "anggota-archive");
+  return buildMetadata({
+    title:         override?.metaTitle || "Direktori Anggota",
+    description:   override?.metaDesc || undefined,
+    ogTitle:       override?.ogTitle || undefined,
+    ogDescription: override?.ogDescription || undefined,
+    siteName:      base.siteName,
+    ogImageUrl:    override?.ogImageUrl || base.logoUrl,
+    canonicalUrl:  `${base.baseUrl}/anggota`,
+    robots:        override?.robots || undefined,
+  });
 }
 
 export default async function AnggotaDirectoryPage({

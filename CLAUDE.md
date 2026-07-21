@@ -8740,19 +8740,90 @@ error) + `bun run build --filter=@jalajogja/web` sukses (dev server dimatikan du
 dibersihkan). Migration `0038` dijalankan di lokal, 6 tabel × 2 kolom dikonfirmasi via query
 `information_schema.columns`. **Belum dijalankan di VPS.**
 
+### [2026-07-21] Fase 3 SEO — Tabel `seo_page_overrides` + Halaman Admin Baru, 16 `generateMetadata` Diupdate
+
+> Detail lengkap: **`docs/arsitektur-seo.md` § 3.3 dan § 4**
+
+Fase terakhir dari roadmap SEO (§ 3.3, Prinsip C) — halaman publik yang TIDAK PUNYA "rumah" tabel
+(login, register, 10 arsip statis) sekarang bisa dikustomisasi admin lewat SATU halaman baru
+`/app/{slug}/settings/seo`, bukan 16 tempat terpisah.
+
+**Tabel baru `seo_page_overrides`** (tenant-scoped, `packages/db/src/schema/tenant/seo.ts`) —
+6 field editable (`metaTitle`, `metaDesc`, `ogTitle`, `ogDescription`, `ogImageId`, `robots`),
+`pageKey TEXT UNIQUE` sebagai identifier stabil — BUKAN URL (URL berubah tergantung custom
+domain/path mode). Migration `0039_seo_page_overrides.sql` — pola `CREATE TABLE` per-tenant sama
+seperti `0034_vouchers.sql`. Daftar `pageKey` (16 total) hidup di kode
+(`lib/seo-page-keys.ts`, client-safe zero-dependency) — pola yang sama dengan
+`STATIC_TOP_SEGMENTS` di `lib/mobile-route-checks.ts` (daftar tetap, bukan tabel DB terpisah).
+
+**`lib/get-page-seo-override.ts`** (server-only) — satu fungsi dipanggil dari SEMUA 16
+`generateMetadata`, resolve `ogImageId → ogImageUrl` via `resolveMediaUrl()` (pola persis
+`dokumen/view/[id]/page.tsx` dari Fase 1). Return `null` kalau belum ada override — caller SELALU
+fallback ke title hardcode lama, default TIDAK PERNAH dihapus.
+
+**Halaman admin `/app/{slug}/settings/seo`** — pola disalin dari `RolesManageClient`/`RoleDialog`
+(list + dialog, `key={editingEntry.key}` supaya form reset total saat ganti target — bug lama
+"dialog tidak reset state" sudah pernah dikunci sebagai lesson, langsung dihindari di sini).
+Field OG Image pakai `<MediaPicker>` dengan mini-preview+tombol ganti, disalin dari pola yang
+sama persis di `seo-panel.tsx`. Field robots pakai `<Combobox>` generik (BUKAN `<select>` polos —
+aturan UI Standards project ini: semua dropdown wajib Combobox).
+
+**2 temuan saat eksekusi:**
+1. **`/produk` arsip TERNYATA juga filter `?category=`** (selain rute terpisah `/produk/kategori/
+   [slug]` yang sudah ditangani Fase 2) — kelewat saat riset Fase 2 karena signature
+   `generateMetadata`-nya cuma `{ params }` (tidak `searchParams`), beda dari default export-nya
+   yang justru MENERIMA `searchParams` — grep berbasis signature `generateMetadata` saja tidak
+   cukup untuk menyimpulkan "halaman ini tidak filter kategori". Ditutup sekalian di sini,
+   memakai `product_categories.metaTitle`/`metaDesc` yang sudah ada dari Fase 2.
+2. **`forgot-password/page.tsx` dan `reset-password/page.tsx` adalah Client Component MURNI**
+   (`"use client"` baris pertama) — Next.js menolak `generateMetadata` di-export dari file yang
+   ditandai `"use client"` (build error eksplisit, bukan silent). Fix: ekstrak SELURUH logic form
+   ke file client baru (`forgot-password-form.tsx`, `reset-password-form.tsx` — terima `slug`
+   sebagai prop biasa, ganti `use(params)` yang sebelumnya dipakai untuk unwrap Promise params di
+   client component), `page.tsx` ditulis ulang jadi Server Component tipis: `generateMetadata` +
+   `await params` + render komponen client. **Perilaku form 100% tidak berubah** — refactor murni
+   pemindahan lokasi kode, bukan perubahan logic.
+
+**Layering fallback untuk 3 halaman arsip berkategori (agenda/campaign/dokumen/produk)**:
+kategori aktif (`?category=`) dengan `metaTitle`/`metaDesc` terisi → menang untuk title+desc;
+`ogTitle`/`ogDescription`/`ogImageUrl`/`robots` SELALU dari override page-wide (Fase 3) — kategori
+Fase 2 sengaja tidak punya field OG/robots sendiri (2-field ringan, bukan duplikasi form 6-field).
+Kalau tidak ada filter kategori aktif, ATAU kategori tidak ditemukan → seluruhnya jatuh ke
+override page-wide, lalu ke title hardcode lama sebagai fallback terakhir.
+
+**`invoice/[id]`** — perbaikan kecil terpisah dari sistem override (sesuai § 3.4, dikunci di § 5
+sejak audit awal): `generateMetadata` baru HANYA berisi `robots: { index: false, follow: false }`
+hardcode, tanpa query DB apa pun — data transaksi privat per-invoice, cukup dicegah ter-index,
+tidak butuh title/desc custom.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package (dicek bertahap per kelompok file — 10
+archive pages, lalu 6 Grup 1 pages, lalu keseluruhan) + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan), `/app/[tenant]/settings/seo` terkonfirmasi
+muncul di build output. Migration `0039` dijalankan di lokal, tabel+kolom+FK+CHECK constraint
+dikonfirmasi via `\d`. **Belum dijalankan di VPS.** Belum diverifikasi visual di browser (isi
+dialog form, upload OG image, lihat hasil di `<head>` halaman publik) — user perlu coba langsung.
+
+**Seluruh roadmap SEO (docs/arsitektur-seo.md) sekarang 100% selesai dari sisi kode — Fase 1, 2,
+3, dan perbaikan `invoice/[id]` noindex.** Migration `0037`+`0038`+`0039` (3 file) perlu dijalankan
+berurutan di VPS sebelum deploy kode ini.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fase 2 SEO — 6 Tabel Taksonomi** (lihat lesson di atas) — `meta_title`+
-  `meta_desc` ditambah ke `post_categories`, `post_tags`, `product_categories`,
-  `event_categories`, `campaign_categories`, `document_categories` (migration `0038`), dikawat ke
-  6 admin CRUD UI berbeda gaya + 4 `generateMetadata` publik (agenda/campaign/dokumen/produk-
-  kategori) baca konteks kategori dari query param. 2 penyesuaian ditemukan saat eksekusi:
-  `/post` arsip tidak punya filter kategori sama sekali (gap fitur, di luar scope, kolom SEO
-  tetap ditambahkan untuk dipakai nanti), `product_categories` tidak punya action update (field
-  SEO cuma di form create). `tsc`+build bersih, migration jalan di lokal, 6×2 kolom dikonfirmasi.
-  **Belum di-commit/push** (menunggu checkpoint ini), **belum dijalankan di VPS**. Fase 1
-  (Dokumen) juga masih belum di-commit — akan digabung dalam commit yang sama. Fase 3 (page
-  overrides + halaman admin `/settings/seo` baru untuk login/register/checkout/dst) BELUM
-  dikerjakan — lanjutkan sesuai roadmap di `docs/arsitektur-seo.md` § 3.3 dan § 4.
+- Terakhir dikerjakan: **Fase 3 SEO — Tabel `seo_page_overrides` + Halaman Admin Baru** (lihat
+  lesson di atas) — tabel tenant-scoped baru (migration `0039`), `lib/seo-page-keys.ts` (16
+  pageKey tetap) + `lib/get-page-seo-override.ts` (helper server-only), halaman admin baru
+  `/app/{slug}/settings/seo` (list+dialog, pola `RolesManageClient`), nav item "SEO" baru di
+  Settings, 16 `generateMetadata` diupdate (10 arsip Kelas C dapat merge-logic + 6 halaman Grup 1
+  dibuatkan dari nol). 2 temuan saat eksekusi: `/produk` arsip TERNYATA juga filter `?category=`
+  (gap Fase 2 yang terlewat, ditutup sekalian), `forgot-password`/`reset-password` adalah Client
+  Component murni sehingga logic form-nya diekstrak ke file client baru supaya `generateMetadata`
+  bisa dipasang di `page.tsx` (Server Component). Sekalian dieksekusi: `invoice/[id]` dapat
+  `generateMetadata` baru dengan `robots: noindex` hardcode (bukan lewat sistem override).
+  `tsc`+build bersih (dicek bertahap), migration `0039` jalan di lokal, tabel+FK+CHECK
+  dikonfirmasi via `\d`. **Belum di-commit/push** (menunggu checkpoint ini — akan digabung
+  dengan Fase 1+2 yang juga masih uncommitted), **migration `0037`+`0038`+`0039` belum dijalankan
+  di VPS**. **Seluruh roadmap SEO (`docs/arsitektur-seo.md`) sekarang selesai dari sisi kode** —
+  belum ada verifikasi visual di browser untuk ketiga fase (butuh login admin + cek tampilan
+  `<head>` halaman publik, di luar kemampuan environment ini).
 - Sesi sebelumnya: **Resolusi Warna Kartu Anggota** (lihat lesson di atas) —
   `resolveAkunBranding()` diperluas dengan `primaryColor`, `MemberCard` override CSS var
   `--primary`/`--primary-foreground` LOKAL via inline `style` (bukan ikut tema page-wide

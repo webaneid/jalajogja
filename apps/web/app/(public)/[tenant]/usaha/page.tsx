@@ -3,11 +3,13 @@ import { eq, and, inArray, ilike, count } from "drizzle-orm";
 import {
   db, members, tenants, tenantMemberships,
   memberBusinesses, addresses, refProvinces, refRegencies,
+  createTenantDb,
 } from "@jalajogja/db";
 import Image     from "next/image";
 import Link      from "next/link";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata } from "next";
 import { Briefcase, MapPin } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";
@@ -36,7 +38,17 @@ const LEGALITAS_OPTIONS = [
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
   const base = await getTenantSeoBase(slug);
-  return buildMetadata({ title: "Direktori Usaha", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/usaha` });
+  const override = await getPageSeoOverride(createTenantDb(slug), slug, "usaha-archive");
+  return buildMetadata({
+    title:         override?.metaTitle || "Direktori Usaha",
+    description:   override?.metaDesc || undefined,
+    ogTitle:       override?.ogTitle || undefined,
+    ogDescription: override?.ogDescription || undefined,
+    siteName:      base.siteName,
+    ogImageUrl:    override?.ogImageUrl || base.logoUrl,
+    canonicalUrl:  `${base.baseUrl}/usaha`,
+    robots:        override?.robots || undefined,
+  });
 }
 
 export default async function UsahaDirectoryPage({

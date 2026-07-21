@@ -4,9 +4,11 @@ import {
   db, members, tenants, tenantMemberships,
   addresses, refRegencies, refProfessions,
   memberBusinesses, memberOwnedPesantren, memberProfessionals,
+  createTenantDb,
 } from "@jalajogja/db";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata } from "next";
 import { Users, School, Briefcase, IdCard } from "lucide-react";
 
@@ -17,7 +19,17 @@ type Params = Promise<{ tenant: string }>;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
   const base = await getTenantSeoBase(slug);
-  return buildMetadata({ title: "Statistik Anggota", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/statistik` });
+  const override = await getPageSeoOverride(createTenantDb(slug), slug, "statistik");
+  return buildMetadata({
+    title:         override?.metaTitle || "Statistik Anggota",
+    description:   override?.metaDesc || undefined,
+    ogTitle:       override?.ogTitle || undefined,
+    ogDescription: override?.ogDescription || undefined,
+    siteName:      base.siteName,
+    ogImageUrl:    override?.ogImageUrl || base.logoUrl,
+    canonicalUrl:  `${base.baseUrl}/statistik`,
+    robots:        override?.robots || undefined,
+  });
 }
 
 // ─── Komponen visual ─────────────────────────────────────────────────────────

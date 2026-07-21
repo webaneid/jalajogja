@@ -271,14 +271,36 @@ merge dengan default yang sudah ada: `title: override?.metaTitle || "{title hard
 - 5 `generateMetadata` (post/agenda/campaign/dokumen archive + produk kategori) — baca
   `searchParams`, cek override kategori, merge dengan fallback
 
-### Fase 3 — Prinsip C (Page Overrides, paling besar)
-- Tabel baru `seo_page_overrides` (schema + DDL + migration)
-- `lib/get-page-seo-override.ts` (helper baru)
-- Halaman admin baru `/app/{slug}/settings/seo/` (page + actions + komponen dialog form)
+### Fase 3 — Prinsip C (Page Overrides, paling besar) ✅ SELESAI (2026-07-21)
+- Tabel baru `seo_page_overrides` (schema `packages/db/src/schema/tenant/seo.ts` + DDL step 39 +
+  migration `0039_seo_page_overrides.sql`)
+- `lib/seo-page-keys.ts` (daftar tetap 16 `pageKey`, client-safe, tanpa dependency DB) +
+  `lib/get-page-seo-override.ts` (helper server-only, resolve `ogImageId → ogImageUrl`)
+- Halaman admin baru `/app/{slug}/settings/seo/` (page + `seo-overrides-manage-client.tsx` — list
+  per grup + dialog form 6 field, pola `RolesManageClient`/`RoleDialog` dengan
+  `key={editingEntry.key}` untuk force-reset state saat ganti target) + 2 action baru
+  (`saveSeoPageOverrideAction`/`resetSeoPageOverrideAction`, upsert/delete via `onConflictDoUpdate`
+  pada `pageKey` unique)
 - Nav item baru "SEO" di sidebar Settings
-- 17 `generateMetadata` diupdate (11 arsip Kelas C § 2.5 sudah ada, tinggal tambah merge-logic +
-  6 halaman Grup 1 § 2.6 yang BARU dibuatkan `generateMetadata` dari nol: login, register,
-  forgot-password, reset-password, keranjang, checkout)
+- 16 `generateMetadata` diupdate: 10 arsip Kelas C yang sudah ada dapat merge-logic (post, produk,
+  campaign, agenda, dokumen, anggota, usaha, pesantren, profesional, statistik) + 6 halaman Grup 1
+  dibuatkan `generateMetadata` dari nol (login, register, forgot-password, reset-password,
+  keranjang, checkout)
+- `invoice/[id]` — `generateMetadata` baru, HANYA `robots: noindex` hardcode (bukan lewat sistem
+  override), sesuai § 3.4
+
+**Temuan saat eksekusi (2026-07-21):**
+1. **`/produk` arsip TERNYATA juga filter `?category=`** (di samping rute terpisah
+   `/produk/kategori/[slug]`) — kelewat saat riset Fase 2 karena `generateMetadata`-nya (beda dari
+   default export-nya) cuma terima `{ params }`, tidak `searchParams`, jadi tidak kelihatan dari
+   grep signature. Ditutup sekalian di sini — sekarang match kategori by slug seperti
+   agenda/campaign, sebelum jatuh ke override page-wide lalu fallback hardcode.
+2. **`forgot-password/page.tsx` dan `reset-password/page.tsx` adalah Client Component murni**
+   (`"use client"` di baris pertama) — `generateMetadata` TIDAK BISA di-export dari file yang
+   ditandai `"use client"` (Next.js menolak build). Fix: logic form diekstrak ke file client baru
+   (`forgot-password-form.tsx`/`reset-password-form.tsx`, terima `slug` sebagai prop, bukan
+   `use(params)`), `page.tsx` ditulis ulang jadi Server Component tipis (generateMetadata +
+   render form client). Perilaku form 100% tidak berubah — murni pemindahan lokasi kode.
 
 ---
 
@@ -316,8 +338,8 @@ merge dengan default yang sudah ada: `title: override?.metaTitle || "{title hard
 | Audit menyeluruh (dokumen ini) | ✅ Selesai (2026-07-21) |
 | Fase 1 — Dokumen | ✅ Selesai (2026-07-21) — migration `0037_documents_seo_columns.sql` |
 | Fase 2 — Taksonomi | ✅ Selesai (2026-07-21) — migration `0038_taxonomy_seo_columns.sql`. `/post` arsip TERNYATA belum punya filter kategori/tag sama sekali (gap terpisah, di luar scope) — dilewati. |
-| Fase 3 — Page Overrides | ⬜ Belum |
-| `invoice/[id]` noindex | ⬜ Belum |
+| Fase 3 — Page Overrides | ✅ Selesai (2026-07-21) — migration `0039_seo_page_overrides.sql`, halaman admin `/app/{slug}/settings/seo`, 16 `generateMetadata` diupdate (10 arsip + 6 Grup 1). Ditemukan sekalian: `/produk` arsip TERNYATA juga filter `?category=` (gap Fase 2 yang terlewat) — ditutup sekalian saat wiring Fase 3. |
+| `invoice/[id]` noindex | ✅ Selesai (2026-07-21) — hardcode langsung, bukan lewat sistem override. |
 
 ---
 

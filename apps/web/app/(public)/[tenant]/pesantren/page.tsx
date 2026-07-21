@@ -3,11 +3,13 @@ import { eq, and, inArray, ilike, count } from "drizzle-orm";
 import {
   db, members, tenants, tenantMemberships,
   memberOwnedPesantren, addresses, refProvinces, refRegencies,
+  createTenantDb,
 } from "@jalajogja/db";
 import Image     from "next/image";
 import Link      from "next/link";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata } from "next";
 import { School, MapPin } from "lucide-react";
 import { PublicButton }   from "@/components/website/public/ui/public-button";
@@ -34,7 +36,17 @@ const KATEGORI_OPTIONS = ["Putra", "Putra dan Putri", "Putri"] as const;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
   const base = await getTenantSeoBase(slug);
-  return buildMetadata({ title: "Direktori Pesantren", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/pesantren` });
+  const override = await getPageSeoOverride(createTenantDb(slug), slug, "pesantren-archive");
+  return buildMetadata({
+    title:         override?.metaTitle || "Direktori Pesantren",
+    description:   override?.metaDesc || undefined,
+    ogTitle:       override?.ogTitle || undefined,
+    ogDescription: override?.ogDescription || undefined,
+    siteName:      base.siteName,
+    ogImageUrl:    override?.ogImageUrl || base.logoUrl,
+    canonicalUrl:  `${base.baseUrl}/pesantren`,
+    robots:        override?.robots || undefined,
+  });
 }
 
 export default async function PesantrenDirectoryPage({

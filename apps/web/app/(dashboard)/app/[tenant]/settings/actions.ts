@@ -1141,3 +1141,61 @@ export async function activateUserDirectAction(
   revalidatePath(`/app/${slug}/settings/users`);
   return { success: true, name: data.name.trim() };
 }
+
+// ─── SEO PAGE OVERRIDES (Fase 3, docs/arsitektur-seo.md § 3.3) ────────────────
+
+export type SeoOverrideFormData = {
+  metaTitle?:     string;
+  metaDesc?:      string;
+  ogTitle?:       string;
+  ogDescription?: string;
+  ogImageId?:     string | null;
+  robots?:        "index,follow" | "noindex" | "noindex,nofollow" | null;
+};
+
+export async function saveSeoPageOverrideAction(
+  slug:    string,
+  pageKey: string,
+  values:  SeoOverrideFormData,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+
+  const row = {
+    metaTitle:     values.metaTitle?.trim()     || null,
+    metaDesc:      values.metaDesc?.trim()      || null,
+    ogTitle:       values.ogTitle?.trim()       || null,
+    ogDescription: values.ogDescription?.trim() || null,
+    ogImageId:     values.ogImageId || null,
+    robots:        values.robots || null,
+    updatedAt:     new Date(),
+  };
+
+  await tenantDb
+    .insert(schema.seoPageOverrides)
+    .values({ pageKey, ...row })
+    .onConflictDoUpdate({ target: schema.seoPageOverrides.pageKey, set: row });
+
+  revalidatePath(`/app/${slug}/settings/seo`);
+  return {};
+}
+
+export async function resetSeoPageOverrideAction(
+  slug:    string,
+  pageKey: string,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (!canManageUsers(access.tenantUser)) return { error: "Akses ditolak." };
+
+  const { db: tenantDb, schema } = createTenantDb(slug);
+  await tenantDb
+    .delete(schema.seoPageOverrides)
+    .where(eq(schema.seoPageOverrides.pageKey, pageKey));
+
+  revalidatePath(`/app/${slug}/settings/seo`);
+  return {};
+}

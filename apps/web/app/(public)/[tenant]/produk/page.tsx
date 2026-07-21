@@ -9,6 +9,7 @@ import type { ProductCardData, SessionType } from "@/lib/product-card-templates"
 import { PRODUCT_ARCHIVE_CARD_DESIGN_IDS, type ProductArchiveCardDesignId } from "@/lib/product-archive-card-designs";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata }                 from "next";
 import { ShoppingBag } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";
@@ -40,10 +41,42 @@ async function resolveSessionType(userId: string | undefined): Promise<SessionTy
 }
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────
-export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+// SEO Fase 2+3 (docs/arsitektur-seo.md § 3.2/3.3) — ditemukan saat wiring Fase 3: halaman ini
+// TERNYATA juga filter via ?category= (di samping rute terpisah /produk/kategori/[slug]) —
+// gap yang terlewat riset Fase 2. Category-level metaTitle/metaDesc menang kalau filter aktif,
+// selain itu jatuh ke override page-wide (Fase 3), lalu fallback hardcode lama.
+export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
   const { tenant: slug } = await params;
+  const { category }     = await searchParams;
   const base = await getTenantSeoBase(slug);
-  return buildMetadata({ title: "Produk", siteName: base.siteName, ogImageUrl: base.logoUrl, canonicalUrl: `${base.baseUrl}/produk` });
+  const tenantClient = createTenantDb(slug);
+
+  const override = await getPageSeoOverride(tenantClient, slug, "produk-archive");
+  let title       = override?.metaTitle || "Produk";
+  let description = override?.metaDesc || undefined;
+  let canonicalUrl = `${base.baseUrl}/produk`;
+
+  if (category) {
+    const { db: tenantDb, schema } = tenantClient;
+    const [cat] = await tenantDb
+      .select({ name: schema.productCategories.name, metaTitle: schema.productCategories.metaTitle, metaDesc: schema.productCategories.metaDesc })
+      .from(schema.productCategories).where(eq(schema.productCategories.slug, category)).limit(1);
+    if (cat) {
+      title        = cat.metaTitle || `${cat.name} — Produk ${base.siteName}`;
+      description  = cat.metaDesc || undefined;
+      canonicalUrl = `${base.baseUrl}/produk?category=${category}`;
+    }
+  }
+
+  return buildMetadata({
+    title, description,
+    ogTitle:       override?.ogTitle || undefined,
+    ogDescription: override?.ogDescription || undefined,
+    siteName:      base.siteName,
+    ogImageUrl:    override?.ogImageUrl || base.logoUrl,
+    canonicalUrl,
+    robots:        override?.robots || undefined,
+  });
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────

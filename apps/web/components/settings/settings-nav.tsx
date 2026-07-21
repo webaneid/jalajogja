@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   LayoutTemplate,
   Puzzle,
+  Search,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { label: "Pembayaran",      href: "payment",       icon: CreditCard     },
   { label: "Tampilan",        href: "display",       icon: Palette        },
   { label: "Website",         href: "website",       icon: LayoutTemplate },
+  { label: "SEO",             href: "seo",           icon: Search         },
   { label: "Email / SMTP",    href: "email",         icon: Mail           },
   { label: "Notifikasi",      href: "notifications", icon: Bell           },
   { label: "Pengguna",        href: "users",         icon: Users          },
