@@ -68,7 +68,7 @@ const SECTION_DEFAULTS: Record<SectionType, Record<string, unknown>> = {
   campaigns:    { title: "Donasi & Infaq", count: 6, categoryId: null, campaignType: null },
   gallery:      { title: "Galeri Foto", items: [] },
   about_text:   { title: "Tentang Kami", body: "", imageUrl: "", imagePosition: "right" },
-  features:     { title: "Keunggulan Kami", items: [] },
+  features:     { eyebrow: "", title: "Keunggulan Kami", headerDesc: "", titleAlign: "center", descPosition: "below", background: "light", width: "full", iconStyle: "plain", iconColor: "primary", iconShape: "square-radius", cardRadius: true, cardBackground: "white", highlightFirst: false, highlightColor: "primary", items: [] },
   cta:          { title: "", subtitle: "", ctaLabel: "Hubungi Kami", ctaUrl: "#", ctaSecondaryLabel: "", ctaSecondaryUrl: "", textAlign: "left", background: "secondary", width: "full", boxedRadius: true, buttonPosition: "below" },
   contact_info: {},
   stats:        { items: [] },

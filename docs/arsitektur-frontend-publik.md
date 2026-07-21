@@ -136,6 +136,15 @@ below/beside) adalah kombinasi bebas dalam satu layout, bukan struktur JSX berbe
 (baru, sebelumnya CTA cuma 1 tombol) pakai variant `PublicButton` baru `outline-light` (border
 `currentColor`, bukan CSS var tetap). **Dokumen detail penuh**: `docs/arsitektur-cta-section.md`.
 
+**Section Keunggulan/Layanan — tetap Design 1 tunggal, icon jadi picker sungguhan** (ditambahkan
+2026-07-22) — pola sama CTA (sub-opsi flat field, bukan Design 2). Field icon per-item yang
+sebelumnya `<Input>` emoji bebas diganti `<IconPicker>` (komponen baru, generik, siap dipakai
+section lain) — searchable grid dari katalog kurasi ~120 icon `lucide-react` (`lib/icon-
+catalog.ts`), BUKAN seluruh library (~1700+, terlalu berisik untuk konteks bisnis/layanan).
+**Dokumen detail penuh**: `docs/arsitektur-keunggulan-section.md` — termasuk peringatan penting:
+nama icon HARUS diverifikasi dulu terhadap `.d.ts` package yang terinstall, banyak nama populer
+di versi lucide-react lama (`CheckCircle2`, `BarChart3`, `HelpCircle`) sudah di-rename di v1.8.0.
+
 ---
 
 ## 5. Widget Area (Sidebar)

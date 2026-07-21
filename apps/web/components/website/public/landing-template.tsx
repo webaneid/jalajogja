@@ -21,6 +21,8 @@ import { PostsSectionTitle } from "@/components/website/public/sections/posts/po
 import { renderAccentTitle } from "@/lib/render-accent-title";
 import { stripTenantPrefix } from "@/lib/strip-tenant-prefix";
 import type { CtaSectionData } from "@/lib/cta-section-designs";
+import type { FeaturesSectionData } from "@/lib/features-section-designs";
+import { resolveIcon } from "@/lib/icon-catalog";
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
@@ -77,25 +79,109 @@ function AboutTextSection({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-type FeatureItem = { icon: string; title: string; desc: string };
-
+// Section Keunggulan/Layanan — tetap "Design 1" tunggal, sub-opsi flat field (title block,
+// background, width, gaya icon, gaya kartu, highlight item pertama). Arsitektur lengkap:
+// docs/arsitektur-keunggulan-section.md
 function FeaturesSection({ data }: { data: Record<string, unknown> }) {
-  const d = data as { title?: string; items?: FeatureItem[] };
+  const d = data as FeaturesSectionData;
   const items = d.items ?? [];
 
-  return (
-    <section className="py-14 px-4 bg-muted/40">
-      <div className="max-w-7xl mx-auto">
-        {d.title && <PostsSectionTitle title={d.title} className="justify-center text-center" />}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {items.map((item, i) => (
-            <div key={i} className="bg-white rounded-xl border border-border p-6">
-              {item.icon && <div className="text-3xl mb-3">{item.icon}</div>}
-              <h3 className="font-semibold mb-2">{item.title}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
-            </div>
-          ))}
+  const titleAlign     = d.titleAlign ?? "center";
+  const descPosition   = d.descPosition ?? "below";
+  const background     = d.background ?? "light";
+  const width           = d.width ?? "full";
+  const iconStyle       = d.iconStyle ?? "plain";
+  const iconColor       = d.iconColor ?? "primary";
+  const iconShape       = d.iconShape ?? "square-radius";
+  const cardRadius      = d.cardRadius ?? true;
+  const cardBackground  = d.cardBackground ?? "white";
+  const highlightFirst  = d.highlightFirst ?? false;
+  const highlightColor  = d.highlightColor ?? "primary";
+
+  const isBoxed  = width === "boxed";
+  const isBeside = descPosition === "beside";
+
+  const bgClass =
+    background === "primary"   ? "bg-primary text-primary-foreground" :
+    background === "secondary" ? "bg-secondary text-secondary-foreground" :
+    background === "white"     ? "bg-white" :
+    "bg-muted/40";
+
+  const textAlignCls  = titleAlign === "center" ? "text-center" : titleAlign === "right" ? "text-right" : "text-left";
+  const alignItemsCls = titleAlign === "center" ? "items-center" : titleAlign === "right" ? "items-end" : "items-start";
+
+  const hasHeader = !!(d.eyebrow || d.title || d.headerDesc);
+  const headerBlock = hasHeader && (
+    <div className={`flex flex-col mb-10 ${isBeside ? "md:flex-row md:items-start md:justify-between gap-8" : `${alignItemsCls} gap-2`}`}>
+      <div className={isBeside ? `flex-1 min-w-0 ${textAlignCls}` : `max-w-3xl ${textAlignCls}`}>
+        {d.eyebrow && <p className="text-xs font-semibold uppercase tracking-widest text-primary mb-2">{d.eyebrow}</p>}
+        {d.title && <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold leading-tight tracking-tight">{d.title}</h2>}
+        {!isBeside && d.headerDesc && <p className="text-base opacity-80 leading-relaxed mt-3">{d.headerDesc}</p>}
+      </div>
+      {isBeside && d.headerDesc && (
+        <p className="text-base opacity-80 leading-relaxed md:max-w-sm md:pt-1">{d.headerDesc}</p>
+      )}
+    </div>
+  );
+
+  const iconBoxShapeCls =
+    iconShape === "rounded" ? "rounded-full" :
+    iconShape === "square"  ? "rounded-none" :
+    "rounded-xl";
+
+  const itemsGrid = (
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {items.map((item, i) => {
+        const isHighlighted = highlightFirst && i === 0;
+        const cardFillCls = isHighlighted
+          ? (highlightColor === "secondary" ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground")
+          : (cardBackground === "white" ? "bg-white" : "bg-transparent");
+        const Icon = resolveIcon(item.icon);
+
+        const iconNode = iconStyle === "colored" ? (
+          <div className={`inline-flex h-12 w-12 items-center justify-center mb-4 ${iconBoxShapeCls} ${
+            iconColor === "secondary" ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"
+          }`}>
+            <Icon className="h-6 w-6" />
+          </div>
+        ) : (
+          <Icon className={`h-8 w-8 mb-4 ${isHighlighted ? "" : "text-primary"}`} />
+        );
+
+        return (
+          <div
+            key={i}
+            className={`p-6 border border-border ${cardRadius ? "rounded-xl" : "rounded-none"} ${cardFillCls}`}
+          >
+            {iconNode}
+            {item.title && <h3 className="font-semibold mb-2">{item.title}</h3>}
+            {item.desc && (
+              <p className={`text-sm leading-relaxed ${isHighlighted ? "opacity-85" : "text-muted-foreground"}`}>
+                {item.desc}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  if (isBoxed) {
+    return (
+      <section className="px-4 py-14">
+        <div className={`max-w-7xl mx-auto px-6 py-12 sm:px-10 sm:py-14 rounded-3xl shadow-sm ${bgClass}`}>
+          {headerBlock}
+          {itemsGrid}
         </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className={`py-14 px-4 ${bgClass}`}>
+      <div className="max-w-7xl mx-auto">
+        {headerBlock}
+        {itemsGrid}
       </div>
     </section>
   );
@@ -149,14 +235,14 @@ function CtaSection({ data, baseUrl, tenantSlug }: { data: Record<string, unknow
 
   const content = (
     <div className={`relative flex flex-col ${isBeside ? "md:flex-row md:items-center md:justify-between gap-8" : `${alignItemsCls} gap-4`}`}>
-      <div className={isBeside ? `flex-1 min-w-0 ${textAlignCls}` : textAlignCls}>
+      <div className={`${isBeside ? "flex-1 min-w-0" : "max-w-4xl"} ${textAlignCls}`}>
         {d.title && (
-          <h2 className={`text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-bold leading-[1.1] tracking-tight mb-4 ${!isBeside ? "max-w-[900px]" : ""}`}>
+          <h2 className="text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-bold leading-[1.1] tracking-tight mb-4">
             {renderAccentTitle(d.title)}
           </h2>
         )}
         {d.subtitle && (
-          <p className={`text-lg opacity-85 leading-relaxed ${!isBeside ? "max-w-xl" : ""}`}>
+          <p className="text-lg opacity-85 leading-relaxed">
             {d.subtitle}
           </p>
         )}

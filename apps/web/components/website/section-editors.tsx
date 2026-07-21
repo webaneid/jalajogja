@@ -38,6 +38,20 @@ import {
   CTA_BUTTON_POSITION_IDS, CTA_BUTTON_POSITION_LABELS,
   type CtaSectionData,
 } from "@/lib/cta-section-designs";
+import {
+  FEATURES_TITLE_ALIGN_IDS, FEATURES_TITLE_ALIGN_LABELS,
+  FEATURES_DESC_POSITION_IDS, FEATURES_DESC_POSITION_LABELS,
+  FEATURES_BACKGROUND_IDS, FEATURES_BACKGROUND_LABELS,
+  FEATURES_WIDTH_IDS, FEATURES_WIDTH_LABELS,
+  FEATURES_ICON_STYLE_IDS, FEATURES_ICON_STYLE_LABELS,
+  FEATURES_ICON_COLOR_IDS, FEATURES_ICON_COLOR_LABELS,
+  FEATURES_ICON_SHAPE_IDS, FEATURES_ICON_SHAPE_LABELS,
+  FEATURES_CARD_BACKGROUND_IDS, FEATURES_CARD_BACKGROUND_LABELS,
+  FEATURES_HIGHLIGHT_COLOR_IDS, FEATURES_HIGHLIGHT_COLOR_LABELS,
+  type FeaturesSectionData, type FeatureItem,
+} from "@/lib/features-section-designs";
+import { IconPicker } from "@/components/ui/icon-picker";
+import { DEFAULT_ICON_NAME } from "@/lib/icon-catalog";
 
 type EditorProps = {
   data:             Record<string, unknown>;
@@ -606,30 +620,93 @@ function AboutTextEditor({ data, onChange, tenantSlug }: EditorProps) {
 }
 
 // ── Features ──────────────────────────────────────────────────────────────────
-
-type FeatureItem = { icon: string; title: string; desc: string };
+// Sub-opsi kompak (title block/background/lebar/gaya icon/gaya kartu) — bukan picker "Design
+// Layout" penuh, Keunggulan/Layanan tetap Design 1 tunggal. Lihat docs/arsitektur-keunggulan-section.md
 
 function FeaturesEditor({ data, onChange }: EditorProps) {
-  const d = data as { title?: string; items?: FeatureItem[] };
+  const d = data as FeaturesSectionData;
   const items: FeatureItem[] = d.items ?? [];
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const updateItems = (arr: FeatureItem[]) => u("items", arr);
 
+  const titleAlign     = d.titleAlign ?? "center";
+  const descPosition   = d.descPosition ?? "below";
+  const background     = d.background ?? "light";
+  const width           = d.width ?? "full";
+  const iconStyle       = d.iconStyle ?? "plain";
+  const iconColor       = d.iconColor ?? "primary";
+  const iconShape       = d.iconShape ?? "square-radius";
+  const cardRadius      = d.cardRadius ?? true;
+  const cardBackground  = d.cardBackground ?? "white";
+  const highlightFirst  = d.highlightFirst ?? false;
+  const highlightColor  = d.highlightColor ?? "primary";
+
   return (
     <div className="space-y-3">
-      <Field label="Judul Section">
+      <Field label="Judul Kecil (eyebrow, opsional)">
+        <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="FUTURE PAYMENT" />
+      </Field>
+      <Field label="Judul Besar (opsional)">
         <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Keunggulan Kami" />
       </Field>
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Item (maks 6)</Label>
+      <Field label="Deskripsi (opsional)">
+        <Textarea value={d.headerDesc ?? ""} onChange={(e) => u("headerDesc", e.target.value)} placeholder="Kalimat pendukung..." rows={2} />
+      </Field>
+
+      <OptionRow label="Posisi Judul" ids={FEATURES_TITLE_ALIGN_IDS} labels={FEATURES_TITLE_ALIGN_LABELS}
+        value={titleAlign} onChange={(v) => u("titleAlign", v)} />
+      <OptionRow label="Posisi Deskripsi" ids={FEATURES_DESC_POSITION_IDS} labels={FEATURES_DESC_POSITION_LABELS}
+        value={descPosition} onChange={(v) => u("descPosition", v)} />
+      <OptionRow label="Background Section" ids={FEATURES_BACKGROUND_IDS} labels={FEATURES_BACKGROUND_LABELS}
+        value={background} onChange={(v) => u("background", v)} />
+      <OptionRow label="Lebar" ids={FEATURES_WIDTH_IDS} labels={FEATURES_WIDTH_LABELS}
+        value={width} onChange={(v) => u("width", v)} />
+
+      <div className="border-t border-border pt-3 space-y-3">
+        <Label className="text-xs font-medium">Gaya Icon</Label>
+        <OptionRow label="Tampilan Icon" ids={FEATURES_ICON_STYLE_IDS} labels={FEATURES_ICON_STYLE_LABELS}
+          value={iconStyle} onChange={(v) => u("iconStyle", v)} />
+        {iconStyle === "colored" && (
+          <>
+            <OptionRow label="Warna Icon" ids={FEATURES_ICON_COLOR_IDS} labels={FEATURES_ICON_COLOR_LABELS}
+              value={iconColor} onChange={(v) => u("iconColor", v)} />
+            <OptionRow label="Bentuk Background Icon" ids={FEATURES_ICON_SHAPE_IDS} labels={FEATURES_ICON_SHAPE_LABELS}
+              value={iconShape} onChange={(v) => u("iconShape", v)} />
+          </>
+        )}
+      </div>
+
+      <div className="border-t border-border pt-3 space-y-3">
+        <Label className="text-xs font-medium">Gaya Kartu Item</Label>
+        <Field label="Sudut Kartu">
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input type="checkbox" checked={cardRadius} onChange={(e) => u("cardRadius", e.target.checked)} className="w-4 h-4 accent-primary" />
+            <span className="text-xs">Sudut membulat (rounded)</span>
+          </label>
+        </Field>
+        <OptionRow label="Background Kartu" ids={FEATURES_CARD_BACKGROUND_IDS} labels={FEATURES_CARD_BACKGROUND_LABELS}
+          value={cardBackground} onChange={(v) => u("cardBackground", v)} />
+        <Field label="Highlight Item Pertama">
+          <label className="flex items-center gap-2.5 cursor-pointer mb-2">
+            <input type="checkbox" checked={highlightFirst} onChange={(e) => u("highlightFirst", e.target.checked)} className="w-4 h-4 accent-primary" />
+            <span className="text-xs">Item pertama diberi warna khusus (menonjol dari item lain)</span>
+          </label>
+          {highlightFirst && (
+            <OptionRow label="Warna Highlight" ids={FEATURES_HIGHLIGHT_COLOR_IDS} labels={FEATURES_HIGHLIGHT_COLOR_LABELS}
+              value={highlightColor} onChange={(v) => u("highlightColor", v)} />
+          )}
+        </Field>
+      </div>
+
+      <div className="space-y-2 border-t border-border pt-3">
+        <Label className="text-xs text-muted-foreground">Item Layanan (maks 6)</Label>
         {items.map((item, i) => (
           <div key={i} className="border rounded-lg p-2 space-y-1.5">
             <div className="flex items-center gap-2">
-              <Input
+              <IconPicker
                 value={item.icon}
-                onChange={(e) => { const n=[...items]; n[i]={...item,icon:e.target.value}; updateItems(n); }}
-                placeholder="Emoji ikon, mis. ⭐"
-                className="w-20 h-7 text-xs text-center"
+                onChange={(name) => { const n=[...items]; n[i]={...item,icon:name}; updateItems(n); }}
+                className="w-32 h-7 shrink-0 text-xs"
               />
               <Input
                 value={item.title}
@@ -649,7 +726,7 @@ function FeaturesEditor({ data, onChange }: EditorProps) {
         ))}
         {items.length < 6 && (
           <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 text-xs"
-            onClick={() => updateItems([...items, { icon: "⭐", title: "", desc: "" }])}>
+            onClick={() => updateItems([...items, { icon: DEFAULT_ICON_NAME, title: "", desc: "" }])}>
             <PlusIcon className="h-3.5 w-3.5" /> Tambah Item
           </Button>
         )}

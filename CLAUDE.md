@@ -8898,17 +8898,94 @@ sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB — murn
 kolom `pages.body` yang sudah ada. Belum diverifikasi visual di browser — user perlu cek kombinasi
 axis di `/app/{slug}/website/pengaturan` setelah deploy.
 
+### [2026-07-22] Section Keunggulan/Layanan — 5 Axis + Icon Picker Baru dari Nol
+
+> Detail lengkap: **`docs/arsitektur-keunggulan-section.md`**
+
+Lanjutan langsung dari CTA (sesi yang sama) — user tegaskan ulang prinsip umum sebelum mulai:
+"semua sections di landingpage terdiri dari sections, yang mana masing-masing section memiliki
+design bermacam-macam" — prolog yang berlaku untuk SEMUA section landing page ke depan, dicatat
+di `docs/arsitektur-keunggulan-section.md` § 1 supaya tidak diulang tiap sesi baru. Tetap Design 1
+tunggal (pola sama CTA), bukan Design 2 terpisah.
+
+**Field icon sebelumnya `<Input>` teks bebas** (admin ketik emoji manual, mis. `⭐`) — diganti
+total jadi `<IconPicker>` (komponen baru, generik, `components/ui/icon-picker.tsx`), searchable
+grid dari katalog kurasi `lib/icon-catalog.ts`. **1 pertanyaan blocking ditanyakan via
+`AskUserQuestion`** sebelum eksekusi: kurasi ~100-150 icon relevan vs expose seluruh
+`lucide-react` (~1700+). User pilih kurasi — alasan: mayoritas icon full library tidak relevan
+konteks bisnis/layanan (bahasa pemrograman, medis spesifik, dll), dan search UI jadi berat/
+berisik kalau semua di-expose.
+
+**Bug dicegah SEBELUM ditulis, bukan ditemukan setelah build gagal**: sebelum menulis katalog
+~120 icon dari memori/asumsi nama, SETIAP nama diverifikasi dulu terhadap `.d.ts` package yang
+BENAR-BENAR terinstall (`lucide-react@1.8.0`) — ternyata banyak nama icon populer di versi lama
+yang saya kira masih ada TERNYATA sudah di-rename di versi ini: `CheckCircle2`→`CircleCheck`,
+`BarChart3`→`ChartBar`, `HelpCircle` tidak ada penggantinya persis, `Filter`→`ListFilter`,
+`PieChart`→`ChartPie`, `LineChart`→`ChartLine`, `Fingerprint`→`FingerprintPattern`. Verifikasi:
+dump SELURUH ~1698 nama export dari `node_modules/.../lucide-react/dist/lucide-react.d.ts` ke
+satu file referensi (`grep -oE "^declare const [A-Za-z0-9]+:"`), baru pilih icon DARI daftar itu
+— bukan menebak lalu menunggu `tsc` menangkap typo satu-satu. **Aturan untuk penambahan icon
+baru ke katalog ke depan**: SELALU verifikasi dulu dengan cara yang sama — jangan asumsikan nama
+icon dari familiaritas versi lain/project lain.
+
+**UI grid, bukan list vertikal**: `Command`/`CommandGroup` (shadcn/cmdk) secara default merender
+list vertikal — dipaksa jadi grid 7 kolom per kategori via Tailwind arbitrary selector
+`[&_[cmdk-group-items]]:grid` pada `className` `CommandGroup` (cmdk merender wrapper internal
+`[cmdk-group-items]` yang tidak bisa ditarget langsung lewat prop biasa, cuma lewat selector
+turunan — pola yang SUDAH dipakai `CommandDialog` di file yang sama untuk override cmdk internal
+lain, jadi bukan hack baru, cuma diperluas). **Search dua lapis**: `CommandItem value={name +
+" " + keywords}` — `keywords` adalah sinonim Bahasa Indonesia per icon (`DollarSign` → "uang mata
+uang dolar rupiah") supaya admin non-teknis bisa ketik "uang" dan tetap ketemu icon relevan,
+bukan cuma nama Inggris literal. `onSelect` pakai closure (bukan parameter balik cmdk) — pola
+yang SAMA PERSIS dengan lesson lama "Combobox generik cari berdasar UUID" (value cmdk untuk
+search, resolusi via closure) — ditegakkan ulang karena file BARU, bug lama gampang terulang
+kalau lupa polanya.
+
+**Resolusi render `resolveIcon(name)`**: nama tak dikenal (termasuk EMOJI LAMA dari data
+pre-existing) fallback ke `DEFAULT_ICON_NAME="CircleCheck"` — TIDAK crash, TIDAK kosong, cuma
+diam-diam ganti jadi icon default. Ini SATU-SATUNYA titik non-backward-compat di seluruh
+perubahan — didokumentasikan eksplisit sebagai trade-off yang diterima (emoji dan nama-icon-
+string secara struktural tidak bisa dipetakan otomatis), BUKAN kelupaan.
+
+**5 axis lain** (title block 3-field opsional + align + posisi desc below/beside, background
+4-pilihan, lebar full/boxed, gaya icon plain/colored+warna+bentuk, gaya kartu radius+background+
+highlight-item-pertama) — semua default dipilih untuk **PERSIS mereplikasi tampilan lama**
+(backward compat penuh kecuali icon): `titleAlign:"center"` (dulu hardcode center),
+`background:"light"` (dulu `bg-muted/40` hardcode), `iconStyle:"plain"` (dulu bare emoji tanpa
+container), `cardRadius:true`+`cardBackground:"white"` (dulu `rounded-xl border bg-white`
+hardcode). Section existing manapun (data lama tanpa field-field baru ini) resolve ke tampilan
+SAMA PERSIS via `?? "<default>"` — nol migrasi data.
+
+**`OptionRow` (dibuat untuk CTA) di-reuse langsung** tanpa modifikasi — generik `<T extends
+string>`, bukti nyata manfaat menulis helper generik sejak awal alih-alih duplikasi per section.
+
+**Verifikasi**: `tsc --noEmit` bersih (termasuk verifikasi ~120 import icon-catalog.ts nol typo
+sejak percobaan pertama, berkat verifikasi nama di muka) + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB. Belum diverifikasi
+visual di browser — user perlu cek kombinasi axis DAN icon picker (search, grid, seleksi) di
+section builder setelah deploy.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Section CTA — 4 axis sub-opsi + tombol kedua** (lihat lesson di atas) —
+- Terakhir dikerjakan: **Section Keunggulan/Layanan — 5 axis + Icon Picker baru** (lihat lesson
+  di atas) — tetap "Design 1" tunggal. Field icon (dulu `<Input>` emoji bebas) diganti
+  `<IconPicker>` baru (`components/ui/icon-picker.tsx`) — grid searchable dari `lib/icon-catalog.ts`
+  (~120 icon kurasi, SEMUA diverifikasi manual terhadap `.d.ts` lucide-react@1.8.0 yang benar-
+  benar terinstall — banyak nama populer versi lama sudah di-rename). `lib/features-section-
+  designs.ts` baru (`FeaturesSectionData` + 9 registry axis). Semua default dipilih untuk PERSIS
+  mereplikasi tampilan lama (backward compat penuh KECUALI icon — emoji lama fallback diam-diam
+  ke icon default, satu-satunya titik non-backward-compat, didokumentasikan eksplisit). `tsc`+
+  build bersih. Nol migrasi DB. **Belum di-commit/push** (menunggu checkpoint ini — akan digabung
+  1 commit dengan fix lebar CTA di bawah), **belum diverifikasi visual di browser**.
+- Sesi sebelumnya: **Section CTA — 4 axis sub-opsi + tombol kedua** (lihat lesson di atas) —
   tetap "Design 1" tunggal (bukan Design 2 baru, keputusan eksplisit user). `lib/cta-section-
   designs.ts` baru (`CtaSectionData` + 4 registry axis: textAlign/background/width/buttonPosition),
   variant `PublicButton` baru `outline-light` (border `currentColor`, bukan CSS var tetap) untuk
   tombol kedua yang sebelumnya tidak ada, judul disamakan persis Hero Design 1
   (`text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-bold`, ganti dari inline `clamp()` lama).
-  `CtaSection` (landing-template.tsx) dan `CtaEditor` (section-editors.tsx) ditulis ulang, helper
-  `OptionRow` baru untuk 4 toggle kompak. `tsc`+build bersih. Nol migrasi DB. **Belum di-commit/
-  push** (menunggu checkpoint ini), **belum diverifikasi visual di browser** — user perlu cek
-  kombinasi axis di section builder setelah deploy.
+  **Sudah di-commit+push** (`e0fe345`). **Fix susulan (BELUM commit/push)**: `h2`(`max-w-[900px]`)
+  dan `p`(`max-w-xl`) sebelumnya punya batas lebar independen — saat `textAlign=center` kedua blok
+  terlihat beda lebar (inkonsisten). Diperbaiki: satu `max-w-4xl` bersama di div wrapper, individual
+  max-w dihapus dari h2/p — akan digabung ke commit checkpoint berikutnya bersama Features di atas.
 - Sesi sebelumnya: **Fase 3 SEO — Tabel `seo_page_overrides` + Halaman Admin Baru** (lihat
   lesson di atas) — tabel tenant-scoped baru (migration `0039`), `lib/seo-page-keys.ts` (16
   pageKey tetap) + `lib/get-page-seo-override.ts` (helper server-only), halaman admin baru
