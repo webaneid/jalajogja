@@ -57,6 +57,20 @@ export default async function DokumenEdit({
         tags:             doc.tags ?? [],
         currentFileName:  currentVersion?.fileName ?? null,
         currentMimeType:  currentVersion?.mimeType ?? null,
+        seo: {
+          metaTitle:      doc.metaTitle      ?? "",
+          metaDesc:       doc.metaDesc       ?? "",
+          focusKeyword:   doc.focusKeyword   ?? "",
+          ogTitle:        doc.ogTitle        ?? "",
+          ogDescription:  doc.ogDescription  ?? "",
+          ogImageId:      doc.ogImageId      ?? null,
+          ogImageUrl:     null,
+          twitterCard:    (doc.twitterCard   ?? "summary_large_image") as "summary" | "summary_large_image",
+          canonicalUrl:   doc.canonicalUrl   ?? "",
+          robots:         (doc.robots        ?? "index,follow") as "index,follow" | "noindex" | "noindex,nofollow",
+          schemaType:     doc.schemaType     ?? "WebPage",
+          structuredData: "",
+        },
       }}
     />
   );

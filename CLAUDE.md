@@ -8639,13 +8639,77 @@ form).
 diverifikasi visual** (belum coba browsing sebagai member lintas-tenant untuk lihat warna kartu
 berubah sesuai skenario) — perlu dicoba user.
 
+### [2026-07-21] Arsitektur SEO Menyeluruh — Audit 3 Kelas Halaman + Fase 1 (Dokumen) Selesai
+
+> Arsitektur lengkap: **`docs/arsitektur-seo.md`** (ditulis ulang total — sebelumnya cuma catatan
+> bug lama, sekarang jadi peta lengkap cakupan SEO seluruh aplikasi)
+
+**Permintaan user**: audit menyeluruh — cari halaman yang belum punya custom SEO (title/
+description hardcode), rancang arsitektur dulu SEBELUM eksekusi, dengan pembedaan eksplisit:
+konten yang sudah punya form create/edit (post/produk/campaign/kategori) → SEO field di tempat
+itu juga; halaman tanpa konteks (login, registrasi) → pengaturan SEO terpisah di admin.
+
+**Riset via 2 Explore agent paralel** (audit `generateMetadata` di semua `page.tsx` publik +
+audit `SeoPanel`/kolom SEO skema DB) menemukan struktur 3 kelas halaman:
+- **Kelas A** (konten bertabel, form sudah ada) — 5 tabel SUDAH lengkap: `posts`, `pages`,
+  `products`, `events`, `campaigns` (11 kolom SEO + `<SeoPanel>` di form masing-masing). **Gap**:
+  modul Dokumen (`documents`) — NOL kolom SEO, `dokumen-form.tsx` nol baris kode SEO, halaman
+  publik `dokumen/view/[id]/page.tsx` bahkan TIDAK PUNYA `generateMetadata` sama sekali meski
+  publik by design (`visibility="public"`).
+- **Kelas B** (taksonomi/kategori) — 6 tabel (`post_categories`, `post_tags`,
+  `product_categories`, `event_categories`, `campaign_categories`, `document_categories`) NOL
+  kolom SEO sama sekali. Post/Event/Campaign/Dokumen filter kategori via QUERY PARAM di halaman
+  arsip yang SAMA (bukan rute terpisah) — hanya Produk yang punya rute kategori sendiri
+  (`/produk/kategori/[slug]`).
+- **Kelas C** (halaman statis tanpa "rumah") — 11 halaman arsip dengan title HARDCODE
+  ("Berita & Artikel", "Direktori Anggota", dst) + **30 halaman TANPA `generateMetadata` sama
+  sekali** (login, register, forgot-password, checkout, keranjang, invoice, seluruh `akun/*`,
+  invite, sign, verify) — semua warisan title generik `{siteName}` dari `layout.tsx`, tanpa
+  description apa pun.
+
+**Prinsip inti yang dikunci**: field SEO hidup DI TEMPAT admin sudah edit kontennya (Kelas A/B) —
+JANGAN bikin halaman "Custom SEO" terpisah untuk konten yang sudah punya form sendiri, itu
+duplikasi UX. Halaman pengaturan SEO terpisah (tabel baru `seo_page_overrides` + admin page baru
+`/app/{slug}/settings/seo`, direncanakan Fase 3) HANYA untuk halaman yang genuinely tidak punya
+baris DB pemilik.
+
+**3 keputusan dikonfirmasi user** (via `AskUserQuestion`): (1) eksekusi berurutan Fase 1→2→3,
+verifikasi tiap fase; (2) entitas milik-anggota (`member_businesses`/`member_owned_pesantren`/
+`member_professionals`, self-service `/akun/usaha` dst) **dibiarkan tanpa SeoPanel** — form
+dipakai anggota non-teknis, SeoPanel 3-tab akan membingungkan, tidak sepadan manfaatnya untuk
+konten self-reported; (3) `invoice/[id]` dapat `robots: noindex` sebagai perbaikan kecil
+terpisah (bukan bagian sistem override).
+
+**Fase 1 (Dokumen) — SELESAI**: 11 kolom SEO ditambah ke `documents` (schema + DDL + migration
+`0037_documents_seo_columns.sql`, pola persis disalin dari `events.ts` — termasuk FK
+`og_image_id → media(id) ON DELETE SET NULL`, CHECK constraint `twitter_card`/`robots`). `"document"`
+ditambah ke union `contentType` SeoPanel + `SCHEMA_ORG_TYPES.document = ["WebPage",
+"DigitalDocument"]`. `<SeoPanel contentType="document">` dipasang di `dokumen-form.tsx` (posisi:
+akhir kolom Main, setelah `MediaPicker`, sebelum Sidebar — pola sama campaign/event). `actions.ts`
+(`createDocumentAction`/`updateDocumentAction`) + kedua `page.tsx` (new/edit) diupdate meneruskan
+field SEO, pola identik `campaign-form.tsx`'s `buildData()` (flat fields, bukan nested `seo:{}`
+saat dikirim ke server action). `dokumen/view/[id]/page.tsx` dapat `generateMetadata` BARU dari
+nol (sebelumnya nihil) — resolve `ogImageId → media` (fallback `base.logoUrl` kalau kosong),
+guard `doc.visibility !== "public" → return {}` (dokumen internal tidak pernah bocorkan metadata).
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package + `bun run build` sukses (dev server
+dimatikan dulu, `.next` dibersihkan). Migration `0037` dijalankan di lokal, 11 kolom + FK + 2
+CHECK constraint dikonfirmasi via `\d`. **Belum dijalankan di VPS.**
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Resolusi Warna Kartu Anggota** (lihat lesson di atas) —
+- Terakhir dikerjakan: **Arsitektur SEO Menyeluruh + Fase 1 (Dokumen)** (lihat lesson di atas) —
+  `docs/arsitektur-seo.md` ditulis ulang total (3 kelas halaman, audit lengkap via 2 Explore
+  agent). Fase 1 SELESAI: 11 kolom SEO di `documents` (migration `0037`), `SeoPanel` dipasang di
+  `dokumen-form.tsx`, `generateMetadata` baru di `dokumen/view/[id]/page.tsx`. `tsc`+build bersih,
+  migration jalan di lokal. **Belum di-commit/push** (menunggu Fase 2+3 atau checkpoint
+  berikutnya), **belum dijalankan di VPS**. Fase 2 (taksonomi 6 tabel) dan Fase 3 (page overrides
+  + halaman admin baru) BELUM dikerjakan — lanjutkan sesuai roadmap di `docs/arsitektur-seo.md`.
+- Sesi sebelumnya: **Resolusi Warna Kartu Anggota** (lihat lesson di atas) —
   `resolveAkunBranding()` diperluas dengan `primaryColor`, `MemberCard` override CSS var
   `--primary`/`--primary-foreground` LOKAL via inline `style` (bukan ikut tema page-wide
   `.public-layout`). Kolom baru `platform_settings.default_color` (migration `0036`) + color
-  picker di `/platform/settings`. `tsc`+build bersih, migration jalan di lokal. **Belum
-  di-commit/push, belum diverifikasi visual.**
+  picker di `/platform/settings`. `tsc`+build bersih, migration jalan di lokal, sudah di-commit
+  dan di-push (`df2f62b`).
 - Sesi sebelumnya: **Image System Phase D3 — Guard Upscale** (lihat lesson di atas) — fix
   bug logo/favicon dipaksa upscale+crop ke ukuran variant konten (large 1200×630, dst).
   `fitsWithoutUpscale()` baru di `lib/image-processor.ts`, 2 route upload disesuaikan

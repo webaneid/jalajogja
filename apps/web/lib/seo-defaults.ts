@@ -59,4 +59,5 @@ export const SCHEMA_ORG_TYPES = {
   product:  ["Product", "SoftwareApplication"] as const,
   campaign: ["WebPage", "Event", "DonateAction"] as const,
   event:    ["Event", "WebPage"] as const,
+  document: ["WebPage", "DigitalDocument"] as const,
 } as const;

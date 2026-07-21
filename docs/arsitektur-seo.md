@@ -300,7 +300,7 @@ merge dengan default yang sudah ada: `title: override?.metaTitle || "{title hard
 | Fase | Status |
 |---|---|
 | Audit menyeluruh (dokumen ini) | ✅ Selesai (2026-07-21) |
-| Fase 1 — Dokumen | ⬜ Belum |
+| Fase 1 — Dokumen | ✅ Selesai (2026-07-21) — migration `0037_documents_seo_columns.sql` |
 | Fase 2 — Taksonomi | ⬜ Belum |
 | Fase 3 — Page Overrides | ⬜ Belum |
 | `invoice/[id]` noindex | ⬜ Belum |

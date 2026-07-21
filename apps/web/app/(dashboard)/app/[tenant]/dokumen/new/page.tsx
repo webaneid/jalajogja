@@ -34,6 +34,11 @@ export default async function DokumenNew({
         categoryId:  null,
         visibility:  "internal",
         tags:        [],
+        seo: {
+          metaTitle: "", metaDesc: "", focusKeyword: "", ogTitle: "", ogDescription: "",
+          ogImageId: null, ogImageUrl: null, twitterCard: "summary_large_image",
+          canonicalUrl: "", robots: "index,follow", schemaType: "WebPage", structuredData: "",
+        },
       }}
     />
   );

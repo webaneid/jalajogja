@@ -810,7 +810,20 @@ export async function createTenantSchemaInDb(
         tags               TEXT[]      NOT NULL DEFAULT '{}',
         created_by         UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
         created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        meta_title         TEXT,
+        meta_desc          TEXT,
+        og_title           TEXT,
+        og_description     TEXT,
+        og_image_id        UUID        REFERENCES "${s}".media(id) ON DELETE SET NULL,
+        twitter_card       TEXT        DEFAULT 'summary_large_image'
+                                       CHECK (twitter_card IN ('summary','summary_large_image')),
+        focus_keyword      TEXT,
+        canonical_url      TEXT,
+        robots             TEXT        NOT NULL DEFAULT 'index,follow'
+                                       CHECK (robots IN ('index,follow','noindex','noindex,nofollow')),
+        schema_type        TEXT        NOT NULL DEFAULT 'WebPage',
+        structured_data    JSONB
       )
     `));
 

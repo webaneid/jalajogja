@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
+import { SeoPanel } from "@/components/seo/seo-panel";
+import type { SeoValues } from "@/components/seo/seo-panel";
 import {
   createDocumentAction,
   updateDocumentAction,
@@ -39,6 +41,7 @@ export type DokumenFormProps = {
     // File versi aktif (hanya untuk edit)
     currentFileName?: string | null;
     currentMimeType?: string | null;
+    seo: SeoValues;
   };
 };
 
@@ -105,6 +108,7 @@ export function DokumenForm({ slug, documentId, categories, initialData }: Dokum
   const [categoryId,  setCategoryId]  = useState<string | null>(initialData.categoryId);
   const [visibility,  setVisibility]  = useState<"internal" | "public">(initialData.visibility);
   const [tags,        setTags]        = useState<string[]>(initialData.tags);
+  const [seo,         setSeo]         = useState<SeoValues>(initialData.seo);
 
   // File (hanya untuk create, atau upload versi baru di halaman detail)
   const [selectedFile, setSelectedFile] = useState<MediaItem | null>(null);
@@ -127,10 +131,23 @@ export function DokumenForm({ slug, documentId, categories, initialData }: Dokum
     if (!title.trim()) { setError("Judul wajib diisi."); return; }
     if (!isEdit && !selectedFile) { setError("File wajib diunggah."); return; }
 
+    const seoFields = {
+      metaTitle:     seo.metaTitle     || null,
+      metaDesc:      seo.metaDesc      || null,
+      ogTitle:       seo.ogTitle       || null,
+      ogDescription: seo.ogDescription || null,
+      ogImageId:     seo.ogImageId     ?? null,
+      twitterCard:   seo.twitterCard   as "summary" | "summary_large_image" | null,
+      focusKeyword:  seo.focusKeyword  || null,
+      canonicalUrl:  seo.canonicalUrl  || null,
+      robots:        seo.robots        as "index,follow" | "noindex" | "noindex,nofollow",
+      schemaType:    seo.schemaType    || "WebPage",
+    };
+
     startTransition(async () => {
       if (isEdit) {
         const res = await updateDocumentAction(slug, documentId, {
-          title, description: description || null, categoryId, visibility, tags,
+          title, description: description || null, categoryId, visibility, tags, ...seoFields,
         });
         if (!res.success) { setError(res.error); return; }
         router.push(`/app/${slug}/dokumen/${documentId}`);
@@ -146,6 +163,7 @@ export function DokumenForm({ slug, documentId, categories, initialData }: Dokum
           fileSize:     selectedFile!.size ?? null,
           mimeType:     selectedFile!.mimeType ?? null,
           versionNotes: versionNotes || null,
+          ...seoFields,
         };
         const res = await createDocumentAction(slug, data);
         if (!res.success) { setError(res.error); return; }
@@ -287,6 +305,18 @@ export function DokumenForm({ slug, documentId, categories, initialData }: Dokum
             onClose={() => setPickerOpen(false)}
             onSelect={handleFileSelect}
             accept={["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]}
+          />
+
+          {/* SEO — relevan terutama saat visibility="public" (halaman publik
+              /dokumen/view/[id]), tapi tetap ditampilkan agar siap kalau visibility
+              diubah nanti. Lihat docs/arsitektur-seo.md § 3.1. */}
+          <SeoPanel
+            slug={slug}
+            contentType="document"
+            title={title}
+            content={description}
+            values={seo}
+            onChange={setSeo}
           />
         </div>
 

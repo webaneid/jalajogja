@@ -3,6 +3,63 @@ import { createTenantDb, db, tenants } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { FileText, FolderOpen, Tag, Globe, FileDown } from "lucide-react";
+import type { Metadata } from "next";
+import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { resolveMediaUrl } from "@/lib/minio";
+
+type Params = Promise<{ tenant: string; id: string }>;
+
+// SEO (Fase 1, docs/arsitektur-seo.md § 3.1) — sebelumnya halaman ini TIDAK
+// PUNYA generateMetadata sama sekali, meski publik by design (visibility="public").
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { tenant: slug, id: docId } = await params;
+  const base = await getTenantSeoBase(slug);
+  const { db: tdb, schema } = createTenantDb(slug);
+
+  const [doc] = await tdb
+    .select({
+      title:         schema.documents.title,
+      description:   schema.documents.description,
+      visibility:    schema.documents.visibility,
+      metaTitle:     schema.documents.metaTitle,
+      metaDesc:      schema.documents.metaDesc,
+      ogTitle:       schema.documents.ogTitle,
+      ogDescription: schema.documents.ogDescription,
+      ogImageId:     schema.documents.ogImageId,
+      robots:        schema.documents.robots,
+    })
+    .from(schema.documents)
+    .where(eq(schema.documents.id, docId))
+    .limit(1);
+
+  // Dokumen tidak ada atau internal — jangan bocorkan metadata sama sekali
+  if (!doc || doc.visibility !== "public") return {};
+
+  let ogImage = base.logoUrl;
+  if (doc.ogImageId) {
+    const [media] = await tdb
+      .select({ path: schema.media.path, variants: schema.media.variants })
+      .from(schema.media)
+      .where(eq(schema.media.id, doc.ogImageId))
+      .limit(1);
+    if (media) {
+      const vv = media.variants as Record<string, string> | null;
+      ogImage = resolveMediaUrl(slug, media.path, vv);
+    }
+  }
+
+  return buildMetadata({
+    title:         doc.metaTitle || doc.title,
+    description:   doc.metaDesc || doc.description || undefined,
+    ogTitle:       doc.ogTitle || undefined,
+    ogDescription: doc.ogDescription || undefined,
+    siteName:      base.siteName,
+    canonicalUrl:  `${base.baseUrl}/dokumen/view/${docId}`,
+    ogImageUrl:    ogImage,
+    robots:        doc.robots,
+  });
+}
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return "—";
@@ -27,7 +84,7 @@ function mimeLabel(mime: string | null) {
 export default async function PublicDokumenPage({
   params,
 }: {
-  params: Promise<{ tenant: string; id: string }>;
+  params: Params;
 }) {
   const { tenant: tenantSlug, id: docId } = await params;
 

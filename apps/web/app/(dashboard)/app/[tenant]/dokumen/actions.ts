@@ -20,6 +20,17 @@ export type DocumentData = {
   fileSize?:    number | null;
   mimeType?:    string | null;
   versionNotes?: string | null;
+  // SEO (Fase 1, docs/arsitektur-seo.md § 3.1)
+  metaTitle?:     string | null;
+  metaDesc?:      string | null;
+  ogTitle?:       string | null;
+  ogDescription?: string | null;
+  ogImageId?:     string | null;
+  twitterCard?:   "summary" | "summary_large_image" | null;
+  focusKeyword?:  string | null;
+  canonicalUrl?:  string | null;
+  robots?:        "index,follow" | "noindex" | "noindex,nofollow";
+  schemaType?:    string;
 };
 
 // ─── createDocumentAction ─────────────────────────────────────────────────────
@@ -49,6 +60,16 @@ export async function createDocumentAction(
         visibility:  data.visibility,
         tags:        data.tags ?? [],
         createdBy:   access.tenantUser.id,
+        metaTitle:      data.metaTitle      || null,
+        metaDesc:       data.metaDesc       || null,
+        ogTitle:        data.ogTitle        || null,
+        ogDescription:  data.ogDescription  || null,
+        ogImageId:      data.ogImageId      || null,
+        twitterCard:    data.twitterCard    ?? "summary_large_image",
+        focusKeyword:   data.focusKeyword   || null,
+        canonicalUrl:   data.canonicalUrl   || null,
+        robots:         data.robots         ?? "index,follow",
+        schemaType:     data.schemaType     || "WebPage",
       })
       .returning({ id: schema.documents.id });
 
@@ -106,6 +127,16 @@ export async function updateDocumentAction(
         visibility:  data.visibility,
         tags:        data.tags ?? [],
         updatedAt:   new Date(),
+        metaTitle:      data.metaTitle      || null,
+        metaDesc:       data.metaDesc       || null,
+        ogTitle:        data.ogTitle        || null,
+        ogDescription:  data.ogDescription  || null,
+        ogImageId:      data.ogImageId      || null,
+        twitterCard:    data.twitterCard    ?? "summary_large_image",
+        focusKeyword:   data.focusKeyword   || null,
+        canonicalUrl:   data.canonicalUrl   || null,
+        robots:         data.robots         ?? "index,follow",
+        schemaType:     data.schemaType     || "WebPage",
       })
       .where(eq(schema.documents.id, docId));
 

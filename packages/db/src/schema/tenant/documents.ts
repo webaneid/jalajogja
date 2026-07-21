@@ -6,12 +6,16 @@ import {
   timestamp,
   index,
   unique,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
 export const DOCUMENT_VISIBILITY = ["internal", "public"] as const;
 export type DocumentVisibility = typeof DOCUMENT_VISIBILITY[number];
+
+export const DOCUMENT_TWITTER_CARDS = ["summary", "summary_large_image"] as const;
+export const DOCUMENT_ROBOTS_VALUES  = ["index,follow", "noindex", "noindex,nofollow"] as const;
 
 // ─── document_categories ──────────────────────────────────────────────────────
 // Kategori hierarkis (self-referential). FK ke diri sendiri via SQL DDL.
@@ -44,6 +48,20 @@ export function createDocumentsTable(s: ReturnType<typeof pgSchema>) {
     createdBy:        uuid("created_by"),            // FK → users via SQL
     createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt:        timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+
+    // ── SEO (Fase 1, docs/arsitektur-seo.md § 3.1) — hanya relevan untuk
+    //    dokumen visibility="public", tapi kolom tetap ada untuk semua ──
+    metaTitle:      text("meta_title"),
+    metaDesc:       text("meta_desc"),
+    ogTitle:        text("og_title"),
+    ogDescription:  text("og_description"),
+    ogImageId:      uuid("og_image_id"),    // FK → media.id via SQL
+    twitterCard:    text("twitter_card",    { enum: DOCUMENT_TWITTER_CARDS }).default("summary_large_image"),
+    focusKeyword:   text("focus_keyword"),
+    canonicalUrl:   text("canonical_url"),
+    robots:         text("robots",          { enum: DOCUMENT_ROBOTS_VALUES }).notNull().default("index,follow"),
+    schemaType:     text("schema_type").notNull().default("WebPage"),
+    structuredData: jsonb("structured_data"),
   });
 }
 
