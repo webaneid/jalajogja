@@ -28,17 +28,17 @@ export function MemberCard({
       <div className="pointer-events-none absolute -bottom-10 -right-2 h-24 w-24 rounded-full bg-primary-foreground/10" />
 
       <div className="relative flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          {logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoUrl} alt={siteName} className="h-7 w-7 shrink-0 rounded-md object-contain bg-primary-foreground/15 p-1" />
-          ) : (
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary-foreground/15 text-xs font-bold">
-              {siteName.charAt(0).toUpperCase()}
-            </div>
-          )}
-          <p className="truncate text-xs font-medium text-primary-foreground/80">{siteName}</p>
-        </div>
+        {logoUrl ? (
+          // brightness-0 invert — paksa logo (apa pun warna aslinya) jadi putih solid,
+          // konsisten di atas background bg-primary manapun warna tenantnya. Tanpa bingkai
+          // (bg/padding/rounded) — logo tampil polos, ukuran diperbesar supaya tetap terlihat.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logoUrl} alt={siteName} className="h-10 w-10 shrink-0 object-contain brightness-0 invert" />
+        ) : (
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary-foreground/15 text-xs font-bold text-white">
+            {siteName.charAt(0).toUpperCase()}
+          </div>
+        )}
         <span className="shrink-0 rounded-full bg-primary-foreground/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide">
           {isMember ? "Kartu Anggota" : "Akun Publik"}
         </span>

@@ -8410,11 +8410,37 @@ karena "paling bawah" berubah-ubah tergantung step yang aktif, tidak masuk akal 
 browser (efek gradasi+overlap kartu — proporsi `-mt-16` mungkin perlu disesuaikan setelah
 dilihat langsung, keterbatasan environment sesi ini yang sudah berulang kali dicatat).
 
+### [2026-07-21] Koreksi Gradasi Header + Logo MemberCard (2 putaran feedback user)
+
+**Koreksi warna gradasi**: user tegas "salah perintah" — maksudnya BUKAN `primary→secondary`
+(yang dibangun sebelumnya) tapi **`secondary → putih`**, dan lebih panjang ~30-40%. Fix di
+`AkunMobileHeader`: `bg-gradient-to-b from-secondary to-white`, `pb-20`→`pb-28`. Sekalian
+dikoreksi: `text-primary-foreground` → `text-secondary-foreground` di semua elemen header (teks,
+ring avatar, badge lonceng) — kontras warna sekarang harus dihitung terhadap `secondary` (warna
+background yang sesungguhnya dipakai di area konten header), bukan `primary` yang sudah tidak
+relevan di komponen ini sama sekali.
+
+**MemberCard — logo polos tanpa label/bingkai**: 2 putaran feedback berurutan:
+1. Label nama tenant (teks di samping logo) dihapus — cukup logo saja. Logo dipaksa putih via
+   `brightness-0 invert` (bekerja untuk logo warna apa pun, tidak perlu tahu warna aslinya).
+2. Putaran kedua: bingkai (`bg-primary-foreground/15 p-1 rounded-md`) dihapus juga — logo
+   sepenuhnya polos (tanpa background/padding/rounded), ukuran diperbesar `h-7 w-7`→`h-10 w-10`
+   supaya tetap terlihat jelas tanpa bingkai penanda batas.
+
+Badge "Kartu Anggota"/"Akun Publik" di sisi kanan TIDAK ikut dihapus — user cuma minta hapus
+label di cluster logo (kiri), bukan seluruh baris atas kartu.
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build` sukses di setiap putaran (2× untuk
+gradasi, 2× untuk logo — total 4 siklus verifikasi dalam sesi feedback beruntun ini).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Gradasi header mobile + tombol Kembali ke Dashboard di 4 halaman
-  akun** (lihat lesson di atas) — `AkunMobileHeader` gradasi primary→secondary + `MemberCard`
-  overlap via `-mt-16`, tombol back ditambahkan ke profil/lengkapi/transaksi/media. `tsc`+build
-  bersih. Belum di-commit/push.
+- Terakhir dikerjakan: **Koreksi gradasi header (secondary→putih) + logo MemberCard polos**
+  (lihat lesson di atas) — 2 putaran feedback user, `tsc`+build bersih di tiap putaran. Sudah
+  di-commit dan di-push.
+- Sesi sebelumnya: **Gradasi header mobile (draft awal, keliru) + tombol Kembali ke Dashboard
+  di 4 halaman akun** (lihat lesson di atas) — `AkunMobileHeader` gradasi primary→secondary
+  (SUPERSEDED oleh koreksi di atas) + `MemberCard` overlap via `-mt-16`, tombol back ditambahkan
+  ke profil/lengkapi/transaksi/media. Sudah di-commit dan di-push (`ec1b04a`).
 - Sesi sebelumnya: **Disambiguasi label Profil → Info Login / Data Diri → Edit Profil**
   (lihat lesson di atas) — rename di `akun-nav.tsx` (satu sumber, propagate otomatis ke
   desktop+mobile) + restructure quick-action mobile (Donasi pindah ke Layanan). Sudah di-commit
