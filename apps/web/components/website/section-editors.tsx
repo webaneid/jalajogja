@@ -61,6 +61,11 @@ import {
   SECTION_BACKGROUND_IDS, SECTION_BACKGROUND_LABELS,
   type AboutSectionData, type AboutListItem,
 } from "@/lib/about-section-designs";
+import {
+  GALLERY_COLUMNS_IDS, GALLERY_COLUMNS_LABELS,
+  GALLERY_IMAGE_RATIO_IDS, GALLERY_IMAGE_RATIO_LABELS,
+  type GallerySectionData,
+} from "@/lib/gallery-section-designs";
 
 type EditorProps = {
   data:             Record<string, unknown>;
@@ -537,17 +542,30 @@ function CampaignsEditor({ data, onChange, variant, onVariantChange }: EditorPro
 }
 
 // ── Gallery ───────────────────────────────────────────────────────────────────
+// Sub-opsi kompak (title block/background/kolom/rasio gambar) — bukan picker "Design Layout"
+// penuh, Galeri Foto tetap Design 1 tunggal. Lihat docs/arsitektur-gallery.md.
 
 function GalleryEditor({ data, onChange, tenantSlug }: EditorProps) {
-  const d = data as { title?: string; items?: GalleryItem[] };
+  const d = data as GallerySectionData;
   const items: GalleryItem[] = d.items ?? [];
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
 
+  const background = d.background ?? "none";
+  const columns    = d.columns ?? 3;
+  const imageRatio = d.imageRatio ?? "square";
+
   return (
     <div className="space-y-3">
-      <Field label="Judul Section">
+      <Field label="Judul Kecil (eyebrow, opsional)">
+        <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="GALERI" />
+      </Field>
+      <Field label="Judul Besar (opsional)">
         <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Galeri Foto" />
       </Field>
+      <Field label="Deskripsi (opsional)">
+        <Textarea value={d.headerDesc ?? ""} onChange={(e) => u("headerDesc", e.target.value)} placeholder="Kalimat pendukung..." rows={2} />
+      </Field>
+
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">Gambar ({items.length})</Label>
         {tenantSlug && (
@@ -559,6 +577,13 @@ function GalleryEditor({ data, onChange, tenantSlug }: EditorProps) {
           />
         )}
       </div>
+
+      <OptionRow label="Kolom" ids={GALLERY_COLUMNS_IDS} labels={GALLERY_COLUMNS_LABELS}
+        value={columns} onChange={(v) => u("columns", v)} />
+      <OptionRow label="Rasio Gambar" ids={GALLERY_IMAGE_RATIO_IDS} labels={GALLERY_IMAGE_RATIO_LABELS}
+        value={imageRatio} onChange={(v) => u("imageRatio", v)} />
+      <OptionRow label="Background Section" ids={SECTION_BACKGROUND_IDS} labels={SECTION_BACKGROUND_LABELS}
+        value={background} onChange={(v) => u("background", v)} />
     </div>
   );
 }
@@ -844,7 +869,7 @@ function FeaturesEditor({ data, onChange }: EditorProps) {
 // Sub-opsi kompak (align/bg/lebar/posisi tombol) — bukan picker "Design Layout" penuh, karena
 // CTA tetap Design 1 tunggal. Lihat docs/arsitektur-cta-section.md § 1.
 
-function OptionRow<T extends string>({
+function OptionRow<T extends string | number>({
   label, ids, labels, value, onChange,
 }: {
   label:    string;

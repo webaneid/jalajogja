@@ -11,9 +11,15 @@ export type GalleryItem = {
 
 export type GalleryLayout = "grid" | "masonry" | "carousel";
 
+// Rasio thumbnail grid — default "square" (perilaku lama, hardcode sebelumnya). "landscape"
+// baru ditambahkan 2026-07-22 untuk section landing Galeri Foto — field ini di GalleryConfig
+// (bukan section-specific) supaya konsumen lain (produk/event/donasi) bisa pakai juga nanti.
+export type GalleryAspectRatio = "square" | "landscape";
+
 export type GalleryConfig = {
-  layout:  GalleryLayout;
-  columns: 2 | 3 | 4;
+  layout:       GalleryLayout;
+  columns:      2 | 3 | 4;
+  aspectRatio?: GalleryAspectRatio;
 };
 
 export const DEFAULT_GALLERY_CONFIG: GalleryConfig = {

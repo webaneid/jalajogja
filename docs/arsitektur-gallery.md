@@ -40,9 +40,15 @@ export type GalleryItem = {
 
 export type GalleryLayout = "grid" | "masonry" | "carousel";
 
+// Rasio thumbnail grid — "square" default (perilaku lama, hardcode sebelum 2026-07-22).
+// "landscape" baru ditambah untuk section landing Galeri Foto, tapi field-nya di GalleryConfig
+// (bukan section-specific) supaya modul lain (produk/event/donasi) bisa pakai juga nanti.
+export type GalleryAspectRatio = "square" | "landscape";
+
 export type GalleryConfig = {
-  layout:  GalleryLayout;
-  columns: 2 | 3 | 4;       // jumlah kolom (untuk grid + masonry)
+  layout:       GalleryLayout;
+  columns:      2 | 3 | 4;       // jumlah kolom (untuk grid + masonry)
+  aspectRatio?: GalleryAspectRatio;  // default "square" — lihat GalleryGrid
 };
 
 export const DEFAULT_GALLERY_CONFIG: GalleryConfig = {
@@ -128,7 +134,8 @@ Menerima `columns` (2/3/4). Default: 3.
 └────────┘ └────────┘
 ```
 
-Setiap cell: `aspect-square`, `object-cover`, overlay hover (icon zoom).
+Setiap cell: `object-cover`, rasio `aspect-square` (default) atau `aspect-[4/3]` (`aspectRatio:
+"landscape"`, ditambah 2026-07-22 — lihat § "Bug Fix" di bawah). Overlay hover (icon zoom).
 Klik → trigger `GalleryLightbox` via URL state (`?gallery=mediaId`).
 
 ### `<GalleryLightbox>` — Lightbox (Client)
@@ -162,6 +169,27 @@ Fitur:
 // Keyboard handler: addEventListener di useEffect
 // Touch handler: onTouchStart + onTouchEnd dengan delta
 ```
+
+### Bug Fix (2026-07-22) — Buka Lightbox Scroll ke Atas
+
+**Gejala**: klik thumbnail untuk buka lightbox → halaman lompat scroll ke posisi paling atas.
+Navigasi INTERNAL lightbox (tombol prev/next/tutup, `gallery-lightbox.tsx`) sudah benar pakai
+`router.replace(..., { scroll: false })` sejak awal — bukan itu penyebabnya.
+
+**Root cause**: titik PEMBUKA lightbox (`gallery-grid.tsx`) memakai `<a href={openHref(item.id)}>`
+— anchor HTML polos, BUKAN `next/link`'s `<Link>` dan tanpa `onClick` handler. Klik anchor polos
+memicu navigasi native browser (bukan client-side routing Next.js), yang tidak mengenal opsi
+`scroll: false` sama sekali — browser reset scroll ke atas sesuai perilaku navigasi native standar.
+
+**Fix**: ganti `<a>` → `<Link href={...} scroll={false}>` (import dari `next/link`) di
+`gallery-grid.tsx`. `<Link>` aman dipakai langsung di Server Component (`GalleryGrid` tidak perlu
+jadi Client Component) — boundary client sudah dibungkus internal oleh `next/link`.
+
+**Sekalian ditutup**: `param` lightbox di `GallerySection` (landing page) sebelumnya literal
+tetap `"gallery"` — kalau admin taruh >1 section Galeri Foto di satu landing page, keduanya
+berbagi query key yang sama (celah laten, belum pernah jadi bug nyata karena baru satu section
+Gallery yang eksis di kebanyakan halaman). Diperbaiki: `param={`gallery-${section.id}`}` —
+diturunkan dari ID section (unik per section), bukan literal tetap.
 
 ### `<GalleryCarousel>` — Carousel (Client)
 
@@ -405,6 +433,18 @@ Phase 4 — Layout Tambahan
 | Landing page section `"gallery"` pakai `<Gallery>` | ✅ Selesai |
 | `gallery-masonry.tsx` | ⬜ Phase 4 |
 | `gallery-carousel.tsx` | ⬜ Phase 4 |
+| `GalleryConfig.aspectRatio` (square/landscape) | ✅ Selesai (2026-07-22) |
+| Bug fix scroll-to-top saat buka lightbox | ✅ Selesai (2026-07-22) |
+| Section landing Galeri Foto — title block + background standar | ✅ Selesai (2026-07-22) |
+
+**Catatan 2026-07-22 (title block + background section landing):**
+`GallerySection` (landing page) dapat title block 3-field opsional (eyebrow/title/headerDesc,
+pola sama section Keunggulan/Layanan dan Tentang Kami) dan background standar 5-opsi
+(`lib/section-background.ts`, dikunci sejak section Tentang Kami). Editor (`GalleryEditor`)
+dapat picker Kolom (3/4) dan Rasio Gambar (square/landscape) — sebelumnya field `layout`/`columns`
+DIBACA oleh `GallerySection` tapi TIDAK PERNAH ada UI untuk mengaturnya di editor (gap
+pre-existing, ditutup sekalian). Lihat `docs/arsitektur-frontend-publik.md` § 4 untuk pointer
+singkat, dan lesson CLAUDE.md `[2026-07-22]` untuk detail lengkap keputusan.
 
 **Catatan Phase 3:**
 - GalleryItem type dipindah ke `packages/db/src/schema/tenant/website.ts` agar bisa dipakai DB schema

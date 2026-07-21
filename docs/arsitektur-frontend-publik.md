@@ -155,6 +155,15 @@ opsi garis pemisah). Tombol baru (section ini sebelumnya tidak punya tombol sama
 gambar square/profile murni CSS `aspect-ratio` — TIDAK menambah variant baru ke pipeline gambar.
 **Dokumen detail penuh**: `docs/arsitektur-tentang-kami-section.md`.
 
+**Section Galeri Foto — title block + background standar, sekalian bug fix scroll-to-top**
+(ditambahkan 2026-07-22) — pola sama Tentang Kami untuk title block+background (reuse
+`lib/section-background.ts`). Editor dapat picker Kolom (3/4) dan Rasio Gambar (square/landscape)
+— gap pre-existing ditutup sekalian (field `layout`/`columns` sudah DIBACA section tapi tidak
+pernah ada UI-nya). Sekalian diperbaiki: bug shared component `<GalleryGrid>` (dipakai lintas
+modul, bukan cuma landing) — thumbnail pakai `<a>` polos alih-alih `<Link scroll={false}>`,
+menyebabkan halaman scroll ke atas tiap kali lightbox dibuka. **Dokumen detail penuh**:
+`docs/arsitektur-gallery.md` § "Bug Fix" dan § "Status Implementasi".
+
 ---
 
 ## 5. Widget Area (Sidebar)

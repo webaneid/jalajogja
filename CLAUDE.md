@@ -9023,16 +9023,93 @@ sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB, nol per
 gambar. Belum diverifikasi visual di browser — user perlu cek kombinasi axis, terutama transisi
 layout lama→50/50 pada section existing, setelah deploy.
 
+### [2026-07-22] Section Galeri Foto — Title+Background Standar + Bug Fix Scroll-to-Top di Shared Component
+
+> Detail lengkap: **`docs/arsitektur-gallery.md`** § "Bug Fix" + "Status Implementasi"
+
+Lanjutan langsung dari Tentang Kami (sesi yang sama). Berbeda dari 3 section sebelumnya (CTA,
+Keunggulan/Layanan, Tentang Kami — semuanya section landing-page-only), Gallery adalah SHARED
+SYSTEM (`lib/gallery.ts` + `components/gallery/*`) yang didesain dipakai lintas modul (produk,
+event, donasi, editor Tiptap, landing) — jadi perubahan di sini punya blast radius lebih luas
+dari sekadar landing page.
+
+**Riset dulu via background agent** (bukan asumsi) — konfirmasi penting: `<Gallery>` (komponen
+display, bukan `GalleryPicker` admin) TERNYATA baru dipakai SATU tempat di seluruh app
+(`landing-template.tsx`) — produk/event/donasi baru pakai `GalleryPicker` untuk input admin,
+belum ada renderer publik yang pakai `<Gallery>`. Ini menurunkan risiko perubahan shared
+component secara signifikan (tidak ada modul lain yang bisa langsung terdampak REGRESI visual
+saat ini — meskipun API-nya tetap didesain aman untuk pemakai masa depan).
+
+**Bug scroll-to-top — root cause ditemukan via baca kode langsung, bukan tebak-tebakan**:
+navigasi INTERNAL lightbox (`gallery-lightbox.tsx`, tombol prev/next/tutup) SUDAH benar sejak
+awal, `router.replace(..., {scroll:false})` di kedua tempat. Root cause sesungguhnya ada di titik
+BERBEDA yang sepintas tidak dicurigai: `gallery-grid.tsx` — thumbnail-nya `<a href={openHref(id)}>`
+**anchor HTML POLOS**, bukan `next/link`'s `<Link>`, tanpa `onClick` handler. Klik anchor polos =
+navigasi native browser (bukan client-side routing Next.js) — TIDAK ADA cara pasang `scroll:false`
+pada navigasi native, browser reset scroll ke atas sesuai default. **Fix**: ganti `<a>` →
+`<Link href={...} scroll={false}>` — `Link` aman dipakai langsung di Server Component (`GalleryGrid`
+TIDAK perlu jadi Client Component, boundary client sudah dibungkus internal oleh `next/link`).
+
+**Pelajaran pola bug**: kalau ada laporan "navigasi X di dalam Y menyebabkan scroll jump", jangan
+cuma cek kode navigasi YANG SUDAH DICURIGAI (di sini: kode di dalam lightbox itu sendiri, yang
+ternyata sudah benar) — cek juga TITIK PEMBUKA/PEMICU-nya (di sini: grid thumbnail di luar
+lightbox) — root cause sering ada di komponen TETANGGA yang menghubungkan dua state, bukan di
+komponen yang menampilkan gejalanya.
+
+**Bug kedua ditemukan sekalian oleh agent riset (bukan diminta user, proaktif)**: `param`
+lightbox (`?gallery=id`) di `GallerySection` sebelumnya STRING LITERAL tetap `"gallery"` — kalau
+admin taruh LEBIH DARI SATU section Galeri Foto di satu landing page, keduanya berbagi query key
+yang sama (celah laten collision, belum pernah jadi bug NYATA karena baru 1 section Gallery yang
+umum dipakai per halaman). Ditutup sekalian: `param={`gallery-${section.id}`}` — diturunkan dari
+ID section (unik per section, sudah ada dari `createSection()`), bukan literal tetap.
+
+**Gap ke-3 ditemukan sekalian**: `GallerySection` sudah lama MEMBACA `d.layout`/`d.columns` dari
+data, tapi `GalleryEditor` TIDAK PERNAH punya UI untuk mengaturnya — field itu cuma bisa
+`undefined` selamanya (fallback default) sejak section ini dibuat. Ditutup sekalian dengan
+axis Kolom (3/4) yang diminta user, plus Rasio Gambar (square/landscape, field BARU — extend
+`GalleryConfig.aspectRatio`, opsional, default `"square"` = PERSIS perilaku lama hardcode
+`aspect-square` di `gallery-grid.tsx` — backward compat untuk SEMUA pemakai `<Gallery>` manapun,
+bukan cuma landing).
+
+**Title block + background** — pola identik Tentang Kami: eyebrow+title+headerDesc opsional
+(REPLACE `PostsSectionTitle` yang dulu dipakai — visual berubah dari gaya "dashed-line + Lihat
+Semua" ke gaya eyebrow+bold-title, perubahan disengaja karena Gallery tidak punya halaman arsip
+untuk di-link), background reuse `lib/section-background.ts` (standar yang sama dikunci di
+Tentang Kami, TIDAK diretrofit ke CTA/Keunggulan, konsisten dengan keputusan sebelumnya).
+
+**`OptionRow` diperluas jadi `<T extends string | number>`** (sebelumnya `string` saja) — Kolom
+(`3|4`) secara semantik adalah angka (konsisten dengan `GalleryConfig.columns: 2|3|4` yang
+dipakai di seluruh sistem Gallery), bukan string — daripada convert ke string arbitrary di data
+section (`"3"|"4"`) cuma demi cocok constraint lama, generic constraint-nya yang diperluas.
+Perubahan aman non-breaking — semua pemakai lama (`string`) tetap valid di bawah `string | number`.
+
+**Verifikasi**: `tsc --noEmit` bersih dari percobaan pertama + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB. Bug fix scroll-to-top
+BELUM diverifikasi visual langsung (keterbatasan environment) — root cause dan fix sangat
+percaya diri secara teknis (native `<a>` vs `<Link scroll={false}>` adalah perbedaan mekanisme
+navigasi yang well-understood, bukan tebakan), tapi user perlu konfirmasi setelah deploy bahwa
+gejala scroll-jump benar-benar hilang.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Section Tentang Kami — standar background baru + kolom 50/50 + tombol
+- Terakhir dikerjakan: **Section Galeri Foto — title+background standar + bug fix scroll-to-top**
+  (lihat lesson di atas) — pola title+background sama Tentang Kami. Bug fix di SHARED component
+  `<GalleryGrid>` (dipakai lintas modul, bukan cuma landing) — thumbnail `<a>` polos diganti
+  `<Link scroll={false}>`, root cause halaman scroll ke atas tiap kali lightbox dibuka (navigasi
+  INTERNAL lightbox sendiri sudah benar sejak awal). Sekalian ditutup: `param` lightbox diturunkan
+  dari `section.id` (cegah collision kalau >1 section Gallery di satu halaman), dan gap
+  pre-existing `layout`/`columns` yang dibaca section tapi tidak pernah ada UI editornya. `Gallery
+  Config.aspectRatio` baru (square/landscape, default backward-compat). `OptionRow` diperluas jadi
+  `string|number` (untuk Kolom 3/4 yang semantiknya angka). `tsc`+build bersih. Nol migrasi DB.
+  **Belum di-commit/push** (menunggu checkpoint ini), **belum diverifikasi visual di browser**
+  (khususnya bug fix scroll — perlu dikonfirmasi user setelah deploy).
+- Sesi sebelumnya: **Section Tentang Kami — standar background baru + kolom 50/50 + tombol
   baru** (lihat lesson di atas) — tetap "Design 1" tunggal. `lib/section-background.ts` baru
   (standar 5-opsi none/light/primary/secondary/dark, REUSABLE untuk section berikutnya, SENGAJA
   tidak diretrofit ke CTA/Features). Kolom SELALU 2 50/50 (perubahan struktural disengaja, bukan
   preservasi — beda dari CTA/Features). Tombol baru (`outline-light` dari CTA di-reuse). Mode
   deskripsi teks/list (list reuse icon Keunggulan/Layanan, tanpa card — cuma toggle divider).
   Rasio gambar square/profile murni CSS (koreksi user: BUKAN "4:3", tapi "profile" yang sudah
-  ada — nol variant baru). `tsc`+build bersih. Nol migrasi DB. **Belum di-commit/push** (menunggu
-  checkpoint ini), **belum diverifikasi visual di browser**.
+  ada — nol variant baru). **Sudah di-commit+push** (`2b55095`).
 - Sesi sebelumnya: **Section Keunggulan/Layanan — 5 axis + Icon Picker baru** (lihat lesson
   di atas) — tetap "Design 1" tunggal. Field icon (dulu `<Input>` emoji bebas) diganti
   `<IconPicker>` baru (`components/ui/icon-picker.tsx`) — grid searchable dari `lib/icon-catalog.ts`

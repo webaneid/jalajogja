@@ -14,7 +14,7 @@ import { EventsSection } from "@/components/website/public/sections/events/event
 import { HeroSection } from "@/components/website/public/sections/hero/hero-section";
 import { ModulesSection } from "@/components/website/public/sections/modules/modules-section";
 import { Gallery } from "@/components/gallery/gallery";
-import type { GalleryItem, GalleryConfig } from "@/lib/gallery";
+import type { GallerySectionData } from "@/lib/gallery-section-designs";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import type { PublicButtonVariant } from "@/components/website/public/ui/public-button";
 import { PostsSectionTitle } from "@/components/website/public/sections/posts/posts-section-title";
@@ -28,26 +28,35 @@ import { resolveSectionBgClass, resolveOutlineButtonVariant } from "@/lib/sectio
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
-function GallerySection({ data }: { data: Record<string, unknown> }) {
-  const d = data as {
-    title?:   string;
-    items?:   GalleryItem[];
-    layout?:  GalleryConfig["layout"];
-    columns?: GalleryConfig["columns"];
-  };
+// Section Galeri Foto — tetap "Design 1" tunggal. Title block + background standar (sama pola
+// Tentang Kami), kolom+rasio gambar reuse sistem Gallery bersama (lib/gallery.ts). `param`
+// lightbox diturunkan dari `sectionId` (bukan literal "gallery" tetap) — cegah collision kalau
+// admin taruh >1 section Galeri Foto di satu landing page. Arsitektur: docs/arsitektur-gallery.md.
+function GallerySection({ data, sectionId }: { data: Record<string, unknown>; sectionId: string }) {
+  const d = data as GallerySectionData;
   const items = d.items ?? [];
+  const background = d.background ?? "none";
+  const bgClass = resolveSectionBgClass(background);
+
+  const hasHeader = !!(d.eyebrow || d.title || d.headerDesc);
 
   return (
-    <section className="py-14 px-4">
+    <section className={`py-14 px-4 ${bgClass}`}>
       <div className="max-w-7xl mx-auto">
-        {d.title && <PostsSectionTitle title={d.title} />}
+        {hasHeader && (
+          <div className="max-w-3xl mx-auto text-center mb-10">
+            {d.eyebrow && <p className="text-xs font-semibold uppercase tracking-widest text-primary mb-2">{d.eyebrow}</p>}
+            {d.title && <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold leading-tight tracking-tight">{d.title}</h2>}
+            {d.headerDesc && <p className="text-base opacity-80 leading-relaxed mt-3">{d.headerDesc}</p>}
+          </div>
+        )}
         {items.length === 0 ? (
           <p className="text-muted-foreground text-sm">Belum ada gambar.</p>
         ) : (
           <Gallery
             items={items}
-            config={{ layout: d.layout ?? "grid", columns: d.columns ?? 3 }}
-            param="gallery"
+            config={{ layout: "grid", columns: d.columns ?? 3, aspectRatio: d.imageRatio ?? "square" }}
+            param={`gallery-${sectionId}`}
           />
         )}
       </div>
@@ -534,7 +543,7 @@ function SectionRenderer({
         tenantSlug={tenantSlug}
       />
     );
-    case "gallery":      return <GallerySection       data={section.data} />;
+    case "gallery":      return <GallerySection       data={section.data} sectionId={section.id} />;
     case "about_text":   return <AboutTextSection     data={section.data} baseUrl={baseUrl} tenantSlug={tenantSlug} />;
     case "features":     return <FeaturesSection      data={section.data} />;
     case "cta":          return <CtaSection           data={section.data} baseUrl={baseUrl} tenantSlug={tenantSlug} />;
