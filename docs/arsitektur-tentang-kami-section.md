@@ -6,6 +6,10 @@
 > section.md`, `docs/arsitektur-keunggulan-section.md`) dengan banyak sub-opsi, SELALU 2 kolom
 > 50/50. Sumber ide visual: `design-refs/sections/about/design-about-default-1a.png` (mode list)
 > dan `design-about-default-1b.png` (mode teks) — "cuma bayangan", tidak ditiru literal.
+>
+> **Update 2026-07-22**: blok eyebrow+judul (bukan body/list) sekarang dirender via
+> `<SectionTitleBlock>` — komponen bersama dengan section Keunggulan/Layanan dan Galeri Foto.
+> Detail: `docs/arsitektur-section-title-block.md`.
 
 ---
 

@@ -7,6 +7,9 @@ block editor (post/page), dan landing page section — tanpa implementasi ulang.
 - `docs/arsitektur-image.md` — sistem variant gambar (square, medium, large, dst.)
 - `docs/arsitektur-card-section.md` — gallery sebagai section type di landing page
 - `docs/arsitektur-product.md` — gallery produk reuse komponen ini
+- `docs/arsitektur-section-title-block.md` — blok header (eyebrow+judul+deskripsi) section
+  "Galeri Foto" di landing page dirender via `<SectionTitleBlock>`, komponen bersama dengan
+  section Keunggulan/Layanan dan Tentang Kami (update 2026-07-22)
 
 **Jawaban: apakah efisien?** Ya — satu implementasi lightbox, swipe, keyboard navigation,
 dan layout grid berlaku untuk semua modul. Menambah gallery ke modul baru = satu baris:

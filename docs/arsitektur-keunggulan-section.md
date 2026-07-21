@@ -6,6 +6,10 @@
 > picker sungguhan dari `lucide-react` (bukan lagi ketik emoji manual). Sumber ide visual:
 > `design-refs/sections/keunggulan/keunggulan-layanan-default.jpg` — user eksplisit bilang ini
 > "cuma bayangan", bukan referensi presisi yang harus ditiru literal.
+>
+> **Update 2026-07-22**: blok header (eyebrow+judul+deskripsi) sekarang dirender via
+> `<SectionTitleBlock>` — komponen bersama dengan section Tentang Kami dan Galeri Foto. Detail:
+> `docs/arsitektur-section-title-block.md`.
 
 ---
 

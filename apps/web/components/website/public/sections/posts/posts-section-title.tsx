@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { SectionSeeAllLink } from "@/components/website/public/sections/section-see-all-link";
 
 type Props = {
   title:      string;     // *italic* untuk bagian berwarna primary
@@ -45,17 +46,7 @@ export function PostsSectionTitle({
       </div>
 
       {/* Kanan: link lihat semua (opsional) */}
-      {href && (
-        <a
-          href={href}
-          className="inline-flex items-center gap-2 text-[13px] font-medium text-foreground pb-1 border-b border-foreground hover:text-primary hover:border-primary transition-colors shrink-0 self-end"
-        >
-          {linkLabel}
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <path d="M5 12h14M13 6l6 6-6 6" />
-          </svg>
-        </a>
-      )}
+      {href && <SectionSeeAllLink href={href} label={linkLabel} className="self-end" />}
 
     </div>
   );

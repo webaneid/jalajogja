@@ -9090,8 +9090,91 @@ percaya diri secara teknis (native `<a>` vs `<Link scroll={false}>` adalah perbe
 navigasi yang well-understood, bukan tebakan), tapi user perlu konfirmasi setelah deploy bahwa
 gejala scroll-jump benar-benar hilang.
 
+### [2026-07-22] `<SectionTitleBlock>` — Ekstraksi Blok Judul Bersama (CTA-Keunggulan-Tentang Kami-Galeri)
+
+> Detail lengkap: **`docs/arsitektur-section-title-block.md`**
+
+Lanjutan langsung dari 4 section sebelumnya (CTA, Keunggulan/Layanan, Tentang Kami, Galeri Foto —
+sesi yang sama). Ketiganya (KECUALI CTA, yang punya judul besar sendiri menyamai Hero) menyalin
+ulang trio JSX yang identik persis: `{eyebrow && <p className="text-xs font-semibold uppercase
+tracking-widest text-primary mb-2">...}` + `{title && <h2 className="text-2xl sm:text-3xl
+md:text-4xl font-bold leading-tight tracking-tight">...}` + `{headerDesc && <p
+className="text-base opacity-80 leading-relaxed mt-3">...}`. User minta ini distandarkan sebelum
+duplikasinya bertambah lagi di section berikutnya.
+
+**Ekstraksi sengaja SEMPIT** — `<SectionTitleBlock>` (`components/website/public/sections/
+section-title-block.tsx`) HANYA merender trio konten. Layout luar (align, max-width, mode
+"beside" Keunggulan, posisi di dalam kolom Tentang Kami) TETAP tanggung jawab caller via prop
+`className` — 3 section ini punya kebutuhan layout luar yang legit berbeda, memaksakan satu
+wrapper akan mengorbankan salah satunya. Tentang Kami memanggil tanpa `description` sama sekali
+(body/list-nya dirender terpisah sebagai sibling); Keunggulan mode "beside" memanggil tanpa
+`description` juga (deskripsinya jadi sibling kolom kanan, sudah begitu sejak awal — tidak
+diubah).
+
+**`.section-title` (CSS baru, `globals.css`)** — user kasih spec CSS eksternal persis
+(`clamp(1.8rem,3vw,2.6rem)`, `font-weight:800`, `letter-spacing:-0.04em`, `color:
+var(--slate-900)`, dst) yang pakai token `--slate-*` yang **tidak ada** di project ini (dicek
+root `globals.css` — cuma ada `--foreground/--primary/--secondary/--muted/--border/--radius`
+per konvensi shadcn/Tailwind v4 yang sudah dipakai project). `color` SENGAJA DIHILANGKAN dari
+kelas (bukan alpa menerjemahkan) — h2 di ketiga section sebelumnya TIDAK punya color utility
+sendiri, murni mewarisi warna section (foreground normal, atau text-primary-foreground/
+text-background saat background berwarna). Kalau `.section-title` hardcode
+`color:var(--foreground)`, declared property akan SELALU menang atas inheritance — judul di
+Keunggulan dengan background primary/secondary/dark jadi teks gelap di atas bg gelap (tidak
+kebaca). Menghilangkan `color` mempertahankan kontras yang sudah benar tanpa kode tambahan.
+
+**Warna eyebrow kontras-otomatis** — `resolveAccentTextClass(bg)` baru di
+`lib/section-background.ts`: `none`/`light` → `text-primary` (aman di bg netral, seperti
+sebelumnya); `primary`/`secondary`/`dark` → `opacity-70` (BUKAN warna baru — cuma meredupkan
+warna teks section yang SUDAH benar via `resolveSectionBgClass`, menciptakan hierarki
+eyebrow-lebih-redup-dari-judul tanpa masalah kontras `text-primary` di atas `bg-primary`).
+Keunggulan (`FeaturesBackground = light|primary|secondary|white`, BUKAN `SectionBackground`,
+sengaja tidak diretrofit ke standar 5-opsi — keputusan lama dipertahankan lagi) di-map manual:
+`background === "white" ? "none" : background` sebelum diteruskan — TypeScript narrow otomatis
+membuktikan hasil ternary adalah subset valid `SectionBackground`, tidak perlu cast.
+
+**"Lihat Semua" jadi bordered pill — `<SectionSeeAllLink>`, BUKAN menimpa `.btn-ghost`**: user
+kasih CSS reference kedua (bordered pill, `border:1.5px solid var(--slate-200)`, dst) untuk
+tombol "Lihat Semua" — **PENTING**: project ini SUDAH punya `.btn-ghost` sistem-wide (Public
+Button System, `variant="ghost"` — `background:transparent;color:var(--primary);
+border:transparent`, visual link-tipis-tanpa-border, dipakai luas untuk "Lihat Semua"/"Kembali").
+Nama class user SAMA (`.btn-ghost`) tapi visual TOTAL BERBEDA (pill berbingkai). **Tidak ditimpa**
+— akan merusak semua pemakai `.btn-ghost` lain. Dibuat sebagai komponen React berdiri sendiri
+(`section-see-all-link.tsx`, Tailwind inline, bukan class global baru) — satu-satunya pemakai
+"Lihat Semua" yang genuinely ada saat ini adalah `PostsSectionTitle` (Post/Produk/Campaign/Event),
+diupdate untuk pakai komponen baru ini (implementasi lama inline dihapus). Keunggulan/Tentang
+Kami/Galeri belum punya field "Lihat Semua" sama sekali (di luar scope untuk ditambahkan
+sekarang, tidak diminta eksplisit) — tapi `SectionTitleBlock`+`SectionSeeAllLink` sudah siap
+dikomposisikan kapan pun salah satu section itu butuh fitur ini.
+
+**Aturan yang ditegaskan**: kalau user memberi CSS reference eksternal dengan nama class yang
+KEBETULAN sama dengan class yang SUDAH ADA dan dipakai luas di sistem (di sini: `.btn-ghost`),
+JANGAN asumsikan itu instruksi untuk menimpa definisi lama — cek dulu apakah keduanya benar-benar
+menjelaskan visual yang sama. Kalau beda, buat implementasi terpisah (komponen baru, bukan class
+global baru dengan nama yang sama) — menghindari collision sambil tetap memenuhi permintaan.
+
+**Verifikasi**: `tsc --noEmit` bersih dari percobaan pertama + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB. Belum diverifikasi
+visual di browser (keterbatasan environment) — perubahan CSS murni (ukuran judul + warna eyebrow
++ style tombol), risiko regresi rendah tapi tetap perlu dicek user terutama di background
+primary/secondary/dark (Keunggulan/Tentang Kami) untuk pastikan opacity-70 eyebrow benar-benar
+terlihat proporsional, bukan cuma terhitung benar secara CSS.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Section Galeri Foto — title+background standar + bug fix scroll-to-top**
+- Terakhir dikerjakan: **`<SectionTitleBlock>` — ekstraksi blok judul bersama** (lihat lesson di
+  atas) — trio eyebrow+judul+deskripsi yang identik persis di Keunggulan/Tentang Kami/Galeri
+  diekstrak jadi satu komponen (`components/website/public/sections/section-title-block.tsx`),
+  ekstraksi sengaja sempit (layout luar tetap tanggung jawab caller). `.section-title` CSS baru
+  (`globals.css`, `clamp()` size, TANPA `color` — sengaja, supaya inheritance kontras di
+  background berwarna tidak rusak). `resolveAccentTextClass()` baru (`lib/section-background.ts`)
+  — warna eyebrow otomatis `opacity-70` di background berwarna, `text-primary` di netral.
+  `<SectionSeeAllLink>` baru (bordered pill, dipakai `PostsSectionTitle`) — SENGAJA komponen
+  React terpisah, BUKAN menimpa `.btn-ghost` Public Button System yang sudah ada dengan visual
+  beda (nama class collision dari CSS reference user, dihindari). CTA tidak ikut (judul sendiri
+  menyamai Hero). `tsc`+build bersih dari percobaan pertama. Nol migrasi DB. **Belum di-commit/
+  push** (menunggu checkpoint ini), **belum diverifikasi visual di browser** (perubahan CSS murni,
+  risiko rendah tapi perlu dicek terutama kontras eyebrow di background berwarna).
+- Sesi sebelumnya: **Section Galeri Foto — title+background standar + bug fix scroll-to-top**
   (lihat lesson di atas) — pola title+background sama Tentang Kami. Bug fix di SHARED component
   `<GalleryGrid>` (dipakai lintas modul, bukan cuma landing) — thumbnail `<a>` polos diganti
   `<Link scroll={false}>`, root cause halaman scroll ke atas tiap kali lightbox dibuka (navigasi
@@ -9100,8 +9183,8 @@ gejala scroll-jump benar-benar hilang.
   pre-existing `layout`/`columns` yang dibaca section tapi tidak pernah ada UI editornya. `Gallery
   Config.aspectRatio` baru (square/landscape, default backward-compat). `OptionRow` diperluas jadi
   `string|number` (untuk Kolom 3/4 yang semantiknya angka). `tsc`+build bersih. Nol migrasi DB.
-  **Belum di-commit/push** (menunggu checkpoint ini), **belum diverifikasi visual di browser**
-  (khususnya bug fix scroll — perlu dikonfirmasi user setelah deploy).
+  **Sudah di-commit+push** (`3a8ff51`). **Belum diverifikasi visual di browser** (khususnya bug
+  fix scroll — perlu dikonfirmasi user setelah deploy).
 - Sesi sebelumnya: **Section Tentang Kami — standar background baru + kolom 50/50 + tombol
   baru** (lihat lesson di atas) — tetap "Design 1" tunggal. `lib/section-background.ts` baru
   (standar 5-opsi none/light/primary/secondary/dark, REUSABLE untuk section berikutnya, SENGAJA

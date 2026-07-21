@@ -164,6 +164,17 @@ modul, bukan cuma landing) — thumbnail pakai `<a>` polos alih-alih `<Link scro
 menyebabkan halaman scroll ke atas tiap kali lightbox dibuka. **Dokumen detail penuh**:
 `docs/arsitektur-gallery.md` § "Bug Fix" dan § "Status Implementasi".
 
+**`<SectionTitleBlock>` — ekstraksi blok judul bersama** (ditambahkan 2026-07-22) — trio
+eyebrow+judul+deskripsi yang identik persis di Keunggulan/Tentang Kami/Galeri (3 sesi terpisah,
+disalin ulang tiap kali) diekstrak jadi satu komponen. Ukuran judul via `.section-title` (CSS
+`clamp()` baru di `globals.css`, ganti Tailwind size utilities yang diulang 3×). Warna eyebrow
+otomatis kontras terhadap background section (`resolveAccentTextClass()`, `opacity-70` di
+background berwarna alih-alih `text-primary` yang hilang di atas `bg-primary`). Tombol "Lihat
+Semua" `PostsSectionTitle` (Post/Produk/Campaign/Event) sekalian diganti gaya bordered-pill
+(`<SectionSeeAllLink>`, komponen React berdiri sendiri — BUKAN menimpa `.btn-ghost` Public Button
+System yang visualnya beda). CTA tidak ikut — judulnya sendiri menyamai ukuran Hero. **Dokumen
+detail penuh**: `docs/arsitektur-section-title-block.md`.
+
 ---
 
 ## 5. Widget Area (Sidebar)

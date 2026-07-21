@@ -25,6 +25,7 @@ import type { FeaturesSectionData } from "@/lib/features-section-designs";
 import { resolveIcon } from "@/lib/icon-catalog";
 import type { AboutSectionData } from "@/lib/about-section-designs";
 import { resolveSectionBgClass, resolveOutlineButtonVariant } from "@/lib/section-background";
+import { SectionTitleBlock } from "@/components/website/public/sections/section-title-block";
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
@@ -44,11 +45,13 @@ function GallerySection({ data, sectionId }: { data: Record<string, unknown>; se
     <section className={`py-14 px-4 ${bgClass}`}>
       <div className="max-w-7xl mx-auto">
         {hasHeader && (
-          <div className="max-w-3xl mx-auto text-center mb-10">
-            {d.eyebrow && <p className="text-xs font-semibold uppercase tracking-widest text-primary mb-2">{d.eyebrow}</p>}
-            {d.title && <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold leading-tight tracking-tight">{d.title}</h2>}
-            {d.headerDesc && <p className="text-base opacity-80 leading-relaxed mt-3">{d.headerDesc}</p>}
-          </div>
+          <SectionTitleBlock
+            eyebrow={d.eyebrow}
+            title={d.title}
+            description={d.headerDesc}
+            background={background}
+            className="max-w-3xl mx-auto text-center mb-10"
+          />
         )}
         {items.length === 0 ? (
           <p className="text-muted-foreground text-sm">Belum ada gambar.</p>
@@ -131,8 +134,7 @@ function AboutTextSection({ data, baseUrl, tenantSlug }: { data: Record<string, 
 
   const textColumn = (
     <div className={`space-y-4 ${textOrderCls}`}>
-      {d.eyebrow && <p className="text-xs font-semibold uppercase tracking-widest text-primary">{d.eyebrow}</p>}
-      {d.title && <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold leading-tight tracking-tight">{d.title}</h2>}
+      <SectionTitleBlock eyebrow={d.eyebrow} title={d.title} background={background} />
       {descMode === "text"
         ? (d.body && <p className="text-base opacity-80 leading-relaxed whitespace-pre-line">{d.body}</p>)
         : listBlock}
@@ -217,11 +219,13 @@ function FeaturesSection({ data }: { data: Record<string, unknown> }) {
   const hasHeader = !!(d.eyebrow || d.title || d.headerDesc);
   const headerBlock = hasHeader && (
     <div className={`flex flex-col mb-10 ${isBeside ? "md:flex-row md:items-start md:justify-between gap-8" : `${alignItemsCls} gap-2`}`}>
-      <div className={isBeside ? `flex-1 min-w-0 ${textAlignCls}` : `max-w-3xl ${textAlignCls}`}>
-        {d.eyebrow && <p className="text-xs font-semibold uppercase tracking-widest text-primary mb-2">{d.eyebrow}</p>}
-        {d.title && <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold leading-tight tracking-tight">{d.title}</h2>}
-        {!isBeside && d.headerDesc && <p className="text-base opacity-80 leading-relaxed mt-3">{d.headerDesc}</p>}
-      </div>
+      <SectionTitleBlock
+        eyebrow={d.eyebrow}
+        title={d.title}
+        description={isBeside ? undefined : d.headerDesc}
+        background={background === "white" ? "none" : background}
+        className={isBeside ? `flex-1 min-w-0 ${textAlignCls}` : `max-w-3xl ${textAlignCls}`}
+      />
       {isBeside && d.headerDesc && (
         <p className="text-base opacity-80 leading-relaxed md:max-w-sm md:pt-1">{d.headerDesc}</p>
       )}

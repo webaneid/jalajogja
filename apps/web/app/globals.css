@@ -206,3 +206,20 @@
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SECTION TITLE — judul besar section landing (Keunggulan, Tentang Kami,
+   Galeri Foto — via <SectionTitleBlock>). Satu sumber ukuran, ganti Tailwind
+   size utilities yang sebelumnya diulang identik di tiga tempat. Sengaja TANPA
+   `color` — judul mewarisi warna teks section (foreground normal, atau
+   text-primary-foreground/text-background saat background berwarna), sama
+   seperti sebelumnya. CTA tidak memakai kelas ini — CTA punya judul sendiri
+   yang menyamai ukuran Hero.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.section-title {
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  margin-bottom: 0.6rem;
+}

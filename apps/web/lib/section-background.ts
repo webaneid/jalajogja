@@ -31,3 +31,12 @@ export function resolveSectionBgClass(bg: SectionBackground): string {
 export function resolveOutlineButtonVariant(bg: SectionBackground): "outline-light" | "outline-dark" {
   return bg === "primary" || bg === "secondary" || bg === "dark" ? "outline-light" : "outline-dark";
 }
+
+// Warna teks aksen (eyebrow/label kecil di atas judul) — `text-primary` hardcode akan
+// hilang/nge-clash kalau section background-nya sendiri sudah primary/secondary/dark (teks
+// primary di atas bg primary = tidak kebaca). Di background berwarna, aksen cukup dibedakan
+// via opacity terhadap warna teks section yang sudah di-set (text-primary-foreground/
+// text-background dari resolveSectionBgClass) — bukan warna baru.
+export function resolveAccentTextClass(bg: SectionBackground): string {
+  return bg === "primary" || bg === "secondary" || bg === "dark" ? "opacity-70" : "text-primary";
+}
