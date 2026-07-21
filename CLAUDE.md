@@ -8433,10 +8433,40 @@ label di cluster logo (kiri), bukan seluruh baris atas kartu.
 **Verifikasi**: `tsc --noEmit` bersih + `bun run build` sukses di setiap putaran (2× untuk
 gradasi, 2× untuk logo — total 4 siklus verifikasi dalam sesi feedback beruntun ini).
 
+### [2026-07-21] MemberCard — Restrukturisasi Info Bottom-Row + Generalisasi ke Semua Tipe Tenant
+
+**4 perubahan kartu sekaligus**, saling terkait jadi satu redesain kohesif:
+1. **Logo**: lebar `calc(var(--spacing)*17)` — di Tailwind v4 ini setara persis `w-17` (utility
+   spacing dinamis, generate otomatis untuk integer berapa pun — bukan arbitrary value manual).
+2. **Badge "Kartu Anggota"/"Akun Publik" (top-right) dihapus total** — bukan disembunyikan.
+3. **No. Anggota**: `text-sm` (14px) → `text-xl` (20px, exact match Tailwind default scale —
+   `text-xl = 1.25rem = 20px`). Baris stambuk (fallback saat member number belum ada) ikut
+   diperbesar sama, konsisten satu slot visual.
+4. **Baris bawah kartu direstrukturisasi total** — sebelumnya "PC IKPM: {nama cabang}" (kiri) +
+   badge "✓ Aktif" (kanan, member-only). Sekarang: **"Nama Anggota: {nama orang}"** (kiri —
+   echo nama, pola umum kartu bank yang menampilkan nama pemegang kartu di bagian bawah, mirip
+   referensi desain awal) + **badge nama tenant/organisasi** (kanan, GENERIK — bukan hardcode
+   asumsi "PC IKPM {cabang}", supaya benar untuk SEMUA tipe tenant: cabang, marhalah, ATAU forum
+   seperti "Visikita" — dikonfirmasi eksplisit oleh user sebagai alasan perubahan).
+
+**Konsekuensi struktural**: `primaryCabangNama` dan `orgLabel` — dua props yang SEBELUMNYA jadi
+sumber nilai untuk baris "PC IKPM" — sekarang genuinely TIDAK DIPAKAI SAMA SEKALI oleh
+`MemberCard` (diganti `name`+`siteName` yang sudah ada). **Dihapus total dari `Props` type**
+(bukan dibiarkan sebagai dead prop) — pemanggilan di `akun/page.tsx` disesuaikan. Data-fetching
+`primaryCabangNama` (query `ref_ikpm_cabang`) TIDAK dihapus dari `page.tsx` — masih dipakai oleh
+blok DESKTOP ("Info keanggotaan" card, baris PC IKPM) yang tidak disentuh sama sekali sesi ini.
+
+**Verifikasi**: `tsc --noEmit` bersih (mengonfirmasi tidak ada pemanggil lain yang masih
+mengharap 2 prop yang dihapus) + `bun run build` sukses.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Koreksi gradasi header (secondary→putih) + logo MemberCard polos**
-  (lihat lesson di atas) — 2 putaran feedback user, `tsc`+build bersih di tiap putaran. Sudah
+- Terakhir dikerjakan: **MemberCard restrukturisasi bottom-row + generalisasi tenant** (lihat
+  lesson di atas) — logo `w-17`, badge top-right dihapus, No. Anggota 20px, baris bawah jadi
+  "Nama Anggota" + badge nama tenant generik (bukan hardcode PC IKPM). `tsc`+build bersih. Sudah
   di-commit dan di-push.
+- Sesi sebelumnya: **Koreksi gradasi header (secondary→putih) + logo MemberCard polos**
+  (lihat lesson di atas) — 2 putaran feedback user, `tsc`+build bersih di tiap putaran. Sudah
+  di-commit dan di-push (`da09c77`).
 - Sesi sebelumnya: **Gradasi header mobile (draft awal, keliru) + tombol Kembali ke Dashboard
   di 4 halaman akun** (lihat lesson di atas) — `AkunMobileHeader` gradasi primary→secondary
   (SUPERSEDED oleh koreksi di atas) + `MemberCard` overlap via `-mt-16`, tombol back ditambahkan

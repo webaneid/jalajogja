@@ -233,8 +233,6 @@ export default async function AkunPage({ params }: { params: Params }) {
           photoUrl={identity.photoUrl}
           memberNumber={membershipInfo?.memberNumber ?? null}
           stambuk={identity.stambuk}
-          primaryCabangNama={membershipInfo?.primaryCabangNama ?? null}
-          orgLabel={isMember ? orgMemberLabel : "Akun Publik"}
           logoUrl={logoUrl}
           siteName={siteName}
         />
