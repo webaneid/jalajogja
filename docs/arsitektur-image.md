@@ -1136,6 +1136,42 @@ original sudah dihapus. Upload ulang untuk mengaktifkan fitur ini."
 
 ---
 
+### Phase D3 — Guard Upscale (2026-07-21)
+
+**Bug**: `fit: "cover"` di Sharp SELALU mengisi penuh kotak target — kalau sumber lebih kecil dari
+target, Sharp meng-**upscale** (memperbesar, jadi buram) lalu crop supaya rasio pas. Sebelum fix
+ini, TIDAK ADA guard `withoutEnlargement` di 6 dari 7 variant builder (`large`/`medium`/
+`thumbnail`/`square`/`square-large`/`profile`) — cuma `original` (modul `akun`) yang punya guard.
+
+**Gejala nyata**: logo tenant 250×90px yang diupload lewat `/settings/general` (modul `"general"`,
+TIDAK ada di `MODULE_VARIANTS` → fallback ke `DEFAULT_VARIANTS = ["original","large","medium",
+"thumbnail","square"]`, set variant untuk KONTEN seperti featured image artikel, bukan branding)
+dipaksa upscale+crop jadi 1200×630 (variant `large`) — dan `PATH_PRIORITY` memilih `large` sebagai
+URL utama. Favicon (`variants.square`, 400×400) kena kelas bug yang sama.
+
+**Fix — `fitsWithoutUpscale()` di `lib/image-processor.ts`**: sebelum generate sebuah variant,
+bandingkan dimensi sumber terhadap target (`IMAGE_VARIANTS[name]`). Kalau sumber `>=` target di
+KEDUA sisi (lebar & tinggi) → crop seperti biasa (attention crop, TIDAK berubah untuk foto konten
+yang memang cukup besar). Kalau sumber lebih kecil di salah satu sisi → variant itu **dilewati
+sepenuhnya** (bukan upscale paksa) — bukan error, `Promise.all` di route upload (`/api/media/upload`
++ `/api/akun/media/upload`) diubah dari `if (!output) throw` jadi `if (!output) return` (skip).
+`withoutEnlargement: true` ditambah ke semua resize call sebagai defense-in-depth (jaga-jaga
+metadata dimensi tidak terbaca/edge case, bukan mekanisme utama).
+
+**Hasil akhir**: variant yang dilewati membuat `variants` JSONB tidak punya key itu sama sekali —
+konsumen di seluruh app SUDAH punya fallback-chain (`variants.large ?? variants.original ??
+media.url`, pola `resolveMediaUrl()` dan sejenisnya) sehingga otomatis jatuh ke variant yang lebih
+kecil yang tersedia, ujungnya ke `original` (convert WebP saja, dimensi asli utuh, tanpa crop sama
+sekali) — TIDAK perlu ubah satu pun consumer. `original` SELALU digenerate tanpa syarat (tidak
+kena filter ini) — jadi tidak pernah ada kasus "semua variant kosong".
+
+**Sengaja TIDAK retroaktif** — cuma berlaku untuk upload BARU. File yang sudah terlanjur ter-upscale
+sebelum fix ini TIDAK di-reprocess otomatis; admin perlu upload ulang manual kalau mau perbaiki.
+
+**Tidak disentuh**: `processVariant()` (dipakai `POST /api/media/[id]/recrop`, manual crop dari
+admin) — itu tindakan eksplisit admin menggambar crop box sendiri, beda konteks dari auto-generate
+saat upload.
+
 ### Phase D — Status Implementasi
 
 | Komponen | Status |
@@ -1146,8 +1182,10 @@ original sudah dihapus. Upload ulang untuk mengaktifkan fitur ini."
 | **D2**: `POST /api/media/[id]/recrop` route | ✅ Selesai |
 | **D2**: Crop editor UI di `MediaDetailPanel` (`react-image-crop`) | ✅ Selesai |
 | **D2**: Tombol "Crop" di panel + state crop editor | ✅ Selesai |
+| **D3**: Guard upscale — variant dilewati kalau sumber lebih kecil dari target | ✅ Selesai |
 
-**Phase D selesai** — D1 (attention + square-large + module-aware) + D2 (manual crop UI).
+**Phase D selesai** — D1 (attention + square-large + module-aware) + D2 (manual crop UI) + D3
+(guard upscale, mencegah logo/favicon/gambar kecil dipaksa jadi ukuran konten).
 **Catatan tenant existing**: perlu `ALTER TABLE ... ADD COLUMN IF NOT EXISTS crop_data JSONB`
 untuk tenant yang sudah ada sebelum Phase D.
 

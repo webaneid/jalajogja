@@ -487,7 +487,7 @@ app/(dashboard)/[tenant]/
 - [x] **Donasi/Qurban perencanaan lengkap** — arsitektur donasi rutin (Section 12 R1–R7) + front-end section (Section 11b). Docs di `docs/arsitektur-donasi.md`.
 - [~] **Donasi Rutin** — perencanaan selesai, implementasi belum. **DITUNDA** (Phase R).
 - [x] **Image System** — Phase A (variant system Sharp + 6 WebP variants + cron cleanup) + Phase B (metadata UI autosave panel) + Phase C (alt/title/caption di semua front-end post) SELESAI. Arsitektur lengkap di `docs/arsitektur-image.md`.
-- [x] **Image System Phase D — Autocrop + Variant Baru**: `square-large` (800×800); module-aware generation; `position:"attention"` (libvips smart crop); manual crop editor UI (`react-image-crop`) + `crop_data` kolom + `/api/media/[id]/recrop`. ✅ SELESAI.
+- [x] **Image System Phase D — Autocrop + Variant Baru**: `square-large` (800×800); module-aware generation; `position:"attention"` (libvips smart crop); manual crop editor UI (`react-image-crop`) + `crop_data` kolom + `/api/media/[id]/recrop`. Phase D3 (2026-07-21): guard upscale — variant dilewati kalau sumber lebih kecil dari target, cegah logo/favicon dipaksa jadi ukuran konten. ✅ SELESAI.
 - [ ] **Image System Phase E — Upload Pipeline Refactor**: client-side compress (Canvas API), `processImage()` hanya generate variant yang dibutuhkan, cap `original` 1600px untuk module `akun`, HEIC/HEIF support. Rencana lengkap: **`docs/arsitektur-upload-pipeline.md`**.
 - [x] **View Counter** — DDL + Drizzle schema + `lib/view-counter.ts` + integrasi post detail + kolom admin. Arsitektur lengkap di `docs/arsitektur-views-count.md`.
 - [x] **Widget Area System** — `default-sidebar` live di post archive + detail. DnD builder di `/website/pengaturan`. Arsitektur di `docs/arsitektur-sidebar.md`.
@@ -8539,8 +8539,67 @@ genuine tenant yang dibrowsing") belum dilakukan** — perlu dicoba user di 3 sk
 genuine di tenant sendiri, member browsing tenant lain (bukan cabang/marhalah/forum sendiri),
 dan akun publik di tenant manapun (harus tidak berubah dari perilaku sebelumnya).
 
+### [2026-07-21] Image System Phase D3 — Guard Upscale, Cegah Logo/Favicon Dipaksa Jadi Ukuran Konten
+
+> Detail lengkap: **`docs/arsitektur-image.md` § "Phase D3 — Guard Upscale"**
+
+**Laporan user**: upload logo 250×90px di `/settings/general` hasilnya "dipaksa" jadi 1200×630 —
+menanyakan apakah ini disengaja. **Jawaban: bukan disengaja, ini bug nyata di pipeline.**
+
+**Root cause**: `fit: "cover"` di Sharp selalu mengisi PENUH kotak target — sumber lebih kecil dari
+target = di-upscale (buram) lalu dipotong biar rasio pas. 6 dari 7 variant builder di
+`lib/image-processor.ts` (`large`/`medium`/`thumbnail`/`square`/`square-large`/`profile`) TIDAK
+punya guard `withoutEnlargement` sama sekali — cuma `original` (modul `akun`) yang punya. Logo
+tenant di-upload lewat modul `"general"` yang TIDAK ada di `MODULE_VARIANTS` (isinya cuma
+`shop`/`members`/`akun`/`letters`) → jatuh ke `DEFAULT_VARIANTS` (set variant untuk KONTEN artikel,
+1.91:1 ala Open Graph — bukan untuk branding rasio bebas). `PATH_PRIORITY` lalu memilih `large`
+sebagai URL utama. Favicon (`variants.square`, 400×400) kena kelas bug persis sama.
+
+**Keputusan user (dikonfirmasi eksplisit)**: perbaikan HANYA untuk upload BARU ("abaikan yang
+sudah terjadi") — tidak ada backfill/reprocess file lama. Logika yang diminta user, tepat sama
+dengan yang diimplementasikan: **sumber cukup besar (≥ target di kedua sisi) → crop seperti biasa;
+sumber lebih kecil → jangan dipaksa, lewati variant itu, ambil `original` (convert WebP saja, tanpa
+crop) sebagai fallback**.
+
+**Fix — `fitsWithoutUpscale()` baru di `lib/image-processor.ts`**: bandingkan dimensi sumber
+(`sharp().metadata()`) terhadap target (`IMAGE_VARIANTS[name]`) SEBELUM generate — kalau sumber
+lebih kecil di salah satu sisi, variant di-`.filter()` keluar dari daftar yang digenerate (bukan
+error, murni "tidak relevan untuk sumber ini"). `original` selalu digenerate tanpa syarat (tidak
+ada di `IMAGE_VARIANTS`, jadi tidak pernah kena filter — jaminan tidak ada kasus "semua variant
+kosong"). `withoutEnlargement: true` ditambah ke SEMUA resize call sebagai defense-in-depth
+(jaga-jaga metadata width/height gagal terbaca — `0 >= target` otomatis `false` = aman, bukan
+mekanisme utama).
+
+**2 route upload disesuaikan** (`/api/media/upload` DAN `/api/akun/media/upload` — dicek proaktif,
+pola sama persis di keduanya sejak awal): `if (!output) throw new Error(...)` di dalam
+`Promise.all` HARUS diubah jadi `if (!output) return;` — sebelumnya variant kosong = SELALU
+dianggap gagal (throw → rollback seluruh upload), sekarang variant kosong bisa juga berarti
+"sengaja dilewati", bukan error.
+
+**Kenapa aman tanpa sentuh consumer manapun**: konsumen variant di seluruh app SUDAH pakai pola
+fallback-chain (`variants.large ?? variants.original ?? media.url`, `resolveMediaUrl()`, dst —
+verifikasi: `ProductImageViewer.getFullUrl()` sudah `variants["square-large"] ?? img.url`) — variant
+yang hilang dari JSONB otomatis membuat fallback jatuh ke variant lebih kecil yang tersedia, ujungnya
+ke `original`. Nol perubahan di sisi consumer.
+
+**Sengaja TIDAK disentuh**: `processVariant()` (dipakai `POST /api/media/[id]/recrop`, manual crop
+admin) — itu tindakan eksplisit admin menggambar crop box sendiri, beda konteks dari auto-generate
+saat upload; di luar scope permintaan user kali ini.
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` sukses (dev server
+dimatikan dulu, `.next` dibersihkan). Tidak ada migrasi DB. Belum diverifikasi visual (upload logo
+kecil sungguhan lalu cek `logo_url` yang tersimpan) — keterbatasan environment sesi ini, perlu
+dicoba user.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Resolusi Branding Kartu Anggota + Branding Default IKPM platform-level**
+- Terakhir dikerjakan: **Image System Phase D3 — Guard Upscale** (lihat lesson di atas) — fix
+  bug logo/favicon dipaksa upscale+crop ke ukuran variant konten (large 1200×630, dst).
+  `fitsWithoutUpscale()` baru di `lib/image-processor.ts`, 2 route upload disesuaikan
+  (`throw` → `return` untuk variant yang sengaja dilewati). Tidak retroaktif (permintaan
+  eksplisit user), tidak sentuh `processVariant()` (manual crop admin, di luar scope). `tsc`+
+  build bersih. **Belum di-commit/push, belum diverifikasi visual** — user perlu coba upload
+  logo kecil dulu.
+- Sesi sebelumnya: **Resolusi Branding Kartu Anggota + Branding Default IKPM platform-level**
   (lihat lesson di atas) — `resolveAkunBranding()` helper baru (4 langkah: genuine member tenant
   dibrowsing → cabang resmi member via `primaryCabangRefId` → fallback `platform_settings` →
   akun publik selalu tenant dibrowsing), diterapkan ke 3 titik (`akun/page.tsx` ×2 +

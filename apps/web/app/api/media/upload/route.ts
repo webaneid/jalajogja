@@ -116,7 +116,10 @@ export async function POST(req: NextRequest) {
     await Promise.all(
       variantKeys.map(async (name) => {
         const output = allVariants[name];
-        if (!output) throw new Error(`Variant ${name} gagal dibuat`);
+        // Tidak ada output = sengaja dilewati (sumber terlalu kecil untuk variant
+        // ini tanpa upscale, lihat fitsWithoutUpscale di image-processor.ts) —
+        // BUKAN error. "original" selalu ada, jadi tidak pernah semua variant kosong.
+        if (!output) return;
         const filePath = `${basePath}/${uuid}${VARIANT_SUFFIXES[name]}.webp`;
         await uploadFile(slug, filePath, output, "image/webp");
         variantPaths[name] = filePath;
