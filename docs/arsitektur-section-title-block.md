@@ -190,7 +190,95 @@ Gallery). Wrapper sama seperti Galeri: `max-w-3xl mx-auto text-center mb-10`. Ti
 opsi `background` ke Stats (di luar scope permintaan — hanya soal ukuran judul, bukan varian
 visual baru) — selalu `background="none"` (default), eyebrow selalu `text-primary`.
 
-## 7. File yang Disentuh
+## 9. Perluasan ke Post/Produk/Campaign/Event — `PostsSectionTitle` Dapat Trio Standar + Align
+
+Lanjutan langsung (sesi berikutnya) — user minta Product/Event/Campaign/Donasi (dan secara implisit
+Post, karena semuanya berbagi `PostsSectionTitle`) juga punya standar 3-judul yang sama
+(eyebrow/judul/deskripsi), dengan syarat tambahan: tombol "Lihat Semua" **selalu di kanan** untuk
+align "left" (perilaku default, tidak berubah), tapi **pindah ke baris terpisah di bawah, terpusat**
+untuk align "center" — HANYA 2 opsi align (left/center), beda dari Keunggulan/CTA yang punya 3
+(left/center/right).
+
+### 9a. `PostsSectionTitle` Direstrukturisasi — Reuse `SectionTitleBlock`, Bukan Duplikasi
+
+Sebelumnya `PostsSectionTitle` render eyebrow/judul secara manual sendiri (JSX terpisah dari
+`SectionTitleBlock`). Sekarang delegasikan sepenuhnya ke `<SectionTitleBlock>` untuk trio konten —
+dua perubahan pada `SectionTitleBlock` diperlukan supaya reuse ini valid:
+- `title` type: `string` → `ReactNode` — `PostsSectionTitle` mengirim `renderTitle(title)` (array
+  elemen hasil parsing markup `*italic*`→`<em>` berwarna primary), bukan string polos. Existing
+  caller (Features/About/Gallery/Statistik) tetap kirim `string` — valid subset dari `ReactNode`,
+  nol perubahan perilaku.
+- `as?: "h2" | "h3"` (default `"h2"`) — `PostsSectionTitle` butuh dukungan `h3` untuk sub-header
+  per-kolom Design 4 "Trio Column" (lihat § 9d), diteruskan lewat komponen ini juga.
+
+Field `label` (teks mono kecil, TIDAK PERNAH dipakai satu caller pun — dikonfirmasi grep sebelum
+dihapus) **dihapus total** dari `PostsSectionTitle`, digantikan `eyebrow` yang konsepnya sama
+(teks kecil di atas judul) tapi konsisten secara visual dengan section lain.
+
+### 9b. Layout Dua Mode — `align="left"` (default) vs `align="center"`
+
+```tsx
+// align="left" — flex items-end justify-between, SAMA seperti sebelumnya
+<div className="flex items-end justify-between gap-6 mb-10 flex-wrap">
+  <SectionTitleBlock ... className="[&>*:last-child]:!mb-0" />
+  {href && <SectionSeeAllLink ... className="self-end" />}
+</div>
+
+// align="center" — title block terpusat, tombol di baris terpisah di bawah
+<div className="mb-10">
+  <div className="max-w-3xl mx-auto"><SectionTitleBlock ... className="text-center" /></div>
+  {href && <div className="flex justify-center mt-6"><SectionSeeAllLink .../></div>}
+</div>
+```
+
+**`[&>*:last-child]:!mb-0` (arbitrary child selector) — bukan `!mb-0` langsung pada
+`SectionTitleBlock`**: di mode "left", trailing margin HARUS nol supaya tombol "Lihat Semua" align
+persis ke baseline via `items-end` — tapi elemen TERAKHIR di dalam title block bisa berbeda
+(judul kalau tanpa deskripsi, deskripsi kalau ADA — baru mungkin sekarang karena `description`
+adalah fitur BARU di komponen ini). Selector `[&>*:last-child]` menargetkan child TERAKHIR
+APAPUN bentuknya secara otomatis, alih-alih hardcode asumsi "yang terakhir pasti judul" seperti
+sweep sebelumnya (§ 6, sebelum `description` ada di `PostsSectionTitle`).
+
+### 9c. Data Shape — 3 Field Baru di 4 Tipe Section
+
+`PostsSectionData`/`ProductsSectionData`/`CampaignsSectionData`/`EventsSectionData` (masing-masing
+`lib/*-section-designs.ts`) — tambah `eyebrow?: string`, `headerDesc?: string`, `titleAlign?:
+SectionTitleAlign` (baru, `lib/section-title-align.ts`, 2 opsi: `left`/`center`). Semua opsional,
+TIDAK ditambahkan ke `SECTION_DEFAULTS` di `page-templates.ts` — mengikuti konvensi LOKAL 4 tipe
+section ini (minimal defaults, andalkan optional chaining `?? ""`/`?? "left"` di titik baca),
+BEDA dari CTA/Features yang exhaustive-list semua field di default (dua konvensi berbeda yang
+sudah ada di codebase ini sebelum sesi ini, dihormati masing-masing bukan diseragamkan paksa).
+
+Editor (`section-editors.tsx`) — `PostsEditor`/`ProductsEditor`/`CampaignsEditor`/`EventsEditor`
+semua dapat 2 `Field` (eyebrow, deskripsi) + 1 `OptionRow` (posisi judul) tepat setelah field
+"Judul Section". Untuk `PostsEditor` khusus: field ini disembunyikan (`showTitleFields = !isHero
+&& !isTrio`) saat Design 1 "Hero 3 Kolom" atau Design 4 "Trio Column" aktif — keduanya TIDAK
+memakai `PostsSectionTitle` sebagai judul section (lihat § 9d) sehingga field itu tidak akan
+berpengaruh sama sekali kalau tetap ditampilkan.
+
+### 9d. Yang SENGAJA Tidak Ikut — Design 1 "Hero 3 Kolom" dan Design 4 "Trio Column" (Post)
+
+Dua design Post ini TIDAK memakai `PostsSectionTitle` untuk judul section secara keseluruhan:
+- **Design 1** (`posts-design-1.tsx`) — judul bespoke (`section-title !mb-6 border-b...`, § 6),
+  tanpa tombol "Lihat Semua" sama sekali. Struktural berbeda dari 3 design Post lain (dan semua
+  design Product/Campaign/Event) — TIDAK diberi eyebrow/deskripsi/align, dibiarkan seperti hasil
+  § 6 (murni penyamaan ukuran).
+- **Design 4** (`posts-design-4.tsx`) — TIDAK punya judul section sama sekali. Setiap dari 3
+  kolomnya render `<PostsSectionTitle as="h3" title={col.filterLabel} href={col.filterHref} />`
+  sendiri-sendiri (nama kategori/tag per-kolom sebagai sub-header) — bukan judul section
+  keseluruhan, tidak ada `data.eyebrow`/`headerDesc`/`titleAlign` yang relevan di level ini.
+
+11 design lain (Post 2/3/5, Produk 1/2/3, Campaign 1/2/3, Event 1/2/3) semuanya SATU baris
+`<PostsSectionTitle title={sectionTitle} href={filterHref} .../>` di level section (bukan
+per-item) — semua diperluas menerima `eyebrow={data.eyebrow} description={data.headerDesc}
+align={data.titleAlign}`. Beberapa design (Post 5, Produk 3 — keduanya carousel dengan tombol
+panah scroll) menaruh `<PostsSectionTitle className="mb-0" />` di dalam `flex-1` bersama tombol
+panah — `align="center"` masih BISA dipilih admin di sana, tapi hasilnya kurang ideal (title block
+akan center DI DALAM kolom sempit `flex-1`, bukan center relatif ke section penuh) — trade-off
+yang diterima (bukan bug, admin cukup tidak memilih "center" untuk 2 design carousel ini), tidak
+ada guard khusus yang mencegah pemilihannya.
+
+## 10. File yang Disentuh
 
 | File | Perubahan |
 |------|-----------|
@@ -204,8 +292,14 @@ visual baru) — selalu `background="none"` (default), eyebrow selalu `text-prim
 | `components/website/public/landing-template.tsx` | `GallerySection`/`AboutTextSection`/`FeaturesSection`/`ContactInfoSection` pakai `.section-title`/`<SectionTitleBlock>`; `StatsSection` dapat judul baru |
 | `lib/page-templates.ts` | `SECTION_DEFAULTS.stats` tambah `eyebrow`/`title`/`headerDesc` (opsional, default kosong) |
 | `components/website/section-editors.tsx` | `StatsEditor` tambah 3 field judul |
+| `lib/section-title-align.ts` | Baru — `SectionTitleAlign` (`left`/`center`) untuk § 9 |
+| `components/website/public/sections/section-title-block.tsx` | `title` jadi `ReactNode`, tambah prop `as` (§ 9a) |
+| `components/website/public/sections/posts/posts-section-title.tsx` | Restrukturisasi total — reuse `SectionTitleBlock`, tambah `eyebrow`/`description`/`align`, hapus `label` (§ 9a–9b) |
+| `lib/posts-section-designs.ts`, `products-section-designs.ts`, `campaigns-section-designs.ts`, `events-section-designs.ts` | Tambah `eyebrow?`/`headerDesc?`/`titleAlign?` (§ 9c) |
+| 11 file `sections/{posts,products,campaigns,events}/*-design-{2,3,5,1,2,3,...}.tsx` | Wire `eyebrow`/`description`/`align` ke `<PostsSectionTitle>` (§ 9d) |
+| `components/website/section-editors.tsx` | `PostsEditor`/`ProductsEditor`/`CampaignsEditor`/`EventsEditor` — 2 `Field` + 1 `OptionRow` baru (§ 9c) |
 
-## 8. Di Luar Scope (dicatat, bukan lupa)
+## 11. Di Luar Scope (dicatat, bukan lupa)
 
 - CTA & Hero tidak disentuh (lihat § 1, dikonfirmasi ulang eksplisit oleh user di sweep ini) —
   judulnya tetap independen.
@@ -218,3 +312,12 @@ visual baru) — selalu `background="none"` (default), eyebrow selalu `text-prim
   `SectionTitleBlock` sudah SIAP menerima itu (lewat komposisi `<SectionSeeAllLink>` di caller),
   tapi belum divariabel-kan sebagai prop resmi karena belum ada section yang genuinely butuh
   fitur ini.
+- `posts-design-1.tsx` (Hero 3 Kolom) dan per-kolom `posts-design-4.tsx` (Trio Column) TIDAK dapat
+  eyebrow/deskripsi/align — struktural tidak memakai `PostsSectionTitle` sebagai judul section
+  keseluruhan, lihat § 9d.
+- `titleAlign="center"` TIDAK di-guard dari 2 design carousel (Post 5, Produk 3) meski hasilnya
+  kurang ideal di sana (title block center di dalam kolom sempit, bukan center penuh section) —
+  lihat § 9d, trade-off diterima bukan bug.
+- `eyebrow`/`headerDesc`/`titleAlign` TIDAK ditambahkan ke `SECTION_DEFAULTS` (`page-templates.ts`)
+  untuk 4 tipe section di § 9 — mengikuti konvensi lokal (minimal defaults) yang sudah ada
+  sebelumnya untuk Posts/Produk/Campaign/Event, berbeda dari konvensi exhaustive CTA/Features.

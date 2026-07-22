@@ -14,12 +14,19 @@ function renderCard(c: CampaignCardData, tenantSlug: string, cardDesign: Campaig
     : <CampaignCard campaign={c} variant="grid" tenantSlug={tenantSlug} />;
 }
 
-export function CampaignsDesign1({ campaigns, tenantSlug, sectionTitle, filterHref, cardDesign }: CampaignsSectionProps) {
+export function CampaignsDesign1({ data, campaigns, tenantSlug, sectionTitle, filterHref, cardDesign }: CampaignsSectionProps) {
   if (campaigns.length === 0) return null;
   return (
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
-        <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" />
+        <PostsSectionTitle
+          title={sectionTitle}
+          eyebrow={data.eyebrow}
+          description={data.headerDesc}
+          align={data.titleAlign}
+          href={filterHref}
+          linkLabel="Lihat Semua"
+        />
 
         {/* Desktop: Grid 3 kolom */}
         <div className="hidden md:grid grid-cols-3 gap-5">

@@ -17,7 +17,13 @@ export function PostsDesign2({ data, posts, tenantSlug, sectionTitle, filterHref
   return (
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
-        <PostsSectionTitle title={sectionTitle} href={filterHref} />
+        <PostsSectionTitle
+          title={sectionTitle}
+          eyebrow={data.eyebrow}
+          description={data.headerDesc}
+          align={data.titleAlign}
+          href={filterHref}
+        />
 
         {/* ── MOBILE: overlay featured + list sisanya ── */}
         {featured && (

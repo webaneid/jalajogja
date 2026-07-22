@@ -4,7 +4,7 @@ import { formatEventDate, formatTicketPrice, EVENT_TYPE_LABELS, EVENT_TYPE_COLOR
 import type { EventsSectionProps } from "@/lib/events-section-designs";
 import { CalendarDays, MapPin } from "lucide-react";
 
-export function EventsDesign2({ events, tenantSlug, sectionTitle, filterHref, timezone }: EventsSectionProps) {
+export function EventsDesign2({ data, events, tenantSlug, sectionTitle, filterHref, timezone }: EventsSectionProps) {
   if (events.length === 0) return null;
 
   const featured  = events[0]!;
@@ -15,7 +15,14 @@ export function EventsDesign2({ events, tenantSlug, sectionTitle, filterHref, ti
   return (
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
-        <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" />
+        <PostsSectionTitle
+          title={sectionTitle}
+          eyebrow={data.eyebrow}
+          description={data.headerDesc}
+          align={data.titleAlign}
+          href={filterHref}
+          linkLabel="Lihat Semua"
+        />
 
         {/* ── MOBILE: full list ── */}
         <div className="sm:hidden divide-y divide-border">

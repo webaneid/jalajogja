@@ -1,8 +1,12 @@
 import type { EventCardData } from "./event-card-templates";
 import type { EventArchiveCardDesignId } from "./event-archive-card-designs";
+import type { SectionTitleAlign } from "./section-title-align";
 
 export type EventsSectionData = {
   title:        string;
+  eyebrow?:     string;             // judul kecil di atas title, opsional
+  headerDesc?:  string;             // deskripsi di bawah title, opsional
+  titleAlign?:  SectionTitleAlign;  // default "left" — lihat lib/section-title-align.ts
   count:        number;          // default 6
   categoryId:   string | null;
   upcomingOnly: boolean;         // default true — filter startsAt > NOW()

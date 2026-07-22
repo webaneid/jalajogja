@@ -6,7 +6,7 @@ import { PostsSectionTitle } from "../posts/posts-section-title";
 import { ProductCard } from "@/components/website/public/product-cards/product-card";
 import type { ProductsSectionProps } from "@/lib/products-section-designs";
 
-export function ProductsDesign3({ products, tenantSlug, sectionTitle, filterHref }: ProductsSectionProps) {
+export function ProductsDesign3({ data, products, tenantSlug, sectionTitle, filterHref }: ProductsSectionProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scroll    = (dir: "left" | "right") =>
     scrollRef.current?.scrollBy({ left: dir === "right" ? 280 : -280, behavior: "smooth" });
@@ -18,7 +18,15 @@ export function ProductsDesign3({ products, tenantSlug, sectionTitle, filterHref
       <div className="max-w-7xl mx-auto">
         <div className="flex items-end gap-2 mb-4">
           <div className="flex-1">
-            <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" className="mb-0" />
+            <PostsSectionTitle
+              title={sectionTitle}
+              eyebrow={data.eyebrow}
+              description={data.headerDesc}
+              align={data.titleAlign}
+              href={filterHref}
+              linkLabel="Lihat Semua"
+              className="mb-0"
+            />
           </div>
           <div className="flex items-center gap-1 shrink-0 pb-1">
             <button type="button" onClick={() => scroll("left")} aria-label="Sebelumnya"

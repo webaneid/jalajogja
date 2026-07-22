@@ -4,7 +4,7 @@ import { CAMPAIGN_TYPE_LABELS, CAMPAIGN_TYPE_COLORS, formatRp, daysRemaining } f
 import type { CampaignsSectionProps } from "@/lib/campaigns-section-designs";
 import { Heart } from "lucide-react";
 
-export function CampaignsDesign2({ campaigns, tenantSlug, sectionTitle, filterHref }: CampaignsSectionProps) {
+export function CampaignsDesign2({ data, campaigns, tenantSlug, sectionTitle, filterHref }: CampaignsSectionProps) {
   if (campaigns.length === 0) return null;
 
   const featured  = campaigns[0]!;
@@ -15,7 +15,14 @@ export function CampaignsDesign2({ campaigns, tenantSlug, sectionTitle, filterHr
   return (
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
-        <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" />
+        <PostsSectionTitle
+          title={sectionTitle}
+          eyebrow={data.eyebrow}
+          description={data.headerDesc}
+          align={data.titleAlign}
+          href={filterHref}
+          linkLabel="Lihat Semua"
+        />
 
         {/* ── MOBILE: 2-col grid semua ── */}
         <div className="md:hidden grid grid-cols-2 gap-3">

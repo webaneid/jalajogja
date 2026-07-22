@@ -1,8 +1,12 @@
 import type { CampaignCardData } from "./campaign-card-templates";
 import type { CampaignArchiveCardDesignId } from "./campaign-archive-card-designs";
+import type { SectionTitleAlign } from "./section-title-align";
 
 export type CampaignsSectionData = {
   title:        string;
+  eyebrow?:     string;             // judul kecil di atas title, opsional
+  headerDesc?:  string;             // deskripsi di bawah title, opsional
+  titleAlign?:  SectionTitleAlign;  // default "left" — lihat lib/section-title-align.ts
   count:        number;          // default 6
   categoryId:   string | null;
   campaignType: "donasi" | "zakat" | "wakaf" | "qurban" | null; // null = semua tipe

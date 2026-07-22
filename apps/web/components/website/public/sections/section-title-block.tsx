@@ -1,11 +1,13 @@
+import type { ReactNode } from "react";
 import type { SectionBackground } from "@/lib/section-background";
 import { resolveAccentTextClass } from "@/lib/section-background";
 
 type Props = {
   eyebrow?:     string;
-  title?:       string;
+  title?:       ReactNode;   // biasanya string, tapi PostsSectionTitle mengirim markup *italic* terparsing
   description?: string;
   background?:  SectionBackground;   // untuk warna eyebrow — default "none"
+  as?:          "h2" | "h3";          // default "h2" — h3 untuk sub-header (mis. kolom Trio Column Post)
   className?:   string;
 };
 
@@ -19,7 +21,7 @@ type Props = {
 // (layout section berbeda-beda secara legit, tidak dipaksa seragam). CTA sengaja TIDAK memakai
 // komponen ini — CTA punya judul besar tersendiri yang menyamai ukuran Hero, lihat
 // docs/arsitektur-cta-section.md.
-export function SectionTitleBlock({ eyebrow, title, description, background = "none", className }: Props) {
+export function SectionTitleBlock({ eyebrow, title, description, background = "none", as: Tag = "h2", className }: Props) {
   if (!eyebrow && !title && !description) return null;
 
   const accentCls = resolveAccentTextClass(background);
@@ -27,7 +29,7 @@ export function SectionTitleBlock({ eyebrow, title, description, background = "n
   return (
     <div className={className}>
       {eyebrow && <p className={`text-xs font-semibold uppercase tracking-widest mb-2 ${accentCls}`}>{eyebrow}</p>}
-      {title && <h2 className="section-title">{title}</h2>}
+      {title && <Tag className="section-title">{title}</Tag>}
       {description && <p className="text-base opacity-80 leading-relaxed mt-3">{description}</p>}
     </div>
   );

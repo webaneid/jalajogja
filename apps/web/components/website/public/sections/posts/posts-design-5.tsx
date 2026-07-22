@@ -8,7 +8,7 @@ import type { PostsSectionProps } from "@/lib/posts-section-designs";
 
 const SLIDE_INTERVAL = 3000;
 
-export function PostsDesign5({ posts, tenantSlug, sectionTitle, filterHref }: PostsSectionProps) {
+export function PostsDesign5({ data, posts, tenantSlug, sectionTitle, filterHref }: PostsSectionProps) {
   const scrollRef  = useRef<HTMLDivElement>(null);
   const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const pausedRef  = useRef(false);
@@ -47,7 +47,14 @@ export function PostsDesign5({ posts, tenantSlug, sectionTitle, filterHref }: Po
       <div className="max-w-7xl mx-auto">
         <div className="flex items-end gap-2 mb-4">
           <div className="flex-1">
-            <PostsSectionTitle title={sectionTitle} href={filterHref} className="mb-0" />
+            <PostsSectionTitle
+              title={sectionTitle}
+              eyebrow={data.eyebrow}
+              description={data.headerDesc}
+              align={data.titleAlign}
+              href={filterHref}
+              className="mb-0"
+            />
           </div>
           <div className="flex items-center gap-1 shrink-0 pb-1">
             <button type="button" onClick={() => scrollBy("left")} aria-label="Sebelumnya"

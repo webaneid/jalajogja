@@ -178,8 +178,14 @@ tersisa: `PostsSectionTitle` (Post/Produk/Campaign/Event, semua design), Design 
 Post, Strip Modul Desain 2, "Info Kontak", dan Statistik (section ini SEBELUMNYA tidak punya
 judul sama sekali — ditambahkan baru, opsional, default kosong = zero perubahan visual untuk
 data existing). Judul ITEM/CARD (nama post/produk individual di dalam kartu) SENGAJA TIDAK ikut
-disamakan — beda kelas dari judul section. **Dokumen detail penuh**:
-`docs/arsitektur-section-title-block.md` § 6–8.
+disamakan — beda kelas dari judul section. **Perluasan (sesi berikutnya)** — `PostsSectionTitle`
+(dipakai Post/Produk/Campaign/Event, 11 dari 14 design) direstrukturisasi total: reuse
+`<SectionTitleBlock>` untuk trio eyebrow+judul+deskripsi (bukan render manual terpisah lagi),
+tambah opsi posisi **HANYA 2** (left/center, beda dari Keunggulan/CTA yang 3 opsi) — "left" =
+tombol "Lihat Semua" tetap sejajar kanan (default, tidak berubah), "center" = title block
+terpusat + tombol pindah ke baris terpisah di bawah, juga terpusat. Design "Hero 3 Kolom" Post
+dan sub-header per-kolom "Trio Column" Post sengaja tidak ikut (tidak memakai `PostsSectionTitle`
+sebagai judul section). **Dokumen detail penuh**: `docs/arsitektur-section-title-block.md` § 6–9.
 
 ---
 

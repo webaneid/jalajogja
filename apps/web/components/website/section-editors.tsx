@@ -66,6 +66,7 @@ import {
   GALLERY_IMAGE_RATIO_IDS, GALLERY_IMAGE_RATIO_LABELS,
   type GallerySectionData,
 } from "@/lib/gallery-section-designs";
+import { SECTION_TITLE_ALIGN_IDS, SECTION_TITLE_ALIGN_LABELS } from "@/lib/section-title-align";
 
 type EditorProps = {
   data:             Record<string, unknown>;
@@ -277,11 +278,18 @@ type TagOption     = { id: string; name: string };
 type ColConfig = { categoryId?: string | null; count?: number };
 
 function PostsEditor({ data, onChange, variant, onVariantChange, tenantSlug }: EditorProps) {
-  const d = data as { title?: string; count?: number; categoryId?: string | null; tagId?: string | null; columns?: ColConfig[] };
+  const d = data as {
+    title?: string; eyebrow?: string; headerDesc?: string; titleAlign?: typeof SECTION_TITLE_ALIGN_IDS[number];
+    count?: number; categoryId?: string | null; tagId?: string | null; columns?: ColConfig[];
+  };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const activeVariant = variant ?? "1";
   const isHero   = POSTS_SECTION_DESIGNS[activeVariant as keyof typeof POSTS_SECTION_DESIGNS]?.type === "hero";
   const isTrio   = activeVariant === "4";
+  // Hero (Design 1) dan Trio Column (Design 4) tidak pakai PostsSectionTitle sebagai judul
+  // section keseluruhan (Hero = h2 bespoke tanpa tombol, Trio = per-kolom h3) — sembunyikan
+  // field eyebrow/deskripsi/align yang tidak akan berpengaruh untuk kedua design ini.
+  const showTitleFields = !isHero && !isTrio;
 
   // "category" | "tag" — ditentukan dari data yang ada, default "category"
   const filterMode = d.tagId ? "tag" : "category";
@@ -307,6 +315,23 @@ function PostsEditor({ data, onChange, variant, onVariantChange, tenantSlug }: E
       <Field label="Judul Section">
         <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Berita & Pengumuman" />
       </Field>
+      {showTitleFields && (
+        <>
+          <Field label="Judul Kecil (eyebrow, opsional)">
+            <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="TERBARU" />
+          </Field>
+          <Field label="Deskripsi (opsional)">
+            <Input value={d.headerDesc ?? ""} onChange={(e) => u("headerDesc", e.target.value)} placeholder="Kabar dan cerita terbaru dari kami." />
+          </Field>
+          <OptionRow
+            label="Posisi Judul"
+            ids={SECTION_TITLE_ALIGN_IDS}
+            labels={SECTION_TITLE_ALIGN_LABELS}
+            value={d.titleAlign ?? "left"}
+            onChange={(v) => u("titleAlign", v)}
+          />
+        </>
+      )}
       <Field label="Jumlah Postingan">
         <Select value={String(d.count ?? 6)} onValueChange={(v) => u("count", Number(v))}>
           <SelectTrigger><SelectValue /></SelectTrigger>
@@ -425,7 +450,10 @@ function PostsEditor({ data, onChange, variant, onVariantChange, tenantSlug }: E
 // ── Events ────────────────────────────────────────────────────────────────────
 
 function EventsEditor({ data, onChange, variant, onVariantChange }: EditorProps) {
-  const d = data as { title?: string; count?: number; upcomingOnly?: boolean };
+  const d = data as {
+    title?: string; eyebrow?: string; headerDesc?: string; titleAlign?: typeof SECTION_TITLE_ALIGN_IDS[number];
+    count?: number; upcomingOnly?: boolean;
+  };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const activeVariant = variant ?? "1";
   return (
@@ -433,6 +461,19 @@ function EventsEditor({ data, onChange, variant, onVariantChange }: EditorProps)
       <Field label="Judul Section">
         <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Event Mendatang" />
       </Field>
+      <Field label="Judul Kecil (eyebrow, opsional)">
+        <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="AGENDA" />
+      </Field>
+      <Field label="Deskripsi (opsional)">
+        <Input value={d.headerDesc ?? ""} onChange={(e) => u("headerDesc", e.target.value)} placeholder="Ikuti kegiatan kami berikutnya." />
+      </Field>
+      <OptionRow
+        label="Posisi Judul"
+        ids={SECTION_TITLE_ALIGN_IDS}
+        labels={SECTION_TITLE_ALIGN_LABELS}
+        value={d.titleAlign ?? "left"}
+        onChange={(v) => u("titleAlign", v)}
+      />
       <Field label="Jumlah Event">
         <Select value={String(d.count ?? 6)} onValueChange={(v) => u("count", Number(v))}>
           <SelectTrigger><SelectValue /></SelectTrigger>
@@ -483,7 +524,10 @@ function EventsEditor({ data, onChange, variant, onVariantChange }: EditorProps)
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 
 function CampaignsEditor({ data, onChange, variant, onVariantChange }: EditorProps) {
-  const d = data as { title?: string; count?: number; campaignType?: string | null };
+  const d = data as {
+    title?: string; eyebrow?: string; headerDesc?: string; titleAlign?: typeof SECTION_TITLE_ALIGN_IDS[number];
+    count?: number; campaignType?: string | null;
+  };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const activeVariant = variant ?? "1";
   return (
@@ -491,6 +535,19 @@ function CampaignsEditor({ data, onChange, variant, onVariantChange }: EditorPro
       <Field label="Judul Section">
         <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Donasi & Infaq" />
       </Field>
+      <Field label="Judul Kecil (eyebrow, opsional)">
+        <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="MARI BERBAGI" />
+      </Field>
+      <Field label="Deskripsi (opsional)">
+        <Input value={d.headerDesc ?? ""} onChange={(e) => u("headerDesc", e.target.value)} placeholder="Program donasi yang sedang berjalan." />
+      </Field>
+      <OptionRow
+        label="Posisi Judul"
+        ids={SECTION_TITLE_ALIGN_IDS}
+        labels={SECTION_TITLE_ALIGN_LABELS}
+        value={d.titleAlign ?? "left"}
+        onChange={(v) => u("titleAlign", v)}
+      />
       <Field label="Jumlah Campaign">
         <Select value={String(d.count ?? 6)} onValueChange={(v) => u("count", Number(v))}>
           <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1042,7 +1099,10 @@ function DividerEditor({ data, onChange }: EditorProps) {
 // ── Products ──────────────────────────────────────────────────────────────────
 
 function ProductsEditor({ data, onChange, variant, onVariantChange }: EditorProps) {
-  const d = data as { title?: string; count?: number; categoryId?: string | null };
+  const d = data as {
+    title?: string; eyebrow?: string; headerDesc?: string; titleAlign?: typeof SECTION_TITLE_ALIGN_IDS[number];
+    count?: number; categoryId?: string | null;
+  };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const activeVariant = variant ?? "1";
   return (
@@ -1051,6 +1111,19 @@ function ProductsEditor({ data, onChange, variant, onVariantChange }: EditorProp
         <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)}
           placeholder="Produk Terbaru" className="h-8 text-sm" />
       </Field>
+      <Field label="Judul Kecil (eyebrow, opsional)">
+        <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="KOLEKSI" />
+      </Field>
+      <Field label="Deskripsi (opsional)">
+        <Input value={d.headerDesc ?? ""} onChange={(e) => u("headerDesc", e.target.value)} placeholder="Produk pilihan dari toko kami." />
+      </Field>
+      <OptionRow
+        label="Posisi Judul"
+        ids={SECTION_TITLE_ALIGN_IDS}
+        labels={SECTION_TITLE_ALIGN_LABELS}
+        value={d.titleAlign ?? "left"}
+        onChange={(v) => u("titleAlign", v)}
+      />
       <Field label="Jumlah Produk">
         <select value={d.count ?? 8} onChange={(e) => u("count", Number(e.target.value))}
           className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">

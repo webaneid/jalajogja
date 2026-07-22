@@ -2,7 +2,7 @@ import { PostCard } from "@/components/website/public/post-cards/post-card";
 import { PostsSectionTitle } from "./posts-section-title";
 import type { PostsSectionProps } from "@/lib/posts-section-designs";
 
-export function PostsDesign3({ posts, tenantSlug, sectionTitle, filterHref }: PostsSectionProps) {
+export function PostsDesign3({ data, posts, tenantSlug, sectionTitle, filterHref }: PostsSectionProps) {
   const leftPosts  = posts.slice(0, 5);
   const rightPosts = posts.slice(5, 10);
 
@@ -13,7 +13,13 @@ export function PostsDesign3({ posts, tenantSlug, sectionTitle, filterHref }: Po
   return (
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
-        <PostsSectionTitle title={sectionTitle} href={filterHref} />
+        <PostsSectionTitle
+          title={sectionTitle}
+          eyebrow={data.eyebrow}
+          description={data.headerDesc}
+          align={data.titleAlign}
+          href={filterHref}
+        />
 
         {/* ── MOBILE: overlay pertama + list ── */}
         <div className="md:hidden">

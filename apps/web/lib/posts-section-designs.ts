@@ -1,4 +1,5 @@
 import type { PostCardData } from "@/lib/post-card-templates";
+import type { SectionTitleAlign } from "@/lib/section-title-align";
 
 export type PostColumnConfig = {
   categoryId?: string | null;
@@ -8,6 +9,9 @@ export type PostColumnConfig = {
 
 export type PostsSectionData = {
   title:         string;
+  eyebrow?:      string;             // judul kecil di atas title, opsional
+  headerDesc?:   string;             // deskripsi di bawah title, opsional
+  titleAlign?:   SectionTitleAlign;  // default "left" — lihat lib/section-title-align.ts
   count:         number;
   categoryId?:   string | null;
   tagId?:        string | null;

@@ -4,7 +4,7 @@ import { pickProductCover, priceLabel } from "@/lib/product-card-templates";
 import { Store } from "lucide-react";
 import type { ProductsSectionProps } from "@/lib/products-section-designs";
 
-export function ProductsDesign2({ products, tenantSlug, sectionTitle, filterHref }: ProductsSectionProps) {
+export function ProductsDesign2({ data, products, tenantSlug, sectionTitle, filterHref }: ProductsSectionProps) {
   if (products.length === 0) return null;
 
   const featured = products[0];
@@ -14,7 +14,14 @@ export function ProductsDesign2({ products, tenantSlug, sectionTitle, filterHref
   return (
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
-        <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" />
+        <PostsSectionTitle
+          title={sectionTitle}
+          eyebrow={data.eyebrow}
+          description={data.headerDesc}
+          align={data.titleAlign}
+          href={filterHref}
+          linkLabel="Lihat Semua"
+        />
 
         {/* ── MOBILE: 2-col grid semua produk ── */}
         <div className="md:hidden grid grid-cols-2 gap-3">

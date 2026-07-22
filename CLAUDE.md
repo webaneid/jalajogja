@@ -9217,19 +9217,90 @@ opsional di JSONB `pages.body`). Belum diverifikasi visual di browser — user p
 terasa aneh (`PostsSectionTitle` vs `modules-design-2` flex `items-end` alignment), (3) Statistik
 sekarang punya opsi judul di section builder.
 
+### [2026-07-22] Audit Lebar Pill Header/Hero — Tidak Ditemukan Bug di Kode (Ditunda)
+
+User laporkan Pill Header dan Hero terlihat asimetris kiri-kanan dibanding section lain. Audit
+kode menyeluruh (`grep` seluruh `max-w-7xl`/`px-*`/`pl-`/`pr-`/`ml-`/`mr-`/`100vw`/`w-screen` di
+`PillHeader`, kedua desain Hero, SEMUA section landing, dan seluruh jalur wrapper
+`HeaderVisibility → PublicHeader → {Classic,Flex,Pill}Header`) — hasilnya **semua identik**
+`max-w-7xl mx-auto px-4`, tidak ada asimetri di level class Tailwind manapun. Tidak ada akses
+browser/screenshot di environment ini untuk verifikasi visual lebih lanjut. User memilih
+**ditunda** ("biarkan saja dulu bro") — tidak ada perubahan kode. Kalau muncul lagi, minta
+screenshot atau URL+breakpoint spesifik sebelum mulai audit ulang — audit berbasis grep class
+sudah terbukti tidak cukup untuk menemukan bug visual jenis ini.
+
+### [2026-07-22] `PostsSectionTitle` — Perluasan Trio Standar ke Post/Produk/Campaign/Event
+
+> Detail lengkap: **`docs/arsitektur-section-title-block.md`** § 9
+
+Lanjutan langsung dari screening ukuran judul (lesson di atas, sesi berikutnya) — user minta
+Product/Event/Campaign/Donasi (dan otomatis Post, karena berbagi `PostsSectionTitle`) juga punya
+standar 3-judul yang sama, dengan syarat: tombol "Lihat Semua" tetap di kanan untuk align "left"
+(default), tapi pindah ke baris terpisah di bawah — terpusat — untuk align "center". **Hanya 2
+opsi align** (left/center), beda dari Keunggulan/CTA yang 3 opsi (+kanan). Pesan user sempat
+kepotong di tengah kalimat ("jika center, maka button") — dilanjutkan di pesan berikutnya
+("button 'Lihat Semua→' itu berada dibawah sejajar..").
+
+**`PostsSectionTitle` direstrukturisasi total** — sebelumnya render eyebrow/judul manual sendiri
+(terpisah dari `SectionTitleBlock`), sekarang delegasikan sepenuhnya ke `<SectionTitleBlock>`.
+Dua perubahan pada `SectionTitleBlock` diperlukan untuk reuse ini valid: `title` type `string` →
+`ReactNode` (untuk terima `renderTitle(title)`, array hasil parsing markup `*italic*` — existing
+caller string tetap valid, subset dari `ReactNode`), dan `as?: "h2"|"h3"` baru (default h2, untuk
+dukung sub-header per-kolom Design 4 "Trio Column" Post). Field `label` (teks mono kecil, TIDAK
+PERNAH dipakai satu caller pun — dikonfirmasi grep sebelum dihapus) dihapus total, digantikan
+`eyebrow` yang secara visual konsisten dengan section lain.
+
+**`[&>*:last-child]:!mb-0` (Tailwind arbitrary child selector)** — di mode "left", trailing
+margin harus nol supaya tombol align persis ke baseline via `items-end`, TAPI elemen TERAKHIR di
+title block sekarang bisa berbeda (judul kalau tanpa deskripsi, deskripsi kalau ADA — baru
+mungkin karena `description` fitur BARU di komponen ini). Selector ini menargetkan child terakhir
+APAPUN bentuknya otomatis, tidak hardcode asumsi seperti sweep sebelumnya.
+
+**`lib/section-title-align.ts` baru** — `SectionTitleAlign` (`left`/`center`), field baru
+`eyebrow?`/`headerDesc?`/`titleAlign?` ditambah ke 4 tipe data (`PostsSectionData` dkk) — SENGAJA
+TIDAK ditambahkan ke `SECTION_DEFAULTS` (konvensi lokal minimal-defaults yang sudah ada untuk 4
+tipe ini, beda dari CTA/Features yang exhaustive — dua konvensi berbeda, dihormati masing-masing).
+
+**Design yang SENGAJA tidak ikut**: Post Design 1 "Hero 3 Kolom" (judul bespoke tanpa tombol,
+hasil sweep sebelumnya) dan sub-header per-kolom Post Design 4 "Trio Column" (`as="h3"`, bukan
+judul section keseluruhan) — keduanya tidak memakai `PostsSectionTitle` di level section. 11
+design lain (Post 2/3/5, Produk 1/2/3, Campaign 1/2/3, Event 1/2/3) semua diperluas menerima
+`eyebrow`/`description`/`align` — perlu tambah `data` ke destructuring props di 10 dari 11 file
+(hanya `posts-design-2.tsx` yang sudah punya `data` sebelumnya). 2 design carousel (Post 5,
+Produk 3) menaruh `PostsSectionTitle` di dalam `flex-1` bersama tombol panah scroll —
+`align="center"` masih bisa dipilih tapi hasilnya kurang ideal (center di kolom sempit, bukan
+center section penuh) — diterima sebagai trade-off, tidak di-guard.
+
+**Verifikasi**: `tsc --noEmit` bersih dari percobaan pertama + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB. Belum diverifikasi
+visual di browser — user perlu cek terutama: (1) mode "center" pada masing-masing dari 4 tipe
+section, (2) editor Posts menyembunyikan field baru dengan benar saat Design 1/4 aktif, (3) 2
+design carousel dengan `align="center"` dipilih (edge case yang diterima, bukan di-guard).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Screening ukuran judul — semua section landing page kecuali Hero+CTA**
-  (lihat lesson di atas) — lanjutan langsung `<SectionTitleBlock>` di sesi yang sama. Audit
-  menyeluruh `<h1/h2/h3>` di seluruh section publik, pisahkan judul SECTION (disamakan) dari
-  judul ITEM/CARD di dalam kartu (sengaja TIDAK disentuh). 5 titik disamakan ke `.section-title`:
-  `PostsSectionTitle` (Post/Produk/Campaign/Event, hampir semua design), Design "Hero 3 Kolom"
-  Post, Strip Modul Desain 2, "Info Kontak", dan Statistik (section ini SEBELUMNYA tidak punya
-  judul sama sekali — `eyebrow`/`title`/`headerDesc` opsional ditambahkan baru, default kosong =
-  zero perubahan visual data existing). Override margin pakai `!mb-*`/`!m-0` (Tailwind important-
-  modifier) — WAJIB karena `.section-title` didefinisikan di luar `@layer utilities`, cascade
-  order vs utility Tailwind biasa tidak bisa diandalkan tanpa `!important`. `tsc`+build bersih
+- Terakhir dikerjakan: **`PostsSectionTitle` — perluasan trio standar ke Post/Produk/Campaign/
+  Event** (lihat lesson di atas) — lanjutan langsung "Screening ukuran judul" di sesi yang sama
+  (diselingi 1 turn audit dokumentasi-vs-kode yang tidak menghasilkan perubahan, dan 1 turn audit
+  lebar Pill Header/Hero yang tidak menemukan bug di kode — lihat lesson terpisah di atas,
+  ditunda menunggu screenshot user). `PostsSectionTitle` direstrukturisasi total: reuse
+  `<SectionTitleBlock>` (butuh `title: ReactNode` + prop `as` baru di komponen itu), tambah
+  `eyebrow`/`description`/`align` (HANYA 2 opsi: left/center — beda dari Keunggulan/CTA yang 3),
+  hapus field `label` yang tidak pernah dipakai caller manapun. `lib/section-title-align.ts` baru.
+  4 tipe data (`PostsSectionData` dkk) dapat 3 field baru opsional, TIDAK ditambah ke
+  `SECTION_DEFAULTS` (konvensi lokal minimal-defaults). 11 dari 14 design Post/Produk/Campaign/
+  Event diwire (Design 1 "Hero 3 Kolom" dan sub-header per-kolom Design 4 "Trio Column" Post
+  sengaja tidak ikut — tidak memakai `PostsSectionTitle` di level section). `tsc`+build bersih
   dari percobaan pertama. Nol migrasi DB. **Belum di-commit/push** (menunggu checkpoint ini),
   **belum diverifikasi visual di browser**.
+- Sesi sebelumnya: **Screening ukuran judul — semua section landing page kecuali Hero+CTA**
+  (lihat lesson di atas) — Audit menyeluruh `<h1/h2/h3>` di seluruh section publik, pisahkan
+  judul SECTION (disamakan) dari judul ITEM/CARD di dalam kartu (sengaja TIDAK disentuh). 5 titik
+  disamakan ke `.section-title`: `PostsSectionTitle`, Design "Hero 3 Kolom" Post, Strip Modul
+  Desain 2, "Info Kontak", dan Statistik (section ini SEBELUMNYA tidak punya judul sama sekali —
+  `eyebrow`/`title`/`headerDesc` opsional ditambahkan baru, default kosong = zero perubahan
+  visual data existing). Override margin pakai `!mb-*`/`!m-0` (Tailwind important-modifier) —
+  WAJIB karena `.section-title` didefinisikan di luar `@layer utilities`. **Sudah di-commit+push**
+  (`10b6217`).
 - Sesi sebelumnya: **`<SectionTitleBlock>` — ekstraksi blok judul bersama** (lihat lesson di
   atas) — trio eyebrow+judul+deskripsi yang identik persis di Keunggulan/Tentang Kami/Galeri
   diekstrak jadi satu komponen (`components/website/public/sections/section-title-block.tsx`),

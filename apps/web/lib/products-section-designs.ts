@@ -1,10 +1,14 @@
 import type { ProductCardData } from "./product-card-templates";
 import type { ProductArchiveCardDesignId } from "./product-archive-card-designs";
+import type { SectionTitleAlign } from "./section-title-align";
 
 export type ProductsSectionData = {
-  title:      string;
-  count:      number;       // default 8
-  categoryId: string | null;
+  title:       string;
+  eyebrow?:    string;             // judul kecil di atas title, opsional
+  headerDesc?: string;             // deskripsi di bawah title, opsional
+  titleAlign?: SectionTitleAlign;  // default "left" — lihat lib/section-title-align.ts
+  count:       number;       // default 8
+  categoryId:  string | null;
 };
 
 export const PRODUCTS_SECTION_DESIGN_IDS = ["1", "2", "3"] as const;

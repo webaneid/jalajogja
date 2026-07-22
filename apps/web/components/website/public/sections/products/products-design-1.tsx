@@ -12,13 +12,20 @@ function renderCard(p: ProductCardData, tenantSlug: string, cardDesign: Products
   }
 }
 
-export function ProductsDesign1({ products, tenantSlug, sectionTitle, filterHref, cardDesign }: ProductsSectionProps) {
+export function ProductsDesign1({ data, products, tenantSlug, sectionTitle, filterHref, cardDesign }: ProductsSectionProps) {
   if (products.length === 0) return null;
 
   return (
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
-        <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" />
+        <PostsSectionTitle
+          title={sectionTitle}
+          eyebrow={data.eyebrow}
+          description={data.headerDesc}
+          align={data.titleAlign}
+          href={filterHref}
+          linkLabel="Lihat Semua"
+        />
 
         {/* Desktop: Grid 4 kolom */}
         <div className="hidden md:grid grid-cols-4 gap-4">

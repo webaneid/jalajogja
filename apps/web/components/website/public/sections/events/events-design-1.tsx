@@ -13,12 +13,19 @@ function renderCard(e: EventCardData, tenantSlug: string, cardDesign: EventsSect
   }
 }
 
-export function EventsDesign1({ events, tenantSlug, sectionTitle, filterHref, cardDesign, timezone }: EventsSectionProps) {
+export function EventsDesign1({ data, events, tenantSlug, sectionTitle, filterHref, cardDesign, timezone }: EventsSectionProps) {
   if (events.length === 0) return null;
   return (
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
-        <PostsSectionTitle title={sectionTitle} href={filterHref} linkLabel="Lihat Semua" />
+        <PostsSectionTitle
+          title={sectionTitle}
+          eyebrow={data.eyebrow}
+          description={data.headerDesc}
+          align={data.titleAlign}
+          href={filterHref}
+          linkLabel="Lihat Semua"
+        />
 
         {/* ── MOBILE: list style (agenda strip) ── */}
         <div className="sm:hidden divide-y divide-border">
