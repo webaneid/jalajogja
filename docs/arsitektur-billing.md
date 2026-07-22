@@ -1436,6 +1436,21 @@ A: ✅ Selesai (Fase 1, berkode) — lihat `docs/arsitektur-voucher.md`. Memoton
 per item yang ditarget, bukan `invoices.discount` (kolom lama tetap murni untuk invoice manual
 admin). Diskon otomatis tanpa kode adalah Fase 2, belum direncanakan detail.
 
+**Q: Payment yang ditolak admin (`status='rejected'`) — apakah ikut kehitung sebagai pemasukan?**
+A: **Tidak, tidak mungkin, secara struktural.** `recordIncome()` (jurnal double-entry) HANYA
+dipanggil saat payment transisi KE status `"paid"` (di `confirmInvoicePaymentAction`/
+`verifySubmittedPaymentAction`) — dan `rejectPaymentAction` (kedua salinannya, `finance/
+actions.ts` dan `finance/billing/actions.ts`) punya guard keras `if (status === "paid") return
+error` — payment yang SUDAH lunas tidak bisa ditolak lagi. Jadi payment berstatus "rejected"
+SELALU berasal dari "submitted" (belum pernah lunas), tidak pernah melalui `recordIncome()`,
+tidak pernah punya baris jurnal (`transactions`/`transaction_entries`). Laporan Keuangan resmi
+(`/finance/laporan`) dihitung dari jurnal LANGSUNG, bukan dari `payments` — jadi immune secara
+struktural. Halaman `/finance/pemasukan` (list mentah semua payment, bukan laporan resmi)
+default-nya (filter "Semua") MENYEMBUNYIKAN `rejected`/`cancelled` sejak 2026-07-22 (sebelumnya
+tampil campur dengan yang lunas, nominal sama-sama hijau — murni membingungkan tampilan, bukan
+salah hitung) — tetap bisa dicari lewat filter status eksplisit, ditampilkan abu-abu+dicoret.
+Diverifikasi langsung terhadap data production `visikita` (SQL manual, bukan cuma baca kode).
+
 ---
 
 ## Status Implementasi

@@ -63,6 +63,11 @@ export default async function PemasukanPage({
   const conditions = [];
   if (status && status !== "all") {
     conditions.push(sql`${schema.payments.status} = ${status}`);
+  } else {
+    // Default ("Semua") sembunyikan ditolak/dibatalkan — dua-duanya bukan pemasukan sama
+    // sekali (tidak pernah masuk jurnal), tampilkan campur dengan yang lunas/menunggu di
+    // tampilan default membingungkan admin. Tetap bisa dicari eksplisit via filter status.
+    conditions.push(sql`${schema.payments.status} NOT IN ('rejected', 'cancelled')`);
   }
   if (q) {
     conditions.push(
@@ -198,7 +203,13 @@ export default async function PemasukanPage({
                   <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">
                     {METHOD_LABEL[row.method] ?? row.method}
                   </td>
-                  <td className="px-4 py-3 text-right font-medium text-green-600">
+                  <td
+                    className={`px-4 py-3 text-right font-medium ${
+                      row.status === "rejected" || row.status === "cancelled"
+                        ? "text-muted-foreground line-through"
+                        : "text-green-600"
+                    }`}
+                  >
                     {formatRupiah(row.amount)}
                   </td>
                   <td className="px-4 py-3 text-center">

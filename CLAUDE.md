@@ -9425,6 +9425,72 @@ visual di browser — user perlu cek: (1) tombol "Sisipkan Galeri Foto" muncul d
 editor, (2) setelah pilih foto+publish, galeri tampil dengan lightbox popup di halaman post publik
 (bukan grid statis), (3) 2 kolom di mobile, 3 kolom di desktop otomatis tanpa pengaturan apa pun.
 
+### [2026-07-22] Audit Produksi: Payment Ditolak Tidak Pernah Kehitung Pemasukan — Plus Fix Tampilan
+
+> Detail lengkap: **`docs/arsitektur-billing.md`** § "Q&A Keputusan Desain"
+
+User khawatir: kemarin ada beberapa invoice yang sempat 2x konfirmasi pembayaran (duplikat), sudah
+ditolak salah satunya via admin, tapi masih tertulis di `/finance/pemasukan` — was-was itu masih
+ikut kehitung sebagai pemasukan. Diinvestigasi dengan pola established
+(`feedback_financial_data_fixes.md`): **SELECT diagnosa dulu ke data production sungguhan** (via
+user jalankan `docker compose exec postgres psql` — saya sendiri TIDAK PUNYA akses SSH ke VPS,
+`ssh root@72.61.215.7` dari environment ini return "Permission denied"), bukan cuma percaya kode.
+
+**Temuan struktural (dicek kode dulu)**: `recordIncome()` HANYA dipanggil saat payment transisi
+KE `"paid"` — dan `rejectPaymentAction` (2 salinan, `finance/actions.ts` + `finance/billing/
+actions.ts`) punya guard keras `if (status==="paid") return error`. Jadi payment yang berhasil
+ditolak SELALU berasal dari "submitted" (belum pernah lunas) — tidak mungkin sudah punya baris
+jurnal. `/finance/laporan` (laporan resmi) dihitung dari `transaction_entries` LANGSUNG, bukan
+dari `payments` — immune struktural terhadap status apa pun di `payments`.
+
+**Verifikasi ke data production (bukan cuma teori)** — 3 putaran query:
+1. `SELECT ... WHERE status='rejected' AND transaction_id IS NOT NULL` → **0 rows**. Konfirmasi
+   langsung: tidak ada payment ditolak yang nyangkut di jurnal.
+2. **False alarm dari saya sendiri**: query `COUNT(*) > 1 WHERE status='paid'` per invoice
+   menemukan 3 invoice — saya SEMPAT mengira ini bukti duplikat/double-count. Setelah lihat
+   detail nominal per payment, ternyata itu bukan duplikat — itu **pola "Kode Unik Transaksi"**
+   (fitur lama, sudah ada, bukan sesuatu yang baru dibuat sesi ini): customer transfer round
+   number dulu (mis. Rp 700.000), lalu transfer terpisah untuk sisa kode uniknya (Rp 432) —
+   `sum(kedua payment) = paid_amount = total + uniqueCode`, PAS, tidak ada kelebihan. Query
+   `COUNT(*) > 1` yang saya tulis pertama kali NAIF — cuma cek "lebih dari 1 payment lunas",
+   tidak cek apakah SUM-nya melebihi yang seharusnya. Saya akui salah alarm ke user secara
+   eksplisit, bukan diam-diam dikoreksi.
+3. **Kasus nyata yang user kasih** (`620-PAY-202607-00015`) — INI baru contoh genuine
+   duplikat-lalu-ditolak: 2 payment identik (nominal SAMA PERSIS Rp 350.472, payer sama) untuk
+   1 invoice, satu `status='paid'` (`confirmed_at` terisi), satu `status='rejected'`
+   (`confirmed_at` KOSONG — bukti tidak pernah lewat "lunas" sama sekali). `invoices.paid_amount`
+   cuma mencerminkan SATU payment yang confirmed, bukan dua-duanya dijumlah. Contoh nyata yang
+   membuktikan sistem bekerja benar persis sesuai klaim struktural di atas.
+
+**Root cause kekhawatiran user — bukan bug data, murni tampilan**: `/finance/pemasukan`
+menampilkan SEMUA status (termasuk rejected/cancelled) di SATU tabel tanpa filter default, DAN
+kolom nominal selalu hijau untuk SEMUA baris tanpa mempedulikan status — jadi baris "Ditolak"
+(badge merah) tetap punya angka hijau di sampingnya, kelihatan seperti uang masuk padahal bukan.
+Halaman ini sendiri TIDAK punya total/sum sama sekali (murni list+pagination) — jadi tidak ada
+angka AGREGAT yang salah di halaman itu, cuma kesan visual yang membingungkan per baris.
+
+**Fix** (`finance/pemasukan/page.tsx`): filter default ("Semua") sekarang `WHERE status NOT IN
+('rejected','cancelled')` — kedua status itu tetap bisa dicari eksplisit lewat tombol filter yang
+sudah ada (tidak dihilangkan, cuma disembunyikan dari default view, mempertahankan jejak audit).
+Nominal untuk baris rejected/cancelled: `text-muted-foreground line-through` (abu-abu+dicoret),
+bukan `text-green-600` lagi.
+
+**Aturan yang ditegaskan**: untuk pertanyaan finansial yang menyangkut uang sungguhan di
+production, JANGAN berhenti di jawaban berbasis pembacaan kode saja meski strukturnya terlihat
+aman — verifikasi ke DATA SUNGGUHAN dulu (lewat user, karena tidak ada akses SSH langsung ke
+VPS dari environment ini). Dan kalau query diagnosa SENDIRI ternyata memberi hasil yang
+menyesatkan (seperti `COUNT(*) > 1` di atas), akui secara EKSPLISIT ke user begitu ketahuan salah
+— jangan diam-diam pura-pura tidak pernah bilang begitu. Query desain untuk deteksi "duplikat"
+harus bandingkan SUM aktual terhadap nilai yang SEHARUSNYA (`total + uniqueCode`), bukan cuma
+`COUNT(*) > 1` — sistem ini sengaja mendukung pembayaran dicicil/dipisah jadi beberapa transfer
+per invoice (termasuk pola kode-unik-menyusul), jadi "lebih dari 1 payment lunas per invoice"
+BUKAN sinyal bug dengan sendirinya.
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` sukses (dev server
+dimatikan dulu, `.next` dibersihkan). Nol migrasi DB — murni perubahan query filter + styling di
+1 halaman admin. Data production `visikita` sudah diverifikasi bersih (tidak ada koreksi SQL yang
+perlu dijalankan) — investigasi ini murni audit + 1 perbaikan tampilan, bukan perbaikan data.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Gallery di dalam Post** (lihat lesson di atas) — user diskusi dulu
   ("jgn eksekusi apapun") soal "post gallery", riset menemukan `GalleryBlock` (node Tiptap +
