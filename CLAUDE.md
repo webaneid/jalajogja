@@ -9369,16 +9369,82 @@ dimatikan dulu, `.next` dibersihkan). Nol migrasi DB. `<Gallery>` dikonfirmasi c
 caller nyata di seluruh app (`GallerySection`), jadi fix ini tidak berisiko memengaruhi konsumen
 lain yang belum ada.
 
+### [2026-07-22] Gallery di dalam Post — Melengkapi Fitur Setengah Jadi, Scope Sempit Diminta User
+
+> Detail lengkap: **`docs/arsitektur-gallery.md`** § "Status Implementasi", catatan Gallery di
+> dalam Post
+
+User tanya (diskusi dulu, "jgn eksekusi apapun") soal bikin "post gallery" — riset (Explore agent)
+menemukan `GalleryBlock` (node Tiptap + NodeView lengkap: picker, preview, layout/kolom) **sudah
+lama terdaftar** di `tiptap-editor.tsx` yang dipakai editor Post, TAPI tidak pernah ada entry
+point UI (nol tombol toolbar, nol slash-command) — fitur setengah jadi, tidak pernah bisa dipakai
+admin sejak dibuat. `renderBody()`'s `case "galleryBlock"` juga cuma grid `<table>` statis tanpa
+lightbox. User eksplisit minta scope SEMPIT dua kali ("jangan meluas kemana2", "gue cuma butuh
+gallery di post") — jawabannya: **tidak perlu tipe/format post baru** (beda dari `pages.template`)
+untuk "gallery bisa disisipkan di post" — editor tetap sama persis, cuma 2 bagian yang dikerjakan.
+
+**1. Tombol toolbar** (`editor-toolbar.tsx`) — `handleInsertGallery()` manggil `editor.chain()
+.focus().insertGallery({items:[], layout:"grid", columns:3}).run()`, pola identik tombol
+"Sisipkan Tabel" yang sudah ada (1 command call, tanpa dialog). Sisipkan block KOSONG — admin
+lanjut isi lewat UI "Edit Gallery" yang SUDAH ADA di NodeView (`gallery-block-view.tsx`, TIDAK
+disentuh sama sekali) — picker gambar, preview thumbnail, semua reuse murni tanpa kode baru.
+
+**2. Render publik dengan lightbox** (`lib/post-body-segments.ts`, baru) — masalahnya:
+`renderBody()` (dipakai post detail page) pure-string server-safe, di-share dengan render PDF
+surat, TIDAK bisa render komponen React `<Gallery>` (yang butuh `Suspense`+`useSearchParams` untuk
+lightbox). Solusi: `splitPostBodySegments()` memecah `post.content` (Tiptap JSON) di LEVEL
+`post/[slug]/page.tsx` — kumpulkan node non-galeri jadi "buffer", tiap ketemu node `galleryBlock`
+→ flush buffer lewat `renderBody()` seperti biasa, lalu masukkan gallery sebagai segmen TERPISAH
+yang di-render via `<Gallery items={...} config={{layout:"grid",columns:3}} param={key} />` ASLI
+(React component, dapat lightbox). Halaman detail sekarang `.map()` array segmen — HTML string
+(`dangerouslySetInnerHTML`, `.prose`) diselingi komponen `<Gallery>` sungguhan, urutan sesuai body
+aslinya. **`letter-render.ts` TIDAK diekspor/diubah sama sekali** — `splitPostBodySegments`
+memanggilnya sebagai black box per potongan (`JSON.stringify({type:"doc",content:buffer})`),
+zero risiko ke PDF surat yang pakai file yang sama.
+
+**Kolom SELALU 3** (permintaan eksplisit "otomatis 3 kolom, mobile 2 kolom") — `GalleryGrid`'s
+`grid-cols-2 sm:grid-cols-3` untuk `columns=3` SUDAH PERSIS itu tanpa kerja tambahan (2 mobile/3
+desktop otomatis). Dipaksa di 2 titik: default tombol toolbar, DAN di titik konstruksi gallery
+segment saat render publik (mengabaikan `layout`/`columns` apa pun yang tersimpan di node) — NodeView
+editor TETAP punya UI untuk mengubah layout/kolom (tidak dihapus, di luar scope untuk disentuh),
+tapi hasilnya tidak pernah dipakai di publik. Trade-off kecil (editor preview vs publik bisa beda)
+diterima demi tidak menyentuh `gallery-block-view.tsx` sama sekali, sesuai "jangan meluas".
+
+**Aturan yang ditegaskan**: kalau riset menemukan infrastruktur yang SUDAH ADA (schema, extension,
+NodeView) tapi TIDAK PERNAH ada entry point UI untuk memakainya, itu "setengah jadi", bukan
+"selesai" — treat sebagai gap yang perlu SATU langkah kecil (biasanya tombol/UI trigger) untuk
+benar-benar hidup, bukan sebagai fitur yang harus dibangun dari nol. Saat user secara eksplisit
+membatasi scope ("jangan meluas"), cari jalur yang REUSE infrastruktur existing seluas mungkin dan
+HANYA sentuh file yang benar-benar perlu — di sini: 1 file baru (splitter, murni fungsi) + 2 baris
+di toolbar + wiring render di 1 halaman, TIDAK ada schema baru, TIDAK ada tipe post baru, TIDAK
+ada perubahan NodeView, TIDAK ada perubahan `letter-render.ts`.
+
+**Verifikasi**: `tsc --noEmit` bersih dari percobaan pertama + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB. Belum diverifikasi
+visual di browser — user perlu cek: (1) tombol "Sisipkan Galeri Foto" muncul di toolbar post
+editor, (2) setelah pilih foto+publish, galeri tampil dengan lightbox popup di halaman post publik
+(bukan grid statis), (3) 2 kolom di mobile, 3 kolom di desktop otomatis tanpa pengaturan apa pun.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Bug fix Gallery — `aspectRatio` tidak pernah sampai ke `<GalleryGrid>`**
+- Terakhir dikerjakan: **Gallery di dalam Post** (lihat lesson di atas) — user diskusi dulu
+  ("jgn eksekusi apapun") soal "post gallery", riset menemukan `GalleryBlock` (node Tiptap +
+  NodeView lengkap) sudah terdaftar di editor Post tapi TIDAK PERNAH ada entry point UI (fitur
+  setengah jadi). User minta scope SEMPIT ("jangan meluas", "cuma butuh gallery di post") — TIDAK
+  perlu tipe/format post baru. 2 bagian: (1) tombol toolbar baru `handleInsertGallery()` (pola
+  identik "Sisipkan Tabel", NodeView existing tidak disentuh sama sekali), (2)
+  `lib/post-body-segments.ts` (baru) — pecah `post.content` jadi segmen HTML (tetap lewat
+  `renderBody()`, TIDAK diubah, di-share dengan PDF surat) diselingi komponen React `<Gallery>`
+  ASLI (lightbox) untuk node `galleryBlock`. Kolom selalu 3 (2 mobile/3 desktop otomatis via
+  `GalleryGrid` yang sudah ada). `tsc`+build bersih dari percobaan pertama. Nol migrasi DB.
+  **Belum di-commit/push** (menunggu checkpoint ini), **belum diverifikasi visual di browser**.
+- Sesi sebelumnya: **Bug fix Gallery — `aspectRatio` tidak pernah sampai ke `<GalleryGrid>`**
   (lihat lesson di atas) — user laporkan pilih "Landscape" di editor tidak mengubah apa-apa di
   front-end. Root cause: `<Gallery>` (wrapper, `components/gallery/gallery.tsx`) destructure
   `config` HANYA ambil `layout`+`columns`, `aspectRatio` diam-diam tidak pernah diteruskan ke
   `<GalleryGrid>` — komponen itu sendiri dan `GallerySection` (pemanggil) sama-sama sudah benar,
   bug murni di SATU baris wrapper di tengah. Fix 1 baris: tambah `aspectRatio` ke destructuring +
   prop. `<Gallery>` dikonfirmasi cuma punya SATU caller nyata (`GallerySection`), fix tidak
-  berisiko ke konsumen lain. `tsc`+build bersih. Nol migrasi DB. **Belum di-commit/push**
-  (menunggu checkpoint ini), **belum diverifikasi visual di browser**.
+  berisiko ke konsumen lain. **Sudah di-commit+push** (`39d35cf`).
 - Sesi sebelumnya: **Audit kelengkapan standar 3-judul — Strip Modul/Galeri/Statistik dapat
   perluasan** (lihat lesson di atas) — lanjutan langsung `PostsSectionTitle` di sesi yang sama.
   User tanya "section design yang belum kita sentuh?" — audit 13 tipe section menemukan 3 gap:

@@ -5,7 +5,8 @@ import { headers } from "next/headers";
 import { eq, and, ne, inArray, desc } from "drizzle-orm";
 import { createTenantDb, db, tenants, getSetting, user as authUser, members } from "@jalajogja/db";
 import { resolveMediaUrl } from "@/lib/minio";
-import { renderBody } from "@/lib/letter-render";
+import { splitPostBodySegments } from "@/lib/post-body-segments";
+import { Gallery } from "@/components/gallery/gallery";
 import { recordView, hashIp } from "@/lib/view-counter";
 import { WidgetArea } from "@/components/website/public/widget-area";
 import { PublicButton } from "@/components/website/public/ui/public-button";
@@ -319,7 +320,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
 
   const { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName, timezone, authorName, authorAvatar, tagIds, categoryId } = result;
   const imageBaseUrl = `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${tenantSlug}`;
-  const html = renderBody(post.content, { imageBaseUrl });
+  const bodySegments = splitPostBodySegments(post.content, { imageBaseUrl });
   const relatedPosts = await getRelatedPosts(tenantClient, tenantSlug, post.id, tagIds, categoryId);
 
   const fmtUpdated = (date: Date) =>
@@ -345,19 +346,35 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
         </p>
       )}
 
-      {/* Content */}
-      <div
-        className="prose prose-sm max-w-none
-          [&_p]:my-3 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-8 [&_h2]:mb-3
-          [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-6 [&_h3]:mb-2
-          [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6
-          [&_li]:my-1 [&_a]:text-primary [&_a]:underline
-          [&_blockquote]:border-l-4 [&_blockquote]:border-border [&_blockquote]:pl-4
-          [&_blockquote]:italic [&_blockquote]:text-muted-foreground
-          [&_pre]:bg-muted [&_pre]:rounded [&_pre]:p-4 [&_pre]:overflow-x-auto
-          [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-sm"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      {/* Content — dipecah per segmen: HTML biasa (renderBody) diselingi galeri foto asli
+          (<Gallery>, dapat lightbox popup) — lihat lib/post-body-segments.ts. Kolom SELALU 3
+          (otomatis 2 kolom di mobile via GalleryGrid), tidak ada pengaturan admin. */}
+      <div className="space-y-6">
+        {bodySegments.map((seg, i) =>
+          seg.type === "gallery" ? (
+            <Gallery
+              key={seg.key}
+              items={seg.items}
+              config={{ layout: "grid", columns: 3 }}
+              param={seg.key}
+            />
+          ) : (
+            <div
+              key={i}
+              className="prose prose-sm max-w-none
+                [&_p]:my-3 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-8 [&_h2]:mb-3
+                [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-6 [&_h3]:mb-2
+                [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6
+                [&_li]:my-1 [&_a]:text-primary [&_a]:underline
+                [&_blockquote]:border-l-4 [&_blockquote]:border-border [&_blockquote]:pl-4
+                [&_blockquote]:italic [&_blockquote]:text-muted-foreground
+                [&_pre]:bg-muted [&_pre]:rounded [&_pre]:p-4 [&_pre]:overflow-x-auto
+                [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-sm"
+              dangerouslySetInnerHTML={{ __html: seg.html }}
+            />
+          ),
+        )}
+      </div>
 
       {/* Footer */}
       <div className="mt-12 pt-6 border-t border-border text-xs text-muted-foreground flex items-center justify-between">

@@ -15,7 +15,7 @@ import {
   ImagePlus, Code2, Minus,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Table, Film, Trash2,
-  Quote,
+  Quote, Images,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -411,6 +411,14 @@ function FixedToolbar({ editor, slug }: ToolbarProps) {
       .run();
   }, [editor]);
 
+  // Kolom SELALU 3 (otomatis 2 di mobile saat dirender di post — lihat lib/post-body-segments.ts)
+  // — bukan pilihan admin, konsisten dengan galeri di section landing page.
+  const handleInsertGallery = useCallback(() => {
+    editor.chain().focus()
+      .insertGallery({ items: [], layout: "grid", columns: 3 })
+      .run();
+  }, [editor]);
+
   return (
     <div className="flex items-center gap-0.5 flex-wrap px-2 py-1.5 border-b border-border bg-muted/30">
 
@@ -423,6 +431,9 @@ function FixedToolbar({ editor, slug }: ToolbarProps) {
       </ToolBtn>
       <ToolBtn onClick={handleInsertTable} title="Sisipkan Tabel">
         <Table className="h-4 w-4" />
+      </ToolBtn>
+      <ToolBtn onClick={handleInsertGallery} title="Sisipkan Galeri Foto">
+        <Images className="h-4 w-4" />
       </ToolBtn>
 
       {/* Hapus tabel — hanya tampil saat cursor di dalam tabel */}

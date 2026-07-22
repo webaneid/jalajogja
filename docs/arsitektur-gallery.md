@@ -440,6 +440,41 @@ Phase 4 — Layout Tambahan
 | Bug fix scroll-to-top saat buka lightbox | ✅ Selesai (2026-07-22) |
 | Section landing Galeri Foto — title block + background standar | ✅ Selesai (2026-07-22) |
 | Bug fix `aspectRatio` tidak pernah sampai ke `<GalleryGrid>` | ✅ Selesai (2026-07-22) |
+| Tombol "Sisipkan Galeri Foto" di toolbar editor Post | ✅ Selesai (2026-07-22) |
+| Post detail — render galeri via `<Gallery>` asli (lightbox), bukan grid statis `renderBody()` | ✅ Selesai (2026-07-22) |
+
+**Catatan 2026-07-22 (Gallery di dalam Post — lengkapi "Step 8" yang setengah jadi):**
+Node/schema/NodeView (`gallery-block-ext.ts`+`gallery-block-view.tsx`) dan ekstensi Tiptap sudah
+lama terdaftar di `tiptap-editor.tsx` (dipakai juga oleh editor Post) — TAPI tidak pernah ada
+entry point UI untuk memakainya (nol tombol toolbar, nol slash-command), jadi fitur ini sebenarnya
+tidak pernah bisa dipakai admin sejak dibuat. User eksplisit minta scope SEMPIT: "cuma butuh
+gallery di post, jangan meluas kemana-mana" — jawabannya TIDAK perlu tipe/format post baru sama
+sekali (beda dari `pages.template`), editor tetap sama persis.
+
+Dua bagian yang dikerjakan:
+1. **Tombol toolbar** (`editor-toolbar.tsx`) — `handleInsertGallery()` manggil
+   `editor.chain().focus().insertGallery({items:[], layout:"grid", columns:3}).run()`, pola
+   identik tombol "Sisipkan Tabel" yang sudah ada. Sisipkan block KOSONG, admin lanjut isi lewat
+   UI "Edit Gallery" yang SUDAH ADA di NodeView (tidak disentuh sama sekali) — picker gambar,
+   preview thumbnail, dst, semua reuse murni.
+2. **Render publik dengan lightbox** (`lib/post-body-segments.ts`, baru) — `renderBody()`'s
+   `case "galleryBlock"` cuma grid `<table>` statis TANPA lightbox (server-safe pure string,
+   di-share dengan render PDF surat — sengaja tidak diubah, resikonya lebih besar dari manfaatnya
+   kalau disentuh). Solusinya: pecah body post JADI SEGMEN di level `post/[slug]/page.tsx` —
+   node non-galeri dikumpulkan lalu tetap lewat `renderBody()` seperti biasa; node `galleryBlock`
+   dirender via komponen React `<Gallery>` ASLI (dengan lightbox popup) yang di-selingi di antara
+   segmen HTML. `splitPostBodySegments()` memanggil `renderBody()` sebagai black box per potongan
+   (`JSON.stringify({type:"doc", content: buffer})`) — TIDAK mengekspor/mengubah apa pun dari
+   `letter-render.ts`.
+
+**Kolom SELALU dipaksa 3** (otomatis 2 di mobile via `GalleryGrid`'s `grid-cols-2 sm:grid-cols-3`
+yang sudah ada) — sesuai permintaan eksplisit "otomatis 3 kolom, mobile 2 kolom, gitu aja". Dipaksa
+di DUA titik: default insersi tombol toolbar (`columns:3`) DAN saat render publik
+(`splitPostBodySegments` selalu construct gallery segment dengan `config={{layout:"grid",
+columns:3}}` di caller, mengabaikan `layout`/`columns` apa pun yang tersimpan di node — walau
+NodeView editornya sendiri masih punya UI untuk mengubah itu, TIDAK dihapus, cuma hasilnya tidak
+pernah dipakai di publik — trade-off kecil yang diterima demi tidak menyentuh file NodeView sama
+sekali, sesuai instruksi scope sempit).
 
 **Catatan 2026-07-22 (bug fix `aspectRatio` tidak berpengaruh sama sekali):**
 User laporkan pilih "Landscape" di editor tidak mengubah apa pun di front-end — foto tetap kotak.
