@@ -9334,8 +9334,52 @@ setelah deploy (verifikasi backward-compat paling kritis di atas), (2) mode "cen
 Design 2 — panah pindah ke bawah dengan benar, (3) editor Modules menampilkan field baru dengan
 benar.
 
+### [2026-07-22] Bug Gallery: `aspectRatio` Tidak Pernah Sampai ke `<GalleryGrid>`
+
+> Detail lengkap: **`docs/arsitektur-gallery.md`** § "Status Implementasi", catatan bug fix
+
+User laporkan pilih "Landscape" di editor Galeri Foto tidak mengubah apa-apa — foto tetap kotak
+di front-end. Root cause: `<Gallery>` (wrapper, `components/gallery/gallery.tsx`) melakukan
+`const { layout, columns } = { ...DEFAULT_GALLERY_CONFIG, ...config };` — HANYA menarik
+`layout`+`columns`, `aspectRatio` diam-diam tidak pernah ikut di-destructure MAUPUN diteruskan ke
+`<GalleryGrid>`. `GalleryGrid`'s default parameter `aspectRatio = "square"` selalu jadi yang
+dipakai, terlepas apa pun yang admin pilih. `GalleryGrid` sendiri (logic `ASPECT[aspectRatio]`,
+CSS `aspect-square`/`aspect-[4/3]`) dan `GallerySection` (landing-template.tsx, sudah benar kirim
+`config={{..., aspectRatio: d.imageRatio ?? "square"}}`) SAMA-SAMA benar sejak awal — bug murni
+di SATU baris wrapper di tengah yang lupa meneruskan satu field dari config gabungan ke prop
+komponen anak. Fix: tambah `aspectRatio` ke destructuring `Gallery` + teruskan sebagai prop ke
+`<GalleryGrid>`.
+
+**Kenapa gambar tidak perlu ganti file/variant** — CSS `aspect-*` + `object-cover` pada wrapping
+div sudah cukup untuk crop visual berbeda; tidak perlu variant gambar baru di pipeline upload
+(`lib/image-processor.ts`) atau ganti `getGalleryThumb()` — keputusan ini sudah dikunci sejak
+`imageRatio` pertama kali ditambahkan, tetap berlaku, cuma butuh wiring yang benar.
+
+**Aturan yang ditegaskan**: kalau sebuah komponen WRAPPER menerima `config` (objek gabungan)
+dan meneruskan SEBAGIAN field-nya ke komponen anak via destructuring manual (bukan spread
+`{...config}` utuh), setiap kali field baru ditambahkan ke tipe config, WAJIB cek juga apakah
+wrapper-nya ikut di-update untuk menarik+meneruskan field baru itu — field bisa 100% valid secara
+TYPE (tsc tidak protes, `config.aspectRatio` ada di type `GalleryConfig`) tapi tetap hilang total
+di RUNTIME karena wrapper tidak pernah membacanya. `tsc` tidak menangkap kelas bug ini sama
+sekali (destructuring parsial itu sendiri bukan type error) — cuma ketahuan lewat testing visual
+langsung, seperti yang dilaporkan user di sini.
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` sukses (dev server
+dimatikan dulu, `.next` dibersihkan). Nol migrasi DB. `<Gallery>` dikonfirmasi cuma punya SATU
+caller nyata di seluruh app (`GallerySection`), jadi fix ini tidak berisiko memengaruhi konsumen
+lain yang belum ada.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Audit kelengkapan standar 3-judul — Strip Modul/Galeri/Statistik dapat
+- Terakhir dikerjakan: **Bug fix Gallery — `aspectRatio` tidak pernah sampai ke `<GalleryGrid>`**
+  (lihat lesson di atas) — user laporkan pilih "Landscape" di editor tidak mengubah apa-apa di
+  front-end. Root cause: `<Gallery>` (wrapper, `components/gallery/gallery.tsx`) destructure
+  `config` HANYA ambil `layout`+`columns`, `aspectRatio` diam-diam tidak pernah diteruskan ke
+  `<GalleryGrid>` — komponen itu sendiri dan `GallerySection` (pemanggil) sama-sama sudah benar,
+  bug murni di SATU baris wrapper di tengah. Fix 1 baris: tambah `aspectRatio` ke destructuring +
+  prop. `<Gallery>` dikonfirmasi cuma punya SATU caller nyata (`GallerySection`), fix tidak
+  berisiko ke konsumen lain. `tsc`+build bersih. Nol migrasi DB. **Belum di-commit/push**
+  (menunggu checkpoint ini), **belum diverifikasi visual di browser**.
+- Sesi sebelumnya: **Audit kelengkapan standar 3-judul — Strip Modul/Galeri/Statistik dapat
   perluasan** (lihat lesson di atas) — lanjutan langsung `PostsSectionTitle` di sesi yang sama.
   User tanya "section design yang belum kita sentuh?" — audit 13 tipe section menemukan 3 gap:
   Strip Modul (belum tersentuh sama sekali), Galeri Foto & Statistik (sudah punya eyebrow+judul+
@@ -9345,9 +9389,7 @@ benar.
   untuk section existing. Strip Modul Design 2 (tombol panah scroll rail, BUKAN href "Lihat
   Semua") direstrukturisasi manual mengikuti pola yang sama tapi reuse `SectionTitleBlock`
   langsung (bukan `PostsSectionTitle`). Keunggulan/Layanan (3 opsi align) dan Info Kontak/Divider
-  (bukan gap, tidak relevan) sengaja TIDAK disentuh. `tsc`+build bersih dari percobaan pertama.
-  Nol migrasi DB. **Belum di-commit/push** (menunggu checkpoint ini), **belum diverifikasi
-  visual di browser**.
+  (bukan gap, tidak relevan) sengaja TIDAK disentuh. **Sudah di-commit+push** (`2780aef`).
 - Sesi sebelumnya: **`PostsSectionTitle` — perluasan trio standar ke Post/Produk/Campaign/
   Event** (lihat lesson di atas) — `PostsSectionTitle` direstrukturisasi total: reuse
   `<SectionTitleBlock>` (butuh `title: ReactNode` + prop `as` baru di komponen itu), tambah

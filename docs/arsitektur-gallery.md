@@ -439,6 +439,20 @@ Phase 4 — Layout Tambahan
 | `GalleryConfig.aspectRatio` (square/landscape) | ✅ Selesai (2026-07-22) |
 | Bug fix scroll-to-top saat buka lightbox | ✅ Selesai (2026-07-22) |
 | Section landing Galeri Foto — title block + background standar | ✅ Selesai (2026-07-22) |
+| Bug fix `aspectRatio` tidak pernah sampai ke `<GalleryGrid>` | ✅ Selesai (2026-07-22) |
+
+**Catatan 2026-07-22 (bug fix `aspectRatio` tidak berpengaruh sama sekali):**
+User laporkan pilih "Landscape" di editor tidak mengubah apa pun di front-end — foto tetap kotak.
+Root cause: `<Gallery>` (wrapper, `components/gallery/gallery.tsx`) melakukan
+`const { layout, columns } = { ...DEFAULT_GALLERY_CONFIG, ...config };` — HANYA menarik
+`layout`+`columns` dari config gabungan, `aspectRatio` DIAM-DIAM TIDAK PERNAH ikut di-destructure
+maupun diteruskan ke `<GalleryGrid>`. `GalleryGrid`'s default parameter `aspectRatio = "square"`
+selalu jadi yang dipakai, terlepas apa pun yang admin pilih di editor — `GalleryGrid` sendiri
+(logic `ASPECT[aspectRatio]`) dan `GallerySection` (landing-template.tsx, sudah benar kirim
+`config={{..., aspectRatio: d.imageRatio ?? "square"}}`) SAMA-SAMA benar sejak awal; bug murni di
+satu baris wrapper yang lupa meneruskan satu field. Fix: tambah `aspectRatio` ke destructuring +
+prop `<GalleryGrid aspectRatio={aspectRatio} .../>`. Dicek: `<Gallery>` cuma punya SATU caller
+nyata di seluruh app (`GallerySection`), jadi fix ini tidak berisiko memengaruhi konsumen lain.
 
 **Catatan 2026-07-22 (title block + background section landing):**
 `GallerySection` (landing page) dapat title block 3-field opsional (eyebrow/title/headerDesc,

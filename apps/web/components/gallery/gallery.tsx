@@ -22,7 +22,7 @@ function buildOpenHref(baseParam: string) {
 export function Gallery({ items, config, module = "website", param = "gallery", className }: Props) {
   if (items.length === 0) return null;
 
-  const { layout, columns } = { ...DEFAULT_GALLERY_CONFIG, ...config };
+  const { layout, columns, aspectRatio } = { ...DEFAULT_GALLERY_CONFIG, ...config };
 
   return (
     <div className={className}>
@@ -31,6 +31,7 @@ export function Gallery({ items, config, module = "website", param = "gallery", 
         <GalleryGrid
           items={items}
           columns={columns}
+          aspectRatio={aspectRatio}
           module={module}
           openHref={buildOpenHref(param)}
         />
