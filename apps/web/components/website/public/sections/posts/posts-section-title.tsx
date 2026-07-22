@@ -37,10 +37,10 @@ export function PostsSectionTitle({
             {label}
           </span>
         )}
-        <Tag
-          className="font-normal leading-none m-0 text-4xl lg:text-[48px]"
-          style={{ letterSpacing: "-0.02em" }}
-        >
+        {/* `.section-title` (globals.css) — samakan ukuran dengan section lain (Keunggulan/
+            Tentang Kami/Galeri/Statistik/dst). `!mb-0` menimpa margin-bottom bawaan kelas itu —
+            div ini flex items-end dengan tombol "Lihat Semua", tidak ada konten di bawahnya. */}
+        <Tag className="section-title !mb-0">
           {renderTitle(title)}
         </Tag>
       </div>

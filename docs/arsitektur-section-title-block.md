@@ -147,7 +147,50 @@ satu komponen, dua pemakai (Posts/Produk/Campaign/Event via `PostsSectionTitle`,
 Keunggulan/Tentang Kami/Galeri via `SectionTitleBlock` kapan pun field "Lihat Semua" ditambahkan
 ke salah satu section itu — belum dikerjakan, di luar scope sesi ini).
 
-## 6. File yang Disentuh
+## 6. Sweep Lanjutan — Screening SEMUA Section (2026-07-22, sesi sama)
+
+User minta "screening semua section ... menggunakan ukuran yang sama pakai section title", eksplisit
+kecuali Hero dan CTA (keduanya punya judul besar tersendiri, § 1). Audit menyeluruh
+(`grep -rn "<h1\|<h2\|<h3"` di seluruh `components/website/public/sections/` +
+`landing-template.tsx`) memisahkan dua kelas elemen:
+
+1. **Judul SECTION** (chrome section, bukan konten individual di dalamnya) — semua disamakan ke
+   `.section-title`.
+2. **Judul ITEM/CARD** (nama post/produk/event/campaign di dalam card, judul item repeater
+   Keunggulan/Tentang Kami) — SENGAJA TIDAK disentuh, beda kelas (konten individual, bukan chrome
+   section) — contoh: `<h3 className="text-4xl md:text-5xl ...">` di `posts-design-2.tsx` adalah
+   judul artikel unggulan di dalam kartu, bukan judul section "Berita Terbaru"-nya.
+
+**Titik yang disamakan ke `.section-title`:**
+
+| Lokasi | Sebelum | Sesudah |
+|--------|---------|---------|
+| `PostsSectionTitle` (Post/Produk/Campaign/Event, hampir semua design) | `font-normal leading-none m-0 text-4xl lg:text-[48px]` + inline `letterSpacing:-0.02em` | `section-title !mb-0` (margin dinolkan — flex `items-end` dengan tombol "Lihat Semua", tidak ada konten di bawahnya) |
+| `posts-design-1.tsx` (Design "Hero 3 Kolom", judul bespoke tanpa `PostsSectionTitle`) | `text-2xl font-bold mb-6 border-b border-border pb-3` | `section-title !mb-6 border-b border-border pb-3` (`!mb-6` mempertahankan jarak visual asli ke grid post di bawahnya — bukan mengandalkan margin bawaan 0.6rem `.section-title`) |
+| `modules-design-2.tsx` (Strip Modul Desain 2, flex `items-end` dengan tombol scroll rail) | `text-2xl sm:text-3xl font-bold m-0` | `section-title !m-0` |
+| `ContactInfoSection` ("Info Kontak", judul statis tanpa eyebrow/deskripsi) | `text-2xl font-bold mb-6` | `section-title !mb-6` |
+| `StatsSection` ("Statistik") | **Tidak ada judul sama sekali** — cuma grid angka | `<SectionTitleBlock>` baru ditambahkan (lihat § 6a) |
+
+**Pola `!mb-*`/`!m-0` (Tailwind important-modifier)**: `.section-title` bawaannya
+`margin-bottom: 0.6rem`. Di tempat yang butuh margin BEDA dari bawaan itu (nol untuk layout flex
+`items-end`, atau angka lama seperti `mb-6` untuk mempertahankan proporsi visual desain yang
+sudah ada), override WAJIB pakai `!` (compile ke `margin-bottom: ... !important`) — `.section-title`
+didefinisikan di luar `@layer utilities` (plain top-level rule di `globals.css`), jadi urutan
+cascade vs utility Tailwind biasa (yang emit di dalam `@layer utilities`) tidak bisa diandalkan
+tanpa `!important` eksplisit.
+
+### 6a. `StatsSection` — Judul Ditambahkan dari Nol
+
+Beda dari 4 titik lain (murni ganti ukuran, sudah punya judul) — `StatsSection` sebelumnya
+SAMA SEKALI tidak punya mekanisme judul (`SECTION_DEFAULTS.stats = { items: [] }`, `StatsEditor`
+cuma repeater number+label). Ditambahkan `eyebrow`/`title`/`headerDesc` opsional (default string
+kosong — section existing manapun otomatis TIDAK berubah tampilan, `SectionTitleBlock` return
+`null` kalau ketiganya kosong, persis pola backward-compat yang sama dipakai Features/About/
+Gallery). Wrapper sama seperti Galeri: `max-w-3xl mx-auto text-center mb-10`. Tidak menambahkan
+opsi `background` ke Stats (di luar scope permintaan — hanya soal ukuran judul, bukan varian
+visual baru) — selalu `background="none"` (default), eyebrow selalu `text-primary`.
+
+## 7. File yang Disentuh
 
 | File | Perubahan |
 |------|-----------|
@@ -155,14 +198,23 @@ ke salah satu section itu — belum dikerjakan, di luar scope sesi ini).
 | `components/website/public/sections/section-see-all-link.tsx` | Baru — komponen `<SectionSeeAllLink>` |
 | `lib/section-background.ts` | Tambah `resolveAccentTextClass()` |
 | `app/globals.css` | Tambah `.section-title` |
-| `components/website/public/sections/posts/posts-section-title.tsx` | "Lihat Semua" pakai `<SectionSeeAllLink>`, hapus implementasi inline lama |
-| `components/website/public/landing-template.tsx` | `GallerySection`/`AboutTextSection`/`FeaturesSection` pakai `<SectionTitleBlock>` menggantikan JSX trio yang diulang |
+| `components/website/public/sections/posts/posts-section-title.tsx` | "Lihat Semua" pakai `<SectionSeeAllLink>`; judul pakai `.section-title` |
+| `components/website/public/sections/posts/posts-design-1.tsx` | Judul "Hero 3 Kolom" pakai `.section-title` |
+| `components/website/public/sections/modules/modules-design-2.tsx` | Judul Strip Modul Desain 2 pakai `.section-title` |
+| `components/website/public/landing-template.tsx` | `GallerySection`/`AboutTextSection`/`FeaturesSection`/`ContactInfoSection` pakai `.section-title`/`<SectionTitleBlock>`; `StatsSection` dapat judul baru |
+| `lib/page-templates.ts` | `SECTION_DEFAULTS.stats` tambah `eyebrow`/`title`/`headerDesc` (opsional, default kosong) |
+| `components/website/section-editors.tsx` | `StatsEditor` tambah 3 field judul |
 
-## 7. Di Luar Scope (dicatat, bukan lupa)
+## 8. Di Luar Scope (dicatat, bukan lupa)
 
-- CTA tidak disentuh (lihat § 1) — judulnya tetap independen.
+- CTA & Hero tidak disentuh (lihat § 1, dikonfirmasi ulang eksplisit oleh user di sweep ini) —
+  judulnya tetap independen.
+- Judul ITEM/CARD (post/produk/event/campaign individual, item repeater Keunggulan/Tentang Kami)
+  SENGAJA TIDAK disamakan — beda kelas dari judul SECTION, lihat § 6.
 - Keunggulan/Layanan tidak diretrofit ke `SectionBackground` 5-opsi standar (`FeaturesBackground`
   4-opsi tetap dipertahankan) — keputusan lama, dipertahankan lagi di sesi ini.
-- Belum ada field "Lihat Semua" di data shape Keunggulan/Tentang Kami/Galeri — `SectionTitleBlock`
-  sudah SIAP menerima itu (lewat komposisi `<SectionSeeAllLink>` di caller), tapi belum divariabel-
-  kan sebagai prop resmi karena belum ada section yang genuinely butuh fitur ini.
+- `StatsSection` tidak dapat opsi `background` (§ 6a) — di luar scope permintaan ukuran judul.
+- Belum ada field "Lihat Semua" di data shape Keunggulan/Tentang Kami/Galeri/Statistik —
+  `SectionTitleBlock` sudah SIAP menerima itu (lewat komposisi `<SectionSeeAllLink>` di caller),
+  tapi belum divariabel-kan sebagai prop resmi karena belum ada section yang genuinely butuh
+  fitur ini.

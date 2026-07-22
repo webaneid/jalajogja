@@ -974,12 +974,22 @@ function ContactInfoEditor() {
 type StatItem = { number: string; label: string };
 
 function StatsEditor({ data, onChange }: EditorProps) {
-  const d = data as { items?: StatItem[] };
+  const d = data as { eyebrow?: string; title?: string; headerDesc?: string; items?: StatItem[] };
   const items: StatItem[] = d.items ?? [];
+  const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const updateItems = (arr: StatItem[]) => onChange({ ...data, items: arr });
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      <Field label="Judul Kecil (eyebrow, opsional)">
+        <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="ANGKA KAMI" />
+      </Field>
+      <Field label="Judul Besar (opsional)">
+        <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Statistik" />
+      </Field>
+      <Field label="Deskripsi (opsional)">
+        <Input value={d.headerDesc ?? ""} onChange={(e) => u("headerDesc", e.target.value)} placeholder="Sedikit cerita di balik angka." />
+      </Field>
       <Label className="text-xs text-muted-foreground">Statistik (maks 4)</Label>
       {items.map((item, i) => (
         <div key={i} className="flex gap-2 items-center">

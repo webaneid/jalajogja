@@ -15,7 +15,7 @@ export function PostsDesign1({ data, posts, featuredPosts = [], tenantSlug }: Po
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
         {data.title && (
-          <h2 className="text-2xl font-bold mb-6 border-b border-border pb-3">{data.title}</h2>
+          <h2 className="section-title !mb-6 border-b border-border pb-3">{data.title}</h2>
         )}
 
         {/* ── MOBILE: overlay pertama + list sisanya ── */}

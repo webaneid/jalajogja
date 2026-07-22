@@ -38,7 +38,7 @@ export function ModulesDesign2({
       <div className="max-w-7xl mx-auto">
         <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
           {title ? (
-            <h2 className="text-2xl sm:text-3xl font-bold m-0">{renderAccentTitle(title)}</h2>
+            <h2 className="section-title !m-0">{renderAccentTitle(title)}</h2>
           ) : <span />}
           <div className="flex gap-2">
             <button

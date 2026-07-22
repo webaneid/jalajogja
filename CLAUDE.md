@@ -9160,8 +9160,77 @@ visual di browser (keterbatasan environment) — perubahan CSS murni (ukuran jud
 primary/secondary/dark (Keunggulan/Tentang Kami) untuk pastikan opacity-70 eyebrow benar-benar
 terlihat proporsional, bukan cuma terhitung benar secara CSS.
 
+### [2026-07-22] Screening Ukuran Judul — Semua Section Landing Page Kecuali Hero+CTA
+
+> Detail lengkap: **`docs/arsitektur-section-title-block.md`** § 6–8
+
+Lanjutan langsung `<SectionTitleBlock>` (entri di atas, sesi yang sama) — user minta "screening
+semua section, mulai dari tentang kami, statistik, keunggulan layanan, gallery foto dan
+semuanya, menggunakan ukuran yang sama pakai section title", lalu susulan "selain hero dan cta"
+mengkonfirmasi dua-duanya (bukan cuma CTA) tetap dikecualikan.
+
+**Audit menyeluruh** (`grep -rn "<h1\|<h2\|<h3"` di seluruh `components/website/public/sections/`
++ `landing-template.tsx`) — pemisahan penting sebelum eksekusi: **judul SECTION** (chrome section
+itu sendiri) vs **judul ITEM/CARD** (nama post/produk/event individual di dalam kartu, item
+repeater Keunggulan/Tentang Kami). Hanya kelas pertama yang disamakan — kelas kedua (mis.
+`<h3 className="text-4xl md:text-5xl...">` di kartu post unggulan `posts-design-2.tsx`) sengaja
+TIDAK disentuh, beda kelas visual sepenuhnya (konten individual, bukan chrome section).
+
+**5 titik judul section yang disamakan ke `.section-title`**:
+1. `PostsSectionTitle` (dipakai hampir semua design Post/Produk/Campaign/Event) — dari
+   `font-normal leading-none m-0 text-4xl lg:text-[48px]` + inline `letterSpacing` → `section-title
+   !mb-0` (margin dinolkan — flex `items-end` dengan tombol "Lihat Semua", tidak ada konten di
+   bawahnya).
+2. `posts-design-1.tsx` (Design "Hero 3 Kolom", satu-satunya design Post dengan judul bespoke
+   TANPA `PostsSectionTitle`) — `text-2xl font-bold mb-6 border-b...` → `section-title !mb-6
+   border-b...` (`!mb-6` mempertahankan jarak visual asli ke grid, bukan mengandalkan margin
+   bawaan `.section-title` yang cuma 0.6rem).
+3. `modules-design-2.tsx` (Strip Modul Desain 2) — `text-2xl sm:text-3xl font-bold m-0` →
+   `section-title !m-0`.
+4. `ContactInfoSection` ("Info Kontak", judul statis tanpa eyebrow) — `text-2xl font-bold mb-6` →
+   `section-title !mb-6`.
+5. `StatsSection` ("Statistik") — **beda dari 4 titik lain**: SEBELUMNYA sama sekali tidak punya
+   judul (`SECTION_DEFAULTS.stats = {items:[]}`, cuma repeater angka+label). Ditambahkan
+   `eyebrow`/`title`/`headerDesc` opsional (default kosong) + `<SectionTitleBlock>` — section
+   existing manapun otomatis TIDAK berubah tampilan (return `null` kalau ketiganya kosong, pola
+   backward-compat yang sama dipakai Features/About/Gallery sebelumnya).
+
+**Pola `!mb-*`/`!m-0` (Tailwind important-modifier) — WAJIB dipakai untuk override margin
+`.section-title`**: kelas ini bawaannya `margin-bottom: 0.6rem`, didefinisikan di LUAR `@layer
+utilities` (plain top-level rule di `globals.css`) — artinya urutan cascade vs utility Tailwind
+biasa (yang di-emit DALAM `@layer utilities`) tidak bisa diandalkan tanpa `!important` eksplisit
+untuk menjamin override menang. Setiap kali sebuah usage butuh margin berbeda dari 0.6rem bawaan
+(nol untuk layout flex `items-end`, atau angka lama untuk mempertahankan proporsi visual desain
+yang sudah ada), WAJIB pakai `!mb-0`/`!mb-6`/`!m-0`, bukan `mb-0`/`mb-6`/`m-0` polos.
+
+**Aturan yang ditegaskan**: saat "screening"/menyamakan style di banyak lokasi sekaligus, pisahkan
+DULU secara eksplisit "chrome section" (yang memang harus konsisten) dari "konten individual di
+dalamnya" (yang boleh — dan harus — tetap beda sesuai desain masing-masing card/item) SEBELUM
+mulai grep-and-replace. Kalau tidak dipisah, risiko nyata: menyamakan ukuran judul artikel di
+dalam card post unggulan dengan judul section "Berita Terbaru"-nya sendiri — merusak hierarki
+visual card, bukan memperbaiki konsistensi.
+
+**Verifikasi**: `tsc --noEmit` bersih dari percobaan pertama + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB (field baru Stats
+opsional di JSONB `pages.body`). Belum diverifikasi visual di browser — user perlu cek terutama:
+(1) ukuran judul konsisten di semua section publik, (2) margin/spacing di 5 titik override tidak
+terasa aneh (`PostsSectionTitle` vs `modules-design-2` flex `items-end` alignment), (3) Statistik
+sekarang punya opsi judul di section builder.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **`<SectionTitleBlock>` — ekstraksi blok judul bersama** (lihat lesson di
+- Terakhir dikerjakan: **Screening ukuran judul — semua section landing page kecuali Hero+CTA**
+  (lihat lesson di atas) — lanjutan langsung `<SectionTitleBlock>` di sesi yang sama. Audit
+  menyeluruh `<h1/h2/h3>` di seluruh section publik, pisahkan judul SECTION (disamakan) dari
+  judul ITEM/CARD di dalam kartu (sengaja TIDAK disentuh). 5 titik disamakan ke `.section-title`:
+  `PostsSectionTitle` (Post/Produk/Campaign/Event, hampir semua design), Design "Hero 3 Kolom"
+  Post, Strip Modul Desain 2, "Info Kontak", dan Statistik (section ini SEBELUMNYA tidak punya
+  judul sama sekali — `eyebrow`/`title`/`headerDesc` opsional ditambahkan baru, default kosong =
+  zero perubahan visual data existing). Override margin pakai `!mb-*`/`!m-0` (Tailwind important-
+  modifier) — WAJIB karena `.section-title` didefinisikan di luar `@layer utilities`, cascade
+  order vs utility Tailwind biasa tidak bisa diandalkan tanpa `!important`. `tsc`+build bersih
+  dari percobaan pertama. Nol migrasi DB. **Belum di-commit/push** (menunggu checkpoint ini),
+  **belum diverifikasi visual di browser**.
+- Sesi sebelumnya: **`<SectionTitleBlock>` — ekstraksi blok judul bersama** (lihat lesson di
   atas) — trio eyebrow+judul+deskripsi yang identik persis di Keunggulan/Tentang Kami/Galeri
   diekstrak jadi satu komponen (`components/website/public/sections/section-title-block.tsx`),
   ekstraksi sengaja sempit (layout luar tetap tanggung jawab caller). `.section-title` CSS baru
@@ -9171,9 +9240,7 @@ terlihat proporsional, bukan cuma terhitung benar secara CSS.
   `<SectionSeeAllLink>` baru (bordered pill, dipakai `PostsSectionTitle`) — SENGAJA komponen
   React terpisah, BUKAN menimpa `.btn-ghost` Public Button System yang sudah ada dengan visual
   beda (nama class collision dari CSS reference user, dihindari). CTA tidak ikut (judul sendiri
-  menyamai Hero). `tsc`+build bersih dari percobaan pertama. Nol migrasi DB. **Belum di-commit/
-  push** (menunggu checkpoint ini), **belum diverifikasi visual di browser** (perubahan CSS murni,
-  risiko rendah tapi perlu dicek terutama kontras eyebrow di background berwarna).
+  menyamai Hero). **Sudah di-commit+push** (`6872ad0`).
 - Sesi sebelumnya: **Section Galeri Foto — title+background standar + bug fix scroll-to-top**
   (lihat lesson di atas) — pola title+background sama Tentang Kami. Bug fix di SHARED component
   `<GalleryGrid>` (dipakai lintas modul, bukan cuma landing) — thumbnail `<a>` polos diganti

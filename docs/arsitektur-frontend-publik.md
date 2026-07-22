@@ -172,8 +172,14 @@ otomatis kontras terhadap background section (`resolveAccentTextClass()`, `opaci
 background berwarna alih-alih `text-primary` yang hilang di atas `bg-primary`). Tombol "Lihat
 Semua" `PostsSectionTitle` (Post/Produk/Campaign/Event) sekalian diganti gaya bordered-pill
 (`<SectionSeeAllLink>`, komponen React berdiri sendiri — BUKAN menimpa `.btn-ghost` Public Button
-System yang visualnya beda). CTA tidak ikut — judulnya sendiri menyamai ukuran Hero. **Dokumen
-detail penuh**: `docs/arsitektur-section-title-block.md`.
+System yang visualnya beda). CTA & Hero tidak ikut — judulnya sendiri menyamai ukuran Hero.
+**Sweep lanjutan (sesi sama)** — `.section-title` diterapkan ke SEMUA judul section lain yang
+tersisa: `PostsSectionTitle` (Post/Produk/Campaign/Event, semua design), Design "Hero 3 Kolom"
+Post, Strip Modul Desain 2, "Info Kontak", dan Statistik (section ini SEBELUMNYA tidak punya
+judul sama sekali — ditambahkan baru, opsional, default kosong = zero perubahan visual untuk
+data existing). Judul ITEM/CARD (nama post/produk individual di dalam kartu) SENGAJA TIDAK ikut
+disamakan — beda kelas dari judul section. **Dokumen detail penuh**:
+`docs/arsitektur-section-title-block.md` § 6–8.
 
 ---
 

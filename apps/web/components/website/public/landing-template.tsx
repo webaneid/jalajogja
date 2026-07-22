@@ -401,7 +401,7 @@ function ContactInfoSection({ settings }: { settings: ContactSettings }) {
     <section className="py-14 px-4 bg-muted/40">
       <div className="max-w-7xl mx-auto">
       <div className="max-w-2xl space-y-4">
-        <h2 className="text-2xl font-bold mb-6">Info Kontak</h2>
+        <h2 className="section-title !mb-6">Info Kontak</h2>
         {email   && <p className="text-sm">📧 <a href={`mailto:${email}`} className="text-primary underline">{email}</a></p>}
         {phone   && <p className="text-sm">📞 <a href={`tel:${phone}`}   className="text-primary underline">{phone}</a></p>}
         {address?.detail && <p className="text-sm">📍 {address.detail}</p>}
@@ -431,12 +431,21 @@ function ContactInfoSection({ settings }: { settings: ContactSettings }) {
 type StatItem = { number: string; label: string };
 
 function StatsSection({ data }: { data: Record<string, unknown> }) {
-  const d = data as { items?: StatItem[] };
+  const d = data as { eyebrow?: string; title?: string; headerDesc?: string; items?: StatItem[] };
   const items = d.items ?? [];
+  const hasHeader = !!(d.eyebrow || d.title || d.headerDesc);
 
   return (
     <section className="py-14 px-4">
       <div className="max-w-7xl mx-auto">
+        {hasHeader && (
+          <SectionTitleBlock
+            eyebrow={d.eyebrow}
+            title={d.title}
+            description={d.headerDesc}
+            className="max-w-3xl mx-auto text-center mb-10"
+          />
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
           {items.map((item, i) => (
             <div key={i}>
