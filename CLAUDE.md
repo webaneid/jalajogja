@@ -9277,21 +9277,87 @@ visual di browser — user perlu cek terutama: (1) mode "center" pada masing-mas
 section, (2) editor Posts menyembunyikan field baru dengan benar saat Design 1/4 aktif, (3) 2
 design carousel dengan `align="center"` dipilih (edge case yang diterima, bukan di-guard).
 
+### [2026-07-22] Audit Kelengkapan Standar 3-Judul — Strip Modul/Galeri/Statistik Dapat Perluasan
+
+> Detail lengkap: **`docs/arsitektur-section-title-block.md`** § 12–14
+
+Setelah user konfirmasi ukuran judul Post sudah konsisten (§ lesson di atas), user tanya: "selain
+yg sudah kita update dan perbaiki tadi, apakah ada section design yg blm kita sentuh?". Audit
+dari 13 tipe section (`SECTION_TYPES`) menemukan 3 gap nyata: **Strip Modul** (belum tersentuh
+sama sekali — Design 1 pakai `PostsSectionTitle` tapi tidak diwire eyebrow/desc/align, Design 2
+raw `<h2>` tanpa `SectionTitleBlock` sama sekali), **Galeri Foto** dan **Statistik** (sudah punya
+eyebrow+judul+deskripsi dari sesi sebelumnya, tapi wrapper-nya di-hardcode `text-center`, tidak
+ada pilihan align). User pilih beresin ketiganya sekaligus.
+
+**Bug yang DICEGAH sebelum ditulis (bukan ditemukan setelah)**: kalau `titleAlign` untuk Galeri/
+Statistik di-default ke `"left"` (mengikuti pola Post/Produk/dst di § 9), section EXISTING yang
+sudah dikonfigurasi admin (punya eyebrow/judul/deskripsi tersimpan) akan tiba-tiba lompat dari
+center ke kiri — regresi visual nyata, karena perilaku ASLI keduanya SUDAH SELALU center (hardcode
+`text-center`, tanpa opsi lain) SEBELUM opsi align ada. Fix: `const titleAlign = d.titleAlign ??
+"center"` (bukan `"left"`) khusus untuk `GallerySection`/`StatsSection` — satu-satunya baris yang
+membedakan perluasan ini dari pola default § 9. `SECTION_DEFAULTS.gallery`/`.stats` juga eksplisit
+set `titleAlign: "center"` (kedua entri ini sudah pakai gaya exhaustive-default, beda dari
+Post/Produk/dst yang minimal-default — § 9c — jadi field baru ditambahkan konsisten dengan gaya
+masing-masing, bukan dipaksa seragam).
+
+**Pola align 2-bagian (`flex flex-col ${alignItemsCls}` untuk POSISI blok + `max-w-3xl
+${textAlignCls}` untuk ALIGN TEKS di dalamnya)** — disalin dari `FeaturesSection` yang sudah lebih
+dulu ada, bukan pola baru: `text-center`/`text-left` SAJA pada `SectionTitleBlock` tidak cukup,
+karena tanpa `items-center`/`items-start` di flex parent, blok `max-w-3xl` akan selalu menempel ke
+kiri (default flex alignment) terlepas dari `text-align` di dalamnya.
+
+**Strip Modul Design 2 — tombol panah BUKAN "Lihat Semua"**: dua tombol `ChevronLeft`/
+`ChevronRight` mengontrol scroll rail carousel, beda semantik dari href-based `SectionSeeAllLink`
+(yang selalu opsional) — tidak bisa langsung reuse `PostsSectionTitle`. Direstrukturisasi manual
+mengikuti POLA yang sama (title kiri+panah kanan 1 baris untuk "left"; title terpusat lalu panah
+di baris terpisah di bawah untuk "center") tapi reuse `<SectionTitleBlock>` langsung (bukan
+`PostsSectionTitle`) karena Design 2 tidak butuh href/`linkLabel` sama sekali. Panah SELALU tampil
+di kedua mode (fungsional, mengontrol rail) — beda dari "Lihat Semua" yang genuinely opsional.
+
+**Yang SENGAJA tidak diubah (bukan gap)**: Keunggulan/Layanan tetap 3 opsi align (kiri/tengah/
+kanan) — desain awalnya sendiri, bukan inkonsistensi yang perlu diseragamkan ke 2 opsi. Info
+Kontak (judul "Info Kontak" hardcode, bukan field admin sama sekali) dan Divider (tidak ada
+konsep judul) tetap tidak tersentuh — keduanya bukan gap, cuma tidak relevan untuk standar ini.
+
+**Aturan yang ditegaskan**: saat memperluas sebuah standar/pola ke section BARU yang PERNAH punya
+perilaku default berbeda dari section yang jadi acuan awal (di sini: Post/Produk/dst selalu
+"left", Galeri/Statistik selalu "center"), JANGAN asumsikan default yang sama berlaku untuk semua
+— identifikasi dulu perilaku ASLI section itu SEBELUM field baru ditambahkan, dan jadikan itu
+sebagai default runtime (`?? "..."`) DAN default eksplisit di `SECTION_DEFAULTS` kalau section itu
+sudah pakai gaya exhaustive-default. Kegagalan melakukan ini adalah kelas regresi visual paling
+gampang lolos audit `tsc`/build (compile bersih, tapi tampilan production tiba-tiba berubah).
+
+**Verifikasi**: `tsc --noEmit` bersih dari percobaan pertama + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan). Nol migrasi DB. Belum diverifikasi visual
+di browser — user perlu cek terutama: (1) Galeri/Statistik existing (kalau ada) TETAP center
+setelah deploy (verifikasi backward-compat paling kritis di atas), (2) mode "center" Strip Modul
+Design 2 — panah pindah ke bawah dengan benar, (3) editor Modules menampilkan field baru dengan
+benar.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **`PostsSectionTitle` — perluasan trio standar ke Post/Produk/Campaign/
-  Event** (lihat lesson di atas) — lanjutan langsung "Screening ukuran judul" di sesi yang sama
-  (diselingi 1 turn audit dokumentasi-vs-kode yang tidak menghasilkan perubahan, dan 1 turn audit
-  lebar Pill Header/Hero yang tidak menemukan bug di kode — lihat lesson terpisah di atas,
-  ditunda menunggu screenshot user). `PostsSectionTitle` direstrukturisasi total: reuse
+- Terakhir dikerjakan: **Audit kelengkapan standar 3-judul — Strip Modul/Galeri/Statistik dapat
+  perluasan** (lihat lesson di atas) — lanjutan langsung `PostsSectionTitle` di sesi yang sama.
+  User tanya "section design yang belum kita sentuh?" — audit 13 tipe section menemukan 3 gap:
+  Strip Modul (belum tersentuh sama sekali), Galeri Foto & Statistik (sudah punya eyebrow+judul+
+  deskripsi tapi belum ada pilihan align). **Bug DICEGAH sebelum ditulis**: Galeri/Statistik
+  default align HARUS `"center"` (bukan `"left"` seperti Post/Produk/dst) — perilaku asli
+  keduanya SUDAH SELALU center sebelum opsi ini ada, default `"left"` akan jadi regresi visual
+  untuk section existing. Strip Modul Design 2 (tombol panah scroll rail, BUKAN href "Lihat
+  Semua") direstrukturisasi manual mengikuti pola yang sama tapi reuse `SectionTitleBlock`
+  langsung (bukan `PostsSectionTitle`). Keunggulan/Layanan (3 opsi align) dan Info Kontak/Divider
+  (bukan gap, tidak relevan) sengaja TIDAK disentuh. `tsc`+build bersih dari percobaan pertama.
+  Nol migrasi DB. **Belum di-commit/push** (menunggu checkpoint ini), **belum diverifikasi
+  visual di browser**.
+- Sesi sebelumnya: **`PostsSectionTitle` — perluasan trio standar ke Post/Produk/Campaign/
+  Event** (lihat lesson di atas) — `PostsSectionTitle` direstrukturisasi total: reuse
   `<SectionTitleBlock>` (butuh `title: ReactNode` + prop `as` baru di komponen itu), tambah
   `eyebrow`/`description`/`align` (HANYA 2 opsi: left/center — beda dari Keunggulan/CTA yang 3),
   hapus field `label` yang tidak pernah dipakai caller manapun. `lib/section-title-align.ts` baru.
   4 tipe data (`PostsSectionData` dkk) dapat 3 field baru opsional, TIDAK ditambah ke
   `SECTION_DEFAULTS` (konvensi lokal minimal-defaults). 11 dari 14 design Post/Produk/Campaign/
   Event diwire (Design 1 "Hero 3 Kolom" dan sub-header per-kolom Design 4 "Trio Column" Post
-  sengaja tidak ikut — tidak memakai `PostsSectionTitle` di level section). `tsc`+build bersih
-  dari percobaan pertama. Nol migrasi DB. **Belum di-commit/push** (menunggu checkpoint ini),
-  **belum diverifikasi visual di browser**.
+  sengaja tidak ikut — tidak memakai `PostsSectionTitle` di level section). **Sudah di-commit+push**
+  (`f18ef8f`).
 - Sesi sebelumnya: **Screening ukuran judul — semua section landing page kecuali Hero+CTA**
   (lihat lesson di atas) — Audit menyeluruh `<h1/h2/h3>` di seluruh section publik, pisahkan
   judul SECTION (disamakan) dari judul ITEM/CARD di dalam kartu (sengaja TIDAK disentuh). 5 titik

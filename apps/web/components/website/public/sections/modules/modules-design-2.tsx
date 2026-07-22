@@ -4,6 +4,8 @@ import { useRef } from "react";
 import { ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { MODULE_CATALOG, type ModuleId } from "@/lib/module-strip-designs";
 import { renderAccentTitle } from "@/lib/render-accent-title";
+import { SectionTitleBlock } from "@/components/website/public/sections/section-title-block";
+import type { SectionTitleAlign } from "@/lib/section-title-align";
 
 // Desain 2 — Kartu Foto Overlay. Sumber ide: section "Ekosistem" di design-refs/jalakarta-v2/
 // (lihat design-refs/README.md) — rail scroll horizontal, kartu portrait foto full-bleed.
@@ -18,12 +20,18 @@ export type ResolvedModuleItem = {
 
 export function ModulesDesign2({
   title,
+  eyebrow,
+  description,
+  align = "left",
   items,
   baseUrl,
 }: {
-  title?:  string;
-  items:   ResolvedModuleItem[];
-  baseUrl: string;
+  title?:       string;
+  eyebrow?:     string;
+  description?: string;
+  align?:       SectionTitleAlign;
+  items:        ResolvedModuleItem[];
+  baseUrl:      string;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
 
@@ -33,32 +41,54 @@ export function ModulesDesign2({
 
   if (items.length === 0) return null;
 
+  const hasHeader = !!(eyebrow || title || description);
+
+  // Tombol panah rail — TIDAK opsional (bukan setara "Lihat Semua" yang bisa disembunyikan),
+  // jadi selalu dirender apapun align-nya; posisinya saja yang berubah (lihat di bawah).
+  const arrows = (
+    <div className="flex gap-2 shrink-0">
+      <button
+        type="button"
+        onClick={() => scroll(-1)}
+        aria-label="Sebelumnya"
+        className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted/60 transition-colors"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => scroll(1)}
+        aria-label="Berikutnya"
+        className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted/60 transition-colors"
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+
+  const titleBlock = hasHeader && (
+    <SectionTitleBlock
+      eyebrow={eyebrow}
+      title={title ? renderAccentTitle(title) : undefined}
+      description={description}
+      className={align === "center" ? "text-center" : "[&>*:last-child]:!mb-0"}
+    />
+  );
+
   return (
     <section className="py-10 px-4">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
-          {title ? (
-            <h2 className="section-title !m-0">{renderAccentTitle(title)}</h2>
-          ) : <span />}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => scroll(-1)}
-              aria-label="Sebelumnya"
-              className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted/60 transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => scroll(1)}
-              aria-label="Berikutnya"
-              className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted/60 transition-colors"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+        {align === "center" ? (
+          <div className="mb-6">
+            {hasHeader && <div className="max-w-3xl mx-auto">{titleBlock}</div>}
+            <div className="flex justify-center mt-4">{arrows}</div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
+            {titleBlock || <span />}
+            {arrows}
+          </div>
+        )}
 
         <div
           ref={railRef}

@@ -185,7 +185,18 @@ tambah opsi posisi **HANYA 2** (left/center, beda dari Keunggulan/CTA yang 3 ops
 tombol "Lihat Semua" tetap sejajar kanan (default, tidak berubah), "center" = title block
 terpusat + tombol pindah ke baris terpisah di bawah, juga terpusat. Design "Hero 3 Kolom" Post
 dan sub-header per-kolom "Trio Column" Post sengaja tidak ikut (tidak memakai `PostsSectionTitle`
-sebagai judul section). **Dokumen detail penuh**: `docs/arsitektur-section-title-block.md` § 6–9.
+sebagai judul section). **Audit kelengkapan + perluasan lanjutan (sesi berikutnya lagi)** — dari
+13 tipe section, ditemukan 3 gap: Strip Modul (belum tersentuh sama sekali — Design 1 pakai
+`PostsSectionTitle` tapi tidak diwire eyebrow/desc/align, Design 2 raw `<h2>` tanpa
+`SectionTitleBlock`), Galeri Foto dan Statistik (sudah punya eyebrow+judul+deskripsi tapi wrapper
+di-hardcode center, tidak ada pilihan align). Ketiganya dibereskan sekaligus — Strip Modul Desain
+2 (tombol scroll rail, bukan href "Lihat Semua") direstrukturisasi manual mengikuti pola yang
+sama (title+panah 1 baris untuk left, title terpusat+panah di bawah untuk center). **Default
+align Galeri/Statistik = `"center"`** (BUKAN `"left"` seperti Post/Produk/dst) — krusial untuk
+backward-compat karena perilaku asli keduanya SUDAH SELALU center sebelum opsi ini ada. Keunggulan/
+Layanan TETAP 3 opsi align (kiri/tengah/kanan) — bukan gap, desain awalnya sendiri, tidak
+diseragamkan. Info Kontak dan Divider tetap tidak tersentuh (bukan gap — lihat dokumen detail).
+**Dokumen detail penuh**: `docs/arsitektur-section-title-block.md` § 6–14.
 
 ---
 

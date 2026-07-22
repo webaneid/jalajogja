@@ -1,4 +1,5 @@
 import { Heart, Store, CalendarDays, FolderOpen, Users, Building2, Briefcase, School } from "lucide-react";
+import type { SectionTitleAlign } from "./section-title-align";
 
 // Katalog modul untuk section "Strip Modul" — independen dari HERO_MODULES di
 // hero-section-designs.ts (sengaja tidak dibagi, supaya hero Desain 1/Klasik tidak pernah
@@ -14,8 +15,11 @@ export type ModuleItemConfig = {
 };
 
 export type ModulesSectionData = {
-  title?: string;
-  items: ModuleItemConfig[];
+  title?:      string;
+  eyebrow?:    string;
+  headerDesc?: string;
+  titleAlign?: SectionTitleAlign;  // default "left" — lihat lib/section-title-align.ts
+  items:       ModuleItemConfig[];
 };
 
 // Backward-compat: sebelum Desain 2 ditambahkan (2026-07-17), `items` disimpan sebagai `string[]`

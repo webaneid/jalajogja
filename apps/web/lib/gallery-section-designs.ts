@@ -7,6 +7,7 @@
 
 import type { GalleryItem, GalleryAspectRatio } from "./gallery";
 import type { SectionBackground } from "./section-background";
+import type { SectionTitleAlign } from "./section-title-align";
 
 export { SECTION_BACKGROUND_IDS, SECTION_BACKGROUND_LABELS } from "./section-background";
 export type { SectionBackground } from "./section-background";
@@ -28,6 +29,7 @@ export type GallerySectionData = {
   eyebrow?:    string;
   title?:      string;
   headerDesc?: string;
+  titleAlign?: SectionTitleAlign;  // default "center" (BEDA dari Post/Produk/dst — lihat landing-template.tsx)
   background?: SectionBackground;
   columns?:    GalleryColumnsId;
   imageRatio?: GalleryAspectRatio;

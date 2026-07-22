@@ -610,6 +610,7 @@ function GalleryEditor({ data, onChange, tenantSlug }: EditorProps) {
   const background = d.background ?? "none";
   const columns    = d.columns ?? 3;
   const imageRatio = d.imageRatio ?? "square";
+  const titleAlign = d.titleAlign ?? "center";
 
   return (
     <div className="space-y-3">
@@ -622,6 +623,13 @@ function GalleryEditor({ data, onChange, tenantSlug }: EditorProps) {
       <Field label="Deskripsi (opsional)">
         <Textarea value={d.headerDesc ?? ""} onChange={(e) => u("headerDesc", e.target.value)} placeholder="Kalimat pendukung..." rows={2} />
       </Field>
+      <OptionRow
+        label="Posisi Judul"
+        ids={SECTION_TITLE_ALIGN_IDS}
+        labels={SECTION_TITLE_ALIGN_LABELS}
+        value={titleAlign}
+        onChange={(v) => u("titleAlign", v)}
+      />
 
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">Gambar ({items.length})</Label>
@@ -1031,7 +1039,7 @@ function ContactInfoEditor() {
 type StatItem = { number: string; label: string };
 
 function StatsEditor({ data, onChange }: EditorProps) {
-  const d = data as { eyebrow?: string; title?: string; headerDesc?: string; items?: StatItem[] };
+  const d = data as { eyebrow?: string; title?: string; headerDesc?: string; titleAlign?: typeof SECTION_TITLE_ALIGN_IDS[number]; items?: StatItem[] };
   const items: StatItem[] = d.items ?? [];
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const updateItems = (arr: StatItem[]) => onChange({ ...data, items: arr });
@@ -1047,6 +1055,13 @@ function StatsEditor({ data, onChange }: EditorProps) {
       <Field label="Deskripsi (opsional)">
         <Input value={d.headerDesc ?? ""} onChange={(e) => u("headerDesc", e.target.value)} placeholder="Sedikit cerita di balik angka." />
       </Field>
+      <OptionRow
+        label="Posisi Judul"
+        ids={SECTION_TITLE_ALIGN_IDS}
+        labels={SECTION_TITLE_ALIGN_LABELS}
+        value={d.titleAlign ?? "center"}
+        onChange={(v) => u("titleAlign", v)}
+      />
       <Label className="text-xs text-muted-foreground">Statistik (maks 4)</Label>
       {items.map((item, i) => (
         <div key={i} className="flex gap-2 items-center">
@@ -1162,7 +1177,7 @@ function ProductsEditor({ data, onChange, variant, onVariantChange }: EditorProp
 // ── Modules (Strip Modul) ──────────────────────────────────────────────────────
 
 function ModulesEditor({ data, onChange, variant, onVariantChange, tenantSlug }: EditorProps) {
-  const d = data as { title?: string; items?: unknown };
+  const d = data as { title?: string; eyebrow?: string; headerDesc?: string; titleAlign?: typeof SECTION_TITLE_ALIGN_IDS[number]; items?: unknown };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
   const selected      = normalizeModuleItems(d.items);
   const activeVariant = (variant ?? "1") as ModuleSectionDesignId;
@@ -1190,6 +1205,19 @@ function ModulesEditor({ data, onChange, variant, onVariantChange, tenantSlug }:
       <Field label="Judul Section (opsional)">
         <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Jelajahi Layanan Kami" />
       </Field>
+      <Field label="Judul Kecil (eyebrow, opsional)">
+        <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="EKOSISTEM" />
+      </Field>
+      <Field label="Deskripsi (opsional)">
+        <Input value={d.headerDesc ?? ""} onChange={(e) => u("headerDesc", e.target.value)} placeholder="Layanan yang bisa kamu manfaatkan." />
+      </Field>
+      <OptionRow
+        label="Posisi Judul"
+        ids={SECTION_TITLE_ALIGN_IDS}
+        labels={SECTION_TITLE_ALIGN_LABELS}
+        value={d.titleAlign ?? "left"}
+        onChange={(v) => u("titleAlign", v)}
+      />
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">Pilih Modul yang Ditampilkan</Label>
         <div className="grid grid-cols-2 gap-2">

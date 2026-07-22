@@ -26,6 +26,7 @@ import { resolveIcon } from "@/lib/icon-catalog";
 import type { AboutSectionData } from "@/lib/about-section-designs";
 import { resolveSectionBgClass, resolveOutlineButtonVariant } from "@/lib/section-background";
 import { SectionTitleBlock } from "@/components/website/public/sections/section-title-block";
+import type { SectionTitleAlign } from "@/lib/section-title-align";
 
 // ─── Section renderers ────────────────────────────────────────────────────────
 
@@ -40,18 +41,25 @@ function GallerySection({ data, sectionId }: { data: Record<string, unknown>; se
   const bgClass = resolveSectionBgClass(background);
 
   const hasHeader = !!(d.eyebrow || d.title || d.headerDesc);
+  // Default "center" (BUKAN "left" seperti Post/Produk/dst) — perilaku asli section ini sebelum
+  // opsi align ditambahkan selalu terpusat, data existing tanpa titleAlign harus tetap terpusat.
+  const titleAlign   = d.titleAlign ?? "center";
+  const alignItemsCls = titleAlign === "center" ? "items-center" : "items-start";
+  const textAlignCls  = titleAlign === "center" ? "text-center"  : "text-left";
 
   return (
     <section className={`py-14 px-4 ${bgClass}`}>
       <div className="max-w-7xl mx-auto">
         {hasHeader && (
-          <SectionTitleBlock
-            eyebrow={d.eyebrow}
-            title={d.title}
-            description={d.headerDesc}
-            background={background}
-            className="max-w-3xl mx-auto text-center mb-10"
-          />
+          <div className={`flex flex-col mb-10 ${alignItemsCls}`}>
+            <SectionTitleBlock
+              eyebrow={d.eyebrow}
+              title={d.title}
+              description={d.headerDesc}
+              background={background}
+              className={`max-w-3xl ${textAlignCls}`}
+            />
+          </div>
         )}
         {items.length === 0 ? (
           <p className="text-muted-foreground text-sm">Belum ada gambar.</p>
@@ -431,20 +439,27 @@ function ContactInfoSection({ settings }: { settings: ContactSettings }) {
 type StatItem = { number: string; label: string };
 
 function StatsSection({ data }: { data: Record<string, unknown> }) {
-  const d = data as { eyebrow?: string; title?: string; headerDesc?: string; items?: StatItem[] };
+  const d = data as { eyebrow?: string; title?: string; headerDesc?: string; titleAlign?: SectionTitleAlign; items?: StatItem[] };
   const items = d.items ?? [];
   const hasHeader = !!(d.eyebrow || d.title || d.headerDesc);
+  // Default "center" (BUKAN "left" seperti Post/Produk/dst) — perilaku asli section ini sebelum
+  // opsi align ditambahkan selalu terpusat, data existing tanpa titleAlign harus tetap terpusat.
+  const titleAlign   = d.titleAlign ?? "center";
+  const alignItemsCls = titleAlign === "center" ? "items-center" : "items-start";
+  const textAlignCls  = titleAlign === "center" ? "text-center"  : "text-left";
 
   return (
     <section className="py-14 px-4">
       <div className="max-w-7xl mx-auto">
         {hasHeader && (
-          <SectionTitleBlock
-            eyebrow={d.eyebrow}
-            title={d.title}
-            description={d.headerDesc}
-            className="max-w-3xl mx-auto text-center mb-10"
-          />
+          <div className={`flex flex-col mb-10 ${alignItemsCls}`}>
+            <SectionTitleBlock
+              eyebrow={d.eyebrow}
+              title={d.title}
+              description={d.headerDesc}
+              className={`max-w-3xl ${textAlignCls}`}
+            />
+          </div>
         )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
           {items.map((item, i) => (

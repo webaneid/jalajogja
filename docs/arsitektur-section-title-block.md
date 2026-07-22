@@ -28,9 +28,10 @@ tidak masuk akal — diekstrak jadi satu komponen.
 ```tsx
 type Props = {
   eyebrow?:     string;
-  title?:       string;
+  title?:       ReactNode;   // biasanya string, tapi PostsSectionTitle mengirim markup *italic* terparsing
   description?: string;
   background?:  SectionBackground;   // untuk warna eyebrow — default "none"
+  as?:          "h2" | "h3";          // default "h2" — h3 untuk sub-header (mis. kolom Trio Column Post)
   className?:   string;
 };
 ```
@@ -38,17 +39,24 @@ type Props = {
 **Cakupan tanggung jawab — sengaja sempit**: komponen ini HANYA merender trio konten (eyebrow,
 judul, deskripsi). Layout luar (align kiri/tengah/kanan, max-width, mode "beside" vs "below",
 posisi di dalam grid) tetap tanggung jawab CALLER via prop `className` (diteruskan ke root
-`<div>`) — bukan diseragamkan paksa, karena tiga section ini punya kebutuhan layout luar yang
+`<div>`) — bukan diseragamkan paksa, karena section-section ini punya kebutuhan layout luar yang
 LEGIT berbeda:
-- Galeri: wrapper terpusat `max-w-3xl mx-auto text-center mb-10`
+- Galeri/Statistik: wrapper terpusat (default) atau kiri, lihat § 12a
 - Tentang Kami: TANPA wrapper terpisah — jadi child pertama dari kolom teks `space-y-4`
   (eyebrow+title saja, `description` TIDAK dipakai — body/list About dirender terpisah setelahnya)
 - Keunggulan/Layanan: `max-w-3xl ${textAlignCls}` (mode "below") atau `flex-1 min-w-0
   ${textAlignCls}` (mode "beside", deskripsi dirender terpisah sebagai sibling — lihat § 4)
+- Post/Produk/Campaign/Event/Strip Modul: lihat § 9b/12b — layout beda tergantung ada/tidaknya
+  tombol di sampingnya
 
 Return `null` kalau eyebrow, title, DAN description semuanya kosong — caller yang butuh
 membungkus dengan margin/wrapper (mis. Galeri `mb-10`) tetap mengecek `hasHeader` sendiri di
 level pemanggilan supaya wrapper kosong tidak ikut ter-render saat title-block-nya null.
+
+**`title` bertipe `ReactNode` (bukan `string`)** — sejak § 9a, supaya `PostsSectionTitle` bisa
+mengirim hasil parsing markup `*italic*`→`<em>` berwarna primary, bukan string polos. Caller lain
+(Features/About/Gallery/Statistik/Strip Modul) tetap kirim `string` biasa — valid subset dari
+`ReactNode`, nol perubahan perilaku untuk mereka.
 
 ## 3. `.section-title` — CSS Class Baru (`globals.css`)
 
@@ -278,7 +286,7 @@ akan center DI DALAM kolom sempit `flex-1`, bukan center relatif ke section penu
 yang diterima (bukan bug, admin cukup tidak memilih "center" untuk 2 design carousel ini), tidak
 ada guard khusus yang mencegah pemilihannya.
 
-## 10. File yang Disentuh
+## 10. File yang Disentuh (§ 1–9)
 
 | File | Perubahan |
 |------|-----------|
@@ -286,20 +294,17 @@ ada guard khusus yang mencegah pemilihannya.
 | `components/website/public/sections/section-see-all-link.tsx` | Baru — komponen `<SectionSeeAllLink>` |
 | `lib/section-background.ts` | Tambah `resolveAccentTextClass()` |
 | `app/globals.css` | Tambah `.section-title` |
-| `components/website/public/sections/posts/posts-section-title.tsx` | "Lihat Semua" pakai `<SectionSeeAllLink>`; judul pakai `.section-title` |
+| `components/website/public/sections/posts/posts-section-title.tsx` | "Lihat Semua" pakai `<SectionSeeAllLink>`; judul pakai `.section-title`; § 9: restrukturisasi total — reuse `SectionTitleBlock`, tambah `eyebrow`/`description`/`align`, hapus `label` |
 | `components/website/public/sections/posts/posts-design-1.tsx` | Judul "Hero 3 Kolom" pakai `.section-title` |
 | `components/website/public/sections/modules/modules-design-2.tsx` | Judul Strip Modul Desain 2 pakai `.section-title` |
 | `components/website/public/landing-template.tsx` | `GallerySection`/`AboutTextSection`/`FeaturesSection`/`ContactInfoSection` pakai `.section-title`/`<SectionTitleBlock>`; `StatsSection` dapat judul baru |
 | `lib/page-templates.ts` | `SECTION_DEFAULTS.stats` tambah `eyebrow`/`title`/`headerDesc` (opsional, default kosong) |
-| `components/website/section-editors.tsx` | `StatsEditor` tambah 3 field judul |
+| `components/website/section-editors.tsx` | `StatsEditor` tambah 3 field judul; § 9: `PostsEditor`/`ProductsEditor`/`CampaignsEditor`/`EventsEditor` — 2 `Field` + 1 `OptionRow` baru |
 | `lib/section-title-align.ts` | Baru — `SectionTitleAlign` (`left`/`center`) untuk § 9 |
-| `components/website/public/sections/section-title-block.tsx` | `title` jadi `ReactNode`, tambah prop `as` (§ 9a) |
-| `components/website/public/sections/posts/posts-section-title.tsx` | Restrukturisasi total — reuse `SectionTitleBlock`, tambah `eyebrow`/`description`/`align`, hapus `label` (§ 9a–9b) |
 | `lib/posts-section-designs.ts`, `products-section-designs.ts`, `campaigns-section-designs.ts`, `events-section-designs.ts` | Tambah `eyebrow?`/`headerDesc?`/`titleAlign?` (§ 9c) |
-| 11 file `sections/{posts,products,campaigns,events}/*-design-{2,3,5,1,2,3,...}.tsx` | Wire `eyebrow`/`description`/`align` ke `<PostsSectionTitle>` (§ 9d) |
-| `components/website/section-editors.tsx` | `PostsEditor`/`ProductsEditor`/`CampaignsEditor`/`EventsEditor` — 2 `Field` + 1 `OptionRow` baru (§ 9c) |
+| 11 file `sections/{posts,products,campaigns,events}/*-design-*.tsx` | Wire `eyebrow`/`description`/`align` ke `<PostsSectionTitle>` (§ 9d) |
 
-## 11. Di Luar Scope (dicatat, bukan lupa)
+## 11. Di Luar Scope (§ 1–9, dicatat bukan lupa)
 
 - CTA & Hero tidak disentuh (lihat § 1, dikonfirmasi ulang eksplisit oleh user di sweep ini) —
   judulnya tetap independen.
@@ -321,3 +326,82 @@ ada guard khusus yang mencegah pemilihannya.
 - `eyebrow`/`headerDesc`/`titleAlign` TIDAK ditambahkan ke `SECTION_DEFAULTS` (`page-templates.ts`)
   untuk 4 tipe section di § 9 — mengikuti konvensi lokal (minimal defaults) yang sudah ada
   sebelumnya untuk Posts/Produk/Campaign/Event, berbeda dari konvensi exhaustive CTA/Features.
+
+## 12. Audit Kelengkapan + Perluasan ke Strip Modul/Galeri/Statistik
+
+Setelah § 9 selesai, user minta audit menyeluruh: dari 13 tipe section (`SECTION_TYPES`,
+`lib/page-templates.ts`), mana yang BELUM lengkap standar 3-judulnya. Hasil audit:
+
+| Section | Eyebrow | Deskripsi | Align (left/center) | Status sebelum § 12 |
+|---|---|---|---|---|
+| Post/Produk/Campaign/Event | ✅ | ✅ | ✅ | Selesai (§ 9) |
+| Hero, CTA | — | — | — | Sengaja dikecualikan (§ 1) |
+| Tentang Kami, Keunggulan/Layanan | ✅ | ✅ | ✅* | Selesai (sesi sebelumnya) — *Keunggulan pakai 3 opsi (kiri/tengah/**kanan**), bukan 2, dari desain awalnya sendiri, TIDAK diubah di § 12 |
+| **Strip Modul** | ❌ | ❌ | ❌ | GAP — Design 1 pakai `PostsSectionTitle` tapi tidak diwire; Design 2 raw `<h2>` tanpa `SectionTitleBlock` sama sekali |
+| **Galeri Foto** | ✅ | ✅ | ❌ | GAP — sudah punya eyebrow/judul/deskripsi (sesi lalu), wrapper di-hardcode `text-center`, tidak ada pilihan align |
+| **Statistik** | ✅ | ✅ | ❌ | GAP sama seperti Galeri |
+| Info Kontak | ❌ | ❌ | ❌ | Judul "Info Kontak" hardcode, BUKAN field admin — di luar scope (§ 11) |
+| Divider | — | — | — | Tidak ada konsep judul sama sekali — N/A |
+
+User pilih beresin ketiganya (Strip Modul, Galeri, Statistik) sekaligus.
+
+### 12a. Default Align BERBEDA per Section — Kunci Backward-Compat
+
+**Yang paling kritis di perluasan ini**: Post/Produk/Campaign/Event (§ 9) defaultnya `"left"`
+(perilaku ASLI mereka sebelum align ada — title kiri, tombol kanan). Tapi Galeri dan Statistik
+perilaku ASLI-nya SUDAH SELALU center (hardcode `text-center`, tanpa opsi lain) — kalau
+`titleAlign` di-default ke `"left"` untuk keduanya, section EXISTING yang sudah dikonfigurasi
+(punya eyebrow/judul/deskripsi tersimpan) akan tiba-tiba lompat dari center ke kiri, REGRESI
+VISUAL nyata. Fix: `const titleAlign = d.titleAlign ?? "center"` (bukan `"left"`) khusus di
+`GallerySection` dan `StatsSection` — satu-satunya baris kritis yang membedakan perluasan ini
+dari pola default § 9. `SECTION_DEFAULTS.gallery`/`SECTION_DEFAULTS.stats` juga eksplisit set
+`titleAlign: "center"` (bukan diam-diam mengandalkan fallback runtime) — kedua entri ini SUDAH
+pakai gaya exhaustive-default (beda dari Post/Produk/dst yang minimal-default, § 9c), jadi
+`titleAlign` ditambahkan ke situ juga demi konsistensi dengan field-field lain di entri yang sama.
+
+Pola align-nya sendiri (2-part: `flex flex-col ${alignItemsCls}` mengatur POSISI blok,
+`max-w-3xl ${textAlignCls}` mengatur ALIGN TEKS di dalamnya) disalin dari `FeaturesSection`
+(sudah lebih dulu ada, bukan pola baru) — bukan cukup `text-center`/`text-left` saja pada
+`SectionTitleBlock`, karena tanpa `items-center`/`items-start` di flex parent, blok `max-w-3xl`
+akan selalu menempel ke kiri (default flex alignment) terlepas dari `text-align` di dalamnya.
+
+### 12b. Strip Modul — Dua Design, Dua Pendekatan Beda
+
+**Design 1 (Ikon)** — sudah pakai `PostsSectionTitle` sejak awal, TAPI dispatcher
+(`modules-section.tsx`) dan `ModulesDesign1` belum diwire menerima `eyebrow`/`description`/
+`align` (kelewat saat § 9 karena Modules tidak disebut eksplisit user waktu itu). Fix murni
+plumbing — tambah 3 prop, teruskan ke `<PostsSectionTitle>`, otomatis dapat seluruh mekanisme
+(termasuk tombol) yang sudah dibangun di § 9.
+
+**Design 2 (Foto)** — TIDAK memakai `PostsSectionTitle` sama sekali (raw `<h2 className=
+"section-title !m-0">`), karena "tombol"-nya bukan href-based "Lihat Semua" (`SectionSeeAllLink`)
+melainkan SEPASANG tombol panah `ChevronLeft`/`ChevronRight` yang mengontrol scroll rail carousel
+— beda semantik, tidak bisa langsung reuse `PostsSectionTitle` (yang built-in untuk 1 tombol
+opsional berbasis href). Direstrukturisasi manual mengikuti POLA yang sama (bukan komponennya):
+`align="left"` → title+panah satu baris (`flex items-end justify-between`, panah SELALU tampil
+karena bukan opsional seperti "Lihat Semua"); `align="center"` → title block terpusat lalu panah
+di baris terpisah di bawah, juga terpusat — identik strukturnya dengan `PostsSectionTitle`'s
+mode "center", cuma `<SectionSeeAllLink>` diganti pasangan tombol panah. Reuse `<SectionTitleBlock>`
+langsung (bukan `PostsSectionTitle`) karena Design 2 tidak butuh href/`linkLabel` sama sekali.
+
+## 13. File yang Disentuh (§ 12)
+
+| File | Perubahan |
+|------|-----------|
+| `lib/module-strip-designs.ts` | `ModulesSectionData` tambah `eyebrow?`/`headerDesc?`/`titleAlign?` |
+| `components/website/public/sections/modules/modules-section.tsx` | Dispatcher teruskan 3 field baru ke kedua design |
+| `components/website/public/sections/modules/modules-design-1.tsx` | Terima+teruskan `eyebrow`/`description`/`align` ke `PostsSectionTitle` |
+| `components/website/public/sections/modules/modules-design-2.tsx` | Restrukturisasi total — reuse `SectionTitleBlock`, 2 mode align manual dengan tombol panah (§ 12b) |
+| `lib/gallery-section-designs.ts` | `GallerySectionData` tambah `titleAlign?` (default runtime `"center"`, § 12a) |
+| `lib/page-templates.ts` | `SECTION_DEFAULTS.gallery`/`.stats` tambah `titleAlign: "center"` eksplisit |
+| `components/website/public/landing-template.tsx` | `GallerySection`/`StatsSection` — 2-part align pattern (§ 12a), import `SectionTitleAlign` |
+| `components/website/section-editors.tsx` | `ModulesEditor`/`GalleryEditor`/`StatsEditor` — tambah `Field` eyebrow/desc (Modules) + `OptionRow` align (ketiganya) |
+
+## 14. Di Luar Scope (§ 12, dicatat bukan lupa)
+
+- Keunggulan/Layanan TETAP 3 opsi align (kiri/tengah/kanan) — TIDAK diseragamkan ke 2 opsi
+  seperti section lain, itu bukan gap tapi desain awalnya sendiri (§ 12 tabel).
+- Info Kontak dan Divider TETAP tidak tersentuh — keduanya bukan gap (§ 12 tabel: Info Kontak
+  judulnya bukan field admin sama sekali; Divider tidak punya konsep judul).
+- Strip Modul Design 2 TIDAK diberi opsi menyembunyikan tombol panah — panah selalu tampil
+  (fungsional, mengontrol rail), beda dari "Lihat Semua" yang genuinely opsional (§ 12b).

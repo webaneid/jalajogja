@@ -31,10 +31,28 @@ export async function ModulesSection({ data, variant, tenantClient, tenantSlug, 
 
   if (variant === "2") {
     const resolved = await resolveModuleImages(items, tenantClient, tenantSlug);
-    return <ModulesDesign2 title={data.title} items={resolved} baseUrl={baseUrl} />;
+    return (
+      <ModulesDesign2
+        title={data.title}
+        eyebrow={data.eyebrow}
+        description={data.headerDesc}
+        align={data.titleAlign}
+        items={resolved}
+        baseUrl={baseUrl}
+      />
+    );
   }
 
-  return <ModulesDesign1 title={data.title} items={items} baseUrl={baseUrl} />;
+  return (
+    <ModulesDesign1
+      title={data.title}
+      eyebrow={data.eyebrow}
+      description={data.headerDesc}
+      align={data.titleAlign}
+      items={items}
+      baseUrl={baseUrl}
+    />
+  );
 }
 
 // Resolve foto cover dari media (campaigns/events pakai FK coverId, bukan URL langsung)
