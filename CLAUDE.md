@@ -9491,8 +9491,95 @@ dimatikan dulu, `.next` dibersihkan). Nol migrasi DB — murni perubahan query f
 1 halaman admin. Data production `visikita` sudah diverifikasi bersih (tidak ada koreksi SQL yang
 perlu dijalankan) — investigasi ini murni audit + 1 perbaikan tampilan, bukan perbaikan data.
 
+### [2026-07-22] Form Pemasukan Manual — Autocomplete Anggota + Bukti Pembayaran
+
+> Detail lengkap: **`docs/arsitektur-keuangan.md` § "Keputusan Desain yang Dikunci"**
+
+User minta 3 perbaikan sekaligus di `/finance/pemasukan/new` (form "Catat Pemasukan" — 4 tab:
+Manual/Toko/Donasi/Event): (1) Nama Pembayar (tab Manual) / Nama Donatur (tab Donasi) bisa
+autocomplete dari anggota, fallback ketik manual; (2) sertakan bukti pembayaran — bukti transfer
+untuk transfer/QRIS, atau "tanda terima" untuk cash; (3) begitu nama diambil dari anggota, telepon
++email otomatis terisi (kosong+manual kalau nama diketik bebas).
+
+**Endpoint pencarian anggota REUSE, bukan baru**: `/api/ref/tenant-members` (dibuat untuk
+`RecipientCombobox` modul Surat, `docs/arsitektur-...` lama) sudah mengembalikan `phone`/`email`
+per anggota via JOIN `contacts` yang benar (`members INNER JOIN tenantMemberships LEFT JOIN
+contacts` — bukan pola `contacts.findFirst` yang pernah kena bug salah-pilih-baris di lesson
+sebelumnya, lihat "[2026-07-21] Bug Sesungguhnya: lookup-member Ambil Contact Sembarang"). Cukup
+dipanggil ulang oleh komponen baru `MemberNameAutocomplete` — tidak perlu endpoint baru.
+
+**`payments.memberId` sudah ADA sejak awal skema tapi TIDAK PERNAH diisi dari jalur manapun** —
+dikonfirmasi baca kode sebelum eksekusi. Begitu juga `donations.memberId`. Kedua kolom FK ini
+sekarang genuinely terpakai: saat admin pilih anggota dari autocomplete, `memberId` diisi;
+mengetik manual → tetap `null` (bukan bug, berarti bukan anggota terdaftar/sengaja tidak ditaut).
+
+**`payerPhone`/`payerEmail` — kolom baru di `payments`** (migration `0040_payment_payer_contact.sql`,
+`DO $$ LOOP` per-tenant, pola sama migration 0033/0038). `donations.donorPhone`/`donorEmail` SUDAH
+ADA sejak lama — tab Donasi tidak butuh migrasi, cuma diwire ke autocomplete yang sama.
+
+**Auto-isi HANYA saat memilih dari dropdown, TIDAK auto-clear saat mengetik manual**: begitu
+admin klik hasil pencarian, `payerPhone`/`payerEmail` (atau `donorPhone`/`donorEmail`) langsung
+terisi dari kontak anggota — tapi kalau admin lanjut mengetik nama secara bebas (tidak memilih
+ulang dari dropdown), field itu TIDAK dikosongkan otomatis oleh `MemberNameAutocomplete` —
+mencegah kehilangan data yang sudah diisi admin secara tidak sengaja hanya karena mengubah teks.
+
+**Bukti pembayaran — satu field, label dinamis by metode, BUKAN generate PDF otomatis**: sempat
+dipertimbangkan "tanda terima" berarti auto-generate dokumen kwitansi (seperti PDF surat yang
+sudah ada infrastrukturnya via Playwright) — dipilih interpretasi yang lebih murah dan sesuai
+bahasa instruksi user ("...atau kecuali kalau cash berarti **tetap ada** tanda terima" — kata
+"tetap" menyiratkan field yang SAMA, cuma label beda, bukan mekanisme baru): `ProofUploadField`
+tetap SATU widget upload opsional, labelnya "Bukti Transfer" (transfer/qris) vs "Tanda Terima /
+Kwitansi" (cash). Upload ke endpoint BARU `POST /api/finance/payment-proof?tenant=` (admin-only,
+guard `getTenantAccess`+`hasFullAccess(...,"keuangan")`) — bukan reuse `/api/invoice/proof-upload`
+(publik, tanpa auth, path per-`invoiceId`) karena payment belum tercipta saat upload terjadi di
+form ini; path generik `payments/manual/{uuid}.webp`. Server-side convert ke WebP via Sharp — pola
+persis disalin dari `/api/invoice/proof-upload` (deteksi format dari isi file, bukan MIME header
+browser yang kadang kosong untuk HEIC — lihat lesson lama "Bug: Bukti Transfer Gagal Upload
+Diam-Diam").
+
+**Alur status TIDAK berubah**: payment hasil form ini tetap masuk `status="submitted"` (bukan
+langsung `"paid"`) — bukti/tanda terima yang baru ditambahkan ini jadi BUKTI TAMBAHAN yang dilihat
+admin sebelum klik "Konfirmasi Lunas" di halaman detail (`PaymentActions`, sudah ada sejak lama),
+bukan pengganti langkah konfirmasi itu. Halaman detail (`[id]/page.tsx`) diperluas: baris
+Telepon/Email (kondisional, cuma tampil kalau terisi) + card bukti pembayaran dengan
+`PaymentProofThumbnail` (klik = lightbox popup, pola disalin dari `invoice-detail-client.tsx` —
+bukan buka tab baru, konsisten aturan lama "Bukti Transfer + Verifikasi Dua Tahap").
+
+**3 komponen baru** (`components/keuangan/`): `member-name-autocomplete.tsx` (generik, dipakai
+tab Manual DAN Donasi — bukan 2 komponen terpisah), `proof-upload-field.tsx` (generik by
+label/hint prop, bukan hardcode teks cash/transfer di dalamnya — caller yang tentukan lewat prop),
+`payment-proof-thumbnail.tsx` (thumbnail+lightbox, dipakai halaman detail).
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package (`apps/web`+`packages/db`) dari percobaan
+pertama + `bun run build --filter=@jalajogja/web` sukses (dev server dimatikan dulu, `.next`
+dibersihkan) — 4 route baru/berubah (`/api/finance/payment-proof`, `/finance/pemasukan{,/new,/[id]}`)
+terkonfirmasi muncul di build output. Migration `0040` dijalankan di lokal (belum di VPS). Belum
+diverifikasi visual di browser (autocomplete dropdown, upload preview, lightbox) — user perlu
+coba langsung setelah deploy.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Gallery di dalam Post** (lihat lesson di atas) — user diskusi dulu
+- Terakhir dikerjakan: **Form Pemasukan Manual — Autocomplete Anggota + Bukti Pembayaran**
+  (lihat lesson di atas) — `/finance/pemasukan/new` tab Manual+Donasi: nama pembayar/donatur
+  sekarang `MemberNameAutocomplete` (reuse `/api/ref/tenant-members`, fallback ketik manual),
+  auto-isi telepon+email saat anggota dipilih (kolom baru `payments.payerPhone`/`payerEmail`,
+  migration `0040_payment_payer_contact.sql`; `donations.donorPhone`/`donorEmail` sudah ada),
+  `payments.memberId`/`donations.memberId` (kolom lama, sebelumnya tidak pernah diisi) terisi
+  saat anggota dipilih. Bukti pembayaran: `ProofUploadField` baru (1 widget, label dinamis
+  "Bukti Transfer" vs "Tanda Terima/Kwitansi" by metode) upload ke endpoint admin-only baru
+  `POST /api/finance/payment-proof`. Halaman detail dapat card thumbnail+lightbox
+  (`PaymentProofThumbnail`). Alur status tidak berubah (tetap `submitted` → admin klik
+  "Konfirmasi Lunas"). `tsc`+build bersih di kedua package. Migration `0040` sudah jalan di
+  lokal (dikonfirmasi kolom ada). **Belum di-commit/push** (menunggu checkpoint ini), **migration
+  belum jalan di VPS**, **belum diverifikasi visual di browser**.
+- Sesi sebelumnya: **Audit Produksi: Payment Ditolak Tidak Pernah Kehitung Pemasukan** (lihat
+  lesson di atas) — user khawatir invoice yang sempat 2x konfirmasi lalu ditolak masih ikut
+  kehitung; diverifikasi ke data production `visikita` (SELECT manual via user, tidak ada akses
+  SSH langsung) — struktural aman (`recordIncome` hanya dipanggil saat status→paid, reject
+  diblokir kalau sudah paid). Fix murni tampilan: `/finance/pemasukan` sembunyikan
+  rejected/cancelled dari default view (tetap bisa dicari via filter), nominalnya dicoret abu-abu.
+  Sempat ada false-alarm dari query diagnosa sendiri (`COUNT(*)>1`), dikoreksi eksplisit ke user
+  setelah lihat detail data. `tsc`+build bersih. Commit `47c8a36`, sudah di-push.
+- Sesi sebelumnya: **Gallery di dalam Post** (lihat lesson di atas) — user diskusi dulu
   ("jgn eksekusi apapun") soal "post gallery", riset menemukan `GalleryBlock` (node Tiptap +
   NodeView lengkap) sudah terdaftar di editor Post tapi TIDAK PERNAH ada entry point UI (fitur
   setengah jadi). User minta scope SEMPIT ("jangan meluas", "cuma butuh gallery di post") — TIDAK
@@ -9501,8 +9588,7 @@ perlu dijalankan) — investigasi ini murni audit + 1 perbaikan tampilan, bukan 
   `lib/post-body-segments.ts` (baru) — pecah `post.content` jadi segmen HTML (tetap lewat
   `renderBody()`, TIDAK diubah, di-share dengan PDF surat) diselingi komponen React `<Gallery>`
   ASLI (lightbox) untuk node `galleryBlock`. Kolom selalu 3 (2 mobile/3 desktop otomatis via
-  `GalleryGrid` yang sudah ada). `tsc`+build bersih dari percobaan pertama. Nol migrasi DB.
-  **Belum di-commit/push** (menunggu checkpoint ini), **belum diverifikasi visual di browser**.
+  `GalleryGrid` yang sudah ada). Commit `984a546`, sudah di-push.
 - Sesi sebelumnya: **Bug fix Gallery — `aspectRatio` tidak pernah sampai ke `<GalleryGrid>`**
   (lihat lesson di atas) — user laporkan pilih "Landscape" di editor tidak mengubah apa-apa di
   front-end. Root cause: `<Gallery>` (wrapper, `components/gallery/gallery.tsx`) destructure

@@ -93,6 +93,8 @@ submittedAt     TIMESTAMP NULLABLE
 -- Info pembayar
 memberId        UUID NULLABLE
 payerName       TEXT NULLABLE
+payerPhone      TEXT NULLABLE  -- otomatis dari anggota terpilih (autocomplete), atau isi manual
+payerEmail      TEXT NULLABLE  -- idem
 payerBank       TEXT NULLABLE
 payerNote       TEXT NULLABLE
 -- Verifikasi
@@ -274,7 +276,13 @@ folder komponen menggunakan `keuangan`. Konsistensi: `sidebar-nav.tsx` pakai `pa
 ```
 components/keuangan/
 ├── keuangan-nav.tsx           → sub-nav 6 item: Dashboard, Pemasukan, Pengeluaran, Jurnal, Akun, Laporan
-├── payment-form.tsx           → form pemasukan manual (amount, method, payerName, transferDate)
+├── payment-form.tsx           → form pemasukan (4 tab: manual/toko/donasi/event) — nama pembayar/
+│                                 donatur via autocomplete anggota (fallback ketik manual), bukti
+│                                 pembayaran (label dinamis: Bukti Transfer / Tanda Terima)
+├── member-name-autocomplete.tsx → cari nama dari /api/ref/tenant-members, kirim {id,phone,email}
+│                                 saat dipilih — dipakai payment-form.tsx (manual + donasi)
+├── proof-upload-field.tsx     → upload+preview bukti pembayaran, kirim ke /api/finance/payment-proof
+├── payment-proof-thumbnail.tsx → thumbnail+lightbox bukti di halaman detail payment (klik = popup)
 ├── payment-detail-client.tsx  → tombol konfirmasi/tolak di halaman detail payment
 ├── disbursement-form.tsx      → form pengeluaran baru (purposeType, amount, recipient, method)
 ├── disbursement-detail-client.tsx → tombol approve/paid/cancel di halaman detail disbursement
@@ -397,3 +405,25 @@ Account mappings di keuangan = routing double-entry journal (akun buku besar man
 - **`uniqueCode = 0` untuk manual**: hanya pembayaran dari publik (toko/donasi) yang punya unique code 3-digit.
 - **Mapping via settings**: routing akun disimpan di `settings` JSONB bukan hardcode — admin bisa override per tenant.
 - **Fallback by kode**: jika mapping belum dikonfigurasi, fallback ke lookup kode akun standar. Ini memungkinkan sistem berjalan sebelum admin setup mapping.
+- **Nama pembayar/donatur — autocomplete anggota, fallback manual (2026-07-22)**: field "Nama
+  Pembayar" (tab Manual) dan "Nama Donatur" (tab Donasi) di `/finance/pemasukan/new` pakai
+  `MemberNameAutocomplete` — cari via `/api/ref/tenant-members` (endpoint yang sudah lama dipakai
+  `RecipientCombobox` modul Surat). Kalau admin memilih dari hasil pencarian, `payments.memberId`
+  (Manual) atau `donations.memberId` (Donasi) ikut terisi — dua kolom FK yang sudah lama ADA di
+  skema tapi sebelumnya tidak pernah diisi dari jalur ini. Kalau admin mengetik manual (tidak
+  memilih dari dropdown), `memberId` tetap null — bukan bug, itu memang berarti pembayar bukan
+  anggota terdaftar atau admin sengaja tidak menautkannya.
+- **Telepon/email auto-isi HANYA saat memilih dari dropdown, TIDAK auto-clear saat mengetik
+  manual**: begitu admin pilih anggota, `payerPhone`/`payerEmail` (kolom baru, migration
+  `0040_payment_payer_contact.sql`) langsung terisi dari kontak anggota tapi tetap bisa diedit.
+  Kalau admin lanjut mengetik nama secara manual (bukan pilih ulang dari dropdown), field
+  telepon/email TIDAK dikosongkan otomatis — mencegah kehilangan data yang sudah diisi admin
+  secara tidak sengaja hanya karena mengubah teks nama.
+- **Bukti pembayaran: satu field, label dinamis by metode**: `ProofUploadField` selalu SATU
+  widget upload (opsional, bukan wajib — pencatatan manual admin diasumsikan sudah terverifikasi
+  sendiri, sama seperti keputusan "Manual payment langsung submitted" di atas) — labelnya berubah
+  "Bukti Transfer" (transfer/qris) vs "Tanda Terima / Kwitansi" (cash), BUKAN dua field terpisah
+  dan BUKAN generate PDF otomatis. Upload ke `POST /api/finance/payment-proof?tenant=` (admin-only,
+  beda dari `/api/invoice/proof-upload` publik yang dipakai jalur customer self-service) — path
+  generik `payments/manual/{uuid}.webp` karena payment belum tercipta saat upload terjadi (beda
+  dari proof-upload publik yang path-nya per-`invoiceId`, invoice-nya sudah ada duluan).

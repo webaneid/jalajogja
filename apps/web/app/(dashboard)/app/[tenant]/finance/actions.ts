@@ -473,12 +473,18 @@ export type LinkedPaymentData = {
   // Manual
   amount?: number;
   payerName?: string;
+  payerPhone?: string;   // otomatis dari anggota terpilih, atau isi manual
+  payerEmail?: string;
   // Donasi — data donatur
   donorName?: string;
   donorPhone?: string;
   donorEmail?: string;
   campaignId?: string;
   donationAmount?: number;
+  // Anggota terpilih dari autocomplete nama (manual/donasi) — link ke public.members
+  memberId?: string;
+  // Bukti transfer (transfer/qris) atau tanda terima/kwitansi (cash) — opsional
+  proofUrl?: string;
   // Common
   method: "cash" | "transfer" | "qris";
   payerBank?: string;
@@ -539,7 +545,7 @@ export async function createLinkedPaymentAction(
         .values({
           donationNumber: donNum.replace("PAY", "DON"),
           campaignId:     data.campaignId,
-          memberId:       null,
+          memberId:       data.memberId ?? null,
           donorName:      data.donorName.trim(),
           donorPhone:     data.donorPhone?.trim() ?? null,
           donorEmail:     data.donorEmail?.trim() ?? null,
@@ -588,9 +594,13 @@ export async function createLinkedPaymentAction(
         bankAccountRef: null,
         status:         "submitted",
         transferDate:   data.transferDate ?? null,
+        memberId:       data.memberId ?? null,
         payerName,
+        payerPhone:     data.payerPhone?.trim() || null,
+        payerEmail:     data.payerEmail?.trim() || null,
         payerBank:      data.payerBank?.trim() ?? null,
         payerNote:      data.notes?.trim() ?? null,
+        proofUrl:       data.proofUrl?.trim() || null,
         submittedAt:    new Date(),
       })
       .returning({ id: schema.payments.id });

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { PaymentActions } from "@/components/keuangan/payment-detail-client";
+import { PaymentProofThumbnail } from "@/components/keuangan/payment-proof-thumbnail";
 
 function formatRupiah(amount: number | string) {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -118,6 +119,8 @@ export default async function PemasukanDetailPage({
         {[
           ["Sumber",         SOURCE_LABEL[payment.sourceType] ?? payment.sourceType],
           ["Metode",         METHOD_LABEL[payment.method]     ?? payment.method],
+          ...(payment.payerPhone ? [["Telepon", payment.payerPhone]] : []),
+          ...(payment.payerEmail ? [["Email",   payment.payerEmail]] : []),
           ["Bank Pengirim",  payment.payerBank ?? "—"],
           ["Tgl Transfer",   payment.transferDate ?? "—"],
           ["Catatan",        payment.payerNote ?? "—"],
@@ -138,6 +141,19 @@ export default async function PemasukanDetailPage({
           </div>
         ))}
       </div>
+
+      {/* Bukti Pembayaran */}
+      {payment.proofUrl && (
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">
+            {payment.method === "cash" ? "Tanda Terima / Kwitansi" : "Bukti Transfer"}
+          </p>
+          <PaymentProofThumbnail
+            url={payment.proofUrl}
+            label={payment.method === "cash" ? "Tanda terima" : "Bukti transfer"}
+          />
+        </div>
+      )}
 
       {/* Jurnal */}
       {transaction && (

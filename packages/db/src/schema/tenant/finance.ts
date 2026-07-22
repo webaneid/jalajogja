@@ -128,6 +128,8 @@ export function createPaymentsTable(s: ReturnType<typeof pgSchema>) {
     // Info pengirim — bisa member (login) atau anonim
     memberId: uuid("member_id"),       // FK → public.members.id via SQL (nullable)
     payerName: text("payer_name"),
+    payerPhone: text("payer_phone"),   // otomatis terisi dari kontak anggota saat dipilih via autocomplete
+    payerEmail: text("payer_email"),   // idem — kosong jika nama diketik manual
     payerBank: text("payer_bank"),
     payerNote: text("payer_note"),
 

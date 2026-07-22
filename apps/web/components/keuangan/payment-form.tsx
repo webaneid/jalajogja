@@ -12,6 +12,8 @@ import {
   type UnpaidRegistrationResult,
 } from "@/app/(dashboard)/app/[tenant]/finance/actions";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { MemberNameAutocomplete, type SelectedMember } from "@/components/keuangan/member-name-autocomplete";
+import { ProofUploadField } from "@/components/keuangan/proof-upload-field";
 
 type SourceType = "manual" | "order" | "donation" | "event_registration";
 
@@ -49,8 +51,14 @@ export function PaymentForm({ slug }: Props) {
   const [notes,        setNotes]        = useState("");
 
   // ── Manual ───────────────────────────────────────────────────────────────────
-  const [amount,    setAmount]    = useState("");
-  const [payerName, setPayerName] = useState("");
+  const [amount,        setAmount]        = useState("");
+  const [payerName,     setPayerName]     = useState("");
+  const [payerPhone,    setPayerPhone]    = useState("");
+  const [payerEmail,    setPayerEmail]    = useState("");
+  const [payerMemberId, setPayerMemberId] = useState<string | null>(null);
+
+  // ── Bukti pembayaran — bukti transfer (transfer/qris) atau tanda terima (cash) ─
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
 
   // ── Toko ─────────────────────────────────────────────────────────────────────
   const [orderSearch,  setOrderSearch]  = useState("");
@@ -61,10 +69,11 @@ export function PaymentForm({ slug }: Props) {
   const [campaignSearch,  setCampaignSearch]  = useState("");
   const [campaignResults, setCampaignResults] = useState<ActiveCampaignResult[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<ActiveCampaignResult | null>(null);
-  const [donorName,   setDonorName]   = useState("");
-  const [donorPhone,  setDonorPhone]  = useState("");
-  const [donorEmail,  setDonorEmail]  = useState("");
-  const [donationAmt, setDonationAmt] = useState("");
+  const [donorName,     setDonorName]     = useState("");
+  const [donorPhone,    setDonorPhone]    = useState("");
+  const [donorEmail,    setDonorEmail]    = useState("");
+  const [donorMemberId, setDonorMemberId] = useState<string | null>(null);
+  const [donationAmt,   setDonationAmt]   = useState("");
 
   // ── Event ─────────────────────────────────────────────────────────────────────
   const [regSearch,   setRegSearch]   = useState("");
@@ -114,6 +123,26 @@ export function PaymentForm({ slug }: Props) {
     setCampaignSearch("");
     setSelectedReg(null);
     setRegSearch("");
+    setPayerMemberId(null);
+    setDonorMemberId(null);
+  }
+
+  // Anggota dipilih dari autocomplete → auto-isi telepon+email. Ketik manual (member=null)
+  // → TIDAK menghapus telepon/email yang mungkin sudah diisi admin, biarkan tetap bisa diedit.
+  function handleSelectPayerMember(m: SelectedMember | null) {
+    setPayerMemberId(m?.id ?? null);
+    if (m) {
+      setPayerPhone(m.phone);
+      setPayerEmail(m.email);
+    }
+  }
+
+  function handleSelectDonorMember(m: SelectedMember | null) {
+    setDonorMemberId(m?.id ?? null);
+    if (m) {
+      setDonorPhone(m.phone);
+      setDonorEmail(m.email);
+    }
   }
 
   // ── Combobox options ──────────────────────────────────────────────────────────
@@ -152,8 +181,10 @@ export function PaymentForm({ slug }: Props) {
         notes:        notes.trim() || undefined,
 
         // Manual
-        amount:    sourceType === "manual" ? parseFloat(amount.replace(/\D/g, "")) || 0 : undefined,
-        payerName: sourceType === "manual" ? payerName.trim() : undefined,
+        amount:     sourceType === "manual" ? parseFloat(amount.replace(/\D/g, "")) || 0 : undefined,
+        payerName:  sourceType === "manual" ? payerName.trim() : undefined,
+        payerPhone: sourceType === "manual" ? payerPhone.trim() || undefined : undefined,
+        payerEmail: sourceType === "manual" ? payerEmail.trim() || undefined : undefined,
 
         // Toko
         sourceId: sourceType === "order" ? (selectedOrder?.id ?? undefined)
@@ -166,6 +197,14 @@ export function PaymentForm({ slug }: Props) {
         donorPhone:     sourceType === "donation" ? donorPhone.trim() : undefined,
         donorEmail:     sourceType === "donation" ? donorEmail.trim() : undefined,
         donationAmount: sourceType === "donation" ? parseFloat(donationAmt.replace(/\D/g, "")) || 0 : undefined,
+
+        // Anggota terpilih (manual/donasi) — link ke public.members
+        memberId: sourceType === "manual" ? (payerMemberId ?? undefined)
+                : sourceType === "donation" ? (donorMemberId ?? undefined)
+                : undefined,
+
+        // Bukti transfer / tanda terima — umum untuk semua sumber
+        proofUrl: proofUrl ?? undefined,
       });
 
       if (res.success) {
@@ -227,14 +266,37 @@ export function PaymentForm({ slug }: Props) {
             <label className={labelCls}>
               Nama Pembayar <span className="text-destructive">*</span>
             </label>
-            <input
-              type="text"
+            <MemberNameAutocomplete
+              slug={slug}
               value={payerName}
-              onChange={(e) => setPayerName(e.target.value)}
-              placeholder="mis. Ahmad Budi"
+              onChange={setPayerName}
+              onSelectMember={handleSelectPayerMember}
+              placeholder="mis. Ahmad Budi — cari dari anggota atau ketik manual"
               className={inputCls}
               required
             />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Telepon</label>
+              <input
+                type="tel"
+                value={payerPhone}
+                onChange={(e) => setPayerPhone(e.target.value)}
+                placeholder="08xx-xxxx-xxxx"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Email</label>
+              <input
+                type="email"
+                value={payerEmail}
+                onChange={(e) => setPayerEmail(e.target.value)}
+                placeholder="email@domain.com"
+                className={inputCls}
+              />
+            </div>
           </div>
         </>
       )}
@@ -291,11 +353,12 @@ export function PaymentForm({ slug }: Props) {
             <label className={labelCls}>
               Nama Donatur <span className="text-destructive">*</span>
             </label>
-            <input
-              type="text"
+            <MemberNameAutocomplete
+              slug={slug}
               value={donorName}
-              onChange={(e) => setDonorName(e.target.value)}
-              placeholder="mis. Hamba Allah"
+              onChange={setDonorName}
+              onSelectMember={handleSelectDonorMember}
+              placeholder="mis. Hamba Allah — cari dari anggota atau ketik manual"
               className={inputCls}
               required
             />
@@ -418,6 +481,14 @@ export function PaymentForm({ slug }: Props) {
           </div>
         </div>
       )}
+
+      {/* ── Bukti pembayaran — label menyesuaikan metode ─────────────────── */}
+      <ProofUploadField
+        slug={slug}
+        label={method === "cash" ? "Tanda Terima / Kwitansi" : "Bukti Transfer"}
+        hint={method === "cash" ? "Foto kwitansi atau tanda terima · Maks. 8 MB" : "JPG, PNG, WebP · Maks. 8 MB"}
+        onUploaded={setProofUrl}
+      />
 
       {/* ── Catatan ──────────────────────────────────────────────────────── */}
       <div>

@@ -480,6 +480,8 @@ export async function createTenantSchemaInDb(
         submitted_at      TIMESTAMPTZ,
         member_id         UUID           REFERENCES public.members(id) ON DELETE SET NULL,
         payer_name        TEXT,
+        payer_phone       TEXT,
+        payer_email       TEXT,
         payer_bank        TEXT,
         payer_note        TEXT,
         -- Admin verification
