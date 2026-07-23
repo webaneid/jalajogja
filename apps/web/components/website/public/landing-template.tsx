@@ -18,6 +18,7 @@ import type { GallerySectionData } from "@/lib/gallery-section-designs";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import type { PublicButtonVariant } from "@/components/website/public/ui/public-button";
 import { PostsSectionTitle } from "@/components/website/public/sections/posts/posts-section-title";
+import { displayPhone } from "@/lib/phone";
 import { renderAccentTitle } from "@/lib/render-accent-title";
 import { stripTenantPrefix } from "@/lib/strip-tenant-prefix";
 import type { CtaSectionData } from "@/lib/cta-section-designs";
@@ -411,7 +412,7 @@ function ContactInfoSection({ settings }: { settings: ContactSettings }) {
       <div className="max-w-2xl space-y-4">
         <h2 className="section-title !mb-6">Info Kontak</h2>
         {email   && <p className="text-sm">📧 <a href={`mailto:${email}`} className="text-primary underline">{email}</a></p>}
-        {phone   && <p className="text-sm">📞 <a href={`tel:${phone}`}   className="text-primary underline">{phone}</a></p>}
+        {phone   && <p className="text-sm">📞 <a href={`tel:${phone}`}   className="text-primary underline">{displayPhone(phone)}</a></p>}
         {address?.detail && <p className="text-sm">📍 {address.detail}</p>}
         {socials && (
           <div className="flex gap-3 flex-wrap pt-2">

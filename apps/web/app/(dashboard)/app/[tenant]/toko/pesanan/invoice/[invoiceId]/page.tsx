@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, ExternalLink, Package } from "lucide-react";
 import { FulfillmentCard } from "@/components/toko/fulfillment-client";
 import type { FulfillmentShippingLine } from "@/components/toko/fulfillment-client";
+import { displayPhone } from "@/lib/phone";
 
 function fmt(n: number | string) {
   const v = typeof n === "string" ? parseFloat(n) : n;
@@ -158,7 +159,7 @@ export default async function FulfillmentPage({
       {/* Info pelanggan */}
       <div className="rounded-lg border border-border bg-card divide-y divide-border text-sm">
         {[
-          ["Telepon",       inv.customerPhone ?? "—"],
+          ["Telepon",       displayPhone(inv.customerPhone)],
           ["Email",         inv.customerEmail ?? "—"],
           ["Alamat Kirim",  [inv.shippingAddress, inv.shippingCityName].filter(Boolean).join(", ") || "—"],
           ...(inv.notes ? [["Catatan", inv.notes]] : []),

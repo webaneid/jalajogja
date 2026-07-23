@@ -9,6 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { displayPhone } from "@/lib/phone";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
 import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/components/ui/social-media-input";
 import Image from "next/image";
@@ -333,7 +334,7 @@ function DetailDialog({ entry, onClose, onEdit }: {
               <p className="text-xs font-semibold text-muted-foreground mb-2">Pimpinan</p>
               <div className="grid grid-cols-2 gap-3">
                 <InfoRow label="Nama Pimpinan"  value={entry.namaPimpinan} />
-                <InfoRow label="HP Pimpinan"    value={entry.hpPimpinan} />
+                <InfoRow label="HP Pimpinan"    value={entry.hpPimpinan ? displayPhone(entry.hpPimpinan) : null} />
               </div>
             </div>
           )}
@@ -358,8 +359,8 @@ function DetailDialog({ entry, onClose, onEdit }: {
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-2">Kontak</p>
               <div className="space-y-1">
-                {entry.phone    && <p className="text-sm">Telp: {entry.phone}</p>}
-                {entry.whatsapp && entry.whatsapp !== entry.phone && <p className="text-sm">WA: {entry.whatsapp}</p>}
+                {entry.phone    && <p className="text-sm">Telp: {displayPhone(entry.phone)}</p>}
+                {entry.whatsapp && entry.whatsapp !== entry.phone && <p className="text-sm">WA: {displayPhone(entry.whatsapp)}</p>}
                 {entry.email    && <p className="text-sm">Email: {entry.email}</p>}
               </div>
             </div>

@@ -9,6 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { displayPhone } from "@/lib/phone";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
 import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-media-input";
 import { CoverImageField } from "@/components/media/member-media-picker";
@@ -339,8 +340,8 @@ function DetailDialog({ entry, onClose, onEdit }: {
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-2">Kontak</p>
               <div className="space-y-1">
-                {entry.phone    && <p className="text-sm">Telp: {entry.phone}</p>}
-                {entry.whatsapp && entry.whatsapp !== entry.phone && <p className="text-sm">WA: {entry.whatsapp}</p>}
+                {entry.phone    && <p className="text-sm">Telp: {displayPhone(entry.phone)}</p>}
+                {entry.whatsapp && entry.whatsapp !== entry.phone && <p className="text-sm">WA: {displayPhone(entry.whatsapp)}</p>}
                 {entry.email    && <p className="text-sm">Email: {entry.email}</p>}
               </div>
             </div>

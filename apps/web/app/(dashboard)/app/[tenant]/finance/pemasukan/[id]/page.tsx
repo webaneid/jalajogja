@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { PaymentActions } from "@/components/keuangan/payment-detail-client";
 import { PaymentProofThumbnail } from "@/components/keuangan/payment-proof-thumbnail";
+import { displayPhone } from "@/lib/phone";
 
 function formatRupiah(amount: number | string) {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -119,7 +120,7 @@ export default async function PemasukanDetailPage({
         {[
           ["Sumber",         SOURCE_LABEL[payment.sourceType] ?? payment.sourceType],
           ["Metode",         METHOD_LABEL[payment.method]     ?? payment.method],
-          ...(payment.payerPhone ? [["Telepon", payment.payerPhone]] : []),
+          ...(payment.payerPhone ? [["Telepon", displayPhone(payment.payerPhone)]] : []),
           ...(payment.payerEmail ? [["Email",   payment.payerEmail]] : []),
           ["Bank Pengirim",  payment.payerBank ?? "—"],
           ["Tgl Transfer",   payment.transferDate ?? "—"],

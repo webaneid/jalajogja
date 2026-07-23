@@ -1,16 +1,12 @@
 import { type NavItem, resolveNavHref } from "@/lib/nav-menu";
 import type { FooterProps } from "@/lib/footer-designs";
 import { SocialLinks } from "@/components/ui/social-links";
+import { displayPhone, toWaDigits } from "@/lib/phone";
 
 // ── ModernFooter — kartu gelap dengan sudut atas melengkung ───────────────────
 // Sumber ide: design-refs/jalakarta-v2/ (lihat design-refs/README.md). Struktur data
 // (email/phone/whatsapp/address/socials) identik dengan DarkFooter/LightFooter —
 // bedanya di layout (1 baris 3-kolom, bukan 2-section) dan bentuk (sudut atas rounded).
-
-function normalizePhone(phone: string): string {
-  const digits = String(phone).replace(/\D/g, "");
-  return digits.startsWith("0") ? "62" + digits.slice(1) : digits;
-}
 
 export function ModernFooter({
   tenantSlug,
@@ -39,7 +35,7 @@ export function ModernFooter({
   };
   const socialsRaw = { ...(cs.socials ?? {}) } as Record<string, string>;
   if (cs.contact_whatsapp && !socialsRaw.whatsapp) {
-    socialsRaw.whatsapp = `https://wa.me/${normalizePhone(cs.contact_whatsapp)}`;
+    socialsRaw.whatsapp = `https://wa.me/${toWaDigits(cs.contact_whatsapp)}`;
   }
   const hasSocials = Object.values(socialsRaw).some(Boolean);
   const email      = cs.contact_email;
@@ -107,7 +103,7 @@ export function ModernFooter({
             <h6 className="text-white/55 text-xs tracking-widest uppercase mb-3">Kontak</h6>
             {address && <p className="text-sm text-white/80 mb-2">{address}</p>}
             <p className="text-sm text-white/80">
-              {[phone, email].filter(Boolean).join(" · ")}
+              {[phone ? displayPhone(phone) : null, email].filter(Boolean).join(" · ")}
             </p>
           </div>
         )}

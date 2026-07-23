@@ -4,6 +4,7 @@ import { createTenantDb } from "@jalajogja/db";
 import { desc, eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
 import { MarkReadButton } from "./mark-read-button";
+import { displayPhone } from "@/lib/phone";
 
 export default async function PesanPage({
   params,
@@ -63,7 +64,7 @@ export default async function PesanPage({
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5 space-x-3">
                     {s.email && <span>📧 {s.email}</span>}
-                    {s.phone && <span>📞 {s.phone}</span>}
+                    {s.phone && <span>📞 {displayPhone(s.phone)}</span>}
                     <span>
                       dari halaman <em>{s.pageTitle ?? "—"}</em>
                     </span>

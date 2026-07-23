@@ -1,11 +1,7 @@
 import { type NavItem, resolveNavHref } from "@/lib/nav-menu";
 import type { FooterProps } from "@/lib/footer-designs";
 import { SocialLinks } from "@/components/ui/social-links";
-
-function normalizePhone(phone: string): string {
-  const digits = String(phone).replace(/\D/g, "");
-  return digits.startsWith("0") ? "62" + digits.slice(1) : digits;
-}
+import { displayPhone, toWaDigits } from "@/lib/phone";
 
 export function LightFooter({
   tenantSlug,
@@ -34,13 +30,13 @@ export function LightFooter({
   };
   const socialsRaw = { ...(cs.socials ?? {}) } as Record<string, string>;
   if (cs.contact_whatsapp && !socialsRaw.whatsapp) {
-    socialsRaw.whatsapp = `https://wa.me/${normalizePhone(cs.contact_whatsapp)}`;
+    socialsRaw.whatsapp = `https://wa.me/${toWaDigits(cs.contact_whatsapp)}`;
   }
   const socials    = Object.entries(socialsRaw).filter(([, url]) => url);
   const email      = cs.contact_email;
   const phone      = cs.contact_phone;
   const whatsapp   = cs.contact_whatsapp
-    ? `https://wa.me/${normalizePhone(cs.contact_whatsapp)}`
+    ? `https://wa.me/${toWaDigits(cs.contact_whatsapp)}`
     : null;
   const addr    = cs.contact_address;
   const addressParts = [
@@ -163,7 +159,7 @@ export function LightFooter({
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 shrink-0 text-gray-400">
                       <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.28h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6.06 6.06l1.08-.91a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
                     </svg>
-                    <a href={`tel:${phone}`} className="hover:text-gray-900 transition-colors">{phone}</a>
+                    <a href={`tel:${phone}`} className="hover:text-gray-900 transition-colors">{displayPhone(phone)}</a>
                   </li>
                 )}
                 {whatsapp && cs.contact_whatsapp && (
@@ -171,7 +167,7 @@ export function LightFooter({
                     <svg viewBox="0 0 24 24" fill="#25D366" className="w-4 h-4 shrink-0">
                       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z M11.998 2C6.477 2 2 6.478 2 12c0 1.75.456 3.393 1.252 4.827L2 22l5.293-1.227A9.953 9.953 0 0 0 11.998 22C17.52 22 22 17.522 22 12c0-5.523-4.48-10.002-10.002-10z" />
                     </svg>
-                    <a href={whatsapp} target="_blank" rel="noopener noreferrer" className="hover:text-gray-900 transition-colors">{cs.contact_whatsapp}</a>
+                    <a href={whatsapp} target="_blank" rel="noopener noreferrer" className="hover:text-gray-900 transition-colors">{displayPhone(cs.contact_whatsapp)}</a>
                   </li>
                 )}
               </ul>

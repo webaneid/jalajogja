@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createTenantDb, recordIncome, generateFinancialNumber, createLinkedInvoice, syncInvoicePayment, upsertSetting, getSettings } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
+import { normalizePhone } from "@/lib/phone";
 import { CAMPAIGN_ARCHIVE_CARD_DESIGN_IDS, type CampaignArchiveCardDesignId } from "@/lib/campaign-archive-card-designs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -350,8 +351,9 @@ export async function createDonationAction(
   if (!data.donorName.trim()) return { success: false, error: "Nama donatur wajib diisi." };
   if (!data.amount || data.amount <= 0) return { success: false, error: "Nominal donasi tidak valid." };
 
-  const tenantDb = createTenantDb(slug);
+  const tenantDb   = createTenantDb(slug);
   const { db, schema } = tenantDb;
+  const donorPhone = normalizePhone(data.donorPhone);
 
   try {
     const donationNumber = await generateDonationNumber(tenantDb);
@@ -368,7 +370,7 @@ export async function createDonationAction(
         donationType: data.donationType,
         memberId:     data.memberId     ?? null,
         donorName:    data.donorName.trim(),
-        donorPhone:   data.donorPhone   ?? null,
+        donorPhone,
         donorEmail:   data.donorEmail   ?? null,
         donorMessage: data.donorMessage ?? null,
         isAnonymous:  data.isAnonymous,
@@ -398,7 +400,7 @@ export async function createDonationAction(
       sourceType:    "donation",
       sourceId:      donation.id,
       customerName:  data.donorName.trim(),
-      customerPhone: data.donorPhone ?? null,
+      customerPhone: donorPhone,
       customerEmail: data.donorEmail ?? null,
       memberId:      data.memberId   ?? null,
       items: [{
@@ -808,145 +810,3 @@ export async function getQurbanAnimalsAction(
   }));
 }
 
-// ─── Qurban Order (front-end publik) ─────────────────────────────────────────
-
-export type QurbanOrderData = {
-  campaignId:  string;
-  animalId:    string;
-  atasNama:    string;
-  donorName:   string;
-  donorPhone?: string | null;
-  donorEmail?: string | null;
-  memberId?:   string | null;
-  method:      "cash" | "transfer" | "qris";
-  bankAccountRef?: string | null;
-  qrisAccountRef?: string | null;
-};
-
-export async function createQurbanOrderAction(
-  slug: string,
-  data: QurbanOrderData
-): Promise<ActionResult<{ donationId: string; donationNumber: string; uniqueCode: number; totalAmount: number }>> {
-  if (!data.atasNama?.trim())  return { success: false, error: "Nama shohibul qurban wajib diisi." };
-  if (!data.donorName?.trim()) return { success: false, error: "Nama pemesan wajib diisi." };
-
-  const tenantClient             = createTenantDb(slug);
-  const { db: tenantDb, schema } = tenantClient;
-
-  // Fetch animal
-  const [animal] = await tenantDb
-    .select()
-    .from(schema.qurbanAnimals)
-    .where(and(
-      eq(schema.qurbanAnimals.id, data.animalId),
-      eq(schema.qurbanAnimals.campaignId, data.campaignId),
-      eq(schema.qurbanAnimals.isActive, true),
-    ))
-    .limit(1);
-
-  if (!animal) return { success: false, error: "Jenis hewan tidak ditemukan." };
-
-  // Validasi stok
-  if (animal.animalType === "sapi" && animal.split) {
-    const maxSlots = animal.stock * animal.split;
-    if (animal.booked >= maxSlots)
-      return { success: false, error: "Stok sapi sudah habis." };
-  } else {
-    if (animal.booked >= animal.stock)
-      return { success: false, error: "Stok hewan sudah habis." };
-  }
-
-  // Fetch biaya administrasi penyembelihan dari settings (per jenis hewan)
-  const donasiSettings = await getSettings(tenantClient, "donasi");
-  const qc = donasiSettings.qurban_config as
-    | { slaughter_fees?: { domba?: number; kambing?: number; sapi?: number } }
-    | undefined;
-  const slaughterFee = qc?.slaughter_fees?.[animal.animalType as "domba" | "kambing" | "sapi"] ?? 0;
-  const totalAmount  = parseFloat(animal.price) + slaughterFee;
-
-  // Unique code hanya untuk transfer
-  const uniqueCode = data.method === "transfer" ? Math.floor(Math.random() * 900) + 100 : 0;
-
-  // Generate nomor donasi
-  const donationNumber = await generateDonationNumber(tenantClient);
-
-  // Slot sapi patungan
-  let sapiGroupId: string | null = null;
-  let slotNumber:  number | null = null;
-
-  if (animal.animalType === "sapi" && animal.split) {
-    // Cari grup yang belum penuh
-    const [activeGroup] = await tenantDb
-      .select()
-      .from(schema.qurbanSapiGroups)
-      .where(and(
-        eq(schema.qurbanSapiGroups.animalId, animal.id),
-        eq(schema.qurbanSapiGroups.isComplete, false),
-      ))
-      .limit(1);
-
-    if (activeGroup) {
-      sapiGroupId = activeGroup.id;
-      slotNumber  = activeGroup.filledSlots + 1;
-      const newFilled = activeGroup.filledSlots + 1;
-      await tenantDb.update(schema.qurbanSapiGroups).set({
-        filledSlots: newFilled,
-        isComplete:  newFilled >= activeGroup.totalSlots,
-      }).where(eq(schema.qurbanSapiGroups.id, activeGroup.id));
-    } else {
-      // Buat grup baru
-      const [totalGroups] = await tenantDb
-        .select({ cnt: sql<number>`count(*)` })
-        .from(schema.qurbanSapiGroups)
-        .where(eq(schema.qurbanSapiGroups.animalId, animal.id));
-      const groupNumber = Number(totalGroups?.cnt ?? 0) + 1;
-      const [newGroup] = await tenantDb.insert(schema.qurbanSapiGroups).values({
-        animalId:    animal.id,
-        groupNumber,
-        totalSlots:  animal.split,
-        filledSlots: 1,
-        isComplete:  animal.split === 1,
-      }).returning({ id: schema.qurbanSapiGroups.id });
-      sapiGroupId = newGroup.id;
-      slotNumber  = 1;
-    }
-  }
-
-  // Insert donation + payment + participant
-  const [donation] = await tenantDb.insert(schema.donations).values({
-    donationNumber,
-    campaignId:    data.campaignId,
-    donationType:  "qurban",
-    memberId:      data.memberId ?? null,
-    donorName:     data.donorName.trim(),
-    donorPhone:    data.donorPhone ?? null,
-    donorEmail:    data.donorEmail ?? null,
-    isAnonymous:   false,
-  }).returning({ id: schema.donations.id });
-
-  const paymentNumber = await generateFinancialNumber(tenantClient, "payment");
-  await tenantDb.insert(schema.payments).values({
-    number:        paymentNumber,
-    sourceType:    "donation",
-    sourceId:      donation.id,
-    amount:        String(totalAmount),
-    uniqueCode,
-    method:        data.method,
-    status:        data.method === "cash" ? "submitted" : "pending",
-  });
-
-  await tenantDb.insert(schema.qurbanParticipants).values({
-    donationId:   donation.id,
-    animalId:     animal.id,
-    sapiGroupId,
-    slotNumber,
-    atasNama:     data.atasNama.trim(),
-  });
-
-  // Increment booked
-  await tenantDb.update(schema.qurbanAnimals)
-    .set({ booked: animal.booked + 1, updatedAt: new Date() })
-    .where(eq(schema.qurbanAnimals.id, animal.id));
-
-  return { success: true, data: { donationId: donation.id, donationNumber, uniqueCode, totalAmount } };
-}

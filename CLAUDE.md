@@ -9557,8 +9557,213 @@ terkonfirmasi muncul di build output. Migration `0040` dijalankan di lokal (belu
 diverifikasi visual di browser (autocomplete dropdown, upload preview, lightbox) — user perlu
 coba langsung setelah deploy.
 
+### [2026-07-23] Audit Menyeluruh Konsistensi Phone/WhatsApp — Sebelum Fitur Besar
+
+> Detail lengkap: **`docs/arsitektur-kontak.md`** (ditulis ulang total, status "SELESAI" per audit
+> ini — versi lama 2026-05-13 hanya menutup form yang ADA saat itu, banyak form baru yang dibangun
+> setelahnya lolos dari aturan).
+
+User minta audit "sebelum kita ke fitur besar" — cek konsistensi phone/WA di SEMUA form (admin +
+publik), karena `PhoneInput`+`normalizePhone()`+`displayPhone()` sudah ada tapi dicurigai tidak
+dipakai konsisten. Dikerjakan via 1 Explore agent (audit eksploratif) + verifikasi manual sendiri
+untuk temuan yang butuh keputusan (bukan sekadar dicatat).
+
+**Skala temuan** (jauh lebih besar dari 6 file yang saya temukan manual di awal):
+- **9 file input form** pakai `<input type="tel">` polos, bukan `<PhoneInput>` — 1 di antaranya
+  (`qurban-order-form.tsx` + `createQurbanOrderAction`) confirmed **dead code** (superseded
+  `campaign-detail-client.tsx` sejak lama, tidak diimpor di mana pun) — dihapus total, bukan difix.
+- **Write-side `normalizePhone()` hilang** di ~11 titik, termasuk pola yang sama BERULANG dalam
+  SATU fungsi: `registerForEventAction` (event/actions.ts) menormalisasi `eventRegistrations.
+  attendeePhone` dengan benar, tapi baris berikutnya di fungsi yang SAMA meneruskan raw value ke
+  `invoices.customerPhone` via `createLinkedInvoice()` — dua kolom untuk data yang sama, satu benar
+  satu tidak.
+- **24 titik display** render phone/WA mentah tanpa `displayPhone()` — admin (accounts, invoice,
+  payment, voucher, letter contacts) dan publik (event registration card+QR, akun self-service
+  usaha/pesantren/profesional, 3 desain footer, contact-template, landing "Info Kontak").
+- **Bug fungsional nyata, bukan cuma gaya**: 4 titik (`anggota-directory-client.tsx` +
+  `/api/member-public/[id]`, dan 3 halaman detail publik usaha/pesantren/profesional) membangun
+  link `wa.me` dengan `.replace(/\D/g,"")` pada nilai yang **SUDAH melewati `displayPhone()`**
+  (`+6281234567890` → `081234567890`) — hasil stripping-nya `081234567890` (hilang kode negara,
+  leading zero tersisa), link `wa.me` rusak total di production untuk siapa pun yang mengklik.
+- **3 implementasi normalizePhone-like yang kompetitif**: `lib/phone.ts:normalizePhone` (canonical),
+  `lib/whatsapp.ts:toE164` (dipakai 3 route OTP, fallback beda — tanpa default `+62`), dan 3×
+  fungsi lokal `function normalizePhone(...)` di `dark-footer.tsx`/`light-footer.tsx`/
+  `modern-footer.tsx` (dipakai khusus untuk bangun link `wa.me` — kebetulan namanya sama persis
+  dengan helper canonical tapi logic beda, potensi salah kira "sudah pakai yang benar").
+
+**Fix arsitektural kunci — `toWaDigits()` helper baru** (`lib/phone.ts`): `normalizePhone(raw)`
+lalu strip `+` — SATU-SATUNYA cara benar membangun digit untuk `wa.me`/GOWA send API. Dipakai
+untuk mengganti SEMUA 3 sumber duplikat sekaligus: `toE164()` dihapus (3 route OTP diarahkan ke
+`normalizePhone()` langsung), 3 fungsi lokal footer dihapus (diganti `toWaDigits()`), dan
+`sendWaNotification()`'s digit-stripping internal ikut diarahkan ke `toWaDigits()` — efek samping:
+`notifyWa()` (helper WA notifikasi bisnis) otomatis dapat defense-in-depth normalisasi tanpa perlu
+disentuh sama sekali, karena `sendWaNotification` yang dipanggilnya sudah robust duluan.
+
+**Fix bug wa.me — pola "dua variabel, bukan satu"**: titik mana pun yang perlu MENAMPILKAN nomor
+(`displayPhone()`) SEKALIGUS membangun link (`toWaDigits()`) WAJIB simpan keduanya sebagai variabel
+terpisah dari SUMBER E.164 asli, bukan menurunkan satu dari yang lain:
+```typescript
+if (c.isWhatsappPublic) {
+  whatsapp       = displayPhone(c.whatsapp);                    // teks tampilan: "0812xxx"
+  whatsappWaLink = `https://wa.me/${toWaDigits(c.whatsapp)}`;    // link: dari E.164 ASLI
+}
+```
+Untuk endpoint API yang mengirim data ke client terpisah (`/api/member-public/[id]`), link `wa.me`
+jadi-jadian (bukan raw whatsapp value) dikirim sebagai field JSON tersendiri (`whatsappWaLink`) —
+supaya client tidak perlu (dan tidak bisa) membangun ulang link dari nilai yang sudah terlanjur
+dilokalkan oleh `displayPhone()`.
+
+**Aturan baru yang dikunci**: `displayPhone()` adalah fungsi TERMINAL — hasilnya HANYA untuk
+ditampilkan sebagai teks. Begitu sebuah nilai sudah lewat `displayPhone()`, JANGAN PERNAH proses
+ulang untuk keperluan lain (link, kalkulasi, dsb.) — selalu turunkan representasi lain dari nilai
+E.164 ASLI.
+
+**`packages/db` butuh normalizePhone juga tapi tidak boleh impor `apps/web/lib/phone.ts`** —
+`createLinkedInvoice()` (shared helper dipakai Toko/Donasi/Event untuk bikin invoice universal,
+hidup di `packages/db/src/helpers/billing.ts`) butuh normalisasi `customerPhone`, tapi
+`lib/phone.ts` harus tetap zero-dependency ke `@jalajogja/db` supaya aman dipakai client component
+(persis alasan kenapa `tenant-timezone.ts` di-split jadi client-safe vs `.server.ts` sebelumnya).
+Fix: `packages/db/src/helpers/phone.ts` — duplikasi minimal SATU fungsi `normalizePhone()` saja
+(bukan `displayPhone`/`toWaDigits`, karena package itu tidak butuh keduanya), pola sama persis
+"duplikasi demi isolasi" yang sudah dipakai `generateEventRegNumber`/`formatEventDateWib`.
+**Efek "single choke point"**: karena `createLinkedInvoice()` menormalisasi `customerPhone` di
+SATU tempat, ketiga pemanggilnya (`createOrderAction` toko, `createDonationAction` donasi,
+`registerForEventAction` event) otomatis terlindungi TANPA perlu disentuh satu-satu — cukup
+konfirmasi via baca kode bahwa `customerPhone` mereka memang mengalir lewat fungsi itu, tidak
+perlu tambahan `normalizePhone()` di titik pemanggilan.
+
+**Cart-flow JSON snapshot — dua titik tulis, bukan satu**: tiket event via cart universal
+menyimpan data peserta sebagai JSON di `cart_items.notes` (`addEventTicketToCartAction`), lalu
+di-parse ulang dan di-insert ke `event_registrations.attendeePhone` saat invoice lunas
+(`confirmInvoicePaymentAction`/`verifySubmittedPaymentAction`, 2 fungsi paralel). KEDUA titik
+(tulis JSON DAN parse-insert) sempat tidak dinormalisasi — diperbaiki keduanya, karena
+menormalisasi cuma salah satu tidak cukup (JSON blob di antara keduanya bisa berasal dari kode
+lama yang belum diperbaiki, atau bug lain di masa depan yang menulis raw value lagi ke JSON).
+
+**Dead API endpoint ditemukan+ditutup sekalian**: `/api/akun/profil` (halaman "Info Login" —
+lihat lesson lama soal disambiguasi label) PATCH handler-nya menerima `phone`/`whatsapp`/alamat
+dan menulisnya TANPA normalisasi — tapi kliennya (`akun/profil/page.tsx`) TERKONFIRMASI (grep +
+baca kode) tidak pernah mengirim field itu sama sekali, HANYA `{ name }`. `/api/akun/profile-data`
+(dipanggil `akun/data/page.tsx`) adalah satu-satunya endpoint LIVE untuk field itu, dan sudah benar
+menormalisasi sejak awal. Fix: `/api/akun/profil` PATCH disederhanakan HANYA menerima `{ name }` —
+bukan "ditambal" dengan `normalizePhone()` untuk kode yang confirmed tidak pernah dipanggil dengan
+field itu (mengikuti prinsip project "kalau yakin tidak dipakai, hapus sepenuhnya" — bukan
+dipertahankan sebagai duplikat berbahaya yang bisa dipanggil manual via curl tanpa normalisasi).
+
+**Backfill data lama** — `packages/db/migrations/0041_backfill_phone_normalization.sql`:
+normalisasi `public.profiles.{phone,whatsapp}` (skema tunggal) + per-tenant (loop semua tenant)
+`donations.donor_phone`, `payments.payer_phone`, `invoices.customer_phone`,
+`event_registrations.attendee_phone`, `contact_submissions.phone`, `letter_contacts.phone`, dan
+3 key settings JSONB (`contact_phone`, `contact_whatsapp` group `contact`; `toko_whatsapp` group
+`toko`). Fungsi normalisasi dibuat di `pg_temp` (session-scoped, otomatis hilang, tidak perlu
+`DROP FUNCTION` manual). **`COALESCE(normalize(...), original)` WAJIB** — bukan assign langsung
+hasil normalize — karena kolom `settings.value` JSONB `NOT NULL`: kalau fungsi normalize
+mengembalikan NULL (input kosong/spasi doang, lolos filter `NOT LIKE '+%'` tapi sebenarnya blank),
+assign langsung akan coba menulis SQL NULL ke kolom NOT NULL dan GAGALKAN SELURUH migration
+di tengah jalan. `COALESCE` memastikan nilai asli dipertahankan kalau normalize tidak menghasilkan
+apa-apa, bukan pernah menulis NULL.
+
+**Ditemukan saat verifikasi lokal**: `settings.contact_phone` tersimpan sebagai JSON **number**
+(bukan string) di satu tenant — kuirk lama dari jalur tulis yang berbeda entah kapan. `value #>>
+'{}'` (ekstraksi JSONB path kosong ke text) bekerja seragam untuk kedua tipe, dan `to_jsonb(text)`
+di ujung migration otomatis mengonversi ke JSON string — migration ini SEKALIGUS membetulkan
+inkonsistensi tipe itu sebagai efek samping yang diterima, bukan disengaja secara eksplisit.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package (`apps/web`+`packages/db`) + `bun run build
+--filter=@jalajogja/web` sukses (dev server dimatikan dulu, `.next` dibersihkan, direstart setelah
+build). Migration 0041 dijalankan LOKAL 2× (idempotency check — run kedua "UPDATE 0" di semua
+statement, konfirmasi aman diulang) — ditemukan+dibenarkan 1 baris `letter_contacts.phone`
+(`085210626455` → `+6285210626455`) dan 2 baris settings di tenant `pc-ikpm-jogjakarta`.
+**Migration belum dijalankan di VPS.** Belum diverifikasi visual di browser (klik link `wa.me`
+sungguhan di 4 halaman yang tadinya rusak) — user perlu coba setelah deploy.
+
+### [2026-07-23] Audit Consent Visibilitas Kontak (Usaha/Pesantren/Anggota) — Kesimpulan: Tidak Ada Bug
+
+> Detail lengkap: **`docs/arsitektur-direktori-publik.md` § 1b/1c** (dikoreksi — sebelumnya
+> keliru mendaftar "Email usaha"/"Email pesantren" sebagai field yang dikontrol toggle, padahal
+> tidak ada UI di mana pun untuk mengaktifkannya).
+
+Menyusul audit format phone/WA di atas, user tanya lanjutan: apakah toggle "tampilkan/sembunyikan"
+kontak (`contacts.is_phone_public`/`is_whatsapp_public`/`is_email_public`) SUDAH konsisten,
+khususnya untuk Usaha dan Profesional — prinsip yang ditegaskan user: **"semua publikasi kontak
+harus sepersetujuan dari pemilik nomor... jangan sampai kita kena tuntut karena mempublish nomor
+HP tanpa izin."**
+
+**Audit menyeluruh (bukan cuma baca kode sepintas) mengonfirmasi bagian yang AMAN:**
+- Ketiga halaman detail publik (`usaha/[id]`, `profesional/[id]`, `pesantren/[id]`) + `/api/
+  member-public/[id]` SEMUA mengecek toggle dengan benar sebelum menampilkan apa pun — tidak
+  disentuh sama sekali oleh fix format phone/WA sesi ini (formatting ditambahkan DI DALAM blok
+  `if (c.isXxxPublic)` yang sudah ada, gate-nya sendiri tidak diubah).
+- **Nol leak di halaman list/arsip** (`/usaha`, `/profesional`, `/pesantren`, `/anggota`) — dicek
+  sampai level SQL SELECT: tidak satu pun query list yang bahkan JOIN ke tabel `contacts` sama
+  sekali, jadi tidak ada risiko exposure lewat network/devtools meski UI tidak merender apa pun.
+- **Nol leak lewat side-channel** — `generateMetadata` (SEO/OG) untuk keempat entitas tidak query
+  `contacts` sama sekali; `/api/search` untuk member hanya `SELECT name, memberNumber`; tidak ada
+  JSON-LD/structured data yang menyertakan kontak.
+
+**2 ketidakkonsistenan ditemukan, keduanya dikonfirmasi SENGAJA oleh user (bukan bug):**
+1. **Toggle email tidak ada UI-nya untuk Usaha maupun Pesantren** — kolom `is_email_public` ADA
+   di skema dan SUDAH dicek di query publik (`if (c.isEmailPublic) email = c.email`), tapi baik
+   admin wizard (`step4-business.tsx` malah tidak punya toggle HP/WA SAMA SEKALI, `step5-
+   pesantren.tsx` punya HP/WA tapi bukan email) maupun self-service (`usaha-client.tsx`,
+   `pesantren/page.tsx`) tidak pernah expose checkbox untuk mengaktifkannya. Efeknya: email
+   selalu default `false` (private) selamanya untuk kedua tipe ini — **aman** (tidak pernah bisa
+   ke-leak), cuma membatasi pilihan pemilik. **Keputusan user: biarkan seperti ini, JANGAN
+   ditambahkan** — beda dari kontak pribadi anggota dan Profesional yang SUDAH punya toggle email.
+2. **Siapa boleh menge-toggle "Publik" berbeda per entitas**: Usaha — HANYA pemilik sendiri lewat
+   `/akun/usaha` (admin wizard business sama sekali tidak punya kapabilitas toggle visibilitas).
+   Kontak pribadi anggota & Pesantren — admin/pengurus dashboard BISA mencentang "Publik" atas
+   nama anggota (lewat `step2-contact.tsx`/`step5-pesantren.tsx`), tanpa mekanisme apa pun yang
+   memverifikasi anggota sungguh sudah setuju secara langsung. **Ditanya eksplisit via
+   `AskUserQuestion`: apakah kapabilitas admin ini harus dikunci hanya ke self-service (menyamakan
+   dengan pola Usaha) demi memperkuat prinsip consent, atau dibiarkan sebagai wewenang
+   administratif pengurus normal? Keputusan user: BIARKAN admin tetap bisa toggle** — dianggap
+   wewenang administratif pengurus mengelola data anggota cabangnya, bukan celah consent yang
+   perlu ditutup.
+
+**Hasil**: NOL perubahan kode. Dua ketidakkonsistenan yang ditemukan sama-sama dikonfirmasi
+sebagai keputusan produk yang disengaja, bukan gap yang perlu ditutup. Yang diperbaiki HANYA
+dokumentasi (`docs/arsitektur-direktori-publik.md` § 1b/1c) — sebelumnya keliru mengklaim ada
+toggle email yang berfungsi untuk usaha/pesantren, padahal secara nyata tidak ada UI untuk
+memicunya di mana pun.
+
+**Aturan yang ditegaskan untuk sesi mendatang**: kalau menemukan field yang menurut dokumen
+"dikontrol toggle X" tapi grep tidak menemukan UI apa pun yang benar-benar men-set toggle itu
+ke `true`, itu **bukan** otomatis berarti dokumen benar dan implementasinya kurang — cek dulu
+apakah ini keputusan produk yang disengaja (seperti kasus ini) sebelum menyimpulkan "ada yang
+belum selesai" dan menambah fitur yang tidak diminta. Kalau menemukan gap consent/visibilitas
+serupa di masa depan, JANGAN unilateral memutuskan mana yang "lebih aman" — presentasikan
+trade-off-nya dan biarkan user memutuskan, seperti pola sesi ini.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Form Pemasukan Manual — Autocomplete Anggota + Bukti Pembayaran**
+- Terakhir dikerjakan: **Audit menyeluruh konsistensi Phone/WhatsApp** (lihat lesson di atas) —
+  diminta user sebagai pembersihan sebelum masuk fitur besar berikutnya. ~14 file input/write-side
+  diperbaiki (1 dihapus sebagai dead code — `qurban-order-form.tsx`+`createQurbanOrderAction`),
+  24 titik display dibungkus `displayPhone()`, bug fungsional nyata ditemukan+difix (4 link `wa.me`
+  rusak karena dibangun dari nilai `displayPhone()` bukan E.164 asli), helper baru `toWaDigits()`
+  di `lib/phone.ts` mengonsolidasi 3 implementasi normalizePhone-like yang kompetitif (`lib/
+  whatsapp.ts:toE164` dihapus, 3× fungsi lokal di file footer dihapus). `packages/db/src/helpers/
+  phone.ts` (duplikasi minimal `normalizePhone`, pola "duplikasi demi isolasi" seperti tenant-
+  timezone) dipakai `createLinkedInvoice()` — efek "single choke point" otomatis melindungi
+  Toko/Donasi/Event tanpa disentuh satu-satu. `/api/akun/profil` PATCH disederhanakan (hapus
+  handling phone/whatsapp/alamat yang confirmed dead code, `/api/akun/profile-data` satu-satunya
+  endpoint live untuk itu). Migration baru `packages/db/migrations/0041_backfill_phone_
+  normalization.sql` (idempotent, pakai `COALESCE` cegah NULL masuk kolom JSONB NOT NULL) —
+  **sudah dijalankan+diverifikasi 2× di lokal** (ditemukan+dibenarkan 1 baris letter_contacts +
+  2 baris settings, termasuk kuirk `contact_phone` yang tersimpan sebagai JSON number bukan
+  string). `docs/arsitektur-kontak.md` ditulis ulang total (status "SELESAI" per audit ini).
+  `tsc`+build bersih di kedua package. **Migration belum dijalankan di VPS. Belum diverifikasi
+  visual di browser** (klik wa.me sungguhan di 4 halaman yang tadinya rusak) — user perlu coba
+  setelah deploy. **Belum di-commit/push** — menunggu konfirmasi user.
+- **Lanjutan sesi yang sama**: user tanya follow-up soal konsistensi toggle visibilitas kontak
+  (is_phone_public/is_whatsapp_public/is_email_public) — lihat lesson "Audit Consent Visibilitas
+  Kontak" di atas. Audit menyeluruh (list pages, SEO, search, JSON-LD — semua clean, nol leak)
+  menemukan 2 ketidakkonsistenan (toggle email tidak ada UI untuk Usaha/Pesantren; admin bisa
+  toggle kontak pribadi+Pesantren tapi tidak bisa untuk Usaha) — DUA-DUANYA dikonfirmasi user
+  sebagai keputusan disengaja, bukan bug. **Nol perubahan kode** — hanya
+  `docs/arsitektur-direktori-publik.md` § 1b/1c dikoreksi (sebelumnya keliru klaim toggle email
+  usaha/pesantren berfungsi, padahal tidak ada UI-nya sama sekali).
+- Sesi sebelumnya: **Form Pemasukan Manual — Autocomplete Anggota + Bukti Pembayaran**
   (lihat lesson di atas) — `/finance/pemasukan/new` tab Manual+Donasi: nama pembayar/donatur
   sekarang `MemberNameAutocomplete` (reuse `/api/ref/tenant-members`, fallback ketik manual),
   auto-isi telepon+email saat anggota dipilih (kolom baru `payments.payerPhone`/`payerEmail`,

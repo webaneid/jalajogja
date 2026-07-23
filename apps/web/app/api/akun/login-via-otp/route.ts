@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse }  from "next/server";
 import { db, otpTokens, session, user, verification } from "@jalajogja/db";
 import { eq, and, gt, isNull }        from "drizzle-orm";
-import { toE164 }                     from "@/lib/whatsapp";
+import { normalizePhone }             from "@/lib/phone";
 import { findUserByPhone }            from "@/lib/find-user-by-phone";
 
 // Di production (HTTPS), Better Auth pakai prefix __Secure-
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "phone, code, dan slug wajib diisi" }, { status: 400 });
   }
 
-  const phone = toE164(rawPhone);
+  const phone = normalizePhone(rawPhone) ?? rawPhone.trim();
   const now   = new Date();
 
   // ── 1. Verifikasi OTP ─────────────────────────────────────────────────────────

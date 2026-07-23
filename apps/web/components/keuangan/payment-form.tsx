@@ -12,6 +12,7 @@ import {
   type UnpaidRegistrationResult,
 } from "@/app/(dashboard)/app/[tenant]/finance/actions";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { MemberNameAutocomplete, type SelectedMember } from "@/components/keuangan/member-name-autocomplete";
 import { ProofUploadField } from "@/components/keuangan/proof-upload-field";
 
@@ -277,16 +278,12 @@ export function PaymentForm({ slug }: Props) {
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Telepon</label>
-              <input
-                type="tel"
-                value={payerPhone}
-                onChange={(e) => setPayerPhone(e.target.value)}
-                placeholder="08xx-xxxx-xxxx"
-                className={inputCls}
-              />
-            </div>
+            <PhoneInput
+              label="Telepon"
+              optional
+              value={payerPhone}
+              onChange={setPayerPhone}
+            />
             <div>
               <label className={labelCls}>Email</label>
               <input
@@ -364,16 +361,12 @@ export function PaymentForm({ slug }: Props) {
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Telepon</label>
-              <input
-                type="tel"
-                value={donorPhone}
-                onChange={(e) => setDonorPhone(e.target.value)}
-                placeholder="08xx-xxxx-xxxx"
-                className={inputCls}
-              />
-            </div>
+            <PhoneInput
+              label="Telepon"
+              optional
+              value={donorPhone}
+              onChange={setDonorPhone}
+            />
             <div>
               <label className={labelCls}>Email</label>
               <input

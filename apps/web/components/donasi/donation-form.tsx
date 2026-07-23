@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PhoneInput } from "@/components/ui/phone-input";
 import {
   Command,
   CommandEmpty,
@@ -282,15 +283,12 @@ export function DonationForm({ slug, campaigns, defaultCampaignId }: DonationFor
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="donorPhone">Telepon</Label>
-            <Input
-              id="donorPhone"
-              value={donorPhone}
-              onChange={(e) => setDonorPhone(e.target.value)}
-              placeholder="08xxx"
-            />
-          </div>
+          <PhoneInput
+            label="Telepon"
+            optional
+            value={donorPhone}
+            onChange={setDonorPhone}
+          />
           <div className="space-y-2">
             <Label htmlFor="donorEmail">Email</Label>
             <Input

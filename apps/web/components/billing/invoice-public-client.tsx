@@ -6,6 +6,7 @@ import { Check, Copy, Download, ImagePlus, X, Loader2 } from "lucide-react";
 import { submitPaymentProofAction, convertInvoiceToInstallmentAction } from "@/app/(public)/[tenant]/cart/actions";
 import { compressImage } from "@/lib/client-image-compress";
 import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
+import { displayPhone } from "@/lib/phone";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -542,7 +543,7 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
       <div className="rounded-lg border border-border p-4 space-y-1">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Pemesan</p>
         <p className="font-medium">{invoice.customerName}</p>
-        {invoice.customerPhone && <p className="text-sm text-muted-foreground">{invoice.customerPhone}</p>}
+        {invoice.customerPhone && <p className="text-sm text-muted-foreground">{displayPhone(invoice.customerPhone)}</p>}
         {invoice.customerEmail && <p className="text-sm text-muted-foreground">{invoice.customerEmail}</p>}
         {invoice.dueDate && (
           <p className="text-sm">

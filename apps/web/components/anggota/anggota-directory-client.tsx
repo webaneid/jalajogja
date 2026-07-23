@@ -48,6 +48,7 @@ type MemberDetail = {
   membershipStatus: "active" | "alumni";
   phone:            string | null;
   whatsapp:         string | null;
+  whatsappWaLink:   string | null;
   email:            string | null;
   socials: {
     instagram?: string; facebook?: string; linkedin?: string;
@@ -336,8 +337,8 @@ export function AnggotaDirectoryClient({ slug, rows, hasFilter }: Props) {
                             {detail.phone}
                           </a>
                         )}
-                        {detail.whatsapp && (
-                          <a href={`https://wa.me/${detail.whatsapp.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-primary">
+                        {detail.whatsapp && detail.whatsappWaLink && (
+                          <a href={detail.whatsappWaLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-primary">
                             <MessageCircle size={14} className="text-muted-foreground" />
                             {detail.whatsapp}
                           </a>

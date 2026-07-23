@@ -941,7 +941,7 @@ export async function addEventTicketToCartAction(
     // Simpan data peserta di notes sebagai JSON
     const notes = JSON.stringify({
       attendeeName:       data.attendeeName.trim(),
-      attendeePhone:      data.attendeePhone?.trim() ?? null,
+      attendeePhone:      normalizePhone(data.attendeePhone),
       attendeeEmail:      data.attendeeEmail?.trim() ?? null,
       customFieldAnswers: data.customFieldAnswers ?? null,
     });

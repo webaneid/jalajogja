@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Button } from "@/components/ui/button";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
 import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/components/ui/social-media-input";
@@ -125,32 +126,22 @@ export function ContactSettingsForm({
             />
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="contactPhone">Telepon</Label>
-              <Input
-                id="contactPhone"
-                type="tel"
-                value={contactPhone}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setContactPhone(e.target.value)}
-                placeholder="(0274) 123456"
-                inputMode="tel"
-                disabled={pending}
-              />
-              <p className="text-xs text-muted-foreground">Nomor kantor, bisa format lokal.</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="contactWhatsapp">WhatsApp</Label>
-              <Input
-                id="contactWhatsapp"
-                type="tel"
-                value={contactWhatsapp}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setContactWhatsapp(e.target.value)}
-                placeholder="6285210626455"
-                inputMode="numeric"
-                disabled={pending}
-              />
-              <p className="text-xs text-muted-foreground">Format internasional tanpa +. Misal: 628521...</p>
-            </div>
+            <PhoneInput
+              label="Telepon"
+              optional
+              value={contactPhone}
+              onChange={setContactPhone}
+              disabled={pending}
+              hint="Nomor kantor — boleh landline, pilih kode negara lalu ketik nomornya."
+            />
+            <PhoneInput
+              label="WhatsApp"
+              optional
+              value={contactWhatsapp}
+              onChange={setContactWhatsapp}
+              disabled={pending}
+              hint="Ditampilkan sebagai kontak WhatsApp organisasi di halaman publik."
+            />
           </div>
         </div>
       </Section>

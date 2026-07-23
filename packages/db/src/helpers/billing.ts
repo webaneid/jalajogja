@@ -14,6 +14,7 @@ import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import { generateFinancialNumber } from "./finance";
 import { getSettings } from "./settings";
 import { getTenantTimezone, anchorTodayUtc } from "./tenant-timezone";
+import { normalizePhone } from "./phone";
 import type { TenantDb } from "../tenant-client";
 import type { InvoiceSourceType } from "../schema/tenant/billing";
 
@@ -260,7 +261,7 @@ export async function createLinkedInvoice(
       sourceType:    input.sourceType,
       sourceId:      input.sourceId,
       customerName:  input.customerName.trim(),
-      customerPhone: input.customerPhone?.trim() ?? null,
+      customerPhone: normalizePhone(input.customerPhone),
       customerEmail: input.customerEmail?.trim() ?? null,
       memberId:      input.memberId ?? null,
       subtotal:      subtotal.toFixed(2),

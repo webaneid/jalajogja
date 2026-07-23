@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db, profiles } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
 import { getTenantAccess } from "@/lib/tenant";
+import { normalizePhone } from "@/lib/phone";
 
 // ─── createProfileAction ──────────────────────────────────────────────────────
 // Admin tambah akun publik baru dari dashboard tenant.
@@ -32,7 +33,7 @@ export async function createProfileAction(
 
   const name  = data.name.trim();
   const email = data.email.trim().toLowerCase();
-  const phone = data.phone.trim();
+  const phone = normalizePhone(data.phone);
 
   if (!name || !email || !phone) {
     return { success: false, error: "Nama, email, dan nomor HP wajib diisi." };

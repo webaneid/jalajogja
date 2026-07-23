@@ -4,6 +4,7 @@ import { desc, eq, ilike, or, and, isNotNull, inArray } from "drizzle-orm";
 import { Eye, Plus } from "lucide-react";
 import { db, profiles, createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { displayPhone } from "@/lib/phone";
 
 const PAGE_SIZE = 20;
 
@@ -144,7 +145,7 @@ export default async function AkunPage({
                 <tr key={row.id} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium">{row.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{row.email}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{row.phone}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{displayPhone(row.phone)}</td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
                     {new Intl.DateTimeFormat("id-ID", { day:"2-digit", month:"short", year:"numeric" }).format(new Date(row.createdAt))}
                   </td>

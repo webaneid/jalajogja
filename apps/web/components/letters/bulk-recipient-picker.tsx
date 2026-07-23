@@ -4,6 +4,7 @@ import { useState, useTransition, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Users, BookUser, X, CheckSquare, Square, Loader2, Send } from "lucide-react";
 import { createBulkLettersAction, type BulkRecipient } from "@/app/(dashboard)/app/[tenant]/letters/actions";
+import { displayPhone } from "@/lib/phone";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -313,7 +314,7 @@ export function BulkRecipientPicker({ slug, letterId, contacts }: Props) {
                       </p>
                     </div>
                     {m.phone && (
-                      <span className="text-xs text-muted-foreground shrink-0">{m.phone}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{displayPhone(m.phone)}</span>
                     )}
                   </button>
                 );
@@ -382,7 +383,7 @@ export function BulkRecipientPicker({ slug, letterId, contacts }: Props) {
                     </p>
                   </div>
                   {c.phone && (
-                    <span className="text-xs text-muted-foreground shrink-0">{c.phone}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">{displayPhone(c.phone)}</span>
                   )}
                 </button>
               );

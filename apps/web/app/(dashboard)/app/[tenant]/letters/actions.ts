@@ -10,6 +10,7 @@ import { eq, sql, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createHash, randomUUID } from "crypto";
 import { notifyWa, waAppUrl } from "@/lib/wa-notify";
+import { normalizePhone } from "@/lib/phone";
 import {
   resolveLetterNumberFormat,
   resolveSequenceCategory,
@@ -635,7 +636,7 @@ export async function createLetterContactAction(
         districtId:    data.districtId            ?? null,
         villageId:     data.villageId             ?? null,
         email:         data.email?.trim()         || null,
-        phone:         data.phone?.trim()         || null,
+        phone:         normalizePhone(data.phone),
         memberId:      data.memberId              || null,
       })
       .returning({ id: schema.letterContacts.id });
@@ -671,7 +672,7 @@ export async function updateLetterContactAction(
         districtId:    data.districtId            ?? null,
         villageId:     data.villageId             ?? null,
         email:         data.email?.trim()         || null,
-        phone:         data.phone?.trim()         || null,
+        phone:         normalizePhone(data.phone),
         memberId:      data.memberId              || null,
         updatedAt:     new Date(),
       })

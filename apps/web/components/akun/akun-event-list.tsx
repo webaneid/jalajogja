@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CalendarDays, Ticket, X, CheckCircle2, Clock, ExternalLink } from "lucide-react";
+import { displayPhone } from "@/lib/phone";
 
 type EventItem = {
   id:                 string;
@@ -200,7 +201,7 @@ export function AkunEventList({ items }: Props) {
                 {selected.attendeePhone && (
                   <div>
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">HP</p>
-                    <p>{selected.attendeePhone}</p>
+                    <p>{displayPhone(selected.attendeePhone)}</p>
                   </div>
                 )}
                 {selected.attendeeEmail && (

@@ -2,6 +2,7 @@
 
 import { createTenantDb, db, tenants } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
+import { normalizePhone } from "@/lib/phone";
 
 export type ContactFormResult =
   | { success: true;  message: string }
@@ -35,7 +36,7 @@ export async function submitContactFormAction(
     pageId,
     name,
     email:   email   || null,
-    phone:   phone   || null,
+    phone:   normalizePhone(phone),
     message,
     isRead:  false,
   });

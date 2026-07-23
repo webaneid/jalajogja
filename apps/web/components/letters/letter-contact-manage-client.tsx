@@ -8,6 +8,8 @@ import {
   deleteLetterContactAction,
 } from "@/app/(dashboard)/app/[tenant]/letters/actions";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { displayPhone } from "@/lib/phone";
 
 type Contact = {
   id:           string;
@@ -236,13 +238,11 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
 
             {/* Telepon */}
             <div>
-              <label className="text-xs text-muted-foreground">Telepon</label>
-              <input
-                type="text"
+              <PhoneInput
+                label="Telepon"
+                optional
                 value={form.phone}
-                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                placeholder="0274-xxxxxx"
-                className="mt-0.5 w-full rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                onChange={(v) => setForm((f) => ({ ...f, phone: v }))}
               />
             </div>
 
@@ -328,7 +328,7 @@ export function LetterContactManageClient({ slug, initialContacts }: Props) {
                   </p>
                   {(c.phone || c.email) && (
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {[c.phone, c.email].filter(Boolean).join(" · ")}
+                      {[c.phone ? displayPhone(c.phone) : null, c.email].filter(Boolean).join(" · ")}
                     </p>
                   )}
                 </div>

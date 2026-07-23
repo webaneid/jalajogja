@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { getVoucherDetailAction } from "../../actions";
 import { VoucherToggle } from "@/components/keuangan/billing/voucher-toggle";
+import { displayPhone } from "@/lib/phone";
 
 function formatRp(n: number) {
   return "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
@@ -91,7 +92,7 @@ export default async function VoucherDetailPage({
           {(v.restrictPhone || v.restrictEmail) && (
             <div className="col-span-2">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Voucher Personal</p>
-              <p className="font-medium">{[v.restrictPhone, v.restrictEmail].filter(Boolean).join(" · ")}</p>
+              <p className="font-medium">{[v.restrictPhone ? displayPhone(v.restrictPhone) : null, v.restrictEmail].filter(Boolean).join(" · ")}</p>
             </div>
           )}
         </div>

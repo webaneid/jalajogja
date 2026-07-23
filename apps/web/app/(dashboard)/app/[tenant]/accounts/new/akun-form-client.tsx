@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { createProfileAction } from "../actions";
 
 export function AkunFormClient({ slug }: { slug: string }) {
@@ -14,6 +15,7 @@ export function AkunFormClient({ slug }: { slug: string }) {
   const [showPwd,  setShowPwd]  = useState(false);
   const [showPwd2, setShowPwd2] = useState(false);
   const [wilayah,  setWilayah]  = useState<WilayahValue>({});
+  const [phone,    setPhone]    = useState("");
 
   // ── Overseas toggle ────────────────────────────────────────────────────────
   const [isOverseas, setIsOverseas] = useState(false);
@@ -34,12 +36,16 @@ export function AkunFormClient({ slug }: { slug: string }) {
       setError("Konfirmasi password tidak cocok.");
       return;
     }
+    if (!phone) {
+      setError("Nomor HP / WhatsApp wajib diisi.");
+      return;
+    }
 
     setLoading(true);
     const result = await createProfileAction(slug, {
       name:          (fd.get("name")          as string)?.trim(),
       email:         (fd.get("email")         as string)?.trim(),
-      phone:         (fd.get("phone")         as string)?.trim(),
+      phone,
       password:      password || undefined,
       addressDetail: (fd.get("addressDetail") as string)?.trim() || undefined,
       provinceId:    isOverseas ? undefined : wilayah.provinceId?.toString(),
@@ -88,16 +94,12 @@ export function AkunFormClient({ slug }: { slug: string }) {
           />
         </div>
 
-        <div className="space-y-1.5">
-          <label htmlFor="phone" className="block text-sm font-medium">
-            Nomor HP / WhatsApp <span className="text-destructive">*</span>
-          </label>
-          <input
-            id="phone" name="phone" type="tel" required autoComplete="off"
-            placeholder="628xxxxxxxxxx"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </div>
+        <PhoneInput
+          label="Nomor HP / WhatsApp"
+          required
+          value={phone}
+          onChange={setPhone}
+        />
       </fieldset>
 
       {/* ── Alamat ────────────────────────────────────────────────────────── */}

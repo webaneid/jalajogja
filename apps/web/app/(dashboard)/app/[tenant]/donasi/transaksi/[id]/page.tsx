@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { TransaksiActions } from "@/components/donasi/transaksi-actions";
+import { displayPhone } from "@/lib/phone";
 
 function formatRupiah(amount: string | null | number) {
   const n = typeof amount === "string" ? parseFloat(amount) : (amount ?? 0);
@@ -113,7 +114,7 @@ export default async function TransaksiDetailPage({
           ["Jenis",     TYPE_LABEL[donation.donationType] ?? donation.donationType],
           ["Campaign",  campaignTitle ?? "Donasi Umum (tanpa campaign)"],
           ["Nama",      donation.isAnonymous ? "(Anonim)" : donation.donorName],
-          ["Telepon",   donation.donorPhone   ?? "—"],
+          ["Telepon",   displayPhone(donation.donorPhone)],
           ["Email",     donation.donorEmail   ?? "—"],
           ...(donation.donorMessage ? [["Pesan", donation.donorMessage]] : []),
         ].map(([label, value]) => (

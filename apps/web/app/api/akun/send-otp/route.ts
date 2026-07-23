@@ -7,10 +7,11 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse }  from "next/server";
 import { db, otpTokens, createTenantDb, getSettings } from "@jalajogja/db";
 import { eq, and, gt, count, sql }   from "drizzle-orm";
-import { sendWaNotification, toE164 } from "@/lib/whatsapp";
+import { sendWaNotification }         from "@/lib/whatsapp";
 import { renderTemplateString }       from "@/lib/wa-templates";
 import { resolveWaTemplateText }      from "@/lib/wa-notify";
 import { findUserByPhone }            from "@/lib/find-user-by-phone";
+import { normalizePhone }             from "@/lib/phone";
 import type { WaNotifConfig }         from "@/lib/whatsapp";
 
 const OTP_TTL_MINUTES   = 5;
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
 
   const validType = type as "register" | "reset_password" | "login";
 
-  const phone = toE164(rawPhone);
+  const phone = normalizePhone(rawPhone) ?? rawPhone.trim();
 
   // ── Login & reset password: tolak sebelum kirim OTP kalau nomor belum terdaftar di akun
   // manapun — cegah kirim WA sia-sia (biaya + membingungkan user yang OTP-nya tidak akan pernah

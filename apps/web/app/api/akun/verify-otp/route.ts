@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse }           from "next/server";
 import { db, otpTokens, verification }         from "@jalajogja/db";
 import { eq, and, gt, isNull }                 from "drizzle-orm";
-import { toE164 }                              from "@/lib/whatsapp";
+import { normalizePhone }                      from "@/lib/phone";
 import { findUserByPhone }                     from "@/lib/find-user-by-phone";
 
 export async function POST(request: NextRequest) {
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "type tidak valid" }, { status: 400 });
   }
 
-  const phone = toE164(rawPhone);
+  const phone = normalizePhone(rawPhone) ?? rawPhone.trim();
   const now   = new Date();
 
   // ── Cari OTP valid ────────────────────────────────────────────────────────────

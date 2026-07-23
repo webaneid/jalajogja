@@ -17,3 +17,12 @@ export function displayPhone(e164: string | null | undefined): string {
   if (e164.startsWith("+62")) return "0" + e164.slice(3);
   return e164; // nomor internasional tampil apa adanya
 }
+
+// Format digit-saja untuk wa.me/api.whatsapp.com link dan GOWA send API — WAJIB
+// dipanggil dengan nilai E.164 ASLI dari DB, bukan hasil displayPhone() (yang sudah
+// dilokalkan ke 08xxx dan akan kehilangan kode negara kalau di-strip lagi).
+export function toWaDigits(raw: string | null | undefined): string {
+  const normalized = normalizePhone(raw);
+  if (!normalized) return "";
+  return normalized.replace(/^\+/, "");
+}

@@ -11,10 +11,9 @@ import { useBaseUrl } from "@/lib/use-base-url";
 type Params = Promise<{ tenant: string }>;
 
 type ProfileData = {
-  type:     "member" | "public";
-  name:     string;
-  email:    string;
-  phone:    string | null;
+  type:  "member" | "public";
+  name:  string;
+  email: string;
 };
 
 export default function ProfilPage({ params }: { params: Params }) {

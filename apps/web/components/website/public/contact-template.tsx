@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { displayPhone } from "@/lib/phone";
 import { submitContactFormAction } from "@/app/(public)/[tenant]/[pageSlug]/actions";
 import type { ContactBody } from "@/lib/page-templates";
 
@@ -61,7 +63,7 @@ export function ContactTemplate({ tenantSlug, pageId, title, body, settings }: P
         <div className="space-y-5">
           <h2 className="text-lg font-semibold">Informasi Kontak</h2>
           {email   && <div className="text-sm">📧 <a href={`mailto:${email}`} className="text-primary underline">{email}</a></div>}
-          {phone   && <div className="text-sm">📞 <a href={`tel:${phone}`}   className="text-primary underline">{phone}</a></div>}
+          {phone   && <div className="text-sm">📞 <a href={`tel:${phone}`}   className="text-primary underline">{displayPhone(phone)}</a></div>}
           {address?.detail && <div className="text-sm">📍 {address.detail}</div>}
 
           {socials && Object.entries(socials).filter(([, url]) => url).length > 0 && (
@@ -117,14 +119,12 @@ export function ContactTemplate({ tenantSlug, pageId, title, body, settings }: P
                       placeholder="email@..."
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>No. HP</Label>
-                    <Input
-                      value={formData.phone}
-                      onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
-                      placeholder="08xx..."
-                    />
-                  </div>
+                  <PhoneInput
+                    label="No. HP"
+                    optional
+                    value={formData.phone}
+                    onChange={(v) => setFormData((p) => ({ ...p, phone: v }))}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Pesan <span className="text-destructive">*</span></Label>

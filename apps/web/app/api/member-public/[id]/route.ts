@@ -7,7 +7,7 @@ import {
   contacts, addresses, socialMedias, refProfessions,
   refProvinces, refRegencies, memberBusinesses, memberOwnedPesantren,
 } from "@jalajogja/db";
-import { displayPhone } from "@/lib/phone";
+import { displayPhone, toWaDigits } from "@/lib/phone";
 
 // GET /api/member-public/[id]?slug={tenantSlug}
 // Publik — tidak butuh auth. Return hanya field yang sesuai aturan visibilitas.
@@ -129,6 +129,7 @@ export async function GET(
   // 7. Kontak — hanya yang is_*_public = true
   let phone: string | null = null;
   let whatsapp: string | null = null;
+  let whatsappWaLink: string | null = null;
   let email: string | null = null;
   if (m.contactId) {
     const [c] = await db
@@ -145,7 +146,10 @@ export async function GET(
       .limit(1);
     if (c) {
       if (c.isPhonePublic)    phone    = displayPhone(c.phone);
-      if (c.isWhatsappPublic) whatsapp = displayPhone(c.whatsapp);
+      if (c.isWhatsappPublic) {
+        whatsapp       = displayPhone(c.whatsapp);
+        whatsappWaLink = c.whatsapp ? `https://wa.me/${toWaDigits(c.whatsapp)}` : null;
+      }
       if (c.isEmailPublic)    email    = c.email;
     }
   }
@@ -206,6 +210,7 @@ export async function GET(
     membershipStatus: membership.status,
     phone,
     whatsapp,
+    whatsappWaLink,
     email,
     socials,
     businesses,

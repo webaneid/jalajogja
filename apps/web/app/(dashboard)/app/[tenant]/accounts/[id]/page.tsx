@@ -4,6 +4,7 @@ import { eq, desc } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import { db, profiles, createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { displayPhone } from "@/lib/phone";
 
 // ─── Label maps ───────────────────────────────────────────────────────────────
 
@@ -126,7 +127,7 @@ export default async function AkunDetailPage({
         <dl>
           <Row label="Nama" value={profile.name} />
           <Row label="Email" value={profile.email} />
-          <Row label="Nomor HP / WA" value={profile.phone} />
+          <Row label="Nomor HP / WA" value={displayPhone(profile.phone)} />
           <Row label="Terdaftar" value={formatDate(profile.createdAt)} />
         </dl>
       </Section>

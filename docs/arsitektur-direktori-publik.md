@@ -104,12 +104,12 @@ bukan seluruh anggota IKPM lintas cabang. Global directory = fitur platform masa
 |-------|---------------------|
 | Nomor HP pesantren | `contacts.is_phone_public` pada `contactId` pesantren |
 | WhatsApp pesantren | `contacts.is_whatsapp_public` |
-| Email pesantren | `contacts.is_email_public` |
 
 **Tidak pernah tampil publik:**
 | Field | Alasan |
 |-------|--------|
 | `hpPimpinan` | Nomor pribadi pimpinan — tidak ada toggle, **tidak ditampilkan** |
+| Email pesantren | `contacts.is_email_public` ada di kolom & sudah dicek di query publik, TAPI **tidak ada UI** untuk mengaktifkannya (admin wizard maupun self-service `/akun/pesantren` cuma punya toggle HP+WA) — nilainya selalu default `false`, email tidak pernah bisa tampil. **Keputusan disengaja** (dikonfirmasi 2026-07-23, lihat lesson CLAUDE.md), bukan bug — jangan ditambahkan tanpa konfirmasi ulang. |
 | Detail alamat (jalan, kecamatan, desa) | Cukup provinsi + kabupaten |
 
 ---
@@ -138,13 +138,24 @@ bukan seluruh anggota IKPM lintas cabang. Global directory = fitur platform masa
 |-------|---------------------|
 | HP usaha | `contacts.is_phone_public` pada `contactId` usaha |
 | WhatsApp usaha | `contacts.is_whatsapp_public` |
-| Email usaha | `contacts.is_email_public` |
 
 **Tidak pernah tampil publik:**
 | Field | Alasan |
 |-------|--------|
 | `revenue` | Informasi finansial — terlalu sensitif meski berupa range |
+| Email usaha | Sama seperti pesantren — kolom `is_email_public` ada tapi tidak ada UI untuk mengaktifkannya di mana pun (admin wizard `step4-business.tsx` bahkan tidak punya toggle HP/WA sama sekali, hanya self-service `/akun/usaha` yang punya, dan itu pun cuma HP+WA). **Keputusan disengaja** (2026-07-23) — jangan ditambahkan tanpa konfirmasi ulang. |
 | Detail alamat (jalan, kecamatan, desa) | Cukup provinsi + kabupaten |
+
+**Catatan wewenang toggle (berlaku semua entitas di atas)**: siapa yang boleh mencentang
+"Publik" berbeda per entitas, dan ini disengaja, bukan inkonsistensi yang perlu diseragamkan:
+- **Usaha** — HANYA pemilik usaha sendiri via `/akun/usaha` (admin wizard `step4-business.tsx`
+  tidak punya toggle visibilitas sama sekali — pengurus tidak bisa membuat kontak usaha anggota
+  jadi publik atas nama mereka, sengaja dibiarkan seperti ini).
+- **Anggota (kontak pribadi) & Pesantren** — pengurus/admin dashboard BOLEH mencentang toggle ini
+  atas nama anggota (via `step2-contact.tsx`/`step5-pesantren.tsx`), diperlakukan sebagai
+  wewenang administratif normal pengurus mengelola data anggota di cabangnya. **Dikonfirmasi
+  eksplisit oleh user 2026-07-23** — bukan celah consent yang perlu ditutup, meski beda dari
+  pola Usaha di atas.
 
 ---
 

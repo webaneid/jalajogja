@@ -3,6 +3,7 @@
 // Semua modul WAJIB pakai fungsi ini — tidak boleh fetch langsung ke GOWA.
 
 import { createTenantDb, getSettings } from "@jalajogja/db";
+import { toWaDigits }                  from "@/lib/phone";
 
 export type WaNotifKey =
   | "payment_submitted"
@@ -118,7 +119,7 @@ export async function sendWaNotification(opts: SendOptions): Promise<WaSendResul
   if (!config.notifications?.[event]) return { ok: false, reason: "event_disabled" };
 
   // Normalisasi nomor → format GOWA (digits + @s.whatsapp.net)
-  const digits = to.replace(/\D/g, "");
+  const digits = toWaDigits(to);
   const phone  = `${digits}@s.whatsapp.net`;
 
   try {
@@ -135,15 +136,3 @@ export async function sendWaNotification(opts: SendOptions): Promise<WaSendResul
   }
 }
 
-// ── Konversi nomor ke E.164 ───────────────────────────────────────────────────
-
-/**
- * Normalisasi nomor HP ke format E.164 (+62xxx).
- * Input: "08123456789" | "628123456789" | "+628123456789"
- */
-export function toE164(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.startsWith("62"))  return `+${digits}`;
-  if (digits.startsWith("0"))   return `+62${digits.slice(1)}`;
-  return `+${digits}`;
-}

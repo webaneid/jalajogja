@@ -14,6 +14,7 @@ import { renderBody } from "@/lib/letter-render";
 import { generateQrDataUrl } from "@/lib/qr-code";
 import type { Metadata } from "next";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { displayPhone } from "@/lib/phone";
 import { generateMetadata as buildMetadata, tiptapToPlainText } from "@/lib/seo";
 import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
@@ -594,7 +595,7 @@ export default async function PublicEventPage({
       `TIKET: ${registeredTicketName ?? "—"}`,
       `NO: ${alreadyRegistered.registrationNumber}`,
       `NAMA: ${alreadyRegistered.attendeeName}`,
-      alreadyRegistered.attendeePhone ? `HP: ${alreadyRegistered.attendeePhone}` : null,
+      alreadyRegistered.attendeePhone ? `HP: ${displayPhone(alreadyRegistered.attendeePhone)}` : null,
       alreadyRegistered.attendeeEmail ? `EMAIL: ${alreadyRegistered.attendeeEmail}` : null,
       `STATUS: ${alreadyRegistered.status.toUpperCase()}`,
     ].filter(Boolean).join("\n");
@@ -759,7 +760,7 @@ export default async function PublicEventPage({
                     {alreadyRegistered.attendeePhone && (
                       <div>
                         <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">HP</p>
-                        <p>{alreadyRegistered.attendeePhone}</p>
+                        <p>{displayPhone(alreadyRegistered.attendeePhone)}</p>
                       </div>
                     )}
                     {alreadyRegistered.attendeeEmail && (

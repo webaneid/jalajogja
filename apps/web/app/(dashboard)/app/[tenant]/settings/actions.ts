@@ -8,6 +8,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import type { Level, Module } from "@/lib/permissions";
+import { normalizePhone } from "@/lib/phone";
 
 type ActionResult = { error?: string };
 type StrictActionResult = { success: true } | { success: false; error: string };
@@ -174,8 +175,8 @@ export async function saveContactSettingsAction(
   const tenantDb = createTenantDb(slug);
   await upsertSettings(tenantDb, "contact", {
     contact_email:    values.contactEmail,
-    contact_phone:    values.contactPhone,
-    contact_whatsapp: values.contactWhatsapp,
+    contact_phone:    normalizePhone(values.contactPhone) ?? "",
+    contact_whatsapp: normalizePhone(values.contactWhatsapp) ?? "",
     contact_address: {
       ...values.contactAddress,
       provinceName: province,

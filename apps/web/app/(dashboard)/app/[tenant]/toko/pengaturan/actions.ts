@@ -3,6 +3,7 @@
 import { createTenantDb, upsertSettings, upsertSetting } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { canManageUsers, hasFullAccess } from "@/lib/permissions";
+import { normalizePhone } from "@/lib/phone";
 import { revalidatePath } from "next/cache";
 import type { TokoSettings } from "@/lib/toko-settings";
 import { PRODUCT_ARCHIVE_CARD_DESIGN_IDS, type ProductArchiveCardDesignId } from "@/lib/product-archive-card-designs";
@@ -30,7 +31,7 @@ export async function saveTokoSettingsAction(
     mitra_max_products: values.mitraMaxProducts,
     min_komisi_mitra:   values.minKomisiMitra,
     toko_description:   values.tokoDescription,
-    toko_whatsapp:      values.tokoWhatsapp,
+    toko_whatsapp:      normalizePhone(values.tokoWhatsapp) ?? "",
   });
 
   revalidatePath(`/app/${slug}/toko/pengaturan`);

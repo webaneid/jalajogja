@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { saveTokoSettingsAction } from "./actions";
 import type { TokoSettings } from "@/lib/toko-settings";
 
@@ -148,19 +149,14 @@ export function TokoSettingsForm({ slug, initialSettings }: Props) {
           />
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="toko-wa" className="text-sm">Nomor WhatsApp Toko</Label>
-          <Input
-            id="toko-wa"
-            type="tel"
+        <div className="max-w-xs">
+          <PhoneInput
+            label="Nomor WhatsApp Toko"
+            optional
             value={settings.tokoWhatsapp}
-            onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set("tokoWhatsapp", e.target.value)}
-            placeholder="+628xxxxxxxxxx"
-            className="max-w-xs h-8 text-sm"
+            onChange={(v) => set("tokoWhatsapp", v)}
+            hint="Ditampilkan di halaman toko publik sebagai kontak bantuan."
           />
-          <p className="text-xs text-muted-foreground">
-            Ditampilkan di halaman toko publik sebagai kontak bantuan.
-          </p>
         </div>
       </section>
 

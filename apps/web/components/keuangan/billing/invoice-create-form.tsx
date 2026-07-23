@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
+import { PhoneInput } from "@/components/ui/phone-input";
 import {
   createInvoiceAction,
   type InvoiceItemInput,
@@ -117,16 +118,12 @@ export function InvoiceCreateForm({ slug }: Props) {
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelCls}>Nomor HP</label>
-            <input
-              type="tel"
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              placeholder="08xx-xxxx-xxxx"
-              className={inputCls}
-            />
-          </div>
+          <PhoneInput
+            label="Nomor HP"
+            optional
+            value={customerPhone}
+            onChange={setCustomerPhone}
+          />
           <div>
             <label className={labelCls}>Email</label>
             <input

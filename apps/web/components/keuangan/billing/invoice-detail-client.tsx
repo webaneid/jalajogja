@@ -14,6 +14,7 @@ import {
 } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
 import { compressImage } from "@/lib/client-image-compress";
+import { displayPhone } from "@/lib/phone";
 
 type Props = {
   slug:     string;
@@ -376,7 +377,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
       <div className="rounded-lg border border-border p-4 space-y-1">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Customer</p>
         <p className="font-medium">{invoice.customerName}</p>
-        {invoice.customerPhone && <p className="text-sm text-muted-foreground">{invoice.customerPhone}</p>}
+        {invoice.customerPhone && <p className="text-sm text-muted-foreground">{displayPhone(invoice.customerPhone)}</p>}
         {invoice.customerEmail && <p className="text-sm text-muted-foreground">{invoice.customerEmail}</p>}
         {invoice.dueDate && (
           <p className="text-sm">
@@ -409,7 +410,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                       {attendee.attendeeName && (
                         <p>Peserta: <span className="text-foreground">{attendee.attendeeName}</span></p>
                       )}
-                      {attendee.attendeePhone && <p>HP: {attendee.attendeePhone}</p>}
+                      {attendee.attendeePhone && <p>HP: {displayPhone(attendee.attendeePhone)}</p>}
                       {attendee.attendeeEmail && <p>Email: {attendee.attendeeEmail}</p>}
                       {attendee.customFieldAnswers && Object.entries(attendee.customFieldAnswers).map(([k, v]) => (
                         <p key={k}>{humanizeFieldKey(k)}: {formatFieldValue(v)}</p>

@@ -153,7 +153,7 @@ export async function createInvoiceAction(
         sourceType:    "manual",
         sourceId:      null,
         customerName:  data.customerName.trim(),
-        customerPhone: data.customerPhone?.trim() ?? null,
+        customerPhone: normalizePhone(data.customerPhone),
         customerEmail: data.customerEmail?.trim() ?? null,
         memberId:      data.memberId ?? null,
         subtotal:      subtotal.toFixed(2),
@@ -515,7 +515,7 @@ export async function confirmInvoicePaymentAction(
           try {
             const p = JSON.parse(item.description ?? "{}") as Record<string, unknown>;
             attendeeName  = String(p.attendeeName ?? item.name ?? "Peserta").trim();
-            attendeePhone = p.attendeePhone ? String(p.attendeePhone) : null;
+            attendeePhone = normalizePhone(p.attendeePhone ? String(p.attendeePhone) : null);
             attendeeEmail = p.attendeeEmail ? String(p.attendeeEmail) : null;
             extraFields   = p.customFieldAnswers ? (p.customFieldAnswers as Record<string, unknown>) : null;
           } catch { /* gunakan default */ }
@@ -1091,7 +1091,7 @@ export async function verifySubmittedPaymentAction(
           try {
             const p = JSON.parse(item.description ?? "{}") as Record<string, unknown>;
             attendeeName  = String(p.attendeeName ?? item.name ?? "Peserta").trim();
-            attendeePhone = p.attendeePhone ? String(p.attendeePhone) : null;
+            attendeePhone = normalizePhone(p.attendeePhone ? String(p.attendeePhone) : null);
             attendeeEmail = p.attendeeEmail ? String(p.attendeeEmail) : null;
             extraFields   = p.customFieldAnswers ? (p.customFieldAnswers as Record<string, unknown>) : null;
           } catch { /* gunakan default */ }

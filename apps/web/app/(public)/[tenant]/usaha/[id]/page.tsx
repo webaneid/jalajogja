@@ -12,7 +12,7 @@ import {
   Briefcase, MapPin, Phone, MessageCircle, Mail,
   Users, ChevronLeft,
 } from "lucide-react";
-import { displayPhone } from "@/lib/phone";
+import { displayPhone, toWaDigits } from "@/lib/phone";
 import { renderBody }   from "@/lib/letter-render";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
@@ -111,9 +111,10 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
   }
 
   // Kontak (hanya yang publik)
-  let phone:    string | null = null;
-  let whatsapp: string | null = null;
-  let email:    string | null = null;
+  let phone:          string | null = null;
+  let whatsapp:       string | null = null;
+  let whatsappWaLink: string | null = null;
+  let email:          string | null = null;
   if (row.contactId) {
     const [c] = await db
       .select({
@@ -125,7 +126,10 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
       .limit(1);
     if (c) {
       if (c.isPhonePublic)    phone    = displayPhone(c.phone);
-      if (c.isWhatsappPublic) whatsapp = displayPhone(c.whatsapp);
+      if (c.isWhatsappPublic) {
+        whatsapp       = displayPhone(c.whatsapp);
+        whatsappWaLink = c.whatsapp ? `https://wa.me/${toWaDigits(c.whatsapp)}` : null;
+      }
       if (c.isEmailPublic)    email    = c.email;
     }
   }
@@ -227,7 +231,7 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
             </h2>
             <div className="space-y-2 text-sm">
               {phone    && <a href={`tel:${phone}`} className="flex items-center gap-2 hover:text-primary"><Phone size={14} className="text-muted-foreground" />{phone}</a>}
-              {whatsapp && <a href={`https://wa.me/${whatsapp.replace(/\D/g,"")}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-primary"><MessageCircle size={14} className="text-muted-foreground" />{whatsapp}</a>}
+              {whatsapp && whatsappWaLink && <a href={whatsappWaLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-primary"><MessageCircle size={14} className="text-muted-foreground" />{whatsapp}</a>}
               {email    && <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-primary"><Mail size={14} className="text-muted-foreground" />{email}</a>}
             </div>
           </div>

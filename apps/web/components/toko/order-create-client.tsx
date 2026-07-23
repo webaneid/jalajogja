@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, Search } from "lucide-react";
 import { createOrderAction, type OrderData, type OrderItemInput } from "@/app/(dashboard)/app/[tenant]/toko/actions";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 type ProductOption = {
   id:    string;
@@ -157,16 +158,12 @@ export function OrderCreateClient({ slug, products }: Props) {
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Telepon</label>
-            <input
-              type="text"
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              placeholder="0812-xxxx-xxxx"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
+          <PhoneInput
+            label="Telepon"
+            optional
+            value={customerPhone}
+            onChange={setCustomerPhone}
+          />
         </div>
 
         <div>

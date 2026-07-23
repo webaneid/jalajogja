@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
+import { normalizePhone } from "@/lib/phone";
 import {
   recordJournal,
   recordIncome,
@@ -547,7 +548,7 @@ export async function createLinkedPaymentAction(
           campaignId:     data.campaignId,
           memberId:       data.memberId ?? null,
           donorName:      data.donorName.trim(),
-          donorPhone:     data.donorPhone?.trim() ?? null,
+          donorPhone:     normalizePhone(data.donorPhone),
           donorEmail:     data.donorEmail?.trim() ?? null,
           donorMessage:   data.notes?.trim() ?? null,
         })
@@ -596,7 +597,7 @@ export async function createLinkedPaymentAction(
         transferDate:   data.transferDate ?? null,
         memberId:       data.memberId ?? null,
         payerName,
-        payerPhone:     data.payerPhone?.trim() || null,
+        payerPhone:     normalizePhone(data.payerPhone),
         payerEmail:     data.payerEmail?.trim() || null,
         payerBank:      data.payerBank?.trim() ?? null,
         payerNote:      data.notes?.trim() ?? null,
