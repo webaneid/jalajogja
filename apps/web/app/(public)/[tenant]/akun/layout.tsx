@@ -60,11 +60,15 @@ export default async function AkunLayout({ children, params }: Props) {
   const avatarUrl    = identity.photoUrl ?? gravatar(displayEmail);
 
   // Label keanggotaan — bukan selalu tenant yang sedang dibrowsing, lihat
-  // docs/arsitektur-akun.md § Resolusi Branding Kartu Anggota.
-  let memberBadgeLabel = "Anggota IKPM";
+  // docs/arsitektur-akun.md § Resolusi Branding Kartu Anggota. `memberVerified=false`
+  // → label = "Lengkapi Data" (profil belum lolos checkMemberEligibility) — checkmark
+  // TIDAK ditampilkan sampai lengkap, berlaku untuk semua tipe tenant.
+  let memberBadgeLabel  = "Anggota IKPM";
+  let memberVerified    = false;
   if (isMember && identity.memberId) {
     const branding = await resolveAkunBranding(identity.memberId, slug);
     memberBadgeLabel = branding.memberLabel;
+    memberVerified   = branding.verified;
   }
 
   return (
@@ -94,7 +98,7 @@ export default async function AkunLayout({ children, params }: Props) {
                   ? "bg-primary/10 text-primary"
                   : "bg-muted text-muted-foreground"
               }`}>
-                {isMember && <BadgeCheck className="h-3 w-3" />}
+                {isMember && memberVerified && <BadgeCheck className="h-3 w-3" />}
                 {isMember ? memberBadgeLabel : "Akun Publik"}
               </span>
             </div>

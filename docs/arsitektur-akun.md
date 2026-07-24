@@ -483,6 +483,148 @@ input hex, pola sama `display-settings-form.tsx`), disimpan lewat `updatePlatfor
 yang sekarang validasi format `^#[0-9a-fA-F]{6}$` (fallback ke `#2563eb` kalau tidak valid,
 bukan reject — form tetap tersimpan).
 
+### Standar Label Keanggotaan — "Lengkapi Data" vs "Anggota X" (2026-07-24)
+
+**Masalah dilaporkan user**: saat mencoba tenant forum baru (`forcreator` di lokal), badge
+"Anggota Forcreator" langsung muncul di sidebar `/akun` begitu mendaftar — padahal belum pernah
+mengisi data apa pun, apalagi menyelesaikan alur `/gabung` (§ `docs/arsitektur-backbone-ikpm.md`
+"Alur Pendaftaran Forum v2"). Investigasi menemukan **dua** root cause independen:
+
+1. **`joinTenant()` di `/api/akun/register`** — meng-insert baris `tenant_memberships` dengan
+   `status: "active"` untuk tenant APA PUN tempat orang mendaftar, TANPA cek `tenantType` sama
+   sekali. Registrasi langsung di domain forum otomatis membuat baris keanggotaan aktif,
+   melewati seluruh gate `/gabung` yang sudah dibangun.
+2. **`resolveAkunBranding()`'s Step 1** ("genuine member") — sebelumnya cukup "ada baris
+   `tenant_memberships` apa pun" untuk SEMUA tipe tenant, tidak pernah cek `forumStatus`.
+
+**Standar baru yang dikunci** (dikonfirmasi user via `AskUserQuestion`, 3 keputusan):
+
+1. **Prasyarat universal SEBELUM label apa pun bisa jadi "Anggota X"**: profil harus lolos
+   `checkForumEligibility()` (reuse fungsi yang sama dari alur forum — data pribadi Step1+2
+   `/akun/lengkapi` lengkap KECUALI Riwayat Pendidikan, PLUS minimal 1 dari 3 direktori
+   usaha/pesantren/profesional). **Berlaku untuk SEMUA tipe tenant** (cabang/marhalah/forum) —
+   dikonfirmasi eksplisit user, bukan cuma forum, meski ini berarti anggota PC IKPM/Angkatan
+   lama yang auto-join tapi belum pernah isi `/akun/lengkapi` akan melihat labelnya berubah
+   dari "Anggota PC IKPM X" jadi "Lengkapi Data" setelah deploy.
+2. **Belum lolos** → `memberLabel = "Lengkapi Data"`, `verified: false` — caller TIDAK menampilkan
+   ikon `BadgeCheck` (centang) untuk state ini, di SEMUA 3 titik render.
+3. **Sudah lolos**:
+   - Cabang/marhalah: TIDAK berubah dari perilaku sebelumnya — "ada baris `tenant_memberships`
+     apa pun" tetap cukup untuk "genuine member" (auto-populate tidak punya tahap verifikasi
+     terpisah seperti forum).
+   - Forum: Step 1 SEKARANG mensyaratkan `forumStatus = 'active'` secara eksplisit (bukan cuma
+     "ada baris") — kalau belum genuinely menyelesaikan `/gabung`, jatuh ke fallback existing
+     (cabang resmi sendiri via `primaryCabangRefId`, atau platform default) — sesuai instruksi
+     user: "jika belum sesuai standard maka tulisannya tertulis 'Anggota PC IKPM <cabang dia>'".
+
+**Implementasi**:
+- `resolveAkunBranding()` — restrukturisasi 3 `return` di 3 langkah jadi 1 variable `resolved`
+  (di-assign per langkah, bukan return langsung), supaya eligibility override bisa diterapkan
+  SEKALI di titik akhir (bukan diulang 3×). Tambah field `verified: boolean` ke
+  `ResolvedAkunBranding`. Step 1 query pakai spread kondisional:
+  `and(eq(memberId), eq(tenantId), ...(isForum ? [eq(forumStatus,"active")] : []))`.
+  **Hanya `memberLabel` yang di-override jadi "Lengkapi Data"** saat belum eligible — `logoUrl`/
+  `orgName`/`primaryColor` TETAP di-resolve normal (identitas visual kartu tidak berubah, cuma
+  klaim status keanggotaan yang jujur — `MemberCard` yang menampilkan `orgName`/logo/warna sama
+  sekali tidak perlu disentuh, karena field itu tidak pernah baca `memberLabel`).
+- `akun/layout.tsx` + `akun/page.tsx` — tambah `memberVerified` (dari `branding.verified`),
+  ikon `BadgeCheck` di kedua tempat sekarang digate `{isMember && memberVerified && <BadgeCheck/>}`
+  / `{memberVerified && <BadgeCheck/>}`. `AkunMobileHeader` (badge teks polos, tanpa ikon) otomatis
+  ikut benar tanpa disentuh — cukup teksnya yang berubah jadi "Lengkapi Data".
+- `/api/akun/register/route.ts`'s `joinTenant()` — tambah cek `registeredAtTenantType`
+  (kolom `tenantType` ditambah ke SELECT tenant lookup yang sudah ada) — SKIP insert
+  `tenant_memberships` sama sekali kalau `tenantType === "forum"`. Cabang/marhalah TIDAK
+  berubah. `tenantRefCabangId` (dipakai auto-set `primaryCabangRefId`) tidak perlu guard
+  tambahan — kolom itu secara semantik hanya terisi untuk tenant cabang (forum tidak punya
+  `refCabangId`), jadi sudah otomatis aman.
+
+**Interaksi dengan `ForumJoinOverlay`**: untuk forum tenant yang belum `forumStatus='active'`,
+overlay glass-effect (dibangun sesi sebelumnya) SUDAH menutupi kartu "Info keanggotaan"/
+`MemberCard` sepenuhnya — label baru ("Lengkapi Data" atau fallback "Anggota PC IKPM X") tetap
+di-resolve dan dirender DI BAWAH overlay (konsisten dengan desain overlay yang sengaja tidak
+menyembunyikan konten asli, cuma menutup visual), tapi secara praktis tidak terlihat user
+selama overlay aktif — tidak ada kontradiksi, sekadar duplikasi informasi yang tersembunyi.
+
+**Efek samping**: `checkMemberEligibility()` sekarang bisa terpanggil 2× per render `/akun` untuk
+forum tenant yang belum join (sekali oleh blok overlay yang sudah ada, sekali lagi di dalam
+`resolveAkunBranding()`) — duplikasi query kecil, diterima (tidak di-cache/di-share) demi
+menghindari refactor lintas fungsi yang tidak perlu untuk beberapa SELECT ringan.
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` sukses (dev
+server dimatikan dulu, `.next` dibersihkan, direstart setelah build). Nol migrasi DB. Belum
+diverifikasi visual di browser oleh Claude — user yang punya tenant forum `forcreator` lokal
+perlu mengonfirmasi langsung.
+
+### Eligibility Overlay Generik — Digeneralisasi ke Semua Tipe Tenant (2026-07-24, susulan)
+
+**Rangkaian 2 permintaan susulan dari user di sesi yang sama:**
+
+1. **"Tombol rancu"** — overlay forum (dibangun sesi sebelumnya sebagai `ForumJoinOverlay`)
+   selalu mengarahkan tombol "Lengkapi Data" ke `/gabung`, meski member belum eligible sama
+   sekali — `/gabung` cuma menampilkan ulang info yang sama (double-hop membingungkan).
+   **Fix**: overlay dipecah jadi **3 kondisi eksplisit** berdasar `missing:
+   MemberEligibilityField[]` (bukan cuma `eligible: boolean`):
+   1. Profil pribadi belum lengkap (ada field selain `"directory"`) → tombol "Lengkapi Data
+      Pribadi" → langsung `/akun/lengkapi`.
+   2. Profil pribadi lengkap, tinggal direktori (`missing` cuma `["directory"]`) → tombol
+      "Lengkapi Data →" membuka **popup** (`DirectoryChoicePopover`, client component baru,
+      `Popover`/`PopoverTrigger`/`PopoverContent` Radix — pola sama `Combobox`) — 3 pilihan:
+      "Saya seorang profesional" → `/akun/profesional`, "Saya memiliki usaha" → `/akun/usaha`,
+      "Saya memiliki lembaga pendidikan/kursus" → `/akun/pesantren`.
+   3. Eligible → teks "Data Anda lengkap. Jika ingin mendaftar menjadi anggota X, klik tombol
+      di bawah ini:" + tombol **"Gabung {tenantName}"** → `/gabung` (satu-satunya kasus yang
+      benar-benar masuk `/gabung`, karena di situ tombol join sungguhan aktif).
+
+2. **Generalisasi ke SEMUA tipe tenant** — user: "bedanya kan cuma: selain anggota forum tidak
+   perlu masuk URL /gabung, tenant lain otomatis menjadi anggota... sehingga pesannya sama jika
+   belum lengkap maka harus ada 2 kondisi tadi sebelum muncul informasi kartu... ini kita namakan
+   eligibiliti kali ya biar konsisten." Overlay (dan seluruh helper di baliknya) di-rename total
+   dari istilah forum-spesifik jadi generik:
+
+   | Sebelum | Sesudah |
+   |---|---|
+   | `lib/forum-eligibility.ts` | `lib/member-eligibility.ts` |
+   | `checkForumEligibility()` | `checkMemberEligibility()` |
+   | `ForumEligibilityField`/`ForumEligibilityResult` | `MemberEligibilityField`/`MemberEligibilityResult` |
+   | `FORUM_ELIGIBILITY_LABELS` | `MEMBER_ELIGIBILITY_LABELS` |
+   | `forumEligibilityFixHref()` | `memberEligibilityFixHref()` |
+   | `components/akun/forum-join-overlay.tsx` (`ForumJoinOverlay`) | `components/akun/membership-eligibility-overlay.tsx` (`MembershipEligibilityOverlay`) |
+
+   Logic CHECK-nya (10 field data pribadi + minimal 1 direktori) TIDAK berubah sama sekali —
+   murni rename supaya namanya mencerminkan pemakaian sebenarnya (dipakai semua tipe tenant),
+   bukan cuma forum.
+
+**Kapan overlay tampil — beda per tipe tenant, ditentukan di `akun/page.tsx`:**
+```typescript
+if (browsedTenant.tenantType === "forum") {
+  showOverlay = forumStatus !== "active";   // termasuk "eligible tapi belum klik gabung"
+} else { // cabang / marhalah
+  showOverlay = !eligibility.eligible;      // begitu eligible, keanggotaan SUDAH otomatis
+}
+```
+Untuk cabang/marhalah, keanggotaan (`tenant_memberships` row) SUDAH otomatis ter-insert oleh
+mekanisme auto-populate yang sudah ada sejak lama (matching `primaryCabangRefId`/
+`graduationYear`+`period`) — TIDAK BERUBAH dan TIDAK bergantung pada eligibility sama sekali.
+Overlay di sini MURNI soal tampilan "informasi kartu belum layak ditampilkan sampai data
+lengkap" — begitu eligible, overlay hilang dan kartu (yang datanya sudah ada dari auto-populate)
+langsung terlihat, TANPA tombol "join" apa pun (beda dari forum yang perlu `/gabung` eksplisit).
+`MembershipEligibilityOverlay` sendiri punya guard defensif `if (eligible && !isForum) return
+null` — kalau ternyata terpanggil di kondisi ini (seharusnya tidak, caller sudah stop
+merender), tidak akan pernah menyarankan "Gabung X" untuk tenant yang tidak punya alur itu.
+
+**`akun/page.tsx` variable rename** (mengikuti generalisasi, bukan cuma forum lagi):
+`showForumOverlay`→`showEligibilityOverlay`, `forumMissing`→`overlayMissing`,
+`forumTenantName`→`overlayTenantName`, tambah `overlayIsForum: boolean` baru (diteruskan ke
+`MembershipEligibilityOverlay` sebagai prop `isForum`).
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` sukses (dev
+server dimatikan dulu, `.next` dibersihkan, direstart tiap kali karena user aktif menguji).
+Grep akhir `checkForumEligibility|ForumEligibilityField|ForumJoinOverlay|forum-eligibility|
+forum-join-overlay` di seluruh `apps/web` — nol hasil, rename bersih tanpa sisa referensi lama.
+Nol migrasi DB. **Belum diverifikasi visual di browser** — khususnya kasus cabang/marhalah
+yang BELUM eligible (member lama yang belum isi `/akun/lengkapi`) perlu dicoba user untuk
+konfirmasi overlay-nya benar-benar muncul menutupi kartu, bukan cuma badge teks yang berubah.
+
 ---
 
 ## Data Usaha Anggota (`/akun/usaha`)

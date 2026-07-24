@@ -4,12 +4,16 @@ import { eq, and, desc, sql, count, inArray } from "drizzle-orm";
 import type { InvoiceStatus } from "@jalajogja/db";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, generateFinancialNumber, settleInstallmentSchedules } from "@jalajogja/db";
+import { db as publicDb, tenants, tenantMemberships, getSetting } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, hasReadAccess } from "@/lib/permissions";
 import { recordIncome } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz, localDatetimeToUtcIso } from "@/lib/tenant-timezone.server";
+import { checkMemberEligibility } from "@/lib/member-eligibility";
+import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
+import type { MembershipConfigData as MembershipConfig } from "../../settings/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -298,6 +302,120 @@ export async function cancelInvoiceAction(
   }
 }
 
+// ─── activateForumMembershipIfApplicable ──────────────────────────────────────
+// Setelah invoice benar-benar lunas (bukan partial): cek apakah tenant ini forum DAN
+// sudah mengonfigurasi produk/campaign sebagai syarat iuran (`membership_config`, key
+// tunggal group "forum", diisi via /app/{slug}/settings/keanggotaan — Fase D) DAN item
+// invoice yang baru lunas cocok dengan konfigurasi itu → aktifkan tenant_memberships
+// forum untuk pembelinya. Keputusan produk (2026-07-24): pembayaran saja TIDAK CUKUP —
+// member tetap harus checkMemberEligibility() sebelum diaktifkan, supaya pembayaran dari
+// jalur mana pun (bukan cuma lewat /gabung — bisa donasi biasa ke campaign yang sama)
+// tidak membuat orang yang datanya belum lengkap otomatis jadi anggota forum.
+//
+// Dipanggil SETELAH tx tenant-schema commit (bukan di dalam tx) — tenant_memberships ada
+// di PUBLIC schema, koneksi terpisah dari `tx` (tenant schema). Caller WAJIB bungkus
+// pemanggilan ini dengan try/catch sendiri — gagal di sini tidak boleh menggagalkan
+// pencatatan pembayaran yang sudah sah (uang sudah masuk, itu fakta terpisah dari
+// aktivasi keanggotaan forum).
+//
+// Lihat docs/arsitektur-backbone-ikpm.md § "Alur Pendaftaran Forum v2".
+
+async function activateForumMembershipIfApplicable(
+  slug:      string,
+  tenantDb:  ReturnType<typeof createTenantDb>,
+  invoiceId: string,
+  memberId:  string | null,
+): Promise<void> {
+  if (!memberId) return;
+
+  const [tenantRow] = await publicDb
+    .select({ id: tenants.id, tenantType: tenants.tenantType })
+    .from(tenants)
+    .where(eq(tenants.slug, slug))
+    .limit(1);
+  if (!tenantRow || tenantRow.tenantType !== "forum") return;
+
+  const config = await getSetting<MembershipConfig>(tenantDb, "membership_config", "forum");
+  if (!config?.paymentRequired) return;
+  if (!config.requiredProductId && !config.requiredCampaignId) return;
+
+  const { db, schema } = tenantDb;
+  const items = await db
+    .select({
+      itemType: schema.invoiceItems.itemType,
+      itemId:   schema.invoiceItems.itemId,
+      // Wajib true — donasi/pembelian ORGANIK (lewat halaman produk/campaign biasa, bukan dari
+      // link ?forGabung=1 di /gabung) TIDAK PERNAH boleh mengaktifkan keanggotaan forum meski
+      // itemId-nya kebetulan cocok syarat iuran. Lihat docs/arsitektur-backbone-ikpm.md
+      // § "Pemisahan Donasi vs Registrasi Forum".
+      forGabungRegistration: schema.invoiceItems.forGabungRegistration,
+    })
+    .from(schema.invoiceItems)
+    .where(eq(schema.invoiceItems.invoiceId, invoiceId));
+
+  const hasProduct  = !!config.requiredProductId  && items.some((it) => it.itemType === "product"  && it.itemId === config.requiredProductId  && it.forGabungRegistration);
+  const hasCampaign = !!config.requiredCampaignId && items.some((it) => it.itemType === "donation" && it.itemId === config.requiredCampaignId && it.forGabungRegistration);
+
+  const bothConfigured = !!(config.requiredProductId && config.requiredCampaignId);
+  const satisfied = bothConfigured
+    ? (config.requireMode === "both" ? (hasProduct && hasCampaign) : (hasProduct || hasCampaign))
+    : (hasProduct || hasCampaign);
+  if (!satisfied) return;
+
+  const eligibility = await checkMemberEligibility(memberId);
+  if (!eligibility.eligible) return;
+
+  const [existing] = await publicDb
+    .select({
+      id:               tenantMemberships.id,
+      forumStatus:      tenantMemberships.forumStatus,
+      membershipNumber: tenantMemberships.membershipNumber,
+    })
+    .from(tenantMemberships)
+    .where(and(
+      eq(tenantMemberships.tenantId, tenantRow.id),
+      eq(tenantMemberships.memberId, memberId),
+    ))
+    .limit(1);
+  if (existing?.forumStatus === "active") return;
+
+  const now = new Date();
+
+  // Nomor keanggotaan lokal forum (opsional) — generate SEKALI saja, pertahankan yang lama
+  // kalau sudah ada (mis. member sempat suspended lalu aktif lagi lewat pembayaran).
+  let membershipNumber = existing?.membershipNumber ?? null;
+  if (!membershipNumber && config.membershipNumberFormat) {
+    membershipNumber = await generateForumMembershipNumber({
+      tenantId: tenantRow.id,
+      memberId,
+      format:   config.membershipNumberFormat,
+      joinDate: now,
+    });
+  }
+
+  if (existing) {
+    await publicDb.update(tenantMemberships)
+      .set({
+        status: "active", membershipType: "forum", forumStatus: "active",
+        approvedAt: now, forumInvoiceId: invoiceId, membershipNumber, updatedAt: now,
+      })
+      .where(eq(tenantMemberships.id, existing.id));
+  } else {
+    await publicDb.insert(tenantMemberships).values({
+      tenantId:       tenantRow.id,
+      memberId,
+      status:         "active",
+      membershipType: "forum",
+      forumStatus:    "active",
+      joinedAt:       now.toISOString().split("T")[0],
+      approvedAt:     now,
+      forumInvoiceId: invoiceId,
+      registeredVia:  "self",
+      membershipNumber,
+    });
+  }
+}
+
 // ─── confirmInvoicePaymentAction ──────────────────────────────────────────────
 // Konfirmasi pembayaran invoice — insert payment, update paid_amount, evaluasi status.
 
@@ -354,6 +472,11 @@ export async function confirmInvoicePaymentAction(
     const installmentInfo: { installmentPlanId: string | null; newPaidAmount: number; newStatus: string } =
       { installmentPlanId: null, newPaidAmount: 0, newStatus: "" };
 
+    // Object holder — dipakai untuk cek "apakah invoice ini SUDAH lunas (bukan partial)"
+    // setelah tx commit, supaya activateForumMembershipIfApplicable hanya dipanggil saat
+    // benar-benar lunas (sama seperti sync collected_amount/event registration di atas).
+    const paymentStatusInfo: { newStatus: string } = { newStatus: "" };
+
     // Tanggal jurnal WAJIB kalender timezone tenant, bukan UTC mentah — fetch sekali di
     // luar transaction (read-only, tidak perlu ikut terkunci).
     const tenantTimezone = await getTenantTimezone(tenantDb);
@@ -385,6 +508,7 @@ export async function confirmInvoicePaymentAction(
 
       const newPaidAmount = paidSoFar + data.amount;
       const newStatus     = newPaidAmount >= amountDue ? "paid" : "partial";
+      paymentStatusInfo.newStatus = newStatus;
 
       const payNum = await generateFinancialNumber(tenantDb, "payment");
 
@@ -618,6 +742,14 @@ export async function confirmInvoicePaymentAction(
             eventUrl,
           },
         });
+      }
+    }
+
+    if (paymentStatusInfo.newStatus === "paid") {
+      try {
+        await activateForumMembershipIfApplicable(slug, tenantDb, invoiceId, inv.memberId);
+      } catch (err) {
+        console.error("[confirmInvoicePaymentAction] aktivasi forum gagal (non-fatal):", err);
       }
     }
 
@@ -928,11 +1060,16 @@ export async function verifySubmittedPaymentAction(
   let notifyCustomerName  = "";
   let notifyCustomerPhone: string | null = null;
   let notifyInvoiceNumber = "";
+  let notifyMemberId: string | null = null;
 
   // Diisi di dalam transaction jika invoice ini adalah cicilan — object holder (bukan `let`
   // union) untuk hindari TS narrowing-quirk pada reassignment di dalam closure async.
   const installmentInfo: { installmentPlanId: string | null; newPaid: number; total: number; newStatus: string } =
     { installmentPlanId: null, newPaid: 0, total: 0, newStatus: "" };
+
+  // Object holder — sama seperti di confirmInvoicePaymentAction, dipakai untuk gating
+  // activateForumMembershipIfApplicable supaya hanya jalan saat invoice benar-benar lunas.
+  const paymentStatusInfo: { newStatus: string } = { newStatus: "" };
 
   // Tanggal jurnal WAJIB kalender timezone tenant, bukan UTC mentah — fetch sekali di luar
   // transaction (read-only, tidak perlu ikut terkunci).
@@ -965,6 +1102,7 @@ export async function verifySubmittedPaymentAction(
       notifyCustomerName  = inv.customerName;
       notifyCustomerPhone = inv.customerPhone;
       notifyInvoiceNumber = inv.invoiceNumber;
+      notifyMemberId      = inv.memberId;
 
       const paidSoFar  = parseFloat(String(inv.paidAmount));
       const total      = parseFloat(String(inv.total));
@@ -972,6 +1110,7 @@ export async function verifySubmittedPaymentAction(
       const amountDue  = total + uniqueCode;
       const newPaid    = paidSoFar + verifiedAmount;
       const newStatus  = newPaid >= amountDue ? "paid" : "partial";
+      paymentStatusInfo.newStatus = newStatus;
 
       // Konfirmasi payment — amount di-update ke nominal yang admin verifikasi (bisa beda
       // dari yang customer submit, lihat docs/arsitektur-billing.md § "Nominal Pembayaran
@@ -1189,6 +1328,14 @@ export async function verifySubmittedPaymentAction(
             invoiceUrl,
           },
         });
+      }
+    }
+
+    if (paymentStatusInfo.newStatus === "paid") {
+      try {
+        await activateForumMembershipIfApplicable(slug, tenantDb, payment.sourceId, notifyMemberId);
+      } catch (err) {
+        console.error("[verifySubmittedPaymentAction] aktivasi forum gagal (non-fatal):", err);
       }
     }
 

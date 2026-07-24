@@ -57,8 +57,17 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   });
 }
 
-export default async function CampaignDetailPage({ params }: { params: Params }) {
+export default async function CampaignDetailPage({
+  params, searchParams,
+}: {
+  params: Params;
+  searchParams: Promise<{ forGabung?: string }>;
+}) {
   const { tenant: slug, slug: campaignSlug } = await params;
+  const { forGabung } = await searchParams;
+  // Penanda "niat bayar untuk daftar forum" dari /gabung — lihat
+  // docs/arsitektur-backbone-ikpm.md § "Pemisahan Donasi vs Registrasi Forum".
+  const isForGabungRegistration = forGabung === "1";
 
   const [tenant] = await db.select({ id: tenants.id, name: tenants.name, isActive: tenants.isActive })
     .from(tenants).where(eq(tenants.slug, slug)).limit(1);
@@ -294,6 +303,7 @@ export default async function CampaignDetailPage({ params }: { params: Params })
         isLoggedIn={!!session?.user?.id}
         memberPhone={memberPhone}
         memberEmail={memberEmail}
+        forGabungRegistration={isForGabungRegistration}
       />
     </>
   );

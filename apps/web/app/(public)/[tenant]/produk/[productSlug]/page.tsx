@@ -63,8 +63,17 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   });
 }
 
-export default async function ProdukDetailPage({ params }: { params: Params }) {
+export default async function ProdukDetailPage({
+  params, searchParams,
+}: {
+  params: Params;
+  searchParams: Promise<{ forGabung?: string }>;
+}) {
   const { tenant: slug, productSlug } = await params;
+  const { forGabung } = await searchParams;
+  // Penanda "niat bayar untuk daftar forum" dari /gabung — lihat
+  // docs/arsitektur-backbone-ikpm.md § "Pemisahan Donasi vs Registrasi Forum".
+  const isForGabungRegistration = forGabung === "1";
 
   const [tenant] = await db
     .select({ id: tenants.id, name: tenants.name, isActive: tenants.isActive })
@@ -341,6 +350,7 @@ export default async function ProdukDetailPage({ params }: { params: Params }) {
           navMenu={navMenu}
           siteName={tenant.name}
           pageUrl={pageUrl}
+          forGabungRegistration={isForGabungRegistration}
         />
 
         {/* Deskripsi */}

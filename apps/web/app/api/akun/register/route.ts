@@ -64,20 +64,27 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Tenant lookup ─────────────────────────────────────────────────────────
-    let registeredAtTenant: string | null = null;
-    let tenantRefCabangId:  string | null = null;
+    let registeredAtTenant:     string | null = null;
+    let tenantRefCabangId:      string | null = null;
+    let registeredAtTenantType: string | null = null;
     if (tenantSlug) {
       const tenant = await db.query.tenants.findFirst({
         where:   eq(tenants.slug, tenantSlug),
-        columns: { id: true, refCabangId: true },
+        columns: { id: true, refCabangId: true, tenantType: true },
       });
-      registeredAtTenant = tenant?.id ?? null;
-      tenantRefCabangId  = tenant?.refCabangId ?? null;
+      registeredAtTenant     = tenant?.id ?? null;
+      tenantRefCabangId      = tenant?.refCabangId ?? null;
+      registeredAtTenantType = tenant?.tenantType ?? null;
     }
 
-    // Helper: daftarkan member ke tenant (idempotent via ON CONFLICT DO NOTHING)
+    // Helper: daftarkan member ke tenant (idempotent via ON CONFLICT DO NOTHING).
+    // Forum SENGAJA di-skip — satu-satunya jalur resmi jadi anggota forum adalah `/gabung`
+    // (lihat docs/arsitektur-backbone-ikpm.md § "Alur Pendaftaran Forum v2"), bukan sekadar
+    // registrasi akun di domain forum tersebut. Cabang/marhalah TIDAK berubah — auto-join
+    // saat registrasi tetap terjadi seperti sebelumnya.
     async function joinTenant(memberId: string) {
       if (!registeredAtTenant) return;
+      if (registeredAtTenantType === "forum") return;
       await db.insert(tenantMemberships)
         .values({
           tenantId:      registeredAtTenant,

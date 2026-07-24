@@ -22,6 +22,7 @@ export const SETTING_GROUPS = [
   "toko",      // pengaturan toko: mitra, komisi, info toko
   "donasi",    // pengaturan donasi: rekomendasi nominal
   "event",     // pengaturan event: desain kartu arsip
+  "forum",     // pengaturan keanggotaan forum: produk/campaign syarat iuran (tenant forum saja)
 ] as const;
 export type SettingGroup = typeof SETTING_GROUPS[number];
 

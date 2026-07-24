@@ -16,6 +16,7 @@ import {
   LayoutTemplate,
   Puzzle,
   Search,
+  UsersRound,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -33,12 +34,16 @@ const NAV_ITEMS = [
   { label: "Add-on",          href: "addons",        icon: Puzzle         },
 ] as const;
 
-export function SettingsNav({ slug }: { slug: string }) {
+// Item khusus tenant forum — ditambahkan kondisional, lihat prop isForum.
+const FORUM_NAV_ITEM = { label: "Keanggotaan", href: "keanggotaan", icon: UsersRound } as const;
+
+export function SettingsNav({ slug, isForum = false }: { slug: string; isForum?: boolean }) {
   const pathname = usePathname();
+  const items = isForum ? [...NAV_ITEMS, FORUM_NAV_ITEM] : NAV_ITEMS;
 
   return (
     <nav className="flex flex-row gap-1 overflow-x-auto lg:flex-col">
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const href = `/app/${slug}/settings/${item.href}`;
         const isActive = pathname === href || pathname.startsWith(href + "/");
         const Icon = item.icon;

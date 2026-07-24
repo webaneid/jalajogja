@@ -24,6 +24,7 @@ export * from "./member-professionals";
 export * from "./member-media";
 export * from "./member-domicile-requests";
 export * from "./tenant-memberships";
+export * from "./forum-membership-sequences";
 
 // ── Akun publik (universal customer identity) ──────────────────────────────────
 export * from "./profiles";

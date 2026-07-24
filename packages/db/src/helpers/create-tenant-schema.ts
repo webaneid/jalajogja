@@ -1016,7 +1016,7 @@ export async function createTenantSchemaInDb(
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
         key        TEXT        NOT NULL,
         "group"    TEXT        NOT NULL DEFAULT 'general'
-                               CHECK ("group" IN ('general','contact','payment','display','mail','notif','website','keuangan','toko','donasi','event')),
+                               CHECK ("group" IN ('general','contact','payment','display','mail','notif','website','keuangan','toko','donasi','event','forum')),
         value      JSONB       NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (key, "group")
@@ -1151,6 +1151,9 @@ export async function createTenantSchemaInDb(
         quantity   INTEGER        NOT NULL DEFAULT 1 CHECK (quantity >= 1),
         notes      TEXT,
         sort_order INTEGER        NOT NULL DEFAULT 0,
+        -- true HANYA kalau item ditambahkan lewat link "bayar untuk gabung forum" di /gabung —
+        -- lihat docs/arsitektur-backbone-ikpm.md § "Pemisahan Donasi vs Registrasi Forum".
+        for_gabung_registration BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )
     `));
@@ -1214,7 +1217,9 @@ export async function createTenantSchemaInDb(
         seller_id   UUID,
         -- Diskon/voucher (per baris — TIDAK PERNAH memotong invoice secara keseluruhan)
         discount_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
-        voucher_id      UUID          REFERENCES "${s}".vouchers(id) ON DELETE SET NULL
+        voucher_id      UUID          REFERENCES "${s}".vouchers(id) ON DELETE SET NULL,
+        -- Disalin dari cart_items.for_gabung_registration saat checkout
+        for_gabung_registration BOOLEAN NOT NULL DEFAULT false
       )
     `));
 

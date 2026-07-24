@@ -75,6 +75,13 @@ export function createCartItemsTable(s: ReturnType<typeof pgSchema>) {
     quantity:  integer("quantity").notNull().default(1),
     notes:     text("notes"),
     sortOrder: integer("sort_order").notNull().default(0),
+    // Ditandai true HANYA kalau item ini ditambahkan lewat link "bayar untuk gabung forum" di
+    // /gabung (query param ?forGabung=1) — dipakai activateForumMembershipIfApplicable() untuk
+    // memastikan donasi/pembelian ORGANIK (lewat halaman produk/campaign biasa, tanpa niat
+    // daftar forum) TIDAK PERNAH mengaktifkan keanggotaan meski itemId-nya kebetulan sama
+    // dengan syarat iuran forum. Lihat docs/arsitektur-backbone-ikpm.md
+    // § "Pemisahan Donasi vs Registrasi Forum".
+    forGabungRegistration: boolean("for_gabung_registration").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   }, (t) => ({
     cartIdx: index("cart_items_cart_id_idx").on(t.cartId),
@@ -159,6 +166,9 @@ export function createInvoiceItemsTable(s: ReturnType<typeof pgSchema>) {
     // docs/arsitektur-voucher.md. total = (unitPrice*quantity) - discountAmount, di-clamp >= 0.
     discountAmount: numeric("discount_amount", { precision: 15, scale: 2 }).notNull().default("0"),
     voucherId:      uuid("voucher_id"), // FK → vouchers.id via SQL
+    // Disalin dari cart_items.for_gabung_registration saat checkout — lihat komentar di
+    // createCartItemsTable() untuk penjelasan lengkap.
+    forGabungRegistration: boolean("for_gabung_registration").notNull().default(false),
   }, (t) => ({
     invoiceIdx: index("invoice_items_invoice_id_idx").on(t.invoiceId),
   }));

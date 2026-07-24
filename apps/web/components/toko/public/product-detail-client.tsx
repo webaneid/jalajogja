@@ -79,6 +79,10 @@ type Props = {
   navMenu:       NavItem[];
   siteName:      string;
   pageUrl:       string;
+  // Penanda "niat bayar untuk daftar forum" dari /gabung?forGabung=1 — lihat
+  // docs/arsitektur-backbone-ikpm.md § "Pemisahan Donasi vs Registrasi Forum". Default false
+  // untuk kunjungan biasa (bukan dari /gabung).
+  forGabungRegistration?: boolean;
 };
 
 export function ProductDetailClient({
@@ -92,6 +96,7 @@ export function ProductDetailClient({
   navMenu,
   siteName,
   pageUrl,
+  forGabungRegistration = false,
 }: Props) {
   const isVariable = product.productType === "variable";
 
@@ -162,6 +167,7 @@ export function ProductDetailClient({
       name:      itemName,
       unitPrice,
       quantity,
+      forGabung: forGabungRegistration,
     });
 
     if (result.success) {

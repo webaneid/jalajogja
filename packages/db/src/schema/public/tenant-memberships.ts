@@ -54,6 +54,14 @@ export const tenantMemberships = pgTable("tenant_memberships", {
   approvedAt:     timestamp("approved_at",  { withTimezone: true }),
   expiresAt:      timestamp("expires_at",   { withTimezone: true }), // untuk iuran tahunan
 
+  // Nomor keanggotaan lokal — KHUSUS forum (null untuk cabang/marhalah). Berbeda dari
+  // members.member_number (global lintas IKPM) — ini penomoran sendiri per forum, opsional,
+  // dikonfigurasi admin di /settings/keanggotaan. Disimpan sebagai STRING HASIL JADI
+  // (mis. "2017.00001"), bukan direkonstruksi dari bagian mentah di titik baca — lihat
+  // lib/forum-membership-number.ts + docs/arsitektur-backbone-ikpm.md § "Nomor Keanggotaan
+  // Lokal Forum".
+  membershipNumber: text("membership_number"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

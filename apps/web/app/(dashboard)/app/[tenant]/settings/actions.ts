@@ -3,12 +3,13 @@
 import { getTenantAccess } from "@/lib/tenant";
 import { canManageUsers } from "@/lib/permissions";
 import { createTenantDb, db, tenants, members, tenantMemberships, contacts, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
-import { upsertSettings } from "@jalajogja/db";
+import { upsertSettings, upsertSetting } from "@jalajogja/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import type { Level, Module } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
+import { FORUM_MEMBERSHIP_NUMBER_FORMATS, type ForumMembershipNumberFormat } from "@/lib/forum-membership-number";
 
 type ActionResult = { error?: string };
 type StrictActionResult = { success: true } | { success: false; error: string };
@@ -1198,5 +1199,55 @@ export async function resetSeoPageOverrideAction(
     .where(eq(schema.seoPageOverrides.pageKey, pageKey));
 
   revalidatePath(`/app/${slug}/settings/seo`);
+  return {};
+}
+
+// ── Keanggotaan (khusus tenant forum) ─────────────────────────────────────────
+// Konfigurasi produk/campaign sebagai syarat iuran forum. Disimpan di settings key
+// "membership_config", group "forum" (migration 0042). Dibaca oleh
+// activateForumMembershipIfApplicable() di finance/billing/actions.ts saat invoice
+// lunas. Lihat docs/arsitektur-backbone-ikpm.md § "Alur Pendaftaran Forum v2".
+
+export type MembershipConfigData = {
+  requiredProductId:  string | null;
+  requiredCampaignId: string | null;
+  paymentRequired:    boolean;
+  requireMode:        "either" | "both";
+  // Teks bebas (multi-paragraf, dipisah baris baru) yang dijelaskan admin forum tentang
+  // sifat/aturan keanggotaan mereka — ditampilkan apa adanya di halaman publik /gabung
+  // sebelum tombol daftar. Opsional — kosong berarti tidak ada info tambahan.
+  registrationInfo: string | null;
+  // Nomor keanggotaan lokal forum (opsional) — null berarti fitur nonaktif, tidak ada
+  // membership_number yang digenerate saat member bergabung. Lihat
+  // lib/forum-membership-number.ts.
+  membershipNumberFormat: ForumMembershipNumberFormat | null;
+};
+
+export async function saveMembershipConfigAction(
+  slug:   string,
+  values: MembershipConfigData,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { error: "Akses ditolak." };
+  if (access.tenant.tenantType !== "forum") return { error: "Hanya untuk tenant forum." };
+
+  const tenantDb = createTenantDb(slug);
+
+  const membershipNumberFormat =
+    values.membershipNumberFormat && FORUM_MEMBERSHIP_NUMBER_FORMATS.includes(values.membershipNumberFormat)
+      ? values.membershipNumberFormat
+      : null;
+
+  await upsertSetting(tenantDb, "membership_config", "forum", {
+    requiredProductId:  values.requiredProductId  || null,
+    requiredCampaignId: values.requiredCampaignId || null,
+    paymentRequired:    !!values.paymentRequired,
+    requireMode:        values.requireMode === "both" ? "both" : "either",
+    registrationInfo:   values.registrationInfo?.trim() || null,
+    membershipNumberFormat,
+  });
+
+  revalidatePath(`/app/${slug}/settings/keanggotaan`);
+  revalidatePath(`/${slug}/gabung`);
   return {};
 }

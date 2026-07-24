@@ -19,7 +19,7 @@ export default async function SettingsLayout({
       <div className="flex flex-col gap-6 lg:flex-row lg:gap-10">
         {/* Sidebar nav kiri — horizontal scroll di mobile, vertikal di desktop */}
         <aside className="w-full shrink-0 lg:w-52">
-          <SettingsNav slug={slug} />
+          <SettingsNav slug={slug} isForum={access.tenant.tenantType === "forum"} />
         </aside>
 
         {/* Konten section */}

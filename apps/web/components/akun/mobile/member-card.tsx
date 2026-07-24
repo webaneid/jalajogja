@@ -20,10 +20,16 @@ type Props = {
   logoUrl:      string | null;
   siteName:     string;
   color:        string; // hex, dari resolveAkunBranding().primaryColor
+  // Nomor keanggotaan lokal forum (opsional) — HANYA terisi untuk tenant tipe forum yang
+  // member-nya aktif di situ (lihat tenant_memberships.membership_number,
+  // lib/forum-membership-number.ts). Kalau ada, MENGGANTIKAN memberNumber (No. Anggota IKPM
+  // global) di kartu — tidak pernah tampil bersamaan. Tidak berlaku untuk cabang/marhalah,
+  // karena kolom ini memang tidak pernah diisi untuk kedua tipe itu.
+  forumMembershipNumber?: string | null;
 };
 
 export function MemberCard({
-  type, name, memberNumber, stambuk, logoUrl, siteName, color,
+  type, name, memberNumber, stambuk, logoUrl, siteName, color, forumMembershipNumber = null,
 }: Props) {
   const isMember = type === "member";
   const cardVars = {
@@ -57,16 +63,24 @@ export function MemberCard({
 
       <div className="relative mt-6">
         <p className="text-lg font-bold leading-tight">{name}</p>
-        {isMember && memberNumber && (
+        {isMember && forumMembershipNumber ? (
+          <>
+            <p className="mt-1 font-mono text-xl tracking-[0.15em] text-primary-foreground/90">
+              {forumMembershipNumber}
+            </p>
+            <p className="mt-0.5 text-[10px] text-primary-foreground/60">
+              No. ID {siteName}
+            </p>
+          </>
+        ) : isMember && memberNumber ? (
           <p className="mt-1 font-mono text-xl tracking-[0.15em] text-primary-foreground/90">
             {memberNumber}
           </p>
-        )}
-        {isMember && !memberNumber && stambuk && (
+        ) : isMember && stambuk ? (
           <p className="mt-1 font-mono text-xl tracking-[0.15em] text-primary-foreground/90">
             Stambuk {stambuk}
           </p>
-        )}
+        ) : null}
       </div>
 
       {/* Baris bawah — nama SUDAH tampil besar di tengah, jadi bagian ini bukan echo nama lagi

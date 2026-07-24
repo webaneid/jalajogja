@@ -30,6 +30,11 @@ export type CartItemInput = {
   unitPrice:   number;
   quantity?:   number;
   notes?:      string;
+  // Penanda "niat bayar untuk daftar forum" — HANYA true kalau item ditambahkan lewat link
+  // ?forGabung=1 di halaman /gabung. Lihat docs/arsitektur-backbone-ikpm.md
+  // § "Pemisahan Donasi vs Registrasi Forum". Default false — donasi/pembelian biasa TIDAK
+  // PERNAH mengaktifkan keanggotaan forum meski itemId-nya kebetulan cocok syarat iuran.
+  forGabung?:  boolean;
 };
 
 export type CartItem = {
@@ -369,7 +374,14 @@ export async function addToCartAction(
       if (existing) {
         await tenantDb
           .update(schema.cartItems)
-          .set({ quantity: existing.quantity + (item.quantity ?? 1) })
+          .set({
+            quantity: existing.quantity + (item.quantity ?? 1),
+            // Retroaktif: kalau user kembali lewat link /gabung untuk item yang sudah ada di
+            // cart (ditambahkan sebelumnya lewat jalur biasa), tandai baris yang sudah ada —
+            // jangan pernah UN-tandai baris yang sebelumnya sudah true hanya karena panggilan
+            // ini forGabung=false.
+            ...(item.forGabung ? { forGabungRegistration: true } : {}),
+          })
           .where(eq(schema.cartItems.id, existing.id));
 
         revalidatePath(`/${slug}/keranjang`);
@@ -394,6 +406,7 @@ export async function addToCartAction(
         quantity:  item.quantity ?? 1,
         notes:     item.notes?.trim() ?? null,
         sortOrder: Number(cnt),
+        forGabungRegistration: !!item.forGabung,
       })
       .returning({ id: schema.cartItems.id });
 
@@ -598,6 +611,7 @@ export async function checkoutAction(
         unitPrice: number;
         quantity:  number;
         mitraId:   string | null;
+        forGabungRegistration: boolean;
       }> = [];
 
       for (const item of cartItems) {
@@ -633,6 +647,7 @@ export async function checkoutAction(
           unitPrice,
           quantity:  item.quantity,
           mitraId,
+          forGabungRegistration: item.forGabungRegistration,
         });
       }
 
@@ -738,6 +753,7 @@ export async function checkoutAction(
             sellerId:    item.mitraId ?? null,
             discountAmount: discountAmount.toFixed(2),
             voucherId:      discountAmount > 0 ? (voucherApplication?.voucher.id ?? null) : null,
+            forGabungRegistration: item.forGabungRegistration,
           };
         })
       );

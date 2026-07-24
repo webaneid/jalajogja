@@ -7,7 +7,9 @@ import { db, tenantMemberships, tenants, members, refIkpmCabang, createTenantDb,
 import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import { resolveAkunBranding } from "@/lib/resolve-akun-branding";
 import { getTenantSeoBase }    from "@/lib/tenant-seo";
+import { checkMemberEligibility, type MemberEligibilityField } from "@/lib/member-eligibility";
 import { MemberCard } from "@/components/akun/mobile/member-card";
+import { MembershipEligibilityOverlay } from "@/components/akun/membership-eligibility-overlay";
 import {
   BadgeCheck, Receipt, Heart, CalendarDays,
   ShoppingBag, AlertCircle, Building2, BookOpen, ImageIcon, Briefcase, ClipboardList,
@@ -34,6 +36,7 @@ export default async function AkunPage({ params }: { params: Params }) {
     memberNumber:    string | null;
     status:          string | null;
     primaryCabangNama: string | null;  // dari ref_ikpm_cabang (cabang resmi PP IKPM)
+    forumMembershipNumber: string | null; // nomor lokal forum (khusus tenant forum, opsional)
   } | null = null;
   let orgMemberLabel = "Keanggotaan IKPM";
 
@@ -49,9 +52,11 @@ export default async function AkunPage({ params }: { params: Params }) {
       .limit(1);
 
     // Status keanggotaan SAYA DI TENANT INI — fakta per-tenant, scoped ke browsed
-    // tenant secara sengaja (beda dari branding, lihat resolveAkunBranding di bawah)
+    // tenant secara sengaja (beda dari branding, lihat resolveAkunBranding di bawah).
+    // membershipNumber ikut di-select — kalau tenant ini forum dan sudah dikonfigurasi,
+    // ini nomor lokal forum (bukan member_number global).
     const [membershipRow] = await db
-      .select({ status: tenantMemberships.status })
+      .select({ status: tenantMemberships.status, membershipNumber: tenantMemberships.membershipNumber })
       .from(tenantMemberships)
       .innerJoin(tenants, eq(tenants.id, tenantMemberships.tenantId))
       .where(and(
@@ -76,7 +81,61 @@ export default async function AkunPage({ params }: { params: Params }) {
         memberNumber:      memberRow.memberNumber,
         status:            membershipRow?.status ?? null,
         primaryCabangNama,
+        forumMembershipNumber: membershipRow?.membershipNumber ?? null,
       };
+    }
+  }
+
+  // Eligibility overlay — standar UMUM untuk SEMUA tipe tenant, bukan cuma forum. Kartu
+  // tetap dirender di belakang, cuma ketutup visual. Lihat docs/arsitektur-akun.md
+  // § "Eligibility Overlay Generik". Query tenant terpisah dari membershipInfo di atas
+  // (sengaja) — INNER JOIN di atas mensyaratkan baris tenant_memberships sudah ada,
+  // padahal justru "belum ada baris sama sekali" adalah kasus utama yang harus
+  // terdeteksi di sini.
+  //
+  // Kondisi tampil beda per tipe tenant:
+  //   - Forum: sampai genuinely forumStatus='active' (lewat /gabung) — termasuk kasus
+  //     "sudah eligible tapi belum klik gabung".
+  //   - Cabang/marhalah: HANYA selama belum eligible — begitu eligible, keanggotaan
+  //     SUDAH otomatis (auto-populate), overlay tidak perlu tampil lagi.
+  let showEligibilityOverlay = false;
+  let overlayMissing: MemberEligibilityField[] = [];
+  let overlayTenantName = "";
+  let overlayIsForum = false;
+
+  if (isMember && identity.memberId) {
+    const [browsedTenantRow] = await db
+      .select({ id: tenants.id, tenantType: tenants.tenantType, name: tenants.name })
+      .from(tenants)
+      .where(eq(tenants.slug, slug))
+      .limit(1);
+
+    if (browsedTenantRow) {
+      overlayTenantName = browsedTenantRow.name;
+      overlayIsForum    = browsedTenantRow.tenantType === "forum";
+
+      if (overlayIsForum) {
+        const [forumMembershipRow] = await db
+          .select({ forumStatus: tenantMemberships.forumStatus })
+          .from(tenantMemberships)
+          .where(and(
+            eq(tenantMemberships.tenantId, browsedTenantRow.id),
+            eq(tenantMemberships.memberId, identity.memberId),
+          ))
+          .limit(1);
+
+        if (forumMembershipRow?.forumStatus !== "active") {
+          showEligibilityOverlay = true;
+          const eligibility = await checkMemberEligibility(identity.memberId);
+          overlayMissing = eligibility.missing;
+        }
+      } else {
+        const eligibility = await checkMemberEligibility(identity.memberId);
+        if (!eligibility.eligible) {
+          showEligibilityOverlay = true;
+          overlayMissing = eligibility.missing;
+        }
+      }
     }
   }
 
@@ -87,12 +146,14 @@ export default async function AkunPage({ params }: { params: Params }) {
   let logoUrl: string | null;
   let siteName: string;
   let primaryColor: string;
+  let memberVerified = false;
   if (isMember && identity.memberId) {
     const branding = await resolveAkunBranding(identity.memberId, slug);
     logoUrl        = branding.logoUrl;
     siteName       = branding.orgName;
     orgMemberLabel = branding.memberLabel;
     primaryColor   = branding.primaryColor;
+    memberVerified = branding.verified;
   } else {
     const [seo, displaySettings] = await Promise.all([
       getTenantSeoBase(slug),
@@ -128,55 +189,71 @@ export default async function AkunPage({ params }: { params: Params }) {
 
       {/* Info keanggotaan (anggota saja) */}
       {isMember && (
-        <div className="rounded-xl border border-border p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 font-semibold text-sm">
-              <BadgeCheck className="h-4 w-4 text-primary" />
-              {orgMemberLabel}
-            </div>
-            <a href={`${baseUrl}/akun/lengkapi`} className="text-xs text-primary hover:underline">
-              {isIncomplete ? "Lengkapi →" : "Edit →"}
-            </a>
-          </div>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            {membershipInfo?.memberNumber && (
-              <>
-                <dt className="text-muted-foreground">No. Anggota</dt>
-                <dd className="font-mono font-medium">{membershipInfo.memberNumber}</dd>
-              </>
-            )}
-            {identity.stambuk && (
-              <>
-                <dt className="text-muted-foreground">Stambuk Gontor</dt>
-                <dd className="font-mono">{identity.stambuk}</dd>
-              </>
-            )}
-            {membershipInfo?.primaryCabangNama ? (
-              <>
-                <dt className="text-muted-foreground">PC IKPM</dt>
-                <dd>{membershipInfo.primaryCabangNama}</dd>
-              </>
-            ) : (
-              <>
-                <dt className="text-muted-foreground">PC IKPM</dt>
-                <dd className="text-muted-foreground italic text-xs">
-                  <a href={`${baseUrl}/akun/lengkapi`} className="underline hover:text-foreground">Pilih cabang Anda →</a>
-                </dd>
-              </>
-            )}
-            {membershipInfo?.status && (
-              <>
-                <dt className="text-muted-foreground">Status</dt>
-                <dd className="capitalize">{membershipInfo.status}</dd>
-              </>
-            )}
-          </dl>
-          {identity.memberId && (
-            <div className="pt-2 border-t border-border">
-              <a href={`${baseUrl}/anggota/${identity.memberId}`} className="text-sm text-primary hover:underline">
-                Lihat profil lengkap →
+        <div className="relative">
+          <div className="rounded-xl border border-border p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-semibold text-sm">
+                {memberVerified && <BadgeCheck className="h-4 w-4 text-primary" />}
+                {orgMemberLabel}
+              </div>
+              <a href={`${baseUrl}/akun/lengkapi`} className="text-xs text-primary hover:underline">
+                {isIncomplete ? "Lengkapi →" : "Edit →"}
               </a>
             </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              {membershipInfo?.memberNumber && (
+                <>
+                  <dt className="text-muted-foreground">No. Anggota</dt>
+                  <dd className="font-mono font-medium">{membershipInfo.memberNumber}</dd>
+                </>
+              )}
+              {membershipInfo?.forumMembershipNumber && (
+                <>
+                  <dt className="text-muted-foreground">No. Anggota Forum</dt>
+                  <dd className="font-mono font-medium">{membershipInfo.forumMembershipNumber}</dd>
+                </>
+              )}
+              {identity.stambuk && (
+                <>
+                  <dt className="text-muted-foreground">Stambuk Gontor</dt>
+                  <dd className="font-mono">{identity.stambuk}</dd>
+                </>
+              )}
+              {membershipInfo?.primaryCabangNama ? (
+                <>
+                  <dt className="text-muted-foreground">PC IKPM</dt>
+                  <dd>{membershipInfo.primaryCabangNama}</dd>
+                </>
+              ) : (
+                <>
+                  <dt className="text-muted-foreground">PC IKPM</dt>
+                  <dd className="text-muted-foreground italic text-xs">
+                    <a href={`${baseUrl}/akun/lengkapi`} className="underline hover:text-foreground">Pilih cabang Anda →</a>
+                  </dd>
+                </>
+              )}
+              {membershipInfo?.status && (
+                <>
+                  <dt className="text-muted-foreground">Status</dt>
+                  <dd className="capitalize">{membershipInfo.status}</dd>
+                </>
+              )}
+            </dl>
+            {identity.memberId && (
+              <div className="pt-2 border-t border-border">
+                <a href={`${baseUrl}/anggota/${identity.memberId}`} className="text-sm text-primary hover:underline">
+                  Lihat profil lengkap →
+                </a>
+              </div>
+            )}
+          </div>
+          {showEligibilityOverlay && (
+            <MembershipEligibilityOverlay
+              tenantName={overlayTenantName}
+              missing={overlayMissing}
+              baseUrl={baseUrl}
+              isForum={overlayIsForum}
+            />
           )}
         </div>
       )}
@@ -231,16 +308,27 @@ export default async function AkunPage({ params }: { params: Params }) {
           margin-top dari space-y sama sekali, jadi -mt-16 di sini tidak konflik). */}
       <div className="-mt-16 space-y-4">
         {completeBanner}
-        <MemberCard
-          type={identity.type}
-          name={identity.name}
-          photoUrl={identity.photoUrl}
-          memberNumber={membershipInfo?.memberNumber ?? null}
-          stambuk={identity.stambuk}
-          logoUrl={logoUrl}
-          siteName={siteName}
-          color={primaryColor}
-        />
+        <div className="relative">
+          <MemberCard
+            type={identity.type}
+            name={identity.name}
+            photoUrl={identity.photoUrl}
+            memberNumber={membershipInfo?.memberNumber ?? null}
+            stambuk={identity.stambuk}
+            logoUrl={logoUrl}
+            siteName={siteName}
+            color={primaryColor}
+            forumMembershipNumber={membershipInfo?.forumMembershipNumber ?? null}
+          />
+          {showEligibilityOverlay && (
+            <MembershipEligibilityOverlay
+              tenantName={overlayTenantName}
+              missing={overlayMissing}
+              baseUrl={baseUrl}
+              isForum={overlayIsForum}
+            />
+          )}
+        </div>
       </div>
 
       {/* 3 quick action utama */}

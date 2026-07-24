@@ -35,6 +35,9 @@ type Props = {
   isLoggedIn:         boolean;
   memberPhone?:       string;
   memberEmail?:       string;
+  // Penanda "niat bayar untuk daftar forum" dari /gabung?forGabung=1 — lihat
+  // docs/arsitektur-backbone-ikpm.md § "Pemisahan Donasi vs Registrasi Forum".
+  forGabungRegistration?: boolean;
 };
 
 const ANIMAL_LABEL: Record<string, string> = { domba: "Domba", kambing: "Kambing", sapi: "Sapi" };
@@ -48,6 +51,7 @@ export function CampaignDetailClient({
   campaignId, campaignTitle, campaignType, tenantSlug,
   recommendedAmounts, qurbanAnimals, slaughterFees, defaultName,
   isLoggedIn, memberPhone = "", memberEmail = "",
+  forGabungRegistration = false,
 }: Props) {
   const isQurban = campaignType === "qurban";
 
@@ -168,6 +172,7 @@ export function CampaignDetailClient({
       name:      itemName,
       unitPrice: donationAmount,
       notes,
+      forGabung: forGabungRegistration,
     });
 
     if (res.success) {
