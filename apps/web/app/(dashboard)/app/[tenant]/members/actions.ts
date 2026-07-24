@@ -589,6 +589,7 @@ export type BusinessEntryData = {
   // Klasifikasi (category + sector wajib di DB)
   category: string;
   sector: string;
+  businessFields?: string[];
   legality?: string;
   position?: string;
   // Skala
@@ -720,6 +721,7 @@ export async function saveMemberBusinessesAction(
         description: entry.description?.trim() || null,
         category: entry.category as "Jasa" | "Produsen" | "Distributor" | "Trading" | "Profesional",
         sector:   entry.sector   as "Teknologi" | "Jasa Profesional" | "Kreatif" | "Manufaktur" | "Kesehatan & Pendidikan" | "Konsumsi & Ritel" | "Sumber Daya Alam",
+        businessFields: entry.businessFields ?? [],
         legality: (entry.legality  || null) as "PT Perseorangan" | "PT" | "CV" | "Yayasan" | "Perkumpulan" | "Koperasi" | "Belum Memiliki Legalitas" | null,
         position: (entry.position  || null) as "Komisaris" | "Direktur" | "Pengelola" | "Manajer" | null,
         employees:(entry.employees || null) as "1-4" | "5-10" | "11-20" | "Lebih dari 20" | null,

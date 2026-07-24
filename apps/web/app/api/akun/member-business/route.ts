@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
       description: memberBusinesses.description,
       category:    memberBusinesses.category,
       sector:      memberBusinesses.sector,
+      businessFields: memberBusinesses.businessFields,
       legality:    memberBusinesses.legality,
       position:    memberBusinesses.position,
       employees:   memberBusinesses.employees,
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json() as {
     entries: {
       name: string; brand?: string; description?: string;
-      category: string; sector: string; legality?: string;
+      category: string; sector: string; businessFields?: string[]; legality?: string;
       position?: string; employees?: string; branches?: string; revenue?: string;
       addressCountry?: string; addressProvinceId?: number; addressRegencyId?: number;
       addressDistrictId?: number; addressVillageId?: number;
@@ -163,6 +164,7 @@ export async function POST(req: NextRequest) {
         description: e.description?.trim() || null,
         category:    e.category as "Jasa"|"Produsen"|"Distributor"|"Trading"|"Profesional",
         sector:      e.sector   as "Teknologi"|"Jasa Profesional"|"Kreatif"|"Manufaktur"|"Kesehatan & Pendidikan"|"Konsumsi & Ritel"|"Sumber Daya Alam",
+        businessFields: e.businessFields ?? [],
         legality:    (e.legality  || null) as "PT Perseorangan"|"PT"|"CV"|"Yayasan"|"Perkumpulan"|"Koperasi"|"Belum Memiliki Legalitas"|null,
         position:    (e.position  || null) as "Komisaris"|"Direktur"|"Pengelola"|"Manajer"|null,
         employees:   (e.employees || null) as "1-4"|"5-10"|"11-20"|"Lebih dari 20"|null,

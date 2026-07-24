@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { TagMultiSelect } from "@/components/ui/tag-multi-select";
+import { BUSINESS_FIELD_SUGGESTIONS } from "@/lib/business-fields";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { displayPhone } from "@/lib/phone";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
@@ -19,7 +21,7 @@ import { CoverImageField } from "@/components/media/member-media-picker";
 type Entry = {
   _key: string;
   name: string; brand: string; description: string;
-  category: string; sector: string; legality: string;
+  category: string; sector: string; businessFields: string[]; legality: string;
   position: string; employees: string; branches: string; revenue: string;
   _addressMode:       "indonesia" | "overseas";
   addressCountry:     string;
@@ -44,7 +46,7 @@ type Entry = {
 
 type ApiRow = {
   name?: string; brand?: string; description?: string;
-  category?: string; sector?: string; legality?: string; position?: string;
+  category?: string; sector?: string; businessFields?: string[]; legality?: string; position?: string;
   employees?: string; branches?: string; revenue?: string;
   addressCountry?: string;
   addressProvinceId?: number; addressRegencyId?: number;
@@ -115,7 +117,7 @@ const REVENUES: ComboboxOption[] = [
 function newEntry(): Entry {
   return {
     _key: crypto.randomUUID(), name: "", brand: "", description: "",
-    category: "", sector: "", legality: "", position: "",
+    category: "", sector: "", businessFields: [], legality: "", position: "",
     employees: "", branches: "", revenue: "",
     _addressMode: "indonesia",
     addressCountry: "", addressProvinceId: null,
@@ -142,6 +144,7 @@ function apiRowToEntry(e: ApiRow): Entry {
     description:       e.description ?? "",
     category:          e.category    ?? "",
     sector:            e.sector      ?? "",
+    businessFields:    e.businessFields ?? [],
     legality:          e.legality    ?? "",
     position:          e.position    ?? "",
     employees:         e.employees   ?? "",
@@ -182,6 +185,7 @@ function buildPayload(e: Entry) {
     description:       trim(e.description)  || undefined,
     category:          e.category,
     sector:            e.sector,
+    businessFields:    e.businessFields.length > 0 ? e.businessFields : undefined,
     legality:          e.legality  || undefined,
     position:          e.position  || undefined,
     employees:         e.employees || undefined,
@@ -278,6 +282,9 @@ function DetailDialog({ entry, onClose, onEdit }: {
               {entry.sector && (
                 <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{entry.sector}</span>
               )}
+              {entry.businessFields.map(bf => (
+                <span key={bf} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{bf}</span>
+              ))}
             </div>
           </div>
           <button onClick={onClose} className="shrink-0 text-muted-foreground hover:text-foreground transition-colors mt-0.5">
@@ -435,6 +442,20 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
               onValueChange={v => onUpdate({ sector: v as string })}
               placeholder="Pilih sektor" />
           </Field>
+        </div>
+        <Field label="Bidang Usaha" optional>
+          <TagMultiSelect
+            options={BUSINESS_FIELD_SUGGESTIONS}
+            value={entry.businessFields}
+            onChange={businessFields => onUpdate({ businessFields })}
+            disabled={disabled}
+            placeholder="Ketik atau pilih bidang usaha, mis. Kaligrafi..."
+          />
+          <p className="text-xs text-muted-foreground">
+            Boleh pilih lebih dari satu — tidak harus sesuai sektor di atas.
+          </p>
+        </Field>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Legalitas" optional>
             <Combobox options={LEGALITIES} value={entry.legality}
               onValueChange={v => onUpdate({ legality: v as string })}

@@ -25,6 +25,8 @@ import {
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select"
 import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-media-input"
 import { PhoneInput } from "@/components/ui/phone-input"
+import { TagMultiSelect } from "@/components/ui/tag-multi-select"
+import { BUSINESS_FIELD_SUGGESTIONS } from "@/lib/business-fields"
 import {
   saveMemberBusinessesAction,
   type BusinessEntryData,
@@ -48,6 +50,7 @@ export interface BusinessEntry {
   // Klasifikasi
   category: string
   sector: string
+  businessFields: string[]
   legality: string
   position: string
   // Skala
@@ -114,7 +117,7 @@ function newEntry(): BusinessEntry {
   return {
     id: crypto.randomUUID(),
     name: "", brand: "", description: "",
-    category: "", sector: "", legality: "", position: "",
+    category: "", sector: "", businessFields: [], legality: "", position: "",
     employees: "", branches: "", revenue: "",
     addressCountry: "",
     provinceId: null, regencyId: null, districtId: null, villageId: null,
@@ -355,6 +358,21 @@ function BusinessCard({
             onSelect={(v) => onChange("position", v)}
             disabled={disabled}
           />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-foreground">
+            Bidang Usaha <span className="font-normal text-muted-foreground">(opsional)</span>
+          </span>
+          <TagMultiSelect
+            options={BUSINESS_FIELD_SUGGESTIONS}
+            value={entry.businessFields}
+            onChange={(businessFields) => onChange("businessFields", businessFields)}
+            disabled={disabled}
+            placeholder="Ketik atau pilih bidang usaha, mis. Kaligrafi..."
+          />
+          <p className="text-xs text-muted-foreground">
+            Boleh pilih lebih dari satu — tidak harus sesuai sektor di atas.
+          </p>
         </div>
       </div>
 
@@ -610,6 +628,7 @@ export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Ste
         description: e.description || undefined,
         category:    e.category,
         sector:      e.sector,
+        businessFields: e.businessFields.length > 0 ? e.businessFields : undefined,
         legality:    e.legality    || undefined,
         position:    e.position    || undefined,
         employees:   e.employees   || undefined,

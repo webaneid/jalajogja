@@ -182,6 +182,7 @@ export default async function MemberDetailPage({
         description: memberBusinesses.description,
         category:    memberBusinesses.category,
         sector:      memberBusinesses.sector,
+        businessFields: memberBusinesses.businessFields,
         legality:    memberBusinesses.legality,
         position:    memberBusinesses.position,
         employees:   memberBusinesses.employees,

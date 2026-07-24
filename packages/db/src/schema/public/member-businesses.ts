@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, boolean, timestamp, index, jsonb } from "drizzle-orm/pg-core";
 import { members } from "./members";
 import { addresses } from "./addresses";
 import { contacts } from "./contacts";
@@ -30,6 +30,10 @@ export const memberBusinesses = pgTable("member_businesses", {
       "Sumber Daya Alam",
     ],
   }).notNull(),
+
+  // Bidang usaha spesifik — facet INDEPENDEN dari sector (bukan sub-sector/hierarki, lihat
+  // docs/arsitektur-usaha.md § 2-3), multi-select tag bebas + kurasi (lib/business-fields.ts).
+  businessFields: jsonb("business_fields").$type<string[]>().notNull().default([]),
 
   // ── Legalitas & struktur ─────────────────────────────────────────────────────
   legality: text("legality", {

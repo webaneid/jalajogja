@@ -36,6 +36,7 @@ export type BizRow = {
   description: string | null
   category: string | null
   sector: string | null
+  businessFields: string[] | null
   legality: string | null
   position: string | null
   employees: string | null
@@ -219,6 +220,7 @@ export function BusinessSection({
     description: b.description ?? "",
     category: b.category ?? "",
     sector: b.sector ?? "",
+    businessFields: b.businessFields ?? [],
     legality: b.legality ?? "",
     position: b.position ?? "",
     employees: b.employees ?? "",
@@ -288,6 +290,7 @@ export function BusinessSection({
                 <dl>
                   <Row label="Kategori"  value={biz.category} />
                   <Row label="Sektor"    value={biz.sector} />
+                  <Row label="Bidang Usaha" value={biz.businessFields?.join(", ") || null} />
                   <Row label="Legalitas" value={biz.legality} />
                   <Row label="Karyawan"  value={biz.employees} />
                   <Row label="Cabang"    value={biz.branches} />
