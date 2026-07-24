@@ -9674,8 +9674,15 @@ inkonsistensi tipe itu sebagai efek samping yang diterima, bukan disengaja secar
 build). Migration 0041 dijalankan LOKAL 2× (idempotency check — run kedua "UPDATE 0" di semua
 statement, konfirmasi aman diulang) — ditemukan+dibenarkan 1 baris `letter_contacts.phone`
 (`085210626455` → `+6285210626455`) dan 2 baris settings di tenant `pc-ikpm-jogjakarta`.
-**Migration belum dijalankan di VPS.** Belum diverifikasi visual di browser (klik link `wa.me`
-sungguhan di 4 halaman yang tadinya rusak) — user perlu coba setelah deploy.
+
+**Deploy ke VPS SELESAI (2026-07-23)** — commit `3a992a4` di-push, migration 0041 dijalankan di
+production (`CREATE FUNCTION` + 2× `UPDATE 0` untuk `public.profiles` + `DO` sukses tanpa error
+untuk loop per-tenant — `public.profiles` production ternyata sudah bersih, tidak ada baris yang
+perlu dinormalisasi di situ; PL/pgSQL `DO` block tidak expose row count per tabel jadi tidak
+tahu persis berapa baris di `donations`/`payments`/`invoices`/dll yang kena, cuma tahu prosesnya
+sukses tanpa error). Build+PM2 restart+curl 200 dikonfirmasi stabil (restart counter tidak naik
+setelah restart, log bersih). **Verifikasi visual di browser (klik link wa.me sungguhan) masih
+jadi PR user** — belum ada konfirmasi baliknya di sesi ini.
 
 ### [2026-07-23] Audit Consent Visibilitas Kontak (Usaha/Pesantren/Anggota) — Kesimpulan: Tidak Ada Bug
 
@@ -9735,8 +9742,956 @@ belum selesai" dan menambah fitur yang tidak diminta. Kalau menemukan gap consen
 serupa di masa depan, JANGAN unilateral memutuskan mana yang "lebih aman" — presentasikan
 trade-off-nya dan biarkan user memutuskan, seperti pola sesi ini.
 
+### [2026-07-23] Alur Pendaftaran Forum v2 — Perencanaan Murni, Belum Dieksekusi
+
+> Detail lengkap: **`docs/arsitektur-backbone-ikpm.md`** § "Alur Pendaftaran Forum v2 — Prinsip
+> Single-ID, Tanpa Form Baru" (v1 lama ditandai SUPERSEDED tapi dipertahankan sebagai catatan
+> sejarah, § 1–3-nya yang soal schema TIDAK superseded — itu backbone umum yang sudah live).
+
+User tanya: apakah alur pendaftaran jadi anggota FORUM (satu dari 3 tipe tenant di backbone
+IKPM) sudah ada — verifikasi kode (bukan cuma baca dokumen) mengonfirmasi: **belum ada sama
+sekali**. Roadmap dokumen lama sendiri (Phase 4) 100% unchecked, dan dikonfirmasi langsung:
+tidak ada route `/{slug}/daftar`, tidak ada `joinForumAction`, tidak ada halaman settings
+config forum, `forum_registration` tidak ada di enum `invoices.source_type`. Yang sudah ada
+cuma kolom schema nganggur (`forumStatus`/`forumInvoiceId`/`approvedAt`/`expiresAt` di
+`tenant_memberships`, dari migration 0018). **Ada tenant forum yang sudah live** (`forcreator`
+di DB lokal) — jadi gap ini bukan teoretis, sudah bisa jadi masalah nyata kalau ada yang coba
+daftar ke sana hari ini (auto-jadi member aktif tanpa konfirmasi apa pun, karena
+`/api/akun/register` tidak pernah cek `tenant_type` sama sekali).
+
+**Diskusi murni via chat (bukan Plan Mode formal), user eksplisit "jangan eksekusi apapun
+dulu"** — beberapa putaran mengarah ke desain yang JAUH lebih ramping dari rencana lama:
+
+**Kenapa rencana lama (v1, di dokumen) diganti total**: v1 mengasumsikan forum butuh FORM
+PENDAFTARAN SENDIRI ("data pre-filled, alumni konfirmasi") + `invoices.source_type` baru
+(`forum_registration`). User menegaskan: project ini sudah menganut **prinsip single-ID** —
+data anggota hidup sekali, dipakai ulang di semua tempat — jadi "daftar jadi anggota forum"
+TIDAK BOLEH jadi form baru yang mengumpulkan data lagi.
+
+**Desain v2 yang disepakati** (lihat dokumen untuk detail lengkap):
+1. **Syarat kelayakan SAMA untuk semua forum** (bukan per-forum configurable) — profil Step 1+2
+   wizard `/akun/lengkapi` lengkap (Step 3 riwayat pendidikan dikecualikan) + minimal 1 dari 3
+   direktori self-report (Usaha/Pesantren/Profesional — BUKAN field `professionId` umum yang
+   otomatis terisi di Step 1, itu akan trivial terpenuhi semua orang).
+2. **Pembayaran forum (opsional per forum) REUSE Toko/Donasi yang sudah ada** — admin forum
+   cukup MENUNJUK 1 produk dan/atau 1 campaign yang sudah ada di tenantnya sebagai "syarat
+   iuran", BUKAN bikin sistem invoice/pembayaran baru. Ini artinya `invoices.source_type` TIDAK
+   PERLU nilai baru — checkout tetap `"cart"` seperti biasa, tinggal tambah hook di
+   `confirmInvoicePaymentAction`/`verifySubmittedPaymentAction` (fungsi yang SAMA yang sudah
+   disentuh sesi audit phone/WA sebelum ini) untuk cek: item invoice yang baru lunas cocok
+   dengan produk/campaign yang dikonfigurasi tenant forum ini? Kalau ya → aktivasi
+   `tenant_memberships`. Invoice sudah otomatis ter-scope ke tenant yang benar (billing
+   per-tenant-schema) — TIDAK perlu cari lintas tenant.
+3. **UX**: saat buka domain sebuah forum di `/akun` dan belum jadi anggotanya, kartu
+   keanggotaan yang biasa tampil (`resolveAkunBranding()`) tetap dirender DI BELAKANG, tapi
+   ketutup **overlay glass-effect** (`bg-background/80 backdrop-blur-lg`, pola yang sama
+   dengan `single-mobile-topbar.tsx`) berisi tombol "Daftar Menjadi Anggota {Nama Forum}"
+   (kalau eligible) atau pesan kekurangan syarat + tautan langsung ke halaman yang perlu
+   dilengkapi (kalau belum eligible) — memaksa mereka menuntaskan status dulu sebelum bisa
+   "melihat" kartu forum itu secara normal.
+4. Klik tombol → halaman pendaftaran TERPISAH (bukan proses inline di overlay) — di situ baru
+   proses lengkap terjadi (gratis = satu klik konfirmasi; berbayar = redirect ke checkout
+   produk/campaign yang dikonfigurasi, reuse alur cart publik yang sudah ada sepenuhnya).
+
+**Kolom schema `forumStatus` dkk (migration 0018) TERNYATA tidak sia-sia** — meski Phase 4
+lama tidak pernah dieksekusi, kolom-kolom itu (dari perencanaan v1) ternyata PAS dipakai untuk
+v2 tanpa perlu migrasi baru sama sekali — satu-satunya migrasi baru yang dibutuhkan v2 cuma
+1 nilai baru di `SETTING_GROUPS` (`"forum"`), pola sama persis `0031_settings_group_event.sql`.
+
+**Susulan di sesi yang sama — ketiga keputusan terbuka di atas SUDAH DIJAWAB user dan
+DIVERIFIKASI, bukan lagi blocking:**
+1. **Produk+campaign both vs either** — dijawab lebih detail dari sekadar itu: user
+   menambahkan SUMBU BARU `paymentRequired: boolean` (checkbox admin) — kalau `false`
+   (default), produk/campaign yang ditunjuk cuma jadi ajakan dukungan sukarela, TIDAK
+   memblokir join sama sekali. `requireMode: "either"|"both"` cuma relevan kalau
+   `paymentRequired=true` DAN kedua produk+campaign ditunjuk sekaligus — default `"either"`.
+2. **Nama rute** — dikunci: `/gabung` (halaman pendaftaran) + `/app/{slug}/settings/
+   keanggotaan` (settings admin). Dicek langsung via grep — nol collision dengan rute lain.
+3. **Field `domicileStatus`** — user eksplisit menegaskan: **"kamu harus check jangan
+   ngarang, ini aplikasi sudah jadi... semua ada di dokumentasi maupun actual code."** Semua
+   10 field syarat kelayakan diverifikasi SATU PER SATU langsung ke
+   `packages/db/src/schema/public/members.ts` + `contacts.ts` (bukan dari ingatan) — SEMUA
+   cocok persis dengan yang ditulis di draft pertama, termasuk `domicileStatus` (kolom
+   langsung di `members`, bukan di `addresses`).
+
+**Aturan yang ditegaskan (generalisasi dari poin 3)**: kalau menulis rencana/dokumen
+arsitektur yang menyebut nama field/kolom DB spesifik, dan belum benar-benar di-grep/dibaca
+dari schema aktual saat menulisnya (ditulis dari ingatan percakapan/context), WAJIB tandai
+eksplisit sebagai "belum diverifikasi" di dokumen itu sendiri (seperti yang sudah dilakukan
+sesi ini) — JANGAN nulis seolah-olah sudah pasti benar. User berhak menagih verifikasi ini
+sebelum implementasi, dan itu yang terjadi di sesi ini — tandanya sistem "tulis dulu, tandai
+yang belum pasti, verifikasi belakangan" ini BEKERJA sesuai tujuannya (bukan sekadar formalitas).
+
+**Status akhir sesi**: HANYA dokumen (`docs/arsitektur-backbone-ikpm.md`, termasuk update
+susulan yang menutup ketiga poin di atas) yang ditulis + memory (`project_backbone_ikpm.md`)
+diperbarui. **Nol baris kode aplikasi disentuh** — sesuai instruksi eksplisit user. Per § 7
+dokumen (sekarang berjudul "Keputusan — Status Akhir"): **tidak ada lagi keputusan blocking
+yang menggantung** — rencana v2 siap dieksekusi dari Fase A kapan pun user memberi sinyal,
+kecuali 1 item yang sengaja dibiarkan di luar scope MVP pertama (cron reminder iuran tahunan).
+
+### [2026-07-24] Alur Pendaftaran Forum v2 — Fase A+B+C Dieksekusi (Jalur Gratis End-to-End)
+
+> Detail lengkap: **`docs/arsitektur-backbone-ikpm.md` § "Alur Pendaftaran Forum v2"** — bagian
+> "Urutan Eksekusi" sekarang berisi status per-fase + daftar file yang dibuat.
+
+User memberi izin eksekusi eksplisit dengan penekanan kuat: **"selalu terlebih dahulu claude.md
+agar konsisten, dan jangan ngarang maupun membuat sesuatu tanpa cek dan recek terlebih dahulu,
+ikut sop yg ada di claude.md terus selalu strick terhadap arsitektur."** — instruksi ini dipatuhi
+literal: setiap nama kolom/tabel yang dipakai kode (bukan cuma yang ditulis di dokumen rencana)
+diverifikasi ULANG langsung ke schema file sebelum dipakai (`members.ts`, `contacts.ts`,
+`tenant-memberships.ts`, `member-businesses.ts`, `member-owned-pesantren.ts`,
+`member-professionals.ts`, `tenants.ts`) — bukan disalin begitu saja dari dokumen rencana yang
+sudah ditulis sebelumnya (meski dokumen itu sendiri sudah diverifikasi sesi lalu, prinsip
+"jangan ngarang" diterapkan lagi di titik implementasi, bukan cuma di titik perencanaan).
+
+**Fase A (schema)** — `SETTING_GROUPS` (`packages/db/src/schema/tenant/settings.ts`) + DDL CHECK
+constraint (`create-tenant-schema.ts`) ditambah nilai `"forum"`. Migration
+`0042_settings_group_forum.sql` (pola persis `0031_settings_group_event.sql`, `DO $$ LOOP` per
+tenant aktif) dijalankan lokal, diverifikasi via query `pg_constraint` langsung terhadap tenant
+forum (`forcreator`) — dikonfirmasi `'forum'` sudah masuk array constraint.
+
+**Fase B+C digabung jadi satu milestone** (deviasi kecil dari rencana yang sudah dituliskan
+sebelumnya, dijelaskan alasannya di dokumen) — admin settings page untuk forum ditunda ke Fase D
+karena TIDAK ADA GUNANYA sampai ada picker produk/campaign untuk dikonfigurasi (Fase D); tanpa
+baris `settings` key `membership_config` tersimpan sama sekali, perilaku sistem OTOMATIS berarti
+"forum gratis, tanpa syarat bayar" — jadi milestone ini cukup membangun jalur gratis penuh:
+
+- `apps/web/lib/forum-eligibility.ts` — `checkForumEligibility(memberId)`, cek ULANG 10 kolom
+  langsung ke DB tiap kali dipanggil (bukan dari flag tersimpan) + `FORUM_ELIGIBILITY_LABELS`
+  (Bahasa Indonesia per field) + `forumEligibilityFixHref()` (routing ke `/akun/lengkapi` atau
+  `/akun/usaha` tergantung field yang kurang).
+- `apps/web/app/(public)/[tenant]/gabung/{page.tsx,actions.ts,join-forum-button.tsx}` — halaman
+  pendaftaran baru dengan 4 kemungkinan state (bukan member sama sekali / sudah jadi anggota
+  forum ini / belum eligible dengan daftar field yang kurang + link perbaikan / eligible dengan
+  tombol join). `joinForumAction` — jalur GRATIS saja untuk sekarang: verifikasi ulang session +
+  identity + tipe tenant + eligibility DI SERVER (tidak percaya state client), lalu UPSERT manual
+  (SELECT dulu → UPDATE kalau baris `tenant_memberships` sudah ada dengan status apa pun,
+  supaya baris lama yang sempat `rejected`/`suspended` bisa diaktifkan ulang tanpa menabrak
+  unique constraint `(tenantId, memberId)`; INSERT kalau belum ada baris sama sekali) dengan
+  `membershipType:'forum'`, `forumStatus:'active'`, `registeredVia:'self'`.
+- `apps/web/components/akun/forum-join-overlay.tsx` — komponen presentasional murni (server
+  component, tanpa state), glass-effect `bg-background/80 backdrop-blur-lg`, cuma berisi `<a
+  href="/gabung">` (TIDAK memproses join inline, sesuai keputusan §4 dokumen).
+- `apps/web/app/(public)/[tenant]/akun/page.tsx` — overlay diwire ke 2 titik (kartu desktop "Info
+  keanggotaan" + `MemberCard` mobile), masing-masing dibungkus wrapper `relative` tambahan untuk
+  `absolute inset-0` overlay. Query "apakah tenant forum + apakah member sudah aktif di situ"
+  SENGAJA dibuat TERPISAH dari query `membershipInfo` yang sudah ada — query lama pakai INNER
+  JOIN `tenant_memberships ⋈ tenants` yang mensyaratkan baris `tenant_memberships` sudah ADA,
+  padahal "belum ada baris sama sekali" justru kasus UTAMA yang harus terdeteksi overlay ini.
+
+**Redirect pasca-join** memakai `window.location.href` (bukan `router.push`) ke `${baseUrl}/akun`
+— mengikuti lesson lama "PC IKPM Cabang — Cache RSC basi di `/akun`" (§ [2026-07-13] di atas),
+generalisasi: navigasi PASCA-MUTASI ke `/akun` spesifik selalu butuh full reload, bukan cuma
+navigasi pasca-login.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` (percobaan pertama) + `bun run build
+--filter=@jalajogja/web` sukses (dev server dimatikan dulu, `.next` dibersihkan) — route
+`/gabung` terkonfirmasi muncul di build output. Nol migrasi DB tambahan di luar migration 0042
+(semua kolom `tenant_memberships` yang dipakai sudah ada sejak migration 0018 lama).
+
+**Belum dikerjakan (Fase D+E, exposed di dokumen)**: halaman admin `/app/{slug}/settings/
+keanggotaan` (picker produk/campaign + `paymentRequired`/`requireMode`), hook aktivasi forum di
+`confirmInvoicePaymentAction`/`verifySubmittedPaymentAction`, dan verifikasi manual end-to-end
+di browser (belum ada tenant forum + member uji coba nyata yang dicoba) — environment sesi ini
+tidak punya browser/dev-server penuh untuk uji visual, konsisten keterbatasan yang sudah dicatat
+berulang kali di lesson-lesson sebelumnya.
+
+### [2026-07-24] Alur Pendaftaran Forum v2 — Fase D Dieksekusi (Integrasi Pembayaran)
+
+> Detail lengkap: **`docs/arsitektur-backbone-ikpm.md` § "Urutan Eksekusi" → "Fase D — detail"**
+
+Langsung menyusul Fase A+B+C (lesson di atas) — user sempat bertanya klarifikasi konseptual:
+**"bukannya sudah integrated dengan donasi? jadi detected sesuai selected donasi"** — jawaban:
+BENAR sebagian — mekanisme "deteksi item mana yang dibeli" memang sudah 100% ada (billing
+universal, `invoice_items` selalu mencatat persis produk/campaign asalnya), yang BELUM ada
+cuma DUA hal spesifik: (1) admin belum punya cara MENUNJUK campaign/produk mana yang jadi
+syarat iuran forum tertentu, (2) belum ada HOOK yang mengaktifkan `tenant_memberships` setelah
+pembayaran terkait itu lunas. Sebelum eksekusi, **1 pertanyaan desain krusial** diklarifikasi via
+`AskUserQuestion`: kalau member yang BELUM eligible kebetulan bayar/donasi ke campaign yang
+ditunjuk (via jalur MANAPUN, bukan cuma `/gabung` — misal donasi organik lewat `/campaign`),
+apakah keanggotaan tetap aktif otomatis? User pilih **TIDAK** — payment saja tidak cukup,
+`checkForumEligibility()` WAJIB dicek ulang di titik konfirmasi pembayaran.
+
+**Implikasi penting dari jawaban itu**: hook aktivasi (`activateForumMembershipIfApplicable`,
+`finance/billing/actions.ts`) dirancang bereaksi terhadap **SEMBARANG invoice yang lunas**
+selama itemnya cocok dengan konfigurasi tenant — BUKAN cuma invoice yang berasal dari alur
+`/gabung`. Ini artinya reuse billing universal benar-benar penuh: tidak perlu menandai invoice
+sebagai "untuk pendaftaran forum" secara eksplisit sama sekali — siapa pun yang kebetulan
+donasi/beli item yang sama (untuk alasan apa pun) otomatis dapat "dicek ulang" kelayakannya
+begitu invoice-nya lunas, dan diaktifkan kalau memang eligible.
+
+**Struktur implementasi:**
+- `settings/actions.ts` — `MembershipConfigData` type (SATU sumber kebenaran, bukan 3 salinan)
+  + `saveMembershipConfigAction`. Guard-nya `getTenantAccess(slug)` + cek
+  `access.tenant.tenantType === "forum"` saja (POLA SAMA dengan `saveGeneralSettingsAction`/
+  `saveContactSettingsAction` — bukan `hasFullAccess(...,"keuangan")` seperti billing, karena
+  ini konfigurasi organisasi biasa, bukan data finansial sensitif).
+- `settings/keanggotaan/page.tsx` (baru) + `settings-nav.tsx` (item "Keanggotaan" muncul
+  KONDISIONAL via prop `isForum`, diteruskan dari `settings/layout.tsx` yang sudah punya
+  `access.tenant.tenantType` dari `getTenantAccess`) + `membership-config-form.tsx` (2
+  `<Combobox>` produk/campaign + checkbox `paymentRequired` + toggle `requireMode` yang HANYA
+  muncul kalau `paymentRequired=true` DAN kedua picker terisi).
+- `finance/billing/actions.ts` — `activateForumMembershipIfApplicable()` (helper privat baru,
+  dipanggil dari KEDUA `confirmInvoicePaymentAction` DAN `verifySubmittedPaymentAction`) —
+  dipanggil SETELAH `db.transaction()` (tenant-schema) commit, BUKAN di dalamnya, karena
+  `tenant_memberships` ada di PUBLIC schema (koneksi terpisah dari `tx`). Dibungkus try/catch
+  TERPISAH dari catch utama — pembayaran yang sudah sah TIDAK BOLEH gagal tercatat hanya karena
+  aktivasi forum error (fakta "uang sudah masuk" independen dari "keanggotaan teraktivasi").
+  Gating "hanya saat benar-benar lunas (bukan partial)" pakai object holder
+  `paymentStatusInfo: {newStatus: string}` — bukan `let newStatus` polos — konsisten dengan
+  lesson lama soal TypeScript narrowing `never` pada `let` yang di-reassign di dalam closure
+  `db.transaction()` dan diakses sesudahnya.
+- `gabung/actions.ts` — `joinForumAction` ditambah guard: tolak eksplisit kalau
+  `paymentRequired=true` (pertahanan server-side KEDUA — UI `/gabung` sudah tidak menampilkan
+  tombol join untuk kasus ini, tapi "server action publik tidak boleh percaya state client"
+  sudah berkali-kali ditegaskan sepanjang project ini).
+- `gabung/page.tsx` — branch UI: `paymentRequired=false` → tombol join seperti sebelumnya (+
+  CTA "Ingin mendukung forum ini?" opsional kalau ada produk/campaign dikonfigurasi meski tidak
+  wajib); `paymentRequired=true` → TIDAK ADA tombol join sama sekali, cuma link ke halaman
+  produk/campaign (mengikuti `requireMode` — "salah satu cukup" atau "wajib keduanya") dengan
+  penjelasan "keanggotaan aktif otomatis setelah pembayaran dikonfirmasi". Klik link ini
+  langsung ke halaman PUBLIK biasa (`/produk/{slug}`/`/campaign/{slug}`) — TIDAK ADA action
+  custom "tambah ke cart" baru dibuat untuk alur ini, murni reuse flow checkout yang sudah ada.
+
+**Matching invoice item ↔ config**: `itemType='product' AND itemId=requiredProductId`,
+`itemType='donation' AND itemId=requiredCampaignId`. **Limitasi yang diterima dan
+didokumentasikan**: campaign tipe QURBAN tidak akan pernah match kalau ditunjuk sebagai
+`requiredCampaignId` — item qurban di cart tersimpan dengan `itemId=qurban_animals.id` (bukan
+`campaigns.id` langsung, sesuai arsitektur donasi yang sudah dikunci lama) — admin sebaiknya
+menunjuk campaign donasi REGULAR sebagai syarat iuran, bukan qurban.
+
+**Tipe dibagi lintas 3 file via import type, bukan 3 salinan independen**: `MembershipConfigData`
+didefinisikan SATU KALI di `settings/actions.ts` (pemilik penulisan config), diimpor sebagai TYPE
+oleh `finance/billing/actions.ts` (`../../settings/actions`) dan `gabung/{actions,page}.tsx`
+(`../../../(dashboard)/app/[tenant]/settings/actions`) — relative path lintas route group
+diverifikasi dengan `node -e "path.resolve(...)"` sebelum dipakai (bukan dihitung manual dan
+dipercaya begitu saja), karena sempat salah hitung satu level di percobaan pertama (`../` vs
+`../../`) — dikoreksi sebelum `tsc` sempat menangkapnya.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan dulu, `.next` dibersihkan) — route `/settings/keanggotaan` DAN
+`/gabung` terkonfirmasi muncul di build output. Nol migrasi DB tambahan (key JSONB baru
+`membership_config` di group `"forum"` yang skemanya sudah dibuat Fase A — tidak perlu ALTER
+TABLE lagi). **Belum diverifikasi visual di browser, belum ada tenant forum + konfigurasi
+pembayaran nyata yang dicoba end-to-end** — Fase E (verifikasi manual penuh + deploy) masih
+menunggu, dan ini SATU-SATUNYA fase tersisa dari roadmap.
+
+### [2026-07-24] Standar Label Keanggotaan — "Lengkapi Data" vs "Anggota X" (2 Bug Ditemukan)
+
+> Detail lengkap: **`docs/arsitektur-akun.md` § "Standar Label Keanggotaan"**
+
+User bikin tenant forum lokal (`forcreator`) untuk uji coba, langsung menemukan gejala nyata:
+badge "Anggota Forcreator" muncul di sidebar `/akun` begitu daftar — tanpa pernah isi data
+apa pun, apalagi lewat `/gabung`. Investigasi menemukan **2 bug independen**, bukan cuma soal
+teks label:
+
+1. **`joinTenant()` di `/api/akun/register`** — insert `tenant_memberships` `status:"active"`
+   untuk tenant APA PUN tempat orang daftar, tanpa cek `tenantType`. Registrasi langsung di
+   domain forum otomatis bikin baris keanggotaan aktif, MELEWATI seluruh gate `/gabung` yang
+   baru dibangun sesi sebelumnya.
+2. **`resolveAkunBranding()`'s "genuine member" check** — cukup "ada baris `tenant_memberships`
+   apa pun", tidak pernah cek `forumStatus`.
+
+**User memberi standar baru dalam 3 poin — salah satunya ternyata typo** ("sudah melengkapi"
+seharusnya "belum melengkapi", dikonfirmasi via `AskUserQuestion` sebelum eksekusi karena
+membalik total arah logikanya):
+1. **Prasyarat universal SEBELUM label apa pun bisa "Anggota X"**: profil harus lolos
+   `checkForumEligibility()` (REUSE fungsi yang sama dari alur forum — bukan bikin fungsi baru,
+   bar-nya PERSIS sama: data pribadi Step1+2 kecuali Riwayat Pendidikan + minimal 1 dari 3
+   direktori). **Dikonfirmasi user: berlaku SEMUA tipe tenant** (cabang/marhalah/forum) — bukan
+   cuma forum, meski ini berarti anggota lama yang auto-join tapi belum pernah isi
+   `/akun/lengkapi` akan melihat labelnya berubah dari "Anggota PC IKPM X" jadi "Lengkapi Data"
+   setelah deploy.
+2. Belum lolos → `"Lengkapi Data"`, ikon centang (`BadgeCheck`) TIDAK ditampilkan.
+3. Sudah lolos: cabang/marhalah TIDAK berubah ("ada baris" tetap cukup — auto-populate tidak
+   punya tahap verifikasi terpisah); forum SEKARANG wajib `forumStatus='active'` (genuinely
+   lewat `/gabung`) — kalau belum, fallback ke cabang resmi sendiri ("Anggota PC IKPM <cabang
+   dia>"), BUKAN nama forum yang sedang dibrowsing.
+
+**Klarifikasi tambahan dari user (jawaban Q3 yang awalnya "bingung pilih mana")**: register flow
+tetap SAMA untuk semua tipe tenant (base member record dibuat identik) — yang beda adalah APA
+YANG TERJADI SETELAHNYA: cabang/marhalah auto-jadi anggota begitu data lengkap DAN memenuhi
+kriteria tenant (cabang: `primaryCabangRefId` cocok; marhalah: `graduationYear`/`period` cocok)
+— mekanisme auto-populate yang SUDAH ADA, tidak disentuh. Forum HARUS tetap lewat `/gabung` —
+melengkapi data cuma prasyarat untuk BISA verified, bukan verifikasi itu sendiri.
+
+**Implementasi**: `resolveAkunBranding()` direstrukturisasi — 3 `return` terpisah (satu per
+langkah resolusi) digabung jadi 1 variable `resolved` yang di-assign per langkah, supaya
+eligibility override (`checkForumEligibility()` dipanggil SEKALI di awal fungsi) bisa diterapkan
+SEKALI di titik akhir — bukan diulang 3×. Field baru `verified: boolean` ditambah ke
+`ResolvedAkunBranding`. **Hanya `memberLabel` yang di-override** jadi "Lengkapi Data" saat belum
+eligible — `logoUrl`/`orgName`/`primaryColor` tetap resolve normal (identitas visual kartu tidak
+berubah, cuma klaim status yang jujur) — `MemberCard` sama sekali tidak perlu disentuh karena
+tidak pernah membaca `memberLabel`. Step 1 forum-aware pakai spread kondisional:
+`and(eq(memberId), eq(tenantId), ...(isForum ? [eq(forumStatus,"active")] : []))`.
+`akun/layout.tsx`+`akun/page.tsx` — `BadgeCheck` di kedua tempat digate `memberVerified`;
+`AkunMobileHeader` (badge teks polos, tanpa ikon) otomatis benar tanpa disentuh.
+`register/route.ts`'s `joinTenant()` — tambah `registeredAtTenantType` ke SELECT tenant lookup
+yang sudah ada, skip insert `tenant_memberships` total kalau `tenantType==="forum"`.
+
+**Efek samping diterima**: `checkForumEligibility()` sekarang bisa terpanggil 2× per render
+`/akun` untuk forum tenant yang belum join (sekali oleh `ForumJoinOverlay` block yang sudah ada
+sesi sebelumnya, sekali lagi di dalam `resolveAkunBranding()`) — duplikasi query kecil, tidak
+di-cache/share, diterima demi menghindari refactor lintas fungsi untuk beberapa SELECT ringan.
+
+**Aturan yang ditegaskan (lagi)**: kalau instruksi user berisi kondisi if/then yang terbaca
+kontradiktif dengan alur logika di sekitarnya (di sini: poin 1 vs poin 2-3), JANGAN diam-diam
+"membetulkan" via asumsi — konfirmasi eksplisit via `AskUserQuestion` sebelum menulis kode,
+persis yang dilakukan di sesi ini. Kalau jawaban user untuk pertanyaan pilihan-ganda ternyata
+"saya bingung, tapi mudah-mudahan kamu bisa simpulkan maksud saya" — itu sinyal untuk MENYUSUN
+ULANG pemahaman dari narasi bebas yang mereka berikan (bukan salah satu opsi literal yang
+ditawarkan), verifikasi masuk akal secara arsitektur, baru eksekusi — bukan memaksakan salah
+satu pilihan A/B yang sudah disediakan.
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` sukses (dev
+server dimatikan dulu, `.next` dibersihkan, direstart setelah build karena user sedang aktif
+menguji). Nol migrasi DB. **Belum diverifikasi visual di browser** — user yang punya tenant
+forum `forcreator` lokal perlu konfirmasi langsung setelah reload.
+
+### [2026-07-24] Eligibility Overlay Digeneralisasi ke Semua Tipe Tenant + Rename Total
+
+> Detail lengkap: **`docs/arsitektur-akun.md` § "Eligibility Overlay Generik"**
+
+Dua permintaan susulan berurutan di sesi yang sama:
+
+1. **"Tombol rancu"** — overlay forum selalu mengarah ke `/gabung` meski belum eligible sama
+   sekali (double-hop membingungkan). Dipecah jadi 3 kondisi eksplisit berdasar `missing[]`
+   (bukan cuma `eligible: boolean`): profil belum lengkap → "Lengkapi Data Pribadi" →
+   `/akun/lengkapi`; tinggal direktori → "Lengkapi Data →" buka **popup** 3 pilihan
+   (`DirectoryChoicePopover`, client component baru, Radix `Popover` — pola sama `Combobox`);
+   eligible → "Gabung {tenantName}" → `/gabung` (satu-satunya kasus yang benar masuk situ).
+2. **Generalisasi ke SEMUA tipe tenant** — user: "bedanya kan cuma: selain anggota forum tidak
+   perlu masuk URL /gabung, tenant lain otomatis menjadi anggota... ini kita namakan
+   eligibiliti kali ya biar konsisten." Diminta rename TOTAL dari istilah forum-spesifik ke
+   generik, di seluruh codebase — bukan cuma tambah fitur baru.
+
+**Rename lengkap** (logic CHECK-nya sendiri, 10 field + minimal 1 direktori, TIDAK berubah):
+`lib/forum-eligibility.ts`→`lib/member-eligibility.ts`, `checkForumEligibility()`→
+`checkMemberEligibility()`, `ForumEligibilityField/Result`→`MemberEligibilityField/Result`,
+`FORUM_ELIGIBILITY_LABELS`→`MEMBER_ELIGIBILITY_LABELS`, `forumEligibilityFixHref()`→
+`memberEligibilityFixHref()`, `components/akun/forum-join-overlay.tsx`
+(`ForumJoinOverlay`)→`membership-eligibility-overlay.tsx` (`MembershipEligibilityOverlay`).
+6 file importer diupdate via `sed` per-simbol (bukan cari-ganti membabi buta satu pola besar) —
+grep akhir `checkForumEligibility|ForumEligibilityField|ForumJoinOverlay|forum-eligibility|
+forum-join-overlay` di seluruh `apps/web` mengonfirmasi nol sisa referensi lama.
+
+**Kondisi tampil overlay SEKARANG beda per tipe tenant** (keputusan kunci, bukan sekadar
+rename) — ditentukan di `akun/page.tsx`:
+```typescript
+if (tenantType === "forum") {
+  showOverlay = forumStatus !== "active";   // termasuk "eligible tapi belum klik gabung"
+} else { // cabang / marhalah
+  showOverlay = !eligibility.eligible;       // begitu eligible, keanggotaan SUDAH otomatis
+}
+```
+Untuk cabang/marhalah, `tenant_memberships` row SUDAH ter-insert otomatis oleh mekanisme
+auto-populate lama (matching `primaryCabangRefId`/`graduationYear`+`period`) — TIDAK bergantung
+eligibility sama sekali, TIDAK disentuh. Overlay di sana MURNI soal "kartu belum layak
+ditampilkan sampai data lengkap" — begitu eligible, overlay hilang, kartu langsung terlihat
+TANPA tombol join apa pun (beda dari forum). `MembershipEligibilityOverlay` punya guard
+defensif `if (eligible && !isForum) return null` untuk mencegah "Gabung X" tersaran ke tenant
+yang tidak punya alur itu, meski caller seharusnya sudah tidak pernah merendernya di kondisi
+itu.
+
+**Aturan yang ditegaskan (generalisasi dari permintaan user)**: kalau user secara eksplisit
+minta penamaan diseragamkan/digeneralisasi ("biar konsisten"), itu BUKAN sekadar preferensi
+kosmetik yang boleh diabaikan — treat sebagai instruksi refactor penuh: rename FILE + semua
+export + semua importer, bukan cuma menambah fungsionalitas baru di atas nama lama yang sudah
+menyesatkan. Verifikasi selesai via grep pola lama = nol hasil, bukan cuma "kompilasi lolos"
+(kompilasi bisa lolos meski ada sisa nama lama yang re-export dari alias, jadi grep tetap
+langkah wajib terpisah).
+
+**Verifikasi**: `tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` sukses (dev
+server dimatikan dulu, `.next` dibersihkan, direstart tiap kali — user aktif menguji sepanjang
+sesi ini). Nol migrasi DB. **Belum diverifikasi visual di browser** — khususnya kasus cabang/
+marhalah yang belum eligible (member lama yang belum isi `/akun/lengkapi`) perlu dicoba user
+untuk konfirmasi overlay benar-benar menutupi kartu, bukan cuma teks badge yang berubah.
+
+### [2026-07-24] Kategori Profesi Baru "Kreatif" — Bug CHECK Constraint Tertinggal
+
+> Detail lengkap: **`docs/arsitektur-profesional.md` § 14**
+
+User minta kategori profesi baru "Kreatif" untuk forum "Forcreator" (kreator & pekerja seni) —
+didiskusikan dulu (9 Bidang Usaha dari kepengurusan mereka dipetakan ke jenis profesi spesifik,
+pola sama "setiap profesi entitas terpisah" yang sudah dikunci di § 2.4 dokumen, mis. Media
+Rekam → Fotografer/Videografer/Editor sebagai 3 profesi berbeda) sebelum eksekusi. User sempat
+tanya ulang untuk konfirmasi level: "Bidang Usaha" BUKAN level tersendiri di sistem 3-level
+(kategori→jenisProfesi→spesialisasi) — cuma data acuan untuk menurunkan `professionType`;
+"Kreatif" sendiri adalah SATU kategori baru sejajar 7 kategori existing.
+
+**Bug ditemukan saat implementasi (bukan cuma nambah 1 baris konstanta)**: menambah "Kreatif"
+HANYA di `lib/professional-types.ts` menyebabkan TypeScript error di `profesional/page.tsx` —
+kolom `member_professionals.profession_category` di Drizzle schema
+(`packages/db/src/schema/public/member-professionals.ts`) punya `text(..., {enum:[...]})`
+SENDIRI, daftar TERPISAH yang harus disinkronkan manual (tidak saling reference). Lebih dalam
+lagi: kolom ini JUGA punya **CHECK constraint PostgreSQL sungguhan**
+(`member_professionals_profession_category_check`, dari migration `0027`, DDL inline `CHECK
+(...IN(...))`— bukan `pgEnum`, sesuai aturan project) — mengubah TypeScript enum saja TIDAK
+CUKUP, INSERT `professionCategory:"Kreatif"` akan tetap ditolak DB kalau constraint-nya tidak
+ikut diupdate.
+
+**Fix — 2 titik**: Drizzle schema enum ditambah `"Kreatif"` + migration baru
+`0043_member_professionals_kreatif_category.sql` (`DROP`+`ADD CONSTRAINT`). `member_
+professionals` ada di PUBLIC schema (bukan per-tenant) — migration ini jalan SEKALI, BUKAN
+loop `DO $$ ... LOOP` per tenant seperti migration `settings.group` sebelumnya di sesi ini.
+Constraint name diverifikasi LANGSUNG via `psql \d public.member_professionals` (bukan ditebak
+dari pola auto-generate Postgres) sebelum menulis migration.
+
+**Aturan yang ditegaskan**: kalau sebuah kolom `text(...,{enum:[...]})` di Drizzle punya
+"kembaran" konseptual di file konstanta terpisah (di sini: `PROFESSION_CATEGORIES` di `lib/`),
+KEDUANYA wajib diupdate bersamaan — DAN kalau kolom itu dibuat via migration SQL manual (bukan
+`drizzle-kit generate` otomatis), kemungkinan besar ADA CHECK constraint DB sungguhan yang juga
+perlu di-`ALTER` terpisah. `tsc` menangkap SEBAGIAN masalah (union type mismatch di consumer
+query lain) tapi TIDAK PERNAH menangkap CHECK constraint DB yang ketinggalan — itu cuma
+ketahuan lewat error runtime saat insert, atau lewat pengecekan manual `\d` seperti di sesi ini.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` + `bun run build
+--filter=@jalajogja/web` sukses (dev server dimatikan dulu, `.next` dibersihkan, direstart).
+Migration `0043` dijalankan+diverifikasi di lokal (`\d` mengonfirmasi `'Kreatif'` masuk
+constraint). **Belum dijalankan di VPS. Belum diverifikasi visual** — user diminta coba tambah
+profesional kategori "Kreatif" di `/akun/profesional`.
+
+### [2026-07-24] Bidang Usaha `/akun/usaha` — Facet Independen, Bukan Sub-Sektor
+
+> Detail lengkap: **`docs/arsitektur-usaha.md`** (dokumen baru)
+
+Lanjutan diskusi kategori "Kreatif" — user tanya apakah 9 Bidang Usaha forcreator bisa
+dimasukkan juga ke `/akun/usaha` (bukan cuma `/akun/profesional`). Diskusi berkembang jadi
+sesuatu yang lebih besar: user mengungkap tujuan sesungguhnya adalah **matchmaking** — retailer
+menemukan produsen yang relevan, kolaborasi lintas bidang usaha, bukan sekadar data lebih rinci.
+
+**Masalah kritis yang DITEMUKAN USER SENDIRI sebelum implementasi**: percobaan pertama
+membayangkan struktur bertingkat `sector → sub-sector` (9 bidang di bawah "Kreatif"). User
+langsung melihat cacatnya: bidang spesifik sering tumpang tindih lintas sektor (mis. "Desain
+Komunikasi Visual" masuk akal sebagai "Kreatif" MAUPUN "Jasa Profesional" — tidak ada satu
+induk yang benar). Ini BUKAN bug desain user, itu sifat datanya sendiri.
+
+**Solusi**: `sector` (7 nilai, sudah ada) **tidak diubah**. Field BARU `businessFields:
+string[]` — **facet independen**, bukan anak dari sector manapun. Satu usaha bisa multi-tag
+lintas bidang, tidak terikat ke satu sektor. Ini menghilangkan masalah "yang mana induknya"
+sepenuhnya — tag tidak dimiliki siapa pun.
+
+**Fase 2 didokumentasikan (BUKAN dibangun)**, atas permintaan eksplisit user ("bagus untuk
+dicatat dalam arsitektur"): field `supplies`/`seeking` ("saya menyediakan"/"saya membutuhkan")
+untuk mesin pencocokan B2B — SENGAJA memakai vocabulary yang SAMA dengan `businessFields`,
+supaya begitu dibangun nanti, pencocokan bisa langsung jalan tanpa migrasi data ulang. Urutan
+yang benar: kosakata dulu (Fase 1, sekarang), mesin pencocokan menyusul (Fase 2, nanti).
+
+**Implementasi Fase 1**:
+- `packages/db/src/schema/public/member-businesses.ts` — kolom baru `businessFields:
+  jsonb(...).$type<string[]>().notNull().default([])`
+- `packages/db/migrations/0044_member_business_fields.sql` — sekali jalan (public schema)
+- `apps/web/lib/business-fields.ts` — `BUSINESS_FIELD_SUGGESTIONS`, 9 Bidang Usaha ASLI dari
+  forcreator (BUKAN daftar 15 profesi yang lebih pecah seperti `professionType` "Kreatif" —
+  usaha dikategorikan per domain/industri, satu usaha bisa sekaligus fotografi+videografi+
+  editing di bawah satu badan usaha, beda dari profesi yang per-jabatan individu)
+- `components/ui/tag-multi-select.tsx` (BARU, generik) — multi-select autocomplete+creatable,
+  pola interaksi sama `TagInput` (`post-form.tsx`, pills+dropdown+koma/Enter+backspace) tapi
+  value `string[]` polos TANPA DB-backed entity/server-action (beda dari `TagInput` yang
+  panggil `createTagAction` untuk tag artikel) — reusable untuk kebutuhan multi-select serupa
+  di tempat lain.
+- Diwire ke **KEDUA** tempat sesuai aturan "update form anggota di front-end DAN admin
+  sekaligus": `/akun/usaha` (`usaha-client.tsx` + API route) DAN admin wizard
+  (`step4-business.tsx` + `saveMemberBusinessesAction` + 2 halaman admin yang mengonstruksi
+  `BusinessEntry[]` dari data DB — `members/[id]/edit/page.tsx` DAN
+  `member-data-sections.tsx`, ditemukan via `tsc` sebagai 2 titik yang butuh field baru).
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` (2 putaran — putaran
+pertama menangkap 1 titik construction `BusinessEntry[]` yang terlewat, langsung difix) +
+`bun run build --filter=@jalajogja/web` sukses (dev server dimatikan dulu, `.next` dibersihkan,
+direstart). Migration `0044` dijalankan+diverifikasi di lokal. **Belum dijalankan di VPS. Belum
+diverifikasi visual** — user diminta coba tambah "Bidang Usaha" di `/akun/usaha`.
+
+### [2026-07-24] Halaman `/gabung` — Info Pendaftaran Custom + Persetujuan Legal + Header Diperkaya
+
+> Susulan langsung dari Fase D (lesson di atas). Detail penuh (termasuk penjelasan lebih
+> panjang): `docs/arsitektur-backbone-ikpm.md` § "Susulan Fase D — Informasi Pendaftaran +
+> Persetujuan Legal".
+
+User mencoba tenant forum lokal (Forcreator) dan minta halaman `/gabung` bisa menampilkan teks
+penjelasan organisasi yang custom per forum — contoh yang diberikan eksplisit menyebut sifat
+keanggotaan **EKSKLUSIF** (dikoreksi user sendiri di tengah pengetikan dari draft awal
+"inklusif" — khusus IKPM Gontor, bukan terbuka untuk umum), plus checkbox persetujuan Syarat &
+Ketentuan + Kebijakan Privasi sebelum tombol join (pola sama `/register`), plus (permintaan
+susulan) UI logo tenant + kartu info yang lebih "keren" — bukan cuma teks tanpa dan box abu-abu.
+
+**Field baru `registrationInfo: string | null`** ditambah ke `MembershipConfigData` (satu
+field lagi di JSONB `membership_config`, group "forum" — TIDAK butuh migrasi DB, konsisten
+dengan field lain di key ini). Textarea admin baru di `MembershipConfigForm`
+(`/settings/keanggotaan`), ditampilkan sebagai teks bebas multi-paragraf
+(`whitespace-pre-line`, baris baru dipertahankan) di `/gabung` — **dipindah supaya SELALU
+tampil, terlepas status eligibility pengunjung** (bukan cuma saat `eligibility.eligible`, yang
+tadinya jadi syarat fetch `config` sama sekali) — teks organisasi relevan untuk SEMUA calon
+anggota, bahkan yang belum lengkap datanya, bukan cuma yang sudah lolos gate.
+
+**`LegalModal` diekstrak jadi komponen shared** (`components/akun/legal-modal.tsx`) — sebelumnya
+private/inline di `register/register-form.tsx` (~50 baris fetch+dialog logic). Dipakai ulang
+oleh `gabung/join-forum-button.tsx`: checkbox "Dengan ini saya menyatakan menyetujui Syarat dan
+Ketentuan serta Kebijakan Privasi" ditaruh tepat di atas tombol "Ya, Saya Ingin Bergabung",
+tombol di-disable sampai dicentang — pola identik `agreed` state di form register. Modal tetap
+konsumsi API yang sama (`GET /api/akun/legal?slug=&template=terms|privacy`, halaman legal
+singleton tenant) — nol endpoint baru. Ini konsumen KEDUA yang genuinely membenarkan ekstraksi
+(beda dari kebanyakan pola "duplikasi demi isolasi" di project ini) — komponen murni
+presentasional+fetch tanpa efek samping, risiko share mendekati nol.
+
+**Header `/gabung` diperkaya** (permintaan eksplisit "UI design-nya lebih keren... kalau ada
+logo panggil logo, kasih bulatan border"): `logo_url` tenant di-fetch via
+`getSettings(tenantDb, "general")` PARALEL dengan `membership_config` (`Promise.all`, satu
+`tenantDb` yang sama dipakai keduanya — tidak query ulang). **Koreksi user setelah draft
+pertama**: logo BUKAN elemen dekoratif tambahan di ATAS judul — logo **menggantikan** label
+teks nama tenant yang sebelumnya selalu tampil di bawah "Daftar Menjadi Anggota". Jadi:
+`h1` "Daftar Menjadi Anggota" tetap SELALU tampil, lalu SATU dari dua di bawahnya —
+`logoUrl` ada → avatar bulat `h-16 w-16` (`ring-4 ring-primary/10` + border putih + shadow);
+`logoUrl` kosong → teks nama tenant seperti semula (`text-lg font-semibold text-primary`).
+Draft pertama salah menaruh KEDUANYA (avatar/badge-inisial DI ATAS + teks nama DI BAWAH) —
+fallback inisial-huruf dihapus total karena tidak lagi relevan (kalau tidak ada logo, cukup
+teks, bukan badge inisial). Kartu info registrasi diberi header kecil "Tentang {tenant}"
+(ikon `Info`, `text-primary` uppercase) + gradient tipis `from-primary/[0.04]`, menggantikan
+box abu-abu polos draft pertama — bagian ini TIDAK dikoreksi, tetap seperti semula.
+
+**Aturan yang ditegaskan (generalisasi)**: setiap kali sebuah setting per-tenant (di sini:
+`membership_config`) menyimpan campuran "field yang cuma relevan kalau eligible/lulus syarat"
+(product/campaign syarat iuran) DAN "field yang relevan untuk SEMUA pengunjung terlepas status
+mereka" (info organisasi), JANGAN gate fetch keseluruhan config di belakang kondisi eligibility
+— fetch config-nya SEKALI di awal, lalu gate PENGGUNAAN field per-fieldnya sendiri-sendiri
+sesuai relevansinya. Draft pertama sesi ini sempat salah menggate seluruh `getSetting(...)` di
+belakang `if (eligibility.eligible)`, sehingga `registrationInfo` tidak pernah terbaca untuk
+member yang belum lengkap datanya — root cause yang sama dengan pola "jangan gabung dua
+keputusan berbeda dalam satu guard" yang sudah berulang di project ini.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` (2× — sekali setelah field+modal, sekali
+lagi setelah redesign header) + `bun run build --filter=@jalajogja/web` sukses (dev server
+dimatikan dulu, `.next` dibersihkan, direstart). Nol migrasi DB. **Belum diverifikasi visual di
+browser** — user perlu isi textarea "Informasi Pendaftaran" di `/settings/keanggotaan` (tenant
+forum lokal `forcreator`) lalu buka `/gabung` untuk lihat hasil render logo+info+checkbox.
+
+### [2026-07-24] Nomor Keanggotaan Lokal Forum — Khusus Forum, Counter Tidak Reset, Simpan String Jadi
+
+> Detail penuh: **`docs/arsitektur-backbone-ikpm.md` § "Nomor Keanggotaan Lokal Forum"**.
+
+User sadar setelah coba `/gabung`: forum butuh nomor identitas anggota SENDIRI, terpisah dari
+`members.member_number` (global lintas IKPM) — contoh: `2017.00001` (tahun + urutan 5-digit).
+Dikonfirmasi via `AskUserQuestion` sebelum eksekusi (ini nambah schema baru + logic penomoran
+atomic — aturan project "tanya konfirmasi sebelum ubah arsitektur"): **khusus tenant forum**
+(TIDAK digeneralisasi ke cabang/marhalah — mereka sudah punya `member_number` global), dan
+**counter TIDAK reset per tahun** (jalan terus selama umur tenant, bukan "urutan dalam tahun
+itu"). Format: preset dropdown 3 pilihan (bukan token-engine bebas ketik seperti nomor surat) —
+Tahun+Urutan (default), Tahun+Tgl Lahir+Urutan (recipe SAMA PERSIS `member_number` global,
+`lib/member-number.ts`), Bulan-Tahun+Urutan. **Nomor disimpan sebagai string hasil jadi**
+(bukan direkonstruksi dari bagian mentah di titik baca) — prinsip yang sudah berkali-kali
+ditegaskan di project ini untuk menghindari kelas bug "format ulang di titik baca" (Rupiah
+ICU/CLDR, `displayPhone()` dipakai ulang untuk wa.me, dll).
+
+**Schema baru** (migration `0045_forum_membership_number.sql`): kolom
+`tenant_memberships.membership_number` + tabel PUBLIC-schema baru
+`forum_membership_sequences` (satu baris per tenant, `SELECT ... FOR UPDATE` di dalam
+`db.transaction()` — pola locking SAMA PERSIS `letter_number_sequences`, cuma dipindah ke
+public schema karena `tenant_memberships` sendiri ada di sana, TANPA kolom `year`/`period`
+karena counter tidak reset).
+
+**Bug client/server boundary ditemukan+difix SEGERA saat `next build`** (PERSIS lesson lama
+`nav-menu.ts`/`tenant-timezone.ts`, terulang lagi — `tsc --noEmit` TIDAK menangkap ini sama
+sekali, cuma `next build` yang tahu): `lib/forum-membership-number.ts` awalnya satu file
+(`import "server-only"` + konstanta + fungsi generate yang butuh `db`), diimpor oleh
+`membership-config-form.tsx` (client component, cuma butuh daftar preset+label) → build gagal
+eksplisit *"You're importing a component that needs 'server-only'... not supported in the
+pages/ directory"*. Fix: split jadi `lib/forum-membership-number.ts` (client-safe: konstanta +
+`formatForumMembershipNumber()` pure function, ZERO import `@jalajogja/db`) +
+`lib/forum-membership-number.server.ts` (`import "server-only"`,
+`generateForumMembershipNumber()` yang butuh DB).
+
+**Generation di dua titik aktivasi** (`joinForumAction` jalur gratis + `activateForumMembership
+IfApplicable` jalur bayar) — keduanya guard `existing?.membershipNumber` dulu, HANYA generate
+kalau kosong (member yang sempat suspended lalu aktif lagi TIDAK dapat nomor baru).
+
+**Display**: baris baru "No. Anggota Forum" di panel "Info keanggotaan" desktop `/akun`.
+Admin dashboard member detail belum menampilkan ini (di luar scope MVP).
+
+**Susulan — MemberCard mobile (permintaan langsung sesudah fitur di atas live)**: bukan baris
+tambahan seperti desktop — nomor forum **menggantikan** `memberNumber` (No. Anggota global)
+yang tampil besar di tengah kartu, plus caption kecil di bawahnya "No. ID {nama forum}".
+`MemberCard` (`components/akun/mobile/member-card.tsx`) dapat prop opsional
+`forumMembershipNumber?: string | null` — cabang render 3-tingkat: forum number ada → tampilkan
+itu + caption (bukan `memberNumber` sama sekali); tidak ada → fallback `memberNumber`; kosong
+dua-duanya → fallback `stambuk`. **Reuse `siteName` yang sudah ada untuk caption** — TIDAK
+butuh prop nama-tenant baru, karena `forumMembershipNumber` HANYA terisi untuk member yang
+genuinely aktif di forum yang sedang dibrowsing, dan pada kondisi itu `resolveAkunBranding()`
+SUDAH resolve `siteName` ke tenant forum itu sendiri (bukan kebetulan — konsekuensi langsung
+arsitektur resolusi branding yang dikunci sebelumnya, § "Resolusi Branding Kartu Anggota" di
+`docs/arsitektur-akun.md`). Tidak berlaku cabang/marhalah secara otomatis (data-driven guard,
+kolom memang tidak pernah diisi untuk keduanya).
+
+**Limitasi diterima (bukan lupa)**: TIDAK ada backfill untuk anggota forum yang sudah aktif
+SEBELUM fitur ini diaktifkan — mereka `membership_number` tetap NULL selamanya kecuali
+dibackfill manual nanti. Diterima karena tenant konteks fitur ini (Forcreator) masih baru.
+
+**Aturan yang ditegaskan (ke-3 kalinya di project ini)**: setiap kali membuat file `lib/*.ts`
+BARU yang akan diimpor client component, WAJIB cek dari awal apakah file itu (atau apa yang
+di-`export ... from`-nya) mengimpor `@jalajogja/db` — kalau ya, split dari awal jadi
+`nama.ts` (client-safe) + `nama.server.ts` (`import "server-only"`), JANGAN tunggu `next build`
+gagal untuk ketahuan. `tsc --noEmit` tidak cukup untuk memverifikasi ini.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` (2×, sekali untuk fitur
+inti, sekali lagi untuk susulan MemberCard) + `bun run build --filter=@jalajogja/web` sukses
+(2×, dev server dimatikan+dibersihkan+direstart tiap kali). Migration `0045` dijalankan+
+diverifikasi di lokal. **Belum dijalankan di VPS. Belum diverifikasi visual** — user perlu
+aktifkan format di `/app/{slug}/settings/keanggotaan` (tenant `forcreator`), coba join via
+`/gabung`, cek hasil di `/akun` (desktop + mobile).
+
+### [2026-07-24] Audit Menyeluruh Modul Surat — Dokumen Basi Dikoreksi + 2 Bug Ditemukan
+
+> Dokumen baru: **`docs/arsitektur-modul-surat.md`** (indeks + hasil audit menyeluruh, JANGAN
+> baca sebagai duplikasi 3 dokumen detail yang sudah ada — 3 dokumen itu tetap sumber kebenaran
+> untuk detail teknis masing-masing bagian).
+
+User minta audit menyeluruh modul Surat sebelum istirahat — cek arsitektur ada/tidak, cek kode
+aktual, cek apakah dokumen dan implementasi benar-benar konsisten, cek khusus notifikasi WA
+saat butuh TTD, cek gap/bug, rencanakan perbaikan (BUKAN eksekusi langsung). 3 dokumen arsitektur
+sudah ada (`arsitektur-surat.md`, `arsitektur-surat-detail.md`, `arsitektur-tandatangan.md`) —
+diverifikasi SATU PER SATU ke kode aktual via grep+Read langsung, bukan dipercaya begitu saja.
+
+**2 dokumen basi ditemukan+dikoreksi** (murni dokumentasi, kode-nya sendiri sudah benar):
+1. `arsitektur-surat.md` header tertulis **"PROPOSAL — belum dieksekusi"**, padahal SEMUA
+   fiturnya (3 layout identitas, format tanggal Masehi/Hijriah per jenis surat, kalender Hijriah
+   `Intl.DateTimeFormat`, `attachment_label`, fetch `letter_types.name` untuk Layout 3 di PDF)
+   dikonfirmasi 100% sudah live di kode — dokumen ini ditulis April, tidak pernah diupdate
+   statusnya meski sudah lama dieksekusi. Sekalian dikoreksi: § 5-nya salah mendeskripsikan
+   penyimpanan setting sebagai 2 key terpisah (`letter_date_format`/`letter_hijri_offset`),
+   padahal implementasi aktual pakai SATU object `letter_config` (key tunggal, group="general")
+   yang menampung semua pengaturan surat sekaligus.
+2. `arsitektur-tandatangan.md` — **kontradiksi internal dalam DOKUMEN YANG SAMA**: § 5 menulis
+   "Accordion 'Lihat Preview Surat' — render body surat via `renderBody()`" seolah sudah ada,
+   tapi § 11 "Pertanyaan Terbuka" (di dokumen yang sama!) menulis "saat ini tidak ada preview
+   isi surat". Diverifikasi ke kode: § 11 yang BENAR — `sign/[token]/page.tsx` tidak pernah
+   fetch kolom `body`, `signing-page-client.tsx` tidak punya accordion apa pun. § 5 dikoreksi.
+
+**Bug #1 — `generateSigningTokenAction` tidak kirim notifikasi WA** (inkonsisten dengan jalur
+sync): ada 2 jalur yang sama-sama bisa menerbitkan token TTD baru — `syncSignatureSlotsAction`
+(saat admin simpan surat) SUDAH otomatis kirim WA `letter_sign_request`, tapi
+`generateSigningTokenAction` (tombol "Buat Link TTD" untuk slot lama/edge case) TIDAK PERNAH
+kirim WA sama sekali, admin harus salin+kirim link manual. Kemungkinan besar
+`generateSigningTokenAction` dibuat SEBELUM Fase 6 notifikasi WA (2026-07-19) dan tidak pernah
+di-retrofit. Rencana: ekstrak logic notifikasi jadi helper kecil, panggil dari kedua tempat.
+
+**Bug #2 — Officer menandatangani "buta" di `/sign/[token]`**: halaman publik penandatanganan
+TIDAK PERNAH menampilkan isi surat — SELECT surat cuma ambil `subject, letterNumber, letterDate,
+recipient`, kolom `body` tidak pernah di-fetch. Officer cuma lihat metadata sebelum klik "Tanda
+Tangani Sekarang" — bukan cuma gap UX, ini masalah kepercayaan (menandatangani tanpa bisa baca
+isi dokumen dulu). `arsitektur-tandatangan.md` § 5 sendiri sudah MENGASUMSIKAN fitur ini ada
+sejak awal ditulis — jadi ini gap yang terlewat sejak implementasi awal, bukan regresi baru.
+Rencana: tambah `body` ke SELECT yang sudah ada, reuse `resolveMergeFields()`+`renderBody()`
+(pola sama `keluar/[id]/page.tsx`), render sebagai accordion collapsed-by-default di
+`signing-page-client.tsx`.
+
+**2 gap lama dikonfirmasi masih terbuka** (bukan temuan baru, sudah lama tercatat di CLAUDE.md):
+attachment lampiran file (`attachment_urls` cuma plumbing kosong, nol UI MediaPicker, nol
+tempat ditampilkan) dan inter-tenant (`inter_tenant_to`/`inter_tenant_status` cuma kolom+field
+opsional, nol picker tenant tujuan, nol logic kirim/terima lintas tenant) — keduanya butuh
+keputusan desain sendiri sebelum bisa direncanakan detail, tidak di-scope ke sesi ini.
+
+**Yang dicek dan dikonfirmasi AMAN** (tidak ada masalah): toggle gating notifikasi WA berlaku
+generik untuk `letter_sign_request` juga, template WA variabelnya match persis dengan yang
+dikirim, `syncSignatureSlotsAction` idempotent (tidak spam WA saat surat disimpan berkali-kali
+tanpa ubah signature), render body + merge fields konsisten dengan dokumen, `masuk` read-only
+memang disengaja bukan halaman yang lupa dibuat edit-nya.
+
+**NOL kode diubah di sesi ini** (kecuali 3 titik koreksi dokumentasi di atas) — sesuai
+permintaan eksplisit user "rencanakan perbaikan" (bukan "perbaiki"). Bug #1 dan #2 dinilai
+risiko rendah untuk dieksekusi (nol migrasi DB, reuse pola existing) — menunggu konfirmasi user
+untuk lanjut eksekusi di sesi berikutnya. Gap #3 dan #4 butuh keputusan desain dulu.
+
+### [2026-07-24] Bug #1 + #2 Modul Surat — Dieksekusi (Lanjutan Langsung dari Audit)
+
+> User minta lanjut fix di giliran yang sama: "ok sementara kita perbaiki terlebih dahulu 2 bug
+> tersebut, lalu verifikasi unk check error type." Detail rencana: lesson audit di atas +
+> `docs/arsitektur-modul-surat.md` § 4 (sekarang ditandai ✅ FIXED untuk keduanya).
+
+**Bug #1 fix** — helper baru `notifyOfficerSignRequest(tenantClient, slug, letterId, officerId,
+token)` di `letters/actions.ts`, melakukan sendiri lookup officer→member→contact→phone + fetch
+subject/nomor surat + `waAppUrl()`+`notifyWa()` untuk SATU officer. Dipanggil dari KEDUA tempat:
+`syncSignatureSlotsAction` (loop `toNotify`, MENGGANTIKAN ~40 baris resolusi batch inline yang
+lama jadi 3 baris) dan `generateSigningTokenAction` (baru, digate `if (!sig.signedAt)` — token
+untuk slot yang sudah TTD tidak perlu notifikasi "diminta tanda tangan"). Trade-off diterima:
+`syncSignatureSlotsAction` kehilangan optimasi batch-query lama (dulu 1 query untuk semua
+officer sekaligus, sekarang N query per slot) — diterima karena jumlah slot baru per simpan
+surat biasanya 1-2 (bukan puluhan) dan ini fire-and-forget, tidak block response ke admin.
+Import `inArray` dari `drizzle-orm` jadi tidak terpakai lagi setelah refactor ini, dihapus.
+
+**Bug #2 fix** — `sign/[token]/page.tsx`: SELECT surat ditambah `body`+`sender`, fetch
+`getSettings` general+contact (pola SAMA `keluar/[id]/page.tsx`, direuse bukan ditulis ulang),
+`buildMergeContext()` dengan `signers: []` (context minimal, cukup untuk preview read-only) →
+`resolveMergeFields()` → `renderBody()` → `bodyHtml`, dibungkus try/catch (gagal render →
+`bodyHtml=null`, accordion tidak dirender, TIDAK menggagalkan seluruh halaman TTD).
+`signing-page-client.tsx`: prop baru `bodyHtml: string | null`, accordion native
+`<details>`/`<summary>` "Lihat Isi Surat" (collapsed by default, tanpa JS state tambahan)
+ditaruh antara blok "Detail Surat" dan "Penandatangan". **Bonus ditemukan saat implementasi**:
+copy existing di bawah tombol TTD ("Dengan menandatangani, Anda menyetujui isi surat di atas.")
+SEBELUMNYA menipu (tidak ada isi surat di atas sama sekali) — sekarang jadi teks yang BENAR
+tanpa perlu diubah, karena accordion isi surat memang ada di atas tombol itu sekarang.
+
+**Gotcha kecil**: build sempat gagal "Script not found 'build'" — bukan bug kode, cwd shell
+masih di `packages/db` (persist dari command `tsc --noEmit` sebelumnya via `cd .../packages/db
+&& ...`), `bun run build --filter=@jalajogja/web` dijalankan dari direktori yang salah. Fix:
+`cd` eksplisit balik ke repo root sebelum build. **Aturan**: shell tool ini mempertahankan cwd
+antar command — kalau sebelumnya sempat `cd` ke subpackage untuk keperluan lain (tsc scoped),
+WAJIB `cd` balik ke root sebelum command yang butuh root context (`bun run build --filter=`,
+`bun run dev`), jangan asumsikan cwd masih root.
+
+**Koreksi dokumen lanjutan**: `docs/arsitektur-tandatangan.md` § 5 dan § 11 diupdate lagi —
+dari "❌ BELUM ADA" (koreksi audit sebelumnya) jadi "✅ SELESAI" (karena baru saja
+diimplementasikan beneran) — dokumen sekarang benar-benar sinkron dengan kode, bukan cuma
+"sudah dikoreksi statusnya jadi jujur" tapi juga "sudah dieksekusi jadi statusnya positif lagi".
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` + `bun run build
+--filter=@jalajogja/web` sukses (dev server dimatikan+dibersihkan+direstart). Nol migrasi DB
+(kolom `body` di `letters` sudah ada sejak lama). **Belum di-commit/push, belum dijalankan/
+diverifikasi di VPS, belum diverifikasi visual di browser** — user perlu coba alur end-to-end:
+assign officer → cek WA `letter_sign_request` masuk → buka `/sign/{token}` → expand "Lihat Isi
+Surat" → tanda tangan, DAN coba tombol "Buat Link TTD" untuk slot lama → cek WA ikut terkirim.
+
+**Susulan — dokumentasi disusun ulang biar gampang dilanjutkan (permintaan eksplisit user
+"dokumentasikan perubahan... agar mudah kita improve kelak")**: `docs/arsitektur-modul-surat.md`
+ditambah § 7 "Arsitektur Final — Referensi untuk Pengembangan Lanjutan" (2 pola reusable
+didokumentasikan eksplisit: notifikasi WA satu-helper-dua-pemanggil § 7a, preview isi surat
+`buildMergeContext`+`renderBody` § 7b — supaya fitur berikutnya di area ini tidak menulis ulang
+pola dari nol) dan § 8 "Backlog" (5 ide konkret: attachment MediaPicker, inter-tenant,
+notifikasi "surat selesai ditandatangani semua pihak" — BARU, belum diminta user, sekadar
+dicatat supaya tidak hilang — preview isi surat di `/verify/[hash]`, restore batching kalau
+performa jadi masalah). `docs/arsitektur-whatsapp.md` § 6.6 diupdate — tabel event ditambah
+baris trigger kedua (`generateSigningTokenAction`), catatan trade-off batching-jadi-per-officer
+dijelaskan eksplisit dengan alasan (bukan cuma "sudah diubah" tanpa konteks).
+
+### [2026-07-24] Pemisahan Donasi vs Registrasi Forum — Celah Nyata Ditemukan+Difix
+
+> Detail penuh: **`docs/arsitektur-backbone-ikpm.md` § "Pemisahan Donasi vs Registrasi Forum"**.
+
+User minta cek: "ketika orang berdonasi SAJA, apakah otomatis dianggap ikut event/gabung forum?
+seharusnya tidak — 2 hal berbeda." Dicek dua modul:
+
+**Event + donasi — TIDAK ADA BUG.** `EventRegisterForm` selalu mewajibkan pilih tiket untuk
+mendaftar; auto-create `event_registrations` (`finance/billing/actions.ts`) secara eksplisit
+cuma memproses `invoice_items` bertipe `"ticket"`, tidak pernah `"donation"`. Donasi ke campaign
+yang kebetulan terhubung ke event TIDAK PERNAH membuat baris pendaftaran.
+
+**Forum + donasi wajib (`paymentRequired=true`) — CELAH NYATA.** `activateForumMembershipIfApplicable()`
+(dibangun Fase D, sesi sebelumnya) menganggap SIAPA PUN yang bayar ke item syarat iuran forum —
+dari jalur MANA PUN, bukan cuma `/gabung` — sebagai niat gabung. Ini disengaja saat Fase D
+("reuse billing universal tanpa perlu menandai invoice") tapi konsekuensinya: donasi organik
+lewat `/campaign/{slug}` (nol niat gabung) bisa tak sengaja mengaktifkan keanggotaan kalau
+orangnya kebetulan eligible. Dikonfirmasi via `AskUserQuestion`: user pilih **pisahkan total**
+— hanya pembayaran genuinely dari `/gabung` yang boleh aktivasi (REVERSAL dari keputusan Fase D
+yang eksplisit "tanpa menandai invoice").
+
+**Fix — penanda `for_gabung_registration` dipropagasi end-to-end**: `/gabung` (paymentRequired
+=true) → link `?forGabung=1` ke `/produk/{slug}`/`/campaign/{slug}` → page.tsx baca
+`searchParams.forGabung` → `ProductDetailClient`/`CampaignDetailClient` kirim flag ke
+`addToCartAction` → `cart_items.for_gabung_registration` → `checkoutAction` copy ke
+`invoice_items.for_gabung_registration` → `activateForumMembershipIfApplicable` WAJIB flag ini
+`true` (bukan cuma itemId cocok). Migration `0046` (boolean DEFAULT false di 2 tabel, per-tenant
+loop) — default aman untuk semua data lama. Link "dukungan sukarela" (`paymentRequired=false`)
+SENGAJA TIDAK ditandai (fungsi sudah `return` duluan di kondisi itu, menandai tidak ada
+gunanya). `addToCartAction`'s cabang update-qty-existing-item ikut menandai retroaktif kalau
+`forGabung=true` — TIDAK PERNAH meng-UN-tandai baris yang sudah `true`.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` + `bun run build
+--filter=@jalajogja/web` sukses (dev server dimatikan+dibersihkan+direstart). Migration `0046`
+dijalankan+diverifikasi di lokal. **Belum dijalankan di VPS. Belum diverifikasi visual/end-to-
+end** — user perlu coba: donasi biasa ke campaign forum TANPA lewat `/gabung` → pastikan tidak
+jadi anggota meski eligible; lalu klik link dari `/gabung` → bayar → pastikan tetap aktif seperti
+sebelumnya.
+
+**Aturan yang ditegaskan**: kalau instruksi user tampak MEMBALIK keputusan arsitektur yang
+sudah eksplisit dikunci di sesi sebelumnya (di sini: "reuse billing universal tanpa menandai
+invoice" → sekarang "wajib ditandai"), JANGAN diam-diam ubah — konfirmasi dulu via
+`AskUserQuestion` dengan menyebutkan eksplisit bahwa ini reversal dari keputusan sebelumnya,
+baru eksekusi setelah dikonfirmasi (persis yang dilakukan di sesi ini).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Audit menyeluruh konsistensi Phone/WhatsApp** (lihat lesson di atas) —
+- Terakhir dikerjakan: **Pemisahan Donasi vs Registrasi Forum** (lihat lesson `[2026-07-24]`
+  "Pemisahan Donasi vs Registrasi Forum" di atas, detail penuh di
+  `docs/arsitektur-backbone-ikpm.md` § "Pemisahan Donasi vs Registrasi Forum") — user minta cek
+  apakah donasi standalone otomatis dianggap ikut event/gabung forum. Event: DICEK, TIDAK ADA
+  BUG (auto-create `event_registrations` sudah filter ketat `itemType==="ticket"`). Forum
+  (`paymentRequired=true`): DITEMUKAN CELAH NYATA — donasi organik via `/campaign/{slug}` bisa
+  tak sengaja aktivasi keanggotaan kalau item-nya cocok syarat iuran forum, meski orangnya nol
+  niat gabung. Dikonfirmasi via `AskUserQuestion` (REVERSAL dari keputusan Fase D sebelumnya
+  yang eksplisit "tanpa menandai invoice") — fix: penanda `for_gabung_registration` baru
+  (migration `0046`, 2 kolom boolean di `cart_items`+`invoice_items`) dipropagasi end-to-end
+  dari klik link `/gabung?forGabung=1` sampai ke pengecekan aktivasi. 7 file diubah (schema,
+  DDL, gabung/page.tsx, 2 detail page + 2 client component, cart/actions.ts,
+  finance/billing/actions.ts). `tsc`+build bersih di kedua package, migration
+  dijalankan+diverifikasi lokal, dev server direstart. **Belum di-commit/push, belum dijalankan
+  di VPS, belum diverifikasi visual/end-to-end** — user perlu coba: donasi biasa TANPA lewat
+  `/gabung` → pastikan tidak jadi anggota; klik link dari `/gabung` → bayar → pastikan tetap
+  aktif seperti sebelumnya.
+- Sesi sebelumnya: **Fix Bug #1+#2 Modul Surat** (lihat lesson `[2026-07-24]` "Bug #1 + #2
+  Modul Surat — Dieksekusi" di atas, detail penuh di `docs/arsitektur-modul-surat.md` § 4,
+  keduanya sekarang ✅ FIXED) — lanjutan LANGSUNG dari audit di sesi yang sama (lihat entri di
+  bawah). (1) `generateSigningTokenAction` sekarang ikut kirim WA `letter_sign_request` (helper
+  baru `notifyOfficerSignRequest`, dipakai ulang oleh `syncSignatureSlotsAction` juga —
+  menyederhanakan ~40 baris resolusi batch jadi 3 baris); (2) halaman publik `/sign/[token]`
+  sekarang fetch+render isi surat (`body`+`sender` ditambah ke SELECT, `buildMergeContext()`+
+  `resolveMergeFields()`+`renderBody()` — reuse pola `keluar/[id]/page.tsx`), ditampilkan
+  sebagai accordion "Lihat Isi Surat" (native `<details>`, collapsed by default) SEBELUM tombol
+  TTD — officer sekarang bisa baca isi surat dulu sebelum menandatangani. `tsc --noEmit` bersih
+  di `apps/web` DAN `packages/db`, `bun run build` sukses, dev server direstart. Gotcha kecil:
+  build sempat gagal karena shell cwd masih di `packages/db` dari command sebelumnya — perlu
+  `cd` eksplisit balik ke root (shell tool ini mempertahankan cwd antar command, jangan
+  asumsikan selalu di root). `docs/arsitektur-tandatangan.md` § 5/§ 11 diupdate lagi jadi
+  "✅ SELESAI" (sebelumnya "❌ BELUM ADA" hasil koreksi audit, sekarang benar-benar dibangun).
+  **Susulan langsung**: dokumentasi disusun ulang atas permintaan user ("agar mudah kita
+  improve kelak") — `docs/arsitektur-modul-surat.md` ditambah § 7 "Arsitektur Final" (2 pola
+  reusable: notifikasi WA satu-helper-dua-pemanggil, preview isi surat
+  `buildMergeContext`+`renderBody`) dan § 8 "Backlog" (5 ide konkret untuk lanjutan);
+  `docs/arsitektur-whatsapp.md` § 6.6 diupdate — tabel event + trade-off batching dijelaskan.
+  **Belum di-commit/push, belum dijalankan/diverifikasi di VPS, belum diverifikasi visual** —
+  user perlu coba alur end-to-end: assign officer → cek WA masuk → buka link → expand isi
+  surat → tanda tangan, dan coba tombol "Buat Link TTD" untuk slot lama → cek WA ikut terkirim.
+- Sesi sebelumnya: **Audit Menyeluruh Modul Surat** (lihat lesson `[2026-07-24]` "Audit
+  Menyeluruh Modul Surat" di atas, detail penuh di `docs/arsitektur-modul-surat.md`, dokumen
+  BARU) — audit sebelum user istirahat: cek arsitektur ada/tidak (ADA, 3 dokumen), verifikasi
+  kode aktual satu per satu (bukan percaya dokumen), cek notifikasi WA saat butuh TTD, cek
+  gap/bug, rencanakan perbaikan. Ditemukan+dikoreksi 2 dokumen basi (`arsitektur-surat.md`
+  header salah bilang "PROPOSAL" padahal 100% sudah diimplementasikan + detail penyimpanan
+  setting salah; `arsitektur-tandatangan.md` punya kontradiksi internal § 5 vs § 11 soal preview
+  surat di halaman TTD). Ditemukan 2 bug (lihat entri di atas — sudah difix di giliran
+  berikutnya di sesi yang sama). 2 gap lama (attachment file, inter-tenant) dikonfirmasi masih
+  terbuka, butuh keputusan desain terpisah, belum dikerjakan.
+- Sesi sebelumnya: **Nomor Keanggotaan Lokal Forum** (lihat lesson `[2026-07-24]` "Nomor
+  Keanggotaan Lokal Forum" di atas, detail penuh di `docs/arsitektur-backbone-ikpm.md` §
+  "Nomor Keanggotaan Lokal Forum") — nomor identitas anggota LOKAL per forum (terpisah dari
+  `member_number` global), khusus tenant forum, counter tidak reset per tahun, preset dropdown
+  3 format (bukan token-engine bebas). Schema baru: `tenant_memberships.membership_number` +
+  tabel `forum_membership_sequences` (migration `0045`, locking pattern sama
+  `letter_number_sequences`). Bug client/server boundary (ke-3 kalinya di project ini) ditemukan
+  SEGERA saat `next build` (bukan setelah deploy) — `lib/forum-membership-number.ts` di-split
+  jadi client-safe + `.server.ts`. Generation diwire ke 2 titik aktivasi (`joinForumAction` +
+  `activateForumMembershipIfApplicable`), display baru "No. Anggota Forum" di panel desktop
+  `/akun`. **Susulan langsung**: `MemberCard` mobile diminta juga — nomor forum
+  MENGGANTIKAN No. Anggota global di kartu (bukan baris tambahan) + caption "No. ID
+  {nama forum}" di bawahnya, reuse `siteName` yang sudah resolve ke tenant forum itu sendiri
+  (bukti langsung manfaat arsitektur `resolveAkunBranding()` yang sudah dikunci sebelumnya).
+  `tsc`+build bersih di kedua package (2×), migration dijalankan+diverifikasi lokal, dev server
+  direstart. **Belum di-commit/push, belum dijalankan di VPS, belum diverifikasi visual** —
+  user perlu aktifkan format di `/app/{slug}/settings/keanggotaan` (tenant `forcreator`), coba
+  join via `/gabung`, cek hasil di `/akun` (desktop + mobile).
+- Sesi sebelumnya: **Halaman `/gabung` — Info Pendaftaran Custom + Persetujuan Legal +
+  Header Diperkaya** (lihat lesson `[2026-07-24]` "Halaman `/gabung`" di atas, detail penuh di
+  `docs/arsitektur-backbone-ikpm.md` § "Susulan Fase D") — field baru `registrationInfo` di
+  `MembershipConfigData` (textarea admin di `/settings/keanggotaan`, tampil sebagai teks bebas
+  di `/gabung` TERLEPAS status eligibility pengunjung — bug draft-pertama yang keliru gate
+  seluruh fetch config di belakang `eligibility.eligible` sudah difix), `LegalModal` diekstrak
+  jadi komponen shared (`components/akun/legal-modal.tsx`) dari yang tadinya private di
+  `register-form.tsx`, dipakai ulang di `join-forum-button.tsx` (checkbox persetujuan Syarat &
+  Ketentuan + Kebijakan Privasi sebelum tombol "Ya, Saya Ingin Bergabung"), dan header `/gabung`
+  diperkaya (logo tenant bulat + ring aksen + fallback inisial, kartu info dengan header "Tentang
+  {tenant}" + gradient tipis). `tsc`+build bersih (2×), dev server direstart. Nol migrasi DB.
+  **Belum di-commit/push, belum diverifikasi visual** — user perlu isi textarea di
+  `/settings/keanggotaan` (tenant `forcreator`) lalu cek `/gabung`.
+- Sesi sebelumnya: **Bidang Usaha `/akun/usaha` — Facet Independen** (lihat lesson
+  `[2026-07-24]` "Bidang Usaha `/akun/usaha`" di atas, detail penuh di dokumen BARU
+  `docs/arsitektur-usaha.md`) — diskusi berkembang dari "tambah bidang usaha" jadi "bagaimana
+  memungkinkan matchmaking antar usaha" (retailer↔produsen). User sendiri menemukan masalah
+  desain sebelum implementasi: sub-sektor bertingkat tidak bisa dipakai karena bidang spesifik
+  sering tumpang tindih lintas sektor. Solusi: `businessFields: string[]` sebagai facet
+  INDEPENDEN dari `sector` (bukan hierarki) — komponen baru `TagMultiSelect` (generik,
+  reusable, autocomplete+creatable) diwire ke KEDUA form (self-service `/akun/usaha` DAN admin
+  wizard `step4-business.tsx`, plus 2 halaman admin yang mengonstruksi `BusinessEntry[]`).
+  Fase 2 (mesin pencocokan "menyediakan"/"membutuhkan") DIDOKUMENTASIKAN saja, sesuai
+  permintaan eksplisit user, belum dibangun. Migration `0044` dijalankan+diverifikasi lokal.
+  `tsc`+build bersih (2 putaran — 1 titik construction `BusinessEntry[]` sempat terlewat,
+  ditemukan `tsc` langsung difix). Dev server direstart. **Belum di-commit/push, belum
+  dijalankan di VPS, belum diverifikasi visual** — user perlu coba "Bidang Usaha" di
+  `/akun/usaha`.
+- Sesi sebelumnya: **Kategori Profesi Baru "Kreatif"** (lihat lesson `[2026-07-24]`
+  "Kategori Profesi Baru" di atas, detail penuh di `docs/arsitektur-profesional.md` § 14) —
+  user minta kategori baru untuk forum "Forcreator" (kreator & pekerja seni), 9 Bidang Usaha
+  dari kepengurusan mereka didiskusikan dulu lalu dipetakan ke ~15 jenis profesi spesifik
+  (`lib/professional-types.ts`, `PROFESSION_TYPES_BY_CATEGORY["Kreatif"]`). Ditemukan+difix
+  bug: kolom `member_professionals.profession_category` punya CHECK constraint PostgreSQL
+  SUNGGUHAN (bukan cuma TypeScript enum) dari migration lama — perlu migration BARU
+  (`0043_member_professionals_kreatif_category.sql`, sekali jalan, tabel PUBLIC-schema bukan
+  per-tenant) untuk update constraint-nya, tidak cukup ubah `lib/professional-types.ts` saja.
+  `tsc`+build bersih di `apps/web` dan `packages/db`, migration dijalankan+diverifikasi lokal
+  via `psql \d`. Dev server direstart untuk testing user. **Belum di-commit/push, belum
+  dijalankan di VPS, belum diverifikasi visual** — user perlu coba tambah profesional kategori
+  "Kreatif" di `/akun/profesional`.
+- Sesi sebelumnya: **Eligibility Overlay Digeneralisasi ke Semua Tipe Tenant + Rename
+  Total** (lihat lesson `[2026-07-24]` "Eligibility Overlay Digeneralisasi" di atas, detail
+  penuh di `docs/arsitektur-akun.md` § "Eligibility Overlay Generik") — 2 permintaan susulan:
+  (1) 3 kondisi tombol overlay ("Lengkapi Data Pribadi" → `/akun/lengkapi`, "Lengkapi Data →"
+  popup 3 pilihan direktori, "Gabung X" → `/gabung`) menggantikan 1 tombol generik yang selalu
+  ke `/gabung` (rancu); (2) SELURUH mekanisme direname dari istilah forum-spesifik jadi generik
+  (`lib/forum-eligibility.ts`→`member-eligibility.ts`, `checkForumEligibility`→
+  `checkMemberEligibility`, `ForumJoinOverlay`→`MembershipEligibilityOverlay`, dkk — 6 file
+  importer diupdate, grep akhir nol sisa nama lama) supaya bisa dipakai SEMUA tipe tenant, bukan
+  cuma forum. Kondisi tampil overlay beda per tipe: forum sampai genuinely `forumStatus=
+  'active'`; cabang/marhalah cuma sampai `eligible` (begitu eligible, keanggotaan SUDAH
+  otomatis dari auto-populate lama, overlay hilang tanpa perlu tombol join). `tsc`+build
+  bersih, dev server direstart. **Belum di-commit/push, belum diverifikasi visual** —
+  terutama kasus cabang/marhalah lama yang belum eligible, perlu dicoba user.
+- Sesi sebelumnya: **`ForumJoinOverlay` — 3 kondisi tombol, bukan 1** (SUPERSEDED oleh entri di
+  atas — komponen ini sudah di-rename+digeneralisasi jadi `MembershipEligibilityOverlay`,
+  dipertahankan di sini sebagai catatan sejarah langkah menengahnya) — susulan langsung dari
+  "Standar Label Keanggotaan" di bawah, ditemukan user via testing manual: tombol "Lengkapi
+  Data" selalu ke `/gabung` (double-hop membingungkan). Diganti 3 kondisi eksplisit berdasar
+  `checkForumEligibility().missing`: (1) profil pribadi belum lengkap → "Lengkapi Data Pribadi"
+  → `/akun/lengkapi`; (2) tinggal direktori (Usaha/Profesional/Pesantren) → "Lengkapi Data →"
+  buka popup 3 pilihan (`DirectoryChoicePopover`, komponen client baru); (3) eligible → "Gabung
+  {tenantName}" → `/gabung`. `akun/page.tsx` ganti `forumEligible: boolean` jadi
+  `forumMissing: ForumEligibilityField[]`. `tsc`+build bersih, dev server direstart.
+- Sesi sebelumnya: **Standar Label Keanggotaan "Lengkapi Data" vs "Anggota X"** (lihat
+  lesson `[2026-07-24]` "Standar Label Keanggotaan" di atas, detail penuh di
+  `docs/arsitektur-akun.md` § "Standar Label Keanggotaan") — dipicu user membuat tenant forum
+  lokal (`forcreator`) dan langsung melihat gejala nyata: badge "Anggota Forcreator" muncul
+  meski belum lewat `/gabung` sama sekali. Ditemukan+difix 2 bug: `joinTenant()` di
+  `/api/akun/register` yang auto-aktifkan keanggotaan tenant APA PUN (termasuk forum) saat
+  registrasi biasa (sekarang skip untuk forum), dan `resolveAkunBranding()` yang menganggap
+  "ada baris tenant_memberships apa pun" = genuine member forum (sekarang wajib
+  `forumStatus='active'`). Ditambah standar baru: SEMUA tipe tenant (bukan cuma forum) kini
+  butuh `checkForumEligibility()` lolos dulu sebelum label bisa jadi "Anggota X" — belum lolos
+  → "Lengkapi Data" tanpa ikon centang. `tsc`+build bersih, dev server direstart untuk testing
+  user. **Belum di-commit/push, belum diverifikasi visual di browser** — user perlu cek
+  langsung dengan tenant `forcreator` miliknya.
+- Sesi sebelumnya: **Alur Pendaftaran Forum v2 — Fase D dieksekusi** (lihat lesson
+  `[2026-07-24]` "Fase D" di atas, detail penuh di `docs/arsitektur-backbone-ikpm.md` § "Urutan
+  Eksekusi") — halaman admin `/app/{slug}/settings/keanggotaan` (picker produk/campaign +
+  `paymentRequired`/`requireMode`) + hook `activateForumMembershipIfApplicable()` diwire ke
+  `confirmInvoicePaymentAction`/`verifySubmittedPaymentAction` (aktif hanya saat invoice benar-
+  benar lunas, DAN member tetap harus eligible — payment saja tidak cukup, keputusan user) +
+  `/gabung` diperluas branch UI untuk forum berbayar (link ke produk/campaign, bukan tombol
+  join). `tsc`+build bersih, kedua route baru terkonfirmasi di build output. **Belum di-commit/
+  push, belum dijalankan di VPS (nol migrasi baru dibutuhkan), belum diverifikasi visual.**
+  **Fase E (verifikasi end-to-end + deploy) adalah SATU-SATUNYA fase tersisa** dari seluruh
+  roadmap Alur Pendaftaran Forum v2 — lanjutkan dari situ di sesi berikutnya begitu user siap
+  menguji manual (butuh minimal 1 tenant forum + 1 member uji coba, plus opsional 1 produk/
+  campaign untuk mencoba jalur berbayar).
+- Sesi sebelumnya: **Alur Pendaftaran Forum v2 — Fase A+B+C dieksekusi** (lihat lesson
+  `[2026-07-24]` di atas, detail penuh di `docs/arsitektur-backbone-ikpm.md` § "Urutan
+  Eksekusi") — schema migration (`settings.group` tambah `"forum"`, migration 0042, dijalankan
+  lokal) + `checkForumEligibility()` helper (`apps/web/lib/forum-eligibility.ts`) + halaman
+  `/gabung` (page+actions+button, jalur GRATIS end-to-end) + `ForumJoinOverlay` diwire ke
+  `/akun` (desktop+mobile). `tsc`+build bersih, route `/gabung` terkonfirmasi di build output.
+- Sesi sebelumnya: **Alur Pendaftaran Forum v2 — perencanaan murni** (lihat lesson di atas,
+  detail penuh di `docs/arsitektur-backbone-ikpm.md`) — user tanya apakah alur daftar jadi
+  anggota forum sudah ada, verifikasi kode mengonfirmasi belum sama sekali (roadmap lama 100%
+  unchecked, sudah ada tenant forum live "forcreator" yang exposed ke gap ini). Didiskusikan
+  murni via chat (bukan Plan Mode), user eksplisit "jangan eksekusi apapun dulu" — desain baru
+  jauh lebih ramping dari rencana lama v1: TANPA form pendaftaran baru (prinsip single-ID),
+  gate kelayakan (profil Step1+2 lengkap + minimal 1 dari usaha/pesantren/profesional),
+  pembayaran opsional reuse produk/campaign yang SUDAH ADA (bukan invoice source_type baru),
+  overlay glass-effect di `/akun` menutupi kartu keanggotaan sampai syarat terpenuhi. Kolom
+  schema `forumStatus` dkk (migration 0018 lama, nganggur) ternyata pas dipakai tanpa migrasi
+  baru — cuma butuh 1 setting group baru (`"forum"`). **NOL kode aplikasi disentuh** — hanya
+  `docs/arsitektur-backbone-ikpm.md` (v1 ditandai superseded, v2 ditulis lengkap) +
+  `project_backbone_ikpm.md` (memory) diperbarui. **Susulan sesi yang sama**: user menjawab
+  ketiga keputusan terbuka (tambah sumbu `paymentRequired` boolean untuk produk/campaign;
+  kunci nama rute `/gabung` + `/settings/keanggotaan`, dicek nol collision; minta verifikasi
+  literal ke schema — "jangan ngarang" — semua 10 field syarat kelayakan diverifikasi satu per
+  satu ke `members.ts`/`contacts.ts`, semua cocok). **§ 7 dokumen sekarang "tidak ada lagi
+  keputusan blocking"** — siap dieksekusi dari Fase A begitu user memberi sinyal eksplisit,
+  belum ada sinyal itu di akhir sesi ini.
+- Sesi sebelumnya: **Audit menyeluruh konsistensi Phone/WhatsApp** (lihat lesson di atas) —
   diminta user sebagai pembersihan sebelum masuk fitur besar berikutnya. ~14 file input/write-side
   diperbaiki (1 dihapus sebagai dead code — `qurban-order-form.tsx`+`createQurbanOrderAction`),
   24 titik display dibungkus `displayPhone()`, bug fungsional nyata ditemukan+difix (4 link `wa.me`
@@ -9752,9 +10707,9 @@ trade-off-nya dan biarkan user memutuskan, seperti pola sesi ini.
   **sudah dijalankan+diverifikasi 2× di lokal** (ditemukan+dibenarkan 1 baris letter_contacts +
   2 baris settings, termasuk kuirk `contact_phone` yang tersimpan sebagai JSON number bukan
   string). `docs/arsitektur-kontak.md` ditulis ulang total (status "SELESAI" per audit ini).
-  `tsc`+build bersih di kedua package. **Migration belum dijalankan di VPS. Belum diverifikasi
-  visual di browser** (klik wa.me sungguhan di 4 halaman yang tadinya rusak) — user perlu coba
-  setelah deploy. **Belum di-commit/push** — menunggu konfirmasi user.
+  `tsc`+build bersih di kedua package. **Di-commit (`3a992a4`) + push + deploy VPS SELESAI** —
+  migration 0041 sudah jalan di production, build+PM2 restart+curl 200 dikonfirmasi stabil.
+  **Verifikasi visual browser (klik wa.me sungguhan) masih PR user, belum ada konfirmasi baliknya.**
 - **Lanjutan sesi yang sama**: user tanya follow-up soal konsistensi toggle visibilitas kontak
   (is_phone_public/is_whatsapp_public/is_email_public) — lihat lesson "Audit Consent Visibilitas
   Kontak" di atas. Audit menyeluruh (list pages, SEO, search, JSON-LD — semua clean, nol leak)
