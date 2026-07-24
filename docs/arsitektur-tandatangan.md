@@ -231,7 +231,12 @@ Tidak ada combobox assign di detail page. Assignment dilakukan di edit page.
 - Tidak butuh login (di luar route group `(dashboard)`)
 - Pattern sama dengan `/(public)/[tenant]/verify/[hash]` yang sudah ada
 - Tampilkan: nama organisasi, perihal surat, nomor, tanggal, nama officer yang diundang, peran
-- Accordion "Lihat Preview Surat" — render body surat via `renderBody()`
+- Accordion "Lihat Isi Surat" — render body surat via `renderBody()` — **✅ SELESAI** (fitur ini
+  sempat tertulis di dokumen padahal belum pernah dibangun — dikoreksi 2026-07-24, LALU
+  benar-benar diimplementasikan di sesi yang sama sebagai Bug #2. Detail:
+  `docs/arsitektur-modul-surat.md` § 4 Bug #2. Native `<details>`/`<summary>`, collapsed by
+  default, `bodyHtml` di-resolve server-side di `page.tsx` via `buildMergeContext()` dengan
+  `signers: []` — reuse pola `keluar/[id]/page.tsx`)
 - Tombol "Tanda Tangani Sekarang" → panggil `signByTokenAction`
 - Setelah success: tampilkan QR verifikasi + pesan konfirmasi
 
@@ -540,7 +545,9 @@ Semua fitur arsitektur TTD telah diimplementasikan. Tidak ada item yang pending.
 
 ## 11. Pertanyaan Terbuka
 
-1. **Accordion "Lihat Preview Surat" di halaman publik `/sign/[token]`** — saat ini tidak ada preview isi surat. Tambahkan jika diperlukan.
+~~1. Accordion "Lihat Preview Surat" di halaman publik `/sign/[token]`~~ — **✅ SELESAI
+2026-07-24**, lihat § 5 di atas + `docs/arsitektur-modul-surat.md` § 4 Bug #2. Tidak ada
+pertanyaan terbuka lain saat ini.
 
 ---
 

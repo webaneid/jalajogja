@@ -29,13 +29,17 @@ type Props = {
   alreadySigned:    boolean;
   verificationHash: string | null;
   appUrl:           string;
+  // Isi surat (sudah di-resolve merge fields + render ke HTML server-side) — supaya officer
+  // tidak menandatangani "buta". Nullable: fallback pesan singkat kalau body kosong/gagal
+  // render. Lihat docs/arsitektur-modul-surat.md § 4 Bug #2.
+  bodyHtml:         string | null;
 };
 
 export function SigningPageClient({
   slug, token, letterId,
   letterSubject, letterNumber, letterDate, recipient,
   officerName, officerPosition, officerDivision, role,
-  alreadySigned, verificationHash: initialHash, appUrl,
+  alreadySigned, verificationHash: initialHash, appUrl, bodyHtml,
 }: Props) {
   const [signed, setSigned]     = useState(alreadySigned);
   const [hash, setHash]         = useState<string | null>(initialHash);
@@ -108,6 +112,24 @@ export function SigningPageClient({
             )}
           </div>
         </div>
+
+        {/* Preview isi surat — collapsed by default. Officer WAJIB bisa baca isi surat
+            sebelum menandatangani, bukan cuma metadata di atas. */}
+        {bodyHtml && (
+          <details className="group rounded-lg border border-border">
+            <summary className="flex cursor-pointer select-none items-center justify-between px-3 py-2.5 text-sm font-medium">
+              <span>Lihat Isi Surat</span>
+              <span className="text-xs text-muted-foreground group-open:hidden">Tampilkan ▾</span>
+              <span className="hidden text-xs text-muted-foreground group-open:inline">Sembunyikan ▴</span>
+            </summary>
+            <div
+              className="prose prose-sm max-w-none border-t border-border px-3 py-3
+                [&_p]:my-2 [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm
+                [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+              dangerouslySetInnerHTML={{ __html: bodyHtml }}
+            />
+          </details>
+        )}
 
         {/* Info penandatangan */}
         <div className="space-y-2">

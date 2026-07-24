@@ -6,7 +6,7 @@ import { hasFullAccess } from "@/lib/permissions";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { eq, sql, and, inArray } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createHash, randomUUID } from "crypto";
 import { notifyWa, waAppUrl } from "@/lib/wa-notify";
@@ -924,6 +924,66 @@ export type SlotInput = {
   signedAt?:   Date | null;     // hanya untuk display di form mode (tidak dikirim ke DB)
 };
 
+// Kirim notifikasi WA "diminta tanda tangan" ke satu officer — dipakai KEDUA jalur yang bisa
+// menerbitkan signing token baru: syncSignatureSlotsAction (batch, saat admin simpan surat)
+// dan generateSigningTokenAction (single, tombol "Buat Link TTD" untuk slot lama/edge case).
+// Sebelum fix ini (2026-07-24, lihat docs/arsitektur-modul-surat.md § 4 Bug #1),
+// generateSigningTokenAction tidak pernah memanggil ini sama sekali — admin harus salin+kirim
+// link manual. Fire-and-forget (void notifyWa) — gagal kirim WA tidak boleh menggagalkan
+// penerbitan token itu sendiri.
+async function notifyOfficerSignRequest(
+  tenantClient: ReturnType<typeof createTenantDb>,
+  slug:         string,
+  letterId:     string,
+  officerId:    string,
+  token:        string,
+): Promise<void> {
+  const { db: tenantDb, schema } = tenantClient;
+
+  const [officer] = await tenantDb
+    .select({ memberId: schema.officers.memberId })
+    .from(schema.officers)
+    .where(eq(schema.officers.id, officerId))
+    .limit(1);
+  if (!officer) return;
+
+  const [member] = await db
+    .select({ name: members.name, contactId: members.contactId })
+    .from(members)
+    .where(eq(members.id, officer.memberId))
+    .limit(1);
+  if (!member) return;
+
+  let phone: string | null = null;
+  if (member.contactId) {
+    const [contact] = await db
+      .select({ phone: contacts.phone, whatsapp: contacts.whatsapp })
+      .from(contacts)
+      .where(eq(contacts.id, member.contactId))
+      .limit(1);
+    phone = contact?.whatsapp || contact?.phone || null;
+  }
+  if (!phone) return;
+
+  const [letterRow] = await tenantDb
+    .select({ subject: schema.letters.subject, letterNumber: schema.letters.letterNumber })
+    .from(schema.letters)
+    .where(eq(schema.letters.id, letterId))
+    .limit(1);
+
+  const signUrl = await waAppUrl(slug, `/sign/${token}`);
+  void notifyWa({
+    slug, tenantDb: tenantClient, event: "letter_sign_request",
+    phone,
+    vars: {
+      name:          member.name,
+      letterSubject: letterRow?.subject ?? "-",
+      letterNumber:  letterRow?.letterNumber ?? "-",
+      signUrl,
+    },
+  });
+}
+
 export async function syncSignatureSlotsAction(
   slug:     string,
   letterId: string,
@@ -1027,48 +1087,10 @@ export async function syncSignatureSlotsAction(
       }
     }
 
-    // Notifikasi WA ke officer yang dapat link TTD baru
-    if (toNotify.length > 0) {
-      const [letterRow] = await tenantDb
-        .select({ subject: schema.letters.subject, letterNumber: schema.letters.letterNumber })
-        .from(schema.letters)
-        .where(eq(schema.letters.id, letterId))
-        .limit(1);
-
-      const officerIds = toNotify.map((n) => n.officerId);
-      const officerRows = await tenantDb
-        .select({ id: schema.officers.id, memberId: schema.officers.memberId })
-        .from(schema.officers)
-        .where(inArray(schema.officers.id, officerIds));
-
-      const memberIds = [...new Set(officerRows.map((o) => o.memberId))];
-      const memberRows = memberIds.length > 0
-        ? await db.select({ id: members.id, name: members.name, contactId: members.contactId }).from(members).where(inArray(members.id, memberIds))
-        : [];
-      const contactIds = memberRows.map((m) => m.contactId).filter((id): id is string => !!id);
-      const contactRows = contactIds.length > 0
-        ? await db.select({ id: contacts.id, phone: contacts.phone, whatsapp: contacts.whatsapp }).from(contacts).where(inArray(contacts.id, contactIds))
-        : [];
-
-      for (const n of toNotify) {
-        const officer = officerRows.find((o) => o.id === n.officerId);
-        const member  = officer ? memberRows.find((m) => m.id === officer.memberId) : undefined;
-        const contact = member?.contactId ? contactRows.find((c) => c.id === member.contactId) : undefined;
-        const phone   = contact?.whatsapp || contact?.phone || null;
-        if (!member || !phone) continue;
-
-        const signUrl = await waAppUrl(slug, `/sign/${n.token}`);
-        void notifyWa({
-          slug, tenantDb: tenantClient, event: "letter_sign_request",
-          phone,
-          vars: {
-            name:          member.name,
-            letterSubject: letterRow?.subject ?? "-",
-            letterNumber:  letterRow?.letterNumber ?? "-",
-            signUrl,
-          },
-        });
-      }
+    // Notifikasi WA ke officer yang dapat link TTD baru — reuse helper bersama, sama yang
+    // dipakai generateSigningTokenAction (lihat komentar di atas definisinya).
+    for (const n of toNotify) {
+      void notifyOfficerSignRequest(tenantClient, slug, letterId, n.officerId, n.token);
     }
 
     revalidatePath(`/app/${slug}/letters`);
@@ -1092,12 +1114,15 @@ export async function generateSigningTokenAction(
     return { success: false, error: "Tidak punya izin." };
   }
 
-  const { db: tenantDb, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
 
   try {
     const [sig] = await tenantDb
       .select({
         id:           schema.letterSignatures.id,
+        letterId:     schema.letterSignatures.letterId,
+        officerId:    schema.letterSignatures.officerId,
         signingToken: schema.letterSignatures.signingToken,
         signedAt:     schema.letterSignatures.signedAt,
       })
@@ -1122,6 +1147,15 @@ export async function generateSigningTokenAction(
         signingTokenExpiresAt: expiresAt,
       })
       .where(eq(schema.letterSignatures.id, signatureId));
+
+    // Notifikasi WA — HANYA untuk slot yang belum TTD (recovery link "diminta tanda tangan"
+    // tidak relevan untuk slot yang sudah selesai, token-nya cuma dipulihkan agar link lama
+    // tetap menampilkan status "sudah ditandatangani"). Lihat komentar di
+    // notifyOfficerSignRequest untuk konteks kenapa jalur ini butuh notifikasi juga
+    // (docs/arsitektur-modul-surat.md § 4 Bug #1).
+    if (!sig.signedAt) {
+      void notifyOfficerSignRequest(tenantClient, slug, sig.letterId, sig.officerId, token);
+    }
 
     revalidatePath(`/app/${slug}/letters`);
     return { success: true, token };

@@ -1,7 +1,9 @@
 # Arsitektur: Modul Surat — Identitas Surat, Tujuan Surat, dan Tanggal
 
 ## Status
-> **PROPOSAL** — belum dieksekusi. Edit file ini sebelum implementasi dimulai.
+> **✅ SELESAI — diimplementasikan penuh** (dikoreksi 2026-07-24, sebelumnya salah tertulis
+> "PROPOSAL belum dieksekusi" meski kode sudah lama live). Verifikasi silang ke kode aktual +
+> daftar bug/gap terpisah yang masih terbuka: **`docs/arsitektur-modul-surat.md`**.
 
 ---
 
@@ -335,9 +337,15 @@ Section **"Format Tanggal"**:
               dari kalkulasi internasional (Umm al-Qura)
 ```
 
-Disimpan di settings:
-- `key="letter_date_format", group="general"` → `"masehi"` atau `"masehi_hijri"`
-- `key="letter_hijri_offset", group="general"` → `-1`, `0`, atau `1`
+**Koreksi implementasi aktual (2026-07-24)**: BUKAN dua key terpisah seperti tertulis di atas.
+Tersimpan sebagai bagian dari SATU object `letter_config` (key="letter_config", group="general")
+yang menampung semua pengaturan surat sekaligus:
+- `letter_config.date_format` → `"masehi"` atau `"masehi_hijri"`
+- `letter_config.hijri_offset` → `-1`, `0`, atau `1`
+- `letter_config.letter_city` → override kota manual
+
+Lihat `LetterConfig` type di `apps/web/app/(dashboard)/app/[tenant]/letters/actions.ts` untuk
+daftar lengkap field dalam object ini (juga menampung paper_size, margin, number_format, dst).
 
 ---
 

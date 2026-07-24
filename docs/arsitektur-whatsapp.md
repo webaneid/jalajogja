@@ -559,17 +559,33 @@ welcome dulu terkirim). Sekali kirim saja (`profile_reminder_sent_at` flag), buk
 `officer_invite` (`createInviteAction`) masih genuinely belum dikerjakan — dicek via grep
 2026-07-15, nol hasil `notifyWa()` di file itu.
 
-### 6.6 Surat — ✅ SELESAI (2026-07-15, commit `876fe91`)
+### 6.6 Surat — ✅ SELESAI (2026-07-15, commit `876fe91`; diperluas 2026-07-24)
 
 | Event | Trigger | Penerima | Template |
 |-------|---------|----------|----------|
-| Permintaan TTD | `syncSignatureSlotsAction` (slot dapat token baru) | Officer (per slot) | `letter_sign_request` |
+| Permintaan TTD | `syncSignatureSlotsAction` (slot dapat token baru, saat admin simpan surat) | Officer (per slot) | `letter_sign_request` |
+| Permintaan TTD (recovery) | `generateSigningTokenAction` (tombol "Buat Link TTD" — slot lama/edge case yang tokennya `null`) | Officer (satu slot) | `letter_sign_request` (template sama) |
 
 **Catatan:** Kirim hanya ke officer yang slotnya dapat token BARU (insert slot baru / officer
 berubah / token hilang). Officer yang tokennya dipertahankan (officer sama, link lama masih
-berlaku) TIDAK dapat notif ulang. Resolusi nomor: `officers.memberId → public.members.contactId →
-public.contacts.(whatsapp || phone)` — 3-level cross-schema lookup, di-batch (bukan per-officer
-query) untuk efisiensi saat ada banyak slot dalam satu surat.
+berlaku) TIDAK dapat notif ulang. `generateSigningTokenAction` HANYA notify kalau
+`!sig.signedAt` — token untuk slot yang sudah TTD (dipulihkan supaya link lama tetap
+menampilkan status "sudah ditandatangani") tidak perlu notifikasi "diminta tanda tangan".
+
+**Helper bersama `notifyOfficerSignRequest()`** (`letters/actions.ts`) — dipakai KEDUA titik
+trigger di atas, satu implementasi, bukan dua salinan. Resolusi nomor:
+`officers.memberId → public.members.contactId → public.contacts.(whatsapp || phone)` —
+3-level cross-schema lookup, PER-OFFICER (bukan di-batch) — sengaja disederhanakan 2026-07-24
+saat helper ini diekstrak (sebelumnya ada versi batch khusus di dalam
+`syncSignatureSlotsAction`, dihapus demi satu implementasi yang dipakai ulang). Trade-off yang
+diterima: kalau satu surat punya BANYAK slot baru sekaligus (jarang — biasanya 1-2 per surat),
+ini jadi N query terpisah alih-alih 1 query batch — diterima karena fire-and-forget (`void
+notifyOfficerSignRequest(...)`, tidak block response ke admin) dan volumenya kecil. Kalau
+suatu saat surat dengan puluhan slot jadi kasus nyata, batching bisa dikembalikan sebagai
+optimasi terpisah tanpa mengubah 2 titik pemanggilnya.
+
+Detail lengkap + rencana yang mendasari perubahan ini: `docs/arsitektur-modul-surat.md` § 4
+Bug #1.
 
 ### 6.7 Auth / OTP — ✅ SELESAI (2026-06-30)
 

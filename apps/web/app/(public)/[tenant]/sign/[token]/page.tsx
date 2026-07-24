@@ -4,11 +4,13 @@
 // Jika login tapi bukan pemilik slot → pesan akses ditolak
 import { auth }           from "@/lib/auth";
 import { headers }        from "next/headers";
-import { createTenantDb, db, members, tenants } from "@jalajogja/db";
+import { createTenantDb, db, members, tenants, getSettings } from "@jalajogja/db";
 import { eq }             from "drizzle-orm";
 import { notFound }       from "next/navigation";
 import { SigningPageClient } from "@/components/letters/signing-page-client";
 import { SignLoginForm }  from "./sign-login-form";
+import { renderBody }     from "@/lib/letter-render";
+import { resolveMergeFields, buildMergeContext } from "@/lib/letter-merge";
 
 function InfoCard({ title, message }: { title: string; message: string }) {
   return (
@@ -37,7 +39,8 @@ export default async function SignPage({
 
   if (!tenant?.isActive) notFound();
 
-  const { db: tenantDb, schema } = createTenantDb(slug);
+  const tenantClient             = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
 
   // Cari slot TTD by signingToken
   const [sig] = await tenantDb
@@ -101,7 +104,9 @@ export default async function SignPage({
   const officerName         = memberRow?.name ?? "—";
   const officerBetterAuthId = memberRow?.betterAuthUserId ?? null;
 
-  // Ambil info surat
+  // Ambil info surat — tambah `body` + `sender` supaya isi surat bisa di-preview sebelum TTD
+  // (sebelumnya cuma metadata, officer menandatangani "buta" — lihat
+  // docs/arsitektur-modul-surat.md § 4 Bug #2).
   const [letter] = await tenantDb
     .select({
       id:           schema.letters.id,
@@ -109,12 +114,44 @@ export default async function SignPage({
       letterNumber: schema.letters.letterNumber,
       letterDate:   schema.letters.letterDate,
       recipient:    schema.letters.recipient,
+      sender:       schema.letters.sender,
+      body:         schema.letters.body,
     })
     .from(schema.letters)
     .where(eq(schema.letters.id, sig.letterId))
     .limit(1);
 
   if (!letter) notFound();
+
+  // Resolve merge fields + render body → HTML — pola sama persis dengan
+  // letters/keluar/[id]/page.tsx (reuse, bukan logic baru). Context minimal (tanpa signers/
+  // recipientData penuh) — cukup untuk kebutuhan preview read-only di halaman ini.
+  let bodyHtml: string | null = null;
+  try {
+    const [generalSettingsRaw, orgSettings] = await Promise.all([
+      getSettings(tenantClient, "general"),
+      getSettings(tenantClient, "contact"),
+    ]);
+    const orgName    = (generalSettingsRaw["site_name"] as string | undefined) ?? tenant.name ?? "";
+    const orgAddress = (orgSettings["contact_address"] as { detail?: string } | undefined)?.detail ?? "";
+    const orgPhone   = (orgSettings["contact_phone"] as string | undefined) ?? "";
+    const orgEmail   = (orgSettings["contact_email"] as string | undefined) ?? "";
+
+    const mergeCtx = buildMergeContext({
+      orgName, orgAddress, orgPhone, orgEmail,
+      letterNumber: letter.letterNumber ?? "",
+      letterDate:   letter.letterDate   ?? "",
+      subject:      letter.subject      ?? "",
+      sender:       letter.sender       ?? "",
+      recipient:    letter.recipient    ?? "",
+      signers:      [],
+    });
+    const resolvedBody = resolveMergeFields(letter.body ?? "", mergeCtx);
+    bodyHtml = renderBody(resolvedBody);
+  } catch (err) {
+    console.error("[sign/token] gagal render body surat:", err);
+    bodyHtml = null;
+  }
 
   const divisionName = officer.divisionId
     ? await tenantDb
@@ -208,6 +245,7 @@ export default async function SignPage({
           officerName={officerName}
           officerPosition={officer.position ?? null}
           officerDivision={divisionName}
+          bodyHtml={bodyHtml}
           role={sig.role as "signer" | "approver" | "witness"}
           alreadySigned={sig.signedAt !== null}
           verificationHash={sig.verificationHash}
