@@ -9,6 +9,7 @@ export const PROFESSION_CATEGORIES = [
   "Bisnis, Keuangan & Manajemen",
   "Teknologi Informasi",
   "Hukum, Sosial & Budaya",
+  "Kreatif",
   "Lainnya",
 ] as const;
 
@@ -39,6 +40,19 @@ export const PROFESSION_TYPES_BY_CATEGORY: Record<ProfessionCategory, string[]> 
   "Teknologi Informasi": [
     "Software Engineer / Developer", "Data Scientist / Analyst", "System Analyst",
     "IT Consultant", "Cyber Security Specialist",
+  ],
+  // Diturunkan dari 9 Bidang Usaha forum "Forcreator" (kreator & pekerja seni) — setiap
+  // profesi entitas terpisah kalau memang beda pekerjaan (pola sama Kesehatan: Dokter≠
+  // Perawat≠Bidan). "Arsitek" sengaja tidak diduplikasi di sini — sudah ada di kategori
+  // "Sains, Teknik & Rekayasa"; Interior & Arsitektur di sini hanya sisi Desainer Interior.
+  "Kreatif": [
+    "Kaligrafer", "Desainer Grafis / Komunikasi Visual", "Desainer Interior",
+    "Aktor/Aktris Teater", "Penulis Sastra / Sastrawan",
+    "Fotografer", "Videografer / Sutradara Film", "Editor Video/Audio",
+    "Pelukis", "Ilustrator",
+    "Musisi", "Vokalis / Penyanyi", "Komposer / Arranger",
+    "Seniman Instalasi & Kontemporer",
+    "Perajin / Pengrajin Kriya",
   ],
   "Lainnya": [],
 };

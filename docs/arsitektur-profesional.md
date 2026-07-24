@@ -588,3 +588,65 @@ Step 8 — Statistik: breakdown "Profesional per Kategori" di /statistik
 Setiap step sebaiknya dikerjakan + di-review terpisah (bukan satu commit besar), mengikuti pola
 `member_owned_pesantren` yang sukses sebelumnya. Dokumen ini sekarang **siap eksekusi** — semua
 keputusan desain sudah dikunci, tidak ada open question tersisa.
+
+---
+
+## 14. Kategori Baru "Kreatif" (2026-07-24)
+
+Ditambahkan atas permintaan user — tenant forum "Forcreator" (menaungi kreator & pekerja seni)
+punya struktur 9 "Bidang Usaha" (Kaligrafi, Desain Komunikasi Visual, Interior & Arsitektur,
+Teater & Sastra, Media Rekam, Seni Lukis & Ilustrasi, Seni Musik, Seni Instalasi & Kontemporer,
+Seni Kriya) dari kepengurusan mereka (koordinator bidang seni per Korbid). Diminta didiskusikan
+dulu sebelum eksekusi ("kira-kira profesi Kreatif ini apa saja jenis profesinya?").
+
+**Klarifikasi level yang penting** (user sempat menanyakan ulang untuk konfirmasi): "Bidang
+Usaha" BUKAN level tersendiri di sistem 3-level yang sudah ada (kategori → jenis profesi →
+spesialisasi) — itu murni DATA ACUAN untuk menurunkan `professionType`. "Kreatif" sendiri
+adalah SATU kategori baru (Level 1, `PROFESSION_CATEGORIES`), sejajar dengan 7 kategori yang
+sudah ada. TIDAK ditambah level ke-4 (sub-kategori) hanya untuk kategori ini — akan membuat
+struktur data tidak seragam tanpa manfaat besar.
+
+**Pemetaan 9 Bidang Usaha → jenis profesi (`PROFESSION_TYPES_BY_CATEGORY["Kreatif"]`)** — pola
+sama "setiap profesi entitas terpisah kalau memang beda pekerjaan" (§ 2.4, contoh existing:
+Dokter≠Perawat≠Bidan): beberapa bidang usaha dipecah jadi 2-3 profesi berbeda (mis. "Media
+Rekam" → Fotografer / Videografer-Sutradara Film / Editor Video-Audio; "Teater & Sastra" →
+Aktor/Aktris Teater / Penulis Sastra-Sastrawan; "Seni Lukis & Ilustrasi" → Pelukis / Ilustrator;
+"Seni Musik" → Musisi / Vokalis-Penyanyi / Komposer-Arranger), sementara yang lain tetap 1
+profesi ("Kaligrafi" → Kaligrafer, "Seni Kriya" → Perajin/Pengrajin Kriya, dst). "Interior &
+Arsitektur" sengaja TIDAK menduplikasi "Arsitek" (sudah ada di kategori "Sains, Teknik &
+Rekayasa" sejak awal) — hanya sisi "Desainer Interior" yang murni kreatif yang ditambahkan di
+sini. "Koordinator Event" dari daftar kepengurusan TIDAK dimasukkan — itu jabatan struktural
+forum (posisi kepengurusan), bukan profesi personal anggota (beda konsep dari `/akun/
+profesional`, yang merekam identitas karier pribadi, bukan jabatan organisasi).
+
+**Bug ditemukan+difix saat implementasi**: `packages/db/src/schema/public/member-
+professionals.ts`'s kolom `profession_category` punya `text(..., {enum: [...]})` TERPISAH dari
+`PROFESSION_CATEGORIES` di `lib/professional-types.ts` — dua daftar independen yang harus tetap
+sinkron manual (bukan reference satu sama lain). Menambah "Kreatif" HANYA di
+`professional-types.ts` menyebabkan TypeScript error di `profesional/page.tsx` (query
+`eq(member_professionals.professionCategory, ...)` — union type Drizzle tidak match). Selain
+tipe, ada juga **CHECK constraint PostgreSQL sungguhan** (`member_professionals_profession_
+category_check`, dari migration `0027_member_professionals.sql`, DDL inline `CHECK (... IN
+(...))` — bukan `pgEnum`, konsisten aturan project) yang juga perlu diupdate, atau INSERT
+`professionCategory: "Kreatif"` akan ditolak di level DB meski TypeScript tidak protes lagi.
+
+**Fix — 2 titik**: (1) Drizzle schema enum ditambah `"Kreatif"`; (2) migration baru
+`0043_member_professionals_kreatif_category.sql` — `DROP CONSTRAINT` + `ADD CONSTRAINT` dengan
+list baru. **`member_professionals` ada di PUBLIC schema (bukan per-tenant)** — migration ini
+jalan SEKALI saja, BUKAN loop `DO $$ ... LOOP` per tenant seperti migration `settings.group`
+(0031/0042) yang per-tenant-schema. Dijalankan lokal via `psql` langsung, dikonfirmasi via `\d
+public.member_professionals` bahwa constraint sudah mencakup `'Kreatif'`.
+
+**Aturan yang ditegaskan**: setiap kali sebuah kolom `text(..., {enum:[...]})` PUBLIC-schema
+punya "kembaran" konseptual di sebuah file konstanta terpisah (`lib/professional-types.ts` di
+sini) — KEDUANYA harus diupdate bersamaan, DAN kalau kolom itu dibuat via migration SQL manual
+(bukan generate otomatis drizzle-kit), migration itu KEMUNGKINAN BESAR juga punya CHECK
+constraint sungguhan di DB yang perlu di-ALTER terpisah — jangan asumsikan mengubah TypeScript
+enum saja sudah cukup, `tsc` akan menangkap SEBAGIAN masalah (union type mismatch di consumer
+lain seperti query filter) tapi TIDAK PERNAH menangkap CHECK constraint DB yang sudah ketinggalan.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` + `bun run build
+--filter=@jalajogja/web` sukses (dev server dimatikan dulu, `.next` dibersihkan, direstart).
+Migration `0043` dijalankan+diverifikasi di lokal. **Belum dijalankan di VPS. Belum
+diverifikasi visual di browser** — user diminta coba tambah profesional dengan kategori
+"Kreatif" di `/akun/profesional` untuk konfirmasi combobox + jenis profesi muncul benar.

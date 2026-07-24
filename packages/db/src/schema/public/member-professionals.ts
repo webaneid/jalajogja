@@ -21,7 +21,7 @@ export const memberProfessionals = pgTable("member_professionals", {
     enum: [
       "Sains, Teknik & Rekayasa", "Kesehatan", "Pendidikan & Akademik",
       "Bisnis, Keuangan & Manajemen", "Teknologi Informasi",
-      "Hukum, Sosial & Budaya", "Lainnya",
+      "Hukum, Sosial & Budaya", "Kreatif", "Lainnya",
     ],
   }).notNull(),
 
