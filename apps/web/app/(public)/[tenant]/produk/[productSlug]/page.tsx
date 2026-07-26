@@ -359,7 +359,11 @@ export default async function ProdukDetailPage({
             <h2 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Deskripsi Produk</h2>
             <div
               className="prose prose-sm max-w-none [&_p]:my-3 [&_ul]:my-3 [&_ol]:my-3 [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:mt-5 [&_h3]:mb-2"
-              dangerouslySetInnerHTML={{ __html: renderBody(row.description, { imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${slug}` }) }}
+              dangerouslySetInnerHTML={{ __html: renderBody(row.description, {
+                imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${slug}`,
+                tenantSlug: slug,
+                baseUrl: relativeBaseUrl,
+              }) }}
             />
           </section>
         )}

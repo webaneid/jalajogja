@@ -16,7 +16,9 @@ export type PostBodySegment =
   | { type: "html"; html: string }
   | { type: "gallery"; items: GalleryItem[]; key: string };
 
-type RenderContext = { imageBaseUrl?: string };
+// tenantSlug/baseUrl: sama semantik dengan letter-render.ts's RenderContext — dibutuhkan
+// untuk strip prefix "/{slug}" dari link internal block "Baca Juga" di custom domain aktif.
+type RenderContext = { imageBaseUrl?: string; tenantSlug?: string; baseUrl?: string };
 
 export function splitPostBodySegments(
   content: string | null | undefined,

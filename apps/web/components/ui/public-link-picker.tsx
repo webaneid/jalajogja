@@ -34,7 +34,11 @@ function StaticIcon({ label, className }: { label: string; className?: string })
 type Props = {
   slug:         string;
   value?:       string;       // URL yang dipilih
-  onChange:     (url: string) => void;
+  // `label` (param ke-2) HANYA terisi kalau dipilih dari daftar hasil pencarian (judul
+  // asli post/produk/campaign/dst) — kosong/undefined kalau admin ketik URL manual, karena
+  // tidak ada judul untuk diturunkan dari string URL mentah. Opsional demi backward-compat —
+  // caller lama yang cuma pakai `(url) => ...` tetap valid tanpa perubahan.
+  onChange:     (url: string, label?: string) => void;
   placeholder?: string;
   className?:   string;
   disabled?:    boolean;
@@ -92,8 +96,8 @@ export function PublicLinkPicker({
     return acc;
   }, {});
 
-  function handleSelect(url: string) {
-    onChange(url);
+  function handleSelect(link: PublicLink) {
+    onChange(link.url, link.label);
     setOpen(false);
   }
 
@@ -121,7 +125,9 @@ export function PublicLinkPicker({
             )}
           >
             <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span className={cn("flex-1 truncate", !displayUrl && "text-muted-foreground")}>
+            {/* min-w-0 WAJIB — flex item dengan flex-1 tanpa ini tidak akan truncate,
+                URL panjang memaksa tombol (dan popup Dialog di sekelilingnya) melebar */}
+            <span className={cn("flex-1 min-w-0 truncate", !displayUrl && "text-muted-foreground")}>
               {displayUrl || placeholder}
             </span>
             {displayUrl && (
@@ -167,7 +173,7 @@ export function PublicLinkPicker({
                     <CommandItem
                       key={link.url}
                       value={link.url}
-                      onSelect={() => handleSelect(link.url)}
+                      onSelect={() => handleSelect(link)}
                       className="gap-2"
                     >
                       {link.type === "static" ? (
@@ -175,8 +181,8 @@ export function PublicLinkPicker({
                       ) : (
                         <LinkIcon type={link.type} group={link.group} />
                       )}
-                      <span className="flex-1 truncate">{link.label}</span>
-                      <span className="text-xs text-muted-foreground truncate max-w-[140px]">
+                      <span className="flex-1 min-w-0 truncate">{link.label}</span>
+                      <span className="text-xs text-muted-foreground truncate max-w-[140px] shrink-0">
                         {link.url}
                       </span>
                     </CommandItem>

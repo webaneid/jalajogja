@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and }                   from "drizzle-orm";
 import { db, tenants, createTenantDb } from "@jalajogja/db";
 import { renderBody }                  from "@/lib/letter-render";
+import { resolveBaseUrl }              from "@/lib/resolve-base-url";
 
 export async function GET(req: NextRequest) {
   const slug     = req.nextUrl.searchParams.get("slug")?.trim();
@@ -35,10 +36,11 @@ export async function GET(req: NextRequest) {
 
   if (!page) return NextResponse.json({ found: false }, { status: 200 });
 
+  const baseUrl = await resolveBaseUrl(slug);
   return NextResponse.json({
     found:     true,
     title:     page.title,
-    html:      renderBody(page.content),
+    html:      renderBody(page.content, { tenantSlug: slug, baseUrl }),
     updatedAt: page.updatedAt.toISOString(),
   });
 }

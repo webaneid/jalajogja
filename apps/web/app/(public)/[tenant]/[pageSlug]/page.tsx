@@ -142,6 +142,8 @@ export default async function PublicPageRoute({ params }: { params: Params }) {
       navMenu={navMenu}
       siteName={tenantName}
       pageUrl={`${seoBase.baseUrl}/${pageSlug}`}
+      tenantSlug={slug}
+      baseUrl={baseUrl}
     />
   );
 }

@@ -18,10 +18,16 @@ type Props = {
   navMenu?:  NavItem[];
   siteName?: string;
   pageUrl?:  string;
+  // Untuk strip prefix "/{slug}" dari link internal block "Baca Juga" di custom domain aktif
+  // — lihat lib/letter-render.ts's RenderContext. Opsional demi backward-compat kalau ada
+  // caller lama yang belum diupdate (fallback: url internal tidak di-strip, aman di domain
+  // sendiri, cuma berisiko di custom domain).
+  tenantSlug?: string;
+  baseUrl?:    string;
 };
 
-export function DefaultTemplate({ title, content, coverUrl, updatedAt, backHref, navMenu, siteName, pageUrl }: Props) {
-  const html = renderBody(content);
+export function DefaultTemplate({ title, content, coverUrl, updatedAt, backHref, navMenu, siteName, pageUrl, tenantSlug, baseUrl }: Props) {
+  const html = renderBody(content, { tenantSlug, baseUrl });
   const showMobileShell = navMenu !== undefined;
 
   const updatedText = `Diperbarui ${new Intl.DateTimeFormat("id-ID", {

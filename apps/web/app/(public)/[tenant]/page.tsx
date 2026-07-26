@@ -183,6 +183,8 @@ export default async function PublicHomePage({ params }: { params: Params }) {
       content={page.content}
       coverUrl={coverUrl}
       updatedAt={page.updatedAt}
+      tenantSlug={slug}
+      baseUrl={baseUrl}
     />
   );
 }

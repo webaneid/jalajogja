@@ -22,6 +22,8 @@ import TableCell from "@tiptap/extension-table-cell";
 import { MediaImageExtension } from "./media-image-ext";
 import { EmbedBlock } from "./embed-block-ext";
 import { GalleryBlock } from "./gallery-block-ext";
+import { RelatedLinkBlock } from "./related-link-ext";
+import { EnhancedBlockquote } from "./enhanced-blockquote-ext";
 import { EditorToolbar } from "./editor-toolbar";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -57,10 +59,11 @@ export function TiptapEditor({
           levels: [1, 2, 3, 4],
         },
         codeBlock: {},
-        // Matikan Link bawaan StarterKit — kita pakai versi kustom di bawah (autolink off)
-        // Tanpa ini StarterKit mungkin aktifkan autolink-nya sendiri
+        blockquote: false, // Gunakan EnhancedBlockquote versi kustom
         link: false,
       }),
+
+      EnhancedBlockquote,
 
       // Image digantikan oleh MediaImageExtension (extend dengan mediaId attr)
       MediaImageExtension.configure({
@@ -109,6 +112,7 @@ export function TiptapEditor({
 
       EmbedBlock,
       GalleryBlock,
+      RelatedLinkBlock,
     ],
 
     content: parseContent(content),

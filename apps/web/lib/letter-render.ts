@@ -4,6 +4,8 @@
 // PENTING: implementasi ini pure string manipulation — tidak pakai @tiptap/core
 // atau prosemirror-model agar tidak ada dependency pada window/document (server-safe).
 
+import { stripTenantPrefix } from "./strip-tenant-prefix"; // pure string, aman di sini (nol DOM/Node dependency)
+
 type TiptapNode = {
   type: string;
   text?: string;
@@ -21,7 +23,22 @@ type TiptapMark = {
 type RenderContext = {
   // Base URL MinIO lengkap termasuk bucket tenant, mis. "https://minio.jalakarta.com/tenant-pc-ikpm-jogjakarta"
   imageBaseUrl?: string;
+  // Untuk strip prefix "/{slug}" dari link internal (block "Baca Juga") saat custom domain
+  // aktif — link dari <PublicLinkPicker> SELALU tersimpan path-mode ("/{slug}/post/...").
+  // `baseUrl` di sini pakai semantik resolveBaseUrl(): "" = custom domain aktif (WAJIB strip),
+  // "/{slug}" = domain sendiri (jangan strip). Tanpa `tenantSlug`+`baseUrl===""`, url dibiarkan
+  // apa adanya (aman untuk semua caller lama yang belum diupdate — post/produk/campaign lama
+  // tanpa "Baca Juga" tidak terpengaruh).
+  tenantSlug?: string;
+  baseUrl?: string;
 };
+
+// Strip prefix "/{slug}" dari href internal HANYA saat custom domain aktif — lihat
+// docs/arsitektur-public-link-picker.md § 9 dan lesson CLAUDE.md soal stripTenantPrefix.
+function resolveInternalHref(url: string, ctx?: RenderContext): string {
+  if (!url || !ctx?.tenantSlug || ctx.baseUrl !== "") return url;
+  return stripTenantPrefix(url, ctx.tenantSlug);
+}
 
 function escapeHtml(str: string): string {
   return str
@@ -112,8 +129,33 @@ function renderNode(node: TiptapNode, ctx?: RenderContext): string {
     case "listItem":
       return `<li>${renderChildren(node, ctx)}</li>`;
 
-    case "blockquote":
-      return `<blockquote style="border-left:3px solid #ddd;padding-left:1em;margin:0.5em 0;color:#666">${renderChildren(node, ctx)}</blockquote>`;
+    case "blockquote": {
+      const citation = node.attrs?.citation ? escapeHtml(node.attrs.citation as string) : "";
+      const inner = renderChildren(node, ctx);
+      return `<figure class="relative my-8 overflow-hidden rounded-r-2xl border-l-4 border-primary bg-muted/40 p-6 sm:p-8">
+        <blockquote class="text-base sm:text-lg italic font-medium leading-relaxed text-foreground/90">${inner}</blockquote>
+        ${citation ? `<figcaption class="mt-4 flex items-center gap-2 text-xs sm:text-sm font-semibold text-primary"><span class="h-0.5 w-6 bg-primary/40 inline-block"></span><span>${citation}</span></figcaption>` : ""}
+      </figure>`;
+    }
+
+    case "relatedLinkBlock": {
+      const label = escapeHtml((node.attrs?.label as string) ?? "Baca Juga:");
+      const title = escapeHtml((node.attrs?.title as string) ?? "");
+      const rawUrl = (node.attrs?.url as string) ?? "";
+      const isExternal = Boolean(node.attrs?.isExternal);
+      // URL internal ("/{slug}/post/...") tersimpan path-mode dari <PublicLinkPicker> — WAJIB
+      // di-strip di custom domain aktif, jangan pernah untuk URL eksternal (isExternal=true).
+      const url = escapeHtml(isExternal ? rawUrl : resolveInternalHref(rawUrl, ctx));
+      return `<div class="related-link-callout my-6 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5 transition-all hover:bg-primary/10 hover:shadow-sm">
+        <div class="flex items-center gap-3">
+          <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-xs">🔗</span>
+          <div class="min-w-0 flex-1 text-sm sm:text-base">
+            <span class="font-bold text-primary mr-2">${label}</span>
+            <a href="${url}" ${isExternal ? 'target="_blank" rel="noopener noreferrer"' : ""} class="font-medium text-foreground hover:underline hover:text-primary transition-colors">${title}</a>
+          </div>
+        </div>
+      </div>`;
+    }
 
     case "codeBlock":
       return `<pre style="background:#f5f5f5;padding:1em;border-radius:4px;overflow-x:auto"><code>${renderChildren(node, ctx)}</code></pre>`;

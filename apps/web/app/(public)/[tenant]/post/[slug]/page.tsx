@@ -320,18 +320,21 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
 
   const { post, coverUrl, coverAlt, coverTitle, coverCaption, tenantName, timezone, authorName, authorAvatar, tagIds, categoryId } = result;
   const imageBaseUrl = `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${tenantSlug}`;
-  const bodySegments = splitPostBodySegments(post.content, { imageBaseUrl });
+
+  // Shell mobile — header situs disembunyikan (lihat HeaderVisibility), diganti overlay
+  // back+menu di atas cover. Lihat docs/arsitektur-mobile-shell.md.
+  // Dihitung SEBELUM splitPostBodySegments — dibutuhkan untuk strip prefix "/{slug}" dari
+  // link internal block "Baca Juga" saat custom domain aktif (relativeBaseUrl === "").
+  const [relativeBaseUrl, seoBase] = await Promise.all([
+    resolveBaseUrl(tenantSlug),
+    getTenantSeoBase(tenantSlug),
+  ]);
+  const bodySegments = splitPostBodySegments(post.content, { imageBaseUrl, tenantSlug, baseUrl: relativeBaseUrl });
   const relatedPosts = await getRelatedPosts(tenantClient, tenantSlug, post.id, tagIds, categoryId);
 
   const fmtUpdated = (date: Date) =>
     new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(date);
 
-  // Shell mobile — header situs disembunyikan (lihat HeaderVisibility), diganti overlay
-  // back+menu di atas cover. Lihat docs/arsitektur-mobile-shell.md.
-  const [relativeBaseUrl, seoBase] = await Promise.all([
-    resolveBaseUrl(tenantSlug),
-    getTenantSeoBase(tenantSlug),
-  ]);
   const navMenu  = await getPublicNavMenu(tenantClient, tenantSlug, relativeBaseUrl);
   const pageUrl  = `${seoBase.baseUrl}/post/${postSlug}`;
 

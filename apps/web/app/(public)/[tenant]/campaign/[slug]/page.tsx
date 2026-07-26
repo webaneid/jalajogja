@@ -378,7 +378,11 @@ export default async function CampaignDetailPage({
             {/* Deskripsi + Tab Donatur */}
             <CampaignDetailTabs
               descriptionHtml={campaign.description
-                ? renderBody(campaign.description, { imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${slug}` })
+                ? renderBody(campaign.description, {
+                    imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${slug}`,
+                    tenantSlug: slug,
+                    baseUrl: relativeBaseUrl,
+                  })
                 : null}
               donorList={donorList}
               showDonorList={campaign.showDonorList}

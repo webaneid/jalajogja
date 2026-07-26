@@ -10,15 +10,17 @@ import { BubbleMenu } from "@tiptap/react/menus";
 import {
   Bold, Italic, Underline, Strikethrough,
   Heading2, Heading3,
-  Link, Link2Off,
+  Link, Link2, Link2Off,
   Highlighter, Palette,
   ImagePlus, Code2, Minus,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Table, Film, Trash2,
-  Quote, Images,
+  Quote, Images, BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { PublicLinkPicker } from "@/components/ui/public-link-picker";
 import {
   Popover,
   PopoverContent,
@@ -390,11 +392,135 @@ function EmbedDialog({
   );
 }
 
+// ── RelatedLinkDialog ─────────────────────────────────────────────────────────
+
+function RelatedLinkDialog({
+  open,
+  slug,
+  onClose,
+  onInsert,
+}: {
+  open: boolean;
+  slug: string;
+  onClose: () => void;
+  onInsert: (data: { label: string; title: string; url: string; isExternal: boolean }) => void;
+}) {
+  const [label, setLabel] = useState("Baca Juga:");
+  const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
+
+  const handleInsert = useCallback(() => {
+    if (!url.trim() || !title.trim()) {
+      toast.error("Tautan dan Judul wajib diisi.");
+      return;
+    }
+    const isExternal = url.startsWith("http");
+    onInsert({ label, title, url, isExternal });
+    setUrl("");
+    setTitle("");
+    onClose();
+  }, [label, title, url, onInsert, onClose]);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Sisipkan Block "Baca Juga"</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2 text-sm">
+          <div>
+            <Label className="text-xs font-semibold mb-1.5 block">Label Awalan</Label>
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Baca Juga:"
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold mb-1.5 block">Pilih Tautan Internal / External</Label>
+            <PublicLinkPicker
+              slug={slug}
+              value={url}
+              onChange={(newUrl, newLabel) => {
+                setUrl(newUrl);
+                // newLabel cuma terisi kalau dipilih dari daftar (judul asli post/produk/
+                // campaign/dst) — kosong kalau admin ketik URL manual, jangan timpa judul
+                // yang mungkin sudah diisi manual dengan string kosong.
+                if (newLabel) setTitle(newLabel);
+              }}
+              placeholder="Cari halaman/artikel internal atau paste URL..."
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold mb-1 block">Judul Artikel / Tautan</Label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Contoh: Silaturahmi Akbar IKPM Yogyakarta..."
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Batal</Button>
+          <Button onClick={handleInsert} disabled={!url.trim() || !title.trim()}>
+            Sisipkan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── QuoteDialog ───────────────────────────────────────────────────────────────
+
+function QuoteDialog({
+  open,
+  initialCitation,
+  onClose,
+  onApply,
+}: {
+  open: boolean;
+  initialCitation: string;
+  onClose: () => void;
+  onApply: (citation: string) => void;
+}) {
+  const [citation, setCitation] = useState(initialCitation);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Penulis / Sumber Kutipan (Citation)</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2 text-sm">
+          <Label className="text-xs font-semibold block">Nama Penulis / Sumber</Label>
+          <Input
+            value={citation}
+            onChange={(e) => setCitation(e.target.value)}
+            placeholder="Contoh: KH. Ahmad Sahal — Pendiri Gontor"
+            autoFocus
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Batal</Button>
+          <Button onClick={() => { onApply(citation); onClose(); }}>
+            Simpan Citation
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── FixedToolbar ──────────────────────────────────────────────────────────────
 
 function FixedToolbar({ editor, slug }: ToolbarProps) {
   const [mediaOpen, setMediaOpen] = useState(false);
   const [embedOpen, setEmbedOpen] = useState(false);
+  const [relatedOpen, setRelatedOpen] = useState(false);
+  const [quoteOpen, setQuoteOpen] = useState(false);
 
   const handleMediaSelect = useCallback((item: MediaItem) => {
     editor.chain().focus().insertMediaImage({
@@ -411,23 +537,26 @@ function FixedToolbar({ editor, slug }: ToolbarProps) {
       .run();
   }, [editor]);
 
-  // Kolom SELALU 3 (otomatis 2 di mobile saat dirender di post — lihat lib/post-body-segments.ts)
-  // — bukan pilihan admin, konsisten dengan galeri di section landing page.
   const handleInsertGallery = useCallback(() => {
     editor.chain().focus()
       .insertGallery({ items: [], layout: "grid", columns: 3 })
       .run();
   }, [editor]);
 
+  const activeCitation = (editor.getAttributes("blockquote").citation as string) || "";
+
   return (
     <div className="flex items-center gap-0.5 flex-wrap px-2 py-1.5 border-b border-border bg-muted/30">
 
-      {/* Insert: Image, Embed, Table */}
+      {/* Insert: Image, Embed, Table, Gallery, Baca Juga */}
       <ToolBtn onClick={() => setMediaOpen(true)} title="Sisipkan Gambar">
         <ImagePlus className="h-4 w-4" />
       </ToolBtn>
-      <ToolBtn onClick={() => setEmbedOpen(true)} title="Embed Media (YouTube, TikTok, dll)">
+      <ToolBtn onClick={() => setEmbedOpen(true)} title="Embed Media (YouTube, Instagram, TikTok, dll)">
         <Film className="h-4 w-4" />
+      </ToolBtn>
+      <ToolBtn onClick={() => setRelatedOpen(true)} title="Sisipkan Block 'Baca Juga' / Link Terkait">
+        <BookOpen className="h-4 w-4" />
       </ToolBtn>
       <ToolBtn onClick={handleInsertTable} title="Sisipkan Tabel">
         <Table className="h-4 w-4" />
@@ -481,14 +610,22 @@ function FixedToolbar({ editor, slug }: ToolbarProps) {
 
       <Separator />
 
-      {/* Block: Blockquote, Code, HR */}
-      <ToolBtn
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        active={editor.isActive("blockquote")}
-        title="Blockquote"
-      >
-        <Quote className="h-4 w-4" />
-      </ToolBtn>
+      {/* Block: Blockquote + Citation, Code, HR */}
+      <div className="flex items-center gap-0.5">
+        <ToolBtn
+          onClick={() => {
+            if (!editor.isActive("blockquote")) {
+              editor.chain().focus().toggleBlockquote().run();
+            }
+            setQuoteOpen(true);
+          }}
+          active={editor.isActive("blockquote")}
+          title="Blockquote (Klik untuk isi/edit penulis/sumber)"
+        >
+          <Quote className="h-4 w-4" />
+        </ToolBtn>
+      </div>
+
       <ToolBtn
         onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         active={editor.isActive("codeBlock")}
@@ -521,6 +658,26 @@ function FixedToolbar({ editor, slug }: ToolbarProps) {
           editor.chain().focus().insertEmbed(data).run();
         }}
       />
+
+      {/* Related Link Dialog */}
+      <RelatedLinkDialog
+        open={relatedOpen}
+        slug={slug}
+        onClose={() => setRelatedOpen(false)}
+        onInsert={(data) => {
+          editor.chain().focus().insertRelatedLink(data).run();
+        }}
+      />
+
+      {/* Quote Citation Dialog */}
+      <QuoteDialog
+        open={quoteOpen}
+        initialCitation={activeCitation}
+        onClose={() => setQuoteOpen(false)}
+        onApply={(citation) => {
+          editor.chain().focus().updateAttributes("blockquote", { citation }).run();
+        }}
+      />
     </div>
   );
 }
@@ -535,3 +692,4 @@ export function EditorToolbar({ editor, slug }: ToolbarProps) {
     </>
   );
 }
+

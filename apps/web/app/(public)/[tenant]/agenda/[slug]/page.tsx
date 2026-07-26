@@ -910,7 +910,11 @@ export default async function PublicEventPage({
             {event.description && (
               <div
                 className="prose prose-sm max-w-none text-foreground [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base"
-                dangerouslySetInnerHTML={{ __html: renderBody(event.description, { imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${tenantSlug}` }) }}
+                dangerouslySetInnerHTML={{ __html: renderBody(event.description, {
+                  imageBaseUrl: `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${tenantSlug}`,
+                  tenantSlug,
+                  baseUrl,
+                }) }}
               />
             )}
             </>}

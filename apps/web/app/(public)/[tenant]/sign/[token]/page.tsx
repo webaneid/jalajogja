@@ -11,6 +11,7 @@ import { SigningPageClient } from "@/components/letters/signing-page-client";
 import { SignLoginForm }  from "./sign-login-form";
 import { renderBody }     from "@/lib/letter-render";
 import { resolveMergeFields, buildMergeContext } from "@/lib/letter-merge";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
 
 function InfoCard({ title, message }: { title: string; message: string }) {
   return (
@@ -147,7 +148,7 @@ export default async function SignPage({
       signers:      [],
     });
     const resolvedBody = resolveMergeFields(letter.body ?? "", mergeCtx);
-    bodyHtml = renderBody(resolvedBody);
+    bodyHtml = renderBody(resolvedBody, { tenantSlug: slug, baseUrl: await resolveBaseUrl(slug) });
   } catch (err) {
     console.error("[sign/token] gagal render body surat:", err);
     bodyHtml = null;
