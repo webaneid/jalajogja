@@ -11,6 +11,16 @@ sector:   "Teknologi" | "Jasa Profesional" | "Kreatif" | "Manufaktur" |
           "Kesehatan & Pendidikan" | "Konsumsi & Ritel" | "Sumber Daya Alam"
 ```
 
+> **Update 2026-07-25 (migration `0048`)**: kedua kolom di atas **nullable di database** —
+> sebelumnya `NOT NULL`, dilonggarkan supaya fitur bulk import (`docs/arsitektur-import-
+> anggota.md` § 13) bisa simpan data usaha yang belum lengkap klasifikasinya tanpa membuang
+> seluruh baris (nama, deskripsi, alamat, kontak, sosial media). **Form self-service
+> (`/akun/usaha`) dan admin (wizard members) TIDAK BERUBAH** — keduanya tetap mewajibkan
+> `category`+`sector` diisi sebelum bisa menyimpan (filter di `saveMemberBusinessesAction` +
+> `POST /api/akun/member-business`, sudah ada sejak awal, dipertahankan apa adanya). Pola ini
+> sama persis dengan `members.gender`/`members.birthDate`/`contacts.phone` — wajib di FORM,
+> bukan di kolom.
+
 Diskusi 2026-07-24 (dipicu penambahan kategori profesi "Kreatif" untuk forum "Forcreator") —
 user bertanya: bisakah 9 "Bidang Usaha" spesifik forum itu (Kaligrafi, Desain Komunikasi
 Visual, dst) dimasukkan ke `/akun/usaha` juga? Dan lebih jauh: tujuan akhirnya BUKAN sekadar

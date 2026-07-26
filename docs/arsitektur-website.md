@@ -862,3 +862,34 @@ Layout: `flex gap-8`, konten utama `flex-1`, sidebar `w-72 shrink-0 hidden lg:bl
 **Dependency baru**: `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities`.
 
 **Status**: ⬜ Belum diimplementasikan — arsitektur selesai.
+
+---
+
+## Bagian 6: Import & Export Post WordPress (Rencana Masa Depan)
+
+> **Dokumen Arsitektur & Spesifikasi Terpisah**: **`docs/arsitektur-import-export-post-wordpress.md`**
+> **STATUS: ⚠️ BELUM DIEKSEKUSI / PERLU KLARIFIKASI & MATURASI LEBIH LANJUT BEFORE EXECUTION**
+
+Perencanaan matang untuk mendukung migrasi penuh dari website berbasis WordPress (beserta plugin Yoast SEO, permalinks, featured images, dan sanitasi Gutenberg HTML):
+- **Import WXR XML & REST API**: Mendukung ekspor XML WordPress standar serta API pull `/wp-json/wp/v2/`.
+- **Integrasi Yoast SEO**: Pemetaan 1-to-1 dari Yoast meta key (`_yoast_wpseo_*`) ke kolom SEO Jalakarta (`posts.metaTitle`, `metaDesc`, `focusKeyword`, `ogImageId`, `robots`, `schemaType`).
+- **Custom Permalinks**: Opsi struktur permalink WordPress (`/%postname%/`, `/post/%postname%/`, `/%year%/%monthnum%/%postname%/`) di `/{slug}/website/pengaturan`.
+- **Klarifikasi Sebelum Eksekusi**: Belum ada kode yang ditulis. Perlu verifikasi teknis lanjutan dan persetujuan user sebelum eksekusi dimulai.
+
+---
+
+## Bagian 7: Arsitektur Editor Tiptap & Content Renderer Universal
+
+> **Dokumen Arsitektur & Spesifikasi Terpisah**: **`docs/arsitektur-editor.md`**
+> **STATUS: 📋 PERENCANAAN TEKNIS SELESAI — SIAP DIEKSEKUSI PER FASE**
+
+Editor konten di seluruh modul Jalakarta (`posts`, `pages`, `products`, `campaigns`, `events`, `letters`) telah terkonsolidasi pada komponen tunggal `<TiptapEditor>` (`components/editor/tiptap-editor.tsx`). 
+
+Spesifikasi pengembangan lanjutan meliputi:
+- **Block "Baca Juga"**: Callout link internal (dengan `<PublicLinkPicker>`) & eksternal dengan custom label prefix.
+- **Enhanced Block Quote**: Quote card dengan field penulis/citation (`— Nama Penulis`) dan ikon quote dekoratif.
+- **Responsive YouTube Embed**: Native URL parser dengan container 16:9 (`aspect-video`) anti-overflow mobile.
+- **Responsive Instagram Embed**: Parser post/reel Instagram dengan auto-script loader `instagram.com/embed.js`.
+- **Frontend Spacing Standard**: Utility `.prose-jalakarta` untuk menjamin konsistensi jarak antar-block di seluruh breakpoint.
+
+

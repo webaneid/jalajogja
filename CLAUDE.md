@@ -10506,8 +10506,951 @@ invoice" → sekarang "wajib ditandai"), JANGAN diam-diam ubah — konfirmasi du
 `AskUserQuestion` dengan menyebutkan eksplisit bahwa ini reversal dari keputusan sebelumnya,
 baru eksekusi setelah dikonfirmasi (persis yang dilakukan di sesi ini).
 
+### [2026-07-25] Import Anggota — Bulk Import Excel/CSV, Rancangan Matang Dulu Baru Eksekusi
+
+> Arsitektur lengkap: **`docs/arsitektur-import-anggota.md`** (baru, § 11 mencatat penyesuaian
+> implementasi vs rancangan awal).
+
+User punya database Excel lengkap 749 anggota resmi Forcreator (`docs/template/
+database-forbis.xlsx`) dan minta arsitektur import ke sistem SEBELUM eksekusi — instruksi
+eksplisit diulang 2× ("mari kita eksekusi, baca claude.md dan pastikan selalu mengikuti sop"
+baru diberikan di GILIRAN TERPISAH setelah dokumen arsitektur selesai dan dikonfirmasi via 2
+putaran `AskUserQuestion`).
+
+**Riset file dilakukan tanpa tool xlsx terinstal** — tidak ada `openpyxl`/`pandas`/npm `xlsx`
+di environment riset; file `.xlsx` dibongkar manual (`unzip`) dan diparse langsung dari XML
+mentahnya (`xl/sharedStrings.xml` + `xl/worksheets/sheet1.xml`) pakai Python stdlib
+(`zipfile`+`xml.etree`) — tidak perlu install apa pun untuk sekadar membaca isi file.
+
+**Temuan kunci yang mengarahkan seluruh desain**: kolom "Forbis ID" (`2017.00001`) ternyata
+PERSIS format Nomor Keanggotaan Forum yang sudah dibangun sesi sebelumnya — verifikasi urutan
+sequence per tahun (2017 berakhir 260, 2018 lanjut 261→323, dst) MEMBUKTIKAN counter memang
+tidak pernah reset di data historis asli, mengonfirmasi keputusan lama itu bukan cuma preferensi
+tapi cocok kenyataan. Ditemukan juga masalah data nyata yang harus ditangani eksplisit, bukan
+diasumsikan bersih: non-breaking space di nama provinsi, notasi ilmiah Excel yang merusak
+permanen nomor HP (presisi digit hilang, tidak bisa dipulihkan), kolom yang bergeser di sebagian
+baris, dan field enum ketat (`category`/`sector` di `member_businesses`, keduanya NOT NULL) yang
+vokabulernya beda total dari isi Excel.
+
+**2 putaran klarifikasi sebelum menulis dokumen** — bukan basa-basi, keduanya mengubah desain
+secara substantif:
+1. Salah paham awal saya soal `sector` (dikira harus dipetakan dari "Kategori Usaha", ternyata
+   dari "Jenis Usaha" — kolom MULTI-value yang juga jadi sumber `businessFields`) dikoreksi user
+   secara eksplisit sebelum kode ditulis.
+2. Konsekuensi nyata "tetap cek `checkMemberEligibility()`" (6 dari 8 field wajib eligibility
+   sama sekali tidak ada di Excel → 0 dari 749 baris akan langsung "aktif") ditemukan+
+   dipresentasikan SEBELUM diasumsikan — user tetap pilih opsi ketat itu, dikonfirmasi paham
+   konsekuensinya.
+
+**Kelas bug client/server boundary muncul lagi — dicegah, bukan ditemukan setelah build gagal**:
+type besar `ImportRowPreview` (dipakai bersama server engine dan client preview table) awalnya
+didefinisikan di `lib/import-anggota.server.ts` (`import "server-only"`). Karena dibutuhkan juga
+oleh client component, dipindah ke `lib/import-anggota-mapping.ts` (client-safe, zero dependency
+`@jalajogja/db`) — pola split yang identik dengan `tenant-timezone.ts`/`forum-membership-
+number.ts` sebelumnya. Ini kelas bug KE-4 di project ini — kali ini ditangkap secara proaktif
+sebelum `next build` sempat gagal (bukan reaktif setelah error muncul).
+
+**`import_batches`/`import_batch_rows` berkembang jadi draft-store, bukan cuma audit log** —
+keputusan ini diambil SAAT implementasi (bukan direncanakan sejak awal): mengirim ratusan baris
+preview bolak-balik lewat argumen Server Action berisiko payload besar + tidak tahan reload
+browser. Solusi: begitu file diparse, hasilnya langsung disimpan ke DB (`status='draft'`),
+commit membaca-ulang dari sana (bukan dari apa yang dikirim balik client) — `import_batch_rows.
+data` (JSONB) menyimpan SELURUH bentuk preview per baris, bukan cuma catatan singkat.
+
+**Reuse pola existing, bukan reimplementasi dari nol**: sebelum menulis `commitImportAction`,
+dibaca dulu `createMemberAction`/`upsertMemberContactAction`/`saveMemberBusinessesAction` di
+`members/actions.ts` untuk memastikan urutan insert (contact→address→member, lalu update FK)
+dan nama field PERSIS sama — bukan ditebak dari ingatan (sempat ketahuan salah: `members.
+fullName` tidak ada, kolom sebenarnya `name` — ditangkap `tsc`, langsung difix).
+
+**Duplicate detection reuse pola JOIN yang benar** dari lesson lama ("Bug Sesungguhnya:
+lookup-member Ambil Contact Sembarang") — `members INNER JOIN contacts`, bukan
+`contacts.findFirst()` yang pernah salah pilih baris contact yang tidak terhubung member.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` + `bun run build
+--filter=@jalajogja/web` sukses (dev server dimatikan+dibersihkan+direstart, dua route baru
+`/app/{slug}/members/import` + `/api/members/import/template` terkonfirmasi muncul di build
+output). Migration `0047` dijalankan+diverifikasi di lokal (sempat di-drop+recreate sekali
+karena skema direvisi mid-implementasi — aman karena tabel masih kosong, belum ada data nyata).
+**Belum di-commit/push, belum dijalankan di VPS, belum diverifikasi visual di browser — upload
+file `database-forbis.xlsx` yang sesungguhnya belum pernah dicoba end-to-end.** Gap yang
+dicatat eksplisit (bukan lupa): tombol "resume draft" belum ada di UI meski action-nya sudah
+dibangun, belum ada halaman riwayat import, dan potensi duplikasi `member_businesses` untuk
+member yang di-link (bukan dibuat baru) belum ada kebijakannya — lihat `docs/arsitektur-
+import-anggota.md` § 11 untuk daftar lengkap.
+
+**Audit bug susulan (giliran sama, sebelum user testing lokal)** — user eksplisit minta "cek
+bug dulu" sebelum mencoba upload. Review logika manual (bukan cuma `tsc`) menemukan+memperbaiki
+3 bug + 1 race condition, detail lengkap di `docs/arsitektur-import-anggota.md` § 12:
+1. **Escalation bug** — baris `if (status==="ready" && notes.length>0) status="review_needed"`
+   mengeskalasi HAMPIR SEMUA baris ber-usaha ke "Perlu Review" karena `mapEmployees()`/
+   `mapRevenue()` SENGAJA selalu `matched:false` (transparansi aproksimasi) → selalu nambah
+   note begitu field itu terisi (~61% baris). Fix: hanya `category`/`sector` (NOT NULL) yang
+   boleh memaksa status, field nullable lain cuma masuk `notes` tanpa ubah status — sesuai
+   kebijakan § 6 yang SUDAH DITULIS di rancangan tapi kelewat di implementasi.
+2. **Kecamatan gagal match tersembunyi** kalau kabupatennya sendiri juga gagal (`regencyId
+   !== null` guard yang keliru di kondisi `flagged`) — dihapus, sekarang selalu ke-flag.
+3. **Duplikat antar-baris DALAM SATU FILE tidak terdeteksi** — dua baris Excel dengan
+   HP/email sama tapi belum ada di DB lolos independen jadi 2 member terpisah dengan kontak
+   identik (`findExistingMemberByContact` cuma cek DB, tidak cek sesama baris draft). Fix:
+   `Map<string,number>` (`seenContacts`) dipertahankan sepanjang loop parsing satu file,
+   di-thread lewat parameter baru `buildPreviewRow(..., seenContacts)` — baris duplikat
+   ditandai `review_needed` (bukan hard-skip, karena bisa jadi 2 orang beda berbagi 1 nomor
+   keluarga) dengan catatan eksplisit sebut nomor baris duplikatnya.
+4. **Race condition double-submit** — `commitImportAction` sebelumnya SELECT lalu cek status
+   sebelum proses (pola "cek di luar transaction = cuma early-exit UX" yang sudah berkali-kali
+   jadi sumber bug di project ini: checkout, payment confirm, event registration). Fix: klaim
+   atomic (`UPDATE ... WHERE status='draft' RETURNING id`, bukan held-lock sepanjang loop 749
+   baris) — request kedua yang telat dapat 0 baris ter-update, berhenti dengan pesan jelas.
+
+Ditemukan juga 2 dead-code comparison (`status !== "error"`) yang TypeScript sendiri tandai
+"no overlap" setelah bug #3 ditambahkan — dihapus (bukan di-suppress), karena `status` memang
+tidak mungkin `"error"` di titik itu (baris kosong-nama sudah `return` lebih awal). `tsc`+build
+diverifikasi ulang bersih setelah semua fix, dev server direstart. **Keempat fix ini murni
+hasil membaca logika kode — belum satu pun dikonfirmasi lewat upload file sungguhan.**
+
+**Bug #5 — ditemukan dari pertanyaan user, bukan dari audit sendiri**: user tanya balik
+"apakah nomor id anggota forum udah masuk blm yak dalam import?" — jawabannya SEBAGIAN benar:
+Forbis ID memang benar ditulis ke `tenant_memberships.membership_number` (diverifikasi ulang
+end-to-end via grep di 3 file), TAPI `forum_membership_sequences` (counter dipakai
+`generateForumMembershipNumber()` untuk join `/gabung` BERIKUTNYA) tidak pernah disentuh oleh
+import — kalau tenant belum punya baris counter, join pertama pasca-import akan mulai dari
+`seq=1` LAGI, menabrak seq yang sudah dipakai anggota pertama yang diimport ("2017.00001").
+Ini melanggar prinsip inti fitur nomor keanggotaan forum ("counter tidak reset, jalan terus")
+yang sudah dikunci sebelumnya (2026-07-24) — gap ini SUDAH tertulis di rencana dokumen
+arsitektur sejak awal (§ 2: "`last_number` di-set ke 749 setelah import") tapi KELEWAT saat
+implementasi kode, dan lolos dari audit bug pertama karena audit itu fokus ke logika status/
+duplikasi, bukan ke integrasi lintas-fitur (import ↔ sistem nomor forum yang sudah ada).
+
+**Fix**: `commitImportAction` melacak `maxImportedSeq` (seq tertinggi dari baris yang BENAR-
+BENAR ter-insert, bukan semua baris file) sepanjang loop commit, lalu setelah loop selesai
+UPDATE-jika-lebih-besar (GREATEST, tidak pernah mundur) ke `forum_membership_sequences` —
+locking pattern (`SELECT ... FOR UPDATE`) disalin PERSIS dari `generateForumMembershipNumber()`
+yang sudah ada, bukan pola baru. `tsc`+build diverifikasi ulang bersih, dev server direstart.
+
+**Aturan yang ditegaskan**: kalau sebuah fitur BARU (import) menulis data yang overlap dengan
+sistem counter/sequence yang SUDAH ADA (nomor forum), integrasi keduanya harus dicek eksplisit
+sebagai bagian audit — "apakah fitur baru ini menulis nilai yang counter existing perlu tahu
+supaya tidak tabrakan nanti?" — bukan cuma cek logika internal fitur baru itu sendiri. Audit
+bug pertama sesi ini terlalu fokus ke dalam (status/duplikasi/race), melewatkan titik temu
+dengan fitur lain yang dibangun sesi sebelumnya.
+
+### [2026-07-25] Import Anggota — Pivot Arsitektur: Template = Struktur Kita, Bukan Struktur Eksternal
+
+> Detail lengkap: **`docs/arsitektur-import-anggota.md` § 13** (menggantikan § 4e/4f/6/bagian
+> template § 7-8, semua ditandai superseded dengan pointer ke § 13).
+
+Dua pertanyaan susulan user mengubah arsitektur secara fundamental — sesi diskusi murni dulu
+(bukan langsung eksekusi), sesuai SOP "confirm sebelum ubah keputusan besar".
+
+**1. "Nomor id forum berarti hanya berlaku ketika forum saja ya?"** — pertanyaan konfirmasi
+yang TERNYATA membongkar bug nyata: `commitImportAction` hardcode `membershipType: "forum"` +
+`forumStatus: "pending"` + `membershipNumber` untuk SEMUA tenant, padahal tool ini eksplisit
+dirancang reusable lintas tipe tenant (cabang/marhalah/forum). Fix: `isForumTenant =
+access.tenant.tenantType === "forum"` dihitung sekali, `membershipType` ikut
+`access.tenant.tenantType` sebenarnya, `forumStatus`/`membershipNumber`/tracking counter
+forum HANYA aktif kalau `isForumTenant`. Kalau tidak ditanyakan, bug ini baru ketahuan saat
+tool dipakai pertama kali untuk tenant cabang/marhalah — jauh setelah deploy.
+
+**2. "Kenapa gak insert yang ada saja, kita insert tidak lewat proses save"** — user
+keberatan dengan pendekatan awal (§ 4e/4f lama): tabel alias/terjemahan untuk memaksa-cocokkan
+istilah historis Forcreator ("Trader"→"Trading", sector diturunkan dari tag "Jenis Usaha",
+omzet dipaksa masuk skala lebih kecil). Argumen intinya: file yang dikirim cuma **satu contoh**
+database eksternal — bukan sesuatu yang tool ini harus "pintar" beradaptasi. Prinsip yang
+dikunci: **template = struktur kita sendiri persis; siapa pun yang punya database lama wajib
+reformat manual dulu sebelum upload; kalau kosong/tidak cocok → biarkan kosong, jangan pernah
+ditebak.**
+
+**Kendala teknis yang butuh 1 putaran diskusi tambahan**: prinsip "biarkan kosong" langsung
+menabrak `category`/`sector` yang waktu itu `NOT NULL` di `member_businesses` — tidak bisa
+dikosongkan di level database apa pun filosofinya. User awalnya curiga ini "berbahaya" —
+sebelum mengeksekusi apa pun, dicek dulu KENAPA constraint ini ada (bukan diasumsikan
+sembarangan): ternyata bukan aturan khusus import — `saveMemberBusinessesAction` (admin) dan
+`POST /api/akun/member-business` (self-service) **sudah lama** memfilter/membuang entri usaha
+tanpa category/sector, konsisten dipakai untuk direktori+statistik+rencana pencocokan usaha.
+
+**Resolusi — user menunjuk pola yang SUDAH ADA**: `members.gender`/`birthDate`,
+`contacts.phone`/`whatsapp` semuanya nullable di DATABASE, wajibnya cuma ditegakkan di FORM.
+Keputusan: terapkan pola SAMA PERSIS ke category/sector — migration `0048` melonggarkan NOT
+NULL, form self-service+admin TIDAK DISENTUH (tetap jadi penegak "wajib" untuk data manual).
+
+**Audit blast-radius SEBELUM eksekusi** (bukan asumsi aman) — grep semua pemakaian
+`.category`/`.sector`: hasilnya jauh lebih kecil dari dikira, karena hampir semua tempat
+TAMPILAN sudah defensif (`{entry.category && (...)}`). `tsc` setelah relaksasi skema HANYA
+menghasilkan 2 error nyata (satu construction type, satu 2× groupBy statistik) — persis
+sejumlah yang perlu difix, tidak lebih. 2 tempat LAINNYA lolos dari `tsc` (interpolasi
+string `{b.category} · {b.sector}` — akan cetak literal "null · null" tanpa error TYPE)
+ditemukan via grep manual terpisah dan difix sekalian — pengingat bahwa `tsc` tidak
+menangkap SEMUA kelas regresi dari pelonggaran nullable, terutama di dalam template string.
+
+**Simplifikasi besar di `lib/import-anggota-mapping.ts`**: SEMUA tabel alias/derivasi untuk
+klasifikasi usaha dihapus total (category aliases, `deriveSector`+`JENIS_USAHA_TO_SECTOR`,
+legality/position/employees/branches/revenue aliases) — diganti SATU helper generik
+`exactMatch<T>(raw, allowed)` (toleran spasi+kapitalisasi saja, bukan sinonim) dipakai
+7 fungsi mapper yang semuanya jadi `(raw) => T | null`. `MappingResult<T>` wrapper (field
+`matched`/`rawValue`) juga dihapus — sudah tidak perlu konsep "matched vs default" sama
+sekali. Status baris (`ready`/`review_needed`/dll) TIDAK LAGI dipengaruhi field usaha apa
+pun (baik yang dulu NOT NULL maupun nullable) — cuma dipengaruhi duplikat dan error nama
+kosong, field lain murni informasional di `notes`.
+
+**Template Excel didesain ulang**: 34 kolom (dari 37) — 4 kolom lama dihapus karena TIDAK
+ADA field yang cocok sama sekali di skema kita ("Kepemilikan Usaha", "Konsep Peluang", "Foto
+Produk atau Usaha", "Logo" — bukan tugas tool ini menyimpan data tanpa rumah), 1 kolom baru
+("Sektor", exact-match terpisah — TIDAK lagi diturunkan dari kolom lain), 1 di-rename
+("Jenis Usaha"→"Bidang Usaha", hindari rancu dengan "Sektor"). Sheet Panduan generate daftar
+nilai baku LANGSUNG dari konstanta `lib/import-anggota-mapping.ts` — satu sumber kebenaran,
+tidak diketik ulang manual.
+
+**Konsekuensi yang diterima secara sadar**: kalau `database-forbis.xlsx` ASLI (belum
+direformat) diupload apa adanya sekarang, banyak baris usaha akan punya category/sector
+KOSONG (istilah lama "Trader"/turunan "Jenis Usaha" tidak lagi dikenali) — ini SESUAI DESAIN
+baru, bukan regresi. Data Forcreator perlu direformat manual dulu supaya masuk lengkap.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` + `bun run build
+--filter=@jalajogja/web` sukses (dev server dimatikan+dibersihkan+direstart tiap tahap,
+dilakukan bertahap mengikuti 7 task terpisah: migration+schema, mapping, server engine,
+commitImportAction, template, 2 fix tampilan+statistik, verifikasi final). Migration `0048`
+dijalankan+diverifikasi di lokal. **Masih murni verifikasi statis — belum ada satu pun upload
+file sungguhan yang dicoba di browser**, baik untuk fix bug §12 sebelumnya maupun pivot ini.
+
+**Aturan yang ditegaskan**: kalau user menantang sebuah keputusan arsitektur dengan "kenapa
+X harus begini, sementara Y tidak" — JANGAN langsung membela/mempertahankan X tanpa
+verifikasi. Cek dulu kode aktual untuk memahami ALASAN X ada (di sini: constraint NOT NULL
+ternyata konsisten dengan aturan pre-existing di 2 tempat lain, bukan sembarangan) — baru
+dari situ cari pola yang SUDAH established di codebase (gender/birthDate/phone: nullable-di-
+DB + wajib-di-form) untuk diterapkan konsisten, bukan menciptakan solusi ad-hoc baru khusus
+untuk kasus ini.
+
+### [2026-07-25] Import Anggota — Pivot Kedua: Audit Skema dari Nol, Bukan Reshuffle Excel
+
+> Detail lengkap: `docs/arsitektur-import-anggota.md` § 14 (menggantikan bagian daftar kolom
+> di § 13 — prinsip "category/sector nullable" di § 13 TETAP berlaku, cuma daftar kolomnya
+> yang diganti).
+
+Setelah "pivot arsitektur" sebelumnya (entri di atas) dianggap selesai, user mengoreksi LAGI,
+lebih tajam: *"kita akhirnya malah focus ke sector bukan memperbaiki alur import... template
+yang kamu buat lebih banyak mengikuti data excel yang bikin, bukan mengikuti existing database
+yang harus diisi... KAMU TERALIHKAN OLEH database luar yang seharusnya MEREKA YANG IKUT KITA,
+bukan kita ikut mereka... termasuk penamaan dalam template, id forbis, forbis itu nama forum...
+kalau kamu kasih template nama forum, habis kita."*
+
+**Bukti paling telak yang lolos dari pivot sebelumnya**: kolom **"Forbis ID"** — nama internal
+SATU forum (Forcreator) — tetap ada persis di template yang diklaim "generik untuk semua
+tenant forum". Pivot § 13 memang benar soal PRINSIP (jangan tebak-nebak, jangan alias), tapi
+EKSEKUSINYA tetap menyusun kolom dari "apa yang kebetulan ada di Excel sumber" (kurangi 4,
+tambah 1) — bukan dari audit independen "skema kita butuh field apa saja".
+
+**Fix**: baca ULANG penuh 7 file schema (`members.ts`, `contacts.ts`, `addresses.ts`,
+`social-medias.ts`, `member-businesses.ts`, `member-professionals.ts`,
+`member-owned-pesantren.ts`, `tenant-memberships.ts`) disilangkan dengan
+`lib/member-eligibility.ts` (`checkMemberEligibility()`, 11 field syarat kelengkapan profil
+generik semua tipe tenant). Ditemukan: template 34-kolom sama sekali tidak punya 6 dari 11
+field eligibility — `birthDate`, `waliSantri`, `domicileStatus`, `professionId`,
+`graduationYear`/`graduationPeriod` (relevan untuk 1999) — semua hilang murni karena Excel
+sumbernya tidak punya kolom itu, bukan keputusan sadar.
+
+**"Forbis ID" → "Nomor Keanggotaan"** (generik) — dan format-nya TIDAK LAGI divalidasi ketat
+(`^\d{4}\.\d+$`). `parseForbisId()` dihapus, diganti `extractYearSeqFromMembershipNumber()`
+yang HANYA best-effort melanjutkan counter `forum_membership_sequences` kalau nomornya
+kebetulan berformat itu (preset default `lib/forum-membership-number.ts`) — nilai kolom itu
+sendiri diterima verbatim apa adanya, karena setiap tenant forum bisa pakai preset penomoran
+berbeda (3 pilihan) dan tool import tidak berhak memaksa satu format "benar" untuk semua.
+
+**10 kolom baru ditambahkan** (template 34→44 kolom), semuanya field `members`/`addresses`
+nyata: NIK, Tanggal Lahir (`parseBirthDate()` — terima ISO atau `DD/MM/YYYY`, validasi kalender
+asli), Tempat Lahir (teks bebas, `birthPlaceText`), Periode Angkatan 1999, No Stambuk Gontor,
+**Profesi** (FK ke `public.ref_professions` — 26 baris seed, matching baru `matchProfession()`
+via ILIKE exact, DB query async seperti `matchWilayah`), Wali Santri (label PERSIS sama dengan
+`step1-identity.tsx`), Status Domisili (label PERSIS sama dengan `/akun/lengkapi`),
+Desa/Kelurahan (`matchWilayah()` diperluas — scope oleh `districtId` yang sudah resolve, sama
+pola kabupaten/kecamatan), Kode Pos (kolom eksplisit menang, fallback ke
+`ref_villages.postal_code` desa yang ter-match). `REQUIRED_HEADERS` disederhanakan jadi
+`["nama"]` saja — field lain boleh kosong per prinsip "jika kosong, kosongkan" yang sudah
+dikunci, jadi tidak masuk akal memaksa kolomnya WAJIB ADA kalau isinya sendiri boleh kosong.
+
+**Keputusan scope dinyatakan EKSPLISIT kali ini** (supaya tidak terulang jadi "diam-diam
+dipotong lagi"): media sosial pribadi anggota, email/kecamatan/sosmed-penuh usaha, dan
+`primaryCabangRefId` (field eligibility ke-11, butuh matching ke 136 PC IKPM resmi) SENGAJA
+tidak ditambahkan — masing-masing dengan alasan tersendiri di dokumen. Scope TETAP
+business-only (professional/pesantren, dua directory lain yang juga bisa penuhi syarat
+"directory" eligibility, belum didukung) — dicatat eksplisit sebagai keputusan scope
+mengingat "banyak forum akan datang, tidak semua berorientasi usaha", bukan kelupaan.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package (percobaan pertama) + `bun run build
+--filter=@jalajogja/web` sukses (dev server dimatikan+`.next` dibersihkan+direstart). Nol
+migrasi DB tambahan — 10 kolom baru semuanya menulis ke kolom `members`/`addresses` yang
+SUDAH ADA sejak awal. **Belum diverifikasi manual di browser** — sama seperti pivot
+sebelumnya, murni hasil membaca kode + `tsc`/build.
+
+**Pelajaran meta — paling penting dari seluruh rangkaian sesi ini**: instruksi "buat sesuai
+struktur KITA, jangan ikut struktur eksternal" sempat dijalankan SETENGAH HATI dua kali
+berturut-turut sebelum benar-benar genuine — kali pertama (§ 13) masih anchor ke sumber Excel
+(reshuffle kolom, bukan audit independen). **Aturan untuk instruksi serupa ke depan**: kalau
+diminta membuat sesuatu "sesuai struktur kita, bukan struktur X", verifikasi SEBELUM
+menganggap selesai — apakah hasil akhirnya (nama kolom, field, istilah) bisa ditelusuri balik
+ke SATU sumber spesifik (satu forum, satu file, satu tenant)? Kalau ya, itu tanda belum
+benar-benar schema-first — ulangi dari audit skema penuh, jangan dari reshuffle sumber yang
+sama.
+
+### [2026-07-25] Bug: Nomor ID IKPM Ter-cetak Permanen dengan Placeholder Kalau Tanggal Lahir Kosong
+
+> Detail lengkap: `docs/arsitektur-import-anggota.md` § 15.
+
+Dari pertanyaan klarifikasi user soal mekanisme Nomor ID IKPM (global, `members.memberNumber`)
+saat import — ditemukan bug nyata (user sendiri yang menyimpulkan "itu bug bro"):
+`commitImportAction` memanggil `generateMemberNumber(db, birthDate)` **unconditional** untuk
+setiap member baru. Kalau `birthDate` kosong (umum untuk database historis lama), bagian
+DDMMYYYY nomor terisi placeholder `"00000000"` — dan nomor itu **permanen selamanya**, tidak
+pernah diperbaiki lagi meski orangnya nanti login dan mengisi tanggal lahir asli via
+`/akun/lengkapi`. Root cause: `PATCH /api/akun/member-data` punya guard
+`if (!member.memberNumber)` untuk generate ulang, tapi karena import sudah kadung mengisi
+nomor (walau placeholder), guard itu tidak akan pernah `true` lagi.
+
+**Fix — TIDAK bikin mekanisme baru, cukup samakan dengan pola yang SUDAH ADA di 2 tempat
+lain**: `grep insert(members)` di seluruh app menemukan `api/akun/register/route.ts`
+(registrasi self-service) dan platform `createFirstOwnerAction` (buat owner pertama) **KEDUANYA
+SUDAH** membuat member baru TANPA field `memberNumber` sama sekali (dibiarkan `null` — kolom
+memang nullable, tidak ada `.notNull()`). Guard `if (!member.memberNumber)` di
+`member-data/route.ts` justru DIRANCANG untuk skenario ini. Fix: `commitImportAction` sekarang
+`preview.member.birthDate ? await generateMemberNumber(...) : null` — kalau tanggal lahir ada,
+generate segera seperti biasa; kalau kosong, biarkan `null`, guard existing akan menghasilkan
+nomor yang BENAR begitu orangnya sendiri melengkapi data.
+
+**Verifikasi tampilan aman tanpa sentuh UI**: 3 titik display (`members/[id]/page.tsx`,
+`akun/page.tsx`, `anggota/[id]/page.tsx`) semuanya SUDAH pakai guard
+`{row.memberNumber && (...)}`/komponen `Row` yang otomatis sembunyikan baris kalau `null` —
+pola yang sudah lama dikunci ("jangan tampilkan 'Belum diterbitkan'"), jadi member yang
+sementara belum punya nomor tidak menampilkan apa pun aneh. `tsc`+build bersih.
+
+**Aturan yang ditegaskan**: sebelum bilang "bisa" untuk permintaan user mengubah timing
+generate suatu ID/nomor, cek dulu apakah kode sudah punya pola serupa di tempat lain — di
+sini, dua jalur pembuatan member LAIN (register self-service, platform first-owner) SUDAH
+menerapkan persis pola yang diminta user, dan mekanisme "generate belakangan" (guard
+`!member.memberNumber` di endpoint completion) SUDAH ADA, cuma import yang belum
+memanfaatkannya. Jangan bikin mekanisme paralel baru kalau infrastrukturnya sudah ada.
+
+### [2026-07-25] Import Anggota — Duplikat Tidak Lagi Di-skip, Selalu Dilengkapi Datanya (§ 16)
+
+> Detail lengkap: `docs/arsitektur-import-anggota.md` § 16.
+
+User menemukan skenario berbahaya dari perilaku lama "duplikat = skip total": anggota forum
+yang SUDAH terdaftar di tenant tertentu, tapi Nomor Keanggotaan Forumnya masih kosong (mis.
+admin baru atur format penomoran belakangan) — kalau ada batch import susulan yang kebetulan
+punya nomor untuk orang itu, baris itu SELALU di-skip tanpa pernah melengkapi nomor yang
+sebenarnya sudah tersedia. Kalimat kunci user: *"ketika saya import data di sebuah tenant,
+otomatis kita berbicara tentang data tenant bersangkutan"* — jadi field TENANT-SCOPED (bukan
+cuma field pribadi member) juga harus ikut dilengkapi.
+
+**Prinsip baru**: baris yang cocok member existing (via HP/WA/email) — baik sudah jadi anggota
+tenant ini maupun belum — SELALU diproses untuk melengkapi field yang di database masih
+kosong. Field yang sudah terisi TIDAK PERNAH ditimpa. Skip HANYA untuk nama kosong atau
+override manual admin.
+
+**Implementasi**: `computeMemberMergeCandidate()` baru di `lib/import-anggota.server.ts` —
+fetch snapshot `members`+`contacts`+`tenant_memberships` TERKINI dari DB, pakai helper murni
+baru `fillEmpty<T>(existing, incoming)` (client-safe, di `import-anggota-mapping.ts`) yang isi
+HANYA key yang di `existing` masih null. Dipanggil KEDUANYA oleh preview (informasional,
+tampilkan "akan melengkapi: X, Y" di Catatan) DAN commit (dipanggil ULANG, bukan percaya hasil
+preview yang bisa basi kalau draft didiamkan lama — benar-benar menulis UPDATE). Cakupan:
+`members` (10 field identitas), `contacts` (phone/whatsapp/email), DAN
+`tenant_memberships.membershipNumber` (satu-satunya field tenant-scoped yang relevan,
+HANYA kalau forum + baris sudah ada + nomornya masih null + data import punya nilai).
+
+**Yang SENGAJA tidak disentuh**: `tenant_memberships.status`/`forumStatus` (lifecycle/moderasi
+— bulk import tidak boleh diam-diam mengaktifkan kembali member yang sengaja di-suspend admin);
+`member_businesses` duplikasi (list, bukan scalar — beda kelas masalah, tetap gap terbuka dari
+§ 11); Nomor ID IKPM global (`members.memberNumber`, punya aturannya sendiri di § 15 — generate
+sekali oleh guard terpisah, sengaja tidak dicampur ke logic `fillEmpty` generik).
+
+**Turunan**: `maxImportedSeq` (lanjutan counter forum, lesson bug #5 sebelumnya) diperbaiki
+sekalian — sekarang melacak `writtenMembershipNumber` (nomor yang BENAR-BENAR tertulis, baik
+dari insert baru MAUPUN update-backfill), bukan `preview.membershipNumber` mentah — supaya
+jalur backfill baru ini juga ikut dihitung untuk lanjutan counter, bug kelas yang sama dengan
+§ 12 bug #5 dicegah sekaligus di titik yang sama.
+
+**UI**: badge "Duplikat" (menyiratkan dibuang) diganti "Sudah Ada — Dilengkapi" (biru), checkbox
+skip manual sekarang tetap tampil untuk baris ini (sebelumnya disembunyikan karena toh selalu
+di-skip). `CommitImportResult` dapat field baru `merged: number` terpisah dari `inserted` —
+laporan akhir bedakan "N anggota BARU" vs "N anggota SUDAH ADA dilengkapi". Nol migrasi DB.
+
+**Aturan yang ditegaskan**: kalau user menjelaskan skenario konkret ("begini kalau di-skip
+semua... maka yang terjadi...") alih-alih menjawab pilihan ganda yang saya tawarkan
+(`AskUserQuestion` sempat ditolak user di titik ini, diminta jelaskan dulu) — pahami dulu
+skenario itu SEUTUHNYA sebelum kembali ke opsi terstruktur; kadang penjelasan bebas
+mengandung poin krusial (di sini: dimensi tenant-scoped) yang tidak tercakup pertanyaan
+pilihan-ganda yang sudah disiapkan sebelumnya.
+
+### [2026-07-25] Bug: Platform Tenant Detail Tidak Tampilkan Login + Redirect Nyasar ke "Pendaftaran Ditutup"
+
+User laporkan kesulitan login ke tenant `forcreator` (testing lokal). Investigasi (bukan
+tebak) menemukan 2 masalah nyata:
+
+**1. Halaman `/platform/tenants/[slug]` tidak pernah menampilkan SIAPA pengurus tenant** —
+query lama cuma `LIMIT 1` + cek existence (`hasOwner: boolean`), tidak pernah fetch nama/email.
+Platform admin tidak ada cara tahu email login tenant tanpa query DB manual. Dicek langsung ke
+DB lokal: `forcreator` TERNYATA SUDAH punya owner (`forcreator@gmail.com`) — masalahnya murni
+platform admin tidak bisa MELIHAT ini dari UI. **Fix**: query diperluas fetch SEMUA
+`tenant.users` + JOIN manual ke `public.user` (pola disalin dari `settings/users/page.tsx` —
+`inArray(authUser.id, betterAuthIds)`, FK tidak didefinisikan Drizzle untuk tenant tables jadi
+join dilakukan di application code, bukan SQL JOIN satu query). Section baru "Pengurus / Login
+Tenant" menampilkan nama+email+role tiap pengurus. Sekalian ditemukan+difix: tombol "Buka
+Tenant" di atas halaman masih pakai URL lama `{slug}/dashboard` (sisa migrasi URL admin
+Fase 1-4, seharusnya `/app/{slug}/dashboard` — link LAIN di halaman yang sama, di bawah,
+sudah benar sejak awal, jadi ini murni 1 titik yang kelewat).
+
+**2. `/app/forcreator/dashboard` (logged in, tapi akun TIDAK punya akses tenant.users di
+`forcreator`) berujung ke `/register?error=no-tenant` → "Pendaftaran Ditutup Sementara"** —
+alur lengkap ditelusuri: `(dashboard)/app/[tenant]/layout.tsx`'s `getTenantAccess(slug)` null →
+`redirect("/dashboard-redirect")` → `getFirstTenantForUser()` null (akun ini TIDAK punya
+tenant.users di MANA PUN, bukan cuma forcreator) → fallback lama `redirect("/register?error=
+no-tenant")`. Pesan "Pendaftaran Ditutup" MENYESATKAN untuk kasus ini — user tidak sedang
+mencoba mendaftarkan tenant BARU, mereka mencoba akses tenant yang SUDAH ADA dengan akun yang
+tidak diberi akses. Registrasi tenant baru sendiri sudah dinonaktifkan PERMANEN
+(`REGISTRATION_OPEN=false`) — jadi skenario asli fallback ini didesain untuk ("partial tenant
+registration state", lesson lama 2025-04) sudah tidak mungkin terjadi lagi; SEMUA traffic yang
+sampai ke fallback ini sekarang adalah kasus "logged in, no tenant access anywhere".
+
+**Fix — halaman baru, BUKAN redirect ke `/app/login`**: sempat dipertimbangkan redirect ke
+`/app/login?error=...` untuk pesan lebih jelas, tapi ini akan bikin INFINITE LOOP —
+middleware.ts punya aturan `if (pathname === "/app/login" && isLoggedIn) redirect
+("/dashboard-redirect")` (mencegah user yang sudah login melihat form login lagi). Kalau
+`/dashboard-redirect` balik lagi ke `/app/login` untuk kasus SESI VALID tanpa akses tenant,
+middleware akan lempar balik ke `/dashboard-redirect` lagi — loop tak henti, persis kelas bug
+lama "Auth gate diduplikasi di middleware DAN layout tanpa koordinasi". Solusi: halaman BARU
+`app/no-tenant-access/page.tsx` (di LUAR `/app/*`, jadi tidak kena aturan bounce-back itu sama
+sekali) — tampilkan email akun yang sedang login + pesan jelas ("belum terdaftar sebagai
+pengurus di tenant mana pun, hubungi admin platform") + tombol "Keluar & Coba Akun Lain"
+(`sign-out-button.tsx`, pakai `window.location.href` setelah `signOut()` — bukan `router.push`,
+sesuai aturan lama "window.location.href wajib setelah operasi yang menghancurkan sesi").
+`dashboard-redirect/page.tsx` diarahkan ke sini, bukan `/register?error=no-tenant`.
+
+**Cleanup sekalian**: `error=no-tenant` handling di `(auth)/register/page.tsx` (pesan inline
+"Pendaftaran sebelumnya tidak lengkap") dihapus — sudah 100% dead code (grep konfirmasi nol
+caller lain, dan bahkan SEBELUM fix ini pesan itu tidak pernah terlihat user karena
+`REGISTRATION_OPEN=false` short-circuit ke pesan "Pendaftaran Ditutup" SEBELUM form+error state
+sempat dirender). `useSearchParams` import ikut dihapus (sudah tidak dipakai apa pun lagi di
+file itu). 2 link "Masuk di sini" di halaman itu diarahkan langsung ke `/app/login` (sebelumnya
+`/login` — file itu sendiri cuma stub redirect ke `/app/login`, BUKAN bug, tapi hop tambahan
+yang tidak perlu, dirapikan sekalian).
+
+**Verifikasi**: `tsc --noEmit` bersih (percobaan pertama) + `bun run build
+--filter=@jalajogja/web` sukses (dev server dimatikan+`.next` dibersihkan+direstart), route
+`/no-tenant-access` terkonfirmasi muncul di build output. Nol migrasi DB. **Belum diverifikasi
+visual di browser** — user diminta coba ulang `/app/forcreator/dashboard` dengan akun yang
+BUKAN `forcreator@gmail.com` untuk konfirmasi halaman baru muncul dengan benar (bukan loop),
+dan login dengan `forcreator@gmail.com` untuk konfirmasi akses tenant berhasil normal.
+
+**Aturan yang ditegaskan**: setiap kali menambah/mengubah target redirect untuk kasus "sesi
+valid tapi tidak diizinkan", WAJIB cek dulu apakah tujuan baru itu sendiri punya aturan
+redirect-balik untuk kondisi "sudah login" (pola `if (isLoggedIn) redirect(X)` yang sudah
+berulang kali muncul di middleware/layout project ini) — kalau ya, JANGAN arahkan ke situ,
+cari/buat tujuan yang benar-benar netral terhadap status login.
+
+### [2026-07-25] Bug Kritis Import Anggota: Merge Patch Bocor `fullName` — SEMUA Baris Match-Existing Gagal Commit
+
+> Detail lengkap: `docs/arsitektur-import-anggota.md` § 17. Ditemukan dari testing SUNGGUHAN
+> pertama kali — upload file nyata, bukan cuma `tsc`/build hijau.
+
+User laporkan: upload `database-forbis-kecil.xlsx`, "Wawan Sugianto" (HP+email cocok member
+existing) tidak muncul di tenant forum meski pesan preview bilang "akan ditambahkan sebagai
+anggota tenant ini." Diagnosa LANGSUNG ke data (query `import_batches`/`import_batch_rows`,
+bukan tebak): batch pertama 128 inserted + **1 skipped** (Wawan). Dua batch re-upload file yang
+SAMA sesudahnya (menit kemudian, karena batch 1 sudah insert 128 member baru → SEMUA baris di
+batch 2/3 sekarang match existing) — **129/129 skipped**. `notes` JSONB baris Wawan berisi
+bukti pasti: `"Gagal insert: syntax error at or near \"where\""` — SQL error sungguhan di
+dalam transaction, ketangkap `catch`, ditandai skip diam-diam meski notes lain di baris yang
+sama sudah bilang "akan diproses."
+
+**Root cause**: `commitImportAction` (§ 16, dibuat sesi sebelumnya) memanggil
+`computeMemberMergeCandidate` dengan **`preview.member` APA ADANYA** (objek utuh, punya field
+`fullName`) — padahal `fullName` BUKAN bagian `MemberFieldPatch` (kolom DB-nya `members.name`,
+tidak pernah kosong). `fillEmpty()` awalnya iterasi `for (const key in incoming)` (runtime,
+bukan dijamin TypeScript) — `fullName` ikut ter-scan, `existing["fullName"]` (dari SELECT yang
+TIDAK PERNAH ambil kolom `name`) jadi `undefined` → dianggap "kosong" → masuk patch →
+`.set({fullName:...})` → Drizzle buang key tak dikenal skema → SQL `SET` kosong →
+`UPDATE ... SET WHERE ...` → syntax error. `buildPreviewRow` (preview) SUDAH BENAR sejak awal
+(pakai objek eksplisit dari variabel lokal, tanpa `fullName`) — asimetri preview-vs-commit
+inilah sumber bug: preview "berjanji", commit gagal tepati.
+
+**Dampak**: SETIAP baris yang match member existing (`linkOnly` maupun sudah jadi anggota
+tenant, keduanya lewat jalur § 16) SELALU gagal commit — bukan cuma 1 orang. Transaction gagal
+BERSIH (rollback Postgres otomatis) — nol korupsi data, cuma niat yang tidak tereksekusi.
+
+**Fix — 2 lapis**: (1) `commitImportAction` sekarang bangun objek `incomingMember` eksplisit
+(10 field, tanpa `fullName`), sama persis pola `buildPreviewRow`. (2) **Hardening `fillEmpty()`
+sendiri** supaya kelas bug ini TIDAK BISA terulang lagi di pemanggil manapun ke depan: diubah
+dari `for (const key in incoming)` jadi `for (const key in existing)` — karena `existing`
+SELALU hasil `SELECT` eksplisit (ground truth kolom yang benar-benar ada), field ekstra apa pun
+di `incoming` yang tidak dikenal `existing` otomatis diabaikan, terlepas caller berikutnya
+teliti atau tidak.
+
+**Verifikasi**: `tsc`+build bersih (percobaan pertama), dev server direstart. Nol migrasi.
+**Fix-nya SENDIRI belum diverifikasi lewat upload ulang** — user diminta coba
+`database-forbis-kecil.xlsx` sekali lagi untuk konfirmasi Wawan (dan baris match-existing lain)
+benar-benar masuk sekarang.
+
+**Aturan yang ditegaskan**: kalau dua fungsi (preview vs commit) SAMA-SAMA memanggil helper
+yang sama dengan parameter yang SEHARUSNYA identik bentuknya, verifikasi KEDUANYA benar-benar
+membangun parameter itu dengan cara yang SAMA — jangan asumsikan "preview sudah benar berarti
+commit juga pasti benar", karena keduanya ditulis di titik kode terpisah dan bisa diam-diam
+divergen (persis yang terjadi di sini). Untuk helper generik yang menerima "objek existing" +
+"objek incoming" untuk dibandingkan field-per-field, SELALU iterasi berdasarkan `existing`
+(sumber kebenaran skema/SELECT), BUKAN `incoming` (bisa saja punya field ekstra di luar
+kontrol) — pola ini reusable untuk helper serupa manapun ke depan di project ini.
+
+### [2026-07-25] Bug: Edit Anggota via Admin Tidak Generate No. Anggota Saat Tanggal Lahir Diisi
+
+**Bukan bug import** — dilaporkan user di giliran yang sama saat minta re-verifikasi § 17 di
+atas, tapi sumbernya file berbeda total: `updateMemberAction` (`members/actions.ts`), dipakai
+halaman admin `/app/{slug}/members/{id}/edit`. Dicatat berdampingan karena root cause-nya
+berhubungan langsung dengan pola "generate No. Anggota begitu tanggal lahir pertama kali
+diketahui" yang sudah dikunci untuk 2 jalur lain (lihat lesson lama "Auto-generate No. Anggota
+di `PATCH /api/akun/member-data`" dan § 15 `docs/arsitektur-import-anggota.md`).
+
+**Root cause**: `members.memberNumber` bisa null untuk member yang dibuat via self-service
+register, buat-owner-pertama platform admin, atau import massal (§ 15) — ketiganya sengaja
+MENUNDA generate sampai tanggal lahir benar-benar ada (supaya tidak mencetak nomor dengan
+placeholder `00000000` permanen). Satu-satunya titik yang dirancang "menyusulkan" generate itu
+adalah `PATCH /api/akun/member-data` (guard `if (!member.memberNumber) {...}`) — tapi
+`updateMemberAction` (jalur ADMIN edit, beda file/beda alur sama sekali dari self-service) TIDAK
+PERNAH punya guard yang sama sejak fitur nomor anggota dibuat: cuma `db.update(members).set({
+...sanitize(data), updatedAt})`, tidak menyentuh `memberNumber` sama sekali. `createMemberAction`
+(admin BUAT baru) aman karena SELALU generate unconditional saat insert — cuma jalur UPDATE yang
+bolong.
+
+**Fix**: `updateMemberAction` sekarang SELECT `memberNumber` existing dulu; kalau masih null,
+`generateMemberNumber(db, data.birthDate ?? null)` dimasukkan ke patch — persis pola
+`PATCH /api/akun/member-data`, `data.birthDate` di sini datang dari FormData form edit (selalu
+terisi begitu field-nya diisi admin, karena form submit seluruh nilai input, bukan partial
+patch). Member yang sudah punya nomor tidak pernah disentuh — nomor yang sudah digenerate tetap
+permanen.
+
+**Verifikasi**: `tsc`+build bersih di `apps/web`, dev server direstart. Nol migrasi. **Belum
+diverifikasi lewat edit sungguhan di browser** — user diminta coba edit anggota tanpa No.
+Anggota (mis. hasil import tanpa tanggal lahir), isi Tanggal Lahir, simpan, cek nomornya terisi.
+
+**Aturan yang ditegaskan**: pola "guard `if (!field) generate...`" yang sudah dikunci di SATU
+jalur mutasi (self-service) tidak otomatis berlaku di jalur mutasi LAIN untuk entitas yang sama
+(admin edit) — setiap kali sebuah field punya banyak titik mutasi (create-admin, edit-admin,
+self-service PATCH, import, dst), audit SEMUA titik itu satu per satu untuk pola serupa, jangan
+asumsikan satu fix di satu tempat otomatis menutup seluruh kelas masalah.
+
+### [2026-07-25] Bug: Kabupaten Tempat Lahir Tampak "Tidak Tersimpan" di Form Edit Admin — Sebenarnya Bug Tampilan
+
+User laporkan (giliran sama dengan bug No. Anggota di atas, saat cek form sebelum mulai import
+sungguhan): pilih kabupaten tempat lahir di form edit anggota, simpan, tapi field itu tampak
+kosong lagi saat form dibuka ulang.
+
+**Root cause — data TERSIMPAN benar, bug ada di TAMPILAN form, bukan penyimpanan**: ditelusuri
+seluruh jalur tulis (`updateMemberAction`→`sanitize()`→`db.update`) dan dikonfirmasi benar
+sejak awal — `birthRegencyId` selalu ikut ter-update. Bukti tambahan: halaman detail anggota
+sudah lama benar menampilkan nama kabupaten (query-nya SELECT `refRegencies.name` — kalau data
+benar-benar hilang, halaman itu juga akan kosong, padahal tidak). Root cause sesungguhnya:
+`RegencyCombobox` butuh DUA nilai untuk menampilkan pilihan awal — `value` (ID) DAN
+`displayName` (nama, untuk ditampilkan sebagai teks input) — lihat constructor
+`useState(() => value && displayName ? {...} : null)`. Form edit sebelumnya menginisialisasi
+state nama SELALU `null` (tidak pernah dibaca dari `defaultValues`), sementara halaman edit
+sendiri TIDAK PERNAH men-select `refRegencies.name` ke server props — hanya
+`refRegencies.provinceId` (dipakai field `birthProvinceId` yang ternyata dead code, tidak
+dibaca komponennya sama sekali). Combobox jadi SELALU render kosong setiap form edit dibuka,
+meski ID internalnya sudah terisi benar — user mengira data hilang, padahal kalau form langsung
+disubmit tanpa disentuh, nilai lama tetap terkirim dan tersimpan utuh.
+
+**Fix — 3 titik**: (1) edit page tambah `birthRegencyName: refRegencies.name` ke select,
+diteruskan ke `defaultStep1`; (2) `Step1DefaultValues` type tambah field
+`birthRegencyName?: string`; (3) state di form sekarang diinisialisasi
+`defaultValues?.birthRegencyName ?? null`, bukan selalu `null`. `birthProvinceId` (dead code
+lama, tidak berbahaya) sengaja dibiarkan, di luar scope.
+
+**Verifikasi**: `tsc`+build bersih (percobaan pertama), dev server direstart. Nol migrasi —
+murni bug tampilan, tidak ada perubahan skema. **Belum diverifikasi lewat edit sungguhan di
+browser** — user diminta buka form edit anggota yang sudah punya tempat lahir tersimpan,
+konfirmasi combobox sekarang menampilkan nama kabupatennya.
+
+**Aturan yang ditegaskan**: kalau sebuah combobox/autocomplete butuh MENAMPILKAN pilihan awal
+dari data server (bukan cuma menyimpan ID), field DISPLAY NAME-nya harus di-select eksplisit di
+query server DAN diteruskan sampai ke state komponen — ID saja tidak cukup untuk re-render
+pilihan yang sudah dipilih. Kalau laporan bug berbunyi "data tidak tersimpan" untuk field
+combobox, cek DULU apakah datanya benar-benar hilang di DB (lewat halaman detail/query
+langsung) sebelum menyimpulkan bug ada di jalur tulis — sering kali gejalanya "tampak tidak
+tersimpan" padahal bug sesungguhnya di jalur BACA/DISPLAY saat form dibuka ulang.
+
+### [2026-07-26] Bug Kritis Kedua Import Anggota: Baris "Duplicate" Ikut Bikin Member Baru Ganda
+
+**Ditemukan dari audit ulang menyeluruh** — permintaan user "cek dulu sebelum eksekusi lanjutan"
+sebelum benar-benar upload file sungguhan, BUKAN dari testing browser. Detail lengkap:
+`docs/arsitektur-import-anggota.md` § 21.
+
+**Root cause**: `ImportRowPreview.linkOnly` hanya `true` untuk SATU dari tiga skenario match
+member ("member baru"/"link-only, belum jadi anggota tenant ini"/"duplicate, sudah jadi anggota
+tenant ini") — HANYA skenario "link-only" yang `linkOnly=true`. `commitImportAction` menggate
+blok "insert member+contact+address baru" dengan `if (!preview.linkOnly)` — kondisi ini SALAH
+bernilai `true` juga untuk skenario "duplicate" (existingMemberId terisi, linkOnly=false),
+padahal skenario itu seharusnya SKIP insert sama sekali dan reuse member yang sudah ada. Efek:
+setiap kali file yang sama di-import ULANG (member-nya sudah jadi anggota tenant), kode ini
+salah membuat `contacts`+`addresses`+`members` BARU yang identik — bisa membakar Nomor ID IKPM
+global baru (`member_number_seq`) kalau Tanggal Lahir terisi, dan member ganda ini jadi ORPHAN
+(tidak pernah dapat `tenant_memberships` karena blok itu sudah benar menggate berdasarkan
+`preview.existingMemberId`, bukan member ganda yang baru dibuat).
+
+**Kenapa belum pernah menghasilkan data ganda nyata**: pola testing user sebelumnya ("upload →
+sebagian sukses → upload file SAMA lagi untuk verifikasi") persis skenario yang memicu bug ini,
+TAPI bug § 17 (SQL syntax error di merge patch) sudah lebih dulu menggagalkan transaction
+SEBELUM sempat commit apa pun untuk baris duplicate — murni kebetulan urutan penemuan bug,
+BUKAN bukti bug ini aman diabaikan.
+
+**Fix**: kondisi gate diubah `if (!preview.linkOnly)` → `if (!preview.existingMemberId)` — HANYA
+insert member baru kalau BENAR-BENAR tidak ada member existing yang cocok sama sekali.
+
+**Gap terkait TIDAK ikut difix (dicatat eksplisit)**: blok insert `member_businesses` TIDAK
+digate berdasarkan existingMemberId/linkOnly — berjalan untuk SEMUA baris yang punya "Nama
+Usaha" terisi, termasuk "duplicate". Re-import file yang sama untuk member yang sudah punya data
+usaha akan menambah baris `member_businesses` BARU yang duplikat setiap kali — gap ini SUDAH
+tercatat sejak § 11 ("belum ada kebijakan"), TIDAK diperbaiki sekarang karena butuh keputusan
+produk (skip/update/tetap tambah untuk kasus multi-usaha) yang belum dikonfirmasi user.
+
+**Verifikasi**: `tsc`+build bersih di kedua package (percobaan pertama), dev server direstart.
+Nol migrasi — murni perbaikan 1 kondisi boolean. **Belum diverifikasi lewat upload sungguhan** —
+murni hasil audit baca-kode sebelum testing dimulai.
+
+**Aturan yang ditegaskan**: kalau sebuah alur punya LEBIH dari 2 skenario status yang mungkin
+(di sini: 3 — baru/link-only/duplicate), JANGAN gate logic pakai satu boolean yang cuma
+membedakan SATU pasang skenario (`linkOnly`) — pastikan kondisi if/else benar-benar menutup
+SEMUA kombinasi yang mungkin, idealnya gate langsung dari sumber kebenaran paling primitif
+(`existingMemberId` — null/tidak-null) bukan dari flag turunan yang cuma valid untuk sebagian
+kasus. Audit "baca ulang seluruh alur dari nol sebelum testing" (bukan cuma verifikasi fix
+sebelumnya) terbukti berharga di sini — bug ini tidak akan pernah tertangkap `tsc`/build,
+hanya oleh membaca logika baris-per-baris.
+
+### [2026-07-26] Audit Editor Tiptap dari Agent Lain — 1 Bug Data-Breaking + 1 Bug Minor + Klaim Berlebihan
+
+User minta cek ringkasan eksekusi dari agent LAIN yang mengklaim fitur editor baru (Fase 1-4:
+Block "Baca Juga", Enhanced Blockquote+citation, YouTube/Instagram embed responsif, spacing
+`.prose-jalakarta`) selesai + `tsc --noEmit` 0 error. Setiap klaim diverifikasi ke kode aktual
+satu per satu (bukan dipercaya begitu saja) — detail lengkap: `docs/arsitektur-editor.md` § 5.
+
+**Bug #1 (data-breaking, SUDAH DIFIX)**: block "Baca Juga" pakai `<PublicLinkPicker>` yang selalu
+kembalikan URL path-mode (`/{slug}/post/...`) — disimpan apa adanya, di-render `letter-render.ts`
+(dipakai bersama Post/Page/Produk/Campaign/Event) sebagai `<a href>` TANPA `stripTenantPrefix()`.
+Persis kelas bug yang sudah berulang kali difix untuk fitur lain (nav menu, Hero CTA, CTA
+section) — fitur baru ini luput. Dampak: link internal rusak (404 ganda-slug) di tenant custom
+domain aktif. Fix: `RenderContext` (`letter-render.ts` + `post-body-segments.ts`) diperluas
+`tenantSlug?`+`baseUrl?` (semantik sama `resolveBaseUrl()`), helper `resolveInternalHref()`
+menerapkan `stripTenantPrefix()` hanya untuk URL non-eksternal. 7 titik render diupdate:
+`post/[slug]`, `campaign/[slug]`, `produk/[productSlug]`, `agenda/[slug]`, `default-template.tsx`
+(+2 pemanggilnya: homepage & `[pageSlug]`), `sign/[token]`, `api/akun/legal/route.ts`. Sengaja
+TIDAK disentuh: `profesional/[id]`+`usaha/[id]` (description-nya `<textarea>` polos, bukan
+TiptapEditor — bug tidak relevan di sana) dan halaman admin Surat (route `(dashboard)` tidak
+pernah diserve custom domain, fix di situ selalu no-op).
+
+**Bug #2 (minor, SUDAH DIFIX)**: `EmbedBlockView`'s loader script Instagram (`embed.js`) tanpa
+cleanup + tanpa cek "sedang loading" → 2 embed Instagram mount bersamaan (atau React StrictMode
+dev-mode double-invoke) bisa inject script dobel. `.process()` juga tidak pernah dipanggil
+eksplisit setelah script load — cuma andalkan auto-scan implisit Instagram. Fix: loader diubah
+jadi singleton module-level (`loadInstagramScript()`, `Promise<void>` di-cache) — satu script tag
+untuk seluruh halaman, `.process()` dipanggil eksplisit via `.then()`.
+
+**Gap #3 — `.prose-jalakarta` dead CSS, DIHAPUS (bukan diwiring)**: klaim "update letter-
+render.ts untuk konsistensi spacing" SALAH — file itu nol referensi ke string itu, dan grep
+seluruh app/components = nol pemakaian di mana pun sejak commit pertama. Ditanya ke user (beda
+kelas risiko dari bug #1/#2 — ini perubahan visual ke 5 halaman publik LIVE, tidak bisa
+diverifikasi visual dari sesi ini). User jawab: front-end SUDAH konsisten via mekanisme lama
+(class `prose` + inline style dari `renderBody()` — SATU sumber kebenaran untuk semua titik
+render karena semua lewat fungsi yang sama), tidak perlu sistem baru — cukup hapus CSS matinya.
+Diverifikasi dulu (5 titik render dibandingkan, memang sudah pola sama) sebelum eksekusi hapus.
+
+**Klaim #4 — "kompatibilitas WordPress WXR import/export", DIABAIKAN sesuai arahan user**:
+`docs/arsitektur-import-export-post-wordpress.md` berstatus eksplisit "RANCANGAN", belum
+diimplementasikan — grep kode WXR = nihil. Satu-satunya elemen nyata: `parseHTML()` di
+`related-link-ext.ts` mengenali `<p class="wp-block-callout">` kalau di-paste manual (fitur
+paste-compatibility kecil, jauh dari klaim "export ke WXR XML"). Tidak dieksekusi sesi ini.
+
+**Verifikasi**: `tsc --noEmit` bersih (3 putaran) + `bun run build --filter=@jalajogja/web`
+sukses (3 putaran, dev server dimatikan+`.next` dibersihkan+direstart tiap kali). Nol migrasi
+DB. **Belum diverifikasi visual di browser** — bug #1 dan #2 butuh dicoba langsung: buat "Baca
+Juga" ke artikel internal di tenant custom domain aktif, cek console Network tab untuk
+`embed.js` cuma fetch sekali meski ada 2+ embed Instagram.
+
+**Aturan yang ditegaskan**: ringkasan eksekusi dari agent LAIN (atau sesi lain) — termasuk klaim
+"tsc 0 error" yang MEMANG benar — TIDAK BOLEH dipercaya sebagai bukti "tidak ada bug". `tsc`
+cuma menangkap type error, bukan bug logic (link custom domain), bukan bug runtime (script race
+condition), dan bukan "klaim fitur yang ternyata tidak terhubung ke mana pun" (dead CSS). Setiap
+klaim spesifik ("X sudah di-update", "Y terintegrasi ke Z") WAJIB diverifikasi dengan membaca
+file yang disebut dan grep pemakaiannya — bukan dipercaya dari narasi ringkasan.
+
+### [2026-07-26] Peningkatan Block "Baca Juga" — Auto-fill Judul, Label Bebas, Fix Overflow
+
+Susulan langsung dari audit editor di atas — 3 permintaan user, detail lengkap
+`docs/arsitektur-editor.md` § 6.
+
+**Klarifikasi dulu, bukan bug**: user awalnya mengira `<PublicLinkPicker>` "belum terintegrasi"
+dengan post/donasi/event — dicek ke `/api/ref/public-links/route.ts`, TERNYATA SUDAH ADA (query
+`ilike` ke judul, ditampilkan grouped). Kesalahpahamannya murni UX: konten yang bisa banyak
+(post/produk/event/campaign) SENGAJA tidak tampil sebelum admin mengetik — kalau popover dibuka
+tanpa ketik apa pun, kelihatannya "cuma ada laman & modul". False alarm, dikonfirmasi ke user
+SEBELUM eksekusi apa pun (bukan langsung dipercaya/langsung "diperbaiki" tanpa verifikasi).
+
+**Fix 1 — auto-fill judul**: `<PublicLinkPicker>`'s `onChange` sebelumnya cuma kirim `url`,
+padahal API sudah kembalikan `label` (judul asli) dan komponen bahkan menampilkannya di
+dropdown — cuma dibuang di `handleSelect()`. Diperluas jadi `onChange: (url, label?) => void`
+(parameter kedua OPSIONAL — 6 caller lama otomatis tetap valid tanpa disentuh, TypeScript izinkan
+callback singkat untuk signature yang lebih panjang). `RelatedLinkDialog` sekarang isi field
+"Judul Artikel/Tautan" otomatis dari `label` — HANYA kalau terisi (dipilih dari daftar, bukan
+ketik manual sebagai URL eksternal, supaya tidak menimpa judul manual dengan string kosong).
+
+**Fix 2 — Label Awalan jadi teks bebas**: `<select>` 4 pilihan tetap diganti `<Input>` bebas,
+default tetap "Baca Juga:" (`useState` tidak berubah, cuma cara input-nya).
+
+**Fix 3 — popup melebar saat URL panjang**: dua `<span className="flex-1 truncate">` di
+`PublicLinkPicker` (trigger button + dropdown item) tidak punya `min-w-0` — flex item dengan
+`flex-1` TANPA `min-w-0` tidak benar-benar truncate (default `min-width:auto` pada flex item
+menolak menyusut di bawah ukuran konten intrinsiknya), jadi URL panjang memaksa tombol/dialog di
+sekelilingnya melebar. Fix: tambah `min-w-0` di kedua span.
+
+**Verifikasi**: `tsc --noEmit` bersih (percobaan pertama) + `bun run build --filter=@jalajogja/web`
+sukses (dev server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB. **Belum
+diverifikasi visual di browser** — user diminta coba: cari post/donasi/event by judul (konfirmasi
+sudah bekerja, bukan bug), pilih satu, cek judul auto-terisi; ketik Label Awalan custom; coba URL
+sangat panjang, cek popup tidak melebar.
+
+**Aturan yang ditegaskan**: `flex-1`/`flex-grow` PADA elemen dengan `truncate` (`overflow:hidden;
+text-overflow:ellipsis; white-space:nowrap`) di dalam flex container SELALU butuh `min-w-0`
+eksplisit — default CSS flexbox `min-width:auto` membuat elemen menolak menyusut di bawah ukuran
+konten intrinsiknya, sehingga `truncate` diam-diam tidak pernah bekerja tanpa `min-w-0`. Ini
+kelas bug CSS yang sudah muncul (dan sengaja dicegah) di komponen lain project ini (`kolom kiri
+min-w-0 wajib` — lihat lesson lama "Mobile Layout Overflow"), sekarang confirmed berlaku juga
+untuk popover/dialog trigger button manapun yang menampilkan teks panjang dinamis (URL, nama
+file, dst) — cek `min-w-0` setiap kali ada laporan "popup/tombol melebar aneh saat teksnya panjang".
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Pemisahan Donasi vs Registrasi Forum** (lihat lesson `[2026-07-24]`
+- Terakhir dikerjakan: **Peningkatan Block "Baca Juga" — auto-fill judul, Label Awalan jadi
+  teks bebas, fix popup melebar** (lihat lesson `[2026-07-26]` "Peningkatan Block 'Baca Juga'"
+  di atas, detail penuh di `docs/arsitektur-editor.md` § 6) — susulan langsung dari audit di
+  bawah. Klarifikasi dulu (bukan langsung dieksekusi): user awalnya kira post/donasi/event
+  "belum terintegrasi" ke `<PublicLinkPicker>` — dicek ke `/api/ref/public-links/route.ts`,
+  TERNYATA SUDAH ADA (query judul), cuma UX: konten yang bisa banyak sengaja tidak tampil
+  sebelum diketik — konfirmasi ke user dulu sebelum eksekusi apa pun, terbukti false alarm. 3
+  fix nyata: (1) `<PublicLinkPicker>`'s `onChange` diperluas kirim `label` juga (parameter
+  opsional, 6 caller lama tidak perlu diubah) — `RelatedLinkDialog` auto-isi "Judul Artikel"
+  dari situ; (2) Label Awalan `<select>` 4 pilihan tetap → `<Input>` bebas, default tetap
+  "Baca Juga:"; (3) `min-w-0` ditambah ke 2 span `flex-1 truncate` yang sebelumnya tidak
+  benar-benar truncate (default CSS `min-width:auto` pada flex item) — URL panjang sebelumnya
+  memaksa popup/dialog melebar. `tsc`+build bersih, dev server direstart, nol migrasi. **Belum
+  diverifikasi visual di browser.**
+- Sesi sebelumnya: **Audit editor Tiptap dari agent lain — 2 bug diperbaiki, 1 gap CSS
+  dihapus, 1 klaim diabaikan** (lihat lesson `[2026-07-26]` "Audit Editor Tiptap dari Agent
+  Lain" di atas, detail penuh di `docs/arsitektur-editor.md` § 5). User minta cek ringkasan
+  eksekusi agent lain (fitur Block "Baca Juga", Enhanced Blockquote+citation, YouTube/Instagram
+  embed, `.prose-jalakarta`) — audit menemukan 4 temuan: (1) **bug data-breaking** — link
+  internal "Baca Juga" tidak pernah di-`stripTenantPrefix()`, rusak (404 ganda-slug) di tenant
+  custom domain aktif, DIFIX di 7 titik render (`letter-render.ts`+`post-body-segments.ts`
+  diperluas `RenderContext`, semua caller diupdate); (2) **bug minor** — Instagram embed script
+  loader rawan double-inject (race condition/StrictMode), DIFIX jadi singleton promise; (3)
+  **gap** — `.prose-jalakarta` ternyata dead CSS (nol pemakaian sejak commit pertama, klaim
+  "terintegrasi ke letter-render.ts" salah) — DITANYAKAN ke user (beda kelas risiko, perubahan
+  visual ke halaman live), user konfirmasi front-end sudah konsisten via mekanisme lama →
+  DIHAPUS (bukan diwiring); (4) **klaim berlebihan** — "kompatibilitas WordPress WXR" ternyata
+  cuma dokumen rancangan belum diimplementasi — DIABAIKAN sesuai arahan eksplisit user, akan
+  dieksekusi terpisah nanti. `tsc`+build bersih (3 putaran), dev server direstart, nol migrasi
+  DB. **Belum diverifikasi visual di browser** — bug #1 dan #2 perlu dicoba langsung: buat
+  "Baca Juga" ke artikel internal di tenant custom domain aktif, cek Network tab browser untuk
+  konfirmasi `embed.js` cuma fetch sekali meski ada 2+ embed Instagram di satu halaman.
+- Sesi sebelumnya: **Audit menyeluruh + Bug Kritis Kedua Import Anggota — baris "duplicate"
+  ikut bikin member baru ganda** (lihat lesson `[2026-07-26]` di atas, detail penuh di
+  `docs/arsitektur-import-anggota.md` § 21). User minta cek ulang menyeluruh sebelum benar-benar
+  mencoba upload file di lokal ("sampai benar-benar berjalan baik"). Audit baca-kode END-TO-END
+  seluruh pipeline (`parseXlsxBuffer`→`buildPreviewRow`→`commitImportAction`, termasuk 2 fitur
+  yang ternyata sudah ditambahkan sejak audit terakhir: kolom "PC IKPM Cabang" § 20 + helper
+  `syncAutoTenantMemberships` auto-join tenant cabang/marhalah — keduanya dikonfirmasi solid)
+  menemukan BUG KRITIS BARU: kondisi `if (!preview.linkOnly)` di `commitImportAction` salah —
+  bernilai `true` untuk 2 skenario berbeda (member baru DAN member "duplicate"/sudah jadi
+  anggota tenant ini), padahal HANYA member baru yang butuh insert. Baris "duplicate" jadi
+  SALAH membuat member+contact+address BARU yang ganda setiap kali file yang sama di-import
+  ulang — bisa membakar Nomor ID IKPM global baru kalau Tanggal Lahir terisi. Untungnya BELUM
+  PERNAH menghasilkan data ganda nyata (tertutup bug § 17 yang lebih dulu menggagalkan baris
+  itu, murni kebetulan urutan penemuan). Fix: gate diganti `if (!preview.existingMemberId)`.
+  Gap terkait (duplikasi `member_businesses` saat re-import) dicatat eksplisit, TIDAK ikut
+  difix (butuh keputusan produk terpisah). `tsc`+build bersih di kedua package, dev server
+  direstart, migration 0047+0048 dikonfirmasi ulang sudah jalan di lokal, data test lama
+  (128 forcreator members) dikonfirmasi sudah bersih (cuma Rahmad tersisa dari cleanup sesi
+  lalu). **Siap dicoba user di lokal** — semua bug yang ditemukan lewat audit maupun testing
+  sungguhan sejauh ini (§ 17, § 18, § 19, § 21) sudah difix, TAPI belum ada satu pun yang
+  benar-benar diverifikasi lewat upload sungguhan di browser sejak fix § 21 ini.
+- Sesi sebelumnya: **Bug fix Kabupaten Tempat Lahir "tidak tersimpan" di form edit admin**
+  (lihat lesson `[2026-07-25]` "Bug: Kabupaten Tempat Lahir Tampak 'Tidak Tersimpan'" di atas,
+  detail penuh di `docs/arsitektur-import-anggota.md` § 19) — dilaporkan user di giliran yang
+  SAMA dengan bug No. Anggota (§ 18 di bawah), sebelum benar-benar mulai import sungguhan. Bug
+  ternyata di TAMPILAN, bukan penyimpanan — `RegencyCombobox` butuh ID+nama untuk render pilihan
+  awal, tapi form edit sebelumnya tidak pernah select `refRegencies.name` ke server props
+  (hanya `provinceId`, yang ternyata dead code) dan state nama di komponen selalu diinisialisasi
+  `null`. Data DB dikonfirmasi BENAR sejak awal (halaman detail sudah lama menampilkannya
+  dengan benar) — combobox cuma selalu tampil kosong tiap form dibuka, membuat admin mengira
+  data hilang padahal kalau form disubmit tanpa disentuh, nilai lama tetap tersimpan utuh. Fix
+  3 titik: edit page tambah select+prop `birthRegencyName`, type `Step1DefaultValues` tambah
+  field itu, state form diinisialisasi dari `defaultValues` (bukan selalu null). `tsc`+build
+  bersih, dev server direstart, nol migrasi (murni bug tampilan). **Belum diverifikasi lewat
+  edit sungguhan di browser.**
+- Sesi sebelumnya: **Re-verifikasi § 17 + Bug baru — edit anggota admin tidak generate No.
+  Anggota** (lihat lesson `[2026-07-25]` "Bug: Edit Anggota via Admin Tidak Generate No.
+  Anggota" di atas, detail penuh di `docs/arsitektur-import-anggota.md` § 17.6 + § 18). User
+  minta cek ulang apakah fix § 17 (di bawah) sungguh-sungguh selesai, sekaligus laporkan bug
+  KEDUA yang tidak terkait import sama sekali: edit anggota via `/app/{slug}/members/{id}/edit`
+  + isi Tanggal Lahir yang tadinya kosong → No. Anggota (`memberNumber`) tidak ikut ter-
+  generate otomatis. **Re-verifikasi § 17**: baca ulang 3 titik (`commitImportAction`,
+  `computeMemberMergeCandidate`, `fillEmpty`) dari nol — dikonfirmasi solid di kedua lapis fix
+  (caller kirim objek eksplisit tanpa `fullName` + `fillEmpty` sendiri sudah iterasi
+  `existing`). Masih murni verifikasi kode, BELUM ada upload sungguhan. **Bug baru**: root
+  cause `updateMemberAction` (`members/actions.ts`) TIDAK PERNAH punya guard "generate
+  memberNumber kalau masih null" — beda dengan `createMemberAction` (admin buat baru, SELALU
+  generate) dan `PATCH /api/akun/member-data` (self-service, SUDAH ada guard sejak lama). Fix:
+  SELECT `memberNumber` existing dulu, kalau null generate via `generateMemberNumber(db,
+  data.birthDate ?? null)`, ditambahkan ke patch — nol perubahan kalau member sudah punya
+  nomor. `tsc`+build bersih di `apps/web`, dev server direstart, nol migrasi. **Belum
+  diverifikasi visual di browser** untuk kedua-duanya.
+- Sesi sebelumnya: **Bug Kritis Import Anggota — Merge Patch Bocor `fullName`** (lihat
+  lesson `[2026-07-25]` "Bug Kritis Import Anggota" di atas, detail penuh di `docs/arsitektur-
+  import-anggota.md` § 17) — TEMUAN PERTAMA dari testing sungguhan (upload file nyata, bukan
+  cuma `tsc`/build). User laporkan "Wawan Sugianto" (member existing, HP+email cocok) tidak
+  muncul di tenant forum meski pesan preview bilang akan diproses. Diagnosa langsung ke data
+  (`import_batches`/`import_batch_rows`): batch pertama 128 inserted + 1 skipped (Wawan); 2
+  batch re-upload sesudahnya (semua baris sekarang match existing) 129/129 skipped. Bukti
+  pasti di `notes` JSONB: `"Gagal insert: syntax error at or near \"where\""`. Root cause:
+  `commitImportAction` (§ 16) kirim `preview.member` UTUH ke `computeMemberMergeCandidate` —
+  field `fullName` (bukan bagian `MemberFieldPatch`, kolom DB-nya `name`) bocor ke UPDATE
+  patch, Drizzle buang key tak dikenal skema → SQL `SET` kosong → syntax error. `buildPreviewRow`
+  (preview) sudah benar sejak awal (objek eksplisit) — asimetri preview-vs-commit ini sumbernya.
+  Fix 2 lapis: (1) commit sekarang bangun objek eksplisit sama seperti preview; (2)
+  **`fillEmpty()` di-hardening** — iterasi `for (key in existing)` bukan `for (key in
+  incoming)`, supaya field ekstra di `incoming` OTOMATIS diabaikan siapa pun pemanggilnya ke
+  depan (bukan cuma tambal titik yang ketahuan). `tsc`+build bersih, dev server direstart, nol
+  migrasi. **Fix-nya SENDIRI belum diverifikasi — user diminta upload ulang file yang sama
+  untuk konfirmasi Wawan (dan baris match-existing lain) benar-benar masuk sekarang.**
+- Sesi sebelumnya: **Bug fix Platform Tenant Detail + Redirect "Pendaftaran Ditutup"**
+  (lihat lesson `[2026-07-25]` "Bug: Platform Tenant Detail Tidak Tampilkan Login" di atas) —
+  dipicu laporan user kesulitan login tenant `forcreator`. 2 bug ditemukan+difix: (1)
+  `/platform/tenants/[slug]` sebelumnya cuma cek existence pengurus (`hasOwner: boolean`),
+  tidak pernah tampilkan email login — sekarang ada section "Pengurus / Login Tenant"
+  (nama+email+role, join manual `tenant.users`→`public.user` pola `settings/users/page.tsx`),
+  sekalian fix tombol "Buka Tenant" yang masih URL lama; (2) `/app/forcreator/dashboard` (login
+  valid, tapi akun tidak punya akses tenant.users di MANA PUN) berujung ke `/register?error=
+  no-tenant` → "Pendaftaran Ditutup" — pesan menyesatkan (bukan soal registrasi tenant baru).
+  Fix: halaman BARU `app/no-tenant-access/page.tsx` (di luar `/app/*`, supaya TIDAK kena aturan
+  middleware "isLoggedIn di /app/login → redirect balik /dashboard-redirect" yang akan bikin
+  infinite loop kalau diarahkan ke `/app/login`) + tombol "Keluar & Coba Akun Lain". Cleanup
+  sekalian: dead code `error=no-tenant` handling di `register/page.tsx` dihapus + 2 link
+  "Masuk di sini" diarahkan langsung ke `/app/login`. `tsc`+build bersih, route
+  `/no-tenant-access` terkonfirmasi di build output, nol migrasi DB. **Belum di-commit/push,
+  belum diverifikasi visual — user diminta coba ulang alur login `forcreator` (dengan akun
+  salah untuk lihat halaman baru, dengan `forcreator@gmail.com` untuk konfirmasi akses normal).**
+- Sesi sebelumnya: **Import Anggota — Duplikat Tidak Lagi Di-skip, Selalu Dilengkapi
+  Datanya** (lihat lesson `[2026-07-25]` "§ 16" di atas, detail penuh di `docs/arsitektur-
+  import-anggota.md` § 16) — user menemukan skenario berbahaya: anggota forum yang sudah
+  terdaftar di tenant tapi Nomor Keanggotaan Forumnya kosong tidak akan PERNAH dilengkapi
+  kalau import susulan selalu men-skip baris "duplikat" total. Fix besar: baris yang match
+  member existing (linkOnly maupun sudah jadi anggota tenant) SEKARANG SELALU diproses untuk
+  melengkapi field kosong — `members` (10 field), `contacts` (phone/whatsapp/email), DAN
+  `tenant_memberships.membershipNumber` (field tenant-scoped, baru — inilah inti perbaikannya).
+  Fungsi baru `computeMemberMergeCandidate()` (server) + helper murni `fillEmpty()` (client-safe)
+  dipakai KEDUANYA oleh preview (tampilkan "akan melengkapi: X, Y") dan commit (tulis ulang,
+  tidak percaya hasil preview basi). `status`/`forumStatus`/`memberNumber` global/duplikasi
+  business SENGAJA tidak disentuh (masing-masing alasan didokumentasikan). Turunan:
+  `maxImportedSeq` (lanjutan counter forum) diperbaiki sekalian untuk ikut hitung jalur backfill
+  baru ini. UI: badge "Duplikat"→"Sudah Ada — Dilengkapi", `CommitImportResult` dapat `merged`
+  counter terpisah dari `inserted`. `tsc`+build bersih (percobaan pertama), nol migrasi DB, dev
+  server direstart. **Belum di-commit/push, belum dijalankan di VPS, belum diverifikasi visual
+  — terutama skenario spesifik yang memicu perbaikan ini (backfill nomor keanggotaan forum
+  untuk member yang sudah terdaftar).**
+- Sesi sebelumnya: **Bug fix Nomor ID IKPM ter-cetak permanen dengan placeholder** (lihat
+  lesson `[2026-07-25]` "Bug: Nomor ID IKPM Ter-cetak Permanen" di atas, detail penuh di
+  `docs/arsitektur-import-anggota.md` § 15) — dari pertanyaan klarifikasi user soal mekanisme
+  Nomor ID IKPM saat import, ditemukan bug nyata (dikonfirmasi user: "itu bug bro"):
+  `commitImportAction` memanggil `generateMemberNumber()` unconditional — kalau Tanggal Lahir
+  kosong di baris Excel, nomor global-nya terisi placeholder `"00000000"` PERMANEN (nomor
+  cuma dicetak sekali, tidak ada mekanisme regenerasi). Fix TIDAK bikin mekanisme baru — cukup
+  samakan dengan pola yang SUDAH ADA di 2 tempat lain (`api/akun/register/route.ts` +
+  platform `createFirstOwnerAction`, keduanya sudah biarkan `memberNumber` null saat member
+  baru dibuat): `commitImportAction` sekarang `birthDate ? generate(...) : null` — guard
+  existing di `PATCH /api/akun/member-data` (`if (!member.memberNumber)`) otomatis
+  menghasilkan nomor benar begitu orangnya sendiri melengkapi tanggal lahir. Tampilan sudah
+  aman tanpa disentuh (3 titik display sudah guard null). `tsc`+build bersih, dev server
+  direstart.
+- Sesi sebelumnya: **Import Anggota — Pivot Kedua: Audit Skema dari Nol** (lihat lesson
+  `[2026-07-25]` "Import Anggota — Pivot Kedua" di atas, detail penuh di `docs/arsitektur-
+  import-anggota.md` § 14) — user mengoreksi pivot sebelumnya (§ 13) lebih tajam: template
+  masih disusun dari "kolom apa yang kebetulan ada di Excel Forcreator" (reshuffle, bukan
+  audit independen), bukti telak kolom **"Forbis ID"** (nama internal SATU forum) tetap ada
+  di template yang diklaim generik untuk semua tenant forum. Fix: baca ULANG penuh 7 file
+  schema (members/contacts/addresses/social-medias/member-businesses/member-professionals/
+  member-owned-pesantren/tenant-memberships) disilangkan dengan `checkMemberEligibility()`
+  (11 field) — ditemukan 6 field eligibility sama sekali tidak ada di template lama karena
+  Excel sumbernya tidak punya kolom itu. "Forbis ID"→"Nomor Keanggotaan" (generik, verbatim
+  tanpa validasi format ketat — `parseForbisId()` dihapus, diganti
+  `extractYearSeqFromMembershipNumber()` best-effort untuk lanjutan counter saja). 10 kolom
+  baru ditambahkan (NIK, Tanggal Lahir, Tempat Lahir, Periode Angkatan 1999, No Stambuk
+  Gontor, Profesi [FK `ref_professions` via `matchProfession()` baru], Wali Santri, Status
+  Domisili, Desa/Kelurahan, Kode Pos) — template 34→44 kolom. `matchWilayah()` diperluas
+  untuk desa+fallback kode pos dari `ref_villages.postal_code`. Keputusan scope dinyatakan
+  EKSPLISIT (bukan dipotong diam-diam lagi): sosmed pribadi anggota, email/kecamatan/sosmed-
+  penuh usaha, `primaryCabangRefId` — sengaja tidak ditambahkan, masing-masing dengan alasan.
+  Scope TETAP business-only (professional/pesantren belum didukung, dicatat sebagai keputusan
+  sadar). `tsc`+build bersih di kedua package (percobaan pertama), nol migrasi DB tambahan
+  (10 kolom baru semua menulis ke kolom `members`/`addresses` yang sudah ada), dev server
+  direstart. **Pelajaran meta ditekankan eksplisit**: instruksi "sesuai struktur kita, bukan
+  struktur eksternal" sempat dijalankan setengah hati 2× berturut sebelum genuine —
+  verifikasi ke depan: kalau hasil akhir bisa ditelusuri balik ke SATU sumber spesifik, itu
+  tanda belum schema-first. **Belum di-commit/push, belum dijalankan di VPS, belum
+  diverifikasi visual di browser (upload file sungguhan belum pernah dicoba sama sekali).**
+- Sesi sebelumnya: **Import Anggota — Pivot Arsitektur Pertama** (lihat lesson `[2026-07-25]`
+  "Import Anggota — Pivot Arsitektur" di atas, detail penuh di `docs/arsitektur-import-
+  anggota.md` § 13, sekarang SEBAGIAN superseded oleh § 14 di atas — bagian "category/sector
+  nullable" tetap berlaku, bagian daftar kolom template sudah digantikan) — 2 pertanyaan
+  susulan user mengubah desain secara fundamental: (1) "nomor id forum hanya berlaku forum
+  saja?" membongkar bug hardcode `membershipType:"forum"` untuk SEMUA tenant — difix jadi
+  ikut `access.tenant.tenantType` sebenarnya; (2) "kenapa gak insert yang ada saja, kita
+  insert tidak lewat proses save" menolak pendekatan alias/tebak-nebak (Trader→Trading,
+  sector diturunkan dari tag Jenis Usaha, omzet dipaksa masuk skala kecil) — prinsip baru:
+  template = struktur kita persis, kosong/tidak cocok = biarkan kosong, database eksternal
+  wajib direformat manual dulu. Kendala teknis `category`/`sector` NOT NULL diselesaikan
+  dengan pola yang SUDAH ADA di app (gender/birthDate/phone: nullable-di-DB + wajib-di-form)
+  — migration `0048` melonggarkan constraint, form self-service+admin TIDAK disentuh.
+  Simplifikasi besar: seluruh tabel alias/derivasi di `lib/import-anggota-mapping.ts`
+  dihapus, diganti 1 helper generik `exactMatch<T>`.
+- Sesi sebelumnya: **Import Anggota — Bulk Import Excel/CSV** (lihat lesson `[2026-07-25]`
+  di atas, detail penuh di `docs/arsitektur-import-anggota.md`) — dari rancangan (dokumen
+  arsitektur ditulis 2026-07-24, 2 putaran `AskUserQuestion` untuk klarifikasi sector-mapping
+  dan konsekuensi eligibility) ke eksekusi penuh sesuai instruksi "eksekusi, baca claude.md,
+  ikuti SOP". Dibangun 6 bagian berurutan (tracked via TaskCreate/TaskUpdate #8–14): dependency
+  `xlsx`, schema `import_batches`/`import_batch_rows` (migration `0047`, berkembang jadi
+  draft-store bukan cuma audit log), `lib/import-anggota-mapping.ts` (fungsi murni client-safe:
+  mapping gender/category/sector-dari-Jenis-Usaha/legality/position/employees/branches/revenue,
+  deteksi sel HP rusak), `lib/import-anggota.server.ts` (parsing xlsx via SheetJS, matching
+  wilayah top-down, deteksi duplikat via JOIN yang benar), Server Actions
+  (`parseImportFileAction`+`commitImportAction`+`getDraftBatchAction`), dan UI di
+  `/app/{slug}/members/import` + route download-template `/api/members/import/template`.
+  Ditemukan+dicegah kelas bug client/server boundary (ke-4 kalinya di project) SEBELUM build
+  gagal — `ImportRowPreview` dipindah ke file client-safe. `tsc`+build bersih di kedua
+  package, 2 route baru terkonfirmasi di build output, migration dijalankan+diverifikasi
+  lokal (sempat drop+recreate sekali karena skema direvisi mid-implementasi, aman karena
+  tabel masih kosong). Dev server direstart, curl 200 dikonfirmasi. **Belum di-commit/push,
+  belum dijalankan di VPS, belum diverifikasi visual — upload file Excel sungguhan belum
+  pernah dicoba end-to-end.** Gap tercatat eksplisit di dokumen § 11: tombol resume-draft
+  belum ada di UI (action-nya sudah ada), belum ada halaman riwayat import, potensi duplikasi
+  `member_businesses` untuk member yang di-link belum ada kebijakan. **Susulan giliran sama**
+  (user minta "cek bug dulu" sebelum testing lokal): review logika manual menemukan+memperbaiki
+  3 bug (escalation status yang salah sweep hampir semua baris ber-usaha ke "Perlu Review",
+  kecamatan-gagal-match tersembunyi kalau kabupatennya juga gagal, duplikat antar-baris DALAM
+  satu file tidak terdeteksi) + 1 race condition (double-submit tombol commit, difix pakai
+  klaim atomic bukan held-lock). `tsc`+build diverifikasi ulang bersih, dev server direstart.
+  **Keempat fix murni dari membaca kode — upload file sungguhan tetap belum pernah dicoba
+  sama sekali.** **Susulan lagi** (dari pertanyaan user "apakah nomor id anggota forum udah
+  masuk?"): ditemukan bug #5 — Forbis ID BENAR ditulis ke `tenant_memberships.membership_
+  number`, tapi `forum_membership_sequences` (counter untuk join `/gabung` berikutnya) tidak
+  pernah dilanjutkan setelah import, jadi join pertama pasca-import akan mulai `seq=1` lagi
+  dan menabrak nomor lama. Fix: `commitImportAction` lacak seq tertinggi yang benar-benar
+  ter-insert, UPDATE-jika-lebih-besar ke counter (locking sama persis
+  `generateForumMembershipNumber()`). `tsc`+build bersih lagi. Detail lengkap:
+  `docs/arsitektur-import-anggota.md` § 12.
+- Sesi sebelumnya: **Pemisahan Donasi vs Registrasi Forum** (lihat lesson `[2026-07-24]`
   "Pemisahan Donasi vs Registrasi Forum" di atas, detail penuh di
   `docs/arsitektur-backbone-ikpm.md` § "Pemisahan Donasi vs Registrasi Forum") — user minta cek
   apakah donasi standalone otomatis dianggap ikut event/gabung forum. Event: DICEK, TIDAK ADA
@@ -12531,3 +13474,95 @@ muncul berkali-kali di PM2 error log setelah deploy.
 
 **Tidak perlu tindakan** kecuali error ini muncul pada URL yang baru saja dibuka (bukan tab lama).
 Jika muncul terus-menerus pada semua request baru → kemungkinan ada masalah build (action tidak ter-bundle).
+
+### [2026-07] Bug Fundamental: Auto-Sync Tenant Memberships (PC IKPM & Marhalah)
+
+**Masalah**: Ketika admin membuat/mengedit anggota di dashboard tenant (mis. Forum Forbis) atau meng-import massal data anggota dari Excel, data `members.primaryCabangRefId` (PC IKPM) dan `graduationYear` (Marhalah) tersimpan di `public.members`. Namun, anggota tersebut **tidak otomatis muncul di dashboard tenant PC IKPM Cabang** (mis. PC IKPM Yogyakarta) atau Marhalah terkait.
+
+**Root cause**:
+Daftar anggota di dashboard tenant bergantung pada `JOIN public.tenant_memberships WHERE tenant_id = {current}`. Sebelumnya, `createMemberAction`, `updateMemberAction`, dan `commitImportAction` HANYA membuat `tenant_memberships` untuk tenant di mana admin sedang berada (`access.tenant.id`). Logika auto-join sebelumnya hanya ada di API self-service user (`PATCH /api/akun/member-data`).
+
+**Fix**:
+Dibuat helper sentral `syncAutoTenantMemberships(runner, memberId, primaryCabangRefId, graduationYear, graduationPeriod)` di `packages/db/src/helpers/member-sync.ts` (dire-export dari `@jalajogja/db`).
+- Mencari tenant tipe `cabang` (`refCabangId == primaryCabangRefId`) & `marhalah` (`marhalahYear == graduationYear`).
+- Menambahkan record ke `public.tenant_memberships` dengan `.onConflictDoNothing()` (`registeredVia: 'auto_cabang'` / `'auto_marhalah'`).
+- Dipanggil secara konsisten di **4 titik**:
+  1. `createMemberAction` (`app/(dashboard)/app/[tenant]/members/actions.ts`)
+  2. `updateMemberAction` (`app/(dashboard)/app/[tenant]/members/actions.ts`)
+  3. `commitImportAction` (`app/(dashboard)/app/[tenant]/members/import/actions.ts`)
+  4. `PATCH /api/akun/member-data` (`app/api/akun/member-data/route.ts`)
+
+### [2026-07] Fix Runtime TypeError: Cannot read properties of null (reading 'trim') di Step1Identity
+
+**Masalah**: Error `Cannot read properties of null (reading 'trim')` pada `step1-identity.tsx` saat menyimpan form edit anggota.
+**Root cause**: `(fd.get("name") as string).trim()` dipanggil tanpa optional chaining `?.trim()`. Jika `fd.get("name")` mengembalikan `null`, ekspresi tersebut melemparkan TypeError.
+**Fix**: Menggunakan `(fd.get("name") as string)?.trim() || ""` diikuti validasi guard `if (!nameVal)` di `components/members/wizard/step1-identity.tsx`.
+
+### [2026-07] Feature: Aktifkan Akun Login Anggota oleh Admin Dashboard
+
+**Kebutuhan**: Banyak data anggota historis / hasil import belum memiliki akun Better Auth (`members.betterAuthUserId` null). Admin membutuhkan akses di Dashboard Admin untuk membuatkan password sementara dan mengaktifkan akun login anggota tersebut.
+
+**Implementasi**:
+- **Server Action**: `activateMemberAccountAction(slug, memberId, email, password)` di `app/(dashboard)/app/[tenant]/members/actions.ts`.
+  - Cek hak akses admin tenant & format email + password.
+  - Buat akun Better Auth via `auth.api.signUpEmail`.
+  - Set `public.members.betterAuthUserId = authUserId`.
+  - Update/create `contacts.email` agar data email kontak konsisten.
+- **Komponen UI**: `<ChangePasswordSection>` di `components/members/change-password-section.tsx`.
+  - Jika `hasAccount === false`: Tampilkan form **"Aktifkan Akun Login"** (Email Login pre-filled dari kontak + Password Sementara + Konfirmasi Password + Tombol "Aktifkan Akun Login").
+  - Jika `hasAccount === true`: Tampilkan form **"Ubah Password"** seperti biasa.
+
+### [2026-07] Feature: Kolom PC IKPM Cabang pada Template & Importer Anggota
+
+**Kebutuhan**: Admin memerlukan kemampuan untuk meng-import kolom PC IKPM Cabang agar anggota yang di-import otomatis terdaftar di tenant PC IKPM Cabang yang sesuai (`primaryCabangRefId`).
+**Implementasi**:
+- Kolom `"PC IKPM Cabang"` ditambahkan ke `TEMPLATE_HEADERS` / `HEADERS` (45 kolom).
+- File template Excel (`GET /api/members/import/template`) memuat daftar PC IKPM Cabang aktif di sheet `Panduan` dan menyediakan **sheet ke-3 "Daftar PC IKPM Cabang"** berisi tabel nama & kode cabang dari DB (`public.ref_ikpm_cabang`) agar mudah disalin/dirujuk.
+- Parser `matchCabang(raw)` di `lib/import-anggota.server.ts` melakukan *case-insensitive ILIKE match* terhadap `ref_ikpm_cabang.nama` / `kode`.
+- `commitImportAction` menyimpan `primaryCabangRefId` dan `syncAutoTenantMemberships` otomatis meng-create `tenant_memberships` pada tenant cabang terkait.
+
+### [2026-07] [PERENCANAAN ARSITEKTUR] Import/Export WordPress, Yoast SEO, Custom Permalinks, & Sanitasi Editor
+
+> **Dokumen Spesifikasi Lanjutan**: `docs/arsitektur-import-export-post-wordpress.md` (Juga dirujuk dari `docs/arsitektur-website.md` § 6 dan `docs/arsitektur-domain.md` § 8.7).
+> **STATUS**: ⚠️ **BELUM DIEKSEKUSI / PERLU KLARIFIKASI MATANG BERIKUTNYA BEFORE EXECUTION**.
+
+**Ringkasan Perencanaan**:
+- **Import/Export**: Dukungan import file WXR XML & pull REST API WordPress (`/wp-json/wp/v2/`), serta ekspor balik dari Jalakarta ke format WXR XML (bebas vendor lock-in).
+- **Yoast SEO Integration**: Pemetaan 1-to-1 dari Yoast meta key (`_yoast_wpseo_*`) ke kolom SEO Jalakarta (`posts.metaTitle`, `metaDesc`, `focusKeyword`, `ogImageId`, `robots`, `schemaType`).
+- **Custom Permalinks**: Opsi penyesuaian struktur URL post (`post_name` `/{tenant}/{slug}`, `date_name` `/{tenant}/{year}/{month}/{slug}`, dll) di `/{slug}/website/pengaturan` dengan perlindungan blacklist `RESERVED_TENANT_SLUGS`.
+- **Timezone**: Parser tanggal publikasi dengan konversi `post_date_gmt` / offset local timezone tenant (`Asia/Jakarta`) ke UTC `timestamptz`.
+- **Media & Content Sanitization**: Worker download featured image/inline image dari WP ke MinIO self-hosted storage (`public.media`), serta sanitasi Gutenberg comment / WordPress shortcode ke HTML/Tiptap clean format.
+- **Aturan Eksekusi**: Dokumen arsitektur ini murni spesifikasi perencanaan. Jangan mengeksekusi penulisan kode tanpa instruksi dan klarifikasi eksplisit dari user.
+
+### [2026-07] [PERENCANAAN ARSITEKTUR] SEO Master Blueprint (GTM, Dual Sitemap Index, AI Bots, & Google Rich Sitelinks Engine)
+
+> **Dokumen Spesifikasi Utama**: `docs/arsitektur-seo.md`
+> **STATUS**: 📋 **ARSITEKTUR LENGKAP — SIAP DIEKSEKUSI PER FASE (FASE 4 – 7)**.
+
+**Ringkasan Perencanaan**:
+- **Fase 4 (GTM & Webmaster Verification)**: Tab baru di `/app/{slug}/settings/seo` untuk mengelola `seo_gtm_id` (`GTM-XXXXXXX`), Google/Bing Meta Verification, script injection di `PublicLayout`, dan Card Petunjuk Submisi Google Search Console.
+- **Fase 5 (Dual Sitemap Index)**: Menyediakan `/{slug}/sitemap.xml` (Native Jalakarta Index) dan `/{slug}/sitemap_index.xml` (Yoast SEO Migration Index) yang mengarahkan ke sub-sitemap modular (`posts`, `pages`, `categories`, `products`, `events`, `campaigns`) tanpa 404 saat migrasi dari WP.
+- **Fase 6 (AI Crawler & Agent LLM)**: Konfigurasi `robots.txt` dengan izin eksplisit bot AI (Google-Extended/Gemini, GPTBot/ChatGPT, ClaudeBot, PerplexityBot) serta endpoint Markdown `/{slug}/llms.txt`.
+- **Fase 7 (Google Rich Sitelinks Engine)**: Struktur HTML `<header>`/`<nav>` bersih, disuntik 5 Schema JSON-LD (`SiteNavigationElement`, `BreadcrumbList` universal, `WebSite` dengan `SearchAction` Sitelinks Search Box, dan `Organization` identity) untuk menghasilkan tampilan hasil pencarian Google berhirarki seperti institusi/kampus besar.
+- **Aturan Eksekusi**: Perencanaan telah dikunci di `docs/arsitektur-seo.md`. Eksekusi dilakukan bertahap per fase setelah konfirmasi user.
+
+### [2026-07] Feature & Arsitektur: Tiptap Editor & Universal Content Renderer
+
+> **Dokumen Spesifikasi Utama**: `docs/arsitektur-editor.md` (Dirujuk dari `docs/arsitektur-website.md` § 7).
+> **STATUS**: ✅ **IMPLEMENTASI SELESAI & DIVERIFIKASI (2026-07-26) — `bun x tsc --noEmit` 0 ERROR**.
+
+**Hasil Implementasi**:
+- **Konsistensi Editor**: Single-source `<TiptapEditor>` (`components/editor/tiptap-editor.tsx`) melayani seluruh modul (`posts`, `pages`, `products`, `campaigns`, `events`, `letters`).
+- **Fase 1 (Block "Baca Juga")**: Extension `RelatedLinkBlock` (`related-link-ext.ts` & `related-link-view.tsx`) terhubung dengan dialog toolbar dan `<PublicLinkPicker>` untuk autocomplete URL internal & eksternal.
+- **Fase 2 (Enhanced Block Quote)**: Extension `EnhancedBlockquote` (`enhanced-blockquote-ext.ts`) mendukung atribut `citation` (`— Nama Penulis`) dan render Quote Card ber-border warna primer di frontend/PDF (`letter-render.ts`).
+- **Fase 3 (Responsive YouTube & Instagram Embed)**: Extension `EmbedBlock` (`embed-block-ext.ts` & `embed-block-view.tsx`) memuat parser YouTube 16:9 (`aspect-video` anti-overflow mobile) serta Instagram Post/Reel Embed dengan auto-loader script `instagram.com/embed.js`.
+- **Fase 4 (Frontend Spacing Standard)**: Class utility `.prose-jalakarta` di `globals.css` dan parser server-side `letter-render.ts` menjamin jarak antar-block responsif dan konsisten.
+- **Kompatibilitas WordPress**: Seluruh block terpetakan 1-to-1 dengan Gutenberg Block HTML (`wp-block-callout`, `wp-block-quote`, `wp-embed` YouTube & Instagram).
+
+
+
+
+
+
+
+

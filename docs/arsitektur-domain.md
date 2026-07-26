@@ -510,6 +510,15 @@ cron terjadwal sebagai fallback. UI tidak butuh tombol manual karena sudah otoma
 panduan ditulis ulang untuk menjelaskan alur otomatis ini, dengan psql sebagai jalur debug/darurat
 saja — bukan langkah wajib.
 
+### 8.7 ⚠️ Rencana Arsitektur Custom Permalinks & WordPress Import (Perlu Klarifikasi Before Execution)
+
+> **Dokumen Arsitektur & Spesifikasi Terpisah**: **`docs/arsitektur-import-export-post-wordpress.md`**
+> **STATUS: ⚠️ BELUM DIEKSEKUSI / PERLU KLARIFIKASI MATANG SEBELUM IMPLEMENTASI**
+
+Kustomisasi struktur permalink post (`post_name`, `date_name`, `category_name`) yang menirukan WordPress `/%postname%/` membawa potensi tabrakan rute (*route collision*) dengan rute statis publik di custom domain (seperti `/toko`, `/event`, `/donasi`, `/surat`, `/akun`, `/login`, `/register`, `/admin`, `/api`). 
+
+Rencana mitigasi 2-lapis yang dispesifikasikan (Reserved Slugs blacklist + priority fallback routing di Next.js) belum dieksekusi dan wajib diklarifikasi lebih matang dengan user sebelum penulisan kode dimulai.
+
 ---
 
 ## 9. Roadmap — Eksekusi Bertahap (SOP: baca CLAUDE.md → per-fase → tsc → dokumentasi → commit)

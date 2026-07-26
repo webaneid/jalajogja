@@ -377,3 +377,17 @@ CREATE SEQUENCE IF NOT EXISTS public.member_number_seq START 1;
 - **Desa**: di-fetch on-select kecamatan
 
 Pattern ini juga berlaku untuk semua form lain yang butuh wilayah (termasuk modul Akun Publik).
+
+### Auto-Sync Tenant Memberships (PC IKPM Cabang & Marhalah)
+
+**Masalah**: Ketika admin membuat/mengedit anggota di dashboard tenant (mis. Forum) atau melakukan import data massal dari Excel, anggota tersebut memilih PC IKPM Cabang (`primaryCabangRefId`) atau Tahun Kelulusan (`graduationYear`). Jika tenant PC IKPM Cabang atau Marhalah tersebut sudah ada dan aktif di sistem, anggota tersebut HARUS otomatis terhubung ke tenant tersebut di `public.tenant_memberships` agar langsung muncul di dashboard PC IKPM / Marhalah bersangkutan.
+
+**Solusi**: Helper `syncAutoTenantMemberships(runner, memberId, primaryCabangRefId, graduationYear, graduationPeriod)` di `packages/db/src/helpers/member-sync.ts`.
+- **Cabang Auto-Join**: Mencari `tenants WHERE refCabangId = primaryCabangRefId AND tenantType = 'cabang' AND isActive = true`. Jika ada, insert `tenant_memberships` (`registeredVia: 'auto_cabang'`, `membershipType: 'cabang'`) dengan `.onConflictDoNothing()`.
+- **Marhalah Auto-Join**: Mencari `tenants WHERE marhalahYear = graduationYear AND tenantType = 'marhalah' AND isActive = true` (plus `marhalahPeriod` untuk angkatan 1999). Jika ada, insert `tenant_memberships` (`registeredVia: 'auto_marhalah'`, `membershipType: 'marhalah'`) dengan `.onConflictDoNothing()`.
+- **Dipanggil konsisten di 4 titik**:
+  1. Admin Create Member (`createMemberAction`)
+  2. Admin Edit Member (`updateMemberAction`)
+  3. Bulk Import Commit (`commitImportAction`)
+  4. User Self-Service Profile Update (`PATCH /api/akun/member-data`)
+
