@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { eq, and, ilike, or } from "drizzle-orm";
-import { UserPlus, Search } from "lucide-react";
+import { UserPlus, Search, Upload } from "lucide-react";
 import { db, members, tenantMemberships } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
@@ -93,14 +93,24 @@ export default async function MembersPage({
             Data anggota {access.tenant.name}
           </p>
         </div>
-        <Link
-          href={`/app/${slug}/members/new`}
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2
-                     text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
-        >
-          <UserPlus className="h-4 w-4" />
-          Tambah Anggota
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/app/${slug}/members/import`}
+            className="flex items-center gap-2 rounded-lg border border-border px-4 py-2
+                       text-sm font-medium hover:bg-muted transition-colors"
+          >
+            <Upload className="h-4 w-4" />
+            Import Anggota
+          </Link>
+          <Link
+            href={`/app/${slug}/members/new`}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2
+                       text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            <UserPlus className="h-4 w-4" />
+            Tambah Anggota
+          </Link>
+        </div>
       </div>
 
       {/* Filter & Search */}

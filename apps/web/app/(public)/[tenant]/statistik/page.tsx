@@ -264,7 +264,7 @@ export default async function StatistikPage({ params }: { params: Params }) {
     .select({ sector: memberBusinesses.sector, total: sql<number>`count(*)` })
     .from(memberBusinesses)
     .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberBusinesses.memberId), scopeClause))
-    .where(eq(memberBusinesses.isActive, true))
+    .where(and(eq(memberBusinesses.isActive, true), sql`${memberBusinesses.sector} IS NOT NULL`))
     .groupBy(memberBusinesses.sector)
     .orderBy(sql`count(*) desc`);
 
@@ -272,7 +272,7 @@ export default async function StatistikPage({ params }: { params: Params }) {
     .select({ category: memberBusinesses.category, total: sql<number>`count(*)` })
     .from(memberBusinesses)
     .innerJoin(tenantMemberships, and(eq(tenantMemberships.memberId, memberBusinesses.memberId), scopeClause))
-    .where(eq(memberBusinesses.isActive, true))
+    .where(and(eq(memberBusinesses.isActive, true), sql`${memberBusinesses.category} IS NOT NULL`))
     .groupBy(memberBusinesses.category)
     .orderBy(sql`count(*) desc`);
 
@@ -506,14 +506,14 @@ export default async function StatistikPage({ params }: { params: Params }) {
             <div className="rounded-xl border border-border p-5 space-y-4">
               <p className="text-sm font-semibold">Distribusi Sektor</p>
               <BarList
-                items={sektorRows.map(r => ({ label: r.sector, value: Number(r.total) }))}
+                items={sektorRows.map(r => ({ label: r.sector ?? "Tidak diketahui", value: Number(r.total) }))}
                 total={totalUsaha}
               />
             </div>
             <div className="rounded-xl border border-border p-5 space-y-4">
               <p className="text-sm font-semibold">Distribusi Kategori</p>
               <BarList
-                items={kategoriUsahaRows.map(r => ({ label: r.category, value: Number(r.total) }))}
+                items={kategoriUsahaRows.map(r => ({ label: r.category ?? "Tidak diketahui", value: Number(r.total) }))}
                 total={totalUsaha}
               />
             </div>

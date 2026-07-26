@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
-import { db, tenants, addons, tenantAddonInstallations, refIkpmCabang, createTenantDb } from "@jalajogja/db";
-import { eq } from "drizzle-orm";
+import {
+  db, tenants, addons, tenantAddonInstallations, refIkpmCabang, createTenantDb,
+  user as authUser,
+} from "@jalajogja/db";
+import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { ArrowLeft, Globe, ExternalLink } from "lucide-react";
 import { PlatformTenantToggle } from "@/components/platform/tenant-toggle";
@@ -39,13 +42,30 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
     linkedCabangNama = linked?.nama ?? null;
   }
 
-  // Cek apakah sudah ada owner di tenant.users
+  // Semua pengurus (tenant.users) + email login-nya (public.user, via join manual —
+  // FK tidak didefinisikan di Drizzle untuk tenant tables, pola sama settings/users/page.tsx).
+  // Sebelumnya cuma cek EXISTENCE (LIMIT 1, boolean hasOwner) tanpa pernah menampilkan SIAPA
+  // pengurusnya — platform admin tidak ada cara tahu email login tenant ini tanpa query DB
+  // manual. Ditemukan dari laporan user: "kenapa di tenant detail itu tidak ada id login
+  // tenant?" — fix: tampilkan daftar lengkap (nama+email+role) di bawah.
   const { db: tenantDb, schema } = createTenantDb(slug);
-  const [firstUser] = await tenantDb
-    .select({ id: schema.users.id, role: schema.users.role })
+  const tenantUsers = await tenantDb
+    .select({ id: schema.users.id, role: schema.users.role, betterAuthUserId: schema.users.betterAuthUserId })
     .from(schema.users)
-    .limit(1);
-  const hasOwner = !!firstUser;
+    .orderBy(schema.users.createdAt);
+  const hasOwner = tenantUsers.length > 0;
+
+  const betterAuthIds = tenantUsers.map((u) => u.betterAuthUserId);
+  const authUsers = betterAuthIds.length > 0
+    ? await db.select({ id: authUser.id, name: authUser.name, email: authUser.email })
+        .from(authUser).where(inArray(authUser.id, betterAuthIds))
+    : [];
+  const authUserMap = new Map(authUsers.map((u) => [u.id, u]));
+  const pengurusList = tenantUsers.map((u) => ({
+    role: u.role,
+    name: authUserMap.get(u.betterAuthUserId)?.name ?? "—",
+    email: authUserMap.get(u.betterAuthUserId)?.email ?? "—",
+  }));
 
   // Semua add-on tersedia + status instalasi untuk tenant ini
   const [allAddons, installations] = await Promise.all([
@@ -132,7 +152,7 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={`${appUrl}/${tenant.slug}/dashboard`}
+            href={`${appUrl}/app/${tenant.slug}/dashboard`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted transition-colors"
@@ -193,18 +213,35 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
       )}
 
       {hasOwner && (
-        <div className="rounded-xl border border-green-200 bg-green-50 dark:bg-green-950 px-5 py-3">
-          <p className="text-sm font-medium text-green-800 dark:text-green-200">
-            Pengurus sudah ada — tenant siap dikelola via{" "}
-            <a
-              href={`${appUrl}/app/${tenant.slug}/dashboard`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-            >
-              dashboard tenant
-            </a>
-          </p>
+        <div className="rounded-xl border border-border bg-background overflow-hidden">
+          <div className="px-5 py-3 border-b border-border">
+            <p className="text-sm font-semibold">Pengurus / Login Tenant</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Email yang bisa dipakai login di{" "}
+              <span className="font-mono">jalakarta.com/app/login</span> untuk mengelola{" "}
+              <a
+                href={`${appUrl}/app/${tenant.slug}/dashboard`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                dashboard tenant ini
+              </a>.
+            </p>
+          </div>
+          <div className="divide-y divide-border">
+            {pengurusList.map((p, i) => (
+              <div key={i} className="flex items-center justify-between px-5 py-3 gap-4 text-sm">
+                <div>
+                  <p className="font-medium">{p.name}</p>
+                  <p className="font-mono text-xs text-muted-foreground">{p.email}</p>
+                </div>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium capitalize shrink-0">
+                  {p.role}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

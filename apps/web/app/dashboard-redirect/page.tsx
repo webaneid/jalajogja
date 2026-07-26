@@ -17,6 +17,10 @@ export default async function DashboardRedirectPage() {
     redirect(`/app/${slug}/dashboard`);
   }
 
-  // Edge case: user terdaftar tapi belum punya tenant
-  redirect("/register?error=no-tenant");
+  // Sesi valid tapi tidak punya akses tenant.users di manapun — BUKAN kasus "pendaftaran
+  // tenant belum lengkap" (pendaftaran tenant baru sudah dinonaktifkan permanen, lihat
+  // REGISTRATION_OPEN=false di (auth)/register/page.tsx), jadi TIDAK diarahkan ke /register
+  // lagi (pesan "Pendaftaran Ditutup" menyesatkan untuk kasus ini). Lihat komentar lengkap
+  // di app/no-tenant-access/page.tsx soal kenapa halaman ini, bukan /app/login.
+  redirect("/no-tenant-access");
 }

@@ -73,3 +73,7 @@ export {
   resolveIdentity,
   type ResolvedIdentity,
 } from "./helpers/resolve-identity";
+
+// Member tenant membership auto-sync (PC IKPM Cabang & Marhalah)
+export { syncAutoTenantMemberships } from "./helpers/member-sync";
+

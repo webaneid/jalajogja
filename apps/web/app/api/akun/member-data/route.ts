@@ -7,6 +7,7 @@ import {
   refRegencies, refIkpmCabang,
   createTenantDb, getSettings,
   generateMemberNumber,
+  syncAutoTenantMemberships,
 } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
 
@@ -210,27 +211,18 @@ export async function PATCH(req: NextRequest) {
 
   await db.update(members).set(updateData).where(eq(members.id, member.id));
 
-  // Jika cabang utama berubah → auto-join tenant cabang baru jika ada
-  if (body.primaryCabangRefId) {
-    const [cabangTenant] = await db
-      .select({ id: tenants.id })
-      .from(tenants)
-      .where(and(
-        eq(tenants.refCabangId, body.primaryCabangRefId),
-        eq(tenants.isActive, true),
-      ))
-      .limit(1);
+  // Auto-sync keanggotaan ke tenant PC IKPM Cabang & Marhalah jika tenant tersebut ada & aktif
+  const finalCabangRefId = body.primaryCabangRefId !== undefined ? body.primaryCabangRefId : member.primaryCabangRefId;
+  const finalGraduationYear = body.graduationYear !== undefined ? body.graduationYear : member.graduationYear;
+  const finalGraduationPeriod = body.graduationPeriod !== undefined ? body.graduationPeriod : member.graduationPeriod;
 
-    if (cabangTenant) {
-      await db.insert(tenantMemberships).values({
-        tenantId:       cabangTenant.id,
-        memberId:       member.id,
-        status:         "active",
-        registeredVia:  "auto_cabang",
-        membershipType: "cabang",
-      }).onConflictDoNothing();
-    }
-  }
+  await syncAutoTenantMemberships(
+    db,
+    member.id,
+    finalCabangRefId,
+    finalGraduationYear,
+    finalGraduationPeriod,
+  );
 
   return NextResponse.json({ success: true });
 }

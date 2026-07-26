@@ -414,7 +414,9 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
                   {b.name}
                   {b.brand && <span className="text-muted-foreground font-normal ml-1.5">({b.brand})</span>}
                 </p>
-                <p className="text-xs text-muted-foreground">{b.category} · {b.sector}</p>
+                {(b.category || b.sector) && (
+                  <p className="text-xs text-muted-foreground">{[b.category, b.sector].filter(Boolean).join(" · ")}</p>
+                )}
                 {b.position  && <p className="text-xs">Jabatan: {b.position}</p>}
                 {b.employees && <p className="text-xs text-muted-foreground">Karyawan: {b.employees}</p>}
                 {b.revenue   && <p className="text-xs text-muted-foreground">Omzet: {b.revenue}</p>}

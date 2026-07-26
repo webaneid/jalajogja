@@ -47,3 +47,6 @@ export * from "./addon-usage";
 // ── Platform admin users (jalakarta internal team) ────────────────────────────
 export * from "./platform-users";
 export * from "./platform-settings";
+
+// ── Import Anggota — audit trail bulk import (docs/arsitektur-import-anggota.md) ──
+export * from "./import-batches";

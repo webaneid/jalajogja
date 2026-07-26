@@ -4,7 +4,7 @@
 const REGISTRATION_OPEN = false;
 
 import { useState, useEffect, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signUp } from "@/lib/auth-client";
 import { registerAction } from "./actions";
@@ -22,7 +22,6 @@ function generateSlug(name: string): string {
 
 export default function RegisterPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
   // Form state
@@ -34,11 +33,7 @@ export default function RegisterPage() {
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
 
   // UI state
-  const [error, setError] = useState(
-    searchParams.get("error") === "no-tenant"
-      ? "Pendaftaran sebelumnya tidak lengkap. Silakan daftar ulang."
-      : ""
-  );
+  const [error, setError] = useState("");
   const [slugStatus, setSlugStatus] = useState<
     "idle" | "checking" | "available" | "taken" | "invalid"
   >("idle");
@@ -141,7 +136,7 @@ export default function RegisterPage() {
           Pendaftaran tenant baru jalakarta sedang tidak tersedia.
           Hubungi tim jalakarta untuk informasi lebih lanjut.
         </p>
-        <Link href="/login" className="inline-block text-sm font-medium text-primary hover:underline">
+        <Link href="/app/login" className="inline-block text-sm font-medium text-primary hover:underline">
           Sudah punya akun? Masuk di sini
         </Link>
       </div>
@@ -288,7 +283,7 @@ export default function RegisterPage() {
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Sudah punya akun?{" "}
-        <Link href="/login" className="font-medium text-primary hover:underline">
+        <Link href="/app/login" className="font-medium text-primary hover:underline">
           Masuk di sini
         </Link>
       </p>

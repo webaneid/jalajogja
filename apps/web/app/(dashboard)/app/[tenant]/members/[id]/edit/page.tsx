@@ -79,6 +79,9 @@ export default async function EditMemberPage({
         status: tenantMemberships.status,
         joinedAt: tenantMemberships.joinedAt,
         domicileStatus: members.domicileStatus,
+        // Kabupaten/kota kelahiran — nama WAJIB ikut, RegencyCombobox butuh id+nama untuk
+        // render pilihan awal, bukan cuma ID (bug lama: combobox tampil kosong meski tersimpan)
+        birthRegencyName: refRegencies.name,
         // Provinsi kelahiran (dari regency → province)
         birthProvinceId: refRegencies.provinceId,
       })
@@ -179,6 +182,7 @@ export default async function EditMemberPage({
     gender: memberRow.gender as "male" | "female" | undefined,
     birthDate: memberRow.birthDate ?? undefined,
     birthRegencyId: memberRow.birthRegencyId ?? undefined,
+    birthRegencyName: memberRow.birthRegencyName ?? undefined,
     birthProvinceId: memberRow.birthProvinceId ?? undefined,
     birthType: memberRow.birthRegencyId ? "id" : (memberRow.birthPlaceText ? "ln" : "id"),
     birthPlaceText: memberRow.birthPlaceText ?? undefined,
@@ -227,8 +231,8 @@ export default async function EditMemberPage({
     name: b.name,
     brand: b.brand ?? "",
     description: b.description ?? "",
-    category: b.category,
-    sector: b.sector,
+    category: b.category ?? "",
+    sector: b.sector ?? "",
     businessFields: b.businessFields ?? [],
     legality: b.legality ?? "",
     position: b.position ?? "",
@@ -284,6 +288,7 @@ export default async function EditMemberPage({
           slug={slug}
           memberId={memberId}
           hasAccount={!!memberRow.betterAuthUserId}
+          initialEmail={memberRow.contactEmail ?? ""}
         />
       </div>
     </div>

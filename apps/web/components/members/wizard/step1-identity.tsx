@@ -30,6 +30,9 @@ export interface Step1DefaultValues {
   gender?: "male" | "female"
   birthDate?: string
   birthRegencyId?: number
+  /** Nama kabupaten/kota tempat lahir — WAJIB dikirim bersama birthRegencyId, tanpa ini
+   * RegencyCombobox tampil kosong meski value tersimpan (bug lama, lihat CLAUDE.md). */
+  birthRegencyName?: string
   birthProvinceId?: number
   birthPlaceText?: string
   birthType?: "id" | "ln"
@@ -302,7 +305,11 @@ export function Step1Identity({ slug, professions, cabangList, onSuccess, member
   // Tempat lahir
   const [birthType,        setBirthType]        = React.useState<"id" | "ln">(defaultValues?.birthType ?? "id")
   const [birthRegencyId,   setBirthRegencyId]   = React.useState<number | undefined>(defaultValues?.birthRegencyId)
-  const [birthRegencyName, setBirthRegencyName] = React.useState<string | null>(null)
+  // BUG LAMA: sebelumnya selalu null, tidak pernah diinisialisasi dari defaultValues — combobox
+  // tampil kosong meski birthRegencyId sudah terisi dari server (RegencyCombobox butuh dua-duanya
+  // id+nama untuk render pilihan awal). Value internal tetap tersimpan benar ke DB, cuma TAMPILAN
+  // yang menyesatkan — user mengira data hilang padahal cuma tidak ditampilkan.
+  const [birthRegencyName, setBirthRegencyName] = React.useState<string | null>(defaultValues?.birthRegencyName ?? null)
 
   // Tahun lulus + periode 1999
   const [graduationYear,   setGraduationYear]   = React.useState<string>(defaultValues?.graduationYear ? String(defaultValues.graduationYear) : "")
@@ -333,9 +340,15 @@ export function Step1Identity({ slug, professions, cabangList, onSuccess, member
     setLoading(true)
 
     const fd = new FormData(e.currentTarget)
+    const nameVal = (fd.get("name") as string)?.trim() || ""
+    if (!nameVal) {
+      setError("Nama anggota wajib diisi.")
+      setLoading(false)
+      return
+    }
 
     const data = {
-      name:           (fd.get("name") as string).trim(),
+      name:           nameVal,
       nik:            (fd.get("nik") as string)?.trim() || undefined,
       stambukNumber:  (fd.get("stambukNumber") as string)?.trim() || undefined,
       gender:         (gender as "male" | "female") || undefined,

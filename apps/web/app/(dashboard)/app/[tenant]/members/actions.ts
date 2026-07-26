@@ -14,6 +14,7 @@ import {
   memberOwnedPesantren,
   generateMemberNumber,
   account,
+  syncAutoTenantMemberships,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess }   from "@/lib/permissions";
@@ -101,6 +102,15 @@ export async function createMemberAction(
       registeredVia: "admin",
     });
 
+    // Auto-sync keanggotaan ke tenant PC IKPM Cabang & Marhalah jika tenant tersebut ada & aktif
+    await syncAutoTenantMemberships(
+      db,
+      newMember.id,
+      data.primaryCabangRefId,
+      data.graduationYear,
+      data.graduationPeriod,
+    );
+
     revalidatePath(`/app/${slug}/members`);
     return { success: true, memberId: newMember.id };
 
@@ -144,10 +154,26 @@ export async function updateMemberAction(
   }
 
   try {
+    // Anggota yang dibuat via jalur lain (self-service register, buat owner pertama dari
+    // platform admin, import massal) bisa saja belum punya No. Anggota — sengaja ditunda
+    // sampai tanggal lahir benar-benar diketahui, sama seperti pattern di
+    // PATCH /api/akun/member-data. `createMemberAction` (admin buat baru) SELALU generate
+    // langsung — hanya jalur UPDATE ini yang sebelumnya tidak pernah cek sama sekali. Kalau
+    // admin melengkapi tanggal lahir lewat form edit ini, No. Anggota wajib ikut ter-generate
+    // di titik yang sama — bug ditemukan dari testing user 2026-07-25.
+    const [existingMember] = await db
+      .select({ memberNumber: members.memberNumber })
+      .from(members)
+      .where(eq(members.id, memberId))
+      .limit(1);
+    const memberNumberPatch = existingMember && !existingMember.memberNumber
+      ? { memberNumber: await generateMemberNumber(db, data.birthDate ?? null) }
+      : {};
+
     // Update data identitas global
     await db
       .update(members)
-      .set({ ...sanitize(data), updatedAt: new Date() })
+      .set({ ...sanitize(data), ...memberNumberPatch, updatedAt: new Date() })
       .where(eq(members.id, memberId));
 
     // Update status keanggotaan di cabang ini
@@ -164,6 +190,15 @@ export async function updateMemberAction(
           eq(tenantMemberships.memberId, memberId)
         )
       );
+
+    // Auto-sync keanggotaan ke tenant PC IKPM Cabang & Marhalah jika tenant tersebut ada & aktif
+    await syncAutoTenantMemberships(
+      db,
+      memberId,
+      data.primaryCabangRefId,
+      data.graduationYear,
+      data.graduationPeriod,
+    );
 
     revalidatePath(`/app/${slug}/members`);
     revalidatePath(`/app/${slug}/members/${memberId}`);
@@ -820,3 +855,98 @@ export async function changeUserPasswordAction(
     return { success: false, error: "Gagal mengubah password." };
   }
 }
+
+// ─── Aktifkan Akun Login Anggota ─────────────────────────────────────────────
+
+export async function activateMemberAccountAction(
+  slug:     string,
+  memberId: string,
+  email:    string,
+  password: string,
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota"))
+    return { success: false, error: "Akses ditolak." };
+
+  const normalizedEmail = email.toLowerCase().trim();
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return { success: false, error: "Format email tidak valid." };
+  }
+
+  if (!password || password.length < 8) {
+    return { success: false, error: "Password minimal 8 karakter." };
+  }
+
+  try {
+    const [member] = await db
+      .select({
+        id: members.id,
+        name: members.name,
+        betterAuthUserId: members.betterAuthUserId,
+        contactId: members.contactId,
+      })
+      .from(members)
+      .where(eq(members.id, memberId))
+      .limit(1);
+
+    if (!member) {
+      return { success: false, error: "Anggota tidak ditemukan." };
+    }
+
+    if (member.betterAuthUserId) {
+      return { success: false, error: "Anggota ini sudah memiliki akun login." };
+    }
+
+    // Buat akun baru via Better Auth server API
+    const { auth } = await import("@/lib/auth");
+    const signUpResult = await auth.api.signUpEmail({
+      body: {
+        name: member.name.trim(),
+        email: normalizedEmail,
+        password,
+      },
+    });
+
+    if (!signUpResult?.user?.id) {
+      return {
+        success: false,
+        error: "Gagal membuat akun login. Email mungkin sudah terdaftar di sistem.",
+      };
+    }
+
+    const authUserId = signUpResult.user.id;
+
+    // Link akun Better Auth ke public.members
+    await db
+      .update(members)
+      .set({ betterAuthUserId: authUserId, updatedAt: new Date() })
+      .where(eq(members.id, memberId));
+
+    // Update/create contact email agar konsisten
+    if (member.contactId) {
+      await db
+        .update(contacts)
+        .set({ email: normalizedEmail, updatedAt: new Date() })
+        .where(eq(contacts.id, member.contactId));
+    } else {
+      const [newContact] = await db
+        .insert(contacts)
+        .values({ email: normalizedEmail })
+        .returning({ id: contacts.id });
+      await db
+        .update(members)
+        .set({ contactId: newContact.id })
+        .where(eq(members.id, memberId));
+    }
+
+    revalidatePath(`/app/${slug}/members/${memberId}`);
+    revalidatePath(`/app/${slug}/members/${memberId}/edit`);
+    return { success: true };
+  } catch (err) {
+    console.error("[activateMemberAccountAction]", err);
+    const msg = err instanceof Error ? err.message : "Gagal mengaktifkan akun.";
+    return { success: false, error: msg };
+  }
+}
+

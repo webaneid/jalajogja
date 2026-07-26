@@ -15,9 +15,14 @@ export const memberBusinesses = pgTable("member_businesses", {
   description: text("description"),
 
   // ── Klasifikasi ──────────────────────────────────────────────────────────────
+  // Nullable di DB (2026-07-25, migration 0048) — SEBELUMNYA NOT NULL, dilonggarkan supaya
+  // bulk import bisa simpan data usaha yang belum lengkap tanpa membuang seluruh baris.
+  // Wajib diisi tetap ditegakkan di FORM (self-service `/akun/usaha` + admin wizard), pola
+  // sama persis dengan members.gender/members.birthDate/contacts.phone — required di
+  // front-end, bukan di kolom. Lihat docs/arsitektur-usaha.md.
   category: text("category", {
     enum: ["Jasa", "Produsen", "Distributor", "Trading", "Profesional"],
-  }).notNull(),
+  }),
 
   sector: text("sector", {
     enum: [
@@ -29,7 +34,7 @@ export const memberBusinesses = pgTable("member_businesses", {
       "Konsumsi & Ritel",
       "Sumber Daya Alam",
     ],
-  }).notNull(),
+  }),
 
   // Bidang usaha spesifik — facet INDEPENDEN dari sector (bukan sub-sector/hierarki, lihat
   // docs/arsitektur-usaha.md § 2-3), multi-select tag bebas + kurasi (lib/business-fields.ts).

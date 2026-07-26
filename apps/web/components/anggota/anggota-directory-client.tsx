@@ -364,7 +364,9 @@ export function AnggotaDirectoryClient({ slug, rows, hasFilter }: Props) {
                         {detail.businesses.map(b => (
                           <div key={b.id} className="rounded-lg bg-muted/40 px-3 py-2 text-sm">
                             <p className="font-medium">{b.name}</p>
-                            <p className="text-xs text-muted-foreground">{b.category} · {b.sector}</p>
+                            {(b.category || b.sector) && (
+                              <p className="text-xs text-muted-foreground">{[b.category, b.sector].filter(Boolean).join(" · ")}</p>
+                            )}
                           </div>
                         ))}
                       </div>
