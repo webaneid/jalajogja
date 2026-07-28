@@ -1453,6 +1453,55 @@ Diverifikasi langsung terhadap data production `visikita` (SQL manual, bukan cum
 
 ---
 
+## 13. Peningkatan Form Buat Invoice Admin & Modal Konfirmasi Pembayaran
+
+> **Status implementasi: ✅ SELESAI (2026-07)**
+> File terkait:
+> - `apps/web/components/keuangan/billing/invoice-create-form.tsx`
+> - `apps/web/components/keuangan/billing/invoice-detail-client.tsx`
+> - `apps/web/app/(dashboard)/app/[tenant]/finance/billing/actions.ts`
+
+### 13.1 Form Buat Invoice Baru (`/finance/billing/invoice/new`)
+
+Form pembuatan invoice manual di Admin Dashboard ditingkatkan dengan 4 integrasi utama:
+
+1. **Autofill Customer dari Anggota (`MemberNameAutocomplete`)**:
+   - Menghubungkan input Customer dengan komponen autocomplete `MemberNameAutocomplete` (dari `components/keuangan/member-name-autocomplete.tsx`).
+   - Saat anggota dipilih: `customerName`, `customerPhone`, `customerEmail`, dan `memberId` (`public.members.id`) diisi secara otomatis.
+   - Jika customer bukan anggota (tamu): admin dapat mengetik nama dan kontak secara bebas tanpa mengikat `memberId` (fallback `memberId = null`).
+
+2. **Autocomplete Item Tagihan dari Katalog (`CatalogItemAutocomplete`)**:
+   - Menambahkan dua Server Action pencarian:
+     - `searchBillingProductsAction(slug, search)` ➔ Mencari produk aktif di `tenant.products`.
+     - `searchBillingPaidTicketsAction(slug, search)` ➔ Mencari tiket event berbayar di `tenant.event_tickets`.
+   - Komponen `CatalogItemAutocomplete` memungut pilihan:
+     - Tipe **"Produk"**: Autofill nama produk, harga satuan (`price`), dan `itemId` (Product UUID).
+     - Tipe **"Tiket"**: Autofill nama (`"Judul Event - Nama Tiket"`), harga satuan (`price`), dan `itemId` (Ticket UUID).
+     - Tipe **"Lainnya"** / **"Donasi"**: Admin dapat mengisi nama item dan harga satuan secara manual.
+
+3. **Kode Unik Otomatis (Rp 100–999)**:
+   - Pada `createInvoiceAction`, sistem memeriksa setting `unique_code_enabled` pada grup setting `payment` tenant.
+   - Jika aktif, helper `generateUniqueCode(tenantDb)` dipanggil untuk menghasilkan kode unik 3-digit acak (Rp 100–999) yang belum terpakai pada invoice aktif.
+   - Kode unik disimpan ke `schema.invoices.uniqueCode` dan ditambahkan ke total pembayaran yang diharapkan (`amountDue`).
+
+4. **Notifikasi WhatsApp Otomatis (`invoice_created`)**:
+   - Saat invoice berhasil dibuat dan nomor HP customer (`customerPhone`) tersedia, `createInvoiceAction` secara otomatis memicu notifikasi WA (`notifyWa`):
+     - **Event**: `invoice_created`
+     - **Payload Pesan**: Nama Customer, Nomor Invoice, Total Tagihan (+ Kode Unik), Tanggal Jatuh Tempo, dan Tautan Publik Invoice (`waAppUrl`).
+
+### 13.2 Popup Modal Konfirmasi Pembayaran (`InvoiceDetailClient`)
+
+Form konfirmasi pembayaran manual oleh Admin di halaman detail invoice (`/app/[tenant]/finance/billing/invoice/[id]`):
+- **Popup Dialog (`<Dialog>`)**: Tombol **"Konfirmasi Pembayaran"** kini membuka popup modal responsif, menggantikan form inline di bagian bawah halaman.
+- **Unggah Bukti Transfer / Kwitansi (`ProofUploadField`)**:
+  - Menyediakan field unggah bukti transfer / kwitansi langsung di dalam modal (menggunakan `ProofUploadField` dari `components/keuangan/proof-upload-field.tsx`).
+  - Mendukung unggah & kompresi otomatis (HEIC/JPG/PNG ➔ WebP via Sharp ke MinIO storage).
+  - Field `proofUrl` disimpan ke `schema.payments.proofUrl` dan otomatis dirender di card **Riwayat Pembayaran** lengkap dengan Lightbox Zoom.
+- **Auto-Approval & Jurnal Keuangan**: Pembayaran langsung berstatus `paid` (Dikonfirmasi), memperbarui `paidAmount` invoice, mengubah status invoice (`paid` / `partial`), dan menerbitkan Jurnal Ganda (`recordIncome`) secara otomatis.
+- **WA Notification (`payment_confirmed`)**: Begitu pembayaran dikonfirmasi, sistem otomatis mengirimkan pesan WhatsApp konfirmasi penerimaan pembayaran ke customer.
+
+---
+
 ## Status Implementasi
 
 ### Phase 1 — Schema + Admin Dashboard
@@ -1478,8 +1527,7 @@ Diverifikasi langsung terhadap data production `visikita` (SQL manual, bukan cum
 - [x] Donasi: `createDonationAction` → invoice otomatis (sourceType=`donation`), `confirmDonationAction` → sync
 - [x] Event: `registerForEventAction` → invoice otomatis untuk tiket berbayar (sourceType=`event_registration`), `confirmRegistrationPaymentAction` → sync
 - [x] Billing dashboard: badge sumber tampil untuk semua tipe (Toko/Donasi/Event/Cart/Manual)
-- [ ] **Invoice manual admin** — item picker: pilih dari katalog produk/tiket/donasi ⏸
-  > Saat ini invoice manual hanya bisa item custom (teks bebas)
+- [x] **Invoice manual admin** — item picker: pilih dari katalog produk/tiket (`searchBillingProductsAction`, `searchBillingPaidTicketsAction`) + customer autocomplete (`MemberNameAutocomplete`) + Kode Unik Otomatis + WA Notifikasi (`invoice_created`) ✅ SELESAI (2026-07)
 
 ### Fulfillment Pengiriman (Phase 4)
 - [x] `SHIPPING_STATUSES` 5 stage: `pending|processing|packed|shipped|delivered`

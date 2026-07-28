@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Loader2 } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { MemberNameAutocomplete, type SelectedMember } from "@/components/keuangan/member-name-autocomplete";
 import {
   createInvoiceAction,
+  searchBillingProductsAction,
+  searchBillingPaidTicketsAction,
   type InvoiceItemInput,
 } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 
@@ -34,6 +37,112 @@ function newItem(): ItemLocal {
   };
 }
 
+// ── CatalogItemAutocomplete Sub-component ────────────────────────────────────
+
+function CatalogItemAutocomplete({
+  slug,
+  type,
+  value,
+  onChange,
+  onSelectOption,
+  placeholder,
+  required,
+}: {
+  slug: string;
+  type: "product" | "ticket";
+  value: string;
+  onChange: (val: string) => void;
+  onSelectOption: (opt: { id: string; name: string; price: number } | null) => void;
+  placeholder?: string;
+  required?: boolean;
+}) {
+  const [open, setOpen]       = useState(false);
+  const [results, setResults] = useState<{ id: string; name: string; price: number }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const containerRef          = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  async function fetchResults(q: string) {
+    setLoading(true);
+    try {
+      const res =
+        type === "product"
+          ? await searchBillingProductsAction(slug, q)
+          : await searchBillingPaidTicketsAction(slug, q);
+
+      if (res.success) {
+        setResults(res.data);
+        setOpen(true);
+      } else {
+        setResults([]);
+      }
+    } catch {
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          onSelectOption(null);
+          fetchResults(e.target.value);
+        }}
+        onFocus={() => {
+          fetchResults(value);
+        }}
+        placeholder={placeholder ?? (type === "product" ? "Cari nama produk..." : "Cari tiket event...")}
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        required={required}
+      />
+      {open && (
+        <div className="absolute z-50 mt-1 max-h-52 w-full overflow-auto rounded-md border border-border bg-popover py-1 shadow-md text-popover-foreground">
+          {loading ? (
+            <div className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Mencari {type === "product" ? "produk" : "tiket"}...
+            </div>
+          ) : results.length === 0 ? (
+            <div className="p-3 text-xs text-muted-foreground text-center">
+              Tidak ada {type === "product" ? "produk" : "tiket"} ditemukan. Ketik nama kustom di atas.
+            </div>
+          ) : (
+            results.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                className="w-full text-left px-3 py-2 text-xs hover:bg-accent hover:text-accent-foreground flex justify-between items-center"
+                onClick={() => {
+                  onChange(r.name);
+                  onSelectOption(r);
+                  setOpen(false);
+                }}
+              >
+                <span className="font-medium truncate pr-2">{r.name}</span>
+                <span className="font-mono text-muted-foreground whitespace-nowrap">Rp {formatRp(r.price)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function InvoiceCreateForm({ slug }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -43,6 +152,7 @@ export function InvoiceCreateForm({ slug }: Props) {
   const [customerName,  setCustomerName]  = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [memberId,      setMemberId]      = useState<string | null>(null);
 
   // Items
   const [items, setItems] = useState<ItemLocal[]>([newItem()]);
@@ -83,6 +193,7 @@ export function InvoiceCreateForm({ slug }: Props) {
         customerName:  customerName.trim(),
         customerPhone: customerPhone.trim() || undefined,
         customerEmail: customerEmail.trim() || undefined,
+        memberId:      memberId ?? undefined,
         items: items.map(({ _key, ...item }) => item),
         discount: discountNum || undefined,
         dueDate,
@@ -108,12 +219,21 @@ export function InvoiceCreateForm({ slug }: Props) {
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Informasi Customer</h2>
         <div>
           <label className={labelCls}>Nama Customer <span className="text-destructive">*</span></label>
-          <input
-            type="text"
+          <MemberNameAutocomplete
+            slug={slug}
             value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-            placeholder="mis. Ahmad Budi"
-            className={inputCls}
+            onChange={setCustomerName}
+            onSelectMember={(m: SelectedMember | null) => {
+              if (m) {
+                setCustomerName(m.name);
+                if (m.phone) setCustomerPhone(m.phone);
+                if (m.email) setCustomerEmail(m.email);
+                setMemberId(m.id);
+              } else {
+                setMemberId(null);
+              }
+            }}
+            placeholder="Cari dari anggota atau ketik nama..."
             required
           />
         </div>
@@ -148,7 +268,10 @@ export function InvoiceCreateForm({ slug }: Props) {
                 <label className={labelCls}>Tipe</label>
                 <select
                   value={item.itemType}
-                  onChange={(e) => updateItem(item._key, { itemType: e.target.value as InvoiceItemInput["itemType"] })}
+                  onChange={(e) => {
+                    const newType = e.target.value as InvoiceItemInput["itemType"];
+                    updateItem(item._key, { itemType: newType, itemId: undefined });
+                  }}
                   className={inputCls}
                 >
                   {Object.entries(ITEM_TYPE_LABELS).map(([v, l]) => (
@@ -158,14 +281,35 @@ export function InvoiceCreateForm({ slug }: Props) {
               </div>
               <div className="col-span-2">
                 <label className={labelCls}>Nama Item <span className="text-destructive">*</span></label>
-                <input
-                  type="text"
-                  value={item.name}
-                  onChange={(e) => updateItem(item._key, { name: e.target.value })}
-                  placeholder="mis. Biaya pendaftaran"
-                  className={inputCls}
-                  required
-                />
+                {item.itemType === "product" || item.itemType === "ticket" ? (
+                  <CatalogItemAutocomplete
+                    slug={slug}
+                    type={item.itemType}
+                    value={item.name}
+                    onChange={(val) => updateItem(item._key, { name: val })}
+                    onSelectOption={(opt) => {
+                      if (opt) {
+                        updateItem(item._key, {
+                          name:      opt.name,
+                          unitPrice: opt.price,
+                          itemId:    opt.id,
+                        });
+                      } else {
+                        updateItem(item._key, { itemId: undefined });
+                      }
+                    }}
+                    required
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={item.name}
+                    onChange={(e) => updateItem(item._key, { name: e.target.value })}
+                    placeholder="mis. Biaya pendaftaran"
+                    className={inputCls}
+                    required
+                  />
+                )}
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3 items-end">

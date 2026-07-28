@@ -15,6 +15,14 @@ import {
 import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
 import { compressImage } from "@/lib/client-image-compress";
 import { displayPhone } from "@/lib/phone";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { ProofUploadField } from "@/components/keuangan/proof-upload-field";
 
 type Props = {
   slug:     string;
@@ -118,6 +126,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
   const [payBank,     setPayBank]       = useState("");
   const [payDate,     setPayDate]       = useState("");
   const [payNotes,    setPayNotes]      = useState("");
+  const [payProofUrl, setPayProofUrl]   = useState<string | null>(null);
 
   // Cancel state
   const [showCancel,  setShowCancel]    = useState(false);
@@ -313,6 +322,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
       return;
     }
     setPayAmount(String(Math.round(payExpected)));
+    setPayProofUrl(null);
     setShowPayForm(true);
   }
 
@@ -327,6 +337,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
         payerBank:    payBank.trim() || undefined,
         transferDate: payDate || undefined,
         notes:        payNotes.trim() || undefined,
+        proofUrl:     payProofUrl ?? undefined,
       });
       if (res.success) {
         setSuccess("Pembayaran berhasil dicatat.");
@@ -858,6 +869,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
       )}
 
       {/* ── Actions ─────────────────────────────────────────────────────── */}
+      {/* ── Actions ─────────────────────────────────────────────────────── */}
       {(canPay || canCancel) && (
         <div className="flex gap-3 pt-2">
           {canPay && (
@@ -866,10 +878,10 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
               onClick={togglePayForm}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              {showPayForm ? "Tutup Form" : "Konfirmasi Pembayaran"}
+              Konfirmasi Pembayaran
             </button>
           )}
-          {canCancel && !showPayForm && (
+          {canCancel && (
             <button
               type="button"
               onClick={() => setShowCancel((v) => !v)}
@@ -881,83 +893,109 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
         </div>
       )}
 
-      {/* ── Form konfirmasi pembayaran ──────────────────────────────────── */}
-      {showPayForm && canPay && (
-        <form onSubmit={handlePay} className="rounded-lg border border-border p-4 space-y-4">
-          <p className="text-sm font-semibold">Konfirmasi Pembayaran</p>
+      {/* ── Modal Konfirmasi Pembayaran Popup ──────────────────────────── */}
+      {canPay && (
+        <Dialog open={showPayForm} onOpenChange={setShowPayForm}>
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Konfirmasi Pembayaran</DialogTitle>
+              <DialogDescription>
+                Catat penerimaan pembayaran manual untuk invoice <span className="font-mono font-semibold">{invoice.invoiceNumber}</span>.
+              </DialogDescription>
+            </DialogHeader>
 
-          <div>
-            <label className={labelCls}>Jumlah Diterima <span className="text-destructive">*</span></label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={payAmount}
-                onChange={(e) => setPayAmount(e.target.value.replace(/\D/g, ""))}
-                className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                required
+            <form onSubmit={handlePay} className="space-y-4 py-2">
+              <div>
+                <label className={labelCls}>Jumlah Diterima <span className="text-destructive">*</span></label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(e.target.value.replace(/\D/g, ""))}
+                    className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    required
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {nextUnpaidTerm
+                    ? `Default sesuai nominal termin ${nextUnpaidTerm.termNumber} (angka bersih, TANPA kode unik${nextUnpaidTerm.uniqueCode ? ` ${nextUnpaidTerm.uniqueCode}` : ""}) — jangan catat sisa tagihan penuh kecuali memang menerima pelunasan sekaligus. Sisa tagihan total: ${formatRp(invoice.remaining)}.`
+                    : `Sisa tagihan: ${formatRp(invoice.remaining)}`}
+                </p>
+                {(() => {
+                  const warn = amountWarning(parseInt(payAmount.replace(/\D/g, ""), 10) || 0, payExpected);
+                  return warn ? (
+                    <p className={`text-xs font-medium mt-1 ${warn.startsWith("⚠") ? "text-amber-700" : "text-blue-700"}`}>{warn}</p>
+                  ) : null;
+                })()}
+              </div>
+
+              <div>
+                <label className={labelCls}>Metode</label>
+                <div className="flex gap-2">
+                  {(["cash", "transfer", "qris"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setPayMethod(m)}
+                      className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                        payMethod === m
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {METHOD_LABELS[m]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {payMethod === "transfer" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls}>Bank Pengirim</label>
+                    <input type="text" value={payBank} onChange={(e) => setPayBank(e.target.value)} placeholder="BCA, BRI..." className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Tanggal Transfer</label>
+                    <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={inputCls} />
+                  </div>
+                </div>
+              )}
+
+              {/* Unggah Bukti Transfer / Kwitansi */}
+              <ProofUploadField
+                slug={slug}
+                label={payMethod === "cash" ? "Tanda Terima / Kwitansi" : "Bukti Transfer"}
+                hint={payMethod === "cash" ? "Foto kwitansi atau tanda terima · Maks. 8 MB" : "JPG, PNG, WebP · Maks. 8 MB"}
+                onUploaded={setPayProofUrl}
               />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {nextUnpaidTerm
-                ? `Default sesuai nominal termin ${nextUnpaidTerm.termNumber} (angka bersih, TANPA kode unik${nextUnpaidTerm.uniqueCode ? ` ${nextUnpaidTerm.uniqueCode}` : ""}) — jangan catat sisa tagihan penuh kecuali memang menerima pelunasan sekaligus. Sisa tagihan total: ${formatRp(invoice.remaining)}.`
-                : `Sisa tagihan: ${formatRp(invoice.remaining)}`}
-            </p>
-            {(() => {
-              const warn = amountWarning(parseInt(payAmount.replace(/\D/g, ""), 10) || 0, payExpected);
-              return warn ? (
-                <p className={`text-xs font-medium mt-1 ${warn.startsWith("⚠") ? "text-amber-700" : "text-blue-700"}`}>{warn}</p>
-              ) : null;
-            })()}
-          </div>
 
-          <div>
-            <label className={labelCls}>Metode</label>
-            <div className="flex gap-2">
-              {(["cash", "transfer", "qris"] as const).map((m) => (
+              <div>
+                <label className={labelCls}>Catatan</label>
+                <input type="text" value={payNotes} onChange={(e) => setPayNotes(e.target.value)} placeholder="Opsional" className={inputCls} />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border">
                 <button
-                  key={m}
                   type="button"
-                  onClick={() => setPayMethod(m)}
-                  className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
-                    payMethod === m
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border text-muted-foreground hover:text-foreground"
-                  }`}
+                  onClick={() => setShowPayForm(false)}
+                  className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  {METHOD_LABELS[m]}
+                  Batal
                 </button>
-              ))}
-            </div>
-          </div>
-
-          {payMethod === "transfer" && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>Bank Pengirim</label>
-                <input type="text" value={payBank} onChange={(e) => setPayBank(e.target.value)} placeholder="BCA, BRI..." className={inputCls} />
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                >
+                  {pending ? "Menyimpan..." : "Konfirmasi Pembayaran"}
+                </button>
               </div>
-              <div>
-                <label className={labelCls}>Tanggal Transfer</label>
-                <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={inputCls} />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className={labelCls}>Catatan</label>
-            <input type="text" value={payNotes} onChange={(e) => setPayNotes(e.target.value)} placeholder="Opsional" className={inputCls} />
-          </div>
-
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-          >
-            {pending ? "Menyimpan..." : "Konfirmasi"}
-          </button>
-        </form>
+            </form>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* ── Form batalkan invoice ──────────────────────────────────────── */}

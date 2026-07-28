@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, and, desc, sql, count, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, count, inArray, ilike, or } from "drizzle-orm";
 import type { InvoiceStatus } from "@jalajogja/db";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, generateFinancialNumber, settleInstallmentSchedules } from "@jalajogja/db";
@@ -96,6 +96,7 @@ export type ConfirmInvoicePaymentData = {
   payerBank?:   string;
   transferDate?: string;
   notes?:       string;
+  proofUrl?:    string;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -142,8 +143,13 @@ export async function createInvoiceAction(
     const discount  = data.discount ?? 0;
     const total     = Math.max(0, subtotal - discount);
 
-    // Default due date: 3 hari dari sekarang, anchor ke kalender timezone tenant (bukan UTC
-    // mentah — lihat lib/tenant-timezone.ts, pola sama fix cicilan sebelumnya).
+    // Kode Unik Otomatis (Rp 100–999) — jika unique_code_enabled di settings payment
+    const { getSettings, generateUniqueCode } = await import("@jalajogja/db");
+    const paymentSettings   = await getSettings(tenantDb, "payment");
+    const uniqueCodeEnabled = paymentSettings["unique_code_enabled"] === true;
+    const uniqueCode        = uniqueCodeEnabled ? await generateUniqueCode(tenantDb) : 0;
+
+    // Default due date: 3 hari dari sekarang, anchor ke kalender timezone tenant
     const dueDate = data.dueDate ?? (() => {
       const d = anchorTodayUtc(tenantTimezone);
       d.setUTCDate(d.getUTCDate() + 3);
@@ -163,13 +169,18 @@ export async function createInvoiceAction(
         subtotal:      subtotal.toFixed(2),
         discount:      discount.toFixed(2),
         total:         total.toFixed(2),
+        uniqueCode,
         paidAmount:    "0",
         status:        "pending",
         dueDate,
         notes:         data.notes?.trim() ?? null,
         createdBy:     access.tenantUser.id,
       })
-      .returning({ id: schema.invoices.id });
+      .returning({
+        id:            schema.invoices.id,
+        customerName:  schema.invoices.customerName,
+        customerPhone: schema.invoices.customerPhone,
+      });
 
     // Insert items
     await db.insert(schema.invoiceItems).values(
@@ -186,11 +197,144 @@ export async function createInvoiceAction(
       }))
     );
 
+    // Kirim notifikasi WA (invoice_created) jika nomor HP customer tersedia
+    if (invoice.customerPhone) {
+      const invoiceUrl = await waAppUrl(slug, `/invoice/${invoice.id}`);
+      const amountDue  = total + uniqueCode;
+      void notifyWa({
+        slug,
+        tenantDb,
+        event: "invoice_created",
+        phone: invoice.customerPhone,
+        vars: {
+          name:          invoice.customerName,
+          invoiceNumber,
+          amount:        waRupiah(amountDue),
+          dueDate:       dueDate,
+          invoiceUrl,
+        },
+      });
+    }
+
     revalidateBilling(slug);
     return { success: true, data: { invoiceId: invoice.id } };
   } catch (err) {
     console.error("[createInvoiceAction]", err);
     return { success: false, error: "Gagal membuat invoice." };
+  }
+}
+
+// ─── searchBillingProductsAction ─────────────────────────────────────────────
+
+export type BillingProductResult = {
+  id:    string;
+  name:  string;
+  price: number;
+  sku:   string | null;
+};
+
+export async function searchBillingProductsAction(
+  slug: string,
+  search?: string,
+): Promise<ActionResult<BillingProductResult[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  const term = search?.trim() ? `%${search.trim()}%` : null;
+
+  try {
+    const rows = await db
+      .select({
+        id:    schema.products.id,
+        name:  schema.products.name,
+        price: schema.products.price,
+        sku:   schema.products.sku,
+      })
+      .from(schema.products)
+      .where(
+        and(
+          eq(schema.products.status, "active"),
+          term ? ilike(schema.products.name, term) : undefined,
+        )
+      )
+      .limit(20);
+
+    return {
+      success: true,
+      data: rows.map((r) => ({
+        id:    r.id,
+        name:  r.name,
+        price: parseFloat(String(r.price)),
+        sku:   r.sku ?? null,
+      })),
+    };
+  } catch (err) {
+    console.error("[searchBillingProductsAction]", err);
+    return { success: false, error: "Gagal mencari produk." };
+  }
+}
+
+// ─── searchBillingPaidTicketsAction ──────────────────────────────────────────
+
+export type BillingTicketResult = {
+  id:         string;
+  name:       string;
+  eventTitle: string;
+  price:      number;
+};
+
+export async function searchBillingPaidTicketsAction(
+  slug: string,
+  search?: string,
+): Promise<ActionResult<BillingTicketResult[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  const term = search?.trim() ? `%${search.trim()}%` : null;
+
+  try {
+    const rows = await db
+      .select({
+        id:         schema.eventTickets.id,
+        name:       schema.eventTickets.name,
+        eventTitle: schema.events.title,
+        price:      schema.eventTickets.price,
+      })
+      .from(schema.eventTickets)
+      .innerJoin(schema.events, eq(schema.eventTickets.eventId, schema.events.id))
+      .where(
+        and(
+          eq(schema.events.status, "published"),
+          eq(schema.eventTickets.isActive, true),
+          sql`CAST(${schema.eventTickets.price} AS NUMERIC) > 0`,
+          term
+            ? or(
+                ilike(schema.events.title, term),
+                ilike(schema.eventTickets.name, term)
+              )
+            : undefined,
+        )
+      )
+      .limit(20);
+
+    return {
+      success: true,
+      data: rows.map((r) => ({
+        id:         r.id,
+        name:       `${r.eventTitle} - ${r.name}`,
+        eventTitle: r.eventTitle,
+        price:      parseFloat(String(r.price)),
+      })),
+    };
+  } catch (err) {
+    console.error("[searchBillingPaidTicketsAction]", err);
+    return { success: false, error: "Gagal mencari tiket event." };
   }
 }
 
@@ -521,6 +665,7 @@ export async function confirmInvoicePaymentAction(
           amount:       data.amount.toFixed(2),
           uniqueCode:   0,
           method:       data.method,
+          proofUrl:     data.proofUrl?.trim() ?? null,
           status:       "paid",
           transferDate: data.transferDate ?? null,
           payerName:    inv.customerName,
