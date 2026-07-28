@@ -338,6 +338,57 @@ export async function searchBillingPaidTicketsAction(
   }
 }
 
+// ─── searchBillingCampaignsAction ──────────────────────────────────────────
+
+export type BillingCampaignResult = {
+  id:    string;
+  name:  string;
+  price: number;
+};
+
+export async function searchBillingCampaignsAction(
+  slug: string,
+  search?: string,
+): Promise<ActionResult<BillingCampaignResult[]>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  const term = search?.trim() ? `%${search.trim()}%` : null;
+
+  try {
+    const rows = await db
+      .select({
+        id:            schema.campaigns.id,
+        title:         schema.campaigns.title,
+        defaultAmount: schema.campaigns.defaultAmount,
+      })
+      .from(schema.campaigns)
+      .where(
+        and(
+          eq(schema.campaigns.status, "active"),
+          term ? ilike(schema.campaigns.title, term) : undefined,
+        )
+      )
+      .orderBy(schema.campaigns.title)
+      .limit(20);
+
+    return {
+      success: true,
+      data: rows.map((r) => ({
+        id:    r.id,
+        name:  `Donasi: ${r.title}`,
+        price: r.defaultAmount ? parseFloat(String(r.defaultAmount)) : 0,
+      })),
+    };
+  } catch (err) {
+    console.error("[searchBillingCampaignsAction]", err);
+    return { success: false, error: "Gagal mencari campaign donasi." };
+  }
+}
+
 // ─── updateInvoiceDueDateAction ───────────────────────────────────────────────
 
 export async function updateInvoiceDueDateAction(

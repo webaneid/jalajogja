@@ -9,6 +9,7 @@ import {
   createInvoiceAction,
   searchBillingProductsAction,
   searchBillingPaidTicketsAction,
+  searchBillingCampaignsAction,
   type InvoiceItemInput,
 } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 
@@ -49,7 +50,7 @@ function CatalogItemAutocomplete({
   required,
 }: {
   slug: string;
-  type: "product" | "ticket";
+  type: "product" | "ticket" | "donation";
   value: string;
   onChange: (val: string) => void;
   onSelectOption: (opt: { id: string; name: string; price: number } | null) => void;
@@ -77,7 +78,9 @@ function CatalogItemAutocomplete({
       const res =
         type === "product"
           ? await searchBillingProductsAction(slug, q)
-          : await searchBillingPaidTicketsAction(slug, q);
+          : type === "ticket"
+            ? await searchBillingPaidTicketsAction(slug, q)
+            : await searchBillingCampaignsAction(slug, q);
 
       if (res.success) {
         setResults(res.data);
@@ -92,6 +95,8 @@ function CatalogItemAutocomplete({
     }
   }
 
+  const typeLabel = type === "product" ? "produk" : type === "ticket" ? "tiket" : "campaign donasi";
+
   return (
     <div ref={containerRef} className="relative w-full">
       <input
@@ -105,7 +110,14 @@ function CatalogItemAutocomplete({
         onFocus={() => {
           fetchResults(value);
         }}
-        placeholder={placeholder ?? (type === "product" ? "Cari nama produk..." : "Cari tiket event...")}
+        placeholder={
+          placeholder ??
+          (type === "product"
+            ? "Cari nama produk..."
+            : type === "ticket"
+              ? "Cari tiket event..."
+              : "Cari campaign donasi...")
+        }
         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         required={required}
       />
@@ -114,11 +126,11 @@ function CatalogItemAutocomplete({
           {loading ? (
             <div className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Mencari {type === "product" ? "produk" : "tiket"}...
+              Mencari {typeLabel}...
             </div>
           ) : results.length === 0 ? (
             <div className="p-3 text-xs text-muted-foreground text-center">
-              Tidak ada {type === "product" ? "produk" : "tiket"} ditemukan. Ketik nama kustom di atas.
+              Tidak ada {typeLabel} ditemukan. Ketik nama kustom di atas.
             </div>
           ) : (
             results.map((r) => (
@@ -133,7 +145,9 @@ function CatalogItemAutocomplete({
                 }}
               >
                 <span className="font-medium truncate pr-2">{r.name}</span>
-                <span className="font-mono text-muted-foreground whitespace-nowrap">Rp {formatRp(r.price)}</span>
+                <span className="font-mono text-muted-foreground whitespace-nowrap">
+                  {r.price > 0 ? `Rp ${formatRp(r.price)}` : "(Nominal Bebas)"}
+                </span>
               </button>
             ))
           )}
@@ -281,7 +295,7 @@ export function InvoiceCreateForm({ slug }: Props) {
               </div>
               <div className="col-span-2">
                 <label className={labelCls}>Nama Item <span className="text-destructive">*</span></label>
-                {item.itemType === "product" || item.itemType === "ticket" ? (
+                {item.itemType === "product" || item.itemType === "ticket" || item.itemType === "donation" ? (
                   <CatalogItemAutocomplete
                     slug={slug}
                     type={item.itemType}
@@ -291,7 +305,7 @@ export function InvoiceCreateForm({ slug }: Props) {
                       if (opt) {
                         updateItem(item._key, {
                           name:      opt.name,
-                          unitPrice: opt.price,
+                          unitPrice: opt.price > 0 ? opt.price : item.unitPrice,
                           itemId:    opt.id,
                         });
                       } else {

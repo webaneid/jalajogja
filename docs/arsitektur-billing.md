@@ -1471,13 +1471,15 @@ Form pembuatan invoice manual di Admin Dashboard ditingkatkan dengan 4 integrasi
    - Jika customer bukan anggota (tamu): admin dapat mengetik nama dan kontak secara bebas tanpa mengikat `memberId` (fallback `memberId = null`).
 
 2. **Autocomplete Item Tagihan dari Katalog (`CatalogItemAutocomplete`)**:
-   - Menambahkan dua Server Action pencarian:
+   - Menambahkan tiga Server Action pencarian:
      - `searchBillingProductsAction(slug, search)` ➔ Mencari produk aktif di `tenant.products`.
      - `searchBillingPaidTicketsAction(slug, search)` ➔ Mencari tiket event berbayar di `tenant.event_tickets`.
+     - `searchBillingCampaignsAction(slug, search)` ➔ Mencari program/campaign donasi aktif di `tenant.campaigns`.
    - Komponen `CatalogItemAutocomplete` memungut pilihan:
      - Tipe **"Produk"**: Autofill nama produk, harga satuan (`price`), dan `itemId` (Product UUID).
      - Tipe **"Tiket"**: Autofill nama (`"Judul Event - Nama Tiket"`), harga satuan (`price`), dan `itemId` (Ticket UUID).
-     - Tipe **"Lainnya"** / **"Donasi"**: Admin dapat mengisi nama item dan harga satuan secara manual.
+     - Tipe **"Donasi"**: Autofill nama (`"Donasi: Judul Campaign"`), harga rekomendasi (`defaultAmount` jika diatur), dan `itemId` (Campaign UUID).
+     - Tipe **"Lainnya"**: Admin dapat mengisi nama item dan harga satuan secara manual.
 
 3. **Kode Unik Otomatis (Rp 100–999)**:
    - Pada `createInvoiceAction`, sistem memeriksa setting `unique_code_enabled` pada grup setting `payment` tenant.
