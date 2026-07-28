@@ -13123,8 +13123,85 @@ input contoh user + 2 edge case (graduationYear null→fallback "00", seq besar 
 — sempat salah jalan sesi sebelumnya, root `tsconfig.json` tidak punya alias `@/*`, gampang
 salah kira ada error padahal cuma salah direktori) + `bun run build` genuine, keduanya 0 error.
 
+### [2026-07-28] Guard Tahun Lulus KMI — Wajib 4-Digit Lengkap, Bukan Disingkat "99"
+
+> Detail lengkap: **`docs/arsitektur-keanggotaan.md`** § "Auto-Sync Tenant Memberships" —
+> sub-bagian "Guard `graduationYear`".
+
+Langsung menyusul preset ke-4 nomor keanggotaan forum (lesson di atas, sesi yang sama) — user
+minta guard eksplisit: `graduationYear` (Tahun Lulus KMI/"Alumni") wajib diisi DAN wajib 4 digit
+lengkap, jangan sampai ada yang menulis "99"/"98" alih-alih "1999"/"1998".
+
+**Audit dulu ke SEMUA titik input** (bukan cuma satu tempat) — 3 form/endpoint ditemukan yang
+menerima nilai ini langsung dari user:
+1. **Self-service `/akun/lengkapi`** (`akun/lengkapi/page.tsx`) — sudah ada cek "wajib diisi"
+   (`if (!graduationYear)...`), TAPI tidak ada cek RANGE — `<input type="number" min={1920}
+   max={...}>` di situ ternyata CUMA DEKORATIF: submit-nya lewat `fetch()` custom
+   (`saveStep1()`), bukan native form submit, jadi atribut `min`/`max` HTML5 tidak pernah
+   dievaluasi browser sama sekali.
+2. **Admin wizard** (`step1-identity.tsx`, dipakai `members/new`+`members/[id]/edit` via
+   `member-wizard.tsx`) — SEBALIKNYA dari #1: tombol pakai `type="submit" form={id}` (native
+   form submission genuinely aktif, dikonfirmasi tidak ada `noValidate` di manapun) — jadi
+   `required`+`min={1950}`+`max={CURRENT_YEAR}` di situ SEHARUSNYA sudah dienforce browser. Tapi
+   ini SEPENUHNYA bergantung mekanisme native yang implisit/gampang di-bypass (devtools, atau
+   panggilan langsung ke server action) — server-side-nya sendiri (`createMemberAction`/
+   `updateMemberAction` di `members/actions.ts`) **nol validasi sama sekali**, `data.graduationYear
+   || null` pass-through mentah.
+3. **`PATCH /api/akun/member-data`** (dipanggil self-service) — juga nol validasi, pass-through
+   `body.graduationYear ?? null` apa adanya — endpoint ini partial-update (`if (field !==
+   undefined)` per kolom), jadi validasi harus HANYA aktif kalau field ini genuinely disentuh.
+4. **Excel Import** (`lib/import-anggota-mapping.ts`'s `parseGraduationYear()`) — DICEK, TERNYATA
+   SUDAH BENAR sejak lama: `n < 1950 || n > currentYear → return null` — nilai "99" sudah
+   ditolak (jadi `null`, ditandai tidak match), tidak perlu disentuh.
+
+**Kenapa ini bukan cuma soal kerapian data — auto-join Marhalah bisa gagal DIAM-DIAM**: ditemukan
+sambil baca `docs/arsitektur-keanggotaan.md` bahwa `graduationYear` dipakai LANGSUNG sebagai
+kunci pencocokan `tenants WHERE marhalahYear = graduationYear` (`syncAutoTenantMemberships`,
+`packages/db/src/helpers/member-sync.ts`) — nilai "99" (bukan "1999") tetap numerik VALID tapi
+TIDAK PERNAH cocok dengan `marhalahYear` tenant manapun (yang selalu 4-digit) → anggota gagal
+auto-terhubung ke tenant Marhalah-nya, tanpa error apa pun yang terlihat. Data yang salah ini
+juga langsung meracuni Nomor Keanggotaan Forum preset ke-4 yang baru dibangun (lesson di atas).
+
+**Fix — 3 titik (bukan 4, import sudah aman)**:
+- `akun/lengkapi/page.tsx` — tambah cek eksplisit RANGE (`Number.isInteger` + `1920 ≤ y ≤
+  tahunBerjalan`) tepat setelah cek "wajib diisi" yang sudah ada, pesan Indonesia jelas
+  menyebut "bukan disingkat 2 digit seperti '99'".
+- `members/actions.ts` — helper baru `validateGraduationYear()` (dipakai KEDUA
+  `createMemberAction` DAN `updateMemberAction`, satu-satunya caller Step 1 selalu kirim form
+  penuh jadi aman divalidasi keras) — required + range `1950 ≤ y ≤ tahunBerjalan` (match bound
+  yang SUDAH ditulis di UI admin, tidak diseragamkan dengan 1920 self-service — beda bound yang
+  sudah ada sebelumnya sengaja dipertahankan, bukan diunifikasi, karena tidak diminta).
+- `api/akun/member-data/route.ts` — validasi HANYA kalau `body.graduationYear !== undefined`
+  (hormati semantik partial-update endpoint ini): kalau field disentuh, `null` eksplisit DITOLAK
+  (field wajib, tidak boleh dikosongkan lewat API) dan nilai di luar `1920–tahunBerjalan` DITOLAK.
+
+**Diverifikasi empiris** (disposable test mereplikasi PERSIS logic yang ditambahkan, dihapus
+setelah): 10 skenario — kosong/undefined, "99", "98", tahun valid (1999/2005), tahun masa depan
+(2030), nol, `null` eksplisit di endpoint patch — SEMUA PASS sesuai ekspektasi. `tsc --noEmit`
+(dari `apps/web`) + `bun run build` genuine, keduanya 0 error.
+
+**Aturan yang ditegaskan**: kalau diminta tambah "guard"/validasi untuk sebuah field, JANGAN
+cuma tambah di satu tempat yang disebut user — audit SEMUA titik input (form self-service, form
+admin, endpoint API, importer bulk) untuk field yang sama, karena field seperti ini nyaris
+selalu punya beberapa jalur masuk independen yang masing-masing butuh guard-nya sendiri
+(client-side saja tidak cukup, terutama kalau submission-nya lewat `fetch()` custom yang
+membuat atribut HTML5 `min`/`max`/`required` jadi dekoratif belaka).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Nomor Keanggotaan Forum — Preset ke-4** (lihat lesson `[2026-07-28]`
+- Terakhir dikerjakan: **Guard Tahun Lulus KMI — Wajib 4-Digit Lengkap** (lihat lesson
+  `[2026-07-28]` "Guard Tahun Lulus KMI" di atas) — user minta `graduationYear` wajib diisi +
+  wajib 4 digit lengkap (bukan disingkat "99"/"98"). Audit ke 4 titik input menemukan gap nyata
+  di 3 dari 4: self-service `/akun/lengkapi` (required check sudah ada, range check TIDAK —
+  atribut HTML `min`/`max` ternyata dekoratif karena submit lewat `fetch()` custom bukan native
+  form), admin `createMemberAction`/`updateMemberAction` (nol validasi server-side sama sekali,
+  cuma mengandalkan native browser validation yang gampang di-bypass), `PATCH /api/akun/
+  member-data` (nol validasi, partial-update endpoint). Excel importer TERNYATA SUDAH benar
+  sejak lama, tidak disentuh. Ditemukan sekalian: `graduationYear` dipakai LANGSUNG sebagai
+  kunci match auto-join Marhalah (`marhalahYear = graduationYear`) — nilai "99" gagal cocok
+  DIAM-DIAM tanpa error, bukan cuma soal kerapian data. Fix 3 titik + helper shared
+  `validateGraduationYear()` di `members/actions.ts`. Diverifikasi empiris 10 skenario, semua
+  PASS. `tsc`+build genuine bersih, dev server direstart. **Belum di-commit/push ke git.**
+- Sesi sebelumnya: **Nomor Keanggotaan Forum — Preset ke-4** (lihat lesson `[2026-07-28]`
   "Nomor Keanggotaan Forum — Preset ke-4" di atas) — user minta format baru
   `<tahun daftar 2 digit><tahun angkatan 2 digit>.<seq 5-digit>` (`2690.00001`). Dicek dulu:
   `graduationYear` sudah WAJIB di `checkMemberEligibility()` dan kedua titik generate nomor

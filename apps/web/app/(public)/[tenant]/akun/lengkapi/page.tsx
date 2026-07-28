@@ -436,7 +436,16 @@ export default function LengkapiPage() {
     if (!gender)          { setError("Jenis kelamin wajib dipilih."); return; }
     if (!birthDate)       { setError("Tanggal lahir wajib diisi."); return; }
     if (!graduationYear)  { setError("Tahun lulus KMI wajib diisi."); return; }
-    if (Number(graduationYear) === 1999 && !graduationPeriod) { setError("Angkatan 1999 wajib memilih periode: Awal atau Akhir."); return; }
+    // Cek eksplisit — atribut min/max di <input type="number"> di bawah cuma dekoratif karena
+    // submit ini lewat fetch() custom, bukan native form submit (browser tidak akan menolak
+    // native meski nilainya di luar batas). Cegah entri disingkat 2 digit (mis. "99"/"98") yang
+    // dikira mewakili 1999/1998 — nilai numeriknya tetap valid tapi datanya salah secara semantik.
+    const graduationYearNum = Number(graduationYear);
+    if (!Number.isInteger(graduationYearNum) || graduationYearNum < 1920 || graduationYearNum > new Date().getFullYear()) {
+      setError(`Tahun lulus KMI harus 4 digit tahun lengkap (mis. 1999), bukan disingkat 2 digit seperti "99".`);
+      return;
+    }
+    if (graduationYearNum === 1999 && !graduationPeriod) { setError("Angkatan 1999 wajib memilih periode: Awal atau Akhir."); return; }
     if (!professionId)    { setError("Profesi wajib dipilih."); return; }
     if (!waliSantri)      { setError("Status wali santri wajib dipilih."); return; }
     if (!primaryCabangRefId) { setError("PC IKPM Cabang wajib dipilih."); return; }

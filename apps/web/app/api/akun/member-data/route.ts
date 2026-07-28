@@ -187,6 +187,20 @@ export async function PATCH(req: NextRequest) {
   if (body.name !== undefined && !body.name?.trim())
     return NextResponse.json({ error: "Nama tidak boleh kosong." }, { status: 400 });
 
+  // graduationYear wajib diisi (tidak boleh dikosongkan) dan harus tahun 4-digit lengkap —
+  // cegah entri disingkat 2 digit (mis. "99" dikira mewakili 1999) yang lolos secara numerik
+  // tapi salah secara semantik. Cuma divalidasi kalau field ini benar-benar disentuh (endpoint
+  // ini partial-update — field yang tidak dikirim tidak boleh ikut divalidasi/diubah).
+  if (body.graduationYear !== undefined) {
+    const y = body.graduationYear;
+    if (y === null || !Number.isInteger(y) || y < 1920 || y > new Date().getFullYear()) {
+      return NextResponse.json(
+        { error: "Tahun lulus KMI wajib diisi dengan tahun 4-digit lengkap (mis. 1999), bukan disingkat 2 digit." },
+        { status: 400 },
+      );
+    }
+  }
+
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
 
   if (body.name          !== undefined) updateData.name           = body.name.trim();

@@ -50,6 +50,18 @@ type ActionResult =
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+// graduationYear (Tahun Lulus KMI) wajib diisi dan harus tahun 4-digit lengkap — cegah entri
+// disingkat 2 digit (mis. "99" dikira mewakili 1999) yang valid secara numerik tapi salah
+// secara semantik. Dipakai createMemberAction + updateMemberAction (satu-satunya caller:
+// step1-identity.tsx, selalu kirim Step 1 penuh — bukan partial update, aman divalidasi keras).
+function validateGraduationYear(year: number | undefined): string | null {
+  if (!year) return "Tahun lulus KMI wajib diisi.";
+  if (!Number.isInteger(year) || year < 1950 || year > new Date().getFullYear()) {
+    return `Tahun lulus KMI harus 4 digit tahun lengkap (mis. 1999), bukan disingkat 2 digit seperti "99".`;
+  }
+  return null;
+}
+
 function sanitize(data: MemberFormData) {
   return {
     name: data.name.trim(),
@@ -80,6 +92,9 @@ export async function createMemberAction(
   if (!data.name?.trim()) {
     return { success: false, error: "Nama anggota wajib diisi." };
   }
+
+  const graduationYearError = validateGraduationYear(data.graduationYear);
+  if (graduationYearError) return { success: false, error: graduationYearError };
 
   try {
     // Generate nomor anggota global via PostgreSQL SEQUENCE
@@ -152,6 +167,9 @@ export async function updateMemberAction(
   if (!data.name?.trim()) {
     return { success: false, error: "Nama anggota wajib diisi." };
   }
+
+  const graduationYearError = validateGraduationYear(data.graduationYear);
+  if (graduationYearError) return { success: false, error: graduationYearError };
 
   try {
     // Anggota yang dibuat via jalur lain (self-service register, buat owner pertama dari

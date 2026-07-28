@@ -391,3 +391,15 @@ Pattern ini juga berlaku untuk semua form lain yang butuh wilayah (termasuk modu
   3. Bulk Import Commit (`commitImportAction`)
   4. User Self-Service Profile Update (`PATCH /api/akun/member-data`)
 
+**Guard `graduationYear` — wajib 4-digit lengkap (2026-07-28)**: karena `graduationYear` dipakai
+sebagai kunci pencocokan LANGSUNG (`marhalahYear = graduationYear`), entri disingkat 2-digit
+(mis. "99" alih-alih "1999") lolos sebagai NILAI NUMERIK VALID tapi tidak akan pernah cocok
+dengan `marhalahYear` tenant manapun (yang selalu 4-digit) — auto-join Marhalah gagal DIAM-DIAM,
+tanpa error apa pun. Ditambah bahwa nilai yang salah ini juga dipakai membangun Nomor
+Keanggotaan Forum (§ "Nomor Keanggotaan Lokal Forum" di `docs/arsitektur-backbone-ikpm.md`).
+Guard ditambahkan di 3 dari 4 titik di atas (poin 1/2/4 — required + range 1920/1950–tahun
+berjalan, tolak kalau di luar itu); titik ke-3 (Bulk Import) SUDAH punya guard setara sejak
+lama (`parseGraduationYear()` di `lib/import-anggota-mapping.ts`, reject <1950 atau >tahun
+berjalan → `null`, ditandai tidak match di preview). Detail lengkap: lesson CLAUDE.md
+`[2026-07-28] Guard Tahun Lulus KMI`.
+
