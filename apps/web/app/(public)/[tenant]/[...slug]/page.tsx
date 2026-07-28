@@ -13,6 +13,7 @@
 //      diabaikan untuk lookup, sama alasannya)
 //   5. Tidak ketemu apa pun di atas → cek legacy_url_redirects, redirect 308 kalau ketemu
 //   6. Semua gagal → notFound()
+import { cache } from "react";
 import { notFound, permanentRedirect } from "next/navigation";
 import { eq, and } from "drizzle-orm";
 import { createTenantDb, db, tenants, getSettings, type TenantDb } from "@jalajogja/db";
@@ -62,7 +63,20 @@ async function postExists(tenantClient: TenantDb, postSlug: string): Promise<boo
   return !!row;
 }
 
-async function resolveSlugKind(tenantSlug: string, segments: string[]): Promise<Resolution> {
+// React.cache() — dedup pemanggilan antara generateMetadata() dan CatchAllPage() untuk request
+// yang sama (docs/rencana-perbaikan-akses-404.md § 3.3/Fase C). Next.js TIDAK otomatis dedup
+// fungsi custom seperti fetch() — tanpa ini, setiap request menjalankan query ini 2x.
+//
+// PENTING — argumen kedua HARUS primitif (string), BUKAN array `segments: string[]`: dibuktikan
+// EMPIRIS (console.log sementara + curl) bahwa `segments` yang didestructure dari `await params`
+// di generateMetadata() dan CatchAllPage() TERNYATA array reference yang BERBEDA meski isinya
+// identik — asumsi awal "Next.js selalu bagi objek params yang sama" ternyata TIDAK berlaku di
+// sini (beda dari getCurrentSession di lib/tenant.ts yang argumennya nol/primitif semua).
+// React.cache() bandingkan argumen non-primitif secara REFERENCE, bukan deep-equality — array
+// beda reference = cache miss meski isinya sama. Fix: gabung segments jadi satu string sebelum
+// masuk fungsi cache, split lagi di dalam. String primitif dibandingkan by VALUE, dedup benar.
+const resolveSlugKind = cache(async (tenantSlug: string, joinedSegments: string): Promise<Resolution> => {
+  const segments = joinedSegments.split("/");
   const tenantClient = createTenantDb(tenantSlug);
   const { db: tenantDb, schema } = tenantClient;
 
@@ -98,7 +112,7 @@ async function resolveSlugKind(tenantSlug: string, segments: string[]): Promise<
   if (redirectRow) return { kind: "redirect", to: redirectRow.redirectTo };
 
   return { kind: "none" };
-}
+});
 
 // ── Page fetch + metadata (dipertahankan persis dari [pageSlug]/page.tsx lama) ──────────────
 
@@ -234,7 +248,7 @@ async function renderPage(slug: string, pageSlug: string) {
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: tenantSlug, slug: segments } = await params;
-  const resolution = await resolveSlugKind(tenantSlug, segments);
+  const resolution = await resolveSlugKind(tenantSlug, segments.join("/"));
 
   if (resolution.kind === "page") return getPageMetadata(tenantSlug, resolution.pageSlug);
   if (resolution.kind === "post") return getPostDetailMetadata(tenantSlug, resolution.postSlug);
@@ -243,7 +257,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function CatchAllPage({ params }: { params: Params }) {
   const { tenant: tenantSlug, slug: segments } = await params;
-  const resolution = await resolveSlugKind(tenantSlug, segments);
+  const resolution = await resolveSlugKind(tenantSlug, segments.join("/"));
 
   if (resolution.kind === "redirect") {
     permanentRedirect(resolution.to);

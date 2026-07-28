@@ -1,11 +1,16 @@
 # Rencana Perbaikan — 404 Tersembunyi, Beban DB, dan Dugaan Blokir IP
 
-> **Status: 📋 RENCANA — BELUM DIEKSEKUSI.** Ditulis 2026-07-28 setelah user melaporkan "kadang
-> beberapa orang tidak bisa membuka website kita" dan meminta verifikasi ulang atas analisa agen
-> lain (dikutip di § 1). Dokumen ini HANYA perencanaan — eksekusi menyusul setelah dikonfirmasi.
-> Sesi yang menulis ini TIDAK punya akses SSH ke VPS — semua temuan § 3 berbasis baca kode
-> langsung (grep + Read), semua yang butuh akses VPS ditandai eksplisit "TIDAK BISA
-> diverifikasi dari sini" dan dipindah jadi prosedur manual untuk user (§ 6).
+> **Status: ✅ Fase A+B+C DIEKSEKUSI DAN DIVERIFIKASI (2026-07-28).** § 6 (cek Fail2ban di VPS)
+> masih tugas manual user — belum dijalankan. Fase D dan § 8 masih **sengaja ditunda** sesuai
+> § 9 (menunggu data § 6). Lihat **§ 11 "Hasil Eksekusi"** untuk detail implementasi aktual +
+> 2 deviasi penting dari draft rencana ini (ditemukan SAAT eksekusi, bukan diantisipasi di sini).
+>
+> Ditulis 2026-07-28 setelah user melaporkan "kadang beberapa orang tidak bisa membuka website
+> kita" dan meminta verifikasi ulang atas analisa agen lain (dikutip di § 1). Sesi yang menulis
+> rencana ini TIDAK punya akses SSH ke VPS — semua temuan § 3 berbasis baca kode langsung (grep +
+> Read), semua yang butuh akses VPS ditandai eksplisit "TIDAK BISA diverifikasi dari sini" dan
+> dipindah jadi prosedur manual untuk user (§ 6) — ini TETAP berlaku, sesi eksekusi juga tidak
+> punya akses SSH.
 
 ## 1. Latar Belakang
 
@@ -309,14 +314,105 @@ infra yang berisiko kalau salah, konsisten prinsip kehati-hatian project ini).
 
 ## 10. Checklist Verifikasi Sebelum Dianggap Selesai
 
-- [ ] `tsc --noEmit` bersih di `apps/web`
-- [ ] `bun run build --filter=@jalajogja/web` sukses (dev server dimatikan, `.next`
-      dibersihkan dulu, sesuai SOP project)
-- [ ] `curl -I` untuk `/favicon.ico`, `/apple-touch-icon.png`, `/icon.png` di domain sendiri →
-      200, tidak lagi masuk ke tenant lookup
-- [ ] Regresi sweep rute publik + admin + custom domain (pola yang sudah established di
-      sesi-sesi sebelumnya untuk perubahan middleware/routing) — semua tetap berfungsi normal
-- [ ] Konfirmasi `resolveSlugKind()` cuma dipanggil sekali per request (log sementara, dihapus
-      lagi setelah verifikasi)
+- [x] `tsc --noEmit` bersih di `apps/web` — 0 error di setiap tahap (Fase A, B, C terpisah)
+- [x] `bun run build --filter=@jalajogja/web` sukses (dev server dimatikan, `.next`
+      dibersihkan dulu, sesuai SOP project) — genuine build (bukan cache-hit) di tiap fase
+- [x] `curl -I` untuk `/favicon.ico`, `/icon.svg`, `/apple-icon.png`, `/manifest.webmanifest` di
+      domain sendiri → 200, tidak lagi masuk ke tenant lookup (nama file beda dari draft — lihat
+      § 11.1 untuk alasan)
+- [x] Regresi sweep rute publik + admin + custom domain — SEMUA lulus: robots.txt/sitemap.xml
+      custom domain (genuine rewrite via `x-middleware-rewrite` header, bukan false-positive),
+      halaman biasa custom domain, `/app/*` auth guard (own+custom domain), `/platform/*` guard,
+      isolasi cross-tenant (slug tidak cocok → redirect canonical), carve-out `/admin/*`. Detail
+      di § 11.2.
+- [x] Konfirmasi `resolveSlugKind()` cuma dipanggil sekali per request — dibuktikan dengan
+      `console.log` sementara + curl 3 skenario (existing page ×2, 404), log tercetak PERSIS
+      sekali tiap kali. Log dihapus setelah verifikasi. Detail deviasi signature di § 11.3.
 - [ ] Hasil § 6 (cek Fail2ban VPS) dibawa balik ke sesi ini untuk diputuskan apakah § 8 perlu
-      dikerjakan
+      dikerjakan — **masih tugas user, belum dijalankan**
+
+## 11. Hasil Eksekusi (2026-07-28)
+
+Fase A, B, C dieksekusi berurutan sesuai § 9 (independen dari hasil § 6). Dua deviasi dari draft
+rencana ini ditemukan SAAT eksekusi (bukan diantisipasi saat rencana ditulis) — dicatat di sini
+supaya siapa pun yang baca dokumen ini nanti tidak bingung kenapa kode aktual sedikit berbeda
+dari § 7 di atas.
+
+### 11.1. Fase A — nama file beda dari draft, alasan teknis
+
+Draft menyebut `icon.png`, `manifest.json`/`site.webmanifest`. Yang genuinely dibangun:
+- `apps/web/app/icon.svg` — SVG geometris murni (bujur sangkar rounded + lingkaran), BUKAN PNG
+  berteks. Percobaan pertama pakai teks "J" dengan `font-family` gagal render (Sharp/librsvg
+  tidak resolve font di environment ini, tanpa error apa pun — cuma hasil kosong/invisible).
+  Diganti bentuk geometris murni yang tidak butuh font sama sekali.
+- `apps/web/app/apple-icon.png` — 180×180 PNG, di-generate dari SVG yang sama via Sharp. Ini
+  Next.js App Router **special file** (bukan static asset biasa) — otomatis jadi route
+  `/apple-icon.png` tanpa config tambahan.
+- `apps/web/app/favicon.ico` — PNG 32×32 dibungkus manual ke container ICO (ICONDIR 6 byte +
+  ICONDIRENTRY 16 byte + data PNG mentah) via Node buffer construction — Sharp tidak punya
+  encoder ICO native, browser modern menerima ICO berisi PNG compressed.
+- `apps/web/app/manifest.ts` — Next.js special file (BUKAN `manifest.json` statis), otomatis
+  jadi route `/manifest.webmanifest` (bukan `/site.webmanifest` seperti draft).
+
+Fungsional: SEMUA 4 path tetap terpenuhi (browser fetch `/favicon.ico`, `/manifest.webmanifest`,
+dll — bukan `/site.webmanifest` yang sudah lama tidak jadi standar). Draft menyebut nama file
+generik dari pengetahuan umum web, bukan verifikasi ke Next.js App Router convention yang
+sebenarnya dipakai project ini.
+
+### 11.2. Fase B — `robots.txt`/`sitemap.xml` DIKELUARKAN dari exclude list, kebalikan draft
+
+**Ini deviasi paling penting.** Draft § 7 Fase B secara eksplisit menyertakan `robots\\.txt` dan
+`sitemap\\.xml` di daftar exclude middleware, dengan catatan "dicek dulu saat eksekusi apakah
+ini menimbulkan regresi". Saat eksekusi, dicek — DAN GENUINELY MENIMBULKAN REGRESI: kedua path
+itu di sesi lain (paralel, sebelum sesi 404 ini) baru saja dibangun sebagai Route Handler
+ter-nested per-tenant (`app/(public)/[tenant]/robots.txt/route.ts`,
+`.../sitemap*.xml/route.ts`) yang **BERGANTUNG** pada middleware men-rewrite custom domain
+(`{custom-domain}/robots.txt` → `/{slug}/robots.txt` secara internal) — fix yang sudah
+diverifikasi LIVE di production (`docs/arsitektur-seo.md` § 6c.2/6c.3). Mengecualikan kedua path
+itu dari middleware akan MEMATIKAN rewrite tersebut dan meregresi fix production yang sudah
+berjalan.
+
+Matcher final HANYA menambah `icon\\.svg`, `apple-icon\\.png`, `manifest\\.webmanifest` ke
+exclude list — TIDAK menyertakan `robots.txt`/`sitemap.xml` sama sekali (beda persis dari
+contoh kode di § 7 Fase B di atas). Diverifikasi empiris: `robots.txt`/`sitemap.xml` pada
+custom domain simulasi TETAP ter-rewrite dengan benar (header `x-middleware-rewrite` muncul,
+konten sitemap pakai domain custom yang benar) SETELAH perubahan matcher ini — regresi nol.
+
+### 11.3. Fase C — signature `resolveSlugKind()` beda dari draft, akibat temuan `React.cache()`
+
+Draft § 7 Fase C menulis signature `cache(async (tenantSlug: string, segments: string[]) => ...)`
+— TIDAK bekerja seperti diharapkan. Dibuktikan empiris (`console.log` + curl): argumen `segments`
+(array) yang didestructure dari `await params` di `generateMetadata()` dan `CatchAllPage()`
+ternyata REFERENCE BERBEDA meski isinya identik — `React.cache()` membandingkan argumen
+non-primitif SECARA REFERENCE, bukan deep-equality, jadi cache MISS tetap terjadi (log tercetak
+2×, bukan 1×). Fix: signature diubah jadi `cache(async (tenantSlug: string, joinedSegments:
+string) => ...)` — array digabung jadi string SEBELUM masuk fungsi cache (string dibandingkan
+by VALUE), di-split lagi di dalam. Setelah fix ini, log tercetak PERSIS 1× per request di semua
+3 skenario tes (existing page ×2, 404 ×1). Kode aktual: `apps/web/app/(public)/[tenant]/
+[...slug]/page.tsx` baris 66-115 (komentar di file itu sendiri sudah mendokumentasikan temuan
+ini secara lengkap).
+
+### 11.4. Verifikasi regresi Fase B — cakupan penuh
+
+Setup: 1 tenant lokal (`pc-ikpm-jogjakarta`) diberi custom domain palsu sementara
+(`test-middleware-verify.local`) via `UPDATE public.tenants`, test server `next start` dengan
+`APP_INTERNAL_URL` diset benar (pelajaran dari kejadian false-positive robots.txt sebelumnya di
+sesi lain — lihat `docs/arsitektur-seo.md` § 6c.2b), dibersihkan (`custom_domain = NULL`) setelah
+selesai. Hasil (semua via curl langsung, bukan cuma baca kode):
+
+| Skenario | Hasil |
+|---|---|
+| `/favicon.ico`, `/icon.svg`, `/apple-icon.png`, `/manifest.webmanifest` (domain sendiri) | 200 |
+| `/robots.txt` (custom domain) | 200, `x-middleware-rewrite` present, `Sitemap:` pakai domain custom |
+| `/sitemap.xml` (custom domain) | 200, `x-middleware-rewrite` present, isi `<loc>` pakai domain custom |
+| `/post` (custom domain, halaman biasa) | 200, `x-middleware-rewrite` present, title benar |
+| `/app/{slug}/dashboard` tanpa sesi (domain sendiri) | 307 → `/app/login?redirect=...` |
+| `/platform/dashboard` tanpa sesi (domain sendiri) | 307 → `/platform/login` |
+| `/app/{slug-cocok}/dashboard` tanpa sesi (custom domain, slug = pemilik domain) | 302 → `/login?redirect=...` DI DOMAIN YANG SAMA (Opsi C, pre-existing, tidak terkait perubahan Fase B) |
+| `/app/{slug-BEDA}/dashboard` (custom domain) | 302 → URL kanonik absolut (isolasi cross-tenant tetap intact) |
+| `/admin` tanpa sesi (custom domain) | 302 → `/login?redirect=%2Fadmin` (carve-out Sub-fase 1 tetap intact) |
+| `/produk`, `/agenda` (domain sendiri) | 200 |
+| `/produk` (custom domain) | 200, `x-middleware-rewrite` present |
+
+Semua data test (custom domain sementara di DB, temp file curl, test server) dibersihkan setelah
+verifikasi, dikonfirmasi bersih.
