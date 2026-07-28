@@ -4,6 +4,7 @@ import type { TenantDb } from "@jalajogja/db";
 import { getImageUrl } from "@/lib/image-url";
 import { publicUrl } from "@/lib/minio";
 import type { PostCardData } from "@/lib/post-card-templates";
+import { resolvePostHrefs } from "@/lib/post-permalink.server";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -112,6 +113,7 @@ type PostRow = {
   coverId:      string | null;
   isFeatured:   boolean;
   categoryName: string | null;
+  categorySlug: string | null;
   publishedAt:  Date | null;
 };
 
@@ -132,6 +134,7 @@ export async function fetchSidebarPosts(
     coverId:      schema.posts.coverId,
     isFeatured:   schema.posts.isFeatured,
     categoryName: schema.postCategories.name,
+    categorySlug: schema.postCategories.slug,
     publishedAt:  schema.posts.publishedAt,
   };
 
@@ -187,9 +190,10 @@ export async function fetchSidebarPosts(
         .limit(limit);
   }
 
-  const mediaMap = await resolveCovers(db, schema, rows, tenantSlug);
+  const mediaMap  = await resolveCovers(db, schema, rows, tenantSlug);
+  const withHrefs = await resolvePostHrefs(tenantClient, rows);
 
-  return rows.map(r => {
+  return withHrefs.map(r => {
     const cover = r.coverId ? (mediaMap.get(r.coverId) ?? null) : null;
     return {
       id:            r.id,
@@ -203,6 +207,7 @@ export async function fetchSidebarPosts(
       categoryName:  r.categoryName,
       publishedAt:   r.publishedAt ? r.publishedAt.toISOString() : null,
       isFeatured:    r.isFeatured,
+      href:          r.href,
     };
   });
 }

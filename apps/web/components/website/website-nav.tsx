@@ -3,15 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, FileText, FileStack, Tag, Inbox, Settings2 } from "lucide-react";
+import { LayoutDashboard, FileText, FileStack, Tag, Inbox, Settings2, Import } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: "Dashboard",   icon: LayoutDashboard, path: ""             },
-  { label: "Posts",       icon: FileText,         path: "/posts"       },
-  { label: "Halaman",     icon: FileStack,         path: "/pages"       },
-  { label: "Kategori",    icon: Tag,               path: "/categories"  },
-  { label: "Pesan",       icon: Inbox,             path: "/pesan"       },
-  { label: "Pengaturan",  icon: Settings2,         path: "/pengaturan"  },
+  { label: "Dashboard",   icon: LayoutDashboard, path: ""                   },
+  { label: "Posts",       icon: FileText,         path: "/posts"             },
+  { label: "Halaman",     icon: FileStack,         path: "/pages"             },
+  { label: "Kategori",    icon: Tag,               path: "/categories"        },
+  { label: "Pesan",       icon: Inbox,             path: "/pesan"             },
+  { label: "Import WP",   icon: Import,            path: "/import-wordpress"  },
+  { label: "Pengaturan",  icon: Settings2,         path: "/pengaturan"        },
 ] as const;
 
 export function WebsiteNav({ slug }: { slug: string }) {

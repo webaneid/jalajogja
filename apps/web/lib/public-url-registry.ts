@@ -76,9 +76,6 @@ export function getStaticLinks(slug: string, q?: string): PublicLink[] {
 export function buildPageUrl(slug: string, pageSlug: string) {
   return `/${slug}/${pageSlug}`;
 }
-export function buildPostUrl(slug: string, postSlug: string) {
-  return `/${slug}/post/${postSlug}`;
-}
 export function buildPostCategoryUrl(slug: string, catSlug: string) {
   return `/${slug}/post?category=${catSlug}`;
 }

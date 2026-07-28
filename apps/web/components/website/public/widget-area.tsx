@@ -6,9 +6,10 @@ type Props = {
   id:           string;
   tenantClient: TenantDb;
   tenantSlug:   string;
+  baseUrl:      string;
 };
 
-export async function WidgetArea({ id, tenantClient, tenantSlug }: Props) {
+export async function WidgetArea({ id, tenantClient, tenantSlug, baseUrl }: Props) {
   const sections = await fetchWidgetArea(id, tenantClient);
   if (!sections) return null;
 
@@ -20,6 +21,7 @@ export async function WidgetArea({ id, tenantClient, tenantSlug }: Props) {
           section={{ id: section.id, type: section.type, label: section.label, filter: section.filter, limit: section.limit }}
           tenantClient={tenantClient}
           tenantSlug={tenantSlug}
+          baseUrl={baseUrl}
         />
       ))}
     </aside>
@@ -30,10 +32,12 @@ async function SidebarSection({
   section,
   tenantClient,
   tenantSlug,
+  baseUrl,
 }: {
   section:      Parameters<typeof fetchSidebarPosts>[1];
   tenantClient: TenantDb;
   tenantSlug:   string;
+  baseUrl:      string;
 }) {
   const posts = await fetchSidebarPosts(tenantClient, section, tenantSlug);
   if (!posts.length) return null;
@@ -45,7 +49,7 @@ async function SidebarSection({
       </h2>
       <div>
         {posts.map(post => (
-          <PostCardList key={post.id} post={post} tenantSlug={tenantSlug} />
+          <PostCardList key={post.id} post={post} baseUrl={baseUrl} />
         ))}
       </div>
     </div>

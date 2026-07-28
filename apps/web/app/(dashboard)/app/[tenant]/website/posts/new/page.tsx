@@ -1,4 +1,5 @@
-import { createTenantDb } from "@jalajogja/db";
+import { eq } from "drizzle-orm";
+import { createTenantDb, db as publicDb, user as authUser } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { redirect } from "next/navigation";
 import { PostForm } from "@/components/website/post-form";
@@ -30,19 +31,21 @@ export default async function PostsNewPage({
 
   const { db, schema } = createTenantDb(slug);
 
-  const [categories, tags] = await Promise.all([
+  const [categories, tags, [currentUser]] = await Promise.all([
     db.select({ id: schema.postCategories.id, name: schema.postCategories.name, slug: schema.postCategories.slug })
       .from(schema.postCategories)
       .orderBy(schema.postCategories.name),
     db.select({ id: schema.postTags.id, name: schema.postTags.name, slug: schema.postTags.slug })
       .from(schema.postTags)
       .orderBy(schema.postTags.name),
+    publicDb.select({ name: authUser.name }).from(authUser).where(eq(authUser.id, access.userId)).limit(1),
   ]);
 
   return (
     <PostForm
       slug={slug}
       postId={null}
+      currentUserName={currentUser?.name ?? null}
       initialData={{
         title:       "",
         postSlug:    "",
@@ -54,6 +57,8 @@ export default async function PostsNewPage({
         tagIds:      [],
         status:      "draft",
         publishedAt: null,
+        displayAuthorId: null,
+        editorId:        null,
         seo:         DEFAULT_SEO,
       }}
       categories={categories}

@@ -49,7 +49,9 @@ export type PostsSectionProps = {
   data:           PostsSectionData;
   posts:          PostCardData[];
   featuredPosts?: PostCardData[];
-  tenantSlug:     string;
+  // baseUrl untuk gabung dengan post.href (relatif) — bukan tenantSlug mentah, supaya benar
+  // di custom domain. Lihat lib/post-permalink.server.ts + docs/arsitektur-import-export-post-wordpress.md § 5.
+  baseUrl:        string;
   sectionTitle:   string;   // sudah di-resolve: filterLabel ?? data.title ?? "Berita Terbaru"
   filterHref:     string;   // selalu terisi: /post?category=x | /post?tag=x | /post
   columnData?:    ColumnRenderData[];

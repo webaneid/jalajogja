@@ -1,7 +1,7 @@
 import { PostCard } from "@/components/website/public/post-cards/post-card";
 import type { PostsSectionProps } from "@/lib/posts-section-designs";
 
-export function PostsDesign1({ data, posts, featuredPosts = [], tenantSlug }: PostsSectionProps) {
+export function PostsDesign1({ data, posts, featuredPosts = [], baseUrl }: PostsSectionProps) {
   const leftPosts  = posts.slice(0, 5);
   const rightPosts = posts.slice(5, 10);
   const centerPosts = (featuredPosts.length > 0 ? featuredPosts : posts.slice(0, 3)).slice(0, 3);
@@ -21,11 +21,11 @@ export function PostsDesign1({ data, posts, featuredPosts = [], tenantSlug }: Po
         {/* ── MOBILE: overlay pertama + list sisanya ── */}
         <div className="md:hidden">
           {mobileFirst && (
-            <PostCard post={mobileFirst} variant="overlay" tenantSlug={tenantSlug} className="aspect-[4/3] mb-4" />
+            <PostCard post={mobileFirst} variant="overlay" baseUrl={baseUrl} className="aspect-[4/3] mb-4" />
           )}
           <div>
             {mobileRest.map(p => (
-              <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
+              <PostCard key={p.id} post={p} variant="list" baseUrl={baseUrl} />
             ))}
           </div>
         </div>
@@ -37,10 +37,10 @@ export function PostsDesign1({ data, posts, featuredPosts = [], tenantSlug }: Po
           {leftPosts.length > 0 && (
             <div className="flex flex-col gap-3 border-r border-border pr-4">
               {leftPosts[0] && (
-                <PostCard post={leftPosts[0]} variant="klasik" tenantSlug={tenantSlug} />
+                <PostCard post={leftPosts[0]} variant="klasik" baseUrl={baseUrl} />
               )}
               {leftPosts.slice(1).map(p => (
-                <PostCard key={p.id} post={p} variant="judul" tenantSlug={tenantSlug} />
+                <PostCard key={p.id} post={p} variant="judul" baseUrl={baseUrl} />
               ))}
             </div>
           )}
@@ -49,10 +49,10 @@ export function PostsDesign1({ data, posts, featuredPosts = [], tenantSlug }: Po
           {centerPosts.length > 0 && (
             <div className="flex flex-col gap-3">
               {centerPosts[0] && (
-                <PostCard post={centerPosts[0]} variant="overlay" tenantSlug={tenantSlug} />
+                <PostCard post={centerPosts[0]} variant="overlay" baseUrl={baseUrl} />
               )}
               {centerPosts.slice(1).map(p => (
-                <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
+                <PostCard key={p.id} post={p} variant="list" baseUrl={baseUrl} />
               ))}
             </div>
           )}
@@ -61,10 +61,10 @@ export function PostsDesign1({ data, posts, featuredPosts = [], tenantSlug }: Po
           {showRight && (
             <div className="flex flex-col gap-3 border-l border-border pl-4">
               {rightPosts[0] && (
-                <PostCard post={rightPosts[0]} variant="klasik" tenantSlug={tenantSlug} />
+                <PostCard post={rightPosts[0]} variant="klasik" baseUrl={baseUrl} />
               )}
               {rightPosts.slice(1).map(p => (
-                <PostCard key={p.id} post={p} variant="judul" tenantSlug={tenantSlug} />
+                <PostCard key={p.id} post={p} variant="judul" baseUrl={baseUrl} />
               ))}
             </div>
           )}

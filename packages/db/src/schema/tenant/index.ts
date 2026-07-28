@@ -2,7 +2,7 @@ import { pgSchema } from "drizzle-orm/pg-core";
 import { createUsersTable } from "./users";
 import { createCustomRolesTable } from "./custom-roles";
 import { createTenantInvitesTable } from "./tenant-invites";
-import { createPagesTable, createPostCategoriesTable, createPostsTable, createPostTagsTable, createPostTagPivotTable, createMediaTable, createContactSubmissionsTable } from "./website";
+import { createPagesTable, createPostCategoriesTable, createPostsTable, createPostAuthorsTable, createPostTagsTable, createPostTagPivotTable, createMediaTable, createContactSubmissionsTable, createLegacyUrlRedirectsTable } from "./website";
 import { createLetterTypesTable, createLetterContactsTable, createLetterTemplatesTable, createLettersTable, createLetterNumberSequencesTable } from "./letters";
 import {
   createDivisionsTable,
@@ -53,11 +53,13 @@ function buildTenantSchema(slug: string) {
     // Website
     pages:               createPagesTable(s),
     postCategories:      createPostCategoriesTable(s),
+    postAuthors:         createPostAuthorsTable(s),
     posts:               createPostsTable(s),
     postTags:            createPostTagsTable(s),
     postTagPivot:        createPostTagPivotTable(s),
     media:               createMediaTable(s),
     contactSubmissions:  createContactSubmissionsTable(s),
+    legacyUrlRedirects:  createLegacyUrlRedirectsTable(s),
     // Surat menyurat
     letterTypes:           createLetterTypesTable(s),
     letterContacts:        createLetterContactsTable(s),

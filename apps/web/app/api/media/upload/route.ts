@@ -29,8 +29,14 @@ const VARIANT_SUFFIXES: Record<VariantKey, string> = {
   profile:        "_pf",
 };
 
-// Urutan prioritas untuk path backward-compat (kode lama pakai path tunggal)
-const PATH_PRIORITY: VariantKey[] = ["large", "square-large", "square", "profile", "original"];
+// Urutan prioritas untuk path backward-compat (kode lama pakai path tunggal) — variant SEASPEK
+// (large/medium/thumbnail, semua 1.91:1) didahulukan dari variant KOTAK (square-large/square,
+// 1:1) sebelum profile/original. Kalau sumber terlalu kecil untuk "large" (umum untuk gambar
+// dari the_content()/gallery WordPress import, biasanya ~700-800px), fallback jatuh ke
+// medium/thumbnail (rasio sama, tetap wide) dulu — BUKAN langsung loncat ke square yang akan
+// memotong paksa gambar landscape jadi kotak. Bug ditemukan dari laporan user: gambar konten
+// WordPress import "selalu square" — root cause: urutan lama loncat large→square langsung.
+const PATH_PRIORITY: VariantKey[] = ["large", "medium", "thumbnail", "square-large", "square", "profile", "original"];
 
 export async function POST(req: NextRequest) {
   const session = await getCurrentSession();
@@ -134,7 +140,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 
-  // Primary path: prioritas large → square-large → square → profile → original
+  // Primary path: prioritas large → medium → thumbnail → square-large → square → profile → original
   const primaryKey  = PATH_PRIORITY.find(k => variantPaths[k]) ?? variantKeys[0];
   const primaryPath = variantPaths[primaryKey];
   const filename    = path.basename(primaryPath);

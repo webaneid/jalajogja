@@ -53,6 +53,10 @@ export function createPagesTable(s: ReturnType<typeof pgSchema>) {
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt:   timestamp("created_at",   { withTimezone: true }).notNull().defaultNow(),
     updatedAt:   timestamp("updated_at",   { withTimezone: true }).notNull().defaultNow(),
+    // Traceability import WordPress (docs/arsitektur-import-export-post-wordpress.md § 14.1) —
+    // nullable, TANPA FK (cross-schema ke public.content_import_batches, pola sama
+    // cross-reference longgar lain di project ini). NULL = bukan hasil import.
+    importBatchId: uuid("import_batch_id"),
   });
 }
 
@@ -74,6 +78,23 @@ export function createPostCategoriesTable(s: ReturnType<typeof pgSchema>) {
 export const POST_TWITTER_CARDS   = ["summary", "summary_large_image"] as const;
 export const POST_ROBOTS_VALUES   = ["index,follow", "noindex", "noindex,nofollow"] as const;
 export const POST_SCHEMA_TYPES    = ["Article", "NewsArticle", "BlogPosting"] as const;
+
+// Profil penulis/editor byline post — terpisah dari authorId (pemilik draft internal, tidak
+// pernah tampil ke publik). Bisa tertaut ke public.members (memberId terisi, tanpa FK
+// constraint — cross-schema, pola sama tenant.users.member_id) ATAU berdiri sendiri sebagai
+// profil tamu (memberId null). Satu row bisa dipakai berulang lintas post (recall) — dan
+// bisa berperan sebagai Penulis di satu post, Editor di post lain. Lihat docs/arsitektur-penulis-post.md.
+export function createPostAuthorsTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("post_authors", {
+    id:        uuid("id").primaryKey().defaultRandom(),
+    memberId:  uuid("member_id"),           // cross-schema → public.members.id, tanpa FK constraint
+    name:      text("name").notNull(),
+    bio:       text("bio"),
+    avatarUrl: text("avatar_url"),          // URL langsung, bukan media_id — pola sama cover_url usaha/pesantren
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  });
+}
 
 // Artikel/berita/pengumuman
 export function createPostsTable(s: ReturnType<typeof pgSchema>) {
@@ -101,12 +122,18 @@ export function createPostsTable(s: ReturnType<typeof pgSchema>) {
     structuredData: jsonb("structured_data"),
     isFeatured: boolean("is_featured").notNull().default(false),
     status: text("status", { enum: CONTENT_STATUSES }).notNull().default("draft"),
-    authorId:   uuid("author_id"),          // FK → users.id via SQL migration
+    authorId:   uuid("author_id"),          // FK → users.id via SQL migration — pemilik draft internal, immutable
+    // Byline publik — NULL berarti fallback ke resolusi authorId lama (lihat docs/arsitektur-penulis-post.md § 3)
+    displayAuthorId: uuid("display_author_id"), // FK → post_authors.id via SQL migration
+    editorId:        uuid("editor_id"),         // FK → post_authors.id via SQL migration, selalu opsional
     categoryId: uuid("category_id"),        // FK → post_categories.id via SQL migration
     viewCount:  integer("view_count").notNull().default(0),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt:   timestamp("created_at",   { withTimezone: true }).notNull().defaultNow(),
     updatedAt:   timestamp("updated_at",   { withTimezone: true }).notNull().defaultNow(),
+    // Traceability import WordPress (docs/arsitektur-import-export-post-wordpress.md § 14.1) —
+    // nullable, TANPA FK (cross-schema ke public.content_import_batches). NULL = bukan hasil import.
+    importBatchId: uuid("import_batch_id"),
   });
 }
 
@@ -196,6 +223,9 @@ export function createMediaTable(s: ReturnType<typeof pgSchema>) {
     originalExpiresAt:    timestamp("original_expires_at", { withTimezone: true }),
     // Manual crop override (Phase D2) — koordinat dalam persen (0–100) relatif terhadap original
     cropData:             jsonb("crop_data").$type<CropData | null>(),
+    // Traceability import WordPress (docs/arsitektur-import-export-post-wordpress.md § 14.1) —
+    // nullable, TANPA FK (cross-schema ke public.content_import_batches). NULL = bukan hasil import.
+    importBatchId: uuid("import_batch_id"),
   });
 }
 
@@ -213,10 +243,25 @@ export function createContactSubmissionsTable(s: ReturnType<typeof pgSchema>) {
   });
 }
 
+// Redirect 301 dari URL WordPress lama ke URL Jalakarta baru — docs/arsitektur-import-export-
+// post-wordpress.md § 5.5. Populate saat commit import (post_id longgar, tanpa FK — pola sama
+// import_batch_id). Wiring ke routing (cek redirect di catch-all sebelum notFound()) adalah
+// tugas Fase 3 (§ 8 roadmap), TIDAK dibangun di sini — hanya penyimpanan datanya.
+export function createLegacyUrlRedirectsTable(s: ReturnType<typeof pgSchema>) {
+  return s.table("legacy_url_redirects", {
+    id:         uuid("id").primaryKey().defaultRandom(),
+    oldPath:    text("old_path").notNull().unique(),  // relatif, tanpa domain, tanpa prefix slug tenant
+    redirectTo: text("redirect_to").notNull(),         // path baru Jalakarta, relatif
+    postId:     uuid("post_id"),                       // longgar, tanpa FK — housekeeping saja
+    createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  });
+}
+
 export type PostsTable               = ReturnType<typeof createPostsTable>;
 export type PagesTable               = ReturnType<typeof createPagesTable>;
 export type MediaTable               = ReturnType<typeof createMediaTable>;
 export type ContactSubmissionsTable  = ReturnType<typeof createContactSubmissionsTable>;
+export type LegacyUrlRedirectsTable  = ReturnType<typeof createLegacyUrlRedirectsTable>;
 
 export type PostTwitterCard = typeof POST_TWITTER_CARDS[number];
 export type PostRobots      = typeof POST_ROBOTS_VALUES[number];

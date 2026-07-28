@@ -7,16 +7,16 @@ const fmt = (date: string | null) =>
 
 export function PostCardOverlay({
   post,
-  tenantSlug,
+  baseUrl,
   className,
 }: {
   post:       PostCardData;
-  tenantSlug: string;
+  baseUrl:    string;
   className?: string;
 }) {
   return (
     <a
-      href={`/${tenantSlug}/post/${post.slug}`}
+      href={`${baseUrl}${post.href}`}
       className={cn("group relative flex flex-col justify-end rounded-xl overflow-hidden aspect-[4/3] hover:shadow-lg transition-all", className)}
     >
       {/* Background */}

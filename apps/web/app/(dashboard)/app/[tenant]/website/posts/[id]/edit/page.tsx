@@ -1,5 +1,5 @@
 import { eq, inArray } from "drizzle-orm";
-import { createTenantDb } from "@jalajogja/db";
+import { createTenantDb, db as publicDb, user as authUser } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { notFound, redirect } from "next/navigation";
 import { publicUrl } from "@/lib/minio";
@@ -57,6 +57,26 @@ export default async function EditPostPage({
     .from(schema.postTags)
     .orderBy(schema.postTags.name);
 
+  // Resolve nama pembuat draft asli (post.authorId → tenant.users → public.user) — dipakai
+  // sebagai teks hint default AuthorPicker saat displayAuthorId belum diisi. Pola sama dengan
+  // resolusi authorId di app/(public)/[tenant]/post/[slug]/page.tsx.
+  let originalAuthorName: string | null = null;
+  if (post.authorId) {
+    const [tenantUserRow] = await db
+      .select({ betterAuthUserId: schema.users.betterAuthUserId })
+      .from(schema.users)
+      .where(eq(schema.users.id, post.authorId))
+      .limit(1);
+    if (tenantUserRow) {
+      const [au] = await publicDb
+        .select({ name: authUser.name })
+        .from(authUser)
+        .where(eq(authUser.id, tenantUserRow.betterAuthUserId))
+        .limit(1);
+      originalAuthorName = au?.name ?? null;
+    }
+  }
+
   // Build SeoValues dari data post
   const seoValues: SeoValues = {
     metaTitle:      post.metaTitle   ?? "",
@@ -80,6 +100,7 @@ export default async function EditPostPage({
       <PostForm
         slug={slug}
         postId={postId}
+        currentUserName={originalAuthorName}
         initialData={{
           title:       post.title,
           postSlug:    post.slug,
@@ -95,6 +116,8 @@ export default async function EditPostPage({
           tagIds,
           coverId:    post.coverId,
           coverUrl:   coverUrl,
+          displayAuthorId: post.displayAuthorId,
+          editorId:        post.editorId,
           seo:        seoValues,
         }}
         categories={categories}

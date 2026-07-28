@@ -119,7 +119,10 @@ export async function createTenantSchemaInDb(
                                           CHECK (processing_status IN ('pending','processing','done','failed','bypass')),
         original_mime         TEXT,
         original_expires_at   TIMESTAMPTZ,
-        crop_data             JSONB
+        crop_data             JSONB,
+        -- Traceability import WordPress (docs/arsitektur-import-export-post-wordpress.md § 14.1)
+        -- nullable, tanpa FK (cross-schema ke public.content_import_batches)
+        import_batch_id       UUID
       )
     `));
 
@@ -158,7 +161,10 @@ export async function createTenantSchemaInDb(
         view_count   INTEGER     NOT NULL DEFAULT 0,
         published_at TIMESTAMPTZ,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        -- Traceability import WordPress (docs/arsitektur-import-export-post-wordpress.md § 14.1)
+        -- nullable, tanpa FK (cross-schema ke public.content_import_batches)
+        import_batch_id UUID
       )
     `));
 
@@ -173,6 +179,33 @@ export async function createTenantSchemaInDb(
         message    TEXT        NOT NULL,
         is_read    BOOLEAN     NOT NULL DEFAULT false,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 7c. Legacy URL Redirects — redirect 301 dari URL WordPress lama ke URL Jalakarta baru,
+    // docs/arsitektur-import-export-post-wordpress.md § 5.5. post_id longgar, tanpa FK.
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".legacy_url_redirects (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        old_path    TEXT        NOT NULL UNIQUE,
+        redirect_to TEXT        NOT NULL,
+        post_id     UUID,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `));
+
+    // ── 6b. Post Authors — profil penulis/editor byline, terpisah dari author_id
+    // (pemilik draft internal). Bisa tertaut public.members (member_id, tanpa FK constraint —
+    // cross-schema) atau berdiri sendiri sebagai profil tamu. docs/arsitektur-penulis-post.md
+    await tx.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${s}".post_authors (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        member_id   UUID,
+        name        TEXT        NOT NULL,
+        bio         TEXT,
+        avatar_url  TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `));
 
@@ -207,11 +240,17 @@ export async function createTenantSchemaInDb(
         status       TEXT        NOT NULL DEFAULT 'draft'
                                  CHECK (status IN ('draft','published','archived')),
         author_id    UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
+        -- Byline publik — NULL berarti fallback ke resolusi author_id lama (docs/arsitektur-penulis-post.md § 3)
+        display_author_id UUID   REFERENCES "${s}".post_authors(id) ON DELETE SET NULL,
+        editor_id          UUID  REFERENCES "${s}".post_authors(id) ON DELETE SET NULL,
         category_id  UUID        REFERENCES "${s}".post_categories(id) ON DELETE SET NULL,
         view_count   INTEGER     NOT NULL DEFAULT 0,
         published_at TIMESTAMPTZ,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        -- Traceability import WordPress (docs/arsitektur-import-export-post-wordpress.md § 14.1)
+        -- nullable, tanpa FK (cross-schema ke public.content_import_batches)
+        import_batch_id UUID
       )
     `));
 

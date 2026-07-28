@@ -4,10 +4,10 @@ import { pickCover } from "@/lib/post-card-templates";
 const fmt = (date: string | null) =>
   date ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date)) : "";
 
-export function PostCardList({ post, tenantSlug }: { post: PostCardData; tenantSlug: string }) {
+export function PostCardList({ post, baseUrl }: { post: PostCardData; baseUrl: string }) {
   return (
     <a
-      href={`/${tenantSlug}/post/${post.slug}`}
+      href={`${baseUrl}${post.href}`}
       className="group flex gap-4 items-start py-3 border-t border-border first:border-0 transition-all hover:bg-muted/40 px-2 -mx-2 rounded-lg"
     >
       {/* Content */}

@@ -33,6 +33,7 @@ import {
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { SeoPanel } from "@/components/seo/seo-panel";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
+import { AuthorPicker } from "@/components/website/author-picker";
 import {
   updatePostAction,
   createPostAction,
@@ -56,6 +57,10 @@ type Tag      = { id: string; name: string; slug: string };
 export type PostFormProps = {
   slug: string;
   postId: string | null; // null = create mode (belum tersimpan di DB)
+  // Nama pengurus yang jadi default byline kalau field Penulis tidak diisi — untuk create-mode
+  // ini nama yang sedang login, untuk edit-mode ini nama pembuat draft asli (post.authorId).
+  // null kalau tidak bisa diresolve (data lama, akun terhapus, dst).
+  currentUserName?: string | null;
   initialData: {
     title:       string;
     postSlug:    string;
@@ -68,6 +73,8 @@ export type PostFormProps = {
     coverId:     string | null;
     coverUrl?:   string | null;
     isFeatured:  boolean;
+    displayAuthorId?: string | null;
+    editorId?:        string | null;
     seo: SeoValues;
   };
   categories: Category[];
@@ -437,6 +444,7 @@ function TagInput({
 export function PostForm({
   slug,
   postId,
+  currentUserName,
   initialData,
   categories,
   tags,
@@ -462,6 +470,10 @@ export function PostForm({
   });
   const [isFeatured, setIsFeatured] = useState<boolean>(initialData.isFeatured);
   const [seoValues, setSeoValues]   = useState<SeoValues>(initialData.seo);
+
+  // Byline — null berarti pakai default (lihat docs/arsitektur-penulis-post.md § 3)
+  const [displayAuthorId, setDisplayAuthorId] = useState<string | null>(initialData.displayAuthorId ?? null);
+  const [editorId, setEditorId]               = useState<string | null>(initialData.editorId ?? null);
 
   // Featured image
   const [coverId, setCoverId]       = useState<string | null>(initialData.coverId);
@@ -501,6 +513,8 @@ export function PostForm({
       coverId:    coverId ?? null,
       categoryId: categoryId || null,
       isFeatured,
+      displayAuthorId,
+      editorId,
       tagIds:     selectedTagIds,
       status:     overrideStatus ?? status,
       // Konversi datetime-local (local browser time) ke UTC ISO string sebelum kirim server.
@@ -677,6 +691,32 @@ export function PostForm({
                 </p>
               </div>
             )}
+
+            <Separator />
+
+            {/* Penulis & Editor — byline publik, terpisah dari authorId internal.
+                Lihat docs/arsitektur-penulis-post.md */}
+            <div className="space-y-2">
+              <SidebarLabel>Penulis</SidebarLabel>
+              <AuthorPicker
+                slug={slug}
+                label="Penulis"
+                value={displayAuthorId}
+                onChange={setDisplayAuthorId}
+                emptyHint={`Default: ${currentUserName ?? "yang login"}`}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <SidebarLabel>Editor</SidebarLabel>
+              <AuthorPicker
+                slug={slug}
+                label="Editor"
+                value={editorId}
+                onChange={setEditorId}
+                emptyHint="(Opsional — kosongkan kalau tidak ada penyunting)"
+              />
+            </div>
 
             <Separator />
 

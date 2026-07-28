@@ -15,10 +15,10 @@ import {
   memberProfessionals,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { resolvePostHrefs } from "@/lib/post-permalink.server";
 import {
   getStaticLinks,
   buildPageUrl,
-  buildPostUrl,
   buildPostCategoryUrl,
   buildPostTagUrl,
   buildProductUrl,
@@ -121,8 +121,14 @@ export async function GET(req: NextRequest) {
       .limit(BROWSE_LIMIT),
 
     // Post individual — hanya kalau ada query
-    !qLike ? Promise.resolve([]) : tdb.select({ slug: schema.posts.slug, title: schema.posts.title })
+    !qLike ? Promise.resolve([]) : tdb.select({
+        slug:         schema.posts.slug,
+        title:        schema.posts.title,
+        publishedAt:  schema.posts.publishedAt,
+        categorySlug: schema.postCategories.slug,
+      })
       .from(schema.posts)
+      .leftJoin(schema.postCategories, eq(schema.postCategories.id, schema.posts.categoryId))
       .where(and(eq(schema.posts.status, "published"), ilike(schema.posts.title, qLike)))
       .limit(LIMIT),
 
@@ -184,9 +190,11 @@ export async function GET(req: NextRequest) {
       .limit(LIMIT),
   ]);
 
+  const postsWithHref = await resolvePostHrefs(tenantClient, posts);
+
   const dynamicLinks: PublicLink[] = [
     ...pages.map(p => ({ label: p.title,  url: buildPageUrl(slug, p.slug),             group: "Halaman",         type: "page"             as const })),
-    ...posts.map(p => ({ label: p.title,  url: buildPostUrl(slug, p.slug),             group: "Postingan",       type: "post"             as const })),
+    ...postsWithHref.map(p => ({ label: p.title, url: `/${slug}${p.href}`,             group: "Postingan",       type: "post"             as const })),
     ...postCats.map(c => ({ label: c.name, url: buildPostCategoryUrl(slug, c.slug),    group: "Kategori Post",   type: "post-category"    as const })),
     ...postTags.map(t => ({ label: t.name, url: buildPostTagUrl(slug, t.slug),         group: "Tag Post",        type: "post-tag"         as const })),
     ...products.map(p => ({ label: p.name, url: buildProductUrl(slug, p.slug),         group: "Produk",          type: "product"          as const })),

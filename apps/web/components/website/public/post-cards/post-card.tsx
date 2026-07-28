@@ -9,17 +9,17 @@ import { PostCardTicker }  from "./post-card-ticker";
 type Props = {
   post:       PostCardData;
   variant:    PostCardVariant;
-  tenantSlug: string;
+  baseUrl:    string;
   className?: string;
 };
 
-export function PostCard({ post, variant, tenantSlug, className }: Props) {
+export function PostCard({ post, variant, baseUrl, className }: Props) {
   switch (variant) {
-    case "list":    return <PostCardList    post={post} tenantSlug={tenantSlug} />;
-    case "overlay": return <PostCardOverlay post={post} tenantSlug={tenantSlug} className={className} />;
-    case "ringkas": return <PostCardRingkas post={post} tenantSlug={tenantSlug} />;
-    case "judul":   return <PostCardJudul   post={post} tenantSlug={tenantSlug} />;
-    case "ticker":  return <PostCardTicker  post={post} tenantSlug={tenantSlug} />;
-    default:        return <PostCardKlasik  post={post} tenantSlug={tenantSlug} />;
+    case "list":    return <PostCardList    post={post} baseUrl={baseUrl} />;
+    case "overlay": return <PostCardOverlay post={post} baseUrl={baseUrl} className={className} />;
+    case "ringkas": return <PostCardRingkas post={post} baseUrl={baseUrl} />;
+    case "judul":   return <PostCardJudul   post={post} baseUrl={baseUrl} />;
+    case "ticker":  return <PostCardTicker  post={post} baseUrl={baseUrl} />;
+    default:        return <PostCardKlasik  post={post} baseUrl={baseUrl} />;
   }
 }

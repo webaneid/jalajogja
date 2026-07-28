@@ -30,7 +30,10 @@ const VARIANT_SUFFIXES: Record<VariantKey, string> = {
   profile:        "_pf",
 };
 
-const PATH_PRIORITY: VariantKey[] = ["large", "square", "profile", "original"];
+// Urutan sama dengan app/api/media/upload/route.ts (§ pola SAMA PERSIS) — variant seaspek
+// (large/medium/thumbnail) didahulukan dari variant kotak (square-large/square) sebelum
+// profile/original, cegah gambar landscape dipotong paksa jadi kotak kalau "large" tidak fit.
+const PATH_PRIORITY: VariantKey[] = ["large", "medium", "thumbnail", "square-large", "square", "profile", "original"];
 
 async function getSessionMember(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });

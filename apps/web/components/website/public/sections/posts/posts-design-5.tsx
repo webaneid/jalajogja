@@ -8,7 +8,7 @@ import type { PostsSectionProps } from "@/lib/posts-section-designs";
 
 const SLIDE_INTERVAL = 3000;
 
-export function PostsDesign5({ data, posts, tenantSlug, sectionTitle, filterHref }: PostsSectionProps) {
+export function PostsDesign5({ data, posts, baseUrl, sectionTitle, filterHref }: PostsSectionProps) {
   const scrollRef  = useRef<HTMLDivElement>(null);
   const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const pausedRef  = useRef(false);
@@ -78,7 +78,7 @@ export function PostsDesign5({ data, posts, tenantSlug, sectionTitle, filterHref
               key={p.id}
               className="shrink-0 snap-start w-[85%] sm:w-[calc(33.333%-11px)] lg:w-[calc(20%-13px)]"
             >
-              <PostCard post={p} variant="overlay" tenantSlug={tenantSlug} className="aspect-[3/4]" />
+              <PostCard post={p} variant="overlay" baseUrl={baseUrl} className="aspect-[3/4]" />
             </div>
           ))}
         </div>

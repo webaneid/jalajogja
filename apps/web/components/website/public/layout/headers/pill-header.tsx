@@ -45,7 +45,7 @@ function SearchOverlay({
 }) {
   const [query,   setQuery]   = useState("");
   const [results, setResults] = useState<null | {
-    posts:    { title: string; slug: string }[];
+    posts:    { title: string; slug: string; href: string }[];
     pages:    { title: string; slug: string }[];
     events:   { name: string; slug: string }[];
     products: { name: string; slug: string; price: number }[];
@@ -109,7 +109,7 @@ function SearchOverlay({
             <p className="text-sm text-muted-foreground px-2 py-3">Tidak ada hasil untuk &quot;{query}&quot;.</p>
           )}
           {results?.posts.map((p) => (
-            <a key={p.slug} href={`${baseUrl}/post/${p.slug}`} className="flex items-center gap-2 px-2 py-2.5 rounded-xl text-sm hover:bg-muted/60 transition-colors">
+            <a key={p.slug} href={`${baseUrl}${p.href}`} className="flex items-center gap-2 px-2 py-2.5 rounded-xl text-sm hover:bg-muted/60 transition-colors">
               <span className="text-[10px] uppercase tracking-wide bg-muted rounded-full px-2 py-0.5 text-muted-foreground shrink-0">Post</span>
               {p.title}
             </a>

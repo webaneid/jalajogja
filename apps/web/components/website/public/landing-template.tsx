@@ -546,6 +546,7 @@ function SectionRenderer({
         variant={(section.variant ?? "1") as PostsSectionDesignId}
         tenantClient={tenantClient}
         tenantSlug={tenantSlug}
+        baseUrl={baseUrl}
       />
     );
     case "products":     return (

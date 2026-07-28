@@ -10,6 +10,11 @@ export type PostCardData = {
   categoryName:   string | null;
   publishedAt:    string | null;
   isFeatured:     boolean;
+  // Custom Permalink Structure (docs/arsitektur-import-export-post-wordpress.md § 5) — path
+  // RELATIF (tanpa prefix tenant/baseUrl, pola sama legacyUrlRedirects.redirectTo), sudah
+  // dihitung server-side via lib/post-permalink.server.ts's resolvePostHrefs() sesuai permalink
+  // structure tenant. Consumer gabungkan sendiri: `${baseUrl}${post.href}`.
+  href:           string;
 };
 
 /** Pilih URL gambar variant terbaik, fallback ke coverUrl jika variant belum ada */

@@ -8,6 +8,7 @@ import type { HeroSectionData, HeroSectionDesignId, HeroCardData, FunfactId, Fun
 import { FUNFACT_CATALOG, FUNFACT_MAX } from "@/lib/hero-section-designs";
 import { formatRp } from "@/lib/campaign-card-templates";
 import { stripTenantPrefix } from "@/lib/strip-tenant-prefix";
+import { resolvePostHrefs } from "@/lib/post-permalink.server";
 import { HeroDesign1 } from "./hero-design-1";
 import { HeroDesign2 } from "./hero-design-2";
 
@@ -67,19 +68,26 @@ async function fetchHeroCard(tenantClient: TenantDb, baseUrl: string): Promise<H
     };
   }
 
-  const [latestPost] = await tenantDb
-    .select({ title: schema.posts.title, slug: schema.posts.slug, publishedAt: schema.posts.publishedAt })
+  const [latestPostRow] = await tenantDb
+    .select({
+      slug:         schema.posts.slug,
+      title:        schema.posts.title,
+      publishedAt:  schema.posts.publishedAt,
+      categorySlug: schema.postCategories.slug,
+    })
     .from(schema.posts)
+    .leftJoin(schema.postCategories, eq(schema.postCategories.id, schema.posts.categoryId))
     .where(eq(schema.posts.status, "published"))
     .orderBy(desc(schema.posts.publishedAt))
     .limit(1);
 
-  if (latestPost) {
+  if (latestPostRow) {
+    const [latestPost] = await resolvePostHrefs(tenantClient, [latestPostRow]);
     return {
       type:  "post",
       label: "Berita Terbaru",
       title: latestPost.title,
-      href:  `${baseUrl}/post/${latestPost.slug}`,
+      href:  `${baseUrl}${latestPost.href}`,
       date:  latestPost.publishedAt
         ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(latestPost.publishedAt)
         : null,

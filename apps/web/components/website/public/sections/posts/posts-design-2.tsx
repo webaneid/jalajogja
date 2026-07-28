@@ -6,7 +6,7 @@ import type { PostsSectionProps } from "@/lib/posts-section-designs";
 const fmtDate = (d: string | null) =>
   d ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(new Date(d)) : "";
 
-export function PostsDesign2({ data, posts, tenantSlug, sectionTitle, filterHref }: PostsSectionProps) {
+export function PostsDesign2({ data, posts, baseUrl, sectionTitle, filterHref }: PostsSectionProps) {
   const featured   = posts[0];
   const leftPosts  = posts.slice(1, 6);
   const rightPosts = posts.slice(6, 11);
@@ -28,10 +28,10 @@ export function PostsDesign2({ data, posts, tenantSlug, sectionTitle, filterHref
         {/* ── MOBILE: overlay featured + list sisanya ── */}
         {featured && (
           <div className="md:hidden mb-4">
-            <PostCard post={featured} variant="overlay" tenantSlug={tenantSlug} className="aspect-[4/3] mb-4" />
+            <PostCard post={featured} variant="overlay" baseUrl={baseUrl} className="aspect-[4/3] mb-4" />
             <div>
               {mobileRest.map(p => (
-                <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
+                <PostCard key={p.id} post={p} variant="list" baseUrl={baseUrl} />
               ))}
             </div>
           </div>
@@ -40,7 +40,7 @@ export function PostsDesign2({ data, posts, tenantSlug, sectionTitle, filterHref
         {/* ── DESKTOP: featured besar + 2 kolom list ── */}
         {featured && (
           <a
-            href={`/${tenantSlug}/post/${featured.slug}`}
+            href={`${baseUrl}${featured.href}`}
             className="hidden md:flex gap-4 mb-6 group"
           >
             <div className="w-1/2 shrink-0 aspect-video overflow-hidden rounded-lg bg-muted">
@@ -79,13 +79,13 @@ export function PostsDesign2({ data, posts, tenantSlug, sectionTitle, filterHref
           <div className="hidden md:grid grid-cols-2 gap-x-6 border-t border-border pt-4">
             <div>
               {leftPosts.map(p => (
-                <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
+                <PostCard key={p.id} post={p} variant="list" baseUrl={baseUrl} />
               ))}
             </div>
             {rightPosts.length > 0 && (
               <div className="border-l border-border pl-6">
                 {rightPosts.map(p => (
-                  <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
+                  <PostCard key={p.id} post={p} variant="list" baseUrl={baseUrl} />
                 ))}
               </div>
             )}

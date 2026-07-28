@@ -168,7 +168,7 @@ function MobileSearchOverlay({
 }) {
   const [query,   setQuery]   = useState("");
   const [results, setResults] = useState<null | {
-    posts:    { title: string; slug: string }[];
+    posts:    { title: string; slug: string; href: string }[];
     pages:    { title: string; slug: string }[];
     events:   { name: string; slug: string }[];
     products: { name: string; slug: string; price: number }[];
@@ -232,7 +232,7 @@ function MobileSearchOverlay({
             <p className="text-sm text-muted-foreground px-2 py-3">Tidak ada hasil untuk &quot;{query}&quot;.</p>
           )}
           {results?.posts.map((p) => (
-            <a key={p.slug} href={`${baseUrl}/post/${p.slug}`} className="flex items-center gap-2 px-2 py-2.5 rounded-xl text-sm hover:bg-muted/60 transition-colors">
+            <a key={p.slug} href={`${baseUrl}${p.href}`} className="flex items-center gap-2 px-2 py-2.5 rounded-xl text-sm hover:bg-muted/60 transition-colors">
               <span className="text-[10px] uppercase tracking-wide bg-muted rounded-full px-2 py-0.5 text-muted-foreground shrink-0">Post</span>
               {p.title}
             </a>
@@ -305,7 +305,7 @@ function MobileHeaderIcons({
 function SearchBar({ tenantSlug, baseUrl }: { tenantSlug: string; baseUrl: string }) {
   const [query,   setQuery]   = useState("");
   const [results, setResults] = useState<null | {
-    posts:    { title: string; slug: string }[];
+    posts:    { title: string; slug: string; href: string }[];
     pages:    { title: string; slug: string }[];
     events:   { name: string; slug: string }[];
     products: { name: string; slug: string; price: number }[];
@@ -354,7 +354,7 @@ function SearchBar({ tenantSlug, baseUrl }: { tenantSlug: string; baseUrl: strin
             <section>
               <p className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/40 font-semibold">Postingan</p>
               {results.posts.map((p) => (
-                <a key={p.slug} href={`${baseUrl}/post/${p.slug}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
+                <a key={p.slug} href={`${baseUrl}${p.href}`} className="block px-3 py-2 text-sm hover:bg-muted/60 transition-colors">
                   {p.title}
                 </a>
               ))}

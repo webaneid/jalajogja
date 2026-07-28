@@ -80,7 +80,23 @@ export default async function PostsPage({
             Artikel, berita, dan pengumuman organisasi
           </p>
         </div>
-        <CreateButton slug={slug} />
+        <div className="flex items-center gap-2">
+          <a
+            href={`/app/${slug}/website/import-wordpress`}
+            className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors"
+            title="Impor post dari file WordPress WXR XML atau tarik langsung dari situs WordPress via REST API"
+          >
+            Import dari WordPress
+          </a>
+          <a
+            href={`/api/website/export-wxr?slug=${slug}`}
+            className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors"
+            title="Unduh semua post sebagai file WordPress WXR XML — bisa diimpor kembali ke WordPress kapan saja"
+          >
+            Export ke WordPress
+          </a>
+          <CreateButton slug={slug} />
+        </div>
       </div>
 
       {/* Filter bar */}

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse }             from "next/server";
 import { eq, ilike, or, and }       from "drizzle-orm";
 import { db, tenants, members, tenantMemberships, createTenantDb } from "@jalajogja/db";
+import { resolvePostHrefs } from "@/lib/post-permalink.server";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -25,15 +26,23 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Tenant tidak ditemukan." }, { status: 404 });
   }
 
-  const { db: tenantDb, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db: tenantDb, schema } = tenantClient;
   const pattern = `%${query}%`;
   const LIMIT   = 5;
 
   const [posts, pages, events, products, memberResults] = await Promise.all([
     // Blog posts
     tenantDb
-      .select({ title: schema.posts.title, slug: schema.posts.slug, excerpt: schema.posts.excerpt })
+      .select({
+        title:        schema.posts.title,
+        slug:         schema.posts.slug,
+        excerpt:      schema.posts.excerpt,
+        publishedAt:  schema.posts.publishedAt,
+        categorySlug: schema.postCategories.slug,
+      })
       .from(schema.posts)
+      .leftJoin(schema.postCategories, eq(schema.postCategories.id, schema.posts.categoryId))
       .where(and(
         eq(schema.posts.status, "published"),
         or(
@@ -88,8 +97,10 @@ export async function GET(req: Request) {
       .limit(LIMIT),
   ]);
 
+  const postsWithHref = await resolvePostHrefs(tenantClient, posts);
+
   return NextResponse.json({
-    posts:    posts,
+    posts:    postsWithHref,
     pages:    pages,
     events:   events,
     products: products.map((p) => ({ ...p, price: Number(p.price) })),

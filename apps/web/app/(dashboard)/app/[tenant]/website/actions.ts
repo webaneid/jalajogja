@@ -8,7 +8,9 @@ import { hasFullAccess } from "@/lib/permissions";
 import { generateSlug } from "@/lib/seo";
 import { saveWidgetArea } from "@/lib/widget-areas";
 import type { SidebarSection } from "@/lib/widget-areas";
-import type { ContentStatus, PostTwitterCard, PostRobots, PostSchemaType, PageSchemaType } from "@jalajogja/db";
+import type { ContentStatus, PostTwitterCard, PostRobots, PostSchemaType, PageSchemaType, TenantDb } from "@jalajogja/db";
+import { getTenantPermalink, setTenantPermalink, PERMALINK_STRUCTURES, type PermalinkStructure } from "@/lib/post-permalink.server";
+import { isReservedPostSlug } from "@/lib/reserved-post-slugs";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -26,6 +28,10 @@ export type PostFormData = {
   isFeatured?: boolean;
   status?: ContentStatus;
   publishedAt?: string | null;        // ISO string atau null
+  // Byline — NULL berarti fallback ke authorId (yang login saat draft dibuat). Lihat
+  // docs/arsitektur-penulis-post.md § 3.
+  displayAuthorId?: string | null;    // FK → post_authors.id
+  editorId?: string | null;           // FK → post_authors.id, selalu opsional
   // Tags
   tagIds?: string[];                  // UUID[] — pivot dikelola action
   // SEO
@@ -62,6 +68,39 @@ function resolveSlug(title: string, slugInput?: string): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
+/**
+ * Validasi tambahan yang HANYA relevan saat permalink structure tenant = "post_name"
+ * (docs/arsitektur-import-export-post-wordpress.md § 5, Fase 2.7) — pada mode ini, Post hidup
+ * di path 1-segmen `/{slug}` PERSIS sama seperti Page, jadi bisa collide dengan (a) nama folder
+ * statis publik, atau (b) slug entitas LAWAN (post vs page). Mode permalink lain (default/
+ * date_name/category_name/category_date_name) tidak berisiko — Post selalu hidup di path
+ * multi-segmen di mode-mode itu. Return pesan error, atau null kalau valid/tidak relevan.
+ */
+async function validateSlugForPostNameMode(
+  tenantClient: TenantDb,
+  slugCandidate: string,
+  kind: "post" | "page",
+): Promise<string | null> {
+  const permalink = await getTenantPermalink(tenantClient);
+  if (permalink !== "post_name") return null;
+
+  if (isReservedPostSlug(slugCandidate)) {
+    return `Slug "${slugCandidate}" tidak boleh dipakai — bertabrakan dengan halaman sistem bawaan. Pilih slug lain.`;
+  }
+
+  const { db, schema } = tenantClient;
+  if (kind === "post") {
+    const [dup] = await db.select({ id: schema.pages.id }).from(schema.pages)
+      .where(eq(schema.pages.slug, slugCandidate)).limit(1);
+    if (dup) return `Slug "${slugCandidate}" sudah dipakai sebuah halaman. Pilih slug lain.`;
+  } else {
+    const [dup] = await db.select({ id: schema.posts.id }).from(schema.posts)
+      .where(eq(schema.posts.slug, slugCandidate)).limit(1);
+    if (dup) return `Slug "${slugCandidate}" sudah dipakai sebuah post. Pilih slug lain.`;
+  }
+  return null;
+}
+
 // ─── CREATE POST (create-on-save — dipanggil dari form kosong di /posts/new) ──
 
 export async function createPostAction(
@@ -73,9 +112,13 @@ export async function createPostAction(
   if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
   if (!data.title?.trim()) return { success: false, error: "Judul post wajib diisi." };
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
 
   let postSlug = resolveSlug(data.title, data.slug);
+  const postNameError = await validateSlugForPostNameMode(tenantClient, postSlug, "post");
+  if (postNameError) return { success: false, error: postNameError };
+
   const [dup] = await db
     .select({ id: schema.posts.id })
     .from(schema.posts)
@@ -109,6 +152,8 @@ export async function createPostAction(
         robots:      data.robots             || "index,follow",
         schemaType:  data.schemaType         || undefined,
         authorId:    access.tenantUser.id,
+        displayAuthorId: data.displayAuthorId ?? null,
+        editorId:        data.editorId        ?? null,
       })
       .returning({ id: schema.posts.id });
 
@@ -131,9 +176,13 @@ export async function createPageAction(
   if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
   if (!data.title?.trim()) return { success: false, error: "Judul halaman wajib diisi." };
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
 
   let pageSlug = resolveSlug(data.title, data.slug);
+  const postNameError = await validateSlugForPostNameMode(tenantClient, pageSlug, "page");
+  if (postNameError) return { success: false, error: postNameError };
+
   const [dup] = await db
     .select({ id: schema.pages.id })
     .from(schema.pages)
@@ -189,10 +238,14 @@ export async function createPostDraftAction(
   if (!access) return { success: false, error: "Akses ditolak." };
   if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
 
   // Buat slug unik — tambah suffix UUID jika slug title sudah ada
   let postSlug = resolveSlug(title);
+  const postNameError = await validateSlugForPostNameMode(tenantClient, postSlug, "post");
+  if (postNameError) return { success: false, error: postNameError };
+
   const [existing] = await db
     .select({ id: schema.posts.id })
     .from(schema.posts)
@@ -238,7 +291,8 @@ export async function updatePostAction(
     return { success: false, error: "Judul post wajib diisi." };
   }
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
 
   // Pastikan post ada di tenant ini
   const [existing] = await db
@@ -252,6 +306,9 @@ export async function updatePostAction(
   // Tentukan slug baru — cek duplikasi hanya jika slug berubah
   const newSlug = resolveSlug(data.title, data.slug);
   if (newSlug !== existing.slug) {
+    const postNameError = await validateSlugForPostNameMode(tenantClient, newSlug, "post");
+    if (postNameError) return { success: false, error: postNameError };
+
     const [duplicate] = await db
       .select({ id: schema.posts.id })
       .from(schema.posts)
@@ -283,6 +340,8 @@ export async function updatePostAction(
         isFeatured: data.isFeatured ?? false,
         status:     data.status ?? "draft",
         publishedAt,
+        displayAuthorId: data.displayAuthorId ?? null,
+        editorId:        data.editorId        ?? null,
         // SEO dasar
         metaTitle: data.metaTitle?.trim() || null,
         metaDesc:  data.metaDesc?.trim()  || null,
@@ -463,9 +522,13 @@ export async function createPageDraftAction(
   if (!access) return { success: false, error: "Akses ditolak." };
   if (!hasFullAccess(access.tenantUser, "website")) return { success: false as const, error: "Akses ditolak." };
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
 
   let pageSlug = resolveSlug(title);
+  const postNameError = await validateSlugForPostNameMode(tenantClient, pageSlug, "page");
+  if (postNameError) return { success: false, error: postNameError };
+
   const [existing] = await db
     .select({ id: schema.pages.id })
     .from(schema.pages)
@@ -557,7 +620,8 @@ export async function updatePageAction(
     return { success: false, error: "Judul halaman wajib diisi." };
   }
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
 
   const [existing] = await db
     .select({ id: schema.pages.id, slug: schema.pages.slug })
@@ -569,6 +633,9 @@ export async function updatePageAction(
 
   const newSlug = resolveSlug(data.title, data.slug);
   if (newSlug !== existing.slug) {
+    const postNameError = await validateSlugForPostNameMode(tenantClient, newSlug, "page");
+    if (postNameError) return { success: false, error: postNameError };
+
     const [duplicate] = await db
       .select({ id: schema.pages.id })
       .from(schema.pages)
@@ -1038,5 +1105,35 @@ export async function saveWidgetAreaAction(
   } catch (err) {
     console.error("[saveWidgetAreaAction]", err);
     return { success: false, error: "Gagal menyimpan widget area." };
+  }
+}
+
+// ─── Permalink Structure (Fase 2.9, docs/arsitektur-import-export-post-wordpress.md § 5) ────
+
+export async function savePermalinkStructureAction(
+  slug:      string,
+  structure: string,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Unauthorized." };
+  if (!hasFullAccess(access.tenantUser, "website"))
+    return { success: false, error: "Tidak punya akses." };
+
+  if (!(PERMALINK_STRUCTURES as readonly string[]).includes(structure)) {
+    return { success: false, error: "Struktur URL tidak valid." };
+  }
+
+  try {
+    const tenantClient = createTenantDb(slug);
+    await setTenantPermalink(tenantClient, structure as PermalinkStructure);
+    // Perubahan ini mempengaruhi href SEMUA post yang sudah pernah ditampilkan (arsip, sidebar,
+    // homepage, dst) — revalidate root tenant + arsip post, bukan cuma halaman pengaturan ini.
+    revalidatePath(`/app/${slug}/website/pengaturan`);
+    revalidatePath(`/${slug}`);
+    revalidatePath(`/${slug}/post`);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[savePermalinkStructureAction]", err);
+    return { success: false, error: "Gagal menyimpan struktur URL." };
   }
 }

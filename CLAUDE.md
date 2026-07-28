@@ -1229,7 +1229,14 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 - Social Preview: Facebook card + Twitter/X card — gambar OG atau placeholder abu-abu
 - SEO helpers (`lib/seo.ts`): `generateMetadata`, `generateArticleJsonLd`, `generateProductJsonLd`, `generateOrganizationJsonLd`, `generateBreadcrumbJsonLd`, `truncateForSeo`, `generateSlug`, `buildTitle`
 - SEO constants (`lib/seo-defaults.ts`): batas karakter, AI-friendly crawlers, robots preset, schema.org types
-- AI-friendly robots.txt: izinkan GPTBot, ClaudeBot, Google-Extended (konten organisasi bersifat publik)
+- ⚠️ **KOREKSI (ditemukan 2026-07-26, baris ini sebelumnya salah klaim "sudah dibuat")**: konstanta
+  `AI_FRIENDLY_CRAWLERS`/`ROBOTS_ALLOW_ALL`/dst di `lib/seo-defaults.ts` **cuma didefinisikan, tidak
+  pernah dipakai di mana pun** (grep nol pemanggil) — `app/robots.ts` yang benar-benar aktif
+  hanya `{userAgent:"*", allow:"/"}` generik, TIDAK ADA baris per-bot AI (GPTBot/ClaudeBot/
+  Google-Extended/PerplexityBot) sama sekali. Wiring-nya adalah rencana **Fase 6** di
+  `docs/arsitektur-seo.md` § 5 — belum diimplementasikan. Lihat juga lesson
+  `[2026-07-26] Audit Rencana SEO Agen Lain` di bawah untuk temuan lengkap (termasuk bug live
+  `/robots.txt` di custom domain).
 - Schema columns: posts, pages (cover_id FK → media, 9 SEO columns per tabel), products (og_image_id, SEO cols)
 - DDL ordering fix: media dipindah ke step 5 (sebelum pages/posts) agar FK `cover_id` + `og_image_id` valid
 - SeoValues type di-export dari seo-panel.tsx — parent form cukup `useState<SeoValues>(DEFAULT_VALUES)` + `onChange`
@@ -11222,8 +11229,2193 @@ min-w-0 wajib` — lihat lesson lama "Mobile Layout Overflow"), sekarang confirm
 untuk popover/dialog trigger button manapun yang menampilkan teks panjang dinamis (URL, nama
 file, dst) — cek `min-w-0` setiap kali ada laporan "popup/tombol melebar aneh saat teksnya panjang".
 
+### [2026-07-26] Penulis & Editor Post — Byline System Terpisah dari `authorId`
+
+> Arsitektur lengkap: **`docs/arsitektur-penulis-post.md`**
+
+Post/Halaman punya kolom `authorId` sejak awal (FK ke `tenant.users`), tapi TIDAK PERNAH ada UI
+untuk memilihnya — selalu auto-terisi ke pengurus yang sedang login saat draft pertama dibuat,
+dan `updatePostAction` tidak pernah menyentuhnya lagi. Diverifikasi dulu (bukan diasumsikan):
+modul `website` di `lib/permissions.ts` cuma punya level `full`/`read`/`none` (tidak ada `"own"`
+seperti modul `surat`) — jadi `authorId` dipastikan TIDAK dipakai untuk access-control apa pun,
+aman menambah mekanisme byline baru tanpa menyentuhnya sama sekali.
+
+**Prinsip kunci — `authorId` (existing, immutable) TIDAK DIUBAH SAMA SEKALI.** Byline publik
+("siapa yang tampil ke pembaca sebagai penulis/editor") adalah konsep BARU, terpisah total:
+2 kolom nullable baru di `posts` — `display_author_id`, `editor_id` — sama-sama menunjuk ke
+entitas baru `tenant.post_authors` (id, member_id nullable tanpa FK constraint — cross-schema
+ke `public.members`, pola sama `tenant.users.member_id` — name, bio, avatar_url, created_at,
+updated_at). **`display_author_id = NULL` → fallback ke resolusi `authorId` LAMA** yang sudah
+ada di halaman publik (tidak diubah) — jadi post lama yang field Penulis-nya tidak pernah
+disentuh admin otomatis tetap tampil benar, **nol migrasi data** untuk post existing.
+
+**Satu entitas untuk dua peran (Penulis DAN Editor)** — bukan dua tabel terpisah. Satu profil
+`post_authors` bisa jadi Penulis di satu post, Editor di post lain; keduanya butuh field yang
+identik (nama, foto, bio opsional, bisa tertaut member atau berdiri sendiri sebagai profil
+tamu). `avatar_url` pakai URL langsung (bukan `media_id` FK) — pola sama
+`member_businesses.cover_url`/`member_owned_pesantren.cover_url`, bukan pola `posts.cover_id`.
+
+**"Find or create" idempotent untuk penulis dari Anggota** — `findOrCreatePostAuthorFromMemberAction`
+cek dulu apakah tenant ini sudah pernah punya `post_authors` untuk `member_id` tsb (SATU query
+`WHERE member_id = X`) sebelum insert — mencegah duplikat kalau admin pilih anggota yang sama
+berkali-kali di post berbeda. Pola SAMA PERSIS dengan `computeMemberMergeCandidate`/
+`syncAutoTenantMemberships` dari fitur Import Anggota sesi sebelumnya — "cek dulu sebelum
+insert" ini sudah jadi pola berulang di project ini untuk entitas apa pun yang bisa dipakai
+ulang lintas record.
+
+**"Recall" untuk penulis TAMU (bukan anggota)** — `GET /api/ref/post-authors?slug=&q=` cari
+`post_authors WHERE member_id IS NULL` (jadi HANYA profil tamu, anggota tidak ikut nyasar ke
+list ini karena mereka selalu dicari dari `/api/ref/tenant-members` yang sudah ada). Admin bisa
+ketik nama yang belum match apa pun → opsi "+ Buat penulis baru" → mini-form inline (nama+bio
+opsional+foto opsional) → tersimpan, bisa dipakai lagi di post lain via search yang sama tanpa
+mengetik ulang dari nol.
+
+**Edit bio/foto adalah SHARED ROW, bukan snapshot per-post** — perubahan bio/foto penulis
+lewat "Edit Bio/Foto" memengaruhi SEMUA post yang memakai penulis itu (karena semuanya
+menunjuk `post_authors.id` yang sama). Ini SESUAI DESAIN prinsip "recall" yang diminta user —
+bukan bug. Beda dengan `name`/`avatarUrl` snapshot member-linked SAAT PERTAMA dipilih (tidak
+live-sync ke data member terbaru) — dua semantik berbeda: snapshot untuk data yang datang DARI
+member, live-shared untuk data yang di-EDIT langsung di konteks post_authors.
+
+**Avatar upload pakai `MediaPicker` admin (`module="website"`), BUKAN `CoverImageField` self-
+service member** — sempat jadi pertimbangan salah di awal karena `CoverImageField`
+(`components/media/member-media-picker.tsx`) tampak seperti pola yang pas ("URL langsung,
+bukan media_id", cocok dengan `avatar_url`). Tapi `CoverImageField` terikat ke `/api/akun/
+media/*` — endpoint yang scoped ke SESI MEMBER YANG SEDANG LOGIN SENDIRI (self-service). Admin
+yang membuat/edit profil penulis TAMU (atau penulis anggota lain) bukan mengupload ke media
+library dirinya sendiri — konteksnya admin tenant, bukan member self-service. `MediaPicker`
+admin (`components/media/media-picker.tsx`, dipakai juga untuk Featured Image post di file yang
+sama) adalah komponen yang benar untuk konteks ini.
+
+**Hint default Penulis beda isi antara create-mode dan edit-mode (halaman BUKAN komponen yang
+menghitung ini)** — create-mode (`posts/new/page.tsx`): "Default: {nama YANG SEDANG LOGIN}"
+(`access.userId → public.user.name`, akurat karena `authorId` post baru PASTI di-set ke
+`access.tenantUser.id`, alias diri sendiri). Edit-mode (`posts/[id]/edit/page.tsx`): "Default:
+{nama PEMBUAT DRAFT ASLI}", diresolve dari `post.authorId` (bisa orang LAIN dari yang sedang
+mengedit sekarang) via 2-langkah `schema.users → public.user` — pola resolusi yang SAMA PERSIS
+dipakai halaman publik untuk fallback. Kalau hint di edit-mode disamakan dengan create-mode
+(selalu "nama yang login"), hint itu akan BOHONG untuk kasus admin A mengedit post yang
+dulunya dibuat admin B — fallback SESUNGGUHNYA yang akan dipakai (kalau field Penulis dibiarkan
+kosong) tetaplah `authorId` asli (admin B), bukan siapa pun yang kebetulan sedang membuka form.
+
+**Bio menggantikan "Tim Redaksi" (bukan baris tambahan) di halaman publik** —
+`{authorBio ?? "Tim Redaksi"}` di caption bawah nama penulis. Untuk byline lama (fallback
+`authorId`, `authorBio` selalu `null`) — perilaku 100% tidak berubah, teks generik "Tim
+Redaksi" tetap tampil seperti sebelumnya. Untuk byline baru yang bio-nya sudah diisi admin —
+teks itu OTOMATIS menggantikan placeholder generik, tanpa perlu baris visual baru atau
+percabangan tampilan tambahan.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` (dicek bertahap per fase:
+schema → server actions → komponen+integrasi form → resolusi render publik) + `bun run build
+--filter=@jalajogja/web` sukses (dev server dimatikan dulu, `.next` dibersihkan, direstart
+setelah build) — route baru `/api/ref/post-authors` terkonfirmasi muncul di build output.
+Migration `packages/db/migrations/0049_post_authors.sql` dijalankan+diverifikasi di lokal
+(tabel+FK dikonfirmasi via `\d`). **Belum dijalankan di VPS. Belum diverifikasi visual di
+browser** — user perlu coba: pilih penulis dari Anggota (cek find-or-create tidak duplikat
+kalau dipilih 2x), ketik nama baru → buat penulis tamu → isi bio+foto, buka lagi post LAIN →
+cari nama yang sama → pastikan muncul di "Penulis Tersimpan" (recall bekerja), isi field Editor
+(opsional) → cek byline "Disunting oleh X" tampil di halaman publik, kosongkan Editor → cek
+baris itu hilang total (bukan tampil kosong).
+
+### [2026-07-26] Rencana SEO Fase 7B — Author Byline Masuk Article JSON-LD (Baru Rencana)
+
+> Detail lengkap: **`docs/arsitektur-seo.md` § 2.2 "Gap 5" + § 6b** (dan pointer balik di
+> `docs/arsitektur-penulis-post.md` § 13)
+
+User minta byline Penulis/Editor yang baru selesai dibangun (lesson di atas) dipastikan MASUK
+rencana arsitektur SEO — eksplisit belum minta implementasi ("nanti kita implementasikannya"),
+cukup dimasukkan dulu ke rencana. `docs/arsitektur-seo.md` sendiri adalah dokumen yang SEDANG
+dikembangkan user (Fase 4-7 semua ⬜ belum diimplementasikan) — dibaca dulu penuh sebelum
+menambah apa pun, bukan ditimpa.
+
+**Temuan penting saat verifikasi (bukan asumsi)**: grep `application/ld+json` di SELURUH
+`apps/web` mengembalikan **nol hasil** — meski `lib/seo.ts` sudah punya 4 fungsi generator
+JSON-LD lengkap sejak modul SEO awal dibangun (`generateArticleJsonLd`, `generateProductJsonLd`,
+`generateOrganizationJsonLd`, `generateBreadcrumbJsonLd`), **tidak satu pun pernah dipanggil**
+di halaman mana pun. `generateArticleJsonLd()` bahkan SUDAH punya param `authorName` sejak awal
+dan sudah tahu cara membangun `{"@type":"Person", name:...}` — infrastrukturnya ada, cuma tidak
+pernah disambungkan. Ini melebar dari sekadar "author belum di SEO" jadi gap yang lebih besar:
+JSON-LD structured data secara keseluruhan belum pernah dirender di aplikasi ini, untuk
+konten apa pun (bukan cuma Post) — dicatat sebagai Gap 5 di § 2.2, dengan dampak turunan
+eksplisit: Pilar 3 (`BreadcrumbList`) dan Pilar 5 (`Organization`) di rencana Fase 7 (Sitelinks)
+milik user JUGA sudah siap-pakai dari sisi fungsi, cuma butuh wiring — bukan generator baru.
+
+**Fase 7B ditambahkan sebagai section baru § 6b** (bukan menimpa Fase 7 existing — dua tujuan
+Google Search berbeda: Fase 7 = sitelinks navigasi situs-lebar, Fase 7B = rich result per-
+artikel individual). Isi rencana: perluas `ArticleJsonLdParams.authorName: string` menjadi
+`author?: {name, description, imageUrl} | string | null` (Person schema penuh, dipetakan dari
+`post_authors.bio`/`avatarUrl`), reuse fallback chain byline YANG SAMA dengan render visual
+(bukan resolusi kedua yang independen — satu sumber kebenaran), dan **keputusan eksplisit
+Editor TIDAK masuk JSON-LD** (Schema.org `Article`/`CreativeWork` tidak punya properti `editor`
+resmi yang divalidasi Google — beda dari `author` yang didukung penuh) — dicatat jelas supaya
+sesi implementasi nanti tidak "menambahkannya kembali" tanpa sadar ini sudah diputuskan.
+`author.url` (link ke halaman profil penulis) sengaja dikosongkan — dependency ke halaman
+arsip publik per penulis yang memang belum dibangun (`arsitektur-penulis-post.md` § 9).
+
+**Nol kode disentuh sesi ini** — murni dokumentasi/perencanaan, sesuai permintaan eksplisit
+user. `tsc`/build tidak perlu dijalankan (tidak ada perubahan file `.ts`/`.tsx`).
+
+### [2026-07-26] Audit Rencana SEO Agen Lain — Bug Live `robots.txt` di Custom Domain Ditemukan
+
+> Detail lengkap: **`docs/arsitektur-seo.md`** § 2.2 (Gap 3 dikoreksi + Gap 6 + Gap 7 baru),
+> § 3.1, § 5 intro, § 6.2 Pilar 1, § 6c (baru), § 7 roadmap — semua dikoreksi/ditambah di sesi
+> ini. Menyusul langsung entri "Rencana SEO Fase 7B" di atas: user tanya eksplisit "apakah
+> rencana yang dirancang agen lain sudah diverifikasi juga" (bukan cuma bagian JSON-LD/author
+> yang saya sentuh) — jawaban jujur: BELUM, hanya bagian relevan ke tugas saya yang dicek.
+> Audit menyeluruh dilakukan sekarang, bukan sekadar jawab "sudah".
+
+**Hasil verifikasi § 2.1 (klaim Fase 1-3 ✅)**: SEMUA 7 klaim akurat — migration 0037/0038/0039,
+`<SeoPanel>` di dokumen-form, `generateMetadata` dokumen+invoice, halaman `/settings/seo`, semua
+dikonfirmasi ke kode. Tidak ada koreksi diperlukan di bagian ini.
+
+**Hasil verifikasi Fase 4/5/7 Pilar 2/4/5 (diklaim ⬜)**: dikonfirmasi GENUINELY nol — bukan
+diasumsikan, dibuktikan grep `application/ld+json`/`SiteNavigationElement`/`SearchAction`/
+`seo_gtm_id`/`sitemap` = nol hasil di seluruh app. Klaim dokumen akurat.
+
+**3 koreksi ditemukan**:
+1. **Gap 3 (robots.txt) diluruskan** — dokumen menyiratkan "belum ada apa-apa", padahal
+   `app/robots.ts` SUDAH ADA dan aktif (Next.js Metadata Route convention), isinya cuma
+   `{userAgent:"*", allow:"/"}` generik. Yang benar-benar belum ada: baris per-bot AI. Sekalian
+   ditemukan: konstanta `AI_FRIENDLY_CRAWLERS`/`ROBOTS_ALLOW_ALL` di `lib/seo-defaults.ts`
+   (yang CLAUDE.md-nya sendiri sempat salah klaim "sudah dibuat" — dikoreksi bersamaan, lihat
+   entri lama "SEO Module Selesai") ternyata **dead code, nol pemanggil** — pola persis Gap 5
+   JSON-LD yang sudah ditemukan sesi sebelumnya (fungsi/konstanta siap tapi tidak pernah
+   disambungkan).
+2. **Gap 6 baru — Fase 4 (GTM/webmaster) butuh migration `SETTING_GROUPS` dulu**. Dokumen
+   menulis "disimpan di grup settings `seo`" seolah tinggal insert — padahal `SETTING_GROUPS`
+   adalah array TS tetap + CHECK constraint fisik di DB (pola yang sudah berkali-kali dikunci
+   di project ini, lihat migration `0031_settings_group_event.sql`/`0042_settings_group_forum
+   .sql`). Tanpa migration constraint dulu, Fase 4 akan gagal di runtime (bukan `tsc`) saat
+   admin pertama kali simpan setting GTM.
+3. **Gap 7 baru — Pilar 1 Fase 7 (Sitelinks) understate**. Dokumen menulis seolah `<nav>`
+   header belum ada — diverifikasi ketiga varian header publik (Classic/Flex/Pill) SUDAH pakai
+   `<nav>`, yang belum cuma `<ul>/<li>` + `aria-label`. Koreksi scope, bukan koreksi arah.
+
+**Temuan PALING KRITIS — § 6c, kemungkinan BUG LIVE SEKARANG (bukan cuma gap rencana)**:
+`middleware.ts` (baris 169-172) me-rewrite SEMUA path non-`/admin`/non-`/api` di custom domain
+jadi `/{slug}${pathname}` TANPA pengecualian — termasuk `/robots.txt`. `app/robots.ts` adalah
+Next.js Metadata Route SINGULAR di ROOT `app/` (cuma melayani path literal `/robots.txt`, tanpa
+prefix). Path hasil rewrite `/{slug}/robots.txt` TIDAK PERNAH match file itu — jatuh ke catch-all
+`[pageSlug]/page.tsx` (`pageSlug="robots.txt"`) → query tabel `pages` cari slug itu → hampir
+pasti tidak ketemu → `notFound()`. **Kesimpulan: `/robots.txt` di custom domain manapun
+kemungkinan besar 404 SEKARANG, terlepas dari Fase SEO apa pun sudah/belum dikerjakan** — murni
+konsekuensi arsitektur routing custom-domain yang sudah lama dikunci, belum pernah ketahuan
+karena robots.txt yang 404 efeknya nyaris sama dengan isi generik `allow:"/"` (crawler tanpa
+robots.txt = boleh crawl semua) — tidak menghasilkan gejala yang mencolok.
+
+**Fix yang direncanakan (BELUM dieksekusi)**: pindah `app/robots.ts` → nested
+`app/(public)/[tenant]/robots.ts` — Next.js MENDUKUNG Metadata Route convention di dalam segmen
+dinamis, satu implementasi otomatis benar untuk KEDUA mode akses (path-based domain sendiri
+`jalakarta.com/{slug}/robots.txt` match langsung; custom domain ter-rewrite middleware ke path
+yang SAMA, sekarang match). **Fase 5 (sitemap) wajib ikuti pola yang sama sejak awal** — kalau
+dibangun via `app/sitemap.ts` singular di root, akan kena bug identik.
+
+**Kenapa TIDAK diperbaiki di sesi ini**: murni temuan audit, di luar permintaan eksplisit user
+(yang minta verifikasi rencana, bukan minta perbaikan bug). Area routing/custom-domain historis
+sangat sensitif di project ini (rangkaian panjang bug serupa sudah tercatat di CLAUDE.md
+sebelumnya) — perbaikan sengaja ditunda sampai ada instruksi eksplisit, dicatat sebagai
+"LANGKAH PERTAMA Fase 6" di roadmap supaya tidak terlewat saat fase itu benar-benar dikerjakan.
+
+**Aturan yang ditegaskan**: kalau diminta "verifikasi rencana/pekerjaan agen lain", JANGAN cuma
+cek bagian yang kebetulan relevan ke tugas sendiri lalu bilang "sudah" — audit MENYELURUH
+setiap klaim di dokumen (via grep/read kode langsung, bukan percaya narasi), termasuk klaim
+"belum ada"/"akan dikerjakan" (bisa jadi SEBAGIAN sudah ada, seperti Gap 3 dan Pilar 1 di sini)
+dan implikasi teknis yang TIDAK disebutkan rencana itu sendiri (SETTING_GROUPS constraint,
+custom-domain routing incompatibility) — audit yang baik menemukan gap DI LUAR apa yang
+eksplisit diklaim salah, bukan cuma mengonfirmasi/menyangkal klaim yang sudah ada.
+
+### [2026-07-27] Audit Rencana Import/Export WordPress — Gap Kritis: Format Konten Salah Total
+
+> Detail lengkap + tabel ringkasan 10 temuan: **`docs/arsitektur-import-export-post-wordpress.md`
+> § 9** (semua koreksi juga inline per-section: § 2, § 2.4 baru, § 3, § 4, § 4.3 baru, § 5.2-5.4,
+> § 6.2, § 7.1-7.2, § 8)
+
+User minta dokumen `docs/arsitektur-import-export-post-wordpress.md` (ditulis agen LAIN,
+2026-07-26 — SEBELUM sistem Penulis/Editor Post selesai dibangun) diverifikasi terhadap
+arsitektur post kita yang sungguhan, khusus soal: Author (baru dibangun, docs/arsitektur-
+penulis-post.md), Feature Image, Date/Timezone, Block Editor, dan SEO — plus alurnya harus
+ikuti pola Importer Anggota yang sudah stabil (beda sumber saja). Audit menyeluruh (1 Explore
+agent, 10 titik verifikasi eksplisit) menemukan **1 gap KRITIS** dan 9 ketidaksinkronan lain.
+
+**Gap paling kritis — format konten salah arah total**: dokumen mengasumsikan alur "WordPress
+HTML → sanitasi → selesai", seolah HTML bersih itu sendiri yang disimpan ke `posts.content`.
+**Ini salah** — `posts.content` WAJIB berisi string JSON hasil serialize Tiptap editor state
+(pola sama `products.description`), bukan HTML. Kalau dieksekusi apa adanya, SETIAP artikel
+hasil import akan tampil rusak/mentah di frontend — persis kelas bug yang sudah pernah terjadi
+dan didokumentasikan (`renderBody()`/`lib/letter-render.ts` sengaja TIDAK memakai
+`@tiptap/core`/`prosemirror-model` karena crash di server — lesson lama "renderBody —
+prosemirror-model tidak server-safe"). **Tidak ada satu pun utility HTML→Tiptap JSON di
+codebase** (grep `generateJSON` = 0 hasil, `@tiptap/html` bukan dependency) — infrastrukturnya
+harus dibangun dari nol, bukan cuma "tambah langkah sanitasi". Rencana koreksi: tambah Tahap B
+terpisah (konversi, bukan cuma sanitasi) + proof-of-concept WAJIB sebelum Fase 1 dianggap mulai
+(ditambahkan sebagai "Fase 0" baru di roadmap) — kandidat pendekatan `@tiptap/html`'s
+`generateJSON()` dicatat EKSPLISIT sebagai belum diverifikasi (bukan diklaim pasti bekerja).
+
+**Sistem Penulis (`post_authors`) sama sekali tidak disebut** — risiko nyata: tanpa mapping
+eksplisit, importer bisa salah menimpa `posts.authorId` (internal, immutable, harus SELALU
+= admin yang menjalankan import) dengan data penulis WordPress, padahal penulis WP seharusnya
+masuk `posts.displayAuthorId` (byline publik, via find-or-create `post_authors` — REUSE
+`createGuestPostAuthorAction()` yang sudah ada, dengan dedup per-batch memakai pola `Map<string,
+id>` yang sama seperti fix duplikat di Importer Anggota). Editor field: sengaja dibiarkan NULL
+(WordPress tidak punya konsep setara yang standar via WXR/REST — konsisten dengan keputusan
+"Editor tidak masuk JSON-LD" di `arsitektur-seo.md` § 6b.4). Ditambahkan sebagai § 2.4 baru.
+
+**8 koreksi lain (severity lebih rendah, detail di § 9 dokumen)**: nama tabel salah (klaim
+`website_posts` dkk, prefix tidak ada di kode nyata — asli `posts`/`post_categories`/`pages`);
+Featured Image/OG Image diklaim insert manual + skema salah (`public.media` vs
+`tenant_{slug}.media` yang benar) — harus lewat `processImage()` seperti SATU-SATUNYA caller
+insert media yang ada di codebase; `import_batches`/`import_batch_rows` diklaim "reuse" padahal
+skemanya hardcode kolom `member_name`/`member_id` tanpa diskriminator — solusi: tabel PARALEL
+`post_import_batches` meniru POLA yang sama, bukan modifikasi tabel member yang sudah stabil;
+helper timezone mengusulkan `dayjs` (bukan dependency project) padahal `lib/tenant-timezone.ts`/
+`.server.ts` sudah established; routing catch-all salah nama file (`[...slug]` vs
+`[pageSlug]` asli) DAN klaim keliru bahwa file itu sudah query `posts` (SAAT INI hanya query
+`pages`, permalink `post_name` butuh perubahan kode nyata, bukan sekadar "integrasi"); daftar
+`RESERVED_TENANT_SLUGS` sudah basi sejak ditulis (tidak menyertakan rute publik yang sudah ada:
+`campaign`/`profesional`/`pesantren`/`usaha`/`gabung`); Fase 2 subdomain diklaim aktif padahal
+disembunyikan ("Segera hadir"); SEO hardcode asumsi Yoast padahal user eksplisit minta
+pluggable untuk plugin SEO lain (Rank Math/AIOSEO/dst) — ditambahkan § 4.3 baru dengan
+kejujuran eksplisit soal meta key plugin lain belum diverifikasi terhadap sample nyata.
+
+**Yang SUDAH sinkron tanpa koreksi**: seluruh 8 nama kolom SEO (metaTitle/metaDesc/
+focusKeyword/ogTitle/ogDescription/ogImageId/canonicalUrl/robots/schemaType) match persis
+skema Drizzle asli — satu-satunya bagian besar dokumen yang akurat sejak draf pertama.
+
+**Nol kode disentuh** — murni audit+koreksi dokumentasi, sesuai instruksi ("verifikasi
+arsitekturnya, lalu perbaiki jika tidak sesuai" — dibaca sebagai perbaikan DOKUMEN, bukan
+implementasi kode, konsisten dengan status dokumen "belum ada kode ditulis").
+
+### [2026-07-27] Gap ke-11 yang Terlewat: Preservasi URL WordPress Lama (Redirect 301)
+
+> Detail teknis lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 5.5** (skema
+> `legacy_url_redirects`, alur populate, wiring routing) + cross-reference di
+> `docs/arsitektur-seo.md` § 6c.4.
+
+Langsung menyusul audit di atas — user bertanya: *"ini udah integrated juga dengan konteks
+SEO ya? disana ada gk setting url yg sesuai dgn url sebelumnya di wordpress agar tidak
+kehilangan nilai url dari google itu"*. Jawaban jujur: **TIDAK** — baik draf pertama dokumen
+maupun audit putaran pertama saya SAMA SEKALI tidak membahas ini, genuinely terlewat, bukan
+"sudah ditangani implisit".
+
+**Kenapa ini penting**: migrasi platform (WordPress → Jalakarta) yang sudah lama online biasa
+punya ribuan URL yang sudah terindeks Google. Kalau URL berubah tanpa redirect, semuanya jadi
+404 — Google secara bertahap akan men-drop halaman itu dari index, situs kehilangan ranking/
+traffic organik/otoritas domain yang terbangun bertahun-tahun. Ini bukan detail kosmetik SEO,
+ini konsekuensi finansial/reputasi nyata untuk organisasi yang migrasi.
+
+**Solusi yang ditambahkan ke rencana**: tabel baru `tenant.legacy_url_redirects` (`old_path`
+unique, `redirect_to`, `post_id` opsional tanpa FK keras) — di-populate OTOMATIS saat import
+dari tag `<link>` (WXR) / field `link` (REST API) di tiap item, dipetakan ke URL final post
+setelah slug baru selesai di-resolve (skip insert kalau old==new, cegah redirect loop).
+
+**Temuan turunan yang lebih besar dari sekadar redirect**: untuk mendukung ini, rencana routing
+di § 5.4 (yang sudah saya tulis sebelumnya untuk opsi permalink `post_name`) TERNYATA kurang
+jauh — `[pageSlug]/page.tsx` (single dynamic segment) secara STRUKTURAL tidak bisa menangkap
+path multi-segmen sama sekali (Next.js App Router tidak akan pernah meneruskan path 2+ segmen
+ke file dynamic segment tunggal — request 404 di level routing, sebelum kode kita jalan). Ini
+relevan untuk DUA kebutuhan sekaligus: opsi permalink `date_name` (§ 5.1, 3 segmen
+year/month/slug) DAN redirect URL lama WordPress (bisa berapa pun segmen, mis.
+`/2024/05/artikel-lama`). Solusi yang direvisi: ganti `[pageSlug]` TOTAL jadi catch-all
+`[...slug]/page.tsx`, dengan urutan resolusi eksplisit (page → post [kalau permalink cocok] →
+legacy redirect table → notFound) — aman untuk semua tenant existing karena Next.js App Router
+selalu prioritaskan folder statis eksplisit di atas catch-all.
+
+**Konsekuensi ke sitemap/canonical (disinkronkan dengan `docs/arsitektur-seo.md`)**: sitemap
+HANYA boleh berisi URL final/baru (bukan URL lama yang di-redirect — itu praktik SEO standar),
+dan `canonicalUrl` post hasil import HARUS di-set ke URL BARU — BUKAN diisi mentah dari
+`_yoast_wpseo_canonical` WordPress (yang menunjuk ke domain/path lama, kalau di-import apa
+adanya malah memberi tahu Google "URL kanonik sebenarnya di tempat lain" — situasi lebih buruk
+daripada tanpa redirect sama sekali).
+
+**Aturan yang ditegaskan (refleksi proses, bukan cuma temuan teknis)**: "preservasi URL/
+redirect saat migrasi dari platform lain" adalah pertanyaan SEO STANDAR untuk migrasi apa pun —
+seharusnya sudah masuk checklist audit putaran PERTAMA, bukan baru muncul karena user bertanya
+langsung. Untuk dokumen migrasi/import konten dari sistem EKSTERNAL ke depan, checklist audit
+WAJIB eksplisit mencakup "preservasi URL/redirect" sebagai satu item tersendiri — jangan
+andalkan audit umum "sinkron dengan arsitektur X" untuk otomatis menangkap kebutuhan spesifik
+migrasi seperti ini, karena terbukti TIDAK otomatis tertangkap meski audit pertama sudah cukup
+menyeluruh untuk 10 temuan lain.
+
+**Nol kode disentuh** — murni tambahan rencana/dokumentasi, konsisten dengan status dokumen.
+
+### [2026-07-27] Putaran Ketiga: Verdict "BELUM Siap Eksekusi" — 6 Pertanyaan Baru
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 10**
+
+User minta review SEKALI LAGI dengan seksama sebelum diberi keputusan eksekusi ("jgn eksekusi
+dulu"). Bukan cuma konfirmasi ulang 11 temuan sebelumnya — dicari hal BARU secara aktif. 6
+pertanyaan genuinely belum terjawab ditemukan:
+
+1. **SSRF** — § 2.2 "Pull via REST API" terima URL bebas dari admin, server yang fetch. Project
+   ini self-hosted dengan service internal (Postgres/MinIO/GOWA) reachable via Docker network —
+   tanpa validasi IP privat/reserved sebelum fetch, ini celah nyata, bukan hipotetis.
+2. **XXE** — upload WXR (XML) belum menyebut konfigurasi parser eksplisit yang menonaktifkan
+   resolusi entity eksternal.
+3. **`fast-xml-parser` bukan dependency** — sama seperti `@tiptap/html`/`linkedom` sebelumnya,
+   ini juga baru, belum ada di `package.json`.
+4. **Tidak ada infrastruktur background job di project ini sama sekali** (nol
+   bullmq/bee-queue/node-cron/inngest). Importer Anggota jalan sinkron sebagai Server Action —
+   cukup untuk kerja ringan (insert DB). Importer WP JAUH lebih berat per-baris (download
+   gambar + Sharp + konversi Tiptap) — untuk "ratusan-ribuan artikel" (klaim dokumen sendiri),
+   commit sinkron dalam satu Server Action call berisiko nyata timeout. Keputusan arsitektur
+   (proses per-batch-kecil vs worker terpisah) belum diambil di dokumen manapun.
+5. **Tidak ada rollback/undo untuk batch yang sudah commit** — kalau ribuan artikel sudah masuk
+   lalu ketahuan bug, tidak ada cara "hapus semua dari batch ini".
+6. **Scope Pages ambigu** — § 2.1 bilang Pages ikut diimpor, tapi seluruh section sesudahnya
+   (Author, Tiptap, SEO) cuma bahas Posts. Belum diputuskan Pages dapat perlakuan sama atau
+   di luar scope. Skema `post_import_batches`/`post_import_batch_rows` juga baru dijelaskan
+   RASIONALnya, DDL lengkap belum ditulis — masih kerja desain, bukan "tinggal reuse pola".
+
+**Verdict yang diberikan ke user: BELUM SIAP EKSEKUSI.** Bukan karena arsitekturnya salah arah
+(sudah jauh lebih sehat setelah 2 putaran koreksi sebelumnya) — tapi karena masih ada asumsi
+teknis yang belum dibuktikan (Fase 0 Tiptap POC — hard blocker menurut dokumennya sendiri),
+celah keamanan yang belum ditutup (SSRF/XXE — wajib-fix-sebelum-rilis untuk fitur fetch-URL-
+dari-admin), dan pertanyaan skala/eksekusi yang belum dijawab (bisa jadi Fase 1 tidak akan
+berfungsi di skala nyata tanpa keputusan background-job). Ditambahkan sebagai § 10 (baru) —
+"Checklist Pra-Eksekusi", bukan checklist yang harus SELESAI semua sebelum mulai (Fase 0 POC
+sendiri butuh dieksekusi untuk dijawab), tapi checklist yang harus PUNYA JAWABAN eksplisit
+(bahkan kalau jawabannya "diterima sebagai risiko/ditunda") sebelum baris kode pertama Fase 1.
+
+**Nol kode disentuh** — murni review + tambahan dokumentasi, sesuai instruksi eksplisit user.
+
+### [2026-07-27] Putaran Keempat: 6 Pertanyaan Pra-Eksekusi Diberi Resolusi Konkret
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 11-§ 14** (§ 10
+> diupdate jadi pointer ke resolusi, bukan lagi daftar open-question)
+
+Langsung menyusul verdict "belum siap eksekusi" — user minta keenam poin itu DILENGKAPI
+arsitekturnya (bukan cuma dicatat sebagai pertanyaan terbuka). Semua 6 sekarang punya desain
+konkret:
+
+- **§ 11 (SSRF)** — modul baru `lib/wordpress-import-security.ts`,
+  `assertSafeExternalUrl()`: validasi skema http/https, resolve DNS + tolak IP privat/reserved
+  (hand-written CIDR check, bukan dependency baru), redirect TIDAK diikuti otomatis (`redirect:
+  "manual"` + validasi ulang tiap hop, maks 3), timeout 10 detik + budget maks 5.000 fetch per
+  batch. WAJIB dipakai di SEMUA titik fetch eksternal fitur ini (URL WP utama, featured image,
+  inline image) — satu gerbang validasi, bukan tiap titik menulis sendiri-sendiri.
+- **§ 12 (XXE + dependency)** — test wajib masuk Fase 0: payload XXE uji (`<!ENTITY xxe SYSTEM
+  "file:///etc/passwd">`) harus TERBUKTI inert terhadap `fast-xml-parser` yang benar-benar
+  dipakai, bukan diasumsikan aman dari nama library. Plus cap ukuran file WXR (200MB) +
+  validasi root element sebelum full parse. Dependency baru dikonfirmasi harus ditambah:
+  `fast-xml-parser`, `@tiptap/html`, `linkedom` — di `apps/web/package.json`, bukan root.
+- **§ 13 (model eksekusi)** — KEPUTUSAN: TIDAK menambah infrastruktur job baru (Redis/BullMQ)
+  untuk SATU fitur ini. Solusi: chunked-commit client-driven — `commitImportChunkAction`
+  (chunkSize=10, LEBIH KECIL dari asumsi awal karena kerja per-baris jauh lebih berat dari
+  Importer Anggota: download gambar+Sharp+Tiptap), klaim atomic per chunk (pola sama
+  `commitImportAction` existing), client loop memanggil sampai selesai (progress bar). Untuk
+  metode REST API, chunk boundary mengikuti pagination WordPress sendiri (100/halaman) —
+  tidak perlu logic chunking terpisah. Mitigasi timeout GANDA: chunkSize kecil (~30-50 detik
+  per panggilan) + naikkan `proxy_read_timeout` Nginx ke ~180 detik sebagai margin tambahan —
+  dua-duanya bersama, bukan salah satu.
+- **§ 14.1 (rollback)** — KEPUTUSAN: soft bulk-archive (`archiveImportBatchAction`,
+  `status='archived'`), BUKAN hard-delete — konsisten prinsip lebih suka aksi reversibel.
+  `post_authors` yang di-find-or-create selama batch TIDAK PERNAH disentuh rollback (resource
+  shared). Kolom baru `import_batch_id` (nullable, tanpa FK — pola cross-reference longgar yang
+  sudah berulang di project ini) di `posts`/`pages`/`media` untuk traceability.
+- **§ 14.2 (scope Pages)** — KEPUTUSAN: Pages IKUT diimpor Fase 1, infrastruktur SAMA (SEO,
+  gambar, Tiptap) — TAPI TANPA byline Penulis/Editor (tetap Post-only sesuai keputusan lama
+  `arsitektur-penulis-post.md` § 9, `pages.authorId` cukup diisi admin importer). Konsekuensi:
+  nama tabel `post_import_batches` → **`content_import_batches`** (content-type-agnostic) —
+  DDL LENGKAP akhirnya ditulis (sebelumnya cuma rasional tanpa skema), termasuk kolom baru
+  `content_type` (`'post'|'page'`) di `content_import_batch_rows` untuk membedakan keduanya.
+
+Semua referensi nama tabel lama (`post_import_batches`) di section-section sebelumnya (§ 3, § 8)
+ikut diupdate ke nama baru — konsistensi lintas dokumen, bukan cuma section baru yang benar
+sendirian. Roadmap § 8 diperbarui total mencerminkan urutan Fase 0-4 yang final (termasuk
+prasyarat keamanan eksplisit masuk checklist Fase 0, bukan cuma POC Tiptap).
+
+**Nol kode disentuh** — murni pelengkapan arsitektur/dokumentasi, sesuai instruksi eksplisit
+user ("jgn eksekusi dulu" masih berlaku, diminta melengkapi RENCANA-nya saja).
+
+### [2026-07-27] Putaran Kelima: Verifikasi Terhadap Data REAL (WXR + REST API `forbis.id`)
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 15** (temuan disisip
+> inline juga di § 2.1, § 2.2, § 2.4, § 4.1, § 5.1, § 5.4, § 12.1)
+
+User mengirim SATU file WXR export sungguhan (`docs/template/contoh-xml.xml`, dari `forbis.id` —
+Forum Bisnis IKPM Gontor, tenant yang sudah dibahas di sesi-sesi lain project ini, jadi ini
+BUKAN sample generik tapi target migrasi nyata) DAN satu URL REST API live
+(`https://forbis.id/wp-json/wp/v2/posts`) untuk diverifikasi terhadap seluruh rencana § 1-14.
+Kedua sumber di-fetch/dibaca dan dibandingkan butir-per-butir terhadap dokumen — 2 temuan
+mengubah keputusan konkret, sisanya mengonfirmasi atau melengkapi mapping yang sudah ada:
+
+- **KRITIS #1 — REST API `_embed=1` TIDAK menyertakan data SEO Yoast sama sekali** (dikonfirmasi
+  empiris: field `yoast_head_json` yang sempat dihipotesiskan sesi sebelumnya sebagai jalan
+  pintas SEO via REST **TIDAK ADA** di respons live `forbis.id`). Ini membalik prioritas dua
+  metode import: **WXR upload dipromosikan jadi metode UTAMA/direkomendasikan untuk migrasi
+  SEO-lengkap** (WXR selalu bawa seluruh `<wp:postmeta>` apa adanya); REST API pull direposisi
+  jadi alternatif "cepat, konten saja, TANPA jaminan SEO ikut" — harus dikomunikasikan eksplisit
+  ke admin di UI kalau metode ini dipilih, bukan diam-diam.
+- **KRITIS #2 — permalink struktur situs real TIDAK cocok 4 opsi § 5.1 manapun**. Dua sumber
+  independen (URL WXR lama 2019 `forbis.id/wawancara/2019/03/...` DAN URL REST API live 2026
+  `forbis.id/kabar/2026/07/...`) SAMA-SAMA berpola `/{categorySlug}/{tahun}/{bulan}/{slug}/` —
+  struktur WordPress standar `%category%/%year%/%monthnum%/%postname%/`, konsisten dipakai
+  situs ini dari 2019 sampai sekarang (bukan kebetulan satu artikel lama). **Opsi permalink ke-5
+  ditambahkan**: `category_date_name` — plus logic catch-all § 5.4 diperluas menangani 4 segmen.
+- **Dikonfirmasi (bukan berubah)**: namespace WXR real adalah `1.2` bukan `1.0` (validasi root
+  element dibuat version-tolerant); `_thumbnail_id` (BUKAN `wp:post_parent`, yang di sample
+  terbukti menunjuk post ID SALAH) satu-satunya mekanisme andal untuk matching featured image —
+  ini juga mengonfirmasi parser WXR harus **dua tahap** (index semua attachment dulu, baru
+  resolve post); gambar di-hosting CDN pihak ketiga (`cdn.webane.net`) bukan domain situs sendiri
+  — mengonfirmasi `assertSafeExternalUrl()` (§ 11) sudah benar didesain domain-agnostic;
+  `_embedded['wp:term']`/`_embedded['wp:featuredmedia']` REST API lengkap sesuai desain; OG image
+  vs Featured Image terbukti bisa jadi DUA aset berbeda di post real (ID postmeta beda) —
+  mengonfirmasi keduanya harus tetap pipeline terpisah, tidak boleh dedup berdasar asumsi "biasanya sama".
+- **Ditemukan, BARU ditambahkan ke § 2.4/§ 4.1**: `_embedded['author']` REST API bisa 404
+  (dikonfirmasi live di `forbis.id` — `rest_user_invalid_id`, REST User endpoint tidak publik) —
+  fallback dua-lapis ditambahkan (batch-level author override manual di UI review, atau
+  `displayAuthorId = null` jatuh ke fallback byline default sistem). `_wp_attachment_image_alt`
+  (→ `media.altText`), `_yoast_wpseo_primary_category` (tie-breaker kategori utama), dan
+  `wpb_post_views_count`/`musi_views` (opsional → `posts.viewCount`) ditambahkan sebagai mapping
+  baru yang belum pernah disebut sebelumnya. Dikonfirmasi juga: key Yoast yang TIDAK ADA di
+  postmeta (`_yoast_wpseo_canonical`, `-noindex` di sample ini) berarti "pakai default", BUKAN
+  error — Yoast hanya menulis key kalau field-nya di-customize eksplisit oleh admin WP.
+
+**Kesimpulan**: tidak ada perubahan struktural besar ke arsitektur § 1-14 — mayoritas temuan
+MENGONFIRMASI desain yang sudah ada (bukti nyata desain sudah tepat, bukan cuma teori). Fase 0
+(proof-of-concept Tiptap + test XXE) **TETAP belum dieksekusi** — sesi ini murni membaca/
+menganalisis dua sumber data real dan menyunting dokumen, nol kode ditulis, sesuai instruksi
+"jgn eksekusi dulu" yang masih berlaku.
+
+### [2026-07-27] File WXR Kedua — Temuan Kritis Baru: Rewrite `data-media-id` Wajib Sebelum Konversi Tiptap
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 15.3** (temuan disisip
+> juga inline di § 4.1, § 7.2)
+
+Menyusul Putaran Kelima (entri di atas), user kirim file WXR KEDUA `forbis.id` (16 item, 3 post +
+13 attachment) dengan instruksi eksplisit: "blocknya lebih variatif, silahkan dianalisa". Salah
+satu post di file ini (`wp:post_id 7837`) ternyata SAMA PERSIS dengan post yang sudah diverifikasi
+via REST API di putaran sebelumnya — kebetulan berguna untuk cross-check dua representasi format
+berbeda dari satu konten real, hasilnya konsisten.
+
+**Variasi block yang ditemukan** (via `grep -o` semua penanda `<!-- wp:...`): `paragraph` (29×),
+`image` (9×), `heading` (5×, level 2/3 + inline `<strong>`), `list`+`list-item` (1 ordered list),
+`gallery` (1×, 2 image nested). **Tidak ditemukan sama sekali**: embed/quote/table/columns/button/
+video/code — jenis block yang justru jadi alasan Jalakarta punya custom extension `EmbedBlock`/
+`EnhancedBlockquote` TIDAK PERNAH muncul di kedua sample real yang diberikan sejauh ini — fallback
+StarterKit standar (bukan custom extension mapping) ternyata jalur yang PALING SERING dipakai di
+kenyataan, bukan pengecualian.
+
+**Temuan KRITIS — ditemukan dengan cara membaca kode Tiptap extension langsung, bukan cuma XML**:
+`components/editor/media-image-ext.ts` — `MediaImage` (image node custom Jalakarta, extend
+`@tiptap/extension-image`) punya attribute `mediaId` yang di-parse dari `data-media-id` HTML
+attribute. `<img src="...">` polos dari WordPress TETAP ter-parse jadi node `image` (inherit
+`parseHTML` bawaan `Image`), TAPI `mediaId`-nya akan **`null` SELAMANYA** kalau HTML tidak
+di-rewrite dulu — gambar hasil import jadi terputus dari Media Library Jalakarta (tidak ikut
+resolve variant, tidak muncul di browse media, dst) meski secara visual tetap tampil (browser
+fetch apa pun yang ada di `src`, termasuk kalau `src` masih menunjuk domain WordPress lama).
+Ini **silent degradation** — bukan error yang kelihatan, persis kelas bug yang paling gampang
+lolos audit karena hasilnya "tampak berhasil". **Fix arsitektur**: ditambahkan langkah wajib baru
+di antara Tahap A (sanitasi) dan Tahap B (konversi JSON) § 7.2 — setelah gambar diunduh+
+`processImage()`, HTML harus di-rewrite dulu (`src` → URL MinIO baru + tambah
+`data-media-id="{media.id baru}"`) SEBELUM `generateJSON()` dipanggil.
+
+**Temuan kedua**: Gutenberg Gallery block WordPress (`<figure class="wp-block-gallery">` berisi
+beberapa `<figure class="wp-block-image">` nested) TIDAK match `parseHTML()` `GalleryBlock`
+Jalakarta (`components/editor/gallery-block-ext.ts`, hanya kenal `div[data-type="gallery-block"]`)
+— tanpa deteksi/transformasi khusus, galeri WP akan pecah jadi beberapa node `image` terpisah
+berurutan saat import, bukan satu node `galleryBlock` native dengan grid/lightbox Jalakarta.
+**Diterima sebagai keputusan MVP eksplisit** (gambar tetap ter-import semua, cuma tidak
+dikelompokkan visual) — rekonstruksi penuh jadi enhancement lanjutan, bukan prasyarat Fase 1.
+
+**Temuan ketiga**: comment Gutenberg BISA nested (`<!-- wp:list-item -->` di dalam `<ol>` yang
+belum ditutup, `<!-- wp:image -->` di dalam `<!-- wp:gallery -->` yang belum ditutup) — dikonfirmasi
+AMAN untuk regex strip sederhana (`<!--\s*/?wp:[\w-]+[^>]*-->`, cocokkan sampai `-->` pertama,
+JANGAN coba parse JSON balanced-braces atribut blocknya) karena comment murni overlay di atas HTML
+yang sudah valid, tidak pernah merusak struktur tag di baliknya.
+
+**Mapping tambahan ditemukan**: `ane_news_utama`/`_ane_news_utama` (ACF plugin field, penanda
+"berita utama") → `posts.isFeatured` (dikonfirmasi kolom ini memang ada, "Berita Unggulan").
+Postmeta Yoast di 3 post sample kedua ini JAUH lebih sedikit dari sample pertama (cuma
+`primary_category`/`focuskw`/`metadesc` yang relevan) — memperkuat lagi prinsip "key tidak ada =
+pakai default", bahkan antar-post di situs YANG SAMA variasinya signifikan.
+
+**Nol kode disentuh** — murni analisis file XML + baca kode extension Tiptap existing untuk
+verifikasi kompatibilitas, sesuai instruksi "jgn eksekusi dulu" yang masih berlaku.
+
+### [2026-07-27] Fase 0 Import WordPress Dieksekusi — POC Tiptap + XXE Terbukti Aman
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 16** (§ 7.2/§ 12.1/§ 12.2
+> diupdate inline, status banner dokumen berubah dari "rencana murni" jadi "Fase 0 sebagian
+> dieksekusi")
+
+Menyusul 5 putaran audit murni dokumentasi, user beri lampu hijau eksplisit ("ya lanjut") untuk
+mulai eksekusi bertahap — DISEPAKATI SEMPIT: script POC disposable (tulis→jalankan→hapus) untuk
+membuktikan 2 risiko teknis terbesar SEBELUM menulis fitur permanen, bukan langsung lompat ke
+Fase 1.
+
+**Koreksi dependency ditemukan SAAT instalasi** (dicek ke npm registry langsung, bukan dipercaya
+dari draf dokumen): `@tiptap/html`'s peer dependency SEBENARNYA `happy-dom`, BUKAN `linkedom`
+yang ditulis draf awal (asumsi generik komunitas Tiptap, ternyata salah untuk package ini).
+`@tiptap/html@latest` (3.29.0) peer-dep ke `@tiptap/core@3.29.0` PERSIS (exact-pin) — project
+ini pakai `@tiptap/core@^3.22.3` — dicek versi demi versi di registry, `@tiptap/html@3.22.3`
+(masih ada) peer-dep ke RANGE `^3.22.3` yang cocok. **Keputusan: pin `@tiptap/html@3.22.3`,
+bukan `latest`** — menghindari upgrade paksa seluruh ekosistem Tiptap v3 project (9+ package)
+hanya demi 1 fitur baru, risiko regresi ke editor LIVE yang dipakai semua admin.
+
+**Bug BERULANG ditemukan**: `bun add @tiptap/html linkedom fast-xml-parser --filter=
+@jalajogja/web` KEMBALI salah menaruh ketiga dependency di ROOT `package.json`, persis kelas bug
+yang sudah didokumentasikan untuk `recharts` (lesson `[2026-07-16] Bug deploy kedua`). Diperbaiki
+manual (pindah ke `apps/web/package.json`, `bun install` ulang, verifikasi resolve dari
+`apps/web`). **Ini kejadian KEDUA dengan root cause identik** — aturan ditegaskan lagi:
+`--filter=` TIDAK BOLEH dipercaya buta, SELALU `git diff package.json` (root) setelah `bun add`
+apa pun.
+
+**POC 1 — konversi Tiptap (risiko teknis TERBESAR di seluruh rencana) TERBUKTI AMAN**: script
+sekali-pakai import LANGSUNG 5 extension custom project (`GalleryBlock`, `EmbedBlock`,
+`RelatedLinkBlock`, `EnhancedBlockquote`, `MediaImageExtension` — termasuk yang internal
+meng-import komponen React) + seluruh extension standar PERSIS sama dengan `tiptap-editor.tsx`,
+panggil `generateJSON()` dari `@tiptap/html/server` terhadap konten Gutenberg REAL (comment
+di-strip via regex sederhana dulu) dari kedua sample WXR. **Hasil: nol crash**, tipe node sesuai
+ekspektasi, dan hasil JSON berhasil di-render balik via `renderBody()` **ASLI** (`lib/letter-
+render.ts`, tidak dimodifikasi) tanpa error — round-trip lengkap sukses. Kekhawatiran awal (pola
+sama bug lama `generateHTML`/`prosemirror-model` yang crash server-side karena sentuh
+`window.document`) TERBUKTI TIDAK TERJADI di arah konversi ini (HTML→JSON, beda dari JSON→HTML
+yang dulu bermasalah) — `happy-dom` cukup menyediakan DOM tanpa perlu browser sungguhan, dan
+`generateJSON()` tidak pernah memanggil `addNodeView()` (murni concern rendering interaktif,
+bukan schema generation) sehingga import komponen React di extension tidak jadi masalah.
+Sekaligus MENGKONFIRMASI EMPIRIS 2 keputusan yang sebelumnya cuma teori: `mediaId` gambar
+WordPress selalu `null` tanpa rewrite `data-media-id` (§ 7.2), dan galeri WordPress pecah jadi
+image individual bukan `galleryBlock` (§ 15.3).
+
+**POC 2 — XXE `fast-xml-parser@5.10.1` TERBUKTI AMAN, lebih baik dari ekspektasi**: payload uji
+`<!DOCTYPE rss [<!ENTITY xxe SYSTEM "file://...">]>` **DITOLAK EKSPLISIT** dengan error
+`"External entities are not supported"` — bukan cuma inert-diam-diam seperti kriteria minimum
+di dokumen, tapi benar-benar melempar error jelas. Smoke test tambahan (di luar checklist asli):
+kedua file WXR real parse sukses <3ms, `_thumbnail_id`↔attachment matching benar — memvalidasi
+mekanisme 2-tahap yang didesain bisa diimplementasikan dengan library ini.
+
+**Temuan sampingan baru**: (1) field `<title>`/`<excerpt:encoded>` WXR masih berisi HTML entity
+literal (`&amp;` dst) DI DALAM CDATA — WordPress sendiri yang menulisnya begitu, bukan bug
+parser — butuh langkah decode terpisah (kandidat: package `he`) sebelum simpan ke `posts.title`/
+`excerpt`, dicatat sebagai item baru Fase 1; (2) editor LIVE project (`tiptap-editor.tsx`) sudah
+punya duplikasi registrasi extension `underline` (StarterKit v3 sudah membundelnya, file itu
+juga import terpisah) — warning ini muncul saat POC tapi BUKAN disebabkan POC, murni situasi
+pre-existing di kode production, TIDAK diperbaiki (di luar scope, butuh sentuh editor live).
+
+**Hasil akhir**: 2 dari 3 risiko Fase 0 (§ 11-§ 14 lama) sekarang TERBUKTI, bukan lagi asumsi.
+Satu item tersisa: `assertSafeExternalUrl()` (§ 11, modul SSRF) belum ditulis/dites. Fase 1
+(fitur sungguhan: parser permanen, schema, UI) BELUM dimulai, menunggu instruksi eksplisit.
+Semua file POC (`_poc-*.ts`) sudah dihapus setelah dipakai — disposable sesuai rencana, tidak
+ada bekas kode temporary yang tertinggal di repo.
+
+### [2026-07-27] Fase 0 Import WordPress SELESAI 100% — Modul SSRF Dibangun, 2 Bug Nyata Ditemukan+Difix
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 16.6** (§ 11 diupdate
+> total dari sketsa/stub jadi deskripsi implementasi nyata, § 8/status banner diupdate jadi
+> "Fase 0 100% selesai")
+
+Lanjutan langsung dari entri di atas — user minta lanjutkan menuntaskan Fase 0 (satu-satunya
+item tersisa: modul SSRF) dengan penekanan eksplisit: **"ingat selalu patuhi sop, dan jangan
+halusinasi atau mengarang, selalu ikuti sesuai rencana."** Dibaca ulang dulu spesifikasi § 11
+PERSIS dari file (bukan dari ingatan percakapan sebelumnya) sebelum menulis kode — mengikuti
+signature `assertSafeExternalUrl(rawUrl)` dan aturan tambahan (redirect manual+3-hop,
+timeout 10 detik, "satu gerbang validasi") tanpa penyimpangan.
+
+**File permanen baru**: `apps/web/lib/wordpress-import-security.ts` — `assertSafeExternalUrl()`
+(validasi 1 URL) + `safeFetch()` (wrapper fetch dengan redirect manual+re-validasi per-hop+maks
+3 hop+timeout — mengimplementasikan "Aturan tambahan WAJIB" § 11 poin 1-2 sebagai helper
+reusable, bukan biarkan Fase 1 menulis ulang redirect-loop sendiri). `isPrivateOrReservedIp`
+(internal, tidak diekspor) menangani range yang PERSIS didokumentasikan (IPv4 5 range, IPv6
+`::1`+`fc00::/7`+`fe80::/10`) — TIDAK menambah scope di luar dokumen KECUALI 1 hal yang
+ditemukan sebagai bypass nyata saat implementasi (IPv4-mapped `::ffff:0:0/96`, dicatat eksplisit
+sebagai temuan baru, bukan diam-diam ditambahkan tanpa keterangan).
+
+**Sebelum menulis kode produksi, dicek dulu apakah environment sesi ini punya akses jaringan
+keluar** (DNS + HTTP langsung dari Bash/Bun, bukan cuma lewat tool `WebFetch`) — ternyata ADA,
+jadi seluruh pengujian bisa memakai DATA NYATA (DNS resolve sungguhan ke domain publik asli,
+redirect sungguhan via `httpbin.org`), bukan simulasi/mock — konsisten dengan instruksi
+"jangan mengarang": setiap klaim "aman"/"tertolak" di bawah ini benar-benar dijalankan dan
+diverifikasi, bukan diasumsikan dari membaca kode saja.
+
+**2 bug NYATA ditemukan lewat testing sungguhan (bukan cuma review kode), keduanya dari
+perilaku `URL` class Node yang tidak intuitif**:
+1. **`URL.hostname` mempertahankan tanda kurung untuk literal IPv6** (`"[::1]"`, bukan
+   `"::1"`), tapi `dns.lookup()` tidak memahami notasi kurung — tanpa fix, SETIAP URL
+   ber-IPv6-literal (privat MAUPUN publik) gagal resolve dan tertolak untuk alasan SALAH
+   ("domain tidak bisa di-resolve", bukan hasil pengecekan privat/reserved yang sesungguhnya).
+   Ditemukan karena test PUBLIK IPv6 (`http://[2606:4700::1111]/`) ikut tertolak padahal
+   seharusnya lolos — kalau hanya menguji kasus "harus tertolak" tanpa kasus kontrol "harus
+   lolos", bug ini TIDAK akan pernah ketahuan (private IPv6 tetap "tertolak", cuma untuk alasan
+   yang salah, kelihatan seperti test lolos padahal logic prefix-check-nya tidak pernah
+   benar-benar teruji). Fix: `url.hostname.replace(/^\[|\]$/g, "")` sebelum `dns.lookup()`.
+2. **Deteksi IPv4-mapped IPv6 berbasis pencarian string "." tidak pernah match** — `new
+   URL("http://[::ffff:127.0.0.1]/")` MENORMALISASI notasi dotted-quad jadi hex groups murni
+   SEBELUM kode sempat melihat string aslinya (`hostname` jadi `"[::ffff:7f00:1]"`) —
+   dikonfirmasi lewat debug langsung (`console.log` pada nilai perantara), bukan ditebak dari
+   spesifikasi URL. Fix: deteksi prefix `::ffff:0:0/96` secara NUMERIK dari grup 16-bit yang
+   sudah di-expand, bukan dari keberadaan karakter titik di string.
+
+**Metodologi testing**: 33 test case via script disposable (`_poc-ssrf-test.ts`, dihapus setelah
+lolos) — IPv4 (10 privat + 3 batas-luar-range + 2 publik), IPv6 (5 privat + 2 publik termasuk
+IPv4-mapped publik), hostname (localhost/example.com/domain-fiktif), dan `safeFetch` terhadap
+REDIRECT SUNGGUHAN `httpbin.org` (2-hop legit sukses, 5-hop ditolak karena lebihi limit,
+**redirect ke `127.0.0.1` dan ke `169.254.169.254` — dua target SSRF-via-redirect klasik —
+ditolak di hop kedua**, membuktikan re-validasi per-hop genuinely berjalan bukan cuma validasi
+hop pertama). Satu kegagalan TRANSIEN (timeout) sempat muncul di percobaan pertama pada test
+5-hop — didiagnosis terpisah (test ulang sendirian, sukses cepat, ~2 detik) sebelum disimpulkan
+sebagai flakiness jaringan publik `httpbin.org`, bukan bug — tidak diabaikan tanpa investigasi.
+
+**Yang SENGAJA belum diimplementasikan**: "budget per batch" (§ 11 poin 3, cap 5.000 fetch per
+sesi import) — ini state PER-BATCH yang butuh counter terikat sesi import, tidak masuk akal
+hidup di modul security stateless ini. Didorong eksplisit jadi tanggung jawab Fase 1 (engine
+pemroses batch), dicatat di dokumen supaya tidak terlupa, bukan diam-diam dilewati.
+
+**Hasil**: Fase 0 sekarang **100% selesai** — ketiga item checklist (§ 10 poin 1: POC Tiptap,
+POC XXE, modul SSRF) semuanya terbukti dengan pengujian nyata, bukan asumsi. `tsc --noEmit`
+project-wide 0 error. File POC dihapus, hanya `lib/wordpress-import-security.ts` yang permanen
+(belum di-commit). Fase 1 (fitur sungguhan) siap dimulai kapan pun ada instruksi eksplisit.
+
+### [2026-07-27] Fase 1 Import WordPress Dimulai — Skema DB `content_import_batches` Selesai
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 8 Fase 1 (item skema
+> ditandai ✅), § 14.1/§ 14.2 (rujukan DDL asli, tidak diubah)**
+
+User minta lanjut ke Fase 1 dengan urutan eksplisit: **skema DB dulu, baru parser, baru UI** —
+dikonfirmasi setuju setelah verifikasi silang terhadap kode aktual (bukan cuma percaya dokumen):
+pola ini PERSIS sama dengan urutan yang sudah terbukti di Importer Anggota (skema → helper →
+server actions → UI, `docs/arsitektur-import-anggota.md`), jadi bukan keputusan baru — mengikuti
+preseden yang sudah stabil di codebase yang sama.
+
+**Sebelum menulis kode**, dicek dulu konvensi existing yang PERSIS relevan (bukan diasumsikan
+dari ingatan dokumen): file `packages/db/src/schema/public/import-batches.ts` (pola tabel public
+draft-store Importer Anggota) dan migration `0049_post_authors.sql` (pola paling analog — tabel
+public baru + kolom baru di tenant existing) dibaca dulu sebagai TEMPLATE persis untuk ditiru.
+
+**Dibangun**:
+- `packages/db/src/schema/public/content-import.ts` (BARU) — `contentImportBatches` +
+  `contentImportBatchRows`, kolom PERSIS sesuai DDL § 14.2 (tidak ada penyimpangan), wired ke
+  `schema/public/index.ts` barrel export.
+- `packages/db/migrations/0050_content_import_wordpress.sql` (BARU) — `CREATE TABLE` sekali
+  jalan (public schema) + `DO $$ LOOP` per tenant existing untuk `ALTER TABLE posts/pages/media
+  ADD COLUMN IF NOT EXISTS import_batch_id UUID` (nullable, TANPA FK — pola cross-reference
+  longgar yang sudah berulang di project ini).
+- `packages/db/src/schema/tenant/website.ts` — `importBatchId` ditambah ke Drizzle
+  `createPostsTable`/`createPagesTable`/`createMediaTable`.
+- `packages/db/src/helpers/create-tenant-schema.ts` — DDL 3 tabel yang sama diupdate agar
+  tenant BARU otomatis dapat kolom ini tanpa perlu migration susulan.
+
+**Verifikasi**: migration dijalankan+dikonfirmasi di lokal (`\d` menunjukkan kedua tabel baru
+dengan CHECK constraint dan FK yang benar, plus kolom `import_batch_id` di ketiga tabel tenant
+sample). `tsc --noEmit` 0 error di `packages/db` DAN `apps/web`. Sekalian dikonfirmasi via
+`bun -e 'import("@jalajogja/db")...'` bahwa `contentImportBatches`/`contentImportBatchRows`
+benar-benar ter-export dari barrel top-level package, bukan cuma ada di file internal.
+
+**Catatan penting**: `_journal.json` (drizzle-kit) HANYA sampai idx 14 — dikonfirmasi bukan
+bug, migration 0015 ke atas SEMUA dijalankan manual via `psql -f` (pola established lama), jadi
+migration baru ini TIDAK perlu update journal, konsisten dengan puluhan migration sebelumnya.
+
+**Belum dari Fase 1**: parser WXR (`lib/wordpress-xml-parser.ts`), REST API fetcher, UI import,
+mapping penulis (§ 2.4), `commitImportChunkAction`, `archiveImportBatchAction` — semua masih
+`⬜ BELUM` di roadmap, menunggu giliran sesuai urutan yang disepakati (parser dulu, baru UI).
+
+### [2026-07-27] Fase 1 Import WordPress — Parser WXR Selesai + Bug `server-only` Saat Testing
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 8** (roadmap Fase 1,
+> item parser). Lanjutan langsung dari skema DB (lesson di atas) — user: "silahkan lanjut ke
+> parser, ingat konsisten dan focus pada task, juga selalu sesuai sop d claude.md".
+
+**2 file baru**: `apps/web/lib/wordpress-import-mapping.ts` (pure, client-safe — pola PERSIS
+`lib/import-anggota-mapping.ts`: `decodeHtmlEntities()` untuk entity HTML yang WordPress
+tulis SUDAH ter-encode di dalam CDATA — CDATA memang tidak pernah di-decode oleh spesifikasi
+XML manapun, § 16.4; `extractPathFromUrl()` untuk legacy redirect § 5.5; `mapYoastSeo()` HANYA
+Yoast sesuai § 4.3 — sengaja TIDAK menebak Rank Math/AIOSEO; `resolvePrimaryCategory()` —
+tie-breaker `_yoast_wpseo_primary_category` butuh lookup terpisah `wp_term_id → nama kategori`
+dari blok `<wp:category>` LEVEL CHANNEL, karena `<category>` per-item TIDAK menyertakan
+`term_id` sama sekali, cuma nama+nicename; tipe `ParsedWordPressItem` — bentuk satu baris
+preview, DIRANCANG SETARA untuk WXR maupun REST API nanti) dan
+`apps/web/lib/wordpress-xml-parser.server.ts` (`import "server-only"` — pakai
+`fast-xml-parser`, dua-tahap index attachment via `_thumbnail_id` (§ 2.1, `wp:post_parent`
+TERBUKTI tidak bisa diandalkan dari sample real), resolusi tanggal `post_date_gmt` (sudah UTC)
+dengan fallback ke `post_date` lokal + `localDatetimeToUtcIso()` — REUSE `lib/tenant-timezone.ts`
+yang sudah ada, TIDAK ada dependency timezone baru, deteksi duplikat slug via 1 query per row
+ke `posts`/`pages` tenant.
+
+**Scope SENGAJA dibatasi sesuai § 13** ("parse murni CPU, tidak ada I/O eksternal") — fungsi
+`parseWxrXml()` HANYA mengekstrak+menormalisasi data jadi `ParsedWordPressItem[]`. TIDAK
+mengunduh gambar, TIDAK memanggil `processImage()`/`generateJSON()`, TIDAK insert apa pun ke
+`posts`/`pages`/`media`, TIDAK find-or-create `post_authors` — semua itu tugas
+`commitImportChunkAction` yang belum ditulis (langkah roadmap terpisah).
+
+**Bug ditemukan SAAT testing (bukan di kode produksi), 2 lapis**:
+1. **`server-only` package genuinely tidak terinstall di project ini** (dicek: nol hasil di
+   `bun.lock`, nol folder di `node_modules` manapun) — package ini HANYA resolve lewat alias
+   internal webpack/turbopack Next.js App Router, TIDAK BISA dijalankan via `bun run script.ts`
+   biasa di luar pipeline Next.js. Ini BEDA dari semua POC sebelumnya di Fase 0 (yang mengimpor
+   file `.ts` biasa, bukan `.server.ts`) — kelas masalah baru yang baru ketahuan sekarang karena
+   baru sekarang ada file ber-marker `server-only` yang perlu diuji langsung via `bun run`.
+   **Solusi**: salinan disposable tanpa baris `import "server-only";` (dibuat via `sed`,
+   dihapus lagi setelah verifikasi) — file produksi `wordpress-xml-parser.server.ts` itu
+   sendiri TIDAK PERNAH disentuh/dimodifikasi untuk testing ini.
+2. **`bun run script.ts | head -N` menyebabkan proses child hang 100% CPU** — setelah `head`
+   membaca N baris dan menutup ujung baca pipe, proses Bun yang masih menulis ke stdout kena
+   SIGPIPE/EPIPE; alih-alih exit bersih, proses malah macet (kemungkinan retry loop di client
+   Postgres/event-loop Bun, bukan bug logic kode sendiri). **Terbukti BUKAN bug kode**: dicek
+   dengan re-run TANPA pipe `head` — proses menyelesaikan SEMUA output dengan benar dan keluar
+   normal, dan output yang SEMPAT tertulis sebelum macet (`status: duplicate` di baris
+   terpotong) membuktikan logic sudah lengkap dijalankan sebelum stdout tersendat. **Aturan**:
+   jangan pernah pipe proses `bun run`/`node` yang MASIH BERJALAN ke `head -N` untuk membatasi
+   output panjang — tulis ke file lebih dulu (redirect `>`), baru `head`/`cat` file HASIL-nya.
+
+**Verifikasi terhadap 2 file WXR sample REAL** (`docs/template/contoh-xml.xml` +
+`docs/template/wordpress-xml-forbis.xml`, keduanya `forbis.id`): SEMUA field benar — judul
+(dengan entity `&amp;` ter-decode benar), slug, tanggal (dikonversi UTC benar), taksonomi
+(kategori+tag, termasuk tag berjumlah 7 di satu post), penulis (`dc:creator` username → nama
+tampilan dari `wp:author` channel-level), **featured image via `_thumbnail_id` dua-tahap
+TERBUKTI BEKERJA** (URL CDN pihak ketiga `cdn.webane.net` terambil benar, bukan
+`wp-content/uploads` — ini risiko teknis PALING kritis di keseluruhan parser, sekarang
+terbukti bukan asumsi), SEO Yoast (metaTitle/metaDesc/focusKeyword/robots/schemaType/
+isFeatured/viewCount — termasuk kasus null yang benar saat admin tidak customize field
+tertentu), legacy path (`/kabar/2026/07/slug/` — cocok pola permalink real yang sudah
+dikonfirmasi § 15). **Status `duplicate` diuji POSITIF** (bukan cuma negatif) — insert 1 baris
+manual ke `tenant_pc-ikpm-jogjakarta.posts` dengan slug sama persis, re-run parser, status
+berubah jadi `"duplicate"` dengan benar, baris tes dihapus lagi setelahnya.
+
+**Verifikasi**: `tsc --noEmit` 0 error di `apps/web` DAN `packages/db`. Semua file disposable
+(salinan tanpa `server-only`, script test) dan baris DB sementara sudah dibersihkan. **Belum
+di-commit ke git** (konsisten dengan seluruh Fase 0/Fase 1 sesi ini yang juga belum di-commit).
+
+### [2026-07-27] Fase 1 Import WordPress — REST API Fetcher Selesai + Diuji LIVE ke `forbis.id`
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 8** (roadmap Fase 1,
+> item REST fetcher). Lanjutan langsung dari parser WXR (lesson di atas) — user: "lanjut ke
+> safeFetch(), ingat konsisten dan focus pada task dan selalu sesuai dengan standard tinggi
+> sop kita."
+
+**File baru**: `apps/web/lib/wordpress-api-fetcher.server.ts` (`import "server-only"`) —
+`fetchWordPressContent(siteUrl, opts)`. Sebelum menulis kode, dibaca ulang § 2.2/§ 2.4/§ 15.2
+dari dokumen (bukan dari ingatan ringkasan) untuk memastikan endpoint, struktur `_embedded`,
+dan fallback yang benar-benar terdokumentasi dari verifikasi data real sesi sebelumnya.
+
+**Keputusan desain kunci**:
+- **`findExistingContentBySlug()` diekspor dari parser WXR dan dipakai ulang di sini** — bukan
+  ditulis ulang. Query duplikat-slug ke `posts`/`pages` tenant HARUS identik untuk WXR maupun
+  REST (dua-duanya menulis ke tabel yang SAMA) — beda dari pola "duplikasi demi isolasi" yang
+  biasa dipakai project ini untuk kode yang BOLEH divergen (`generateEventRegNumber`, dst);
+  di sini risiko divergen justru berbahaya (dua definisi "duplikat" yang beda-beda untuk
+  konsep yang sama).
+- **Fetch `/posts` DAN `/pages` sekaligus** (§ 14.2 — Pages ikut Fase 1, infrastruktur sama).
+  § 2.2 aslinya cuma daftar endpoint `/posts`+`/categories`+`/tags` (ditulis SEBELUM keputusan
+  Pages di § 14.2 ada) — diperluas konsisten dengan keputusan yang lebih baru.
+  **SENGAJA TIDAK memanggil `/categories`/`/tags` terpisah** — `_embed=1`'s `wp:term` SUDAH
+  memberi taksonomi lengkap PER-ITEM yang jadi kebutuhan fungsi ini; endpoint terpisah itu
+  baru relevan untuk fitur lain (UI pemetaan taksonomi situs-lebar), di luar scope fungsi ini.
+- **`emptySeoFields()`** — REST API TIDAK menyertakan Yoast SEO sama sekali (dikonfirmasi § 15.2
+  dari fetch live sebelumnya) — SEO diisi default kosong, bukan error/exception.
+- **Fallback author dua-lapis** (§ 2.4) — kalau `_embedded.author` 404 (dikonfirmasi terjadi
+  SITE-WIDE di forbis.id, bukan cuma 1 post), catat di `notes[]` per row, resolusi batch-level
+  override DITUNDA ke commit/UI review — parser/fetcher TIDAK menebak nama penulis.
+- **`stripHtmlTags()` baru** (di `wordpress-import-mapping.ts`, pure) — `excerpt.rendered` REST
+  API SELALU dibungkus `<p>` oleh WordPress core (bahkan excerpt manual), beda dari WXR's
+  `<excerpt:encoded>` yang sudah plain text — HANYA dipakai di jalur REST, TIDAK diretrofit ke
+  parser WXR yang sudah terverifikasi bekerja (scope tetap fokus ke tugas yang diminta).
+- **Cap pagination lokal** (200 halaman/tipe konten, ~20.000 item) — BUKAN pengganti "budget
+  5.000 fetch per batch" (§ 11 poin 3, state lintas-sumber yang sengaja ditunda ke
+  `commitImportChunkAction`) — murni pengaman lokal terhadap loop tak berkesudahan kalau
+  `X-WP-TotalPages` dari situs target keliru/dimanipulasi.
+
+**Diuji LIVE terhadap `https://forbis.id` sungguhan** (bukan sample statis seperti parser WXR
+sebelumnya) — pola disposable-copy-tanpa-`server-only` yang sama dipakai lagi, kali ini 2 file
+saling terhubung (fetcher + parser WXR untuk `findExistingContentBySlug`) sehingga jalur impor
+relatifnya perlu disesuaikan manual (fetcher dipindah ke root `apps/web/`, bukan lagi
+`apps/web/lib/`, jadi `./wordpress-import-security` perlu jadi `./lib/wordpress-import-security`).
+**480 baris nyata** (450 post + 30 page hierarkis, mis.
+`/susunan-pengurus/periode-2024-2029/`) — pagination lintas 5+ halaman terbukti benar via
+header `X-WP-TotalPages`. Featured image 444/480, kategori 450/480 (0 untuk SEMUA 30 page —
+sesuai ekspektasi, Pages tidak punya taksonomi di WP core, dikonfirmasi bukan bug), legacy path
+480/480, SEO null 480/480 (mengonfirmasi ulang temuan § 15.2 di skala PENUH, bukan cuma 1
+sample), penulis 0/480 ditemukan (`_embedded.author` 404 dikonfirmasi site-wide, bukan
+kebetulan 1 post).
+
+**Status `duplicate` ditemukan GENUINE 2× tanpa direkayasa** (beda dari parser WXR yang cuma
+diuji via insert baris tes manual) — `kebijakan-privasi` dan `home`, dua page forbis.id yang
+KEBETULAN sama persis slug-nya dengan page yang sudah ada di tenant `pc-ikpm-jogjakarta`
+(legal singleton page bawaan sistem + halaman Home tenant) — ditelusuri langsung ke DB untuk
+konfirmasi ini genuine collision, bukan bug (`existingContentId` di kedua row cocok persis
+dengan UUID row yang sudah ada). Bukti nyata deteksi duplikat bekerja benar di skenario
+lintas-tenant sungguhan, bukan cuma tes artifisial.
+
+**Cross-check silang dengan parser WXR**: post row #1 hasil REST API ("Cetak Srikandi
+Pengusaha Hafidzoh...") adalah post YANG SAMA PERSIS dengan yang sudah diverifikasi via WXR di
+§ 15.3 (`wp:post_id 7837`) — judul, 7 tag, legacy path semuanya identik di kedua metode
+ekstraksi, memvalidasi kedua parser menghasilkan data yang setara untuk konten yang sama.
+
+**Verifikasi**: `tsc --noEmit` 0 error di `apps/web` DAN `packages/db`. Semua file disposable
+dan baris DB sementara sudah dibersihkan. **Belum di-commit ke git.**
+
+### [2026-07-27] Fase 1 Import WordPress — Parse-Simpan-Draft Actions + Mapping Penulis Selesai
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 8** (roadmap Fase 1).
+> Lanjutan langsung dari REST fetcher — user minta analisa kritis urutan sisa 4 item Fase 1
+> ("mapping penulis → commit → archive → UI"), saya setujui dengan 1 koreksi (mapping penulis
+> BUKAN fase berdiri sendiri, § 2.4 eksplisit bilang resolusi penulis terjadi "saat commit" —
+> jadi ini sub-komponen kecil yang dibangun+diverifikasi dulu SEBELUM di-wire ke commit, bukan
+> deliverable terpisah setara commit/archive), lalu user: "silahkan eksekusi... strick pada
+> arsitektur, focus, dan harus sesuai SOP yang ketat."
+
+**Gap ditemukan SAAT eksekusi (bukan direncanakan eksplisit)**: `commitImportChunkAction`
+butuh baris `content_import_batch_rows` yang SUDAH ADA untuk dibaca+diproses per-chunk — tapi
+tidak ada satu pun action yang menulis baris itu (parser/fetcher yang sudah dibangun hanya
+mengembalikan `ParsedWordPressItem[]` in-memory, belum pernah dipersist). File BARU
+`app/(dashboard)/app/[tenant]/website/import-wordpress/actions.ts` (`"use server"`, direktori
+BARU mengikuti pola `members/import/`) menutup gap ini: `importWxrFileAction`+
+`importRestApiAction` (pola PERSIS `parseImportFileAction` Importer Anggota) — digate
+`getTenantAccess()`+`hasFullAccess(...,"website")`, panggil parser/fetcher yang sudah ada,
+`persistDraftBatch()` (private helper) tulis ke `content_import_batches`+
+`content_import_batch_rows` (data JSONB = `ParsedWordPressItem` utuh).
+
+**Mapping penulis (§ 2.4) — `resolveOrCreateAuthor()`**, private helper di file yang sama
+(TIDAK di-export — tidak jadi Server Action sendiri meski file-nya `"use server"`, dipanggil
+`commitImportChunkAction` nanti). Cache-first (dedup SATU batch) → lookup cross-batch
+(`sql\`lower(name)=lower(x)\` AND member_id IS NULL` — **SENGAJA bukan `ilike()`**, supaya
+karakter `%`/`_` di nama penulis WordPress tidak disalahartikan sebagai wildcard SQL, celah
+false-positive-match nyata kalau dipakai naif) → REUSE `createGuestPostAuthorAction()` yang
+sudah ada (§ 2.4 eksplisit larang reimplementasi insert `post_authors`) kalau belum ketemu.
+
+**Koreksi klaim saya sendiri ke user** (ditemukan+diluruskan SAAT eksekusi, bukan dibiarkan):
+sebelumnya saya bilang ke user `"use server"` "kemungkinan lebih gampang dites" dibanding
+`"server-only"` — SALAH pada mekanismenya. Dites empiris (`headers()` dipanggil standalone via
+`bun run`): benar `"use server"` cuma directive kosmetik (no-op di luar Next.js), TAPI
+`getTenantAccess()` di dalam fungsi tetap panggil `headers()` dari `next/headers`, yang
+GENUINELY butuh Next.js request scope — throw persis `` `headers` was called outside a request
+scope `` terlepas dari "use server" ada/tidak. Kelas masalah BARU (bukan modul-resolusi seperti
+`server-only`, tapi runtime AsyncLocalStorage context) yang butuh strategi testing berbeda.
+
+**Rabbit hole disposable-copy + solusi**: mencoba pola "salinan tanpa marker" yang sama seperti
+sesi sebelumnya untuk `importWxrFileAction`/`importRestApiAction` gagal berlapis — rantai impor
+transitif `getTenantAccess()→lib/tenant.ts→lib/auth.ts→lib/mail.ts` SEMUANYA butuh disalin satu
+per satu (3+ file `server-only` bersarang), dan bahkan setelah itu tetap tidak bisa memanggil
+fungsi yang genuinely butuh `headers()`. **Solusi yang dipakai**: berhenti mengejar salinan utuh
+`actions.ts` — buat script test MINIMAL yang menyalin PERSIS (bukan reimplementasi) body 2
+fungsi yang TIDAK butuh `getTenantAccess()`/`createGuestPostAuthorAction()`
+(`persistDraftBatch()` penuh, `resolveOrCreateAuthor()` sampai titik SEBELUM cabang "buat baru")
+dengan HANYA import yang genuinely dibutuhkan jalur itu. **4 test lolos**: `persistDraftBatch()`
+terhadap data real WXR (`content_import_batches`+`content_import_batch_rows` tersimpan benar,
+JSONB utuh, dibaca-balik dari DB, dibersihkan); `resolveOrCreateAuthor()` lookup case-insensitive
+(insert manual "Admin Forbis TEST" → cari "admin forbis test" → cocok), cache-hit, **keamanan
+wildcard SQL dibuktikan POSITIF** (cari "AB%" terhadap post_authors existing → tidak match keliru,
+lanjut ke cabang "buat baru" — throw di `headers()` itu sendiri jadi BUKTI tidak ada false-positive,
+bukan kegagalan test), dan nama kosong → null tanpa query DB.
+
+**Sengaja DITUNDA, bukan diabaikan**: jalur `importWxrFileAction`/`importRestApiAction` LENGKAP
+(dengan auth gate `getTenantAccess()`) dan cabang "buat penulis baru" `resolveOrCreateAuthor()`
+(via `createGuestPostAuthorAction()`) TIDAK bisa dites tanpa Next.js dev server sungguhan +
+session admin nyata — deferred ke pengujian `commitImportChunkAction` (yang butuh dev server
+untuk `processImage()`/`generateJSON()` juga) supaya SATU sesi pengujian dev-server mencakup
+semuanya sekaligus, bukan berulang kali setup untuk tiap potongan kecil.
+
+**Verifikasi**: `tsc --noEmit` 0 error di `apps/web` DAN `packages/db`. Semua file disposable
+(4+ salinan bertingkat) dan baris DB sementara sudah dibersihkan+diverifikasi kosong.
+**Belum di-commit ke git.**
+
+### [2026-07-27] Fase 1 Import WordPress — `commitImportChunkAction` Selesai + Uji Error-Resilience
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 8** (roadmap Fase 1,
+> semua bullet Fase 2 lama digabung masuk Fase 1). Lanjutan langsung dari mapping penulis — user
+> minta analisa kritis dulu ("mapping penulis → commit import chunk → archive import → UI ..
+> gmn menurut analisa kritis kamu?"), disetujui, lalu "silahkan eksekusi .. ingat selalu strick
+> pada arsitektur, focus, dan harus sesuai SOP yang ketat."
+
+**Bagian TERBERAT di seluruh fitur ini** — `commitImportChunkAction`, orchestrator yang unduh
+gambar, `processImage()`, rewrite `data-media-id`, `generateJSON()`, dan insert
+posts/pages/media+legacy_url_redirects, semuanya per-baris di dalam satu chunk klaim atomic.
+
+**File baru**: `lib/wordpress-image-import.server.ts` (`downloadAndImportImage()` — pola PERSIS
+`app/api/media/upload/route.ts` asli: `assertSafeExternalUrl()`/`safeFetch()` § 11 → validasi
+content-type+ukuran → `processImage()` module="website" → upload variant MinIO → insert `media`
+dengan `importBatchId`; `rewriteInlineImages()` — `happy-dom`, dedup by src, non-destructive
+untuk yang gagal unduh), `lib/wordpress-tiptap-extensions.server.ts` (duplikasi SENGAJA daftar
+extension dari `tiptap-editor.tsx` live, bukan share — supaya `generateJSON()` konsisten dengan
+editor sungguhan), `lib/wordpress-tiptap-convert.server.ts` (`convertHtmlToTiptapJson()`, return
+`null` bukan throw kalau gagal). Skema baru `tenant.legacy_url_redirects` (migration `0051`,
+sekalian tambah `'processing'` ke enum `content_import_batch_rows.status` — dibutuhkan untuk
+klaim atomic supaya baris tidak diproses ganda kalau dua panggilan chunk tumpang tindih).
+`commitImportChunkAction`+`commitOneRow` ditulis di `import-wordpress/actions.ts` yang sama,
+mengikuti PERSIS pola klaim-2-langkah (SELECT kandidat → UPDATE guarded) yang sudah dikunci
+Importer Anggota — bukan raw SQL `FOR UPDATE SKIP LOCKED`.
+
+**Strategi verifikasi — pivot dari rencana awal, dikomunikasikan eksplisit ke user, bukan diam-
+diam disederhanakan**: `getTenantAccess()`/`headers()` genuinely tidak bisa dites di luar Next.js
+request scope (lesson sesi sebelumnya). Alih-alih menunggu dev-server+session browser sungguhan,
+disadari `commitOneRow()`/body `commitImportChunkAction` (setelah guard auth) menerima `access`
+sebagai PARAMETER yang SUDAH diresolve pemanggilnya — jadi logic INTI bisa diuji langsung dengan
+mengonstruksi objek `access` dari nilai DB nyata (`tenant.id`+`tenantUser.id` sungguhan owner
+`pc-ikpm-jogjakarta`), tanpa perlu memalsukan cookie sesi Better Auth (yang butuh replikasi HMAC-
+SHA256 signing terikat `BETTER_AUTH_SECRET`). Author pre-seeded ("Admin Forbis") supaya
+`resolveOrCreateAuthor()` ambil jalur "sudah ada", menghindari satu-satunya cabang yang genuinely
+butuh auth (`createGuestPostAuthorAction()`).
+
+**Dua putaran tes end-to-end terhadap data REAL** (bukan mock):
+1. **1 post dari `contoh-xml.xml`** — post tercipta benar SEMUA field (title/slug/status/
+   coverId/metaTitle/canonicalUrl [FRESH dari slug baru, BUKAN dari Yoast lama — § 5.5]/
+   displayAuthorId cocok author pre-seeded/editorId NULL/authorId = admin importer [BUKAN dari
+   WordPress — § 2.4]/importBatchId/categoryId/isFeatured/viewCount), **`content` dikonfirmasi
+   Tiptap JSON VALID** (`JSON.parse()` sukses, `type:"doc"`, node pertama `paragraph` — syarat
+   PALING KRITIS § 7.2, bukan HTML mentah), 1 tag pivot + 1 legacy redirect + media cover semua
+   benar ada di DB dengan variant lengkap.
+2. **3 post dari `wordpress-xml-forbis.xml`, `chunkSize=2` (< total 3)** + 1 baris SENGAJA
+   digagalkan (title diberi marker, `commitOneRow` dipatch throw eksplisit untuk marker itu) —
+   uji **error-resilience**, bagian yang paling penting dari orchestrator ini: panggilan pertama
+   `processed=2, done=false, status batch='committing'`; panggilan kedua `processed=3,
+   done=true, status batch='committed'+committedAt terisi`; counter `insertedRows=2,
+   errorRows=1` PERSIS; baris gagal-sengaja ditandai `error`+`errorMessage` terisi TANPA
+   `createdContentId`, dan post untuk baris itu **DIKONFIRMASI TIDAK tercipta** di DB — sementara
+   2 baris lain berhasil normal (post+slug keduanya dikonfirmasi ada, ditemukan bug kecil di
+   percobaan pertama: lupa pre-seed author untuk sample KEDUA ini — ternyata SEMUA 3 post-nya
+   ditulis penulis WP yang SAMA "Admin Forbis" — begitu diperbaiki, 2 dari 3 baris berhasil
+   penuh seperti seharusnya).
+
+Kedua putaran tes membersihkan seluruh data buatan sendiri (post, media+variant MinIO, kategori,
+tag, legacy redirect, batch+row, author pre-seeded) dan diverifikasi bersih via query independen
+setelahnya (bukan cuma percaya log cleanup script sendiri). Semua file disposable (2 putaran,
+total 12 file `_poc-*`/`_poc2-*`) dihapus. `tsc --noEmit` 0 error di kedua package + `bun run
+build --filter=@jalajogja/web` sukses (dev server dimatikan+`.next` dibersihkan+direstart).
+
+**Yang TIDAK dicakup verifikasi ini, dinyatakan jujur**: wrapper auth `commitImportChunkAction`
+sendiri (`getTenantAccess()`+`hasFullAccess()`) belum dites via browser+session sungguhan — tapi
+ini infrastruktur established yang sudah dipakai puluhan action lain di codebase ini (termasuk
+`importWxrFileAction`/`importRestApiAction` yang SAMA PERSIS memakainya), bukan logic BARU yang
+butuh diverifikasi ulang khusus untuk fitur ini. Diputuskan cukup tercakup natural begitu UI
+dibangun dan dicoba manual oleh user nanti — bukan gap yang disembunyikan.
+
+**Aturan yang ditegaskan (generalisasi dari strategi verifikasi ini)**: kalau sebuah fungsi
+`"use server"` genuinely tidak bisa dites langsung karena bergantung `headers()`/session, dan
+fungsi itu MENERIMA hasil resolusi auth sebagai PARAMETER (bukan resolve sendiri di dalam body
+yang sama), logic INTI di baliknya tetap bisa diuji menyeluruh dengan mengonstruksi parameter itu
+dari nilai DB nyata — JANGAN menyerah dan menunda verifikasi seluruhnya ke "nanti pas ada dev
+server", pisahkan dulu logic yang genuinely butuh auth dari logic yang tidak, uji yang bisa
+diuji SEKARANG dengan data real, dan nyatakan eksplisit ke user bagian mana yang masih tersisa.
+
+### [2026-07-27] Fase 1 Import WordPress — `archiveImportBatchAction` Selesai (Rollback Soft Bulk-Archive)
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 8 Fase 1** (item
+> archive) + **§ 14.1** (desain asli). Lanjutan langsung dari `commitImportChunkAction` — user:
+> "mari kita masuk ke langkah selanjutnya di fase 1, arsip import dulu terakhir UI."
+
+**Desain dibaca ulang dari § 14.1 dulu sebelum menulis kode** (bukan dari ingatan): soft
+bulk-archive, TIDAK PERNAH hard-delete — `UPDATE posts/pages SET status='archived' WHERE
+import_batch_id=$1`. `post_authors` dan `media` yang terhubung batch itu **TIDAK PERNAH
+disentuh** — keduanya resource shared/tetap valid meski post-nya archived (media tetap dipakai
+sebagai `coverId` post yang archived, `post_authors` bisa dipakai post lain di luar batch ini).
+
+**Dikonfirmasi lebih dulu (bukan diasumsikan)**: `posts`/`pages` SUDAH punya `'archived'` di
+`CONTENT_STATUSES` (`["draft","published","archived"]`) — tidak perlu ALTER constraint sama
+sekali untuk kedua tabel itu. `media` dikonfirmasi tidak punya kolom `status` sama sekali (cuma
+`isUsed` boolean) — mengonfirmasi keputusan § 14.1 "media tidak disentuh rollback" bukan cuma
+soal desain tapi juga MEMANG tidak ada mekanisme status untuk disentuh di tabel itu.
+
+**Penambahan kecil di luar yang eksplisit ditulis dokumen (dinyatakan jujur, bukan disembunyikan)**:
+kolom baru `archivedAt` (nullable timestamp) di `contentImportBatches` — pola PERSIS
+`committedAt` yang sudah ada di tabel yang sama, sebagai penanda "kapan rollback batch ini
+terakhir dijalankan". Dokumen § 14.1 tidak menyebutkan ini eksplisit, tapi tanpa penanda apa
+pun di level batch, UI (nanti) tidak akan punya cara mendeteksi "batch ini sudah pernah
+di-archive" selain query ulang status semua post/page-nya — konsisten dengan pola audit-trail
+`committedAt` yang sudah dikunci di tabel yang sama, jadi ditambahkan sebagai perluasan wajar,
+bukan penyimpangan arsitektur. Batch's OWN `status` (enum `draft/committing/committed`) SENGAJA
+TIDAK diberi nilai `'archived'` baru — tetap `'committed'` selamanya, sesuai literal § 14.1
+("`archived`" hanya untuk status konten, bukan status batch).
+
+**Guard yang ditambahkan (di luar literal dokumen, konsekuensi logis)**: batch harus
+`status==='committed'` sebelum boleh diarsipkan — mencegah archive dipanggil pada batch yang
+masih `draft`/`committing` (belum ada konten untuk diarsipkan sama sekali).
+
+**Verifikasi — genuine parse→commit→archive end-to-end** (bukan dummy data langsung insert,
+supaya archive teruji berinteraksi dengan konten yang BENAR-BENAR lewat pipeline commit
+sungguhan): reuse `commitChunkCore` (disposable copy, pola sama sesi sebelumnya) untuk commit
+1 post dari `contoh-xml.xml` sampai `status='committed'` genuine, BARU archive batch itu.
+4 skenario diverifikasi:
+1. **Guard status** — archive batch `draft` (belum commit) → ditolak eksplisit dengan pesan
+   jelas, bukan diproses diam-diam.
+2. **Archive batch committed** — `archivedPosts=1, archivedPages=0`; post berubah
+   `status='archived'`; **batch TETAP `'committed'`** (tidak berubah, sesuai desain); `archivedAt`
+   terisi.
+3. **`post_authors` DAN `media` (cover image) dikonfirmasi masih ada utuh** setelah archive —
+   bukti langsung § 14.1 "tidak pernah disentuh" benar-benar berlaku, bukan cuma niat di kode.
+4. **Idempotency** — archive KEDUA KALINYA pada batch yang sudah archived sukses tanpa error,
+   `archivedPosts=0` (guard `!= 'archived'` di WHERE clause mencegah reprocessing, bukan
+   menyebabkan error/duplikasi).
+
+Semua data test dibersihkan+diverifikasi bersih via query independen setelahnya. File disposable
+(4 salinan + 1 file inti + 1 test script) dihapus semua. `tsc --noEmit` 0 error kedua package +
+`bun run build --filter=@jalajogja/web` sukses (dev server dimatikan+`.next` dibersihkan+
+direstart). Migration `packages/db/migrations/0052_content_import_batch_archived_at.sql`
+dijalankan+diverifikasi di lokal. **Belum di-commit ke git, belum dijalankan di VPS.**
+
+**Fase 1 sekarang tinggal SATU item: UI** (`/{slug}/website/import-wordpress` — upload/pull,
+review preview, progress bar chunked-commit panggil `commitImportChunkAction` berulang sampai
+`done:true`, tombol archive/rollback panggil `archiveImportBatchAction`) — sesuai urutan yang
+sudah disepakati eksplisit user (mapping penulis → commit → archive → UI), tidak perlu tanya
+urutan lagi.
+
+### [2026-07-27] Fase 1 Import WordPress SELESAI 100% — UI Dibangun + Gap `review_needed` Ditemukan Sebelum Kode Ditulis
+
+> Detail lengkap: **`docs/arsitektur-import-export-post-wordpress.md` § 8 Fase 1** (UI item,
+> Fase 1 sekarang ditandai 100% selesai). Lanjutan langsung dari `archiveImportBatchAction` —
+> user: "mantab ... mari kita lanjutkan."
+
+**Sebelum menulis satu baris kode UI**, saya baca ulang `ParsedWordPressItem`/`ImportContentStatus`
+dan trace bagaimana tiap status (`ready`/`review_needed`/`duplicate`) benar-benar diperlakukan
+sepanjang pipeline (bukan asumsi dari nama status doang) — grep langsung ke parser
+(`wordpress-xml-parser.server.ts`/`wordpress-api-fetcher.server.ts`) menemukan `status:"error"`
+**TIDAK PERNAH sekalipun diassign oleh parser konten** (beda dari Importer Anggota yang genuinely
+punya baris rusak) — hanya 3 status nyata: `ready`/`review_needed` (tanggal publish tidak
+valid)/`duplicate` (slug bentrok existing). Trace lebih jauh ke `commitImportChunkAction`
+(dibangun sesi sebelumnya) menemukan **gap nyata**: candidate query cuma `eq(status,"ready")`
+— baris `review_needed` TIDAK PERNAH diklaim, padahal `notes`-nya eksplisit bilang "tanggal
+publish tidak valid — **perlu diisi manual SETELAH import**" (mengimplikasikan baris itu MEMANG
+seharusnya ikut ter-commit dengan fallback, bukan diblokir menunggu review). `commitOneRow`
+sendiri SUDAH benar fallback `publishedAt = parsed.publishedAtIso ? new Date(...) : new Date()`
+— jadi mengklaim baris ini genuinely aman, cuma candidate query-nya yang bolong.
+
+**Fix**: `claimableStatuses = ["ready","review_needed"] as const` dipakai `inArray()` di KEDUA
+titik (SELECT kandidat + UPDATE klaim guarded) DAN formula `remaining` (`count(*) FILTER (WHERE
+status IN ('ready','review_needed','processing'))`) — tanpa fix formula ini, `done:true` bisa
+dilaporkan prematur padahal masih ada baris `review_needed` menunggu diklaim. `'duplicate'`
+SENGAJA TIDAK diikutkan — tidak ada strategi "merge" untuk KONTEN (beda dari Importer Anggota
+yang punya konsep merge untuk MEMBER) — slug sama berarti genuinely sudah ada, dibiarkan sebagai
+status terminal informational, admin lihat di preview tanpa auto-diproses.
+
+**Diverifikasi terpisah dengan disposable test** (bukan cuma `tsc`) — SATU baris dari
+`contoh-xml.xml` disimulasikan `status:"review_needed"` + `publishedAtIso:null` (persis kondisi
+asli yang memicu status itu di parser), commit dijalankan, dikonfirmasi: `processed=1,
+done=true`, baris final `status='inserted'`, post BENAR-BENAR tercipta dengan `publishedAt`
+fallback ke `NOW()`. Data test dibersihkan+diverifikasi bersih.
+
+**UI dibangun mengikuti pola `ImportClient` Importer Anggota** (`members/import/import-client.tsx`)
+sebagai referensi, dengan 2 penyesuaian struktural yang genuinely berbeda (bukan sekadar re-skin):
+1. **Dua metode input** (bukan satu) — tab "Upload File WXR" vs "Tarik dari URL Situs", masing-
+   masing panggil `importWxrFileAction`/`importRestApiAction`. Peringatan eksplisit ditampilkan
+   di tab REST: "tidak membawa data SEO Yoast" (§ 15.2, sudah dikonfirmasi empiris sesi lalu).
+2. **Commit dipecah chunked dengan progress bar** (bukan satu panggilan sinkron seperti Importer
+   Anggota) — `while(!done)` loop client-side memanggil `commitImportChunkAction` berulang,
+   update progress bar tiap iterasi, sesuai § 13.
+
+**Action baru ditambah, belum ada sebelumnya**: `getBatchRowsAction(slug, batchId)` — query
+read-only `content_import_batch_rows` terkini (auth-gated sama seperti action lain), dipanggil
+SEKALI setelah `done:true` untuk menampilkan status final+`errorMessage` PER BARIS di View
+Report — tanpa ini, admin cuma lihat angka agregat ("2 gagal") tanpa tahu baris mana dan
+kenapa. Ini genuinely dibutuhkan (bukan scope creep) — konsisten dengan catatan doc "Resume
+Import" yang mengimplikasikan admin butuh visibilitas per-baris.
+
+**Bug kecil ditemukan+difix saat menulis kode (bukan setelah)**: draf pertama `handleParse`
+pakai pola ternary+IIFE untuk 2 metode input, `tsc` langsung menangkap `result.fetchErrors` jadi
+`unknown` (union 2 return type beda tidak ter-narrow lewat `"in"` check pada hasil IIFE) — fix:
+tulis 2 branch eksplisit `if (method==="wxr") {...; return;} ...` daripada ternary+IIFE. Juga
+ditemukan state `finalReport` yang di-set tapi tidak pernah dibaca render (dead state, View
+Report sudah menghitung count dari `finalRows` langsung) — dihapus, bukan dibiarkan.
+
+**Nav item baru** "Import WP" (ikon `Import` — diverifikasi dulu ada di `lucide-react@1.8.0`
+yang terinstall, bukan ditebak) ditambah ke `components/website/website-nav.tsx`.
+
+**Verifikasi**: `tsc --noEmit` 0 error kedua package. `bun run build --filter=@jalajogja/web`
+sukses GENUINE (47 detik, bukan cache-hit — file baru genuinely berubah) — rute
+`/app/[tenant]/website/import-wordpress` (5.11 kB) terkonfirmasi di output. Curl endpoint tanpa
+sesi → `307` redirect (bukan crash 500) — guard auth bekerja normal. Dev server direstart, `200
+OK` dikonfirmasi. **Belum diverifikasi visual/interaktif di browser sungguhan** (upload file
+nyata, lihat progress bar bergerak, klik tombol archive — SEMUA itu belum dicoba oleh siapa pun)
+— environment sesi ini tidak punya browser, murni keterbatasan yang dinyatakan jujur, bukan
+diklaim "sudah teruji penuh".
+
+**Fase 1 Import WordPress sekarang SELESAI 100%** — semua item (skema, parser WXR, REST
+fetcher, mapping penulis, image downloader, legacy redirect, `commitImportChunkAction`,
+`archiveImportBatchAction`, UI) sudah dibangun. **Belum di-commit ke git, belum dijalankan di
+VPS, belum diverifikasi visual browser.** Fase 2 (Custom Permalink Settings + Preservasi URL
+Lama — catch-all routing `[...slug]/page.tsx`, wiring 301 redirect dari `legacy_url_redirects`
+yang skemanya sudah ada) belum dimulai, menunggu instruksi eksplisit.
+
+### [2026-07-28] Fase 2 Import WordPress — Custom Permalink Structure + Preservasi URL Lama, SELESAI 100%
+
+> Detail lengkap tiap sub-fase: **`docs/arsitektur-import-export-post-wordpress.md`** § 8 poin
+> Fase 2 (ditulis ulang total dari draf rencana jadi laporan hasil), § 5.1/§ 5.3/§ 5.4/§ 5.5
+> (penanda "✅ DIIMPLEMENTASIKAN" ditambah setelah tiap desain lama yang sekarang benar-benar
+> dibangun).
+
+User: *"selesaikan dulu fase 2-nya biar enak kalau sudah semua kita coba.. tp pastikan ikut sop
+ketat kita.."* — dipecah 10 sub-fase (2.0–2.9), tiap sub-fase diverifikasi `tsc --noEmit` KEDUA
+package + (untuk perubahan routing) build produksi genuine + curl end-to-end SEBELUM lanjut ke
+sub-fase berikutnya, pola SOP yang sama persis dengan Fase 0/1. Skala pekerjaan **jauh lebih
+besar** dari rencana awal — riset di tengah jalan menemukan ~15 titik hardcode `/post/{slug}`
+(bukan cuma "6 post card"), dan Fase 2.5/2.6 menabrak 1 bug Next.js App Router yang genuinely
+tidak bisa diketahui tanpa dicoba.
+
+**2.1 — Helper inti `lib/post-permalink.server.ts`**: `resolvePostHrefs<T>()` — SATU fungsi
+dipanggil SEMUA query-builder post di seluruh app, fetch permalink+timezone tenant SEKALI,
+tambahkan `href` relatif ke tiap baris. `buildPostPath()` (pure, semua cabang fallback ke
+`/post/{slug}` kalau data prasyarat kosong). Diverifikasi 20 kombinasi (5 permalink × 4 kondisi
+data) via disposable test — semua lulus, termasuk timezone WIB yang benar (reuse
+`utcIsoToLocalDatetime()`, bukan `new Date()` mentah — kelas bug yang sudah berulang kali dikunci
+di project ini untuk WIB/UTC).
+
+**2.2 — 9 query-builder site**: `app/api/search/route.ts`, `app/api/ref/public-links/route.ts`
+(+ hapus `buildPostUrl()` lama, dead code), `hero-section.tsx`, `lib/widget-areas.ts`,
+`posts-section.tsx` (2 fetcher), `post/page.tsx`, `post/[slug]/page.tsx` (2 query) — semua
+ditambah `categorySlug` ke SELECT + panggil `resolvePostHrefs`. **Bug BERULANG (kelas yang sudah
+berkali-kali dikunci sebelumnya) ketangkap SEBELUM `tsc`**: sempat kirim `tenantDb` (raw
+destructure) ke `resolvePostHrefs` alih-alih `tenantClient` (objek `TenantDb` penuh) di
+`app/api/search/route.ts` — langsung dikoreksi begitu disadari, konsisten lesson lama
+"getSettings/resolvePostHrefs butuh TenantDb lengkap, bukan raw db".
+
+**2.3 — Konsumen render, JAUH lebih luas dari estimasi**: `PostCardData.href: string` (field
+BARU wajib) dipakai sebagai forcing function — begitu ditambahkan, `tsc` langsung membongkar
+SEMUA sisa titik yang perlu update. Hasilnya: bukan cuma "6 post card + posts-design-2.tsx"
+seperti estimasi awal, tapi TERNYATA `baseUrl` belum PERNAH di-propagate sama sekali dari
+`landing-template.tsx`→`PostsSection`→5 file `posts-design-1..5.tsx`→`<PostCard>`/6 varian
+(`post-card-klasik/list/overlay/ringkas/judul/ticker.tsx`) — semua masih pakai prop
+`tenantSlug` mentah untuk membangun href (bug custom-domain laten, drive-by fix sekalian karena
+baris itu sudah disentuh untuk swap ke `post.href`). `widget-area.tsx` (2 caller) dan header
+search (`pill-header.tsx`, `flex-header.tsx` ×2 titik) juga di-swap. Diverifikasi curl: post
+detail, arsip, homepage, produk/agenda/campaign (regresi) semua 200 dengan href benar.
+
+**2.4 — Ekstraksi post detail (PALING BERISIKO)**: `post/[slug]/page.tsx` (567 baris) diekstrak
+MURNI (pure code motion, zero perubahan logic) ke `components/website/public/single/
+post-detail-view.tsx` (`getPostDetailMetadata()` + `PostDetailView()`, dipanggil 3 route
+berbeda nantinya). File asli jadi wrapper 15 baris. **Diverifikasi via curl end-to-end**
+(bukan cuma `tsc`) — title, canonical tag, og:type, kedua h1 (mobile+desktop), related-posts,
+breadcrumb, "Kembali ke Blog" semua identik sebelum/sesudah ekstraksi.
+
+**2.5 — Catch-all `[...slug]/page.tsx`**: `[pageSlug]/page.tsx` (single-segment, cuma bisa
+query `pages`) **DIGANTI TOTAL**. `submitContactFormAction`'s `actions.ts` (dipakai
+`ContactTemplate`) ikut dipindah ke folder baru, 1 import path diupdate. 6-prioritas resolusi:
+1-segmen→Page dulu (perilaku default dipertahankan) →1-segmen+post_name→Post →3-segmen+
+date_name→Post →4-segmen+category_date_name→Post (category segmen kosmetik) →cek
+`legacy_url_redirects`, `permanentRedirect()` kalau ketemu →`notFound()`. **Diverifikasi
+EMPIRIS lewat build produksi genuine + curl untuk SEMUA skenario**: static folder routes tetap
+prioritas di atas catch-all (dikonfirmasi, bukan diasumsikan dari dokumentasi Next.js), Page
+resolusi via catch-all, homepage tidak terpengaruh, 404 untuk slug tidak ada, legacy redirect
+**308** (test row insert→curl→delete — `permanentRedirect()` Next.js SELALU 308, bukan 301 yang
+ditulis di rencana awal; SEO-equivalent, Google perlakukan sama), 3 dari 5 mode permalink resolve
+benar via catch-all termasuk Page tetap menang atas Post meski permalink="post_name".
+
+**2.6 — Route nested `category_name` — bug ditemukan via `next dev`, BUKAN `next build`**:
+folder awal `post/[category]/[slug]/page.tsx` gagal start dengan error eksplisit *"You cannot
+use different slug names for the same dynamic path ('category' !== 'slug')"* — Next.js App
+Router mewajibkan SATU nama dynamic segment yang sama di kedalaman yang sama untuk SEMUA route
+sibling; `post/[slug]/page.tsx` (mode default) sudah menetapkan nama `slug` di posisi pertama.
+**Production build TIDAK menangkap konflik ini sama sekali** (build sukses, bahkan
+mencantumkan kedua route di listing) — HANYA dev server (Turbopack) yang menangkapnya saat
+start. Fix: rename folder jadi `post/[slug]/[postSlug]/page.tsx` (segmen pertama, kosmetik,
+tetap bernama `slug` untuk konsistensi dengan sibling; segmen kedua `postSlug` yang benar-benar
+dipakai). Diverifikasi build sukses DAN dev server restart tanpa error — pengujian penentu.
+
+**2.7 — Validasi slug (reserved + cross-collision)**: `lib/reserved-post-slugs.ts` —
+`RESERVED_POST_SLUGS`, 25 folder statis REAL (bukan disalin dari draf dokumen basi), SENGAJA
+TIDAK termasuk `app`/`platform`/`api`/`admin` (itu reserved untuk TENANT SLUG di
+`middleware.ts`, beda konsep dari POST SLUG di dalam satu tenant — `/{tenant}/app` tidak
+collide dengan `/app/{tenant}/...` karena segmen pertama beda). `validateSlugForPostNameMode()`
+baru di `website/actions.ts` — HANYA aktif kalau permalink="post_name", cek reserved-word DAN
+cross-table (post↔page) dua arah, diwire ke SEMUA 6 fungsi create/update post/page — hard-reject
+dengan pesan jelas (BUKAN auto-suffix silent seperti pola dedup lama, disengaja karena collision
+di sini lebih konsekuensial: post/page bisa jadi permanently unreachable, bukan sekadar
+duplikat judul biasa). Diverifikasi via disposable script — 5 skenario terhadap DB lokal real,
+semua PERSIS sesuai ekspektasi (default mode selalu lolos, reserved-word ditolak keduanya, slug
+bebas lolos, cross-collision dua arah ditolak).
+
+**2.8 — `commitOneRow` jadi permalink-aware**: `finalPath` (WordPress import, Fase 1)
+sebelumnya HARDCODE `/post/{slug}`. Sekarang panggil `resolvePostHrefs()` yang sama — tenant
+yang pilih `category_date_name` (motivasi utama SELURUH fitur import, meniru struktur URL
+`forbis.id`) sekarang benar-benar dapat `canonicalUrl`/`legacyUrlRedirects.redirectTo` sesuai
+mode yang dipilih. `findOrCreateTaxonomy()` diperluas return `{id, slug}` (bukan cuma `id`)
+supaya `categorySlug` tersedia. Diverifikasi via disposable test terfokus (reuse
+`resolvePostHrefs` yang sudah teruji ekstensif, bukan re-test seluruh pipeline import yang
+sudah teruji sesi lalu).
+
+**2.9 — Settings UI**: section "Struktur URL Artikel" di `/{slug}/website/pengaturan` —
+dropdown 5 opsi (`Combobox`, komponen client baru `PermalinkStructureForm`) + preview contoh
+URL live + `savePermalinkStructureAction`. `setTenantPermalink()` ditambah ke
+`post-permalink.server.ts` (simetris `getTenantPermalink()`, satu sumber kebenaran key/group
+setting). Diverifikasi build produksi genuine (route 6.4 kB) + curl (307 tanpa sesi, bukan
+crash 500).
+
+**Verifikasi akhir**: regresi sweep 12+ tipe rute publik (homepage, post, produk, agenda,
+campaign, anggota, pesantren, usaha, profesional, statistik, login, register, keranjang) — semua
+tetap 200, nol collateral damage. `tsc --noEmit` bersih KEDUA package sebagai gate final. Semua
+data test (setting permalink, baris legacy redirect, file disposable) dibersihkan+diverifikasi
+bersih di setiap sub-fase.
+
+**Aturan yang ditegaskan (generalisasi dari Fase 2.6)**: konflik penamaan dynamic segment Next.js
+App Router ("different slug names for the same dynamic path") **hanya terdeteksi oleh dev server
+(`next dev`), TIDAK oleh production build (`next build`)** — kalau menambah route baru yang
+BERBAGI parent folder dengan route dynamic-segment yang sudah ada, WAJIB restart dev server
+(bukan cukup `next build`) untuk memverifikasi tidak ada konflik penamaan sebelum menganggap
+struktur folder final.
+
+**Status akhir**: Fase 2 SELESAI 100% dari sisi kode. **Belum di-commit ke git, belum
+dijalankan di VPS, belum diverifikasi visual/interaktif di browser sungguhan** (klik dropdown
+permalink di UI settings, lihat hasilnya di halaman publik — belum dicoba siapa pun) —
+keterbatasan environment sesi ini (tidak ada browser). Fase 3 (WXR Exporter) belum dimulai.
+
+### [2026-07-28] Fase 3 Import WordPress — WXR Exporter, SELESAI 100%
+
+> Detail lengkap: `docs/arsitektur-import-export-post-wordpress.md` § 8 poin Fase 3.
+
+Lanjutan langsung dari Fase 2 (entri di atas) — user konfirmasi eksplisit scope keseluruhan
+fitur ini POST-ONLY ("kita focus importing post dari wordpress bukan jenis lain"), lalu minta
+lanjut ke Fase 3. § 2.3 dokumen sudah cukup eksplisit (ambil dari `posts`/`post_categories`/
+`post_tags`/`post_authors`/`media`, `<dc:creator>` dari `post_authors.name` bukan
+`posts.authorId`) — dieksekusi langsung tanpa Plan Mode formal (scope jauh lebih kecil/mandiri
+dari Fase 0-2), tetap dengan verifikasi berlapis yang sama.
+
+**`lib/wordpress-wxr-export.server.ts` (baru)** — `generateWxrExport(slug)`, cermin terbalik dari
+`wordpress-xml-parser.server.ts` (Fase 1). Reuse infrastruktur yang SUDAH ADA, bukan
+reimplementasi: `resolvePostHrefs()` (Fase 2, href yang menghormati `permalink_structure`
+tenant) untuk `<link>`, `getTenantSeoBase()` (baseUrl absolut custom-domain-aware) untuk
+`<link>`/`<wp:base_site_url>`, dan **`renderBody()`** (`lib/letter-render.ts`, dipakai sejak
+modul Surat) untuk konversi Tiptap JSON → HTML `<content:encoded>` — arah KEBALIKAN dari
+`generateJSON()` (Fase 0, HTML→Tiptap), sama sekali tidak perlu library baru untuk arah ini.
+
+**Semua status post diikutkan** (draft/published/archived, bukan cuma published) — konsisten
+prinsip anti vendor lock-in di § 2.3: admin harus bisa membawa SEMUA datanya keluar, bukan cuma
+yang sedang live. `archived` → WP `draft` (WordPress tidak punya status "archived" native).
+
+**`<dc:creator>` SELALU dari `post_authors.name` via `displayAuthorId`** — post tanpa
+`displayAuthorId` fallback ke username sintetis `"admin"` + `<wp:author>` block sintetis
+(`author_id=0`) yang HANYA dideklarasikan kalau memang ada post yang memakainya (dicek dulu
+`posts.some(p => !p.displayAuthorId)` sebelum menambah block, bukan selalu ditambahkan).
+`posts.editorId` TIDAK diekspor sama sekali — WordPress tidak punya konsep byline Editor yang
+setara via WXR/REST, keputusan sama seperti `docs/arsitektur-seo.md` § 6b.4.
+
+**Tag TIDAK dideklarasikan sebagai `<wp:tag>` di level channel** — dikonfirmasi dari 2 sample WXR
+real (`docs/template/*.xml`) bahwa WordPress sendiri tidak selalu melakukan ini; cukup inline
+`<category domain="post_tag" nicename="...">` per item, importer WordPress standar otomatis
+membuat term baru dari deklarasi ini. Kategori MENDUKUNG hierarki (`parentId` → nicename induk
+di `<wp:category_parent>`) — diuji dengan kategori bertingkat sungguhan.
+
+**Featured image → `<item post_type="attachment">` terpisah + `_thumbnail_id`** (pola WXR
+standar) — term_id/post_id sintetis pakai SATU counter SHARED antara posts+attachments (mulai
+dari 1000, meniru gaya penomoran WordPress asli, mencegah post_id dan attachment post_id
+bertabrakan di namespace yang sama). OG image (kalau beda dari cover) diekspor sebagai URL
+string di `_yoast_wpseo_opengraph-image` saja (key Yoast ini memang berisi URL, bukan attachment
+ID — tidak perlu attachment terpisah untuk ini).
+
+**Bug ditemukan+difix LEWAT ROUND-TRIP TEST, bukan dari membaca kode**: draf pertama cuma emit
+`_yoast_wpseo_meta-robots-noindex` (1 key) untuk `posts.robots="noindex,nofollow"` — importer
+sendiri (`mapYoastSeo()`) TERNYATA membaca 2 key terpisah (`-noindex` DAN `-nofollow`) untuk
+merekonstruksi nilai compound itu. Ketahuan setelah export→round-trip lewat importer sendiri
+menunjukkan `seo.robots` kembali sebagai `"noindex"` (bukan `"noindex,nofollow"`) — bukan
+ditebak, langsung kelihatan dari hasil test. Fix: tambah `_yoast_wpseo_meta-robots-nofollow`
+kalau `robots==="noindex,nofollow"`. Re-test mengonfirmasi lossless round-trip setelahnya.
+
+**`posts.canonicalUrl` SENGAJA TIDAK diekspor** ke `_yoast_wpseo_canonical` — canonical lama
+menunjuk ke situs Jalakarta ASAL, bukan situs WordPress TUJUAN; mewariskan nilai itu ke situs
+baru lebih membingungkan (Yoast akan bilang "canonical mengarah ke domain lain") daripada
+membiarkan Yoast di situs baru menghitung canonical-nya sendiri berdasarkan URL barunya.
+
+**Keterbatasan V1 yang diterima (didokumentasikan, bukan diam-diam dilewati)**: link internal
+"Baca Juga" (RelatedLinkBlock) yang tersimpan path-mode (`/{slug}/post/...`) TIDAK
+di-absolute-kan saat render body (`RenderContext` diberi `imageBaseUrl` saja untuk gambar,
+TIDAK diberi `tenantSlug`/`baseUrl` untuk resolusi link) — konten utama (isi artikel + gambar)
+tetap benar, cuma blok "Baca Juga" (fitur minor, jarang dipakai) jadi path relatif tanpa domain
+di file yang di-export. `RenderContext` saat ini tidak punya mode "buat absolut", cuma "biarkan
+apa adanya" atau "strip prefix" — menambah mode baru dianggap di luar scope V1 ini.
+
+**Route + UI**: `GET /api/website/export-wxr?slug={slug}` (baru) — auth
+`getTenantAccess`+`hasFullAccess(...,"website")` (pola sama persis `/api/members/import/
+template`), `Content-Type: application/xml` + `Content-Disposition: attachment` — download
+native browser, tanpa JS. Tombol "Export ke WordPress" — 1 `<a href>` baru di header
+`/{slug}/website/posts` (halaman existing), di sebelah tombol "Tambah Post" yang sudah ada.
+
+**Verifikasi empiris menyeluruh** (pola disposable-test yang sama, marker-stripped copies untuk
+file `server-only` — kali ini 4 file butuh copy: exporter sendiri + `tenant-seo.ts` +
+`tenant-timezone.server.ts` + `post-permalink.server.ts`, plus 1 copy tambahan untuk
+`wordpress-xml-parser.server.ts` khusus round-trip test):
+1. Data test disisipkan ke tenant lokal `pc-ikpm-jogjakarta` (17 post real existing + 2 post
+   test baru: 1 draft kaya-fitur dengan kategori bertingkat/tag/2 penulis/SEO lengkap/robots
+   noindex,nofollow/OG image beda dari cover, 1 archived minimal tanpa penulis untuk uji
+   fallback "admin").
+2. `XMLValidator.validate()` (`fast-xml-parser`) → **VALID**, well-formed.
+3. Parse+inspeksi struktur manual: 3 `<wp:author>` benar (termasuk fallback admin), 3
+   `<wp:category>` benar (termasuk parent nicename kategori bertingkat), 36 item (19 post + 17
+   attachment unik — dedup via `Set` coverMediaIds terbukti bekerja), SEMUA `<dc:creator>` di
+   SEMUA 19 post (bukan cuma yang ditest) resolve ke `wp:author_login` yang benar-benar
+   dideklarasikan — nol mismatch.
+4. **Round-trip test** — file hasil export dijalankan BALIK lewat
+   `wordpress-xml-parser.server.ts` (importer Fase 1 sendiri, sudah battle-tested terhadap
+   WordPress real) — title/slug/status/kategori bertingkat/tag/author/SEO/featuredImageUrl/
+   content/excerpt/publishedAtIso/legacyPath SEMUA cocok 1:1 dengan data asal (status resolve
+   `"duplicate"`, BENAR karena slug memang sudah ada — bukti duplicate-detection tetap bekerja
+   pada data hasil export sendiri).
+5. `tsc --noEmit` bersih (2× — sebelum dan sesudah fix robots) + `bun run build
+   --filter=@jalajogja/web` genuine 2× (dev server dimatikan+`.next` dibersihkan+direstart) —
+   route `/api/website/export-wxr` terkonfirmasi 352 B di output build.
+6. Semua data test (5 baris DB: 2 post + 1 author + 1 kategori + 1 tag, plus 8 file disposable)
+   dibersihkan+diverifikasi bersih (`total_posts_now=17`, kembali ke baseline persis).
+
+**Aturan yang ditegaskan (dari bug robots)**: kalau membangun fitur EXPORT yang isinya mengikuti
+skema yang sudah punya IMPORTER (arah kebalikan), verifikasi PALING KUAT bukan cuma
+"structural parse OK" — jalankan file hasil export BALIK lewat importer yang sudah ada dan
+bandingkan field-per-field dengan data asal. Ini menemukan bug (robots 1-key vs 2-key) yang
+TIDAK akan ketahuan dari sekadar membaca XML atau structural inspection — hanya ketahuan dari
+melihat bagaimana SISI PEMBACA (importer) menginterpretasikan hasilnya.
+
+**Status akhir**: Fase 3 SELESAI 100% dari sisi kode — **seluruh 3 fase Import/Export WordPress
+(Fase 0/1/2/3) sekarang selesai**. **Belum di-commit ke git, belum dijalankan di VPS, belum
+diverifikasi visual di browser (klik tombol, unduh file sungguhan), dan belum diverifikasi
+dengan import BALIK ke instance WordPress sungguhan** — keterbatasan environment sesi ini (tidak
+ada browser, tidak ada WordPress test instance nyata) — round-trip lewat importer sendiri adalah
+bukti kuat tapi bukan pengganti tes WordPress sungguhan, user perlu coba sebelum dianggap
+production-ready penuh.
+
+### [2026-07-28] Bug Kritis: Fase 0 POC "Terbukti Aman" Ternyata Tidak Berlaku di Bundling
+Next.js Sungguhan — `EmbedBlock`/`GalleryBlock`/`RelatedLinkBlock` Crash Server Action
+
+> Ditemukan user via testing browser sungguhan SETELAH Fase 3 dilaporkan selesai — bukan dari
+> audit sendiri. Detail lengkap: `docs/arsitektur-import-export-post-wordpress.md` § 7.2
+> (koreksi inline pada klaim POC Fase 0).
+
+User laporkan crash saat membuka `/app/{slug}/website/import-wordpress`: *"Class extends value
+undefined is not a constructor or null"*, stack trace menunjuk `components/editor/
+embed-block-ext.ts` di baris `import { ReactNodeViewRenderer } from "@tiptap/react";`. Next.js
+sendiri kasih hint: "This might be caused by a React Class Component being rendered in a Server
+Component."
+
+**Root cause**: `lib/wordpress-tiptap-extensions.server.ts` (dibangun Fase 1, untuk
+`generateJSON()` saat commit import) SENGAJA duplikasi PERSIS daftar extension dari editor live
+`tiptap-editor.tsx` — termasuk `EmbedBlock`/`GalleryBlock`/`RelatedLinkBlock` versi ASLI dari
+`components/editor/*-ext.ts`. Ketiga extension itu punya `addNodeView() { return
+ReactNodeViewRenderer(SomeView); }` — config RENDER INTERAKTIF di browser, TIDAK PERNAH dipakai
+`generateJSON()` (yang cuma butuh schema: `addAttributes`/`parseHTML`/`renderHTML`). Tapi
+`ReactNodeViewRenderer` diimpor dari `@tiptap/react` di LEVEL MODUL (bukan di dalam
+`addNodeView()`) — begitu file `embed-block-ext.ts` di-import untuk MENGAMBIL definisi Node-nya,
+baris import itu tetap tereksekusi. `@tiptap/react` adalah paket BROWSER-ONLY (butuh
+`react-dom`) — begitu `wordpress-tiptap-extensions.server.ts` (dipakai
+`import-wordpress/actions.ts`, sebuah `"use server"` module) mengimpornya, Next.js's bundler
+(Turbopack) mencoba mem-bundle `@tiptap/react` ke SERVER ACTION bundle — crash saat modul
+dievaluasi.
+
+**Kenapa Fase 0 POC (`bun run` script disposable) TIDAK menangkap bug ini** — poin PALING
+PENTING dari lesson ini: POC Fase 0 menjalankan `generateJSON()` dengan extension YANG SAMA
+(termasuk `EmbedBlock`/`GalleryBlock` versi live) via `bun run _poc-xxx.ts` LANGSUNG, dan
+BERHASIL tanpa crash — dilaporkan sebagai "TERBUKTI AMAN" di dokumentasi. Ini BENAR untuk bare
+Bun runtime (yang cuma jalankan JS apa adanya, tanpa transform RSC/server-bundle-aware sama
+sekali) — TAPI SALAH untuk Next.js sungguhan, yang menerapkan aturan bundling KETAT soal apa
+yang boleh masuk bundle SERVER vs CLIENT. Kedua cara eksekusi ini BUKAN cara verifikasi yang
+ekuivalen — bug bundling-level HANYA muncul saat kode benar-benar dijalankan lewat pipeline
+Next.js (dan bahkan itu pun, cuma muncul saat halaman BENAR-BENAR dirender dengan session login
+sungguhan yang memicu render `<ImportWordPressClient>` — curl tanpa sesi yang cuma dapat 307
+redirect TIDAK memicu compile bundle client component-nya, jadi tidak akan menangkap bug ini
+juga).
+
+**Fix**: `lib/wordpress-import-tiptap-nodes.server.ts` (baru) — duplikasi SCHEMA-ONLY ketiga
+extension (attrs/parseHTML/renderHTML persis sama, `addCommands()` DIHAPUS juga karena tidak
+relevan untuk parsing — cuma dipakai command API editor interaktif — dan `addNodeView()`
+DIHAPUS TOTAL beserta import `@tiptap/react`-nya). `wordpress-tiptap-extensions.server.ts`
+diupdate memakai versi schema-only ini, bukan versi live. `MediaImageExtension`/
+`EnhancedBlockquote` TIDAK perlu disentuh — dikonfirmasi keduanya tidak pernah import
+`@tiptap/react` sama sekali (cuma extend `@tiptap/core`/`@tiptap/extension-image` murni).
+Diverifikasi: grep `@tiptap/react` di SELURUH module graph `wordpress-*.ts` = nol hasil
+non-komentar (root cause genuinely dihilangkan dari akar, bukan ditambal); `@tiptap/html`'s
+`package.json` dikonfirmasi `peerDependencies` HANYA `happy-dom`/`@tiptap/core`/`@tiptap/pm`
+(package `generateJSON()` itu sendiri TIDAK PERNAH bergantung ke `@tiptap/react`); `tsc`+`bun run
+build` (dev server dimatikan+`.next` dibersihkan+direstart) bersih tanpa warning terkait.
+**Belum diverifikasi ulang oleh user via browser sungguhan setelah fix** — analisis root cause
+sangat kuat (import chain problematik dihilangkan total, bukan cuma disembunyikan/di-suppress)
+tapi belum ada konfirmasi visual baru dari user.
+
+**Aturan yang ditegaskan (generalisasi paling penting dari bug ini)**: verifikasi "kode berhasil
+dijalankan via script disposable (`bun run`, Node langsung, dsb.)" TIDAK PERNAH bukti yang cukup
+untuk kode yang akan dipakai di dalam pipeline Next.js (Server Component/Server Action/Client
+Component) — terutama kalau kode itu mengimpor package pihak ketiga yang biasa dipakai di
+konteks BROWSER-ONLY (React rendering utilities, DOM-dependent libraries, dst). Next.js
+menerapkan aturan bundling RSC yang KETAT (server vs client boundary) yang TIDAK ADA sama
+sekali di runtime Bun/Node biasa — bug bundling-level jenis ini HANYA bisa ditangkap dengan
+benar-benar menjalankan kode itu lewat Next.js dev server DAN mengakses halaman yang
+memicunya SUNGGUHAN (bukan sekadar curl tanpa sesi yang short-circuit di redirect awal). Kalau
+sebuah modul server-only butuh SEBAGIAN definisi dari file yang juga punya kode client-only
+(mis. custom Tiptap Node extension yang juga punya `addNodeView()` React-based), JANGAN import
+file itu apa adanya — buat duplikasi SCHEMA-ONLY yang benar-benar tidak menyentuh import
+client-only sama sekali, seperti pola yang sudah dikunci sesi ini.
+
+### [2026-07-28] Bug Sistemik: `PATH_PRIORITY` Loncat Langsung ke "Square" — Gambar Konten
+Dipotong Paksa Jadi Kotak
+
+> Ditemukan dari pertanyaan langsung user saat kembali ke `docs/arsitektur-import-export-post-
+> wordpress.md`: *"di the_content() semua gambar yang diambil selalu square"*. Bukan cuma bug
+> WordPress import — bug PRE-EXISTING di pipeline upload media inti yang saya warisi (copy)
+> tanpa mempertanyakan urutannya saat membangun importer.
+
+**Root cause**: `PATH_PRIORITY` (konstanta penentu variant mana jadi "path utama"/fallback
+default gambar, dipakai `resolveMediaUrl()`-independent code path) urutannya
+`["large", "square-large", "square", "profile", "original"]` — LONCAT LANGSUNG dari `large`
+(1200×630) ke `square`/`square-large` (1:1) tanpa mempertimbangkan `medium` (800×420)/
+`thumbnail` (400×210) sebagai fallback antara, padahal keduanya SAMA rasio aspek dengan `large`
+(1.91:1, bukan 1:1). `processImage()`'s guard "jangan upscale" (`fitsWithoutUpscale()`, Phase
+D3 lama) SENGAJA melewati variant kalau sumber lebih kecil dari target — gambar dari
+`the_content()`/gallery WordPress biasanya ~700-800px lebar (WordPress jarang embed resolusi
+penuh di isi artikel) → gagal fit untuk `large` (butuh ≥1200px) → `medium`/`thumbnail` BERHASIL
+dibuat (sumbernya cukup besar untuk itu) → tapi `PATH_PRIORITY` yang lama sama sekali tidak
+menyebut `medium`/`thumbnail` sebagai opsi, jadi loncat ke `square` yang JUGA berhasil dibuat —
+memotong paksa gambar landscape jadi kotak, kehilangan sebagian besar isinya.
+
+**Bukan cuma bug WordPress import — SYSTEMIC, 3 file duplikat konstanta yang sama**:
+`app/api/media/upload/route.ts` (upload manual admin, SEMUA modul termasuk post/page),
+`app/api/akun/media/upload/route.ts` (upload self-service anggota), `lib/wordpress-image-
+import.server.ts` (importer WordPress — saya COPY pola dari file pertama saat membangun ini,
+dengan komentar sendiri "Pola & modul SAMA PERSIS upload manual admin", tanpa mempertanyakan
+urutannya). Artinya: gambar apa pun yang di-upload MANUAL ke post/page lewat dashboard (bukan
+cuma dari WordPress) yang ukurannya di bawah 1200×630 JUGA kena crop paksa jadi kotak sejak
+fitur upload media pertama kali dibangun — bug ini sudah lama ada, cuma baru ketahuan sekarang.
+
+**Fix — ketiga file, urutan sama**: `["large", "medium", "thumbnail", "square-large", "square",
+"profile", "original"]` — variant SEASPEK (large/medium/thumbnail) didahulukan dari variant
+KOTAK (square-large/square) sebelum profile/original. Aman untuk semua modul lain (`shop`
+hanya punya square/square-large di variant list-nya — medium/thumbnail memang tidak pernah ada
+di situ, jadi otomatis dilewati tanpa mengubah perilaku; `members`/`akun` sama). Tidak
+retroaktif (konsisten prinsip "Guard Upscale" lama) — cuma berlaku upload/import baru.
+
+**Diverifikasi empiris** (bukan cuma baca kode) — script disposable generate 3 gambar sintetis
+via Sharp, jalankan `processImage()` sungguhan, bandingkan hasil pilihan primary LAMA vs BARU:
+- 800×450 (khas WordPress content) — LAMA pilih `square` (bug), BARU pilih `medium` (benar).
+- 1600×900 (full-res) — LAMA dan BARU sama-sama pilih `large` (nol regresi untuk gambar besar).
+- 350×350 (sangat kecil) — LAMA dan BARU sama-sama fallback `original` (nol regresi untuk
+  gambar kecil, cuma convert WebP tanpa crop, seperti sudah benar sejak awal).
+
+`tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` sukses (dev server dimatikan+
+`.next` dibersihkan+direstart). File test disposable dihapus, dikonfirmasi bersih.
+
+**Aturan yang ditegaskan**: kalau menemukan sebuah pola/konstanta yang di-COPY ke file baru
+dengan alasan "sama persis dengan yang existing" (pola "duplikasi demi isolasi" yang sudah
+berkali-kali dipakai di project ini), itu TIDAK berarti pola yang di-copy itu SENDIRI sudah
+benar — cuma berarti KONSISTEN dengan yang lama (termasuk konsisten SALAHNYA, kalau yang lama
+memang salah). Setiap kali meng-copy logic seperti ini, tetap pertanyakan apakah logic
+ASLINYA benar, jangan asumsikan "sudah dipakai di tempat lain jadi pasti sudah teruji benar".
+
+### [2026-07-28] Bug: Rencana Fix `robots.ts` (§ 6c.2 Lama) Terbukti Tidak Bekerja — Next.js Tidak Izinkan Nesting
+
+> Detail lengkap: **`docs/arsitektur-seo.md` § 6c.2/6c.2a/6c.2b**
+
+Menyusul "audit rencana agen lain" sesi sebelumnya (§ 6c menemukan kemungkinan bug 404
+`/robots.txt` di custom domain), user konfirmasi eksekusi 3 langkah berurutan: (1) fix
+`robots.ts`, (2) sinkron rencana sitemap § 4 dengan `resolvePostHrefs()`, (3) eksekusi Fase 5.
+Langkah 1 dimulai dengan mengikuti rencana § 6c.2 PERSIS ("pindahkan `app/robots.ts` → nested
+`app/(public)/[tenant]/robots.ts`") — **rencana itu sendiri TERBUKTI SALAH saat dieksekusi**:
+file baru lolos `tsc --noEmit` 0 error DAN lolos `next build` tanpa error, tapi menghasilkan
+**NOL route** — dikonfirmasi via inspeksi langsung `.next/server/app-paths-manifest.json`
+(hanya `/robots.txt` root yang terdaftar, `/{tenant}/robots.txt` tidak ada sama sekali).
+
+**Root cause** ditemukan dari SOURCE Next.js sendiri
+(`node_modules/next/dist/lib/metadata/is-metadata-route.js`, fungsi `isMetadataRouteFile`):
+regex pencocokan untuk `robots`/`manifest`/`favicon.ico` di-ANCHOR dengan `^` (`^[\/]robots...`)
+— HANYA match kalau path relatif MULAI PERSIS dari nama file itu (root `app/` saja). Regex untuk
+`sitemap`/`icon`/`opengraph-image`/`twitter-image` TIDAK di-anchor — boleh nested di kedalaman
+path berapa pun. Dikonfirmasi empiris via `node -e` test regex langsung terhadap kedua path
+(`/robots` cocok, `/(public)/[tenant]/robots` tidak) — bukan tebakan.
+
+**Fix sesungguhnya**: Route Handler manual (`route.ts`) di folder literal bernama `robots.txt`
+— `app/(public)/[tenant]/robots.txt/route.ts`. Route Handler TIDAK terikat regex
+`isMetadataRouteFile` sama sekali (itu cuma berlaku untuk special-file convention) — mendukung
+nesting di kedalaman path berapa pun, menghasilkan route `/{tenant}/robots.txt`, PERSIS path
+hasil rewrite middleware pada custom domain (`middleware.ts` me-rewrite SEMUA path non-admin/
+non-api di custom domain jadi `/{slug}${pathname}` tanpa kecuali). `app/robots.ts` (root, isi
+generik) TETAP DIPERTAHANKAN untuk domain telanjang (`jalakarta.com/robots.txt`) — dua file
+hidup di kedalaman URL berbeda, tidak collision.
+
+**Bug KEDUA — verifikasi custom domain PERTAMA ternyata false-positive**: test awal (`next
+start` di port test + curl dengan `Host:` header spoofed) mengembalikan 200 dengan konten benar
+— TERLIHAT seperti bukti kuat. Ternyata BUKAN — root cause: test server dijalankan TANPA
+`APP_INTERNAL_URL` eksplisit, sehingga middleware's internal fetch ke
+`/api/internal/resolve-domain` (dituju ke `NEXT_PUBLIC_APP_URL=http://localhost:6202`, yang
+SEDANG MATI karena dev server sengaja dihentikan untuk build) gagal secara SILENT (`try/catch`
+menelan error, "lanjut normal") — custom domain rewrite TIDAK PERNAH benar-benar jalan. Request
+jatuh ke ROOT static `/robots.txt` yang KEBETULAN isinya identik dengan versi tenant (sama-sama
+generik "User-agent: *\nAllow: /") — 200 + konten cocok TERLIHAT seperti custom domain path
+teruji, padahal middleware rewrite genuinely tidak pernah tereksekusi. Ditemukan ulang justru
+karena test SITEMAP (bukan robots) menghasilkan 404 NYATA di skenario yang identik — memaksa
+investigasi yang mengungkap akar masalah verifikasi (bukan akar masalah kode).
+
+**Fix metodologi**: jalankan test server dengan `APP_INTERNAL_URL=http://localhost:{PORT_TEST}`
+eksplisit (menunjuk ke instance yang SAMA), dan verifikasi header response
+`x-middleware-rewrite` benar-benar muncul di response (bukti pasti rewrite terjadi) — JANGAN
+cuma percaya status code 200 + kecocokan isi, terutama untuk konten yang KEBETULAN identik
+antara jalur root dan jalur tenant. Setelah diperbaiki, robots.txt DAN sitemap.xml/
+sitemap-posts.xml semuanya dikonfirmasi ulang dengan bukti genuine (`x-middleware-rewrite:
+/pc-ikpm-jogjakarta/robots.txt` muncul, `<loc>` hasil sitemap benar-benar pakai domain custom
+`https://test-....local/...`, bukan domain asli).
+
+**Aturan yang ditegaskan (dua lapis)**: (1) klaim kompatibilitas Next.js Metadata Route
+convention dari dokumentasi/rencana manapun (termasuk yang ditulis sesi lalu) WAJIB diverifikasi
+empiris sebelum dipercaya — `tsc`/`next build` lolos TANPA ERROR bukan bukti route
+benar-benar terdaftar, cek `app-paths-manifest.json` atau curl langsung; (2) simulasi custom
+domain via Host-header-spoof WAJIB disertai `APP_INTERNAL_URL` yang benar DAN pengecekan header
+`x-middleware-rewrite` — status code + isi yang "kelihatan benar" bisa jadi false-positive kalau
+konten fallback KEBETULAN identik dengan konten yang seharusnya diuji.
+
+### [2026-07-28] Fase 5 SEO — Dual Sitemap Index Engine, 14 Route Handler + Permalink-Aware
+
+> Detail lengkap: **`docs/arsitektur-seo.md` § 4.0a/§ 4.4/§ 4.5**
+
+Lanjutan langsung dari fix `robots.ts` di atas (Langkah 3 dari 3 yang dikonfirmasi user).
+Sebelum menulis kode, recon menyeluruh (1 Explore agent) memverifikasi kolom/enum/URL-pattern
+untuk 8 tipe konten (post/page/produk/event/campaign/dokumen/kategori/pesantren/usaha) langsung
+dari schema aktual + halaman publik existing — bukan ditulis dari ingatan. Temuan penting:
+`member_owned_pesantren`/`member_businesses` hidup di PUBLIC schema (bukan tenant schema),
+butuh JOIN `tenant_memberships` scoped by `tenants.id` resolved dari slug — pola disalin persis
+dari `pesantren/page.tsx`/`usaha/page.tsx` yang sudah ada. `getTenantSeoBase(slug).baseUrl`
+(BUKAN `resolveBaseUrl()` yang relatif+request-header-dependent) yang benar untuk `<loc>`
+absolut di Route Handler tanpa konteks halaman.
+
+**Arsitektur**: `lib/sitemap-builder.server.ts` (baru) — XML builder pure functions
+(`buildUrlsetXml`/`buildSitemapIndexXml`/`xmlResponse`) + 9 fetcher per tipe konten, semua
+return `{loc, lastmod?}[]` dengan `loc` SUDAH absolut. **`fetchPostEntries()` WAJIB panggil
+`resolvePostHrefs()`** (helper permalink-aware yang dibangun sesudah rencana § 4 pertama
+ditulis) — BUKAN hardcode `/post/{slug}` seperti draf lama, supaya sitemap ikut setting
+`permalink_structure` tenant. 14 Route Handler (`app/(public)/[tenant]/sitemap*.xml/route.ts`
+dkk) — SEMUA thin wrapper yang panggil fetcher bersama, Strategi B (alias Yoast:
+`post-sitemap.xml`, `page-sitemap.xml`, dll) memanggil FETCHER YANG SAMA dengan Strategi A,
+bukan implementasi kedua independen.
+
+**Keputusan scope**: `post_categories` SENGAJA TIDAK dimasukkan ke sitemap kategori (arsip
+`/post` belum punya filter `?category=` yang berfungsi — comment kode sendiri mengonfirmasi),
+sementara `event_categories`/`campaign_categories`/`document_categories` DIMASUKKAN (filter-nya
+terkonfirmasi fungsional) — memperluas cakupan dari draf awal § 4.1 yang cuma sebut "Post &
+Produk". `legacy_url_redirects` (§ 6c.4) tidak pernah masuk fetcher manapun — sitemap hanya
+berisi URL aktif, bukan URL lama yang sudah 308.
+
+**Verifikasi empiris menyeluruh** (bukan cuma `tsc`/build): `tsc --noEmit` 0 error, `next build`
+genuine (dev server dimatikan+`.next` dibersihkan) — 14 route terkonfirmasi terdaftar di output
+build. Curl seluruh 14 route terhadap tenant lokal real, semua 200 + `Content-Type:
+application/xml; charset=utf-8` + XML well-formed (diparse `xml.etree.ElementTree` Python,
+bukan cuma dicek visual) — posts (17 entri), pages (5), produk (4), event (1), campaign (1),
+kategori (2), pesantren (1), usaha (4), semua `<loc>` valid. **Permalink-aware dibuktikan
+genuine**: tenant disetel sementara ke `permalink_structure="post_name"`, `sitemap-posts.xml`
+langsung berubah dari `/post/{slug}` jadi `/{slug}` tanpa prefix — bukan asumsi. Custom domain
+diverifikasi dengan metodologi yang SUDAH diperbaiki (lihat lesson di atas) — genuine, bukan
+false-positive.
+
+**Belum dikerjakan**: pagination multi-file untuk tenant >1.000 item/tipe (`ENTRY_CAP=1000` di
+kode sekadar safety limit, bukan split file); Fase 4 (GTM/Search Console) dan Fase 6 (isi
+robots.txt per-bot AI + `llms.txt`) TETAP belum dieksekusi, independen dari 3 langkah yang
+dikonfirmasi user sesi ini. **Belum di-commit/push ke git, belum dijalankan/diverifikasi di
+VPS** — seluruh verifikasi murni lokal, data test (custom domain sementara, permalink
+sementara) sudah dibersihkan+diverifikasi bersih.
+
+### [2026-07-28] Audit Sinkronisasi Doc ↔ Kode untuk Fase 5 Sitemap — 4 Drift Ditemukan+Difix
+
+> Detail lengkap: **`docs/arsitektur-seo.md`** § 4.1/§ 4.2/§ 4.3/§ 4.4/§ 5 (semua diperbarui) —
+> banner status § atas juga ditambah ringkasan audit ini.
+
+User minta cek ulang sinkronisasi dokumentasi vs kode untuk pekerjaan SEO yang baru saja
+dieksekusi (fix `robots.ts` + Fase 5 sitemap, lihat 2 lesson di atas). Dibaca ulang SETIAP
+fungsi di `lib/sitemap-builder.server.ts` + isi 15 `route.ts` (14 sitemap + robots.txt)
+baris-per-baris, dibandingkan klaim tiap baris dokumen terhadap kode aktual — bukan percaya
+begitu saja pada dokumentasi yang baru ditulis sendiri di sesi sebelumnya.
+
+**4 drift nyata ditemukan+difix**:
+1. **§ 4.4 salah nama fungsi helper** — doc tulis `escapeXml`/`buildUrlset`/`buildSitemapIndex`,
+   kode sesungguhnya `xmlEscape` (privat)/`buildUrlsetXml`/`buildSitemapIndexXml`, dan
+   `xmlResponse()` return `Response` polos (bukan `NextResponse` seperti klaim doc).
+2. **§ 4.1 & § 4.2 masih menyebut scope LAMA untuk `sitemap-categories.xml`/
+   `category-sitemap.xml`** — "Kategori Post & Produk" / dipetakan ke `post_categories`. Ini
+   SALAH — implementasi final (§ 4.4, ditulis belakangan) justru MENGECUALIKAN `post_categories`
+   (arsip `/post` belum punya filter `?category=` fungsional) dan MEMASUKKAN
+   `event_categories`+`campaign_categories`+`document_categories` sebagai gantinya. § 4.4 sudah
+   benar sejak awal, tapi § 4.1/§ 4.2 (draf yang lebih tua) tidak pernah diupdate ke keputusan
+   final — dua bagian dokumen yang sama saling kontradiksi sampai ditemukan sekarang.
+3. **§ 4.3 overclaim "pagination otomatis"** — kenyataan kode cuma `.limit(1000)` per fetcher
+   sebagai safety cap, TIDAK ADA mekanisme split multi-file (`sitemap-posts-2.xml`, dst).
+4. **Gap genuine DI KODE (bukan cuma di doc)** — komentar `robots.txt/route.ts` yang ditulis
+   sesi sebelumnya eksplisit bilang "baris `Sitemap:` menyusul saat Fase 5 selesai" — tapi Fase 5
+   SUDAH selesai (sesi yang sama) dan baris itu tidak pernah ditambahkan. Ditambahkan sekarang:
+   `Sitemap: {baseUrl}/sitemap.xml` + `Sitemap: {baseUrl}/sitemap_index.xml`, via
+   `getTenantSeoBase(slug).baseUrl` (pola sama fetcher sitemap lain) — diverifikasi build+curl
+   ulang, output benar.
+
+**Semua fetcher/route/tabel referensi LAIN dikonfirmasi SUDAH sinkron sejak awal** (nol drift) —
+setiap baris `fetchXxxEntries()` di `sitemap-builder.server.ts` dibandingkan satu-per-satu ke
+tabel referensi § 4.4 (filter status/visibility, kolom lastmod, pola URL) dan cocok persis;
+setiap pasangan Strategi A/B (`sitemap-posts.xml` ↔ `post-sitemap.xml`, dst) dikonfirmasi
+memanggil fetcher yang SAMA persis via grep (bukan implementasi kedua independen); kedua file
+index (`sitemap.xml`/`sitemap_index.xml`) dikonfirmasi mereferensikan tepat 8 dan 4 sub-sitemap
+sesuai § 4.1/§ 4.2.
+
+`tsc --noEmit` bersih di kedua package setelah semua fix + `bun run build --filter=@jalajogja/web`
+genuine (dev server dimatikan+`.next` dibersihkan+direstart) + curl ulang konfirmasi baris
+`Sitemap:` muncul benar di output. **Belum di-commit/push ke git, belum dijalankan/diverifikasi
+di VPS** — konsisten dengan status kerja Fase 5 sebelumnya.
+
+**Aturan yang ditegaskan**: dokumen arsitektur yang ditulis dalam BEBERAPA bagian bertahap (§ 4.1
+ditulis sebagai draf awal, § 4.4 ditulis belakangan sebagai "rencana implementasi konkret" yang
+merevisi keputusan draf awal) RAWAN kontradiksi internal kalau bagian yang lebih tua tidak
+ditarik kembali dan disamakan — audit sinkronisasi harus membaca SEMUA bagian yang membahas
+topik yang sama (bukan cuma bagian yang paling baru/paling detail), karena bagian lama yang
+"kelihatannya sudah digantikan" seringkali masih ada dan tetap terbaca sebagai kebenaran oleh
+siapa pun yang mulai dari situ.
+
+### [2026-07-28] Card URL Sitemap di `/settings/seo` — Bagian § 3.3 Dieksekusi Duluan, Bukan Tunggu Fase 4 Penuh
+
+> Detail lengkap: **`docs/arsitektur-seo.md` § 3.3**
+
+User tanya langsung sambil coba fitur sitemap di lokal: apakah mungkin URL sitemap ditampilkan
+di pengaturan website, supaya tidak perlu menebak URL saat submit ke Google Search Console.
+Ini PERSIS fitur yang sudah direncanakan di § 3.3 ("Card Informasi Submisi GSC") sebagai bagian
+dari Fase 4 — tapi Fase 4 penuh (Tab 2, GTM script injection, verification meta tag, migration
+`SETTING_GROUPS`) belum dibangun. Diputuskan eksekusi HANYA bagian card sitemap-nya duluan
+(read-only, tidak butuh skema/migration baru) — tidak perlu menunggu seluruh Fase 4 selesai.
+
+**Implementasi**: `components/settings/sitemap-urls-card.tsx` (baru, client component) —
+menampilkan 2 URL (native `/sitemap.xml` + alias Yoast `/sitemap_index.xml`) sebagai read-only
+input + tombol salin, POLA DISALIN PERSIS dari link TTD di `signature-slot-manager.tsx`
+(select-all on click, `navigator.clipboard.writeText` + timed Copy/Check icon feedback) — bukan
+komponen baru dari nol. Dipasang di `settings/seo/page.tsx` (Server Component existing, di ATAS
+`SeoOverridesManageClient`) — URL dihitung dari `getTenantSeoBase(slug).baseUrl`, SUMBER YANG
+SAMA dipakai Route Handler sitemap sendiri (`lib/sitemap-builder.server.ts`) — otomatis benar
+untuk domain sendiri MAUPUN custom domain tanpa logic tambahan, tidak ada risiko drift antara
+"URL yang ditampilkan di admin" vs "URL yang sungguhan direspons server".
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine (dev server dimatikan+
+`.next` dibersihkan+direstart) — route `/app/[tenant]/settings/seo` terkonfirmasi naik ukuran
+wajar di build output. **Belum di-commit/push ke git, belum dijalankan/diverifikasi di VPS** —
+user diminta buka `/app/{slug}/settings/seo` di browser lokal untuk cek tampilan+copy button.
+
+**Aturan yang ditegaskan**: kalau sebuah rencana besar (Fase 4) berisi BEBERAPA sub-bagian yang
+independen satu sama lain (di sini: card sitemap tidak butuh skema/settings baru sama sekali,
+beda dari GTM/verification meta yang butuh migration), dan user cuma butuh salah satu bagian
+kecilnya SEKARANG, tidak perlu menunggu seluruh fase selesai — eksekusi bagian yang genuinely
+independen dan berdiri sendiri, tetap dokumentasikan sebagai "sebagian dari Fase X sudah
+dieksekusi" (bukan pura-pura itu fase terpisah baru), supaya sesi mendatang yang melanjutkan
+sisa Fase 4 tahu persis apa yang sudah ada dan tidak perlu dibangun ulang.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Peningkatan Block "Baca Juga" — auto-fill judul, Label Awalan jadi
+- Terakhir dikerjakan: **Card URL Sitemap di `/settings/seo`** (lihat lesson `[2026-07-28]`
+  "Card URL Sitemap di `/settings/seo`" di atas) — user coba fitur sitemap di lokal, tanya
+  apakah URL sitemap bisa ditampilkan di pengaturan website supaya tidak perlu menebak saat
+  submit ke Google Search Console. Ini persis fitur § 3.3 (bagian dari Fase 4 yang belum
+  dieksekusi penuh) — dieksekusi HANYA bagian card-nya (read-only, tidak butuh migration/skema
+  baru), tidak perlu tunggu Tab 2/GTM/verification meta selesai. `components/settings/
+  sitemap-urls-card.tsx` (baru) — 2 URL (native+Yoast) read-only+copy button, pola disalin
+  persis dari link TTD `signature-slot-manager.tsx`. Dipasang di `settings/seo/page.tsx`
+  (Server Component existing), URL dihitung dari `getTenantSeoBase(slug).baseUrl` — sumber SAMA
+  dipakai Route Handler sitemap sendiri, otomatis konsisten. `tsc`+build genuine bersih, dev
+  server direstart. **Belum di-commit/push ke git, belum dijalankan/diverifikasi di VPS** —
+  user diminta buka `/app/{slug}/settings/seo` di browser lokal untuk cek tampilan.
+- Sesi sebelumnya: **Audit sinkronisasi doc↔kode untuk Fase 5 Sitemap — 4 drift
+  ditemukan+difix** (lihat lesson `[2026-07-28]` "Audit Sinkronisasi Doc ↔ Kode untuk Fase 5
+  Sitemap" di atas) — user minta cek ulang sinkronisasi dokumentasi vs kode untuk SEO yang baru
+  dieksekusi (fix `robots.ts` + Fase 5 sitemap, entri di bawah). Dibaca ulang SETIAP fungsi di
+  `lib/sitemap-builder.server.ts` + isi 15 `route.ts` baris-per-baris, dibandingkan ke klaim
+  dokumen — bukan percaya begitu saja pada dokumentasi yang baru ditulis sendiri sesi
+  sebelumnya. **4 drift nyata**: (1) § 4.4 salah nama fungsi helper (`escapeXml`/`buildUrlset`/
+  `buildSitemapIndex` vs nama sesungguhnya `xmlEscape`/`buildUrlsetXml`/`buildSitemapIndexXml`,
+  `Response` bukan `NextResponse`); (2) § 4.1 & § 4.2 masih menyebut scope LAMA untuk
+  `sitemap-categories.xml` ("Kategori Post & Produk"/`post_categories`) — KONTRADIKSI dengan
+  § 4.4 (ditulis belakangan) yang justru MENGECUALIKAN post_categories dan MEMASUKKAN
+  event+campaign+dokumen — dua bagian dokumen yang sama saling bertentangan sampai ditemukan
+  sekarang; (3) § 4.3 overclaim "pagination otomatis" — kenyataannya cuma `.limit(1000)` safety
+  cap; (4) **gap genuine DI KODE** — komentar `robots.txt/route.ts` bilang "baris Sitemap:
+  menyusul saat Fase 5 selesai", tapi Fase 5 SUDAH selesai dan baris itu belum pernah
+  ditambahkan — DITAMBAHKAN sekarang (`Sitemap: {baseUrl}/sitemap.xml` +
+  `/sitemap_index.xml`), diverifikasi build+curl ulang. Semua fetcher/route/tabel referensi
+  lain dikonfirmasi SUDAH sinkron sejak awal (nol drift) — tiap fetcher dibandingkan ke tabel
+  § 4.4, tiap pasangan Strategi A/B dikonfirmasi panggil fetcher SAMA via grep, kedua index
+  file dikonfirmasi referensi 8+4 sub-sitemap yang benar. `tsc` bersih kedua package + build
+  genuine + curl ulang. **Belum di-commit/push ke git, belum dijalankan/diverifikasi di VPS.**
+- Sesi sebelumnya: **Fase 5 SEO — Dual Sitemap Index Engine SELESAI (14 Route Handler) +
+  fix `robots.ts` (Route Handler, bukan nested metadata file)** (lihat lesson `[2026-07-28]`
+  "Bug: Rencana Fix robots.ts Terbukti Tidak Bekerja" dan "Fase 5 SEO — Dual Sitemap Index
+  Engine" di atas, detail penuh di `docs/arsitektur-seo.md` § 6c.2/6c.2a/6c.2b + § 4.0a/4.4/4.5)
+  — user konfirmasi eksekusi 3 langkah berurutan (fix robots.ts → sinkron rencana sitemap §4
+  dengan `resolvePostHrefs()` → eksekusi Fase 5) menyusul "audit rencana agen lain" sesi
+  sebelumnya yang menemukan kemungkinan bug 404 `/robots.txt` di custom domain.
+  **Langkah 1**: rencana § 6c.2 lama ("pindah `robots.ts` ke nested `[tenant]/robots.ts`")
+  TERBUKTI TIDAK BEKERJA saat dieksekusi — Next.js genuinely tidak izinkan nesting untuk
+  `robots.ts`/`manifest.ts`/`favicon.ico` (regex `isMetadataRouteFile()` di Next.js source
+  di-anchor `^` ke root, beda dari `sitemap`/`icon`/`opengraph-image` yang tidak di-anchor) —
+  ditemukan lewat verifikasi empiris (file compile 0 error tapi 0 route terdaftar, dikonfirmasi
+  via `.next/server/app-paths-manifest.json`). Fix sesungguhnya: Route Handler manual
+  `app/(public)/[tenant]/robots.txt/route.ts` (folder literal, bukan special-file convention).
+  **Bug metodologi verifikasi ditemukan+diperbaiki di tengah jalan**: test custom-domain
+  PERTAMA (Host-header-spoof) sempat false-positive — `APP_INTERNAL_URL` tidak diset saat
+  testing, middleware's internal resolve-domain fetch gagal silent, request jatuh ke root
+  static robots.txt yang KEBETULAN isinya identik — 200+konten cocok TERLIHAT seperti bukti
+  padahal rewrite custom domain tidak pernah genuinely jalan. Baru ketahuan saat test SITEMAP
+  (bukan robots) 404 nyata di skenario identik. Fix: `APP_INTERNAL_URL` eksplisit ke instance
+  test yang sama + cek header `x-middleware-rewrite` sebagai bukti pasti (bukan cuma status
+  code+isi). **Langkah 2**: § 4 (rencana sitemap) disinkronkan dengan `resolvePostHrefs()`
+  (§ 4.0a — permalink 5-mode, dibangun sesudah § 4 pertama ditulis di sesi lain). **Langkah 3**:
+  Fase 5 dieksekusi penuh — recon schema 8 tipe konten via Explore agent (dikonfirmasi ke
+  schema aktual, bukan ingatan — termasuk temuan `member_owned_pesantren`/`member_businesses`
+  hidup di PUBLIC schema bukan tenant schema), `lib/sitemap-builder.server.ts` baru (XML
+  builder + 9 fetcher, `fetchPostEntries()` WAJIB pakai `resolvePostHrefs()` bukan hardcode),
+  14 Route Handler (`sitemap.xml`/`sitemap-posts.xml`/dst + 4 alias Yoast-style
+  `post-sitemap.xml`/dst yang panggil fetcher SAMA, bukan implementasi kedua). Keputusan scope:
+  `post_categories` dikecualikan dari sitemap kategori (filter `?category=` arsip post belum
+  berfungsi), `event_categories`/`campaign_categories`/`document_categories` DIMASUKKAN
+  (terkonfirmasi fungsional) — perluasan dari draf awal yang cuma sebut "Post & Produk".
+  **Verifikasi empiris menyeluruh**: `tsc`+build genuine (14 route terkonfirmasi di build
+  output), curl semua 14 route terhadap data tenant lokal real (XML diparse via Python
+  `ElementTree`, bukan cuma dicek visual), permalink-aware dibuktikan GENUINE (switch tenant ke
+  `permalink_structure="post_name"` live, sitemap-posts.xml langsung berubah tanpa prefix
+  `/post/`), custom domain diverifikasi dengan metodologi yang sudah diperbaiki (header
+  `x-middleware-rewrite` dikonfirmasi muncul + `<loc>` pakai domain custom itu sendiri). Dev
+  server direstart, `tsc` 0 error kedua package sebagai gate akhir, semua data test (custom
+  domain sementara, permalink sementara) dibersihkan+diverifikasi bersih. **Ketiga langkah yang
+  dikonfirmasi user selesai dari sisi kode. Belum di-commit/push ke git, belum dijalankan/
+  diverifikasi di VPS.** Belum dikerjakan (independen, di luar 3 langkah ini): Fase 4 (GTM/
+  Search Console), Fase 6 (isi robots.txt per-bot AI + `llms.txt`), pagination sitemap
+  multi-file untuk tenant >1.000 item/tipe. Juga masih pending dari sesi sebelumnya (belum
+  disentuh sesi ini): rencana `docs/rencana-perbaikan-akses-404.md` (404/Fail2ban investigation)
+  belum dieksekusi sama sekali.
+- Sesi sebelumnya: **Fix bug sistemik `PATH_PRIORITY` — gambar konten dipotong paksa jadi
+  kotak** (lihat lesson `[2026-07-28]` "Bug Sistemik: PATH_PRIORITY Loncat Langsung ke 'Square'"
+  di atas) — dipicu pertanyaan langsung user saat kembali ke dokumen WordPress import: "di
+  the_content() semua gambar yang diambil selalu square". Root cause: `PATH_PRIORITY`
+  (`["large", "square-large", "square", "profile", "original"]`) loncat langsung dari `large`
+  ke `square` tanpa mempertimbangkan `medium`/`thumbnail` (sama rasio aspek 1.91:1) sebagai
+  fallback antara — gambar dari `the_content()`/gallery WordPress biasanya ~700-800px (gagal
+  fit untuk `large` yang butuh ≥1200px, tapi `medium`/`thumbnail` BERHASIL dibuat) berujung
+  dipotong paksa jadi kotak karena kode loncat ke `square`. **Bukan cuma bug WordPress import —
+  SYSTEMIC di 3 file**: `app/api/media/upload/route.ts` (upload manual admin, SEMUA modul),
+  `app/api/akun/media/upload/route.ts` (self-service anggota), `lib/wordpress-image-
+  import.server.ts` (importer WordPress, saya COPY pola dari file pertama tanpa mempertanyakan
+  urutannya). Fix: urutan baru `["large", "medium", "thumbnail", "square-large", "square",
+  "profile", "original"]` di ketiga file — variant seaspek didahulukan dari variant kotak.
+  Diverifikasi EMPIRIS (bukan cuma baca kode) — script disposable generate 3 gambar sintetis
+  (800×450/1600×900/350×350) via Sharp sungguhan, jalankan `processImage()`, konfirmasi hasil:
+  800×450 LAMA pilih `square` (bug) vs BARU pilih `medium` (benar); 1600×900 dan 350×350 identik
+  LAMA/BARU (nol regresi untuk gambar besar/kecil). `tsc`+build bersih (dev server dimatikan+
+  `.next` dibersihkan+direstart), file test dihapus+dikonfirmasi bersih. **Belum di-commit ke
+  git, belum dijalankan di VPS, belum diverifikasi visual dengan gambar sungguhan hasil import**
+  — perbaikan HANYA berlaku upload/import BARU (tidak retroaktif) — gambar yang SUDAH ter-import
+  dengan primary path "square" (kalau ada) tidak otomatis diperbaiki, perlu keputusan terpisah
+  apakah mau di-reprocess manual atau dibiarkan.
+- Sesi sebelumnya: **Fix bug kritis — crash "Class extends value undefined" di halaman
+  Import WordPress** (lihat lesson `[2026-07-28]` "Bug Kritis: Fase 0 POC 'Terbukti Aman'
+  Ternyata Tidak Berlaku" di atas, detail penuh di `docs/arsitektur-import-export-post-
+  wordpress.md` § 7.2 koreksi inline) — user laporkan crash saat membuka
+  `/app/{slug}/website/import-wordpress`, stack trace menunjuk `components/editor/
+  embed-block-ext.ts` di baris `import { ReactNodeViewRenderer } from "@tiptap/react"`. Root
+  cause: `lib/wordpress-tiptap-extensions.server.ts` (Fase 1) SENGAJA duplikasi extension list
+  editor LIVE untuk `generateJSON()`, termasuk `EmbedBlock`/`GalleryBlock`/`RelatedLinkBlock`
+  versi ASLI yang punya `addNodeView()` — `generateJSON()` TIDAK PERNAH butuh ini (cuma perlu
+  schema), tapi import `ReactNodeViewRenderer` dari `@tiptap/react` (paket browser-only) di
+  level modul tetap tereksekusi begitu file itu diimpor, dan Next.js's bundler mencoba
+  mem-bundle paket itu ke Server Action bundle — crash. **Pelajaran paling penting**: klaim
+  "TERBUKTI AMAN" dari POC Fase 0 (dijalankan via `bun run` script disposable) TIDAK EKUIVALEN
+  dengan aman di-bundle Next.js sungguhan — bare Bun runtime tidak menerapkan aturan RSC/
+  server-client-bundle-boundary sama sekali, jadi tidak bisa menangkap kelas bug ini. Fix:
+  `lib/wordpress-import-tiptap-nodes.server.ts` (baru) — duplikasi SCHEMA-ONLY ketiga extension
+  (attrs/parseHTML/renderHTML, TANPA `addNodeView()`/`addCommands()`/import `@tiptap/react` sama
+  sekali), `wordpress-tiptap-extensions.server.ts` diupdate memakai versi ini.
+  `MediaImageExtension`/`EnhancedBlockquote` tidak perlu disentuh (dikonfirmasi tidak pernah
+  import `@tiptap/react`). Diverifikasi: grep `@tiptap/react` di seluruh module graph
+  `wordpress-*.ts` = nol hasil non-komentar, `@tiptap/html`'s `package.json` dikonfirmasi
+  `peerDependencies` tidak menyertakan `@tiptap/react` sama sekali, `tsc`+`bun run build`
+  (dev server dimatikan+`.next` dibersihkan+direstart) bersih. Sekalian ditambahkan tombol
+  "Import dari WordPress" di halaman `/{slug}/website/posts` (sebelumnya fitur import cuma bisa
+  diakses via item nav sidebar "Import WP", terpisah dari tombol "Export ke WordPress" yang
+  sudah ada di halaman itu — gap discoverability, user sempat kira fitur import belum ada sama
+  sekali). **Belum diverifikasi ulang oleh user via browser sungguhan setelah fix ini** — root
+  cause dihilangkan total dari akar (bukan ditambal/di-suppress), tapi belum ada konfirmasi
+  visual baru.
+- Sesi sebelumnya: **Fase 3 Import WordPress SELESAI 100% — WXR Exporter** (lihat lesson
+  `[2026-07-28]` "Fase 3 Import WordPress" di atas, detail penuh di `docs/arsitektur-import-
+  export-post-wordpress.md` § 8 Fase 3 — banner status dokumen sekarang "FASE 0+1+2+3 SELESAI
+  100%") — lanjutan langsung dari Fase 2, user konfirmasi scope keseluruhan fitur POST-ONLY
+  ("kita focus importing post dari wordpress bukan jenis lain"), lalu minta lanjut Fase 3.
+  `lib/wordpress-wxr-export.server.ts` (baru) — `generateWxrExport(slug)`, cermin terbalik dari
+  importer Fase 1, REUSE penuh infrastruktur existing: `resolvePostHrefs()` (Fase 2) untuk
+  `<link>`, `getTenantSeoBase()` untuk baseUrl absolut custom-domain-aware, dan **`renderBody()`**
+  (`lib/letter-render.ts`, dipakai sejak modul Surat) untuk Tiptap JSON→HTML `<content:encoded>`
+  — nol dependency baru untuk arah konversi ini. Semua status post diikutkan (draft/published/
+  archived, archived→WP draft) sesuai prinsip anti vendor lock-in. `<dc:creator>` selalu dari
+  `post_authors.name` via `displayAuthorId` (fallback username sintetis "admin" + `<wp:author>`
+  block sintetis HANYA kalau dipakai), `editorId` TIDAK diekspor sama sekali (WordPress tidak
+  punya konsep setara). Tag TIDAK dideklarasikan `<wp:tag>` channel-level (dikonfirmasi dari 2
+  sample WXR real bahwa WordPress sendiri tidak selalu melakukannya), kategori mendukung
+  hierarki. Featured image → `<item post_type="attachment">` terpisah + `_thumbnail_id` (counter
+  sintetis SHARED posts+attachments). **Bug ditemukan LEWAT ROUND-TRIP TEST (bukan baca kode)**:
+  draf pertama cuma emit 1 postmeta key untuk robots, importer sendiri ternyata baca 2 key
+  terpisah untuk merekonstruksi `noindex,nofollow` — ketahuan dari `seo.robots` round-trip jadi
+  `"noindex"` bukan `"noindex,nofollow"`, difix (`_yoast_wpseo_meta-robots-nofollow` ditambah),
+  re-test konfirmasi lossless. `canonicalUrl` sengaja TIDAK diekspor (canonical situs asal tidak
+  relevan untuk situs WordPress tujuan). Keterbatasan V1 diterima: link "Baca Juga" internal
+  tidak di-absolute-kan (konten utama tetap benar). Route baru `GET /api/website/export-wxr`
+  (auth pola sama `/api/members/import/template`) + tombol "Export ke WordPress" di
+  `/{slug}/website/posts`. **Verifikasi empiris menyeluruh**: data test disisipkan ke
+  `pc-ikpm-jogjakarta` (17 post real + 2 post test rich-fields) → `XMLValidator.validate()`
+  VALID → structural inspection (36 item, semua dc:creator resolve, nol mismatch) →
+  **round-trip lewat `wordpress-xml-parser.server.ts` sendiri** (importer Fase 1, battle-tested
+  terhadap WordPress real) — semua field cocok 1:1. `tsc`+build bersih 2×, data test (5 baris DB
+  + 8 file disposable) dibersihkan+diverifikasi bersih (`total_posts_now=17`, baseline persis).
+  **Seluruh 4 fase Import/Export WordPress (Fase 0/1/2/3) sekarang selesai dari sisi kode.**
+  Belum di-commit ke git, belum dijalankan di VPS, **belum diverifikasi visual di browser (klik
+  tombol, unduh file), dan belum diverifikasi dengan import balik ke WordPress sungguhan** —
+  keterbatasan environment sesi ini (tidak ada browser, tidak ada WordPress test instance nyata).
+- Sesi sebelumnya: **Fase 2 Import WordPress SELESAI 100% — Custom Permalink Structure +
+  Preservasi URL Lama** (lihat lesson `[2026-07-28]` "Fase 2 Import WordPress" di atas, detail
+  penuh di `docs/arsitektur-import-export-post-wordpress.md` § 8 Fase 2 — banner status dokumen
+  sekarang "FASE 0+1+2 SELESAI 100%") — user: "selesaikan dulu fase 2-nya biar enak kalau sudah
+  semua kita coba.. tp pastikan ikut sop ketat kita.." Dipecah 10 sub-fase (2.0–2.9), skala JAUH
+  lebih besar dari rencana awal: helper inti `lib/post-permalink.server.ts` (5 mode permalink,
+  `resolvePostHrefs()` dipanggil semua query-builder post) → 9 query-builder site → **~12
+  consumer render site TERNYATA meluas jadi seluruh chain `landing-template.tsx`→`PostsSection`
+  →5 file `posts-design-*.tsx`→`<PostCard>`/6 varian** (`PostCardData.href` sebagai forcing
+  function membongkar semua sisa titik via `tsc`, drive-by fix bug custom-domain `tenantSlug`
+  mentah sekalian) → `post/[slug]/page.tsx` (567 baris) diekstrak MURNI jadi shared renderer
+  `post-detail-view.tsx` (diverifikasi curl end-to-end, bukan cuma `tsc`) → `[pageSlug]/page.tsx`
+  **DIGANTI TOTAL** jadi catch-all `[...slug]/page.tsx` (6-prioritas resolusi + legacy redirect
+  **308** via `permanentRedirect()` — Next.js selalu 308 bukan 301 seperti rencana awal, tapi
+  SEO-equivalent) → route nested `post/[slug]/[postSlug]/page.tsx` untuk `category_name` (folder
+  awal `[category]/[slug]` GAGAL — Next.js App Router mewajibkan nama dynamic segment SAMA di
+  kedalaman sama untuk sibling route, error **hanya ketangkap via `next dev`, BUKAN `next
+  build`** — pelajaran baru: production build TIDAK cukup untuk verifikasi konflik penamaan
+  route, WAJIB restart dev server) → validasi slug (`RESERVED_POST_SLUGS` 25 folder statis real,
+  cross-collision post↔page, HANYA aktif saat permalink="post_name") → `commitOneRow` (WordPress
+  import) dijadikan permalink-aware (sebelumnya hardcode `/post/{slug}`) → settings UI dropdown
+  5 opsi di `/website/pengaturan`. **Setiap sub-fase diverifikasi empiris** — build produksi
+  genuine setelah tiap perubahan routing + curl end-to-end untuk semua 5 mode permalink + legacy
+  redirect + reserved-slug rejection (5 skenario via disposable script) + regresi sweep 12+
+  tipe rute publik lain (semua tetap 200, nol collateral damage dari catch-all baru). `tsc
+  --noEmit` bersih KEDUA package sebagai gate final di setiap sub-fase. **Fase 2 sekarang
+  SELESAI 100% dari sisi kode.** Belum di-commit ke git, belum dijalankan di VPS, **belum
+  diverifikasi visual/interaktif di browser sungguhan** (klik dropdown permalink di UI, lihat
+  hasilnya di halaman publik — belum dicoba siapa pun, keterbatasan environment sesi ini tidak
+  ada browser).
+- Sesi sebelumnya: **Fase 1 Import WordPress SELESAI 100% — UI Dibangun** (lihat lesson
+  `[2026-07-27]` "Fase 1 Import WordPress SELESAI 100%" di atas, detail penuh di
+  `docs/arsitektur-import-export-post-wordpress.md` § 8 Fase 1) — lanjutan langsung dari
+  `archiveImportBatchAction`, user: "mantab ... mari kita lanjutkan." **Gap ditemukan SEBELUM
+  menulis kode UI** (bukan sesudah) — trace ulang `ParsedWordPressItem`/parser menemukan
+  `commitImportChunkAction`'s candidate query cuma klaim `status='ready'`, padahal baris
+  `'review_needed'` (tanggal publish tidak valid, notes eksplisit "perlu diisi manual SETELAH
+  import") genuinely aman ikut di-commit dan seharusnya tidak stuck permanen. Fix:
+  `claimableStatuses=["ready","review_needed"]` di 2 titik query + formula `remaining`.
+  `'duplicate'` sengaja tetap tidak diklaim (tidak ada strategi merge untuk konten). Diverifikasi
+  terpisah dengan disposable test (1 baris disimulasikan review_needed → berhasil ter-commit
+  dengan `publishedAt` fallback `NOW()`), data dibersihkan+diverifikasi bersih. **UI dibangun**
+  mengikuti pola `ImportClient` Importer Anggota dengan 2 penyesuaian struktural: dua metode
+  input (tab Upload WXR / Tarik URL REST, bukan satu) dan commit chunked dengan progress bar
+  (bukan satu panggilan sinkron). Action baru `getBatchRowsAction` ditambah untuk laporan akhir
+  per-baris (admin tahu PERSIS baris mana gagal dan kenapa, bukan cuma agregat). 2 bug kecil
+  ditemukan+difix saat menulis kode: pola ternary+IIFE yang bikin `tsc` gagal narrow union type
+  (diganti 2 branch eksplisit), dan dead state `finalReport` (dihapus). Nav item baru "Import WP"
+  (ikon diverifikasi dulu ada di `lucide-react` terinstall). `tsc --noEmit` 0 error kedua package
+  + `bun run build` sukses GENUINE (47 detik, bukan cache — rute 5.11 kB terkonfirmasi) + curl
+  tanpa sesi → 307 redirect (bukan crash 500). Dev server direstart, 200 OK. **Belum
+  diverifikasi visual/interaktif di browser sungguhan** (upload file nyata, progress bar
+  bergerak, tombol archive — belum dicoba siapa pun, dinyatakan jujur bukan diklaim teruji
+  penuh). **Fase 1 Import WordPress sekarang SELESAI 100%.** Belum di-commit ke git, belum
+  dijalankan di VPS.
+- Sesi sebelumnya: **Fase 1 Import WordPress — `archiveImportBatchAction` Selesai** (lihat
+  lesson `[2026-07-27]` "Fase 1 Import WordPress — archiveImportBatchAction Selesai" di atas,
+  detail penuh di `docs/arsitektur-import-export-post-wordpress.md` § 8 Fase 1 + § 14.1) —
+  lanjutan langsung dari `commitImportChunkAction`, user: "mari kita masuk ke langkah
+  selanjutnya di fase 1, arsip import dulu terakhir UI." Desain dibaca ulang dari § 14.1 dulu
+  (bukan dari ingatan) — soft bulk-archive, TIDAK PERNAH hard-delete, `post_authors`+`media`
+  TIDAK PERNAH disentuh (dikonfirmasi `media` bahkan tidak punya kolom `status` sama sekali).
+  Dikonfirmasi `posts`/`pages` sudah punya `'archived'` di `CONTENT_STATUSES` existing — nol
+  ALTER constraint diperlukan di situ. Penambahan kecil di luar literal dokumen (dinyatakan
+  jujur): kolom `archivedAt` (migration `0052`, pola persis `committedAt`) untuk audit-trail
+  "kapan rollback terakhir dijalankan" — batch's own `status` sengaja TETAP `'committed'`
+  selamanya, tidak diberi nilai enum baru. Guard tambahan: hanya batch `status='committed'`
+  boleh diarsipkan. **Verifikasi genuine parse→commit→archive end-to-end** (bukan dummy data) —
+  4 skenario semua PASS: guard batch draft ditolak jelas, archive committed batch berhasil
+  (`archivedPosts=1`, post jadi `status='archived'`, batch TETAP `'committed'`, `archivedAt`
+  terisi), `post_authors`+`media` dikonfirmasi masih utuh tak tersentuh, idempotency (archive
+  2× aman tanpa error). Data test dibersihkan+diverifikasi independen, file disposable dihapus
+  semua. `tsc --noEmit` 0 error kedua package + `bun run build --filter=@jalajogja/web` sukses
+  (dev server dimatikan+`.next` dibersihkan+direstart). **Belum di-commit ke git, belum
+  dijalankan di VPS.** **Fase 1 sekarang tinggal SATU item tersisa: UI**
+  (`/{slug}/website/import-wordpress` — upload/pull, review preview, progress bar
+  chunked-commit, tombol archive/rollback) — sesuai urutan yang sudah disepakati eksplisit
+  (mapping penulis → commit → archive → UI).
+- Sesi sebelumnya: **Fase 1 Import WordPress — `commitImportChunkAction` Selesai + Uji
+  Error-Resilience** (lihat lesson `[2026-07-27]` "Fase 1 Import WordPress —
+  commitImportChunkAction Selesai" di atas, detail penuh di `docs/arsitektur-import-export-
+  post-wordpress.md` § 8 Fase 1, semua bullet Fase 2 lama digabung masuk Fase 1) — lanjutan
+  langsung dari mapping penulis. User minta analisa kritis dulu ("mapping penulis → commit
+  import chunk → archive import → UI .. gmn menurut analisa kritis kamu?"), disetujui, lalu
+  "silahkan eksekusi .. ingat selalu strick pada arsitektur, focus, dan harus sesuai SOP yang
+  ketat." **Bagian TERBERAT seluruh fitur** — dibangun: `lib/wordpress-image-import.server.ts`
+  (`downloadAndImportImage()` pola PERSIS route upload asli + `rewriteInlineImages()` via
+  `happy-dom`, non-destructive untuk gambar gagal unduh), `lib/wordpress-tiptap-extensions.
+  server.ts` + `lib/wordpress-tiptap-convert.server.ts` (duplikasi SENGAJA daftar extension
+  editor live), skema baru `tenant.legacy_url_redirects` (migration `0051`, sekalian tambah
+  `'processing'` ke enum status baris — untuk klaim atomic), dan `commitImportChunkAction`+
+  `commitOneRow` (klaim 2-langkah, loop try/catch per-baris, hitung ulang counter, transisi
+  status batch). **Strategi verifikasi dipivot secara eksplisit ke user** (bukan diam-diam
+  disederhanakan): karena `getTenantAccess()`/`headers()` genuinely tidak bisa dites di luar
+  Next.js request scope, disadari `commitOneRow()` menerima `access` sebagai PARAMETER — logic
+  inti bisa diuji langsung dengan `access` dikonstruksi dari nilai DB nyata (owner
+  `pc-ikpm-jogjakarta`), tanpa perlu memalsukan cookie sesi Better Auth. **Dua putaran tes
+  end-to-end data REAL**: (1) 1 post dari `contoh-xml.xml` — SEMUA field benar TERMASUK
+  `content` dikonfirmasi Tiptap JSON valid (syarat paling kritis § 7.2, bukan HTML mentah);
+  (2) 3 post dari sample kedua, `chunkSize=2` (<total, uji progress bertahap) + 1 baris SENGAJA
+  digagalkan (uji **error-resilience** — bagian terpenting orchestrator ini) — semua counter/
+  status/per-baris terverifikasi PERSIS benar, termasuk baris gagal ditandai `error` tanpa
+  merusak 2 baris lain yang sukses normal (ditemukan+difix bug kecil: lupa pre-seed author untuk
+  sample kedua di percobaan pertama). Semua data test dibersihkan+diverifikasi independen, 12
+  file disposable (2 putaran) dihapus semua. `tsc --noEmit` 0 error kedua package + `bun run
+  build --filter=@jalajogja/web` sukses (dev server dimatikan+`.next` dibersihkan+direstart).
+  **Dinyatakan jujur ke user**: wrapper auth `commitImportChunkAction` sendiri belum dites via
+  browser+session sungguhan (infrastruktur established, bukan logic baru — diputuskan cukup
+  tercakup natural begitu UI dibangun dan dicoba manual nanti, bukan gap disembunyikan). **Belum
+  di-commit ke git.** Sisa Fase 1: `archiveImportBatchAction`, UI (`/{slug}/website/
+  import-wordpress`).
+- Sesi sebelumnya: **Fase 1 Import WordPress — Parse-Simpan-Draft Actions + Mapping
+  Penulis Selesai** (lihat lesson `[2026-07-27]` "Fase 1 Import WordPress — Parse-Simpan-Draft"
+  di atas, detail penuh di `docs/arsitektur-import-export-post-wordpress.md` § 8 Fase 1) —
+  user minta analisa kritis urutan 4 item sisa Fase 1 ("mapping penulis → commit → archive →
+  UI"), disetujui dengan 1 koreksi (mapping penulis bukan fase berdiri sendiri, § 2.4 bilang
+  resolusinya terjadi "saat commit" — dibangun+diverifikasi dulu sebagai sub-komponen SEBELUM
+  di-wire ke commit), lalu "silahkan eksekusi... strick pada arsitektur, focus, dan harus
+  sesuai SOP yang ketat". **Gap ditemukan SAAT eksekusi**: `commitImportChunkAction` butuh
+  baris `content_import_batch_rows` yang SUDAH ADA, tapi belum ada yang menulisnya — file BARU
+  `app/(dashboard)/app/[tenant]/website/import-wordpress/actions.ts` menutup gap ini:
+  `importWxrFileAction`+`importRestApiAction` (pola persis `parseImportFileAction` Importer
+  Anggota, digate `getTenantAccess()`) + `persistDraftBatch()` (tulis ke
+  `content_import_batches`/`content_import_batch_rows`). **Mapping penulis**:
+  `resolveOrCreateAuthor()` (private, tidak di-export) — cache-first → lookup cross-batch
+  (`lower(name)=lower(x)`, SENGAJA bukan `ilike()` — cegah `%`/`_` disalahartikan wildcard) →
+  reuse `createGuestPostAuthorAction()` yang sudah ada. **Koreksi klaim saya sendiri**: sempat
+  bilang ke user `"use server"` "lebih gampang dites" — SALAH, dibuktikan empiris `headers()`
+  dari `next/headers` tetap throw di luar Next.js request scope terlepas dari directive itu —
+  kelas masalah BARU (runtime context, bukan modul-resolusi seperti `server-only`). **Rabbit
+  hole disposable-copy**: rantai impor transitif `getTenantAccess→auth→mail.ts` butuh 3+ salinan
+  bertingkat, akhirnya diselesaikan dengan script test MINIMAL (salin PERSIS body 2 fungsi yang
+  TIDAK butuh `headers()`, bukan reimplementasi) — 4 test lolos termasuk **bukti positif
+  keamanan wildcard SQL** (`"AB%"` tidak match keliru terhadap author existing). Jalur
+  bergantung `headers()` (auth gate penuh, cabang "buat penulis baru") SENGAJA ditunda ke
+  pengujian `commitImportChunkAction` (butuh dev server sungguhan untuk `processImage()`/
+  `generateJSON()` juga — satu sesi pengujian mencakup semuanya). `tsc --noEmit` 0 error kedua
+  package. **Belum di-commit ke git.** Sisa Fase 1: `commitImportChunkAction` (langkah
+  berikutnya, sudah eksplisit disepakati urutannya), `archiveImportBatchAction`, UI.
+- Sesi sebelumnya: **Fase 1 Import WordPress — REST API Fetcher Selesai + Diuji LIVE ke
+  `forbis.id`** (lihat lesson `[2026-07-27]` "Fase 1 Import WordPress — REST API Fetcher
+  Selesai" di atas, detail penuh di `docs/arsitektur-import-export-post-wordpress.md` § 8 Fase
+  1 item REST fetcher) — `apps/web/lib/wordpress-api-fetcher.server.ts` — `fetchWordPressContent()`,
+  fetch `/posts`+`/pages` sekaligus, SEO diisi `emptySeoFields()`, `safeFetch()` untuk semua
+  fetch eksternal. Diuji LIVE terhadap `forbis.id` — 480 baris nyata, status `duplicate`
+  ditemukan genuine 2× (bukan direkayasa). `tsc --noEmit` 0 error kedua package.
+- Sesi sebelumnya: **Fase 1 Import WordPress — Parser WXR Selesai + Bug `server-only` Saat
+  Testing** (lihat lesson `[2026-07-27]` "Fase 1 Import WordPress — Parser WXR Selesai" di
+  atas, detail penuh di `docs/arsitektur-import-export-post-wordpress.md` § 8 Fase 1 item
+  parser) — lanjutan LANGSUNG dari skema DB (entri di bawah), user: "silahkan lanjut ke
+  parser, ingat konsisten dan focus pada task, juga selalu sesuai sop d claude.md". **Dibangun
+  2 file baru**: `apps/web/lib/wordpress-import-mapping.ts` (pure/client-safe — pola PERSIS
+  `import-anggota-mapping.ts`: `decodeHtmlEntities`, `extractPathFromUrl`, `mapYoastSeo` HANYA
+  Yoast sesuai § 4.3, `resolvePrimaryCategory` dengan lookup channel-level `<wp:category>`,
+  tipe `ParsedWordPressItem`) dan `apps/web/lib/wordpress-xml-parser.server.ts`
+  (`import "server-only"` — `fast-xml-parser`, dua-tahap index attachment via `_thumbnail_id`
+  § 2.1, resolusi tanggal REUSE `lib/tenant-timezone.ts` tanpa dependency baru, deteksi
+  duplikat slug via query DB). Scope SENGAJA dibatasi sesuai § 13 — parser HANYA
+  ekstrak+normalisasi, TIDAK unduh gambar/konversi Tiptap/insert DB (itu tugas
+  `commitImportChunkAction` yang belum ditulis). **2 bug ditemukan SAAT testing (bukan di kode
+  produksi)**: (1) `server-only` package genuinely tidak terinstall — hanya resolve lewat
+  Next.js webpack/turbopack, tidak bisa `bun run` langsung di luar itu — diverifikasi pakai
+  salinan disposable tanpa marker itu, file produksi tidak disentuh; (2) `bun run script |
+  head -N` bikin proses child hang 100% CPU (SIGPIPE saat `head` tutup pipe) — bukan bug
+  logic, dikonfirmasi re-run tanpa pipe selesai normal. **Diuji terhadap KEDUA file WXR sample
+  real** (`contoh-xml.xml` + `wordpress-xml-forbis.xml`) — semua field benar, TERMASUK status
+  `duplicate` diuji POSITIF (insert baris tes manual → status berubah benar → dihapus lagi).
+  `tsc --noEmit` 0 error di kedua package. **Belum di-commit ke git.** Sisa Fase 1 (REST
+  fetcher, mapping penulis, `commitImportChunkAction`, `archiveImportBatchAction`, UI) masih
+  `⬜ BELUM` — REST fetcher (`lib/wordpress-api-fetcher.server.ts`, WAJIB pakai `safeFetch()`)
+  adalah langkah logis berikutnya untuk melengkapi "parser" (WXR selesai, REST belum), tapi
+  BELUM ada instruksi eksplisit user untuk lanjut ke situ — tanyakan dulu sebelum eksekusi
+  kalau user cuma bilang "lanjut" tanpa spesifik.
+- Sesi sebelumnya: **Fase 1 Import WordPress Dimulai — Skema DB Selesai** (lihat lesson
+  `[2026-07-27]` "Fase 1 Import WordPress Dimulai" di atas, detail penuh di `docs/arsitektur-
+  import-export-post-wordpress.md` § 8 Fase 1 item skema, § 14.1/§ 14.2) — user setuju urutan
+  eksekusi Fase 1: skema DB dulu, baru parser, baru UI (dikonfirmasi cocok preseden Importer
+  Anggota sebelum dieksekusi). Tabel public baru `content_import_batches`/
+  `content_import_batch_rows` + kolom `import_batch_id` di `posts`/`pages`/`media`. Migration
+  `0050_content_import_wordpress.sql` dijalankan+diverifikasi lokal. `tsc --noEmit` 0 error.
+- Sesi sebelumnya: **Fase 0 Import WordPress SELESAI 100% — Modul SSRF Dibangun** (lihat
+  lesson `[2026-07-27]` "Fase 0 Import WordPress SELESAI 100%" di atas, detail penuh di
+  `docs/arsitektur-import-export-post-wordpress.md` § 16.6, § 11 diupdate total jadi deskripsi
+  implementasi nyata) — user minta lanjutkan menuntaskan satu-satunya item Fase 0 tersisa
+  (modul SSRF) dengan penekanan eksplisit "jangan halusinasi/mengarang, ikuti rencana". Dibaca
+  ulang § 11 persis dari file sebelum menulis kode. **File permanen baru**:
+  `apps/web/lib/wordpress-import-security.ts` — `assertSafeExternalUrl()` (validasi 1 URL) +
+  `safeFetch()` (wrapper fetch dengan redirect manual+re-validasi per-hop+maks 3 hop+timeout).
+  Dicek dulu environment sesi ini punya akses jaringan keluar (DNS+HTTP langsung, bukan cuma
+  via `WebFetch`) — ADA, jadi SEMUA pengujian pakai data nyata (DNS resolve sungguhan,
+  redirect sungguhan via `httpbin.org`), bukan mock. **2 bug NYATA ditemukan+difix lewat
+  testing sungguhan**: (1) `URL.hostname` mempertahankan tanda kurung untuk IPv6 literal tapi
+  `dns.lookup()` tidak paham notasi itu — tanpa fix SEMUA URL ber-IPv6 (privat MAUPUN publik)
+  gagal resolve dan tertolak untuk alasan salah; ditemukan karena ada test KONTROL "harus
+  lolos" (IPv6 publik), bukan cuma test "harus tertolak"; (2) deteksi IPv4-mapped IPv6
+  (`::ffff:127.0.0.1`) berbasis string "." tidak pernah match karena `new URL()` menormalisasi
+  notasi dotted-quad jadi hex groups murni SEBELUM kode sempat melihatnya — fix: deteksi
+  NUMERIK dari grup 16-bit yang sudah di-expand. 33 test case total (IPv4/IPv6/hostname/
+  redirect sungguhan termasuk 2 target SSRF-via-redirect klasik: `127.0.0.1` dan
+  `169.254.169.254`, keduanya berhasil ditolak di hop kedua — membuktikan re-validasi per-hop
+  genuinely berjalan). `tsc --noEmit` project-wide 0 error. **Fase 0 sekarang 100% selesai**
+  (POC Tiptap + POC XXE + modul SSRF, ketiganya terbukti). File POC dihapus (disposable),
+  hanya `lib/wordpress-import-security.ts` yang permanen dan BELUM di-commit. Fase 1 (fitur
+  sungguhan) siap dimulai kapan pun ada instruksi eksplisit — belum ada instruksi itu.
+- Sesi sebelumnya: **Fase 0 Import WordPress Dieksekusi — POC Tiptap + XXE Terbukti Aman**
+  (lihat lesson `[2026-07-27]` "Fase 0 Import WordPress Dieksekusi" di atas, detail penuh di
+  `docs/arsitektur-import-export-post-wordpress.md` § 16, koreksi inline § 7.2/§ 12.1/§ 12.2,
+  status banner dokumen diubah) — user beri lampu hijau eksplisit ("ya lanjut") untuk mulai
+  eksekusi bertahap SEMPIT (script POC disposable, bukan langsung fitur permanen). **Dependency
+  ditambah ke `apps/web/package.json`** (bukan root — sempat salah taruh via `bun add --filter=`,
+  bug BERULANG persis kelas `recharts` lama, sudah diperbaiki manual): `@tiptap/html@3.22.3`
+  (PINNED, bukan `latest` — peer-dep mismatch ditemukan lewat cek registry npm langsung),
+  `happy-dom@^20.8.9` (BUKAN `linkedom` seperti asumsi draf awal), `fast-xml-parser@^5.10.1`.
+  **POC 1 (risiko teknis TERBESAR di seluruh rencana)**: `generateJSON()` dari `@tiptap/html/
+  server` DIBUKTIKAN bekerja server-side dengan 5 extension custom project (termasuk yang
+  import komponen React) terhadap konten Gutenberg REAL dari kedua sample WXR — nol crash,
+  round-trip lewat `renderBody()` ASLI sukses — mengonfirmasi empiris 2 keputusan yang
+  sebelumnya cuma teori (`mediaId` null tanpa rewrite, galeri WP pecah jadi image individual).
+  **POC 2**: `fast-xml-parser@5.10.1` TERBUKTI aman dari XXE (menolak eksplisit, bukan cuma
+  inert) + smoke test parse 2 file real sukses. 1 temuan baru (entity HTML di dalam CDATA
+  `<title>` butuh decode terpisah) + 1 temuan sampingan pre-existing (duplikasi extension
+  `underline` di editor live, tidak diperbaiki, di luar scope). **Satu item Fase 0 tersisa**:
+  `assertSafeExternalUrl()` (SSRF module) belum ditulis. Fase 1 (fitur sungguhan) BELUM dimulai,
+  menunggu instruksi eksplisit. Semua file POC sudah dihapus (disposable, sesuai rencana).
+- Sesi sebelumnya: **File WXR Kedua — Temuan Kritis Baru: Rewrite `data-media-id` Wajib
+  Sebelum Konversi Tiptap** (lihat lesson `[2026-07-27]` "File WXR Kedua" di atas, detail penuh
+  di `docs/arsitektur-import-export-post-wordpress.md` § 15.3, koreksi inline di § 4.1 + § 7.2)
+  — user kirim file WXR KEDUA `forbis.id` (`docs/template/wordpress-xml-forbis.xml`, 16 item,
+  block lebih variatif: paragraph/image/heading/list/gallery) untuk dianalisis, salah satu
+  post-nya (7837) ternyata SAMA dengan yang sudah diverifikasi via REST API putaran sebelumnya
+  (cross-check konsisten). **Temuan KRITIS baru** — ditemukan dengan membaca kode Tiptap
+  extension langsung (`components/editor/media-image-ext.ts`), bukan cuma XML: `MediaImage`
+  (image node custom Jalakarta) butuh atribut `data-media-id` di HTML untuk terhubung ke
+  `tenant.media` — `<img>` polos WordPress tetap ter-parse jadi node `image` tapi `mediaId:
+  null` SELAMANYA kalau HTML tidak di-rewrite dulu (silent degradation: visual tetap tampil,
+  tapi terputus dari Media Library) — ditambahkan langkah wajib baru di § 7.2 (rewrite
+  `src`+`data-media-id` SETELAH download gambar, SEBELUM `generateJSON()`). Temuan kedua: galeri
+  Gutenberg WordPress tidak match `parseHTML()` `GalleryBlock` Jalakarta (beda struktur HTML) —
+  diterima sebagai degradasi MVP (pecah jadi image individual, bukan native gallery). Temuan
+  ketiga: comment Gutenberg bisa nested (list-item dalam ol, image dalam gallery) — dikonfirmasi
+  aman untuk regex strip sederhana. Mapping baru: `ane_news_utama`→`posts.isFeatured`. Nol kode
+  disentuh, "jgn eksekusi dulu" masih berlaku.
+- Sesi sebelumnya: **Putaran Kelima — Verifikasi Terhadap Data REAL (WXR + REST API
+  `forbis.id`)** (lihat lesson `[2026-07-27]` "Putaran Kelima" di atas, detail penuh di
+  `docs/arsitektur-import-export-post-wordpress.md` § 15, plus koreksi inline di § 2.1, § 2.2,
+  § 2.4, § 4.1, § 5.1, § 5.4, § 12.1) — user kirim SATU file WXR export sungguhan
+  (`docs/template/contoh-xml.xml`, dari `forbis.id` — Forum Bisnis IKPM Gontor, target migrasi
+  NYATA bukan sample generik) DAN satu URL REST API live (`https://forbis.id/wp-json/wp/v2/
+  posts`, di-fetch via WebFetch) untuk verifikasi butir-per-butir terhadap rencana § 1-14. **2
+  temuan KRITIS mengubah keputusan konkret**: (1) REST API TIDAK menyertakan data SEO Yoast sama
+  sekali (hipotesis `yoast_head_json` dari sesi sebelumnya TERBUKTI SALAH secara empiris) — WXR
+  upload dipromosikan jadi metode UTAMA untuk migrasi SEO-lengkap, REST API direposisi jadi
+  "cepat, konten saja, tanpa SEO"; (2) permalink real situs (`/{kategori}/{tahun}/{bulan}/
+  {slug}/`, konsisten dari WXR 2019 sampai REST live 2026) tidak cocok 4 opsi § 5.1 manapun —
+  **opsi permalink ke-5 ditambahkan** (`category_date_name`) + logic catch-all § 5.4 diperluas
+  4 segmen. Sisanya mengonfirmasi desain existing (namespace WXR version-tolerant 1.2 bukan 1.0,
+  `_thumbnail_id` bukan `post_parent` untuk featured image — perlu parsing 2 tahap, CDN pihak
+  ketiga untuk gambar mengonfirmasi SSRF check harus domain-agnostic, OG image vs Featured Image
+  bisa 2 aset beda) atau melengkapi mapping baru (`_embedded.author` REST bisa 404 → fallback
+  batch-level author override; `_wp_attachment_image_alt`→`media.altText`;
+  `_yoast_wpseo_primary_category`→tie-breaker kategori; view-count plugin keys→opsional
+  `posts.viewCount`). Nol kode disentuh — murni analisis data real + edit dokumen, "jgn eksekusi
+  dulu" masih berlaku. **Belum ada instruksi eksplisit untuk mulai Fase 0.**
+- Sesi sebelumnya: **Putaran Keempat — 6 Pertanyaan Pra-Eksekusi Diberi Resolusi Konkret**
+  (lihat lesson `[2026-07-27]` "Putaran Keempat" di atas, detail penuh di
+  `docs/arsitektur-import-export-post-wordpress.md` § 11-§ 14) — lanjutan LANGSUNG dari verdict
+  "belum siap eksekusi" di bawah, di giliran yang sama. User minta 6 poin itu DILENGKAPI
+  arsitekturnya (bukan cuma dicatat sebagai pertanyaan terbuka). Semua 6 sekarang punya
+  keputusan konkret: § 11 SSRF (`assertSafeExternalUrl()`, validasi DNS+IP privat+redirect
+  manual-check), § 12 XXE+dependency (test wajib Fase 0 + `fast-xml-parser`/`@tiptap/html`/
+  `linkedom` ditambahkan sebagai dependency baru), § 13 model eksekusi (KEPUTUSAN: TIDAK
+  tambah infra job baru — chunked-commit client-driven, chunkSize=10, mitigasi timeout ganda),
+  § 14.1 rollback (KEPUTUSAN: soft bulk-archive, bukan hard-delete), § 14.2 scope Pages
+  (KEPUTUSAN: Pages ikut diimpor tanpa byline — tabel `post_import_batches` di-rename total
+  jadi `content_import_batches` + DDL lengkap akhirnya ditulis, sebelumnya cuma rasional).
+  Semua referensi nama tabel lama di section sebelumnya (§3, §8 roadmap) ikut diupdate
+  konsisten. Nol kode disentuh — murni pelengkapan arsitektur, "jgn eksekusi dulu" masih
+  berlaku.
+- Sesi sebelumnya: **Putaran Ketiga Audit WP — Verdict "Belum Siap Eksekusi"** (lihat
+  lesson `[2026-07-27]` "Putaran Ketiga: Verdict 'BELUM Siap Eksekusi'" di atas, detail penuh
+  di `docs/arsitektur-import-export-post-wordpress.md` § 10) — user minta review sekali lagi
+  dengan seksama sebelum diberi lampu hijau eksekusi. 6 pertanyaan BARU ditemukan (bukan
+  konfirmasi ulang temuan lama): SSRF di fitur "Pull via REST API" (fetch URL bebas dari admin,
+  server ini punya service internal reachable — celah nyata), XXE di parser WXR upload,
+  `fast-xml-parser` bukan dependency, TIDAK ADA infrastruktur background job di project ini
+  sama sekali (importer WP jauh lebih berat per-baris dari importer anggota — risiko timeout
+  di skala "ratusan-ribuan artikel"), tidak ada rollback/undo batch yang sudah commit, dan
+  scope Pages ambigu (disebut ikut diimpor tapi tidak pernah dibahas lagi). **Verdict yang
+  diberikan: BELUM SIAP** — bukan arsitektur salah arah, tapi masih ada asumsi teknis belum
+  dibuktikan (Fase 0 POC Tiptap), celah keamanan belum ditutup (SSRF/XXE), dan keputusan
+  skala/eksekusi belum diambil. Nol kode disentuh — murni review+dokumentasi lanjutan.
+- Sesi sebelumnya: **Gap ke-11 yang Terlewat — Preservasi URL WordPress Lama (Redirect
+  301)** (lihat lesson `[2026-07-27]` "Gap ke-11 yang Terlewat" di atas, detail penuh di
+  `docs/arsitektur-import-export-post-wordpress.md` § 5.5 + cross-reference `docs/arsitektur-
+  seo.md` § 6c.4) — lanjutan LANGSUNG dari audit WP di bawah, di giliran yang sama. User
+  tanya eksplisit: apakah rencana sudah mencakup redirect URL lama WordPress supaya tidak
+  kehilangan nilai SEO Google. Jawaban jujur: BELUM, genuinely terlewat di audit putaran
+  pertama (bukan "sudah ditangani implisit"). Ditambahkan: skema baru
+  `tenant.legacy_url_redirects` (old_path→redirect_to, populate otomatis saat import dari
+  `<link>`/`link` WXR-REST), DAN temuan turunan yang lebih besar — `[pageSlug]/page.tsx`
+  (single dynamic segment) secara STRUKTURAL tidak bisa menangkap path multi-segmen sama
+  sekali (dibutuhkan untuk permalink `date_name` 3-segmen MAUPUN redirect URL lama apa pun
+  panjangnya) — rencana routing direvisi: ganti TOTAL jadi catch-all `[...slug]/page.tsx`
+  (aman untuk semua tenant existing, Next.js selalu prioritaskan folder statis eksplisit di
+  atas catch-all). Konsekuensi ke sitemap/canonical URL juga didokumentasikan (harus selalu
+  tunjuk URL baru, bukan URL lama/nilai `_yoast_wpseo_canonical` mentah). **Aturan proses
+  ditegaskan**: preservasi URL/redirect adalah checklist SEO STANDAR untuk migrasi platform
+  apa pun — harus jadi item eksplisit di audit PERTAMA ke depan, bukan menunggu user bertanya.
+  Nol kode disentuh — murni tambahan rencana/dokumentasi.
+- Sesi sebelumnya: **Audit Rencana Import/Export WordPress — Gap Kritis Format Konten**
+  (lihat lesson `[2026-07-27]` "Audit Rencana Import/Export WordPress" di atas, detail penuh di
+  `docs/arsitektur-import-export-post-wordpress.md` § 9 + koreksi inline di semua section) —
+  user minta dokumen WP (ditulis agen lain, SEBELUM sistem Penulis/Editor Post selesai
+  dibangun) diverifikasi terhadap arsitektur post sungguhan: Author, Feature Image, Date,
+  Block Editor, SEO — plus alur harus ikuti pola Importer Anggota yang stabil. 1 gap KRITIS
+  ditemukan: dokumen mengasumsikan `posts.content` = HTML mentah, padahal WAJIB Tiptap JSON
+  (kalau dieksekusi apa adanya, semua artikel hasil import akan tampil rusak) — infrastruktur
+  konversi HTML→Tiptap JSON belum ada sama sekali di codebase, ditambahkan sebagai "Fase 0"
+  proof-of-concept wajib sebelum Fase 1. Sistem `post_authors` (baru dibangun sesi sebelumnya)
+  sama sekali tidak disebut dokumen — ditambahkan § 2.4 baru (mapping penulis WP → post_authors,
+  REUSE `createGuestPostAuthorAction()`, `authorId` internal TIDAK PERNAH diisi dari WP). 8
+  koreksi lain (nama tabel, image pipeline, skema import_batches, timezone helper, routing
+  catch-all, RESERVED_TENANT_SLUGS basi, status Fase 2 domain, SEO hardcode Yoast) didetailkan
+  di § 9 tabel ringkasan. Nol kode disentuh — murni audit+koreksi dokumentasi.
+- Sesi sebelumnya: **Audit Rencana SEO Agen Lain — Bug Live `robots.txt` Ditemukan**
+  (lihat lesson `[2026-07-26]` "Audit Rencana SEO Agen Lain" di atas, detail penuh di
+  `docs/arsitektur-seo.md` § 2.2 Gap 3/6/7 + § 3.1 + § 5 + § 6.2 Pilar 1 + § 6c baru + § 7) —
+  user tanya eksplisit apakah rencana SEO yang ditulis agen lain (Fase 1-7) sudah diverifikasi
+  menyeluruh, bukan cuma bagian yang saya sentuh (entri di bawah). Jawaban jujur: belum, lalu
+  diaudit sekarang. Hasil: klaim Fase 1-3 (✅) SEMUA akurat; klaim Fase 4/5/7 Pilar 2/4/5 (⬜)
+  dikonfirmasi genuinely nol (grep, bukan asumsi). 3 koreksi ditemukan (Gap 3 robots.txt
+  diluruskan — route-nya sudah ada, isinya yang belum; Gap 6 baru — Fase 4 butuh migration
+  `SETTING_GROUPS` dulu; Gap 7 baru — Pilar 1 Fase 7 understate, `<nav>` header sudah ada).
+  **Temuan paling kritis**: § 6c — kemungkinan BUG LIVE SEKARANG, `/robots.txt` di custom
+  domain manapun kemungkinan besar 404 (middleware rewrite semua path non-admin/api ke
+  `/{slug}${pathname}` tanpa kecuali, `app/robots.ts` singular di root tidak pernah match hasil
+  rewrite itu) — akar masalah yang juga akan menjegal Fase 5 (sitemap) kalau tidak dihindari
+  sejak awal desain route-nya. **Nol kode diperbaiki** (murni temuan audit, area routing/
+  custom-domain sengaja tidak disentuh tanpa instruksi eksplisit) — dicatat sebagai prasyarat
+  di roadmap (§ 7), menunggu instruksi user kapan mau dieksekusi.
+- Sesi sebelumnya: **Rencana SEO Fase 7B — Author Byline Masuk Article JSON-LD** (lihat
+  lesson `[2026-07-26]` "Rencana SEO Fase 7B" di atas, detail penuh di `docs/arsitektur-seo.md`
+  § 2.2 "Gap 5" + § 6b, cross-reference balik di `docs/arsitektur-penulis-post.md` § 13) — user
+  minta byline yang baru dibangun (entri di bawah) dipastikan masuk rencana arsitektur SEO,
+  eksplisit BELUM minta implementasi. Temuan kunci saat verifikasi: `generateArticleJsonLd()`
+  (dan 3 generator JSON-LD lain di `lib/seo.ts`) sudah lengkap sejak awal tapi **nol pemanggil
+  di seluruh app** (grep `application/ld+json` = nol hasil) — JSON-LD belum pernah dirender di
+  halaman mana pun, bukan cuma soal Post. Ditambahkan sebagai Gap 5 (§ 2.2) + rencana penutupan
+  lengkap sebagai Fase 7B (§ 6b): perluas `ArticleJsonLdParams.author` jadi Person schema penuh
+  (name+bio+avatarUrl dari `post_authors`), reuse fallback chain byline yang sama dengan render
+  visual, dan keputusan eksplisit Editor TIDAK masuk JSON-LD (Schema.org tidak punya properti
+  `editor` resmi). **Nol kode disentuh** — murni dokumentasi, sesuai permintaan user
+  ("nanti kita implementasikannya"). Fase 4-7B semua masih rencana (⬜), menunggu instruksi
+  eksekusi bertahap dari user.
+- Sesi sebelumnya: **Penulis & Editor Post — Byline System** (lihat lesson `[2026-07-26]`
+  "Penulis & Editor Post — Byline System Terpisah dari `authorId`" di atas, detail penuh di
+  `docs/arsitektur-penulis-post.md`) — dari diskusi user soal "post belum ada kolom penulis/
+  editor" ke arsitektur lengkap (dikonfirmasi via `AskUserQuestion`: scope Post-saja, manajemen
+  inline-saja, editor tampil publik sebagai "Disunting oleh X") ke eksekusi penuh 5 fase.
+  Kolom baru `posts.display_author_id`/`editor_id` (nullable, NULL = fallback ke `authorId`
+  lama yang tidak pernah diubah — nol migrasi data post existing) menunjuk entitas baru
+  `tenant.post_authors` (satu entitas untuk peran Penulis MAUPUN Editor, bisa tertaut member
+  atau berdiri sendiri sebagai profil tamu). Server actions baru (`website/post-authors-
+  actions.ts`, file terpisah — bukan ditambah ke `actions.ts` yang sudah 1000+ baris):
+  find-or-create idempotent dari Anggota, create/update profil tamu (pola "shared row" — edit
+  bio/foto memengaruhi SEMUA post yang memakai penulis itu, prinsip "recall" yang diminta
+  user). Komponen baru `AuthorPicker` (2 sumber pencarian: Anggota via endpoint existing +
+  Penulis Tersimpan via endpoint baru `/api/ref/post-authors`) diintegrasikan ke sidebar
+  `post-form.tsx` (2 field: Penulis + Editor, keduanya di atas Berita Unggulan). Resolusi
+  publik `post/[slug]/page.tsx` diperluas: byline+bio (menggantikan "Tim Redaksi" generik kalau
+  bio diisi) + baris "Disunting oleh X" (opsional, hilang total kalau Editor kosong). `tsc`+
+  build bersih di kedua package, migration `0049_post_authors.sql` dijalankan+diverifikasi di
+  lokal, dev server direstart. **Belum di-commit/push, belum dijalankan di VPS, belum
+  diverifikasi visual di browser** — user perlu coba alur penuh (pilih dari Anggota, buat
+  penulis tamu baru, edit bio/foto, recall di post lain, isi/kosongkan Editor) sebelum deploy.
+- Sesi sebelumnya: **Peningkatan Block "Baca Juga" — auto-fill judul, Label Awalan jadi
   teks bebas, fix popup melebar** (lihat lesson `[2026-07-26]` "Peningkatan Block 'Baca Juga'"
   di atas, detail penuh di `docs/arsitektur-editor.md` § 6) — susulan langsung dari audit di
   bawah. Klarifikasi dulu (bukan langsung dieksekusi): user awalnya kira post/donasi/event
@@ -13558,6 +15750,27 @@ Dibuat helper sentral `syncAutoTenantMemberships(runner, memberId, primaryCabang
 - **Fase 3 (Responsive YouTube & Instagram Embed)**: Extension `EmbedBlock` (`embed-block-ext.ts` & `embed-block-view.tsx`) memuat parser YouTube 16:9 (`aspect-video` anti-overflow mobile) serta Instagram Post/Reel Embed dengan auto-loader script `instagram.com/embed.js`.
 - **Fase 4 (Frontend Spacing Standard)**: Class utility `.prose-jalakarta` di `globals.css` dan parser server-side `letter-render.ts` menjamin jarak antar-block responsif dan konsisten.
 - **Kompatibilitas WordPress**: Seluruh block terpetakan 1-to-1 dengan Gutenberg Block HTML (`wp-block-callout`, `wp-block-quote`, `wp-embed` YouTube & Instagram).
+
+### [2026-07] Feature: Modal Popup Konfirmasi Pembayaran & Unggah Bukti Transfer Invoice Admin
+
+> **STATUS**: ✅ **IMPLEMENTASI SELESAI & DIVERIFIKASI — `bun x tsc --noEmit` 0 ERROR**.
+
+**Hasil Implementasi**:
+- **Modal Popup Dialog**: Tombol **"Konfirmasi Pembayaran"** pada halaman Detail Invoice Admin (`/app/[tenant]/finance/billing/invoice/[id]`) kini membuka modal popup (`<Dialog>`), menggantikan form inline di bawah halaman.
+- **Unggah Bukti Transfer**: Menambahkan komponen `ProofUploadField` (konsisten dengan `/finance/pemasukan/new`), mendukung upload langsung (HEIC/JPG/PNG ➔ WebP via Sharp + MinIO).
+- **Integrasi Server Action & Database**: Field `proofUrl` diteruskan ke `confirmInvoicePaymentAction` dan disimpan ke `schema.payments.proofUrl`, otomatis tampil di card **Riwayat Pembayaran** dengan lightbox zoom.
+
+### [2026-07] Feature: Peningkatan Form Buat Invoice Admin (Customer Autocomplete, Products & Tickets Integration, Unique Code, WA Notif)
+
+> **STATUS**: ✅ **IMPLEMENTASI SELESAI & DIVERIFIKASI — `bun x tsc --noEmit` 0 ERROR**.
+
+**Hasil Implementasi**:
+- **Customer Autocomplete (`MemberNameAutocomplete`)**: Input nama customer di halaman `/finance/billing/invoice/new` kini terintegrasi dengan pencarian data Anggota. Saat anggota dipilih, `customerName`, `customerPhone`, `customerEmail`, dan `memberId` terisi otomatis. Admin tetap dapat mengentri nama & kontak kustom jika bukan anggota.
+- **Item Tagihan Autocomplete (`CatalogItemAutocomplete`)**: Menambahkan server actions `searchBillingProductsAction` & `searchBillingPaidTicketsAction`. Admin dapat memilih item dari Produk Toko aktif (`tenant.products`) atau Tiket Event Berbayar (`tenant.event_tickets`) ➔ nama, harga, dan `itemId` terisi otomatis.
+- **Kode Unik Otomatis**: Saat invoice diterbitkan (`createInvoiceAction`), jika setting `unique_code_enabled` bernilai true, kode unik Rp 100–999 acak di-generate via `generateUniqueCode(tenantDb)` dan disimpan ke `schema.invoices.uniqueCode`.
+- **Notifikasi WhatsApp**: Saat invoice berhasil diterbitkan dan `customerPhone` ada, sistem secara otomatis mengirimkan notifikasi WA (`invoice_created`) berisi rincian invoice, total tagihan (+ kode unik), tanggal jatuh tempo, dan tautan invoice publik (`waAppUrl`).
+
+
 
 
 

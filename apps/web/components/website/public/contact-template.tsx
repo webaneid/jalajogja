@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { displayPhone } from "@/lib/phone";
-import { submitContactFormAction } from "@/app/(public)/[tenant]/[pageSlug]/actions";
+import { submitContactFormAction } from "@/app/(public)/[tenant]/[...slug]/actions";
 import type { ContactBody } from "@/lib/page-templates";
 
 type ContactSettings = {

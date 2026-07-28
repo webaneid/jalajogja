@@ -2,7 +2,7 @@ import { PostCard } from "@/components/website/public/post-cards/post-card";
 import { PostsSectionTitle } from "./posts-section-title";
 import type { PostsSectionProps, ColumnRenderData } from "@/lib/posts-section-designs";
 
-function TrioColumn({ col, tenantSlug }: { col: ColumnRenderData; tenantSlug: string }) {
+function TrioColumn({ col, baseUrl }: { col: ColumnRenderData; baseUrl: string }) {
   if (col.posts.length === 0) return null;
   const title = col.filterLabel ?? "Postingan";
   const href  = col.filterHref ?? "#";
@@ -11,14 +11,14 @@ function TrioColumn({ col, tenantSlug }: { col: ColumnRenderData; tenantSlug: st
       <PostsSectionTitle as="h3" title={title} href={href} />
       <div>
         {col.posts.map(p => (
-          <PostCard key={p.id} post={p} variant="list" tenantSlug={tenantSlug} />
+          <PostCard key={p.id} post={p} variant="list" baseUrl={baseUrl} />
         ))}
       </div>
     </div>
   );
 }
 
-export function PostsDesign4({ columnData = [], tenantSlug }: PostsSectionProps) {
+export function PostsDesign4({ columnData = [], baseUrl }: PostsSectionProps) {
   const activeCols = columnData.filter(col => col.posts.length > 0);
   if (activeCols.length === 0) return null;
 
@@ -32,7 +32,7 @@ export function PostsDesign4({ columnData = [], tenantSlug }: PostsSectionProps)
             const px = `${isFirst ? "" : "md:pl-6"} ${isLast ? "" : "md:pr-6"} ${i > 0 ? "pt-6 md:pt-0" : ""}`.trim();
             return (
               <div key={i} className={px}>
-                <TrioColumn col={col} tenantSlug={tenantSlug} />
+                <TrioColumn col={col} baseUrl={baseUrl} />
               </div>
             );
           })}

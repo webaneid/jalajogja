@@ -7,6 +7,8 @@ import type { Metadata } from "next";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { getPageSeoOverride } from "@/lib/get-page-seo-override";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
+import { resolvePostHrefs } from "@/lib/post-permalink.server";
 
 export const revalidate = 60;
 
@@ -44,7 +46,9 @@ export default async function BlogListPage({ params }: { params: Params }) {
   const tenantClient = createTenantDb(slug);
   const { db: tenantDb, schema } = tenantClient;
 
-  const posts = await tenantDb
+  const baseUrl = await resolveBaseUrl(slug);
+
+  const rows = await tenantDb
     .select({
       id:          schema.posts.id,
       title:       schema.posts.title,
@@ -53,12 +57,15 @@ export default async function BlogListPage({ params }: { params: Params }) {
       coverId:     schema.posts.coverId,
       publishedAt: schema.posts.publishedAt,
       categoryName: schema.postCategories.name,
+      categorySlug: schema.postCategories.slug,
     })
     .from(schema.posts)
     .leftJoin(schema.postCategories, eq(schema.postCategories.id, schema.posts.categoryId))
     .where(eq(schema.posts.status, "published"))
     .orderBy(desc(schema.posts.publishedAt))
     .limit(50);
+
+  const posts = await resolvePostHrefs(tenantClient, rows);
 
   // Fetch cover URLs + metadata
   const coverIds = [...new Set(posts.map((p) => p.coverId).filter(Boolean))] as string[];
@@ -102,7 +109,7 @@ export default async function BlogListPage({ params }: { params: Params }) {
                 return (
                   <a
                     key={post.id}
-                    href={`/${slug}/post/${post.slug}`}
+                    href={`${baseUrl}${post.href}`}
                     className="group block border border-border rounded-xl overflow-hidden hover:border-primary/50 hover:shadow-md transition-all"
                   >
                     {cover ? (
@@ -144,7 +151,7 @@ export default async function BlogListPage({ params }: { params: Params }) {
 
         {/* Sidebar */}
         <div className="w-72 shrink-0 hidden lg:block">
-          <WidgetArea id="default-sidebar" tenantClient={tenantClient} tenantSlug={slug} />
+          <WidgetArea id="default-sidebar" tenantClient={tenantClient} tenantSlug={slug} baseUrl={baseUrl} />
         </div>
       </div>
     </div>

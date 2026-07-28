@@ -5,6 +5,7 @@ import { publicUrl } from "@/lib/minio";
 import type { PostsSectionData, PostsSectionDesignId, ColumnRenderData } from "@/lib/posts-section-designs";
 import { POSTS_SECTION_DESIGNS } from "@/lib/posts-section-designs";
 import type { PostCardData } from "@/lib/post-card-templates";
+import { resolvePostHrefs } from "@/lib/post-permalink.server";
 import { PostsDesign1 } from "./posts-design-1";
 import { PostsDesign2 } from "./posts-design-2";
 import { PostsDesign3 } from "./posts-design-3";
@@ -16,9 +17,10 @@ type Props = {
   variant:      PostsSectionDesignId;
   tenantClient: TenantDb;
   tenantSlug:   string;
+  baseUrl:      string;
 };
 
-export async function PostsSection({ data, variant, tenantClient, tenantSlug }: Props) {
+export async function PostsSection({ data, variant, tenantClient, tenantSlug, baseUrl }: Props) {
   const designMeta = POSTS_SECTION_DESIGNS[variant];
   const { db, schema } = tenantClient;
   const isHero = designMeta?.type === "hero";
@@ -68,7 +70,7 @@ export async function PostsSection({ data, variant, tenantClient, tenantSlug }: 
   const filterHref   = filterMeta.href;
   const columnData   = columnResults.length > 0 ? (columnResults as ColumnRenderData[]) : undefined;
 
-  const props = { data, posts, featuredPosts, tenantSlug, sectionTitle, filterHref, columnData };
+  const props = { data, posts, featuredPosts, baseUrl, sectionTitle, filterHref, columnData };
 
   switch (variant) {
     case "2": return <PostsDesign2 {...props} />;
@@ -159,6 +161,7 @@ async function fetchRecentPosts(
       coverId:      schema.posts.coverId,
       isFeatured:   schema.posts.isFeatured,
       categoryName: schema.postCategories.name,
+      categorySlug: schema.postCategories.slug,
       publishedAt:  schema.posts.publishedAt,
     })
     .from(schema.posts)
@@ -167,8 +170,9 @@ async function fetchRecentPosts(
     .orderBy(desc(schema.posts.publishedAt))
     .limit(count);
 
-  const mediaMap = await resolveCovers(db, schema, rows, tenantSlug);
-  return rows.map(r => {
+  const mediaMap  = await resolveCovers(db, schema, rows, tenantSlug);
+  const withHrefs = await resolvePostHrefs(tenantClient, rows);
+  return withHrefs.map(r => {
     const cover = r.coverId ? (mediaMap.get(r.coverId) ?? null) : null;
     return {
       id:             r.id,
@@ -182,6 +186,7 @@ async function fetchRecentPosts(
       categoryName:   r.categoryName ?? null,
       publishedAt:    r.publishedAt ? r.publishedAt.toISOString() : null,
       isFeatured:     r.isFeatured,
+      href:           r.href,
     };
   });
 }
@@ -208,6 +213,7 @@ async function fetchFeaturedPosts(
       coverId:      schema.posts.coverId,
       isFeatured:   schema.posts.isFeatured,
       categoryName: schema.postCategories.name,
+      categorySlug: schema.postCategories.slug,
       publishedAt:  schema.posts.publishedAt,
     })
     .from(schema.posts)
@@ -216,8 +222,9 @@ async function fetchFeaturedPosts(
     .orderBy(desc(schema.posts.publishedAt))
     .limit(5);
 
-  const mediaMap = await resolveCovers(db, schema, rows, tenantSlug);
-  return rows.map(r => {
+  const mediaMap  = await resolveCovers(db, schema, rows, tenantSlug);
+  const withHrefs = await resolvePostHrefs(tenantClient, rows);
+  return withHrefs.map(r => {
     const cover = r.coverId ? (mediaMap.get(r.coverId) ?? null) : null;
     return {
       id:             r.id,
@@ -231,6 +238,7 @@ async function fetchFeaturedPosts(
       categoryName:   r.categoryName ?? null,
       publishedAt:    r.publishedAt ? r.publishedAt.toISOString() : null,
       isFeatured:     r.isFeatured,
+      href:           r.href,
     };
   });
 }

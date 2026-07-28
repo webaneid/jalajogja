@@ -4,10 +4,10 @@ import { pickCover } from "@/lib/post-card-templates";
 const fmt = (date: string | null) =>
   date ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date)) : "";
 
-export function PostCardRingkas({ post, tenantSlug }: { post: PostCardData; tenantSlug: string }) {
+export function PostCardRingkas({ post, baseUrl }: { post: PostCardData; baseUrl: string }) {
   return (
     <a
-      href={`/${tenantSlug}/post/${post.slug}`}
+      href={`${baseUrl}${post.href}`}
       className="group flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 hover:shadow-md transition-all"
     >
       {/* Cover */}

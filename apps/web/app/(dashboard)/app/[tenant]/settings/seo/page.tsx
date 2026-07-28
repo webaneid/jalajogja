@@ -3,8 +3,10 @@ import { createTenantDb } from "@jalajogja/db";
 import { inArray } from "drizzle-orm";
 import { getTenantAccess } from "@/lib/tenant";
 import { resolveMediaUrl } from "@/lib/minio";
+import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { SEO_PAGE_KEYS } from "@/lib/seo-page-keys";
 import { SeoOverridesManageClient } from "@/components/settings/seo-overrides-manage-client";
+import { SitemapUrlsCard } from "@/components/settings/sitemap-urls-card";
 
 export default async function SettingsSeoPage({
   params,
@@ -15,6 +17,12 @@ export default async function SettingsSeoPage({
 
   const access = await getTenantAccess(slug);
   if (!access) redirect("/dashboard-redirect");
+
+  // Sama persis sumber baseUrl yang dipakai Route Handler sitemap sendiri
+  // (lib/sitemap-builder.server.ts) — absolut, custom-domain-aware.
+  const base = await getTenantSeoBase(slug);
+  const nativeSitemapUrl = `${base.baseUrl}/sitemap.xml`;
+  const yoastSitemapUrl  = `${base.baseUrl}/sitemap_index.xml`;
 
   const { db: tenantDb, schema } = createTenantDb(slug);
 
@@ -76,6 +84,8 @@ export default async function SettingsSeoPage({
           dikustomisasi memakai judul bawaan.
         </p>
       </div>
+
+      <SitemapUrlsCard nativeUrl={nativeSitemapUrl} yoastUrl={yoastSitemapUrl} />
 
       <SeoOverridesManageClient slug={slug} entries={entries} />
     </div>
