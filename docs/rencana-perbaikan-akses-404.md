@@ -1,9 +1,14 @@
 # Rencana Perbaikan — 404 Tersembunyi, Beban DB, dan Dugaan Blokir IP
 
-> **Status: ✅ Fase A+B+C DIEKSEKUSI DAN DIVERIFIKASI (2026-07-28).** § 6 (cek Fail2ban di VPS)
-> masih tugas manual user — belum dijalankan. Fase D dan § 8 masih **sengaja ditunda** sesuai
-> § 9 (menunggu data § 6). Lihat **§ 11 "Hasil Eksekusi"** untuk detail implementasi aktual +
-> 2 deviasi penting dari draft rencana ini (ditemukan SAAT eksekusi, bukan diantisipasi di sini).
+> **Status: ✅ SELESAI SELURUHNYA (2026-07-28).** Fase A+B+C dieksekusi+diverifikasi. § 6 (cek
+> Fail2ban di VPS) sudah dijalankan user — **hasil: Fail2ban TIDAK TERINSTALL sama sekali** di
+> VPS ini (`systemctl status fail2ban` → "Unit fail2ban.service could not be found"). Ini
+> **menggugurkan total** teori "404 → Fail2ban ban IP → user asli ikut kena" dari laporan agen
+> lain (§ 5.1) — mekanismenya tidak pernah ada di server ini. Fase D dan § 8 (keduanya
+> kontinjen pada data ini) **DIBATALKAN, bukan cuma ditunda** — tidak ada jail untuk di-tuning.
+> Lihat **§ 11 "Hasil Eksekusi"** untuk detail implementasi Fase A/B/C + § 12 untuk hasil cek
+> Fail2ban dan rekomendasi lanjutan kalau keluhan "beberapa orang tidak bisa buka situs" masih
+> berulang setelah fix ini di-deploy.
 >
 > Ditulis 2026-07-28 setelah user melaporkan "kadang beberapa orang tidak bisa membuka website
 > kita" dan meminta verifikasi ulang atas analisa agen lain (dikutip di § 1). Sesi yang menulis
@@ -416,3 +421,56 @@ selesai. Hasil (semua via curl langsung, bukan cuma baca kode):
 
 Semua data test (custom domain sementara di DB, temp file curl, test server) dibersihkan setelah
 verifikasi, dikonfirmasi bersih.
+
+## 12. Hasil Cek § 6 — Fail2ban TIDAK TERINSTALL (2026-07-28)
+
+User menjalankan § 6 Langkah 1 di VPS (`72.61.215.7`):
+```
+$ sudo systemctl status fail2ban
+Unit fail2ban.service could not be found.
+```
+
+Persis kondisi yang sudah diantisipasi § 6 Langkah 1: **Fail2ban tidak terinstall sama sekali**
+di server ini. Sesuai catatan di langkah itu sendiri, hasil ini menggugurkan TOTAL teori "404
+numpuk → Fail2ban anggap scanner → ban IP → user asli ikut kena" — bukan cuma "belum terbukti",
+tapi genuinely TIDAK MUNGKIN jadi penyebab, karena mekanisme banning itu tidak ada di server ini
+untuk dipicu sama sekali. Langkah 2-6 (jail aktif, threshold, log ban) otomatis tidak relevan —
+tidak ada yang perlu dicek lebih jauh soal Fail2ban.
+
+**Konsekuensi ke roadmap**: Fase D (early-reject scanner path, § 7) dan § 8 (tuning Fail2ban)
+DIBATALKAN, bukan sekadar tetap ditunda — keduanya didesain sebagai mitigasi UNTUK skenario
+Fail2ban yang sekarang terbukti tidak ada. Kalau volume traffic scanner nanti terasa mengganggu
+performa (bukan soal ban IP lagi, murni soal beban server), Fase D bisa dipertimbangkan ulang
+dari nol sebagai optimasi independen — tapi itu keputusan terpisah, bukan lanjutan rencana ini.
+
+### Kemungkinan penyebab lain untuk "beberapa orang tidak bisa membuka website" (belum diselidiki)
+
+Karena teori Fail2ban gugur, keluhan awal user (§ 1) masih belum punya penjelasan pasti. Fase
+A+B+C (favicon hilang + query DB dobel per request + middleware boros) tetap perbaikan nyata dan
+bermanfaat terlepas dari itu — mengurangi 404 palsu dan beban database yang BISA berkontribusi
+ke pengalaman lambat/timeout saat traffic scanner sedang tinggi bersamaan dengan pengunjung asli
+— tapi belum tentu itu SATU-SATUNYA sebab.
+
+Kandidat lain yang BELUM dicek (di luar scope sesi ini, cuma dicatat untuk referensi kalau
+keluhan berulang setelah fix ini di-deploy):
+- **Firewall lain di VPS** (bukan Fail2ban) — cek `sudo ufw status` dan
+  `sudo iptables -L -n -v` untuk pastikan tidak ada rule blokir IP/rentang IP yang aktif dari
+  mekanisme lain (CrowdSec, sshguard, atau aturan manual yang pernah ditambahkan).
+- **Rate limiting di level Nginx sendiri** (`limit_req`/`limit_conn` di config Nginx, TERPISAH
+  dari Fail2ban) — kalau ada zona rate-limit yang terlalu ketat, bisa menghasilkan 429/503 untuk
+  pengunjung yang browsing normal dengan cepat (klik banyak halaman berturut-turut).
+  `grep -rn "limit_req\|limit_conn" /etc/nginx/` untuk cek apakah ada konfigurasi seperti ini.
+- **Beban server saat burst traffic** — sebelum Fase C (dedup query), tiap request (termasuk
+  404 dari bot) bisa makan sampai 8 query DB; kalau banyak bot menyerang bersamaan, koneksi DB
+  bisa penuh dan request pengunjung asli ikut lambat/timeout. Fase C sudah mengurangi ini secara
+  signifikan — worth di-observasi apakah keluhan berkurang SETELAH deploy, sebelum menyelidiki
+  lebih jauh.
+- **Masalah jaringan sisi pengunjung** (ISP/ponsel tertentu, ekstensi ad-blocker yang agresif,
+  DNS lokal yang cache entry lama) — sulit dibuktikan dari sisi server sama sekali, biasanya
+  cuma bisa dikonfirmasi lewat laporan detail dari pengunjung yang mengalami (browser apa,
+  provider apa, pesan error persis apa yang mereka lihat).
+
+**Rekomendasi**: deploy Fase A+B+C dulu, observasi apakah laporan "tidak bisa buka situs"
+berkurang/berhenti. Kalau masih berulang, kandidat paling murah untuk dicek berikutnya adalah
+`ufw`/`iptables` (Langkah pertama di atas) — sama-sama cuma perintah baca status, aman
+dijalankan kapan saja tanpa risiko.
