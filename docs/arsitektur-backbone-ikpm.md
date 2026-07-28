@@ -1141,6 +1141,42 @@ resolusi branding yang sudah dikunci sebelumnya (§ "Resolusi Branding Kartu Ang
 `membership_number` memang tidak pernah diisi untuk kedua tipe itu (data-driven guard, bukan
 pengecekan `tenantType` eksplisit tambahan).
 
+**Preset ke-4 — "Tahun Daftar + Angkatan + Urutan" (2026-07-28)**: user minta format baru
+`<2 digit tahun daftar><2 digit tahun angkatan>.<seq 5-digit>`, contoh `2690.00001` = daftar
+2026, angkatan (Tahun Lulus KMI) 1990, urutan 1. Ditambahkan sebagai opsi ke-4 di
+`FORUM_MEMBERSHIP_NUMBER_FORMATS` (key: `joinyear_gradyear_seq`) — murni ADDITIF, 3 preset lama
+tidak berubah sama sekali (diverifikasi via disposable test regresi).
+
+Layak dibangun tanpa risiko data kosong karena `graduationYear` (Tahun Lulus KMI) SUDAH jadi
+field WAJIB di `checkMemberEligibility()` (§ "Alur Pendaftaran Forum v2") — dan KEDUA titik
+generate nomor (`joinForumAction` jalur gratis, `activateForumMembershipIfApplicable` jalur
+bayar) SUDAH memanggil `checkMemberEligibility()` dan menolak proses kalau belum lolos, SEBELUM
+sampai ke `generateForumMembershipNumber()`. Jadi `graduationYear` dijamin terisi di titik ini —
+fallback `"00"` di kode murni defensif (sama pola `birthPart` fallback `"00000000"` yang sudah
+ada), tidak pernah genuinely terpakai lewat jalur normal.
+
+`generateForumMembershipNumber()` (`forum-membership-number.server.ts`) direfactor: SEBELUMNYA
+cuma fetch `birthDate` secara kondisional (`if (format === "year_birthdate_seq")`), SEKARANG
+fetch `birthDate` DAN `graduationYear` SEKALIGUS tanpa kondisi — query by-PK terlalu murah untuk
+sepadan branching per-format, dan menghindari perlu tambah cabang `if` baru setiap kali format
+baru butuh field member lain (constraint yang mulai terasa dengan preset ke-4 ini, akan makin
+tidak scalable kalau preset ke-5/6 nanti butuh field lain lagi).
+
+**Batasan yang diterima, tidak diselesaikan (di luar scope diminta)**: angkatan 1999 punya dua
+sub-kelompok (`graduationPeriod`: Awal/Akhir, lihat § "Statistik — Pola Angkatan dengan
+Sub-periode" di CLAUDE.md) — format ini TIDAK membedakan keduanya, dua digit "99" akan sama
+untuk 1999-Awal maupun 1999-Akhir. Ini TIDAK menyebabkan bug data (bagian sequence 5-digit tetap
+unik per anggota, tidak pernah bentrok) — cuma berarti prefiks manusia-terbaca ini kebetulan
+tidak disambiguasi untuk kasus 1999 spesifik. Tidak ditangani karena tidak diminta dan akan
+memaksa format jadi lebih panjang (butuh 1 karakter tambahan untuk Awal/Akhir) demi kasus yang
+cuma menyentuh SATU angkatan dari puluhan yang mungkin ada di sebuah forum.
+
+Diverifikasi empiris (disposable test, dihapus setelah): output PERSIS `"2690.00001"` untuk
+input persis contoh user, plus 2 edge case (graduationYear null → fallback "00", seq >5 digit
+→ tidak dipotong, `padStart` cuma jamin MINIMAL 5 digit) dan 1 regression check (`year_seq`
+masih identik). `tsc --noEmit` (dari `apps/web`, bukan root — root `tsconfig.json` tidak
+punya alias `@/*`, gampang keliru) + `bun run build` genuine, keduanya 0 error.
+
 **Limitasi yang diterima (edge case, tidak dibangun)**: TIDAK ada backfill untuk anggota forum
 yang SUDAH aktif SEBELUM admin mengaktifkan fitur ini — mereka akan selamanya `membership_
 number = NULL` kecuali dibackfill manual. Anggota BARU setelah fitur diaktifkan mulai dari

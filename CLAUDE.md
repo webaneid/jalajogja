@@ -13044,14 +13044,120 @@ sebagai lesson. Jangan cukup fix 1 titik yang dilaporkan lalu berhenti.
 `.next` dibersihkan+direstart) — sukses, rute icon/manifest/robots dari Fase A 404 juga masih
 terkonfirmasi ada di build output (nol regresi lintas-sesi). **Belum di-commit/push ke git.**
 
+### [2026-07-28] Hasil Cek Fail2ban di VPS — TIDAK TERINSTALL, Teori 404→Ban Gugur Total
+
+> Detail lengkap: **`docs/rencana-perbaikan-akses-404.md` § 12** (§ 6, prosedur cek yang
+> ditulis sesi sebelumnya, sekarang sudah dijalankan user dan diberi hasil di sini).
+
+Melanjutkan Fase A+B+C (404 remediation, lesson di atas) yang sudah commit+push — user diajari
+cara SSH+cek Fail2ban langkah demi langkah (disarankan pakai prefix `!` supaya output masuk
+langsung ke sesi, bukan copy-paste manual). **Hasil Langkah 1 sudah definitif**:
+```
+$ sudo systemctl status fail2ban
+Unit fail2ban.service could not be found.
+```
+Fail2ban **TIDAK TERINSTALL SAMA SEKALI** di VPS ini — bukan "jail terlalu longgar" atau "belum
+dikonfigurasi", genuinely tidak ada. Ini menggugurkan TOTAL teori dari laporan agen lain (dikutip
+di § 1 dokumen) bahwa 404 numpuk memicu Fail2ban mem-ban IP pengunjung asli — mekanisme banning
+itu tidak pernah ada untuk dipicu. Langkah 2-6 § 6 (cek jail aktif, threshold, log ban) otomatis
+tidak relevan lagi, tidak perlu dijalankan.
+
+**Konsekuensi roadmap**: Fase D (early-reject scanner path) dan § 8 (tuning Fail2ban) — yang
+sejak awal SENGAJA ditunda menunggu data ini — sekarang **DIBATALKAN**, bukan cuma ditunda lebih
+lama. Keduanya didesain sebagai mitigasi untuk skenario Fail2ban yang terbukti tidak eksis di
+server ini. `docs/rencana-perbaikan-akses-404.md` sekarang berstatus **SELESAI SELURUHNYA** —
+tidak ada lagi item tersisa dari rencana ini.
+
+**Keluhan awal user ("kadang beberapa orang tidak bisa membuka website kita") masih belum
+punya penjelasan pasti** — Fase A+B+C tetap perbaikan nyata (favicon 404 palsu, query DB dobel
+per request, middleware boros) yang BISA berkontribusi ke pengalaman lambat/timeout saat
+traffic bot tinggi, tapi belum tentu itu penyebab TUNGGAL. Kandidat lain yang dicatat untuk
+kalau keluhan berulang setelah deploy (belum diselidiki, murni referensi): firewall LAIN di VPS
+(`ufw`/`iptables`, terpisah dari Fail2ban), rate-limiting Nginx sendiri (`limit_req`/
+`limit_conn`), atau masalah jaringan di sisi pengunjung (ISP/ekstensi browser/DNS cache) yang
+sama sekali tidak bisa dibuktikan dari sisi server. **Rekomendasi**: deploy dulu Fase A+B+C
+(sudah di-commit+push, tinggal `git pull`+build+`pm2 restart` di VPS), observasi apakah laporan
+berkurang, baru selidiki kandidat lain kalau masih terjadi.
+
+**Aturan yang ditegaskan**: prosedur verifikasi manual yang ditulis untuk user (§ 6, ditulis
+sesi sebelumnya) TERBUKTI berguna persis seperti dirancang — jawaban "tidak terinstall" di
+LANGKAH PERTAMA saja sudah cukup untuk menutup total sebuah cabang investigasi, tanpa perlu
+menjalankan langkah 2-6 sama sekali. Kalau menulis prosedur cek bertahap semacam ini di masa
+depan, pastikan setiap langkah awal punya kondisi "berhenti di sini kalau hasilnya begini" yang
+eksplisit — supaya user tidak perlu menjalankan seluruh checklist kalau jawaban pertama sudah
+definitif.
+
+### [2026-07-28] Nomor Keanggotaan Forum — Preset ke-4 "Tahun Daftar + Angkatan + Urutan"
+
+> Detail lengkap: **`docs/arsitektur-backbone-ikpm.md`** § "Nomor Keanggotaan Lokal Forum" —
+> sub-bagian "Preset ke-4".
+
+User konfirmasi sudah deploy fix 404 ke server, lalu minta fitur kecil terpisah: tambah preset
+format nomor keanggotaan forum baru — `<2 digit tahun daftar><2 digit tahun angkatan>.<seq
+5-digit>`, contoh `2690.00001` = daftar 2026, angkatan (Tahun Lulus KMI) 1990, urutan 1.
+
+**Dicek dulu sebelum menjawab "bisa"**: `checkMemberEligibility()` sudah menjadikan
+`graduationYear` field WAJIB, dan KEDUA titik generate nomor (`joinForumAction` jalur gratis,
+`activateForumMembershipIfApplicable` jalur bayar, `finance/billing/actions.ts`) sudah memanggil
+eligibility check itu SEBELUM generate nomor — jadi `graduationYear` dijamin terisi di titik
+ini, nol risiko data kosong. Baru setelah verifikasi ini dijawab "ya, feasible" ke user.
+
+**Implementasi murni ADDITIF** — preset ke-4 (`joinyear_gradyear_seq`) ditambah ke
+`FORUM_MEMBERSHIP_NUMBER_FORMATS` array + `FORUM_MEMBERSHIP_NUMBER_FORMAT_LABELS` (
+`lib/forum-membership-number.ts`, file client-safe) — picker UI di
+`/settings/keanggotaan` (`membership-config-form.tsx`) otomatis menampilkan opsi baru tanpa
+disentuh sama sekali (button-list-nya iterasi dari array itu). 3 preset lama TIDAK berubah.
+`generateForumMembershipNumber()` (`.server.ts`) direfactor: SEBELUMNYA fetch `birthDate`
+kondisional per-format, SEKARANG fetch `birthDate`+`graduationYear` SEKALIGUS tanpa kondisi
+(query by-PK terlalu murah untuk sepadan branching, dan mencegah pola `if (format===X)` yang
+makin tidak scalable tiap kali preset baru butuh field member lain).
+
+**Batasan diterima, tidak diselesaikan (di luar scope)**: angkatan 1999 punya 2 sub-kelompok
+(Awal/Akhir) — format 2-digit ini tidak membedakan keduanya (kebetulan sama "99"). Tidak
+menyebabkan bug data (sequence 5-digit tetap unik), cuma prefiks manusia-terbaca tidak
+disambiguasi untuk SATU angkatan spesifik itu — tidak ditangani karena tidak diminta.
+
+**Verifikasi empiris** (disposable test, dihapus setelah): output PERSIS `"2690.00001"` untuk
+input contoh user + 2 edge case (graduationYear null→fallback "00", seq besar tidak terpotong)
++ 1 regression check (`year_seq` tidak berubah). `tsc --noEmit` **dari `apps/web`** (bukan root
+— sempat salah jalan sesi sebelumnya, root `tsconfig.json` tidak punya alias `@/*`, gampang
+salah kira ada error padahal cuma salah direktori) + `bun run build` genuine, keduanya 0 error.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Bug Kritis "Konfirmasi Lunas" — UUID/nanoid di 6 fungsi finance/
+- Terakhir dikerjakan: **Nomor Keanggotaan Forum — Preset ke-4** (lihat lesson `[2026-07-28]`
+  "Nomor Keanggotaan Forum — Preset ke-4" di atas) — user minta format baru
+  `<tahun daftar 2 digit><tahun angkatan 2 digit>.<seq 5-digit>` (`2690.00001`). Dicek dulu:
+  `graduationYear` sudah WAJIB di `checkMemberEligibility()` dan kedua titik generate nomor
+  sudah memanggil eligibility check duluan — nol risiko data kosong, aman diimplementasikan.
+  Ditambahkan sebagai preset ke-4 murni ADDITIF (array+label baru, 3 preset lama tidak
+  disentuh), picker UI otomatis update tanpa perlu disentuh. `generateForumMembershipNumber()`
+  direfactor fetch `birthDate`+`graduationYear` sekaligus (bukan kondisional per-format lagi).
+  Diverifikasi empiris (disposable test — output persis cocok contoh user + edge case + regresi
+  3 preset lama) + `tsc`(dari `apps/web`, bukan root)+build genuine, keduanya 0 error. Dev
+  server direstart. **Belum di-commit/push ke git** — menunggu instruksi user.
+- Sesi sebelumnya: **Hasil Cek Fail2ban di VPS — TIDAK TERINSTALL, Rencana 404 SELESAI
+  Seluruhnya** (lihat lesson `[2026-07-28]` "Hasil Cek Fail2ban di VPS" di atas) — user
+  menjalankan § 6 langkah 1 di VPS via SSH, hasilnya `Unit fail2ban.service could not be found`
+  — definitif, Fail2ban genuinely tidak terinstall. Ini menggugurkan TOTAL teori "404→Fail2ban
+  ban IP→user asli kena" dari laporan agen lain yang jadi pemicu seluruh investigasi ini. Fase D
+  + § 8 (kontinjen pada data ini) DIBATALKAN, bukan sekadar ditunda — tidak ada mekanisme untuk
+  di-mitigasi/tuning. `docs/rencana-perbaikan-akses-404.md` § 12 ditambahkan (hasil cek + daftar
+  kandidat penyebab LAIN untuk kalau keluhan "beberapa orang tidak bisa buka situs" masih
+  berulang setelah Fase A+B+C di-deploy — belum diselidiki, murni referensi untuk sesi
+  mendatang). Status dokumen sekarang "SELESAI SELURUHNYA" — nol item tersisa dari rencana ini.
+  **Fase A+B+C sudah di-commit+push (lihat lesson sebelumnya, commit `4d71dc0`), TAPI BELUM
+  DI-DEPLOY ke VPS** — user perlu jalankan `git pull && bun run build --filter=@jalajogja/web &&
+  pm2 restart jalajogja --update-env` di VPS sebelum fix ini benar-benar aktif di production.
+- Sesi sebelumnya: **Bug Kritis "Konfirmasi Lunas" — UUID/nanoid di 6 fungsi finance/
   actions.ts** (lihat lesson `[2026-07-28]` "Bug Kritis: 'Konfirmasi Lunas' Selalu Gagal" di
   atas) — user laporkan klik "Konfirmasi" di `/finance/pemasukan/new` (Catat Pemasukan) tidak
   bisa + Bank Pengirim/Tanggal Transfer tampak kosong. Investigasi menemukan bug NYATA:
   `confirmPaymentAction` menulis `access.userId` (nanoid Better Auth) ke kolom UUID
   (`confirmedBy`/`createdBy`) — pasti gagal tiap klik, sudah begitu sejak file dibuat 2026-04-13.
-  Audit menyeluruh file yang sama menemukan 5 fungsi LAIN dengan bug identik
+  Audit menyeluruh file yang sama menemukan 5 fungsi LAIN dengan bug identik. **Sudah di-commit+
+  push** (commit `0a3d00e`) — sesi ini juga meng-commit+push fitur katalog Donasi di invoice
+  admin yang sempat tertunda (commit `c463d28`, `searchBillingCampaignsAction` +
+  `CatalogItemAutocomplete` 3 tipe).
   (`createDisbursementAction`, `approveDisbursementAction` — tanpa try/catch, uncaught crash,
   `markDisbursementPaidAction`, `createJournalAction`) — semua diperbaiki jadi
   `access.tenantUser.id`. Diverifikasi empiris via 2 disposable test (reproduksi bug persis +

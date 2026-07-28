@@ -28,14 +28,20 @@ export async function generateForumMembershipNumber(params: {
 }): Promise<string> {
   const { tenantId, memberId, format, joinDate } = params;
 
+  // Satu lookup ringan (PK) untuk kedua field opsional — birthDate (year_birthdate_seq) dan
+  // graduationYear (joinyear_gradyear_seq). Selalu di-fetch terlepas format yang dipilih;
+  // query by-PK terlalu murah untuk sepadan branching per-format, dan menghindari perlu
+  // tambah kondisi baru setiap kali format baru butuh field member lain.
   let birthDate: string | null = null;
-  if (format === "year_birthdate_seq") {
+  let graduationYear: number | null = null;
+  {
     const [memberRow] = await db
-      .select({ birthDate: members.birthDate })
+      .select({ birthDate: members.birthDate, graduationYear: members.graduationYear })
       .from(members)
       .where(eq(members.id, memberId))
       .limit(1);
-    birthDate = memberRow?.birthDate ?? null;
+    birthDate      = memberRow?.birthDate ?? null;
+    graduationYear = memberRow?.graduationYear ?? null;
   }
 
   let nextNum = 1;
@@ -60,5 +66,5 @@ export async function generateForumMembershipNumber(params: {
     }
   });
 
-  return formatForumMembershipNumber(format, { seq: nextNum, joinDate, birthDate });
+  return formatForumMembershipNumber(format, { seq: nextNum, joinDate, birthDate, graduationYear });
 }
