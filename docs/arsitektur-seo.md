@@ -31,8 +31,7 @@
 > `lib/sitemap-builder.server.ts`, diverifikasi `tsc`+build genuine+curl 14 route dengan data
 > real+permalink-switch live+custom domain (metodologi sudah diperbaiki, header
 > `x-middleware-rewrite` dikonfirmasi). Detail lengkap § 4.5. **Ketiga langkah yang dikonfirmasi
-> user ("1, 2, 3") sekarang selesai dari sisi kode. Belum di-commit/push ke git, belum
-> dijalankan/diverifikasi di VPS.**
+> user ("1, 2, 3") sekarang selesai dari sisi kode.**
 >
 > **✅ Audit sinkronisasi susulan (2026-07-28, diminta eksplisit user "cek sekali lagi
 > singkronisasi antara dokumentasi dan implemented code")**: dibaca ulang SETIAP fungsi/fetcher/
@@ -215,9 +214,9 @@ menunggu Tab 2/GTM/verification meta (§ 3.1/3.2, belum dibangun). Card menampil
 salin (pola sama link TTD di `signature-slot-manager.tsx`), dihitung dari
 `getTenantSeoBase(slug).baseUrl` — SUMBER YANG SAMA dipakai Route Handler sitemap sendiri
 (`lib/sitemap-builder.server.ts`), jadi otomatis benar untuk domain sendiri MAUPUN custom
-domain tanpa kode tambahan. Diverifikasi `tsc`+build genuine. **Belum di-commit/push ke git,
-belum dijalankan/diverifikasi di VPS.** Sisa Fase 4 (Tab 2, GTM script injection, verification
-meta tag, migration `SETTING_GROUPS`) TETAP belum dieksekusi.
+domain tanpa kode tambahan. Diverifikasi `tsc`+build genuine, **di-commit+push+deploy ke VPS,
+live di production** (dikonfirmasi bareng seluruh Fase 5 — lihat § 4.5). Sisa Fase 4 (Tab 2,
+GTM script injection, verification meta tag, migration `SETTING_GROUPS`) TETAP belum dieksekusi.
 
 ---
 
@@ -433,9 +432,15 @@ sekadar SAFETY LIMIT, belum ada split `sitemap-posts-2.xml` dst); Fase 6 (isi ro
 AI + `llms.txt`) dan Fase 4 (GTM/Search Console) TETAP belum dieksekusi — keduanya independen
 dari Fase 5, tidak termasuk 3 langkah yang dikonfirmasi user sesi ini.
 
-**Belum di-commit/push ke git, belum dijalankan/diverifikasi di VPS** — seluruh verifikasi murni
-lokal (`pc-ikpm-jogjakarta` dev database). Data test (custom domain sementara, permalink
-sementara) sudah dibersihkan+diverifikasi bersih.
+**✅ Di-commit (`636123d`) + push + deploy ke VPS (2026-07-28)** — 4 migration dijalankan
+(`0049`-`0052`), `bun install` (dependency baru `@tiptap/html`/`fast-xml-parser`/`happy-dom`),
+build + `pm2 restart`, semua sukses tanpa error. **Diverifikasi ulang LANGSUNG di production
+terhadap bug ASLI** (bukan simulasi) — `ikpmjogja.com` (custom domain aktif milik
+`pc-ikpm-jogjakarta`): `curl -i https://ikpmjogja.com/robots.txt` → 200, header
+`x-middleware-rewrite: /pc-ikpm-jogjakarta/robots.txt` (bukti rewrite genuinely jalan),
+`Sitemap:` lines dan seluruh `<loc>` di `sitemap.xml` benar-benar pakai `ikpmjogja.com` —
+bug 404 yang jadi motivasi seluruh pekerjaan ini (§ 6c) sekarang genuinely tertutup di
+production. Detail lengkap: § 6c.3.
 
 ---
 
@@ -866,12 +871,33 @@ file yang tidak seragam (`robots`/`manifest`/`favicon` dibatasi ke root, `sitema
 `opengraph-image` bebas nested) — cek `app-paths-manifest.json` hasil build atau curl langsung
 untuk memastikan.
 
-### 6c.3. Status — ✅ SELESAI (sebelumnya "belum dieksekusi", diupdate 2026-07-28)
+### 6c.3. Status — ✅ SELESAI + DIVERIFIKASI PRODUCTION (2026-07-28)
 
 Fix ini sudah dieksekusi dan diverifikasi (§ 6c.2/6c.2a/6c.2b) sebagai LANGKAH PERTAMA dari
 urutan eksekusi SEO yang dikonfirmasi user (robots.ts fix → sinkron rencana sitemap § 4 dengan
-`resolvePostHrefs()` → eksekusi Fase 5). **Belum di-commit/push ke git, belum dijalankan/
-diverifikasi di VPS** — hanya diverifikasi lokal.
+`resolvePostHrefs()` → eksekusi Fase 5). **Di-commit (`636123d`) + push + deploy ke VPS
+(migration 0049-0052 dijalankan, `bun install`, build, `pm2 restart`) — SEMUA sukses tanpa
+error.**
+
+**Diverifikasi ulang LANGSUNG terhadap bug asli di production** — `ikpmjogja.com` (custom
+domain AKTIF milik tenant `pc-ikpm-jogjakarta`, bukan simulasi/Host-header-spoof seperti
+verifikasi lokal) — `curl -i https://ikpmjogja.com/robots.txt`:
+```
+HTTP/1.1 200 OK
+x-middleware-rewrite: /pc-ikpm-jogjakarta/robots.txt
+Content-Type: text/plain
+
+User-agent: *
+Allow: /
+
+Sitemap: https://ikpmjogja.com/sitemap.xml
+Sitemap: https://ikpmjogja.com/sitemap_index.xml
+```
+Header `x-middleware-rewrite` mengonfirmasi rewrite custom domain genuinely jalan (bukti sama
+yang dipakai verifikasi lokal), `Sitemap:` lines dan seluruh `<loc>` di `sitemap.xml` benar-benar
+memakai `ikpmjogja.com` (custom domain-nya sendiri, bukan `jalakarta.com/pc-ikpm-jogjakarta`).
+**Bug 404 asli (yang jadi motivasi seluruh § 6c) sekarang genuinely tertutup di production,
+bukan cuma di lokal.**
 
 ### 6c.4. Terkait — Preservasi URL Lama Saat Migrasi dari Platform Lain (Redirect 301)
 
@@ -917,12 +943,14 @@ Semua perbaikan dikelompokkan ke dalam fase-fase terstruktur. Setiap fase wajib 
    │     ├── Route `/sitemap.xml` (Native Modular Index) + `/sitemap_index.xml` (Yoast Index)
    │     ├── Sub-sitemaps: posts, pages, categories (produk+event+campaign+dokumen), toko,
    │     │   event, donasi, pesantren, usaha — 8 tipe konten, semua diverifikasi curl+data real
-   │     └── ⚠️ Belum di-commit/deploy VPS. Pagination >1.000 item/tipe belum ada (safety cap saja)
+   │     └── ✅ Di-commit+push+deploy VPS, verified live production (custom domain
+   │         ikpmjogja.com). Pagination >1.000 item/tipe belum ada (safety cap saja)
    │
    ├── ⬜ Fase 6: Optimasi AI Crawler & Agent (LLM Bot Friendly)
    │     ├── ✅ LANGKAH PERTAMA SELESAI (2026-07-28): bug 404 robots.txt custom domain SUDAH
    │     │   DITUTUP — via Route Handler `app/(public)/[tenant]/robots.txt/route.ts` (BUKAN
-   │     │   `robots.ts` — tidak bisa di-nest, § 6c.2a). Diverifikasi lokal, BELUM di-commit/deploy.
+   │     │   `robots.ts` — tidak bisa di-nest, § 6c.2a). ✅ Di-commit+push+deploy, verified live
+   │     │   di custom domain production `ikpmjogja.com` (§ 6c.3).
    │     ├── ✅ Baris `Sitemap:` sudah ditambahkan (tenant route, mengarah ke sitemap.xml +
    │     │   sitemap_index.xml) — sisa isi masih generik (`allow: "/"` polos, belum per-bot AI)
    │     ├── Isi content diperluas dengan izin eksplisit bot AI, REUSE `AI_FRIENDLY_CRAWLERS`

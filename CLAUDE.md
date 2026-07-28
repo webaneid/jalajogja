@@ -12874,8 +12874,69 @@ independen dan berdiri sendiri, tetap dokumentasikan sebagai "sebagian dari Fase
 dieksekusi" (bukan pura-pura itu fase terpisah baru), supaya sesi mendatang yang melanjutkan
 sisa Fase 4 tahu persis apa yang sudah ada dan tidak perlu dibangun ulang.
 
+### [2026-07-28] Commit + Push + Deploy VPS + Verifikasi Production — WordPress Import/Export, Permalink, Post Authors, SEO Sitemap
+
+> Detail lengkap: **`docs/arsitektur-seo.md`** § 6c.3, § 4.5, § 3.3, § 7 roadmap (semua
+> diupdate status jadi ✅ deployed+verified).
+
+User minta commit+push seluruh pekerjaan sesi ini. Diputuskan 2 commit (bukan 1 commit besar)
+— `git status` menunjukkan changeset lain yang jauh lebih tua dan tidak terkait sedang sudah
+ter-stage sebagian di index (fitur admin invoice: autocomplete customer+katalog, kode unik,
+modal konfirmasi pembayaran — `finance/billing/actions.ts`+`invoice-create-form.tsx`+
+`invoice-detail-client.tsx`+`docs/arsitektur-billing.md`, ~468 baris, terlihat lengkap dan
+terdokumentasi tapi belum pernah di-commit sebelumnya). Commit 1 memisahkan fitur itu; commit 2
+membawa seluruh pekerjaan WordPress Import/Export+Permalink+Post Authors+SEO Sitemap+robots.txt
+fix+Sitemap URL card (94 file, ~11.800 baris).
+
+**Ketemu kuirk git**: commit 1 (`be56cdb`) tanpa sengaja ikut membawa rename `[pageSlug]/
+actions.ts → [...slug]/actions.ts` + delete `[pageSlug]/page.tsx` — TERNYATA sudah ter-stage di
+index dari sesi SEBELUM giliran ini (bukan dari `git add` yang saya jalankan barusan).
+`git commit` (tanpa pathspec) selalu commit SELURUH index, bukan cuma file yang baru saja
+di-`git add`. Diterima sebagai imperfection kecil (kode tetap benar, cuma boundary commit
+sedikit tidak rapi) — tidak di-rollback/diperbaiki, tidak sepadan risikonya.
+
+**Deploy VPS dijalankan user sendiri** (bukan saya, sesuai batasan sesi ini — tidak ada akses
+SSH): `bun install` (dependency baru `@tiptap/html`/`fast-xml-parser`/`happy-dom`), 4 migration
+(`0049`-`0052`) via `docker compose exec -T postgres psql`, `bun run build`, `pm2 restart
+--update-env` — semua sukses tanpa error, dikonfirmasi dari output terminal yang di-paste user.
+
+**Diverifikasi ulang LANGSUNG di production terhadap bug ASLI** (bukan simulasi lokal) — tenant
+`pc-ikpm-jogjakarta` ternyata sudah punya custom domain AKTIF (`ikpmjogja.com`) di production,
+jadi bisa dites persis skenario nyata yang jadi motivasi seluruh § 6c: `curl -i
+https://ikpmjogja.com/robots.txt` → 200, header `x-middleware-rewrite:
+/pc-ikpm-jogjakarta/robots.txt` (bukti rewrite genuinely jalan, kriteria yang sama dipakai
+verifikasi lokal sebelumnya), `Sitemap:` lines dan seluruh `<loc>` di `sitemap.xml` benar-benar
+memakai `ikpmjogja.com` (custom domain itu sendiri). **Bug 404 asli sekarang genuinely tertutup
+di production — verifikasi lokal sebelumnya terbukti akurat, tidak ada surprise saat deploy
+sungguhan.**
+
+**Aturan yang ditegaskan**: kalau tenant real yang dipakai untuk testing (`pc-ikpm-jogjakarta`)
+kebetulan punya custom domain aktif di production, itu adalah kesempatan verifikasi PALING KUAT
+— jauh lebih meyakinkan daripada simulasi Host-header-spoof di lokal (yang butuh
+`APP_INTERNAL_URL` manual + rawan false-positive seperti kejadian sebelumnya). Setiap kali
+selesai deploy fitur yang berhubungan dengan custom domain, cek dulu apakah ada tenant real
+dengan custom domain aktif untuk verifikasi langsung — jangan berhenti di "build sukses,
+migration jalan" saja.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Card URL Sitemap di `/settings/seo`** (lihat lesson `[2026-07-28]`
+- Terakhir dikerjakan: **Commit + Push + Deploy VPS + Verifikasi Production** (lihat lesson
+  `[2026-07-28]` "Commit + Push + Deploy VPS + Verifikasi Production" di atas) — user minta
+  commit+push seluruh pekerjaan sesi ini (WordPress Import/Export+Permalink+Post Authors+SEO
+  Sitemap+robots.txt fix+Sitemap URL card). 2 commit: `be56cdb` (fitur admin invoice yang
+  ternyata sudah lama tertunda commit-nya — autocomplete+kode unik+modal konfirmasi
+  pembayaran) dan `636123d` (94 file, ~11.800 baris, seluruh pekerjaan SEO/WordPress sesi ini).
+  Kuirk kecil: rename `[pageSlug]→[...slug]` ikut tercommit di `be56cdb` karena sudah ter-stage
+  di index dari sesi sebelumnya (`git commit` tanpa pathspec commit SELURUH index) — diterima,
+  tidak di-rollback. **User deploy VPS sendiri** (migration 0049-0052 + `bun install` + build +
+  `pm2 restart`, semua sukses). **Diverifikasi ulang LANGSUNG di production** — tenant
+  `pc-ikpm-jogjakarta` ternyata sudah punya custom domain aktif (`ikpmjogja.com`) di production,
+  jadi bisa dites persis skenario bug asli (bukan simulasi): `curl -i https://ikpmjogja.com/
+  robots.txt` → 200, header `x-middleware-rewrite` konfirmasi rewrite genuinely jalan,
+  `Sitemap:` lines dan `<loc>` sitemap.xml benar-benar pakai domain custom itu sendiri. **Bug
+  404 asli (motivasi seluruh pekerjaan § 6c) sekarang genuinely tertutup di production.** Semua
+  status doc diupdate dari "belum di-commit/deploy" jadi "✅ deployed+verified" di
+  `docs/arsitektur-seo.md` (§ 6c.3, § 4.5, § 3.3, § 7 roadmap).
+- Sesi sebelumnya: **Card URL Sitemap di `/settings/seo`** (lihat lesson `[2026-07-28]`
   "Card URL Sitemap di `/settings/seo`" di atas) — user coba fitur sitemap di lokal, tanya
   apakah URL sitemap bisa ditampilkan di pengaturan website supaya tidak perlu menebak saat
   submit ke Google Search Console. Ini persis fitur § 3.3 (bagian dari Fase 4 yang belum
