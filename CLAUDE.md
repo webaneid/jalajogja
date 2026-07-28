@@ -12918,8 +12918,167 @@ selesai deploy fitur yang berhubungan dengan custom domain, cek dulu apakah ada 
 dengan custom domain aktif untuk verifikasi langsung — jangan berhenti di "build sukses,
 migration jalan" saja.
 
+### [2026-07-28] Eksekusi Rencana Perbaikan 404 — Fase A+B+C (Icon Files, Middleware Matcher, React.cache Dedup)
+
+> Detail lengkap + tabel regresi sweep: **`docs/rencana-perbaikan-akses-404.md` § 11** (bagian
+> "Hasil Eksekusi", ditulis setelah eksekusi selesai — dokumen aslinya murni rencana).
+
+User minta eksekusi rencana yang sudah ditulis di sesi sebelumnya (§ 7-9 dokumen) untuk
+mengurangi 404 palsu (favicon/icon hilang) + query DB boros (duplikasi `resolveSlugKind()`),
+dengan urutan risiko-naik: Fase A (file icon, risiko nol) → Fase C (fix `React.cache()`, risiko
+rendah) → Fase B (perluas exclude middleware, risiko rendah tapi file paling sensitif — regresi
+sweep wajib). § 6 (cek Fail2ban VPS, butuh SSH) TETAP tugas manual user, tidak dieksekusi di
+sini.
+
+**Fase A** — `app/icon.svg` (SVG geometris murni, bujur sangkar rounded + lingkaran — percobaan
+pertama pakai teks "J" gagal render tanpa error di Sharp/librsvg environment ini, diganti bentuk
+tanpa font sama sekali), `app/apple-icon.png` (180×180, Next.js App Router special file),
+`app/favicon.ico` (32×32 PNG dibungkus manual ke container ICO — ICONDIR+ICONDIRENTRY+data PNG,
+Sharp tidak punya encoder ICO native, browser modern terima PNG-in-ICO), `app/manifest.ts`
+(Next.js special file, otomatis jadi route `/manifest.webmanifest`).
+
+**Fase C** — `resolveSlugKind()` (`[...slug]/page.tsx`) dibungkus `React.cache()` untuk dedup
+pemanggilan `generateMetadata()` vs `CatchAllPage()`. **Temuan penting**: signature draft rencana
+(`segments: string[]` sebagai argumen ke-2) TIDAK bekerja — dibuktikan empiris (`console.log`
+sementara + curl) bahwa array yang didestructure dari `await params` di kedua titik pemanggilan
+adalah REFERENCE BERBEDA meski isinya identik. `React.cache()` membandingkan argumen non-primitif
+SECARA REFERENCE, bukan deep-equality — cache tetap MISS (log tercetak 2×). Fix: ubah signature
+jadi terima `joinedSegments: string` (array digabung `.join("/")` sebelum masuk fungsi cache,
+displit lagi di dalam) — string dibandingkan by VALUE, dedup benar (log tercetak PERSIS 1× di 3
+skenario tes: existing page ×2, 404 ×1).
+
+**Fase B — deviasi PALING PENTING dari draft rencana, ditemukan SEBELUM dieksekusi (bukan
+setelah gagal test)**: draft § 7 Fase B menulis matcher middleware yang menyertakan `robots\.txt`
+dan `sitemap\.xml` dalam exclude list. Sebelum mengeksekusi ini literal, disadari (via penalaran,
+bukan trial-and-error) bahwa KEDUA path itu — di sesi lain yang berjalan paralel sebelum sesi
+ini — baru saja dibangun sebagai Route Handler ter-nested per-tenant
+(`[tenant]/robots.txt/route.ts`, `.../sitemap*.xml/route.ts`) yang **BERGANTUNG** pada
+middleware men-rewrite custom domain, dan fix itu SUDAH diverifikasi LIVE di production
+(`docs/arsitektur-seo.md` § 6c.3). Mengecualikan `robots.txt`/`sitemap.xml` dari middleware akan
+MEMATIKAN rewrite itu dan meregresi fix production yang sudah berjalan. Matcher final HANYA
+menambah `icon\.svg`, `apple-icon\.png`, `manifest\.webmanifest` — **TIDAK** menyertakan
+`robots.txt`/`sitemap.xml` sama sekali, kebalikan dari draft.
+
+**Regresi sweep Fase B** (wajib karena `middleware.ts` file paling sensitif) — setup tenant lokal
+dengan custom domain palsu sementara (`UPDATE public.tenants`, dihapus lagi setelah selesai),
+test server `next start` dengan `APP_INTERNAL_URL` diset benar (pelajaran dari kejadian
+false-positive robots.txt di sesi lain — lihat `docs/arsitektur-seo.md` § 6c.2b), semua via curl
+langsung: favicon/icon/manifest own-domain (200), robots.txt+sitemap.xml+halaman biasa custom
+domain (200, `x-middleware-rewrite` header genuinely muncul — bukan false-positive), `/app/*`
+dan `/platform/*` auth guard own-domain (307 redirect benar), `/app/{slug-cocok}/*` custom
+domain (302 ke `/login` di domain yang sama — perilaku "Opsi C" pre-existing, tidak terkait
+perubahan ini), `/app/{slug-BEDA}/*` custom domain (302 ke URL kanonik absolut — isolasi
+cross-tenant tetap intact), `/admin` carve-out custom domain (302 ke `/login` di domain yang
+sama — Sub-fase 1 tetap intact). Semua lulus, nol regresi. Data test dibersihkan+diverifikasi
+bersih.
+
+**Aturan yang ditegaskan (generalisasi)**: (1) `React.cache()` HANYA dedup benar untuk argumen
+primitif (string/number) yang dibandingkan by-value — argumen array/object HARUS diserialisasi
+jadi string dulu kalau reference-nya bisa berbeda antar titik pemanggilan, jangan asumsikan
+"params yang sama" berarti "array reference yang sama". (2) Sebelum mengeksekusi draft rencana
+lama secara literal, cek dulu apakah premisnya masih valid — kode bisa berubah SEJAK rencana
+ditulis (di sini: fitur robots.txt/sitemap.xml route handler dibangun di sesi LAIN setelah
+rencana 404 ditulis tapi SEBELUM dieksekusi) — draft rencana bukan sumber kebenaran final kalau
+ada perubahan kode yang lebih baru.
+
+**§ 6 (cek Fail2ban di VPS) tetap tugas manual user** — belum dijalankan, hasilnya akan
+menentukan apakah Fase D (early-reject scanner path) dan § 8 (tuning Fail2ban) perlu
+dikerjakan. Keduanya SENGAJA ditunda, bukan lupa.
+
+### [2026-07-28] Bug Kritis: "Konfirmasi Lunas" Selalu Gagal — `access.userId` (nanoid) Ditulis ke Kolom UUID
+
+User laporkan di `/finance/pemasukan/new` (Catat Pemasukan): klik "Konfirmasi" tidak bisa, dan
+"Bank Pengirim"/"Tanggal Transfer" tampak kosong seperti tidak tersimpan. Diinvestigasi
+menyeluruh — 2 gejala, cuma 1 bug nyata ditemukan.
+
+**Bug nyata, dikonfirmasi empiris**: `apps/web/app/(dashboard)/app/[tenant]/finance/actions.ts`
+— `confirmPaymentAction` (dipanggil tombol "Konfirmasi Lunas" di halaman detail pemasukan)
+menulis `const userId = access.userId` ke KEDUA kolom UUID `transactions.createdBy` DAN
+`payments.confirmedBy`. `access.userId` = `session.user.id` dari Better Auth = **nanoid**
+(mis. `"1bbNUBnobqznt8AZX7LqiSW92l"`) — BUKAN UUID. Kolom-kolom itu bertipe `uuid(...)` di
+schema (`packages/db/src/schema/tenant/finance.ts`), jadi setiap klik "Konfirmasi Lunas" PASTI
+gagal dengan `invalid input syntax for type uuid`, tertangkap `try/catch`, tampil sebagai pesan
+error generik "Gagal mengkonfirmasi pembayaran." — persis gejala "klik konfirmasi tidak bisa".
+
+**Bug ini sudah ada SEJAK FILE DIBUAT** (`git blame` → commit `dac83781`, 2026-04-13) — tidak
+pernah difix, meski pola bug PERSIS ini sudah didokumentasikan sebagai lesson lama
+("[2025-05] UUID vs nanoid — Bug Kritis di Finance Actions") dan sudah benar di FUNGSI TETANGGA
+DI FILE YANG SAMA (`rejectPaymentAction` pakai `access.tenantUser.id` dengan benar, baris 291).
+Audit menyeluruh file yang sama menemukan **5 titik LAIN dengan bug identik** — total 6 fungsi
+kena: `confirmPaymentAction` (createdBy+confirmedBy), `createDisbursementAction` (requestedBy),
+`approveDisbursementAction` (approvedBy — TANPA try/catch, jadi ini uncaught crash bukan cuma
+error terkontrol), `markDisbursementPaidAction` (createdBy), `createJournalAction` (createdBy).
+Artinya SELURUH alur konfirmasi pemasukan, buat/setujui/bayar pengeluaran, dan buat jurnal
+manual SEMUA rusak sejak modul Keuangan dibuat — bukan regresi baru.
+
+**Fix**: keenam titik diganti `access.tenantUser.id` (UUID asli dari `tenant.users.id`,
+sudah tersedia di objek `access` yang sama, tidak perlu query tambahan).
+
+**Diverifikasi empiris (bukan cuma baca kode)** — 2 disposable test terhadap tenant lokal
+(`pc-ikpm-jogjakarta`): (1) reproduksi bug — insert payment lalu update `confirmedBy` dengan
+nanoid sungguhan → error PERSIS sama (`invalid input syntax for type uuid`); (2) verifikasi fix
+— update yang sama dengan UUID asli dari `tenant.users` → sukses, `confirmedBy` tersimpan benar.
+Data test dibersihkan+diverifikasi bersih.
+
+**Gejala kedua ("Bank Pengirim/Tanggal Transfer kosong") — storage layer TERBUKTI BERSIH,
+kemungkinan besar bukan bug**: disposable test ketiga mereproduksi persis object `.values()`
+yang dipakai `createLinkedPaymentAction` (method="transfer", payerBank="BCA",
+transferDate="2026-07-28") → insert+read-back membuktikan KEDUA field tersimpan dan terbaca
+sempurna. Kolom `transferDate` (`date("transfer_date")`, drizzle-orm) menerima string
+"YYYY-MM-DD" polos tanpa masalah — konsisten dengan pola yang sudah lama dipakai di seluruh
+project (`recordIncome`/`recordExpense` selalu kirim `date: new Date().toISOString().slice(0,10)`
+sebagai string). Kedua field HANYA dirender di form (`payment-form.tsx`) dan HANYA terkirim ke
+server kalau `method === "transfer"` dipilih eksplisit — kalau method masih default "Tunai"
+(cash), field itu memang tidak pernah tampil/terisi, dan `payment.payerBank ?? "—"` di halaman
+detail benar menampilkan "—". **Belum dikonfirmasi ulang oleh user** apakah observasi ini
+memang karena Metode belum diset ke "Transfer", atau ada skenario lain yang belum tertangkap —
+audit kode tidak menemukan bug lain di jalur create→simpan→tampil untuk 2 field ini.
+
+**Aturan yang ditegaskan (pengulangan dari lesson lama, generalisasi lebih tegas)**: kalau
+menemukan bug `access.userId` vs `access.tenantUser.id` di SATU fungsi dalam sebuah file, WAJIB
+grep SELURUH file yang sama untuk pola serupa — bug ini terbukti bisa "menular" ke banyak fungsi
+bertetangga tanpa terdeteksi bertahun-tahun, bahkan setelah polanya sudah didokumentasikan
+sebagai lesson. Jangan cukup fix 1 titik yang dilaporkan lalu berhenti.
+
+`tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` genuine (dev server dimatikan+
+`.next` dibersihkan+direstart) — sukses, rute icon/manifest/robots dari Fase A 404 juga masih
+terkonfirmasi ada di build output (nol regresi lintas-sesi). **Belum di-commit/push ke git.**
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Commit + Push + Deploy VPS + Verifikasi Production** (lihat lesson
+- Terakhir dikerjakan: **Bug Kritis "Konfirmasi Lunas" — UUID/nanoid di 6 fungsi finance/
+  actions.ts** (lihat lesson `[2026-07-28]` "Bug Kritis: 'Konfirmasi Lunas' Selalu Gagal" di
+  atas) — user laporkan klik "Konfirmasi" di `/finance/pemasukan/new` (Catat Pemasukan) tidak
+  bisa + Bank Pengirim/Tanggal Transfer tampak kosong. Investigasi menemukan bug NYATA:
+  `confirmPaymentAction` menulis `access.userId` (nanoid Better Auth) ke kolom UUID
+  (`confirmedBy`/`createdBy`) — pasti gagal tiap klik, sudah begitu sejak file dibuat 2026-04-13.
+  Audit menyeluruh file yang sama menemukan 5 fungsi LAIN dengan bug identik
+  (`createDisbursementAction`, `approveDisbursementAction` — tanpa try/catch, uncaught crash,
+  `markDisbursementPaidAction`, `createJournalAction`) — semua diperbaiki jadi
+  `access.tenantUser.id`. Diverifikasi empiris via 2 disposable test (reproduksi bug persis +
+  konfirmasi fix berhasil dengan UUID asli). Gejala kedua (Bank Pengirim/Tgl Transfer kosong)
+  DICEK juga — storage layer TERBUKTI BERSIH lewat disposable test ketiga (insert+read-back
+  sukses sempurna), kemungkinan besar Metode belum diset ke "Transfer" saat testing (field itu
+  memang cuma tampil/tersimpan untuk method=transfer) — **belum dikonfirmasi ulang ke user**.
+  `tsc`+build genuine bersih, dev server direstart. **Belum di-commit/push ke git.**
+- Sesi sebelumnya: **Eksekusi Rencana Perbaikan 404 — Fase A+B+C** (lihat lesson
+  `[2026-07-28]` "Eksekusi Rencana Perbaikan 404" di atas) — user minta eksekusi
+  `docs/rencana-perbaikan-akses-404.md` berurutan sesuai risiko: Fase A (favicon/icon/manifest
+  files, risiko nol) → Fase C (`React.cache()` fix duplikasi query `resolveSlugKind()`, risiko
+  rendah) → Fase B (perluas exclude middleware, risiko rendah tapi file paling sensitif). Fase C
+  menemukan bug nyata dalam asumsi draft rencana sendiri: signature `React.cache()` dengan
+  argumen array TIDAK dedup (reference berbeda meski isi sama) — dibuktikan empiris via
+  `console.log`+curl, difix jadi argumen string gabungan. Fase B menemukan+MENGHINDARI deviasi
+  kritis dari draft: draft menyertakan `robots.txt`/`sitemap.xml` di exclude list middleware,
+  tapi kedua path itu (dibangun di sesi paralel lain) justru BERGANTUNG pada middleware rewrite
+  untuk custom domain — kalau dieksekusi literal akan meregresi fix production yang sudah
+  berjalan. Matcher final sengaja TIDAK menyertakan kedua path itu. Regresi sweep penuh
+  (favicon/icon/manifest, robots.txt/sitemap.xml custom domain, halaman biasa custom domain,
+  auth guard `/app/*`+`/platform/*`, isolasi cross-tenant, carve-out `/admin/*`) — SEMUA lulus,
+  via test server lokal dengan custom domain palsu sementara (dibersihkan setelah). `tsc`+build
+  bersih di setiap fase. **§ 6 (cek Fail2ban VPS) TETAP tugas manual user, belum dijalankan** —
+  hasilnya menentukan apakah Fase D + § 8 (keduanya sengaja ditunda) perlu dikerjakan. Belum
+  di-commit/push (menunggu instruksi user, mengikuti pola sesi-sesi sebelumnya).
+- Sesi sebelumnya: **Commit + Push + Deploy VPS + Verifikasi Production** (lihat lesson
   `[2026-07-28]` "Commit + Push + Deploy VPS + Verifikasi Production" di atas) — user minta
   commit+push seluruh pekerjaan sesi ini (WordPress Import/Export+Permalink+Post Authors+SEO
   Sitemap+robots.txt fix+Sitemap URL card). 2 commit: `be56cdb` (fitur admin invoice yang
@@ -15827,7 +15986,7 @@ Dibuat helper sentral `syncAutoTenantMemberships(runner, memberId, primaryCabang
 
 **Hasil Implementasi**:
 - **Customer Autocomplete (`MemberNameAutocomplete`)**: Input nama customer di halaman `/finance/billing/invoice/new` kini terintegrasi dengan pencarian data Anggota. Saat anggota dipilih, `customerName`, `customerPhone`, `customerEmail`, dan `memberId` terisi otomatis. Admin tetap dapat mengentri nama & kontak kustom jika bukan anggota.
-- **Item Tagihan Autocomplete (`CatalogItemAutocomplete`)**: Menambahkan server actions `searchBillingProductsAction` & `searchBillingPaidTicketsAction`. Admin dapat memilih item dari Produk Toko aktif (`tenant.products`) atau Tiket Event Berbayar (`tenant.event_tickets`) ➔ nama, harga, dan `itemId` terisi otomatis.
+- **Item Tagihan Autocomplete (`CatalogItemAutocomplete`)**: Menambahkan server actions `searchBillingProductsAction`, `searchBillingPaidTicketsAction`, & `searchBillingCampaignsAction`. Admin dapat memilih item dari Produk Toko aktif (`tenant.products`), Tiket Event Berbayar (`tenant.event_tickets`), atau Campaign Donasi aktif (`tenant.campaigns`) ➔ nama, harga (atau rekomendasi nominal), dan `itemId` terisi otomatis.
 - **Kode Unik Otomatis**: Saat invoice diterbitkan (`createInvoiceAction`), jika setting `unique_code_enabled` bernilai true, kode unik Rp 100–999 acak di-generate via `generateUniqueCode(tenantDb)` dan disimpan ke `schema.invoices.uniqueCode`.
 - **Notifikasi WhatsApp**: Saat invoice berhasil diterbitkan dan `customerPhone` ada, sistem secara otomatis mengirimkan notifikasi WA (`invoice_created`) berisi rincian invoice, total tagihan (+ kode unik), tanggal jatuh tempo, dan tautan invoice publik (`waAppUrl`).
 

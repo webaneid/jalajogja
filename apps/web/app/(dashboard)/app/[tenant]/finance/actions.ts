@@ -226,7 +226,10 @@ export async function confirmPaymentAction(
     }
 
     const amount = parseFloat(String(payment.amount));
-    const userId = access.userId;
+    // WAJIB access.tenantUser.id (UUID) — bukan access.userId (nanoid Better Auth). Kolom
+    // confirmedBy/createdBy di tabel finance bertipe uuid, lihat lesson CLAUDE.md
+    // "[2025-05] UUID vs nanoid — Bug Kritis di Finance Actions".
+    const userId = access.tenantUser.id;
 
     // Buat journal entry otomatis
     const txNumber = await generateFinancialNumber(tenantDb, "journal");
@@ -658,7 +661,7 @@ export async function createDisbursementAction(
         recipientAccount: data.recipientAccount?.trim() ?? null,
         note:             data.note?.trim() ?? null,
         status:           "draft",
-        requestedBy:      access.userId,
+        requestedBy:      access.tenantUser.id, // UUID, bukan nanoid — lihat lesson CLAUDE.md
       })
       .returning({ id: schema.disbursements.id });
 
@@ -694,7 +697,7 @@ export async function approveDisbursementAction(
     .update(schema.disbursements)
     .set({
       status:     "approved",
-      approvedBy: access.userId,
+      approvedBy: access.tenantUser.id, // UUID, bukan nanoid — lihat lesson CLAUDE.md
       approvedAt: new Date(),
       updatedAt:  new Date(),
     })
@@ -745,7 +748,7 @@ export async function markDisbursementPaidAction(
       date:            new Date().toISOString().slice(0, 10),
       description:     `Pengeluaran ${dis.number} — ${dis.recipientName}`,
       referenceNumber: txNumber,
-      createdBy:       access.userId,
+      createdBy:       access.tenantUser.id, // UUID, bukan nanoid — lihat lesson CLAUDE.md
       amount,
       expenseAccountId,
       cashAccountId,
@@ -844,7 +847,7 @@ export async function createJournalAction(
       date:            data.date,
       description:     data.description.trim(),
       referenceNumber: number,
-      createdBy:       access.userId,
+      createdBy:       access.tenantUser.id, // UUID, bukan nanoid — lihat lesson CLAUDE.md
       entries:         data.entries.map(e => ({
         accountId: e.accountId,
         type:      e.type,
