@@ -1,5 +1,5 @@
 import { notFound }   from "next/navigation";
-import { eq, and, or, inArray, ilike, count } from "drizzle-orm";
+import { eq, and, or, inArray, ilike, count, sql } from "drizzle-orm";
 import {
   db, members, tenants, tenantMemberships,
   memberProfessionals, addresses, refProvinces, refRegencies,
@@ -23,6 +23,7 @@ const PAGE_SIZE = 24;
 type Params       = Promise<{ tenant: string }>;
 type SearchParams = Promise<{
   q?: string; provinsi?: string; kategori?: string; jenis?: string; page?: string;
+  tag?: string; arah?: string;
 }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
@@ -49,7 +50,7 @@ export default async function ProfesionalDirectoryPage({
   searchParams: SearchParams;
 }) {
   const { tenant: slug } = await params;
-  const { q, provinsi, kategori, jenis, page: pageParam } = await searchParams;
+  const { q, provinsi, kategori, jenis, page: pageParam, tag, arah } = await searchParams;
 
   const currentPage = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
   const offset      = (currentPage - 1) * PAGE_SIZE;
@@ -96,6 +97,7 @@ export default async function ProfesionalDirectoryPage({
     ...(kategori   ? [eq(memberProfessionals.professionCategory, kategori as ProfessionCategory)] : []),
     ...(jenis      ? [eq(memberProfessionals.professionType, jenis)]                              : []),
     ...(provinsiId ? [eq(addresses.provinceId, provinsiId)]                                        : []),
+    ...(tag ? [sql`${arah === "membutuhkan" ? memberProfessionals.neededTags : memberProfessionals.offeredTags} @> ${JSON.stringify([tag])}::jsonb`] : []),
   ];
 
   const [rows, countRows] = await Promise.all([
@@ -149,17 +151,19 @@ export default async function ProfesionalDirectoryPage({
 
   function buildUrl(overrides: Record<string, string | undefined | number>) {
     const sp = new URLSearchParams();
-    const eff = { q, provinsi, kategori, jenis, page: String(currentPage), ...overrides };
+    const eff = { q, provinsi, kategori, jenis, tag, arah, page: String(currentPage), ...overrides };
     if (eff.q)        sp.set("q",        String(eff.q));
     if (eff.provinsi) sp.set("provinsi", String(eff.provinsi));
     if (eff.kategori) sp.set("kategori", String(eff.kategori));
     if (eff.jenis)    sp.set("jenis",    String(eff.jenis));
+    if (eff.tag)       sp.set("tag",       String(eff.tag));
+    if (eff.tag && eff.arah) sp.set("arah", String(eff.arah));
     if (eff.page && eff.page !== "1") sp.set("page", String(eff.page));
     const qs = sp.toString();
     return `/${slug}/profesional${qs ? `?${qs}` : ""}`;
   }
 
-  const hasFilter = !!(q || provinsi || kategori || jenis);
+  const hasFilter = !!(q || provinsi || kategori || jenis || tag);
 
   return (
     <div className="py-10">
@@ -178,6 +182,8 @@ export default async function ProfesionalDirectoryPage({
           currentProvinsi={provinsi}
           currentKategori={kategori}
           currentJenis={jenis}
+          currentTag={tag}
+          currentArah={arah}
           currentPage={currentPage}
           hasFilter={hasFilter}
           provinsiList={provinsiList}

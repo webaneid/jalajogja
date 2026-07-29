@@ -13312,15 +13312,79 @@ sungguhan. Query production yang sama diserahkan ke user (tidak memblokir ekseku
 saat Edit string-matching di `edit/page.tsx` langsung ketahuan dan diperbaiki) + `bun run build
 --filter=@jalajogja/web` sukses genuine 46 detik (dev server dimatikan+`.next` dibersihkan
 +direstart) + **round-trip empiris** (insert baris test dengan `offered_tags`/`needed_tags`
-berisi array nyata → SELECT balik → hasil cocok persis → DELETE, dibersihkan). **Belum di-
-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser** (upload tag
-sungguhan lewat form self-service/admin belum pernah dicoba siapa pun) — keterbatasan
-environment sesi ini (tidak ada browser), konsisten dicatat di semua sesi implementasi
-sebelumnya. Fase 2 (filter pencarian lintas-direktori `/usaha`+`/profesional`+`/pesantren`,
-TANPA hub baru) adalah langkah berikutnya, belum dimulai.
+berisi array nyata → SELECT balik → hasil cocok persis → DELETE, dibersihkan). **Di-commit+push
+(`d307d9e`) dan berhasil di-deploy ke VPS** (migration `0053` dijalankan, build sukses, PM2
+restart bersih — dikonfirmasi via output terminal user, log noise pasca-deploy diverifikasi
+sebagai bot traffic pre-existing bukan regresi dari deploy ini). **Belum diverifikasi visual di
+browser** (upload tag sungguhan lewat form self-service/admin belum pernah dicoba siapa pun) —
+keterbatasan environment sesi ini (tidak ada browser).
+
+### [2026-07-29] Ekosistem Fase 2 Dieksekusi — Filter Lintas-Direktori + Cross-Link Widget
+
+> Detail lengkap: **`docs/arsitektur-ekosistem.md` § 6 Fase 2** (ditandai ✅ SELESAI).
+
+Lanjutan langsung Fase 1 (lesson di atas) — user minta lanjut ("ok berarti kita masuk ke fase 2
+atau bgmn?"), sesuai rencana yang sudah dikunci § 6: filter pencarian lintas-direktori TANPA hub
+baru, TANPA algoritma matching, murni menambah kapabilitas ke 3 halaman direktori publik yang
+sudah ada (`/usaha`, `/profesional`, `/pesantren`).
+
+**2 komponen baru shared**: `components/ekosistem/ecosystem-tag-filter.tsx`
+(`EcosystemTagFilter` — dropdown tag dari `ECOSYSTEM_TAG_SUGGESTIONS` + toggle arah
+"Menawarkan"/"Membutuhkan", pakai `<Combobox>` sesuai aturan UI project, meski 3 filter select
+lain di file yang sama masih pakai `<select>` polos — pelanggaran pre-existing yang SENGAJA
+tidak diperbaiki retroaktif, di luar scope tugas ini) dan
+`components/ekosistem/tag-cross-links.tsx` (`EcosystemTagCrossLinks` — generate link "opposite
+intent": entitas yang MENAWARKAN tag X mendapat link ke pencarian `?tag=X&arah=membutuhkan` di 2
+direktori LAIN, dan sebaliknya; murni navigasi/link-generation, TIDAK ada query cross-module
+langsung di halaman detail, TIDAK ada ranking — sesuai batasan eksplisit § 6 Fase 2).
+
+**Pola query filter, diverifikasi empiris SEBELUM dipakai produksi**:
+`sql`${column} @> ${JSON.stringify([tag])}::jsonb`` (Drizzle raw `sql` tag, dites via disposable
+POC — match/non-match/kolom-lain semua benar). **Ini BUKAN pelanggaran aturan lama "`inArray()`,
+jangan pernah `sql`ANY()`"`** — aturan itu untuk kolom array Postgres native dibanding daftar
+kemungkinan nilai; `@>` containment di sini untuk kolom JSONB array-of-string mengecek SATU
+elemen spesifik, operasi yang sama sekali berbeda secara semantik.
+
+**Param URL terstandar**: `tag` (nilai tag) + `arah` (`"menawarkan"|"membutuhkan"`, hanya
+di-serialize kalau `tag` terisi, default `"menawarkan"` — jadi mencari "siapa MENAWARKAN X" itu
+kondisi default). Ketiga list page (`page.tsx`), ketiga `*FiltersClient.tsx`, dan ketiga halaman
+detail (`[id]/page.tsx`) diperluas dengan pola IDENTIK — dikerjakan berurutan (Usaha dulu,
+verifikasi `tsc` clean, baru Profesional, verifikasi lagi, baru Pesantren) bukan ditumpuk ke
+akhir, supaya kalau ada mismatch tipe generic langsung ketahuan di modul yang sedang dikerjakan.
+
+**Verifikasi**: `tsc --noEmit` 0 error (dicek 2× — setelah Usaha, dan lagi setelah Profesional+
+Pesantren) + `bun run build --filter=@jalajogja/web` sukses genuine 44.9 detik (dev server
+dimatikan+`.next` dibersihkan+direstart) — keenam route (list+detail × 3 modul) terkonfirmasi
+terdaftar di build output. **Belum di-commit/push ke git, belum dijalankan/diverifikasi di VPS,
+belum diverifikasi visual di browser** (mengetik tag di dropdown, klik cross-link widget,
+konfirmasi hasil filter benar-benar menyaring data — belum pernah dicoba siapa pun) — user perlu
+coba langsung sebelum dianggap final.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Ekosistem Fase 1 Dieksekusi — `offeredTags`/`neededTags` Simetris di 3
+- Terakhir dikerjakan: **Ekosistem Fase 2 Dieksekusi — Filter Lintas-Direktori + Cross-Link
+  Widget** (lihat lesson `[2026-07-29]` "Ekosistem Fase 2 Dieksekusi" di atas) — lanjutan langsung
+  Fase 1 (sudah commit+push+deploy VPS, `d307d9e`), user minta lanjut ke Fase 2 sesuai rencana
+  yang sudah dikunci `docs/arsitektur-ekosistem.md` § 6: filter pencarian lintas-direktori TANPA
+  hub baru, TANPA algoritma matching, di 3 halaman direktori publik existing
+  (`/usaha`, `/profesional`, `/pesantren`). 2 komponen baru shared:
+  `components/ekosistem/ecosystem-tag-filter.tsx` (`EcosystemTagFilter`, dropdown tag +
+  toggle arah "Menawarkan"/"Membutuhkan", pakai `<Combobox>`) dan
+  `components/ekosistem/tag-cross-links.tsx` (`EcosystemTagCrossLinks`, widget "opposite intent"
+  link — MENAWARKAN tag X → link cari "membutuhkan" di 2 direktori lain, dan sebaliknya — murni
+  navigasi, bukan matching engine). Query filter pakai `sql`${col} @> ${JSON.stringify([tag])}
+  ::jsonb`` (Drizzle raw sql, JSONB containment — BEDA dari aturan lama "inArray, jangan sql`ANY()`"
+  yang berlaku untuk kolom array Postgres native, bukan JSONB array-of-string), diverifikasi
+  empiris via disposable POC sebelum dipakai produksi. Param URL terstandar `tag`+`arah`
+  (default `arah="menawarkan"`). Ketiga list page + ketiga `*FiltersClient.tsx` + ketiga halaman
+  detail diperluas dengan pola identik, dikerjakan berurutan per-modul dengan checkpoint `tsc`
+  di antaranya (Usaha → Profesional → Pesantren). `tsc --noEmit` 0 error (2 checkpoint) + `bun
+  run build --filter=@jalajogja/web` sukses genuine 44.9 detik (dev server dimatikan+`.next`
+  dibersihkan+direstart) — keenam route (list+detail × 3 modul) terkonfirmasi di build output.
+  **Belum di-commit/push ke git, belum dijalankan/diverifikasi di VPS, belum diverifikasi visual
+  di browser** (dropdown tag, klik cross-link, konfirmasi filter benar-benar menyaring — belum
+  pernah dicoba) — user perlu coba langsung. Fase 3 (Trust Badge sederhana, hanya jika Fase 1-2
+  menunjukkan adopsi organik) belum dimulai, menunggu sinyal user.
+- Sesi sebelumnya: **Ekosistem Fase 1 Dieksekusi — `offeredTags`/`neededTags` Simetris di 3
   Modul** (lihat lesson `[2026-07-29]` "Ekosistem Fase 1 Dieksekusi" di atas) — lanjutan langsung
   dari kritik draft (entri di bawah), user bawa masukan lanjutan (agen lain) menjawab 2
   pertanyaan terbuka: Fase 0 jalankan dulu (cepat), penamaan field seragamkan
@@ -13337,9 +13401,10 @@ TANPA hub baru) adalah langkah berikutnya, belum dimulai.
   `members/[id]/edit/page.tsx` yang HANYA konstruksi Usaha, bukan Pesantren) + 3 API route + 2
   server action. Fase 0 dijalankan LOKAL (bukan production, dicatat jujur sebagai proxy): 12
   entri Usaha aktif, 83,3% sudah terisi `businessFields`. `tsc`+build genuine bersih + round-trip
-  empiris (insert-select-delete baris test JSONB nyata). **Belum di-commit/push, belum
-  dijalankan di VPS, belum diverifikasi visual di browser** — upload tag sungguhan lewat form
-  belum pernah dicoba. Fase 2 (filter pencarian lintas-direktori, tanpa hub baru) belum dimulai.
+  empiris (insert-select-delete baris test JSONB nyata). **Di-commit+push (`d307d9e`) dan
+  berhasil di-deploy ke VPS** (migration jalan, build+PM2 restart sukses, dikonfirmasi output
+  terminal user). Belum diverifikasi visual di browser — upload tag sungguhan lewat form belum
+  pernah dicoba.
 - Sesi sebelumnya: **Kritik + Tulis Ulang Arsitektur Ekosistem** (lihat lesson
   `[2026-07-29]` "Arsitektur Ekosistem — Draft Agen Lain Dikritisi Total" di atas) — user minta
   saya kritis terhadap draft `docs/arsitektur-ekosistem.md` yang ditulis agen lain (matchmaking
@@ -16343,6 +16408,16 @@ Dibuat helper sentral `syncAutoTenantMemberships(runner, memberId, primaryCabang
 - **Item Tagihan Autocomplete (`CatalogItemAutocomplete`)**: Menambahkan server actions `searchBillingProductsAction`, `searchBillingPaidTicketsAction`, & `searchBillingCampaignsAction`. Admin dapat memilih item dari Produk Toko aktif (`tenant.products`), Tiket Event Berbayar (`tenant.event_tickets`), atau Campaign Donasi aktif (`tenant.campaigns`) ➔ nama, harga (atau rekomendasi nominal), dan `itemId` terisi otomatis.
 - **Kode Unik Otomatis**: Saat invoice diterbitkan (`createInvoiceAction`), jika setting `unique_code_enabled` bernilai true, kode unik Rp 100–999 acak di-generate via `generateUniqueCode(tenantDb)` dan disimpan ke `schema.invoices.uniqueCode`.
 - **Notifikasi WhatsApp**: Saat invoice berhasil diterbitkan dan `customerPhone` ada, sistem secara otomatis mengirimkan notifikasi WA (`invoice_created`) berisi rincian invoice, total tagihan (+ kode unik), tanggal jatuh tempo, dan tautan invoice publik (`waAppUrl`).
+
+### [2026-07] UI Feature: Pembaruan Desain Header Pill Modern (Border Bottom & Centered Nav Menu)
+
+> **STATUS**: ✅ **IMPLEMENTASI SELESAI & DIVERIFIKASI — `bun x tsc --noEmit` 0 ERROR**.
+
+**Hasil Implementasi**:
+- **Border Bottom Tipis**: Menambahkan garis pembatas bawah `border-b border-border/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)]` pada komponen `<header>` di `apps/web/components/website/public/layout/headers/pill-header.tsx`.
+- **Nav Menu Center Alignment**: Memperbarui struktur layout menjadi 3 kolom grid (`grid grid-cols-2 md:grid-cols-3 items-center h-16 gap-4`) sehingga kontainer kapsul navigasi (`bg-muted/60 rounded-full p-1 mx-auto`) secara matematis tepat berada di posisi tengah antara Logo (kiri) dan Action Buttons (kanan).
+- **Dokumentasi Terbarui**: [`docs/arsitektur-header-footer-publik.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-header-footer-publik.md) Section Desain 3 Pill Header ter-update.
+
 
 
 

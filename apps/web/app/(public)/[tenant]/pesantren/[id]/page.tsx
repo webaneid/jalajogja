@@ -16,6 +16,7 @@ import { displayPhone, toWaDigits } from "@/lib/phone";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { SocialLinks } from "@/components/ui/social-links";
+import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
@@ -79,6 +80,8 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
       contactId:       memberOwnedPesantren.contactId,
       socialMediaId:   memberOwnedPesantren.socialMediaId,
       memberId:        memberOwnedPesantren.memberId,
+      offeredTags:     memberOwnedPesantren.offeredTags,
+      neededTags:      memberOwnedPesantren.neededTags,
       ownerName:       members.name,
       ownerPhoto:      members.photoUrl,
     })
@@ -240,7 +243,34 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
             <InfoRow label="Kategori Santri"  value={row.kategoriSantri} />
             <InfoRow label="Lokasi"           value={[regencyName, provinceName].filter(Boolean).join(", ")} />
           </dl>
+          {(row.offeredTags.length > 0 || row.neededTags.length > 0) && (
+            <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
+              {row.offeredTags.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Menawarkan:</span>
+                  {row.offeredTags.map(t => (
+                    <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">{t}</span>
+                  ))}
+                </div>
+              )}
+              {row.neededTags.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Membutuhkan:</span>
+                  {row.neededTags.map(t => (
+                    <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{t}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
+
+        <EcosystemTagCrossLinks
+          slug={slug}
+          currentModule="pesantren"
+          offeredTags={row.offeredTags}
+          neededTags={row.neededTags}
+        />
 
         {/* Kontak */}
         {(phone || whatsapp || email) && (

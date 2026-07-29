@@ -1,5 +1,5 @@
 import { notFound }   from "next/navigation";
-import { eq, and, inArray, ilike, count } from "drizzle-orm";
+import { eq, and, inArray, ilike, count, sql } from "drizzle-orm";
 import {
   db, members, tenants, tenantMemberships,
   memberOwnedPesantren, addresses, refProvinces, refRegencies,
@@ -23,6 +23,7 @@ type Params       = Promise<{ tenant: string }>;
 type SearchParams  = Promise<{
   q?: string; provinsi?: string; kurikulum?: string;
   model?: string; kategori?: string; page?: string;
+  tag?: string; arah?: string;
 }>;
 
 const KURIKULUM_OPTIONS = ["KMI Gontor", "DIKNAS", "KEMENAG", "Salafiah", "Lainnya"] as const;
@@ -57,7 +58,7 @@ export default async function PesantrenDirectoryPage({
   searchParams: SearchParams;
 }) {
   const { tenant: slug } = await params;
-  const { q, provinsi, kurikulum, model, kategori, page: pageParam } = await searchParams;
+  const { q, provinsi, kurikulum, model, kategori, page: pageParam, tag, arah } = await searchParams;
 
   const currentPage = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
   const offset      = (currentPage - 1) * PAGE_SIZE;
@@ -86,6 +87,7 @@ export default async function PesantrenDirectoryPage({
     ...(model     ? [eq(memberOwnedPesantren.modelPendidikan, model as typeof MODEL_OPTIONS[number])] : []),
     ...(kategori  ? [eq(memberOwnedPesantren.kategoriSantri, kategori as typeof KATEGORI_OPTIONS[number])] : []),
     ...(provinsiId ? [eq(addresses.provinceId, provinsiId)] : []),
+    ...(tag ? [sql`${arah === "membutuhkan" ? memberOwnedPesantren.neededTags : memberOwnedPesantren.offeredTags} @> ${JSON.stringify([tag])}::jsonb`] : []),
   ];
 
   const [rows, countRows] = await Promise.all([
@@ -140,18 +142,20 @@ export default async function PesantrenDirectoryPage({
 
   function buildUrl(overrides: Record<string, string | undefined | number>) {
     const sp = new URLSearchParams();
-    const eff = { q, provinsi, kurikulum, model, kategori, page: String(currentPage), ...overrides };
+    const eff = { q, provinsi, kurikulum, model, kategori, tag, arah, page: String(currentPage), ...overrides };
     if (eff.q)         sp.set("q",         String(eff.q));
     if (eff.provinsi)  sp.set("provinsi",  String(eff.provinsi));
     if (eff.kurikulum) sp.set("kurikulum", String(eff.kurikulum));
     if (eff.model)     sp.set("model",     String(eff.model));
     if (eff.kategori)  sp.set("kategori",  String(eff.kategori));
+    if (eff.tag)       sp.set("tag",       String(eff.tag));
+    if (eff.tag && eff.arah) sp.set("arah", String(eff.arah));
     if (eff.page && eff.page !== "1") sp.set("page", String(eff.page));
     const qs = sp.toString();
     return `/${slug}/pesantren${qs ? `?${qs}` : ""}`;
   }
 
-  const hasFilter = !!(q || provinsi || kurikulum || model || kategori);
+  const hasFilter = !!(q || provinsi || kurikulum || model || kategori || tag);
 
   return (
     <div className="py-10">
@@ -170,6 +174,8 @@ export default async function PesantrenDirectoryPage({
           currentProvinsi={provinsi}
           currentKurikulum={kurikulum}
           currentKategori={kategori}
+          currentTag={tag}
+          currentArah={arah}
           currentPage={currentPage}
           hasFilter={hasFilter}
           provinsiList={provinsiList}

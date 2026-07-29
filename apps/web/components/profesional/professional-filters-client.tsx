@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { PROFESSION_CATEGORIES } from "@/lib/professional-types";
+import { EcosystemTagFilter } from "@/components/ekosistem/ecosystem-tag-filter";
 
 type Props = {
   slug:             string;
@@ -9,6 +10,8 @@ type Props = {
   currentProvinsi?: string;
   currentKategori?: string;
   currentJenis?:    string;
+  currentTag?:      string;
+  currentArah?:     string;
   currentPage:      number;
   hasFilter:        boolean;
   provinsiList:     { id: number; name: string }[];
@@ -22,6 +25,8 @@ export function ProfessionalFiltersClient({
   currentProvinsi,
   currentKategori,
   currentJenis,
+  currentTag,
+  currentArah,
   currentPage,
   hasFilter,
   provinsiList,
@@ -34,6 +39,8 @@ export function ProfessionalFiltersClient({
       provinsi:  currentProvinsi,
       kategori:  currentKategori,
       jenis:     currentJenis,
+      tag:       currentTag,
+      arah:      currentArah,
       page:      String(currentPage),
       ...overrides,
     };
@@ -41,6 +48,8 @@ export function ProfessionalFiltersClient({
     if (eff.provinsi) sp.set("provinsi", String(eff.provinsi));
     if (eff.kategori) sp.set("kategori", String(eff.kategori));
     if (eff.jenis)    sp.set("jenis",    String(eff.jenis));
+    if (eff.tag)       sp.set("tag",       String(eff.tag));
+    if (eff.tag && eff.arah) sp.set("arah", String(eff.arah));
     if (eff.page && eff.page !== "1") sp.set("page", String(eff.page));
     const qs = sp.toString();
     return `/${slug}/profesional${qs ? `?${qs}` : ""}`;

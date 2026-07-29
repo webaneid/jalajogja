@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { EcosystemTagFilter } from "@/components/ekosistem/ecosystem-tag-filter";
 
 const SEKTOR_OPTIONS = [
   "Teknologi", "Jasa Profesional", "Kreatif", "Manufaktur",
@@ -20,6 +21,8 @@ type Props = {
   currentSektor?:   string;
   currentKategori?: string;
   currentLegalitas?: string;
+  currentTag?:      string;
+  currentArah?:     string;
   currentPage:      number;
   hasFilter:        boolean;
   provinsiList:     { id: number; name: string }[];
@@ -32,6 +35,8 @@ export function UsahaFiltersClient({
   currentSektor,
   currentKategori,
   currentLegalitas,
+  currentTag,
+  currentArah,
   currentPage,
   hasFilter,
   provinsiList,
@@ -44,6 +49,8 @@ export function UsahaFiltersClient({
       sektor:    currentSektor,
       kategori:  currentKategori,
       legalitas: currentLegalitas,
+      tag:       currentTag,
+      arah:      currentArah,
       page:      String(currentPage),
       ...overrides,
     };
@@ -52,6 +59,8 @@ export function UsahaFiltersClient({
     if (eff.sektor)    sp.set("sektor",    String(eff.sektor));
     if (eff.kategori)  sp.set("kategori",  String(eff.kategori));
     if (eff.legalitas) sp.set("legalitas", String(eff.legalitas));
+    if (eff.tag)       sp.set("tag",       String(eff.tag));
+    if (eff.tag && eff.arah) sp.set("arah", String(eff.arah));
     if (eff.page && eff.page !== "1") sp.set("page", String(eff.page));
     const qs = sp.toString();
     return `/${slug}/usaha${qs ? `?${qs}` : ""}`;
@@ -120,6 +129,12 @@ export function UsahaFiltersClient({
           </Link>
         )}
       </div>
+
+      <EcosystemTagFilter
+        currentTag={currentTag}
+        currentArah={currentArah}
+        onApply={(tag, arah) => { window.location.href = buildUrl({ tag, arah, page: "1" }); }}
+      />
     </div>
   );
 }

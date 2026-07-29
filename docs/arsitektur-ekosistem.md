@@ -1,6 +1,6 @@
 # Arsitektur Ekosistem Sinergi Anggota — Interkoneksi Usaha, Profesional & Pesantren
 
-> **Status: 🔴 DRAFT AWAL DIKRITISI TOTAL (2026-07-29) — Rencana Eksekusi Ditulis Ulang, Bertahap, Berbasis Fondasi Nyata**
+> **Status: Fase 0-2 SELESAI (2026-07-29, belum di-commit/deploy) — Rencana Eksekusi Ditulis Ulang, Bertahap, Berbasis Fondasi Nyata**
 > Dokumen versi sebelumnya (ditulis agen lain, tanggal yang sama) mengusulkan pembangunan Trust
 > Engine + RFQ Subsystem + Structured JSONB + Taxonomy Dictionary + Hub `/ekosistem` + Insight
 > Widgets sekaligus sebagai "Fase 1". Setelah verifikasi LANGSUNG ke kode aktual (bukan asumsi),
@@ -311,7 +311,7 @@ tambahan (`members/[id]/page.tsx`+`member-data-sections.tsx` untuk tampilan deta
 +direstart). **Belum di-commit/push, belum dijalankan di VPS.** Fase 2 (filter pencarian
 lintas-direktori) belum dimulai.
 
-### Fase 2 — Pencarian Lintas-Direktori (TANPA hub baru, TANPA algoritma matching)
+### Fase 2 — Pencarian Lintas-Direktori (TANPA hub baru, TANPA algoritma matching) — ✅ SELESAI (2026-07-29)
 Tujuan: mewujudkan skenario konkret user (§ 5 poin 1-2) dengan build SEKECIL mungkin.
 
 - Tambah filter "Cari berdasarkan yang ditawarkan/dibutuhkan" di 3 halaman direktori PUBLIK
@@ -325,6 +325,36 @@ Tujuan: mewujudkan skenario konkret user (§ 5 poin 1-2) dengan build SEKECIL mu
   matching API — semua di dalam infrastruktur direktori yang SUDAH ADA.
 - Ini fase yang paling murah untuk memberikan nilai nyata dan bisa dieksekusi SEGERA begitu
   Fase 1 selesai, tanpa menunggu keputusan besar (Trust Engine, RFQ, privacy layer baru).
+
+**Eksekusi selesai**: 2 komponen baru shared — `components/ekosistem/ecosystem-tag-filter.tsx`
+(`EcosystemTagFilter`, dipakai di ketiga `*FiltersClient.tsx`: dropdown tag dari
+`ECOSYSTEM_TAG_SUGGESTIONS` + toggle arah "Menawarkan"/"Membutuhkan", pakai `<Combobox>` sesuai
+standar UI project — meski 3 filter select lain di file yang sama sudah lama pakai `<select>`
+polos, pelanggaran pre-existing yang TIDAK diperbaiki retroaktif, di luar scope) dan
+`components/ekosistem/tag-cross-links.tsx` (`EcosystemTagCrossLinks`, dipasang di ketiga halaman
+detail — generate link "opposite intent": kalau entitas MENAWARKAN tag X, link ke pencarian
+`?tag=X&arah=membutuhkan` di 2 direktori LAIN; kalau MEMBUTUHKAN tag X, link ke pencarian
+`?tag=X&arah=menawarkan`; murni navigasi/generate-link, TIDAK ada query cross-module langsung di
+halaman detail, TIDAK ada ranking).
+
+Query filter pakai `sql`${column} @> ${JSON.stringify([tag])}::jsonb`` (Drizzle raw `sql` tag) —
+diverifikasi empiris via disposable POC SEBELUM dipakai di kode produksi (match/non-match/
+kolom-lain semua benar). **Ini operasi BERBEDA dari aturan lama "`inArray()`, jangan pernah
+`sql`ANY()`"`** — aturan lama itu untuk kolom array Postgres native dibanding daftar kemungkinan
+nilai; `@>` containment di sini untuk kolom JSONB array-of-string mengecek SATU elemen spesifik
+di dalamnya, operasi yang sama sekali berbeda secara semantik dan sintaks.
+
+Param URL: `tag` (nilai tag) + `arah` (`"menawarkan"|"membutuhkan"`, hanya di-serialize kalau
+`tag` terisi, default `"menawarkan"`). Query condition: `arah==="membutuhkan"` cari di kolom
+`neededTags`, selain itu (default) cari di `offeredTags` — jadi mencari "siapa MENAWARKAN X" itu
+kondisi DEFAULT-nya. Ketiga list page (`usaha/page.tsx`, `profesional/page.tsx`,
+`pesantren/page.tsx`) dan ketiga `*FiltersClient.tsx` dan ketiga halaman detail
+(`[id]/page.tsx`) semuanya mengikuti pola identik — verifikasi `tsc --noEmit` per-modul (bukan
+ditumpuk di akhir), 0 error di ketiganya, lalu `bun run build --filter=@jalajogja/web` genuine
+(dev server dimatikan, `.next` dibersihkan, direstart setelah) mengonfirmasi ke-6 route (list+
+detail × 3 modul) terdaftar di build output. **Belum di-commit/push, belum dijalankan/
+diverifikasi di VPS, belum diverifikasi visual di browser** (mengetik tag di dropdown, klik
+cross-link, konfirmasi hasil filter benar-benar menyaring) — user perlu coba langsung.
 
 ### Fase 3 — Trust Badge Sederhana (HANYA jika Fase 1-2 menunjukkan adopsi organik)
 - Satu kolom boolean `verifiedByAdmin: boolean` (BUKAN 4-tier enum) per tabel, dengan UI admin

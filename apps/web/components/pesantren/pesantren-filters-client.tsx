@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { EcosystemTagFilter } from "@/components/ekosistem/ecosystem-tag-filter";
 
 const KURIKULUM_OPTIONS = ["KMI Gontor", "DIKNAS", "KEMENAG", "Salafiah", "Lainnya"] as const;
 const KATEGORI_OPTIONS  = ["Putra", "Putra dan Putri", "Putri"] as const;
@@ -11,6 +12,8 @@ type Props = {
   currentProvinsi?:  string;
   currentKurikulum?: string;
   currentKategori?:  string;
+  currentTag?:       string;
+  currentArah?:      string;
   currentPage:       number;
   hasFilter:         boolean;
   provinsiList:      { id: number; name: string }[];
@@ -22,6 +25,8 @@ export function PesantrenFiltersClient({
   currentProvinsi,
   currentKurikulum,
   currentKategori,
+  currentTag,
+  currentArah,
   currentPage,
   hasFilter,
   provinsiList,
@@ -33,6 +38,8 @@ export function PesantrenFiltersClient({
       provinsi:  currentProvinsi,
       kurikulum: currentKurikulum,
       kategori:  currentKategori,
+      tag:       currentTag,
+      arah:      currentArah,
       page:      String(currentPage),
       ...overrides,
     };
@@ -40,6 +47,8 @@ export function PesantrenFiltersClient({
     if (eff.provinsi)  sp.set("provinsi",  String(eff.provinsi));
     if (eff.kurikulum) sp.set("kurikulum", String(eff.kurikulum));
     if (eff.kategori)  sp.set("kategori",  String(eff.kategori));
+    if (eff.tag)       sp.set("tag",       String(eff.tag));
+    if (eff.tag && eff.arah) sp.set("arah", String(eff.arah));
     if (eff.page && eff.page !== "1") sp.set("page", String(eff.page));
     const qs = sp.toString();
     return `/${slug}/pesantren${qs ? `?${qs}` : ""}`;
@@ -98,6 +107,12 @@ export function PesantrenFiltersClient({
           </Link>
         )}
       </div>
+
+      <EcosystemTagFilter
+        currentTag={currentTag}
+        currentArah={currentArah}
+        onApply={(tag, arah) => { window.location.href = buildUrl({ tag, arah, page: "1" }); }}
+      />
     </div>
   );
 }

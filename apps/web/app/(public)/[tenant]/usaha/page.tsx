@@ -1,5 +1,5 @@
 import { notFound }   from "next/navigation";
-import { eq, and, inArray, ilike, count } from "drizzle-orm";
+import { eq, and, inArray, ilike, count, sql } from "drizzle-orm";
 import {
   db, members, tenants, tenantMemberships,
   memberBusinesses, addresses, refProvinces, refRegencies,
@@ -22,6 +22,7 @@ const PAGE_SIZE = 24;
 type Params      = Promise<{ tenant: string }>;
 type SearchParams  = Promise<{
   q?: string; provinsi?: string; sektor?: string; kategori?: string; legalitas?: string; page?: string;
+  tag?: string; arah?: string;
 }>;
 
 const SEKTOR_OPTIONS = [
@@ -59,7 +60,7 @@ export default async function UsahaDirectoryPage({
   searchParams: SearchParams;
 }) {
   const { tenant: slug } = await params;
-  const { q, provinsi, sektor, kategori, legalitas, page: pageParam } = await searchParams;
+  const { q, provinsi, sektor, kategori, legalitas, page: pageParam, tag, arah } = await searchParams;
 
   const currentPage = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
   const offset      = (currentPage - 1) * PAGE_SIZE;
@@ -88,6 +89,7 @@ export default async function UsahaDirectoryPage({
     ...(kategori   ? [eq(memberBusinesses.category, kategori as typeof KATEGORI_OPTIONS[number])]                : []),
     ...(legalitas  ? [eq(memberBusinesses.legality, legalitas as typeof LEGALITAS_OPTIONS[number])]              : []),
     ...(provinsiId ? [eq(addresses.provinceId, provinsiId)]                                                      : []),
+    ...(tag ? [sql`${arah === "membutuhkan" ? memberBusinesses.neededTags : memberBusinesses.offeredTags} @> ${JSON.stringify([tag])}::jsonb`] : []),
   ];
 
   const [rows, countRows] = await Promise.all([
@@ -143,18 +145,20 @@ export default async function UsahaDirectoryPage({
 
   function buildUrl(overrides: Record<string, string | undefined | number>) {
     const sp = new URLSearchParams();
-    const eff = { q, provinsi, sektor, kategori, legalitas, page: String(currentPage), ...overrides };
+    const eff = { q, provinsi, sektor, kategori, legalitas, tag, arah, page: String(currentPage), ...overrides };
     if (eff.q)         sp.set("q",         String(eff.q));
     if (eff.provinsi)  sp.set("provinsi",  String(eff.provinsi));
     if (eff.sektor)    sp.set("sektor",    String(eff.sektor));
     if (eff.kategori)  sp.set("kategori",  String(eff.kategori));
     if (eff.legalitas) sp.set("legalitas", String(eff.legalitas));
+    if (eff.tag)       sp.set("tag",       String(eff.tag));
+    if (eff.tag && eff.arah) sp.set("arah", String(eff.arah));
     if (eff.page && eff.page !== "1") sp.set("page", String(eff.page));
     const qs = sp.toString();
     return `/${slug}/usaha${qs ? `?${qs}` : ""}`;
   }
 
-  const hasFilter = !!(q || provinsi || sektor || kategori || legalitas);
+  const hasFilter = !!(q || provinsi || sektor || kategori || legalitas || tag);
 
   return (
     <div className="py-10">
@@ -174,6 +178,8 @@ export default async function UsahaDirectoryPage({
           currentSektor={sektor}
           currentKategori={kategori}
           currentLegalitas={legalitas}
+          currentTag={tag}
+          currentArah={arah}
           currentPage={currentPage}
           hasFilter={hasFilter}
           provinsiList={provinsiList}
