@@ -7,12 +7,15 @@ import type { CampaignsSectionData, CampaignsSectionDesignId } from "@/lib/campa
 import type { EventsSectionData, EventsSectionDesignId } from "@/lib/events-section-designs";
 import type { HeroSectionData, HeroSectionDesignId } from "@/lib/hero-section-designs";
 import type { ModulesSectionData, ModuleSectionDesignId } from "@/lib/module-strip-designs";
+import type { InstagramSectionData } from "@/lib/instagram-section-designs";
+import { resolveInstagramFeed } from "@/lib/instagram-feed.server";
 import { PostsSection } from "@/components/website/public/sections/posts/posts-section";
 import { ProductsSection } from "@/components/website/public/sections/products/products-section";
 import { CampaignsSection } from "@/components/website/public/sections/campaigns/campaigns-section";
 import { EventsSection } from "@/components/website/public/sections/events/events-section";
 import { HeroSection } from "@/components/website/public/sections/hero/hero-section";
 import { ModulesSection } from "@/components/website/public/sections/modules/modules-section";
+import { InstagramSection } from "@/components/website/public/sections/instagram/instagram-section";
 import { Gallery } from "@/components/gallery/gallery";
 import type { GallerySectionData } from "@/lib/gallery-section-designs";
 import { PublicButton } from "@/components/website/public/ui/public-button";
@@ -521,7 +524,7 @@ export async function LandingTemplate({ body, tenantSlug, tenantClient, baseUrl 
 
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
-function SectionRenderer({
+async function SectionRenderer({
   section, tenantSlug, tenantClient, contactSettings, baseUrl,
 }: {
   section:         SectionItem;
@@ -589,6 +592,17 @@ function SectionRenderer({
         baseUrl={baseUrl}
       />
     );
+    case "instagram_post": {
+      const resolved = await resolveInstagramFeed(tenantClient, tenantSlug, baseUrl, section.data as InstagramSectionData);
+      return (
+        <InstagramSection
+          data={section.data as InstagramSectionData}
+          resolvedItems={resolved.items}
+          resolvedAccountName={resolved.accountName}
+          resolvedAccountUrl={resolved.accountUrl}
+        />
+      );
+    }
     default:             return null;
   }
 }

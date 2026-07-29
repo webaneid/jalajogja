@@ -11,6 +11,7 @@ import { PostsDesign2 } from "./posts-design-2";
 import { PostsDesign3 } from "./posts-design-3";
 import { PostsDesign4 } from "./posts-design-4";
 import { PostsDesign5 } from "./posts-design-5";
+import { PostsDesign6 } from "./posts-design-6";
 
 type Props = {
   data:         PostsSectionData;
@@ -77,6 +78,7 @@ export async function PostsSection({ data, variant, tenantClient, tenantSlug, ba
     case "3": return <PostsDesign3 {...props} />;
     case "4": return <PostsDesign4 {...props} />;
     case "5": return <PostsDesign5 {...props} />;
+    case "6": return <PostsDesign6 {...props} />;
     default:  return <PostsDesign1 {...props} />;
   }
 }

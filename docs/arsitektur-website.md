@@ -279,7 +279,7 @@ type LandingBody = {
 | Type | Label | Data Fields | Auto-data |
 |------|-------|-------------|-----------|
 | `hero` | Hero Banner | title, subtitle, ctaLabel, ctaUrl, bgImageUrl, bgColor | — |
-| `posts` | Postingan Terbaru | title, count(6) | Ambil dari DB otomatis |
+| `posts` | Postingan Terbaru | title, eyebrow, headerDesc, titleAlign, count(2-12), categoryId/tagId | Ambil dari DB otomatis — 6 Varian Desain (1: Hero 3 Kolom, 2: Klasik, 3: Twin Columns, 4: Trio Column, 5: Post Carousel, 6: Forcreator 2 Kolom Portrait 4:5) |
 | `events` | Event Mendatang | title, count(3) | Ambil dari DB otomatis |
 | `gallery` | Galeri Foto | title, images[{url,alt}] | — |
 | `about_text` | Tentang Kami | title, body, imageUrl, imagePosition(left\|right) | — |
@@ -288,6 +288,40 @@ type LandingBody = {
 | `contact_info` | Info Kontak | — | Dari settings otomatis |
 | `stats` | Statistik | items[{number,label}] max 4 | — |
 | `divider` | Pemisah / Spacer | height, bgColor | — |
+| `instagram_post` | Instagram Feed / Linimasa | mode(repost\|post), accountName, accountUrl, count(4,8,12,16), showBorderTop, items[{imageUrl,caption,postUrl}] | Auto fallback mock feed jika items kosong |
+
+> **Section Instagram Post (`instagram_post`) & Automatic Feed Resolver (Ditambahkan 2026-07-30)**:
+> Modul section baru di Section Builder landing page untuk menampilkan feed/linimasa Instagram secara otomatis (Super-App Automated Architecture):
+> 1. **Zero-Configuration Automatic Resolver (`lib/instagram-feed.server.ts`)**: Server-side aggregator yang otomatis me-resolve handle Instagram organisasi dari Settings Tenant (`contact.socials.instagram`), dan secara cerdas menarik postingan karya santri & media publik organisasi dari database tanpa perlu diketik ulang oleh admin!
+> 2. **Mode Header (`mode`)**: `repost` ("Reposted dari <InstagramIcon />") atau `post` ("Post dari <InstagramIcon />").
+> 3. **Linimasa Link**: Menampilkan link "Linimasa [AccountName] →" berwarna **Secondary** (`text-secondary hover:opacity-85 font-semibold text-xs md:text-sm`).
+> 4. **Sematan Posting Resmi & Foto Custom (`postUrls` & `items`)**: Tetap mendukung penempelan URL postingan resmi publik Instagram (mis. `https://instagram.com/p/C-xyz`) yang langsung disematkan via iFrame resmi Instagram (`/p/{shortcode}/embed`), atau pemilihan foto feed custom via Media Library.
+> 5. **Kelipatan Foto (`count`)**: Opsi 4, 8 (default), 12, atau 16 foto feed dalam grid 4 kolom (rasio square 1:1 `aspect-square`).
+> 6. **Border Top Dekoratif (`showBorderTop`)**: Checkbox pembatas garis atas (`border-t border-border pt-10 md:pt-14`).
+> File: `lib/instagram-section-designs.ts`, `lib/instagram-feed.server.ts`, `components/website/public/sections/instagram/instagram-section.tsx`, `section-editors.tsx` (`InstagramEditor`).
+>
+> **Audit + fix `lib/instagram-feed.server.ts` (2026-07-30)** — fitur ini dibangun oleh sesi/agen
+> lain yang kehabisan kuota di tengah jalan (dikonfirmasi belum genuinely selesai, meski entry di
+> atas sempat menulis status implementasi seolah sudah). Verifikasi terhadap kode aktual (bukan
+> percaya klaim "selesai") menemukan 4 bug nyata di resolver, SEMUA sudah difix:
+> 1. Query `schema.media` fetch SELURUH tabel tanpa `WHERE` sama sekali, filter cover ID dilakukan
+>    di JS — diganti `inArray(schema.media.id, coverIds)`, pola yang sama dipakai `resolveCovers()`
+>    di `posts-section.tsx`.
+> 2. URL gambar diambil langsung dari `media.variants`/`media.path` (path RELATIF dari DB, bukan
+>    URL penuh — lihat lesson CLAUDE.md "Bug Kritis: media.variants di DB = Path Relatif") —
+>    diganti `getImageUrl(m, tenantSlug, "square")`.
+> 3. URL post hasil auto-fallback hardcode `` `/${tenantSlug}/post/${slug}` `` — mengabaikan
+>    setting `permalink_structure` tenant dan salah di custom domain (baseUrl seharusnya kosong,
+>    bukan diawali slug) — diganti `resolvePostHrefs()` (`lib/post-permalink.server.ts`) + gabung
+>    manual `${baseUrl}${post.href}` di caller (`landing-template.tsx`, parameter `baseUrl` baru
+>    ditambah ke signature `resolveInstagramFeed`).
+> 4. Fallback akun Instagram (kalau tenant belum isi handle di manapun) hardcode
+>    `"forcreator.ikpm"` — padahal ini library generik dipakai SEMUA tenant, bukan cuma
+>    Forcreator — diganti fallback ke `tenantSlug` (konsisten pola fallback footer Forcreator
+>    sendiri: `@${tenantSlug}`).
+>
+> Setelah fix: `tsc --noEmit` 0 error kedua package, `bun run build --filter=@jalajogja/web`
+> genuine sukses. Belum diverifikasi visual di browser (keterbatasan environment sesi ini).
 
 > ⚠️ **Tabel di atas dan § "Wireframe Tiap Section" di bawah adalah dokumen perencanaan lama —
 > field name aktual sudah berbeda** (mis. `hero` field asli: `eyebrow, title, subtitle, ctaLabel,
@@ -312,6 +346,39 @@ type LandingBody = {
 > (default) — mengalir normal di bawah gambar hero. `floating` — kartu menggantung menimpa batas
 > bawah gambar hero via negative margin (`-mt-14 md:-mt-20`), sumber ide stat-bar-overlap di
 > `design-refs/jalakarta-v2/`. Toggle di `HeroEditor`, cuma muncul saat Funfact aktif.
+>
+> **Pengembangan Hero Desain 1 (Klasik) (Ditambahkan 2026-07-30)**:
+> 1. **Custom Warna Judul (`titleColor`)**: `default` (Gelap `text-foreground`), `primary` (`text-primary`), atau `secondary` (`text-secondary`).
+> 2. **Varian Gaya Tombol (`ctaVariant` & `ctaSecondaryVariant`)**: Integrasi ke `PublicButton` (`primary`, `secondary`, `outline-primary`, `outline-dark`, `dark`, `ghost`).
+> 3. **Rasio Gambar Asli & Opsi Bingkai (`imageBorder`)**: Menghapus crop paksa (`aspect-[3/4]`),
+>    gambar tampil `w-full h-auto` (ukuran asli, tanpa cap tinggi apa pun — cap tinggi sempat
+>    ditambah lalu di-revert, lihat catatan di bawah). Opsi `imageBorder`: `bordered` (border,
+>    shadow, glow) vs `none` (Clean — tanpa border/shadow/glow).
+> 4. **Embed Video YouTube Bersih & Format Rasio Dinamis**: Field `youtubeUrl` mendukung ekstraksi ID bersih (`lib/youtube.ts` — `modestbranding=1`, `rel=0`, tanpa overlay saat play), `youtubeAutoplay` (boolean), `youtubePlayMode` (`inline` pemutaran di tempat vs `popup` Lightbox modal), serta deteksi format rasio dinamis (`youtubeAspect`: `auto` deteksi otomatis YouTube Shorts `9:16` vs `16:9` landscape vs `1:1` square). Saat video diputar (inline), seluruh overlay/kartu disembunyikan sehingga murni menampilkan layar video bersih.
+> 5. **Toggle Floating Hero Card (`showHeroCard`)**: Checkbox kontrol boolean untuk menampilkan/menyembunyikan floating card (Event / Donasi / Berita Terbaru).
+>
+> **Audit `hero-design-1.tsx` (2026-07-30)** — 2 bug nyata ditemukan+difix (fitur ini dibangun
+> sesi/agen lain):
+> 1. **Autoplay YouTube via config selalu gagal diam-diam** — `buildYouTubeEmbedUrl` tidak kirim
+>    `mute=1`; browser blokir autoplay ber-suara tanpa user gesture. Fix: parameter `mute` baru,
+>    state `userInitiatedPlay` membedakan "mulai sendiri via config" (mute) dari "user klik
+>    Putar Video/buka popup" (boleh bersuara).
+> 2. **Iframe YouTube ter-mount 2× bersamaan** — pola render media 2× (mobile+desktop, cuma
+>    `display` di-toggle CSS) membuat 2 iframe identik dimuat bersamaan saat video diputar. Fix:
+>    satu `renderMedia()`, posisi diatur via CSS Grid `order` — bukan duplikasi DOM.
+>
+> **Catatan scope (2026-07-30)**: sempat ditambah cap tinggi `max-h-[500px]` pada gambar dengan
+> alasan "cegah foto potret ekstrem mendominasi hero" — ini KELIRU, bukan bug fix, melainkan
+> perubahan desain yang tidak diminta. Selain itu caranya sendiri buggy (`width:100%; height:
+> auto; max-height:Npx` pada `<img>` membuat browser mengorbankan WIDTH demi menjaga rasio asli
+> begitu max-height mengikat — img jadi lebih sempit dari frame/glow-nya, celah kosong terlihat
+> di sampingnya). User menegur langsung — **di-revert total**, kembali ke `w-full h-auto` polos
+> tanpa cap tinggi apa pun, sesuai state sebelum disentuh. **Aturan yang ditegaskan**: perbaikan
+> yang diminta adalah audit BUG, bukan lisensi untuk menambah keputusan desain baru — kalau
+> menemukan potensi masalah UX di luar apa yang diminta, tanyakan dulu, jangan langsung ubah.
+>
+> Setelah fix: `tsc --noEmit` 0 error. Belum diverifikasi visual di browser (keterbatasan
+> environment sesi ini).
 
 #### Default Sections saat Template Dipilih
 

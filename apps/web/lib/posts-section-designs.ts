@@ -19,7 +19,7 @@ export type PostsSectionData = {
   columns?:      PostColumnConfig[];
 };
 
-export const POSTS_SECTION_DESIGN_IDS = ["1", "2", "3", "4", "5"] as const;
+export const POSTS_SECTION_DESIGN_IDS = ["1", "2", "3", "4", "5", "6"] as const;
 export type PostsSectionDesignId = typeof POSTS_SECTION_DESIGN_IDS[number];
 
 export type PostsSectionDesignMeta = {
@@ -37,6 +37,7 @@ export const POSTS_SECTION_DESIGNS: Record<PostsSectionDesignId, PostsSectionDes
   "3": { label: "Twin Columns",  description: "Dua kolom sejajar, judul dari nama kategori/tag.",    minCount: 4, type: "section" },
   "4": { label: "Trio Column",   description: "Tiga kolom, tiap kolom filter kategori/tag sendiri.", minCount: 3, type: "section", needsColumnData: true },
   "5": { label: "Post Carousel", description: "Sliding carousel overlay card, portrait 3:4.",        minCount: 3, type: "section" },
+  "6": { label: "Forcreator",    description: "Dua kolom ringkas di tengah dengan gambar rasio portrait 4:5 dan aksen diamond.", minCount: 2, type: "section" },
 };
 
 export type ColumnRenderData = {

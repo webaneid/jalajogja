@@ -1,14 +1,29 @@
 import { Heart, CalendarDays, FolderOpen, Users } from "lucide-react";
+import type { PublicButtonVariant } from "@/components/website/public/ui/public-button";
+
+export type HeroTitleColor = "default" | "primary" | "secondary";
+export type HeroYoutubePlayMode = "inline" | "popup";
+export type HeroYoutubeAspect = "auto" | "16:9" | "9:16" | "1:1";
+export type HeroImageBorder = "bordered" | "none";
 
 export type HeroSectionData = {
   eyebrow?:           string;
   title?:             string;
+  titleColor?:        HeroTitleColor;
   subtitle?:          string;
   ctaLabel?:          string;
   ctaUrl?:            string;
+  ctaVariant?:        PublicButtonVariant;
   ctaSecondaryLabel?: string;
   ctaSecondaryUrl?:   string;
+  ctaSecondaryVariant?: PublicButtonVariant;
   imageUrl?:          string;
+  imageBorder?:       HeroImageBorder;
+  youtubeUrl?:        string;
+  youtubeAutoplay?:   boolean;
+  youtubePlayMode?:   HeroYoutubePlayMode;
+  youtubeAspect?:     HeroYoutubeAspect;
+  showHeroCard?:      boolean; // default true
   // showModuleStrip berarti beda per desain: Desain 1 = tampilkan HERO_MODULES (strip kartu
   // modul, seperti sejak awal). Desain 2 = tampilkan Funfact (statistik live dari funfactItems).
   showModuleStrip?:   boolean;

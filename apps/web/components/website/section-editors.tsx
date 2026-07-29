@@ -18,7 +18,8 @@ import {
 import { PlusIcon, Trash2, ImageIcon, X } from "lucide-react";
 import type { SectionType } from "@/lib/page-templates";
 import { POSTS_SECTION_DESIGNS, POSTS_SECTION_DESIGN_IDS } from "@/lib/posts-section-designs";
-import { HERO_SECTION_DESIGNS, HERO_SECTION_DESIGN_IDS, FUNFACT_CATALOG, FUNFACT_IDS, FUNFACT_STYLE_IDS, FUNFACT_STYLE_LABELS } from "@/lib/hero-section-designs";
+import { HERO_SECTION_DESIGNS, HERO_SECTION_DESIGN_IDS, FUNFACT_CATALOG, FUNFACT_IDS, FUNFACT_STYLE_IDS, FUNFACT_STYLE_LABELS, type HeroTitleColor, type HeroYoutubePlayMode, type HeroYoutubeAspect, type HeroImageBorder } from "@/lib/hero-section-designs";
+import type { PublicButtonVariant } from "@/components/website/public/ui/public-button";
 import { CAMPAIGNS_SECTION_DESIGNS, CAMPAIGNS_SECTION_DESIGN_IDS } from "@/lib/campaigns-section-designs";
 import { EVENTS_SECTION_DESIGNS, EVENTS_SECTION_DESIGN_IDS } from "@/lib/events-section-designs";
 import { PRODUCTS_SECTION_DESIGNS, PRODUCTS_SECTION_DESIGN_IDS } from "@/lib/products-section-designs";
@@ -26,6 +27,7 @@ import {
   MODULE_CATALOG, MODULE_IDS, MODULE_SECTION_DESIGN_IDS, MODULE_SECTION_DESIGNS, MODULES_NO_AUTO_PHOTO,
   normalizeModuleItems, type ModuleId, type ModuleSectionDesignId,
 } from "@/lib/module-strip-designs";
+import { INSTAGRAM_SECTION_DESIGNS, INSTAGRAM_SECTION_DESIGN_IDS, type InstagramSectionData, type InstagramItem } from "@/lib/instagram-section-designs";
 import { MediaPicker } from "@/components/media/media-picker";
 import type { MediaItem } from "@/components/media/media-picker";
 import { GalleryPicker } from "@/components/gallery/gallery-picker";
@@ -89,10 +91,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function HeroEditor({ data, onChange, variant, onVariantChange, tenantSlug }: EditorProps) {
   const d = data as {
-    eyebrow?: string; title?: string; subtitle?: string;
-    ctaLabel?: string; ctaUrl?: string;
-    ctaSecondaryLabel?: string; ctaSecondaryUrl?: string;
-    imageUrl?: string; showModuleStrip?: boolean; funfactItems?: string[];
+    eyebrow?: string; title?: string; titleColor?: HeroTitleColor; subtitle?: string;
+    ctaLabel?: string; ctaUrl?: string; ctaVariant?: PublicButtonVariant;
+    ctaSecondaryLabel?: string; ctaSecondaryUrl?: string; ctaSecondaryVariant?: PublicButtonVariant;
+    imageUrl?: string; imageBorder?: HeroImageBorder; youtubeUrl?: string; youtubeAutoplay?: boolean;
+    youtubePlayMode?: HeroYoutubePlayMode; youtubeAspect?: HeroYoutubeAspect; showHeroCard?: boolean;
+    showModuleStrip?: boolean; funfactItems?: string[];
     funfactStyle?: typeof FUNFACT_STYLE_IDS[number];
   };
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
@@ -109,7 +113,8 @@ function HeroEditor({ data, onChange, variant, onVariantChange, tenantSlug }: Ed
   }
 
   function handleMediaSelect(media: MediaItem) {
-    const url = media.variants?.profile ?? media.variants?.large ?? media.url;
+    // Utamakan media.variants?.original agar mendapatkan file WebP ukuran & rasio ASLI (tanpa autocrop 16:9/1.91:1)
+    const url = media.variants?.original || media.url;
     u("imageUrl", url);
     setPickerOpen(false);
   }
@@ -119,28 +124,70 @@ function HeroEditor({ data, onChange, variant, onVariantChange, tenantSlug }: Ed
       <Field label="Label Kecil (eyebrow)">
         <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="Organisasi · 2026" />
       </Field>
-      <Field label="Judul Besar">
-        <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Judul utama" />
-      </Field>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="col-span-2">
+          <Field label="Judul Besar">
+            <Input value={d.title ?? ""} onChange={(e) => u("title", e.target.value)} placeholder="Judul utama" />
+          </Field>
+        </div>
+        <Field label="Warna Judul">
+          <Select value={d.titleColor ?? "default"} onValueChange={(v) => u("titleColor", v)}>
+            <SelectTrigger><SelectValue placeholder="Warna" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Gelap (Default)</SelectItem>
+              <SelectItem value="primary">Warna Utama</SelectItem>
+              <SelectItem value="secondary">Warna Secondary</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
       <Field label="Deskripsi">
         <Textarea value={d.subtitle ?? ""} onChange={(e) => u("subtitle", e.target.value)} placeholder="Paragraf deskripsi singkat..." rows={3} />
       </Field>
-      <Field label="Tombol Utama">
-        <div className="grid grid-cols-2 gap-2">
-          <Input value={d.ctaLabel ?? ""} onChange={(e) => u("ctaLabel", e.target.value)} placeholder="Teks tombol" />
-          <PublicLinkPicker slug={tenantSlug ?? ""} value={d.ctaUrl ?? ""} onChange={(url) => u("ctaUrl", url)} placeholder="Pilih halaman atau URL..." />
-        </div>
-      </Field>
-      <Field label="Tombol Kedua (opsional)">
-        <div className="grid grid-cols-2 gap-2">
-          <Input value={d.ctaSecondaryLabel ?? ""} onChange={(e) => u("ctaSecondaryLabel", e.target.value)} placeholder="Teks tombol" />
-          <PublicLinkPicker slug={tenantSlug ?? ""} value={d.ctaSecondaryUrl ?? ""} onChange={(url) => u("ctaSecondaryUrl", url)} placeholder="Pilih halaman atau URL..." />
-        </div>
-      </Field>
-      <Field label="Gambar (dari Media Library)">
+      <div className="space-y-2 p-2.5 border border-border rounded-lg bg-muted/20">
+        <Field label="Tombol Utama">
+          <div className="grid grid-cols-2 gap-2 mb-1.5">
+            <Input value={d.ctaLabel ?? ""} onChange={(e) => u("ctaLabel", e.target.value)} placeholder="Teks tombol" />
+            <PublicLinkPicker slug={tenantSlug ?? ""} value={d.ctaUrl ?? ""} onChange={(url) => u("ctaUrl", url)} placeholder="Pilih halaman..." />
+          </div>
+        </Field>
+        <Field label="Gaya Tombol Utama">
+          <Select value={d.ctaVariant ?? "primary"} onValueChange={(v) => u("ctaVariant", v)}>
+            <SelectTrigger><SelectValue placeholder="Pilih gaya" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="primary">Background Utama (Primary)</SelectItem>
+              <SelectItem value="secondary">Background Secondary</SelectItem>
+              <SelectItem value="outline-primary">Border Warna Utama</SelectItem>
+              <SelectItem value="outline-dark">Border Gelap</SelectItem>
+              <SelectItem value="dark">Background Gelap</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+      <div className="space-y-2 p-2.5 border border-border rounded-lg bg-muted/20">
+        <Field label="Tombol Kedua (opsional)">
+          <div className="grid grid-cols-2 gap-2 mb-1.5">
+            <Input value={d.ctaSecondaryLabel ?? ""} onChange={(e) => u("ctaSecondaryLabel", e.target.value)} placeholder="Teks tombol" />
+            <PublicLinkPicker slug={tenantSlug ?? ""} value={d.ctaSecondaryUrl ?? ""} onChange={(url) => u("ctaSecondaryUrl", url)} placeholder="Pilih halaman..." />
+          </div>
+        </Field>
+        <Field label="Gaya Tombol Kedua">
+          <Select value={d.ctaSecondaryVariant ?? "ghost"} onValueChange={(v) => u("ctaSecondaryVariant", v)}>
+            <SelectTrigger><SelectValue placeholder="Pilih gaya" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ghost">Ghost (Tanpa Border)</SelectItem>
+              <SelectItem value="primary">Background Utama (Primary)</SelectItem>
+              <SelectItem value="secondary">Background Secondary</SelectItem>
+              <SelectItem value="outline-primary">Border Warna Utama</SelectItem>
+              <SelectItem value="outline-dark">Border Gelap</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+      <Field label="Gambar Thumbnail (Original Size WebP)">
         {d.imageUrl ? (
           <div className="relative group">
-            <img src={d.imageUrl} alt="" className="w-full aspect-[3/4] object-cover rounded-lg border border-border" />
+            <img src={d.imageUrl} alt="" className="w-full h-auto max-h-48 object-contain rounded-lg border border-border bg-black/5" />
             <button
               onClick={() => u("imageUrl", "")}
               className="absolute top-1.5 right-1.5 bg-background/90 border border-border rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition-opacity"
@@ -169,6 +216,66 @@ function HeroEditor({ data, onChange, variant, onVariantChange, tenantSlug }: Ed
           />
         )}
       </Field>
+      {d.imageUrl && (
+        <Field label="Gaya Bingkai Gambar">
+          <Select value={d.imageBorder ?? "bordered"} onValueChange={(v) => u("imageBorder", v)}>
+            <SelectTrigger><SelectValue placeholder="Pilih bingkai" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="bordered">Ber-Border & Shadow (Biasa)</SelectItem>
+              <SelectItem value="none">Clean (Tanpa Border & Shadow)</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
+      <Field label="URL Video YouTube (opsional)">
+        <Input value={d.youtubeUrl ?? ""} onChange={(e) => u("youtubeUrl", e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+      </Field>
+      {d.youtubeUrl && (
+        <div className="space-y-2 p-2.5 rounded-lg border border-border bg-muted/30">
+          <div className="grid grid-cols-2 gap-2 items-center">
+            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                checked={d.youtubeAutoplay ?? false}
+                onChange={(e) => u("youtubeAutoplay", e.target.checked)}
+                className="w-4 h-4 accent-primary"
+              />
+              Autoplay Video
+            </label>
+            <Field label="Modus Pemutaran">
+              <Select value={d.youtubePlayMode ?? "inline"} onValueChange={(v) => u("youtubePlayMode", v)}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inline">Di Tempat (Inline)</SelectItem>
+                  <SelectItem value="popup">Pop-up Lightbox</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <Field label="Rasio / Format Video">
+            <Select value={d.youtubeAspect ?? "auto"} onValueChange={(v) => u("youtubeAspect", v)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Format Rasio" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Auto-Detect (Shorts vs Landscape)</SelectItem>
+                <SelectItem value="16:9">Landscape (16:9)</SelectItem>
+                <SelectItem value="9:16">Vertikal Shorts (9:16)</SelectItem>
+                <SelectItem value="1:1">Kotak (1:1)</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+        </div>
+      )}
+      <div className="pt-1">
+        <label className="flex items-center gap-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={d.showHeroCard !== false}
+            onChange={(e) => u("showHeroCard", e.target.checked)}
+            className="w-4 h-4 accent-primary"
+          />
+          <span className="text-xs font-medium">Tampilkan Kartu Melayang (Event / Donasi / Berita)</span>
+        </label>
+      </div>
       {activeVariant === "2" ? (
         <Field label="Funfact">
           <label className="flex items-center gap-2.5 cursor-pointer mb-2">
@@ -336,7 +443,7 @@ function PostsEditor({ data, onChange, variant, onVariantChange, tenantSlug }: E
         <Select value={String(d.count ?? 6)} onValueChange={(v) => u("count", Number(v))}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            {[3, 4, 6, 8, 9, 11, 12].map((n) => (
+            {[2, 3, 4, 6, 8, 9, 11, 12].map((n) => (
               <SelectItem key={n} value={String(n)}>{n} postingan</SelectItem>
             ))}
           </SelectContent>
@@ -1330,22 +1437,161 @@ function ModulesEditor({ data, onChange, variant, onVariantChange, tenantSlug }:
   );
 }
 
+// ── Instagram Editor ─────────────────────────────────────────────────────────
+
+function InstagramEditor({ data, onChange, tenantSlug }: EditorProps) {
+  const d = data as InstagramSectionData;
+  const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const items = d.items ?? [];
+
+  const handleMediaSelect = (media: MediaItem) => {
+    const url = media.variants?.original || media.url;
+    const newItem: InstagramItem = {
+      id: Math.random().toString(36).slice(2, 9),
+      imageUrl: url,
+      caption: media.title ?? "",
+      postUrl: d.accountUrl ?? "",
+    };
+    u("items", [...items, newItem]);
+    setPickerOpen(false);
+  };
+
+  const removeItem = (id: string) => {
+    u("items", items.filter((item) => item.id !== id));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Mode Tampilan Header">
+          <Select value={d.mode ?? "repost"} onValueChange={(v) => u("mode", v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="repost">Reposted dari (Default)</SelectItem>
+              <SelectItem value="post">Post dari</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Jumlah Post Tampil">
+          <Select value={String(d.count ?? 8)} onValueChange={(v) => u("count", Number(v))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {[4, 8, 12, 16].map((n) => (
+                <SelectItem key={n} value={String(n)}>{n} postingan</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Nama Akun (Linimasa)">
+          <Input
+            value={d.accountName ?? ""}
+            onChange={(e) => u("accountName", e.target.value)}
+            placeholder="Forcreator"
+          />
+        </Field>
+        <Field label="URL Akun Instagram">
+          <Input
+            value={d.accountUrl ?? ""}
+            onChange={(e) => u("accountUrl", e.target.value)}
+            placeholder="https://instagram.com/forcreator"
+          />
+        </Field>
+      </div>
+
+      <Field label="Border Top Dekoratif">
+        <label className="flex items-center gap-2.5 cursor-pointer text-xs font-medium">
+          <input
+            type="checkbox"
+            checked={d.showBorderTop ?? false}
+            onChange={(e) => u("showBorderTop", e.target.checked)}
+            className="w-4 h-4 accent-primary"
+          />
+          Tampilkan Garis Pembatas Atas (Border Top)
+        </label>
+      </Field>
+
+      <Field label="URL Postingan Resmi Instagram (1 URL per baris, opsional)">
+        <Textarea
+          rows={3}
+          value={(d.postUrls ?? []).join("\n")}
+          onChange={(e) => {
+            const urls = e.target.value.split("\n").map(s => s.trim()).filter(Boolean);
+            u("postUrls", urls);
+          }}
+          placeholder="https://www.instagram.com/p/C-xyz123/&#10;https://www.instagram.com/p/D-abc987/"
+          className="font-mono text-xs"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Tempelkan link postingan Instagram publik. Sistem akan menyematkan (embed) postingan resmi tersebut secara otomatis.
+        </p>
+      </Field>
+
+      {/* Foto-foto Instagram Custom */}
+      <Field label={`Foto Feed Instagram Custom (${items.length} dipilih)`}>
+        <div className="space-y-2">
+          {items.length > 0 && (
+            <div className="grid grid-cols-4 gap-2">
+              {items.map((item) => (
+                <div key={item.id} className="relative group aspect-square rounded-lg overflow-hidden border border-border">
+                  <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removeItem(item.id)}
+                    className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => tenantSlug && setPickerOpen(true)}
+            disabled={!tenantSlug}
+            className="w-full py-2 border-2 border-dashed border-border rounded-lg flex items-center justify-center gap-1.5 text-muted-foreground hover:border-primary hover:text-primary transition-colors text-xs disabled:opacity-50"
+          >
+            <PlusIcon className="w-4 h-4" /> Tambah Foto dari Media Library
+          </button>
+        </div>
+
+        {tenantSlug && (
+          <MediaPicker
+            slug={tenantSlug}
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            onSelect={handleMediaSelect}
+            module="website"
+            accept={["image/"]}
+          />
+        )}
+      </Field>
+    </div>
+  );
+}
+
 // ── Editor Map ────────────────────────────────────────────────────────────────
 
 const EDITOR_MAP: Record<SectionType, React.FC<EditorProps>> = {
-  hero:         HeroEditor,
-  posts:        PostsEditor,
-  products:     ProductsEditor,
-  events:       EventsEditor,
-  campaigns:    CampaignsEditor,
-  gallery:      GalleryEditor,
-  about_text:   AboutTextEditor,
-  features:     FeaturesEditor,
-  cta:          CtaEditor,
-  contact_info: ContactInfoEditor,
-  stats:        StatsEditor,
-  divider:      DividerEditor,
-  modules:      ModulesEditor,
+  hero:           HeroEditor,
+  posts:          PostsEditor,
+  products:       ProductsEditor,
+  events:         EventsEditor,
+  campaigns:      CampaignsEditor,
+  gallery:        GalleryEditor,
+  about_text:     AboutTextEditor,
+  features:       FeaturesEditor,
+  cta:            CtaEditor,
+  contact_info:   ContactInfoEditor,
+  stats:          StatsEditor,
+  divider:        DividerEditor,
+  modules:        ModulesEditor,
+  instagram_post: InstagramEditor,
 };
 
 // ── Public Export ─────────────────────────────────────────────────────────────

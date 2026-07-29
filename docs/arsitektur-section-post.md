@@ -101,7 +101,7 @@ export type PostsSectionData = {
 ```typescript
 // lib/posts-section-designs.ts
 
-export const POSTS_SECTION_DESIGN_IDS = ["1", "2", "3", "4", "5"] as const;
+export const POSTS_SECTION_DESIGN_IDS = ["1", "2", "3", "4", "5", "6"] as const;
 export type PostsSectionDesignId = typeof POSTS_SECTION_DESIGN_IDS[number];
 
 export type PostsSectionDesignMeta = {
@@ -119,6 +119,7 @@ export const POSTS_SECTION_DESIGNS: Record<PostsSectionDesignId, PostsSectionDes
   "3": { label: "Twin Columns",   description: "Dua kolom sejajar, judul dari nama kategori/tag.",    minCount: 4,  type: "section" },
   "4": { label: "Trio Column",    description: "Tiga kolom, tiap kolom filter kategori/tag sendiri.", minCount: 3,  type: "section", needsColumnData: true },
   "5": { label: "Post Carousel",  description: "Sliding carousel overlay card, portrait 3:4.",        minCount: 3,  type: "section" },
+  "6": { label: "Forcreator",     description: "Dua kolom ringkas di tengah dengan gambar rasio portrait 4:5, aksen diamond, dan link CTA warna secondary.", minCount: 2, type: "section" },
 };
 ```
 
@@ -813,12 +814,51 @@ export function PostsDesign5({ posts, tenantSlug, sectionTitle, filterHref }: Po
 
 ## Cara Menambah Design Baru
 
-1. Buat `posts-design-6.tsx` — implementasi layout + komposisi PostCard variant
-2. Tambah satu entry di `POSTS_SECTION_DESIGNS` di `lib/posts-section-designs.ts`
-3. Tambah `case "6"` di switch `PostsSection` wrapper
-4. Buat `<WireframeDesign6 />` di `posts-section-wireframes.tsx`
+Contoh berikut pakai "7" sebagai design berikutnya (Design 6 "Forcreator" sudah dibangun,
+lihat § "Status Implementasi" di atas):
 
-Tidak ada perubahan di `landing-template.tsx`, section editor, atau DB.
+1. Buat `posts-design-7.tsx` — implementasi layout + komposisi PostCard variant. **Wajib**:
+   container terluar `max-w-7xl mx-auto` (boleh nest wrapper lebih sempit di dalamnya untuk
+   konten yang memang ingin lebih ringkas — lihat Design 6 sebagai contoh), dan judul section
+   via `<PostsSectionTitle title={sectionTitle} eyebrow={data.eyebrow} description={data.headerDesc}
+   align={data.titleAlign ?? "left"} href={filterHref} />` — jangan hand-roll markup judul
+   sendiri, supaya kontrol "Posisi Judul" + "Lihat Semua" yang sudah ada di editor tetap
+   berfungsi untuk design baru ini juga.
+2. Tambah satu entry di `POSTS_SECTION_DESIGNS` di `lib/posts-section-designs.ts`
+   (`POSTS_SECTION_DESIGN_IDS` juga wajib di-update — ini yang membuat design baru otomatis
+   muncul di picker "Design Layout" `PostsEditor`, tidak perlu sentuh `section-editors.tsx`
+   sama sekali kalau design baru tidak butuh field config tambahan di luar yang generik).
+3. Tambah `case "7"` di switch `PostsSection` wrapper (`sections/posts/posts-section.tsx`)
+4. Wireframe editor TIDAK perlu disentuh — satu `PostsWireframe()` generik di
+   `components/website/section-wireframes.tsx` (`WIREFRAME_MAP.posts`) sudah otomatis berlaku
+   untuk semua design baru di section type `posts`.
+
+Tidak ada perubahan di `landing-template.tsx`, section editor (kecuali kalau design baru punya
+field config unik di luar title/count/category/tag generik), atau DB.
+
+### Catatan Audit Design 6 "Forcreator" (2026-07-30)
+
+Design ini dibangun oleh sesi/agen lain sebelum akhirnya diverifikasi — 2 penyimpangan dari
+konvensi ditemukan+difix saat verifikasi:
+
+1. **Container `max-w-4xl` langsung sebagai wrapper terluar** — melanggar aturan UI Standards
+   project ("Container width front-end publik: selalu `max-w-7xl mx-auto px-4`") dan berbeda dari
+   Design 1-5 yang semuanya pakai `max-w-7xl` sebagai boundary section. Fix: dibungkus wrapper
+   `max-w-7xl mx-auto` di luar, `max-w-4xl mx-auto` dipertahankan sebagai wrapper DALAM untuk
+   konten editorial 2-kolom yang memang ingin lebih ringkas dari lebar penuh — pola yang sama
+   dengan wrapper ganda (outer `max-w-7xl` + inner `max-w-3xl`/`4xl`) yang sudah dipakai section
+   About/CTA di `landing-template.tsx`.
+2. **Judul section hand-rolled, bukan `<PostsSectionTitle>`** — berbeda dari Design 2/3/5 yang
+   semuanya reuse komponen shared ini. Akibatnya kontrol "Posisi Judul" (`titleAlign`) dan filter
+   kategori/tag ("Lihat Semua", `filterHref`) yang SUDAH tampil di editor untuk Design 6 (karena
+   `PostsEditor` tidak tahu Design 6 hand-roll markup sendiri) sama sekali tidak berpengaruh ke
+   hasil render — admin bisa memilih "Tengah" atau kategori filter tanpa efek apa pun. Fix: ganti
+   ke `<PostsSectionTitle title={sectionTitle} eyebrow={data.eyebrow} description={data.headerDesc}
+   align={data.titleAlign ?? "center"} href={filterHref} />` — default align "center" (bukan
+   "left" generik) dipertahankan sesuai identitas visual desain ini ("Dua kolom ringkas di
+   tengah"), admin tetap bebas pilih "left" dari editor.
+
+Setelah fix: `tsc --noEmit` 0 error, `bun run build --filter=@jalajogja/web` genuine sukses.
 
 ---
 
@@ -847,9 +887,10 @@ Tidak ada perubahan di `landing-template.tsx`, section editor, atau DB.
 | `sections/posts/posts-design-5.tsx` | ✅ Selesai — auto-slide + pause on hover |
 | Update `post-card-overlay.tsx` → `className?` prop | ✅ Selesai |
 | `sections/posts/posts-design-4.tsx` | ✅ Selesai |
-| `posts-section-wireframes.tsx` | ⬜ Belum |
-| Refactor `landing-template.tsx` → pakai PostsSection | ⬜ Belum |
-| Update `section-editors.tsx` → tagId combobox | ⬜ Belum |
+| `sections/posts/posts-design-6.tsx` (Forcreator, 2 kolom portrait 4:5) | ✅ Selesai (2026-07-30, lihat catatan audit di bawah) |
+| Wireframe editor untuk section `posts` | ✅ Selesai — **KOREKSI**: bukan per-design (`<WireframeDesign6 />` seperti tertulis di § "Cara Menambah Design Baru" di bawah tidak pernah dibangun/dibutuhkan) — satu `PostsWireframe()` generik di `components/website/section-wireframes.tsx` (`WIREFRAME_MAP.posts`) dipakai untuk SEMUA 6 design sekaligus. |
+| Refactor `landing-template.tsx` → pakai PostsSection | ✅ Selesai — dispatcher `SectionRenderer` di `landing-template.tsx` memanggil `<PostsSection>` untuk section type `posts`, yang lalu switch ke Design 1-6 secara internal. |
+| Update `section-editors.tsx` → tagId combobox | ✅ Selesai — `PostsEditor` (baris ~387) punya toggle Kategori/Tag + `<Select>` combobox untuk keduanya, berlaku untuk semua design kecuali Hero (1) dan Trio (4, yang punya kategori per-kolom sendiri). |
 | `app/api/ref/post-categories/route.ts` | ✅ Selesai |
 
 ---

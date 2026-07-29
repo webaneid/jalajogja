@@ -229,22 +229,39 @@ function ModulesWireframe() {
   );
 }
 
+function InstagramWireframe() {
+  return (
+    <div className="w-full h-full bg-gray-100 rounded flex flex-col gap-1.5 p-2">
+      <div className="flex justify-between items-center mb-1">
+        <div className="w-1/3 h-2.5 bg-gray-500 rounded" />
+        <div className="w-1/4 h-2 bg-gray-400 rounded" />
+      </div>
+      <div className="grid grid-cols-4 gap-1.5 flex-1">
+        {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <div key={i} className="bg-gray-300 rounded aspect-square" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Map type → component ──────────────────────────────────────────────────────
 
 const WIREFRAME_MAP: Record<SectionType, React.FC> = {
-  hero:         HeroWireframe,
-  posts:        PostsWireframe,
-  products:     ProductsWireframe,
-  events:       EventsWireframe,
-  campaigns:    CampaignsWireframe,
-  gallery:      GalleryWireframe,
-  about_text:   AboutTextWireframe,
-  features:     FeaturesWireframe,
-  cta:          CtaWireframe,
-  contact_info: ContactInfoWireframe,
-  stats:        StatsWireframe,
-  divider:      DividerWireframe,
-  modules:      ModulesWireframe,
+  hero:           HeroWireframe,
+  posts:          PostsWireframe,
+  products:       ProductsWireframe,
+  events:         EventsWireframe,
+  campaigns:      CampaignsWireframe,
+  gallery:        GalleryWireframe,
+  about_text:     AboutTextWireframe,
+  features:       FeaturesWireframe,
+  cta:            CtaWireframe,
+  contact_info:   ContactInfoWireframe,
+  stats:          StatsWireframe,
+  divider:        DividerWireframe,
+  modules:        ModulesWireframe,
+  instagram_post: InstagramWireframe,
 };
 
 // ── Public exports ────────────────────────────────────────────────────────────

@@ -20,25 +20,26 @@ export const SINGLETON_SLUGS: Record<string, string> = {
 
 export const SECTION_TYPES = [
   "hero", "posts", "products", "events", "campaigns", "gallery", "about_text",
-  "features", "cta", "contact_info", "stats", "divider", "modules",
+  "features", "cta", "contact_info", "stats", "divider", "modules", "instagram_post",
 ] as const;
 
 export type SectionType = typeof SECTION_TYPES[number];
 
 export const SECTION_LABELS: Record<SectionType, string> = {
-  hero:         "Hero Banner",
-  posts:        "Postingan Terbaru",
-  products:     "Produk Terbaru",
-  events:       "Event Mendatang",
-  campaigns:    "Donasi & Infaq",
-  gallery:      "Galeri Foto",
-  about_text:   "Tentang Kami",
-  features:     "Keunggulan / Layanan",
-  cta:          "Call to Action",
-  contact_info: "Info Kontak",
-  stats:        "Statistik",
-  divider:      "Pemisah / Spacer",
-  modules:      "Strip Modul",
+  hero:           "Hero Banner",
+  posts:          "Postingan Terbaru",
+  products:       "Produk Terbaru",
+  events:         "Event Mendatang",
+  campaigns:      "Donasi & Infaq",
+  gallery:        "Galeri Foto",
+  about_text:     "Tentang Kami",
+  features:       "Keunggulan / Layanan",
+  cta:            "Call to Action",
+  contact_info:   "Info Kontak",
+  stats:          "Statistik",
+  divider:        "Pemisah / Spacer",
+  modules:        "Strip Modul",
+  instagram_post: "Instagram Feed / Linimasa",
 };
 
 export type SectionItem = {
@@ -61,19 +62,20 @@ export type LandingBody = {
 
 // Default data per section type
 const SECTION_DEFAULTS: Record<SectionType, Record<string, unknown>> = {
-  hero:         { eyebrow: "", title: "", subtitle: "", ctaLabel: "Pelajari Lebih", ctaUrl: "#", ctaSecondaryLabel: "", ctaSecondaryUrl: "", imageUrl: "", showModuleStrip: false, funfactItems: [] },
-  posts:        { title: "Berita & Pengumuman", count: 6 },
-  products:     { title: "Produk Terbaru", count: 8, categoryId: null },
-  events:       { title: "Event Mendatang", count: 3 },
-  campaigns:    { title: "Donasi & Infaq", count: 6, categoryId: null, campaignType: null },
-  gallery:      { eyebrow: "", title: "Galeri Foto", headerDesc: "", titleAlign: "center", background: "none", columns: 3, imageRatio: "square", items: [] },
-  about_text:   { eyebrow: "", title: "Tentang Kami", body: "", items: [], descMode: "text", listDividers: false, iconStyle: "plain", iconColor: "primary", iconShape: "square-radius", ctaLabel: "", ctaUrl: "", background: "none", width: "full", textVAlign: "center", imageUrl: "", imagePosition: "right", imageRatio: "square", imageRadius: true },
-  features:     { eyebrow: "", title: "Keunggulan Kami", headerDesc: "", titleAlign: "center", descPosition: "below", background: "light", width: "full", iconStyle: "plain", iconColor: "primary", iconShape: "square-radius", cardRadius: true, cardBackground: "white", highlightFirst: false, highlightColor: "primary", items: [] },
-  cta:          { title: "", subtitle: "", ctaLabel: "Hubungi Kami", ctaUrl: "#", ctaSecondaryLabel: "", ctaSecondaryUrl: "", textAlign: "left", background: "secondary", width: "full", boxedRadius: true, buttonPosition: "below" },
-  contact_info: {},
-  stats:        { eyebrow: "", title: "", headerDesc: "", titleAlign: "center", items: [] },
-  divider:      { height: 64, bgColor: "" },
-  modules:      { title: "", items: [] },
+  hero:           { eyebrow: "", title: "", subtitle: "", ctaLabel: "Pelajari Lebih", ctaUrl: "#", ctaSecondaryLabel: "", ctaSecondaryUrl: "", imageUrl: "", showModuleStrip: false, funfactItems: [] },
+  posts:          { title: "Berita & Pengumuman", count: 6 },
+  products:       { title: "Produk Terbaru", count: 8, categoryId: null },
+  events:         { title: "Event Mendatang", count: 3 },
+  campaigns:      { title: "Donasi & Infaq", count: 6, categoryId: null, campaignType: null },
+  gallery:        { eyebrow: "", title: "Galeri Foto", headerDesc: "", titleAlign: "center", background: "none", columns: 3, imageRatio: "square", items: [] },
+  about_text:     { eyebrow: "", title: "Tentang Kami", body: "", items: [], descMode: "text", listDividers: false, iconStyle: "plain", iconColor: "primary", iconShape: "square-radius", ctaLabel: "", ctaUrl: "", background: "none", width: "full", textVAlign: "center", imageUrl: "", imagePosition: "right", imageRatio: "square", imageRadius: true },
+  features:       { eyebrow: "", title: "Keunggulan Kami", headerDesc: "", titleAlign: "center", descPosition: "below", background: "light", width: "full", iconStyle: "plain", iconColor: "primary", iconShape: "square-radius", cardRadius: true, cardBackground: "white", highlightFirst: false, highlightColor: "primary", items: [] },
+  cta:            { title: "", subtitle: "", ctaLabel: "Hubungi Kami", ctaUrl: "#", ctaSecondaryLabel: "", ctaSecondaryUrl: "", textAlign: "left", background: "secondary", width: "full", boxedRadius: true, buttonPosition: "below" },
+  contact_info:   {},
+  stats:          { eyebrow: "", title: "", headerDesc: "", titleAlign: "center", items: [] },
+  divider:        { height: 64, bgColor: "" },
+  modules:        { title: "", items: [] },
+  instagram_post: { mode: "repost", accountName: "Forcreator", accountUrl: "https://instagram.com/forcreator", count: 8, showBorderTop: false, items: [] },
 };
 
 export function createSection(type: SectionType): SectionItem {
