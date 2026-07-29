@@ -70,24 +70,26 @@ export function DirectorySection({
 
         {/* ── Grid Items ── */}
         <div className={gridContainerClass}>
-          {items.map((item) => (
-            <div key={item.id} className="flex flex-col group">
+          {items.map((item) => {
+            const cornerClass = data.imageCorner === "rounded" ? "rounded-xl" : "rounded-none";
+            return (
+              <div key={item.id} className="flex flex-col group">
 
-              {/* Cover Image — Tanpa Border Radius */}
-              <a href={item.href} className="block overflow-hidden bg-muted aspect-[16/9] w-full">
-                {item.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    className="w-full h-full object-cover rounded-none transition-transform duration-500 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-muted">
-                    <ImageIcon className="w-10 h-10 text-muted-foreground/30" />
-                  </div>
-                )}
-              </a>
+                {/* Cover Image */}
+                <a href={item.href} className={`block overflow-hidden bg-muted aspect-[16/9] w-full ${cornerClass}`}>
+                  {item.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.imageUrl}
+                      alt={item.title}
+                      className={`w-full h-full object-cover ${cornerClass} transition-transform duration-500 group-hover:scale-105`}
+                    />
+                  ) : (
+                    <div className={`w-full h-full flex items-center justify-center bg-muted ${cornerClass}`}>
+                      <ImageIcon className="w-10 h-10 text-muted-foreground/30" />
+                    </div>
+                  )}
+                </a>
 
               {/* Aksen Diamond Melayang berwarna Secondary */}
               <div className="w-3.5 h-3.5 bg-secondary rotate-45 my-4 shrink-0" />
@@ -144,7 +146,8 @@ export function DirectorySection({
               )}
 
             </div>
-          ))}
+          );
+        })}
         </div>
 
       </div>

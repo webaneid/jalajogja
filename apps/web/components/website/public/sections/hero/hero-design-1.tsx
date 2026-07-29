@@ -78,12 +78,12 @@ export function HeroDesign1({ data: d, baseUrl, heroCard }: HeroDesignProps) {
           <img
             src={d.imageUrl}
             alt={d.title ?? ""}
-            className={`w-full h-auto rounded-2xl ${
-              isCleanImage ? "" : "shadow-xl border border-border/50"
+            className={`w-full h-auto ${
+              isCleanImage ? "rounded-none" : "rounded-2xl shadow-xl border border-border/50"
             }`}
           />
         ) : (
-          <div className={`w-full ${aspectClass} rounded-2xl bg-muted flex items-center justify-center border border-border`}>
+          <div className={`w-full ${aspectClass} ${isCleanImage ? "rounded-none" : "rounded-2xl"} bg-muted flex items-center justify-center border border-border`}>
             <Play className="w-12 h-12 text-muted-foreground opacity-50" />
           </div>
         )}

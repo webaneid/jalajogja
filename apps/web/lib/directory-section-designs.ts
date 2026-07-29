@@ -24,6 +24,7 @@ export type DirectorySectionData = {
   count?:          number;               // 2 s/d 8 (default 4)
   gridCols?:       DirectoryGridCols;    // 2 | 3 | 4 (default 3)
   cardDesign?:     DirectoryCardDesign;  // "default" | "custom" (default custom)
+  imageCorner?:    "rounded" | "square"; // "rounded" (Sudut Melengkung) vs "square" (Persegi Tajam)
 };
 
 export const DIRECTORY_SECTION_DESIGN_IDS = ["1"] as const;

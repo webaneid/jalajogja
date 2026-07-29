@@ -219,12 +219,12 @@ function HeroEditor({ data, onChange, variant, onVariantChange, tenantSlug }: Ed
         )}
       </Field>
       {d.imageUrl && (
-        <Field label="Gaya Bingkai Gambar">
+        <Field label="Bentuk Sudut Gambar">
           <Select value={d.imageBorder ?? "bordered"} onValueChange={(v) => u("imageBorder", v)}>
-            <SelectTrigger><SelectValue placeholder="Pilih bingkai" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Pilih bentuk sudut..." /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="bordered">Ber-Border & Shadow (Biasa)</SelectItem>
-              <SelectItem value="none">Clean (Tanpa Border & Shadow)</SelectItem>
+              <SelectItem value="bordered">Sudut Melengkung (Bulat)</SelectItem>
+              <SelectItem value="none">Persegi Tajam (Tanpa Lengkungan)</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -451,6 +451,17 @@ function PostsEditor({ data, onChange, variant, onVariantChange, tenantSlug }: E
           </SelectContent>
         </Select>
       </Field>
+      {activeVariant === "6" && (
+        <Field label="Bentuk Sudut Gambar">
+          <Select value={(d as { imageCorner?: string }).imageCorner ?? "rounded"} onValueChange={(v) => u("imageCorner", v)}>
+            <SelectTrigger><SelectValue placeholder="Pilih bentuk sudut..." /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="rounded">Sudut Melengkung (Bulat)</SelectItem>
+              <SelectItem value="square">Persegi Tajam (Tanpa Lengkungan)</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
       {!isHero && !isTrio && (
         <div className="space-y-2">
           <div className="flex gap-1">
@@ -1667,6 +1678,15 @@ function DirectoryEditor({ data, onChange }: EditorProps) {
             <SelectContent>
               <SelectItem value="custom">Kustom (Foto + Diamond + Avatar Pemilik)</SelectItem>
               <SelectItem value="default">Default Card Arsip</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Bentuk Sudut Gambar">
+          <Select value={d.imageCorner ?? "square"} onValueChange={(v) => u("imageCorner", v)}>
+            <SelectTrigger><SelectValue placeholder="Pilih bentuk sudut..." /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="square">Persegi Tajam (Tanpa Lengkungan)</SelectItem>
+              <SelectItem value="rounded">Sudut Melengkung (Bulat)</SelectItem>
             </SelectContent>
           </Select>
         </Field>

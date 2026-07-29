@@ -17,6 +17,7 @@ export type PostsSectionData = {
   tagId?:        string | null;
   onlyFeatured?: boolean;
   columns?:      PostColumnConfig[];
+  imageCorner?:  "rounded" | "square"; // "rounded" (Sudut Melengkung) vs "square" (Persegi Tajam)
 };
 
 export const POSTS_SECTION_DESIGN_IDS = ["1", "2", "3", "4", "5", "6"] as const;

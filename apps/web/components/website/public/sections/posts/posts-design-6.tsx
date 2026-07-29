@@ -36,10 +36,11 @@ export function PostsDesign6({ data, posts, baseUrl, sectionTitle, filterHref }:
             {displayPosts.map((post) => {
               const coverUrl = pickCover(post, "profile") ?? pickCover(post, "original") ?? post.coverUrl;
               const fullHref = `${baseUrl}${post.href}`;
+              const cornerClass = data.imageCorner === "square" ? "rounded-none" : "rounded-xl";
 
               return (
                 <article key={post.id} className="group flex flex-col items-start">
-                  <a href={fullHref} className="w-full block overflow-hidden rounded-xl border border-border/40 shadow-sm transition-all duration-300 group-hover:shadow-md">
+                  <a href={fullHref} className={`w-full block overflow-hidden ${cornerClass} border border-border/40 shadow-sm transition-all duration-300 group-hover:shadow-md`}>
                     {coverUrl ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img
