@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
-import { createTenantDb, db, tenants, getSettings, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { createTenantDb, db, tenants, tenantMemberships, members, socialMedias, getSettings, refProvinces, refRegencies, refDistricts, refVillages } from "@jalajogja/db";
 import { HeaderVisibility } from "@/components/website/public/layout/header-visibility";
 import { PublicFooter } from "@/components/website/public/layout/public-footer";
 import { FooterBottomNav } from "@/components/website/public/layout/footer-bottom-nav";
@@ -76,6 +76,7 @@ export default async function PublicLayout({
   const tagline        = (generalSettings.tagline           as string | undefined) ?? null;
   const description    = (generalSettings.site_description  as string | undefined) ?? null;
   const logoUrl        = (generalSettings.logo_url          as string | undefined) ?? null;
+  const footerLogoUrl  = (generalSettings.footer_logo_url   as string | undefined) ?? null;
   const primaryColor   = (displaySettings.primary_color     as string | undefined) ?? "#2563eb";
   const secondaryColor = (displaySettings.secondary_color   as string | undefined) ?? "#64748b";
   const bodyFont       = (displaySettings.font              as string | undefined) ?? "Inter";
@@ -87,6 +88,29 @@ export default async function PublicLayout({
     : rawNavMenu;
   const headerDesign   = (displaySettings.header_design     as string | undefined) ?? "flex";
   const footerDesign   = (displaySettings.footer_design     as string | undefined) ?? "dark";
+
+  // Query member instagram usernames untuk footer Forcreator marquee
+  let memberInstagrams: string[] = [];
+  if (footerDesign === "forcreator") {
+    try {
+      const rows = await db
+        .select({ instagram: socialMedias.instagram })
+        .from(tenantMemberships)
+        .innerJoin(members, eq(tenantMemberships.memberId, members.id))
+        .innerJoin(socialMedias, eq(members.socialMediaId, socialMedias.id))
+        .where(
+          and(
+            eq(tenantMemberships.tenantId, tenant.id),
+            inArray(tenantMemberships.status, ["active", "alumni"]),
+            sql`${socialMedias.instagram} IS NOT NULL AND ${socialMedias.instagram} != ''`
+          )
+        )
+        .limit(20);
+      memberInstagrams = rows.map((r) => r.instagram!).filter(Boolean);
+    } catch (err) {
+      console.error("[PublicLayout] Gagal fetch memberInstagrams untuk footer Forcreator:", err);
+    }
+  }
 
   const themeCss      = buildTenantThemeCss({ primaryColor, secondaryColor, bodyFont, headingFont });
   const googleFontUrl = getGoogleFontsUrl([bodyFont, headingFont]);
@@ -170,11 +194,14 @@ export default async function PublicLayout({
         tenantSlug={slug}
         siteName={siteName}
         logoUrl={logoUrl}
+        footerLogoUrl={footerLogoUrl}
         tagline={tagline}
         description={description}
         navMenu={navMenu}
         contactSettings={enrichedContactSettings as Parameters<typeof PublicFooter>[0]["contactSettings"]}
         primaryColor={primaryColor}
+        secondaryColor={secondaryColor}
+        memberInstagrams={memberInstagrams}
         baseUrl={baseUrl}
       />
 

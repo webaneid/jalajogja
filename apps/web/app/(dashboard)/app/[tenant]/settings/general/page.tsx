@@ -32,6 +32,7 @@ export default async function GeneralSettingsPage({
           tagline:         (settings.tagline          as string) ?? "",
           siteDescription: (settings.site_description as string) ?? "",
           logoUrl:         (settings.logo_url         as string) ?? "",
+          footerLogoUrl:   (settings.footer_logo_url  as string) ?? "",
           faviconUrl:      (settings.favicon_url      as string) ?? "",
           timezone:        (settings.timezone         as string) ?? "Asia/Jakarta",
           language:        (settings.language         as string) ?? "id",

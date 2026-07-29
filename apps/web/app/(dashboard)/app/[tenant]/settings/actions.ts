@@ -37,6 +37,7 @@ export async function saveGeneralSettingsAction(
     tagline:         string;
     siteDescription: string;
     logoUrl:         string;
+    footerLogoUrl?:  string;
     faviconUrl:      string;
     timezone:        string;
     language:        string;
@@ -53,6 +54,7 @@ export async function saveGeneralSettingsAction(
     tagline:          values.tagline,
     site_description: values.siteDescription,
     logo_url:         values.logoUrl,
+    footer_logo_url:  values.footerLogoUrl ?? "",
     favicon_url:      values.faviconUrl,
     timezone:         values.timezone,
     language:         values.language,

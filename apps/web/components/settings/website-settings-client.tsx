@@ -150,12 +150,28 @@ function DesignCard<T extends string>({
         </span>
       )}
       {/* Wireframe preview */}
-      <div className="mb-3 h-16 bg-muted/60 rounded-lg overflow-hidden flex flex-col gap-1 p-2">
-        <div className="h-2.5 bg-muted-foreground/30 rounded-sm w-3/4" />
-        <div className="flex gap-1 mt-0.5">
-          {[1,2,3].map((i) => <div key={i} className="h-1.5 bg-muted-foreground/20 rounded-sm w-8" />)}
-        </div>
-        <div className="mt-auto h-1.5 bg-muted-foreground/10 rounded-sm w-full" />
+      <div className="mb-3 h-16 bg-muted/60 rounded-lg overflow-hidden flex flex-col p-1.5 gap-1">
+        {id === "forcreator" ? (
+          <>
+            <div className="h-2 bg-primary/80 rounded-xs w-full" />
+            <div className="flex justify-between items-center px-1 pt-1">
+              <div className="h-3 w-6 bg-muted-foreground/40 rounded-xs" />
+              <div className="flex gap-1">
+                <div className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+                <div className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+              </div>
+            </div>
+            <div className="mt-auto h-2 bg-black/40 rounded-xs w-full" />
+          </>
+        ) : (
+          <>
+            <div className="h-2.5 bg-muted-foreground/30 rounded-sm w-3/4" />
+            <div className="flex gap-1 mt-0.5">
+              {[1,2,3].map((i) => <div key={i} className="h-1.5 bg-muted-foreground/20 rounded-sm w-8" />)}
+            </div>
+            <div className="mt-auto h-1.5 bg-muted-foreground/10 rounded-sm w-full" />
+          </>
+        )}
       </div>
       <p className="text-sm font-medium">{label}</p>
       <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{description}</p>
@@ -351,7 +367,7 @@ export function WebsiteSettingsClient({
             Tampilan footer di website publik Anda.
           </p>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {FOOTER_DESIGN_IDS.map((id) => (
             <DesignCard
               key={id}

@@ -32,6 +32,7 @@ type DefaultValues = {
   tagline:         string;
   siteDescription: string;
   logoUrl:         string;
+  footerLogoUrl?:  string;
   faviconUrl:      string;
   timezone:        string;
   language:        string;
@@ -51,12 +52,12 @@ export function GeneralSettingsForm({
 
   // State MediaPicker
   const [mediaPickerOpen, setMediaPickerOpen] = React.useState(false);
-  const [pickerTarget, setPickerTarget] = React.useState<"logo" | "favicon" | null>(null);
+  const [pickerTarget, setPickerTarget] = React.useState<"logo" | "footerLogo" | "favicon" | null>(null);
 
   const set = (key: keyof DefaultValues) => (val: string) =>
     setValues((v) => ({ ...v, [key]: val }));
 
-  function openPickerFor(target: "logo" | "favicon") {
+  function openPickerFor(target: "logo" | "footerLogo" | "favicon") {
     setPickerTarget(target);
     setMediaPickerOpen(true);
   }
@@ -119,9 +120,9 @@ export function GeneralSettingsForm({
         <p className="text-xs text-muted-foreground">Tampil di footer website. Maks 2–3 kalimat.</p>
       </div>
 
-      {/* Logo */}
+      {/* Logo Utama */}
       <div className="space-y-2">
-        <Label>Logo</Label>
+        <Label>Logo Website</Label>
         {values.logoUrl ? (
           <div className="flex items-start gap-3">
             <img
@@ -157,6 +158,47 @@ export function GeneralSettingsForm({
             Pilih Logo
           </Button>
         )}
+      </div>
+
+      {/* Logo Footer */}
+      <div className="space-y-2">
+        <Label>Logo Footer (Opsional)</Label>
+        {values.footerLogoUrl ? (
+          <div className="flex items-start gap-3">
+            <img
+              src={values.footerLogoUrl}
+              alt="Logo footer"
+              className="max-h-16 rounded border object-contain bg-muted p-1"
+            />
+            <div className="flex flex-col gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => openPickerFor("footerLogo")}
+              >
+                Ganti
+              </Button>
+              <button
+                type="button"
+                onClick={() => set("footerLogoUrl")("")}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors text-left"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => openPickerFor("footerLogo")}
+          >
+            Pilih Logo Footer
+          </Button>
+        )}
+        <p className="text-xs text-muted-foreground">Logo khusus yang tampil di bagian footer (misalnya logo versi putih/kontras). Jika kosong, menggunakan Logo Website.</p>
       </div>
 
       {/* Favicon */}
@@ -244,6 +286,7 @@ export function GeneralSettingsForm({
       onClose={() => setMediaPickerOpen(false)}
       onSelect={(media) => {
         if (pickerTarget === "logo") set("logoUrl")(media.url);
+        if (pickerTarget === "footerLogo") set("footerLogoUrl")(media.url);
         if (pickerTarget === "favicon") set("faviconUrl")(media.variants?.square ?? media.url);
         setMediaPickerOpen(false);
       }}

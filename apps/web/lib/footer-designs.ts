@@ -8,24 +8,28 @@ type ContactSettings = {
 };
 
 export type FooterProps = {
-  tenantSlug:      string;
-  siteName:        string;
-  logoUrl:         string | null;
-  tagline:         string | null;
-  description:     string | null;
-  navMenu:         NavItem[];
-  contactSettings: ContactSettings;
-  primaryColor:    string;
-  baseUrl:         string; // "" jika custom domain, "/{slug}" jika path mode
+  tenantSlug:       string;
+  siteName:         string;
+  logoUrl:          string | null;
+  footerLogoUrl?:   string | null;
+  tagline:          string | null;
+  description:      string | null;
+  navMenu:          NavItem[];
+  contactSettings:  ContactSettings;
+  primaryColor:     string;
+  secondaryColor?:  string;
+  memberInstagrams?: string[];
+  baseUrl:          string; // "" jika custom domain, "/{slug}" jika path mode
 };
 
-export const FOOTER_DESIGN_IDS = ["dark", "light", "modern"] as const;
+export const FOOTER_DESIGN_IDS = ["dark", "light", "modern", "forcreator"] as const;
 export type FooterDesignId = typeof FOOTER_DESIGN_IDS[number];
 
 export const FOOTER_DESIGN_LABELS: Record<FooterDesignId, string> = {
-  dark:   "Gelap",
-  light:  "Terang",
-  modern: "Modern (Melengkung)",
+  dark:       "Gelap",
+  light:      "Terang",
+  modern:     "Modern (Melengkung)",
+  forcreator: "Forcreator",
 };
 
 export const FOOTER_DESIGNS: Record<FooterDesignId, {
@@ -43,5 +47,9 @@ export const FOOTER_DESIGNS: Record<FooterDesignId, {
   modern: {
     label:       "Modern (Melengkung)",
     description: "Kartu gelap dengan sudut atas melengkung, 1 baris 3-kolom (brand+sosmed | nav | kontak).",
+  },
+  forcreator: {
+    label:       "Forcreator",
+    description: "Layout 3-Row (Top Marquee running text warna secondary + Middle 2-Row Split Grid + Bottom Copyright).",
   },
 };

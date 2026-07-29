@@ -303,7 +303,7 @@ Footer adalah server component — tidak butuh session.
 | `dark` | Gelap (default) | ✅ Selesai — lihat § "Status Implementasi" |
 | `light` | Terang | ✅ Selesai — struktur identik dark, hanya warna berbeda |
 | `modern` | Modern (Melengkung) | ✅ Selesai (2026-07-16) — lihat § "Desain 3: Modern Footer (Melengkung)" |
-| `forcreator` | Forcreator | 📝 Terencana (2026-07-29) — lihat § "Desain 4: Forcreator Footer" |
+| `forcreator` | Forcreator | ✅ Selesai (2026-07-29) — lihat § "Desain 4: Forcreator Footer" |
 
 ---
 
@@ -544,6 +544,7 @@ lihat § "Custom domain" di atas dan `docs/arsitektur-domain.md` § 5.1.
 ### Rincian Elemen Desain:
 
 1. **Row 1 — Top Bar Marquee (Running Text)**:
+   - **Container Standard**: Wajib dibungkus kontainer standar `max-w-7xl mx-auto px-4 overflow-hidden` agar sejajar presisi dengan header, row middle, dan copyright bar.
    - **Background**: Menggunakan warna **Secondary** tenant (`secondaryColor` / `--secondary` dari Pengaturan Tampilan Admin).
    - **Running Text Ticker**: Marquee animasi horizontal yang menampilkan username Instagram anggota tenant (`memberInstagrams`), diformat `@username @username ...`.
    - **Fallback Ticker**: Jika belum ada data Instagram anggota, menampilkan pola marquee default `@siteName` / `@forcreator`.
@@ -551,7 +552,7 @@ lihat § "Custom domain" di atas dan `docs/arsitektur-domain.md` § 5.1.
 2. **Row 2 — Middle Section**:
    - **Background**: Hitam pekat (`bg-black` / `bg-neutral-950`) dengan teks serba putih/kontras tinggi.
    - **Row Atas (Grid 2 Kolom)**:
-     - **Kolom Kiri**: Logo Footer (`footerLogoUrl`). Mengambil setting `footer_logo_url` dari grup `general`. Jika kosong, fallback ke `logoUrl`.
+     - **Kolom Kiri**: Logo Footer (`footerLogoUrl`, fallback ke `logoUrl`) diperbesar >30% (`h-24 md:h-28 w-auto object-contain max-w-[320px]`).
      - **Kolom Kanan**: Ikon Sosial Media (Instagram, YouTube, Facebook, WhatsApp, dll) dengan `flex items-center justify-start md:justify-end gap-3 items-start`.
    - **Row Bawah (Grid 2 Kolom)**:
      - **Kolom Kiri**:
@@ -570,9 +571,35 @@ lihat § "Custom domain" di atas dan `docs/arsitektur-domain.md` § 5.1.
 ### Database & Settings Schema Updates:
 1. **Setting Key Baru di `settings` (group `general`)**:
    - `footer_logo_url` (`string | null`): URL gambar logo khusus footer.
+   - **Bukan tabel/kolom baru** — cukup key baru di JSONB `settings` yang sudah ada, pola
+     identik `logo_url`/`favicon_url`. Nol migration DB diperlukan.
 2. **Form Pengaturan Umum Admin (`/app/[tenant]/settings/general`)**:
    - Tambahkan input/uploader **Logo Footer** (`footerLogoUrl`) di bawah input Logo Utama (`logoUrl`).
    - Action `saveGeneralSettingsAction` di `settings/actions.ts` diperluas untuk menerima `footerLogoUrl`.
+
+### Marquee Instagram — Query Sumber Data
+
+`memberInstagrams` diambil di `PublicLayout` (`app/(public)/[tenant]/layout.tsx`), HANYA saat
+`footerDesign === "forcreator"` (query digate — tidak jalan untuk tenant dengan desain footer
+lain). JOIN `tenant_memberships → members → socialMedias`, filter
+`socialMedias.instagram IS NOT NULL AND != ''`, **wajib** `inArray(tenantMemberships.status,
+["active","alumni"])` — pola SAMA dengan filter status yang sudah dikunci di 3 direktori publik
+lain (`/usaha`, `/profesional`, `/pesantren`), supaya member yang `inactive` di tenant ini tidak
+ikut nampang di marquee. Dibungkus `try/catch` dengan `console.error` (bukan silent-swallow) —
+kalau query gagal, marquee fallback ke placeholder statis (`@{tenantSlug}`/`@{siteName}`/
+`@forcreator`) di `ForcreatorFooter` sendiri, tanpa menggagalkan render seluruh halaman publik.
+Query DB biasa di `PublicLayout` (bukan `headers()`/`cookies()`) — aman untuk ISR, tidak melanggar
+larangan dynamic API di layout ini.
+
+Instagram handle TIDAK punya toggle privasi (`is_*_public`) seperti phone/email/whatsapp —
+konsisten dengan keputusan lama "sosial media selalu publik jika diisi, tidak ada toggle
+per-platform" (§ Login Universal Phase 2), jadi query ini aman menampilkan `socialMedias.
+instagram` langsung tanpa perlu cek consent tambahan.
+
+**Bug ditemukan+difix saat review** (2026-07-29): draf awal user TIDAK menyertakan filter status
+`active`/`alumni` — query menarik Instagram SEMUA member ber-`tenant_memberships` apa pun
+statusnya (termasuk `inactive`), berbeda dari standar 3 direktori publik lain. Difix dengan
+menambah `inArray(...)` yang sama.
 
 ---
 
@@ -757,6 +784,8 @@ Step 10 — tsc --noEmit → 0 errors
 | Mobile bottom navigation bar | ✅ Selesai (dalam FlexHeader) |
 | `headers/pill-header.tsx` (Desain 3, § "Desain 3: Pill Header") | ✅ Selesai (2026-07-16) |
 | `footers/modern-footer.tsx` (Desain 3, § "Desain 3: Modern Footer") | ✅ Selesai (2026-07-16) |
+| `footers/forcreator-footer.tsx` (Desain 4, § "Desain 4: Forcreator Footer") | ✅ Selesai (2026-07-29) |
+| `settings.general.footer_logo_url` + uploader di `/settings/general` | ✅ Selesai (2026-07-29) |
 | Notifikasi lonceng | ⬜ Menunggu Modul Pengumuman |
 
 ### Catatan Bug Fix & UI Decisions

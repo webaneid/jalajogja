@@ -13418,6 +13418,49 @@ berapa pun": grid `[1fr auto 1fr]` (kolom tengah content-sized, kolom flanking s
 membagi rata sisa ruang) — BUKAN `grid-cols-N` dengan kolom sama rata. Berlaku untuk header
 manapun ke depan yang butuh pola "logo kiri, nav tengah, aksi kanan".
 
+### [2026-07-29] Footer Baru "Forcreator" (User-Built) — Audit + 1 Bug Ditemukan+Difix
+
+> Detail lengkap: `docs/arsitektur-header-footer-publik.md` § "Desain 4: Forcreator Footer" +
+> "Marquee Instagram — Query Sumber Data".
+
+User bangun sendiri (langsung di editor, di luar sesi Claude Code) desain footer ke-4
+`forcreator` (Top Bar marquee running-text Instagram warna secondary + Middle 2-Row Split Grid +
+Copyright bar) + setting `footer_logo_url` opsional baru di General Settings, dan sudah update
+dokumennya sendiri. Diminta audit menyeluruh terhadap standar project, khusus soroti marquee
+Instagram, sebelum push bareng fix header sebelumnya.
+
+**Diverifikasi SATU PER SATU (bukan cuma percaya deskripsi)**: `git diff` semua 9 file
+diubah/dibuat — `forcreator-footer.tsx` (baru), `footer-designs.ts`, `public-footer.tsx`
+(switcher), `settings/actions.ts`+`general/page.tsx`+`general-settings-form.tsx` (setting logo
+footer baru), `website-settings-client.tsx` (wireframe preview picker), `layout.tsx` (resolusi
+`secondaryColor`+query `memberInstagrams`), `globals.css` (keyframes marquee). Semua cocok
+konvensi existing: `SocialLinks variant="brand"` + handling `whatsapp` identik persis
+`dark-footer.tsx`, container `max-w-7xl mx-auto px-4` konsisten di 3 row, atribusi Jalakarta
+`{baseUrl !== "" && (...)}` sesuai aturan custom-domain, `footer_logo_url` cukup key baru di
+JSONB `settings` yang sudah ada (BUKAN tabel/migration baru — dikonfirmasi nol file migration
+baru), registry+switcher pattern identik desain lain, Instagram handle tidak butuh toggle privasi
+(konsisten keputusan lama "sosmed selalu publik kalau diisi").
+
+**1 gap nyata ditemukan (bukan cuma type error — `tsc` tidak bisa menangkap ini)**: query
+`memberInstagrams` di `layout.tsx` (JOIN `tenant_memberships→members→socialMedias`) TIDAK
+menyertakan filter `inArray(status, ["active","alumni"])` — berbeda dari SEMUA 3 direktori
+publik lain (`/usaha`, `/profesional`, `/pesantren`) yang konsisten filter status ini. Tanpa
+fix, member `inactive` di tenant tetap ikut nampang di marquee Instagram footer. Difix
+menambahkan filter yang sama. Sekalian diperbaiki: `catch { /* ignore */ }` (silent-swallow,
+pola yang sudah berkali-kali dikunci sebagai anti-pattern di project ini — lihat lesson
+`renderBody`) diganti `catch (err) { console.error(...) }` — tetap fallback ke placeholder
+statis di komponen kalau query gagal (nol perubahan behavior), tapi kegagalan sekarang
+terlihat di log server, bukan hilang diam-diam.
+
+**Verifikasi**: `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine 46.7
+detik (dev server dimatikan+`.next` dibersihkan+direstart) + dicek langsung isi CSS hasil
+compile (`grep animate-marquee`) mengonfirmasi keyframes benar-benar ter-generate. Dokumen
+diupdate: status "📝 Terencana" → "✅ Selesai" (implementasinya sudah genuinely selesai, bukan
+cuma rencana), tabel "Status Implementasi" ditambah 2 baris baru, section baru menjelaskan
+query+fix marquee. **Belum di-commit/push, belum diverifikasi visual di browser** (tidak ada
+browser di environment ini) — akan di-push bersamaan dengan fix header Pill sebelumnya sesuai
+instruksi user, deploy VPS dilakukan user sendiri.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Bug Fix Nav Pill Header — `grid-cols-3` diganti `1fr auto 1fr`** (lihat
   lesson `[2026-07-29]` "Bug Fix: Nav Pill Header Ternyata Mepet ke Kanan" di atas) — user
@@ -16512,6 +16555,20 @@ Dibuat helper sentral `syncAutoTenantMemberships(runner, memberId, primaryCabang
   - **Row Bottom (Copyright Bar)**: Copyright bar standar (`© {year} {siteName}. All rights reserved.`) dengan atribusi Jalakarta (jika bukan custom domain).
 - **Setting Logo Footer Admin**: Menambahkan field `footerLogoUrl` / key database `footer_logo_url` (group `general`) di form `/app/[tenant]/settings/general` & `saveGeneralSettingsAction` untuk mengunggah logo khusus footer.
 - **Dokumentasi Terbarui**: [`docs/arsitektur-header-footer-publik.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-header-footer-publik.md) Section Desain 4 Forcreator Footer ter-update.
+
+### [2026-07] Architecture Feature: Perencanaan Taksonomi Sektor Usaha BPS KBLI 2020
+
+> **STATUS**: ✅ **DOKUMENTASI PERENCANAAN LENGKAP DI `docs/arsitektur-usaha.md` § 9**.
+
+**Rangkuman Perencanaan**:
+- **Evaluasi Riset Gemini (`docs/evaluasi-arsitektur-usaha-gemini.md`)**: Memisahkan "Kesehatan" (KBLI Q) dan "Pendidikan" (KBLI P) yang memiliki beda *supply chain* & regulasi, serta menambahkan sektor Logistik, Konstruksi, Agribisnis, F&B, dan Keuangan.
+- **Formulasi 10 Sektor BPS Hybrid**: Di-upgrade dari 7 sektor lama menjadi 10 sektor berstandar BPS KBLI 2020.
+- **Sektor `Kreatif` Mandiri (Request Forcreator)**: Sektor `Kreatif` dipertahankan sebagai sektor tersendiri (tidak dilebur ke Teknologi) untuk mendukung komunitas Forcreator. Sektor `Teknologi & Informasi` berdiri sendiri.
+- **Harmonisasi Modul Profesional (`member_professionals`)**: Taksonomi usaha disederhanakan murni untuk entitas bisnis/lembaga, sedangkan kredensial perorangan dikelola terpisah di `docs/arsitektur-profesional.md`.
+- **Rincian Sub-Sektor Tier 3 (`docs/arsitektur-usaha-taxonomy-gemini.md`)**: Menetapkan rincian sub-sektor presisi per sektor, dengan Sektor `Kreatif` menggunakan 9 Sub-Bidang Custom khas Forcreator (`Event`, `Kaligrafi`, `Desain Komunikasi Visual`, `Seni Teater dan Sastra`, `Seni Media Rekam`, `Seni Lukis dan Illustrasi`, `Seni Musik`, `Seni Instalasi dan Kontemporer`, `Seni Kriya`).
+- **Integrasi Ekosistem (`docs/arsitektur-ekosistem.md`)**: Taksonomi 3-Tier Usaha (termasuk Forcreator sub-sectors) di-seed ke `lib/ecosystem-tags.ts` untuk menggerakkan autocomplete pencocokan presisi pada `offeredTags` ("Menawarkan") dan `neededTags` ("Membutuhkan").
+- **Dokumentasi Terbarui**: [`docs/arsitektur-usaha.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-usaha.md) Section 9, [`docs/arsitektur-usaha-taxonomy-gemini.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-usaha-taxonomy-gemini.md) & [`docs/arsitektur-ekosistem.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-ekosistem.md) ter-update.
+
 
 
 

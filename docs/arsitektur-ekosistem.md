@@ -270,16 +270,11 @@ yang sedang dicari/dibutuhkan) — POLA IDENTIK dengan `businessFields`, bukan o
 **Keputusan final (nama field + taksonomi)**: `offeredTags`/`neededTags`, seragam persis di
 ketiga tabel (BUKAN `supplies`/`seeking` seperti sketsa awal `arsitektur-usaha.md` § 8 —
 diselaraskan supaya query/API/komponen `<TagMultiSelect>` identik lintas modul). Suggestion
-autocomplete dipusatkan di **`lib/ecosystem-tags.ts`** (baru) — TAPI file ini bukan taksonomi
-independen ketiga seperti yang dikritik § 3.2: isinya murni **aggregator flat `string[]`** yang
-di-*seed* dari `BUSINESS_FIELD_SUGGESTIONS` (`lib/business-fields.ts`) + tambahan kebutuhan
-lintas-domain yang belum tercakup vocabulary manapun (mis. "Guru Bahasa Inggris", "Konsultan
-Legalitas Yayasan", "Pengadaan Beras/Sembako", "Kelebihan Lahan/Aset Menganggur") — TIDAK ada
-`categoryId`/synonym-mapping/struktur objek seperti draft asli. Tetap konsisten Prinsip §4 poin 3
-("perpanjangan dari vocabulary yang sudah ada, bukan sistem independen baru").
+autocomplete dipusatkan di **`lib/ecosystem-tags.ts`** — isinya murni **aggregator flat `string[]`** yang
+di-*seed* dari **Taksonomi 3-Tier Usaha & Sub-Sektor Tier 3** (`docs/arsitektur-usaha-taxonomy-gemini.md` — termasuk 9 Sub-Bidang Custom Forcreator: `Event`, `Kaligrafi`, `Desain Komunikasi Visual`, `Seni Teater dan Sastra`, `Seni Media Rekam`, `Seni Lukis dan Illustrasi`, `Seni Musik`, `Seni Instalasi dan Kontemporer`, `Seni Kriya`) + vocabulary dari `BUSINESS_FIELD_SUGGESTIONS` (`lib/business-fields.ts`) + tambahan kebutuhan lintas-domain (mis. "Guru Bahasa Inggris", "Konsultan Legalitas Yayasan", "Pengadaan Beras/Sembako", "Kelebihan Lahan/Aset Menganggur"). Tetap konsisten Prinsip §4 poin 3 ("perpanjangan dari vocabulary yang sudah ada, bukan sistem independen baru").
 
 - **Usaha**: `offeredTags`/`neededTags` ditambahkan ke `member_businesses`, reuse suggestion
-  dari `lib/ecosystem-tags.ts` (yang sudah mengandung seluruh isi `BUSINESS_FIELD_SUGGESTIONS`).
+  dari `lib/ecosystem-tags.ts` (yang di-seed dari Taksonomi Tier 3 Usaha + Forcreator tags).
 - **Profesional**: `offeredTags` (jasa konkret yang bisa dikerjakan, boleh lebih granular dari
   `professionType`+`specialization` yang sudah ada) + `neededTags` (opsional, proyek/klien yang
   dicari). TIDAK ada `skillTags` DAN `offeredServices` terpisah seperti draft — cukup SATU array

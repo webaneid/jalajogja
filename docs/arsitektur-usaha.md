@@ -162,3 +162,74 @@ tag-overlap sederhana. TANPA hub `/ekosistem` baru, TANPA algoritma matching kom
 
 **Status: ✅ kolom + form self-service + admin wizard SELESAI dieksekusi (2026-07-29, Fase 1
 payung). Filter pencarian lintas-direktori (Fase 2 payung) belum dimulai.**
+
+---
+
+## 9. Rencana Transisi & Upgrade Sektor Usaha (BPS Hybrid + Mandiri Forcreator)
+
+> **Rujukan Analisis**: [`docs/evaluasi-arsitektur-usaha-gemini.md`](file:///Users/webane/sites/jalajogja/docs/evaluasi-arsitektur-usaha-gemini.md) dan [`docs/arsitektur-profesional.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-profesional.md).
+> Ditambahkan: 2026-07-29. Updated: 2026-07-29.
+
+### 9.1 Evaluasi & Aturan Kunci Arsitektur
+
+1. **Sektor `Kreatif` WAJIB Berdiri Sendiri (Kebutuhan Spesifik Forcreator)**:
+   - Berbeda dari KBLI BPS murni yang menggabungkan Industri Kreatif ke Informasi/Media, **Sektor `Kreatif` WAJIB dipertahankan sebagai sektor mandiri**.
+   - Ini adalah *hard-requirement* untuk komunitas **Forcreator** (forum pelaku seni, desainer, media rekam, audio visual, kaligrafi, kriya, pertunjukan, dll) agar dapat difilter dan dikelompokkan secara independen di direktori usaha.
+
+2. **Harmonisasi dengan Modul Profesional (`docs/arsitektur-profesional.md`)**:
+   - Jalakarta telah memiliki modul terpisah `public.member_professionals` ([`docs/arsitektur-profesional.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-profesional.md)) untuk mencatat kredensial profesional individu (dokter, pengacara, akuntan, dosen, konsultan, insinyur, dll).
+   - Oleh karena itu, taksonomi Sektor Usaha pada `member_businesses` **dibuat lebih sederhana dan murni berfokus pada entitas bisnis/lembaga**, tanpa membebani entitas usaha dengan spesialisasi profesi perorangan yang rumit, guna mencegah duplikasi atau konflik data antar modul.
+
+3. **Pemisahan "Kesehatan" & "Pendidikan"**:
+   - Sektor Kesehatan (KBLI Q - Klinik, Apotek, Alkes) dan Pendidikan (KBLI P - Sekolah, Pesantren, Bimbel) dipisah tegas karena memiliki *supply chain* dan regulasi legalitas yang sangat bertolak belakang.
+
+---
+
+### 9.2 Taksonomi Terencana: 10 Sektor Usaha Hybrid (Tier 2 & Tier 3 Sub-Sektor)
+
+> **Dokumen Rincian Sub-Sektor Tier 3**: [`docs/arsitektur-usaha-taxonomy-gemini.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-usaha-taxonomy-gemini.md).
+
+Daftar sektor utama (Tier 2) direncanakan terdiri dari **10 Sektor Mandiri Hybrid**, dengan rincian sub-sektor (Tier 3) custom untuk komunitas:
+
+| ID / Value | Label Sektor Baru | Pengelompokan & Catatan Sub-Sektor Tier 3 |
+|---|---|---|
+| `sec_agriculture` | **Pertanian, Peternakan & Perikanan** | Agribisnis, tanaman pangan, perkebunan, peternakan, perikanan. |
+| `sec_manufacturing` | **Manufaktur & Pengolahan** | Pabrik, olahan pangan, tekstil/konveksi, kemasan, perakitan. |
+| `sec_trade_retail` | **Perdagangan, Ritel & F&B** | Toko ritel, grosir, kuliner/F&B, catering harian. |
+| `sec_technology` | **Teknologi & Informasi** | Software development, SaaS, IT infrastructure, pemasaran digital, publishing. |
+| `sec_creative` | **Kreatif** *(Mandiri — Custom Forcreator)* | **10 Sub-Bidang Custom Forcreator**: `Event` · `Kaligrafi` · `Desain Komunikasi Visual` · `Seni Teater dan Sastra` · `Seni Media Rekam` · `Seni Lukis dan Illustrasi` · `Seni Musik` · `Seni Instalasi dan Kontemporer` · `Seni Kriya`. |
+| `sec_logistics_construction` | **Logistik, Transportasi & Konstruksi** | Ekspedisi, armada kurir, pergudangan, kontraktor, bahan bangunan. |
+| `sec_business_services` | **Jasa Usaha & Keuangan** | Konsultan bisnis, legal, notaris, BMT/Koperasi Usaha, SDM. |
+| `sec_education` | **Pendidikan & Pelatihan** | Sekolah, pesantren, bimbel, pusat pelatihan vokasi *(Dipisah dari Kesehatan)*. |
+| `sec_health` | **Kesehatan, Farmasi & Herbal** | Klinik, apotek, produsen herbal, alat kesehatan (alkes) *(Dipisah dari Pendidikan)*. |
+| `sec_energy_resources` | **Sumber Daya Alam & Energi** | Pertambangan, pengolahan air, energi terbarukan, pengelolaan limbah. |
+
+---
+
+### 9.3 Strategi Migrasi Data & Mitigasi Risiko
+
+#### A. Mitigasi Potensi Data Hilang (*Zero Data Loss Mitigation*)
+1. **Keamanan Database Schema**:
+   - Sejak migration `0048` (`0048_business_category_sector_nullable.sql`), kolom `sector` pada `public.member_businesses` bertipe `text` biasa **tanpa NOT NULL** dan **tanpa PostgreSQL pgEnum constraint**.
+   - Artinya, pembaruan daftar enum di Drizzle TypeScript **TIDAK memerlukan DDL SQL berisiko tinggi** (`ALTER TABLE`). Data lama aman 100% dan tidak akan memicu database error.
+2. **Helper Mapping Dual Compatibility (`normalizeBusinessSector`)**:
+   - Dibuat helper sentral `normalizeBusinessSector(rawSector)` yang mampu memetakan sektor lama secara otomatis saat dibaca:
+     - `"Teknologi"` ➔ `"Teknologi & Informasi"`
+     - `"Kreatif"` ➔ `"Kreatif"` *(Tetap utuh, tidak diubah)*
+     - `"Jasa Profesional"` ➔ `"Jasa Usaha & Keuangan"`
+     - `"Manufaktur"` ➔ `"Manufaktur & Pengolahan"`
+     - `"Kesehatan & Pendidikan"` ➔ Dipetakan secara cerdas ke `"Pendidikan & Pelatihan"` atau `"Kesehatan, Farmasi & Herbal"`.
+     - `"Konsumsi & Ritel"` ➔ `"Perdagangan, Ritel & F&B"`
+     - `"Sumber Daya Alam"` ➔ `"Pertanian, Peternakan & Perikanan"` atau `"Sumber Daya Alam & Energi"`.
+
+#### B. Mitigasi Error & Bug pada Kode (8 Touchpoints Update Check List)
+Setiap agent atau developer yang mengeksekusi upgrade Sektor BPS ini **WAJIB** memperbarui 8 titik sentuh kode secara bersamaan:
+1. `packages/db/src/schema/public/member-businesses.ts` (Drizzle schema `sector` enum definition).
+2. `apps/web/lib/business-sectors.ts` (Registry Sektor + Helper Dual-Compatibility Mapping).
+3. `apps/web/app/(public)/[tenant]/akun/usaha/usaha-client.tsx` (Dropdown Sektor Form Self-Service Anggota).
+4. `apps/web/components/members/wizard/step4-business.tsx` (Dropdown Sektor Form Admin Wizard).
+5. `apps/web/app/(dashboard)/app/[tenant]/members/actions.ts` (`saveMemberBusinessesAction` type assertion & validation).
+6. `apps/web/app/api/akun/member-business/route.ts` (API endpoint self-service `POST/PATCH`).
+7. `apps/web/lib/import-anggota-mapping.ts` & `import-anggota.server.ts` (Logika auto-mapping sektor saat bulk import Excel/CSV).
+8. `apps/web/components/usaha/usaha-filters-client.tsx` & `app/(public)/[tenant]/usaha/page.tsx` (Filter pencarian direktori publik).
+
