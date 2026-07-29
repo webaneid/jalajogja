@@ -3152,6 +3152,21 @@ Dibuat helper sentral `syncAutoTenantMemberships(runner, memberId, primaryCabang
 - **Fase 4 (Frontend Spacing Standard)**: Class utility `.prose-jalakarta` di `globals.css` dan parser server-side `letter-render.ts` menjamin jarak antar-block responsif dan konsisten.
 - **Kompatibilitas WordPress**: Seluruh block terpetakan 1-to-1 dengan Gutenberg Block HTML (`wp-block-callout`, `wp-block-quote`, `wp-embed` YouTube & Instagram).
 
+### [2026-07] UI & Arsitektur: Desain Footer "Forcreator", Centered Pill Header, & Taksonomi 3-Tier Usaha
+
+> **STATUS**: ✅ **IMPLEMENTASI UI & PERENCANAAN TAKSONOMI SELESAI — `bun x tsc --noEmit` 0 ERROR, GIT COMMITTED & PUSHED**.
+
+**Hasil Implementasi & Perencanaan**:
+- **Pill Header Modern**: Border bottom tipis (`border-b border-border/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)]`) dan menu kapsul tepat di tengah (`grid grid-cols-2 md:grid-cols-3 items-center h-16 gap-4` di `pill-header.tsx`).
+- **Footer Forcreator (`forcreator-footer.tsx`)**: 3-row footer: Row Top = Continuous Marquee Instagram Anggota (`--secondary` background); Row Middle = Logo Footer (`footerLogoUrl` di `/settings/general`) + Social Links & Site Description + Contact Us; Row Bottom = Copyright Bar.
+- **Taksonomi 3-Tier Usaha (`docs/arsitektur-usaha-taxonomy-gemini.md`)**:
+  - *Tier 1*: Business Role (Produsen, Distributor, Retail, Jasa Layanan, Profesional).
+  - *Tier 2*: 10 Sektor BPS Hybrid (Pertanian, Manufaktur, Perdagangan/F&B, Teknologi, Kreatif, Logistik/Konstruksi, Jasa Usaha, Pendidikan, Kesehatan, Energi).
+  - *Tier 3*: Sub-Sektor Presisi, dengan Sektor **`Kreatif`** ber-sub-sektor custom Forcreator (`Event`, `Kaligrafi`, `Desain Komunikasi Visual`, `Seni Teater dan Sastra`, `Seni Media Rekam`, `Seni Lukis dan Illustrasi`, `Seni Musik`, `Seni Instalasi dan Kontemporer`, `Seni Kriya`).
+- **Integrasi Ekosistem (`docs/arsitektur-ekosistem.md`)**: Sub-Sektor Tier 3 di-seed ke `lib/ecosystem-tags.ts` untuk menggerakkan autocomplete pencocokan presisi pada `offeredTags` ("Menawarkan") dan `neededTags` ("Membutuhkan").
+- **Mitigasi Zero Data Loss**: Sejak Migration `0048`, kolom `sector` di `public.member_businesses` bertipe `text` tanpa `NOT NULL` & tanpa `pgEnum`, sehingga pembaruan enum TypeScript tidak memerlukan DDL `ALTER TABLE` berisiko. Helper dual-compatibility `normalizeBusinessSector` memetakan data lama secara otomatis.
+
+
 
 
 
