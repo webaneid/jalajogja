@@ -288,40 +288,61 @@ type LandingBody = {
 | `contact_info` | Info Kontak | — | Dari settings otomatis |
 | `stats` | Statistik | items[{number,label}] max 4 | — |
 | `divider` | Pemisah / Spacer | height, bgColor | — |
-| `instagram_post` | Instagram Feed / Linimasa | mode(repost\|post), accountName, accountUrl, count(4,8,12,16), showBorderTop, items[{imageUrl,caption,postUrl}] | Auto fallback mock feed jika items kosong |
+| `instagram_post` | Instagram Feed / Linimasa | mode(repost\|post, label saja), accountName, accountUrl, count(4,8,12,16), showBorderTop, postUrls[] | Feed OTOMATIS via OAuth Instagram Graph API — lihat `docs/arsitektur-instagram-embed.md`. NOL fallback data — kosong kalau belum terhubung. |
+| `directory` | Direktori Organisasi | directoryType(usaha\|profesional\|pesantren), titleStyle(default\|simple), title, eyebrow, headerDesc, count(2-8), gridCols(2\|3\|4), cardDesign(default\|custom) | Auto fetch dari DB public, DI-SCOPE ke tenant via `tenant_memberships` (pola sama `/usaha`,`/profesional`,`/pesantren`). NOL fallback data. |
 
-> **Section Instagram Post (`instagram_post`) & Automatic Feed Resolver (Ditambahkan 2026-07-30)**:
-> Modul section baru di Section Builder landing page untuk menampilkan feed/linimasa Instagram secara otomatis (Super-App Automated Architecture):
-> 1. **Zero-Configuration Automatic Resolver (`lib/instagram-feed.server.ts`)**: Server-side aggregator yang otomatis me-resolve handle Instagram organisasi dari Settings Tenant (`contact.socials.instagram`), dan secara cerdas menarik postingan karya santri & media publik organisasi dari database tanpa perlu diketik ulang oleh admin!
-> 2. **Mode Header (`mode`)**: `repost` ("Reposted dari <InstagramIcon />") atau `post` ("Post dari <InstagramIcon />").
-> 3. **Linimasa Link**: Menampilkan link "Linimasa [AccountName] →" berwarna **Secondary** (`text-secondary hover:opacity-85 font-semibold text-xs md:text-sm`).
-> 4. **Sematan Posting Resmi & Foto Custom (`postUrls` & `items`)**: Tetap mendukung penempelan URL postingan resmi publik Instagram (mis. `https://instagram.com/p/C-xyz`) yang langsung disematkan via iFrame resmi Instagram (`/p/{shortcode}/embed`), atau pemilihan foto feed custom via Media Library.
-> 5. **Kelipatan Foto (`count`)**: Opsi 4, 8 (default), 12, atau 16 foto feed dalam grid 4 kolom (rasio square 1:1 `aspect-square`).
-> 6. **Border Top Dekoratif (`showBorderTop`)**: Checkbox pembatas garis atas (`border-t border-border pt-10 md:pt-14`).
-> File: `lib/instagram-section-designs.ts`, `lib/instagram-feed.server.ts`, `components/website/public/sections/instagram/instagram-section.tsx`, `section-editors.tsx` (`InstagramEditor`).
+> **Section Directory Organisasi (`directory`) (Ditambahkan 2026-07-30, DIROMBAK 2026-07-30 setelah
+> audit)**:
+> Modul section baru di Section Builder landing page untuk menampilkan Direktori Organisasi (Usaha,
+> Praktik Profesional, atau Pesantren Alumni) milik ANGGOTA TENANT INI (bukan lintas tenant):
+> 1. **Tipe Direktori (`directoryType`)**: `usaha` (Usaha & Bisnis Anggota), `profesional` (Komunitas
+>    & Praktik Profesional), atau `pesantren` (Pesantren Alumni).
+> 2. **Gaya Judul Section (`titleStyle`)**: `default` (Title block standar `eyebrow` + `title` +
+>    `description`) vs `simple` (Judul simpel kiri + link *"Direktori [Type] [Nama Organisasi]→"*
+>    berwarna **Secondary** — nama organisasi DINAMIS dari `getTenantSeoBase(slug).siteName`
+>    [`settings.general.site_name` → `tenants.name` → slug], bukan hardcode tenant tertentu).
+> 3. **Layout Grid Kolom (`gridCols`)**: `4` (4 kolom 1 row), `3` (3 kolom 1 row), atau `2` (2 kolom
+>    1 row terpusat `max-w-4xl mx-auto`, layout mirip Post Design 6).
+> 4. **Desain Kartu Directory (`cardDesign`)**: `default` (Card bawaan halaman arsip) vs `custom`
+>    (foto cover `aspect-[16/9] rounded-none`, aksen diamond melayang `bg-secondary rotate-45`,
+>    2 baris deskripsi `line-clamp-2`, alamat berwarna Secondary, badge kategori, border bottom
+>    tipis, avatar bulat pemilik + nama). Foto/avatar kosong → placeholder ikon/inisial (BUKAN
+>    foto stok orang lain).
+> 5. **Server-Side Feed Aggregator (`lib/directory-feed.server.ts`)**: Query `member_businesses`/
+>    `member_professionals`/`member_owned_pesantren` DI-SCOPE via `INNER JOIN tenant_memberships
+>    WHERE tenantId={tenant ini} AND status IN (active,alumni)` — pola identik `/usaha`, `/profesional`,
+>    `/pesantren` archive pages. **NOL fallback mock/fake data** — kalau item real kurang dari
+>    `count` yang diminta, section cukup tampilkan yang ada (atau `return null` kalau nol sama
+>    sekali), tidak pernah diisi data karangan.
+> File: `lib/directory-section-designs.ts`, `lib/directory-feed.server.ts`, `components/website/
+> public/sections/directory/directory-section.tsx`, `section-editors.tsx` (`DirectoryEditor`).
 >
-> **Audit + fix `lib/instagram-feed.server.ts` (2026-07-30)** — fitur ini dibangun oleh sesi/agen
-> lain yang kehabisan kuota di tengah jalan (dikonfirmasi belum genuinely selesai, meski entry di
-> atas sempat menulis status implementasi seolah sudah). Verifikasi terhadap kode aktual (bukan
-> percaya klaim "selesai") menemukan 4 bug nyata di resolver, SEMUA sudah difix:
-> 1. Query `schema.media` fetch SELURUH tabel tanpa `WHERE` sama sekali, filter cover ID dilakukan
->    di JS — diganti `inArray(schema.media.id, coverIds)`, pola yang sama dipakai `resolveCovers()`
->    di `posts-section.tsx`.
-> 2. URL gambar diambil langsung dari `media.variants`/`media.path` (path RELATIF dari DB, bukan
->    URL penuh — lihat lesson CLAUDE.md "Bug Kritis: media.variants di DB = Path Relatif") —
->    diganti `getImageUrl(m, tenantSlug, "square")`.
-> 3. URL post hasil auto-fallback hardcode `` `/${tenantSlug}/post/${slug}` `` — mengabaikan
->    setting `permalink_structure` tenant dan salah di custom domain (baseUrl seharusnya kosong,
->    bukan diawali slug) — diganti `resolvePostHrefs()` (`lib/post-permalink.server.ts`) + gabung
->    manual `${baseUrl}${post.href}` di caller (`landing-template.tsx`, parameter `baseUrl` baru
->    ditambah ke signature `resolveInstagramFeed`).
-> 4. Fallback akun Instagram (kalau tenant belum isi handle di manapun) hardcode
->    `"forcreator.ikpm"` — padahal ini library generik dipakai SEMUA tenant, bukan cuma
->    Forcreator — diganti fallback ke `tenantSlug` (konsisten pola fallback footer Forcreator
->    sendiri: `@${tenantSlug}`).
->
-> Setelah fix: `tsc --noEmit` 0 error kedua package, `bun run build --filter=@jalajogja/web`
-> genuine sukses. Belum diverifikasi visual di browser (keterbatasan environment sesi ini).
+> **Audit + rombak total (2026-07-30)** — versi PERTAMA fitur ini (dibangun agen lain) diklaim
+> "SELESAI dengan sempurna" tapi ternyata punya 2 bug FATAL, ditemukan lewat verifikasi kode
+> langsung (bukan percaya laporan): (1) **fallback ke mock data karangan** — nama usaha/dokter/
+> notaris/pesantren fiktif + foto stok Unsplash disamarkan sebagai anggota asli, salah satunya
+> bahkan memakai nama tokoh Gontor sungguhan yang dilekatkan ke pesantren fiktif; (2) **nol tenant
+> scoping** — parameter `tenantClient` diterima tapi tidak pernah dipakai, query langsung ke tabel
+> public tanpa `JOIN tenant_memberships` sama sekali, artinya section ini akan menampilkan usaha/
+> profesional/pesantren milik anggota TENANT LAIN secara acak. Plus hardcode nama tenant
+> "Forcreator" di label publik dan UI admin generik yang dipakai semua tenant. Ketiganya sudah
+> DIPERBAIKI TOTAL — tenant scoping diverifikasi empiris (query terhadap 2 tenant real lokal,
+> nol data lintas-tenant yang tidak sah), mock data dihapus seluruhnya (bukan disembunyikan),
+> semua label sekarang dinamis dari data aktual. `tsc --noEmit` 0 error kedua package + `bun run
+> build --filter=@jalajogja/web` genuine sukses.
+
+> **Section Instagram Post (`instagram_post`) (Ditambahkan 2026-07-30, DIBONGKAR TOTAL 2026-07-30)**:
+> Versi PERTAMA fitur ini (agen lain, kehabisan kuota di tengah jalan) memakai upload foto manual
+> via MediaPicker dan fallback ke post blog tenant sendiri yang disamarkan sebagai konten
+> Instagram — SEMUA itu sudah dibongkar total dan diganti feed OTOMATIS sungguhan via OAuth
+> Instagram Graph API (produk "Instagram API with Instagram Login"). Field `items`/MediaPicker
+> upload custom SUDAH DIHAPUS TOTAL dari tipe data maupun UI editor. `mode` sekarang murni label
+> header ("Post dari"/"Reposted dari" — repost Instagram native mempublish ke timeline akun
+> sendiri, jadi satu fetch API sudah mencakup keduanya). `postUrls` (tempel URL post publik →
+> embed resmi Instagram) tetap dipertahankan sebagai opsi sekunder independen dari OAuth. Detail
+> arsitektur LENGKAP (alur OAuth, kredensial platform vs tenant, refresh token, prasyarat Meta App)
+> ada di dokumen terpisah: **`docs/arsitektur-instagram-embed.md`** — jangan duplikasi detail itu
+> di sini, ini cuma ringkasan pointer.
 
 > ⚠️ **Tabel di atas dan § "Wireframe Tiap Section" di bawah adalah dokumen perencanaan lama —
 > field name aktual sudah berbeda** (mis. `hero` field asli: `eyebrow, title, subtitle, ctaLabel,

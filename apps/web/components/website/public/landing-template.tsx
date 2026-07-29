@@ -9,6 +9,8 @@ import type { HeroSectionData, HeroSectionDesignId } from "@/lib/hero-section-de
 import type { ModulesSectionData, ModuleSectionDesignId } from "@/lib/module-strip-designs";
 import type { InstagramSectionData } from "@/lib/instagram-section-designs";
 import { resolveInstagramFeed } from "@/lib/instagram-feed.server";
+import type { DirectorySectionData } from "@/lib/directory-section-designs";
+import { resolveDirectoryItems } from "@/lib/directory-feed.server";
 import { PostsSection } from "@/components/website/public/sections/posts/posts-section";
 import { ProductsSection } from "@/components/website/public/sections/products/products-section";
 import { CampaignsSection } from "@/components/website/public/sections/campaigns/campaigns-section";
@@ -16,6 +18,7 @@ import { EventsSection } from "@/components/website/public/sections/events/event
 import { HeroSection } from "@/components/website/public/sections/hero/hero-section";
 import { ModulesSection } from "@/components/website/public/sections/modules/modules-section";
 import { InstagramSection } from "@/components/website/public/sections/instagram/instagram-section";
+import { DirectorySection } from "@/components/website/public/sections/directory/directory-section";
 import { Gallery } from "@/components/gallery/gallery";
 import type { GallerySectionData } from "@/lib/gallery-section-designs";
 import { PublicButton } from "@/components/website/public/ui/public-button";
@@ -601,6 +604,19 @@ async function SectionRenderer({
           resolvedItems={resolved.items}
           resolvedAccountName={resolved.accountName}
           resolvedAccountUrl={resolved.accountUrl}
+        />
+      );
+    }
+    case "directory": {
+      const resolved = await resolveDirectoryItems(tenantClient, tenantSlug, section.data as DirectorySectionData);
+      return (
+        <DirectorySection
+          data={section.data as DirectorySectionData}
+          resolvedItems={resolved.items}
+          resolvedTitle={resolved.title}
+          archiveHref={resolved.archiveHref}
+          typeLabel={resolved.typeLabel}
+          orgName={resolved.orgName}
         />
       );
     }

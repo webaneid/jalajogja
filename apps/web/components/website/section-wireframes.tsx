@@ -245,6 +245,28 @@ function InstagramWireframe() {
   );
 }
 
+function DirectoryWireframe() {
+  return (
+    <div className="w-full h-full bg-gray-100 rounded flex flex-col gap-1.5 p-2">
+      <div className="flex justify-between items-center mb-1">
+        <div className="w-1/3 h-2.5 bg-gray-500 rounded" />
+        <div className="w-1/4 h-2 bg-gray-400 rounded" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 flex-1">
+        {[0, 1].map((i) => (
+          <div key={i} className="bg-gray-200 p-1.5 rounded flex flex-col gap-1">
+            <div className="w-full h-10 bg-gray-300 rounded-none" />
+            <div className="w-2.5 h-2.5 bg-gray-400 rotate-45 my-0.5" />
+            <div className="w-3/4 h-2 bg-gray-600 rounded" />
+            <div className="w-full h-1.5 bg-gray-300 rounded" />
+            <div className="w-1/2 h-1.5 bg-gray-400 rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Map type → component ──────────────────────────────────────────────────────
 
 const WIREFRAME_MAP: Record<SectionType, React.FC> = {
@@ -262,6 +284,7 @@ const WIREFRAME_MAP: Record<SectionType, React.FC> = {
   divider:        DividerWireframe,
   modules:        ModulesWireframe,
   instagram_post: InstagramWireframe,
+  directory:      DirectoryWireframe,
 };
 
 // ── Public exports ────────────────────────────────────────────────────────────

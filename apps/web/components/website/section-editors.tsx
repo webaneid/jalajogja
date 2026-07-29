@@ -28,6 +28,7 @@ import {
   normalizeModuleItems, type ModuleId, type ModuleSectionDesignId,
 } from "@/lib/module-strip-designs";
 import { INSTAGRAM_SECTION_DESIGNS, INSTAGRAM_SECTION_DESIGN_IDS, type InstagramSectionData } from "@/lib/instagram-section-designs";
+import { DIRECTORY_SECTION_DESIGNS, DIRECTORY_SECTION_DESIGN_IDS, type DirectorySectionData } from "@/lib/directory-section-designs";
 import { MediaPicker } from "@/components/media/media-picker";
 import type { MediaItem } from "@/components/media/media-picker";
 import { GalleryPicker } from "@/components/gallery/gallery-picker";
@@ -1499,14 +1500,14 @@ function InstagramEditor({ data, onChange, tenantSlug }: EditorProps) {
           <Input
             value={d.accountName ?? ""}
             onChange={(e) => u("accountName", e.target.value)}
-            placeholder="Forcreator"
+            placeholder="Kosongkan untuk pakai akun yang terhubung"
           />
         </Field>
         <Field label="URL Akun Instagram">
           <Input
             value={d.accountUrl ?? ""}
             onChange={(e) => u("accountUrl", e.target.value)}
-            placeholder="https://instagram.com/forcreator"
+            placeholder="https://instagram.com/nama_akun"
           />
         </Field>
       </div>
@@ -1581,6 +1582,98 @@ function InstagramEditor({ data, onChange, tenantSlug }: EditorProps) {
   );
 }
 
+// ── Directory Editor ─────────────────────────────────────────────────────────
+
+function DirectoryEditor({ data, onChange }: EditorProps) {
+  const d = data as DirectorySectionData;
+  const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Tipe Direktori">
+          <Select value={d.directoryType ?? "usaha"} onValueChange={(v) => u("directoryType", v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="usaha">Direktori Usaha & Bisnis</SelectItem>
+              <SelectItem value="profesional">Direktori Praktik Profesional</SelectItem>
+              <SelectItem value="pesantren">Direktori Pesantren Alumni</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Gaya Judul Section">
+          <Select value={d.titleStyle ?? "simple"} onValueChange={(v) => u("titleStyle", v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="simple">Simpel + Link Secondary (Default)</SelectItem>
+              <SelectItem value="default">Default Header Block (Eyebrow + Title)</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+
+      <Field label="Judul Section">
+        <Input
+          value={d.title ?? ""}
+          onChange={(e) => u("title", e.target.value)}
+          placeholder="Kreativitas Santri Gontor"
+        />
+      </Field>
+
+      {d.titleStyle === "default" && (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Eyebrow Teks">
+            <Input
+              value={d.eyebrow ?? ""}
+              onChange={(e) => u("eyebrow", e.target.value)}
+              placeholder="DIREKTORI ORGANISASI"
+            />
+          </Field>
+          <Field label="Deskripsi Header">
+            <Input
+              value={d.headerDesc ?? ""}
+              onChange={(e) => u("headerDesc", e.target.value)}
+              placeholder="Jelajahi potensi dan karya anggota..."
+            />
+          </Field>
+        </div>
+      )}
+
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Jumlah Tampil">
+          <Select value={String(d.count ?? 4)} onValueChange={(v) => u("count", Number(v))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {[2, 3, 4, 6, 8].map((n) => (
+                <SelectItem key={n} value={String(n)}>{n} item</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Layout Kolom">
+          <Select value={String(d.gridCols ?? 2)} onValueChange={(v) => u("gridCols", Number(v))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="2">2 Kolom 1 Row (Terpusat)</SelectItem>
+              <SelectItem value="3">3 Kolom 1 Row</SelectItem>
+              <SelectItem value="4">4 Kolom 1 Row</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Gaya Kartu (Card)">
+          <Select value={d.cardDesign ?? "custom"} onValueChange={(v) => u("cardDesign", v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="custom">Kustom (Foto + Diamond + Avatar Pemilik)</SelectItem>
+              <SelectItem value="default">Default Card Arsip</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      </div>
+    </div>
+  );
+}
+
 // ── Editor Map ────────────────────────────────────────────────────────────────
 
 const EDITOR_MAP: Record<SectionType, React.FC<EditorProps>> = {
@@ -1598,6 +1691,7 @@ const EDITOR_MAP: Record<SectionType, React.FC<EditorProps>> = {
   divider:        DividerEditor,
   modules:        ModulesEditor,
   instagram_post: InstagramEditor,
+  directory:      DirectoryEditor,
 };
 
 // ── Public Export ─────────────────────────────────────────────────────────────

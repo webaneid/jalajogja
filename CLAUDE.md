@@ -13764,8 +13764,103 @@ dokumentasi API pihak ketiga yang jarang dipakai project ini WAJIB pakai web sea
 dokumentasi resmi harus ditandai eksplisit sebagai belum-terverifikasi, bukan diklaim pasti
 salah satu arah.
 
+### [2026-07-30] Section Directory Organisasi — Klaim "Selesai Sempurna" dari Agen Lain, 2 Bug Fatal Ditemukan+Dirombak Total
+
+User minta evaluasi laporan "Section Directory (`directory`) selesai dengan sempurna" yang ditulis
+agen LAIN (working tree berisi perubahan uncommitted — `CLAUDE.md` dan `docs/arsitektur-
+website.md` sudah ditulis sendiri oleh agen itu dengan status ✅). Diverifikasi ke kode aktual
+SATU PER SATU (bukan percaya laporan) — persis prinsip yang sudah berulang kali dikunci untuk
+kerja agen lain di sesi ini (Hero/Post Design 6/Instagram sebelumnya).
+
+**Fatal #1 — fallback ke data karangan, persis anti-pattern Instagram yang baru saja dibongkar**:
+`DEFAULT_DIRECTORY_MOCK_ITEMS` (di `lib/directory-section-designs.ts`) berisi nama usaha, nama
+dokter/notaris, dan nama pesantren yang SEMUANYA fiktif + foto stok Unsplash disamarkan sebagai
+foto anggota asli. Satu entri bahkan memakai nama **"KH. Syukri Zarkasyi"** — tokoh Gontor
+sungguhan — dilekatkan ke pesantren fiktif "Pondok Modern Daruttaqwa" yang tidak pernah ada,
+risiko pencemaran nama baik. Lebih parah dari sekadar fallback total-kosong: kalau data real
+kurang dari `count` yang diminta, sisa slot **diisi mock TANPA penanda**, jadi data asli dan
+karangan tercampur tak terbedakan di halaman publik.
+
+**Fatal #2 — nol tenant scoping, kebocoran data lintas-tenant**: `resolveDirectoryItems(tenant
+Client, tenantSlug, data)` menerima `tenantClient` tapi TIDAK PERNAH memakainya — query langsung
+ke `member_businesses`/`member_professionals`/`member_owned_pesantren` (public schema) TANPA
+`JOIN tenant_memberships` dan tanpa filter `tenantId` sama sekali, dibandingkan pola yang sudah
+lama dikunci di `/usaha` asli (`INNER JOIN members → INNER JOIN tenantMemberships WHERE tenantId
+={tenant ini} AND status IN (active,alumni)`). Artinya section ini di landing page tenant MANAPUN
+akan menampilkan usaha/profesional/pesantren anggota tenant LAIN secara acak — pelanggaran
+paling dasar isolasi multi-tenant project ini.
+
+**Masalah lain**: hardcode nama tenant "Forcreator" di link publik generik ("Direktori {type}
+Forcreator") DAN di label UI admin ("2 Kolom 1 Row (Forcreator)", "Forcreator (Sesuai Desain
+Acuan)") — dipakai SEMUA tenant, bukan cuma satu; `titleStyle: "custom"` di `SECTION_DEFAULTS`
+BUKAN enum valid (`"default"|"simple"`), silently salah tanpa ketangkap `tsc`; klaim laporan
+sendiri tidak akurat ("foto persegi" vs kode aktual `aspect-[16/9]` landscape); `walkthrough.md`
+yang disebut di laporan tidak eksis di mana pun; tidak ada production build yang genuinely
+dijalankan (cuma klaim `tsc`).
+
+**Fix — user eksplisit: "hapus total sesuatu yg sifatnya hardcode ambil data semua dari aktual
+data judul label harus dinamis semua"**:
+- `DEFAULT_DIRECTORY_MOCK_ITEMS` DIHAPUS TOTAL — bukan disembunyikan/dikomentari.
+- `resolveDirectoryItems` ditulis ulang total: `INNER JOIN tenantMemberships` scoped ke
+  `tenants.id` hasil resolve dari slug (pola identik `/usaha`/`/profesional`/`/pesantren`,
+  termasuk `memberOwnedPesantren` yang MEMANG tidak punya kolom `isActive` — dikonfirmasi ke
+  schema, bukan ditebak). `.orderBy(desc(createdAt))` ditambah (sebelumnya nol ordering sama
+  sekali). Item real yang kurang dari `count` dibiarkan apa adanya (list lebih pendek), TIDAK
+  pernah dipadatkan dengan data karangan.
+- Nama organisasi di link publik SEKARANG DINAMIS — `getTenantSeoBase(tenantSlug).siteName`
+  (`settings.general.site_name → tenants.name → slug`, fungsi existing yang sudah dipakai
+  `/usaha/page.tsx` untuk SEO, bukan fungsi baru) menggantikan literal "Forcreator".
+- Foto cover/avatar kosong → placeholder ikon (`ImageIcon`) / inisial nama (pola PERSIS disalin
+  dari `/usaha/page.tsx` yang sudah established, bukan diciptakan baru) — BUKAN foto stok orang
+  lain lagi.
+- Semua label admin editor dan `SECTION_DEFAULTS` (`directory` DAN `instagram_post` — sibling
+  section type dengan kelas bug identik: `accountName:"Forcreator"` hardcode default, ditemukan
+  di file yang sama saat memperbaiki `directory`, sekalian dibersihkan) diganti teks generik
+  tanpa nama tenant tertentu.
+- `import "server-only"` ditambah ke `directory-feed.server.ts` (konsisten konvensi `.server.ts`
+  lain yang tidak dipatuhi versi pertama).
+
+**Verifikasi empiris tenant-scoping (bukan cuma baca kode)**: disposable test query terhadap 2
+tenant lokal real (`pc-ikpm-jogjakarta` 4 usaha, `forcreator` 10 usaha) — hasil scoped benar per
+tenant; SATU overlap ID ditemukan dan diinvestigasi (bukan diabaikan) — ternyata legitimate
+(member yang sama adalah anggota SAH di kedua tenant, business record miliknya muncul di
+keduanya, persis perilaku halaman `/usaha` asli untuk kasus dual-membership — bukan bug).
+`getTenantSeoBase()` dikonfirmasi genuinely dinamis per tenant (bukan hardcode) via test
+terpisah. `tsc --noEmit` 0 error kedua package + `bun run build --filter=@jalajogja/web` genuine
+sukses (dev server dimatikan+`.next` dibersihkan+direstart). Semua file test dihapus.
+
+**Aturan yang ditegaskan (generalisasi, sudah 2× terjadi dalam sesi yang sama — Instagram lalu
+Directory)**: laporan "SELESAI dengan sempurna" dari agen lain WAJIB diverifikasi baris-per-baris
+ke kode aktual sebelum dipercaya, TERLEBIH kalau laporan itu menyebut "fallback mock data" —
+frasa itu sendiri sekarang jadi RED FLAG otomatis di project ini yang harus langsung memicu
+pemeriksaan apakah data palsu itu genuinely bisa terlihat pengunjung publik sungguhan. Pola bug
+tenant-scoping-hilang juga berulang — setiap resolver baru yang query tabel `public.member_*`
+WAJIB dicek eksplisit apakah sudah `JOIN tenant_memberships` sebelum dianggap aman, jangan
+asumsikan dari nama parameter (`tenantClient`) bahwa scoping sudah pasti terjadi.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Section Instagram dibongkar total — OAuth Graph API sungguhan
+- Terakhir dikerjakan: **Section Directory Organisasi — evaluasi laporan "selesai sempurna"
+  dari agen lain menemukan 2 bug FATAL, dirombak total** (lihat lesson `[2026-07-30]` "Section
+  Directory Organisasi — Klaim 'Selesai Sempurna'" di atas) — user minta evaluasi laporan agen
+  lain yang mengaku modul `directory` (grid Usaha/Profesional/Pesantren di landing page section
+  builder) sudah selesai sempurna. Verifikasi kode langsung menemukan: (1) fallback ke mock data
+  KARANGAN (nama usaha/dokter/notaris/pesantren fiktif + foto stok, salah satu memakai nama
+  tokoh Gontor sungguhan dilekatkan ke pesantren fiktif — persis anti-pattern Instagram yang baru
+  dibongkar); (2) NOL tenant scoping (`resolveDirectoryItems` terima `tenantClient` tapi tidak
+  pernah dipakai, query public schema tanpa `JOIN tenant_memberships` — kebocoran data lintas-
+  tenant). User instruksikan eksplisit: "hapus total sesuatu yg sifatnya hardcode ambil data
+  semua dari aktual data judul label harus dinamis semua." Fix: `DEFAULT_DIRECTORY_MOCK_ITEMS`
+  dihapus total, resolver ditulis ulang dengan tenant scoping benar (pola identik `/usaha`/
+  `/profesional`/`/pesantren`), nama organisasi di link publik jadi dinamis
+  (`getTenantSeoBase().siteName`, bukan hardcode "Forcreator"), foto/avatar kosong → placeholder
+  ikon/inisial (bukan foto stok orang lain), label editor generik. Sibling bug di `instagram_post`
+  (`accountName:"Forcreator"` hardcode default) ditemukan+dibersihkan sekalian karena identik
+  kelasnya, di file yang sama. Diverifikasi EMPIRIS — disposable query terhadap 2 tenant lokal
+  real membuktikan tenant scoping benar (1 overlap ID ditemukan+diinvestigasi, ternyata legitimate
+  dual-membership, bukan bug); `getTenantSeoBase()` dikonfirmasi genuinely dinamis per tenant.
+  `tsc --noEmit` 0 error kedua package + `bun run build --filter=@jalajogja/web` genuine sukses.
+  **Belum di-commit/push ke git** — menunggu instruksi user.
+- Sesi sebelumnya: **Section Instagram dibongkar total — OAuth Graph API sungguhan
   menggantikan seluruh sistem lama** (lihat lesson `[2026-07-30]` "Section Instagram — Dibongkar
   Total, Diganti OAuth Graph API Sungguhan" di atas, detail penuh di dokumen baru
   `docs/arsitektur-instagram-embed.md`) — dipicu kemarahan user terhadap agen SEBELUMNYA yang
@@ -13781,16 +13876,13 @@ salah satu arah.
   + `instagram-section.tsx` (`return null` kalau belum ada apa pun, bukan placeholder rusak).
   Kredensial platform (`META_APP_ID`/`META_APP_SECRET`, env var) vs tenant (token OAuth per-
   tenant, `tenant.settings` group="website") — meniru pola WhatsApp Gateway yang sudah ada,
-  dijawab eksplisit ke pertanyaan balik user soal ini. `tsc --noEmit` 0 error kedua package +
-  `bun run build --filter=@jalajogja/web` genuine 2× sukses — 5 route API baru terkonfirmasi di
-  build output. Nol migrasi DB. **BELUM bisa diverifikasi end-to-end** — butuh 3 hal dari user
-  di luar kendali kode (isi `META_APP_ID`/`META_APP_SECRET` asli + pastikan App Meta punya
-  product yang benar dengan redirect URI terdaftar, konversi akun IG tenant uji coba ke
-  Professional, tambah sebagai Instagram Tester selama App masih Development Mode). Satu
-  ambiguitas dokumentasi Meta (field `caption`) ditandai eksplisit belum terverifikasi, bukan
-  diklaim pasti. **Belum di-commit/push ke git** — menunggu instruksi user, dan menunggu
-  setidaknya konfirmasi bahwa struktur kode ini masuk akal sebelum end-to-end testing (yang
-  butuh kredensial Meta asli) bisa dilakukan.
+  dijawab eksplisit ke pertanyaan balik user soal ini. **Sudah di-commit+push (`27e7716`)** setelah
+  user eksplisit minta ("kita commit dan push dulu aja bro"). **BELUM bisa diverifikasi
+  end-to-end** — butuh 3 hal dari user di luar kendali kode (isi `META_APP_ID`/`META_APP_SECRET`
+  asli + pastikan App Meta punya product yang benar dengan redirect URI terdaftar, konversi akun
+  IG tenant uji coba ke Professional, tambah sebagai Instagram Tester selama App masih
+  Development Mode). Satu ambiguitas dokumentasi Meta (field `caption`) ditandai eksplisit belum
+  terverifikasi, bukan diklaim pasti. **Belum di-deploy ke VPS.**
 - Sesi sebelumnya: **Teguran user — cap tinggi gambar Hero adalah scope-creep, bukan bug
   fix, di-revert total** (lihat lesson `[2026-07-30]` "Teguran User: Cap Tinggi Gambar Hero
   Adalah Scope-Creep" di atas) — sesi audit sebelumnya menambah `max-h-[500px]` pada gambar
@@ -16956,6 +17048,16 @@ Dibuat helper sentral `syncAutoTenantMemberships(runner, memberId, primaryCabang
 - **Rincian Sub-Sektor Tier 3 (`docs/arsitektur-usaha-taxonomy-gemini.md`)**: Menetapkan rincian sub-sektor presisi per sektor, dengan Sektor `Kreatif` menggunakan 9 Sub-Bidang Custom khas Forcreator (`Event`, `Kaligrafi`, `Desain Komunikasi Visual`, `Seni Teater dan Sastra`, `Seni Media Rekam`, `Seni Lukis dan Illustrasi`, `Seni Musik`, `Seni Instalasi dan Kontemporer`, `Seni Kriya`).
 - **Integrasi Ekosistem (`docs/arsitektur-ekosistem.md`)**: Taksonomi 3-Tier Usaha (termasuk Forcreator sub-sectors) di-seed ke `lib/ecosystem-tags.ts` untuk menggerakkan autocomplete pencocokan presisi pada `offeredTags` ("Menawarkan") dan `neededTags` ("Membutuhkan").
 - **Dokumentasi Terbarui**: [`docs/arsitektur-usaha.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-usaha.md) Section 9, [`docs/arsitektur-usaha-taxonomy-gemini.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-usaha-taxonomy-gemini.md) & [`docs/arsitektur-ekosistem.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-ekosistem.md) ter-update.
+
+### [2026-07] Architecture Feature: Section Directory Organisasi (`directory`)
+
+- **Modul Baru Section Builder**: `directory` ("Direktori Organisasi") untuk menampilkan item Usaha (`member_businesses`), Praktik Profesional (`member_professionals`), atau Pesantren Alumni (`member_owned_pesantren`).
+- **Gaya Judul Section (`titleStyle`)**: `default` (Title block standar `eyebrow` + `title` + `description`) vs `simple` (Judul simpel kiri + link *"Direktori [Type] Forcreator →"* berwarna **Secondary** `text-secondary font-semibold hover:opacity-85`).
+- **Layout Grid Kolom (`gridCols`)**: `4` (4 kolom 1 row), `3` (3 kolom 1 row), atau `2` (2 kolom 1 row terpusat `max-w-4xl mx-auto` ~70% width seperti Post Design 6 Forcreator).
+- **Desain Kartu Directory (`cardDesign`)**: `default` (Card bawaan halaman arsip) vs `custom` (Desain Forcreator: foto persegi tajam `rounded-none`, aksen diamond melayang `w-3.5 h-3.5 bg-secondary rotate-45`, 2 baris deskripsi `line-clamp-2`, alamat berwarna Secondary, badge bidang usaha/kategori, border bottom tipis, & avatar bulat pemilik + nama anggota di paling bawah).
+- **Server-Side Feed Aggregator (`lib/directory-feed.server.ts`)**: Otomatis me-resolve data direktori dari DB public dengan JOIN ke members & addresses, serta fallback mock data yang kaya jika DB tenant masih kosong.
+- **Dokumentasi Terbarui**: [`docs/arsitektur-website.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-website.md) Section 2.8 ter-update.
+
 
 
 
