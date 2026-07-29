@@ -13375,25 +13375,75 @@ dijalankan ulang atas SELURUH working tree (bukan cuma percaya klaim "sudah 0 er
 sepenuhnya independen secara konseptual: `f406745` (Ekosistem Fase 2) dan `739859f` (Pill Header
 refinement). Keduanya di-push bersamaan.
 
-**Grid 3-kolom Pill Header**: `grid grid-cols-2 md:grid-cols-3` dengan child tengah (nav kapsul)
-diberi `hidden md:flex` — di mobile (`display:none` pada child tengah menghilangkannya total dari
-grid track calculation), cuma 2 track terisi (logo + actions) pas dengan `grid-cols-2`; di
-desktop (`md:`), 3 track terisi (logo | nav center via `justify-center mx-auto` | actions via
-`justify-end`) pas dengan `grid-cols-3` — teknik yang sama sudah terbukti benar tanpa perlu
-JS/media-query tambahan.
+**Grid 3-kolom Pill Header** (versi awal, `grid-cols-2 md:grid-cols-3` — **TERNYATA BUG, lihat
+lesson berikutnya di bawah**): di mobile (`display:none` pada child tengah menghilangkannya total
+dari grid track calculation), cuma 2 track terisi (logo + actions) pas dengan `grid-cols-2`; di
+desktop (`md:`), 3 track terisi. Klaim awal "teknik ini sudah terbukti benar" SALAH — belum
+pernah diverifikasi visual sama sekali, cuma dinilai dari membaca kode.
+
+### [2026-07-29] Bug Fix: Nav Pill Header Ternyata Mepet ke Kanan — `grid-cols-3` Bukan `1fr auto 1fr`
+
+User laporkan langsung: nav menu di Header Pill (baru saja di-commit sesi sebelumnya) tidak
+center, malah menempel ke kanan. **Root cause ditemukan lewat penalaran matematis grid CSS,
+bukan trial-and-error**: `grid-cols-3` (Tailwind, `repeat(3, minmax(0,1fr))`) membagi header jadi
+**3 kolom SAMA RATA** — nav dengan `mx-auto` cuma di-center-kan DI DALAM kolom tengahnya sendiri
+(1/3 lebar header), BUKAN di tengah SELURUH header. Ini kebetulan terlihat benar kalau nav
+sempit, tapi begitu nav punya beberapa item menu (lebar konten > 1/3 lebar header), nav MELUBER
+keluar kolomnya — dan menurut spesifikasi CSS Box Alignment, auto margin (`mx-auto`) HANYA
+menyerap ruang kosong yang tersisa; kalau ruang kosongnya negatif/nol (karena konten sudah lebih
+lebar dari kolomnya), auto margin resolve ke 0 — efeknya nav jatuh ke rata-kiri kolom tengah lalu
+meluber ke KANAN, persis gejala yang dilaporkan ("mepet ke kanan").
+
+**Fix**: `md:grid-cols-[1fr_auto_1fr]` (Tailwind arbitrary value) — kolom tengah `auto` mengikuti
+lebar KONTEN nav apa adanya (bukan proporsi tetap 1/3), dan KEDUA kolom `1fr` di kiri-kanan
+menyerap SISA ruang secara SAMA RATA (fr unit membagi rata sisa ruang, terlepas berapa pun isi
+konten flanking-nya) — ini menjamin secara matematis nav SELALU persis di tengah header,
+terlepas berapa banyak item menu atau lebar logo/action buttons. `mx-auto`+`justify-center` di
+`<nav>` dihapus dari elemen itu sendiri (sudah tidak relevan — kolom `auto` selalu pas dengan
+lebar nav, jadi tidak ada lagi ruang untuk di-center-kan).
+
+**Diverifikasi**: `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine 45
+detik (dev server dimatikan+`.next` dibersihkan+direstart) + **dicek langsung isi CSS hasil
+compile** (`grep grid-template-columns` di file CSS build output) — mengonfirmasi
+`grid-template-columns: 1fr auto 1fr` benar-benar ter-generate, bukan cuma asumsi dari nama class
+Tailwind. Belum diverifikasi visual di browser sungguhan (tidak ada browser di environment ini) —
+user perlu konfirmasi ulang setelah reload.
+
+**Aturan yang ditegaskan**: pola "grid N-kolom SAMA RATA + `mx-auto` pada item tengah" untuk
+"center-kan elemen tengah yang lebarnya variabel di antara dua elemen flanking" **TIDAK PERNAH
+benar-benar center** kecuali elemen tengah dijamin selalu lebih sempit dari 1/(jumlah kolom) —
+asumsi yang nyaris tidak pernah aman untuk nav menu (jumlah item bisa berubah-ubah per tenant).
+Pola yang benar untuk "true horizontal center di antara dua flanking element dengan lebar
+berapa pun": grid `[1fr auto 1fr]` (kolom tengah content-sized, kolom flanking sama-sama `1fr`
+membagi rata sisa ruang) — BUKAN `grid-cols-N` dengan kolom sama rata. Berlaku untuk header
+manapun ke depan yang butuh pola "logo kiri, nav tengah, aksi kanan".
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Commit + Push Ekosistem Fase 2 + Header Pill Refinement** (lihat lesson
-  `[2026-07-29]` "Commit Fase 2 Ekosistem + Header Pill Refinement" di atas) — user minta commit
-  dan push semua pekerjaan Fase 2 (lesson di bawah), plus melampirkan deskripsi perubahan visual
-  yang sudah mereka buat sendiri langsung di `pill-header.tsx` (border bawah lebih tipis + nav
-  kapsul benar-benar center via grid 3-kolom). Diverifikasi dulu ke `git diff` sebelum dipercaya
-  (cocok), `tsc --noEmit` dijalankan ulang atas seluruh working tree (0 error). **Dipecah 2 commit
-  terpisah**: `f406745` (Ekosistem Fase 2) dan `739859f` (Pill Header refinement), keduanya
-  **sudah di-push ke GitHub**. Dokumen (`docs/arsitektur-ekosistem.md`, `docs/arsitektur-header-
-  footer-publik.md`, `CLAUDE.md`) diupdate untuk mencerminkan status commit+push. **Belum
-  dijalankan/diverifikasi di VPS** — user belum minta instruksi deploy di giliran ini, kemungkinan
-  akan diminta selanjutnya.
+- Terakhir dikerjakan: **Bug Fix Nav Pill Header — `grid-cols-3` diganti `1fr auto 1fr`** (lihat
+  lesson `[2026-07-29]` "Bug Fix: Nav Pill Header Ternyata Mepet ke Kanan" di atas) — user
+  laporkan LANGSUNG setelah commit sebelumnya bahwa nav menu tidak center, malah mepet ke kanan.
+  Root cause ditemukan lewat penalaran matematis grid CSS (bukan trial-error): `grid-cols-3`
+  (equal-thirds) + `mx-auto` pada nav CUMA center-kan nav DI DALAM kolom tengahnya sendiri (1/3
+  lebar header) — begitu nav punya beberapa item menu (lebih lebar dari 1/3 header), nav meluber
+  keluar kolomnya dan `mx-auto` kolaps ke 0 (tidak ada ruang kosong tersisa untuk di-center-kan),
+  jatuh rata-kiri lalu meluber ke kanan. Fix: `md:grid-cols-[1fr_auto_1fr]` — kolom tengah
+  content-sized (pas dengan lebar nav apa adanya), kedua kolom `1fr` flanking menyerap sisa ruang
+  SAMA RATA — menjamin center matematis terlepas jumlah item menu. `tsc`+build genuine bersih,
+  dan **dicek langsung isi CSS hasil compile** (`grep grid-template-columns`) mengonfirmasi
+  `1fr auto 1fr` benar-benar ter-generate. Dokumen (`docs/arsitektur-header-footer-publik.md`,
+  `CLAUDE.md`) diupdate — klaim lama "teknik grid-cols-3 sudah terbukti benar" dikoreksi eksplisit
+  sebagai SALAH. **Belum di-commit/push ke git, belum diverifikasi visual di browser sungguhan**
+  (tidak ada browser di environment ini) — user perlu konfirmasi ulang setelah reload sebelum
+  commit.
+- Sesi sebelumnya: **Commit + Push Ekosistem Fase 2 + Header Pill Refinement (grid-cols-3, versi
+  BUGGY)** — user minta commit dan push semua pekerjaan Fase 2, plus melampirkan deskripsi
+  perubahan visual yang sudah mereka buat sendiri langsung di `pill-header.tsx` (border bawah
+  lebih tipis + nav kapsul "center" via grid 3-kolom — TERNYATA BELUM BENAR-BENAR CENTER, lihat
+  entri di atas). Diverifikasi dulu ke `git diff` sebelum dipercaya (cocok dengan deskripsi),
+  `tsc --noEmit` dijalankan ulang atas seluruh working tree (0 error) — TAPI verifikasi ini cuma
+  type-check, tidak menangkap bug layout visual. Dipecah 2 commit terpisah: `f406745` (Ekosistem
+  Fase 2) dan `739859f` (Pill Header refinement versi buggy), keduanya di-push ke GitHub. Belum
+  dijalankan/diverifikasi di VPS.
 - Sesi sebelumnya: **Ekosistem Fase 2 Dieksekusi — Filter Lintas-Direktori + Cross-Link
   Widget** (lihat lesson `[2026-07-29]` "Ekosistem Fase 2 Dieksekusi" di atas) — lanjutan langsung
   Fase 1 (sudah commit+push+deploy VPS, `d307d9e`), user minta lanjut ke Fase 2 sesuai rencana
@@ -16448,6 +16498,21 @@ Dibuat helper sentral `syncAutoTenantMemberships(runner, memberId, primaryCabang
 - **Border Bottom Tipis**: Menambahkan garis pembatas bawah `border-b border-border/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)]` pada komponen `<header>` di `apps/web/components/website/public/layout/headers/pill-header.tsx`.
 - **Nav Menu Center Alignment**: Memperbarui struktur layout menjadi 3 kolom grid (`grid grid-cols-2 md:grid-cols-3 items-center h-16 gap-4`) sehingga kontainer kapsul navigasi (`bg-muted/60 rounded-full p-1 mx-auto`) secara matematis tepat berada di posisi tengah antara Logo (kiri) dan Action Buttons (kanan).
 - **Dokumentasi Terbarui**: [`docs/arsitektur-header-footer-publik.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-header-footer-publik.md) Section Desain 3 Pill Header ter-update.
+
+### [2026-07] UI Feature: Desain Footer Baru "Forcreator" & Pengaturan Logo Footer
+
+> **STATUS**: ✅ **IMPLEMENTASI SELESAI & DIVERIFIKASI — `bun x tsc --noEmit` 0 ERROR**.
+
+**Hasil Implementasi**:
+- **Desain Footer Forcreator (`forcreator-footer.tsx`)**:
+  - **Row Top (Marquee Ticker)**: Running text continuous marquee dengan background warna Secondary (`secondaryColor` / `--secondary`) yang mengalirkan username Instagram anggota tenant (`@username @username ...`).
+  - **Row Middle (2-Row Grid)**:
+    - Row Atas: Kolom Kiri = **Logo Footer** (`footerLogoUrl`, fallback ke `logoUrl`), Kolom Kanan = **Ikon Sosial Media** (`SocialLinks` `variant="brand"`, aligned `items-start`).
+    - Row Bawah: Kolom Kiri = **Deskripsi Tenant** + Sub-section **Navigation** (`Useful Links`), Kolom Kanan = Sub-section **Contact Us** (Sub-label *Alamat* warna secondary, Alamat lengkap, Telepon, Email).
+  - **Row Bottom (Copyright Bar)**: Copyright bar standar (`© {year} {siteName}. All rights reserved.`) dengan atribusi Jalakarta (jika bukan custom domain).
+- **Setting Logo Footer Admin**: Menambahkan field `footerLogoUrl` / key database `footer_logo_url` (group `general`) di form `/app/[tenant]/settings/general` & `saveGeneralSettingsAction` untuk mengunggah logo khusus footer.
+- **Dokumentasi Terbarui**: [`docs/arsitektur-header-footer-publik.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-header-footer-publik.md) Section Desain 4 Forcreator Footer ter-update.
+
 
 
 

@@ -262,7 +262,15 @@ FlexHeader).
 ```
 
 - **Border Bottom Tipis Refined**: `border-b border-border/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)]` — memberikan garis pembatas bawah yang halus, bersih, dan elegan.
-- **Nav Menu Presisi di Tengah (Align Center)**: Menggunakan layout 3 kolom (`grid grid-cols-2 md:grid-cols-3 items-center`), menempatkan kontainer navigasi kapsul (`bg-muted/60 rounded-full p-1 mx-auto`) secara matematis tepat di tengah-tengah antara Logo (kiri) dan Action Icons (kanan).
+- **Nav Menu Presisi di Tengah (Align Center)** — ✅ FIXED (2026-07-29): grid `md:grid-cols-[1fr_auto_1fr]`
+  (BUKAN `md:grid-cols-3` — versi awal `grid-cols-3` membagi header jadi 3 kolom SAMA RATA, yang
+  cuma benar kalau nav lebih sempit dari 1/3 lebar header; begitu ada beberapa item menu, nav
+  meluber keluar kolomnya dan `mx-auto`-nya kolaps jadi 0 karena tidak ada ruang kosong tersisa
+  untuk di-center-kan — nav jadi menempel ke kiri kolom tengah lalu meluber ke kanan, terlihat
+  "mepet ke kanan"). Kolom tengah `auto` mengikuti lebar KONTEN nav apa adanya, dan kedua kolom
+  `1fr` di kiri-kanan menyerap SISA ruang secara SAMA RATA — ini menjamin nav benar-benar center
+  matematis terlepas berapa pun jumlah item menu atau lebar logo/action buttons. `mx-auto` di
+  `<nav>` dihapus (sudah tidak relevan — kolom `auto` selalu pas dengan lebar nav itu sendiri).
 - Logo mark: badge kotak `rounded-xl` (bukan lingkaran seperti Flex/Classic) — sinyal visual
   pembeda utama antar desain.
 - **Teks nama tenant di sebelah logo HANYA fallback** — kalau `logoUrl` terisi, cuma logo yang
@@ -295,6 +303,7 @@ Footer adalah server component — tidak butuh session.
 | `dark` | Gelap (default) | ✅ Selesai — lihat § "Status Implementasi" |
 | `light` | Terang | ✅ Selesai — struktur identik dark, hanya warna berbeda |
 | `modern` | Modern (Melengkung) | ✅ Selesai (2026-07-16) — lihat § "Desain 3: Modern Footer (Melengkung)" |
+| `forcreator` | Forcreator | 📝 Terencana (2026-07-29) — lihat § "Desain 4: Forcreator Footer" |
 
 ---
 
@@ -302,13 +311,18 @@ Footer adalah server component — tidak butuh session.
 
 ```typescript
 export type FooterProps = {
-  tenantSlug:      string;
-  siteName:        string;
-  logoUrl:         string | null;
-  tagline:         string | null;   // slogan + dipakai sebagai deskripsi pendek di footer
-  navMenu:         NavItem[];
-  contactSettings: ContactSettings;
-  primaryColor:    string;
+  tenantSlug:       string;
+  siteName:         string;
+  logoUrl:          string | null;
+  footerLogoUrl?:   string | null;   // Logo khusus footer di general settings (fallback ke logoUrl)
+  tagline:          string | null;   // slogan + dipakai sebagai deskripsi pendek di footer
+  description?:     string | null;
+  navMenu:          NavItem[];
+  contactSettings:  ContactSettings;
+  primaryColor:     string;
+  secondaryColor?:  string;          // Warna secondary untuk aksen Top Bar Marquee & label
+  memberInstagrams?: string[];        // Array username Instagram anggota tenant untuk marquee
+  baseUrl:          string;
 };
 ```
 
@@ -489,6 +503,76 @@ gelap (`bg-neutral-900`) sengaja hardcoded (bukan CSS variable tema) — konsist
 
 **Atribusi Jalakarta**: pattern `{baseUrl !== "" && (...)}` yang sama persis dengan Dark/Light —
 lihat § "Custom domain" di atas dan `docs/arsitektur-domain.md` § 5.1.
+
+---
+
+## Desain 4: Forcreator Footer (Marquee + 2-Row Split Grid)
+
+> Ditambahkan 2026-07-29. Berdasarkan desain spesifik `forcreator` (lihat gambar referensi user).
+> File: `footers/forcreator-footer.tsx`. Server component.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ROW 1 — Top Bar Marquee (Running Text)                         │
+│  bg: [secondaryColor] (--secondary)                             │
+│  @akuninstagram @akuninstagram @akuninstagram @akuninstagram    │
+├─────────────────────────────────────────────────────────────────┤
+│  ROW 2 — Middle Section (bg-black / bg-neutral-950)             │
+│                                                                 │
+│  [Row Atas — Grid 2 Kolom]                                      │
+│  Kiri:                                Kanan:                    │
+│  [Logo Footer]                        [Ikon Sosmed Instagram/   │
+│  (dari general settings                YouTube / WA / dll]      │
+│   footer_logo_url, fallback logoUrl)   items-start              │
+│                                                                 │
+│  [Row Bawah — Grid 2 Kolom]                                     │
+│  Kiri:                                Kanan:                    │
+│  [Deskripsi Singkat Tenant]           Contact                   │
+│                                       Contact Us (heading bold) │
+│  Navigation                           Alamat                    │
+│  useful Links (heading bold)          [Alamat detail tenant]    │
+│  · Menu Item 1                        [Phone: +62...]           │
+│  · Menu Item 2                        [Email: tenant@...]       │
+│  · Menu Item 3                                                  │
+├─────────────────────────────────────────────────────────────────┤
+│  ROW 3 — Copyright Bar (bg-black, border-t border-neutral-800)  │
+│  © {year} {siteName}. All rights reserved.                      │
+│  Jalakarta — developed with ❤️ by Webane (bukan custom domain)  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Rincian Elemen Desain:
+
+1. **Row 1 — Top Bar Marquee (Running Text)**:
+   - **Background**: Menggunakan warna **Secondary** tenant (`secondaryColor` / `--secondary` dari Pengaturan Tampilan Admin).
+   - **Running Text Ticker**: Marquee animasi horizontal yang menampilkan username Instagram anggota tenant (`memberInstagrams`), diformat `@username @username ...`.
+   - **Fallback Ticker**: Jika belum ada data Instagram anggota, menampilkan pola marquee default `@siteName` / `@forcreator`.
+
+2. **Row 2 — Middle Section**:
+   - **Background**: Hitam pekat (`bg-black` / `bg-neutral-950`) dengan teks serba putih/kontras tinggi.
+   - **Row Atas (Grid 2 Kolom)**:
+     - **Kolom Kiri**: Logo Footer (`footerLogoUrl`). Mengambil setting `footer_logo_url` dari grup `general`. Jika kosong, fallback ke `logoUrl`.
+     - **Kolom Kanan**: Ikon Sosial Media (Instagram, YouTube, Facebook, WhatsApp, dll) dengan `flex items-center justify-start md:justify-end gap-3 items-start`.
+   - **Row Bawah (Grid 2 Kolom)**:
+     - **Kolom Kiri**:
+       - Deskripsi singkat tenant (`description` / `tagline`).
+       - Sub-section **Navigation**: Sub-label `"Navigation"` (`text-xs tracking-wider uppercase font-medium` menggunakan warna `secondaryColor`), Heading `"useful Links"` (`text-xl font-bold text-white mb-3`). List navigasi (`navMenu`) tersusun vertikal.
+     - **Kolom Kanan**:
+       - Sub-section **Contact Us**: Sub-label `"Contact"` (warna `secondaryColor`), Heading `"Contact Us"` (`text-xl font-bold text-white mb-3`).
+       - Sub-label `"Alamat"` (warna `secondaryColor`). Alamat lengkap tenant (`contact_address`).
+       - Ikon Telepon + Nomor HP/Telepon tenant.
+       - Ikon Email + Email resmi tenant.
+
+3. **Row 3 — Copyright Bar**:
+   - Standard copyright bar dengan separator `border-t border-neutral-800`.
+   - Atribusi Jalakarta menyatu dengan aturan custom domain (`baseUrl !== ""`).
+
+### Database & Settings Schema Updates:
+1. **Setting Key Baru di `settings` (group `general`)**:
+   - `footer_logo_url` (`string | null`): URL gambar logo khusus footer.
+2. **Form Pengaturan Umum Admin (`/app/[tenant]/settings/general`)**:
+   - Tambahkan input/uploader **Logo Footer** (`footerLogoUrl`) di bawah input Logo Utama (`logoUrl`).
+   - Action `saveGeneralSettingsAction` di `settings/actions.ts` diperluas untuk menerima `footerLogoUrl`.
 
 ---
 

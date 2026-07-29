@@ -324,7 +324,7 @@ export function PillHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
     <>
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-md border-b border-border/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 items-center h-16 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-[1fr_auto_1fr] items-center h-16 gap-4">
             {/* Logo — nama tenant HANYA tampil sebagai fallback saat belum upload logo */}
             <div className="flex items-center justify-start shrink-0">
               <a href={baseUrl || "/"} className="flex items-center gap-2.5">
@@ -346,7 +346,7 @@ export function PillHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
 
             {/* Nav — pill container, desktop only, centered in middle column */}
             {navMenu.length > 0 ? (
-              <nav className="hidden md:flex items-center justify-center gap-0.5 bg-muted/60 rounded-full p-1 mx-auto">
+              <nav className="hidden md:flex items-center gap-0.5 bg-muted/60 rounded-full p-1">
                 {navMenu.map((item) => {
                   const href  = resolveNavHref(item);
                   const isExt = item.external ?? false;
