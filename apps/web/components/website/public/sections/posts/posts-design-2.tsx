@@ -20,6 +20,7 @@ export function PostsDesign2({ data, posts, baseUrl, sectionTitle, filterHref }:
         <PostsSectionTitle
           title={sectionTitle}
           eyebrow={data.eyebrow}
+          eyebrowColor={data.eyebrowColor}
           description={data.headerDesc}
           align={data.titleAlign}
           href={filterHref}

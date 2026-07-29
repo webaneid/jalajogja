@@ -5,6 +5,7 @@ import { ArrowRight, Play, X } from "lucide-react";
 import { HERO_MODULES, type HeroDesignProps } from "@/lib/hero-section-designs";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import { getYouTubeVideoId, isYouTubeShorts, buildYouTubeEmbedUrl } from "@/lib/youtube";
+import { renderSafeHtml } from "@/lib/safe-html";
 
 export function HeroDesign1({ data: d, baseUrl, heroCard }: HeroDesignProps) {
   const youtubeId = getYouTubeVideoId(d.youtubeUrl);
@@ -143,17 +144,17 @@ export function HeroDesign1({ data: d, baseUrl, heroCard }: HeroDesignProps) {
             {d.eyebrow && (
               <div className={`flex items-center gap-2.5 text-xs font-mono uppercase tracking-widest text-muted-foreground ${!hasMedia ? "justify-center" : ""}`}>
                 <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />
-                {d.eyebrow}
+                {renderSafeHtml(d.eyebrow)}
               </div>
             )}
             {d.title && (
               <h1 className={`text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-bold leading-[1.1] tracking-tight ${titleColorClass}`}>
-                {d.title}
+                {renderSafeHtml(d.title)}
               </h1>
             )}
             {d.subtitle && (
               <p className={`text-base sm:text-lg text-muted-foreground leading-relaxed ${!hasMedia ? "mx-auto" : ""} max-w-lg`}>
-                {d.subtitle}
+                {renderSafeHtml(d.subtitle)}
               </p>
             )}
             {(d.ctaLabel || d.ctaSecondaryLabel) && (

@@ -6,6 +6,7 @@ import type { SectionTitleAlign } from "@/lib/section-title-align";
 type Props = {
   title:        string;     // *italic* untuk bagian berwarna primary
   eyebrow?:     string;     // judul kecil, opsional
+  eyebrowColor?: "primary" | "secondary";
   description?: string;     // opsional
   href?:        string;     // opsional — jika tidak ada, link kanan tidak tampil
   linkLabel?:   string;
@@ -31,6 +32,7 @@ function renderTitle(text: string) {
 export function PostsSectionTitle({
   title,
   eyebrow,
+  eyebrowColor,
   description,
   href,
   linkLabel = "Lihat Semua",
@@ -44,6 +46,7 @@ export function PostsSectionTitle({
         <div className="max-w-3xl mx-auto">
           <SectionTitleBlock
             eyebrow={eyebrow}
+            eyebrowColor={eyebrowColor}
             title={renderTitle(title)}
             description={description}
             as={Tag}
@@ -66,6 +69,7 @@ export function PostsSectionTitle({
           tetap align persis ke baseline via items-end, tidak bergeser oleh margin trailing. */}
       <SectionTitleBlock
         eyebrow={eyebrow}
+        eyebrowColor={eyebrowColor}
         title={renderTitle(title)}
         description={description}
         as={Tag}

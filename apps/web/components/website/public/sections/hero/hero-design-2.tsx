@@ -1,7 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import type { HeroDesignProps, FunfactResult } from "@/lib/hero-section-designs";
 import { PublicButton } from "@/components/website/public/ui/public-button";
-import { renderAccentTitle } from "@/lib/render-accent-title";
+import { renderSafeHtml } from "@/lib/safe-html";
 
 // Desain 2 — Full-Bleed Modern. Sumber ide: design-refs/jalakarta-v2/ (lihat design-refs/README.md).
 // Struktur & bahasa diadaptasi, bukan disalin mentah — tidak ada field data baru selain
@@ -38,17 +38,17 @@ export function HeroDesign2({ data: d, heroCard, funfacts }: Props) {
             {d.eyebrow && (
               <span className="inline-flex items-center gap-2 bg-white/15 text-white px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-widest">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                {d.eyebrow}
+                {renderSafeHtml(d.eyebrow)}
               </span>
             )}
             {d.title && (
               <h1 className="text-white text-4xl sm:text-5xl xl:text-6xl font-bold leading-[0.98] tracking-tight">
-                {renderAccentTitle(d.title)}
+                {renderSafeHtml(d.title)}
               </h1>
             )}
             {d.subtitle && (
               <p className="text-white/85 text-base sm:text-lg max-w-lg leading-relaxed">
-                {d.subtitle}
+                {renderSafeHtml(d.subtitle)}
               </p>
             )}
             {(d.ctaLabel || d.ctaSecondaryLabel) && (

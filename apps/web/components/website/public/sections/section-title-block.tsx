@@ -4,6 +4,7 @@ import { resolveAccentTextClass } from "@/lib/section-background";
 
 type Props = {
   eyebrow?:     string;
+  eyebrowColor?: "primary" | "secondary";
   title?:       ReactNode;   // biasanya string, tapi PostsSectionTitle mengirim markup *italic* terparsing
   description?: string;
   background?:  SectionBackground;   // untuk warna eyebrow — default "none"
@@ -21,10 +22,22 @@ type Props = {
 // (layout section berbeda-beda secara legit, tidak dipaksa seragam). CTA sengaja TIDAK memakai
 // komponen ini — CTA punya judul besar tersendiri yang menyamai ukuran Hero, lihat
 // docs/arsitektur-cta-section.md.
-export function SectionTitleBlock({ eyebrow, title, description, background = "none", as: Tag = "h2", className }: Props) {
+export function SectionTitleBlock({
+  eyebrow,
+  eyebrowColor,
+  title,
+  description,
+  background = "none",
+  as: Tag = "h2",
+  className,
+}: Props) {
   if (!eyebrow && !title && !description) return null;
 
-  const accentCls = resolveAccentTextClass(background);
+  const accentCls = eyebrowColor === "secondary"
+    ? "text-secondary"
+    : eyebrowColor === "primary"
+    ? "text-primary"
+    : resolveAccentTextClass(background);
 
   return (
     <div className={className}>

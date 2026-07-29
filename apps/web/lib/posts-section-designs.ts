@@ -10,6 +10,7 @@ export type PostColumnConfig = {
 export type PostsSectionData = {
   title:         string;
   eyebrow?:      string;             // judul kecil di atas title, opsional
+  eyebrowColor?: "primary" | "secondary"; // "primary" (Warna Utama) vs "secondary" (Warna Sekunder)
   headerDesc?:   string;             // deskripsi di bawah title, opsional
   titleAlign?:   SectionTitleAlign;  // default "left" — lihat lib/section-title-align.ts
   count:         number;

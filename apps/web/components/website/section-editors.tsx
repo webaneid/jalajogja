@@ -429,6 +429,17 @@ function PostsEditor({ data, onChange, variant, onVariantChange, tenantSlug }: E
           <Field label="Judul Kecil (eyebrow, opsional)">
             <Input value={d.eyebrow ?? ""} onChange={(e) => u("eyebrow", e.target.value)} placeholder="TERBARU" />
           </Field>
+          {d.eyebrow && (
+            <Field label="Warna Judul Kecil (Eyebrow)">
+              <Select value={(d as { eyebrowColor?: string }).eyebrowColor ?? "primary"} onValueChange={(v) => u("eyebrowColor", v)}>
+                <SelectTrigger><SelectValue placeholder="Pilih warna..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="primary">Warna Utama (Primary)</SelectItem>
+                  <SelectItem value="secondary">Warna Sekunder (Secondary)</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
           <Field label="Deskripsi (opsional)">
             <Input value={d.headerDesc ?? ""} onChange={(e) => u("headerDesc", e.target.value)} placeholder="Kabar dan cerita terbaru dari kami." />
           </Field>
