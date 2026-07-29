@@ -1,6 +1,6 @@
 # Arsitektur Ekosistem Sinergi Anggota — Interkoneksi Usaha, Profesional & Pesantren
 
-> **Status: Fase 0-2 SELESAI (2026-07-29, belum di-commit/deploy) — Rencana Eksekusi Ditulis Ulang, Bertahap, Berbasis Fondasi Nyata**
+> **Status: Fase 0-2 SELESAI + di-commit/push (Fase 1 sudah deploy VPS, Fase 2 belum) — Rencana Eksekusi Ditulis Ulang, Bertahap, Berbasis Fondasi Nyata**
 > Dokumen versi sebelumnya (ditulis agen lain, tanggal yang sama) mengusulkan pembangunan Trust
 > Engine + RFQ Subsystem + Structured JSONB + Taxonomy Dictionary + Hub `/ekosistem` + Insight
 > Widgets sekaligus sebagai "Fase 1". Setelah verifikasi LANGSUNG ke kode aktual (bukan asumsi),
@@ -352,9 +352,10 @@ kondisi DEFAULT-nya. Ketiga list page (`usaha/page.tsx`, `profesional/page.tsx`,
 (`[id]/page.tsx`) semuanya mengikuti pola identik — verifikasi `tsc --noEmit` per-modul (bukan
 ditumpuk di akhir), 0 error di ketiganya, lalu `bun run build --filter=@jalajogja/web` genuine
 (dev server dimatikan, `.next` dibersihkan, direstart setelah) mengonfirmasi ke-6 route (list+
-detail × 3 modul) terdaftar di build output. **Belum di-commit/push, belum dijalankan/
+detail × 3 modul) terdaftar di build output. **Di-commit+push (`f406745`).** **Belum dijalankan/
 diverifikasi di VPS, belum diverifikasi visual di browser** (mengetik tag di dropdown, klik
-cross-link, konfirmasi hasil filter benar-benar menyaring) — user perlu coba langsung.
+cross-link, konfirmasi hasil filter benar-benar menyaring) — user perlu deploy ke VPS lalu coba
+langsung.
 
 ### Fase 3 — Trust Badge Sederhana (HANYA jika Fase 1-2 menunjukkan adopsi organik)
 - Satu kolom boolean `verifiedByAdmin: boolean` (BUKAN 4-tier enum) per tabel, dengan UI admin

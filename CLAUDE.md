@@ -13355,13 +13355,46 @@ akhir, supaya kalau ada mismatch tipe generic langsung ketahuan di modul yang se
 **Verifikasi**: `tsc --noEmit` 0 error (dicek 2× — setelah Usaha, dan lagi setelah Profesional+
 Pesantren) + `bun run build --filter=@jalajogja/web` sukses genuine 44.9 detik (dev server
 dimatikan+`.next` dibersihkan+direstart) — keenam route (list+detail × 3 modul) terkonfirmasi
-terdaftar di build output. **Belum di-commit/push ke git, belum dijalankan/diverifikasi di VPS,
-belum diverifikasi visual di browser** (mengetik tag di dropdown, klik cross-link widget,
+terdaftar di build output. **Di-commit+push (`f406745`).** **Belum dijalankan/diverifikasi di
+VPS, belum diverifikasi visual di browser** (mengetik tag di dropdown, klik cross-link widget,
 konfirmasi hasil filter benar-benar menyaring data — belum pernah dicoba siapa pun) — user perlu
-coba langsung sebelum dianggap final.
+deploy ke VPS lalu coba langsung sebelum dianggap final.
+
+### [2026-07-29] Commit Fase 2 Ekosistem + Header Pill Refinement — 2 Commit Terpisah
+
+Dua perubahan tidak berkaitan sudah ada di working tree sekaligus (Fase 2 Ekosistem yang baru
+selesai dikerjakan + refinement visual Header Pill "Modern" yang dibuat user langsung di editor
+di luar sesi Claude Code — border bawah lebih tipis dengan shadow halus + nav kapsul dipindah
+dari flex biasa jadi grid 3-kolom supaya benar-benar center secara matematis di antara logo dan
+action buttons). **Diverifikasi dulu SEBELUM commit** (bukan dipercaya dari deskripsi user) —
+`git diff` kedua file dicek manual, cocok persis dengan yang dideskripsikan; `tsc --noEmit`
+dijalankan ulang atas SELURUH working tree (bukan cuma percaya klaim "sudah 0 error" dari user)
+— 0 error.
+
+**Dipecah jadi 2 commit terpisah** (bukan digabung satu commit besar) — dua fitur yang
+sepenuhnya independen secara konseptual: `f406745` (Ekosistem Fase 2) dan `739859f` (Pill Header
+refinement). Keduanya di-push bersamaan.
+
+**Grid 3-kolom Pill Header**: `grid grid-cols-2 md:grid-cols-3` dengan child tengah (nav kapsul)
+diberi `hidden md:flex` — di mobile (`display:none` pada child tengah menghilangkannya total dari
+grid track calculation), cuma 2 track terisi (logo + actions) pas dengan `grid-cols-2`; di
+desktop (`md:`), 3 track terisi (logo | nav center via `justify-center mx-auto` | actions via
+`justify-end`) pas dengan `grid-cols-3` — teknik yang sama sudah terbukti benar tanpa perlu
+JS/media-query tambahan.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Ekosistem Fase 2 Dieksekusi — Filter Lintas-Direktori + Cross-Link
+- Terakhir dikerjakan: **Commit + Push Ekosistem Fase 2 + Header Pill Refinement** (lihat lesson
+  `[2026-07-29]` "Commit Fase 2 Ekosistem + Header Pill Refinement" di atas) — user minta commit
+  dan push semua pekerjaan Fase 2 (lesson di bawah), plus melampirkan deskripsi perubahan visual
+  yang sudah mereka buat sendiri langsung di `pill-header.tsx` (border bawah lebih tipis + nav
+  kapsul benar-benar center via grid 3-kolom). Diverifikasi dulu ke `git diff` sebelum dipercaya
+  (cocok), `tsc --noEmit` dijalankan ulang atas seluruh working tree (0 error). **Dipecah 2 commit
+  terpisah**: `f406745` (Ekosistem Fase 2) dan `739859f` (Pill Header refinement), keduanya
+  **sudah di-push ke GitHub**. Dokumen (`docs/arsitektur-ekosistem.md`, `docs/arsitektur-header-
+  footer-publik.md`, `CLAUDE.md`) diupdate untuk mencerminkan status commit+push. **Belum
+  dijalankan/diverifikasi di VPS** — user belum minta instruksi deploy di giliran ini, kemungkinan
+  akan diminta selanjutnya.
+- Sesi sebelumnya: **Ekosistem Fase 2 Dieksekusi — Filter Lintas-Direktori + Cross-Link
   Widget** (lihat lesson `[2026-07-29]` "Ekosistem Fase 2 Dieksekusi" di atas) — lanjutan langsung
   Fase 1 (sudah commit+push+deploy VPS, `d307d9e`), user minta lanjut ke Fase 2 sesuai rencana
   yang sudah dikunci `docs/arsitektur-ekosistem.md` § 6: filter pencarian lintas-direktori TANPA
@@ -13380,10 +13413,8 @@ coba langsung sebelum dianggap final.
   di antaranya (Usaha → Profesional → Pesantren). `tsc --noEmit` 0 error (2 checkpoint) + `bun
   run build --filter=@jalajogja/web` sukses genuine 44.9 detik (dev server dimatikan+`.next`
   dibersihkan+direstart) — keenam route (list+detail × 3 modul) terkonfirmasi di build output.
-  **Belum di-commit/push ke git, belum dijalankan/diverifikasi di VPS, belum diverifikasi visual
-  di browser** (dropdown tag, klik cross-link, konfirmasi filter benar-benar menyaring — belum
-  pernah dicoba) — user perlu coba langsung. Fase 3 (Trust Badge sederhana, hanya jika Fase 1-2
-  menunjukkan adopsi organik) belum dimulai, menunggu sinyal user.
+  Di-commit+push (`f406745`) di giliran berikutnya. Fase 3 (Trust Badge sederhana, hanya jika
+  Fase 1-2 menunjukkan adopsi organik) belum dimulai, menunggu sinyal user.
 - Sesi sebelumnya: **Ekosistem Fase 1 Dieksekusi — `offeredTags`/`neededTags` Simetris di 3
   Modul** (lihat lesson `[2026-07-29]` "Ekosistem Fase 1 Dieksekusi" di atas) — lanjutan langsung
   dari kritik draft (entri di bawah), user bawa masukan lanjutan (agen lain) menjawab 2
