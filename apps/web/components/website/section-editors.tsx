@@ -1791,7 +1791,8 @@ function QuoteEditor({ data, onChange, tenantSlug }: EditorProps) {
             open={pickerOpen}
             onClose={() => setPickerOpen(false)}
             onSelect={(item) => {
-              u("authorAvatarUrl", item.url);
+              const squareUrl = item.variants?.square ?? item.variants?.profile ?? item.variants?.thumbnail ?? item.url;
+              u("authorAvatarUrl", squareUrl);
               setPickerOpen(false);
             }}
             module="website"
