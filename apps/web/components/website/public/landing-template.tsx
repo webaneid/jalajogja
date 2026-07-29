@@ -593,10 +593,11 @@ async function SectionRenderer({
       />
     );
     case "instagram_post": {
-      const resolved = await resolveInstagramFeed(tenantClient, tenantSlug, baseUrl, section.data as InstagramSectionData);
+      const resolved = await resolveInstagramFeed(tenantClient, tenantSlug, section.data as InstagramSectionData);
       return (
         <InstagramSection
           data={section.data as InstagramSectionData}
+          connected={resolved.connected}
           resolvedItems={resolved.items}
           resolvedAccountName={resolved.accountName}
           resolvedAccountUrl={resolved.accountUrl}

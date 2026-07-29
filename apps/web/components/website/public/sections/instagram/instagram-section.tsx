@@ -1,6 +1,5 @@
 import { ArrowRight } from "lucide-react";
 import {
-  DEFAULT_INSTAGRAM_MOCK_ITEMS,
   getInstagramShortcode,
   type InstagramSectionData,
   type InstagramItem,
@@ -27,29 +26,31 @@ function InstagramIcon({ className = "w-5 h-5" }: { className?: string }) {
 
 type Props = {
   data:                 InstagramSectionData;
-  resolvedItems?:       InstagramItem[];
-  resolvedAccountName?: string;
-  resolvedAccountUrl?:  string;
+  connected:            boolean;
+  resolvedItems:        InstagramItem[];
+  resolvedAccountName:  string;
+  resolvedAccountUrl:   string;
 };
 
-export function InstagramSection({ data, resolvedItems, resolvedAccountName, resolvedAccountUrl }: Props) {
+export function InstagramSection({ data, connected, resolvedItems, resolvedAccountName, resolvedAccountUrl }: Props) {
   const mode = data.mode ?? "repost";
-  const accountName = resolvedAccountName || data.accountName || "Forcreator";
-  const accountUrl = resolvedAccountUrl || data.accountUrl || `https://instagram.com/${accountName.toLowerCase().replace(/\s+/g, "")}`;
+  const accountName = resolvedAccountName || data.accountName || "";
+  const accountUrl = resolvedAccountUrl || data.accountUrl || "";
   const count = data.count ?? 8;
   const showBorderTop = data.showBorderTop ?? false;
   const postUrls = data.postUrls ?? [];
 
-  // Jika ada postUrls resmi dari Instagram, utamakan membuat embed resmi Instagram
+  // Jika ada postUrls resmi dari Instagram, utamakan membuat embed resmi Instagram — opsi ini
+  // TIDAK bergantung pada koneksi OAuth, jadi tetap bisa dipakai meski belum connect.
   const embedShortcodes = postUrls.map(url => ({ url, shortcode: getInstagramShortcode(url) })).filter(x => x.shortcode);
 
-  // Gunakan resolvedItems dari server-side aggregator
-  const customItems = (resolvedItems && resolvedItems.length > 0) ? resolvedItems : (data.items ?? []);
-  const displayItems: InstagramItem[] = Array.from({ length: count }).map((_, idx) => {
-    return customItems[idx] ?? DEFAULT_INSTAGRAM_MOCK_ITEMS[idx % DEFAULT_INSTAGRAM_MOCK_ITEMS.length];
-  });
-
+  const displayItems = resolvedItems.slice(0, count);
   const headingText = mode === "repost" ? "Reposted dari" : "Post dari";
+
+  // Belum terhubung ke Instagram DAN tidak ada embed manual — jangan tampilkan section kosong/
+  // rusak ke pengunjung publik. Status "belum terhubung" ditampilkan di admin editor
+  // (InstagramEditor, section-editors.tsx), bukan di halaman publik ini.
+  if (embedShortcodes.length === 0 && displayItems.length === 0) return null;
 
   return (
     <section className={`py-10 md:py-14 px-4 ${showBorderTop ? "border-t border-border pt-10 md:pt-14" : ""}`}>

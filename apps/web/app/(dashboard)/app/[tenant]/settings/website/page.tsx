@@ -9,10 +9,13 @@ import type { FooterDesignId } from "@/lib/footer-designs";
 
 export default async function WebsiteSettingsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ tenant: string }>;
+  searchParams: Promise<{ instagram?: string; msg?: string }>;
 }) {
   const { tenant: slug } = await params;
+  const { instagram: instagramStatus, msg: instagramMsg } = await searchParams;
   const access = await getTenantAccess(slug);
   if (!access) redirect("/app/login");
 
@@ -42,6 +45,17 @@ export default async function WebsiteSettingsPage({
           Atur halaman beranda, menu navigasi, dan tampilan header/footer website publik Anda.
         </p>
       </div>
+
+      {instagramStatus === "connected" && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          ✓ Akun Instagram berhasil terhubung. Kembali ke editor section landing page untuk melihat feed otomatis.
+        </div>
+      )}
+      {instagramStatus === "error" && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          Gagal menghubungkan Instagram{instagramMsg ? `: ${instagramMsg}` : "."} Coba lagi dari editor section.
+        </div>
+      )}
 
       <WebsiteSettingsClient
         slug={slug}

@@ -27,7 +27,7 @@ import {
   MODULE_CATALOG, MODULE_IDS, MODULE_SECTION_DESIGN_IDS, MODULE_SECTION_DESIGNS, MODULES_NO_AUTO_PHOTO,
   normalizeModuleItems, type ModuleId, type ModuleSectionDesignId,
 } from "@/lib/module-strip-designs";
-import { INSTAGRAM_SECTION_DESIGNS, INSTAGRAM_SECTION_DESIGN_IDS, type InstagramSectionData, type InstagramItem } from "@/lib/instagram-section-designs";
+import { INSTAGRAM_SECTION_DESIGNS, INSTAGRAM_SECTION_DESIGN_IDS, type InstagramSectionData } from "@/lib/instagram-section-designs";
 import { MediaPicker } from "@/components/media/media-picker";
 import type { MediaItem } from "@/components/media/media-picker";
 import { GalleryPicker } from "@/components/gallery/gallery-picker";
@@ -1439,26 +1439,35 @@ function ModulesEditor({ data, onChange, variant, onVariantChange, tenantSlug }:
 
 // ── Instagram Editor ─────────────────────────────────────────────────────────
 
+type InstagramConnectionStatus =
+  | { state: "loading" }
+  | { state: "connected"; username: string }
+  | { state: "disconnected" }
+  | { state: "error" };
+
 function InstagramEditor({ data, onChange, tenantSlug }: EditorProps) {
   const d = data as InstagramSectionData;
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const items = d.items ?? [];
+  const [status, setStatus] = useState<InstagramConnectionStatus>({ state: "loading" });
 
-  const handleMediaSelect = (media: MediaItem) => {
-    const url = media.variants?.original || media.url;
-    const newItem: InstagramItem = {
-      id: Math.random().toString(36).slice(2, 9),
-      imageUrl: url,
-      caption: media.title ?? "",
-      postUrl: d.accountUrl ?? "",
-    };
-    u("items", [...items, newItem]);
-    setPickerOpen(false);
-  };
+  useEffect(() => {
+    if (!tenantSlug) return;
+    let cancelled = false;
+    fetch(`/api/instagram/oauth/status?slug=${tenantSlug}`)
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then((data: { connected: boolean; username?: string }) => {
+        if (cancelled) return;
+        setStatus(data.connected ? { state: "connected", username: data.username ?? "" } : { state: "disconnected" });
+      })
+      .catch(() => { if (!cancelled) setStatus({ state: "error" }); });
+    return () => { cancelled = true; };
+  }, [tenantSlug]);
 
-  const removeItem = (id: string) => {
-    u("items", items.filter((item) => item.id !== id));
+  const handleDisconnect = async () => {
+    if (!tenantSlug) return;
+    if (!confirm("Putuskan koneksi Instagram? Feed otomatis di section ini akan berhenti tampil sampai dihubungkan lagi.")) return;
+    await fetch(`/api/instagram/oauth/disconnect?slug=${tenantSlug}`, { method: "POST" });
+    setStatus({ state: "disconnected" });
   };
 
   return (
@@ -1530,45 +1539,42 @@ function InstagramEditor({ data, onChange, tenantSlug }: EditorProps) {
         </p>
       </Field>
 
-      {/* Foto-foto Instagram Custom */}
-      <Field label={`Foto Feed Instagram Custom (${items.length} dipilih)`}>
-        <div className="space-y-2">
-          {items.length > 0 && (
-            <div className="grid grid-cols-4 gap-2">
-              {items.map((item) => (
-                <div key={item.id} className="relative group aspect-square rounded-lg overflow-hidden border border-border">
-                  <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => removeItem(item.id)}
-                    className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* Koneksi Instagram — feed otomatis, TIDAK ada upload foto manual */}
+      <Field label="Koneksi Akun Instagram">
+        {status.state === "loading" && (
+          <p className="text-xs text-muted-foreground">Memuat status koneksi...</p>
+        )}
 
-          <button
-            type="button"
-            onClick={() => tenantSlug && setPickerOpen(true)}
-            disabled={!tenantSlug}
-            className="w-full py-2 border-2 border-dashed border-border rounded-lg flex items-center justify-center gap-1.5 text-muted-foreground hover:border-primary hover:text-primary transition-colors text-xs disabled:opacity-50"
-          >
-            <PlusIcon className="w-4 h-4" /> Tambah Foto dari Media Library
-          </button>
-        </div>
+        {status.state === "connected" && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5">
+            <p className="text-xs text-green-800">
+              ✓ Terhubung sebagai <span className="font-semibold">@{status.username}</span> — foto diambil otomatis dari feed Instagram.
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={handleDisconnect} className="shrink-0 text-xs">
+              Putuskan
+            </Button>
+          </div>
+        )}
 
-        {tenantSlug && (
-          <MediaPicker
-            slug={tenantSlug}
-            open={pickerOpen}
-            onClose={() => setPickerOpen(false)}
-            onSelect={handleMediaSelect}
-            module="website"
-            accept={["image/"]}
-          />
+        {status.state === "disconnected" && (
+          <div className="space-y-2 rounded-lg border border-dashed border-border px-3 py-3">
+            <p className="text-xs text-muted-foreground">
+              Belum terhubung ke Instagram — section ini tidak akan menampilkan apa pun di halaman publik
+              sampai akun dihubungkan (kecuali diisi URL postingan manual di bawah).
+            </p>
+            {tenantSlug && (
+              <a
+                href={`/api/instagram/oauth/authorize?slug=${tenantSlug}`}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+              >
+                Hubungkan Instagram
+              </a>
+            )}
+          </div>
+        )}
+
+        {status.state === "error" && (
+          <p className="text-xs text-destructive">Gagal memuat status koneksi. Coba tutup dan buka lagi editor ini.</p>
         )}
       </Field>
     </div>

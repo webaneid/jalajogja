@@ -13663,8 +13663,135 @@ dan token yang seharusnya bisa dihindari sepenuhnya dengan tetap dalam scope.
 **Verifikasi**: `tsc --noEmit` 0 error. Belum diverifikasi visual di browser (keterbatasan
 environment sesi ini) — user perlu konfirmasi ulang setelah reload sebelum commit.
 
+### [2026-07-30] Section Instagram — Dibongkar Total, Diganti OAuth Graph API Sungguhan
+
+> Dokumen baru: **`docs/arsitektur-instagram-embed.md`**
+
+Setelah commit+push sesi sebelumnya (yang eksplisit mencatat "Instagram masih salah total"),
+user meluapkan kekesalan ke agen SEBELUMNYA (bukan sesi ini) yang membangun fitur ini: "yg gue
+maksud dengan instagram post dan instagram repost itu otomatis menampilkan post atau repost dari
+sebuah akun instagram, secara otomatis.. ambil data langsung dari instagram bukan gue harus
+upload dummy atau ngarang upload gambar2 gk jelas dimasukan kesana." Maksud fitur ini SEJAK AWAL
+adalah **feed otomatis dari akun Instagram yang benar-benar terhubung** — bukan upload foto
+manual (`items` + MediaPicker), bukan tempel URL post satu-satu sebagai satu-satunya cara, dan
+BUKAN fallback ke post blog tenant sendiri yang disamarkan sebagai konten Instagram (fix
+"sementara" yang saya buat sesi sebelumnya sendiri — sama-sama termasuk "ngarang data pengganti"
+yang dikeluhkan user, meski niatnya beda dari agen pertama).
+
+**Riset dulu via web search sungguhan** (bukan dari training data yang berpotensi basi/salah —
+langsung dipicu oleh kemarahan user soal "ngarang") ke dokumentasi Meta terkini: dipilih
+**"Instagram API with Instagram Login"** (bukan "Facebook Login") — TIDAK butuh akun akun
+terhubung ke Facebook Page, jauh lebih sederhana untuk tenant organisasi kecil. Ditemukan+
+didokumentasikan SATU ambiguitas nyata yang SENGAJA TIDAK diasumsikan pasti ke arah mana pun:
+apakah field `caption` benar-benar ikut terisi lewat jalur sederhana ini — sumber Meta sendiri
+tidak konsisten soal ini, ditandai eksplisit sebagai "perlu diverifikasi empiris begitu ada
+token nyata", bukan diklaim sebagai fakta.
+
+**Klarifikasi arsitektur via `AskUserQuestion` SEBELUM menulis kode** (3 pertanyaan, semua
+genuinely blocking): (1) akun IG tenant sudah Professional atau belum → "belum, tapi bisa
+diubah" (prasyarat mutlak — akun personal = nol akses API sama sekali); (2) makna "repost" yang
+dimaksud user → fitur native "Repost" Instagram yang mempublish ulang ke timeline AKUN SENDIRI —
+artinya SATU fetch `/media` pada akun yang terhubung SUDAH otomatis mencakup keduanya, `mode`
+jadi murni label header ("Post dari" vs "Reposted dari"), BUKAN penentu sumber data terpisah;
+(3) status Meta Developer App → "sudah ada, tapi belum saya cek detailnya". User juga
+menanyakan balik arsitektur credential storage — dijawab dengan MENIRU pola WhatsApp Gateway
+(GOWA) yang SUDAH ADA di project ini: platform-level (`META_APP_ID`/`META_APP_SECRET`, env var,
+satu untuk semua tenant — persis `WHATSAPP_API_USER`/`PASS`) vs tenant-level (token hasil OAuth
+tenant itu sendiri, disimpan di `tenant.settings` group="website" key="instagram_config" — TIDAK
+perlu migration/`SETTING_GROUPS` baru karena "website" sudah ada di enum, persis pola
+`whatsapp_config`).
+
+**Dibangun**: `lib/instagram-oauth.server.ts` (`import "server-only"`) — seluruh mekanik OAuth
+Meta: `buildInstagramAuthorizeUrl()`, `signState()`/`verifyState()` (HMAC pakai
+`BETTER_AUTH_SECRET` yang SUDAH ADA — bukan secret baru, meniru pola cookie-signing WA OTP
+lama), `exchangeCodeForShortLivedToken()` → `exchangeForLongLivedToken()` (60 hari) →
+`fetchInstagramProfile()` → `fetchInstagramMedia()`. 4 API route baru (`authorize`/`callback`/
+`disconnect`/`status`) + 1 cron baru (`refresh-instagram-tokens`, pola `x-cron-secret` sama
+seperti cron lain, **belum dijadwalkan di crontab VPS** — perlu ditambahkan manual). `lib/
+instagram-feed.server.ts` ditulis ulang TOTAL — TIDAK ADA fallback ke post blog sama sekali lagi;
+belum terhubung → `{connected:false, items:[]}` apa adanya, caller yang memutuskan tampilannya
+(bukan resolver yang mengarang data). Safety-net refresh token inline (kalau tersisa <10 hari)
+di dalam resolver ini sendiri, DI LUAR cron — supaya tetap aman meski cron belum sempat
+dijadwalkan di VPS.
+
+**`lib/instagram-section-designs.ts`** — field `items?: InstagramItem[]` (custom manual upload)
+DIHAPUS TOTAL dari tipe, `DEFAULT_INSTAGRAM_MOCK_ITEMS` (8 URL Unsplash hardcoded) DIHAPUS TOTAL
+— bukan disembunyikan/dikomentari, dihapus sepenuhnya karena keduanya PERSIS jenis "ngarang data
+pengganti" yang membuat user marah. `postUrls` (tempel link post publik → official Instagram
+iframe embed) TETAP dipertahankan sebagai opsi sekunder — ini genuinely embed resmi dari
+Instagram sendiri (bukan data palsu), independen dari status OAuth, tetap berguna untuk admin
+yang belum/tidak ingin connect.
+
+**`instagram-section.tsx`** — kalau tidak ada embed manual (`postUrls`) MAUPUN item feed hasil
+OAuth, komponen **`return null`** — section TIDAK dirender sama sekali ke pengunjung publik,
+bukan menampilkan grid kosong atau placeholder yang terlihat rusak. Status "belum terhubung"
+HANYA ditampilkan di admin editor (`InstagramEditor`), bukan di halaman publik — pengunjung
+biasa tidak perlu tahu detail konfigurasi admin yang belum selesai.
+
+**`InstagramEditor`** (`section-editors.tsx`) — seluruh blok MediaPicker upload manual DIHAPUS
+TOTAL, diganti card status koneksi: fetch client-side ke `GET /api/instagram/oauth/status`
+(endpoint baru, TIDAK PERNAH mengirim `accessToken` ke browser — hanya `connected`+`username`),
+render "✓ Terhubung sebagai @username" + tombol "Putuskan", atau "Belum terhubung..." + tombol
+"Hubungkan Instagram" (`<a href="/api/instagram/oauth/authorize?slug=...">`). **Keputusan lokasi
+UI**: tombol connect/disconnect ditaruh DI SINI (section builder dialog), BUKAN di halaman
+Settings terpisah — karena section `instagram_post` adalah SATU-SATUNYA konsumen fitur ini (beda
+dari WhatsApp Gateway yang dipakai lintas modul sehingga butuh halaman Settings sendiri). Redirect
+callback OAuth tetap mengarah ke `/settings/website` (halaman generik terdekat untuk "mendarat"
+setelah consent Meta) — ditambahkan banner singkat baca `?instagram=connected|error` supaya alur
+tidak dead-end tanpa feedback, dengan pesan mengarahkan admin kembali ke editor section.
+
+**Verifikasi**: `tsc --noEmit` 0 error di `apps/web` DAN `packages/db` (percobaan pertama) + `bun
+run build --filter=@jalajogja/web` genuine 2× (48-50 detik, bukan cache-hit, dev server
+dimatikan+`.next` dibersihkan+direstart tiap kali) — 5 route API baru (`authorize`/`callback`/
+`disconnect`/`status`/cron) terkonfirmasi muncul di build output. Nol migrasi DB (`"website"`
+settings group sudah ada sejak lama).
+
+**BELUM bisa diverifikasi end-to-end** — 3 hal di luar kendali kode, murni tanggung jawab user:
+(1) isi `META_APP_ID`/`META_APP_SECRET` asli ke `.env.local` (baru placeholder di
+`.env.example`) + pastikan App Meta punya product "Instagram API with Instagram Login" dengan
+redirect URI terdaftar PERSIS; (2) konversi akun IG tenant uji coba ke Professional; (3) tambah
+akun itu sebagai Instagram Tester di App Meta selama masih Development Mode. Ambiguitas field
+`caption` (§ 2 dokumen) juga baru bisa dipastikan setelah OAuth pertama berhasil dengan token
+nyata — belum diverifikasi.
+
+**Aturan yang ditegaskan**: kalau user marah soal "agen sebelumnya ngarang data" — treat itu
+sebagai instruksi untuk MENGHILANGKAN SEMUA bentuk data pengganti/dummy dari fitur itu (bukan
+cuma yang paling jelas), termasuk fallback "sementara" yang sesi INI SENDIRI sempat buat
+sebelumnya (blog-post-sebagai-Instagram) — user tidak membedakan "data palsu dari agen lain"
+vs "data palsu dari saya sendiri", keduanya sama-sama melanggar maksud aslinya. Riset ke
+dokumentasi API pihak ketiga yang jarang dipakai project ini WAJIB pakai web search sungguhan
+(bukan diasumsikan dari training data), dan ambiguitas yang genuinely tidak terjawab oleh
+dokumentasi resmi harus ditandai eksplisit sebagai belum-terverifikasi, bukan diklaim pasti
+salah satu arah.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Teguran user — cap tinggi gambar Hero adalah scope-creep, bukan bug
+- Terakhir dikerjakan: **Section Instagram dibongkar total — OAuth Graph API sungguhan
+  menggantikan seluruh sistem lama** (lihat lesson `[2026-07-30]` "Section Instagram — Dibongkar
+  Total, Diganti OAuth Graph API Sungguhan" di atas, detail penuh di dokumen baru
+  `docs/arsitektur-instagram-embed.md`) — dipicu kemarahan user terhadap agen SEBELUMNYA yang
+  membangun fitur "Instagram" berbasis upload foto manual/tempel URL satu-satu, padahal maksud
+  aslinya adalah **feed otomatis sungguhan** dari akun Instagram yang terhubung (post MAUPUN
+  repost — repost Instagram native mempublish ke timeline akun sendiri, jadi satu fetch API
+  sudah cukup). Riset via web search sungguhan ke dokumentasi Meta terkini (bukan training data)
+  memilih "Instagram API with Instagram Login" (tanpa perlu Facebook Page). Dibangun penuh: OAuth
+  library (`lib/instagram-oauth.server.ts`) + 4 API route + 1 cron refresh token + resolver feed
+  ditulis ulang total (`lib/instagram-feed.server.ts`, TANPA fallback data pengganti apa pun,
+  termasuk fallback "sementara" yang SESI INI SENDIRI sempat buat sebelumnya) + `InstagramEditor`
+  diganti total (hapus MediaPicker manual, tampilkan status koneksi + tombol connect/disconnect)
+  + `instagram-section.tsx` (`return null` kalau belum ada apa pun, bukan placeholder rusak).
+  Kredensial platform (`META_APP_ID`/`META_APP_SECRET`, env var) vs tenant (token OAuth per-
+  tenant, `tenant.settings` group="website") — meniru pola WhatsApp Gateway yang sudah ada,
+  dijawab eksplisit ke pertanyaan balik user soal ini. `tsc --noEmit` 0 error kedua package +
+  `bun run build --filter=@jalajogja/web` genuine 2× sukses — 5 route API baru terkonfirmasi di
+  build output. Nol migrasi DB. **BELUM bisa diverifikasi end-to-end** — butuh 3 hal dari user
+  di luar kendali kode (isi `META_APP_ID`/`META_APP_SECRET` asli + pastikan App Meta punya
+  product yang benar dengan redirect URI terdaftar, konversi akun IG tenant uji coba ke
+  Professional, tambah sebagai Instagram Tester selama App masih Development Mode). Satu
+  ambiguitas dokumentasi Meta (field `caption`) ditandai eksplisit belum terverifikasi, bukan
+  diklaim pasti. **Belum di-commit/push ke git** — menunggu instruksi user, dan menunggu
+  setidaknya konfirmasi bahwa struktur kode ini masuk akal sebelum end-to-end testing (yang
+  butuh kredensial Meta asli) bisa dilakukan.
+- Sesi sebelumnya: **Teguran user — cap tinggi gambar Hero adalah scope-creep, bukan bug
   fix, di-revert total** (lihat lesson `[2026-07-30]` "Teguran User: Cap Tinggi Gambar Hero
   Adalah Scope-Creep" di atas) — sesi audit sebelumnya menambah `max-h-[500px]` pada gambar
   custom Hero Klasik dengan alasan "cegah foto ekstrem mendominasi hero" — ini KELIRU, tidak
