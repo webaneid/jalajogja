@@ -8,10 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { saveDisplaySettingsAction } from "@/app/(dashboard)/app/[tenant]/settings/actions";
+import { getGoogleFontsUrl, fontStack } from "@/lib/theme-palette";
 
 const BODY_FONT_OPTIONS = [
   { value: "Inter",             label: "Inter (default)"   },
   { value: "Plus Jakarta Sans", label: "Plus Jakarta Sans" },
+  { value: "Albert Sans",       label: "Albert Sans"       },
   { value: "Geist",             label: "Geist"             },
   { value: "DM Sans",           label: "DM Sans"           },
   { value: "Nunito",            label: "Nunito"            },
@@ -20,12 +22,10 @@ const BODY_FONT_OPTIONS = [
 
 const HEADING_FONT_OPTIONS = [
   { value: "Inter",       label: "Inter (default)" },
+  { value: "Albert Sans", label: "Albert Sans"     },
   { value: "Poppins",     label: "Poppins"         },
   { value: "Philosopher", label: "Philosopher"      },
 ];
-
-// Font yang perlu di-load dari Google Fonts untuk preview
-const GOOGLE_FONTS = ["Poppins", "Philosopher", "Plus Jakarta Sans", "DM Sans", "Nunito", "Geist"];
 
 function ColorField({
   id,
@@ -94,17 +94,14 @@ export function DisplaySettingsForm({
   const [headingFont,    setHeadingFont]    = React.useState(defaultValues.headingFont);
   const [footerText,     setFooterText]     = React.useState(defaultValues.footerText);
 
-  // Load Google Fonts satu kali untuk preview di form ini
+  // Load Google Fonts untuk preview di form ini
   React.useEffect(() => {
-    const families = [
-      "Poppins:wght@400;600;700",
-      "Philosopher:ital,wght@0,400;0,700;1,400",
-      "Plus+Jakarta+Sans:wght@400;600",
-      "DM+Sans:wght@400;500",
-      "Nunito:wght@400;600",
-    ].join("&family=");
-    const href = `https://fonts.googleapis.com/css2?family=${families}&display=swap`;
-    if (document.querySelector(`link[href="${href}"]`)) return;
+    const allFonts = [
+      ...BODY_FONT_OPTIONS.map((o) => o.value),
+      ...HEADING_FONT_OPTIONS.map((o) => o.value),
+    ];
+    const href = getGoogleFontsUrl(allFonts);
+    if (!href || document.querySelector(`link[href="${href}"]`)) return;
     const link = document.createElement("link");
     link.rel  = "stylesheet";
     link.href = href;
@@ -122,8 +119,6 @@ export function DisplaySettingsForm({
       else { toast.success("Tampilan disimpan."); router.refresh(); }
     } finally { setPending(false); }
   }
-
-  const isGoogleFont = (f: string) => GOOGLE_FONTS.includes(f);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
@@ -169,10 +164,10 @@ export function DisplaySettingsForm({
             Untuk paragraf, konten artikel, dan teks umum.
           </p>
           <p
-            className="text-sm border border-border rounded px-3 py-2 max-w-xs bg-muted/30"
-            style={{ fontFamily: isGoogleFont(font) ? `"${font}", sans-serif` : font }}
+            className="text-sm border border-border rounded px-3.5 py-2.5 max-w-sm bg-muted/30 transition-all"
+            style={{ fontFamily: fontStack(font) }}
           >
-            Contoh teks paragraf dengan font {font}.
+            Contoh teks paragraf dengan font <strong style={{ fontFamily: fontStack(font) }}>{font}</strong>.
           </p>
         </div>
 
@@ -192,10 +187,10 @@ export function DisplaySettingsForm({
             Untuk judul halaman, heading artikel, dan nama section.
           </p>
           <p
-            className="text-xl font-bold border border-border rounded px-3 py-2 max-w-xs bg-muted/30"
-            style={{ fontFamily: isGoogleFont(headingFont) ? `"${headingFont}", serif` : headingFont }}
+            className="text-xl font-bold border border-border rounded px-3.5 py-2.5 max-w-sm bg-muted/30 transition-all"
+            style={{ fontFamily: fontStack(headingFont) }}
           >
-            Contoh Judul Halaman
+            Contoh Judul Halaman ({headingFont})
           </p>
         </div>
       </div>

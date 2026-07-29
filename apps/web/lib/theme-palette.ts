@@ -50,6 +50,7 @@ const GOOGLE_FONT_SPEC: Record<string, string> = {
   "Plus Jakarta Sans": "Plus+Jakarta+Sans:wght@400;500;600;700",
   "DM Sans":           "DM+Sans:wght@400;500;600",
   "Nunito":            "Nunito:wght@400;600;700",
+  "Albert Sans":       "Albert+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400",
 };
 
 export function getGoogleFontsUrl(fonts: string[]): string | null {
@@ -60,9 +61,8 @@ export function getGoogleFontsUrl(fonts: string[]): string | null {
   return `https://fonts.googleapis.com/css2?family=${specs.join("&family=")}&display=swap`;
 }
 
-function fontStack(name: string): string {
-  const isGoogle = !!GOOGLE_FONT_SPEC[name];
-  return isGoogle ? `"${name}", system-ui, sans-serif` : `${name}, system-ui, sans-serif`;
+export function fontStack(name: string): string {
+  return `"${name}", system-ui, sans-serif`;
 }
 
 // CSS string yang di-inject ke <style> di PublicLayout

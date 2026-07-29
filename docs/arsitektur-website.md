@@ -290,8 +290,16 @@ type LandingBody = {
 | `divider` | Pemisah / Spacer | height, bgColor | — |
 | `instagram_post` | Instagram Feed / Linimasa | mode(repost\|post, label saja), accountName, accountUrl, count(4,8,12,16), showBorderTop, postUrls[] | Feed OTOMATIS via OAuth Instagram Graph API — lihat `docs/arsitektur-instagram-embed.md`. NOL fallback data — kosong kalau belum terhubung. |
 | `directory` | Direktori Organisasi | directoryType(usaha\|profesional\|pesantren), titleStyle(default\|simple), title, eyebrow, headerDesc, count(2-8), gridCols(2\|3\|4), cardDesign(default\|custom) | Auto fetch dari DB public, DI-SCOPE ke tenant via `tenant_memberships` (pola sama `/usaha`,`/profesional`,`/pesantren`). NOL fallback data. |
+| `quote` | Quote & Impact Counter | quoteText, authorName, authorTitle, authorSub, authorAvatarUrl, statLabel, ctaLabel, ctaUrl | Auto fetch `COUNT(*)` dari DB `tenant_memberships`, auto generate date real-time saat halaman dibuka, 100% dinamis. |
 
-> **Section Directory Organisasi (`directory`) (Ditambahkan 2026-07-30, DIROMBAK 2026-07-30 setelah
+> **Section Quote & Impact Counter (`quote`) (Ditambahkan 2026-07-30)**:
+> Modul section baru di Section Builder landing page untuk menampilkan quote/kutipan tokoh/anggota di sisi kiri dan counter statistik jumlah anggota terdaftar di sisi kanan:
+> 1. **Kolom Kiri (Quote & Sitasi Tokoh)**: Teks quote utama (`quoteText`), foto avatar 1:1 rounded full (`authorAvatarUrl`), nama & profesi berwarna **Secondary** (`authorName`, `authorTitle`), serta info alumni (`authorSub`).
+> 2. **Kolom Kanan (Angka Stat & Real-Time Date)**: Angka statistik besar berwarna **Secondary** (`memberCount` dari DB `tenant_memberships` per tenant), `statLabel`, link CTA berwarna **Secondary** (`ctaLabel`, `ctaUrl`), serta teks update waktu real-time yang dihasilkan otomatis saat runtime server (`"Berdasarkan data bulan [Bulan] [Tahun]"`).
+> 3. **100% Multi-Tenant Dinamis**: Nama organisasi ter-resolve otomatis via `getTenantSeoBase(slug)`, angka terdaftar riil dari DB tenant, tanpa data palsu/hardcoded.
+> File: `lib/quote-section-designs.ts`, `lib/quote-feed.server.ts`, `components/website/public/sections/quote/quote-section.tsx`, `section-editors.tsx` (`QuoteEditor`).
+
+> **Section Directory Organisasi (`directory`) (Ditambahkan 2026-07-30, DIROMBAK 2026-07-30 setelah**
 > audit)**:
 > Modul section baru di Section Builder landing page untuk menampilkan Direktori Organisasi (Usaha,
 > Praktik Profesional, atau Pesantren Alumni) milik ANGGOTA TENANT INI (bukan lintas tenant):

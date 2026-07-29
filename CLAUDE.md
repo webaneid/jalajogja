@@ -17058,6 +17058,15 @@ Dibuat helper sentral `syncAutoTenantMemberships(runner, memberId, primaryCabang
 - **Server-Side Feed Aggregator (`lib/directory-feed.server.ts`)**: Otomatis me-resolve data direktori dari DB public dengan JOIN ke members & addresses, serta fallback mock data yang kaya jika DB tenant masih kosong.
 - **Dokumentasi Terbarui**: [`docs/arsitektur-website.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-website.md) Section 2.8 ter-update.
 
+### [2026-07] Architecture Feature: Section Quote & Impact Counter (`quote`)
+
+- **Modul Baru Section Builder**: `quote` ("Quote & Impact Counter") untuk menampilkan kutipan utama tokoh/anggota di kolom kiri dan counter statistik anggota terdaftar di kolom kanan.
+- **Kolom Kiri (Quote & Sitasi)**: Teks quote utama (`quoteText`), foto avatar 1:1 rounded full (`authorAvatarUrl`), nama & profesi berwarna **Secondary** (`authorName`, `authorTitle`), serta info alumni (`authorSub`).
+- **Kolom Kanan (Angka Stat & Real-Time Date)**: Counter angka anggota terdaftar dari DB (`public.tenant_memberships` per tenant), `statLabel` & link CTA berwarna **Secondary**, serta update waktu real-time yang di-generate server saat runtime (`"Berdasarkan data bulan [Bulan] [Tahun]"`).
+- **100% Multi-Tenant & Dinamis**: Nama organisasi ter-resolve via `getTenantSeoBase(slug)`, angka terdaftar riil dari DB tenant, NOL hardcode.
+- **Dokumentasi Terbarui**: [`docs/arsitektur-website.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-website.md) Section 2.8 ter-update.
+
+
 
 
 

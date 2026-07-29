@@ -29,6 +29,7 @@ import {
 } from "@/lib/module-strip-designs";
 import { INSTAGRAM_SECTION_DESIGNS, INSTAGRAM_SECTION_DESIGN_IDS, type InstagramSectionData } from "@/lib/instagram-section-designs";
 import { DIRECTORY_SECTION_DESIGNS, DIRECTORY_SECTION_DESIGN_IDS, type DirectorySectionData } from "@/lib/directory-section-designs";
+import { QUOTE_SECTION_DESIGNS, QUOTE_SECTION_DESIGN_IDS, type QuoteSectionData } from "@/lib/quote-section-designs";
 import { MediaPicker } from "@/components/media/media-picker";
 import type { MediaItem } from "@/components/media/media-picker";
 import { GalleryPicker } from "@/components/gallery/gallery-picker";
@@ -1639,7 +1640,7 @@ function DirectoryEditor({ data, onChange }: EditorProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="space-y-3">
         <Field label="Jumlah Tampil">
           <Select value={String(d.count ?? 4)} onValueChange={(v) => u("count", Number(v))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1674,6 +1675,129 @@ function DirectoryEditor({ data, onChange }: EditorProps) {
   );
 }
 
+// ── Quote Editor ───────────────────────────────────────────────────────────
+
+function QuoteEditor({ data, onChange, tenantSlug }: EditorProps) {
+  const q = data as QuoteSectionData;
+  const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  return (
+    <div className="space-y-4">
+      <Field label="Teks Quote Utama">
+        <Textarea
+          rows={3}
+          value={q.quoteText ?? ""}
+          onChange={(e) => u("quoteText", e.target.value)}
+          placeholder="Selayaknya seorang santri, takzim kami..."
+        />
+      </Field>
+
+      <div className="space-y-3">
+        <Field label="Nama Pemberi Quote">
+          <Input
+            value={q.authorName ?? ""}
+            onChange={(e) => u("authorName", e.target.value)}
+            placeholder="Sigit Ariansyah"
+          />
+        </Field>
+        <Field label="Profesi / Jabatan">
+          <Input
+            value={q.authorTitle ?? ""}
+            onChange={(e) => u("authorTitle", e.target.value)}
+            placeholder="Sutradara Film 'Jejak Langkah 2 Ulama'"
+          />
+        </Field>
+        <Field label="Info Alumni / Sub-label">
+          <Input
+            value={q.authorSub ?? ""}
+            onChange={(e) => u("authorSub", e.target.value)}
+            placeholder="Alumni Gontor 1990"
+          />
+        </Field>
+      </div>
+
+      <Field label="Foto Avatar Pemberi Quote">
+        <div className="flex items-center gap-3">
+          {q.authorAvatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={q.authorAvatarUrl}
+              alt="Avatar Preview"
+              className="w-12 h-12 rounded-full object-cover border border-border"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-muted border border-border flex items-center justify-center text-xs text-muted-foreground">
+              No Photo
+            </div>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setPickerOpen(true)}
+            className="gap-2 text-xs"
+          >
+            <ImageIcon className="w-4 h-4" />
+            Pilih Foto
+          </Button>
+          {q.authorAvatarUrl && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => u("authorAvatarUrl", "")}
+              className="text-xs text-destructive hover:text-destructive"
+            >
+              Hapus Foto
+            </Button>
+          )}
+        </div>
+
+        {tenantSlug && (
+          <MediaPicker
+            slug={tenantSlug}
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            onSelect={(item) => {
+              u("authorAvatarUrl", item.url);
+              setPickerOpen(false);
+            }}
+            module="website"
+            accept={["image/"]}
+          />
+        )}
+      </Field>
+
+      <div className="space-y-3">
+        <Field label="Keterangan Stat (Di bawah angka)">
+          <Input
+            value={q.statLabel ?? ""}
+            onChange={(e) => u("statLabel", e.target.value)}
+            placeholder="Anggota terdaftar di ekosistem..."
+          />
+        </Field>
+        <Field label="Label Link CTA">
+          <Input
+            value={q.ctaLabel ?? ""}
+            onChange={(e) => u("ctaLabel", e.target.value)}
+            placeholder="Direktori Organisasi →"
+          />
+        </Field>
+      </div>
+
+      <Field label="Target Link CTA">
+        <PublicLinkPicker
+          slug={tenantSlug ?? ""}
+          value={q.ctaUrl ?? ""}
+          onChange={(val) => u("ctaUrl", val)}
+          placeholder="Pilih URL tujuan (misal: /anggota atau /usaha)..."
+        />
+      </Field>
+    </div>
+  );
+}
+
 // ── Editor Map ────────────────────────────────────────────────────────────────
 
 const EDITOR_MAP: Record<SectionType, React.FC<EditorProps>> = {
@@ -1692,6 +1816,7 @@ const EDITOR_MAP: Record<SectionType, React.FC<EditorProps>> = {
   modules:        ModulesEditor,
   instagram_post: InstagramEditor,
   directory:      DirectoryEditor,
+  quote:          QuoteEditor,
 };
 
 // ── Public Export ─────────────────────────────────────────────────────────────

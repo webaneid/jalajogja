@@ -11,6 +11,8 @@ import type { InstagramSectionData } from "@/lib/instagram-section-designs";
 import { resolveInstagramFeed } from "@/lib/instagram-feed.server";
 import type { DirectorySectionData } from "@/lib/directory-section-designs";
 import { resolveDirectoryItems } from "@/lib/directory-feed.server";
+import type { QuoteSectionData } from "@/lib/quote-section-designs";
+import { resolveQuoteData } from "@/lib/quote-feed.server";
 import { PostsSection } from "@/components/website/public/sections/posts/posts-section";
 import { ProductsSection } from "@/components/website/public/sections/products/products-section";
 import { CampaignsSection } from "@/components/website/public/sections/campaigns/campaigns-section";
@@ -19,6 +21,7 @@ import { HeroSection } from "@/components/website/public/sections/hero/hero-sect
 import { ModulesSection } from "@/components/website/public/sections/modules/modules-section";
 import { InstagramSection } from "@/components/website/public/sections/instagram/instagram-section";
 import { DirectorySection } from "@/components/website/public/sections/directory/directory-section";
+import { QuoteSection } from "@/components/website/public/sections/quote/quote-section";
 import { Gallery } from "@/components/gallery/gallery";
 import type { GallerySectionData } from "@/lib/gallery-section-designs";
 import { PublicButton } from "@/components/website/public/ui/public-button";
@@ -617,6 +620,20 @@ async function SectionRenderer({
           archiveHref={resolved.archiveHref}
           typeLabel={resolved.typeLabel}
           orgName={resolved.orgName}
+        />
+      );
+    }
+    case "quote": {
+      const resolved = await resolveQuoteData(tenantClient, tenantSlug, section.data as QuoteSectionData);
+      return (
+        <QuoteSection
+          data={section.data as QuoteSectionData}
+          memberCount={resolved.memberCount}
+          orgName={resolved.orgName}
+          lastUpdateText={resolved.lastUpdateText}
+          defaultStatLabel={resolved.defaultStatLabel}
+          defaultCtaLabel={resolved.defaultCtaLabel}
+          defaultCtaUrl={resolved.defaultCtaUrl}
         />
       );
     }

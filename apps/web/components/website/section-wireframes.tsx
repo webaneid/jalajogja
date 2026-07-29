@@ -267,6 +267,30 @@ function DirectoryWireframe() {
   );
 }
 
+function QuoteWireframe() {
+  return (
+    <div className="w-full h-full bg-gray-100 rounded flex gap-3 p-3 items-center">
+      <div className="flex-1 flex flex-col gap-2">
+        <div className="w-full h-3 bg-gray-400 rounded" />
+        <div className="w-4/5 h-3 bg-gray-400 rounded" />
+        <div className="flex items-center gap-2 mt-1">
+          <div className="w-6 h-6 rounded-full bg-gray-500" />
+          <div className="flex flex-col gap-1">
+            <div className="w-24 h-2 bg-red-400 rounded" />
+            <div className="w-16 h-1.5 bg-gray-300 rounded" />
+          </div>
+        </div>
+      </div>
+      <div className="w-1/3 flex flex-col gap-1.5 items-start pl-3 border-l border-gray-300">
+        <div className="text-3xl font-extrabold text-red-500">144</div>
+        <div className="w-full h-2 bg-red-400 rounded" />
+        <div className="w-3/4 h-1.5 bg-red-400 rounded" />
+        <div className="w-1/2 h-1 bg-gray-300 rounded mt-1" />
+      </div>
+    </div>
+  );
+}
+
 // ── Map type → component ──────────────────────────────────────────────────────
 
 const WIREFRAME_MAP: Record<SectionType, React.FC> = {
@@ -285,6 +309,7 @@ const WIREFRAME_MAP: Record<SectionType, React.FC> = {
   modules:        ModulesWireframe,
   instagram_post: InstagramWireframe,
   directory:      DirectoryWireframe,
+  quote:          QuoteWireframe,
 };
 
 // ── Public exports ────────────────────────────────────────────────────────────

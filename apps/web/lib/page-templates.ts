@@ -20,7 +20,7 @@ export const SINGLETON_SLUGS: Record<string, string> = {
 
 export const SECTION_TYPES = [
   "hero", "posts", "products", "events", "campaigns", "gallery", "about_text",
-  "features", "cta", "contact_info", "stats", "divider", "modules", "instagram_post", "directory",
+  "features", "cta", "contact_info", "stats", "divider", "modules", "instagram_post", "directory", "quote",
 ] as const;
 
 export type SectionType = typeof SECTION_TYPES[number];
@@ -41,6 +41,7 @@ export const SECTION_LABELS: Record<SectionType, string> = {
   modules:        "Strip Modul",
   instagram_post: "Instagram Feed / Linimasa",
   directory:      "Direktori Organisasi",
+  quote:          "Quote & Impact Counter",
 };
 
 export type SectionItem = {
@@ -78,6 +79,7 @@ const SECTION_DEFAULTS: Record<SectionType, Record<string, unknown>> = {
   modules:        { title: "", items: [] },
   instagram_post: { mode: "repost", accountName: "", accountUrl: "", count: 8, showBorderTop: false, items: [] },
   directory:      { directoryType: "usaha", titleStyle: "simple", title: "", eyebrow: "", headerDesc: "", count: 4, gridCols: 2, cardDesign: "custom" },
+  quote:          { quoteText: "", authorName: "", authorTitle: "", authorSub: "", authorAvatarUrl: "", statLabel: "", ctaLabel: "", ctaUrl: "" },
 };
 
 export function createSection(type: SectionType): SectionItem {
