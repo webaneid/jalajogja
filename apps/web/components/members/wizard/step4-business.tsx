@@ -27,6 +27,7 @@ import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-
 import { PhoneInput } from "@/components/ui/phone-input"
 import { TagMultiSelect } from "@/components/ui/tag-multi-select"
 import { BUSINESS_FIELD_SUGGESTIONS } from "@/lib/business-fields"
+import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags"
 import {
   saveMemberBusinessesAction,
   type BusinessEntryData,
@@ -51,6 +52,8 @@ export interface BusinessEntry {
   category: string
   sector: string
   businessFields: string[]
+  offeredTags: string[]
+  neededTags: string[]
   legality: string
   position: string
   // Skala
@@ -117,7 +120,7 @@ function newEntry(): BusinessEntry {
   return {
     id: crypto.randomUUID(),
     name: "", brand: "", description: "",
-    category: "", sector: "", businessFields: [], legality: "", position: "",
+    category: "", sector: "", businessFields: [], offeredTags: [], neededTags: [], legality: "", position: "",
     employees: "", branches: "", revenue: "",
     addressCountry: "",
     provinceId: null, regencyId: null, districtId: null, villageId: null,
@@ -374,6 +377,32 @@ function BusinessCard({
             Boleh pilih lebih dari satu — tidak harus sesuai sektor di atas.
           </p>
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">
+              Menawarkan <span className="font-normal text-muted-foreground">(opsional)</span>
+            </span>
+            <TagMultiSelect
+              options={ECOSYSTEM_TAG_SUGGESTIONS}
+              value={entry.offeredTags}
+              onChange={(offeredTags) => onChange("offeredTags", offeredTags)}
+              disabled={disabled}
+              placeholder="Apa yang bisa ditawarkan/disuplai?"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">
+              Membutuhkan <span className="font-normal text-muted-foreground">(opsional)</span>
+            </span>
+            <TagMultiSelect
+              options={ECOSYSTEM_TAG_SUGGESTIONS}
+              value={entry.neededTags}
+              onChange={(neededTags) => onChange("neededTags", neededTags)}
+              disabled={disabled}
+              placeholder="Apa yang sedang dicari/dibutuhkan?"
+            />
+          </div>
+        </div>
       </div>
 
       {/* ── Section 3: Skala Usaha ── */}
@@ -629,6 +658,8 @@ export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Ste
         category:    e.category,
         sector:      e.sector,
         businessFields: e.businessFields.length > 0 ? e.businessFields : undefined,
+        offeredTags: e.offeredTags.length > 0 ? e.offeredTags : undefined,
+        neededTags:  e.neededTags.length  > 0 ? e.neededTags  : undefined,
         legality:    e.legality    || undefined,
         position:    e.position    || undefined,
         employees:   e.employees   || undefined,

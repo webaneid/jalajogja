@@ -465,6 +465,7 @@ app/(dashboard)/[tenant]/
 - [x] **Halaman publik `/campaign`** — arsip donasi dengan filter tipe (donasi/zakat/wakaf/qurban) + kategori. URL `/campaign` (bukan `/donasi` — hindari konflik dashboard). TypeScript 0 errors.
 - [x] **Halaman publik `/campaign/{slug}`** — detail campaign + form donasi: donasi reguler (nominal chips + custom) dan qurban (hewan cards = variasi), keduanya → `addToCartAction`. Atas nama qurban di `notes`. TypeScript 0 errors.
 - [x] **Donasi/Qurban perencanaan lengkap** — arsitektur donasi rutin (Section 12 R1–R7) + front-end section (Section 11b). Docs di `docs/arsitektur-donasi.md`.
+- [~] **Ekosistem Sinergi Usaha/Profesional/Pesantren** — draft awal (Trust Engine, RFQ, taksonomi master) dikritisi & ditulis ulang jadi 6 fase ramping. **Fase 1 SELESAI** (`offeredTags`/`neededTags` flat tag di 3 modul, `lib/ecosystem-tags.ts` aggregator). Fase 2+ (filter lintas-direktori, trust badge, RFQ) belum. Docs di `docs/arsitektur-ekosistem.md`.
 - [~] **Donasi Rutin** — perencanaan selesai, implementasi belum. **DITUNDA** (Phase R).
 - [x] **Image System** — Phase A (variant system Sharp + 6 WebP variants + cron cleanup) + Phase B (metadata UI autosave panel) + Phase C (alt/title/caption di semua front-end post) SELESAI. Arsitektur lengkap di `docs/arsitektur-image.md`.
 - [x] **Image System Phase D — Autocrop + Variant Baru**: `square-large` (800×800); module-aware generation; `position:"attention"` (libvips smart crop); manual crop editor UI (`react-image-crop`) + `crop_data` kolom + `/api/media/[id]/recrop`. ✅ SELESAI.

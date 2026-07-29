@@ -25,6 +25,8 @@ import {
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select"
 import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-media-input"
 import { PhoneInput } from "@/components/ui/phone-input"
+import { TagMultiSelect } from "@/components/ui/tag-multi-select"
+import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags"
 import {
   saveMemberOwnedPesantrenAction,
   type OwnedPesantrenEntryData,
@@ -58,6 +60,9 @@ export interface OwnedPesantrenEntry {
   santriPutri: string
   asatidz: string
   asatidzah: string
+  // Ekosistem — apa yang ditawarkan/dibutuhkan
+  offeredTags: string[]
+  neededTags: string[]
   // Kontak
   phone: string
   whatsapp: string
@@ -113,6 +118,7 @@ function newEntry(): OwnedPesantrenEntry {
     kurikulum: "", jenisPondok: "", modelPendidikan: "", kategoriSantri: "",
     santriPutra: "", santriPutri: "",
     asatidz: "", asatidzah: "",
+    offeredTags: [], neededTags: [],
     phone: "", whatsapp: "", email: "",
     isPhonePublic: false, isWhatsappPublic: false,
     addressMode: "indonesia",
@@ -379,6 +385,41 @@ function PesantrenCard({
             disabled={disabled}
           />
         </div>
+      </div>
+
+      {/* ── Section 3b: Ekosistem — apa yang ditawarkan/dibutuhkan ── */}
+      <div className="space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ekosistem Sinergi</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">
+              Menawarkan <span className="font-normal text-muted-foreground">(opsional)</span>
+            </span>
+            <TagMultiSelect
+              options={ECOSYSTEM_TAG_SUGGESTIONS}
+              value={entry.offeredTags}
+              onChange={(offeredTags) => onChange("offeredTags", offeredTags)}
+              disabled={disabled}
+              placeholder="Mis. Kelebihan Lahan, Aula untuk Disewa..."
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">
+              Membutuhkan <span className="font-normal text-muted-foreground">(opsional)</span>
+            </span>
+            <TagMultiSelect
+              options={ECOSYSTEM_TAG_SUGGESTIONS}
+              value={entry.neededTags}
+              onChange={(neededTags) => onChange("neededTags", neededTags)}
+              disabled={disabled}
+              placeholder="Mis. Guru Bahasa Inggris, Pasokan Beras..."
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Membantu sesama anggota menemukan sinergi — mis. tenaga pengajar, pengadaan, atau
+          pemanfaatan aset.
+        </p>
       </div>
 
       {/* ── Section 4: Statistik ── */}
@@ -690,6 +731,8 @@ export function Step5Pesantren({ memberId, slug, onSuccess, defaultEntries }: St
         santriPutri:     num(e.santriPutri),
         asatidz:         num(e.asatidz),
         asatidzah:       num(e.asatidzah),
+        offeredTags:     e.offeredTags.length > 0 ? e.offeredTags : undefined,
+        neededTags:      e.neededTags.length  > 0 ? e.neededTags  : undefined,
         phone:           e.phone    || undefined,
         whatsapp:        e.whatsapp || undefined,
         email:           e.email    || undefined,

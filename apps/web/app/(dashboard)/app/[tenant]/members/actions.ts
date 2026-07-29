@@ -442,6 +442,8 @@ export type OwnedPesantrenEntryData = {
   santriPutri?: number | null;
   asatidz?: number | null;
   asatidzah?: number | null;
+  offeredTags?: string[];
+  neededTags?: string[];
   phone?: string;
   whatsapp?: string;
   email?: string;
@@ -618,6 +620,8 @@ export async function saveMemberOwnedPesantrenAction(
         santriPutri:  entry.santriPutri  ?? null,
         asatidz:      entry.asatidz      ?? null,
         asatidzah:    entry.asatidzah    ?? null,
+        offeredTags:  entry.offeredTags ?? [],
+        neededTags:   entry.neededTags  ?? [],
         contactId, addressId, socialMediaId,
       });
     }
@@ -643,6 +647,8 @@ export type BusinessEntryData = {
   category: string;
   sector: string;
   businessFields?: string[];
+  offeredTags?: string[];
+  neededTags?: string[];
   legality?: string;
   position?: string;
   // Skala
@@ -775,6 +781,8 @@ export async function saveMemberBusinessesAction(
         category: entry.category as "Jasa" | "Produsen" | "Distributor" | "Trading" | "Profesional",
         sector:   entry.sector   as "Teknologi" | "Jasa Profesional" | "Kreatif" | "Manufaktur" | "Kesehatan & Pendidikan" | "Konsumsi & Ritel" | "Sumber Daya Alam",
         businessFields: entry.businessFields ?? [],
+        offeredTags: entry.offeredTags ?? [],
+        neededTags:  entry.neededTags  ?? [],
         legality: (entry.legality  || null) as "PT Perseorangan" | "PT" | "CV" | "Yayasan" | "Perkumpulan" | "Koperasi" | "Belum Memiliki Legalitas" | null,
         position: (entry.position  || null) as "Komisaris" | "Direktur" | "Pengelola" | "Manajer" | null,
         employees:(entry.employees || null) as "1-4" | "5-10" | "11-20" | "Lebih dari 20" | null,

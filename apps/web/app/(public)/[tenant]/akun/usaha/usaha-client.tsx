@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { TagMultiSelect } from "@/components/ui/tag-multi-select";
 import { BUSINESS_FIELD_SUGGESTIONS } from "@/lib/business-fields";
+import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { displayPhone } from "@/lib/phone";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
@@ -22,6 +23,7 @@ type Entry = {
   _key: string;
   name: string; brand: string; description: string;
   category: string; sector: string; businessFields: string[]; legality: string;
+  offeredTags: string[]; neededTags: string[];
   position: string; employees: string; branches: string; revenue: string;
   _addressMode:       "indonesia" | "overseas";
   addressCountry:     string;
@@ -46,7 +48,9 @@ type Entry = {
 
 type ApiRow = {
   name?: string; brand?: string; description?: string;
-  category?: string; sector?: string; businessFields?: string[]; legality?: string; position?: string;
+  category?: string; sector?: string; businessFields?: string[];
+  offeredTags?: string[]; neededTags?: string[];
+  legality?: string; position?: string;
   employees?: string; branches?: string; revenue?: string;
   addressCountry?: string;
   addressProvinceId?: number; addressRegencyId?: number;
@@ -118,6 +122,7 @@ function newEntry(): Entry {
   return {
     _key: crypto.randomUUID(), name: "", brand: "", description: "",
     category: "", sector: "", businessFields: [], legality: "", position: "",
+    offeredTags: [], neededTags: [],
     employees: "", branches: "", revenue: "",
     _addressMode: "indonesia",
     addressCountry: "", addressProvinceId: null,
@@ -145,6 +150,8 @@ function apiRowToEntry(e: ApiRow): Entry {
     category:          e.category    ?? "",
     sector:            e.sector      ?? "",
     businessFields:    e.businessFields ?? [],
+    offeredTags:       e.offeredTags ?? [],
+    neededTags:        e.neededTags  ?? [],
     legality:          e.legality    ?? "",
     position:          e.position    ?? "",
     employees:         e.employees   ?? "",
@@ -186,6 +193,8 @@ function buildPayload(e: Entry) {
     category:          e.category,
     sector:            e.sector,
     businessFields:    e.businessFields.length > 0 ? e.businessFields : undefined,
+    offeredTags:       e.offeredTags.length > 0 ? e.offeredTags : undefined,
+    neededTags:        e.neededTags.length  > 0 ? e.neededTags  : undefined,
     legality:          e.legality  || undefined,
     position:          e.position  || undefined,
     employees:         e.employees || undefined,
@@ -315,6 +324,35 @@ function DetailDialog({ entry, onClose, onEdit }: {
                 <InfoRow label="Karyawan"       value={entry.employees} />
                 <InfoRow label="Cabang"         value={entry.branches}  />
                 <InfoRow label="Omzet / Tahun"  value={entry.revenue}   />
+              </div>
+            </div>
+          )}
+
+          {/* Ekosistem — apa yang ditawarkan/dibutuhkan */}
+          {(entry.offeredTags.length > 0 || entry.neededTags.length > 0) && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">Ekosistem Sinergi</p>
+              <div className="space-y-2">
+                {entry.offeredTags.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Menawarkan</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {entry.offeredTags.map(t => (
+                        <span key={t} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {entry.neededTags.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Membutuhkan</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {entry.neededTags.map(t => (
+                        <span key={t} className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -455,6 +493,30 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
             Boleh pilih lebih dari satu — tidak harus sesuai sektor di atas.
           </p>
         </Field>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Menawarkan" optional>
+            <TagMultiSelect
+              options={ECOSYSTEM_TAG_SUGGESTIONS}
+              value={entry.offeredTags}
+              onChange={offeredTags => onUpdate({ offeredTags })}
+              disabled={disabled}
+              placeholder="Apa yang bisa Anda tawarkan/suplai?"
+            />
+          </Field>
+          <Field label="Membutuhkan" optional>
+            <TagMultiSelect
+              options={ECOSYSTEM_TAG_SUGGESTIONS}
+              value={entry.neededTags}
+              onChange={neededTags => onUpdate({ neededTags })}
+              disabled={disabled}
+              placeholder="Apa yang sedang Anda cari/butuhkan?"
+            />
+          </Field>
+        </div>
+        <p className="text-xs text-muted-foreground -mt-2">
+          Membantu sesama anggota menemukan sinergi — mis. bahan baku, mitra, atau layanan yang
+          relevan dengan usaha Anda.
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Legalitas" optional>
             <Combobox options={LEGALITIES} value={entry.legality}

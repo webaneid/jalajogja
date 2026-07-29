@@ -37,6 +37,8 @@ export type BizRow = {
   category: string | null
   sector: string | null
   businessFields: string[] | null
+  offeredTags: string[] | null
+  neededTags: string[] | null
   legality: string | null
   position: string | null
   employees: string | null
@@ -74,6 +76,8 @@ export type PesantrenRow = {
   santriPutri: number | null
   asatidz: number | null
   asatidzah: number | null
+  offeredTags: string[] | null
+  neededTags: string[] | null
   // Kontak
   pesPhone: string | null
   pesWhatsapp: string | null
@@ -221,6 +225,8 @@ export function BusinessSection({
     category: b.category ?? "",
     sector: b.sector ?? "",
     businessFields: b.businessFields ?? [],
+    offeredTags: b.offeredTags ?? [],
+    neededTags: b.neededTags ?? [],
     legality: b.legality ?? "",
     position: b.position ?? "",
     employees: b.employees ?? "",
@@ -291,6 +297,8 @@ export function BusinessSection({
                   <Row label="Kategori"  value={biz.category} />
                   <Row label="Sektor"    value={biz.sector} />
                   <Row label="Bidang Usaha" value={biz.businessFields?.join(", ") || null} />
+                  <Row label="Menawarkan" value={biz.offeredTags?.join(", ") || null} />
+                  <Row label="Membutuhkan" value={biz.neededTags?.join(", ") || null} />
                   <Row label="Legalitas" value={biz.legality} />
                   <Row label="Karyawan"  value={biz.employees} />
                   <Row label="Cabang"    value={biz.branches} />
@@ -355,6 +363,8 @@ export function PesantrenSection({
     santriPutri: p.santriPutri?.toString() ?? "",
     asatidz: p.asatidz?.toString() ?? "",
     asatidzah: p.asatidzah?.toString() ?? "",
+    offeredTags: p.offeredTags ?? [],
+    neededTags: p.neededTags ?? [],
     phone: p.pesPhone ?? "",
     whatsapp: p.pesWhatsapp ?? "",
     email: p.pesEmail ?? "",
@@ -415,6 +425,8 @@ export function PesantrenSection({
                   <Row label="Nama Pimpinan"  value={p.namaPimpinan} />
                   <Row label="HP Pimpinan"    value={displayPhone(p.hpPimpinan)} />
                   <Row label="Jenis Pondok"   value={p.jenisPondok} />
+                  <Row label="Menawarkan"     value={p.offeredTags?.join(", ") || null} />
+                  <Row label="Membutuhkan"    value={p.neededTags?.join(", ") || null} />
                   {(p.santriPutra != null || p.santriPutri != null) && (
                     <Row
                       label="Santri"

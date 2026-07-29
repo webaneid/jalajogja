@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { TagMultiSelect } from "@/components/ui/tag-multi-select";
+import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { displayPhone } from "@/lib/phone";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
@@ -33,6 +35,8 @@ type Entry = {
   santriPutri: string;
   asatidz: string;
   asatidzah: string;
+  offeredTags: string[];
+  neededTags: string[];
   // Kontak
   phone: string; whatsapp: string; email: string;
   isPhonePublic: boolean; isWhatsappPublic: boolean;
@@ -67,6 +71,8 @@ type ApiRow = {
   santriPutri?: number | null;
   asatidz?: number | null;
   asatidzah?: number | null;
+  offeredTags?: string[] | null;
+  neededTags?: string[] | null;
   phone?: string | null; whatsapp?: string | null; email?: string | null;
   isPhonePublic?: boolean | null; isWhatsappPublic?: boolean | null;
   addressCountry?: string | null;
@@ -122,6 +128,7 @@ function newEntry(): Entry {
     namaPimpinan: "", hpPimpinan: "",
     kurikulum: "", jenisPondok: "", modelPendidikan: "", kategoriSantri: "",
     santriPutra: "", santriPutri: "", asatidz: "", asatidzah: "",
+    offeredTags: [], neededTags: [],
     phone: "", whatsapp: "", email: "",
     isPhonePublic: false, isWhatsappPublic: false, _sameAsPhone: false,
     _addressMode: "indonesia",
@@ -155,6 +162,8 @@ function apiRowToEntry(e: ApiRow): Entry {
     santriPutri: e.santriPutri != null ? String(e.santriPutri) : "",
     asatidz:     e.asatidz     != null ? String(e.asatidz)     : "",
     asatidzah:   e.asatidzah   != null ? String(e.asatidzah)   : "",
+    offeredTags: e.offeredTags ?? [],
+    neededTags:  e.neededTags  ?? [],
     phone, whatsapp,
     email:            e.email            ?? "",
     isPhonePublic:    e.isPhonePublic     ?? false,
@@ -199,6 +208,8 @@ function buildPayload(e: Entry) {
     santriPutri: num(e.santriPutri),
     asatidz:     num(e.asatidz),
     asatidzah:   num(e.asatidzah),
+    offeredTags: e.offeredTags.length > 0 ? e.offeredTags : undefined,
+    neededTags:  e.neededTags.length  > 0 ? e.neededTags  : undefined,
     phone:    t(e.phone)    || undefined,
     whatsapp: e._sameAsPhone ? (t(e.phone) || undefined) : (t(e.whatsapp) || undefined),
     email:    t(e.email)    || undefined,
@@ -327,6 +338,35 @@ function DetailDialog({ entry, onClose, onEdit }: {
             <InfoRow label="Luas Area"      value={entry.luasArea} />
             <InfoRow label="Jenis Pondok"   value={entry.jenisPondok} />
           </div>
+
+          {/* Ekosistem — apa yang ditawarkan/dibutuhkan */}
+          {(entry.offeredTags.length > 0 || entry.neededTags.length > 0) && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">Ekosistem Sinergi</p>
+              <div className="space-y-2">
+                {entry.offeredTags.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Menawarkan</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {entry.offeredTags.map(t => (
+                        <span key={t} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {entry.neededTags.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Membutuhkan</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {entry.neededTags.map(t => (
+                        <span key={t} className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Pimpinan */}
           {(entry.namaPimpinan || entry.hpPimpinan) && (
@@ -507,6 +547,33 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
               placeholder="Pilih kategori santri" />
           </Field>
         </div>
+      </div>
+
+      {/* ── 3b. Ekosistem — apa yang ditawarkan/dibutuhkan ── */}
+      <div className="space-y-4">
+        <p className="text-sm font-semibold text-muted-foreground">Ekosistem Sinergi</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Menawarkan" optional>
+            <TagMultiSelect
+              options={ECOSYSTEM_TAG_SUGGESTIONS}
+              value={entry.offeredTags}
+              onChange={offeredTags => onUpdate({ offeredTags })}
+              placeholder="Mis. Kelebihan Lahan, Aula untuk Disewa..."
+            />
+          </Field>
+          <Field label="Membutuhkan" optional>
+            <TagMultiSelect
+              options={ECOSYSTEM_TAG_SUGGESTIONS}
+              value={entry.neededTags}
+              onChange={neededTags => onUpdate({ neededTags })}
+              placeholder="Mis. Guru Bahasa Inggris, Pasokan Beras..."
+            />
+          </Field>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Membantu sesama anggota menemukan sinergi — mis. tenaga pengajar, pengadaan, atau
+          pemanfaatan aset.
+        </p>
       </div>
 
       {/* ── 4. Data Pesantren (Statistik) ── */}

@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, integer, timestamp, index,
+  pgTable, uuid, text, integer, timestamp, index, jsonb,
 } from "drizzle-orm/pg-core";
 import { members }     from "./members";
 import { addresses }   from "./addresses";
@@ -44,6 +44,12 @@ export const memberOwnedPesantren = pgTable("member_owned_pesantren", {
   kategoriSantri: text("kategori_santri", {
     enum: ["Putra", "Putra dan Putri", "Putri"],
   }),
+
+  // ── Ekosistem — apa yang ditawarkan/dibutuhkan (docs/arsitektur-ekosistem.md § 6 Fase 1) ────
+  // Modul paling minim fondasi dari ketiganya (tidak punya tag klasifikasi sebelumnya) —
+  // vocabulary suggestion dipusatkan di lib/ecosystem-tags.ts, dipakai bersama Usaha/Profesional.
+  offeredTags: jsonb("offered_tags").$type<string[]>().notNull().default([]),
+  neededTags:  jsonb("needed_tags").$type<string[]>().notNull().default([]),
 
   // ── Statistik (total dikalkulasi di client, tidak disimpan) ───────────────
   santriPutra: integer("santri_putra"),

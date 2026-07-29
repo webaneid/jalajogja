@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
       professionType:      memberProfessionals.professionType,
       specialization:      memberProfessionals.specialization,
       description:         memberProfessionals.description,
+      offeredTags:         memberProfessionals.offeredTags,
+      neededTags:          memberProfessionals.neededTags,
       licenseType:         memberProfessionals.licenseType,
       licenseNumber:       memberProfessionals.licenseNumber,
       employmentType:      memberProfessionals.employmentType,
@@ -93,6 +95,7 @@ export async function POST(req: NextRequest) {
       professionType: string;
       specialization?: string;
       description?: string;
+      offeredTags?: string[]; neededTags?: string[];
       licenseType?: string;
       licenseNumber?: string;
       employmentType?: string;
@@ -174,6 +177,8 @@ export async function POST(req: NextRequest) {
         professionType:     e.professionType.trim(),
         specialization:     e.specialization?.trim() || null,
         description:        e.description?.trim()    || null,
+        offeredTags:        e.offeredTags ?? [],
+        neededTags:         e.neededTags  ?? [],
         licenseType:        e.licenseType?.trim()     || null,
         licenseNumber:      e.licenseNumber?.trim()   || null,
         employmentType:     (e.employmentType || null) as

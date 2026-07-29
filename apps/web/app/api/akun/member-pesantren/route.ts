@@ -41,6 +41,8 @@ export async function GET(req: NextRequest) {
       santriPutri:  memberOwnedPesantren.santriPutri,
       asatidz:      memberOwnedPesantren.asatidz,
       asatidzah:    memberOwnedPesantren.asatidzah,
+      offeredTags:  memberOwnedPesantren.offeredTags,
+      neededTags:   memberOwnedPesantren.neededTags,
       coverUrl:     memberOwnedPesantren.coverUrl,
       // Kontak
       phone:            contacts.phone,
@@ -103,6 +105,7 @@ export async function POST(req: NextRequest) {
       santriPutri?: number | null;
       asatidz?: number | null;
       asatidzah?: number | null;
+      offeredTags?: string[]; neededTags?: string[];
       phone?: string; whatsapp?: string; email?: string;
       isPhonePublic?: boolean; isWhatsappPublic?: boolean;
       addressCountry?: string; addressProvinceId?: number; addressRegencyId?: number;
@@ -186,6 +189,8 @@ export async function POST(req: NextRequest) {
         santriPutri:  e.santriPutri  ?? null,
         asatidz:      e.asatidz      ?? null,
         asatidzah:    e.asatidzah    ?? null,
+        offeredTags:  e.offeredTags ?? [],
+        neededTags:   e.neededTags  ?? [],
         coverUrl:     e.coverUrl?.trim() || null,
         contactId, addressId, socialMediaId,
       });

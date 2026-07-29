@@ -9,6 +9,8 @@ import {
 import { cn } from "@/lib/utils";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { ProfessionTypeCombobox } from "@/components/ui/profession-type-combobox";
+import { TagMultiSelect } from "@/components/ui/tag-multi-select";
+import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { displayPhone } from "@/lib/phone";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
@@ -25,6 +27,7 @@ type Entry = {
   _key: string;
   title: string; professionCategory: string; professionType: string;
   specialization: string; description: string;
+  offeredTags: string[]; neededTags: string[];
   licenseType: string; licenseNumber: string;
   employmentType: string; institution: string; startYear: string;
   _addressMode:       "indonesia" | "overseas";
@@ -52,6 +55,7 @@ type Entry = {
 type ApiRow = {
   title?: string; professionCategory?: string; professionType?: string;
   specialization?: string; description?: string;
+  offeredTags?: string[]; neededTags?: string[];
   licenseType?: string; licenseNumber?: string;
   employmentType?: string; institution?: string; startYear?: number;
   addressCountry?: string;
@@ -79,6 +83,7 @@ function newEntry(): Entry {
     _key: crypto.randomUUID(),
     title: "", professionCategory: "", professionType: "",
     specialization: "", description: "",
+    offeredTags: [], neededTags: [],
     licenseType: "", licenseNumber: "",
     employmentType: "", institution: "", startYear: "",
     _addressMode: "indonesia",
@@ -106,6 +111,8 @@ function apiRowToEntry(e: ApiRow): Entry {
     professionType:     e.professionType      ?? "",
     specialization:     e.specialization      ?? "",
     description:        e.description         ?? "",
+    offeredTags:        e.offeredTags ?? [],
+    neededTags:         e.neededTags  ?? [],
     licenseType:        e.licenseType         ?? "",
     licenseNumber:      e.licenseNumber       ?? "",
     employmentType:     e.employmentType      ?? "",
@@ -147,6 +154,8 @@ function buildPayload(e: Entry) {
     professionType:     trim(e.professionType),
     specialization:     trim(e.specialization) || undefined,
     description:        trim(e.description)    || undefined,
+    offeredTags:        e.offeredTags.length > 0 ? e.offeredTags : undefined,
+    neededTags:         e.neededTags.length  > 0 ? e.neededTags  : undefined,
     licenseType:        trim(e.licenseType)     || undefined,
     licenseNumber:      trim(e.licenseNumber)   || undefined,
     employmentType:     e.employmentType || undefined,
@@ -263,6 +272,35 @@ function DetailDialog({ entry, onClose, onEdit }: {
         <div className="px-6 py-5 space-y-5 max-h-[55vh] overflow-y-auto">
           {entry.description && (
             <InfoRow label="Deskripsi" value={entry.description} />
+          )}
+
+          {/* Ekosistem — apa yang ditawarkan/dibutuhkan */}
+          {(entry.offeredTags.length > 0 || entry.neededTags.length > 0) && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">Ekosistem Sinergi</p>
+              <div className="space-y-2">
+                {entry.offeredTags.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Menawarkan</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {entry.offeredTags.map(t => (
+                        <span key={t} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {entry.neededTags.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Membutuhkan</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {entry.neededTags.map(t => (
+                        <span key={t} className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {/* Kredensial */}
@@ -412,6 +450,30 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
             onChange={e => onUpdate({ description: e.target.value })} disabled={disabled}
             placeholder="Layanan yang ditawarkan, pengalaman singkat..." rows={2} />
         </Field>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Menawarkan" optional>
+            <TagMultiSelect
+              options={ECOSYSTEM_TAG_SUGGESTIONS}
+              value={entry.offeredTags}
+              onChange={offeredTags => onUpdate({ offeredTags })}
+              disabled={disabled}
+              placeholder="Jasa konkret yang bisa dikerjakan..."
+            />
+          </Field>
+          <Field label="Membutuhkan" optional>
+            <TagMultiSelect
+              options={ECOSYSTEM_TAG_SUGGESTIONS}
+              value={entry.neededTags}
+              onChange={neededTags => onUpdate({ neededTags })}
+              disabled={disabled}
+              placeholder="Proyek/klien yang sedang dicari..."
+            />
+          </Field>
+        </div>
+        <p className="text-xs text-muted-foreground -mt-2">
+          Membantu sesama anggota menemukan sinergi — boleh lebih spesifik dari jenis profesi
+          di atas.
+        </p>
       </div>
 
       {/* ── Kredensial ── */}

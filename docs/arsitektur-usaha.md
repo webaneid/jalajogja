@@ -123,33 +123,42 @@ terakhir + opsi "buat baru" muncul kalau ketikan tidak cocok satu pun rekomendas
 Sesuai aturan project "Setiap perubahan form anggota → update KEDUA tempat (front-end + admin)
 sekaligus" — kedua form (self-service DAN admin wizard) diupdate bersamaan, bukan salah satu.
 
-## 8. Fase 2 (BELUM Dibangun) — Jaringan Kolaborasi/Pencocokan
+## 8. Fase 2 (SEDANG DIEKSEKUSI, 2026-07-29) — Tag Ekosistem `offeredTags`/`neededTags`
 
-**Didokumentasikan sekarang atas permintaan eksplisit user** ("bagus untuk dicatat dalam
-arsitektur"), TAPI implementasinya DITUNDA — bukan bagian scope Fase 1.
+> Bagian ini SUPERSEDED oleh rencana payung **`docs/arsitektur-ekosistem.md` § 6 Fase 1** —
+> dokumen itu adalah sumber kebenaran untuk keputusan lintas-modul (Usaha + Profesional +
+> Pesantren sekaligus). Bagian ini dipertahankan sebagai catatan sejarah keputusan awal
+> (kenapa fitur ini ditunda dulu, lalu kenapa akhirnya dieksekusi) + detail spesifik modul Usaha.
 
-**Tujuan**: retailer bisa menemukan produsen yang relevan, dan sebaliknya — matchmaking B2B di
-antara sesama anggota IKPM, bukan cuma direktori pasif.
+**Tujuan** (tidak berubah dari draft awal): retailer bisa menemukan produsen yang relevan, dan
+sebaliknya — matchmaking sederhana lintas direktori Usaha/Profesional/Pesantren, bukan cuma
+direktori pasif.
 
-**Model data yang direkomendasikan** (draft, belum final):
-- `supplies: string[]` — "yang saya sediakan/tawarkan" (tag dari vocabulary yang sama dengan
-  `businessFields`)
-- `seeking: string[]` — "yang saya cari/butuhkan" (tag dari vocabulary yang sama)
+**Keputusan final (bukan lagi draft)**: field dinamai `offeredTags: string[]` (apa yang
+ditawarkan/disuplai) dan `neededTags: string[]` (apa yang dicari/dibutuhkan) — **diseragamkan
+namanya lintas SEMUA 3 modul** (Usaha, Profesional, Pesantren), bukan `supplies`/`seeking` yang
+disketsakan draft awal — supaya query/helper API server dan komponen `<TagMultiSelect>` di ketiga
+form self-service bisa memakai prop dan nama state yang identik (DRY).
 
-Kedua field ini SENGAJA memakai **vocabulary yang sama** dengan `businessFields` (bukan
-vocabulary baru terpisah) — supaya begitu Fase 2 dibangun, pencocokan "siapa yang menyediakan X"
-vs "siapa yang mencari X" bisa langsung jalan dengan `inArray`/overlap query sederhana terhadap
-tag yang SUDAH ada, tanpa perlu migrasi data ulang.
+Untuk Usaha spesifik: suggestion autocomplete `offeredTags`/`neededTags` REUSE vocabulary yang
+sama dengan `businessFields` (via `lib/ecosystem-tags.ts`, aggregator — lihat
+`arsitektur-ekosistem.md` § 6 Fase 1) — bukan vocabulary baru terpisah. Ini menjaga prinsip yang
+sudah dikunci sejak awal: pencocokan "siapa yang menyediakan X" vs "siapa yang mencari X" bisa
+langsung jalan dengan overlap query sederhana (`inArray`/JSONB containment) terhadap tag yang
+sama, tanpa migrasi data ulang.
 
-**Kenapa ditunda sekarang**: kalau `supplies`/`seeking` dibangun SEBELUM `businessFields` (tag
-vocabulary dasar) matang dan terisi cukup banyak, kedua field itu akan jadi free-text tidak
-terstruktur yang susah dicocokkan otomatis. Urutan yang benar: bangun kosakata dulu
-(`businessFields`, Fase 1), biarkan terisi secara organik, BARU bangun mesin pencocokan di
-atasnya (Fase 2).
+**Kenapa sempat ditunda, lalu jadi layak dieksekusi**: alasan penundaan asli (jangan bangun
+`supplies`/`seeking` sebelum `businessFields` matang dan terisi organik) tetap valid sebagai
+PRINSIP — tapi audit adopsi lokal (2026-07-29, `docs/arsitektur-ekosistem.md` § "Fase 0")
+menunjukkan `businessFields` SUDAH terisi cukup baik di data yang ada (bukan kosong semua), jadi
+fondasi kosakata dianggap cukup matang untuk lapis tag berikutnya. Field baru ini TETAP flat
+`string[]` sederhana (BUKAN JSONB terstruktur dengan volume/satuan/geospasial) — itu ditunda ke
+fase yang jauh lebih lanjut (Fase 4+ di `arsitektur-ekosistem.md`), kalau memang terbukti perlu.
 
-**Kemungkinan UI Fase 2** (belum didesain detail, sekadar arah): halaman "Cari Mitra Usaha" di
-`/{slug}/usaha` (direktori publik) atau `/akun/usaha` — filter "saya butuh X" → tampilkan semua
-usaha dengan `supplies` mengandung X. Atau notifikasi otomatis saat ada usaha baru yang
-`supplies`-nya cocok dengan `seeking` usaha lain (lebih kompleks, kandidat jangka lebih panjang).
+**UI Fase 2** (`docs/arsitektur-ekosistem.md` § 6 Fase 2, BELUM dibangun di sesi ini — Fase 1
+hanya menambah kolom+form): filter pencarian di direktori publik `/{slug}/usaha` berdasarkan
+`offeredTags`/`neededTags`, plus cross-link ke direktori Profesional/Pesantren berbasis
+tag-overlap sederhana. TANPA hub `/ekosistem` baru, TANPA algoritma matching kompleks.
 
-**Status: perencanaan konseptual saja, urutan eksekusi belum ditentukan, menunggu sinyal user.**
+**Status: ✅ kolom + form self-service + admin wizard SELESAI dieksekusi (2026-07-29, Fase 1
+payung). Filter pencarian lintas-direktori (Fase 2 payung) belum dimulai.**

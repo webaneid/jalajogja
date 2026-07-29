@@ -40,6 +40,12 @@ export const memberBusinesses = pgTable("member_businesses", {
   // docs/arsitektur-usaha.md § 2-3), multi-select tag bebas + kurasi (lib/business-fields.ts).
   businessFields: jsonb("business_fields").$type<string[]>().notNull().default([]),
 
+  // ── Ekosistem — apa yang ditawarkan/dibutuhkan (docs/arsitektur-ekosistem.md § 6 Fase 1) ────
+  // Facet BARU, terpisah dari businessFields (klasifikasi industri) — vocabulary suggestion
+  // dipusatkan di lib/ecosystem-tags.ts, dipakai bersama Usaha/Profesional/Pesantren.
+  offeredTags: jsonb("offered_tags").$type<string[]>().notNull().default([]),
+  neededTags:  jsonb("needed_tags").$type<string[]>().notNull().default([]),
+
   // ── Legalitas & struktur ─────────────────────────────────────────────────────
   legality: text("legality", {
     enum: [

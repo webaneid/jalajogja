@@ -13187,8 +13187,179 @@ selalu punya beberapa jalur masuk independen yang masing-masing butuh guard-nya 
 (client-side saja tidak cukup, terutama kalau submission-nya lewat `fetch()` custom yang
 membuat atribut HTML5 `min`/`max`/`required` jadi dekoratif belaka).
 
+### [2026-07-29] Arsitektur Ekosistem — Draft Agen Lain Dikritisi Total, Ditulis Ulang Bertahap
+
+> Dokumen: **`docs/arsitektur-ekosistem.md`** (ditulis ulang total — draft asli agen lain
+> diarsipkan di § 7 dokumen itu sebagai referensi visi, bukan dihapus).
+
+User minta fase baru "Ekosistem" — data Usaha/Profesional/Pesantren jangan cuma jadi direktori
+pasif, tapi bisa memicu sinergi/matchmaking (contoh user: retailer kaos cari bahan kaos;
+pesantren cari guru Bahasa Inggris/konsultan legalitas). Draft rencana SUDAH ditulis agen LAIN
+di `docs/arsitektur-ekosistem.md` — user eksplisit curiga ada distorsi informasi, minta saya
+(paling paham arsitektur aktual) kritis, verifikasi ke kode SUNGGUHAN + `docs/arsitektur-usaha.md`
+/`-pesantren.md`/`-profesional.md`, baru tulis rencana eksekusi bertahap yang benar.
+
+**Verifikasi kode (bukan percaya draft/dokumen begitu saja) menemukan 5 fakta kunci:**
+1. `member_businesses` — HANYA `businessFields: jsonb string[]` (facet independen dari
+   `sector`, live sejak migration `0044`). Draft mengusulkan 8 field baru (`verificationStatus`,
+   `structuredSupplies` dengan volume+satuan+geospasial, `excessCapacity`, dll) — NOL dari itu
+   ada. `arsitektur-usaha.md` § 8 SENDIRI sudah menyketsakan versi SEDERHANA
+   (`supplies`/`seeking` flat array, reuse `businessFields`) dengan prinsip eksplisit: "bangun
+   kosakata dulu, biarkan terisi organik, BARU bangun mesin pencocokan" — draft melompati
+   prinsip ini seluruhnya.
+2. `member_professionals` — **SUDAH LIVE PENUH** (`professionCategory`/`professionType`/
+   `specialization`/`employmentType`/`licenseType`, route publik+self-service ada,
+   `lib/professional-types.ts` ada). **`docs/arsitektur-profesional.md`'s HEADER SENDIRI
+   basi** — masih tulis "belum diimplementasikan" padahal § 14 dokumen yang SAMA
+   mendeskripsikan bug fix ke kode yang sudah deploy (migration `0043`, 2026-07-24) — kontradiksi
+   internal yang lolos sampai sekarang, dicatat tapi tidak diperbaiki di sesi ini (di luar scope).
+3. `member_owned_pesantren` — LIVE, stabil, **ZERO** konsep tag/kebutuhan/penawaran apa pun.
+   Draft mengusulkan 7 field JSONB terstruktur sekaligus untuk modul yang fondasinya paling
+   minim dari ketiganya — asimetri yang draft tidak akui sama sekali.
+4. Grep `verificationStatus|verifiedBy|isVerified` di SELURUH app — **nol hasil**. Trust Engine
+   yang diusulkan draft bukan perluasan sesuatu yang sudah ada — konsep baru dari nol, tanpa
+   workflow admin yang jelas (siapa boleh verifikasi, lewat UI apa) — kolom yang tidak akan
+   pernah ada yang mengisinya.
+5. Pola tenant-scoping direktori (`INNER JOIN tenant_memberships WHERE tenantId=X AND status
+   IN (active,alumni)`) dan model privasi owner-controlled per-field (`is_phone_public` dkk,
+   sudah pernah diaudit khusus) WAJIB dihormati — draft § 7 "Layer 2 — Anggota Terverifikasi
+   ... WhatsApp Langsung" berpotensi MEMBYPASS toggle consent yang sudah dikunci, pelanggaran
+   langsung terhadap keputusan privasi yang sudah diaudit di sesi lain.
+
+**8 kritik konkret ditulis** (dokumen § 3): adopsi belum diukur sebelum lompat ke infrastruktur
+berat; `lib/ecosystem-tags.ts` akan jadi taksonomi KETIGA yang tumpang tindih dengan
+`business-fields.ts`+`professional-types.ts` yang sudah ada (ironis — draft klaim mencegah
+fragmentasi tapi justru menambahnya); Pesantren melompat dari nol; Trust Engine = gap
+proses bukan cuma kolom; RFQ Subsystem sebanding skala Billing (bukan "Fase 2 enhancement");
+matching geospasial/volume dideskripsikan lewat contoh bukan algoritma; privacy model konflik
+dengan consent yang sudah dikunci; `skillTags`/`offeredServices` tumpang tindih tak jelas
+dengan `professionType`+`specialization` yang sudah ada.
+
+**Rencana revisi (dokumen § 6), jauh lebih ramping**: Fase 0 (ukur adopsi `businessFields` di
+production dulu, bukan kode — tugas terpisah, boleh dilewati sebagai risiko yang diterima) →
+Fase 1 (lengkapi fondasi SIMETRIS 3 modul — `offeredTags`/`neededTags` flat array, POLA SAMA
+`businessFields`, reuse `TagMultiSelect` yang sudah ada, TIDAK ADA structured JSONB) → Fase 2
+(filter pencarian lintas-direktori di 3 halaman PUBLIK yang SUDAH ADA — `/usaha`/`/profesional`/
+`/pesantren` — TANPA hub baru, TANPA algoritma matching, cukup `WHERE tag = ANY(...)` — inilah
+titik yang mewujudkan skenario konkret user dengan build TERKECIL) → Fase 3 (Trust Badge
+BOOLEAN sederhana, HANYA dengan workflow admin eksplisit, HANYA jika Fase 1-2 terbukti dipakai)
+→ Fase 4 (RFQ Subsystem, diperlakukan sebagai inisiatif TERPISAH seperti Billing dulu, bukan
+checkbox — hanya kalau ada bukti permintaan nyata) → Fase 5 (dashboard insight + WA notif,
+hanya setelah Fase 3-4 menghasilkan sinyal yang layak ditampilkan).
+
+**Draft asli DIPERTAHANKAN penuh di § 7** (diagram, cross-synergy matrix, skema field lengkap,
+Trust Engine, taksonomi, privacy layer, hub `/ekosistem`, insight widgets) sebagai referensi
+VISI JANGKA PANJANG dengan pointer eksplisit ke nomor kritik § 3 yang relevan — bukan dihapus,
+karena idenya (endorsement, sinonim taksonomi, dst) tetap berguna untuk fase yang JAUH lebih
+lanjut, cuma tidak layak jadi fondasi awal.
+
+**Nol kode disentuh** — murni riset+kritik+penulisan ulang dokumen arsitektur, sesuai
+permintaan eksplisit user ("masuk dalam membuat rencana ... yang tertuang dalam
+docs/arsitektur-ekosistem.md"). Belum ada instruksi eksekusi Fase 0/1 — menunggu konfirmasi
+user, kemungkinan via `AskUserQuestion` untuk poin yang masih terbuka (mis. apakah Fase 0
+"ukur adopsi production" wajib ditunggu atau boleh dilewati; penamaan field Usaha
+`supplies`/`seeking` vs `offeredTags`/`neededTags` biar konsisten lintas modul).
+
+### [2026-07-29] Ekosistem Fase 1 Dieksekusi — `offeredTags`/`neededTags` Simetris di 3 Modul
+
+> Detail lengkap: **`docs/arsitektur-ekosistem.md` § 6 Fase 0-1** + **`docs/arsitektur-usaha.md`
+> § 8** (status diupdate jadi SELESAI).
+
+Menyusul kritik terhadap draft (lesson di atas), user membawa masukan lanjutan (dari agen lain)
+untuk menjawab 2 pertanyaan terbuka: (1) Fase 0 (ukur adopsi) — jalankan dulu, cepat; (2)
+penamaan field — seragamkan `offeredTags`/`neededTags` di ketiga modul (bukan `supplies`/
+`seeking` yang disketsakan `arsitektur-usaha.md` § 8 sebelumnya), plus 3 catatan teknis: dual-
+update form (self-service+admin), migration public-schema sekali jalan (bukan per-tenant), dan
+daftar tag terpusat `lib/ecosystem-tags.ts`.
+
+**Poin taksonomi direkonsiliasi, bukan diterima mentah**: rekomendasi "gunakan
+`lib/ecosystem-tags.ts`" PERSIS nama file yang dikritik di § 3.2 (draft asli, taksonomi ketiga
+yang tumpang tindih `business-fields.ts`+`professional-types.ts`). Diputuskan: TERIMA nama
+file, TAPI isinya HARUS beda dari draft asli — bukan `TaxonomyCategory{id,domain,label,
+synonyms}` (struktur berat, categoryId+sinonim), melainkan **aggregator flat `string[]`** yang
+di-*seed* dari `BUSINESS_FIELD_SUGGESTIONS` (import+spread, bukan disalin ulang manual) plus
+~15 entri lintas-domain baru (kebutuhan guru/legalitas/pengadaan/aset yang sudah disebut user).
+Ini konsisten Prinsip § 4 poin 3 sendiri ("perpanjangan dari vocabulary yang sudah ada") — bukan
+kontradiksi, melainkan implementasi persis dari prinsip yang sudah dikunci.
+
+**Riset struktur SEBELUM menulis kode** (bukan asumsi dari rekomendasi advisor) menemukan
+asimetri penting: `member-wizard.tsx` (2-step "tambah anggota baru") TIDAK menyertakan
+`step4-business.tsx`/`step5-pesantren.tsx` sama sekali — keduanya dipakai TERPISAH di
+`members/[id]/edit/page.tsx`+`member-data-sections.tsx` (edit data existing member, bukan
+create-baru). Dan **Profesional TIDAK PUNYA admin wizard/edit step sama sekali** (dikonfirmasi
+`find`+grep, nol file) — jadi "dual-update form" (self-service+admin) HANYA berlaku genuine
+untuk Usaha dan Pesantren; Profesional cukup self-service saja, TIDAK dibangun admin step baru
+untuk itu (di luar scope, tidak diminta).
+
+**Eksekusi**: migration `0053_ecosystem_offered_needed_tags.sql` (3 tabel public schema
+sekaligus, sekali jalan) + schema Drizzle 3 file (tambah `jsonb` ke import yang belum ada di
+`member-professionals.ts`/`member-owned-pesantren.ts`) + `lib/ecosystem-tags.ts` (baru) + 3 form
+self-service (`usaha-client.tsx`, `pesantren/page.tsx` full-client, `profesional-client.tsx`) +
+2 form admin wizard (`step4-business.tsx`, `step5-pesantren.tsx`) + 4 titik konstruksi admin
+tambahan yang ditemukan via grep (bukan diasumsikan simetris): `members/[id]/page.tsx` (SELECT
+detail), `member-data-sections.tsx` (tipe `BizRow`/`PesantrenRow` + konstruksi + display Row
+untuk KEDUA modul), `members/[id]/edit/page.tsx` (SELECT+konstruksi, HANYA Usaha — Pesantren
+tidak dikonstruksi di sini) + 3 API route self-service + `saveMemberBusinessesAction`/
+`saveMemberOwnedPesantrenAction` (`members/actions.ts`).
+
+**Fase 0 dijalankan LOKAL** (bukan production — sesi ini tidak punya akses SSH VPS): query cepat
+`jsonb_array_length(business_fields) > 0` terhadap DB dev → 12 entri aktif, 10 (83,3%) sudah
+terisi `businessFields`. Data dev, bukan bukti production, tapi cukup meyakinkan fondasi
+kosakata tidak kosong — dicatat jujur sebagai proxy, bukan diklaim sebagai bukti adopsi
+sungguhan. Query production yang sama diserahkan ke user (tidak memblokir eksekusi).
+
+**Verifikasi**: `tsc --noEmit` 0 error di kedua package (percobaan pertama, sekali typo minor
+saat Edit string-matching di `edit/page.tsx` langsung ketahuan dan diperbaiki) + `bun run build
+--filter=@jalajogja/web` sukses genuine 46 detik (dev server dimatikan+`.next` dibersihkan
++direstart) + **round-trip empiris** (insert baris test dengan `offered_tags`/`needed_tags`
+berisi array nyata → SELECT balik → hasil cocok persis → DELETE, dibersihkan). **Belum di-
+commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser** (upload tag
+sungguhan lewat form self-service/admin belum pernah dicoba siapa pun) — keterbatasan
+environment sesi ini (tidak ada browser), konsisten dicatat di semua sesi implementasi
+sebelumnya. Fase 2 (filter pencarian lintas-direktori `/usaha`+`/profesional`+`/pesantren`,
+TANPA hub baru) adalah langkah berikutnya, belum dimulai.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Guard Tahun Lulus KMI — Wajib 4-Digit Lengkap** (lihat lesson
+- Terakhir dikerjakan: **Ekosistem Fase 1 Dieksekusi — `offeredTags`/`neededTags` Simetris di 3
+  Modul** (lihat lesson `[2026-07-29]` "Ekosistem Fase 1 Dieksekusi" di atas) — lanjutan langsung
+  dari kritik draft (entri di bawah), user bawa masukan lanjutan (agen lain) menjawab 2
+  pertanyaan terbuka: Fase 0 jalankan dulu (cepat), penamaan field seragamkan
+  `offeredTags`/`neededTags` (bukan `supplies`/`seeking`) + 3 catatan teknis (dual-update form,
+  migration public-schema sekali jalan, tag terpusat `lib/ecosystem-tags.ts`). Poin taksonomi
+  direkonsiliasi (bukan diterima mentah) — `lib/ecosystem-tags.ts` DIBUAT tapi isinya aggregator
+  flat `string[]` (seed dari `BUSINESS_FIELD_SUGGESTIONS` + ~15 entri lintas-domain baru), BUKAN
+  struktur berat `categoryId`+sinonim yang dikritik sebelumnya — konsisten prinsip § 4 poin 3
+  sendiri. Riset SEBELUM kode menemukan asimetri penting: Profesional TIDAK PUNYA admin wizard/
+  edit step sama sekali (nol file, dikonfirmasi grep) — dual-update HANYA berlaku Usaha+
+  Pesantren. Eksekusi penuh: migration `0053` (3 tabel public schema, sekali jalan) + schema
+  Drizzle 3 file + `lib/ecosystem-tags.ts` baru + 3 form self-service + 2 form admin wizard + 4
+  titik konstruksi admin tambahan (ditemukan via grep, bukan diasumsikan simetris — termasuk
+  `members/[id]/edit/page.tsx` yang HANYA konstruksi Usaha, bukan Pesantren) + 3 API route + 2
+  server action. Fase 0 dijalankan LOKAL (bukan production, dicatat jujur sebagai proxy): 12
+  entri Usaha aktif, 83,3% sudah terisi `businessFields`. `tsc`+build genuine bersih + round-trip
+  empiris (insert-select-delete baris test JSONB nyata). **Belum di-commit/push, belum
+  dijalankan di VPS, belum diverifikasi visual di browser** — upload tag sungguhan lewat form
+  belum pernah dicoba. Fase 2 (filter pencarian lintas-direktori, tanpa hub baru) belum dimulai.
+- Sesi sebelumnya: **Kritik + Tulis Ulang Arsitektur Ekosistem** (lihat lesson
+  `[2026-07-29]` "Arsitektur Ekosistem — Draft Agen Lain Dikritisi Total" di atas) — user minta
+  saya kritis terhadap draft `docs/arsitektur-ekosistem.md` yang ditulis agen lain (matchmaking
+  Usaha↔Profesional↔Pesantren), verifikasi ke kode aktual, lalu tulis rencana eksekusi bertahap
+  yang benar. Verifikasi menemukan: `member_businesses` cuma punya `businessFields` (tag flat,
+  live 5 hari sebelum draft ditulis) — draft mengusulkan 8 field baru terstruktur (Trust Engine,
+  volume+geospasial) tanpa mengukur adopsi fondasi yang baru live itu; `member_professionals`
+  TERNYATA SUDAH LIVE PENUH (draft dan bahkan `arsitektur-profesional.md`'s HEADER SENDIRI
+  masih bilang "belum diimplementasikan" — kontradiksi dengan § 14 dokumen yang sama); `member_
+  owned_pesantren` ZERO groundwork sama sekali (draft lompat ke 7 field JSONB sekaligus untuk
+  modul paling minim fondasinya); nol konsep "verifikasi/trust" di mana pun di codebase (Trust
+  Engine draft = gap workflow, bukan cuma kolom); model privasi draft (viewer-tiered, "anggota
+  terverifikasi lihat WhatsApp langsung") berpotensi membypass toggle consent owner-controlled
+  yang sudah diaudit khusus di sesi lain. `docs/arsitektur-ekosistem.md` ditulis ulang total:
+  § 2 audit realitas, § 3 8-poin kritik, § 4 prinsip dikunci, § 6 rencana revisi 6-fase yang
+  jauh lebih ramping (Fase 0 ukur adopsi → Fase 1 tag flat simetris 3 modul → Fase 2 filter
+  lintas-direktori TANPA hub baru → Fase 3 trust badge boolean → Fase 4 RFQ sebagai inisiatif
+  terpisah → Fase 5 insight+WA notif), draft asli diarsipkan penuh di § 7 sebagai referensi visi
+  (bukan dihapus). **Nol kode disentuh** — murni dokumen. Belum ada instruksi eksekusi Fase 0/1.
+- Sesi sebelumnya: **Guard Tahun Lulus KMI — Wajib 4-Digit Lengkap** (lihat lesson
   `[2026-07-28]` "Guard Tahun Lulus KMI" di atas) — user minta `graduationYear` wajib diisi +
   wajib 4 digit lengkap (bukan disingkat "99"/"98"). Audit ke 4 titik input menemukan gap nyata
   di 3 dari 4: self-service `/akun/lengkapi` (required check sudah ada, range check TIDAK —

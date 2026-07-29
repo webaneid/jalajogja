@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, integer, boolean, timestamp, index,
+  pgTable, uuid, text, integer, boolean, timestamp, index, jsonb,
 } from "drizzle-orm/pg-core";
 import { members }      from "./members";
 import { addresses }    from "./addresses";
@@ -28,6 +28,12 @@ export const memberProfessionals = pgTable("member_professionals", {
   professionType: text("profession_type").notNull(), // mis. "Dokter", "Notaris", "Perawat" — combobox kurasi + custom
   specialization: text("specialization"),             // detail lanjut, mis. "Spesialis Anak (Sp.A)" — opsional
   description:    text("description"),               // bio singkat / layanan
+
+  // ── Ekosistem — apa yang ditawarkan/dibutuhkan (docs/arsitektur-ekosistem.md § 6 Fase 1) ────
+  // Facet BARU, lebih granular dari professionType+specialization — vocabulary suggestion
+  // dipusatkan di lib/ecosystem-tags.ts, dipakai bersama Usaha/Profesional/Pesantren.
+  offeredTags: jsonb("offered_tags").$type<string[]>().notNull().default([]),
+  neededTags:  jsonb("needed_tags").$type<string[]>().notNull().default([]),
 
   // ── Kredensial (opsional, publik by default) ─────────────────────────────
   licenseType:   text("license_type"),     // mis. "STR", "No. Advokat PERADI"
