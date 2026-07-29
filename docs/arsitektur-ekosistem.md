@@ -1,5 +1,13 @@
 # Arsitektur Ekosistem Sinergi Anggota — Interkoneksi Usaha, Profesional & Pesantren
 
+> **Dokumen Terkait & Saling Terhubung**:
+> - [`docs/arsitektur-usaha.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-usaha.md) — Data Usaha Anggota & Rencana Upgrade Sektor 3-Tier.
+> - [`docs/arsitektur-usaha-taxonomy-gemini.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-usaha-taxonomy-gemini.md) — Taksonomi Sub-Sektor Tier 3 & Sub-Bidang Custom Forcreator.
+> - [`docs/arsitektur-profesional.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-profesional.md) — Data & Kredensial Profesional Anggota.
+> - [`docs/arsitektur-pesantren.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-pesantren.md) — Data Pesantren Anggota.
+
+---
+
 > **Status: Fase 0-2 SELESAI + di-commit/push (Fase 1 sudah deploy VPS, Fase 2 belum) — Rencana Eksekusi Ditulis Ulang, Bertahap, Berbasis Fondasi Nyata**
 > Dokumen versi sebelumnya (ditulis agen lain, tanggal yang sama) mengusulkan pembangunan Trust
 > Engine + RFQ Subsystem + Structured JSONB + Taxonomy Dictionary + Hub `/ekosistem` + Insight

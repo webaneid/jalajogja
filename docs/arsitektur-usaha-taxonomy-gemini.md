@@ -1,5 +1,12 @@
 # **Taksonomi Bidang Usaha Spesifik & Sub-Sektor Modern**
 
+> **Dokumen Terkait & Saling Terhubung**:
+> - [`docs/arsitektur-usaha.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-usaha.md) — Arsitektur Utama Modul Usaha (`public.member_businesses`) & Rencana Upgrade Sektor.
+> - [`docs/arsitektur-ekosistem.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-ekosistem.md) — Payung Sinergi Interkoneksi Tag Autocomplete (`lib/ecosystem-tags.ts`).
+> - [`docs/evaluasi-arsitektur-usaha-gemini.md`](file:///Users/webane/sites/jalajogja/docs/evaluasi-arsitektur-usaha-gemini.md) — Dokumen Hasil Evaluasi & Riset BPS KBLI 2020.
+
+---
+
 **Dokumen Arsitektur Data — Tier 3 (Sub-Bidang Usaha & Tag Pencocokan Presisi)**  
 Dokumen ini membedah 10 Sektor Utama (*Tier 2*) menjadi **Sub-Sektor/Bidang Usaha Spesifik (*Tier 3*)** yang mencakup industri konvensional maupun industri modern (digital, *green economy*, dan layanan kekinian).  
 Setiap bidang dilengkapi dengan contoh produk/layanan nyata untuk memudahkan pencocokan (*matchmaking engine*) rantai pasok B2B dan *asset sharing*.

@@ -1,5 +1,13 @@
 # Arsitektur Usaha Anggota (`/akun/usaha`) — Bidang Usaha & Rencana Jaringan Kolaborasi
 
+> **Dokumen Terkait & Saling Terhubung**:
+> - [`docs/arsitektur-usaha-taxonomy-gemini.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-usaha-taxonomy-gemini.md) — Rincian Sub-Sektor Tier 3 & 9 Sub-Bidang Custom Forcreator.
+> - [`docs/arsitektur-ekosistem.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-ekosistem.md) — Payung Sinergi Interkoneksi Usaha, Profesional, & Pesantren (`offeredTags`/`neededTags`).
+> - [`docs/arsitektur-profesional.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-profesional.md) — Taksonomi & Kredensial Profesional Perorangan.
+> - [`docs/evaluasi-arsitektur-usaha-gemini.md`](file:///Users/webane/sites/jalajogja/docs/evaluasi-arsitektur-usaha-gemini.md) — Dokumen Hasil Evaluasi & Riset BPS KBLI 2020.
+
+---
+
 ## 1. Latar Belakang
 
 Modul Usaha (`public.member_businesses`) sudah lama ada — self-report data usaha/bisnis anggota
