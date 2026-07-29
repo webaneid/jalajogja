@@ -322,29 +322,31 @@ export function PillHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
 
   return (
     <>
-      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-md border-b border-border">
+      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-md border-b border-border/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center gap-4 h-16">
+          <div className="grid grid-cols-2 md:grid-cols-3 items-center h-16 gap-4">
             {/* Logo — nama tenant HANYA tampil sebagai fallback saat belum upload logo */}
-            <a href={baseUrl || "/"} className="flex items-center gap-2.5 shrink-0">
-              {logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoUrl} alt={siteName} className="h-10 w-auto object-contain" />
-              ) : (
-                <>
-                  <span className="h-9 w-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-bold text-base shrink-0">
-                    {siteName.charAt(0).toUpperCase()}
-                  </span>
-                  <span className="font-bold text-sm tracking-tight hidden sm:block max-w-[160px] line-clamp-1">
-                    {siteName}
-                  </span>
-                </>
-              )}
-            </a>
+            <div className="flex items-center justify-start shrink-0">
+              <a href={baseUrl || "/"} className="flex items-center gap-2.5">
+                {logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={logoUrl} alt={siteName} className="h-10 w-auto object-contain" />
+                ) : (
+                  <>
+                    <span className="h-9 w-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-bold text-base shrink-0">
+                      {siteName.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="font-bold text-sm tracking-tight hidden sm:block max-w-[160px] line-clamp-1">
+                      {siteName}
+                    </span>
+                  </>
+                )}
+              </a>
+            </div>
 
-            {/* Nav — pill container, desktop only */}
-            {navMenu.length > 0 && (
-              <nav className="hidden md:flex items-center gap-0.5 ml-2 bg-muted/60 rounded-full p-1">
+            {/* Nav — pill container, desktop only, centered in middle column */}
+            {navMenu.length > 0 ? (
+              <nav className="hidden md:flex items-center justify-center gap-0.5 bg-muted/60 rounded-full p-1 mx-auto">
                 {navMenu.map((item) => {
                   const href  = resolveNavHref(item);
                   const isExt = item.external ?? false;
@@ -361,9 +363,12 @@ export function PillHeader({ tenantSlug, siteName, logoUrl, navMenu, primaryColo
                   );
                 })}
               </nav>
+            ) : (
+              <div className="hidden md:block" />
             )}
 
-            <div className="ml-auto flex items-center gap-2">
+            {/* Actions — right aligned */}
+            <div className="flex items-center justify-end gap-2">
               <IconButton label="Cari" onClick={() => setSearchOpen(true)}>
                 <Search className="h-4 w-4" />
               </IconButton>

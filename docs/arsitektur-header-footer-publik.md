@@ -261,6 +261,8 @@ FlexHeader).
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+- **Border Bottom Tipis Refined**: `border-b border-border/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)]` — memberikan garis pembatas bawah yang halus, bersih, dan elegan.
+- **Nav Menu Presisi di Tengah (Align Center)**: Menggunakan layout 3 kolom (`grid grid-cols-2 md:grid-cols-3 items-center`), menempatkan kontainer navigasi kapsul (`bg-muted/60 rounded-full p-1 mx-auto`) secara matematis tepat di tengah-tengah antara Logo (kiri) dan Action Icons (kanan).
 - Logo mark: badge kotak `rounded-xl` (bukan lingkaran seperti Flex/Classic) — sinyal visual
   pembeda utama antar desain.
 - **Teks nama tenant di sebelah logo HANYA fallback** — kalau `logoUrl` terisi, cuma logo yang
