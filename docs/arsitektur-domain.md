@@ -366,6 +366,11 @@ perbaikannya.
 3. Sisanya (konten publik, /api/*, dst) → tidak berubah dari sebelumnya.
 ```
 
+> ⚠️ **Update 2026-07-30 (Carve-out `/app/login` pada Custom Domain)**:
+> Jika Server Component/layout memanggil `redirect("/app/login")` atau browser meminta path `/app/login` di custom domain, segmen `pathSlug` yang diekstrak bernilai `"login"`, yang secara literal tidak cocok dengan `ownSlug` (`"login"` ≠ `"pc-ikpm-jogjakarta"`). Tanpa pengecualian khusus, middleware akan menangkapnya di cabang `{X} !== slug` dan salah memicu redirect 302 ke `https://jalakarta.com/app/login`.
+> **Perbaikan (`middleware.ts`)**: Ditambahkan carve-out eksplisit `if (pathname === "/app/login" || pathname === "/app/login/")` pada cabang custom domain untuk me-redirect 302 ke `/login` milik custom domain itu sendiri (`{custom-domain}/login`), mempertahankan pengguna tetap di dalam domain tenant tanpa pernah terlempar ke domain utama.
+
+
 **Keamanan**: slug SELALU di-resolve dari `Host` header request ini sendiri, TIDAK PERNAH dari
 path — inilah yang menjamin baik `/admin/*` maupun `/app/{slug}/*` di sebuah custom domain hanya
 bisa mengakses dashboard tenant PEMILIK domain itu, tidak pernah tenant lain (kelas celah yang

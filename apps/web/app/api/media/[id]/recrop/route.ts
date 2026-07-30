@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTenantAccess } from "@/lib/tenant";
 import { createTenantDb } from "@jalajogja/db";
 import { getFile, uploadFile, publicUrl } from "@/lib/minio";
-import { processVariant, IMAGE_VARIANTS, getVariantsForModule, type VariantKey } from "@/lib/image-processor";
+import { processVariant, getVariantsForModule, type VariantKey } from "@/lib/image-processor";
 import { eq } from "drizzle-orm";
 import type { CropData } from "@jalajogja/db";
 
@@ -65,9 +65,9 @@ export async function POST(
 
   await Promise.all(
     targetKeys.map(async (key) => {
-      const dim  = IMAGE_VARIANTS[key as keyof typeof IMAGE_VARIANTS];
-      if (!dim) return;
-      const buf  = await processVariant(originalBuffer, dim.width, dim.height, crop);
+      // processVariant() sendiri yang menentukan: soft-scale (large/medium/thumbnail) selalu
+      // proporsional (crop diabaikan), hard-crop (square/square-large/profile) pakai crop manual.
+      const buf  = await processVariant(originalBuffer, key, crop);
       const path = updatedVariants[key];
       if (path) await uploadFile(slug, path, buf, "image/webp");
     }),

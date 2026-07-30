@@ -12,6 +12,12 @@ import type { MediaItem } from "./media-picker";
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 type CropStatus = "idle" | "applying" | "done" | "error";
 
+// large/medium/thumbnail SELALU proporsional (soft-scale, zero crop) sejak upgrade sistem crop
+// ala WordPress — server (`processVariant`) mengabaikan koordinat crop untuk ketiganya demi
+// menjamin konsistensi (thumbnail di landing page vs large di halaman single harus menampilkan
+// komposisi foto yang identik). Jangan tawarkan sebagai target crop manual di UI ini.
+const NO_MANUAL_CROP_VARIANTS = ["original", "large", "medium", "thumbnail"];
+
 type Props = {
   media:            MediaItem;
   slug:             string;
@@ -164,9 +170,9 @@ export function MediaDetailPanel({
               onChange={(e) => setCropVariant(e.target.value)}
               className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-xs"
             >
-              <option value="all">Semua variant</option>
+              <option value="all">Semua variant (persegi/potret)</option>
               {Object.keys(media.variants ?? {})
-                .filter((k) => k !== "original")
+                .filter((k) => !NO_MANUAL_CROP_VARIANTS.includes(k))
                 .map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
             <button
@@ -190,6 +196,11 @@ export function MediaDetailPanel({
               Gagal menerapkan crop. Pastikan file original belum dihapus (&lt;10 hari).
             </p>
           )}
+          <p className="text-[11px] text-muted-foreground">
+            Variant lebar (large/medium/thumbnail) selalu proporsional otomatis — tidak bisa
+            di-crop manual, supaya foto konsisten di semua ukuran. Crop manual hanya untuk
+            variant persegi/potret.
+          </p>
         </div>
       ) : (
         <div className="shrink-0 bg-muted flex items-center justify-center" style={{ aspectRatio: "16/9" }}>

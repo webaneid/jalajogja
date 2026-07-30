@@ -19,6 +19,21 @@ sector:   "Teknologi" | "Jasa Profesional" | "Kreatif" | "Manufaktur" |
           "Kesehatan & Pendidikan" | "Konsumsi & Ritel" | "Sumber Daya Alam"
 ```
 
+---
+
+## Arsitektur Gambar Usaha (Logo vs Foto Sampul)
+
+Modul usaha menyimpan dua entitas gambar terpisah pada `public.member_businesses`:
+1. `logo_url`: **Logo Usaha**
+   - **Varian**: `original` (`_ori.webp` untuk bitmap PNG/JPG/WebP, atau `.svg` asli untuk vektor).
+   - **Form Edit (`/akun/usaha`)**: Menggunakan `preferVariant="original"` dan `objectFit="contain"`.
+   - **Penayangan di UI**: Ditampilkan dalam wadah **16:9 (`aspect-video`)** menggunakan `object-contain` dan padding agar bentuk logo 100% utuh tanpa crop paksa.
+2. `cover_url`: **Foto Sampul Usaha**
+   - **Varian**: Soft Scale proporsional (ala WordPress) `thumbnail` (`_th.webp` max 400px), `medium` (`_md.webp` max 800px), dan `large` (`_lg.webp` max 1200px).
+   - **Arsip (`/usaha`) & Edit (`/akun/usaha`)**: Menggunakan varian `thumbnail` (`_th.webp`).
+   - **Single Detail (`/usaha/[id]`)**: Menggunakan varian `large` (`_lg.webp`).
+   - **Resizing Engine**: `fit: "inside", withoutEnlargement: true` di Sharp server. Gambar diperkecil secara proporsional berdasarkan batas lebar tanpa memotong (crop) 1 piksel pun dari foto asli.
+
 > **Update 2026-07-25 (migration `0048`)**: kedua kolom di atas **nullable di database** —
 > sebelumnya `NOT NULL`, dilonggarkan supaya fitur bulk import (`docs/arsitektur-import-
 > anggota.md` § 13) bisa simpan data usaha yang belum lengkap klasifikasinya tanpa membuang
@@ -279,6 +294,45 @@ Setiap agent atau developer yang mengeksekusi upgrade Sektor BPS ini **WAJIB** m
 6. `apps/web/app/api/akun/member-business/route.ts` (API endpoint self-service `POST/PATCH`).
 7. `apps/web/lib/import-anggota-mapping.ts` & `import-anggota.server.ts` (Logika auto-mapping sektor saat bulk import Excel/CSV).
 8. `apps/web/components/usaha/usaha-filters-client.tsx` & `app/(public)/[tenant]/usaha/page.tsx` (Filter pencarian direktori publik).
+
+#### C. Follow-up: Batasan Tampilan Dropdown "Minimal 10 di Atas" (BELUM DIIMPLEMENTASIKAN)
+
+> Ditemukan 2026-07-30 saat verifikasi pasca-implementasi, sengaja **hanya didokumentasikan**
+> atas instruksi user ("lanjutkan dokumentasi saja lalu selesai"), belum dieksekusi.
+
+Pertanyaan user: apakah rekomendasi `getPrioritizedBusinessFields()` bisa dijamin menampilkan
+**minimal 10 item** di bagian atas dropdown "Bidang Usaha", untuk sektor yang jumlah Tier-3
+native-nya kecil (mis. Teknologi & Informasi hanya 4, Sumber Daya Alam & Energi hanya 4).
+
+**Root cause sesungguhnya BUKAN di `getPrioritizedBusinessFields()`** — fungsi itu sudah benar:
+selalu mengembalikan array PENUH ~52 item (Tier-3 sektor terpilih duluan, lalu sisanya), jadi
+"10 item teratas" secara DATA sudah otomatis terjamin ada asalkan total pool ≥ 10 (yang memang
+selalu benar di sini). Root cause sebenarnya ada di komponen UI generik
+`components/ui/tag-multi-select.tsx`:
+
+```typescript
+{filtered.slice(0, 8).map((opt) => (
+  <CommandItem key={opt} value={opt} onSelect={() => addTag(opt)}>{opt}</CommandItem>
+))}
+```
+
+Dropdown **HANYA PERNAH menampilkan maksimal 8 item**, terlepas seberapa panjang/terprioritisasi
+array `options` yang dikirim — cap ini hardcoded, bukan mengikuti panjang array. Efeknya dua
+lapis: (1) bahkan sektor "Kreatif" yang punya 9 item Tier-3 native sendiri akan terpotong 1 item
+dari tampilan sebelum ada kesempatan menampilkan item dari sektor lain; (2) menaikkan cap ini ke
+≥10 akan LANGSUNG memenuhi permintaan user tanpa perlu mengubah `getPrioritizedBusinessFields()`
+sama sekali.
+
+**Kenapa belum diimplementasikan langsung**: `TagMultiSelect` dikonfirmasi generik — dipakai di
+5 tempat berbeda (`akun/profesional/profesional-client.tsx`, `akun/usaha/usaha-client.tsx`,
+`akun/pesantren/page.tsx`, `components/members/wizard/step4-business.tsx`, `.../step5-
+pesantren.tsx`). Menaikkan cap `slice(0, 8)` secara GLOBAL berisiko mengubah UX pemakai lain
+(mis. dropdown jadi lebih tinggi/scroll berbeda) tanpa diminta untuk mereka. Pendekatan yang
+lebih aman: tambah prop opsional baru (mis. `maxSuggestions?: number`, default tetap `8` — nol
+perubahan untuk 4 pemakai lain), dipanggil dengan nilai lebih besar (`10` atau lebih) HANYA di
+titik "Bidang Usaha" (`usaha-client.tsx` + `step4-business.tsx`).
+
+**Status**: murni tercatat sebagai backlog. Nol kode disentuh untuk temuan ini pada sesi ini.
 
 ---
 

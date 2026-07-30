@@ -35,23 +35,85 @@ Berlaku untuk **semua modul** — posts, pages, donasi, event, produk, anggota, 
 ## Enam Variant Standar
 
 ```
-┌──────────────┬────────┬────────┬────────┬──────────────────────────────────┐
-│ Variant      │ Lebar  │ Tinggi │ Rasio  │ Dipakai untuk                    │
-├──────────────┼────────┼────────┼────────┼──────────────────────────────────┤
-│ original     │ as-is  │ as-is  │ as-is  │ Backup — WebP tanpa crop         │
-│ large        │ 1200px │  630px │ 1.91:1 │ Featured image, OG meta, Discover│
-│ medium       │  800px │  420px │ 1.91:1 │ Card list, section preview       │
-│ thumbnail    │  400px │  210px │ 1.91:1 │ Grid kecil, widget, admin list   │
-│ square       │  400px │  400px │  1:1   │ Produk kecil, avatar, icon       │
-│ square-large │  800px │  800px │  1:1   │ Produk utama, galeri, OG produk  │
-│ profile      │  300px │  400px │   3:4  │ Foto profil anggota IKPM         │
-└──────────────┴────────┴────────┴────────┴──────────────────────────────────┘
+┌──────────────┬────────┬───────────┬───────────┬──────────────────────────────────┐
+│ Variant      │ Lebar  │ Tinggi    │ Resize    │ Dipakai untuk                    │
+├──────────────┼────────┼───────────┼───────────┼──────────────────────────────────┤
+│ original     │ as-is  │ as-is     │ none      │ Backup — WebP tanpa crop         │
+│ large        │ 1200px │ otomatis* │ soft-scale│ Featured image, OG meta, Discover│
+│ medium       │  800px │ otomatis* │ soft-scale│ Card list, section preview       │
+│ thumbnail    │  400px │ otomatis* │ soft-scale│ Grid kecil, widget, admin list   │
+│ square       │  400px │  400px    │ hard-crop │ Produk kecil, avatar, icon       │
+│ square-large │  800px │  800px    │ hard-crop │ Produk utama, galeri, OG produk  │
+│ profile      │  300px │  400px    │ hard-crop │ Foto profil anggota IKPM         │
+└──────────────┴────────┴───────────┴───────────┴──────────────────────────────────┘
 ```
 
+`*` **Tinggi `large`/`medium`/`thumbnail` TIDAK PERNAH ditegakkan sebagai target resize** —
+ini murni ilustrasi rasio 16:9 pada lebar penuh untuk sumber yang KEBETULAN 16:9. Tinggi
+sebenarnya SELALU otomatis mengikuti rasio gambar sumber (lihat "Strategi Resizing" di bawah).
+Foto potret 3:4 yang di-resize ke `large` akan tetap 3:4 di lebar ≤1200px, bukan dipotong jadi
+1.91:1. `square`/`square-large`/`profile` sebaliknya — tinggi di tabel BENAR-BENAR ditegakkan
+(hard crop, memotong bagian foto yang tidak muat rasio target).
+
+---
+
+## Strategi Resizing: WordPress Soft Scale vs Hard Crop
+
+Sistem gambar menggunakan kombinasi strategi penyesuaian dimensi:
+1. **WordPress Soft Scale (`fit: "inside", withoutEnlargement: true`)**:
+   - Diterapkan pada varian lanskap (`large`, `medium`, `thumbnail`) — dikonstantakan sebagai
+     `SOFT_SCALE_VARIANTS` di `lib/image-processor.ts`.
+   - Gambar diperkecil secara proporsional berdasarkan batas lebar maksimal (`1200px`, `800px`, `400px`) —
+     `height` diberikan `undefined` ke Sharp, dihitung otomatis dari rasio sumber.
+   - **100% komposisi dan aspek rasio asli foto dipertahankan tanpa ada 1 piksel pun yang dipotong atau terbuang.**
+   - Mencegah foto terpotong secara tidak sengaja oleh AI Sharp serta mencegah distorsi (melar/gepeng).
+2. **Hard Crop (`fit: "cover", position: "center"` atau `"attention"`)**:
+   - Diterapkan khusus pada varian rasio kaku seperti `square` (400×400), `square-large` (800×800)
+     dan `profile` (300×400).
+
 **Pola dimensi**:
-- Keluarga 1.91:1: `large → medium → thumbnail` — ukuran setengah dari sebelumnya
-- Keluarga 1:1: `square` (400) → `square-large` (800) — untuk produk dan galeri
-- Independen: `profile` (3:4) — khusus foto orang
+- Keluarga soft-scale (proporsional, tinggi otomatis): `large → medium → thumbnail`
+- Keluarga hard-crop 1:1: `square` (400) → `square-large` (800) — untuk produk dan galeri
+- Hard-crop independen: `profile` (3:4) — khusus foto orang
+
+### Konsistensi Variant — Aturan yang Dikunci
+
+**Untuk satu gambar sumber yang sama, `large`/`medium`/`thumbnail` WAJIB selalu menampilkan
+komposisi yang identik** (beda ukuran file, sama persis isi fotonya) — karena ketiganya soft-scale
+(zero crop), tidak mungkin berbeda komposisi. Ini menjamin: thumbnail yang dipakai di landing page
+dan large yang dipakai di halaman single/detail untuk gambar yang sama TIDAK PERNAH menampilkan
+crop yang berbeda-beda.
+
+**Bug yang pernah terjadi (difix 2026-07-31)**:
+1. `fitsWithoutUpscale()` (gate upload — variant dilewati kalau sumber terlalu kecil) sempat
+   mengecek `srcW >= target.width && srcH >= target.height` untuk SEMUA variant, termasuk
+   large/medium/thumbnail. Padahal ketiganya resize width-only — mengecek tinggi sumber di situ
+   salah: gambar lebar-tapi-pendek (mis. banner 1400×300) bisa gagal lolos gate `large` padahal
+   lebarnya cukup. Fix: untuk variant di `SOFT_SCALE_VARIANTS`, HANYA cek `srcW >= target.width`.
+2. `processVariant()` (dipanggil `POST /api/media/[id]/recrop`, fitur "Edit Crop" manual admin)
+   TIDAK PERNAH diperbarui mengikuti perubahan di atas — tetap hard-crop (`fit:"cover"`) SEMUA
+   variant termasuk large/medium/thumbnail berdasarkan koordinat crop manual admin. Ini
+   MELANGGAR LANGSUNG jaminan konsistensi: admin bisa (tanpa sadar) meng-crop manual variant
+   `large` sebuah gambar sementara `thumbnail`-nya tetap proporsional — dua variant dari sumber
+   yang sama menampilkan komposisi berbeda. Fix: `processVariant()` ditulis ulang — untuk variant
+   di `SOFT_SCALE_VARIANTS`, SELALU regenerasi proporsional dari `original` (parameter `crop`
+   diabaikan total, apa pun isinya); hard-crop (extract+resize atau `position:"attention"`) HANYA
+   berlaku untuk `square`/`square-large`/`profile`. UI (`MediaDetailPanel`) diperbarui sejalan —
+   dropdown "Edit Crop" tidak lagi menawarkan large/medium/thumbnail sebagai target crop manual
+   (opsi "Semua variant" diberi label "(persegi/potret)" untuk kejelasan), plus catatan singkat
+   di bawah editor menjelaskan kenapa.
+
+**Isu terbuka, BELUM diputuskan/dieksekusi**: `lib/seo-defaults.ts`'s `OG_IMAGE_WIDTH=1200`/
+`OG_IMAGE_HEIGHT=630` adalah konstanta hardcoded, dipakai apa adanya di `lib/seo.ts` untuk meta
+tag `og:image:width`/`og:image:height` — TIDAK lagi mencerminkan dimensi variant `large` yang
+sesungguhnya untuk sumber non-landscape (mis. foto potret 3:4 yang di-resize ke `large` akan
+punya tinggi sesungguhnya ~1580px pada lebar 1200px, bukan 630px). Tabel `tenant.media` juga
+TIDAK menyimpan dimensi per-variant hasil resize — hanya path. Menutup gap ini butuh salah satu
+dari: (a) menghitung ulang dimensi file di titik render (baca file, cek metadata Sharp — mahal per
+request), (b) menyimpan dimensi hasil resize ke DB saat upload (perubahan schema), atau
+(c) menerima ketidakcocokan ini sebagai gap kecil (kebanyakan crawler toleran terhadap
+width/height OG yang tidak 100% presisi, selama rasio tidak jauh berbeda). Belum dieksekusi —
+butuh keputusan arsitektur eksplisit sebelum salah satu opsi dipilih.
 
 ---
 

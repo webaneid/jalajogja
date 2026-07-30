@@ -1,13 +1,25 @@
 import sharp from "sharp";
 
+// `height` untuk large/medium/thumbnail HANYA ilustrasi rasio 16:9 pada lebar penuh — BUKAN
+// target resize yang ditegakkan. Ketiga variant ini "soft-scale" (fit:"inside", lihat
+// SOFT_SCALE_VARIANTS di bawah): tinggi output SELALU otomatis mengikuti rasio gambar SUMBER,
+// bukan angka di sini. square/square-large/profile TETAP hard-crop — height di situ BENAR-BENAR
+// ditegakkan (fit:"cover").
 export const IMAGE_VARIANTS = {
-  large:          { width: 1200, height: 675  },  // 16:9 murni — Soft scale proporsional ala WordPress
-  medium:         { width: 800,  height: 450  },  // 16:9 murni — Soft scale proporsional ala WordPress
-  thumbnail:      { width: 400,  height: 225  },  // 16:9 murni — Soft scale proporsional ala WordPress
-  square:         { width: 400,  height: 400  },  // 1:1 — produk kecil, avatar
-  "square-large": { width: 800,  height: 800  },  // 1:1 — produk utama, galeri
-  profile:        { width: 300,  height: 400  },  // 3:4 — foto profil anggota
+  large:          { width: 1200, height: 675  },  // ilustrasi 16:9 — lihat catatan di atas
+  medium:         { width: 800,  height: 450  },  // ilustrasi 16:9 — lihat catatan di atas
+  thumbnail:      { width: 400,  height: 225  },  // ilustrasi 16:9 — lihat catatan di atas
+  square:         { width: 400,  height: 400  },  // 1:1 — produk kecil, avatar (hard crop)
+  "square-large": { width: 800,  height: 800  },  // 1:1 — produk utama, galeri (hard crop)
+  profile:        { width: 300,  height: 400  },  // 3:4 — foto profil anggota (hard crop)
 } as const;
+
+// Variant yang SELALU soft-scale proporsional (fit:"inside", zero crop) — dipakai di 3 tempat:
+// gate upscale (fitsWithoutUpscale), pipeline otomatis (processImage/VARIANT_BUILDERS), dan
+// crop manual (processVariant). Menjamin KONSISTENSI: untuk gambar yang sama, thumbnail (landing
+// page) dan large (halaman single) SELALU menampilkan komposisi yang identik (yaitu: tidak ada
+// crop sama sekali) — beda ukuran file, sama persis isi fotonya.
+const SOFT_SCALE_VARIANTS: readonly VariantKey[] = ["large", "medium", "thumbnail"];
 
 const WEBP_QUALITY = 85;
 
@@ -66,18 +78,43 @@ export function shouldBypass(mime: string): boolean {
   return mime === "image/svg+xml";
 }
 
-// Re-crop satu variant dengan koordinat manual (persen 0–100) atau attention fallback
-// Dipanggil dari POST /api/media/[id]/recrop
+// Re-crop satu variant. Dipanggil dari POST /api/media/[id]/recrop.
+//
+// Variant SOFT-SCALE (large/medium/thumbnail) SELALU diregenerasi proporsional dari `original`
+// (fit:"inside", zero crop) — parameter `crop` DIABAIKAN TOTAL untuk ketiganya, apa pun isinya.
+// Ini KEPUTUSAN DESAIN yang disengaja, bukan celah yang belum sempat ditangani: variant-variant
+// ini adalah "versi hemat" dari foto asli (bukan crop artistik terpisah) — kalau salah satu boleh
+// di-crop manual independen, thumbnail di landing page dan large di halaman single bisa
+// menampilkan KOMPOSISI FOTO YANG BERBEDA untuk sumber yang sama, melanggar jaminan konsistensi
+// yang sudah dikunci di komentar SOFT_SCALE_VARIANTS di atas. UI (MediaDetailPanel) tidak lagi
+// menawarkan pilihan crop untuk ketiga variant ini — parameter `crop` tetap diterima di sini
+// (bukan dihapus dari signature) semata untuk backward-compat pemanggil lama/pihak ketiga.
+//
+// Variant HARD-CROP (square/square-large/profile) tetap seperti semula: crop manual (extract +
+// resize) kalau `crop` diisi, atau `position:"attention"` (auto-deteksi subjek) kalau tidak.
 export async function processVariant(
   inputBuffer: Buffer,
-  width:  number,
-  height: number,
+  variantKey: VariantKey,
   crop?: { x: number; y: number; width: number; height: number } | null,
 ): Promise<Buffer> {
   const q = WEBP_QUALITY;
+  const target = IMAGE_VARIANTS[variantKey as keyof typeof IMAGE_VARIANTS];
+
+  // "original" (tidak ada di IMAGE_VARIANTS) → convert WebP saja, tanpa resize/crop apa pun.
+  if (!target) {
+    return sharp(inputBuffer).webp({ quality: q }).toBuffer();
+  }
+
+  if (SOFT_SCALE_VARIANTS.includes(variantKey)) {
+    // Soft-scale: SELALU proporsional dari original, crop manual diabaikan (lihat komentar di atas).
+    return sharp(inputBuffer)
+      .resize(target.width, undefined, { fit: "inside", withoutEnlargement: true })
+      .webp({ quality: q })
+      .toBuffer();
+  }
 
   if (crop) {
-    // Manual crop: extract area dulu, baru resize ke target
+    // Hard-crop dengan koordinat manual: extract area dulu, baru resize ke target
     const meta = await sharp(inputBuffer).metadata();
     const imgW = meta.width  ?? 1;
     const imgH = meta.height ?? 1;
@@ -88,29 +125,38 @@ export async function processVariant(
         width:  Math.round(crop.width  / 100 * imgW),
         height: Math.round(crop.height / 100 * imgH),
       })
-      .resize(width, height, { fit: "cover", position: "center" })
+      .resize(target.width, target.height, { fit: "cover", position: "center" })
       .webp({ quality: q })
       .toBuffer();
   }
 
-  // Tanpa crop manual → pakai attention (default)
+  // Hard-crop tanpa crop manual → pakai attention (auto-deteksi subjek)
   return sharp(inputBuffer)
-    .resize(width, height, { fit: "cover", position: "attention" })
+    .resize(target.width, target.height, { fit: "cover", position: "attention" })
     .webp({ quality: q })
     .toBuffer();
 }
 
 const MAX_PIXELS = 40_000_000; // 40 MP — foto 12MP/24MP masih aman
 
-// Variant di-generate HANYA kalau sumber cukup besar untuk di-crop tanpa upscale
-// (lebar & tinggi sumber >= target). Kalau tidak cukup besar, variant itu SENGAJA
-// dilewati (bukan error) — caller (upload route) fallback ke variant lain yang ada,
-// pada akhirnya ke `original` (convert WebP saja, dimensi asli utuh, tanpa crop).
-// Mencegah logo/favicon/gambar kecil dipaksa upscale+crop ke ukuran konten (large/
-// square/dst) yang tidak relevan untuknya. TIDAK retroaktif — hanya berlaku upload baru.
+// Variant di-generate HANYA kalau sumber cukup besar untuk variant itu tanpa upscale.
+// Kalau tidak cukup besar, variant itu SENGAJA dilewati (bukan error) — caller (upload route)
+// fallback ke variant lain yang ada, pada akhirnya ke `original` (convert WebP saja, dimensi
+// asli utuh, tanpa crop). Mencegah logo/favicon/gambar kecil dipaksa upscale ke ukuran konten
+// yang tidak relevan untuknya. TIDAK retroaktif — hanya berlaku upload baru.
+//
+// Soft-scale (large/medium/thumbnail): resize width-only (fit:"inside", lihat
+// SOFT_SCALE_VARIANTS) — tinggi TIDAK pernah jadi target resize, jadi HANYA lebar sumber yang
+// relevan sebagai syarat. Cek tinggi di sini dulu SALAH (bug ditemukan 2026-07): source lebar-
+// tapi-pendek (mis. banner 1400×300) bisa gagal lolos gate large/medium padahal lebarnya cukup
+// untuk scale proporsional — variant itu jadi tidak perlu-perlu amat dilewati.
+//
+// Hard-crop (square/square-large/profile): resize width+height (fit:"cover") — keduanya
+// tetap relevan sebagai syarat cukup-besar (mencegah upscale di salah satu sisi).
 function fitsWithoutUpscale(name: VariantKey, srcW: number, srcH: number): boolean {
   const target = IMAGE_VARIANTS[name as keyof typeof IMAGE_VARIANTS];
   if (!target) return true; // "original" tidak ada di IMAGE_VARIANTS — selalu valid
+  if (SOFT_SCALE_VARIANTS.includes(name)) return srcW >= target.width;
   return srcW >= target.width && srcH >= target.height;
 }
 

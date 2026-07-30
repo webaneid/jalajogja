@@ -11,14 +11,19 @@ import { PublicButton } from "@/components/website/public/ui/public-button";
 
 type SearchResultItem = {
   title: string;
-  url: string;
+  url: string | null; // null = tidak bisa diklik (mis. Anggota — tidak ada halaman profil publik per-orang dari hasil pencarian ini)
   category: string;
 };
 
 function formatGregorianDate(): string {
   try {
     const now = new Date();
+    // timeZone WAJIB eksplisit — server (VPS) tidak dijamin WIB (nol TZ= env var di manapun di
+    // repo). Tanpa ini, string tanggal hasil SSR bisa beda dengan hasil render client saat
+    // hydration → React hydration mismatch (kelas bug yang sudah berkali-kali dikunci di project
+    // ini untuk komponen client manapun yang menampilkan tanggal).
     const formatter = new Intl.DateTimeFormat("id-ID", {
+      timeZone: "Asia/Jakarta",
       weekday: "long",
       day: "numeric",
       month: "long",
@@ -28,7 +33,8 @@ function formatGregorianDate(): string {
     // Capitalize first character (misal "kamis, 30 juli 2026" -> "Kamis, 30 Juli 2026")
     return str.charAt(0).toUpperCase() + str.slice(1);
   } catch {
-    return "Kamis, 30 Juli 2026";
+    const now = new Date();
+    return `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
   }
 }
 
@@ -47,14 +53,15 @@ export function NewsHeader({
   // Marquee ticker posts state
   const [tickerPosts, setTickerPosts]               = useState<Array<{ title: string; href: string }>>([]);
 
-  // Search state
+  // Search popup state — dipicu ikon di top bar, dipakai bersama desktop+mobile (satu mekanisme,
+  // bukan lagi input inline desktop + drawer input mobile yang terpisah)
+  const [searchOpen, setSearchOpen]                 = useState(false);
   const [searchQuery, setSearchQuery]               = useState("");
   const [searchResults, setSearchResults]           = useState<SearchResultItem[]>([]);
   const [searchLoading, setSearchLoading]           = useState(false);
-  const [searchOpen, setSearchOpen]                 = useState(false);
-  const searchRef                                   = useRef<HTMLDivElement>(null);
+  const searchInputRef                              = useRef<HTMLInputElement>(null);
 
-  // Mobile menu state
+  // Mobile menu state (nav links + auth — search sudah ditangani popup terpisah)
   const [mobileMenuOpen, setMobileMenuOpen]         = useState(false);
 
   // User menu dropdown
@@ -79,26 +86,33 @@ export function NewsHeader({
     getTickerPostsAction(tenantSlug).then(setTickerPosts);
   }, [tenantSlug]);
 
-  // Click outside to close user dropdown & search results
+  // Click outside untuk tutup dropdown user (search popup tutup lewat backdrop-click sendiri)
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (userDropdownRef.current && !userDropdownRef.current.contains(e.target as Node)) {
         setUserDropdownOpen(false);
-      }
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setSearchOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Live search debounce 300ms
+  // Saat popup search dibuka: fokus input. Saat ditutup: reset query+hasil.
   useEffect(() => {
+    if (searchOpen) {
+      const t = setTimeout(() => searchInputRef.current?.focus(), 50);
+      return () => clearTimeout(t);
+    }
+    setSearchQuery("");
+    setSearchResults([]);
+  }, [searchOpen]);
+
+  // Live search debounce 300ms — hanya jalan saat popup terbuka
+  useEffect(() => {
+    if (!searchOpen) return;
     const q = searchQuery.trim();
     if (q.length < 2) {
       setSearchResults([]);
-      setSearchOpen(false);
       return;
     }
 
@@ -111,8 +125,11 @@ export function NewsHeader({
           const items: SearchResultItem[] = [];
 
           if (data.posts) {
-            data.posts.forEach((p: { title: string; slug: string }) => {
-              items.push({ title: p.title, url: `${baseUrl}/post/${p.slug}`, category: "Berita" });
+            // p.href SUDAH resolved oleh resolvePostHrefs() (permalink-aware — hormati setting
+            // permalink_structure tenant: post_name/date_name/dst) di /api/search — JANGAN
+            // rekonstruksi manual dari slug, itu akan mengabaikan setting tenant.
+            data.posts.forEach((p: { title: string; href: string }) => {
+              items.push({ title: p.title, url: `${baseUrl}${p.href}`, category: "Berita" });
             });
           }
           if (data.pages) {
@@ -130,9 +147,13 @@ export function NewsHeader({
               items.push({ title: pr.name, url: `${baseUrl}/produk/${pr.slug}`, category: "Produk" });
             });
           }
+          if (data.members) {
+            data.members.forEach((m: { name: string; memberNumber: string }) => {
+              items.push({ title: `${m.name} #${m.memberNumber}`, url: null, category: "Anggota" });
+            });
+          }
 
           setSearchResults(items);
-          setSearchOpen(items.length > 0);
         }
       } catch (err) {
         console.error("Search error:", err);
@@ -142,7 +163,7 @@ export function NewsHeader({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, tenantSlug, baseUrl]);
+  }, [searchQuery, searchOpen, tenantSlug, baseUrl]);
 
   // Initial name for avatar fallback
   const userInitial = session?.user?.name ? session.user.name.charAt(0).toUpperCase() : "U";
@@ -156,35 +177,73 @@ export function NewsHeader({
     ? tickerPosts.map((p) => ({ title: p.title, url: p.href }))
     : [{ title: `Selamat datang di website resmi ${siteName}`, url: `${baseUrl}/post` }];
 
+  // Satu render dipakai di dalam popup search — url=null (mis. hasil kategori "Anggota") →
+  // baris info, tidak bisa diklik.
+  function renderSearchResult(res: SearchResultItem, i: number) {
+    const inner = (
+      <>
+        <span className="font-medium text-foreground line-clamp-1">{res.title}</span>
+        <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-primary/10 text-primary shrink-0">
+          {res.category}
+        </span>
+      </>
+    );
+    if (!res.url) {
+      return (
+        <div key={i} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-xs">
+          {inner}
+        </div>
+      );
+    }
+    return (
+      <a
+        key={i}
+        href={res.url}
+        onClick={() => setSearchOpen(false)}
+        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/60 text-xs transition-colors no-underline"
+      >
+        {inner}
+      </a>
+    );
+  }
+
   return (
     <header className="w-full bg-background border-b border-border shadow-xs">
-      
-      {/* ── TOPBAR: Background Warna Utama (Primary) ── */}
+
+      {/* ── ROW 1 — TOP BAR: Tanggal (kiri) + Search & Cart glass icon (kanan) ── */}
       <div className="bg-primary text-primary-foreground py-2 px-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 text-xs font-medium">
-          
+
           {/* Sisi Kiri: Tanggal Masehi Single (Format ID) */}
           <div className="flex items-center gap-2 tracking-wide font-mono uppercase">
             <span>{formattedDate}</span>
           </div>
 
-          {/* Sisi Kanan: Cart Button (Tombol Kapsul Sekunder Tenant — No Nested <a>) */}
-          <div className="flex items-center gap-3">
+          {/* Sisi Kanan: Search (icon → popup) + Cart — kapsul kaca (bg putih opacity kecil) */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              aria-label="Cari"
+              className="flex items-center justify-center h-8 w-8 rounded-full bg-white/15 backdrop-blur-sm text-primary-foreground hover:bg-white/25 transition-colors"
+            >
+              <Search className="h-3.5 w-3.5" />
+            </button>
             <CartButton
               tenantSlug={tenantSlug}
               baseUrl={baseUrl}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-full bg-secondary text-secondary-foreground text-xs font-semibold hover:opacity-90 transition-opacity shadow-xs h-auto w-auto"
+              className="flex items-center justify-center h-8 w-8 rounded-full bg-white/15 backdrop-blur-sm text-primary-foreground hover:bg-white/25 transition-colors"
             />
           </div>
 
         </div>
       </div>
 
-      {/* ── MAINBAR: Logo, Inline Search Form & User Auth ── */}
+      {/* ── ROW 2 — LOGO / MENU / LOGIN (3 kolom) ── */}
       <div className="py-4 px-4 border-b border-border/50 bg-background">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 sm:gap-8">
-          
-          {/* Logo Tenant / Site Name Dinamis (No Hardcode) */}
+        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-[1fr_auto_1fr] items-center gap-4">
+
+          {/* Kolom kiri: Logo Tenant / Site Name Dinamis (No Hardcode) */}
           <a href={baseUrl || "/"} className="flex items-center gap-3 shrink-0 no-underline group">
             {logoUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
@@ -201,50 +260,32 @@ export function NewsHeader({
             )}
           </a>
 
-          {/* Inline Search Input (Langsung Terbuka Tanpa Klik Toggle) */}
-          <div ref={searchRef} className="relative flex-1 max-w-lg hidden sm:block">
-            <div className="relative flex items-center">
-              <Search className="absolute left-3.5 w-4 h-4 text-muted-foreground pointer-events-none" />
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => { if (searchResults.length > 0) setSearchOpen(true); }}
-                placeholder="Cari berita, agenda, topik atau informasi..."
-                className="w-full h-10 pl-10 pr-9 text-sm rounded-full border border-border bg-muted/30 focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
-                autoComplete="off"
-              />
-              <span className="absolute right-3.5 text-[11px] font-mono text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded border border-border/60">
-                /
-              </span>
-            </div>
+          {/* Kolom tengah: Nav Menu, desktop only — dipindah dari row navbar terpisah supaya
+              header jadi 3 baris (bukan 4). Placeholder kosong tetap dirender saat navMenu
+              kosong supaya grid-cols-[1fr_auto_1fr] tetap 3 kolom (logo/login tidak collapse). */}
+          {navMenu.length > 0 ? (
+            <nav className="hidden md:flex items-center justify-center gap-6">
+              {navMenu.map((item) => {
+                const href = resolveNavHref(item);
+                return (
+                  <a
+                    key={item.id}
+                    href={href}
+                    target={item.external ? "_blank" : undefined}
+                    rel={item.external ? "noopener noreferrer" : undefined}
+                    className="text-sm font-semibold text-foreground hover:text-primary transition-colors no-underline whitespace-nowrap"
+                  >
+                    {item.label}
+                  </a>
+                );
+              })}
+            </nav>
+          ) : (
+            <div className="hidden md:block" />
+          )}
 
-            {/* Live Autocomplete Results Box */}
-            {searchOpen && (
-              <div className="absolute left-0 right-0 top-full mt-2 bg-background border border-border rounded-xl shadow-xl z-50 overflow-hidden py-1">
-                {searchLoading ? (
-                  <div className="px-4 py-3 text-xs text-muted-foreground">Mencari...</div>
-                ) : (
-                  searchResults.slice(0, 5).map((res, i) => (
-                    <a
-                      key={i}
-                      href={res.url}
-                      onClick={() => setSearchOpen(false)}
-                      className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-muted/50 text-xs transition-colors no-underline"
-                    >
-                      <span className="font-medium text-foreground line-clamp-1">{res.title}</span>
-                      <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-primary/10 text-primary shrink-0">
-                        {res.category}
-                      </span>
-                    </a>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* User Auth Buttons / Dropdown Profile (Presisi 2-Row FlexHeader Style) */}
-          <div className="flex items-center gap-3">
+          {/* Kolom kanan: User Auth Buttons / Dropdown Profile + Hamburger Mobile */}
+          <div className="flex items-center justify-end gap-3">
             {session?.user ? (
               /* User Menu Logged-In */
               <div ref={userDropdownRef} className="relative">
@@ -277,7 +318,10 @@ export function NewsHeader({
                     </div>
                     {hasDashboardAccess && (
                       <a
-                        href={`/${tenantSlug}/dashboard`}
+                        // URL absolut WAJIB — /app/{slug}/dashboard bukan /{slug}/dashboard.
+                        // Custom domain me-rewrite path relatif jadi /{slug}/{slug}/dashboard
+                        // (404 double-slug); URL absolut ke jalakarta.com aman di domain manapun.
+                        href={`${process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com"}/app/${tenantSlug}/dashboard`}
                         className="flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-foreground hover:bg-muted no-underline"
                       >
                         <LayoutDashboard className="w-4 h-4 text-primary" />
@@ -304,7 +348,7 @@ export function NewsHeader({
                 )}
               </div>
             ) : (
-              /* Guest Auth Buttons (2-Row FlexHeader Style) */
+              /* Guest Auth Buttons (desktop only, mobile lewat drawer hamburger) */
               <div className="hidden md:flex items-center gap-2">
                 <PublicButton href={loginHref} variant="ghost" size="sm" icon="none">
                   Masuk
@@ -329,27 +373,7 @@ export function NewsHeader({
         </div>
       </div>
 
-      {/* ── DESKTOP NAVBAR: Links Menu Utama ── */}
-      <nav className="hidden md:block border-b border-border/40 bg-background">
-        <div className="max-w-7xl mx-auto px-4 flex items-center gap-6 overflow-x-auto scrollbar-none py-2.5">
-          {navMenu.map((item) => {
-            const href = resolveNavHref(item);
-            return (
-              <a
-                key={item.id}
-                href={href}
-                target={item.external ? "_blank" : undefined}
-                rel={item.external ? "noopener noreferrer" : undefined}
-                className="text-sm font-semibold text-foreground hover:text-primary transition-colors no-underline py-1 shrink-0"
-              >
-                {item.label}
-              </a>
-            );
-          })}
-        </div>
-      </nav>
-
-      {/* ── LIVE UPDATE / MARQUEE TICKER (POSTINGAN BERITA SAJA) ── */}
+      {/* ── ROW 3 — LIVE UPDATE / MARQUEE TICKER (POSTINGAN BERITA SAJA) ── */}
       <div className="bg-muted/40 border-b border-border/50 py-1.5 px-4 overflow-hidden">
         <div className="max-w-7xl mx-auto flex items-center gap-3 text-xs">
           <span className="inline-flex items-center gap-1.5 bg-secondary text-secondary-foreground text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full shrink-0 shadow-xs">
@@ -373,21 +397,9 @@ export function NewsHeader({
         </div>
       </div>
 
-      {/* ── MOBILE MENU DRAWER ── */}
+      {/* ── MOBILE MENU DRAWER — nav links + auth (search sudah ditangani popup) ── */}
       {mobileMenuOpen && (
         <div className="md:hidden border-b border-border bg-background px-4 py-4 space-y-4">
-          
-          {/* Mobile Search Input */}
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari..."
-              className="w-full h-9 pl-9 pr-3 text-xs rounded-full border border-border bg-muted/40"
-            />
-          </div>
 
           {/* Mobile Nav Links */}
           <div className="space-y-1">
@@ -417,6 +429,50 @@ export function NewsHeader({
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* ── SEARCH POPUP — dipicu ikon di top bar, dipakai bersama desktop & mobile ── */}
+      {searchOpen && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/40 flex items-start justify-center pt-[8vh] px-4"
+          onClick={() => setSearchOpen(false)}
+        >
+          <div
+            className="w-full max-w-xl bg-background rounded-3xl shadow-lg overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 bg-muted/60 rounded-full mx-3 mt-3 px-4 py-2.5">
+              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari berita, agenda, topik atau informasi..."
+                className="flex-1 bg-transparent text-sm focus:outline-none"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                onClick={() => setSearchOpen(false)}
+                aria-label="Tutup"
+                className="h-7 w-7 rounded-full bg-background flex items-center justify-center shrink-0"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="max-h-[50vh] overflow-y-auto p-3">
+              {searchLoading ? (
+                <div className="px-4 py-3 text-xs text-muted-foreground">Mencari...</div>
+              ) : searchResults.length > 0 ? (
+                searchResults.slice(0, 8).map((res, i) => renderSearchResult(res, i))
+              ) : searchQuery.trim().length >= 2 ? (
+                <p className="text-sm text-muted-foreground px-2 py-3">Tidak ada hasil untuk &quot;{searchQuery}&quot;.</p>
+              ) : null}
+            </div>
+          </div>
         </div>
       )}
 

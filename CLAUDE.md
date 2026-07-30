@@ -14013,8 +14013,276 @@ dengan REASONING lengkap (kenapa opsi A berisiko mengulang masalah lama, kenapa 
 tengah yang lebih baik) sebelum mengonfirmasi lewat `AskUserQuestion` — user eksplisit minta
 pendapat, bukan cuma pilihan mekanis.
 
+**Follow-up ditemukan, BELUM diimplementasikan (backlog)**: user tanya susulan apakah
+rekomendasi prioritas bisa dijamin tampil **minimal 10 di atas** untuk field "Bidang Usaha".
+Investigasi menemukan root cause sesungguhnya BUKAN di `getPrioritizedBusinessFields()` (fungsi
+itu sudah benar — selalu mengembalikan array PENUH ~52 item, Tier-3 sektor duluan lalu sisanya,
+jadi "10 teratas" secara data SUDAH otomatis terjamin ada asalkan total pool ≥ 10) — melainkan
+di `components/ui/tag-multi-select.tsx` baris `filtered.slice(0, 8)`: dropdown HANYA pernah
+menampilkan maksimal **8** item apa pun urutan `options`-nya, terlepas dari prioritas. Efeknya
+DUA lapis: (1) bahkan sektor "Kreatif" yang punya 9 item Tier-3 native sendiri akan terpotong 1
+item dari tampilan sebelum sisanya (dari sektor lain) sempat terlihat; (2) menaikkan cap ke
+≥10 akan otomatis menyelesaikan permintaan user TANPA perlu mengubah `getPrioritizedBusiness
+Fields()` sama sekali. `TagMultiSelect` dikonfirmasi generik — dipakai di 5 tempat
+(`profesional-client.tsx`, `usaha-client.tsx`, `pesantren/page.tsx`, `step4-business.tsx`,
+`step5-pesantren.tsx`) — menaikkan cap GLOBAL berisiko mengubah UX pemakai lain tanpa diminta;
+opsi lebih aman adalah prop opsional (mis. `maxSuggestions`, default tetap 8) yang di-override
+HANYA di titik "Bidang Usaha". **User memutuskan untuk sekarang cukup didokumentasikan saja,
+tidak dieksekusi** ("lanjutkan dokumentasi saja lalu selesai..") — nol kode disentuh untuk temuan
+ini, murni dicatat sebagai backlog supaya sesi mendatang tidak perlu menemukan ulang root cause-nya.
+
+### [2026-07-31] Audit + Fix Header "News" — Dibangun Sesi Lain, Tidak Terdokumentasi, 5 Bug/Gap
+
+User minta cek header design baru "News" (`news-header.tsx`, 425 baris) yang muncul di working
+tree hasil sesi/agen LAIN (sudah ter-commit di `7e9131d`, bareng bersama pekerjaan taksonomi
+usaha yang saya kerjakan sendiri) — konfirmasi dulu prinsip "jangan asumsikan perubahan yang
+tidak dikenal itu kerja sendiri" (lihat lesson lama `feedback_verify_other_agent_work`). Diminta
+2 hal: (1) cek apakah sudah terdokumentasi, (2) cek bug dan gap.
+
+**(1) Dokumentasi**: TIDAK ADA SAMA SEKALI — baik di `docs/arsitektur-header-footer-publik.md`
+maupun lesson CLAUDE.md, meski sudah live (`HEADER_DESIGN_IDS`+`public-header.tsx` sudah wired).
+
+**(2) 5 bug/gap ditemukan, SEMUA sudah diverifikasi dengan membandingkan ke pola established di
+`flex-header.tsx`/`pill-header.tsx` (bukan asumsi) — SEMUA sudah difix di giliran berikutnya
+setelah user bilang "tidak ada prioritas silahkan perbaiki semua"**:
+
+1. **Bug (SERIUS) — link "Dashboard Pengurus" pakai URL relatif lama**
+   (`href={`/${tenantSlug}/dashboard`}`), bukan absolut `/app/{slug}/dashboard`. Persis kelas bug
+   isolasi custom-domain yang sudah dikunci berkali-kali di project ini — di custom domain,
+   middleware me-rewrite jadi `/{slug}/{slug}/dashboard` (404 double-slug); di jalakarta.com
+   sendiri "selamat" cuma kebetulan karena legacy 301 redirect `ADMIN_MODULES` (di-gate
+   `has: [{host:"jalakarta.com"}]`) masih ada untuk modul `dashboard`. `flex-header.tsx`/
+   `pill-header.tsx` (baris 485 & 222) SUDAH benar sejak awal pakai
+   `${process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com"}/app/${tenantSlug}/dashboard` —
+   News Header disamakan ke pola itu.
+2. **Bug — hasil pencarian post rekonstruksi URL manual, abaikan `href` yang sudah benar dari
+   API**. `/api/search/route.ts` SUDAH memanggil `resolvePostHrefs()` (permalink-aware, hormati
+   `permalink_structure` tenant) dan mengembalikan `p.href` siap pakai — handler search News
+   Header membuang field itu, hardcode `/post/${slug}`. Ironisnya `getTickerPostsAction` di FILE
+   YANG SAMA sudah benar pakai `resolvePostHrefs`. Fix: `url: `${baseUrl}${p.href}``.
+3. **Gap — hasil kategori "Anggota" (`data.members`) dari `/api/search` di-drop total** —
+   FlexHeader+PillHeader sama-sama menampilkannya (baris info, `<div>` bukan `<a>`, karena tidak
+   ada halaman profil publik per-anggota dari titik pencarian ini), News Header tidak pernah baca
+   field itu sama sekali. Fix: `SearchResultItem.url` diperluas jadi `string | null` (`null` =
+   baris info tidak bisa diklik), ditambahkan.
+4. **Gap — search di mobile hamburger drawer fungsinya buntu**. Input search mobile terhubung ke
+   state yang SAMA dengan search desktop (fetch tetap jalan via `useEffect` debounce yang sama),
+   tapi dropdown hasil HANYA dirender di kontainer desktop (`hidden sm:block`) — di mobile user
+   ketik, fetch jalan, nol hasil pernah tampil. Fix: diekstrak `renderSearchResult()` helper
+   (dipakai BERSAMA desktop+mobile, cegah drift antara 2 tempat) + blok hasil baru ditambahkan ke
+   drawer mobile.
+5. **Pelanggaran aturan — `formatGregorianDate()` tanpa `timeZone: "Asia/Jakarta"` eksplisit** —
+   pelanggaran langsung aturan yang SUDAH dikunci berkali-kali di CLAUDE.md ("setiap kali
+   komponen client menampilkan tanggal, WAJIB `timeZone: "Asia/Jakarta"` eksplisit, cegah
+   hydration mismatch SSR/CSR"). Dikonfirmasi tidak ada `TZ=` env var di manapun (Docker/PM2) —
+   server VPS tidak dijamin WIB. Commit message sebelumnya ("fix news header hydration") TIDAK
+   benar-benar menutup root cause ini — cuma nambah `try/catch` fallback ke string tanggal
+   HARDCODED (`"Kamis, 30 Juli 2026"`, jelas placeholder "hari ini" saat file ditulis) yang tidak
+   pernah efektif, karena `Intl.DateTimeFormat` tidak *throw* akibat beda timezone (cuma hasilkan
+   string BEDA diam-diam, try/catch tidak menangkap ini). Fix: `timeZone` ditambahkan + fallback
+   catch diganti hitung tanggal generik (bukan string hardcoded yang akan terlihat salah
+   selamanya begitu waktu berlalu).
+
+**Verifikasi**: `tsc --noEmit` (dari `apps/web` DAN `packages/db` — bukan root, root tsconfig
+tidak punya alias `@/*`, jebakan yang sudah pernah terjadi sebelumnya di sesi ini juga) 0 error
+kedua package + `bun run build --filter=@jalajogja/web` genuine sukses (dev server dimatikan+
+`.next` dibersihkan+direstart, 44.69s, `Cached: 0 cached` — bukan cache-hit). Dokumentasi baru
+ditambahkan: `docs/arsitektur-header-footer-publik.md` § "Desain 4: News Header" (lengkap: ASCII
+wireframe, fitur, § "Audit + Fix" berisi kelima temuan). **Belum di-commit/push, belum dijalankan
+di VPS, belum diverifikasi visual di browser** — user perlu coba: klik "Dashboard Pengurus" (baik
+di jalakarta.com maupun custom domain kalau ada), coba search post di tenant dengan
+`permalink_structure` custom, ketik nama anggota di search box (harus muncul sebagai baris info),
+buka search dari hamburger mobile (harus tampil hasil, bukan buntu).
+
+### [2026-07-31] Header "News" Disederhanakan — 4 Baris jadi 3 Baris + Search Icon-Popup + Glass
+
+Lanjutan LANGSUNG dari audit di atas, di giliran yang sama — user minta simplifikasi struktural:
+(1) top bar tetap tanggal (kiri) + search & cart (kanan), TAPI search diubah dari input inline
+jadi IKON yang membuka popup, dan kedua ikon (search+cart) diberi gaya "kaca" (background putih
+opacity kecil, glass); (2) menu navigasi dipindah SEJAJAR dengan logo (bukan baris navbar
+terpisah) — jadi 3 kolom: logo, menu, login; (3) marquee tetap seperti sekarang. Hasil akhir:
+header 4 baris (topbar/mainbar/navbar/marquee) jadi 3 baris (topbar/logo-menu-login/marquee).
+
+**Reuse pola Pill Header, bukan reinvensi dari nol**: grid 3-kolom `grid-cols-2
+md:grid-cols-[1fr_auto_1fr]` untuk logo/menu/login — PERSIS teknik yang sudah dipakai (dan
+dibuktikan benar via bug-fix sebelumnya, lesson `[2026-07-29]` "Bug Fix: Nav Pill Header") di
+`pill-header.tsx` untuk menjamin nav menu benar-benar center matematis terlepas jumlah item,
+BUKAN `grid-cols-3` (equal-thirds) yang pernah menyebabkan nav "mepet ke kanan" begitu item menu
+lebih lebar dari 1/3 header. Popup search juga meniru struktur `SearchOverlay` Pill Header
+(`fixed inset-0 bg-black/40` + card `rounded-3xl` terpusat, backdrop-click/tombol-X untuk tutup)
+— TAPI ditulis ulang LOKAL di `news-header.tsx` (bukan import dari pill-header.tsx), konsisten
+konvensi "tiap desain header self-contained, duplikasi bukan share" yang sudah berkali-kali
+ditegaskan di project ini.
+
+**Konsekuensi struktural yang menghapus 1 gap dari audit sebelumnya**: karena search sekarang
+SATU mekanisme (popup) dipakai desktop MAUPUN mobile — bukan lagi "input inline desktop" +
+"drawer input mobile" terpisah — gap #4 dari audit sebelumnya ("search mobile buntu, hasil tidak
+pernah dirender") TIDAK RELEVAN LAGI secara struktural, bukan diperbaiki ulang tapi digantikan
+total oleh desain yang tidak punya kelas masalah itu sama sekali (drawer mobile sekarang cuma
+berisi nav links + auth guest, tidak ada search di dalamnya lagi).
+
+**Fix-fix dari audit sebelumnya TETAP dipertahankan penuh di struktur baru** (bukan hilang saat
+restrukturisasi) — dicek satu-satu saat menulis ulang file: dashboard link absolut, `p.href`
+permalink-aware untuk hasil pencarian post, kategori "Anggota" ditampilkan (baris info non-klik),
+`timeZone: "Asia/Jakarta"` di `formatGregorianDate()`.
+
+Glass style: `bg-white/15 backdrop-blur-sm text-primary-foreground hover:bg-white/25` — opacity
+putih kecil di atas `bg-primary` topbar, dipakai IDENTIK untuk ikon search dan `<CartButton
+className=...>` (di-override via `cn()`/`twMerge`, bukan CSS baru — `CartButton` sudah generik
+menerima override className penuh sejak awal).
+
+File ditulis ulang total via `Write` (bukan banyak `Edit` fragile untuk restrukturisasi seluas
+ini) — dibaca penuh dulu sebelum ditimpa, sesuai syarat tool.
+
+**Verifikasi**: `tsc --noEmit` 0 error `apps/web` (dari direktori yang benar) + `bun run build
+--filter=@jalajogja/web` genuine sukses (46.22s, `Cached: 0 cached`, dev server dimatikan+
+`.next` dibersihkan+direstart, curl 200 OK). Dokumentasi diupdate:
+`docs/arsitektur-header-footer-publik.md` § "Desain 4: News Header" (wireframe+deskripsi diganti
+total mencerminkan 3-baris) + § "Simplifikasi Layout 3-Baris" (baru) + § "Audit + Fix" lama
+ditandai sebagian superseded (poin 4) tapi dipertahankan sebagai riwayat. **Belum di-commit/
+push, belum dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba: klik
+ikon search di top bar (harus buka popup, bukan input inline lagi), cek posisi menu sejajar
+logo di desktop (harus benar-benar center, bukan geser), cek gaya glass ikon search+cart di atas
+warna primary, dan pastikan hamburger mobile masih berfungsi (nav+auth, tanpa search di
+dalamnya).
+
+### [2026-07-31] Fix Sistem Crop Gambar — Konsistensi Variant Soft-Scale vs Hard-Crop
+
+Sistem upload gambar diubah sesi agen LAIN sebelum sesi ini ke pendekatan "WordPress Soft Scale"
+(`fit:"inside", withoutEnlargement:true`, resize width-only) untuk variant `large`/`medium`/
+`thumbnail` — menggantikan hard-crop lama yang memotong komposisi foto secara agresif. User minta
+evaluasi ("jgn ubah logikanya, tp kalau ada bug mari kita evaluasi, jgn eksekusi apapun") sebelum
+mengonfirmasi eksekusi fix, dengan syarat tegas: **varian gambar harus konsisten** — thumbnail di
+landing page dan large di halaman single untuk sumber yang sama harus menampilkan komposisi
+identik.
+
+**Evaluasi mengonfirmasi**: pipeline OTOMATIS (`processImage()`/`VARIANT_BUILDERS` di
+`lib/image-processor.ts`) SUDAH benar — persis proposal WordPress soft-scale user, tidak perlu
+diubah. **2 bug ditemukan, keduanya mengancam langsung syarat konsistensi**, plus 1 isu terbuka
+yang SENGAJA tidak dieksekusi (butuh keputusan arsitektur terpisah). Detail lengkap:
+`docs/arsitektur-image.md` § "Strategi Resizing" (sub-section "Konsistensi Variant — Aturan yang
+Dikunci").
+
+**Bug #1 — `fitsWithoutUpscale()` cek tinggi sumber untuk variant yang resize-nya width-only**:
+Gate upload (skip variant kalau sumber terlalu kecil untuk di-upscale) mengecek `srcW >=
+target.width && srcH >= target.height` untuk SEMUA variant — termasuk large/medium/thumbnail,
+padahal ketiganya cuma resize berdasar lebar (tinggi otomatis ikut rasio sumber). Gambar lebar-
+tapi-pendek (mis. banner 1400×300) bisa gagal lolos gate `large` (butuh tinggi 630px) padahal
+lebarnya (1400≥1200) sudah cukup untuk scale proporsional — variant itu jadi dilewati tanpa
+alasan yang relevan. Fix: konstanta baru `SOFT_SCALE_VARIANTS = ["large","medium","thumbnail"]`
+di `image-processor.ts`; untuk variant di daftar ini, `fitsWithoutUpscale()` HANYA cek
+`srcW >= target.width` — cek lebar+tinggi tetap dipertahankan untuk `square`/`square-large`/
+`profile` (hard-crop, kedua dimensi genuinely relevan).
+
+**Bug #2 — `processVariant()` (manual recrop admin) tidak pernah ikut diupdate**: Fungsi ini
+(dipanggil SATU-SATUNYA titik: `POST /api/media/[id]/recrop`, dipicu tombol "Edit Crop" di
+`MediaDetailPanel`) tetap hard-crop (`fit:"cover"`) SEMUA variant termasuk large/medium/thumbnail
+berdasarkan koordinat crop manual admin — sisa dari desain LAMA sebelum soft-scale ada, tidak
+pernah disinkronkan. Ini **melanggar langsung** syarat konsistensi user: admin bisa (sengaja atau
+tidak) meng-crop manual variant `large` sebuah gambar sementara `thumbnail`-nya tetap proporsional
+(dihasilkan pipeline upload) — dua variant dari sumber yang sama menampilkan komposisi berbeda.
+
+**Fix Bug #2**: `processVariant()` ditulis ulang — signature berubah dari `(inputBuffer, width,
+height, crop?)` jadi `(inputBuffer, variantKey: VariantKey, crop?)` (lookup dimensi target
+internal dari `IMAGE_VARIANTS[variantKey]`, bukan diteruskan caller). Branch baru: kalau
+`variantKey` ada di `SOFT_SCALE_VARIANTS` → SELALU regenerasi proporsional dari `original`
+(`fit:"inside"`), **parameter `crop` diabaikan total, apa pun isinya** — keputusan desain
+disengaja, bukan celah belum sempat ditangani (dijelaskan eksplisit di komentar kode). Kalau
+`variantKey` adalah `square`/`square-large`/`profile` → perilaku LAMA dipertahankan (extract+
+resize kalau ada koordinat crop, atau `position:"attention"` kalau tidak). Kalau `variantKey`
+adalah `"original"` (tidak ada di `IMAGE_VARIANTS`) → convert WebP saja tanpa resize/crop.
+Caller (`recrop/route.ts`) disederhanakan — hapus lookup `dim`/guard `if (!dim) return` yang
+sekarang jadi tanggung jawab internal `processVariant()`, hapus import `IMAGE_VARIANTS` yang
+tidak lagi dipakai di file itu.
+
+**UI (`MediaDetailPanel`) diperbarui sejalan**: dropdown target crop manual sekarang
+memfilter keluar `large`/`medium`/`thumbnail` (selain `original` yang sudah difilter sejak awal)
+via konstanta lokal `NO_MANUAL_CROP_VARIANTS` — hanya `square`/`square-large`/`profile` yang
+tampil sebagai opsi selain "Semua variant" (label diperjelas jadi "Semua variant (persegi/
+potret)"). Ditambah catatan singkat di bawah editor crop menjelaskan kenapa large/medium/
+thumbnail tidak bisa di-crop manual (konsistensi), supaya admin tidak bingung field itu hilang.
+
+**Isu terbuka, TIDAK dieksekusi (dilaporkan sebagai keputusan arsitektur terpisah, bukan diam-diam
+diabaikan)**: `lib/seo-defaults.ts`'s `OG_IMAGE_WIDTH=1200`/`OG_IMAGE_HEIGHT=630` (dipakai apa
+adanya di `lib/seo.ts` untuk meta tag `og:image:width`/`og:image:height`) tidak lagi mencerminkan
+dimensi sesungguhnya variant `large` untuk sumber non-landscape (foto potret 3:4 di-resize ke
+`large` akan punya tinggi riil ~1580px pada lebar 1200px, BUKAN 630px yang dideklarasikan meta
+tag). `tenant.media` juga tidak menyimpan dimensi hasil resize per-variant — hanya path, jadi
+tidak ada cara murah menghitung angka yang akurat tanpa baca-ulang file (mahal per request) atau
+perubahan schema (simpan dimensi saat upload). Sesuai aturan project ("SELALU tanya konfirmasi
+sebelum mengubah arsitektur atau keputusan besar"), TIDAK dieksekusi unilateral — dicatat di
+`docs/arsitektur-image.md` sebagai gap terbuka dengan 3 opsi (hitung ulang di render / simpan
+dimensi ke DB saat upload / terima mismatch sebagai risiko kecil), menunggu keputusan user.
+
+**Verifikasi**: `tsc --noEmit` 0 error `apps/web` (2× — setelah `image-processor.ts`, dan lagi
+setelah `recrop/route.ts`+`media-detail-panel.tsx`) + `bun run build --filter=@jalajogja/web`
+genuine sukses (47.4s, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 OK). Grep
+dikonfirmasi `recrop/route.ts` adalah SATU-SATUNYA caller `processVariant()` di seluruh app —
+tidak ada titik lain yang perlu disesuaikan ke signature baru. Dokumentasi diupdate
+(`docs/arsitektur-image.md` § "Enam Variant Standar" (tabel stale diperbaiki) + "Strategi
+Resizing" (sub-section konsistensi + isu terbuka baru)). **Belum di-commit/push, belum
+dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba: upload foto potret
+(bukan landscape) dan cek `large`/`medium`/`thumbnail` semuanya tetap proporsional (bukan
+1.91:1 dipaksa); buka "Edit Crop" di Media Library dan konfirmasi dropdown hanya menawarkan
+square/square-large/profile, bukan large/medium/thumbnail.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Upgrade Taksonomi Sektor Usaha — 10 Sektor BPS Hybrid + Merge Tier-3**
+- Terakhir dikerjakan: **Fix Sistem Crop Gambar — Konsistensi Variant Soft-Scale vs Hard-Crop**
+  (lihat lesson `[2026-07-31]` "Fix Sistem Crop Gambar" di atas) — user minta evaluasi sistem
+  crop gambar yang sebelumnya diubah agen lain ke pendekatan "WordPress Soft Scale" (proporsional,
+  zero crop untuk large/medium/thumbnail), dengan syarat eksplisit: JANGAN ubah logika, JANGAN
+  eksekusi apapun — cuma evaluasi. Setelah dikonfirmasi, user beri lampu hijau eksekusi semua
+  temuan dengan syarat tambahan: **varian gambar harus konsisten** (thumbnail landing page vs
+  large halaman single untuk sumber sama = komposisi identik). Pipeline OTOMATIS
+  (`processImage()`) dikonfirmasi SUDAH benar, tidak disentuh. **2 bug ditemukan+difix**: (1)
+  `fitsWithoutUpscale()` cek tinggi sumber untuk variant yang resize-nya width-only (bisa gagal
+  lolos gate `large` untuk banner lebar-pendek padahal lebarnya cukup) — fix: konstanta
+  `SOFT_SCALE_VARIANTS`, cek lebar saja untuk large/medium/thumbnail; (2) `processVariant()`
+  (manual "Edit Crop" admin, satu-satunya caller `POST /api/media/[id]/recrop`) TIDAK PERNAH
+  disinkronkan ke soft-scale — masih hard-crop SEMUA variant termasuk large/medium/thumbnail,
+  MELANGGAR LANGSUNG syarat konsistensi — fix: signature diubah jadi terima `variantKey` (bukan
+  width/height eksplisit), untuk large/medium/thumbnail SELALU regenerasi proporsional (crop
+  manual diabaikan total), hard-crop tetap untuk square/square-large/profile. UI
+  (`MediaDetailPanel`) diperbarui sejalan (dropdown crop manual tidak lagi tawarkan large/medium/
+  thumbnail). **1 isu terbuka DILAPORKAN, TIDAK dieksekusi** (butuh keputusan arsitektur):
+  `OG_IMAGE_WIDTH`/`HEIGHT` hardcoded di `lib/seo-defaults.ts` tidak lagi akurat untuk sumber
+  non-landscape sejak soft-scale — 3 opsi dicatat di dokumen, menunggu user pilih. `tsc`+build
+  genuine bersih (2×), grep konfirmasi `recrop/route.ts` satu-satunya caller `processVariant()`.
+  Dokumentasi diupdate (`docs/arsitektur-image.md`). **Belum di-commit/push, belum dijalankan di
+  VPS, belum diverifikasi visual di browser** — user perlu coba upload foto potret (cek
+  large/medium/thumbnail tetap proporsional) dan buka "Edit Crop" (cek dropdown hanya
+  square/square-large/profile).
+- Sesi sebelumnya: **Simplifikasi Header "News" — 4 Baris jadi 3 Baris** (lihat lesson
+  `[2026-07-31]` "Header 'News' Disederhanakan" di atas) — lanjutan langsung dari audit di bawah,
+  di giliran yang sama. User minta restrukturisasi: search jadi ikon+popup (bukan input inline),
+  ikon search+cart digabung di top bar dengan gaya "kaca" (glass, bg putih opacity kecil), dan
+  menu navigasi dipindah sejajar logo (bukan baris navbar terpisah) — hasil akhir 3 baris (top
+  bar / logo-menu-login / marquee). Reuse pola Pill Header: grid `grid-cols-2 md:grid-cols-
+  [1fr_auto_1fr]` untuk centering nav (teknik yang sudah dibuktikan benar via bug-fix
+  sebelumnya), popup search meniru struktur `SearchOverlay` Pill Header tapi ditulis ulang LOKAL
+  (konvensi self-contained per header). Semua 5 fix dari audit sebelumnya dipertahankan penuh di
+  struktur baru (dicek satu-satu). Konsekuensi: gap #4 audit sebelumnya ("search mobile drawer
+  buntu") jadi TIDAK RELEVAN LAGI secara struktural (search sekarang satu mekanisme popup untuk
+  semua breakpoint, bukan diperbaiki ulang tapi digantikan total). File ditulis ulang total via
+  `Write` (restrukturisasi luas, dibaca penuh dulu). `tsc` 0 error + `bun run build` genuine
+  sukses (46.22s), dev server direstart, curl 200 OK. Dokumentasi diupdate:
+  `docs/arsitektur-header-footer-publik.md` § "Desain 4: News Header" (wireframe+deskripsi
+  diganti total) + § "Simplifikasi Layout 3-Baris" (baru). **Belum di-commit/push, belum
+  dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba klik ikon search
+  (popup, bukan inline), cek nav benar-benar center sejajar logo, cek gaya glass ikon.
+- Sesi sebelumnya: **Audit + Fix Header "News"** (lihat lesson `[2026-07-31]` "Audit + Fix
+  Header 'News'" di atas) — user minta cek header design baru "News" (`news-header.tsx`) yang
+  muncul di kode hasil sesi/agen LAIN (sudah ter-commit `7e9131d`, bareng pekerjaan taksonomi
+  usaha sesi sebelumnya). Ditemukan: (1) TIDAK terdokumentasi sama sekali; (2) 5 bug/gap — link
+  "Dashboard Pengurus" pakai URL relatif lama (bukan `/app/{slug}/dashboard` absolut, akan 404 di
+  custom domain), search post rekonstruksi URL manual abaikan `href` permalink-aware yang sudah
+  benar dari API, hasil kategori "Anggota" di-drop total dari search (FlexHeader/PillHeader
+  menampilkannya), search di mobile drawer fungsinya buntu (fetch jalan, hasil tidak pernah
+  dirender), dan `formatGregorianDate()` tanpa `timeZone: "Asia/Jakarta"` eksplisit (pelanggaran
+  aturan hydration yang sudah dikunci berkali-kali). User: "tidak ada prioritas silahkan
+  perbaiki semua" — SEMUA 5 titik sudah difix di giliran ini (lalu struktur header itu sendiri
+  disederhanakan lagi di giliran berikutnya, lihat entri di atas).
+- Sesi sebelumnya: **Upgrade Taksonomi Sektor Usaha — 10 Sektor BPS Hybrid + Merge Tier-3**
   (lihat lesson `[2026-07-30]` "Upgrade Taksonomi Sektor Usaha" di atas) — user menegaskan § 9
   `arsitektur-usaha.md` (sebelumnya sengaja ditunda) bagian dari "ekosistem" yang sudah bisa
   dieksekusi ("data usaha jadi data yang hidup"). Plan Mode + 2 putaran `AskUserQuestion`: (1) 10
@@ -14030,7 +14298,13 @@ pendapat, bukan cuma pilihan mekanis.
   migration `0055` dijalankan+diverifikasi lokal (2 UPDATE ambigu = `UPDATE 0`, sesuai prediksi),
   6 titik kode `apps/web` diupdate. `tsc` 0 error kedua package (percobaan pertama) + disposable
   test 15 assertion PASS + `bun run build` genuine sukses, dev server direstart. **Belum
-  di-commit/push, belum dijalankan di VPS, belum diverifikasi visual di browser.**
+  di-commit/push, belum dijalankan di VPS, belum diverifikasi visual di browser.** **Susulan
+  (didokumentasikan, TIDAK dieksekusi)**: user tanya apakah rekomendasi bisa dijamin tampil
+  minimal 10 di atas untuk "Bidang Usaha" — root cause ditemukan di
+  `components/ui/tag-multi-select.tsx` (`filtered.slice(0, 8)`, cap dropdown global, BUKAN di
+  `getPrioritizedBusinessFields()` yang sudah benar), fix yang disarankan (prop opsional
+  `maxSuggestions`) dicatat di lesson di atas sebagai backlog — user minta "lanjutkan dokumentasi
+  saja lalu selesai", jadi nol kode disentuh untuk temuan ini.
 - Sesi sebelumnya: **Admin Wizard Photo Parity — Usaha (Logo+Cover) & Pesantren (Cover)
   diwire ke admin** (lihat lesson `[2026-07-30]` "Admin Wizard Photo Parity" di atas) — lanjutan
   langsung audit kritis Ekosistem: user menegaskan prinsip "kalau ada perubahan di satu tempat,

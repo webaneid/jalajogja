@@ -294,6 +294,119 @@ FlexHeader).
 
 ---
 
+## Desain 4: News Header
+
+> Dibangun sesi lain (bukan didokumentasikan saat itu — gap ditemukan+ditutup lewat audit
+> 2026-07-31, lihat § "Audit + Fix" di bawah). Sudah live sejak commit `7e9131d`
+> (`HEADER_DESIGN_IDS`, `public-header.tsx`'s switch).
+
+File: `headers/news-header.tsx`. Client component. Gaya "portal berita" — **3 baris**: top bar
+(tanggal + search/cart glass icon), logo+menu+login sejajar, dan marquee ticker post terbaru.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Kamis, 30 Juli 2026                       (🔍) (🛒)     │  ← Row 1: top bar (bg-primary, glass icon)
+├─────────────────────────────────────────────────────────┤
+│ [Logo] Nama   Nav Item · Nav Item · Nav Item      (👤)  │  ← Row 2: logo/menu/login (3 kolom)
+├─────────────────────────────────────────────────────────┤
+│ 🔴 Live Update   • judul post • judul post • ...        │  ← Row 3: marquee ticker
+└─────────────────────────────────────────────────────────┘
+```
+
+- **Row 1 (top bar)**: tanggal Masehi (kiri, `Intl.DateTimeFormat("id-ID",
+  {timeZone:"Asia/Jakarta", ...})`) + ikon Search & `CartButton` (kanan) — KEDUANYA kapsul
+  "kaca" (`bg-white/15 backdrop-blur-sm hover:bg-white/25 text-primary-foreground`, opacity putih
+  kecil di atas `bg-primary`, bukan solid warna sekunder seperti versi sebelumnya). Search
+  BUKAN input inline lagi — cuma ikon, klik membuka popup (Row 1 poin desain 2026-07-31 di
+  bawah).
+- **Row 2 (logo/menu/login)**: 3 kolom `grid grid-cols-2 md:grid-cols-[1fr_auto_1fr]` — TEKNIK
+  YANG SAMA dipakai Pill Header (§ Desain 3) untuk menjamin nav benar-benar center matematis
+  terlepas jumlah item menu (bukan `grid-cols-3` yang cuma bagi rata, sudah pernah kena bug
+  "mepet ke kanan"). Kolom kiri = logo (fallback badge inisial), kolom tengah = nav menu
+  (`hidden md:flex`, placeholder kosong tetap dirender saat `navMenu` kosong supaya grid tidak
+  collapse jadi 2 kolom), kolom kanan = dropdown user/guest auth + hamburger mobile.
+- **Row 3 (marquee ticker)**: TIDAK BERUBAH — `getTickerPostsAction()`, 8 post `published`
+  terbaru, permalink-aware via `resolvePostHrefs()`, fallback "Selamat datang..." kalau tenant
+  belum punya post. Animasi `animate-marquee` (keyframes `globals.css`, di-share dengan fitur
+  Forcreator Footer).
+- **Search popup**: SATU mekanisme dipakai desktop MAUPUN mobile (bukan lagi 2 implementasi
+  terpisah — inline-desktop + drawer-input-mobile) — `fixed inset-0 bg-black/40` + card
+  `rounded-3xl` terpusat (pola sama `SearchOverlay` Pill Header), backdrop click atau tombol X
+  untuk tutup, fokus otomatis ke input saat dibuka, query+hasil di-reset saat ditutup.
+- **Mobile menu drawer**: sekarang HANYA nav links + auth guest (search sudah pindah ke popup
+  terpisah, tidak perlu diduplikasi di drawer lagi) — BUKAN via `FooterBottomNav` global
+  (`footer-bottom-nav.tsx` hard-gate `designId !== "flex" → return null`, jadi News/Pill/Classic
+  semuanya mandiri kelola nav mobile sendiri, tidak ada duplikasi dengan tab bar situs-lebar).
+
+### Simplifikasi Layout 3-Baris (2026-07-31, lanjutan)
+
+Permintaan user langsung setelah audit di atas: sederhanakan dari 4 baris (topbar/mainbar/
+navbar/marquee) jadi 3 baris — pindahkan search dari input inline ke ikon+popup, gabungkan
+search+cart di top bar dengan gaya "kaca" (glass, bg putih opacity kecil), dan pindahkan menu
+navigasi sejajar dengan logo (bukan baris navbar terpisah).
+
+**Reuse pola Pill Header, bukan reinvensi** — grid 3-kolom `[1fr_auto_1fr]` untuk centering nav
+(persis fix bug "mepet ke kanan" yang sudah dikunci di § Desain 3) dan struktur popup search
+(`fixed inset-0 bg-black/40` + card rounded terpusat, pola `SearchOverlay`). TETAP file
+self-contained (bukan share komponen lintas header, konsisten konvensi "tiap desain header
+independen") — popup ditulis ulang lokal di `news-header.tsx`, tapi logic fetch-nya REUSE
+langsung fix-fix dari audit sebelumnya (href permalink-aware, kategori Anggota, dst — tidak ada
+regresi dari simplifikasi ini).
+
+**Konsekuensi struktural**: karena search kini SATU mekanisme (popup) untuk semua breakpoint,
+duplikasi "search desktop inline vs search drawer mobile" yang jadi sumber gap #4 di audit
+sebelumnya (di bawah) sekarang TIDAK RELEVAN LAGI secara struktural — bukan diperbaiki lagi,
+tapi diganti total oleh desain baru yang tidak punya kelas masalah itu sama sekali.
+
+### Audit + Fix (2026-07-31) — Riwayat, Sebagian SUPERSEDED oleh Simplifikasi di Atas
+
+> Poin 1, 2, 3, 5 di bawah TETAP RELEVAN (fix-nya dipertahankan di struktur baru). Poin 4
+> (dulu: "mobile drawer search buntu") SUPERSEDED — search mobile sekarang bukan drawer lagi,
+> tapi popup yang sama dengan desktop, jadi kelas bug itu sudah tidak mungkin terjadi lagi.
+
+Ditemukan **tidak terdokumentasi sama sekali** (baik di sini maupun lesson CLAUDE.md) meski sudah
+live — audit menemukan 2 bug nyata + 2 gap fungsional + 1 pelanggaran aturan timezone, semua
+sudah diperbaiki:
+
+1. **Bug — link "Dashboard Pengurus" pakai URL relatif lama** (`/${tenantSlug}/dashboard`, bukan
+   absolut `/app/{slug}/dashboard`) — persis kelas bug isolasi custom-domain yang sudah berkali-
+   kali dikunci di project ini (lihat lesson lama "Custom Domain Harus Diisolasi"). Di custom
+   domain, middleware me-rewrite jadi `/{slug}/{slug}/dashboard` (404 double-slug); di
+   jalakarta.com sendiri "selamat" cuma karena legacy 301 redirect `ADMIN_MODULES` yang di-gate
+   `has: [{host:"jalakarta.com"}]`. Fix: disamakan dengan pola `flex-header.tsx`/`pill-header.tsx`
+   — `${process.env.NEXT_PUBLIC_APP_URL ?? "https://jalakarta.com"}/app/${tenantSlug}/dashboard`.
+2. **Bug — hasil pencarian post rekonstruksi URL manual, abaikan `href` yang sudah benar dari
+   API**. `/api/search` SUDAH memanggil `resolvePostHrefs()` (permalink-aware) dan mengembalikan
+   `p.href` siap pakai — tapi handler search News Header membuang field itu, hardcode
+   `/post/${slug}`. Ironisnya ticker marquee di FILE YANG SAMA sudah benar pakai
+   `resolvePostHrefs`. Fix: pakai `p.href` (`url: `${baseUrl}${p.href}``), sama seperti pola
+   `flex-header.tsx`.
+3. **Gap — hasil kategori "Anggota" dari `/api/search` di-drop total**. FlexHeader dan PillHeader
+   sama-sama menampilkan kategori ke-5 ini (`data.members`), News Header tidak pernah membacanya.
+   Fix: ditambahkan sebagai baris info non-klik (`url: null` — tidak ada halaman profil publik
+   per-anggota dari titik ini, konsisten pola FlexHeader yang render `<div>` bukan `<a>` untuk
+   member).
+4. **Gap — search di mobile drawer fungsinya buntu**. Input search di hamburger drawer terhubung
+   ke state yang sama dengan search desktop (fetch tetap jalan), tapi dropdown hasil HANYA
+   dirender di kontainer desktop (`hidden sm:block`) — di mobile, user ketik, fetch jalan, tidak
+   ada satu pun hasil yang pernah tampil. Fix: `renderSearchResult()` helper diekstrak (dipakai
+   BERSAMA desktop+mobile, cegah drift) + blok hasil baru ditambahkan ke drawer mobile.
+5. **Pelanggaran aturan — `formatGregorianDate()` tanpa `timeZone: "Asia/Jakarta"` eksplisit**.
+   Server VPS tidak dijamin WIB (nol `TZ=` env var di manapun di repo) — tanpa `timeZone`
+   eksplisit, string tanggal SSR bisa beda dari hasil hydration client → React hydration
+   mismatch, kelas bug yang sudah dikunci berkali-kali di CLAUDE.md untuk komponen client
+   manapun yang menampilkan tanggal. Commit message sebelumnya ("fix news header hydration")
+   TIDAK benar-benar menutup ini — cuma menambah `try/catch` fallback ke string tanggal hardcoded
+   (`"Kamis, 30 Juli 2026"`, jelas placeholder tanggal "hari ini" saat file ditulis), yang tidak
+   pernah efektif karena `Intl.DateTimeFormat` tidak *throw* akibat beda timezone, cuma
+   menghasilkan string berbeda diam-diam. Fix: `timeZone: "Asia/Jakarta"` ditambahkan + fallback
+   catch diganti hitung tanggal generik (bukan string hardcoded).
+
+`tsc --noEmit` 0 error kedua package + `bun run build --filter=@jalajogja/web` genuine sukses.
+Belum di-commit, belum diverifikasi visual di browser.
+
+---
+
 ## Desain Footer
 
 Footer adalah server component — tidak butuh session.
