@@ -275,13 +275,42 @@ export default async function MemberDetailPage({
     : (row.birthPlaceText ?? null);
 
   // Format tanggal lahir
-  const birthDateFormatted = row.birthDate
-    ? new Date(row.birthDate).toLocaleDateString("id-ID", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
-    : null;
+  let birthDateFormatted: string | null = null;
+  if (row.birthDate) {
+    try {
+      const d = new Date(row.birthDate);
+      if (!isNaN(d.getTime())) {
+        birthDateFormatted = d.toLocaleDateString("id-ID", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
+      } else {
+        birthDateFormatted = String(row.birthDate);
+      }
+    } catch {
+      birthDateFormatted = String(row.birthDate);
+    }
+  }
+
+  // Format tanggal bergabung
+  let joinedAtFormatted: string | null = null;
+  if (row.joinedAt) {
+    try {
+      const d = new Date(row.joinedAt);
+      if (!isNaN(d.getTime())) {
+        joinedAtFormatted = d.toLocaleDateString("id-ID", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
+      } else {
+        joinedAtFormatted = String(row.joinedAt);
+      }
+    } catch {
+      joinedAtFormatted = String(row.joinedAt);
+    }
+  }
 
   // Sosial media anggota yang terisi
   const socialLinks = [
@@ -350,7 +379,7 @@ export default async function MemberDetailPage({
       <Section title="Keanggotaan">
         <dl>
           <Row label="Status"        value={STATUS_LABEL[row.status ?? "active"]} />
-          <Row label="Bergabung"     value={row.joinedAt ?? undefined} />
+          <Row label="Bergabung"     value={joinedAtFormatted} />
           <Row label="Didaftarkan via" value={row.registeredVia ?? undefined} />
         </dl>
       </Section>

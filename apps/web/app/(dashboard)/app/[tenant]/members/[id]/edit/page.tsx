@@ -196,7 +196,7 @@ export default async function EditMemberPage({
     waliSantri: (memberRow.waliSantri as "gontor" | "alumni" | "lain" | "bukan") ?? undefined,
     primaryCabangRefId: memberRow.primaryCabangRefId ?? undefined,
     status: (memberRow.status as "active" | "inactive" | "alumni") ?? "active",
-    joinedAt: memberRow.joinedAt ?? undefined,
+    joinedAt: memberRow.joinedAt ? String(memberRow.joinedAt) : undefined,
   };
 
   const defaultStep2: Step2DefaultValues = {
