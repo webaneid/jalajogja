@@ -14,6 +14,7 @@ import type { Metadata } from "next";
 import { Briefcase, MapPin } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import { UsahaFiltersClient } from "@/components/usaha/usaha-filters-client";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import { getPrioritizedBusinessFields } from "@/lib/business-sectors";
 
@@ -221,7 +222,7 @@ export default async function UsahaDirectoryPage({
                     <div className="aspect-video bg-muted/30 relative overflow-hidden flex items-center justify-center">
                       {coverImg ? (
                         <>
-                          <Image
+                          <ImageWithFallback
                             src={coverImg} alt={b.name}
                             fill className="object-cover"
                             unoptimized

@@ -5,7 +5,6 @@ import {
   memberOwnedPesantren, addresses, refProvinces, refRegencies,
   createTenantDb,
 } from "@jalajogja/db";
-import Image     from "next/image";
 import Link      from "next/link";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
@@ -14,6 +13,8 @@ import type { Metadata } from "next";
 import { School, MapPin } from "lucide-react";
 import { PublicButton }   from "@/components/website/public/ui/public-button";
 import { PesantrenFiltersClient } from "@/components/pesantren/pesantren-filters-client";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
+import { getVariantUrl } from "@/lib/image-processor";
 
 export const revalidate = 60;
 
@@ -207,8 +208,8 @@ export default async function PesantrenDirectoryPage({
                   {/* Logo */}
                   <div className="aspect-video bg-muted/30 relative overflow-hidden flex items-center justify-center">
                     {p.coverUrl ? (
-                      <Image
-                        src={p.coverUrl} alt={p.name}
+                      <ImageWithFallback
+                        src={getVariantUrl(p.coverUrl, "thumbnail")} alt={p.name}
                         fill className="object-contain p-4"
                         unoptimized
                       />

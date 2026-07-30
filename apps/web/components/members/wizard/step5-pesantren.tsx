@@ -203,7 +203,7 @@ function PhotoPickerField({
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onSelect={(media: MediaItem) => { onChange(media.url); setPickerOpen(false) }}
-        module="members"
+        module="akun"
         accept={["image/"]}
       />
     </div>

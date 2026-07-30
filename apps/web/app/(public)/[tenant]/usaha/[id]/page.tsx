@@ -18,6 +18,7 @@ import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { SocialLinks } from "@/components/ui/social-links";
 import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 
 type Params = Promise<{ tenant: string; id: string }>;
@@ -179,7 +180,7 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
             <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 flex items-center justify-center border border-border">
               {coverImg ? (
                 <>
-                  <Image src={coverImg} alt={row.name} fill className="object-cover" unoptimized />
+                  <ImageWithFallback src={coverImg} alt={row.name} fill className="object-cover" unoptimized />
                   {logoImg && (
                     <div className="absolute bottom-4 left-4 w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-background/95 border border-border p-1.5 shadow-md flex items-center justify-center overflow-hidden z-10">
                       <Image src={logoImg} alt={row.name} fill className="object-contain p-1" unoptimized />

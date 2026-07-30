@@ -14353,25 +14353,108 @@ namanya sendiri implikasikan) — baru simpulkan ulang, dan kalau perbaikannya p
 satu interpretasi masuk akal (label kosmetik vs validasi vs dihapus), tanya eksplisit lewat
 opsi konkret alih-alih menebak lagi setelah baru saja terbukti salah menebak.
 
+### [2026-08-01] Fallback Gambar ke Original — Foto Anggota Tidak Boleh "Hilang" karena Variant Missing
+
+User laporkan foto Usaha yang diupload anggota tidak muncul di `/usaha` (production, tenant
+`visikita`) — contoh nyata: `..._th.webp` 404 padahal versi `_lg` (di halaman single) tampil
+normal. Diminta: kalau variant yang diminta tidak ada, panggil ukuran **original** saja (bukan
+`_lg`) — "kita sangat menghargai kerja keras yang telah mereka lakukan" (foto anggota tidak
+boleh hilang begitu saja karena masalah teknis di sisi kita).
+
+**Solusi**: bukan existence-check server-side (mahal, N+1 HEAD request per gambar di halaman
+listing) — komponen baru `components/ui/image-with-fallback.tsx` (`ImageWithFallback`, wrapper
+`next/image` dengan `onError` yang swap `src` ke `_ori.webp` sekali kalau variant yang diminta
+gagal load). Diwire ke 3 titik cover Usaha (`usaha/page.tsx` listing, `usaha/[id]/page.tsx`
+detail, `akun/usaha/usaha-client.tsx` self-service listing) + `<img onError>` inline di
+`step4-business.tsx`'s preview (elemen `<img>` polos, tidak butuh wrapper). `toOriginalUrl()`
+duplikasi lokal (bukan import `lib/image-processor.ts` — file itu bawa `sharp`, tidak aman ke
+client bundle).
+
+**Ditemukan+difix bersamaan**: `step5-pesantren.tsx` (admin wizard cover Pesantren) TERNYATA
+masih `MediaPicker module="members"` — bug IDENTIK yang sudah difix di `step4-business.tsx`
+(Usaha) di sesi sebelumnya, kelewat untuk Pesantren. Diperbaiki jadi `module="akun"`. Cover
+Pesantren dikonfirmasi tidak dipakai dengan suffix swap di halaman publik manapun saat ini
+(grep), jadi tidak ada gambar Pesantren yang genuinely broken sekarang — fix ini murni mencegah
+masalah yang sama muncul untuk record BARU ke depan.
+
+Detail lengkap: `docs/arsitektur-image.md` § "Fallback ke Variant Original". `tsc --noEmit` 0
+error + `bun run build --filter=@jalajogja/web` genuine sukses (47.7s, dev server dimatikan+
+`.next` dibersihkan+direstart). Nol migrasi DB — fallback ini murni runtime, tidak memperbaiki
+data (`coverUrl` di DB tetap menunjuk suffix yang mungkin tidak eksis, cuma tidak lagi terlihat
+rusak ke pengunjung). **Belum di-commit/push, belum diverifikasi visual di browser** — user
+perlu cek langsung apakah foto "CV. Maristiq Lit Beauty" (contoh yang dilaporkan) sekarang
+tampil (fallback ke original) di `/usaha`.
+
+**Susulan langsung (giliran sama)**: user minta ini jangan berhenti di Usaha —
+*"jadi sebenarnya baik pesantren, profesional, maupun usaha, cara pengambilan gambar dan upload
+gambarnya itu sama harusnya seragam.. gk beda2"*, diperjelas lagi *"di arsip selalu pake yg kecil
+(thumbnail) sementara single yg lg (large) tapi tetap dikasih opsi, karena sudah banyak yg
+upload dulua, maka ketika 404 ambil yg original"*. Pola Usaha direplikasi identik ke Pesantren
+DAN Profesional — 6 file tambahan: `pesantren/page.tsx` (listing publik, thumbnail),
+`pesantren/[id]/page.tsx` (detail publik, large), `akun/pesantren/page.tsx` (listing self-
+service, `thumbUrl()` lokal baru), `profesional/page.tsx` (listing publik, thumbnail —
+sempat salah hapus import `Image` yang masih dipakai `entry.ownerPhoto` di baris lain, LANGSUNG
+ketahuan+dikoreksi sendiri via grep sebelum lanjut ke file berikutnya), `profesional/[id]/page.tsx`
+(detail publik, large — kali ini dicek dulu pemakaian `Image` lain SEBELUM edit, belajar dari
+kesalahan file sebelumnya), `akun/profesional/profesional-client.tsx` (listing self-service,
+`thumbUrl()` lokal baru).
+
+**Ditemukan sekaligus dikonfirmasi (bukan bug baru)**: Profesional TIDAK PUNYA bug module yang
+sama — tidak ada admin wizard untuk modul ini sama sekali (self-service only), jadi tidak ada
+titik upload yang perlu diaudit seperti `step4-business.tsx`/`step5-pesantren.tsx`. Halaman
+publik Profesional sebelumnya juga tidak pernah melakukan suffix-swap (`coverUrl` dipakai raw)
+— unifikasi ini MENAMBAHKAN behavior thumbnail/large yang konsisten, bukan memperbaiki bug yang
+sudah ada.
+
+**Keputusan konsistensi eksplisit**: detail dialog popup di ketiga halaman self-service (`akun/
+usaha`, `akun/pesantren`, `akun/profesional`) SENGAJA dibiarkan `<Image src={entry.coverUrl}>`
+polos tanpa `ImageWithFallback` — sama seperti yang sudah ditetapkan untuk Usaha sebelumnya
+(bukan kelewat). Pemilik data melihat foto miliknya sendiri di context ini (bukan pengunjung
+publik), risiko lebih rendah, dan `coverUrl` di sini dipakai tanpa suffix swap. Dikonfirmasi
+identik di ketiga file via grep sebelum disimpulkan sebagai pola yang konsisten, bukan celah.
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (49.21s, `Cached:
+0 cached`, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 di ketiga halaman
+publik). Nol migrasi DB. **Belum di-commit/push, belum diverifikasi visual di browser** —
+sama seperti fix Usaha, user perlu cek langsung `/pesantren` dan `/profesional` (arsip+single)
+tampil konsisten dengan `/usaha`.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Instagram OAuth — Validasi Akun (fix field "Nama Akun" yang tadinya
-  cuma label kosmetik)** (lihat lesson `[2026-08-01]` di atas, detail lengkap
-  `docs/arsitektur-instagram-embed.md` § 3a) — user tanya "settingnya ada dimana, kok tiba2
-  masuk akun forcreator?", saya jawab dengan penjelasan yang DITEGUR user sebagai salah (seolah
-  berasumsi akun Instagram = nama tenant). Dicek ulang kode — user benar: field "Nama Akun
-  (Linimasa)" di `InstagramEditor` sudah ada sejak rilis OAuth pertama tapi HANYA dipakai
-  sebagai label kosmetik (`resolveInstagramFeed()`), tidak pernah divalidasi terhadap akun yang
-  benar-benar OAuth-connect — admin bisa ketik akun A, tapi foto tetap dari akun OAuth
-  sebelumnya (akun B) tanpa peringatan. Ditanya via `AskUserQuestion` (3 opsi: validasi/label
-  saja/hapus field) — user pilih **Validasi akun OAuth**. Fix: `expectedAccount` dibawa lintas
-  redirect Meta via signed `state` (HMAC, `lib/instagram-oauth.server.ts`), callback menolak
-  simpan token kalau username hasil login tidak cocok persis (case-insensitive, "@" diabaikan)
-  dengan yang diketik admin — pesan error eksplisit menyebut kedua akun. Kosong = skip validasi
-  (terima akun apa pun), sesuai niat placeholder lama. Keterangan field di UI diperjelas
-  sekaligus. `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses
-  (47.9s, dev server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB. **Belum di-
-  commit/push, belum diverifikasi end-to-end** (masih menunggu `META_APP_ID`/`META_APP_SECRET`
-  asli + prasyarat lain dari user, sama seperti gap dari rilis OAuth pertama).
+- Terakhir dikerjakan: **Fallback gambar ke variant original — diseragamkan ke Usaha +
+  Pesantren + Profesional** (lihat lesson `[2026-08-01]` "Fallback Gambar ke Original" di
+  atas, detail lengkap `docs/arsitektur-image.md` § "Fallback ke Variant Original") — user
+  laporkan foto record LAMA di `/usaha` (production, tenant `visikita`) 404 karena variant `_th`
+  tidak pernah ter-generate (bug `module="members"` lama), sementara `_lg` di halaman single
+  tampil normal. Diminta fallback ke ukuran **original** (bukan `_lg`) kalau variant yang
+  diminta tidak ada — komponen baru `components/ui/image-with-fallback.tsx` (`ImageWithFallback`,
+  wrapper `next/image` dengan `onError` swap ke `_ori.webp`). Ditemukan+difix bersamaan:
+  `step5-pesantren.tsx` TERNYATA masih `module="members"` juga (bug identik yang sudah difix di
+  `step4-business.tsx` sebelumnya, kelewat untuk Pesantren) — diperbaiki jadi `module="akun"`.
+  User lalu minta pola ini diseragamkan ke SEMUA 3 modul (Usaha/Pesantren/Profesional) — "di
+  arsip selalu thumbnail, single selalu large, keduanya fallback ke original saat 404" — sekarang
+  diterapkan konsisten di 9 titik (listing publik + detail publik + listing self-service × 3
+  modul). Profesional dikonfirmasi tidak punya bug module yang sama (tidak ada admin wizard
+  sama sekali). Detail dialog self-service di ketiga modul SENGAJA tetap `<Image>` polos tanpa
+  fallback (konsisten, bukan celah). `tsc --noEmit` 0 error + `bun run build` genuine sukses
+  (49.21s, `Cached: 0 cached`, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 di
+  ketiga halaman publik). Nol migrasi DB (murni fallback runtime, tidak memperbaiki data
+  `coverUrl` di DB). **Belum di-commit/push, belum diverifikasi visual di browser** — user perlu
+  cek apakah foto "CV. Maristiq Lit Beauty" (contoh yang dilaporkan) sekarang tampil di `/usaha`,
+  dan konfirmasi `/pesantren` + `/profesional` sekarang berperilaku identik.
+- Sesi sebelumnya: **Instagram OAuth — Validasi Akun (fix field "Nama Akun" yang tadinya cuma
+  label kosmetik)** (lihat lesson `[2026-08-01]` "Instagram OAuth — Field 'Nama Akun'" di atas,
+  detail lengkap `docs/arsitektur-instagram-embed.md` § 3a) — user tanya "settingnya ada dimana,
+  kok tiba2 masuk akun forcreator?", saya jawab dengan penjelasan yang DITEGUR user sebagai
+  salah (seolah berasumsi akun Instagram = nama tenant). Dicek ulang kode — user benar: field
+  "Nama Akun (Linimasa)" di `InstagramEditor` sudah ada sejak rilis OAuth pertama tapi HANYA
+  dipakai sebagai label kosmetik (`resolveInstagramFeed()`), tidak pernah divalidasi terhadap
+  akun yang benar-benar OAuth-connect. Ditanya via `AskUserQuestion` (3 opsi) — user pilih
+  **Validasi akun OAuth**. Fix: `expectedAccount` dibawa lintas redirect Meta via signed `state`
+  (HMAC), callback menolak simpan token kalau username hasil login tidak cocok persis. **Sudah
+  di-commit+push (`653cf53`)**. Belum diverifikasi end-to-end — user sedang setup Meta App
+  (App ID `905583402036496` sudah dibuat, produk "API setup with Instagram login" sudah
+  ditambahkan) tapi sempat kena error "Insufficient Developer Role" (soal 2FA/App Roles di sisi
+  Meta, bukan kode kita) — belum dilanjutkan, user pindah ke task lain.
 - Sesi sebelumnya: **Audit perubahan agen lain (auto-link email + sektor) + filter direktori
   Combobox + fix regresi cover foto usaha + fix race condition `TagMultiSelect` + konsistensi
   layout Menawarkan/Membutuhkan lintas modul** (lihat lesson `[2026-07-31]` "Audit + Fix Agen

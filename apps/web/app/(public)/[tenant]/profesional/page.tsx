@@ -14,6 +14,8 @@ import type { Metadata } from "next";
 import { Briefcase, MapPin } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import { ProfessionalFiltersClient } from "@/components/profesional/professional-filters-client";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
+import { getVariantUrl } from "@/lib/image-processor";
 import type { ProfessionCategory } from "@/lib/professional-types";
 
 export const revalidate = 60;
@@ -214,8 +216,8 @@ export default async function ProfesionalDirectoryPage({
                 {/* Foto */}
                 <div className="aspect-video bg-muted/30 relative overflow-hidden flex items-center justify-center p-4">
                   {p.coverUrl ? (
-                    <Image
-                      src={p.coverUrl} alt={p.professionType}
+                    <ImageWithFallback
+                      src={getVariantUrl(p.coverUrl, "thumbnail")} alt={p.professionType}
                       fill className="object-contain p-4"
                       unoptimized
                     />

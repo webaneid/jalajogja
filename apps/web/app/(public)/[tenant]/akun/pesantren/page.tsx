@@ -15,8 +15,17 @@ import { displayPhone } from "@/lib/phone";
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
 import { SocialMediaInput, type SocialMediaValue, SOCIAL_MEDIA_EMPTY } from "@/components/ui/social-media-input";
 import Image from "next/image";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { CoverImageField } from "@/components/media/member-media-picker";
 import { useBaseUrl } from "@/lib/use-base-url";
+
+// Pure, client-safe — JANGAN import dari lib/image-processor.ts (bawa `sharp`, Node-only,
+// merusak bundle client). Sama persis logika getVariantUrl() untuk swap suffix "_th".
+function thumbUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (url.endsWith(".svg") || url.startsWith("data:")) return url;
+  return url.replace(/_(ori|lg|md|th|sq|sql|pf)\.webp$/, "_th.webp");
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -917,7 +926,7 @@ export default function PesantrenPage() {
                     <div className="flex items-center gap-3">
                       {e.coverUrl ? (
                         <div className="relative w-10 h-10 rounded-md overflow-hidden shrink-0 border border-border">
-                          <Image src={e.coverUrl} alt={e.name} fill sizes="40px" className="object-cover" />
+                          <ImageWithFallback src={thumbUrl(e.coverUrl)} alt={e.name} fill sizes="40px" className="object-cover" />
                         </div>
                       ) : (
                         <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0">

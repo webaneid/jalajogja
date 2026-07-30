@@ -17,6 +17,8 @@ import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { SocialLinks } from "@/components/ui/social-links";
 import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
+import { getVariantUrl } from "@/lib/image-processor";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
@@ -175,7 +177,7 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
         {/* Logo */}
         {row.coverUrl && (
           <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 flex items-center justify-center">
-            <Image src={row.coverUrl} alt={row.name} fill className="object-contain p-6" unoptimized />
+            <ImageWithFallback src={getVariantUrl(row.coverUrl, "large")} alt={row.name} fill className="object-contain p-6" unoptimized />
           </div>
         )}
 

@@ -19,6 +19,11 @@ function thumbUrl(url: string | null | undefined): string {
   if (url.endsWith(".svg") || url.startsWith("data:")) return url
   return url.replace(/_(ori|lg|md|th|sq|sql|pf)\.webp$/, "_th.webp")
 }
+
+// Fallback kalau variant thumbnail belum sempat generate (record lama) — pakai ukuran original.
+function originalUrl(url: string): string {
+  return url.replace(/_(ori|lg|md|th|sq|sql|pf)\.webp$/, "_ori.webp")
+}
 import {
   Command,
   CommandEmpty,
@@ -185,6 +190,13 @@ function PhotoPickerField({
             src={shape === "wide" ? thumbUrl(value) : value}
             alt={label}
             className={cn("shrink-0 rounded-md border border-border object-cover", boxCls)}
+            onError={(e) => {
+              const fallback = originalUrl(value)
+              if (e.currentTarget.src !== fallback) {
+                e.currentTarget.onerror = null
+                e.currentTarget.src = fallback
+              }
+            }}
           />
         ) : (
           <div className={cn(

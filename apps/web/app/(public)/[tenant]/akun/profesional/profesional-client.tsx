@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import {
   Loader2, Plus, X, CheckCircle2,
   Eye, Pencil, Trash2, ArrowLeft, Briefcase,
@@ -20,6 +21,14 @@ import {
   PROFESSION_CATEGORIES, PROFESSION_TYPES_BY_CATEGORY, EMPLOYMENT_TYPES,
   type ProfessionCategory,
 } from "@/lib/professional-types";
+
+// Pure, client-safe — JANGAN import dari lib/image-processor.ts (bawa `sharp`, Node-only,
+// merusak bundle client). Sama persis logika getVariantUrl() untuk swap suffix "_th".
+function thumbUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (url.endsWith(".svg") || url.startsWith("data:")) return url;
+  return url.replace(/_(ori|lg|md|th|sq|sql|pf)\.webp$/, "_th.webp");
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -846,7 +855,7 @@ export function ProfesionalClient({ slug, baseUrl }: { slug: string; baseUrl: st
                     <div className="flex items-center gap-3">
                       {e.coverUrl ? (
                         <div className="relative w-10 h-10 rounded-md overflow-hidden shrink-0 border border-border">
-                          <Image src={e.coverUrl} alt={e.professionType} fill sizes="40px" className="object-cover" />
+                          <ImageWithFallback src={thumbUrl(e.coverUrl)} alt={e.professionType} fill sizes="40px" className="object-cover" />
                         </div>
                       ) : (
                         <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0">

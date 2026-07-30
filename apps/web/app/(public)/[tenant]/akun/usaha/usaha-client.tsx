@@ -24,6 +24,7 @@ function thumbUrl(url: string | null | undefined): string {
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
 import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-media-input";
 import { CoverImageField } from "@/components/media/member-media-picker";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -913,7 +914,7 @@ export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }
                     <div className="flex items-center gap-3">
                       {e.coverUrl ? (
                         <div className="relative w-10 h-10 rounded-md overflow-hidden shrink-0 border border-border">
-                          <Image src={thumbUrl(e.coverUrl)} alt={e.name} fill sizes="40px" className="object-cover" />
+                          <ImageWithFallback src={thumbUrl(e.coverUrl)} alt={e.name} fill sizes="40px" className="object-cover" />
                         </div>
                       ) : (
                         <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0">

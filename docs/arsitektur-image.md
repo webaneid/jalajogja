@@ -115,6 +115,76 @@ request), (b) menyimpan dimensi hasil resize ke DB saat upload (perubahan schema
 width/height OG yang tidak 100% presisi, selama rasio tidak jauh berbeda). Belum dieksekusi —
 butuh keputusan arsitektur eksplisit sebelum salah satu opsi dipilih.
 
+### Fallback ke Variant Original — `ImageWithFallback` (2026-08-01)
+
+**Masalah**: record LAMA (diupload sebelum bug `module="members"` di admin wizard Usaha/Pesantren
+difix — lihat lesson CLAUDE.md "Regresi Foto Sampul Usaha") cuma punya variant `original`+
+`profile` tersimpan di storage. Kode publik yang meng-swap suffix URL ke `_th`/`_lg`
+(`getVariantUrl()`) TIDAK PERNAH cek apakah file hasil swap itu genuinely ada — hasilnya gambar
+yang sudah diupload anggota dengan susah payah tampak "hilang" (404) di halaman publik, padahal
+filenya (original) sebenarnya masih ada.
+
+**Fix — client-side `onError` fallback, BUKAN existence-check server-side**: mengecek keberadaan
+file di MinIO sebelum render (HEAD request per gambar) terlalu mahal untuk halaman listing
+(N+1 network call per item) — solusi yang benar adalah biarkan BROWSER yang mencoba load variant
+yang diminta, dan kalau gagal (404), JS otomatis swap `src` ke `_ori.webp` (variant yang PASTI ada
+untuk setiap upload, di semua module). Komponen baru `components/ui/image-with-fallback.tsx`
+(`ImageWithFallback`) — wrapper `next/image` dengan `onError` yang swap `src` sekali ke original.
+Untuk elemen `<img>` polos (bukan `next/image`, sudah client component), `onError` inline cukup
+tanpa wrapper (`step4-business.tsx`'s `PhotoPickerField`).
+
+**Diwire ke 3 titik cover Usaha** (kasus yang genuinely dilaporkan rusak):
+`(public)/[tenant]/usaha/page.tsx` (listing publik, thumbnail), `.../usaha/[id]/page.tsx`
+(detail publik, large), `akun/usaha/usaha-client.tsx` (listing self-service, thumbnail). TIDAK
+diterapkan ke `entry.coverUrl`/`row.logoUrl` yang dipakai TANPA suffix swap (langsung raw URL
+tersimpan) — itu dijamin selalu merujuk variant yang benar-benar ter-generate saat upload
+(dipilih via `PATH_PRIORITY`), nol risiko 404 dari swap.
+
+**Diperluas ke Pesantren + Profesional (2026-08-01, lanjutan sesi yang sama)** — permintaan
+eksplisit user: *"cara pengambilan dan tampilannya sama persis semua sama .. baik ukurannya
+maupun cara cropingnya, sehingga konsisten.. di arsip selalu pake yg kecil (thumbnail)
+sementara single yg lg (large) tapi tetap dikasih opsi... ketika 404 ambil yg original"*.
+Pola Usaha direplikasi identik ke kedua modul lain — sekarang KETIGA modul (Usaha, Pesantren,
+Profesional) punya perilaku gambar yang 100% seragam:
+
+| Konteks | Variant diminta | Komponen |
+|---|---|---|
+| Listing publik (`/usaha`, `/pesantren`, `/profesional`) | `thumbnail` | `ImageWithFallback` + `getVariantUrl(cover, "thumbnail")` |
+| Detail publik (`/usaha/[id]`, `/pesantren/[id]`, `/profesional/[id]`) | `large` | `ImageWithFallback` + `getVariantUrl(cover, "large")` |
+| Listing self-service (`akun/usaha`, `akun/pesantren`, `akun/profesional`) | `thumbnail` | `ImageWithFallback` + `thumbUrl()` lokal (client-safe, duplikasi pure regex — bukan import `getVariantUrl` server-only) |
+| Detail dialog self-service (popup di ketiga halaman akun) | — | **Sengaja TIDAK disentuh** — tetap `<Image src={entry.coverUrl}>` polos tanpa fallback, konsisten di ketiga modul (lihat "Batasan yang diterima" di bawah) |
+
+**Profesional TIDAK punya bug module yang sama** — dikonfirmasi tidak ada admin wizard untuk
+modul ini sama sekali (self-service only), jadi tidak ada titik upload yang perlu di-audit/fix
+seperti `step4-business.tsx`/`step5-pesantren.tsx`. Halaman publik Profesional sebelumnya juga
+belum pernah melakukan suffix-swap sama sekali (selalu raw `coverUrl`) — unifikasi ini
+MENAMBAHKAN behavior thumbnail/large yang konsisten dengan 2 modul lain, bukan memperbaiki bug
+yang sudah ada.
+
+**Duplikasi logic suffix-swap SENGAJA** (`toOriginalUrl()` lokal di `image-with-fallback.tsx`,
+BUKAN import dari `lib/image-processor.ts`) — file itu import `sharp` di level modul, tidak aman
+dibawa ke client bundle (pola sama `nav-menu.ts`/`tenant-timezone.ts` sebelumnya di project ini).
+
+**Root cause tambahan ditemukan+difix bersamaan**: `components/members/wizard/step5-pesantren.tsx`
+(admin wizard cover Pesantren) TERNYATA masih `MediaPicker module="members"` — bug IDENTIK yang
+sudah difix di `step4-business.tsx` (Usaha) sebelumnya, tapi kelewat untuk Pesantren. Diperbaiki
+jadi `module="akun"` (generate variant set lengkap) — mencegah record BARU Pesantren kena masalah
+yang sama ke depan. Cover Pesantren TIDAK dipakai dengan suffix swap di halaman publik manapun
+saat ini (dikonfirmasi grep), jadi tidak butuh `ImageWithFallback` di sisi publik untuk sekarang —
+tapi fix module ini tetap penting untuk konsistensi variant set ke depan.
+
+**Batasan yang diterima**: fallback ini TIDAK memperbaiki data — `member_businesses.coverUrl` di
+DB tetap menunjuk ke URL dengan suffix variant yang tidak eksis (mis. `_th.webp` yang 404).
+Solusinya murni "tampilkan yang ada" di runtime, bukan migrasi data. Kalau nanti mau
+membersihkan data (regenerasi variant untuk record lama, atau normalisasi `coverUrl` ke suffix
+yang genuinely ada), itu pekerjaan terpisah — belum dilakukan.
+
+Kedua, popup detail di ketiga halaman self-service (`akun/usaha`, `akun/pesantren`,
+`akun/profesional`) SENGAJA dibiarkan pakai `<Image src={entry.coverUrl}>` polos tanpa
+`ImageWithFallback` — bukan kelewat, tapi keputusan konsisten: pemilik data sedang melihat foto
+miliknya sendiri (bukan pengunjung publik), jadi risiko "foto hilang" lebih rendah dan `coverUrl`
+mentah (tanpa suffix swap) di context ini sudah menunjuk file yang di-upload apa adanya.
+
 ---
 
 ## Pemetaan Variant per Modul
