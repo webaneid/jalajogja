@@ -79,11 +79,11 @@ export function InstagramSection({ data, connected, resolvedItems, resolvedAccou
           )}
         </div>
 
-        {/* ── Photos Grid (4 Kolom Square 1:1) ── */}
+        {/* ── Photos Grid (Portrait 4:5 Modern Instagram) ── */}
         {embedShortcodes.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             {embedShortcodes.slice(0, count).map((item, i) => (
-              <div key={i} className="w-full aspect-square overflow-hidden rounded-xl border border-border/40 shadow-sm bg-white relative">
+              <div key={i} className="w-full aspect-[4/5] overflow-hidden rounded-xl border border-border/40 shadow-sm bg-white relative">
                 <iframe
                   src={`https://www.instagram.com/p/${item.shortcode}/embed`}
                   title={`Instagram post ${i + 1}`}
@@ -111,7 +111,7 @@ export function InstagramSection({ data, connected, resolvedItems, resolvedAccou
                   <img
                     src={item.imageUrl}
                     alt={item.caption || `Instagram photo ${i + 1}`}
-                    className="w-full aspect-square object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="w-full aspect-[4/5] object-cover transition-transform duration-500 group-hover:scale-105"
                   />
 
                   {/* Hover overlay dengan Instagram icon */}
