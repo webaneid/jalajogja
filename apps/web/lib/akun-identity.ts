@@ -1,5 +1,5 @@
-import { eq, and, isNull } from "drizzle-orm";
-import { db, members, profiles, contacts, user } from "@jalajogja/db";
+import { eq } from "drizzle-orm";
+import { db, members, profiles, contacts } from "@jalajogja/db";
 
 // ─── AkunIdentity — unified identity untuk semua halaman /akun/* ──────────────
 //
@@ -39,56 +39,17 @@ export type AkunIdentity = {
 
 export async function getAkunIdentity(userId: string): Promise<AkunIdentity | null> {
 
-  // 1. Cek member IKPM yang sudah terhubung via betterAuthUserId
-  let member = await db.query.members.findFirst({
+  // Cek member IKPM yang sudah terhubung via betterAuthUserId.
+  // TIDAK ADA auto-link berdasarkan email di sini — klaim identitas anggota HANYA boleh terjadi
+  // lewat alur registrasi eksplisit (/api/akun/register), bukan efek samping loading halaman.
+  // Email bukan bukti kepemilikan (tidak ada verifikasi email di project ini — lihat lib/auth.ts).
+  const member = await db.query.members.findFirst({
     where: eq(members.betterAuthUserId, userId),
     columns: {
       id: true, name: true, memberNumber: true, stambukNumber: true,
       birthDate: true, contactId: true, photoUrl: true,
     },
   });
-
-  // 2. Jika belum terhubung (betterAuthUserId null), coba auto-link via email pengguna yang sama
-  if (!member) {
-    const userRow = await db.query.user.findFirst({
-      where: eq(user.id, userId),
-      columns: { email: true },
-    });
-
-    const userEmail = userRow?.email?.trim().toLowerCase();
-
-    if (userEmail) {
-      const matchedMember = await db
-        .select({
-          id: members.id,
-          name: members.name,
-          memberNumber: members.memberNumber,
-          stambukNumber: members.stambukNumber,
-          birthDate: members.birthDate,
-          contactId: members.contactId,
-          photoUrl: members.photoUrl,
-        })
-        .from(members)
-        .innerJoin(contacts, eq(contacts.id, members.contactId))
-        .where(
-          and(
-            eq(contacts.email, userEmail),
-            isNull(members.betterAuthUserId)
-          )
-        )
-        .limit(1)
-        .then((r) => r[0]);
-
-      if (matchedMember) {
-        await db
-          .update(members)
-          .set({ betterAuthUserId: userId, updatedAt: new Date() })
-          .where(and(eq(members.id, matchedMember.id), isNull(members.betterAuthUserId)));
-
-        member = matchedMember;
-      }
-    }
-  }
 
   if (member) {
     const contact = member.contactId

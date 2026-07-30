@@ -29,14 +29,14 @@ export type BusinessSector = typeof BUSINESS_SECTOR_ENUM[number];
 // Mapping AMBIGU (1-ke-banyak, tidak ada padanan tunggal yang pasti) sengaja diarahkan ke null
 // — bukan ditebak. Pemilik usaha pilih ulang sendiri lewat form (sector nullable sejak migration
 // 0048). Lihat docs/arsitektur-usaha.md § 9 untuk rasionalisasi lengkap tiap baris.
-const OLD_TO_NEW_SECTOR: Record<string, BusinessSector> = {
+const OLD_TO_NEW_SECTOR: Record<string, BusinessSector | null> = {
   "Teknologi": "Teknologi & Informasi",
   "Jasa Profesional": "Jasa Usaha & Keuangan",
   "Kreatif": "Kreatif",
   "Manufaktur": "Manufaktur & Pengolahan",
-  "Kesehatan & Pendidikan": "Pendidikan & Pelatihan",
+  "Kesehatan & Pendidikan": null,
   "Konsumsi & Ritel": "Perdagangan, Ritel & F&B",
-  "Sumber Daya Alam": "Sumber Daya Alam & Energi",
+  "Sumber Daya Alam": null,
 };
 
 export function normalizeBusinessSector(raw: string | null | undefined): BusinessSector | null {
