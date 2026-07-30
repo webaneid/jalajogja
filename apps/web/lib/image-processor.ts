@@ -1,9 +1,9 @@
 import sharp from "sharp";
 
 export const IMAGE_VARIANTS = {
-  large:          { width: 1200, height: 630  },  // 1.91:1 — featured, OG
-  medium:         { width: 800,  height: 420  },  // 1.91:1 — card preview
-  thumbnail:      { width: 400,  height: 210  },  // 1.91:1 — grid kecil
+  large:          { width: 1200, height: 675  },  // 16:9 murni — Soft scale proporsional ala WordPress
+  medium:         { width: 800,  height: 450  },  // 16:9 murni — Soft scale proporsional ala WordPress
+  thumbnail:      { width: 400,  height: 225  },  // 16:9 murni — Soft scale proporsional ala WordPress
   square:         { width: 400,  height: 400  },  // 1:1 — produk kecil, avatar
   "square-large": { width: 800,  height: 800  },  // 1:1 — produk utama, galeri
   profile:        { width: 300,  height: 400  },  // 3:4 — foto profil anggota
@@ -136,12 +136,12 @@ export async function processImage(
     original:       () => options?.originalMaxWidth
       ? sharp(inputBuffer).resize(options.originalMaxWidth, undefined, { fit: "inside", withoutEnlargement: true }).webp({ quality: q }).toBuffer()
       : sharp(inputBuffer).webp({ quality: q }).toBuffer(),
-    large:          () => sharp(inputBuffer).resize(1200, 630,  { fit: "cover", position: pos, withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
-    medium:         () => sharp(inputBuffer).resize(800,  420,  { fit: "cover", position: pos, withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
-    thumbnail:      () => sharp(inputBuffer).resize(400,  210,  { fit: "cover", position: pos, withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
-    square:         () => sharp(inputBuffer).resize(400,  400,  { fit: "cover", position: pos, withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
-    "square-large": () => sharp(inputBuffer).resize(800,  800,  { fit: "cover", position: pos, withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
-    profile:        () => sharp(inputBuffer).resize(300,  400,  { fit: "cover", position: pos, withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
+    large:          () => sharp(inputBuffer).resize(1200, undefined, { fit: "inside", withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
+    medium:         () => sharp(inputBuffer).resize(800,  undefined, { fit: "inside", withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
+    thumbnail:      () => sharp(inputBuffer).resize(400,  undefined, { fit: "inside", withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
+    square:         () => sharp(inputBuffer).resize(400,  400,       { fit: "cover",  position: "center", withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
+    "square-large": () => sharp(inputBuffer).resize(800,  800,       { fit: "cover",  position: "center", withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
+    profile:        () => sharp(inputBuffer).resize(300,  400,       { fit: "cover",  position: "center", withoutEnlargement: true }).webp({ quality: q }).toBuffer(),
   };
 
   const entries = await Promise.all(
