@@ -1496,7 +1496,7 @@ function InstagramEditor({ data, onChange, tenantSlug }: EditorProps) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <Field label="Mode Tampilan Header">
           <Select value={d.mode ?? "repost"} onValueChange={(v) => u("mode", v)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1513,6 +1513,15 @@ function InstagramEditor({ data, onChange, tenantSlug }: EditorProps) {
               {[4, 8, 12, 16].map((n) => (
                 <SelectItem key={n} value={String(n)}>{n} postingan</SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Bentuk Sudut Kartu">
+          <Select value={d.cardCorner ?? "rounded"} onValueChange={(v) => u("cardCorner", v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="rounded">Melengkung (Rounded)</SelectItem>
+              <SelectItem value="sharp">Tajam / Tanpa Lengkungan (Sharp)</SelectItem>
             </SelectContent>
           </Select>
         </Field>

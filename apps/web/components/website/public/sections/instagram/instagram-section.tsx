@@ -47,6 +47,9 @@ export function InstagramSection({ data, connected, resolvedItems, resolvedAccou
   const displayItems = resolvedItems.slice(0, count);
   const headingText = mode === "repost" ? "Reposted dari" : "Post dari";
 
+  const cardCorner = data.cardCorner ?? "rounded";
+  const cornerCls  = cardCorner === "sharp" ? "rounded-none" : "rounded-xl";
+
   // Belum terhubung ke Instagram DAN tidak ada embed manual — jangan tampilkan section kosong/
   // rusak ke pengunjung publik. Status "belum terhubung" ditampilkan di admin editor
   // (InstagramEditor, section-editors.tsx), bukan di halaman publik ini.
@@ -83,11 +86,11 @@ export function InstagramSection({ data, connected, resolvedItems, resolvedAccou
         {embedShortcodes.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             {embedShortcodes.slice(0, count).map((item, i) => (
-              <div key={i} className="w-full aspect-[4/5] overflow-hidden rounded-xl border border-border/40 shadow-sm bg-white relative">
+              <div key={i} className={`w-full aspect-[4/5] overflow-hidden ${cornerCls} border border-border/40 shadow-sm bg-white relative`}>
                 <iframe
                   src={`https://www.instagram.com/p/${item.shortcode}/embed`}
                   title={`Instagram post ${i + 1}`}
-                  className="w-full h-full border-0 rounded-xl"
+                  className={`w-full h-full border-0 ${cornerCls}`}
                   scrolling="no"
                   allowTransparency
                 />
@@ -105,7 +108,7 @@ export function InstagramSection({ data, connected, resolvedItems, resolvedAccou
                   href={linkHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group relative block overflow-hidden rounded-xl bg-muted border border-border/40 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-[1.015]"
+                  className={`group relative block overflow-hidden ${cornerCls} bg-muted border border-border/40 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-[1.015]`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img

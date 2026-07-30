@@ -22,6 +22,7 @@ export type InstagramSectionData = {
   showBorderTop?: boolean;                // default false
   postUrls?:      string[];               // opsi sekunder: tempel URL post publik untuk embed resmi
                                            // Instagram — dipakai kalau admin belum/tidak connect OAuth.
+  cardCorner?:    "rounded" | "sharp";    // "rounded" (default melengkung) | "sharp" (siku tajam)
 };
 
 export const INSTAGRAM_SECTION_DESIGN_IDS = ["1"] as const;
