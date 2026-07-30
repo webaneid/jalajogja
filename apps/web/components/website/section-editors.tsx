@@ -1523,8 +1523,13 @@ function InstagramEditor({ data, onChange, tenantSlug }: EditorProps) {
           <Input
             value={d.accountName ?? ""}
             onChange={(e) => u("accountName", e.target.value)}
-            placeholder="Kosongkan untuk pakai akun yang terhubung"
+            placeholder="Kosongkan untuk terima akun apa pun yang login"
           />
+          <p className="text-[11px] text-muted-foreground">
+            Diisi username Instagram spesifik (mis. <code>toko_kaos_budi</code>) → saat klik
+            &ldquo;Hubungkan Instagram&rdquo;, sistem WAJIB login sebagai akun ini persis, kalau
+            beda akan ditolak. Kosong = terima akun apa pun yang login.
+          </p>
         </Field>
         <Field label="URL Akun Instagram">
           <Input
@@ -1532,6 +1537,9 @@ function InstagramEditor({ data, onChange, tenantSlug }: EditorProps) {
             onChange={(e) => u("accountUrl", e.target.value)}
             placeholder="https://instagram.com/nama_akun"
           />
+          <p className="text-[11px] text-muted-foreground">
+            Cuma label link &ldquo;Lihat Linimasa&rdquo; — tidak memengaruhi akun yang terhubung.
+          </p>
         </Field>
       </div>
 
@@ -1588,11 +1596,16 @@ function InstagramEditor({ data, onChange, tenantSlug }: EditorProps) {
             </p>
             {tenantSlug && (
               <a
-                href={`/api/instagram/oauth/authorize?slug=${tenantSlug}`}
+                href={`/api/instagram/oauth/authorize?slug=${tenantSlug}&expected=${encodeURIComponent(d.accountName ?? "")}`}
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
               >
                 Hubungkan Instagram
               </a>
+            )}
+            {d.accountName && (
+              <p className="text-[11px] text-muted-foreground">
+                Akan divalidasi: harus login sebagai <span className="font-semibold">@{d.accountName}</span>.
+              </p>
             )}
           </div>
         )}

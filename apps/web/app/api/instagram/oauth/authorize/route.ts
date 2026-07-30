@@ -10,6 +10,11 @@ export async function GET(request: NextRequest) {
   const slug = request.nextUrl.searchParams.get("slug");
   if (!slug) return NextResponse.json({ error: "slug wajib diisi" }, { status: 400 });
 
+  // "expected" — nilai field "Nama Akun (Linimasa)" saat admin klik "Hubungkan Instagram".
+  // Kosong = terima akun Instagram apa pun yang login. Diisi = callback wajib validasi username
+  // hasil OAuth sama persis dengan ini sebelum menyimpan koneksi.
+  const expectedAccount = request.nextUrl.searchParams.get("expected") ?? "";
+
   const access = await getTenantAccess(slug);
   if (!access) {
     return NextResponse.redirect(new URL(`/app/login`, request.url));
@@ -22,5 +27,5 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.redirect(buildInstagramAuthorizeUrl(slug));
+  return NextResponse.redirect(buildInstagramAuthorizeUrl(slug, expectedAccount));
 }

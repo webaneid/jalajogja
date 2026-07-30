@@ -15,42 +15,52 @@ function getRedirectUri(): string {
   return `${base}/api/instagram/oauth/callback`;
 }
 
-// State param membawa slug tenant lintas redirect Meta — ditandatangani (HMAC) supaya tidak
-// bisa dipalsukan (mis. tenant A memicu callback yang tersimpan ke tenant B). Pola sama dengan
-// cookie signing WA OTP login (lesson lama), pakai BETTER_AUTH_SECRET yang sudah ada — bukan
-// secret baru.
-function signState(slug: string): string {
+// State param membawa slug tenant + username Instagram yang DIHARAPKAN (opsional, dari field
+// "Nama Akun (Linimasa)" di InstagramEditor) lintas redirect Meta — ditandatangani (HMAC) supaya
+// tidak bisa dipalsukan (mis. tenant A memicu callback yang tersimpan ke tenant B, atau expected
+// account diubah di tengah jalan). Pola sama dengan cookie signing WA OTP login (lesson lama),
+// pakai BETTER_AUTH_SECRET yang sudah ada — bukan secret baru.
+//
+// `expectedAccount` kosong = admin tidak menspesifikasikan akun tertentu → callback terima akun
+// APA PUN yang login. Kalau diisi, callback WAJIB validasi username hasil OAuth sama persis
+// (case-insensitive) dengan ini — cegah salah akun ter-connect tanpa disadari admin.
+function signState(slug: string, expectedAccount: string): string {
   const secret = process.env.BETTER_AUTH_SECRET ?? "";
-  const payload = Buffer.from(JSON.stringify({ slug, ts: Date.now() })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ slug, expectedAccount, ts: Date.now() })).toString("base64url");
   const sig = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
   return `${payload}.${sig}`;
 }
 
-export function verifyState(state: string): { slug: string } | null {
+export function verifyState(state: string): { slug: string; expectedAccount: string } | null {
   const secret = process.env.BETTER_AUTH_SECRET ?? "";
   const [payload, sig] = state.split(".");
   if (!payload || !sig) return null;
   const expectedSig = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
   if (sig !== expectedSig) return null;
   try {
-    const { slug, ts } = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    const { slug, expectedAccount, ts } = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     // State kadaluarsa setelah 10 menit — cukup untuk selesaikan alur consent Instagram.
     if (Date.now() - ts > 10 * 60 * 1000) return null;
-    return { slug };
+    return { slug, expectedAccount: expectedAccount ?? "" };
   } catch {
     return null;
   }
 }
 
-export function buildInstagramAuthorizeUrl(slug: string): string {
+export function buildInstagramAuthorizeUrl(slug: string, expectedAccount: string): string {
   const params = new URLSearchParams({
     client_id:     process.env.META_APP_ID ?? "",
     redirect_uri:  getRedirectUri(),
     response_type: "code",
     scope:         SCOPE,
-    state:         signState(slug),
+    state:         signState(slug, expectedAccount),
   });
   return `${AUTHORIZE_URL}?${params.toString()}`;
+}
+
+// Normalisasi username untuk perbandingan — hapus "@" yang mungkin diketik admin, trim, lowercase.
+export function normalizeIgUsername(raw: string): string {
+  return raw.trim().replace(/^@/, "").toLowerCase();
 }
 
 type ShortLivedToken = { accessToken: string; userId: string };

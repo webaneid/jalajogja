@@ -14313,31 +14313,97 @@ copy-paste serupa) — kalau kembarannya JUGA melanggar, itu bukan berarti patte
 tapi bukti debt yang sama menyebar; catat eksplisit sebagai debt terpisah kalau perbaikannya
 di luar scope permintaan saat itu, jangan diam-diam dibiarkan tanpa jejak.
 
+### [2026-08-01] Instagram OAuth — Field "Nama Akun" Tidak Pernah Divalidasi, Cuma Label Kosmetik
+
+User laporkan kebingungan "kok tiba2 masuk akun forcreator?" saat mencoba section Instagram —
+respons awal saya (menjelaskan flow OAuth per-tenant) DITEGUR user: saya seolah berasumsi "akun
+Instagram = nama tenant", padahal ada field eksplisit "Nama Akun (Linimasa)" di `InstagramEditor`
+yang SEHARUSNYA jadi acuan akun yang terhubung. Dicek ke kode — user benar, ada bug nyata: field
+`accountName` yang diketik admin (sejak rilis OAuth pertama, 2026-07-30) **hanya dipakai sebagai
+label kosmetik** di `resolveInstagramFeed()` (`data.accountName || config.username`) — foto yang
+ditarik SELALU dari `config.igUserId` (akun OAuth terakhir kali connect), TIDAK PERNAH divalidasi
+terhadap apa yang diketik admin. Admin bisa ketik nama akun A, tapi kalau OAuth kebetulan login
+sebagai akun B, foto tetap dari B tanpa peringatan apa pun.
+
+**Fix (dikonfirmasi user via `AskUserQuestion`, opsi "Validasi akun OAuth")**: `expectedAccount`
+(nilai field "Nama Akun" saat tombol diklik) dibawa lintas redirect Meta via `state` param yang
+di-HMAC-sign bareng `slug` (`lib/instagram-oauth.server.ts` — `signState`/`verifyState`/
+`buildInstagramAuthorizeUrl` diperluas 1 parameter, fungsi baru `normalizeIgUsername()` untuk
+banding case-insensitive + strip "@"). Callback (`api/instagram/oauth/callback/route.ts`)
+membandingkan `username` hasil OAuth terhadap `expectedAccount` SEBELUM menyimpan token — kalau
+tidak cocok, token TIDAK disimpan sama sekali, admin dapat pesan error eksplisit menyebut kedua
+akun. Kosong (admin tidak spesifik) → skip validasi, terima akun apa pun — sesuai niat asli
+placeholder lama. Keterangan field di `InstagramEditor` diperjelas supaya perilaku ini tertulis
+eksplisit di UI, bukan cuma di kode. Detail lengkap: `docs/arsitektur-instagram-embed.md` § 3a.
+
+**Batasan yang tetap ada** (keterbatasan protokol OAuth Instagram, bukan bug): tidak ada cara
+memaksa Meta menampilkan hanya akun tertentu di layar consent — validasi ini murni safety-net
+SETELAH login terjadi (tolak-simpan kalau salah), bukan mencegah salah pilih akun sebelum login.
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (47.9s, dev
+server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB. **Belum di-commit/push, belum
+diverifikasi end-to-end** (masih menunggu `META_APP_ID`/`META_APP_SECRET` asli dari user, sama
+seperti gap dari rilis OAuth pertama).
+
+**Aturan yang ditegaskan**: kalau user menegur bahwa penjelasan saya "sok tau"/berasumsi sesuatu
+yang salah, JANGAN membela penjelasan lama — langsung cek ulang kode dari nol dengan asumsi
+penjelasan saya sebelumnya SALAH, cari field/mekanisme yang mungkin terlewat (di sini: field
+`accountName` yang sudah ada di UI tapi ternyata tidak benar-benar dipakai untuk keperluan yang
+namanya sendiri implikasikan) — baru simpulkan ulang, dan kalau perbaikannya punya lebih dari
+satu interpretasi masuk akal (label kosmetik vs validasi vs dihapus), tanya eksplisit lewat
+opsi konkret alih-alih menebak lagi setelah baru saja terbukti salah menebak.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Audit perubahan agen lain (auto-link email + sektor) + filter direktori
-  Combobox + fix regresi cover foto usaha + fix race condition `TagMultiSelect`** (lihat lesson
-  `[2026-07-31]` "Audit + Fix Agen Lain" di atas) — rangkaian permintaan dalam satu sesi: (1)
-  audit 2 bug (auto-link email tak terverifikasi = celah keamanan identity-takeover; mapping
-  sektor ambigu ditebak salah) — DIFIX+commit `249fd73`; (2) konversi filter `<select>` di
-  `/usaha`/`/profesional`/`/pesantren` ke `<Combobox>` (UI standar), layout responsif mobile/
-  desktop, prop `clearable` baru di `Combobox`, filter "Bidang Usaha" dibangun dari nol, urutan
-  filter `/usaha` direstrukturisasi + Legalitas dihapus — commit `8b48256`; (3) regresi Foto
-  Sampul Usaha (thumbnail listing vs large detail) — root cause git archaeology: module upload
-  admin wizard salah (`"members"` vs seharusnya `"akun"`), difix + `getVariantUrl()` di-reapply —
-  commit `893e606`, dengan caveat eksplisit ke user bahwa record LAMA tetap broken (backfill
-  ditawarkan, belum dieksekusi); (4) **investigasi terbaru** — user laporkan sistem tagging
-  "Bidang Usaha"/"Menawarkan"/"Membutuhkan" di `/akun/usaha` (edit+create) tidak bisa tambah
-  lebih dari 1 tag. Dibaca 4 lapis kode (component→parent wiring→payload→API→schema), semua
-  struktural benar (mirip `TagInput` post yang sudah terbukti jalan) — TAPI ditemukan 2 bug race
-  condition nyata di `components/ui/tag-multi-select.tsx`: `CommandItem` tanpa `onMouseDown`
-  preventDefault (pattern wajib project untuk dropdown blur-close), dan `onBlur`'s
-  `setTimeout(150ms)` yang tidak pernah di-cancel — bisa menutup paksa dropdown persis saat user
-  coba pilih tag kedua via klik, walau `addTag()`'s auto-refocus sempat membukanya lagi. Fix:
-  `blurTimeoutRef` + `clearTimeout()` di `onFocus`, `onMouseDown={e=>e.preventDefault()}` di
-  kedua `CommandItem`. `tsc --noEmit` 0 error + `bun run build` genuine sukses (47.9s, dev server
-  direstart, curl 200 OK). **Fix TagMultiSelect BELUM di-commit/push, belum diverifikasi visual
-  di browser** — user perlu coba tambah 2+ tag via klik suggestion berturut-turut untuk
-  konfirmasi fix ini benar-benar menutup gejala yang dilaporkan, sebelum commit.
+- Terakhir dikerjakan: **Instagram OAuth — Validasi Akun (fix field "Nama Akun" yang tadinya
+  cuma label kosmetik)** (lihat lesson `[2026-08-01]` di atas, detail lengkap
+  `docs/arsitektur-instagram-embed.md` § 3a) — user tanya "settingnya ada dimana, kok tiba2
+  masuk akun forcreator?", saya jawab dengan penjelasan yang DITEGUR user sebagai salah (seolah
+  berasumsi akun Instagram = nama tenant). Dicek ulang kode — user benar: field "Nama Akun
+  (Linimasa)" di `InstagramEditor` sudah ada sejak rilis OAuth pertama tapi HANYA dipakai
+  sebagai label kosmetik (`resolveInstagramFeed()`), tidak pernah divalidasi terhadap akun yang
+  benar-benar OAuth-connect — admin bisa ketik akun A, tapi foto tetap dari akun OAuth
+  sebelumnya (akun B) tanpa peringatan. Ditanya via `AskUserQuestion` (3 opsi: validasi/label
+  saja/hapus field) — user pilih **Validasi akun OAuth**. Fix: `expectedAccount` dibawa lintas
+  redirect Meta via signed `state` (HMAC, `lib/instagram-oauth.server.ts`), callback menolak
+  simpan token kalau username hasil login tidak cocok persis (case-insensitive, "@" diabaikan)
+  dengan yang diketik admin — pesan error eksplisit menyebut kedua akun. Kosong = skip validasi
+  (terima akun apa pun), sesuai niat placeholder lama. Keterangan field di UI diperjelas
+  sekaligus. `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses
+  (47.9s, dev server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB. **Belum di-
+  commit/push, belum diverifikasi end-to-end** (masih menunggu `META_APP_ID`/`META_APP_SECRET`
+  asli + prasyarat lain dari user, sama seperti gap dari rilis OAuth pertama).
+- Sesi sebelumnya: **Audit perubahan agen lain (auto-link email + sektor) + filter direktori
+  Combobox + fix regresi cover foto usaha + fix race condition `TagMultiSelect` + konsistensi
+  layout Menawarkan/Membutuhkan lintas modul** (lihat lesson `[2026-07-31]` "Audit + Fix Agen
+  Lain" di atas) — rangkaian permintaan dalam satu sesi: (1) audit 2 bug (auto-link email tak
+  terverifikasi = celah keamanan identity-takeover; mapping sektor ambigu ditebak salah) —
+  DIFIX+commit `249fd73`; (2) konversi filter `<select>` di `/usaha`/`/profesional`/`/pesantren`
+  ke `<Combobox>` (UI standar), layout responsif mobile/desktop, prop `clearable` baru di
+  `Combobox`, filter "Bidang Usaha" dibangun dari nol, urutan filter `/usaha` direstrukturisasi
+  + Legalitas dihapus — commit `8b48256`; (3) regresi Foto Sampul Usaha (thumbnail listing vs
+  large detail) — root cause git archaeology: module upload admin wizard salah (`"members"` vs
+  seharusnya `"akun"`), difix + `getVariantUrl()` di-reapply — commit `893e606`, dengan caveat
+  eksplisit ke user bahwa record LAMA tetap broken (backfill ditawarkan, belum dieksekusi);
+  (4) user laporkan sistem tagging "Bidang Usaha"/"Menawarkan"/"Membutuhkan" di `/akun/usaha`
+  tidak bisa tambah lebih dari 1 tag — root cause 2 bug race condition nyata di
+  `components/ui/tag-multi-select.tsx`: `CommandItem` tanpa `onMouseDown` preventDefault
+  (pattern wajib project untuk dropdown blur-close), dan `onBlur`'s `setTimeout(150ms)` yang
+  tidak pernah di-cancel — bisa menutup paksa dropdown persis saat user coba pilih tag kedua via
+  klik, walau `addTag()`'s auto-refocus sempat membukanya lagi. Fix: `blurTimeoutRef` +
+  `clearTimeout()` di `onFocus`, `onMouseDown={e=>e.preventDefault()}` di kedua `CommandItem`;
+  (5) user minta Menawarkan/Membutuhkan jadi 1 row masing-masing (bukan 2-kolom side-by-side) —
+  diterapkan ke `usaha-client.tsx`+`step4-business.tsx` dulu, lalu user minta cek konsistensi
+  lintas Profesional+Pesantren — ditemukan+difix 3 titik lagi (`profesional-client.tsx`,
+  `pesantren/page.tsx`, `step5-pesantren.tsx`) yang masih 2-kolom. Dikonfirmasi via grep bahwa
+  `Step4Business`/`Step5Pesantren` masing-masing SATU komponen shared dipakai di 3 dan 1 entry
+  point admin (new/edit/section-dialog) — fix race-condition otomatis berlaku di semua titik
+  tanpa disentuh ulang; Profesional tidak punya admin wizard (self-service saja). `tsc --noEmit`
+  0 error + `bun run build` genuine sukses di setiap tahap (dev server dimatikan+`.next`
+  dibersihkan+direstart tiap kali, curl 200 OK). **Sudah di-commit+push (`d5a8995`)** — mencakup
+  fix race condition `TagMultiSelect` + layout 1-row di 5 file. **Belum dijalankan di VPS, belum
+  diverifikasi visual di browser** — user perlu coba tambah 2+ tag via klik suggestion berturut-
+  turut di Usaha/Profesional/Pesantren (self-service maupun admin) untuk konfirmasi fix ini
+  benar-benar menutup gejala yang dilaporkan.
 - Sesi sebelumnya: **Fix Sistem Crop Gambar — Konsistensi Variant Soft-Scale vs Hard-Crop**
   (lihat lesson `[2026-07-31]` "Fix Sistem Crop Gambar" di atas) — user minta evaluasi sistem
   crop gambar yang sebelumnya diubah agen lain ke pendekatan "WordPress Soft Scale" (proporsional,

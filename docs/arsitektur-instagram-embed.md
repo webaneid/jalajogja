@@ -45,17 +45,19 @@ jalur Facebook Login (assessment ulang biaya/manfaat saat itu terjadi).
 ## 3. Alur OAuth "Connect Instagram"
 
 ```
-Admin klik "Hubungkan Instagram" di /app/{slug}/settings/website
-  → GET /api/instagram/oauth/authorize?slug={slug}
+Admin isi "Nama Akun (Linimasa)" (opsional) di InstagramEditor, lalu klik "Hubungkan Instagram"
+  → GET /api/instagram/oauth/authorize?slug={slug}&expected={accountName}
     → redirect ke https://api.instagram.com/oauth/authorize
          ?client_id={META_APP_ID}
          &redirect_uri={NEXT_PUBLIC_APP_URL}/api/instagram/oauth/callback
          &response_type=code
          &scope=instagram_business_basic
-         &state={signed(slug)}          ← cegah CSRF + bawa tenant slug lintas redirect
-  → Admin login/consent ke Instagram
+         &state={signed(slug, expectedAccount)}  ← cegah CSRF + bawa tenant slug + akun
+                                                     yang diharapkan lintas redirect
+  → Admin login/consent ke Instagram (akun APA PUN yang sedang login di Instagram.com —
+    Meta TIDAK punya cara "paksa login sebagai akun X" di URL authorize)
   → Meta redirect balik ke /api/instagram/oauth/callback?code=...&state=...
-    1. Verifikasi signature `state` → dapatkan slug tenant
+    1. Verifikasi signature `state` → dapatkan slug tenant + expectedAccount
     2. Tukar `code` → short-lived access token (exchange endpoint EKSAK perlu diverifikasi
        saat implementasi — dua sumber riset tidak sepakat persis endpoint/domain-nya, cek
        response dari Meta App Dashboard "API setup with Instagram login" — biasanya
@@ -66,15 +68,45 @@ Admin klik "Hubungkan Instagram" di /app/{slug}/settings/website
        → { access_token, expires_in }  (expires_in ≈ 60 hari)
     4. GET https://graph.instagram.com/me?fields=user_id,username&access_token={long}
        → { user_id, username }
-    5. Simpan ke tenant.settings (group="website", key="instagram_config"):
+    5. **VALIDASI AKUN** (kalau expectedAccount tidak kosong): bandingkan `username` hasil
+       login dengan `expectedAccount` (case-insensitive, "@" diabaikan). TIDAK COCOK →
+       token/koneksi TIDAK disimpan sama sekali, redirect dengan pesan error jelas
+       ("Anda login sebagai @X, section ini disetel untuk akun @Y"). Kosong → skip validasi,
+       terima akun apa pun.
+    6. Simpan ke tenant.settings (group="website", key="instagram_config"):
        { igUserId, username, accessToken, tokenExpiresAt, connectedAt }
-    6. Redirect balik ke /app/{slug}/settings/website?instagram=connected
+    7. Redirect balik ke /app/{slug}/settings/website?instagram=connected
 ```
 
 **Kenapa `tenant.settings` group `"website"`, bukan group baru**: `SETTING_GROUPS` sudah
 punya `"website"` (dipakai homepage layout, dst) — reuse ini berarti NOL migration DB baru
 diperlukan (beda dari `contact.socials.instagram`, yang cuma teks handle manual untuk
 footer/kontak — TIDAK disentuh, tetap ada terpisah, dua hal berbeda).
+
+### 3a. Validasi Akun — Kenapa Ditambahkan (2026-08-01)
+
+**Bug yang ditemukan**: rilis pertama fitur ini (2026-07-30) SUDAH punya field "Nama Akun
+(Linimasa)" (`accountName`) + "URL Akun Instagram" (`accountUrl`) di `InstagramEditor`, TAPI
+keduanya HANYA dipakai sebagai label kosmetik di `resolveInstagramFeed()`
+(`const accountName = data.accountName || config.username`) — foto yang ditarik SELALU dari
+`config.igUserId` (akun OAuth yang terhubung terakhir kali), TIDAK PERNAH divalidasi terhadap
+apa yang diketik admin di "Nama Akun". Admin bisa mengetik nama akun A, tapi kalau OAuth
+sebelumnya (atau berikutnya) kebetulan login sebagai akun B, foto yang tampil ya dari akun B —
+tanpa peringatan apa pun soal ketidakcocokan ini.
+
+**Fix**: `signState()`/`verifyState()` (`lib/instagram-oauth.server.ts`) sekarang membawa
+`expectedAccount` (nilai `accountName` saat tombol "Hubungkan Instagram" diklik) lintas redirect
+Meta, ditandatangani HMAC bareng `slug` (tidak bisa dipalsukan). Callback (langkah 5 di atas)
+membandingkan `username` hasil OAuth terhadap `expectedAccount` — tidak cocok → token TIDAK
+disimpan, admin dapat pesan error eksplisit menyebut kedua akun (yang login vs yang diharapkan).
+`accountName` kosong (admin tidak spesifik) → validasi di-skip, terima akun apa pun — mengikuti
+niat asli placeholder "kosongkan untuk terima akun apa pun yang login".
+
+**Batasan yang tetap berlaku** (tidak bisa dihindari, keterbatasan protokol OAuth Instagram):
+tidak ada cara memaksa Meta menampilkan HANYA akun tertentu di layar consent — admin tetap harus
+tahu SENDIRI sedang login sebagai akun mana di Instagram.com saat klik "Hubungkan Instagram".
+Validasi ini murni **safety net setelah fakta** (menolak simpan kalau salah), bukan mencegah
+salah login SEBELUM terjadi.
 
 ## 4. Kredensial Platform vs Data Tenant (dijawab eksplisit ke user)
 
@@ -174,3 +206,18 @@ nyata.
 
 **Belum dijadwalkan**: cron `refresh-instagram-tokens` di crontab VPS (pola sama cron lain yang
 juga belum dijadwalkan — `installment-reminder`, dll — perlu ditambahkan manual oleh user).
+
+### Update 2026-08-01 — Validasi Akun (§ 3a)
+
+User laporkan kebingungan "kok tiba2 masuk akun forcreator" saat mencoba Instagram section —
+investigasi menemukan bug NYATA (bukan cuma masalah pemahaman): field "Nama Akun (Linimasa)"
+yang admin ketik TIDAK PERNAH memengaruhi akun mana yang benar-benar terhubung/ditarik fotonya —
+cuma jadi label kosmetik. Fix: `expectedAccount` dibawa lintas OAuth via signed state, callback
+menolak menyimpan koneksi kalau username hasil login TIDAK cocok dengan yang diketik admin.
+Lihat § 3a untuk detail lengkap. **File diubah**: `lib/instagram-oauth.server.ts` (`signState`/
+`verifyState`/`buildInstagramAuthorizeUrl` tambah parameter `expectedAccount`, fungsi baru
+`normalizeIgUsername`), `app/api/instagram/oauth/authorize/route.ts` (baca query `expected`),
+`app/api/instagram/oauth/callback/route.ts` (validasi + tolak kalau mismatch),
+`components/website/section-editors.tsx` (`InstagramEditor` — link kirim `expected`, keterangan
+field diperjelas). `tsc --noEmit` 0 error + `bun run build` genuine sukses. Nol migrasi DB.
+**Belum di-commit/push, belum diverifikasi end-to-end** (masih menunggu prasyarat § 1 dari user).
