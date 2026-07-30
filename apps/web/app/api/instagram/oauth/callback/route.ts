@@ -18,8 +18,9 @@ export async function GET(request: NextRequest) {
 
   const fail = (slug: string | null, message: string) => {
     const target = slug ? `/app/${slug}/settings/website` : "/app/login";
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? request.url;
     return NextResponse.redirect(
-      new URL(`${target}?instagram=error&msg=${encodeURIComponent(message)}`, request.url),
+      new URL(`${target}?instagram=error&msg=${encodeURIComponent(message)}`, baseUrl),
     );
   };
 
@@ -54,8 +55,9 @@ export async function GET(request: NextRequest) {
       connectedAt:    new Date().toISOString(),
     });
 
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? request.url;
     return NextResponse.redirect(
-      new URL(`/app/${slug}/settings/website?instagram=connected`, request.url),
+      new URL(`/app/${slug}/settings/website?instagram=connected`, baseUrl),
     );
   } catch (err) {
     console.error("[instagram/oauth/callback] Gagal menghubungkan Instagram:", err);
