@@ -280,22 +280,23 @@ ketiga tabel (BUKAN `supplies`/`seeking` seperti sketsa awal `arsitektur-usaha.m
 diselaraskan supaya query/API/komponen `<TagMultiSelect>` identik lintas modul). Suggestion
 autocomplete dipusatkan di **`lib/ecosystem-tags.ts`** — isinya murni **aggregator flat `string[]`**.
 
-> ⚠️ **Koreksi (2026-07-30) — klaim taksonomi di paragraf ini sebelumnya menyesatkan.**
-> Diverifikasi ke kode aktual: `lib/ecosystem-tags.ts` **BUKAN** di-seed dari "Taksonomi 3-Tier
-> Usaha & Sub-Sektor Tier 3" (`docs/arsitektur-usaha-taxonomy-gemini.md`) — dokumen taxonomy itu
-> **0% terpakai kode, murni riset yang belum diintegrasikan**. Isi aktual `ecosystem-tags.ts`
-> HANYA: `BUSINESS_FIELD_SUGGESTIONS` (9 item lama dari `lib/business-fields.ts`, KEBETULAN sama
-> dengan 9 Sub-Bidang Forcreator karena `business-fields.ts` sendiri diturunkan dari situ) +
-> 15 tag cross-domain manual (`ECOSYSTEM_CROSS_DOMAIN_SUGGESTIONS`). Puluhan sub-sektor lain di
-> taxonomy-gemini.md (AgriTech, Fulfillment Center, Telehealth, dll — § 9.2 `arsitektur-usaha.md`
-> nya sendiri juga BELUM dieksekusi, lihat catatan status di dokumen itu) **tidak ada satu pun**
-> di `ecosystem-tags.ts` saat ini. Keputusan user: integrasi taksonomi 10-sektor ke
-> `ecosystem-tags.ts` DITUNDA bersamaan dengan upgrade sektor `arsitektur-usaha.md` § 9 — jangan
-> dieksekusi terpisah supaya tidak ada dua sumber taksonomi yang perlu disinkronkan dua kali.
+> ⚠️ **Koreksi (2026-07-30, PAGI) — klaim taksonomi di paragraf ini sebelumnya menyesatkan,
+> SEKARANG SUDAH DIEKSEKUSI (2026-07-30, SORE).** Temuan pagi: `lib/ecosystem-tags.ts` waktu itu
+> HANYA berisi 9 item lama `business-fields.ts` + 15 tag cross-domain — taxonomy-gemini.md 0%
+> terpakai. Keputusan user waktu itu: tunda integrasi sampai bersamaan dengan upgrade sektor
+> § 9 `arsitektur-usaha.md`. **Sore harinya user memberi sinyal eksekusi** — lihat § 9 dokumen
+> itu (status sekarang ✅ SELESAI): `lib/business-fields.ts`'s `BUSINESS_FIELD_SUGGESTIONS`
+> SEKARANG berisi PENUH ~52 label Tier-3 dari taxonomy-gemini.md (bukan cuma 9 Kreatif lagi) —
+> karena `ecosystem-tags.ts` men-spread array ini APA ADANYA (`[...BUSINESS_FIELD_SUGGESTIONS,
+> ...ECOSYSTEM_CROSS_DOMAIN_SUGGESTIONS]`), integrasi taksonomi 10-sektor ke
+> `ecosystem-tags.ts` OTOMATIS ikut jadi ~67 item TANPA perlu sentuh file `ecosystem-tags.ts`
+> itu sendiri sama sekali — nol perubahan di file ini, murni efek dari upstream `business-fields.ts`
+> yang jadi sumbernya.
 
 - **Usaha**: `offeredTags`/`neededTags` ditambahkan ke `member_businesses`, reuse suggestion
-  dari `lib/ecosystem-tags.ts` (saat ini HANYA `business-fields.ts` + cross-domain tags — BELUM
-  taksonomi 10-sektor, lihat koreksi di atas).
+  dari `lib/ecosystem-tags.ts` — SEKARANG mencakup penuh ~52 Tier-3 (lihat koreksi di atas +
+  § 9 `arsitektur-usaha.md`), bukan lagi cuma 9 Kreatif. Field `businessFields`-nya sendiri juga
+  dapat `getPrioritizedBusinessFields(sector)` (soft-prioritize, bukan hard-filter — § 9).
 - **Profesional**: `offeredTags` (jasa konkret yang bisa dikerjakan, boleh lebih granular dari
   `professionType`+`specialization` yang sudah ada) + `neededTags` (opsional, proyek/klien yang
   dicari). TIDAK ada `skillTags` DAN `offeredServices` terpisah seperti draft — cukup SATU array

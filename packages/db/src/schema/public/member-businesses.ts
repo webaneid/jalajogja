@@ -24,15 +24,22 @@ export const memberBusinesses = pgTable("member_businesses", {
     enum: ["Jasa", "Produsen", "Distributor", "Trading", "Profesional"],
   }),
 
+  // Upgrade 2026-07-30 dari 7 sektor lama ke 10 sektor BPS KBLI hybrid + "Kreatif" mandiri.
+  // Nilai HARUS identik dengan BUSINESS_SECTOR_ENUM di apps/web/lib/business-sectors.ts —
+  // packages/db tidak import dari apps/web, jadi dijaga manual konsisten. Lihat
+  // docs/arsitektur-usaha.md § 9 untuk rasionalisasi + mapping backward-compat.
   sector: text("sector", {
     enum: [
-      "Teknologi",
-      "Jasa Profesional",
+      "Pertanian, Peternakan & Perikanan",
+      "Manufaktur & Pengolahan",
+      "Perdagangan, Ritel & F&B",
+      "Teknologi & Informasi",
       "Kreatif",
-      "Manufaktur",
-      "Kesehatan & Pendidikan",
-      "Konsumsi & Ritel",
-      "Sumber Daya Alam",
+      "Logistik, Transportasi & Konstruksi",
+      "Jasa Usaha & Keuangan",
+      "Pendidikan & Pelatihan",
+      "Kesehatan, Farmasi & Herbal",
+      "Sumber Daya Alam & Energi",
     ],
   }),
 

@@ -41,7 +41,8 @@ Aktivitas transaksi barang langsung ke konsumen (B2C) maupun jaringan distribusi
 
 | Sub-Sektor / Bidang Spesifik | Layanan / Produk / Sub-Bidang Modern |
 | :---- | :---- |
-| **Kuliner Modern & F\&B** | Restoran, kafe/coffee shop, *cloud kitchen* / *ghost kitchen*, katering massal (acara/dapur pondok), waralaba/franchise F\&B. |
+| **Kuliner Modern & F&B** | Kafe/coffee shop, *cloud kitchen* / *ghost kitchen*, katering massal (acara/dapur pondok), waralaba/franchise F&B. |
+| **Restoran & Rumah Makan** | Rumah makan Padang/Sunda/Jawa, restoran keluarga, rumah makan lesehan, kedai makan harian. |
 | **Toko Ritel & Minimarket** | Minimarket komunitas, Kopontren (Koperasi Pesantren), toko kelontong modern, *specialty store*. |
 | **Distribusi Grosir Sembako** | Distributor gula, minyak goreng, tepung, komoditas pangan pokok untuk warung dan lembaga. |
 | **E-commerce & Social Commerce** | Toko daring (marketplace seller), reseller/dropshipper network, live streaming sales hub. |
@@ -57,6 +58,7 @@ Sektor yang berfokus pada teknologi, perangkat lunak, infrastruktur digital, dan
 | **Infrastruktur IT & Keamanan** | Jasa jaringan/WiFi, instalasi CCTV & IoT security, cloud hosting provider, konsultasi *cybersecurity*. |
 | **Pemasaran Digital & Analytics** | *Performance Marketing* (Ads Meta/Google/TikTok), SEO/SEM, *Data Analytics*, otomatisasi pemasaran. |
 | **Media Digital & Publishing** | Portal berita digital, penerbitan e-book, platform streaming, agensi PR digital. |
+| **Penerbit Buku** | Penerbitan buku cetak/digital, penyuntingan naskah, pendaftaran ISBN, jasa penerbitan mandiri (*self-publishing*). |
 
 ## **5\. Kreatif (sec\_creative — Khusus Forcreator)**
 
@@ -81,6 +83,10 @@ Penyedia sarana fisik, pengiriman barang, dan pembangunan infrastruktur ekosiste
 | Sub-Sektor / Bidang Spesifik | Layanan / Produk / Sub-Bidang Modern |
 | :---- | :---- |
 | **Jasa Ekspedisi & Kurir** | Pengiriman barang *last-mile*, jasa truk muatan (*trucking/freight*), kargo antarpulau, pengiriman berpendingin (*cold chain*). |
+| **Bengkel Mobil** | Bengkel spesialis/umum mobil, tune-up, ganti oli, body repair, variasi & salon mobil. |
+| **Bengkel Motor** | Bengkel service sepeda motor, sparepart, ganti oli, variasi motor & tempat cuci motor. |
+| **Travel & Biro Perjalanan Wisata** | Agen perjalanan wisata, paket tur domestik/mancanegara, reservasi tiket & sewa bus/armada pariwisata. |
+| **Travel Haji & Umroh** | Penyelenggara Perjalanan Ibadah Umrah (PPIU), Penyelenggara Ibadah Haji Khusus (PIHK), bimbingan manasik. |
 | **Pergudangan & Fulfillment** | *Fulfillment center* untuk e-commerce, sewa gudang bersama (*shared warehouse*), manajemen stok & sewa cold storage. |
 | **Kontraktor & Jasa Konstruksi** | Pembangunan gedung/asrama, renovasi bangunan, kontraktor sipil, jasa arsitektur & interior design. |
 | **Bahan Bangunan & Material** | Suplai semen, baja ringan, pasir, bata/hebel, cat bangunan, kaca, dan perlengkapan saniter. |
@@ -116,7 +122,8 @@ Layanan medis, perawatan kesehatan masyarakat, hingga penyediaan obat dan alat m
 
 | Sub-Sektor / Bidang Spesifik | Layanan / Produk / Sub-Bidang Modern |
 | :---- | :---- |
-| **Fasilitas Kesehatan & Klinik** | Klinik pratama/utama, Poskestren (Pos Kesehatan Pesantren), Rumah Sakit, laboratorium medis, praktik dokter mandiri. |
+| **Rumah Sakit** | Rumah sakit umum (RSU), rumah sakit khusus/ibu-anak (RSIA), pelayanan rawat inap & spesialis medis lengkap. |
+| **Fasilitas Kesehatan & Klinik** | Klinik pratama/utama, Poskestren (Pos Kesehatan Pesantren), laboratorium medis, praktik dokter mandiri. |
 | **Produsen & Distributor Herbal / Thibbun Nabawi** | Produsen habbatussauda, madu murni, minyak zaitun, jamu tradisional terstandar, suplemen kesehatan. |
 | **Apotek & Farmasi** | Toko obat, apotek, distributor obat-obatan resep dan OTC (over the counter). |
 | **Alat Kesehatan & Sterilisasi** | Alat Pelindung Diri (APD), alat cek darah/gula, kursi roda, cairan sterilisasi laboratorium, perlengkapan medis. |

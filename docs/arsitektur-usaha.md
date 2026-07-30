@@ -175,19 +175,47 @@ payung). Filter pencarian lintas-direktori (Fase 2 payung) belum dimulai.**
 
 ## 9. Rencana Transisi & Upgrade Sektor Usaha (BPS Hybrid + Mandiri Forcreator)
 
-> ⬜ **STATUS: BELUM DIEKSEKUSI — MURNI RENCANA.** Diverifikasi ke kode aktual (2026-07-30):
-> `member_businesses.sector` di schema/DB **masih 7 nilai lama** ("Teknologi", "Jasa Profesional",
-> dst — bukan `sec_agriculture` dkk). `lib/business-sectors.ts` dan `normalizeBusinessSector()`
-> yang disebut § 9.3 **tidak ada satu pun di codebase**. Seluruh isi § 9 adalah draft yang perlu
-> dieksekusi kapan pun user memberi sinyal — jangan asumsikan sudah jalan hanya karena ditulis
-> dengan gaya seolah final. Keputusan user (2026-07-30): tunda eksekusi sampai arsitektur
-> taksonomi ekosistem (lihat `docs/arsitektur-ekosistem.md`) benar-benar matang dan siap —
-> upgrade sektor ini idealnya dieksekusi BERSAMAAN dengan integrasi taksonomi 10-sektor ke
-> `lib/ecosystem-tags.ts` (lihat catatan di `docs/arsitektur-ekosistem.md` § 6 Fase 1), bukan
-> terpisah, supaya tidak ada dua sumber taksonomi yang harus disinkronkan dua kali.
+> ✅ **STATUS: SELESAI DIEKSEKUSI (2026-07-30).** `member_businesses.sector` sekarang 10 nilai
+> baru (§ 9.2, TANPA sektor ke-11 `sec_other_services`/"Jasa Komunitas & Lainnya" — dibuang
+> sesuai keputusan user, tetap persis 10 sektor). `lib/business-sectors.ts` (BARU) berisi
+> `BUSINESS_SECTOR_ENUM`, `normalizeBusinessSector()` (backward-compat, 2 mapping ambigu —
+> "Kesehatan & Pendidikan" dan "Sumber Daya Alam" — sengaja diarahkan ke `null`, bukan ditebak;
+> data lokal terkonfirmasi nol baris kena kedua nilai ambigu itu saat migrasi dijalankan), dan
+> `SECTOR_SUB_FIELDS`+`getPrioritizedBusinessFields()` untuk soft-prioritize (lihat di bawah).
+> Migration `packages/db/migrations/0055_business_sector_taxonomy_upgrade.sql` — murni `UPDATE`
+> data (kolom `sector` TEXT biasa tanpa CHECK constraint, dikonfirmasi via `\d
+> member_businesses` — nol DDL berisiko), dijalankan LOKAL, belum di VPS.
+>
+> **Perluasan dari rencana asli § 9.3.B (dikonfirmasi user sebelum eksekusi)**: SEMUA ~52 label
+> Sub-Sektor (Tier 3, `docs/arsitektur-usaha-taxonomy-gemini.md`) digabung SEKALIGUS ke
+> `lib/business-fields.ts`'s `BUSINESS_FIELD_SUGGESTIONS` (bukan cuma rename sektor Tier-2) —
+> supaya bisa juga dipakai untuk `offeredTags`/`neededTags` lewat `ecosystem-tags.ts` yang sudah
+> aggregate dari situ. Wording Kreatif diadopsi PERSIS dari taxonomy-gemini.md (beda tipis dari 9
+> item lama business-fields.ts — field creatable, tag lama di data manapun tidak pernah rusak).
+>
+> **`businessFields` TETAP TIDAK di-hard-filter oleh `sector`** — prinsip § 2-3 (facet
+> independen, bukan hierarki) dipertahankan. Sebagai gantinya: **soft-prioritize** —
+> `getPrioritizedBusinessFields(sector)` menaruh Tier-3 milik sektor terpilih di URUTAN PALING
+> ATAS daftar saran `TagMultiSelect`, tapi seluruh ~52 tag tetap bisa dicari/diketik bebas, tidak
+> ada yang disembunyikan (keputusan eksplisit user — hard-filter ditolak karena banyak Tier-3
+> seperti "Desain Komunikasi Visual" natural masuk >1 sektor).
+>
+> **6 titik kode diupdate** (di luar schema+migration): `lib/import-anggota-mapping.ts`
+> (`BUSINESS_SECTOR_ENUM`/`mapSector` sekarang re-export dari `business-sectors.ts`, bukan
+> definisi lokal), `usaha-client.tsx` + `step4-business.tsx` (`SECTORS`/`SECTOR_ITEMS` const +
+> `TagMultiSelect` options pakai `getPrioritizedBusinessFields`), `api/akun/member-business/
+> route.ts` + admin `members/actions.ts` (inline TS union cast → `as BusinessSector`),
+> `usaha/page.tsx` + `usaha-filters-client.tsx` (`SEKTOR_OPTIONS` duplikat, keduanya diupdate).
+>
+> `tsc --noEmit` 0 error kedua package + `bun run build --filter=@jalajogja/web` genuine sukses
+> + disposable test verifikasi `getPrioritizedBusinessFields`/`normalizeBusinessSector` (semua
+> PASS — total 52 item konsisten, nol duplikat, Kreatif prioritize benar, mapping ambigu→null
+> benar). **Belum dijalankan di VPS, belum di-commit/push, belum diverifikasi visual di
+> browser** — user perlu coba pilih sektor di `/akun/usaha` atau admin wizard, konfirmasi
+> Tier-3 sektor terkait muncul duluan di dropdown "Bidang Usaha".
 >
 > **Rujukan Analisis**: [`docs/evaluasi-arsitektur-usaha-gemini.md`](file:///Users/webane/sites/jalajogja/docs/evaluasi-arsitektur-usaha-gemini.md) dan [`docs/arsitektur-profesional.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-profesional.md).
-> Ditambahkan: 2026-07-29. Updated: 2026-07-29.
+> Ditambahkan: 2026-07-29. Updated: 2026-07-30.
 
 ### 9.1 Evaluasi & Aturan Kunci Arsitektur
 
@@ -251,4 +279,33 @@ Setiap agent atau developer yang mengeksekusi upgrade Sektor BPS ini **WAJIB** m
 6. `apps/web/app/api/akun/member-business/route.ts` (API endpoint self-service `POST/PATCH`).
 7. `apps/web/lib/import-anggota-mapping.ts` & `import-anggota.server.ts` (Logika auto-mapping sektor saat bulk import Excel/CSV).
 8. `apps/web/components/usaha/usaha-filters-client.tsx` & `app/(public)/[tenant]/usaha/page.tsx` (Filter pencarian direktori publik).
+
+---
+
+## 10. Aturan Validasi Field Wajib Usaha (Mandatory Fields Rule)
+
+Sesuai keputusan arsitektur dan penyelarasan form (2026-07-30), data usaha anggota (`public.member_businesses`) mewajibkan kelengkapan **11 Field Data Usaha Utama** (ditambah 3 field dasar `name`, `category`, `sector`).
+
+Aturan validasi wajib ini ditegakkan secara **simetris & identik** di dua lokasi form:
+1. **Form Self-Service Anggota (`/akun/usaha`)**: client-side validation (`saveEditing()`) & penanda UI bintang merah (`*`).
+2. **Form Admin Wizard / Edit Anggota (`step4-business.tsx` & `saveMemberBusinessesAction`)**: client-side & server action validation.
+
+### Daftar 11 Field Wajib Usaha:
+1. **Logo Usaha** (`logoUrl`): Wajib diunggah via Member Media Picker (`Logo usaha wajib diunggah.`).
+2. **Foto Sampul Usaha** (`coverUrl`): Wajib diunggah via Member Media Picker (`Foto sampul usaha wajib diunggah.`).
+3. **Deskripsi Usaha** (`description`): Wajib diisi deskripsi ringkas produk/layanan (`Deskripsi usaha wajib diisi.`).
+4. **Legalitas Usaha** (`legality`): Wajib dipilih (mis. PT, CV, UD, Perorangan, dst) (`Legalitas usaha wajib dipilih.`).
+5. **Posisi dan Jabatan** (`position`): Wajib dipilih (mis. Owner, Founder, Direktur, dst) (`Posisi dan jabatan wajib dipilih.`).
+6. **Bidang Usaha** (`businessFields`): Wajib dipilih minimal 1 tag bidang usaha (`Bidang usaha (minimal 1 tag) wajib dipilih.`).
+7. **Jumlah Karyawan** (`employees`): Wajib dipilih kisaran jumlah karyawan (`Jumlah karyawan wajib dipilih.`).
+8. **Jumlah Cabang** (`branches`): Wajib dipilih kisaran jumlah cabang (`Jumlah cabang wajib dipilih.`).
+9. **Omzet Usaha** (`revenue`): Wajib dipilih kisaran omzet per tahun (`Omzet usaha wajib dipilih.`).
+10. **Alamat Usaha (Min. Kecamatan)**:
+    - Mode Indonesia: Wajib terisi Provinsi, Kab/Kota, dan Kecamatan (`addressDistrictId`) (`Alamat usaha wajib diisi minimal sampai tingkat Kecamatan.`).
+    - Mode Luar Negeri: Wajib terisi Nama Negara (`addressCountry`) (`Negara alamat usaha wajib diisi.`).
+11. **Nomor WhatsApp** (`whatsapp`): Wajib diisi nomor WhatsApp valid atau centang *"Sama dengan nomor telepon"* (`Nomor WhatsApp usaha wajib diisi.`).
+
+### Integrasi Tag Sinergi Ekosistem (`offeredTags` / `neededTags`):
+Field **Menawarkan** (`offeredTags`) dan **Membutuhkan** (`neededTags`) diintegrasikan dengan komponen `TagMultiSelect` berbasis `ECOSYSTEM_TAG_SUGGESTIONS` (`apps/web/lib/ecosystem-tags.ts`), memungkinkan sinergi pasokan dan kebutuhan secara fleksibel antar-modul **Usaha, Profesional, dan Pesantren**.
+
 

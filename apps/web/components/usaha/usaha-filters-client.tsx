@@ -4,8 +4,16 @@ import Link from "next/link";
 import { EcosystemTagFilter } from "@/components/ekosistem/ecosystem-tag-filter";
 
 const SEKTOR_OPTIONS = [
-  "Teknologi", "Jasa Profesional", "Kreatif", "Manufaktur",
-  "Kesehatan & Pendidikan", "Konsumsi & Ritel", "Sumber Daya Alam",
+  "Pertanian, Peternakan & Perikanan",
+  "Manufaktur & Pengolahan",
+  "Perdagangan, Ritel & F&B",
+  "Teknologi & Informasi",
+  "Kreatif",
+  "Logistik, Transportasi & Konstruksi",
+  "Jasa Usaha & Keuangan",
+  "Pendidikan & Pelatihan",
+  "Kesehatan, Farmasi & Herbal",
+  "Sumber Daya Alam & Energi",
 ] as const;
 
 const KATEGORI_OPTIONS = ["Jasa", "Produsen", "Distributor", "Trading", "Profesional"] as const;

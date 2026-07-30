@@ -299,6 +299,21 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
     const str = (key: string) => (fd.get(key) as string)?.trim() || undefined
     if (!str("email"))                             { setError("Email wajib diisi.");             return; }
     if (!domicileStatus)                           { setError("Status domisili wajib dipilih."); return; }
+    if (addressMode === "indonesia") {
+      if (!wilayah.provinceId || !wilayah.regencyId || !wilayah.districtId) {
+        setError("Alamat rumah wajib diisi minimal sampai tingkat Kecamatan.");
+        return;
+      }
+    } else {
+      if (!addressCountry.trim()) {
+        setError("Negara alamat rumah wajib diisi.");
+        return;
+      }
+    }
+    if (!str("addressDetail")) {
+      setError("Detail alamat domisili wajib diisi.");
+      return;
+    }
 
     setLoading(true)
 
@@ -483,8 +498,7 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
         ) : (
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-foreground">
-              Negara
-              <span className="ml-1 font-normal text-muted-foreground">(opsional)</span>
+              Negara<span className="text-destructive ml-0.5">*</span>
             </label>
             <input
               type="text"
@@ -500,8 +514,7 @@ export function Step2Contact({ memberId, slug, tenantName, tenantId, onSuccess, 
         <div className="space-y-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-foreground">
-              Detail Alamat{" "}
-              <span className="font-normal text-muted-foreground">(opsional)</span>
+              Detail Alamat<span className="text-destructive ml-0.5">*</span>
             </label>
             <textarea
               name="addressDetail"

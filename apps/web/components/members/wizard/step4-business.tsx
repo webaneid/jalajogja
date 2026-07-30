@@ -4,11 +4,13 @@ import * as React from "react"
 import {
   CheckIcon,
   ChevronsUpDownIcon,
+  ImageIcon,
   PlusIcon,
   XIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { MediaPicker, type MediaItem } from "@/components/media/media-picker"
 import {
   Command,
   CommandEmpty,
@@ -26,7 +28,7 @@ import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select
 import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-media-input"
 import { PhoneInput } from "@/components/ui/phone-input"
 import { TagMultiSelect } from "@/components/ui/tag-multi-select"
-import { BUSINESS_FIELD_SUGGESTIONS } from "@/lib/business-fields"
+import { getPrioritizedBusinessFields } from "@/lib/business-sectors"
 import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags"
 import {
   saveMemberBusinessesAction,
@@ -80,6 +82,9 @@ export interface BusinessEntry {
   youtube: string
   tiktok: string
   website: string
+  // Foto — URL langsung dari media library tenant (bukan FK)
+  coverUrl: string
+  logoUrl: string
 }
 
 // ─── Konstanta enum (mirror dari schema) ──────────────────────────────────────
@@ -89,8 +94,16 @@ const CATEGORY_ITEMS = [
 ].map((v) => ({ value: v, label: v }))
 
 const SECTOR_ITEMS = [
-  "Teknologi", "Jasa Profesional", "Kreatif", "Manufaktur",
-  "Kesehatan & Pendidikan", "Konsumsi & Ritel", "Sumber Daya Alam",
+  "Pertanian, Peternakan & Perikanan",
+  "Manufaktur & Pengolahan",
+  "Perdagangan, Ritel & F&B",
+  "Teknologi & Informasi",
+  "Kreatif",
+  "Logistik, Transportasi & Konstruksi",
+  "Jasa Usaha & Keuangan",
+  "Pendidikan & Pelatihan",
+  "Kesehatan, Farmasi & Herbal",
+  "Sumber Daya Alam & Energi",
 ].map((v) => ({ value: v, label: v }))
 
 const LEGALITY_ITEMS = [
@@ -128,7 +141,83 @@ function newEntry(): BusinessEntry {
     phone: "", whatsapp: "", email: "",
     instagram: "", facebook: "", linkedin: "",
     twitter: "", youtube: "", tiktok: "", website: "",
+    coverUrl: "", logoUrl: "",
   }
+}
+
+// ─── Sub-komponen: Photo Picker Field (reuse MediaPicker tenant-scoped) ──────
+
+function PhotoPickerField({
+  slug,
+  label,
+  value,
+  onChange,
+  shape = "square",
+  disabled = false,
+}: {
+  slug: string
+  label: string
+  value: string
+  onChange: (url: string) => void
+  shape?: "square" | "wide"
+  disabled?: boolean
+}) {
+  const [pickerOpen, setPickerOpen] = React.useState(false)
+  const boxCls = shape === "square" ? "h-16 w-16" : "h-16 w-28"
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium text-foreground">
+        {label} <span className="font-normal text-muted-foreground">(opsional)</span>
+      </span>
+      <div className="flex items-center gap-3">
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={value}
+            alt={label}
+            className={cn("shrink-0 rounded-md border border-border object-cover", boxCls)}
+          />
+        ) : (
+          <div className={cn(
+            "flex shrink-0 items-center justify-center rounded-md border border-dashed border-muted-foreground/40 text-muted-foreground",
+            boxCls
+          )}>
+            <ImageIcon className="size-5" />
+          </div>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled}
+            onClick={() => setPickerOpen(true)}
+          >
+            {value ? "Ganti Foto" : "Pilih Foto"}
+          </Button>
+          {value && (
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              disabled={disabled}
+              className="text-left text-xs text-muted-foreground transition-colors hover:text-destructive disabled:pointer-events-none disabled:opacity-50"
+            >
+              Hapus
+            </button>
+          )}
+        </div>
+      </div>
+      <MediaPicker
+        slug={slug}
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(media: MediaItem) => { onChange(media.url); setPickerOpen(false) }}
+        module="members"
+        accept={["image/"]}
+      />
+    </div>
+  )
 }
 
 const inputCls =
@@ -281,6 +370,25 @@ function BusinessCard({
         </button>
       </div>
 
+      {/* ── Foto ── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <PhotoPickerField
+          slug={tenantSlug}
+          label="Logo Usaha *"
+          value={entry.logoUrl}
+          onChange={(url) => onChange("logoUrl", url)}
+          disabled={disabled}
+        />
+        <PhotoPickerField
+          slug={tenantSlug}
+          label="Foto Sampul Usaha *"
+          value={entry.coverUrl}
+          onChange={(url) => onChange("coverUrl", url)}
+          shape="wide"
+          disabled={disabled}
+        />
+      </div>
+
       {/* ── Section 1: Identitas ── */}
       <div className="space-y-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Identitas Usaha</p>
@@ -312,7 +420,7 @@ function BusinessCard({
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-foreground">
-            Deskripsi <span className="font-normal text-muted-foreground">(opsional)</span>
+            Deskripsi<span className="text-destructive ml-0.5">*</span>
           </span>
           <textarea
             value={entry.description}
@@ -346,7 +454,7 @@ function BusinessCard({
             disabled={disabled}
           />
           <SimpleCombobox
-            label="Legalitas" optional clearable
+            label="Legalitas" required
             placeholder="Pilih legalitas"
             items={LEGALITY_ITEMS}
             value={entry.legality}
@@ -354,7 +462,7 @@ function BusinessCard({
             disabled={disabled}
           />
           <SimpleCombobox
-            label="Posisi / Jabatan" optional clearable
+            label="Posisi / Jabatan" required
             placeholder="Pilih posisi"
             items={POSITION_ITEMS}
             value={entry.position}
@@ -364,10 +472,10 @@ function BusinessCard({
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-foreground">
-            Bidang Usaha <span className="font-normal text-muted-foreground">(opsional)</span>
+            Bidang Usaha<span className="text-destructive ml-0.5">*</span>
           </span>
           <TagMultiSelect
-            options={BUSINESS_FIELD_SUGGESTIONS}
+            options={getPrioritizedBusinessFields(entry.sector)}
             value={entry.businessFields}
             onChange={(businessFields) => onChange("businessFields", businessFields)}
             disabled={disabled}
@@ -410,7 +518,7 @@ function BusinessCard({
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Skala Usaha</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <SimpleCombobox
-            label="Jumlah Karyawan" optional clearable
+            label="Jumlah Karyawan" required
             placeholder="Pilih range"
             items={EMPLOYEES_ITEMS}
             value={entry.employees}
@@ -418,7 +526,7 @@ function BusinessCard({
             disabled={disabled}
           />
           <SimpleCombobox
-            label="Jumlah Cabang" optional clearable
+            label="Jumlah Cabang" required
             placeholder="Pilih range"
             items={BRANCHES_ITEMS}
             value={entry.branches}
@@ -426,7 +534,7 @@ function BusinessCard({
             disabled={disabled}
           />
           <SimpleCombobox
-            label="Omzet / Tahun" optional clearable
+            label="Omzet / Tahun" required
             placeholder="Pilih range"
             items={REVENUE_ITEMS}
             value={entry.revenue}
@@ -475,7 +583,7 @@ function BusinessCard({
         ) : (
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-foreground">
-              Negara <span className="font-normal text-muted-foreground">(opsional)</span>
+              Negara<span className="text-destructive ml-0.5">*</span>
             </span>
             <input
               type="text"
@@ -536,10 +644,9 @@ function BusinessCard({
           {/* WhatsApp + checkbox */}
           <div className="flex flex-col gap-1.5">
             <PhoneInput
-              label="WhatsApp"
+              label="WhatsApp *"
               value={sameAsPhone ? entry.phone : entry.whatsapp}
               onChange={(v) => { if (!sameAsPhone) onChange("whatsapp", v) }}
-              optional
               disabled={disabled || sameAsPhone}
             />
             <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
@@ -647,42 +754,70 @@ export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Ste
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
+
+    // Validasi 11 field wajib untuk setiap entry usaha yang diisi
+    for (let i = 0; i < entries.length; i++) {
+      const item = entries[i];
+      const prefix = entries.length > 1 ? `Usaha ke-${i + 1}: ` : "";
+
+      if (!item.name.trim())                                          { setError(`${prefix}Nama usaha wajib diisi.`);                        return; }
+      if (!item.category)                                             { setError(`${prefix}Kategori wajib dipilih.`);                         return; }
+      if (!item.sector)                                               { setError(`${prefix}Sektor wajib dipilih.`);                           return; }
+      if (!item.logoUrl)                                              { setError(`${prefix}Logo usaha wajib diunggah.`);                       return; }
+      if (!item.coverUrl)                                             { setError(`${prefix}Foto sampul usaha wajib diunggah.`);               return; }
+      if (!item.description?.trim())                                  { setError(`${prefix}Deskripsi usaha wajib diisi.`);                    return; }
+      if (!item.legality)                                             { setError(`${prefix}Legalitas usaha wajib dipilih.`);                   return; }
+      if (!item.position)                                             { setError(`${prefix}Posisi dan jabatan wajib dipilih.`);               return; }
+      if (!item.businessFields || item.businessFields.length === 0)   { setError(`${prefix}Bidang usaha (minimal 1 tag) wajib dipilih.`);    return; }
+      if (!item.employees)                                            { setError(`${prefix}Jumlah karyawan wajib dipilih.`);                   return; }
+      if (!item.branches)                                             { setError(`${prefix}Jumlah cabang wajib dipilih.`);                    return; }
+      if (!item.revenue)                                              { setError(`${prefix}Omzet usaha wajib dipilih.`);                       return; }
+      if (item.addressCountry?.trim()) {
+        // Overseas
+      } else {
+        if (!item.provinceId || !item.regencyId || !item.districtId) {
+          setError(`${prefix}Alamat usaha wajib diisi minimal sampai tingkat Kecamatan.`); return;
+        }
+      }
+      if (!item.whatsapp?.trim())                                     { setError(`${prefix}Nomor WhatsApp usaha wajib diisi.`);               return; }
+    }
+
     setLoading(true)
 
-    const payload: BusinessEntryData[] = entries
-      .filter((e) => e.name.trim() && e.category && e.sector)
-      .map((e) => ({
-        name:        e.name,
-        brand:       e.brand       || undefined,
-        description: e.description || undefined,
-        category:    e.category,
-        sector:      e.sector,
-        businessFields: e.businessFields.length > 0 ? e.businessFields : undefined,
-        offeredTags: e.offeredTags.length > 0 ? e.offeredTags : undefined,
-        neededTags:  e.neededTags.length  > 0 ? e.neededTags  : undefined,
-        legality:    e.legality    || undefined,
-        position:    e.position    || undefined,
-        employees:   e.employees   || undefined,
-        branches:    e.branches    || undefined,
-        revenue:     e.revenue     || undefined,
-        addressCountry:    e.addressCountry || undefined,
-        addressProvinceId: e.provinceId ?? undefined,
-        addressRegencyId:  e.regencyId  ?? undefined,
-        addressDistrictId: e.districtId ?? undefined,
-        addressVillageId:  e.villageId  ?? undefined,
-        addressDetail:    e.addressDetail || undefined,
-        addressPostalCode: e.postalCode   || undefined,
-        phone:    e.phone    || undefined,
-        whatsapp: e.whatsapp || undefined,
-        email:    e.email    || undefined,
-        instagram: e.instagram || undefined,
-        facebook:  e.facebook  || undefined,
-        linkedin:  e.linkedin  || undefined,
-        twitter:   e.twitter   || undefined,
-        youtube:   e.youtube   || undefined,
-        tiktok:    e.tiktok    || undefined,
-        website:   e.website   || undefined,
-      }))
+    const payload: BusinessEntryData[] = entries.map((e) => ({
+      name:        e.name,
+      brand:       e.brand       || undefined,
+      description: e.description || undefined,
+      category:    e.category,
+      sector:      e.sector,
+      businessFields: e.businessFields.length > 0 ? e.businessFields : undefined,
+      offeredTags: e.offeredTags.length > 0 ? e.offeredTags : undefined,
+      neededTags:  e.neededTags.length  > 0 ? e.neededTags  : undefined,
+      legality:    e.legality    || undefined,
+      position:    e.position    || undefined,
+      employees:   e.employees   || undefined,
+      branches:    e.branches    || undefined,
+      revenue:     e.revenue     || undefined,
+      addressCountry:    e.addressCountry || undefined,
+      addressProvinceId: e.provinceId ?? undefined,
+      addressRegencyId:  e.regencyId  ?? undefined,
+      addressDistrictId: e.districtId ?? undefined,
+      addressVillageId:  e.villageId  ?? undefined,
+      addressDetail:    e.addressDetail || undefined,
+      addressPostalCode: e.postalCode   || undefined,
+      phone:    e.phone    || undefined,
+      whatsapp: e.whatsapp || undefined,
+      email:    e.email    || undefined,
+      instagram: e.instagram || undefined,
+      facebook:  e.facebook  || undefined,
+      linkedin:  e.linkedin  || undefined,
+      twitter:   e.twitter   || undefined,
+      youtube:   e.youtube   || undefined,
+      tiktok:    e.tiktok    || undefined,
+      website:   e.website   || undefined,
+      coverUrl:  e.coverUrl  || undefined,
+      logoUrl:   e.logoUrl   || undefined,
+    }))
 
     const result = await saveMemberBusinessesAction(slug, memberId, payload)
 

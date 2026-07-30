@@ -8,6 +8,7 @@ import {
 } from "@jalajogja/db";
 import { auth }           from "@/lib/auth";
 import { normalizePhone } from "@/lib/phone";
+import type { BusinessSector } from "@/lib/business-sectors";
 
 async function getSessionMember(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -168,7 +169,7 @@ export async function POST(req: NextRequest) {
         brand:       e.brand?.trim()       || null,
         description: e.description?.trim() || null,
         category:    e.category as "Jasa"|"Produsen"|"Distributor"|"Trading"|"Profesional",
-        sector:      e.sector   as "Teknologi"|"Jasa Profesional"|"Kreatif"|"Manufaktur"|"Kesehatan & Pendidikan"|"Konsumsi & Ritel"|"Sumber Daya Alam",
+        sector:      e.sector   as BusinessSector,
         businessFields: e.businessFields ?? [],
         offeredTags: e.offeredTags ?? [],
         neededTags:  e.neededTags  ?? [],

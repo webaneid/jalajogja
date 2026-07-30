@@ -29,6 +29,8 @@
 // jawabannya, kalau baris itu selalu di-skip. Fix: `fillEmpty()` di bawah — dipakai baik oleh
 // preview (menampilkan field apa yang AKAN dilengkapi) maupun commit (benar-benar menulis).
 
+import { BUSINESS_SECTOR_ENUM, type BusinessSector } from "@/lib/business-sectors";
+
 // ── Isi HANYA field yang di database masih kosong — TIDAK PERNAH menimpa nilai yang sudah
 // ada. Generik, dipakai untuk members DAN contacts (bentuk field beda, logic sama). ──────
 export function fillEmpty<T extends Record<string, unknown>>(
@@ -220,11 +222,10 @@ export function mapCategory(raw: string): BusinessCategory | null {
   return exactMatch(raw, BUSINESS_CATEGORY_ENUM);
 }
 
-export const BUSINESS_SECTOR_ENUM = [
-  "Teknologi", "Jasa Profesional", "Kreatif", "Manufaktur",
-  "Kesehatan & Pendidikan", "Konsumsi & Ritel", "Sumber Daya Alam",
-] as const;
-export type BusinessSector = typeof BUSINESS_SECTOR_ENUM[number];
+// Sumber kebenaran taksonomi sektor sekarang lib/business-sectors.ts (upgrade 2026-07-30, 10
+// sektor BPS hybrid) — diimpor di atas file lalu di-re-export di sini supaya importer lama
+// (`BUSINESS_SECTOR_ENUM` dari file ini) tidak perlu diubah path importnya, tanpa duplikasi isi.
+export { BUSINESS_SECTOR_ENUM, type BusinessSector };
 export function mapSector(raw: string): BusinessSector | null {
   return exactMatch(raw, BUSINESS_SECTOR_ENUM);
 }

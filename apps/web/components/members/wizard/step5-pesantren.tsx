@@ -4,11 +4,13 @@ import * as React from "react"
 import {
   CheckIcon,
   ChevronsUpDownIcon,
+  ImageIcon,
   PlusIcon,
   XIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { MediaPicker, type MediaItem } from "@/components/media/media-picker"
 import {
   Command,
   CommandEmpty,
@@ -86,6 +88,8 @@ export interface OwnedPesantrenEntry {
   youtube: string
   tiktok: string
   website: string
+  // Foto — URL langsung dari media library tenant (bukan FK)
+  coverUrl: string
 }
 
 // ─── Konstanta enum (mirror dari schema) ──────────────────────────────────────
@@ -127,7 +131,83 @@ function newEntry(): OwnedPesantrenEntry {
     addressDetail: "", postalCode: "",
     instagram: "", facebook: "", linkedin: "",
     twitter: "", youtube: "", tiktok: "", website: "",
+    coverUrl: "",
   }
+}
+
+// ─── Sub-komponen: Photo Picker Field (reuse MediaPicker tenant-scoped) ──────
+
+function PhotoPickerField({
+  slug,
+  label,
+  value,
+  onChange,
+  shape = "square",
+  disabled = false,
+}: {
+  slug: string
+  label: string
+  value: string
+  onChange: (url: string) => void
+  shape?: "square" | "wide"
+  disabled?: boolean
+}) {
+  const [pickerOpen, setPickerOpen] = React.useState(false)
+  const boxCls = shape === "square" ? "h-16 w-16" : "h-16 w-28"
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium text-foreground">
+        {label} <span className="font-normal text-muted-foreground">(opsional)</span>
+      </span>
+      <div className="flex items-center gap-3">
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={value}
+            alt={label}
+            className={cn("shrink-0 rounded-md border border-border object-cover", boxCls)}
+          />
+        ) : (
+          <div className={cn(
+            "flex shrink-0 items-center justify-center rounded-md border border-dashed border-muted-foreground/40 text-muted-foreground",
+            boxCls
+          )}>
+            <ImageIcon className="size-5" />
+          </div>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled}
+            onClick={() => setPickerOpen(true)}
+          >
+            {value ? "Ganti Foto" : "Pilih Foto"}
+          </Button>
+          {value && (
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              disabled={disabled}
+              className="text-left text-xs text-muted-foreground transition-colors hover:text-destructive disabled:pointer-events-none disabled:opacity-50"
+            >
+              Hapus
+            </button>
+          )}
+        </div>
+      </div>
+      <MediaPicker
+        slug={slug}
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(media: MediaItem) => { onChange(media.url); setPickerOpen(false) }}
+        module="members"
+        accept={["image/"]}
+      />
+    </div>
+  )
 }
 
 function autoTotal(a: string, b: string): string {
@@ -274,6 +354,18 @@ function PesantrenCard({
           <XIcon className="size-3.5" />
           Hapus
         </button>
+      </div>
+
+      {/* ── Foto ── */}
+      <div className="max-w-xs">
+        <PhotoPickerField
+          slug={tenantSlug}
+          label="Foto Sampul Pesantren"
+          value={entry.coverUrl}
+          onChange={(url) => onChange("coverUrl", url)}
+          shape="wide"
+          disabled={disabled}
+        />
       </div>
 
       {/* ── Section 1: Identitas ── */}
@@ -752,6 +844,7 @@ export function Step5Pesantren({ memberId, slug, onSuccess, defaultEntries }: St
         youtube:   e.youtube   || undefined,
         tiktok:    e.tiktok    || undefined,
         website:   e.website   || undefined,
+        coverUrl:  e.coverUrl  || undefined,
       }))
 
     const result = await saveMemberOwnedPesantrenAction(slug, memberId, payload)

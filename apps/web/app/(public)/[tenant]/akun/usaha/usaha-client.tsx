@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { TagMultiSelect } from "@/components/ui/tag-multi-select";
-import { BUSINESS_FIELD_SUGGESTIONS } from "@/lib/business-fields";
+import { getPrioritizedBusinessFields } from "@/lib/business-sectors";
 import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { displayPhone } from "@/lib/phone";
@@ -77,13 +77,16 @@ const CATEGORIES: ComboboxOption[] = [
   { value: "Profesional", label: "Profesional" },
 ];
 const SECTORS: ComboboxOption[] = [
-  { value: "Teknologi",              label: "Teknologi" },
-  { value: "Jasa Profesional",       label: "Jasa Profesional" },
-  { value: "Kreatif",                label: "Kreatif" },
-  { value: "Manufaktur",             label: "Manufaktur" },
-  { value: "Kesehatan & Pendidikan", label: "Kesehatan & Pendidikan" },
-  { value: "Konsumsi & Ritel",       label: "Konsumsi & Ritel" },
-  { value: "Sumber Daya Alam",       label: "Sumber Daya Alam" },
+  { value: "Pertanian, Peternakan & Perikanan",   label: "Pertanian, Peternakan & Perikanan" },
+  { value: "Manufaktur & Pengolahan",             label: "Manufaktur & Pengolahan" },
+  { value: "Perdagangan, Ritel & F&B",            label: "Perdagangan, Ritel & F&B" },
+  { value: "Teknologi & Informasi",               label: "Teknologi & Informasi" },
+  { value: "Kreatif",                             label: "Kreatif" },
+  { value: "Logistik, Transportasi & Konstruksi", label: "Logistik, Transportasi & Konstruksi" },
+  { value: "Jasa Usaha & Keuangan",               label: "Jasa Usaha & Keuangan" },
+  { value: "Pendidikan & Pelatihan",               label: "Pendidikan & Pelatihan" },
+  { value: "Kesehatan, Farmasi & Herbal",          label: "Kesehatan, Farmasi & Herbal" },
+  { value: "Sumber Daya Alam & Energi",           label: "Sumber Daya Alam & Energi" },
 ];
 const LEGALITIES: ComboboxOption[] = [
   { value: "PT Perseorangan",          label: "PT Perseorangan" },
@@ -472,7 +475,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
               placeholder="Nama merek jika berbeda" />
           </Field>
         </div>
-        <Field label="Deskripsi" optional>
+        <Field label="Deskripsi">
           <textarea className={`${inputCls} h-16 resize-none py-2`} value={entry.description}
             onChange={e => onUpdate({ description: e.target.value })} disabled={disabled}
             placeholder="Produk atau layanan yang ditawarkan..." rows={2} />
@@ -494,9 +497,9 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
               placeholder="Pilih sektor" />
           </Field>
         </div>
-        <Field label="Bidang Usaha" optional>
+        <Field label="Bidang Usaha">
           <TagMultiSelect
-            options={BUSINESS_FIELD_SUGGESTIONS}
+            options={getPrioritizedBusinessFields(entry.sector)}
             value={entry.businessFields}
             onChange={businessFields => onUpdate({ businessFields })}
             disabled={disabled}
@@ -531,12 +534,12 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
           relevan dengan usaha Anda.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Legalitas" optional>
+          <Field label="Legalitas">
             <Combobox options={LEGALITIES} value={entry.legality}
               onValueChange={v => onUpdate({ legality: v as string })}
               placeholder="Pilih legalitas" />
           </Field>
-          <Field label="Posisi / Jabatan" optional>
+          <Field label="Posisi / Jabatan">
             <Combobox options={POSITIONS} value={entry.position}
               onValueChange={v => onUpdate({ position: v as string })}
               placeholder="Pilih posisi" />
@@ -548,17 +551,17 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
       <div className="space-y-4">
         <p className="text-sm font-semibold text-muted-foreground">Skala Usaha</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Field label="Karyawan" optional>
+          <Field label="Karyawan">
             <Combobox options={EMPLOYEES} value={entry.employees}
               onValueChange={v => onUpdate({ employees: v as string })}
               placeholder="Jumlah karyawan" />
           </Field>
-          <Field label="Cabang" optional>
+          <Field label="Cabang">
             <Combobox options={BRANCHES} value={entry.branches}
               onValueChange={v => onUpdate({ branches: v as string })}
               placeholder="Jumlah cabang" />
           </Field>
-          <Field label="Omzet / Tahun" optional>
+          <Field label="Omzet / Tahun">
             <Combobox options={REVENUES} value={entry.revenue}
               onValueChange={v => onUpdate({ revenue: v as string })}
               placeholder="Kisaran omzet" />
@@ -638,7 +641,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
             </label>
           </div>
           <div className="space-y-1.5">
-            <PhoneInput label="WhatsApp" optional
+            <PhoneInput label="WhatsApp"
               value={entry._sameAsPhone ? entry.phone : entry.whatsapp}
               onChange={v => { if (!entry._sameAsPhone) onUpdate({ whatsapp: v }); }}
               disabled={entry._sameAsPhone} />
@@ -743,9 +746,29 @@ export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }
   async function saveEditing() {
     if (!editingEntry) return;
     const e = editingEntry;
-    if (!trim(e.name))     { setError("Nama usaha wajib diisi.");        return; }
-    if (!e.category)       { setError("Kategori wajib dipilih.");         return; }
-    if (!e.sector)         { setError("Sektor wajib dipilih.");           return; }
+    if (!trim(e.name))                                                     { setError("Nama usaha wajib diisi.");                        return; }
+    if (!e.category)                                                       { setError("Kategori wajib dipilih.");                         return; }
+    if (!e.sector)                                                         { setError("Sektor wajib dipilih.");                           return; }
+    if (!e.logoUrl)                                                        { setError("Logo usaha wajib diunggah.");                       return; }
+    if (!e.coverUrl)                                                       { setError("Foto sampul usaha wajib diunggah.");               return; }
+    if (!trim(e.description))                                              { setError("Deskripsi usaha wajib diisi.");                    return; }
+    if (!e.legality)                                                       { setError("Legalitas usaha wajib dipilih.");                   return; }
+    if (!e.position)                                                       { setError("Posisi dan jabatan wajib dipilih.");               return; }
+    if (!e.businessFields || e.businessFields.length === 0)                { setError("Bidang usaha (minimal 1 tag) wajib dipilih.");    return; }
+    if (!e.employees)                                                      { setError("Jumlah karyawan wajib dipilih.");                   return; }
+    if (!e.branches)                                                       { setError("Jumlah cabang wajib dipilih.");                    return; }
+    if (!e.revenue)                                                        { setError("Omzet usaha wajib dipilih.");                       return; }
+    if (e._addressMode === "indonesia") {
+      if (!e.addressProvinceId || !e.addressRegencyId || !e.addressDistrictId) {
+        setError("Alamat usaha wajib diisi minimal sampai tingkat Kecamatan."); return;
+      }
+    } else {
+      if (!trim(e.addressCountry)) {
+        setError("Negara alamat usaha wajib diisi."); return;
+      }
+    }
+    const wa = e._sameAsPhone ? e.phone : e.whatsapp;
+    if (!trim(wa))                                                         { setError("Nomor WhatsApp usaha wajib diisi.");               return; }
 
     setError(null);
     setSaving(true);

@@ -112,7 +112,9 @@ export async function POST(req: NextRequest) {
     }[];
   };
 
-  const valid = (body.entries ?? []).filter(e => e.professionType?.trim() && e.professionCategory);
+  const valid = (body.entries ?? []).filter(
+    e => e.professionType?.trim() && e.professionCategory && e.description?.trim() && e.startYear && (e.whatsapp?.trim() || e.phone?.trim())
+  );
 
   try {
     await db.delete(memberProfessionals).where(eq(memberProfessionals.memberId, member.id));

@@ -20,6 +20,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess }   from "@/lib/permissions";
 import { normalizePhone }  from "@/lib/phone";
 import { hashPassword }    from "better-auth/crypto";
+import type { BusinessSector } from "@/lib/business-sectors";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 // Catatan: phone/email/address sudah dipindah ke helper tables (contacts, addresses)
@@ -91,6 +92,12 @@ export async function createMemberAction(
 
   if (!data.name?.trim()) {
     return { success: false, error: "Nama anggota wajib diisi." };
+  }
+  if (!data.primaryCabangRefId?.trim()) {
+    return { success: false, error: "PC IKPM Cabang wajib dipilih." };
+  }
+  if (!data.birthRegencyId && !data.birthPlaceText?.trim()) {
+    return { success: false, error: "Tempat lahir wajib diisi (pilih kabupaten/kota atau isi luar negeri)." };
   }
 
   const graduationYearError = validateGraduationYear(data.graduationYear);
@@ -166,6 +173,12 @@ export async function updateMemberAction(
 
   if (!data.name?.trim()) {
     return { success: false, error: "Nama anggota wajib diisi." };
+  }
+  if (!data.primaryCabangRefId?.trim()) {
+    return { success: false, error: "PC IKPM Cabang wajib dipilih." };
+  }
+  if (!data.birthRegencyId && !data.birthPlaceText?.trim()) {
+    return { success: false, error: "Tempat lahir wajib diisi (pilih kabupaten/kota atau isi luar negeri)." };
   }
 
   const graduationYearError = validateGraduationYear(data.graduationYear);
@@ -285,6 +298,17 @@ export async function upsertMemberContactAction(
     )
     .limit(1);
   if (!membership) return { success: false, error: "Anggota tidak ditemukan." };
+
+  if (data.addressCountry?.trim()) {
+    // Overseas
+  } else {
+    if (!data.addressProvinceId || !data.addressRegencyId || !data.addressDistrictId) {
+      return { success: false, error: "Alamat rumah wajib diisi minimal sampai tingkat Kecamatan." };
+    }
+  }
+  if (!data.addressDetail?.trim()) {
+    return { success: false, error: "Detail alamat domisili wajib diisi." };
+  }
 
   try {
     // Ambil ID helper tables yang sudah ada di member ini
@@ -463,6 +487,8 @@ export type OwnedPesantrenEntryData = {
   youtube?: string;
   tiktok?: string;
   website?: string;
+  // Foto — URL langsung (bukan FK), dari media library tenant
+  coverUrl?: string;
 };
 
 export async function saveMemberEducationsAction(
@@ -622,6 +648,7 @@ export async function saveMemberOwnedPesantrenAction(
         asatidzah:    entry.asatidzah    ?? null,
         offeredTags:  entry.offeredTags ?? [],
         neededTags:   entry.neededTags  ?? [],
+        coverUrl:     entry.coverUrl?.trim() || null,
         contactId, addressId, socialMediaId,
       });
     }
@@ -675,6 +702,9 @@ export type BusinessEntryData = {
   youtube?: string;
   tiktok?: string;
   website?: string;
+  // Foto — URL langsung (bukan FK), dari media library tenant
+  coverUrl?: string;
+  logoUrl?: string;
 };
 
 export async function saveMemberBusinessesAction(
@@ -779,7 +809,7 @@ export async function saveMemberBusinessesAction(
         brand:       entry.brand?.trim()       || null,
         description: entry.description?.trim() || null,
         category: entry.category as "Jasa" | "Produsen" | "Distributor" | "Trading" | "Profesional",
-        sector:   entry.sector   as "Teknologi" | "Jasa Profesional" | "Kreatif" | "Manufaktur" | "Kesehatan & Pendidikan" | "Konsumsi & Ritel" | "Sumber Daya Alam",
+        sector:   entry.sector   as BusinessSector,
         businessFields: entry.businessFields ?? [],
         offeredTags: entry.offeredTags ?? [],
         neededTags:  entry.neededTags  ?? [],
@@ -788,6 +818,8 @@ export async function saveMemberBusinessesAction(
         employees:(entry.employees || null) as "1-4" | "5-10" | "11-20" | "Lebih dari 20" | null,
         branches: (entry.branches  || null) as "Tidak Ada" | "1-3" | "Diatas 3" | null,
         revenue:  (entry.revenue   || null) as "Dibawah 500jt" | "500jt-1M" | "1M-2M" | "Diatas 2M" | null,
+        coverUrl: entry.coverUrl?.trim() || null,
+        logoUrl:  entry.logoUrl?.trim()  || null,
         contactId:     businessContactId,
         addressId:     businessAddressId,
         socialMediaId: businessSocialId,

@@ -435,6 +435,8 @@ export default function LengkapiPage() {
     if (!name.trim())     { setError("Nama tidak boleh kosong."); return; }
     if (!gender)          { setError("Jenis kelamin wajib dipilih."); return; }
     if (!birthDate)       { setError("Tanggal lahir wajib diisi."); return; }
+    if (birthType === "id" && !birthRegencyId) { setError("Tempat lahir (kabupaten/kota) wajib dipilih."); return; }
+    if (birthType === "ln" && !birthPlaceText.trim()) { setError("Tempat lahir (kota/negara) wajib diisi."); return; }
     if (!graduationYear)  { setError("Tahun lulus KMI wajib diisi."); return; }
     // Cek eksplisit — atribut min/max di <input type="number"> di bawah cuma dekoratif karena
     // submit ini lewat fetch() custom, bukan native form submit (browser tidak akan menolak
@@ -486,6 +488,21 @@ export default function LengkapiPage() {
     if (!effectiveWa)        { setError("Nomor WhatsApp wajib diisi.");   return; }
     if (!email.trim())       { setError("Email wajib diisi.");             return; }
     if (!domicileStatus)     { setError("Status domisili wajib dipilih."); return; }
+    if (addrType === "indonesia") {
+      if (!addrWilayah.provinceId || !addrWilayah.regencyId || !addrWilayah.districtId) {
+        setError("Alamat rumah wajib diisi minimal sampai tingkat Kecamatan.");
+        return;
+      }
+    } else {
+      if (!addrCountry.trim()) {
+        setError("Negara alamat rumah wajib diisi.");
+        return;
+      }
+    }
+    if (!addrDetail.trim()) {
+      setError("Detail alamat domisili wajib diisi.");
+      return;
+    }
     setSaving(true); setError(null);
     try {
       const res = await fetch("/api/akun/member-contact", {
@@ -658,7 +675,7 @@ export default function LengkapiPage() {
           <div className="space-y-3">
             <label className="text-sm font-medium">
               Tempat Lahir
-              <span className="text-muted-foreground font-normal ml-1">(opsional)</span>
+              <span className="text-destructive ml-0.5">*</span>
             </label>
             <div className="flex gap-4">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -783,7 +800,7 @@ export default function LengkapiPage() {
           <div className="flex justify-end pt-4">
             <button
               onClick={saveStep1}
-              disabled={saving || !name.trim() || !gender || !birthDate || !graduationYear || (Number(graduationYear) === 1999 && !graduationPeriod) || !professionId || !waliSantri || !primaryCabangRefId}
+              disabled={saving || !name.trim() || !gender || !birthDate || (birthType === "id" ? !birthRegencyId : !birthPlaceText.trim()) || !graduationYear || (Number(graduationYear) === 1999 && !graduationPeriod) || !professionId || !waliSantri || !primaryCabangRefId}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -868,7 +885,7 @@ export default function LengkapiPage() {
             </SelectNative>
 
             <div className="space-y-3">
-              <label className="text-sm font-medium">Lokasi Alamat</label>
+              <label className="text-sm font-medium">Lokasi Alamat <span className="text-destructive">*</span></label>
               <div className="flex gap-3">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name="addrType" value="indonesia"
@@ -907,7 +924,7 @@ export default function LengkapiPage() {
                 </div>
               ) : (
                 <TextInput
-                  label="Nama Negara"
+                  label="Nama Negara *"
                   value={addrCountry}
                   onChange={e => setAddrCountry(e.target.value)}
                   placeholder="mis. Malaysia, Australia"
@@ -917,8 +934,7 @@ export default function LengkapiPage() {
 
             <div className="space-y-1.5">
               <TextInput
-                label="Alamat Detail"
-                optional
+                label="Alamat Detail *"
                 value={addrDetail}
                 onChange={e => setAddrDetail(e.target.value)}
                 placeholder="Nama jalan, nomor rumah, RT/RW, dll"

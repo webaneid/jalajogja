@@ -445,7 +445,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
             onChange={e => onUpdate({ specialization: e.target.value })}
             placeholder="Contoh: Spesialis Anak (Sp.A), Litigasi Perdata" />
         </Field>
-        <Field label="Deskripsi / Bio" optional>
+        <Field label="Deskripsi / Bio">
           <textarea className={`${inputCls} h-16 resize-none py-2`} value={entry.description}
             onChange={e => onUpdate({ description: e.target.value })} disabled={disabled}
             placeholder="Layanan yang ditawarkan, pengalaman singkat..." rows={2} />
@@ -502,7 +502,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
               onValueChange={v => onUpdate({ employmentType: v as string })}
               placeholder="Pilih status kerja" />
           </Field>
-          <Field label="Tahun Mulai Berkarir" optional>
+          <Field label="Tahun Mulai Berkarir">
             <input className={inputCls} type="number" value={entry.startYear} disabled={disabled}
               onChange={e => onUpdate({ startYear: e.target.value })}
               placeholder="2015" min={1950} max={2100} />
@@ -587,7 +587,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
             </label>
           </div>
           <div className="space-y-1.5">
-            <PhoneInput label="WhatsApp" optional
+            <PhoneInput label="WhatsApp"
               value={entry._sameAsPhone ? entry.phone : entry.whatsapp}
               onChange={v => { if (!entry._sameAsPhone) onUpdate({ whatsapp: v }); }}
               disabled={entry._sameAsPhone} />
@@ -698,8 +698,21 @@ export function ProfesionalClient({ slug, baseUrl }: { slug: string; baseUrl: st
   async function saveEditing() {
     if (!editingEntry) return;
     const e = editingEntry;
-    if (!e.professionCategory)   { setError("Kategori profesi wajib dipilih.");  return; }
-    if (!trim(e.professionType)) { setError("Jenis profesi wajib diisi.");       return; }
+    if (!e.professionCategory)   { setError("Kategori profesi wajib dipilih.");        return; }
+    if (!trim(e.professionType)) { setError("Jenis profesi wajib diisi.");             return; }
+    if (!trim(e.description))    { setError("Deskripsi / bio profesional wajib diisi."); return; }
+    if (!trim(e.startYear))      { setError("Tahun mulai berkarir wajib diisi.");      return; }
+    if (e._addressMode === "indonesia") {
+      if (!e.addressProvinceId || !e.addressRegencyId || !e.addressDistrictId) {
+        setError("Alamat praktik wajib diisi minimal sampai tingkat Kecamatan."); return;
+      }
+    } else {
+      if (!trim(e.addressCountry)) {
+        setError("Negara alamat praktik wajib diisi."); return;
+      }
+    }
+    const wa = e._sameAsPhone ? e.phone : e.whatsapp;
+    if (!trim(wa))               { setError("Nomor WhatsApp wajib diisi.");           return; }
 
     setError(null);
     setSaving(true);

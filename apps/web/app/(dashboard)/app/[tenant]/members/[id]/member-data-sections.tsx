@@ -44,6 +44,8 @@ export type BizRow = {
   employees: string | null
   branches: string | null
   revenue: string | null
+  bizCoverUrl: string | null
+  bizLogoUrl: string | null
   bizPhone: string | null
   bizWhatsapp: string | null
   bizEmail: string | null
@@ -78,6 +80,7 @@ export type PesantrenRow = {
   asatidzah: number | null
   offeredTags: string[] | null
   neededTags: string[] | null
+  pesCoverUrl: string | null
   // Kontak
   pesPhone: string | null
   pesWhatsapp: string | null
@@ -232,6 +235,8 @@ export function BusinessSection({
     employees: b.employees ?? "",
     branches: b.branches ?? "",
     revenue: b.revenue ?? "",
+    coverUrl: b.bizCoverUrl ?? "",
+    logoUrl: b.bizLogoUrl ?? "",
     addressCountry: "",
     provinceId: null,
     regencyId: null,
@@ -277,6 +282,26 @@ export function BusinessSection({
 
             return (
               <div key={biz.id} className={i > 0 ? "border-t pt-6" : ""}>
+                {(biz.bizLogoUrl || biz.bizCoverUrl) && (
+                  <div className="mb-3 flex items-center gap-3">
+                    {biz.bizLogoUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={biz.bizLogoUrl}
+                        alt={`Logo ${biz.name}`}
+                        className="h-14 w-14 shrink-0 rounded-md border border-border object-cover"
+                      />
+                    )}
+                    {biz.bizCoverUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={biz.bizCoverUrl}
+                        alt={`Foto sampul ${biz.name}`}
+                        className="h-14 w-24 shrink-0 rounded-md border border-border object-cover"
+                      />
+                    )}
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div>
                     <p className="text-sm font-semibold">
@@ -385,6 +410,7 @@ export function PesantrenSection({
     youtube: p.pesYoutube ?? "",
     tiktok: p.pesTiktok ?? "",
     website: p.pesWebsite ?? "",
+    coverUrl: p.pesCoverUrl ?? "",
   }))
 
   function handleSuccess() {
@@ -405,6 +431,14 @@ export function PesantrenSection({
             const totalAsatidz = (p.asatidz ?? 0) + (p.asatidzah ?? 0)
             return (
               <div key={p.id} className={i > 0 ? "border-t pt-6" : ""}>
+                {p.pesCoverUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.pesCoverUrl}
+                    alt={`Foto sampul ${p.name}`}
+                    className="mb-3 h-14 w-24 rounded-md border border-border object-cover"
+                  />
+                )}
                 <div className="mb-3">
                   <p className="text-sm font-semibold">{p.name}</p>
                   <div className="flex flex-wrap gap-x-3 mt-0.5">

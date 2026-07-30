@@ -64,6 +64,14 @@ export default function AkunDataPage() {
   const handleSave = useCallback(async () => {
     if (!name.trim()) { setError("Nama wajib diisi."); return; }
     if (!phone.trim()) { setError("Nomor HP wajib diisi."); return; }
+    if (!wilayah.provinceId || !wilayah.regencyId || !wilayah.districtId) {
+      setError("Alamat domisili wajib diisi minimal sampai tingkat Kecamatan.");
+      return;
+    }
+    if (!addressDetail.trim()) {
+      setError("Detail alamat domisili wajib diisi.");
+      return;
+    }
     setSaving(true); setError(null);
     try {
       const res = await fetch("/api/akun/profile-data", {

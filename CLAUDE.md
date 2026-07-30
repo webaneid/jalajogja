@@ -13885,8 +13885,165 @@ murni gap lama yang kebetulan ketemu saat verifikasi — dicatat, bukan diperbai
 lokal. **Belum di-commit/push, belum dijalankan di VPS, belum diverifikasi visual** — perlu
 dicoba upload logo di `/akun/usaha` sebelum deploy.
 
+### [2026-07-30] Admin Wizard Photo Parity — Usaha (Logo+Cover) & Pesantren (Cover) Diwire ke Admin
+
+Langsung menyusul lesson di atas — user menegaskan prinsip: **"jadi kalau ada perubahan di satu
+tempat, termasuk logo, juga harus berubah di admin.. ini sistem terintegrasi antara admin dan
+front-end unk user.. jangan parsial.."** Ini MEMBALIK keputusan "tidak difix" di lesson
+sebelumnya — bukan scope creep tanpa izin, melainkan instruksi eksplisit user setelah gap
+diberitahukan. Menutup gap Usaha (logo BARU + cover LAMA) dan Pesantren (cover LAMA, ditemukan
+kelas bug identik saat audit) sekaligus, supaya tidak parsial lagi.
+
+**Keputusan arsitektur kunci — JANGAN reuse `CoverImageField`/`useMemberMediaPicker` untuk sisi
+admin.** Dicek dulu (`app/api/akun/media/upload/route.ts`'s `getSessionMember()`): endpoint itu
+SELALU resolve target member dari **session yang sedang login** (`members.betterAuthUserId ===
+session.user.id`) — admin yang mengedit data anggota LAIN login sebagai dirinya sendiri, bukan
+sebagai anggota itu, jadi komponen self-service ini secara struktural salah kalau dipakai di
+admin. **Solusi**: reuse `components/media/media-picker.tsx`'s `MediaPicker` — media library
+tenant-scoped standar yang sudah dipakai luas di admin (produk, post, dll), `module="members"`,
+`accept={["image/"]}`. Field target (`coverUrl`/`logoUrl`) tetap URL string biasa (bukan FK) —
+storage/media-library-mana-pun tidak masalah, konsisten prinsip yang sudah dikunci sejak Fase 1
+Ecosystem Media Library.
+
+**Komponen baru `PhotoPickerField`** — dibuat identik 2× (di `step4-business.tsx` DAN
+`step5-pesantren.tsx`, bukan diekstrak ke file shared — kedua wizard step sudah lama
+self-contained per konvensi project ini, bukan saling import). Thumbnail preview (kotak/lebar
+sesuai `shape` prop) + tombol Ganti/Pilih Foto + tombol Hapus + `<MediaPicker>` inline.
+
+**Usaha — 5 titik diwire**: `BusinessEntryData` (`actions.ts`, tambah `coverUrl?`/`logoUrl?`) +
+`saveMemberBusinessesAction` (insert values) + `BusinessEntry` interface + `newEntry()` +
+`BusinessCard` (section "Foto" BARU, 2 kolom Logo+Cover, ditaruh SEBELUM "Identitas Usaha" —
+posisi disamakan persis dengan urutan di self-service `usaha-client.tsx`) + `handleSubmit`
+payload — semua di `step4-business.tsx`. Plus **3 titik read/prefill**: `members/[id]/page.tsx`
+(SELECT thumbnail display), `members/[id]/edit/page.tsx` (SELECT + `defaultBusinesses` prefill —
+halaman edit penuh INI SATU-SATUNYA yang punya Step4Business terpasang), dan
+`member-data-sections.tsx`'s `BusinessSection` (`BizRow` + `defaultEntries` + thumbnail 2-gambar
+di tampilan read-only dialog).
+
+**Pesantren — gap SAMA ditemukan sekaligus** (bukan diminta eksplisit, tapi kelas bug identik
+persis dengan Usaha — user's prinsip "jangan parsial" berlaku sama): `member_owned_pesantren.
+coverUrl` sudah lama ada di schema+self-service `/akun/pesantren`, tapi `OwnedPesantrenEntryData`/
+`saveMemberOwnedPesantrenAction`/`step5-pesantren.tsx` NOL dukungan foto sejak awal — dikonfirmasi
+`edit/page.tsx` (halaman edit PENUH) TIDAK PUNYA Step5Pesantren sama sekali (cuma Step1-4);
+Pesantren HANYA bisa diedit lewat dialog `PesantrenSection` di `member-data-sections.tsx` — jadi
+titik wiring untuk Pesantren HANYA 2 file: `step5-pesantren.tsx` (Foto section 1 kolom, ditaruh
+sebelum "Identitas Pesantren") + `member-data-sections.tsx` (`PesantrenRow.pesCoverUrl` +
+`defaultEntries` + thumbnail display) + `members/[id]/page.tsx` (SELECT). **Nol migrasi baru** —
+kolom `coverUrl` di `member_owned_pesantren` sudah ada sejak lama, cuma belum pernah dipakai
+admin.
+
+**Verifikasi**: `tsc --noEmit` 0 error `apps/web` (2× — sekali setelah Usaha, sekali lagi setelah
+Pesantren) + `bun run build --filter=@jalajogja/web` genuine 2× (dev server dimatikan+`.next`
+dibersihkan+direstart tiap kali, ~47-55 detik, bukan cache-hit). Nol migrasi DB tambahan di sesi
+ini (kolom `logo_url` sudah dimigrasikan di lesson sebelumnya). **Belum di-commit/push, belum
+dijalankan di VPS, belum diverifikasi visual di browser** (upload logo/cover lewat admin wizard,
+konfirmasi thumbnail muncul di halaman detail anggota — belum dicoba siapa pun).
+
+**Aturan yang ditegaskan**: kalau audit menemukan gap "self-service punya fitur X, admin tidak"
+dan user secara eksplisit menyatakan prinsip "admin dan front-end harus selalu sinkron, jangan
+parsial" — treat SEMUA instance gap serupa yang ditemukan dalam audit yang sama (di sini: Usaha
+DAN Pesantren, bukan cuma modul yang disebut user) sebagai bagian dari permintaan yang sama,
+bukan sebagai scope creep terpisah yang butuh izin baru — prinsip itu sendiri SUDAH menjadi izin
+untuk kelas bug yang identik.
+
+### [2026-07-30] Upgrade Taksonomi Sektor Usaha — 10 Sektor BPS Hybrid + Merge Tier-3 SELESAI
+
+Lanjutan langsung dari lesson di atas — user menegaskan § 9 `arsitektur-usaha.md` (10-sektor,
+sebelumnya sengaja ditunda) SEKARANG bagian dari "ekosistem" yang sudah bisa dieksekusi, dengan
+penekanan: fokusnya bukan sekadar sektor lebih detail, tapi supaya data usaha jadi "data yang
+hidup" — substrat matchmaking beneran, sesuai visi `arsitektur-usaha-taxonomy-gemini.md`.
+
+**Masuk Plan Mode** (scope besar: schema+migration+6 file kode) — 3 keputusan dikonfirmasi via
+`AskUserQuestion` SEBELUM menulis rencana: (1) **10 sektor, bukan 11** — sektor ke-11 taxonomy
+doc (`sec_other_services`) dibuang; (2) mapping lama→baru yang AMBIGU 1-ke-banyak ("Kesehatan &
+Pendidikan", "Sumber Daya Alam") → **NULL**, bukan ditebak — pemilik usaha pilih ulang manual
+(kolom sudah nullable sejak migration 0048); (3) SEMUA ~52 label Tier-3 (`arsitektur-usaha-
+taxonomy-gemini.md` § 1-10, kolom kiri/bold tiap tabel — BUKAN kolom "Layanan/Produk" yang
+ilustratif) **digabung SEKARANG** ke `businessFields`/`ecosystem-tags.ts`, tapi dengan **soft-
+prioritize BUKAN hard-filter** per sektor (dikonfirmasi via `AskUserQuestion` KEDUA, setelah user
+sendiri bertanya balik "menurutmu gimana?" soal apakah Bidang Usaha harus difilter oleh Sektor) —
+hard-filter akan menghidupkan lagi masalah "yang mana induknya" yang sudah sengaja dihindari sejak
+awal (`arsitektur-usaha.md` § 2-3: "Desain Komunikasi Visual" natural masuk >1 sektor).
+
+**Verifikasi teknis SEBELUM menulis rencana** (bukan asumsi): `\d public.member_businesses`
+langsung — `sector` adalah `text` biasa TANPA CHECK constraint DB (migrasi murni `UPDATE` data,
+nol DDL berisiko). 1 Explore agent memverifikasi ISI PERSIS 8 titik sentuh kode (bukan menebak
+dari draft `§ 9.3.B` lama yang ditulis agen lain — 2 file di antaranya, `api/akun/member-business/
+route.ts` dan admin `members/actions.ts`, TIDAK disebut draft lama sama sekali). Query data lokal
+SEBELUM eksekusi: nol baris `member_businesses` bernilai kedua sektor ambigu — keputusan NULL
+murni forward-looking, nol dampak data nyata. Query `businessFields` existing juga dicek: SEMUA
+tag yang SUDAH tersimpan ("Industri Kreatif", "Kuliner & Resto", dll) TIDAK SATU PUN cocok
+wording lama ATAU baru KECUALI "Desain Komunikasi Visual" — mengonfirmasi aman mengadopsi wording
+BARU (taxonomy-gemini.md) apa adanya sebagai daftar kanonik tanpa merusak data manapun (field
+creatable, tag lama tetap tersimpan valid terlepas daftar SARAN berubah).
+
+**Implementasi**: `lib/business-sectors.ts` (BARU) — `BUSINESS_SECTOR_ENUM` (10 nilai),
+`normalizeBusinessSector()` (backward-compat, 2 mapping ambigu → null), `SECTOR_SUB_FIELDS`
+(Tier-3 per sektor, HANYA untuk urutan saran) + `getPrioritizedBusinessFields()` (sektor terpilih
+→ Tier-3-nya duluan, sisa ~52 tag tetap ada, tidak ada yang hilang). `lib/business-fields.ts`'s
+`BUSINESS_FIELD_SUGGESTIONS` diganti isinya (nama export SAMA, jadi `ecosystem-tags.ts` dan
+semua consumer lama tidak perlu ubah import). Migration `0055_business_sector_taxonomy_upgrade.sql`
+(public schema, sekali jalan, murni `UPDATE ... WHERE sector = '<lama>'`) — dijalankan lokal,
+diverifikasi before/after (`SELECT sector, COUNT(*) GROUP BY sector`): persis sesuai prediksi,
+2 UPDATE ambigu menghasilkan `UPDATE 0` (konfirmasi empiris nol dampak). 6 titik kode `apps/web`
+diupdate: `import-anggota-mapping.ts` (`BUSINESS_SECTOR_ENUM`/`mapSector` sekarang re-export dari
+`business-sectors.ts`, bukan definisi lokal — duplikasi lama dihapus), `usaha-client.tsx` +
+`step4-business.tsx` (`SECTORS`/`SECTOR_ITEMS` const + `TagMultiSelect` "Bidang Usaha" pakai
+`getPrioritizedBusinessFields(entry.sector)`), `api/akun/member-business/route.ts` + admin
+`members/actions.ts` (inline TS union cast → `as BusinessSector`), `usaha/page.tsx` +
+`usaha-filters-client.tsx` (`SEKTOR_OPTIONS` duplikat, keduanya diupdate).
+
+**Verifikasi**: `tsc --noEmit` 0 error kedua package (percobaan pertama). Disposable test
+(`_test-prioritize.ts` di `apps/web/`, dihapus setelah) — 15 assertion semua PASS: total 52 item
+konsisten (nol duplikat), sektor="Kreatif" → 9 sub-bidang Kreatif duluan lalu 43 sisanya (nol
+hilang), sektor=null/tidak dikenal → fallback unfiltered, mapping ambigu→null benar, SEMUA
+Tier-3 per sektor terkonfirmasi ada di flat list. `bun run build --filter=@jalajogja/web` genuine
+sukses (dev server dimatikan+`.next` dibersihkan+direstart, 48.7s, bukan cache-hit).
+
+**Belum di-commit/push, belum dijalankan di VPS, belum diverifikasi visual di browser** — user
+perlu coba pilih sektor "Kreatif" di `/akun/usaha` atau admin wizard, konfirmasi 9 sub-bidang
+Kreatif muncul DULUAN (bukan cuma ada) di dropdown "Bidang Usaha", dan cek sisa 43 tag tetap bisa
+dicari/diketik.
+
+**Aturan yang ditegaskan**: kalau user bertanya balik "menurutmu gimana?" pada keputusan desain
+yang genuinely bersinggungan dengan arsitektur yang SUDAH dikunci sebelumnya (di sini: apakah
+Bidang Usaha boleh di-hard-filter oleh Sektor — bertentangan langsung dengan § 2-3 "facet
+independen, bukan hierarki" yang sudah ditulis sebelumnya) — jangan langsung jawab teknis, jawab
+dengan REASONING lengkap (kenapa opsi A berisiko mengulang masalah lama, kenapa opsi B solusi
+tengah yang lebih baik) sebelum mengonfirmasi lewat `AskUserQuestion` — user eksplisit minta
+pendapat, bukan cuma pilihan mekanis.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Section Directory Organisasi — evaluasi laporan "selesai sempurna"
+- Terakhir dikerjakan: **Upgrade Taksonomi Sektor Usaha — 10 Sektor BPS Hybrid + Merge Tier-3**
+  (lihat lesson `[2026-07-30]` "Upgrade Taksonomi Sektor Usaha" di atas) — user menegaskan § 9
+  `arsitektur-usaha.md` (sebelumnya sengaja ditunda) bagian dari "ekosistem" yang sudah bisa
+  dieksekusi ("data usaha jadi data yang hidup"). Plan Mode + 2 putaran `AskUserQuestion`: (1) 10
+  sektor bukan 11 (`sec_other_services` dibuang), mapping ambigu ("Kesehatan & Pendidikan",
+  "Sumber Daya Alam") → NULL bukan ditebak; (2) merge SEMUA ~52 label Tier-3 ke `businessFields`
+  SEKARANG, tapi **soft-prioritize BUKAN hard-filter** per sektor (user tanya balik "menurutmu
+  gimana?" — dijawab dengan reasoning penuh sebelum konfirmasi, bukan langsung pilih). Verifikasi
+  teknis dulu: `sector` TEXT tanpa CHECK constraint (migrasi murni UPDATE, nol DDL berisiko),
+  Explore agent verifikasi ISI PERSIS 8 titik sentuh (2 di antaranya tidak disebut draft lama
+  agen lain), query data lokal nol dampak untuk kedua sektor ambigu. `lib/business-sectors.ts`
+  baru (`BUSINESS_SECTOR_ENUM`, `normalizeBusinessSector()`, `getPrioritizedBusinessFields()`),
+  `business-fields.ts` diganti isinya (nama export sama, nol perubahan import di consumer),
+  migration `0055` dijalankan+diverifikasi lokal (2 UPDATE ambigu = `UPDATE 0`, sesuai prediksi),
+  6 titik kode `apps/web` diupdate. `tsc` 0 error kedua package (percobaan pertama) + disposable
+  test 15 assertion PASS + `bun run build` genuine sukses, dev server direstart. **Belum
+  di-commit/push, belum dijalankan di VPS, belum diverifikasi visual di browser.**
+- Sesi sebelumnya: **Admin Wizard Photo Parity — Usaha (Logo+Cover) & Pesantren (Cover)
+  diwire ke admin** (lihat lesson `[2026-07-30]` "Admin Wizard Photo Parity" di atas) — lanjutan
+  langsung audit kritis Ekosistem: user menegaskan prinsip "kalau ada perubahan di satu tempat,
+  termasuk logo, juga harus berubah di admin.. jangan parsial." Ditambahkan `PhotoPickerField`
+  (reuse `MediaPicker` tenant-scoped, BUKAN `CoverImageField` self-service — komponen itu
+  resolve target member dari session yang login, salah untuk admin-atas-nama-anggota-lain) ke
+  `step4-business.tsx` (Logo+Cover) DAN `step5-pesantren.tsx` (Cover — gap identik ditemukan
+  sekaligus, ditutup bersamaan sesuai prinsip yang sama). Diwire ke 3 titik tiap modul: form
+  wizard, halaman detail (thumbnail display), dan (khusus Usaha) `edit/page.tsx` prefill —
+  Pesantren tidak punya halaman edit penuh, cuma dialog di `member-data-sections.tsx`. `tsc` 0
+  error + `bun run build` genuine 2× sukses. Nol migrasi baru (kolom sudah ada). **Belum
+  di-commit/push, belum dijalankan di VPS, belum diverifikasi visual di browser.**
+- Sesi sebelumnya: **Section Directory Organisasi — evaluasi laporan "selesai sempurna"
   dari agen lain menemukan 2 bug FATAL, dirombak total** (lihat lesson `[2026-07-30]` "Section
   Directory Organisasi — Klaim 'Selesai Sempurna'" di atas) — user minta evaluasi laporan agen
   lain yang mengaku modul `directory` (grid Usaha/Profesional/Pesantren di landing page section

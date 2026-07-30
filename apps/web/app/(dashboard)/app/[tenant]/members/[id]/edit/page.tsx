@@ -137,6 +137,8 @@ export default async function EditMemberPage({
         employees: memberBusinesses.employees,
         branches: memberBusinesses.branches,
         revenue: memberBusinesses.revenue,
+        coverUrl: memberBusinesses.coverUrl,
+        logoUrl: memberBusinesses.logoUrl,
         // Kontak usaha
         bizPhone: contacts.phone,
         bizWhatsapp: contacts.whatsapp,
@@ -243,6 +245,8 @@ export default async function EditMemberPage({
     employees: b.employees ?? "",
     branches: b.branches ?? "",
     revenue: b.revenue ?? "",
+    coverUrl: b.coverUrl ?? "",
+    logoUrl: b.logoUrl ?? "",
     addressCountry: b.bizCountry ?? "",
     provinceId: b.bizProvinceId ?? null,
     regencyId: b.bizRegencyId ?? null,

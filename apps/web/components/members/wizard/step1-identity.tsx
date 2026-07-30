@@ -328,18 +328,32 @@ export function Step1Identity({ slug, professions, cabangList, onSuccess, member
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+
     if (Number(graduationYear) === 1999 && !graduationPeriod) {
       setError("Angkatan 1999 wajib memilih periode: Awal atau Akhir.")
+      return
+    }
+    if (birthType === "id" && !birthRegencyId) {
+      setError("Tempat lahir (kabupaten/kota) wajib dipilih.")
+      return
+    }
+    const birthPlaceTextVal = (fd.get("birthPlaceText") as string)?.trim()
+    if (birthType === "ln" && !birthPlaceTextVal) {
+      setError("Tempat lahir (kota/negara luar negeri) wajib diisi.")
       return
     }
     if (!waliSantri) {
       setError("Status wali santri wajib dipilih.")
       return
     }
+    if (!primaryCabangRefId) {
+      setError("PC IKPM Cabang wajib dipilih.")
+      return
+    }
     setError(null)
     setLoading(true)
 
-    const fd = new FormData(e.currentTarget)
     const nameVal = (fd.get("name") as string)?.trim() || ""
     if (!nameVal) {
       setError("Nama anggota wajib diisi.")
@@ -442,8 +456,7 @@ export function Step1Identity({ slug, professions, cabangList, onSuccess, member
       {/* ── Tempat Lahir ── */}
       <div className="flex flex-col gap-2">
         <span className="text-sm font-medium text-foreground">
-          Tempat Lahir{" "}
-          <span className="text-muted-foreground font-normal">(opsional)</span>
+          Tempat Lahir<span className="text-destructive ml-0.5">*</span>
         </span>
 
         {/* Toggle Indonesia / Luar Negeri */}
@@ -570,7 +583,7 @@ export function Step1Identity({ slug, professions, cabangList, onSuccess, member
         {/* PC IKPM Cabang */}
         <SimpleCombobox
           label="PC IKPM Cabang"
-          optional
+          required
           placeholder="Cari PC IKPM..."
           items={cabangList.map((c) => ({ value: c.id, label: c.nama }))}
           value={primaryCabangRefId}

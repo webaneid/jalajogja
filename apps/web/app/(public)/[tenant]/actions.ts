@@ -1,11 +1,41 @@
 "use server";
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { createTenantDb } from "@jalajogja/db";
 import { getAkunIdentity } from "@/lib/akun-identity";
+import { resolvePostHrefs } from "@/lib/post-permalink.server";
+
+// Ambil list post terbaru (status published) untuk marquee ticker header.
+// Dipanggil client-side via useEffect agar layout tetap ISR-safe.
+export async function getTickerPostsAction(slug: string): Promise<Array<{ title: string; href: string }>> {
+  try {
+    const tenantClient = createTenantDb(slug);
+    const { db: tenantDb, schema } = tenantClient;
+    const posts = await tenantDb
+      .select({
+        title:        schema.posts.title,
+        slug:         schema.posts.slug,
+        publishedAt:  schema.posts.publishedAt,
+        categorySlug: schema.postCategories.slug,
+      })
+      .from(schema.posts)
+      .leftJoin(schema.postCategories, eq(schema.postCategories.id, schema.posts.categoryId))
+      .where(eq(schema.posts.status, "published"))
+      .orderBy(desc(schema.posts.publishedAt))
+      .limit(8);
+
+    const postsWithHref = await resolvePostHrefs(tenantClient, posts);
+    return postsWithHref.map((p) => ({
+      title: p.title,
+      href: p.href,
+    }));
+  } catch {
+    return [];
+  }
+}
 
 // Cek apakah user yang sedang login punya akses dashboard tenant ini.
 // Dipanggil client-side dari UserButton (useEffect) agar layout tetap ISR-safe.

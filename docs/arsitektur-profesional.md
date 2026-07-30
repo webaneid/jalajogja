@@ -650,3 +650,22 @@ lain seperti query filter) tapi TIDAK PERNAH menangkap CHECK constraint DB yang 
 Migration `0043` dijalankan+diverifikasi di lokal. **Belum dijalankan di VPS. Belum
 diverifikasi visual di browser** — user diminta coba tambah profesional dengan kategori
 "Kreatif" di `/akun/profesional` untuk konfirmasi combobox + jenis profesi muncul benar.
+
+---
+
+## 14. Aturan Validasi Field Wajib & Integrasi Tag Ekosistem (Mandatory Fields & Tag Rule)
+
+Sesuai keputusan arsitektur (2026-07-30), data profesional anggota (`public.member_professionals`) mewajibkan kelengkapan **6 Field Data Utama** saat disimpan di form self-service (`/akun/profesional`) dan backend API (`/api/akun/member-professional`).
+
+### Daftar 6 Field Wajib Profesional:
+1. **Kategori Profesi** (`professionCategory`): Wajib dipilih (`Kategori profesi wajib dipilih.`).
+2. **Jenis Profesi** (`professionType`): Wajib diisi (`Jenis profesi wajib diisi.`).
+3. **Deskripsi / Bio** (`description`): Wajib diisi penjelasan layanan/pengalaman (`Deskripsi / bio profesional wajib diisi.`).
+4. **Tahun Mulai Berkarir** (`startYear`): Wajib diisi tahun mulai berkarir/praktik (`Tahun mulai berkarir wajib diisi.`).
+5. **Alamat Praktik (Min. Kecamatan)**:
+   - Mode Indonesia: Wajib terisi Provinsi, Kab/Kota, dan Kecamatan (`addressDistrictId`) (`Alamat praktik wajib diisi minimal sampai tingkat Kecamatan.`).
+   - Mode Luar Negeri: Wajib terisi Nama Negara (`addressCountry`) (`Negara alamat praktik wajib diisi.`).
+6. **Nomor WhatsApp** (`whatsapp`): Wajib diisi nomor WhatsApp valid atau centang *"Sama dengan nomor telepon"* (`Nomor WhatsApp wajib diisi.`).
+
+### Integrasi Tag Sinergi Ekosistem (`offeredTags` / `neededTags`):
+Field **Menawarkan** (`offeredTags`) dan **Membutuhkan** (`neededTags`) diintegrasikan dengan komponen `TagMultiSelect` berbasis `ECOSYSTEM_TAG_SUGGESTIONS` (`apps/web/lib/ecosystem-tags.ts`), seragam dengan modul **Usaha** dan **Pesantren**. Hal ini memungkinkan sinergi pasokan dan kebutuhan antar-anggota lintas modul ekosistem.

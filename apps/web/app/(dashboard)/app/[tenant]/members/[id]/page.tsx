@@ -190,6 +190,8 @@ export default async function MemberDetailPage({
         employees:   memberBusinesses.employees,
         branches:    memberBusinesses.branches,
         revenue:     memberBusinesses.revenue,
+        bizCoverUrl: memberBusinesses.coverUrl,
+        bizLogoUrl:  memberBusinesses.logoUrl,
         // Kontak usaha
         bizPhone:    bizContacts.phone,
         bizWhatsapp: bizContacts.whatsapp,
@@ -237,6 +239,7 @@ export default async function MemberDetailPage({
         asatidzah:     memberOwnedPesantren.asatidzah,
         offeredTags:   memberOwnedPesantren.offeredTags,
         neededTags:    memberOwnedPesantren.neededTags,
+        pesCoverUrl:   memberOwnedPesantren.coverUrl,
         pesPhone:      pesContacts.phone,
         pesWhatsapp:   pesContacts.whatsapp,
         pesEmail:      pesContacts.email,

@@ -60,6 +60,23 @@ export async function PATCH(req: NextRequest) {
     website?:   string | null;
   };
 
+  if (body.addressCountry?.trim()) {
+    // Overseas
+  } else if (body.addressProvinceId !== undefined || body.addressRegencyId !== undefined || body.addressDistrictId !== undefined) {
+    if (!body.addressProvinceId || !body.addressRegencyId || !body.addressDistrictId) {
+      return NextResponse.json(
+        { error: "Alamat rumah wajib diisi minimal sampai tingkat Kecamatan." },
+        { status: 400 }
+      );
+    }
+  }
+  if (body.addressDetail !== undefined && !body.addressDetail?.trim()) {
+    return NextResponse.json(
+      { error: "Detail alamat domisili wajib diisi." },
+      { status: 400 }
+    );
+  }
+
   try {
     // ── Upsert contacts ────────────────────────────────────────────────────────
     const hasContact = body.phone || body.whatsapp || body.email;
