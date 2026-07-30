@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { TagMultiSelect } from "@/components/ui/tag-multi-select";
-import { getPrioritizedBusinessFields } from "@/lib/business-sectors";
+import { getPrioritizedBusinessFields, normalizeBusinessSector } from "@/lib/business-sectors";
 import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { displayPhone } from "@/lib/phone";
@@ -154,7 +154,7 @@ function apiRowToEntry(e: ApiRow): Entry {
     brand:             e.brand       ?? "",
     description:       e.description ?? "",
     category:          e.category    ?? "",
-    sector:            e.sector      ?? "",
+    sector:            normalizeBusinessSector(e.sector) ?? e.sector ?? "",
     businessFields:    e.businessFields ?? [],
     offeredTags:       e.offeredTags ?? [],
     neededTags:        e.neededTags  ?? [],
@@ -451,12 +451,16 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
           value={entry.logoUrl}
           onChange={(url) => onUpdate({ logoUrl: url })}
           label="Logo Usaha"
+          preferVariant="original"
+          objectFit="contain"
         />
         <CoverImageField
           slug={slug}
           value={entry.coverUrl}
           onChange={(url) => onUpdate({ coverUrl: url })}
           label="Foto Sampul Usaha"
+          preferVariant="thumbnail"
+          objectFit="cover"
         />
       </div>
 

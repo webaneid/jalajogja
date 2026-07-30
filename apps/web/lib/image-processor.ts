@@ -27,7 +27,7 @@ export type VariantKey = keyof ProcessedVariants;
 const MODULE_VARIANTS: Partial<Record<string, VariantKey[]>> = {
   shop:    ["original", "square", "square-large"],
   members: ["original", "profile"],
-  akun:    ["original", "large", "square", "profile"],
+  akun:    ["original", "large", "medium", "thumbnail", "square", "profile"],
   // Kop surat (header/footer): convert ke WebP saja, ukuran asli dipertahankan
   letters: ["original"],
 };
@@ -38,6 +38,27 @@ export const DEFAULT_VARIANTS: VariantKey[] = [
 
 export function getVariantsForModule(module: string): VariantKey[] {
   return MODULE_VARIANTS[module] ?? DEFAULT_VARIANTS;
+}
+
+export function getVariantUrl(
+  url: string | null | undefined,
+  targetVariant: VariantKey,
+): string {
+  if (!url) return "";
+  if (url.endsWith(".svg") || url.startsWith("data:")) return url;
+
+  const suffixMap: Record<VariantKey, string> = {
+    original:       "_ori",
+    large:          "_lg",
+    medium:         "_md",
+    thumbnail:      "_th",
+    square:         "_sq",
+    "square-large": "_sql",
+    profile:        "_pf",
+  };
+
+  const targetSuffix = suffixMap[targetVariant] ?? "_ori";
+  return url.replace(/_(ori|lg|md|th|sq|sql|pf)\.webp$/, `${targetSuffix}.webp`);
 }
 
 // SVG tidak diproses — simpan as-is

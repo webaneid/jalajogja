@@ -6,18 +6,18 @@ import {
   contacts, addresses, socialMedias,
   refProvinces, refRegencies, refDistricts, refVillages,
 } from "@jalajogja/db";
-import { auth }           from "@/lib/auth";
-import { normalizePhone } from "@/lib/phone";
+import { auth }            from "@/lib/auth";
+import { getAkunIdentity }  from "@/lib/akun-identity";
+import { normalizePhone }   from "@/lib/phone";
 
 async function getSessionMember(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user?.id) return { error: "Login diperlukan.", status: 401 as const, member: null };
-  const member = await db.query.members.findFirst({
-    where: eq(members.betterAuthUserId, session.user.id),
-    columns: { id: true },
-  });
-  if (!member) return { error: "Bukan anggota IKPM.", status: 403 as const, member: null };
-  return { error: null, status: 200 as const, member };
+  const identity = await getAkunIdentity(session.user.id);
+  if (!identity || identity.type !== "member" || !identity.memberId) {
+    return { error: "Bukan anggota IKPM.", status: 403 as const, member: null };
+  }
+  return { error: null, status: 200 as const, member: { id: identity.memberId } };
 }
 
 // ── GET /api/akun/member-professional ──────────────────────────────────────────

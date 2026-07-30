@@ -271,12 +271,14 @@ export function CoverImageField({
   onChange,
   label = "Foto",
   preferVariant,
+  objectFit = "cover",
 }: {
   slug:           string;
   value:          string | null | undefined;
   onChange:       (url: string | null) => void;
   label?:         string;
   preferVariant?: string;
+  objectFit?:     "cover" | "contain";
 }) {
   const { open, openPicker, closePicker } = useMemberMediaPicker();
 
@@ -284,13 +286,19 @@ export function CoverImageField({
     <div className="space-y-2">
       <p className="text-sm font-medium">{label}</p>
       {value ? (
-        <div className="relative w-40 h-32 rounded-lg overflow-hidden border border-border">
-          <Image src={value} alt={label} fill sizes="160px" className="object-cover" />
+        <div className="relative w-40 h-24 rounded-lg overflow-hidden border border-border bg-muted/30">
+          <Image
+            src={value}
+            alt={label}
+            fill
+            sizes="160px"
+            className={objectFit === "contain" ? "object-contain p-2" : "object-cover"}
+          />
           <button
             type="button"
             onClick={() => onChange(null)}
             className="absolute top-1 right-1 w-6 h-6 bg-black/60 rounded-full flex items-center
-                       justify-center hover:bg-black/80 transition-colors"
+                       justify-center hover:bg-black/80 transition-colors z-10"
             title="Hapus foto"
           >
             <X className="h-3.5 w-3.5 text-white" />
@@ -300,11 +308,11 @@ export function CoverImageField({
         <button
           type="button"
           onClick={openPicker}
-          className="w-40 h-32 border-2 border-dashed border-border rounded-lg flex flex-col
-                     items-center justify-center gap-2 text-muted-foreground hover:border-primary/50
+          className="w-40 h-24 border-2 border-dashed border-border rounded-lg flex flex-col
+                     items-center justify-center gap-1.5 text-muted-foreground hover:border-primary/50
                      hover:text-primary transition-colors cursor-pointer"
         >
-          <UploadCloud className="h-7 w-7" />
+          <UploadCloud className="h-6 w-6" />
           <span className="text-xs">Pilih Foto</span>
         </button>
       )}
@@ -320,6 +328,8 @@ export function CoverImageField({
         onClose={closePicker}
         onSelect={(item) => {
           const url = (preferVariant ? item.variants?.[preferVariant] : null)
+            ?? item.variants?.thumbnail
+            ?? item.variants?.medium
             ?? item.variants?.large
             ?? item.url;
           onChange(url);

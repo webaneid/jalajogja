@@ -14,6 +14,7 @@ import type { Metadata } from "next";
 import { Briefcase, MapPin } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import { UsahaFiltersClient } from "@/components/usaha/usaha-filters-client";
+import { getVariantUrl } from "@/lib/image-processor";
 
 export const revalidate = 60;
 
@@ -108,6 +109,7 @@ export default async function UsahaDirectoryPage({
         brand:        memberBusinesses.brand,
         description:  memberBusinesses.description,
         coverUrl:     memberBusinesses.coverUrl,
+        logoUrl:      memberBusinesses.logoUrl,
         category:     memberBusinesses.category,
         sector:       memberBusinesses.sector,
         legality:     memberBusinesses.legality,
@@ -214,25 +216,44 @@ export default async function UsahaDirectoryPage({
                 href={`/${slug}/usaha/${b.id}`}
                 className="group flex flex-col rounded-xl border border-border overflow-hidden hover:border-primary/30 hover:shadow-md transition-all"
               >
-                {/* Logo */}
-                <div className="aspect-video bg-muted/30 relative overflow-hidden flex items-center justify-center p-4">
-                  {b.coverUrl ? (
-                    <Image
-                      src={b.coverUrl} alt={b.name}
-                      fill className="object-contain p-4"
-                      unoptimized
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Briefcase className="h-10 w-10 text-muted-foreground/30" />
+                {/* Sampul & Logo */}
+                {(() => {
+                  const coverImg = getVariantUrl(b.coverUrl, "thumbnail");
+                  const logoImg  = b.logoUrl;
+                  return (
+                    <div className="aspect-video bg-muted/30 relative overflow-hidden flex items-center justify-center">
+                      {coverImg ? (
+                        <>
+                          <Image
+                            src={coverImg} alt={b.name}
+                            fill className="object-cover"
+                            unoptimized
+                          />
+                          {logoImg && (
+                            <div className="absolute bottom-2 left-2 w-9 h-9 rounded-lg bg-background/95 border border-border p-1 shadow-sm flex items-center justify-center overflow-hidden z-10">
+                              <Image src={logoImg} alt={b.name} fill className="object-contain p-0.5" unoptimized />
+                            </div>
+                          )}
+                        </>
+                      ) : logoImg ? (
+                        <Image
+                          src={logoImg} alt={b.name}
+                          fill className="object-contain p-4"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Briefcase className="h-10 w-10 text-muted-foreground/30" />
+                        </div>
+                      )}
+                      {b.category && (
+                        <div className="absolute top-2 right-2 z-10">
+                          <span className="text-xs bg-black/60 text-white px-2 py-0.5 rounded-full">{b.category}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {b.category && (
-                    <div className="absolute top-2 left-2">
-                      <span className="text-xs bg-black/60 text-white px-2 py-0.5 rounded-full">{b.category}</span>
-                    </div>
-                  )}
-                </div>
+                  );
+                })()}
 
                 {/* Info */}
                 <div className="p-4 flex flex-col gap-1.5 flex-1">

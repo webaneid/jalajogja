@@ -18,6 +18,7 @@ import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { SocialLinks } from "@/components/ui/social-links";
 import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
+import { getVariantUrl } from "@/lib/image-processor";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
@@ -67,6 +68,7 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
       brand:       memberBusinesses.brand,
       description: memberBusinesses.description,
       coverUrl:    memberBusinesses.coverUrl,
+      logoUrl:     memberBusinesses.logoUrl,
       category:    memberBusinesses.category,
       sector:      memberBusinesses.sector,
       legality:    memberBusinesses.legality,
@@ -168,12 +170,28 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
           Direktori Usaha
         </Link>
 
-        {/* Logo */}
-        {row.coverUrl && (
-          <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 flex items-center justify-center">
-            <Image src={row.coverUrl} alt={row.name} fill className="object-contain p-6" unoptimized />
-          </div>
-        )}
+        {/* Banner Sampul & Logo */}
+        {(() => {
+          const coverImg = getVariantUrl(row.coverUrl, "large");
+          const logoImg  = row.logoUrl;
+          if (!coverImg && !logoImg) return null;
+          return (
+            <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 flex items-center justify-center border border-border">
+              {coverImg ? (
+                <>
+                  <Image src={coverImg} alt={row.name} fill className="object-cover" unoptimized />
+                  {logoImg && (
+                    <div className="absolute bottom-4 left-4 w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-background/95 border border-border p-1.5 shadow-md flex items-center justify-center overflow-hidden z-10">
+                      <Image src={logoImg} alt={row.name} fill className="object-contain p-1" unoptimized />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Image src={logoImg!} alt={row.name} fill className="object-contain p-8" unoptimized />
+              )}
+            </div>
+          );
+        })()}
 
         {/* Header */}
         <div>

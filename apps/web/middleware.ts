@@ -90,6 +90,14 @@ export async function middleware(request: NextRequest) {
     // pertama (bukan tetap /admin/...), tapi tenant tetap di domain sendiri & branding tetap tampil.
     // Verifikasi tetap dari Host header (bukan path) — tenant lain tetap tidak bisa diakses.
     if (pathname.startsWith("/app/") || pathname.startsWith("/platform/")) {
+      // Carve-out: /app/login di custom domain → redirect ke /login di custom domain ini sendiri
+      // (bukan dilempar ke jalakarta.com/app/login karena "login" !== ownSlug)
+      if (pathname === "/app/login" || pathname === "/app/login/") {
+        const loginUrl = request.nextUrl.clone();
+        loginUrl.pathname = "/login";
+        return NextResponse.redirect(loginUrl, 302);
+      }
+
       let allowOwnApp = false;
       if (pathname.startsWith("/app/")) {
         const ownSlug  = await resolveCustomDomainSlug(host);
