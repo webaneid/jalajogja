@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronsUpDown, Check } from "lucide-react";
+import { ChevronsUpDown, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +37,8 @@ type Props = {
   className?: string;
   /** Jika diberikan, filter dilakukan server-side dan built-in filter dimatikan */
   onSearchChange?: (q: string) => void;
+  /** Tampilkan tombol × untuk reset langsung ke "" tanpa buka dropdown (dipakai filter) */
+  clearable?: boolean;
 };
 
 export function Combobox({
@@ -49,6 +51,7 @@ export function Combobox({
   disabled = false,
   className,
   onSearchChange,
+  clearable = false,
 }: Props) {
   const [open, setOpen] = React.useState(false);
   const selected = options.find((o) => o.value === value);
@@ -63,13 +66,24 @@ export function Combobox({
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            "w-full justify-between font-normal",
+            "w-full justify-between overflow-hidden font-normal",
             !selected && "text-muted-foreground",
             className
           )}
         >
-          {selected?.label ?? placeholder}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <span className="truncate">{selected?.label ?? placeholder}</span>
+          {clearable && value ? (
+            <span
+              role="button"
+              aria-label="Reset"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onValueChange(""); }}
+              className="ml-2 shrink-0 opacity-60 hover:opacity-100"
+            >
+              <X className="h-4 w-4" />
+            </span>
+          ) : (
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          )}
         </Button>
       </PopoverTrigger>
       <PopoverContent

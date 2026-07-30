@@ -15,6 +15,7 @@ import { Briefcase, MapPin } from "lucide-react";
 import { PublicButton } from "@/components/website/public/ui/public-button";
 import { UsahaFiltersClient } from "@/components/usaha/usaha-filters-client";
 import { getVariantUrl } from "@/lib/image-processor";
+import { getPrioritizedBusinessFields } from "@/lib/business-sectors";
 
 export const revalidate = 60;
 
@@ -22,7 +23,7 @@ const PAGE_SIZE = 24;
 
 type Params      = Promise<{ tenant: string }>;
 type SearchParams  = Promise<{
-  q?: string; provinsi?: string; sektor?: string; kategori?: string; legalitas?: string; page?: string;
+  q?: string; provinsi?: string; sektor?: string; kategori?: string; bidang?: string; page?: string;
   tag?: string; arah?: string;
 }>;
 
@@ -40,10 +41,6 @@ const SEKTOR_OPTIONS = [
 ] as const;
 
 const KATEGORI_OPTIONS = ["Jasa", "Produsen", "Distributor", "Trading", "Profesional"] as const;
-
-const LEGALITAS_OPTIONS = [
-  "PT Perseorangan", "PT", "CV", "Yayasan", "Perkumpulan", "Koperasi", "Belum Memiliki Legalitas",
-] as const;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
@@ -69,7 +66,7 @@ export default async function UsahaDirectoryPage({
   searchParams: SearchParams;
 }) {
   const { tenant: slug } = await params;
-  const { q, provinsi, sektor, kategori, legalitas, page: pageParam, tag, arah } = await searchParams;
+  const { q, provinsi, sektor, kategori, bidang, page: pageParam, tag, arah } = await searchParams;
 
   const currentPage = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
   const offset      = (currentPage - 1) * PAGE_SIZE;
@@ -96,7 +93,7 @@ export default async function UsahaDirectoryPage({
     ...(q          ? [ilike(memberBusinesses.name, `%${q}%`)]                                                    : []),
     ...(sektor     ? [eq(memberBusinesses.sector, sektor as typeof SEKTOR_OPTIONS[number])]                      : []),
     ...(kategori   ? [eq(memberBusinesses.category, kategori as typeof KATEGORI_OPTIONS[number])]                : []),
-    ...(legalitas  ? [eq(memberBusinesses.legality, legalitas as typeof LEGALITAS_OPTIONS[number])]              : []),
+    ...(bidang     ? [sql`${memberBusinesses.businessFields} @> ${JSON.stringify([bidang])}::jsonb`]             : []),
     ...(provinsiId ? [eq(addresses.provinceId, provinsiId)]                                                      : []),
     ...(tag ? [sql`${arah === "membutuhkan" ? memberBusinesses.neededTags : memberBusinesses.offeredTags} @> ${JSON.stringify([tag])}::jsonb`] : []),
   ];
@@ -112,7 +109,6 @@ export default async function UsahaDirectoryPage({
         logoUrl:      memberBusinesses.logoUrl,
         category:     memberBusinesses.category,
         sector:       memberBusinesses.sector,
-        legality:     memberBusinesses.legality,
         employees:    memberBusinesses.employees,
         provinceName: refProvinces.name,
         regencyName:  refRegencies.name,
@@ -155,12 +151,12 @@ export default async function UsahaDirectoryPage({
 
   function buildUrl(overrides: Record<string, string | undefined | number>) {
     const sp = new URLSearchParams();
-    const eff = { q, provinsi, sektor, kategori, legalitas, tag, arah, page: String(currentPage), ...overrides };
+    const eff = { q, provinsi, sektor, kategori, bidang, tag, arah, page: String(currentPage), ...overrides };
     if (eff.q)         sp.set("q",         String(eff.q));
     if (eff.provinsi)  sp.set("provinsi",  String(eff.provinsi));
     if (eff.sektor)    sp.set("sektor",    String(eff.sektor));
     if (eff.kategori)  sp.set("kategori",  String(eff.kategori));
-    if (eff.legalitas) sp.set("legalitas", String(eff.legalitas));
+    if (eff.bidang)    sp.set("bidang",    String(eff.bidang));
     if (eff.tag)       sp.set("tag",       String(eff.tag));
     if (eff.tag && eff.arah) sp.set("arah", String(eff.arah));
     if (eff.page && eff.page !== "1") sp.set("page", String(eff.page));
@@ -168,7 +164,7 @@ export default async function UsahaDirectoryPage({
     return `/${slug}/usaha${qs ? `?${qs}` : ""}`;
   }
 
-  const hasFilter = !!(q || provinsi || sektor || kategori || legalitas || tag);
+  const hasFilter = !!(q || provinsi || sektor || kategori || bidang || tag);
 
   return (
     <div className="py-10">
@@ -187,12 +183,13 @@ export default async function UsahaDirectoryPage({
           currentProvinsi={provinsi}
           currentSektor={sektor}
           currentKategori={kategori}
-          currentLegalitas={legalitas}
+          currentBidang={bidang}
           currentTag={tag}
           currentArah={arah}
           currentPage={currentPage}
           hasFilter={hasFilter}
           provinsiList={provinsiList}
+          bidangOptions={getPrioritizedBusinessFields(sektor ?? null)}
         />
 
         {/* Grid */}

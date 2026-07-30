@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { PROFESSION_CATEGORIES } from "@/lib/professional-types";
+import { Combobox } from "@/components/ui/combobox";
 import { EcosystemTagFilter } from "@/components/ekosistem/ecosystem-tag-filter";
+
+const FILTER_CLASS = "h-8 w-full sm:w-auto sm:flex-1 sm:min-w-[140px] rounded-full text-xs px-3 py-0";
 
 type Props = {
   slug:             string;
@@ -80,36 +83,33 @@ export function ProfessionalFiltersClient({
         </div>
       </form>
 
-      <div className="flex flex-wrap gap-2 items-center">
-        <select
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-center">
+        <Combobox
+          options={[{ value: "", label: "Semua Kategori" }, ...PROFESSION_CATEGORIES.map(c => ({ value: c, label: c }))]}
           value={currentKategori ?? ""}
-          onChange={e => { window.location.href = buildUrl({ kategori: e.target.value || undefined, jenis: undefined, page: "1" }); }}
-          className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">Semua Kategori</option>
-          {PROFESSION_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+          onValueChange={v => { window.location.href = buildUrl({ kategori: v || undefined, jenis: undefined, page: "1" }); }}
+          className={FILTER_CLASS}
+          clearable
+        />
 
-        <select
+        <Combobox
+          options={[{ value: "", label: "Semua Jenis Profesi" }, ...uniqueTypes.map(t => ({ value: t, label: t }))]}
           value={currentJenis ?? ""}
-          onChange={e => { window.location.href = buildUrl({ jenis: e.target.value || undefined, page: "1" }); }}
-          className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">Semua Jenis Profesi</option>
-          {uniqueTypes.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+          onValueChange={v => { window.location.href = buildUrl({ jenis: v || undefined, page: "1" }); }}
+          className={FILTER_CLASS}
+          clearable
+        />
 
-        <select
+        <Combobox
+          options={[{ value: "", label: "Semua Provinsi" }, ...provinsiList.map(p => ({ value: String(p.id), label: p.name }))]}
           value={currentProvinsi ?? ""}
-          onChange={e => { window.location.href = buildUrl({ provinsi: e.target.value || undefined, page: "1" }); }}
-          className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">Semua Provinsi</option>
-          {provinsiList.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
-        </select>
+          onValueChange={v => { window.location.href = buildUrl({ provinsi: v || undefined, page: "1" }); }}
+          className={FILTER_CLASS}
+          clearable
+        />
 
         {hasFilter && (
-          <Link href={`/${slug}/profesional`} className="text-xs px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
+          <Link href={`/${slug}/profesional`} className="w-full sm:w-auto text-center text-xs px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
             × Reset Filter
           </Link>
         )}

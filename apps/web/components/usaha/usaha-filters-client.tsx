@@ -1,26 +1,31 @@
 "use client";
 
 import Link from "next/link";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { EcosystemTagFilter } from "@/components/ekosistem/ecosystem-tag-filter";
 
-const SEKTOR_OPTIONS = [
-  "Pertanian, Peternakan & Perikanan",
-  "Manufaktur & Pengolahan",
-  "Perdagangan, Ritel & F&B",
-  "Teknologi & Informasi",
-  "Kreatif",
-  "Logistik, Transportasi & Konstruksi",
-  "Jasa Usaha & Keuangan",
-  "Pendidikan & Pelatihan",
-  "Kesehatan, Farmasi & Herbal",
-  "Sumber Daya Alam & Energi",
-] as const;
+const FILTER_CLASS = "h-8 w-full sm:w-auto sm:flex-1 sm:min-w-[140px] rounded-full text-xs px-3 py-0";
 
-const KATEGORI_OPTIONS = ["Jasa", "Produsen", "Distributor", "Trading", "Profesional"] as const;
+const SEKTOR_OPTIONS: ComboboxOption[] = [
+  { value: "", label: "Semua Sektor" },
+  ...[
+    "Pertanian, Peternakan & Perikanan",
+    "Manufaktur & Pengolahan",
+    "Perdagangan, Ritel & F&B",
+    "Teknologi & Informasi",
+    "Kreatif",
+    "Logistik, Transportasi & Konstruksi",
+    "Jasa Usaha & Keuangan",
+    "Pendidikan & Pelatihan",
+    "Kesehatan, Farmasi & Herbal",
+    "Sumber Daya Alam & Energi",
+  ].map(v => ({ value: v, label: v })),
+];
 
-const LEGALITAS_OPTIONS = [
-  "PT Perseorangan", "PT", "CV", "Yayasan", "Perkumpulan", "Koperasi", "Belum Memiliki Legalitas",
-] as const;
+const KATEGORI_OPTIONS: ComboboxOption[] = [
+  { value: "", label: "Semua Kategori" },
+  ...["Jasa", "Produsen", "Distributor", "Trading", "Profesional"].map(v => ({ value: v, label: v })),
+];
 
 type Props = {
   slug:             string;
@@ -28,12 +33,13 @@ type Props = {
   currentProvinsi?: string;
   currentSektor?:   string;
   currentKategori?: string;
-  currentLegalitas?: string;
+  currentBidang?:   string;
   currentTag?:      string;
   currentArah?:     string;
   currentPage:      number;
   hasFilter:        boolean;
   provinsiList:     { id: number; name: string }[];
+  bidangOptions:    string[];
 };
 
 export function UsahaFiltersClient({
@@ -42,12 +48,13 @@ export function UsahaFiltersClient({
   currentProvinsi,
   currentSektor,
   currentKategori,
-  currentLegalitas,
+  currentBidang,
   currentTag,
   currentArah,
   currentPage,
   hasFilter,
   provinsiList,
+  bidangOptions,
 }: Props) {
   function buildUrl(overrides: Record<string, string | undefined | number>) {
     const sp = new URLSearchParams();
@@ -56,7 +63,7 @@ export function UsahaFiltersClient({
       provinsi:  currentProvinsi,
       sektor:    currentSektor,
       kategori:  currentKategori,
-      legalitas: currentLegalitas,
+      bidang:    currentBidang,
       tag:       currentTag,
       arah:      currentArah,
       page:      String(currentPage),
@@ -66,7 +73,7 @@ export function UsahaFiltersClient({
     if (eff.provinsi)  sp.set("provinsi",  String(eff.provinsi));
     if (eff.sektor)    sp.set("sektor",    String(eff.sektor));
     if (eff.kategori)  sp.set("kategori",  String(eff.kategori));
-    if (eff.legalitas) sp.set("legalitas", String(eff.legalitas));
+    if (eff.bidang)    sp.set("bidang",    String(eff.bidang));
     if (eff.tag)       sp.set("tag",       String(eff.tag));
     if (eff.tag && eff.arah) sp.set("arah", String(eff.arah));
     if (eff.page && eff.page !== "1") sp.set("page", String(eff.page));
@@ -77,10 +84,10 @@ export function UsahaFiltersClient({
   return (
     <div className="mb-6 space-y-3">
       <form method="GET" action={`/${slug}/usaha`}>
-        {currentProvinsi  && <input type="hidden" name="provinsi"  value={currentProvinsi} />}
-        {currentSektor    && <input type="hidden" name="sektor"    value={currentSektor} />}
+        {currentProvinsi && <input type="hidden" name="provinsi" value={currentProvinsi} />}
+        {currentSektor   && <input type="hidden" name="sektor"   value={currentSektor} />}
         {currentKategori  && <input type="hidden" name="kategori"  value={currentKategori} />}
-        {currentLegalitas && <input type="hidden" name="legalitas" value={currentLegalitas} />}
+        {currentBidang    && <input type="hidden" name="bidang"    value={currentBidang} />}
         <div className="flex gap-2 max-w-md">
           <input
             name="q"
@@ -94,45 +101,41 @@ export function UsahaFiltersClient({
         </div>
       </form>
 
-      <div className="flex flex-wrap gap-2 items-center">
-        <select
-          value={currentSektor ?? ""}
-          onChange={e => { window.location.href = buildUrl({ sektor: e.target.value || undefined, page: "1" }); }}
-          className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">Semua Sektor</option>
-          {SEKTOR_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-
-        <select
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-center">
+        <Combobox
+          options={KATEGORI_OPTIONS}
           value={currentKategori ?? ""}
-          onChange={e => { window.location.href = buildUrl({ kategori: e.target.value || undefined, page: "1" }); }}
-          className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">Semua Kategori</option>
-          {KATEGORI_OPTIONS.map(k => <option key={k} value={k}>{k}</option>)}
-        </select>
+          onValueChange={v => { window.location.href = buildUrl({ kategori: v || undefined, page: "1" }); }}
+          className={FILTER_CLASS}
+          clearable
+        />
 
-        <select
+        <Combobox
+          options={SEKTOR_OPTIONS}
+          value={currentSektor ?? ""}
+          onValueChange={v => { window.location.href = buildUrl({ sektor: v || undefined, page: "1" }); }}
+          className={FILTER_CLASS}
+          clearable
+        />
+
+        <Combobox
+          options={[{ value: "", label: "Semua Bidang Usaha" }, ...bidangOptions.map(b => ({ value: b, label: b }))]}
+          value={currentBidang ?? ""}
+          onValueChange={v => { window.location.href = buildUrl({ bidang: v || undefined, page: "1" }); }}
+          className={FILTER_CLASS}
+          clearable
+        />
+
+        <Combobox
+          options={[{ value: "", label: "Semua Provinsi" }, ...provinsiList.map(p => ({ value: String(p.id), label: p.name }))]}
           value={currentProvinsi ?? ""}
-          onChange={e => { window.location.href = buildUrl({ provinsi: e.target.value || undefined, page: "1" }); }}
-          className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">Semua Provinsi</option>
-          {provinsiList.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
-        </select>
-
-        <select
-          value={currentLegalitas ?? ""}
-          onChange={e => { window.location.href = buildUrl({ legalitas: e.target.value || undefined, page: "1" }); }}
-          className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">Semua Legalitas</option>
-          {LEGALITAS_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
-        </select>
+          onValueChange={v => { window.location.href = buildUrl({ provinsi: v || undefined, page: "1" }); }}
+          className={FILTER_CLASS}
+          clearable
+        />
 
         {hasFilter && (
-          <Link href={`/${slug}/usaha`} className="text-xs px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
+          <Link href={`/${slug}/usaha`} className="w-full sm:w-auto text-center text-xs px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
             × Reset Filter
           </Link>
         )}

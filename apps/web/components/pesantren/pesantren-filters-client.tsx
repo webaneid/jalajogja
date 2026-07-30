@@ -1,10 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { EcosystemTagFilter } from "@/components/ekosistem/ecosystem-tag-filter";
 
-const KURIKULUM_OPTIONS = ["KMI Gontor", "DIKNAS", "KEMENAG", "Salafiah", "Lainnya"] as const;
-const KATEGORI_OPTIONS  = ["Putra", "Putra dan Putri", "Putri"] as const;
+const FILTER_CLASS = "h-8 w-full sm:w-auto sm:flex-1 sm:min-w-[140px] rounded-full text-xs px-3 py-0";
+
+const KURIKULUM_OPTIONS: ComboboxOption[] = [
+  { value: "", label: "Semua Kurikulum" },
+  ...["KMI Gontor", "DIKNAS", "KEMENAG", "Salafiah", "Lainnya"].map(v => ({ value: v, label: v })),
+];
+const KATEGORI_OPTIONS: ComboboxOption[] = [
+  { value: "", label: "Semua Kategori Santri" },
+  ...["Putra", "Putra dan Putri", "Putri"].map(v => ({ value: v, label: v })),
+];
 
 type Props = {
   slug:              string;
@@ -73,36 +82,33 @@ export function PesantrenFiltersClient({
         </div>
       </form>
 
-      <div className="flex flex-wrap gap-2 items-center">
-        <select
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-center">
+        <Combobox
+          options={[{ value: "", label: "Semua Provinsi" }, ...provinsiList.map(p => ({ value: String(p.id), label: p.name }))]}
           value={currentProvinsi ?? ""}
-          onChange={e => { window.location.href = buildUrl({ provinsi: e.target.value || undefined, page: "1" }); }}
-          className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">Semua Provinsi</option>
-          {provinsiList.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
-        </select>
+          onValueChange={v => { window.location.href = buildUrl({ provinsi: v || undefined, page: "1" }); }}
+          className={FILTER_CLASS}
+          clearable
+        />
 
-        <select
+        <Combobox
+          options={KURIKULUM_OPTIONS}
           value={currentKurikulum ?? ""}
-          onChange={e => { window.location.href = buildUrl({ kurikulum: e.target.value || undefined, page: "1" }); }}
-          className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">Semua Kurikulum</option>
-          {KURIKULUM_OPTIONS.map(k => <option key={k} value={k}>{k}</option>)}
-        </select>
+          onValueChange={v => { window.location.href = buildUrl({ kurikulum: v || undefined, page: "1" }); }}
+          className={FILTER_CLASS}
+          clearable
+        />
 
-        <select
+        <Combobox
+          options={KATEGORI_OPTIONS}
           value={currentKategori ?? ""}
-          onChange={e => { window.location.href = buildUrl({ kategori: e.target.value || undefined, page: "1" }); }}
-          className="text-xs rounded-full border border-border bg-background px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">Semua Kategori Santri</option>
-          {KATEGORI_OPTIONS.map(k => <option key={k} value={k}>{k}</option>)}
-        </select>
+          onValueChange={v => { window.location.href = buildUrl({ kategori: v || undefined, page: "1" }); }}
+          className={FILTER_CLASS}
+          clearable
+        />
 
         {hasFilter && (
-          <Link href={`/${slug}/pesantren`} className="text-xs px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
+          <Link href={`/${slug}/pesantren`} className="w-full sm:w-auto text-center text-xs px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
             × Reset Filter
           </Link>
         )}

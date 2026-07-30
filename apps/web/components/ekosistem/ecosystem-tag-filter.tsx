@@ -8,7 +8,10 @@ import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags";
 // lib/ecosystem-tags.ts yang sama dengan form self-service (Fase 1) — satu sumber kebenaran.
 // Lihat docs/arsitektur-ekosistem.md § 6 Fase 2.
 
-const TAG_OPTIONS: ComboboxOption[] = ECOSYSTEM_TAG_SUGGESTIONS.map(t => ({ value: t, label: t }));
+const TAG_OPTIONS: ComboboxOption[] = [
+  { value: "", label: "Semua Tag" },
+  ...ECOSYSTEM_TAG_SUGGESTIONS.map(t => ({ value: t, label: t })),
+];
 
 type Props = {
   currentTag?: string;
@@ -47,6 +50,7 @@ export function EcosystemTagFilter({ currentTag, currentArah, onApply }: Props) 
         onValueChange={v => onApply((v as string) || undefined, arah)}
         placeholder="Cari tag ekosistem..."
         className="h-8 text-xs rounded-full px-3 w-56"
+        clearable
       />
     </div>
   );
