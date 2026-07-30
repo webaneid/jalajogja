@@ -218,7 +218,7 @@ export default async function UsahaDirectoryPage({
               >
                 {/* Sampul & Logo */}
                 {(() => {
-                  const coverImg = getVariantUrl(b.coverUrl, "thumbnail");
+                  const coverImg = b.coverUrl;
                   const logoImg  = b.logoUrl;
                   return (
                     <div className="aspect-video bg-muted/30 relative overflow-hidden flex items-center justify-center">

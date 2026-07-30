@@ -172,7 +172,7 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
 
         {/* Banner Sampul & Logo */}
         {(() => {
-          const coverImg = getVariantUrl(row.coverUrl, "large");
+          const coverImg = row.coverUrl;
           const logoImg  = row.logoUrl;
           if (!coverImg && !logoImg) return null;
           return (
