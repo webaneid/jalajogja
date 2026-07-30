@@ -552,7 +552,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
       {/* ── 3b. Ekosistem — apa yang ditawarkan/dibutuhkan ── */}
       <div className="space-y-4">
         <p className="text-sm font-semibold text-muted-foreground">Ekosistem Sinergi</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-4">
           <Field label="Menawarkan" optional>
             <TagMultiSelect
               options={ECOSYSTEM_TAG_SUGGESTIONS}

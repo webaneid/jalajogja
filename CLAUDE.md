@@ -14226,8 +14226,119 @@ dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba: u
 1.91:1 dipaksa); buka "Edit Crop" di Media Library dan konfirmasi dropdown hanya menawarkan
 square/square-large/profile, bukan large/medium/thumbnail.
 
+### [2026-07-31] Audit + Fix Agen Lain (Auto-Link Email + Sektor) + Filter Direktori Autocomplete + Cover Photo Regression + TagMultiSelect Race Condition
+
+**Audit perubahan agen lain (2 bug ditemukan+difix)**: user minta cek 4 file yang diubah agen
+lain (dokumentasi/bug/standar). Ditemukan **bug keamanan kritis** di `lib/akun-identity.ts` —
+blok "Langkah 2" baru mencocokkan email session terhadap `contacts.email` untuk member manapun
+yang belum diklaim, lalu DIAM-DIAM menulis `betterAuthUserId = userId` tanpa verifikasi email
+apa pun. Better Auth di project ini TIDAK punya email verification (`requireEmailVerification`
+tidak diset) — siapa pun bisa daftar akun publik dengan email siapa saja (dikonfirmasi: jalur
+"Akun Publik" di `/api/akun/register` tidak cek `members`/`contacts.email` sebelum mendaftarkan)
+lalu otomatis "claim" identitas member manapun yang emailnya kebetulan cocok string yang mereka
+ketik sendiri — celah identity-takeover nyata. **Fix**: blok auto-link dihapus total, revert ke
+lookup `betterAuthUserId` murni. Bug kedua: `business-sectors.ts`'s `OLD_TO_NEW_SECTOR` menebak
+2 mapping ambigu ("Kesehatan & Pendidikan", "Sumber Daya Alam") jadi nilai baru yang salah,
+bertentangan dengan keputusan yang sudah dikunci (harus `null`, sesuai migration `0055` yang
+sudah benar) — fix: 2 baris diubah jadi `null` + tipe diperluas `BusinessSector | null`.
+
+**Filter direktori publik jadi Combobox (UI standard compliance)**: `/usaha`, `/profesional`,
+`/pesantren` sebelumnya pakai `<select>` polos — melanggar aturan project "semua dropdown wajib
+autocomplete". Dikonversi ke `<Combobox>` di ketiga `*-filters-client.tsx`, plus: layout
+responsif (`flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-center`, class
+`w-full sm:w-auto sm:flex-1 sm:min-w-[140px]` — mobile stack 100% lebar, desktop bagi rata sisa
+ruang dengan min-width aman); `truncate`+`overflow-hidden` ditambah ke `Combobox` shared
+component (Button shadcn default `whitespace-nowrap` tanpa overflow handling, opsi label panjang
+memaksa tombol melebar tanpa ini); prop baru `clearable` di `Combobox` (ikon "×" pada trigger
+button sendiri kalau ada value, `e.preventDefault()+e.stopPropagation()` cegah Popover ikut
+terbuka) — `ecosystem-tag-filter.tsx` juga ditemukan TIDAK PUNYA opsi "Semua Tag" sama sekali,
+ditambahkan. Filter `/usaha` direstrukturisasi sesuai urutan eksplisit user (Kategori→Sektor→
+Bidang Usaha→Provinsi), Legalitas dihapus total (constant+prop+hidden input+Combobox+buildUrl).
+"Bidang Usaha" sebagai filter TERNYATA belum ada sama sekali server-side — dibangun dari nol
+(searchParam baru, query JSONB containment, options via `getPrioritizedBusinessFields()`).
+
+**Regresi Foto Sampul Usaha (thumbnail listing vs large detail)** — root cause DITEMUKAN via
+git archaeology (bukan ditebak): commit lama `718ba95` sudah benar pakai `getVariantUrl()` di
+kedua halaman publik, tapi commit BERIKUTNYA `3d3d0be` ("preserve legacy MinIO uploads")
+me-revert ke raw `coverUrl` karena admin-wizard-uploaded covers (`MediaPicker module="members"`)
+CUMA generate variant `original`+`profile` (lihat `MODULE_VARIANTS`) — suffix-swap ke `_th`/`_lg`
+untuk record itu 404. **Root fix**: ganti module upload admin wizard dari `"members"` →
+`"akun"` (generate variant SET LENGKAP, sama seperti self-service — dikonfirmasi via
+`git log --follow -p` bahwa self-service SELALU pakai `module="akun"` sejak commit pertama, nol
+risiko historis di jalur itu). Setelah module diperbaiki, `getVariantUrl()` di-reapply aman di
+kedua halaman publik (`usaha/page.tsx` thumbnail, `usaha/[id]/page.tsx` large), plus helper pure
+lokal `thumbUrl()` (regex suffix-swap, TIDAK import `lib/image-processor.ts` — client bundle
+boundary rule) ditambahkan ke 2 client component yang butuh thumbnail-ize (`step4-business.tsx`,
+`usaha-client.tsx`). **Caveat eksplisit ke user**: record LAMA yang sempat diupload admin wizard
+SEBELUM fix ini akan TETAP broken (cover-nya cuma varian `profile`, tidak ada `_th`/`_lg` untuk
+di-swap) — backfill perlu file `_ori` yang belum kena cron cleanup 10 hari, ditawarkan tapi
+belum dieksekusi (menunggu keputusan user). Front-end self-service dikonfirmasi AMAN sejak awal.
+
+**Bug race condition di `TagMultiSelect` — "gk bisa nambah bidang usaha lebih dari 1"**: dibaca
+menyeluruh 4 lapis (component logic → parent wiring `usaha-client.tsx` → payload build → API
+`member-business/route.ts` → schema Drizzle) — SEMUA struktural benar, mendukung array multi-tag,
+persis pola `TagInput` (post-form.tsx) yang sudah terbukti berfungsi untuk tag artikel. TAPI
+ditemukan 2 kelas bug nyata (bukan hipotetis) yang match pola CLAUDE.md sendiri
+("blur vs click race condition — pattern wajib untuk semua custom dropdown dengan blur-close"):
+(1) `CommandItem` (suggestion + "Tambah X") TIDAK punya `onMouseDown={e=>e.preventDefault()}` —
+sama seperti city-search-dropdown lama yang PERNAH kena bug identik; (2) `onBlur`'s
+`setTimeout(() => setOpen(false), 150)` TIDAK PERNAH di-cancel — kalau user berhasil memilih tag
+via klik (memicu blur→timer 150ms) lalu `addTag()`'s auto-refocus berhasil membuka lagi dropdown
+SEBELUM timer itu fire, timer tetap `setOpen(false)` di t+150ms TANPA CEK apakah fokus sudah
+kembali — dropdown tertutup paksa persis saat user mau pilih tag KEDUA. Fix: `blurTimeoutRef`
+(ref) menyimpan timeout ID, `onFocus` panggil `clearTimeout()` sebelum `setOpen(true)` — kalau
+refocus terjadi sebelum 150ms, stale-close dibatalkan. `onMouseDown` preventDefault ditambah ke
+kedua `CommandItem`. **Scope sengaja dibatasi ke `TagMultiSelect` saja** (dipakai `businessFields`/
+`offeredTags`/`neededTags` di 5 tempat: self-service usaha/profesional/pesantren + admin wizard
+step4-business/step5-pesantren) — `TagInput` kembaran di `post-form.tsx` PUNYA kelas race yang
+SAMA (dikonfirmasi baca kode, sama-sama tanpa `onMouseDown`) tapi TIDAK disentuh (di luar scope
+yang diminta user, "mode hemat" — dicatat sebagai technical debt kalau nanti dilaporkan serupa).
+
+**Verifikasi**: `tsc --noEmit` 0 error (setiap kelompok fix, sesuai SOP tsc-per-fase) + `bun run
+build --filter=@jalajogja/web` genuine sukses (47.9s, `Cached: 0 cached`, dev server dimatikan+
+`.next` dibersihkan+direstart, curl 200 OK). 4 commit terpisah dipush ke GitHub: `249fd73` (fix
+auto-link+sektor), `013d777` (crop-system + header simplifikasi, dari sesi sebelumnya), `8b48256`
+(filter autocomplete), `893e606` (cover photo fix). **TagMultiSelect race-condition fix (2 file)
+BELUM di-commit/push** — menunggu instruksi user. **Belum diverifikasi visual di browser** untuk
+fix TagMultiSelect maupun filter/cover-photo — user perlu coba langsung: tambah 2+ tag "Bidang
+Usaha" via klik suggestion berturut-turut (bukan cuma ketik+Enter), konfirmasi filter Combobox
+`/usaha` reset-able dan responsif mobile/desktop, dan cek cover foto usaha BARU (bukan yang lama)
+tampil thumbnail di listing + large di detail.
+
+**Aturan yang ditegaskan**: kalau menemukan sebuah class bug yang SUDAH terdokumentasi eksplisit
+di CLAUDE.md sebagai "pattern wajib" (di sini: `onMouseDown` preventDefault untuk semua custom
+dropdown blur-close), dan menemukan SATU komponen yang melanggarnya, grep juga komponen KEMBARAN
+yang polanya identik (di sini: `TagInput` vs `TagMultiSelect`, sama-sama dibuat dengan struktur
+copy-paste serupa) — kalau kembarannya JUGA melanggar, itu bukan berarti pattern-nya salah,
+tapi bukti debt yang sama menyebar; catat eksplisit sebagai debt terpisah kalau perbaikannya
+di luar scope permintaan saat itu, jangan diam-diam dibiarkan tanpa jejak.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix Sistem Crop Gambar — Konsistensi Variant Soft-Scale vs Hard-Crop**
+- Terakhir dikerjakan: **Audit perubahan agen lain (auto-link email + sektor) + filter direktori
+  Combobox + fix regresi cover foto usaha + fix race condition `TagMultiSelect`** (lihat lesson
+  `[2026-07-31]` "Audit + Fix Agen Lain" di atas) — rangkaian permintaan dalam satu sesi: (1)
+  audit 2 bug (auto-link email tak terverifikasi = celah keamanan identity-takeover; mapping
+  sektor ambigu ditebak salah) — DIFIX+commit `249fd73`; (2) konversi filter `<select>` di
+  `/usaha`/`/profesional`/`/pesantren` ke `<Combobox>` (UI standar), layout responsif mobile/
+  desktop, prop `clearable` baru di `Combobox`, filter "Bidang Usaha" dibangun dari nol, urutan
+  filter `/usaha` direstrukturisasi + Legalitas dihapus — commit `8b48256`; (3) regresi Foto
+  Sampul Usaha (thumbnail listing vs large detail) — root cause git archaeology: module upload
+  admin wizard salah (`"members"` vs seharusnya `"akun"`), difix + `getVariantUrl()` di-reapply —
+  commit `893e606`, dengan caveat eksplisit ke user bahwa record LAMA tetap broken (backfill
+  ditawarkan, belum dieksekusi); (4) **investigasi terbaru** — user laporkan sistem tagging
+  "Bidang Usaha"/"Menawarkan"/"Membutuhkan" di `/akun/usaha` (edit+create) tidak bisa tambah
+  lebih dari 1 tag. Dibaca 4 lapis kode (component→parent wiring→payload→API→schema), semua
+  struktural benar (mirip `TagInput` post yang sudah terbukti jalan) — TAPI ditemukan 2 bug race
+  condition nyata di `components/ui/tag-multi-select.tsx`: `CommandItem` tanpa `onMouseDown`
+  preventDefault (pattern wajib project untuk dropdown blur-close), dan `onBlur`'s
+  `setTimeout(150ms)` yang tidak pernah di-cancel — bisa menutup paksa dropdown persis saat user
+  coba pilih tag kedua via klik, walau `addTag()`'s auto-refocus sempat membukanya lagi. Fix:
+  `blurTimeoutRef` + `clearTimeout()` di `onFocus`, `onMouseDown={e=>e.preventDefault()}` di
+  kedua `CommandItem`. `tsc --noEmit` 0 error + `bun run build` genuine sukses (47.9s, dev server
+  direstart, curl 200 OK). **Fix TagMultiSelect BELUM di-commit/push, belum diverifikasi visual
+  di browser** — user perlu coba tambah 2+ tag via klik suggestion berturut-turut untuk
+  konfirmasi fix ini benar-benar menutup gejala yang dilaporkan, sebelum commit.
+- Sesi sebelumnya: **Fix Sistem Crop Gambar — Konsistensi Variant Soft-Scale vs Hard-Crop**
   (lihat lesson `[2026-07-31]` "Fix Sistem Crop Gambar" di atas) — user minta evaluasi sistem
   crop gambar yang sebelumnya diubah agen lain ke pendekatan "WordPress Soft Scale" (proporsional,
   zero crop untuk large/medium/thumbnail), dengan syarat eksplisit: JANGAN ubah logika, JANGAN

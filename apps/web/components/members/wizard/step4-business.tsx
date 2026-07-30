@@ -493,7 +493,7 @@ function BusinessCard({
             Boleh pilih lebih dari satu — tidak harus sesuai sektor di atas.
           </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-4">
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-foreground">
               Menawarkan <span className="font-normal text-muted-foreground">(opsional)</span>

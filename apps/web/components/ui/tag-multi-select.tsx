@@ -27,6 +27,7 @@ export function TagMultiSelect({ options, value, onChange, placeholder, disabled
   const [inputValue, setInputValue] = React.useState("");
   const [open, setOpen]             = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const blurTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const searchTerm   = inputValue.trim();
   const available     = options.filter((o) => !value.includes(o));
@@ -103,8 +104,13 @@ export function TagMultiSelect({ options, value, onChange, placeholder, disabled
             value={inputValue}
             onChange={(e) => { setInputValue(e.target.value); setOpen(true); }}
             onKeyDown={handleKeyDown}
-            onFocus={() => setOpen(true)}
-            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            onFocus={() => {
+              if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+              setOpen(true);
+            }}
+            onBlur={() => {
+              blurTimeoutRef.current = setTimeout(() => setOpen(false), 150);
+            }}
             placeholder={placeholder ?? (value.length === 0 ? "Ketik atau pilih, pisah koma..." : "Tambah...")}
             className="h-9 text-sm"
             disabled={disabled}
@@ -122,7 +128,12 @@ export function TagMultiSelect({ options, value, onChange, placeholder, disabled
               {filtered.length > 0 && (
                 <CommandGroup>
                   {filtered.slice(0, 8).map((opt) => (
-                    <CommandItem key={opt} value={opt} onSelect={() => addTag(opt)}>
+                    <CommandItem
+                      key={opt}
+                      value={opt}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onSelect={() => addTag(opt)}
+                    >
                       {opt}
                     </CommandItem>
                   ))}
@@ -130,7 +141,11 @@ export function TagMultiSelect({ options, value, onChange, placeholder, disabled
               )}
               {canCreate && (
                 <CommandGroup>
-                  <CommandItem value={`__create__${searchTerm}`} onSelect={() => addTag(searchTerm)}>
+                  <CommandItem
+                    value={`__create__${searchTerm}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onSelect={() => addTag(searchTerm)}
+                  >
                     Tambah &ldquo;{searchTerm}&rdquo;
                   </CommandItem>
                 </CommandGroup>

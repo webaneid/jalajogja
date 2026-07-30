@@ -450,7 +450,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
             onChange={e => onUpdate({ description: e.target.value })} disabled={disabled}
             placeholder="Layanan yang ditawarkan, pengalaman singkat..." rows={2} />
         </Field>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-4">
           <Field label="Menawarkan" optional>
             <TagMultiSelect
               options={ECOSYSTEM_TAG_SUGGESTIONS}

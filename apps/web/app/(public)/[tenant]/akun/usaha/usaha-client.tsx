@@ -521,7 +521,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
             Boleh pilih lebih dari satu — tidak harus sesuai sektor di atas.
           </p>
         </Field>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-4">
           <Field label="Menawarkan" optional>
             <TagMultiSelect
               options={ECOSYSTEM_TAG_SUGGESTIONS}

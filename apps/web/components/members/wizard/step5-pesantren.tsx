@@ -482,7 +482,7 @@ function PesantrenCard({
       {/* ── Section 3b: Ekosistem — apa yang ditawarkan/dibutuhkan ── */}
       <div className="space-y-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ekosistem Sinergi</p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-4">
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-foreground">
               Menawarkan <span className="font-normal text-muted-foreground">(opsional)</span>
