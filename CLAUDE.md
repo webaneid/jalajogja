@@ -13838,6 +13838,53 @@ tenant-scoping-hilang juga berulang — setiap resolver baru yang query tabel `p
 WAJIB dicek eksplisit apakah sudah `JOIN tenant_memberships` sebelum dianggap aman, jangan
 asumsikan dari nama parameter (`tenantClient`) bahwa scoping sudah pasti terjadi.
 
+### [2026-07-30] Audit Kritis Arsitektur Ekosistem — § 9 Usaha & Taksonomi Belum Dieksekusi + Logo Usaha
+
+User minta evaluasi kritis `docs/arsitektur-usaha.md`, `docs/arsitektur-ekosistem.md`,
+`docs/arsitektur-usaha-taxonomy-gemini.md` — "jangan percaya 100% terhadap agent, recheck
+kondisi dan arsitektur eksisting." Verifikasi langsung ke kode (bukan percaya dokumen)
+menemukan:
+
+- ✅ **Fase 1+2 Ekosistem (offeredTags/neededTags + filter lintas-direktori) genuinely benar** —
+  kolom ada di 3 tabel (`member_businesses`/`member_professionals`/`member_owned_pesantren`),
+  migration `0053` applied lokal, komponen filter (`components/ekosistem/`) dipakai nyata di 6
+  file (3 halaman detail + 3 filter client).
+- 🔴 **`arsitektur-usaha.md` § 9 ("Upgrade ke 10 Sektor BPS Hybrid") — NOL dieksekusi**, meski
+  ditulis dengan gaya seolah settled. Schema `sector` masih 7 nilai lama, `lib/business-
+  sectors.ts` dan `normalizeBusinessSector()` (disebut § 9.3 sebagai mitigasi) **tidak ada di
+  mana pun**.
+- 🟡 **Klaim `arsitektur-ekosistem.md` § 6 Fase 1 menyesatkan** — "`ecosystem-tags.ts` di-seed
+  dari Taksonomi 3-Tier + 9 Sub-Bidang Forcreator" TIDAK akurat. Isi aktual cuma
+  `BUSINESS_FIELD_SUGGESTIONS` (9 item lama, kebetulan sama) + 15 tag cross-domain manual —
+  **puluhan sub-sektor di `arsitektur-usaha-taxonomy-gemini.md` (AgriTech, Fulfillment Center,
+  dll) 0% terpakai kode**, dokumen itu murni riset belum terintegrasi.
+- ✅ Pesantren doc (`docs/arsitektur-pesantren.md`) konsisten dengan schema, tidak ada masalah.
+
+**Keputusan user**: tunda eksekusi § 9 (10 sektor) — koreksi status dokumen dulu jadi eksplisit
+"belum dieksekusi", TUNDA sampai arsitektur taksonomi ekosistem benar-benar matang (upgrade
+sektor + integrasi taksonomi 10-sektor ke `ecosystem-tags.ts` harus dieksekusi BERSAMAAN, bukan
+terpisah, supaya tidak ada dua sumber taksonomi yang perlu disinkronkan dua kali). Kedua dokumen
+dikoreksi dengan blockquote peringatan eksplisit (bukan diam-diam diedit tanpa jejak).
+
+**Logo Usaha (permintaan tambahan user)** — ditemukan `usaha-client.tsx` SUDAH punya
+`CoverImageField` untuk "Foto Usaha" (cover 16:9), tapi belum ada field logo terpisah (persegi,
+brand mark). Ditambahkan: kolom baru `member_businesses.logo_url` (migration
+`0054_member_business_logo.sql`, dijalankan lokal), wired ke self-service `/akun/usaha` (2
+`<CoverImageField>` berdampingan: "Logo Usaha" + "Foto Sampul Usaha") dan `GET/POST /api/akun/
+member-business` (SELECT + body type + insert values, pola persis `coverUrl`).
+
+**Gap pre-existing ditemukan, TIDAK ikut difix (di luar scope sempit "tambah upload logo")**:
+admin wizard (`step4-business.tsx`) dan `saveMemberBusinessesAction`/`BusinessEntryData`
+TERNYATA nol dukungan foto usaha sama sekali — bahkan `coverUrl` (yang sudah lama ada di
+self-service) tidak pernah diwire ke sisi admin. Ini bukan regresi dari perubahan sesi ini,
+murni gap lama yang kebetulan ketemu saat verifikasi — dicatat, bukan diperbaiki sekarang
+(scope creep kalau langsung dieksekusi tanpa diminta, sesuai lesson
+`feedback_no_scope_creep_in_audits`).
+
+**Verifikasi**: `tsc --noEmit` 0 error kedua package. Migration `0054` dijalankan+diverifikasi
+lokal. **Belum di-commit/push, belum dijalankan di VPS, belum diverifikasi visual** — perlu
+dicoba upload logo di `/akun/usaha` sebelum deploy.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Section Directory Organisasi — evaluasi laporan "selesai sempurna"
   dari agen lain menemukan 2 bug FATAL, dirombak total** (lihat lesson `[2026-07-30]` "Section

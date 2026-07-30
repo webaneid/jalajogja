@@ -175,6 +175,17 @@ payung). Filter pencarian lintas-direktori (Fase 2 payung) belum dimulai.**
 
 ## 9. Rencana Transisi & Upgrade Sektor Usaha (BPS Hybrid + Mandiri Forcreator)
 
+> ⬜ **STATUS: BELUM DIEKSEKUSI — MURNI RENCANA.** Diverifikasi ke kode aktual (2026-07-30):
+> `member_businesses.sector` di schema/DB **masih 7 nilai lama** ("Teknologi", "Jasa Profesional",
+> dst — bukan `sec_agriculture` dkk). `lib/business-sectors.ts` dan `normalizeBusinessSector()`
+> yang disebut § 9.3 **tidak ada satu pun di codebase**. Seluruh isi § 9 adalah draft yang perlu
+> dieksekusi kapan pun user memberi sinyal — jangan asumsikan sudah jalan hanya karena ditulis
+> dengan gaya seolah final. Keputusan user (2026-07-30): tunda eksekusi sampai arsitektur
+> taksonomi ekosistem (lihat `docs/arsitektur-ekosistem.md`) benar-benar matang dan siap —
+> upgrade sektor ini idealnya dieksekusi BERSAMAAN dengan integrasi taksonomi 10-sektor ke
+> `lib/ecosystem-tags.ts` (lihat catatan di `docs/arsitektur-ekosistem.md` § 6 Fase 1), bukan
+> terpisah, supaya tidak ada dua sumber taksonomi yang harus disinkronkan dua kali.
+>
 > **Rujukan Analisis**: [`docs/evaluasi-arsitektur-usaha-gemini.md`](file:///Users/webane/sites/jalajogja/docs/evaluasi-arsitektur-usaha-gemini.md) dan [`docs/arsitektur-profesional.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-profesional.md).
 > Ditambahkan: 2026-07-29. Updated: 2026-07-29.
 

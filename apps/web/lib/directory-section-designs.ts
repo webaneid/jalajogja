@@ -38,6 +38,6 @@ export type DirectorySectionDesignMeta = {
 export const DIRECTORY_SECTION_DESIGNS: Record<DirectorySectionDesignId, DirectorySectionDesignMeta> = {
   "1": {
     label:       "Grid Direktori Organisasi",
-    description: "Tampilan direktori dengan opsi judul default/simple, grid 2-4 kolom, dan desain kartu kustom (tanpa border radius cover, aksen diamond, alamat warna secondary, & avatar pemilik).",
+    description: "Tampilan direktori dengan opsi judul default/simple, grid 2-4 kolom, sudut foto bisa dipilih melengkung/tajam, aksen diamond, alamat warna secondary, & avatar pemilik.",
   },
 };

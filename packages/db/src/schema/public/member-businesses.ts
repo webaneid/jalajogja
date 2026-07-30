@@ -77,7 +77,8 @@ export const memberBusinesses = pgTable("member_businesses", {
   }),
 
   // ── Foto usaha ─────────────────────────────────────────────────────────────────
-  coverUrl: text("cover_url"),   // URL foto dari member media library (bukan FK — cross-schema)
+  coverUrl: text("cover_url"),   // URL foto cover/banner 16:9, dari member media library (bukan FK)
+  logoUrl:  text("logo_url"),    // URL logo persegi (brand mark), terpisah dari cover
 
   // ── Relasi ke helper tables ───────────────────────────────────────────────────
   addressId: uuid("address_id").references(() => addresses.id, { onDelete: "set null" }),

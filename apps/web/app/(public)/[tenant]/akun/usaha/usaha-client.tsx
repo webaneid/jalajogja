@@ -44,6 +44,7 @@ type Entry = {
   isWhatsappPublic: boolean;
   _sameAsPhone:     boolean;
   coverUrl:         string | null;
+  logoUrl:          string | null;
 };
 
 type ApiRow = {
@@ -63,6 +64,7 @@ type ApiRow = {
   instagram?: string; facebook?: string; linkedin?: string;
   twitter?: string; youtube?: string; tiktok?: string; website?: string;
   coverUrl?: string | null;
+  logoUrl?: string | null;
 };
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
@@ -134,6 +136,7 @@ function newEntry(): Entry {
     instagram: "", facebook: "", linkedin: "", twitter: "", youtube: "", tiktok: "", website: "",
     isPhonePublic: false, isWhatsappPublic: false, _sameAsPhone: false,
     coverUrl: null,
+    logoUrl: null,
   };
 }
 
@@ -182,6 +185,7 @@ function apiRowToEntry(e: ApiRow): Entry {
     isWhatsappPublic: e.isWhatsappPublic ?? false,
     _sameAsPhone:     !!phone && phone === whatsapp,
     coverUrl:         e.coverUrl ?? null,
+    logoUrl:          e.logoUrl ?? null,
   };
 }
 
@@ -220,6 +224,7 @@ function buildPayload(e: Entry) {
     tiktok:    trim(e.tiktok)    || undefined,
     website:   trim(e.website)   || undefined,
     coverUrl:  e.coverUrl ?? undefined,
+    logoUrl:   e.logoUrl ?? undefined,
   };
 }
 
@@ -437,12 +442,20 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
     <div className="space-y-6 rounded-lg border border-border bg-card p-5 sm:p-6">
 
       {/* ── Foto ── */}
-      <CoverImageField
-        slug={slug}
-        value={entry.coverUrl}
-        onChange={(url) => onUpdate({ coverUrl: url })}
-        label="Foto Usaha"
-      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <CoverImageField
+          slug={slug}
+          value={entry.logoUrl}
+          onChange={(url) => onUpdate({ logoUrl: url })}
+          label="Logo Usaha"
+        />
+        <CoverImageField
+          slug={slug}
+          value={entry.coverUrl}
+          onChange={(url) => onUpdate({ coverUrl: url })}
+          label="Foto Sampul Usaha"
+        />
+      </div>
 
       {/* ── Identitas ── */}
       <div className="space-y-4">

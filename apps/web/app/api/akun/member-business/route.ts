@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
       branches:    memberBusinesses.branches,
       revenue:     memberBusinesses.revenue,
       coverUrl:    memberBusinesses.coverUrl,
+      logoUrl:     memberBusinesses.logoUrl,
       // Kontak
       phone:              contacts.phone,
       whatsapp:           contacts.whatsapp,
@@ -102,6 +103,7 @@ export async function POST(req: NextRequest) {
       instagram?: string; facebook?: string; linkedin?: string;
       twitter?: string; youtube?: string; tiktok?: string; website?: string;
       coverUrl?: string;
+      logoUrl?: string;
     }[];
   };
 
@@ -176,6 +178,7 @@ export async function POST(req: NextRequest) {
         branches:    (e.branches  || null) as "Tidak Ada"|"1-3"|"Diatas 3"|null,
         revenue:     (e.revenue   || null) as "Dibawah 500jt"|"500jt-1M"|"1M-2M"|"Diatas 2M"|null,
         coverUrl:    e.coverUrl?.trim() || null,
+        logoUrl:     e.logoUrl?.trim() || null,
         contactId, addressId, socialMediaId,
       });
     }
