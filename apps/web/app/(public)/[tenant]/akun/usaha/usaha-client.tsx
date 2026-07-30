@@ -13,6 +13,14 @@ import { getPrioritizedBusinessFields, normalizeBusinessSector } from "@/lib/bus
 import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { displayPhone } from "@/lib/phone";
+
+// Pure, client-safe — JANGAN import dari lib/image-processor.ts (bawa `sharp`, Node-only,
+// merusak bundle client). Sama persis logika getVariantUrl() untuk swap suffix "_th".
+function thumbUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (url.endsWith(".svg") || url.startsWith("data:")) return url;
+  return url.replace(/_(ori|lg|md|th|sq|sql|pf)\.webp$/, "_th.webp");
+}
 import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select";
 import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-media-input";
 import { CoverImageField } from "@/components/media/member-media-picker";
@@ -905,7 +913,7 @@ export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }
                     <div className="flex items-center gap-3">
                       {e.coverUrl ? (
                         <div className="relative w-10 h-10 rounded-md overflow-hidden shrink-0 border border-border">
-                          <Image src={e.coverUrl} alt={e.name} fill sizes="40px" className="object-cover" />
+                          <Image src={thumbUrl(e.coverUrl)} alt={e.name} fill sizes="40px" className="object-cover" />
                         </div>
                       ) : (
                         <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0">

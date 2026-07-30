@@ -11,6 +11,14 @@ import {
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker"
+
+// Pure, client-safe — JANGAN import dari lib/image-processor.ts (bawa `sharp`, Node-only,
+// merusak bundle client). Sama persis logika getVariantUrl() untuk swap suffix "_th".
+function thumbUrl(url: string | null | undefined): string {
+  if (!url) return ""
+  if (url.endsWith(".svg") || url.startsWith("data:")) return url
+  return url.replace(/_(ori|lg|md|th|sq|sql|pf)\.webp$/, "_th.webp")
+}
 import {
   Command,
   CommandEmpty,
@@ -174,7 +182,7 @@ function PhotoPickerField({
         {value ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={value}
+            src={shape === "wide" ? thumbUrl(value) : value}
             alt={label}
             className={cn("shrink-0 rounded-md border border-border object-cover", boxCls)}
           />
@@ -213,7 +221,7 @@ function PhotoPickerField({
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onSelect={(media: MediaItem) => { onChange(media.url); setPickerOpen(false) }}
-        module="members"
+        module="akun"
         accept={["image/"]}
       />
     </div>
