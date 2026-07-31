@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { EkosistemModulesConfig } from "@/lib/ekosistem-modules";
 
 // Widget kecil "Cari Sinergi" — cross-link statis berbasis tag-overlap sederhana, TANPA
 // matching engine (nol query tambahan, murni link navigasi dari tag entitas ini sendiri ke
@@ -25,10 +26,17 @@ type Props = {
   currentModule: DirectoryKey;
   offeredTags:   string[];
   neededTags:    string[];
+  // Modul mana yang aktif di tenant ini — target link ke direktori yang dimatikan admin
+  // disembunyikan. Opsional: kalau tidak dikirim, semua direktori lain tetap ditawarkan
+  // (perilaku lama). Lihat lib/ekosistem-modules.ts.
+  enabledModules?: EkosistemModulesConfig;
 };
 
-export function EcosystemTagCrossLinks({ slug, currentModule, offeredTags, neededTags }: Props) {
-  const otherDirectories = ALL_DIRECTORIES.filter(d => d !== currentModule);
+export function EcosystemTagCrossLinks({ slug, currentModule, offeredTags, neededTags, enabledModules }: Props) {
+  const otherDirectories = ALL_DIRECTORIES.filter(
+    d => d !== currentModule && (!enabledModules || enabledModules[d]),
+  );
+  if (otherDirectories.length === 0) return null;
 
   const entries: { tag: string; searchArah: "menawarkan" | "membutuhkan" }[] = [];
   const seen = new Set<string>();

@@ -8,6 +8,8 @@ import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import { resolveAkunBranding } from "@/lib/resolve-akun-branding";
 import { getTenantSeoBase }    from "@/lib/tenant-seo";
 import { checkMemberEligibility, type MemberEligibilityField } from "@/lib/member-eligibility";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { enabledModuleList, type EkosistemModule } from "@/lib/ekosistem-modules";
 import { MemberCard } from "@/components/akun/mobile/member-card";
 import { MembershipEligibilityOverlay } from "@/components/akun/membership-eligibility-overlay";
 import {
@@ -30,6 +32,12 @@ export default async function AkunPage({ params }: { params: Params }) {
 
   const isMember     = identity.type === "member";
   const isIncomplete = isMemberDataIncomplete(identity);
+
+  // Modul ekosistem aktif tenant ini — dipakai untuk filter quick-action link Pesantren/
+  // Usaha/Profesional DAN untuk mempersempit himpunan eligibility "directory". Lihat
+  // lib/ekosistem-modules.ts + docs/arsitektur-ekosistem.md.
+  const enabledModulesConfig = await getEnabledEkosistemModules(createTenantDb(slug));
+  const enabledModulesArr    = enabledModuleList(enabledModulesConfig);
 
   // Info keanggotaan
   let membershipInfo: {
@@ -130,13 +138,13 @@ export default async function AkunPage({ params }: { params: Params }) {
           .limit(1);
 
         const isJoined = forumMembershipRow?.forumStatus === "active";
-        const eligibility = await checkMemberEligibility(identity.memberId);
+        const eligibility = await checkMemberEligibility(identity.memberId, enabledModulesArr);
         if (!eligibility.eligible || !isJoined) {
           showEligibilityOverlay = true;
           overlayMissing = eligibility.missing; // kosong = eligible, komponen tampilkan "Gabung X"
         }
       } else {
-        const eligibility = await checkMemberEligibility(identity.memberId);
+        const eligibility = await checkMemberEligibility(identity.memberId, enabledModulesArr);
         if (!eligibility.eligible) {
           showEligibilityOverlay = true;
           overlayMissing = eligibility.missing;
@@ -169,6 +177,17 @@ export default async function AkunPage({ params }: { params: Params }) {
     siteName     = seo.siteName;
     primaryColor = (displaySettings.primary_color as string | undefined) || "#2563eb";
   }
+
+  // Link ke 3 modul ekosistem + Foto Saya — item ber-moduleKey hilang kalau modul itu
+  // dimatikan admin di tenant ini (Foto Saya tidak punya moduleKey, selalu tampil).
+  const directoryLinks = (
+    [
+      { href: `${baseUrl}/akun/pesantren`,   icon: BookOpen,   label: "Pesantren",   desc: "Data keterlibatan pesantren", moduleKey: "pesantren" },
+      { href: `${baseUrl}/akun/usaha`,       icon: Building2,  label: "Usaha",       desc: "Data usaha & bisnis",         moduleKey: "usaha" },
+      { href: `${baseUrl}/akun/profesional`, icon: Briefcase,  label: "Profesional", desc: "Data profesi & kredensial",   moduleKey: "profesional" },
+      { href: `${baseUrl}/akun/media`,       icon: ImageIcon,  label: "Foto Saya",   desc: "Kelola foto yang Anda upload" },
+    ] as Array<{ href: string; icon: React.ElementType; label: string; desc: string; moduleKey?: EkosistemModule }>
+  ).filter((item) => !item.moduleKey || enabledModulesConfig[item.moduleKey]);
 
   const completeBanner = isMember && isIncomplete && (
     <a
@@ -259,6 +278,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               missing={overlayMissing}
               baseUrl={baseUrl}
               isForum={overlayIsForum}
+              enabledModules={enabledModulesConfig}
             />
           )}
         </div>
@@ -267,12 +287,7 @@ export default async function AkunPage({ params }: { params: Params }) {
       {/* Quick links data anggota */}
       {isMember && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {[
-            { href: `${baseUrl}/akun/pesantren`,   icon: BookOpen,   label: "Pesantren",   desc: "Data keterlibatan pesantren" },
-            { href: `${baseUrl}/akun/usaha`,       icon: Building2,  label: "Usaha",       desc: "Data usaha & bisnis" },
-            { href: `${baseUrl}/akun/profesional`, icon: Briefcase,  label: "Profesional", desc: "Data profesi & kredensial" },
-            { href: `${baseUrl}/akun/media`,       icon: ImageIcon,  label: "Foto Saya",   desc: "Kelola foto yang Anda upload" },
-          ].map(({ href, icon: Icon, label, desc }) => (
+          {directoryLinks.map(({ href, icon: Icon, label, desc }) => (
             <a key={href} href={href}
               className="flex items-center gap-3 rounded-xl border border-border p-4 hover:border-primary/50 hover:bg-muted/40 transition-all">
               <Icon className="h-5 w-5 text-primary shrink-0" />
@@ -332,6 +347,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               missing={overlayMissing}
               baseUrl={baseUrl}
               isForum={overlayIsForum}
+              enabledModules={enabledModulesConfig}
             />
           )}
         </div>
@@ -357,12 +373,7 @@ export default async function AkunPage({ params }: { params: Params }) {
         <div>
           <p className="mb-2 text-sm font-semibold">Menu Cepat</p>
           <div className="flex gap-4 overflow-x-auto pb-1">
-            {[
-              { href: `${baseUrl}/akun/pesantren`,   icon: BookOpen,   label: "Pesantren" },
-              { href: `${baseUrl}/akun/usaha`,       icon: Building2,  label: "Usaha" },
-              { href: `${baseUrl}/akun/profesional`, icon: Briefcase,  label: "Profesional" },
-              { href: `${baseUrl}/akun/media`,       icon: ImageIcon,  label: "Foto Saya" },
-            ].map(({ href, icon: Icon, label }) => (
+            {directoryLinks.map(({ href, icon: Icon, label }) => (
               <a key={href} href={href} className="flex shrink-0 flex-col items-center gap-1.5 w-16">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <Icon className="h-5 w-5" />

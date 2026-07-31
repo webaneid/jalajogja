@@ -638,6 +638,167 @@ konfirmasi overlay-nya benar-benar muncul menutupi kartu, bukan cuma badge teks 
 
 ---
 
+### Toggle Per-Tenant untuk Modul Ekosistem (2026-08-01)
+
+> Rencana lengkap (riset + desain): `/Users/webane/.claude/plans/binary-questing-river.md`.
+> Cross-reference: `docs/arsitektur-ekosistem.md` (Fase 1+2, tag `offeredTags`/`neededTags` —
+> fitur BERBEDA, tidak overlap; toggle ini murni visibility gate per modul, bukan pencocokan).
+
+**Kebutuhan**: sebuah tenant (cabang/marhalah/forum) bisa jadi tidak relevan menawarkan
+ketiga direktori (Usaha/Pesantren/Profesional) sekaligus — forum yang fokus bisnis mungkin
+tidak butuh Pesantren; forum desain grafis mungkin cuma butuh Profesional. Sebelum fitur ini,
+ketiga modul selalu tampil unconditional di semua tempat untuk semua tenant, tidak ada cara
+mematikan salah satunya.
+
+**Prinsip yang dikunci dari diskusi user (kutipan verbatim, jangan disederhanakan)**:
+
+> "secara konstruksi sistem, bukan menghilangkan data, tetapi menyembunyikan. Artinya: dia
+> tidak pernah dihapus dari sistem personal, karena kita memiliki single id tadi, yang
+> memungkinkan di satu tenant memang ada atau dibutuhkan varian tersebut dan seorang boleh
+> merasa sebagai profesional mandiri atau memiliki usaha untuk menunjang profesionalitasnya.
+> sehingga tidak benar-benar hilang hanya tidak terlihat atau dianggap."
+
+Konsekuensi arsitektural: `member_businesses`/`member_owned_pesantren`/`member_professionals`
+adalah tabel `public` schema (data global milik member, bukan tenant-owned) — toggle ini
+**TIDAK PERNAH** menghapus atau membatasi baris data. Ia murni gerbang VISIBILITAS front-end
+untuk konteks tenant yang sedang dibrowsing. Data anggota yang sama tetap utuh dan bisa
+tampil normal di tenant lain yang mengaktifkan modul itu.
+
+**Aturan eligibility — kutipan verbatim (koreksi eksplisit dari kesalahpahaman saya
+sebelumnya, jangan diinterpretasi ulang)**:
+
+> "'harus mengisi salah satu' itu keyword utamanya, artinya: Jika yang diaktifkan 3 varian
+> database (pesantren, usaha dan profesional) maka wajib mengisi salah satunya. Jika
+> diaktifkan 2, maka wajib mengisi salah satu. Jika cuma satu: ya berarti wajib mengisi satu
+> itu. ... Misal saya masuk komunitas atau forum design grafis, dan dia mengaktifkan
+> profesional saja, ketika saya masuk forum bisnis yang mewajibkan punya usaha dan tidak
+> mengaktifkan profesional, maka saya tidak eligibel, tetap harus mengisi data usaha terlebih
+> dahulu."
+
+Jadi aturan "directory" di `checkMemberEligibility()` SELALU "OR — minimal satu dari modul
+yang AKTIF UNTUK TENANT INI", terlepas berapa banyak modul yang aktif (1, 2, atau 3). Sudah
+punya data di modul yang TIDAK aktif di tenant ini TIDAK PERNAH cukup untuk lolos eligibility
+di tenant itu — member harus mengisi salah satu modul yang memang ditawarkan tenant tersebut.
+
+Kedua putaran `AskUserQuestion` lain yang dikonfirmasi user: (a) `checkMemberEligibility()`
+ikut menyesuaikan toggle (bukan cuma UI form entri) — **Recommended, dipilih**; (b) semua tipe
+tenant (cabang/marhalah/forum) bisa mengatur toggle — **Recommended, dipilih**, bukan cuma
+forum.
+
+**Storage — nol migrasi DB**: 3 boolean baru (`usaha_enabled`, `pesantren_enabled`,
+`profesional_enabled`) di `tenant.settings` group `"general"` (grup yang SUDAH ADA sejak lama,
+dipakai `site_name`/`logo_url`/dst) — tidak perlu `SETTING_GROUPS` migration baru. Semantik
+`!== false` (bukan `=== true`) supaya default backward-compatible: tenant lama yang belum
+pernah menyentuh setting ini otomatis dianggap SEMUA modul aktif (perilaku sebelum fitur ini).
+
+**File baru — split client-safe/server-only** (pola yang SUDAH berulang 3× di project ini
+untuk kelas bug client/server bundle boundary — `nav-menu.ts`/`.server.ts`,
+`tenant-timezone.ts`/`.server.ts`, `forum-membership-number.ts`/`.server.ts`):
+```typescript
+// lib/ekosistem-modules.ts — pure, ZERO import @jalajogja/db, aman diimpor client component
+export type EkosistemModule = "usaha" | "pesantren" | "profesional";
+export const ALL_EKOSISTEM_MODULES: EkosistemModule[] = ["usaha", "pesantren", "profesional"];
+export type EkosistemModulesConfig = Record<EkosistemModule, boolean>;
+
+export function resolveEkosistemModulesConfig(raw: Record<string, unknown>): EkosistemModulesConfig {
+  return {
+    usaha:       raw.usaha_enabled       !== false,
+    pesantren:   raw.pesantren_enabled   !== false,
+    profesional: raw.profesional_enabled !== false,
+  };
+}
+
+export function enabledModuleList(config: EkosistemModulesConfig): EkosistemModule[] {
+  return ALL_EKOSISTEM_MODULES.filter((m) => config[m]);
+}
+```
+```typescript
+// lib/ekosistem-modules.server.ts — import "server-only"
+export async function getEnabledEkosistemModules(tenantClient: TenantDb): Promise<EkosistemModulesConfig> {
+  const settings = await getSettings(tenantClient, "general");
+  return resolveEkosistemModulesConfig(settings);
+}
+```
+Dites via disposable `bun -e` script: default-true saat setting absen, override eksplisit
+`false` terbaca benar, `enabledModuleList()` filter benar — semua PASS sebelum dipakai produksi.
+
+**`checkMemberEligibility(memberId, enabledDirectoryModules?)`** — parameter kedua baru,
+default `ALL_EKOSISTEM_MODULES` (backward-compat — caller lama yang belum diupdate tetap
+berperilaku identik sebelum fitur ini). Query "directory" requirement sekarang HANYA dibangun
+untuk modul yang ada di `enabledDirectoryModules`. Kalau array kosong (tenant mematikan
+SEMUA 3 modul sekaligus) → `hasDirectory = true` (requirement di-skip total, karena tidak
+mungkin dipenuhi kalau tidak ada satu pun modul yang ditawarkan).
+
+**`memberEligibilityFixHref(field, baseUrl, enabledModules?)`** — parameter ketiga baru,
+untuk field `"directory"` pilih modul aktif PERTAMA dalam urutan prioritas
+`["usaha", "profesional", "pesantren"]` (bukan hardcode `/akun/usaha` seperti sebelumnya).
+
+**Semua 5 caller lama `checkMemberEligibility()` diupdate** mengirim parameter modul — bukan
+dibiarkan pakai default supaya konsisten dengan toggle tenant yang sedang dibrowsing:
+1. `gabung/actions.ts` (`joinForumAction`)
+2. `gabung/page.tsx`
+3. `akun/page.tsx` (2 cabang — forum & cabang/marhalah)
+4. `lib/resolve-akun-branding.ts` (`resolveAkunBranding`)
+5. `finance/billing/actions.ts` (`activateForumMembershipIfApplicable`)
+
+**Admin toggle UI** — `/app/{slug}/settings/general`: 3 checkbox baru ("Aktifkan Modul
+Usaha/Pesantren/Profesional") dengan teks penjelasan "data anggota yang sudah ada tidak akan
+dihapus, hanya disembunyikan dari tampilan" — konsisten prinsip yang dikunci di atas, supaya
+admin yang mematikan modul tidak salah kira ini aksi destruktif.
+
+**Titik-titik yang ikut menyembunyikan (bukan cuma form entri)** — dieksekusi 4 fase, `tsc`+
+build genuine diverifikasi tiap fase:
+
+- **Self-service** (`/akun/*`): `akun/layout.tsx` fetch config sekali, thread ke `<AkunNav>`
+  (desktop) + `<AkunBottomNav>` (mobile) — keduanya filter `MEMBER_NAV_ITEMS` via
+  `moduleKey` field baru + `filterNavItemsByModules()` (export baru dari `akun-nav.tsx`).
+  `akun/usaha/page.tsx`+`akun/profesional/page.tsx` gate redirect ke `/akun` kalau modulnya
+  off. `akun/pesantren/page.tsx` (sebelumnya CLIENT COMPONENT itu sendiri, tanpa server
+  wrapper) direstrukturisasi jadi `pesantren-client.tsx` (ekstraksi murni, isi identik,
+  `useParams()`/`useBaseUrl()` dihapus karena sekarang terima prop) + `page.tsx` server baru
+  dengan gate yang sama. `akun/page.tsx` — 2 array quick-action (desktop grid + mobile "Menu
+  Cepat") digabung jadi satu `directoryLinks` di-filter `moduleKey`; `checkMemberEligibility`
+  dan overlay dapat config yang sama. `DirectoryChoicePopover` (popup 3 pilihan direktori) dan
+  `MembershipEligibilityOverlay` dapat prop `enabledModules?` untuk filter opsi yang
+  ditampilkan.
+- **Admin dashboard**: `member-edit-shell.tsx` — tab "Usaha" (`TABS` array) di-exclude kalau
+  modul off (Pesantren/Profesional tidak punya tab admin sama sekali — Profesional murni
+  self-service, Pesantren cuma via dialog `member-data-sections.tsx`). `members/[id]/page.tsx`
+  — render `<BusinessSection>`/`<PesantrenSection>` dibungkus kondisi `enabledModules.usaha`/
+  `.pesantren`.
+- **Publik + landing + statistik**: 6 halaman direktori publik (`usaha`/`pesantren`/
+  `profesional` × list+detail) — gate `notFound()` sejajar pola `!tenant?.isActive` yang sudah
+  ada. `directory-feed.server.ts` (`resolveDirectoryItems`) — kembalikan `items: []` kalau
+  `directoryType` section itu dimatikan admin (bukan mock data, murni kosong). Route API baru
+  `GET /api/ekosistem/modules?slug=` (auth `getTenantAccess`, pola sama
+  `/api/instagram/oauth/status`) — dipanggil `DirectoryEditor` (section builder,
+  `section-editors.tsx`, pola fetch client-side identik `InstagramEditor`) untuk memfilter
+  opsi dropdown "Tipe Direktori" cuma menawarkan modul yang aktif. `statistik/page.tsx` — 3
+  dari 4 blok breakdown (Usaha/Pesantren/Profesional; "Statistik Anggota" TETAP selalu
+  tampil) dibungkus kondisi enabled. `EcosystemTagCrossLinks` (widget "Cari Sinergi") dapat
+  prop `enabledModules?` — filter target link cross-directory ke modul yang aktif saja.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` di SETIAP fase (bukan
+ditumpuk ke akhir) — 2× sempat salah jalankan dari root repo (bukan `apps/web`), langsung
+terdiagnosis via `pwd` sebagai kesalahan cwd (root `tsconfig.json` tidak punya alias `@/*`),
+bukan regresi nyata. `bun run build --filter=@jalajogja/web` genuine (dev server
+dimatikan+`.next` dibersihkan+direstart, `Cached: 0 cached` dikonfirmasi) minimal 2× (akhir
+Fase B dan Fase D). Curl sanity sweep ke setiap route yang disentuh (`/akun/*`,
+`/{slug}/usaha`, `/{slug}/pesantren`, `/{slug}/profesional`, list+detail) plus regresi sweep
+tipe konten LAIN yang tidak disentuh (produk/agenda/campaign/anggota — semua tetap 200, nol
+collateral damage). Grep akhir `getEnabledEkosistemModules(` — 20 titik pemanggilan
+terkonfirmasi ada di seluruh 4 fase. Nol migrasi DB.
+
+**Belum diverifikasi visual di browser** (keterbatasan environment sesi ini) — user perlu
+coba: matikan Pesantren di `/settings/general` sebuah tenant → cek `/akun` (card+nav item
+hilang), `/akun/pesantren` (redirect ke `/akun`), `/{slug}/pesantren` (404), section builder
+landing page (opsi "Pesantren" hilang dari dropdown "Tipe Direktori"), `/statistik` (blok
+Pesantren hilang), dan alur `/gabung` (eligibility tidak lagi mensyaratkan Pesantren — cukup
+Usaha/Profesional kalau keduanya masih aktif). **Belum di-commit/push** — menunggu instruksi
+user.
+
+---
+
 ## Data Usaha Anggota (`/akun/usaha`)
 
 ### Arsitektur Penyimpanan

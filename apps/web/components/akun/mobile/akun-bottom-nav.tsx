@@ -4,7 +4,8 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Receipt, User, Menu, X, LogOut } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
-import { MEMBER_NAV_ITEMS, PUBLIC_NAV_ITEMS, type NavItem } from "@/components/akun/akun-nav";
+import { MEMBER_NAV_ITEMS, PUBLIC_NAV_ITEMS, filterNavItemsByModules, type NavItem } from "@/components/akun/akun-nav";
+import type { EkosistemModulesConfig } from "@/lib/ekosistem-modules";
 
 // Bottom nav khusus "app mode" /akun (mobile) — beda dari BottomNav situs (flex-header.tsx):
 // bar flat, tanpa tombol melayang (itu gimmick branding situs, tidak relevan di sini). Struktur
@@ -23,14 +24,15 @@ type Props = {
   slug:     string;
   baseUrl:  string;
   isMember: boolean;
+  enabledModules?: EkosistemModulesConfig;
 };
 
-export function AkunBottomNav({ baseUrl, isMember }: Props) {
+export function AkunBottomNav({ baseUrl, isMember, enabledModules }: Props) {
   const pathname    = usePathname();
   const [open, setOpen] = useState(false);
   const base         = `${baseUrl}/akun`;
 
-  const items: NavItem[] = isMember ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
+  const items: NavItem[] = filterNavItemsByModules(isMember ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS, enabledModules);
   const mainItems    = items.filter((i) => MAIN_HREFS.has(i.href));
   const extraItems   = items.filter((i) => !MAIN_HREFS.has(i.href));
 

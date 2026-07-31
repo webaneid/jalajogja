@@ -17,6 +17,7 @@ import { UsahaFiltersClient } from "@/components/usaha/usaha-filters-client";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import { getPrioritizedBusinessFields } from "@/lib/business-sectors";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 
 export const revalidate = 60;
 
@@ -78,6 +79,11 @@ export default async function UsahaDirectoryPage({
     .where(eq(tenants.slug, slug))
     .limit(1);
   if (!tenant?.isActive) notFound();
+
+  // Modul Usaha dimatikan admin tenant ini — data tetap ada (single-ID global), cuma tidak
+  // ditawarkan di sini. Berlaku juga untuk entri lama yang dibuat sebelum modul dimatikan.
+  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  if (!enabledModules.usaha) notFound();
 
   const provinsiList = await db
     .select({ id: refProvinces.id, name: refProvinces.name })

@@ -8,6 +8,7 @@ import {
   members, addresses,
 } from "@jalajogja/db";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 import type { DirectorySectionData, DirectoryItem, DirectoryType } from "./directory-section-designs";
 
 type DirectoryLabels = { defaultTitle: string; archiveHref: string; typeLabel: string };
@@ -34,12 +35,12 @@ export type DirectoryFeedResult = {
  * mock/fake data apa pun. Kalau data kosong, `items` kosong — caller yang memutuskan
  * tampilannya, bukan resolver yang mengarang data.
  *
- * `tenantClient` saat ini tidak dipakai (semua data direktori hidup di public schema,
- * bukan tenant schema) — dipertahankan di signature untuk konsistensi dengan resolver
- * sejenis lain (`resolveInstagramFeed`, dst) yang memang butuh akses tenant schema.
+ * `tenantClient` dipakai untuk cek toggle modul ekosistem tenant ini
+ * (lib/ekosistem-modules.ts) — kalau `directoryType` section ini dimatikan admin, `items`
+ * dikembalikan kosong (data tidak dihapus, cuma tidak ditawarkan di sini).
  */
 export async function resolveDirectoryItems(
-  _tenantClient: TenantDb,
+  tenantClient: TenantDb,
   tenantSlug: string,
   data: DirectorySectionData,
 ): Promise<DirectoryFeedResult> {
@@ -52,6 +53,14 @@ export async function resolveDirectoryItems(
   // Nama organisasi dinamis (settings.general.site_name -> tenants.name -> slug) — dipakai
   // untuk label "Direktori {Type} {orgName}". TIDAK PERNAH hardcode nama tenant tertentu.
   const { siteName: orgName } = await getTenantSeoBase(tenantSlug);
+
+  // Modul directoryType dimatikan admin tenant ini — section kosong, DirectorySection
+  // (caller) yang memutuskan untuk tidak merender apa pun, bukan resolver ini yang
+  // mengarang data pengganti.
+  const enabledModules = await getEnabledEkosistemModules(tenantClient);
+  if (!enabledModules[directoryType]) {
+    return { title: sectionTitle, items: [], archiveHref: meta.archiveHref, typeLabel: meta.typeLabel, orgName };
+  }
 
   const [tenantRow] = await publicDb
     .select({ id: tenants.id })

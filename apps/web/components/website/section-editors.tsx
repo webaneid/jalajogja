@@ -1629,9 +1629,34 @@ function InstagramEditor({ data, onChange, tenantSlug }: EditorProps) {
 
 // ── Directory Editor ─────────────────────────────────────────────────────────
 
-function DirectoryEditor({ data, onChange }: EditorProps) {
+const DIRECTORY_TYPE_LABELS: Record<string, string> = {
+  usaha:       "Direktori Usaha & Bisnis",
+  profesional: "Direktori Praktik Profesional",
+  pesantren:   "Direktori Pesantren Alumni",
+};
+
+function DirectoryEditor({ data, onChange, tenantSlug }: EditorProps) {
   const d = data as DirectorySectionData;
   const u = (k: string, v: unknown) => onChange({ ...data, [k]: v });
+
+  // Modul mana yang aktif untuk tenant ini — opsi "Tipe Direktori" cuma menawarkan modul
+  // yang dinyalakan admin (lib/ekosistem-modules.ts). Default: semua tampil selagi masih
+  // memuat / kalau slug belum tersedia, supaya tidak ada flicker "kosong" sesaat.
+  const [enabledDirectoryTypes, setEnabledDirectoryTypes] = useState<string[]>(
+    Object.keys(DIRECTORY_TYPE_LABELS),
+  );
+  useEffect(() => {
+    if (!tenantSlug) return;
+    let cancelled = false;
+    fetch(`/api/ekosistem/modules?slug=${tenantSlug}`)
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then((cfg: Record<string, boolean>) => {
+        if (cancelled) return;
+        setEnabledDirectoryTypes(Object.keys(DIRECTORY_TYPE_LABELS).filter((k) => cfg[k]));
+      })
+      .catch(() => {}); // gagal fetch → biarkan default (semua tampil), bukan kosong
+    return () => { cancelled = true; };
+  }, [tenantSlug]);
 
   return (
     <div className="space-y-4">
@@ -1640,9 +1665,9 @@ function DirectoryEditor({ data, onChange }: EditorProps) {
           <Select value={d.directoryType ?? "usaha"} onValueChange={(v) => u("directoryType", v)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="usaha">Direktori Usaha & Bisnis</SelectItem>
-              <SelectItem value="profesional">Direktori Praktik Profesional</SelectItem>
-              <SelectItem value="pesantren">Direktori Pesantren Alumni</SelectItem>
+              {enabledDirectoryTypes.map((key) => (
+                <SelectItem key={key} value={key}>{DIRECTORY_TYPE_LABELS[key]}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </Field>

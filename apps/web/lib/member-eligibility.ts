@@ -2,6 +2,7 @@ import {
   db, members, contacts, memberBusinesses, memberOwnedPesantren, memberProfessionals,
 } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
+import { ALL_EKOSISTEM_MODULES, type EkosistemModule } from "./ekosistem-modules";
 
 // Field yang dicek — nama sesuai kolom DB sebenarnya, sudah diverifikasi langsung ke
 // packages/db/src/schema/public/members.ts + contacts.ts (2026-07-23), bukan dari ingatan.
@@ -26,8 +27,18 @@ export type MemberEligibilityResult = {
  * kehilangan status "eligible". Dipakai BERSAMA oleh overlay `/akun` (semua tipe tenant),
  * `resolveAkunBranding()`, dan halaman `/gabung` (forum) supaya logic tidak ditulis berkali-
  * kali dan berisiko drift (satu helper, satu tempat).
+ *
+ * `enabledDirectoryModules` — modul Usaha/Pesantren/Profesional yang AKTIF untuk tenant yang
+ * sedang diproses (lihat lib/ekosistem-modules.ts). Default = ketiganya (perilaku lama,
+ * backward-compatible) kalau caller tidak mengirim param ini. Syarat "directory" jadi OR
+ * HANYA terhadap modul yang aktif — kalau tenant cuma aktifkan 1 modul, member wajib isi
+ * modul itu SPESIFIK (data di modul lain yang sudah dimatikan tenant ini tidak dihitung).
+ * Kalau SEMUA modul dimatikan (edge case), syarat ini di-skip total (tidak mungkin dipenuhi).
  */
-export async function checkMemberEligibility(memberId: string): Promise<MemberEligibilityResult> {
+export async function checkMemberEligibility(
+  memberId: string,
+  enabledDirectoryModules: EkosistemModule[] = ALL_EKOSISTEM_MODULES,
+): Promise<MemberEligibilityResult> {
   const [memberRow] = await db
     .select({
       gender:             members.gender,
@@ -76,15 +87,32 @@ export async function checkMemberEligibility(memberId: string): Promise<MemberEl
   if (!contactRow?.whatsapp) missing.push("whatsapp");
   if (!contactRow?.email)    missing.push("email");
 
-  const [businessRow, pesantrenRow, professionalRow] = await Promise.all([
-    db.select({ id: memberBusinesses.id }).from(memberBusinesses)
-      .where(eq(memberBusinesses.memberId, memberId)).limit(1),
-    db.select({ id: memberOwnedPesantren.id }).from(memberOwnedPesantren)
-      .where(eq(memberOwnedPesantren.memberId, memberId)).limit(1),
-    db.select({ id: memberProfessionals.id }).from(memberProfessionals)
-      .where(eq(memberProfessionals.memberId, memberId)).limit(1),
-  ]);
-  const hasDirectory = businessRow.length > 0 || pesantrenRow.length > 0 || professionalRow.length > 0;
+  // Cek HANYA modul yang aktif untuk tenant ini — modul yang dimatikan tidak ikut menghitung
+  // (lihat docs/arsitektur-ekosistem.md § toggle per-tenant).
+  const directoryChecks: Promise<{ id: string }[]>[] = [];
+  if (enabledDirectoryModules.includes("usaha")) {
+    directoryChecks.push(
+      db.select({ id: memberBusinesses.id }).from(memberBusinesses)
+        .where(eq(memberBusinesses.memberId, memberId)).limit(1),
+    );
+  }
+  if (enabledDirectoryModules.includes("pesantren")) {
+    directoryChecks.push(
+      db.select({ id: memberOwnedPesantren.id }).from(memberOwnedPesantren)
+        .where(eq(memberOwnedPesantren.memberId, memberId)).limit(1),
+    );
+  }
+  if (enabledDirectoryModules.includes("profesional")) {
+    directoryChecks.push(
+      db.select({ id: memberProfessionals.id }).from(memberProfessionals)
+        .where(eq(memberProfessionals.memberId, memberId)).limit(1),
+    );
+  }
+  // Kalau tidak ada modul aktif sama sekali (edge case: tenant matikan ketiganya), syarat ini
+  // tidak mungkin dipenuhi siapa pun — skip total (jangan pernah blokir karena ini).
+  const hasDirectory = directoryChecks.length === 0
+    ? true
+    : (await Promise.all(directoryChecks)).some((rows) => rows.length > 0);
   if (!hasDirectory) missing.push("directory");
 
   return { eligible: missing.length === 0, missing };
@@ -107,9 +135,21 @@ export const MEMBER_ELIGIBILITY_LABELS: Record<MemberEligibilityField, string> =
   directory:          "Data Usaha / Pesantren / Profesional (minimal salah satu)",
 };
 
+// Urutan prioritas modul yang ditawarkan duluan kalau lebih dari satu modul aktif untuk
+// field "directory" — pilihan arbitrer tapi konsisten, bukan berarti lebih penting.
+const DIRECTORY_HREF_PRIORITY: EkosistemModule[] = ["usaha", "profesional", "pesantren"];
+
 // Field di atas dikelompokkan ke tautan mana yang harus dituju untuk melengkapinya —
 // semuanya diselesaikan di /akun/lengkapi KECUALI "directory" yang punya 3 halaman terpisah.
-export function memberEligibilityFixHref(field: MemberEligibilityField, baseUrl: string): string {
-  if (field === "directory") return `${baseUrl}/akun/usaha`;
+// `enabledModules` — modul aktif tenant ini (default ketiganya, sama seperti checkMemberEligibility).
+export function memberEligibilityFixHref(
+  field: MemberEligibilityField,
+  baseUrl: string,
+  enabledModules: EkosistemModule[] = ALL_EKOSISTEM_MODULES,
+): string {
+  if (field === "directory") {
+    const target = DIRECTORY_HREF_PRIORITY.find((m) => enabledModules.includes(m)) ?? "usaha";
+    return `${baseUrl}/akun/${target}`;
+  }
   return `${baseUrl}/akun/lengkapi`;
 }

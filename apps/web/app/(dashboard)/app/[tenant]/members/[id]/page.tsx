@@ -18,8 +18,10 @@ import {
   refRegencies,
   refProvinces,
   refDistricts,
+  createTenantDb,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 import { displayPhone }   from "@/lib/phone";
 import { DeleteMemberButton } from "./delete-button";
 import {
@@ -104,7 +106,7 @@ export default async function MemberDetailPage({
   if (!access) redirect("/dashboard-redirect");
 
   // Ambil semua data anggota secara paralel
-  const [row, educations, businesses, pesantrenList] = await Promise.all([
+  const [row, educations, businesses, pesantrenList, enabledModules] = await Promise.all([
     // Identitas + kontak + alamat + sosmed + profesi + kelahiran
     db
       .select({
@@ -265,6 +267,9 @@ export default async function MemberDetailPage({
       .leftJoin(pesProvinces,   eq(pesProvinces.id,   pesAddresses.provinceId))
       .where(eq(memberOwnedPesantren.memberId, memberId))
       .orderBy(memberOwnedPesantren.createdAt),
+
+    // Modul ekosistem aktif tenant ini — section Usaha/Pesantren hilang kalau dimatikan
+    getEnabledEkosistemModules(createTenantDb(slug)),
   ]);
 
   if (!row) notFound();
@@ -425,11 +430,15 @@ export default async function MemberDetailPage({
       {/* ── Riwayat Pendidikan (interaktif) ── */}
       <EducationSection memberId={memberId} slug={slug} educations={educations} />
 
-      {/* ── Data Usaha (interaktif) ── */}
-      <BusinessSection memberId={memberId} slug={slug} businesses={businesses as BizRow[]} />
+      {/* ── Data Usaha (interaktif) — hilang kalau modul Usaha dimatikan admin ── */}
+      {enabledModules.usaha && (
+        <BusinessSection memberId={memberId} slug={slug} businesses={businesses as BizRow[]} />
+      )}
 
-      {/* ── Pesantren (interaktif) ── */}
-      <PesantrenSection memberId={memberId} slug={slug} pesantrenList={pesantrenList} />
+      {/* ── Pesantren (interaktif) — hilang kalau modul Pesantren dimatikan admin ── */}
+      {enabledModules.pesantren && (
+        <PesantrenSection memberId={memberId} slug={slug} pesantrenList={pesantrenList} />
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { AkunMobileHeader } from "@/components/akun/mobile/akun-mobile-header";
 import { AkunBottomNav }    from "@/components/akun/mobile/akun-bottom-nav";
 import { BadgeCheck } from "lucide-react";
 import { resolveAkunBranding } from "@/lib/resolve-akun-branding";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 
 type Props = {
   children: React.ReactNode;
@@ -59,6 +60,10 @@ export default async function AkunLayout({ children, params }: Props) {
   const displayEmail = identity.email || session.user.email;
   const avatarUrl    = identity.photoUrl ?? gravatar(displayEmail);
 
+  // Toggle modul ekosistem tenant ini — thread ke nav supaya link Usaha/Pesantren/Profesional
+  // yang dimatikan hilang dari sidebar+bottom-nav. Lihat lib/ekosistem-modules.ts.
+  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+
   // Label keanggotaan — bukan selalu tenant yang sedang dibrowsing, lihat
   // docs/arsitektur-akun.md § Resolusi Branding Kartu Anggota. `memberVerified=false`
   // → label = "Lengkapi Data" (profil belum lolos checkMemberEligibility) — checkmark
@@ -104,7 +109,7 @@ export default async function AkunLayout({ children, params }: Props) {
             </div>
 
             {/* Nav */}
-            <AkunNav slug={slug} isMember={isMember} baseUrl={baseUrl} />
+            <AkunNav slug={slug} isMember={isMember} baseUrl={baseUrl} enabledModules={enabledModules} />
           </aside>
 
           {/* ── Konten ── */}
@@ -128,7 +133,7 @@ export default async function AkunLayout({ children, params }: Props) {
         <div className="px-4 py-4">
           {children}
         </div>
-        <AkunBottomNav slug={slug} baseUrl={baseUrl} isMember={isMember} />
+        <AkunBottomNav slug={slug} baseUrl={baseUrl} isMember={isMember} enabledModules={enabledModules} />
       </div>
     </>
   );

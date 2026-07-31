@@ -1,4 +1,5 @@
 import type { MemberEligibilityField } from "@/lib/member-eligibility";
+import type { EkosistemModulesConfig } from "@/lib/ekosistem-modules";
 import { DirectoryChoicePopover } from "@/components/akun/directory-choice-popover";
 
 // Overlay glass-effect yang menutupi kartu keanggotaan di /akun — standar UMUM untuk
@@ -32,9 +33,12 @@ type Props = {
   missing:    MemberEligibilityField[];
   baseUrl:    string;
   isForum:    boolean;
+  // Modul mana yang aktif di tenant ini — diteruskan ke DirectoryChoicePopover supaya
+  // popup 3 pilihan hanya menampilkan modul yang benar-benar ditawarkan tenant ini.
+  enabledModules?: EkosistemModulesConfig;
 };
 
-export function MembershipEligibilityOverlay({ tenantName, missing, baseUrl, isForum }: Props) {
+export function MembershipEligibilityOverlay({ tenantName, missing, baseUrl, isForum, enabledModules }: Props) {
   const eligible             = missing.length === 0;
   const onlyDirectoryMissing = missing.length === 1 && missing[0] === "directory";
 
@@ -63,7 +67,7 @@ export function MembershipEligibilityOverlay({ tenantName, missing, baseUrl, isF
           Gabung {tenantName}
         </a>
       ) : onlyDirectoryMissing ? (
-        <DirectoryChoicePopover baseUrl={baseUrl} />
+        <DirectoryChoicePopover baseUrl={baseUrl} enabledModules={enabledModules} />
       ) : (
         <a href={`${baseUrl}/akun/lengkapi`} className="btn btn-outline-dark btn-sm">
           Lengkapi Data Pribadi

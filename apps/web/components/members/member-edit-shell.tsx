@@ -8,6 +8,7 @@ import { Step2Contact, type Step2DefaultValues } from "./wizard/step2-contact"
 import { Step3Education, type EducationEntry } from "./wizard/step3-education"
 import { Step4Business, type BusinessEntry } from "./wizard/step4-business"
 import type { RefProfession } from "@jalajogja/db"
+import type { EkosistemModulesConfig } from "@/lib/ekosistem-modules"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,10 @@ interface MemberEditShellProps {
   defaultStep2: Step2DefaultValues
   defaultEducations: EducationEntry[]
   defaultBusinesses: BusinessEntry[]
+  // Modul ekosistem aktif tenant ini — tab "Data Usaha" hilang kalau modul Usaha dimatikan
+  // admin (lib/ekosistem-modules.ts). Opsional: kalau tidak dikirim, semua tab tampil
+  // (perilaku lama).
+  enabledModules?: EkosistemModulesConfig
 }
 
 type TabId = "identitas" | "kontak" | "pendidikan" | "usaha"
@@ -46,10 +51,13 @@ export function MemberEditShell({
   defaultStep2,
   defaultEducations,
   defaultBusinesses,
+  enabledModules,
 }: MemberEditShellProps) {
   const [activeTab, setActiveTab] = React.useState<TabId>("identitas")
   const [savedTabs, setSavedTabs] = React.useState<Set<TabId>>(new Set())
   const [savingTab, setSavingTab] = React.useState<TabId | null>(null)
+
+  const tabs = TABS.filter((tab) => tab.id !== "usaha" || !enabledModules || enabledModules.usaha)
 
   function handleSuccess(_memberId?: string | undefined) {
     setSavedTabs((prev) => new Set([...prev, activeTab]))
@@ -75,7 +83,7 @@ export function MemberEditShell({
     <div className="space-y-6">
       {/* ── Tab Nav ── */}
       <div className="flex border-b">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -141,7 +149,7 @@ export function MemberEditShell({
       {/* ── Save Button Area ── */}
       <div className="flex items-center justify-between border-t pt-4">
         <div className="flex gap-2">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             if (tab.id !== activeTab) return null
             return (
               // Hidden submit trigger yang dihubungkan ke form via form attribute

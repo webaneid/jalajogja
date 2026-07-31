@@ -8,6 +8,8 @@ import { getAkunIdentity } from "@/lib/akun-identity";
 import {
   checkMemberEligibility, MEMBER_ELIGIBILITY_LABELS, memberEligibilityFixHref,
 } from "@/lib/member-eligibility";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { enabledModuleList } from "@/lib/ekosistem-modules";
 import type { MembershipConfigData } from "../../../(dashboard)/app/[tenant]/settings/actions";
 import { JoinForumButton } from "./join-forum-button";
 import { CheckCircle2, ArrowRight, Heart, Info } from "lucide-react";
@@ -77,13 +79,19 @@ export default async function GabungPage({ params }: { params: Params }) {
     );
   }
 
-  const eligibility = await checkMemberEligibility(identity.memberId);
+  const tenantDb = createTenantDb(slug);
+
+  // Eligibility dipersempit ke modul ekosistem yang aktif untuk tenant forum ini
+  // (lib/ekosistem-modules.ts) — dipakai juga di memberEligibilityFixHref di bawah supaya
+  // link "Lengkapi Data" tidak mengarah ke modul yang justru dimatikan tenant ini.
+  const enabledModulesConfig = await getEnabledEkosistemModules(tenantDb);
+  const enabledModulesArr    = enabledModuleList(enabledModulesConfig);
+  const eligibility = await checkMemberEligibility(identity.memberId, enabledModulesArr);
 
   // Konfigurasi forum (info pendaftaran + syarat iuran opsional) — dibaca selalu, terlepas
   // status eligibility, karena teks info organisasi relevan ditampilkan ke semua calon
   // anggota. Lihat docs/arsitektur-backbone-ikpm.md § "Alur Pendaftaran Forum v2 — 2.
   // Konfigurasi Pembayaran per Forum".
-  const tenantDb = createTenantDb(slug);
   const { db: tdb, schema } = tenantDb;
   const [config, generalSettings] = await Promise.all([
     getSetting<MembershipConfigData>(tenantDb, "membership_config", "forum"),
@@ -227,7 +235,7 @@ export default async function GabungPage({ params }: { params: Params }) {
               {eligibility.missing.map((field) => (
                 <li key={field}>
                   <a
-                    href={memberEligibilityFixHref(field, baseUrl)}
+                    href={memberEligibilityFixHref(field, baseUrl, enabledModulesArr)}
                     className="flex items-center justify-between gap-2 text-sm hover:text-primary transition-colors"
                   >
                     <span>{MEMBER_ELIGIBILITY_LABELS[field]}</span>

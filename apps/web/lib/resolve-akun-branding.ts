@@ -3,6 +3,8 @@ import { db, members, tenants, tenantMemberships, platformSettings, createTenant
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { resolveOrgLabels } from "@/lib/tenant-org-label";
 import { checkMemberEligibility } from "@/lib/member-eligibility";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { enabledModuleList } from "@/lib/ekosistem-modules";
 
 const DEFAULT_COLOR = "#2563eb"; // sama dengan default warna tenant baru (settings/display)
 
@@ -55,7 +57,10 @@ export async function resolveAkunBranding(
   memberId: string,
   browsedSlug: string,
 ): Promise<ResolvedAkunBranding> {
-  const eligibility = await checkMemberEligibility(memberId);
+  // Eligibility dinilai terhadap modul yang aktif di tenant yang SEDANG DIBROWSING —
+  // konsisten prinsip "logo/nama/warna/label semua dari tenant hasil resolusi yang sama".
+  const enabledModulesConfig = await getEnabledEkosistemModules(createTenantDb(browsedSlug));
+  const eligibility = await checkMemberEligibility(memberId, enabledModuleList(enabledModulesConfig));
 
   type Resolved = Omit<ResolvedAkunBranding, "verified">;
   let resolved: Resolved | null = null;

@@ -7,6 +7,8 @@ import { db, tenants, tenantMemberships, createTenantDb, getSetting } from "@jal
 import { auth }               from "@/lib/auth";
 import { getAkunIdentity }    from "@/lib/akun-identity";
 import { checkMemberEligibility, MEMBER_ELIGIBILITY_LABELS } from "@/lib/member-eligibility";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { enabledModuleList } from "@/lib/ekosistem-modules";
 import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
 import type { MembershipConfigData } from "../../../(dashboard)/app/[tenant]/settings/actions";
 
@@ -37,9 +39,13 @@ export async function joinForumAction(slug: string): Promise<ActionResult<{ tena
     return { success: false, error: "Tenant ini bukan forum — tidak ada alur pendaftaran di sini." };
   }
 
+  const tenantDb = createTenantDb(slug);
+
   // Cek ulang di server — jangan percaya state client, meski halaman /gabung sudah
-  // menyaring ini sebelum tombol muncul.
-  const eligibility = await checkMemberEligibility(identity.memberId);
+  // menyaring ini sebelum tombol muncul. Eligibility dipersempit ke modul ekosistem
+  // yang aktif untuk tenant forum ini (lib/ekosistem-modules.ts).
+  const enabledModulesConfig = await getEnabledEkosistemModules(tenantDb);
+  const eligibility = await checkMemberEligibility(identity.memberId, enabledModuleList(enabledModulesConfig));
   if (!eligibility.eligible) {
     const missingLabels = eligibility.missing.map((f) => MEMBER_ELIGIBILITY_LABELS[f]).join(", ");
     return { success: false, error: `Data Anda belum lengkap: ${missingLabels}.` };
@@ -50,8 +56,7 @@ export async function joinForumAction(slug: string): Promise<ActionResult<{ tena
   // activateForumMembershipIfApplicable() (finance/billing/actions.ts) setelah invoice
   // lunas. Guard ini pertahanan server-side — UI /gabung sudah tidak menampilkan tombol
   // ini kalau paymentRequired=true, tapi jangan percaya itu saja.
-  const tenantDb = createTenantDb(slug);
-  const config   = await getSetting<MembershipConfigData>(tenantDb, "membership_config", "forum");
+  const config = await getSetting<MembershipConfigData>(tenantDb, "membership_config", "forum");
   if (config?.paymentRequired) {
     return {
       success: false,

@@ -15,8 +15,10 @@ import {
   refProfessions,
   refIkpmCabang,
   refRegencies,
+  createTenantDb,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 import { MemberEditShell } from "@/components/members/member-edit-shell";
 import { ChangePasswordSection } from "@/components/members/change-password-section";
 import type { EducationEntry } from "@/components/members/wizard/step3-education";
@@ -35,7 +37,7 @@ export default async function EditMemberPage({
   if (!access) redirect("/dashboard-redirect");
 
   // Ambil semua data anggota secara paralel
-  const [memberRow, professions, cabangList, educations, businesses, tenantRow] = await Promise.all([
+  const [memberRow, professions, cabangList, educations, businesses, tenantRow, enabledModules] = await Promise.all([
     // Data identitas + kontak/alamat/sosmed
     db
       .select({
@@ -173,6 +175,9 @@ export default async function EditMemberPage({
       .where(eq(tenants.id, access.tenant.id))
       .limit(1)
       .then((r) => r[0]),
+
+    // Modul ekosistem aktif tenant ini — tab "Data Usaha" hilang kalau Usaha dimatikan
+    getEnabledEkosistemModules(createTenantDb(slug)),
   ]);
 
   if (!memberRow) notFound();
@@ -289,6 +294,7 @@ export default async function EditMemberPage({
         defaultStep2={defaultStep2}
         defaultEducations={defaultEducations}
         defaultBusinesses={defaultBusinesses}
+        enabledModules={enabledModules}
       />
 
       <div className="mt-8">

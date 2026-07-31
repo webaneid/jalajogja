@@ -12,6 +12,8 @@ import { normalizePhone } from "@/lib/phone";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz, localDatetimeToUtcIso } from "@/lib/tenant-timezone.server";
 import { checkMemberEligibility } from "@/lib/member-eligibility";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { enabledModuleList } from "@/lib/ekosistem-modules";
 import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
 import type { MembershipConfigData as MembershipConfig } from "../../settings/actions";
 
@@ -557,7 +559,8 @@ async function activateForumMembershipIfApplicable(
     : (hasProduct || hasCampaign);
   if (!satisfied) return;
 
-  const eligibility = await checkMemberEligibility(memberId);
+  const enabledModulesConfig = await getEnabledEkosistemModules(tenantDb);
+  const eligibility = await checkMemberEligibility(memberId, enabledModuleList(enabledModulesConfig));
   if (!eligibility.eligible) return;
 
   const [existing] = await publicDb

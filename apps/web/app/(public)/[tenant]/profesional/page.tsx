@@ -17,6 +17,7 @@ import { ProfessionalFiltersClient } from "@/components/profesional/professional
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import type { ProfessionCategory } from "@/lib/professional-types";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 
 export const revalidate = 60;
 
@@ -63,6 +64,11 @@ export default async function ProfesionalDirectoryPage({
     .where(eq(tenants.slug, slug))
     .limit(1);
   if (!tenant?.isActive) notFound();
+
+  // Modul Profesional dimatikan admin tenant ini — data tetap ada (single-ID global), cuma
+  // tidak ditawarkan di sini. Berlaku juga untuk entri lama yang dibuat sebelum dimatikan.
+  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  if (!enabledModules.profesional) notFound();
 
   const provinsiList = await db
     .select({ id: refProvinces.id, name: refProvinces.name })

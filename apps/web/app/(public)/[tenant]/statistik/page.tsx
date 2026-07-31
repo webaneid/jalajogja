@@ -11,6 +11,7 @@ import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata } from "next";
 import { Users, School, Briefcase, IdCard } from "lucide-react";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 
 export const revalidate = 300;
 
@@ -90,6 +91,11 @@ export default async function StatistikPage({ params }: { params: Params }) {
     .where(eq(tenants.slug, slug))
     .limit(1);
   if (!tenant?.isActive) notFound();
+
+  // Modul ekosistem aktif tenant ini — breakdown Usaha/Pesantren/Profesional hilang kalau
+  // modulnya dimatikan admin (lib/ekosistem-modules.ts). Query tetap jalan seperti biasa
+  // (data global tidak pernah dihapus), cuma blok render-nya yang digate di bawah.
+  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
 
   const tenantId = tenant.id;
   const scopeClause = and(
@@ -445,7 +451,8 @@ export default async function StatistikPage({ params }: { params: Params }) {
           </div>
         </section>
 
-        {/* ── Statistik Pesantren ────────────────────────────────────────── */}
+        {/* ── Statistik Pesantren — hilang kalau modul Pesantren dimatikan admin ── */}
+        {enabledModules.pesantren && (
         <section className="space-y-6">
           <SectionTitle icon={School} title="Statistik Pesantren" />
 
@@ -491,8 +498,10 @@ export default async function StatistikPage({ params }: { params: Params }) {
             </div>
           </div>
         </section>
+        )}
 
-        {/* ── Statistik Usaha ────────────────────────────────────────────── */}
+        {/* ── Statistik Usaha — hilang kalau modul Usaha dimatikan admin ── */}
+        {enabledModules.usaha && (
         <section className="space-y-6">
           <SectionTitle icon={Briefcase} title="Statistik Usaha" />
 
@@ -547,8 +556,10 @@ export default async function StatistikPage({ params }: { params: Params }) {
             </div>
           </div>
         </section>
+        )}
 
-        {/* ── Statistik Profesional ─────────────────────────────────────── */}
+        {/* ── Statistik Profesional — hilang kalau modul Profesional dimatikan admin ── */}
+        {enabledModules.profesional && (
         <section className="space-y-6">
           <SectionTitle icon={IdCard} title="Statistik Profesional" />
 
@@ -582,6 +593,7 @@ export default async function StatistikPage({ params }: { params: Params }) {
             </div>
           </div>
         </section>
+        )}
       </div>
     </div>
   );

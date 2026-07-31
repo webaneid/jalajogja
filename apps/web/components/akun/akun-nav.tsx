@@ -6,12 +6,16 @@ import {
   BookOpen, Building2, Briefcase, Store, CalendarDays, LogOut,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
+import type { EkosistemModule, EkosistemModulesConfig } from "@/lib/ekosistem-modules";
 
 export type NavItem = {
   href:       string;
   label:      string;
   icon:       React.ElementType;
   memberOnly: boolean;
+  // Kalau diisi, item ini cuma tampil kalau modul ekosistem itu aktif untuk tenant ini
+  // (lib/ekosistem-modules.ts) — lihat docs/arsitektur-ekosistem.md § toggle per-tenant.
+  moduleKey?: EkosistemModule;
 };
 
 // Di-export — dipakai ulang oleh AkunBottomNav (components/akun/mobile/akun-bottom-nav.tsx)
@@ -27,11 +31,18 @@ export const MEMBER_NAV_ITEMS: NavItem[] = [
   { href: "/transaksi", label: "Transaksi",   icon: Receipt,         memberOnly: false },
   { href: "/event",     label: "Event",       icon: CalendarDays,    memberOnly: false },
   { href: "/lengkapi",  label: "Edit Profil", icon: ClipboardList,   memberOnly: false },
-  { href: "/pesantren",   label: "Pesantren",   icon: BookOpen,   memberOnly: false },
-  { href: "/usaha",       label: "Usaha",       icon: Building2,  memberOnly: false },
-  { href: "/profesional", label: "Profesional", icon: Briefcase,  memberOnly: false },
+  { href: "/pesantren",   label: "Pesantren",   icon: BookOpen,   memberOnly: false, moduleKey: "pesantren" },
+  { href: "/usaha",       label: "Usaha",       icon: Building2,  memberOnly: false, moduleKey: "usaha" },
+  { href: "/profesional", label: "Profesional", icon: Briefcase,  memberOnly: false, moduleKey: "profesional" },
   { href: "/mitra",       label: "Mitra",       icon: Store,      memberOnly: false },
 ];
+
+// Filter item nav berdasarkan modul yang aktif untuk tenant ini — item tanpa `moduleKey`
+// (Beranda, Info Login, dst) selalu tampil, tidak terpengaruh toggle ekosistem.
+export function filterNavItemsByModules(items: NavItem[], enabledModules?: EkosistemModulesConfig): NavItem[] {
+  if (!enabledModules) return items;
+  return items.filter((item) => !item.moduleKey || enabledModules[item.moduleKey]);
+}
 
 export const PUBLIC_NAV_ITEMS: NavItem[] = [
   { href: "",           label: "Beranda",     icon: LayoutDashboard, memberOnly: false },
@@ -45,13 +56,14 @@ type Props = {
   slug:     string;
   isMember: boolean;
   baseUrl:  string;
+  enabledModules?: EkosistemModulesConfig;
 };
 
-export function AkunNav({ slug, isMember, baseUrl }: Props) {
+export function AkunNav({ slug, isMember, baseUrl, enabledModules }: Props) {
   const pathname = usePathname();
   const base     = `${baseUrl}/akun`;
 
-  const items = isMember ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
+  const items = filterNavItemsByModules(isMember ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS, enabledModules);
 
   return (
     <nav className="space-y-0.5">

@@ -22,6 +22,7 @@ import { SocialLinks } from "@/components/ui/social-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
+import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
 import { CategoryPill } from "@/components/website/public/single/category-pill";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
@@ -69,6 +70,11 @@ export default async function ProfesionalDetailPage({ params }: { params: Params
     .where(eq(tenants.slug, slug))
     .limit(1);
   if (!tenant?.isActive) notFound();
+
+  // Modul Profesional dimatikan admin tenant ini — entri lama tetap ada di DB (single-ID
+  // global) tapi tidak lagi ditampilkan di sini, konsisten dengan arsip.
+  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  if (!enabledModules.profesional) notFound();
 
   const [row] = await db
     .select({
@@ -454,6 +460,7 @@ export default async function ProfesionalDetailPage({ params }: { params: Params
               currentModule="profesional"
               offeredTags={row.offeredTags}
               neededTags={row.neededTags}
+              enabledModules={enabledModules}
             />
 
           </div>
