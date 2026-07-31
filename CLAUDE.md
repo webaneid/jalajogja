@@ -14526,9 +14526,10 @@ ID palsu (bukan crash 500), mengandalkan pola identik yang SUDAH terverifikasi d
 
 `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (47.7s, `Cached:
 0 cached`, dev server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB. Detail lengkap:
-`docs/arsitektur-mobile-shell.md` § 2.1 (diperluas) + § 10 (baris baru). **Belum di-commit/push,
-belum diverifikasi visual di browser sungguhan (viewport mobile asli)** — user perlu coba
-langsung di HP: cek overlay back/menu muncul, cek floating logo/foto tidak bergeser posisi
+`docs/arsitektur-mobile-shell.md` § 2.1 (diperluas) + § 10 (baris baru). **Sudah di-commit+push**
+(`289b39c`). **Belum dijalankan di VPS, belum diverifikasi visual di browser sungguhan (viewport
+mobile asli)** — user perlu coba langsung di HP: cek overlay back/menu muncul, cek floating
+logo/foto tidak bergeser posisi
 dibanding sebelumnya, cek share button berfungsi.
 
 ## Context Sesi Terakhir
