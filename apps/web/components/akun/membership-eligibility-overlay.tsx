@@ -33,12 +33,18 @@ type Props = {
   missing:    MemberEligibilityField[];
   baseUrl:    string;
   isForum:    boolean;
+  // Sudah GENUINELY menjadi anggota tenant ini (forumStatus='active' untuk forum, atau
+  // baris tenant_memberships sudah ada untuk cabang/marhalah) — MESKI datanya belum
+  // eligible. Menentukan framing pesan: kalau sudah anggota, jangan bilang "sebelum
+  // dapat mendaftar" (kontradiktif dengan kartu No. Anggota/Status di baliknya yang
+  // sudah menunjukkan mereka anggota aktif) — pakai framing "lengkapi data" saja.
+  isJoined:   boolean;
   // Modul mana yang aktif di tenant ini — diteruskan ke DirectoryChoicePopover supaya
   // popup 3 pilihan hanya menampilkan modul yang benar-benar ditawarkan tenant ini.
   enabledModules?: EkosistemModulesConfig;
 };
 
-export function MembershipEligibilityOverlay({ tenantName, missing, baseUrl, isForum, enabledModules }: Props) {
+export function MembershipEligibilityOverlay({ tenantName, missing, baseUrl, isForum, isJoined, enabledModules }: Props) {
   const eligible             = missing.length === 0;
   const onlyDirectoryMissing = missing.length === 1 && missing[0] === "directory";
 
@@ -53,6 +59,14 @@ export function MembershipEligibilityOverlay({ tenantName, missing, baseUrl, isF
       <p className="text-sm font-semibold leading-snug">
         {eligible ? (
           <>Data Anda lengkap. Jika ingin mendaftar menjadi anggota <strong>{tenantName}</strong>, klik tombol di bawah ini:</>
+        ) : isJoined ? (
+          onlyDirectoryMissing ? (
+            <>Anda sudah menjadi anggota <strong>{tenantName}</strong>. Lengkapi salah satu dari
+              data Usaha/Profesional/Pesantren Anda agar profil keanggotaan tercatat dengan benar.</>
+          ) : (
+            <>Anda sudah menjadi anggota <strong>{tenantName}</strong>. Lengkapi profil Anda agar
+              data keanggotaan tercatat dengan benar.</>
+          )
         ) : onlyDirectoryMissing ? (
           <>Anda harus melengkapi salah satu dari data Usaha/Profesional/Pesantren Anda
             terlebih dahulu sebelum dapat mendaftar menjadi anggota <strong>{tenantName}</strong></>

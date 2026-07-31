@@ -794,8 +794,55 @@ coba: matikan Pesantren di `/settings/general` sebuah tenant → cek `/akun` (ca
 hilang), `/akun/pesantren` (redirect ke `/akun`), `/{slug}/pesantren` (404), section builder
 landing page (opsi "Pesantren" hilang dari dropdown "Tipe Direktori"), `/statistik` (blok
 Pesantren hilang), dan alur `/gabung` (eligibility tidak lagi mensyaratkan Pesantren — cukup
-Usaha/Profesional kalau keduanya masih aktif). **Belum di-commit/push** — menunggu instruksi
-user.
+Usaha/Profesional kalau keduanya masih aktif).
+
+**Status: di-commit+push (`05ceef8`) tanpa migrasi DB.**
+
+**Susulan (2026-08-01) — bug ditemukan dari testing sungguhan user pertama kali, langsung
+difix**: user setup tenant forum baru "Forbis" dengan database anggota lengkap dari import
+Excel (banyak nomor keanggotaan forum sudah terisi, sesuai rule auto-join § "Template Excel
+Import + Auto-Join Forum" — member dengan nomor keanggotaan forum otomatis
+`forumStatus='active'`). Begitu login aktif, salah satu anggota yang SUDAH punya
+`forumStatus='active'` (No. Anggota Forum `2017.00001`, PC IKPM Subang) tetap melihat overlay
+"Lengkapi Data" yang isinya "Anda harus melengkapi profil Anda terlebih dahulu **sebelum
+dapat mendaftar menjadi anggota Forbis**" — kontradiktif, karena kartu di baliknya SUDAH
+menunjukkan mereka anggota aktif (Status: active). User: "harusnya jika memang sudah menjadi
+anggota kita ubah notifikasi yang menutupi itu dengan notifikasi Data keanggotaan belum
+lengkap aja gitu ... padahal kan sudah menjadi anggota forbis."
+
+**Root cause**: `showEligibilityOverlay = !eligibility.eligible || !isJoined` (forum) —
+overlay tampil begitu profil TIDAK eligible, TERLEPAS dari `isJoined`. Tapi teks pesan
+overlay tidak pernah tahu soal `isJoined` — selalu memakai framing "sebelum dapat mendaftar
+menjadi anggota X" (seolah belum jadi anggota), padahal untuk member yang SUDAH
+`forumStatus='active'` (via auto-join import/admin-add), framing itu salah — mereka BUKAN
+sedang "akan mendaftar", mereka SUDAH anggota tapi datanya belum lengkap.
+
+**Fix**: `MembershipEligibilityOverlay` dapat prop baru `isJoined: boolean` — kalau `true`
+DAN belum eligible, pakai framing "Anda **sudah menjadi anggota** {tenantName}. Lengkapi
+[profil/salah satu data Usaha-Profesional-Pesantren] Anda agar data keanggotaan tercatat
+dengan benar" — bukan lagi "sebelum dapat mendaftar". Framing lama (`isJoined=false`) tetap
+dipertahankan utuh untuk kasus yang genuinely belum jadi anggota. Tombol/routing (Lengkapi
+Data Pribadi → `/akun/lengkapi`, popup 3 pilihan direktori, Gabung X) TIDAK berubah — hanya
+teksnya.
+
+**`overlayIsJoined` dihitung di `akun/page.tsx`, beda sumber per tipe tenant**:
+- Forum: reuse `isJoined` yang sudah dihitung (`forumStatus === "active"`).
+- Cabang/marhalah: `membershipInfo?.status != null` — auto-populate (`syncAutoTenantMemberships`,
+  `packages/db/src/helpers/member-sync.ts`) SELALU insert `status: "active"` langsung, TIDAK
+  ADA lifecycle "pending" seperti forum (`forumStatus`) — jadi baris `tenant_memberships` yang
+  sudah ada untuk tenant ini berarti genuinely anggota, terlepas kelengkapan datanya.
+  `membershipInfo.status` sudah di-fetch lebih awal di file yang sama (query lain, untuk
+  display "No. Anggota"/"Status" di kartu) — di-reuse, bukan query baru.
+
+**Verifikasi**: `tsc --noEmit` 0 error kedua package + `bun run build --filter=@jalajogja/web`
+genuine sukses (`Cached: 0 cached`, 46.75s, dev server dimatikan+`.next` dibersihkan+direstart).
+Curl sanity check `/akun` di 2 tenant lokal (307 redirect ke login tanpa sesi, bukan 500 —
+konfirmasi rute compile+jalan normal). Nol migrasi DB — murni perubahan copy/logic aplikasi.
+**Belum diverifikasi visual di browser sungguhan** (tidak ada session member forum lokal yang
+persis mereplikasi skenario "forumStatus active tapi data belum lengkap" untuk dicoba langsung)
+— user perlu konfirmasi ulang di tenant Forbis: anggota yang sudah `forumStatus='active'`
+sekarang harus melihat teks "Anda sudah menjadi anggota Forbis. Lengkapi ..." bukan lagi
+"sebelum dapat mendaftar menjadi anggota Forbis".
 
 ---
 

@@ -14857,11 +14857,15 @@ setiap route yang disentuh plus regresi sweep tipe konten lain yang TIDAK disent
 `getEnabledEkosistemModules(` — 20 titik pemanggilan terkonfirmasi ada di seluruh 4 fase. Nol
 migrasi DB.
 
-**Belum diverifikasi visual di browser, belum di-commit/push** — user perlu coba: matikan
-Pesantren di `/settings/general` sebuah tenant → cek `/akun` (card+nav item hilang),
-`/akun/pesantren` (redirect), `/{slug}/pesantren` (404), section builder (opsi "Pesantren"
-hilang dari dropdown), `/statistik` (blok Pesantren hilang), dan alur `/gabung` (eligibility
-tidak lagi mensyaratkan Pesantren).
+**Verifikasi**: `tsc --noEmit` bersih kedua package + `bun run build` genuine sukses. Curl
+sanity sweep semua route disentuh + regresi sweep tipe konten lain (nol collateral damage).
+Grep akhir 20 titik `getEnabledEkosistemModules(` terkonfirmasi. Nol migrasi DB. **Sudah
+di-commit+push (`05ceef8`).** Belum dijalankan di VPS (nol migrasi, cukup pull+build+restart),
+belum diverifikasi visual di browser — user perlu coba: matikan Pesantren di
+`/settings/general` sebuah tenant → cek `/akun` (card+nav item hilang), `/akun/pesantren`
+(redirect), `/{slug}/pesantren` (404), section builder (opsi "Pesantren" hilang dari
+dropdown), `/statistik` (blok Pesantren hilang), dan alur `/gabung` (eligibility tidak lagi
+mensyaratkan Pesantren).
 
 **Aturan yang ditegaskan**: kalau instruksi user berisi klausa "OR" yang jumlah operand-nya
 BERVARIASI (di sini: "salah satu dari N modul aktif", N bisa 1/2/3), jangan diam-diam
@@ -14870,8 +14874,67 @@ atau ulangi pemahaman ke user SEBELUM menulis kode, terutama untuk aturan eligib
 yang salah paham di sini bisa berdampak signifikan (member ditolak/diterima secara keliru di
 banyak tenant sekaligus).
 
+### [2026-08-01] Bug: Overlay "Sebelum Dapat Mendaftar" Muncul untuk Anggota yang SUDAH Aktif
+
+> Detail lengkap: **`docs/arsitektur-akun.md` § "Toggle Per-Tenant untuk Modul Ekosistem"**
+> (bagian "Susulan — bug ditemukan dari testing sungguhan").
+
+Menyusul fitur toggle modul di atas (baru saja di-commit+push), user setup tenant forum baru
+"Forbis" dengan database anggota lengkap dari import Excel (banyak baris sudah punya Nomor
+Keanggotaan Forum, memicu rule auto-join dari sesi 2026-07-31: member dengan nomor
+keanggotaan otomatis `forumStatus='active'`). Login aktif pertama kali langsung menemukan bug
+nyata: seorang anggota yang SUDAH `forumStatus='active'` (No. Anggota Forum `2017.00001`, PC
+IKPM Subang, Status: active — semua tampil di kartu) tetap melihat overlay "Lengkapi Data"
+dengan teks "Anda harus melengkapi profil Anda terlebih dahulu **sebelum dapat mendaftar
+menjadi anggota Forbis**" — kontradiktif dengan kartu di baliknya yang sudah jelas
+menunjukkan mereka anggota aktif. User: "harusnya jika memang sudah menjadi anggota kita ubah
+notifikasi yang menutupi itu dengan notifikasi Data keanggotaan belum lengkap aja gitu ...
+padahal kan sudah menjadi anggota forbis."
+
+**Root cause**: `showEligibilityOverlay = !eligibility.eligible || !isJoined` (forum) — tampil
+begitu profil TIDAK eligible, TERLEPAS `isJoined`. Tapi `MembershipEligibilityOverlay` tidak
+pernah tahu soal `isJoined` — pesannya SELALU pakai framing "sebelum dapat mendaftar menjadi
+anggota X" (seolah belum jadi anggota), padahal untuk member yang SUDAH `forumStatus='active'`
+(via auto-join import/admin-add — bukan lewat `/gabung`), framing itu salah total.
+
+**Fix**: `MembershipEligibilityOverlay` dapat prop baru `isJoined: boolean` — kalau `true` DAN
+belum eligible, ganti framing jadi "Anda **sudah menjadi anggota** {tenantName}. Lengkapi
+[profil/salah satu data Usaha-Profesional-Pesantren] Anda agar data keanggotaan tercatat
+dengan benar" — bukan lagi "sebelum dapat mendaftar". Tombol/routing (Lengkapi Data Pribadi,
+popup 3 pilihan direktori, Gabung X) TIDAK berubah — hanya teksnya. `overlayIsJoined` dihitung
+di `akun/page.tsx` beda sumber per tipe tenant: forum reuse `isJoined` (`forumStatus==="active"`)
+yang sudah ada; cabang/marhalah pakai `membershipInfo?.status != null` — auto-populate
+(`syncAutoTenantMemberships`) SELALU insert `status:"active"` langsung, TIDAK ADA lifecycle
+"pending" seperti forum, jadi baris `tenant_memberships` yang sudah ada = genuinely anggota,
+terlepas kelengkapan datanya (`membershipInfo.status` sudah di-fetch lebih awal di file yang
+sama, di-reuse bukan query baru).
+
+**Verifikasi**: `tsc --noEmit` 0 error kedua package + `bun run build --filter=@jalajogja/web`
+genuine sukses (`Cached: 0 cached`, 46.75s, dev server dimatikan+`.next` dibersihkan+direstart).
+Curl sanity check `/akun` di 2 tenant lokal (307 redirect login, bukan 500). Nol migrasi DB.
+Di-commit+push bersamaan dengan dokumentasi ini. **Belum diverifikasi visual di browser
+sungguhan** — user perlu konfirmasi ulang di tenant Forbis bahwa anggota `forumStatus='active'`
+sekarang melihat teks "Anda sudah menjadi anggota Forbis. Lengkapi..." bukan lagi "sebelum
+dapat mendaftar menjadi anggota Forbis".
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Toggle Per-Tenant untuk Modul Ekosistem (Usaha/Pesantren/
+- Terakhir dikerjakan: **Bug fix overlay "sebelum dapat mendaftar" untuk anggota yang SUDAH
+  aktif** (lihat lesson `[2026-08-01]` "Bug: Overlay 'Sebelum Dapat Mendaftar'" di atas, detail
+  lengkap `docs/arsitektur-akun.md` § "Toggle Per-Tenant untuk Modul Ekosistem" bagian
+  "Susulan") — ditemukan user langsung dari testing pertama tenant forum baru "Forbis"
+  (database anggota lengkap dari import Excel). Anggota yang SUDAH `forumStatus='active'`
+  (via auto-join import, No. Anggota Forum + Status: active tampil di kartu) tetap melihat
+  overlay dengan teks "sebelum dapat mendaftar menjadi anggota Forbis" — kontradiktif karena
+  mereka sudah anggota aktif. Fix: `MembershipEligibilityOverlay` dapat prop baru
+  `isJoined: boolean` — kalau true & belum eligible, framing diganti "Anda sudah menjadi
+  anggota {tenantName}. Lengkapi..." (bukan "sebelum dapat mendaftar"). `overlayIsJoined` di
+  `akun/page.tsx`: forum reuse `isJoined` (`forumStatus==="active"`), cabang/marhalah pakai
+  `membershipInfo?.status != null` (auto-populate selalu insert status='active' langsung,
+  tidak ada lifecycle pending). Tombol/routing tidak berubah, cuma teks. `tsc --noEmit` 0
+  error kedua package + `bun run build` genuine sukses (46.75s) + curl sanity `/akun` 2 tenant
+  lokal (307, bukan 500). Nol migrasi DB. **Sudah di-commit+push. Belum diverifikasi visual di
+  browser** — user perlu cek ulang di tenant Forbis dengan anggota yang sama.
+- Sesi sebelumnya: **Toggle Per-Tenant untuk Modul Ekosistem (Usaha/Pesantren/
   Profesional)** (lihat lesson `[2026-08-01]` "Toggle Per-Tenant untuk Modul Ekosistem" di
   atas, detail lengkap `docs/arsitektur-akun.md` § "Toggle Per-Tenant untuk Modul Ekosistem").
   User minta didiskusikan dulu ("jgn eksekusi apapun dulu") apakah sebuah tenant bisa mematikan
@@ -14895,12 +14958,12 @@ banyak tenant sekaligus).
   sebagai cwd salah, bukan regresi) + `bun run build` genuine 2× sukses + curl sanity sweep
   lintas semua route yang disentuh plus regresi sweep tipe konten lain (nol collateral damage).
   Grep akhir konfirmasi 20 titik pemanggilan `getEnabledEkosistemModules(` di seluruh 4 fase.
-  Nol migrasi DB. Dokumentasi ditulis lengkap di `docs/arsitektur-akun.md` (section baru,
-  termasuk kutipan verbatim keputusan user) dan lesson CLAUDE.md ini. **Belum diverifikasi
-  visual di browser, belum di-commit/push** — user perlu coba: matikan Pesantren di
-  `/settings/general` sebuah tenant → cek `/akun` (card+nav hilang), `/akun/pesantren`
-  (redirect), `/{slug}/pesantren` (404), section builder (opsi hilang dari dropdown),
-  `/statistik` (blok hilang), `/gabung` (eligibility tidak lagi mensyaratkan Pesantren).
+  Nol migrasi DB. **Sudah di-commit+push (`05ceef8`). Belum dijalankan di VPS** (cukup pull+
+  build+restart, nol migrasi), **belum diverifikasi visual di browser** — user perlu coba:
+  matikan Pesantren di `/settings/general` sebuah tenant → cek `/akun` (card+nav hilang),
+  `/akun/pesantren` (redirect), `/{slug}/pesantren` (404), section builder (opsi hilang dari
+  dropdown), `/statistik` (blok hilang), `/gabung` (eligibility tidak lagi mensyaratkan
+  Pesantren).
 - Sesi sebelumnya: **Kategori Profesi Baru "Pemerintahan, Keamanan & Militer" + jenis
   profesi "Politikus"** (lihat lesson `[2026-08-01]` di atas, detail lengkap `docs/arsitektur-
   profesional.md` § 15) — user tanya eksploratif soal profesi TNI/Polri, dijawab dengan

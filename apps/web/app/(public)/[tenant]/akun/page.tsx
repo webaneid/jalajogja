@@ -115,6 +115,13 @@ export default async function AkunPage({ params }: { params: Params }) {
   let overlayMissing: MemberEligibilityField[] = [];
   let overlayTenantName = "";
   let overlayIsForum = false;
+  // Sudah GENUINELY menjadi anggota tenant ini (forumStatus='active' untuk forum, atau
+  // baris tenant_memberships sudah ada untuk cabang/marhalah — auto-populate selalu insert
+  // status='active' langsung, tidak ada lifecycle "pending" seperti forum). Dipakai overlay
+  // untuk membedakan framing pesan: "lengkapi profil" (sudah anggota) vs "sebelum bisa
+  // mendaftar" (belum anggota) — supaya tidak kontradiktif dengan kartu keanggotaan yang
+  // sudah menampilkan No. Anggota/Status di baliknya.
+  let overlayIsJoined = false;
 
   if (isMember && identity.memberId) {
     const [browsedTenantRow] = await db
@@ -138,12 +145,17 @@ export default async function AkunPage({ params }: { params: Params }) {
           .limit(1);
 
         const isJoined = forumMembershipRow?.forumStatus === "active";
+        overlayIsJoined = isJoined;
         const eligibility = await checkMemberEligibility(identity.memberId, enabledModulesArr);
         if (!eligibility.eligible || !isJoined) {
           showEligibilityOverlay = true;
           overlayMissing = eligibility.missing; // kosong = eligible, komponen tampilkan "Gabung X"
         }
       } else {
+        // Cabang/marhalah: auto-populate SELALU insert status='active' langsung (tidak ada
+        // lifecycle pending seperti forum) — jadi baris tenant_memberships sudah ADA berarti
+        // genuinely anggota, meski profil datanya belum lengkap.
+        overlayIsJoined = membershipInfo?.status != null;
         const eligibility = await checkMemberEligibility(identity.memberId, enabledModulesArr);
         if (!eligibility.eligible) {
           showEligibilityOverlay = true;
@@ -278,6 +290,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               missing={overlayMissing}
               baseUrl={baseUrl}
               isForum={overlayIsForum}
+              isJoined={overlayIsJoined}
               enabledModules={enabledModulesConfig}
             />
           )}
@@ -347,6 +360,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               missing={overlayMissing}
               baseUrl={baseUrl}
               isForum={overlayIsForum}
+              isJoined={overlayIsJoined}
               enabledModules={enabledModulesConfig}
             />
           )}
