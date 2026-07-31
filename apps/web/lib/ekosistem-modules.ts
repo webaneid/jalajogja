@@ -29,3 +29,11 @@ export function resolveEkosistemModulesConfig(raw: Record<string, unknown>): Eko
 export function enabledModuleList(config: EkosistemModulesConfig): EkosistemModule[] {
   return ALL_EKOSISTEM_MODULES.filter((m) => config[m]);
 }
+
+// Label tampilan per modul — dipakai overlay eligibility + halaman /gabung untuk pesan
+// spesifik ("Lengkapi Data Usaha Anda"), bukan cuma daftar generik "Usaha/Pesantren/Profesional".
+export const EKOSISTEM_MODULE_LABELS: Record<EkosistemModule, string> = {
+  usaha:       "Usaha",
+  pesantren:   "Pesantren",
+  profesional: "Profesional",
+};

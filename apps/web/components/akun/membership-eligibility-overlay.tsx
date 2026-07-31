@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import type { MemberEligibilityField } from "@/lib/member-eligibility";
-import type { EkosistemModulesConfig } from "@/lib/ekosistem-modules";
+import type { EkosistemModule, EkosistemModulesConfig } from "@/lib/ekosistem-modules";
+import { EKOSISTEM_MODULE_LABELS } from "@/lib/ekosistem-modules";
 import { DirectoryChoicePopover } from "@/components/akun/directory-choice-popover";
 
 // Overlay glass-effect yang menutupi kartu keanggotaan di /akun — standar UMUM untuk
@@ -16,13 +18,16 @@ import { DirectoryChoicePopover } from "@/components/akun/directory-choice-popov
 //     eligible tapi belum klik gabung", karena forum butuh langkah `/gabung` eksplisit.
 //     Prop isForum=true.
 //
-// 3 kondisi tombol (bukan cuma eligible/tidak) — supaya tombol selalu mengarahkan ke
+// 4 kondisi tombol (bukan cuma eligible/tidak) — supaya tombol selalu mengarahkan ke
 // tempat yang BENAR-BENAR bisa diproses, bukan selalu ke /gabung:
 //   1. Profil pribadi belum lengkap (field apa pun di luar "directory" masih hilang) →
 //      "Lengkapi Data Pribadi" → langsung ke /akun/lengkapi.
-//   2. Profil pribadi SUDAH lengkap, tinggal minimal 1 dari Usaha/Profesional/Pesantren →
+//   2. Profil pribadi lengkap, tinggal "directory", DAN member sudah MULAI mengisi salah
+//      satu modul (punya baris) tapi field wajibnya belum lengkap → langsung ke modul itu
+//      ("Lengkapi Data Usaha Anda"), bukan minta pilih ulang — mereka sudah memilih.
+//   3. Profil pribadi lengkap, tinggal "directory", member BELUM mulai isi modul apa pun →
 //      "Lengkapi Data →" → popup 3 pilihan (DirectoryChoicePopover).
-//   3. Semua syarat terpenuhi:
+//   4. Semua syarat terpenuhi:
 //      - Forum → "Gabung {tenantName}" → /gabung (satu-satunya kasus yang benar-benar
 //        boleh masuk /gabung, karena di situ tombol join sungguhan aktif).
 //      - Cabang/marhalah → caller sudah tidak render overlay ini sama sekali di kondisi
@@ -31,6 +36,10 @@ import { DirectoryChoicePopover } from "@/components/akun/directory-choice-popov
 type Props = {
   tenantName: string;
   missing:    MemberEligibilityField[];
+  // Kalau "directory" ada di `missing` DAN member sudah mulai isi salah satu modul (punya
+  // baris) tapi belum lengkap field wajibnya — modul itu (lihat lib/member-eligibility.ts).
+  // `null` = belum mulai isi modul mana pun sama sekali (tetap popup pilih salah satu).
+  directoryIncompleteModule: EkosistemModule | null;
   baseUrl:    string;
   isForum:    boolean;
   // Sudah GENUINELY menjadi anggota tenant ini (forumStatus='active' untuk forum, atau
@@ -44,7 +53,9 @@ type Props = {
   enabledModules?: EkosistemModulesConfig;
 };
 
-export function MembershipEligibilityOverlay({ tenantName, missing, baseUrl, isForum, isJoined, enabledModules }: Props) {
+export function MembershipEligibilityOverlay({
+  tenantName, missing, directoryIncompleteModule, baseUrl, isForum, isJoined, enabledModules,
+}: Props) {
   const eligible             = missing.length === 0;
   const onlyDirectoryMissing = missing.length === 1 && missing[0] === "directory";
 
@@ -54,39 +65,55 @@ export function MembershipEligibilityOverlay({ tenantName, missing, baseUrl, isF
   // punya alur /gabung.
   if (eligible && !isForum) return null;
 
+  const moduleLabel = directoryIncompleteModule ? EKOSISTEM_MODULE_LABELS[directoryIncompleteModule] : null;
+
+  let message: ReactNode;
+  let action:  ReactNode;
+
+  if (eligible) {
+    message = <>Data Anda lengkap. Jika ingin mendaftar menjadi anggota <strong>{tenantName}</strong>, klik tombol di bawah ini:</>;
+    action  = <a href={`${baseUrl}/gabung`} className="btn btn-primary btn-md">Gabung {tenantName}</a>;
+  } else if (onlyDirectoryMissing && moduleLabel && directoryIncompleteModule) {
+    message = isJoined ? (
+      <>Anda sudah menjadi anggota <strong>{tenantName}</strong>. Lengkapi Data {moduleLabel} Anda —
+        masih ada bagian wajib yang belum terisi.</>
+    ) : (
+      <>Sebelum dapat mendaftar menjadi anggota <strong>{tenantName}</strong>, lengkapi Data
+        {" "}{moduleLabel} Anda — masih ada bagian wajib yang belum terisi.</>
+    );
+    action = (
+      <a href={`${baseUrl}/akun/${directoryIncompleteModule}`} className="btn btn-outline-dark btn-sm">
+        Lengkapi Data {moduleLabel} →
+      </a>
+    );
+  } else if (onlyDirectoryMissing) {
+    message = isJoined ? (
+      <>Anda sudah menjadi anggota <strong>{tenantName}</strong>. Lengkapi salah satu dari
+        data Usaha/Profesional/Pesantren Anda agar profil keanggotaan tercatat dengan benar.</>
+    ) : (
+      <>Anda harus melengkapi salah satu dari data Usaha/Profesional/Pesantren Anda
+        terlebih dahulu sebelum dapat mendaftar menjadi anggota <strong>{tenantName}</strong></>
+    );
+    action = <DirectoryChoicePopover baseUrl={baseUrl} enabledModules={enabledModules} />;
+  } else {
+    message = isJoined ? (
+      <>Anda sudah menjadi anggota <strong>{tenantName}</strong>. Lengkapi profil Anda agar
+        data keanggotaan tercatat dengan benar.</>
+    ) : (
+      <>Anda harus melengkapi profil Anda terlebih dahulu sebelum dapat mendaftar menjadi
+        anggota <strong>{tenantName}</strong></>
+    );
+    action = (
+      <a href={`${baseUrl}/akun/lengkapi`} className="btn btn-outline-dark btn-sm">
+        Lengkapi Data Pribadi
+      </a>
+    );
+  }
+
   return (
     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-background/80 p-6 text-center backdrop-blur-lg shadow-lg">
-      <p className="text-sm font-semibold leading-snug">
-        {eligible ? (
-          <>Data Anda lengkap. Jika ingin mendaftar menjadi anggota <strong>{tenantName}</strong>, klik tombol di bawah ini:</>
-        ) : isJoined ? (
-          onlyDirectoryMissing ? (
-            <>Anda sudah menjadi anggota <strong>{tenantName}</strong>. Lengkapi salah satu dari
-              data Usaha/Profesional/Pesantren Anda agar profil keanggotaan tercatat dengan benar.</>
-          ) : (
-            <>Anda sudah menjadi anggota <strong>{tenantName}</strong>. Lengkapi profil Anda agar
-              data keanggotaan tercatat dengan benar.</>
-          )
-        ) : onlyDirectoryMissing ? (
-          <>Anda harus melengkapi salah satu dari data Usaha/Profesional/Pesantren Anda
-            terlebih dahulu sebelum dapat mendaftar menjadi anggota <strong>{tenantName}</strong></>
-        ) : (
-          <>Anda harus melengkapi profil Anda terlebih dahulu sebelum dapat mendaftar menjadi
-            anggota <strong>{tenantName}</strong></>
-        )}
-      </p>
-
-      {eligible ? (
-        <a href={`${baseUrl}/gabung`} className="btn btn-primary btn-md">
-          Gabung {tenantName}
-        </a>
-      ) : onlyDirectoryMissing ? (
-        <DirectoryChoicePopover baseUrl={baseUrl} enabledModules={enabledModules} />
-      ) : (
-        <a href={`${baseUrl}/akun/lengkapi`} className="btn btn-outline-dark btn-sm">
-          Lengkapi Data Pribadi
-        </a>
-      )}
+      <p className="text-sm font-semibold leading-snug">{message}</p>
+      {action}
     </div>
   );
 }

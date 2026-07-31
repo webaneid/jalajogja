@@ -1,5 +1,5 @@
 import {
-  db, members, contacts, memberBusinesses, memberOwnedPesantren, memberProfessionals,
+  db, members, contacts, addresses, memberBusinesses, memberOwnedPesantren, memberProfessionals,
 } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import { ALL_EKOSISTEM_MODULES, type EkosistemModule } from "./ekosistem-modules";
@@ -19,6 +19,12 @@ export type MemberEligibilityField =
 export type MemberEligibilityResult = {
   eligible: boolean;
   missing:  MemberEligibilityField[];
+  // Kalau "directory" ada di `missing` DAN member sudah MULAI mengisi salah satu modul
+  // (punya baris) tapi belum lengkap field wajibnya — modul itu yang ditunjuk di sini, supaya
+  // UI bisa arahkan LANGSUNG ke sana ("Lengkapi Data Usaha Anda") alih-alih menyuruh pilih
+  // ulang dari 3 opsi. `null` kalau member belum mulai isi modul mana pun sama sekali (tetap
+  // pakai popup "pilih salah satu" seperti sebelumnya).
+  directoryIncompleteModule: EkosistemModule | null;
 };
 
 /**
@@ -62,6 +68,7 @@ export async function checkMemberEligibility(
         "gender", "birthDate", "graduationYear", "professionId", "waliSantri",
         "primaryCabangRefId", "domicileStatus", "phone", "whatsapp", "email", "directory",
       ],
+      directoryIncompleteModule: null,
     };
   }
 
@@ -88,34 +95,122 @@ export async function checkMemberEligibility(
   if (!contactRow?.email)    missing.push("email");
 
   // Cek HANYA modul yang aktif untuk tenant ini — modul yang dimatikan tidak ikut menghitung
-  // (lihat docs/arsitektur-ekosistem.md § toggle per-tenant).
-  const directoryChecks: Promise<{ id: string }[]>[] = [];
-  if (enabledDirectoryModules.includes("usaha")) {
-    directoryChecks.push(
-      db.select({ id: memberBusinesses.id }).from(memberBusinesses)
-        .where(eq(memberBusinesses.memberId, memberId)).limit(1),
-    );
-  }
-  if (enabledDirectoryModules.includes("pesantren")) {
-    directoryChecks.push(
-      db.select({ id: memberOwnedPesantren.id }).from(memberOwnedPesantren)
-        .where(eq(memberOwnedPesantren.memberId, memberId)).limit(1),
-    );
-  }
-  if (enabledDirectoryModules.includes("profesional")) {
-    directoryChecks.push(
-      db.select({ id: memberProfessionals.id }).from(memberProfessionals)
-        .where(eq(memberProfessionals.memberId, memberId)).limit(1),
-    );
-  }
+  // (lihat docs/arsitektur-ekosistem.md § toggle per-tenant). Per modul, "punya data" TIDAK
+  // CUKUP — harus punya SATU baris yang field WAJIBnya (persis validasi self-service
+  // usaha-client.tsx/pesantren-client.tsx/profesional-client.tsx, field opsional diabaikan)
+  // sudah semua terisi. "Punya baris tapi belum lengkap" (mis. hasil import massal) TETAP
+  // dianggap belum eligible — supaya orang tidak berhenti mengisi begitu punya 1 baris.
+  const moduleChecks: Partial<Record<EkosistemModule, ModuleCheck>> = {};
+  if (enabledDirectoryModules.includes("usaha"))       moduleChecks.usaha       = await checkUsahaComplete(memberId);
+  if (enabledDirectoryModules.includes("pesantren"))   moduleChecks.pesantren   = await checkPesantrenComplete(memberId);
+  if (enabledDirectoryModules.includes("profesional")) moduleChecks.profesional = await checkProfesionalComplete(memberId);
+
   // Kalau tidak ada modul aktif sama sekali (edge case: tenant matikan ketiganya), syarat ini
   // tidak mungkin dipenuhi siapa pun — skip total (jangan pernah blokir karena ini).
-  const hasDirectory = directoryChecks.length === 0
+  const hasDirectory = enabledDirectoryModules.length === 0
     ? true
-    : (await Promise.all(directoryChecks)).some((rows) => rows.length > 0);
-  if (!hasDirectory) missing.push("directory");
+    : enabledDirectoryModules.some((m) => moduleChecks[m]?.hasComplete);
 
-  return { eligible: missing.length === 0, missing };
+  let directoryIncompleteModule: EkosistemModule | null = null;
+  if (!hasDirectory) {
+    missing.push("directory");
+    // Modul yang SUDAH dimulai (ada baris) tapi belum lengkap — arahkan langsung ke situ,
+    // bukan minta pilih ulang dari 3 opsi (mereka sudah memilih). Prioritas sama seperti
+    // DIRECTORY_HREF_PRIORITY di bawah, arbitrer tapi konsisten.
+    directoryIncompleteModule = DIRECTORY_HREF_PRIORITY.find(
+      (m) => enabledDirectoryModules.includes(m) && moduleChecks[m]?.hasAny,
+    ) ?? null;
+  }
+
+  return { eligible: missing.length === 0, missing, directoryIncompleteModule };
+}
+
+type ModuleCheck = { hasAny: boolean; hasComplete: boolean };
+
+// Field wajib PERSIS sama dengan validasi client-side `/akun/usaha` (usaha-client.tsx
+// `saveEditing()`) — field opsional (brand, offeredTags/neededTags, socmed, dll) sengaja
+// TIDAK dicek. `addresses.country` non-null = alamat luar negeri (lihat addresses.ts),
+// districtId non-null = alamat domestik minimal sampai kecamatan — salah satu cukup.
+async function checkUsahaComplete(memberId: string): Promise<ModuleCheck> {
+  const rows = await db
+    .select({
+      name: memberBusinesses.name, category: memberBusinesses.category,
+      sector: memberBusinesses.sector, logoUrl: memberBusinesses.logoUrl,
+      coverUrl: memberBusinesses.coverUrl, description: memberBusinesses.description,
+      legality: memberBusinesses.legality, position: memberBusinesses.position,
+      businessFields: memberBusinesses.businessFields, employees: memberBusinesses.employees,
+      branches: memberBusinesses.branches, revenue: memberBusinesses.revenue,
+      addressDistrictId: addresses.districtId, addressCountry: addresses.country,
+      contactWhatsapp: contacts.whatsapp,
+    })
+    .from(memberBusinesses)
+    .leftJoin(addresses, eq(addresses.id, memberBusinesses.addressId))
+    .leftJoin(contacts, eq(contacts.id, memberBusinesses.contactId))
+    .where(eq(memberBusinesses.memberId, memberId));
+
+  return {
+    hasAny: rows.length > 0,
+    hasComplete: rows.some((r) => !!(
+      r.name && r.category && r.sector && r.logoUrl && r.coverUrl && r.description &&
+      r.legality && r.position && r.businessFields && r.businessFields.length > 0 &&
+      r.employees && r.branches && r.revenue &&
+      (r.addressDistrictId != null || r.addressCountry) &&
+      r.contactWhatsapp
+    )),
+  };
+}
+
+// Field wajib PERSIS sama dengan `/akun/pesantren` (pesantren-client.tsx `saveEditing()`) —
+// alamat SENGAJA tidak dicek (form menandainya `optional` secara eksplisit).
+async function checkPesantrenComplete(memberId: string): Promise<ModuleCheck> {
+  const rows = await db
+    .select({
+      name: memberOwnedPesantren.name, tahunBerdiri: memberOwnedPesantren.tahunBerdiri,
+      luasArea: memberOwnedPesantren.luasArea, namaPimpinan: memberOwnedPesantren.namaPimpinan,
+      kurikulum: memberOwnedPesantren.kurikulum, jenisPondok: memberOwnedPesantren.jenisPondok,
+      modelPendidikan: memberOwnedPesantren.modelPendidikan,
+      kategoriSantri: memberOwnedPesantren.kategoriSantri,
+      contactPhone: contacts.phone, contactWhatsapp: contacts.whatsapp,
+    })
+    .from(memberOwnedPesantren)
+    .leftJoin(contacts, eq(contacts.id, memberOwnedPesantren.contactId))
+    .where(eq(memberOwnedPesantren.memberId, memberId));
+
+  return {
+    hasAny: rows.length > 0,
+    hasComplete: rows.some((r) => !!(
+      r.name && r.tahunBerdiri && r.luasArea && r.namaPimpinan &&
+      r.kurikulum && r.jenisPondok && r.modelPendidikan && r.kategoriSantri &&
+      r.contactPhone && r.contactWhatsapp
+    )),
+  };
+}
+
+// Field wajib PERSIS sama dengan `/akun/profesional` (profesional-client.tsx `saveEditing()`).
+// professionCategory/professionType sudah NOT NULL di DB (selalu terisi) — tetap dicek untuk
+// konsistensi/defensif.
+async function checkProfesionalComplete(memberId: string): Promise<ModuleCheck> {
+  const rows = await db
+    .select({
+      professionCategory: memberProfessionals.professionCategory,
+      professionType: memberProfessionals.professionType,
+      description: memberProfessionals.description, startYear: memberProfessionals.startYear,
+      addressDistrictId: addresses.districtId, addressCountry: addresses.country,
+      contactWhatsapp: contacts.whatsapp,
+    })
+    .from(memberProfessionals)
+    .leftJoin(addresses, eq(addresses.id, memberProfessionals.addressId))
+    .leftJoin(contacts, eq(contacts.id, memberProfessionals.contactId))
+    .where(eq(memberProfessionals.memberId, memberId));
+
+  return {
+    hasAny: rows.length > 0,
+    hasComplete: rows.some((r) => !!(
+      r.professionCategory && r.professionType && r.description && r.startYear &&
+      (r.addressDistrictId != null || r.addressCountry) &&
+      r.contactWhatsapp
+    )),
+  };
 }
 
 // Label Bahasa Indonesia per field — dipakai UI (overlay + halaman /gabung) untuk
@@ -142,13 +237,20 @@ const DIRECTORY_HREF_PRIORITY: EkosistemModule[] = ["usaha", "profesional", "pes
 // Field di atas dikelompokkan ke tautan mana yang harus dituju untuk melengkapinya —
 // semuanya diselesaikan di /akun/lengkapi KECUALI "directory" yang punya 3 halaman terpisah.
 // `enabledModules` — modul aktif tenant ini (default ketiganya, sama seperti checkMemberEligibility).
+// `directoryIncompleteModule` (dari MemberEligibilityResult) — kalau member sudah mulai isi
+// SATU modul tapi belum lengkap, arahkan LANGSUNG ke situ, bukan ke modul prioritas pertama
+// yang belum tentu relevan (mis. mereka sudah mulai Profesional, jangan malah disuruh mulai
+// Usaha dari nol).
 export function memberEligibilityFixHref(
   field: MemberEligibilityField,
   baseUrl: string,
   enabledModules: EkosistemModule[] = ALL_EKOSISTEM_MODULES,
+  directoryIncompleteModule?: EkosistemModule | null,
 ): string {
   if (field === "directory") {
-    const target = DIRECTORY_HREF_PRIORITY.find((m) => enabledModules.includes(m)) ?? "usaha";
+    const target = directoryIncompleteModule
+      ?? DIRECTORY_HREF_PRIORITY.find((m) => enabledModules.includes(m))
+      ?? "usaha";
     return `${baseUrl}/akun/${target}`;
   }
   return `${baseUrl}/akun/lengkapi`;

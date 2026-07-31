@@ -9,7 +9,7 @@ import {
   checkMemberEligibility, MEMBER_ELIGIBILITY_LABELS, memberEligibilityFixHref,
 } from "@/lib/member-eligibility";
 import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
-import { enabledModuleList } from "@/lib/ekosistem-modules";
+import { enabledModuleList, EKOSISTEM_MODULE_LABELS } from "@/lib/ekosistem-modules";
 import type { MembershipConfigData } from "../../../(dashboard)/app/[tenant]/settings/actions";
 import { JoinForumButton } from "./join-forum-button";
 import { CheckCircle2, ArrowRight, Heart, Info } from "lucide-react";
@@ -232,17 +232,25 @@ export default async function GabungPage({ params }: { params: Params }) {
               <strong>{tenantRow.name}</strong>:
             </p>
             <ul className="space-y-2 rounded-xl border border-border p-4">
-              {eligibility.missing.map((field) => (
-                <li key={field}>
-                  <a
-                    href={memberEligibilityFixHref(field, baseUrl, enabledModulesArr)}
-                    className="flex items-center justify-between gap-2 text-sm hover:text-primary transition-colors"
-                  >
-                    <span>{MEMBER_ELIGIBILITY_LABELS[field]}</span>
-                    <ArrowRight className="h-4 w-4 shrink-0" />
-                  </a>
-                </li>
-              ))}
+              {eligibility.missing.map((field) => {
+                // "directory" + sudah mulai isi salah satu modul (belum lengkap) — tunjuk
+                // modul itu spesifik ("Data Usaha Anda (belum lengkap)"), bukan label generik
+                // "pilih salah satu" yang menyuruh mereka memilih ulang dari awal.
+                const label = field === "directory" && eligibility.directoryIncompleteModule
+                  ? `Data ${EKOSISTEM_MODULE_LABELS[eligibility.directoryIncompleteModule]} Anda (belum lengkap)`
+                  : MEMBER_ELIGIBILITY_LABELS[field];
+                return (
+                  <li key={field}>
+                    <a
+                      href={memberEligibilityFixHref(field, baseUrl, enabledModulesArr, eligibility.directoryIncompleteModule)}
+                      className="flex items-center justify-between gap-2 text-sm hover:text-primary transition-colors"
+                    >
+                      <span>{label}</span>
+                      <ArrowRight className="h-4 w-4 shrink-0" />
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
             <a href={`${baseUrl}/akun`} className="btn btn-ghost btn-md btn-full">
               ← Kembali ke Akun

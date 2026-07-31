@@ -122,6 +122,10 @@ export default async function AkunPage({ params }: { params: Params }) {
   // mendaftar" (belum anggota) — supaya tidak kontradiktif dengan kartu keanggotaan yang
   // sudah menampilkan No. Anggota/Status di baliknya.
   let overlayIsJoined = false;
+  // Modul (Usaha/Pesantren/Profesional) yang sudah MULAI diisi member (punya baris) tapi
+  // belum lengkap field wajibnya — dipakai overlay untuk arahkan langsung ke situ ("Lengkapi
+  // Data Usaha Anda"), bukan minta pilih ulang dari 3 opsi. Lihat lib/member-eligibility.ts.
+  let overlayDirectoryIncompleteModule: EkosistemModule | null = null;
 
   if (isMember && identity.memberId) {
     const [browsedTenantRow] = await db
@@ -150,6 +154,7 @@ export default async function AkunPage({ params }: { params: Params }) {
         if (!eligibility.eligible || !isJoined) {
           showEligibilityOverlay = true;
           overlayMissing = eligibility.missing; // kosong = eligible, komponen tampilkan "Gabung X"
+          overlayDirectoryIncompleteModule = eligibility.directoryIncompleteModule;
         }
       } else {
         // Cabang/marhalah: auto-populate SELALU insert status='active' langsung (tidak ada
@@ -160,6 +165,7 @@ export default async function AkunPage({ params }: { params: Params }) {
         if (!eligibility.eligible) {
           showEligibilityOverlay = true;
           overlayMissing = eligibility.missing;
+          overlayDirectoryIncompleteModule = eligibility.directoryIncompleteModule;
         }
       }
     }
@@ -288,6 +294,7 @@ export default async function AkunPage({ params }: { params: Params }) {
             <MembershipEligibilityOverlay
               tenantName={overlayTenantName}
               missing={overlayMissing}
+              directoryIncompleteModule={overlayDirectoryIncompleteModule}
               baseUrl={baseUrl}
               isForum={overlayIsForum}
               isJoined={overlayIsJoined}
@@ -358,6 +365,7 @@ export default async function AkunPage({ params }: { params: Params }) {
             <MembershipEligibilityOverlay
               tenantName={overlayTenantName}
               missing={overlayMissing}
+              directoryIncompleteModule={overlayDirectoryIncompleteModule}
               baseUrl={baseUrl}
               isForum={overlayIsForum}
               isJoined={overlayIsJoined}
