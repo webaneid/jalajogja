@@ -369,10 +369,30 @@ kondisi DEFAULT-nya. Ketiga list page (`usaha/page.tsx`, `profesional/page.tsx`,
 (`[id]/page.tsx`) semuanya mengikuti pola identik — verifikasi `tsc --noEmit` per-modul (bukan
 ditumpuk di akhir), 0 error di ketiganya, lalu `bun run build --filter=@jalajogja/web` genuine
 (dev server dimatikan, `.next` dibersihkan, direstart setelah) mengonfirmasi ke-6 route (list+
-detail × 3 modul) terdaftar di build output. **Di-commit+push (`f406745`).** **Belum dijalankan/
-diverifikasi di VPS, belum diverifikasi visual di browser** (mengetik tag di dropdown, klik
-cross-link, konfirmasi hasil filter benar-benar menyaring) — user perlu deploy ke VPS lalu coba
-langsung.
+detail × 3 modul) terdaftar di build output. **Di-commit+push (`f406745`).**
+
+**Regresi ditemukan+diperbaiki (2026-07-31)**: sesi lain (di luar sesi yang menulis dokumen ini)
+me-redesign layout ketiga halaman detail (`usaha/[id]`, `pesantren/[id]`, `profesional/[id]` —
+commit lokal `44696f7`+`81d7f7f`+`03a125e`, belum di-push saat ditemukan) jadi struktur 2-kolom
+sticky sidebar yang jauh lebih rapi — TAPI menghapus import+pemakaian `EcosystemTagCrossLinks`
+di ketiganya tanpa penggantian, membuat komponen itu jadi dead code (nol importer di source,
+cuma tersisa di build artifact lama). Audit menemukan ini saat diminta user cek konsistensi
+halaman single lintas 3 modul. **Diperbaiki**: `EcosystemTagCrossLinks` diimpor+dirender ulang
+di ketiga file, ditempatkan di kolom konten utama (bukan sidebar) — persis setelah blok
+"Ekosistem Sinergi" (yang menampilkan `offeredTags`/`neededTags` milik entitas itu sendiri),
+karena "Cari Sinergi" secara semantik adalah kelanjutan alami dari situ ("berikut yang
+ditawarkan/dibutuhkan entitas ini — klik untuk cari yang komplemen di 2 direktori lain").
+Diverifikasi EMPIRIS bukan cuma `tsc`: dicari record nyata di DB (forcreator, usaha "Bengkel
+Mobil" dengan `offeredTags=["Bengkel Mobil","Pembukaan Cabang Bengkel Mobil"]`), di-curl
+langsung, dikonfirmasi teks "Cari Sinergi" + tag + arah "membutuhkan" muncul di HTML, DAN link
+cross-directory (`href="/forcreator/profesional?tag=...&arah=membutuhkan"`,
+`href="/forcreator/pesantren?tag=...&arah=membutuhkan"`) terbentuk benar. Record TANPA tag
+(kebanyakan record existing) dikonfirmasi widget `return null` (tidak tampil sama sekali,
+bukan tampil kosong) — sesuai desain aslinya.
+
+**Belum dijalankan/diverifikasi di VPS, belum diverifikasi visual di browser** (mengetik tag di
+dropdown, klik cross-link, konfirmasi hasil filter benar-benar menyaring) — user perlu deploy ke
+VPS lalu coba langsung.
 
 ### Fase 3 — Trust Badge Sederhana (HANYA jika Fase 1-2 menunjukkan adopsi organik)
 - Satu kolom boolean `verifiedByAdmin: boolean` (BUKAN 4-tier enum) per tabel, dengan UI admin

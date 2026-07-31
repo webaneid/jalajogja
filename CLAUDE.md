@@ -14415,12 +14415,83 @@ identik di ketiga file via grep sebelum disimpulkan sebagai pola yang konsisten,
 
 `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (49.21s, `Cached:
 0 cached`, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 di ketiga halaman
-publik). Nol migrasi DB. **Belum di-commit/push, belum diverifikasi visual di browser** —
-sama seperti fix Usaha, user perlu cek langsung `/pesantren` dan `/profesional` (arsip+single)
-tampil konsisten dengan `/usaha`.
+publik). Nol migrasi DB. **Sudah di-commit+push** (`20c3f2f`). **Belum dijalankan di VPS, belum
+diverifikasi visual di browser** — user perlu cek langsung `/pesantren` dan `/profesional`
+(arsip+single) tampil konsisten dengan `/usaha`.
+
+### [2026-07-31] Audit Halaman Single Usaha/Pesantren/Profesional — Ketemu Kerja Sesi Lain + 1 Regresi Ditemukan+Difix
+
+User minta cek halaman single (detail) Usaha/Pesantren/Profesional supaya "standard" — kalau
+ada bug diperbaiki, kalau tidak diabaikan saja. **Temuan pertama**: `git log` menunjukkan 3
+commit LOKAL (belum di-push) yang dibuat SETELAH commit terakhir saya (`20c3f2f`) — `44696f7`
+("redesign single detail page layout to 2-column sticky border-only sidebar"), `81d7f7f`
+("apply evaluation updates"), `03a125e` ("redesign Pesantren and Profesional detail pages to
+match Usaha layout structure"). Ini persis skenario yang sudah dicatat sebelumnya di project
+ini — **sesi/agen LAIN mengerjakan sesuatu secara paralel** — sesuai prinsip
+`feedback_verify_other_agent_work`, saya tidak asumsikan working tree "milik saya sendiri" dan
+verifikasi kode aktual, bukan percaya nama commit.
+
+**Hasil audit ketiga file hasil redesign — struktur SANGAT konsisten**: breadcrumb kembali ke
+arsip → banner cover (pola beda disengaja: Usaha = floating logo persegi, Pesantren = polos
+tanpa floating apa pun karena tidak ada konsep "logo terpisah", Profesional = floating foto
+bulat pemilik karena entitasnya SEORANG ORANG bukan badan usaha) → grid 2-kolom (kanan sticky:
+info ringkas + kontak (gated `is_*_public`) + sosial media + kartu pemilik/anggota IKPM; kiri:
+badge kategori + judul + lokasi + deskripsi (kalau ada) + section spesifik modul + Ekosistem
+Sinergi). Absennya section "Deskripsi" di Pesantren DIKONFIRMASI BUKAN bug — `member_owned_
+pesantren` schema genuinely tidak punya kolom `description` sama sekali (dicek langsung ke
+schema file). `renderBody(row.description)` tanpa parameter context (`imageBaseUrl`/`tenantSlug`/
+`baseUrl`) di Usaha+Profesional JUGA dikonfirmasi BUKAN bug — dicek kolom `description` di kedua
+tabel adalah `text()` polos (bukan JSONB), dan form editnya `<textarea>` biasa (bukan Tiptap) —
+jadi tidak pernah ada gambar inline/link internal yang butuh context itu untuk diresolve,
+berbeda dari campaign/event/produk/post yang memang pakai Tiptap JSON.
+
+**1 regresi NYATA ditemukan**: `EcosystemTagCrossLinks` (widget "Cari Sinergi" dari Fase 2
+Ekosistem, `docs/arsitektur-ekosistem.md` § 6 — link navigasi cross-directory berbasis tag
+"opposite intent") terhapus total dari ketiga file redesign tanpa penggantian — grep
+mengonfirmasi component itu jadi dead code (nol importer di source, cuma tersisa di build
+artifact `.next` lama). Fitur pencarian filter-by-tag di halaman ARSIP (Fase 2 lainnya) tetap
+utuh (tidak disentuh redesign) — cuma widget di halaman DETAIL yang hilang.
+
+**Fix**: `EcosystemTagCrossLinks` diimpor+dirender ulang di ketiga file, ditempatkan setelah
+blok "Ekosistem Sinergi" di kolom kiri (bukan sidebar) — kelanjutan alami dari section yang
+menampilkan `offeredTags`/`neededTags` milik entitas itu sendiri. **Diverifikasi EMPIRIS, bukan
+cuma `tsc`**: dicari record nyata (`forcreator`, usaha "Bengkel Mobil" dengan tag tersimpan),
+di-curl langsung, dikonfirmasi teks "Cari Sinergi" + link cross-directory
+(`/forcreator/profesional?tag=...&arah=membutuhkan`, `/forcreator/pesantren?tag=...&arah=
+membutuhkan`) terbentuk benar di HTML — bukan cuma "compile tanpa error". Record tanpa tag
+dikonfirmasi widget `return null` (tidak tampil, bukan tampil kosong) sesuai desain asli.
+
+Detail lengkap: `docs/arsitektur-ekosistem.md` § 6 Fase 2 (subsection "Regresi ditemukan+
+diperbaiki"). `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses
+(48.7s, dev server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB. **Belum di-commit/
+push** — perubahan ini (3 file: `usaha/[id]/page.tsx`, `pesantren/[id]/page.tsx`,
+`profesional/[id]/page.tsx`) DAN 3 commit redesign sesi lain (`44696f7`/`81d7f7f`/`03a125e`)
+semuanya masih lokal, belum di-push ke origin — menunggu instruksi user.
+
+**Aturan yang ditegaskan (pengulangan, kelas ke sekian kalinya di project ini)**: SELALU
+`git log --oneline -N -- <file>` sebelum audit "cek apakah halaman X sudah standard" — kalau ada
+commit yang tidak dikenal (bukan dari sesi ini), itu sinyal kerja paralel dari sesi/agen lain;
+verifikasi isinya dari nol via membaca kode, jangan percaya nama commit message begitu saja.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fallback gambar ke variant original — diseragamkan ke Usaha +
+- Terakhir dikerjakan: **Audit halaman single Usaha/Pesantren/Profesional — ketemu kerja sesi
+  lain (3 commit lokal redesign belum di-push) + 1 regresi ditemukan+difix** (lihat lesson
+  `[2026-07-31]` "Audit Halaman Single Usaha/Pesantren/Profesional" di atas, detail lengkap
+  `docs/arsitektur-ekosistem.md` § 6 Fase 2) — user minta cek konsistensi halaman detail
+  (single) 3 modul, perbaiki kalau ada bug, abaikan kalau tidak. `git log` mengungkap 3 commit
+  LOKAL BELUM DI-PUSH yang dibuat SETELAH commit terakhir saya (`44696f7`/`81d7f7f`/`03a125e`) —
+  sesi/agen lain me-redesign ketiga halaman detail jadi layout 2-kolom sticky sidebar yang rapi.
+  Audit menyeluruh: struktur SANGAT konsisten lintas 3 modul (perbedaan yang ada semua disengaja
+  dan sesuai semantik data — Pesantren tanpa section deskripsi karena schema-nya genuinely tidak
+  punya kolom itu, `renderBody()` tanpa context karena description Usaha/Profesional cuma
+  `<textarea>` plain text bukan Tiptap JSON). **1 regresi nyata**: widget `EcosystemTagCrossLinks`
+  ("Cari Sinergi", Fase 2 Ekosistem) terhapus total dari ketiga file redesign tanpa penggantian —
+  jadi dead code. Fix: diimpor+dirender ulang di ketiga file (setelah blok "Ekosistem Sinergi"),
+  diverifikasi EMPIRIS (bukan cuma `tsc`) via curl ke record nyata di DB — teks+link
+  cross-directory terkonfirmasi terbentuk benar. `tsc` 0 error + `bun run build` genuine sukses
+  (48.7s). Nol migrasi DB. **Belum di-commit/push** — perubahan sesi ini (3 file) DAN 3 commit
+  redesign sesi lain semuanya masih lokal, menunggu instruksi user untuk commit+push.
+- Sesi sebelumnya: **Fallback gambar ke variant original — diseragamkan ke Usaha +
   Pesantren + Profesional** (lihat lesson `[2026-08-01]` "Fallback Gambar ke Original" di
   atas, detail lengkap `docs/arsitektur-image.md` § "Fallback ke Variant Original") — user
   laporkan foto record LAMA di `/usaha` (production, tenant `visikita`) 404 karena variant `_th`
@@ -14438,8 +14509,9 @@ tampil konsisten dengan `/usaha`.
   fallback (konsisten, bukan celah). `tsc --noEmit` 0 error + `bun run build` genuine sukses
   (49.21s, `Cached: 0 cached`, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 di
   ketiga halaman publik). Nol migrasi DB (murni fallback runtime, tidak memperbaiki data
-  `coverUrl` di DB). **Belum di-commit/push, belum diverifikasi visual di browser** — user perlu
-  cek apakah foto "CV. Maristiq Lit Beauty" (contoh yang dilaporkan) sekarang tampil di `/usaha`,
+  `coverUrl` di DB). **Sudah di-commit+push** (`20c3f2f`). **Belum dijalankan di VPS, belum
+  diverifikasi visual di browser** — user perlu cek apakah foto "CV. Maristiq Lit Beauty"
+  (contoh yang dilaporkan) sekarang tampil di `/usaha`,
   dan konfirmasi `/pesantren` + `/profesional` sekarang berperilaku identik.
 - Sesi sebelumnya: **Instagram OAuth — Validasi Akun (fix field "Nama Akun" yang tadinya cuma
   label kosmetik)** (lihat lesson `[2026-08-01]` "Instagram OAuth — Field 'Nama Akun'" di atas,

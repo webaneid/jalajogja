@@ -18,6 +18,7 @@ import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { SocialLinks } from "@/components/ui/social-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
+import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
@@ -392,6 +393,13 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
                 </div>
               </div>
             )}
+
+            <EcosystemTagCrossLinks
+              slug={slug}
+              currentModule="pesantren"
+              offeredTags={row.offeredTags}
+              neededTags={row.neededTags}
+            />
 
           </div>
 
