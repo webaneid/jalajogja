@@ -669,3 +669,62 @@ Sesuai keputusan arsitektur (2026-07-30), data profesional anggota (`public.memb
 
 ### Integrasi Tag Sinergi Ekosistem (`offeredTags` / `neededTags`):
 Field **Menawarkan** (`offeredTags`) dan **Membutuhkan** (`neededTags`) diintegrasikan dengan komponen `TagMultiSelect` berbasis `ECOSYSTEM_TAG_SUGGESTIONS` (`apps/web/lib/ecosystem-tags.ts`), seragam dengan modul **Usaha** dan **Pesantren**. Hal ini memungkinkan sinergi pasokan dan kebutuhan antar-anggota lintas modul ekosistem.
+
+---
+
+## 15. Kategori Baru "Pemerintahan, Keamanan & Militer" (2026-08-01)
+
+User tanya (eksploratif, bukan langsung minta eksekusi): "ada profesi seperti polisi, TNI atau
+apalagi ya, kira-kira masuk mana ya?" — dicek ke 8 kategori yang sudah ada
+(`PROFESSION_CATEGORIES`), tidak satu pun cocok. Alasan strukturalnya: seluruh 8 kategori itu
+turunan BPS KBJI 2014 "Golongan Pokok 2: Profesional" (§ 2), sementara TNI/Polri di
+klasifikasi KBJI/ISCO-08 sesungguhnya masuk **Golongan Pokok TERPISAH** ("Angkatan Bersenjata" /
+Armed Forces Occupations, Major Group 0) — bukan bagian dari "Profesional" sama sekali. Memaksa
+masukkan ke salah satu 6 kategori profesional yang ada, atau ke "Lainnya" (catch-all generik),
+sama-sama kurang tepat mengingat kemungkinan banyak alumni Gontor berkarier di jalur ini.
+
+**Keputusan dikonfirmasi user**: buat kategori BARU (bukan pakai "Lainnya"), sejajar 8 kategori
+lain — konsisten pola yang sama dengan penambahan "Kreatif" di § 14 (kategori baru dibuat kalau
+memang tidak cocok dipaksakan ke yang sudah ada, bukan cuma "cukup detail lebih jauh").
+
+**Cakupan "apa lagi selain TNI/Polri"** — didiskusikan dulu sebelum eksekusi (bukan langsung
+ditebak), hasil brainstorm dikonfirmasi user tanpa perubahan:
+```
+TNI Angkatan Darat, TNI Angkatan Laut, TNI Angkatan Udara, Polisi (POLRI),
+Kepala Desa / Perangkat Desa, Anggota Legislatif (DPR/DPRD/DPD),
+Kepala Daerah / Wakil Kepala Daerah, Aparatur Sipil Negara (ASN) / Pejabat Struktural,
+Diplomat, Petugas Imigrasi, Petugas Bea Cukai, Petugas Pemasyarakatan,
+Satpol PP, Pemadam Kebakaran, Politikus / Fungsionaris Partai Politik
+```
+**Susulan giliran sama**: user tanya lagi "Politikus, ini gmn?" — dijawab: masuk KE SINI sebagai
+jenis profesi tambahan (bukan kategori terpisah), beda dari "Anggota Legislatif" (yang spesifik
+untuk yang SEDANG menjabat DPR/DPRD/DPD) — "Politikus / Fungsionaris Partai Politik" mencakup
+karier politik tanpa/di luar jabatan legislatif spesifik (pengurus partai, kader, kandidat).
+Ditambahkan langsung ke `PROFESSION_TYPES_BY_CATEGORY` — **TANPA migration**, karena
+`professionType` (beda dari `professionCategory`) adalah `text()` polos tanpa CHECK constraint
+DB sama sekali, murni combobox suggestion (anggota tetap bisa ketik bebas apa pun, § 2.5) — nol
+DDL yang perlu diubah.
+
+**Hakim dan Jaksa SENGAJA TIDAK diduplikasi ke sini** — keduanya sudah ada di kategori "Hukum,
+Sosial & Budaya" sejak awal (§ 2.4 daftar profesi), dipertahankan di sana karena keahliannya
+memang hukum — persis pola "Arsitek" yang tidak diduplikasi ke "Kreatif" saat kategori itu
+ditambah (§ 14). "Aparatur Sipil Negara (ASN) / Pejabat Struktural" sengaja generik (bukan per-
+kementerian) — PNS dengan profesi teknis (guru/dokter/insinyur PNS) tetap masuk kategori
+masing-masing, BUKAN sini; kategori ini khusus untuk birokrat struktural yang tidak punya
+profesi teknis spesifik.
+
+**Fix — 3 titik, pola PERSIS § 14 (Kreatif)**: (1) `PROFESSION_CATEGORIES` (`lib/professional-
+types.ts`) ditambah `"Pemerintahan, Keamanan & Militer"` + `PROFESSION_TYPES_BY_CATEGORY` diisi
+14 jenis profesi di atas; (2) Drizzle schema enum (`packages/db/src/schema/public/member-
+professionals.ts`) ditambah nilai yang sama; (3) migration baru
+`0056_member_professionals_pemerintahan_category.sql` — `DROP CONSTRAINT` + `ADD CONSTRAINT`
+CHECK dengan 9 nilai (sekali jalan, PUBLIC schema, bukan loop per tenant — sama seperti § 14).
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` (percobaan pertama) +
+`bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached`, 47.35s, dev server
+dimatikan+`.next` dibersihkan+direstart). Migration `0056` dijalankan+diverifikasi lokal (`\d
+public.member_professionals` mengonfirmasi 9 nilai termasuk kategori baru). **Belum di-commit/
+push (user eksplisit minta "mode hemat", tunda push), belum dijalankan di VPS, belum
+diverifikasi visual di browser** — user perlu coba tambah profesional dengan kategori
+"Pemerintahan, Keamanan & Militer" di `/akun/profesional`, konfirmasi combobox + 14 jenis
+profesi muncul benar.

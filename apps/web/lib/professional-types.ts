@@ -10,6 +10,7 @@ export const PROFESSION_CATEGORIES = [
   "Teknologi Informasi",
   "Hukum, Sosial & Budaya",
   "Kreatif",
+  "Pemerintahan, Keamanan & Militer",
   "Lainnya",
 ] as const;
 
@@ -53,6 +54,18 @@ export const PROFESSION_TYPES_BY_CATEGORY: Record<ProfessionCategory, string[]> 
     "Musisi", "Vokalis / Penyanyi", "Komposer / Arranger",
     "Seniman Instalasi & Kontemporer",
     "Perajin / Pengrajin Kriya",
+  ],
+  // Rumpun aparatur negara — di KBJI/ISCO TNI/Polri sebenarnya golongan pokok TERPISAH
+  // ("Angkatan Bersenjata"), bukan bagian "Profesional" — tapi dipisah jadi kategori sendiri
+  // di sini (bukan dipaksa masuk 6 kategori profesional di atas) karena banyak alumni Gontor
+  // berkarier di jalur ini. Hakim & Jaksa SENGAJA tidak diduplikasi ke sini — sudah ada di
+  // "Hukum, Sosial & Budaya" (pola sama "Arsitek" yang tidak diduplikasi ke "Kreatif").
+  "Pemerintahan, Keamanan & Militer": [
+    "TNI Angkatan Darat", "TNI Angkatan Laut", "TNI Angkatan Udara", "Polisi (POLRI)",
+    "Kepala Desa / Perangkat Desa", "Anggota Legislatif (DPR/DPRD/DPD)",
+    "Kepala Daerah / Wakil Kepala Daerah", "Aparatur Sipil Negara (ASN) / Pejabat Struktural",
+    "Diplomat", "Petugas Imigrasi", "Petugas Bea Cukai", "Petugas Pemasyarakatan",
+    "Satpol PP", "Pemadam Kebakaran", "Politikus / Fungsionaris Partai Politik",
   ],
   "Lainnya": [],
 };

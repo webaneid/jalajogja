@@ -14716,8 +14716,68 @@ sebagai default kalau ada ambiguitas, dan kalau ragu tetap lebih baik ditanyakan
 sebelum ditulis+commit — bukan diverifikasi empiris dulu (yang di sesi ini sampai menghasilkan
 efek samping nyata di DB — sequence counter maju 1 — sebelum ternyata pendekatannya salah).
 
+### [2026-08-01] Kategori Profesi Baru "Pemerintahan, Keamanan & Militer" — TNI/Polri/ASN
+
+> Detail lengkap: **`docs/arsitektur-profesional.md` § 15**
+
+User tanya eksploratif: "ada profesi seperti polisi, TNI atau apalagi ya, kira-kira masuk mana
+ya?" — dicek ke 8 kategori profesi yang ada (`PROFESSION_CATEGORIES`, turunan BPS KBJI 2014
+"Golongan Pokok 2: Profesional"), tidak satu pun cocok. TNI/Polri di klasifikasi KBJI/ISCO-08
+sesungguhnya golongan pokok TERPISAH ("Angkatan Bersenjata"), bukan bagian "Profesional" —
+dijawab dengan rekomendasi 2 opsi (taruh di "Lainnya" vs kategori baru) sesuai gaya jawaban
+eksploratif (2-3 kalimat + tradeoff, bukan langsung eksekusi). User pilih kategori baru,
+sejajar 8 kategori lain — persis pola penambahan "Kreatif" sebelumnya (§ 14 doc).
+
+Diminta lanjut brainstorm cakupan "apa lagi selain TNI/Polri" SEBELUM eksekusi — didiskusikan
+dulu, bukan ditebak: 14 jenis profesi (TNI AD/AL/AU, Polisi, Kepala Desa/Perangkat Desa,
+Anggota Legislatif, Kepala Daerah/Wakil, ASN/Pejabat Struktural, Diplomat, Petugas Imigrasi,
+Petugas Bea Cukai, Petugas Pemasyarakatan, Satpol PP, Pemadam Kebakaran) dikonfirmasi user
+tanpa perubahan. Hakim/Jaksa SENGAJA TIDAK diduplikasi ke kategori baru — tetap di "Hukum,
+Sosial & Budaya" (pola sama "Arsitek" yang tidak diduplikasi ke "Kreatif").
+
+**Eksekusi — pola PERSIS § 14 (Kreatif), 3 titik**: `PROFESSION_CATEGORIES`+
+`PROFESSION_TYPES_BY_CATEGORY` (`lib/professional-types.ts`), Drizzle schema enum
+(`packages/db/src/schema/public/member-professionals.ts`), migration baru
+`0056_member_professionals_pemerintahan_category.sql` (`DROP`+`ADD CONSTRAINT` CHECK, sekali
+jalan PUBLIC schema — bukan loop per tenant, karena tabel ini bukan per-tenant).
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` (percobaan pertama) + `bun
+run build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached`, 47.35s, dev server
+dimatikan+`.next` dibersihkan+direstart). Migration `0056` dijalankan+diverifikasi lokal (`\d`
+mengonfirmasi 9 nilai constraint). **User eksplisit minta "mode hemat" — belum di-commit/push,
+belum dijalankan di VPS, belum diverifikasi visual di browser** — perlu coba tambah profesional
+kategori baru ini di `/akun/profesional`, konfirmasi combobox + 14 jenis profesi tampil.
+
+**Susulan giliran sama — "Politikus, ini gmn?"**: dijawab masuk ke kategori yang SAMA (bukan
+kategori terpisah baru) sebagai jenis profesi ke-15, "Politikus / Fungsionaris Partai Politik"
+— beda dari "Anggota Legislatif" (spesifik yang sedang menjabat). Ditambahkan LANGSUNG ke
+`PROFESSION_TYPES_BY_CATEGORY` **tanpa migration** — `professionType` (beda dari
+`professionCategory`) adalah `text()` polos tanpa CHECK constraint DB, murni combobox
+suggestion, jadi nol DDL yang perlu disentuh untuk penambahan jenis profesi (kontras dengan
+penambahan KATEGORI baru yang selalu butuh migration CHECK constraint). `tsc --noEmit` bersih.
+**Aturan yang ditegaskan**: `professionCategory` (closed-ish, CHECK constraint DB) vs
+`professionType` (combobox suggestion, TANPA constraint) punya biaya perubahan yang SANGAT
+beda — nambah kategori baru = migration wajib; nambah jenis profesi ke kategori yang sudah ada
+= edit array biasa, nol migration. Perbedaan biaya ini yang menentukan kapan perlu kategori
+baru vs cukup entri baru di kategori existing.
+kategori baru ini di `/akun/profesional` untuk konfirmasi combobox + 14 jenis profesi tampil.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Koreksi — Nomor Keanggotaan TIDAK PERNAH di-generate saat import/
+- Terakhir dikerjakan: **Kategori Profesi Baru "Pemerintahan, Keamanan & Militer"** (lihat
+  lesson `[2026-08-01]` di atas, detail lengkap `docs/arsitektur-profesional.md` § 15) — user
+  tanya eksploratif soal profesi TNI/Polri, dijawab dengan rekomendasi (2 opsi: "Lainnya" vs
+  kategori baru), user pilih kategori baru sejajar 8 kategori lain (persis pola "Kreatif" § 14).
+  Brainstorm cakupan 14 jenis profesi (TNI AD/AL/AU, Polisi, Kepala Desa, Anggota Legislatif,
+  Kepala Daerah, ASN/Pejabat Struktural, Diplomat, Petugas Imigrasi/Bea Cukai/Pemasyarakatan,
+  Satpol PP, Pemadam Kebakaran) dikonfirmasi user sebelum eksekusi. Hakim/Jaksa sengaja TIDAK
+  diduplikasi (tetap di "Hukum, Sosial & Budaya"). Eksekusi 3 titik pola persis § 14:
+  `PROFESSION_CATEGORIES`+`PROFESSION_TYPES_BY_CATEGORY` (`lib/professional-types.ts`), Drizzle
+  enum (`member-professionals.ts`), migration `0056` (CHECK constraint, sekali jalan public
+  schema). `tsc --noEmit` 0 error kedua package + `bun run build` genuine sukses (`Cached: 0
+  cached`, 47.35s). Migration dijalankan+diverifikasi lokal. **User eksplisit minta "mode
+  hemat" — belum di-commit/push, belum dijalankan di VPS, belum diverifikasi visual di
+  browser** — perlu coba tambah profesional kategori baru di `/akun/profesional`.
+- Sesi sebelumnya: **Koreksi — Nomor Keanggotaan TIDAK PERNAH di-generate saat import/
   admin-add** (lihat lesson `[2026-07-31]` "Koreksi: Nomor Keanggotaan TIDAK PERNAH di-generate"
   di atas, detail lengkap `docs/arsitektur-import-anggota.md` § 22.5) — user MEMBALIK sepenuhnya
   fitur "auto-generate" yang baru saja dibangun+commit (`2d9bb47`, lesson "Susulan..." SEKARANG
@@ -14739,7 +14799,7 @@ efek samping nyata di DB — sequence counter maju 1 — sebelum ternyata pendek
   build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached`, 46.82s, dev server
   dimatikan+`.next` dibersihkan+direstart). Dokumentasi (§ 22.4 ditandai superseded + § 22.5
   baru di `docs/arsitektur-import-anggota.md`, lesson CLAUDE.md, memory file) sudah dikoreksi
-  bersamaan. **Belum di-commit/push, belum diverifikasi visual di browser** — user perlu coba
+  bersamaan. **Sudah di-commit+push (`f106130`). Belum diverifikasi visual di browser** — user perlu coba
   import file dengan sebagian baris kolom "Nomor Keanggotaan" kosong dan sebagian terisi,
   konfirmasi hanya baris berisi nomor yang jadi `forumStatus="active"` tanpa ajakan gabung,
   sisanya tetap `pending` dengan overlay "Gabung X" tetap tampil.
