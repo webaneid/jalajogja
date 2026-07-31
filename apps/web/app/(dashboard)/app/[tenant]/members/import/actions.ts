@@ -287,11 +287,12 @@ export async function commitImportAction(
             await tx.update(contacts).set(candidate.contactPatch).where(eq(contacts.id, candidate.contactId));
           }
           existingTenantMembershipId = candidate.existingTenantMembershipId;
-          if (existingTenantMembershipId && candidate.membershipNumberPatch) {
-            await tx.update(tenantMemberships)
-              .set({ membershipNumber: candidate.membershipNumberPatch })
-              .where(eq(tenantMemberships.id, existingTenantMembershipId));
-            writtenMembershipNumber = candidate.membershipNumberPatch;
+          if (existingTenantMembershipId && (candidate.membershipNumberPatch || candidate.activateForumStatus)) {
+            const tmPatch: { membershipNumber?: string; forumStatus?: "active" } = {};
+            if (candidate.membershipNumberPatch) tmPatch.membershipNumber = candidate.membershipNumberPatch;
+            if (candidate.activateForumStatus) tmPatch.forumStatus = "active";
+            await tx.update(tenantMemberships).set(tmPatch).where(eq(tenantMemberships.id, existingTenantMembershipId));
+            if (candidate.membershipNumberPatch) writtenMembershipNumber = candidate.membershipNumberPatch;
           }
         }
 
@@ -343,12 +344,17 @@ export async function commitImportAction(
         // tenant ini). Kalau sudah ada (existingTenantMembershipId terisi dari blok merge di
         // atas) — JANGAN insert lagi (constraint unique tenantId+memberId akan menolak
         // duplikat); membershipNumber-nya sudah ditangani via UPDATE di blok merge. ──
-        // Nomor keanggotaan lokal + forumStatus="pending" HANYA relevan untuk tenant forum
+        // forumStatus="active" LANGSUNG (bukan "pending") HANYA relevan untuk tenant forum
         // (skema: "khusus forum, null untuk cabang/marhalah" — docs/arsitektur-backbone-
-        // ikpm.md § "Nomor Keanggotaan Lokal Forum"). Tool ini reusable lintas tipe tenant,
-        // jadi tidak boleh hardcode "forum" — cabang/marhalah dapat membershipType sesuai
-        // access.tenant.tenantType dan tidak pernah dapat forumStatus/membershipNumber.
-        // (`isForumTenant` dihitung sekali di scope luar fungsi ini — lihat atas.)
+        // ikpm.md § "Nomor Keanggotaan Lokal Forum"). Rule: kalau admin secara eksplisit
+        // menaruh data anggota di database tenant forum ini (via import), orangnya SUDAH
+        // resmi jadi anggota forum ini — tidak perlu ajakan "Gabung" via /gabung lagi. Data
+        // pribadi yang belum lengkap TETAP diminta dilengkapi lewat overlay eligibility
+        // terpisah di /akun (lihat akun/page.tsx), independen dari forumStatus ini. Tool ini
+        // reusable lintas tipe tenant, jadi tidak boleh hardcode "forum" — cabang/marhalah
+        // dapat membershipType sesuai access.tenant.tenantType dan tidak pernah dapat
+        // forumStatus/membershipNumber. (`isForumTenant` dihitung sekali di scope luar
+        // fungsi ini — lihat atas.)
         if (!existingTenantMembershipId) {
           await tx.insert(tenantMemberships).values({
             tenantId: access.tenant.id,
@@ -356,7 +362,7 @@ export async function commitImportAction(
             status: "active",
             registeredVia: "import",
             membershipType: access.tenant.tenantType,
-            forumStatus: isForumTenant ? "pending" : null,
+            forumStatus: isForumTenant ? "active" : null,
             membershipNumber: isForumTenant ? preview.membershipNumber : null,
           });
           if (isForumTenant && preview.membershipNumber) writtenMembershipNumber = preview.membershipNumber;

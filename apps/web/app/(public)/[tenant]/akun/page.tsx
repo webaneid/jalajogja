@@ -94,8 +94,13 @@ export default async function AkunPage({ params }: { params: Params }) {
   // terdeteksi di sini.
   //
   // Kondisi tampil beda per tipe tenant:
-  //   - Forum: sampai genuinely forumStatus='active' (lewat /gabung) — termasuk kasus
-  //     "sudah eligible tapi belum klik gabung".
+  //   - Forum: TIDAK lagi cuma gerbang `forumStatus`. Sejak admin bisa auto-join
+  //     member ke forum (createMemberAction/commitImportAction set forumStatus='active'
+  //     langsung, tanpa melalui pengecekan eligibility yang biasanya dipaksakan /gabung),
+  //     eligibility WAJIB selalu dicek — bukan cuma saat belum joined. Overlay tampil
+  //     kalau BELUM eligible (regardless status join) ATAU sudah eligible tapi belum
+  //     genuinely joined (forumStatus != 'active'). Begitu eligible DAN sudah joined →
+  //     tidak ada overlay sama sekali, tidak ada "ajakan bergabung" lagi.
   //   - Cabang/marhalah: HANYA selama belum eligible — begitu eligible, keanggotaan
   //     SUDAH otomatis (auto-populate), overlay tidak perlu tampil lagi.
   let showEligibilityOverlay = false;
@@ -124,10 +129,11 @@ export default async function AkunPage({ params }: { params: Params }) {
           ))
           .limit(1);
 
-        if (forumMembershipRow?.forumStatus !== "active") {
+        const isJoined = forumMembershipRow?.forumStatus === "active";
+        const eligibility = await checkMemberEligibility(identity.memberId);
+        if (!eligibility.eligible || !isJoined) {
           showEligibilityOverlay = true;
-          const eligibility = await checkMemberEligibility(identity.memberId);
-          overlayMissing = eligibility.missing;
+          overlayMissing = eligibility.missing; // kosong = eligible, komponen tampilkan "Gabung X"
         }
       } else {
         const eligibility = await checkMemberEligibility(identity.memberId);

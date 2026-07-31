@@ -241,6 +241,7 @@ export type MemberMergeCandidate = {
   contactId: string | null;
   contactPatch: ContactFieldPatch;
   membershipNumberPatch: string | null; // non-null = akan di-set ke tenant_membership yang sudah ada
+  activateForumStatus: boolean; // true = tenant_membership existing masih belum "active", akan di-set jadi aktif
   existingTenantMembershipId: string | null; // null = belum jadi anggota tenant ini
   fieldLabels: string[]; // label Indonesia gabungan, untuk preview/notes
 };
@@ -272,6 +273,7 @@ export async function computeMemberMergeCandidate(
 
   const [tmRow] = await db.select({
     id: tenantMemberships.id, membershipNumber: tenantMemberships.membershipNumber,
+    forumStatus: tenantMemberships.forumStatus,
   }).from(tenantMemberships)
     .where(and(eq(tenantMemberships.memberId, memberId), eq(tenantMemberships.tenantId, tenantId)))
     .limit(1);
@@ -281,13 +283,20 @@ export async function computeMemberMergeCandidate(
     membershipNumberPatch = incomingMembershipNumber;
   }
 
+  // Member yang sudah pernah jadi anggota forum ini (baris tenant_membership sudah ada) tapi
+  // forumStatus-nya belum "active" (mis. sisa sebelum aturan auto-join ini ada) — backfill
+  // jadi aktif juga, prinsip sama dengan "field kosong dilengkapi" di atas: data sudah eksplisit
+  // ditaruh admin di tenant forum ini, tidak perlu ajakan "Gabung" lagi. Data pribadi yang belum
+  // lengkap tetap diminta lewat overlay eligibility terpisah, independen dari flag ini.
+  const activateForumStatus = !!(tmRow && isForumTenant && tmRow.forumStatus !== "active");
+
   const fieldLabels = [
     ...Object.keys(memberPatch), ...Object.keys(contactPatch),
     ...(membershipNumberPatch ? ["membershipNumber"] : []),
   ].map((k) => MERGEABLE_FIELD_LABELS[k] ?? k);
 
   return {
-    memberPatch, contactId, contactPatch, membershipNumberPatch,
+    memberPatch, contactId, contactPatch, membershipNumberPatch, activateForumStatus,
     existingTenantMembershipId: tmRow?.id ?? null,
     fieldLabels,
   };

@@ -21,6 +21,7 @@ import {
   BUSINESS_EMPLOYEES_ENUM, BUSINESS_BRANCHES_ENUM, BUSINESS_REVENUE_ENUM,
   WALI_SANTRI_DISPLAY_ENUM, DOMICILE_STATUS_DISPLAY_ENUM,
 } from "@/lib/import-anggota-mapping";
+import { SECTOR_SUB_FIELDS } from "@/lib/business-sectors";
 
 // 45 kolom — HARUS sama persis (nama, urutan tidak masalah karena dicocokkan by-name) dengan
 // TEMPLATE_HEADERS di lib/import-anggota.server.ts. Kalau menambah/mengubah kolom di sana,
@@ -138,12 +139,18 @@ export async function GET(req: NextRequest) {
     ["Kategori Usaha (pilih PERSIS salah satu, case-insensitive):"],
     ...bulletList(BUSINESS_CATEGORY_ENUM),
     [""],
-    ["Sektor (pilih PERSIS salah satu):"],
-    ...bulletList(BUSINESS_SECTOR_ENUM),
+    ["Sektor & Bidang Usaha"],
+    ["- Sektor: pilih PERSIS salah satu dari 10 nama sektor di bawah (baris \"SEKTOR: ...\")."],
+    ["- Bidang Usaha: BEDA dari Sektor, boleh lebih dari satu nilai, pisahkan dengan koma dalam"],
+    ["  SATU sel. Bebas ketik apa saja, TAPI disarankan pilih dari daftar di bawah tiap sektor"],
+    ["  (tinggal copy-paste) — tidak harus sesuai Sektor yang dipilih, boleh ambil dari sektor"],
+    ["  manapun. Contoh: \"Kuliner Modern & F&B, Toko Ritel & Minimarket\""],
     [""],
-    ["Bidang Usaha — BEDA dari Sektor. Ini boleh lebih dari satu nilai (bebas, tidak harus dari"],
-    ["daftar baku), pisahkan dengan koma dalam SATU sel. Contoh: \"Kuliner & Resto, Percetakan\""],
-    [""],
+    ...BUSINESS_SECTOR_ENUM.flatMap((sector) => [
+      [`SEKTOR: ${sector}`],
+      ...bulletList(SECTOR_SUB_FIELDS[sector]),
+      [""],
+    ]),
     ["Badan Hukum (pilih PERSIS salah satu, atau kosongkan):"],
     ...bulletList(BUSINESS_LEGALITY_ENUM),
     [""],

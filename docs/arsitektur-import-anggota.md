@@ -1,5 +1,13 @@
 # Arsitektur Import Anggota — Bulk Import Database Excel/CSV
 
+> **§ 22 (2026-07-31, BELUM DI-COMMIT)**: template Excel diverifikasi + 1 bug ditemukan+difix
+> (contoh sektor lama di `EXAMPLE_ROW`), Panduan Sektor+Bidang Usaha digabung jadi list
+> bertingkat copy-paste, dan rule baru "auto-join forum" — member yang datanya SUDAH ditaruh
+> admin langsung di database tenant forum (via import ATAU tambah manual) otomatis dianggap
+> anggota resmi (`forumStatus='active'`), tidak ada lagi ajakan "Gabung X" — TAPI overlay
+> "Lengkapi Data" tetap wajib tampil kalau profilnya belum lengkap, independen dari status join.
+> Baca § 22 untuk detail lengkap.
+
 > **Status: ✅ KODE SELESAI (2026-07-26), 2 PIVOT ARSITEKTUR (§ 13 + § 14) + FITUR KOLOM PC IKPM CABANG (§ 20) +
 > BUG KRITIS KEDUA DITEMUKAN+DIFIX SEBELUM TESTING (§ 21)** — **§ 21: baris "duplicate" (member
 > sudah jadi anggota tenant ini) sebelumnya IKUT membuat member+contact+address BARU yang ganda
@@ -1249,4 +1257,100 @@ untuk member yang sudah punya data usaha, cek manual apakah `member_businesses` 
 migrasi DB — murni perbaikan 1 kondisi boolean. **Belum diverifikasi lewat upload sungguhan** —
 ini murni hasil audit baca-kode sebelum testing dimulai, sesuai permintaan user "cek dulu
 sebelum eksekusi lanjutan".
+
+## 22. Panduan Sektor+Bidang Usaha Dicopas + Auto-Join Forum Saat Admin Menambahkan Anggota
+
+Menyusul upgrade taksonomi sektor 10-BPS-hybrid (`lib/business-sectors.ts`, di luar dokumen ini
+— lihat `docs/arsitektur-usaha.md` § 9), user tanya: apakah template Excel sudah ikut berubah?
+
+### 22.1. Bug ditemukan: `EXAMPLE_ROW` template masih pakai nama sektor lama
+
+Sheet "Panduan" (daftar pilihan Sektor/Profesi/PC IKPM/Wali Santri/Status Domisili) SUDAH
+otomatis benar sejak awal — semua di-generate **dinamis** dari enum/DB live saat request
+(`...bulletList(BUSINESS_SECTOR_ENUM)` dkk), jadi begitu `business-sectors.ts` berubah jadi 10
+nilai baru, template ikut tanpa perlu sentuh kode. Kolom "Bidang Usaha" juga sudah lama parsing
++ tersimpan benar (`splitBusinessFields()` → `member_businesses.business_fields`, free-text
+bukan enum) — tidak perlu perubahan mapping.
+
+**Yang BUGGY**: baris CONTOH (`EXAMPLE_ROW`, hardcode literal) di sheet data masih
+`"Konsumsi & Ritel"` untuk kolom Sektor — nilai LAMA, sudah tidak valid sejak upgrade taksonomi.
+Kalau admin copy pola dari baris contoh, nilai itu gagal exact-match dan dikosongkan diam-diam
+(cocok prinsip "jangan ditebak" § 1, tapi tetap sumber kebingungan). Fix: diganti
+`"Perdagangan, Ritel & F&B"` (padanan langsung `OLD_TO_NEW_SECTOR["Konsumsi & Ritel"]`) + contoh
+Bidang Usaha disesuaikan wording Tier-3 baru (`"Kuliner Modern & F&B, Toko Ritel & Minimarket"`).
+
+### 22.2. Panduan Sektor+Bidang Usaha digabung jadi satu list bertingkat (copy-paste)
+
+Sebelumnya Panduan cuma list flat 10 nama Sektor + 1 paragraf teks "Bidang Usaha bebas, pisah
+koma" TANPA daftar nilai contoh (padahal `BUSINESS_FIELD_SUGGESTIONS` — 59 label Tier-3 — sudah
+ada sejak Ekosistem Fase 1). User minta panduan yang bisa langsung dicopas untuk keduanya.
+
+Diganti jadi list bertingkat: untuk tiap 10 Sektor, baris `SEKTOR: {nama}` diikuti bullet semua
+Bidang Usaha Tier-3 di bawah sektor itu (dari `SECTOR_SUB_FIELDS[sector]`, sumber yang SAMA
+dipakai `getPrioritizedBusinessFields()` di UI self-service/admin — nol duplikasi data, satu
+sumber kebenaran). Diverifikasi: total 59 label tersebar merata ke 10 grup, cocok persis jumlah
+`BUSINESS_FIELD_SUGGESTIONS` (dicek via script disposable, `bun run` dari `apps/web`).
+
+**Bidang Usaha tetap TIDAK exact-match** — daftar ini murni referensi copy-paste, bukan enum
+tertutup baru. Field ini `splitBusinessFields()` masih terima nilai bebas apa pun.
+
+### 22.3. Rule baru: auto-join forum kalau admin sudah taruh data anggota di tenant itu
+
+User: *"jika di database sudah memiliki id sebuah organisasi forum, maka otomatis dia
+bergabung.. jangan ada ajakan bergabung lagi"* — lalu susulan: *"tapi tetap wajib melengkapi
+data"*.
+
+**Root cause sebelumnya**: `commitImportAction` (import massal) DAN `createMemberAction` (admin
+tambah 1 anggota manual) sama-sama insert `tenant_memberships` dengan `forumStatus: "pending"`
+(import) atau tidak diisi sama sekali/`null` (admin manual) untuk tenant forum. Overlay
+"Lengkapi Data"/"Gabung X" di `/akun` (`MembershipEligibilityOverlay`) menggate tampilannya HANYA
+dari `forumStatus !== "active"` — jadi meski admin BARU SAJA memasukkan anggota itu langsung ke
+database tenant forum ini (via Excel atau form manual), member tetap melihat ajakan "Gabung X"
+seolah-olah belum jadi anggota — padahal datanya sudah eksplisit ada di sana.
+
+**Fix — 3 titik**:
+1. `commitImportAction` (baris baru): `forumStatus: isForumTenant ? "active" : null` (dulu
+   `"pending"`) — untuk member BARU yang di-insert lewat import.
+2. `createMemberAction`: tambah `membershipType: access.tenant.tenantType` +
+   `forumStatus: access.tenant.tenantType === "forum" ? "active" : null` ke insert
+   `tenant_memberships` — sebelumnya kolom ini sama sekali tidak diisi di jalur admin manual,
+   bug identik dengan import (ditemukan sekaligus, diperbaiki bareng — konsisten prinsip "jangan
+   parsial" yang sudah dikunci sesi-sesi sebelumnya).
+3. **Backfill untuk member yang SUDAH punya baris `tenant_memberships` tapi `forumStatus` masih
+   `"pending"`** (sisa sebelum aturan ini ada) — `computeMemberMergeCandidate()` (dipanggil
+   `commitImportAction` untuk baris "link-only"/"duplicate") sekarang juga menghitung
+   `activateForumStatus: boolean` (true kalau `isForumTenant && tmRow.forumStatus !== "active"`),
+   diterapkan lewat UPDATE gabungan bersama `membershipNumberPatch` yang sudah ada. Diverifikasi
+   EMPIRIS (read-only, tidak memutasi data) terhadap member forum lokal nyata berstatus
+   `"pending"` — `activateForumStatus` mengembalikan `true` seperti seharusnya.
+
+**Yang TIDAK ikut diubah — "tetap wajib melengkapi data"**: `forumStatus="active"` cuma
+menandai keanggotaan forum RESMI (mencegah ajakan "Gabung X" muncul lagi) — TIDAK berarti
+profil pribadi member otomatis dianggap lengkap. `akun/page.tsx`'s logic overlay eligibility
+sebelumnya SALAH: untuk tenant forum, `checkMemberEligibility()` HANYA dipanggil kalau
+`forumStatus !== "active"` — begitu status jadi "active" (baik lewat `/gabung` LAMA atau
+auto-join BARU ini), pengecekan data lengkap ikut ter-skip SELAMANYA, padahal data import bisa
+saja tidak lengkap (prinsip "field boleh kosong" § 1 mengizinkan ini). Fix: eligibility SEKARANG
+SELALU dicek untuk forum, independen dari `forumStatus` —
+`showEligibilityOverlay = !eligibility.eligible || !isJoined`:
+- Belum eligible (data kurang) → overlay tampil "Lengkapi Data Pribadi"/popup direktori,
+  **terlepas dari forumStatus** (termasuk member yang sudah auto-joined tapi datanya bolong).
+- Eligible tapi belum genuinely joined (`forumStatus !== "active"`) → overlay "Gabung X" —
+  perilaku LAMA untuk member yang daftar sendiri via `/register`, tidak berubah.
+- Eligible DAN sudah joined → tidak ada overlay sama sekali (tujuan utama fix ini).
+
+Detail arsitektur `MembershipEligibilityOverlay` (3 kondisi tombol) sendiri TIDAK berubah — lihat
+`docs/arsitektur-akun.md` § "Eligibility Overlay Generik". Yang berubah murni logic CALLER
+(`akun/page.tsx`) yang menentukan kapan overlay itu dirender + `missing` apa yang dikirim.
+
+**Verifikasi**: `tsc --noEmit` bersih (`apps/web`, tidak menyentuh `packages/db`) + `bun run
+build --filter=@jalajogja/web` genuine sukses (dev server dimatikan+`.next` dibersihkan+
+direstart). `computeMemberMergeCandidate()` diverifikasi empiris read-only terhadap data lokal
+nyata (lihat § 22.3 poin 3). Nol migrasi DB — semua kolom (`forum_status`, `membership_type`)
+sudah ada sejak lama. **Belum di-commit/push. Belum diverifikasi visual di browser** (buka
+`/akun` sebagai member forum yang baru diimport, konfirmasi tidak ada tombol "Gabung X" lagi
+tapi overlay "Lengkapi Data" tetap muncul kalau datanya sengaja dikosongkan) — dan **belum
+dijalankan backfill di data lokal `forcreator`** (9 baris `pending` ditemukan saat verifikasi,
+sengaja tidak dimutasi otomatis — tunggu konfirmasi user apakah mau dibackfill sekarang lewat
+re-import file yang sama, atau via SQL langsung).
 

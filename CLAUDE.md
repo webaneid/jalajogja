@@ -14532,8 +14532,93 @@ mobile asli)** — user perlu coba langsung di HP: cek overlay back/menu muncul,
 logo/foto tidak bergeser posisi
 dibanding sebelumnya, cek share button berfungsi.
 
+### [2026-07-31] Template Excel Import + Auto-Join Forum Saat Admin Menaruh Data Anggota
+
+> Detail lengkap: **`docs/arsitektur-import-anggota.md` § 22** + **`docs/arsitektur-akun.md`
+> § "Eligibility Overlay Generik"** (revisi 2026-07-31 di dalamnya).
+
+User tanya: dengan banyaknya fitur baru terkait data anggota (upgrade taksonomi sektor 10-BPS
+kemarin), apakah template Excel Import Anggota ikut berubah? Dicek dulu ke kode aktual — bukan
+tebak-tebakan.
+
+**Yang otomatis sudah benar**: sheet "Panduan" (daftar pilihan Sektor/Profesi/PC IKPM/Wali
+Santri/Status Domisili) di-generate DINAMIS dari enum/DB live saat request — begitu
+`business-sectors.ts` berubah, template ikut tanpa sentuh kode. Kolom "Bidang Usaha" juga sudah
+lama parsing+tersimpan benar (`splitBusinessFields()` → `member_businesses.business_fields`).
+
+**Bug nyata ditemukan+difix**: baris CONTOH (`EXAMPLE_ROW`, hardcode literal) di sheet data
+masih pakai `"Konsumsi & Ritel"` untuk kolom Sektor — nilai LAMA, sudah tidak valid sejak
+upgrade taksonomi kemarin. Diganti `"Perdagangan, Ritel & F&B"` + contoh Bidang Usaha
+disesuaikan wording Tier-3 baru.
+
+**Fitur baru**: user minta panduan Sektor+Bidang Usaha bisa dicopas — Panduan sekarang
+menampilkan list bertingkat (10 grup `SEKTOR: {nama}` diikuti bullet Bidang Usaha Tier-3 di
+bawahnya masing-masing, sumber SAMA dengan `getPrioritizedBusinessFields()` yang dipakai UI).
+Diverifikasi total 59 label tersebar merata ke 10 sektor, cocok persis `BUSINESS_FIELD_
+SUGGESTIONS` (script disposable).
+
+**Rule baru — auto-join forum**: user, *"jika di database sudah memiliki id sebuah organisasi
+forum, maka otomatis dia bergabung.. jangan ada ajakan bergabung lagi"*, lalu susulan mid-turn
+*"tapi tetap wajib melengkapi data"* — koreksi krusial yang mengubah desain fix. Root cause:
+`commitImportAction` (import massal) DAN `createMemberAction` (admin tambah 1 anggota) sama-
+sama insert `tenant_memberships` dengan `forumStatus: "pending"`/tidak diisi untuk tenant
+forum — overlay "Gabung X" di `/akun` menggate tampilannya HANYA dari `forumStatus !== "active"`,
+jadi member yang BARU SAJA ditaruh admin langsung ke database tenant forum tetap melihat ajakan
+gabung seolah belum jadi anggota.
+
+**Fix — 3 titik**: (1) `commitImportAction` set `forumStatus: "active"` langsung (bukan
+"pending") untuk member baru; (2) `createMemberAction` — TERNYATA sama sekali tidak pernah isi
+`forumStatus`/`membershipType` (bug identik, ditemukan+diperbaiki bareng, konsisten prinsip
+"jangan parsial" yang sudah dikunci sesi-sesi sebelumnya); (3) **backfill** untuk member yang
+SUDAH punya baris `tenant_memberships` tapi `forumStatus` masih "pending" (sisa sebelum rule
+ini) — `computeMemberMergeCandidate()` sekarang hitung `activateForumStatus: boolean`,
+diterapkan lewat UPDATE gabungan bareng `membershipNumberPatch` yang sudah ada. Diverifikasi
+EMPIRIS (read-only) terhadap member forum lokal nyata berstatus "pending" — hasil `true`,
+sesuai ekspektasi.
+
+**Perbaikan krusial dari koreksi "tetap wajib melengkapi data"**: kalau HANYA fix #1-#3 di atas
+dieksekusi tanpa ini, member yang auto-joined tapi datanya BOLONG (import mengizinkan field
+kosong) tidak akan PERNAH lagi melihat prompt "Lengkapi Data" — karena `akun/page.tsx`'s logic
+LAMA cuma cek `checkMemberEligibility()` untuk forum KALAU `forumStatus !== "active"` (skip
+sama sekali begitu status aktif). Fix: eligibility SEKARANG SELALU dicek untuk forum, independen
+dari status join — `showEligibilityOverlay = !eligibility.eligible || !isJoined`. Kalau belum
+eligible → overlay "Lengkapi Data" tampil terlepas forumStatus. Kalau eligible tapi belum
+joined → overlay "Gabung X" (perilaku lama untuk self-register, tidak berubah). Kalau eligible
+DAN joined → tidak ada overlay sama sekali (tujuan utama fix).
+
+`tsc --noEmit` bersih (`apps/web`) + `bun run build --filter=@jalajogja/web` genuine sukses (dev
+server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB (kolom `forum_status`/
+`membership_type` sudah ada sejak lama). **Sudah di-commit+push (template EXAMPLE_ROW fix,
+commit `aa29cd1`). Auto-join + panduan grouping BELUM di-commit** — menunggu checkpoint
+berikutnya. **Belum diverifikasi visual di browser, belum dijalankan backfill di data lokal
+`forcreator`** (9 baris "pending" ditemukan saat verifikasi, sengaja tidak dimutasi otomatis —
+tunggu konfirmasi user).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Mobile Single-Page Shell diperluas ke Usaha/Pesantren/Profesional**
+- Terakhir dikerjakan: **Template Excel Import + Auto-Join Forum Saat Admin Menaruh Data
+  Anggota** (lihat lesson `[2026-07-31]` "Template Excel Import + Auto-Join Forum" di atas,
+  detail lengkap `docs/arsitektur-import-anggota.md` § 22 + `docs/arsitektur-akun.md` §
+  "Eligibility Overlay Generik" revisi) — user tanya apakah template Excel sudah ikut berubah
+  dengan banyaknya fitur baru terkait data anggota. Sheet Panduan (Sektor dkk) sudah otomatis
+  benar (dinamis dari enum live), TAPI ditemukan bug: `EXAMPLE_ROW` masih pakai nama sektor
+  lama "Konsumsi & Ritel" — difix, sudah di-commit+push (`aa29cd1`). Ditambah: Panduan Sektor+
+  Bidang Usaha digabung jadi list bertingkat bisa dicopas (10 grup `SEKTOR: {nama}` + bullet
+  Tier-3 di bawahnya, 59 label total terverifikasi merata). Rule baru diminta user: "auto-join
+  forum" — member yang datanya SUDAH ditaruh admin langsung ke database tenant forum (import
+  MAUPUN tambah manual) otomatis dianggap anggota resmi (`forumStatus='active'`), tidak ada
+  lagi ajakan "Gabung X" — TAPI (koreksi mid-turn user) overlay "Lengkapi Data" WAJIB tetap
+  tampil kalau profilnya belum lengkap, independen dari status join. Fix 3 titik:
+  `commitImportAction` (forumStatus langsung "active" untuk member baru), `createMemberAction`
+  (bug identik ditemukan sekaligus — field ini sama sekali tidak pernah diisi di jalur admin
+  manual, diperbaiki bareng), dan backfill `computeMemberMergeCandidate()` untuk member existing
+  yang masih "pending" (diverifikasi empiris read-only, hasil `true` sesuai ekspektasi). Plus
+  restrukturisasi `akun/page.tsx`'s overlay logic — eligibility SEKARANG SELALU dicek untuk
+  forum (bukan cuma saat belum joined), supaya member auto-joined dengan data bolong tetap
+  diminta melengkapi. `tsc`+build genuine bersih, dev server direstart. **Auto-join + panduan
+  grouping BELUM di-commit/push** (cuma fix EXAMPLE_ROW yang sudah). **Belum diverifikasi
+  visual di browser, belum dijalankan backfill di data lokal `forcreator`** (9 baris "pending"
+  ditemukan, sengaja tidak dimutasi otomatis — tunggu konfirmasi user).
+- Sesi sebelumnya: **Mobile Single-Page Shell diperluas ke Usaha/Pesantren/Profesional**
   (lihat lesson `[2026-07-31]` "Mobile Single-Page Shell Diperluas" di atas, detail lengkap
   `docs/arsitektur-mobile-shell.md` § 2.1 + § 10) — user minta halaman detail 3 modul dibuat
   seperti mobile shell Post ("saya ingin seperti itu tampilan-nya"), dengan syarat posisi

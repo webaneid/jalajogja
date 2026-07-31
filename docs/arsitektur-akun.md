@@ -597,11 +597,22 @@ perlu mengonfirmasi langsung.
 **Kapan overlay tampil — beda per tipe tenant, ditentukan di `akun/page.tsx`:**
 ```typescript
 if (browsedTenant.tenantType === "forum") {
-  showOverlay = forumStatus !== "active";   // termasuk "eligible tapi belum klik gabung"
+  const isJoined = forumStatus === "active";
+  const eligibility = await checkMemberEligibility(...);   // SELALU dicek, tidak lagi digate forumStatus
+  showOverlay = !eligibility.eligible || !isJoined;
 } else { // cabang / marhalah
   showOverlay = !eligibility.eligible;      // begitu eligible, keanggotaan SUDAH otomatis
 }
 ```
+> **Revisi 2026-07-31** (`docs/arsitektur-import-anggota.md` § 22): sebelumnya untuk forum,
+> eligibility HANYA dicek kalau `forumStatus !== "active"` — begitu status jadi "active",
+> pengecekan data lengkap ikut ter-skip selamanya. Ini jadi bug nyata begitu forum bisa
+> punya member `forumStatus="active"` TANPA lewat `/gabung` (yang selama ini memaksa
+> eligibility check) — yaitu member yang di-auto-join admin lewat import massal atau tambah
+> manual (§ 22.3 dokumen import). Fix: eligibility SEKARANG selalu dicek untuk forum,
+> independen dari status join — member yang sudah joined tapi datanya belum lengkap tetap
+> melihat overlay "Lengkapi Data", bukan langsung dianggap "selesai".
+
 Untuk cabang/marhalah, keanggotaan (`tenant_memberships` row) SUDAH otomatis ter-insert oleh
 mekanisme auto-populate yang sudah ada sejak lama (matching `primaryCabangRefId`/
 `graduationYear`+`period`) — TIDAK BERUBAH dan TIDAK bergantung pada eligibility sama sekali.

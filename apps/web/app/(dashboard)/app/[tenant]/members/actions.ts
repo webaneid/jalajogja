@@ -115,13 +115,19 @@ export async function createMemberAction(
       })
       .returning({ id: members.id });
 
-    // Catat keanggotaan di cabang ini
+    // Catat keanggotaan di tenant ini. forumStatus="active" LANGSUNG untuk tenant forum —
+    // admin yang secara eksplisit menambahkan anggota di dashboard forum ini berarti orangnya
+    // SUDAH resmi jadi anggota, tidak perlu ajakan "Gabung" via /gabung lagi (data pribadi yang
+    // belum lengkap tetap diminta lewat overlay eligibility terpisah di /akun, independen dari
+    // ini — lihat akun/page.tsx). Pola sama persis dengan commitImportAction (bulk import).
     await db.insert(tenantMemberships).values({
       tenantId: access.tenant.id,
       memberId: newMember.id,
       status: data.status ?? "active",
       joinedAt: data.joinedAt ?? null,
       registeredVia: "admin",
+      membershipType: access.tenant.tenantType,
+      forumStatus: access.tenant.tenantType === "forum" ? "active" : null,
     });
 
     // Auto-sync keanggotaan ke tenant PC IKPM Cabang & Marhalah jika tenant tersebut ada & aktif
