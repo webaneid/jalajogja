@@ -15,16 +15,12 @@ import {
   generateMemberNumber,
   account,
   syncAutoTenantMemberships,
-  createTenantDb,
-  getSetting,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess }   from "@/lib/permissions";
 import { normalizePhone }  from "@/lib/phone";
 import { hashPassword }    from "better-auth/crypto";
 import type { BusinessSector } from "@/lib/business-sectors";
-import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
-import type { MembershipConfigData } from "../settings/actions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 // Catatan: phone/email/address sudah dipindah ke helper tables (contacts, addresses)
@@ -119,28 +115,16 @@ export async function createMemberAction(
       })
       .returning({ id: members.id });
 
-    // Catat keanggotaan di tenant ini. forumStatus="active" LANGSUNG untuk tenant forum —
-    // admin yang secara eksplisit menambahkan anggota di dashboard forum ini berarti orangnya
-    // SUDAH resmi jadi anggota, tidak perlu ajakan "Gabung" via /gabung lagi (data pribadi yang
-    // belum lengkap tetap diminta lewat overlay eligibility terpisah di /akun, independen dari
-    // ini — lihat akun/page.tsx). Pola sama persis dengan commitImportAction (bulk import).
-    //
-    // Nomor Keanggotaan: form ini tidak punya field untuk isi manual, jadi kalau tenant forum
-    // ini sudah punya format standar dikonfigurasi (/app/{slug}/settings/keanggotaan), generate
-    // sekarang — member yang jadi aktif via tambah manual admin tetap dapat ID resmi, bukan
-    // dibiarkan null selamanya. Pola sama persis joinForumAction + commitImportAction.
+    // Catat keanggotaan di tenant ini. forumStatus HANYA relevan untuk tenant forum. STANDAR
+    // KETAT (dikunci user 2026-07-31, § 22.5 docs/arsitektur-import-anggota.md): "active" HANYA
+    // kalau member ini PUNYA Nomor Keanggotaan — form tambah manual ini TIDAK PUNYA field untuk
+    // isi nomor sama sekali, jadi member yang ditambah lewat sini SELALU tetap "pending" (belum
+    // resmi jadi anggota forum) sampai nomornya diberikan lewat jalur lain (import yang
+    // membawa nomor, atau member itu sendiri join manual via /gabung nanti — yang generate
+    // nomor "urutan berikutnya" secara sah karena join real-time). Nomor TIDAK PERNAH
+    // di-generate di titik ini — supaya urutan nomor tetap merepresentasikan histori
+    // pendaftaran sesungguhnya, bukan angka karangan untuk data yang belum lengkap.
     const isForumTenant = access.tenant.tenantType === "forum";
-    let membershipNumber: string | null = null;
-    if (isForumTenant) {
-      const tenantClient = createTenantDb(slug);
-      const config = await getSetting<MembershipConfigData>(tenantClient, "membership_config", "forum");
-      if (config?.membershipNumberFormat) {
-        membershipNumber = await generateForumMembershipNumber({
-          tenantId: access.tenant.id, memberId: newMember.id,
-          format: config.membershipNumberFormat, joinDate: new Date(),
-        });
-      }
-    }
 
     await db.insert(tenantMemberships).values({
       tenantId: access.tenant.id,
@@ -149,8 +133,7 @@ export async function createMemberAction(
       joinedAt: data.joinedAt ?? null,
       registeredVia: "admin",
       membershipType: access.tenant.tenantType,
-      forumStatus: isForumTenant ? "active" : null,
-      membershipNumber,
+      forumStatus: isForumTenant ? "pending" : null,
     });
 
     // Auto-sync keanggotaan ke tenant PC IKPM Cabang & Marhalah jika tenant tersebut ada & aktif

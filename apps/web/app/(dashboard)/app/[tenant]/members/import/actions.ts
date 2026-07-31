@@ -5,14 +5,12 @@ import { revalidatePath } from "next/cache";
 import {
   db, members, contacts, addresses, socialMedias, memberBusinesses, tenantMemberships,
   importBatches, importBatchRows, generateMemberNumber, forumMembershipSequences,
-  syncAutoTenantMemberships, createTenantDb, getSetting,
+  syncAutoTenantMemberships,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { parseXlsxBuffer, buildPreviewRow, computeMemberMergeCandidate } from "@/lib/import-anggota.server";
 import { extractYearSeqFromMembershipNumber, type ImportRowPreview } from "@/lib/import-anggota-mapping";
-import { generateForumMembershipNumber, type ForumMembershipNumberFormat } from "@/lib/forum-membership-number.server";
-import type { MembershipConfigData } from "../../settings/actions";
 
 // ─── Parse & Preview ─────────────────────────────────────────────────────────
 
@@ -160,21 +158,19 @@ export async function commitImportAction(
   // forum — lihat § 5 dokumen arsitektur + skema `tenant_memberships.membership_number`
   // ("khusus forum, null untuk cabang/marhalah"). Dihitung sekali di sini (bukan per-baris)
   // karena tipe tenant tidak berubah selama satu commit berjalan.
+  //
+  // KOREKSI 2026-07-31 (§ 22.5, superseded § 22.4): nomor keanggotaan TIDAK PERNAH di-generate
+  // saat import — HANYA dipakai apa adanya kalau Excel menyediakannya. Auto-generate
+  // (`generateForumMembershipNumber()`) TETAP eksklusif untuk `/gabung` (join real-time,
+  // "urutan berikutnya" genuinely akurat untuk join yang benar-benar terjadi saat itu).
+  // Standar KETAT: member yang PUNYA nomor (di Excel ATAU sudah ada di DB) → langsung resmi
+  // jadi anggota forum (forumStatus="active"). Member TANPA nomor sama sekali → belum resmi
+  // jadi anggota, tetap "pending" — datanya sudah ditaruh di sistem tapi belum terdaftar
+  // official, menunggu nomor diberikan (baik lewat import susulan yang membawa nomornya,
+  // maupun member itu sendiri join manual via /gabung nanti). Prinsip ini menjaga urutan
+  // nomor tetap merepresentasikan histori pendaftaran yang sesungguhnya — bukan angka yang
+  // dikarang untuk menutupi data yang belum lengkap.
   const isForumTenant = access.tenant.tenantType === "forum";
-
-  // Format nomor keanggotaan forum (dikonfigurasi admin di /app/{slug}/settings/keanggotaan) —
-  // dibaca SEKALI di sini, sama seperti isForumTenant. Kalau baris Excel TIDAK menyediakan
-  // Nomor Keanggotaan sendiri (kolom kosong) dan forum ini sudah punya format standar
-  // dikonfigurasi, member yang jadi aktif lewat import HARUS tetap dapat ID resmi — bukan
-  // dibiarkan null selamanya — pola sama persis /gabung (`joinForumAction`,
-  // `generateForumMembershipNumber()`). Kalau format belum dikonfigurasi, tetap null (forum ini
-  // memang belum pakai penomoran resmi).
-  let membershipNumberFormat: ForumMembershipNumberFormat | null = null;
-  if (isForumTenant) {
-    const tenantClient = createTenantDb(slug);
-    const config = await getSetting<MembershipConfigData>(tenantClient, "membership_config", "forum");
-    membershipNumberFormat = config?.membershipNumberFormat ?? null;
-  }
 
   let inserted = 0;
   let merged = 0;
@@ -303,24 +299,12 @@ export async function commitImportAction(
             await tx.update(contacts).set(candidate.contactPatch).where(eq(contacts.id, candidate.contactId));
           }
           existingTenantMembershipId = candidate.existingTenantMembershipId;
-          if (existingTenantMembershipId && (
-            candidate.membershipNumberPatch || candidate.activateForumStatus || candidate.needsGeneratedMembershipNumber
-          )) {
+          if (existingTenantMembershipId && (candidate.membershipNumberPatch || candidate.activateForumStatus)) {
             const tmPatch: { membershipNumber?: string; forumStatus?: "active" } = {};
-            if (candidate.membershipNumberPatch) {
-              tmPatch.membershipNumber = candidate.membershipNumberPatch;
-            } else if (candidate.needsGeneratedMembershipNumber && membershipNumberFormat) {
-              // Member sudah jadi anggota tenant forum ini (baris tenant_membership sudah
-              // ada) tapi belum PERNAH punya Nomor Keanggotaan sama sekali — bukan dari Excel
-              // (kosong) maupun dari DB (belum digenerate/diisi sebelumnya). Generate sekarang
-              // pakai format standar tenant ini, sama seperti member baru.
-              tmPatch.membershipNumber = await generateForumMembershipNumber({
-                tenantId: access.tenant.id, memberId, format: membershipNumberFormat, joinDate: new Date(),
-              });
-            }
+            if (candidate.membershipNumberPatch) tmPatch.membershipNumber = candidate.membershipNumberPatch;
             if (candidate.activateForumStatus) tmPatch.forumStatus = "active";
             await tx.update(tenantMemberships).set(tmPatch).where(eq(tenantMemberships.id, existingTenantMembershipId));
-            if (tmPatch.membershipNumber) writtenMembershipNumber = tmPatch.membershipNumber;
+            if (candidate.membershipNumberPatch) writtenMembershipNumber = candidate.membershipNumberPatch;
           }
         }
 
@@ -372,35 +356,27 @@ export async function commitImportAction(
         // tenant ini). Kalau sudah ada (existingTenantMembershipId terisi dari blok merge di
         // atas) — JANGAN insert lagi (constraint unique tenantId+memberId akan menolak
         // duplikat); membershipNumber-nya sudah ditangani via UPDATE di blok merge. ──
-        // forumStatus="active" LANGSUNG (bukan "pending") HANYA relevan untuk tenant forum
-        // (skema: "khusus forum, null untuk cabang/marhalah" — docs/arsitektur-backbone-
-        // ikpm.md § "Nomor Keanggotaan Lokal Forum"). Rule: kalau admin secara eksplisit
-        // menaruh data anggota di database tenant forum ini (via import), orangnya SUDAH
-        // resmi jadi anggota forum ini — tidak perlu ajakan "Gabung" via /gabung lagi. Data
-        // pribadi yang belum lengkap TETAP diminta dilengkapi lewat overlay eligibility
-        // terpisah di /akun (lihat akun/page.tsx), independen dari forumStatus ini. Tool ini
-        // reusable lintas tipe tenant, jadi tidak boleh hardcode "forum" — cabang/marhalah
-        // dapat membershipType sesuai access.tenant.tenantType dan tidak pernah dapat
-        // forumStatus/membershipNumber. (`isForumTenant` dihitung sekali di scope luar
-        // fungsi ini — lihat atas.)
+        // forumStatus HANYA relevan untuk tenant forum (skema: "khusus forum, null untuk
+        // cabang/marhalah" — docs/arsitektur-backbone-ikpm.md § "Nomor Keanggotaan Lokal
+        // Forum"). STANDAR KETAT (dikunci user 2026-07-31, § 22.5): "active" HANYA kalau baris
+        // ini PUNYA Nomor Keanggotaan (dari Excel) — tanpa nomor, orangnya BELUM resmi jadi
+        // anggota forum meski datanya sudah ditaruh admin, tetap "pending". Nomor TIDAK PERNAH
+        // di-generate di sini (beda dari /gabung) — supaya urutan nomor tetap merepresentasikan
+        // histori pendaftaran sesungguhnya, bukan angka karangan untuk data yang belum lengkap.
+        // Data pribadi yang belum lengkap tetap diminta dilengkapi lewat overlay eligibility
+        // terpisah di /akun (lihat akun/page.tsx) — itu independen dari forumStatus/nomor ini.
+        // Tool ini reusable lintas tipe tenant: cabang/marhalah dapat membershipType sesuai
+        // access.tenant.tenantType dan tidak pernah dapat forumStatus/membershipNumber.
+        // (`isForumTenant` dihitung sekali di scope luar fungsi ini — lihat atas.)
         if (!existingTenantMembershipId) {
-          // Nomor Keanggotaan: pakai apa adanya dari Excel kalau diisi; kalau kosong DAN
-          // forum ini sudah punya format standar dikonfigurasi (membershipNumberFormat) →
-          // generate SEKARANG (pola sama joinForumAction) — member yang jadi aktif via import
-          // tetap harus dapat ID resmi, bukan dibiarkan null selamanya.
-          let membershipNumber = isForumTenant ? preview.membershipNumber : null;
-          if (isForumTenant && !membershipNumber && membershipNumberFormat) {
-            membershipNumber = await generateForumMembershipNumber({
-              tenantId: access.tenant.id, memberId, format: membershipNumberFormat, joinDate: new Date(),
-            });
-          }
+          const membershipNumber = isForumTenant ? preview.membershipNumber : null;
           await tx.insert(tenantMemberships).values({
             tenantId: access.tenant.id,
             memberId,
             status: "active",
             registeredVia: "import",
             membershipType: access.tenant.tenantType,
-            forumStatus: isForumTenant ? "active" : null,
+            forumStatus: isForumTenant ? (membershipNumber ? "active" : "pending") : null,
             membershipNumber,
           });
           if (isForumTenant && membershipNumber) writtenMembershipNumber = membershipNumber;

@@ -14567,9 +14567,12 @@ jadi member yang BARU SAJA ditaruh admin langsung ke database tenant forum tetap
 gabung seolah belum jadi anggota.
 
 **Fix — 3 titik**: (1) `commitImportAction` set `forumStatus: "active"` langsung (bukan
-"pending") untuk member baru; (2) `createMemberAction` — TERNYATA sama sekali tidak pernah isi
-`forumStatus`/`membershipType` (bug identik, ditemukan+diperbaiki bareng, konsisten prinsip
-"jangan parsial" yang sudah dikunci sesi-sesi sebelumnya); (3) **backfill** untuk member yang
+"pending") untuk member baru — **⚠️ KOREKSI (lihat lesson "Koreksi: Nomor Keanggotaan..." di
+bawah)**: "active" TERNYATA cuma benar KALAU member itu punya Nomor Keanggotaan; tanpa nomor
+tetap "pending" — bukan unconditional seperti tertulis di sini; (2) `createMemberAction` —
+TERNYATA sama sekali tidak pernah isi `forumStatus`/`membershipType` (bug identik, ditemukan+
+diperbaiki bareng, konsisten prinsip "jangan parsial" yang sudah dikunci sesi-sesi sebelumnya);
+(3) **backfill** untuk member yang
 SUDAH punya baris `tenant_memberships` tapi `forumStatus` masih "pending" (sisa sebelum rule
 ini) — `computeMemberMergeCandidate()` sekarang hitung `activateForumStatus: boolean`,
 diterapkan lewat UPDATE gabungan bareng `membershipNumberPatch` yang sudah ada. Diverifikasi
@@ -14595,7 +14598,13 @@ diverifikasi visual di browser, belum dijalankan backfill di data lokal `forcrea
 
 ### [2026-07-31] Susulan: Nomor Keanggotaan Forum Wajib Auto-Generate, Bukan Cuma dari Excel
 
-> Detail lengkap: **`docs/arsitektur-import-anggota.md` § 22.4**
+> **⚠️ SUPERSEDED — pendekatan ini TERBUKTI SALAH, di-revert total.** Lihat lesson "Koreksi:
+> Nomor Keanggotaan TIDAK PERNAH di-generate saat import/admin-add" tepat di bawah ini untuk
+> perilaku final. Dipertahankan sebagai catatan sejarah (apa yang sempat ditulis+commit
+> `2d9bb47` sebelum dikoreksi), BUKAN sebagai panduan implementasi.
+
+> Detail lengkap: **`docs/arsitektur-import-anggota.md` § 22.4** (sekarang ditandai superseded,
+> lihat § 22.5 untuk versi final)
 
 Lanjutan langsung dari lesson auto-join di atas, giliran sama. User tolak tawaran backfill 9
 baris "pending" lokal (*"gk perlu itu kan dummy"* — data test, bukan real) — lalu tambah syarat
@@ -14636,27 +14645,108 @@ diverifikasi visual di browser** — user perlu coba import file baru (kolom "No
 sengaja dikosongkan) ke tenant forum yang sudah punya format dikonfigurasi, konfirmasi member
 barunya langsung dapat ID sesuai format itu.
 
+**Pendekatan ini SALAH — di-revert total, lihat lesson berikutnya.**
+
+### [2026-07-31] Koreksi: Nomor Keanggotaan TIDAK PERNAH di-generate saat import/admin-add — hanya penanda status
+
+> Detail lengkap: **`docs/arsitektur-import-anggota.md` § 22.5**
+
+Commit `2d9bb47` (lesson di atas) di-push, tapi user langsung mengoreksi sebelum sempat
+dianggap final: *"kayanya ada yg salah, kalau kosong berarti blm terdaftar, hanya anggota
+dengan nomor id saja yg otomatis jadi anggota, kalau di import tanpa nomor id berarti blm
+menjadi anggota, kita pakai standard ketat gitu agar urutannya tidak berubah.."*
+
+**Kesalahan interpretasi yang dikoreksi**: kalimat user sebelumnya ("harus langsung aktif ya
+anggotanya dgn parameter memiliki nomor id...") dibaca sebagai "nomor ID adalah SYARAT yang
+harus dipenuhi (generate kalau belum ada)" — padahal maksud sesungguhnya "nomor ID adalah
+GERBANG: hanya baris yang SUDAH punya nomor (dari Excel atau DB) yang boleh otomatis jadi
+anggota aktif; baris tanpa nomor tetap `pending` sampai diisi manual atau di-generate lewat
+`/gabung` yang sesungguhnya." Dua interpretasi ini menghasilkan perilaku yang PERSIS berlawanan
+untuk baris tanpa nomor — generate-otomatis vs tetap-pending — dan cuma satu yang benar.
+
+**Kenapa aturan ketat ini penting, bukan preferensi kosmetik**: `forum_membership_sequences`
+adalah counter yang merepresentasikan **urutan pendaftaran historis riil**. Kalau baris import
+tanpa nomor (data lama yang memang belum pernah dapat ID resmi) di-generate-kan nomor baru
+begitu saja, sequence itu tidak lagi mencerminkan kapan orang itu SUNGGUH-SUNGGUH bergabung —
+jadi angka yang dikarang untuk menambal data tidak lengkap. Auto-generation HANYA sah dipanggil
+dari `joinForumAction` (`/gabung`, klik real-time "Ya, Saya Ingin Bergabung") — di situ "urutan
+berikutnya" memang benar secara harfiah.
+
+**Fix — revert total ketiga titik lesson sebelumnya, bukan tambal**:
+1. `commitImportAction` — fetch `membershipNumberFormat`/`getSetting("membership_config",
+   "forum")` dihapus total. Member baru: `membershipNumber = isForumTenant ?
+   preview.membershipNumber : null` (apa adanya dari Excel, TIDAK PERNAH digenerate).
+   `forumStatus: isForumTenant ? (membershipNumber ? "active" : "pending") : null` — baris
+   tanpa nomor jadi `"pending"` (BUKAN unconditional `"active"` seperti lesson auto-join
+   sebelumnya sempat tulis — itu juga dikoreksi di sini).
+2. `computeMemberMergeCandidate()` — field `needsGeneratedMembershipNumber` DIHAPUS TOTAL dari
+   type `MemberMergeCandidate`. `activateForumStatus` sekarang dari
+   `hasOrGetsMembershipNumber = !!(tmRow?.membershipNumber || membershipNumberPatch)` — baris
+   existing yang match tapi TIDAK punya nomor (di DB maupun dari Excel row ini) TIDAK
+   diaktivasi, meski data lain sudah lengkap.
+3. `createMemberAction` — seluruh blok fetch config + panggilan generator dihapus. Form admin
+   "Tambah 1 Anggota" TIDAK PERNAH punya field Nomor Keanggotaan manual, jadi SELALU insert
+   `forumStatus: isForumTenant ? "pending" : null` tanpa `membershipNumber` — member lewat form
+   ini TIDAK PERNAH bisa otomatis "active" (satu-satunya jalur legit dapat nomor: `/gabung`
+   atau Excel yang kolomnya sudah terisi).
+
+**Konsekuensi ke rule "auto-join forum" (lesson sebelumnya)**: rule itu tetap BENAR secara
+konsep, tapi syaratnya diperketat — "auto-join tanpa ajakan gabung lagi" HANYA berlaku untuk
+baris yang SUDAH punya Nomor Keanggotaan, bukan semua baris di tenant forum manapun. Baris
+tanpa nomor tetap `pending`, `MembershipEligibilityOverlay` di `/akun` TETAP menampilkan ajakan
+"Gabung X" untuk member itu — perilaku yang benar, karena mereka memang belum genuinely
+terdaftar menurut standar penomoran resmi forum.
+
+`tsc --noEmit` bersih (`apps/web`, 0 error) + `bun run build --filter=@jalajogja/web` genuine
+sukses (dev server dimatikan+`.next` dibersihkan+direstart, `Cached: 0 cached`, 46.82s). Grep
+dikonfirmasi nol sisa referensi `needsGeneratedMembershipNumber`/pemanggilan
+`generateForumMembershipNumber()` di ketiga file selain `/gabung`'s `joinForumAction`
+(satu-satunya pemanggil legit yang tersisa). Nol migrasi DB (revert murni logic aplikasi).
+**Belum diverifikasi visual di browser** — user perlu coba import file dengan sebagian baris
+kolom "Nomor Keanggotaan" kosong dan sebagian terisi, konfirmasi hanya baris berisi nomor yang
+jadi `forumStatus="active"` tanpa ajakan gabung, sisanya tetap `pending` dengan overlay
+"Gabung X" tetap tampil.
+
+**Aturan yang ditegaskan**: kalau instruksi user berisi frasa yang ambigu antara "syarat yang
+harus dipenuhi (isi kalau kosong)" vs "gerbang yang harus sudah terpenuhi (jangan isi kalau
+kosong, tolak/tunda saja)" — terutama untuk hal yang berkaitan dengan URUTAN/SEQUENCE historis
+— jangan langsung pilih interpretasi yang lebih "proaktif" (generate/isi otomatis). Interpretasi
+yang MEMPERTAHANKAN integritas data historis (tidak mengarang nilai) hampir selalu lebih aman
+sebagai default kalau ada ambiguitas, dan kalau ragu tetap lebih baik ditanyakan eksplisit
+sebelum ditulis+commit — bukan diverifikasi empiris dulu (yang di sesi ini sampai menghasilkan
+efek samping nyata di DB — sequence counter maju 1 — sebelum ternyata pendekatannya salah).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Susulan — Nomor Keanggotaan Forum Wajib Auto-Generate** (lihat lesson
-  `[2026-07-31]` "Susulan: Nomor Keanggotaan Forum Wajib Auto-Generate" di atas, detail lengkap
-  `docs/arsitektur-import-anggota.md` § 22.4) — lanjutan langsung dari auto-join forum (entri di
-  bawah), giliran sama. User tolak tawaran backfill 9 baris "pending" lokal (dummy, tidak
-  perlu), lalu minta rule tambahan: member baru harus aktif DAN punya Nomor Keanggotaan sesuai
-  format standar forum itu, bukan cuma status aktif tanpa ID. Root cause: `commitImportAction`
-  cuma pakai nomor APA ADANYA dari Excel — kosong = null selamanya, tidak ada mekanisme
-  melengkapi. `/gabung` (`joinForumAction`) sudah lama punya pola benar
-  (`generateForumMembershipNumber()` on-demand kalau kosong+format dikonfigurasi) — belum
-  pernah diterapkan ke import/`createMemberAction`. Fix 3 titik, semua reuse fungsi generator
-  yang SAMA: `commitImportAction` (fetch format tenant sekali, generate untuk member baru),
-  `computeMemberMergeCandidate()` (field baru `needsGeneratedMembershipNumber` — sinyal murni,
-  caller yang generate), `createMemberAction` (form tidak punya field nomor manual — SELALU
-  generate kalau format dikonfigurasi, bug identik pola forumStatus ditemukan ulang di sini).
-  Diverifikasi EMPIRIS: `generateForumMembershipNumber()` dipanggil langsung terhadap tenant
-  `forcreator` lokal (format "year_seq") — hasil `"2026.00165"`, counter sequence naik
-  164→165 secara atomic (dikonfirmasi via SQL sebelum+sesudah). `tsc`+build genuine bersih, dev
-  server direstart. **Belum di-commit/push, belum diverifikasi visual di browser** — user perlu
-  coba import file baru (kolom Nomor Keanggotaan kosong) ke forum berformat, konfirmasi member
-  baru langsung dapat ID sesuai format.
+- Terakhir dikerjakan: **Koreksi — Nomor Keanggotaan TIDAK PERNAH di-generate saat import/
+  admin-add** (lihat lesson `[2026-07-31]` "Koreksi: Nomor Keanggotaan TIDAK PERNAH di-generate"
+  di atas, detail lengkap `docs/arsitektur-import-anggota.md` § 22.5) — user MEMBALIK sepenuhnya
+  fitur "auto-generate" yang baru saja dibangun+commit (`2d9bb47`, lesson "Susulan..." SEKARANG
+  ditandai SUPERSEDED di atas): *"kayanya ada yg salah, kalau kosong berarti blm terdaftar,
+  hanya anggota dengan nomor id saja yg otomatis jadi anggota... kita pakai standard ketat gitu
+  agar urutannya tidak berubah.."* — interpretasi sebelumnya ("nomor ID = syarat yang harus
+  dipenuhi, generate kalau kosong") TERBALIK jadi yang benar ("nomor ID = gerbang, cuma baris
+  yang SUDAH punya nomor yang boleh auto-active; kosong = tetap pending selamanya sampai
+  diisi manual atau lewat `/gabung` sungguhan") — supaya `forum_membership_sequences` (counter
+  urutan pendaftaran historis riil) tidak pernah dikarang untuk menambal data lama yang
+  memang belum pernah dapat ID resmi. Kode direvert TOTAL di 3 file
+  (`members/import/actions.ts`, `lib/import-anggota.server.ts`, `members/actions.ts`) —
+  `membershipNumberFormat`-fetch + panggilan `generateForumMembershipNumber()` dihapus dari
+  ketiganya (satu-satunya pemanggil legit yang tersisa: `/gabung`'s `joinForumAction`),
+  `needsGeneratedMembershipNumber` dihapus dari type `MemberMergeCandidate`, `forumStatus`
+  member baru sekarang `isForumTenant ? (membershipNumber ? "active" : "pending") : null`
+  (kondisional pada punya-nomor, BUKAN unconditional "active" seperti lesson auto-join
+  sebelumnya sempat tulis — itu juga dikoreksi). `tsc --noEmit` 0 error (`apps/web`) + `bun run
+  build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached`, 46.82s, dev server
+  dimatikan+`.next` dibersihkan+direstart). Dokumentasi (§ 22.4 ditandai superseded + § 22.5
+  baru di `docs/arsitektur-import-anggota.md`, lesson CLAUDE.md, memory file) sudah dikoreksi
+  bersamaan. **Belum di-commit/push, belum diverifikasi visual di browser** — user perlu coba
+  import file dengan sebagian baris kolom "Nomor Keanggotaan" kosong dan sebagian terisi,
+  konfirmasi hanya baris berisi nomor yang jadi `forumStatus="active"` tanpa ajakan gabung,
+  sisanya tetap `pending` dengan overlay "Gabung X" tetap tampil.
+- Sesi sebelumnya: **Susulan — Nomor Keanggotaan Forum Wajib Auto-Generate (SUPERSEDED, lihat
+  lesson koreksi di atas — pendekatan di entri ini SALAH dan sudah direvert total)** — lihat
+  lesson `[2026-07-31]` "Susulan: Nomor Keanggotaan Forum Wajib Auto-Generate" di atas untuk
+  catatan sejarah, `docs/arsitektur-import-anggota.md` § 22.4 (superseded).
 - Sesi sebelumnya: **Template Excel Import + Auto-Join Forum Saat Admin Menaruh Data Anggota**
   (lihat lesson `[2026-07-31]` "Template Excel Import + Auto-Join Forum" di atas, detail
   lengkap `docs/arsitektur-import-anggota.md` § 22 + `docs/arsitektur-akun.md` § "Eligibility

@@ -241,8 +241,7 @@ export type MemberMergeCandidate = {
   contactId: string | null;
   contactPatch: ContactFieldPatch;
   membershipNumberPatch: string | null; // non-null = akan di-set ke tenant_membership yang sudah ada (dari Excel)
-  needsGeneratedMembershipNumber: boolean; // true = belum ada nomor SAMA SEKALI (Excel maupun DB) — caller generate via format tenant
-  activateForumStatus: boolean; // true = tenant_membership existing masih belum "active", akan di-set jadi aktif
+  activateForumStatus: boolean; // true = punya nomor (di DB atau baru dapat dari row ini) TAPI belum "active"
   existingTenantMembershipId: string | null; // null = belum jadi anggota tenant ini
   fieldLabels: string[]; // label Indonesia gabungan, untuk preview/notes
 };
@@ -279,36 +278,31 @@ export async function computeMemberMergeCandidate(
     .where(and(eq(tenantMemberships.memberId, memberId), eq(tenantMemberships.tenantId, tenantId)))
     .limit(1);
 
-  // Nomor Keanggotaan: pakai apa adanya dari Excel kalau diisi (membershipNumberPatch). Kalau
-  // tenant_membership ini belum punya nomor SAMA SEKALI dan Excel juga tidak menyediakan —
-  // beri tahu caller lewat needsGeneratedMembershipNumber supaya di-generate pakai format
-  // standar tenant forum ini (caller yang generate, bukan fungsi ini — generator butuh koneksi
-  // DB terpisah + tahu format konfigurasi tenant, di luar tanggung jawab fungsi murni ini).
+  // Nomor Keanggotaan: pakai apa adanya dari Excel kalau diisi — TIDAK PERNAH di-generate di
+  // sini (§ 22.5, standar ketat: urutan nomor cuma boleh mencerminkan histori pendaftaran
+  // sesungguhnya, bukan angka karangan untuk baris yang datanya belum lengkap).
   let membershipNumberPatch: string | null = null;
-  let needsGeneratedMembershipNumber = false;
-  if (tmRow && isForumTenant && !tmRow.membershipNumber) {
-    if (incomingMembershipNumber) {
-      membershipNumberPatch = incomingMembershipNumber;
-    } else {
-      needsGeneratedMembershipNumber = true;
-    }
+  if (tmRow && isForumTenant && !tmRow.membershipNumber && incomingMembershipNumber) {
+    membershipNumberPatch = incomingMembershipNumber;
   }
 
-  // Member yang sudah pernah jadi anggota forum ini (baris tenant_membership sudah ada) tapi
-  // forumStatus-nya belum "active" (mis. sisa sebelum aturan auto-join ini ada) — backfill
-  // jadi aktif juga, prinsip sama dengan "field kosong dilengkapi" di atas: data sudah eksplisit
-  // ditaruh admin di tenant forum ini, tidak perlu ajakan "Gabung" lagi. Data pribadi yang belum
-  // lengkap tetap diminta lewat overlay eligibility terpisah, independen dari flag ini.
-  const activateForumStatus = !!(tmRow && isForumTenant && tmRow.forumStatus !== "active");
+  // Aktivasi forumStatus HANYA kalau member ini PUNYA Nomor Keanggotaan — baik yang sudah ada
+  // di DB (`tmRow.membershipNumber`) MAUPUN yang baru saja didapat dari baris ini
+  // (`membershipNumberPatch`). Tanpa nomor sama sekali, orangnya belum resmi jadi anggota forum
+  // meski datanya sudah eksplisit ditaruh admin di tenant ini — tetap "pending". Prinsip sama
+  // dengan blok insert member baru (commitImportAction), lihat § 22.5.
+  const hasOrGetsMembershipNumber = !!(tmRow?.membershipNumber || membershipNumberPatch);
+  const activateForumStatus = !!(
+    tmRow && isForumTenant && tmRow.forumStatus !== "active" && hasOrGetsMembershipNumber
+  );
 
   const fieldLabels = [
     ...Object.keys(memberPatch), ...Object.keys(contactPatch),
-    ...(membershipNumberPatch || needsGeneratedMembershipNumber ? ["membershipNumber"] : []),
+    ...(membershipNumberPatch ? ["membershipNumber"] : []),
   ].map((k) => MERGEABLE_FIELD_LABELS[k] ?? k);
 
   return {
-    memberPatch, contactId, contactPatch, membershipNumberPatch,
-    needsGeneratedMembershipNumber, activateForumStatus,
+    memberPatch, contactId, contactPatch, membershipNumberPatch, activateForumStatus,
     existingTenantMembershipId: tmRow?.id ?? null,
     fieldLabels,
   };
