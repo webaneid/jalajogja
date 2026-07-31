@@ -17,7 +17,6 @@ import { renderBody }   from "@/lib/letter-render";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { SocialLinks } from "@/components/ui/social-links";
-import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 
@@ -72,6 +71,7 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
       logoUrl:     memberBusinesses.logoUrl,
       category:    memberBusinesses.category,
       sector:      memberBusinesses.sector,
+      businessFields: memberBusinesses.businessFields,
       legality:    memberBusinesses.legality,
       position:    memberBusinesses.position,
       employees:   memberBusinesses.employees,
@@ -160,9 +160,10 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
     }
   }
 
-  const descHtml = row.description ? renderBody(row.description) : null;
-  const hasOfferedTags = (row.offeredTags ?? []).length > 0;
-  const hasNeededTags  = (row.neededTags ?? []).length > 0;
+  const descHtml          = row.description ? renderBody(row.description) : null;
+  const hasBusinessFields = (row.businessFields ?? []).length > 0;
+  const hasOfferedTags    = (row.offeredTags ?? []).length > 0;
+  const hasNeededTags     = (row.neededTags ?? []).length > 0;
 
   const locationText = [regencyName, provinceName].filter(Boolean).join(", ");
   const hasLocation = Boolean(locationText);
@@ -351,42 +352,48 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
               </div>
             )}
 
-            {/* Tag Sinergi Ekosistem */}
+            {/* Bidang Usaha */}
+            {hasBusinessFields && (
+              <div className="rounded-2xl border border-border bg-card p-6 space-y-3">
+                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                  <Briefcase size={16} className="text-primary" /> Bidang Usaha
+                </h2>
+                <ul className="space-y-1.5 text-sm text-foreground pl-5 list-disc marker:text-primary font-medium">
+                  {row.businessFields!.map(bf => (
+                    <li key={bf}>{bf}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Ekosistem Sinergi (Vertical Listing) */}
             {(hasOfferedTags || hasNeededTags) && (
-              <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
+              <div className="rounded-2xl border border-border bg-card p-6 space-y-5">
                 <h2 className="text-base font-semibold text-foreground">Ekosistem Sinergi</h2>
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {hasOfferedTags && (
-                    <div className="space-y-1.5">
-                      <p className="text-xs text-muted-foreground font-medium">Menawarkan Produk / Jasa:</p>
-                      <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Menawarkan Produk / Jasa:</p>
+                      <ul className="space-y-1.5 text-sm text-foreground pl-5 list-disc marker:text-primary font-medium">
                         {row.offeredTags.map(t => (
-                          <span key={t} className="text-xs px-3 py-1 rounded-full bg-primary/10 text-primary font-medium">{t}</span>
+                          <li key={t}>{t}</li>
                         ))}
-                      </div>
+                      </ul>
                     </div>
                   )}
                   {hasNeededTags && (
-                    <div className="space-y-1.5">
-                      <p className="text-xs text-muted-foreground font-medium">Membutuhkan Pasokan / Kemitraan:</p>
-                      <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Membutuhkan Pasokan / Kemitraan:</p>
+                      <ul className="space-y-1.5 text-sm text-foreground pl-5 list-disc marker:text-muted-foreground font-medium">
                         {row.neededTags.map(t => (
-                          <span key={t} className="text-xs px-3 py-1 rounded-full bg-muted text-muted-foreground font-medium">{t}</span>
+                          <li key={t}>{t}</li>
                         ))}
-                      </div>
+                      </ul>
                     </div>
                   )}
                 </div>
               </div>
             )}
-
-            {/* Tautan Lintas Ekosistem (Cross-Links) */}
-            <EcosystemTagCrossLinks
-              slug={slug}
-              currentModule="usaha"
-              offeredTags={row.offeredTags}
-              neededTags={row.neededTags}
-            />
 
           </div>
 
