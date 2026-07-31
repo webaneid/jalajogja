@@ -1,7 +1,7 @@
 import { notFound }   from "next/navigation";
 import { eq, and, inArray } from "drizzle-orm";
 import {
-  db, members, tenants, tenantMemberships,
+  db, members, tenants, tenantMemberships, createTenantDb,
   memberProfessionals, contacts, addresses, socialMedias,
   refProvinces, refRegencies,
 } from "@jalajogja/db";
@@ -16,10 +16,15 @@ import { displayPhone, toWaDigits } from "@/lib/phone";
 import { renderBody }   from "@/lib/letter-render";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
+import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
 import { SocialLinks } from "@/components/ui/social-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
+import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
+import { CategoryPill } from "@/components/website/public/single/category-pill";
+import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
@@ -182,50 +187,85 @@ export default async function ProfesionalDetailPage({ params }: { params: Params
   const hasContactInfo = Boolean(phone || whatsapp || email);
   const hasSocials = Object.keys(socials).length > 0;
 
+  // Shell mobile — lihat docs/arsitektur-mobile-shell.md, pola disalin dari campaign/[slug].
+  const tenantClient = createTenantDb(slug);
+  const [relativeBaseUrl, seoBase] = await Promise.all([
+    resolveBaseUrl(slug),
+    getTenantSeoBase(slug),
+  ]);
+  const navMenu = await getPublicNavMenu(tenantClient, slug, relativeBaseUrl);
+  const pageUrl = `${seoBase.baseUrl}/profesional/${id}`;
+
+  // Cover + floating foto pemilik — dihitung sekali, dipakai ULANG identik di mobile
+  // (full-bleed, di dalam SingleFeatureImage) dan desktop (kartu berbingkai) — posisi foto
+  // pemilik TIDAK pernah berubah antara keduanya, cuma wrapper luarnya yang beda.
+  const coverImg     = getVariantUrl(row.coverUrl, "large");
+  const personPhoto  = row.ownerPhoto;
+  const coverInner = coverImg ? (
+    <>
+      <ImageWithFallback src={coverImg} alt={titleLine} fill className="object-cover" unoptimized />
+      {personPhoto ? (
+        <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-background shadow-md overflow-hidden z-10 bg-background">
+          <Image src={personPhoto} alt={row.ownerName} fill className="object-cover" unoptimized />
+        </div>
+      ) : (
+        <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-background shadow-md overflow-hidden z-10 bg-primary/10 flex items-center justify-center text-primary font-bold text-lg sm:text-xl">
+          {row.ownerName.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()}
+        </div>
+      )}
+    </>
+  ) : (
+    <div className="flex items-center justify-center w-full h-full">
+      <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-background shadow-md overflow-hidden relative bg-primary/10 flex items-center justify-center text-primary font-bold text-2xl sm:text-3xl">
+        {personPhoto ? (
+          <Image src={personPhoto} alt={row.ownerName} fill className="object-cover" unoptimized />
+        ) : (
+          row.ownerName.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()
+        )}
+      </div>
+    </div>
+  );
+
   return (
+    <>
+      {/* ── Mobile shell — full-bleed cover + overlay back/menu, header situs disembunyikan ── */}
+      <div className="md:hidden">
+        <SingleFeatureImage backHref={`${relativeBaseUrl}/profesional`} navMenu={navMenu} siteName={tenant.name}>
+          {(coverImg || personPhoto) && (
+            <div className="relative w-full aspect-video bg-muted/30 overflow-hidden">{coverInner}</div>
+          )}
+        </SingleFeatureImage>
+        <div className="px-4 pt-4 space-y-3">
+          {row.professionCategory && <CategoryPill label={row.professionCategory} />}
+          <h1 className="text-2xl font-bold tracking-tight leading-tight">{titleLine}</h1>
+          {row.specialization && (
+            <p className="text-muted-foreground text-sm font-medium">{row.specialization}</p>
+          )}
+          {hasLocation && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MapPin size={15} className="text-primary shrink-0" />
+              <span>{locationText}</span>
+            </div>
+          )}
+          <SocialShareCard url={pageUrl} title={titleLine} />
+        </div>
+      </div>
+
     <div className="py-8 md:py-12">
       <div className="max-w-7xl mx-auto px-4 space-y-6">
-        
-        {/* Breadcrumb Navigation */}
-        <Link href={`/${slug}/profesional`} className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+
+        {/* Breadcrumb Navigation — desktop saja, mobile sudah punya tombol back di overlay */}
+        <Link href={`/${slug}/profesional`} className="hidden md:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft size={16} />
           Kembali ke Direktori Profesional
         </Link>
 
-        {/* Banner Sampul & Floating Foto Orang (Avatar Pemilik) */}
-        {(() => {
-          const coverImg = getVariantUrl(row.coverUrl, "large");
-          const personPhoto = row.ownerPhoto;
-          if (!coverImg && !personPhoto) return null;
-          return (
-            <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 border border-border">
-              {coverImg ? (
-                <>
-                  <ImageWithFallback src={coverImg} alt={titleLine} fill className="object-cover" unoptimized />
-                  {personPhoto ? (
-                    <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-background shadow-md overflow-hidden z-10 bg-background">
-                      <Image src={personPhoto} alt={row.ownerName} fill className="object-cover" unoptimized />
-                    </div>
-                  ) : (
-                    <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-background shadow-md overflow-hidden z-10 bg-primary/10 flex items-center justify-center text-primary font-bold text-lg sm:text-xl">
-                      {row.ownerName.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="flex items-center justify-center w-full h-full">
-                  <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-background shadow-md overflow-hidden relative bg-primary/10 flex items-center justify-center text-primary font-bold text-2xl sm:text-3xl">
-                    {personPhoto ? (
-                      <Image src={personPhoto} alt={row.ownerName} fill className="object-cover" unoptimized />
-                    ) : (
-                      row.ownerName.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {/* Banner Sampul & Floating Foto Orang (Avatar Pemilik) — desktop saja */}
+        {(coverImg || personPhoto) && (
+          <div className="hidden md:block relative aspect-video rounded-2xl overflow-hidden bg-muted/30 border border-border">
+            {coverInner}
+          </div>
+        )}
 
         {/* Grid Tata Letak Utama (Kolom Kiri 2/3 : Kolom Kanan 1/3) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start pt-2">
@@ -327,8 +367,8 @@ export default async function ProfesionalDetailPage({ params }: { params: Params
           {/* ── KIRI / KONTEN UTAMA ── */}
           <div className="lg:col-span-2 space-y-6 order-1 lg:order-1">
             
-            {/* Header Judul Profesional & Badges */}
-            <div className="space-y-3">
+            {/* Header Judul Profesional & Badges — desktop saja, mobile sudah render sendiri di shell atas */}
+            <div className="hidden md:block space-y-3">
               {(row.professionCategory || row.employmentType) && (
                 <div className="flex flex-wrap gap-2">
                   {row.professionCategory && (
@@ -421,5 +461,6 @@ export default async function ProfesionalDetailPage({ params }: { params: Params
         </div>
       </div>
     </div>
+    </>
   );
 }

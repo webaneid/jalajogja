@@ -7,12 +7,14 @@
 >   bug yang mendasari dokumen ini (baca kalau butuh konteks historis, BUKAN untuk operasional —
 >   dokumen ini adalah versi final/ringkas, ikuti § 5 dan § 8 di bawah untuk kerja sehari-hari)
 
-**Status: ✅ SELESAI** (2026-07-20) — 5 halaman (`/keranjang`, `/checkout`, `/campaign/[slug]`,
-`/produk/[productSlug]`, `/invoice/[id]`) + header global (`FlexHeader`) sudah diaudit dan
-diperbaiki. Dokumen ini WAJIB dibaca ulang sebelum menambah elemen `fixed bottom-0` baru
-manapun di front-end publik — pola bugnya SUDAH TERBUKTI BERULANG 4× dalam satu sesi kerja,
-selalu dengan gejala yang sama ("ada jarak kosong aneh") tapi root cause yang mudah salah
-didiagnosis kalau tidak paham aturan di § 5.
+**Status: ✅ SELESAI** (2026-07-20, diperluas 2026-07-31) — 5 halaman (`/keranjang`, `/checkout`,
+`/campaign/[slug]`, `/produk/[productSlug]`, `/invoice/[id]`) + header global (`FlexHeader`)
+sudah diaudit dan diperbaiki, DAN 3 halaman baru (`/usaha/[id]`, `/pesantren/[id]`,
+`/profesional/[id]`) sudah diwire ke pola "Mobile Single-Page Shell" yang sama (§ 2.1). Dokumen
+ini WAJIB dibaca ulang sebelum menambah elemen `fixed bottom-0` baru manapun di front-end publik
+— pola bugnya SUDAH TERBUKTI BERULANG 4× dalam satu sesi kerja, selalu dengan gejala yang sama
+("ada jarak kosong aneh") tapi root cause yang mudah salah didiagnosis kalau tidak paham aturan
+di § 5.
 
 ---
 
@@ -45,12 +47,26 @@ helper terpusat **`lib/mobile-route-checks.ts`**:
 
 ### 2.1 `isSingleMobileRoute(pathname, baseUrl)` — sembunyikan SELURUH header
 
-Untuk halaman **single-item detail** (post/agenda/campaign/produk detail — 2 segmen path — dan
-halaman CMS generik 1 segmen di luar daftar statis) — header (topbar+logo+nav+search+cart+user)
-disembunyikan TOTAL di mobile (`hidden md:block` di `HeaderVisibility`), diganti overlay
-back+menu yang menempel di gambar fitur halaman (`SingleMobileTopBar`). Ini fondasi "Mobile
-Single-Page Shell" yang sudah ada sejak sebelum sesi 2026-07-18 (Post/Event/Campaign/Produk
-detail dengan `MobileActionSheet`, lihat § 4).
+Untuk halaman **single-item detail** (post/agenda/campaign/produk/usaha/pesantren/profesional
+detail — 2 segmen path — dan halaman CMS generik 1 segmen di luar daftar statis) — header
+(topbar+logo+nav+search+cart+user) disembunyikan TOTAL di mobile (`hidden md:block` di
+`HeaderVisibility`), diganti overlay back+menu yang menempel di gambar fitur halaman
+(`SingleMobileTopBar`). Ini fondasi "Mobile Single-Page Shell" yang sudah ada sejak sebelum sesi
+2026-07-18 (Post/Event/Campaign/Produk detail dengan `MobileActionSheet`, lihat § 4).
+
+**Diperluas 2026-07-31** ke `usaha/[id]`, `pesantren/[id]`, `profesional/[id]` (permintaan
+eksplisit user — "saya ingin seperti itu tampilan-nya untuk usaha, pesantren dan juga
+profesional"). Ketiganya TIDAK punya `MobileActionSheet` (tidak ada aksi beli/donasi/daftar di
+halaman ini) — jadi cuma butuh `SingleFeatureImage` (cover full-bleed) + `CategoryPill` + judul +
+`SocialShareCard` di shell mobile, TANPA spacer/bottom-bar tambahan sama sekali (dikonfirmasi
+`grep "fixed.*bottom-0"` nol hasil di ketiga file). Posisi floating badge (logo bisnis di Usaha,
+foto pemilik di Profesional) SENGAJA dipertahankan persis sama antara mobile dan desktop — kedua
+mode reuse SATU variable JSX (`coverInner`) yang dihitung sekali, cuma wrapper LUARnya yang beda
+(mobile: full-bleed tanpa border/rounded; desktop: kartu `rounded-2xl border`) — supaya "posisi
+logo maupun image pemilik tetap dalam posisinya" (persis permintaan user) terjamin secara
+struktural, bukan cuma kebetulan sama. Pesantren tidak punya floating badge (tidak ada konsep
+logo/foto pemilik terpisah untuk pesantren) — pakai `src`/`alt` biasa di `SingleFeatureImage`,
+bukan `children`.
 
 ### 2.2 `hasOwnMobileActionBar(pathname, baseUrl)` — sembunyikan BottomNav saja
 
@@ -382,6 +398,7 @@ Sebelum menambah elemen fixed baru di halaman publik manapun:
 | `/invoice/[id]` | `invoice-public-client.tsx` (trailing) | C | ✅ Terverifikasi (kode) |
 | `/agenda/[slug]` (event) | — | — | ✅ Sudah benar sejak awal, tidak butuh fix |
 | `/akun/*` (semua kedalaman) | `akun-bottom-nav.tsx` (dibundel dalam komponen) | A (kasus paling aman — layout.tsx penuh kontrol akhir tree) | ✅ Terverifikasi (kode) |
+| `/usaha/[id]`, `/pesantren/[id]`, `/profesional/[id]` | — (nol `fixed bottom-0`, nol `MobileActionSheet`) | — | ✅ Terverifikasi (kode) — 2026-07-31 |
 
 **"Terverifikasi (kode)"** berarti: logic sudah benar berdasarkan pembacaan struktur JSX +
 `tsc`/`build` bersih, TAPI **belum dikonfirmasi visual di browser oleh siapa pun** per tanggal

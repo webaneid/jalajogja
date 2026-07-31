@@ -1,7 +1,7 @@
 import { notFound }   from "next/navigation";
 import { eq, and, inArray } from "drizzle-orm";
 import {
-  db, members, tenants, tenantMemberships,
+  db, members, tenants, tenantMemberships, createTenantDb,
   memberOwnedPesantren, contacts, addresses, socialMedias,
   refProvinces, refRegencies,
 } from "@jalajogja/db";
@@ -15,10 +15,15 @@ import {
 import { displayPhone, toWaDigits } from "@/lib/phone";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
+import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
 import { SocialLinks } from "@/components/ui/social-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
+import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
+import { CategoryPill } from "@/components/website/public/single/category-pill";
+import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
@@ -180,21 +185,54 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
   const hasContactInfo = Boolean(phone || whatsapp || email);
   const hasSocials = Object.keys(socials).length > 0;
 
+  // Shell mobile — lihat docs/arsitektur-mobile-shell.md, pola disalin dari campaign/[slug].
+  const tenantClient = createTenantDb(slug);
+  const [relativeBaseUrl, seoBase] = await Promise.all([
+    resolveBaseUrl(slug),
+    getTenantSeoBase(slug),
+  ]);
+  const navMenu = await getPublicNavMenu(tenantClient, slug, relativeBaseUrl);
+  const pageUrl = `${seoBase.baseUrl}/pesantren/${id}`;
+  const coverImg = getVariantUrl(row.coverUrl, "large");
+
   return (
+    <>
+      {/* ── Mobile shell — full-bleed cover + overlay back/menu, header situs disembunyikan ── */}
+      <div className="md:hidden">
+        <SingleFeatureImage
+          src={coverImg}
+          alt={row.name}
+          backHref={`${relativeBaseUrl}/pesantren`}
+          navMenu={navMenu}
+          siteName={tenant.name}
+        />
+        <div className="px-4 pt-4 space-y-3">
+          {row.kurikulum && <CategoryPill label={row.kurikulum} />}
+          <h1 className="text-2xl font-bold tracking-tight leading-tight">{row.name}</h1>
+          {hasLocation && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MapPin size={15} className="text-primary shrink-0" />
+              <span>{locationText}</span>
+            </div>
+          )}
+          <SocialShareCard url={pageUrl} title={row.name} />
+        </div>
+      </div>
+
     <div className="py-8 md:py-12">
       <div className="max-w-7xl mx-auto px-4 space-y-6">
-        
-        {/* Breadcrumb Navigation */}
-        <Link href={`/${slug}/pesantren`} className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+
+        {/* Breadcrumb Navigation — desktop saja, mobile sudah punya tombol back di overlay */}
+        <Link href={`/${slug}/pesantren`} className="hidden md:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft size={16} />
           Kembali ke Direktori Pesantren
         </Link>
 
-        {/* Banner Sampul (Pesantren: Tanpa Floating Logo) */}
+        {/* Banner Sampul (Pesantren: Tanpa Floating Logo) — desktop saja */}
         {row.coverUrl && (
-          <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 border border-border">
+          <div className="hidden md:block relative aspect-video rounded-2xl overflow-hidden bg-muted/30 border border-border">
             <ImageWithFallback
-              src={getVariantUrl(row.coverUrl, "large")}
+              src={coverImg}
               alt={row.name}
               fill
               className="object-cover"
@@ -304,8 +342,8 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
           {/* ── KIRI / KONTEN UTAMA ── */}
           <div className="lg:col-span-2 space-y-6 order-1 lg:order-1">
             
-            {/* Header Nama Pesantren & Badges */}
-            <div className="space-y-3">
+            {/* Header Nama Pesantren & Badges — desktop saja, mobile sudah render sendiri di shell atas */}
+            <div className="hidden md:block space-y-3">
               {(row.kurikulum || row.kategoriSantri || row.jenisPondok || row.modelPendidikan) && (
                 <div className="flex flex-wrap gap-2">
                   {row.kurikulum && (
@@ -406,5 +444,6 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
         </div>
       </div>
     </div>
+    </>
   );
 }

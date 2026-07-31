@@ -14463,18 +14463,93 @@ dikonfirmasi widget `return null` (tidak tampil, bukan tampil kosong) sesuai des
 
 Detail lengkap: `docs/arsitektur-ekosistem.md` § 6 Fase 2 (subsection "Regresi ditemukan+
 diperbaiki"). `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses
-(48.7s, dev server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB. **Belum di-commit/
-push** — perubahan ini (3 file: `usaha/[id]/page.tsx`, `pesantren/[id]/page.tsx`,
-`profesional/[id]/page.tsx`) DAN 3 commit redesign sesi lain (`44696f7`/`81d7f7f`/`03a125e`)
-semuanya masih lokal, belum di-push ke origin — menunggu instruksi user.
+(48.7s, dev server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB. **Sudah di-commit+
+push** (`5e30167`) — bersamaan dengan ke-3 commit redesign sesi lain
+(`44696f7`/`81d7f7f`/`03a125e`) yang sebelumnya lokal, semua ikut ter-push ke origin. **Belum
+dijalankan di VPS, belum diverifikasi visual di browser.**
 
 **Aturan yang ditegaskan (pengulangan, kelas ke sekian kalinya di project ini)**: SELALU
 `git log --oneline -N -- <file>` sebelum audit "cek apakah halaman X sudah standard" — kalau ada
 commit yang tidak dikenal (bukan dari sesi ini), itu sinyal kerja paralel dari sesi/agen lain;
 verifikasi isinya dari nol via membaca kode, jangan percaya nama commit message begitu saja.
 
+### [2026-07-31] Mobile Single-Page Shell Diperluas ke Usaha/Pesantren/Profesional
+
+User minta halaman single (detail) Usaha/Pesantren/Profesional dibuat seperti mobile shell Post
+("saya ingin seperti itu tampilan-nya"), dengan satu syarat eksplisit: posisi floating logo
+(Usaha) dan floating foto pemilik (Profesional) di atas cover harus TETAP di posisinya — tidak
+boleh diubah/dipindah saat diadaptasi ke mode mobile.
+
+**Riset pola referensi**: dibaca `docs/arsitektur-mobile-shell.md` (arsitektur shell mobile
+lengkap) + `post-detail-view.tsx` (referensi awal, tapi struktur artikel blog terlalu beda) +
+`campaign/[slug]/page.tsx` (referensi YANG DIPAKAI — struktur "main content + sidebar
+kontak/sosial" jauh lebih mirip Usaha/Pesantren/Profesional daripada Post). Pola Campaign:
+`<div className="md:hidden">` berisi `SingleFeatureImage` (cover full-bleed + overlay back/menu
+`SingleMobileTopBar`) → `CategoryPill` + `<h1>` + `SocialShareCard`, lalu breadcrumb dan blok
+"cover+badge+judul" desktop dibungkus `hidden md:block` terpisah, SEMENTARA konten sisanya
+(deskripsi, tab, dll) TIDAK diduplikasi — cukup dirender sekali karena grid sudah collapse ke
+1 kolom di bawah `lg` secara alami.
+
+**Implementasi identik ke 3 file** (`usaha/[id]/page.tsx`, `pesantren/[id]/page.tsx`,
+`profesional/[id]/page.tsx`): tambah `createTenantDb`+`resolveBaseUrl`+`getPublicNavMenu` (untuk
+`navMenu`+`backHref`), hoisting `coverImg`/`logoImg`/`personPhoto` computation (sebelumnya
+terjebak di dalam IIFE sekali-pakai) jadi variable `coverInner` (JSX) yang di-REUSE PERSIS SAMA
+di kedua mode — cuma wrapper LUAR yang beda: mobile (di dalam `<SingleFeatureImage>` sebagai
+`children`, full-bleed tanpa border/rounded) vs desktop (`hidden md:block` kartu
+`rounded-2xl border`, tidak diubah dari sebelumnya). Ini menjamin secara STRUKTURAL (bukan
+kebetulan) bahwa posisi floating badge sama persis di kedua mode — satu sumber JSX, dua wrapper.
+Pesantren (tidak punya floating badge sama sekali) pakai `src`/`alt` biasa di
+`SingleFeatureImage`, bukan `children`. Header "Nama X & Badges" existing dibungkus `hidden
+md:block` (desktop-only, karena mobile sudah render versi sendiri di shell). `CategoryPill`
+mobile pakai field kategori utama (Usaha: `category`, Pesantren: `kurikulum`, Profesional:
+`professionCategory`) — bukan semua badge desktop, matching pola Campaign yang cuma 1 badge.
+
+**Perubahan WAJIB di luar 3 file detail**: `lib/mobile-route-checks.ts`'s
+`isSingleMobileRoute()` — ditambah `usaha`/`pesantren`/`profesional` ke daftar 2-segmen yang
+memicu header disembunyikan total di mobile (tanpa ini, overlay baru akan tampil BERSAMAAN
+dengan header situs asli — dobel). Dikonfirmasi aman: `find -maxdepth 2` membuktikan
+ketiga folder HANYA punya sub-route `[id]` (tidak ada `kategori` sub-route seperti Produk yang
+butuh pengecualian tambahan).
+
+**Nol spacer/`MobileActionSheet` dibutuhkan** — ketiga halaman ini tidak punya aksi beli/
+donasi/daftar (`grep "fixed.*bottom-0"` nol hasil di ketiga file), beda dari
+Campaign/Produk/Event yang punya bottom sheet. Kelas bug spacer (§ 5 `arsitektur-mobile-
+shell.md`, sudah berulang 4× di project ini) TIDAK RELEVAN di sini — dicek eksplisit sebelum
+dianggap selesai, bukan diasumsikan aman.
+
+**Verifikasi empiris** (bukan cuma `tsc`): curl ke record nyata (`forcreator` usaha "Bengkel
+Mobil", `pc-ikpm-jogjakarta` pesantren) — dikonfirmasi overlay `aria-label="Kembali"` dan
+`SocialShareCard` ("Bagikan") muncul di HTML, dan widget "Cari Sinergi" (`EcosystemTagCrossLinks`,
+fix sesi sebelumnya) tetap berfungsi setelah restrukturisasi. Profesional TIDAK ADA data lokal
+untuk dites (0 record `member_professionals`) — hanya diverifikasi via `tsc`+404 graceful untuk
+ID palsu (bukan crash 500), mengandalkan pola identik yang SUDAH terverifikasi di Usaha.
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (47.7s, `Cached:
+0 cached`, dev server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB. Detail lengkap:
+`docs/arsitektur-mobile-shell.md` § 2.1 (diperluas) + § 10 (baris baru). **Belum di-commit/push,
+belum diverifikasi visual di browser sungguhan (viewport mobile asli)** — user perlu coba
+langsung di HP: cek overlay back/menu muncul, cek floating logo/foto tidak bergeser posisi
+dibanding sebelumnya, cek share button berfungsi.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Audit halaman single Usaha/Pesantren/Profesional — ketemu kerja sesi
+- Terakhir dikerjakan: **Mobile Single-Page Shell diperluas ke Usaha/Pesantren/Profesional**
+  (lihat lesson `[2026-07-31]` "Mobile Single-Page Shell Diperluas" di atas, detail lengkap
+  `docs/arsitektur-mobile-shell.md` § 2.1 + § 10) — user minta halaman detail 3 modul dibuat
+  seperti mobile shell Post ("saya ingin seperti itu tampilan-nya"), dengan syarat posisi
+  floating logo (Usaha) dan foto pemilik (Profesional) di atas cover TETAP di posisinya.
+  Referensi pola yang dipakai: `campaign/[slug]/page.tsx` (lebih mirip strukturnya dari Post —
+  main+sidebar, bukan artikel blog). Implementasi identik ke 3 file: `SingleFeatureImage`
+  (cover full-bleed + overlay back/menu) + `CategoryPill` + `SocialShareCard` di shell mobile,
+  desktop tidak berubah (`hidden md:block`). Floating badge (`coverInner` variable) di-REUSE
+  PERSIS SAMA di kedua mode (cuma wrapper luar beda) — menjamin posisi tidak bergeser secara
+  struktural. `lib/mobile-route-checks.ts`'s `isSingleMobileRoute()` diperluas (WAJIB, tanpa ini
+  overlay baru akan dobel dengan header situs asli). Nol spacer dibutuhkan (tidak ada
+  `MobileActionSheet`/aksi beli di halaman ini). Verifikasi empiris via curl ke record nyata
+  (Usaha+Pesantren) — overlay+share card+widget "Cari Sinergi" semua terkonfirmasi bekerja.
+  Profesional tidak ada data lokal untuk dites (0 record), hanya `tsc`+404 graceful. `tsc`+build
+  genuine sukses (47.7s). **Belum di-commit/push, belum diverifikasi visual di browser
+  sungguhan (viewport mobile asli)** — user perlu coba langsung di HP.
+- Sesi sebelumnya: **Audit halaman single Usaha/Pesantren/Profesional — ketemu kerja sesi
   lain (3 commit lokal redesign belum di-push) + 1 regresi ditemukan+difix** (lihat lesson
   `[2026-07-31]` "Audit Halaman Single Usaha/Pesantren/Profesional" di atas, detail lengkap
   `docs/arsitektur-ekosistem.md` § 6 Fase 2) — user minta cek konsistensi halaman detail
@@ -14489,8 +14564,9 @@ verifikasi isinya dari nol via membaca kode, jangan percaya nama commit message 
   jadi dead code. Fix: diimpor+dirender ulang di ketiga file (setelah blok "Ekosistem Sinergi"),
   diverifikasi EMPIRIS (bukan cuma `tsc`) via curl ke record nyata di DB — teks+link
   cross-directory terkonfirmasi terbentuk benar. `tsc` 0 error + `bun run build` genuine sukses
-  (48.7s). Nol migrasi DB. **Belum di-commit/push** — perubahan sesi ini (3 file) DAN 3 commit
-  redesign sesi lain semuanya masih lokal, menunggu instruksi user untuk commit+push.
+  (48.7s). Nol migrasi DB. **Sudah di-commit+push** (`5e30167`) — bersamaan dengan 3 commit
+  redesign sesi lain yang sebelumnya lokal, semua ikut ter-push. **Belum dijalankan di VPS,
+  belum diverifikasi visual di browser.**
 - Sesi sebelumnya: **Fallback gambar ke variant original — diseragamkan ke Usaha +
   Pesantren + Profesional** (lihat lesson `[2026-08-01]` "Fallback Gambar ke Original" di
   atas, detail lengkap `docs/arsitektur-image.md` § "Fallback ke Variant Original") — user

@@ -28,6 +28,7 @@ export function isSingleMobileRoute(pathname: string, baseUrl: string): boolean 
   if (segments.length === 2) {
     if (segments[0] === "post" || segments[0] === "agenda" || segments[0] === "campaign") return true;
     if (segments[0] === "produk" && segments[1] !== "kategori") return true;
+    if (segments[0] === "usaha" || segments[0] === "pesantren" || segments[0] === "profesional") return true;
   }
   if (segments.length === 1 && !STATIC_TOP_SEGMENTS.has(segments[0])) return true;
   return false;

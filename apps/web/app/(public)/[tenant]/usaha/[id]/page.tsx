@@ -1,7 +1,7 @@
 import { notFound }   from "next/navigation";
 import { eq, and, inArray } from "drizzle-orm";
 import {
-  db, members, tenants, tenantMemberships,
+  db, members, tenants, tenantMemberships, createTenantDb,
   memberBusinesses, contacts, addresses, socialMedias,
   refProvinces, refRegencies,
 } from "@jalajogja/db";
@@ -16,10 +16,15 @@ import { displayPhone, toWaDigits } from "@/lib/phone";
 import { renderBody }   from "@/lib/letter-render";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
+import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
 import { SocialLinks } from "@/components/ui/social-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
+import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
+import { CategoryPill } from "@/components/website/public/single/category-pill";
+import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
@@ -177,38 +182,75 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
   const hasContactInfo = Boolean(phone || whatsapp || email);
   const hasSocials = Object.keys(socials).length > 0;
 
+  // Shell mobile — lihat docs/arsitektur-mobile-shell.md, pola disalin dari campaign/[slug].
+  const tenantClient = createTenantDb(slug);
+  const [relativeBaseUrl, seoBase] = await Promise.all([
+    resolveBaseUrl(slug),
+    getTenantSeoBase(slug),
+  ]);
+  const navMenu = await getPublicNavMenu(tenantClient, slug, relativeBaseUrl);
+  const pageUrl = `${seoBase.baseUrl}/usaha/${id}`;
+
+  // Cover + floating logo — dihitung sekali, dipakai ULANG identik di mobile (full-bleed,
+  // di dalam SingleFeatureImage) dan desktop (kartu berbingkai) — posisi badge logo TIDAK
+  // pernah berubah antara keduanya, cuma wrapper luarnya yang beda.
+  const coverImg = getVariantUrl(row.coverUrl, "large");
+  const logoImg  = row.logoUrl;
+  const coverInner = coverImg ? (
+    <>
+      <ImageWithFallback src={coverImg} alt={row.name} fill className="object-cover" unoptimized />
+      {logoImg && (
+        <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-background/95 backdrop-blur-md border border-border p-2 shadow-sm flex items-center justify-center overflow-hidden z-10">
+          <Image src={logoImg} alt={row.name} fill className="object-contain p-1" unoptimized />
+        </div>
+      )}
+    </>
+  ) : logoImg ? (
+    <Image src={logoImg} alt={row.name} fill className="object-contain p-8 sm:p-12" unoptimized />
+  ) : null;
+
   return (
+    <>
+      {/* ── Mobile shell — full-bleed cover + overlay back/menu, header situs disembunyikan ── */}
+      <div className="md:hidden">
+        <SingleFeatureImage backHref={`${relativeBaseUrl}/usaha`} navMenu={navMenu} siteName={tenant.name}>
+          {(coverImg || logoImg) && (
+            <div className="relative w-full aspect-video bg-muted/30 overflow-hidden">{coverInner}</div>
+          )}
+        </SingleFeatureImage>
+        <div className="px-4 pt-4 space-y-3">
+          {row.category && <CategoryPill label={row.category} />}
+          <h1 className="text-2xl font-bold tracking-tight leading-tight">
+            {row.name}
+            {row.brand && row.brand !== row.name && (
+              <span className="font-normal text-muted-foreground text-lg ml-2">({row.brand})</span>
+            )}
+          </h1>
+          {hasLocation && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MapPin size={15} className="text-primary shrink-0" />
+              <span>{locationText}</span>
+            </div>
+          )}
+          <SocialShareCard url={pageUrl} title={row.name} />
+        </div>
+      </div>
+
     <div className="py-8 md:py-12">
       <div className="max-w-7xl mx-auto px-4 space-y-6">
-        
-        {/* Breadcrumb Navigation */}
-        <Link href={`/${slug}/usaha`} className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+
+        {/* Breadcrumb Navigation — desktop saja, mobile sudah punya tombol back di overlay */}
+        <Link href={`/${slug}/usaha`} className="hidden md:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft size={16} />
           Kembali ke Direktori Usaha
         </Link>
 
-        {/* Banner Sampul & Floating Logo */}
-        {(() => {
-          const coverImg = getVariantUrl(row.coverUrl, "large");
-          const logoImg  = row.logoUrl;
-          if (!coverImg && !logoImg) return null;
-          return (
-            <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 border border-border">
-              {coverImg ? (
-                <>
-                  <ImageWithFallback src={coverImg} alt={row.name} fill className="object-cover" unoptimized />
-                  {logoImg && (
-                    <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-background/95 backdrop-blur-md border border-border p-2 shadow-sm flex items-center justify-center overflow-hidden z-10">
-                      <Image src={logoImg} alt={row.name} fill className="object-contain p-1" unoptimized />
-                    </div>
-                  )}
-                </>
-              ) : (
-                <Image src={logoImg!} alt={row.name} fill className="object-contain p-8 sm:p-12" unoptimized />
-              )}
-            </div>
-          );
-        })()}
+        {/* Banner Sampul & Floating Logo — desktop saja, mobile sudah render sendiri di shell atas */}
+        {(coverImg || logoImg) && (
+          <div className="hidden md:block relative aspect-video rounded-2xl overflow-hidden bg-muted/30 border border-border">
+            {coverInner}
+          </div>
+        )}
 
         {/* Grid Tata Letak Utama (Kolom Kiri 2/3 : Kolom Kanan 1/3) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start pt-2">
@@ -311,8 +353,8 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
           {/* ── KIRI / KONTEN UTAMA ── */}
           <div className="lg:col-span-2 space-y-6 order-1 lg:order-1">
             
-            {/* Header Nama Usaha & Badges */}
-            <div className="space-y-3">
+            {/* Header Nama Usaha & Badges — desktop saja, mobile sudah render sendiri di shell atas */}
+            <div className="hidden md:block space-y-3">
               {(row.category || row.sector || row.legality) && (
                 <div className="flex flex-wrap gap-2">
                   {row.category && (
@@ -408,5 +450,6 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
