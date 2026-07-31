@@ -14744,9 +14744,10 @@ jalan PUBLIC schema — bukan loop per tenant, karena tabel ini bukan per-tenant
 **Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` (percobaan pertama) + `bun
 run build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached`, 47.35s, dev server
 dimatikan+`.next` dibersihkan+direstart). Migration `0056` dijalankan+diverifikasi lokal (`\d`
-mengonfirmasi 9 nilai constraint). **User eksplisit minta "mode hemat" — belum di-commit/push,
-belum dijalankan di VPS, belum diverifikasi visual di browser** — perlu coba tambah profesional
-kategori baru ini di `/akun/profesional`, konfirmasi combobox + 14 jenis profesi tampil.
+mengonfirmasi 9 nilai constraint). **Sudah di-commit+push (`cd10e99`, bareng penambahan
+"Politikus" di bawah). Belum dijalankan di VPS, belum diverifikasi visual di browser** — perlu
+coba tambah profesional kategori baru ini di `/akun/profesional`, konfirmasi combobox + 15
+jenis profesi tampil.
 
 **Susulan giliran sama — "Politikus, ini gmn?"**: dijawab masuk ke kategori yang SAMA (bukan
 kategori terpisah baru) sebagai jenis profesi ke-15, "Politikus / Fungsionaris Partai Politik"
@@ -14760,23 +14761,26 @@ penambahan KATEGORI baru yang selalu butuh migration CHECK constraint). `tsc --n
 beda — nambah kategori baru = migration wajib; nambah jenis profesi ke kategori yang sudah ada
 = edit array biasa, nol migration. Perbedaan biaya ini yang menentukan kapan perlu kategori
 baru vs cukup entri baru di kategori existing.
-kategori baru ini di `/akun/profesional` untuk konfirmasi combobox + 14 jenis profesi tampil.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Kategori Profesi Baru "Pemerintahan, Keamanan & Militer"** (lihat
-  lesson `[2026-08-01]` di atas, detail lengkap `docs/arsitektur-profesional.md` § 15) — user
-  tanya eksploratif soal profesi TNI/Polri, dijawab dengan rekomendasi (2 opsi: "Lainnya" vs
-  kategori baru), user pilih kategori baru sejajar 8 kategori lain (persis pola "Kreatif" § 14).
-  Brainstorm cakupan 14 jenis profesi (TNI AD/AL/AU, Polisi, Kepala Desa, Anggota Legislatif,
-  Kepala Daerah, ASN/Pejabat Struktural, Diplomat, Petugas Imigrasi/Bea Cukai/Pemasyarakatan,
-  Satpol PP, Pemadam Kebakaran) dikonfirmasi user sebelum eksekusi. Hakim/Jaksa sengaja TIDAK
-  diduplikasi (tetap di "Hukum, Sosial & Budaya"). Eksekusi 3 titik pola persis § 14:
-  `PROFESSION_CATEGORIES`+`PROFESSION_TYPES_BY_CATEGORY` (`lib/professional-types.ts`), Drizzle
-  enum (`member-professionals.ts`), migration `0056` (CHECK constraint, sekali jalan public
-  schema). `tsc --noEmit` 0 error kedua package + `bun run build` genuine sukses (`Cached: 0
-  cached`, 47.35s). Migration dijalankan+diverifikasi lokal. **User eksplisit minta "mode
-  hemat" — belum di-commit/push, belum dijalankan di VPS, belum diverifikasi visual di
-  browser** — perlu coba tambah profesional kategori baru di `/akun/profesional`.
+- Terakhir dikerjakan: **Kategori Profesi Baru "Pemerintahan, Keamanan & Militer" + jenis
+  profesi "Politikus"** (lihat lesson `[2026-08-01]` di atas, detail lengkap `docs/arsitektur-
+  profesional.md` § 15) — user tanya eksploratif soal profesi TNI/Polri, dijawab dengan
+  rekomendasi (2 opsi: "Lainnya" vs kategori baru), user pilih kategori baru sejajar 8 kategori
+  lain (persis pola "Kreatif" § 14). Brainstorm cakupan 14 jenis profesi (TNI AD/AL/AU, Polisi,
+  Kepala Desa, Anggota Legislatif, Kepala Daerah, ASN/Pejabat Struktural, Diplomat, Petugas
+  Imigrasi/Bea Cukai/Pemasyarakatan, Satpol PP, Pemadam Kebakaran) dikonfirmasi user sebelum
+  eksekusi. Hakim/Jaksa sengaja TIDAK diduplikasi (tetap di "Hukum, Sosial & Budaya"). Susulan
+  giliran sama: user tanya "Politikus, ini gmn?" — ditambahkan sebagai jenis profesi ke-15 di
+  kategori YANG SAMA (bukan kategori baru lagi), "Politikus / Fungsionaris Partai Politik" —
+  TANPA migration (professionType text bebas tanpa CHECK constraint, beda dari professionCategory
+  yang punya constraint). Eksekusi 3 titik pola persis § 14: `PROFESSION_CATEGORIES`+
+  `PROFESSION_TYPES_BY_CATEGORY` (`lib/professional-types.ts`), Drizzle enum
+  (`member-professionals.ts`), migration `0056` (CHECK constraint, sekali jalan public schema).
+  `tsc --noEmit` 0 error kedua package + `bun run build` genuine sukses (`Cached: 0 cached`,
+  47.35s). Migration dijalankan+diverifikasi lokal. **Sudah di-commit+push (`cd10e99`). Belum
+  dijalankan di VPS, belum diverifikasi visual di browser** — perlu coba tambah profesional
+  kategori baru di `/akun/profesional`, konfirmasi combobox + 15 jenis profesi tampil.
 - Sesi sebelumnya: **Koreksi — Nomor Keanggotaan TIDAK PERNAH di-generate saat import/
   admin-add** (lihat lesson `[2026-07-31]` "Koreksi: Nomor Keanggotaan TIDAK PERNAH di-generate"
   di atas, detail lengkap `docs/arsitektur-import-anggota.md` § 22.5) — user MEMBALIK sepenuhnya
