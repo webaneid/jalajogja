@@ -14593,30 +14593,90 @@ server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB (kolom `forum_st
 diverifikasi visual di browser, belum dijalankan backfill di data lokal `forcreator`** (9 baris
 "pending" ditemukan saat verifikasi, sengaja tidak dimutasi otomatis — tunggu konfirmasi user).
 
+### [2026-07-31] Susulan: Nomor Keanggotaan Forum Wajib Auto-Generate, Bukan Cuma dari Excel
+
+> Detail lengkap: **`docs/arsitektur-import-anggota.md` § 22.4**
+
+Lanjutan langsung dari lesson auto-join di atas, giliran sama. User tolak tawaran backfill 9
+baris "pending" lokal (*"gk perlu itu kan dummy"* — data test, bukan real) — lalu tambah syarat
+baru: *"ketika saya upload data baru nanti harus langsung aktif ya anggotanya dgn parameter
+memiliki nomor id sesuai standard bentuk id yang ditetapkan forum tertentu.."* — member baru
+harus aktif DAN punya ID sesuai format standar forum, bukan cuma status aktif tanpa nomor.
+
+**Root cause**: `commitImportAction` cuma pakai nomor APA ADANYA dari kolom Excel — kosong
+berarti `null` selamanya, tidak ada mekanisme melengkapi kemudian. Padahal `/gabung`
+(`joinForumAction`) sudah lama punya pola benar: kalau nomor kosong DAN tenant sudah punya
+format standar dikonfigurasi (`/app/{slug}/settings/keanggotaan`) → `generateForumMembership
+Number()` on-demand. Pola ini belum pernah diterapkan ke import maupun `createMemberAction`.
+
+**Fix — 3 titik, reuse fungsi generator yang SAMA (bukan reimplementasi)**: (1)
+`commitImportAction` — fetch format tenant SEKALI di awal fungsi, generate untuk member BARU
+kalau kolom Excel kosong; (2) `computeMemberMergeCandidate()` diperluas
+`needsGeneratedMembershipNumber: boolean` (murni sinyal, TIDAK generate sendiri — fungsi ini
+tidak tahu config tenant) — caller (`commitImportAction`'s blok merge "link-only"/"duplicate")
+yang benar-benar panggil generator; (3) `createMemberAction` (admin tambah 1 anggota manual) —
+form ini SAMA SEKALI tidak punya field nomor manual, jadi SELALU generate kalau format
+dikonfigurasi. Bug identik pola forumStatus (lesson di atas) ditemukan ulang di sini — tanpa
+fix ini, admin tambah manual akan hasilkan member "active" tanpa ID resmi selamanya, kontradiksi
+langsung dengan rule baru.
+
+**Diverifikasi EMPIRIS, bukan cuma `tsc`** — panggil `generateForumMembershipNumber()` langsung
+(fungsi SAMA dipakai ketiga titik) terhadap tenant `forcreator` lokal (format `"year_seq"`,
+dikonfirmasi via SQL): hasil `"2026.00165"` (format benar) + `forum_membership_sequences.
+last_number` naik 164→165 secara atomic, dikonfirmasi via query terpisah sebelum+sesudah. Efek
+samping (sequence gap 1 dari panggilan verifikasi) DITERIMA — konsisten prinsip "gap sequence
+selalu ditoleransi" yang sudah berlaku di seluruh project (`member_number_seq`, dll).
+`needsGeneratedMembershipNumber` sendiri tidak sempat diuji nilai `true` (semua tenant_
+membership `forcreator` lokal sudah punya nomor dari import awal, 0 baris NULL) — jalur ini
+murni terverifikasi via `tsc`+review (struktur identik jalur "new insert" yang sudah teruji).
+
+`tsc --noEmit` bersih (`apps/web`) + `bun run build --filter=@jalajogja/web` genuine sukses (dev
+server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB. **Belum di-commit/push, belum
+diverifikasi visual di browser** — user perlu coba import file baru (kolom "Nomor Keanggotaan"
+sengaja dikosongkan) ke tenant forum yang sudah punya format dikonfigurasi, konfirmasi member
+barunya langsung dapat ID sesuai format itu.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Template Excel Import + Auto-Join Forum Saat Admin Menaruh Data
-  Anggota** (lihat lesson `[2026-07-31]` "Template Excel Import + Auto-Join Forum" di atas,
-  detail lengkap `docs/arsitektur-import-anggota.md` § 22 + `docs/arsitektur-akun.md` §
-  "Eligibility Overlay Generik" revisi) — user tanya apakah template Excel sudah ikut berubah
-  dengan banyaknya fitur baru terkait data anggota. Sheet Panduan (Sektor dkk) sudah otomatis
-  benar (dinamis dari enum live), TAPI ditemukan bug: `EXAMPLE_ROW` masih pakai nama sektor
-  lama "Konsumsi & Ritel" — difix, sudah di-commit+push (`aa29cd1`). Ditambah: Panduan Sektor+
-  Bidang Usaha digabung jadi list bertingkat bisa dicopas (10 grup `SEKTOR: {nama}` + bullet
-  Tier-3 di bawahnya, 59 label total terverifikasi merata). Rule baru diminta user: "auto-join
-  forum" — member yang datanya SUDAH ditaruh admin langsung ke database tenant forum (import
-  MAUPUN tambah manual) otomatis dianggap anggota resmi (`forumStatus='active'`), tidak ada
-  lagi ajakan "Gabung X" — TAPI (koreksi mid-turn user) overlay "Lengkapi Data" WAJIB tetap
-  tampil kalau profilnya belum lengkap, independen dari status join. Fix 3 titik:
-  `commitImportAction` (forumStatus langsung "active" untuk member baru), `createMemberAction`
-  (bug identik ditemukan sekaligus — field ini sama sekali tidak pernah diisi di jalur admin
-  manual, diperbaiki bareng), dan backfill `computeMemberMergeCandidate()` untuk member existing
-  yang masih "pending" (diverifikasi empiris read-only, hasil `true` sesuai ekspektasi). Plus
+- Terakhir dikerjakan: **Susulan — Nomor Keanggotaan Forum Wajib Auto-Generate** (lihat lesson
+  `[2026-07-31]` "Susulan: Nomor Keanggotaan Forum Wajib Auto-Generate" di atas, detail lengkap
+  `docs/arsitektur-import-anggota.md` § 22.4) — lanjutan langsung dari auto-join forum (entri di
+  bawah), giliran sama. User tolak tawaran backfill 9 baris "pending" lokal (dummy, tidak
+  perlu), lalu minta rule tambahan: member baru harus aktif DAN punya Nomor Keanggotaan sesuai
+  format standar forum itu, bukan cuma status aktif tanpa ID. Root cause: `commitImportAction`
+  cuma pakai nomor APA ADANYA dari Excel — kosong = null selamanya, tidak ada mekanisme
+  melengkapi. `/gabung` (`joinForumAction`) sudah lama punya pola benar
+  (`generateForumMembershipNumber()` on-demand kalau kosong+format dikonfigurasi) — belum
+  pernah diterapkan ke import/`createMemberAction`. Fix 3 titik, semua reuse fungsi generator
+  yang SAMA: `commitImportAction` (fetch format tenant sekali, generate untuk member baru),
+  `computeMemberMergeCandidate()` (field baru `needsGeneratedMembershipNumber` — sinyal murni,
+  caller yang generate), `createMemberAction` (form tidak punya field nomor manual — SELALU
+  generate kalau format dikonfigurasi, bug identik pola forumStatus ditemukan ulang di sini).
+  Diverifikasi EMPIRIS: `generateForumMembershipNumber()` dipanggil langsung terhadap tenant
+  `forcreator` lokal (format "year_seq") — hasil `"2026.00165"`, counter sequence naik
+  164→165 secara atomic (dikonfirmasi via SQL sebelum+sesudah). `tsc`+build genuine bersih, dev
+  server direstart. **Belum di-commit/push, belum diverifikasi visual di browser** — user perlu
+  coba import file baru (kolom Nomor Keanggotaan kosong) ke forum berformat, konfirmasi member
+  baru langsung dapat ID sesuai format.
+- Sesi sebelumnya: **Template Excel Import + Auto-Join Forum Saat Admin Menaruh Data Anggota**
+  (lihat lesson `[2026-07-31]` "Template Excel Import + Auto-Join Forum" di atas, detail
+  lengkap `docs/arsitektur-import-anggota.md` § 22 + `docs/arsitektur-akun.md` § "Eligibility
+  Overlay Generik" revisi) — user tanya apakah template Excel sudah ikut berubah dengan
+  banyaknya fitur baru terkait data anggota. Sheet Panduan (Sektor dkk) sudah otomatis benar
+  (dinamis dari enum live), TAPI ditemukan bug: `EXAMPLE_ROW` masih pakai nama sektor lama
+  "Konsumsi & Ritel" — difix. Ditambah: Panduan Sektor+Bidang Usaha digabung jadi list
+  bertingkat bisa dicopas (10 grup `SEKTOR: {nama}` + bullet Tier-3 di bawahnya, 59 label total
+  terverifikasi merata). Rule baru diminta user: "auto-join forum" — member yang datanya SUDAH
+  ditaruh admin langsung ke database tenant forum (import MAUPUN tambah manual) otomatis
+  dianggap anggota resmi (`forumStatus='active'`), tidak ada lagi ajakan "Gabung X" — TAPI
+  (koreksi mid-turn user) overlay "Lengkapi Data" WAJIB tetap tampil kalau profilnya belum
+  lengkap, independen dari status join. Fix 3 titik: `commitImportAction` (forumStatus langsung
+  "active" untuk member baru), `createMemberAction` (bug identik ditemukan sekaligus), dan
+  backfill `computeMemberMergeCandidate()` untuk member existing yang masih "pending". Plus
   restrukturisasi `akun/page.tsx`'s overlay logic — eligibility SEKARANG SELALU dicek untuk
-  forum (bukan cuma saat belum joined), supaya member auto-joined dengan data bolong tetap
-  diminta melengkapi. `tsc`+build genuine bersih, dev server direstart. **Sudah di-commit+push**
-  (`aa29cd1` fix EXAMPLE_ROW + `adbca7e` auto-join+panduan grouping). **Belum dijalankan di VPS,
-  belum diverifikasi visual di browser, belum dijalankan backfill di data lokal `forcreator`**
-  (9 baris "pending" ditemukan, sengaja tidak dimutasi otomatis — tunggu konfirmasi user).
+  forum, supaya member auto-joined dengan data bolong tetap diminta melengkapi. **Sudah
+  di-commit+push** (`aa29cd1` fix EXAMPLE_ROW + `adbca7e` auto-join+panduan grouping). **Belum
+  dijalankan di VPS, belum diverifikasi visual di browser, belum dijalankan backfill di data
+  lokal `forcreator`** (9 baris "pending" ditemukan, sengaja tidak dimutasi otomatis).
 - Sesi sebelumnya: **Mobile Single-Page Shell diperluas ke Usaha/Pesantren/Profesional**
   (lihat lesson `[2026-07-31]` "Mobile Single-Page Shell Diperluas" di atas, detail lengkap
   `docs/arsitektur-mobile-shell.md` § 2.1 + § 10) — user minta halaman detail 3 modul dibuat

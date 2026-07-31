@@ -15,12 +15,16 @@ import {
   generateMemberNumber,
   account,
   syncAutoTenantMemberships,
+  createTenantDb,
+  getSetting,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess }   from "@/lib/permissions";
 import { normalizePhone }  from "@/lib/phone";
 import { hashPassword }    from "better-auth/crypto";
 import type { BusinessSector } from "@/lib/business-sectors";
+import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
+import type { MembershipConfigData } from "../settings/actions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 // Catatan: phone/email/address sudah dipindah ke helper tables (contacts, addresses)
@@ -120,6 +124,24 @@ export async function createMemberAction(
     // SUDAH resmi jadi anggota, tidak perlu ajakan "Gabung" via /gabung lagi (data pribadi yang
     // belum lengkap tetap diminta lewat overlay eligibility terpisah di /akun, independen dari
     // ini — lihat akun/page.tsx). Pola sama persis dengan commitImportAction (bulk import).
+    //
+    // Nomor Keanggotaan: form ini tidak punya field untuk isi manual, jadi kalau tenant forum
+    // ini sudah punya format standar dikonfigurasi (/app/{slug}/settings/keanggotaan), generate
+    // sekarang — member yang jadi aktif via tambah manual admin tetap dapat ID resmi, bukan
+    // dibiarkan null selamanya. Pola sama persis joinForumAction + commitImportAction.
+    const isForumTenant = access.tenant.tenantType === "forum";
+    let membershipNumber: string | null = null;
+    if (isForumTenant) {
+      const tenantClient = createTenantDb(slug);
+      const config = await getSetting<MembershipConfigData>(tenantClient, "membership_config", "forum");
+      if (config?.membershipNumberFormat) {
+        membershipNumber = await generateForumMembershipNumber({
+          tenantId: access.tenant.id, memberId: newMember.id,
+          format: config.membershipNumberFormat, joinDate: new Date(),
+        });
+      }
+    }
+
     await db.insert(tenantMemberships).values({
       tenantId: access.tenant.id,
       memberId: newMember.id,
@@ -127,7 +149,8 @@ export async function createMemberAction(
       joinedAt: data.joinedAt ?? null,
       registeredVia: "admin",
       membershipType: access.tenant.tenantType,
-      forumStatus: access.tenant.tenantType === "forum" ? "active" : null,
+      forumStatus: isForumTenant ? "active" : null,
+      membershipNumber,
     });
 
     // Auto-sync keanggotaan ke tenant PC IKPM Cabang & Marhalah jika tenant tersebut ada & aktif

@@ -1,12 +1,15 @@
 # Arsitektur Import Anggota — Bulk Import Database Excel/CSV
 
-> **§ 22 (2026-07-31, BELUM DI-COMMIT)**: template Excel diverifikasi + 1 bug ditemukan+difix
-> (contoh sektor lama di `EXAMPLE_ROW`), Panduan Sektor+Bidang Usaha digabung jadi list
-> bertingkat copy-paste, dan rule baru "auto-join forum" — member yang datanya SUDAH ditaruh
-> admin langsung di database tenant forum (via import ATAU tambah manual) otomatis dianggap
-> anggota resmi (`forumStatus='active'`), tidak ada lagi ajakan "Gabung X" — TAPI overlay
-> "Lengkapi Data" tetap wajib tampil kalau profilnya belum lengkap, independen dari status join.
-> Baca § 22 untuk detail lengkap.
+> **§ 22 (2026-07-31)**: template Excel diverifikasi + 1 bug ditemukan+difix (contoh sektor
+> lama di `EXAMPLE_ROW`, sudah COMMITTED), Panduan Sektor+Bidang Usaha digabung jadi list
+> bertingkat copy-paste, rule "auto-join forum" — member yang datanya SUDAH ditaruh admin
+> langsung di database tenant forum (import ATAU tambah manual) otomatis dianggap anggota resmi
+> (`forumStatus='active'`), tidak ada lagi ajakan "Gabung X" — TAPI overlay "Lengkapi Data"
+> tetap wajib tampil kalau profil belum lengkap (independen status join). **§ 22.4 (BELUM
+> DI-COMMIT)**: member baru sekarang juga otomatis dapat Nomor Keanggotaan sesuai format
+> standar tenant forum (`generateForumMembershipNumber()`, reuse pola `/gabung`) kalau Excel
+> tidak menyediakan nomornya sendiri — diverifikasi empiris (bukan cuma `tsc`). Baca § 22 untuk
+> detail lengkap.
 
 > **Status: ✅ KODE SELESAI (2026-07-26), 2 PIVOT ARSITEKTUR (§ 13 + § 14) + FITUR KOLOM PC IKPM CABANG (§ 20) +
 > BUG KRITIS KEDUA DITEMUKAN+DIFIX SEBELUM TESTING (§ 21)** — **§ 21: baris "duplicate" (member
@@ -1347,10 +1350,63 @@ Detail arsitektur `MembershipEligibilityOverlay` (3 kondisi tombol) sendiri TIDA
 build --filter=@jalajogja/web` genuine sukses (dev server dimatikan+`.next` dibersihkan+
 direstart). `computeMemberMergeCandidate()` diverifikasi empiris read-only terhadap data lokal
 nyata (lihat § 22.3 poin 3). Nol migrasi DB — semua kolom (`forum_status`, `membership_type`)
-sudah ada sejak lama. **Belum di-commit/push. Belum diverifikasi visual di browser** (buka
-`/akun` sebagai member forum yang baru diimport, konfirmasi tidak ada tombol "Gabung X" lagi
-tapi overlay "Lengkapi Data" tetap muncul kalau datanya sengaja dikosongkan) — dan **belum
-dijalankan backfill di data lokal `forcreator`** (9 baris `pending` ditemukan saat verifikasi,
-sengaja tidak dimutasi otomatis — tunggu konfirmasi user apakah mau dibackfill sekarang lewat
-re-import file yang sama, atau via SQL langsung).
+sudah ada sejak lama. **Sudah di-commit+push** (`adbca7e`). **Belum diverifikasi visual di
+browser** (buka `/akun` sebagai member forum yang baru diimport, konfirmasi tidak ada tombol
+"Gabung X" lagi tapi overlay "Lengkapi Data" tetap muncul kalau datanya sengaja dikosongkan).
+
+### 22.4. Susulan: Nomor Keanggotaan HARUS auto-generate, bukan cuma dari Excel
+
+User, setelah menolak backfill 9 baris `pending` lokal (*"gk perlu itu kan dummy"* — data test,
+tidak perlu dibereskan): *"ketika saya upload data baru nanti harus langsung aktif ya
+anggotanya dgn parameter memiliki nomor id sesuai standard bentuk id yang ditetapkan forum
+tertentu.."* — member baru harus langsung aktif DAN punya nomor ID sesuai format standar forum
+itu, bukan cuma status "active" tanpa ID.
+
+**Root cause**: `commitImportAction` sebelumnya HANYA memakai "Nomor Keanggotaan" apa adanya
+dari kolom Excel (`preview.membershipNumber`) — kalau kolom itu kosong, `membershipNumber`
+tersimpan `null` selamanya, tidak ada mekanisme untuk melengkapinya kemudian. Padahal
+`/gabung` (`joinForumAction`) sudah lama punya pola yang benar: `if (!membershipNumber &&
+config?.membershipNumberFormat) membershipNumber = await generateForumMembershipNumber(...)` —
+generate on-demand pakai format standar tenant (`lib/forum-membership-number.server.ts`, 4
+preset — dikonfigurasi admin di `/app/{slug}/settings/keanggotaan`). Pola ini belum pernah
+diterapkan ke import maupun `createMemberAction`.
+
+**Fix — 3 titik, semuanya reuse `generateForumMembershipNumber()` yang sama**:
+1. `commitImportAction` — format tenant (`membershipNumberFormat`) di-fetch SEKALI di awal
+   fungsi (sejajar `isForumTenant`), lewat `getSetting(tenantClient, "membership_config",
+   "forum")`. Untuk member BARU (insert `tenant_memberships` baru): kalau
+   `preview.membershipNumber` kosong DAN format sudah dikonfigurasi → generate sekarang,
+   `memberId` sudah pasti tersedia di titik ini (member sudah di-insert lebih dulu di
+   transaction yang sama).
+2. `computeMemberMergeCandidate()` (`import-anggota.server.ts`) — diperluas dengan field baru
+   `needsGeneratedMembershipNumber: boolean` (true kalau `tenant_membership` existing belum
+   punya nomor SAMA SEKALI, baik dari Excel maupun DB) — fungsi ini SENGAJA TIDAK generate
+   sendiri (pure-ish, tidak tahu konfigurasi tenant), hanya memberi sinyal ke caller.
+   `commitImportAction`'s blok merge (baris "link-only"/"duplicate") yang benar-benar
+   memanggil generator kalau flag ini `true`.
+3. `createMemberAction` (`members/actions.ts`, admin tambah 1 anggota manual) — form ini SAMA
+   SEKALI tidak punya field untuk isi nomor manual, jadi kalau tenant forum sudah punya format
+   dikonfigurasi, SELALU generate untuk member baru. Bug identik forumStatus (§ 22.3) ditemukan
+   ulang di sini secara konsisten — tanpa field ini, admin tambah manual akan menghasilkan
+   member "active" tapi tanpa ID resmi selamanya, kontradiksi langsung dengan rule yang baru
+   diminta user.
+
+**Diverifikasi EMPIRIS, bukan cuma `tsc`** — memanggil `generateForumMembershipNumber()`
+langsung (fungsi yang SAMA dipakai ketiga titik di atas) terhadap tenant `forcreator` lokal
+(format terkonfirmasi `"year_seq"` via SQL langsung ke `tenant_forcreator.settings`): hasil
+`"2026.00165"` (format benar, tahun berjalan + urutan 5-digit) dan `forum_membership_sequences.
+last_number` terkonfirmasi naik dari 164 → 165 secara atomic. Efek samping DITERIMA (bukan bug)
+— sequence gap dari 1 panggilan verifikasi ini harmless, konsisten prinsip "gap di sequence
+selalu ditoleransi" yang sudah berlaku di seluruh project untuk kasus serupa (`member_number_
+seq`, dll). `computeMemberMergeCandidate()`'s `needsGeneratedMembershipNumber` TIDAK sempat
+diuji dengan kasus `true` — SEMUA baris `tenant_membership` di `forcreator` lokal sudah punya
+nomor dari import awal (0 baris `membership_number IS NULL` ditemukan saat query verifikasi),
+jadi jalur ini murni terverifikasi lewat `tsc` + review logic (identik struktur dengan jalur
+"new insert" yang sudah teruji empiris).
+
+**Verifikasi**: `tsc --noEmit` bersih (`apps/web`) + `bun run build --filter=@jalajogja/web`
+genuine sukses (dev server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB. **Belum
+di-commit/push, belum diverifikasi visual di browser** — user perlu coba import file baru
+(dengan kolom "Nomor Keanggotaan" SENGAJA dikosongkan) ke tenant forum yang sudah punya format
+dikonfigurasi, konfirmasi member barunya langsung dapat ID sesuai format tersebut.
 

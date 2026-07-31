@@ -5,12 +5,14 @@ import { revalidatePath } from "next/cache";
 import {
   db, members, contacts, addresses, socialMedias, memberBusinesses, tenantMemberships,
   importBatches, importBatchRows, generateMemberNumber, forumMembershipSequences,
-  syncAutoTenantMemberships,
+  syncAutoTenantMemberships, createTenantDb, getSetting,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { parseXlsxBuffer, buildPreviewRow, computeMemberMergeCandidate } from "@/lib/import-anggota.server";
 import { extractYearSeqFromMembershipNumber, type ImportRowPreview } from "@/lib/import-anggota-mapping";
+import { generateForumMembershipNumber, type ForumMembershipNumberFormat } from "@/lib/forum-membership-number.server";
+import type { MembershipConfigData } from "../../settings/actions";
 
 // ─── Parse & Preview ─────────────────────────────────────────────────────────
 
@@ -160,6 +162,20 @@ export async function commitImportAction(
   // karena tipe tenant tidak berubah selama satu commit berjalan.
   const isForumTenant = access.tenant.tenantType === "forum";
 
+  // Format nomor keanggotaan forum (dikonfigurasi admin di /app/{slug}/settings/keanggotaan) —
+  // dibaca SEKALI di sini, sama seperti isForumTenant. Kalau baris Excel TIDAK menyediakan
+  // Nomor Keanggotaan sendiri (kolom kosong) dan forum ini sudah punya format standar
+  // dikonfigurasi, member yang jadi aktif lewat import HARUS tetap dapat ID resmi — bukan
+  // dibiarkan null selamanya — pola sama persis /gabung (`joinForumAction`,
+  // `generateForumMembershipNumber()`). Kalau format belum dikonfigurasi, tetap null (forum ini
+  // memang belum pakai penomoran resmi).
+  let membershipNumberFormat: ForumMembershipNumberFormat | null = null;
+  if (isForumTenant) {
+    const tenantClient = createTenantDb(slug);
+    const config = await getSetting<MembershipConfigData>(tenantClient, "membership_config", "forum");
+    membershipNumberFormat = config?.membershipNumberFormat ?? null;
+  }
+
   let inserted = 0;
   let merged = 0;
   let skipped = 0;
@@ -287,12 +303,24 @@ export async function commitImportAction(
             await tx.update(contacts).set(candidate.contactPatch).where(eq(contacts.id, candidate.contactId));
           }
           existingTenantMembershipId = candidate.existingTenantMembershipId;
-          if (existingTenantMembershipId && (candidate.membershipNumberPatch || candidate.activateForumStatus)) {
+          if (existingTenantMembershipId && (
+            candidate.membershipNumberPatch || candidate.activateForumStatus || candidate.needsGeneratedMembershipNumber
+          )) {
             const tmPatch: { membershipNumber?: string; forumStatus?: "active" } = {};
-            if (candidate.membershipNumberPatch) tmPatch.membershipNumber = candidate.membershipNumberPatch;
+            if (candidate.membershipNumberPatch) {
+              tmPatch.membershipNumber = candidate.membershipNumberPatch;
+            } else if (candidate.needsGeneratedMembershipNumber && membershipNumberFormat) {
+              // Member sudah jadi anggota tenant forum ini (baris tenant_membership sudah
+              // ada) tapi belum PERNAH punya Nomor Keanggotaan sama sekali — bukan dari Excel
+              // (kosong) maupun dari DB (belum digenerate/diisi sebelumnya). Generate sekarang
+              // pakai format standar tenant ini, sama seperti member baru.
+              tmPatch.membershipNumber = await generateForumMembershipNumber({
+                tenantId: access.tenant.id, memberId, format: membershipNumberFormat, joinDate: new Date(),
+              });
+            }
             if (candidate.activateForumStatus) tmPatch.forumStatus = "active";
             await tx.update(tenantMemberships).set(tmPatch).where(eq(tenantMemberships.id, existingTenantMembershipId));
-            if (candidate.membershipNumberPatch) writtenMembershipNumber = candidate.membershipNumberPatch;
+            if (tmPatch.membershipNumber) writtenMembershipNumber = tmPatch.membershipNumber;
           }
         }
 
@@ -356,6 +384,16 @@ export async function commitImportAction(
         // forumStatus/membershipNumber. (`isForumTenant` dihitung sekali di scope luar
         // fungsi ini — lihat atas.)
         if (!existingTenantMembershipId) {
+          // Nomor Keanggotaan: pakai apa adanya dari Excel kalau diisi; kalau kosong DAN
+          // forum ini sudah punya format standar dikonfigurasi (membershipNumberFormat) →
+          // generate SEKARANG (pola sama joinForumAction) — member yang jadi aktif via import
+          // tetap harus dapat ID resmi, bukan dibiarkan null selamanya.
+          let membershipNumber = isForumTenant ? preview.membershipNumber : null;
+          if (isForumTenant && !membershipNumber && membershipNumberFormat) {
+            membershipNumber = await generateForumMembershipNumber({
+              tenantId: access.tenant.id, memberId, format: membershipNumberFormat, joinDate: new Date(),
+            });
+          }
           await tx.insert(tenantMemberships).values({
             tenantId: access.tenant.id,
             memberId,
@@ -363,9 +401,9 @@ export async function commitImportAction(
             registeredVia: "import",
             membershipType: access.tenant.tenantType,
             forumStatus: isForumTenant ? "active" : null,
-            membershipNumber: isForumTenant ? preview.membershipNumber : null,
+            membershipNumber,
           });
-          if (isForumTenant && preview.membershipNumber) writtenMembershipNumber = preview.membershipNumber;
+          if (isForumTenant && membershipNumber) writtenMembershipNumber = membershipNumber;
         }
 
         // Auto-sync keanggotaan ke tenant PC IKPM Cabang & Marhalah jika tenant tersebut ada & aktif

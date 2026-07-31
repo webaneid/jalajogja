@@ -240,7 +240,8 @@ export type MemberMergeCandidate = {
   memberPatch: MemberFieldPatch;
   contactId: string | null;
   contactPatch: ContactFieldPatch;
-  membershipNumberPatch: string | null; // non-null = akan di-set ke tenant_membership yang sudah ada
+  membershipNumberPatch: string | null; // non-null = akan di-set ke tenant_membership yang sudah ada (dari Excel)
+  needsGeneratedMembershipNumber: boolean; // true = belum ada nomor SAMA SEKALI (Excel maupun DB) — caller generate via format tenant
   activateForumStatus: boolean; // true = tenant_membership existing masih belum "active", akan di-set jadi aktif
   existingTenantMembershipId: string | null; // null = belum jadi anggota tenant ini
   fieldLabels: string[]; // label Indonesia gabungan, untuk preview/notes
@@ -278,9 +279,19 @@ export async function computeMemberMergeCandidate(
     .where(and(eq(tenantMemberships.memberId, memberId), eq(tenantMemberships.tenantId, tenantId)))
     .limit(1);
 
+  // Nomor Keanggotaan: pakai apa adanya dari Excel kalau diisi (membershipNumberPatch). Kalau
+  // tenant_membership ini belum punya nomor SAMA SEKALI dan Excel juga tidak menyediakan —
+  // beri tahu caller lewat needsGeneratedMembershipNumber supaya di-generate pakai format
+  // standar tenant forum ini (caller yang generate, bukan fungsi ini — generator butuh koneksi
+  // DB terpisah + tahu format konfigurasi tenant, di luar tanggung jawab fungsi murni ini).
   let membershipNumberPatch: string | null = null;
-  if (tmRow && isForumTenant && !tmRow.membershipNumber && incomingMembershipNumber) {
-    membershipNumberPatch = incomingMembershipNumber;
+  let needsGeneratedMembershipNumber = false;
+  if (tmRow && isForumTenant && !tmRow.membershipNumber) {
+    if (incomingMembershipNumber) {
+      membershipNumberPatch = incomingMembershipNumber;
+    } else {
+      needsGeneratedMembershipNumber = true;
+    }
   }
 
   // Member yang sudah pernah jadi anggota forum ini (baris tenant_membership sudah ada) tapi
@@ -292,11 +303,12 @@ export async function computeMemberMergeCandidate(
 
   const fieldLabels = [
     ...Object.keys(memberPatch), ...Object.keys(contactPatch),
-    ...(membershipNumberPatch ? ["membershipNumber"] : []),
+    ...(membershipNumberPatch || needsGeneratedMembershipNumber ? ["membershipNumber"] : []),
   ].map((k) => MERGEABLE_FIELD_LABELS[k] ?? k);
 
   return {
-    memberPatch, contactId, contactPatch, membershipNumberPatch, activateForumStatus,
+    memberPatch, contactId, contactPatch, membershipNumberPatch,
+    needsGeneratedMembershipNumber, activateForumStatus,
     existingTenantMembershipId: tmRow?.id ?? null,
     fieldLabels,
   };
