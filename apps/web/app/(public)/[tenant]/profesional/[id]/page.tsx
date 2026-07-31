@@ -17,7 +17,6 @@ import { renderBody }   from "@/lib/letter-render";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { SocialLinks } from "@/components/ui/social-links";
-import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 
@@ -166,136 +165,251 @@ export default async function ProfesionalDetailPage({ params }: { params: Params
   const descHtml  = row.description ? renderBody(row.description) : null;
   const titleLine = [row.title, row.professionType].filter(Boolean).join(" ");
 
+  const hasOfferedTags = (row.offeredTags ?? []).length > 0;
+  const hasNeededTags  = (row.neededTags ?? []).length > 0;
+
+  const locationText = [regencyName, provinceName].filter(Boolean).join(", ");
+  const hasLocation = Boolean(locationText);
+
+  const hasCredentials = Boolean(row.licenseType || row.licenseNumber);
+
+  const hasInfoFields = Boolean(
+    row.professionCategory || row.employmentType || row.institution ||
+    row.startYear || row.specialization || hasLocation
+  );
+
+  const hasContactInfo = Boolean(phone || whatsapp || email);
+  const hasSocials = Object.keys(socials).length > 0;
+
   return (
-    <div className="py-10">
-      <div className="max-w-4xl mx-auto px-4 space-y-6">
-        {/* Breadcrumb */}
-        <Link href={`/${slug}/profesional`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+    <div className="py-8 md:py-12">
+      <div className="max-w-7xl mx-auto px-4 space-y-6">
+        
+        {/* Breadcrumb Navigation */}
+        <Link href={`/${slug}/profesional`} className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft size={16} />
-          Direktori Profesional
+          Kembali ke Direktori Profesional
         </Link>
 
-        {/* Foto */}
-        {row.coverUrl && (
-          <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 flex items-center justify-center">
-            <ImageWithFallback src={getVariantUrl(row.coverUrl, "large")} alt={titleLine} fill className="object-contain p-6" unoptimized />
-          </div>
-        )}
-
-        {/* Header */}
-        <div>
-          <div className="flex flex-wrap gap-2 mb-2">
-            {row.professionCategory && (
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{row.professionCategory}</span>
-            )}
-            {row.employmentType && (
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground">{row.employmentType}</span>
-            )}
-          </div>
-          <h1 className="text-2xl font-bold">{titleLine}</h1>
-          {row.specialization && (
-            <p className="text-muted-foreground mt-1">{row.specialization}</p>
-          )}
-          {(provinceName || regencyName) && (
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1.5">
-              <MapPin size={14} />
-              {regencyName ? `${regencyName}, ` : ""}{provinceName}
-            </div>
-          )}
-        </div>
-
-        {/* Deskripsi */}
-        {descHtml && (
-          <div
-            className="prose prose-sm max-w-none text-foreground [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5"
-            dangerouslySetInnerHTML={{ __html: descHtml }}
-          />
-        )}
-
-        {/* Kredensial */}
-        {(row.licenseType || row.licenseNumber) && (
-          <div className="rounded-xl border border-border p-5">
-            <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <ShieldCheck size={15} className="text-primary" /> Kredensial
-            </h2>
-            <dl className="space-y-0">
-              <InfoRow label="Jenis Izin" value={row.licenseType} />
-              <InfoRow label="Nomor Izin" value={row.licenseNumber} />
-            </dl>
-          </div>
-        )}
-
-        {/* Konteks Kerja */}
-        <div className="rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <Briefcase size={15} className="text-primary" /> Konteks Kerja
-          </h2>
-          <dl className="space-y-0">
-            <InfoRow label="Institusi / Tempat Praktik" value={row.institution} />
-            <InfoRow label="Mulai Berkarir"              value={row.startYear} />
-            <InfoRow label="Lokasi"                       value={[regencyName, provinceName].filter(Boolean).join(", ")} />
-          </dl>
-          {(row.offeredTags.length > 0 || row.neededTags.length > 0) && (
-            <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
-              {row.offeredTags.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">Menawarkan:</span>
-                  {row.offeredTags.map(t => (
-                    <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">{t}</span>
-                  ))}
-                </div>
-              )}
-              {row.neededTags.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">Membutuhkan:</span>
-                  {row.neededTags.map(t => (
-                    <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{t}</span>
-                  ))}
+        {/* Banner Sampul & Floating Foto Orang (Avatar Pemilik) */}
+        {(() => {
+          const coverImg = getVariantUrl(row.coverUrl, "large");
+          const personPhoto = row.ownerPhoto;
+          if (!coverImg && !personPhoto) return null;
+          return (
+            <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 border border-border">
+              {coverImg ? (
+                <>
+                  <ImageWithFallback src={coverImg} alt={titleLine} fill className="object-cover" unoptimized />
+                  {personPhoto ? (
+                    <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-background shadow-md overflow-hidden z-10 bg-background">
+                      <Image src={personPhoto} alt={row.ownerName} fill className="object-cover" unoptimized />
+                    </div>
+                  ) : (
+                    <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-background shadow-md overflow-hidden z-10 bg-primary/10 flex items-center justify-center text-primary font-bold text-lg sm:text-xl">
+                      {row.ownerName.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex items-center justify-center w-full h-full">
+                  <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-background shadow-md overflow-hidden relative bg-primary/10 flex items-center justify-center text-primary font-bold text-2xl sm:text-3xl">
+                    {personPhoto ? (
+                      <Image src={personPhoto} alt={row.ownerName} fill className="object-cover" unoptimized />
+                    ) : (
+                      row.ownerName.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()
+                    )}
+                  </div>
                 </div>
               )}
             </div>
-          )}
-        </div>
+          );
+        })()}
 
-        <EcosystemTagCrossLinks
-          slug={slug}
-          currentModule="profesional"
-          offeredTags={row.offeredTags}
-          neededTags={row.neededTags}
-        />
+        {/* Grid Tata Letak Utama (Kolom Kiri 2/3 : Kolom Kanan 1/3) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start pt-2">
+          
+          {/* ── KANAN / STICKY SIDEBAR ── */}
+          <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-24 order-2 lg:order-2">
+            
+            {/* Sidebar Card — BORDER SAJA, TANPA SHADOW */}
+            {(hasInfoFields || hasContactInfo || hasSocials) && (
+              <div className="rounded-2xl border border-border bg-card p-6 space-y-6">
+                
+                {/* Informasi Ringkas Profesional */}
+                {hasInfoFields && (
+                  <div>
+                    <h2 className="text-sm font-semibold mb-3 flex items-center gap-2 text-foreground">
+                      <Briefcase size={16} className="text-primary" /> Konteks Karir & Kerja
+                    </h2>
+                    <dl className="space-y-0 text-sm">
+                      <InfoRow label="Institusi / Praktik" value={row.institution} />
+                      <InfoRow label="Kategori Profesi"   value={row.professionCategory} />
+                      <InfoRow label="Jenis Karir"        value={row.professionType} />
+                      <InfoRow label="Tipe Pekerjaan"     value={row.employmentType} />
+                      <InfoRow label="Spesialisasi"       value={row.specialization} />
+                      <InfoRow label="Mulai Berkarir"     value={row.startYear} />
+                      {hasLocation && <InfoRow label="Lokasi" value={locationText} />}
+                    </dl>
+                  </div>
+                )}
 
-        {/* Kontak */}
-        {(phone || whatsapp || email) && (
-          <div className="rounded-xl border border-border p-5 space-y-3">
-            <h2 className="text-sm font-semibold flex items-center gap-2">
-              <Phone size={15} className="text-primary" /> Kontak
-            </h2>
-            <div className="space-y-2 text-sm">
-              {phone    && <a href={`tel:${phone}`} className="flex items-center gap-2 hover:text-primary"><Phone size={14} className="text-muted-foreground" />{phone}</a>}
-              {whatsapp && whatsappWaLink && <a href={whatsappWaLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-primary"><MessageCircle size={14} className="text-muted-foreground" />{whatsapp}</a>}
-              {email    && <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-primary"><Mail size={14} className="text-muted-foreground" />{email}</a>}
-            </div>
-          </div>
-        )}
+                {/* Aksi Kontak Langsung */}
+                {hasContactInfo && (
+                  <div className={hasInfoFields ? "pt-5 border-t border-border space-y-3" : "space-y-3"}>
+                    <h2 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                      <Phone size={16} className="text-primary" /> Hubungi Profesional
+                    </h2>
+                    <div className="space-y-2.5">
+                      {whatsapp && whatsappWaLink && (
+                        <a
+                          href={whatsappWaLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm transition-all"
+                        >
+                          <MessageCircle size={16} /> Hubungi via WhatsApp
+                        </a>
+                      )}
+                      {phone && (
+                        <a
+                          href={`tel:${phone}`}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border hover:border-primary/50 text-foreground font-medium text-sm transition-all"
+                        >
+                          <Phone size={15} className="text-muted-foreground" /> {phone}
+                        </a>
+                      )}
+                      {email && (
+                        <a
+                          href={`mailto:${email}`}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border hover:border-primary/50 text-foreground font-medium text-sm transition-all"
+                        >
+                          <Mail size={15} className="text-muted-foreground" /> {email}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-        {/* Social media */}
-        {Object.keys(socials).length > 0 && <SocialLinks value={socials} />}
+                {/* Social Media Links */}
+                {hasSocials && (
+                  <div className={(hasInfoFields || hasContactInfo) ? "pt-5 border-t border-border space-y-3" : "space-y-3"}>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Media Sosial & Website</p>
+                    <SocialLinks value={socials} />
+                  </div>
+                )}
 
-        {/* Pemilik */}
-        <div className="rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <Users size={15} className="text-primary" /> Anggota IKPM
-          </h2>
-          <div className="flex items-center gap-3">
-            {row.ownerPhoto ? (
-              <Image src={row.ownerPhoto} alt={row.ownerName} width={40} height={40} className="rounded-full object-cover" unoptimized />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-                {row.ownerName.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()}
               </div>
             )}
-            <p className="font-medium text-sm">{row.ownerName}</p>
+
+            {/* Profil Anggota IKPM */}
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                <Users size={15} className="text-primary" /> Anggota IKPM
+              </h2>
+              <div className="flex items-center gap-3">
+                {row.ownerPhoto ? (
+                  <Image src={row.ownerPhoto} alt={row.ownerName} width={44} height={44} className="rounded-full object-cover shrink-0 border border-border" unoptimized />
+                ) : (
+                  <div className="w-11 h-11 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+                    {row.ownerName.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <p className="font-semibold text-sm leading-snug">{row.ownerName}</p>
+                </div>
+              </div>
+            </div>
+
           </div>
+
+          {/* ── KIRI / KONTEN UTAMA ── */}
+          <div className="lg:col-span-2 space-y-6 order-1 lg:order-1">
+            
+            {/* Header Judul Profesional & Badges */}
+            <div className="space-y-3">
+              {(row.professionCategory || row.employmentType) && (
+                <div className="flex flex-wrap gap-2">
+                  {row.professionCategory && (
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{row.professionCategory}</span>
+                  )}
+                  {row.employmentType && (
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground">{row.employmentType}</span>
+                  )}
+                </div>
+              )}
+
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground leading-tight">
+                {titleLine}
+              </h1>
+
+              {row.specialization && (
+                <p className="text-muted-foreground text-base font-medium">{row.specialization}</p>
+              )}
+
+              {hasLocation && (
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground pt-0.5">
+                  <MapPin size={15} className="text-primary shrink-0" />
+                  <span>{locationText}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Deskripsi / Profil Profesional */}
+            {descHtml && (
+              <div className="rounded-2xl border border-border bg-card p-6 space-y-3">
+                <h2 className="text-base font-semibold text-foreground">Profil & Pengalaman</h2>
+                <div
+                  className="prose prose-sm max-w-none text-foreground [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5"
+                  dangerouslySetInnerHTML={{ __html: descHtml }}
+                />
+              </div>
+            )}
+
+            {/* Kredensial & Perizinan */}
+            {hasCredentials && (
+              <div className="rounded-2xl border border-border bg-card p-6 space-y-3">
+                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-primary" /> Kredensial & Perizinan
+                </h2>
+                <dl className="space-y-0 text-sm">
+                  <InfoRow label="Jenis Izin" value={row.licenseType} />
+                  <InfoRow label="Nomor Izin" value={row.licenseNumber} />
+                </dl>
+              </div>
+            )}
+
+            {/* Ekosistem Sinergi (Vertical Listing) */}
+            {(hasOfferedTags || hasNeededTags) && (
+              <div className="rounded-2xl border border-border bg-card p-6 space-y-5">
+                <h2 className="text-base font-semibold text-foreground">Ekosistem Sinergi</h2>
+                <div className="space-y-4">
+                  {hasOfferedTags && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Menawarkan Keahlian / Layanan:</p>
+                      <ul className="space-y-1.5 text-sm text-foreground pl-5 list-disc marker:text-primary font-medium">
+                        {row.offeredTags.map(t => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {hasNeededTags && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Membutuhkan Pasokan / Kemitraan:</p>
+                      <ul className="space-y-1.5 text-sm text-foreground pl-5 list-disc marker:text-muted-foreground font-medium">
+                        {row.neededTags.map(t => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+          </div>
+
         </div>
       </div>
     </div>

@@ -16,7 +16,6 @@ import { displayPhone, toWaDigits } from "@/lib/phone";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { SocialLinks } from "@/components/ui/social-links";
-import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 
@@ -165,147 +164,237 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
   const totalSantri  = (row.santriPutra  ?? 0) + (row.santriPutri  ?? 0);
   const totalAsatidz = (row.asatidz      ?? 0) + (row.asatidzah    ?? 0);
 
+  const hasOfferedTags = (row.offeredTags ?? []).length > 0;
+  const hasNeededTags  = (row.neededTags ?? []).length > 0;
+
+  const locationText = [regencyName, provinceName].filter(Boolean).join(", ");
+  const hasLocation = Boolean(locationText);
+
+  const hasInfoFields = Boolean(
+    row.tahunBerdiri || row.luasArea || row.namaPimpinan ||
+    row.kurikulum || row.jenisPondok || row.modelPendidikan ||
+    row.kategoriSantri || hasLocation
+  );
+
+  const hasContactInfo = Boolean(phone || whatsapp || email);
+  const hasSocials = Object.keys(socials).length > 0;
+
   return (
-    <div className="py-10">
-      <div className="max-w-4xl mx-auto px-4 space-y-6">
-        {/* Breadcrumb */}
-        <Link href={`/${slug}/pesantren`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+    <div className="py-8 md:py-12">
+      <div className="max-w-7xl mx-auto px-4 space-y-6">
+        
+        {/* Breadcrumb Navigation */}
+        <Link href={`/${slug}/pesantren`} className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft size={16} />
-          Direktori Pesantren
+          Kembali ke Direktori Pesantren
         </Link>
 
-        {/* Logo */}
+        {/* Banner Sampul (Pesantren: Tanpa Floating Logo) */}
         {row.coverUrl && (
-          <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 flex items-center justify-center">
-            <ImageWithFallback src={getVariantUrl(row.coverUrl, "large")} alt={row.name} fill className="object-contain p-6" unoptimized />
+          <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted/30 border border-border">
+            <ImageWithFallback
+              src={getVariantUrl(row.coverUrl, "large")}
+              alt={row.name}
+              fill
+              className="object-cover"
+              unoptimized
+            />
           </div>
         )}
 
-        {/* Header */}
-        <div>
-          <div className="flex flex-wrap gap-2 mb-2">
-            {row.kurikulum && (
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{row.kurikulum}</span>
+        {/* Grid Tata Letak Utama (Kolom Kiri 2/3 : Kolom Kanan 1/3) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start pt-2">
+          
+          {/* ── KANAN / STICKY SIDEBAR ── */}
+          <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-24 order-2 lg:order-2">
+            
+            {/* Sidebar Card — BORDER SAJA, TANPA SHADOW */}
+            {(hasInfoFields || hasContactInfo || hasSocials) && (
+              <div className="rounded-2xl border border-border bg-card p-6 space-y-6">
+                
+                {/* Informasi Ringkas Pesantren */}
+                {hasInfoFields && (
+                  <div>
+                    <h2 className="text-sm font-semibold mb-3 flex items-center gap-2 text-foreground">
+                      <BookOpen size={16} className="text-primary" /> Informasi Pesantren
+                    </h2>
+                    <dl className="space-y-0 text-sm">
+                      <InfoRow label="Tahun Berdiri"    value={row.tahunBerdiri} />
+                      <InfoRow label="Luas Area"        value={row.luasArea} />
+                      <InfoRow label="Nama Pimpinan"    value={row.namaPimpinan} />
+                      <InfoRow label="Kurikulum"        value={row.kurikulum} />
+                      <InfoRow label="Jenis Pondok"     value={row.jenisPondok} />
+                      <InfoRow label="Model Pendidikan" value={row.modelPendidikan} />
+                      <InfoRow label="Kategori Santri"  value={row.kategoriSantri} />
+                      {hasLocation && <InfoRow label="Lokasi" value={locationText} />}
+                    </dl>
+                  </div>
+                )}
+
+                {/* Aksi Kontak Langsung */}
+                {hasContactInfo && (
+                  <div className={hasInfoFields ? "pt-5 border-t border-border space-y-3" : "space-y-3"}>
+                    <h2 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                      <Phone size={16} className="text-primary" /> Hubungi Pesantren
+                    </h2>
+                    <div className="space-y-2.5">
+                      {whatsapp && whatsappWaLink && (
+                        <a
+                          href={whatsappWaLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm transition-all"
+                        >
+                          <MessageCircle size={16} /> Hubungi via WhatsApp
+                        </a>
+                      )}
+                      {phone && (
+                        <a
+                          href={`tel:${phone}`}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border hover:border-primary/50 text-foreground font-medium text-sm transition-all"
+                        >
+                          <Phone size={15} className="text-muted-foreground" /> {phone}
+                        </a>
+                      )}
+                      {email && (
+                        <a
+                          href={`mailto:${email}`}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border hover:border-primary/50 text-foreground font-medium text-sm transition-all"
+                        >
+                          <Mail size={15} className="text-muted-foreground" /> {email}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Social Media Links */}
+                {hasSocials && (
+                  <div className={(hasInfoFields || hasContactInfo) ? "pt-5 border-t border-border space-y-3" : "space-y-3"}>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Media Sosial & Website</p>
+                    <SocialLinks value={socials} />
+                  </div>
+                )}
+
+              </div>
             )}
-            {row.kategoriSantri && (
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground">{row.kategoriSantri}</span>
-            )}
-          </div>
-          <h1 className="text-2xl font-bold">{row.name}</h1>
-          {(provinceName || regencyName) && (
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1.5">
-              <MapPin size={14} />
-              {regencyName ? `${regencyName}, ` : ""}{provinceName}
+
+            {/* Pemilik / Pengelola IKPM */}
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
+                <Users size={15} className="text-primary" /> Pemilik / Pengelola
+              </h2>
+              <div className="flex items-center gap-3">
+                {row.ownerPhoto ? (
+                  <Image src={row.ownerPhoto} alt={row.ownerName} width={44} height={44} className="rounded-full object-cover shrink-0 border border-border" unoptimized />
+                ) : (
+                  <div className="w-11 h-11 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+                    {row.ownerName.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <p className="font-semibold text-sm leading-snug">{row.ownerName}</p>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Statistik ringkas */}
-        {(totalSantri > 0 || totalAsatidz > 0) && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {row.santriPutra !== null && row.santriPutra !== undefined && (
-              <div className="rounded-xl border border-border p-4 text-center">
-                <p className="text-2xl font-bold">{row.santriPutra.toLocaleString("id-ID")}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Santri Putra</p>
-              </div>
-            )}
-            {row.santriPutri !== null && row.santriPutri !== undefined && (
-              <div className="rounded-xl border border-border p-4 text-center">
-                <p className="text-2xl font-bold">{row.santriPutri.toLocaleString("id-ID")}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Santri Putri</p>
-              </div>
-            )}
-            {row.asatidz !== null && row.asatidz !== undefined && (
-              <div className="rounded-xl border border-border p-4 text-center">
-                <p className="text-2xl font-bold">{row.asatidz.toLocaleString("id-ID")}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Asatidz (Putra)</p>
-              </div>
-            )}
-            {row.asatidzah !== null && row.asatidzah !== undefined && (
-              <div className="rounded-xl border border-border p-4 text-center">
-                <p className="text-2xl font-bold">{row.asatidzah.toLocaleString("id-ID")}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Asatidzah (Putri)</p>
-              </div>
-            )}
           </div>
-        )}
 
-        {/* Detail info */}
-        <div className="rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <BookOpen size={15} className="text-primary" /> Informasi Pesantren
-          </h2>
-          <dl className="space-y-0">
-            <InfoRow label="Tahun Berdiri"    value={row.tahunBerdiri} />
-            <InfoRow label="Luas Area"        value={row.luasArea} />
-            <InfoRow label="Nama Pimpinan"    value={row.namaPimpinan} />
-            <InfoRow label="Kurikulum"        value={row.kurikulum} />
-            <InfoRow label="Jenis Pondok"     value={row.jenisPondok} />
-            <InfoRow label="Model Pendidikan" value={row.modelPendidikan} />
-            <InfoRow label="Kategori Santri"  value={row.kategoriSantri} />
-            <InfoRow label="Lokasi"           value={[regencyName, provinceName].filter(Boolean).join(", ")} />
-          </dl>
-          {(row.offeredTags.length > 0 || row.neededTags.length > 0) && (
-            <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
-              {row.offeredTags.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">Menawarkan:</span>
-                  {row.offeredTags.map(t => (
-                    <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">{t}</span>
-                  ))}
+          {/* ── KIRI / KONTEN UTAMA ── */}
+          <div className="lg:col-span-2 space-y-6 order-1 lg:order-1">
+            
+            {/* Header Nama Pesantren & Badges */}
+            <div className="space-y-3">
+              {(row.kurikulum || row.kategoriSantri || row.jenisPondok || row.modelPendidikan) && (
+                <div className="flex flex-wrap gap-2">
+                  {row.kurikulum && (
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{row.kurikulum}</span>
+                  )}
+                  {row.kategoriSantri && (
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground">{row.kategoriSantri}</span>
+                  )}
+                  {row.jenisPondok && (
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground">{row.jenisPondok}</span>
+                  )}
+                  {row.modelPendidikan && (
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground">{row.modelPendidikan}</span>
+                  )}
                 </div>
               )}
-              {row.neededTags.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">Membutuhkan:</span>
-                  {row.neededTags.map(t => (
-                    <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{t}</span>
-                  ))}
+
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground leading-tight">
+                {row.name}
+              </h1>
+
+              {hasLocation && (
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground pt-0.5">
+                  <MapPin size={15} className="text-primary shrink-0" />
+                  <span>{locationText}</span>
                 </div>
               )}
             </div>
-          )}
-        </div>
 
-        <EcosystemTagCrossLinks
-          slug={slug}
-          currentModule="pesantren"
-          offeredTags={row.offeredTags}
-          neededTags={row.neededTags}
-        />
-
-        {/* Kontak */}
-        {(phone || whatsapp || email) && (
-          <div className="rounded-xl border border-border p-5 space-y-3">
-            <h2 className="text-sm font-semibold flex items-center gap-2">
-              <Phone size={15} className="text-primary" /> Kontak Pesantren
-            </h2>
-            <div className="space-y-2 text-sm">
-              {phone    && <a href={`tel:${phone}`}    className="flex items-center gap-2 hover:text-primary"><Phone size={14} className="text-muted-foreground" />{phone}</a>}
-              {whatsapp && whatsappWaLink && <a href={whatsappWaLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-primary"><MessageCircle size={14} className="text-muted-foreground" />{whatsapp}</a>}
-              {email    && <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-primary"><Mail size={14} className="text-muted-foreground" />{email}</a>}
-            </div>
-          </div>
-        )}
-
-        {/* Social media */}
-        {Object.keys(socials).length > 0 && <SocialLinks value={socials} />}
-
-        {/* Pemilik */}
-        <div className="rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <Users size={15} className="text-primary" /> Pemilik / Pengelola IKPM
-          </h2>
-          <div className="flex items-center gap-3">
-            {row.ownerPhoto ? (
-              <Image src={row.ownerPhoto} alt={row.ownerName} width={40} height={40} className="rounded-full object-cover" unoptimized />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-                {row.ownerName.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase()}
+            {/* Statistik Ringkas Santri & Asatidz */}
+            {(totalSantri > 0 || totalAsatidz > 0) && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {row.santriPutra !== null && row.santriPutra !== undefined && (
+                  <div className="rounded-2xl border border-border bg-card p-4 text-center">
+                    <p className="text-2xl font-bold text-foreground">{row.santriPutra.toLocaleString("id-ID")}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Santri Putra</p>
+                  </div>
+                )}
+                {row.santriPutri !== null && row.santriPutri !== undefined && (
+                  <div className="rounded-2xl border border-border bg-card p-4 text-center">
+                    <p className="text-2xl font-bold text-foreground">{row.santriPutri.toLocaleString("id-ID")}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Santri Putri</p>
+                  </div>
+                )}
+                {row.asatidz !== null && row.asatidz !== undefined && (
+                  <div className="rounded-2xl border border-border bg-card p-4 text-center">
+                    <p className="text-2xl font-bold text-foreground">{row.asatidz.toLocaleString("id-ID")}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Asatidz (Putra)</p>
+                  </div>
+                )}
+                {row.asatidzah !== null && row.asatidzah !== undefined && (
+                  <div className="rounded-2xl border border-border bg-card p-4 text-center">
+                    <p className="text-2xl font-bold text-foreground">{row.asatidzah.toLocaleString("id-ID")}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Asatidzah (Putri)</p>
+                  </div>
+                )}
               </div>
             )}
-            <p className="font-medium text-sm">{row.ownerName}</p>
+
+            {/* Ekosistem Sinergi (Vertical Listing) */}
+            {(hasOfferedTags || hasNeededTags) && (
+              <div className="rounded-2xl border border-border bg-card p-6 space-y-5">
+                <h2 className="text-base font-semibold text-foreground">Ekosistem Sinergi</h2>
+                <div className="space-y-4">
+                  {hasOfferedTags && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Menawarkan Program / Layanan:</p>
+                      <ul className="space-y-1.5 text-sm text-foreground pl-5 list-disc marker:text-primary font-medium">
+                        {row.offeredTags.map(t => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {hasNeededTags && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Membutuhkan Pasokan / Kemitraan:</p>
+                      <ul className="space-y-1.5 text-sm text-foreground pl-5 list-disc marker:text-muted-foreground font-medium">
+                        {row.neededTags.map(t => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
           </div>
+
         </div>
       </div>
     </div>
