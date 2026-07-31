@@ -42,7 +42,7 @@ const EXAMPLE_ROW = [
   "081234567890", "081234567890", "contoh@email.com",
   "Jalan Contoh No. 1", "", "Kecamatan Contoh", "Kabupaten Contoh", "Jawa Barat", "", "",
   "Nama Usaha Contoh", "Deskripsi singkat usaha",
-  "Jasa", "Konsumsi & Ritel", "Perdagangan Jasa & Umum, Kuliner & Resto",
+  "Jasa", "Perdagangan, Ritel & F&B", "Kuliner Modern & F&B, Toko Ritel & Minimarket",
   "Produk/jasa yang ditawarkan", "Merk Contoh",
   "Belum Memiliki Legalitas", "Direktur", "1-4", "Tidak Ada", "Dibawah 500jt",
   "Jalan Usaha No. 1", "Kabupaten Contoh", "Jawa Barat", "", "", "", "", "", "", "",
