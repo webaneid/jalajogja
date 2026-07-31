@@ -14588,11 +14588,10 @@ DAN joined → tidak ada overlay sama sekali (tujuan utama fix).
 
 `tsc --noEmit` bersih (`apps/web`) + `bun run build --filter=@jalajogja/web` genuine sukses (dev
 server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB (kolom `forum_status`/
-`membership_type` sudah ada sejak lama). **Sudah di-commit+push (template EXAMPLE_ROW fix,
-commit `aa29cd1`). Auto-join + panduan grouping BELUM di-commit** — menunggu checkpoint
-berikutnya. **Belum diverifikasi visual di browser, belum dijalankan backfill di data lokal
-`forcreator`** (9 baris "pending" ditemukan saat verifikasi, sengaja tidak dimutasi otomatis —
-tunggu konfirmasi user).
+`membership_type` sudah ada sejak lama). **Sudah di-commit+push** — template EXAMPLE_ROW fix
+(`aa29cd1`) DAN auto-join+panduan grouping (`adbca7e`). **Belum dijalankan di VPS, belum
+diverifikasi visual di browser, belum dijalankan backfill di data lokal `forcreator`** (9 baris
+"pending" ditemukan saat verifikasi, sengaja tidak dimutasi otomatis — tunggu konfirmasi user).
 
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Template Excel Import + Auto-Join Forum Saat Admin Menaruh Data
@@ -14614,10 +14613,10 @@ tunggu konfirmasi user).
   yang masih "pending" (diverifikasi empiris read-only, hasil `true` sesuai ekspektasi). Plus
   restrukturisasi `akun/page.tsx`'s overlay logic — eligibility SEKARANG SELALU dicek untuk
   forum (bukan cuma saat belum joined), supaya member auto-joined dengan data bolong tetap
-  diminta melengkapi. `tsc`+build genuine bersih, dev server direstart. **Auto-join + panduan
-  grouping BELUM di-commit/push** (cuma fix EXAMPLE_ROW yang sudah). **Belum diverifikasi
-  visual di browser, belum dijalankan backfill di data lokal `forcreator`** (9 baris "pending"
-  ditemukan, sengaja tidak dimutasi otomatis — tunggu konfirmasi user).
+  diminta melengkapi. `tsc`+build genuine bersih, dev server direstart. **Sudah di-commit+push**
+  (`aa29cd1` fix EXAMPLE_ROW + `adbca7e` auto-join+panduan grouping). **Belum dijalankan di VPS,
+  belum diverifikasi visual di browser, belum dijalankan backfill di data lokal `forcreator`**
+  (9 baris "pending" ditemukan, sengaja tidak dimutasi otomatis — tunggu konfirmasi user).
 - Sesi sebelumnya: **Mobile Single-Page Shell diperluas ke Usaha/Pesantren/Profesional**
   (lihat lesson `[2026-07-31]` "Mobile Single-Page Shell Diperluas" di atas, detail lengkap
   `docs/arsitektur-mobile-shell.md` § 2.1 + § 10) — user minta halaman detail 3 modul dibuat
