@@ -93,6 +93,7 @@ export type EventFormProps = {
       saleEndsAt?:        string | null;
       sortOrder:          number;
       requiresMembership: boolean;
+      requiresRegistration: boolean;
     }>;
     seo: SeoValues;
   };
@@ -382,6 +383,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
       saleStartsAt:       t.saleStartsAt ?? null,
       saleEndsAt:         t.saleEndsAt   ?? null,
       requiresMembership: t.requiresMembership ?? false,
+      requiresRegistration: t.requiresRegistration ?? false,
       _key:               nextKey(),
       _expanded:          false,
       _isGratis:          (t.price ?? 0) === 0,
@@ -435,6 +437,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
         saleEndsAt:         null,
         sortOrder:          order,
         requiresMembership: false,
+        requiresRegistration: false,
       },
     ]);
   }
@@ -496,6 +499,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
         saleEndsAt:         t.saleEndsAt   ? localDatetimeToUtcIso(t.saleEndsAt,   tenantTimezone) : null,
         sortOrder:          i,
         requiresMembership: t.requiresMembership,
+        requiresRegistration: t.requiresRegistration,
       })),
       metaTitle:     seo.metaTitle     || null,
       metaDesc:      seo.metaDesc      || null,
@@ -1067,9 +1071,16 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
 
                       <ToggleRow
                         label="Wajib Anggota Terdaftar"
-                        hint="Hanya anggota terdaftar di cabang ini yang dapat memesan tiket ini."
+                        hint="Hanya anggota terdaftar di cabang/tenant ini yang dapat memesan tiket ini."
                         checked={ticket.requiresMembership}
                         onChange={(v) => updateTicket(ticket._key, { requiresMembership: v })}
+                      />
+
+                      <ToggleRow
+                        label="Wajib Terdaftar (Umum)"
+                        hint="Independen dari toggle di atas — tidak peduli anggota cabang mana pun. Siapa saja (anggota IKPM maupun akun publik) boleh memesan, ASAL sudah login dan data pribadinya lengkap."
+                        checked={ticket.requiresRegistration}
+                        onChange={(v) => updateTicket(ticket._key, { requiresRegistration: v })}
                       />
                     </div>
                   )}

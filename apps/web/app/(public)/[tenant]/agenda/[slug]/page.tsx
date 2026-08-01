@@ -7,7 +7,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { CalendarDays, MapPin, Globe, Building2, Navigation, ExternalLink, Video, Ticket, CheckCircle2 } from "lucide-react";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
-import { EventRegisterForm } from "@/components/event/event-register-form";
+import { EventRegisterForm, type RegistrationStatus } from "@/components/event/event-register-form";
 import type { CustomFormField } from "@/lib/event-custom-form";
 import { EventDetailTabs, type TicketStat, type AttendeeStatsData } from "@/components/event/event-detail-tabs";
 import { renderBody } from "@/lib/letter-render";
@@ -21,7 +21,7 @@ import { SingleFeatureImage } from "@/components/website/public/single/single-fe
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 import { EventMobileTicketBar } from "@/components/event/event-mobile-ticket-bar";
 import { getTenantTimezone, tzLabel } from "@/lib/tenant-timezone.server";
-import { checkMemberEligibility } from "@/lib/member-eligibility";
+import { checkGeneralRegistrationEligibility } from "@/lib/member-eligibility";
 
 type BankAccount = {
   id: string;
@@ -466,6 +466,7 @@ export default async function PublicEventPage({
     description:        t.description,
     usedCount:          ticketCountMap.get(t.id) ?? 0,
     requiresMembership: t.requiresMembership,
+    requiresRegistration: t.requiresRegistration,
   }));
 
   // Pre-fill data peserta dari session + cek sudah terdaftar
@@ -482,7 +483,8 @@ export default async function PublicEventPage({
     attendeeEmail:      string | null;
     ticketId:           string | null;
   } | null = null;
-  let resolvedMemberId: string | null = null;
+  let resolvedMemberId:  string | null = null;
+  let resolvedProfileId: string | null = null;
 
   if (session?.user?.id) {
     const [member] = await db
@@ -508,11 +510,12 @@ export default async function PublicEventPage({
     // Fallback: akun publik (profiles) — phone tersimpan langsung di profiles
     if (!resolvedMemberId) {
       const [profile] = await db
-        .select({ name: profiles.name, phone: profiles.phone, whatsapp: profiles.whatsapp, email: profiles.email })
+        .select({ id: profiles.id, name: profiles.name, phone: profiles.phone, whatsapp: profiles.whatsapp, email: profiles.email })
         .from(profiles)
         .where(eq(profiles.betterAuthUserId, session.user.id))
         .limit(1);
       if (profile) {
+        resolvedProfileId = profile.id;
         if (!defaultAttendeeName)  defaultAttendeeName  = profile.name ?? "";
         if (!defaultAttendeePhone) defaultAttendeePhone = profile.whatsapp ?? profile.phone ?? "";
         if (!defaultAttendeeEmail) defaultAttendeeEmail = profile.email ?? "";
@@ -550,12 +553,9 @@ export default async function PublicEventPage({
     }
   }
 
-  // Cek apakah user terdaftar sebagai anggota cabang ini DAN data pribadinya lengkap —
-  // dua-duanya wajib, konsisten dengan guard server-side di registerForEventAction/
-  // addEventTicketToCartAction (event/actions.ts). Terdaftar saja tidak cukup: ada anggota
-  // yang tenant_memberships.status="active" (mis. hasil import massal) tapi belum pernah
-  // isi data pribadi sama sekali. "directory" (Usaha/Pesantren/Profesional) TIDAK ikut
-  // disyaratkan di sini (enabledDirectoryModules=[]) — cuma kelengkapan data pribadi.
+  // Cek apakah user terdaftar sebagai anggota cabang ini (Toggle A — "Wajib Anggota
+  // Terdaftar", murni tenant_memberships, TIDAK peduli kelengkapan data pribadi — itu
+  // urusan Toggle B "Wajib Terdaftar (Umum)", lihat currentUserIsRegistered di bawah).
   let currentUserIsEnrolled = false;
   if (resolvedMemberId && tenant) {
     const [membership] = await db
@@ -567,11 +567,17 @@ export default async function PublicEventPage({
         sql`${tenantMemberships.status} IN ('active', 'alumni')`,
       ))
       .limit(1);
-    if (membership) {
-      const eligibility = await checkMemberEligibility(resolvedMemberId, []);
-      currentUserIsEnrolled = eligibility.eligible;
-    }
+    currentUserIsEnrolled = !!membership;
   }
+
+  // Status kelayakan Toggle B "Wajib Terdaftar (Umum)" — independen tenant membership,
+  // berlaku anggota IKPM maupun akun publik. Lihat lib/member-eligibility.ts.
+  const genEligibility = await checkGeneralRegistrationEligibility(resolvedMemberId, resolvedProfileId);
+  const registrationStatus: RegistrationStatus = {
+    hasAccount:  genEligibility.hasAccount,
+    eligible:    genEligibility.eligible,
+    accountType: resolvedMemberId ? "member" : resolvedProfileId ? "profile" : "none",
+  };
 
   // Jika sudah terdaftar dan masih pending → cari invoice yang belum lunas
   let pendingInvoiceId: string | null = null;
@@ -845,6 +851,7 @@ export default async function PublicEventPage({
                   qrisAccounts={qrisAccounts}
                   hasPaidTicket={hasPaidTicket}
                   currentUserIsEnrolled={currentUserIsEnrolled}
+                  registrationStatus={registrationStatus}
                   donationPrompt={donationPrompt}
                   linkedProductId={event.linkedProductId ?? null}
                   linkedProductTitle={linkedProductTitle}

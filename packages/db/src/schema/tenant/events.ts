@@ -149,6 +149,12 @@ export function createEventTicketsTable(s: ReturnType<typeof pgSchema>) {
 
     // Akses tiket — jika true, hanya anggota terdaftar di tenant ini yang bisa daftar
     requiresMembership: boolean("requires_membership").notNull().default(false),
+    // Akses tiket — jika true, WAJIB login (anggota IKPM ATAU akun publik, tidak peduli
+    // tenant membership) DAN data pribadinya lengkap (checkMemberEligibility untuk anggota,
+    // whatsapp+alamat untuk akun publik). Independen dari requiresMembership — dua toggle
+    // ini bisa aktif salah satu, keduanya, atau tidak sama sekali. Lihat
+    // docs/arsitektur-event.md § "Wajib Terdaftar (Umum)".
+    requiresRegistration: boolean("requires_registration").notNull().default(false),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   }, (t) => ({

@@ -11,7 +11,7 @@ import { normalizePhone } from "@/lib/phone";
 import type { CustomFormField } from "@/lib/event-custom-form";
 import { notifyWa, waAppUrl } from "@/lib/wa-notify";
 import { getTenantTimezone, formatInTz, tzLabel, todayInTz } from "@/lib/tenant-timezone.server";
-import { checkMemberEligibility } from "@/lib/member-eligibility";
+import { checkGeneralRegistrationEligibility } from "@/lib/member-eligibility";
 
 function formatEventDateWib(date: Date | null, timezone: string): string {
   if (!date) return "-";
@@ -38,6 +38,7 @@ export type TicketInput = {
   saleEndsAt?:          string | null;
   sortOrder:            number;
   requiresMembership:   boolean;
+  requiresRegistration: boolean;
 };
 
 export type EventData = {
@@ -170,6 +171,7 @@ async function syncTickets(
         saleEndsAt:           t.saleEndsAt   ? new Date(t.saleEndsAt)   : null,
         sortOrder:            t.sortOrder,
         requiresMembership:   t.requiresMembership,
+        requiresRegistration: t.requiresRegistration,
       })
       .where(eq(schema.eventTickets.id, t.id!));
   }
@@ -189,6 +191,7 @@ async function syncTickets(
         saleEndsAt:           t.saleEndsAt   ? new Date(t.saleEndsAt)   : null,
         sortOrder:            t.sortOrder,
         requiresMembership:   t.requiresMembership,
+        requiresRegistration: t.requiresRegistration,
       }))
     );
   }
@@ -656,15 +659,17 @@ export async function registerForEventAction(
       if (!membership)
         return { success: false, error: "Tiket ini hanya untuk anggota terdaftar cabang ini. Lengkapi data keanggotaan Anda terlebih dahulu." };
     }
+  }
 
-    // Guard tambahan: terdaftar saja (tenant_memberships) tidak cukup — data pribadi WAJIB
-    // lengkap juga (semua tipe tenant, bukan cuma forum). "directory" (Usaha/Pesantren/
-    // Profesional) dan riwayat pendidikan SENGAJA tidak ikut disyaratkan di sini — kirim
-    // enabledDirectoryModules=[] supaya checkMemberEligibility skip total pengecekan
-    // "directory" (dan 3 query sub-modul-nya), murni cek kelengkapan data pribadi.
-    const eligibility = await checkMemberEligibility(resolvedMemberId, []);
-    if (!eligibility.eligible)
-      return { success: false, error: "Tiket ini hanya untuk anggota yang data pribadinya sudah lengkap. Silakan lengkapi data diri Anda di halaman Akun terlebih dahulu." };
+  // Guard: tiket wajib terdaftar (umum) — TIDAK peduli tenant membership, beda dari
+  // requiresMembership di atas. Berlaku anggota IKPM maupun akun publik, keduanya wajib
+  // login DAN data pribadinya lengkap. Lihat lib/member-eligibility.ts.
+  if (ticket.requiresRegistration) {
+    const genEligibility = await checkGeneralRegistrationEligibility(resolvedMemberId, resolvedProfileId);
+    if (!genEligibility.hasAccount)
+      return { success: false, error: "Tiket ini mengharuskan Anda login/daftar akun terlebih dahulu." };
+    if (!genEligibility.eligible)
+      return { success: false, error: "Tiket ini mengharuskan data pribadi Anda lengkap. Silakan lengkapi data diri Anda di halaman Akun terlebih dahulu." };
   }
 
   try {
@@ -838,8 +843,11 @@ export async function addEventTicketToCartAction(
   const tenantDb = createTenantDb(slug);
   const { db, schema } = tenantDb;
 
-  // Resolve identity (session) untuk cek keanggotaan
-  let resolvedMemberId: string | null = null;
+  // Resolve identity (session) untuk cek keanggotaan — member DULU, fallback akun publik
+  // (persis pola registerForEventAction) supaya Toggle B (requiresRegistration) bisa
+  // menerima kedua jenis identitas, bukan cuma anggota IKPM.
+  let resolvedMemberId:  string | null = null;
+  let resolvedProfileId: string | null = null;
   const session = await auth.api.getSession({ headers: await headers() });
   if (session?.user?.id) {
     const [member] = await publicDb
@@ -847,7 +855,16 @@ export async function addEventTicketToCartAction(
       .from(members)
       .where(eq(members.betterAuthUserId, session.user.id))
       .limit(1);
-    if (member) resolvedMemberId = member.id;
+    if (member) {
+      resolvedMemberId = member.id;
+    } else {
+      const [profile] = await publicDb
+        .select({ id: profiles.id })
+        .from(profiles)
+        .where(eq(profiles.betterAuthUserId, session.user.id))
+        .limit(1);
+      if (profile) resolvedProfileId = profile.id;
+    }
   }
 
   // Validasi event masih published
@@ -900,11 +917,15 @@ export async function addEventTicketToCartAction(
       if (!membership)
         return { success: false, error: "Tiket ini hanya untuk anggota terdaftar cabang ini." };
     }
+  }
 
-    // Guard sama seperti registerForEventAction — lihat komentar di sana.
-    const eligibility = await checkMemberEligibility(resolvedMemberId, []);
-    if (!eligibility.eligible)
-      return { success: false, error: "Tiket ini hanya untuk anggota yang data pribadinya sudah lengkap. Silakan lengkapi data diri Anda di halaman Akun terlebih dahulu." };
+  // Guard: tiket wajib terdaftar (umum) — lihat komentar lengkap di registerForEventAction.
+  if (ticket.requiresRegistration) {
+    const genEligibility = await checkGeneralRegistrationEligibility(resolvedMemberId, resolvedProfileId);
+    if (!genEligibility.hasAccount)
+      return { success: false, error: "Tiket ini mengharuskan Anda login/daftar akun terlebih dahulu." };
+    if (!genEligibility.eligible)
+      return { success: false, error: "Tiket ini mengharuskan data pribadi Anda lengkap. Silakan lengkapi data diri Anda di halaman Akun terlebih dahulu." };
   }
 
   // Soft quota check (tanpa lock — lock final ada di checkout)

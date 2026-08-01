@@ -792,7 +792,8 @@ export async function createTenantSchemaInDb(
         is_active      BOOLEAN       NOT NULL DEFAULT true,
         sale_starts_at      TIMESTAMPTZ,
         sale_ends_at        TIMESTAMPTZ,
-        requires_membership BOOLEAN       NOT NULL DEFAULT false,
+        requires_membership   BOOLEAN     NOT NULL DEFAULT false,
+        requires_registration BOOLEAN     NOT NULL DEFAULT false,
         created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
       )
     `));

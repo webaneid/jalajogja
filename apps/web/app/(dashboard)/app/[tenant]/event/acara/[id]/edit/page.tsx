@@ -106,6 +106,7 @@ export default async function AcaraEditPage({
             : null,
           sortOrder:          t.sortOrder,
           requiresMembership: t.requiresMembership,
+          requiresRegistration: t.requiresRegistration,
         })),
         seo: {
           metaTitle:      event.metaTitle     ?? "",

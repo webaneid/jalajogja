@@ -1,5 +1,6 @@
 import {
   db, members, contacts, addresses, memberBusinesses, memberOwnedPesantren, memberProfessionals,
+  profiles,
 } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import { ALL_EKOSISTEM_MODULES, type EkosistemModule } from "./ekosistem-modules";
@@ -216,6 +217,54 @@ async function checkProfesionalComplete(memberId: string): Promise<ModuleCheck> 
       r.contactWhatsapp
     )),
   };
+}
+
+// ─── Kelayakan akun PUBLIK (public.profiles, non-anggota IKPM) ───────────────────
+// Dipakai KHUSUS untuk Toggle B "Wajib Terdaftar (Umum)" di modul Event (lihat
+// checkGeneralRegistrationEligibility di bawah) — TIDAK dipakai /gabung (forum selalu
+// mensyaratkan identitas anggota IKPM, akun publik tidak relevan di sana).
+//
+// name/email/phone SUDAH NOT NULL di skema profiles (dijamin sejak daftar akun), jadi
+// TIDAK dicek ulang di sini — standar "lengkap" untuk akun publik cuma 2 field TAMBAHAN
+// yang secara skema opsional: whatsapp dan alamat (sampai kecamatan, sama seperti bar
+// yang berlaku untuk anggota IKPM). Form self-service `/akun/data` sudah wajibkan alamat
+// sampai kecamatan, tapi whatsapp bisa kosong (checkbox "sama dengan HP" kalau dicentang
+// auto-isi, tapi kalau tidak dan field dikosongkan tetap bisa null) — dicek ulang di sini
+// langsung ke DB, bukan percaya form sudah pasti benar.
+async function checkProfileComplete(profileId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ whatsapp: profiles.whatsapp, districtId: profiles.districtId })
+    .from(profiles)
+    .where(eq(profiles.id, profileId))
+    .limit(1);
+  return !!(row?.whatsapp && row?.districtId);
+}
+
+export type GeneralRegistrationEligibility = {
+  hasAccount: boolean;   // false = tamu murni, tidak login sama sekali
+  eligible:   boolean;   // punya akun DAN datanya lengkap (selalu false kalau hasAccount=false)
+};
+
+/**
+ * Kelayakan generik untuk Toggle B "Wajib Terdaftar (Umum)" — TIDAK peduli tenant
+ * membership sama sekali (beda dari Toggle A "Wajib Anggota Terdaftar"). Berlaku untuk
+ * KEDUA jenis identitas: anggota IKPM (public.members) ATAU akun publik (public.profiles).
+ * "directory" (Usaha/Pesantren/Profesional) TIDAK ikut disyaratkan (kirim
+ * enabledDirectoryModules=[] ke checkMemberEligibility untuk cabang member).
+ */
+export async function checkGeneralRegistrationEligibility(
+  memberId:  string | null,
+  profileId: string | null,
+): Promise<GeneralRegistrationEligibility> {
+  if (memberId) {
+    const result = await checkMemberEligibility(memberId, []);
+    return { hasAccount: true, eligible: result.eligible };
+  }
+  if (profileId) {
+    const eligible = await checkProfileComplete(profileId);
+    return { hasAccount: true, eligible };
+  }
+  return { hasAccount: false, eligible: false };
 }
 
 // Label Bahasa Indonesia per field — dipakai UI (overlay + halaman /gabung) untuk

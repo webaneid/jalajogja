@@ -20,7 +20,62 @@ type TicketInfo = {
   description:        string | null | undefined;
   usedCount?:         number;  // jumlah pendaftaran aktif (untuk tampil sisa kuota di form)
   requiresMembership: boolean;
+  requiresRegistration: boolean;
 };
+
+// Status kelayakan "Wajib Terdaftar (Umum)" — independen dari currentUserIsEnrolled
+// (yang murni untuk Toggle A "Wajib Anggota Terdaftar"). Dikomputasi server-side via
+// checkGeneralRegistrationEligibility (lib/member-eligibility.ts).
+export type RegistrationStatus = {
+  hasAccount:  boolean; // sudah login (anggota IKPM ATAU akun publik)
+  eligible:    boolean; // hasAccount=true DAN data pribadinya lengkap
+  accountType: "member" | "profile" | "none";
+};
+
+type TicketLock = {
+  locked:   boolean;
+  badge:    string | null;
+  message:  string | null;
+  ctaLabel: string | null;
+  ctaHref:  string | null;
+};
+
+function completionHref(baseUrl: string, accountType: RegistrationStatus["accountType"]): string {
+  return accountType === "profile" ? `${baseUrl}/akun/data` : `${baseUrl}/akun/lengkapi`;
+}
+
+// Satu ticket bisa terkunci oleh salah satu dari DUA toggle independen — Toggle A dicek
+// duluan (pesan lebih spesifik: "anggota cabang ini"), baru Toggle B kalau Toggle A lolos.
+function getTicketLock(
+  t: TicketInfo, baseUrl: string,
+  currentUserIsEnrolled: boolean, reg: RegistrationStatus,
+): TicketLock {
+  if (t.requiresMembership && !currentUserIsEnrolled) {
+    return {
+      locked: true, badge: "Anggota",
+      message:  "Tiket ini khusus untuk anggota terdaftar cabang ini.",
+      ctaLabel: "Lengkapi Keanggotaan →",
+      ctaHref:  `${baseUrl}/akun/lengkapi`,
+    };
+  }
+  if (t.requiresRegistration && !(reg.hasAccount && reg.eligible)) {
+    if (!reg.hasAccount) {
+      return {
+        locked: true, badge: "Wajib Login",
+        message:  "Tiket ini mengharuskan Anda login/daftar akun terlebih dahulu.",
+        ctaLabel: "Login / Daftar →",
+        ctaHref:  `${baseUrl}/login`,
+      };
+    }
+    return {
+      locked: true, badge: "Wajib Data",
+      message:  "Tiket ini mengharuskan data pribadi Anda lengkap.",
+      ctaLabel: "Lengkapi Data →",
+      ctaHref:  completionHref(baseUrl, reg.accountType),
+    };
+  }
+  return { locked: false, badge: null, message: null, ctaLabel: null, ctaHref: null };
+}
 
 type BankAccount = {
   id:            string;
@@ -45,8 +100,10 @@ export type EventRegisterFormProps = {
   banks:              BankAccount[];
   qrisAccounts:       QrisAccount[];
   hasPaidTicket:      boolean;
-  // Apakah user yang sedang login sudah terdaftar sebagai anggota di cabang ini
+  // Apakah user yang sedang login sudah terdaftar sebagai anggota di cabang ini (Toggle A)
   currentUserIsEnrolled: boolean;
+  // Status kelayakan Toggle B "Wajib Terdaftar (Umum)"
+  registrationStatus: RegistrationStatus;
   // Donation prompt (opsional — hanya jika admin aktifkan + ada linkedCampaignId)
   donationPrompt?:    {
     campaignId:    string;
@@ -84,6 +141,7 @@ export function EventRegisterForm({
   qrisAccounts,
   hasPaidTicket,
   currentUserIsEnrolled,
+  registrationStatus,
   donationPrompt,
   linkedProductId   = null,
   linkedProductTitle = null,
@@ -133,8 +191,11 @@ export function EventRegisterForm({
 
   const selectedTicket       = tickets.find((t) => t.id === selectedTicketId);
   const isPaidTicket         = (selectedTicket?.price ?? 0) > 0;
-  // Tiket terpilih membutuhkan keanggotaan tapi user belum terdaftar
-  const selectedTicketLocked = Boolean(selectedTicket?.requiresMembership && !currentUserIsEnrolled);
+  // Tiket terpilih terkunci oleh salah satu dari 2 toggle (lihat getTicketLock)
+  const selectedTicketLock   = selectedTicket
+    ? getTicketLock(selectedTicket, baseUrl, currentUserIsEnrolled, registrationStatus)
+    : { locked: false, badge: null, message: null, ctaLabel: null, ctaHref: null };
+  const selectedTicketLocked = selectedTicketLock.locked;
 
   function handleSubmit() {
     setError(null);
@@ -146,11 +207,14 @@ export function EventRegisterForm({
       setError("Pilih tiket terlebih dahulu.");
       return;
     }
-    // Guard client-side untuk tiket wajib anggota
+    // Guard client-side — cek DUA toggle (member + terdaftar umum), lihat getTicketLock
     const chosenTicket = tickets.find((t) => t.id === selectedTicketId);
-    if (chosenTicket?.requiresMembership && !currentUserIsEnrolled) {
-      setError("Tiket ini hanya untuk anggota terdaftar. Silakan lengkapi data keanggotaan terlebih dahulu.");
-      return;
+    if (chosenTicket) {
+      const lock = getTicketLock(chosenTicket, baseUrl, currentUserIsEnrolled, registrationStatus);
+      if (lock.locked) {
+        setError(lock.message ?? "Tiket ini tidak dapat dipesan saat ini.");
+        return;
+      }
     }
 
     // Validasi required custom form fields
@@ -306,8 +370,8 @@ export function EventRegisterForm({
           <Label className="text-sm font-medium">Pilih Tiket</Label>
           <div className="space-y-2">
             {tickets.map((t) => {
-              const memberLocked = t.requiresMembership && !currentUserIsEnrolled;
-              return memberLocked ? (
+              const lock = getTicketLock(t, baseUrl, currentUserIsEnrolled, registrationStatus);
+              return lock.locked ? (
                 // Tiket terkunci — tampil tapi tidak bisa dipilih
                 <div
                   key={t.id}
@@ -318,7 +382,7 @@ export function EventRegisterForm({
                       <Ticket className="h-4 w-4 shrink-0 text-muted-foreground" />
                       <span className="font-medium text-sm truncate">{t.name}</span>
                       <span className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded-full font-medium">
-                        Anggota
+                        {lock.badge}
                       </span>
                     </div>
                     <span className="text-sm font-semibold shrink-0 text-muted-foreground">
@@ -329,10 +393,10 @@ export function EventRegisterForm({
                     <p className="mt-1 ml-6 text-xs text-muted-foreground">{t.description}</p>
                   )}
                   <a
-                    href={`${baseUrl}/akun/lengkapi`}
+                    href={lock.ctaHref ?? `${baseUrl}/akun/lengkapi`}
                     className="mt-2 ml-6 text-xs text-primary hover:underline inline-flex items-center gap-1"
                   >
-                    Lengkapi Keanggotaan →
+                    {lock.ctaLabel}
                   </a>
                 </div>
               ) : (
@@ -350,9 +414,9 @@ export function EventRegisterForm({
                     <div className="flex items-center gap-2 min-w-0">
                       <Ticket className="h-4 w-4 shrink-0 text-muted-foreground" />
                       <span className="font-medium text-sm truncate">{t.name}</span>
-                      {t.requiresMembership && (
+                      {(t.requiresMembership || t.requiresRegistration) && (
                         <span className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded-full font-medium">
-                          Anggota
+                          {t.requiresMembership ? "Anggota" : "Terdaftar"}
                         </span>
                       )}
                     </div>
@@ -376,8 +440,8 @@ export function EventRegisterForm({
       {/* Info tiket tunggal */}
       {tickets.length === 1 && (() => {
         const t = tickets[0];
-        const memberLocked = t.requiresMembership && !currentUserIsEnrolled;
-        return memberLocked ? (
+        const lock = getTicketLock(t, baseUrl, currentUserIsEnrolled, registrationStatus);
+        return lock.locked ? (
           <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-700 p-4 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -389,13 +453,13 @@ export function EventRegisterForm({
               </span>
             </div>
             <p className="text-xs text-amber-800 dark:text-amber-200">
-              Tiket ini hanya tersedia untuk anggota terdaftar.
+              {lock.message}
             </p>
             <a
-              href={`${baseUrl}/akun/lengkapi`}
+              href={lock.ctaHref ?? `${baseUrl}/akun/lengkapi`}
               className="btn btn-primary btn-sm inline-flex"
             >
-              Lengkapi Keanggotaan →
+              {lock.ctaLabel}
             </a>
           </div>
         ) : (
@@ -411,17 +475,14 @@ export function EventRegisterForm({
         );
       })()}
 
-      {/* CTA Lengkapi Keanggotaan — tampil ketika tiket terpilih terkunci (multi-tiket) */}
+      {/* CTA — tampil ketika tiket terpilih terkunci (multi-tiket) */}
       {selectedTicketLocked && tickets.length > 1 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-700 p-4 space-y-2">
           <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
-            Tiket ini khusus untuk anggota terdaftar cabang ini.
+            {selectedTicketLock.message}
           </p>
-          <p className="text-xs text-amber-800 dark:text-amber-300">
-            Lengkapi data keanggotaan Anda terlebih dahulu untuk dapat mendaftar.
-          </p>
-          <a href={`${baseUrl}/akun/lengkapi`} className="btn btn-primary btn-sm inline-flex">
-            Lengkapi Keanggotaan →
+          <a href={selectedTicketLock.ctaHref ?? `${baseUrl}/akun/lengkapi`} className="btn btn-primary btn-sm inline-flex">
+            {selectedTicketLock.ctaLabel}
           </a>
         </div>
       )}
