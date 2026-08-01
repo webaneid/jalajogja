@@ -14917,8 +14917,45 @@ sungguhan** — user perlu konfirmasi ulang di tenant Forbis bahwa anggota `foru
 sekarang melihat teks "Anda sudah menjadi anggota Forbis. Lengkapi..." bukan lagi "sebelum
 dapat mendaftar menjadi anggota Forbis".
 
+### [2026-08-01] Fitur Export Peserta Event ke Excel
+
+Route baru `GET /api/events/[id]/export-participants?tenant=` (auth `hasReadAccess(...,
+"event")`, pola xlsx sama `template/route.ts`) + tombol "Export ke Excel" di
+`/event/acara/[id]` (halaman admin). Filter peserta: HANYA `status IN ('confirmed',
+'attended')` — pending/cancelled tidak diikutkan (dikonfirmasi ke user: ini definisi "sudah
+bayar" yang dipakai, sama dengan `isPaid` di `event-registration-list.tsx`).
+
+Kolom sesuai urutan yang diminta: No. Registrasi, Nomor Stambuk, Nama Lengkap, Nomor
+Telepon, Nomor WhatsApp, Alamat, Kabupaten, Kode Pos, Profesi/Pekerjaan, Angkatan, Jenis
+Kelamin, **custom field event (dinamis, dari `events.customFormFields`)**, Pembayaran,
+Tanggal Transfer, Cara Transfer. Data anggota (stambuk/gender/angkatan/profesi/alamat/
+kontak) di-JOIN dari `public.members`+`contacts`+`addresses`+`refRegencies`+`refProfessions`
+via `memberId` di `event_registrations` — kosong untuk peserta non-anggota (guest).
+
+**Dua jalur invoice per registrasi ditangani sekaligus** (pola sama `acara/[id]/page.tsx`
+existing): alur lama (`invoices.sourceType='event_registration'`, `sourceId=registration.id`)
+dan alur cart (invoice ID tersimpan di `registration.customFields.sourceInvoiceId`, bukan FK
+langsung). "Pembayaran" = SUM seluruh `payments` berstatus `paid` untuk invoice itu
+(mengakomodasi cicilan — bisa >1 payment per invoice); "Tanggal Transfer"/"Cara Transfer"
+diambil dari payment PALING BARU (by `confirmedAt`) sebagai representasi tunggal per baris.
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses
+(`Cached: 0 cached`, 47.9s), route `/api/events/[id]/export-participants` terkonfirmasi di
+build output. Nol migrasi DB. **Belum diverifikasi visual/download sungguhan** (butuh event
+nyata dengan peserta berbayar+cicilan untuk uji kolom Pembayaran/Tanggal Transfer) — user
+perlu coba klik "Export ke Excel" di halaman detail event.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Bug fix overlay "sebelum dapat mendaftar" untuk anggota yang SUDAH
+- Terakhir dikerjakan: **Fitur Export Peserta Event ke Excel** (lihat lesson `[2026-08-01]`
+  "Fitur Export Peserta Event ke Excel" di atas) — route `GET /api/events/[id]/export-
+  participants` + tombol di `/event/acara/[id]`, filter hanya peserta `confirmed`/`attended`
+  (sudah bayar/dikonfirmasi), 14+ kolom termasuk custom field event dinamis, resolve
+  pembayaran dari 2 jalur invoice (legacy + cart) dengan dukungan cicilan (SUM payment).
+  `tsc`+build genuine bersih. **Sudah di-commit+push, belum dijalankan di VPS, belum
+  diverifikasi download sungguhan** — user perlu coba export event nyata.
+- Sesi sebelumnya: **Verifikasi definisi eligibilitas "salah satu" tetap OR, tidak berubah
+  jadi wajib semua modul** — dikonfirmasi ke user tanpa perubahan kode (mode hemat).
+- Sesi sebelumnya: **Bug fix overlay "sebelum dapat mendaftar" untuk anggota yang SUDAH
   aktif** (lihat lesson `[2026-08-01]` "Bug: Overlay 'Sebelum Dapat Mendaftar'" di atas, detail
   lengkap `docs/arsitektur-akun.md` § "Toggle Per-Tenant untuk Modul Ekosistem" bagian
   "Susulan") — ditemukan user langsung dari testing pertama tenant forum baru "Forbis"

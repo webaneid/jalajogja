@@ -3,7 +3,7 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq, count, and, inArray, sql } from "drizzle-orm";
 import Link from "next/link";
-import { CalendarDays, MapPin, Globe, Users, Pencil, Ticket, UserCheck } from "lucide-react";
+import { CalendarDays, MapPin, Globe, Users, Pencil, Ticket, UserCheck, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EventRegistrationList, type RegistrationRow } from "@/components/event/event-registration-list";
@@ -275,7 +275,18 @@ export default async function AcaraDetailPage({
 
         {/* Daftar Pendaftaran */}
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold">Daftar Pendaftar</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Daftar Pendaftar</h2>
+            <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
+              <a href={`/api/events/${eventId}/export-participants?tenant=${slug}`}>
+                <Download className="h-3 w-3 mr-1" />
+                Export ke Excel
+              </a>
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-1">
+            Hanya peserta yang sudah dikonfirmasi/bayar (status Dikonfirmasi atau Hadir) yang diikutkan.
+          </p>
           <EventRegistrationList
             slug={slug}
             eventId={eventId}
