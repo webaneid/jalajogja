@@ -13,7 +13,7 @@ import { ALL_EKOSISTEM_MODULES, type EkosistemModule } from "./ekosistem-modules
 // Keanggotaan" dan § "Eligibility Overlay Generik".
 export type MemberEligibilityField =
   | "gender" | "birthDate" | "graduationYear" | "graduationPeriod" | "professionId"
-  | "waliSantri" | "primaryCabangRefId" | "domicileStatus"
+  | "waliSantri" | "primaryCabangRefId" | "domicileStatus" | "homeAddressId"
   | "phone" | "whatsapp" | "email" | "directory";
 
 export type MemberEligibilityResult = {
@@ -55,6 +55,7 @@ export async function checkMemberEligibility(
       waliSantri:         members.waliSantri,
       primaryCabangRefId: members.primaryCabangRefId,
       domicileStatus:     members.domicileStatus,
+      homeAddressId:      members.homeAddressId,
       contactId:          members.contactId,
     })
     .from(members)
@@ -66,7 +67,7 @@ export async function checkMemberEligibility(
       eligible: false,
       missing: [
         "gender", "birthDate", "graduationYear", "professionId", "waliSantri",
-        "primaryCabangRefId", "domicileStatus", "phone", "whatsapp", "email", "directory",
+        "primaryCabangRefId", "domicileStatus", "homeAddressId", "phone", "whatsapp", "email", "directory",
       ],
       directoryIncompleteModule: null,
     };
@@ -81,6 +82,10 @@ export async function checkMemberEligibility(
   if (!memberRow.waliSantri)         missing.push("waliSantri");
   if (!memberRow.primaryCabangRefId) missing.push("primaryCabangRefId");
   if (!memberRow.domicileStatus)     missing.push("domicileStatus");
+  // domicileStatus (kategori Tetap/Sementara) TIDAK sama dengan alamat sesungguhnya — cek
+  // homeAddressId terpisah supaya anggota hasil import (kolom domicileStatus & alamat
+  // di-parse independen per kolom Excel) tidak lolos "eligible" tanpa alamat tersimpan.
+  if (!memberRow.homeAddressId)      missing.push("homeAddressId");
 
   let contactRow: { phone: string | null; whatsapp: string | null; email: string | null } | undefined;
   if (memberRow.contactId) {
@@ -224,6 +229,7 @@ export const MEMBER_ELIGIBILITY_LABELS: Record<MemberEligibilityField, string> =
   waliSantri:         "Wali Santri",
   primaryCabangRefId: "PC IKPM Cabang",
   domicileStatus:     "Status Domisili",
+  homeAddressId:      "Alamat Domisili",
   phone:              "Nomor HP",
   whatsapp:           "Nomor WhatsApp",
   email:              "Email",

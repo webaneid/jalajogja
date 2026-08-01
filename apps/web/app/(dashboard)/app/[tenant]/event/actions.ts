@@ -11,6 +11,7 @@ import { normalizePhone } from "@/lib/phone";
 import type { CustomFormField } from "@/lib/event-custom-form";
 import { notifyWa, waAppUrl } from "@/lib/wa-notify";
 import { getTenantTimezone, formatInTz, tzLabel, todayInTz } from "@/lib/tenant-timezone.server";
+import { checkMemberEligibility } from "@/lib/member-eligibility";
 
 function formatEventDateWib(date: Date | null, timezone: string): string {
   if (!date) return "-";
@@ -655,6 +656,15 @@ export async function registerForEventAction(
       if (!membership)
         return { success: false, error: "Tiket ini hanya untuk anggota terdaftar cabang ini. Lengkapi data keanggotaan Anda terlebih dahulu." };
     }
+
+    // Guard tambahan: terdaftar saja (tenant_memberships) tidak cukup — data pribadi WAJIB
+    // lengkap juga (semua tipe tenant, bukan cuma forum). "directory" (Usaha/Pesantren/
+    // Profesional) dan riwayat pendidikan SENGAJA tidak ikut disyaratkan di sini — kirim
+    // enabledDirectoryModules=[] supaya checkMemberEligibility skip total pengecekan
+    // "directory" (dan 3 query sub-modul-nya), murni cek kelengkapan data pribadi.
+    const eligibility = await checkMemberEligibility(resolvedMemberId, []);
+    if (!eligibility.eligible)
+      return { success: false, error: "Tiket ini hanya untuk anggota yang data pribadinya sudah lengkap. Silakan lengkapi data diri Anda di halaman Akun terlebih dahulu." };
   }
 
   try {
@@ -890,6 +900,11 @@ export async function addEventTicketToCartAction(
       if (!membership)
         return { success: false, error: "Tiket ini hanya untuk anggota terdaftar cabang ini." };
     }
+
+    // Guard sama seperti registerForEventAction — lihat komentar di sana.
+    const eligibility = await checkMemberEligibility(resolvedMemberId, []);
+    if (!eligibility.eligible)
+      return { success: false, error: "Tiket ini hanya untuk anggota yang data pribadinya sudah lengkap. Silakan lengkapi data diri Anda di halaman Akun terlebih dahulu." };
   }
 
   // Soft quota check (tanpa lock — lock final ada di checkout)

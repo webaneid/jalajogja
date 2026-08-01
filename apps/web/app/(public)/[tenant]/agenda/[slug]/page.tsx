@@ -21,6 +21,7 @@ import { SingleFeatureImage } from "@/components/website/public/single/single-fe
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 import { EventMobileTicketBar } from "@/components/event/event-mobile-ticket-bar";
 import { getTenantTimezone, tzLabel } from "@/lib/tenant-timezone.server";
+import { checkMemberEligibility } from "@/lib/member-eligibility";
 
 type BankAccount = {
   id: string;
@@ -549,7 +550,12 @@ export default async function PublicEventPage({
     }
   }
 
-  // Cek apakah user terdaftar sebagai anggota cabang ini
+  // Cek apakah user terdaftar sebagai anggota cabang ini DAN data pribadinya lengkap —
+  // dua-duanya wajib, konsisten dengan guard server-side di registerForEventAction/
+  // addEventTicketToCartAction (event/actions.ts). Terdaftar saja tidak cukup: ada anggota
+  // yang tenant_memberships.status="active" (mis. hasil import massal) tapi belum pernah
+  // isi data pribadi sama sekali. "directory" (Usaha/Pesantren/Profesional) TIDAK ikut
+  // disyaratkan di sini (enabledDirectoryModules=[]) — cuma kelengkapan data pribadi.
   let currentUserIsEnrolled = false;
   if (resolvedMemberId && tenant) {
     const [membership] = await db
@@ -561,7 +567,10 @@ export default async function PublicEventPage({
         sql`${tenantMemberships.status} IN ('active', 'alumni')`,
       ))
       .limit(1);
-    currentUserIsEnrolled = !!membership;
+    if (membership) {
+      const eligibility = await checkMemberEligibility(resolvedMemberId, []);
+      currentUserIsEnrolled = eligibility.eligible;
+    }
   }
 
   // Jika sudah terdaftar dan masih pending → cari invoice yang belum lunas
