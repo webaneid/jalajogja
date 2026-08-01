@@ -642,6 +642,12 @@ export async function confirmInvoicePaymentAction(
   if (!inv) return { success: false, error: "Invoice tidak ditemukan." };
   if (inv.status === "paid")     return { success: false, error: "Invoice sudah lunas." };
   if (inv.status === "cancelled") return { success: false, error: "Invoice dibatalkan." };
+  // Guard duplikat konfirmasi — ada bukti transfer customer yang masih menunggu verifikasi.
+  // Admin harus Verifikasi/Tolak bukti itu dulu, bukan menambah pembayaran manual terpisah
+  // untuk transfer yang sama (root cause bug 2026-08-01: dua payment dikonfirmasi untuk satu
+  // transfer, salah satunya ditolak, status invoice salah turun ke "partial").
+  if (inv.status === "waiting_verification")
+    return { success: false, error: "Ada bukti pembayaran yang sedang menunggu verifikasi. Verifikasi atau tolak dulu bukti tersebut sebelum menambah pembayaran manual baru." };
 
   try {
     // Resolve akun untuk jurnal
@@ -692,6 +698,8 @@ export async function confirmInvoicePaymentAction(
       if (!lockedInv) throw new Error("Invoice tidak ditemukan.");
       if (lockedInv.status === "paid")      throw new Error("Invoice sudah lunas.");
       if (lockedInv.status === "cancelled") throw new Error("Invoice dibatalkan.");
+      if (lockedInv.status === "waiting_verification")
+        throw new Error("Ada bukti pembayaran yang sedang menunggu verifikasi. Verifikasi atau tolak dulu bukti tersebut sebelum menambah pembayaran manual baru.");
 
       const total      = parseFloat(String(lockedInv.total));
       const uniqueCode = lockedInv.uniqueCode ?? 0;
@@ -955,7 +963,7 @@ export async function confirmInvoicePaymentAction(
     revalidateBilling(slug);
     return { success: true, data: { paymentId } };
   } catch (err) {
-    if (err instanceof Error && (err.message.includes("lunas") || err.message.includes("dibatalkan")))
+    if (err instanceof Error && (err.message.includes("lunas") || err.message.includes("dibatalkan") || err.message.includes("menunggu verifikasi")))
       return { success: false, error: err.message };
     console.error("[confirmInvoicePaymentAction]", err);
     return { success: false, error: "Gagal mencatat pembayaran." };
@@ -1030,10 +1038,17 @@ export async function rejectPaymentAction(
         })
         .where(eq(schema.payments.id, paymentId));
 
-      // Kembalikan invoice ke status semula agar customer bisa upload ulang — "partial" kalau
-      // sudah ada pembayaran terkonfirmasi sebelumnya (paidAmount > 0), "pending" kalau belum
-      // sama sekali. Jangan selalu "pending" — invoice yang sudah punya history partial payment
-      // tidak boleh kehilangan status itu hanya karena SATU submission tambahan ditolak.
+      // Kembalikan invoice ke status semula agar customer bisa upload ulang — "paid" kalau
+      // pembayaran YANG MASIH VALID (di luar yang barusan ditolak) sudah cukup melunasi
+      // (paidAmount >= amountDue), "partial" kalau sudah ada pembayaran terkonfirmasi tapi
+      // belum cukup, "pending" kalau belum ada sama sekali. Jangan selalu turunkan ke
+      // "partial"/"pending" begitu ada satu submission ditolak — kalau ada pembayaran LAIN
+      // yang sudah dikonfirmasi (mis. dari confirmInvoicePaymentAction manual) dan itu sendiri
+      // sudah cukup, invoice TETAP "paid" (bukti yang ditolak cuma duplikat, uang yang valid
+      // sudah masuk). Bug produksi 2026-08-01: admin double-konfirmasi 1 transfer (satu via
+      // verifikasi bukti submit, satu via input manual) → keduanya kebetulan pas menutup
+      // total → admin tolak salah satu (duplikat) → status SALAH turun ke "partial" padahal
+      // pembayaran yang tersisa sudah cukup melunasi.
       if (invLink?.invoiceId) {
         const [otherSubmitted] = await tx
           .select({ id: schema.payments.id })
@@ -1046,15 +1061,21 @@ export async function rejectPaymentAction(
           .limit(1);
 
         if (!otherSubmitted) {
-          // Baca ulang paidAmount DI DALAM tx (bukan pakai invLink.paidAmount yang direkam
-          // sebelum transaction) — hindari status revert salah kalau ada confirmInvoicePaymentAction
-          // lain yang mengubah paidAmount konkuren dengan reject ini.
+          // Baca ulang paidAmount+total+uniqueCode DI DALAM tx (bukan pakai invLink.paidAmount
+          // yang direkam sebelum transaction) — hindari status revert salah kalau ada
+          // confirmInvoicePaymentAction lain yang mengubah paidAmount konkuren dengan reject ini.
           const [freshInv] = await tx
-            .select({ paidAmount: schema.invoices.paidAmount })
+            .select({
+              paidAmount: schema.invoices.paidAmount,
+              total:      schema.invoices.total,
+              uniqueCode: schema.invoices.uniqueCode,
+            })
             .from(schema.invoices)
             .where(eq(schema.invoices.id, invLink.invoiceId))
             .limit(1);
-          const revertStatus = parseFloat(String(freshInv?.paidAmount ?? 0)) > 0 ? "partial" : "pending";
+          const paidAmt   = parseFloat(String(freshInv?.paidAmount ?? 0));
+          const amountDue = parseFloat(String(freshInv?.total ?? 0)) + (freshInv?.uniqueCode ?? 0);
+          const revertStatus = paidAmt >= amountDue ? "paid" : paidAmt > 0 ? "partial" : "pending";
           await tx
             .update(schema.invoices)
             .set({ status: revertStatus, updatedAt: new Date() })
