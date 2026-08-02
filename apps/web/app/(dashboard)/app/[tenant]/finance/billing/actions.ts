@@ -282,10 +282,15 @@ export async function searchBillingProductsAction(
 // ─── searchBillingPaidTicketsAction ──────────────────────────────────────────
 
 export type BillingTicketResult = {
-  id:         string;
-  name:       string;
-  eventTitle: string;
-  price:      number;
+  id:                string;
+  name:              string;
+  eventTitle:        string;
+  price:             number;
+  // Data peserta (Nama/HP/Email + custom form) HARUS diisi admin saat item ini dipilih —
+  // tanpa ini, event_registrations hasil konfirmasi invoice akan salah (attendeeName jatuh
+  // ke nama tiket, bukan nama orangnya). Lihat lib/event-custom-form.ts.
+  enableCustomForm:  boolean;
+  customFormFields:  import("@/lib/event-custom-form").CustomFormField[];
 };
 
 export async function searchBillingPaidTicketsAction(
@@ -303,10 +308,12 @@ export async function searchBillingPaidTicketsAction(
   try {
     const rows = await db
       .select({
-        id:         schema.eventTickets.id,
-        name:       schema.eventTickets.name,
-        eventTitle: schema.events.title,
-        price:      schema.eventTickets.price,
+        id:               schema.eventTickets.id,
+        name:             schema.eventTickets.name,
+        eventTitle:       schema.events.title,
+        price:            schema.eventTickets.price,
+        enableCustomForm: schema.events.enableCustomForm,
+        customFormFields: schema.events.customFormFields,
       })
       .from(schema.eventTickets)
       .innerJoin(schema.events, eq(schema.eventTickets.eventId, schema.events.id))
@@ -329,6 +336,8 @@ export async function searchBillingPaidTicketsAction(
       success: true,
       data: rows.map((r) => ({
         id:         r.id,
+        enableCustomForm: r.enableCustomForm,
+        customFormFields: (r.customFormFields as import("@/lib/event-custom-form").CustomFormField[] | null) ?? [],
         name:       `${r.eventTitle} - ${r.name}`,
         eventTitle: r.eventTitle,
         price:      parseFloat(String(r.price)),

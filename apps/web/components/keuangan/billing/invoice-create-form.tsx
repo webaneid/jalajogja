@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Trash2, Loader2 } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { MemberNameAutocomplete, type SelectedMember } from "@/components/keuangan/member-name-autocomplete";
+import type { CustomFormField } from "@/lib/event-custom-form";
 import {
   createInvoiceAction,
   searchBillingProductsAction,
@@ -15,7 +16,20 @@ import {
 
 type Props = { slug: string };
 
-type ItemLocal = InvoiceItemInput & { _key: string };
+// Field _ (bawah) murni state UI untuk item bertipe "ticket" — di-strip sebelum dikirim ke
+// server, dipaketkan jadi JSON string di kolom `description` (kontrak sama dengan
+// cart_items.notes yang dipakai addEventTicketToCartAction, lihat lib/event-custom-form.ts
+// `TicketAttendeeData`). Tanpa ini, event_registrations hasil konfirmasi invoice manual admin
+// akan salah — attendeeName jatuh ke nama tiket, bukan nama peserta sesungguhnya.
+type ItemLocal = InvoiceItemInput & {
+  _key: string;
+  _ticketEnableCustomForm?: boolean;
+  _ticketCustomFields?:     CustomFormField[];
+  _attendeeName?:           string;
+  _attendeePhone?:          string;
+  _attendeeEmail?:          string;
+  _customFieldAnswers?:     Record<string, string>;
+};
 
 const ITEM_TYPE_LABELS: Record<string, string> = {
   product:  "Produk",
@@ -40,6 +54,14 @@ function newItem(): ItemLocal {
 
 // ── CatalogItemAutocomplete Sub-component ────────────────────────────────────
 
+type CatalogOption = {
+  id:                string;
+  name:              string;
+  price:             number;
+  enableCustomForm?: boolean;
+  customFormFields?: CustomFormField[];
+};
+
 function CatalogItemAutocomplete({
   slug,
   type,
@@ -53,12 +75,12 @@ function CatalogItemAutocomplete({
   type: "product" | "ticket" | "donation";
   value: string;
   onChange: (val: string) => void;
-  onSelectOption: (opt: { id: string; name: string; price: number } | null) => void;
+  onSelectOption: (opt: CatalogOption | null) => void;
   placeholder?: string;
   required?: boolean;
 }) {
   const [open, setOpen]       = useState(false);
-  const [results, setResults] = useState<{ id: string; name: string; price: number }[]>([]);
+  const [results, setResults] = useState<CatalogOption[]>([]);
   const [loading, setLoading] = useState(false);
   const containerRef          = useRef<HTMLDivElement>(null);
 
@@ -208,7 +230,33 @@ export function InvoiceCreateForm({ slug }: Props) {
         customerPhone: customerPhone.trim() || undefined,
         customerEmail: customerEmail.trim() || undefined,
         memberId:      memberId ?? undefined,
-        items: items.map(({ _key, ...item }) => item),
+        items: items.map((it) => {
+          const {
+            _key, _ticketEnableCustomForm, _ticketCustomFields,
+            _attendeeName, _attendeePhone, _attendeeEmail, _customFieldAnswers,
+            ...item
+          } = it;
+
+          // Paketkan data peserta jadi JSON di `description` — kontrak SAMA dengan yang
+          // dibaca confirmInvoicePaymentAction/verifySubmittedPaymentAction untuk membangun
+          // event_registrations (lib/event-custom-form.ts TicketAttendeeData). Tanpa ini,
+          // attendeeName akan jatuh ke nama tiket, bukan nama peserta.
+          if (item.itemType === "ticket" && item.itemId) {
+            return {
+              ...item,
+              description: JSON.stringify({
+                attendeeName:  (_attendeeName || customerName).trim(),
+                attendeePhone: _attendeePhone?.trim() || customerPhone.trim() || null,
+                attendeeEmail: _attendeeEmail?.trim() || customerEmail.trim() || null,
+                customFieldAnswers:
+                  _customFieldAnswers && Object.keys(_customFieldAnswers).length > 0
+                    ? _customFieldAnswers
+                    : null,
+              }),
+            };
+          }
+          return item;
+        }),
         discount: discountNum || undefined,
         dueDate,
         notes: notes.trim() || undefined,
@@ -307,6 +355,13 @@ export function InvoiceCreateForm({ slug }: Props) {
                           name:      opt.name,
                           unitPrice: opt.price > 0 ? opt.price : item.unitPrice,
                           itemId:    opt.id,
+                          // Data peserta — reset saat ganti tiket (tiket lain = form custom
+                          // beda), prefill Nama Peserta dari Nama Customer (kasus umum: buyer
+                          // = peserta), admin tetap bisa override.
+                          _ticketEnableCustomForm: item.itemType === "ticket" ? (opt.enableCustomForm ?? false) : undefined,
+                          _ticketCustomFields:     item.itemType === "ticket" ? (opt.customFormFields ?? []) : undefined,
+                          _attendeeName:           item.itemType === "ticket" ? (item._attendeeName || customerName) : item._attendeeName,
+                          _customFieldAnswers:     item.itemType === "ticket" ? {} : item._customFieldAnswers,
                         });
                       } else {
                         updateItem(item._key, { itemId: undefined });
@@ -367,6 +422,102 @@ export function InvoiceCreateForm({ slug }: Props) {
                 </button>
               </div>
             </div>
+
+            {/* Data Peserta — wajib untuk item tiket event, supaya event_registrations hasil
+                konfirmasi invoice ini punya nama/HP/email peserta yang benar (bukan jatuh ke
+                nama tiket) + jawaban formulir tambahan event kalau ada. */}
+            {item.itemType === "ticket" && item.itemId && (
+              <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Data Peserta
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className={labelCls}>Nama Peserta <span className="text-destructive">*</span></label>
+                    <input
+                      type="text"
+                      value={item._attendeeName ?? ""}
+                      onChange={(e) => updateItem(item._key, { _attendeeName: e.target.value })}
+                      placeholder="Nama orang yang akan datang"
+                      className={inputCls}
+                      required
+                    />
+                  </div>
+                  <PhoneInput
+                    label="HP Peserta"
+                    optional
+                    value={item._attendeePhone ?? ""}
+                    onChange={(val) => updateItem(item._key, { _attendeePhone: val })}
+                  />
+                  <div>
+                    <label className={labelCls}>Email Peserta</label>
+                    <input
+                      type="email"
+                      value={item._attendeeEmail ?? ""}
+                      onChange={(e) => updateItem(item._key, { _attendeeEmail: e.target.value })}
+                      placeholder="email@domain.com"
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+
+                {item._ticketEnableCustomForm && (item._ticketCustomFields?.length ?? 0) > 0 && (
+                  <div className="space-y-2.5 pt-2 border-t border-border">
+                    <p className="text-xs text-muted-foreground">Formulir tambahan dari event ini:</p>
+                    {item._ticketCustomFields!.map((field) => {
+                      const answers    = item._customFieldAnswers ?? {};
+                      const fieldValue = answers[field.key] ?? "";
+                      const setAnswer  = (v: string) =>
+                        updateItem(item._key, { _customFieldAnswers: { ...answers, [field.key]: v } });
+
+                      return (
+                        <div key={field.key}>
+                          <label className={labelCls}>
+                            {field.label}
+                            {field.required && <span className="text-destructive"> *</span>}
+                          </label>
+                          {field.type === "select" && field.options && field.options.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {field.options.map((opt) => (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => setAnswer(opt)}
+                                  className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                                    fieldValue === opt
+                                      ? "border-primary bg-primary text-primary-foreground"
+                                      : "border-border hover:border-primary/50"
+                                  }`}
+                                >
+                                  {opt}
+                                </button>
+                              ))}
+                            </div>
+                          ) : field.type === "datetime" ? (
+                            <input
+                              type="datetime-local"
+                              value={fieldValue}
+                              onChange={(e) => setAnswer(e.target.value)}
+                              required={field.required}
+                              className={inputCls}
+                            />
+                          ) : (
+                            <input
+                              type={field.type === "number" ? "number" : "text"}
+                              value={fieldValue}
+                              onChange={(e) => setAnswer(e.target.value)}
+                              placeholder={field.placeholder ?? ""}
+                              required={field.required}
+                              className={inputCls}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
 
