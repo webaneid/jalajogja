@@ -125,9 +125,10 @@ function ProfessionCombobox({
   value:       number | null;
   onChange:    (id: number | null) => void;
 }) {
-  const [query,  setQuery]  = React.useState("");
-  const [open,   setOpen]   = React.useState(false);
-  const wrapRef             = React.useRef<HTMLDivElement>(null);
+  const [query,     setQuery]     = React.useState("");
+  const [open,      setOpen]      = React.useState(false);
+  const [isEditing, setIsEditing] = React.useState(false);
+  const wrapRef                   = React.useRef<HTMLDivElement>(null);
 
   const selected = professions.find(p => p.id === value) ?? null;
 
@@ -135,29 +136,37 @@ function ProfessionCombobox({
     ? professions.filter(p => p.name.toLowerCase().includes(query.toLowerCase()))
     : professions;
 
-  // Tutup saat klik di luar
+  // Tutup saat klik di luar — keluar dari mode edit TANPA mengubah pilihan yang
+  // sudah tersimpan. Bug lama: mengetik apa pun langsung menolkan `value` di
+  // parent (via onChange(null) di setiap keystroke) — kalau user klik ke field
+  // ini lagi (misal sekadar review) lalu klik keluar tanpa memilih ulang,
+  // profesi yang sudah terisi hilang diam-diam dan tombol "Simpan & Lanjutkan"
+  // macet. Sekarang: onChange(id) HANYA dipanggil saat user benar-benar pilih
+  // item baru atau klik tombol clear — mengetik/browse tidak pernah menyentuh
+  // `value` sampai ada pilihan eksplisit.
   React.useEffect(() => {
     function handler(e: MouseEvent) {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
         setOpen(false);
-        // Jika query tidak cocok dengan pilihan, reset ke nama yang dipilih
-        if (selected) setQuery(selected.name);
-        else          setQuery("");
+        setIsEditing(false);
+        setQuery("");
       }
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [selected]);
+  }, []);
 
   function handleSelect(p: Profession) {
     onChange(p.id);
-    setQuery(p.name);
+    setQuery("");
+    setIsEditing(false);
     setOpen(false);
   }
 
   function handleClear() {
     onChange(null);
     setQuery("");
+    setIsEditing(false);
     setOpen(false);
   }
 
@@ -168,14 +177,24 @@ function ProfessionCombobox({
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
         <input
           type="text"
-          value={selected ? selected.name : query}
-          onFocus={() => { setOpen(true); if (selected) setQuery(""); }}
-          onChange={e => { setQuery(e.target.value); onChange(null); setOpen(true); }}
+          value={isEditing ? query : (selected?.name ?? "")}
+          onFocus={() => { setOpen(true); setIsEditing(true); setQuery(""); }}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
           placeholder="Ketik atau pilih profesi..."
           autoComplete="off"
           className="flex h-9 w-full rounded-md border border-input bg-background pl-8 pr-8 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
-        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        {selected && !isEditing ? (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        )}
 
         {open && (
           <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md overflow-hidden">
@@ -435,7 +454,10 @@ export default function LengkapiPage() {
     if (!name.trim())     { setError("Nama tidak boleh kosong."); return; }
     if (!gender)          { setError("Jenis kelamin wajib dipilih."); return; }
     if (!birthDate)       { setError("Tanggal lahir wajib diisi."); return; }
-    if (birthType === "id" && !birthRegencyId) { setError("Tempat lahir (kabupaten/kota) wajib dipilih."); return; }
+    if (birthType === "id" && !birthRegencyId) {
+      setError("Tempat lahir (Kabupaten/Kota) wajib dipilih dari pilihan dropdown yang muncul (mis. Kab. Bangka Barat). Jika berasal dari Luar Negeri atau tidak ditemukan, silakan pilih 'Luar Negeri'.");
+      return;
+    }
     if (birthType === "ln" && !birthPlaceText.trim()) { setError("Tempat lahir (kota/negara) wajib diisi."); return; }
     if (!graduationYear)  { setError("Tahun lulus KMI wajib diisi."); return; }
     // Cek eksplisit — atribut min/max di <input type="number"> di bawah cuma dekoratif karena
@@ -800,11 +822,11 @@ export default function LengkapiPage() {
           <div className="flex justify-end pt-4">
             <button
               onClick={saveStep1}
-              disabled={saving || !name.trim() || !gender || !birthDate || (birthType === "id" ? !birthRegencyId : !birthPlaceText.trim()) || !graduationYear || (Number(graduationYear) === 1999 && !graduationPeriod) || !professionId || !waliSantri || !primaryCabangRefId}
+              disabled={saving}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Simpan & Lanjutkan
+              Simpan &amp; Lanjutkan
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>

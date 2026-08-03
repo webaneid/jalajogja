@@ -29,11 +29,12 @@ export function RegencyCombobox({
   placeholder = "Ketik nama kabupaten / kota...",
   required,
 }: Props) {
-  const [query,    setQuery]    = useState(displayName ?? "");
-  const [results,  setResults]  = useState<Regency[]>([]);
-  const [open,     setOpen]     = useState(false);
-  const [loading,  setLoading]  = useState(false);
-  const [selected, setSelected] = useState<Regency | null>(() =>
+  const [query,     setQuery]     = useState("");
+  const [results,   setResults]   = useState<Regency[]>([]);
+  const [open,      setOpen]      = useState(false);
+  const [loading,   setLoading]   = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [selected,  setSelected]  = useState<Regency | null>(() =>
     value && displayName
       ? { id: value, name: displayName, type: "", provinceName: "" }
       : null
@@ -46,18 +47,17 @@ export function RegencyCombobox({
   useEffect(() => {
     if (value && displayName && !selected) {
       setSelected({ id: value, name: displayName, type: "", provinceName: "" });
-      setQuery(displayName);
     }
     if (!value && !displayName) {
       setSelected(null);
-      setQuery("");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, displayName]);
 
-  // Debounced search
+  // Debounced search — hanya jalan selama mode edit aktif (bukan tergantung
+  // `selected`, supaya mengetik/browse tidak perlu menolkan pilihan lama dulu)
   useEffect(() => {
-    if (selected) return;            // sudah dipilih, skip search
+    if (!isEditing) return;
     if (timer.current) clearTimeout(timer.current);
 
     if (query.length < 2) { setResults([]); setOpen(false); return; }
@@ -77,13 +77,21 @@ export function RegencyCombobox({
     }, 300);
 
     return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [query, selected]);
+  }, [query, isEditing]);
 
-  // Tutup dropdown saat klik di luar
+  // Tutup dropdown saat klik di luar — keluar dari mode edit TANPA mengubah
+  // pilihan yang sudah tersimpan. Bug lama: mengetik apa pun langsung
+  // menolkan `value` di parent (via onChange(null,null) di setiap keystroke)
+  // tanpa mekanisme pemulihan sama sekali kalau user batal (klik keluar tanpa
+  // memilih ulang) — field yang sudah terisi jadi hilang diam-diam. Sekarang
+  // onChange HANYA dipanggil saat user benar-benar pilih item baru atau klik
+  // tombol clear eksplisit.
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
         setOpen(false);
+        setIsEditing(false);
+        setQuery("");
       }
     }
     document.addEventListener("mousedown", handler);
@@ -92,7 +100,8 @@ export function RegencyCombobox({
 
   function handleSelect(reg: Regency) {
     setSelected(reg);
-    setQuery(reg.name);
+    setQuery("");
+    setIsEditing(false);
     setOpen(false);
     setResults([]);
     onChange(reg.id, reg.name);
@@ -101,15 +110,23 @@ export function RegencyCombobox({
   function handleClear() {
     setSelected(null);
     setQuery("");
+    setIsEditing(false);
     setResults([]);
     setOpen(false);
     onChange(null, null);
   }
 
   function handleInputChange(val: string) {
-    setSelected(null);   // reset pilihan saat user ketik ulang
+    setIsEditing(true);
     setQuery(val);
-    onChange(null, null);
+    // JANGAN onChange(null,null) di sini — pilihan lama tetap tersimpan
+    // sampai user benar-benar pilih item baru / klik tombol clear.
+  }
+
+  function handleFocus() {
+    setIsEditing(true);
+    setQuery("");
+    if (results.length > 0) setOpen(true);
   }
 
   return (
@@ -127,9 +144,9 @@ export function RegencyCombobox({
 
         <input
           type="text"
-          value={query}
+          value={isEditing ? query : (selected?.name ?? "")}
           onChange={e => handleInputChange(e.target.value)}
-          onFocus={() => { if (results.length > 0) setOpen(true); }}
+          onFocus={handleFocus}
           placeholder={placeholder}
           autoComplete="off"
           className="flex h-9 w-full rounded-md border border-input bg-background pl-8 pr-8 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -139,7 +156,7 @@ export function RegencyCombobox({
         <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
           {loading
             ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-            : selected
+            : selected && !isEditing
               ? <button type="button" onClick={handleClear} className="text-muted-foreground hover:text-foreground transition-colors">
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -148,7 +165,7 @@ export function RegencyCombobox({
         </div>
 
         {/* Dropdown */}
-        {open && results.length > 0 && (
+        {open && isEditing && results.length > 0 && (
           <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md overflow-hidden">
             <ul className="max-h-52 overflow-y-auto py-1">
               {results.map(reg => (
@@ -168,7 +185,7 @@ export function RegencyCombobox({
         )}
 
         {/* Tidak ditemukan */}
-        {open && !loading && query.length >= 2 && results.length === 0 && (
+        {open && isEditing && !loading && query.length >= 2 && results.length === 0 && (
           <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md px-3 py-3 text-sm text-muted-foreground">
             Tidak ditemukan. Coba nama lain.
           </div>
