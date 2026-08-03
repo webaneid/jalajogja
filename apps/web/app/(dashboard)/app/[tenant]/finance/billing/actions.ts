@@ -80,17 +80,26 @@ type TenantTx = PgTransaction<
 // sebelum bug sourceType!=="cart" ini ditemukan — lihat komentar di kedua caller lain).
 // Idempotent: baris yang sudah punya customFields.sourceInvoiceId = invoiceId dilewati.
 
-type CreatedEventReg = { eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null };
+type CreatedEventReg = {
+  eventId: string; eventTitle: string; eventSlug: string;
+  regNumber: string; attendeeName: string; attendeePhone: string | null;
+};
+
+type ExistingEventReg = {
+  id: string; eventId: string; eventTitle: string; eventSlug: string;
+  regNumber: string; attendeeName: string; status: string;
+};
 
 export type EventTicketBackfillResult = {
-  created:          CreatedEventReg[];
-  alreadySynced:    number; // sudah punya registrasi (idempotent skip) — normal, bukan masalah
-  unlinkedItemId:   number; // itemType="ticket" tapi itemId kosong — item diketik manual/bebas,
-                             // tidak pernah dipilih dari daftar tiket saat invoice dibuat.
-                             // TIDAK BISA disinkronkan otomatis (tidak tahu event/tiket mana).
-  ticketNotFound:   number; // itemId ada tapi tidak match event_tickets manapun (tiket sudah
-                             // dihapus/diganti sejak invoice dibuat).
-  totalTicketItems: number;
+  created:              CreatedEventReg[];
+  existingRegistrations: ExistingEventReg[]; // detail baris yang SUDAH ada (kenapa alreadySynced)
+  alreadySynced:        number; // sudah punya registrasi (idempotent skip) — normal, bukan masalah
+  unlinkedItemId:       number; // itemType="ticket" tapi itemId kosong — item diketik manual/bebas,
+                                 // tidak pernah dipilih dari daftar tiket saat invoice dibuat.
+                                 // TIDAK BISA disinkronkan otomatis (tidak tahu event/tiket mana).
+  ticketNotFound:       number; // itemId ada tapi tidak match event_tickets manapun (tiket sudah
+                                 // dihapus/diganti sejak invoice dibuat).
+  totalTicketItems:     number;
 };
 
 async function createEventRegistrationsFromInvoiceTickets(
@@ -102,7 +111,8 @@ async function createEventRegistrationsFromInvoiceTickets(
 ): Promise<EventTicketBackfillResult> {
   const { schema } = tenantDb;
   const result: EventTicketBackfillResult = {
-    created: [], alreadySynced: 0, unlinkedItemId: 0, ticketNotFound: 0, totalTicketItems: 0,
+    created: [], existingRegistrations: [], alreadySynced: 0,
+    unlinkedItemId: 0, ticketNotFound: 0, totalTicketItems: 0,
   };
 
   const ticketItems = await tx
@@ -122,15 +132,43 @@ async function createEventRegistrationsFromInvoiceTickets(
   for (const item of ticketItems) {
     if (!item.itemId) { result.unlinkedItemId++; continue; }
 
+    // Resolve event+judul DULU (dipakai baik untuk baris baru maupun untuk laporan
+    // "sudah ada" — supaya admin bisa lihat persis event mana yang dimaksud, bukan
+    // cuma pesan generik "sudah tersinkron").
+    const [ticket] = await tx
+      .select({ eventId: schema.eventTickets.eventId, eventTitle: schema.events.title, eventSlug: schema.events.slug })
+      .from(schema.eventTickets)
+      .innerJoin(schema.events, eq(schema.eventTickets.eventId, schema.events.id))
+      .where(eq(schema.eventTickets.id, item.itemId))
+      .limit(1);
+    if (!ticket?.eventId) { result.ticketNotFound++; continue; }
+
     const [existing] = await tx
-      .select({ id: schema.eventRegistrations.id })
+      .select({
+        id:         schema.eventRegistrations.id,
+        attendeeName: schema.eventRegistrations.attendeeName,
+        status:     schema.eventRegistrations.status,
+        regNumber:  schema.eventRegistrations.registrationNumber,
+      })
       .from(schema.eventRegistrations)
       .where(and(
         eq(schema.eventRegistrations.ticketId, item.itemId),
         sql`${schema.eventRegistrations.customFields}->>'sourceInvoiceId' = ${invoiceId}`,
       ))
       .limit(1);
-    if (existing) { result.alreadySynced++; continue; }
+    if (existing) {
+      result.alreadySynced++;
+      result.existingRegistrations.push({
+        id:          existing.id,
+        eventId:     ticket.eventId,
+        eventTitle:  ticket.eventTitle,
+        eventSlug:   ticket.eventSlug,
+        regNumber:   existing.regNumber,
+        attendeeName: existing.attendeeName,
+        status:      existing.status,
+      });
+      continue;
+    }
 
     let attendeeName  = item.name ?? "Peserta";
     let attendeePhone: string | null = null;
@@ -143,13 +181,6 @@ async function createEventRegistrationsFromInvoiceTickets(
       attendeeEmail = p.attendeeEmail ? String(p.attendeeEmail) : null;
       extraFields   = p.customFieldAnswers ? (p.customFieldAnswers as Record<string, unknown>) : null;
     } catch { /* gunakan default */ }
-
-    const [ticket] = await tx
-      .select({ eventId: schema.eventTickets.eventId })
-      .from(schema.eventTickets)
-      .where(eq(schema.eventTickets.id, item.itemId))
-      .limit(1);
-    if (!ticket?.eventId) { result.ticketNotFound++; continue; }
 
     const regNumber = await generateEventRegNumber(tenantDb);
 
@@ -166,7 +197,10 @@ async function createEventRegistrationsFromInvoiceTickets(
       customFields:       { sourceInvoiceId: invoiceId, ...(extraFields ?? {}) },
     });
 
-    result.created.push({ eventId: ticket.eventId, regNumber, attendeeName, attendeePhone });
+    result.created.push({
+      eventId: ticket.eventId, eventTitle: ticket.eventTitle, eventSlug: ticket.eventSlug,
+      regNumber, attendeeName, attendeePhone,
+    });
   }
 
   return result;
