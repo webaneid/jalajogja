@@ -1037,6 +1037,13 @@ export async function confirmInvoicePaymentAction(
           .limit(1);
         if (!eventDetail) continue;
 
+        // Bust cache admin (dynamic tapi tetap perlu invalidate client Router Cache) DAN
+        // halaman publik (ISR/Full Route Cache — tanpa ini tab "Peserta" bisa stale sampai
+        // window ISR habis sendiri, meski data di DB sudah benar). Lihat lesson CLAUDE.md
+        // "Bug: Sinkronisasi Peserta Event Tidak Terlihat".
+        revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
+        revalidatePath(`/${slug}/agenda/${eventDetail.slug}`);
+
         const eventUrl = await waAppUrl(slug, `/agenda/${eventDetail.slug}`);
         void notifyWa({
           slug, tenantDb, event: "event_registered",
@@ -1543,6 +1550,13 @@ export async function verifySubmittedPaymentAction(
           .limit(1);
         if (!eventDetail) continue;
 
+        // Bust cache admin (dynamic tapi tetap perlu invalidate client Router Cache) DAN
+        // halaman publik (ISR/Full Route Cache — tanpa ini tab "Peserta" bisa stale sampai
+        // window ISR habis sendiri, meski data di DB sudah benar). Lihat lesson CLAUDE.md
+        // "Bug: Sinkronisasi Peserta Event Tidak Terlihat".
+        revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
+        revalidatePath(`/${slug}/agenda/${eventDetail.slug}`);
+
         const eventUrl = await waAppUrl(slug, `/agenda/${eventDetail.slug}`);
         void notifyWa({
           slug, tenantDb, event: "event_registered",
@@ -1659,8 +1673,13 @@ export async function backfillEventRegistrationsAction(
     );
 
     revalidateBilling(slug);
-    for (const reg of result.created) {
+    // Revalidate admin + halaman publik untuk baris BARU maupun yang SUDAH ADA — tombol ini
+    // bisa diklik ulang tanpa menghasilkan baris baru (idempotent), tapi admin tetap perlu
+    // cache-nya di-bust supaya halaman event yang dibuka SETELAH klik pasti fresh, bukan
+    // mengandalkan client Router Cache/ISR yang mungkin masih menyimpan versi lama.
+    for (const reg of [...result.created, ...result.existingRegistrations]) {
       revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
+      revalidatePath(`/${slug}/agenda/${reg.eventSlug}`);
     }
 
     return { success: true, data: result };
