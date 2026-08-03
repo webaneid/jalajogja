@@ -68,7 +68,16 @@ export function NewsHeader({
   const [userDropdownOpen, setUserDropdownOpen]     = useState(false);
   const userDropdownRef                             = useRef<HTMLDivElement>(null);
 
-  const formattedDate = formatGregorianDate();
+  // Dihitung via useEffect (BUKAN langsung saat render) — formatGregorianDate() panggil
+  // new Date() yang bisa berbeda momen antara SSR (server) dan hydration (client), meski
+  // granularitas cuma sampai hari (bukan jam/menit) risikonya sempit (hanya kalau kedua momen
+  // itu melewati batas tengah malam WIB) — TAPI tetap risiko nyata & gratis dihindari total
+  // dengan pola ini: null di render pertama (SSR & client SAMA PERSIS, nol teks) → terisi
+  // SETELAH hydration selesai via effect (update state biasa, bukan hydration mismatch).
+  const [formattedDate, setFormattedDate] = useState<string | null>(null);
+  useEffect(() => {
+    setFormattedDate(formatGregorianDate());
+  }, []);
 
   // Cek dashboard access & avatar saat session berubah
   useEffect(() => {

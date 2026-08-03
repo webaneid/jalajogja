@@ -14945,8 +14945,225 @@ build output. Nol migrasi DB. **Belum diverifikasi visual/download sungguhan** (
 nyata dengan peserta berbayar+cicilan untuk uji kolom Pembayaran/Tanggal Transfer) — user
 perlu coba klik "Export ke Excel" di halaman detail event.
 
+### [2026-08-03] Bug Kritis: Peserta Event "Hilang" — `showAttendeeList` Default `false`, Bukan Bug Data
+
+> Detail investigasi: user laporkan peserta hasil invoice manual admin (`620-INV-202608-00003`,
+> status lunas) tidak muncul di tab "Peserta" — baik di halaman admin event maupun publik —
+> meski sudah klik tombol "Sinkronkan Peserta Event" berkali-kali.
+
+**Rangkaian fix menuju root cause sesungguhnya** (4 commit berurutan, `e416e95`→`4f3e0a3`→
+`dda397f`→`272d7e7`):
+1. **Guard auto-create terlalu sempit** — `confirmInvoicePaymentAction`/`verifySubmittedPaymentAction`
+   cuma auto-create `event_registrations` untuk `sourceType==="cart"`, MENGABAIKAN invoice
+   `sourceType==="manual"` (dibuat admin via `/finance/billing/invoice/new`). Fix: guard diubah
+   jadi blocklist `sourceType !== "event_registration"` — konsisten dengan niat asli guard ini
+   (skip HANYA invoice yang memang sudah exist duluan lewat alur pendaftaran langsung, bukan
+   skip semua invoice selain cart). Logic diekstrak ke helper shared
+   `createEventRegistrationsFromInvoiceTickets()` (dipakai kedua fungsi confirm + action backfill
+   baru `backfillEventRegistrationsAction`, untuk invoice LAMA yang sudah terlanjur lunas
+   sebelum fix ini).
+2. **Diagnostik "sudah tersinkron" tidak informatif** — hasil backfill sempat cuma bilang
+   "sudah tersinkron sebelumnya" tanpa detail — diperluas `EventTicketBackfillResult` (per-
+   kategori: `created`/`existingRegistrations`/`alreadySynced`/`unlinkedItemId`/`ticketNotFound`)
+   supaya admin tahu PERSIS baris mana + status + nama yang tersimpan.
+3. **Nol `revalidatePath` untuk halaman publik event** — ditemukan via grep bahwa
+   `/{slug}/agenda/{slug}` TIDAK PERNAH di-revalidate di titik mana pun saat registrasi dibuat
+   (cuma path admin). Ditambahkan di 3 titik (`confirmInvoicePaymentAction`,
+   `verifySubmittedPaymentAction`, `backfillEventRegistrationsAction`) — **fix ini valid tapi
+   TERBUKTI BUKAN penyebab utama gejala** (lihat poin 4).
+4. **ROOT CAUSE SESUNGGUHNYA — `showAttendeeList` (toggle "Tampilkan daftar peserta" di
+   Pengaturan Tampilan event) default `false` untuk event BARU** (`event/acara/new/page.tsx:74`).
+   `EventDetailTabs`'s `hasPesertaTab = showAttendeeList` (`event-detail-tabs.tsx:82`) — kalau
+   `false`, tab "Peserta" **tidak dirender sama sekali**, bukan cuma datanya kosong. Query
+   `attendees` dan `ticketStatsForTab` di `agenda/[slug]/page.tsx` (baris 263+314) sama-sama
+   digate persis flag ini. Data di database SUDAH 100% benar (event_id, slug, status='confirmed'
+   semua cocok, dikonfirmasi via SQL) — halaman publik memang TIDAK PERNAH menampilkan APA PUN
+   soal peserta selama toggle ini belum dinyalakan admin, terlepas cache/revalidate apa pun.
+
+**Metodologi verifikasi yang membuktikan ini, bukan cuma teori**: (a) diverifikasi via SQL
+langsung (`docker compose exec -T postgres psql`) bahwa row registrasi genuinely ada dengan
+`event_id`/`slug` yang cocok persis; (b) 2 analisis "agent lain" yang dipaste user (menuduh
+`itemType` salah / `itemId` null) DITOLAK karena kontradiktif langsung dengan hasil SQL — bukti
+konkret > klaim tanpa verifikasi, sesuai prinsip `feedback_verify_other_agent_work`; (c) hipotesis
+CDN-caching disanggah EMPIRIS via `curl -H "Host: visikita.com" http://localhost:3000/...`
+(bypass Cloudflare total, langsung ke proses Next.js) — hasil `EVT-202608-00005: TIDAK_DITEMUKAN`
+membuktikan bukan soal cache sama sekali; (d) baru dari situ ditemukan gating `showAttendeeList`
+via grep lalu baca ulang `agenda/[slug]/page.tsx` + `event-detail-tabs.tsx`.
+
+**Kenapa sisi admin TERLIHAT juga tidak menampilkan**: `event/acara/[id]/page.tsx`'s query
+`rawRegs` TIDAK punya gate/filter status apa pun, dan `EventRegistrationList` (`event-registration-
+list.tsx`) tidak ada pagination — kalau row ada di DB, PASTI muncul di tabel admin. User sempat
+search "fadhli" dan dapat 0 hasil — ini BUKAN bukti row hilang, melainkan konsekuensi LANGSUNG
+dari bug data terpisah (lihat lesson berikutnya): `attendeeName` row itu tersimpan sebagai
+`"Reuni Akbar Spinker 620 tahun 2026 - Ikut Reuni 2026"` (nama tampilan tiket, bukan nama orang)
+karena invoice ini dibuat SEBELUM fitur "Data Peserta" ada di form invoice manual — search filter
+cuma cocokkan `attendeeName`/`registrationNumber`/`phone`/`email`, jadi mencari "fadhli" terhadap
+nama yang salah itu pasti nol hasil. Dikonfirmasi user sendiri via `Ctrl+F`/scroll manual: row
+memang ADA di tabel, cuma bernama salah — dikoreksi via fitur "Edit Data Peserta" (pencil icon)
+yang sudah ada, tanpa perlu kode baru.
+
+**Aturan yang ditegaskan**: kalau sebuah fitur "kosong padahal data ada" dilaporkan, JANGAN
+langsung asumsikan itu bug caching/query — cek dulu apakah ada TOGGLE ADMIN yang menggate seluruh
+fitur itu (search nama komponennya di grep, cek nilai default-nya untuk record BARU). Verifikasi
+klaim "sudah difix"/analisis pihak lain SELALU terhadap bukti konkret (query SQL langsung, curl
+bypass-cache) — bukan diterima/ditolak berdasarkan argumen semata.
+
+`tsc --noEmit` bersih tiap commit + `bun run build` genuine. **Sudah di-commit+push** (`e416e95`,
+`4f3e0a3`, `dda397f`, `272d7e7`). Solusi akhir bagi user: nyalakan toggle "Tampilkan daftar
+peserta" di halaman edit event (`/app/{slug}/event/acara/{id}/edit` → "Pengaturan Tampilan").
+
+### [2026-08-03] Autocomplete Anggota di Dialog "Edit Data Peserta"
+
+Field Nama Peserta di dialog koreksi data (`EventRegistrationList`'s `EditRegistrationDialog`,
+dipakai untuk memperbaiki nama/HP yang salah — mis. akibat bug § di atas) sekarang pakai
+`MemberNameAutocomplete` (reuse komponen yang sudah ada di modul keuangan, `components/keuangan/
+member-name-autocomplete.tsx`) — admin bisa cari & pilih dari anggota terdaftar, HP+Email otomatis
+terisi saat dipilih (pola `if (m) { setPhone(...); setEmail(...); }` — SAMA PERSIS pola yang sudah
+dikunci di `payment-form.tsx`, auto-isi HANYA saat pilih dari dropdown, TIDAK meng-clear saat
+ketik manual). `tsc`+build bersih. **Sudah di-commit+push** (`e113cc1`).
+
+### [2026-08-03] `renderSafeHtml` (Hero) — Dukung Tag `<a href>`
+
+User tanya kenapa `<a href="">` tidak berfungsi di deskripsi Hero. Ditemukan: `lib/safe-html.tsx`
+adalah mini-parser HTML buatan sendiri (bukan DOMPurify) dengan whitelist tag TETAP
+(`ALLOWED_TAGS`) yang sebelumnya tidak menyertakan `a` — tag itu (dan `href`-nya) dibuang total
+saat parsing, teks di dalamnya tetap tampil tapi jadi teks polos bukan link.
+
+**Fix**: `"a"` ditambah ke `ALLOWED_TAGS`, ekstraksi `href` dengan whitelist skema
+(`SAFE_HREF_PATTERN = /^(https?:|mailto:|tel:|\/|#)/i` — tolak `javascript:`/`data:`/`vbscript:`),
+default styling `text-primary underline underline-offset-2 hover:opacity-80` (dilewati kalau
+admin sudah kasih `class` sendiri), `target="_blank"` otomatis dapat `rel="noopener noreferrer"`.
+
+Diverifikasi EMPIRIS (bukan cuma baca kode) via `renderToStaticMarkup` — 6 skenario: link
+eksternal, link internal relatif, **percobaan XSS `javascript:alert(1)` berhasil ditolak** (href
+dibuang, teks tetap tampil, tidak ada link berbahaya), `target="_blank"` dapat `rel` otomatis,
+custom class tidak di-override paksa, dan regresi `*teks*`/`<strong>` existing tetap jalan. Blast
+radius terbatas (hanya 2 file: `hero-design-1.tsx`+`hero-design-2.tsx`, satu-satunya pemanggil
+`renderSafeHtml`). `tsc`+build bersih. **Sudah di-commit+push** (`1eab366`).
+
+### [2026-08-03] Bug: Tombol "Simpan & Lanjutkan" `/akun/lengkapi` Sering Disabled Padahal Semua Field Terisi
+
+User laporkan tombol Step 1 wizard lengkapi profil "sering tidak bisa" diklik meski Jenis
+Kelamin/Tanggal Lahir/Tempat Lahir/Tahun Lulus/Profesi/Wali Santri/PC IKPM Cabang semua sudah
+terisi. Audit disabled-condition (`!name.trim() || !gender || ... || !professionId || ... ||
+!primaryCabangRefId`) TIDAK menunjukkan drift antara kondisi disabled dan validasi
+`saveStep1()` — keduanya konsisten. Root cause ADA DI KOMPONEN INPUT-nya, bukan di kondisi
+disabled itu sendiri.
+
+**Bug nyata ditemukan di `ProfessionCombobox`** (lokal `akun/lengkapi/page.tsx`) DAN
+`RegencyCombobox` (shared, `components/ui/regency-combobox.tsx`, dipakai juga admin
+`step1-identity.tsx` untuk Tempat Lahir) — pola identik di keduanya:
+```typescript
+// SALAH — onChange ke parent dipanggil di SETIAP keystroke, sebelum user
+// benar-benar memilih item baru
+onChange={e => { setQuery(e.target.value); onChange(null); setOpen(true); }}
+```
+Kalau user sudah punya Profesi/Tempat Lahir terisi (dari data lama, atau baru dipilih), lalu
+klik ke field itu lagi (sekadar review, atau tersentuh saat tab-through form) dan mengetik APA
+PUN — sengaja mencari ulang, atau cuma keystroke tak sengaja — `professionId`/`birthRegencyId`
+LANGSUNG `null` di parent, SEBELUM ada pilihan baru. Kalau user lalu klik keluar TANPA memilih
+item baru dari dropdown, tidak ada mekanisme pemulihan sama sekali (`RegencyCombobox`'s
+outside-click handler cuma `setOpen(false)`, tidak restore apa pun) — field yang sudah terisi
+hilang diam-diam, tombol tetap disabled, user bingung karena "sudah saya isi kok".
+
+**Fix — decouple "pilihan tersimpan" dari "draft sedang diketik" via flag `isEditing`**:
+`onChange` ke parent HANYA dipanggil saat user benar-benar `handleSelect()` (klik item dropdown)
+atau `handleClear()` (klik tombol × eksplisit) — TIDAK PERNAH lagi di setiap keystroke. Selama
+`isEditing=true`, input tampilkan `query` (draft lokal, aman disentuh bebas); begitu blur/klik-
+luar tanpa memilih apa pun, `isEditing` kembali `false`, input otomatis reveal `selected?.name`
+lagi via ternary — dan karena `value`/`professionId` TIDAK PERNAH disentuh selama proses
+ketik-lalu-batal ini, tidak ada data yang hilang. `RegencyCombobox`'s debounced-search effect
+diubah dependency dari `[query, selected]` jadi `[query, isEditing]` (sebelumnya search di-skip
+total begitu `selected` truthy — kalau `selected` tidak lagi dinolkan saat mengetik, effect lama
+tidak akan pernah jalan lagi untuk mencari ulang).
+
+**Ditemukan setelah commit `9ceaf15` dipush** (dikonfirmasi via `git show`, BUKAN diasumsikan
+sudah benar — user bilang "sudah di-build dan di-push oleh agent lain") — komit itu ternyata
+persis mengambil edit saya sendiri di sesi ini (byte-for-byte, termasuk teks komentar), PLUS 2
+perbaikan tambahan yang bukan dari saya: pesan error `birthRegencyId` diperjelas jadi tuntunan
+eksplisit, dan **`disabled={saving}` menggantikan seluruh rantai boolean panjang** — tombol
+SELALU bisa diklik (kecuali sedang menyimpan), validasi diserahkan sepenuhnya ke `saveStep1()`
+yang punya `setError(...)` jelas per field. Ini closes root complaint lebih tuntas — bahkan
+kalau combobox sudah benar, kondisi `disabled` sepanjang itu tetap rawan drift/stale di masa
+depan; tombol-selalu-aktif + validasi eksplisit jauh lebih robust dan lebih mudah didiagnosis.
+
+**Aturan yang ditegaskan (perluasan dari lesson lama "blur vs click race condition")**: untuk
+SEMUA custom search/combobox yang punya konsep "sudah dipilih sebelumnya", JANGAN panggil
+`onChange`/callback ke parent di handler `onChange` input (tiap keystroke) — HANYA panggil saat
+ada aksi EKSPLISIT (pilih item / klik clear). Selama user cuma mengetik untuk mencari, biarkan
+itu jadi draft LOKAL murni, jangan sentuh state yang direpresentasikan sebagai "nilai final" ke
+parent sampai ada konfirmasi pilihan.
+
+`tsc --noEmit` bersih kedua file + `bun run build` genuine sukses. **Sudah di-commit+push**
+(`9ceaf15`, diverifikasi via `git show` — bukan cuma dipercaya dari klaim).
+
+### [2026-08-04] Investigasi React Error #418 di Invoice Publik — Nol Bug Baru di File, 1 Risiko
+Narrow-Window Ditutup di `NewsHeader`
+
+User laporkan React error #418 (hydration text mismatch) di console saat buka halaman invoice
+publik, SETELAH mengonfirmasi VPS sudah running commit `9ceaf15` (post-fix ICU/CLDR 18 Juli)
+DAN sudah hard refresh — error TETAP muncul.
+
+**Audit menyeluruh, bukan asumsi**: dibaca PENUH `invoice-public-client.tsx` (1151 baris) —
+`formatRp()` sudah pola aman (`"Rp " + Intl.NumberFormat(...)`, bukan `style:"currency"`),
+SEMUA 3 pemakaian `toLocaleDateString()` (formatDate, resi pengiriman, `todayWib` cicilan)
+sudah punya `timeZone` eksplisit, `isOverdue` bandingkan string `"YYYY-MM-DD"` langsung (bukan
+Date object). Grep site-wide `style:"currency"` di seluruh app — HANYA muncul di halaman
+ADMIN (Server Component, sesuai daftar pengecualian lama, aman dari hydration). Grep
+`toLocaleDateString`/`toLocaleTimeString` tanpa `timeZone` di `components/website/public` —
+nol hasil relevan.
+
+**1 risiko nyata ditemukan (di luar file invoice)**: `NewsHeader`'s `formatGregorianDate()`
+(dipanggil LANGSUNG saat render, baris `const formattedDate = formatGregorianDate();`)
+memanggil `new Date()` secara independen di SSR (server) dan hydration (client) — dua momen
+BERBEDA. Granularitas format cuma sampai hari (`weekday/day/month/year`, bukan jam/menit) jadi
+window mismatch-nya SEMPIT (cuma kalau kedua momen itu melewati batas tengah malam WIB) — tidak
+cocok skenario "konsisten selalu muncul", tapi tetap risiko nyata yang gratis dihilangkan
+total.
+
+**Fix defensif**: `formattedDate` diubah dari nilai langsung jadi `useState<string|null>(null)`,
+diisi via `useEffect` (post-mount). Render pertama (SSR DAN client) SAMA PERSIS kosong (nol
+teks) — nol kemungkinan mismatch — baru terisi setelah hydration selesai (update state biasa,
+bukan hydration mismatch). Pola standar React untuk "nilai bergantung waktu-sekarang / API
+browser": JANGAN pernah hitung langsung saat render pertama, defer ke effect.
+
+**Kejujuran ke user**: fix ini genuinely memperbaiki 1 risiko real, TAPI tidak 100% pasti ini
+akar masalah yang dilaporkan (window terlalu sempit untuk "selalu terjadi"). Sesi ini TIDAK
+menemukan smoking-gun lain di `invoice-public-client.tsx` maupun header/footer publik lain
+meski sudah dibaca menyeluruh (bukan cuma grep pola lama) — kalau error TETAP muncul setelah
+fix ini di-deploy, perlu info lebih presisi: bandingkan "View Page Source" (Ctrl+U, HTML SSR
+mentah) terhadap tampilan setelah hydration untuk temukan teks yang beda persis, ATAU
+non-minified error dari `bun run dev` lokal.
+
+`tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0
+cached`, 46.29s). **Belum di-commit/push saat ditulis di sini — lihat commit berikutnya.**
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fitur Export Peserta Event ke Excel** (lihat lesson `[2026-08-01]`
+- Terakhir dikerjakan: **Investigasi React error #418 di invoice publik** (lihat lesson
+  `[2026-08-04]` di atas) — audit menyeluruh `invoice-public-client.tsx` (baca penuh 1151
+  baris) + grep site-wide tidak menemukan bug baru di file itu (semua sudah properly guarded
+  dari fix ICU/CLDR + timezone lama). 1 risiko narrow-window ditutup di `NewsHeader`'s
+  `formatGregorianDate()` (defer ke `useEffect`, bukan hitung langsung saat render). `tsc`+
+  build genuine bersih. **Sudah di-commit+push. Belum dijalankan di VPS, belum dikonfirmasi
+  apakah ini benar-benar menutup error yang dilaporkan user** — kejujuran dicatat eksplisit di
+  lesson: window mismatch-nya sempit (cuma tengah malam WIB), belum tentu akar masalah utama.
+  Kalau error tetap muncul setelah deploy, langkah berikutnya: minta user bandingkan "View Page
+  Source" vs tampilan ter-hydrate, atau non-minified error dari dev lokal.
+- Sesi sebelumnya: **Bug Tombol "Simpan & Lanjutkan" `/akun/lengkapi`** (lihat lesson
+  `[2026-08-03]` "Bug: Tombol 'Simpan & Lanjutkan'" di atas) — root cause: `ProfessionCombobox`
+  dan `RegencyCombobox` menolkan pilihan tersimpan di SETIAP keystroke tanpa mekanisme pemulihan
+  kalau user batal — fix decouple "committed value" dari "draft sedang diketik" via flag
+  `isEditing`, `onChange` ke parent cuma dipanggil saat pilih eksplisit/clear. Ditemukan
+  komit `9ceaf15` (diklaim user sebagai "agent lain") ternyata persis mengambil edit saya sendiri
+  + 2 perbaikan tambahan (pesan error lebih jelas + `disabled={saving}` menggantikan rantai
+  boolean panjang) — diverifikasi via `git show`, bukan dipercaya begitu saja. **Sudah di-
+  commit+push (`9ceaf15`). Belum dijalankan di VPS, belum diverifikasi visual di browser.**
+- Sesi sebelumnya (giliran sama): **Bug kritis peserta event "hilang"** (root cause
+  `showAttendeeList` default `false` untuk event baru, menggate seluruh tab "Peserta" — lihat
+  lesson di atas) + **autocomplete anggota di dialog Edit Data Peserta** (`e113cc1`) + **dukungan
+  `<a href>` di `renderSafeHtml` Hero** (`1eab366`) — semua sudah di-commit+push, belum
+  dijalankan di VPS.
+- Sesi sebelumnya: **Fitur Export Peserta Event ke Excel** (lihat lesson `[2026-08-01]`
   "Fitur Export Peserta Event ke Excel" di atas) — route `GET /api/events/[id]/export-
   participants` + tombol di `/event/acara/[id]`, filter hanya peserta `confirmed`/`attended`
   (sudah bayar/dikonfirmasi), 14+ kolom termasuk custom field event dinamis, resolve
