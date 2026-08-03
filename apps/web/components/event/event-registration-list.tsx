@@ -5,16 +5,22 @@ import { displayPhone } from "@/lib/phone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import {
   XCircle, UserCheck,
-  Search, Loader2, BadgeCheck, BanknoteIcon, ExternalLink, ImageIcon, X as XIcon,
+  Search, Loader2, BadgeCheck, BanknoteIcon, ExternalLink, ImageIcon, X as XIcon, Pencil,
 } from "lucide-react";
 import {
   approveRegistrationAction,
   confirmRegistrationPaymentAction,
   confirmEventInvoicePaymentAction,
   cancelRegistrationAction,
+  updateRegistrationDataAction,
 } from "@/app/(dashboard)/app/[tenant]/event/actions";
+import type { CustomFormField } from "@/lib/event-custom-form";
 import { EventCertificateButton } from "./event-certificate-button";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -37,6 +43,7 @@ export type RegistrationRow = {
   proofUrl:           string | null;
   certificateUrl:     string | null;
   createdAt:          Date;
+  customFields:       Record<string, string> | null;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -64,17 +71,22 @@ export function EventRegistrationList({
   eventId,
   registrations: initialRows,
   timezone,
+  enableCustomForm,
+  customFormFields,
 }: {
-  slug:          string;
-  eventId:       string;
-  registrations: RegistrationRow[];
-  timezone:      string;
+  slug:             string;
+  eventId:          string;
+  registrations:    RegistrationRow[];
+  timezone:         string;
+  enableCustomForm: boolean;
+  customFormFields: CustomFormField[];
 }) {
   const [rows,      setRows]      = useState<RegistrationRow[]>(initialRows);
   const [search,    setSearch]    = useState("");
   const [actionId,  setActionId]  = useState<string | null>(null);
   const [error,     setError]     = useState<string | null>(null);
   const [proofOpen, setProofOpen] = useState<string | null>(null); // URL lightbox bukti
+  const [editRow,   setEditRow]   = useState<RegistrationRow | null>(null); // dialog edit data peserta
   const [isPending, startTransition] = useTransition();
 
   const filtered = rows.filter((r) => {
@@ -285,6 +297,21 @@ export function EventRegistrationList({
                         </Button>
                       )}
 
+                      {/* Edit data peserta — nama/HP/email/custom form, terlepas status.
+                          Untuk koreksi registrasi yang terlanjur masuk salah/tidak lengkap
+                          (mis. hasil invoice manual admin sebelum fix custom form). */}
+                      {!isLoading && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                          title="Edit Data Peserta"
+                          onClick={() => setEditRow(reg)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+
                       {/* Batalkan */}
                       {!isLoading && reg.status !== "cancelled" && reg.status !== "attended" && (
                         <Button
@@ -359,6 +386,166 @@ export function EventRegistrationList({
           />
         </div>
       )}
+
+      {/* Edit data peserta */}
+      {editRow && (
+        <EditRegistrationDialog
+          slug={slug}
+          row={editRow}
+          enableCustomForm={enableCustomForm}
+          customFormFields={customFormFields}
+          onClose={() => setEditRow(null)}
+          onSaved={() => window.location.reload()}
+        />
+      )}
     </div>
+  );
+}
+
+// ─── EditRegistrationDialog ────────────────────────────────────────────────────
+// Koreksi data peserta (nama/HP/email/formulir tambahan) untuk registrasi yang sudah
+// terlanjur masuk — mis. hasil invoice manual admin sebelum custom form ikut terpasang,
+// atau salah ketik saat pendaftaran publik. Tidak mengubah status/pembayaran.
+
+function EditRegistrationDialog({
+  slug,
+  row,
+  enableCustomForm,
+  customFormFields,
+  onClose,
+  onSaved,
+}: {
+  slug:             string;
+  row:              RegistrationRow;
+  enableCustomForm: boolean;
+  customFormFields: CustomFormField[];
+  onClose:          () => void;
+  onSaved:          () => void;
+}) {
+  const [name,  setName]  = useState(row.attendeeName);
+  const [phone, setPhone] = useState(row.attendeePhone ?? "");
+  const [email, setEmail] = useState(row.attendeeEmail ?? "");
+  const [answers, setAnswers] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const f of customFormFields) {
+      const v = row.customFields?.[f.key];
+      if (v !== undefined && v !== null) init[f.key] = String(v);
+    }
+    return init;
+  });
+  const [saving, setSaving] = useState(false);
+  const [error,  setError]  = useState<string | null>(null);
+
+  function setAnswer(key: string, v: string) {
+    setAnswers((prev) => ({ ...prev, [key]: v }));
+  }
+
+  async function handleSave() {
+    if (!name.trim()) {
+      setError("Nama peserta wajib diisi.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const res = await updateRegistrationDataAction(slug, row.id, {
+      attendeeName:       name,
+      attendeePhone:      phone,
+      attendeeEmail:      email,
+      customFieldAnswers: answers,
+    });
+    setSaving(false);
+    if (!res.success) {
+      setError(res.error ?? "Gagal menyimpan data peserta.");
+      return;
+    }
+    onSaved();
+  }
+
+  const labelCls = "text-sm font-medium mb-1 block";
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit Data Peserta</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Nama Peserta <span className="text-destructive">*</span></label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+
+          <PhoneInput label="HP Peserta" optional value={phone} onChange={setPhone} />
+
+          <div>
+            <label className={labelCls}>Email Peserta</label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+
+          {enableCustomForm && customFormFields.length > 0 && (
+            <div className="space-y-2.5 pt-2 border-t border-border">
+              <p className="text-xs text-muted-foreground">Formulir tambahan dari event ini:</p>
+              {customFormFields.map((field) => {
+                const value = answers[field.key] ?? "";
+                return (
+                  <div key={field.key}>
+                    <label className={labelCls}>
+                      {field.label}
+                      {field.required && <span className="text-destructive"> *</span>}
+                    </label>
+
+                    {field.type === "select" && field.options && field.options.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {field.options.map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => setAnswer(field.key, opt)}
+                            className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                              value === opt
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border hover:border-primary/50"
+                            }`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    ) : field.type === "datetime" ? (
+                      <input
+                        type="datetime-local"
+                        value={value}
+                        onChange={(e) => setAnswer(field.key, e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                    ) : (
+                      <Input
+                        type={field.type === "number" ? "number" : "text"}
+                        value={value}
+                        onChange={(e) => setAnswer(field.key, e.target.value)}
+                        placeholder={field.placeholder ?? ""}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Batal
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+            Simpan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

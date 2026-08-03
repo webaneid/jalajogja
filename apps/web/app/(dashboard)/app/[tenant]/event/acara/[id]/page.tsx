@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EventRegistrationList, type RegistrationRow } from "@/components/event/event-registration-list";
 import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone.server";
+import type { CustomFormField } from "@/lib/event-custom-form";
 
 function formatDate(d: Date | null, timezone: string) {
   if (!d) return "—";
@@ -97,6 +98,7 @@ export default async function AcaraDetailPage({
       certificateUrl:     schema.eventRegistrations.certificateUrl,
       createdAt:          schema.eventRegistrations.createdAt,
       ticketId:           schema.eventRegistrations.ticketId,
+      customFields:       schema.eventRegistrations.customFields,
     })
     .from(schema.eventRegistrations)
     .where(eq(schema.eventRegistrations.eventId, eventId))
@@ -168,6 +170,7 @@ export default async function AcaraDetailPage({
       proofUrl:           payment?.proofUrl ?? null,
       certificateUrl:     r.certificateUrl ?? null,
       createdAt:          r.createdAt!,
+      customFields:       (r.customFields as Record<string, string> | null) ?? null,
     };
   });
 
@@ -292,6 +295,8 @@ export default async function AcaraDetailPage({
             eventId={eventId}
             registrations={registrations}
             timezone={tenantTimezone}
+            enableCustomForm={event.enableCustomForm}
+            customFormFields={(event.customFormFields as CustomFormField[] | null) ?? []}
           />
         </div>
       </main>

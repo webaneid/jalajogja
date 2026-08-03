@@ -1307,6 +1307,64 @@ export async function cancelRegistrationAction(
   return { success: true, data: undefined };
 }
 
+// ─── Edit data peserta (admin) — untuk registrasi yang sudah terlanjur masuk ──
+// dengan attendeeName/HP/email/custom form salah atau belum lengkap (mis. hasil invoice
+// manual admin sebelum fix custom form, lihat lib/event-custom-form.ts). Tidak menyentuh
+// status/pembayaran — murni koreksi data kontak+identitas peserta.
+
+export type UpdateRegistrationData = {
+  attendeeName:        string;
+  attendeePhone:        string;
+  attendeeEmail:        string;
+  customFieldAnswers?:  Record<string, string>;
+};
+
+export async function updateRegistrationDataAction(
+  slug: string,
+  registrationId: string,
+  data: UpdateRegistrationData,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "event"))
+    return { success: false, error: "Hanya admin yang bisa mengedit data peserta." };
+
+  if (!data.attendeeName?.trim())
+    return { success: false, error: "Nama peserta wajib diisi." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [reg] = await db
+    .select({ id: schema.eventRegistrations.id, eventId: schema.eventRegistrations.eventId })
+    .from(schema.eventRegistrations)
+    .where(eq(schema.eventRegistrations.id, registrationId))
+    .limit(1);
+
+  if (!reg) return { success: false, error: "Registrasi tidak ditemukan." };
+
+  try {
+    await db
+      .update(schema.eventRegistrations)
+      .set({
+        attendeeName:  data.attendeeName.trim(),
+        attendeePhone: data.attendeePhone?.trim() ? normalizePhone(data.attendeePhone) : null,
+        attendeeEmail: data.attendeeEmail?.trim().toLowerCase() || null,
+        customFields:
+          data.customFieldAnswers && Object.keys(data.customFieldAnswers).length > 0
+            ? data.customFieldAnswers
+            : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.eventRegistrations.id, registrationId));
+
+    revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
+    return { success: true, data: undefined };
+  } catch (err) {
+    console.error("[updateRegistrationDataAction]", err);
+    return { success: false, error: "Gagal menyimpan data peserta." };
+  }
+}
+
 // ─── Check-in peserta (admin) ─────────────────────────────────────────────────
 
 export async function checkInRegistrationAction(
