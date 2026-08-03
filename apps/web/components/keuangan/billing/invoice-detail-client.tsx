@@ -180,16 +180,29 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
     setSuccess("");
     startBackfillTr(async () => {
       const res = await backfillEventRegistrationsAction(slug, invoice.id);
-      if (res.success) {
-        setSuccess(
-          res.data.created > 0
-            ? `${res.data.created} peserta berhasil disinkronkan ke data event.`
-            : "Semua peserta di invoice ini sudah tersinkron — tidak ada yang perlu ditambahkan."
-        );
-        router.refresh();
-      } else {
+      if (!res.success) {
         setError(res.error);
+        return;
       }
+      const { created, alreadySynced, unlinkedItemId, ticketNotFound, totalTicketItems } = res.data;
+      if (created.length > 0) {
+        setSuccess(`${created.length} peserta berhasil disinkronkan ke data event.`);
+      } else if (totalTicketItems === 0) {
+        setError("Invoice ini tidak memiliki item bertipe tiket event — tidak ada yang bisa disinkronkan.");
+      } else if (unlinkedItemId > 0) {
+        setError(
+          `Ditemukan ${unlinkedItemId} item tiket yang TIDAK terhubung ke tiket event manapun — kemungkinan diketik manual sebagai teks bebas saat invoice dibuat (bukan dipilih dari hasil pencarian tiket), sehingga sistem tidak tahu ini peserta event mana. Tidak bisa disinkronkan otomatis — periksa item invoice ini, atau tambahkan peserta secara manual di halaman detail event.`
+        );
+      } else if (ticketNotFound > 0) {
+        setError(
+          `Ditemukan ${ticketNotFound} item tiket yang mereferensikan tiket event yang sudah tidak ada lagi (mungkin dihapus/diubah setelah invoice dibuat). Tidak bisa disinkronkan otomatis.`
+        );
+      } else if (alreadySynced > 0) {
+        setSuccess("Semua peserta di invoice ini sudah tersinkron sebelumnya — tidak ada yang perlu ditambahkan.");
+      } else {
+        setSuccess("Tidak ada yang perlu disinkronkan.");
+      }
+      router.refresh();
     });
   }
 

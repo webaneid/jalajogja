@@ -80,15 +80,30 @@ type TenantTx = PgTransaction<
 // sebelum bug sourceType!=="cart" ini ditemukan — lihat komentar di kedua caller lain).
 // Idempotent: baris yang sudah punya customFields.sourceInvoiceId = invoiceId dilewati.
 
+type CreatedEventReg = { eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null };
+
+export type EventTicketBackfillResult = {
+  created:          CreatedEventReg[];
+  alreadySynced:    number; // sudah punya registrasi (idempotent skip) — normal, bukan masalah
+  unlinkedItemId:   number; // itemType="ticket" tapi itemId kosong — item diketik manual/bebas,
+                             // tidak pernah dipilih dari daftar tiket saat invoice dibuat.
+                             // TIDAK BISA disinkronkan otomatis (tidak tahu event/tiket mana).
+  ticketNotFound:   number; // itemId ada tapi tidak match event_tickets manapun (tiket sudah
+                             // dihapus/diganti sejak invoice dibuat).
+  totalTicketItems: number;
+};
+
 async function createEventRegistrationsFromInvoiceTickets(
   tx: TenantTx,
   tenantDb: ReturnType<typeof createTenantDb>,
   invoiceId: string,
   invoiceMemberId: string | null,
   invoiceProfileId: string | null,
-): Promise<Array<{ eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null }>> {
+): Promise<EventTicketBackfillResult> {
   const { schema } = tenantDb;
-  const newRegs: Array<{ eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null }> = [];
+  const result: EventTicketBackfillResult = {
+    created: [], alreadySynced: 0, unlinkedItemId: 0, ticketNotFound: 0, totalTicketItems: 0,
+  };
 
   const ticketItems = await tx
     .select({
@@ -102,8 +117,10 @@ async function createEventRegistrationsFromInvoiceTickets(
       eq(schema.invoiceItems.itemType, "ticket"),
     ));
 
+  result.totalTicketItems = ticketItems.length;
+
   for (const item of ticketItems) {
-    if (!item.itemId) continue;
+    if (!item.itemId) { result.unlinkedItemId++; continue; }
 
     const [existing] = await tx
       .select({ id: schema.eventRegistrations.id })
@@ -113,7 +130,7 @@ async function createEventRegistrationsFromInvoiceTickets(
         sql`${schema.eventRegistrations.customFields}->>'sourceInvoiceId' = ${invoiceId}`,
       ))
       .limit(1);
-    if (existing) continue;
+    if (existing) { result.alreadySynced++; continue; }
 
     let attendeeName  = item.name ?? "Peserta";
     let attendeePhone: string | null = null;
@@ -132,7 +149,7 @@ async function createEventRegistrationsFromInvoiceTickets(
       .from(schema.eventTickets)
       .where(eq(schema.eventTickets.id, item.itemId))
       .limit(1);
-    if (!ticket?.eventId) continue;
+    if (!ticket?.eventId) { result.ticketNotFound++; continue; }
 
     const regNumber = await generateEventRegNumber(tenantDb);
 
@@ -149,10 +166,10 @@ async function createEventRegistrationsFromInvoiceTickets(
       customFields:       { sourceInvoiceId: invoiceId, ...(extraFields ?? {}) },
     });
 
-    newRegs.push({ eventId: ticket.eventId, regNumber, attendeeName, attendeePhone });
+    result.created.push({ eventId: ticket.eventId, regNumber, attendeeName, attendeePhone });
   }
 
-  return newRegs;
+  return result;
 }
 
 // Sama dengan formatEventDateWib di event/actions.ts — di-duplikasi agar billing
@@ -920,10 +937,10 @@ export async function confirmInvoicePaymentAction(
         // nama tiket (bukan nama peserta asli), karena description item itu tidak diisi JSON
         // attendee.
         if (inv.sourceType !== "event_registration") {
-          const created = await createEventRegistrationsFromInvoiceTickets(
+          const ticketResult = await createEventRegistrationsFromInvoiceTickets(
             tx, tenantDb, invoiceId, inv.memberId ?? null, inv.profileId ?? null,
           );
-          newEventRegs.push(...created);
+          newEventRegs.push(...ticketResult.created);
         }
       }
 
@@ -1470,10 +1487,10 @@ export async function verifySubmittedPaymentAction(
         // sourceType="event_registration" — sudah ditangani blok di atas. Lihat komentar sama
         // di confirmInvoicePaymentAction untuk alasan lengkap.
         if (inv.sourceType !== "event_registration") {
-          const created = await createEventRegistrationsFromInvoiceTickets(
+          const ticketResult = await createEventRegistrationsFromInvoiceTickets(
             tx, tenantDb, inv.id, inv.memberId ?? null, inv.profileId ?? null,
           );
-          newEventRegs.push(...created);
+          newEventRegs.push(...ticketResult.created);
         }
       }
     });
@@ -1576,7 +1593,7 @@ export async function verifySubmittedPaymentAction(
 export async function backfillEventRegistrationsAction(
   slug: string,
   invoiceId: string,
-): Promise<ActionResult<{ created: number }>> {
+): Promise<ActionResult<EventTicketBackfillResult>> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
   if (!hasFullAccess(access.tenantUser, "keuangan"))
@@ -1601,18 +1618,18 @@ export async function backfillEventRegistrationsAction(
     return { success: false, error: "Invoice belum lunas — tidak ada yang perlu disinkronkan." };
 
   try {
-    const created = await db.transaction((tx) =>
+    const result = await db.transaction((tx) =>
       createEventRegistrationsFromInvoiceTickets(
         tx, tenantDb, invoiceId, inv.memberId ?? null, inv.profileId ?? null,
       )
     );
 
     revalidateBilling(slug);
-    for (const reg of created) {
+    for (const reg of result.created) {
       revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
     }
 
-    return { success: true, data: { created: created.length } };
+    return { success: true, data: result };
   } catch (err) {
     console.error("[backfillEventRegistrationsAction]", err);
     return { success: false, error: "Gagal menyinkronkan peserta." };
