@@ -22,6 +22,7 @@ import {
 } from "@/app/(dashboard)/app/[tenant]/event/actions";
 import type { CustomFormField } from "@/lib/event-custom-form";
 import { EventCertificateButton } from "./event-certificate-button";
+import { MemberNameAutocomplete, type SelectedMember } from "@/components/keuangan/member-name-autocomplete";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -440,6 +441,15 @@ function EditRegistrationDialog({
     setAnswers((prev) => ({ ...prev, [key]: v }));
   }
 
+  // Anggota dipilih dari autocomplete → auto-isi HP+email. Ketik manual (member=null)
+  // → TIDAK menghapus HP/email yang sudah diisi, biarkan tetap bisa diedit sendiri.
+  function handleSelectMember(m: SelectedMember | null) {
+    if (m) {
+      setPhone(m.phone);
+      setEmail(m.email);
+    }
+  }
+
   async function handleSave() {
     if (!name.trim()) {
       setError("Nama peserta wajib diisi.");
@@ -473,7 +483,14 @@ function EditRegistrationDialog({
         <div className="space-y-3">
           <div>
             <label className={labelCls}>Nama Peserta <span className="text-destructive">*</span></label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
+            <MemberNameAutocomplete
+              slug={slug}
+              value={name}
+              onChange={setName}
+              onSelectMember={handleSelectMember}
+              placeholder="Ketik nama — cari dari anggota atau isi manual"
+              required
+            />
           </div>
 
           <PhoneInput label="HP Peserta" optional value={phone} onChange={setPhone} />
