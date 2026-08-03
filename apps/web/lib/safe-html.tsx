@@ -3,8 +3,11 @@ import React from "react";
 
 // Safe inline HTML tags allowed in title & text formatting
 const ALLOWED_TAGS = new Set([
-  "span", "i", "em", "b", "strong", "u", "small", "mark", "sub", "sup", "br", "p", "div", "code",
+  "span", "i", "em", "b", "strong", "u", "small", "mark", "sub", "sup", "br", "p", "div", "code", "a",
 ]);
+
+// Skema URL yang boleh dipakai di href — menolak javascript:/data:/vbscript: (XSS)
+const SAFE_HREF_PATTERN = /^(https?:|mailto:|tel:|\/|#)/i;
 
 // Dangerous style properties (e.g. position: fixed, z-index, javascript expression)
 const DANGEROUS_STYLE_PATTERNS = [
@@ -122,6 +125,24 @@ export function renderSafeHtml(input?: string | null): ReactNode {
             const classMatch = /(?:class|className)\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(rawAttrs);
             if (classMatch) {
               props.className = classMatch[1] || classMatch[2] || "";
+            }
+
+            // Match href="..." — khusus tag <a>, tolak skema berbahaya (javascript:, data:, dst)
+            if (tagName === "a") {
+              const hrefMatch = /href\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(rawAttrs);
+              const hrefVal = (hrefMatch?.[1] || hrefMatch?.[2] || "").trim();
+              if (hrefVal && SAFE_HREF_PATTERN.test(hrefVal)) {
+                props.href = hrefVal;
+                if (!props.className) {
+                  props.className = "text-primary underline underline-offset-2 hover:opacity-80";
+                }
+                const targetMatch = /target\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(rawAttrs);
+                const targetVal = targetMatch?.[1] || targetMatch?.[2];
+                if (targetVal === "_blank") {
+                  props.target = "_blank";
+                  props.rel = "noopener noreferrer";
+                }
+              }
             }
           }
 
