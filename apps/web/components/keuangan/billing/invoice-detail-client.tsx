@@ -10,6 +10,7 @@ import {
   rejectPaymentAction,
   updatePaymentEvidenceAction,
   updateAdminShippingTrackingAction,
+  backfillEventRegistrationsAction,
   type InvoiceDetail,
 } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
@@ -167,6 +168,30 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
   // Shipping tracking
   const [resiInputs,  setResiInputs]   = useState<Record<string, string>>({});
   const [savingResi,  setSavingResi]   = useState<string | null>(null);
+
+  // Sinkronkan peserta event — perbaikan untuk invoice tiket yang lunas tapi belum
+  // menghasilkan event_registrations (bug lama sebelum admin bisa isi "Data Peserta" di
+  // invoice manual). Idempotent, aman diklik berkali-kali.
+  const hasTicketItems = invoice.items.some((i) => i.itemType === "ticket");
+  const [backfillPending, startBackfillTr] = useTransition();
+
+  function handleBackfillRegistrations() {
+    setError("");
+    setSuccess("");
+    startBackfillTr(async () => {
+      const res = await backfillEventRegistrationsAction(slug, invoice.id);
+      if (res.success) {
+        setSuccess(
+          res.data.created > 0
+            ? `${res.data.created} peserta berhasil disinkronkan ke data event.`
+            : "Semua peserta di invoice ini sudah tersinkron — tidak ada yang perlu ditambahkan."
+        );
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+    });
+  }
 
   function handleReject(paymentId: string) {
     if (!rejectReason.trim()) return;
@@ -868,7 +893,26 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
         </div>
       )}
 
-      {/* ── Actions ─────────────────────────────────────────────────────── */}
+      {/* ── Sinkronkan Peserta Event ────────────────────────────────────── */}
+      {invoice.status === "paid" && hasTicketItems && (
+        <div className="rounded-lg border border-border p-4 space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sinkronisasi Data Event</p>
+          <p className="text-sm text-muted-foreground">
+            Invoice ini berisi tiket event. Jika peserta belum muncul di daftar pendaftar event
+            (mis. invoice dibuat sebelum peserta sempat dilengkapi), klik tombol ini untuk
+            menyinkronkan ulang — aman diklik berkali-kali, data yang sudah ada tidak akan diduplikasi.
+          </p>
+          <button
+            type="button"
+            onClick={handleBackfillRegistrations}
+            disabled={backfillPending}
+            className="rounded-md border border-primary/50 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 disabled:opacity-60 transition-colors"
+          >
+            {backfillPending ? "Menyinkronkan..." : "Sinkronkan Peserta Event"}
+          </button>
+        </div>
+      )}
+
       {/* ── Actions ─────────────────────────────────────────────────────── */}
       {(canPay || canCancel) && (
         <div className="flex gap-3 pt-2">
