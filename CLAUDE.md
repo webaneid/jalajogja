@@ -15138,8 +15138,95 @@ non-minified error dari `bun run dev` lokal.
 `tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0
 cached`, 46.29s). **Belum di-commit/push saat ditulis di sini — lihat commit berikutnya.**
 
+### [2026-08-05] Arsip Post Disatukan — Editorial Mix (Overlay+Klasik+List) + Filter Kategori/Search
+
+User minta halaman `/post` (arsip) jadi "satu laman khusus untuk arsip post, search result, tag
+dan category post — konsisten". Investigasi (read-only dulu, sesuai instruksi "jgn eksekusi
+apapun dulu") menemukan `/post/page.tsx` adalah SATU-SATUNYA tipe konten (dibanding Produk/
+Campaign/Event) yang: (1) tidak punya filter kategori/tag sama sekali, (2) tidak punya halaman
+search result, (3) TIDAK memakai sistem 6-varian `PostCard` (`klasik`/`list`/`overlay`/
+`ringkas`/`judul`/`ticker`) yang sudah ada — hand-roll grid sendiri — meski Post justru tipe
+konten dengan varian kartu TERBANYAK. Temuan ini dipresentasikan dulu, TANPA eksekusi.
+
+**Rekap desain final** (disepakati 3 putaran `AskUserQuestion`/koreksi user):
+- **Posisi kartu** (0-indexed): index 0 → `overlay` (hero); index 1–4 (4 post) → `klasik`;
+  index 5+ → `list`. Resep SAMA di SETIAP halaman pagination (bukan cuma page 1 — user
+  eksplisit: "aturannya sama di halaman berikutnya").
+- **Grid klasik**: 2 kolom (bukan 4) — `grid-cols-2`, 4 post otomatis wrap jadi 2×2.
+- **Rasio overlay hero**: SAMA dengan variant `large`/`medium`/`thumbnail` (1200×630, ketiganya
+  share rasio identik ~1.905:1) — BUKAN default `aspect-[4/3]` bawaan `PostCardOverlay`. Di-
+  override via `className="aspect-[1200/630]"` yang diteruskan lewat prop `className` yang
+  MEMANG sudah disediakan `PostCardOverlay` untuk keperluan ini (dikonfirmasi `cn()` = `clsx`+
+  `twMerge`, jadi override aspect-ratio KONFLIK diselesaikan benar — class terakhir menang,
+  bukan menumpuk dua `aspect-*` sekaligus).
+- **Mobile**: SEMUA posisi klasik+list melebur jadi `list` dalam SATU stack vertikal — KECUALI
+  tiap kelipatan 6 (`index % 6 === 0`, 0-indexed) tetap/jadi `overlay` lagi untuk variasi.
+  Formula ini SECARA OTOMATIS mencakup post pertama (index 0 = kelipatan 6) — TIDAK perlu kasus
+  khusus "kecuali overlay" terpisah seperti yang tersirat di instruksi awal user.
+- **Filter**: `?category=slug` (chip UI, pola persis `ProductArchiveClient`) + `?search=teks`
+  (ilike ke `posts.title`) + `?page=N`. **Tanpa filter tag** (user eksplisit: "tidak perlu ada
+  filter tag" — scope dipersempit dari permintaan awal, diikuti apa adanya tanpa didebat).
+
+**File baru** (mengikuti pola `product-archive-card-designs.ts`/`ProductArchiveCards`/
+`ProductArchiveCardsDesign1` persis, termasuk teknik "dual-render CSS breakpoint" — desktop
+`hidden md:block` dan mobile `md:hidden` masing-masing render SELURUH list sendiri-sendiri, SSR-
+safe, bukan satu render dengan variant switch per-item via JS runtime):
+```
+lib/post-archive-card-designs.ts                                    → registry, ID "1" saja
+components/website/public/post-cards/post-archive-cards.tsx         → dispatcher
+components/website/public/post-cards/post-archive-cards-design-1.tsx → 3-zona recipe (klasik
+                                                                          2 kolom, bukan 4)
+components/website/public/post-cards/post-archive-filters-client.tsx → search+chip kategori
+```
+`app/(public)/[tenant]/post/page.tsx` ditulis ulang TOTAL — `searchParams` (category/search/
+page), SEO metadata dengan override level-kategori (pola persis `/produk`, pakai
+`post_categories.metaTitle`/`metaDesc`), `resolveCovers()` helper (duplikasi LOKAL dari private
+function di `posts-section.tsx` — bukan diekspor/di-share, konsisten pola "duplikasi demi
+isolasi" project ini) untuk resolve `media.variants` (path relatif, WAJIB `publicUrl()`) jadi
+`PostCardData.coverVariants`. `PAGE_SIZE = 20` (sama `/produk`, tidak dikoreksi user).
+**Tidak dibangun**: halaman Settings picker "Desain 1/2/..." — cuma ada 1 desain sekarang, UI
+picker untuk 1 pilihan berlebihan; registry file tetap dibuat kosong (`["1"]`) supaya nambah
+"Desain 2" nanti tinggal isi, bukan refactor ulang.
+
+**Verifikasi empiris presisi (bukan cuma "tidak crash")** — via Python HTML parser (buang
+`<script>` RSC flight-payload dulu, yang ternyata mengandung DUPLIKASI string literal className
+mentah — grep count naif pada raw HTML 500KB menyesatkan, count sesungguhnya di visible DOM
+cuma 66KB): terhadap tenant real `pc-ikpm-jogjakarta` (17 post published) — overlay=4 (1
+desktop+3 mobile di index 0/6/12), klasik=4 (post #2-#5, desktop-only), list=26 (12 desktop + 14
+mobile) — **PERSIS cocok formula**, tidak meleset satu pun. Sidebar `WidgetArea` yang
+kebetulan pakai gaya divider mirip (`border-t...first:border-0`) sempat bikin count list
+kelihatan 31 bukan 26 — diinvestigasi lebih jauh (pisahkan main-content vs sidebar block), bukan
+diabaikan sebagai "pasti beres" — terbukti selisihnya genuinely dari section lain yang tidak
+disentuh. Filter kategori "Olahraga" (3 post di DB) dan search "masjid" (2 post match judul)
+dibandingkan LANGSUNG ke query SQL manual — cocok persis, bukan diasumsikan dari status 200 saja.
+
+**Aturan yang ditegaskan**: kalau meng-grep-hitung string di HTML hasil `curl` Next.js App
+Router untuk verifikasi jumlah elemen, WAJIB buang `<script>...</script>` dulu (RSC flight
+payload menduplikasi banyak string literal prop mentah, termasuk className) — grep polos pada
+raw response bisa menghasilkan angka 2-8× lipat dari jumlah elemen DOM sesungguhnya, menyesatkan
+kalau tidak disadari. Parsing dengan `re.sub` buang `<script>` dulu sebelum count adalah cara
+murah untuk menghindari kesalahan interpretasi ini.
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0
+cached`, 50.3s, dev server dimatikan+`.next` dibersihkan+direstart). **Sudah di-commit+push.**
+Belum dijalankan di VPS — user perlu `git pull && bun run build --filter=@jalajogja/web && pm2
+restart jalajogja --update-env` (nol migrasi DB, murni kode aplikasi).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Investigasi React error #418 di invoice publik** (lihat lesson
+- Terakhir dikerjakan: **Arsip Post disatukan — Editorial Mix + filter kategori/search** (lihat
+  lesson `[2026-08-05]` di atas) — `/post/page.tsx` ditulis ulang total: kartu #1 overlay
+  (rasio sama large/medium/thumbnail via `className` override), 4 post berikutnya klasik (grid
+  2 kolom), sisanya list — resep sama di semua halaman pagination. Mobile: semua jadi list
+  kecuali tiap kelipatan 6 (`index % 6 === 0`) tetap/jadi overlay. Filter `?category=`+
+  `?search=`+`?page=` (tanpa tag, sesuai koreksi user). 4 file baru
+  (`lib/post-archive-card-designs.ts` + `post-archive-cards.tsx`/`-design-1.tsx`/
+  `-filters-client.tsx` di `components/website/public/post-cards/`) mengikuti pola
+  `product-archive-card-designs.ts`/`ProductArchiveCards` persis. Diverifikasi EMPIRIS presisi
+  (Python parse HTML, buang `<script>` RSC payload dulu — grep polos raw HTML menyesatkan 2-8×
+  lipat) terhadap tenant real 17 post: overlay=4, klasik=4, list=26 — PERSIS cocok formula;
+  filter kategori+search dicocokkan langsung ke query SQL manual. `tsc`+build genuine bersih.
+  **Sudah di-commit+push. Belum dijalankan di VPS** (nol migrasi DB, cukup pull+build+restart).
+- Sesi sebelumnya: **Investigasi React error #418 di invoice publik** (lihat lesson
   `[2026-08-04]` di atas) — audit menyeluruh `invoice-public-client.tsx` (baca penuh 1151
   baris) + grep site-wide tidak menemukan bug baru di file itu (semua sudah properly guarded
   dari fix ICU/CLDR + timezone lama). 1 risiko narrow-window ditutup di `NewsHeader`'s
