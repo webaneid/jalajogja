@@ -16,8 +16,8 @@ export type FulfillmentShippingLine = {
   id:             string;
   sellerType:     "tenant" | "mitra";
   sellerName:     string;
-  courier:        string;
-  service:        string;
+  courier:        string | null;
+  service:        string | null;
   etd:            string | null;
   cost:           number;
   trackingNumber: string | null;
@@ -180,7 +180,7 @@ function FulfillmentActions({
             <input
               value={resi}
               onChange={(e) => setResi(e.target.value)}
-              placeholder={`Masukkan resi ${line.courier.toUpperCase()}`}
+              placeholder={`Masukkan resi ${(line.courier ?? "").toUpperCase()}`}
               className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring font-mono"
             />
             <button

@@ -1,5 +1,6 @@
-import { eq, desc, and, inArray, min, max } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 import { getSettings, type TenantDb } from "@jalajogja/db";
+import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import type { ProductsSectionData, ProductsSectionDesignId } from "@/lib/products-section-designs";
 import type { ProductCardData } from "@/lib/product-card-templates";
 import { PRODUCT_ARCHIVE_CARD_DESIGN_IDS, type ProductArchiveCardDesignId } from "@/lib/product-archive-card-designs";
@@ -98,27 +99,10 @@ async function fetchProducts(
     }
   }
 
-  // Fetch priceMin/priceMax untuk variable product
-  const variableIds = filtered.filter(r => r.productType === "variable").map(r => r.id);
-  const priceRangeMap = new Map<string, { min: string; max: string }>();
-  if (variableIds.length > 0) {
-    const ranges = await db
-      .select({
-        productId: schema.productVariations.productId,
-        minPrice:  min(schema.productVariations.price),
-        maxPrice:  max(schema.productVariations.price),
-      })
-      .from(schema.productVariations)
-      .where(and(
-        inArray(schema.productVariations.productId, variableIds),
-        eq(schema.productVariations.isActive, true),
-      ))
-      .groupBy(schema.productVariations.productId);
-    ranges.forEach(r => {
-      if (r.minPrice && r.maxPrice)
-        priceRangeMap.set(r.productId, { min: r.minPrice, max: r.maxPrice });
-    });
-  }
+  // Fetch priceMin/priceMax untuk variable product — COALESCE(variation.price, product.price)
+  // dulu, lihat lib/product-variation-price.server.ts
+  const variableIds   = filtered.filter(r => r.productType === "variable").map(r => r.id);
+  const priceRangeMap = await resolveVariantPriceRanges(tenantClient, variableIds);
 
   return filtered.map(r => {
     const { coverUrl, coverVariants } = extractCover(r.images);

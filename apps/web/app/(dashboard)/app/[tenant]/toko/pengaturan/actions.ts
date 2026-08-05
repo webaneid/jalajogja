@@ -24,6 +24,12 @@ export async function saveTokoSettingsAction(
   if (values.mitraMaxProducts < 0) {
     return { error: "Batas produk tidak boleh negatif." };
   }
+  if (values.pickupEnabled && !values.pickupLocationName.trim()) {
+    return { error: "Nama Lokasi wajib diisi kalau Ambil Sendiri diaktifkan." };
+  }
+  if (values.pickupEnabled && !values.pickupAddress.trim()) {
+    return { error: "Alamat Lengkap wajib diisi kalau Ambil Sendiri diaktifkan." };
+  }
 
   const tenantDb = createTenantDb(slug);
   await upsertSettings(tenantDb, "toko", {
@@ -32,6 +38,11 @@ export async function saveTokoSettingsAction(
     min_komisi_mitra:   values.minKomisiMitra,
     toko_description:   values.tokoDescription,
     toko_whatsapp:      normalizePhone(values.tokoWhatsapp) ?? "",
+    cod_enabled:          values.codEnabled,
+    pickup_enabled:       values.pickupEnabled,
+    pickup_location_name: values.pickupLocationName,
+    pickup_address:       values.pickupAddress,
+    pickup_maps_url:      values.pickupMapsUrl,
   });
 
   revalidatePath(`/app/${slug}/toko/pengaturan`);

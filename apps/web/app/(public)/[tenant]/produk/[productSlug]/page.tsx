@@ -1,5 +1,6 @@
 import { notFound }                from "next/navigation";
-import { eq, desc, and, inArray, min, max } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
+import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import { createTenantDb, db, tenants, members, memberBusinesses, getSettings } from "@jalajogja/db";
 import { auth }                   from "@/lib/auth";
 import { headers }                from "next/headers";
@@ -95,6 +96,7 @@ export default async function ProdukDetailPage({
       name:            schema.products.name,
       slug:            schema.products.slug,
       description:     schema.products.description,
+      sku:             schema.products.sku,
       price:           schema.products.price,
       publicPrice:     schema.products.publicPrice,
       memberPrice:     schema.products.memberPrice,
@@ -164,10 +166,14 @@ export default async function ProdukDetailPage({
       ))
       .orderBy(schema.productVariations.createdAt);
 
+    // v.price null (variasi tidak override harga sendiri) → fallback ke harga produk induk
+    // (row.price) — resolve DI SINI, sebelum diteruskan ke client component, supaya seluruh
+    // downstream (resolvePrice, priceMin/priceMax, add-to-cart) selalu terima angka valid,
+    // tidak perlu tahu apakah nilainya explicit atau fallback.
     variations = vrows.map(v => ({
       id:             v.id,
-      sku:            v.sku,
-      price:          String(v.price),
+      sku:            v.sku ?? row.sku,
+      price:          String(v.price ?? row.price),
       publicPrice:    v.publicPrice != null ? String(v.publicPrice) : null,
       memberPrice:    v.memberPrice != null ? String(v.memberPrice) : null,
       stock:          v.stock,
@@ -257,26 +263,9 @@ export default async function ProdukDetailPage({
       r.sellerType === "tenant" || (r.sellerType === "mitra" && r.mitraId != null)
     )).slice(0, 4);
 
-    // priceMin/priceMax untuk variable related
+    // priceMin/priceMax untuk variable related — COALESCE(variation.price, product.price) dulu
     const relVariableIds = relFiltered.filter(r => r.productType === "variable").map(r => r.id);
-    const relPriceMap = new Map<string, { min: string; max: string }>();
-    if (relVariableIds.length > 0) {
-      const ranges = await tenantDb
-        .select({
-          productId: schema.productVariations.productId,
-          minPrice:  min(schema.productVariations.price),
-          maxPrice:  max(schema.productVariations.price),
-        })
-        .from(schema.productVariations)
-        .where(and(
-          inArray(schema.productVariations.productId, relVariableIds),
-          eq(schema.productVariations.isActive, true),
-        ))
-        .groupBy(schema.productVariations.productId);
-      ranges.forEach(r => {
-        if (r.minPrice && r.maxPrice) relPriceMap.set(r.productId, { min: r.minPrice, max: r.maxPrice });
-      });
-    }
+    const relPriceMap    = await resolveVariantPriceRanges(tenantClient, relVariableIds);
 
     relatedProducts = relFiltered.map(r => {
       const { coverUrl: cv, coverVariants: cvs } = extractCover(r.images);

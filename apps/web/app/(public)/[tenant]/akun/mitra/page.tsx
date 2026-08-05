@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { headers  } from "next/headers";
 import { auth }     from "@/lib/auth";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
-import { Handshake, CheckCircle2, Clock, PauseCircle, Package, ShoppingBag } from "lucide-react";
+import { Handshake, CheckCircle2, Clock, PauseCircle, Package, ShoppingBag, Settings } from "lucide-react";
 import { MitraCancelApplyButton } from "./mitra-cancel-button";
 
 type Params = Promise<{ tenant: string }>;
@@ -112,8 +112,16 @@ export default async function AkunMitraPage({ params }: { params: Params }) {
                 <p className="text-xs text-muted-foreground">Input resi pengiriman</p>
               </a>
               <a
+                href={`${baseUrl}/akun/mitra/pengaturan`}
+                className="rounded-xl border border-border bg-card p-4 hover:border-primary/50 transition-colors space-y-1"
+              >
+                <Settings className="h-5 w-5 text-muted-foreground" />
+                <p className="font-medium text-sm">Pengaturan Toko</p>
+                <p className="text-xs text-muted-foreground">COD & Ambil Sendiri</p>
+              </a>
+              <a
                 href={`${baseUrl}/akun/mitra/produk/new`}
-                className="col-span-2 rounded-xl border border-dashed border-border p-4 hover:border-primary transition-colors flex items-center justify-center gap-2 text-muted-foreground hover:text-primary"
+                className="rounded-xl border border-dashed border-border p-4 hover:border-primary transition-colors flex items-center justify-center gap-2 text-muted-foreground hover:text-primary"
               >
                 <span className="text-xl">+</span>
                 <p className="text-xs font-medium">Tambah Produk Baru</p>

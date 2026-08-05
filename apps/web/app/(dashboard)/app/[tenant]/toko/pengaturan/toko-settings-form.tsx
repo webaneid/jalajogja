@@ -160,6 +160,86 @@ export function TokoSettingsForm({ slug, initialSettings }: Props) {
         </div>
       </section>
 
+      {/* ── Opsi Pengiriman & Pembayaran ─────────────────────────────────── */}
+      <section className="space-y-4">
+        <div className="pb-2 border-b border-border">
+          <h2 className="text-sm font-semibold">Opsi Pengiriman & Pembayaran</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Berlaku untuk produk milik toko sendiri. Tiap mitra mengatur COD/Ambil Sendiri
+            miliknya sendiri secara terpisah.
+          </p>
+        </div>
+
+        {/* Toggle COD */}
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="cod-enabled" className="text-sm">Aktifkan Bayar di Tempat (COD)</Label>
+            <p className="text-xs text-muted-foreground">
+              Pembeli bisa memilih bayar tunai saat barang diterima kurir.
+            </p>
+          </div>
+          <Switch
+            id="cod-enabled"
+            checked={settings.codEnabled}
+            onCheckedChange={(v: boolean) => set("codEnabled", v)}
+          />
+        </div>
+
+        {/* Toggle Ambil Sendiri */}
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="pickup-enabled" className="text-sm">Aktifkan Ambil Sendiri</Label>
+            <p className="text-xs text-muted-foreground">
+              Pembeli ambil barang langsung ke lokasi — tetap wajib bayar dulu via transfer/QRIS.
+            </p>
+          </div>
+          <Switch
+            id="pickup-enabled"
+            checked={settings.pickupEnabled}
+            onCheckedChange={(v: boolean) => set("pickupEnabled", v)}
+          />
+        </div>
+
+        {settings.pickupEnabled && (
+          <div className="space-y-4 pl-4 border-l-2 border-primary/20">
+            <div className="space-y-1.5">
+              <Label htmlFor="pickup-name" className="text-sm">Nama Lokasi</Label>
+              <Input
+                id="pickup-name"
+                value={settings.pickupLocationName}
+                onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set("pickupLocationName", e.target.value)}
+                placeholder="Kantor Sekretariat IKPM Yogyakarta"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pickup-address" className="text-sm">Alamat Lengkap</Label>
+              <textarea
+                id="pickup-address"
+                rows={2}
+                value={settings.pickupAddress}
+                onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set("pickupAddress", e.target.value)}
+                placeholder="Jl. Contoh No. 1, Yogyakarta"
+                className="w-full rounded-md border border-input bg-background px-3 py-2
+                           text-sm placeholder:text-muted-foreground focus-visible:outline-none
+                           focus-visible:ring-2 focus-visible:ring-ring resize-none"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pickup-maps" className="text-sm">Link Google Maps</Label>
+              <Input
+                id="pickup-maps"
+                type="url"
+                value={settings.pickupMapsUrl}
+                onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set("pickupMapsUrl", e.target.value)}
+                placeholder="https://maps.app.goo.gl/..."
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* ── Simpan ────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-4 pt-2">
         <Button type="submit" disabled={saving}>

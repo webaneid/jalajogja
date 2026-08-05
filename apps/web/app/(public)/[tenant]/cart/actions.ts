@@ -11,6 +11,7 @@ import {
 } from "@jalajogja/db";
 import { tenants } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
+import { getTokoSettings } from "@/lib/toko-settings";
 import { auth } from "@/lib/auth";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, anchorTodayUtc, todayInTz, formatInTz, tzLabel } from "@/lib/tenant-timezone.server";
@@ -78,20 +79,36 @@ export type SellerGroup = {
     weightGram:  number;
   }>;
   totalWeightGram: number;
+  // Opsi COD & Ambil Sendiri milik penjual grup ini — dari mitras (sellerType='mitra') atau
+  // settings toko group "toko" (sellerType='tenant'). Lihat docs/arsitektur-billing.md
+  // § COD & Ambil Sendiri.
+  codEnabled:         boolean;
+  pickupEnabled:      boolean;
+  pickupLocationName: string | null;
+  pickupAddress:      string | null;
+  pickupMapsUrl:      string | null;
 };
 
 export type CheckoutShippingLine = {
   sellerType:      "tenant" | "mitra";
   sellerId:        string | null;
   sellerName:      string;
-  originCityId:    number;
-  originCityName:  string;
-  courier:         string;
-  service:         string;
-  serviceDesc?:    string;
-  etd?:            string;
-  weightGram:      number;
+  // courier/*, hanya terisi kalau deliveryMethod === "courier".
+  originCityId?:    number;
+  originCityName?:  string;
+  courier?:         string;
+  service?:         string;
+  serviceDesc?:     string;
+  etd?:             string;
+  weightGram?:      number;
   cost:            number;
+  // Delivery method "pickup" → cost selalu 0, paymentMethod selalu "prepaid" (server re-cek ini,
+  // jangan percaya client). pickupLocationName/Address/MapsUrl hanya terisi untuk pickup.
+  deliveryMethod:  "courier" | "pickup";
+  paymentMethod:   "prepaid" | "cod";
+  pickupLocationName?: string | null;
+  pickupAddress?:      string | null;
+  pickupMapsUrl?:       string | null;
 };
 
 export type CheckoutShippingData = {
@@ -530,6 +547,9 @@ export async function checkoutAction(
     const paymentSettings   = await getSettings(tenantDb, "payment");
     const uniqueCodeEnabled = paymentSettings["unique_code_enabled"] === true;
     const tenantTimezone    = await getTenantTimezone(tenantDb);
+    // Untuk re-verifikasi server-side opsi COD/pickup penjual "tenant" di shipping lines —
+    // jangan percaya boolean deliveryMethod/paymentMethod yang dikirim client apa adanya.
+    const tokoSettings      = await getTokoSettings(slug);
 
     // ── Transaction: lock cart FOR UPDATE mencegah double-checkout dari klik ganda /
     // double-tap / retry jaringan. Request kedua yang datang hampir bersamaan akan
@@ -775,25 +795,74 @@ export async function checkoutAction(
         });
       }
 
-      // Insert shipping lines (jika ada)
+      // Insert shipping lines (jika ada) — validasi server-side wajib, jangan percaya
+      // deliveryMethod/paymentMethod/cost yang dikirim client apa adanya. Lihat
+      // docs/arsitektur-billing.md § COD & Ambil Sendiri.
       if (shipping && shipping.lines.length > 0) {
-        await tx.insert(schema.invoiceShippingLines).values(
-          shipping.lines.map(line => ({
+        // Re-cek opsi COD/pickup penjual mitra yang sungguhan tercatat di DB (bukan dari client).
+        const mitraSellerIds = [...new Set(
+          shipping.lines.filter(l => l.sellerType === "mitra" && l.sellerId).map(l => l.sellerId!)
+        )];
+        const mitraRows = mitraSellerIds.length > 0
+          ? await tx
+              .select({
+                id: schema.mitras.id,
+                codEnabled: schema.mitras.codEnabled,
+                pickupEnabled: schema.mitras.pickupEnabled,
+              })
+              .from(schema.mitras)
+              .where(inArray(schema.mitras.id, mitraSellerIds))
+          : [];
+        const mitraConfigMap = new Map(mitraRows.map(m => [m.id, m]));
+
+        const shippingLineValues = shipping.lines.map(line => {
+          const sellerConfig = line.sellerType === "mitra" && line.sellerId
+            ? mitraConfigMap.get(line.sellerId)
+            : { codEnabled: tokoSettings.codEnabled, pickupEnabled: tokoSettings.pickupEnabled };
+
+          // Ambil sendiri SELALU prabayar — tolak diam-diam kombinasi pickup+cod dari client
+          // yang tidak seharusnya bisa terjadi lewat UI, dan re-cek pickup/cod sungguhan aktif.
+          const deliveryMethod: "courier" | "pickup" =
+            line.deliveryMethod === "pickup" && sellerConfig?.pickupEnabled ? "pickup" : "courier";
+          const paymentMethod: "prepaid" | "cod" =
+            deliveryMethod === "pickup" ? "prepaid"
+              : (line.paymentMethod === "cod" && sellerConfig?.codEnabled ? "cod" : "prepaid");
+
+          if (deliveryMethod === "pickup") {
+            return {
+              invoiceId:      invoice.id,
+              sellerType:     line.sellerType,
+              sellerId:       line.sellerId ?? null,
+              sellerName:     line.sellerName,
+              cost:           "0.00",
+              status:         "pending" as const,
+              deliveryMethod: "pickup" as const,
+              paymentMethod:  "prepaid" as const,
+              pickupLocationName: line.pickupLocationName ?? null,
+              pickupAddress:      line.pickupAddress ?? null,
+              pickupMapsUrl:      line.pickupMapsUrl ?? null,
+            };
+          }
+          return {
             invoiceId:      invoice.id,
             sellerType:     line.sellerType,
             sellerId:       line.sellerId ?? null,
             sellerName:     line.sellerName,
-            originCityId:   line.originCityId,
-            originCityName: line.originCityName,
-            courier:        line.courier,
-            service:        line.service,
+            originCityId:   line.originCityId ?? null,
+            originCityName: line.originCityName ?? null,
+            courier:        line.courier ?? null,
+            service:        line.service ?? null,
             serviceDesc:    line.serviceDesc ?? null,
             etd:            line.etd ?? null,
-            weightGram:     line.weightGram,
+            weightGram:     line.weightGram ?? null,
             cost:           line.cost.toFixed(2),
             status:         "pending" as const,
-          }))
-        );
+            deliveryMethod: "courier" as const,
+            paymentMethod,
+          };
+        });
+
+        await tx.insert(schema.invoiceShippingLines).values(shippingLineValues);
       }
 
       // ── Efek samping "invoice langsung lunas" (Rp 0) — pola SAMA PERSIS dengan blok

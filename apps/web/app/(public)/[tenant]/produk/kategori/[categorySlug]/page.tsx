@@ -1,5 +1,6 @@
 import { notFound }                      from "next/navigation";
-import { eq, desc, and, inArray, min, max, ilike, sql } from "drizzle-orm";
+import { eq, desc, and, inArray, ilike, sql } from "drizzle-orm";
+import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
 import { createTenantDb, db, tenants, members, memberBusinesses, getSettings } from "@jalajogja/db";
 import { auth }                          from "@/lib/auth";
 import { headers }                       from "next/headers";
@@ -158,26 +159,8 @@ export default async function ProdukKategoriPage({
     }
   }
 
-  const variableIds = filtered.filter(r => r.productType === "variable").map(r => r.id);
-  const priceRangeMap = new Map<string, { min: string; max: string }>();
-  if (variableIds.length > 0) {
-    const ranges = await tenantDb
-      .select({
-        productId: schema.productVariations.productId,
-        minPrice:  min(schema.productVariations.price),
-        maxPrice:  max(schema.productVariations.price),
-      })
-      .from(schema.productVariations)
-      .where(and(
-        inArray(schema.productVariations.productId, variableIds),
-        eq(schema.productVariations.isActive, true),
-      ))
-      .groupBy(schema.productVariations.productId);
-    ranges.forEach(r => {
-      if (r.minPrice && r.maxPrice)
-        priceRangeMap.set(r.productId, { min: r.minPrice, max: r.maxPrice });
-    });
-  }
+  const variableIds   = filtered.filter(r => r.productType === "variable").map(r => r.id);
+  const priceRangeMap = await resolveVariantPriceRanges(tenantClient, variableIds);
 
   const products: ProductCardData[] = filtered.map(r => {
     const { coverUrl, coverVariants } = extractCover(r.images);

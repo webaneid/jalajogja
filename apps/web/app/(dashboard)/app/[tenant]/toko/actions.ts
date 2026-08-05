@@ -891,24 +891,48 @@ export async function saveVariationsAction(
 
   const { db: tenantDb, schema } = createTenantDb(slug);
 
-  // Hapus semua variasi existing, lalu insert ulang (simpler & safer)
-  await tenantDb.delete(schema.productVariations)
+  // Diff-based upsert — BUKAN delete-all+insert-all seperti sebelumnya. cart_items.item_id
+  // (untuk produk variable) adalah product_variations.id — kalau setiap save meregenerasi
+  // SEMUA UUID variasi (delete-all lalu insert ulang), item yang sudah ada di keranjang
+  // pelanggan jadi orphan (menunjuk id yang tidak pernah ada lagi) setiap kali admin resave
+  // produk, walau kombinasi atributnya persis sama. Variasi existing yang masih dikirim
+  // (punya v.id) di-UPDATE di tempat — UUID-nya dipertahankan.
+  const existingRows = await tenantDb
+    .select({ id: schema.productVariations.id })
+    .from(schema.productVariations)
     .where(eq(schema.productVariations.productId, productId));
+  const existingIds  = new Set(existingRows.map(r => r.id));
+  const submittedIds = new Set(variations.filter(v => v.id).map(v => v.id!));
 
-  if (variations.length > 0) {
-    await tenantDb.insert(schema.productVariations).values(
-      variations.map(v => ({
-        productId,
-        sku:            v.sku.trim() || null,
-        price:          (parseFloat(v.price) || 0).toFixed(2),
-        publicPrice:    v.publicPrice ? (parseFloat(v.publicPrice)).toFixed(2) : null,
-        memberPrice:    v.memberPrice ? (parseFloat(v.memberPrice)).toFixed(2) : null,
-        stock:          parseInt(v.stock) || 0,
-        images:         v.images,
-        attributeCombo: v.attributeCombo,
-        isActive:       v.isActive,
-      })),
-    );
+  const toDelete = [...existingIds].filter(id => !submittedIds.has(id));
+  if (toDelete.length > 0) {
+    await tenantDb.delete(schema.productVariations)
+      .where(inArray(schema.productVariations.id, toDelete));
+  }
+
+  for (const v of variations) {
+    const values = {
+      productId,
+      sku:            v.sku.trim() || null,
+      // Kosong = null → fallback ke harga produk induk saat dibaca (lib/product-variation-
+      // price.server.ts), bukan dipaksa jadi 0 seperti sebelumnya.
+      price:          v.price.trim() ? (parseFloat(v.price) || 0).toFixed(2) : null,
+      publicPrice:    v.publicPrice ? (parseFloat(v.publicPrice)).toFixed(2) : null,
+      memberPrice:    v.memberPrice ? (parseFloat(v.memberPrice)).toFixed(2) : null,
+      stock:          parseInt(v.stock) || 0,
+      weightGram:     v.weightGram ? (parseInt(v.weightGram) || null) : null,
+      images:         v.images,
+      attributeCombo: v.attributeCombo,
+      isActive:       v.isActive,
+    };
+
+    if (v.id && existingIds.has(v.id)) {
+      await tenantDb.update(schema.productVariations)
+        .set(values)
+        .where(eq(schema.productVariations.id, v.id));
+    } else {
+      await tenantDb.insert(schema.productVariations).values(values);
+    }
   }
 
   revalidateToko(slug);
@@ -955,6 +979,7 @@ export async function generateVariationsAction(
       publicPrice: "",
       memberPrice: "",
       stock:       "0",
+      weightGram:  "",
       images:      [],
       attributeCombo: combo,
       isActive:    true,

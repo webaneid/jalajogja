@@ -98,6 +98,7 @@ export default async function ProductEditPage({
           publicPrice:    v.publicPrice != null ? String(v.publicPrice) : "",
           memberPrice:    v.memberPrice != null ? String(v.memberPrice) : "",
           stock:          String(v.stock),
+          weightGram:     v.weightGram != null ? String(v.weightGram) : "",
           images:         Array.isArray(v.images) ? v.images as ProductImage[] : [],
           attributeCombo: (v.attributeCombo as Record<string, string>) ?? {},
           isActive:       v.isActive,

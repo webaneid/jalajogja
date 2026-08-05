@@ -1841,13 +1841,19 @@ export type InvoiceDetail = {
     id:             string;
     sellerType:     "tenant" | "mitra";
     sellerName:     string;
-    courier:        string;
-    service:        string;
+    courier:        string | null;
+    service:        string | null;
     etd:            string | null;
     cost:           number;
     trackingNumber: string | null;
     shippedAt:      string | null;
     status:         "pending" | "processing" | "packed" | "shipped" | "delivered";
+    deliveryMethod: "courier" | "pickup";
+    paymentMethod:  "prepaid" | "cod";
+    pickupLocationName: string | null;
+    pickupAddress:      string | null;
+    pickupMapsUrl:      string | null;
+    codConfirmedAt:     string | null;
   }[];
   installmentSchedules: {
     id:          string;
@@ -1978,6 +1984,12 @@ export async function getInvoiceDetailAction(
         trackingNumber: sl.trackingNumber ?? null,
         shippedAt:      sl.shippedAt?.toISOString() ?? null,
         status:         sl.status as "pending" | "processing" | "packed" | "shipped" | "delivered",
+        deliveryMethod: sl.deliveryMethod as "courier" | "pickup",
+        paymentMethod:  sl.paymentMethod as "prepaid" | "cod",
+        pickupLocationName: sl.pickupLocationName ?? null,
+        pickupAddress:      sl.pickupAddress ?? null,
+        pickupMapsUrl:      sl.pickupMapsUrl ?? null,
+        codConfirmedAt:     sl.codConfirmedAt?.toISOString() ?? null,
       })),
       installmentSchedules: scheduleRows.map((s) => ({
         id:         s.id,
@@ -2124,7 +2136,7 @@ export async function updateFulfillmentStatusAction(
         vars: {
           name:            inv.customerName,
           orderNumber:     inv.invoiceNumber,
-          courier:         line.courier.toUpperCase(),
+          courier:         (line.courier ?? "").toUpperCase(),
           trackingNumber:  resolvedTrackingNumber,
           trackingUrl,
         },
@@ -2919,4 +2931,149 @@ export async function getVoucherDetailAction(
       })),
     },
   };
+}
+
+// ─── COD (Bayar di Tempat) — konfirmasi per penjual, independen ──────────────
+// Lihat docs/arsitektur-billing.md § COD & Ambil Sendiri. Admin HANYA boleh konfirmasi baris
+// sellerType="tenant" — porsi mitra dikonfirmasi mitra sendiri (self-service, lihat
+// akun/mitra/pesanan/actions.ts::confirmMitraCodReceivedAction, pola auth berbeda karena
+// mitra bukan tenant.users). Setiap konfirmasi COD membukukan jurnal SENDIRI (porsi penjual
+// itu saja) begitu dikonfirmasi — TIDAK menunggu invoice keseluruhan lunas, karena satu
+// invoice campuran tenant+mitra bisa "sebagian COD terkonfirmasi, sisanya menunggu" (beda
+// dari confirmInvoicePaymentAction yang jurnal-nya menunggu newStatus==="paid").
+export async function confirmCodPaymentAction(
+  slug: string,
+  shippingLineId: string,
+): Promise<ActionResult<{ paymentId: string }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  const [line] = await db
+    .select()
+    .from(schema.invoiceShippingLines)
+    .where(eq(schema.invoiceShippingLines.id, shippingLineId))
+    .limit(1);
+
+  if (!line) return { success: false, error: "Data pengiriman tidak ditemukan." };
+  if (line.sellerType !== "tenant")
+    return { success: false, error: "Baris ini milik mitra — hanya mitra yang bisa konfirmasi." };
+  if (line.paymentMethod !== "cod")
+    return { success: false, error: "Baris ini bukan pembayaran COD." };
+  if (line.codConfirmedAt)
+    return { success: false, error: "COD untuk baris ini sudah dikonfirmasi sebelumnya." };
+
+  try {
+    const { resolveAccountMappingsForBilling } = await import("../actions");
+    const { cashAccountId, incomeAccountId } = await resolveAccountMappingsForBilling(
+      tenantDb, "cash", "manual"
+    );
+    if (!cashAccountId || !incomeAccountId) {
+      return {
+        success: false,
+        error: "Konfigurasi mapping akun belum lengkap. Atur di menu Akun → Pengaturan Mapping.",
+      };
+    }
+
+    const tenantTimezone = await getTenantTimezone(tenantDb);
+
+    const result = await db.transaction(async (tx) => {
+      const [lockedInv] = await tx
+        .select()
+        .from(schema.invoices)
+        .where(sql`${schema.invoices.id} = ${line.invoiceId} FOR UPDATE`)
+        .limit(1);
+      if (!lockedInv) throw new Error("Invoice tidak ditemukan.");
+      if (lockedInv.status === "cancelled") throw new Error("Invoice dibatalkan.");
+
+      const [lockedLine] = await tx
+        .select()
+        .from(schema.invoiceShippingLines)
+        .where(sql`${schema.invoiceShippingLines.id} = ${shippingLineId} FOR UPDATE`)
+        .limit(1);
+      if (!lockedLine) throw new Error("Data pengiriman tidak ditemukan.");
+      if (lockedLine.codConfirmedAt) throw new Error("COD untuk baris ini sudah dikonfirmasi sebelumnya.");
+
+      // Porsi milik penjual tenant sendiri: subtotal item bertipe sellerType="tenant"
+      // (sellerId selalu null untuk tenant) + ongkos baris shipping ini.
+      // `invoice_items.total` SUDAH net dari discountAmount (lihat komentar schema di
+      // billing.ts) — jangan kurangi discountAmount lagi di sini, itu double-subtraction.
+      const [itemsAgg] = await tx
+        .select({ subtotal: sql<string>`coalesce(sum(${schema.invoiceItems.total}), 0)` })
+        .from(schema.invoiceItems)
+        .where(and(
+          eq(schema.invoiceItems.invoiceId, line.invoiceId),
+          eq(schema.invoiceItems.sellerType, "tenant"),
+        ));
+      const amount = parseFloat(itemsAgg?.subtotal ?? "0") + parseFloat(String(lockedLine.cost));
+      if (amount <= 0) throw new Error("Nominal COD tidak valid.");
+
+      const total      = parseFloat(String(lockedInv.total));
+      const uniqueCode = lockedInv.uniqueCode ?? 0;
+      const amountDue  = total + uniqueCode;
+      const paidSoFar  = parseFloat(String(lockedInv.paidAmount));
+      const newPaidAmount = paidSoFar + amount;
+      const newStatus     = newPaidAmount >= amountDue ? "paid" : "partial";
+
+      const payNum = await generateFinancialNumber(tenantDb, "payment");
+      const [payment] = await tx
+        .insert(schema.payments)
+        .values({
+          number:      payNum,
+          sourceType:  "invoice",
+          sourceId:    line.invoiceId,
+          amount:      amount.toFixed(2),
+          uniqueCode:  0,
+          method:      "cash",
+          status:      "paid",
+          payerName:   lockedInv.customerName,
+          payerNote:   "COD dikonfirmasi oleh admin",
+          confirmedBy: access.tenantUser.id,
+          confirmedAt: new Date(),
+          submittedAt: new Date(),
+        })
+        .returning({ id: schema.payments.id });
+
+      await tx.insert(schema.invoicePayments).values({
+        invoiceId: line.invoiceId,
+        paymentId: payment.id,
+        amount:    amount.toFixed(2),
+      });
+
+      await tx
+        .update(schema.invoices)
+        .set({ paidAmount: newPaidAmount.toFixed(2), status: newStatus, updatedAt: new Date() })
+        .where(eq(schema.invoices.id, line.invoiceId));
+
+      await tx
+        .update(schema.invoiceShippingLines)
+        .set({ codConfirmedAt: new Date(), codPaymentId: payment.id, updatedAt: new Date() })
+        .where(eq(schema.invoiceShippingLines.id, shippingLineId));
+
+      // Jurnal SEGERA untuk porsi ini — tidak menunggu invoice keseluruhan lunas (beda dari
+      // confirmInvoicePaymentAction), karena porsi penjual lain (mis. mitra) bisa masih pending.
+      const txNum = await generateFinancialNumber(tenantDb, "journal");
+      await recordIncome(tenantDb, {
+        date:            todayInTz(tenantTimezone),
+        description:     `COD ${lockedInv.invoiceNumber} — porsi toko`,
+        referenceNumber: txNum,
+        createdBy:       access.tenantUser.id,
+        amount,
+        cashAccountId,
+        incomeAccountId,
+      });
+
+      return { paymentId: payment.id };
+    });
+
+    revalidatePath(`/app/${slug}/finance/billing/invoice/${line.invoiceId}`);
+    revalidatePath(`/${slug}/invoice/${line.invoiceId}`);
+    return { success: true, data: result };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Gagal konfirmasi COD." };
+  }
 }

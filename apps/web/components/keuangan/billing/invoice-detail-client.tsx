@@ -11,6 +11,7 @@ import {
   updatePaymentEvidenceAction,
   updateAdminShippingTrackingAction,
   backfillEventRegistrationsAction,
+  confirmCodPaymentAction,
   type InvoiceDetail,
 } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
@@ -168,6 +169,7 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
   // Shipping tracking
   const [resiInputs,  setResiInputs]   = useState<Record<string, string>>({});
   const [savingResi,  setSavingResi]   = useState<string | null>(null);
+  const [confirmingCod, setConfirmingCod] = useState<string | null>(null);
 
   // Sinkronkan peserta event — perbaikan untuk invoice tiket yang lunas tapi belum
   // menghasilkan event_registrations (bug lama sebelum admin bisa isi "Data Peserta" di
@@ -348,6 +350,21 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
         setError(res.error);
       }
       setSavingResi(null);
+    });
+  }
+
+  function handleConfirmCod(lineId: string) {
+    setConfirmingCod(lineId);
+    setError("");
+    startTransition(async () => {
+      const res = await confirmCodPaymentAction(slug, lineId);
+      if (res.success) {
+        setSuccess("Pembayaran COD berhasil dikonfirmasi.");
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+      setConfirmingCod(null);
     });
   }
 
@@ -1091,26 +1108,46 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
         <div className="space-y-2">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Kelola Pengiriman</p>
           <div className="rounded-lg border border-border divide-y divide-border">
-            {invoice.shippingLines.filter(sl => sl.sellerType === "tenant").map((sl) => (
+            {invoice.shippingLines.filter(sl => sl.sellerType === "tenant").map((sl) => {
+              const isPickup = sl.deliveryMethod === "pickup";
+              const isCod    = sl.paymentMethod === "cod";
+              return (
               <div key={sl.id} className="px-4 py-3 space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <p className="font-medium uppercase">{sl.courier} {sl.service}</p>
+                    <p className="font-medium">
+                      {isPickup ? "Ambil Sendiri" : <span className="uppercase">{sl.courier} {sl.service}</span>}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {sl.sellerName}
-                      {sl.etd && ` · Est. ${sl.etd}`}
-                      {" · "}Rp {sl.cost.toLocaleString("id-ID")}
+                      {!isPickup && sl.etd && ` · Est. ${sl.etd}`}
+                      {sl.cost > 0 && ` · Rp ${sl.cost.toLocaleString("id-ID")}`}
                     </p>
                   </div>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    sl.status === "shipped"   ? "bg-blue-100 text-blue-700" :
-                    sl.status === "delivered" ? "bg-green-100 text-green-700" :
-                    "bg-yellow-100 text-yellow-700"
-                  }`}>
-                    {sl.status === "shipped" ? "Dikirim" : sl.status === "delivered" ? "Terkirim" : "Menunggu"}
-                  </span>
+                  {!isPickup && (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      sl.status === "shipped"   ? "bg-blue-100 text-blue-700" :
+                      sl.status === "delivered" ? "bg-green-100 text-green-700" :
+                      "bg-yellow-100 text-yellow-700"
+                    }`}>
+                      {sl.status === "shipped" ? "Dikirim" : sl.status === "delivered" ? "Terkirim" : "Menunggu"}
+                    </span>
+                  )}
                 </div>
-                {sl.trackingNumber && (
+
+                {isPickup && (
+                  <div className="text-xs text-muted-foreground space-y-0.5">
+                    {sl.pickupLocationName && <p className="font-medium text-foreground">{sl.pickupLocationName}</p>}
+                    {sl.pickupAddress && <p>{sl.pickupAddress}</p>}
+                    {sl.pickupMapsUrl && (
+                      <a href={sl.pickupMapsUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-primary hover:underline">
+                        Buka di Google Maps →
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {!isPickup && sl.trackingNumber && (
                   <p className="text-xs">
                     Resi: <span className="font-mono font-medium">{sl.trackingNumber}</span>
                     {sl.shippedAt && (
@@ -1120,25 +1157,51 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                     )}
                   </p>
                 )}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={resiInputs[sl.id] ?? (sl.trackingNumber ?? "")}
-                    onChange={(e) => setResiInputs(prev => ({ ...prev, [sl.id]: e.target.value }))}
-                    placeholder="Nomor resi pengiriman"
-                    className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleSaveResi(sl.id)}
-                    disabled={pending || savingResi === sl.id}
-                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-                  >
-                    {savingResi === sl.id ? "Menyimpan..." : "Simpan Resi"}
-                  </button>
-                </div>
+
+                {!isPickup && (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={resiInputs[sl.id] ?? (sl.trackingNumber ?? "")}
+                      onChange={(e) => setResiInputs(prev => ({ ...prev, [sl.id]: e.target.value }))}
+                      placeholder="Nomor resi pengiriman"
+                      className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveResi(sl.id)}
+                      disabled={pending || savingResi === sl.id}
+                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                    >
+                      {savingResi === sl.id ? "Menyimpan..." : "Simpan Resi"}
+                    </button>
+                  </div>
+                )}
+
+                {isCod && (
+                  sl.codConfirmedAt ? (
+                    <p className="inline-block rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
+                      ✓ Tunai diterima {formatDate(sl.codConfirmedAt, timezone)}
+                    </p>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className="flex-1 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+                        Menunggu pembayaran tunai (COD)
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmCod(sl.id)}
+                        disabled={pending || confirmingCod === sl.id}
+                        className="whitespace-nowrap rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                      >
+                        {confirmingCod === sl.id ? "Memproses..." : "Konfirmasi Tunai Diterima"}
+                      </button>
+                    </div>
+                  )
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

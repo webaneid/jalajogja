@@ -1,4 +1,4 @@
-import { pgSchema, uuid, text, numeric, integer, timestamp, index, unique } from "drizzle-orm/pg-core";
+import { pgSchema, uuid, text, numeric, integer, boolean, timestamp, index, unique } from "drizzle-orm/pg-core";
 
 export const MITRA_APPLICATION_STATUSES = ["pending", "approved", "rejected", "cancelled"] as const;
 export type MitraApplicationStatus = typeof MITRA_APPLICATION_STATUSES[number];
@@ -37,6 +37,13 @@ export function createMitrasTable(s: ReturnType<typeof pgSchema>) {
     // Kota asal pengiriman (RajaOngkir city_id) — wajib saat pengajuan mitra
     rajaongkirCityId:   integer("rajaongkir_city_id"),
     rajaongkirCityName: text("rajaongkir_city_name"),
+    // Opsi COD & Ambil Sendiri — independen dari toko utama, diatur mitra sendiri.
+    // Diedit via halaman self-service /akun/mitra/pengaturan (tidak ada di form approve).
+    codEnabled:         boolean("cod_enabled").notNull().default(false),
+    pickupEnabled:      boolean("pickup_enabled").notNull().default(false),
+    pickupLocationName: text("pickup_location_name"),
+    pickupAddress:      text("pickup_address"),
+    pickupMapsUrl:      text("pickup_maps_url"),
     approvedAt:       timestamp("approved_at", { withTimezone: true }).notNull().defaultNow(),
     approvedBy:       uuid("approved_by"),           // FK → officers.id via DDL (nullable)
     createdAt:        timestamp("created_at",  { withTimezone: true }).notNull().defaultNow(),

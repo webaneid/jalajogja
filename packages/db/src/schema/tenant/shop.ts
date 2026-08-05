@@ -140,7 +140,10 @@ export function createProductVariationsTable(s: ReturnType<typeof pgSchema>) {
     id:             uuid("id").primaryKey().defaultRandom(),
     productId:      uuid("product_id").notNull(),   // FK → products.id via DDL
     sku:            text("sku"),
-    price:          numeric("price",        { precision: 15, scale: 2 }).notNull(),
+    // Nullable — bukan wajib. Variasi tanpa harga sendiri pakai harga produk induk sebagai
+    // bawaan (resolve-time fallback, lihat lib/product-variation-price.server.ts) — sama
+    // seperti weight_gram di bawah, yang memang sudah lama didesain begitu.
+    price:          numeric("price",        { precision: 15, scale: 2 }),
     publicPrice:    numeric("public_price", { precision: 15, scale: 2 }),
     memberPrice:    numeric("member_price", { precision: 15, scale: 2 }),
     stock:          integer("stock").notNull().default(0),

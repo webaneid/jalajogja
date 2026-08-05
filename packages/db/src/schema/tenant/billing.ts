@@ -300,6 +300,16 @@ export function createInstallmentSchedulesTable(s: ReturnType<typeof pgSchema>) 
 // ─── invoice_shipping_lines ───────────────────────────────────────────────────
 // Ongkir per seller group. Dibuat saat checkout, satu row per seller.
 
+// Metode pengiriman: kurir (default, semua kolom courier/* wajib) vs ambil sendiri
+// (kolom courier/* null, cost selalu "0" — tidak ada ongkos kurir).
+export const SHIPPING_DELIVERY_METHODS = ["courier", "pickup"] as const;
+export type ShippingDeliveryMethod = typeof SHIPPING_DELIVERY_METHODS[number];
+
+// Metode bayar untuk baris pengiriman ini — "cod" hanya valid untuk deliveryMethod="courier"
+// (ambil sendiri SELALU prabayar, lihat docs/arsitektur-billing.md § COD & Ambil Sendiri).
+export const SHIPPING_PAYMENT_METHODS = ["prepaid", "cod"] as const;
+export type ShippingPaymentMethod = typeof SHIPPING_PAYMENT_METHODS[number];
+
 export function createInvoiceShippingLinesTable(s: ReturnType<typeof pgSchema>) {
   return s.table("invoice_shipping_lines", {
     id:              uuid("id").primaryKey().defaultRandom(),
@@ -307,18 +317,30 @@ export function createInvoiceShippingLinesTable(s: ReturnType<typeof pgSchema>) 
     sellerType:      text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull(),
     sellerId:        uuid("seller_id"),                  // null jika tenant
     sellerName:      text("seller_name").notNull(),      // snapshot
-    originCityId:    integer("origin_city_id").notNull(),
-    originCityName:  text("origin_city_name").notNull(),
-    courier:         text("courier").notNull(),           // 'jne' | 'pos' | 'tiki' | 'sicepat' dll
-    service:         text("service").notNull(),           // 'REG' | 'YES' | 'OKE' dll
+    // Kolom courier/* nullable — hanya terisi saat deliveryMethod="courier".
+    originCityId:    integer("origin_city_id"),
+    originCityName:  text("origin_city_name"),
+    courier:         text("courier"),                     // 'jne' | 'pos' | 'tiki' | 'sicepat' dll
+    service:         text("service"),                     // 'REG' | 'YES' | 'OKE' dll
     serviceDesc:     text("service_desc"),
     etd:             text("etd"),                        // estimasi tiba, mis '1-2 hari'
-    weightGram:      integer("weight_gram").notNull(),
-    cost:            numeric("cost", { precision: 15, scale: 2 }).notNull(),
+    weightGram:      integer("weight_gram"),
+    cost:            numeric("cost", { precision: 15, scale: 2 }).notNull(), // "0" untuk pickup
     trackingNumber:  text("tracking_number"),            // resi, diisi mitra setelah kirim
     shippedAt:       timestamp("shipped_at",   { withTimezone: true }),
     deliveredAt:     timestamp("delivered_at", { withTimezone: true }),
     status:          text("status", { enum: SHIPPING_STATUSES }).notNull().default("pending"),
+    deliveryMethod:  text("delivery_method", { enum: SHIPPING_DELIVERY_METHODS }).notNull().default("courier"),
+    paymentMethod:   text("payment_method",  { enum: SHIPPING_PAYMENT_METHODS }).notNull().default("prepaid"),
+    // Snapshot lokasi ambil sendiri saat checkout (bukan referensi live ke mitras/settings —
+    // supaya invoice lama tidak berubah kalau penjual edit alamat pickup-nya belakangan).
+    pickupLocationName: text("pickup_location_name"),
+    pickupAddress:      text("pickup_address"),
+    pickupMapsUrl:      text("pickup_maps_url"),
+    // Konfirmasi COD diterima — TANPA default, selalu null sampai diisi eksplisit oleh aksi
+    // konfirmasi (lesson lama: kolom konfirmasi tidak boleh punya DEFAULT NOW()).
+    codConfirmedAt:  timestamp("cod_confirmed_at", { withTimezone: true }),
+    codPaymentId:    uuid("cod_payment_id"), // referensi ke payments.id, tanpa FK constraint
     createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   }, (t) => ({

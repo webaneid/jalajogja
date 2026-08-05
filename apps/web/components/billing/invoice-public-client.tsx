@@ -36,13 +36,19 @@ export type QrisAccountPublic = {
 export type PublicShippingLine = {
   id:             string;
   sellerName:     string;
-  courier:        string;
-  service:        string;
+  courier:        string | null;
+  service:        string | null;
   etd:            string | null;
   cost:           number;
   trackingNumber: string | null;
   shippedAt:      string | null;
   status:         "pending" | "shipped" | "delivered";
+  deliveryMethod: "courier" | "pickup";
+  paymentMethod:  "prepaid" | "cod";
+  pickupLocationName: string | null;
+  pickupAddress:      string | null;
+  pickupMapsUrl:       string | null;
+  codConfirmedAt: string | null;
 };
 
 export type PublicInvoiceData = {
@@ -62,6 +68,11 @@ export type PublicInvoiceData = {
   amountDue:        number;
   paidAmount:       number;
   remaining:        number;
+  // Total porsi COD (courier+item penjual) yang belum dikonfirmasi diterima — sudah termasuk
+  // di dalam `remaining`/`amountDue` (COD tetap bagian dari total invoice, cuma belum
+  // "dibayar" sampai dikonfirmasi), murni dipakai untuk pisahkan tampilan "perlu transfer
+  // sekarang" vs "dibayar tunai nanti". Lihat docs/arsitektur-billing.md § COD & Ambil Sendiri.
+  codPendingTotal:  number;
   dueDate:          string | null;
   notes:            string | null;
   createdAt:        string;
@@ -358,9 +369,12 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
   // Untuk cicilan: default nominal = termin berikutnya + kode unik termin itu (bukan seluruh
   // sisa invoice) — tetap bebas diedit, customer boleh transfer lebih untuk lunasi beberapa
   // termin sekaligus (waterfall settlement menangani otomatis).
+  // Non-cicilan: kurangi porsi COD yang belum dikonfirmasi — itu dibayar TUNAI saat barang
+  // diterima, bukan via transfer sekarang. Cicilan tidak disentuh (kombinasi cicilan+COD
+  // di luar cakupan fitur ini — cicilan untuk tiket/produk, COD murni pilihan pengiriman).
   const defaultPayAmount = nextUnpaidTerm
     ? String(nextUnpaidTerm.amount + (nextUnpaidTerm.uniqueCode ?? 0))
-    : String(invoice.remaining);
+    : String(Math.max(0, invoice.remaining - invoice.codPendingTotal));
 
   // Kontrol Dialog konfirmasi pembayaran DESKTOP saja — mobile pakai MobileActionSheet
   // (state expand/collapse-nya sendiri, mandiri, lihat render di bawah).
@@ -651,38 +665,75 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
               {invoice.shippingAddress && ` — ${invoice.shippingAddress}`}
             </p>
           )}
-          {invoice.shippingLines.map(line => (
-            <div key={line.id} className="rounded-md bg-muted/40 px-4 py-3 space-y-1 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium uppercase">{line.courier} {line.service}</span>
-                <span className={`text-xs rounded-full px-2 py-0.5 ${
-                  line.status === "shipped"   ? "bg-blue-100 text-blue-700" :
-                  line.status === "delivered" ? "bg-green-100 text-green-700" :
-                  "bg-yellow-100 text-yellow-700"
-                }`}>
-                  {line.status === "shipped" ? "Dalam Pengiriman" :
-                   line.status === "delivered" ? "Terkirim" : "Menunggu Pengiriman"}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Dari: {line.sellerName}
-                {line.etd && ` · Estimasi ${line.etd}`}
-                {" · "}{formatRp(line.cost)}
-              </p>
-              {line.trackingNumber && (
-                <p className="text-xs font-medium">
-                  Resi: <span className="font-mono">{line.trackingNumber}</span>
-                  {line.shippedAt && (
-                    <span className="ml-2 text-muted-foreground font-normal">
-                      · Dikirim {new Date(line.shippedAt).toLocaleDateString("id-ID", {
-                        day: "numeric", month: "short", year: "numeric", timeZone: timezone,
-                      })}
+          {invoice.shippingLines.map(line => {
+            const isPickup = line.deliveryMethod === "pickup";
+            const isCod    = line.paymentMethod === "cod";
+            return (
+              <div key={line.id} className="rounded-md bg-muted/40 px-4 py-3 space-y-1.5 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">
+                    {isPickup
+                      ? "Ambil Sendiri"
+                      : <span className="uppercase">{line.courier} {line.service}</span>}
+                  </span>
+                  {!isPickup && (
+                    <span className={`text-xs rounded-full px-2 py-0.5 ${
+                      line.status === "shipped"   ? "bg-blue-100 text-blue-700" :
+                      line.status === "delivered" ? "bg-green-100 text-green-700" :
+                      "bg-yellow-100 text-yellow-700"
+                    }`}>
+                      {line.status === "shipped" ? "Dalam Pengiriman" :
+                       line.status === "delivered" ? "Terkirim" : "Menunggu Pengiriman"}
                     </span>
                   )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Dari: {line.sellerName}
+                  {!isPickup && line.etd && ` · Estimasi ${line.etd}`}
+                  {line.cost > 0 && ` · ${formatRp(line.cost)}`}
                 </p>
-              )}
-            </div>
-          ))}
+                {isPickup && (
+                  <div className="text-xs text-muted-foreground space-y-0.5">
+                    {line.pickupLocationName && (
+                      <p className="font-medium text-foreground">{line.pickupLocationName}</p>
+                    )}
+                    {line.pickupAddress && <p>{line.pickupAddress}</p>}
+                    {line.pickupMapsUrl && (
+                      <a
+                        href={line.pickupMapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block text-primary hover:underline"
+                      >
+                        Buka di Google Maps →
+                      </a>
+                    )}
+                  </div>
+                )}
+                {!isPickup && line.trackingNumber && (
+                  <p className="text-xs font-medium">
+                    Resi: <span className="font-mono">{line.trackingNumber}</span>
+                    {line.shippedAt && (
+                      <span className="ml-2 text-muted-foreground font-normal">
+                        · Dikirim {new Date(line.shippedAt).toLocaleDateString("id-ID", {
+                          day: "numeric", month: "short", year: "numeric", timeZone: timezone,
+                        })}
+                      </span>
+                    )}
+                  </p>
+                )}
+                {isCod && (
+                  <p className={`inline-block rounded px-2 py-1 text-xs font-medium ${
+                    line.codConfirmedAt ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                  }`}>
+                    {line.codConfirmedAt
+                      ? `✓ Tunai diterima ${formatDate(line.codConfirmedAt, timezone)}`
+                      : "Menunggu pembayaran tunai (COD)"}
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -720,6 +771,31 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
           </p>
         )}
       </div>
+
+      {/* ── Breakdown COD — nominal yang dibayar tunai saat barang diterima TIDAK perlu
+           ditransfer sekarang. Hanya tampil kalau invoice masih bisa dibayar (canPay) DAN
+           masih ada porsi COD yang belum dikonfirmasi. ── */}
+      {canPay && invoice.codPendingTotal > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-2 text-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+            Sebagian Dibayar di Tempat (COD)
+          </p>
+          <div className="flex justify-between">
+            <span className="text-amber-700">Dibayar tunai saat barang diterima</span>
+            <span className="tabular-nums font-medium text-amber-700">{formatRp(invoice.codPendingTotal)}</span>
+          </div>
+          <p className="text-xs text-amber-600">
+            Nominal ini tidak perlu ditransfer sekarang — bayar tunai langsung ke
+            kurir/penjual saat barang tiba.
+          </p>
+          <div className="flex justify-between border-t border-amber-200 pt-2 font-semibold">
+            <span className="text-amber-700">Perlu ditransfer sekarang</span>
+            <span className="tabular-nums text-primary">
+              {formatRp(Math.max(0, invoice.remaining - invoice.codPendingTotal))}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ── Prompt "Ubah jadi Cicilan" — cicilan sebagai metode pembayaran, bukan jalur
            pendaftaran terpisah. Hanya tampil kalau ada program cocok DAN invoice belum

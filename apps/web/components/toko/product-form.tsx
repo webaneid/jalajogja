@@ -436,8 +436,14 @@ export function ProductForm({
         </div>
 
         {/* ── Sidebar ── */}
-        <div className="w-72 shrink-0 border-l border-border bg-muted/10 overflow-y-auto flex flex-col">
-          <div className="flex-1 space-y-5 p-4">
+        {/* Konten scroll SENDIRI (flex-1 overflow-y-auto), footer bar TIDAK sticky — flex
+            sibling biasa di bawahnya. Sebelumnya overflow-y-auto ada di wrapper LUAR + footer
+            sticky bottom-0 sebagai sibling — begitu Atribut Produk punya >1 grup (konten jadi
+            tinggi), footer "melayang" menutupi tombol Generate Variasi/baris variasi saat
+            discroll. Pola ini (scroll dibatasi ke area konten, footer flex biasa) menghilangkan
+            kelas overlap ini total, bukan cuma ditambal padding. */}
+        <div className="w-72 shrink-0 border-l border-border bg-muted/10 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto space-y-5 p-4">
 
             {/* Harga & Stok */}
             <div className="space-y-2">
@@ -555,7 +561,8 @@ export function ProductForm({
               </div>
               {productType === "variable" && (
                 <p className="text-xs text-muted-foreground mt-1.5">
-                  Harga & stok diatur per variasi. Field harga di atas diabaikan.
+                  Stok selalu per variasi. Harga &amp; berat di atas dipakai sebagai bawaan
+                  untuk variasi yang tidak diisi sendiri — tidak diabaikan.
                 </p>
               )}
             </div>
@@ -591,6 +598,9 @@ export function ProductForm({
                     variations={variations}
                     attributeGroups={attributeGroups}
                     onChange={setVariations}
+                    productPrice={price}
+                    productWeightGram={weightGram}
+                    productSku={sku}
                   />
                 </div>
               </>
@@ -654,8 +664,9 @@ export function ProductForm({
             </div>
           </div>
 
-          {/* Sticky footer — tombol simpan */}
-          <div className="sticky bottom-0 border-t border-border bg-background p-4 space-y-2">
+          {/* Footer — tombol simpan. Flex sibling biasa (bukan sticky), selalu di bawah tanpa
+              pernah menutupi konten yang discroll di atasnya — lihat komentar di wrapper sidebar. */}
+          <div className="shrink-0 border-t border-border bg-background p-4 space-y-2">
             {error    && <p className="text-xs text-destructive">{error}</p>}
             {saveMsg  && <p className="text-xs text-green-600">{saveMsg}</p>}
 

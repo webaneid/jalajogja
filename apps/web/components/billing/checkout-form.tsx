@@ -115,6 +115,18 @@ export function CheckoutForm({
     error:    string;
   }>>({});
 
+  // Pilihan pengiriman per grup penjual — deliveryMethod hanya relevan kalau group.pickupEnabled
+  // (kalau tidak, selalu "courier"); paymentMethod hanya relevan kalau group.codEnabled DAN
+  // deliveryMethod==="courier" (ambil sendiri SELALU prabayar, tidak pernah COD).
+  type GroupChoice = { deliveryMethod: "courier" | "pickup"; paymentMethod: "prepaid" | "cod" };
+  const [groupChoices, setGroupChoices] = useState<Record<string, GroupChoice>>({});
+  const getChoice = useCallback((key: string): GroupChoice =>
+    groupChoices[key] ?? { deliveryMethod: "courier", paymentMethod: "prepaid" },
+  [groupChoices]);
+  const setChoice = useCallback((key: string, patch: Partial<GroupChoice>) => {
+    setGroupChoices(prev => ({ ...prev, [key]: { ...getChoice(key), ...patch } }));
+  }, [getChoice]);
+
   // Debounced city search
   useEffect(() => {
     if (citySearch.length < 2) { setCityResults([]); return; }
@@ -173,7 +185,13 @@ export function CheckoutForm({
   const voucherDiscount    = voucherPreview?.valid ? (voucherPreview.totalDiscount ?? 0) : 0;
   const discountedSubtotal = Math.max(0, cart.subtotal - voucherDiscount);
   const grandTotal         = discountedSubtotal + shippingTotal;
-  const allSelected        = sellerGroups.every(g => !!groupStates[g.key]?.selected);
+  // Grup pickup dianggap "selesai" tanpa perlu pilihan kurir — tidak ada yang perlu dipilih.
+  const allSelected        = sellerGroups.every(g =>
+    getChoice(g.key).deliveryMethod === "pickup" || !!groupStates[g.key]?.selected,
+  );
+  // Destinasi kota hanya wajib kalau MINIMAL satu grup masih pakai kurir — kalau semua grup
+  // pilih Ambil Sendiri, Step 2 tidak perlu tanya kota tujuan sama sekali.
+  const anyCourierGroup     = sellerGroups.some(g => getChoice(g.key).deliveryMethod === "courier");
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -221,20 +239,36 @@ export function CheckoutForm({
   }
 
   function handleStep2Next() {
-    if (!destCity) { setError("Pilih kota tujuan pengiriman."); return; }
+    if (anyCourierGroup && !destCity) { setError("Pilih kota tujuan pengiriman."); return; }
     setError("");
     setStep(3);
     for (const group of sellerGroups) {
-      void fetchCouriers(group, destCity.id);
+      if (getChoice(group.key).deliveryMethod === "courier" && destCity) {
+        void fetchCouriers(group, destCity.id);
+      }
     }
   }
 
   function handleStep3Submit() {
     setError("");
     const lines: CheckoutShippingLine[] = sellerGroups
-      .filter(g => groupStates[g.key]?.selected)
-      .map(g => {
-        const sel = groupStates[g.key]!.selected!;
+      .map((g): CheckoutShippingLine | null => {
+        const choice = getChoice(g.key);
+        if (choice.deliveryMethod === "pickup") {
+          return {
+            sellerType:         g.sellerType,
+            sellerId:           g.sellerId,
+            sellerName:         g.sellerName,
+            deliveryMethod:     "pickup",
+            paymentMethod:      "prepaid",
+            pickupLocationName: g.pickupLocationName,
+            pickupAddress:      g.pickupAddress,
+            pickupMapsUrl:      g.pickupMapsUrl,
+            cost:               0,
+          };
+        }
+        const sel = groupStates[g.key]?.selected;
+        if (!sel) return null;
         return {
           sellerType:    g.sellerType,
           sellerId:      g.sellerId,
@@ -247,13 +281,16 @@ export function CheckoutForm({
           etd:           sel.etd,
           weightGram:    g.totalWeightGram,
           cost:          sel.cost,
+          deliveryMethod: "courier",
+          paymentMethod:  choice.paymentMethod,
         };
-      });
+      })
+      .filter((l): l is CheckoutShippingLine => l !== null);
 
-    doCheckout(lines.length > 0 && destCity ? {
-      cityId:  destCity.id,
-      cityName: destCity.name,
-      address: address.trim() || undefined,
+    doCheckout(lines.length > 0 ? {
+      cityId:   destCity?.id ?? 0,
+      cityName: destCity?.name ?? "",
+      address:  address.trim() || undefined,
       lines,
     } : undefined);
   }
@@ -284,7 +321,7 @@ export function CheckoutForm({
                   {step > s ? "✓" : s}
                 </div>
                 <span className={`text-xs ${step === s ? "font-medium" : "text-muted-foreground"}`}>
-                  {s === 1 ? "Pemesan" : s === 2 ? "Tujuan" : "Kurir"}
+                  {s === 1 ? "Pemesan" : s === 2 ? "Pengiriman" : "Konfirmasi"}
                 </span>
                 {s < 3 && <span className="text-muted-foreground mx-1">›</span>}
               </div>
@@ -351,8 +388,63 @@ export function CheckoutForm({
           </div>
         )}
 
-        {/* ── Step 2: kota tujuan + alamat ── */}
+        {/* ── Step 2: metode pengiriman per grup + kota tujuan (kondisional) ── */}
         {step === 2 && (
+          <div className="space-y-4">
+            {/* Pilihan Kirim via Kurir / Ambil Sendiri — hanya tampil kalau grup punya opsi
+                Ambil Sendiri; kalau tidak, selalu kurir (perilaku lama, tidak berubah). */}
+            {sellerGroups.some(g => g.pickupEnabled) && (
+              <div className="rounded-lg border border-border p-5 space-y-3">
+                <p className="font-semibold text-sm">Metode Pengiriman</p>
+                {sellerGroups.map(group => {
+                  if (!group.pickupEnabled) return null;
+                  const choice = getChoice(group.key);
+                  return (
+                    <div key={group.key} className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">{group.sellerName}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className={`flex items-center gap-2 p-2.5 rounded-md border cursor-pointer text-sm ${
+                          choice.deliveryMethod === "courier" ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                        }`}>
+                          <input
+                            type="radio"
+                            name={`delivery-${group.key}`}
+                            checked={choice.deliveryMethod === "courier"}
+                            onChange={() => setChoice(group.key, { deliveryMethod: "courier" })}
+                          />
+                          Kirim via Kurir
+                        </label>
+                        <label className={`flex items-center gap-2 p-2.5 rounded-md border cursor-pointer text-sm ${
+                          choice.deliveryMethod === "pickup" ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                        }`}>
+                          <input
+                            type="radio"
+                            name={`delivery-${group.key}`}
+                            checked={choice.deliveryMethod === "pickup"}
+                            onChange={() => setChoice(group.key, { deliveryMethod: "pickup", paymentMethod: "prepaid" })}
+                          />
+                          Ambil Sendiri
+                        </label>
+                      </div>
+                      {choice.deliveryMethod === "pickup" && (
+                        <div className="rounded-md bg-muted/50 p-3 text-xs space-y-1">
+                          <p className="font-medium text-foreground">{group.pickupLocationName}</p>
+                          <p className="text-muted-foreground">{group.pickupAddress}</p>
+                          {group.pickupMapsUrl && (
+                            <a href={group.pickupMapsUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                              Buka di Google Maps →
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Kota tujuan + alamat — hanya wajib kalau minimal satu grup masih pakai kurir */}
+            {anyCourierGroup && (
           <div className="rounded-lg border border-border p-5 space-y-4">
             <p className="font-semibold text-sm">Alamat Pengiriman</p>
 
@@ -425,7 +517,7 @@ export function CheckoutForm({
 
             <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
               <p className="font-medium text-foreground">Paket dikirim dari:</p>
-              {sellerGroups.map(g => (
+              {sellerGroups.filter(g => getChoice(g.key).deliveryMethod === "courier").map(g => (
                 <p key={g.key}>
                   • {g.sellerName} — {g.originCityName} · {(g.totalWeightGram / 1000).toFixed(g.totalWeightGram >= 1000 ? 1 : 0)}
                   {g.totalWeightGram >= 1000 ? " kg" : ` g`} · {g.items.length} produk
@@ -433,12 +525,34 @@ export function CheckoutForm({
               ))}
             </div>
           </div>
+            )}
+          </div>
         )}
 
-        {/* ── Step 3: pilih kurir per seller ── */}
+        {/* ── Step 3: konfirmasi pengiriman — kurir (+ metode bayar) atau ringkasan ambil sendiri ── */}
         {step === 3 && (
           <div className="space-y-4">
             {sellerGroups.map(group => {
+              const choice = getChoice(group.key);
+
+              if (choice.deliveryMethod === "pickup") {
+                return (
+                  <div key={group.key} className="rounded-lg border border-border p-5 space-y-2">
+                    <p className="font-semibold text-sm">Ambil Sendiri — {group.sellerName}</p>
+                    <div className="rounded-md bg-muted/50 p-3 text-sm space-y-1">
+                      <p className="font-medium">{group.pickupLocationName}</p>
+                      <p className="text-xs text-muted-foreground">{group.pickupAddress}</p>
+                      {group.pickupMapsUrl && (
+                        <a href={group.pickupMapsUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline">
+                          Buka di Google Maps →
+                        </a>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Gratis — tidak ada ongkos kirim.</p>
+                  </div>
+                );
+              }
+
               const gs = groupStates[group.key];
               return (
                 <div key={group.key} className="rounded-lg border border-border p-5 space-y-3">
@@ -498,6 +612,37 @@ export function CheckoutForm({
                           </label>
                         );
                       })}
+                    </div>
+                  )}
+
+                  {/* Metode bayar untuk paket ini — hanya kalau penjual aktifkan COD */}
+                  {group.codEnabled && (
+                    <div className="pt-2 border-t border-border space-y-2">
+                      <p className="text-xs font-medium">Metode Bayar untuk Paket Ini</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className={`flex items-center gap-2 p-2.5 rounded-md border cursor-pointer text-sm ${
+                          choice.paymentMethod === "prepaid" ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                        }`}>
+                          <input
+                            type="radio"
+                            name={`payment-${group.key}`}
+                            checked={choice.paymentMethod === "prepaid"}
+                            onChange={() => setChoice(group.key, { paymentMethod: "prepaid" })}
+                          />
+                          Transfer/QRIS (nanti)
+                        </label>
+                        <label className={`flex items-center gap-2 p-2.5 rounded-md border cursor-pointer text-sm ${
+                          choice.paymentMethod === "cod" ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                        }`}>
+                          <input
+                            type="radio"
+                            name={`payment-${group.key}`}
+                            checked={choice.paymentMethod === "cod"}
+                            onChange={() => setChoice(group.key, { paymentMethod: "cod" })}
+                          />
+                          Bayar di Tempat (COD)
+                        </label>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -579,7 +724,7 @@ export function CheckoutForm({
                 {pending
                   ? "Memproses…"
                   : needsShipping
-                    ? "Lanjut — Pilih Tujuan Pengiriman →"
+                    ? "Lanjut — Atur Pengiriman →"
                     : `Buat Invoice — ${formatRp(discountedSubtotal)}`}
               </button>
             )}
@@ -590,7 +735,7 @@ export function CheckoutForm({
                 onClick={handleStep2Next}
                 className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
               >
-                Lanjut — Pilih Jasa Pengiriman →
+                Lanjut — Konfirmasi Pengiriman →
               </button>
             )}
 
@@ -644,10 +789,21 @@ export function CheckoutForm({
         )}
 
         {step === 3 && sellerGroups.map(g => {
+          const choice = getChoice(g.key);
+          if (choice.deliveryMethod === "pickup") {
+            return (
+              <div key={g.key} className="flex justify-between text-sm">
+                <span className="text-muted-foreground truncate">Ambil Sendiri — {g.sellerName}</span>
+                <span className="tabular-nums shrink-0">Gratis</span>
+              </div>
+            );
+          }
           const sel = groupStates[g.key]?.selected;
           return (
             <div key={g.key} className="flex justify-between text-sm">
-              <span className="text-muted-foreground truncate">Ongkir {g.sellerName}</span>
+              <span className="text-muted-foreground truncate">
+                Ongkir {g.sellerName}{choice.paymentMethod === "cod" ? " (COD)" : ""}
+              </span>
               <span className="tabular-nums shrink-0">{sel ? formatRp(sel.cost) : "—"}</span>
             </div>
           );

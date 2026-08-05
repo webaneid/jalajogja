@@ -5,6 +5,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
 import { getAkunIdentity } from "@/lib/akun-identity";
+import { getTokoSettings } from "@/lib/toko-settings";
 import { CheckoutForm } from "@/components/billing/checkout-form";
 import type { CartData, CartItem, SellerGroup } from "@/app/(public)/[tenant]/cart/actions";
 import type { CheckoutDefaults } from "@/components/billing/checkout-form";
@@ -149,7 +150,34 @@ export default async function CheckoutPage({ params }: Props) {
 
           const { db: tdb, schema: ts } = createTenantDb(slug);
 
-          // Fetch product + mitra detail sekaligus
+          // Opsi COD & Ambil Sendiri untuk penjual tenant sendiri — sekali fetch di luar loop.
+          const tokoSettings = await getTokoSettings(slug);
+
+          // Produk VARIABLE: cart_items.item_id adalah product_variations.id (bukan products.id
+          // — lihat komponen add-to-cart di halaman detail produk), jadi harus di-translate dulu
+          // ke parent product-nya SEBELUM lookup mitra/kota-asal/berat. Tanpa ini, seluruh
+          // shipping group (termasuk opsi COD & Ambil Sendiri) diam-diam kosong untuk produk
+          // variasi — bukan bug baru, celah ini sudah dicatat sejak Fase 1 Voucher (docs/
+          // arsitektur-voucher.md) tapi baru sekarang genuinely memblokir fitur.
+          const variationRows = await tdb
+            .select({
+              id:         ts.productVariations.id,
+              productId:  ts.productVariations.productId,
+              weightGram: ts.productVariations.weightGram,
+            })
+            .from(ts.productVariations)
+            .where(inArray(ts.productVariations.id, productItemIds));
+
+          const variationMap: Record<string, { productId: string; weightGram: number | null }> = {};
+          for (const v of variationRows) variationMap[v.id] = { productId: v.productId, weightGram: v.weightGram };
+
+          // productId sesungguhnya per cart item: kalau itemId adalah variation id, pakai
+          // parent product-nya; kalau bukan (produk simple), itemId ITU SENDIRI = productId.
+          const resolvedProductIds = [...new Set(
+            productItemIds.map(id => variationMap[id]?.productId ?? id)
+          )];
+
+          // Fetch product + mitra detail sekaligus (termasuk opsi COD/pickup milik mitra)
           const productDetails = await tdb
             .select({
               productId:       ts.products.id,
@@ -158,10 +186,15 @@ export default async function CheckoutPage({ params }: Props) {
               originCityId:    ts.mitras.rajaongkirCityId,
               originCityName:  ts.mitras.rajaongkirCityName,
               businessId:      ts.mitras.businessId,
+              mitraCodEnabled:         ts.mitras.codEnabled,
+              mitraPickupEnabled:      ts.mitras.pickupEnabled,
+              mitraPickupLocationName: ts.mitras.pickupLocationName,
+              mitraPickupAddress:      ts.mitras.pickupAddress,
+              mitraPickupMapsUrl:      ts.mitras.pickupMapsUrl,
             })
             .from(ts.products)
             .leftJoin(ts.mitras, eq(ts.mitras.id, ts.products.mitraId))
-            .where(inArray(ts.products.id, productItemIds));
+            .where(inArray(ts.products.id, resolvedProductIds));
 
           // Ambil nama usaha mitra dari public.member_businesses
           const bizIds = [...new Set(
@@ -182,14 +215,24 @@ export default async function CheckoutPage({ params }: Props) {
           const groupMap: Record<string, SellerGroup> = {};
 
           for (const item of cartItems.filter(i => i.itemType === "product" && i.itemId)) {
-            const d = detailMap[item.itemId!];
-            if (!d?.weightGram) continue;
+            const variation     = variationMap[item.itemId!];
+            const realProductId = variation?.productId ?? item.itemId!;
+            const d             = detailMap[realProductId];
+            // Berat variasi (kalau diisi admin) meng-override berat produk induk — kolom
+            // product_variations.weight_gram memang didesain sebagai override per-variasi.
+            const weightGram = variation?.weightGram ?? d?.weightGram ?? null;
+            if (!d || !weightGram) continue;
 
             let sellerType: "tenant" | "mitra";
             let sellerId: string | null;
             let sellerName: string;
             let originCityId: number;
             let originCityName: string;
+            let codEnabled: boolean;
+            let pickupEnabled: boolean;
+            let pickupLocationName: string | null;
+            let pickupAddress: string | null;
+            let pickupMapsUrl: string | null;
 
             if (d.mitraId && d.originCityId) {
               sellerType    = "mitra";
@@ -197,12 +240,22 @@ export default async function CheckoutPage({ params }: Props) {
               sellerName    = d.businessId ? (bizMap[d.businessId] ?? "Mitra") : "Mitra";
               originCityId  = d.originCityId;
               originCityName = d.originCityName ?? "";
+              codEnabled          = d.mitraCodEnabled ?? false;
+              pickupEnabled       = d.mitraPickupEnabled ?? false;
+              pickupLocationName  = d.mitraPickupLocationName ?? null;
+              pickupAddress       = d.mitraPickupAddress ?? null;
+              pickupMapsUrl       = d.mitraPickupMapsUrl ?? null;
             } else if (!d.mitraId && config.origin_city_id) {
               sellerType    = "tenant";
               sellerId      = null;
               sellerName    = tenant.name;
               originCityId  = config.origin_city_id;
               originCityName = config.origin_city_name ?? "";
+              codEnabled          = tokoSettings.codEnabled;
+              pickupEnabled       = tokoSettings.pickupEnabled;
+              pickupLocationName  = tokoSettings.pickupLocationName || null;
+              pickupAddress       = tokoSettings.pickupAddress || null;
+              pickupMapsUrl       = tokoSettings.pickupMapsUrl || null;
             } else {
               continue; // kota asal tidak diketahui, skip
             }
@@ -212,17 +265,18 @@ export default async function CheckoutPage({ params }: Props) {
               groupMap[groupKey] = {
                 key: groupKey, sellerType, sellerId, sellerName,
                 originCityId, originCityName, items: [], totalWeightGram: 0,
+                codEnabled, pickupEnabled, pickupLocationName, pickupAddress, pickupMapsUrl,
               };
             }
 
             groupMap[groupKey].items.push({
               cartItemId: item.id,
-              productId:  item.itemId!,
+              productId:  realProductId,
               name:       item.name,
               quantity:   item.quantity,
-              weightGram: d.weightGram,
+              weightGram: weightGram,
             });
-            groupMap[groupKey].totalWeightGram += d.weightGram * item.quantity;
+            groupMap[groupKey].totalWeightGram += weightGram * item.quantity;
           }
 
           sellerGroups = Object.values(groupMap);

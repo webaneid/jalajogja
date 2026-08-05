@@ -1504,6 +1504,264 @@ Form konfirmasi pembayaran manual oleh Admin di halaman detail invoice (`/app/[t
 
 ---
 
+## 14. COD (Bayar di Tempat) & Ambil Sendiri — per Penjual
+
+> **Status implementasi: ✅ SELESAI (2026-08)** — belum diverifikasi visual di browser, belum
+> di-deploy ke VPS. Rencana lengkap:
+> `/Users/webane/.claude/plans/binary-questing-river.md`.
+>
+> File terkait:
+> - `packages/db/migrations/0058_shipping_cod_pickup.sql`
+> - `packages/db/src/schema/tenant/mitra.ts`, `packages/db/src/schema/tenant/billing.ts`
+> - `apps/web/lib/toko-settings.ts` (setting tenant, group `"toko"`)
+> - `apps/web/app/(public)/[tenant]/akun/mitra/pengaturan/page.tsx` (setting mitra self-service)
+> - `apps/web/app/(public)/[tenant]/checkout/page.tsx`, `components/billing/checkout-form.tsx`
+> - `apps/web/app/(public)/[tenant]/cart/actions.ts` (`checkoutAction`)
+> - `apps/web/app/(dashboard)/app/[tenant]/finance/billing/actions.ts` (`confirmCodPaymentAction`)
+> - `apps/web/app/(public)/[tenant]/akun/mitra/pesanan/actions.ts` (`confirmMitraCodReceivedAction`)
+> - `apps/web/components/billing/invoice-public-client.tsx`
+> - `apps/web/components/keuangan/billing/invoice-detail-client.tsx`
+> - `apps/web/app/(public)/[tenant]/akun/mitra/pesanan/pesanan-client.tsx`
+
+### 14.1 Konsep
+
+Dua opsi transaksi baru untuk pengiriman produk toko, **opsional** (default OFF), diatur di
+Setting Toko — bukan per-produk:
+
+- **COD (Bayar di Tempat)** — customer bayar tunai saat barang diterima kurir, bukan
+  transfer/QRIS di muka.
+- **Ambil Sendiri (self-pickup)** — customer ambil barang langsung ke lokasi penjual, **SELALU
+  prabayar** (tidak pernah dikombinasikan dengan COD — ambil sendiri murni soal cara
+  pengiriman, bukan cara bayar).
+
+Konfigurasi ada di **dua level independen**, sejajar pola `mitras.rajaongkirCityId/Name` yang
+sudah ada:
+- **Tenant** — `/{slug}/toko/pengaturan`, tersimpan di `tenant.settings` group `"toko"`.
+- **Mitra** — `/{slug}/akun/mitra/pengaturan` (halaman self-service BARU, kapabilitas edit
+  profil toko PERTAMA untuk mitra — sebelumnya `rajaongkirCityId/Name` cuma diisi sekali saat
+  admin approve, tanpa jalur edit sesudahnya), tersimpan di kolom `mitras.*`.
+
+### 14.2 Konfirmasi COD — per penjual, independen
+
+Prinsip kunci: kalau keranjang campuran tenant+mitra dan keduanya sama-sama pakai COD,
+**konfirmasi "uang sudah diterima" terjadi per penjual, independen** — bukan dibatasi
+1-penjual-per-invoice. Mitra konfirmasi porsi miliknya sendiri (self-service, TANPA akses
+dashboard keuangan admin), admin konfirmasi porsi tenant. Satu invoice bisa "sebagian COD
+terkonfirmasi, sisanya menunggu" — reuse mekanisme partial-payment yang sama dengan cicilan
+(multiple `payments` rows terhadap satu invoice, `paidAmount` terakumulasi bertahap).
+
+Ini bisa dilakukan tanpa kolom tambahan karena `invoice_items.sellerType`/`sellerId` sudah ada
+sejak awal (untuk grouping ongkir per penjual) — porsi milik seorang penjual pada sebuah
+invoice SELALU bisa dihitung ulang kapan saja: `SUM(invoice_items.total) WHERE
+invoiceId=X AND sellerType=Y AND sellerId=Z`.
+
+⚠️ **`invoice_items.total` SUDAH net-of-discount** (lihat komentar schema
+`billing.ts`: `"total = (unitPrice*quantity) - discountAmount"`) — JANGAN kurangi
+`discountAmount` lagi saat menghitung porsi penjual. Bug double-subtraction ini sempat
+tertulis di draf pertama kedua fungsi konfirmasi di bawah, ditemukan+diperbaiki sebelum
+`tsc`/build final.
+
+Dua Server Action, replikasi logic inti yang sama (duplikasi kecil disengaja — pola project
+ini untuk jalur admin vs self-service yang menyentuh uang):
+
+- **`confirmCodPaymentAction(slug, shippingLineId)`** (admin, `finance/billing/actions.ts`) —
+  guard `hasFullAccess(access.tenantUser, "keuangan")`, HANYA untuk baris `sellerType='tenant'`.
+- **`confirmMitraCodReceivedAction(slug, shippingLineId)`** (mitra self-service,
+  `akun/mitra/pesanan/actions.ts`) — auth pola `updateShippingTrackingAction` (session →
+  `members.betterAuthUserId` → mitra aktif → verifikasi `line.sellerId === mitra.id`), HANYA
+  untuk baris `sellerType='mitra'` milik mitra yang login.
+
+Keduanya, di dalam `db.transaction()`: `FOR UPDATE` lock invoice + shipping line → hitung
+porsi penjual → insert `payments` (`method:"cash"`, `status:"paid"`) → update
+`invoices.paidAmount`/`status` (transisi pending→partial→paid, reuse logic yang sama) →
+`recordIncome()` (jurnal) → stamp `invoice_shipping_lines.codConfirmedAt`/`codPaymentId` pada
+baris itu SAJA → `revalidatePath` invoice admin+publik+halaman pesanan mitra.
+
+**Kolom konfirmasi tanpa `DEFAULT`** — `codConfirmedAt` (dan seluruh kolom `_confirmed_at`/
+`_paid_at`/`signed_at` lain di aplikasi ini) TIDAK PERNAH punya `DEFAULT NOW()` di DDL, sesuai
+aturan lama yang berulang kali dikunci — kolom itu harus selalu `NULL` sampai diisi eksplisit
+oleh aksi konfirmasi.
+
+### 14.3 Deviasi desain — `createdBy` jurnal COD mitra
+
+`recordIncome()`/`recordJournal()`'s `createdBy` (di tabel `transactions`/`transaction_entries`)
+adalah `uuid NOT NULL`, FK konseptual ke `tenant.users.id`. **Mitra bukan `tenant.users`** —
+mitra adalah `public.members` yang punya baris `mitras`, tidak pernah punya baris
+`tenant.users.id` sendiri. Menulis `createdBy: null` gagal (kolom NOT NULL); mengarang UUID
+acak akan melanggar integritas referensial (tidak ada baris `tenant.users` yang cocok).
+
+**Solusi**: jurnal COD yang dikonfirmasi mitra diatribusikan ke **owner tenant** (fallback:
+pengurus manapun yang paling lama terdaftar, `ORDER BY (role='owner') DESC, createdAt ASC LIMIT
+1`) — sebagai pemegang tanggung jawab pembukuan toko. `payerNote` (di `payments`) dan
+`description` (di jurnal) tetap eksplisit menyebut "dikonfirmasi mitra" — atribusi UUID ke
+owner murni memenuhi syarat referensial DB, bukan menyamarkan siapa yang sesungguhnya
+mengonfirmasi.
+
+`payments.confirmedBy` (beda dari `transaction_entries.createdBy`) **nullable** — versi mitra
+sengaja tidak mengisi field ini sama sekali (tidak perlu fallback owner di situ).
+
+### 14.4 Tampilan invoice
+
+`PublicInvoiceData.codPendingTotal` (dihitung di `invoice/[id]/page.tsx`) = total porsi COD
+(item penjual + ongkos) yang **belum** dikonfirmasi — sudah termasuk di dalam
+`invoice.total`/`remaining` (COD tetap bagian dari total invoice, cuma belum "dibayar" sampai
+dikonfirmasi), murni dipakai untuk memisahkan tampilan.
+
+- **Default "Nominal Transfer"** = `remaining - codPendingTotal` (floor 0) untuk invoice
+  non-cicilan — customer tidak diminta transfer porsi yang memang akan dibayar tunai nanti.
+- **Card breakdown** (`canPay && codPendingTotal > 0`): "Dibayar tunai saat barang diterima:
+  Rp Y" + "Perlu ditransfer sekarang: Rp Z".
+- **Per-baris shipping**: status "Menunggu pembayaran tunai (COD)" (amber) atau "✓ Tunai
+  diterima {tanggal}" (hijau) berdasarkan `codConfirmedAt`.
+- **Ambil Sendiri**: baris shipping tampil "Ambil Sendiri" + nama lokasi/alamat/link Google
+  Maps, menggantikan tampilan kurir/resi (tidak relevan untuk pickup).
+
+Admin invoice detail (`finance/billing/invoice/[id]`) dan halaman mitra
+(`akun/mitra/pesanan`) sama-sama dapat tombol **"Konfirmasi Tunai Diterima"** di baris COD yang
+`sellerType` cocok dan belum `codConfirmedAt`.
+
+### 14.4b Bug fix — produk variasi selalu skip shipping/COD/pickup (2026-08)
+
+Ditemukan saat testing lokal pertama: aktifkan COD+pickup di `/toko/pengaturan`, tapi checkout
+sama sekali tidak menampilkan pilihan pengiriman apa pun (bukan cuma COD/pickup — cek ongkos
+kirim pun tidak muncul). Root cause: `checkout/page.tsx`'s query pembangun `sellerGroups` query
+`ts.products` pakai `productItemIds` (dari `cart_items.item_id`) langsung — TAPI untuk produk
+**variable**, `cart_items.item_id` adalah `product_variations.id`, bukan `products.id` (celah
+ini sudah dicatat sejak Fase 1 Voucher, `docs/arsitektur-voucher.md`, sengaja di-scope-out saat
+itu — sekarang genuinely memblokir fitur ini). Akibatnya `inArray(ts.products.id,
+productItemIds)` tidak pernah match apa pun untuk produk variasi → `sellerGroups` selalu kosong
+→ `needsShipping = sellerGroups.length > 0` di `checkout-form.tsx` selalu `false` → seluruh
+section pengiriman (kurir, COD, pickup) tidak pernah dirender.
+
+**Fix**: `checkout/page.tsx` sekarang query `product_variations` dulu untuk resolve
+`itemId → parentProductId` (kalau itemId adalah variation id) sebelum lookup `products`/`mitras`.
+Berat juga di-resolve dengan prioritas `variation.weightGram ?? product.weightGram` —
+`product_variations.weight_gram` memang didesain sebagai override berat per-variasi (lihat
+komentar schema di `packages/db/src/schema/tenant/shop.ts`).
+
+**Gap susulan ditemukan+ditutup di hari yang sama**: `VariationTable`
+(`components/toko/variation-table.tsx`) awalnya tidak punya field input berat sama sekali —
+kolom `product_variations.weight_gram` ada di DB dan sudah DIBACA oleh checkout (§ di atas),
+tapi tidak ada UI untuk MENGISINYA. User laporkan langsung setelah fix di atas ("saya tidak
+melihat field berat ketika edit product di variasi"), sekaligus minta field baru ini dibuat
+sebagai **popup/Dialog** saat edit variasi — bukan field inline tambahan di sidebar `w-72`
+yang sudah padat (alasan eksplisit: "lebar sidebar yang kecil bikin bingung editnya").
+
+**Fix**: `VariationTable` direstrukturisasi total — tiap baris variasi sekarang jadi ringkasan
+kompak (foto thumbnail, badge atribut, harga/stok/berat sebagai satu baris teks, toggle Aktif,
+tombol Edit pensil, tombol Hapus), bukan lagi form inline penuh per baris. Klik foto/ringkasan/
+tombol Edit membuka `Dialog` (shadcn/Radix, pola sama `MediaPicker`) berisi form lengkap:
+Harga Dasar, Stok, Harga Publik, **Berat (gram) — field baru**, Harga Anggota (dengan hint
+validasi maks harga anggota yang sudah ada), SKU, dan manajemen foto. Field Berat sengaja
+placeholder "Ikut produk" (bukan "0") — kosong berarti checkout fallback ke berat produk
+induk, sesuai desain override yang sudah dikunci di paragraf sebelumnya.
+
+Dialog tambah-foto (`MediaPicker`) tetap bisa dibuka SAAT Dialog edit variasi masih terbuka
+(dua Radix `Dialog` root independen, state masing-masing terpisah) — pola ini sudah ada
+preseden identik di codebase (`MediaEditModal` dibuka dari dalam `MediaPicker` yang sedang
+terbuka, lihat komentar "di luar Dialog" di `media-picker.tsx`), jadi tidak perlu mekanisme
+`collapseSignal` seperti kasus Dialog+AlertDialog konfirmasi pembayaran yang pernah bermasalah.
+
+3 titik lain diupdate agar `weightGram` benar-benar tersimpan+termuat:
+`toko/actions.ts`'s `saveVariationsAction` (insert `weightGram` ke DB) dan
+`generateVariationsAction` (default `""` untuk kombinasi variasi baru), serta
+`produk/[id]/edit/page.tsx` (load `weightGram` dari DB row saat membuka form edit). Nol
+migrasi baru — kolom `weight_gram` sudah ada sejak Fase A COD/pickup.
+
+### 14.4c Fallback Harga/Berat/SKU per Variasi + cart-item orphaning (2026-08)
+
+User menegaskan prinsip yang seharusnya sudah berlaku sejak awal: kalau variasi tidak
+mengisi harga/berat/SKU sendiri, sistem WAJIB pakai nilai produk induk — bukan angka kosong
+atau 0 ("buat apa harga dasar kalau tidak dipakai"). Sebelum fix ini, hanya `weightGram`
+yang sudah punya semantik ini (nullable + fallback di checkout, § 14.4b); `price` justru
+DIPAKSA jadi `0.00` di `saveVariationsAction` kalau field-nya dibiarkan kosong (`(parseFloat
+(v.price) || 0).toFixed(2)`), dan `sku` (sudah nullable, tapi tidak pernah di-resolve
+fallback di manapun).
+
+**Migrasi**: `product_variations.price` diubah jadi nullable
+(`0059_product_variation_price_nullable.sql`) — sama seperti `weight_gram` yang memang sudah
+lama nullable. `sku` sudah nullable sejak awal, tidak perlu migrasi.
+
+**Resolve-time fallback, bukan disalin ke DB saat simpan** — konsisten pola `weightGram`
+yang sudah ada: `saveVariationsAction` sekarang menulis `null` (bukan `0.00`) kalau field
+harga variasi dikosongkan, dan setiap titik BACA yang mengonsumsi harga variasi wajib
+resolve `variation.price ?? product.price` sebelum dipakai:
+- `produk/[productSlug]/page.tsx` — `variations` array (dipakai add-to-cart & priceMin/
+  priceMax milik produk sendiri) di-resolve saat dibangun: `price: String(v.price ?? row.price)`,
+  `sku: v.sku ?? row.sku`. Setelah ini, downstream (`resolvePrice()`, `parseFloat(displayPrice)`
+  yang dikirim ke `addToCartAction`) otomatis benar tanpa perlu tahu apakah nilainya explicit
+  atau fallback.
+- **4 titik lain** menghitung `MIN(price)`/`MAX(price)` mentah lintas semua variasi produk
+  (untuk tampilan "Mulai dari Rp X" di listing/kartu) — SQL polos ini salah begitu ada
+  variasi ber-`price=NULL`: aggregate mengabaikan baris NULL sepenuhnya, padahal baris itu
+  efektif berharga = harga produk. Diganti helper baru **`lib/product-variation-price.server.ts`**
+  (`resolveVariantPriceRanges`) yang pakai `COALESCE(product_variations.price,
+  products.price)` di dalam agregat — dipakai di `produk/page.tsx` (arsip), `produk/kategori/
+  [categorySlug]/page.tsx`, `produk/[productSlug]/page.tsx` (bagian "Produk Terkait"), dan
+  `products-section.tsx` (section landing page). Satu implementasi, bukan 4 salinan SQL yang
+  bisa drift lagi ke depan.
+- `weightGram` sudah benar sejak § 14.4b (satu-satunya konsumen: checkout). `sku`
+  saat ini TIDAK dikonsumsi/ditampilkan di mana pun secara fungsional (dicek via grep
+  menyeluruh — `ProductVariationData.sku` di-fetch tapi tidak pernah dirender di
+  `product-detail-client.tsx`) — fallback untuk SKU murni kosmetik di popup admin
+  (placeholder "(dari produk)"), belum ada tempat lain yang butuh resolve runtime.
+
+**`VariationTable`/`VariationEditForm` diperluas** — 3 prop baru (`productPrice`,
+`productWeightGram`, `productSku`) diteruskan dari `product-form.tsx` (nilai field "Harga
+Dasar"/"Berat (gram)"/"SKU" di sidebar/main content, bukan query terpisah). Baris ringkasan
+variasi & placeholder di dialog edit sekarang menunjukkan nilai EFEKTIF (mis. "Rp 150.000
+(produk)" kalau variasi tidak override) — supaya admin tidak salah kira field kosong berarti
+"harga Rp 0", dan tahu persis angka apa yang benar-benar akan dipakai. Teks hint sidebar
+"Field harga di atas diabaikan" (menyesatkan untuk produk variable) diganti "dipakai sebagai
+bawaan untuk variasi yang tidak diisi sendiri — tidak diabaikan"; Stok tetap eksplisit selalu
+per-variasi (tidak ada fallback stok — tiap variasi punya stok independen).
+
+**Bug arsitektur terpisah ditemukan+diperbaiki bersamaan — `saveVariationsAction` delete-all
++insert-all meregenerasi SEMUA UUID variasi setiap kali produk disimpan.** Ini ditemukan
+saat mendiagnosis laporan "checkout masih tidak menampilkan apa pun" — investigasi DB lokal
+langsung (`psql`) menunjukkan `cart_items.item_id` (untuk produk variable, ini adalah
+`product_variations.id`) menunjuk UUID yang **sudah tidak ada** di `product_variations` sama
+sekali. Root cause: `saveVariationsAction` SEBELUMNYA selalu `DELETE ... WHERE product_id=X`
+lalu `INSERT` ulang SEMUA variasi dengan UUID BARU (`defaultRandom()`) — meski kombinasi
+atributnya identik dengan sebelumnya. Kalau seorang pelanggan sudah menambahkan sebuah
+variasi ke keranjang, LALU admin resave produk itu (mengubah stok, harga, atau — persis
+skenario sesi ini — mengisi field Berat lewat popup baru), UUID variasi yang ada di keranjang
+pelanggan langsung jadi orphan: `checkout/page.tsx`'s lookup `variationMap[item.itemId]`
+tidak menemukan apa pun → `realProductId` fallback ke `item.itemId` mentah (bukan UUID produk
+valid) → query produk tidak menemukan apa pun → baris di-skip total →
+`sellerGroups` kosong → seluruh section pengiriman (kurir, COD, pickup) tidak pernah
+dirender — persis gejala yang dilaporkan.
+
+**Fix**: `saveVariationsAction` ditulis ulang jadi **diff-based upsert** (bukan delete-all+
+insert-all) — pola yang sama dengan "Tag Sync" yang sudah lama dikunci di lesson CLAUDE.md
+project ini ("gunakan diff, bukan delete-all+insert-all, untuk pivot table"). Variasi yang
+masih dikirim DAN sudah punya `id` (existing) di-`UPDATE` di tempat — UUID-nya dipertahankan.
+Variasi baru (tanpa `id`) di-`INSERT`. Variasi yang ada di DB tapi TIDAK lagi dikirim di
+payload (dihapus admin dari UI) baru di-`DELETE`. Ini menutup kelas bug ini untuk SEMUA
+resave produk ke depan, bukan cuma skenario testing sesi ini — orphaning HANYA akan terjadi
+sekarang kalau admin benar-benar MENGHAPUS variasi tertentu (yang memang seharusnya membuat
+cart_item yang mereferensikannya tidak valid lagi — itu perilaku yang benar).
+
+**Data test lokal**: satu `cart_items` row yang sudah terlanjur orphan (dari sesi testing
+sebelum fix ini) dihapus manual via `psql` di database lokal — bukan sesuatu yang perlu
+di-backport ke data lain, murni cleanup test data lokal.
+
+### 14.5 Belum diverifikasi
+
+- Belum ada uji end-to-end di browser (checkout dengan grup penjual campuran, pilih Ambil
+  Sendiri untuk satu grup + COD untuk grup lain, konfirmasi dari kedua sisi admin & mitra).
+- Belum diverifikasi visual di browser: Dialog edit variasi baru (isi Berat, simpan, generate
+  ulang variasi tidak menghapus berat yang sudah diisi, MediaPicker tetap bisa dibuka saat
+  Dialog edit terbuka).
+- Belum diverifikasi visual di browser: fallback harga/berat/SKU (kosongkan harga variasi →
+  ringkasan tampil "Rp X (produk)" → checkout hitung harga & ongkir dengan benar; simpan
+  variasi lalu resave produk lagi → UUID variasi TIDAK berubah, cek via DevTools/DB kalau
+  perlu; harga listing "Mulai dari Rp X" ikut benar begitu campuran variasi override+fallback).
+- Migration `0058_shipping_cod_pickup.sql` DAN `0059_product_variation_price_nullable.sql`
+  **belum dijalankan di VPS** — wajib sebelum deploy, urutan sesuai nomor.
+
+---
+
 ## Status Implementasi
 
 ### Phase 1 — Schema + Admin Dashboard
@@ -1554,6 +1812,20 @@ Form konfirmasi pembayaran manual oleh Admin di halaman detail invoice (`/app/[t
 - [ ] Migrasi `0034_vouchers.sql` **belum dijalankan di VPS** — wajib sebelum deploy
 - [ ] Belum dites manual end-to-end di browser
 > Detail lengkap: **`docs/arsitektur-voucher.md`**
+
+### COD (Bayar di Tempat) & Ambil Sendiri
+- [x] Schema `mitras` (5 kolom) + `invoice_shipping_lines` (9 kolom + 5 kolom courier jadi
+      nullable) — migration `0058_shipping_cod_pickup.sql`
+- [x] Setting tenant `/toko/pengaturan` + setting mitra self-service `/akun/mitra/pengaturan`
+- [x] Checkout: pilih metode pengiriman (kurir/ambil sendiri) + metode bayar (transfer-QRIS/COD)
+      per grup penjual, validasi server-side (tolak kombinasi pickup+cod, re-cek konfigurasi
+      seller sesungguhnya)
+- [x] Konfirmasi COD per penjual independen — `confirmCodPaymentAction` (admin) +
+      `confirmMitraCodReceivedAction` (mitra self-service), reuse mekanisme partial-payment
+- [x] Tampilan invoice publik+admin+mitra — breakdown COD, status per-baris, info pickup
+- [ ] Migrasi `0058_shipping_cod_pickup.sql` **belum dijalankan di VPS** — wajib sebelum deploy
+- [ ] Belum dites manual end-to-end di browser
+> Detail lengkap: **§ 14 di dokumen ini**
 
 ### Belum Dimulai
 - [ ] Invoice PDF (Playwright)

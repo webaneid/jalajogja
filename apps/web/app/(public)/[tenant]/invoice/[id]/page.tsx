@@ -130,6 +130,19 @@ export default async function PublicInvoicePage({ params }: Props) {
   const submittedProofUrl = paymentRows.find(p => p.proofUrl)?.proofUrl ?? null;
   const rejectedPayment   = paymentRows.findLast(p => p.status === "rejected") ?? null;
 
+  // Total porsi COD (item penjual + ongkos) yang BELUM dikonfirmasi diterima — sudah termasuk
+  // di dalam invoice.total/remaining (COD tetap bagian dari total, cuma belum "dibayar" sampai
+  // dikonfirmasi via confirmCodPaymentAction/confirmMitraCodReceivedAction). `it.total` sudah
+  // net-of-discount (lihat komentar schema di billing.ts) — jangan kurangi discountAmount lagi.
+  const codPendingTotal = shippingRows
+    .filter(sl => sl.paymentMethod === "cod" && !sl.codConfirmedAt)
+    .reduce((sum, sl) => {
+      const sellerItemsTotal = items
+        .filter(it => it.sellerType === sl.sellerType && (sl.sellerType === "tenant" || it.sellerId === sl.sellerId))
+        .reduce((s, it) => s + parseFloat(String(it.total)), 0);
+      return sum + sellerItemsTotal + parseFloat(String(sl.cost));
+    }, 0);
+
   const invoice: PublicInvoiceData = {
     id:               inv.id,
     invoiceNumber:    inv.invoiceNumber,
@@ -147,6 +160,7 @@ export default async function PublicInvoicePage({ params }: Props) {
     amountDue,
     paidAmount:       paid,
     remaining,
+    codPendingTotal,
     dueDate:          inv.dueDate,
     notes:            inv.notes,
     createdAt:        inv.createdAt.toISOString(),
@@ -174,6 +188,12 @@ export default async function PublicInvoicePage({ params }: Props) {
       trackingNumber: sl.trackingNumber,
       shippedAt:      sl.shippedAt?.toISOString() ?? null,
       status:         sl.status as "pending" | "shipped" | "delivered",
+      deliveryMethod: sl.deliveryMethod as "courier" | "pickup",
+      paymentMethod:  sl.paymentMethod as "prepaid" | "cod",
+      pickupLocationName: sl.pickupLocationName,
+      pickupAddress:      sl.pickupAddress,
+      pickupMapsUrl:       sl.pickupMapsUrl,
+      codConfirmedAt: sl.codConfirmedAt?.toISOString() ?? null,
     })),
     bankAccounts,
     qrisAccounts,

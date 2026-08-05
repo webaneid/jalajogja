@@ -116,6 +116,12 @@ export default async function MitraPesananPage({ params }: { params: Params }) {
       trackingNumber: sl.trackingNumber,
       shippedAt:      sl.shippedAt?.toISOString() ?? null,
       status:         sl.status as "pending" | "shipped" | "delivered",
+      deliveryMethod: sl.deliveryMethod as "courier" | "pickup",
+      paymentMethod:  sl.paymentMethod as "prepaid" | "cod",
+      pickupLocationName: sl.pickupLocationName,
+      pickupAddress:      sl.pickupAddress,
+      pickupMapsUrl:       sl.pickupMapsUrl,
+      codConfirmedAt: sl.codConfirmedAt?.toISOString() ?? null,
     } : null;
 
     return {
