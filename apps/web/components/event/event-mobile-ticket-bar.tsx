@@ -1,3 +1,5 @@
+"use client";
+
 import { Ticket } from "lucide-react";
 import { MobileActionSheet } from "@/components/website/public/single/mobile-action-sheet";
 
