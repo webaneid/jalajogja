@@ -4,7 +4,11 @@ import { useState, useEffect } from "react";
 import { ChevronUp } from "lucide-react";
 
 type Props = {
-  collapsedBar: React.ReactNode;   // konten baris ringkas, selalu tampil, seluruh area jadi tombol toggle
+  // Konten baris ringkas, selalu tampil, seluruh area jadi tombol toggle. Render-prop (bukan
+  // node statis) — dilewatkan `expanded` supaya badge CTA (Donasi/Beli/Daftar) di dalamnya bisa
+  // berubah dari solid ke outline saat sheet terbuka, agar perhatian tetap ke tombol submit
+  // sungguhan di dalam `children`, bukan bersaing dengan badge ini yang tetap terlihat.
+  collapsedBar: (expanded: boolean) => React.ReactNode;
   children:     React.ReactNode;   // konten penuh saat expanded
   /** Opsional — set `true` (mis. dari state dialog lain yang akan dibuka) untuk memaksa sheet
    *  collapse. Dipakai supaya sheet ini tidak menutupi dialog/modal LAIN yang dibuka di atasnya
@@ -56,7 +60,7 @@ export function MobileActionSheet({ collapsedBar, children, collapseSignal }: Pr
           onClick={() => setExpanded((v) => !v)}
           className="w-full flex items-center gap-3 px-4 py-3"
         >
-          {collapsedBar}
+          {collapsedBar(expanded)}
           <ChevronUp
             size={18}
             className={`text-muted-foreground shrink-0 transition-transform duration-300 ${expanded ? "rotate-180" : ""}`}

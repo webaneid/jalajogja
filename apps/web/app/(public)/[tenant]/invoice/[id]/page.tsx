@@ -3,6 +3,8 @@ import { db, tenants } from "@jalajogja/db";
 import { eq } from "drizzle-orm";
 import { createTenantDb, getSettings, findEligibleInstallmentPlan } from "@jalajogja/db";
 import { getTenantTimezone } from "@/lib/tenant-timezone.server";
+import { resolveBaseUrl } from "@/lib/resolve-base-url";
+import { ArrowLeft, Receipt } from "lucide-react";
 import type { Metadata } from "next";
 import {
   InvoicePublicClient,
@@ -59,6 +61,8 @@ export default async function PublicInvoicePage({ params }: Props) {
     .limit(1);
 
   if (!inv) notFound();
+
+  const baseUrl = await resolveBaseUrl(slug);
 
   const [items, shippingRows, paymentRows, scheduleRows, eligibleInstallmentPlan, tenantTimezone] = await Promise.all([
     tenantDb
@@ -214,6 +218,19 @@ export default async function PublicInvoicePage({ params }: Props) {
           <p className="text-sm text-muted-foreground">{tenant.name}</p>
         </div>
         <InvoicePublicClient slug={slug} invoice={invoice} eligibleInstallmentPlan={eligibleInstallmentPlan} timezone={tenantTimezone} />
+
+        <div className="mt-8 flex flex-wrap gap-3">
+          <a href={`${baseUrl}/akun`}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-5 py-2.5 text-sm font-medium hover:bg-muted transition-colors">
+            <ArrowLeft className="size-4" />
+            Kembali ke Dashboard
+          </a>
+          <a href={`${baseUrl}/akun/transaksi`}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-5 py-2.5 text-sm font-medium hover:bg-muted transition-colors">
+            <Receipt className="size-4" />
+            Laman Transaksi
+          </a>
+        </div>
       </div>
     </main>
   );

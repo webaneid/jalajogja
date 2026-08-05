@@ -15,7 +15,10 @@ type Props = {
 export function CampaignMobileDonationBar({ campaignType, children }: Props) {
   const isQurban = campaignType === "qurban";
 
-  const collapsedBar = (
+  // Badge CTA solid saat collapsed (menarik perhatian untuk di-tap) — begitu expanded (detail
+  // transaksi terbuka), badge diredupkan jadi outline netral supaya tombol "Lanjutkan" di dalam
+  // form yang jadi fokus, bukan badge ini (yang tetap tampil sebagai header baris sheet).
+  const collapsedBar = (expanded: boolean) => (
     <>
       <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
         <Heart size={18} className="text-primary" />
@@ -24,7 +27,9 @@ export function CampaignMobileDonationBar({ campaignType, children }: Props) {
         <p className="text-xs text-muted-foreground">{isQurban ? "Qurban" : "Donasi"}</p>
         <p className="text-sm font-semibold">{isQurban ? "Pesan Qurban" : "Donasi Sekarang"}</p>
       </div>
-      <span className="btn btn-primary btn-sm shrink-0 pointer-events-none">{isQurban ? "Pesan" : "Donasi"}</span>
+      <span className={`btn btn-sm shrink-0 pointer-events-none ${expanded ? "btn-outline-dark" : "btn-primary"}`}>
+        {isQurban ? "Pesan" : "Donasi"}
+      </span>
     </>
   );
 

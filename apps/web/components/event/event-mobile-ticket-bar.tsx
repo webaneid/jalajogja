@@ -14,7 +14,10 @@ type Props = {
 // MobileActionSheet (mekanisme sheet generik), cuma bangun collapsedBar yang beda per state
 // (sudah terdaftar: QR mini + status; belum: label harga + CTA "Daftar").
 export function EventMobileTicketBar({ registered, qrSrc, statusLabel, regNumber, priceLabel, children }: Props) {
-  const collapsedBar = registered ? (
+  // Badge "Daftar" solid saat collapsed, jadi outline netral begitu expanded (detail form
+  // pendaftaran terbuka) — supaya tombol submit sungguhan di dalam form yang jadi fokus.
+  // Kalau sudah terdaftar, tidak ada badge sama sekali (QR + status saja) — tidak relevan.
+  const collapsedBar = (expanded: boolean) => registered ? (
     <>
       {qrSrc ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -35,7 +38,9 @@ export function EventMobileTicketBar({ registered, qrSrc, statusLabel, regNumber
         <p className="text-xs text-muted-foreground">Tiket</p>
         <p className="text-sm font-semibold">{priceLabel ?? "Daftar Sekarang"}</p>
       </div>
-      <span className="btn btn-primary btn-sm shrink-0 pointer-events-none">Daftar</span>
+      <span className={`btn btn-sm shrink-0 pointer-events-none ${expanded ? "btn-outline-dark" : "btn-primary"}`}>
+        Daftar
+      </span>
     </>
   );
 

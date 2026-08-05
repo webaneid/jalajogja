@@ -483,6 +483,22 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
       setError("Nominal transfer harus diisi dengan benar.");
       return;
     }
+    if (payMethod === "transfer" && !payerBank.trim()) {
+      setError("Bank pengirim wajib diisi.");
+      return;
+    }
+    if (!transferDate) {
+      setError(payMethod === "transfer" ? "Tanggal transfer wajib diisi." : "Tanggal pembayaran wajib diisi.");
+      return;
+    }
+    if (uploadingProof) {
+      setError("Tunggu hingga bukti pembayaran selesai diunggah.");
+      return;
+    }
+    if (!proofUrl) {
+      setError("Bukti pembayaran wajib dilampirkan.");
+      return;
+    }
     // Tutup Dialog form pembayaran DULU (desktop) — dua Radix dialog terbuka bersamaan
     // (Dialog form + AlertDialog konfirmasi) sama-sama z-50, saling ganggu focus-trap/
     // pointer-events, AlertDialog jadi terkesan "tidak ada respons" saat diklik. Mobile:
@@ -916,6 +932,14 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
               Pastikan pembayaran Anda sesuai dengan jumlah invoice sebelum mengirim konfirmasi.
             </div>
 
+            {/* Duplikat dari banner error di atas halaman — Dialog/Sheet ini portal/overlay,
+                banner di luar tidak terlihat saat form ini sedang terbuka. */}
+            {error && (
+              <p className="rounded-md bg-red-50 border border-red-200 px-4 py-2 text-sm text-destructive">
+                {error}
+              </p>
+            )}
+
             <div>
             <label className={labelCls}>Nominal Transfer</label>
             <div className="relative">
@@ -970,25 +994,28 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
           <div className="grid grid-cols-2 gap-3">
             {payMethod === "transfer" && (
               <div>
-                <label className={labelCls}>Bank Pengirim</label>
+                <label className={labelCls}>Bank Pengirim <span className="text-destructive">*</span></label>
                 <input
                   type="text"
                   value={payerBank}
                   onChange={(e) => setPayerBank(e.target.value)}
                   placeholder="BCA, BRI..."
                   className={inputCls}
+                  required
                 />
               </div>
             )}
             <div className={payMethod === "transfer" ? "" : "col-span-2"}>
               <label className={labelCls}>
-                {payMethod === "transfer" ? "Tanggal Transfer" : "Tanggal Pembayaran"}
+                {payMethod === "transfer" ? "Tanggal Transfer" : "Tanggal Pembayaran"}{" "}
+                <span className="text-destructive">*</span>
               </label>
               <input
                 type="date"
                 value={transferDate}
                 onChange={(e) => setTransferDate(e.target.value)}
                 className={inputCls}
+                required
               />
             </div>
           </div>
@@ -1007,8 +1034,8 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
           {/* ── Bukti Pembayaran ── */}
           <div>
             <label className={labelCls}>
-              {payMethod === "transfer" ? "Bukti Transfer / Screenshot" : "Screenshot QRIS / Bukti Bayar"}
-              <span className="ml-1 text-muted-foreground text-xs">(opsional tapi disarankan)</span>
+              {payMethod === "transfer" ? "Bukti Transfer / Screenshot" : "Screenshot QRIS / Bukti Bayar"}{" "}
+              <span className="text-destructive">*</span>
             </label>
 
             {!proofPreview ? (
@@ -1067,8 +1094,8 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
               <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
                 <p className="text-xs font-medium text-destructive">⚠ Foto gagal terkirim: {uploadError}</p>
                 <p className="text-xs text-destructive/80 mt-0.5">
-                  Anda tetap bisa kirim konfirmasi tanpa foto, tapi disarankan coba unggah ulang
-                  (atau screenshot foto lalu unggah ulang kalau format tidak didukung).
+                  Bukti pembayaran wajib dilampirkan — coba unggah ulang (atau screenshot foto lalu
+                  unggah ulang kalau format tidak didukung).
                 </p>
               </div>
             )}
@@ -1077,7 +1104,7 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
           <button
             type="submit"
             disabled={pending || uploadingProof}
-            className="rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+            className="w-full rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
             {pending ? "Mengirim..." : "Kirim Konfirmasi"}
           </button>
@@ -1109,11 +1136,11 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
                 collapseSignal={confirmOpen} — paksa collapse begitu AlertDialog "Kirim
                 Konfirmasi?" mau dibuka, supaya tidak tersembunyi di balik sheet (z-71 > z-50). */}
             <MobileActionSheet
-              collapsedBar={
+              collapsedBar={() => (
                 <span className="flex-1 text-left text-sm font-semibold text-primary">
                   Konfirmasi Pembayaran
                 </span>
-              }
+              )}
               collapseSignal={confirmOpen}
             >
               <div className="pb-2">{paymentFormFields}</div>

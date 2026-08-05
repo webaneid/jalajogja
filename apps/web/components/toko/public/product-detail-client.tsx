@@ -311,7 +311,9 @@ export function ProductDetailClient({
 
   // Collapsed bar bottom sheet mobile — harga LIVE ikut activeVariation (component ini satu-
   // satunya pemilik state, jadi aman ditampilkan live, beda dari Event/Campaign yang statis).
-  const collapsedBar = (
+  // Badge "Beli" solid saat collapsed, jadi outline netral begitu expanded (detail beli
+  // terbuka) — supaya tombol "Tambah ke Keranjang" sungguhan di dalam sheet yang jadi fokus.
+  const collapsedBar = (expanded: boolean) => (
     <>
       <div className="flex-1 min-w-0 text-left">
         <p className="text-xs text-muted-foreground">Harga</p>
@@ -319,7 +321,9 @@ export function ProductDetailClient({
           {isVariable && !activeVariation ? priceLabel(product, sessionType) : formatPrice(displayPrice)}
         </p>
       </div>
-      <span className="btn btn-primary btn-sm shrink-0 pointer-events-none">Beli</span>
+      <span className={`btn btn-sm shrink-0 pointer-events-none ${expanded ? "btn-outline-dark" : "btn-primary"}`}>
+        Beli
+      </span>
     </>
   );
 
