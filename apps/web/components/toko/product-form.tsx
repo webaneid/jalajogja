@@ -598,13 +598,23 @@ export function ProductForm({
 
             <Separator />
 
-            {/* Gambar produk (hanya untuk simple product) */}
-            {productType === "simple" && (
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Gambar Produk</p>
-                <ProductImages slug={slug} images={images} onChange={setImages} />
-              </div>
-            )}
+            {/* Gambar produk — SELALU tampil, terlepas tipe produk. Ini kolom `images`
+                top-level yang dipakai sebagai cover di arsip/kartu toko untuk KEDUA tipe
+                produk (extractCover() di /produk/page.tsx baca products.images langsung,
+                bukan gambar variasi) — sebelumnya disembunyikan untuk "variable" sehingga
+                produk variasi baru tidak pernah punya cara mengisi cover-nya sama sekali. */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Gambar Produk {productType === "variable" && <span className="normal-case font-normal">(Sampul Utama)</span>}
+              </p>
+              <ProductImages slug={slug} images={images} onChange={setImages} />
+              {productType === "variable" && (
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Ditampilkan sebagai foto sampul di arsip/kartu toko. Foto per varian (mis. per
+                  warna) diatur terpisah di tabel Variasi di bawah.
+                </p>
+              )}
+            </div>
 
             <Separator />
 

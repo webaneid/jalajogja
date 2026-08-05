@@ -15212,8 +15212,60 @@ cached`, 50.3s, dev server dimatikan+`.next` dibersihkan+direstart). **Sudah di-
 Belum dijalankan di VPS — user perlu `git pull && bun run build --filter=@jalajogja/web && pm2
 restart jalajogja --update-env` (nol migrasi DB, murni kode aplikasi).
 
+### [2026-08-05] Bug: Produk Variasi Baru Tidak Punya Cara Upload Gambar Sama Sekali
+
+User laporkan "gk ada upload gambar dan gallery.. ketika create product". Investigasi (baca kode
+dulu, bukan asumsi) menemukan `ProductForm` (`components/toko/product-form.tsx`) — section
+"Gambar Produk" (`<ProductImages>`, berisi tombol "Tambah Gambar" → `MediaPicker`) dibungkus
+`{productType === "simple" && (...)}` — TOTAL disembunyikan untuk "Produk Variasi". Untuk
+produk variasi yang BARU (belum pernah disimpan, `productId === null`), gambar per-varian di
+`VariationTable` JUGA tidak bisa diisi — tombol "Generate Variasi" sendiri digate
+`&& productId` (butuh produk sudah tersimpan dulu). Hasilnya: produk variasi baru genuinely
+**tidak punya cara upload gambar apa pun** sampai serangkaian langkah (simpan draft → isi
+atribut → generate variasi) selesai — user cuma lihat section itu hilang tanpa penjelasan.
+
+**Bukan cuma bug UX — bug fungsional**: `extractCover()` (`/produk/page.tsx`, dipakai arsip+kartu
+toko) membaca `products.images` (kolom top-level) LANGSUNG untuk cover, **untuk KEDUA tipe
+produk** — tidak pernah fallback ke gambar variasi. Karena section itu disembunyikan total untuk
+"variable", produk variasi TIDAK PERNAH punya cara mengisi kolom yang justru dipakai sebagai
+cover storefront-nya sendiri — bukan cuma "kurang nyaman", tapi produk variasi selamanya tidak
+bisa punya foto sampul di arsip toko sama sekali.
+
+**Fix**: hapus gate `productType === "simple"` — `<ProductImages>` (dan tombol "Tambah Gambar"-
+nya) SEKARANG SELALU tampil terlepas tipe produk. Untuk "Produk Variasi", label diperjelas jadi
+"Gambar Produk (Sampul Utama)" + catatan kecil membedakan dari foto per-varian ("Ditampilkan
+sebagai foto sampul di arsip/kartu toko. Foto per varian... diatur terpisah di tabel Variasi").
+Posisi tidak dipindah — tetap setelah blok Atribut/Variasi (kontekstual berdekatan dengan
+tabel variasi untuk produk tipe itu).
+
+**Aturan yang ditegaskan**: kalau sebuah field top-level (di sini: `products.images`) dipakai
+SEBAGAI SUMBER oleh fitur lain (cover storefront) SECARA UNCONDITIONAL (tidak peduli
+`productType`), form editornya TIDAK BOLEH menyembunyikan field itu untuk sub-tipe manapun —
+kalau memang perlu disembunyikan/dibatasi untuk suatu kondisi, verifikasi dulu SEMUA consumer
+field itu tidak butuh nilai itu terisi untuk kondisi yang sama, jangan asumsikan "field ini kan
+concept-nya untuk simple product" tanpa cross-check konsumen aktual.
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0
+cached`, 49.6s, dev server dimatikan+`.next` dibersihkan+direstart). **Halaman admin butuh auth
+session** — tidak bisa diverifikasi empiris via curl seperti halaman publik (beda dari task
+arsip post sebelumnya), verifikasi murni via `tsc`+build+trace kondisi kode manual. Belum
+di-commit/push saat ditulis di sini — lihat commit berikutnya.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Arsip Post disatukan — Editorial Mix + filter kategori/search** (lihat
+- Terakhir dikerjakan: **Fix produk variasi tidak punya cara upload gambar** (lihat lesson
+  `[2026-08-05]` "Bug: Produk Variasi Baru" di atas) — `ProductImages` (section "Gambar Produk")
+  di `product-form.tsx` sebelumnya dibungkus `productType === "simple"`, total hilang untuk
+  "Produk Variasi" — dan produk variasi BARU (belum tersimpan) juga tidak bisa isi gambar
+  per-varian (butuh `productId` dulu, yang baru ada setelah simpan). Ini BUKAN cuma UX — kolom
+  `products.images` yang disembunyikan itu dipakai `extractCover()` (`/produk/page.tsx`) sebagai
+  cover storefront untuk KEDUA tipe produk, tanpa fallback — produk variasi selamanya tidak
+  bisa punya foto sampul arsip. Fix: gate dihapus, section SELALU tampil + label+catatan
+  diperjelas untuk tipe variable. `tsc`+build genuine bersih. **Halaman admin butuh auth,
+  tidak bisa diverifikasi via curl** (beda dari task publik sebelumnya) — verifikasi murni
+  trace kondisi kode. **Sudah di-commit+push. Belum dijalankan di VPS, belum diverifikasi
+  visual di browser** — user perlu coba: buat produk baru → pilih "Produk Variasi" → cek
+  section "Gambar Produk (Sampul Utama)" sekarang tampil.
+- Sesi sebelumnya: **Arsip Post disatukan — Editorial Mix + filter kategori/search** (lihat
   lesson `[2026-08-05]` di atas) — `/post/page.tsx` ditulis ulang total: kartu #1 overlay
   (rasio sama large/medium/thumbnail via `className` override), 4 post berikutnya klasik (grid
   2 kolom), sisanya list — resep sama di semua halaman pagination. Mobile: semua jadi list
