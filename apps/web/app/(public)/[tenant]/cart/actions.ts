@@ -47,6 +47,9 @@ export type CartItem = {
   quantity:  number;
   notes:     string | null;
   sortOrder: number;
+  // Foto sampul (square) — hanya diisi keranjang/page.tsx (dipakai display), opsional di
+  // titik konstruksi lain (mis. checkout/page.tsx) yang tidak butuh menampilkan foto.
+  coverUrl?: string | null;
 };
 
 export type CartData = {

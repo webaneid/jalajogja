@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { db, tenants, getSettings } from "@jalajogja/db";
+import { db, tenants, getSettings, type TenantDb } from "@jalajogja/db";
 import { eq, inArray, and } from "drizzle-orm";
 import { createTenantDb } from "@jalajogja/db";
 import { CartClient } from "@/components/billing/cart-client";
@@ -11,17 +11,97 @@ import { ShoppingCart } from "lucide-react";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import { generateMetadata as buildMetadata } from "@/lib/seo";
+import { resolveMediaUrl } from "@/lib/minio";
 import type { Metadata } from "next";
 
 type CampaignBanner = { campaignId: string; campaignTitle: string; amounts: number[] };
 type ProductBanner  = { productId: string; productTitle: string; coverUrl: string | null };
 
 // Sama dengan produk/page.tsx & products-section.tsx — images JSONB sudah berisi URL penuh
-// (dari MediaPicker), tidak perlu publicUrl() lagi.
+// (dari MediaPicker), tidak perlu publicUrl() lagi. Prioritas variant persegi (square) dulu.
 function extractCoverUrl(images: unknown): string | null {
   if (!Array.isArray(images) || images.length === 0) return null;
   const first = images[0] as { url?: string; variants?: Record<string, string> | null };
-  return first.variants?.["square-large"] ?? first.url ?? null;
+  return first.variants?.["square"] ?? first.variants?.["square-large"] ?? first.url ?? null;
+}
+
+// Foto sampul per item keranjang — product dari images[0], ticket dari cover event terkait,
+// donasi dari cover campaign (langsung, atau via qurban_animals untuk item qurban).
+// Dibatch per tipe supaya tidak N+1 query untuk keranjang berisi banyak item.
+async function resolveCartItemCovers(
+  tenantClient: TenantDb,
+  slug:         string,
+  items:        CartItem[],
+): Promise<Map<string, string | null>> {
+  const { db: tenantDb, schema } = tenantClient;
+  const covers = new Map<string, string | null>();
+
+  const productIds  = items.filter((i) => i.itemType === "product").map((i) => i.itemId).filter(Boolean) as string[];
+  const ticketIds    = items.filter((i) => i.itemType === "ticket").map((i) => i.itemId).filter(Boolean) as string[];
+  const donationIds = items.filter((i) => i.itemType === "donation").map((i) => i.itemId).filter(Boolean) as string[];
+
+  if (productIds.length > 0) {
+    const rows = await tenantDb
+      .select({ id: schema.products.id, images: schema.products.images })
+      .from(schema.products)
+      .where(inArray(schema.products.id, productIds));
+    for (const r of rows) covers.set(r.id, extractCoverUrl(r.images));
+  }
+
+  // coverId (media) -> daftar itemId yang perlu URL itu — resolve semua media sekaligus di akhir.
+  const mediaIdToItemIds = new Map<string, string[]>();
+  function queueMedia(coverId: string | null, itemId: string) {
+    if (!coverId) { covers.set(itemId, null); return; }
+    const arr = mediaIdToItemIds.get(coverId) ?? [];
+    arr.push(itemId);
+    mediaIdToItemIds.set(coverId, arr);
+  }
+
+  if (ticketIds.length > 0) {
+    const rows = await tenantDb
+      .select({ ticketId: schema.eventTickets.id, coverId: schema.events.coverId })
+      .from(schema.eventTickets)
+      .innerJoin(schema.events, eq(schema.eventTickets.eventId, schema.events.id))
+      .where(inArray(schema.eventTickets.id, ticketIds));
+    for (const r of rows) queueMedia(r.coverId, r.ticketId);
+  }
+
+  if (donationIds.length > 0) {
+    const directCampaigns = await tenantDb
+      .select({ id: schema.campaigns.id, coverId: schema.campaigns.coverId })
+      .from(schema.campaigns)
+      .where(inArray(schema.campaigns.id, donationIds));
+    const foundIds = new Set(directCampaigns.map((c) => c.id));
+    for (const c of directCampaigns) queueMedia(c.coverId, c.id);
+
+    // Item qurban: itemId = qurban_animals.id, bukan campaigns.id langsung.
+    const remaining = donationIds.filter((id) => !foundIds.has(id));
+    if (remaining.length > 0) {
+      const qurbanRows = await tenantDb
+        .select({ animalId: schema.qurbanAnimals.id, coverId: schema.campaigns.coverId })
+        .from(schema.qurbanAnimals)
+        .innerJoin(schema.campaigns, eq(schema.qurbanAnimals.campaignId, schema.campaigns.id))
+        .where(inArray(schema.qurbanAnimals.id, remaining));
+      for (const r of qurbanRows) queueMedia(r.coverId, r.animalId);
+    }
+  }
+
+  const mediaIds = [...mediaIdToItemIds.keys()];
+  if (mediaIds.length > 0) {
+    const mediaRows = await tenantDb
+      .select({ id: schema.media.id, path: schema.media.path, variants: schema.media.variants })
+      .from(schema.media)
+      .where(inArray(schema.media.id, mediaIds));
+    for (const m of mediaRows) {
+      const url = resolveMediaUrl(
+        slug, m.path, m.variants as Record<string, string> | null,
+        ["square", "square-large", "large", "original"],
+      );
+      for (const itemId of mediaIdToItemIds.get(m.id) ?? []) covers.set(itemId, url);
+    }
+  }
+
+  return covers;
 }
 
 type Props = { params: Promise<{ tenant: string }> };
@@ -63,7 +143,8 @@ export default async function KeranjangPage({ params }: Props) {
 
   if (token) {
     try {
-      const { db: tenantDb, schema } = createTenantDb(slug);
+      const tenantClient = createTenantDb(slug);
+      const { db: tenantDb, schema } = tenantClient;
 
       const [cartRow] = await tenantDb
         .select({ id: schema.carts.id, expiresAt: schema.carts.expiresAt })
@@ -88,6 +169,13 @@ export default async function KeranjangPage({ params }: Props) {
           notes:     it.notes,
           sortOrder: it.sortOrder,
         }));
+
+        try {
+          const coverMap = await resolveCartItemCovers(tenantClient, slug, cartItems);
+          for (const it of cartItems) it.coverUrl = coverMap.get(it.itemId ?? "") ?? null;
+        } catch {
+          // Foto gagal di-resolve — tampilkan tanpa foto, bukan gagalkan seluruh halaman.
+        }
 
         const subtotal = cartItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0);
 
