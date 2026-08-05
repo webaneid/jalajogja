@@ -15,7 +15,14 @@ import { resolveMediaUrl } from "@/lib/minio";
 import type { Metadata } from "next";
 
 type CampaignBanner = { campaignId: string; campaignTitle: string; amounts: number[] };
-type ProductBanner  = { productId: string; productTitle: string; coverUrl: string | null };
+type ProductBanner  = {
+  productId:   string;
+  productTitle: string;
+  productSlug: string;
+  productType: "simple" | "variable";
+  coverUrl:    string | null;
+  unitPrice:   number; // hanya valid dipakai untuk produk simple (add langsung)
+};
 
 // Sama dengan produk/page.tsx & products-section.tsx — images JSONB sudah berisi URL penuh
 // (dari MediaPicker), tidak perlu publicUrl() lagi. Prioritas variant persegi (square) dulu.
@@ -277,14 +284,30 @@ export default async function KeranjangPage({ params }: Props) {
         // Cari produk terkait dari events (ambil yang pertama ditemukan)
         const productIdFromEvent = eventRows.find((e) => e.linkedProductId)?.linkedProductId ?? null;
         if (productIdFromEvent) {
-          // Jangan tampilkan jika produk sudah di keranjang
+          // "Sudah di keranjang" harus cek variasi juga — produk variable ditambahkan dengan
+          // itemId = product_variations.id (bukan products.id langsung), jadi cek yang cuma
+          // bandingkan ke productIdFromEvent tidak pernah cocok untuk produk variable.
+          const variationIds = (await tenantDb
+            .select({ id: schema.productVariations.id })
+            .from(schema.productVariations)
+            .where(eq(schema.productVariations.productId, productIdFromEvent))
+          ).map((v) => v.id);
+          const relevantIds = new Set([productIdFromEvent, ...variationIds]);
+
           const productAlreadyInCart = cart?.items.some(
-            (i) => i.itemType === "product" && i.itemId === productIdFromEvent
+            (i) => i.itemType === "product" && i.itemId && relevantIds.has(i.itemId)
           ) ?? false;
 
           if (!productAlreadyInCart) {
             const [product] = await tenantDb
-              .select({ id: schema.products.id, name: schema.products.name, images: schema.products.images })
+              .select({
+                id:          schema.products.id,
+                name:        schema.products.name,
+                slug:        schema.products.slug,
+                images:      schema.products.images,
+                productType: schema.products.productType,
+                price:       schema.products.price,
+              })
               .from(schema.products)
               .where(
                 and(
@@ -298,7 +321,13 @@ export default async function KeranjangPage({ params }: Props) {
               linkedProductBanner = {
                 productId:    product.id,
                 productTitle: product.name,
+                productSlug:  product.slug,
+                productType:  product.productType as "simple" | "variable",
                 coverUrl:     extractCoverUrl(product.images),
+                // Harga dasar (sama seperti yang dipakai checkoutAction saat re-validasi) —
+                // hanya relevan untuk produk simple, produk variable harganya baru pasti
+                // setelah variasi dipilih di halaman produk.
+                unitPrice:    parseFloat(String(product.price)),
               };
             }
           }

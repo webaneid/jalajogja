@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { addToCartAction } from "@/app/(public)/[tenant]/cart/actions";
-import { Heart, ShoppingBag, X, ChevronDown, Check } from "lucide-react";
+import { Heart, ShoppingBag, X, ChevronDown, Check, ArrowRight } from "lucide-react";
 
 type CampaignBanner = {
   campaignId:    string;
@@ -13,7 +13,10 @@ type CampaignBanner = {
 type ProductBanner = {
   productId:    string;
   productTitle: string;
+  productSlug:  string;
+  productType:  "simple" | "variable";
   coverUrl:     string | null;
+  unitPrice:    number; // hanya valid dipakai untuk produk simple (add langsung)
 };
 
 type Props = {
@@ -58,13 +61,15 @@ export function DonationBannerCart({ tenantSlug, campaigns, linkedProduct }: Pro
   }
 
   function handleAddProduct() {
-    if (!linkedProduct) return;
+    // Hanya untuk produk simple — produk variable WAJIB lewat halaman detail (pilih variasi
+    // dulu), lihat cabang render di bawah.
+    if (!linkedProduct || linkedProduct.productType !== "simple") return;
     startProdTransition(async () => {
       const res = await addToCartAction(tenantSlug, {
         itemType:  "product",
         itemId:    linkedProduct.productId,
         name:      linkedProduct.productTitle,
-        unitPrice: 0, // server akan resolve harga sesuai sesi
+        unitPrice: linkedProduct.unitPrice,
         quantity:  1,
       });
       if (res.success) setProductAdded(true);
@@ -182,19 +187,32 @@ export function DonationBannerCart({ tenantSlug, campaigns, linkedProduct }: Pro
             )}
             <p className="text-sm text-muted-foreground">{linkedProduct.productTitle}</p>
           </div>
-          <button
-            type="button"
-            onClick={handleAddProduct}
-            disabled={prodPending || productAdded}
-            className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10 disabled:opacity-60 transition-colors"
-          >
-            {productAdded
-              ? <><Check className="h-3.5 w-3.5" /> Ditambahkan ke keranjang!</>
-              : prodPending
-                ? "Menambahkan..."
-                : <><ShoppingBag className="h-3.5 w-3.5" /> Tambah ke Keranjang</>
-            }
-          </button>
+
+          {linkedProduct.productType === "variable" ? (
+            // Produk punya variasi (ukuran/warna/dll) — tidak bisa ditambah langsung dari sini
+            // (tidak ada picker variasi di banner ini), arahkan ke halaman produk supaya user
+            // pilih variasi lewat alur yang sudah benar (harga + berat pengiriman per varian).
+            <a
+              href={`/${tenantSlug}/produk/${linkedProduct.productSlug}`}
+              className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
+            >
+              Lihat & Pilih Variasi <ArrowRight className="h-3.5 w-3.5" />
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAddProduct}
+              disabled={prodPending || productAdded}
+              className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10 disabled:opacity-60 transition-colors"
+            >
+              {productAdded
+                ? <><Check className="h-3.5 w-3.5" /> Ditambahkan ke keranjang!</>
+                : prodPending
+                  ? "Menambahkan..."
+                  : <><ShoppingBag className="h-3.5 w-3.5" /> Tambah ke Keranjang</>
+              }
+            </button>
+          )}
         </div>
       )}
     </div>
