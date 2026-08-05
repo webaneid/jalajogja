@@ -59,6 +59,14 @@ function formatRp(n: number) {
   return "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
 }
 
+// Copy tombol submit final — khusus keranjang yang berisi tiket event ("kondisi Agenda"),
+// supaya framing-nya "bayar"/"selesaikan pendaftaran" bukan istilah generik "buat invoice".
+// Keranjang tanpa tiket (produk/donasi saja) tetap pakai copy lama.
+function submitLabel(amount: number, hasTicket: boolean): string {
+  if (!hasTicket) return `Buat Invoice — ${formatRp(amount)}`;
+  return amount <= 0 ? "Selesaikan Pendaftaran" : `Bayar Sekarang — ${formatRp(amount)}`;
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 export type CheckoutDefaults = { name: string; email: string; phone: string };
@@ -85,6 +93,7 @@ export function CheckoutForm({
   const [error, setError]          = useState("");
 
   const needsShipping = sellerGroups.length > 0;
+  const hasTicket      = cart.items.some((i) => i.itemType === "ticket");
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   // Step 1 — info pemesan
@@ -725,7 +734,7 @@ export function CheckoutForm({
                   ? "Memproses…"
                   : needsShipping
                     ? "Lanjut — Atur Pengiriman →"
-                    : `Buat Invoice — ${formatRp(discountedSubtotal)}`}
+                    : submitLabel(discountedSubtotal, hasTicket)}
               </button>
             )}
 
@@ -746,7 +755,7 @@ export function CheckoutForm({
                 disabled={pending || !allSelected}
                 className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
               >
-                {pending ? "Memproses…" : `Buat Invoice — ${formatRp(grandTotal)}`}
+                {pending ? "Memproses…" : submitLabel(grandTotal, hasTicket)}
               </button>
             )}
           </div>

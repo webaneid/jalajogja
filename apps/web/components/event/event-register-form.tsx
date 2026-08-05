@@ -707,7 +707,7 @@ export function EventRegisterForm({
                 {hasLinkedItems ? "Menambahkan ke Keranjang..." : "Mendaftarkan..."}
               </>
             ) : hasLinkedItems ? (
-              "Lanjut ke Keranjang →"
+              isPaidTicket ? "Beli Tiket →" : "Daftar Sekarang →"
             ) : (
               isPaidTicket ? "Daftar & Lanjut Bayar" : "Daftar Sekarang"
             )}

@@ -41,11 +41,31 @@ async function resolveCartItemCovers(
   const donationIds = items.filter((i) => i.itemType === "donation").map((i) => i.itemId).filter(Boolean) as string[];
 
   if (productIds.length > 0) {
-    const rows = await tenantDb
+    const directRows = await tenantDb
       .select({ id: schema.products.id, images: schema.products.images })
       .from(schema.products)
       .where(inArray(schema.products.id, productIds));
-    for (const r of rows) covers.set(r.id, extractCoverUrl(r.images));
+    const foundProductIds = new Set(directRows.map((r) => r.id));
+    for (const r of directRows) covers.set(r.id, extractCoverUrl(r.images));
+
+    // Sisa itemId belum ketemu di products langsung — produk variable ditambahkan ke
+    // keranjang dengan itemId = product_variations.id (lihat product-detail-client.tsx),
+    // bukan products.id. Fallback ke foto produk induk kalau variasinya sendiri tidak punya foto.
+    const remainingProductIds = productIds.filter((id) => !foundProductIds.has(id));
+    if (remainingProductIds.length > 0) {
+      const variationRows = await tenantDb
+        .select({
+          variationId:     schema.productVariations.id,
+          variationImages: schema.productVariations.images,
+          productImages:   schema.products.images,
+        })
+        .from(schema.productVariations)
+        .innerJoin(schema.products, eq(schema.productVariations.productId, schema.products.id))
+        .where(inArray(schema.productVariations.id, remainingProductIds));
+      for (const r of variationRows) {
+        covers.set(r.variationId, extractCoverUrl(r.variationImages) ?? extractCoverUrl(r.productImages));
+      }
+    }
   }
 
   // coverId (media) -> daftar itemId yang perlu URL itu — resolve semua media sekaligus di akhir.

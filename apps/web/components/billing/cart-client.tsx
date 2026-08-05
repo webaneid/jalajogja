@@ -152,7 +152,7 @@ export function CartClient({ slug, cart }: Props) {
           href={`/${slug}/checkout`}
           className="block w-full rounded-md bg-primary px-4 py-3 text-center text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
-          Lanjut ke Checkout
+          Konfirmasi Detail
         </a>
       </div>
     </div>

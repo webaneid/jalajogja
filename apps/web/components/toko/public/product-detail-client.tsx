@@ -11,6 +11,10 @@ import type { NavItem } from "@/lib/nav-menu";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
 import { MobileActionSheet } from "@/components/website/public/single/mobile-action-sheet";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,6 +109,10 @@ export function ProductDetailClient({
   const [added, setAdded]         = useState(false);
   const [error, setError]         = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Popup sukses "Produk berhasil ditambahkan!" — muncul setelah addToCartAction sukses,
+  // menggantikan feedback inline lama. collapseSignal MobileActionSheet dipakai supaya popup
+  // ini (z-50) tidak tersembunyi di balik sheet (z-71) saat dibuka dari mobile.
+  const [showAddedDialog, setShowAddedDialog] = useState(false);
 
   const activeVariation = isVariable ? findVariation(variations, selected) : null;
 
@@ -173,6 +181,7 @@ export function ProductDetailClient({
     if (result.success) {
       setAdded(true);
       setTimeout(() => setAdded(false), 2500);
+      setShowAddedDialog(true);
     } else {
       setError(result.error);
     }
@@ -292,20 +301,11 @@ export function ProductDetailClient({
           onClick={() => startTransition(handleAddToCart)}
         >
           <ShoppingCart className="h-4 w-4 mr-2" />
-          {isPending ? "Menambahkan..." : added ? "Ditambahkan ✓" : isOutOfStock ? "Stok Habis" : !allAttrSelected ? "Pilih Variasi" : "Tambah ke Keranjang"}
+          {isPending ? "Menambahkan..." : added ? "Ditambahkan ✓" : isOutOfStock ? "Stok Habis" : !allAttrSelected ? "Pilih Variasi" : "Beli Sekarang"}
         </Button>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
-
-      {added && (
-        <p className="text-sm text-center text-muted-foreground">
-          Produk masuk ke{" "}
-          <a href={`/${tenantSlug}/keranjang`} className="text-primary font-medium hover:underline">
-            keranjang
-          </a>
-        </p>
-      )}
     </div>
   );
 
@@ -340,7 +340,7 @@ export function ProductDetailClient({
           {mitraBadge}
           <SocialShareCard url={pageUrl} title={product.name} />
         </div>
-        <MobileActionSheet collapsedBar={collapsedBar}>
+        <MobileActionSheet collapsedBar={collapsedBar} collapseSignal={showAddedDialog}>
           <div className="space-y-5 pt-2">
             {priceBlock}
             {variationPicker}
@@ -368,6 +368,24 @@ export function ProductDetailClient({
           {qtyAndCta}
         </div>
       </div>
+
+      {/* ── Popup sukses tambah keranjang ── */}
+      <AlertDialog open={showAddedDialog} onOpenChange={setShowAddedDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Produk berhasil ditambahkan!</AlertDialogTitle>
+            <AlertDialogDescription>
+              Mau tambah produk lainnya atau langsung selesaikan pesanan?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Tambah Produk Lain</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { window.location.href = `/${tenantSlug}/keranjang`; }}>
+              Lanjut ke Pesanan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

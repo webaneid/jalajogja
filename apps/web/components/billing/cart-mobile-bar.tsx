@@ -28,7 +28,7 @@ export function CartMobileBar({ slug, subtotal }: Props) {
           href={`/${slug}/checkout`}
           className="shrink-0 rounded-md bg-primary px-6 py-3 text-center text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
-          Lanjut ke Checkout
+          Konfirmasi Detail
         </a>
       </div>
     </>
