@@ -14,7 +14,15 @@ import { generateMetadata as buildMetadata } from "@/lib/seo";
 import type { Metadata } from "next";
 
 type CampaignBanner = { campaignId: string; campaignTitle: string; amounts: number[] };
-type ProductBanner  = { productId: string; productTitle: string };
+type ProductBanner  = { productId: string; productTitle: string; coverUrl: string | null };
+
+// Sama dengan produk/page.tsx & products-section.tsx — images JSONB sudah berisi URL penuh
+// (dari MediaPicker), tidak perlu publicUrl() lagi.
+function extractCoverUrl(images: unknown): string | null {
+  if (!Array.isArray(images) || images.length === 0) return null;
+  const first = images[0] as { url?: string; variants?: Record<string, string> | null };
+  return first.variants?.["square-large"] ?? first.url ?? null;
+}
 
 type Props = { params: Promise<{ tenant: string }> };
 
@@ -168,7 +176,7 @@ export default async function KeranjangPage({ params }: Props) {
 
           if (!productAlreadyInCart) {
             const [product] = await tenantDb
-              .select({ id: schema.products.id, name: schema.products.name })
+              .select({ id: schema.products.id, name: schema.products.name, images: schema.products.images })
               .from(schema.products)
               .where(
                 and(
@@ -179,7 +187,11 @@ export default async function KeranjangPage({ params }: Props) {
               .limit(1);
 
             if (product) {
-              linkedProductBanner = { productId: product.id, productTitle: product.name };
+              linkedProductBanner = {
+                productId:    product.id,
+                productTitle: product.name,
+                coverUrl:     extractCoverUrl(product.images),
+              };
             }
           }
         }

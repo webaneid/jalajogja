@@ -13,6 +13,7 @@ type CampaignBanner = {
 type ProductBanner = {
   productId:    string;
   productTitle: string;
+  coverUrl:     string | null;
 };
 
 type Props = {
@@ -164,9 +165,23 @@ export function DonationBannerCart({ tenantSlug, campaigns, linkedProduct }: Pro
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <ShoppingBag className="h-4 w-4 text-primary shrink-0" />
-            <p className="text-sm font-semibold">Produk Terkait</p>
+            <p className="text-sm font-semibold">Mungkin Anda Tertarik</p>
           </div>
-          <p className="text-sm text-muted-foreground">{linkedProduct.productTitle}</p>
+          <div className="flex items-center gap-3">
+            {linkedProduct.coverUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={linkedProduct.coverUrl}
+                alt={linkedProduct.productTitle}
+                className="h-14 w-14 shrink-0 rounded-lg border border-border object-cover bg-background"
+              />
+            ) : (
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
+                <ShoppingBag className="h-5 w-5 text-muted-foreground" />
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground">{linkedProduct.productTitle}</p>
+          </div>
           <button
             type="button"
             onClick={handleAddProduct}
