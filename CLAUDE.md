@@ -15814,9 +15814,63 @@ masuk scope Fase 1 (ini yang diminta user sesi ini) — sisa item "di luar scope
 filter/search tabel) tidak berubah.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **[PERENCANAAN, belum eksekusi] Refinement rencana "Ringkasan Tenant" —
-  reuse penuh query statistik existing** (lihat lesson `[2026-08-07]` "Refinement Rencana
-  'Ringkasan Tenant'" di atas, detail lengkap `docs/arsitektur-backbone-ikpm.md` § "E.
+- Terakhir dikerjakan: **Menu Admin "Ringkasan Tenant" — DIEKSEKUSI PENUH** (lihat lesson
+  `[2026-08-07]` "Menu Admin Khusus IKPM Pusat: Ringkasan Tenant — DIEKSEKUSI" di atas, detail
+  lengkap `docs/arsitektur-backbone-ikpm.md` § "Menu Admin Khusus IKPM Pusat: 'Ringkasan
+  Tenant'" — status sekarang ✅ SELESAI kode). Lanjutan langsung dari 2 sesi perencanaan
+  sebelumnya (bullet di bawah), dieksekusi setelah user beri lampu hijau ("ok ok .. mari kita
+  eksekusi ... biar nanti gue punya gambaran kalau sudah lihat hasilnya.."). Dibangun 8 file
+  sesuai rencana yang sudah dikunci: `lib/member-statistics.server.ts` baru (`compute
+  MemberStatistics(tenantId)` — ekstraksi MURNI dari `statistik/page.tsx`, dibaca ulang penuh
+  file 600-baris itu langsung sebelum ekstraksi supaya "pure code motion" genuinely presisi,
+  bukan direkonstruksi dari ingatan; **deviasi kecil dari rencana tertulis**: parameter
+  `enabledModules` dijatuhkan dari signature karena ternyata tidak pernah dipakai di badan
+  query — cuma menggate RENDER, bukan hitungan — jadi caller fetch `enabledModules` sendiri dan
+  teruskan LANGSUNG ke `<StatistikSections>`; return type `MemberStatisticsData =
+  Awaited<ReturnType<typeof computeMemberStatistics>>` diturunkan otomatis dari compiler, bukan
+  ditulis manual, cegah risiko mismatch), `components/statistik/statistik-sections.tsx` baru
+  (`<StatistikSections>` — ekstraksi MURNI JSX render 4 section + helper lokal StatCard/
+  BarList/SectionTitle, SENGAJA tidak merender header supaya tiap caller bebas pakai header
+  sendiri), `statistik/page.tsx` diperkecil pakai fungsi+komponen baru (perilaku publik nol
+  berubah), 3 file sidebar (`sidebar-nav.tsx`+`sidebar.tsx`+`mobile-sidebar.tsx`, prop
+  `isPusatTenant` di-thread dari `layout.tsx` yang sudah punya `tenant.tenantType` tanpa query
+  tambahan) + `NavItem.pusatOnly` field baru (dicek SEBELUM `module`, item ini `module: null`
+  supaya tidak ikut permission check `canAccess`), icon `Network` (diverifikasi dulu ada di
+  `.d.ts` lucide-react@1.8.0 terinstall), 2 halaman route baru
+  (`ringkasan-tenant/page.tsx` — overview: 4 KPI StatCard + breakdown tenant per tipe (urutan
+  tetap `TENANT_TYPES`, bukan count-desc) + tabel utama (`LEFT JOIN` + `count(*) FILTER (WHERE
+  status=...)` per tenant) + insight data quality (anggota tanpa PC IKPM) + "Total Statistik
+  Pusat" via `computeMemberStatistics(access.tenant.id)` — OTOMATIS mencakup seluruh sistem
+  tanpa cabang kode terpisah, konsekuensi langsung desain "keanggotaan tanpa batas" Fase A-D
+  sebelumnya; `ringkasan-tenant/[targetSlug]/page.tsx` — drill-down LAZY per tenant, guard
+  dicek dari `access.tenant.tenantType` (tenant DI URL), BUKAN tipe `targetSlug`), dan drive-by
+  fix `TYPE_LABEL.pusat` + opsi filter dropdown "pusat" + WHERE clause-nya di
+  `/platform/tenants` (gap yang sudah diidentifikasi saat riset sesi perencanaan sebelumnya).
+  **Guard 2-lapis diterapkan persis sesuai desain**: sidebar hiding (`isPusatTenant`, murni UX)
+  DAN redirect eksplisit `if (access.tenant.tenantType !== "pusat") redirect(...)` di baris
+  pertama KEDUA halaman baru (pertahanan sesungguhnya) — halaman drill-down mengecek tipe
+  tenant KONTEKS (di URL), bukan tipe target yang sedang dilihat. `tsc --noEmit` bersih di
+  KEDUA package di SETIAP langkah (bukan ditumpuk ke akhir — dicek 6× sepanjang eksekusi: usai
+  ekstraksi, usai refactor halaman publik, usai wiring sidebar, usai halaman overview, usai
+  halaman drill-down, usai drive-by fix). `bun run build --filter=@jalajogja/web` genuine
+  sukses SEKALI di akhir (dev server dimatikan+`.next` dibersihkan sebelum, direstart sesudah,
+  `Cached: 0 cached`, 50.4s — bukan cache-hit) — kedua route baru (`/app/[tenant]/ringkasan-
+  tenant` 829 B, `/app/[tenant]/ringkasan-tenant/[targetSlug]` 863 B) terkonfirmasi compile
+  bersih di build output. Dokumentasi disinkronkan: header section + tabel "File yang
+  disentuh" di `docs/arsitektur-backbone-ikpm.md` diupdate dari "📋 RENCANA" jadi "✅ SELESAI"
+  per-baris, plus koreksi signature `computeMemberStatistics` yang berubah dari rencana awal.
+  **Belum di-commit/push ke git, belum dijalankan di VPS** (nol migrasi DB dibutuhkan — murni
+  kode aplikasi, deploy cukup `git pull && bun run build --filter=@jalajogja/web && pm2 restart
+  jalajogja --update-env`), **belum diverifikasi visual di browser** (keterbatasan environment
+  sesi ini, tidak ada browser) — user perlu coba: buka `/app/{slug-pusat}/dashboard`, konfirmasi
+  item "Ringkasan Tenant" muncul di sidebar (ikon jaringan) HANYA untuk tenant Pusat; klik masuk
+  → cek 4 KPI, breakdown per tipe, tabel tenant+jumlah anggota, dan "Total Statistik Pusat" di
+  bagian bawah; klik "Lihat Statistik →" salah satu baris tenant → cek drill-down per-tenant
+  tampil benar; coba akses `/app/{slug-cabang-biasa}/ringkasan-tenant` langsung via URL (harus
+  redirect ke dashboard, BUKAN menampilkan data — verifikasi guard lapis-2 genuinely bekerja).
+- Sesi sebelumnya: **[PERENCANAAN, sudah dieksekusi di atas] Refinement rencana "Ringkasan
+  Tenant" — reuse penuh query statistik existing** (lihat lesson `[2026-08-07]` "Refinement
+  Rencana 'Ringkasan Tenant'" di atas, detail lengkap `docs/arsitektur-backbone-ikpm.md` § "E.
   Statistik detail — REUSE penuh dari `/{slug}/statistik`"). User minta statistik per-tenant
   juga ditampilkan, selain total Pusat — dan menegaskan ini bisa REUSE data statistik yang
   sudah ada per tenant. Dibaca penuh `/{slug}/statistik/page.tsx` (600 baris) untuk verifikasi
@@ -19573,3 +19627,108 @@ Dibuat helper sentral `syncAutoTenantMemberships(runner, memberId, primaryCabang
 
 
 
+
+### [2026-08-07] Menu Admin Khusus IKPM Pusat: "Ringkasan Tenant" — DIEKSEKUSI
+
+Lanjutan langsung dari 2 sesi perencanaan sebelumnya (§ "[PERENCANAAN ARSITEKTUR] Menu Admin
+Khusus IKPM Pusat" dan "Refinement Rencana 'Ringkasan Tenant'" — keduanya di atas). User beri
+lampu hijau eksekusi penuh: *"ok ok .. mari kita eksekusi ... biar nanti gue punya gambaran
+kalau sudah lihat hasilnya.. ini kan kita sementara baru punya 4 tenant yg online.."*
+
+**Ekstraksi murni (Task #72-73)** — `apps/web/app/(public)/[tenant]/statistik/page.tsx` (600
+baris) DIBACA ULANG PENUH sebelum eksekusi (bukan direkonstruksi dari ingatan sesi sebelumnya)
+untuk memastikan "pure code motion" genuinely presisi. Query (baris ±100–357) dipindah apa
+adanya ke `lib/member-statistics.server.ts`'s `computeMemberStatistics(tenantId: string)` —
+**deviasi kecil dari rencana tertulis**: parameter `enabledModules` yang tadinya direncanakan
+di signature ternyata TIDAK PERNAH dipakai di badan query (query section Pesantren/Usaha/
+Profesional selalu jalan penuh terlepas toggle admin — `enabledModules` cuma menggate RENDER-
+nya, bukan hitungannya) — dijatuhkan dari signature demi kejujuran API, caller tetap fetch
+`enabledModules` sendiri dan meneruskannya langsung ke komponen render. Return type
+`MemberStatisticsData = Awaited<ReturnType<typeof computeMemberStatistics>>` — diturunkan
+OTOMATIS dari compiler (bukan didefinisikan manual terpisah), menghilangkan risiko drift antara
+fungsi dan tipe. JSX render (4 `<section>` + helper lokal `StatCard`/`BarList`/`SectionTitle` +
+label map gender/waliSantri/domisili) dipindah apa adanya ke `components/statistik/
+statistik-sections.tsx`'s `<StatistikSections>` — SENGAJA tidak merender header/judul halaman,
+supaya tiap caller (publik/overview Pusat/drill-down per-tenant) bebas pakai header sesuai
+konteksnya masing-masing. `statistik/page.tsx` diperkecil jadi murni resolve tenant → panggil
+fungsi+komponen baru — perilaku publik dijamin nol berubah (struktur JSX final identik byte-
+demi-byte dengan yang lama, cuma dipecah lokasi filenya).
+
+**Wiring sidebar (Task #74)** — `layout.tsx` SUDAH punya `tenant.tenantType` dari
+`getTenantAccess()` (nol query tambahan) → `isPusatTenant = tenant.tenantType === "pusat"` →
+di-thread lewat rantai `layout.tsx → Sidebar (desktop) + MobileSidebar (mobile, sekadar wrap
+`<Sidebar>`) → SidebarNav`. `NavItem` type dapat field baru `pusatOnly?: boolean`, entry baru
+`{ label: "Ringkasan Tenant", icon: Network, path: "ringkasan-tenant", module: null, pusatOnly:
+true }` — filter logic cek `pusatOnly` PALING AWAL (sebelum cek `module`), item ini sengaja
+`module: null` supaya tidak ikut lolos permission check `canAccess()` dari sistem 10-modul yang
+sudah ada (axis TIPE TENANT, bukan axis PERMISSION — dua konsep sengaja tidak dicampur). Icon
+`Network` diverifikasi dulu ADA di `.d.ts` `lucide-react@1.8.0` yang genuinely terinstall
+(`grep "declare const Network:"`) sebelum dipakai — bukan ditebak dari familiaritas versi lain.
+
+**Halaman overview `ringkasan-tenant/page.tsx` (Task #75)** — guard 2-lapis: sidebar hiding
+(murni UX, sudah di atas) DAN `if (access.tenant.tenantType !== "pusat") redirect(\`/app/${slug}
+/dashboard\`)` di baris awal Server Component (pertahanan SESUNGGUHNYA — pola persis guard
+10-modul `canAccess()` yang sudah ada, cuma kondisinya tipe tenant bukan role-permission).
+4 KPI (`<StatCard>` reuse `components/dashboard/stat-card.tsx` apa adanya, nol perubahan):
+total tenant aktif, total anggota unik (`public.members`), total baris keanggotaan tercatat
+(`tenant_memberships`, bisa lebih besar dari anggota unik — disclaimer jujur di `sublabel`),
+anggota baru bulan ini (`gte(members.createdAt, startOfMonthUtc)` — anchor "awal bulan WIB"
+dihitung manual via `todayInTz("Asia/Jakarta")` + `Date.UTC(y, m-1, 1)`, pola sama persis
+`anchorTodayUtc()` yang sudah dikunci di lesson-lesson WIB/UTC sebelumnya, BUKAN `new Date()`
+mentah). Breakdown tenant per tipe: urutan tetap `TENANT_TYPES` (import dari `@jalajogja/db`),
+BUKAN hasil `COUNT` descending — supaya urutan render konsisten setiap kali. Tabel utama:
+`LEFT JOIN tenant_memberships` + `count(${tenantMemberships.id}) filter (where status = '...')`
+per status (active/alumni/inactive) dalam SATU query `GROUP BY tenants.id` (murah, bukan N+1) —
+tiap baris dapat link "Lihat Statistik →" ke drill-down. Insight data quality: `COUNT(*) FROM
+members WHERE primary_cabang_ref_id IS NULL`, ditampilkan sebagai banner amber HANYA kalau
+`>0` (tidak menampilkan noise kalau datanya sudah bersih). **"Total Statistik Pusat"** — bagian
+paling elegan: cukup `computeMemberStatistics(access.tenant.id)` dipanggil DARI DALAM dashboard
+tenant Pusat itu sendiri, TANPA cabang kode terpisah apa pun — otomatis mencakup statistik
+SELURUH sistem, konsekuensi langsung desain "keanggotaan tanpa batas" yang sudah dikunci di
+Fase A-D IKPM Pusat sebelumnya (tenant Pusat punya baris `tenant_memberships` untuk SEMUA
+anggota via auto-populate unconditional + backfill).
+
+**Halaman drill-down `ringkasan-tenant/[targetSlug]/page.tsx` (Task #76)** — LAZY, cuma
+dihitung saat admin benar-benar klik masuk (analog `/platform/tenants/[slug]`) — mencegah
+~20 query × N tenant di satu page load kalau breakdown detail dihitung untuk semua tenant
+sekaligus di halaman overview. **Guard dicek dari `access.tenant.tenantType` (tenant DI URL
+dashboard yang sedang dibuka), BUKAN tipe `targetSlug`** (tenant yang datanya sedang dilihat,
+bisa cabang/marhalah/forum apa saja) — kalau guard pertama gagal, redirect SEBELUM `targetSlug`
+bahkan di-resolve, jangan bocorkan apa pun. `getEnabledEkosistemModules(createTenantDb
+(targetSlug))` — SATU-SATUNYA pengecualian sempit terhadap prinsip "hanya baca 3 tabel public
+schema backbone" yang dikunci di dokumen: baca `tenant_{targetSlug}.settings` group "general",
+diterima karena murni toggle UI boolean (bukan data finansial/PII) dan tanpa ini breakdown
+Pesantren/Usaha/Profesional akan salah tampil section yang admin tenant target sudah matikan.
+
+**Drive-by fix `/platform/tenants` (Task #77)** — `TYPE_LABEL` (badge tipe tenant) sebelumnya
+cuma punya 3 entry (`cabang`/`marhalah`/`forum`), tenant tipe "pusat" fallback diam-diam ke
+`TYPE_LABEL.cabang` (badge salah tampil "Cabang"). Ditambah entry `pusat` + opsi filter
+dropdown `<option value="pusat">IKPM Pusat</option>` + baris WHERE clause `status === "pusat"
+? eq(tenants.tenantType, "pusat")` yang sebelumnya juga belum ada (kalau cuma tambah opsi
+dropdown tanpa WHERE clause-nya, filter itu akan terlihat berfungsi tapi diam-diam tidak
+memfilter apa pun) — gap yang sudah diidentifikasi eksplisit sejak sesi perencanaan pertama.
+
+**Verifikasi (Task #78)** — `tsc --noEmit` bersih di KEDUA package (`apps/web` + `packages/db`)
+dicek di SETIAP langkah (6× sepanjang eksekusi — bukan ditumpuk ke akhir, sesuai SOP ketat
+project ini), bukan cuma sekali di penghujung. `bun run build --filter=@jalajogja/web` genuine
+(dev server dimatikan via `lsof -ti:6202 | xargs kill -9`, `.next` dibersihkan via `rm -rf`,
+direstart setelah) — sukses, `Cached: 0 cached` (bukti bukan cache-hit), 50.4 detik — kedua
+route baru (`/app/[tenant]/ringkasan-tenant` 829 B, `/app/[tenant]/ringkasan-tenant/
+[targetSlug]` 863 B) terkonfirmasi compile bersih di build output, tidak ada error. Dev server
+direstart, `curl localhost:6202/` → 200 OK.
+
+Dokumentasi disinkronkan: `docs/arsitektur-backbone-ikpm.md`'s header section + tabel "File
+yang disentuh" diupdate dari "📋 RENCANA" jadi "✅ SELESAI" per-baris, plus catatan eksplisit
+soal deviasi signature `computeMemberStatistics` dari rencana awal (dokumentasi TIDAK diam-diam
+disamakan dengan implementasi — perbedaan dicatat dengan alasan, konsisten prinsip project ini
+"dokumen historis tidak dihapus, ditandai eksplisit kalau berubah").
+
+**Belum di-commit/push ke git, belum dijalankan di VPS** (nol migrasi DB dibutuhkan — murni
+kode aplikasi baru, deploy cukup `git pull && bun run build --filter=@jalajogja/web && pm2
+restart jalajogja --update-env`), **belum diverifikasi visual di browser** (keterbatasan
+environment sesi ini, tidak ada browser) — user perlu coba: buka dashboard tenant Pusat,
+konfirmasi item "Ringkasan Tenant" muncul di sidebar HANYA untuk tenant itu; klik masuk → cek
+4 KPI + breakdown per tipe + tabel tenant+anggota + "Total Statistik Pusat"; klik "Lihat
+Statistik →" salah satu baris → cek drill-down tampil benar; coba akses
+`/app/{slug-cabang-biasa}/ringkasan-tenant` langsung via URL (harus redirect ke dashboard,
+BUKTI guard lapis-2 genuinely bekerja, bukan cuma sidebar hiding).

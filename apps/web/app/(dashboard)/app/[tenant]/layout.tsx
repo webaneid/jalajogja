@@ -29,6 +29,7 @@ export default async function TenantLayout({
   }
 
   const { tenant, tenantUser } = access;
+  const isPusatTenant = tenant.tenantType === "pusat";
 
   // Admin-on-Custom-Domain: diakses lewat /admin/* di custom domain tenant sendiri (bukan
   // jalakarta.com) → dashboard WAJIB tenant-branded (Prinsip #2, docs/arsitektur-domain.md § 1).
@@ -65,6 +66,7 @@ export default async function TenantLayout({
           tenantUser={tenantUser}
           logoUrl={isCustomDomainAdmin ? brandLogoUrl : null}
           showPlatformFooter={!isCustomDomainAdmin}
+          isPusatTenant={isPusatTenant}
         />
       </div>
 
@@ -80,6 +82,7 @@ export default async function TenantLayout({
             tenantUser={tenantUser}
             logoUrl={isCustomDomainAdmin ? brandLogoUrl : null}
             showPlatformFooter={!isCustomDomainAdmin}
+            isPusatTenant={isPusatTenant}
           />
 
           {/* Nama org — hanya muncul di mobile */}

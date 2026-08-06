@@ -11,9 +11,12 @@ type MobileSidebarProps = {
   tenantUser: TenantUserForPermission;
   logoUrl?:   string | null;
   showPlatformFooter?: boolean;
+  isPusatTenant?: boolean;
 };
 
-export function MobileSidebar({ slug, orgName, tenantUser, logoUrl = null, showPlatformFooter = true }: MobileSidebarProps) {
+export function MobileSidebar({
+  slug, orgName, tenantUser, logoUrl = null, showPlatformFooter = true, isPusatTenant = false,
+}: MobileSidebarProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -42,6 +45,7 @@ export function MobileSidebar({ slug, orgName, tenantUser, logoUrl = null, showP
               tenantUser={tenantUser}
               logoUrl={logoUrl}
               showPlatformFooter={showPlatformFooter}
+              isPusatTenant={isPusatTenant}
             />
             <button
               onClick={() => setOpen(false)}

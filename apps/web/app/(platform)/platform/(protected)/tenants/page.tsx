@@ -5,9 +5,10 @@ import { Plus } from "lucide-react";
 import { PlatformTenantActions } from "@/components/platform/tenant-actions";
 
 const TYPE_LABEL: Record<string, { label: string; cls: string }> = {
-  cabang:   { label: "Cabang",   cls: "bg-blue-100 text-blue-700" },
-  marhalah: { label: "Marhalah", cls: "bg-purple-100 text-purple-700" },
-  forum:    { label: "Forum",    cls: "bg-orange-100 text-orange-700" },
+  cabang:   { label: "Cabang",     cls: "bg-blue-100 text-blue-700" },
+  marhalah: { label: "Marhalah",   cls: "bg-purple-100 text-purple-700" },
+  forum:    { label: "Forum",      cls: "bg-orange-100 text-orange-700" },
+  pusat:    { label: "IKPM Pusat", cls: "bg-emerald-100 text-emerald-700" },
 };
 
 type Props = { searchParams: Promise<{ q?: string; status?: string }> };
@@ -37,6 +38,7 @@ export default async function PlatformTenantsPage({ searchParams }: Props) {
         : status === "cabang"   ? eq(tenants.tenantType, "cabang")
         : status === "marhalah" ? eq(tenants.tenantType, "marhalah")
         : status === "forum"    ? eq(tenants.tenantType, "forum")
+        : status === "pusat"    ? eq(tenants.tenantType, "pusat")
         : undefined,
     )
     .orderBy(desc(tenants.createdAt));
@@ -76,6 +78,7 @@ export default async function PlatformTenantsPage({ searchParams }: Props) {
           <option value="cabang">Cabang</option>
           <option value="marhalah">Marhalah</option>
           <option value="forum">Forum</option>
+          <option value="pusat">IKPM Pusat</option>
         </select>
         <button
           type="submit"

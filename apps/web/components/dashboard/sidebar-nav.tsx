@@ -16,6 +16,7 @@ import {
   FolderOpen,
   ShoppingBag,
   Settings,
+  Network,
 } from "lucide-react";
 import { canAccess, type Module, type TenantUserForPermission } from "@/lib/permissions";
 
@@ -24,10 +25,13 @@ type NavItem = {
   icon:   React.ElementType;
   path:   string;
   module: Module | null; // null = selalu tampil
+  /** true = hanya tampil untuk tenant tipe "pusat" (IKPM Pusat), terlepas role/module */
+  pusatOnly?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard",  icon: LayoutDashboard, path: "dashboard",  module: null       },
+  { label: "Dashboard",       icon: LayoutDashboard, path: "dashboard",        module: null       },
+  { label: "Ringkasan Tenant", icon: Network,         path: "ringkasan-tenant", module: null, pusatOnly: true },
   { label: "Anggota",    icon: Users,           path: "members",    module: "anggota"  },
   { label: "Pengurus",   icon: UserCog,         path: "pengurus",   module: "pengurus" },
   { label: "Akun",       icon: UserCircle,      path: "accounts",   module: "anggota"  },
@@ -45,13 +49,17 @@ const NAV_ITEMS: NavItem[] = [
 export function SidebarNav({
   slug,
   tenantUser,
+  isPusatTenant,
 }: {
-  slug:       string;
-  tenantUser: TenantUserForPermission;
+  slug:          string;
+  tenantUser:    TenantUserForPermission;
+  isPusatTenant: boolean;
 }) {
   const pathname = usePathname();
 
   const visibleItems = NAV_ITEMS.filter((item) => {
+    // Menu khusus IKPM Pusat — dicek DULUAN, independen dari module permission apa pun.
+    if (item.pusatOnly) return isPusatTenant;
     if (!item.module) return true;
     // Surat: level minimum "own" (bisa akses module dengan akses sendiri)
     if (item.module === "surat") return canAccess(tenantUser, "surat", "own");

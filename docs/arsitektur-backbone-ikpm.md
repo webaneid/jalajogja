@@ -704,13 +704,18 @@ default yang belum tentu tepat.
 
 ---
 
-## Menu Admin Khusus IKPM Pusat: "Ringkasan Tenant" 📋 RENCANA
+## Menu Admin Khusus IKPM Pusat: "Ringkasan Tenant" ✅ SELESAI (kode)
 
-> **Status: RENCANA — belum dieksekusi.** Diminta user 2026-08-06, langsung setelah eksekusi
-> Fase A–D IKPM Pusat di atas selesai: *"bikin perencanaan yang merangkum semua aktifitas
-> keanggotaan masing2 tenant.. isinya rangkuman anggota masing2 dan statistik masing2 tenant..
-> hanya ada di IKPM pusat dan hanya bisa diakses ikpm pusat.. dia menu tersendiri di admin..
-> jadi ada tenant apa saja, anggota berapa, dll gitu lah.. pokoknya rangkuman semua tenant.."*
+> **Status: kode SELESAI 2026-08-07** (`tsc --noEmit` bersih kedua package, `bun run build
+> --filter=@jalajogja/web` genuine sukses — dev server dimatikan+`.next` dibersihkan+direstart,
+> `Cached: 0 cached`, 50.4s — kedua route baru terkonfirmasi di build output). **Belum di-
+> commit/push, belum dijalankan di VPS (nol migrasi DB dibutuhkan — murni kode aplikasi, deploy
+> cukup pull+build+restart), belum diverifikasi visual di browser** (keterbatasan environment
+> sesi ini — tidak ada browser). Diminta user 2026-08-06, langsung setelah eksekusi Fase A–D
+> IKPM Pusat di atas selesai: *"bikin perencanaan yang merangkum semua aktifitas keanggotaan
+> masing2 tenant.. isinya rangkuman anggota masing2 dan statistik masing2 tenant.. hanya ada di
+> IKPM pusat dan hanya bisa diakses ikpm pusat.. dia menu tersendiri di admin.. jadi ada tenant
+> apa saja, anggota berapa, dll gitu lah.. pokoknya rangkuman semua tenant.."*
 
 ### Konsep
 
@@ -842,23 +847,33 @@ backbone.
 > Pesantren/Usaha/Profesional masing-masing dengan sub-breakdown sendiri) — tinggal DIEKSTRAK
 > jadi fungsi/komponen bersama, bukan ditulis ulang.
 
-**Refactor wajib (bukan opsional) — pemisahan query vs render dari file existing**:
+**Refactor wajib (bukan opsional) — pemisahan query vs render dari file existing — ✅ SELESAI
+2026-08-07**:
 - `apps/web/lib/member-statistics.server.ts` (BARU, `import "server-only"`) —
-  `computeMemberStatistics(tenantId: string, enabledModules: EkosistemModulesConfig)`, isinya
-  SELURUH blok query (baris ±100–357 di `statistik/page.tsx` saat ini — gender, kabupaten,
-  angkatan, profesi, wali santri, domisili, punya-usaha/pesantren/profesional, + 3 section
-  detail) dipindah APA ADANYA (pure code motion, zero perubahan logic) dari
-  `statistik/page.tsx`, dibungkus jadi satu fungsi yang menerima `tenantId` sebagai parameter
-  (bukan hardcode dari `params`).
+  `computeMemberStatistics(tenantId: string)`, isinya SELURUH blok query (baris ±100–357 di
+  `statistik/page.tsx` sebelum refactor — gender, kabupaten, angkatan, profesi, wali santri,
+  domisili, punya-usaha/pesantren/profesional, + 3 section detail) dipindah APA ADANYA (pure
+  code motion, zero perubahan logic), dibungkus jadi satu fungsi yang menerima `tenantId`
+  sebagai parameter. **Deviasi kecil dari rencana awal**: signature TIDAK menerima
+  `enabledModules` — dicek ulang saat implementasi, parameter itu genuinely tidak pernah dipakai
+  di badan query (query section Pesantren/Usaha/Profesional selalu jalan penuh terlepas toggle;
+  `enabledModules` HANYA menggate RENDER-nya, bukan hitungnya) — jadi dijatuhkan dari signature,
+  caller tetap fetch `enabledModules` sendiri dan meneruskannya LANGSUNG ke `<StatistikSections>`
+  sebagai prop terpisah. Return type `MemberStatisticsData = Awaited<ReturnType<typeof
+  computeMemberStatistics>>` — diturunkan otomatis dari compiler (bukan ditulis manual), supaya
+  tidak ada risiko mismatch antara fungsi dan tipe yang dideklarasikan terpisah.
 - `apps/web/components/statistik/statistik-sections.tsx` (BARU) — SELURUH JSX render (4
   `<section>`: Anggota/Pesantren/Usaha/Profesional, termasuk `StatCard`/`BarList`/
-  `SectionTitle` helper lokal) dipindah APA ADANYA jadi komponen `<StatistikSections data={...}
-  enabledModules={...} />` yang menerima hasil `computeMemberStatistics()` sebagai prop.
+  `SectionTitle` helper lokal + label map gender/waliSantri/domisili) dipindah APA ADANYA jadi
+  komponen `<StatistikSections data={...} enabledModules={...} />`. Komponen ini SENGAJA tidak
+  merender header/judul halaman — cuma keempat `<section>` — supaya tiap caller bebas menaruh
+  header sesuai konteksnya (statistik publik pakai `<h1>Statistik</h1>`; overview Pusat pakai
+  `<h2>Total Statistik Pusat</h2>`; drill-down per-tenant pakai breadcrumb+nama+badge tenant).
 - `apps/web/app/(public)/[tenant]/statistik/page.tsx` — DIPERKECIL jadi murni: resolve
-  `tenant.id` dari slug → panggil `computeMemberStatistics(tenant.id, enabledModules)` →
-  render `<StatistikSections data={...} enabledModules={...} />`. **Perilaku halaman publik
-  ini TIDAK BOLEH berubah SAMA SEKALI** — refactor murni, bukan penambahan fitur, output HTML
-  harus identik sebelum/sesudah.
+  `tenant.id` dari slug → panggil `computeMemberStatistics(tenant.id)` → render
+  `<StatistikSections data={...} enabledModules={...} />`. **Perilaku halaman publik ini TIDAK
+  BERUBAH SAMA SEKALI** — refactor murni, output HTML identik sebelum/sesudah (diverifikasi via
+  perbandingan JSX baris-per-baris saat ekstraksi, bukan cuma `tsc`).
 
 **Insight arsitektur penting — "Total Statistik Pusat" TIDAK butuh cabang kode terpisah**:
 karena tenant Pusat (via `syncAutoTenantMemberships()` § 3 + backfill § 4) memiliki baris
@@ -908,20 +923,20 @@ butuh field settings lain (mis. nama tenant custom), harus lewat `public.tenants
 - Filter/search di tabel tenant (mirip `/platform/tenants` yang sudah punya query param
   `q`+`status`).
 
-### File yang akan disentuh (saat dieksekusi)
+### File yang disentuh — ✅ SEMUA SELESAI 2026-08-07
 
 | File | Perubahan |
 |------|-----------|
-| `apps/web/lib/member-statistics.server.ts` (baru) | `computeMemberStatistics(tenantId, enabledModules)` — ekstraksi murni dari `statistik/page.tsx`, `import "server-only"` |
-| `apps/web/components/statistik/statistik-sections.tsx` (baru) | `<StatistikSections>` — ekstraksi murni JSX render dari `statistik/page.tsx` |
-| `apps/web/app/(public)/[tenant]/statistik/page.tsx` | diperkecil jadi resolve tenant → panggil fungsi+komponen baru, nol perubahan perilaku |
-| `components/dashboard/sidebar-nav.tsx` | `NavItem.pusatOnly` + entry baru + filter logic |
-| `components/dashboard/sidebar.tsx` | prop `isPusatTenant` → diteruskan ke `SidebarNav` |
-| `components/dashboard/mobile-sidebar.tsx` | prop `isPusatTenant` → diteruskan ke `Sidebar` |
-| `(dashboard)/app/[tenant]/layout.tsx` | hitung `isPusatTenant`, teruskan ke `Sidebar`+`MobileSidebar` |
-| `(dashboard)/app/[tenant]/ringkasan-tenant/page.tsx` (baru) | Server Component: guard tipe tenant + 4 query (A–D) + `computeMemberStatistics(access.tenant.id)` untuk Total Pusat + tabel per-tenant dengan link drill-down |
-| `(dashboard)/app/[tenant]/ringkasan-tenant/[targetSlug]/page.tsx` (baru) | Server Component: guard tipe tenant (dari `access.tenant`, BUKAN `targetSlug`) + resolve target tenant by slug + `computeMemberStatistics(target.id)` + render `<StatistikSections>` |
-| `(platform)/platform/(protected)/tenants/page.tsx` | drive-by fix: tambah entry `TYPE_LABEL.pusat` (gap ditemukan saat riset fitur ini, badge platform admin salah tampil "Cabang" untuk tenant Pusat) |
+| `apps/web/lib/member-statistics.server.ts` (baru) | ✅ `computeMemberStatistics(tenantId)` — ekstraksi murni dari `statistik/page.tsx`, `import "server-only"` |
+| `apps/web/components/statistik/statistik-sections.tsx` (baru) | ✅ `<StatistikSections>` — ekstraksi murni JSX render dari `statistik/page.tsx` |
+| `apps/web/app/(public)/[tenant]/statistik/page.tsx` | ✅ diperkecil jadi resolve tenant → panggil fungsi+komponen baru, nol perubahan perilaku |
+| `components/dashboard/sidebar-nav.tsx` | ✅ `NavItem.pusatOnly` + entry baru + filter logic |
+| `components/dashboard/sidebar.tsx` | ✅ prop `isPusatTenant` → diteruskan ke `SidebarNav` |
+| `components/dashboard/mobile-sidebar.tsx` | ✅ prop `isPusatTenant` → diteruskan ke `Sidebar` |
+| `(dashboard)/app/[tenant]/layout.tsx` | ✅ hitung `isPusatTenant`, teruskan ke `Sidebar`+`MobileSidebar` |
+| `(dashboard)/app/[tenant]/ringkasan-tenant/page.tsx` (baru) | ✅ Server Component: guard tipe tenant + 4 query (A–D) + `computeMemberStatistics(access.tenant.id)` untuk Total Pusat + tabel per-tenant dengan link drill-down |
+| `(dashboard)/app/[tenant]/ringkasan-tenant/[targetSlug]/page.tsx` (baru) | ✅ Server Component: guard tipe tenant (dari `access.tenant`, BUKAN `targetSlug`) + resolve target tenant by slug + `computeMemberStatistics(target.id)` + render `<StatistikSections>` |
+| `(platform)/platform/(protected)/tenants/page.tsx` | ✅ drive-by fix: tambah entry `TYPE_LABEL.pusat` + opsi filter dropdown `pusat` + cabang WHERE clause-nya (gap ditemukan saat riset fitur ini, badge platform admin salah tampil "Cabang" untuk tenant Pusat) |
 
 **Nol migrasi DB diperlukan** — seluruh data sumber (`tenants`, `tenant_memberships`,
 `members`, dan tabel-tabel yang sudah dipakai `/{slug}/statistik`) sudah ada sejak lama, fitur
