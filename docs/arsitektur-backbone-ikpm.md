@@ -97,9 +97,13 @@ Ini adalah perbedaan paling fundamental dalam ekosistem backbone IKPM:
 
 | Tipe | Slug Contoh | Sifat Keanggotaan | Trigger | Modul Default |
 |------|------------|-------------------|---------|---------------|
-| `cabang` | `pc-ikpm-yogyakarta` | **Otomatis** | Register dari mana saja | Semua modul |
-| `marhalah` | `marhalah-2005` | **Otomatis** | Register dari mana saja | Website, Event, Direktori |
+| `cabang` | `pc-ikpm-yogyakarta` | **Otomatis** (match `primaryCabangRefId`) | Register dari mana saja | Semua modul |
+| `marhalah` | `marhalah-2005` | **Otomatis** (match `graduationYear`) | Register dari mana saja | Website, Event, Direktori |
 | `forum` | `forbis-ikpm` | **Aktif (opt-in)** | Klik "Daftar ke Forum" | Website, Event, Toko, Direktori |
+| `pusat` 📋 | `ikpm-pusat` | **Otomatis, TANPA syarat** | Register dari mana saja — TIDAK ADA yang bisa dikecualikan | Semua modul (sama seperti cabang) |
+
+> 📋 `pusat` masih RENCANA — belum dibangun. Lihat § "Tenant Khusus: IKPM Pusat" di bawah untuk
+> desain lengkap.
 
 ### Aturan Kunci per Tipe
 
@@ -124,6 +128,22 @@ Ini adalah perbedaan paling fundamental dalam ekosistem backbone IKPM:
 - **Data profil, usaha, pesantren dari cabang/marhalah langsung tersedia** tanpa input ulang
 - Anggota hanya perlu konfirmasi: "Ya, saya ingin bergabung di forum ini"
 - Forum bisa punya struktur kepengurusan sendiri via modul Pengurus
+
+**IKPM Pusat (`pusat`) 📋 RENCANA:**
+- Tenant seperti tenant lain — punya schema sendiri, modul operasional (Surat, Toko, Website,
+  Keuangan, Event) berfungsi identik, TIDAK ADA kode khusus di modul-modul itu.
+- **Satu-satunya perbedaan: himpunan keanggotaannya.** Cabang dibatasi `primaryCabangRefId`,
+  marhalah dibatasi `graduationYear`, forum dibatasi opt-in eksplisit — **Pusat TIDAK dibatasi
+  kriteria apa pun**. Setiap anggota yang punya baris di `public.members` otomatis jadi
+  anggota Pusat, titik.
+- **"The one and only"** — hanya boleh ada SATU tenant `tenant_type='pusat'` di seluruh
+  sistem, dipaksa lewat constraint (lihat desain di bawah).
+- **BUKAN lapisan akses lintas-tenant.** Dashboard Pusat TIDAK BISA membaca surat/keuangan/
+  produk/event tenant lain — isolasi schema-per-tenant TETAP berlaku sama seperti tenant
+  manapun. "Muara semua data" di sini artinya muara KEANGGOTAAN (semua orang otomatis jadi
+  anggotanya), BUKAN muara data operasional lintas tenant. Kalau suatu saat memang dibutuhkan
+  visibility lintas-tenant untuk data operasional (bukan cuma keanggotaan), itu topik terpisah
+  yang harus lewat Platform Admin (`/platform/*`) — jangan dicampur ke tenant ini.
 
 ---
 
@@ -533,6 +553,150 @@ async function autoAddToMarhalah(memberId: string, year: number, period?: string
 
 ---
 
+## Tenant Khusus: IKPM Pusat — Keanggotaan Tanpa Batas 📋 RENCANA
+
+> **Status: RENCANA — belum dieksekusi.** Dikunci lewat diskusi 2026-08-06 (user: *"betul
+> sekali, dia the one and only"* + *"ikpm pusat adalah muara semua data"*). Dokumen ini
+> menjelaskan DESAIN yang disepakati — nol kode/migration ditulis sampai ada instruksi
+> eksplisit untuk eksekusi.
+
+### Konsep
+
+IKPM Pusat adalah tenant seperti tenant lain — schema sendiri, modul operasional (Surat, Toko,
+Website, Keuangan, Event) berfungsi identik, TIDAK ADA kode khusus di modul-modul itu. Satu-
+satunya yang berbeda adalah **himpunan keanggotaannya**: kalau cabang dibatasi
+`primaryCabangRefId` dan marhalah dibatasi `graduationYear`, IKPM Pusat **tidak dibatasi
+kriteria apa pun** — setiap anggota yang punya baris di `public.members` otomatis jadi
+anggotanya. "Muara semua data" berarti muara KEANGGOTAAN — bukan visibility lintas-tenant
+untuk data operasional (surat/keuangan/produk tenant lain tetap terisolasi, tidak terlihat
+dari sini, sama seperti tenant manapun terhadap tenant lain).
+
+### 1. Tipe tenant baru: `pusat`
+
+`TENANT_TYPES` (`packages/db/src/schema/public/tenants.ts`) dan `MEMBERSHIP_TYPES`
+(`packages/db/src/schema/public/tenant-memberships.ts`) perlu nilai ke-4: `"pusat"`. Kolom
+`tenants.tenant_type` dan `tenant_memberships.membership_type` punya CHECK constraint DB
+NYATA (`CHECK (tenant_type IN ('cabang','marhalah','forum'))`, migration `0018`) — bukan
+cuma TypeScript enum — jadi menambah nilai ini butuh migration `ALTER TABLE ... DROP
+CONSTRAINT ... ADD CONSTRAINT ... CHECK (... IN (..., 'pusat'))` untuk KEDUA kolom.
+`REGISTERED_VIA` (`["admin","self","import","invite","auto_marhalah","auto_cabang"]`) juga
+perlu nilai baru `"auto_pusat"` untuk audit-trail yang jelas (jangan reuse `"auto_cabang"` —
+semantiknya beda).
+
+### 2. Keunikan — "The One and Only"
+
+Cuma boleh ada SATU tenant `tenant_type='pusat'` di seluruh sistem — dampaknya menyentuh
+SEMUA anggota, jadi ini harus dipaksa, bukan sekadar disiplin admin. Dua lapis (defense in
+depth, bukan pilih salah satu):
+- **DB-level**: partial unique index Postgres —
+  `CREATE UNIQUE INDEX tenants_pusat_singleton ON tenants ((1)) WHERE tenant_type='pusat'`
+  (trik standar Postgres untuk "maksimal satu baris yang memenuhi kondisi").
+- **Application-level**: `createTenantAction`/`linkTenantToCabangAction`-setara — cek
+  `SELECT COUNT(*) FROM tenants WHERE tenant_type='pusat'` sebelum insert, tolak dengan pesan
+  jelas kalau sudah ada ("IKPM Pusat sudah dibuat sebelumnya — hanya boleh ada satu.") supaya
+  admin dapat pesan yang jelas, bukan error constraint mentah dari DB.
+
+### 3. Auto-populate — cabang ketiga di `syncAutoTenantMemberships()`
+
+`packages/db/src/helpers/member-sync.ts` sekarang punya 2 cabang (cabang match
+`primaryCabangRefId`, marhalah match `graduationYear`) — perlu cabang ke-3 yang **TANPA
+kondisi WHERE apa pun**, dijalankan UNCONDITIONAL setiap kali fungsi ini dipanggil (bukan
+digate oleh parameter apa pun, beda dari 2 cabang lain yang butuh
+`primaryCabangRefId`/`graduationYear` terisi dulu):
+
+```typescript
+// 3. IKPM Pusat Auto-Join — TANPA syarat, berjalan untuk SETIAP pemanggilan fungsi ini
+const [pusatTenant] = await runner
+  .select({ id: tenants.id })
+  .from(tenants)
+  .where(and(eq(tenants.tenantType, "pusat"), eq(tenants.isActive, true)))
+  .limit(1);
+
+if (pusatTenant) {
+  await runner
+    .insert(tenantMemberships)
+    .values({
+      tenantId: pusatTenant.id,
+      memberId,
+      status: "active",
+      registeredVia: "auto_pusat",
+      membershipType: "pusat",
+    })
+    .onConflictDoNothing();
+}
+```
+
+Fungsi ini sudah dipanggil dari 4 titik yang tepat (`createMemberAction`, `updateMemberAction`,
+`commitImportAction`, `PATCH /api/akun/member-data`) — cabang baru ini otomatis ikut berjalan
+di keempatnya tanpa perlu sentuh titik pemanggilan mana pun. Kalau tenant `pusat` belum
+dibuat sama sekali (`pusatTenant` kosong), cabang ini no-op — aman dipasang lebih dulu sebelum
+tenant-nya benar-benar ada.
+
+### 4. Backfill retroaktif
+
+Begitu tenant `pusat` dibuat, SEMUA anggota yang SUDAH ADA (bukan cuma anggota baru ke depan)
+perlu langsung dapat `tenant_memberships` — analog persis dengan bulk-insert yang sudah ada
+untuk cabang/marhalah di `createTenantAction`/`linkTenantToCabangAction`
+(`apps/web/app/(platform)/platform/(protected)/actions.ts`), cuma TANPA filter `WHERE` sama
+sekali. Beda penting dari pola existing: cabang/marhalah backfill mengambil SUBSET anggota ke
+JS (`SELECT ... WHERE primaryCabangRefId=X` → `.map()` → bulk insert array) — untuk Pusat,
+subsetnya adalah SELURUH `public.members` (berpotensi jauh lebih besar, bisa ribuan+). Untuk
+skala itu, JANGAN tarik semua baris ke memori Node dulu — pakai raw SQL `INSERT ... SELECT`
+satu statement (Postgres proses server-side):
+
+```sql
+INSERT INTO public.tenant_memberships (tenant_id, member_id, status, registered_via, membership_type)
+SELECT $1, id, 'active', 'auto_pusat', 'pusat'
+FROM public.members
+ON CONFLICT DO NOTHING;
+```
+
+### 5. Interaksi dengan fitur eligibility/overlay/branding yang sudah ada — sebagian besar GRATIS
+
+Ditelusuri terhadap kode yang sudah dibaca sesi ini — beberapa mekanisme sudah generalisasi ke
+"non-forum" secara biner (bukan per-tipe spesifik), jadi otomatis mencakup `pusat` tanpa
+sentuh kode:
+- `akun/page.tsx`'s cabang `if (overlayIsForum) {...} else {...}` — SEMUA tipe non-forum
+  (cabang, marhalah, dan `pusat` nanti) jatuh ke cabang `else` yang sama, yang menghitung
+  `overlayIsJoined` dari keberadaan baris `tenant_memberships` dan tetap menjalankan
+  `checkMemberEligibility()` untuk menentukan overlay "Lengkapi Data". Nol kode tambahan.
+- `resolveAkunBranding()` (`lib/resolve-akun-branding.ts`) — resolusi "genuine member tenant
+  yang dibrowsing" berbasis keberadaan baris `tenant_memberships`, bukan tipe tenant spesifik.
+  Begitu baris Pusat ter-insert (via § 3/§ 4), browsing `/akun` di tenant Pusat otomatis
+  resolve branding tenant itu tanpa kode tambahan.
+- `checkMemberEligibility()` (`lib/member-eligibility.ts`) — tidak pernah branch berdasarkan
+  tipe tenant sama sekali (parameternya `memberId` + daftar modul ekosistem aktif tenant yang
+  dibrowsing) — otomatis berfungsi sama untuk Pusat.
+
+**Yang PERLU diverifikasi ulang saat eksekusi** (bukan diasumsikan pasti aman dari analisis
+statis ini): field label organisasi (`resolveOrgLabels()`, dipakai halaman register) saat ini
+punya 3 cabang (cabang/marhalah/forum) — perlu cabang ke-4 eksplisit untuk `pusat` (mis. label
+copy "Anggota IKPM Pusat" atau serupa), karena kalau tidak ditangani akan jatuh ke fallback
+default yang belum tentu tepat.
+
+### 6. Yang TIDAK diubah
+
+- `checkMemberEligibility()`, `MembershipEligibilityOverlay`, alur `/gabung` (khusus
+  `tenant_type==='forum'`, tidak relevan untuk Pusat karena keanggotaannya otomatis, bukan
+  opt-in) — nol perubahan.
+- Modul Surat/Toko/Website/Keuangan/Event — nol perubahan, tenant Pusat memakainya persis
+  seperti tenant cabang biasa.
+- Isolasi schema-per-tenant — TETAP berlaku penuh. Dashboard Pusat tidak bisa dan tidak akan
+  bisa membaca `tenant_{slug}.*` tenant lain.
+
+### File yang akan disentuh (kalau/saat dieksekusi)
+
+| File | Perubahan |
+|------|-----------|
+| `packages/db/src/schema/public/tenants.ts` | `TENANT_TYPES` +`"pusat"` |
+| `packages/db/src/schema/public/tenant-memberships.ts` | `MEMBERSHIP_TYPES`/`REGISTERED_VIA` +`"pusat"`/`"auto_pusat"` |
+| `packages/db/migrations/00XX_tenant_type_pusat.sql` (baru) | CHECK constraint 2 kolom + partial unique index |
+| `packages/db/src/helpers/member-sync.ts` | Cabang ke-3 unconditional (§ 3) |
+| `apps/web/app/(platform)/platform/(protected)/actions.ts` | `createTenantAction` — cek keunikan + backfill raw SQL (§ 2, § 4) |
+| `lib/tenant-org-label.ts` (`resolveOrgLabels()`) | Cabang ke-4 untuk label registrasi (§ 5) |
+
+---
+
 ## Data yang Terlihat di Masing-Masing Tenant
 
 ### Direktori Anggota — Per Tipe Tenant
@@ -672,10 +836,22 @@ Urutan cek untuk identifikasi anggota yang sudah ada:
 > Lama" (2026-08-06). Rencana yang berlaku sekarang (dan sudah diimplementasikan): § "Alur
 > Pendaftaran Forum v2" di dokumen itu, termasuk checklist "Urutan Eksekusi (Fase A–E)".
 
-### Phase 5 — Platform Dashboard (Pusat)
-- [ ] Admin IKPM Pusat bisa lihat semua tenant + statistik lintas cabang
+### Phase 5 — IKPM Pusat + Platform Dashboard
+
+> **Baris pertama di bawah ini SEBELUMNYA salah kerangka** — ditulis seolah "IKPM Pusat"
+> berarti Platform Admin diberi kemampuan membaca data operasional (surat/keuangan/dst)
+> lintas tenant. Setelah didiskusikan ulang 2026-08-06, yang dimaksud "IKPM Pusat" adalah
+> **tenant tersendiri dengan keanggotaan tanpa batas** (semua anggota otomatis jadi
+> anggotanya) — BUKAN kemampuan baca lintas-schema. Lihat § "Tenant Khusus: IKPM Pusat —
+> Keanggotaan Tanpa Batas" di atas untuk desain lengkap yang menggantikan baris pertama ini.
+
+- [ ] Tenant `pusat` — § "Tenant Khusus: IKPM Pusat" di atas (tipe tenant baru, auto-populate
+      unconditional, backfill retroaktif, constraint "the one and only")
 - [ ] Kelola katalog forum resmi
-- [ ] Statistik alumni global (berapa anggota, sebaran wilayah, angkatan)
+- [ ] Statistik alumni global (berapa anggota, sebaran wilayah, angkatan) — sudah mungkin
+      dibangun sekarang tanpa menunggu tenant Pusat, karena `public.members`/
+      `tenant_memberships` sudah global; tenant Pusat sekadar memberi "rumah" tersendiri untuk
+      data itu kalau memang perlu dashboard operasional sendiri di luar Platform Admin
 
 ---
 

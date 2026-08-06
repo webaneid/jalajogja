@@ -15550,16 +15550,97 @@ yang disentuh sama sekali. Nol migrasi DB.
 --filter=@jalajogja/web` genuine sukses (dev server dimatikan+`.next` dibersihkan+direstart,
 `Cached: 0 cached`, 50.35 detik) — `/[tenant]/gabung` (6.87 kB) dan `/[tenant]/akun` (3.99 kB)
 terkonfirmasi compile bersih. Grep akhir konfirmasi persis 2 titik pemakaian `pendingInvoiceId`
-di JSX (`akun/page.tsx`, mobile+desktop, sama seperti pola prop lain di file itu). **Belum
-di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser** — sama
-seperti "Redesain /gabung" di atas, verifikasi Fase E (end-to-end manual) untuk KEDUA fitur
-sekaligus (redesain widget + koreksi ini) baru bisa dilakukan bersamaan oleh user, karena
-koreksi ini murni lapisan tambahan di atas kode yang belum sempat di-deploy.
+di JSX (`akun/page.tsx`, mobile+desktop, sama seperti pola prop lain di file itu). **Sudah
+di-commit+push** (`4d58405`, mencakup redesain widget + koreksi ini sekaligus). **Belum
+dijalankan di VPS, belum diverifikasi visual di browser** — verifikasi Fase E (end-to-end
+manual) untuk KEDUA fitur sekaligus baru bisa dilakukan user setelah deploy.
+
+### [2026-08-06] [PERENCANAAN ARSITEKTUR] Tenant "IKPM Pusat" — Keanggotaan Tanpa Batas
+
+> Dokumen: `docs/arsitektur-backbone-ikpm.md` § "Tenant Khusus: IKPM Pusat — Keanggotaan
+> Tanpa Batas". **STATUS: RENCANA, belum dieksekusi** — user eksplisit "jgn buat apapun ya,
+> kita cek kemungkinannya dulu" untuk fase diskusi, lalu mengonfirmasi dua keputusan desain
+> tanpa memberi instruksi eksekusi kode.
+
+User awalnya bertanya soal "tenant untuk IKPM Pusat yang menampilkan semua database yang ada,
+muara dari semua tenant lain" — jawaban pertama saya SALAH ARAH (menganggap ini soal cross-
+tenant DATA VISIBILITY, mengusulkan opsi A/B/C seputar Platform Admin vs isolasi schema).
+Setelah ditanya klarifikasi via `AskUserQuestion`, user meluruskan: **ini BUKAN soal baca data
+lintas-tenant sama sekali** — "tenantnya sama dengan yang lain... perbedaannya hanya di
+keanggotaan, dia tidak terbatas... IKPM Pusat ini tidak terbatas, dia pusat segala pusat."
+Ini murni perluasan mekanisme AUTO-POPULATE keanggotaan yang sudah ada untuk cabang/marhalah
+(`syncAutoTenantMemberships()`, `packages/db/src/helpers/member-sync.ts`) — ditambah cabang
+ke-3 TANPA kondisi WHERE sama sekali (setiap anggota, tanpa kecuali, otomatis jadi anggota).
+
+**Dua keputusan dikunci via 2 putaran `AskUserQuestion`+konfirmasi user**: (1) "the one and
+only" — hanya boleh ada SATU tenant `tenant_type='pusat'`, dipaksa 2 lapis (partial unique
+index Postgres `CREATE UNIQUE INDEX ... ON tenants ((1)) WHERE tenant_type='pusat'` + cek
+aplikasi sebelum insert); (2) "muara semua data" = muara KEANGGOTAAN, bukan visibility
+operasional lintas-tenant — modul Surat/Toko/Website/Keuangan/Event tenant Pusat berfungsi
+identik tenant lain, isolasi schema-per-tenant TIDAK dilanggar sama sekali.
+
+**Verifikasi kode sebelum menulis rencana (bukan tebakan)**: dikonfirmasi `tenants.tenant_type`
+DAN `tenant_memberships.membership_type` punya CHECK constraint DB SUNGGUHAN (migration `0018`,
+`CHECK (tenant_type IN ('cabang','marhalah','forum'))`) — menambah nilai `"pusat"` genuinely
+butuh migration, bukan cuma edit TypeScript enum. Dibaca langsung `syncAutoTenantMemberships()`
+(2 cabang existing: cabang match `primaryCabangRefId`, marhalah match `graduationYear`, KEDUANYA
+insert unconditional `status:"active"` tanpa gate eligibility) dan `createTenantAction`/
+`linkTenantToCabangAction` (`apps/web/app/(platform)/platform/(protected)/actions.ts`, pola
+bulk-backfill existing: SELECT anggota matching → JS `.map()` → bulk insert array) — untuk
+Pusat, backfill-nya SELURUH `public.members` (berpotensi jauh lebih besar dari subset per-
+cabang), direkomendasikan pakai raw SQL `INSERT ... SELECT` (server-side, bukan tarik semua
+baris ke memori Node terlebih dulu seperti pola existing).
+
+**Temuan positif — sebagian besar fitur eligibility/overlay/branding yang baru dibangun sesi
+ini OTOMATIS mencakup tipe `pusat` tanpa sentuh kode**, karena branching-nya BINER
+(forum vs non-forum), bukan per-tipe spesifik: `akun/page.tsx`'s `if (overlayIsForum) {...}
+else {...}` — cabang `else` (dipakai cabang+marhalah+nanti pusat) menghitung `overlayIsJoined`
+dari keberadaan baris `tenant_memberships` semata, bukan tipe tenant; `resolveAkunBranding()`
+resolve "genuine member" dari keberadaan baris juga, bukan tipe; `checkMemberEligibility()`
+tidak pernah branch berdasarkan tipe tenant sama sekali. **1 titik yang PERLU diverifikasi
+ulang saat eksekusi** (bukan diasumsikan aman): `resolveOrgLabels()` (label copy halaman
+register) cuma punya 3 cabang saat ini — perlu cabang ke-4 eksplisit untuk `pusat`.
+
+Ditulis ke dokumen: tabel perbandingan tipe tenant + "Aturan Kunci per Tipe" diperluas dengan
+baris `pusat` (ditandai 📋), section desain penuh baru ("Tenant Khusus: IKPM Pusat") dengan 6
+sub-bagian (konsep, tipe tenant baru, keunikan, auto-populate, backfill, interaksi fitur
+existing) + tabel "File yang akan disentuh", dan **roadmap Phase 5 lama dikoreksi** (baris
+pertama "Admin IKPM Pusat bisa lihat semua tenant + statistik lintas cabang" — kerangka SALAH
+dari awal, diberi catatan koreksi eksplisit + pointer ke section baru, bukan dihapus diam-diam).
+
+**Aturan yang ditegaskan (kesalahan sendiri di jawaban pertama)**: kalau user menyebut istilah
+yang terdengar arsitektural besar ("pusat dari segala pusat", "muara semua data") tanpa
+konteks teknis eksplisit, JANGAN langsung asumsikan arti paling literal/luas (di sini: cross-
+tenant data access, yang MELANGGAR isolasi schema yang sudah dikunci) — tanya dulu via
+`AskUserQuestion` untuk pahami maksud SEBENARNYA sebelum menyusun rekomendasi arsitektur,
+terutama kalau interpretasi pertama akan mengarah ke perubahan besar/berisiko (di sini: nyaris
+mengusulkan pola cross-schema read yang tidak pernah ada presedennya di project ini).
+
+**Nol kode/migration ditulis** — murni dokumen. Menunggu instruksi eksplisit untuk mulai
+eksekusi (Fase A: schema+migration, sesuai pola SOP project — belum ada urutan fase ditulis
+karena belum diminta).
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Koreksi: Komitmen Cart Selalu Menahan Aktivasi Sampai Bayar + Overlay
+- Terakhir dikerjakan: **[PERENCANAAN, belum eksekusi] Tenant "IKPM Pusat" — Keanggotaan
+  Tanpa Batas** (lihat lesson `[2026-08-06]` "[PERENCANAAN ARSITEKTUR] Tenant 'IKPM Pusat'" di
+  atas, detail lengkap `docs/arsitektur-backbone-ikpm.md` § "Tenant Khusus: IKPM Pusat"). User
+  minta didiskusikan dulu ("jgn buat apapun ya, kita cek kemungkinannya dulu") soal tenant
+  IKPM Pusat yang jadi "muara semua data". Jawaban pertama saya SALAH ARAH (menganggap ini
+  soal cross-tenant data visibility) — dikoreksi via `AskUserQuestion`: user maksudnya murni
+  perluasan mekanisme auto-populate keanggotaan (`syncAutoTenantMemberships()`) dengan cabang
+  ke-3 TANPA syarat sama sekali — bukan kemampuan baca data operasional lintas-tenant (isolasi
+  schema tetap utuh). Dua keputusan dikunci: "the one and only" (constraint 2 lapis: partial
+  unique index DB + cek aplikasi) dan "muara semua data" = muara keanggotaan bukan visibility
+  operasional. Verifikasi kode dulu sebelum tulis rencana: `tenant_type`/`membership_type`
+  punya CHECK constraint DB sungguhan (perlu migration untuk nilai `"pusat"` baru), pola
+  auto-populate+backfill existing dibaca langsung dari `member-sync.ts`+platform actions.
+  Ditulis ke `docs/arsitektur-backbone-ikpm.md`: tabel tipe tenant+"Aturan Kunci" diperluas,
+  section desain penuh baru (6 sub-bagian), roadmap Phase 5 lama dikoreksi (kerangka salah
+  sejak awal, diberi catatan eksplisit bukan dihapus diam-diam). **Nol kode/migration
+  ditulis** — murni dokumen, menunggu instruksi eksekusi eksplisit.
+- Sesi sebelumnya: **Koreksi: Komitmen Cart Selalu Menahan Aktivasi Sampai Bayar + Overlay
   "Lunasi Pembayaran"** (lihat lesson `[2026-08-06]` "Koreksi: Komitmen Cart Selalu Menahan
-  Aktivasi Sampai Bayar" tepat di atas, detail lengkap `docs/arsitektur-gabung-forum.md` §
+  Aktivasi Sampai Bayar" di atas, detail lengkap `docs/arsitektur-gabung-forum.md` §
   "Koreksi..."). Menyusul LANGSUNG "Redesain /gabung" (bullet di bawah) di sesi yang sama —
   user mengoreksi SEBELUM fitur itu sempat di-commit: item apa pun (wajib ATAU opsional) yang
   ditambahkan lewat `GabungItemWidget` sekarang jadi komitmen — membership ditahan sampai
@@ -15576,9 +15657,10 @@ koreksi ini murni lapisan tambahan di atas kode yang belum sempat di-deploy.
   actions.ts`, `gabung/page.tsx`, `membership-eligibility-overlay.tsx`, `akun/page.tsx`);
   `GabungCheckoutButton`/`JoinForumButton`/`GabungItemWidget`/`checkoutAction` TIDAK disentuh.
   `tsc`+build genuine bersih (`Cached: 0 cached`, 50.35s), dev server direstart. Nol migrasi DB.
-  **Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser**
-  — Fase E (end-to-end manual) sekarang mencakup KEDUA fitur sekaligus (redesain widget +
-  koreksi ini), karena koreksi ini murni lapisan tambahan di atas kode yang belum di-deploy.
+  **Sudah di-commit+push** (`4d58405`). **Belum dijalankan di VPS, belum diverifikasi visual di
+  browser** — Fase E (end-to-end manual) sekarang mencakup KEDUA fitur sekaligus (redesain
+  widget + koreksi ini), karena koreksi ini murni lapisan tambahan di atas kode yang belum
+  di-deploy ke production.
 - Sesi sebelumnya: **Redesain `/gabung` — Widget Inline + Syarat Per-Item Eksplisit,
   DIEKSEKUSI** (lihat lesson `[2026-08-06]` "Redesain /gabung — Widget Inline + Syarat Per-Item
   Eksplisit (Dieksekusi)" di atas, detail lengkap `docs/arsitektur-gabung-forum.md` §
