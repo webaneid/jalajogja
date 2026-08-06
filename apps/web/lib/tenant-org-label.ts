@@ -3,7 +3,7 @@
 
 export type TenantOrgInfo = {
   name:           string;
-  tenantType:     "cabang" | "marhalah" | "forum";
+  tenantType:     "cabang" | "marhalah" | "forum" | "pusat";
   marhalahYear:   number | null;
   marhalahPeriod: "awal" | "akhir" | null;
 };
@@ -36,6 +36,19 @@ export function resolveOrgLabels(tenant: TenantOrgInfo): OrgLabels {
       memberLabel:          `Anggota ${tenant.name}`,
       memberDescription:    "Saya alumni Pondok Modern Gontor / anggota IKPM",
       nonMemberLabel:       "Bukan Anggota",
+      nonMemberDescription,
+    };
+  }
+
+  if (tenant.tenantType === "pusat") {
+    // Keanggotaan tidak dibatasi kriteria apa pun (lihat docs/arsitektur-backbone-ikpm.md §
+    // "Tenant Khusus: IKPM Pusat") — copy tetap generik "alumni Gontor / anggota IKPM",
+    // dibedakan eksplisit dari cabang (bukan cuma jatuh ke default) supaya jelas ini
+    // disengaja, bukan kebetulan sama.
+    return {
+      memberLabel:          `Anggota ${tenant.name}`,
+      memberDescription:    "Saya alumni Pondok Modern Gontor / anggota IKPM",
+      nonMemberLabel:       "Bukan Anggota IKPM",
       nonMemberDescription,
     };
   }

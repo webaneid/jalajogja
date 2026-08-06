@@ -3,10 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Building2, GraduationCap, Users } from "lucide-react";
+import { ArrowLeft, Building2, GraduationCap, Users, Landmark } from "lucide-react";
 import { createTenantAction } from "../../actions";
 
-type TenantType = "cabang" | "marhalah" | "forum";
+type TenantType = "cabang" | "marhalah" | "forum" | "pusat";
 
 interface CabangOption { id: string; nama: string; kota: string | null }
 
@@ -28,6 +28,12 @@ const TYPE_OPTIONS: { value: TenantType; label: string; desc: string; icon: Reac
     label: "Forum",
     desc:  "Komunitas atau forum tematik (Forum Bisnis, Olahraga, dll). Keanggotaan bersifat aktif/opt-in.",
     icon:  <Users size={20} />,
+  },
+  {
+    value: "pusat",
+    label: "IKPM Pusat",
+    desc:  "Keanggotaan tanpa batas — SEMUA anggota IKPM otomatis masuk. Hanya boleh ada satu tenant tipe ini di seluruh sistem.",
+    icon:  <Landmark size={20} />,
   },
 ];
 
@@ -165,6 +171,7 @@ export function NewTenantForm({ cabangList }: { cabangList: CabangOption[] }) {
             placeholder={
               type === "cabang"   ? "PC IKPM Yogyakarta" :
               type === "marhalah" ? "Angkatan 2005" :
+              type === "pusat"    ? "IKPM Pusat" :
                                     "Forum Bisnis IKPM"
             }
             className={inputCls}
@@ -186,6 +193,7 @@ export function NewTenantForm({ cabangList }: { cabangList: CabangOption[] }) {
               placeholder={
                 type === "cabang"   ? "pc-ikpm-yogyakarta" :
                 type === "marhalah" ? "angkatan-2005" :
+                type === "pusat"    ? "ikpm-pusat" :
                                       "forum-bisnis"
               }
               className="flex-1 rounded-l-none rounded-r-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring font-mono"

@@ -52,7 +52,7 @@ export default async function RegisterPage({ params }: { params: Params }) {
 
   const orgLabels = resolveOrgLabels({
     name:           tenant?.name ?? "IKPM Gontor",
-    tenantType:     (tenant?.tenantType as "cabang" | "marhalah" | "forum") ?? "cabang",
+    tenantType:     (tenant?.tenantType as "cabang" | "marhalah" | "forum" | "pusat") ?? "cabang",
     marhalahYear:   tenant?.marhalahYear ?? null,
     marhalahPeriod: (tenant?.marhalahPeriod as "awal" | "akhir" | null) ?? null,
   });

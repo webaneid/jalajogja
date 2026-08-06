@@ -9,9 +9,13 @@ import {
 import { members } from "./members";
 import { tenants } from "./tenants";
 
-export const MEMBERSHIP_TYPES  = ["cabang", "marhalah", "forum"] as const;
+// "pusat" — lihat docs/arsitektur-backbone-ikpm.md § "Tenant Khusus: IKPM Pusat". Auto-join
+// unconditional (syncAutoTenantMemberships), TIDAK dibatasi kriteria apa pun.
+export const MEMBERSHIP_TYPES  = ["cabang", "marhalah", "forum", "pusat"] as const;
 export const FORUM_STATUSES    = ["pending", "active", "suspended", "rejected"] as const;
-export const REGISTERED_VIA    = ["admin", "self", "import", "invite", "auto_marhalah", "auto_cabang"] as const;
+// "auto_pusat" — TIDAK punya CHECK constraint DB (kolom registered_via murni text, validasi
+// hanya di application layer, sejak migration 0018) — nol migrasi diperlukan untuk nilai ini.
+export const REGISTERED_VIA    = ["admin", "self", "import", "invite", "auto_marhalah", "auto_cabang", "auto_pusat"] as const;
 export type MembershipType     = typeof MEMBERSHIP_TYPES[number];
 export type ForumStatus        = typeof FORUM_STATUSES[number];
 

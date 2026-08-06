@@ -99,7 +99,7 @@ export async function resolveAkunBranding(
         orgName: browsedTenant.name,
         memberLabel: resolveOrgLabels({
           name:           browsedTenant.name,
-          tenantType:     (browsedTenant.tenantType as "cabang" | "marhalah" | "forum") ?? "cabang",
+          tenantType:     (browsedTenant.tenantType as "cabang" | "marhalah" | "forum" | "pusat") ?? "cabang",
           marhalahYear:   browsedTenant.marhalahYear ?? null,
           marhalahPeriod: (browsedTenant.marhalahPeriod as "awal" | "akhir" | null) ?? null,
         }).memberLabel,
@@ -142,7 +142,7 @@ export async function resolveAkunBranding(
           orgName: homeTenant.name,
           memberLabel: resolveOrgLabels({
             name:           homeTenant.name,
-            tenantType:     (homeTenant.tenantType as "cabang" | "marhalah" | "forum") ?? "cabang",
+            tenantType:     (homeTenant.tenantType as "cabang" | "marhalah" | "forum" | "pusat") ?? "cabang",
             marhalahYear:   homeTenant.marhalahYear ?? null,
             marhalahPeriod: (homeTenant.marhalahPeriod as "awal" | "akhir" | null) ?? null,
           }).memberLabel,

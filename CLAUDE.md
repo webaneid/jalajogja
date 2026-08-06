@@ -15620,24 +15620,112 @@ mengusulkan pola cross-schema read yang tidak pernah ada presedennya di project 
 eksekusi (Fase A: schema+migration, sesuai pola SOP project — belum ada urutan fase ditulis
 karena belum diminta).
 
+### [2026-08-06] Tenant "IKPM Pusat" — DIEKSEKUSI (lanjutan langsung dari rencana di atas)
+
+> Dokumen: `docs/arsitektur-backbone-ikpm.md` § "Tenant Khusus: IKPM Pusat — Keanggotaan
+> Tanpa Batas". User: *"ok kalau gitu, masuk mode hemat dan auto, kemudian eksekusi.. pastikan
+> sesuai SOP kita.. baca claude.md unk konteks"* — lampu hijau eksekusi penuh atas rencana yang
+> sudah dikunci di lesson sebelumnya, tanpa berhenti untuk klarifikasi tambahan.
+
+**Skema (2 file + 1 migration baru)**: `TENANT_TYPES` (`packages/db/src/schema/public/
+tenants.ts`) diperluas `["cabang","marhalah","forum","pusat"]`; `MEMBERSHIP_TYPES`
+(`tenant-memberships.ts`) diperluas sama, `REGISTERED_VIA` ditambah `"auto_pusat"` (kolom ini
+TANPA CHECK constraint DB sejak migration 0018 — nol migrasi diperlukan khusus untuk nilai
+ini, dikonfirmasi dari komentar migration lama, bukan tebakan). Migration baru
+`packages/db/migrations/0060_tenant_type_pusat.sql` — `DROP`+`ADD CONSTRAINT` untuk KEDUA
+CHECK constraint (`tenants_tenant_type_check`+`tenant_memberships_membership_type_check`,
+nama constraint dikonfirmasi via `psql \d` langsung, bukan ditebak) plus partial unique index
+untuk aturan "the one and only": `CREATE UNIQUE INDEX tenants_pusat_singleton ON
+public.tenants ((true)) WHERE tenant_type = 'pusat'` — index pada ekspresi konstan yang
+di-filter WHERE, sehingga PostgreSQL sendiri yang menjamin maksimal satu baris bisa memenuhi
+kondisi itu di seluruh tabel. **Diverifikasi empiris** (bukan cuma dipercaya dari baca
+dokumentasi Postgres) — test lokal wrapped `BEGIN`/insert-pusat-pertama/insert-pusat-kedua/
+`ROLLBACK`: insert kedua GAGAL persis dengan `ERROR: duplicate key value violates unique
+constraint "tenants_pusat_singleton"`, membuktikan constraint genuinely bekerja sebelum
+dipakai produksi. Migration dijalankan+diverifikasi LOKAL (`psql \d` mengonfirmasi kedua CHECK
+constraint sudah menyertakan `'pusat'` dan index singleton ada) — **belum dijalankan di VPS**.
+
+**`syncAutoTenantMemberships()`** (`packages/db/src/helpers/member-sync.ts`) — cabang ke-3
+ditambahkan setelah cabang cabang+marhalah yang sudah ada, SENGAJA **unconditional** (tidak
+digate parameter apa pun, tidak seperti dua cabang sebelumnya yang match
+`primaryCabangRefId`/`graduationYear`) — query `SELECT id FROM tenants WHERE tenantType=
+'pusat' AND isActive=true LIMIT 1`, kalau ketemu → `INSERT tenant_memberships (...,
+registeredVia:"auto_pusat", membershipType:"pusat") ON CONFLICT DO NOTHING`. Kalau tenant
+Pusat belum pernah dibuat sama sekali → no-op alami (query kosong) — aman terpasang di kode
+SEBELUM tenant-nya benar-benar eksis, tidak perlu urutan deploy khusus. Otomatis berlaku di
+SEMUA 4 titik pemanggil fungsi ini (`createMemberAction`, `updateMemberAction`,
+`commitImportAction`, `PATCH /api/akun/member-data`) tanpa perlu sentuh 4 file itu satu-satu.
+
+**Backfill retroaktif** (`createTenantAction`, `apps/web/app/(platform)/platform/(protected)/
+actions.ts`) — 2 bagian: (1) pre-check keunikan SEBELUM insert tenant baru (pesan error jelas
+"IKPM Pusat sudah dibuat sebelumnya — hanya boleh ada satu", bukan biarkan raw constraint-DB-
+error mentah sampai ke admin — pertahanan SESUNGGUHNYA tetap partial unique index migration
+0060, ini murni lapis UX tambahan, bukan satu-satunya penjaga); (2) setelah tenant baru
+ter-insert, KALAU tipenya `"pusat"` → `db.execute(sql\`INSERT INTO tenant_memberships (...)
+SELECT ${inserted.id}::uuid, id, 'active', 'auto_pusat', 'pusat' FROM public.members ON
+CONFLICT DO NOTHING\`)` — raw SQL `INSERT...SELECT` dieksekusi SERVER-SIDE, BUKAN pola
+existing cabang/marhalah (SELECT subset ke JS array → `.map()` → bulk insert) karena skala
+Pusat berpotensi mencakup SELURUH `public.members`, jauh lebih besar dari subset per-cabang —
+menghindari menarik ribuan baris ke memori Node hanya untuk insert-balik.
+
+**Titik yang PERLU diverifikasi ulang (bukan diasumsikan aman) — 1 dari lesson sebelumnya
+terbukti benar-benar perlu disentuh, 3 lain terkonfirmasi aman tanpa sentuhan**:
+- `resolveOrgLabels()` (`lib/tenant-org-label.ts`) — SATU-SATUNYA yang genuinely butuh cabang
+  baru: ditambahkan `if (tenant.tenantType === "pusat")` eksplisit (bukan cuma jatuh ke
+  fallback default cabang) supaya jelas ini disengaja, meski copy-nya kebetulan identik
+  default. Dipakai `register/page.tsx` — cast type diperluas jadi mencakup `"pusat"`.
+- `resolveAkunBranding()` (`lib/resolve-akun-branding.ts`) — 2 titik cast type diperluas
+  (`replace_all`), TIDAK ada logic baru — cabang "genuine member" sudah generik (cek
+  keberadaan baris `tenant_memberships`, bukan per-tipe), otomatis mencakup Pusat.
+- `akun/page.tsx`'s `overlayIsForum`/eligibility branching, `checkMemberEligibility()` —
+  TERKONFIRMASI (dari lesson sebelumnya) sudah biner forum-vs-non-forum, nol sentuhan
+  diperlukan — dikonfirmasi ulang tidak ada regresi dari perluasan tipe tenant.
+
+**Gap ditemukan+ditutup PROAKTIF, di luar 6 file yang tercantum di tabel rencana**:
+`new-tenant-form.tsx` (form platform admin "Tambah Tenant Baru") tidak akan pernah punya opsi
+`"pusat"` untuk dipilih tanpa disentuh — backend lengkap tapi fitur tidak reachable dari UI
+sama sekali. Ditambahkan: `TenantType` union diperluas, opsi radio ke-4 (ikon `Landmark` —
+diverifikasi dulu ada di `.d.ts` lucide-react yang terinstall, bukan ditebak dari ingatan),
+placeholder Nama/Slug diperluas untuk kasus `"pusat"`.
+
+**Verifikasi**: `tsc --noEmit` bersih di kedua package di SETIAP fase (schema → member-sync →
+tenant-org-label+resolve-akun-branding+register → platform actions+form), tidak ditumpuk ke
+akhir. `bun run build --filter=@jalajogja/web` genuine (dev server dimatikan+`.next`
+dibersihkan+direstart setelah, `Cached: 0 cached`, 46.6 detik — bukan cache-hit) — route
+`/platform/tenants/new` terkonfirmasi compile bersih, curl `200`/`307` (auth guard, bukan
+crash 500) setelah restart. **Belum di-commit/push ke git, belum dijalankan di VPS, belum
+diverifikasi visual di browser** — user perlu coba: buat tenant baru dengan tipe "IKPM Pusat"
+dari `/platform/tenants/new`, konfirmasi SEMUA anggota existing langsung ter-backfill jadi
+anggota (`tenant_memberships` bertambah sebanyak `public.members`), coba buat tenant "pusat"
+KEDUA dan konfirmasi ditolak dengan pesan jelas, dan konfirmasi anggota BARU yang didaftarkan
+di tenant manapun setelah itu otomatis ikut jadi anggota Pusat juga (lewat
+`syncAutoTenantMemberships`).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **[PERENCANAAN, belum eksekusi] Tenant "IKPM Pusat" — Keanggotaan
-  Tanpa Batas** (lihat lesson `[2026-08-06]` "[PERENCANAAN ARSITEKTUR] Tenant 'IKPM Pusat'" di
-  atas, detail lengkap `docs/arsitektur-backbone-ikpm.md` § "Tenant Khusus: IKPM Pusat"). User
-  minta didiskusikan dulu ("jgn buat apapun ya, kita cek kemungkinannya dulu") soal tenant
-  IKPM Pusat yang jadi "muara semua data". Jawaban pertama saya SALAH ARAH (menganggap ini
-  soal cross-tenant data visibility) — dikoreksi via `AskUserQuestion`: user maksudnya murni
-  perluasan mekanisme auto-populate keanggotaan (`syncAutoTenantMemberships()`) dengan cabang
-  ke-3 TANPA syarat sama sekali — bukan kemampuan baca data operasional lintas-tenant (isolasi
-  schema tetap utuh). Dua keputusan dikunci: "the one and only" (constraint 2 lapis: partial
-  unique index DB + cek aplikasi) dan "muara semua data" = muara keanggotaan bukan visibility
-  operasional. Verifikasi kode dulu sebelum tulis rencana: `tenant_type`/`membership_type`
-  punya CHECK constraint DB sungguhan (perlu migration untuk nilai `"pusat"` baru), pola
-  auto-populate+backfill existing dibaca langsung dari `member-sync.ts`+platform actions.
-  Ditulis ke `docs/arsitektur-backbone-ikpm.md`: tabel tipe tenant+"Aturan Kunci" diperluas,
-  section desain penuh baru (6 sub-bagian), roadmap Phase 5 lama dikoreksi (kerangka salah
-  sejak awal, diberi catatan eksplisit bukan dihapus diam-diam). **Nol kode/migration
-  ditulis** — murni dokumen, menunggu instruksi eksekusi eksplisit.
+- Terakhir dikerjakan: **Tenant "IKPM Pusat" — DIEKSEKUSI** (lihat lesson `[2026-08-06]`
+  "Tenant 'IKPM Pusat' — DIEKSEKUSI" di atas, detail lengkap `docs/arsitektur-backbone-ikpm.md`
+  § "Tenant Khusus: IKPM Pusat"). Lanjutan langsung dari rencana sesi sebelumnya (lesson
+  "[PERENCANAAN ARSITEKTUR]" tepat di atas) — user beri lampu hijau eksekusi penuh ("mode hemat
+  dan auto") tanpa klarifikasi tambahan. Skema: `TENANT_TYPES`/`MEMBERSHIP_TYPES` diperluas
+  `"pusat"`, `REGISTERED_VIA` +`"auto_pusat"` (tanpa migration, kolom tanpa CHECK constraint),
+  migration baru `0060_tenant_type_pusat.sql` (2 CHECK constraint + partial unique index
+  "the one and only" — DIVERIFIKASI EMPIRIS via test insert-duplikat lokal, genuinely
+  menolak). `syncAutoTenantMemberships()` dapat cabang ke-3 UNCONDITIONAL (tanpa gate apa pun,
+  beda dari cabang/marhalah) — otomatis berlaku di 4 titik pemanggil tanpa disentuh satu-satu.
+  `createTenantAction` dapat pre-check keunikan + backfill raw SQL `INSERT...SELECT` (server-
+  side, bukan tarik semua `public.members` ke JS dulu — beda dari pola cabang/marhalah karena
+  skala Pusat berpotensi jauh lebih besar). 1 dari 3 titik "perlu diverifikasi ulang" dari
+  lesson sebelumnya TERBUKTI genuinely perlu disentuh (`resolveOrgLabels()`, cabang eksplisit
+  baru), 2 lainnya terkonfirmasi sudah generik tanpa sentuhan. **Gap proaktif ditemukan+
+  ditutup**: `new-tenant-form.tsx` (form platform admin) tidak akan reachable untuk tipe
+  "pusat" tanpa opsi radio baru — ditambahkan (dengan ikon `Landmark`, diverifikasi ada di
+  `.d.ts` terinstall). `tsc --noEmit` bersih di kedua package di SETIAP fase + `bun run build`
+  genuine sukses (`Cached: 0 cached`, 46.6s, dev server dimatikan+`.next` dibersihkan+
+  direstart). Migration dijalankan+diverifikasi LOKAL. **Belum di-commit/push ke git, belum
+  dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba: buat tenant
+  "IKPM Pusat" dari `/platform/tenants/new`, konfirmasi backfill SELURUH anggota existing,
+  coba buat tenant "pusat" KEDUA (harus ditolak jelas), dan konfirmasi anggota baru di tenant
+  manapun otomatis ikut jadi anggota Pusat.
 - Sesi sebelumnya: **Koreksi: Komitmen Cart Selalu Menahan Aktivasi Sampai Bayar + Overlay
   "Lunasi Pembayaran"** (lihat lesson `[2026-08-06]` "Koreksi: Komitmen Cart Selalu Menahan
   Aktivasi Sampai Bayar" di atas, detail lengkap `docs/arsitektur-gabung-forum.md` §

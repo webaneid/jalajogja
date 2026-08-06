@@ -10,7 +10,12 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
-export const TENANT_TYPES = ["cabang", "marhalah", "forum"] as const;
+// "pusat" — tenant biasa (schema+modul operasional identik tenant lain), TAPI
+// keanggotaannya TIDAK dibatasi kriteria apa pun (beda dari cabang/marhalah/forum) — SEMUA
+// anggota di public.members otomatis jadi anggotanya. Hanya boleh ada SATU tenant tipe ini
+// di seluruh sistem (dipaksa via partial unique index, lihat migration 0060). Lihat
+// docs/arsitektur-backbone-ikpm.md § "Tenant Khusus: IKPM Pusat — Keanggotaan Tanpa Batas".
+export const TENANT_TYPES = ["cabang", "marhalah", "forum", "pusat"] as const;
 export type TenantType = typeof TENANT_TYPES[number];
 
 export const MARHALAH_PERIODS = ["awal", "akhir"] as const;

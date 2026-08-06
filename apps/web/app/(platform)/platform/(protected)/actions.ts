@@ -7,7 +7,7 @@ import {
   refIkpmCabang, createTenantSchemaInDb, createTenantDb,
   user as authUser, platformSettings,
 } from "@jalajogja/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { getPlatformSession } from "@/lib/platform-auth";
 import { auth } from "@/lib/auth";
@@ -36,6 +36,18 @@ export async function createTenantAction(formData: FormData): Promise<{ error: s
 
   const marhalahYear = marhalahYearRaw ? parseInt(marhalahYearRaw, 10) : null;
   if (tenantType === "marhalah" && !marhalahYear) return { error: "Angkatan (tahun) wajib diisi untuk tipe Marhalah." };
+
+  // "The one and only" — cek keunikan sebelum insert supaya admin dapat pesan jelas, bukan
+  // error constraint DB mentah. Pertahanan sesungguhnya tetap partial unique index
+  // `tenants_pusat_singleton` (migration 0060) — cek ini murni UX, bukan satu-satunya lapis.
+  if (tenantType === "pusat") {
+    const [existingPusat] = await db
+      .select({ id: tenants.id })
+      .from(tenants)
+      .where(eq(tenants.tenantType, "pusat"))
+      .limit(1);
+    if (existingPusat) return { error: "IKPM Pusat sudah dibuat sebelumnya — hanya boleh ada satu." };
+  }
 
   try {
     const [inserted] = await db.insert(tenants).values({
@@ -99,12 +111,26 @@ export async function createTenantAction(formData: FormData): Promise<{ error: s
       }
     }
 
+    // ── Auto-populate: pusat → SEMUA anggota, TANPA syarat apa pun ─────────
+    // Backfill retroaktif — SELURUH public.members, bukan subset seperti cabang/marhalah di
+    // atas. Raw SQL INSERT...SELECT (server-side, bukan tarik semua baris ke Node dulu) karena
+    // skalanya berpotensi jauh lebih besar. Lihat docs/arsitektur-backbone-ikpm.md §
+    // "Tenant Khusus: IKPM Pusat — Keanggotaan Tanpa Batas" § 4.
+    if (tenantType === "pusat") {
+      await db.execute(sql`
+        INSERT INTO public.tenant_memberships (tenant_id, member_id, status, registered_via, membership_type)
+        SELECT ${inserted.id}::uuid, id, 'active', 'auto_pusat', 'pusat'
+        FROM public.members
+        ON CONFLICT DO NOTHING
+      `);
+    }
+
     revalidatePath("/platform/tenants");
     return { ok: true, slug: inserted.slug };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("unique") || msg.includes("duplicate")) {
-      return { error: "Slug sudah digunakan." };
+      return { error: "Slug sudah digunakan (atau IKPM Pusat sudah ada sebelumnya)." };
     }
     return { error: "Gagal membuat tenant. " + msg };
   }

@@ -5,7 +5,8 @@ import type { PublicDb } from "../client";
 
 /**
  * Helper untuk meng-autosinkronisasi keanggotaan tenant (tenant_memberships)
- * untuk PC IKPM Cabang (berdasarkan primaryCabangRefId) dan Marhalah (berdasarkan graduationYear/Period).
+ * untuk PC IKPM Cabang (berdasarkan primaryCabangRefId), Marhalah (berdasarkan
+ * graduationYear/Period), dan IKPM Pusat (TANPA syarat apa pun — setiap anggota otomatis).
  *
  * Dipanggil dari:
  * - Admin Create Member (createMemberAction)
@@ -19,11 +20,12 @@ export async function syncAutoTenantMemberships(
   primaryCabangRefId?: string | null,
   graduationYear?: number | null,
   graduationPeriod?: "awal" | "akhir" | null,
-): Promise<{ syncedCabang: boolean; syncedMarhalah: boolean }> {
+): Promise<{ syncedCabang: boolean; syncedMarhalah: boolean; syncedPusat: boolean }> {
   let syncedCabang = false;
   let syncedMarhalah = false;
+  let syncedPusat = false;
 
-  if (!memberId) return { syncedCabang, syncedMarhalah };
+  if (!memberId) return { syncedCabang, syncedMarhalah, syncedPusat };
 
   // 1. Cabang Auto-Join (PC IKPM Cabang)
   if (primaryCabangRefId) {
@@ -86,5 +88,30 @@ export async function syncAutoTenantMemberships(
     }
   }
 
-  return { syncedCabang, syncedMarhalah };
+  // 3. IKPM Pusat Auto-Join — TANPA syarat apa pun, berjalan UNCONDITIONAL untuk setiap
+  // pemanggilan fungsi ini (tidak digate parameter apa pun, beda dari cabang/marhalah di
+  // atas). Kalau tenant tipe 'pusat' belum dibuat sama sekali, ini no-op — aman terpasang
+  // sebelum tenant-nya benar-benar ada. Lihat docs/arsitektur-backbone-ikpm.md
+  // § "Tenant Khusus: IKPM Pusat — Keanggotaan Tanpa Batas".
+  const [pusatTenant] = await runner
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(and(eq(tenants.tenantType, "pusat"), eq(tenants.isActive, true)))
+    .limit(1);
+
+  if (pusatTenant) {
+    await runner
+      .insert(tenantMemberships)
+      .values({
+        tenantId: pusatTenant.id,
+        memberId,
+        status: "active",
+        registeredVia: "auto_pusat",
+        membershipType: "pusat",
+      })
+      .onConflictDoNothing();
+    syncedPusat = true;
+  }
+
+  return { syncedCabang, syncedMarhalah, syncedPusat };
 }
