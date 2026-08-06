@@ -553,12 +553,19 @@ async function autoAddToMarhalah(memberId: string, year: number, period?: string
 
 ---
 
-## Tenant Khusus: IKPM Pusat — Keanggotaan Tanpa Batas 📋 RENCANA
+## Tenant Khusus: IKPM Pusat — Keanggotaan Tanpa Batas ✅ FASE A–D SELESAI
 
-> **Status: RENCANA — belum dieksekusi.** Dikunci lewat diskusi 2026-08-06 (user: *"betul
-> sekali, dia the one and only"* + *"ikpm pusat adalah muara semua data"*). Dokumen ini
-> menjelaskan DESAIN yang disepakati — nol kode/migration ditulis sampai ada instruksi
-> eksplisit untuk eksekusi.
+> **Status: DIEKSEKUSI (2026-08-06, commit `a6f877b` + `679f2f9`).** Dikunci lewat diskusi
+> 2026-08-06 (user: *"betul sekali, dia the one and only"* + *"ikpm pusat adalah muara semua
+> data"*), lalu dieksekusi penuh di sesi yang sama setelah instruksi *"masuk mode hemat dan
+> auto, kemudian eksekusi.."*. Migration `0060_tenant_type_pusat.sql` sudah dijalankan+
+> diverifikasi di LOKAL dan di VPS (user konfirmasi output `ALTER TABLE`×4 + `CREATE INDEX` +
+> hasil verifikasi CHECK constraint/index sukses). `tsc`+build genuine bersih di lokal — status
+> build+restart PM2 di VPS BELUM dikonfirmasi selesai di percakapan ini. **Belum diverifikasi
+> visual di browser** (buat tenant Pusat sungguhan, cek backfill, cek penolakan tenant kedua)
+> — di luar kapasitas environment kerja ini, perlu dicoba user. Lihat juga section BARU di
+> bawah: "Menu Admin Khusus IKPM Pusat: Ringkasan Tenant" — fitur lanjutan yang memakai tenant
+> tipe ini.
 
 ### Konsep
 
@@ -697,6 +704,162 @@ default yang belum tentu tepat.
 
 ---
 
+## Menu Admin Khusus IKPM Pusat: "Ringkasan Tenant" 📋 RENCANA
+
+> **Status: RENCANA — belum dieksekusi.** Diminta user 2026-08-06, langsung setelah eksekusi
+> Fase A–D IKPM Pusat di atas selesai: *"bikin perencanaan yang merangkum semua aktifitas
+> keanggotaan masing2 tenant.. isinya rangkuman anggota masing2 dan statistik masing2 tenant..
+> hanya ada di IKPM pusat dan hanya bisa diakses ikpm pusat.. dia menu tersendiri di admin..
+> jadi ada tenant apa saja, anggota berapa, dll gitu lah.. pokoknya rangkuman semua tenant.."*
+
+### Konsep
+
+Menu dashboard BARU — satu-satunya menu di seluruh sistem yang menampilkan data AGREGAT
+lintas SELURUH tenant — tapi HANYA muncul dan HANYA bisa diakses dari dalam dashboard admin
+tenant `tenant_type='pusat'` itu sendiri (bukan Platform Admin `/platform/*`, yang merupakan
+sistem auth terpisah/JWT; bukan tenant lain manapun).
+
+**Prinsip yang mengatur seluruh desain ini**: modul ini HANYA membaca dari 3 tabel `public`
+schema yang memang didesain sebagai backbone lintas-tenant SEJAK AWAL project (`public.
+tenants`, `public.tenant_memberships`, `public.members`) — TIDAK PERNAH membaca `tenant_
+{slug}.*` (surat, keuangan, produk, event, dst) milik tenant LAIN. Ini BUKAN pengecualian
+terhadap isolasi schema-per-tenant yang sudah dikunci sejak awal project (§ "Cross-Tenant Data
+Access — Aturan" di bawah) — murni memanfaatkan layer yang memang sudah global by design.
+Kalau nanti ada permintaan menampilkan data OPERASIONAL tenant lain (mis. "total transaksi
+semua tenant", "berapa post yang diterbitkan semua tenant") — itu keputusan arsitektur
+TERPISAH yang harus didiskusikan ulang dari nol, bukan otomatis termasuk perluasan fitur ini.
+
+### Keamanan — dua lapis wajib (non-negotiable)
+
+Fitur ini secara struktural rawan jadi celah kebocoran data lintas-tenant kalau cuma
+disembunyikan dari sidebar (UX-level hiding) tanpa guard server-side — ini kelas bug yang
+sudah berkali-kali terjadi & difix di project ini (isolasi custom domain, dst, lihat CLAUDE.md
+"[2026-07-08] Bug kritis: custom domain bisa akses admin dashboard tenant manapun" dan
+turunannya). WAJIB dua lapis, bukan salah satu:
+
+1. **Sidebar (murni UX, BUKAN pertahanan)** — item menu "Ringkasan Tenant" hanya dirender
+   kalau `tenant.tenantType === "pusat"`.
+2. **Server-side guard (pertahanan SESUNGGUHNYA)** — halaman itu sendiri WAJIB cek ulang di
+   baris pertama Server Component: `if (access.tenant.tenantType !== "pusat")
+   redirect(\`/app/${slug}/dashboard\`)` — pola PERSIS sama dengan guard 10-modul permission
+   (`canAccess(...)`) yang sudah ada di 10 modul lain, cuma kondisinya TIPE TENANT bukan
+   role-permission. Tanpa guard #2, admin tenant CABANG manapun yang tahu/menebak URL bisa
+   melihat rangkuman keanggotaan SELURUH tenant lain — sidebar hiding TIDAK mencegah akses
+   URL langsung.
+
+### Route + Menu
+
+- Route baru: `/app/{slug}/ringkasan-tenant` — folder
+  `app/(dashboard)/app/[tenant]/ringkasan-tenant/page.tsx`.
+- Sidebar label: **"Ringkasan Tenant"**, icon `Network` (lucide-react — diverifikasi ada di
+  `.d.ts` `lucide-react@1.8.0` yang terinstall sebelum dipakai).
+- BUKAN bagian sistem 10-modul (`Module` di `lib/permissions.ts`, `website|surat|keuangan|
+  toko|donasi|event|dokumen|anggota|media|pengurus`) — itu axis PERMISSION per role DALAM satu
+  tenant (full/read/own/none). Menu ini axis berbeda: TIPE TENANT (visible hanya untuk satu
+  tenant spesifik, terlepas role user di dalamnya — owner maupun sekretaris tenant Pusat
+  sama-sama boleh lihat, tidak digate lebih lanjut per role). JANGAN dicampur jadi modul ke-11
+  di `Module` union — dua konsep yang berbeda, akan mengaburkan makna axis permission yang
+  sudah mapan.
+
+### Wiring sidebar (4 file, prop-threading sederhana)
+
+`(dashboard)/app/[tenant]/layout.tsx` SUDAH punya `tenant` (full row hasil `getTenantAccess()`,
+termasuk `tenantType`) — cukup hitung `isPusatTenant = tenant.tenantType === "pusat"` dan
+teruskan sebagai prop baru melalui rantai yang sudah ada:
+
+```
+layout.tsx  →  Sidebar (desktop) + MobileSidebar (mobile, cuma wrap <Sidebar>)  →  SidebarNav
+```
+
+- `components/dashboard/sidebar-nav.tsx` — `NavItem` type tambah field opsional
+  `pusatOnly?: boolean` (sejajar `module`). `NAV_ITEMS` tambah entry baru:
+  `{ label: "Ringkasan Tenant", icon: Network, path: "ringkasan-tenant", module: null,
+  pusatOnly: true }`. Filter logic diperluas: `if (item.pusatOnly) return isPusatTenant;`
+  dicek SEBELUM cek `module` (item ini `module: null` supaya tidak ikut lolos permission
+  check `canAccess`, murni digate tipe tenant).
+- `components/dashboard/sidebar.tsx` + `mobile-sidebar.tsx` — tambah prop `isPusatTenant:
+  boolean`, teruskan ke `<SidebarNav>`. `MobileSidebar` sekadar forward props ke `<Sidebar>`
+  (sudah merender `SidebarNav` di dalamnya) — cukup 1 baris tambahan di masing-masing.
+
+### Data yang ditampilkan (Fase 1 — cukup untuk permintaan awal user)
+
+**A. KPI ringkas** — 4× `<StatCard>` (reuse `components/dashboard/stat-card.tsx` apa adanya,
+komponennya sudah generik, nol perubahan diperlukan):
+- Total tenant aktif — `COUNT(*) FROM tenants WHERE isActive=true`
+- Total anggota IKPM (unique) — `COUNT(*) FROM members`
+- Total baris keanggotaan tercatat — `COUNT(*) FROM tenant_memberships` (BISA lebih besar dari
+  jumlah anggota unique karena satu anggota bisa jadi member di banyak tenant sekaligus — beri
+  sublabel yang jujur soal ini di `<StatCard sublabel=...>`, jangan biarkan terlihat seperti
+  duplikasi data)
+- Anggota baru bulan ini — `COUNT(*) FROM members WHERE createdAt >= awal_bulan_ini` — WAJIB
+  pakai anchor kalender WIB (`anchorTodayUtc()`/pola timezone yang sudah dikunci berkali-kali
+  di project ini), BUKAN `new Date()` mentah yang bisa geser 1 hari di jam-jam awal WIB (lihat
+  lesson lama "Bug Kritis Import Anggota" / rangkaian bug WIB-vs-UTC lain di CLAUDE.md).
+
+**B. Breakdown jumlah tenant per tipe** — bar list kecil (cabang/marhalah/forum/pusat),
+`GROUP BY tenant_type`, urutan tetap sesuai `TENANT_TYPES` (bukan hasil `COUNT` descending,
+supaya urutannya konsisten setiap render).
+
+**C. Tabel utama: daftar tenant + jumlah anggota** (INTI permintaan user — "ada tenant apa
+saja, anggota berapa, dll"):
+
+```sql
+SELECT
+  t.id, t.slug, t.name, t.tenant_type, t.is_active, t.created_at,
+  COUNT(tm.id) AS total_members,
+  COUNT(tm.id) FILTER (WHERE tm.status = 'active')   AS active_members,
+  COUNT(tm.id) FILTER (WHERE tm.status = 'alumni')   AS alumni_members,
+  COUNT(tm.id) FILTER (WHERE tm.status = 'inactive') AS inactive_members
+FROM public.tenants t
+LEFT JOIN public.tenant_memberships tm ON tm.tenant_id = t.id
+GROUP BY t.id
+ORDER BY total_members DESC;
+```
+
+Kolom tabel: Nama tenant (+ badge tipe — REUSE style `TYPE_LABEL` dari `/platform/tenants/
+page.tsx`, drive-by gap ditemukan saat riset: entry `"pusat"` BELUM ada di `TYPE_LABEL` situ,
+fallback diam-diam ke `TYPE_LABEL.cabang` → badge tenant Pusat sendiri di `/platform/tenants`
+salah tampil "Cabang" — WAJIB ditambahkan sekalian saat eksekusi, item terpisah di tabel file
+di bawah), Slug, Total Anggota, breakdown Aktif/Alumni/Non-aktif (kolom terpisah atau expand,
+diputuskan saat implementasi), Status tenant (Aktif/Non-aktif). **TIDAK ada link keluar** ke
+`/platform/tenants/{slug}` — itu sistem auth TERPISAH (JWT `platform_users`, bukan Better Auth
+`tenant.users`), admin dashboard tenant Pusat kemungkinan besar TIDAK punya akses ke situ;
+murni tampilan informasi read-only, tidak actionable.
+
+**D. Data quality insight** (opsional tapi murah untuk ditambahkan sekalian): jumlah anggota
+yang BELUM tersambung ke PC IKPM resmi manapun — `COUNT(*) FROM members WHERE
+primary_cabang_ref_id IS NULL`. Berguna operasional buat admin Pusat memantau kelengkapan data
+backbone.
+
+### Di luar scope Fase 1 (ide lanjutan, TIDAK diminta eksplisit — jangan dieksekusi tanpa konfirmasi)
+
+- Grafik tren pendaftaran anggota (harian/mingguan/bulanan) — bisa reuse pola
+  `components/dashboard/income-expense-chart.tsx` (recharts, dipakai dashboard tenant biasa
+  untuk grafik pemasukan/pengeluaran) sebagai referensi bikin komponen `MemberGrowthChart`
+  serupa.
+- Breakdown demografis lintas-tenant (kabupaten/provinsi/angkatan agregat) — pola query-nya
+  SUDAH ADA di `/{slug}/statistik` (halaman publik per-tenant, § lesson CLAUDE.md "Statistik —
+  Pola Angkatan dengan Sub-periode"), tinggal dilepas filter `tenant_memberships.tenantId`
+  untuk versi lintas-tenant.
+- Filter/search di tabel tenant (mirip `/platform/tenants` yang sudah punya query param
+  `q`+`status`).
+
+### File yang akan disentuh (saat dieksekusi)
+
+| File | Perubahan |
+|------|-----------|
+| `components/dashboard/sidebar-nav.tsx` | `NavItem.pusatOnly` + entry baru + filter logic |
+| `components/dashboard/sidebar.tsx` | prop `isPusatTenant` → diteruskan ke `SidebarNav` |
+| `components/dashboard/mobile-sidebar.tsx` | prop `isPusatTenant` → diteruskan ke `Sidebar` |
+| `(dashboard)/app/[tenant]/layout.tsx` | hitung `isPusatTenant`, teruskan ke `Sidebar`+`MobileSidebar` |
+| `(dashboard)/app/[tenant]/ringkasan-tenant/page.tsx` (baru) | Server Component: guard tipe tenant + 4 query (A–D) + render StatCard+tabel |
+| `(platform)/platform/(protected)/tenants/page.tsx` | drive-by fix: tambah entry `TYPE_LABEL.pusat` (gap ditemukan saat riset fitur ini, badge platform admin salah tampil "Cabang" untuk tenant Pusat) |
+
+**Nol migrasi DB diperlukan** — seluruh data sumber (`tenants`, `tenant_memberships`,
+`members`) sudah ada sejak lama, fitur ini murni query+render baru.
+
+---
+
 ## Data yang Terlihat di Masing-Masing Tenant
 
 ### Direktori Anggota — Per Tipe Tenant
@@ -803,11 +966,15 @@ Urutan cek untuk identifikasi anggota yang sudah ada:
 | Admin marhalah lihat anggota | Profil publik (tanpa NIK, detail alamat, tanggal+bulan lahir) |
 | Admin forum lihat anggota | Profil publik + data usaha yang di-share ke forum |
 | Admin cabang | Data penuh anggota cabangnya sendiri |
+| Admin IKPM Pusat (menu "Ringkasan Tenant" 📋) | HANYA rangkuman agregat lintas-tenant dari `tenants`+`tenant_memberships`+`members` (nama tenant, jumlah anggota per tenant, breakdown status) — TIDAK PERNAH data operasional tenant lain (surat/keuangan/produk/dst, tetap terisolasi penuh) |
 
 **Aturan privasi yang tidak boleh dilanggar:**
 - NIK tidak pernah tampil lintas organisasi
 - Detail alamat (kecamatan/desa/jalan) tidak tampil di luar cabang sendiri
 - Kontak (HP/WA/email) hanya tampil jika `contacts.is_*_public = true`
+- Rangkuman agregat lintas-tenant ("Ringkasan Tenant") HANYA reachable dari dashboard admin
+  tenant `tenant_type='pusat'` itu sendiri — WAJIB guard server-side di halaman itu sendiri,
+  bukan cuma disembunyikan dari sidebar (lihat § "Menu Admin Khusus IKPM Pusat" di atas)
 
 ---
 
@@ -845,13 +1012,14 @@ Urutan cek untuk identifikasi anggota yang sudah ada:
 > anggotanya) — BUKAN kemampuan baca lintas-schema. Lihat § "Tenant Khusus: IKPM Pusat —
 > Keanggotaan Tanpa Batas" di atas untuk desain lengkap yang menggantikan baris pertama ini.
 
-- [ ] Tenant `pusat` — § "Tenant Khusus: IKPM Pusat" di atas (tipe tenant baru, auto-populate
-      unconditional, backfill retroaktif, constraint "the one and only")
+- [x] Tenant `pusat` — § "Tenant Khusus: IKPM Pusat" di atas (tipe tenant baru, auto-populate
+      unconditional, backfill retroaktif, constraint "the one and only") — DIEKSEKUSI
+      2026-08-06, commit `a6f877b`+`679f2f9`, migration jalan di lokal+VPS
 - [ ] Kelola katalog forum resmi
-- [ ] Statistik alumni global (berapa anggota, sebaran wilayah, angkatan) — sudah mungkin
-      dibangun sekarang tanpa menunggu tenant Pusat, karena `public.members`/
-      `tenant_memberships` sudah global; tenant Pusat sekadar memberi "rumah" tersendiri untuk
-      data itu kalau memang perlu dashboard operasional sendiri di luar Platform Admin
+- [ ] Statistik alumni global (berapa anggota, sebaran wilayah, angkatan) — § "Menu Admin
+      Khusus IKPM Pusat: 'Ringkasan Tenant'" di atas (RENCANA, belum dieksekusi) — dibangun
+      sebagai menu dashboard tenant Pusat sendiri (bukan Platform Admin), fase pertama cukup
+      daftar tenant+jumlah anggota, breakdown wilayah/angkatan lintas-tenant masuk fase lanjutan
 
 ---
 

@@ -15693,19 +15693,101 @@ tenant-org-label+resolve-akun-branding+register → platform actions+form), tida
 akhir. `bun run build --filter=@jalajogja/web` genuine (dev server dimatikan+`.next`
 dibersihkan+direstart setelah, `Cached: 0 cached`, 46.6 detik — bukan cache-hit) — route
 `/platform/tenants/new` terkonfirmasi compile bersih, curl `200`/`307` (auth guard, bukan
-crash 500) setelah restart. **Sudah di-commit+push (`a6f877b`). Belum dijalankan di VPS, belum
-diverifikasi visual di browser** — user perlu coba: buat tenant baru dengan tipe "IKPM Pusat"
-dari `/platform/tenants/new`, konfirmasi SEMUA anggota existing langsung ter-backfill jadi
-anggota (`tenant_memberships` bertambah sebanyak `public.members`), coba buat tenant "pusat"
-KEDUA dan konfirmasi ditolak dengan pesan jelas, dan konfirmasi anggota BARU yang didaftarkan
-di tenant manapun setelah itu otomatis ikut jadi anggota Pusat juga (lewat
-`syncAutoTenantMemberships`).
+crash 500) setelah restart. **Sudah di-commit+push (`a6f877b`). Migration `0060` sudah
+dijalankan di VPS** (user konfirmasi output `ALTER TABLE`×4+`CREATE INDEX`+verifikasi CHECK
+constraint/index sukses langsung dari server) — **build+restart PM2 di VPS dan verifikasi
+visual di browser belum dikonfirmasi selesai** — user perlu coba: buat tenant baru dengan tipe
+"IKPM Pusat" dari `/platform/tenants/new`, konfirmasi SEMUA anggota existing langsung
+ter-backfill jadi anggota (`tenant_memberships` bertambah sebanyak `public.members`), coba
+buat tenant "pusat" KEDUA dan konfirmasi ditolak dengan pesan jelas, dan konfirmasi anggota
+BARU yang didaftarkan di tenant manapun setelah itu otomatis ikut jadi anggota Pusat juga
+(lewat `syncAutoTenantMemberships`).
+
+### [2026-08-06] [PERENCANAAN ARSITEKTUR] Menu Admin Khusus IKPM Pusat: "Ringkasan Tenant"
+
+> Dokumen: `docs/arsitektur-backbone-ikpm.md` § "Menu Admin Khusus IKPM Pusat: 'Ringkasan
+> Tenant'". **STATUS: RENCANA, belum dieksekusi** — user minta dibuatkan perencanaan langsung
+> setelah eksekusi tenant "IKPM Pusat" selesai (lesson di atas), belum ada instruksi eksekusi
+> kode.
+
+User: *"bikin perencanaan yang merangkum semua aktifitas keanggotaan masing2 tenant.. isinya
+rangkuman anggota masing2 dan statistik masing2 tenant.. hanya ada di IKPM pusat dan hanya
+bisa diakses ikpm pusat.. dia menu tersendiri di admin.. jadi ada tenant apa saja, anggota
+berapa, dll gitu lah.. pokoknya rangkuman semua tenant.."* — menu dashboard BARU, satu-satunya
+di seluruh sistem yang menampilkan data agregat lintas SEMUA tenant, tapi HANYA muncul+
+reachable dari dashboard admin tenant `tenant_type='pusat'` itu sendiri (bukan Platform Admin
+`/platform/*`, sistem auth terpisah).
+
+**Riset kode sebelum menulis rencana**: `getTenantAccess()` sudah mengembalikan `tenant` (full
+row, termasuk `tenantType`) — cukup thread prop baru lewat rantai
+`layout.tsx→Sidebar+MobileSidebar→SidebarNav` yang sudah ada, TIDAK perlu query tambahan.
+`SidebarNav`'s `NAV_ITEMS` sistem 10-modul (`Module` di `lib/permissions.ts`) dikonfirmasi
+adalah axis PERMISSION per role DALAM satu tenant — BEDA axis dari kebutuhan ini (TIPE TENANT,
+lintas role) — jadi tidak dijadikan modul ke-11, melainkan field baru `pusatOnly?: boolean`
+sejajar `module`. `/platform/tenants` (list tenant existing di Platform Admin) dikonfirmasi
+TIDAK PERNAH menghitung jumlah anggota per tenant sama sekali — fitur ini genuinely baru, bukan
+menduplikasi yang sudah ada. Ditemukan gap kecil sebagai efek samping riset: `TYPE_LABEL` di
+file itu belum punya entry `"pusat"` (fallback diam-diam ke `TYPE_LABEL.cabang`, badge salah
+tampil "Cabang" untuk tenant Pusat) — dicatat sebagai drive-by fix saat eksekusi nanti.
+
+**Prinsip arsitektur inti yang dikunci di dokumen**: modul ini HANYA boleh membaca 3 tabel
+`public` schema yang memang backbone lintas-tenant sejak awal (`tenants`/`tenant_memberships`/
+`members`) — TIDAK PERNAH `tenant_{slug}.*` tenant lain. Ini BUKAN pengecualian isolasi schema-
+per-tenant yang sudah dikunci sejak lama, murni pakai layer yang sudah global by design.
+Permintaan data OPERASIONAL tenant lain ke depan (mis. "total transaksi semua tenant") adalah
+keputusan arsitektur TERPISAH, tidak otomatis termasuk perluasan fitur ini.
+
+**Keamanan — dua lapis wajib, ditegaskan eksplisit di dokumen**: (1) sidebar hide via
+`tenant.tenantType==="pusat"` — MURNI UX, bukan pertahanan; (2) guard server-side WAJIB di
+halaman itu sendiri (`redirect` kalau bukan tipe pusat) — pola PERSIS sama dengan guard
+10-modul permission yang sudah ada. Tanpa guard #2, admin tenant CABANG manapun yang tahu/
+menebak URL bisa melihat rangkuman keanggotaan SELURUH tenant lain — kelas bug yang sudah
+berkali-kali terjadi di project ini (isolasi custom domain, dst).
+
+**Rencana Fase 1** (ditulis lengkap di dokumen, termasuk contoh query SQL): 4× `StatCard`
+(reuse komponen existing tanpa perubahan) — total tenant aktif, total anggota unique, total
+baris `tenant_memberships` (dengan sublabel jujur soal potensi >jumlah anggota karena satu
+orang bisa di banyak tenant), anggota baru bulan ini (WAJIB anchor kalender WIB, bukan `new
+Date()` mentah — pola bug lama yang sudah berkali-kali dikunci). Breakdown jumlah tenant per
+tipe. Tabel utama daftar tenant+jumlah anggota (`LEFT JOIN tenant_memberships GROUP BY
+tenant.id`, breakdown status active/alumni/inactive, TANPA link keluar ke `/platform/tenants`
+karena beda sistem auth). Insight anggota tanpa PC IKPM resmi (`primaryCabangRefId IS NULL`).
+Ide di luar scope Fase 1 (grafik tren, breakdown demografis lintas-tenant) dicatat eksplisit
+sebagai TIDAK diminta — jangan dieksekusi tanpa konfirmasi ulang.
+
+**Nol kode ditulis** — murni dokumen (`docs/arsitektur-backbone-ikpm.md`, section baru + baris
+baru tabel "Cross-Tenant Data Access — Aturan" + update Roadmap Phase 5). Sekalian dikoreksi:
+status header section "Tenant Khusus: IKPM Pusat" (yang masih bilang "RENCANA" padahal sudah
+dieksekusi di lesson sebelumnya) diupdate jadi "✅ FASE A–D SELESAI" dengan status commit+
+migration VPS yang akurat.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Tenant "IKPM Pusat" — DIEKSEKUSI** (lihat lesson `[2026-08-06]`
+- Terakhir dikerjakan: **[PERENCANAAN, belum eksekusi] Menu Admin Khusus IKPM Pusat: "Ringkasan
+  Tenant"** (lihat lesson `[2026-08-06]` "[PERENCANAAN ARSITEKTUR] Menu Admin Khusus IKPM Pusat"
+  di atas, detail lengkap `docs/arsitektur-backbone-ikpm.md` § "Menu Admin Khusus IKPM Pusat:
+  'Ringkasan Tenant'"). User minta dibuatkan perencanaan LANGSUNG setelah eksekusi tenant "IKPM
+  Pusat" selesai (bullet di bawah): menu dashboard BARU, satu-satunya yang menampilkan data
+  agregat lintas SEMUA tenant, HANYA muncul+reachable dari dashboard admin tenant
+  `tenant_type='pusat'` sendiri. Riset dulu (bukan tebakan): `getTenantAccess()` sudah
+  mengembalikan `tenant.tenantType`, sistem 10-modul (`Module`) dikonfirmasi axis PERMISSION
+  beda dari kebutuhan ini (axis TIPE TENANT) — jadi bukan modul ke-11, melainkan field baru
+  `pusatOnly?: boolean` di `SidebarNav`. `/platform/tenants` dikonfirmasi TIDAK PERNAH hitung
+  jumlah anggota per tenant — fitur genuinely baru. Gap kecil ditemukan sebagai efek samping:
+  `TYPE_LABEL` platform admin belum punya entry `"pusat"` (drive-by fix dicatat). Prinsip
+  arsitektur dikunci di dokumen: HANYA baca 3 tabel `public` schema backbone
+  (`tenants`/`tenant_memberships`/`members`), TIDAK PERNAH `tenant_{slug}.*` tenant lain — bukan
+  pengecualian isolasi schema. **Keamanan 2 lapis wajib**: sidebar hide (UX) + guard server-side
+  di halaman itu sendiri (pertahanan sesungguhnya) — tanpa guard #2, admin tenant lain bisa
+  akses via URL langsung. Rencana Fase 1 lengkap dengan query SQL (4 StatCard, breakdown tipe
+  tenant, tabel utama daftar tenant+jumlah anggota, insight anggota tanpa PC IKPM) ditulis di
+  dokumen; grafik tren+demografis lintas-tenant dicatat eksplisit di luar scope. **Nol kode
+  ditulis** — murni dokumen, menunggu instruksi eksekusi eksplisit. Sekalian dikoreksi: status
+  section "Tenant Khusus: IKPM Pusat" (masih bilang "RENCANA" padahal sudah dieksekusi)
+  diupdate jadi akurat.
+- Sesi sebelumnya: **Tenant "IKPM Pusat" — DIEKSEKUSI** (lihat lesson `[2026-08-06]`
   "Tenant 'IKPM Pusat' — DIEKSEKUSI" di atas, detail lengkap `docs/arsitektur-backbone-ikpm.md`
   § "Tenant Khusus: IKPM Pusat"). Lanjutan langsung dari rencana sesi sebelumnya (lesson
-  "[PERENCANAAN ARSITEKTUR]" tepat di atas) — user beri lampu hijau eksekusi penuh ("mode hemat
+  "[PERENCANAAN ARSITEKTUR]" di atasnya) — user beri lampu hijau eksekusi penuh ("mode hemat
   dan auto") tanpa klarifikasi tambahan. Skema: `TENANT_TYPES`/`MEMBERSHIP_TYPES` diperluas
   `"pusat"`, `REGISTERED_VIA` +`"auto_pusat"` (tanpa migration, kolom tanpa CHECK constraint),
   migration baru `0060_tenant_type_pusat.sql` (2 CHECK constraint + partial unique index
@@ -15721,11 +15803,13 @@ di tenant manapun setelah itu otomatis ikut jadi anggota Pusat juga (lewat
   "pusat" tanpa opsi radio baru — ditambahkan (dengan ikon `Landmark`, diverifikasi ada di
   `.d.ts` terinstall). `tsc --noEmit` bersih di kedua package di SETIAP fase + `bun run build`
   genuine sukses (`Cached: 0 cached`, 46.6s, dev server dimatikan+`.next` dibersihkan+
-  direstart). Migration dijalankan+diverifikasi LOKAL. **Sudah di-commit+push (`a6f877b`).
-  Belum dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba: buat
-  tenant "IKPM Pusat" dari `/platform/tenants/new`, konfirmasi backfill SELURUH anggota
-  existing, coba buat tenant "pusat" KEDUA (harus ditolak jelas), dan konfirmasi anggota baru
-  di tenant manapun otomatis ikut jadi anggota Pusat.
+  direstart). Migration dijalankan+diverifikasi di LOKAL **dan di VPS** (user konfirmasi output
+  sukses langsung dari server — `ALTER TABLE`×4+`CREATE INDEX`+verifikasi constraint/index).
+  **Sudah di-commit+push (`a6f877b`). Build+restart PM2 di VPS dan verifikasi visual di browser
+  belum dikonfirmasi selesai** — user perlu coba: buat tenant "IKPM Pusat" dari
+  `/platform/tenants/new`, konfirmasi backfill SELURUH anggota existing, coba buat tenant
+  "pusat" KEDUA (harus ditolak jelas), dan konfirmasi anggota baru di tenant manapun otomatis
+  ikut jadi anggota Pusat.
 - Sesi sebelumnya: **Koreksi: Komitmen Cart Selalu Menahan Aktivasi Sampai Bayar + Overlay
   "Lunasi Pembayaran"** (lihat lesson `[2026-08-06]` "Koreksi: Komitmen Cart Selalu Menahan
   Aktivasi Sampai Bayar" di atas, detail lengkap `docs/arsitektur-gabung-forum.md` §
