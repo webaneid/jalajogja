@@ -30,8 +30,8 @@ export function MembershipConfigForm({
   const [pending, setPending]   = React.useState(false);
   const [productId,  setProductId]  = React.useState(defaultValues.requiredProductId ?? "");
   const [campaignId, setCampaignId] = React.useState(defaultValues.requiredCampaignId ?? "");
-  const [paymentRequired, setPaymentRequired] = React.useState(defaultValues.paymentRequired);
-  const [requireMode, setRequireMode] = React.useState<"either" | "both">(defaultValues.requireMode);
+  const [productRequired,  setProductRequired]  = React.useState(defaultValues.productRequired);
+  const [campaignRequired, setCampaignRequired] = React.useState(defaultValues.campaignRequired);
   const [registrationInfo, setRegistrationInfo] = React.useState(defaultValues.registrationInfo ?? "");
   const [numberEnabled, setNumberEnabled] = React.useState(!!defaultValues.membershipNumberFormat);
   const [numberFormat, setNumberFormat] = React.useState<ForumMembershipNumberFormat>(
@@ -41,8 +41,7 @@ export function MembershipConfigForm({
   const productOptions:  ComboboxOption[] = products.map((p) => ({ value: p.id, label: p.label }));
   const campaignOptions: ComboboxOption[] = campaigns.map((c) => ({ value: c.id, label: c.label }));
 
-  const anyConfigured  = !!productId || !!campaignId;
-  const bothConfigured = !!productId && !!campaignId;
+  const bothRequired = !!productId && productRequired && !!campaignId && campaignRequired;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,9 +49,9 @@ export function MembershipConfigForm({
     try {
       const result = await saveMembershipConfigAction(slug, {
         requiredProductId:  productId  || null,
+        productRequired:    !!productId  && productRequired,
         requiredCampaignId: campaignId || null,
-        paymentRequired:    anyConfigured ? paymentRequired : false,
-        requireMode,
+        campaignRequired:   !!campaignId && campaignRequired,
         registrationInfo:   registrationInfo.trim() || null,
         membershipNumberFormat: numberEnabled ? numberFormat : null,
       });
@@ -92,12 +91,24 @@ export function MembershipConfigForm({
         <Combobox
           options={productOptions}
           value={productId}
-          onValueChange={setProductId}
+          onValueChange={(v) => { setProductId(v); if (!v) setProductRequired(false); }}
           placeholder="Tidak ada — kosongkan"
           searchPlaceholder="Cari produk..."
           emptyText="Tidak ada produk aktif."
           disabled={pending}
         />
+        {productId && (
+          <label className="flex items-start gap-2 text-sm pt-1">
+            <input
+              type="checkbox"
+              checked={productRequired}
+              onChange={(e) => setProductRequired(e.target.checked)}
+              disabled={pending}
+              className="mt-0.5"
+            />
+            <span>Wajibkan produk ini untuk anggota baru.</span>
+          </label>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -105,66 +116,36 @@ export function MembershipConfigForm({
         <Combobox
           options={campaignOptions}
           value={campaignId}
-          onValueChange={setCampaignId}
+          onValueChange={(v) => { setCampaignId(v); if (!v) setCampaignRequired(false); }}
           placeholder="Tidak ada — kosongkan"
           searchPlaceholder="Cari campaign..."
           emptyText="Tidak ada campaign aktif."
           disabled={pending}
         />
-        <p className="text-xs text-muted-foreground">
-          Kosongkan keduanya kalau forum ini 100% gratis, tanpa ajakan bayar apa pun.
-        </p>
-      </div>
-
-      {anyConfigured && (
-        <div className="space-y-4 rounded-xl border border-border p-4">
-          <label className="flex items-start gap-2 text-sm">
+        {campaignId && (
+          <label className="flex items-start gap-2 text-sm pt-1">
             <input
               type="checkbox"
-              checked={paymentRequired}
-              onChange={(e) => setPaymentRequired(e.target.checked)}
+              checked={campaignRequired}
+              onChange={(e) => setCampaignRequired(e.target.checked)}
               disabled={pending}
               className="mt-0.5"
             />
-            <span>
-              Wajibkan pembayaran ini untuk anggota baru — kalau tidak dicentang, produk/campaign
-              di atas cuma jadi ajakan dukungan sukarela (anggota tetap bisa bergabung gratis
-              lewat halaman <code className="text-xs">/gabung</code>).
-            </span>
+            <span>Wajibkan campaign ini untuk anggota baru.</span>
           </label>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Kosongkan keduanya kalau forum ini 100% gratis, tanpa ajakan bayar apa pun. Kalau tidak
+          dicentang wajib, produk/campaign yang dipilih cuma jadi ajakan dukungan sukarela —
+          anggota tetap bisa bergabung gratis lewat halaman <code className="text-xs">/gabung</code>.
+        </p>
+      </div>
 
-          {paymentRequired && bothConfigured && (
-            <div className="space-y-2">
-              <Label>Syarat pemenuhan (produk & campaign sekaligus ditunjuk)</Label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRequireMode("either")}
-                  disabled={pending}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                    requireMode === "either"
-                      ? "border-primary bg-primary/5 font-medium text-primary"
-                      : "border-border text-muted-foreground hover:bg-muted/40"
-                  }`}
-                >
-                  Salah satu cukup
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRequireMode("both")}
-                  disabled={pending}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                    requireMode === "both"
-                      ? "border-primary bg-primary/5 font-medium text-primary"
-                      : "border-border text-muted-foreground hover:bg-muted/40"
-                  }`}
-                >
-                  Wajib keduanya
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+      {bothRequired && (
+        <p className="text-xs text-muted-foreground rounded-lg border border-dashed border-border p-3">
+          Anggota baru wajib melengkapi KEDUA syarat di atas (produk dan campaign) sebelum bisa
+          bergabung.
+        </p>
       )}
 
       <div className="space-y-4 rounded-xl border border-border p-4">

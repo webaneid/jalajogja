@@ -51,26 +51,45 @@ type Props = {
   // Modul mana yang aktif di tenant ini — diteruskan ke DirectoryChoicePopover supaya
   // popup 3 pilihan hanya menampilkan modul yang benar-benar ditawarkan tenant ini.
   enabledModules?: EkosistemModulesConfig;
+  // Ada invoice OUTSTANDING (belum lunas) hasil komitmen /gabung (produk/donasi yang
+  // ditambahkan lewat GabungItemWidget) — PRIORITAS TERTINGGI di atas semua state lain:
+  // user SUDAH commit membayar, overlay harus mengarahkan mereka melunasi, bukan menyuruh
+  // "Lengkapi Data"/"Gabung X" dari awal lagi. Secara struktural hanya pernah diisi saat
+  // isForum=true (dihitung caller di dalam blok forum-only) — cabang/marhalah tidak punya
+  // konsep komitmen pembayaran gabung. Lihat docs/arsitektur-gabung-forum.md § "Koreksi:
+  // Komitmen Cart Selalu Menahan Aktivasi Sampai Bayar".
+  pendingInvoiceId?: string | null;
 };
 
 export function MembershipEligibilityOverlay({
   tenantName, missing, directoryIncompleteModule, baseUrl, isForum, isJoined, enabledModules,
+  pendingInvoiceId,
 }: Props) {
   const eligible             = missing.length === 0;
   const onlyDirectoryMissing = missing.length === 1 && missing[0] === "directory";
 
-  // Defensif: cabang/marhalah yang sudah eligible seharusnya tidak pernah sampai render
-  // komponen ini (caller sudah berhenti menampilkannya) — kalau tetap terpanggil, jangan
-  // tampilkan apa pun daripada salah menyarankan "Gabung X" untuk tenant yang tidak
-  // punya alur /gabung.
-  if (eligible && !isForum) return null;
+  // Defensif: cabang/marhalah yang sudah eligible DAN tidak punya invoice pending seharusnya
+  // tidak pernah sampai render komponen ini (caller sudah berhenti menampilkannya) — kalau
+  // tetap terpanggil, jangan tampilkan apa pun daripada salah menyarankan "Gabung X" untuk
+  // tenant yang tidak punya alur /gabung.
+  if (eligible && !isForum && !pendingInvoiceId) return null;
 
   const moduleLabel = directoryIncompleteModule ? EKOSISTEM_MODULE_LABELS[directoryIncompleteModule] : null;
 
   let message: ReactNode;
   let action:  ReactNode;
 
-  if (eligible) {
+  if (pendingInvoiceId) {
+    message = (
+      <>Anda sudah memilih untuk mendukung <strong>{tenantName}</strong> — selesaikan
+        pembayaran untuk melengkapi keanggotaan Anda.</>
+    );
+    action = (
+      <a href={`${baseUrl}/invoice/${pendingInvoiceId}`} className="btn btn-primary btn-md">
+        Lunasi Pembayaran →
+      </a>
+    );
+  } else if (eligible) {
     message = <>Data Anda lengkap. Jika ingin mendaftar menjadi anggota <strong>{tenantName}</strong>, klik tombol di bawah ini:</>;
     action  = <a href={`${baseUrl}/gabung`} className="btn btn-primary btn-md">Gabung {tenantName}</a>;
   } else if (onlyDirectoryMissing && moduleLabel && directoryIncompleteModule) {

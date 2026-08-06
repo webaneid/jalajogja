@@ -17,6 +17,7 @@ import { checkMemberEligibility } from "@/lib/member-eligibility";
 import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 import { enabledModuleList } from "@/lib/ekosistem-modules";
 import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
+import { isRequirementSatisfied } from "@/lib/membership-config";
 import type { MembershipConfigData as MembershipConfig } from "../../settings/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -687,10 +688,26 @@ async function activateForumMembershipIfApplicable(
   if (!tenantRow || tenantRow.tenantType !== "forum") return;
 
   const config = await getSetting<MembershipConfig>(tenantDb, "membership_config", "forum");
-  if (!config?.paymentRequired) return;
+  if (!config) return;
+  // Nol produk & campaign dikonfigurasi sama sekali → tidak ada apa pun untuk dicocokkan.
   if (!config.requiredProductId && !config.requiredCampaignId) return;
 
   const { db, schema } = tenantDb;
+
+  // Produk BERVARIASI: itemId di invoice_items adalah variation id (product_variations.id),
+  // bukan requiredProductId (products.id) langsung — kumpulkan seluruh variationId milik
+  // requiredProductId dulu supaya match tetap benar untuk produk variable. Bug laten
+  // ditemukan+ditutup 2026-08-06, lihat docs/arsitektur-gabung-forum.md § "Redesain /gabung".
+  const productRelevantIds = new Set<string>();
+  if (config?.requiredProductId) {
+    productRelevantIds.add(config.requiredProductId);
+    const variationRows = await db
+      .select({ id: schema.productVariations.id })
+      .from(schema.productVariations)
+      .where(eq(schema.productVariations.productId, config.requiredProductId));
+    for (const v of variationRows) productRelevantIds.add(v.id);
+  }
+
   const items = await db
     .select({
       itemType: schema.invoiceItems.itemType,
@@ -704,14 +721,21 @@ async function activateForumMembershipIfApplicable(
     .from(schema.invoiceItems)
     .where(eq(schema.invoiceItems.invoiceId, invoiceId));
 
-  const hasProduct  = !!config.requiredProductId  && items.some((it) => it.itemType === "product"  && it.itemId === config.requiredProductId  && it.forGabungRegistration);
-  const hasCampaign = !!config.requiredCampaignId && items.some((it) => it.itemType === "donation" && it.itemId === config.requiredCampaignId && it.forGabungRegistration);
+  const hasProduct  = items.some((it) => it.itemType === "product"  && it.forGabungRegistration && it.itemId && productRelevantIds.has(it.itemId));
+  const hasCampaign = items.some((it) => it.itemType === "donation" && it.forGabungRegistration && it.itemId === config?.requiredCampaignId);
 
-  const bothConfigured = !!(config.requiredProductId && config.requiredCampaignId);
-  const satisfied = bothConfigured
-    ? (config.requireMode === "both" ? (hasProduct && hasCampaign) : (hasProduct || hasCampaign))
-    : (hasProduct || hasCampaign);
-  if (!satisfied) return;
+  // Precondition WAJIB, terpisah dari isRequirementSatisfied di bawah: invoice ini harus
+  // GENUINELY mengandung minimal satu item forGabung yang cocok konfigurasi. Tanpa gate
+  // ini, invoice organik (donasi/beli produk biasa TANPA lewat /gabung sama sekali) bisa
+  // lolos vacuous-true di isRequirementSatisfied() kalau slot yang bersangkutan kebetulan
+  // TIDAK admin-wajibkan (productRequired/campaignRequired=false) — persis kelas bug yang
+  // sudah dikunci di "Pemisahan Donasi vs Registrasi Forum" (arsitektur-gabung-forum.md),
+  // JANGAN dihilangkan lagi. Setelah lolos gate ini, isRequirementSatisfied menentukan
+  // apakah komitmen yang ADA sudah cukup LENGKAP (menghormati flag wajib/opsional per-item
+  // admin — bukan berarti "ada gabung item apa saja langsung aktif").
+  if (!hasProduct && !hasCampaign) return;
+
+  if (!isRequirementSatisfied(config, { product: hasProduct, campaign: hasCampaign })) return;
 
   const enabledModulesConfig = await getEnabledEkosistemModules(tenantDb);
   const eligibility = await checkMemberEligibility(memberId, enabledModuleList(enabledModulesConfig));

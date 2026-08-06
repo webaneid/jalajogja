@@ -15251,8 +15251,395 @@ session** — tidak bisa diverifikasi empiris via curl seperti halaman publik (b
 arsip post sebelumnya), verifikasi murni via `tsc`+build+trace kondisi kode manual. Belum
 di-commit/push saat ditulis di sini — lihat commit berikutnya.
 
+### [2026-08-06] `/gabung` — Fixed Footer Tombol Gabung + Revert Percobaan "Tanpa Navigasi"
+
+> Detail penuh (termasuk metodologi verifikasi curl+signed session cookie): lihat
+> `docs/arsitektur-backbone-ikpm.md` § "UI `/gabung` — Fixed Footer Tombol Gabung + Revert
+> Percobaan 'Tanpa Navigasi' (2026-08-06)".
+
+User minta dua hal di halaman `/gabung`: (1) "tidak pernah meninggalkan laman ini, tetap di
+satu halaman gabung"; (2) checkbox persetujuan + tombol "Ya, Saya Ingin Bergabung"
+(`JoinForumButton`) di mobile jadi fixed bottom bar yang override fixed footer lain, z-index
+benar, tidak pernah hilang.
+
+**Percobaan pertama** (di-REVERT sebagian, lihat di bawah): kartu produk/donasi syarat wajib
+diubah dari `<a href>` navigasi jadi widget inline yang memanggil `addToCartAction` langsung
+(pola `donation-banner-cart.tsx` — nominal chip untuk donasi, quick-add untuk produk simple,
+produk BERVARIASI tetap harus ke halaman detail sebagai satu-satunya pengecualian yang sudah
+ada presedennya). `JoinForumButton` diubah: tidak lagi auto-redirect `window.location.href`
+setelah join sukses (status sukses inline + tombol eksplisit), checkbox+tombol dirender dua
+kali (desktop `hidden md:block` normal, mobile `md:hidden fixed bottom-0 z-[72]` — satu tingkat
+di atas `MobileActionSheet` yang z-[71], bar tertinggi yang sudah ada di codebase) dengan id
+unik per instance (cegah duplikat `id`/`htmlFor` DOM) dan spacer diukur via `ResizeObserver`
+(bukan angka tetap, karena teks persetujuan bisa wrap 2-3 baris tergantung lebar layar).
+
+**User menegur scope-creep**: "mana tombol gabungnya gk muncul.. saya bilang jangan lakukan
+lainnya selain mengubah tombol gabung berada di footer fixed seperti ketika transaksi ditempat
+lain." Investigasi menemukan **root cause BUKAN bug** — tenant test `forcreator` sedang
+`paymentRequired=true` di config `membership_config`, dan pada kondisi itu `JoinForumButton`
+**MEMANG TIDAK PERNAH dirender sama sekali** — perilaku YANG SUDAH ADA sejak Fase D alur
+pendaftaran forum (jauh sebelum sesi ini): kalau pembayaran wajib, keanggotaan aktif OTOMATIS
+lewat hook `activateForumMembershipIfApplicable` saat invoice lunas, bukan lewat klik tombol
+manual. User kemungkinan menguji state itu dan mengira tombolnya hilang karena bug baru.
+
+**Fix — revert sebagian, bukan tambal**: kartu produk/donasi wajib dikembalikan ke `<a href>`
+navigasi sederhana (persis bentuk sebelum percobaan). File `gabung-required-item.tsx` DIHAPUS
+TOTAL. Field tambahan yang cuma dibutuhkan widget inline itu (`productType`/`price`/donation
+amounts) dilepas dari query `page.tsx`. **DIPERTAHANKAN** (memang bagian dari permintaan
+"tombol gabung di footer fixed"): seluruh perubahan `JoinForumButton`. Sebagai langkah unblock
+testing (bukan keputusan produk permanen), config `forcreator.membership_config.paymentRequired`
+diset sementara ke `false` supaya tombolnya langsung terlihat — bisa ditoggle balik lewat
+`/app/forcreator/settings/keanggotaan`.
+
+`tsc --noEmit` bersih (2×) + `bun run build` genuine sukses (2×). Curl dengan session cookie
+asli (signed HMAC — Better Auth menolak raw token tanpa signature `token.base64(HMAC-SHA256(
+BETTER_AUTH_SECRET, token))`, url-encoded) mengonfirmasi struktur HTML benar setelah revert:
+`z-[72]` fixed bar hadir, 2 checkbox id unik, tombol muncul 2× (desktop+mobile), widget inline
+lama TIDAK ADA lagi, hanya SATU elemen `fixed bottom-0` di halaman (tidak bentrok dengan
+BottomNav situs — `/gabung` sudah masuk `isSingleMobileRoute()` sejak awal). Nol migrasi DB.
+**Belum diverifikasi visual sungguhan di browser oleh siapa pun** — user perlu coba lagi setelah
+`paymentRequired` di-set `false`.
+
+**Aturan yang ditegaskan**: instruksi "tidak pernah meninggalkan halaman ini" yang terdengar
+ABSOLUT ternyata, setelah diklarifikasi user, HANYA berlaku untuk perilaku tombol Gabung itu
+sendiri (tidak auto-redirect setelah sukses) — BUKAN seluruh flow pembayaran/pemilihan produk-
+donasi. Kalau instruksi serupa terdengar luas/arsitektural, JANGAN langsung bangun solusi paling
+literal/luas — pertimbangkan interpretasi SEMPIT yang sudah cocok pola established lebih dulu,
+dan kalau ragu skala dampaknya besar, PERKECIL scope draft pertama sebelum eksekusi penuh.
+
+### [2026-08-06] Dokumen `docs/arsitektur-gabung-forum.md` Dipisah dari Backbone + Audit Sinkronisasi Kode
+
+User minta seluruh dokumentasi alur "bergabung ke forum" (v1 historis + v2 implementasi,
+sebelumnya jadi satu bagian besar ~955 baris di dalam `docs/arsitektur-backbone-ikpm.md`)
+dipindahkan ke dokumen terpisah `docs/arsitektur-gabung-forum.md`, DAN dipastikan arsitektur
+yang tertulis benar-benar sinkron dengan kode yang berjalan sekarang — bukan cuma copy-paste
+teks lama begitu saja.
+
+**Pemindahan**: seluruh "Alur Pendaftaran Forum v1 (SUPERSEDED)" + "Alur Pendaftaran Forum v2"
+(termasuk semua subsection historis: Prinsip Kunci, Syarat Kelayakan, Konfigurasi Pembayaran,
+Alur End-to-End, Nomor Keanggotaan Lokal Forum, Pemisahan Donasi vs Registrasi, dan "UI /gabung
+— Fixed Footer..." dari lesson di atas) dipindah verbatim ke file baru — dipertahankan sebagai
+CATATAN SEJARAH keputusan (bukan ditulis ulang), karena riwayat "kenapa v1 diganti v2" tetap
+berharga. Skenario 3 (narasi ilustratif forum di `backbone-ikpm.md` § "Alur Skenario") dan
+checklist Phase 4 lama (§ "Roadmap Implementasi") ikut dipindah — keduanya spesifik forum.
+`backbone-ikpm.md` sekarang cuma menyisakan pointer 3-baris ke dokumen baru di titik-titik itu,
+plus fix kecil: § "Antarmuka Admin > Forum" (masih menyebut route lama `/{forum-slug}/daftar`,
+diperbaiki ke `/gabung` yang benar-benar dipakai sekarang) dan catatan klarifikasi di Skenario
+1c (bagian forum-nya menggambarkan asumsi v1-era "registrasi sekaligus dalam satu form", sudah
+tidak akurat untuk v2 — cabang/marhalah-nya tetap akurat, tidak disentuh).
+
+**Audit sinkronisasi — dibaca LANGSUNG ke kode, bukan dipercaya dari teks lama**: `lib/member-
+eligibility.ts` (rename dari `lib/forum-eligibility.ts`), `components/akun/membership-
+eligibility-overlay.tsx` (rename dari `forum-join-overlay.tsx`), `gabung/page.tsx`,
+`gabung/actions.ts`, `join-forum-button.tsx`, `settings/actions.ts` (`MembershipConfigData`),
+`settings/keanggotaan/page.tsx` + `membership-config-form.tsx`, `finance/billing/actions.ts`
+(`activateForumMembershipIfApplicable`), `lib/forum-membership-number.ts`+`.server.ts`,
+`akun/page.tsx` wiring, plus schema (`tenant_memberships` kolom forum, `cart_items`/
+`invoice_items.forGabungRegistration`, `SETTING_GROUPS` grup "forum") dan ketiga migration
+(`0042`/`0045`/`0046`) — SEMUA dikonfirmasi ADA dan SESUAI perilaku yang didokumentasikan.
+
+**Satu drift nyata ditemukan** (bukan penyimpangan, murni pertumbuhan yang belum
+didokumentasikan): `checkMemberEligibility()` (dulu `checkForumEligibility()`) di kode SEKARANG
+jauh lebih detail dari rencana asli § "1. Syarat Kelayakan" (ditulis 2026-07-23) — field baru
+`homeAddressId` (alamat sesungguhnya, terpisah dari `domicileStatus` yang cuma kategori Tetap/
+Sementara — supaya anggota hasil import massal yang dua kolom itu di-parse independen tidak
+lolos tanpa alamat tersimpan); cek "directory" sekarang mensyaratkan KELENGKAPAN penuh per
+modul (`checkUsahaComplete`/`checkPesantrenComplete`/`checkProfesionalComplete`, field PERSIS
+sama dengan validasi self-service form), bukan cuma "punya baris" seperti rencana asli; parameter
+baru `enabledDirectoryModules` (integrasi toggle modul ekosistem per-tenant, `docs/arsitektur-
+ekosistem.md` — fitur yang belum ada saat v2 pertama ditulis); return field baru
+`directoryIncompleteModule` (smart-routing ke modul yang sudah mulai diisi tapi belum lengkap).
+Dan file ini sekarang JUGA jadi rumah `checkGeneralRegistrationEligibility()`/
+`checkProfileComplete()` — helper TIDAK TERKAIT forum sama sekali, dipakai Toggle B "Wajib
+Terdaftar (Umum)" modul Event — bukti `checkMemberEligibility()` sudah genuinely generic
+lintas-fitur, bukan cuma "digeneralisasi tapi tetap dipakai forum saja".
+
+**Field list yang salah di rencana lama TIDAK dikoreksi diam-diam** — teks §1 dipertahankan
+apa adanya sebagai catatan sejarah, diberi blockquote peringatan eksplisit di tempatnya + section
+baru "Audit Sinkronisasi Arsitektur ↔ Kode Aktual" di bagian paling bawah dokumen baru yang
+mendokumentasikan SEMUA 5 poin drift di atas secara detail, plus tabel konfirmasi "sinkron penuh"
+untuk semua file lain yang diverifikasi tidak menyimpang.
+
+**Aturan yang ditegaskan**: kalau diminta "pastikan dokumentasi dan kode sinkron", jangan cukup
+pindah-tempat teks lama — BACA kode aktual satu per satu (bukan diasumsikan dari rencana yang
+sudah lama tidak disentuh), dan kalau ketemu drift, JANGAN diam-diam menimpa teks historis
+(riwayat keputusan tetap berharga) — tandai eksplisit dengan blockquote di titik yang salah +
+tulis section audit terpisah yang jadi rujukan operasional yang benar. Ini konsisten dengan pola
+yang sudah berkali-kali dipakai di project ini (Skenario "digantikan", "Catatan penamaan", dst)
+— histori tidak dihapus, tapi juga tidak boleh disalahartikan sebagai kebenaran operasional saat
+ini tanpa penanda.
+
+`docs/arsitektur-gabung-forum.md` (baru, 1212 baris) dan `docs/arsitektur-backbone-ikpm.md`
+(diringkas dari 1687 → 710 baris) — murni perubahan dokumentasi, nol kode disentuh sesi ini.
+Belum di-commit/push.
+
+### [2026-08-06] Redesain /gabung — Widget Inline + Syarat Per-Item Eksplisit (Dieksekusi)
+
+> Detail lengkap: **`docs/arsitektur-gabung-forum.md` § "Redesain /gabung — Widget Inline
+> (Donasi/Produk) + Syarat Per-Item Eksplisit (2026-08-06)"**.
+
+Lanjutan langsung dari perencanaan (entri di atas) — user beri lampu hijau eksekusi via "mode
+hemat dan mode otomatis". Seluruh rencana (§ 5–13 dokumen) dieksekusi tanpa henti untuk
+pertanyaan lanjutan, sesuai instruksi "otomatis". Ringkasan perubahan:
+
+**Skema baru `MembershipConfigData`** — `paymentRequired: boolean` + `requireMode:
+"either"|"both"` (yang membuka pilihan ke USER mana yang mau dibayar) DIHAPUS TOTAL, diganti
+`productRequired: boolean` + `campaignRequired: boolean` independen per slot — admin yang
+menentukan item mana yang wajib secara eksplisit, tidak ada lagi ambiguitas "salah satu cukup".
+Disimpan di JSONB `tenant.settings` yang sama (`membership_config`/`forum`) — nol migrasi DB,
+field lama otomatis diabaikan begitu kode baru deploy.
+
+**Bug laten ditemukan+ditutup sekaligus (bukan disengaja diperkenalkan, sudah ada sejak
+`activateForumMembershipIfApplicable` dibuat)**: admin form produk (`settings/keanggotaan/
+page.tsx`) tidak pernah filter `productType` — admin BISA menunjuk produk `variable` sebagai
+syarat wajib. Tapi predikat lama `it.itemId === config.requiredProductId` membandingkan LANGSUNG
+ke `products.id`, padahal `invoice_items.itemId` untuk produk bervariasi SELALU berisi ID
+VARIASI (`product_variations.id`), bukan ID produk induk (dikonfirmasi via 3 titik independen di
+codebase: `product-detail-client.tsx`, `keranjang/page.tsx`, `checkout/page.tsx`). Akibatnya:
+kalau admin menunjuk produk bervariasi sebagai syarat, keanggotaan TIDAK PERNAH aktif meski
+invoice sudah lunas — silent failure. Fix: `activateForumMembershipIfApplicable` sekarang
+mengumpulkan seluruh `variationId` milik `requiredProductId` dulu (query tambahan ke
+`product_variations`), baru cocokkan `itemId` terhadap SET itu.
+
+**Helper terpusat baru `apps/web/lib/membership-config.ts`** — `hasPaymentRequirement()` +
+`isRequirementSatisfied()`, pure function client-safe, dipakai di TIGA titik (halaman `/gabung`
+untuk gating tombol, `joinForumAction` untuk guard mode-gratis, `activateForumMembershipIfApplicable`
+untuk settlement pasca-bayar) — satu sumber kebenaran "wajib"/"terpenuhi", cegah drift definisi
+antar titik (kelas bug yang sudah berkali-kali jadi masalah nyata di project ini).
+
+**3 komponen baru, kolokasi di `gabung/`** (pola "duplikasi demi isolasi" — TIDAK menyentuh
+`DonationBannerCart`/`/keranjang` sama sekali, keputusan scope eksplisit): `GabungItemWidget`
+(donasi nominal-chip + produk simple/variable inline-add, meniru visual `DonationBannerCart`
+tapi berdiri sendiri, selalu `forGabung:true`, `router.refresh()` setelah sukses supaya gating
+server-side ikut ter-update), `ProductVariationPopup` (Dialog popup BARU — kapabilitas yang
+sebelumnya tidak ada sama sekali, TIDAK PERNAH navigasi keluar `/gabung`, data variasi di-fetch
+EAGER oleh Server Component `/gabung/page.tsx` bukan lazy-fetch — karena cuma ada NOL/SATU
+produk per konfigurasi forum, jauh lebih murah dari infra lazy-fetch+loading-state), dan
+`GabungCheckoutButton` (checkbox+tombol untuk mode wajib, reuse `AgreementFields` yang di-export
+dari `join-forum-button.tsx` — SATU-SATUNYA perubahan ke file itu, `JoinForumButton` sendiri
+tidak disentuh, tetap dipakai apa adanya untuk mode gratis). Gating tombol: `!agreed ||
+!canProceed` — `canProceed` dihitung server-side dari isi cart SEKARANG (cek
+`forGabungRegistration=true` yang match, simetris persis dengan predikat settlement pasca-bayar)
+— bukan cuma checkbox, mencegah user checkout dengan cart kosong dari item forum yang settlement-
+nya nanti gagal diam-diam.
+
+**`gabung/page.tsx` diperluas signifikan** — fetch produk kini termasuk `productType`/
+`attributeGroups`/variasi lengkap (kalau `variable`, subset query yang sama dengan
+`/produk/[productSlug]/page.tsx`, termasuk fallback harga variasi ke harga induk), fetch
+campaign kini termasuk `amounts` dari `settings.donasi.donation_config.recommended_amounts`
+(sumber SAMA dengan `/keranjang`), dan query BARU ke `cart_items` (join `carts` by
+`cart_session` cookie) untuk hitung `productInCart`/`campaignInCart` — tidak lewat
+`getCartAction`/`CartItem` type (tidak expose `forGabungRegistration`), query manual mengikuti
+pola `keranjang/page.tsx`. Render dirombak: mode wajib dan mode opsional SAMA-SAMA memakai
+`<GabungItemWidget>` (§ 4 poin 2 rencana — "laman gabung seperti laman cart event" berlaku
+untuk KEDUA mode, bukan cuma yang wajib), bedanya cuma prop `required` (copy) dan komponen
+tombol di bawahnya (`GabungCheckoutButton` vs `JoinForumButton`).
+
+**Deviasi kecil dari rencana tertulis** (dicatat jujur, non-arsitektural): rencana § 10
+menyebut `resolvePrice(product, "member")` untuk harga di popup — saat implementasi, membangun
+objek `ProductCardData` PENUH (butuh field `id/slug/description/coverUrl/categoryName/
+sellerType/businessName/mitraId` yang semuanya tidak relevan untuk resolusi harga) dinilai lebih
+ribet dari perlu untuk 3-baris logic prioritas tier — diganti fungsi lokal `resolveMemberPrice()`
+(memberPrice ?? publicPrice ?? price, urutan identik `resolvePrice`'s cabang `sessionType===
+"member"`). Hasil akhir sama persis, cuma jalan implementasi lebih ringkas.
+
+**Verifikasi**: `tsc --noEmit` 0 error di `apps/web` DAN `packages/db` (2 kali cek — setelah
+Fase A-B, setelah Fase C-D). `bun run build --filter=@jalajogja/web` genuine (dev server
+dimatikan+`.next` dibersihkan sebelum build, `Cached: 0 cached`, 47.4 detik) — rute
+`/[tenant]/gabung` 6.88 kB terkonfirmasi muncul di build output tanpa error. Grep akhir
+`paymentRequired|requireMode` di seluruh `apps/web` — nol sisa di kode (cuma komentar, sudah
+disesuaikan). Dev server direstart, `curl` 200 OK. **Belum di-commit/push ke git, belum
+dijalankan di VPS** (nol migrasi DB — deploy cukup pull+build+restart begitu di-push), **belum
+diverifikasi visual di browser** (Fase E rencana — butuh tenant forum+member eligible+produk
+variable+campaign nyata, di luar kapasitas environment sesi ini).
+
+### [2026-08-06] Koreksi: Komitmen Cart Selalu Menahan Aktivasi Sampai Bayar + Overlay "Lunasi Pembayaran"
+
+> Detail penuh: `docs/arsitektur-gabung-forum.md` § "Koreksi: Komitmen Cart Selalu Menahan
+> Aktivasi Sampai Bayar (2026-08-06)". Menyusul LANGSUNG "Redesain /gabung" (entri di atas,
+> sesi yang sama) — user mengoreksi SEBELUM fitur itu sempat di-commit.
+
+User: *"diwajibkan atau tidak, jika dia memilih membeli produk dan, atau donasi, maka
+keanggotaannya ditahan sampai membayar. karena itu komitmen.. sehingga setelah klik gabung,
+masuk ke invoice terlebih dahulu.. bayar dulu.. termasuk nanti di keanggotaaan itu ada
+notifikasi: Lunasi Pembayaran yang menutupi kartu ketika mobile atau data keanggotaan ketika
+desktop..(notifikasi yang mendeteksi eligibilitas itu). yang jadi pertanyaan, apakah
+memungkinkan logikannya ketika donasi dan produk tersebut benar2 yang diorder dari laman
+gabung, bukan donasi sendiri atau produk sendiri karena itu 2 entitas yang berbeda."*
+
+**Jawaban atas pertanyaan langsung user**: YA, sudah bisa — `invoice_items.forGabungRegistration`
+(dibangun di sesi lampau "Pemisahan Donasi vs Registrasi Forum") HANYA PERNAH diset `true` oleh
+`GabungItemWidget`/`ProductVariationPopup` yang baru dibangun di "Redesain /gabung"; jalur
+donasi/beli produk organik (`/campaign/{slug}`, `/produk/{slug}`) tidak pernah menyentuh flag
+ini. Seluruh koreksi ini adalah PENERAPAN LEBIH KETAT dari mekanisme yang sudah ada, bukan
+mekanisme baru.
+
+**Prinsip baru**: sebelumnya hanya item yang admin tandai "wajib" yang memaksa alur checkout —
+item terkonfigurasi tapi "opsional" tetap bisa langsung join gratis. SEKARANG: begitu user
+MENAMBAHKAN item apa pun (wajib atau opsional, tidak relevan) lewat `GabungItemWidget`, itu
+jadi komitmen — alur join-gratis tidak boleh dipakai lagi untuk mereka. Field
+`productRequired`/`campaignRequired` admin TETAP menentukan KELENGKAPAN (mana yang harus lunas
+sebelum aktif) — bukan lagi penentu APAKAH mereka harus lewat checkout sama sekali. Dua sumbu
+independen: (1) front-end "harus checkout atau boleh gratis?" = `anyRequired ||
+hasCartCommitment` (diperluas); (2) backend "sudah lengkap, boleh aktif?" =
+`isRequirementSatisfied(...)` (TIDAK berubah).
+
+**Bug HAMPIR diperkenalkan, dicegah lewat penalaran sebelum menulis kode**: percobaan pertama
+untuk "izinkan item opsional ikut mengaktifkan membership" adalah menghapus total gate
+`hasPaymentRequirement(config)` di `activateForumMembershipIfApplicable` — TERNYATA ini akan
+MEMBUKA KEMBALI kelas bug yang sudah dikunci di "Pemisahan Donasi vs Registrasi Forum":
+`isRequirementSatisfied()` mengembalikan `true` secara VACUOUS untuk slot yang TIDAK wajib
+(`!config.campaignRequired` sudah cukup, TANPA peduli `has.campaign`) — kalau gate lama dibuang
+tanpa pengganti, INVOICE ORGANIK APA PUN (donasi lewat `/campaign/{slug}` biasa, tidak lewat
+`/gabung` sama sekali) yang kebetulan tidak punya syarat wajib akan LOLOS dan mengaktifkan
+membership. **Fix yang benar**: pecah jadi DUA gate berurutan — gate #1 (BARU, precondition)
+`if (!hasProduct && !hasCampaign) return;` (invoice ini harus GENUINELY punya minimal satu item
+forGabung yang cocok konfigurasi — mencegah invoice organik lolos), BARU gate #2 (LAMA, tidak
+berubah) `isRequirementSatisfied(...)` (item yang ADA sudah cukup menurut aturan wajib/opsional
+admin). Efeknya: forum tanpa syarat wajib sama sekali (campaign cuma "rekomendasi") — user yang
+BAYAR via `/gabung` untuk campaign itu SEKARANG mengaktifkan membership (sebelumnya tidak,
+gate lama langsung `return` di awal fungsi); user yang bayar campaign SAMA lewat
+`/campaign/{slug}` langsung (organik) TETAP TIDAK mengaktifkan apa pun.
+
+**`/gabung/page.tsx` — reaktivitas otomatis tanpa kode client tambahan**: `hasCartCommitment =
+productInCart || campaignInCart` (variabel yang SUDAH ADA, cuma di-reuse) → `useCheckoutFlow =
+anyRequired || hasCartCommitment` menggantikan `anyRequired` sebagai kondisi branch. `required`
+prop ke `GabungItemWidget` TETAP `anyRequired` (bukan `useCheckoutFlow`) — supaya copy widget
+("Syarat Bergabung" vs "opsional") tetap jujur, walau checkout tetap dipaksa. `canProceed`
+**tidak perlu diubah rumusnya** — sudah otomatis `true` kapan pun `anyRequired=false` (vacuous
+truth per slot tidak wajib di `isRequirementSatisfied`), jadi begitu `useCheckoutFlow` true
+murni karena `hasCartCommitment`, `canProceed` sudah otomatis benar tanpa gerbang tambahan.
+Karena `GabungItemWidget` SUDAH memanggil `router.refresh()` setelah `addToCartAction` sukses
+(dibangun di "Redesain /gabung"), Server Component menghitung ulang `productInCart`/
+`campaignInCart` dari DB dan JSX otomatis berpindah cabang dari `JoinForumButton` ke
+`GabungCheckoutButton` — TIDAK ADA state client tambahan yang perlu dijaga manual.
+
+**Overlay baru "Lunasi Pembayaran" — keputusan desain query-based, BUKAN eager-write baris
+`tenant_memberships`**: dua pendekatan dipertimbangkan — (A) buat/update baris ke
+`forumStatus:"pending"` PAS saat klik checkout (ditolak: butuh server action baru di titik yang
+sekarang murni client-side navigation, DAN berisiko baris "pending" yatim kalau user batal
+sebelum sempat checkout sungguhan); (B) **dipilih** — `/akun/page.tsx` query LANGSUNG: "ada
+invoice OUTSTANDING (`status IN pending/waiting_verification/partial/overdue`) milik member ini
+di tenant ini, punya minimal satu `invoice_items.forGabungRegistration=true`?" Nol tulisan baru
+ke `tenant_memberships` sebelum pembayaran genuinely lunas — `activateForumMembershipIfApplicable`
+TETAP satu-satunya titik yang menulis baris membership. `"draft"`/`"cancelled"`/`"paid"` sengaja
+tidak masuk daftar status (draft belum genuinely checkout, cancelled sudah mati/dead-end,
+paid seharusnya sudah `isJoined=true` duluan). Query dijalankan `if (!isJoined)`, SEBELUM
+`checkMemberEligibility()` — kalau ada invoice pending, itu prioritas mutlak di atas "Lengkapi
+Data"/"Gabung X".
+
+`MembershipEligibilityOverlay` (`components/akun/membership-eligibility-overlay.tsx`) dapat
+prop baru opsional `pendingInvoiceId?: string | null` — cabang PALING AWAL/prioritas tertinggi
+(dicek sebelum `eligible`/`onlyDirectoryMissing`/default), pesan "Anda sudah memilih untuk
+mendukung {tenant} — selesaikan pembayaran..." + tombol "Lunasi Pembayaran →" ke
+`${baseUrl}/invoice/${pendingInvoiceId}`. Guard early-return lama diperluas
+`if (eligible && !isForum && !pendingInvoiceId) return null;`. Posisi visual TIDAK berubah —
+overlay ini SUDAH jadi sibling `MemberCard`/panel "Info keanggotaan" di dalam
+`<div className="relative">`, `absolute inset-0` sejak fitur eligibility overlay generik
+pertama dibangun (persis mekanisme yang dimaksud user, "notifikasi yang mendeteksi
+eligibilitas itu") — state baru ini murni cabang tambahan di komponen yang SAMA.
+
+**File yang disentuh**: `finance/billing/actions.ts` (gate 2-tahap), `gabung/page.tsx`
+(`useCheckoutFlow`), `components/akun/membership-eligibility-overlay.tsx` (prop
+`pendingInvoiceId`), `akun/page.tsx` (query invoice outstanding + `tenantDb` di-hoist ke
+variabel, dipakai bareng `enabledModulesConfig`). `GabungCheckoutButton`, `JoinForumButton`,
+`GabungItemWidget`, `ProductVariationPopup`, `joinForumAction`, `checkoutAction` — TIDAK ADA
+yang disentuh sama sekali. Nol migrasi DB.
+
+`tsc --noEmit` 0 error kedua package (percobaan pertama) + `bun run build
+--filter=@jalajogja/web` genuine sukses (dev server dimatikan+`.next` dibersihkan+direstart,
+`Cached: 0 cached`, 50.35 detik) — `/[tenant]/gabung` (6.87 kB) dan `/[tenant]/akun` (3.99 kB)
+terkonfirmasi compile bersih. Grep akhir konfirmasi persis 2 titik pemakaian `pendingInvoiceId`
+di JSX (`akun/page.tsx`, mobile+desktop, sama seperti pola prop lain di file itu). **Belum
+di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser** — sama
+seperti "Redesain /gabung" di atas, verifikasi Fase E (end-to-end manual) untuk KEDUA fitur
+sekaligus (redesain widget + koreksi ini) baru bisa dilakukan bersamaan oleh user, karena
+koreksi ini murni lapisan tambahan di atas kode yang belum sempat di-deploy.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix produk variasi tidak punya cara upload gambar** (lihat lesson
+- Terakhir dikerjakan: **Koreksi: Komitmen Cart Selalu Menahan Aktivasi Sampai Bayar + Overlay
+  "Lunasi Pembayaran"** (lihat lesson `[2026-08-06]` "Koreksi: Komitmen Cart Selalu Menahan
+  Aktivasi Sampai Bayar" tepat di atas, detail lengkap `docs/arsitektur-gabung-forum.md` §
+  "Koreksi..."). Menyusul LANGSUNG "Redesain /gabung" (bullet di bawah) di sesi yang sama —
+  user mengoreksi SEBELUM fitur itu sempat di-commit: item apa pun (wajib ATAU opsional) yang
+  ditambahkan lewat `GabungItemWidget` sekarang jadi komitmen — membership ditahan sampai
+  invoice-nya lunas, tidak lagi bisa join gratis. Jawaban eksplisit ke pertanyaan langsung
+  user ("apakah bisa bedakan item dari /gabung vs standalone?") — YA, via
+  `forGabungRegistration` yang sudah ada. Fix bug HAMPIR diperkenalkan (dicegah lewat penalaran
+  sebelum menulis kode): `activateForumMembershipIfApplicable` dipecah jadi 2 gate berurutan
+  (precondition "genuinely ada item forGabung" + kelengkapan "isRequirementSatisfied", bukan
+  cuma hapus gate lama begitu saja — itu akan membuka lagi celah invoice organik lolos).
+  `/gabung/page.tsx`'s `useCheckoutFlow = anyRequired || hasCartCommitment` (reaktif otomatis
+  via `router.refresh()` yang sudah ada, nol state client baru). `MembershipEligibilityOverlay`
+  dapat cabang prioritas tertinggi baru (`pendingInvoiceId`, query-based bukan eager-write baris
+  DB) — "Lunasi Pembayaran →" ke invoice outstanding. 4 file disentuh (`finance/billing/
+  actions.ts`, `gabung/page.tsx`, `membership-eligibility-overlay.tsx`, `akun/page.tsx`);
+  `GabungCheckoutButton`/`JoinForumButton`/`GabungItemWidget`/`checkoutAction` TIDAK disentuh.
+  `tsc`+build genuine bersih (`Cached: 0 cached`, 50.35s), dev server direstart. Nol migrasi DB.
+  **Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser**
+  — Fase E (end-to-end manual) sekarang mencakup KEDUA fitur sekaligus (redesain widget +
+  koreksi ini), karena koreksi ini murni lapisan tambahan di atas kode yang belum di-deploy.
+- Sesi sebelumnya: **Redesain `/gabung` — Widget Inline + Syarat Per-Item Eksplisit,
+  DIEKSEKUSI** (lihat lesson `[2026-08-06]` "Redesain /gabung — Widget Inline + Syarat Per-Item
+  Eksplisit (Dieksekusi)" di atas, detail lengkap `docs/arsitektur-gabung-forum.md` §
+  "Redesain /gabung..."). User beri izin eksekusi ("mode hemat dan mode otomatis") atas rencana
+  yang ditulis sesi sebelumnya. Ringkasan: `MembershipConfigData` diganti total (either/both
+  dihapus, per-item required eksplisit), bug laten produk-variasi di
+  `activateForumMembershipIfApplicable` ditutup sekalian, helper terpusat
+  `lib/membership-config.ts` baru, 3 komponen baru di `gabung/` (widget inline, popup variasi
+  BARU — kapabilitas yang sebelumnya tidak ada, tombol checkout mode wajib), `gabung/page.tsx`
+  dirombak signifikan (fetch variasi lengkap + cek cart forGabung-aware). `DonationBannerCart`/
+  `/keranjang`/`checkout` SENGAJA TIDAK disentuh sama sekali (scope boundary eksplisit).
+  `tsc`+build genuine bersih di kedua checkpoint, grep akhir konfirmasi nol sisa field lama. Dev
+  server direstart.
+- Sesi sebelumnya: **Dokumen `docs/arsitektur-gabung-forum.md` dipisah dari backbone +
+  audit sinkronisasi kode** (lihat lesson `[2026-08-06]` "Dokumen `docs/arsitektur-gabung-
+  forum.md` Dipisah dari Backbone" di atas) — user minta seluruh dokumentasi alur "bergabung ke
+  forum" (v1 historis + v2 implementasi, sebelumnya ~955 baris di dalam `docs/arsitektur-
+  backbone-ikpm.md`) dipindah ke dokumen terpisah, DAN dipastikan arsitektur sinkron dengan
+  kode yang benar-benar berjalan. Konten dipindah verbatim (dipertahankan sebagai catatan
+  sejarah keputusan v1→v2), `backbone-ikpm.md` diringkas 1687→710 baris (cuma sisa pointer di
+  titik-titik yang dipindah), plus 2 fix kecil di dalamnya (route lama `/{forum-slug}/daftar`
+  diperbaiki ke `/gabung`, catatan klarifikasi Skenario 1c). **Audit sinkronisasi dibaca
+  LANGSUNG ke kode** (`lib/member-eligibility.ts`, `membership-eligibility-overlay.tsx`,
+  `gabung/page.tsx`+`actions.ts`+`join-forum-button.tsx`, settings forum, `finance/billing/
+  actions.ts`'s `activateForumMembershipIfApplicable`, `forum-membership-number.ts`+`.server.ts`,
+  `akun/page.tsx`, schema+3 migration) — SEMUA dikonfirmasi sinkron. **Satu drift nyata
+  ditemukan**: `checkMemberEligibility()` di kode sekarang jauh lebih detail dari rencana asli
+  2026-07-23 — field baru `homeAddressId`, cek "directory" sekarang mensyaratkan kelengkapan
+  penuh per modul (bukan cuma "punya baris"), parameter `enabledDirectoryModules` (integrasi
+  toggle ekosistem per-tenant), return field `directoryIncompleteModule`, dan file yang sama
+  sekarang juga jadi rumah `checkGeneralRegistrationEligibility()` untuk modul Event (tidak
+  terkait forum sama sekali) — bukti helper ini sudah genuinely generic lintas-fitur. Field
+  list lama TIDAK dikoreksi diam-diam — diberi blockquote peringatan di tempatnya + section
+  audit terpisah ("Audit Sinkronisasi Arsitektur ↔ Kode Aktual") di dokumen baru yang jadi
+  rujukan operasional yang benar. Murni perubahan dokumentasi, nol kode disentuh. **Belum
+  di-commit/push.**
+- Sesi sebelumnya: **`/gabung` — fixed footer tombol Gabung + revert percobaan "tanpa
+  navigasi"** (lihat lesson `[2026-08-06]` di atas, detail lengkap di
+  `docs/arsitektur-gabung-forum.md` § "UI `/gabung` — Fixed Footer Tombol Gabung + Revert
+  Percobaan 'Tanpa Navigasi' (2026-08-06)"). User minta dua hal: (1) "tidak pernah
+  meninggalkan laman /gabung"; (2) checkbox persetujuan + tombol "Ya, Saya Ingin Bergabung"
+  jadi fixed bottom bar di mobile (override fixed footer lain, z-index benar, tidak pernah
+  hilang). Percobaan pertama SALAH ARAH — kartu produk/donasi syarat wajib diubah jadi widget
+  inline (`addToCartAction` langsung, pola `donation-banner-cart.tsx`) — DITEGUR user: "jangan
+  lakukan lainnya selain mengubah tombol gabung berada di footer fixed". Investigasi
+  laporan "tombol gabung tidak muncul" menemukan root cause BUKAN bug: `JoinForumButton`
+  MEMANG tidak pernah dirender saat `paymentRequired=true` (perilaku Fase D yang sudah ada
+  sejak sebelum sesi ini — keanggotaan aktif otomatis lewat pembayaran, bukan klik tombol).
+  Fix: kartu produk/donasi DIKEMBALIKAN ke `<a href>` navigasi sederhana, file
+  `gabung-required-item.tsx` DIHAPUS TOTAL. `JoinForumButton` DIPERTAHANKAN (memang diminta):
+  tidak lagi auto-redirect setelah join sukses (status inline + tombol eksplisit ke `/akun`),
+  checkbox+tombol dirender 2× (desktop normal + mobile `fixed bottom-0 z-[72]`, satu tingkat
+  di atas `MobileActionSheet` yang `z-[71]`) dengan id unik per instance dan spacer diukur via
+  `ResizeObserver` (bukan angka tetap — teks bisa wrap 2-3 baris). `forcreator`'s
+  `membership_config.paymentRequired` diset sementara ke `false` via `psql` sebagai langkah
+  unblock testing (reversibel, ditoggle balik lewat `/app/forcreator/settings/keanggotaan`) —
+  BUKAN keputusan produk permanen. `tsc`+build genuine bersih (2×). Verifikasi via curl dengan
+  session cookie asli (signed HMAC) mengonfirmasi struktur HTML benar setelah revert. Nol
+  migrasi DB. **Belum di-commit/push, belum diverifikasi visual sungguhan di browser oleh
+  siapa pun** — user perlu coba lagi setelah toggle `paymentRequired`.
+- Sesi sebelumnya: **Fix produk variasi tidak punya cara upload gambar** (lihat lesson
   `[2026-08-05]` "Bug: Produk Variasi Baru" di atas) — `ProductImages` (section "Gambar Produk")
   di `product-form.tsx` sebelumnya dibungkus `productType === "simple"`, total hilang untuk
   "Produk Variasi" — dan produk variasi BARU (belum tersimpan) juga tidak bisa isi gambar

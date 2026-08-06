@@ -1221,9 +1221,12 @@ export async function resetSeoPageOverrideAction(
 
 export type MembershipConfigData = {
   requiredProductId:  string | null;
+  // Wajib HANYA relevan kalau slot ID-nya terisi. Admin menentukan per-item mana yang wajib —
+  // TIDAK ADA lagi mode "salah satu cukup" yang membiarkan user memilih (lihat
+  // docs/arsitektur-gabung-forum.md § "Redesain /gabung" untuk alasan).
+  productRequired:    boolean;
   requiredCampaignId: string | null;
-  paymentRequired:    boolean;
-  requireMode:        "either" | "both";
+  campaignRequired:   boolean;
   // Teks bebas (multi-paragraf, dipisah baris baru) yang dijelaskan admin forum tentang
   // sifat/aturan keanggotaan mereka — ditampilkan apa adanya di halaman publik /gabung
   // sebelum tombol daftar. Opsional — kosong berarti tidak ada info tambahan.
@@ -1251,9 +1254,9 @@ export async function saveMembershipConfigAction(
 
   await upsertSetting(tenantDb, "membership_config", "forum", {
     requiredProductId:  values.requiredProductId  || null,
+    productRequired:    !!values.requiredProductId  && !!values.productRequired,
     requiredCampaignId: values.requiredCampaignId || null,
-    paymentRequired:    !!values.paymentRequired,
-    requireMode:        values.requireMode === "both" ? "both" : "either",
+    campaignRequired:   !!values.requiredCampaignId && !!values.campaignRequired,
     registrationInfo:   values.registrationInfo?.trim() || null,
     membershipNumberFormat,
   });

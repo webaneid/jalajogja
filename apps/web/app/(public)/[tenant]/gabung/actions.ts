@@ -10,6 +10,7 @@ import { checkMemberEligibility, MEMBER_ELIGIBILITY_LABELS } from "@/lib/member-
 import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 import { enabledModuleList } from "@/lib/ekosistem-modules";
 import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
+import { hasPaymentRequirement } from "@/lib/membership-config";
 import type { MembershipConfigData } from "../../../(dashboard)/app/[tenant]/settings/actions";
 
 type ActionResult<T = void> =
@@ -55,9 +56,9 @@ export async function joinForumAction(slug: string): Promise<ActionResult<{ tena
   // dipakai — aktivasi untuk forum berbayar HANYA lewat
   // activateForumMembershipIfApplicable() (finance/billing/actions.ts) setelah invoice
   // lunas. Guard ini pertahanan server-side — UI /gabung sudah tidak menampilkan tombol
-  // ini kalau paymentRequired=true, tapi jangan percaya itu saja.
+  // ini kalau hasPaymentRequirement(config)=true, tapi jangan percaya itu saja.
   const config = await getSetting<MembershipConfigData>(tenantDb, "membership_config", "forum");
-  if (config?.paymentRequired) {
+  if (hasPaymentRequirement(config)) {
     return {
       success: false,
       error: "Forum ini mewajibkan pembayaran — selesaikan pembayaran terlebih dahulu, keanggotaan akan aktif otomatis setelah invoice lunas.",

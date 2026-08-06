@@ -1,5 +1,5 @@
 import { redirect }      from "next/navigation";
-import { headers }       from "next/headers";
+import { headers, cookies } from "next/headers";
 import { eq, and }       from "drizzle-orm";
 import { auth }          from "@/lib/auth";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
@@ -10,9 +10,22 @@ import {
 } from "@/lib/member-eligibility";
 import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 import { enabledModuleList, EKOSISTEM_MODULE_LABELS } from "@/lib/ekosistem-modules";
+import { hasPaymentRequirement, isRequirementSatisfied } from "@/lib/membership-config";
 import type { MembershipConfigData } from "../../../(dashboard)/app/[tenant]/settings/actions";
 import { JoinForumButton } from "./join-forum-button";
-import { CheckCircle2, ArrowRight, Heart, Info } from "lucide-react";
+import { GabungItemWidget } from "./gabung-item-widget";
+import { GabungCheckoutButton } from "./gabung-checkout-button";
+import { CheckCircle2, ArrowRight, Info } from "lucide-react";
+import { resolveMediaUrl } from "@/lib/minio";
+import type { ProductVariationData, AttributeGroup, ViewerImage } from "@/components/toko/public/product-detail-client";
+
+// Sama dengan produk/page.tsx & keranjang/page.tsx — images JSONB sudah berisi URL penuh
+// (dari MediaPicker), tidak perlu publicUrl() lagi. Prioritas variant persegi (square) dulu.
+function extractCoverUrl(images: unknown): string | null {
+  if (!Array.isArray(images) || images.length === 0) return null;
+  const first = images[0] as { url?: string; variants?: Record<string, string> | null };
+  return first.variants?.["square"] ?? first.variants?.["square-large"] ?? first.url ?? null;
+}
 
 type Params = Promise<{ tenant: string }>;
 
@@ -90,8 +103,7 @@ export default async function GabungPage({ params }: { params: Params }) {
 
   // Konfigurasi forum (info pendaftaran + syarat iuran opsional) — dibaca selalu, terlepas
   // status eligibility, karena teks info organisasi relevan ditampilkan ke semua calon
-  // anggota. Lihat docs/arsitektur-backbone-ikpm.md § "Alur Pendaftaran Forum v2 — 2.
-  // Konfigurasi Pembayaran per Forum".
+  // anggota. Lihat docs/arsitektur-gabung-forum.md § "Redesain /gabung".
   const { db: tdb, schema } = tenantDb;
   const [config, generalSettings] = await Promise.all([
     getSetting<MembershipConfigData>(tenantDb, "membership_config", "forum"),
@@ -100,34 +112,154 @@ export default async function GabungPage({ params }: { params: Params }) {
   const registrationInfo = config?.registrationInfo?.trim() || null;
   const logoUrl = (generalSettings.logo_url as string | undefined) || null;
 
-  let paymentRequired = false;
-  let supportProduct:  { name: string; slug: string } | null = null;
-  let supportCampaign: { title: string; slug: string } | null = null;
-  let requireMode: "either" | "both" = "either";
+  const anyRequired = hasPaymentRequirement(config);
+
+  type ProductWidgetData = {
+    productId: string; name: string; coverUrl: string | null;
+    productType: "simple" | "variable"; unitPrice: number; alreadyInCart: boolean;
+    variationData?: { variations: ProductVariationData[]; attrGroups: AttributeGroup[]; images: ViewerImage[] };
+  };
+  type CampaignWidgetData = {
+    campaignId: string; title: string; coverUrl: string | null; amounts: number[]; alreadyInCart: boolean;
+  };
+
+  let productWidget:  ProductWidgetData  | null = null;
+  let campaignWidget: CampaignWidgetData | null = null;
+  let productRelevantIds = new Set<string>();
 
   if (eligibility.eligible && config) {
-    paymentRequired = config.paymentRequired;
-    requireMode     = config.requireMode;
-
     if (config.requiredProductId) {
       const [p] = await tdb
-        .select({ name: schema.products.name, slug: schema.products.slug })
+        .select({
+          id: schema.products.id, name: schema.products.name, images: schema.products.images,
+          productType: schema.products.productType, price: schema.products.price,
+          attributeGroups: schema.products.attributeGroups,
+        })
         .from(schema.products)
         .where(eq(schema.products.id, config.requiredProductId))
         .limit(1);
-      if (p) supportProduct = p;
+
+      if (p) {
+        const isVariable = p.productType === "variable";
+        let variationData: ProductWidgetData["variationData"];
+
+        if (isVariable) {
+          const vrows = await tdb
+            .select({
+              id: schema.productVariations.id, sku: schema.productVariations.sku,
+              price: schema.productVariations.price, publicPrice: schema.productVariations.publicPrice,
+              memberPrice: schema.productVariations.memberPrice, stock: schema.productVariations.stock,
+              images: schema.productVariations.images, attributeCombo: schema.productVariations.attributeCombo,
+              isActive: schema.productVariations.isActive,
+            })
+            .from(schema.productVariations)
+            .where(and(
+              eq(schema.productVariations.productId, p.id),
+              eq(schema.productVariations.isActive, true),
+            ))
+            .orderBy(schema.productVariations.createdAt);
+
+          const variations: ProductVariationData[] = vrows.map((v) => ({
+            id: v.id, sku: v.sku ?? null,
+            price: String(v.price ?? p.price),
+            publicPrice: v.publicPrice != null ? String(v.publicPrice) : null,
+            memberPrice: v.memberPrice != null ? String(v.memberPrice) : null,
+            stock: v.stock,
+            images: (Array.isArray(v.images) ? v.images : []) as ProductVariationData["images"],
+            attributeCombo: (v.attributeCombo ?? {}) as Record<string, string>,
+            isActive: v.isActive,
+          }));
+
+          productRelevantIds = new Set(variations.map((v) => v.id));
+
+          const rawImages = Array.isArray(p.images) ? p.images as Array<{
+            id: string; url: string; variants?: Record<string, string> | null; alt: string;
+          }> : [];
+
+          variationData = {
+            variations,
+            attrGroups: (p.attributeGroups ?? []) as AttributeGroup[],
+            images: rawImages.map((img) => ({ id: img.id, url: img.url, variants: img.variants, alt: img.alt })),
+          };
+        }
+
+        productRelevantIds.add(p.id);
+
+        productWidget = {
+          productId: p.id, name: p.name, coverUrl: extractCoverUrl(p.images),
+          productType: (p.productType ?? "simple") as "simple" | "variable",
+          unitPrice: parseFloat(String(p.price)),
+          alreadyInCart: false, // dihitung di bawah setelah cartRows tersedia
+          variationData,
+        };
+      }
     }
+
     if (config.requiredCampaignId) {
       const [c] = await tdb
-        .select({ title: schema.campaigns.title, slug: schema.campaigns.slug })
+        .select({ title: schema.campaigns.title, coverId: schema.campaigns.coverId })
         .from(schema.campaigns)
         .where(eq(schema.campaigns.id, config.requiredCampaignId))
         .limit(1);
-      if (c) supportCampaign = { title: c.title, slug: c.slug };
+      if (c) {
+        let coverUrl: string | null = null;
+        if (c.coverId) {
+          const [m] = await tdb
+            .select({ path: schema.media.path, variants: schema.media.variants })
+            .from(schema.media)
+            .where(eq(schema.media.id, c.coverId))
+            .limit(1);
+          if (m) coverUrl = resolveMediaUrl(slug, m.path, m.variants as Record<string, string> | null, ["square", "square-large", "large", "original"]);
+        }
+        const donasiSettings = await getSettings(tenantDb, "donasi");
+        const dc = donasiSettings.donation_config as { recommended_amounts?: number[] } | undefined;
+        campaignWidget = {
+          campaignId: config.requiredCampaignId, title: c.title, coverUrl,
+          amounts: dc?.recommended_amounts ?? [10000, 25000, 50000, 100000],
+          alreadyInCart: false,
+        };
+      }
     }
   }
 
-  const hasSupportOption = !!supportProduct || !!supportCampaign;
+  // Cek "sudah di cart?" — query langsung ke cart_items milik session cart aktif (bukan lewat
+  // getCartAction/CartItem, yang tidak expose forGabungRegistration).
+  let productInCart  = false;
+  let campaignInCart = false;
+
+  if (productWidget || campaignWidget) {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("cart_session")?.value ?? null;
+
+    if (token) {
+      const cartRows = await tdb
+        .select({
+          itemType: schema.cartItems.itemType, itemId: schema.cartItems.itemId,
+          forGabungRegistration: schema.cartItems.forGabungRegistration,
+        })
+        .from(schema.cartItems)
+        .innerJoin(schema.carts, eq(schema.carts.id, schema.cartItems.cartId))
+        .where(eq(schema.carts.sessionToken, token));
+
+      productInCart = cartRows.some((r) =>
+        r.itemType === "product" && r.forGabungRegistration && r.itemId && productRelevantIds.has(r.itemId));
+      campaignInCart = cartRows.some((r) =>
+        r.itemType === "donation" && r.forGabungRegistration && r.itemId === config?.requiredCampaignId);
+    }
+  }
+
+  if (productWidget)  productWidget.alreadyInCart  = productInCart;
+  if (campaignWidget) campaignWidget.alreadyInCart = campaignInCart;
+
+  const canProceed = config ? isRequirementSatisfied(config, { product: productInCart, campaign: campaignInCart }) : true;
+  const hasSupportOption = !!productWidget || !!campaignWidget;
+
+  // Komitmen cart (WAJIB atau tidak, tidak relevan) selalu menahan aktivasi sampai bayar —
+  // begitu user menambahkan item apa pun via GabungItemWidget, alur join-gratis tidak boleh
+  // dipakai lagi, terlepas admin mewajibkannya atau tidak. Lihat docs/arsitektur-gabung-forum.md
+  // § "Koreksi: Komitmen Cart Selalu Menahan Aktivasi Sampai Bayar".
+  const hasCartCommitment = productInCart || campaignInCart;
+  const useCheckoutFlow   = anyRequired || hasCartCommitment;
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4 py-12">
@@ -160,68 +292,40 @@ export default async function GabungPage({ params }: { params: Params }) {
 
         {eligibility.eligible ? (
           <div className="space-y-4">
-            {paymentRequired ? (
+            {useCheckoutFlow ? (
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground text-center">
-                  Forum ini mewajibkan pembayaran berikut untuk anggota baru. Keanggotaan Anda
-                  akan <strong>aktif otomatis</strong> begitu pembayaran dikonfirmasi.
-                  {supportProduct && supportCampaign && requireMode === "either" && " Cukup selesaikan salah satu di bawah."}
-                  {supportProduct && supportCampaign && requireMode === "both" && " Kedua-duanya wajib diselesaikan."}
-                </p>
-                {/* ?forGabung=1 — penanda eksplisit "niat bayar untuk daftar forum", dibaca
-                    oleh halaman produk/campaign lalu diteruskan ke cart_items.
-                    for_gabung_registration. TANPA penanda ini, siapa pun yang beli/donasi item
-                    yang SAMA lewat halaman biasa (bukan dari sini) TIDAK PERNAH mengaktifkan
-                    keanggotaan forum — donasi organik dan registrasi forum sengaja dipisah
-                    total. Lihat docs/arsitektur-backbone-ikpm.md § "Pemisahan Donasi vs
-                    Registrasi Forum". */}
-                <div className="space-y-2">
-                  {supportProduct && (
-                    <a
-                      href={`${baseUrl}/produk/${supportProduct.slug}?forGabung=1`}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-border p-4 text-sm hover:border-primary/50 hover:bg-muted/40 transition-all"
-                    >
-                      <span>Beli produk: <strong>{supportProduct.name}</strong></span>
-                      <ArrowRight className="h-4 w-4 shrink-0" />
-                    </a>
-                  )}
-                  {supportCampaign && (
-                    <a
-                      href={`${baseUrl}/campaign/${supportCampaign.slug}?forGabung=1`}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-border p-4 text-sm hover:border-primary/50 hover:bg-muted/40 transition-all"
-                    >
-                      <span>Donasi: <strong>{supportCampaign.title}</strong></span>
-                      <ArrowRight className="h-4 w-4 shrink-0" />
-                    </a>
-                  )}
-                </div>
-                <a href={`${baseUrl}/akun`} className="btn btn-ghost btn-md btn-full">
-                  ← Kembali ke Akun
-                </a>
+                <GabungItemWidget
+                  tenantSlug={slug}
+                  required={anyRequired}
+                  product={productWidget}
+                  campaign={campaignWidget}
+                />
+                {!anyRequired && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Karena Anda menambahkan dukungan di atas, keanggotaan akan aktif otomatis
+                    setelah pembayaran selesai.
+                  </p>
+                )}
+                <GabungCheckoutButton slug={slug} baseUrl={baseUrl} canProceed={canProceed} />
               </div>
             ) : (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground text-center">
                   Data Anda sudah lengkap. Klik tombol di bawah untuk bergabung.
                 </p>
-                <JoinForumButton slug={slug} baseUrl={baseUrl} />
                 {hasSupportOption && (
-                  <div className="space-y-2 rounded-xl border border-dashed border-border p-4">
-                    <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                      <Heart className="h-3.5 w-3.5" /> Ingin mendukung {tenantRow.name}? (opsional)
-                    </p>
-                    {supportProduct && (
-                      <a href={`${baseUrl}/produk/${supportProduct.slug}`} className="block text-sm text-primary hover:underline">
-                        {supportProduct.name} →
-                      </a>
-                    )}
-                    {supportCampaign && (
-                      <a href={`${baseUrl}/campaign/${supportCampaign.slug}`} className="block text-sm text-primary hover:underline">
-                        {supportCampaign.title} →
-                      </a>
-                    )}
-                  </div>
+                  <GabungItemWidget
+                    tenantSlug={slug}
+                    required={false}
+                    product={productWidget}
+                    campaign={campaignWidget}
+                  />
                 )}
+                {/* JoinForumButton WAJIB jadi elemen paling terakhir di branch ini — bar fixed
+                    mobile-nya sendiri (self-contained spacer) hanya menjamin konten TIDAK
+                    ketutupan kalau tidak ada konten lain dirender SETELAHNYA. Lihat
+                    docs/arsitektur-mobile-shell.md § spacer. */}
+                <JoinForumButton slug={slug} baseUrl={baseUrl} tenantName={tenantRow.name} />
               </div>
             )}
           </div>

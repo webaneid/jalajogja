@@ -1,6 +1,6 @@
 import { redirect }  from "next/navigation";
 import { headers }   from "next/headers";
-import { eq, and }   from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { auth }      from "@/lib/auth";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { db, tenantMemberships, tenants, members, refIkpmCabang, createTenantDb, getSettings } from "@jalajogja/db";
@@ -33,10 +33,12 @@ export default async function AkunPage({ params }: { params: Params }) {
   const isMember     = identity.type === "member";
   const isIncomplete = isMemberDataIncomplete(identity);
 
+  const tenantDb = createTenantDb(slug);
+
   // Modul ekosistem aktif tenant ini — dipakai untuk filter quick-action link Pesantren/
   // Usaha/Profesional DAN untuk mempersempit himpunan eligibility "directory". Lihat
   // lib/ekosistem-modules.ts + docs/arsitektur-ekosistem.md.
-  const enabledModulesConfig = await getEnabledEkosistemModules(createTenantDb(slug));
+  const enabledModulesConfig = await getEnabledEkosistemModules(tenantDb);
   const enabledModulesArr    = enabledModuleList(enabledModulesConfig);
 
   // Info keanggotaan
@@ -126,6 +128,11 @@ export default async function AkunPage({ params }: { params: Params }) {
   // belum lengkap field wajibnya — dipakai overlay untuk arahkan langsung ke situ ("Lengkapi
   // Data Usaha Anda"), bukan minta pilih ulang dari 3 opsi. Lihat lib/member-eligibility.ts.
   let overlayDirectoryIncompleteModule: EkosistemModule | null = null;
+  // Ada invoice OUTSTANDING (belum lunas) hasil komitmen /gabung — kalau terisi, PRIORITAS
+  // TERTINGGI di atas eligibility apa pun (user sudah commit membayar). Lihat
+  // docs/arsitektur-gabung-forum.md § "Koreksi: Komitmen Cart Selalu Menahan Aktivasi Sampai
+  // Bayar".
+  let overlayPendingInvoiceId: string | null = null;
 
   if (isMember && identity.memberId) {
     const [browsedTenantRow] = await db
@@ -150,11 +157,38 @@ export default async function AkunPage({ params }: { params: Params }) {
 
         const isJoined = forumMembershipRow?.forumStatus === "active";
         overlayIsJoined = isJoined;
-        const eligibility = await checkMemberEligibility(identity.memberId, enabledModulesArr);
-        if (!eligibility.eligible || !isJoined) {
-          showEligibilityOverlay = true;
-          overlayMissing = eligibility.missing; // kosong = eligible, komponen tampilkan "Gabung X"
-          overlayDirectoryIncompleteModule = eligibility.directoryIncompleteModule;
+
+        // Ada invoice belum lunas hasil komitmen /gabung? Kalau ada, itu PRIORITAS mutlak di
+        // atas ajakan "Lengkapi Data"/"Gabung X" — user sudah memilih untuk membayar, overlay
+        // harus mengarahkan mereka melunasi, bukan menyuruh mulai dari awal lagi. Query-based
+        // (bukan baris tenant_memberships eager-written) — lihat § "Koreksi..." di
+        // docs/arsitektur-gabung-forum.md untuk alasan.
+        let pendingInvoiceId: string | null = null;
+        if (!isJoined) {
+          const { db: tdb, schema } = tenantDb;
+          const [pendingInvoiceRow] = await tdb
+            .select({ id: schema.invoices.id })
+            .from(schema.invoices)
+            .innerJoin(schema.invoiceItems, eq(schema.invoiceItems.invoiceId, schema.invoices.id))
+            .where(and(
+              eq(schema.invoices.memberId, identity.memberId),
+              inArray(schema.invoices.status, ["pending", "waiting_verification", "partial", "overdue"]),
+              eq(schema.invoiceItems.forGabungRegistration, true),
+            ))
+            .limit(1);
+          pendingInvoiceId = pendingInvoiceRow?.id ?? null;
+        }
+
+        if (pendingInvoiceId) {
+          showEligibilityOverlay  = true;
+          overlayPendingInvoiceId = pendingInvoiceId;
+        } else {
+          const eligibility = await checkMemberEligibility(identity.memberId, enabledModulesArr);
+          if (!eligibility.eligible || !isJoined) {
+            showEligibilityOverlay = true;
+            overlayMissing = eligibility.missing; // kosong = eligible, komponen tampilkan "Gabung X"
+            overlayDirectoryIncompleteModule = eligibility.directoryIncompleteModule;
+          }
         }
       } else {
         // Cabang/marhalah: auto-populate SELALU insert status='active' langsung (tidak ada
@@ -299,6 +333,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               isForum={overlayIsForum}
               isJoined={overlayIsJoined}
               enabledModules={enabledModulesConfig}
+              pendingInvoiceId={overlayPendingInvoiceId}
             />
           )}
         </div>
@@ -370,6 +405,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               isForum={overlayIsForum}
               isJoined={overlayIsJoined}
               enabledModules={enabledModulesConfig}
+              pendingInvoiceId={overlayPendingInvoiceId}
             />
           )}
         </div>

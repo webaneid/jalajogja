@@ -50,9 +50,9 @@ export default async function KeanggotaanSettingsPage({
         campaigns={campaigns.map((c) => ({ id: c.id, label: c.title }))}
         defaultValues={{
           requiredProductId:  config?.requiredProductId  ?? null,
+          productRequired:    config?.productRequired     ?? false,
           requiredCampaignId: config?.requiredCampaignId ?? null,
-          paymentRequired:    config?.paymentRequired     ?? false,
-          requireMode:        config?.requireMode         ?? "either",
+          campaignRequired:   config?.campaignRequired    ?? false,
           registrationInfo:   config?.registrationInfo    ?? null,
           membershipNumberFormat: config?.membershipNumberFormat ?? null,
         }}
