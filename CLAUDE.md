@@ -15761,8 +15761,81 @@ status header section "Tenant Khusus: IKPM Pusat" (yang masih bilang "RENCANA" p
 dieksekusi di lesson sebelumnya) diupdate jadi "✅ FASE A–D SELESAI" dengan status commit+
 migration VPS yang akurat.
 
+### [2026-08-07] Refinement Rencana "Ringkasan Tenant" — Reuse Penuh Query Statistik Existing
+
+> Lanjutan LANGSUNG dari lesson di atas, giliran berikutnya. Dokumen: `docs/arsitektur-
+> backbone-ikpm.md` § "E. Statistik detail — REUSE penuh dari `/{slug}/statistik`". **STATUS
+> TETAP RENCANA** — belum ada instruksi eksekusi.
+
+User: *"tampilkan juga statistik anggota masing2 tenant ya.. selain total statistik seluruh
+anggota pusat.. sebenarnya itu bisa ambil dari data statistik masing2 tenant yg sudah ada ya..
+kan setiap tenant punya statistik.."* — dibaca penuh `/{slug}/statistik/page.tsx` (halaman
+publik per-tenant existing, 600 baris) untuk memverifikasi klaim user, BUKAN diasumsikan.
+Terkonfirmasi BENAR: halaman itu sudah menghitung breakdown lengkap yang persis dibutuhkan
+(~20 query — gender/kabupaten/angkatan/profesi/wali santri/domisili + 3 section detail
+Pesantren/Usaha/Profesional) — tinggal diekstrak jadi shared function+component, BUKAN ditulis
+ulang query baru.
+
+**Refactor wajib**: query logic (blok ~250 baris) dipindah APA ADANYA ke
+`lib/member-statistics.server.ts` (`computeMemberStatistics(tenantId, enabledModules)`), JSX
+render dipindah APA ADANYA ke `components/statistik/statistik-sections.tsx`
+(`<StatistikSections>`). `/{slug}/statistik/page.tsx` diperkecil jadi resolve+panggil
+keduanya — TIDAK BOLEH ada perubahan perilaku sama sekali di halaman publik existing ini
+(refactor murni, bukan fitur baru).
+
+**Insight arsitektur — "Total Statistik Pusat" TIDAK butuh cabang kode terpisah**: karena
+tenant Pusat (§ auto-populate unconditional yang sudah dieksekusi) memiliki baris `tenant_
+memberships` untuk SEMUA anggota, `computeMemberStatistics(access.tenant.id)` yang dipanggil
+DARI DALAM dashboard Pusat sendiri OTOMATIS menghasilkan statistik seluruh sistem — sama
+persis fungsi yang dipanggil `/{slug}/statistik` untuk tenant mana pun. Konsekuensi elegan
+langsung dari desain "keanggotaan tanpa batas" yang sudah dikunci sebelumnya — tidak perlu
+`UNION`/query tanpa-filter khusus.
+
+**Statistik per-tenant LAIN — drill-down LAZY, bukan dihitung untuk semua tenant sekaligus**:
+~20 query × N tenant di satu page load tidak scalable. Desain: halaman utama tetap 1× panggilan
+`computeMemberStatistics` (Total Pusat) + tabel ringkas murah (`GROUP BY`, tanpa breakdown
+inline); tiap baris tenant dapat link **"Lihat Statistik →"** ke route BARU
+`/ringkasan-tenant/[targetSlug]` (analog pola drill-down `/platform/tenants/[slug]`) yang baru
+menghitung SAAT diklik. Guard keamanan tetap cek `access.tenant.tenantType==="pusat"` (tenant
+DI URL, konteks dashboard yang dibuka) — BUKAN tipe `targetSlug` (tenant yang datanya dilihat).
+
+**Satu pengecualian SEMPIT dicatat eksplisit terhadap prinsip "hanya 3 tabel public schema"**
+yang sudah dikunci sebelumnya: `getEnabledEkosistemModules()` (dipakai `computeMemberStatistics`
+untuk tahu section mana yang harus digate per toggle admin tenant target) membaca `tenant_
+{targetSlug}.settings` group `"general"` — SATU tabel di schema tenant LAIN, murni data toggle
+UI boolean (bukan finansial/PII). Diterima sebagai exception minimal, BUKAN pembukaan akses
+lebih luas — tidak ada tabel `tenant_{slug}.*` lain yang boleh dibaca di luar ini.
+
+**Nol kode ditulis** — murni pelengkapan dokumen (section "E" baru + "File yang akan disentuh"
+diperluas 4 file baru: `member-statistics.server.ts`, `statistik-sections.tsx`, refactor
+`statistik/page.tsx`, route drill-down `ringkasan-tenant/[targetSlug]/page.tsx`). Item
+"breakdown demografis lintas-tenant" yang sebelumnya dicatat "di luar scope Fase 1" DIPINDAH
+masuk scope Fase 1 (ini yang diminta user sesi ini) — sisa item "di luar scope" (grafik tren,
+filter/search tabel) tidak berubah.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **[PERENCANAAN, belum eksekusi] Menu Admin Khusus IKPM Pusat: "Ringkasan
+- Terakhir dikerjakan: **[PERENCANAAN, belum eksekusi] Refinement rencana "Ringkasan Tenant" —
+  reuse penuh query statistik existing** (lihat lesson `[2026-08-07]` "Refinement Rencana
+  'Ringkasan Tenant'" di atas, detail lengkap `docs/arsitektur-backbone-ikpm.md` § "E.
+  Statistik detail — REUSE penuh dari `/{slug}/statistik`"). User minta statistik per-tenant
+  juga ditampilkan, selain total Pusat — dan menegaskan ini bisa REUSE data statistik yang
+  sudah ada per tenant. Dibaca penuh `/{slug}/statistik/page.tsx` (600 baris) untuk verifikasi
+  klaim, bukan diasumsikan — terkonfirmasi benar. Rencana: ekstraksi query (`computeMemberStatistics()`
+  di file baru `lib/member-statistics.server.ts`) + JSX (`<StatistikSections>` di
+  `components/statistik/statistik-sections.tsx`) dari halaman publik existing, TANPA mengubah
+  perilakunya sama sekali (refactor murni). **Insight arsitektur**: "Total Statistik Pusat"
+  TIDAK butuh cabang kode terpisah — cukup panggil `computeMemberStatistics(access.tenant.id)`
+  dengan ID tenant Pusat sendiri, karena Pusat memang berisi SEMUA anggota (konsekuensi
+  langsung desain "keanggotaan tanpa batas"). Statistik per-tenant LAIN didesain LAZY (route
+  drill-down terpisah `/ringkasan-tenant/[targetSlug]`, dihitung SAAT diklik) — bukan
+  dihitung untuk semua tenant sekaligus di satu page load (~20 query/tenant, tidak scalable
+  kalau dikalikan jumlah tenant). Satu pengecualian sempit dicatat eksplisit terhadap prinsip
+  "hanya 3 tabel public schema": `getEnabledEkosistemModules()` perlu baca `tenant_
+  {targetSlug}.settings` group "general" (murni toggle UI boolean, bukan data sensitif) untuk
+  tahu section mana yang harus digate per tenant target. **Nol kode ditulis** — murni
+  pelengkapan dokumen (4 file baru ditambahkan ke tabel "File yang akan disentuh"), item
+  "breakdown demografis lintas-tenant" dipindah dari "di luar scope" masuk ke scope Fase 1.
+- Sesi sebelumnya: **[PERENCANAAN, belum eksekusi] Menu Admin Khusus IKPM Pusat: "Ringkasan
   Tenant"** (lihat lesson `[2026-08-06]` "[PERENCANAAN ARSITEKTUR] Menu Admin Khusus IKPM Pusat"
   di atas, detail lengkap `docs/arsitektur-backbone-ikpm.md` § "Menu Admin Khusus IKPM Pusat:
   'Ringkasan Tenant'"). User minta dibuatkan perencanaan LANGSUNG setelah eksekusi tenant "IKPM

@@ -831,16 +831,80 @@ yang BELUM tersambung ke PC IKPM resmi manapun — `COUNT(*) FROM members WHERE
 primary_cabang_ref_id IS NULL`. Berguna operasional buat admin Pusat memantau kelengkapan data
 backbone.
 
+### E. Statistik detail — REUSE penuh dari `/{slug}/statistik`, bukan query baru
+
+> Ditambahkan setelah user menegaskan 2026-08-06/07: *"tampilkan juga statistik anggota masing2
+> tenant ya.. selain total statistik seluruh anggota pusat.. sebenarnya itu bisa ambil dari
+> data statistik masing2 tenant yg sudah ada ya.. kan setiap tenant punya statistik.."* —
+> dikonfirmasi BENAR: `/{slug}/statistik` (halaman publik per-tenant, 600 baris, sudah dibaca
+> penuh) SUDAH menghitung breakdown lengkap yang persis dibutuhkan (gender, kabupaten domisili,
+> angkatan dengan sub-periode 1999, kategori profesi, wali santri, status domisili, + 3 section
+> Pesantren/Usaha/Profesional masing-masing dengan sub-breakdown sendiri) — tinggal DIEKSTRAK
+> jadi fungsi/komponen bersama, bukan ditulis ulang.
+
+**Refactor wajib (bukan opsional) — pemisahan query vs render dari file existing**:
+- `apps/web/lib/member-statistics.server.ts` (BARU, `import "server-only"`) —
+  `computeMemberStatistics(tenantId: string, enabledModules: EkosistemModulesConfig)`, isinya
+  SELURUH blok query (baris ±100–357 di `statistik/page.tsx` saat ini — gender, kabupaten,
+  angkatan, profesi, wali santri, domisili, punya-usaha/pesantren/profesional, + 3 section
+  detail) dipindah APA ADANYA (pure code motion, zero perubahan logic) dari
+  `statistik/page.tsx`, dibungkus jadi satu fungsi yang menerima `tenantId` sebagai parameter
+  (bukan hardcode dari `params`).
+- `apps/web/components/statistik/statistik-sections.tsx` (BARU) — SELURUH JSX render (4
+  `<section>`: Anggota/Pesantren/Usaha/Profesional, termasuk `StatCard`/`BarList`/
+  `SectionTitle` helper lokal) dipindah APA ADANYA jadi komponen `<StatistikSections data={...}
+  enabledModules={...} />` yang menerima hasil `computeMemberStatistics()` sebagai prop.
+- `apps/web/app/(public)/[tenant]/statistik/page.tsx` — DIPERKECIL jadi murni: resolve
+  `tenant.id` dari slug → panggil `computeMemberStatistics(tenant.id, enabledModules)` →
+  render `<StatistikSections data={...} enabledModules={...} />`. **Perilaku halaman publik
+  ini TIDAK BOLEH berubah SAMA SEKALI** — refactor murni, bukan penambahan fitur, output HTML
+  harus identik sebelum/sesudah.
+
+**Insight arsitektur penting — "Total Statistik Pusat" TIDAK butuh cabang kode terpisah**:
+karena tenant Pusat (via `syncAutoTenantMemberships()` § 3 + backfill § 4) memiliki baris
+`tenant_memberships` untuk SEMUA anggota, maka `computeMemberStatistics(access.tenant.id)`
+yang dipanggil DARI DALAM dashboard tenant Pusat itu sendiri (`access.tenant.id` = ID tenant
+Pusat) **otomatis menghasilkan statistik SELURUH anggota sistem** — sama persis fungsi yang
+dipanggil `/{slug}/statistik` untuk tenant mana pun, tidak perlu query terpisah/`UNION`/tanpa-
+filter khusus. "Total Statistik Pusat" hanyalah `<StatistikSections>` yang dipanggil dengan ID
+tenant Pusat sendiri — konsekuensi elegan langsung dari desain "keanggotaan tanpa batas" yang
+sudah dikunci di § "Tenant Khusus: IKPM Pusat" di atas.
+
+**Statistik PER tenant lain (cabang/marhalah/forum) — drill-down route terpisah, LAZY, bukan
+dihitung untuk semua tenant sekaligus**: `/{slug}/statistik` sendirian sudah menjalankan ~20
+query untuk SATU tenant — menghitung ini untuk SEMUA tenant di satu page load (kalau ada N
+tenant) berarti ~20×N query, tidak scalable begitu jumlah tenant bertambah. Desain yang benar:
+- Halaman utama "Ringkasan Tenant" (§ A–D di atas) HANYA jalankan `computeMemberStatistics`
+  SEKALI (untuk total Pusat) — tabel per-tenant (§ C) tetap murni agregat murah (1 query
+  `GROUP BY`), TIDAK menampilkan breakdown detail inline.
+- Setiap baris tenant di tabel dapat tautan **"Lihat Statistik →"** menuju route BARU
+  `/app/{slug-pusat}/ringkasan-tenant/[targetSlug]/page.tsx` — halaman terpisah yang HANYA
+  dihitung saat admin benar-benar klik masuk ke tenant itu (analog `/platform/tenants/[slug]`
+  sebagai pola drill-down yang sudah ada). Di sinilah `computeMemberStatistics(targetTenant.id)`
+  + `<StatistikSections>` yang SAMA dipanggil ulang, untuk tenant target.
+- **Guard keamanan tetap sama** — yang dicek adalah `access.tenant.tenantType === "pusat"`
+  (tenant DI URL `/app/{slug-pusat}/...`, konteks dashboard yang sedang dibuka), BUKAN tipe
+  `targetSlug` (tenant yang datanya sedang dilihat, bisa cabang/marhalah/forum apa saja) — kalau
+  guard pertama gagal, redirect sebelum `targetSlug` bahkan di-resolve.
+
+**Satu pengecualian SEMPIT terhadap prinsip "hanya 3 tabel public schema"** — dicatat eksplisit,
+bukan diam-diam diperluas: `getEnabledEkosistemModules(tenantClient)` (dipakai
+`computeMemberStatistics` untuk tahu section Pesantren/Usaha/Profesional mana yang mau
+dirender per tenant, sesuai toggle admin tenant itu masing-masing — § "Toggle Per-Tenant untuk
+Modul Ekosistem") membaca `tenant_{targetSlug}.settings` GROUP `"general"` — SATU tabel di
+schema tenant LAIN, di luar 3 tabel backbone yang disebutkan sebelumnya. Diterima sebagai
+pengecualian sempit karena: (1) datanya murni toggle UI boolean (bukan data finansial/PII), (2)
+tanpa ini, statistik tenant lain akan salah tampil section yang admin tenant itu sudah matikan
+sengaja. **Tidak ada tabel `tenant_{slug}.*` LAIN yang boleh dibaca di luar ini** — kalau nanti
+butuh field settings lain (mis. nama tenant custom), harus lewat `public.tenants.name`, bukan
+`tenant_{slug}.settings`.
+
 ### Di luar scope Fase 1 (ide lanjutan, TIDAK diminta eksplisit — jangan dieksekusi tanpa konfirmasi)
 
 - Grafik tren pendaftaran anggota (harian/mingguan/bulanan) — bisa reuse pola
   `components/dashboard/income-expense-chart.tsx` (recharts, dipakai dashboard tenant biasa
   untuk grafik pemasukan/pengeluaran) sebagai referensi bikin komponen `MemberGrowthChart`
   serupa.
-- Breakdown demografis lintas-tenant (kabupaten/provinsi/angkatan agregat) — pola query-nya
-  SUDAH ADA di `/{slug}/statistik` (halaman publik per-tenant, § lesson CLAUDE.md "Statistik —
-  Pola Angkatan dengan Sub-periode"), tinggal dilepas filter `tenant_memberships.tenantId`
-  untuk versi lintas-tenant.
 - Filter/search di tabel tenant (mirip `/platform/tenants` yang sudah punya query param
   `q`+`status`).
 
@@ -848,15 +912,21 @@ backbone.
 
 | File | Perubahan |
 |------|-----------|
+| `apps/web/lib/member-statistics.server.ts` (baru) | `computeMemberStatistics(tenantId, enabledModules)` — ekstraksi murni dari `statistik/page.tsx`, `import "server-only"` |
+| `apps/web/components/statistik/statistik-sections.tsx` (baru) | `<StatistikSections>` — ekstraksi murni JSX render dari `statistik/page.tsx` |
+| `apps/web/app/(public)/[tenant]/statistik/page.tsx` | diperkecil jadi resolve tenant → panggil fungsi+komponen baru, nol perubahan perilaku |
 | `components/dashboard/sidebar-nav.tsx` | `NavItem.pusatOnly` + entry baru + filter logic |
 | `components/dashboard/sidebar.tsx` | prop `isPusatTenant` → diteruskan ke `SidebarNav` |
 | `components/dashboard/mobile-sidebar.tsx` | prop `isPusatTenant` → diteruskan ke `Sidebar` |
 | `(dashboard)/app/[tenant]/layout.tsx` | hitung `isPusatTenant`, teruskan ke `Sidebar`+`MobileSidebar` |
-| `(dashboard)/app/[tenant]/ringkasan-tenant/page.tsx` (baru) | Server Component: guard tipe tenant + 4 query (A–D) + render StatCard+tabel |
+| `(dashboard)/app/[tenant]/ringkasan-tenant/page.tsx` (baru) | Server Component: guard tipe tenant + 4 query (A–D) + `computeMemberStatistics(access.tenant.id)` untuk Total Pusat + tabel per-tenant dengan link drill-down |
+| `(dashboard)/app/[tenant]/ringkasan-tenant/[targetSlug]/page.tsx` (baru) | Server Component: guard tipe tenant (dari `access.tenant`, BUKAN `targetSlug`) + resolve target tenant by slug + `computeMemberStatistics(target.id)` + render `<StatistikSections>` |
 | `(platform)/platform/(protected)/tenants/page.tsx` | drive-by fix: tambah entry `TYPE_LABEL.pusat` (gap ditemukan saat riset fitur ini, badge platform admin salah tampil "Cabang" untuk tenant Pusat) |
 
 **Nol migrasi DB diperlukan** — seluruh data sumber (`tenants`, `tenant_memberships`,
-`members`) sudah ada sejak lama, fitur ini murni query+render baru.
+`members`, dan tabel-tabel yang sudah dipakai `/{slug}/statistik`) sudah ada sejak lama, fitur
+ini murni query+render baru + 1 refactor ekstraksi (tanpa perubahan perilaku) pada halaman
+publik yang sudah ada.
 
 ---
 
