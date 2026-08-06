@@ -15693,7 +15693,7 @@ tenant-org-label+resolve-akun-branding+register → platform actions+form), tida
 akhir. `bun run build --filter=@jalajogja/web` genuine (dev server dimatikan+`.next`
 dibersihkan+direstart setelah, `Cached: 0 cached`, 46.6 detik — bukan cache-hit) — route
 `/platform/tenants/new` terkonfirmasi compile bersih, curl `200`/`307` (auth guard, bukan
-crash 500) setelah restart. **Belum di-commit/push ke git, belum dijalankan di VPS, belum
+crash 500) setelah restart. **Sudah di-commit+push (`a6f877b`). Belum dijalankan di VPS, belum
 diverifikasi visual di browser** — user perlu coba: buat tenant baru dengan tipe "IKPM Pusat"
 dari `/platform/tenants/new`, konfirmasi SEMUA anggota existing langsung ter-backfill jadi
 anggota (`tenant_memberships` bertambah sebanyak `public.members`), coba buat tenant "pusat"
@@ -15721,11 +15721,11 @@ di tenant manapun setelah itu otomatis ikut jadi anggota Pusat juga (lewat
   "pusat" tanpa opsi radio baru — ditambahkan (dengan ikon `Landmark`, diverifikasi ada di
   `.d.ts` terinstall). `tsc --noEmit` bersih di kedua package di SETIAP fase + `bun run build`
   genuine sukses (`Cached: 0 cached`, 46.6s, dev server dimatikan+`.next` dibersihkan+
-  direstart). Migration dijalankan+diverifikasi LOKAL. **Belum di-commit/push ke git, belum
-  dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba: buat tenant
-  "IKPM Pusat" dari `/platform/tenants/new`, konfirmasi backfill SELURUH anggota existing,
-  coba buat tenant "pusat" KEDUA (harus ditolak jelas), dan konfirmasi anggota baru di tenant
-  manapun otomatis ikut jadi anggota Pusat.
+  direstart). Migration dijalankan+diverifikasi LOKAL. **Sudah di-commit+push (`a6f877b`).
+  Belum dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba: buat
+  tenant "IKPM Pusat" dari `/platform/tenants/new`, konfirmasi backfill SELURUH anggota
+  existing, coba buat tenant "pusat" KEDUA (harus ditolak jelas), dan konfirmasi anggota baru
+  di tenant manapun otomatis ikut jadi anggota Pusat.
 - Sesi sebelumnya: **Koreksi: Komitmen Cart Selalu Menahan Aktivasi Sampai Bayar + Overlay
   "Lunasi Pembayaran"** (lihat lesson `[2026-08-06]` "Koreksi: Komitmen Cart Selalu Menahan
   Aktivasi Sampai Bayar" di atas, detail lengkap `docs/arsitektur-gabung-forum.md` §
