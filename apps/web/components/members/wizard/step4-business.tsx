@@ -47,6 +47,7 @@ import {
 } from "@/lib/business-form-options"
 import {
   resolveCategoryOptions, resolveSectorOptions, resolveBusinessFieldSuggestions,
+  resolveBusinessFieldSuggestionsStrict,
   resolveFieldLabel, EMPTY_TAXONOMY_OVERRIDES, type TaxonomyOverrides,
 } from "@/lib/taxonomy-overrides"
 import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags"
@@ -477,14 +478,16 @@ function BusinessCard({
             {resolveFieldLabel("businessFields", taxonomyOverrides)}<span className="text-destructive ml-0.5">*</span>
           </span>
           <TagMultiSelect
-            options={resolveBusinessFieldSuggestions(entry.sector, taxonomyOverrides)}
+            options={resolveBusinessFieldSuggestionsStrict(entry.sector, taxonomyOverrides)}
+            searchOptions={resolveBusinessFieldSuggestions(entry.sector, taxonomyOverrides)}
             value={entry.businessFields}
             onChange={(businessFields) => onChange("businessFields", businessFields)}
             disabled={disabled}
             placeholder="Ketik atau pilih bidang usaha, mis. Kaligrafi..."
           />
           <p className="text-xs text-muted-foreground">
-            Boleh pilih lebih dari satu — tidak harus sesuai sektor di atas.
+            Boleh pilih lebih dari satu — daftar mengikuti sektor di atas, ketik untuk mencari
+            bidang usaha dari sektor lain.
           </p>
         </div>
         <div className="space-y-4">

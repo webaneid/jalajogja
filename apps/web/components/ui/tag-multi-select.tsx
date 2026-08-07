@@ -16,28 +16,36 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 // "Bidang Usaha" (JSONB array), atau kebutuhan multi-select serupa lainnya di seluruh app.
 
 type Props = {
-  options:     string[];   // daftar rekomendasi/suggestion
+  options:       string[];   // daftar rekomendasi/suggestion — dipakai saat IDLE (belum mengetik)
+  /**
+   * Daftar LEBIH LUAS, dipakai HANYA saat user sedang mengetik (searchTerm tidak kosong) —
+   * opsional, default `undefined` = perilaku lama (selalu pakai `options`). Kasus pakai: field
+   * yang idle-nya sengaja dibatasi (mis. Bidang Usaha hanya milik sektor terpilih), tapi tetap
+   * bisa MENEMUKAN item di luar batasan itu begitu diketik.
+   */
+  searchOptions?: string[];
   value:       string[];   // tag yang sudah dipilih
   onChange:    (value: string[]) => void;
   placeholder?: string;
   disabled?:   boolean;
 };
 
-export function TagMultiSelect({ options, value, onChange, placeholder, disabled }: Props) {
+export function TagMultiSelect({ options, searchOptions, value, onChange, placeholder, disabled }: Props) {
   const [inputValue, setInputValue] = React.useState("");
   const [open, setOpen]             = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const blurTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const searchTerm   = inputValue.trim();
-  const available     = options.filter((o) => !value.includes(o));
-  const filtered       = searchTerm
+  const searchTerm    = inputValue.trim();
+  const sourceOptions = searchTerm ? (searchOptions ?? options) : options;
+  const available      = sourceOptions.filter((o) => !value.includes(o));
+  const filtered        = searchTerm
     ? available.filter((o) => o.toLowerCase().includes(searchTerm.toLowerCase()))
     : available;
-  const exactMatch    = options.some((o) => o.toLowerCase() === searchTerm.toLowerCase())
+  const exactMatch     = sourceOptions.some((o) => o.toLowerCase() === searchTerm.toLowerCase())
     || value.some((v) => v.toLowerCase() === searchTerm.toLowerCase());
-  const canCreate     = searchTerm.length > 0 && !exactMatch;
-  const showDropdown  = open && !disabled && (filtered.length > 0 || canCreate);
+  const canCreate      = searchTerm.length > 0 && !exactMatch;
+  const showDropdown   = open && !disabled && (filtered.length > 0 || canCreate);
 
   function addTag(tag: string) {
     const trimmed = tag.trim();

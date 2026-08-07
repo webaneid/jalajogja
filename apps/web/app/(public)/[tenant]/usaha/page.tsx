@@ -24,7 +24,8 @@ import { getTaxonomyOverrides } from "@/lib/taxonomy-overrides.server";
 import {
   resolveCategoryLabel, resolveCategoryOptions,
   resolveSectorLabel, resolveSectorOptions,
-  resolveBusinessFieldLabel, resolveBusinessFieldSuggestions, resolveFieldLabel,
+  resolveBusinessFieldLabel, resolveBusinessFieldSuggestions,
+  resolveBusinessFieldSuggestionsStrict, resolveFieldLabel,
 } from "@/lib/taxonomy-overrides";
 
 export const revalidate = 60;
@@ -209,6 +210,11 @@ export default async function UsahaDirectoryPage({
             ...resolveSectorOptions(taxonomyOverrides),
           ]}
           bidangOptions={[
+            { value: "", label: `Semua ${resolveFieldLabel("businessFields", taxonomyOverrides)}` },
+            ...resolveBusinessFieldSuggestionsStrict(sektor ?? null, taxonomyOverrides)
+              .map((b) => ({ value: b, label: resolveBusinessFieldLabel(b, taxonomyOverrides) })),
+          ]}
+          bidangSearchOptions={[
             { value: "", label: `Semua ${resolveFieldLabel("businessFields", taxonomyOverrides)}` },
             ...resolveBusinessFieldSuggestions(sektor ?? null, taxonomyOverrides)
               .map((b) => ({ value: b, label: resolveBusinessFieldLabel(b, taxonomyOverrides) })),

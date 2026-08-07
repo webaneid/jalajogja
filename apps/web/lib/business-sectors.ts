@@ -139,11 +139,32 @@ export const SECTOR_SUB_FIELDS: Record<BusinessSector, string[]> = {
 };
 
 // ── Soft-prioritize: sektor terpilih muncul duluan, sisanya (termasuk sektor lain) tetap ada ──
-// Tidak ada item yang hilang dari daftar — murni urutan, bukan filter.
+// Tidak ada item yang hilang dari daftar — murni urutan, bukan filter. Dipakai sebagai daftar
+// PENCARIAN (searchOptions) di TagMultiSelect — begitu user mengetik, seluruh sektor tetap bisa
+// ditemukan.
 export function getPrioritizedBusinessFields(sector: string | null | undefined): string[] {
   const all = BUSINESS_FIELD_SUGGESTIONS;
   if (!sector || !(sector in SECTOR_SUB_FIELDS)) return all;
   const prioritized = SECTOR_SUB_FIELDS[sector as BusinessSector];
   const rest = all.filter((f) => !prioritized.includes(f));
   return [...prioritized, ...rest];
+}
+
+// ── Hard filter: HANYA item kanonik milik sektor ini ────────────────────────────────────────
+// Beda dari getPrioritizedBusinessFields() di atas (yang tetap menyertakan SEMUA sektor, cuma
+// diurutkan) — fungsi ini GENUINELY membuang item sektor lain. Dipakai sebagai daftar IDLE
+// (options) di TagMultiSelect, supaya dropdown yang belum diketik apa pun tidak "bocor" item
+// sektor lain — sektor lain tetap bisa dicari via searchOptions (getPrioritizedBusinessFields).
+//
+// DUA kondisi fallback yang BERBEDA (jangan disatukan):
+// - `sector` kosong (belum dipilih SAMA SEKALI) → tidak ada yang bisa dibatasi, tampilkan
+//   daftar penuh.
+// - `sector` terisi tapi BUKAN salah satu dari 10 kanonik (Sektor CUSTOM tenant, § 10.10) →
+//   kosong (`[]`), BUKAN daftar penuh — Sektor custom murni punya item custom
+//   (customBusinessFields[sector]) miliknya sendiri, tidak ada Tier-3 kanonik yang relevan
+//   untuknya. Fallback ke daftar penuh di sini justru MEMBOCORKAN 59 item lintas-sektor untuk
+//   tenant yang sektor-nya sepenuhnya custom — kebalikan dari tujuan fungsi ini.
+export function getStrictBusinessFields(sector: string | null | undefined): string[] {
+  if (!sector) return BUSINESS_FIELD_SUGGESTIONS;
+  return (SECTOR_SUB_FIELDS as Record<string, string[]>)[sector] ?? [];
 }

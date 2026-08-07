@@ -17,7 +17,7 @@ import {
 } from "@/lib/business-form-options";
 import {
   BUSINESS_SECTOR_ENUM, type BusinessSector, SECTOR_COMBOBOX_OPTIONS,
-  getPrioritizedBusinessFields,
+  getPrioritizedBusinessFields, getStrictBusinessFields,
 } from "@/lib/business-sectors";
 
 export type TaxonomyOverrides = {
@@ -164,13 +164,14 @@ export function resolveBusinessFieldLabel(
   return overrides.businessFieldLabels?.[value] || value;
 }
 
-// Untuk PICKER (TagMultiSelect) — gabung daftar kanonik (soft-prioritized per sektor) dengan
-// Bidang Usaha custom tenant, JUGA soft-prioritized per sektor (§ 10.9 — customBusinessFields
-// sekarang Partial<Record<BusinessSector,string[]>>, mirror SECTOR_SUB_FIELDS). Item custom
-// milik sektor terpilih didahulukan, item custom milik sektor LAIN tetap ada di posisi
-// belakang (non-exclusive, sama seperti kanonik) — TIDAK PERNAH hilang total. TIDAK menerapkan
-// businessFieldLabels di sini — TagMultiSelect cuma terima string[] polos (value=label
-// sekaligus), lihat § 10.2 kenapa override picker untuk Bidang Usaha sengaja tidak didukung.
+// Untuk PICKER (TagMultiSelect) mode PENCARIAN (searchOptions) — gabung daftar kanonik
+// (soft-prioritized per sektor) dengan Bidang Usaha custom tenant, JUGA soft-prioritized per
+// sektor (§ 10.9 — customBusinessFields sekarang Partial<Record<BusinessSector,string[]>>,
+// mirror SECTOR_SUB_FIELDS). Item custom milik sektor terpilih didahulukan, item custom milik
+// sektor LAIN tetap ada di posisi belakang (non-exclusive, sama seperti kanonik) — TIDAK PERNAH
+// hilang total. TIDAK menerapkan businessFieldLabels di sini — TagMultiSelect cuma terima
+// string[] polos (value=label sekaligus), lihat § 10.2 kenapa override picker untuk Bidang
+// Usaha sengaja tidak didukung.
 export function resolveBusinessFieldSuggestions(
   sector: string | null | undefined,
   overrides: TaxonomyOverrides,
@@ -182,6 +183,24 @@ export function resolveBusinessFieldSuggestions(
     .filter(([s]) => s !== sector)
     .flatMap(([, items]) => items ?? []);
   return Array.from(new Set([...currentSectorCustom, ...canonicalPrioritized, ...otherSectorCustom]));
+}
+
+// Untuk PICKER (TagMultiSelect/Combobox) mode IDLE (options) — HANYA item milik sektor
+// terpilih (kanonik Tier-3 sektor itu + custom Bidang Usaha khusus sektor itu), TIDAK
+// menyertakan sektor lain sama sekali (§ 2026-08-07 susulan — beda dari soft-prioritize di
+// atas yang tetap menyertakan SEMUA sektor). Dipasangkan sebagai `options` bersama
+// resolveBusinessFieldSuggestions() (union penuh) sebagai `searchOptions` — begitu user
+// mengetik untuk mencari, seluruh sektor lain tetap bisa ditemukan; SEBELUM mengetik, dropdown
+// tidak "bocor" item sektor lain. Kalau sektor belum dipilih, fallback ke union penuh (tidak
+// ada yang bisa dibatasi tanpa sektor).
+export function resolveBusinessFieldSuggestionsStrict(
+  sector: string | null | undefined,
+  overrides: TaxonomyOverrides,
+): string[] {
+  if (!sector) return resolveBusinessFieldSuggestions(sector, overrides);
+  const canonicalForSector = getStrictBusinessFields(sector);
+  const customForSector = overrides.customBusinessFields?.[sector] ?? [];
+  return Array.from(new Set([...canonicalForSector, ...customForSector]));
 }
 
 // Re-export enum untuk konsumen yang cuma butuh daftar mentah (mis. form pengaturan taksonomi

@@ -16,7 +16,8 @@ import {
 } from "@/lib/business-form-options";
 import {
   resolveCategoryLabel, resolveCategoryOptions, resolveSectorLabel, resolveSectorOptions,
-  resolveBusinessFieldLabel, resolveBusinessFieldSuggestions, resolveFieldLabel,
+  resolveBusinessFieldLabel, resolveBusinessFieldSuggestions,
+  resolveBusinessFieldSuggestionsStrict, resolveFieldLabel,
   type TaxonomyOverrides,
 } from "@/lib/taxonomy-overrides";
 import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags";
@@ -473,14 +474,16 @@ function EntryEditForm({ entry, taxonomyOverrides, onUpdate, onWilayah, disabled
         </div>
         <Field label={resolveFieldLabel("businessFields", taxonomyOverrides)}>
           <TagMultiSelect
-            options={resolveBusinessFieldSuggestions(entry.sector, taxonomyOverrides)}
+            options={resolveBusinessFieldSuggestionsStrict(entry.sector, taxonomyOverrides)}
+            searchOptions={resolveBusinessFieldSuggestions(entry.sector, taxonomyOverrides)}
             value={entry.businessFields}
             onChange={businessFields => onUpdate({ businessFields })}
             disabled={disabled}
             placeholder="Ketik atau pilih bidang usaha, mis. Kaligrafi..."
           />
           <p className="text-xs text-muted-foreground">
-            Boleh pilih lebih dari satu — tidak harus sesuai sektor di atas.
+            Boleh pilih lebih dari satu — daftar mengikuti sektor di atas, ketik untuk mencari
+            bidang usaha dari sektor lain.
           </p>
         </Field>
         <div className="space-y-4">

@@ -23,7 +23,11 @@ type Props = {
   // render, tidak import const kanonik langsung lagi (docs/arsitektur-ekosistem.md § 10.5).
   kategoriOptions:  ComboboxOption[];
   sektorOptions:    ComboboxOption[];
-  bidangOptions:    ComboboxOption[];
+  // bidangOptions = IDLE (dibatasi ke Sektor yang sedang difilter, kalau ada). bidangSearchOptions
+  // = daftar PENUH (semua sektor), dipakai HANYA saat user mengetik di combobox Bidang Usaha —
+  // supaya sektor lain tetap bisa ditemukan lewat pencarian tanpa membanjiri tampilan idle.
+  bidangOptions:       ComboboxOption[];
+  bidangSearchOptions: ComboboxOption[];
 };
 
 export function UsahaFiltersClient({
@@ -41,6 +45,7 @@ export function UsahaFiltersClient({
   kategoriOptions,
   sektorOptions,
   bidangOptions,
+  bidangSearchOptions,
 }: Props) {
   function buildUrl(overrides: Record<string, string | undefined | number>) {
     const sp = new URLSearchParams();
@@ -106,6 +111,7 @@ export function UsahaFiltersClient({
 
         <Combobox
           options={bidangOptions}
+          searchOptions={bidangSearchOptions}
           value={currentBidang ?? ""}
           onValueChange={v => { window.location.href = buildUrl({ bidang: v || undefined, page: "1" }); }}
           className={FILTER_CLASS}

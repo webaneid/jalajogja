@@ -28,6 +28,14 @@ export type ComboboxOption = {
 
 type Props = {
   options: ComboboxOption[];
+  /**
+   * Daftar LEBIH LUAS, dipakai HANYA saat user sedang mengetik pencarian (query tidak kosong) —
+   * opsional, default `undefined` = perilaku lama (selalu pakai `options` apa pun kondisinya).
+   * Kasus pakai: dropdown yang idle-nya sengaja dibatasi (mis. Bidang Usaha hanya milik sektor
+   * terpilih), tapi tetap bisa MENEMUKAN item di luar batasan itu begitu diketik. Tidak
+   * dipakai bersamaan `onSearchChange` (mode server-side, filter sudah ditentukan caller).
+   */
+  searchOptions?: ComboboxOption[];
   value: string;
   onValueChange: (value: string) => void;
   placeholder?: string;
@@ -43,6 +51,7 @@ type Props = {
 
 export function Combobox({
   options,
+  searchOptions,
   value,
   onValueChange,
   placeholder = "Pilih...",
@@ -53,8 +62,14 @@ export function Combobox({
   onSearchChange,
   clearable = false,
 }: Props) {
-  const [open, setOpen] = React.useState(false);
-  const selected = options.find((o) => o.value === value);
+  const [open, setOpen]   = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  // Label tombol tetap benar meski value sekarang datang dari searchOptions (item di luar
+  // daftar idle, mis. hasil pencarian yang sudah tersimpan sebelumnya) — cegah tombol tampak
+  // "kosong" untuk pilihan yang sah. Pola sama resolveSectorOptions()'s `currentValue` fallback.
+  const selected = options.find((o) => o.value === value)
+    ?? searchOptions?.find((o) => o.value === value);
+  const sourceOptions = query.trim() && searchOptions ? searchOptions : options;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -93,12 +108,13 @@ export function Combobox({
         <Command shouldFilter={!onSearchChange}>
           <CommandInput
             placeholder={searchPlaceholder}
-            onValueChange={onSearchChange}
+            value={query}
+            onValueChange={(v) => { setQuery(v); onSearchChange?.(v); }}
           />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
-              {options.map((opt) => (
+              {sourceOptions.map((opt) => (
                 <CommandItem
                   key={opt.value}
                   value={opt.label}
