@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { MemberEligibilityField } from "@/lib/member-eligibility";
-import type { EkosistemModule, EkosistemModulesConfig } from "@/lib/ekosistem-modules";
-import { EKOSISTEM_MODULE_LABELS } from "@/lib/ekosistem-modules";
+import type { EkosistemModule, EkosistemModulesConfig, EkosistemModuleLabels } from "@/lib/ekosistem-modules";
+import { ALL_EKOSISTEM_MODULES, resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import { DirectoryChoicePopover } from "@/components/akun/directory-choice-popover";
 
 // Overlay glass-effect yang menutupi kartu keanggotaan di /akun — standar UMUM untuk
@@ -51,6 +51,11 @@ type Props = {
   // Modul mana yang aktif di tenant ini — diteruskan ke DirectoryChoicePopover supaya
   // popup 3 pilihan hanya menampilkan modul yang benar-benar ditawarkan tenant ini.
   enabledModules?: EkosistemModulesConfig;
+  // Label custom nama modul (2026-08-07, /ekosistem/pengaturan) — dipakai untuk pesan
+  // spesifik-modul ("Lengkapi Data {label} Anda"). TIDAK dipakai DirectoryChoicePopover —
+  // opsinya kalimat deskriptif ("Saya memiliki usaha"), bukan sekadar nama modul, rename
+  // tidak natural disisipkan ke situ.
+  moduleLabels?: EkosistemModuleLabels;
   // Ada invoice OUTSTANDING (belum lunas) hasil komitmen /gabung (produk/donasi yang
   // ditambahkan lewat GabungItemWidget) — PRIORITAS TERTINGGI di atas semua state lain:
   // user SUDAH commit membayar, overlay harus mengarahkan mereka melunasi, bukan menyuruh
@@ -63,7 +68,7 @@ type Props = {
 
 export function MembershipEligibilityOverlay({
   tenantName, missing, directoryIncompleteModule, baseUrl, isForum, isJoined, enabledModules,
-  pendingInvoiceId,
+  pendingInvoiceId, moduleLabels,
 }: Props) {
   const eligible             = missing.length === 0;
   const onlyDirectoryMissing = missing.length === 1 && missing[0] === "directory";
@@ -74,7 +79,17 @@ export function MembershipEligibilityOverlay({
   // tenant yang tidak punya alur /gabung.
   if (eligible && !isForum && !pendingInvoiceId) return null;
 
-  const moduleLabel = directoryIncompleteModule ? EKOSISTEM_MODULE_LABELS[directoryIncompleteModule] : null;
+  const moduleLabel = directoryIncompleteModule
+    ? resolveEkosistemModuleLabel(directoryIncompleteModule, moduleLabels ?? {})
+    : null;
+
+  // Fallback generik "Usaha/Profesional/Pesantren" untuk kasus belum mulai isi modul mana pun
+  // — kalau moduleLabels diisi, susun ulang dari label CUSTOM (bukan literal kanonik) sesuai
+  // modul yang aktif untuk tenant ini.
+  const genericDirectoryLabel = (enabledModules
+    ? ALL_EKOSISTEM_MODULES.filter((m) => enabledModules[m])
+    : ALL_EKOSISTEM_MODULES
+  ).map((m) => resolveEkosistemModuleLabel(m, moduleLabels ?? {})).join("/");
 
   let message: ReactNode;
   let action:  ReactNode;
@@ -108,9 +123,9 @@ export function MembershipEligibilityOverlay({
   } else if (onlyDirectoryMissing) {
     message = isJoined ? (
       <>Anda sudah menjadi anggota <strong>{tenantName}</strong>. Lengkapi salah satu dari
-        data Usaha/Profesional/Pesantren Anda agar profil keanggotaan tercatat dengan benar.</>
+        data {genericDirectoryLabel} Anda agar profil keanggotaan tercatat dengan benar.</>
     ) : (
-      <>Anda harus melengkapi salah satu dari data Usaha/Profesional/Pesantren Anda
+      <>Anda harus melengkapi salah satu dari data {genericDirectoryLabel} Anda
         terlebih dahulu sebelum dapat mendaftar menjadi anggota <strong>{tenantName}</strong></>
     );
     action = <DirectoryChoicePopover baseUrl={baseUrl} enabledModules={enabledModules} />;

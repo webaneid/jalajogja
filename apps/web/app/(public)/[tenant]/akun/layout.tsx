@@ -11,7 +11,7 @@ import { AkunMobileHeader } from "@/components/akun/mobile/akun-mobile-header";
 import { AkunBottomNav }    from "@/components/akun/mobile/akun-bottom-nav";
 import { BadgeCheck } from "lucide-react";
 import { resolveAkunBranding } from "@/lib/resolve-akun-branding";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
 
 type Props = {
   children: React.ReactNode;
@@ -62,7 +62,11 @@ export default async function AkunLayout({ children, params }: Props) {
 
   // Toggle modul ekosistem tenant ini — thread ke nav supaya link Usaha/Pesantren/Profesional
   // yang dimatikan hilang dari sidebar+bottom-nav. Lihat lib/ekosistem-modules.ts.
-  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  const tenantDbForModules = createTenantDb(slug);
+  const enabledModules = await getEnabledEkosistemModules(tenantDbForModules);
+  // Label custom nama modul (2026-08-07) — thread ke nav supaya "Usaha"/"Pesantren"/
+  // "Profesional" bisa diganti admin tenant, lihat /ekosistem/pengaturan.
+  const moduleLabels   = await getEkosistemModuleLabels(tenantDbForModules);
 
   // Label keanggotaan — bukan selalu tenant yang sedang dibrowsing, lihat
   // docs/arsitektur-akun.md § Resolusi Branding Kartu Anggota. `memberVerified=false`
@@ -109,7 +113,7 @@ export default async function AkunLayout({ children, params }: Props) {
             </div>
 
             {/* Nav */}
-            <AkunNav slug={slug} isMember={isMember} baseUrl={baseUrl} enabledModules={enabledModules} />
+            <AkunNav slug={slug} isMember={isMember} baseUrl={baseUrl} enabledModules={enabledModules} moduleLabels={moduleLabels} />
           </aside>
 
           {/* ── Konten ── */}
@@ -133,7 +137,7 @@ export default async function AkunLayout({ children, params }: Props) {
         <div className="px-4 py-4">
           {children}
         </div>
-        <AkunBottomNav slug={slug} baseUrl={baseUrl} isMember={isMember} enabledModules={enabledModules} />
+        <AkunBottomNav slug={slug} baseUrl={baseUrl} isMember={isMember} enabledModules={enabledModules} moduleLabels={moduleLabels} />
       </div>
     </>
   );

@@ -20,8 +20,12 @@ export const memberBusinesses = pgTable("member_businesses", {
   // Wajib diisi tetap ditegakkan di FORM (self-service `/akun/usaha` + admin wizard), pola
   // sama persis dengan members.gender/members.birthDate/contacts.phone — required di
   // front-end, bukan di kolom. Lihat docs/arsitektur-usaha.md.
+  //
+  // "Praktisi" + "Akademisi" ditambah 2026-08-07. Nilai HARUS identik dengan
+  // BUSINESS_CATEGORY_ENUM di apps/web/lib/business-form-options.ts — packages/db tidak
+  // import dari apps/web, jadi dijaga manual konsisten (pola sama persis Sektor di bawah).
   category: text("category", {
-    enum: ["Jasa", "Produsen", "Distributor", "Trading", "Profesional"],
+    enum: ["Jasa", "Produsen", "Distributor", "Trading", "Profesional", "Praktisi", "Akademisi"],
   }),
 
   // Upgrade 2026-07-30 dari 7 sektor lama ke 10 sektor BPS KBLI hybrid + "Kreatif" mandiri.

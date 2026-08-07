@@ -8,7 +8,9 @@ import { Step2Contact, type Step2DefaultValues } from "./wizard/step2-contact"
 import { Step3Education, type EducationEntry } from "./wizard/step3-education"
 import { Step4Business, type BusinessEntry } from "./wizard/step4-business"
 import type { RefProfession } from "@jalajogja/db"
-import type { EkosistemModulesConfig } from "@/lib/ekosistem-modules"
+import type { EkosistemModulesConfig, EkosistemModuleLabels } from "@/lib/ekosistem-modules"
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules"
+import type { TaxonomyOverrides } from "@/lib/taxonomy-overrides"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,6 +29,12 @@ interface MemberEditShellProps {
   // admin (lib/ekosistem-modules.ts). Opsional: kalau tidak dikirim, semua tab tampil
   // (perilaku lama).
   enabledModules?: EkosistemModulesConfig
+  // Label Kategori/Sektor/Bidang Usaha custom tenant (docs/arsitektur-ekosistem.md § 10).
+  // Opsional: caller lama yang belum di-update tetap dapat label kanonik bawaan.
+  taxonomyOverrides?: TaxonomyOverrides
+  // Label custom nama modul "Usaha" (2026-08-07, /ekosistem/pengaturan) — dipakai untuk tab
+  // "Data Usaha". Opsional: caller lama tetap dapat label kanonik bawaan.
+  moduleLabels?: EkosistemModuleLabels
 }
 
 type TabId = "identitas" | "kontak" | "pendidikan" | "usaha"
@@ -52,12 +60,17 @@ export function MemberEditShell({
   defaultEducations,
   defaultBusinesses,
   enabledModules,
+  taxonomyOverrides,
+  moduleLabels,
 }: MemberEditShellProps) {
   const [activeTab, setActiveTab] = React.useState<TabId>("identitas")
   const [savedTabs, setSavedTabs] = React.useState<Set<TabId>>(new Set())
   const [savingTab, setSavingTab] = React.useState<TabId | null>(null)
 
-  const tabs = TABS.filter((tab) => tab.id !== "usaha" || !enabledModules || enabledModules.usaha)
+  const usahaLabel = resolveEkosistemModuleLabel("usaha", moduleLabels ?? {})
+  const tabs = TABS
+    .filter((tab) => tab.id !== "usaha" || !enabledModules || enabledModules.usaha)
+    .map((tab) => tab.id === "usaha" ? { ...tab, label: `Data ${usahaLabel}` } : tab)
 
   function handleSuccess(_memberId?: string | undefined) {
     setSavedTabs((prev) => new Set([...prev, activeTab]))
@@ -141,6 +154,8 @@ export function MemberEditShell({
             memberId={memberId}
             slug={slug}
             defaultEntries={defaultBusinesses}
+            taxonomyOverrides={taxonomyOverrides}
+            moduleLabel={usahaLabel}
             onSuccess={() => handleSuccess()}
           />
         )}

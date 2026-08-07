@@ -17,7 +17,8 @@ import { ProfessionalFiltersClient } from "@/components/profesional/professional
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import type { ProfessionCategory } from "@/lib/professional-types";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 
 export const revalidate = 60;
 
@@ -67,8 +68,13 @@ export default async function ProfesionalDirectoryPage({
 
   // Modul Profesional dimatikan admin tenant ini — data tetap ada (single-ID global), cuma
   // tidak ditawarkan di sini. Berlaku juga untuk entri lama yang dibuat sebelum dimatikan.
-  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  const tenantClient = createTenantDb(slug);
+  const [enabledModules, moduleLabels] = await Promise.all([
+    getEnabledEkosistemModules(tenantClient),
+    getEkosistemModuleLabels(tenantClient),
+  ]);
   if (!enabledModules.profesional) notFound();
+  const moduleLabel = resolveEkosistemModuleLabel("profesional", moduleLabels);
 
   const provinsiList = await db
     .select({ id: refProvinces.id, name: refProvinces.name })
@@ -178,7 +184,7 @@ export default async function ProfesionalDirectoryPage({
       <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">Direktori Profesional</h1>
+          <h1 className="text-3xl font-bold">Direktori {moduleLabel}</h1>
           <p className="text-muted-foreground mt-1 text-sm">
             {total.toLocaleString("id-ID")} profesional terdaftar
           </p>

@@ -741,10 +741,11 @@ dibiarkan pakai default supaya konsisten dengan toggle tenant yang sedang dibrow
 4. `lib/resolve-akun-branding.ts` (`resolveAkunBranding`)
 5. `finance/billing/actions.ts` (`activateForumMembershipIfApplicable`)
 
-**Admin toggle UI** — `/app/{slug}/settings/general`: 3 checkbox baru ("Aktifkan Modul
-Usaha/Pesantren/Profesional") dengan teks penjelasan "data anggota yang sudah ada tidak akan
-dihapus, hanya disembunyikan dari tampilan" — konsisten prinsip yang dikunci di atas, supaya
-admin yang mematikan modul tidak salah kira ini aksi destruktif.
+**Admin toggle UI (lokasi ASLI saat dibangun 2026-08-01, sekarang basi — lihat "Susulan
+2026-08-07" di akhir section ini untuk lokasi TERKINI)** — `/app/{slug}/settings/general`:
+3 checkbox ("Aktifkan Modul Usaha/Pesantren/Profesional") dengan teks penjelasan "data anggota
+yang sudah ada tidak akan dihapus, hanya disembunyikan dari tampilan" — konsisten prinsip yang
+dikunci di atas, supaya admin yang mematikan modul tidak salah kira ini aksi destruktif.
 
 **Titik-titik yang ikut menyembunyikan (bukan cuma form entri)** — dieksekusi 4 fase, `tsc`+
 build genuine diverifikasi tiap fase:
@@ -843,6 +844,28 @@ persis mereplikasi skenario "forumStatus active tapi data belum lengkap" untuk d
 — user perlu konfirmasi ulang di tenant Forbis: anggota yang sudah `forumStatus='active'`
 sekarang harus melihat teks "Anda sudah menjadi anggota Forbis. Lengkapi ..." bukan lagi
 "sebelum dapat mendaftar menjadi anggota Forbis".
+
+**Susulan (2026-08-07) — toggle dipindah ke modul admin baru "Ekosistem"**: setelah
+konsolidasi hardcode taksonomi Usaha (`docs/arsitektur-usaha.md` § 11), user membuka diskusi
+soal per-tenant taxonomy customization untuk field Kategori/Sektor/Bidang Usaha (rekomendasi
+hybrid: taksonomi baku + hide/show per tenant, ditunda ke sesi lain) — tapi mengusulkan
+konkret: modul dashboard admin BARU khusus untuk "menaungi semua setting form" (Usaha/
+Pesantren/Profesional), termasuk memindahkan toggle on/off yang tadinya numpang di
+`/settings/general`. Detail arsitektur, struktur modul, dan alasan tiap keputusan teknis:
+**`docs/arsitektur-ekosistem.md` § 7 "Modul Admin: Ekosistem (2026-08-07)"**.
+
+**Ringkasan yang relevan untuk halaman ini**: toggle 3 checkbox ("Aktifkan Modul Usaha/
+Pesantren/Profesional") DIPINDAH TOTAL dari `/app/{slug}/settings/general` ke
+`/app/{slug}/ekosistem/pengaturan` — isi/perilaku/guard akses (`canManageUsers`) TIDAK
+BERUBAH, cuma lokasinya. Storage settings JUGA pindah — `usaha_enabled`/`pesantren_enabled`/
+`profesional_enabled` sekarang di `tenant.settings` group `"ekosistem"` (group baru, migration
+`0061_settings_group_ekosistem.sql`), bukan lagi group `"general"`. **Satu-satunya titik yang
+perlu tahu perubahan group** ini adalah `getEnabledEkosistemModules()` (`lib/ekosistem-
+modules.server.ts`) — ~20 caller lain di seluruh app tidak perlu disentuh sama sekali, karena
+semuanya cuma memanggil fungsi itu tanpa tahu (atau perlu tahu) group storage internalnya.
+Semua rujukan "toggle di `/settings/general`" di section ini di atas (termasuk kutipan
+`AskUserQuestion` yang sudah dikunci sebelumnya) TETAP AKURAT SECARA HISTORIS untuk kapan
+ditulis — dipertahankan apa adanya, bukan ditulis ulang, sesuai keputusan produk sadar.
 
 ---
 

@@ -8,8 +8,8 @@ import { getAkunIdentity, isMemberDataIncomplete } from "@/lib/akun-identity";
 import { resolveAkunBranding } from "@/lib/resolve-akun-branding";
 import { getTenantSeoBase }    from "@/lib/tenant-seo";
 import { checkMemberEligibility, type MemberEligibilityField } from "@/lib/member-eligibility";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
-import { enabledModuleList, type EkosistemModule } from "@/lib/ekosistem-modules";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { enabledModuleList, resolveEkosistemModuleLabel, type EkosistemModule } from "@/lib/ekosistem-modules";
 import { MemberCard } from "@/components/akun/mobile/member-card";
 import { MembershipEligibilityOverlay } from "@/components/akun/membership-eligibility-overlay";
 import {
@@ -40,6 +40,8 @@ export default async function AkunPage({ params }: { params: Params }) {
   // lib/ekosistem-modules.ts + docs/arsitektur-ekosistem.md.
   const enabledModulesConfig = await getEnabledEkosistemModules(tenantDb);
   const enabledModulesArr    = enabledModuleList(enabledModulesConfig);
+  // Label custom nama modul (2026-08-07) — thread ke quick-action links + overlay eligibility.
+  const moduleLabels         = await getEkosistemModuleLabels(tenantDb);
 
   // Info keanggotaan
   let membershipInfo: {
@@ -234,9 +236,9 @@ export default async function AkunPage({ params }: { params: Params }) {
   // dimatikan admin di tenant ini (Foto Saya tidak punya moduleKey, selalu tampil).
   const directoryLinks = (
     [
-      { href: `${baseUrl}/akun/pesantren`,   icon: BookOpen,   label: "Pesantren",   desc: "Data keterlibatan pesantren", moduleKey: "pesantren" },
-      { href: `${baseUrl}/akun/usaha`,       icon: Building2,  label: "Usaha",       desc: "Data usaha & bisnis",         moduleKey: "usaha" },
-      { href: `${baseUrl}/akun/profesional`, icon: Briefcase,  label: "Profesional", desc: "Data profesi & kredensial",   moduleKey: "profesional" },
+      { href: `${baseUrl}/akun/pesantren`,   icon: BookOpen,   label: resolveEkosistemModuleLabel("pesantren", moduleLabels),   desc: "Data keterlibatan pesantren", moduleKey: "pesantren" },
+      { href: `${baseUrl}/akun/usaha`,       icon: Building2,  label: resolveEkosistemModuleLabel("usaha", moduleLabels),       desc: "Data usaha & bisnis",         moduleKey: "usaha" },
+      { href: `${baseUrl}/akun/profesional`, icon: Briefcase,  label: resolveEkosistemModuleLabel("profesional", moduleLabels), desc: "Data profesi & kredensial",   moduleKey: "profesional" },
       { href: `${baseUrl}/akun/media`,       icon: ImageIcon,  label: "Foto Saya",   desc: "Kelola foto yang Anda upload" },
     ] as Array<{ href: string; icon: React.ElementType; label: string; desc: string; moduleKey?: EkosistemModule }>
   ).filter((item) => !item.moduleKey || enabledModulesConfig[item.moduleKey]);
@@ -333,6 +335,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               isForum={overlayIsForum}
               isJoined={overlayIsJoined}
               enabledModules={enabledModulesConfig}
+              moduleLabels={moduleLabels}
               pendingInvoiceId={overlayPendingInvoiceId}
             />
           )}
@@ -405,6 +408,7 @@ export default async function AkunPage({ params }: { params: Params }) {
               isForum={overlayIsForum}
               isJoined={overlayIsJoined}
               enabledModules={enabledModulesConfig}
+              moduleLabels={moduleLabels}
               pendingInvoiceId={overlayPendingInvoiceId}
             />
           )}

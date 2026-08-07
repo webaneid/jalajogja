@@ -41,7 +41,14 @@ import { WilayahSelect, type WilayahValue } from "@/components/ui/wilayah-select
 import { SocialMediaInput, type SocialMediaValue } from "@/components/ui/social-media-input"
 import { PhoneInput } from "@/components/ui/phone-input"
 import { TagMultiSelect } from "@/components/ui/tag-multi-select"
-import { getPrioritizedBusinessFields } from "@/lib/business-sectors"
+import {
+  LEGALITY_COMBOBOX_OPTIONS, POSITION_COMBOBOX_OPTIONS,
+  EMPLOYEES_COMBOBOX_OPTIONS, BRANCHES_COMBOBOX_OPTIONS, REVENUE_COMBOBOX_OPTIONS,
+} from "@/lib/business-form-options"
+import {
+  resolveCategoryOptions, resolveSectorOptions, resolveBusinessFieldSuggestions,
+  resolveFieldLabel, EMPTY_TAXONOMY_OVERRIDES, type TaxonomyOverrides,
+} from "@/lib/taxonomy-overrides"
 import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags"
 import {
   saveMemberBusinessesAction,
@@ -55,6 +62,12 @@ interface Step4Props {
   slug: string
   onSuccess: () => void
   defaultEntries?: BusinessEntry[]
+  // Label Kategori/Sektor/Bidang Usaha custom tenant — opsional, default = label kanonik
+  // (docs/arsitektur-ekosistem.md § 10). Caller yang belum sempat di-update tetap kompatibel.
+  taxonomyOverrides?: TaxonomyOverrides
+  // Label custom nama modul "Usaha" (2026-08-07, /ekosistem/pengaturan) — opsional, default
+  // "Usaha" (label kanonik).
+  moduleLabel?: string
 }
 
 export interface BusinessEntry {
@@ -102,43 +115,8 @@ export interface BusinessEntry {
 
 // ─── Konstanta enum (mirror dari schema) ──────────────────────────────────────
 
-const CATEGORY_ITEMS = [
-  "Jasa", "Produsen", "Distributor", "Trading", "Profesional",
-].map((v) => ({ value: v, label: v }))
-
-const SECTOR_ITEMS = [
-  "Pertanian, Peternakan & Perikanan",
-  "Manufaktur & Pengolahan",
-  "Perdagangan, Ritel & F&B",
-  "Teknologi & Informasi",
-  "Kreatif",
-  "Logistik, Transportasi & Konstruksi",
-  "Jasa Usaha & Keuangan",
-  "Pendidikan & Pelatihan",
-  "Kesehatan, Farmasi & Herbal",
-  "Sumber Daya Alam & Energi",
-].map((v) => ({ value: v, label: v }))
-
-const LEGALITY_ITEMS = [
-  "PT Perseorangan", "PT", "CV", "Yayasan",
-  "Perkumpulan", "Koperasi", "Belum Memiliki Legalitas",
-].map((v) => ({ value: v, label: v }))
-
-const POSITION_ITEMS = [
-  "Komisaris", "Direktur", "Pengelola", "Manajer",
-].map((v) => ({ value: v, label: v }))
-
-const EMPLOYEES_ITEMS = [
-  "1-4", "5-10", "11-20", "Lebih dari 20",
-].map((v) => ({ value: v, label: v }))
-
-const BRANCHES_ITEMS = [
-  "Tidak Ada", "1-3", "Diatas 3",
-].map((v) => ({ value: v, label: v }))
-
-const REVENUE_ITEMS = [
-  "Dibawah 500jt", "500jt-1M", "1M-2M", "Diatas 2M",
-].map((v) => ({ value: v, label: v }))
+// Kategori/Sektor/Legalitas/Posisi/Karyawan/Cabang/Omzet: diimpor dari lib/business-sectors.ts
+// + lib/business-form-options.ts — jangan re-declare literal enum di sini.
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -331,6 +309,8 @@ function BusinessCard({
   canRemove,
   disabled,
   tenantSlug,
+  taxonomyOverrides,
+  moduleLabel,
   onChange,
   onWilayahChange,
   onRemove,
@@ -340,6 +320,8 @@ function BusinessCard({
   canRemove: boolean
   disabled: boolean
   tenantSlug: string
+  taxonomyOverrides: TaxonomyOverrides
+  moduleLabel: string
   onChange: <K extends keyof BusinessEntry>(field: K, value: BusinessEntry[K]) => void
   onWilayahChange: (val: WilayahValue) => void
   onRemove: () => void
@@ -378,7 +360,7 @@ function BusinessCard({
     <div className="rounded-lg border bg-card p-5 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold">Usaha #{index + 1}</span>
+        <span className="text-sm font-semibold">{moduleLabel} #{index + 1}</span>
         <button
           type="button"
           onClick={onRemove}
@@ -458,17 +440,17 @@ function BusinessCard({
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Klasifikasi</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <SimpleCombobox
-            label="Kategori" required
-            placeholder="Pilih kategori"
-            items={CATEGORY_ITEMS}
+            label={resolveFieldLabel("category", taxonomyOverrides)} required
+            placeholder={`Pilih ${resolveFieldLabel("category", taxonomyOverrides).toLowerCase()}`}
+            items={resolveCategoryOptions(taxonomyOverrides, entry.category)}
             value={entry.category}
             onSelect={(v) => onChange("category", v)}
             disabled={disabled}
           />
           <SimpleCombobox
-            label="Sektor" required
-            placeholder="Pilih sektor"
-            items={SECTOR_ITEMS}
+            label={resolveFieldLabel("sector", taxonomyOverrides)} required
+            placeholder={`Pilih ${resolveFieldLabel("sector", taxonomyOverrides).toLowerCase()}`}
+            items={resolveSectorOptions(taxonomyOverrides, entry.sector)}
             value={entry.sector}
             onSelect={(v) => onChange("sector", v)}
             disabled={disabled}
@@ -476,7 +458,7 @@ function BusinessCard({
           <SimpleCombobox
             label="Legalitas" required
             placeholder="Pilih legalitas"
-            items={LEGALITY_ITEMS}
+            items={LEGALITY_COMBOBOX_OPTIONS}
             value={entry.legality}
             onSelect={(v) => onChange("legality", v)}
             disabled={disabled}
@@ -484,7 +466,7 @@ function BusinessCard({
           <SimpleCombobox
             label="Posisi / Jabatan" required
             placeholder="Pilih posisi"
-            items={POSITION_ITEMS}
+            items={POSITION_COMBOBOX_OPTIONS}
             value={entry.position}
             onSelect={(v) => onChange("position", v)}
             disabled={disabled}
@@ -492,10 +474,10 @@ function BusinessCard({
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-foreground">
-            Bidang Usaha<span className="text-destructive ml-0.5">*</span>
+            {resolveFieldLabel("businessFields", taxonomyOverrides)}<span className="text-destructive ml-0.5">*</span>
           </span>
           <TagMultiSelect
-            options={getPrioritizedBusinessFields(entry.sector)}
+            options={resolveBusinessFieldSuggestions(entry.sector, taxonomyOverrides)}
             value={entry.businessFields}
             onChange={(businessFields) => onChange("businessFields", businessFields)}
             disabled={disabled}
@@ -540,7 +522,7 @@ function BusinessCard({
           <SimpleCombobox
             label="Jumlah Karyawan" required
             placeholder="Pilih range"
-            items={EMPLOYEES_ITEMS}
+            items={EMPLOYEES_COMBOBOX_OPTIONS}
             value={entry.employees}
             onSelect={(v) => onChange("employees", v)}
             disabled={disabled}
@@ -548,7 +530,7 @@ function BusinessCard({
           <SimpleCombobox
             label="Jumlah Cabang" required
             placeholder="Pilih range"
-            items={BRANCHES_ITEMS}
+            items={BRANCHES_COMBOBOX_OPTIONS}
             value={entry.branches}
             onSelect={(v) => onChange("branches", v)}
             disabled={disabled}
@@ -556,7 +538,7 @@ function BusinessCard({
           <SimpleCombobox
             label="Omzet / Tahun" required
             placeholder="Pilih range"
-            items={REVENUE_ITEMS}
+            items={REVENUE_COMBOBOX_OPTIONS}
             value={entry.revenue}
             onSelect={(v) => onChange("revenue", v)}
             disabled={disabled}
@@ -717,7 +699,11 @@ function BusinessCard({
 
 // ─── Step 4: Data Usaha ───────────────────────────────────────────────────────
 
-export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Step4Props) {
+export function Step4Business({
+  memberId, slug, onSuccess, defaultEntries,
+  taxonomyOverrides = EMPTY_TAXONOMY_OVERRIDES,
+  moduleLabel = "Usaha",
+}: Step4Props) {
   const [entries, setEntries] = React.useState<BusinessEntry[]>(
     defaultEntries && defaultEntries.length > 0 ? defaultEntries : [newEntry()]
   )
@@ -778,7 +764,7 @@ export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Ste
     // Validasi 11 field wajib untuk setiap entry usaha yang diisi
     for (let i = 0; i < entries.length; i++) {
       const item = entries[i];
-      const prefix = entries.length > 1 ? `Usaha ke-${i + 1}: ` : "";
+      const prefix = entries.length > 1 ? `${moduleLabel} ke-${i + 1}: ` : "";
 
       if (!item.name.trim())                                          { setError(`${prefix}Nama usaha wajib diisi.`);                        return; }
       if (!item.category)                                             { setError(`${prefix}Kategori wajib dipilih.`);                         return; }
@@ -867,7 +853,7 @@ export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Ste
           disabled={loading}
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
         >
-          ← Lihat semua usaha ({entries.length})
+          ← Lihat semua {moduleLabel.toLowerCase()} ({entries.length})
         </button>
       )}
 
@@ -879,6 +865,8 @@ export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Ste
           canRemove={entries.length > 1}
           disabled={loading}
           tenantSlug={slug}
+          taxonomyOverrides={taxonomyOverrides}
+          moduleLabel={moduleLabel}
           onChange={(field, value) => updateEntry(entry.id, field, value)}
           onWilayahChange={(val) => updateEntryWilayah(entry.id, val)}
           onRemove={() => removeEntry(entry.id)}
@@ -894,7 +882,7 @@ export function Step4Business({ memberId, slug, onSuccess, defaultEntries }: Ste
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/40 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-50"
         >
           <PlusIcon className="size-4" />
-          Tambah Data Usaha
+          Tambah Data {moduleLabel}
         </button>
       )}
 

@@ -3,7 +3,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createTenantDb } from "@jalajogja/db";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import { PesantrenClient } from "./pesantren-client";
 
 export default async function PesantrenPage({
@@ -19,8 +20,13 @@ export default async function PesantrenPage({
   if (!session?.user) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun/pesantren`);
 
   // Modul dimatikan tenant ini — data tetap ada (single-ID global), cuma tidak ditawarkan di sini.
-  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  const tenantClient = createTenantDb(slug);
+  const [enabledModules, moduleLabels] = await Promise.all([
+    getEnabledEkosistemModules(tenantClient),
+    getEkosistemModuleLabels(tenantClient),
+  ]);
   if (!enabledModules.pesantren) redirect(`${baseUrl}/akun`);
+  const moduleLabel = resolveEkosistemModuleLabel("pesantren", moduleLabels);
 
-  return <PesantrenClient slug={slug} baseUrl={baseUrl} />;
+  return <PesantrenClient slug={slug} baseUrl={baseUrl} moduleLabel={moduleLabel} />;
 }

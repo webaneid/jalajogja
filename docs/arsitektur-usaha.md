@@ -362,4 +362,118 @@ Aturan validasi wajib ini ditegakkan secara **simetris & identik** di dua lokasi
 ### Integrasi Tag Sinergi Ekosistem (`offeredTags` / `neededTags`):
 Field **Menawarkan** (`offeredTags`) dan **Membutuhkan** (`neededTags`) diintegrasikan dengan komponen `TagMultiSelect` berbasis `ECOSYSTEM_TAG_SUGGESTIONS` (`apps/web/lib/ecosystem-tags.ts`), memungkinkan sinergi pasokan dan kebutuhan secara fleksibel antar-modul **Usaha, Profesional, dan Pesantren**.
 
+---
+
+## 11. Konsolidasi Hardcode 10-Sektor — `SECTOR_COMBOBOX_OPTIONS` (2026-08-07)
+
+**Masalah**: daftar 10 sektor (`BUSINESS_SECTOR_ENUM`) sempat di-re-declare secara independen
+sebagai literal array di **6 tempat berbeda** di seluruh codebase (bukan 1, meski sumber kanonik
+`lib/business-sectors.ts` sudah ada sejak § 9) — risiko drift diam-diam kalau salah satu daftar
+diedit tanpa yang lain (mis. tenant beda melihat opsi sektor yang berbeda di dropdown).
+
+**6 titik yang ditemukan** (grep string literal `"Pertanian, Peternakan & Perikanan"`):
+1. `apps/web/lib/business-sectors.ts` — **sumber kanonik**, `BUSINESS_SECTOR_ENUM` (dipertahankan).
+2. `apps/web/app/(public)/[tenant]/akun/usaha/usaha-client.tsx` — const lokal `SECTORS`.
+3. `apps/web/app/(public)/[tenant]/usaha/page.tsx` — const lokal `SEKTOR_OPTIONS` (Server Component,
+   dipakai hanya sebagai type-cast di `eq(memberBusinesses.sector, ...)`).
+4. `apps/web/components/usaha/usaha-filters-client.tsx` — const lokal `SEKTOR_OPTIONS`.
+5. `apps/web/components/members/wizard/step4-business.tsx` — const lokal `SECTOR_ITEMS`.
+6. `packages/db/src/schema/public/member-businesses.ts` — Drizzle `text(col, {enum:[...]})` hint.
+
+**Fix — hanya 4 titik apps/web UI-facing dikonsolidasi** (titik #2-#5 di atas):
+- `lib/business-sectors.ts` diperluas dengan export baru:
+  ```typescript
+  export const SECTOR_COMBOBOX_OPTIONS = BUSINESS_SECTOR_ENUM.map((v) => ({ value: v, label: v }));
+  ```
+- Keempat file (#2-#5) menghapus const lokalnya, import `SECTOR_COMBOBOX_OPTIONS` langsung.
+  `usaha/page.tsx` (Server Component) sekaligus import `type BusinessSector` untuk mengganti
+  type-cast `sektor as typeof SEKTOR_OPTIONS[number]` → `sektor as BusinessSector`.
+
+**2 hal SENGAJA TIDAK disentuh, dicatat sebagai temuan terpisah (bukan diabaikan diam-diam)**:
+1. **Duplikasi paralel Kategori** (5-item: `Jasa`/`Produsen`/`Distributor`/`Trading`/
+   `Profesional`) — pola drift yang SAMA persis, di 4 file YANG SAMA (`CATEGORIES`/
+   `KATEGORI_OPTIONS`/`CATEGORY_ITEMS`). Tidak dikonsolidasi karena instruksi eksplisit user
+   spesifik menyebut "10 sektor" — tidak diperluas scope tanpa konfirmasi.
+2. **Titik #6** (`packages/db/src/schema/public/member-businesses.ts`) — Drizzle `enum` hint
+   TIDAK menghasilkan DB `CHECK` constraint (murni type-level, dikonfirmasi baca kode langsung;
+   `sector` sengaja tanpa constraint sejak migration 0048 untuk mendukung nilai `null`). Tidak
+   dikonsolidasi karena `packages/db` **tidak boleh** import dari `apps/web` (arah dependency
+   monorepo terbalik), dan `packages/db/package.json` **tidak punya field `"exports"`** — deep
+   import `@jalajogja/db/lib/business-sectors` adalah pola yang belum pernah dipakai di codebase
+   ini (nol precedent, dikonfirmasi via grep) dan berisiko kalau dicoba tanpa verifikasi
+   menyeluruh. Komentar di file schema itu sendiri sudah eksplisit mengakui constraint ini
+   ("dijaga manual konsisten") — technical debt yang diketahui, bukan bug tersembunyi.
+
+**Verifikasi**: `tsc --noEmit` 0 error di `apps/web` DAN `packages/db` + `bun run build
+--filter=@jalajogja/web` genuine sukses (`Cached: 0 cached`, dev server dimatikan+`.next`
+dibersihkan+direstart) — ketiga route publik (`/[tenant]/akun/usaha`, `/[tenant]/usaha`,
+`/[tenant]/usaha/[id]`) terkonfirmasi compile bersih. Nol migrasi DB (murni refactor kode, tidak
+mengubah data/skema). Nol perubahan visual/behavior (opsi dropdown yang ditampilkan identik
+sebelum-sesudah, cuma sumber datanya sekarang tunggal).
+
+### Putaran Kedua (2026-08-07) — Kategori + Legalitas + Posisi + Karyawan + Cabang + Omzet
+
+User minta lanjut: "termasuk duplikasi paralel kategori dll" — bukan cuma Kategori (yang
+sengaja dilewati putaran pertama), tapi seluruh KELAS enum statis di form Usaha. Audit ulang
+`grep "^const [A-Z_]* *[:=]"` di keempat file target menemukan **6 enum lokal** di
+`akun/usaha/usaha-client.tsx` (self-service) DAN 6 enum PARALEL di `step4-business.tsx` (admin
+wizard) — Kategori, Legalitas, Posisi, Karyawan, Cabang, Omzet — dua form data-entry lengkap
+yang masing-masing punya salinan sendiri, bukan cuma Sektor.
+
+**Bug divergensi yang SUDAH TERJADI, ditemukan saat membandingkan isi (bukan cuma nama)**:
+`step4-business.tsx` membangun label combobox via `.map(v => ({value:v, label:v}))` — untuk
+Karyawan/Cabang/Omzet, label = raw internal value (mis. admin melihat `"1-4"`,
+`"Dibawah 500jt"`, `"500jt-1M"` sebagai pilihan combobox). `usaha-client.tsx` (self-service)
+sudah lama punya label manusiawi berbeda dari value (`"1–4 orang"`, `"Di bawah Rp 500 juta"`,
+`"Rp 500 juta – 1 Miliar"`). Artinya **admin sudah lama melihat dropdown yang lebih jelek dari
+member** untuk field yang PERSIS SAMA — bukan cuma risiko drift masa depan, tapi bug UX yang
+sudah nyata ada.
+
+**Titik ke-7 ditemukan lewat grep menyeluruh nilai (bukan cuma nama sektor)**: sistem Import
+Anggota (`lib/import-anggota-mapping.ts`) punya SUMBER KETIGA yang independen —
+`BUSINESS_CATEGORY_ENUM`/`BUSINESS_LEGALITY_ENUM`/`BUSINESS_POSITION_ENUM`/
+`BUSINESS_EMPLOYEES_ENUM`/`BUSINESS_BRANCHES_ENUM`/`BUSINESS_REVENUE_ENUM` untuk validasi
+`exactMatch()` saat parsing Excel bulk import. File ini SUDAH punya precedent pola konsolidasi
+yang benar untuk Sektor (`export { BUSINESS_SECTOR_ENUM, type BusinessSector }` — re-export,
+bukan re-declare) sejak upgrade taksonomi 2026-07-30 — precedent yang sama sekarang diterapkan
+ke 6 enum lainnya. Plus 2 titik inline union-type-cast tangan (`app/api/akun/member-business/
+route.ts` dan `members/actions.ts`) yang menulis ulang literal union `"Jasa"|"Produsen"|...`
+sendiri-sendiri di `insert()` values — sama kelasnya, sama-sama diperbaiki.
+
+**Fix — file kanonik baru `apps/web/lib/business-form-options.ts`**: pola per-field
+`BUSINESS_XXX_ENUM` (plain readonly tuple — dipakai `exactMatch()` importer Excel DAN basis
+type) + `XXX_COMBOBOX_OPTIONS` (`{value,label}[]` siap pakai Combobox). Untuk field label≠value
+(Karyawan/Cabang/Omzet), label diambil dari `Record<Enum[number], string>` — kalau nanti ada
+nilai baru ditambah ke enum, TypeScript **memaksa** label-nya disertakan (exhaustiveness check),
+supaya kelas bug "admin lihat raw value" tidak bisa terulang diam-diam.
+
+**8 titik dikonsolidasi total** (di luar yang sudah dikerjakan putaran pertama):
+1. `akun/usaha/usaha-client.tsx` — 6 const lokal dihapus, import dari kedua file kanonik.
+2. `step4-business.tsx` — 6 const lokal dihapus (termasuk yang berlabel salah), import sama.
+3. `usaha-filters-client.tsx` — `KATEGORI_OPTIONS` diganti spread `CATEGORY_COMBOBOX_OPTIONS`.
+4. `usaha/page.tsx` — `KATEGORI_OPTIONS` (plain tuple, type-cast) diganti `type BusinessCategory`.
+5. `lib/import-anggota-mapping.ts` — 6 enum lokal diganti `export { BUSINESS_XXX_ENUM }` (re-
+   export dari `business-form-options.ts`), pola persis precedent Sektor yang sudah ada di file
+   yang sama.
+6. `app/api/akun/member-business/route.ts` — 5 inline union-cast diganti `as BusinessCategory`/
+   `BusinessLegality`/`BusinessPosition`/`BusinessEmployees`/`BusinessBranches`/`BusinessRevenue`.
+7. `app/(dashboard)/app/[tenant]/members/actions.ts` — 5 inline union-cast yang sama, diganti
+   dengan pola identik.
+8. `app/api/members/import/template/route.ts` — DICEK, TIDAK PERLU diubah — sudah lama import
+   dari `import-anggota-mapping.ts` (bukan re-declare sendiri); `EXAMPLE_ROW`-nya cuma nilai
+   contoh Excel (satu string valid per kolom), bukan daftar enum yang berisiko drift.
+
+**Tetap SENGAJA TIDAK disentuh** (sama alasan seperti sebelumnya): duplikasi 10-sektor +
+6-enum-lainnya di `packages/db/src/schema/public/member-businesses.ts` (Drizzle type hint,
+bukan DB constraint) — cross-package import direction masih jadi penghalang yang sama.
+
+**Verifikasi**: `tsc --noEmit` 0 error di `apps/web` DAN `packages/db` + `bun run build
+--filter=@jalajogja/web` genuine sukses (`Cached: 0 cached`, 48.2 detik, dev server dimatikan+
+`.next` dibersihkan+direstart). Grep akhir string literal Kategori/Legalitas/Posisi/Karyawan/
+Cabang/Omzet di seluruh `apps/web` — nol sisa duplikat di luar `business-form-options.ts`
+(sumber kanonik) dan `template/route.ts`'s `EXAMPLE_ROW` (data contoh, bukan enum). Nol migrasi
+DB. **Konsekuensi visual yang disengaja**: admin wizard SEKARANG menampilkan label Karyawan/
+Cabang/Omzet yang sama manusiawinya dengan self-service (bukan raw value lagi) — perbaikan
+UX, bukan regresi.
+
 

@@ -10,6 +10,10 @@ import { auth }            from "@/lib/auth";
 import { getAkunIdentity }  from "@/lib/akun-identity";
 import { normalizePhone }   from "@/lib/phone";
 import { normalizeBusinessSector, type BusinessSector } from "@/lib/business-sectors";
+import type {
+  BusinessCategory, BusinessLegality, BusinessPosition,
+  BusinessEmployees, BusinessBranches, BusinessRevenue,
+} from "@/lib/business-form-options";
 
 async function getSessionMember(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -173,16 +177,16 @@ export async function POST(req: NextRequest) {
           name:        e.name.trim(),
           brand:       e.brand?.trim()       || null,
           description: e.description?.trim() || null,
-          category:    e.category as "Jasa"|"Produsen"|"Distributor"|"Trading"|"Profesional",
+          category:    e.category as BusinessCategory,
           sector:      e.sector   as BusinessSector,
           businessFields: e.businessFields ?? [],
           offeredTags: e.offeredTags ?? [],
           neededTags:  e.neededTags  ?? [],
-          legality:    (e.legality  || null) as "PT Perseorangan"|"PT"|"CV"|"Yayasan"|"Perkumpulan"|"Koperasi"|"Belum Memiliki Legalitas"|null,
-          position:    (e.position  || null) as "Komisaris"|"Direktur"|"Pengelola"|"Manajer"|null,
-          employees:   (e.employees || null) as "1-4"|"5-10"|"11-20"|"Lebih dari 20"|null,
-          branches:    (e.branches  || null) as "Tidak Ada"|"1-3"|"Diatas 3"|null,
-          revenue:     (e.revenue   || null) as "Dibawah 500jt"|"500jt-1M"|"1M-2M"|"Diatas 2M"|null,
+          legality:    (e.legality  || null) as BusinessLegality  | null,
+          position:    (e.position  || null) as BusinessPosition  | null,
+          employees:   (e.employees || null) as BusinessEmployees | null,
+          branches:    (e.branches  || null) as BusinessBranches  | null,
+          revenue:     (e.revenue   || null) as BusinessRevenue   | null,
           coverUrl:    e.coverUrl?.trim() || null,
           logoUrl:     e.logoUrl?.trim() || null,
           contactId, addressId, socialMediaId,

@@ -21,7 +21,9 @@ import {
   createTenantDb,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
+import { getTaxonomyOverrides } from "@/lib/taxonomy-overrides.server";
 import { displayPhone }   from "@/lib/phone";
 import { DeleteMemberButton } from "./delete-button";
 import {
@@ -106,7 +108,7 @@ export default async function MemberDetailPage({
   if (!access) redirect("/dashboard-redirect");
 
   // Ambil semua data anggota secara paralel
-  const [row, educations, businesses, pesantrenList, enabledModules] = await Promise.all([
+  const [row, educations, businesses, pesantrenList, enabledModules, taxonomyOverrides, moduleLabels] = await Promise.all([
     // Identitas + kontak + alamat + sosmed + profesi + kelahiran
     db
       .select({
@@ -270,6 +272,12 @@ export default async function MemberDetailPage({
 
     // Modul ekosistem aktif tenant ini — section Usaha/Pesantren hilang kalau dimatikan
     getEnabledEkosistemModules(createTenantDb(slug)),
+
+    // Label Kategori/Sektor/Bidang Usaha custom tenant (docs/arsitektur-ekosistem.md § 10)
+    getTaxonomyOverrides(createTenantDb(slug)),
+
+    // Label custom nama modul "Usaha"/"Pesantren" (2026-08-07, /ekosistem/pengaturan)
+    getEkosistemModuleLabels(createTenantDb(slug)),
   ]);
 
   if (!row) notFound();
@@ -432,12 +440,23 @@ export default async function MemberDetailPage({
 
       {/* ── Data Usaha (interaktif) — hilang kalau modul Usaha dimatikan admin ── */}
       {enabledModules.usaha && (
-        <BusinessSection memberId={memberId} slug={slug} businesses={businesses as BizRow[]} />
+        <BusinessSection
+          memberId={memberId}
+          slug={slug}
+          businesses={businesses as BizRow[]}
+          taxonomyOverrides={taxonomyOverrides}
+          moduleLabel={resolveEkosistemModuleLabel("usaha", moduleLabels)}
+        />
       )}
 
       {/* ── Pesantren (interaktif) — hilang kalau modul Pesantren dimatikan admin ── */}
       {enabledModules.pesantren && (
-        <PesantrenSection memberId={memberId} slug={slug} pesantrenList={pesantrenList} />
+        <PesantrenSection
+          memberId={memberId}
+          slug={slug}
+          pesantrenList={pesantrenList}
+          moduleLabel={resolveEkosistemModuleLabel("pesantren", moduleLabels)}
+        />
       )}
     </div>
   );

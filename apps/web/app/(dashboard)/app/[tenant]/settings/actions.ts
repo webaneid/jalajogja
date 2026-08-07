@@ -30,6 +30,10 @@ export type CustomRoleFormData = {
 };
 
 // ── Umum ──────────────────────────────────────────────────────────────────────
+// Toggle modul ekosistem (Usaha/Pesantren/Profesional) TIDAK LAGI ditulis di sini sejak modul
+// Ekosistem dibangun (2026-08-07) — lihat saveEkosistemModulesAction di
+// app/(dashboard)/app/[tenant]/ekosistem/actions.ts. Group storage juga pindah "general" →
+// "ekosistem" (migration 0061).
 export async function saveGeneralSettingsAction(
   slug: string,
   values: {
@@ -42,9 +46,6 @@ export async function saveGeneralSettingsAction(
     timezone:        string;
     language:        string;
     currency:        string;
-    usahaEnabled?:       boolean;
-    pesantrenEnabled?:   boolean;
-    profesionalEnabled?: boolean;
   }
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
@@ -62,12 +63,6 @@ export async function saveGeneralSettingsAction(
     timezone:         values.timezone,
     language:         values.language,
     currency:         values.currency,
-    // Toggle modul ekosistem — gerbang visibilitas front-end saja, data member tidak pernah
-    // dihapus. Lihat lib/ekosistem-modules.ts. Default true kalau tidak dikirim (checkbox
-    // dicentang di form, jadi ini seharusnya selalu ada — fallback murni jaga-jaga).
-    usaha_enabled:       values.usahaEnabled       ?? true,
-    pesantren_enabled:   values.pesantrenEnabled   ?? true,
-    profesional_enabled: values.profesionalEnabled ?? true,
   });
 
   return {};

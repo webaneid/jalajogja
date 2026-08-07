@@ -1,6 +1,7 @@
 import { Users, School, Briefcase, IdCard } from "lucide-react";
 import type { MemberStatisticsData } from "@/lib/member-statistics.server";
-import type { EkosistemModulesConfig } from "@/lib/ekosistem-modules";
+import type { EkosistemModulesConfig, EkosistemModuleLabels } from "@/lib/ekosistem-modules";
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 
 // Ekstraksi MURNI dari app/(public)/[tenant]/statistik/page.tsx (2026-08-07) — render JSX
 // dipindah apa adanya (zero perubahan visual), supaya bisa dipakai bersama oleh halaman
@@ -70,10 +71,13 @@ const domisiliLabel: Record<string, string> = {
 };
 
 export function StatistikSections({
-  data, enabledModules,
+  data, enabledModules, moduleLabels,
 }: {
   data: MemberStatisticsData;
   enabledModules: EkosistemModulesConfig;
+  // Label custom nama modul (2026-08-07, /ekosistem/pengaturan) — opsional, default label
+  // kanonik "Usaha"/"Pesantren"/"Profesional" untuk caller lama yang belum di-update.
+  moduleLabels?: EkosistemModuleLabels;
 }) {
   const {
     totalAnggota, activeTotal, alumniTotal,
@@ -160,7 +164,7 @@ export function StatistikSections({
       {/* ── Statistik Pesantren — hilang kalau modul Pesantren dimatikan admin ── */}
       {enabledModules.pesantren && (
       <section className="space-y-6">
-        <SectionTitle icon={School} title="Statistik Pesantren" />
+        <SectionTitle icon={School} title={`Statistik ${resolveEkosistemModuleLabel("pesantren", moduleLabels ?? {})}`} />
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Total Pesantren"    value={totalPesantren} />
@@ -209,7 +213,7 @@ export function StatistikSections({
       {/* ── Statistik Usaha — hilang kalau modul Usaha dimatikan admin ── */}
       {enabledModules.usaha && (
       <section className="space-y-6">
-        <SectionTitle icon={Briefcase} title="Statistik Usaha" />
+        <SectionTitle icon={Briefcase} title={`Statistik ${resolveEkosistemModuleLabel("usaha", moduleLabels ?? {})}`} />
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Total Usaha Aktif"  value={totalUsaha} />
@@ -267,7 +271,7 @@ export function StatistikSections({
       {/* ── Statistik Profesional — hilang kalau modul Profesional dimatikan admin ── */}
       {enabledModules.profesional && (
       <section className="space-y-6">
-        <SectionTitle icon={IdCard} title="Statistik Profesional" />
+        <SectionTitle icon={IdCard} title={`Statistik ${resolveEkosistemModuleLabel("profesional", moduleLabels ?? {})}`} />
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Total Data Profesional" value={totalProfesional} />

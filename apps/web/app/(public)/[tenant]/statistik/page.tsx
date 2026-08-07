@@ -5,7 +5,8 @@ import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { getPageSeoOverride } from "@/lib/get-page-seo-override";
 import type { Metadata } from "next";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import { computeMemberStatistics } from "@/lib/member-statistics.server";
 import { StatistikSections } from "@/components/statistik/statistik-sections";
 
@@ -42,9 +43,19 @@ export default async function StatistikPage({ params }: { params: Params }) {
   // Modul ekosistem aktif tenant ini — breakdown Usaha/Pesantren/Profesional hilang kalau
   // modulnya dimatikan admin (lib/ekosistem-modules.ts). Query tetap jalan seperti biasa
   // (data global tidak pernah dihapus), cuma blok render-nya yang digate di StatistikSections.
-  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  const tenantClient = createTenantDb(slug);
+  const [enabledModules, moduleLabels] = await Promise.all([
+    getEnabledEkosistemModules(tenantClient),
+    getEkosistemModuleLabels(tenantClient),
+  ]);
 
   const data = await computeMemberStatistics(tenant.id);
+
+  const subtitleModuleLabels = (["pesantren", "usaha", "profesional"] as const)
+    .map((m) => resolveEkosistemModuleLabel(m, moduleLabels).toLowerCase());
+  const subtitleModules = subtitleModuleLabels.length > 1
+    ? `${subtitleModuleLabels.slice(0, -1).join(", ")}, dan ${subtitleModuleLabels[subtitleModuleLabels.length - 1]}`
+    : subtitleModuleLabels.join("");
 
   return (
     <div className="py-10">
@@ -53,11 +64,11 @@ export default async function StatistikPage({ params }: { params: Params }) {
         <div>
           <h1 className="text-3xl font-bold">Statistik</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Data statistik anggota, pesantren, usaha, dan profesional {tenant.name}
+            Data statistik anggota, {subtitleModules} {tenant.name}
           </p>
         </div>
 
-        <StatistikSections data={data} enabledModules={enabledModules} />
+        <StatistikSections data={data} enabledModules={enabledModules} moduleLabels={moduleLabels} />
       </div>
     </div>
   );

@@ -738,7 +738,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
 
 // ─── Main: PesantrenClient ────────────────────────────────────────────────────
 
-export function PesantrenClient({ slug, baseUrl }: { slug: string; baseUrl: string }) {
+export function PesantrenClient({ slug, baseUrl, moduleLabel }: { slug: string; baseUrl: string; moduleLabel: string }) {
   const [entries,      setEntries]      = React.useState<Entry[]>([]);
   const [loading,      setLoading]      = React.useState(true);
   const [saving,       setSaving]       = React.useState(false);
@@ -849,11 +849,11 @@ export function PesantrenClient({ slug, baseUrl }: { slug: string; baseUrl: stri
           <button onClick={cancelEdit}
             className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="size-3.5" />
-            Data Pesantren
+            Data {moduleLabel}
           </button>
           <span className="text-muted-foreground">/</span>
           <span className="text-foreground font-medium">
-            {isNew ? "Tambah Pesantren" : (t(editingEntry.name) || "Edit Pesantren")}
+            {isNew ? `Tambah ${moduleLabel}` : (t(editingEntry.name) || `Edit ${moduleLabel}`)}
           </span>
         </div>
 
@@ -896,7 +896,7 @@ export function PesantrenClient({ slug, baseUrl }: { slug: string; baseUrl: stri
       {savedMsg && (
         <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          Data pesantren berhasil disimpan.
+          Data {moduleLabel.toLowerCase()} berhasil disimpan.
         </div>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -906,7 +906,7 @@ export function PesantrenClient({ slug, baseUrl }: { slug: string; baseUrl: stri
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-foreground">Nama Pesantren</th>
+                <th className="px-4 py-3 text-left font-medium text-foreground">Nama {moduleLabel}</th>
                 <th className="px-4 py-3 text-left font-medium text-foreground hidden sm:table-cell">Kurikulum</th>
                 <th className="px-4 py-3 text-left font-medium text-foreground hidden md:table-cell">Model</th>
                 <th className="px-4 py-3 text-right font-medium text-foreground">Aksi</th>
@@ -960,15 +960,15 @@ export function PesantrenClient({ slug, baseUrl }: { slug: string; baseUrl: stri
       ) : (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-12 text-center">
           <School className="size-10 text-muted-foreground/40 mb-3" />
-          <p className="text-sm font-medium text-foreground">Belum ada data pesantren</p>
-          <p className="text-xs text-muted-foreground mt-1">Tambahkan pesantren yang Anda kelola atau pimpin.</p>
+          <p className="text-sm font-medium text-foreground">Belum ada data {moduleLabel.toLowerCase()}</p>
+          <p className="text-xs text-muted-foreground mt-1">Tambahkan {moduleLabel.toLowerCase()} yang Anda kelola atau pimpin.</p>
         </div>
       )}
 
       <button onClick={handleAdd} disabled={saving}
         className="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-2.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors w-full justify-center disabled:opacity-50">
         <Plus className="h-4 w-4" />
-        Tambah Pesantren
+        Tambah {moduleLabel}
       </button>
 
       <a href={`${baseUrl}/akun`}

@@ -25,6 +25,13 @@ export const BUSINESS_SECTOR_ENUM = [
 ] as const;
 export type BusinessSector = typeof BUSINESS_SECTOR_ENUM[number];
 
+// Bentuk siap-pakai untuk <Combobox>/picker manapun — SATU sumber untuk SEMUA form (self-
+// service /akun/usaha, admin wizard step4-business, filter arsip publik /usaha). Sebelumnya
+// masing-masing file re-declare 10 string sektor ini secara independen — 4 salinan yang bisa
+// diam-diam drift kalau salah satu diedit tanpa yang lain (mis. tenant beda melihat opsi
+// sektor yang berbeda). Import array ini, jangan pernah tulis literal sektor baru di file lain.
+export const SECTOR_COMBOBOX_OPTIONS = BUSINESS_SECTOR_ENUM.map((v) => ({ value: v, label: v }));
+
 // ── Backward-compat: 7 nilai lama → 10 nilai baru ───────────────────────────────
 // Mapping AMBIGU (1-ke-banyak, tidak ada padanan tunggal yang pasti) sengaja diarahkan ke null
 // — bukan ditebak. Pemilik usaha pilih ulang sendiri lewat form (sector nullable sejak migration

@@ -6,7 +6,7 @@ import {
   BookOpen, Building2, Briefcase, Store, CalendarDays, LogOut,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
-import type { EkosistemModule, EkosistemModulesConfig } from "@/lib/ekosistem-modules";
+import type { EkosistemModule, EkosistemModulesConfig, EkosistemModuleLabels } from "@/lib/ekosistem-modules";
 
 export type NavItem = {
   href:       string;
@@ -44,6 +44,15 @@ export function filterNavItemsByModules(items: NavItem[], enabledModules?: Ekosi
   return items.filter((item) => !item.moduleKey || enabledModules[item.moduleKey]);
 }
 
+// Resolve label item nav — item dengan `moduleKey` (Usaha/Pesantren/Profesional) pakai label
+// custom tenant kalau diisi (2026-08-07, /ekosistem/pengaturan); item lain (Beranda, Info
+// Login, dst) selalu pakai label bawaan. Di-export supaya AkunBottomNav pakai fungsi yang
+// SAMA — cegah drift resolusi label sidebar vs bottom-nav.
+export function resolveNavItemLabel(item: NavItem, moduleLabels?: EkosistemModuleLabels): string {
+  if (!item.moduleKey || !moduleLabels) return item.label;
+  return moduleLabels[item.moduleKey] || item.label;
+}
+
 export const PUBLIC_NAV_ITEMS: NavItem[] = [
   { href: "",           label: "Beranda",     icon: LayoutDashboard, memberOnly: false },
   { href: "/profil",    label: "Info Login",  icon: User,            memberOnly: false },
@@ -57,9 +66,10 @@ type Props = {
   isMember: boolean;
   baseUrl:  string;
   enabledModules?: EkosistemModulesConfig;
+  moduleLabels?:   EkosistemModuleLabels;
 };
 
-export function AkunNav({ slug, isMember, baseUrl, enabledModules }: Props) {
+export function AkunNav({ slug, isMember, baseUrl, enabledModules, moduleLabels }: Props) {
   const pathname = usePathname();
   const base     = `${baseUrl}/akun`;
 
@@ -67,7 +77,9 @@ export function AkunNav({ slug, isMember, baseUrl, enabledModules }: Props) {
 
   return (
     <nav className="space-y-0.5">
-      {items.map(({ href, label, icon: Icon }) => {
+      {items.map((item) => {
+        const { href, icon: Icon } = item;
+        const label     = resolveNavItemLabel(item, moduleLabels);
         const fullHref  = `${base}${href}`;
         const isActive  = href === ""
           ? pathname === base

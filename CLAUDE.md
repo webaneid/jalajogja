@@ -15813,14 +15813,693 @@ diperluas 4 file baru: `member-statistics.server.ts`, `statistik-sections.tsx`, 
 masuk scope Fase 1 (ini yang diminta user sesi ini) — sisa item "di luar scope" (grafik tren,
 filter/search tabel) tidak berubah.
 
+### [2026-08-07] Konsolidasi Hardcode 10-Sektor Usaha — 4 File UI-Facing
+
+> Detail lengkap: **`docs/arsitektur-usaha.md` § 11**
+
+User membuka diskusi soal kebingungan form Usaha (Kategori/Sektor/Bidang Usaha) yang cocok
+untuk tenant fokus-bisnis (Forbis) tapi rancu untuk tenant lain (mis. forum kreatif) — 3 opsi
+diajukan: (1) taksonomi tetap baku tapi tenant bisa hide/show + tambah Bidang Usaha baru, (2)
+taksonomi custom penuh per tenant, (3) label custom per tenant tanpa ubah field DB. Saya
+merekomendasikan hybrid Opsi 1+3, dan secara eksplisit menyarankan MENGHINDARI Opsi 2 —
+`member_businesses` adalah data GLOBAL milik member (public schema), bisa muncul di direktori
+banyak tenant sekaligus (dan sekarang juga di "Ringkasan Tenant" lintas-tenant) — taksonomi
+custom per tenant akan ambigu "taksonomi siapa yang berlaku" saat record yang sama dilihat
+dari tenant berbeda.
+
+Di tengah diskusi ini, saya menemukan temuan teknis sampingan: daftar 10 sektor
+(`BUSINESS_SECTOR_ENUM`, sumber kanonik di `lib/business-sectors.ts` sejak § 9) ternyata
+di-**re-declare sebagai literal array independen di 6 tempat berbeda** — bukan cuma dipakai
+dari sumber tunggal. User langsung memutuskan: **perbaiki dulu duplikasi ini SEBELUM**
+lanjut ke diskusi toggle/label (yang eksplisit ditunda ke sesi lain) — "berbahaya sekali"
+karena berisiko drift diam-diam (tenant beda bisa melihat opsi sektor yang berbeda kalau salah
+satu salinan diedit tanpa yang lain).
+
+**Investigasi menemukan scope LEBIH BESAR dari perkiraan user** ("4 file") — grep string
+literal `"Pertanian, Peternakan & Perikanan"` menemukan 6 titik: `lib/business-sectors.ts`
+(sumber kanonik), `akun/usaha/usaha-client.tsx`, `usaha/page.tsx` (Server Component, dipakai
+sebagai type-cast bukan dropdown), `usaha-filters-client.tsx`, `step4-business.tsx` — DAN
+**titik ke-7** ditemukan lewat inspeksi schema langsung: `packages/db/src/schema/public/
+member-businesses.ts`'s Drizzle `text(col, {enum:[...]})` juga mendeklarasikan ulang daftar
+yang sama sebagai type hint TypeScript murni (dikonfirmasi: opsi `enum` di Drizzle **hanya
+menyempitkan tipe TS, TIDAK menghasilkan `CHECK` constraint DB** — kolom `sector` memang
+sengaja tanpa constraint sejak migration 0048 untuk mendukung nilai `null`).
+
+**Keputusan scoping**: konsolidasi HANYA 4 file `apps/web` UI-facing (yang menyebabkan drift
+nyata di dropdown yang dilihat user) — `SECTOR_COMBOBOX_OPTIONS` (map `{value,label}` siap
+pakai) ditambahkan ke `lib/business-sectors.ts`, keempat file lain menghapus const lokalnya
+dan import dari sana. **TIDAK dikonsolidasi** (dicatat eksplisit, bukan diam-diam diabaikan):
+1. Duplikasi PARALEL untuk Kategori (5-item, pola risiko IDENTIK, di 4 file YANG SAMA) — di
+   luar scope karena instruksi user spesifik menyebut "10 sektor", tidak diperluas tanpa izin.
+2. Titik ke-7 di `packages/db` — `packages/db` **tidak boleh** import dari `apps/web` (arah
+   dependency monorepo terbalik), dan `packages/db/package.json` **tidak punya field
+   `"exports"`** (dikonfirmasi via `cat`) — deep import `@jalajogja/db/lib/business-sectors`
+   adalah pola YANG BELUM PERNAH dipakai di codebase ini (nol precedent via grep). Mencoba
+   pattern baru yang belum terverifikasi tanpa diskusi lebih dulu dinilai lebih berisiko
+   daripada membiarkan technical debt yang SUDAH diketahui dan didokumentasikan (komentar di
+   file schema itu sendiri mengakui "dijaga manual konsisten").
+
+`tsc --noEmit` 0 error di KEDUA package + `bun run build --filter=@jalajogja/web` genuine
+sukses (`Cached: 0 cached`, dev server dimatikan+`.next` dibersihkan+direstart, 46.7 detik) —
+ketiga route publik (`/[tenant]/akun/usaha`, `/[tenant]/usaha`, `/[tenant]/usaha/[id]`)
+terkonfirmasi compile bersih. Nol migrasi DB, nol perubahan visual/behavior (opsi dropdown
+identik, cuma sumbernya sekarang tunggal). **Belum di-commit/push ke git.**
+
+**Aturan yang ditegaskan**: kalau audit teknis menemukan scope LEBIH BESAR dari yang
+disebutkan user (di sini: 6-7 titik vs perkiraan "4 file"), jangan diam-diam membatasi diri
+ke jumlah yang disebutkan user — investigasi menyeluruh dulu (grep literal string, bukan
+asumsi), baru putuskan scoping SECARA SADAR dengan alasan eksplisit (di sini: 4 dari 6 titik
+dikonsolidasi, 2 titik dicatat sebagai temuan terpisah untuk keputusan user berikutnya) —
+bukan pura-pura investigasi tidak menemukan yang lain.
+
+### [2026-08-07] Putaran Kedua Konsolidasi — Kategori/Legalitas/Posisi/Karyawan/Cabang/Omzet
++ Ditemukan Sumber Duplikasi ke-3
+
+> Detail lengkap: **`docs/arsitektur-usaha.md` § 11 (subsection "Putaran Kedua")**
+
+Lanjutan langsung dari lesson di atas — user secara eksplisit memperluas scope yang tadinya
+sengaja dibatasi: *"perbaiki bugnya.. termasuk duplikasi paralel kategori dll"*. Diverifikasi
+via grep literal string per enum (bukan asumsi "pasti sama polanya seperti Sektor") — Kategori
+(5-item) + Legalitas + Posisi/Jabatan + Jumlah Karyawan + Jumlah Cabang + Omzet SEMUA punya
+pola duplikasi identik, tersebar di file UI-facing yang SAMA PERSIS dengan titik Sektor
+sebelumnya.
+
+**Ditemukan sumber duplikasi KE-3 yang tidak disadari di putaran pertama**:
+`lib/import-anggota-mapping.ts` (validasi Excel import massal anggota) TERNYATA
+mendeklarasikan ulang SEMUA enum ini secara independen (dipakai `mapCategory`/`mapLegality`/
+dst via `exactMatch(raw, ENUM)`) — bukan cuma 2 sumber (UI + `packages/db` schema hint) seperti
+diasumsikan sebelumnya, tapi 3 sumber independen yang harus tetap sinkron manual.
+
+**Ditemukan bug UX NYATA (bukan cuma risiko drift masa depan)**: `step4-business.tsx` (wizard
+admin) menampilkan LABEL MENTAH enum (`"1-4"`, `"Diatas 3"`, `"Dibawah 500jt"`) sebagai teks
+dropdown untuk Jumlah Karyawan/Cabang/Omzet, sementara form self-service (`usaha-client.tsx`)
+untuk field YANG SAMA sudah lama menampilkan label manusiawi (`"1–4 orang"`, `"Di atas 3
+cabang"`, `"Di bawah Rp 500 juta"`) — admin dan anggota melihat tampilan berbeda untuk data
+identik, murni karena dua form ditulis terpisah tanpa sumber bersama.
+
+**File baru `lib/business-form-options.ts`** — kanonik untuk 6 enum (Category/Legality/
+Position/Employees/Branches/Revenue), pola `BUSINESS_XXX_ENUM as const` + `XXX_COMBOBOX_
+OPTIONS` identik `business-sectors.ts`, **ZERO import `@jalajogja/db`** (aturan client-bundle-
+safety yang sama). Untuk 3 field yang label≠value (Employees/Branches/Revenue), pakai
+`Record<Enum, string>` label-map — pola yang MEMAKSA TypeScript exhaustiveness check kalau
+enum bertambah nilai baru, mencegah bug label-mentah ini berulang secara diam-diam.
+
+**8 titik konsolidasi total**: `business-form-options.ts` (baru) + `usaha/page.tsx` +
+`usaha-filters-client.tsx` + `step4-business.tsx` (6 const lokal dihapus sekaligus, plus JADI
+titik yang memperbaiki bug label mentah) + `akun/usaha/usaha-client.tsx` (6 const lokal
+dihapus, sekarang label-nya identik admin — bukan sebaliknya "admin diseragamkan ke gaya
+lama") + `import-anggota-mapping.ts` (re-export, pola sama presedential `BUSINESS_SECTOR_ENUM`
+di file yang sama) + `api/akun/member-business/route.ts` + `members/actions.ts` (2 titik
+inline union-type cast diganti referensi tipe dari file baru).
+
+**TIDAK disentuh** (konsisten alasan Sektor): schema-level `text(col,{enum:[...]})` hint di
+`packages/db/src/schema/public/member-businesses.ts` — deep import lintas package belum ada
+precedent, technical debt yang sudah didokumentasikan sengaja dibiarkan.
+
+`tsc --noEmit` 0 error kedua package + `bun run build --filter=@jalajogja/web` genuine sukses
+(dev server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB, nol perubahan behavior
+KECUALI bug label mentah yang sekarang genuinely diperbaiki (bukan regresi — perbaikan
+disengaja). **Belum di-commit/push ke git.**
+
+### [2026-08-07] Modul Admin Baru "Ekosistem" — Rumah Config Usaha/Pesantren/Profesional
+
+> Detail lengkap: **`docs/arsitektur-ekosistem.md` § 9** (cross-reference dari
+> **`docs/arsitektur-akun.md`** § "Toggle Per-Tenant untuk Modul Ekosistem" — susulan
+> 2026-08-07).
+
+Lanjutan langsung dari 2 lesson konsolidasi di atas, giliran sama. User membuka diskusi baru:
+field Kategori/Sektor/Bidang Usaha cocok untuk tenant fokus-bisnis tapi rancu untuk tenant lain
+— didiskusikan 3 opsi customization per-tenant (taksonomi baku+hide/show, taksonomi custom
+penuh, label custom), **hybrid direkomendasikan, opsi taksonomi-custom-penuh dihindari** karena
+`member_businesses` data GLOBAL milik member (public schema) bisa muncul di banyak tenant
+sekaligus — taksonomi custom akan ambigu "punya siapa" saat record yang sama dilihat tenant
+lain. **Toggle/label EKSPLISIT DITUNDA ke sesi lain oleh user sendiri.**
+
+Lalu user mengusulkan konkret: *"kita bikin laman baru sebagai modul yaitu form atau
+formulir... sub menu setting, untuk menidahkan semua setting form... bgmn menurutmu?"` —
+diminta pendapat SEBELUM eksekusi. Direkomendasikan nama **"Ekosistem"** (bukan "Formulir")
+karena istilah ini SUDAH jadi baku internal (`lib/ekosistem-modules.ts` + `docs/arsitektur-
+ekosistem.md`, 26+ referensi), sementara "Form" ambigu dengan konsep form LAIN yang tidak
+terkait di codebase (form post/event/surat/custom-field-event). User setuju + beri lampu hijau
+eksekusi dengan instruksi eksplisit: **"ingat semua harus terdokumentasi agar mudah editnya
+nanti"** — jadi dokumentasi bukan sekadar ringkasan penutup, tapi syarat inheren pekerjaan ini.
+
+**Keputusan arsitektur kunci — access pattern BUKAN sistem 10-modul permission**
+(`lib/permissions.ts`'s `Module`), melainkan pola `/settings/*` (`getTenantAccess()` polos).
+Dipertimbangkan dan ditolak menambah `"ekosistem"` sebagai modul ke-11: akan memaksa update
+`SYSTEM_PERMISSIONS` untuk 4 role sistem SEKALIGUS, dan role custom EXISTING (JSONB tanpa fixed
+schema) akan **diam-diam terkunci** dari fitur yang sebelumnya bisa mereka akses (karena
+`/settings/general` tidak pernah module-gated) — mengejutkan tanpa alasan kuat. Modul ini
+bersifat KONFIGURASI (mirip Contact/Payment/Display di `/settings/*`), bukan modul operasional
+CRUD harian — guard MUTASI tetap `canManageUsers()` (level akses TIDAK berubah, cuma pindah
+rumah dari `saveGeneralSettingsAction`).
+
+**Struktur — mirror Toko/Event/Donasi** (shell layout+sub-nav sendiri, BUKAN nested di
+`/settings/*`): `components/ekosistem/{ekosistem-nav,ekosistem-pengaturan-form}.tsx` +
+`app/(dashboard)/app/[tenant]/ekosistem/{layout,page,actions}.tsx` +
+`ekosistem/pengaturan/page.tsx`. Sidebar entry baru (`Boxes` icon, `module: null` — selalu
+tampil, konsisten access pattern di atas), posisi antara "Akun" dan "Media".
+
+**Migration `0061_settings_group_ekosistem.sql`** — group settings baru `"ekosistem"`
+(sebelumnya toggle numpang di grup `"general"` yang tidak terkait), pola precedent
+`0042_settings_group_forum.sql` (`DROP`+`ADD CONSTRAINT` CHECK per tenant aktif), plus langkah
+defensif copy-data dari grup lama (kosong di kedua tenant lokal, jaga-jaga untuk production
+yang tidak bisa dicek dari sesi ini). **Satu-satunya titik kode yang perlu tahu perubahan
+group**: `getEnabledEkosistemModules()` (`lib/ekosistem-modules.server.ts`, satu-satunya
+fungsi yang benar-benar `getSettings()` dari DB — `resolveEkosistemModulesConfig()` di file
+pure-nya cuma terima raw settings sebagai parameter) — ~20 caller lain di seluruh app (self-
+service nav, direktori publik, section builder, `checkMemberEligibility`, dst) **nol
+perubahan**, bukti nyata manfaat pola "single choke point" yang sudah berulang kali dipakai di
+project ini (`resolvePostHrefs`, dll).
+
+`GeneralSettingsForm`/`saveGeneralSettingsAction` diperkecil (3 field boolean + blok JSX toggle
+dihapus, diganti comment penunjuk lokasi baru). API existing `GET /api/ekosistem/modules`
+(dipakai `DirectoryEditor` section builder) tidak berubah logic-nya sama sekali — otomatis
+ikut baca group baru lewat choke point yang sama, cuma comment-nya diperbarui.
+
+`tsc --noEmit` 0 error kedua package + `bun run build --filter=@jalajogja/web` genuine sukses
+(`Cached: 0 cached`, 48.2 detik) — 3 route baru/berubah terkonfirmasi compile bersih. Migration
+dijalankan+diverifikasi di lokal (`\d` konfirmasi `'ekosistem'` masuk CHECK constraint). Grep
+akhir konfirmasi nol sisa referensi 3 field lama di luar file modul baru. **Sesuai instruksi
+eksplisit user, seluruh keputusan+struktur didokumentasikan lengkap** di
+`docs/arsitektur-ekosistem.md` § 9 (termasuk section "Ide Lanjutan" — placeholder untuk ide-ide
+berikutnya yang user sebut akan disampaikan terpisah, TANPA didesain lebih jauh sampai
+dikonfirmasi ulang). **Belum di-commit/push ke git, belum dijalankan di VPS, belum
+diverifikasi visual di browser** — user perlu coba: buka `/app/{slug}/ekosistem` (redirect ke
+`/pengaturan`), toggle modul lalu simpan, konfirmasi efeknya sama seperti toggle lama, dan
+konfirmasi `/settings/general` tidak lagi menampilkan toggle itu.
+
+**Aturan yang ditegaskan**: kalau user secara eksplisit meminta pendapat arsitektur ("bgmn
+menurutmu?") untuk keputusan yang akan membentuk struktur jangka panjang (nama modul, pola
+akses), JAWAB dengan reasoning konkret (precedent existing, biaya alternatif) SEBELUM
+eksekusi — bukan langsung ikuti usulan literal user tanpa evaluasi. Dan kalau instruksi
+dokumentasi diberikan eksplisit ("harus terdokumentasi"), perlakukan sebagai bagian WAJIB dari
+definisi selesainya task — bukan langkah opsional yang boleh disingkat jadi satu paragraf
+ringkasan di CLAUDE.md saja.
+
+### [2026-08-07] Taksonomi Override — Label Kategori/Sektor/Bidang Usaha + Toggle Sektor
+
+> Detail lengkap: **`docs/arsitektur-ekosistem.md` § 10** (§ 10.7 "Status Implementasi").
+
+Lanjutan langsung dari modul admin "Ekosistem" (lesson di atas, sesi yang sama) — "ide
+lanjutan" yang sengaja ditunda di § 9 ("toggle show/hide per-opsi dalam field, label custom per
+tenant") DATANG di giliran berikutnya: *"saya ingin ada pengaturan label untuk ketiga:
+kategori, sector dan bidang usaha, kemudian toggle untuk aktifkan sector usaha dan tambah juga
+edit bidang usaha."* Dikonfirmasi eksplisit scope-nya SEBELUM eksekusi: *"yes perubahan hanya
+di label.. default tetap seperti sekarang, tetapi label tersebut bisa diubah."*
+
+**Prinsip keamanan yang sama dengan diskusi sebelumnya (§ 9.1 "hindari Opsi 2")**: fitur ini
+TIDAK PERNAH mengubah nilai (`value`) tersimpan di `member_businesses.category/.sector/
+.businessFields[]` — HANYA teks LABEL yang ditampilkan. `member_businesses` data GLOBAL
+(public schema, lintas-tenant, dipakai juga filter JSONB containment Fase 2 Ekosistem) — kalau
+nilai literal ikut berubah per tenant, pencarian lintas-tenant akan pecah.
+
+**Halaman baru `/app/{slug}/ekosistem/taksonomi`** (sub-nav kedua modul Ekosistem, sejajar
+`/pengaturan`) — 3 section: label Kategori (5 item, tanpa toggle — tidak diminta), label+toggle
+aktif Sektor (10 item — matikan sektor yang tidak relevan, TIDAK menawarkannya lagi untuk usaha
+BARU, tapi entri LAMA yang sudah pakai sektor itu tetap harus tampil normal), tambah Bidang
+Usaha custom + cari-edit label Bidang Usaha bawaan (~59 item, display-only — lihat kendala
+teknis di bawah).
+
+**Storage**: key baru `taxonomy_overrides` di `tenant.settings` group `"ekosistem"` (group yang
+SAMA dari lesson di atas — NOL migrasi tambahan). Semua field `TaxonomyOverrides` opsional,
+objek kosong `{}` = perilaku default persis sebelum fitur ini ada — payload hanya menyimpan
+override yang genuinely diisi (label kosong dibuang, `sectorEnabled` hanya simpan yang
+eksplisit `false`) supaya tetap hemat dan "default = current" trivially benar.
+
+**Kendala teknis ditemukan (bukan diasumsikan sejak awal)**: `Kategori`/`Sektor` dipilih lewat
+`Combobox`/`SimpleCombobox` — SUDAH mendukung `{value,label}[]` sejak awal, override AMAN di
+picker maupun display. `Bidang Usaha` dipilih lewat `TagMultiSelect`
+(`components/ui/tag-multi-select.tsx`) — komponen creatable-tag ini HANYA terima
+`options: string[]` (value=label sekaligus), TANPA pemisahan — dan dipakai JUGA oleh
+`offeredTags`/`neededTags` di 4 tempat lain (Fase 1 Ekosistem) yang TIDAK butuh override.
+Mengubah komponen generik ini ke `{value,label}[]` berisiko meregresi 4 pemakai itu. Keputusan:
+override Bidang Usaha HANYA berlaku di tampilan READ-ONLY (badge/list yang sudah dipilih) —
+picker (`TagMultiSelect` saat memilih/menambah) tetap tampilkan label kanonik apa adanya.
+
+**File baru**: `lib/taxonomy-overrides.ts` (pure, ZERO import `@jalajogja/db` — resolver:
+`resolveCategoryLabel/Options`, `resolveSectorLabel/Options`, `resolveBusinessFieldLabel`,
+`resolveBusinessFieldSuggestions`) + `lib/taxonomy-overrides.server.ts` (`import
+"server-only"`, satu-satunya titik yang genuinely `getSettings()` dari DB — pola SAMA
+`getEnabledEkosistemModules()`, sudah 4× dipakai di project ini untuk kelas bug client/server
+bundle boundary: `nav-menu`, `tenant-timezone`, `forum-membership-number`,
+`ekosistem-modules`).
+
+**Bug ditemukan+difix SAAT eksekusi** (bukan direncanakan dari awal, tapi sudah diantisipasi
+di checklist verifikasi § 10.6 yang ditulis sebelum coding): `resolveSectorOptions()` draf
+pertama filter sektor `sectorEnabled=false` TANPA pengecualian apa pun. Begitu admin
+menonaktifkan sektor yang KEBETULAN sudah dipakai entri usaha LAMA, `Combobox`/`SimpleCombobox`
+entri itu tampil BLANK (kehilangan seleksi) — root cause: kedua komponen resolve tampilan
+terpilih via `options.find(o => o.value === value)`, dan sektor yang di-disable hilang dari
+`options` array. Fix: parameter kedua opsional `currentValue?: string` — kalau diisi dan
+ternyata sudah tidak ada di opsi aktif, tetap disisipkan balik ke hasil (dengan label
+ter-override kalau ada) — supaya janji fitur ini ("usaha yang sudah pakai sektor itu tetap
+tampil normal") benar-benar terpenuhi di PICKER, bukan cuma di tampilan read-only yang sudah
+otomatis benar (karena `resolveSectorLabel()` tidak pernah filter apa pun, jalan untuk value
+apa pun terlepas status enabled).
+
+**9 titik consumer di-wire** (thread `TaxonomyOverrides` sebagai prop, Server Component yang
+`getTaxonomyOverrides()` → Client Component yang render — bukan API route baru, konsisten pola
+`enabledModules` yang sudah ada): **Publik** — `usaha/page.tsx` (fetch + bangun
+`kategoriOptions`/`sektorOptions`/`bidangOptions` lengkap "Semua X" untuk
+`usaha-filters-client.tsx`, badge arsip) → `usaha-filters-client.tsx` (terima options siap
+pakai sebagai prop, BUKAN import const kanonik langsung lagi) → `usaha/[id]/page.tsx` (fetch
+sendiri, resolve badge desktop+mobile, InfoRow sidebar, list Bidang Usaha). **Self-service** —
+`akun/usaha/page.tsx` (fetch bareng `enabledModules` yang sudah ada di situ, `Promise.all`) →
+`usaha-client.tsx` (prop baru `taxonomyOverrides`, dipakai picker Kategori/Sektor/Bidang Usaha
++ label `DetailDialog` + label tabel list). **Admin** — `step4-business.tsx`
+(`Step4Props`+`BusinessCard` dapat `taxonomyOverrides?: TaxonomyOverrides`, default
+`EMPTY_TAXONOMY_OVERRIDES` — OPSIONAL karena komponen ini dipakai 2 context berbeda) →
+`member-edit-shell.tsx` (`taxonomyOverrides?`, mirror persis pola `enabledModules?` yang sudah
+ada di file yang sama) → `members/[id]/edit/page.tsx` (tambah 1 elemen ke `Promise.all` yang
+sudah ada, `createTenantDb(slug)` dipanggil lagi mengikuti gaya inline file ini) DAN
+`member-data-sections.tsx`'s `BusinessSection` (`taxonomyOverrides` wajib, dipakai resolve
+`<Row value={biz.category}>`/`<Row value={biz.sector}>`/list Bidang Usaha yang SUDAH ada di
+file yang sama — sekalian dipakai) → `members/[id]/page.tsx` (fetch bareng `enabledModules`).
+**SENGAJA TIDAK disentuh**: `members/import/import-client.tsx` (layar review Excel internal
+admin, bukan surface presentasi ke anggota/publik).
+
+**Verifikasi**: `tsc --noEmit` 0 error di `apps/web` DAN `packages/db`, dicek di SETIAP fase
+(bukan ditumpuk ke akhir — 4 checkpoint terpisah sepanjang eksekusi). `bun run build
+--filter=@jalajogja/web` genuine sukses (dev server dimatikan via `lsof -ti:6202 | xargs kill`,
+`.next` dibersihkan, direstart setelah, `Cached: 0 cached, 1 total`, 48.75 detik — bukan
+cache-hit) — `/app/[tenant]/ekosistem/taksonomi` (4.47 kB) dan seluruh route
+`/app/[tenant]/members/*`/`/app/[tenant]/usaha`-family terkonfirmasi compile bersih di build
+output. Grep akhir `CATEGORY_COMBOBOX_OPTIONS|SECTOR_COMBOBOX_OPTIONS|
+getPrioritizedBusinessFields` di seluruh `apps/web` di luar folder `lib/` — nol hasil, semua
+consumer sudah migrasi ke resolver. Nol migrasi DB (key JSONB baru di group yang sudah ada).
+**Sesuai instruksi eksplisit user, seluruh keputusan didokumentasikan lengkap** di
+`docs/arsitektur-ekosistem.md` § 10 sebelum kode ditulis (docs-first, bukan disusul belakangan).
+**Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser**
+— user perlu coba: ubah label Sektor "Kreatif"→custom di `/ekosistem/taksonomi`, cek muncul di
+picker+badge `/akun/usaha` DAN `/usaha` publik; matikan satu Sektor, cek hilang dari picker
+TAPI entri lama yang sudah pakai sektor itu tetap tampil normal (verifikasi langsung fix bug di
+atas); tambah Bidang Usaha custom, cek muncul sebagai suggestion di `TagMultiSelect`.
+
+### [2026-08-07] Susulan: Toggle Kategori + Kategori Baru "Praktisi"/"Akademisi"
+
+> Detail lengkap: **`docs/arsitektur-ekosistem.md` § 10.8**. Lanjutan langsung lesson di atas.
+
+User tanya eksploratif dulu: *"btw emang kategori gk bisa ditambah sama sekali?"* — dijawab
+jujur setelah verifikasi (bukan tebakan): SECARA TEKNIS bisa, kolom `public.member_businesses.
+category` adalah `text` polos TANPA CHECK constraint DB (dikonfirmasi grep migrations), murni
+TypeScript enum hint — cuma belum ada mekanisme UI seperti Bidang Usaha (`customBusinessFields`).
+Lalu user minta konkret: *"saya ingin kategori bisa di toggle (diaktifkan dan di non aktifkan)
+dan ditambahkan: Praktisi dan Akademisi."* Dua permintaan, dieksekusi bersamaan:
+
+**(a) Toggle Kategori** — MIRROR PERSIS `sectorEnabled` yang sudah ada (bukan pola baru):
+`TaxonomyOverrides` diperluas `categoryEnabled?: Partial<Record<BusinessCategory, boolean>>`
+(default `true`, backward-compat penuh); `resolveCategoryOptions()` ditulis ulang identik
+struktur `resolveSectorOptions()` termasuk fix `currentValue?` (lesson di atas — cegah
+`Combobox` blank untuk entri lama yang kategorinya baru dinonaktifkan admin); form pengaturan
+taksonomi section "Kategori" ditulis ulang jadi checkbox+label per item (sama seperti section
+"Sektor"), `onlyDisabled()` helper digeneralisasi untuk KEDUA field. **Semua caller
+`resolveCategoryOptions()` diupdate meneruskan `currentValue`** (`usaha-client.tsx`,
+`step4-business.tsx` — kirim `entry.category`) KECUALI `usaha/page.tsx` (arsip publik,
+membangun opsi FILTER dropdown, bukan mengedit entitas — sengaja tanpa `currentValue`, sama
+seperti pola `resolveSectorOptions` di file yang sama).
+
+**(b) "Praktisi"/"Akademisi" — perluasan GLOBAL/kanonik** (berlaku semua tenant, BUKAN custom
+per-tenant seperti Bidang Usaha), konsisten pola "Kreatif" ditambahkan ke Sektor sebelumnya:
+`BUSINESS_CATEGORY_ENUM` (`lib/business-form-options.ts`) diperluas 5→7 nilai. Tenant yang
+tidak relevan cukup nonaktifkan lewat toggle (a), bukan dihapus.
+
+**Bug ditemukan+difix — cross-package Drizzle enum sync (kelas bug yang sudah pernah terjadi
+untuk Sektor, sekarang terulang untuk Kategori)**: memperluas enum di `apps/web` sendirian
+menghasilkan 3 error `tsc --noEmit` (`members/actions.ts`, `usaha/page.tsx`, `api/akun/
+member-business/route.ts` — semua `"No overload matches this call. Type '\"Praktisi\"' is not
+assignable to..."`). Root cause: `packages/db/src/schema/public/member-businesses.ts`'s
+`category` field masih deklarasi Drizzle `enum` hint LAMA (5 nilai) — BUKAN CHECK constraint
+DB sungguhan, murni type hint TypeScript yang wajib disinkron MANUAL karena `packages/db`
+tidak bisa import dari `apps/web` (arah dependency monorepo terbalik). Pola ini SUDAH
+terdokumentasi eksplisit di komentar `sector` field di file yang SAMA sejak upgrade taksonomi
+Sektor — cuma belum pernah dites ulang untuk `category` sampai sekarang. Fix: array enum
+`category` diupdate manual jadi 7 nilai yang identik, dengan komentar eksplisit menjelaskan
+kewajiban sinkron ini. `tsc --noEmit` 0 error setelahnya di kedua package.
+
+**Aturan yang ditegaskan (generalisasi)**: setiap kali sebuah enum kanonik `apps/web` yang
+punya kembaran Drizzle `enum` hint di `packages/db` diperluas, WAJIB cek dan update
+kembarannya DI GILIRAN YANG SAMA — jangan tunggu `tsc` menangkapnya sebagai "kejutan", karena
+pesan error TypeScript ("Type '\"Praktisi\"' is not assignable...") tidak langsung menunjuk ke
+root cause sesungguhnya (dua file berbeda package yang harus disinkronkan manual).
+
+**Verifikasi**: `tsc --noEmit` 0 error kedua package (dicek dari direktori yang benar via
+`pwd`, menghindari kesalahan cwd yang pernah terjadi sebelumnya di project ini). `bun run build
+--filter=@jalajogja/web` genuine (dev server dimatikan port 6202, `.next` dibersihkan, `Cached:
+0 cached, 1 total`, 47.36 detik, dev server direstart, curl 200 OK) — route `/app/[tenant]/
+ekosistem/taksonomi` terkonfirmasi ter-build ulang tanpa error via inspeksi langsung
+`.next/server/app/` (bukan cuma dipercaya dari output log). Nol migrasi DB tambahan. **Belum
+di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser** — user
+perlu coba: buka `/ekosistem/taksonomi`, konfirmasi 7 baris Kategori (termasuk Praktisi/
+Akademisi) dengan checkbox toggle; matikan satu Kategori, cek hilang dari picker tapi entri
+lama tetap tampil normal; pilih Praktisi/Akademisi untuk entri baru, cek tersimpan+tampil
+benar di badge publik `/usaha`.
+
+### [2026-08-07] Koreksi Kedua: Bidang Usaha Sektor-Scoped + Nama Field Sendiri
+
+> Detail lengkap: **`docs/arsitektur-ekosistem.md` § 10.9**. Lanjutan langsung lesson di atas.
+
+User mengoreksi 2 kesalahtafsiran atas permintaan awal § 10.1 (kutipan verbatim): *"yang gue
+tahu sektor dengan bidang usaha itu hirarkikal.. yg gue maksud adalah: misal: bidang kreatif,
+gue bisa tambah misal bidang usahanya musik, vokalis, gitu lho.. ini kok malah bidang usaha
+jadi diganti labelnya.. kayanya kamu salah tafsir.. kedua, yg gue maksud dari label kategori
+juga, itu text 'kategorinya' dan juga berarti text 'Sektor' dan 'bidang usaha' ini yg blm ada."*
+
+**Koreksi #1 — Bidang Usaha tambah baru harus sektor-scoped, bukan global flat.** Fitur
+"Tambah Bidang Usaha Baru" sebelumnya menyimpan item custom sebagai `string[]` global tanpa
+asosiasi sektor. Contoh user ("Sektor Kreatif → tambah Musik, Vokalis") artinya item baru
+harus DIPILIH Sektor induknya — persis mekanisme yang SUDAH ADA untuk ~59 item bawaan
+(`SECTOR_SUB_FIELDS: Record<BusinessSector,string[]>`, dipakai `getPrioritizedBusinessFields()`
+untuk soft-prioritize, BUKAN filter eksklusif). **Ini BUKAN pembalikan prinsip "facet
+independen" § 2-3 `docs/arsitektur-usaha.md`** — prinsip itu soal DATA member
+(`member_businesses.businessFields` tetap `string[]` flat, bebas pilih apa saja), bukan soal
+mekanisme SARAN/prioritas yang memang sudah hirarkis-lunak sejak awal untuk item kanonik.
+Perluasan ini murni menyamakan perlakuan item custom dengan item kanonik.
+
+Fix: `TaxonomyOverrides.customBusinessFields` diubah dari `string[]` jadi `Partial<Record<
+BusinessSector, string[]>>` (mirror `SECTOR_SUB_FIELDS`). `resolveBusinessFieldSuggestions()`
+ditulis ulang — item custom sektor terpilih digabung ke barisan prioritized, item custom
+sektor lain tetap disertakan di posisi belakang (non-exclusive). **Diverifikasi EMPIRIS**
+(disposable script, dihapus setelah): `sector="Kreatif"` dengan custom
+`{Kreatif:["Musik","Vokalis"], "Teknologi & Informasi":["Coding Bootcamp"]}` → Musik+Vokalis
+di posisi 0-1, "Coding Bootcamp" tetap ada di posisi 61/62 (tidak hilang); `sector="Teknologi &
+Informasi"` → "Coding Bootcamp" di posisi 0, "Musik" tetap ada di posisi 60/62; `sector=null`
+→ semua 62 item hadir tanpa prioritas; nol duplikat di semua kasus. Form pengaturan ditulis
+ulang: `<Combobox>` pilih Sektor (wajib, aturan project "semua dropdown wajib Combobox") +
+input teks + tombol Tambah; daftar existing dikelompokkan per sektor (bukan flat lagi).
+
+**Koreksi #2 — Nama FIELD itu sendiri belum bisa diganti.** Permintaan awal "pengaturan label
+untuk kategori/sektor/bidang usaha" ternyata BUKAN cuma override label per-ITEM (sudah dibangun
+sebelumnya) — TERMASUK JUGA mengganti JUDUL FIELD itu sendiri (mis. "Sektor"→"Jenis Karya",
+"Bidang Usaha"→"Spesialisasi") — dua konsep beda yang saya campur.
+
+Fix: `TaxonomyOverrides` dapat `fieldLabels?: {category?, sector?, businessFields?}` + resolver
+`resolveFieldLabel()`. Section baru "Nama Field (Opsional)" di PALING ATAS form pengaturan. **9
+titik render diupdate** (`usaha-client.tsx` 3× Field label + 2× th + 2× pesan validasi,
+`step4-business.tsx` 2× SimpleCombobox label + 1× span statis, `usaha/[id]/page.tsx` 2×
+InfoRow + 1× h2, `member-data-sections.tsx` 3× Row, `usaha/page.tsx` 3× "Semua X"). SENGAJA
+TIDAK disentuh: header kolom Excel bulk-import (alat internal admin, berisiko tidak sinkron
+dengan parser).
+
+**Verifikasi**: `tsc --noEmit` bersih kedua package di SETIAP tahap + `bun run build
+--filter=@jalajogja/web` genuine sukses (`Cached: 0 cached, 1 total`, 46.98 detik, dev server
+dimatikan port 6202+`.next` dibersihkan+direstart, curl 200 OK). Grep menyeluruh konfirmasi
+nol sisa literal "Kategori"/"Sektor"/"Bidang Usaha" yang relevan di luar file yang sengaja
+tidak disentuh. Nol migrasi DB. **Belum di-commit/push ke git, belum dijalankan di VPS, belum
+diverifikasi visual di browser** — user perlu coba: tambah Bidang Usaha baru dengan pilih
+Sektor "Kreatif" (mis. "Musik"), konfirmasi muncul paling atas saat Sektor Kreatif dipilih tapi
+tetap ada (di bawah) saat sektor lain dipilih; ganti "Nama Field" Sektor jadi custom, cek
+berubah di semua titik tanpa mengubah label per-item Sektor yang sudah dikustomisasi.
+
+**Aturan yang ditegaskan**: kalau user secara eksplisit bilang "kamu salah tafsir" setelah
+implementasi selesai, JANGAN membela implementasi lama atau menganggap koreksi user sebagai
+permintaan fitur tambahan yang independen — treat sebagai bukti pemahaman awal genuinely
+keliru, baca ulang instruksi asli kata-per-kata dengan asumsi baru itu benar, dan verifikasi
+apakah "penolakan" terhadap solusi lama sebenarnya konsisten dengan prinsip arsitektur yang
+sudah dikunci (di sini: sektor-scoping TERNYATA tidak melanggar "facet independen" sama sekali
+karena bekerja di layer SARAN, bukan layer DATA) — baru eksekusi ulang.
+
+### [2026-08-07] Susulan Ketiga: Tambah Sektor Baru
+
+> Detail lengkap: **`docs/arsitektur-ekosistem.md` § 10.10**. Lanjutan langsung lesson di atas,
+> giliran sama.
+
+User: *"selain bidang usaha, sektor jg bisa ditambah bro tadi sudah benar.."* — Sektor
+seharusnya juga punya kapabilitas "tambah baru" self-service per-tenant, persis mekanisme yang
+baru dibangun untuk Bidang Usaha di lesson sebelumnya. Sebelumnya `/ekosistem/taksonomi` HANYA
+bisa toggle-aktif+relabel 10 Sektor KANONIK yang di-hardcode di kode — tidak ada cara menambah
+Sektor genuinely BARU tanpa saya menulis kode+migration setiap kali (pola lama yang dipakai
+untuk "Kreatif"/"Praktisi"/"Akademisi" — perluasan GLOBAL).
+
+**Kelayakan teknis dikonfirmasi dulu, bukan diasumsikan**: `member_businesses.sector` adalah
+kolom `text` TANPA CHECK constraint DB (lesson `[2026-07-30]` "Upgrade Taksonomi Sektor Usaha")
+— string sektor arbitrary aman disimpan. `getPrioritizedBusinessFields()` sudah menangani
+sektor tak dikenal secara graceful (return unprioritized, tanpa crash). 4 titik lain yang pakai
+tipe `BusinessSector` cuma memakainya sebagai type assertion (`as BusinessSector`, bukan
+runtime guard) — nol perubahan diperlukan di situ, assertion tetap aman menerima string custom.
+
+**Fix**: `TaxonomyOverrides.customSectors?: string[]` baru — string bebas, value=label
+sekaligus (TANPA override label terpisah, sama pola item custom Bidang Usaha — ganti dengan
+hapus+tambah ulang). `resolveSectorOptions(overrides, currentValue?)` ditulis ulang: gabung
+opsi kanonik (existing) dengan `customSectors`, `currentValue` fallback diperluas mencakup DUA
+kasus (kanonik yang baru di-disable ATAU custom yang sudah dihapus tenant) — keduanya tersisip
+balik supaya `Combobox` tidak blank untuk entri lama. `customBusinessFields` (fitur "Susulan
+Kedua" di atas) diperluas keyingnya dari `Partial<Record<BusinessSector,string[]>>` jadi
+`Partial<Record<string,string[]>>` — supaya Sektor CUSTOM juga bisa jadi induk untuk "Tambah
+Bidang Usaha Baru", bukan cuma 10 Sektor kanonik.
+
+**Diverifikasi EMPIRIS** (disposable script, dihapus setelah): `resolveSectorOptions()`
+menghasilkan 11 opsi (9 kanonik aktif + 2 custom) dengan 1 kanonik di-disable genuinely hilang
+dari picker; fallback `currentValue` untuk sektor custom yang sudah dihapus tetap disisipkan
+balik; `resolveBusinessFieldSuggestions()` untuk sektor custom → item miliknya di posisi 0-1,
+total 63 item (59 kanonik + 2 depan + 2 milik sektor lain tetap di belakang), nol duplikat.
+
+Form pengaturan — section baru "Tambah Sektor Baru" (input+tombol, cek duplikat, list chip
+dengan tombol hapus) ditaruh setelah section "Label & Aktivasi Sektor" kanonik, sebelum "Tambah
+Bidang Usaha Baru". Sektor custom yang dihapus TIDAK cascade-menghapus Bidang Usaha yang sudah
+terlanjur dikaitkan ke sana — item itu tetap ada sebagai saran untuk sektor lain (konsisten
+prinsip "data tidak pernah hilang diam-diam"). Picker Sektor induk di "Tambah Bidang Usaha
+Baru" digabung dari `SECTOR_COMBOBOX_OPTIONS` + `state.customSectors` LIVE (dari form yang
+sedang diedit, bukan `defaultOverrides` tersimpan — admin bisa tambah Sektor lalu langsung
+tambah Bidang Usaha di bawahnya di sesi edit yang sama). **Bug laten ditemukan+diperbaiki
+sekaligus**: list "Bidang Usaha custom dikelompokkan per Sektor" sebelumnya iterasi
+`BUSINESS_SECTOR_ENUM.map(...)` (HANYA 10 kanonik) — Bidang Usaha yang dikaitkan ke Sektor
+custom TIDAK AKAN PERNAH tampil di list itu. Fix: `Object.entries(state.customBusinessFields)
+.map(...)` (semua kunci yang genuinely punya item).
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` (percobaan pertama) +
+`bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached, 1 total`, 49.34
+detik, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 OK) — route `/ekosistem/
+taksonomi` naik 4.47 kB → 6.47 kB (section baru). Nol migrasi DB. **Belum di-commit/push ke
+git, belum dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba: tambah
+Sektor baru, konfirmasi langsung muncul di picker Sektor form Usaha (self-service+admin) DAN
+sebagai pilihan induk Bidang Usaha baru; tambah Bidang Usaha di bawah Sektor custom itu,
+konfirmasi terprioritaskan saat Sektor custom itu dipilih; hapus Sektor custom, konfirmasi
+entri usaha lama yang sudah pakai sektor itu tetap tampil normal (tidak blank).
+
+### [2026-08-07] Susulan Keempat: Label Custom Nama Modul (Usaha/Pesantren/Profesional) — Bukan Cuma Field
+
+> Detail lengkap: **`docs/arsitektur-ekosistem.md` § 9.7**
+
+Lanjutan langsung dari § 10 (taksonomi override untuk field Kategori/Sektor/Bidang Usaha) —
+user minta perluasan: *"sepertinya kita juga bagus kalau membuat text 'Usaha', 'Pesantren' dan
+'Profesional' juga bisa diubah text-nya saja, alias labelnya saja, sama persis dengan text
+'kategori' tetapi default-nya tetap sama. settingnya ada dilaman: /app/forcreator/ekosistem/
+pengaturan."* Ini BUKAN perluasan § 10 (yang mengubah label FIELD di dalam form Usaha) —
+melainkan sistem override TERPISAH untuk NAMA MODUL itu sendiri, hidup di halaman
+`/ekosistem/pengaturan` (satu tempat dengan toggle enable/disable § 9), bukan
+`/ekosistem/taksonomi`.
+
+**API**: `EkosistemModuleLabels = Partial<Record<EkosistemModule,string>>` +
+`resolveEkosistemModuleLabel(module, overrides)` (fallback ke `EKOSISTEM_MODULE_LABELS`
+kanonik) di `lib/ekosistem-modules.ts` (pure, sudah lama client-safe sejak § 9).
+`getEkosistemModuleLabels(tenantClient)` di `.server.ts` — SENGAJA fungsi TERPISAH dari
+`getEnabledEkosistemModules()` (bukan digabung return-nya) supaya ~20 caller lama yang cuma
+butuh boolean gate tidak perlu disentuh. Storage: key BARU `module_labels` di group
+`tenant.settings` `"ekosistem"` yang SUDAH ADA — **nol migrasi DB**.
+
+**Tier-1/Tier-2 scoping**: menyusul pola project ini untuk fitur label-override kedua kalinya
+di sesi yang sama — ditetapkan SENDIRI (tanpa konfirmasi eksplisit user, sebagai judgment call)
+bahwa surface yang di-thread adalah "nama modul yang tampil ke pengguna" (nav, H1 arsip/detail
+publik, breadcrumb, tombol CTA, dialog title, section title, tab admin, header kartu per-entry
+"Usaha #N", prefix pesan validasi multi-entry) — SEDANGKAN label FIELD DI DALAM form
+(Nama Usaha, Logo Usaha, "Identitas Usaha"/"Skala Usaha" section headers, ~11 pesan error
+per-field, SEO metaTitle fallback yang sudah punya sistem override sendiri) SENGAJA tidak
+disentuh (diminishing returns + risiko visual inconsistency parsial dalam satu form).
+Di-thread ke ~20 file: arsip publik ×3, detail publik ×3 (+ fix 2 bug `tenantClient`
+redeclaration ditemukan proaktif via grep sebelum `tsc`), self-service ×6 (client+page per
+modul), `/gabung` (restrukturisasi ternary label — `MEMBER_ELIGIBILITY_LABELS.directory`
+konstanta statis diganti branch dinamis untuk field "directory"), profil publik anggota,
+admin dashboard ×6 (`member-edit-shell`, `step4-business`, `step5-pesantren`,
+`member-data-sections`, 2 Server Component caller), statistik ×4 (`statistik-sections` shared +
+3 caller: publik + 2 halaman drill-down IKPM Pusat).
+
+**Bug ke-2 ditemukan+difix sendiri (bukan dari `tsc`, murni isi string)**: draf pertama
+subtitle dinamis di `/statistik` salah menempatkan `tenant.name` di slot yang seharusnya diisi
+label modul TERAKHIR ("profesional") — diam-diam menghilangkan kata itu dari kalimat. Ditemukan
+saat menulis, diperbaiki jadi daftar koma Indonesia benar (`"a, b, dan c"`) sebelum
+`tenant.name` ditambahkan terpisah.
+
+**Verifikasi**: `tsc --noEmit` bersih di 8 checkpoint terpisah sepanjang eksekusi (per kelompok
+file, bukan ditumpuk ke akhir) + `bun run build --filter=@jalajogja/web` genuine sukses (dev
+server dimatikan port 6202+`.next` dibersihkan, `Cached: 0 cached`, 51.9 detik, dev server
+direstart, curl 200 OK). Grep sweep akhir mengonfirmasi seluruh literal "Usaha"/"Pesantren"/
+"Profesional" yang tersisa tak tersentuh semuanya masuk kategori Tier-2, nol yang terlewat
+tanpa alasan. Nol migrasi DB. **Belum di-commit/push ke git, belum dijalankan di VPS, belum
+diverifikasi visual di browser** — user perlu coba: ubah label "Usaha" jadi custom (mis.
+"Bisnis") di `/ekosistem/pengaturan`, konfirmasi berubah di seluruh titik Tier-1 (nav self-
+service, arsip+detail publik, admin wizard, statistik, `/gabung`) sementara field DI DALAM form
+Usaha (Kategori/Sektor/Nama Usaha) tetap memakai teks aslinya.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Menu Admin "Ringkasan Tenant" — DIEKSEKUSI PENUH** (lihat lesson
+- Terakhir dikerjakan: **Susulan Keempat — Label Custom Nama Modul (Usaha/Pesantren/
+  Profesional)** (lihat lesson `[2026-08-07]` "Susulan Keempat: Label Custom Nama Modul" di
+  atas, detail lengkap `docs/arsitektur-ekosistem.md` § 9.7). Lanjutan langsung dari "Susulan
+  Ketiga — Tambah Sektor Baru" (bullet berikutnya di bawah) — user minta perluasan sistem
+  label-override, kali ini bukan untuk FIELD di dalam form Usaha (§ 10, sudah selesai) tapi
+  untuk NAMA MODUL itu sendiri ("Usaha"/"Pesantren"/"Profesional") yang tampil di nav/H1/
+  breadcrumb/tombol di puluhan tempat, dengan setting di halaman `/ekosistem/pengaturan` (satu
+  tempat dengan toggle enable/disable § 9, bukan `/ekosistem/taksonomi`). `EkosistemModuleLabels`
+  + `resolveEkosistemModuleLabel()` (`lib/ekosistem-modules.ts`, sudah lama client-safe) +
+  `getEkosistemModuleLabels()` (`.server.ts`, sengaja terpisah dari `getEnabledEkosistemModules()`
+  supaya ~20 caller lama tidak perlu disentuh) — key baru `module_labels` di group settings
+  `"ekosistem"` yang sudah ada, nol migrasi DB. Di-thread ke ~20 file lintas arsip publik/
+  detail publik/self-service/`/gabung`/profil anggota/admin dashboard/statistik, dengan scoping
+  Tier-1 (nama modul yang tampil ke pengguna) vs Tier-2 (field internal form, SEO fallback —
+  sengaja tidak disentuh) yang ditetapkan sendiri sebagai judgment call. 2 bug ditemukan+difix
+  proaktif (variable `tenantClient` redeclaration di 2 file — ditemukan via grep sebelum `tsc`;
+  grammar bug daftar-koma di subtitle `/statistik` — ditemukan sendiri saat menulis). `tsc`
+  bersih di 8 checkpoint terpisah + `bun run build` genuine sukses. **Belum di-commit/push ke
+  git, belum dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba: ubah
+  label "Usaha" jadi custom di `/ekosistem/pengaturan`, konfirmasi berubah di semua titik
+  Tier-1 sementara field internal form Usaha tetap teks asli.
+- Sesi sebelumnya: **Susulan Ketiga — Tambah Sektor Baru** (lihat lesson `[2026-08-07]`
+  "Susulan Ketiga: Tambah Sektor Baru" di atas, detail lengkap `docs/arsitektur-ekosistem.md`
+  § 10.10). Lanjutan langsung dari "Koreksi Kedua" (bullet berikutnya di bawah) — user: "selain
+  bidang usaha, sektor jg bisa ditambah bro tadi sudah benar.." — Sektor sekarang juga punya
+  kapabilitas "tambah baru" self-service per-tenant (persis mekanisme Bidang Usaha), bukan
+  cuma toggle-aktif+relabel 10 Sektor kanonik yang di-hardcode. `TaxonomyOverrides.
+  customSectors?: string[]` baru, `resolveSectorOptions()` ditulis ulang (gabung kanonik+custom,
+  fallback `currentValue` diperluas 2 kasus), `customBusinessFields` diperluas keyingnya dari
+  `Partial<Record<BusinessSector,string[]>>` jadi `Partial<Record<string,string[]>>` (supaya
+  Sektor custom juga bisa jadi induk Bidang Usaha). Diverifikasi empiris via disposable script
+  (11 opsi, fallback custom-dihapus bekerja, prioritization+dedup benar). Bug laten ditemukan+
+  difix sekaligus: list "Bidang Usaha per Sektor" sebelumnya iterasi 10 kanonik saja (Bidang
+  Usaha di bawah Sektor custom tidak pernah tampil) — fix `Object.entries(customBusinessFields)`.
+  `tsc --noEmit` 0 error kedua package + `bun run build --filter=@jalajogja/web` genuine sukses
+  (`Cached: 0 cached, 1 total`, 49.34 detik, dev server dimatikan+`.next` dibersihkan+direstart,
+  route `/ekosistem/taksonomi` naik 4.47 kB → 6.47 kB). Nol migrasi DB. **Belum di-commit/push
+  ke git, belum dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba:
+  tambah Sektor baru, cek muncul di picker Sektor (self-service+admin) DAN sebagai induk Bidang
+  Usaha baru; tambah Bidang Usaha di bawah Sektor custom, cek terprioritaskan; hapus Sektor
+  custom, cek entri lama tetap tampil normal (tidak blank).
+- Sesi sebelumnya: **Koreksi Kedua — Bidang Usaha Sektor-Scoped + Nama Field Sendiri**
+  (lihat lesson `[2026-08-07]` "Koreksi Kedua: Bidang Usaha Sektor-Scoped + Nama Field Sendiri"
+  di atas, detail lengkap `docs/arsitektur-ekosistem.md` § 10.9). Lanjutan langsung dari
+  "Susulan — Toggle Kategori" (bullet berikutnya di bawah) — user mengoreksi 2 kesalahtafsiran:
+  (1) "Tambah Bidang Usaha Baru" seharusnya sektor-scoped (mis. Sektor Kreatif → tambah
+  Musik/Vokalis), BUKAN daftar global flat — fix: `customBusinessFields` diubah jadi
+  `Partial<Record<BusinessSector,string[]>>`, `resolveBusinessFieldSuggestions()` ditulis
+  ulang (soft-prioritize non-exclusive, diverifikasi empiris via disposable script — item
+  hilang nol, duplikat nol), form dapat `<Combobox>` pilih Sektor; (2) permintaan awal
+  "pengaturan label" ternyata BUKAN cuma override per-item, tapi TERMASUK mengganti nama FIELD
+  itu sendiri ("Sektor"→custom) — fix: `TaxonomyOverrides.fieldLabels` baru +
+  `resolveFieldLabel()`, diwire ke 9 titik render (`usaha-client.tsx`, `step4-business.tsx`,
+  `usaha/[id]/page.tsx`, `member-data-sections.tsx`, `usaha/page.tsx`). `tsc --noEmit` 0 error
+  kedua package + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached, 1
+  total`, 46.98 detik, dev server dimatikan+`.next` dibersihkan+direstart). Nol migrasi DB.
+  **Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di
+  browser** — user perlu coba: tambah Bidang Usaha baru dengan pilih Sektor "Kreatif", cek
+  muncul paling atas saat Sektor Kreatif dipilih tapi tetap ada saat sektor lain dipilih; ganti
+  "Nama Field" Sektor jadi custom, cek berubah di semua titik.
+- Sesi sebelumnya: **Susulan — Toggle Kategori + Kategori Baru "Praktisi"/"Akademisi"**
+  (lihat lesson `[2026-08-07]` "Susulan: Toggle Kategori + Kategori Baru" di atas, detail
+  lengkap `docs/arsitektur-ekosistem.md` § 10.8). Lanjutan langsung dari Taksonomi Override
+  (bullet berikutnya di bawah) — user tanya eksploratif "kategori gk bisa ditambah sama
+  sekali?" (dijawab: teknis bisa, kolom `text` tanpa CHECK constraint), lalu minta konkret:
+  toggle Kategori (mirror `sectorEnabled` persis) + tambah "Praktisi"/"Akademisi" sebagai
+  kanonik GLOBAL (bukan custom per-tenant). `TaxonomyOverrides` dapat `categoryEnabled?`,
+  `resolveCategoryOptions()` ditulis ulang identik `resolveSectorOptions()` (termasuk fix
+  `currentValue?` supaya Combobox tidak blank), form pengaturan section Kategori jadi
+  checkbox+label per item, semua caller (`usaha-client.tsx`, `step4-business.tsx`) diupdate
+  kirim `entry.category` — KECUALI `usaha/page.tsx` (filter arsip publik, sengaja tanpa
+  currentValue). `BUSINESS_CATEGORY_ENUM` diperluas 5→7 nilai. **Bug ditemukan+difix**: cross-
+  package Drizzle enum sync — `packages/db/src/schema/public/member-businesses.ts`'s `category`
+  field (type hint TypeScript, bukan CHECK constraint DB) ketinggalan, menyebabkan 3 error
+  `tsc` di `apps/web` sampai disinkronkan manual (pola SAMA yang sudah didokumentasikan untuk
+  `sector` field di file yang sama, sekarang terulang untuk `category`). `tsc --noEmit` 0 error
+  kedua package + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached, 1
+  total`, 47.36 detik, dev server dimatikan+`.next` dibersihkan+direstart, route `/ekosistem/
+  taksonomi` dikonfirmasi via inspeksi langsung `.next/server/app/`). **Belum di-commit/push ke
+  git, belum dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba: buka
+  `/ekosistem/taksonomi`, cek 7 baris Kategori dengan checkbox toggle; matikan satu Kategori,
+  cek hilang dari picker tapi entri lama tetap tampil normal; pilih Praktisi/Akademisi untuk
+  entri baru, cek tersimpan+tampil benar di badge publik `/usaha`.
+- Sesi sebelumnya: **Taksonomi Override — Label Kategori/Sektor/Bidang Usaha + Toggle
+  Sektor** (lihat lesson `[2026-08-07]` "Taksonomi Override" di atas, detail lengkap
+  `docs/arsitektur-ekosistem.md` § 10 § 10.7). Lanjutan langsung dari modul admin "Ekosistem"
+  (bullet berikutnya di bawah) — ide lanjutan yang sengaja ditunda di § 9 ("toggle show/hide
+  per-opsi dalam field, label custom per tenant") datang di giliran berikutnya, dikonfirmasi
+  scope-nya label-only sebelum eksekusi. Halaman baru `/app/{slug}/ekosistem/taksonomi` (sub-
+  nav kedua, sejajar `/pengaturan`) — label Kategori (5 item), label+toggle-aktif Sektor (10
+  item), tambah Bidang Usaha custom + edit label ~59 item bawaan. Storage: key baru
+  `taxonomy_overrides` di group `tenant.settings` `"ekosistem"` yang sudah ada (nol migrasi).
+  Ditemukan kendala teknis (`TagMultiSelect` tidak seperti `Combobox`, tidak support
+  value≠label — dipakai juga 4 tempat lain yang tidak butuh override) → keputusan: override
+  Bidang Usaha HANYA display-only, picker tetap label kanonik. Bug ditemukan+difix saat
+  eksekusi: `resolveSectorOptions()` bisa bikin Combobox "blank" untuk entri lama begitu
+  sektornya dinonaktifkan admin — fix parameter `currentValue?` supaya tetap disisipkan balik.
+  9 titik consumer di-wire (publik `/usaha` 3 file, self-service `/akun/usaha` 2 file, admin
+  `step4-business`+`member-edit-shell`+3 halaman member). `tsc --noEmit` 0 error kedua package
+  (4 checkpoint terpisah) + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0
+  cached, 1 total`, dev server dimatikan+`.next` dibersihkan+direstart). Grep akhir konfirmasi
+  nol sisa import const kanonik langsung di luar `lib/`. Docs ditulis SEBELUM kode (docs-first,
+  sesuai instruksi standing user). **Belum di-commit/push ke git, belum dijalankan di VPS**
+  (nol migrasi DB — deploy cukup pull+build+restart), **belum diverifikasi visual di browser**
+  — user perlu coba: ubah label Sektor custom, cek picker+badge publik&self-service; matikan
+  satu Sektor, cek hilang dari picker TAPI entri lama tetap tampil normal (verifikasi fix bug
+  di atas); tambah Bidang Usaha custom, cek muncul sebagai suggestion.
+- Sesi sebelumnya: **Modul Admin Baru "Ekosistem"** (lihat lesson `[2026-08-07]`
+  "Modul Admin Baru 'Ekosistem' — Rumah Config Usaha/Pesantren/Profesional" di atas, detail
+  lengkap `docs/arsitektur-ekosistem.md` § 9 + `docs/arsitektur-akun.md` § "Toggle Per-Tenant
+  untuk Modul Ekosistem" susulan 2026-08-07). Lanjutan langsung dari konsolidasi Kategori dkk
+  (bullet berikutnya di bawah) — user membuka diskusi arsitektur baru: form Usaha (Kategori/
+  Sektor/Bidang Usaha) rancu untuk tenant non-bisnis, 3 opsi customization per-tenant
+  didiskusikan (toggle/label EKSPLISIT DITUNDA lagi oleh user sendiri), lalu user mengusulkan
+  KONKRET halaman admin baru "form/formulir" dengan sub-menu Setting untuk menaungi SEMUA
+  setting form (termasuk relokasi toggle on/off Usaha/Pesantren/Profesional yang sebelumnya
+  numpang di `/settings/general`) — diminta pendapat SEBELUM eksekusi. Direkomendasikan nama
+  **"Ekosistem"** (bukan "Formulir", sudah jadi istilah baku internal 26+ referensi vs "Form"
+  yang ambigu dengan konsep lain di codebase) — user setuju, beri lampu hijau eksekusi dengan
+  instruksi EKSPLISIT: **"ingat semua harus terdokumentasi agar mudah editnya nanti."**
+  Dibangun: modul shell mirror Toko/Event/Donasi (`ekosistem/{layout,page,actions,pengaturan/
+  page}.tsx` + 2 komponen client) dengan access pattern SENGAJA `/settings/*`-style
+  (`getTenantAccess()` polos, BUKAN sistem 10-modul permission — pertimbangan+penolakan alasan
+  didokumentasikan lengkap di lesson), migration `0061` untuk group settings baru
+  `"ekosistem"` (dipindah dari `"general"`), dan satu titik choke-point
+  (`getEnabledEkosistemModules()`) yang membuat ~20 caller lain di seluruh app nol perubahan.
+  `tsc`+build genuine bersih. **Belum di-commit/push ke git, belum dijalankan di VPS, belum
+  diverifikasi visual di browser.**
+- Sesi sebelumnya: **Putaran Kedua Konsolidasi Hardcode — Kategori/Legalitas/Posisi/Karyawan/
+  Cabang/Omzet + sumber duplikasi ke-3 ditemukan** (lihat lesson `[2026-08-07]` "Putaran Kedua
+  Konsolidasi..." di atas, detail lengkap `docs/arsitektur-usaha.md` § 11 subsection "Putaran
+  Kedua"). User perluas scope eksplisit ("termasuk duplikasi paralel kategori dll") dari
+  konsolidasi Sektor-only sebelumnya. Ditemukan sumber duplikasi KE-3 yang tidak disadari
+  putaran pertama (`lib/import-anggota-mapping.ts`, validasi Excel import) DAN bug UX nyata
+  (bukan cuma risiko drift) — `step4-business.tsx` menampilkan label enum MENTAH untuk
+  Karyawan/Cabang/Omzet sementara `usaha-client.tsx` self-service sudah lama pakai label
+  manusiawi untuk field yang sama. File baru `lib/business-form-options.ts` (kanonik 6 enum,
+  pola `Record<Enum,string>` label-map untuk 3 field label≠value — memaksa exhaustiveness
+  check TypeScript kalau enum bertambah). 8 titik dikonsolidasi total; schema-level Drizzle
+  enum hint di `packages/db` tetap sengaja tidak disentuh (alasan sama seperti Sektor). `tsc`+
+  build genuine bersih. **Belum di-commit/push ke git.**
+- Sesi sebelumnya: **Konsolidasi Hardcode 10-Sektor Usaha (putaran pertama)** (lihat lesson
+  `[2026-08-07]` "Konsolidasi Hardcode 10-Sektor Usaha — 4 File UI-Facing" di atas, detail
+  lengkap `docs/arsitektur-usaha.md` § 11). User buka diskusi soal kerancuan form Usaha
+  (Kategori/Sektor/Bidang Usaha) antar tipe tenant (Forbis vs forum kreatif) — 3 opsi diajukan,
+  saya rekomendasikan hybrid Opsi 1+3 dan sarankan hindari Opsi 2 (taksonomi custom per tenant,
+  karena `member_businesses` data GLOBAL milik member, bukan tenant-owned). Toggle enable/
+  disable + custom label EKSPLISIT DITUNDA ke diskusi lain — user minta perbaiki dulu temuan
+  teknis sampingan: daftar 10 sektor di-re-declare independen di **6 titik** (bukan "4 file"
+  seperti perkiraan awal user — ditemukan lewat grep menyeluruh, bukan dipercaya dari
+  perkiraan). 4 titik `apps/web` UI-facing dikonsolidasi ke sumber kanonik `lib/business-
+  sectors.ts` (export baru `SECTOR_COMBOBOX_OPTIONS`) — `akun/usaha/usaha-client.tsx`,
+  `usaha/page.tsx` (+ type-cast `BusinessSector`), `usaha-filters-client.tsx`,
+  `step4-business.tsx`. 2 titik SENGAJA TIDAK disentuh saat itu (dicatat eksplisit): duplikasi
+  paralel Kategori (kemudian diselesaikan di putaran kedua di atas), dan `packages/db/src/
+  schema/public/member-businesses.ts`'s Drizzle enum hint (arah dependency monorepo terbalik +
+  `package.json` tidak punya `"exports"` field, nol precedent deep-import — dinilai lebih aman
+  dibiarkan sebagai technical debt yang sudah didokumentasikan). `tsc --noEmit` 0 error kedua
+  package + `bun run build` genuine sukses (`Cached: 0 cached`, 3 route publik terkonfirmasi
+  bersih).
+- Sesi sebelumnya: **Menu Admin "Ringkasan Tenant" — DIEKSEKUSI PENUH** (lihat lesson
   `[2026-08-07]` "Menu Admin Khusus IKPM Pusat: Ringkasan Tenant — DIEKSEKUSI" di atas, detail
   lengkap `docs/arsitektur-backbone-ikpm.md` § "Menu Admin Khusus IKPM Pusat: 'Ringkasan
-  Tenant'" — status sekarang ✅ SELESAI kode). Lanjutan langsung dari 2 sesi perencanaan
-  sebelumnya (bullet di bawah), dieksekusi setelah user beri lampu hijau ("ok ok .. mari kita
-  eksekusi ... biar nanti gue punya gambaran kalau sudah lihat hasilnya.."). Dibangun 8 file
-  sesuai rencana yang sudah dikunci: `lib/member-statistics.server.ts` baru (`compute
+  Tenant'" — status sekarang ✅ SELESAI kode, sudah di-commit+push sebagai `753606f`).
+  Lanjutan langsung dari 2 sesi perencanaan sebelumnya (bullet di bawah), dieksekusi setelah
+  user beri lampu hijau ("ok ok .. mari kita eksekusi ... biar nanti gue punya gambaran kalau
+  sudah lihat hasilnya.."). Dibangun 8 file sesuai rencana yang sudah dikunci: `lib/member-
+  statistics.server.ts` baru (`compute
   MemberStatistics(tenantId)` — ekstraksi MURNI dari `statistik/page.tsx`, dibaca ulang penuh
   file 600-baris itu langsung sebelum ekstraksi supaya "pure code motion" genuinely presisi,
   bukan direkonstruksi dari ingatan; **deviasi kecil dari rencana tertulis**: parameter

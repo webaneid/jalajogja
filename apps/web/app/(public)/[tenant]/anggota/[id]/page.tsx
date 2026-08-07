@@ -8,7 +8,10 @@ import {
   db, members, contacts, addresses, socialMedias, refProfessions, refIkpmCabang,
   memberBusinesses, memberEducations, memberPesantren, pesantren, memberProfessionals,
   tenantMemberships, tenants, refProvinces, refRegencies, refDistricts, refVillages,
+  createTenantDb,
 } from "@jalajogja/db";
+import { getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import {
   BadgeCheck, Phone, Mail, MessageCircle, MapPin,
   Globe, Building2, BookOpen, GraduationCap, User, Calendar,
@@ -83,6 +86,9 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
   if (memberRow.betterAuthUserId !== session.user.id) {
     redirect(`/${slug}/akun`);
   }
+
+  // Label custom nama modul (2026-08-07, /ekosistem/pengaturan).
+  const moduleLabels = await getEkosistemModuleLabels(createTenantDb(slug));
 
   // ── Fetch semua data relasi ───────────────────────────────────────────────
 
@@ -382,7 +388,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
 
       {/* ── Pesantren ── */}
       {pesantrenList.length > 0 && (
-        <Section title="Pesantren" icon={BookOpen}>
+        <Section title={resolveEkosistemModuleLabel("pesantren", moduleLabels)} icon={BookOpen}>
           <div className="space-y-4">
             {pesantrenList.map((p, i) => (
               <div key={i} className="text-sm space-y-0.5 pb-3 border-b border-border last:border-0 last:pb-0">
@@ -406,7 +412,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
 
       {/* ── Usaha ── */}
       {businessDetails.length > 0 && (
-        <Section title="Usaha & Bisnis" icon={Building2}>
+        <Section title={`${resolveEkosistemModuleLabel("usaha", moduleLabels)} & Bisnis`} icon={Building2}>
           <div className="space-y-4">
             {businessDetails.map((b, i) => (
               <div key={i} className="text-sm space-y-1.5 pb-4 border-b border-border last:border-0 last:pb-0">
@@ -435,7 +441,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
 
       {/* ── Profesional ── */}
       {professionalDetails.length > 0 && (
-        <Section title="Profesional" icon={Briefcase}>
+        <Section title={resolveEkosistemModuleLabel("profesional", moduleLabels)} icon={Briefcase}>
           <div className="space-y-4">
             {professionalDetails.map((p, i) => (
               <div key={i} className="text-sm space-y-1.5 pb-4 border-b border-border last:border-0 last:pb-0">
@@ -471,13 +477,13 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
           Edit Data Pribadi
         </a>
         <a href={`/${slug}/akun/pesantren`} className="rounded-xl border border-border p-3 text-center text-sm hover:bg-muted/40 transition-colors">
-          Edit Data Pesantren
+          Edit Data {resolveEkosistemModuleLabel("pesantren", moduleLabels)}
         </a>
         <a href={`/${slug}/akun/usaha`} className="rounded-xl border border-border p-3 text-center text-sm hover:bg-muted/40 transition-colors">
-          Edit Data Usaha
+          Edit Data {resolveEkosistemModuleLabel("usaha", moduleLabels)}
         </a>
         <a href={`/${slug}/akun/profesional`} className="rounded-xl border border-border p-3 text-center text-sm hover:bg-muted/40 transition-colors">
-          Edit Data Profesional
+          Edit Data {resolveEkosistemModuleLabel("profesional", moduleLabels)}
         </a>
         <a href={`/${slug}/akun`} className="rounded-xl border border-border p-3 text-center text-sm hover:bg-muted/40 transition-colors text-muted-foreground col-span-2">
           ← Dashboard

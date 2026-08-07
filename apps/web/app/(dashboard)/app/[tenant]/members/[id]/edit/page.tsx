@@ -18,7 +18,8 @@ import {
   createTenantDb,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { getTaxonomyOverrides } from "@/lib/taxonomy-overrides.server";
 import { MemberEditShell } from "@/components/members/member-edit-shell";
 import { ChangePasswordSection } from "@/components/members/change-password-section";
 import type { EducationEntry } from "@/components/members/wizard/step3-education";
@@ -37,7 +38,7 @@ export default async function EditMemberPage({
   if (!access) redirect("/dashboard-redirect");
 
   // Ambil semua data anggota secara paralel
-  const [memberRow, professions, cabangList, educations, businesses, tenantRow, enabledModules] = await Promise.all([
+  const [memberRow, professions, cabangList, educations, businesses, tenantRow, enabledModules, taxonomyOverrides, moduleLabels] = await Promise.all([
     // Data identitas + kontak/alamat/sosmed
     db
       .select({
@@ -178,6 +179,12 @@ export default async function EditMemberPage({
 
     // Modul ekosistem aktif tenant ini — tab "Data Usaha" hilang kalau Usaha dimatikan
     getEnabledEkosistemModules(createTenantDb(slug)),
+
+    // Label Kategori/Sektor/Bidang Usaha custom tenant (docs/arsitektur-ekosistem.md § 10)
+    getTaxonomyOverrides(createTenantDb(slug)),
+
+    // Label custom nama modul "Usaha" (2026-08-07, /ekosistem/pengaturan)
+    getEkosistemModuleLabels(createTenantDb(slug)),
   ]);
 
   if (!memberRow) notFound();
@@ -295,6 +302,8 @@ export default async function EditMemberPage({
         defaultEducations={defaultEducations}
         defaultBusinesses={defaultBusinesses}
         enabledModules={enabledModules}
+        taxonomyOverrides={taxonomyOverrides}
+        moduleLabels={moduleLabels}
       />
 
       <div className="mt-8">

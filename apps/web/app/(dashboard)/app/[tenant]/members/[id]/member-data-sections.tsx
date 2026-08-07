@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation"
 import { PlusIcon, BookOpen, Briefcase, School } from "lucide-react"
 import { displayPhone } from "@/lib/phone"
 import {
+  resolveCategoryLabel, resolveSectorLabel, resolveBusinessFieldLabel, resolveFieldLabel,
+  type TaxonomyOverrides,
+} from "@/lib/taxonomy-overrides"
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -215,8 +219,8 @@ export function EducationSection({
 // ─── Section: Data Usaha ──────────────────────────────────────────────────────
 
 export function BusinessSection({
-  memberId, slug, businesses,
-}: { memberId: string; slug: string; businesses: BizRow[] }) {
+  memberId, slug, businesses, taxonomyOverrides, moduleLabel = "Usaha",
+}: { memberId: string; slug: string; businesses: BizRow[]; taxonomyOverrides: TaxonomyOverrides; moduleLabel?: string }) {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
 
@@ -263,10 +267,10 @@ export function BusinessSection({
 
   return (
     <section className="rounded-xl border bg-card p-5 mb-4">
-      <SectionHeader icon={Briefcase} title="Data Usaha" onAdd={() => setOpen(true)} />
+      <SectionHeader icon={Briefcase} title={`Data ${moduleLabel}`} onAdd={() => setOpen(true)} />
 
       {businesses.length === 0 ? (
-        <EmptyState label="Belum ada data usaha." />
+        <EmptyState label={`Belum ada data ${moduleLabel.toLowerCase()}.`} />
       ) : (
         <div className="space-y-6">
           {businesses.map((biz, i) => {
@@ -319,9 +323,9 @@ export function BusinessSection({
                   )}
                 </div>
                 <dl>
-                  <Row label="Kategori"  value={biz.category} />
-                  <Row label="Sektor"    value={biz.sector} />
-                  <Row label="Bidang Usaha" value={biz.businessFields?.join(", ") || null} />
+                  <Row label={resolveFieldLabel("category", taxonomyOverrides)}       value={resolveCategoryLabel(biz.category, taxonomyOverrides)} />
+                  <Row label={resolveFieldLabel("sector", taxonomyOverrides)}         value={resolveSectorLabel(biz.sector, taxonomyOverrides)} />
+                  <Row label={resolveFieldLabel("businessFields", taxonomyOverrides)} value={biz.businessFields?.map(bf => resolveBusinessFieldLabel(bf, taxonomyOverrides)).join(", ") || null} />
                   <Row label="Menawarkan" value={biz.offeredTags?.join(", ") || null} />
                   <Row label="Membutuhkan" value={biz.neededTags?.join(", ") || null} />
                   <Row label="Legalitas" value={biz.legality} />
@@ -347,13 +351,15 @@ export function BusinessSection({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Kelola Data Usaha</DialogTitle>
+            <DialogTitle>Kelola Data {moduleLabel}</DialogTitle>
           </DialogHeader>
           <Step4Business
             memberId={memberId}
             slug={slug}
             onSuccess={handleSuccess}
             defaultEntries={defaultEntries}
+            taxonomyOverrides={taxonomyOverrides}
+            moduleLabel={moduleLabel}
           />
           <DialogFooter className="pt-2 border-t">
             <Button variant="ghost" onClick={() => setOpen(false)}>Batal</Button>
@@ -368,8 +374,8 @@ export function BusinessSection({
 // ─── Section: Data Pesantren ──────────────────────────────────────────────────
 
 export function PesantrenSection({
-  memberId, slug, pesantrenList,
-}: { memberId: string; slug: string; pesantrenList: PesantrenRow[] }) {
+  memberId, slug, pesantrenList, moduleLabel = "Pesantren",
+}: { memberId: string; slug: string; pesantrenList: PesantrenRow[]; moduleLabel?: string }) {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
 
@@ -420,10 +426,10 @@ export function PesantrenSection({
 
   return (
     <section className="rounded-xl border bg-card p-5 mb-4">
-      <SectionHeader icon={School} title="Data Pesantren" onAdd={() => setOpen(true)} />
+      <SectionHeader icon={School} title={`Data ${moduleLabel}`} onAdd={() => setOpen(true)} />
 
       {pesantrenList.length === 0 ? (
-        <EmptyState label="Belum ada data pesantren." />
+        <EmptyState label={`Belum ada data ${moduleLabel.toLowerCase()}.`} />
       ) : (
         <div className="space-y-6">
           {pesantrenList.map((p, i) => {
@@ -489,13 +495,14 @@ export function PesantrenSection({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Kelola Data Pesantren</DialogTitle>
+            <DialogTitle>Kelola Data {moduleLabel}</DialogTitle>
           </DialogHeader>
           <Step5Pesantren
             memberId={memberId}
             slug={slug}
             onSuccess={handleSuccess}
             defaultEntries={defaultEntries}
+            moduleLabel={moduleLabel}
           />
           <DialogFooter className="pt-2 border-t">
             <Button variant="ghost" onClick={() => setOpen(false)}>Batal</Button>

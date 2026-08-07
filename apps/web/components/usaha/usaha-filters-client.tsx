@@ -6,27 +6,6 @@ import { EcosystemTagFilter } from "@/components/ekosistem/ecosystem-tag-filter"
 
 const FILTER_CLASS = "h-8 w-full sm:w-auto sm:flex-1 sm:min-w-[140px] rounded-full text-xs px-3 py-0";
 
-const SEKTOR_OPTIONS: ComboboxOption[] = [
-  { value: "", label: "Semua Sektor" },
-  ...[
-    "Pertanian, Peternakan & Perikanan",
-    "Manufaktur & Pengolahan",
-    "Perdagangan, Ritel & F&B",
-    "Teknologi & Informasi",
-    "Kreatif",
-    "Logistik, Transportasi & Konstruksi",
-    "Jasa Usaha & Keuangan",
-    "Pendidikan & Pelatihan",
-    "Kesehatan, Farmasi & Herbal",
-    "Sumber Daya Alam & Energi",
-  ].map(v => ({ value: v, label: v })),
-];
-
-const KATEGORI_OPTIONS: ComboboxOption[] = [
-  { value: "", label: "Semua Kategori" },
-  ...["Jasa", "Produsen", "Distributor", "Trading", "Profesional"].map(v => ({ value: v, label: v })),
-];
-
 type Props = {
   slug:             string;
   currentQ?:        string;
@@ -39,7 +18,12 @@ type Props = {
   currentPage:      number;
   hasFilter:        boolean;
   provinsiList:     { id: number; name: string }[];
-  bidangOptions:    string[];
+  // Ketiganya SUDAH termasuk opsi "Semua X" (dihitung server-side, lib/taxonomy-overrides.ts)
+  // + label overridden sesuai pengaturan /app/{slug}/ekosistem/taksonomi — komponen ini murni
+  // render, tidak import const kanonik langsung lagi (docs/arsitektur-ekosistem.md § 10.5).
+  kategoriOptions:  ComboboxOption[];
+  sektorOptions:    ComboboxOption[];
+  bidangOptions:    ComboboxOption[];
 };
 
 export function UsahaFiltersClient({
@@ -54,6 +38,8 @@ export function UsahaFiltersClient({
   currentPage,
   hasFilter,
   provinsiList,
+  kategoriOptions,
+  sektorOptions,
   bidangOptions,
 }: Props) {
   function buildUrl(overrides: Record<string, string | undefined | number>) {
@@ -103,7 +89,7 @@ export function UsahaFiltersClient({
 
       <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-center">
         <Combobox
-          options={KATEGORI_OPTIONS}
+          options={kategoriOptions}
           value={currentKategori ?? ""}
           onValueChange={v => { window.location.href = buildUrl({ kategori: v || undefined, page: "1" }); }}
           className={FILTER_CLASS}
@@ -111,7 +97,7 @@ export function UsahaFiltersClient({
         />
 
         <Combobox
-          options={SEKTOR_OPTIONS}
+          options={sektorOptions}
           value={currentSektor ?? ""}
           onValueChange={v => { window.location.href = buildUrl({ sektor: v || undefined, page: "1" }); }}
           className={FILTER_CLASS}
@@ -119,7 +105,7 @@ export function UsahaFiltersClient({
         />
 
         <Combobox
-          options={[{ value: "", label: "Semua Bidang Usaha" }, ...bidangOptions.map(b => ({ value: b, label: b }))]}
+          options={bidangOptions}
           value={currentBidang ?? ""}
           onValueChange={v => { window.location.href = buildUrl({ bidang: v || undefined, page: "1" }); }}
           className={FILTER_CLASS}

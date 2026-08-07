@@ -5,7 +5,7 @@ import { db, tenants, tenantMemberships, members, TENANT_TYPES, createTenantDb }
 import { getTenantAccess } from "@/lib/tenant";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { todayInTz } from "@/lib/tenant-timezone";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
 import { computeMemberStatistics } from "@/lib/member-statistics.server";
 import { StatistikSections } from "@/components/statistik/statistik-sections";
 import { Building2, Users, IdCard, UserPlus } from "lucide-react";
@@ -93,7 +93,11 @@ export default async function RingkasanTenantPage({
   // /{slug}/statistik untuk tenant mana pun. Karena tenant Pusat punya baris tenant_memberships
   // untuk SEMUA anggota (auto-populate unconditional), pemanggilan dengan ID tenant Pusat
   // sendiri OTOMATIS menghasilkan statistik SELURUH sistem — nol query khusus tambahan.
-  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  const tenantClient = createTenantDb(slug);
+  const [enabledModules, moduleLabels] = await Promise.all([
+    getEnabledEkosistemModules(tenantClient),
+    getEkosistemModuleLabels(tenantClient),
+  ]);
   const statsData      = await computeMemberStatistics(access.tenant.id);
 
   return (
@@ -226,7 +230,7 @@ export default async function RingkasanTenantPage({
           </p>
         </div>
         <div className="space-y-12">
-          <StatistikSections data={statsData} enabledModules={enabledModules} />
+          <StatistikSections data={statsData} enabledModules={enabledModules} moduleLabels={moduleLabels} />
         </div>
       </div>
     </div>

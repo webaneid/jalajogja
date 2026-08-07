@@ -652,7 +652,7 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
 
 // ─── Main: ProfesionalClient ────────────────────────────────────────────────────
 
-export function ProfesionalClient({ slug, baseUrl }: { slug: string; baseUrl: string }) {
+export function ProfesionalClient({ slug, baseUrl, moduleLabel }: { slug: string; baseUrl: string; moduleLabel: string }) {
   const [entries,     setEntries]     = React.useState<Entry[]>([]);
   const [loading,     setLoading]     = React.useState(true);
   const [saving,      setSaving]      = React.useState(false);
@@ -773,7 +773,7 @@ export function ProfesionalClient({ slug, baseUrl }: { slug: string; baseUrl: st
   // ── Edit view ─────────────────────────────────────────────────────────────────
 
   if (editingEntry) {
-    const displayLabel = [editingEntry.title, editingEntry.professionType].filter(Boolean).join(" ") || "Data Profesional";
+    const displayLabel = [editingEntry.title, editingEntry.professionType].filter(Boolean).join(" ") || `Data ${moduleLabel}`;
     return (
       <div className="space-y-6">
         {/* Breadcrumb-style back */}
@@ -781,11 +781,11 @@ export function ProfesionalClient({ slug, baseUrl }: { slug: string; baseUrl: st
           <button onClick={cancelEdit}
             className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="size-3.5" />
-            Data Profesional
+            Data {moduleLabel}
           </button>
           <span className="text-muted-foreground">/</span>
           <span className="text-foreground font-medium">
-            {isNew ? "Tambah Data Profesional" : displayLabel}
+            {isNew ? `Tambah Data ${moduleLabel}` : displayLabel}
           </span>
         </div>
 
@@ -830,7 +830,7 @@ export function ProfesionalClient({ slug, baseUrl }: { slug: string; baseUrl: st
       {savedMsg && (
         <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          Data profesional berhasil disimpan.
+          Data {moduleLabel.toLowerCase()} berhasil disimpan.
         </div>
       )}
 
@@ -899,7 +899,7 @@ export function ProfesionalClient({ slug, baseUrl }: { slug: string; baseUrl: st
       ) : (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-12 text-center">
           <Briefcase className="size-10 text-muted-foreground/40 mb-3" />
-          <p className="text-sm font-medium text-foreground">Belum ada data profesional</p>
+          <p className="text-sm font-medium text-foreground">Belum ada data {moduleLabel.toLowerCase()}</p>
           <p className="text-xs text-muted-foreground mt-1">Tambahkan profesi Anda (dokter, pengacara, konsultan, dll).</p>
         </div>
       )}
@@ -908,7 +908,7 @@ export function ProfesionalClient({ slug, baseUrl }: { slug: string; baseUrl: st
       <button onClick={handleAdd} disabled={saving}
         className="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-2.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors w-full justify-center disabled:opacity-50">
         <Plus className="h-4 w-4" />
-        Tambah Data Profesional
+        Tambah Data {moduleLabel}
       </button>
 
       {/* Back to dashboard */}

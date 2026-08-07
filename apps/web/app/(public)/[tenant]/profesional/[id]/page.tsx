@@ -22,7 +22,8 @@ import { SocialLinks } from "@/components/ui/social-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
 import { CategoryPill } from "@/components/website/public/single/category-pill";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
@@ -73,8 +74,13 @@ export default async function ProfesionalDetailPage({ params }: { params: Params
 
   // Modul Profesional dimatikan admin tenant ini — entri lama tetap ada di DB (single-ID
   // global) tapi tidak lagi ditampilkan di sini, konsisten dengan arsip.
-  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  const tenantClient = createTenantDb(slug);
+  const [enabledModules, moduleLabels] = await Promise.all([
+    getEnabledEkosistemModules(tenantClient),
+    getEkosistemModuleLabels(tenantClient),
+  ]);
   if (!enabledModules.profesional) notFound();
+  const moduleLabel = resolveEkosistemModuleLabel("profesional", moduleLabels);
 
   const [row] = await db
     .select({
@@ -194,7 +200,6 @@ export default async function ProfesionalDetailPage({ params }: { params: Params
   const hasSocials = Object.keys(socials).length > 0;
 
   // Shell mobile — lihat docs/arsitektur-mobile-shell.md, pola disalin dari campaign/[slug].
-  const tenantClient = createTenantDb(slug);
   const [relativeBaseUrl, seoBase] = await Promise.all([
     resolveBaseUrl(slug),
     getTenantSeoBase(slug),
@@ -263,7 +268,7 @@ export default async function ProfesionalDetailPage({ params }: { params: Params
         {/* Breadcrumb Navigation — desktop saja, mobile sudah punya tombol back di overlay */}
         <Link href={`/${slug}/profesional`} className="hidden md:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft size={16} />
-          Kembali ke Direktori Profesional
+          Kembali ke Direktori {moduleLabel}
         </Link>
 
         {/* Banner Sampul & Floating Foto Orang (Avatar Pemilik) — desktop saja */}
@@ -305,7 +310,7 @@ export default async function ProfesionalDetailPage({ params }: { params: Params
                 {hasContactInfo && (
                   <div className={hasInfoFields ? "pt-5 border-t border-border space-y-3" : "space-y-3"}>
                     <h2 className="text-sm font-semibold flex items-center gap-2 text-foreground">
-                      <Phone size={16} className="text-primary" /> Hubungi Profesional
+                      <Phone size={16} className="text-primary" /> Hubungi {moduleLabel}
                     </h2>
                     <div className="space-y-2.5">
                       {whatsapp && whatsappWaLink && (

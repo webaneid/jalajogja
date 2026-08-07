@@ -41,6 +41,9 @@ interface Step5Props {
   slug: string
   onSuccess: () => void
   defaultEntries?: OwnedPesantrenEntry[]
+  // Label custom nama modul "Pesantren" (2026-08-07, /ekosistem/pengaturan) — opsional,
+  // default "Pesantren" (label kanonik).
+  moduleLabel?: string
 }
 
 export interface OwnedPesantrenEntry {
@@ -303,6 +306,7 @@ function PesantrenCard({
   canRemove,
   disabled,
   tenantSlug,
+  moduleLabel,
   onChange,
   onWilayahChange,
   onRemove,
@@ -312,6 +316,7 @@ function PesantrenCard({
   canRemove: boolean
   disabled: boolean
   tenantSlug: string
+  moduleLabel: string
   onChange: <K extends keyof OwnedPesantrenEntry>(field: K, value: OwnedPesantrenEntry[K]) => void
   onWilayahChange: (val: WilayahValue) => void
   onRemove: () => void
@@ -344,7 +349,7 @@ function PesantrenCard({
     <div className="rounded-lg border bg-card p-5 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold">Pesantren #{index + 1}</span>
+        <span className="text-sm font-semibold">{moduleLabel} #{index + 1}</span>
         <button
           type="button"
           onClick={onRemove}
@@ -754,7 +759,7 @@ function PesantrenCard({
 
 // ─── Step 5: Data Pesantren Milik / Kelolaan ──────────────────────────────────
 
-export function Step5Pesantren({ memberId, slug, onSuccess, defaultEntries }: Step5Props) {
+export function Step5Pesantren({ memberId, slug, onSuccess, defaultEntries, moduleLabel = "Pesantren" }: Step5Props) {
   const [entries, setEntries] = React.useState<OwnedPesantrenEntry[]>(
     defaultEntries && defaultEntries.length > 0 ? defaultEntries : [newEntry()]
   )
@@ -876,7 +881,7 @@ export function Step5Pesantren({ memberId, slug, onSuccess, defaultEntries }: St
           disabled={loading}
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
         >
-          ← Lihat semua pesantren ({entries.length})
+          ← Lihat semua {moduleLabel.toLowerCase()} ({entries.length})
         </button>
       )}
 
@@ -888,6 +893,7 @@ export function Step5Pesantren({ memberId, slug, onSuccess, defaultEntries }: St
           canRemove={entries.length > 1}
           disabled={loading}
           tenantSlug={slug}
+          moduleLabel={moduleLabel}
           onChange={(field, value) => updateEntry(entry.id, field, value)}
           onWilayahChange={(val) => updateEntryWilayah(entry.id, val)}
           onRemove={() => removeEntry(entry.id)}
@@ -902,7 +908,7 @@ export function Step5Pesantren({ memberId, slug, onSuccess, defaultEntries }: St
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/40 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-50"
         >
           <PlusIcon className="size-4" />
-          Tambah Data Pesantren
+          Tambah Data {moduleLabel}
         </button>
       )}
 

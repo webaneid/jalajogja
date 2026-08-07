@@ -3,7 +3,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createTenantDb } from "@jalajogja/db";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import { ProfesionalClient } from "./profesional-client";
 
 export default async function ProfesionalPage({
@@ -19,8 +20,13 @@ export default async function ProfesionalPage({
   if (!session?.user) redirect(`${baseUrl}/login?redirect=${baseUrl}/akun/profesional`);
 
   // Modul dimatikan tenant ini — data tetap ada (single-ID global), cuma tidak ditawarkan di sini.
-  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  const tenantClient = createTenantDb(slug);
+  const [enabledModules, moduleLabels] = await Promise.all([
+    getEnabledEkosistemModules(tenantClient),
+    getEkosistemModuleLabels(tenantClient),
+  ]);
   if (!enabledModules.profesional) redirect(`${baseUrl}/akun`);
+  const moduleLabel = resolveEkosistemModuleLabel("profesional", moduleLabels);
 
-  return <ProfesionalClient slug={slug} baseUrl={baseUrl} />;
+  return <ProfesionalClient slug={slug} baseUrl={baseUrl} moduleLabel={moduleLabel} />;
 }

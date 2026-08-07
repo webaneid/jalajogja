@@ -21,7 +21,8 @@ import { SocialLinks } from "@/components/ui/social-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
 import { CategoryPill } from "@/components/website/public/single/category-pill";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
@@ -69,8 +70,13 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
 
   // Modul Pesantren dimatikan admin tenant ini — entri lama tetap ada di DB (single-ID
   // global) tapi tidak lagi ditampilkan di sini, konsisten dengan arsip.
-  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  const tenantClient = createTenantDb(slug);
+  const [enabledModules, moduleLabels] = await Promise.all([
+    getEnabledEkosistemModules(tenantClient),
+    getEkosistemModuleLabels(tenantClient),
+  ]);
   if (!enabledModules.pesantren) notFound();
+  const moduleLabel = resolveEkosistemModuleLabel("pesantren", moduleLabels);
 
   // Verifikasi scope: pemilik pesantren harus anggota tenant ini
   const [row] = await db
@@ -192,7 +198,6 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
   const hasSocials = Object.keys(socials).length > 0;
 
   // Shell mobile — lihat docs/arsitektur-mobile-shell.md, pola disalin dari campaign/[slug].
-  const tenantClient = createTenantDb(slug);
   const [relativeBaseUrl, seoBase] = await Promise.all([
     resolveBaseUrl(slug),
     getTenantSeoBase(slug),
@@ -231,7 +236,7 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
         {/* Breadcrumb Navigation — desktop saja, mobile sudah punya tombol back di overlay */}
         <Link href={`/${slug}/pesantren`} className="hidden md:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft size={16} />
-          Kembali ke Direktori Pesantren
+          Kembali ke Direktori {moduleLabel}
         </Link>
 
         {/* Banner Sampul (Pesantren: Tanpa Floating Logo) — desktop saja */}
@@ -261,7 +266,7 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
                 {hasInfoFields && (
                   <div>
                     <h2 className="text-sm font-semibold mb-3 flex items-center gap-2 text-foreground">
-                      <BookOpen size={16} className="text-primary" /> Informasi Pesantren
+                      <BookOpen size={16} className="text-primary" /> Informasi {moduleLabel}
                     </h2>
                     <dl className="space-y-0 text-sm">
                       <InfoRow label="Tahun Berdiri"    value={row.tahunBerdiri} />
@@ -280,7 +285,7 @@ export default async function PesantrenDetailPage({ params }: { params: Params }
                 {hasContactInfo && (
                   <div className={hasInfoFields ? "pt-5 border-t border-border space-y-3" : "space-y-3"}>
                     <h2 className="text-sm font-semibold flex items-center gap-2 text-foreground">
-                      <Phone size={16} className="text-primary" /> Hubungi Pesantren
+                      <Phone size={16} className="text-primary" /> Hubungi {moduleLabel}
                     </h2>
                     <div className="space-y-2.5">
                       {whatsapp && whatsappWaLink && (

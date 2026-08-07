@@ -1061,7 +1061,7 @@ export async function createTenantSchemaInDb(
         id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
         key        TEXT        NOT NULL,
         "group"    TEXT        NOT NULL DEFAULT 'general'
-                               CHECK ("group" IN ('general','contact','payment','display','mail','notif','website','keuangan','toko','donasi','event','forum')),
+                               CHECK ("group" IN ('general','contact','payment','display','mail','notif','website','keuangan','toko','donasi','event','forum','ekosistem')),
         value      JSONB       NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (key, "group")

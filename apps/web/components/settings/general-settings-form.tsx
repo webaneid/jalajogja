@@ -37,9 +37,6 @@ type DefaultValues = {
   timezone:        string;
   language:        string;
   currency:        string;
-  usahaEnabled:       boolean;
-  pesantrenEnabled:   boolean;
-  profesionalEnabled: boolean;
 };
 
 export function GeneralSettingsForm({
@@ -58,9 +55,6 @@ export function GeneralSettingsForm({
   const [pickerTarget, setPickerTarget] = React.useState<"logo" | "footerLogo" | "favicon" | null>(null);
 
   const set = (key: keyof DefaultValues) => (val: string) =>
-    setValues((v) => ({ ...v, [key]: val }));
-
-  const setBool = (key: "usahaEnabled" | "pesantrenEnabled" | "profesionalEnabled") => (val: boolean) =>
     setValues((v) => ({ ...v, [key]: val }));
 
   function openPickerFor(target: "logo" | "footerLogo" | "favicon") {
@@ -281,32 +275,8 @@ export function GeneralSettingsForm({
         />
       </div>
 
-      {/* Modul Ekosistem */}
-      <div className="space-y-3 rounded-lg border border-border p-4">
-        <div>
-          <Label className="text-sm font-medium">Modul Ekosistem Anggota</Label>
-          <p className="text-xs text-muted-foreground mt-1">
-            Matikan modul yang tidak relevan untuk organisasi ini — data anggota yang sudah ada
-            TIDAK akan dihapus, hanya disembunyikan dari form pendaftaran, direktori publik,
-            dan halaman lain di tenant ini.
-          </p>
-        </div>
-        {([
-          { key: "usahaEnabled" as const,       label: "Aktifkan Modul Usaha" },
-          { key: "pesantrenEnabled" as const,    label: "Aktifkan Modul Pesantren" },
-          { key: "profesionalEnabled" as const,  label: "Aktifkan Modul Profesional" },
-        ]).map(({ key, label }) => (
-          <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={values[key]}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBool(key)(e.target.checked)}
-              className="h-4 w-4 rounded border-input"
-            />
-            {label}
-          </label>
-        ))}
-      </div>
+      {/* Modul Usaha/Pesantren/Profesional (toggle on/off) sekarang dikelola di modul
+          Ekosistem tersendiri: /app/{slug}/ekosistem/pengaturan — bukan di sini lagi. */}
 
       <Button type="submit" disabled={pending}>
         {pending ? "Menyimpan..." : "Simpan"}

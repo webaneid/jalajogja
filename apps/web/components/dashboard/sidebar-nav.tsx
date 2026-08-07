@@ -17,6 +17,7 @@ import {
   ShoppingBag,
   Settings,
   Network,
+  Boxes,
 } from "lucide-react";
 import { canAccess, type Module, type TenantUserForPermission } from "@/lib/permissions";
 
@@ -35,6 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Anggota",    icon: Users,           path: "members",    module: "anggota"  },
   { label: "Pengurus",   icon: UserCog,         path: "pengurus",   module: "pengurus" },
   { label: "Akun",       icon: UserCircle,      path: "accounts",   module: "anggota"  },
+  { label: "Ekosistem",  icon: Boxes,           path: "ekosistem",  module: null       },
   { label: "Media",      icon: Image,           path: "media",      module: "media"    },
   { label: "Website",    icon: Globe,           path: "website",    module: "website"  },
   { label: "Surat",      icon: Mail,            path: "letters",    module: "surat"    },

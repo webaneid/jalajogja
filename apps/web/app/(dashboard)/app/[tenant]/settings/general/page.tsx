@@ -37,9 +37,6 @@ export default async function GeneralSettingsPage({
           timezone:        (settings.timezone         as string) ?? "Asia/Jakarta",
           language:        (settings.language         as string) ?? "id",
           currency:        (settings.currency         as string) ?? "IDR",
-          usahaEnabled:       (settings.usaha_enabled       as boolean) ?? true,
-          pesantrenEnabled:   (settings.pesantren_enabled   as boolean) ?? true,
-          profesionalEnabled: (settings.profesional_enabled as boolean) ?? true,
         }}
       />
     </div>

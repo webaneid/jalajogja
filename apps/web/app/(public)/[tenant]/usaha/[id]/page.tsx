@@ -22,7 +22,12 @@ import { SocialLinks } from "@/components/ui/social-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
 import { EcosystemTagCrossLinks } from "@/components/ekosistem/tag-cross-links";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
+import { getTaxonomyOverrides } from "@/lib/taxonomy-overrides.server";
+import {
+  resolveCategoryLabel, resolveSectorLabel, resolveBusinessFieldLabel, resolveFieldLabel,
+} from "@/lib/taxonomy-overrides";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
 import { CategoryPill } from "@/components/website/public/single/category-pill";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
@@ -68,10 +73,17 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
     .limit(1);
   if (!tenant?.isActive) notFound();
 
+  const tenantClient = createTenantDb(slug);
+
   // Modul Usaha dimatikan admin tenant ini — entri lama tetap ada di DB (single-ID global)
   // tapi tidak lagi ditawarkan/ditampilkan di sini, konsisten dengan arsip.
-  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  const [enabledModules, taxonomyOverrides, moduleLabels] = await Promise.all([
+    getEnabledEkosistemModules(tenantClient),
+    getTaxonomyOverrides(tenantClient),
+    getEkosistemModuleLabels(tenantClient),
+  ]);
   if (!enabledModules.usaha) notFound();
+  const moduleLabel = resolveEkosistemModuleLabel("usaha", moduleLabels);
 
   const [row] = await db
     .select({
@@ -189,7 +201,6 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
   const hasSocials = Object.keys(socials).length > 0;
 
   // Shell mobile — lihat docs/arsitektur-mobile-shell.md, pola disalin dari campaign/[slug].
-  const tenantClient = createTenantDb(slug);
   const [relativeBaseUrl, seoBase] = await Promise.all([
     resolveBaseUrl(slug),
     getTenantSeoBase(slug),
@@ -225,7 +236,7 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
           )}
         </SingleFeatureImage>
         <div className="px-4 pt-4 space-y-3">
-          {row.category && <CategoryPill label={row.category} />}
+          {row.category && <CategoryPill label={resolveCategoryLabel(row.category, taxonomyOverrides)} />}
           <h1 className="text-2xl font-bold tracking-tight leading-tight">
             {row.name}
             {row.brand && row.brand !== row.name && (
@@ -248,7 +259,7 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
         {/* Breadcrumb Navigation — desktop saja, mobile sudah punya tombol back di overlay */}
         <Link href={`/${slug}/usaha`} className="hidden md:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft size={16} />
-          Kembali ke Direktori Usaha
+          Kembali ke Direktori {moduleLabel}
         </Link>
 
         {/* Banner Sampul & Floating Logo — desktop saja, mobile sudah render sendiri di shell atas */}
@@ -272,11 +283,11 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
                 {hasInfoFields && (
                   <div>
                     <h2 className="text-sm font-semibold mb-3 flex items-center gap-2 text-foreground">
-                      <Briefcase size={16} className="text-primary" /> Informasi Usaha
+                      <Briefcase size={16} className="text-primary" /> Informasi {moduleLabel}
                     </h2>
                     <dl className="space-y-0 text-sm">
-                      <InfoRow label="Kategori"      value={row.category} />
-                      <InfoRow label="Sektor"        value={row.sector} />
+                      <InfoRow label={resolveFieldLabel("category", taxonomyOverrides)} value={resolveCategoryLabel(row.category, taxonomyOverrides)} />
+                      <InfoRow label={resolveFieldLabel("sector", taxonomyOverrides)}   value={resolveSectorLabel(row.sector, taxonomyOverrides)} />
                       <InfoRow label="Legalitas"     value={row.legality} />
                       <InfoRow label="Peran Pemilik" value={row.position} />
                       <InfoRow label="Karyawan"      value={row.employees} />
@@ -290,7 +301,7 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
                 {hasContactInfo && (
                   <div className={hasInfoFields ? "pt-5 border-t border-border space-y-3" : "space-y-3"}>
                     <h2 className="text-sm font-semibold flex items-center gap-2 text-foreground">
-                      <Phone size={16} className="text-primary" /> Hubungi Usaha
+                      <Phone size={16} className="text-primary" /> Hubungi {moduleLabel}
                     </h2>
                     <div className="space-y-2.5">
                       {whatsapp && whatsappWaLink && (
@@ -364,10 +375,10 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
               {(row.category || row.sector || row.legality) && (
                 <div className="flex flex-wrap gap-2">
                   {row.category && (
-                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{row.category}</span>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{resolveCategoryLabel(row.category, taxonomyOverrides)}</span>
                   )}
                   {row.sector && (
-                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground">{row.sector}</span>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground">{resolveSectorLabel(row.sector, taxonomyOverrides)}</span>
                   )}
                   {row.legality && (
                     <span className="text-xs px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground">{row.legality}</span>
@@ -393,7 +404,7 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
             {/* Deskripsi Usaha */}
             {descHtml && (
               <div className="rounded-2xl border border-border bg-card p-6 space-y-3">
-                <h2 className="text-base font-semibold text-foreground">Profil & Deskripsi Usaha</h2>
+                <h2 className="text-base font-semibold text-foreground">Profil & Deskripsi {moduleLabel}</h2>
                 <div
                   className="prose prose-sm max-w-none text-foreground [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5"
                   dangerouslySetInnerHTML={{ __html: descHtml }}
@@ -405,11 +416,11 @@ export default async function UsahaDetailPage({ params }: { params: Params }) {
             {hasBusinessFields && (
               <div className="rounded-2xl border border-border bg-card p-6 space-y-3">
                 <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                  <Briefcase size={16} className="text-primary" /> Bidang Usaha
+                  <Briefcase size={16} className="text-primary" /> {resolveFieldLabel("businessFields", taxonomyOverrides)}
                 </h2>
                 <ul className="space-y-1.5 text-sm text-foreground pl-5 list-disc marker:text-primary font-medium">
                   {row.businessFields!.map(bf => (
-                    <li key={bf}>{bf}</li>
+                    <li key={bf}>{resolveBusinessFieldLabel(bf, taxonomyOverrides)}</li>
                   ))}
                 </ul>
               </div>

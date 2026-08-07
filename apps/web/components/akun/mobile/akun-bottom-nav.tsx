@@ -4,8 +4,10 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Receipt, User, Menu, X, LogOut } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
-import { MEMBER_NAV_ITEMS, PUBLIC_NAV_ITEMS, filterNavItemsByModules, type NavItem } from "@/components/akun/akun-nav";
-import type { EkosistemModulesConfig } from "@/lib/ekosistem-modules";
+import {
+  MEMBER_NAV_ITEMS, PUBLIC_NAV_ITEMS, filterNavItemsByModules, resolveNavItemLabel, type NavItem,
+} from "@/components/akun/akun-nav";
+import type { EkosistemModulesConfig, EkosistemModuleLabels } from "@/lib/ekosistem-modules";
 
 // Bottom nav khusus "app mode" /akun (mobile) — beda dari BottomNav situs (flex-header.tsx):
 // bar flat, tanpa tombol melayang (itu gimmick branding situs, tidak relevan di sini). Struktur
@@ -25,9 +27,10 @@ type Props = {
   baseUrl:  string;
   isMember: boolean;
   enabledModules?: EkosistemModulesConfig;
+  moduleLabels?:   EkosistemModuleLabels;
 };
 
-export function AkunBottomNav({ baseUrl, isMember, enabledModules }: Props) {
+export function AkunBottomNav({ baseUrl, isMember, enabledModules, moduleLabels }: Props) {
   const pathname    = usePathname();
   const [open, setOpen] = useState(false);
   const base         = `${baseUrl}/akun`;
@@ -58,7 +61,7 @@ export function AkunBottomNav({ baseUrl, isMember, enabledModules }: Props) {
                 }`}
               >
                 <Icon className="h-5 w-5" />
-                <span className="text-[10px] leading-tight">{item.label}</span>
+                <span className="text-[10px] leading-tight">{resolveNavItemLabel(item, moduleLabels)}</span>
               </a>
             );
           })}
@@ -94,7 +97,7 @@ export function AkunBottomNav({ baseUrl, isMember, enabledModules }: Props) {
                   className="flex items-center gap-3 rounded-lg px-2 py-3 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
-                  {item.label}
+                  {resolveNavItemLabel(item, moduleLabels)}
                 </a>
               ))}
               <button

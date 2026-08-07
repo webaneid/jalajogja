@@ -30,6 +30,14 @@
 // preview (menampilkan field apa yang AKAN dilengkapi) maupun commit (benar-benar menulis).
 
 import { BUSINESS_SECTOR_ENUM, type BusinessSector } from "@/lib/business-sectors";
+import {
+  BUSINESS_CATEGORY_ENUM, type BusinessCategory,
+  BUSINESS_LEGALITY_ENUM,
+  BUSINESS_POSITION_ENUM,
+  BUSINESS_EMPLOYEES_ENUM,
+  BUSINESS_BRANCHES_ENUM,
+  BUSINESS_REVENUE_ENUM,
+} from "@/lib/business-form-options";
 
 // ── Isi HANYA field yang di database masih kosong — TIDAK PERNAH menimpa nilai yang sudah
 // ada. Generik, dipakai untuk members DAN contacts (bentuk field beda, logic sama). ──────
@@ -216,43 +224,41 @@ export function detectPhoneCellIssue(raw: string): string | null {
 // null, orangnya lengkapi sendiri nanti via /akun/usaha (form itu SUDAH mewajibkan
 // category+sector diisi sebelum bisa disimpan).
 
-export const BUSINESS_CATEGORY_ENUM = ["Jasa", "Produsen", "Distributor", "Trading", "Profesional"] as const;
-export type BusinessCategory = typeof BUSINESS_CATEGORY_ENUM[number];
+// Sumber kebenaran taksonomi Kategori/Sektor/Legalitas/Posisi/Karyawan/Cabang/Omzet sekarang
+// lib/business-sectors.ts (Sektor) + lib/business-form-options.ts (sisanya) — diimpor di atas
+// file lalu di-re-export di sini supaya importer lama dari file ini tidak perlu diubah path
+// importnya, tanpa duplikasi isi (konsolidasi 2026-08-07, menutup 3 sumber independen jadi 1).
+export { BUSINESS_CATEGORY_ENUM, type BusinessCategory };
 export function mapCategory(raw: string): BusinessCategory | null {
   return exactMatch(raw, BUSINESS_CATEGORY_ENUM);
 }
 
-// Sumber kebenaran taksonomi sektor sekarang lib/business-sectors.ts (upgrade 2026-07-30, 10
-// sektor BPS hybrid) — diimpor di atas file lalu di-re-export di sini supaya importer lama
-// (`BUSINESS_SECTOR_ENUM` dari file ini) tidak perlu diubah path importnya, tanpa duplikasi isi.
 export { BUSINESS_SECTOR_ENUM, type BusinessSector };
 export function mapSector(raw: string): BusinessSector | null {
   return exactMatch(raw, BUSINESS_SECTOR_ENUM);
 }
 
-export const BUSINESS_LEGALITY_ENUM = [
-  "PT Perseorangan", "PT", "CV", "Yayasan", "Perkumpulan", "Koperasi", "Belum Memiliki Legalitas",
-] as const;
+export { BUSINESS_LEGALITY_ENUM };
 export function mapLegality(raw: string): string | null {
   return exactMatch(raw, BUSINESS_LEGALITY_ENUM);
 }
 
-export const BUSINESS_POSITION_ENUM = ["Komisaris", "Direktur", "Pengelola", "Manajer"] as const;
+export { BUSINESS_POSITION_ENUM };
 export function mapPosition(raw: string): string | null {
   return exactMatch(raw, BUSINESS_POSITION_ENUM);
 }
 
-export const BUSINESS_EMPLOYEES_ENUM = ["1-4", "5-10", "11-20", "Lebih dari 20"] as const;
+export { BUSINESS_EMPLOYEES_ENUM };
 export function mapEmployees(raw: string): string | null {
   return exactMatch(raw, BUSINESS_EMPLOYEES_ENUM);
 }
 
-export const BUSINESS_BRANCHES_ENUM = ["Tidak Ada", "1-3", "Diatas 3"] as const;
+export { BUSINESS_BRANCHES_ENUM };
 export function mapBranches(raw: string): string | null {
   return exactMatch(raw, BUSINESS_BRANCHES_ENUM);
 }
 
-export const BUSINESS_REVENUE_ENUM = ["Dibawah 500jt", "500jt-1M", "1M-2M", "Diatas 2M"] as const;
+export { BUSINESS_REVENUE_ENUM };
 export function mapRevenue(raw: string): string | null {
   return exactMatch(raw, BUSINESS_REVENUE_ENUM);
 }

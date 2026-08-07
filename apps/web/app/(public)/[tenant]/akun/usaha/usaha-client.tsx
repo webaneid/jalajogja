@@ -9,7 +9,16 @@ import {
 import { cn } from "@/lib/utils";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { TagMultiSelect } from "@/components/ui/tag-multi-select";
-import { getPrioritizedBusinessFields, normalizeBusinessSector } from "@/lib/business-sectors";
+import { normalizeBusinessSector } from "@/lib/business-sectors";
+import {
+  LEGALITY_COMBOBOX_OPTIONS, POSITION_COMBOBOX_OPTIONS,
+  EMPLOYEES_COMBOBOX_OPTIONS, BRANCHES_COMBOBOX_OPTIONS, REVENUE_COMBOBOX_OPTIONS,
+} from "@/lib/business-form-options";
+import {
+  resolveCategoryLabel, resolveCategoryOptions, resolveSectorLabel, resolveSectorOptions,
+  resolveBusinessFieldLabel, resolveBusinessFieldSuggestions, resolveFieldLabel,
+  type TaxonomyOverrides,
+} from "@/lib/taxonomy-overrides";
 import { ECOSYSTEM_TAG_SUGGESTIONS } from "@/lib/ecosystem-tags";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { displayPhone } from "@/lib/phone";
@@ -78,57 +87,8 @@ type ApiRow = {
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
-const CATEGORIES: ComboboxOption[] = [
-  { value: "Jasa",        label: "Jasa" },
-  { value: "Produsen",    label: "Produsen" },
-  { value: "Distributor", label: "Distributor" },
-  { value: "Trading",     label: "Trading" },
-  { value: "Profesional", label: "Profesional" },
-];
-const SECTORS: ComboboxOption[] = [
-  { value: "Pertanian, Peternakan & Perikanan",   label: "Pertanian, Peternakan & Perikanan" },
-  { value: "Manufaktur & Pengolahan",             label: "Manufaktur & Pengolahan" },
-  { value: "Perdagangan, Ritel & F&B",            label: "Perdagangan, Ritel & F&B" },
-  { value: "Teknologi & Informasi",               label: "Teknologi & Informasi" },
-  { value: "Kreatif",                             label: "Kreatif" },
-  { value: "Logistik, Transportasi & Konstruksi", label: "Logistik, Transportasi & Konstruksi" },
-  { value: "Jasa Usaha & Keuangan",               label: "Jasa Usaha & Keuangan" },
-  { value: "Pendidikan & Pelatihan",               label: "Pendidikan & Pelatihan" },
-  { value: "Kesehatan, Farmasi & Herbal",          label: "Kesehatan, Farmasi & Herbal" },
-  { value: "Sumber Daya Alam & Energi",           label: "Sumber Daya Alam & Energi" },
-];
-const LEGALITIES: ComboboxOption[] = [
-  { value: "PT Perseorangan",          label: "PT Perseorangan" },
-  { value: "PT",                       label: "PT" },
-  { value: "CV",                       label: "CV" },
-  { value: "Yayasan",                  label: "Yayasan" },
-  { value: "Perkumpulan",              label: "Perkumpulan" },
-  { value: "Koperasi",                 label: "Koperasi" },
-  { value: "Belum Memiliki Legalitas", label: "Belum Memiliki Legalitas" },
-];
-const POSITIONS: ComboboxOption[] = [
-  { value: "Komisaris", label: "Komisaris" },
-  { value: "Direktur",  label: "Direktur" },
-  { value: "Pengelola", label: "Pengelola" },
-  { value: "Manajer",   label: "Manajer" },
-];
-const EMPLOYEES: ComboboxOption[] = [
-  { value: "1-4",           label: "1–4 orang" },
-  { value: "5-10",          label: "5–10 orang" },
-  { value: "11-20",         label: "11–20 orang" },
-  { value: "Lebih dari 20", label: "Lebih dari 20" },
-];
-const BRANCHES: ComboboxOption[] = [
-  { value: "Tidak Ada", label: "Tidak Ada" },
-  { value: "1-3",       label: "1–3 cabang" },
-  { value: "Diatas 3",  label: "Di atas 3 cabang" },
-];
-const REVENUES: ComboboxOption[] = [
-  { value: "Dibawah 500jt", label: "Di bawah Rp 500 juta" },
-  { value: "500jt-1M",      label: "Rp 500 juta – 1 Miliar" },
-  { value: "1M-2M",         label: "Rp 1 – 2 Miliar" },
-  { value: "Diatas 2M",     label: "Di atas Rp 2 Miliar" },
-];
+// Kategori/Sektor/Legalitas/Posisi/Karyawan/Cabang/Omzet: diimpor dari lib/business-sectors.ts
+// + lib/business-form-options.ts — jangan re-declare literal enum di sini.
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -267,8 +227,8 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-function DetailDialog({ entry, onClose, onEdit }: {
-  entry: Entry; onClose: () => void; onEdit: () => void;
+function DetailDialog({ entry, taxonomyOverrides, onClose, onEdit }: {
+  entry: Entry; taxonomyOverrides: TaxonomyOverrides; onClose: () => void; onEdit: () => void;
 }) {
   React.useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -303,13 +263,13 @@ function DetailDialog({ entry, onClose, onEdit }: {
             {entry.brand && <p className="text-sm text-muted-foreground mt-0.5">{entry.brand}</p>}
             <div className="flex flex-wrap gap-1.5 mt-2">
               {entry.category && (
-                <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{entry.category}</span>
+                <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{resolveCategoryLabel(entry.category, taxonomyOverrides)}</span>
               )}
               {entry.sector && (
-                <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{entry.sector}</span>
+                <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{resolveSectorLabel(entry.sector, taxonomyOverrides)}</span>
               )}
               {entry.businessFields.map(bf => (
-                <span key={bf} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{bf}</span>
+                <span key={bf} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{resolveBusinessFieldLabel(bf, taxonomyOverrides)}</span>
               ))}
             </div>
           </div>
@@ -443,8 +403,9 @@ function DetailDialog({ entry, onClose, onEdit }: {
 
 // ─── Sub-komponen: Form Edit ──────────────────────────────────────────────────
 
-function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
+function EntryEditForm({ entry, taxonomyOverrides, onUpdate, onWilayah, disabled, slug }: {
   entry: Entry;
+  taxonomyOverrides: TaxonomyOverrides;
   onUpdate: (patch: Partial<Entry>) => void;
   onWilayah: (val: WilayahValue) => void;
   disabled: boolean;
@@ -499,20 +460,20 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
       <div className="space-y-4">
         <p className="text-sm font-semibold text-muted-foreground">Klasifikasi</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Kategori">
-            <Combobox options={CATEGORIES} value={entry.category}
+          <Field label={resolveFieldLabel("category", taxonomyOverrides)}>
+            <Combobox options={resolveCategoryOptions(taxonomyOverrides, entry.category)} value={entry.category}
               onValueChange={v => onUpdate({ category: v as string })}
-              placeholder="Pilih kategori" />
+              placeholder={`Pilih ${resolveFieldLabel("category", taxonomyOverrides).toLowerCase()}`} />
           </Field>
-          <Field label="Sektor">
-            <Combobox options={SECTORS} value={entry.sector}
+          <Field label={resolveFieldLabel("sector", taxonomyOverrides)}>
+            <Combobox options={resolveSectorOptions(taxonomyOverrides, entry.sector)} value={entry.sector}
               onValueChange={v => onUpdate({ sector: v as string })}
-              placeholder="Pilih sektor" />
+              placeholder={`Pilih ${resolveFieldLabel("sector", taxonomyOverrides).toLowerCase()}`} />
           </Field>
         </div>
-        <Field label="Bidang Usaha">
+        <Field label={resolveFieldLabel("businessFields", taxonomyOverrides)}>
           <TagMultiSelect
-            options={getPrioritizedBusinessFields(entry.sector)}
+            options={resolveBusinessFieldSuggestions(entry.sector, taxonomyOverrides)}
             value={entry.businessFields}
             onChange={businessFields => onUpdate({ businessFields })}
             disabled={disabled}
@@ -548,12 +509,12 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Legalitas">
-            <Combobox options={LEGALITIES} value={entry.legality}
+            <Combobox options={LEGALITY_COMBOBOX_OPTIONS} value={entry.legality}
               onValueChange={v => onUpdate({ legality: v as string })}
               placeholder="Pilih legalitas" />
           </Field>
           <Field label="Posisi / Jabatan">
-            <Combobox options={POSITIONS} value={entry.position}
+            <Combobox options={POSITION_COMBOBOX_OPTIONS} value={entry.position}
               onValueChange={v => onUpdate({ position: v as string })}
               placeholder="Pilih posisi" />
           </Field>
@@ -565,17 +526,17 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
         <p className="text-sm font-semibold text-muted-foreground">Skala Usaha</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Field label="Karyawan">
-            <Combobox options={EMPLOYEES} value={entry.employees}
+            <Combobox options={EMPLOYEES_COMBOBOX_OPTIONS} value={entry.employees}
               onValueChange={v => onUpdate({ employees: v as string })}
               placeholder="Jumlah karyawan" />
           </Field>
           <Field label="Cabang">
-            <Combobox options={BRANCHES} value={entry.branches}
+            <Combobox options={BRANCHES_COMBOBOX_OPTIONS} value={entry.branches}
               onValueChange={v => onUpdate({ branches: v as string })}
               placeholder="Jumlah cabang" />
           </Field>
           <Field label="Omzet / Tahun">
-            <Combobox options={REVENUES} value={entry.revenue}
+            <Combobox options={REVENUE_COMBOBOX_OPTIONS} value={entry.revenue}
               onValueChange={v => onUpdate({ revenue: v as string })}
               placeholder="Kisaran omzet" />
           </Field>
@@ -704,7 +665,9 @@ function EntryEditForm({ entry, onUpdate, onWilayah, disabled, slug }: {
 
 // ─── Main: UsahaClient ────────────────────────────────────────────────────────
 
-export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }) {
+export function UsahaClient({ slug, baseUrl, taxonomyOverrides, moduleLabel }: {
+  slug: string; baseUrl: string; taxonomyOverrides: TaxonomyOverrides; moduleLabel: string;
+}) {
   const [entries,     setEntries]     = React.useState<Entry[]>([]);
   const [loading,     setLoading]     = React.useState(true);
   const [saving,      setSaving]      = React.useState(false);
@@ -760,8 +723,8 @@ export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }
     if (!editingEntry) return;
     const e = editingEntry;
     if (!trim(e.name))                                                     { setError("Nama usaha wajib diisi.");                        return; }
-    if (!e.category)                                                       { setError("Kategori wajib dipilih.");                         return; }
-    if (!e.sector)                                                         { setError("Sektor wajib dipilih.");                           return; }
+    if (!e.category)                                                       { setError(`${resolveFieldLabel("category", taxonomyOverrides)} wajib dipilih.`); return; }
+    if (!e.sector)                                                         { setError(`${resolveFieldLabel("sector", taxonomyOverrides)} wajib dipilih.`);   return; }
     if (!e.logoUrl)                                                        { setError("Logo usaha wajib diunggah.");                       return; }
     if (!e.coverUrl)                                                       { setError("Foto sampul usaha wajib diunggah.");               return; }
     if (!trim(e.description))                                              { setError("Deskripsi usaha wajib diisi.");                    return; }
@@ -840,17 +803,18 @@ export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }
           <button onClick={cancelEdit}
             className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="size-3.5" />
-            Data Usaha
+            Data {moduleLabel}
           </button>
           <span className="text-muted-foreground">/</span>
           <span className="text-foreground font-medium">
-            {isNew ? "Tambah Usaha" : (trim(editingEntry.name) || "Edit Usaha")}
+            {isNew ? `Tambah ${moduleLabel}` : (trim(editingEntry.name) || `Edit ${moduleLabel}`)}
           </span>
         </div>
 
         <EntryEditForm
           key={editingEntry._key}
           entry={editingEntry}
+          taxonomyOverrides={taxonomyOverrides}
           onUpdate={updateEditing}
           onWilayah={val => updateEditing({
             addressProvinceId: val.provinceId ?? null,
@@ -889,7 +853,7 @@ export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }
       {savedMsg && (
         <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          Data usaha berhasil disimpan.
+          Data {moduleLabel.toLowerCase()} berhasil disimpan.
         </div>
       )}
 
@@ -901,9 +865,9 @@ export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-foreground">Nama Usaha</th>
-                <th className="px-4 py-3 text-left font-medium text-foreground hidden sm:table-cell">Kategori</th>
-                <th className="px-4 py-3 text-left font-medium text-foreground hidden sm:table-cell">Sektor</th>
+                <th className="px-4 py-3 text-left font-medium text-foreground">Nama {moduleLabel}</th>
+                <th className="px-4 py-3 text-left font-medium text-foreground hidden sm:table-cell">{resolveFieldLabel("category", taxonomyOverrides)}</th>
+                <th className="px-4 py-3 text-left font-medium text-foreground hidden sm:table-cell">{resolveFieldLabel("sector", taxonomyOverrides)}</th>
                 <th className="px-4 py-3 text-right font-medium text-foreground">Aksi</th>
               </tr>
             </thead>
@@ -925,13 +889,13 @@ export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }
                         <p className="font-medium text-foreground">{e.name}</p>
                         {e.brand && <p className="text-xs text-muted-foreground">{e.brand}</p>}
                         <p className="text-xs text-muted-foreground sm:hidden mt-0.5">
-                          {[e.category, e.sector].filter(Boolean).join(" · ")}
+                          {[resolveCategoryLabel(e.category, taxonomyOverrides), resolveSectorLabel(e.sector, taxonomyOverrides)].filter(Boolean).join(" · ")}
                         </p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{e.category}</td>
-                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{e.sector}</td>
+                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{resolveCategoryLabel(e.category, taxonomyOverrides)}</td>
+                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{resolveSectorLabel(e.sector, taxonomyOverrides)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <button onClick={() => setDetailKey(e._key)} title="Detail"
@@ -956,8 +920,8 @@ export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }
       ) : (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-12 text-center">
           <Building2 className="size-10 text-muted-foreground/40 mb-3" />
-          <p className="text-sm font-medium text-foreground">Belum ada data usaha</p>
-          <p className="text-xs text-muted-foreground mt-1">Tambahkan usaha atau bisnis yang Anda kelola.</p>
+          <p className="text-sm font-medium text-foreground">Belum ada data {moduleLabel.toLowerCase()}</p>
+          <p className="text-xs text-muted-foreground mt-1">Tambahkan {moduleLabel.toLowerCase()} atau bisnis yang Anda kelola.</p>
         </div>
       )}
 
@@ -965,7 +929,7 @@ export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }
       <button onClick={handleAdd} disabled={saving}
         className="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-2.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors w-full justify-center disabled:opacity-50">
         <Plus className="h-4 w-4" />
-        Tambah Usaha
+        Tambah {moduleLabel}
       </button>
 
       {/* Back to dashboard */}
@@ -979,6 +943,7 @@ export function UsahaClient({ slug, baseUrl }: { slug: string; baseUrl: string }
       {detailEntry && (
         <DetailDialog
           entry={detailEntry}
+          taxonomyOverrides={taxonomyOverrides}
           onClose={() => setDetailKey(null)}
           onEdit={() => startEdit(detailEntry)}
         />

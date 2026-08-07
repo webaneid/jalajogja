@@ -16,8 +16,16 @@ import { PublicButton } from "@/components/website/public/ui/public-button";
 import { UsahaFiltersClient } from "@/components/usaha/usaha-filters-client";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
-import { getPrioritizedBusinessFields } from "@/lib/business-sectors";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import type { BusinessSector } from "@/lib/business-sectors";
+import type { BusinessCategory } from "@/lib/business-form-options";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
+import { getTaxonomyOverrides } from "@/lib/taxonomy-overrides.server";
+import {
+  resolveCategoryLabel, resolveCategoryOptions,
+  resolveSectorLabel, resolveSectorOptions,
+  resolveBusinessFieldLabel, resolveBusinessFieldSuggestions, resolveFieldLabel,
+} from "@/lib/taxonomy-overrides";
 
 export const revalidate = 60;
 
@@ -29,20 +37,9 @@ type SearchParams  = Promise<{
   tag?: string; arah?: string;
 }>;
 
-const SEKTOR_OPTIONS = [
-  "Pertanian, Peternakan & Perikanan",
-  "Manufaktur & Pengolahan",
-  "Perdagangan, Ritel & F&B",
-  "Teknologi & Informasi",
-  "Kreatif",
-  "Logistik, Transportasi & Konstruksi",
-  "Jasa Usaha & Keuangan",
-  "Pendidikan & Pelatihan",
-  "Kesehatan, Farmasi & Herbal",
-  "Sumber Daya Alam & Energi",
-] as const;
-
-const KATEGORI_OPTIONS = ["Jasa", "Produsen", "Distributor", "Trading", "Profesional"] as const;
+// Sektor: tipe BusinessSector diimpor dari lib/business-sectors.ts. Kategori: tipe
+// BusinessCategory diimpor dari lib/business-form-options.ts — satu sumber kebenaran, jangan
+// re-declare literal enum di sini.
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug } = await params;
@@ -80,10 +77,17 @@ export default async function UsahaDirectoryPage({
     .limit(1);
   if (!tenant?.isActive) notFound();
 
+  const tenantClient = createTenantDb(slug);
+
   // Modul Usaha dimatikan admin tenant ini — data tetap ada (single-ID global), cuma tidak
   // ditawarkan di sini. Berlaku juga untuk entri lama yang dibuat sebelum modul dimatikan.
-  const enabledModules = await getEnabledEkosistemModules(createTenantDb(slug));
+  const [enabledModules, taxonomyOverrides, moduleLabels] = await Promise.all([
+    getEnabledEkosistemModules(tenantClient),
+    getTaxonomyOverrides(tenantClient),
+    getEkosistemModuleLabels(tenantClient),
+  ]);
   if (!enabledModules.usaha) notFound();
+  const moduleLabel = resolveEkosistemModuleLabel("usaha", moduleLabels);
 
   const provinsiList = await db
     .select({ id: refProvinces.id, name: refProvinces.name })
@@ -98,8 +102,8 @@ export default async function UsahaDirectoryPage({
     inArray(tenantMemberships.status, ["active", "alumni"]),
     eq(tenantMemberships.tenantId, tenant.id),
     ...(q          ? [ilike(memberBusinesses.name, `%${q}%`)]                                                    : []),
-    ...(sektor     ? [eq(memberBusinesses.sector, sektor as typeof SEKTOR_OPTIONS[number])]                      : []),
-    ...(kategori   ? [eq(memberBusinesses.category, kategori as typeof KATEGORI_OPTIONS[number])]                : []),
+    ...(sektor     ? [eq(memberBusinesses.sector, sektor as BusinessSector)]                                      : []),
+    ...(kategori   ? [eq(memberBusinesses.category, kategori as BusinessCategory)]                                : []),
     ...(bidang     ? [sql`${memberBusinesses.businessFields} @> ${JSON.stringify([bidang])}::jsonb`]             : []),
     ...(provinsiId ? [eq(addresses.provinceId, provinsiId)]                                                      : []),
     ...(tag ? [sql`${arah === "membutuhkan" ? memberBusinesses.neededTags : memberBusinesses.offeredTags} @> ${JSON.stringify([tag])}::jsonb`] : []),
@@ -178,7 +182,7 @@ export default async function UsahaDirectoryPage({
       <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">Direktori Usaha</h1>
+          <h1 className="text-3xl font-bold">Direktori {moduleLabel}</h1>
           <p className="text-muted-foreground mt-1 text-sm">
             {total.toLocaleString("id-ID")} usaha terdaftar
           </p>
@@ -196,7 +200,19 @@ export default async function UsahaDirectoryPage({
           currentPage={currentPage}
           hasFilter={hasFilter}
           provinsiList={provinsiList}
-          bidangOptions={getPrioritizedBusinessFields(sektor ?? null)}
+          kategoriOptions={[
+            { value: "", label: `Semua ${resolveFieldLabel("category", taxonomyOverrides)}` },
+            ...resolveCategoryOptions(taxonomyOverrides),
+          ]}
+          sektorOptions={[
+            { value: "", label: `Semua ${resolveFieldLabel("sector", taxonomyOverrides)}` },
+            ...resolveSectorOptions(taxonomyOverrides),
+          ]}
+          bidangOptions={[
+            { value: "", label: `Semua ${resolveFieldLabel("businessFields", taxonomyOverrides)}` },
+            ...resolveBusinessFieldSuggestions(sektor ?? null, taxonomyOverrides)
+              .map((b) => ({ value: b, label: resolveBusinessFieldLabel(b, taxonomyOverrides) })),
+          ]}
         />
 
         {/* Grid */}
@@ -252,7 +268,7 @@ export default async function UsahaDirectoryPage({
                       )}
                       {b.category && (
                         <div className="absolute top-2 right-2 z-10">
-                          <span className="text-xs bg-black/60 text-white px-2 py-0.5 rounded-full">{b.category}</span>
+                          <span className="text-xs bg-black/60 text-white px-2 py-0.5 rounded-full">{resolveCategoryLabel(b.category, taxonomyOverrides)}</span>
                         </div>
                       )}
                     </div>
@@ -278,7 +294,7 @@ export default async function UsahaDirectoryPage({
                   )}
                   <div className="flex flex-wrap gap-1.5 mt-auto pt-1">
                     {b.sector && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{b.sector}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{resolveSectorLabel(b.sector, taxonomyOverrides)}</span>
                     )}
                     {b.employees && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{b.employees} karyawan</span>

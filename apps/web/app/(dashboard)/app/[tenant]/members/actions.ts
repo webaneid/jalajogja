@@ -21,6 +21,10 @@ import { hasFullAccess }   from "@/lib/permissions";
 import { normalizePhone }  from "@/lib/phone";
 import { hashPassword }    from "better-auth/crypto";
 import type { BusinessSector } from "@/lib/business-sectors";
+import type {
+  BusinessCategory, BusinessLegality, BusinessPosition,
+  BusinessEmployees, BusinessBranches, BusinessRevenue,
+} from "@/lib/business-form-options";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 // Catatan: phone/email/address sudah dipindah ke helper tables (contacts, addresses)
@@ -820,16 +824,16 @@ export async function saveMemberBusinessesAction(
         name:        entry.name.trim(),
         brand:       entry.brand?.trim()       || null,
         description: entry.description?.trim() || null,
-        category: entry.category as "Jasa" | "Produsen" | "Distributor" | "Trading" | "Profesional",
+        category: entry.category as BusinessCategory,
         sector:   entry.sector   as BusinessSector,
         businessFields: entry.businessFields ?? [],
         offeredTags: entry.offeredTags ?? [],
         neededTags:  entry.neededTags  ?? [],
-        legality: (entry.legality  || null) as "PT Perseorangan" | "PT" | "CV" | "Yayasan" | "Perkumpulan" | "Koperasi" | "Belum Memiliki Legalitas" | null,
-        position: (entry.position  || null) as "Komisaris" | "Direktur" | "Pengelola" | "Manajer" | null,
-        employees:(entry.employees || null) as "1-4" | "5-10" | "11-20" | "Lebih dari 20" | null,
-        branches: (entry.branches  || null) as "Tidak Ada" | "1-3" | "Diatas 3" | null,
-        revenue:  (entry.revenue   || null) as "Dibawah 500jt" | "500jt-1M" | "1M-2M" | "Diatas 2M" | null,
+        legality: (entry.legality  || null) as BusinessLegality  | null,
+        position: (entry.position  || null) as BusinessPosition  | null,
+        employees:(entry.employees || null) as BusinessEmployees | null,
+        branches: (entry.branches  || null) as BusinessBranches  | null,
+        revenue:  (entry.revenue   || null) as BusinessRevenue   | null,
         coverUrl: entry.coverUrl?.trim() || null,
         logoUrl:  entry.logoUrl?.trim()  || null,
         contactId:     businessContactId,

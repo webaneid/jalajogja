@@ -7,7 +7,8 @@ import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
 // Modul ekosistem (Usaha/Pesantren/Profesional) yang aktif untuk tenant ini — dipanggil
 // client-side oleh DirectoryEditor (section builder, components/website/section-editors.tsx)
 // supaya opsi "Tipe Direktori" cuma menawarkan modul yang benar-benar dinyalakan admin di
-// /settings/general. Lihat lib/ekosistem-modules.ts + docs/arsitektur-ekosistem.md.
+// /app/{slug}/ekosistem/pengaturan (dulu /settings/general, dipindah 2026-08-07). Lihat
+// lib/ekosistem-modules.ts + docs/arsitektur-ekosistem.md.
 export async function GET(request: NextRequest) {
   const slug = request.nextUrl.searchParams.get("slug");
   if (!slug) return NextResponse.json({ error: "slug wajib diisi" }, { status: 400 });

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { db, tenants, createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
 import { computeMemberStatistics } from "@/lib/member-statistics.server";
 import { StatistikSections } from "@/components/statistik/statistik-sections";
 import { ArrowLeft } from "lucide-react";
@@ -46,7 +46,11 @@ export default async function RingkasanTenantDetailPage({
   // Satu-satunya pengecualian sempit terhadap "hanya 3 tabel backbone" — dijelaskan di dokumen
   // arsitektur: murni toggle UI boolean (bukan data finansial/PII), dibaca dari schema tenant
   // TARGET supaya breakdown Pesantren/Usaha/Profesional menghormati toggle admin tenant itu.
-  const enabledModules = await getEnabledEkosistemModules(createTenantDb(targetSlug));
+  const targetTenantClient = createTenantDb(targetSlug);
+  const [enabledModules, moduleLabels] = await Promise.all([
+    getEnabledEkosistemModules(targetTenantClient),
+    getEkosistemModuleLabels(targetTenantClient),
+  ]);
   const statsData       = await computeMemberStatistics(target.id);
 
   return (
@@ -72,7 +76,7 @@ export default async function RingkasanTenantDetailPage({
       </div>
 
       <div className="space-y-12">
-        <StatistikSections data={statsData} enabledModules={enabledModules} />
+        <StatistikSections data={statsData} enabledModules={enabledModules} moduleLabels={moduleLabels} />
       </div>
     </div>
   );

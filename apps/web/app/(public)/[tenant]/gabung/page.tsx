@@ -8,8 +8,8 @@ import { getAkunIdentity } from "@/lib/akun-identity";
 import {
   checkMemberEligibility, MEMBER_ELIGIBILITY_LABELS, memberEligibilityFixHref,
 } from "@/lib/member-eligibility";
-import { getEnabledEkosistemModules } from "@/lib/ekosistem-modules.server";
-import { enabledModuleList, EKOSISTEM_MODULE_LABELS } from "@/lib/ekosistem-modules";
+import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
+import { enabledModuleList, resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import { hasPaymentRequirement, isRequirementSatisfied } from "@/lib/membership-config";
 import type { MembershipConfigData } from "../../../(dashboard)/app/[tenant]/settings/actions";
 import { JoinForumButton } from "./join-forum-button";
@@ -100,6 +100,8 @@ export default async function GabungPage({ params }: { params: Params }) {
   const enabledModulesConfig = await getEnabledEkosistemModules(tenantDb);
   const enabledModulesArr    = enabledModuleList(enabledModulesConfig);
   const eligibility = await checkMemberEligibility(identity.memberId, enabledModulesArr);
+  // Label custom nama modul (2026-08-07, /ekosistem/pengaturan).
+  const moduleLabels = await getEkosistemModuleLabels(tenantDb);
 
   // Konfigurasi forum (info pendaftaran + syarat iuran opsional) — dibaca selalu, terlepas
   // status eligibility, karena teks info organisasi relevan ditampilkan ke semua calon
@@ -340,9 +342,11 @@ export default async function GabungPage({ params }: { params: Params }) {
                 // "directory" + sudah mulai isi salah satu modul (belum lengkap) — tunjuk
                 // modul itu spesifik ("Data Usaha Anda (belum lengkap)"), bukan label generik
                 // "pilih salah satu" yang menyuruh mereka memilih ulang dari awal.
-                const label = field === "directory" && eligibility.directoryIncompleteModule
-                  ? `Data ${EKOSISTEM_MODULE_LABELS[eligibility.directoryIncompleteModule]} Anda (belum lengkap)`
-                  : MEMBER_ELIGIBILITY_LABELS[field];
+                const label = field !== "directory"
+                  ? MEMBER_ELIGIBILITY_LABELS[field]
+                  : eligibility.directoryIncompleteModule
+                    ? `Data ${resolveEkosistemModuleLabel(eligibility.directoryIncompleteModule, moduleLabels)} Anda (belum lengkap)`
+                    : `Data ${enabledModulesArr.map((m) => resolveEkosistemModuleLabel(m, moduleLabels)).join(" / ")} (minimal salah satu)`;
                 return (
                   <li key={field}>
                     <a
