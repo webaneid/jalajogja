@@ -973,10 +973,11 @@ build, direstart sesudah) — `/app/[tenant]/ekosistem/taksonomi` (4.47 kB) dan 
 `/app/[tenant]/members/*`/`/app/[tenant]/usaha`-family terkonfirmasi compile bersih di build
 output. Grep akhir `CATEGORY_COMBOBOX_OPTIONS|SECTOR_COMBOBOX_OPTIONS|getPrioritizedBusinessFields`
 di seluruh `apps/web` (di luar `lib/`) — nol hasil, semua consumer sudah migrasi ke resolver.
-**Belum di-commit/push ke git, belum dijalankan di VPS** (nol migrasi DB dibutuhkan — deploy
-cukup `git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja
---update-env`), **belum diverifikasi visual di browser** — checklist manual di § 10.6 di atas
-masih perlu dicoba user.
+**Sudah di-commit+push** (bagian dari `55e7fc5`, dibundel bareng seluruh modul admin Ekosistem
+— lihat § 9.7). **Belum dijalankan di VPS** (nol migrasi DB dibutuhkan — deploy cukup
+`git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env`),
+**belum diverifikasi visual di browser** — checklist manual di § 10.6 di atas masih perlu
+dicoba user.
 
 ### 10.8 Susulan (2026-08-07): Toggle Kategori + Kategori Baru "Praktisi"/"Akademisi" —
 ✅ SELESAI
@@ -1047,8 +1048,9 @@ direktori yang benar via `pwd` untuk menghindari kesalahan cwd). `bun run build
 `Cached: 0 cached, 1 total`, 47.36 detik, dev server direstart, `curl` 200 OK) — route
 `/app/[tenant]/ekosistem/taksonomi` terkonfirmasi ter-build ulang tanpa error. Nol migrasi DB
 tambahan (kolom `category` sudah `text` polos sejak awal, tidak ada CHECK constraint yang perlu
-di-`ALTER`). **Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual
-di browser** — user perlu coba: buka `/ekosistem/taksonomi`, konfirmasi 7 baris Kategori
+di-`ALTER`). **Sudah di-commit+push** (bagian dari `55e7fc5`). **Belum dijalankan di VPS,
+belum diverifikasi visual di browser** — user perlu coba: buka `/ekosistem/taksonomi`,
+konfirmasi 7 baris Kategori
 tampil (termasuk Praktisi/Akademisi) masing-masing dengan checkbox toggle; matikan satu
 Kategori (mis. "Trading"), cek hilang dari picker `/akun/usaha` dan admin wizard tapi entri
 lama yang sudah pakai kategori itu tetap tampil normal (tidak blank); pilih Kategori
@@ -1132,8 +1134,9 @@ file yang disengaja tidak disentuh (nav item modul lain seperti Toko/Dokumen/Don
 punya "Kategori" konsep BERBEDA, dan Excel template). Nol migrasi DB (perubahan bentuk
 `customBusinessFields` dan `fieldLabels` baru sama-sama field JSONB opsional di key
 `taxonomy_overrides` yang sudah ada — kosong = perilaku default persis sebelum fitur ini).
-**Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser**
-— user perlu coba: di `/ekosistem/taksonomi`, tambah Bidang Usaha baru dengan pilih Sektor
+**Sudah di-commit+push** (bagian dari `55e7fc5`). **Belum dijalankan di VPS, belum
+diverifikasi visual di browser** — user perlu coba: di `/ekosistem/taksonomi`, tambah Bidang
+Usaha baru dengan pilih Sektor
 "Kreatif" dulu (mis. "Musik"), konfirmasi muncul PALING ATAS saat pilih Sektor Kreatif di form
 Usaha tapi tetap muncul (di bawah) saat Sektor lain dipilih; isi "Nama Field" Sektor jadi
 "Jenis Karya", konfirmasi berubah di SEMUA titik (form self-service+admin, filter arsip,
@@ -1217,10 +1220,111 @@ error setelah edit 2 file: `lib/taxonomy-overrides.ts` + `ekosistem-taksonomi-fo
 dibersihkan, `Cached: 0 cached, 1 total`, 49.34 detik, dev server direstart, `curl` 200 OK) —
 route `/ekosistem/taksonomi` naik 4.47 kB → 6.47 kB (section baru), terkonfirmasi compile
 bersih di build output. Nol migrasi DB (field JSONB baru di key `taxonomy_overrides` yang sudah
-ada). **Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di
-browser** — user perlu coba: tambah Sektor baru (mis. "Riset & Inovasi") di `/ekosistem/
+ada). **Sudah di-commit+push** (bagian dari `55e7fc5`). **Belum dijalankan di VPS, belum
+diverifikasi visual di browser** — user perlu coba: tambah Sektor baru (mis. "Riset & Inovasi") di `/ekosistem/
 taksonomi`, konfirmasi langsung muncul sebagai opsi di picker Sektor form Usaha (self-service
 `/akun/usaha` DAN admin wizard) dan sebagai pilihan induk "Tambah Bidang Usaha Baru"; tambah
 Bidang Usaha di bawah Sektor custom itu, konfirmasi tersimpan+tampil terprioritaskan saat
 Sektor custom itu dipilih; hapus Sektor custom dari daftar, konfirmasi entri usaha LAMA yang
 sudah pakai sektor itu tetap tampil normal (tidak blank) di form edit.
+
+### 10.11 Susulan Keempat (2026-08-07): Fix Duplikat Global Bidang Usaha + Picker Sektor-
+Scoped (Idle vs Search) — ✅ SELESAI
+
+Dua perbaikan berurutan pada fitur "Tambah Bidang Usaha Baru" (§ 10.9), giliran terpisah dari
+§ 10.10 tapi sesi yang sama.
+
+**Bug 1 — pengecekan duplikat GLOBAL, seharusnya per-sektor.** Dilaporkan user (verbatim):
+*"ketika tambah bidang usaha baru, kok gk mau: katanya: Bidang Usaha itu sudah ada. padahal
+ini baru, tp parent sectornya yg sama. harusnya satu parent bisa punya banyak bidang usaha."*
+`addCustomBidang()` (`ekosistem-taksonomi-form.tsx`) sebelumnya mengecek nama baru terhadap
+`allExisting` — GABUNGAN seluruh 59 item kanonik LINTAS 10 sektor + seluruh custom item LINTAS
+semua sektor sekaligus, bukan cuma milik sektor target. Nama yang genuinely BARU untuk sektor
+X ditolak "sudah ada" hanya karena kebetulan sama dengan item kanonik/custom milik sektor Y
+yang tidak berhubungan. **Fix**: scope cek HANYA ke `SECTOR_SUB_FIELDS[sector] ?? []` +
+`state.customBusinessFields[sector] ?? []` — nama yang sama SEKARANG boleh dipakai di sektor
+berbeda tanpa konflik (tetap di-dedupe jadi satu saran gabungan oleh `resolveBusinessField
+Suggestions()` saat ditampilkan, sesuai desain "facet independen" § 2-3 `docs/arsitektur-
+usaha.md` yang sudah dikunci sejak awal). Diverifikasi via disposable test 5 skenario (item
+baru di sektor terisi → allow; duplikat exact di sektor sama → reject; nama sama di sektor lain
+yang masih kosong → allow, skenario BUG yang dilaporkan; nama cocok item kanonik sektor lain →
+allow; nama cocok item kanonik sektor TARGET sendiri → reject) — semua sesuai ekspektasi.
+
+**UI polish sekaligus** (diminta bersamaan, verbatim): *"perbaiki UI-nya juga kok gk menyusun
+rapi? tidak seperti bidang usaha lain sehingga bisa di edit diperbaiki jika ada typo.. atau
+menghapus jika tidak dibutuhkan."* Listing custom Bidang Usaha (pill/chip, hapus-saja) diganti
+list rapi per-sektor — `<Input>` inline-editable per baris (perbaiki typo tanpa hapus+tambah
+ulang) + tombol `Trash2` per baris — mengikuti gaya visual section "Label Bidang Usaha Bawaan"
+yang sudah ada di halaman yang sama, bukan desain baru. `toPayload()` dapat pembersihan
+defensif (trim, dedupe, buang string kosong) sebelum kirim ke server.
+
+**Bug 2 — search tetap dibatasi ke sektor terpilih**, giliran berikutnya, user (verbatim):
+*"bagaimana jika sub bidang yang di tampilkan di edit usaha maupun di backend adalah bidang
+usaha yang sesuai dengan sector yang dipilih yang munculnya.. jangan munculkan yg lain.. atau
+yg lainnya hanya muncul kalau di search."* — lalu klarifikasi susulan memperluas scope ke
+filter arsip publik juga: *"tambahan: sub bidang ini termasuk sub bidang di filter laman usaha
+arsip, dan juga edit usaha di akun, dan edit usaha di admin."* Tiga permukaan: form self-
+service (`/akun/usaha`), form admin (`step4-business.tsx`), DAN filter arsip publik (`/usaha`).
+
+**Desain — dua-tier "idle vs search", diterapkan sebagai perluasan GENERIK ke 2 komponen
+shared** (bukan komponen baru khusus fitur ini): `getStrictBusinessFields(sector)`
+(`lib/business-sectors.ts`, baru) — hard filter, HANYA item Tier-3 kanonik milik sektor itu
+(BEDA dari `getPrioritizedBusinessFields()` § 10.9 yang cuma REORDER, tidak pernah membuang
+sektor lain). Dua fallback berbeda yang sengaja dipisah (bukan disatukan): `sector` kosong
+(belum dipilih sama sekali) → daftar penuh (tidak ada yang bisa dibatasi); `sector` terisi
+tapi CUSTOM (bukan salah satu 10 kanonik) → `[]` (BUKAN daftar penuh — kalau fallback ke daftar
+penuh di sini, justru membocorkan 59 item lintas-sektor persis untuk tenant yang sektornya
+sepenuhnya custom, kebalikan tujuan fungsi ini). `resolveBusinessFieldSuggestionsStrict(
+sector, overrides)` (`lib/taxonomy-overrides.ts`, baru) — gabung `getStrictBusinessFields` +
+`customBusinessFields[sector]` tenant, fallback sama.
+
+**Prop baru `searchOptions?`** ditambahkan ke DUA komponen shared yang sudah dipakai luas di
+app: `components/ui/tag-multi-select.tsx` (dipakai `businessFields`/`offeredTags`/`needed
+Tags` di 5 tempat) dan `components/ui/combobox.tsx` (dipakai puluhan tempat lain di seluruh
+app, sesuai aturan UI "semua dropdown wajib Combobox"). Semantik: `options` = daftar IDLE
+(ditampilkan saat belum ada kata kunci diketik); `searchOptions` (opsional) = daftar dipakai
+HANYA saat user mulai mengetik, jatuh kembali ke `options` kalau `searchOptions` tidak diisi —
+**100% backward-compatible untuk SEMUA pemakai lain kedua komponen** (prop opsional, default
+behavior identik persis sebelum perubahan ini). `Combobox` dijadikan controlled query state
+(`CommandInput value={query} onValueChange={...}`) supaya bisa switch sumber data saat
+`searchOptions` ada — sebelumnya `CommandInput` uncontrolled, filtering murni via `shouldFilter`
+bawaan cmdk.
+
+**Diwire ke 4 titik konsumen**: `usaha-client.tsx` (self-service) + `step4-business.tsx`
+(admin) — `options` = strict resolver (scoped ke `entry.sector` saat ini), `searchOptions` =
+resolver lama § 10.9 (soft-prioritize, semua sektor tetap bisa dicari). `usaha/page.tsx` +
+`usaha-filters-client.tsx` (filter arsip publik) — `bidangOptions` (idle, scoped ke `?sektor=`
+query param yang sedang aktif, kalau ada) + `bidangSearchOptions` (search, semua sektor) —
+`UsahaFiltersClient` dapat 2 prop baru menggantikan 1 prop `bidangOptions` lama.
+
+**Bug self-caught SEBELUM dilaporkan user**: draf pertama `getStrictBusinessFields()`
+(`if (!sector || !(sector in SECTOR_SUB_FIELDS)) return BUSINESS_FIELD_SUGGESTIONS;`) keliru
+fallback ke DAFTAR PENUH untuk sektor CUSTOM — mengalahkan seluruh tujuan fitur ini justru
+untuk tenant yang paling membutuhkannya (organisasi bergaya Forcreator dengan sektor custom).
+Ditemukan+diperbaiki sendiri sebelum verifikasi akhir (bukan lewat laporan bug user) — versi
+final hanya fallback ke daftar penuh kalau `sector` genuinely `null`/`undefined`, sektor custom
+apa pun mengembalikan `[]`.
+
+**Diverifikasi EMPIRIS** (disposable script `_verify_strict.ts`, dihapus setelah) 6 skenario:
+Kreatif (kanonik) idle → 9 item (bukan 59); sektor `null` → 59 item (fallback penuh); sektor
+custom idle → 0 item (BUKTI fix bug self-caught, bukan 59); sektor custom + custom item milik
+sendiri → HANYA 2 item miliknya, nol kebocoran; Kreatif + custom item milik Kreatif → 9
+kanonik + 2 custom = 11, union benar; mode search (`getPrioritizedBusinessFields`) untuk
+sektor custom → tetap mengandung item lintas-sektor (63 total) — konfirmasi search TIDAK ikut
+dibatasi. Semua 6 sesuai ekspektasi.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` (0 error). `bun run build
+--filter=@jalajogja/web` genuine sukses (dev server dimatikan port 6202, `.next` dibersihkan,
+`Cached: 0 cached, 1 total`, 49.66 detik, dev server direstart dari REPO ROOT — percobaan
+pertama dari `apps/web/` gagal, konsisten aturan project "`bun run dev/build --filter=` wajib
+dari root monorepo" — `curl` 200 OK). 8 file disentuh: `lib/business-sectors.ts`, `lib/
+taxonomy-overrides.ts`, `components/ui/tag-multi-select.tsx`, `components/ui/combobox.tsx`,
+`usaha-client.tsx`, `step4-business.tsx`, `usaha/page.tsx`, `usaha-filters-client.tsx`. Nol
+migrasi DB. **Sudah di-commit+push** — bug duplikat+UI polish sebagai `fd5181e`, picker
+strict/search sebagai `f58bf63`. **Belum dijalankan di VPS, belum diverifikasi visual di
+browser** — user perlu coba: pilih Sektor "Kreatif" di form Bidang Usaha (`/akun/usaha` atau
+admin wizard), konfirmasi dropdown idle HANYA menampilkan 9 item Kreatif (bukan 59 campur
+semua sektor); ketik untuk mencari, konfirmasi item sektor lain tetap muncul; ulangi cek yang
+sama di filter arsip `/usaha` (pilih Sektor dulu, lalu buka dropdown Bidang Usaha); coba tambah
+Bidang Usaha baru dengan nama yang KEBETULAN sama dengan item kanonik sektor lain — konfirmasi
+sekarang diterima (bukan ditolak "sudah ada").
