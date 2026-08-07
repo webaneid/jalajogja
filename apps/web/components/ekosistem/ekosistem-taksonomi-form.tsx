@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/ui/combobox";
@@ -10,7 +11,9 @@ import { saveTaxonomyOverridesAction } from "@/app/(dashboard)/app/[tenant]/ekos
 import {
   BUSINESS_CATEGORY_ENUM, BUSINESS_SECTOR_ENUM, type TaxonomyOverrides,
 } from "@/lib/taxonomy-overrides";
-import { SECTOR_COMBOBOX_OPTIONS } from "@/lib/business-sectors";
+import {
+  SECTOR_COMBOBOX_OPTIONS, SECTOR_SUB_FIELDS, type BusinessSector,
+} from "@/lib/business-sectors";
 import { BUSINESS_FIELD_SUGGESTIONS } from "@/lib/business-fields";
 
 // Form pengaturan label Kategori/Sektor/Bidang Usaha + toggle enable Sektor/Kategori + Bidang
@@ -80,9 +83,16 @@ function toPayload(state: FormState): TaxonomyOverrides {
   const onlyDisabled = (rec: Record<string, boolean>) =>
     Object.fromEntries(Object.entries(rec).filter(([, v]) => v === false));
 
-  // Buang sektor yang sudah tidak punya item custom lagi (semua sudah dihapus)
+  // Bersihkan defensif sebelum kirim ke server: trim whitespace, buang string kosong (hasil
+  // rename yang belum sempat diisi ulang), dan dedupe (rename bisa saja menghasilkan nilai yang
+  // sekarang sama dengan item lain di sektor yang sama). Sektor yang habis jadi kosong dibuang.
   const customBusinessFields = Object.fromEntries(
-    Object.entries(state.customBusinessFields).filter(([, items]) => (items?.length ?? 0) > 0),
+    Object.entries(state.customBusinessFields)
+      .map(([sec, items]) => [
+        sec,
+        Array.from(new Set((items ?? []).map((v) => v.trim()).filter((v) => v !== ""))),
+      ] as const)
+      .filter(([, items]) => items.length > 0),
   );
 
   const fieldLabels: TaxonomyOverrides["fieldLabels"] = {};
@@ -137,21 +147,26 @@ export function EkosistemTaksonomiForm({
   // item ini diprioritaskan saat Sektor itu dipilih (sama seperti Tier-3 bawaan/SECTOR_SUB_
   // FIELDS), tetap muncul (di posisi belakang) untuk sektor lain. § 10.9. Sektor induk boleh
   // kanonik ATAU custom tenant (§ 10.10) — `newBidangSector` sudah string bebas.
+  //
+  // Pengecekan duplikat DI-SCOPE ke Sektor yang dipilih SAJA — bukan global lintas SEMUA
+  // sektor+59 item kanonik. Nama Bidang Usaha yang SAMA boleh dipakai di sektor BERBEDA (tidak
+  // konflik: resolveBusinessFieldSuggestions() dedup jadi satu saran, diprioritaskan kapan pun
+  // salah satu sektornya dipilih) — yang tidak boleh HANYA duplikat DI DALAM sektor yang sama.
+  // Bug lama: cek global bikin nama yang kebetulan sudah kanonik di sektor LAIN (dari 59 item
+  // bawaan) ditolak "sudah ada", padahal untuk sektor yang sedang ditambahkan itu genuinely baru.
   function addCustomBidang() {
     const v = newBidang.trim();
     if (!v) { toast.error("Nama Bidang Usaha tidak boleh kosong."); return; }
     if (!newBidangSector) { toast.error("Pilih Sektor untuk Bidang Usaha baru ini."); return; }
 
-    const allExisting = [
-      ...(BUSINESS_FIELD_SUGGESTIONS as string[]),
-      ...Object.values(state.customBusinessFields).flatMap((items) => items ?? []),
-    ];
-    if (allExisting.includes(v)) {
-      toast.error("Bidang Usaha itu sudah ada.");
+    const sector = newBidangSector;
+    const canonicalForSector = SECTOR_SUB_FIELDS[sector as BusinessSector] ?? [];
+    const customForSector    = state.customBusinessFields[sector] ?? [];
+    if ([...canonicalForSector, ...customForSector].includes(v)) {
+      toast.error(`"${v}" sudah ada di Sektor "${sector}".`);
       return;
     }
 
-    const sector = newBidangSector;
     setState((s) => ({
       ...s,
       customBusinessFields: {
@@ -162,12 +177,26 @@ export function EkosistemTaksonomiForm({
     setNewBidang("");
   }
 
-  function removeCustomBidang(sector: string, v: string) {
+  // Rename in-place (fix typo) — dikunci per index, BUKAN per value (value adalah teks yang
+  // sedang diketik ulang, tidak stabil sebagai identity). Live per keystroke, tanpa validasi
+  // duplikat mid-typing (biar tidak mengganggu proses ngetik) — dibersihkan defensif saat submit
+  // (lihat toPayload: trim + dedupe + buang string kosong).
+  function renameCustomBidang(sector: string, idx: number, value: string) {
     setState((s) => ({
       ...s,
       customBusinessFields: {
         ...s.customBusinessFields,
-        [sector]: (s.customBusinessFields[sector] ?? []).filter((x) => x !== v),
+        [sector]: (s.customBusinessFields[sector] ?? []).map((x, i) => (i === idx ? value : x)),
+      },
+    }));
+  }
+
+  function removeCustomBidangAt(sector: string, idx: number) {
+    setState((s) => ({
+      ...s,
+      customBusinessFields: {
+        ...s.customBusinessFields,
+        [sector]: (s.customBusinessFields[sector] ?? []).filter((_, i) => i !== idx),
       },
     }));
   }
@@ -398,27 +427,37 @@ export function EkosistemTaksonomiForm({
           <Button type="button" variant="outline" onClick={addCustomBidang}>Tambah</Button>
         </div>
         {hasCustomBidang && (
-          <div className="space-y-3">
+          <div className="space-y-4 rounded-md border border-border p-3">
             {Object.entries(state.customBusinessFields).map(([sec, items]) => {
               if (!items || items.length === 0) return null;
               return (
                 <div key={sec}>
-                  <p className="text-xs font-medium text-muted-foreground mb-1">{sec}</p>
-                  <ul className="flex flex-wrap gap-2">
-                    {items.map((v) => (
-                      <li key={v} className="flex items-center gap-1.5 rounded-full bg-primary/10 text-primary text-xs px-3 py-1">
-                        {v}
+                  <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                    Sektor: {sec}
+                  </p>
+                  <div className="space-y-1.5">
+                    {items.map((v, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <Input
+                          value={v}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            renameCustomBidang(sec, idx, e.target.value)
+                          }
+                          className="h-8 text-sm"
+                        />
                         <button
                           type="button"
-                          onClick={() => removeCustomBidang(sec, v)}
-                          className="text-primary/60 hover:text-primary"
-                          aria-label={`Hapus ${v}`}
+                          onClick={() => removeCustomBidangAt(sec, idx)}
+                          className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          aria-label={`Hapus ${v || "item ini"}`}
+                          title="Hapus"
                         >
-                          ×
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
-                      </li>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               );
             })}
