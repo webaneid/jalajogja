@@ -607,6 +607,94 @@ dibersihkan, `Cached: 0 cached, 1 total`, 51.86 detik, dev server direstart, `cu
 File disentuh: `packages/db/src/helpers/resolve-product-item.ts` (baru), `packages/db/src/
 index.ts` (export), `apps/web/app/(public)/[tenant]/cart/actions.ts` (checkoutAction +
 previewVoucherAction). Nol migrasi DB — murni perbaikan logika resolusi, skema tidak berubah.
-**Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser**
-— user perlu coba di `visikita.com` (setelah deploy): checkout produk bervariasi yang ditarget
-voucher spesifik, konfirmasi diskon sekarang benar-benar terpotong.
+Sudah di-commit (`d4b3e6d`) dan di-push.
+
+## 14. Bug Kritis — Kode Voucher Diketik Tapi Tidak Pernah Diterapkan, Checkout Lanjut Diam-Diam (2026-08-09)
+
+Menyusul § 13 (sudah di-deploy), user laporkan satu kasus lagi: seorang customer sudah
+mendaftar via kode voucher `SYUKRONSAHABAT620` (100% off, target tiket event "Ikut Reuni
+2026" spesifik) — tapi di dashboard admin, invoice-nya tercatat SEBAGAI HARGA PENUH tanpa
+voucher sama sekali, padahal voucher itu sendiri valid, belum pernah dipakai customer ini, dan
+menargetkan tiket yang tepat (BUKAN kasus § 13 — produk/tiket ini tidak bervariasi).
+
+**Investigasi menyeluruh, dua hipotesis diuji lewat pembacaan kode penuh (bukan tebakan)**:
+1. *Apakah klik "Terapkan" sendiri bisa membuat invoice?* — Dibaca penuh `previewVoucherAction`
+   (`cart/actions.ts`): 100% read-only, cuma `SELECT` (carts, cartItems, `findVoucherByCode`,
+   `countCustomerRedemptions`), nol `.insert()`/`.update()`. **Terbukti tidak mungkin.**
+2. *Apakah `checkoutAction` bisa diam-diam membuat invoice dari kode voucher yang gagal
+   validasi?* — Dibaca ulang alur `checkoutAction`: kalau `voucherCode` dikirim TAPI gagal di
+   `findVoucherByCode`/`computeVoucherDiscount`, SELURUH transaksi di-abort
+   (`return { error: result.error }`) — **tidak ada invoice yang tercipta sama sekali** dalam
+   skenario ini (all-or-nothing, bukan fallback diam-diam ke harga penuh).
+
+Kesimpulan dari kedua fakta ini: satu-satunya cara invoice bisa tercipta dengan harga PENUH
+adalah kalau parameter `voucherCode` yang dikirim ke `checkoutAction` **memang kosong/`undefined`**
+— bukan karena ditolak server, tapi karena tidak pernah dikirim sama sekali dari client.
+
+**Root cause ditemukan di `checkout-form.tsx`'s `doCheckout()`** (satu-satunya titik pemanggil
+`checkoutAction`, dipanggil dari 2 handler step berbeda — checkout tanpa ongkir dan checkout
+dengan ongkir): parameter voucher yang dikirim adalah `voucherPreview?.valid ?
+voucherInput.trim() : undefined` — **TIDAK ADA GUARD** yang mencegah submit final kalau
+customer sudah MENGETIK kode voucher di kolom input tapi **lupa/gagal klik tombol "Terapkan"**
+sebelum klik tombol checkout akhir. Efeknya: customer ketik kode, yakin sudah "pakai" kode itu
+(kode terlihat jelas di kolom input), klik "Selesaikan Pendaftaran" — checkout lanjut TANPA
+voucher, TANPA peringatan apa pun, invoice langsung tercipta harga penuh. Customer baru sadar
+setelah transfer/dikonfirmasi admin bahwa kodenya ternyata tidak pernah dipakai.
+
+**Fix** — tambah guard di awal `doCheckout()`, sebelum `startTransition`:
+```typescript
+const pendingVoucherCode = voucherInput.trim();
+if (pendingVoucherCode && !voucherPreview?.valid) {
+  setError(`Kode voucher "${pendingVoucherCode}" belum diterapkan — klik "Terapkan" dulu, atau
+kosongkan kolom voucher jika tidak ingin memakainya.`);
+  return;
+}
+```
+Kalau kolom voucher berisi teks TAPI belum berhasil di-preview (`voucherPreview.valid` bukan
+`true`), checkout diblokir dengan pesan jelas — bukan lanjut diam-diam. Titik ini SATU-SATUNYA
+pemanggil `checkoutAction` di file ini, jadi cukup ditutup di sini untuk kedua alur (dengan/
+tanpa ongkir).
+
+**Dicek dan dikonfirmasi AMAN (tidak berkontribusi ke bug ini)**:
+- `onChange` di kolom input voucher SUDAH me-reset `voucherPreview` ke `null` di setiap
+  keystroke — state basi (kode diedit tapi preview lama masih `valid`) secara struktural tidak
+  mungkin terjadi.
+- Panel voucher (sticky bottom bar "Punya Kode Voucher?") dirender UNCONDITIONAL di semua step
+  (1/2/3) — bukan soal panelnya hilang di step tertentu.
+- Tombol checkout adalah `<button type="button">`, bukan native form submit — tidak ada risiko
+  submit-via-Enter yang melewati handler `onClick`.
+
+**Koreksi data untuk kasus yang sudah terlanjur terjadi** — invoice `620-INV-202608-00024`
+(tenant `visikita`), customer Yusbiantoro (`+6283830371821`, `yusbi86@gmail.com`), tiket
+"Ikut Reuni 2026". Karena `checkoutAction`'s efek samping "invoice Rp 0 → auto-lunas" (sync
+`event_registrations`, dst — lihat § 4) HANYA terpicu di dalam alur checkout itu sendiri, dan
+customer tidak bisa/tidak perlu diminta checkout ulang untuk kasus yang jelas murni bug UI,
+**database dikoreksi manual secara langsung** menggantikan yang seharusnya terjadi kalau
+voucher berhasil diterapkan saat checkout:
+1. `invoices` — `voucherId`/`voucherCode`/`voucherDiscountTotal` diisi, `subtotal`/`total`/
+   `paidAmount`/`uniqueCode` di-nol-kan, `status → 'paid'` (subtotal WAJIB net-of-discount,
+   bukan gross — lihat lesson CLAUDE.md soal ini).
+2. `invoice_items` — `discountAmount`/`voucherId` diisi, `total → 0`.
+3. `voucher_redemptions` — baris baru dicatat (identitas customer + jumlah diskon), supaya
+   voucher ini tidak bisa dipakai ulang oleh customer yang sama di luar batas `usageLimitPer
+   Customer`.
+4. `vouchers.usedCount` — dinaikkan 1, sinkron dengan kuota (`usageLimit`) yang tersisa.
+5. `event_registrations` — baris baru dibuat manual (nomor registrasi via increment atomic
+   `event_registration_sequences`, format `EVT-{yyyymm}-{5 digit}`), attendee data diambil
+   dari `invoice_items.description` (JSON custom field jawaban pendaftaran yang tersimpan di
+   sana sejak checkout awal — satu-satunya sumber yang masih menyimpannya setelah
+   `cart_items`/`carts` dihapus pasca-checkout). Status langsung `'confirmed'`, sama seperti
+   yang terjadi otomatis untuk invoice Rp 0 yang lunas normal.
+
+Diverifikasi: precondition dicek dulu (`status='pending'`, belum ada `voucher_redemptions`
+untuk invoice ini) sebelum menulis apa pun. Hasil akhir dikonfirmasi via SELECT — invoice
+`paid`/`total=0`, registrasi `EVT-202608-00022` (Yusbiantoro, `confirmed`), `used_count`
+voucher naik jadi 4. **Koreksi ini dijalankan LANGSUNG di production (tenant `visikita`)** —
+bukan di lokal, karena datanya memang cuma ada di production.
+
+**Verifikasi kode**: `tsc --noEmit` bersih, `bun run build --filter=@jalajogja/web` genuine
+sukses (dev server dimatikan+`.next` dibersihkan+direstart). File disentuh:
+`apps/web/components/billing/checkout-form.tsx` (guard baru di `doCheckout()`). Nol migrasi
+DB — murni perbaikan logika client + koreksi data manual satu invoice. **Sudah di-commit,
+belum di-deploy ke VPS** — perlu `git pull && bun run build --filter=@jalajogja/web && pm2
+restart jalajogja --update-env` di server sebelum fix ini aktif untuk customer berikutnya.

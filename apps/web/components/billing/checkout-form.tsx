@@ -205,6 +205,16 @@ export function CheckoutForm({
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   function doCheckout(shippingData?: CheckoutShippingData) {
+    // Bug ditemukan 2026-08-09: kode voucher HANYA dikirim ke checkoutAction kalau
+    // voucherPreview.valid===true — kalau customer ketik kode tapi lupa/gagal klik "Terapkan",
+    // checkout SEBELUMNYA lanjut diam-diam tanpa voucher, tanpa peringatan apa pun (invoice
+    // dibuat harga penuh, customer tidak sadar kodenya tidak pernah dipakai). Blokir di sini —
+    // satu-satunya titik pemanggilan checkoutAction, dipanggil dari 2 handler step berbeda.
+    const pendingVoucherCode = voucherInput.trim();
+    if (pendingVoucherCode && !voucherPreview?.valid) {
+      setError(`Kode voucher "${pendingVoucherCode}" belum diterapkan — klik "Terapkan" dulu, atau kosongkan kolom voucher jika tidak ingin memakainya.`);
+      return;
+    }
     startTransition(async () => {
       const res = await checkoutAction(
         slug,
