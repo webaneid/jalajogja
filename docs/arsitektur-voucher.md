@@ -5,7 +5,8 @@
 > - `docs/arsitektur-kode-unik.md` — kode unik transaksi (interaksi dengan voucher 100% di § 8)
 > - `docs/arsitektur-keuangan.md` — double-entry journal (interaksi dengan checkout Rp 0 di § 6)
 
-**Status implementasi: ✅ Fase 1 SELESAI + audit pasca-implementasi SELESAI** (2026-07-19)
+**Status implementasi: ✅ Fase 1 SELESAI + audit pasca-implementasi SELESAI** (2026-07-19,
+audit lanjutan 2026-08-08)
 - Schema + migration (`0034_vouchers.sql`) + `create-tenant-schema.ts`: ✅ Selesai
 - Helper resolver murni (`packages/db/src/helpers/voucher.ts`): ✅ Selesai
 - Integrasi `checkoutAction` (resolusi, potongan per-item, Rp 0 auto-lunas, kode unik): ✅ Selesai
@@ -13,10 +14,15 @@
 - Admin CRUD (`/app/{slug}/finance/billing/voucher/*`): ✅ Selesai
 - Pembatalan invoice → rollback kuota voucher: ✅ Selesai
 - Audit docs-vs-kode + 4 bug/gap ditemukan+difix: ✅ Selesai — lihat § 11
-- Migrasi `0034_vouchers.sql` sudah dijalankan di **lokal** (`pc-ikpm-jogjakarta`) — **belum di VPS**
+- Migrasi `0034_vouchers.sql` — sudah live di production (`visikita.com` genuinely memakai
+  voucher per laporan user 2026-08-08), status commit VPS terkini tidak terverifikasi dari sini
+  (tidak ada akses SSH langsung) — dokumen lama sempat bilang "belum di VPS", sudah tidak akurat
 - Bug UX ditemukan dari testing langsung user: input voucher tidak terlihat di alur checkout
   (tersembunyi di kolom kanan, jatuh di bawah tombol submit saat mobile) — ✅ Difix, lihat § 12
-- Sisa skenario manual (§ 9) masih perlu dicoba end-to-end setelah fix § 12 dikonfirmasi user
+- **Bug KRITIS ditemukan dari laporan user (2026-08-08)**: voucher tidak pernah match untuk
+  produk BERVARIASI (mismatch `product_variations.id` vs `products.id` di targeting) —
+  ✅ Difix, lihat § 13. Belum di-commit/push/deploy — lihat § 13 untuk status verifikasi.
+- Sisa skenario manual (§ 9) masih perlu dicoba end-to-end
 
 Fase 2 (diskon otomatis tanpa kode, target produk mitra, target per kategori) — **belum
 direncanakan detail**, lihat § 10 "Di Luar Scope Fase 1".
@@ -505,3 +511,102 @@ yang tidak butuh aksi user sebelum submit.
 **Verifikasi**: `tsc --noEmit` bersih + `bun run build --filter=@jalajogja/web` sukses. Belum
 diverifikasi visual di browser oleh Claude (keterbatasan environment) — user diminta konfirmasi
 tampilan baru sudah sesuai setelah reload.
+
+---
+
+## 13. Bug Kritis — Voucher Tidak Match untuk Produk Bervariasi (2026-08-08)
+
+User laporkan: ada yang memasukkan kode voucher di `visikita.com` tapi tidak bisa dipakai.
+Diminta cek ketidakkonsistenan di alur input voucher.
+
+**Root cause ditemukan lewat pembacaan kode 3 file, bukan tebakan** — `product-detail-
+client.tsx` (baris ~166) mengirim `itemId = isVariable ? activeVariation.id : product.id` ke
+`addToCartAction` — untuk produk BERVARIASI, `cart_items.itemId` yang tersimpan adalah
+**`product_variations.id`, BUKAN `products.id`**. Sementara `VoucherTargetPicker` (dan
+`getVoucherTargetOptionsAction`'s cabang `targetType==="product"`) HANYA PERNAH menyimpan
+`products.id` sebagai `targetItemIds` — picker-nya sendiri query `schema.products` langsung,
+tidak pernah menawarkan variasi individual sebagai opsi target.
+
+`checkoutAction` dan `previewVoucherAction` (`cart/actions.ts`) sama-sama melakukan re-fetch
+harga dengan `WHERE schema.products.id = item.itemId` — untuk item bervariasi, query ini
+**TIDAK PERNAH match** (`prod` selalu `undefined`). Efeknya BERLAPIS TIGA:
+1. `unitPrice`/`mitraId` jatuh balik ke default lokal (`item.unitPrice` snapshot cart,
+   `mitraId = null`) — bukan hasil re-fetch DB yang seharusnya (celah harga, sudah dicatat di
+   § 10 poin 6 sebagai "belum dieksekusi", tapi TERNYATA harus dieksekusi juga untuk menutup
+   bug voucher ini — tidak bisa dipisah).
+2. `mitraId` SELALU resolve jadi `null` untuk item bervariasi — kalau kebetulan variasi itu
+   milik produk MITRA, guard `if (item.mitraId) return;` di `computeVoucherDiscount` (pengecuali
+   produk mitra dari Fase 1) tidak pernah terpicu — celah eksklusi mitra.
+3. **`voucher.targetItemIds.includes(item.itemId)` TIDAK PERNAH `true`** untuk produk
+   bervariasi yang ditarget spesifik — `item.itemId` (variasi) tidak akan pernah sama dengan
+   ID yang tersimpan di `targetItemIds` (produk induk). Voucher yang admin targetkan ke produk
+   tertentu SELALU gagal untuk SEMUA variasi produk itu, dengan pesan "Voucher tidak berlaku
+   untuk item di keranjang Anda" — persis gejala yang dilaporkan.
+
+**Fix — helper baru `resolveProductCartItem()`** (`packages/db/src/helpers/resolve-product-
+item.ts`, di-export dari barrel `@jalajogja/db`): coba `products.id = itemId` dulu (kasus
+simple, paling umum); kalau tidak ketemu, fallback ke `product_variations.id = itemId` (JOIN
+ke `products` induk untuk `mitraId` + fallback harga — `COALESCE(variation.price,
+product.price)`, pola yang sama dipakai `resolveVariantPriceRanges()` di `lib/product-
+variation-price.server.ts`). Return `{productId, price, mitraId}` — `productId` SELALU ID
+PRODUK INDUK, dipakai KHUSUS untuk cocokkan `voucher.targetItemIds` (field baru
+`voucherTargetId` di `resolvedItems`, terpisah dari `itemId` asli yang tetap dipertahankan
+untuk `invoice_items`/tracking SKU — variasi mana yang benar-benar dibeli TIDAK BOLEH hilang
+dari catatan pesanan).
+
+Dipakai IDENTIK di KEDUA titik (`checkoutAction` DAN `previewVoucherAction`) — bukan
+duplikasi terpisah, karena staleness di sini genuinely berbahaya (preview yang bilang "voucher
+berlaku" tapi checkout sungguhan menolak, atau sebaliknya, akan jadi bug baru yang sama
+kelasnya). Ini mengikuti rasional yang sama dengan `voucher.ts` sendiri — satu sumber
+kebenaran untuk logic yang harus identik di dua pemanggil.
+
+**Diverifikasi EMPIRIS terhadap data real** (disposable script, dihapus setelah) — produk
+"Kaos IKPM Jogja" (tenant `forcreator`, 12 variasi, tenant-owned) di DB lokal: (a) query lama
+`WHERE products.id = variation.id` dikonfirmasi 0 baris (bukti root cause); (b)
+`resolveProductCartItem()` untuk `products.id` biasa → resolve benar (`price=150000,
+mitraId=null`); (c) untuk `product_variations.id` → resolve ke `productId` INDUK yang benar +
+harga VARIASI sendiri (`100000`, bukan harga induk `150000` — fallback COALESCE bekerja
+benar meski di kasus ini variasi punya harga sendiri); (d) ID yang genuinely tidak ada → `null`
+tanpa crash; (e) **reproduksi bug**: voucher 20% ditarget ke produk induk, cart berisi
+variasinya, matching pakai `itemId` mentah (variasi) → `computeVoucherDiscount` GAGAL match
+("Voucher tidak berlaku untuk item di keranjang Anda") — persis gejala dilaporkan; (f)
+**verifikasi fix**: matching yang sama tapi pakai `voucherTargetId` (hasil resolve, = produk
+induk) → MATCH, `totalDiscount = 20000` (tepat 20% dari harga variasi `100000`).
+
+**Titik lain yang DICEK dan DIKONFIRMASI AMAN (tidak butuh fix)**:
+- Normalisasi email (case-insensitive) — masih benar sejak fix § 11 poin 1, dicek ulang di
+  kode aktual.
+- Normalisasi phone — `checkoutAction` DAN `previewVoucherAction` SAMA-SAMA memanggil
+  `normalizePhone(customer.phone)` sebelum dibandingkan ke `voucher.restrictPhone` (yang
+  disimpan ter-normalisasi sejak `createVoucherAction`/`updateVoucherAction`) — konsisten,
+  tidak ada mismatch format E.164.
+- Semantik `itemId` untuk donasi/qurban — `getVoucherTargetOptionsAction`'s cabang
+  `targetType==="donation"` SUDAH benar sejak awal membedakan campaign biasa (`campaigns.id`)
+  dari varian qurban (`qurban_animals.id`), sesuai `itemId` yang genuinely dipakai cart untuk
+  masing-masing (§ 3 "Semantik target_item_ids untuk donasi/qurban") — tidak ada mismatch
+  serupa produk bervariasi di jalur donasi.
+- Tiket event — entitas flat (`event_tickets.id`), tidak ada konsep variasi, `itemId` yang
+  dipakai cart dan yang ditarget picker selalu sama.
+- Kode voucher itu sendiri (case, whitespace) — `findVoucherByCode()` selalu `.trim().
+  toUpperCase()` di server, terlepas apa yang dikirim client.
+- State UI `checkout-form.tsx` — kode yang berhasil di-preview (`voucherPreview.valid`) baru
+  dikirim ke `checkoutAction` saat submit final, form input reset preview ke `null` saat
+  diketik ulang (tidak ada state basi yang salah dikirim).
+
+**Dicatat sebagai edge case TERPISAH, TIDAK difix sesi ini** (di luar scope laporan, severity
+rendah): kalau voucher personal (`restrictPhone`/`restrictEmail`) berhasil di-preview untuk
+satu nomor/email, lalu customer mengubah nomor/email di Step 1 SEBELUM submit final, UI tidak
+otomatis menjalankan ulang preview — `checkoutAction` tetap benar menolak di server (re-
+validasi identitas terbaru), tapi UI sempat menampilkan "voucher diterapkan" yang sudah basi
+sampai submit ditolak. Hanya relevan untuk voucher personal (fitur sempit), tidak untuk
+voucher publik biasa seperti yang dilaporkan di `visikita.com`.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` DAN `packages/db` (percobaan pertama). `bun
+run build --filter=@jalajogja/web` genuine sukses (dev server dimatikan port 6202, `.next`
+dibersihkan, `Cached: 0 cached, 1 total`, 51.86 detik, dev server direstart, `curl` 200 OK).
+File disentuh: `packages/db/src/helpers/resolve-product-item.ts` (baru), `packages/db/src/
+index.ts` (export), `apps/web/app/(public)/[tenant]/cart/actions.ts` (checkoutAction +
+previewVoucherAction). Nol migrasi DB — murni perbaikan logika resolusi, skema tidak berubah.
+**Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser**
+— user perlu coba di `visikita.com` (setelah deploy): checkout produk bervariasi yang ditarget
+voucher spesifik, konfirmasi diskon sekarang benar-benar terpotong.

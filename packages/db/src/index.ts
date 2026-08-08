@@ -55,6 +55,14 @@ export {
   type VoucherApplicationResult,
 } from "./helpers/voucher";
 
+// Resolusi cart item "product" — tangani baik products.id (simple) maupun
+// product_variations.id (variable) secara konsisten. Lihat file untuk root cause bug yang
+// ditutup (voucher tidak match utk produk bervariasi + celah eksklusi mitra).
+export {
+  resolveProductCartItem,
+  type ResolvedProductCartItem,
+} from "./helpers/resolve-product-item";
+
 // Timezone tenant — satu sumber kebenaran untuk Event, Invoice/Billing, cron. Lihat
 // packages/db/src/helpers/tenant-timezone.ts untuk penjelasan kenapa ditempatkan di sini
 // (bukan apps/web/lib) — createLinkedInvoice juga memakainya.

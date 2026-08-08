@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db, resolveIdentity, generateUniqueCode, generateInstallmentScheduleCode, settleInstallmentSchedules } from "@jalajogja/db";
 import { createTenantDb, generateFinancialNumber, getSettings } from "@jalajogja/db";
 import {
-  findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount,
+  findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount, resolveProductCartItem,
   type VoucherApplicationResult, type ResolvedCartItemForVoucher,
 } from "@jalajogja/db";
 import { tenants } from "@jalajogja/db";
@@ -331,12 +331,13 @@ export async function previewVoucherAction(
     for (const item of cartItems) {
       let unitPrice = parseFloat(String(item.unitPrice));
       let mitraId: string | null = null;
+      // voucherTargetId = ID PRODUK INDUK untuk item bervariasi (VoucherTargetPicker cuma
+      // pernah simpan products.id) — lihat resolve-product-item.ts. Sama seperti checkoutAction.
+      let voucherTargetId = item.itemId;
       if (item.itemId) {
         if (item.itemType === "product") {
-          const [prod] = await tenantDb
-            .select({ price: schema.products.price, mitraId: schema.products.mitraId })
-            .from(schema.products).where(eq(schema.products.id, item.itemId)).limit(1);
-          if (prod) { unitPrice = parseFloat(String(prod.price)); mitraId = prod.mitraId ?? null; }
+          const resolved = await resolveProductCartItem(tenantDb, schema, item.itemId);
+          if (resolved) { unitPrice = resolved.price; mitraId = resolved.mitraId; voucherTargetId = resolved.productId; }
         } else if (item.itemType === "ticket") {
           const [ticket] = await tenantDb
             .select({ price: schema.eventTickets.price })
@@ -344,7 +345,7 @@ export async function previewVoucherAction(
           if (ticket) unitPrice = parseFloat(String(ticket.price));
         }
       }
-      voucherResolvedItems.push({ itemType: item.itemType, itemId: item.itemId, unitPrice, quantity: item.quantity, mitraId });
+      voucherResolvedItems.push({ itemType: item.itemType, itemId: voucherTargetId, unitPrice, quantity: item.quantity, mitraId });
     }
 
     const result = computeVoucherDiscount(
@@ -635,22 +636,28 @@ export async function checkoutAction(
         quantity:  number;
         mitraId:   string | null;
         forGabungRegistration: boolean;
+        // ID PRODUK INDUK untuk cocokkan voucher.targetItemIds — beda dari itemId di atas kalau
+        // item ini variasi produk (itemId = product_variations.id, VoucherTargetPicker cuma
+        // pernah menyimpan products.id). Untuk tiket/donasi/produk simple, sama persis itemId.
+        voucherTargetId: string | null;
       }> = [];
 
       for (const item of cartItems) {
         let unitPrice = parseFloat(String(item.unitPrice));
         let mitraId: string | null = null;
+        let voucherTargetId = item.itemId;
 
         if (item.itemId) {
           if (item.itemType === "product") {
-            const [prod] = await tx
-              .select({ price: schema.products.price, name: schema.products.name, mitraId: schema.products.mitraId })
-              .from(schema.products)
-              .where(eq(schema.products.id, item.itemId))
-              .limit(1);
-            if (prod) {
-              unitPrice = parseFloat(String(prod.price));
-              mitraId   = prod.mitraId ?? null;
+            // resolveProductCartItem menangani KEDUA kasus: itemId = products.id (simple)
+            // ATAU product_variations.id (bervariasi) — lihat resolve-product-item.ts untuk
+            // root cause bug yang ditutup (voucher tidak match + celah eksklusi mitra utk
+            // produk bervariasi).
+            const resolved = await resolveProductCartItem(tx, schema, item.itemId);
+            if (resolved) {
+              unitPrice        = resolved.price;
+              mitraId          = resolved.mitraId;
+              voucherTargetId  = resolved.productId;
             }
           } else if (item.itemType === "ticket") {
             const [ticket] = await tx
@@ -671,6 +678,7 @@ export async function checkoutAction(
           quantity:  item.quantity,
           mitraId,
           forGabungRegistration: item.forGabungRegistration,
+          voucherTargetId,
         });
       }
 
@@ -691,7 +699,7 @@ export async function checkoutAction(
         });
 
         const voucherResolvedItems: ResolvedCartItemForVoucher[] = resolvedItems.map((it) => ({
-          itemType: it.itemType, itemId: it.itemId, unitPrice: it.unitPrice,
+          itemType: it.itemType, itemId: it.voucherTargetId, unitPrice: it.unitPrice,
           quantity: it.quantity, mitraId: it.mitraId,
         }));
 
