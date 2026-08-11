@@ -40,6 +40,7 @@ const NOTIF_GROUPS: Array<{
   {
     label: "Pembayaran",
     items: [
+      { key: "invoice_created",    label: "Invoice baru dibuat",     desc: "Kirim ke customer saat invoice baru dibuat (checkout keranjang atau invoice manual admin), berisi link ke halaman pembayaran." },
       { key: "payment_submitted",  label: "Bukti bayar diterima",   desc: "Kirim ke customer saat bukti pembayaran berhasil diupload." },
       { key: "payment_confirmed",  label: "Pembayaran dikonfirmasi", desc: "Kirim ke customer saat admin mengkonfirmasi pembayaran." },
       { key: "payment_rejected",   label: "Pembayaran ditolak",      desc: "Kirim ke customer saat bukti pembayaran ditolak admin." },
