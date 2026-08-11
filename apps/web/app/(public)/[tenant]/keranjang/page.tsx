@@ -339,36 +339,34 @@ export default async function KeranjangPage({ params }: Props) {
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="max-w-2xl mx-auto px-4 py-10">
-        <div className="flex items-center gap-2 mb-6">
-          <ShoppingCart className="w-5 h-5 text-muted-foreground" />
-          <h1 className="text-xl font-semibold">Keranjang Belanja</h1>
-          {cart && cart.items.length > 0 && (
-            <span className="rounded-full bg-primary/10 text-primary text-xs font-medium px-2 py-0.5">
-              {cart.items.length} item
-            </span>
-          )}
-        </div>
-
-        <CartClient slug={slug} cart={cart} />
-
-        {(donationBanners.length > 0 || linkedProductBanner) && (
-          <div className="mt-4">
-            <DonationBannerCart
-              tenantSlug={slug}
-              campaigns={donationBanners}
-              linkedProduct={linkedProductBanner}
-            />
-          </div>
-        )}
-
-        {/* Elemen PALING TERAKHIR di halaman — WAJIB, supaya spacer sticky bar tidak nyangkut
-            di tengah (sebelum banner donasi/produk di atas). Lihat lesson CLAUDE.md. */}
+    <div className="max-w-2xl mx-auto px-4 py-10">
+      <div className="flex items-center gap-2 mb-6">
+        <ShoppingCart className="w-5 h-5 text-muted-foreground" />
+        <h1 className="text-xl font-semibold">Keranjang Belanja</h1>
         {cart && cart.items.length > 0 && (
-          <CartMobileBar slug={slug} subtotal={cart.subtotal} />
+          <span className="rounded-full bg-primary/10 text-primary text-xs font-medium px-2 py-0.5">
+            {cart.items.length} item
+          </span>
         )}
       </div>
-    </main>
+
+      <CartClient slug={slug} cart={cart} />
+
+      {(donationBanners.length > 0 || linkedProductBanner) && (
+        <div className="mt-4">
+          <DonationBannerCart
+            tenantSlug={slug}
+            campaigns={donationBanners}
+            linkedProduct={linkedProductBanner}
+          />
+        </div>
+      )}
+
+      {/* Elemen PALING TERAKHIR di halaman — WAJIB, supaya spacer sticky bar tidak nyangkut
+          di tengah (sebelum banner donasi/produk di atas). Lihat lesson CLAUDE.md. */}
+      {cart && cart.items.length > 0 && (
+        <CartMobileBar slug={slug} subtotal={cart.subtotal} />
+      )}
+    </div>
   );
 }

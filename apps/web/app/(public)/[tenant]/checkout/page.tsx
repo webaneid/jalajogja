@@ -288,22 +288,20 @@ export default async function CheckoutPage({ params }: Props) {
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 py-10">
-        <div className="mb-6">
-          <a href={`/${slug}/keranjang`} className="text-sm text-muted-foreground hover:text-foreground">
-            ← Kembali ke Keranjang
-          </a>
-        </div>
-        <h1 className="text-xl font-semibold mb-6">Checkout</h1>
-        <CheckoutForm
-          slug={slug}
-          cart={cart}
-          defaults={defaults}
-          sellerGroups={sellerGroups}
-          addonCouriers={addonCouriers}
-        />
+    <div className="max-w-7xl mx-auto px-4 py-10">
+      <div className="mb-6">
+        <a href={`/${slug}/keranjang`} className="text-sm text-muted-foreground hover:text-foreground">
+          ← Kembali ke Keranjang
+        </a>
       </div>
-    </main>
+      <h1 className="text-xl font-semibold mb-6">Checkout</h1>
+      <CheckoutForm
+        slug={slug}
+        cart={cart}
+        defaults={defaults}
+        sellerGroups={sellerGroups}
+        addonCouriers={addonCouriers}
+      />
+    </div>
   );
 }
