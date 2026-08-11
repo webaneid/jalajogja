@@ -680,7 +680,7 @@ export function CheckoutForm({
              dengan shell mobile event/donasi/produk), kembali ke alur normal di desktop.
              `mt-0` sama alasannya dengan spacer di atas (cuma relevan saat fixed di mobile —
              saat md:static di desktop, md:space-y-5 di bawah tetap mengatur gap seperti biasa). ── */}
-        <div className="fixed inset-x-0 bottom-0 z-40 mt-0 space-y-3 border-t border-border bg-background p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] md:static md:inset-auto md:z-auto md:mt-5 md:space-y-5 md:border-0 md:bg-transparent md:p-0 md:pb-0 md:shadow-none">
+        <div className="fixed inset-x-0 bottom-0 z-40 mt-0 max-h-[85vh] overflow-y-auto space-y-3 border-t border-border bg-background p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] md:static md:inset-auto md:z-auto md:mt-5 md:max-h-none md:overflow-visible md:space-y-5 md:border-0 md:bg-transparent md:p-0 md:pb-0 md:shadow-none">
           <div className="rounded-lg border border-border p-4">
             <p className="text-sm font-medium mb-2">Punya Kode Voucher?</p>
             {voucherPreview?.valid ? (
