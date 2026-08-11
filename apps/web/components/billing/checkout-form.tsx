@@ -325,7 +325,7 @@ export function CheckoutForm({
     <>
     <div className="grid gap-6 lg:grid-cols-[1fr_360px] items-start">
       {/* ── Form kiri ── */}
-      <div className="space-y-5">
+      <div className="space-y-5 min-w-0">
 
         {/* Progress indicator — hanya jika ada shipping */}
         {needsShipping && (
@@ -773,7 +773,7 @@ export function CheckoutForm({
       </div>
 
       {/* ── Ringkasan kanan ── */}
-      <div className="rounded-lg border border-border p-5 space-y-3 sticky top-4">
+      <div className="rounded-lg border border-border p-5 space-y-3 sticky top-4 min-w-0">
         <p className="font-semibold text-sm">Ringkasan Pesanan</p>
         <div className="divide-y divide-border">
           {cart.items.map((item) => {
