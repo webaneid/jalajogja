@@ -64,7 +64,7 @@ export function MemberForm({ slug, defaultValues = {}, memberId, onSubmit }: Mem
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Identitas Pribadi
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
           <div className="sm:col-span-2">
             <label className={label}>Nama Lengkap <span className="text-destructive">*</span></label>
@@ -123,7 +123,7 @@ export function MemberForm({ slug, defaultValues = {}, memberId, onSubmit }: Mem
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Keanggotaan
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
           <div>
             <label className={label}>Status</label>

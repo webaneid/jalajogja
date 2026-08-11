@@ -172,7 +172,7 @@ function LabaRugiTable({ data }: { data: LabaRugiData }) {
 function ArusKasTable({ data }: { data: ArusKasData }) {
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Pemasukan */}
         <div>
           <h3 className="font-medium text-sm px-3 py-2 bg-green-50 border border-border rounded-t-md">Arus Kas Masuk</h3>

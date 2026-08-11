@@ -174,7 +174,7 @@ export default async function FinanceDashboardPage({
       </div>
 
       {/* Tabel terbaru */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Pemasukan terbaru */}
         <div className="rounded-lg border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">

@@ -16331,8 +16331,137 @@ diverifikasi visual di browser** — user perlu coba: ubah label "Usaha" jadi cu
 service, arsip+detail publik, admin wizard, statistik, `/gabung`) sementara field DI DALAM form
 Usaha (Kategori/Sektor/Nama Usaha) tetap memakai teks aslinya.
 
+### [2026-08-11] Bug Kelas CSS: Grid Tanpa `grid-cols` di Base Breakpoint — Overflow/"Menjorok" di Mobile
+
+> Memperluas lesson lama "Mobile Layout Overflow — `min-h-screen` Ekstra di Public Page" —
+> lesson itu baru menyinggung gejalanya, belum menjelaskan MEKANISME CSS-nya. Dipicu laporan
+> user: checkout page terasa "menjorok ke kiri frame" di mobile, dan user sendiri menduga
+> tepat sasaran (verbatim): *"problemnya ada di class: grid gap-6 lg:grid-cols-[1fr_360px] ...
+> tp gk tau apakah mungkin itu terjadi ketika mobile jadi flex-column?"*
+
+**Root cause (mekanisme CSS, bukan cuma gejala)**: `display:grid` yang TIDAK punya
+`grid-template-columns` eksplisit aktif di breakpoint saat ini (mis. `grid lg:grid-cols-[1fr_
+360px]` tanpa `grid-cols-*` apa pun di base) jatuh ke `grid-auto-columns: auto` bawaan browser
+— BEDA dari utility angka Tailwind (`grid-cols-2`, dst) yang SELALU digenerate sebagai
+`repeat(N, minmax(0, 1fr))`. Track `auto` (tanpa `minmax(0, ...)`) menghormati **min-content
+size** tiap grid item — persis analog `min-width: auto` bawaan flex item yang sudah lama jadi
+bug berulang di project ini (`min-w-0` di kolom kiri). Bedanya: grid TIDAK sefleksibel flex di
+sini justru karena TIDAK ADA `minmax(0,...)` otomatis sampai breakpoint `grid-cols-N` benar-
+benar aktif — kalau ada konten di dalam kolom yang tidak bisa menyusut (teks panjang tak
+terbungkus, `<table>`, elemen fixed-width), grid track (dan sering seluruh halaman) dipaksa
+lebih lebar dari viewport. Browser mempertahankan posisi scroll di x=0, jadi yang terlihat
+adalah konten "menjorok"/kompres ke kiri, bukan overflow yang jelas ke kanan.
+
+**Dua fix yang valid, kapan pakai yang mana**:
+1. **Default/lebih sederhana — tambah base `grid-cols-1` eksplisit** ke kontainer:
+   `grid grid-cols-1 lg:grid-cols-2` (bukan `grid lg:grid-cols-2` polos). SATU edit di
+   kontainer otomatis membenahi SEMUA child sekaligus (Tailwind `repeat(1, minmax(0,1fr))`
+   sudah termasuk `minmax(0,...)`). Ini fix root-cause yang lebih murah untuk grid simetris
+   N-kolom (form field, card grid, dst) — dipakai untuk 7 dari 8 temuan sesi ini.
+2. **`min-w-0` langsung di child grid** — dipakai kalau kontainer punya `grid-template-columns`
+   ARBITRARY asimetris (`[1fr_360px]`) yang SEBAGIAN child-nya sudah benar (base breakpoint
+   sengaja tetap 1-kolom implisit) dan cuma satu child spesifik yang belum di-patch — lebih
+   surgical, konsisten dengan pattern yang SUDAH ada di file yang sama. Dipakai untuk
+   `checkout-form.tsx` dan `agenda/[slug]/page.tsx` (asimetris `[1fr_360px]`, sudah ada
+   preseden `min-w-0` di kolom kiri, tinggal lengkapi kolom kanan yang terlewat).
+
+**False positive yang WAJIB dikenali** (jangan disentuh, bukan bug): grid yang `display`-nya
+`flex`/`hidden` di base dan BARU jadi `grid` PERSIS di breakpoint yang sama dengan
+`grid-cols`-nya — contoh: `flex gap-3 overflow-x-auto lg:grid lg:grid-cols-4
+lg:overflow-visible` (pola carousel horizontal-scroll di mobile, `hero-design-1.tsx` +
+`modules-design-1.tsx`). Grid layout algorithm TIDAK PERNAH aktif di breakpoint di mana
+`display:grid` sendiri belum aktif — kolom yang "hilang" di situ bukan gap sama sekali.
+
+**Cara audit sistematis** (dipakai sesi ini, reusable untuk sweep berikutnya): grep semua
+`className` yang mengandung `(sm|md|lg|xl):grid-cols-`, lalu cek STRING YANG SAMA — apakah ada
+`grid-cols-*` tanpa prefix breakpoint juga di situ? Kalau tidak ada DAN `display:grid` genuinely
+aktif di base (bukan `flex`/`hidden`), itu kandidat bug:
+```bash
+grep -rnoE 'className=\{?[`"][^`"]*grid-cols-[^`"]*[`"]' --include="*.tsx" . | python3 -c '
+import sys, re
+pat_prefixed = re.compile(r"(?:^|\s)(sm|md|lg|xl|2xl):grid-cols-")
+for line in sys.stdin:
+    parts = line.rstrip("\n").split(":", 2)
+    if len(parts) < 3: continue
+    content = parts[2]
+    if not pat_prefixed.search(content): continue
+    stripped = re.sub(r"(?:sm|md|lg|xl|2xl):grid-cols-\S+", "", content)
+    if not re.search(r"(?:^|\s)grid-cols-", stripped):
+        print(f"{parts[0]}:{parts[1]}  ::  {content.strip()}")
+'
+```
+Hasil masih perlu diverifikasi manual satu-satu (buang false positive `flex`-base seperti di
+atas) sebelum diputuskan perlu fix atau tidak.
+
+**8 file diperbaiki sesi ini** (7 pakai base `grid-cols-1`, 1 pakai `min-w-0` tambahan):
+`checkout-form.tsx` (2× `min-w-0`, fix pertama yang memicu audit ini),
+`agenda/[slug]/page.tsx` (1× `min-w-0`, kolom kanan yang terlewat — kolom kiri sudah benar),
+`contact-template.tsx`, `landing-template.tsx` (section Keunggulan/Layanan — card grid publik,
+blast radius tinggi lintas tenant), `finance/dashboard/page.tsx`, `laporan-client.tsx`
+(mengandung `<table>` — konten paling rentan tidak menyusut di kelas bug ini),
+`member-form.tsx` (2 instance sekaligus via `replace_all`), `change-password-section.tsx` —
+semua admin dashboard + publik dicek bersamaan, bukan cuma yang dilaporkan user.
+
+**Aturan yang ditegaskan**: setiap kali menulis `className` grid BARU dengan `grid-cols-*`
+yang hanya aktif di breakpoint tertentu (`sm:`/`md:`/`lg:`), WAJIB sertakan base `grid-cols-1`
+(atau count lain sesuai intent mobile) — JANGAN andalkan "implicit single-column" bawaan
+browser untuk mobile, karena itu TIDAK sama dengan flex-column yang benar-benar shrinkable.
+Kalau terlanjur ada grid tanpa base `grid-cols` dan tidak mau ubah struktur kontainer, `min-w-0`
+di child adalah alternatif yang sama validnya — tapi base `grid-cols-1` selalu lebih murah
+(satu edit, bukan N).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Susulan Keempat — Label Custom Nama Modul (Usaha/Pesantren/
+- Terakhir dikerjakan: **Audit + Fix Bug Kelas CSS Grid (`grid-cols` tanpa base breakpoint)
+  di 8 File, Lanjutan dari Bug Checkout Mobile** (lihat lesson `[2026-08-11]` "Bug Kelas CSS:
+  Grid Tanpa `grid-cols` di Base Breakpoint" di atas). Sesi ini dimulai dari beberapa laporan
+  bug user (toggle notif WA `invoice_created` hilang total dari UI settings — DIFIX, entri
+  ditambahkan ke `NOTIF_GROUPS` di `whatsapp-setup-client.tsx`; investigasi "Ambil Sendiri masih
+  wajib pilih kota tujuan" — TIDAK terselesaikan definitif, pertanyaan diagnostik lanjutan tidak
+  pernah dijawab user; tombol "Lanjut" checkout kadang hilang di mobile — fix defensif
+  `max-h-[85vh] overflow-y-auto` di sticky bar), lalu berlanjut ke laporan `<main>` checkout
+  "menjorok ke kiri frame" di mobile. **Root cause ke-1 ditemukan**: `checkout/page.tsx` DAN
+  `keranjang/page.tsx` sama-sama merender `<main className="min-h-screen bg-background">`
+  sebagai elemen terluar SENDIRI, padahal `PublicLayout` (`app/(public)/[tenant]/layout.tsx`)
+  SUDAH membungkus semua halaman publik dengan `<main className="flex-1">{children}</main>` —
+  menghasilkan `<main>` bersarang (invalid HTML) persis pola lama "Mobile Layout Overflow —
+  `min-h-screen` Ekstra". Fix: wrapper dihapus total di kedua file, disamakan ke pola referensi
+  `post/[slug]/page.tsx` (langsung `max-w-* mx-auto px-4`, tanpa `<main>` tambahan) — **sudah
+  di-commit (`da70ee3`) DAN DI-PUSH** (sebelum instruksi "jangan push dulu" datang). User
+  lanjut menunjuk **root cause ke-2** sendiri (verbatim, tepat sasaran): grid
+  `lg:grid-cols-[1fr_360px]` di `checkout-form.tsx` tanpa `grid-cols-1` di base, curiga tidak
+  se-fleksibel flex saat mobile. Dikonfirmasi benar — CSS Grid implicit-column (tanpa
+  `grid-template-columns` eksplisit di breakpoint aktif) jatuh ke `grid-auto-columns: auto`
+  BAWAAN BROWSER (bukan Tailwind's `minmax(0,1fr)` yang otomatis ada di utility angka
+  `grid-cols-N`), sehingga menghormati `min-content` tiap grid item — analog bug `min-width:
+  auto` flex item yang sudah lama dikunci sebagai lesson (`min-w-0` kolom kiri). Fix:
+  `min-w-0` di kedua kolom `checkout-form.tsx` — **commit lokal `2ed173f`, TIDAK di-push**
+  (instruksi eksplisit user setelahnya: "jgn di push dulu, jgn setiap perbaikan d push sblm sy
+  suruh" — berlaku untuk SISA sesi ini). User minta diperluas jadi audit sistematis + lesson
+  ("kira-kira bug css spt ini bisa kamu cek gk? lalu dokumentasikan"). **Audit**: script Python
+  grep semua `className` dengan `(sm|md|lg|xl):grid-cols-` TANPA base `grid-cols-*` di string
+  yang sama — 10 kandidat ditemukan, 2 FALSE POSITIVE dikenali+dikonfirmasi aman
+  (`hero-design-1.tsx`+`modules-design-1.tsx` — pola carousel `flex ... lg:grid lg:grid-cols-4`,
+  `display:grid` baru aktif PERSIS di breakpoint yang sama dengan `grid-cols`-nya, jadi grid
+  algorithm tidak pernah jalan di base). **8 file genuinely diperbaiki** — 7 dengan base
+  `grid-cols-1` ditambahkan ke kontainer (fix lebih murah, 1 edit membenahi SEMUA child
+  sekaligus): `contact-template.tsx`, `landing-template.tsx` (section Keunggulan/Layanan, card
+  grid publik lintas tenant), `finance/dashboard/page.tsx`, `laporan-client.tsx` (mengandung
+  `<table>`, konten paling rentan di kelas bug ini), `member-form.tsx` (2 instance sekaligus via
+  `replace_all`), `change-password-section.tsx` — dan 1 dengan `min-w-0` tambahan
+  (`agenda/[slug]/page.tsx`, kolom kanan yang terlewat — kolom kiri di file yang sama sudah
+  benar sejak awal, dipertahankan konsisten dengan pola yang sudah ada di file itu daripada
+  diganti). `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses
+  (`Cached: 0 cached, 1 total`, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 OK)
+  di SETIAP tahap (3× sepanjang sesi: fix `<main>`, fix `min-w-0` checkout, fix 7 file audit).
+  Lesson lengkap (mekanisme CSS root-cause, 2 varian fix + kapan pakai yang mana, script audit
+  reusable, false-positive yang harus dikenali) ditulis di CLAUDE.md sebagai perluasan lesson
+  lama. **SEMUA fix dari "min-w-0 checkout-form.tsx" sampai audit 7 file ini BELUM di-push** —
+  menunggu instruksi eksplisit user (hanya fix `<main>` ganda yang sudah sempat push duluan).
+  Belum diverifikasi visual di browser sungguhan (keterbatasan environment sesi ini) — user
+  perlu cek langsung di HP setelah deploy: checkout/keranjang tidak lagi "menjorok", dan
+  form-form admin (member-form, laporan, dashboard keuangan) tetap tampil normal (nol perubahan
+  visual diharapkan di sana, base `grid-cols-1` cuma jaring pengaman).
+- Sesi sebelumnya: **Susulan Keempat — Label Custom Nama Modul (Usaha/Pesantren/
   Profesional)** (lihat lesson `[2026-08-07]` "Susulan Keempat: Label Custom Nama Modul" di
   atas, detail lengkap `docs/arsitektur-ekosistem.md` § 9.7). Lanjutan langsung dari "Susulan
   Ketiga — Tambah Sektor Baru" (bullet berikutnya di bawah) — user minta perluasan sistem

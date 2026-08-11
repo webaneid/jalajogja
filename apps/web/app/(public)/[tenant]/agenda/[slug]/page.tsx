@@ -937,7 +937,7 @@ export default async function PublicEventPage({
           /></div>
 
           {/* ── Kanan — desktop (sticky), tidak diubah ── */}
-          <div className="hidden md:block lg:sticky lg:top-6 space-y-4">
+          <div className="hidden md:block lg:sticky lg:top-6 space-y-4 min-w-0">
             {ticketPanelContent}
           </div>
 

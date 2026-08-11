@@ -58,7 +58,7 @@ export function ContactTemplate({ tenantSlug, pageId, title, body, settings }: P
       <div className="max-w-4xl">
       <h1 className="text-3xl font-bold mb-10">{body.customTitle || title}</h1>
 
-      <div className="grid md:grid-cols-2 gap-10">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
         {/* Info kontak */}
         <div className="space-y-5">
           <h2 className="text-lg font-semibold">Informasi Kontak</h2>

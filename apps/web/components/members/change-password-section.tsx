@@ -97,7 +97,7 @@ export function ChangePasswordSection({ slug, memberId, hasAccount, initialEmail
         </p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {!hasAccount && (
           <div className="space-y-1.5 sm:col-span-2">
             <label className="text-sm font-medium">
