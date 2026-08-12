@@ -341,6 +341,73 @@ maupun di helper — WAJIB selalu pakai `total + uniqueCode`, jangan pernah
 `submitPaymentProofAction` (customer submit) — kalau salah satu lupa, invoice
 nyangkut partial selamanya.
 
+> **⚠️ KOREKSI (2026-08-12)**: aturan "3 titik" di atas TIDAK LENGKAP — lihat
+> lesson di bawah untuk titik ke-4 yang terlewat lama (notifikasi WA
+> `invoice_created`, kategori berbeda dari 3 titik ini karena bukan soal
+> mencatat pembayaran, tapi soal MENAMPILKAN nominal ke customer via kanal
+> lain di luar halaman invoice itu sendiri).
+
+### [2026-08-12] Bug FATAL: Notifikasi WA `invoice_created` Kirim Nominal Tanpa Kode Unik
+
+**Gejala** (dilaporkan user langsung, contoh nyata invoice `620-INV-202608-00053`,
+tenant `visikita`): notifikasi WhatsApp "Invoice Baru" menampilkan `Total: Rp
+350.000` — tapi begitu link invoice di klik, nominal yang HARUS ditransfer
+(sudah termasuk kode unik) berbeda, misal `Rp 350.347`. Customer transfer
+sesuai angka di WhatsApp (tanpa kode unik) → payment yang tercatat SELALU
+kurang persis sejumlah kode unik, invoice nyangkut `partial` — persis kelas
+akibat yang sama dengan bug `submitPaymentProofAction` di atas, cuma sumber
+angkanya kali ini dari notifikasi, bukan dari form submit.
+
+**Root cause**: `checkoutAction` (`app/(public)/[tenant]/cart/actions.ts`,
+alur checkout publik — cart produk/tiket/donasi) menghitung `uniqueCode` DI
+DALAM `db.transaction()` (dipakai benar untuk `invoices.uniqueCode` saat
+insert), tapi TIDAK menyertakannya di `TxResult` yang dikembalikan keluar
+transaction. Notifikasi `invoice_created` di luar transaction lalu kirim:
+```typescript
+// SALAH — sebelum fix, txResult tidak punya field uniqueCode sama sekali
+amount: waRupiah(txResult.total),
+```
+Jalur ADMIN MANUAL (`createInvoiceAction`, `finance/billing/actions.ts`)
+TERNYATA SUDAH BENAR sejak awal (`const amountDue = total + uniqueCode;`) —
+bug ini HANYA di jalur cart publik, membuatnya lebih berbahaya karena itu
+jalur paling sering dipakai (event registration, donasi, toko).
+
+**Fix**: `uniqueCode` ditambahkan ke type `TxResult` dan ke objek yang
+dikembalikan transaction, notifikasi diubah jadi
+`amount: waRupiah(txResult.total + txResult.uniqueCode)`.
+
+**Audit menyeluruh dilakukan sekalian** (bukan cuma tambal 1 titik yang
+dilaporkan) — SEMUA 24 pemanggilan `notifyWa(...)` di seluruh app digrep dan
+dicek konteksnya satu per satu. Hasil: HANYA titik ini yang bug. Titik lain
+yang SEKILAS mirip tapi TERNYATA benar, dengan alasan masing-masing:
+- `payment_submitted`/`installment_payment_submitted` — kirim `data.amount`
+  (nominal yang CUSTOMER SENDIRI ketik saat submit bukti, prinsip "Fidelitas
+  ke Nominal yang Customer Submit" sudah dikunci sebelumnya) — BUKAN
+  recalculation "apa yang seharusnya dibayar", jadi tidak butuh `+uniqueCode`.
+- `payment_confirmed` (admin konfirmasi manual maupun verifikasi bukti) —
+  kirim nominal yang ADMIN konfirmasi/verifikasi sungguhan, sama alasannya.
+- `invoice_reminder` (cron) — sudah benar `(total + uniqueCode) - paidAmount`.
+- `installment_reminder`/`installment_due_today` (cron cicilan) — `amount`
+  per-termin sudah benar pakai kode unik PER TERMIN
+  (`installmentSchedules.uniqueCode`, mekanisme terpisah dari kode unik
+  invoice-level — lihat § "Kode Unik PER TERMIN" di `docs/arsitektur-billing.md`);
+  `remaining` (total invoice tersisa) sengaja TIDAK tambah `uniqueCode`
+  invoice-level karena kolom itu MEMANG di-nolkan permanen saat invoice
+  dikonversi jadi cicilan (`invoices.uniqueCode = 0` sejak konversi).
+- `donation_received` — kirim nominal PER ITEM donasi (`invoiceItems.total`),
+  tidak terkait kode unik invoice-level sama sekali.
+
+**Aturan yang ditegaskan**: perluasan langsung dari "3 titik" di atas — kode
+unik bukan cuma soal MENCATAT pembayaran (payment actions), tapi juga soal
+MENAMPILKAN nominal ke customer lewat KANAL APA PUN (notifikasi WA, email,
+dsb) yang menyatakan "ini yang harus Anda bayar/transfer". Kalau kanal itu
+me-refer ke `total` invoice secara langsung (bukan nominal yang sudah
+dikonfirmasi/di-submit orang), WAJIB `total + uniqueCode`. Setiap kali
+menambah kanal notifikasi BARU yang menyebut nominal invoice, cek dulu: apakah
+ini "berapa yang harus dibayar" (butuh +uniqueCode) atau "berapa yang sudah
+dibayar/dikonfirmasi" (pakai nominal aktual apa adanya, TIDAK ditambah kode
+unik lagi)?
+
 ### [2026-07-12] Bug: Loop auto-create tiket jalan tanpa guard `sourceType`
 
 Loop yang mengubah invoice item `itemType="ticket"` jadi `event_registrations`

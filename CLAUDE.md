@@ -16410,6 +16410,51 @@ Kalau terlanjur ada grid tanpa base `grid-cols` dan tidak mau ubah struktur kont
 di child adalah alternatif yang sama validnya — tapi base `grid-cols-1` selalu lebih murah
 (satu edit, bukan N).
 
+### [2026-08-12] Bug FATAL: Notifikasi WA `invoice_created` Kirim Nominal Tanpa Kode Unik
+
+> Detail lengkap + audit menyeluruh 24 titik `notifyWa(...)`:
+> **`docs/arsitektur-kode-unik.md` § 12** (koreksi eksplisit atas aturan "3 titik" lama, sekarang
+> ditandai 4 titik).
+
+Dilaporkan user langsung dengan contoh nyata (invoice `620-INV-202608-00053`, tenant
+`visikita`): notifikasi WA "Invoice Baru" menampilkan `Total: Rp 350.000`, tapi halaman invoice
+sesungguhnya menagih nominal LEBIH (sudah termasuk kode unik) — customer transfer sesuai angka
+di WhatsApp, payment tercatat selalu kurang persis sejumlah kode unik, invoice nyangkut
+`partial` selamanya (persis kelas akibat lesson lama "submitPaymentProofAction tidak include
+uniqueCode", cuma sumber angka salahnya kali ini notifikasi, bukan form submit).
+
+**Root cause**: `checkoutAction` (`cart/actions.ts`, alur checkout publik) hitung `uniqueCode`
+DI DALAM `db.transaction()` (dipakai benar untuk insert `invoices.uniqueCode`), tapi TIDAK
+menyertakannya di `TxResult` yang keluar dari transaction — notifikasi `invoice_created` di luar
+transaction jadi kirim `waRupiah(txResult.total)` polos. Jalur admin manual
+(`createInvoiceAction`) TERNYATA SUDAH BENAR sejak awal — bug HANYA di jalur cart publik, yang
+justru paling sering dipakai (event/donasi/toko).
+
+**Fix**: `uniqueCode` ditambahkan ke type `TxResult` + objek return transaction, notifikasi
+diubah jadi `amount: waRupiah(txResult.total + txResult.uniqueCode)`.
+
+**Audit menyeluruh dilakukan sekalian** (bukan cuma tambal 1 titik) — SEMUA 24 pemanggilan
+`notifyWa(...)` di seluruh app dicek konteksnya. Hasil: HANYA titik ini bug. Titik lain yang
+SEKILAS mirip tapi TERNYATA benar: `payment_submitted`/`payment_confirmed` (kirim nominal yang
+CUSTOMER/ADMIN sendiri konfirmasi sungguhan — prinsip "Fidelitas ke Nominal yang Customer
+Submit" — BUKAN recalculation "apa yang seharusnya dibayar", jadi memang tidak butuh
+`+uniqueCode`), `invoice_reminder` cron (sudah benar), `installment_reminder`/
+`installment_due_today` cron (kode unik PER TERMIN sudah benar, `uniqueCode` invoice-level
+SENGAJA tidak ditambah lagi karena kolom itu memang di-nolkan permanen begitu invoice
+dikonversi jadi cicilan), `donation_received` (nominal per-item, tidak terkait kode unik
+invoice-level).
+
+**Aturan yang ditegaskan**: perluasan langsung "3 titik wajib +uniqueCode" (lesson lama, kini
+dikoreksi jadi 4) — kode unik bukan cuma soal MENCATAT pembayaran (payment actions), tapi juga
+soal MENAMPILKAN nominal ke customer lewat KANAL APA PUN (WA, email, dsb) yang menyatakan "ini
+yang harus dibayar". Setiap kali menambah kanal notifikasi baru yang menyebut nominal invoice,
+cek dulu: "berapa yang harus dibayar" (butuh `+uniqueCode`) vs "berapa yang sudah dibayar/
+dikonfirmasi" (nominal aktual apa adanya, JANGAN ditambah kode unik lagi).
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (dev server
+dimatikan+`.next` dibersihkan+direstart, 1m35s, `Cached: 0 cached`). **Commit lokal, belum
+di-push** — mengikuti instruksi standing user, menunggu konfirmasi push eksplisit.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Audit + Fix Bug Kelas CSS Grid (`grid-cols` tanpa base breakpoint)
   di 8 File, Lanjutan dari Bug Checkout Mobile** (lihat lesson `[2026-08-11]` "Bug Kelas CSS:

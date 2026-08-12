@@ -564,7 +564,7 @@ export async function checkoutAction(
       | { error: string }
       | { duplicate: true; invoiceId: string; invoiceNumber: string }
       | {
-          invoiceId: string; invoiceNumber: string; total: number; dueDate: string;
+          invoiceId: string; invoiceNumber: string; total: number; uniqueCode: number; dueDate: string;
           isFullyPaid: boolean; voucherDiscountTotal: number;
           newEventRegs: Array<{ eventId: string; regNumber: string; attendeeName: string; attendeePhone: string | null }>;
         };
@@ -947,7 +947,7 @@ export async function checkoutAction(
       await tx.delete(schema.carts).where(eq(schema.carts.id, lockedCart.id));
 
       return {
-        invoiceId: invoice.id, invoiceNumber, total, dueDate, isFullyPaid,
+        invoiceId: invoice.id, invoiceNumber, total, uniqueCode, dueDate, isFullyPaid,
         voucherDiscountTotal: voucherApplication?.totalDiscount ?? 0,
         newEventRegs,
       };
@@ -1011,7 +1011,10 @@ export async function checkoutAction(
           vars: {
             name:          customerName,
             invoiceNumber: txResult.invoiceNumber,
-            amount:        waRupiah(txResult.total),
+            // Wajib total + uniqueCode — invoice publik selalu tampilkan nominal transfer
+            // dengan kode unik ditambahkan, jangan pernah kirim total polos di sini.
+            // Lihat lesson CLAUDE.md § Kode Unik Transaksi.
+            amount:        waRupiah(txResult.total + txResult.uniqueCode),
             dueDate:       txResult.dueDate,
             invoiceUrl,
           },
