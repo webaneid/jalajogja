@@ -1825,6 +1825,7 @@ export type InvoiceDetail = {
   customerPhone: string | null;
   customerEmail: string | null;
   subtotal:      number;
+  shippingTotal: number;
   discount:      number;
   voucherCode:           string | null;
   voucherDiscountTotal:  number;
@@ -1961,6 +1962,7 @@ export async function getInvoiceDetailAction(
       customerPhone: inv.customerPhone,
       customerEmail: inv.customerEmail,
       subtotal:      parseFloat(String(inv.subtotal)),
+      shippingTotal: parseFloat(String(inv.shippingTotal ?? "0")),
       discount:      parseFloat(String(inv.discount)),
       voucherCode:           inv.voucherCode ?? null,
       voucherDiscountTotal:  parseFloat(String(inv.voucherDiscountTotal ?? "0")),

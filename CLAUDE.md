@@ -16452,60 +16452,86 @@ cek dulu: "berapa yang harus dibayar" (butuh `+uniqueCode`) vs "berapa yang suda
 dikonfirmasi" (nominal aktual apa adanya, JANGAN ditambah kode unik lagi).
 
 `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (dev server
-dimatikan+`.next` dibersihkan+direstart, 1m35s, `Cached: 0 cached`). **Commit lokal, belum
-di-push** — mengikuti instruksi standing user, menunggu konfirmasi push eksplisit.
+dimatikan+`.next` dibersihkan+direstart, 1m35s, `Cached: 0 cached`). Sudah di-commit+push
+(`6713063`).
+
+### [2026-08-13] Bug: Ongkos Kirim Hilang dari Invoice Admin (Total Benar, Breakdown Tidak)
+
+User laporkan (verbatim): "ketika ada transaksi onlineshop, atau toko ... jika ada ongkos
+kirim, jumlahnya benar ditambah ongkos kirim, tetapi di item invoice tidak tercantum ongkos
+kirim." Dicek dulu invoice PUBLIK (`invoice-public-client.tsx`) — TERNYATA sudah benar sejak
+awal, ada baris "Ongkos Kirim" di `<tfoot>` breakdown. Bug murni di **invoice ADMIN**
+(`invoice-detail-client.tsx`, dashboard `/finance/billing/invoice/[id]`).
+
+**Root cause**: `getInvoiceDetailAction` (`finance/billing/actions.ts`) — `db.select().from
+(schema.invoices)` mengambil SEMUA kolom termasuk `shippingTotal`, tapi type `InvoiceDetail`
+tidak pernah mendeklarasikan field `shippingTotal`, dan objek return-nya tidak pernah
+mengekstrak `inv.shippingTotal` — field itu sekadar hilang di tengah jalan antara query dan
+response, meski `invoice.total` (yang SUDAH termasuk ongkir sejak `checkoutAction`) tetap
+benar. Akibatnya `invoice-detail-client.tsx` tidak PERNAH bisa menampilkan baris breakdown
+"Ongkos Kirim" — bukan salah render, field-nya genuinely tidak pernah sampai ke komponen.
+
+**Fix**: `InvoiceDetail` type + `getInvoiceDetailAction`'s return object ditambah
+`shippingTotal: parseFloat(String(inv.shippingTotal ?? "0"))` — pola PERSIS disalin dari
+`app/(public)/[tenant]/invoice/[id]/page.tsx` yang sudah lama benar
+(`shippingTotal: parseFloat(String(inv.shippingTotal ?? 0))`). `invoice-detail-client.tsx`'s
+`<tfoot>` ditambah baris "Ongkos Kirim" (posisi setelah Subtotal, sebelum Diskon — sama
+persis urutan public client) + kondisi render blok breakdown diperluas
+(`invoice.discount>0 || invoice.voucherDiscountTotal>0 || invoice.shippingTotal>0`,
+sebelumnya cuma 2 kondisi pertama — invoice yang HANYA punya ongkir tanpa diskon/voucher
+sebelumnya tidak pernah menampilkan blok breakdown sama sekali, langsung loncat ke "Total").
+
+**Aturan yang ditegaskan**: kalau customer-facing view (di sini: invoice publik) dan
+admin-facing view (invoice dashboard) menampilkan data yang SEHARUSNYA identik strukturnya
+(item+breakdown+total), dan salah satunya benar sementara yang lain tidak — JANGAN asumsikan
+bug ada di layer render. Cek dulu apakah field-nya genuinely SAMPAI ke komponen (type
+definition + query + mapping return object) — di sini bug-nya di titik "data hilang sebelum
+sempat dirender", bukan "salah cara render data yang sudah ada".
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (dev server
+dimatikan+`.next` dibersihkan+direstart, 53.8s, `Cached: 0 cached`). **Belum di-commit/push.**
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Audit + Fix Bug Kelas CSS Grid (`grid-cols` tanpa base breakpoint)
-  di 8 File, Lanjutan dari Bug Checkout Mobile** (lihat lesson `[2026-08-11]` "Bug Kelas CSS:
-  Grid Tanpa `grid-cols` di Base Breakpoint" di atas). Sesi ini dimulai dari beberapa laporan
-  bug user (toggle notif WA `invoice_created` hilang total dari UI settings — DIFIX, entri
-  ditambahkan ke `NOTIF_GROUPS` di `whatsapp-setup-client.tsx`; investigasi "Ambil Sendiri masih
-  wajib pilih kota tujuan" — TIDAK terselesaikan definitif, pertanyaan diagnostik lanjutan tidak
-  pernah dijawab user; tombol "Lanjut" checkout kadang hilang di mobile — fix defensif
-  `max-h-[85vh] overflow-y-auto` di sticky bar), lalu berlanjut ke laporan `<main>` checkout
-  "menjorok ke kiri frame" di mobile. **Root cause ke-1 ditemukan**: `checkout/page.tsx` DAN
-  `keranjang/page.tsx` sama-sama merender `<main className="min-h-screen bg-background">`
-  sebagai elemen terluar SENDIRI, padahal `PublicLayout` (`app/(public)/[tenant]/layout.tsx`)
-  SUDAH membungkus semua halaman publik dengan `<main className="flex-1">{children}</main>` —
-  menghasilkan `<main>` bersarang (invalid HTML) persis pola lama "Mobile Layout Overflow —
-  `min-h-screen` Ekstra". Fix: wrapper dihapus total di kedua file, disamakan ke pola referensi
-  `post/[slug]/page.tsx` (langsung `max-w-* mx-auto px-4`, tanpa `<main>` tambahan) — **sudah
-  di-commit (`da70ee3`) DAN DI-PUSH** (sebelum instruksi "jangan push dulu" datang). User
-  lanjut menunjuk **root cause ke-2** sendiri (verbatim, tepat sasaran): grid
-  `lg:grid-cols-[1fr_360px]` di `checkout-form.tsx` tanpa `grid-cols-1` di base, curiga tidak
-  se-fleksibel flex saat mobile. Dikonfirmasi benar — CSS Grid implicit-column (tanpa
+- Terakhir dikerjakan: **Fix Ongkos Kirim Hilang dari Invoice Admin** (lihat lesson
+  `[2026-08-13]` di atas). User laporkan total invoice sudah benar termasuk ongkir, tapi baris
+  "Ongkos Kirim" tidak muncul di breakdown item. Root cause: `getInvoiceDetailAction`
+  (`finance/billing/actions.ts`) query semua kolom `invoices` termasuk `shippingTotal`, tapi
+  type `InvoiceDetail` dan objek return-nya tidak pernah mengekstrak field itu — invoice
+  PUBLIK sudah lama benar (dicek dulu, dikonfirmasi tidak ada bug di sana), bug murni di
+  invoice ADMIN (`invoice-detail-client.tsx`). Fix: tambah `shippingTotal` ke type+return
+  (pola disalin dari public invoice page yang sudah benar) + tambah baris "Ongkos Kirim" di
+  `<tfoot>` + perluas kondisi render blok breakdown supaya invoice yang HANYA punya ongkir
+  (tanpa diskon/voucher) tetap menampilkan breakdown, bukan loncat langsung ke Total.
+  `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0
+  cached, 1 total`, 53.8s, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 OK).
+  **Belum di-commit/push, belum diverifikasi visual di browser** — user perlu buka invoice
+  admin (`/finance/billing/invoice/{id}`) untuk transaksi yang punya ongkir dan konfirmasi
+  baris "Ongkos Kirim" sekarang muncul di breakdown.
+- Sesi sebelumnya: **Audit + Fix Bug Kelas CSS Grid (`grid-cols` tanpa base breakpoint)
+  di 8 File** (lihat lesson `[2026-08-11]` "Bug Kelas CSS: Grid Tanpa `grid-cols` di Base
+  Breakpoint" di atas) + **Fix WA `invoice_created` kode unik hilang** (lihat lesson
+  `[2026-08-12]` di atas). Root cause CSS grid: `checkout-form.tsx`'s
+  `lg:grid-cols-[1fr_360px]` tanpa base `grid-cols-1` — CSS Grid implicit-column (tanpa
   `grid-template-columns` eksplisit di breakpoint aktif) jatuh ke `grid-auto-columns: auto`
-  BAWAAN BROWSER (bukan Tailwind's `minmax(0,1fr)` yang otomatis ada di utility angka
-  `grid-cols-N`), sehingga menghormati `min-content` tiap grid item — analog bug `min-width:
-  auto` flex item yang sudah lama dikunci sebagai lesson (`min-w-0` kolom kiri). Fix:
-  `min-w-0` di kedua kolom `checkout-form.tsx` — **commit lokal `2ed173f`, TIDAK di-push**
-  (instruksi eksplisit user setelahnya: "jgn di push dulu, jgn setiap perbaikan d push sblm sy
-  suruh" — berlaku untuk SISA sesi ini). User minta diperluas jadi audit sistematis + lesson
-  ("kira-kira bug css spt ini bisa kamu cek gk? lalu dokumentasikan"). **Audit**: script Python
-  grep semua `className` dengan `(sm|md|lg|xl):grid-cols-` TANPA base `grid-cols-*` di string
-  yang sama — 10 kandidat ditemukan, 2 FALSE POSITIVE dikenali+dikonfirmasi aman
-  (`hero-design-1.tsx`+`modules-design-1.tsx` — pola carousel `flex ... lg:grid lg:grid-cols-4`,
-  `display:grid` baru aktif PERSIS di breakpoint yang sama dengan `grid-cols`-nya, jadi grid
-  algorithm tidak pernah jalan di base). **8 file genuinely diperbaiki** — 7 dengan base
-  `grid-cols-1` ditambahkan ke kontainer (fix lebih murah, 1 edit membenahi SEMUA child
-  sekaligus): `contact-template.tsx`, `landing-template.tsx` (section Keunggulan/Layanan, card
-  grid publik lintas tenant), `finance/dashboard/page.tsx`, `laporan-client.tsx` (mengandung
-  `<table>`, konten paling rentan di kelas bug ini), `member-form.tsx` (2 instance sekaligus via
-  `replace_all`), `change-password-section.tsx` — dan 1 dengan `min-w-0` tambahan
-  (`agenda/[slug]/page.tsx`, kolom kanan yang terlewat — kolom kiri di file yang sama sudah
-  benar sejak awal, dipertahankan konsisten dengan pola yang sudah ada di file itu daripada
-  diganti). `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses
-  (`Cached: 0 cached, 1 total`, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 OK)
-  di SETIAP tahap (3× sepanjang sesi: fix `<main>`, fix `min-w-0` checkout, fix 7 file audit).
-  Lesson lengkap (mekanisme CSS root-cause, 2 varian fix + kapan pakai yang mana, script audit
-  reusable, false-positive yang harus dikenali) ditulis di CLAUDE.md sebagai perluasan lesson
-  lama. **SEMUA fix dari "min-w-0 checkout-form.tsx" sampai audit 7 file ini BELUM di-push** —
-  menunggu instruksi eksplisit user (hanya fix `<main>` ganda yang sudah sempat push duluan).
-  Belum diverifikasi visual di browser sungguhan (keterbatasan environment sesi ini) — user
-  perlu cek langsung di HP setelah deploy: checkout/keranjang tidak lagi "menjorok", dan
-  form-form admin (member-form, laporan, dashboard keuangan) tetap tampil normal (nol perubahan
-  visual diharapkan di sana, base `grid-cols-1` cuma jaring pengaman).
+  bawaan browser (bukan Tailwind's `minmax(0,1fr)` yang otomatis ada di utility angka
+  `grid-cols-N`), menghormati `min-content` tiap grid item — analog bug `min-width: auto` flex
+  item yang sudah lama dikunci sebagai lesson (`min-w-0` kolom kiri). User sendiri menemukan
+  root cause ini lalu minta diperluas jadi audit sistematis + lesson reusable. Audit (script
+  Python grep `className` dengan breakpoint-prefixed `grid-cols-*` tanpa base) menemukan 10
+  kandidat, 2 false positive dikenali (pola carousel `flex...lg:grid lg:grid-cols-4`, grid baru
+  aktif persis di breakpoint yang sama dengan `grid-cols`-nya), 8 genuinely difix (7 base
+  `grid-cols-1`, 1 `min-w-0` tambahan di `agenda/[slug]/page.tsx`). Root cause "menjorok ke
+  kiri" awalnya juga ditemukan di `<main>` bersarang ganda di `checkout/page.tsx`+
+  `keranjang/page.tsx` (wrapper `min-h-screen` redundan di atas `PublicLayout`'s `<main>` yang
+  sudah ada) — dihapus total. Semua commit di batch ini (`da70ee3`, `2ed173f`, `22c30d5`) SUDAH
+  di-push, plus 1 commit terpisah (`6713063`) untuk fix kode unik WA notification (root cause:
+  `checkoutAction` hitung `uniqueCode` di dalam transaction tapi tidak menyertakannya di
+  `TxResult` yang keluar — notifikasi WA "Invoice Baru" kirim total tanpa kode unik, padahal
+  halaman invoice sesungguhnya benar tambahkan kode unik; audit 24 titik `notifyWa(...)`
+  konfirmasi ini satu-satunya bug). Belum diverifikasi visual di browser sungguhan
+  (keterbatasan environment sesi ini) — user perlu cek langsung di HP: checkout/keranjang tidak
+  lagi "menjorok", form-form admin tetap tampil normal, dan notifikasi WA invoice baru sekarang
+  menampilkan nominal yang cocok dengan halaman invoice.
 - Sesi sebelumnya: **Susulan Keempat — Label Custom Nama Modul (Usaha/Pesantren/
   Profesional)** (lihat lesson `[2026-08-07]` "Susulan Keempat: Label Custom Nama Modul" di
   atas, detail lengkap `docs/arsitektur-ekosistem.md` § 9.7). Lanjutan langsung dari "Susulan

@@ -511,12 +511,18 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                 potongan per item) — beda dari invoice.discount (legacy, admin-manual) yang
                 dipotong DARI subtotal gross. Rekonstruksi gross di sini supaya baris "Subtotal"
                 selalu tampil sebelum potongan apa pun, tidak pernah dipotong dobel. */}
-            {(invoice.discount > 0 || invoice.voucherDiscountTotal > 0) && (
+            {(invoice.discount > 0 || invoice.voucherDiscountTotal > 0 || invoice.shippingTotal > 0) && (
               <tr>
                 <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Subtotal</td>
                 <td className="px-4 py-2 text-right tabular-nums">
                   {formatRp(invoice.subtotal + invoice.voucherDiscountTotal)}
                 </td>
+              </tr>
+            )}
+            {invoice.shippingTotal > 0 && (
+              <tr>
+                <td colSpan={3} className="px-4 py-2 text-right text-muted-foreground">Ongkos Kirim</td>
+                <td className="px-4 py-2 text-right tabular-nums">{formatRp(invoice.shippingTotal)}</td>
               </tr>
             )}
             {invoice.discount > 0 && (
