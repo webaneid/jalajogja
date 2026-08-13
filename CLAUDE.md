@@ -16489,24 +16489,55 @@ definition + query + mapping return object) — di sini bug-nya di titik "data h
 sempat dirender", bukan "salah cara render data yang sudah ada".
 
 `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (dev server
-dimatikan+`.next` dibersihkan+direstart, 53.8s, `Cached: 0 cached`). **Belum di-commit/push.**
+dimatikan+`.next` dibersihkan+direstart, 53.8s, `Cached: 0 cached`). Sudah di-commit+push
+(`3af2d39`).
+
+### [2026-08-14] Bug UX: Label "Kota / Kabupaten Tujuan" Menyesatkan — Search Sudah Granular Sampai Desa
+
+User observasi (verbatim): "ketika memilih menggunakan kurir, disana ada pilih kota tujuan,
+tetapi sebenarnya bisa di search desa atau kecamatan ... padahal bisa search desa/kecamatan.
+jadi lebih detail outputnya." Diverifikasi LANGSUNG via curl ke `/api/ongkir/cities` (bukan
+cuma baca kode) — user benar 100%: `curl "...?q=tridadi"` dan `"...?q=catur+harjo"` (nama desa
+langsung) mengembalikan hasil PERSIS, `"...?q=sleman"` (nama kecamatan/kabupaten) juga
+berfungsi. RajaOngkir v2 sudah lama subdistrict-level (lesson lama "v2 level kota = kelurahan,
+bukan kota/kabupaten") — `city.label` yang ditampilkan di dropdown SUDAH format lengkap
+`"DESA, KECAMATAN, KABUPATEN, PROVINSI, KODEPOS"`. **Bug murni copy UI** — label
+"Kota / Kabupaten Tujuan" dan placeholder "Ketik nama kota atau kabupaten..." menyembunyikan
+kapabilitas yang sudah ada, membuat user tidak tahu mereka bisa (dan untuk akurasi ongkir
+SEBAIKNYA) cari sampai level desa/kelurahan.
+
+**Fix** (`checkout-form.tsx`): label → "Kelurahan / Desa Tujuan", placeholder → "Ketik nama
+kelurahan, kecamatan, atau kota...", tambah hint `text-xs text-muted-foreground` di atas input
+("Semakin spesifik... semakin akurat estimasi ongkos kirim"). **Perhatian struktural**: hint
+BUKAN ditaruh di antara `<input>` dan dropdown hasil pencarian (dropdown itu `absolute` TANPA
+`top` eksplisit — default CSS `position:absolute` pakai "static position", posisi di flow
+normal seolah tidak di-absolute-kan; menyisipkan elemen baru SEBELUM dropdown di DOM akan
+menggeser static position-nya turun). Hint dipindah ke wrapper terpisah SEBELUM
+`<div className="relative">`, supaya `<input>` dan dropdown tetap sibling langsung persis
+struktur semula — nol perubahan posisi dropdown.
+
+**Nol perubahan backend** — API `/api/ongkir/cities` sudah benar sejak awal (proxy RajaOngkir
+v2 search, sudah subdistrict-level), murni relabeling supaya kapabilitas yang sudah ada
+terlihat oleh user.
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (dev server
+dimatikan+`.next` dibersihkan+direstart, 50.3s, `Cached: 0 cached`). **Belum di-commit/push.**
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix Ongkos Kirim Hilang dari Invoice Admin** (lihat lesson
-  `[2026-08-13]` di atas). User laporkan total invoice sudah benar termasuk ongkir, tapi baris
-  "Ongkos Kirim" tidak muncul di breakdown item. Root cause: `getInvoiceDetailAction`
-  (`finance/billing/actions.ts`) query semua kolom `invoices` termasuk `shippingTotal`, tapi
-  type `InvoiceDetail` dan objek return-nya tidak pernah mengekstrak field itu — invoice
-  PUBLIK sudah lama benar (dicek dulu, dikonfirmasi tidak ada bug di sana), bug murni di
-  invoice ADMIN (`invoice-detail-client.tsx`). Fix: tambah `shippingTotal` ke type+return
-  (pola disalin dari public invoice page yang sudah benar) + tambah baris "Ongkos Kirim" di
-  `<tfoot>` + perluas kondisi render blok breakdown supaya invoice yang HANYA punya ongkir
-  (tanpa diskon/voucher) tetap menampilkan breakdown, bukan loncat langsung ke Total.
-  `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0
-  cached, 1 total`, 53.8s, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 OK).
-  **Belum di-commit/push, belum diverifikasi visual di browser** — user perlu buka invoice
-  admin (`/finance/billing/invoice/{id}`) untuk transaksi yang punya ongkir dan konfirmasi
-  baris "Ongkos Kirim" sekarang muncul di breakdown.
+- Terakhir dikerjakan: **Fix Label "Kota / Kabupaten Tujuan" Menyesatkan di Checkout** (lihat
+  lesson `[2026-08-14]` di atas). User observasi: search kurir sebenarnya sudah bisa cari
+  sampai desa/kecamatan, bukan cuma kota — diverifikasi LANGSUNG via curl ke
+  `/api/ongkir/cities` (bukan cuma baca kode), terkonfirmasi RajaOngkir v2 memang sudah
+  subdistrict-level (lesson lama), search "tridadi"/"catur harjo" (nama desa) dan "sleman"
+  (nama kecamatan/kabupaten) sama-sama berfungsi. Bug murni copy UI, nol perubahan backend.
+  Fix di `checkout-form.tsx`: label "Kota / Kabupaten Tujuan" → "Kelurahan / Desa Tujuan",
+  placeholder diperluas sebut kelurahan/kecamatan/kota, tambah hint teks kecil di ATAS input
+  (bukan di antara input+dropdown — dropdown pakai `position:absolute` tanpa `top` eksplisit,
+  menyisipkan elemen di antara akan menggeser static-position-nya). `tsc --noEmit` 0 error +
+  `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached, 1 total`, 50.3s,
+  dev server dimatikan+`.next` dibersihkan+direstart, curl 200 OK). **Belum di-commit/push,
+  belum diverifikasi visual di browser** — user perlu buka checkout dengan produk yang butuh
+  kurir, konfirmasi label+hint baru tampil benar dan dropdown pencarian tidak bergeser posisi.
 - Sesi sebelumnya: **Audit + Fix Bug Kelas CSS Grid (`grid-cols` tanpa base breakpoint)
   di 8 File** (lihat lesson `[2026-08-11]` "Bug Kelas CSS: Grid Tanpa `grid-cols` di Base
   Breakpoint" di atas) + **Fix WA `invoice_created` kode unik hilang** (lihat lesson

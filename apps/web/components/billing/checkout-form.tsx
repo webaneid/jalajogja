@@ -468,7 +468,7 @@ export function CheckoutForm({
             <p className="font-semibold text-sm">Alamat Pengiriman</p>
 
             <div>
-              <label className={labelCls}>Kota / Kabupaten Tujuan</label>
+              <label className={labelCls}>Kelurahan / Desa Tujuan</label>
               {destCity ? (
                 <div className="flex items-center justify-between gap-2 px-3 py-2 border border-border rounded-md bg-muted/50 text-sm">
                   <span>{destCity.name}</span>
@@ -481,42 +481,47 @@ export function CheckoutForm({
                   </button>
                 </div>
               ) : (
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={citySearch}
-                    onChange={(e) => { setCitySearch(e.target.value); setCityOpen(true); }}
-                    onFocus={() => setCityOpen(true)}
-                    onBlur={() => setTimeout(() => setCityOpen(false), 150)}
-                    placeholder="Ketik nama kota atau kabupaten..."
-                    className={inputCls}
-                    autoComplete="off"
-                  />
-                  {cityOpen && citySearch.length >= 2 && (
-                    <div className="absolute z-20 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-52 overflow-y-auto">
-                      {cityLoading && (
-                        <p className="px-3 py-2 text-sm text-muted-foreground">Mencari...</p>
-                      )}
-                      {!cityLoading && cityResults.length === 0 && (
-                        <p className="px-3 py-2 text-sm text-muted-foreground">Tidak ada hasil untuk "{citySearch}"</p>
-                      )}
-                      {cityResults.map(city => (
-                        <button
-                          key={city.id}
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            setDestCity({ id: city.id, name: city.label });
-                            setCitySearch("");
-                            setCityOpen(false);
-                          }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors"
-                        >
-                          <span>{city.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                <div>
+                  <p className="mb-1 text-xs text-muted-foreground">
+                    Semakin spesifik (nama kelurahan/desa), semakin akurat estimasi ongkos kirim.
+                  </p>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={citySearch}
+                      onChange={(e) => { setCitySearch(e.target.value); setCityOpen(true); }}
+                      onFocus={() => setCityOpen(true)}
+                      onBlur={() => setTimeout(() => setCityOpen(false), 150)}
+                      placeholder="Ketik nama kelurahan, kecamatan, atau kota..."
+                      className={inputCls}
+                      autoComplete="off"
+                    />
+                    {cityOpen && citySearch.length >= 2 && (
+                      <div className="absolute z-20 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-52 overflow-y-auto">
+                        {cityLoading && (
+                          <p className="px-3 py-2 text-sm text-muted-foreground">Mencari...</p>
+                        )}
+                        {!cityLoading && cityResults.length === 0 && (
+                          <p className="px-3 py-2 text-sm text-muted-foreground">Tidak ada hasil untuk "{citySearch}"</p>
+                        )}
+                        {cityResults.map(city => (
+                          <button
+                            key={city.id}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setDestCity({ id: city.id, name: city.label });
+                              setCitySearch("");
+                              setCityOpen(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors"
+                          >
+                            <span>{city.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
