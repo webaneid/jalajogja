@@ -16521,23 +16521,64 @@ v2 search, sudah subdistrict-level), murni relabeling supaya kapabilitas yang su
 terlihat oleh user.
 
 `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (dev server
-dimatikan+`.next` dibersihkan+direstart, 50.3s, `Cached: 0 cached`). **Belum di-commit/push.**
+dimatikan+`.next` dibersihkan+direstart, 50.3s, `Cached: 0 cached`). Sudah di-commit+push
+(`1d7aa86`).
+
+### [2026-08-14] Kurir RajaOngkir — Daftar Checkbox Tidak Lengkap (10 dari 16)
+
+User tanya (setelah konfirmasi sinkronisasi checkbox↔frontend sudah benar — lihat lesson
+sebelumnya): "cek apakah laman `/settings/addons/rajaongkir` sudah list semua available kurir
+yang disediakan rajaongkir?" Dokumentasi resmi RajaOngkir untuk endpoint yang kita pakai
+(`/calculate/domestic-cost`) TIDAK menyediakan tabel lengkap yang bisa dipercaya — beberapa
+sumber saling kontradiksi, dan daftar kurir yang tersedia TERNYATA bergantung tier akun API
+(Starter/Basic/Pro). **Cara paling akurat: minta RajaOngkir sendiri yang menjawab** — kirim
+kode kurir sengaja SALAH satu (`dse`) bersama daftar kandidat lain langsung ke API produksi
+pakai `RAJAONGKIR_PLATFORM_KEY` kita — respons 422-nya berisi PERSIS daftar kurir valid untuk
+key kita: `"the valid courier is jne, sicepat, ide, sap, jnt, ninja, tiki, lion, anteraja, pos,
+ncs, rex, rpx, sentral, star, wahana"` — 16 kurir. Checkbox setting cuma punya 10 — **hilang 6**:
+`ide` (ID Express), `ncs` (NCS Express), `rex` (REX/Royal Express Indonesia), `sentral`
+(Sentral Cargo), `star` (Star Cargo), `wahana` (Wahana). Nama lengkap 12 dari 16 dikonfirmasi
+LANGSUNG dari field `name` respons sukses API (test 2 rute berbeda: Sleman→Yogyakarta,
+Jakarta Pusat→Surabaya) — 3 nama sisa (`ncs`/`sentral`/`star`, keduanya konsisten tidak
+mengembalikan hasil biaya di kedua rute yang dites, kemungkinan besar tidak melayani rute itu
+atau nonaktif untuk tier akun kita — bukan berarti kode-nya salah, RajaOngkir sendiri sudah
+validasi kodenya valid) diverifikasi silang lewat sumber pihak ketiga terpercaya (Woongkir,
+plugin RajaOngkir yang dipakai luas di ekosistem WooCommerce Indonesia).
+
+**Fix**: `COURIER_OPTIONS` (`config-form.tsx`) diperluas 10→16 entri. Nol perubahan lain
+diperlukan — `couriers: string[]` sudah longgar (bukan union type literal), `/api/ongkir/cost`
+sudah generic passthrough, `flattenCourierOptions` sudah generic — cukup tambah opsi checkbox.
+
+**Aturan yang ditegaskan**: untuk pertanyaan "apakah daftar kita lengkap sesuai penyedia
+eksternal X", JANGAN percaya dokumentasi pihak ketiga begitu saja (apalagi kalau ada indikasi
+daftar tergantung tier akun/versi API) — kalau API-nya sendiri punya mekanisme validasi (di
+sini: submit kode salah sengaja → error message balikan berisi daftar valid), itu SATU-SATUNYA
+sumber kebenaran yang benar-benar cocok dengan kredensial/akun kita, lebih otoritatif daripada
+dokumentasi resmi sekalipun.
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (dev server
+dimatikan+`.next` dibersihkan+direstart, 54.0s, `Cached: 0 cached`). **Belum di-commit/push.**
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix Label "Kota / Kabupaten Tujuan" Menyesatkan di Checkout** (lihat
-  lesson `[2026-08-14]` di atas). User observasi: search kurir sebenarnya sudah bisa cari
-  sampai desa/kecamatan, bukan cuma kota — diverifikasi LANGSUNG via curl ke
-  `/api/ongkir/cities` (bukan cuma baca kode), terkonfirmasi RajaOngkir v2 memang sudah
-  subdistrict-level (lesson lama), search "tridadi"/"catur harjo" (nama desa) dan "sleman"
-  (nama kecamatan/kabupaten) sama-sama berfungsi. Bug murni copy UI, nol perubahan backend.
-  Fix di `checkout-form.tsx`: label "Kota / Kabupaten Tujuan" → "Kelurahan / Desa Tujuan",
-  placeholder diperluas sebut kelurahan/kecamatan/kota, tambah hint teks kecil di ATAS input
-  (bukan di antara input+dropdown — dropdown pakai `position:absolute` tanpa `top` eksplisit,
-  menyisipkan elemen di antara akan menggeser static-position-nya). `tsc --noEmit` 0 error +
-  `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached, 1 total`, 50.3s,
-  dev server dimatikan+`.next` dibersihkan+direstart, curl 200 OK). **Belum di-commit/push,
-  belum diverifikasi visual di browser** — user perlu buka checkout dengan produk yang butuh
-  kurir, konfirmasi label+hint baru tampil benar dan dropdown pencarian tidak bergeser posisi.
+- Terakhir dikerjakan: **Kurir RajaOngkir — Lengkapi Checkbox Setting dari 10 jadi 16** (lihat
+  lesson `[2026-08-14]` "Kurir RajaOngkir — Daftar Checkbox Tidak Lengkap" di atas). User tanya
+  susulan (setelah konfirmasi sinkronisasi checkbox↔frontend sudah benar): apakah
+  `/settings/addons/rajaongkir` sudah list semua kurir yang tersedia. Dokumentasi RajaOngkir
+  untuk endpoint yang dipakai (`/calculate/domestic-cost`) tidak konsisten/lengkap — daftar
+  kurir tergantung tier akun API. Diverifikasi PALING otoritatif: kirim kode kurir sengaja
+  salah (`dse`) langsung ke API produksi pakai key kita sendiri — error 422-nya balikan PERSIS
+  daftar 16 kurir valid untuk key kita. Checkbox cuma punya 10 — hilang 6: `ide` (ID Express),
+  `ncs` (NCS Express), `rex` (REX/Royal Express Indonesia), `sentral` (Sentral Cargo), `star`
+  (Star Cargo), `wahana` (Wahana). 12 dari 16 nama dikonfirmasi langsung dari respons sukses
+  API (2 rute berbeda), 3 sisanya (ncs/sentral/star, konsisten tanpa hasil biaya di kedua rute)
+  disilangkan ke sumber pihak ketiga terpercaya (Woongkir). Fix: `COURIER_OPTIONS` di
+  `config-form.tsx` diperluas 10→16 — nol perubahan lain diperlukan (`couriers: string[]`
+  longgar, `/api/ongkir/cost` sudah generic passthrough). `tsc --noEmit` 0 error + `bun run
+  build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached, 1 total`, 54.0s, dev server
+  dimatikan+`.next` dibersihkan+direstart, curl 200 OK). **Belum di-commit/push, belum
+  diverifikasi visual di browser** — user perlu buka `/app/{slug}/settings/addons/rajaongkir`,
+  konfirmasi 16 checkbox kurir tampil, dan coba centang salah satu kurir baru (mis. ID Express)
+  lalu cek muncul di dropdown checkout.
 - Sesi sebelumnya: **Audit + Fix Bug Kelas CSS Grid (`grid-cols` tanpa base breakpoint)
   di 8 File** (lihat lesson `[2026-08-11]` "Bug Kelas CSS: Grid Tanpa `grid-cols` di Base
   Breakpoint" di atas) + **Fix WA `invoice_created` kode unik hilang** (lihat lesson
