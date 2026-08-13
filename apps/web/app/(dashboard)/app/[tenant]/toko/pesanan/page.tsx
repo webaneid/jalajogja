@@ -75,7 +75,6 @@ export default async function PesananPage({
         sourceType:    schema.invoices.sourceType,
         sourceId:      schema.invoices.sourceId,
         customerName:  schema.invoices.customerName,
-        total:         schema.invoices.total,
         status:        schema.invoices.status,
         createdAt:     schema.invoices.createdAt,
       })
@@ -92,6 +91,38 @@ export default async function PesananPage({
 
   const total      = parseInt(String(countResult[0]?.count ?? 0));
   const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  // ── Nominal pesanan yang benar-benar scoped ke toko (produk + ongkir) ──────
+  // JANGAN pernah pakai invoices.total di sini — satu invoice bisa campur produk
+  // dengan tiket event/donasi (cart universal), invoices.total mencakup semuanya.
+  // Hitung ulang: SUM(invoice_items.total) khusus itemType='product' + SUM ongkir.
+  const rowIds = rows.map((r) => r.id);
+  const [productSums, shippingSums] = rowIds.length > 0
+    ? await Promise.all([
+        db
+          .select({
+            invoiceId: schema.invoiceItems.invoiceId,
+            sum: sql<string>`coalesce(sum(${schema.invoiceItems.total}), 0)`,
+          })
+          .from(schema.invoiceItems)
+          .where(and(
+            inArray(schema.invoiceItems.invoiceId, rowIds),
+            eq(schema.invoiceItems.itemType, "product"),
+          ))
+          .groupBy(schema.invoiceItems.invoiceId),
+        db
+          .select({
+            invoiceId: schema.invoiceShippingLines.invoiceId,
+            sum: sql<string>`coalesce(sum(${schema.invoiceShippingLines.cost}), 0)`,
+          })
+          .from(schema.invoiceShippingLines)
+          .where(inArray(schema.invoiceShippingLines.invoiceId, rowIds))
+          .groupBy(schema.invoiceShippingLines.invoiceId),
+      ])
+    : [[], []];
+
+  const productAmountMap  = new Map(productSums.map((r) => [r.invoiceId, parseFloat(r.sum)]));
+  const shippingAmountMap = new Map(shippingSums.map((r) => [r.invoiceId, parseFloat(r.sum)]));
 
   const buildUrl = (overrides: Record<string, string | undefined>) => {
     const sp = new URLSearchParams();
@@ -161,7 +192,7 @@ export default async function PesananPage({
               <th className="px-4 py-3 text-left font-medium">Nomor Invoice</th>
               <th className="px-4 py-3 text-left font-medium">Pelanggan</th>
               <th className="px-4 py-3 text-left font-medium hidden md:table-cell">Tanggal</th>
-              <th className="px-4 py-3 text-right font-medium">Total</th>
+              <th className="px-4 py-3 text-right font-medium">Total Produk</th>
               <th className="px-4 py-3 text-center font-medium">Status</th>
             </tr>
           </thead>
@@ -176,6 +207,7 @@ export default async function PesananPage({
               rows.map((row) => {
                 const st = INV_STATUS[row.status] ?? { label: row.status, cls: "bg-zinc-100 text-zinc-500" };
                 const detailHref = `/app/${slug}/toko/pesanan/invoice/${row.id}`;
+                const orderAmount = (productAmountMap.get(row.id) ?? 0) + (shippingAmountMap.get(row.id) ?? 0);
                 return (
                   <tr key={row.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-3">
@@ -192,7 +224,7 @@ export default async function PesananPage({
                       {fmtDate(row.createdAt)}
                     </td>
                     <td className="px-4 py-3 text-right font-medium tabular-nums">
-                      {fmt(row.total)}
+                      {fmt(orderAmount)}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>

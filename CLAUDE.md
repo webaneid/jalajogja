@@ -16557,10 +16557,92 @@ sumber kebenaran yang benar-benar cocok dengan kredensial/akun kita, lebih otori
 dokumentasi resmi sekalipun.
 
 `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (dev server
-dimatikan+`.next` dibersihkan+direstart, 54.0s, `Cached: 0 cached`). **Belum di-commit/push.**
+dimatikan+`.next` dibersihkan+direstart, 54.0s, `Cached: 0 cached`). **Sudah di-commit+push**
+(`8dfcb5e`, atas instruksi eksplisit user "mari kita push terlebih dahulu, sebelum kita
+lanjut..").
+
+### [2026-08-15] Bug: Kolom "Total" `/toko/pesanan` Menampilkan Total Invoice Utuh, Bukan Nominal Toko Saja
+
+User laporkan (verbatim, dengan contoh konkret): *"harusnya nominal pesanan sesuai dengan
+harga yang di order oleh customer dari product+ongkos kirim saja jika ada, bukan nominal
+total invoice .. misal jika dia order produk dan event, berarti tidak perlu totalnya masuk
+dalam data pesanan, bisa rancu ini."* Karena arsitektur "cart universal" (§ Billing) SENGAJA
+mengizinkan satu invoice mencampur beberapa tipe item (`invoice_items.itemType`:
+produk/tiket/donasi/custom) dalam satu checkout, halaman list admin **khusus Toko**
+(`/app/{slug}/toko/pesanan`) yang menampilkan `invoices.total` mentah jadi menyesatkan —
+kalau customer checkout produk BARENG tiket event dalam satu keranjang, kolom "Total" di
+halaman Toko ikut menampilkan harga tiketnya juga, padahal itu bukan domain Toko sama sekali.
+
+**Root cause**: `page.tsx`'s query SELECT `total: schema.invoices.total` langsung, ditampilkan
+apa adanya di kolom tabel. Ironisnya, filter WHERE clause di file YANG SAMA (baris 41-57)
+SUDAH cukup canggih untuk membedakan "invoice mana yang relevan untuk Toko" (cek keberadaan
+`invoice_shipping_lines` dengan `sellerType='tenant'`) — tapi begitu invoice dianggap relevan,
+kolom nominalnya tetap ambil TOTAL PENUH invoice itu, bukan porsi produknya saja.
+
+**Fix**: hitung ulang nominal per baris dari `invoice_items` (bukan percaya `invoices.total`)
+— `SUM(invoice_items.total) WHERE itemType='product'` (kolom `total` per item SUDAH net-of-
+voucher-discount, dikonfirmasi dari `checkoutAction`) **+** `SUM(invoice_shipping_lines.cost)`
+untuk invoice yang sama (shipping lines HANYA pernah dibuat untuk grup item produk — tiket/
+donasi tidak pernah menghasilkan baris ongkir, jadi aman dijumlah tanpa filter tambahan).
+Dihitung via 2 query agregat `GROUP BY invoiceId` yang di-scope `inArray(rowIds)` (bukan N+1
+per baris), hasilnya dipetakan ke `Map<invoiceId, number>` untuk lookup O(1) saat render.
+Field `total: schema.invoices.total` yang sudah tidak dipakai dihapus total dari SELECT
+(bukan dibiarkan sebagai dead field yang bisa menyesatkan pembaca kode berikutnya). Header
+kolom diubah "Total" → **"Total Produk"** — memperjelas maksudnya secara eksplisit, langsung
+menjawab kekhawatiran "bisa rancu ini" dari user.
+
+**Cek konsistensi 3 file saudara**: `pesanan/new/page.tsx` (buat pesanan manual admin) HANYA
+menawarkan pilihan dari `products` — invoice hasil jalur ini SELALU product-only by
+construction (tidak mungkin campur tiket/donasi), jadi `invoices.total` untuk `sourceType=
+'order'` sudah otomatis sama dengan hitungan baru ini, tidak ada regresi. `pesanan/[id]/
+page.tsx` sudah lama jadi stub redirect ke list (migrasi lama ke invoice-only flow), tidak
+menampilkan nominal apa pun — aman. `pesanan/invoice/[invoiceId]/page.tsx` (halaman detail
+fulfillment) MEMANG menampilkan `invoices.total` penuh sebagai "Total" — TAPI di situ SELALU
+disertai tabel itemized PENUH (tiap baris item + `itemType`-nya terlihat) sebelum baris total
+— transparan by design, bukan disamarkan sebagai satu angka polos tanpa konteks seperti di
+list. Halaman detail ini SENGAJA TIDAK disentuh.
+
+**Aturan yang ditegaskan**: kalau sebuah halaman admin di-scope ke SATU domain (Toko/Event/
+Donasi) dari invoice yang bisa mencampur banyak domain (cart universal), setiap kolom
+NOMINAL yang ditampilkan WAJIB dihitung ulang dari `invoice_items` ter-filter `itemType`
+domain itu — JANGAN pernah tampilkan `invoices.total` mentah begitu saja, meski filter WHERE
+clause halaman itu sendiri sudah benar memilih baris invoice yang relevan. "Invoice yang
+relevan" ≠ "nominal invoice itu seluruhnya relevan" — dua hal yang berbeda begitu satu invoice
+bisa mencampur item lintas-domain.
+
+`tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (dev server
+dimatikan port 6202+`.next` dibersihkan+direstart, `Cached: 0 cached, 1 total`, 49.3s, route
+`/app/[tenant]/toko/pesanan` 863 B terkonfirmasi compile bersih). **Belum di-commit/push,
+belum diverifikasi visual di browser** — user perlu buka `/app/{slug}/toko/pesanan` dan
+konfirmasi kolom "Total Produk" sekarang cuma menghitung porsi produk+ongkir, terutama untuk
+invoice yang customer-nya checkout campuran produk+tiket/donasi dalam satu keranjang.
 
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Kurir RajaOngkir — Lengkapi Checkbox Setting dari 10 jadi 16** (lihat
+- Terakhir dikerjakan: **Fix Bug: Kolom "Total" `/toko/pesanan` Menampilkan Total Invoice
+  Utuh, Bukan Nominal Toko Saja** (lihat lesson `[2026-08-15]` di atas). User laporkan
+  dengan contoh konkret: kalau customer checkout produk BARENG tiket event dalam satu
+  keranjang (cart universal, satu invoice campur banyak domain), kolom "Total" di halaman
+  admin Toko (`/app/{slug}/toko/pesanan`) menampilkan `invoices.total` MENTAH — termasuk
+  harga tiketnya, padahal itu bukan domain Toko. Root cause: filter WHERE clause halaman
+  ini SUDAH benar memilih baris invoice yang relevan (cek `invoice_shipping_lines` dengan
+  `sellerType='tenant'`), tapi nominal yang ditampilkan tetap ambil TOTAL PENUH invoice,
+  bukan porsi produknya saja. Fix: hitung ulang per baris dari `SUM(invoice_items.total)
+  WHERE itemType='product'` + `SUM(invoice_shipping_lines.cost)` (2 query agregat
+  `GROUP BY invoiceId`, di-scope `inArray(rowIds)`, hasil di-Map untuk lookup O(1) saat
+  render) — bukan percaya `invoices.total`. Field `total` yang tidak lagi dipakai dihapus
+  dari SELECT (bukan dibiarkan jadi dead field menyesatkan). Header kolom diubah "Total" →
+  "Total Produk". Dicek 3 file saudara: `pesanan/new/page.tsx` (buat manual, selalu
+  product-only by construction, aman); `pesanan/[id]/page.tsx` (stub redirect lama, tidak
+  menampilkan nominal); `pesanan/invoice/[invoiceId]/page.tsx` (halaman detail, SENGAJA
+  TIDAK disentuh — menampilkan total penuh TAPI selalu disertai tabel itemized transparan
+  per-item sebelum baris total, beda konteks dari list yang cuma angka polos tanpa
+  breakdown). `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine
+  sukses (`Cached: 0 cached, 1 total`, 49.3s, dev server dimatikan port 6202+`.next`
+  dibersihkan+direstart, curl 200 OK). **Belum di-commit/push, belum diverifikasi visual di
+  browser** — user perlu buka `/app/{slug}/toko/pesanan`, konfirmasi kolom "Total Produk"
+  sekarang cuma menghitung porsi produk+ongkir, terutama untuk invoice campuran produk+
+  tiket/donasi.
+- Sesi sebelumnya: **Kurir RajaOngkir — Lengkapi Checkbox Setting dari 10 jadi 16** (lihat
   lesson `[2026-08-14]` "Kurir RajaOngkir — Daftar Checkbox Tidak Lengkap" di atas). User tanya
   susulan (setelah konfirmasi sinkronisasi checkbox↔frontend sudah benar): apakah
   `/settings/addons/rajaongkir` sudah list semua kurir yang tersedia. Dokumentasi RajaOngkir
@@ -16575,10 +16657,7 @@ dimatikan+`.next` dibersihkan+direstart, 54.0s, `Cached: 0 cached`). **Belum di-
   `config-form.tsx` diperluas 10→16 — nol perubahan lain diperlukan (`couriers: string[]`
   longgar, `/api/ongkir/cost` sudah generic passthrough). `tsc --noEmit` 0 error + `bun run
   build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached, 1 total`, 54.0s, dev server
-  dimatikan+`.next` dibersihkan+direstart, curl 200 OK). **Belum di-commit/push, belum
-  diverifikasi visual di browser** — user perlu buka `/app/{slug}/settings/addons/rajaongkir`,
-  konfirmasi 16 checkbox kurir tampil, dan coba centang salah satu kurir baru (mis. ID Express)
-  lalu cek muncul di dropdown checkout.
+  dimatikan+`.next` dibersihkan+direstart, curl 200 OK). **Sudah di-commit+push** (`8dfcb5e`).
 - Sesi sebelumnya: **Audit + Fix Bug Kelas CSS Grid (`grid-cols` tanpa base breakpoint)
   di 8 File** (lihat lesson `[2026-08-11]` "Bug Kelas CSS: Grid Tanpa `grid-cols` di Base
   Breakpoint" di atas) + **Fix WA `invoice_created` kode unik hilang** (lihat lesson
