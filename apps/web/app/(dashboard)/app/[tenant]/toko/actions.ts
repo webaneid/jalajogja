@@ -474,11 +474,18 @@ export async function previewOrderVoucherAction(
       phone: normalizedPhone, email: emailTrim,
     });
 
+    // originalIds tetap lockstep dengan voucherItems (dua-duanya di-push bersamaan, item yang
+    // gagal resolve di-skip dari KEDUANYA) — supaya perItemDiscount di bawah bisa dikembalikan
+    // dengan key ID ASLI yang dikirim client (bisa jadi ID variasi), bukan ID produk induk hasil
+    // resolve (itemId di voucherItems WAJIB parent id — itu yang dicocokkan ke
+    // voucher.targetItemIds, VoucherTargetPicker cuma pernah simpan products.id).
     const voucherItems: Array<{ itemType: "product"; itemId: string; unitPrice: number; quantity: number; mitraId: string | null }> = [];
+    const originalIds: string[] = [];
     for (const item of items) {
       const resolved = await resolveProductCartItem(db, schema, item.productId);
       if (!resolved) continue;
       voucherItems.push({ itemType: "product", itemId: resolved.productId, unitPrice: resolved.price, quantity: item.qty, mitraId: resolved.mitraId });
+      originalIds.push(item.productId);
     }
 
     const result = computeVoucherDiscount(voucherRow, { phone: normalizedPhone, email: emailTrim }, existingRedemptions, voucherItems);
@@ -486,7 +493,7 @@ export async function previewOrderVoucherAction(
 
     const perItemDiscount: Record<string, number> = {};
     result.perItemDiscount.forEach((discount, index) => {
-      perItemDiscount[voucherItems[index].itemId] = discount;
+      perItemDiscount[originalIds[index]] = discount;
     });
 
     return {
@@ -497,6 +504,71 @@ export async function previewOrderVoucherAction(
     console.error("[previewOrderVoucherAction]", err);
     return { success: false, error: "Gagal memeriksa voucher." };
   }
+}
+
+// ─── Variasi produk — lazy fetch untuk picker di form buat pesanan manual ──────
+// Tipe khusus admin (BUKAN reuse ProductVariationData dari product-detail-client.tsx) karena
+// admin butuh weightGram (untuk hitung ongkir client-side di order-create-client.tsx) yang
+// tidak ada di tipe publik itu — publik tidak butuh weight, checkout server-side query fresh
+// sendiri. Fallback harga/berat ke induk sudah di-resolve di sini (server), bukan di client.
+export type AdminProductVariation = {
+  id:             string;
+  sku:            string | null;
+  price:          string;   // efektif — variation.price kalau ada, else harga produk induk
+  stock:          number;
+  weightGram:     number;   // efektif — variation.weightGram kalau ada, else berat produk induk
+  attributeCombo: Record<string, string>;
+  isActive:       boolean;
+};
+
+export type AdminAttributeGroup = { name: string; values: string[] };
+
+export async function getProductVariationsAction(
+  slug: string,
+  productId: string,
+): Promise<ActionResult<{ variations: AdminProductVariation[]; attrGroups: AdminAttributeGroup[] }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [p] = await db
+    .select({
+      id: schema.products.id, price: schema.products.price, weightGram: schema.products.weightGram,
+      attributeGroups: schema.products.attributeGroups, productType: schema.products.productType,
+    })
+    .from(schema.products)
+    .where(eq(schema.products.id, productId))
+    .limit(1);
+  if (!p) return { success: false, error: "Produk tidak ditemukan." };
+  if (p.productType !== "variable") return { success: false, error: "Produk ini bukan produk variasi." };
+
+  const vrows = await db
+    .select({
+      id: schema.productVariations.id, sku: schema.productVariations.sku,
+      price: schema.productVariations.price, stock: schema.productVariations.stock,
+      weightGram: schema.productVariations.weightGram, attributeCombo: schema.productVariations.attributeCombo,
+      isActive: schema.productVariations.isActive,
+    })
+    .from(schema.productVariations)
+    .where(and(eq(schema.productVariations.productId, p.id), eq(schema.productVariations.isActive, true)))
+    .orderBy(schema.productVariations.createdAt);
+
+  const variations: AdminProductVariation[] = vrows.map((v) => ({
+    id:             v.id,
+    sku:            v.sku ?? null,
+    price:          String(v.price ?? p.price),
+    stock:          v.stock,
+    weightGram:     v.weightGram ?? p.weightGram ?? 0,
+    attributeCombo: (v.attributeCombo ?? {}) as Record<string, string>,
+    isActive:       v.isActive,
+  }));
+
+  return {
+    success: true,
+    data: { variations, attrGroups: (p.attributeGroups ?? []) as AdminAttributeGroup[] },
+  };
 }
 
 /**
@@ -544,20 +616,50 @@ export async function createOrderAction(
 
     const txResult: TxResult = await db.transaction(async (tx) => {
       // ── Resolusi item — JANGAN percaya harga/mitraId dari client (pola checkoutAction) ──
-      const resolvedItems: Array<{ productId: string; name: string; unitPrice: number; quantity: number; mitraId: string | null }> = [];
+      // itemId = ID ASLI yang dikirim client (bisa product_variations.id untuk produk
+      // bervariasi) — disimpan APA ADANYA ke invoice_items.itemId untuk fulfillment/SKU.
+      // productId = ID PRODUK INDUK hasil resolve — HANYA dipakai untuk voucher matching
+      // (voucher.targetItemIds cuma pernah simpan products.id, tidak pernah variasi). Dua
+      // field ini WAJIB dipisah — lihat komentar di resolveProductCartItem() untuk root cause
+      // bug kelas ini yang pernah terjadi di checkout publik.
+      const resolvedItems: Array<{ itemId: string; productId: string; name: string; unitPrice: number; quantity: number; mitraId: string | null }> = [];
       for (const item of data.items) {
         const resolved = await resolveProductCartItem(tx, schema, item.productId);
         if (!resolved) return { error: "Produk tidak ditemukan." };
         const [p] = await tx
-          .select({ name: schema.products.name, stock: schema.products.stock, status: schema.products.status })
+          .select({ name: schema.products.name, status: schema.products.status })
           .from(schema.products)
           .where(eq(schema.products.id, resolved.productId))
           .limit(1);
         if (!p) return { error: "Produk tidak ditemukan." };
         if (p.status !== "active") return { error: `Produk "${p.name}" tidak aktif.` };
         if (item.qty <= 0) return { error: `Jumlah item "${p.name}" harus lebih dari 0.` };
-        if (p.stock < item.qty) return { error: `Stok "${p.name}" tidak cukup. Tersedia: ${p.stock}, diminta: ${item.qty}.` };
-        resolvedItems.push({ productId: resolved.productId, name: p.name, unitPrice: resolved.price, quantity: item.qty, mitraId: resolved.mitraId });
+
+        // itemId !== productId hasil resolve berarti item ini adalah variasi (product_variations.id)
+        // — stok+nama WAJIB dicek dari baris variasi itu sendiri, bukan produk induk (stock/atribut
+        // combo tidak sama antara induk dan tiap variasinya).
+        const isVariation = item.productId !== resolved.productId;
+        let itemName = p.name;
+        let availableStock: number;
+
+        if (isVariation) {
+          const [v] = await tx
+            .select({ stock: schema.productVariations.stock, attributeCombo: schema.productVariations.attributeCombo, isActive: schema.productVariations.isActive })
+            .from(schema.productVariations)
+            .where(eq(schema.productVariations.id, item.productId))
+            .limit(1);
+          if (!v || !v.isActive) return { error: `Variasi produk "${p.name}" tidak tersedia.` };
+          const combo = (v.attributeCombo ?? {}) as Record<string, string>;
+          const comboLabel = Object.values(combo).join(" / ");
+          itemName = comboLabel ? `${p.name} — ${comboLabel}` : p.name;
+          availableStock = v.stock;
+        } else {
+          const [pr] = await tx.select({ stock: schema.products.stock }).from(schema.products).where(eq(schema.products.id, resolved.productId)).limit(1);
+          availableStock = pr?.stock ?? 0;
+        }
+
+        if (availableStock < item.qty) return { error: `Stok "${itemName}" tidak cukup. Tersedia: ${availableStock}, diminta: ${item.qty}.` };
+        resolvedItems.push({ itemId: item.productId, productId: resolved.productId, name: itemName, unitPrice: resolved.price, quantity: item.qty, mitraId: resolved.mitraId });
       }
 
       // ── Voucher (opsional) ──
@@ -693,7 +795,7 @@ export async function createOrderAction(
           return {
             invoiceId:   invoice.id,
             itemType:    "product" as const,
-            itemId:      item.productId,
+            itemId:      item.itemId,
             name:        item.name,
             unitPrice:   item.unitPrice.toFixed(2),
             quantity:    item.quantity,

@@ -10,6 +10,7 @@ import {
 import type { CheckoutShippingLine } from "@/app/(public)/[tenant]/cart/actions";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { CustomerSearchAutocomplete, type SelectedCustomer } from "@/components/toko/customer-search-autocomplete";
+import { AdminVariationPicker, type PickedVariation } from "@/components/toko/admin-variation-picker";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -132,6 +133,36 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
     });
     setShowSearch(false);
     setSearchQ("");
+  }
+
+  // ── Picker variasi — produk productType="variable" tidak bisa langsung addToCart, wajib
+  // pilih atribut kombinasi dulu (mis. ukuran/warna) via dialog. ────────────────────────────
+  const [variationPicker, setVariationPicker] = useState<{ productId: string; productName: string } | null>(null);
+
+  function handleProductClick(product: ProductOption) {
+    if (product.productType === "variable") {
+      setVariationPicker({ productId: product.id, productName: product.name });
+      setShowSearch(false);
+      setSearchQ("");
+    } else {
+      addToCart(product);
+    }
+  }
+
+  function handleVariationConfirm(v: PickedVariation) {
+    const parent = variationPicker ? products.find((p) => p.id === variationPicker.productId) : undefined;
+    addToCart({
+      id:          v.id,
+      name:        v.name,
+      sku:         v.sku,
+      price:       v.price,
+      stock:       v.stock,
+      weightGram:  v.weightGram,
+      mitraId:     parent?.mitraId ?? null,
+      sellerType:  parent?.sellerType ?? "tenant",
+      productType: "simple", // sudah dipilih, tidak perlu picker lagi kalau qty diubah di cart
+    });
+    setVariationPicker(null);
   }
 
   function updateQty(productId: string, qty: number) {
@@ -360,6 +391,7 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       {/* Kolom kiri — Info pelanggan */}
       <div className="space-y-4">
@@ -576,8 +608,8 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
                     <li key={p.id}>
                       <button
                         type="button"
-                        onClick={() => addToCart(p)}
-                        disabled={p.stock === 0}
+                        onClick={() => handleProductClick(p)}
+                        disabled={p.productType !== "variable" && p.stock === 0}
                         className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted/40 transition-colors disabled:opacity-50 text-left"
                       >
                         <div>
@@ -585,13 +617,20 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
                           <p className="text-xs text-muted-foreground">
                             {p.sku && <span className="font-mono">{p.sku}</span>}
                             {p.mitraId && <span className="ml-1 rounded bg-blue-50 px-1 text-blue-600">Mitra</span>}
+                            {p.productType === "variable" && <span className="ml-1 rounded bg-amber-50 px-1 text-amber-600">Variasi</span>}
                           </p>
                         </div>
                         <div className="text-right shrink-0 ml-3">
-                          <p className="text-green-600 font-medium">
-                            {new Intl.NumberFormat("id-ID").format(p.price)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Stok: {p.stock}</p>
+                          {p.productType === "variable" ? (
+                            <p className="text-xs text-muted-foreground">Pilih variasi →</p>
+                          ) : (
+                            <>
+                              <p className="text-green-600 font-medium">
+                                {new Intl.NumberFormat("id-ID").format(p.price)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">Stok: {p.stock}</p>
+                            </>
+                          )}
                         </div>
                       </button>
                     </li>
@@ -768,5 +807,15 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
         </div>
       </div>
     </form>
+
+    <AdminVariationPicker
+      open={!!variationPicker}
+      onOpenChange={(v) => { if (!v) setVariationPicker(null); }}
+      slug={slug}
+      productId={variationPicker?.productId ?? ""}
+      productName={variationPicker?.productName ?? ""}
+      onConfirm={handleVariationConfirm}
+    />
+    </>
   );
 }

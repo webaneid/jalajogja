@@ -16737,8 +16737,127 @@ pengiriman terpisah), pilih Ambil Sendiri untuk satu grup dan kurir+COD untuk gr
 terapkan kode voucher aktif, submit — cek invoice terbuat dengan breakdown yang benar DAN
 customer (kalau ada nomor HP) menerima WA "Invoice Baru".
 
+### [2026-08-14] `/toko/pesanan/new` — Produk Variasi Tidak Bisa Dipesan + Kode Unik Ternyata Sudah Benar
+
+Setelah commit sebelumnya (§ di atas) di-push, user khawatir ada yang terlewat lagi (verbatim,
+diminta dicatat): *"produk itu ada 2 jenis, ada produk yang memiliki variasi dan ada yang
+simple tanpa variasi.. artinya ketika variasi maka ketika buat pesanan juga harus ada
+variasinya"* — dan menanyakan apakah kode unik sudah benar-benar masuk ke invoice saat pesanan
+dibuat (belum sempat dicoba sendiri).
+
+**Kode unik — dicek, TERNYATA SUDAH BENAR sejak awal, bukan lupa.** `generateUniqueCode()`
+sudah dipanggil di `createOrderAction` dan disimpan ke `invoices.uniqueCode` sebagai kolom
+TERPISAH dari `total` (persis pola `checkoutAction`). Diverifikasi lintas file:
+`amountDue = total + uniqueCode` dihitung GENERIK di seluruh `finance/billing/actions.ts`
+(confirm/verify payment, cicilan, dst) TANPA percabangan per `sourceType` — jadi invoice hasil
+`createOrderAction` (`sourceType="order"`) otomatis ikut benar tanpa kode tambahan apa pun.
+
+**Produk variasi — genuinely 2 bug nyata, bukan salah paham user.** `order-create-client.tsx`
+menerima field `productType` di `ProductOption` tapi TIDAK PERNAH memakainya — `addToCart`
+menambahkan produk apa pun (simple maupun variable) langsung dengan harga flat, tanpa picker
+atribut sama sekali. Kalau dibiarkan dan client SEMPAT dikirim ID variasi, bug kedua (lebih
+dalam) juga sudah menunggu: `createOrderAction`'s `resolvedItems.push({ productId: resolved.
+productId, ... })` menyimpan ID PRODUK INDUK hasil resolve (bukan ID asli yang dikirim client)
+ke `invoice_items.itemId` — info varian (ukuran/warna) akan hilang begitu masuk invoice, dan
+stock check-nya query `products.stock` (induk), bukan `product_variations.stock` milik varian
+spesifik yang dipesan.
+
+**Root cause detail**: `resolveProductCartItem()` (`@jalajogja/db`, sudah lama dipakai di
+`checkoutAction` DAN `createOrderAction`) memang SUDAH mendukung dual-resolusi (terima
+`products.id` ATAU `product_variations.id`, fallback JOIN ke induk) — tapi return-nya
+`ResolvedProductCartItem.productId` SECARA SENGAJA adalah ID INDUK (dipakai untuk voucher
+matching, karena `VoucherTargetPicker` cuma pernah simpan `products.id`, tidak pernah variasi
+— didokumentasikan eksplisit di komentar file itu sendiri). `checkoutAction` (cart publik)
+sudah benar menangani ini dengan memisahkan `itemId` (asli, disimpan ke invoice) dari
+`voucherTargetId` (induk, cuma untuk matching voucher) — tapi `createOrderAction` (admin
+manual, dibangun di commit sebelumnya) melewatkan pemisahan ini sepenuhnya.
+
+**Fix — 4 titik, semua reuse infrastruktur yang sudah ada, bukan bikin dari nol**:
+1. `resolvedItems` di `createOrderAction` sekarang punya field `itemId` (ID ASLI, disimpan ke
+   `invoice_items.itemId`) TERPISAH dari `productId` (ID induk, HANYA untuk voucher matching) —
+   pola SAMA PERSIS `checkoutAction`. Stock+nama dicek dari sumber yang benar: kalau
+   `item.productId !== resolved.productId` (berarti variasi), query `product_variations.stock`
+   +`attributeCombo` langsung, bangun nama `"{induk} — {kombo atribut}"`; kalau simple, tetap
+   query `products.stock` seperti semula.
+2. **Action baru `getProductVariationsAction(slug, productId)`** — lazy fetch (bukan eager
+   seperti `/gabung`'s `ProductVariationPopup`, karena katalog admin bisa banyak produk
+   variable — fetch semua sekaligus boros) untuk SATU produk saat admin klik. Tipe baru
+   `AdminProductVariation`/`AdminAttributeGroup` — SENGAJA BUKAN reuse `ProductVariationData`
+   publik (`product-detail-client.tsx`), karena tipe publik itu tidak carry `weightGram` (tidak
+   dibutuhkan tampilan publik, tapi WAJIB di sini untuk hitung ongkir client-side) — fallback
+   harga+berat ke induk sudah di-resolve SERVER-SIDE di action ini, konsisten pola
+   `resolveVariantPriceRanges`/`COALESCE(variation.x, product.x)` yang sudah dikunci di
+   `lib/product-variation-price.server.ts`.
+3. **Komponen baru `AdminVariationPicker`** (`components/toko/admin-variation-picker.tsx`) —
+   logic pilih atribut (`findVariation`/`isValueAvailable`) DIDUPLIKASI dari
+   `ProductVariationPopup` (`/gabung`), bukan di-import — beda tipe data DAN beda confirm
+   handler (di sini TIDAK memanggil `addToCartAction` publik, cuma mengembalikan
+   `PickedVariation` ke caller via `onConfirm`, yang lalu memanggil `addToCart()` LOKAL milik
+   `OrderCreateClient` sendiri — cart admin dibangun client-side, tidak ada `cart_items` DB).
+   Diwire via tombol "Tambah Produk": klik produk `productType==="variable"` buka dialog
+   picker (bukan langsung `addToCart`); tombol produk variable TIDAK di-`disabled` berdasar
+   `p.stock` (stock induk tidak relevan, gate stock sesungguhnya ada di picker per-varian).
+4. **Bonus bug ditemukan+difix sekalian saat baca kode** (bukan diminta eksplisit, tapi kelas
+   sama): `previewOrderVoucherAction`'s `perItemDiscount` (map buat tampilan "diskon per baris"
+   di preview keranjang) JUGA di-key pakai `resolved.productId` (induk) — untuk baris variasi,
+   `voucherPreview.perItemDiscount?.[item.product.id]` di client akan SELALU `0` (client
+   nyimpan ID variasi di `item.product.id`, map-nya di-key pakai ID induk) meski diskon
+   sesungguhnya yang diterapkan saat submit tetap benar (jalur commit sudah difix di poin 1,
+   independen dari preview). Fix: `originalIds[]` di-track LOCKSTEP dengan `voucherItems[]`
+   (push bersamaan, skip bersamaan kalau `resolveProductCartItem` gagal) — supaya
+   `perItemDiscount` return dikunci pakai ID ASLI yang dikirim client, bukan hasil resolve
+   internal untuk matching voucher.
+
+**Verifikasi**: `tsc --noEmit` 0 error kedua package (dicek 2× — sekali setelah backend, sekali
+lagi setelah frontend picker) + `bun run build --filter=@jalajogja/web` genuine sukses (dev
+server dimatikan port 6202+`.next` dibersihkan, `Cached: 0 cached, 1 total`, 50.9s, dev server
+direstart, curl 200 OK) — route `/app/[tenant]/toko/pesanan/new` naik 9.54→11.3 kB (konfirmasi
+`AdminVariationPicker` genuinely ter-compile). Nol migrasi DB — semua kolom (`product_
+variations.stock`/`weightGram`/`attributeCombo`) sudah ada sejak fitur variasi produk lama.
+**Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser**
+— user perlu coba: klik produk bervariasi di "Tambah Produk" (harus buka dialog pilih atribut,
+bukan langsung masuk keranjang), pilih kombinasi lengkap → cek harga+stok muncul benar → tambah
+ke keranjang → submit → cek `invoice_items.itemId` di database benar-benar ID variasi (bukan ID
+produk induk) dan nama item menyebut kombinasi atribut yang dipilih (mis. "Kaos — Merah / L").
+
+**Aturan yang ditegaskan**: kalau sebuah helper resolusi (`resolveProductCartItem`) SENGAJA
+mengembalikan ID INDUK untuk keperluan tertentu (voucher matching) yang BERBEDA dari ID yang
+harus disimpan permanen (fulfillment/invoice), setiap TITIK PEMANGGIL baru WAJIB mereplikasi
+pemisahan `itemId`(asli)/`productId`(induk) — bukan asumsi "tinggal pakai return value-nya
+apa adanya". Comment di `resolve-product-item.ts` sudah menjelaskan pemisahan ini eksplisit,
+tapi kode BARU (`createOrderAction`, dibangun sesi sebelumnya) tetap melewatkannya sampai
+ditemukan lewat audit susulan ini — dokumentasi inline tidak menjamin pola diikuti tanpa
+verifikasi ulang tiap kali menulis kode baru yang memanggil fungsi yang sama.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **`/toko/pesanan/new` — Search Pelanggan Gabungan + Ongkir Per-Penjual
+- Terakhir dikerjakan: **`/toko/pesanan/new` — Produk Variasi Tidak Bisa Dipesan + Kode Unik
+  Ternyata Sudah Benar** (lihat lesson `[2026-08-14]` di atas). User khawatir 2 hal terlewat
+  dari fitur yang baru saja di-push: (1) produk bervariasi (ukuran/warna) tidak bisa dipesan
+  lewat form admin; (2) kode unik transaksi apakah genuinely masuk ke invoice. Investigasi:
+  kode unik TERNYATA SUDAH BENAR (`generateUniqueCode()` sudah dipanggil+disimpan, `amountDue
+  = total + uniqueCode` generik lintas semua sourceType — dikonfirmasi via grep, bukan
+  diklaim). Variasi produk GENUINELY 2 bug: (a) `order-create-client.tsx` tidak pernah
+  menampilkan picker atribut untuk produk `productType==="variable"`, `addToCart` langsung
+  pakai harga flat; (b) `createOrderAction`'s `resolvedItems` menyimpan ID PRODUK INDUK ke
+  `invoice_items.itemId` (bukan ID variasi asli), plus stock check salah query (`products.
+  stock` induk, bukan `product_variations.stock` milik varian spesifik). Fix: `resolvedItems`
+  sekarang split `itemId`(asli)/`productId`(induk, cuma untuk voucher matching) persis pola
+  `checkoutAction` yang sudah benar; action baru `getProductVariationsAction` (lazy fetch,
+  tipe `AdminProductVariation` sendiri — bukan reuse tipe publik, karena butuh `weightGram`
+  untuk ongkir); komponen baru `AdminVariationPicker` (`components/toko/`, logic duplikasi
+  dari `ProductVariationPopup` /gabung tapi confirm handler beda — panggil `addToCart()` lokal,
+  bukan `addToCartAction` publik); tombol "Tambah Produk" branch ke picker untuk produk
+  variable. Bonus fix ditemukan sekalian: `previewOrderVoucherAction`'s `perItemDiscount` juga
+  salah key (induk, bukan asli) — preview diskon akan tampil Rp0 untuk baris variasi meski
+  diskon sesungguhnya benar saat submit; fix via `originalIds[]` lockstep. `tsc --noEmit` 0
+  error kedua package (2×) + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0
+  cached, 1 total`, 50.9s, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 OK) —
+  route `/app/[tenant]/toko/pesanan/new` naik 9.54→11.3 kB. Nol migrasi DB. **Belum di-commit/
+  push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser** — user perlu
+  coba: klik produk bervariasi di "Tambah Produk" (harus buka dialog pilih atribut), pilih
+  kombinasi → tambah ke keranjang → submit → cek `invoice_items.itemId` di DB benar-benar ID
+  variasi (bukan ID induk) dan nama item menyebut kombinasi atribut (mis. "Kaos — Merah / L").
+- Sesi sebelumnya: **`/toko/pesanan/new` — Search Pelanggan Gabungan + Ongkir Per-Penjual
   + Voucher + Auto-Invoice+WA** (lihat lesson `[2026-08-15]` "`/toko/pesanan/new` — Search
   Pelanggan Gabungan..." di atas). Lanjutan langsung dari fix kolom "Total" `/toko/pesanan`
   (bullet berikutnya di bawah, sesi yang sama). User minta 4 peningkatan sekaligus di form
