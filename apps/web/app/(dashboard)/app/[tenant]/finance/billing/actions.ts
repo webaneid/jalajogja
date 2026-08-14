@@ -9,7 +9,7 @@ import { createTenantDb, generateFinancialNumber, settleInstallmentSchedules } f
 import { db as publicDb, tenants, tenantMemberships, getSetting } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, hasReadAccess } from "@/lib/permissions";
-import { recordIncome } from "@jalajogja/db";
+import { recordIncomeSplit } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz, localDatetimeToUtcIso } from "@/lib/tenant-timezone.server";
@@ -828,13 +828,12 @@ export async function confirmInvoicePaymentAction(
     return { success: false, error: "Ada bukti pembayaran yang sedang menunggu verifikasi. Verifikasi atau tolak dulu bukti tersebut sebelum menambah pembayaran manual baru." };
 
   try {
-    // Resolve akun untuk jurnal
-    const { resolveAccountMappingsForBilling } = await import("../actions");
-    const { cashAccountId, incomeAccountId } = await resolveAccountMappingsForBilling(
-      tenantDb, data.method, "manual"
-    );
+    // Resolve akun untuk jurnal — pre-check cepat (jaminan korektnes yang sebenarnya via
+    // resolve ULANG di dalam transaction, lihat komentar sebelum recordIncomeSplit di bawah).
+    const { resolveIncomeSplitForBilling } = await import("../actions");
+    const preCheckSplit = await resolveIncomeSplitForBilling(tenantDb, data.method, invoiceId, data.amount);
 
-    if (!cashAccountId || !incomeAccountId) {
+    if (!preCheckSplit) {
       return {
         success: false,
         error: "Konfigurasi mapping akun belum lengkap. Atur di menu Akun → Pengaturan Mapping.",
@@ -952,14 +951,19 @@ export async function confirmInvoicePaymentAction(
         // formal juga, supaya rekening bank dan laporan sama persis" — lihat
         // docs/arsitektur-billing.md § "Overpayment Juga Dijurnal".
         const journalAmount = Math.max(0, newPaidAmount - uniqueCode);
-        await recordIncome(tenantDb, {
+        // Resolve ULANG di sini (bukan pakai preCheckSplit dari luar tx) — jaminan korektnes
+        // sebenarnya, sama seperti pola lock+recheck lain di project ini. Pecah jadi beberapa
+        // baris kredit sesuai domain item (produk→Toko, tiket→Event, donasi→Dana Titipan,
+        // custom→Manual) — lihat docs/arsitektur-keuangan.md § 14.4 (Opsi B).
+        const split = await resolveIncomeSplitForBilling(tenantDb, data.method, invoiceId, journalAmount);
+        if (!split) throw new Error("Konfigurasi mapping akun belum lengkap. Atur di menu Akun → Pengaturan Mapping.");
+        await recordIncomeSplit(tenantDb, {
           date:            todayInTz(tenantTimezone),
           description:     `Pelunasan invoice ${inv.invoiceNumber}`,
           referenceNumber: txNum,
           createdBy:       access.tenantUser.id,
-          amount:          journalAmount,
-          cashAccountId,
-          incomeAccountId,
+          cashAccountId:   split.cashAccountId,
+          lines:           split.lines,
         });
 
         // Sync collected_amount kampanye donasi dari cart
@@ -1388,13 +1392,14 @@ export async function verifySubmittedPaymentAction(
   if (invEarly.status === "paid")      return { success: false, error: "Invoice sudah lunas." };
   if (invEarly.status === "cancelled") return { success: false, error: "Invoice sudah dibatalkan." };
 
-  // Resolve akun untuk jurnal
-  const { resolveAccountMappingsForBilling } = await import("../actions");
-  const { cashAccountId, incomeAccountId } = await resolveAccountMappingsForBilling(
-    tenantDb, payment.method as "cash" | "transfer" | "qris", "manual",
+  // Resolve akun untuk jurnal — pre-check cepat (jaminan korektnes yang sebenarnya via resolve
+  // ULANG di dalam transaction, lihat komentar sebelum recordIncomeSplit di bawah).
+  const { resolveIncomeSplitForBilling } = await import("../actions");
+  const preCheckSplit = await resolveIncomeSplitForBilling(
+    tenantDb, payment.method as "cash" | "transfer" | "qris", payment.sourceId, verifiedAmount,
   );
 
-  if (!cashAccountId || !incomeAccountId) {
+  if (!preCheckSplit) {
     return {
       success: false,
       error: "Konfigurasi mapping akun belum lengkap. Atur di menu Akun → Pengaturan Mapping.",
@@ -1513,14 +1518,21 @@ export async function verifySubmittedPaymentAction(
         // uniqueCode invoice-level saja. Lihat komentar sama di confirmInvoicePaymentAction +
         // docs/arsitektur-billing.md § "Overpayment Juga Dijurnal".
         const journalAmount = Math.max(0, newPaid - uniqueCode);
-        await recordIncome(tenantDb, {
+        // Resolve ULANG di sini (bukan pakai preCheckSplit dari luar tx) — jaminan korektnes
+        // sebenarnya, sama seperti pola lock+recheck lain di project ini. Pecah jadi beberapa
+        // baris kredit sesuai domain item (produk→Toko, tiket→Event, donasi→Dana Titipan,
+        // custom→Manual) — lihat docs/arsitektur-keuangan.md § 14.4 (Opsi B).
+        const split = await resolveIncomeSplitForBilling(
+          tenantDb, payment.method as "cash" | "transfer" | "qris", inv.id, journalAmount,
+        );
+        if (!split) throw new Error("Konfigurasi mapping akun belum lengkap. Atur di menu Akun → Pengaturan Mapping.");
+        await recordIncomeSplit(tenantDb, {
           date:            todayInTz(tenantTimezone),
           description:     `Pelunasan invoice ${inv.invoiceNumber}`,
           referenceNumber: txNum,
           createdBy:       access.tenantUser.id,
-          amount:          journalAmount,
-          cashAccountId,
-          incomeAccountId,
+          cashAccountId:   split.cashAccountId,
+          lines:           split.lines,
         });
 
         // Sync collected_amount kampanye donasi dari cart
@@ -2994,17 +3006,7 @@ export async function confirmCodPaymentAction(
     return { success: false, error: "COD untuk baris ini sudah dikonfirmasi sebelumnya." };
 
   try {
-    const { resolveAccountMappingsForBilling } = await import("../actions");
-    const { cashAccountId, incomeAccountId } = await resolveAccountMappingsForBilling(
-      tenantDb, "cash", "manual"
-    );
-    if (!cashAccountId || !incomeAccountId) {
-      return {
-        success: false,
-        error: "Konfigurasi mapping akun belum lengkap. Atur di menu Akun → Pengaturan Mapping.",
-      };
-    }
-
+    const { resolveIncomeSplitForBilling } = await import("../actions");
     const tenantTimezone = await getTenantTimezone(tenantDb);
 
     const result = await db.transaction(async (tx) => {
@@ -3082,15 +3084,21 @@ export async function confirmCodPaymentAction(
 
       // Jurnal SEGERA untuk porsi ini — tidak menunggu invoice keseluruhan lunas (beda dari
       // confirmInvoicePaymentAction), karena porsi penjual lain (mis. mitra) bisa masih pending.
+      // Pecah jadi beberapa baris kredit sesuai domain item milik tenant (produk→Toko,
+      // tiket→Event, donasi→Dana Titipan, custom→Manual) — lihat
+      // docs/arsitektur-keuangan.md § 14.4 (Opsi B).
       const txNum = await generateFinancialNumber(tenantDb, "journal");
-      await recordIncome(tenantDb, {
+      const split = await resolveIncomeSplitForBilling(
+        tenantDb, "cash", line.invoiceId, amount, { sellerType: "tenant" },
+      );
+      if (!split) throw new Error("Konfigurasi mapping akun belum lengkap. Atur di menu Akun → Pengaturan Mapping.");
+      await recordIncomeSplit(tenantDb, {
         date:            todayInTz(tenantTimezone),
         description:     `COD ${lockedInv.invoiceNumber} — porsi toko`,
         referenceNumber: txNum,
         createdBy:       access.tenantUser.id,
-        amount,
-        cashAccountId,
-        incomeAccountId,
+        cashAccountId:   split.cashAccountId,
+        lines:           split.lines,
       });
 
       return { paymentId: payment.id };

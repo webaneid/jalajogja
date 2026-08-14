@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { FileText, Download, Loader2 } from "lucide-react";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import {
   getLaporanNeracaSaldoAction,
   getLaporanLabaRugiAction,
   getLaporanArusKasAction,
+  getLaporanArusKasBulananAction,
   getLaporanBukuBesarAction,
   type NeracaSaldoRow,
   type LabaRugiData,
   type ArusKasData,
+  type ArusKasBulananData,
   type BukuBesarRow,
 } from "@/app/(dashboard)/app/[tenant]/finance/actions";
 
@@ -27,18 +29,20 @@ type Props = {
 };
 
 const REPORT_TYPES = [
-  { value: "neraca",     label: "Neraca Saldo",      desc: "Saldo semua akun per periode" },
-  { value: "laba_rugi",  label: "Laporan Laba Rugi", desc: "Pendapatan vs beban" },
-  { value: "arus_kas",   label: "Laporan Arus Kas",  desc: "Ringkasan aliran kas masuk & keluar" },
-  { value: "buku_besar", label: "Buku Besar",        desc: "Riwayat transaksi per akun" },
+  { value: "neraca",           label: "Neraca Saldo",       desc: "Saldo semua akun per periode" },
+  { value: "laba_rugi",        label: "Laporan Laba Rugi",  desc: "Pendapatan vs beban" },
+  { value: "arus_kas",         label: "Laporan Arus Kas",   desc: "Ringkasan aliran kas masuk & keluar" },
+  { value: "arus_kas_bulanan", label: "Arus Kas Bulanan",   desc: "Pemasukan & pengeluaran per bulan" },
+  { value: "buku_besar",       label: "Buku Besar",         desc: "Riwayat transaksi per akun" },
 ] as const;
 
 type ReportType = typeof REPORT_TYPES[number]["value"];
 type ReportData =
-  | { type: "neraca";     data: NeracaSaldoRow[] }
-  | { type: "laba_rugi";  data: LabaRugiData }
-  | { type: "arus_kas";   data: ArusKasData }
-  | { type: "buku_besar"; data: BukuBesarRow[] };
+  | { type: "neraca";           data: NeracaSaldoRow[] }
+  | { type: "laba_rugi";        data: LabaRugiData }
+  | { type: "arus_kas";         data: ArusKasData }
+  | { type: "arus_kas_bulanan"; data: ArusKasBulananData }
+  | { type: "buku_besar";       data: BukuBesarRow[] };
 
 function formatRp(n: number) {
   return "Rp " + new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0 }).format(n);
@@ -227,6 +231,99 @@ function ArusKasTable({ data }: { data: ArusKasData }) {
   );
 }
 
+// ─── Tabel Arus Kas Bulanan ─────────────────────────────────────────────────────
+
+function ArusKasBulananTable({ data }: { data: ArusKasBulananData }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  function toggle(key: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border bg-muted/30">
+            <th className="px-3 py-2 text-left font-medium">Bulan</th>
+            <th className="px-3 py-2 text-right font-medium">Pemasukan</th>
+            <th className="px-3 py-2 text-right font-medium">Pengeluaran</th>
+            <th className="px-3 py-2 text-right font-medium">Saldo Bulan Ini</th>
+            <th className="px-3 py-2 text-right font-medium">Saldo Kumulatif</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.rows.length === 0 ? (
+            <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground text-xs">Tidak ada transaksi dalam periode ini</td></tr>
+          ) : data.rows.map((r) => (
+            <Fragment key={r.monthKey}>
+              <tr
+                className="border-b border-border hover:bg-muted/20 cursor-pointer"
+                onClick={() => toggle(r.monthKey)}
+              >
+                <td className="px-3 py-2 font-medium">{r.monthLabel}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-green-700">{formatRp(r.totalPemasukan)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-red-700">{formatRp(r.totalPengeluaran)}</td>
+                <td className={`px-3 py-2 text-right tabular-nums font-medium ${r.saldo >= 0 ? "text-blue-600" : "text-red-600"}`}>
+                  {formatRp(r.saldo)}
+                </td>
+                <td className={`px-3 py-2 text-right tabular-nums font-medium ${r.saldoKumulatif >= 0 ? "text-blue-600" : "text-red-600"}`}>
+                  {formatRp(r.saldoKumulatif)}
+                </td>
+              </tr>
+              {expanded.has(r.monthKey) && (
+                <tr className="border-b border-border bg-muted/10">
+                  <td colSpan={5} className="px-3 py-3">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1.5">Rincian Pemasukan</p>
+                        {r.pemasukan.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">Tidak ada pemasukan</p>
+                        ) : r.pemasukan.map((p, i) => (
+                          <div key={i} className="flex justify-between text-xs py-0.5">
+                            <span>{p.label}</span>
+                            <span className="tabular-nums text-green-700">{formatRp(p.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1.5">Rincian Pengeluaran</p>
+                        {r.pengeluaran.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">Tidak ada pengeluaran</p>
+                        ) : r.pengeluaran.map((p, i) => (
+                          <div key={i} className="flex justify-between text-xs py-0.5">
+                            <span>{p.label}</span>
+                            <span className="tabular-nums text-red-700">{formatRp(p.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-border font-semibold bg-muted/30">
+            <td className="px-3 py-2">TOTAL</td>
+            <td className="px-3 py-2 text-right tabular-nums text-green-700">{formatRp(data.grandTotalPemasukan)}</td>
+            <td className="px-3 py-2 text-right tabular-nums text-red-700">{formatRp(data.grandTotalPengeluaran)}</td>
+            <td className={`px-3 py-2 text-right tabular-nums ${data.grandSaldo >= 0 ? "text-blue-600" : "text-red-600"}`}>
+              {formatRp(data.grandSaldo)}
+            </td>
+            <td className="px-3 py-2"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
 // ─── Tabel Buku Besar ─────────────────────────────────────────────────────────
 
 function BukuBesarTable({ rows }: { rows: BukuBesarRow[] }) {
@@ -352,6 +449,10 @@ export function LaporanClient({ slug, accounts }: Props) {
         const res = await getLaporanArusKasAction(slug, startDate, endDate);
         if (res.success) setResult({ type: "arus_kas",  data: res.data });
         else setError(res.error);
+      } else if (reportType === "arus_kas_bulanan") {
+        const res = await getLaporanArusKasBulananAction(slug, startDate, endDate);
+        if (res.success) setResult({ type: "arus_kas_bulanan", data: res.data });
+        else setError(res.error);
       } else if (reportType === "buku_besar") {
         const res = await getLaporanBukuBesarAction(slug, accountId, startDate, endDate);
         if (res.success) setResult({ type: "buku_besar", data: res.data });
@@ -365,7 +466,7 @@ export function LaporanClient({ slug, accounts }: Props) {
   return (
     <div className="space-y-6">
       {/* Pilih jenis laporan */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {REPORT_TYPES.map((r) => (
           <button
             key={r.value}
@@ -443,21 +544,32 @@ export function LaporanClient({ slug, accounts }: Props) {
               <p className="font-medium text-sm">{selectedLabel}</p>
               <p className="text-xs text-muted-foreground">{startDate} s/d {endDate}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => exportCsv(reportType, result)}
-              className="inline-flex items-center gap-1.5 rounded border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/40"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Export CSV
-            </button>
+            {reportType === "arus_kas_bulanan" ? (
+              <a
+                href={`/api/finance/laporan/arus-kas-bulanan/export?tenant=${slug}&start=${startDate}&end=${endDate}`}
+                className="inline-flex items-center gap-1.5 rounded border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/40"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export Excel
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => exportCsv(reportType, result)}
+                className="inline-flex items-center gap-1.5 rounded border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/40"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export CSV
+              </button>
+            )}
           </div>
 
           <div className="p-4">
-            {result.type === "neraca"     && <NeracaTable   rows={result.data} />}
-            {result.type === "laba_rugi"  && <LabaRugiTable data={result.data} />}
-            {result.type === "arus_kas"   && <ArusKasTable  data={result.data} />}
-            {result.type === "buku_besar" && <BukuBesarTable rows={result.data} />}
+            {result.type === "neraca"           && <NeracaTable         rows={result.data} />}
+            {result.type === "laba_rugi"        && <LabaRugiTable       data={result.data} />}
+            {result.type === "arus_kas"         && <ArusKasTable        data={result.data} />}
+            {result.type === "arus_kas_bulanan" && <ArusKasBulananTable data={result.data} />}
+            {result.type === "buku_besar"       && <BukuBesarTable      rows={result.data} />}
           </div>
         </div>
       )}

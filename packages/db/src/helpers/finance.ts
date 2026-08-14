@@ -96,6 +96,30 @@ export async function recordIncome(
   });
 }
 
+// Catat penerimaan kas/bank dengan pendapatan terpecah ke BEBERAPA akun sekaligus (mis. satu
+// invoice cart universal berisi campuran produk+tiket+donasi) — satu debit kas, N kredit
+// pendapatan/kewajiban. `recordJournal` sudah memvalidasi total debit = total kredit; caller
+// WAJIB memastikan sum(lines.amount) persis sama dengan total yang didebit (bukan dihitung
+// ulang di sini) — lihat resolveIncomeSplitForBilling() di finance/actions.ts (apps/web) untuk
+// pola pembagian proporsional yang aman dari selisih pembulatan.
+export async function recordIncomeSplit(
+  tenantDb: TenantDb,
+  input: BaseTransactionInput & {
+    cashAccountId: string;                                    // akun kas/bank yang didebit
+    lines: { accountId: string; amount: number; note?: string }[]; // akun pendapatan/kewajiban yang dikredit
+  }
+) {
+  const { cashAccountId, lines, ...txData } = input;
+  const totalAmount = lines.reduce((sum, l) => sum + l.amount, 0);
+  return recordJournal(tenantDb, {
+    ...txData,
+    entries: [
+      { accountId: cashAccountId, type: "debit", amount: totalAmount },
+      ...lines.map((l) => ({ accountId: l.accountId, type: "credit" as const, amount: l.amount, note: l.note })),
+    ],
+  });
+}
+
 // Catat transfer antar akun kas/bank
 // Otomatis: debit akun tujuan, kredit akun asal
 export async function recordTransfer(

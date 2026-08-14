@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { db, members, createTenantDb, recordIncome, generateFinancialNumber } from "@jalajogja/db";
+import { db, members, createTenantDb, recordIncomeSplit, generateFinancialNumber } from "@jalajogja/db";
 import { eq, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getTenantTimezone, todayInTz } from "@/lib/tenant-timezone.server";
@@ -61,9 +61,12 @@ export async function updateShippingTrackingAction(
 // kepemilikan). Logic inti (lock invoice, insert payment, update paidAmount/status, jurnal,
 // stamp codConfirmedAt) DUPLIKASI DISENGAJA dari confirmCodPaymentAction versi admin
 // (finance/billing/actions.ts) — konsisten pola project ini untuk jalur admin vs self-service
-// yang menyentuh uang. `resolveAccountMappingsForBilling` di-import lintas route group karena
-// murni resolusi konfigurasi akun (tanpa auth/session di dalamnya) — duplikasi logic mapping
-// akun yang punya banyak fallback akan lebih berisiko drift daripada reuse fungsi ini.
+// yang menyentuh uang. `resolveIncomeSplitForBilling` di-import lintas route group karena murni
+// resolusi konfigurasi akun + pemecahan domain (tanpa auth/session di dalamnya) — duplikasi
+// logic mapping akun yang punya banyak fallback akan lebih berisiko drift daripada reuse fungsi
+// ini. Item mitra selalu bertipe "product" (mitra cuma jual produk, tidak pernah tiket/donasi)
+// jadi hasil split di sini SELALU satu baris ke income_toko — mekanismenya tetap generik,
+// bukan special-cased, murni konsekuensi alami dari data.
 export async function confirmMitraCodReceivedAction(
   slug: string,
   shippingLineId: string,
@@ -99,12 +102,7 @@ export async function confirmMitraCodReceivedAction(
   if (line.codConfirmedAt) return { error: "COD untuk baris ini sudah dikonfirmasi sebelumnya." };
 
   try {
-    const { resolveAccountMappingsForBilling } = await import("../../../../../(dashboard)/app/[tenant]/finance/actions");
-    const { cashAccountId, incomeAccountId } = await resolveAccountMappingsForBilling(tenantDb, "cash", "manual");
-    if (!cashAccountId || !incomeAccountId) {
-      return { error: "Konfigurasi mapping akun toko belum lengkap — hubungi admin toko." };
-    }
-
+    const { resolveIncomeSplitForBilling } = await import("../../../../../(dashboard)/app/[tenant]/finance/actions");
     const tenantTimezone = await getTenantTimezone(tenantDb);
 
     // Jurnal (transaction_entries.created_by) WAJIB uuid tenant.users.id — mitra bukan
@@ -195,14 +193,17 @@ export async function confirmMitraCodReceivedAction(
         .where(eq(schema.invoiceShippingLines.id, shippingLineId));
 
       const txNum = await generateFinancialNumber(tenantDb, "journal");
-      await recordIncome(tenantDb, {
+      const split = await resolveIncomeSplitForBilling(
+        tenantDb, "cash", line.invoiceId, amount, { sellerType: "mitra", sellerId: mitra.id },
+      );
+      if (!split) throw new Error("Konfigurasi mapping akun toko belum lengkap — hubungi admin toko.");
+      await recordIncomeSplit(tenantDb, {
         date:            todayInTz(tenantTimezone),
         description:     `COD ${lockedInv.invoiceNumber} — porsi mitra (dikonfirmasi mitra)`,
         referenceNumber: txNum,
         createdBy:       ownerUser.id,
-        amount,
-        cashAccountId,
-        incomeAccountId,
+        cashAccountId:   split.cashAccountId,
+        lines:           split.lines,
       });
     });
 

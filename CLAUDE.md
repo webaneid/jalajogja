@@ -16612,10 +16612,11 @@ bisa mencampur item lintas-domain.
 
 `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine sukses (dev server
 dimatikan port 6202+`.next` dibersihkan+direstart, `Cached: 0 cached, 1 total`, 49.3s, route
-`/app/[tenant]/toko/pesanan` 863 B terkonfirmasi compile bersih). **Belum di-commit/push,
-belum diverifikasi visual di browser** — user perlu buka `/app/{slug}/toko/pesanan` dan
-konfirmasi kolom "Total Produk" sekarang cuma menghitung porsi produk+ongkir, terutama untuk
-invoice yang customer-nya checkout campuran produk+tiket/donasi dalam satu keranjang.
+`/app/[tenant]/toko/pesanan` 863 B terkonfirmasi compile bersih). **SUDAH di-commit+push**
+(`f18c17d`). **Belum diverifikasi visual di browser** — user perlu buka
+`/app/{slug}/toko/pesanan` dan konfirmasi kolom "Total Produk" sekarang cuma menghitung
+porsi produk+ongkir, terutama untuk invoice yang customer-nya checkout campuran produk+
+tiket/donasi dalam satu keranjang.
 
 ### [2026-08-15] `/toko/pesanan/new` — Search Pelanggan Gabungan + Ongkir Per-Penjual + Voucher + Auto-Invoice+WA
 
@@ -16727,10 +16728,9 @@ dibersihkan, `Cached: 0 cached, 1 total`, 52.9s, dev server direstart, curl 200 
 baru genuinely ter-compile, bukan cache-hit) dan route baru `/api/ref/customer-search`
 terkonfirmasi ada di build output. Nol migrasi DB — seluruh kolom (COD/pickup/shipping-line
 fields, `memberId`/`profileId`/`voucherId` di invoices, dst) sudah ada sejak fitur-fitur
-sebelumnya, murni kode aplikasi baru. **Belum di-commit/push ke git (menunggu otorisasi
-eksplisit terpisah — instruksi standing project ini: izin push satu commit TIDAK berlaku
-otomatis untuk commit berikutnya), belum dijalankan di VPS, belum diverifikasi visual di
-browser** (halaman admin butuh session auth, tidak bisa dicurl seperti halaman publik) — user
+sebelumnya, murni kode aplikasi baru. **SUDAH di-commit+push** (`21a9755`). **Belum
+dijalankan di VPS, belum diverifikasi visual di browser** (halaman admin butuh session auth,
+tidak bisa dicurl seperti halaman publik) — user
 perlu coba end-to-end: cari nama anggota/akun publik di field "Nama Pelanggan" (cek auto-isi
 telepon+email), tambah produk campuran tenant+mitra ke keranjang (cek muncul 2 grup
 pengiriman terpisah), pilih Ambil Sendiri untuk satu grup dan kurir+COD untuk grup lain,
@@ -16814,11 +16814,12 @@ server dimatikan port 6202+`.next` dibersihkan, `Cached: 0 cached, 1 total`, 50.
 direstart, curl 200 OK) — route `/app/[tenant]/toko/pesanan/new` naik 9.54→11.3 kB (konfirmasi
 `AdminVariationPicker` genuinely ter-compile). Nol migrasi DB — semua kolom (`product_
 variations.stock`/`weightGram`/`attributeCombo`) sudah ada sejak fitur variasi produk lama.
-**Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser**
-— user perlu coba: klik produk bervariasi di "Tambah Produk" (harus buka dialog pilih atribut,
-bukan langsung masuk keranjang), pilih kombinasi lengkap → cek harga+stok muncul benar → tambah
-ke keranjang → submit → cek `invoice_items.itemId` di database benar-benar ID variasi (bukan ID
-produk induk) dan nama item menyebut kombinasi atribut yang dipilih (mis. "Kaos — Merah / L").
+**SUDAH di-commit+push** (`f582506`). **Belum dijalankan di VPS, belum diverifikasi visual di
+browser** — user perlu coba: klik produk bervariasi di "Tambah Produk" (harus buka dialog
+pilih atribut, bukan langsung masuk keranjang), pilih kombinasi lengkap → cek harga+stok
+muncul benar → tambah ke keranjang → submit → cek `invoice_items.itemId` di database
+benar-benar ID variasi (bukan ID produk induk) dan nama item menyebut kombinasi atribut yang
+dipilih (mis. "Kaos — Merah / L").
 
 **Aturan yang ditegaskan**: kalau sebuah helper resolusi (`resolveProductCartItem`) SENGAJA
 mengembalikan ID INDUK untuk keperluan tertentu (voucher matching) yang BERBEDA dari ID yang
@@ -16829,8 +16830,292 @@ tapi kode BARU (`createOrderAction`, dibangun sesi sebelumnya) tetap melewatkann
 ditemukan lewat audit susulan ini — dokumentasi inline tidak menjamin pola diikuti tanpa
 verifikasi ulang tiap kali menulis kode baru yang memanggil fungsi yang sama.
 
+### [2026-08-15] Laporan Arus Kas Bulanan + Export Excel Sungguhan
+
+User minta laporan cashflow bulanan yang bisa export ke Excel ("cashflow berarti keluar
+masuk uang"). Sebelum menulis kode, arsitektur laporan diverifikasi ke kode aktual (bukan
+dokumen — `docs/arsitektur-keuangan.md` kontradiktif: § 7/8 bilang laporan cuma placeholder,
+§ 11 bilang sudah selesai. § 11 yang benar). **Temuan**: laporan "Arus Kas" SUDAH ADA dan
+berfungsi (`getLaporanArusKasAction`, `finance/actions.ts`) — agregasi `payments`(status='paid',
+GROUP BY `sourceType`) sebagai pemasukan + `disbursements`(status='paid', GROUP BY
+`purposeType`) sebagai pengeluaran, TIDAK berbasis `transaction_entries`/akun kas per-baris.
+Tapi (1) single-period flat (tidak dipecah per bulan), (2) export CSV client-side (Blob+BOM),
+bukan `.xlsx` sungguhan. Task ini murni **perluasan**, bukan bangun dari nol.
+
+**Ditambahkan sebagai report type KE-5** (`laporan-client.tsx`'s `REPORT_TYPES`), "Arus Kas
+Bulanan" — TIDAK mengubah "Arus Kas" existing sama sekali (nol risiko ke laporan yang sudah
+berfungsi). Grid picker report type diubah `sm:grid-cols-4`→`sm:grid-cols-5` supaya 5 tipe
+muat 1 baris di layar besar.
+
+**Timezone-aware month bucketing — WAJIB, bukan opsional**: payment/disbursement dekat
+tengah malam WIB bisa lintas batas bulan kalau di-grup pakai UTC mentah (kelas bug yang
+sudah berkali-kali dikunci: "kode yang MENGHITUNG tanggal wajib anchor ke kalender timezone
+tenant"). Solusi: fetch raw rows (TANPA `GROUP BY` SQL) untuk `payments`/`disbursements`
+dalam rentang tanggal (WHERE sama persis `getLaporanArusKasAction` — boundary lama sengaja
+TIDAK diperbaiki, di luar scope, supaya "Arus Kas" dan "Arus Kas Bulanan" tetap konsisten
+untuk rentang sama), lalu bucket per bulan **di JavaScript** pakai `date.toLocaleDateString
+("en-CA", { timeZone: tz, year: "numeric", month: "2-digit" })` — idiom SAMA dengan
+`todayInTz()` yang sudah ada di `packages/db/src/helpers/tenant-timezone.ts`. Timezone
+diambil via `getTenantTimezone(tenantClient)` (helper yang sama, sudah live luas di project)
+— BUKAN hardcode `"Asia/Jakarta"`, supaya tenant WITA/WIT tetap benar.
+
+**Diverifikasi EMPIRIS terhadap data lokal nyata (bukan cuma baca kode)** — script disposable
+(`/tmp/verify-bucket.mjs`, dihapus setelah) mereplikasi PERSIS algoritma bucketing terhadap
+data `tenant_pc-ikpm-jogjakarta.payments`: hasil `{2026-05: 324000, 2026-07: 50000}` COCOK
+PERSIS dengan agregasi manual SQL (`to_char(confirmed_at,'YYYY-MM') GROUP BY`) — dikonfirmasi
+juga psql session default timezone tenant ini KEBETULAN sudah `Asia/Jakarta` (sama dengan
+setting tenant), jadi perbandingan apples-to-apples valid. `disbursements` tidak ada data
+lokal untuk dites langsung, tapi query-nya struktural identik (simetri sourceType↔purposeType,
+confirmedAt↔paidAt) — diverifikasi via code review, bukan asumsi buta.
+
+**Export `.xlsx` sungguhan — reuse pola existing, bukan library baru**: route baru `GET
+/api/finance/laporan/arus-kas-bulanan/export` (bukan Server Action — perlu kirim file
+binary), pola disalin PERSIS dari `app/api/events/[id]/export-participants/route.ts` (yang
+juga sudah pakai package `xlsx`/SheetJS): `XLSX.utils.book_new()` →
+`XLSX.utils.aoa_to_sheet([headers,...rows])` → `XLSX.utils.book_append_sheet(wb,sheet,nama)`
+→ `XLSX.write(wb,{type:"buffer",bookType:"xlsx"})` → `NextResponse` dengan
+`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`. 2 sheet:
+"Ringkasan Bulanan" (Bulan|Pemasukan|Pengeluaran|Saldo|Saldo Kumulatif) + "Detail per
+Kategori" (audit trail penuh per sumber/tujuan). Angka ditulis MENTAH (bukan string
+"Rp ...") — supaya tetap bisa dijumlah/diformat di Excel, konsisten pola
+`export-participants` (`isFree ? 0 : totalPaid`, bukan string terformat).
+
+**Auth route API terpisah, WAJIB `hasReadAccess` eksplisit**: `getLaporanArusKasBulananAction`
+sendiri cuma cek `getTenantAccess(slug)` (generic tenant access) — TIDAK ada `hasReadAccess`
+module-level check, karena action ini biasanya cuma dipanggil dari halaman `/finance/laporan`
+yang SUDAH digate `finance/layout.tsx`. Tapi route `/api/finance/laporan/arus-kas-bulanan/
+export` adalah endpoint API BERDIRI SENDIRI (bypass layout guard tadi) — WAJIB tambah
+`hasReadAccess(access.tenantUser, "keuangan")` eksplisit, pola sama `export-participants/
+route.ts` (juga endpoint API standalone). **Aturan digeneralisasi**: Server Action yang cuma
+cek `getTenantAccess` (mengandalkan page-level layout guard) TIDAK BOLEH dianggap "sudah
+aman" begitu ada ROUTE API baru yang memanggilnya di luar halaman ber-guard — route API
+WAJIB tambah guard module-level sendiri.
+
+**Saldo kumulatif berjalan** (running balance antar bulan) ditambahkan sebagai kolom
+tambahan — turunan murah dari komputasi yang sama, kasih gambaran tren kas naik/turun.
+UI: baris bulan bisa di-klik untuk expand breakdown kategori (reuse struktur `ArusKasRow`
+yang sudah ada, `useState<Set<string>>` + `Fragment` — bukan komponen baru).
+
+`tsc --noEmit` 0 error (`apps/web`, percobaan pertama) + `bun run build --filter=@jalajogja/web`
+genuine sukses (dev server dimatikan port 6202+`.next` dibersihkan, `Cached: 0 cached, 1
+total`, ~52 detik, dev server direstart, curl 200 OK) — route `/api/finance/laporan/
+arus-kas-bulanan/export` dan `/app/[tenant]/finance/laporan` terkonfirmasi ada di
+`.next/server/app/`, bukan cuma dipercaya dari log build. Nol migrasi DB (murni kode
+aplikasi + reuse tabel/helper yang sudah ada). **Belum di-commit/push ke git, belum
+dijalankan di VPS, belum diverifikasi visual export file di aplikasi spreadsheet
+sungguhan** — user perlu buka `/app/{slug}/finance/laporan`, pilih "Arus Kas Bulanan", cek
+tabel expand-per-bulan tampil benar, klik "Export Excel" → buka file `.xlsx` yang
+ter-download, konfirmasi 2 sheet + angka cocok tampilan UI.
+
+### [2026-08-15] Klasifikasi Toko/Tiket/Donasi di Laporan Keuangan — Opsi A Selesai, Opsi B Direncanakan
+
+> Detail lengkap (tabel titik insert payment, contoh data empiris, rencana teknis Opsi B):
+> **`docs/arsitektur-keuangan.md` § 14**
+
+Langsung menyusul Laporan Arus Kas Bulanan (entri di atas) — user: *"laporan ini kita blm cek
+sama sekali yg lainnya.. karena masih rancu antara: invoice dari toko, invoice dari tiket,
+invoice dari donasi.. coba di klasifikasikan deh.. coba di cek2.. lalu ajukan ke saya
+perubahan2 yg memungkinkan dan aman."* Diminta audit dulu + PROPOSAL, bukan langsung eksekusi
+(konsisten aturan project "SELALU tanya konfirmasi sebelum mengubah arsitektur").
+
+**Root cause ditemukan lewat grep SEMUA titik `insert(schema.payments)` di seluruh app (7
+titik, bukan cuma yang kelihatan di 1 file)**: 5 dari 7 — SEMUA yang lewat alur cart universal
+(`confirmInvoicePaymentAction`, konfirmasi COD tenant, konfirmasi COD mitra,
+`submitPaymentProofAction`) — hardcode `sourceType: "invoice"` generik, terlepas isi invoice-
+nya (produk/tiket/donasi/campuran). Cuma 2 titik legacy (`toko/actions.ts`'s
+`addPaymentToOrderAction`→`"order"`, `donasi/actions.ts`'s `confirmDonationAction`→
+`"donation"`) masih pakai label spesifik — dan keduanya sudah lama digantikan alur cart (sesuai
+prinsip "Donasi = Alur Cart Universal" yang sudah dikunci lama). Diverifikasi empiris ke data
+lokal: 7/7 payment di kedua tenant lokal berstatus `sourceType='invoice'` — 100%.
+
+**Ditemukan masalah KEDUA yang lebih dalam, bukan cuma soal label laporan**: `pickIncomeAccount
+(sourceType, mappings)` (routing akun jurnal double-entry, dipakai `recordIncome()` saat
+konfirmasi payment) menerima `sourceType` YANG SAMA — karena selalu `"invoice"` untuk cart
+universal, cabang `income_toko`/`income_event`/`dana_titipan` yang admin sudah konfigurasi di
+`/finance/akun` **praktis tidak pernah kepakai**, semua pendapatan cart (Toko+Tiket+Donasi
+campur) jatuh ke satu akun `income_manual`. Ini artinya **Laba Rugi, Neraca Saldo, DAN Buku
+Besar** (yang baca dari `transaction_entries`/`accounts`, bukan `payments.sourceType`
+langsung) JUGA ikut kena — bukan cuma 2 laporan Arus Kas seperti dugaan awal. Sekalian
+ditemukan: `income_donasi` (akun 4200) dikonfigurasi di UI settings tapi genuinely TIDAK
+PERNAH dibaca `pickIncomeAccount()` — dead key murni, terpisah dari masalah utama.
+
+**Opsi A — DIEKSEKUSI (scope: laporan Arus Kas saja, TIDAK sentuh jurnal)**: helper baru
+`splitIncomeByDomain()` di `finance/actions.ts` — untuk payment `sourceType='invoice'`,
+batch-fetch `invoice_items` (GROUP BY invoiceId+itemType) + `invoice_shipping_lines` (ongkir
+digabung ke bucket "product"/Toko) untuk semua invoice yang direferensikan sekaligus (bukan
+N+1), lalu pecah nominal payment PROPORSIONAL per domain (`kontribusi = amount ×
+subtotal_domain/total_semua_domain`) — jaminan matematis: total selalu sama, cuma
+breakdown-nya yang berubah, jadi aman retroaktif ke data historis tanpa migrasi. Label hasil
+split di-MERGE dengan label legacy yang sudah ada (`SOURCE_TYPE_LABELS.order`="Penjualan
+Toko", dst) supaya sisa transaksi legacy dan derivasi dari invoice tampil sebagai satu baris
+gabungan, bukan duplikat. Diverifikasi empiris via SQL manual ke data lokal — contoh nyata
+payment `396e6637...`: `amount=174000` = `invoice_items.total(product)=150000` +
+`invoice_shipping_lines.cost=24000`, PERSIS cocok, membuktikan logika ongkir-masuk-Toko benar.
+`getLaporanArusKasAction`+`getLaporanArusKasBulananAction` diubah dari `GROUP BY` SQL langsung
+jadi fetch raw row + panggil helper. UI (`laporan-client.tsx`) dan export Excel TIDAK disentuh
+(sudah render `{r.label}` generik, nol string hardcode). `tsc --noEmit` 0 error + `bun run
+build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached, 1 total`, ~51 detik, dev
+server dimatikan port 6202+`.next` dibersihkan+direstart, curl 200 OK) — kedua route
+terkonfirmasi compile bersih di build output.
+
+**Opsi B — DIDOKUMENTASIKAN, NOL kode ditulis** (`docs/arsitektur-keuangan.md` § 14.4):
+perbaikan di level jurnal (`recordIncome()` perlu jadi multi-baris kredit per domain,
+`pickIncomeAccount()` perlu breakdown bukan sourceType tunggal) — jauh lebih invasif dari Opsi
+A karena mengubah cara PENCATATAN transaksi baru (bukan cuma cara BACA laporan), dan TIDAK
+otomatis mengoreksi data historis yang sudah salah masuk `income_manual`. 3 pertanyaan
+akuntansi eksplisit dicatat di dokumen sebagai blocker keputusan (bukan keputusan teknis yang
+bisa saya putuskan sepihak): apakah organisasi mau akun Pendapatan terpisah PERMANEN per
+domain di Chart of Accounts atau cukup satu akun dengan laporan yang pintar (Opsi A sudah
+cukup); apakah donasi cart tetap disemantikkan sebagai "dana titipan" (kewajiban) atau
+langsung pendapatan; dan apakah data historis yang sudah salah target akun perlu dikoreksi via
+jurnal reversal atau dibiarkan sebagai catatan historis. Draft rencana teknis (fungsi baru
+`recordIncomeSplit()`, refactor shared helper split-domain dipakai KEDUA Opsi A dan B supaya
+rumus proporsional tidak drift) ditulis lengkap di dokumen — menunggu jawaban user sebelum
+baris kode pertama.
+
+**Koreksi kecil dokumentasi sekalian** (ditemukan saat menulis § 14, konsisten prinsip "docs-
+first"): `docs/arsitektur-keuangan.md` §6/§7/§8/§11/§12 punya beberapa klaim basi (komentar
+`income_donasi` yang salah kaitkan ke "Dana Titipan" padahal itu key `dana_titipan` terpisah;
+"laporan belum diimplementasikan" yang sudah lama tidak akurat sejak jauh sebelum sesi ini;
+integrasi Toko/Donasi/Event yang tidak membedakan jalur legacy vs cart modern) — semua
+dikoreksi bersamaan.
+
+**Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser**
+— user perlu buka `/app/{slug}/finance/laporan`, pilih Arus Kas atau Arus Kas Bulanan,
+konfirmasi baris "Penjualan Toko"/"Donasi / Infaq"/"Pendaftaran Event" muncul menggantikan
+"Tagihan" generik. Opsi B menunggu jawaban 3 pertanyaan akuntansi di atas sebelum dilanjutkan.
+
+### [2026-08-15] Klasifikasi Toko/Tiket/Donasi — Opsi B: Jurnal Terpecah per Domain + Koreksi Historis
+
+> Detail lengkap (kode, tabel entri terkoreksi, query diagnosa production):
+> **`docs/arsitektur-keuangan.md` § 14.4**
+
+Lanjutan langsung dari Opsi A (entri di atas) — user menjawab 3 pertanyaan akuntansi yang
+sebelumnya jadi blocker, verbatim: *"1. ya harus terpisah permanen. 2. donasi adalah dana
+titipan bukan pendapatan. 3. data yg sudah masuk kalau bisa diperbaiki lebih baik karena agar
+memiliki laporan yang benar."* — otorisasi penuh untuk akun Pendapatan permanen terpisah,
+donasi tetap `dana_titipan` (bukan `income_donasi` yang genuinely dead), dan koreksi data lama.
+
+**Implementasi jurnal**: `pickIncomeAccount()` (`finance/actions.ts`) TIDAK berubah struktur,
+tapi sekarang dipanggil dengan `sourceType` VIRTUAL per-domain (bukan `payments.sourceType`
+mentah yang untuk cart-checkout selalu `"invoice"`) via fungsi baru
+`computeInvoiceDomainBucket()` (breakdown Rupiah per invoice, opsional scoped-seller untuk
+COD) dan `resolveIncomeSplitForBilling(tenantDb, method, invoiceId, amount, sellerFilter?)`
+(satu sumber kebenaran split, return `null` kalau mapping akun belum lengkap — donasi TIDAK
+PERNAH fallback ke `income_manual`, `order`/`event_registration` fallback demi backward-compat
+tenant lama). Helper baru `recordIncomeSplit()` (`packages/db/src/helpers/finance.ts`, di-
+export dari `@jalajogja/db`) — wrapper tipis `recordJournal()`, 1 debit kas + N kredit. **4
+titik konfirmasi diupdate** (bukan 3 seperti dugaan awal Opsi B) — ditemukan titik ke-4
+(`confirmMitraCodReceivedAction`, `akun/mitra/pesanan/actions.ts`, porsi COD mitra self-
+service) saat audit menyeluruh titik-titik `recordIncome()`: `confirmInvoicePaymentAction`,
+`verifySubmittedPaymentAction`, `confirmCodPaymentAction` (semua di `finance/billing/
+actions.ts`), + titik ke-4 itu.
+
+**Gap ditemukan+DILAPORKAN, sengaja TIDAK difix**: `confirmPaymentAction` (halaman generik
+`/finance/pemasukan/[id]`, BUKAN halaman detail invoice) masih pakai `payment.sourceType`
+mentah — punya bug kelas sama. Diverifikasi empiris: 0 dari 7 payment `sourceType='invoice'`
+di kedua tenant lokal punya `transaction_id` terisi (satu-satunya kolom yang diisi fungsi ini)
+— bukti nyata fungsi ini TIDAK PERNAH benar-benar dipakai untuk payment invoice dalam praktik,
+admin selalu lewat halaman detail invoice yang benar. Fungsi ini JUGA tidak update
+`invoices.paidAmount`/`status` sama sekali (bug terpisah, invoice-state-desync, lebih besar
+dari sekadar salah akun) — menggabungkan 2 bug beda dalam 1 fix dinilai scope creep, tidak
+dieksekusi tanpa konfirmasi eksplisit.
+
+**Koreksi data historis — dieksekusi LOKAL, PRODUCTION BELUM** (no SSH access dari environment
+ini). Diagnosa: cari `transaction_entries` kredit pada akun `income_manual` yang
+`transactions.description` cocok `'Pelunasan invoice %'`/`'COD %'` (2 pola dari 4 titik yang
+baru difix — pola `confirmPaymentAction` sengaja tidak ikut, bukan bagian bug yang sama).
+Ditemukan 6 entri (3 di `forcreator`, 3 di `pc-ikpm-jogjakarta`), SEMUA single-domain (bukan
+invoice campuran): 3 produk (termasuk ongkir) yang salah masuk 4100→harusnya 4300, 3 donasi
+yang salah masuk 4100→harusnya 2200 (`Dana Titipan`, akun KEWAJIBAN, bukan pendapatan —
+temuan paling signifikan, sebelumnya donasi tercatat sebagai pendapatan langsung).
+
+**Metodologi koreksi**: script sekali-pakai (ditulis, dijalankan, DIHAPUS — tidak masuk repo),
+jurnal koreksi BERIMBANG (debit `income_manual` sejumlah nominal salah + kredit akun yang
+benar sesuai breakdown item invoice) — **TIDAK PERNAH edit baris `transaction_entries` lama**,
+konsisten prinsip project ini yang sudah berkali-kali dikunci ("kolom konfirmasi eksplisit
+tidak boleh diubah diam-diam dari jalur lain"). Diverifikasi setelah eksekusi: saldo bersih
+akun `income_manual` (4100) untuk KEDUA tenant kembali ke Rp 0, saldo `4300`/`2200` bertambah
+persis sesuai breakdown per invoice — dicek via `SUM(debit - credit) GROUP BY account`, bukan
+cuma dipercaya dari log skrip.
+
+`tsc --noEmit` 0 error kedua package (`apps/web`+`packages/db`) — pass pertama, nol error dari
+refactor (termasuk parameter opsional `sellerFilter`, `Promise.all` destructuring, dynamic
+cross-route-group import). `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0
+cached, 1 total`, 48.88s, dev server dimatikan port 6202+`.next` dibersihkan+direstart, curl
+200 OK). Nol migrasi DB — kolom/tabel yang dipakai (`accounts`, `transaction_entries`,
+`invoice_items`, `invoice_shipping_lines`) semua sudah ada sejak lama.
+
+**Belum di-commit/push ke git** (menunggu otorisasi eksplisit terpisah, sesuai aturan standing
+project). **Belum dijalankan/dikoreksi di VPS production** — user perlu jalankan query diagnosa
+read-only (tercantum di `docs/arsitektur-keuangan.md` § 14.4) sendiri via SSH dulu; kalau hasil
+tidak kosong, minta skrip koreksi yang sama ditulis ulang untuk dijalankan di VPS. Belum
+diverifikasi visual di browser (Laba Rugi/Neraca Saldo/Buku Besar sekarang seharusnya otomatis
+ikut benar untuk invoice BARU sejak fix ini live — user perlu coba checkout invoice campuran
+produk+donasi baru dan cek breakdown akun di `/finance/akun`/`/finance/laporan`).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **`/toko/pesanan/new` — Produk Variasi Tidak Bisa Dipesan + Kode Unik
+- Terakhir dikerjakan: **Klasifikasi Toko/Tiket/Donasi — Opsi B: Jurnal Terpecah per Domain +
+  Koreksi Historis** (lihat lesson `[2026-08-15]` "Klasifikasi Toko/Tiket/Donasi — Opsi B" di
+  atas, detail lengkap `docs/arsitektur-keuangan.md` § 14.4). Lanjutan langsung dari Opsi A —
+  user menjawab 3 pertanyaan akuntansi blocker: *"1. ya harus terpisah permanen. 2. donasi
+  adalah dana titipan bukan pendapatan. 3. data yg sudah masuk kalau bisa diperbaiki lebih
+  baik."* Diimplementasikan: `computeInvoiceDomainBucket()`+`resolveIncomeSplitForBilling()`
+  baru (`finance/actions.ts`) + `recordIncomeSplit()` baru (`packages/db/src/helpers/
+  finance.ts`) — jurnal sekarang genuinely split per domain (produk→4300, tiket→4400,
+  donasi→2200 Dana Titipan [kewajiban, TIDAK PERNAH fallback], custom→4100) di **4 titik
+  konfirmasi** (`confirmInvoicePaymentAction`, `verifySubmittedPaymentAction`,
+  `confirmCodPaymentAction` di `finance/billing/actions.ts` + `confirmMitraCodReceivedAction`
+  di `akun/mitra/pesanan/actions.ts` — titik ke-4 baru ditemukan saat audit, bukan dari dugaan
+  awal 3 titik). **Gap ditemukan+DILAPORKAN (bukan difix)**: `confirmPaymentAction` (halaman
+  generik `/finance/pemasukan/[id]`) punya bug kelas sama tapi diverifikasi 0/7 payment invoice
+  lokal pernah lewat situ — DAN fungsi itu juga tidak update status invoice sama sekali (bug
+  terpisah lebih besar, di luar scope). **Koreksi data historis dieksekusi LOKAL** (script
+  sekali-pakai, ditulis-jalankan-dihapus, jurnal koreksi BERIMBANG bukan edit baris lama) — 6
+  entri ditemukan+dikoreksi di 2 tenant (3 produk 4100→4300, 3 donasi 4100→2200), diverifikasi
+  via `SUM(debit-credit) GROUP BY account` kembali ke Rp 0 di akun lama. **PRODUCTION BELUM
+  DIKOREKSI** (no SSH access) — query diagnosa read-only siap dipakai di dokumen § 14.4. `tsc`
+  0 error kedua package + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0
+  cached`, 48.88s, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 OK). Nol
+  migrasi DB. **Belum di-commit/push ke git, belum dijalankan/dikoreksi di VPS, belum
+  diverifikasi visual di browser** — user perlu jalankan query diagnosa production sendiri via
+  SSH, dan coba checkout invoice campuran baru untuk cek breakdown akun di
+  `/finance/akun`/`/finance/laporan`.
+- Sesi sebelumnya: **Klasifikasi Toko/Tiket/Donasi di Laporan Keuangan — Opsi A Selesai,
+  Opsi B Direncanakan** (lihat lesson `[2026-08-15]` "Klasifikasi Toko/Tiket/Donasi..." di
+  atas, detail lengkap `docs/arsitektur-keuangan.md` § 14). User: laporan keuangan "masih
+  rancu antara invoice dari toko, invoice dari tiket, invoice dari donasi" — diminta audit +
+  proposal (bukan langsung eksekusi). Investigasi menemukan root cause via grep SEMUA titik
+  `insert(schema.payments)` (7 titik) — 5 dari 7 (semua jalur cart universal) hardcode
+  `sourceType:"invoice"` generik, tidak bisa membedakan domain meski invoice bisa campuran.
+  **Opsi A** (scope sempit: laporan Arus Kas saja) — helper `splitIncomeByDomain()`, pecah
+  nominal payment proporsional per domain saat query laporan, aman retroaktif tanpa migrasi.
+  Superseded oleh Opsi B di atas untuk bagian jurnal (Laba Rugi/Neraca Saldo/Buku Besar).
+- Sesi sebelumnya: **Laporan Arus Kas Bulanan + Export Excel Sungguhan** (lihat lesson
+  `[2026-08-15]` "Laporan Arus Kas Bulanan + Export Excel Sungguhan" di atas). User minta
+  laporan cashflow bulanan yang bisa export Excel — diverifikasi dulu ke kode aktual (docs
+  kontradiktif soal status fitur ini), ditemukan laporan "Arus Kas" SUDAH ADA+berfungsi
+  (single-period, export CSV) — task ini PERLUASAN: ditambah sebagai report type ke-5 "Arus
+  Kas Bulanan" (`REPORT_TYPES` di `laporan-client.tsx`, TIDAK mengubah "Arus Kas" existing),
+  action baru `getLaporanArusKasBulananAction` (reuse query `payments`/`disbursements`
+  `getLaporanArusKasAction` yang sudah ada, tambah month-bucketing timezone-aware di
+  JavaScript via `getTenantTimezone()`+`toLocaleDateString("en-CA",{timeZone})` — bukan UTC
+  mentah, cegah payment dekat tengah malam WIB lintas bulan salah), plus saldo kumulatif
+  berjalan. Export `.xlsx` SUNGGUHAN (bukan CSV) via route API baru
+  `/api/finance/laporan/arus-kas-bulanan/export`, pola disalin PERSIS dari
+  `export-participants/route.ts` yang sudah ada (package `xlsx`/SheetJS) — 2 sheet
+  (Ringkasan Bulanan + Detail per Kategori), angka mentah (bukan string terformat) supaya
+  bisa dijumlah di Excel. Diverifikasi EMPIRIS terhadap data lokal nyata (script disposable
+  mereplikasi algoritma bucketing, hasil `{2026-05:324000, 2026-07:50000}` cocok persis
+  agregasi SQL manual). `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web`
+  genuine sukses (dev server dimatikan port 6202+`.next` dibersihkan, `Cached: 0 cached, 1
+  total`, ~52 detik, direstart, curl 200 OK) — kedua route baru terkonfirmasi di
+  `.next/server/app/`. Nol migrasi DB. **Belum di-commit/push ke git, belum dijalankan di
+  VPS, belum diverifikasi visual export file di aplikasi spreadsheet sungguhan** — user
+  perlu buka `/app/{slug}/finance/laporan`, pilih "Arus Kas Bulanan", cek tabel expand-per-
+  bulan, klik "Export Excel" → buka file `.xlsx` yang ter-download, konfirmasi 2 sheet +
+  angka cocok tampilan UI.
+- Sesi sebelumnya: **`/toko/pesanan/new` — Produk Variasi Tidak Bisa Dipesan + Kode Unik
   Ternyata Sudah Benar** (lihat lesson `[2026-08-14]` di atas). User khawatir 2 hal terlewat
   dari fitur yang baru saja di-push: (1) produk bervariasi (ukuran/warna) tidak bisa dipesan
   lewat form admin; (2) kode unik transaksi apakah genuinely masuk ke invoice. Investigasi:
@@ -16852,11 +17137,12 @@ verifikasi ulang tiap kali menulis kode baru yang memanggil fungsi yang sama.
   diskon sesungguhnya benar saat submit; fix via `originalIds[]` lockstep. `tsc --noEmit` 0
   error kedua package (2×) + `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0
   cached, 1 total`, 50.9s, dev server dimatikan+`.next` dibersihkan+direstart, curl 200 OK) —
-  route `/app/[tenant]/toko/pesanan/new` naik 9.54→11.3 kB. Nol migrasi DB. **Belum di-commit/
-  push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser** — user perlu
-  coba: klik produk bervariasi di "Tambah Produk" (harus buka dialog pilih atribut), pilih
-  kombinasi → tambah ke keranjang → submit → cek `invoice_items.itemId` di DB benar-benar ID
-  variasi (bukan ID induk) dan nama item menyebut kombinasi atribut (mis. "Kaos — Merah / L").
+  route `/app/[tenant]/toko/pesanan/new` naik 9.54→11.3 kB. Nol migrasi DB. **SUDAH di-commit+
+  push** (`f582506`, bareng `21a9755` — dikonfirmasi via `git log`). **Belum dijalankan di
+  VPS, belum diverifikasi visual di browser** — user perlu coba: klik produk bervariasi di
+  "Tambah Produk" (harus buka dialog pilih atribut), pilih kombinasi → tambah ke keranjang →
+  submit → cek `invoice_items.itemId` di DB benar-benar ID variasi (bukan ID induk) dan nama
+  item menyebut kombinasi atribut (mis. "Kaos — Merah / L").
 - Sesi sebelumnya: **`/toko/pesanan/new` — Search Pelanggan Gabungan + Ongkir Per-Penjual
   + Voucher + Auto-Invoice+WA** (lihat lesson `[2026-08-15]` "`/toko/pesanan/new` — Search
   Pelanggan Gabungan..." di atas). Lanjutan langsung dari fix kolom "Total" `/toko/pesanan`
@@ -16908,8 +17194,9 @@ verifikasi ulang tiap kali menulis kode baru yang memanggil fungsi yang sama.
   per-item sebelum baris total, beda konteks dari list yang cuma angka polos tanpa
   breakdown). `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine
   sukses (`Cached: 0 cached, 1 total`, 49.3s, dev server dimatikan port 6202+`.next`
-  dibersihkan+direstart, curl 200 OK). **Belum di-commit/push, belum diverifikasi visual di
-  browser** — user perlu buka `/app/{slug}/toko/pesanan`, konfirmasi kolom "Total Produk"
+  dibersihkan+direstart, curl 200 OK). **SUDAH di-commit+push** (`f18c17d`). **Belum
+  diverifikasi visual di browser** — user perlu buka `/app/{slug}/toko/pesanan`, konfirmasi
+  kolom "Total Produk"
   sekarang cuma menghitung porsi produk+ongkir, terutama untuk invoice campuran produk+
   tiket/donasi.
 - Sesi sebelumnya: **Kurir RajaOngkir — Lengkapi Checkbox Setting dari 10 jadi 16** (lihat

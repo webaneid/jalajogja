@@ -2,7 +2,7 @@
 
 import { eq, and, sql, gte, lte, desc, isNull, or, ilike, ne, inArray, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createTenantDb } from "@jalajogja/db";
+import { createTenantDb, getTenantTimezone } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/phone";
@@ -104,12 +104,26 @@ function pickCashAccount(
   return mappings.cash_default;
 }
 
-/** Pilih akun pendapatan berdasarkan source_type */
+/**
+ * Pilih akun pendapatan berdasarkan source_type.
+ *
+ * "order" dan "event_registration" fallback ke income_manual kalau akun spesifiknya belum
+ * dikonfigurasi admin — field ini historisnya tidak pernah dibaca kode manapun sebelum
+ * Opsi B (2026-08-15, lihat docs/arsitektur-keuangan.md § 14), jadi banyak tenant existing
+ * belum pernah mengisinya. Tanpa fallback ini, konfirmasi invoice yang SEBELUMNYA berhasil
+ * (walau salah kategori) akan tiba-tiba gagal keras untuk tenant yang belum sempat isi field
+ * baru ini.
+ *
+ * "donation" SENGAJA TIDAK fallback ke income_manual — donasi WAJIB tetap dana_titipan
+ * (akun kewajiban 2200, bukan pendapatan langsung, keputusan produk 2026-08-15). Kalau
+ * dana_titipan belum terkonfigurasi, gagal eksplisit lebih aman daripada diam-diam
+ * mengklasifikasikan donasi sebagai pendapatan.
+ */
 function pickIncomeAccount(
   sourceType: string,
   mappings: AccountMappings
 ): string | null {
-  if (sourceType === "order")              return mappings.income_toko;
+  if (sourceType === "order")              return mappings.income_toko  ?? mappings.income_manual;
   if (sourceType === "donation")           return mappings.dana_titipan;
   if (sourceType === "event_registration") return mappings.income_event ?? mappings.income_manual;
   return mappings.income_manual;
@@ -130,6 +144,131 @@ export async function resolveAccountMappingsForBilling(
     cashAccountId:   pickCashAccount(method, mappings),
     incomeAccountId: pickIncomeAccount(sourceType, mappings),
   };
+}
+
+/** Breakdown nominal invoice per domain (produk/tiket/donasi/custom) — dipakai laporan DAN jurnal. */
+type DomainBucket = { product: number; ticket: number; donation: number; custom: number };
+
+/**
+ * Hitung breakdown domain untuk SATU invoice (opsional discope ke satu seller — dipakai COD
+ * tenant/mitra yang hanya menjurnal porsi milik seller itu). Ongkos kirim
+ * (invoice_shipping_lines) dianggap bagian domain "product" (Toko), di-scope pakai filter
+ * seller YANG SAMA dengan item — satu invoice normalnya cuma punya satu shipping line per
+ * seller, jadi hasilnya equivalent dengan "ongkos milik seller ini saja". Konsisten dengan
+ * splitIncomeByDomain() di bawah (report side, tidak diubah/direfactor untuk reuse fungsi ini —
+ * dua query batch di sana untuk banyak invoice sekaligus, lebih efisien daripada N+1 kalau
+ * dipaksa reuse function single-invoice ini; duplikasi logic kecil diterima, pola sama dengan
+ * generateEventRegNumber/formatEventDateWib yang sudah didokumentasikan).
+ */
+async function computeInvoiceDomainBucket(
+  tenantClient: ReturnType<typeof createTenantDb>,
+  invoiceId: string,
+  sellerFilter?: { sellerType: "tenant" | "mitra"; sellerId?: string | null },
+): Promise<DomainBucket> {
+  const { db, schema } = tenantClient;
+  const bucket: DomainBucket = { product: 0, ticket: 0, donation: 0, custom: 0 };
+
+  const whereClauses = [eq(schema.invoiceItems.invoiceId, invoiceId)];
+  if (sellerFilter) {
+    whereClauses.push(eq(schema.invoiceItems.sellerType, sellerFilter.sellerType));
+    if (sellerFilter.sellerId) whereClauses.push(eq(schema.invoiceItems.sellerId, sellerFilter.sellerId));
+  }
+
+  const itemRows = await db
+    .select({
+      itemType: schema.invoiceItems.itemType,
+      total:    sql<string>`coalesce(sum(${schema.invoiceItems.total}), 0)`,
+    })
+    .from(schema.invoiceItems)
+    .where(and(...whereClauses))
+    .groupBy(schema.invoiceItems.itemType);
+
+  for (const r of itemRows) {
+    const amt = parseFloat(r.total);
+    if (r.itemType === "product")       bucket.product  += amt;
+    else if (r.itemType === "ticket")   bucket.ticket   += amt;
+    else if (r.itemType === "donation") bucket.donation += amt;
+    else if (r.itemType === "custom")   bucket.custom   += amt;
+  }
+
+  // Ongkos kirim di-scope pakai filter seller YANG SAMA dengan item — satu invoice normalnya
+  // cuma punya satu shipping line per seller (satu grup pengiriman per penjual dalam satu
+  // checkout), jadi filter ini equivalent dengan "ongkos milik seller ini saja".
+  const shippingWhere = [eq(schema.invoiceShippingLines.invoiceId, invoiceId)];
+  if (sellerFilter) {
+    shippingWhere.push(eq(schema.invoiceShippingLines.sellerType, sellerFilter.sellerType));
+    if (sellerFilter.sellerId) shippingWhere.push(eq(schema.invoiceShippingLines.sellerId, sellerFilter.sellerId));
+  }
+  const [shippingAgg] = await db
+    .select({ cost: sql<string>`coalesce(sum(${schema.invoiceShippingLines.cost}), 0)` })
+    .from(schema.invoiceShippingLines)
+    .where(and(...shippingWhere));
+  bucket.product += parseFloat(shippingAgg?.cost ?? "0");
+
+  return bucket;
+}
+
+/**
+ * Resolve akun kas + baris kredit pendapatan (bisa >1 baris) untuk SATU nominal yang sedang
+ * dikonfirmasi pada SATU invoice (bisa nominal penuh, atau porsi COD tenant/mitra via
+ * `sellerFilter`). Dipakai bersama oleh confirmInvoicePaymentAction, verifySubmittedPaymentAction,
+ * confirmCodPaymentAction (finance/billing/actions.ts) dan mitra COD confirm
+ * (akun/mitra/pesanan/actions.ts) — satu sumber kebenaran untuk "bagaimana memecah nominal
+ * campuran produk/tiket/donasi jadi baris jurnal", cegah drift 4 implementasi terpisah. Baris
+ * terakhir menyerap sisa pembulatan supaya sum(lines.amount) SELALU persis sama dengan `amount`
+ * (syarat recordIncomeSplit/recordJournal). Lihat docs/arsitektur-keuangan.md § 14.4 (Opsi B).
+ *
+ * Return `null` kalau akun kas atau salah satu akun pendapatan yang dibutuhkan belum
+ * dikonfigurasi admin — caller WAJIB tampilkan pesan "Konfigurasi mapping akun belum lengkap."
+ */
+export async function resolveIncomeSplitForBilling(
+  tenantDb: ReturnType<typeof createTenantDb>,
+  method: string,
+  invoiceId: string,
+  amount: number,
+  sellerFilter?: { sellerType: "tenant" | "mitra"; sellerId?: string | null },
+): Promise<{ cashAccountId: string; lines: { accountId: string; amount: number }[] } | null> {
+  const [mappings, bucket] = await Promise.all([
+    resolveAccountMappings(tenantDb),
+    computeInvoiceDomainBucket(tenantDb, invoiceId, sellerFilter),
+  ]);
+  const cashAccountId = pickCashAccount(method, mappings);
+  if (!cashAccountId || amount <= 0) return null;
+
+  const denom = bucket.product + bucket.ticket + bucket.donation + bucket.custom;
+  // Tidak ada item terklasifikasi sama sekali (edge case: invoice_items kosong/tidak sinkron) —
+  // seluruh nominal jatuh ke income_manual, sama seperti perilaku LAMA sebelum Opsi B.
+  const pieces: [string, number][] = denom > 0
+    ? [
+        ["order",              bucket.product],
+        ["event_registration", bucket.ticket],
+        ["donation",           bucket.donation],
+        ["manual",             bucket.custom],
+      ]
+    : [["manual", amount]];
+
+  const raw: { accountId: string; amount: number }[] = [];
+  for (const [virtualSourceType, subtotal] of pieces) {
+    if (subtotal <= 0) continue;
+    const accountId = pickIncomeAccount(virtualSourceType, mappings);
+    if (!accountId) return null;
+    const portion = denom > 0 ? amount * (subtotal / denom) : amount;
+    raw.push({ accountId, amount: portion });
+  }
+  if (raw.length === 0) return null;
+
+  // Gabungkan baris yang kebetulan menunjuk akun yang sama (mis. order & custom sama-sama
+  // fallback ke income_manual saat income_toko belum diisi).
+  const merged = new Map<string, number>();
+  for (const r of raw) merged.set(r.accountId, (merged.get(r.accountId) ?? 0) + r.amount);
+  const lines = [...merged.entries()].map(([accountId, lineAmount]) => ({ accountId, amount: lineAmount }));
+
+  // Baris terakhir menyerap sisa pembulatan (floating point) — jamin sum persis `amount`.
+  const roundedAllButLast = lines.slice(0, -1).reduce((s, l) => s + Math.round(l.amount * 100) / 100, 0);
+  for (let i = 0; i < lines.length - 1; i++) lines[i].amount = Math.round(lines[i].amount * 100) / 100;
+  lines[lines.length - 1].amount = Math.round((amount - roundedAllButLast) * 100) / 100;
+
+  return { cashAccountId, lines };
 }
 
 // ─── PEMASUKAN (Payments) ────────────────────────────────────────────────────
@@ -1160,6 +1299,106 @@ const PURPOSE_TYPE_LABELS: Record<string, string> = {
   manual:          "Pengeluaran Manual",
 };
 
+const CUSTOM_ITEM_LABEL          = "Item Kustom";
+const UNCLASSIFIED_INVOICE_LABEL = "Tagihan (Tidak Terklasifikasi)";
+
+/**
+ * Pecah payment jadi kontribusi per (groupKey, label) untuk laporan Arus Kas.
+ *
+ * Payment dari alur cart universal (checkout, COD tenant/mitra, submit-bukti) SELALU tersimpan
+ * dengan sourceType='invoice' generik — TIDAK BISA membedakan Toko/Tiket/Donasi/Custom meski
+ * satu invoice bisa berisi campuran domain (produk+tiket+donasi dalam satu keranjang). Fungsi
+ * ini menghitung ulang proporsi nominal per payment dari invoice_items.itemType (ongkos kirim
+ * di invoice_shipping_lines dianggap bagian domain Toko, karena hanya relevan untuk produk
+ * fisik) — TIDAK mengubah total (pieces selalu menjumlah persis ke payment.amount), murni
+ * mengoreksi kategorinya. Payment non-invoice (order/donation/event_registration/manual — jalur
+ * legacy pra-cart-universal) tidak disentuh, tetap label lama dari SOURCE_TYPE_LABELS.
+ *
+ * Scope sengaja TIDAK memisahkan tenant vs mitra (invoice_items.sellerType) — itu axis "rancu"
+ * lain yang tidak diminta di task ini; item mitra tetap ikut porsi "Penjualan Toko" tenant.
+ * Lihat docs/arsitektur-keuangan.md § "Klasifikasi Toko/Tiket/Donasi" untuk detail + rencana
+ * Opsi B (perbaikan di level jurnal/akun, belum dieksekusi).
+ */
+async function splitIncomeByDomain(
+  tenantClient: ReturnType<typeof createTenantDb>,
+  rows: { sourceType: string; sourceId: string | null; amount: number; groupKey: string }[],
+): Promise<{ groupKey: string; label: string; amount: number }[]> {
+  const { db, schema } = tenantClient;
+
+  const invoiceRows = rows.filter((r) => r.sourceType === "invoice" && r.sourceId);
+  const otherRows   = rows.filter((r) => !(r.sourceType === "invoice" && r.sourceId));
+
+  const contributions = otherRows.map((r) => ({
+    groupKey: r.groupKey,
+    label:    SOURCE_TYPE_LABELS[r.sourceType] ?? r.sourceType,
+    amount:   r.amount,
+  }));
+
+  if (invoiceRows.length === 0) return contributions;
+
+  const invoiceIds = [...new Set(invoiceRows.map((r) => r.sourceId as string))];
+
+  const itemRows = await db
+    .select({
+      invoiceId: schema.invoiceItems.invoiceId,
+      itemType:  schema.invoiceItems.itemType,
+      total:     sql<string>`coalesce(sum(${schema.invoiceItems.total}), 0)`,
+    })
+    .from(schema.invoiceItems)
+    .where(inArray(schema.invoiceItems.invoiceId, invoiceIds))
+    .groupBy(schema.invoiceItems.invoiceId, schema.invoiceItems.itemType);
+
+  const shippingRows = await db
+    .select({
+      invoiceId: schema.invoiceShippingLines.invoiceId,
+      cost:      sql<string>`coalesce(sum(${schema.invoiceShippingLines.cost}), 0)`,
+    })
+    .from(schema.invoiceShippingLines)
+    .where(inArray(schema.invoiceShippingLines.invoiceId, invoiceIds))
+    .groupBy(schema.invoiceShippingLines.invoiceId);
+
+  // DomainBucket type shared dari deklarasi module-level (dipakai juga computeInvoiceDomainBucket
+  // untuk jurnal Opsi B) — dua fungsi ini sengaja tetap query terpisah (batch N-invoice di sini
+  // vs single-invoice di sana), cuma bentuk datanya yang di-share.
+  const byInvoice = new Map<string, DomainBucket>();
+  for (const id of invoiceIds) byInvoice.set(id, { product: 0, ticket: 0, donation: 0, custom: 0 });
+
+  for (const r of itemRows) {
+    const bucket = byInvoice.get(r.invoiceId);
+    if (!bucket) continue;
+    const amt = parseFloat(r.total);
+    if (r.itemType === "product")       bucket.product  += amt;
+    else if (r.itemType === "ticket")   bucket.ticket   += amt;
+    else if (r.itemType === "donation") bucket.donation += amt;
+    else if (r.itemType === "custom")   bucket.custom   += amt;
+  }
+  for (const r of shippingRows) {
+    const bucket = byInvoice.get(r.invoiceId);
+    if (bucket) bucket.product += parseFloat(r.cost); // ongkir → bagian domain Toko
+  }
+
+  for (const r of invoiceRows) {
+    const bucket = byInvoice.get(r.sourceId as string);
+    const denom  = bucket ? bucket.product + bucket.ticket + bucket.donation + bucket.custom : 0;
+    if (!bucket || denom <= 0) {
+      contributions.push({ groupKey: r.groupKey, label: UNCLASSIFIED_INVOICE_LABEL, amount: r.amount });
+      continue;
+    }
+    const pieces: [string, number][] = [
+      [SOURCE_TYPE_LABELS.order,              bucket.product],
+      [SOURCE_TYPE_LABELS.event_registration, bucket.ticket],
+      [SOURCE_TYPE_LABELS.donation,           bucket.donation],
+      [CUSTOM_ITEM_LABEL,                     bucket.custom],
+    ];
+    for (const [label, subtotal] of pieces) {
+      if (subtotal <= 0) continue;
+      contributions.push({ groupKey: r.groupKey, label, amount: r.amount * (subtotal / denom) });
+    }
+  }
+
+  return contributions;
+}
+
 /** Laporan Arus Kas: ringkasan pemasukan & pengeluaran dalam periode */
 export async function getLaporanArusKasAction(
   slug: string,
@@ -1169,20 +1408,21 @@ export async function getLaporanArusKasAction(
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
 
-  const { db, schema } = createTenantDb(slug);
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
 
-  const pemasukanRows = await db
+  const pemasukanRaw = await db
     .select({
       sourceType: schema.payments.sourceType,
-      total:      sql<string>`COALESCE(SUM(${schema.payments.amount}::numeric), 0)`,
+      sourceId:   schema.payments.sourceId,
+      amount:     schema.payments.amount,
     })
     .from(schema.payments)
     .where(and(
       eq(schema.payments.status, "paid"),
       gte(schema.payments.confirmedAt, new Date(start)),
       lte(schema.payments.confirmedAt, new Date(end + "T23:59:59"))
-    ))
-    .groupBy(schema.payments.sourceType);
+    ));
 
   const pengeluaranRows = await db
     .select({
@@ -1197,10 +1437,19 @@ export async function getLaporanArusKasAction(
     ))
     .groupBy(schema.disbursements.purposeType);
 
-  const pemasukan: ArusKasRow[]   = pemasukanRows.map((r) => ({
-    label:  SOURCE_TYPE_LABELS[r.sourceType] ?? r.sourceType,
-    amount: parseFloat(String(r.total)),
-  }));
+  const contributions = await splitIncomeByDomain(
+    tenantClient,
+    pemasukanRaw.map((r) => ({
+      sourceType: r.sourceType,
+      sourceId:   r.sourceId,
+      amount:     parseFloat(String(r.amount)),
+      groupKey:   "",
+    })),
+  );
+  const pemasukanMap = new Map<string, number>();
+  for (const c of contributions) pemasukanMap.set(c.label, (pemasukanMap.get(c.label) ?? 0) + c.amount);
+  const pemasukan: ArusKasRow[] = [...pemasukanMap.entries()].map(([label, amount]) => ({ label, amount }));
+
   const pengeluaran: ArusKasRow[] = pengeluaranRows.map((r) => ({
     label:  PURPOSE_TYPE_LABELS[r.purposeType] ?? r.purposeType,
     amount: parseFloat(String(r.total)),
@@ -1210,6 +1459,135 @@ export async function getLaporanArusKasAction(
   const totalPengeluaran = pengeluaran.reduce((s, r) => s + r.amount, 0);
 
   return { success: true, data: { pemasukan, pengeluaran, totalPemasukan, totalPengeluaran, saldo: totalPemasukan - totalPengeluaran } };
+}
+
+export type ArusKasBulananRow = {
+  monthKey:         string; // "2026-01"
+  monthLabel:       string; // "Januari 2026"
+  pemasukan:        ArusKasRow[];
+  pengeluaran:      ArusKasRow[];
+  totalPemasukan:   number;
+  totalPengeluaran: number;
+  saldo:            number;
+  saldoKumulatif:   number;
+};
+
+export type ArusKasBulananData = {
+  rows:                  ArusKasBulananRow[];
+  grandTotalPemasukan:   number;
+  grandTotalPengeluaran: number;
+  grandSaldo:            number;
+};
+
+const BULAN_LABELS = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
+
+/**
+ * Laporan Arus Kas Bulanan: pemasukan & pengeluaran dikelompokkan per bulan.
+ * Sumber data SAMA PERSIS getLaporanArusKasAction (payments/disbursements status='paid'),
+ * cuma dipecah per bulan. Bucket bulan dihitung timezone-aware (bukan UTC mentah) — payment
+ * dekat tengah malam WIB tidak boleh tergeser ke bulan sebelumnya/berikutnya.
+ */
+export async function getLaporanArusKasBulananAction(
+  slug: string,
+  start: string,
+  end: string
+): Promise<ActionResult<ArusKasBulananData>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+
+  const tenantClient = createTenantDb(slug);
+  const { db, schema } = tenantClient;
+  const timezone = await getTenantTimezone(tenantClient);
+
+  const pemasukanRaw = await db
+    .select({
+      sourceType:  schema.payments.sourceType,
+      sourceId:    schema.payments.sourceId,
+      amount:      schema.payments.amount,
+      confirmedAt: schema.payments.confirmedAt,
+    })
+    .from(schema.payments)
+    .where(and(
+      eq(schema.payments.status, "paid"),
+      gte(schema.payments.confirmedAt, new Date(start)),
+      lte(schema.payments.confirmedAt, new Date(end + "T23:59:59"))
+    ));
+
+  const pengeluaranRaw = await db
+    .select({
+      purposeType: schema.disbursements.purposeType,
+      amount:      schema.disbursements.amount,
+      paidAt:      schema.disbursements.paidAt,
+    })
+    .from(schema.disbursements)
+    .where(and(
+      eq(schema.disbursements.status, "paid"),
+      gte(schema.disbursements.paidAt, new Date(start)),
+      lte(schema.disbursements.paidAt, new Date(end + "T23:59:59"))
+    ));
+
+  // Kelompokkan per bulan di kalender timezone tenant — idiom sama dengan todayInTz()
+  // (packages/db/src/helpers/tenant-timezone.ts).
+  function monthKeyOf(date: Date | null): string | null {
+    if (!date) return null;
+    return date.toLocaleDateString("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit" });
+  }
+
+  const monthMap = new Map<string, { pemasukan: Map<string, number>; pengeluaran: Map<string, number> }>();
+  function ensureMonth(key: string) {
+    if (!monthMap.has(key)) monthMap.set(key, { pemasukan: new Map(), pengeluaran: new Map() });
+    return monthMap.get(key)!;
+  }
+
+  const pemasukanWithGroup = pemasukanRaw
+    .map((r) => ({
+      sourceType: r.sourceType,
+      sourceId:   r.sourceId,
+      amount:     parseFloat(String(r.amount)),
+      groupKey:   monthKeyOf(r.confirmedAt),
+    }))
+    .filter((r): r is typeof r & { groupKey: string } => r.groupKey !== null);
+
+  const contributions = await splitIncomeByDomain(tenantClient, pemasukanWithGroup);
+  for (const c of contributions) {
+    const bucket = ensureMonth(c.groupKey);
+    bucket.pemasukan.set(c.label, (bucket.pemasukan.get(c.label) ?? 0) + c.amount);
+  }
+
+  for (const r of pengeluaranRaw) {
+    const key = monthKeyOf(r.paidAt);
+    if (!key) continue;
+    const bucket = ensureMonth(key);
+    bucket.pengeluaran.set(r.purposeType, (bucket.pengeluaran.get(r.purposeType) ?? 0) + parseFloat(String(r.amount)));
+  }
+
+  const sortedKeys = [...monthMap.keys()].sort();
+  let runningBalance = 0;
+  const rows: ArusKasBulananRow[] = sortedKeys.map((key) => {
+    const bucket = monthMap.get(key)!;
+    const pemasukan: ArusKasRow[]   = [...bucket.pemasukan.entries()].map(([label, amount]) => ({ label, amount }));
+    const pengeluaran: ArusKasRow[] = [...bucket.pengeluaran.entries()].map(([t, amount]) => ({ label: PURPOSE_TYPE_LABELS[t] ?? t, amount }));
+    const totalPemasukan   = pemasukan.reduce((s, r) => s + r.amount, 0);
+    const totalPengeluaran = pengeluaran.reduce((s, r) => s + r.amount, 0);
+    const saldo = totalPemasukan - totalPengeluaran;
+    runningBalance += saldo;
+
+    const [yearStr, monthStr] = key.split("-");
+    const monthLabel = `${BULAN_LABELS[Number(monthStr) - 1]} ${yearStr}`;
+
+    return { monthKey: key, monthLabel, pemasukan, pengeluaran, totalPemasukan, totalPengeluaran, saldo, saldoKumulatif: runningBalance };
+  });
+
+  const grandTotalPemasukan   = rows.reduce((s, r) => s + r.totalPemasukan, 0);
+  const grandTotalPengeluaran = rows.reduce((s, r) => s + r.totalPengeluaran, 0);
+
+  return {
+    success: true,
+    data: { rows, grandTotalPemasukan, grandTotalPengeluaran, grandSaldo: grandTotalPemasukan - grandTotalPengeluaran },
+  };
 }
 
 /** Buku Besar: riwayat semua transaksi per akun dalam periode */

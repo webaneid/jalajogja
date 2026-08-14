@@ -15,6 +15,7 @@ export {
   recordJournal,
   recordExpense,
   recordIncome,
+  recordIncomeSplit,
   recordTransfer,
   generateFinancialNumber,
   getNextLetterNumber,
