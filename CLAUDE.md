@@ -16617,8 +16617,159 @@ belum diverifikasi visual di browser** — user perlu buka `/app/{slug}/toko/pes
 konfirmasi kolom "Total Produk" sekarang cuma menghitung porsi produk+ongkir, terutama untuk
 invoice yang customer-nya checkout campuran produk+tiket/donasi dalam satu keranjang.
 
+### [2026-08-15] `/toko/pesanan/new` — Search Pelanggan Gabungan + Ongkir Per-Penjual + Voucher + Auto-Invoice+WA
+
+Lanjutan langsung dari fix kolom "Total" (§ di atas, sesi yang sama). User minta form buat
+pesanan manual admin (`/toko/pesanan/new`) ditingkatkan 4 hal sekaligus: (1) search
+pelanggan "seperti di invoice" — cocokkan Anggota MAUPUN Akun Publik, auto-isi email+telepon;
+(2) opsi pengiriman RajaOngkir + COD + Ambil Sendiri; (3) fasilitas kupon/voucher; (4)
+terintegrasi ke invoice — otomatis buat invoice + kirim notifikasi WA saat pesanan dibuat.
+Konteks penting: COD + Ambil Sendiri per-penjual (`SellerGroup.codEnabled`/`pickupEnabled`,
+kolom `mitras.codEnabled` dkk, `invoice_shipping_lines.deliveryMethod`/`paymentMethod`) SUDAH
+lama live di checkout publik (dikonfirmasi baca `checkout/page.tsx`+`checkout-form.tsx`+
+`cart/actions.ts` langsung — bukan asumsi dari nama file plan lama yang ternyata sudah
+dieksekusi jauh sebelum sesi ini) — task-nya murni MEREPLIKASI infrastruktur yang sudah ada
+ke konteks admin, bukan membangun dari nol. Keputusan scope yang sudah dikunci sesi
+sebelumnya (dipertahankan, bukan ditinjau ulang): admin form boleh campur produk tenant+mitra
+sekaligus ("Boleh campur toko + mitra"), jadi replikasi HARUS mencakup `SellerGroup[]` penuh
+per-penjual, bukan versi simplifikasi 1-shipping-line.
+
+**1. Search pelanggan gabungan (Anggota + Akun Publik) — genuinely baru, tidak ada
+precedent langsung**: route baru `GET /api/ref/customer-search?slug=&q=` — cari
+`public.members` (JOIN `tenant_memberships` scoped ke tenant ini, LEFT JOIN `contacts` untuk
+phone/email — pola sama `/api/ref/tenant-members`) DAN `public.profiles` (TIDAK di-scope
+tenant — akun publik memang lintas-tenant, sama seperti member) secara PARALEL, gabung jadi
+`CustomerSearchResult[]` dengan diskriminator `type: "member"|"profile"`. Komponen baru
+`CustomerSearchAutocomplete` (`components/toko/`) — pola debounce/click-outside/
+`onMouseDown` preventDefault identik `MemberNameAutocomplete` (aturan lama "blur vs click
+race condition" — dropdown item WAJIB `onMouseDown`, bukan `onClick`, supaya tidak
+ke-`onBlur` duluan). `onChange` ke parent hanya dipanggil saat pilih dari dropdown ATAU
+mengetik manual (untuk clear selection) — TIDAK auto-isi ulang phone/email saat mengetik
+manual (hanya saat pilih dari dropdown), konsisten pola `MemberNameAutocomplete` yang sudah
+dikunci di lesson lama form Pemasukan Manual.
+
+**2. Ongkir per-penjual + COD + Ambil Sendiri — replikasi PERSIS `checkout/page.tsx`'s
+algoritma pembangun `SellerGroup[]`**, tapi dipindah ke CLIENT-SIDE (`useMemo` di
+`OrderCreateClient`) karena admin form membangun cart virtual di browser, bukan baca dari
+`cart_items` DB seperti checkout publik. `pesanan/new/page.tsx` diperluas fetch: config
+RajaOngkir tenant (`tenantAddonInstallations`+`addons`, skip kalau expired/inactive/belum ada
+`origin_city_id`), `getTokoSettings()` untuk COD/pickup tenant, dan `mitraConfigMap` (semua
+mitra yang produknya tampil di daftar, JOIN `public.memberBusinesses` untuk nama tampil —
+pola cross-schema yang sudah berulang di 4+ tempat lain di codebase). Semua diteruskan
+sebagai props statis ke client — client `useMemo`-kan `SellerGroup[]` dari cart+config tanpa
+round-trip server (beda dari checkout publik yang membangunnya server-side per request).
+Destinasi kota SATU field shared untuk semua grup (customer cuma punya 1 alamat kirim,
+persis pola checkout-form.tsx Step 2), courier fetch per-grup via `/api/ongkir/cost` yang
+sudah ada (reuse endpoint, nol perubahan di situ).
+
+**3. Voucher — action baru `previewOrderVoucherAction`**, reuse langsung `findVoucherByCode`/
+`countCustomerRedemptions`/`computeVoucherDiscount` (`@jalajogja/db`, sudah lama dipakai
+`previewVoucherAction` di cart publik) — bedanya HANYA sumber item: cart publik baca
+`cart_items` DB, sini terima `OrderItemInput[]` langsung dari client (tidak ada cart DB di
+konteks admin). `perItemDiscount` di-key ulang by `productId` (bukan `cartItemId` seperti
+versi publik — tidak ada baris cart_items untuk dijadikan key), aman karena admin cart tidak
+pernah punya 2 baris untuk produk yang sama (qty digabung, bukan duplikat baris, sejak awal).
+
+**4. Invoice otomatis + WA — `createOrderAction` ditulis ULANG TOTAL, bypass
+`createLinkedInvoice()` sepenuhnya** (helper lama itu tidak support `memberId`/`profileId`/
+shipping/voucher sama sekali — dikonfirmasi baca `CreateLinkedInvoiceInput` type langsung,
+bukan diasumsikan). Insert invoice LANGSUNG di dalam `db.transaction()`, meniru struktur
+PERSIS `checkoutAction` (cart/actions.ts) yang sudah terbukti solid: resolusi harga/mitraId
+via `resolveProductCartItem(tx, ...)` (jangan percaya harga dari client — server selalu
+re-fetch), voucher via `findVoucherByCode(tx, ..., forUpdate=true)` (lock row cegah race 2
+admin pakai kode yang sama bersamaan), shipping-line re-validasi server-side (delivery/payment
+method dicek ULANG terhadap `mitras`/`tokoSettings` sungguhan — TIDAK percaya boolean dari
+client meski `cost` kurir sendiri tetap dipercaya dari client, pola SAMA `checkoutAction`),
+kode unik (`generateUniqueCode`, hanya kalau `unique_code_enabled`), lalu `notifyWa(event:
+"invoice_created", amount: waRupiah(total + uniqueCode))` FIRE-AND-FORGET di luar transaction
+— WAJIB `total + uniqueCode`, bukan total polos (aturan lama "Kode Unik Transaksi", baru
+dikoreksi ulang minggu sebelumnya untuk 24 titik `notifyWa` lain, sekarang titik ke-25 ini
+langsung ditulis benar sejak awal).
+
+**Bug ditemukan+difix SAAT menulis (bukan dari `tsc` doang) — UUID vs nanoid, kelas bug lama
+terulang di file yang SAMA yang sedang ditulis ulang**: `createOrderAction` versi LAMA
+(sebelum rewrite ini) memakai `createdBy: access.userId` — `access.userId` adalah **nanoid**
+dari Better Auth session (`session.user.id`), sementara `invoices.created_by` adalah **UUID**
+(`uuid("created_by")`, dikonfirmasi baca schema `billing.ts` langsung). Setiap kali admin
+membuat pesanan manual, insert seharusnya SELALU gagal `invalid input syntax for type uuid`
+— bug pre-existing sejak fungsi ini dibuat, persis kelas "UUID vs nanoid" yang sudah
+berulang kali dikunci sebagai lesson (`access.tenantUser.id` yang benar, bukan
+`access.userId`). Difix sebagai bagian rewrite (bukan scope creep — field ini memang sedang
+ditulis ulang). **Line lain di file yang sama** (`addPaymentToOrderAction`'s `userId =
+access.userId`) TERKONFIRMASI PUNYA POLA SERUPA tapi SENGAJA TIDAK disentuh — di luar fungsi
+yang direwrite, fixing itu akan jadi audit-scope-creep yang tidak diminta (pelanggaran
+langsung prinsip "task audit/fix BUKAN lisensi menambah keputusan di luar scope" yang sudah
+dikunci sebagai lesson keras sebelumnya) — dicatat sebagai technical debt terpisah, bukan
+diperbaiki diam-diam.
+
+**Bug TypeScript ditemukan+difix saat implementasi** (dua kelas berbeda): (1) `(item.mitraId
+? "mitra" : "tenant") as const` — TS1355, `as const` TIDAK BISA diterapkan ke hasil ekspresi
+ternary, hanya ke literal langsung — fix: `item.mitraId ? ("mitra" as const) : ("tenant" as
+const)` (`as const` di MASING-MASING cabang, bukan di luar ternary); (2) array
+`shippingLineValues: Array<Record<string, unknown>>` terlalu longgar untuk Drizzle `.values()`
+overload resolution (dua bentuk baris berbeda — pickup vs courier — di-push ke array yang
+sama, TypeScript widen ke `Record<string,unknown>` begitu digabung) — fix: definisikan type
+lokal eksplisit `ShippingLineInsert` (union field opsional mencakup KEDUA bentuk baris) untuk
+anotasi array, bukan biarkan inferensi otomatis melebar.
+
+**Scope yang SENGAJA tidak direplikasi dari checkoutAction**: blok `isFullyPaid` (auto-lunas
+untuk voucher 100%, sync `campaigns.collectedAmount`, auto-create `event_registrations`) TIDAK
+diikutkan — admin order form scope-nya toko/produk saja (tidak pernah ada tiket/donasi di cart
+admin ini), dan kalau admin memang ingin tandai lunas langsung, tombol "Konfirmasi Pembayaran"
+yang sudah ada di halaman detail invoice sudah cukup — mereplikasi seluruh efek samping Rp0
+untuk kasus yang tidak mungkin terjadi di konteks ini dianggap kompleksitas tak perlu.
+
+**Verifikasi**: `tsc --noEmit` 0 error kedua package (`apps/web` dari nol percobaan pertama
+setelah 2 putaran fix TypeScript di atas, `packages/db` sanity-check nol perubahan) + `bun run
+build --filter=@jalajogja/web` genuine sukses (dev server dimatikan port 6202+`.next`
+dibersihkan, `Cached: 0 cached, 1 total`, 52.9s, dev server direstart, curl 200 OK) — route
+`/app/[tenant]/toko/pesanan/new` naik dari ukuran lama ke 9.54 kB (konfirmasi client component
+baru genuinely ter-compile, bukan cache-hit) dan route baru `/api/ref/customer-search`
+terkonfirmasi ada di build output. Nol migrasi DB — seluruh kolom (COD/pickup/shipping-line
+fields, `memberId`/`profileId`/`voucherId` di invoices, dst) sudah ada sejak fitur-fitur
+sebelumnya, murni kode aplikasi baru. **Belum di-commit/push ke git (menunggu otorisasi
+eksplisit terpisah — instruksi standing project ini: izin push satu commit TIDAK berlaku
+otomatis untuk commit berikutnya), belum dijalankan di VPS, belum diverifikasi visual di
+browser** (halaman admin butuh session auth, tidak bisa dicurl seperti halaman publik) — user
+perlu coba end-to-end: cari nama anggota/akun publik di field "Nama Pelanggan" (cek auto-isi
+telepon+email), tambah produk campuran tenant+mitra ke keranjang (cek muncul 2 grup
+pengiriman terpisah), pilih Ambil Sendiri untuk satu grup dan kurir+COD untuk grup lain,
+terapkan kode voucher aktif, submit — cek invoice terbuat dengan breakdown yang benar DAN
+customer (kalau ada nomor HP) menerima WA "Invoice Baru".
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Fix Bug: Kolom "Total" `/toko/pesanan` Menampilkan Total Invoice
+- Terakhir dikerjakan: **`/toko/pesanan/new` — Search Pelanggan Gabungan + Ongkir Per-Penjual
+  + Voucher + Auto-Invoice+WA** (lihat lesson `[2026-08-15]` "`/toko/pesanan/new` — Search
+  Pelanggan Gabungan..." di atas). Lanjutan langsung dari fix kolom "Total" `/toko/pesanan`
+  (bullet berikutnya di bawah, sesi yang sama). User minta 4 peningkatan sekaligus di form
+  buat pesanan manual admin: (1) search pelanggan gabungan Anggota+Akun Publik dengan
+  auto-isi telepon/email; (2) opsi pengiriman RajaOngkir+COD+Ambil Sendiri per-penjual
+  (dikonfirmasi infrastrukturnya SUDAH live di checkout publik, bukan dibangun dari nol —
+  task ini murni replikasi ke konteks admin); (3) fasilitas voucher; (4) auto-buat invoice +
+  notifikasi WA saat pesanan dibuat. Dibangun: route baru `GET /api/ref/customer-search`
+  (gabung `public.members`+`public.profiles`) + komponen `CustomerSearchAutocomplete` (pola
+  debounce/onMouseDown identik `MemberNameAutocomplete`), `pesanan/new/page.tsx` diperluas
+  fetch config RajaOngkir+tokoSettings+mitraConfigMap, `OrderCreateClient` ditulis ulang total
+  (client-side `SellerGroup[]` via `useMemo`, UI pengiriman per-grup + voucher + ringkasan),
+  `toko/actions.ts`'s `createOrderAction` ditulis ulang TOTAL (bypass `createLinkedInvoice()`,
+  insert invoice langsung di `db.transaction()` meniru struktur PERSIS `checkoutAction` cart
+  publik: resolusi harga server-side, voucher dengan row-lock, shipping re-validasi server-side,
+  kode unik, `notifyWa` fire-and-forget dengan `total+uniqueCode`) + action baru
+  `previewOrderVoucherAction`. **Bug UUID-vs-nanoid ditemukan+difix sebagai bagian rewrite**
+  (`createdBy: access.userId` → `access.tenantUser.id`, invoice `created_by` kolom UUID —
+  kelas bug lama yang terulang di fungsi yang sedang ditulis ulang; 1 titik serupa lain di
+  fungsi TETANGGA sengaja TIDAK disentuh, di luar scope rewrite ini). 2 bug TypeScript
+  ditemukan+difix (`as const` pada ternary tidak valid; array shipping-line perlu type union
+  eksplisit, bukan `Record<string,unknown>` longgar). `tsc --noEmit` 0 error kedua package +
+  `bun run build --filter=@jalajogja/web` genuine sukses (`Cached: 0 cached, 1 total`, 52.9s,
+  dev server dimatikan port 6202+`.next` dibersihkan+direstart, curl 200 OK) — route
+  `/app/[tenant]/toko/pesanan/new` naik ke 9.54 kB + route `/api/ref/customer-search`
+  terkonfirmasi di build output. Nol migrasi DB. **Belum di-commit/push ke git, belum
+  dijalankan di VPS, belum diverifikasi visual di browser** — user perlu coba end-to-end:
+  search+pilih pelanggan, cart campuran tenant+mitra (cek 2 grup pengiriman terpisah), pilih
+  Ambil Sendiri untuk satu grup + kurir/COD untuk grup lain, terapkan voucher, submit — cek
+  invoice terbentuk benar DAN WA "Invoice Baru" terkirim ke customer.
+- Sesi sebelumnya: **Fix Bug: Kolom "Total" `/toko/pesanan` Menampilkan Total Invoice
   Utuh, Bukan Nominal Toko Saja** (lihat lesson `[2026-08-15]` di atas). User laporkan
   dengan contoh konkret: kalau customer checkout produk BARENG tiket event dalam satu
   keranjang (cart universal, satu invoice campur banyak domain), kolom "Total" di halaman
