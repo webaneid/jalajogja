@@ -17054,8 +17054,82 @@ diverifikasi visual di browser (Laba Rugi/Neraca Saldo/Buku Besar sekarang sehar
 ikut benar untuk invoice BARU sejak fix ini live — user perlu coba checkout invoice campuran
 produk+donasi baru dan cek breakdown akun di `/finance/akun`/`/finance/laporan`).
 
+### [2026-08-15] Deploy Batch 15 Migration ke VPS + Koreksi Data Historis Production + Temuan SSH Line-Wrap Corruption
+
+> Detail lengkap: **`docs/arsitektur-keuangan.md` § 14.4** (bagian "PRODUCTION SUDAH
+> DIKOREKSI" + "Temuan operasional penting").
+
+Lanjutan langsung dari Opsi B (entri di atas) — user: *"mari kita commit dan push dulu sebelum
+kemudian kt evaluasi"* (commit `3b7a2f0`), lalu *"bgmn cara deploy yg aman step by step."*
+
+**Audit backlog deploy**: sebelum menulis panduan deploy, dicek dulu apakah cuma commit hari
+ini yang perlu di-deploy — TERNYATA ada backlog 15 migration (`0047`–`0061`) dari banyak sesi
+sebelumnya yang tidak pernah dikonfirmasi jalan di VPS (drizzle-kit journal berhenti di index
+~14, migration setelahnya semua manual). Daripada minta user cek satu-satu migration mana yang
+sudah/belum jalan (rawan salah, tidak ada tabel tracking), pendekatan yang dipilih: **buat
+SEMUA 15 migration aman diulang** (idempotent) — audit menemukan HANYA migration `0051` yang
+tidak idempotent (`DROP CONSTRAINT` tanpa `IF EXISTS`). Fix 1 baris, diverifikasi ulang
+terhadap DB lokal (yang migration itu sudah pernah jalan) — sukses tanpa error. Commit
+`55b9e5b`, dipush setelah otorisasi eksplisit user ("ok baik.. mari kita lakukan..").
+
+**Deploy VPS dieksekusi user via SSH relay** (backup DB → `git pull` → loop 15 migration →
+`bun install` → `bun run build` → `pm2 restart` → `curl` 200 OK) — semua sukses, nol `ERROR`
+di 15 migration (cuma `NOTICE` "already exists, skipping" untuk yang sudah pernah jalan
+sebelumnya — bukti pendekatan idempotent tepat, tidak perlu tahu status per-migration).
+
+**Audit data historis production — 5 tenant aktif** (`forbis`, `forcreator`, `ikpm-pusat`,
+`pc-ikpm-jogjakarta`, `visikita`): query diagnosa read-only yang sama persis dengan versi lokal
+dijalankan ke masing-masing (cari `transaction_entries` kredit ke akun `income_manual` dengan
+deskripsi transaksi cocok pola `'Pelunasan invoice %'`/`'COD %'`). Hasil: **4 tenant bersih**,
+**1 tenant (`pc-ikpm-jogjakarta`) punya 4 entri salah rute** — 2 donasi (Rp50.000+Rp100.000,
+harusnya 2200 Dana Titipan) + 2 tiket event (Rp300.000×2, harusnya 4400 Pendapatan Event).
+Dikoreksi via jurnal penyeimbang (persis metodologi lokal) — 4 transaksi baru, masing-masing 1
+debit ke akun lama (4100) + 1 kredit ke akun benar, nominal identik dengan yang salah tercatat.
+Baris lama TIDAK disentuh sama sekali. Diverifikasi: 8 baris jurnal baru, tiap pasangan
+debit=kredit persis — cukup untuk menjamin efek bersih akun 4100 dari koreksi ini nol.
+
+**Temuan operasional signifikan — SSH-relayed long single-line SQL bisa korup diam-diam**:
+selama proses koreksi, `docker compose exec -T postgres psql -c "..."` yang panjang berulang
+kali gagal dengan error yang TERLIHAT seperti data salah (`invalid input syntax for type uuid`,
+`violates check constraint`), padahal SQL-nya benar — root cause: **terminal user menyisipkan
+newline literal di titik wrap-nya saat command panjang di-paste**, memutus string di tengah
+(`'credit'` jadi `'credit\n  '`, korup+tidak cocok CHECK constraint). Ditemukan lewat trial:
+memendekkan bagian AKHIR command (hapus kolom `note`) SAMA SEKALI TIDAK MEMBANTU — titik wrap
+ternyata FIXED di kolom layar tertentu, ditentukan oleh panjang bagian AWAL command (nama
+schema panjang + UUID 36-karakter berulang) sebelum sampai ke token yang korup, bukan panjang
+total command. **Fix yang benar-benar berhasil**: simpan UUID/identifier panjang sebagai
+variabel shell di command TERPISAH lebih dulu (`T1='uuid...'`), lalu pakai `'$T1'` (referensi
+pendek) di command `-c` yang sesungguhnya — memendekkan bagian AWAL, bukan akhir.
+
+**Aturan yang dikunci untuk SEMUA relay SSH command panjang ke depan** (berlaku luas, bukan
+cuma koreksi finansial): kalau `-c "..."` yang cukup panjang gagal dengan error yang terlihat
+seperti data korup di tengah string (bukan salah logic SQL), curigai wrap-corruption LEBIH
+DULU sebelum menyalahkan query — solusinya SELALU pendekkan bagian AWAL command via shell
+variable (`VAR='nilai-panjang'` di command terpisah, lalu `'$VAR'` di command sesungguhnya),
+BUKAN memendekkan/menghapus field di ujung command (itu tidak menggeser titik wrap sama
+sekali kalau field yang dihapus ada SETELAH titik wrap-nya).
+
+`docs/arsitektur-keuangan.md` § 14.4 diupdate lengkap (tabel 4 entri production, metodologi,
+temuan wrap-corruption). Header status file (baris 3-10) + judul § 14 + 1 baris stale di § 14.3
+dikoreksi sekalian (semua masih bilang "Opsi B belum dieksekusi" padahal sudah selesai). **Belum
+di-commit/push ke git** — dokumentasi ini + koreksi data production selesai, menunggu otorisasi
+commit terpisah sesuai aturan standing project.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Klasifikasi Toko/Tiket/Donasi — Opsi B: Jurnal Terpecah per Domain +
+- Terakhir dikerjakan: **Deploy 15 migration ke VPS + koreksi data historis production +
+  temuan SSH line-wrap corruption** (lihat lesson `[2026-08-15]` "Deploy Batch 15 Migration"
+  di atas, detail `docs/arsitektur-keuangan.md` § 14.4). Commit `3b7a2f0` (Opsi B) dan `55b9e5b`
+  (fix idempotency migration 0051) sudah di-push. Deploy VPS SELESAI dan terverifikasi (15
+  migration nol error, build+restart+curl 200 OK). Audit 5 tenant production: 4 bersih, 1
+  (`pc-ikpm-jogjakarta`) punya 4 entri salah rute — SUDAH dikoreksi via jurnal penyeimbang
+  (4 transaksi baru, baris lama tidak disentuh), diverifikasi 8 baris seimbang persis. Temuan
+  penting: command SSH panjang bisa korup diam-diam kalau terminal user menyisipkan newline di
+  titik wrap — fix-nya pendekkan bagian AWAL command via shell variable, bukan bagian akhir
+  (dikunci sebagai aturan reusable untuk relay SSH command panjang ke depan). Dokumentasi
+  (`docs/arsitektur-keuangan.md` § 14.4 + header status file) sudah diupdate mencerminkan
+  status final. **Belum di-commit/push ke git** — perubahan dokumentasi sesi ini menunggu
+  otorisasi commit terpisah.
+- Sesi sebelumnya: **Klasifikasi Toko/Tiket/Donasi — Opsi B: Jurnal Terpecah per Domain +
   Koreksi Historis** (lihat lesson `[2026-08-15]` "Klasifikasi Toko/Tiket/Donasi — Opsi B" di
   atas, detail lengkap `docs/arsitektur-keuangan.md` § 14.4). Lanjutan langsung dari Opsi A —
   user menjawab 3 pertanyaan akuntansi blocker: *"1. ya harus terpisah permanen. 2. donasi

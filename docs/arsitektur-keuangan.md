@@ -6,7 +6,7 @@
 - Integrasi Toko/Donasi/Event → universal payments: ✅ Selesai
 - Akun 4400 Pendapatan Event + `event_income` mapping: ✅ Selesai secara kode, **praktis dormant** untuk transaksi cart modern — lihat § 14
 - Klasifikasi Toko/Tiket/Donasi di laporan Arus Kas (Opsi A): ✅ Selesai (2026-08-15) — lihat § 14
-- Klasifikasi Toko/Tiket/Donasi di level jurnal/Chart of Accounts (Opsi B): 📋 Direncanakan, BELUM dieksekusi — lihat § 14
+- Klasifikasi Toko/Tiket/Donasi di level jurnal/Chart of Accounts (Opsi B): ✅ Selesai (2026-08-15), termasuk koreksi data historis di kode DAN production — lihat § 14.4
 - Anggaran (Budgets): ⚠️ Schema ada, UI belum dibuat
 
 ---
@@ -454,7 +454,7 @@ Account mappings di keuangan = routing double-entry journal (akun buku besar man
 
 ---
 
-## 14. Klasifikasi Toko/Tiket/Donasi — Opsi A (Selesai) + Opsi B (Rencana)
+## 14. Klasifikasi Toko/Tiket/Donasi — Opsi A (Selesai) + Opsi B (Selesai)
 
 > Investigasi dipicu laporan user: laporan keuangan "masih rancu antara invoice dari toko,
 > invoice dari tiket, invoice dari donasi". Ditemukan DUA masalah terpisah dengan akar yang
@@ -564,8 +564,10 @@ ini aman untuk data historis tanpa perlu migrasi/koreksi apa pun.
   "Penjualan Toko" tenant, tidak dipisah. Ini axis "rancu" LAIN yang tidak diminta di task ini.
 - **Pengeluaran/disbursements** — tidak ada ambiguitas serupa di sisi ini (disbursement bukan
   konfirmasi invoice cart, `purposeType` sudah cukup spesifik sejak awal), tidak disentuh.
-- **Laba Rugi, Neraca Saldo, Buku Besar** — MASIH menampilkan pendapatan cart tercampur di
-  akun `income_manual` seperti sebelumnya. Ini Opsi B (§ 14.4), belum dieksekusi.
+- **Laba Rugi, Neraca Saldo, Buku Besar** — pada saat § 14.3 ini ditulis, MASIH menampilkan
+  pendapatan cart tercampur di akun `income_manual`. **Sudah dibenahi via Opsi B (§ 14.4,
+  selesai 2026-08-15)** — ketiga laporan ini baca `transaction_entries` langsung, jadi otomatis
+  ikut benar begitu jurnal dicatat benar sejak sumbernya, tanpa perlu logic laporan terpisah.
 
 **File yang diubah**: `apps/web/app/(dashboard)/app/[tenant]/finance/actions.ts` — helper baru
 `splitIncomeByDomain()` + 2 konstanta (`CUSTOM_ITEM_LABEL`, `UNCLASSIFIED_INVOICE_LABEL`) + fetch
@@ -598,7 +600,7 @@ satu-satunya tujuan untuk donasi — `income_donasi` (4200) TIDAK PERNAH dipakai
 baik sebelum maupun sesudah Opsi B (field ini ada di `AccountMappings`/UI settings tapi genuinely
 dead — lihat gap di bawah); (3) data historis yang sudah salah masuk `income_manual` dikoreksi
 via jurnal koreksi berimbang (BUKAN edit langsung baris lama) — sudah dieksekusi untuk kedua
-tenant LOKAL, PRODUCTION belum (lihat "Koreksi data historis" di bawah).
+tenant LOKAL DAN untuk seluruh 5 tenant PRODUCTION (lihat "Koreksi data historis" di bawah).
 
 **Implementasi (`apps/web/app/(dashboard)/app/[tenant]/finance/actions.ts`)**:
 
@@ -684,16 +686,44 @@ eksekusi: saldo bersih akun `4100 Pendapatan Iuran` (income_manual) untuk KEDUA 
 ke `Rp 0` (seluruh nominal yang salah masuk sudah dipindah keluar), saldo `4300`/`2200` bertambah
 persis sesuai tabel di atas.
 
-**PRODUCTION BELUM DIKOREKSI** — environment sesi ini tidak punya akses SSH. Kalau perlu
-dijalankan di production, query diagnosa read-only berikut bisa dijalankan dulu (ganti
-`{tenant_slug}` dan cari `account_id` akun `income_manual`/kode `4100` tenant itu via
-`SELECT id FROM tenant_{slug}.accounts WHERE code='4100'` lebih dulu):
-```sql
-SELECT te.id, te.amount, t.date, t.description
-FROM tenant_{slug}.transaction_entries te
-JOIN tenant_{slug}.transactions t ON t.id = te.transaction_id
-WHERE te.type = 'credit' AND te.account_id = '{income_manual_account_id}'
-  AND (t.description LIKE 'Pelunasan invoice %' OR t.description LIKE 'COD %');
-```
-Kalau hasilnya tidak kosong, koreksinya bisa direplikasi dengan script yang sama (minta ditulis
-ulang, dijalankan via SSH oleh user sendiri — bukan Claude, tidak ada akses production).
+**PRODUCTION SUDAH DIKOREKSI (2026-08-15)** — dijalankan via query relay (Claude tidak punya
+akses SSH sama sekali; setiap command dijalankan oleh user sendiri, hasil di-paste balik untuk
+diverifikasi). Diagnosa dijalankan terhadap SEMUA 5 tenant aktif production
+(`forbis`, `forcreator`, `ikpm-pusat`, `pc-ikpm-jogjakarta`, `visikita`) memakai query yang sama
+persis dengan versi lokal. Hasil: **4 tenant bersih (0 rows)** — `forbis`, `forcreator`,
+`ikpm-pusat`, `visikita`. **1 tenant kotor** — `pc-ikpm-jogjakarta`:
+
+| Invoice | Domain | Nominal | Akun lama → benar |
+|---|---|---|---|
+| 620-INV-202605-00001 | donasi | Rp50.000 | 4100 → 2200 |
+| 620-INV-202605-00002 | donasi | Rp100.000 | 4100 → 2200 |
+| 620-INV-202608-00001 | tiket event | Rp300.000 | 4100 → 4400 |
+| 620-INV-202608-00002 | tiket event | Rp300.000 | 4100 → 4400 |
+
+Sama seperti koreksi lokal — SEMUA single-domain (tidak ada invoice campuran), jadi tiap koreksi
+cukup 1 debit `income_manual` (4100) + 1 kredit akun yang benar, nominal identik dengan yang
+salah tercatat. **Baris `transaction_entries`/`transactions` LAMA sama sekali tidak disentuh** —
+4 transaksi jurnal koreksi BARU ditambahkan (`reference_number` berpola `KOREKSI-{nomor
+invoice}`, `date = CURRENT_DATE` saat koreksi dijalankan — bukan di-backdate ke tanggal invoice
+asli, supaya jelas kapan koreksinya genuinely dibuat). Diverifikasi: 8 baris jurnal baru (4
+transaksi × debit+kredit) dicek satu-satu, tiap pasangan punya `amount` yang identik persis —
+secara matematis ini menjamin efek bersih ke akun 4100 dari koreksi ini adalah nol (debit baru
+persis menutup kredit lama yang salah), dan akun tujuan (2200/4400) bertambah tepat sesuai tabel
+di atas.
+
+**Temuan operasional penting — command SQL panjang lewat SSH relay bisa korup diam-diam**:
+selama proses ini, `docker compose exec -T postgres psql -c "..."` dengan SQL yang cukup panjang
+DALAM SATU BARIS berulang kali gagal dengan `ERROR: invalid input syntax for type uuid`/
+`violates check constraint` — root cause-nya BUKAN kesalahan SQL, tapi **terminal user secara
+diam-diam menyisipkan newline literal** di titik wrap-nya saat command panjang di-paste,
+memutus string di tengah (mis. `'credit'` jadi `'credit\n  '`, gagal cocok `CHECK (type IN
+('debit','credit'))`). Yang PENTING: memendekkan bagian AKHIR command (menghapus kolom `note`)
+TIDAK membantu sama sekali — titik wrap ternyata posisinya TETAP (kolom absolut di layar),
+ditentukan oleh panjang bagian AWAL command sebelum token yang korup. **Fix yang benar-benar
+berhasil**: pendekkan bagian AWAL — simpan UUID/identifier panjang sebagai variabel shell
+(`T1='uuid...'`) di command terpisah lebih dulu, baru pakai `'$T1'` (str pendek) di command
+`-c` yang sesungguhnya. Ini menurunkan panjang baris yang di-paste jauh di bawah ambang wrap,
+tanpa mengubah SQL final yang dieksekusi. **Aturan untuk koreksi/relay SSH panjang ke depan**:
+kalau `psql -c "..."` gagal dengan pesan yang terlihat seperti data korup di tengah string
+(bukan salah logic), curigai wrap-corruption dulu sebelum menyalahkan query — solusinya SELALU
+pendekkan command via shell variable, bukan cuma memendekkan teks di ujung.
