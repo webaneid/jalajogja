@@ -4,7 +4,7 @@
 -- Jalankan: docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/0051_legacy_redirects_and_processing_status.sql
 
 -- ── 1. Tambah 'processing' ke CHECK constraint status (public.content_import_batch_rows) ──
-ALTER TABLE public.content_import_batch_rows DROP CONSTRAINT content_import_batch_rows_status_check;
+ALTER TABLE public.content_import_batch_rows DROP CONSTRAINT IF EXISTS content_import_batch_rows_status_check;
 ALTER TABLE public.content_import_batch_rows ADD CONSTRAINT content_import_batch_rows_status_check
   CHECK (status IN ('ready', 'review_needed', 'duplicate', 'error', 'processing', 'inserted', 'skipped'));
 
