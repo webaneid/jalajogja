@@ -17115,20 +17115,109 @@ dikoreksi sekalian (semua masih bilang "Opsi B belum dieksekusi" padahal sudah s
 di-commit/push ke git** — dokumentasi ini + koreksi data production selesai, menunggu otorisasi
 commit terpisah sesuai aturan standing project.
 
+### [2026-08-15] Bug Metodologi Diagnosa: `payments.transactionId` Bukan Proxy Andal untuk "Sudah Dijurnal" — `visikita` Ternyata Punya 92 Entri Salah Rute yang Lolos dari Audit Sebelumnya
+
+> Detail lengkap: **`docs/arsitektur-keuangan.md` § 14.4** (bagian "KOREKSI atas diagnosa di
+> atas — 'visikita' TERNYATA TIDAK bersih"). Lanjutan langsung dari lesson di atas (Deploy
+> Batch 15 Migration) — user melaporkan penemuan nyata dari dashboard produksi, bukan
+> permintaan task baru: *"ini saya lagi buka laporan, laporan arus kas... ada donasi...
+> tetapi di neraca saldo: 2200 Dana Titipan... 2201 Dana Titipan Donasi... —"* untuk tenant
+> `visikita`.
+
+**Root cause metodologi (bukan bug kode aplikasi)**: audit 5-tenant sebelumnya (lesson di
+atas) memakai `payments.transactionId IS NULL` sebagai proxy "belum pernah dijurnal" — proxy
+ini VALID untuk `confirmDonationAction`/`confirmPaymentAction` (`finance/actions.ts`, keduanya
+eksplisit `.set({ transactionId: transaction.id })` setelah `recordIncome` sukses), TAPI
+**tidak valid** untuk `confirmInvoicePaymentAction`/`verifySubmittedPaymentAction`
+(`finance/billing/actions.ts`) — kedua fungsi ini menjurnal atomik di dalam `db.transaction()`
+yang sama dengan update `payments`/`invoices` (kalau `recordIncomeSplit` gagal, `throw` →
+rollback total, jadi TIDAK MUNGKIN payment `status='paid'` tanpa jurnal untuk kode SAAT INI),
+tapi **tidak pernah menulis balik `payments.transactionId`** — kolom itu selalu `NULL` untuk
+`sourceType='invoice'` terlepas jurnalnya ada atau tidak. Diverifikasi lewat baca kode langsung
+(`finance/billing/actions.ts:798-1010`), bukan tebakan.
+
+Akibatnya: query diagnosa lama SELALU melewatkan seluruh histori `sourceType='invoice'` di
+tenant manapun — kebetulan `pc-ikpm-jogjakarta` (yang ditemukan "kotor" sebelumnya) punya
+metodologi diagnosa BERBEDA (langsung match `transactions.description LIKE 'Pelunasan
+invoice %'`, bukan lewat `transaction_id`) sehingga ketangkap; `visikita` yang diaudit dengan
+proxy `transaction_id` malah lolos sebagai "bersih" padahal punya **92 entri salah rute**
+(Rp36.206.985) — donasi (11×Rp8.852.500 → seharusnya 2201 Dana Titipan Donasi, bukan 2200
+generik, dipilih user karena lebih spesifik), tiket event (57×Rp23.320.000 → 4400), toko
+(24×Rp4.034.485 → 4300) — semua salah masuk ke 4100 Pendapatan Iuran, sama persis pola
+`pc-ikpm-jogjakarta` tapi skala jauh lebih besar dan mencakup SEMUA domain (bukan cuma
+donasi+tiket).
+
+**Metode diagnosa yang benar, dikunci sebagai standar**: match `transactions.description`
+langsung (`LIKE 'Pelunasan invoice %'` / `'COD %'`), JOIN ke `invoice_items.item_type` untuk
+breakdown domain — TIDAK PERNAH pakai `payments.transactionId` sebagai proxy "sudah dijurnal"
+untuk alur billing invoice (beda dari alur donasi-langsung/manual yang memang menulis kolom
+itu). Diverifikasi ulang SEMUA 5 tenant dengan metode benar: `forbis`/`forcreator`/
+`ikpm-pusat` genuinely bersih (0 baris), `pc-ikpm-jogjakarta` dikonfirmasi LENGKAP (4 baris,
+persis yang sudah dikoreksi sebelumnya — tidak ada yang tercecer).
+
+**Koreksi `visikita` — pola berbeda dari `pc-ikpm-jogjakarta`**: karena volumenya besar (92
+entri asal, bukan 4), dipakai **3 jurnal koreksi KONSOLIDASI per domain** (bukan satu-satu
+per invoice) — satu debit 4100 + satu kredit akun benar per domain, nominal sejumlah total
+domain itu, `reference_number` pola `KOREKSI-VISIKITA-{DOMAIN}-20260815`. Baris lama sama
+sekali tidak disentuh. Diverifikasi: debit 4100 gabungan ketiga jurnal = Rp36.206.985, persis
+kredit gabungan 2201+4400+4300. Teknik shell-variable (dikunci lesson sebelumnya) dipakai
+proaktif sejak awal untuk semua 10+ command INSERT di sesi ini — nol kegagalan korupsi SSH,
+membuktikan tekniknya genuinely reusable.
+
+**Gap konfigurasi ditemukan sekaligus**: `visikita` belum pernah mengisi `account_mappings`
+di settings (`0 rows`) — pakai fallback `lookupAccountByCode` yang untuk Dana Titipan
+hardcode ke kode "2200" (bukan "2201" yang dipilih user). Direkomendasikan ke user untuk
+mengisi mapping eksplisit lewat menu Akun → Pengaturan Mapping supaya donasi baru ke depan
+konsisten ke 2201 — TIDAK dieksekusi otomatis dari sini (keputusan konfigurasi produk, bukan
+koreksi data histori).
+
+**Aturan yang ditegaskan**: kalau sebuah kolom (di sini `transactionId`) TERLIHAT seperti
+"link ke record terkait" di satu alur kode, JANGAN asumsikan semua alur LAIN yang menuju
+status akhir yang sama juga mengisi kolom itu secara konsisten — verifikasi per-fungsi lewat
+baca kode langsung. Diagnosa data finansial yang mengandalkan satu kolom sebagai proxy tanpa
+verifikasi ini berisiko menghasilkan false-negative yang tidak terlihat sampai user
+melaporkan discrepancy nyata dari dashboard — seperti yang terjadi di sini.
+
+**Belum di-commit/push** — menunggu otorisasi user untuk giliran commit ini (murni dokumentasi
++ koreksi data production, nol perubahan kode aplikasi).
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Deploy 15 migration ke VPS + koreksi data historis production +
+- Terakhir dikerjakan: **Bug metodologi diagnosa `payments.transactionId` + koreksi 92 entri
+  salah rute di `visikita`** (lihat lesson `[2026-08-15]` "Bug Metodologi Diagnosa" di atas,
+  detail `docs/arsitektur-keuangan.md` § 14.4). User melaporkan discrepancy nyata dari
+  dashboard produksi `visikita` (Arus Kas ada pemasukan donasi besar, Neraca Saldo "Dana
+  Titipan" kosong). Investigasi menemukan: proxy `payments.transactionId IS NULL` yang dipakai
+  audit 5-tenant sebelumnya TIDAK reliable untuk alur `confirmInvoicePaymentAction`/
+  `verifySubmittedPaymentAction` (menjurnal atomik tapi TIDAK PERNAH menulis balik kolom itu) —
+  bikin `visikita` lolos sebagai "bersih" padahal punya **92 entri salah rute (Rp36.206.985)**
+  di SEMUA domain (donasi 11×Rp8.852.500, tiket event 57×Rp23.320.000, toko 24×Rp4.034.485,
+  semua salah masuk 4100 Pendapatan Iuran). Metode diagnosa benar (match
+  `transactions.description` langsung) dipakai untuk re-verifikasi SEMUA 5 tenant:
+  `forbis`/`forcreator`/`ikpm-pusat` genuinely bersih, `pc-ikpm-jogjakarta` dikonfirmasi
+  LENGKAP (4 baris, tidak ada yang tercecer). `visikita` dikoreksi via 3 jurnal konsolidasi per
+  domain (bukan satu-satu per invoice seperti sebelumnya, mengingat volumenya besar) — 2201
+  Dana Titipan Donasi (dipilih user, lebih spesifik dari 2200 generik), 4400 Pendapatan Event,
+  4300 Pendapatan Usaha — diverifikasi seimbang sempurna (debit 4100 gabungan = kredit gabungan
+  ketiga akun tujuan). Gap ditemukan: `visikita` belum pernah isi `account_mappings` eksplisit
+  (fallback hardcode ke 2200, bukan 2201) — direkomendasikan ke user untuk mengisi lewat menu
+  Akun → Pengaturan Mapping, TIDAK dieksekusi otomatis. **Belum di-commit/push ke git** —
+  menunggu otorisasi user.
+- Sesi sebelumnya: **Deploy 15 migration ke VPS + koreksi data historis production +
   temuan SSH line-wrap corruption** (lihat lesson `[2026-08-15]` "Deploy Batch 15 Migration"
   di atas, detail `docs/arsitektur-keuangan.md` § 14.4). Commit `3b7a2f0` (Opsi B) dan `55b9e5b`
   (fix idempotency migration 0051) sudah di-push. Deploy VPS SELESAI dan terverifikasi (15
-  migration nol error, build+restart+curl 200 OK). Audit 5 tenant production: 4 bersih, 1
-  (`pc-ikpm-jogjakarta`) punya 4 entri salah rute — SUDAH dikoreksi via jurnal penyeimbang
-  (4 transaksi baru, baris lama tidak disentuh), diverifikasi 8 baris seimbang persis. Temuan
-  penting: command SSH panjang bisa korup diam-diam kalau terminal user menyisipkan newline di
+  migration nol error, build+restart+curl 200 OK). Audit 5 tenant production saat itu: 4
+  dianggap bersih, 1 (`pc-ikpm-jogjakarta`) punya 4 entri salah rute — SUDAH dikoreksi via
+  jurnal penyeimbang (4 transaksi baru, baris lama tidak disentuh), diverifikasi 8 baris
+  seimbang persis. **[KOREKSI, lihat bullet di atas]**: klaim "4 tenant bersih" TERNYATA salah
+  untuk `visikita` — proxy diagnosa yang dipakai saat itu (`payments.transactionId IS NULL`)
+  punya celah metodologi, ditemukan+diperbaiki di sesi berikutnya. Temuan SSH terpisah tetap
+  valid: command SSH panjang bisa korup diam-diam kalau terminal user menyisipkan newline di
   titik wrap — fix-nya pendekkan bagian AWAL command via shell variable, bukan bagian akhir
   (dikunci sebagai aturan reusable untuk relay SSH command panjang ke depan). Dokumentasi
-  (`docs/arsitektur-keuangan.md` § 14.4 + header status file) sudah diupdate mencerminkan
-  status final. **Belum di-commit/push ke git** — perubahan dokumentasi sesi ini menunggu
-  otorisasi commit terpisah.
+  (`docs/arsitektur-keuangan.md` § 14.4 + header status file) diupdate saat itu, DAN sudah
+  di-commit+push sebagai `66145cf` (dikonfirmasi via git log, bukan lagi "belum di-commit"
+  seperti tertulis semula di bullet ini).
 - Sesi sebelumnya: **Klasifikasi Toko/Tiket/Donasi — Opsi B: Jurnal Terpecah per Domain +
   Koreksi Historis** (lihat lesson `[2026-08-15]` "Klasifikasi Toko/Tiket/Donasi — Opsi B" di
   atas, detail lengkap `docs/arsitektur-keuangan.md` § 14.4). Lanjutan langsung dari Opsi A —

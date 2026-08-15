@@ -711,6 +711,68 @@ secara matematis ini menjamin efek bersih ke akun 4100 dari koreksi ini adalah n
 persis menutup kredit lama yang salah), dan akun tujuan (2200/4400) bertambah tepat sesuai tabel
 di atas.
 
+**KOREKSI atas diagnosa di atas — "4 tenant bersih" TERNYATA SALAH untuk `visikita`
+(2026-08-15, lanjutan)**: user melaporkan discrepancy nyata dari dashboard produksi —
+laporan Arus Kas `visikita` menunjukkan pemasukan donasi/event/toko yang besar (confirmed
+payments), tapi Neraca Saldo menampilkan akun 2200/2201 "Dana Titipan" kosong total (`—`).
+Investigasi ulang menemukan **akar masalah metodologi**: diagnosa 5-tenant di atas
+(`payments.transaction_id IS NULL` sebagai proxy "belum dijurnal") **tidak reliable** untuk
+alur `confirmInvoicePaymentAction`/`verifySubmittedPaymentAction` — kedua fungsi ini
+menjurnal DI DALAM transaksi DB yang sama (atomik, `throw` kalau gagal → rollback penuh),
+TAPI **tidak pernah menulis balik `payments.transactionId`** setelah sukses (beda dari
+`confirmDonationAction`/`confirmPaymentAction` di `finance/actions.ts` yang eksplisit
+`.set({ transactionId: transaction.id })`). Akibatnya kolom itu SELALU `NULL` untuk semua
+payment `sourceType='invoice'`, terlepas jurnalnya ada atau tidak — proxy yang salah total.
+
+Metode yang BENAR: match langsung `transactions.description LIKE 'Pelunasan invoice %'`
+(atau `'COD %'`), join ke `invoice_items.item_type` untuk breakdown domain. Diverifikasi
+ulang SEMUA 5 tenant pakai metode ini:
+
+| Tenant | Hasil re-verifikasi |
+|---|---|
+| `forbis` | 0 baris — genuinely bersih |
+| `forcreator` | 0 baris — genuinely bersih |
+| `ikpm-pusat` | 0 baris — genuinely bersih |
+| `pc-ikpm-jogjakarta` | 4 baris, Rp750.000 — PERSIS cocok 4 entri yang sudah dikoreksi di atas, tidak ada yang tercecer |
+| `visikita` | **92 baris, Rp36.206.985 — TIDAK terdeteksi sama sekali oleh diagnosa lama** |
+
+Breakdown `visikita` per domain (semua salah masuk 4100 Pendapatan Iuran):
+
+| Domain | Jumlah invoice | Nominal | Akun benar |
+|---|---|---|---|
+| Donasi | 11 | Rp8.852.500 | 2201 Dana Titipan Donasi (dipilih user — lebih spesifik dari 2200 generik) |
+| Tiket Event | 57 | Rp23.320.000 | 4400 Pendapatan Event |
+| Toko/Produk | 24 | Rp4.034.485 | 4300 Pendapatan Usaha |
+| Custom | 0 | — | — |
+
+Semua transaksi ini dikonfirmasi 11 Juli–11 Agustus 2026 (rentang penuh sebelum Opsi B
+hari ini) — bukan kejadian sekali, tapi pola sistemik untuk SELURUH riwayat cart-checkout
+tenant ini sebelum split-domain journaling ada.
+
+**Koreksi dieksekusi berbeda dari pola sebelumnya** — karena volumenya besar (92 entri asal),
+dipakai **3 jurnal koreksi KONSOLIDASI per domain** (bukan satu-satu per invoice seperti
+`pc-ikpm-jogjakarta`) untuk menekan jumlah command SSH yang perlu di-relay: satu transaksi
+debit 4100 + kredit akun benar, nominal sejumlah total domain itu. `reference_number` pola
+`KOREKSI-VISIKITA-{DOMAIN}-20260815`. Baris `transaction_entries`/`transactions` LAMA sama
+sekali tidak disentuh. Diverifikasi: total debit 4100 dari ketiga jurnal koreksi = Rp36.206.985
+(persis 8.852.500+23.320.000+4.034.485), kredit gabungan 2201+4400+4300 = jumlah yang sama.
+
+**Gap konfigurasi ditemukan sekaligus**: `visikita` **belum pernah mengisi `account_mappings`**
+di settings (`0 rows`) — sistem selama ini pakai fallback `lookupAccountByCode` yang untuk
+Dana Titipan **hardcode ke kode "2200"** (bukan "2201" yang dipilih user sebagai target lebih
+spesifik). Tanpa konfigurasi eksplisit lewat menu **Akun → Pengaturan Mapping**, donasi BARU
+ke depan (pasca Opsi B) akan tetap default ke 2200, bukan 2201 — direkomendasikan ke user
+untuk mengisi mapping ini secara eksplisit, TIDAK dieksekusi otomatis dari sini (perubahan
+konfigurasi produk, bukan koreksi data).
+
+**Pelajaran metodologi yang dikunci**: `payments.transactionId` HANYA reliable sebagai proxy
+"sudah dijurnal" untuk alur yang eksplisit menulis baliknya (`confirmDonationAction`,
+`confirmPaymentAction` generik). Untuk `confirmInvoicePaymentAction`/`verifySubmittedPaymentAction`
+(jurnal per-invoice, bukan per-payment — karena partial payment bisa numpuk sebelum invoice
+lunas dan baru dijurnal sekali saat status akhirnya "paid"), verifikasi HARUS lewat
+`transactions.description` langsung. Diagnosa ke depan untuk kelas bug serupa WAJIB pakai
+metode description-matching ini sebagai standar, bukan `transaction_id IS NULL`.
+
 **Temuan operasional penting — command SQL panjang lewat SSH relay bisa korup diam-diam**:
 selama proses ini, `docker compose exec -T postgres psql -c "..."` dengan SQL yang cukup panjang
 DALAM SATU BARIS berulang kali gagal dengan `ERROR: invalid input syntax for type uuid`/
