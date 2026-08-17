@@ -5,6 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import { db, profiles, createTenantDb } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { displayPhone } from "@/lib/phone";
+import { DeleteAccountButton } from "./delete-account-button";
 
 // ─── Label maps ───────────────────────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ export default async function AkunDetailPage({
       </div>
 
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">{profile.name}</h1>
           <div className="mt-1 flex items-center gap-2">
@@ -119,6 +120,14 @@ export default async function AkunDetailPage({
               </span>
             )}
           </div>
+        </div>
+        <div className="shrink-0">
+          <DeleteAccountButton
+            slug={slug}
+            profileId={profile.id}
+            profileName={profile.name}
+            invoiceCount={invoices.length}
+          />
         </div>
       </div>
 
