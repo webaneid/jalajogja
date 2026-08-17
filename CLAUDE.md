@@ -17181,8 +17181,85 @@ melaporkan discrepancy nyata dari dashboard — seperti yang terjadi di sini.
 **Belum di-commit/push** — menunggu otorisasi user untuk giliran commit ini (murni dokumentasi
 + koreksi data production, nol perubahan kode aplikasi).
 
+### [2026-08-17] Hapus Permanen Akun Publik yang Salah Jalur Registrasi
+
+> Detail lengkap: **`docs/arsitektur-akun.md`** § "Hapus Akun — Soft Delete (Self-Service) vs
+> Hard Delete (Admin)".
+
+User laporkan (verbatim): *"kayanya kita butuh delete di public user, karena ada beberapa yang
+salah masuk, harusnya anggota malah isi data public account .. jadi pas ada yg salah gk bisa di
+hapus sama sekali.."* — beberapa orang yang seharusnya daftar sebagai **Anggota IKPM** terlanjur
+pilih jalur "Bukan Anggota" (publik) saat register, dan tidak ada cara membebaskan email/HP
+mereka untuk daftar ulang yang benar.
+
+**Root cause dikonfirmasi lewat baca kode, bukan tebakan**: `DELETE /api/akun/profil` (self-
+service, sudah lama ada) HANYA soft-delete — set `deletedAt`, TIDAK membebaskan kolom `email`/
+`phone` (`UNIQUE NOT NULL` di `public.profiles`), dan TIDAK PERNAH menghapus `public.user`
+(Better Auth). Akibatnya `checkEmailTaken()` di `/api/akun/register` tetap menolak registrasi
+ulang dengan email yang sama — persis gejala "gk bisa di hapus sama sekali" yang dilaporkan.
+Endpoint ini juga session-based (self-service), admin tidak bisa memicunya untuk akun orang lain.
+
+**Fix — tombol "Hapus Akun" (hard delete) di admin `/app/{slug}/accounts/[id]`** (server action
+`deleteProfileAction`, `apps/web/app/(dashboard)/app/[tenant]/accounts/actions.ts` + komponen
+`delete-account-button.tsx` — pola inline-confirm identik `DeleteMemberButton` yang sudah ada di
+modul Anggota, bukan pola baru): `db.transaction()` hapus `public.user` (kalau
+`betterAuthUserId` ada) lalu `public.profiles`. **Dikonfirmasi AMAN sebagai hard delete** (bukan
+cuma soft-delete diperkuat) via baca skema: `session`/`account` sudah `onDelete: "cascade"` dari
+`user.id`; `profile_id` di SEMUA tabel transaksi tenant (`invoices`/`orders`/`donations`/
+`event_registrations`) adalah `ON DELETE SET NULL` (dicek via grep 4 titik DDL di
+`create-tenant-schema.ts`) — riwayat transaksi tidak ikut terhapus, cuma kehilangan tautan.
+
+**Diverifikasi EMPIRIS sebelum dianggap selesai** (bukan cuma `tsc`) — script disposable
+(ditulis SEMENTARA di dalam `apps/web/` untuk resolusi module workspace, dijalankan, lalu
+dihapus): insert `user`+`session`+`profile` test dengan email/phone tertentu → jalankan LOGIC
+DELETE YANG SAMA PERSIS dengan action → konfirmasi ketiga baris lenyap (termasuk `session`
+cascade genuinely jalan) → insert `profiles` BARU dengan email/phone yang SAMA PERSIS berhasil
+(bukti kolom UNIQUE benar-benar bebas, bukan cuma diasumsikan dari baca DDL). `tsc --noEmit` 0
+error + `bun run build --filter=@jalajogja/web` genuine sukses (dev server dimatikan+`.next`
+dibersihkan+direstart).
+
+**Gap yang ditemukan+DILAPORKAN, sengaja TIDAK difix** (di luar scope permintaan user): halaman
+`/app/{slug}/accounts/[id]` (baik lihat maupun sekarang hapus) tidak pernah validasi profil ini
+terdaftar di tenant yang sedang dibuka — admin tenant manapun yang tahu/menebak `profileId` bisa
+lihat/hapus profil publik tenant lain. Ini gap PRE-EXISTING di halaman detail (bukan yang
+diperkenalkan fitur ini) — dicatat sebagai technical debt, bukan diperbaiki tanpa diminta.
+
+**Deploy**: user eksplisit minta commit+push setelah verifikasi (`d0fc4c5`, sudah di-push). Nol
+migrasi DB (kolom/FK yang dipakai sudah ada sejak lama) — deploy VPS cukup
+`git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env`. 3
+akun spesifik yang dilaporkan salah masuk (M Hendro Purnomo, Riduwan Abuzar, Heri Yanto) BELUM
+dihapus dari production — sesi ini tidak punya akses SSH/DB langsung ke VPS; user diminta pakai
+tombol yang baru dibangun ini sendiri di `/app/{slug}/accounts` setelah deploy, sesuai permintaan
+eksplisit mereka ("kamu gk usah hapus manual, biar ada tombol hapus").
+
+**Aturan yang ditegaskan**: kalau ada `DELETE`/soft-delete endpoint existing yang TERLIHAT sudah
+menutupi kebutuhan "hapus akun", verifikasi DULU apakah itu genuinely membebaskan constraint
+`UNIQUE` yang relevan (email/phone/dst) — soft-delete yang cuma set `deletedAt` tanpa membebaskan
+kolom unique TIDAK menyelesaikan masalah "data terkunci", meski secara nama terdengar seperti
+solusinya.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Bug metodologi diagnosa `payments.transactionId` + koreksi 92 entri
+- Terakhir dikerjakan: **Hapus permanen akun publik yang salah jalur registrasi** (lihat
+  lesson `[2026-08-17]` "Hapus Permanen Akun Publik yang Salah Jalur Registrasi" di atas,
+  detail `docs/arsitektur-akun.md` § "Hapus Akun — Soft Delete vs Hard Delete"). User laporkan
+  beberapa orang salah daftar via jalur "Bukan Anggota" (publik) padahal harusnya Anggota IKPM,
+  dan soft-delete self-service yang sudah ada (`DELETE /api/akun/profil`) tidak membebaskan
+  email/HP mereka (cuma set `deletedAt`, tidak hapus `public.user`) — jadi tidak bisa daftar
+  ulang dengan benar. Ditambahkan tombol "Hapus Akun" (hard delete) di admin
+  `/app/{slug}/accounts/[id]` — `deleteProfileAction` + `delete-account-button.tsx`, hapus
+  `public.user` (cascade session/account) lalu `public.profiles`. Aman karena `profile_id` di
+  semua tabel transaksi tenant adalah `ON DELETE SET NULL` (riwayat transaksi tidak ikut
+  terhapus). Diverifikasi EMPIRIS via script disposable (insert user+session+profile test →
+  jalankan logic delete yang sama persis dengan action → konfirmasi semua lenyap termasuk
+  cascade session → insert profile baru dengan email/phone SAMA berhasil, bukti kolom UNIQUE
+  genuinely bebas) — bukan cuma `tsc`. `tsc --noEmit` 0 error + `bun run build
+  --filter=@jalajogja/web` genuine sukses. Gap pre-existing dicatat (tidak difix, di luar
+  scope): halaman detail `/accounts/[id]` tidak validasi profil terdaftar di tenant yang
+  sedang dibuka. **Sudah di-commit+push** (`d0fc4c5`, atas instruksi eksplisit user). **Belum
+  dijalankan di VPS, dan 3 akun spesifik yang dilaporkan salah (M Hendro Purnomo, Riduwan
+  Abuzar, Heri Yanto) belum dihapus di production** — sesi ini tidak punya akses SSH/DB
+  langsung ke VPS, user perlu pakai tombol barunya sendiri setelah deploy.
+- Sesi sebelumnya: **Bug metodologi diagnosa `payments.transactionId` + koreksi 92 entri
   salah rute di `visikita`** (lihat lesson `[2026-08-15]` "Bug Metodologi Diagnosa" di atas,
   detail `docs/arsitektur-keuangan.md` § 14.4). User melaporkan discrepancy nyata dari
   dashboard produksi `visikita` (Arus Kas ada pemasukan donasi besar, Neraca Saldo "Dana

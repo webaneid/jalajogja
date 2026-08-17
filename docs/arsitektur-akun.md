@@ -144,6 +144,51 @@ public.profiles
 
 **Tidak ada kolom `member_id` atau `account_type`** — ini khusus untuk publik saja.
 
+### Hapus Akun — Soft Delete (Self-Service) vs Hard Delete (Admin)
+
+Dua jalur hapus yang berbeda tujuan, jangan disamakan:
+
+**Soft delete — `DELETE /api/akun/profil`** (self-service, dipanggil user sendiri saat login):
+```typescript
+await db.update(profiles).set({ deletedAt: new Date(), updatedAt: new Date() })
+  .where(eq(profiles.id, p.id));
+await auth.api.signOut(...);
+```
+Hanya set `deletedAt` — `email`/`phone` (kolom `UNIQUE NOT NULL`) **tetap terkunci**, dan
+`public.user` (Better Auth) **tidak pernah dihapus**. Cukup untuk "nonaktifkan akun sendiri",
+TIDAK cukup untuk membebaskan email/HP agar bisa dipakai daftar ulang.
+
+**Hard delete — `deleteProfileAction(slug, profileId)`** (admin, `/app/{slug}/accounts/[id]`,
+tombol "Hapus Akun" — `apps/web/app/(dashboard)/app/[tenant]/accounts/actions.ts` +
+`accounts/[id]/delete-account-button.tsx`):
+```typescript
+await db.transaction(async (tx) => {
+  if (existing.betterAuthUserId) {
+    await tx.delete(authUser).where(eq(authUser.id, existing.betterAuthUserId));
+  }
+  await tx.delete(profiles).where(eq(profiles.id, profileId));
+});
+```
+Dipakai untuk membersihkan registrasi yang **salah jalur** — orang yang harusnya daftar sebagai
+Anggota IKPM tapi terlanjur pilih "Bukan Anggota" (jalur publik), sehingga email/HP-nya terjebak
+di `public.profiles` dan tidak bisa dipakai lagi untuk daftar ulang yang benar (`checkEmailTaken()`
+di `/api/akun/register` selalu menolak selama `public.user`-nya masih ada).
+
+**Kenapa aman jadi hard delete** (bukan cuma soft delete diperkuat):
+- `session`/`account` sudah `onDelete: "cascade"` dari `public.user` — hapus `user` otomatis
+  bersihkan sesi login & kredensialnya.
+- `profile_id` di **semua** tabel transaksi tenant (`invoices`, `orders`, `donations`,
+  `event_registrations`) adalah `REFERENCES public.profiles(id) ON DELETE SET NULL` — riwayat
+  transaksi TIDAK ikut terhapus, hanya kehilangan tautan ke profil ini (jadi transaksi guest).
+- Diverifikasi empiris (bukan cuma dibaca): insert user+session+profile test → jalankan logic
+  delete → user/session/profile lenyap semua (cascade session terbukti jalan) → insert profile
+  baru dengan email/phone yang SAMA berhasil (bukti kolom UNIQUE genuinely bebas).
+
+**Batasan yang diketahui, belum diperbaiki**: halaman `/app/{slug}/accounts/[id]` (baik untuk
+lihat maupun hapus) tidak memvalidasi bahwa profil ini terdaftar di tenant yang sedang dibuka —
+admin tenant manapun yang tahu/menebak `profileId` bisa melihat dan menghapus profil publik
+tenant lain. Gap pre-existing di halaman detail, bukan yang baru diperkenalkan fitur ini.
+
 ---
 
 ## Alur Register
@@ -1033,6 +1078,9 @@ Keduanya nullable. Lookup saat checkout:
 - [x] `/login` redirect ke `/akun` jika sudah login
 - [x] `/register` redirect ke `/akun` jika sudah login
 - [x] `/akun` redirect ke `/dashboard` jika identity null (pengurus-only)
+- [x] **Hard delete akun publik oleh admin** — `deleteProfileAction` +
+      tombol "Hapus Akun" di `/app/{slug}/accounts/[id]`, untuk bersihkan registrasi salah
+      jalur (lihat § "Hapus Akun — Soft Delete vs Hard Delete" di atas)
 
 ### ✅ Bug Diperbaiki
 - [x] **`createOfficerWithAccountAction`** — sekarang set `members.better_auth_user_id`
