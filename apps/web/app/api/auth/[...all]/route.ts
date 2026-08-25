@@ -6,6 +6,7 @@ import { type NextRequest } from "next/server";
 import { db, tenants } from "@jalajogja/db";
 import { eq, and } from "drizzle-orm";
 import { isOwnHost } from "@/lib/is-own-host";
+import { rateLimitGuard } from "@/lib/rate-limit";
 
 const handler = toNextJsHandler(auth);
 
@@ -31,6 +32,16 @@ export function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Rate limit percobaan login — cegah brute-force tebak password. Sengaja
+  // di-scope HANYA ke path sign-in (bukan seluruh catch-all Better Auth),
+  // supaya tidak mengganggu get-session/sign-out yang wajar dipanggil sering
+  // dari client. Dicek sebelum logic spoof-Origin custom domain di bawah —
+  // limit berlaku terlepas domain mana yang dipakai.
+  if (req.nextUrl.pathname.includes("/sign-in")) {
+    const blocked = rateLimitGuard(req, "auth-sign-in", 10, 60_000);
+    if (blocked) return blocked;
+  }
+
   const origin = req.headers.get("origin");
 
   if (origin) {

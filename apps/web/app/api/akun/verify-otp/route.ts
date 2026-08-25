@@ -10,8 +10,16 @@ import { db, otpTokens, verification }         from "@jalajogja/db";
 import { eq, and, gt, isNull }                 from "drizzle-orm";
 import { normalizePhone }                      from "@/lib/phone";
 import { findUserByPhone }                     from "@/lib/find-user-by-phone";
+import { rateLimitGuard }                      from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
+  // Kode OTP 6-digit = 1 juta kombinasi. Tanpa rate limit di sini, endpoint ini
+  // adalah target brute-force langsung (tebak kode sampai kena, tanpa perlu
+  // akses WA korban sama sekali). Limit per-IP membuat brute force tidak
+  // feasible dalam window TTL OTP (5 menit).
+  const ipBlocked = rateLimitGuard(request, "verify-otp", 10, 60_000);
+  if (ipBlocked) return ipBlocked;
+
   let body: unknown;
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "Body tidak valid" }, { status: 400 });

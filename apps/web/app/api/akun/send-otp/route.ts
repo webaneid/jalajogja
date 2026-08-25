@@ -12,13 +12,20 @@ import { renderTemplateString }       from "@/lib/wa-templates";
 import { resolveWaTemplateText }      from "@/lib/wa-notify";
 import { findUserByPhone }            from "@/lib/find-user-by-phone";
 import { normalizePhone }             from "@/lib/phone";
+import { rateLimitGuard }             from "@/lib/rate-limit";
 import type { WaNotifConfig }         from "@/lib/whatsapp";
 
 const OTP_TTL_MINUTES   = 5;
-const RATE_LIMIT_MAX    = 50;  // TODO sebelum publish: turunkan ke 3
+const RATE_LIMIT_MAX    = 3;  // per phone, per jam
 const RATE_LIMIT_WINDOW = 60; // menit
 
 export async function POST(request: NextRequest) {
+  // Rate limit per-IP — pelengkap limit per-phone di bawah. Limit per-phone
+  // sendiri tidak mencegah satu IP mengirim OTP ke BANYAK nomor berbeda
+  // (mis. spam/harassment ke nomor anggota lain, atau biaya WA membengkak).
+  const ipBlocked = rateLimitGuard(request, "send-otp", 10, 60_000);
+  if (ipBlocked) return ipBlocked;
+
   let body: unknown;
   try { body = await request.json(); } catch {
     return NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
