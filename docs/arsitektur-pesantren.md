@@ -349,7 +349,7 @@ Step 5 — TypeScript check + commit ✅
 |------|--------|
 | `packages/db/src/schema/public/member-owned-pesantren.ts` | ✅ Dibuat |
 | `packages/db/src/schema/public/index.ts` | ✅ Diperbarui |
-| `docs/migration-member-owned-pesantren.sql` | ✅ Dibuat + dijalankan |
+| `docs/migration-member-owned-pesantren.sql` | ✅ Dijalankan sekali (tabel `public.member_owned_pesantren` — public schema, bukan per-tenant), lalu dihapus (2026-08-25) — perubahan kolom berikutnya lewat `packages/db/migrations/*.sql` |
 | `apps/web/app/api/akun/member-pesantren/route.ts` | ✅ Ditulis ulang |
 | `apps/web/app/(public)/[tenant]/akun/pesantren/page.tsx` | ✅ Ditulis ulang |
 | `apps/web/components/members/wizard/step5-pesantren.tsx` | ✅ Ditulis ulang |

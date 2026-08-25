@@ -39,3 +39,7 @@ packages/db/migrations/meta/
 # TypeScript generated
 *.tsbuildinfo
 next-env.d.ts
+
+# Referensi/pengetahuan lokal saja — jangan masuk repo (bisa berisi data anggota nyata,
+# source pihak ketiga, atau file mentah lain yang cuma dipakai sebagai bahan riset sesi kerja)
+docs/template/

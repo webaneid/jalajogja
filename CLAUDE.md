@@ -17238,8 +17238,93 @@ menutupi kebutuhan "hapus akun", verifikasi DULU apakah itu genuinely membebaska
 kolom unique TIDAK menyelesaikan masalah "data terkunci", meski secara nama terdengar seperti
 solusinya.
 
+### [2026-08-25] Dokumentasi: Pembersihan Skrip SQL Historis di `docs/`
+
+User minta cek isi `docs/*.sql` — apakah semua masih dipakai. Audit: 10 file, semuanya di
+LUAR sistem migrasi bernomor `packages/db/migrations/` (yang sekarang sampai `0061`) — semua
+skrip ad-hoc yang dulu dijalankan manual via `psql` ke VPS, mendahului kebiasaan project
+memakai migration bernomor + `DO $$ LOOP` per tenant aktif untuk perubahan schema.
+
+**7 file dihapus total** — isinya sudah permanen dibakukan ke `create-tenant-schema.ts`
+(tenant baru otomatis dapat semuanya), dan sudah pernah dijalankan ke tenant lama yang ada
+saat itu: `migration-billing-existing-tenant.sql`, `migration-keuangan-event-income.sql`,
+`migration-member-media.sql`, `migration-member-owned-pesantren.sql`, `migration-ongkir.sql`,
+`migration-tandatangan.sql`, `migration-tenant-pc-ikpm-jogjakarta.sql`.
+
+**Ditemukan dead code sekaligus**: tabel `public.ref_rajaongkir_cities` (dibuat oleh
+`migration-ongkir.sql`, punya schema Drizzle sendiri di
+`packages/db/src/schema/public/ref-rajaongkir-cities.ts`) — nol pemakai di seluruh app
+(dikonfirmasi grep). Sesuai lesson lama "RajaOngkir v1 → v2 Migration": begitu API pindah ke
+v2 yang search realtime, tabel cache kota ini tidak pernah dibutuhkan lagi, tapi filenya
+tidak pernah dihapus. Dihapus sekarang — schema file + baris export dari barrel
+(`packages/db/src/schema/public/index.ts`) + baris `CREATE TABLE`-nya. `tsc --noEmit` 0 error
+di `apps/web` DAN `packages/db` setelahnya.
+
+**3 file dipindah (bukan dihapus)** ke `docs/diagnostik/` — masih relevan sebagai alat
+diagnosa/backfill kalau kasus serupa muncul lagi: `diagnosa-double-payment.sql`,
+`diagnosa-kode-unik-event-registrations.sql`, `fix-akun-tidak-terhubung.sql`. Path internal
+di dalam file (`-f docs/...`) diupdate ikut lokasi baru.
+
+**Cross-reference disinkronkan** di 5 dokumen arsitektur (`arsitektur-pesantren.md`,
+`arsitektur-keuangan.md`, `arsitektur-tandatangan.md`, `arsitektur-kode-unik.md`,
+`arsitektur-donasi.md`) — baris yang menunjuk file terhapus diberi catatan eksplisit
+"sudah dijalankan, lalu dihapus, DDL permanen di create-tenant-schema.ts", BUKAN dibiarkan
+jadi link mati. `arsitektur-addon-ongkir.md` (dokumen rencana pra-implementasi RajaOngkir,
+sudah lama punya self-contradiction — bagian awal deskripsi tabel v1, bagian akhir bilang
+"tidak ada lagi tabel ini") diberi blockquote SUPERSEDED di titik definisi tabel, pointer ke
+tabel perbandingan v1→v2 yang sudah benar di bawahnya — bukan dihapus, dipertahankan sebagai
+catatan sejarah rencana awal.
+
+**Sengaja TIDAK disentuh**: seluruh referensi ke file-file ini di dalam entri "Lessons
+Learned" CLAUDE.md sendiri (narasi historis bertanggal — konsisten prinsip "jangan diam-diam
+menimpa histori lama") dan `AGENTS.md` (duplikat lama CLAUDE.md yang sudah lama tidak
+dipelihara aktif sejak 2026-05-16, treat sebagai snapshot beku). Satu blok kode § 14i di
+`arsitektur-donasi.md` (rencana langkah historis, bukan panduan operasional) juga dibiarkan
+apa adanya — sudah dijelaskan lewat catatan terpisah tepat di bawahnya.
+
+**Aturan yang ditegaskan**: kalau `docs/` punya skrip `.sql` di luar folder migrasi
+bernomor, itu HAMPIR SELALU catatan historis satu-kali (bukan alat yang perlu dijalankan
+ulang) — verifikasi dengan cek apakah isinya sudah baku di `create-tenant-schema.ts` (untuk
+tabel per-tenant) sebelum menyimpulkan file itu masih "dipakai". Skrip diagnosa/backfill
+read-only atau berdampak-terbatas boleh dipertahankan sebagai alat cadangan, tapi kelompokkan
+terpisah dari dokumen arsitektur supaya jelas bedanya.
+
+**Susulan langsung (giliran sama)**: user minta `docs/template/` (folder bahan riset lokal —
+Excel data anggota nyata dari import massal, plugin WordPress pihak ketiga `rajaongkir/`, sample
+WXR `contoh-xml.xml`/`wordpress-xml-forbis.xml`, file `.html` ekspor lama) di-`.gitignore`, murni
+untuk "pengetahuan/referensi awal" — bukan bagian repo. **45 dari 55 file di folder itu TERNYATA
+sudah ter-track git** (bukan sekadar untracked baru) — audit dulu: grep referensi
+`docs/template/` di seluruh dokumentasi (CLAUDE.md history + `arsitektur-import-anggota.md` +
+`arsitektur-import-export-post-wordpress.md`) mengonfirmasi SEMUA pemakaiannya murni dokumentasi/
+riwayat sesi, nol dependency runtime (satu-satunya hit di kode aplikasi,
+`wordpress-wxr-export.server.ts:7`, cuma komentar penjelas — bukan file read). Aman diuntrack.
+Fix: `docs/template/` ditambah ke `.gitignore`, lalu `git rm -r --cached docs/template/`
+(hapus dari index git, file TETAP ada di disk — bukan `rm -rf`). Diverifikasi: `git ls-files
+docs/template/` kembali 0 baris, `ls docs/template/` tetap 10 item di disk. **Belum di-commit**
+— staged (`git rm --cached` otomatis stage) tapi menunggu review user, konsisten sesi
+sebelumnya.
+
+**Aturan tambahan**: sebelum `.gitignore` sebuah folder yang DIDUGA cuma referensi lokal, cek
+DULU `git ls-files <folder>` — kalau hasilnya tidak kosong, `.gitignore` saja TIDAK CUKUP (aturan
+itu cuma mencegah file BARU masuk index, tidak mengeluarkan yang SUDAH ter-track) — wajib
+`git rm -r --cached` juga. Dan sebelum menyimpulkan folder itu "aman" diuntrack, grep referensi
+namanya di seluruh dokumentasi DAN kode — kalau ada file di dalamnya yang dibaca runtime
+(bukan cuma disebut di komentar/dokumen historis), itu bukan folder "referensi awal saja" dan
+perlu didiskusikan ulang sebelum diuntrack.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Hapus permanen akun publik yang salah jalur registrasi** (lihat
+- Terakhir dikerjakan: **Pembersihan skrip SQL historis di `docs/`** (lihat lesson
+  `[2026-08-25]` "Dokumentasi: Pembersihan Skrip SQL Historis di `docs/`" di atas). User minta
+  cek `docs/*.sql` — 10 file, semuanya di luar sistem migrasi bernomor. Hasil: 7 file dihapus
+  (isinya sudah baku di `create-tenant-schema.ts`), 1 tabel dead code (`ref_rajaongkir_cities`
+  — schema Drizzle + baris CREATE TABLE) ditemukan+dihapus sekalian, 3 file diagnosa/backfill
+  dipindah ke `docs/diagnostik/` (masih relevan sebagai alat cadangan). 5 dokumen arsitektur
+  disinkronkan (path/catatan diupdate, bukan dibiarkan jadi link mati). `tsc --noEmit` 0 error
+  di `apps/web` DAN `packages/db`. Susulan giliran sama: `docs/template/` (bahan riset lokal —
+  Excel data anggota nyata, plugin RajaOngkir pihak ketiga, sample WXR) ditambah ke
+  `.gitignore` + `git rm -r --cached` (45 dari 55 file ternyata sudah ter-track, diuntrack —
+  file tetap di disk). **Belum di-commit/push ke git.**
+- Sesi sebelumnya: **Hapus permanen akun publik yang salah jalur registrasi** (lihat
   lesson `[2026-08-17]` "Hapus Permanen Akun Publik yang Salah Jalur Registrasi" di atas,
   detail `docs/arsitektur-akun.md` § "Hapus Akun — Soft Delete vs Hard Delete"). User laporkan
   beberapa orang salah daftar via jalur "Bukan Anggota" (publik) padahal harusnya Anggota IKPM,

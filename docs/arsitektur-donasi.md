@@ -2452,16 +2452,21 @@ Fix: `coverUrl = media ? publicUrl(slug, media.path) : null` — identik dengan 
 
 ### Tenant existing wajib migration manual untuk kolom + constraint baru
 Kolom yang ditambahkan setelah tenant di-provisioning tidak otomatis ada di DB tenant lama.
-Wajib jalankan `ALTER TABLE` manual via `psql`. Selalu update
-`docs/migration-tenant-pc-ikpm-jogjakarta.sql` setiap ada perubahan schema.
-Kolom yang perlu dimigrasikan di sesi ini: `campaigns.default_amount`, `campaigns.gallery`,
-dan `settings` CHECK constraint group `donasi`.
+Wajib jalankan `ALTER TABLE` manual. Kolom yang perlu dimigrasikan di sesi ini:
+`campaigns.default_amount`, `campaigns.gallery`, dan `settings` CHECK constraint group `donasi`.
+
+> **Catatan (2026-08-25)**: saat sesi ini ditulis, praktiknya masih menumpuk semua `ALTER
+> TABLE` tenant existing ke satu file ad-hoc (`docs/migration-tenant-pc-ikpm-jogjakarta.sql`,
+> sekarang sudah dijalankan + dihapus). Praktik SAAT INI: setiap perubahan schema dapat file
+> migration bernomor sendiri di `packages/db/migrations/NNNN_*.sql`, dijalankan via
+> `DO $$ ... LOOP` ke semua tenant aktif — lihat migration terbaru untuk polanya.
 
 ### Settings group baru wajib ditambah di tiga tempat
 Saat menambah group settings baru (misal `donasi`), wajib update ketiganya sekaligus:
 1. `packages/db/src/schema/tenant/settings.ts` → `SETTING_GROUPS` array
 2. `packages/db/src/helpers/create-tenant-schema.ts` → DDL CHECK constraint
-3. `docs/migration-tenant-pc-ikpm-jogjakarta.sql` → `ALTER TABLE ... DROP/ADD CONSTRAINT`
+3. Migration bernomor baru di `packages/db/migrations/` → `ALTER TABLE ... DROP/ADD CONSTRAINT`
+   untuk tenant yang sudah ada (pola `DO $$ LOOP` per tenant aktif, lihat migration terbaru)
 Melewatkan salah satu → TypeScript error atau runtime `23514` constraint violation.
 
 ### Route conflict public vs dashboard — selalu pakai URL berbeda

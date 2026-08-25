@@ -17,7 +17,7 @@
 --
 -- Cara pakai — jalankan per tenant (ganti tenant_pc_ikpm_jogjakarta):
 --   docker compose exec -T postgres psql -U jalakarta -d jalakarta \
---     -v schema=tenant_pc_ikpm_jogjakarta -f docs/diagnosa-kode-unik-event-registrations.sql
+--     -v schema=tenant_pc_ikpm_jogjakarta -f docs/diagnostik/diagnosa-kode-unik-event-registrations.sql
 -- ═══════════════════════════════════════════════════════════════════════════
 
 \set schema_name :schema

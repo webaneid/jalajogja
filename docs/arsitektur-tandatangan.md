@@ -485,7 +485,7 @@ Ketika admin ganti layout di dropdown → preview langsung berubah (client-side)
 | `nota/new/page.tsx` | ✅ Selesai | Sama seperti keluar new |
 | `keluar/[id]/page.tsx` | ✅ Selesai | `SignatureSlotManager mode="detail"` + fetch `userRole` via tenant.users JOIN |
 | `nota/[id]/page.tsx` | ✅ Selesai | Sama seperti keluar detail |
-| `docs/migration-tandatangan.sql` | ✅ Selesai | Idempotent SQL untuk tenant existing |
+| `docs/migration-tandatangan.sql` | ✅ Dijalankan ke tenant existing, lalu dihapus (2026-08-25) — DDL-nya sudah permanen di `create-tenant-schema.ts` |
 
 ---
 

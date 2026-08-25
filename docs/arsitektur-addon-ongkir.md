@@ -116,6 +116,14 @@ CREATE INDEX IF NOT EXISTS idx_invoice_shipping_seller  ON invoice_shipping_line
 
 ### 3. Tabel `ref_rajaongkir_cities` — cache daftar kota (public schema)
 
+> **⚠️ SUPERSEDED (2026-08-25)**: desain di section ini adalah rencana v1 dan **tidak pernah
+> dieksekusi permanen** — implementasi aktual (lihat § "Perubahan dari Arsitektur Awal v1 → v2"
+> di bawah) memakai search realtime ke API v2, bukan tabel cache. Tabel ini sempat dibuat via
+> `docs/migration-ongkir.sql` tapi nol pemakai di kode (dikonfirmasi grep) — file migration
+> dan schema Drizzle-nya (`packages/db/src/schema/public/ref-rajaongkir-cities.ts`) sudah
+> dihapus. Section di bawah dipertahankan sebagai catatan sejarah rencana awal, bukan panduan
+> implementasi.
+
 ```sql
 -- Disimpan di public schema — shared semua tenant, cukup sync sekali
 CREATE TABLE IF NOT EXISTS public.ref_rajaongkir_cities (

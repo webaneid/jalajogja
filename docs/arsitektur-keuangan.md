@@ -375,7 +375,7 @@ penuh — bukan destructured `{ db, schema }`. Ini berbeda dari pola di modul la
 | Fitur | Status | Catatan |
 |-------|--------|---------|
 | Laporan Keuangan (5 jenis) | ✅ Selesai | Neraca Saldo, Laba Rugi, Arus Kas, **Arus Kas Bulanan**, Buku Besar — query nyata, export CSV (4 tipe) + Excel `.xlsx` sungguhan (Arus Kas Bulanan) |
-| Akun 4400 Pendapatan Event | ✅ Selesai | Di-seed untuk tenant baru; tenant lama: `docs/migration-keuangan-event-income.sql` |
+| Akun 4400 Pendapatan Event | ✅ Selesai | Di-seed untuk tenant baru di `create-tenant-schema.ts`; skrip backfill tenant lama (`docs/migration-keuangan-event-income.sql`) sudah dijalankan + dihapus (2026-08-25) |
 | `income_toko`/`income_event`/`dana_titipan` mapping — kini AKTIF di jurnal | ✅ Selesai (2026-08-15) | Opsi B — lihat § 14.4. `pickIncomeAccount()` sekarang dipanggil per-domain via `resolveIncomeSplitForBilling()`, bukan lagi dari `payments.sourceType` mentah (yang untuk cart-checkout SELALU `"invoice"`) — cabang ini sekarang genuinely tereksekusi di 4 titik konfirmasi. **Kecuali** 1 jalur lama (`confirmPaymentAction`, halaman generik `/finance/pemasukan/[id]`) yang masih pakai `payments.sourceType` mentah — lihat catatan gap di § 14.4 |
 | Klasifikasi Toko/Tiket/Donasi di laporan Arus Kas + jurnal | ✅ Selesai (2026-08-15) | Opsi A (laporan) DAN Opsi B (jurnal, pencatatan baru + koreksi data historis lokal) sama-sama SELESAI — lihat § 14. Laba Rugi/Neraca Saldo/Buku Besar (baca `transaction_entries`) otomatis ikut benar karena Opsi B membenarkan jurnal-nya langsung, bukan cuma laporan Arus Kas |
 | Anggaran (Budget) | ⚠️ Schema ada | Tabel `budgets` + `budget_items` ada di DDL, belum ada UI route |

@@ -439,7 +439,7 @@ payment — pattern yang sama dengan lock kuota tiket event
 (`docs/arsitektur-event.md` § SELECT FOR UPDATE). Kasus nyata: invoice
 `620-INV-202607-00014` (tenant visikita) sempat ke-double-confirm, payment
 duplikat dihapus manual + `paid_amount`/`status` di-recompute — lihat
-`docs/diagnosa-double-payment.sql` untuk query diagnosa yang dipakai.
+`docs/diagnostik/diagnosa-double-payment.sql` untuk query diagnosa yang dipakai.
 
 **Aturan**: setiap action yang mengubah state "sekali jalan" (status → paid,
 konfirmasi, dll) berdasarkan baca-lalu-tulis pada baris yang sama WAJIB kunci
