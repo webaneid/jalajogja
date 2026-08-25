@@ -17312,6 +17312,71 @@ namanya di seluruh dokumentasi DAN kode — kalau ada file di dalamnya yang diba
 (bukan cuma disebut di komentar/dokumen historis), itu bukan folder "referensi awal saja" dan
 perlu didiskusikan ulang sebelum diuntrack.
 
+**Susulan kedua (giliran sama) — riwayat Git juga dibersihkan (rewrite history + force-push)**:
+user tanya balik: apakah `.gitignore` menghapus file itu dari GitHub/VPS juga? Jawaban: TIDAK
+sepenuhnya — dijelaskan 3 lapis (working directory VPS akan bersih setelah `git pull`, tapi
+`.git` history di GitHub DAN di VPS tetap menyimpan blob lama sampai riwayatnya ditulis ulang).
+User pilih dibersihkan total via `AskUserQuestion`.
+
+**Temuan risiko baru SEBELUM eksekusi (bukan diasumsikan aman)**: `git worktree list` mengungkap
+ada worktree LAIN yang aktif (`/Users/webane/.gemini/antigravity/worktrees/jalajogja/
+refactor-project-naming-jalakarta`, sesi kerja tool lain — "Gemini Antigravity" — pada branch
+`refactor-project-naming-jalakarta`, **7 baris belum di-commit** di sana). Commit yang menambah
+`docs/template/` (`8a29c40`) TERKONFIRMASI ancestor dari branch itu (`git merge-base --is-
+ancestor`) — rewrite history yang dilakukan IN-PLACE di repo lokal bersama akan mengubah hash
+semua commit turunannya, berisiko mengorbankan worktree lain yang sedang aktif dipakai.
+Dilaporkan ke user via `AskUserQuestion` KEDUA (bukan diam-diam dilanjutkan) — user pilih
+"Lanjut saja, saya paham risikonya."
+
+**Mitigasi yang menghilangkan risiko itu, ditemukan lewat verifikasi lanjutan**: dicek
+`git ls-remote --heads origin` — branch `refactor-project-naming-jalakarta` **cuma ada lokal**,
+tidak pernah di-push ke GitHub (`main` satu-satunya branch di origin). Ini mengubah rencana:
+**JANGAN jalankan `git filter-repo` in-place** di `.git` lokal yang dipakai bersama kedua
+worktree — sebagai gantinya, buat clone BERSIH di scratchpad (`git clone` terpisah total),
+jalankan `filter-repo` DI SITU, force-push HANYA `main` ke origin dari clone terpisah itu, lalu
+sinkronkan working directory lokal via `git fetch && git reset --hard origin/main` (yang cuma
+menyentuh ref `main`, tidak menyentuh `refs/heads/refactor-project-naming-jalakarta`). Dengan
+pola ini, worktree lain TIDAK PERNAH tersentuh langsung — risiko yang tersisa cuma "nanti kalau
+branch itu direkonsiliasi ke `main`, historinya sudah divergen, butuh rebase/resolve manual" —
+bukan risiko korupsi data langsung, sesuai yang sudah diterima user.
+
+**Urutan eksekusi**: (1) commit dulu 74 file perubahan tertunda dari susulan pertama (`git add
+-u` — HANYA file yang sudah ter-track, sengaja hindari `git add -A` supaya 2 file tidak terkait
+di root, `Jalakarta_Presentation_Deck.pptx` + `PRESENTATION_SCRIPT.md`, tidak ikut kebawa); (2)
+push normal (fast-forward, non-destruktif) supaya origin punya state "sekarang" dulu; (3) clone
+bersih ke scratchpad, `git filter-repo --path docs/template --invert-paths --force`; (4)
+verifikasi hasil SEBELUM push: `git log --all --oneline -- docs/template/` di clone bersih itu
+harus 0, isi commit terakhir dicocokkan manual ke yang di-push tadi; (5) `git remote add origin`
+(filter-repo hapus origin otomatis sebagai safety), `git push --force origin main`; (6) sinkron
+working directory lokal (`git fetch && git reset --hard origin/main`); (7) `git gc --prune=now
+--aggressive` di working directory lokal untuk benar-benar reclaim space (bukan cuma di clone
+scratch); (8) verifikasi akhir: `tsc --noEmit` 0 error kedua package, `git log --all -- docs/
+template/` di repo lokal (BUKAN `git log main`, karena `--all` sengaja masih nemu 3 hit dari
+branch `refactor-project-naming-jalakarta` yang memang tidak disentuh — dikonfirmasi via
+`--source` bukan bug), GitHub `origin/main` SHA dicocokkan persis ke lokal (`git ls-remote`).
+
+**Angka hasil**: `.git` working directory lokal 32M → 11M setelah gc (clone bersih di scratchpad
+sendiri 14M → 12M setelah filter-repo, lebih kecil dari lokal karena fresh clone otomatis
+ter-repack rapi sementara repo lokal sempat menumpuk loose objects). 695 commit ditulis ulang.
+SHA `main` berubah dari `6e77548` (lama, masih exists sebagai commit dangling di GitHub untuk
+sementara, TIDAK di-pin ke branch/tag apa pun jadi bisa kena garbage collection GitHub kapan
+saja — bukan backup permanen) menjadi `be0e3da` (baru, riwayat bersih).
+
+**Aturan yang ditegaskan**: (1) `.gitignore` + `git rm --cached` HANYA membersihkan working
+directory pada `git pull` berikutnya — TIDAK mengecilkan `.git` history yang sudah ada, baik di
+origin maupun di clone manapun; kalau tujuannya benar-benar mengecilkan ukuran clone/`.git`,
+wajib rewrite history (`git filter-repo`) + force-push, operasi kelas berbeda dengan risiko
+jauh lebih tinggi (irreversible di sisi origin, force-push). (2) SEBELUM rewrite history apa
+pun, WAJIB `git worktree list` dulu — worktree lain berbagi `.git` yang sama, dan commit yang
+di-rewrite bisa jadi ancestor dari branch yang sedang aktif dipakai worktree lain (bahkan kalau
+bukan bagian repo yang sedang dikerjakan sesi ini). (3) Kalau branch yang berisiko TERNYATA
+belum pernah di-push ke remote (`git ls-remote --heads origin`), rewrite yang dilakukan di
+clone TERPISAH (bukan in-place di `.git` lokal yang dipakai bersama) sepenuhnya menghindari
+menyentuh branch lokal itu — pola ini (clone bersih → rewrite di situ → force-push → sync balik
+working dir via fetch+reset, BUKAN filter-repo langsung di repo yang sedang dipakai) adalah
+cara STANDAR git-filter-repo sendiri untuk kasus serupa, bukan langkah ekstra kehati-hatian
+semata.
+
 ## Context Sesi Terakhir
 - Terakhir dikerjakan: **Pembersihan skrip SQL historis di `docs/`** (lihat lesson
   `[2026-08-25]` "Dokumentasi: Pembersihan Skrip SQL Historis di `docs/`" di atas). User minta
@@ -17323,7 +17388,17 @@ perlu didiskusikan ulang sebelum diuntrack.
   di `apps/web` DAN `packages/db`. Susulan giliran sama: `docs/template/` (bahan riset lokal —
   Excel data anggota nyata, plugin RajaOngkir pihak ketiga, sample WXR) ditambah ke
   `.gitignore` + `git rm -r --cached` (45 dari 55 file ternyata sudah ter-track, diuntrack —
-  file tetap di disk). **Belum di-commit/push ke git.**
+  file tetap di disk). Susulan kedua giliran sama: user tanya apakah itu juga menghapus dari
+  GitHub/VPS — dijelaskan 3 lapis, user pilih riwayat Git juga dibersihkan total. Ditemukan
+  worktree lain aktif (`refactor-project-naming-jalakarta`, tool Gemini Antigravity, 7 baris
+  belum commit) berbagi ancestor commit dengan yang mau di-rewrite — dilaporkan ke user
+  (`AskUserQuestion` kedua), user pilih lanjut. Verifikasi lanjutan menemukan branch itu belum
+  pernah di-push ke origin — memungkinkan rewrite dilakukan di CLONE TERPISAH (bukan in-place)
+  sehingga worktree lain sama sekali tidak tersentuh. Commit 74 file tertunda → push normal →
+  `git filter-repo --path docs/template --invert-paths` di clone scratchpad (695 commit ditulis
+  ulang) → force-push `main` ke origin (SHA `6e77548`→`be0e3da`) → sync working dir lokal via
+  fetch+reset+gc (`.git` 32M→11M). `tsc --noEmit` 0 error kedua package setelah reset. **SUDAH
+  di-commit+push+force-push — SELESAI, live di GitHub.**
 - Sesi sebelumnya: **Hapus permanen akun publik yang salah jalur registrasi** (lihat
   lesson `[2026-08-17]` "Hapus Permanen Akun Publik yang Salah Jalur Registrasi" di atas,
   detail `docs/arsitektur-akun.md` § "Hapus Akun — Soft Delete vs Hard Delete"). User laporkan
