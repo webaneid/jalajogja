@@ -3,7 +3,9 @@
 > **Dokumen Terkait & Saling Terhubung**:
 > - [`docs/arsitektur-usaha.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-usaha.md) — Arsitektur Utama Modul Usaha (`public.member_businesses`) & Rencana Upgrade Sektor.
 > - [`docs/arsitektur-ekosistem.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-ekosistem.md) — Payung Sinergi Interkoneksi Tag Autocomplete (`lib/ecosystem-tags.ts`).
-> - [`docs/evaluasi-arsitektur-usaha-gemini.md`](file:///Users/webane/sites/jalajogja/docs/evaluasi-arsitektur-usaha-gemini.md) — Dokumen Hasil Evaluasi & Riset BPS KBLI 2020.
+>
+> Riset input awal (`docs/evaluasi-arsitektur-usaha-gemini.md` — evaluasi & riset BPS KBLI 2020)
+> sudah dihapus (2026-08-25) — kesimpulannya sudah diserap ke `arsitektur-usaha.md` § 9.1-9.2.
 
 ---
 

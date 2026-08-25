@@ -229,7 +229,10 @@ payung). Filter pencarian lintas-direktori (Fase 2 payung) belum dimulai.**
 > browser** — user perlu coba pilih sektor di `/akun/usaha` atau admin wizard, konfirmasi
 > Tier-3 sektor terkait muncul duluan di dropdown "Bidang Usaha".
 >
-> **Rujukan Analisis**: [`docs/evaluasi-arsitektur-usaha-gemini.md`](file:///Users/webane/sites/jalajogja/docs/evaluasi-arsitektur-usaha-gemini.md) dan [`docs/arsitektur-profesional.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-profesional.md).
+> **Rujukan**: [`docs/arsitektur-profesional.md`](file:///Users/webane/sites/jalajogja/docs/arsitektur-profesional.md).
+> Riset input awal (`docs/evaluasi-arsitektur-usaha-gemini.md` — evaluasi taksonomi BPS KBLI
+> 2020, dasar keputusan 10-sektor di § 9.1-9.2 di bawah) sudah dihapus (2026-08-25) — isi
+> kesimpulannya sudah sepenuhnya diserap ke section ini, dokumen aslinya tidak lagi dibutuhkan.
 > Ditambahkan: 2026-07-29. Updated: 2026-07-30.
 
 ### 9.1 Evaluasi & Aturan Kunci Arsitektur

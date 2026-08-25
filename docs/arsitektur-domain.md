@@ -496,15 +496,19 @@ domain publik (`jalakarta.com`), pelanggaran langsung terhadap aturan penamaan y
 di CLAUDE.md ("Repo/folder = jalajogja; brand/domain publik = jalakarta"). Komentar-komentar ini
 kemungkinan sisa draft desain awal yang tidak pernah diupdate seiring project berjalan.
 
-### 8.5 Rencana "Fase 5" lama (`docs/rencana-migrasi-url.md`) — kontradiksi internal, jangan diadopsi mentah
+### 8.5 Rencana "Fase 5" lama (`docs/rencana-migrasi-url.md`, dihapus 2026-08-25) — kontradiksi internal, tidak pernah diadopsi
 
-Proposal lama untuk admin subdomain (`admin.{customdomain}`) merekomendasikan **Cloudflare orange-
-cloud proxy** untuk menangani SSL-nya — ini **bertentangan langsung** dengan seluruh pendekatan
-custom domain yang sudah berjalan (§ 6: DNS-only/grey-cloud, SSL manual via Certbot di VPS, bukan
-Cloudflare). Kalau Opsi A (§ 7.1) dipilih, pendekatan SSL-nya harus mengikuti pola yang sudah ada
-(Certbot manual per subdomain admin), **bukan** memperkenalkan Cloudflare proxy sebagai pengecualian
-khusus untuk satu fitur ini — itu akan membuat dua pendekatan SSL berbeda dalam satu sistem, sumber
-kebingungan operasional baru.
+Dokumen lama itu (Fase 1-4-nya sudah lama selesai dan riwayatnya tercatat penuh di lesson
+CLAUDE.md — lihat `[2025-05] Migrasi URL Admin — Lessons Learned`) mengusulkan admin subdomain
+(`admin.{customdomain}`) via **Cloudflare orange-cloud proxy** untuk SSL-nya — ini **bertentangan
+langsung** dengan seluruh pendekatan custom domain yang sudah berjalan (§ 6: DNS-only/grey-cloud,
+SSL manual via Certbot di VPS, bukan Cloudflare). Proposal itu tidak pernah dieksekusi — solusi
+yang benar-benar dibangun dan sudah live adalah **Opsi B path-based** (§ 7 di atas,
+`{custom-domain}/admin/*`), bukan subdomain. Dicatat di sini sebagai alasan kenapa pendekatan
+subdomain ditolak, kalau ide itu muncul lagi: kalau nanti Opsi A (subdomain) dipertimbangkan
+ulang, SSL-nya harus tetap ikut pola yang sudah ada (Certbot manual per subdomain), **bukan**
+memperkenalkan Cloudflare proxy sebagai pengecualian khusus — itu akan membuat dua pendekatan
+SSL berbeda dalam satu sistem, sumber kebingungan operasional baru.
 
 ### 8.6 ✅ Fixed (Fase 1, 2026-07-16): `docs/panduan-custom-domain.md` sebut tombol yang tidak ada
 

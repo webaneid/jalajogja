@@ -5,8 +5,24 @@
 > Brand dan domain publik adalah **`jalakarta`** (`jalakarta.com`).  
 > Jangan bingung: `/var/www/jalajogja` adalah folder server untuk website `jalakarta.com`.
 
+> ⚠️ **KOREKSI PENTING (2026-08-25)**: dokumen ini ditulis di awal project saat rencananya
+> aplikasi Next.js juga dijalankan via Docker Compose. **Keputusan itu berubah** — sekarang
+> aplikasi (`app`) dijalankan via **PM2** (`next start` langsung di host VPS), BUKAN Docker.
+> Docker Compose HANYA dipakai untuk **PostgreSQL dan MinIO** — bukan untuk `app`. Nama
+> database/user PostgreSQL sungguhan juga **`jalakarta`** (bukan `jalajogja` seperti tertulis
+> di beberapa contoh di bawah — sisa draft awal yang tidak pernah diupdate).
+>
+> **Bagian yang MASIH akurat** (dipakai apa adanya): Tahap 1 (hardening SSH/UFW), Tahap 2
+> (Cloudflare DNS), Tahap 3.1-3.4 (install Docker/Nginx/Certbot), Tahap 5 (issue SSL Certbot),
+> Tahap 6.1 (config Nginx) + 6.2 (setup bucket MinIO).
+> **Bagian yang SALAH/USANG** (jangan diikuti — lihat koreksi inline di titik terkait di bawah):
+> Tahap 4.3 ("Build dan jalankan container" untuk app), bagian "Update aplikasi" &
+> "Restart service tertentu" di Maintenance, dan contoh nilai `jalajogja` di `.env.local`.
+> Untuk alur deploy kode sehari-hari yang BENAR, lihat `CLAUDE.md` lesson
+> `[2026-05] PM2 vs Docker — Pilih Satu, Jangan Keduanya`.
+
 **Spesifikasi:** Ubuntu 24.04 LTS, VPS Hostinger, domain via Cloudflare  
-**Stack:** Nginx (reverse proxy) + Docker Compose (PostgreSQL + MinIO + Next.js) + Certbot (SSL)
+**Stack:** Nginx (reverse proxy) + Docker Compose (PostgreSQL + MinIO saja) + PM2 (Next.js app) + Certbot (SSL)
 
 ---
 
@@ -280,8 +296,8 @@ nano .env.local
 Isi semua nilai di `.env.local`:
 
 ```env
-# Database
-DATABASE_URL=postgresql://jalajogja:PASSWORD_DB_KUAT@postgres:5432/jalajogja
+# Database (nama DB/user PRODUCTION sungguhan: "jalakarta", bukan "jalajogja")
+DATABASE_URL=postgresql://jalakarta:PASSWORD_DB_KUAT@localhost:5432/jalakarta
 
 # Auth
 BETTER_AUTH_SECRET=GENERATE_DENGAN_openssl_rand_-base64_32
@@ -321,33 +337,35 @@ Juga buat `.env.local` di root untuk docker-compose (variabel postgres dan minio
 # Tambahkan ini ke .env.local (atau buat .env terpisah di root)
 cat >> .env.local << 'EOF'
 
-# Docker Compose vars
-POSTGRES_USER=jalajogja
+# Docker Compose vars — nama sungguhan "jalakarta", bukan "jalajogja"
+POSTGRES_USER=jalakarta
 POSTGRES_PASSWORD=PASSWORD_DB_KUAT_SAMA_DENGAN_DATABASE_URL
-POSTGRES_DB=jalajogja
+POSTGRES_DB=jalakarta
 EOF
 ```
 
-### 4.3 Build dan jalankan container
+### 4.3 Jalankan PostgreSQL + MinIO via Docker (BUKAN app)
+
+> ⚠️ **Koreksi (2026-08-25)**: `docker-compose.yml` di repo ini hanya mendefinisikan service
+> `postgres` dan `minio` — **tidak ada service `app`**. Aplikasi Next.js dijalankan terpisah via
+> PM2 langsung di host VPS (§ 4.6 di bawah), bukan sebagai container.
 
 ```bash
 cd /var/www/jalajogja
 
-# Build image dan jalankan semua service
-docker compose up -d --build
+# Jalankan PostgreSQL + MinIO
+docker compose up -d
 
-# Pantau progress build (tekan Ctrl+C untuk keluar dari log, container tetap jalan)
+# Pantau progress (tekan Ctrl+C untuk keluar dari log, container tetap jalan)
 docker compose logs -f
 ```
-
-Build pertama akan lama (5-15 menit) karena download image dan install Chromium.
 
 ### 4.4 Jalankan migrasi database
 
 Tunggu PostgreSQL sehat dulu (cek dengan `docker compose ps`), lalu:
 
 ```bash
-# Install bun di VPS untuk jalankan migrasi
+# Install bun di VPS (kalau belum ada)
 curl -fsSL https://bun.sh/install | bash
 source ~/.bashrc
 
@@ -355,23 +373,48 @@ source ~/.bashrc
 cd /var/www/jalajogja
 bun install
 
-# Jalankan migrasi public schema
+# Jalankan migrasi public schema (drizzle-kit, sekali saat pertama deploy)
 bun run db:migrate --filter=@jalajogja/db
 ```
 
-> **Catatan**: Migrasi public schema (drizzle-kit) hanya perlu dijalankan SEKALI saat pertama deploy. Tenant schema dibuat otomatis oleh aplikasi saat tenant baru dibuat.
+> **Catatan**: Migrasi public schema (drizzle-kit) hanya perlu dijalankan SEKALI saat pertama
+> deploy. Tenant schema dibuat otomatis oleh aplikasi saat tenant baru dibuat. Migrasi
+> **berikutnya** (file bernomor di `packages/db/migrations/`) dijalankan manual via
+> `docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/NNNN_*.sql`
+> — **bukan** `drizzle-kit migrate` lagi (butuh input TTY interaktif, tidak jalan non-interaktif
+> di VPS).
 
-### 4.5 Verifikasi container berjalan
+### 4.5 Verifikasi container Postgres + MinIO berjalan
 
 ```bash
 docker compose ps
 
-# Output yang diharapkan:
+# Output yang diharapkan (HANYA 2 service, bukan 3):
 # NAME        STATUS    PORTS
 # postgres    Up        0.0.0.0:5432->5432/tcp
 # minio       Up        0.0.0.0:9000->9000/tcp, 0.0.0.0:9001->9001/tcp
-# app         Up        0.0.0.0:3000->3000/tcp
 ```
+
+### 4.6 Build dan jalankan aplikasi Next.js via PM2 (bukan Docker)
+
+```bash
+cd /var/www/jalajogja
+
+# Build production
+bun run build --filter=@jalajogja/web
+
+# Jalankan pertama kali via PM2 (ecosystem.config.cjs sudah ada di root repo)
+pm2 start ecosystem.config.cjs
+pm2 save   # persist agar auto-start setelah reboot VPS
+
+# Verifikasi
+pm2 status
+pm2 logs jalajogja --lines 30
+```
+
+Untuk deploy KODE selanjutnya (bukan setup pertama kali), lihat "Update aplikasi" di
+Maintenance & Troubleshooting di bawah — cukup `git pull` + build + `pm2 restart`, tidak perlu
+ulangi langkah `pm2 start`.
 
 ---
 
@@ -464,33 +507,40 @@ curl -I https://minio.jalakarta.com
 
 ### Update aplikasi
 
+> Aplikasi (Next.js) dijalankan via PM2, **bukan** Docker — lihat § 4.6. PostgreSQL + MinIO
+> tetap Docker dan biasanya tidak perlu di-restart untuk update kode.
+
 ```bash
 cd /var/www/jalajogja
 git pull
 
-# Rebuild dan restart app (PostgreSQL + MinIO tidak perlu restart)
-docker compose up -d --build app
+# Jika ada migration baru:
+docker compose exec -T postgres psql -U jalakarta -d jalakarta < packages/db/migrations/NNNN_nama.sql
+
+bun install                                 # jika ada dependency baru
+bun run build --filter=@jalajogja/web       # build production
+pm2 restart jalajogja --update-env          # restart aplikasi
+pm2 logs jalajogja --lines 30               # cek tidak ada error
 ```
 
 ### Lihat logs
 
 ```bash
-# Semua service
-docker compose logs -f
+# Aplikasi (PM2)
+pm2 logs jalajogja
+pm2 logs jalajogja --lines 100
 
-# Hanya app
-docker compose logs -f app
-
-# Hanya postgres
+# PostgreSQL + MinIO (Docker)
 docker compose logs -f postgres
+docker compose logs -f minio
 ```
 
 ### Restart service tertentu
 
 ```bash
-docker compose restart app
-docker compose restart postgres
-docker compose restart minio
+pm2 restart jalajogja           # aplikasi
+docker compose restart postgres # database
+docker compose restart minio    # storage
 ```
 
 ### Backup database
@@ -543,8 +593,9 @@ sudo ufw delete allow PORT # Tutup port
 - [ ] UFW aktif, hanya port 22/80/443 yang terbuka
 - [ ] Cloudflare DNS mengarah ke VPS
 - [ ] SSL Certbot aktif untuk jalakarta.com dan minio.jalakarta.com
-- [ ] Semua container running (`docker compose ps` semua "Up")
-- [ ] Migrasi DB sudah jalan (`drizzle-kit migrate` 0 errors)
+- [ ] Container `postgres` + `minio` running (`docker compose ps` semua "Up" — HANYA 2 service)
+- [ ] Aplikasi jalan via PM2 (`pm2 status` menampilkan `jalajogja` status "online")
+- [ ] Migrasi public schema (drizzle-kit) sudah jalan 0 error
 - [ ] MinIO bucket sudah dibuat
 - [ ] Test register tenant pertama berhasil
 - [ ] Test upload gambar berhasil (muncul di browser)
