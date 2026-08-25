@@ -192,6 +192,17 @@ export async function commitImportAction(
       continue;
     }
 
+    // `preview.member.nik`/`nikHash` SUDAH ciphertext/hash di titik ini — dienkripsi
+    // sedini mungkin di buildPreviewRow() (lib/import-anggota.server.ts), SEBELUM baris
+    // ini pernah tersimpan ke draft `import_batch_rows.data` (JSONB), supaya NIK
+    // plaintext tidak pernah singgah di DB sama sekali, bahkan sementara selagi admin
+    // meninjau hasil parse. JANGAN panggil encryptPii() lagi di sini — nilainya bukan
+    // plaintext, memanggilnya lagi akan mengenkripsi-ulang ciphertext itu sendiri
+    // (double-encryption, korup diam-diam: decryptPii() nanti cuma akan membuka SATU
+    // lapis dan menghasilkan string ciphertext lama, bukan NIK asli).
+    const encryptedNik = preview.member.nik;
+    const nikHashValue  = preview.member.nikHash;
+
     try {
       const { finalMemberId, writtenMembershipNumber } = await db.transaction(async (tx) => {
         let memberId = preview.existingMemberId;
@@ -250,7 +261,8 @@ export async function commitImportAction(
             birthDate: preview.member.birthDate,
             birthPlaceText: preview.member.birthPlaceText,
             stambukNumber: preview.member.stambukNumber,
-            nik: preview.member.nik,
+            nik: encryptedNik,
+            nikHash: nikHashValue,
             waliSantri: preview.member.waliSantri,
             domicileStatus: preview.member.domicileStatus,
             professionId: preview.member.professionId,
@@ -286,7 +298,7 @@ export async function commitImportAction(
               gender: preview.member.gender, graduationYear: preview.member.graduationYear,
               graduationPeriod: preview.member.graduationPeriod, birthDate: preview.member.birthDate,
               birthPlaceText: preview.member.birthPlaceText, stambukNumber: preview.member.stambukNumber,
-              nik: preview.member.nik, waliSantri: preview.member.waliSantri,
+              nik: encryptedNik, nikHash: nikHashValue, waliSantri: preview.member.waliSantri,
               domicileStatus: preview.member.domicileStatus, professionId: preview.member.professionId,
               primaryCabangRefId: preview.member.primaryCabangRefId,
             },

@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { and, eq, ilike, or } from "drizzle-orm";
 import {
   db, members, contacts, refProvinces, refRegencies, refDistricts, refVillages, refProfessions, refIkpmCabang,
-  tenantMemberships,
+  tenantMemberships, hashPiiForLookup, encryptPii,
 } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import {
@@ -231,6 +231,16 @@ export async function findExistingMemberByContact(
 export type MemberFieldPatch = Partial<{
   gender: "male" | "female" | null; graduationYear: number | null; graduationPeriod: "awal" | "akhir" | null;
   birthDate: string | null; birthPlaceText: string | null; stambukNumber: string | null; nik: string | null;
+  // `nik` di sini SELALU ciphertext (encryptPii() dipanggil sedini mungkin di
+  // buildPreviewRow(), SEBELUM baris ini pernah tersimpan ke draft
+  // `import_batch_rows.data` — plaintext dari Excel tidak pernah singgah di DB
+  // sama sekali, bahkan sementara selagi ditinjau). `nikHash` (hashPiiForLookup
+  // dari plaintext yang SAMA) SELALU dihitung bersamaan — fillEmpty() memperlakukan
+  // keduanya sebagai field independen (tidak ada cross-field correlation), jadi
+  // kalau salah satu diisi tanpa yang lain, `members.nik` bisa punya ciphertext
+  // tanpa `nik_hash` yang cocok (uniqueness + exact-match search jadi tidak
+  // berfungsi untuk baris itu).
+  nikHash: string | null;
   waliSantri: "gontor" | "alumni" | "lain" | "bukan" | null; domicileStatus: "permanent" | "temporary" | null;
   professionId: number | null; primaryCabangRefId: string | null;
 }>;
@@ -255,7 +265,7 @@ export async function computeMemberMergeCandidate(
     gender: members.gender, graduationYear: members.graduationYear,
     graduationPeriod: members.graduationPeriod, birthDate: members.birthDate,
     birthPlaceText: members.birthPlaceText, stambukNumber: members.stambukNumber,
-    nik: members.nik, waliSantri: members.waliSantri, domicileStatus: members.domicileStatus,
+    nik: members.nik, nikHash: members.nikHash, waliSantri: members.waliSantri, domicileStatus: members.domicileStatus,
     professionId: members.professionId, primaryCabangRefId: members.primaryCabangRefId,
     contactId: members.contactId,
   }).from(members).where(eq(members.id, memberId)).limit(1);
@@ -331,7 +341,7 @@ export async function buildPreviewRow(
       existingMemberId: null, linkOnly: false,
       member: {
         fullName: "", gender: null, graduationYear: null, graduationPeriod: null,
-        birthDate: null, birthPlaceText: null, stambukNumber: null, nik: null,
+        birthDate: null, birthPlaceText: null, stambukNumber: null, nik: null, nikHash: null,
         waliSantri: null, domicileStatus: null, professionId: null, primaryCabangRefId: null,
       },
       contact: { phone: null, whatsapp: null, email: null },
@@ -363,7 +373,18 @@ export async function buildPreviewRow(
 
   const birthPlaceText = raw["tempat lahir"]?.trim() || null;
   const stambukNumber  = raw["no stambuk gontor"]?.trim() || null;
-  const nik            = raw["nik"]?.trim() || null;
+
+  // NIK dienkripsi SEKARANG, sebelum baris ini pernah tersimpan ke draft
+  // `import_batch_rows.data` (JSONB) — supaya draft yang bisa didiamkan lama
+  // sebelum di-commit/dibatalkan admin tidak pernah menyimpan NIK plaintext
+  // di database, bahkan sementara. Preview table (import-client.tsx) tidak
+  // pernah menampilkan NIK, jadi mengenkripsi sedini ini tidak mengorbankan
+  // apa pun dari sisi UX. `nik`/`nikHash` dari titik ini ke bawah SELALU
+  // ciphertext/hash — lihat komentar di MemberFieldPatch (di file ini juga,
+  // di bawah) dan packages/db/src/helpers/pii-crypto.ts untuk detail skema.
+  const nikPlain = raw["nik"]?.trim() || null;
+  const nik      = encryptPii(nikPlain);
+  const nikHash  = hashPiiForLookup(nikPlain);
 
   const waliSantriRaw = (raw["wali santri"] ?? "").trim();
   const waliSantri = mapWaliSantri(waliSantriRaw);
@@ -422,7 +443,7 @@ export async function buildPreviewRow(
     existingMemberId = existing.id;
     const candidate = await computeMemberMergeCandidate(
       existing.id, tenantId, isForumTenant,
-      { gender, graduationYear, graduationPeriod, birthDate, birthPlaceText, stambukNumber, nik, waliSantri, domicileStatus, professionId, primaryCabangRefId },
+      { gender, graduationYear, graduationPeriod, birthDate, birthPlaceText, stambukNumber, nik, nikHash, waliSantri, domicileStatus, professionId, primaryCabangRefId },
       { phone, whatsapp, email },
       membershipNumber,
     );
@@ -525,7 +546,7 @@ export async function buildPreviewRow(
     rowNumber, status, notes, existingMemberId, linkOnly, mergeFields,
     member: {
       fullName, gender, graduationYear, graduationPeriod, birthDate, birthPlaceText,
-      stambukNumber, nik, waliSantri, domicileStatus, professionId, primaryCabangRefId,
+      stambukNumber, nik, nikHash, waliSantri, domicileStatus, professionId, primaryCabangRefId,
     },
     contact: { phone, whatsapp, email },
     address: {

@@ -16,6 +16,7 @@ import {
   refIkpmCabang,
   refRegencies,
   createTenantDb,
+  decryptPii,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
@@ -193,7 +194,7 @@ export default async function EditMemberPage({
 
   const defaultStep1: Step1DefaultValues = {
     name: memberRow.name,
-    nik: memberRow.nik ?? undefined,
+    nik: decryptPii(memberRow.nik) ?? undefined,
     stambukNumber: memberRow.stambukNumber ?? undefined,
     gender: memberRow.gender as "male" | "female" | undefined,
     birthDate: memberRow.birthDate ?? undefined,

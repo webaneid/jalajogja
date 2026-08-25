@@ -30,9 +30,17 @@ export const members = pgTable("members", {
   stambukNumber: text("stambuk_number"), // Nomor santri PM Gontor — bukan nomor anggota
 
   // ── Data pribadi ────────────────────────────────────────────────────────────
-  // NIK: partial unique index via raw SQL di migration (WHERE nik IS NOT NULL)
-  // Tidak menggunakan .unique() Drizzle karena tidak support partial index
+  // NIK dienkripsi at-rest (AES-256-GCM, lihat helpers/pii-crypto.ts) sejak
+  // migration 0062 — kolom ini isinya ciphertext, BUKAN NIK asli. WAJIB lewat
+  // encryptPii()/decryptPii() di setiap titik tulis/baca, jangan pernah query
+  // langsung ke kolom ini (ILIKE/eq) — ciphertext-nya acak, tidak match apa pun.
   nik: text("nik"),
+  // Blind index (HMAC-SHA256, deterministik) — SATU-SATUNYA cara sah untuk
+  // exact-match search dan cegah NIK ganda. Bukan kolom baru sembarangan,
+  // ini menggantikan `members_nik_not_null_unique` lama (unique index di atas
+  // ciphertext acak tidak berguna — plaintext sama tidak lagi hasilkan
+  // ciphertext sama). Partial unique index via raw SQL di migration.
+  nikHash: text("nik_hash"),
   name: text("name").notNull(),
   gender: text("gender", { enum: ["male", "female"] }),
 

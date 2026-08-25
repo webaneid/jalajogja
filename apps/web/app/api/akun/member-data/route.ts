@@ -8,6 +8,7 @@ import {
   createTenantDb, getSettings,
   generateMemberNumber,
   syncAutoTenantMemberships,
+  encryptPii, decryptPii, hashPiiForLookup,
 } from "@jalajogja/db";
 import { auth } from "@/lib/auth";
 
@@ -126,7 +127,7 @@ export async function GET(req: NextRequest) {
       // Identitas
       id:            member.id,
       name:          member.name,
-      nik:           member.nik,
+      nik:           decryptPii(member.nik),
       stambukNumber: member.stambukNumber,
       gender:        member.gender,
       birthDate:     member.birthDate,
@@ -204,7 +205,10 @@ export async function PATCH(req: NextRequest) {
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
 
   if (body.name          !== undefined) updateData.name           = body.name.trim();
-  if (body.nik           !== undefined) updateData.nik            = body.nik?.trim()          || null;
+  if (body.nik           !== undefined) {
+    updateData.nik     = encryptPii(body.nik);
+    updateData.nikHash = hashPiiForLookup(body.nik);
+  }
   if (body.stambukNumber !== undefined) updateData.stambukNumber  = body.stambukNumber?.trim() || null;
   if (body.gender        !== undefined) updateData.gender         = body.gender               || null;
   if (body.birthDate     !== undefined) updateData.birthDate      = body.birthDate            || null;

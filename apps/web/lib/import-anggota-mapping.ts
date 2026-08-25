@@ -69,7 +69,7 @@ export function fillEmpty<T extends Record<string, unknown>>(
 export const MERGEABLE_FIELD_LABELS: Record<string, string> = {
   gender: "Jenis Kelamin", graduationYear: "Alumni", graduationPeriod: "Periode Angkatan 1999",
   birthDate: "Tanggal Lahir", birthPlaceText: "Tempat Lahir", stambukNumber: "No. Stambuk Gontor",
-  nik: "NIK", waliSantri: "Wali Santri", domicileStatus: "Status Domisili",
+  nik: "NIK", nikHash: "NIK", waliSantri: "Wali Santri", domicileStatus: "Status Domisili",
   professionId: "Profesi", primaryCabangRefId: "PC IKPM Cabang", phone: "No HP", whatsapp: "No WhatsApp", email: "Email",
   membershipNumber: "Nomor Keanggotaan Forum",
 };
@@ -301,7 +301,13 @@ export type ImportRowPreview = {
     birthDate: string | null;                  // "YYYY-MM-DD"
     birthPlaceText: string | null;
     stambukNumber: string | null;              // No. Induk Gontor — beda dari memberNumber (auto-generated)
+    // `nik` di sini SELALU ciphertext (encryptPii() sudah dipanggil sedini
+    // mungkin di buildPreviewRow, sebelum baris ini pernah tersimpan ke draft
+    // import_batch_rows.data) — TIDAK PERNAH plaintext, meski hidup di
+    // ImportRowPreview yang sempat disimpan sebagai JSONB. `nikHash` (blind
+    // index untuk exact-match/uniqueness) selalu menyertainya.
     nik: string | null;
+    nikHash: string | null;
     waliSantri: "gontor" | "alumni" | "lain" | "bukan" | null;
     domicileStatus: "permanent" | "temporary" | null;
     professionId: number | null;               // FK ke public.ref_professions

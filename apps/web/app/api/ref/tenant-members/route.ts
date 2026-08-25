@@ -4,7 +4,10 @@ export const dynamic = "force-dynamic";
 // Butuh sesi valid (admin/owner)
 
 import { NextRequest, NextResponse } from "next/server";
-import { db, members, tenantMemberships, contacts, addresses, refRegencies } from "@jalajogja/db";
+import {
+  db, members, tenantMemberships, contacts, addresses, refRegencies,
+  decryptPii, hashPiiForLookup,
+} from "@jalajogja/db";
 import { eq, and, ilike, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getTenantAccess } from "@/lib/tenant";
@@ -41,12 +44,14 @@ export async function GET(request: NextRequest) {
         eq(tenantMemberships.status, status as "active" | "alumni" | "inactive")
       );
 
-  // Filter search — nama, nomor anggota, NIK
+  // Filter search — nama & nomor anggota tetap sebagian (ILIKE), NIK terenkripsi jadi
+  // EXACT MATCH via blind index (nikHash) — ciphertext acak, tidak bisa lagi di-ILIKE
+  // sebagian. Admin harus ketik NIK lengkap+persis untuk ketemu lewat kotak ini.
   const searchCondition = search.trim()
     ? or(
         ilike(members.name,         `%${search.trim()}%`),
         ilike(members.memberNumber, `%${search.trim()}%`),
-        ilike(members.nik,          `%${search.trim()}%`)
+        eq(members.nikHash,         hashPiiForLookup(search.trim()) ?? "")
       )
     : undefined;
 
@@ -102,7 +107,7 @@ export async function GET(request: NextRequest) {
         id:           r.id,
         name:         r.name,
         memberNumber: r.memberNumber ?? null,
-        nik:          r.nik          ?? null,
+        nik:          decryptPii(r.nik) ?? null,
         phone:        r.phone        ?? null,
         email:        r.email        ?? null,
         address:      addrParts.length > 0 ? addrParts.join(", ") : null,

@@ -19,6 +19,7 @@ import {
   refProvinces,
   refDistricts,
   createTenantDb,
+  decryptPii,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
@@ -378,7 +379,7 @@ export default async function MemberDetailPage({
       <Section title="Identitas Pribadi">
         <dl>
           <Row label="Nomor Stambuk" value={row.stambukNumber} />
-          <Row label="NIK"           value={row.nik} />
+          <Row label="NIK"           value={decryptPii(row.nik)} />
           <Row label="Jenis Kelamin" value={row.gender ? GENDER_LABEL[row.gender] : null} />
           <Row label="Tempat Lahir"  value={birthPlace} />
           <Row label="Tanggal Lahir" value={birthDateFormatted} />

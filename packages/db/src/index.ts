@@ -86,3 +86,8 @@ export {
 // Member tenant membership auto-sync (PC IKPM Cabang & Marhalah)
 export { syncAutoTenantMemberships } from "./helpers/member-sync";
 
+// Enkripsi at-rest untuk PII paling sensitif (NIK, dst). Lihat komentar di
+// helpers/pii-crypto.ts untuk batasan (tidak bisa dipakai untuk ILIKE/substring
+// search — pakai hashPiiForLookup() untuk exact-match).
+export { encryptPii, decryptPii, hashPiiForLookup } from "./helpers/pii-crypto";
+

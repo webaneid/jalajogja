@@ -8,7 +8,7 @@ import {
   db, members, contacts, addresses, socialMedias, refProfessions, refIkpmCabang,
   memberBusinesses, memberEducations, memberPesantren, pesantren, memberProfessionals,
   tenantMemberships, tenants, refProvinces, refRegencies, refDistricts, refVillages,
-  createTenantDb,
+  createTenantDb, decryptPii,
 } from "@jalajogja/db";
 import { getEkosistemModuleLabels } from "@/lib/ekosistem-modules.server";
 import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
@@ -277,7 +277,7 @@ export default async function AnggotaProfilePage({ params }: { params: Params })
         <dl className="space-y-2">
           <Row label="No. ID IKPM Gontor" value={memberRow.memberNumber} />
           <Row label="No. Stambuk Gontor" value={memberRow.stambukNumber} />
-          <Row label="NIK"              value={memberRow.nik} />
+          <Row label="NIK"              value={decryptPii(memberRow.nik)} />
         </dl>
 
         {/* Anggota — afiliasi organisasi, lintas tenant */}

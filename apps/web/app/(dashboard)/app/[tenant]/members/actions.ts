@@ -15,6 +15,8 @@ import {
   generateMemberNumber,
   account,
   syncAutoTenantMemberships,
+  encryptPii,
+  hashPiiForLookup,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess }   from "@/lib/permissions";
@@ -71,7 +73,10 @@ function sanitize(data: MemberFormData) {
   return {
     name: data.name.trim(),
     stambukNumber: data.stambukNumber?.trim() || null,
-    nik: data.nik?.trim() || null,
+    // NIK dienkripsi at-rest — nikHash (blind index) dihitung dari nilai ASLI
+    // (belum enkripsi) supaya deterministik, dipakai untuk cek NIK ganda.
+    nik:     encryptPii(data.nik),
+    nikHash: hashPiiForLookup(data.nik),
     gender: data.gender || null,
     birthRegencyId: data.birthRegencyId ?? null,
     birthPlaceText: data.birthPlaceText?.trim() || null,
@@ -155,7 +160,7 @@ export async function createMemberAction(
   } catch (err) {
     console.error("[createMemberAction]", err);
     const msg = err instanceof Error ? err.message : "Gagal menyimpan.";
-    if (msg.includes("members_nik_not_null_unique")) {
+    if (msg.includes("members_nik_hash_not_null_unique")) {
       return { success: false, error: "NIK sudah terdaftar di sistem." };
     }
     return { success: false, error: `Gagal: ${msg}` };
@@ -254,7 +259,7 @@ export async function updateMemberAction(
   } catch (err) {
     console.error("[updateMemberAction]", err);
     const msg = err instanceof Error ? err.message : "Gagal menyimpan.";
-    if (msg.includes("members_nik_not_null_unique")) {
+    if (msg.includes("members_nik_hash_not_null_unique")) {
       return { success: false, error: "NIK sudah terdaftar di sistem." };
     }
     return { success: false, error: `Gagal: ${msg}` };
