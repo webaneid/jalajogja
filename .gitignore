@@ -43,3 +43,9 @@ next-env.d.ts
 # Referensi/pengetahuan lokal saja — jangan masuk repo (bisa berisi data anggota nyata,
 # source pihak ketiga, atau file mentah lain yang cuma dipakai sebagai bahan riset sesi kerja)
 docs/template/
+
+# Claude Code — settings personal per developer, sering berisi secret mentah
+# (API key percobaan, password test) di dalam string permission command.
+# JANGAN andalkan gitignore global personal saja untuk file ini — harus eksplisit
+# di project supaya aman di mesin/clone manapun.
+.claude/settings.local.json

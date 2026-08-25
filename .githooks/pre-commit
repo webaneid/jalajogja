@@ -1,0 +1,48 @@
+#!/bin/sh
+# .githooks/pre-commit
+#
+# Lapis KEDUA proteksi secret — independen dari Claude Code. Jalan di level
+# git, jadi tetap aktif meski commit-nya dari edit manual, tool AI lain yang
+# kerja di worktree terpisah, atau siapa pun yang punya akses ke repo ini.
+# (`.claude/hooks/secret-scan.sh` = lapis pertama, cuma jalan kalau Claude
+# Code sendiri yang menulis file lewat sesi ini.)
+#
+# Cakupan: baris BARU yang di-stage (bukan seluruh history — untuk itu
+# butuh scanner terpisah seperti gitleaks/trufflehog kalau nanti diperlukan).
+#
+# Aktivasi (satu kali per clone/mesin):
+#   git config core.hooksPath .githooks
+
+# Hanya scan file yang benar-benar akan masuk commit, dengan ekstensi yang
+# relevan — TIDAK termasuk file .env asli (itu memang tempat secret hidup
+# dan sudah di-gitignore, bukan tempat yang salah).
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx|json|ya?ml|sql)$|docker-compose|ecosystem\.config' | grep -vE '\.example$|schema\.json$')
+
+[ -z "$STAGED_FILES" ] && exit 0
+
+GENERIC='(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|sk_live_[0-9a-zA-Z]{20,}|(password|secret|token|apikey|api_key)[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']{6,}["'"'"'])'
+DB_URL='postgres(ql)?://[^:@/[:space:]]+:[^@/[:space:]]{4,}@'
+NAMED='(BETTER_AUTH_SECRET|PLATFORM_JWT_SECRET|MINIO_SECRET_KEY|MINIO_ACCESS_KEY|RAJAONGKIR_PLATFORM_KEY|CRON_SECRET|WHATSAPP_API_PASS|SMTP_PASS|META_APP_SECRET|MEMBER_PII_ENCRYPTION_KEY)[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9+/_.-]{6,}["'"'"']?'
+
+FOUND=0
+for f in $STAGED_FILES; do
+  # ambil isi versi yang di-stage (index), bukan working directory — supaya
+  # akurat scan apa yang BENAR-BENAR akan masuk commit
+  MATCH=$(git show ":$f" 2>/dev/null | grep -EinH "$GENERIC|$DB_URL|$NAMED" | grep -v "process\.env\.")
+  if [ -n "$MATCH" ]; then
+    echo "⚠️  Kemungkinan secret ter-hardcode di: $f" >&2
+    echo "$MATCH" >&2
+    FOUND=1
+  fi
+done
+
+if [ "$FOUND" -eq 1 ]; then
+  echo "" >&2
+  echo "Commit diblokir. Pindahkan nilai di atas ke .env.local (akses via" >&2
+  echo "process.env), bukan hardcode di kode/config." >&2
+  echo "Kalau ini false-positive, commit ulang dengan --no-verify (pakai HANYA" >&2
+  echo "kalau benar-benar yakin, bukan cara standar untuk lewati pengecekan ini)." >&2
+  exit 1
+fi
+
+exit 0
