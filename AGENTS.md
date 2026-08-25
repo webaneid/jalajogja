@@ -997,7 +997,8 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 
 - 3 Server Actions: `createMemberAction`, `updateMemberAction`, `removeMemberFromTenantAction`
 - Delete: hanya hapus dari `tenant_memberships` — data di `public.members` tidak dihapus
-- NIK duplicate: deteksi via constraint name `members_nik_not_null_unique` di catch block
+- NIK duplicate: deteksi via constraint name `members_nik_hash_not_null_unique` di catch block
+  (NIK dienkripsi at-rest sejak 2026-08 — lihat `docs/arsitektur-keanggotaan.md`)
 - Wizard 4-step: submit wajib di Step 1, Step 2–4 opsional
 - SEQUENCE `public.member_number_seq` wajib dibuat manual via raw SQL; selalu pakai prefix `public.`
 

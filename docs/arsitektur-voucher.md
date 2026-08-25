@@ -247,7 +247,8 @@ untuk semua item tipe itu.
 
 **Kode voucher & uniqueness**: `code UNIQUE` constraint di DB. `createVoucherAction`/
 `updateVoucherAction` catch unique-violation dan translate ke pesan ramah — pola sama dengan
-deteksi NIK duplicate di modul Anggota (`members_nik_not_null_unique`).
+deteksi NIK duplicate di modul Anggota (`members_nik_hash_not_null_unique`, sejak NIK
+dienkripsi at-rest — lihat `docs/arsitektur-keanggotaan.md` § "Deteksi Duplikasi Anggota").
 
 ---
 

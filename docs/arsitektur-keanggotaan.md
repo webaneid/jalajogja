@@ -190,18 +190,33 @@ Generator: `generateMemberNumber(db, birthDate, year?)` di
 ## Deteksi Duplikasi Anggota
 
 Karena `public.members` adalah satu sumber kebenaran, duplikasi NIK bisa dideteksi
-secara global:
+secara global.
+
+> **Sejak migration `0062` (2026-08): NIK dienkripsi at-rest** (AES-256-GCM, lihat
+> `packages/db/src/helpers/pii-crypto.ts`). Kolom `members.nik` isinya ciphertext,
+> BUKAN NIK asli — enkripsi non-deterministik berarti ciphertext-nya SELALU beda
+> tiap kali NIK yang sama dienkripsi ulang, jadi unique constraint di atas kolom itu
+> tidak lagi berguna. Deteksi duplikat sekarang lewat `nikHash` — HMAC-SHA256
+> deterministik (blind index) yang dihitung dari NIK asli via `hashPiiForLookup()`
+> di titik tulis yang sama dengan `encryptPii()`.
 
 ```sql
--- Constraint di DB:
-ALTER TABLE public.members ADD CONSTRAINT members_nik_not_null_unique
-  UNIQUE (nik) WHERE nik IS NOT NULL;
+-- Constraint di DB (menggantikan members_nik_not_null_unique lama):
+CREATE UNIQUE INDEX members_nik_hash_not_null_unique
+  ON public.members (nik_hash) WHERE nik_hash IS NOT NULL;
 ```
 
 Jika admin cabang A input anggota dengan NIK yang sama dengan anggota cabang B:
-- Sistem menolak dengan error `members_nik_not_null_unique`
+- Sistem menolak dengan error `members_nik_hash_not_null_unique`
 - Solusi: cek apakah anggota sudah ada, jika ya → tambahkan ke `tenant_memberships` saja
   (tanpa create member baru)
+
+**Konsekuensi yang harus dipahami**: enkripsi penuh (bukan deterministik) berarti
+pencarian NIK cuma bisa EXACT MATCH lewat `nikHash` — tidak bisa lagi ILIKE/substring
+search di kolom `nik`. Membaca NIK untuk ditampilkan WAJIB lewat `decryptPii()`,
+menulis WAJIB lewat `encryptPii()` + `hashPiiForLookup()` sekaligus (dua fungsi
+independen dari satu master key, lihat komentar di `pii-crypto.ts` untuk detail
+key-separation-nya) — jangan pernah query/tampilkan kolom `nik` mentah.
 
 ---
 
@@ -346,14 +361,19 @@ Wizard untuk tambah anggota baru. Step 1 wajib (buat record), Step 2–4 opsiona
 
 ### NIK Duplicate Error Detection
 
-NIK memakai partial unique index (bukan `.unique()` Drizzle — tidak support partial index):
+NIK memakai partial unique index (bukan `.unique()` Drizzle — tidak support partial index).
+**Sejak enkripsi NIK (migration `0062`), index-nya ada di kolom `nik_hash` (blind
+index HMAC), BUKAN di kolom `nik` (ciphertext) — nilai ciphertext tidak pernah
+collide walau NIK aslinya sama, jadi unique constraint di atas `nik` langsung tidak
+berguna begitu enkripsi non-deterministik dipasang:**
 ```sql
-ALTER TABLE public.members ADD CONSTRAINT members_nik_not_null_unique
-  UNIQUE (nik) WHERE nik IS NOT NULL;
+CREATE UNIQUE INDEX members_nik_hash_not_null_unique
+  ON public.members (nik_hash) WHERE nik_hash IS NOT NULL;
 ```
-Di server action, deteksi via constraint name di catch block:
+Di server action, deteksi via constraint name di catch block (dan tulis NIK selalu lewat
+`encryptPii()` + `hashPiiForLookup()` bersamaan — lihat `packages/db/src/helpers/pii-crypto.ts`):
 ```typescript
-if (err.constraint === "members_nik_not_null_unique") {
+if (msg.includes("members_nik_hash_not_null_unique")) {
   return { error: "NIK sudah terdaftar di sistem." };
 }
 ```

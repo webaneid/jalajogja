@@ -1208,7 +1208,8 @@ Setiap modul baru = subfolder baru di dalam `[tenant]/`.
 
 - 3 Server Actions: `createMemberAction`, `updateMemberAction`, `removeMemberFromTenantAction`
 - Delete: hanya hapus dari `tenant_memberships` — data di `public.members` tidak dihapus
-- NIK duplicate: deteksi via constraint name `members_nik_not_null_unique` di catch block
+- NIK duplicate: deteksi via constraint name `members_nik_hash_not_null_unique` di catch block
+  (NIK dienkripsi at-rest sejak 2026-08 — lihat lesson `[2026-08]` di bawah)
 - Wizard 4-step: submit wajib di Step 1, Step 2–4 opsional
 - SEQUENCE `public.member_number_seq` wajib dibuat manual via raw SQL; selalu pakai prefix `public.`
 
@@ -17381,8 +17382,142 @@ working dir via fetch+reset, BUKAN filter-repo langsung di repo yang sedang dipa
 cara STANDAR git-filter-repo sendiri untuk kasus serupa, bukan langkah ekstra kehati-hatian
 semata.
 
+### [2026-08-26] Enkripsi NIK At-Rest + Rate Limit OTP/Login + Backup Otomatis Postgres+MinIO ke Google Drive — SELESAI + DI-DEPLOY
+
+**Enkripsi PII pertama di seluruh sistem ini** — `public.members.nik` (nomor identitas
+nasional, diatur khusus UU PDP) sebelumnya plaintext sejak awal project, meski sudah
+tidak pernah ditampilkan ke publik tanpa auth. Sekarang dienkripsi AES-256-GCM.
+
+**Arsitektur** — `packages/db/src/helpers/pii-crypto.ts`, 3 fungsi:
+- `encryptPii(plain)` — AES-256-GCM, IV acak per panggilan, format simpan
+  `"{iv}.{authTag}.{ciphertext}"` (semua base64). `null`/kosong tetap `null`.
+- `decryptPii(encoded)` — fail-soft (return `null`, TIDAK PERNAH throw) supaya satu
+  baris korup/key-mismatch tidak menjatuhkan halaman yang render banyak anggota
+  sekaligus (list/tabel).
+- `hashPiiForLookup(plain)` — HMAC-SHA256 DETERMINISTIK untuk blind index. Ini
+  SATU-SATUNYA cara sah mencari/membandingkan nilai terenkripsi tanpa membuka nilai
+  aslinya — dipakai sebagai kolom `nikHash` terpisah untuk exact-match/uniqueness.
+
+**Key separation via HKDF**: `deriveKey("encrypt")` dan `deriveKey("hmac")` menurunkan
+2 sub-key INDEPENDEN dari satu `MEMBER_PII_ENCRYPTION_KEY` (32-byte, base64, di env) —
+kompromi salah satu tujuan (mis. index hash bocor lewat bug lain) tidak otomatis
+membuka kunci enkripsi nilai asli, dan sebaliknya.
+
+**Trade-off yang dikunci (dikonfirmasi user sebelum eksekusi)**: enkripsi PENUH (AES-GCM,
+non-deterministik), BUKAN deterministik — konsekuensinya pencarian NIK cuma bisa EXACT
+MATCH lewat `nikHash`, TIDAK BISA lagi ILIKE/substring/partial search. Kolom
+`nik_hash` + unique index `members_nik_hash_not_null_unique` (migration `0062`)
+menggantikan constraint lama `members_nik_not_null_unique` yang dulu langsung di atas
+`nik` — ciphertext acak tidak pernah collide walau NIK aslinya sama persis, jadi
+constraint lama diam-diam berhenti bekerja begitu kolomnya berisi ciphertext.
+
+**8 titik pemanggil disesuaikan** (encrypt-on-write / decrypt-on-read / hash-on-search):
+form tambah+edit member admin (`members/actions.ts`), import massal Excel
+(`import-anggota.server.ts` + `import-anggota-mapping.ts` — NIK dienkripsi SEDINI
+MUNGKIN saat parse baris Excel, SEBELUM masuk draft table `import_batch_rows`, BUKAN
+disimpan plaintext dulu lalu dienkripsi ulang saat commit — celah exposure plaintext
+di draft yang bisa dibiarkan tidak direview), self-service `/akun/lengkapi`
+(`api/akun/member-data/route.ts`), pencarian anggota (`api/ref/tenant-members/route.ts`
+— `hashPiiForLookup()` dipakai untuk match NIK di search box), dan tampilan profil
+(admin `members/[id]/{page,edit/page}.tsx` + publik `anggota/[id]/page.tsx`).
+
+**Verifikasi konsistensi (audit 2026-08-26, bagian dari permintaan user "pastikan
+dokumentasi dan implemented code sesuai")**: grep menyeluruh `encryptPii|decryptPii|
+hashPiiForLookup` DAN semua akses `.nik` mentah di `apps/web` — SEMUA titik baca lewat
+`decryptPii()`, SEMUA titik tulis lewat `encryptPii()`+`hashPiiForLookup()` bersamaan,
+nol kebocoran ciphertext ke UI. **Ditemukan 1 gap TERPISAH+TIDAK TERKAIT** saat audit
+ini (dicatat, TIDAK difix — di luar scope, murni temuan sampingan): merge field
+`{{recipient.nik}}` di modul Surat (`lib/letter-merge.ts`'s `buildMergeContext()`)
+TIDAK PERNAH benar-benar disurfacekan ke rendering PDF/body surat — `generate-pdf/
+route.ts`, `letters/keluar/[id]/page.tsx`, `letters/nota/[id]/page.tsx`, dan
+`sign/[token]/page.tsx` SEMUA membangun `recipientData` TANPA field `nik` sama sekali
+(cuma title/organization/address/phone/email) — jadi placeholder itu selalu resolve ke
+string kosong di keempat tempat itu. Ini PRE-EXISTING (encryption commit tidak
+menyentuh file-file ini sama sekali) — SATU-SATUNYA tempat `{{recipient.nik}}`
+genuinely terisi adalah snapshot di `createBulkLettersAction` (bulk mail merge),
+sumbernya `/api/ref/tenant-members` yang sudah decrypt — jadi bukan ciphertext-leak,
+cuma capability yang tidak pernah selesai di-wire ke rendering. Bukan bug dari sesi
+ini, tidak dieksekusi tanpa diminta.
+
+**Dokumentasi yang DITEMUKAN STALE saat audit sinkronisasi dan DIPERBAIKI**: 4 file
+masih menyebut constraint lama `members_nik_not_null_unique` (yang sudah di-`DROP`
+migration `0062`) — `docs/arsitektur-keanggotaan.md` (dua section: "Deteksi Duplikasi
+Anggota" dan Lessons Learned "NIK Duplicate Error Detection", keduanya berisi SQL/kode
+yang sudah tidak akurat), `docs/arsitektur-voucher.md` (referensi sekilas sebagai
+contoh pola), `AGENTS.md`, dan `CLAUDE.md` sendiri (baris di lesson lama "[2025-04]
+Modul Anggota + Member Wizard Selesai") — semua sudah dikoreksi bersamaan dengan
+entri ini. **Aturan yang ditegaskan**: kode sudah benar sejak commit `de6e311`
+(2026-08-25), tapi dokumentasi baru genuinely disinkronkan sehari kemudian — bukti
+nyata kenapa "pastikan dokumentasi dan implemented code sesuai" perlu jadi langkah
+eksplisit terpisah, bukan diasumsikan otomatis ikut benar begitu kode selesai.
+
+**Rate limiting (commit `bfcdb81`, bersamaan)**: OTP verify (`send-otp`/`verify-otp`
+route) dan login (`auth/[...all]/route.ts`) — cegah brute-force, tidak ada perubahan
+schema.
+
+**Secret-scan hook (commit `91cd28b`, bersamaan)**: `.githooks/pre-commit` (perlu
+`git config core.hooksPath .githooks` sekali per clone) + hook Claude Code
+(`.claude/hooks/secret-scan.sh`) — scan pola secret umum sebelum commit, mencegah key
+seperti `MEMBER_PII_ENCRYPTION_KEY` ke-commit tidak sengaja.
+
+**Backup otomatis — Postgres + MinIO ke Google Drive** (commit `c9b6b8f`,
+`scripts/backup-db.sh`/`restore-db.sh`, diadaptasi dari template proven di project
+sibling `master-typescript`): **whole-database dump, BUKAN per-tenant** — keputusan
+ini murni konsekuensi arsitektur schema-per-tenant jalajogja (satu database
+`jalakarta` berisi `public` + satu `tenant_{slug}` per tenant, dengan FK
+cross-schema seperti `tenant.users.member_id → public.members`) — dump terpisah per
+tenant/per public schema punya titik snapshot waktu yang beda-beda, berisiko
+inkonsisten saat restore. Format `-Fc` (custom/compressed, BUKAN plain SQL+gzip) tetap
+memberi kemampuan restore SATU tenant saja nanti kalau perlu
+(`pg_restore --schema=tenant_visikita -d db_scratch`) — jadi "per-tenant vs
+whole-database" bukan trade-off yang harus dipilih di muka.
+
+MinIO di-backup terpisah lewat `mc mirror` (object-level) — BUKAN raw `tar` pada
+Docker volume (berisiko korup kalau ada write bersamaan saat backup jalan; dokumen
+lama `docs/panduan-deploy-vps.md` sempat merekomendasikan cara raw-tar ini, sudah
+diperbaiki bersamaan). Dijadwalkan via **crontab OS-level** (bukan cron aplikasi) —
+tetap jalan walau aplikasi crash, pola sama dengan 5 cron aplikasi yang sudah ada
+(`invoice-reminder`, dst).
+
+**3 kesalahan operasional ditemukan+diperbaiki live saat setup di VPS** (dicatat
+supaya tidak terulang): (1) generate `MEMBER_PII_ENCRYPTION_KEY` sempat dilakukan di
+mesin lokal alih-alih VPS — production key WAJIB digenerate langsung di mesin
+target, bukan ditransfer manual; (2) `mc` (MinIO Client) collision nama paket dengan
+Midnight Commander di `apt` Ubuntu — install via download binary langsung dari
+`dl.min.io`, BUKAN `apt install mc`; (3) default `BACKUP_DIR="/var/backups/jalajogja"`
+di script butuh root untuk dibuat — VPS ini user non-root (`webane`), jadi SETIAP
+pemanggilan (manual maupun cron) WAJIB override `BACKUP_DIR` ke path di home
+directory (`~/backups/jalajogja`) — default script itu sendiri BELUM diperbaiki
+(technical debt tercatat, workaround selalu override di titik pemanggilan).
+
+**Status akhir**: migration `0062` + `encrypt-existing-nik.ts --commit` sudah
+dijalankan di VPS production (dikonfirmasi user, NIK anggota lama sekarang genuinely
+ciphertext + `nik_hash` terisi), aplikasi sudah di-build+restart dengan kode baru,
+backup harian jam 2 pagi sudah terjadwal aktif di crontab VPS dan sudah diverifikasi
+sukses end-to-end (dump Postgres + arsip MinIO sama-sama muncul di
+`gdrive:backup-app/jalakarta/`). `CRON_SECRET` yang terlihat di crontab TIDAK terkait
+sesi ini — itu secret lama dari cron aplikasi yang sudah ada jauh sebelum pekerjaan
+hari ini, tidak pernah disentuh/digenerate ulang.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Pembersihan skrip SQL historis di `docs/`** (lihat lesson
+- Terakhir dikerjakan: **Enkripsi NIK at-rest + rate limit OTP/login + backup otomatis
+  Postgres+MinIO ke Google Drive** — lihat lesson `[2026-08-26]` "Enkripsi NIK At-Rest
+  + Rate Limit OTP/Login + Backup Otomatis..." di atas untuk detail lengkap. Status:
+  **SELESAI SEPENUHNYA DAN SUDAH DI-DEPLOY** — migration `0062` + skrip
+  `encrypt-existing-nik.ts --commit` sudah jalan di VPS production (dikonfirmasi
+  user), aplikasi sudah di-build+restart, backup harian jam 2 pagi sudah terjadwal
+  aktif di crontab dan diverifikasi sukses end-to-end. Audit sinkronisasi dokumentasi
+  (diminta user eksplisit "pastikan dokumentasi dan implemented code sesuai")
+  menemukan+memperbaiki referensi constraint NIK yang basi di 4 file
+  (`docs/arsitektur-keanggotaan.md` ×2 section, `docs/arsitektur-voucher.md`,
+  `AGENTS.md`) dan section backup manual yang basi di `docs/panduan-deploy-vps.md`
+  (nama DB salah + belum menunjuk skrip otomatis baru) — semua sudah dikoreksi.
+  Tidak ada tugas tersisa dari thread ini kecuali item technical-debt yang sudah
+  dicatat eksplisit di lesson (default `BACKUP_DIR` butuh root, belum diperbaiki di
+  file skrip itu sendiri) dan 1 gap pre-existing tak terkait yang ditemukan sekaligus
+  (`{{recipient.nik}}` di mail-merge Surat tidak pernah ter-wire ke rendering PDF —
+  bukan bug dari sesi ini, sengaja tidak difix karena di luar scope).
+- Sesi sebelumnya: **Pembersihan skrip SQL historis di `docs/`** (lihat lesson
   `[2026-08-25]` "Dokumentasi: Pembersihan Skrip SQL Historis di `docs/`" di atas). User minta
   cek `docs/*.sql` — 10 file, semuanya di luar sistem migrasi bernomor. Hasil: 7 file dihapus
   (isinya sudah baku di `create-tenant-schema.ts`), 1 tabel dead code (`ref_rajaongkir_cities`

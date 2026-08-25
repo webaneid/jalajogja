@@ -543,24 +543,36 @@ docker compose restart postgres # database
 docker compose restart minio    # storage
 ```
 
-### Backup database
+### Backup — otomatis (Postgres + MinIO ke Google Drive)
+
+> Sejak 2026-08, backup harian sudah berjalan otomatis via crontab OS-level —
+> **tidak perlu dijalankan manual** kecuali untuk backup ad-hoc sebelum migrasi
+> berisiko. Lihat `scripts/backup-db.sh` (kepala file berisi penjelasan lengkap
+> kenapa whole-database dump format `-Fc`, bukan per-tenant, dan kenapa MinIO
+> di-backup lewat `mc mirror` bukan raw copy volume Docker).
 
 ```bash
-# Dump database
-docker compose exec postgres pg_dump -U jalajogja jalajogja > backup_$(date +%Y%m%d).sql
+# Jalankan manual (mis. backup ad-hoc sebelum migrasi):
+BACKUP_DIR=~/backups/jalajogja ./scripts/backup-db.sh
 
-# Restore (jika perlu)
-docker compose exec -T postgres psql -U jalajogja jalajogja < backup_20260515.sql
+# Restore — DESTRUKTIF, selalu manual dengan konfirmasi ketik ulang nama DB.
+# Lihat komentar di kepala scripts/restore-db.sh untuk cara restore SATU
+# tenant saja (tanpa menimpa tenant lain) memakai format dump -Fc yang sama.
+BACKUP_DIR=~/backups/jalajogja ./scripts/restore-db.sh
+BACKUP_DIR=~/backups/jalajogja ./scripts/restore-db.sh --from-remote   # ambil dulu dari Drive
+
+# Jadwal cron (sudah terpasang di VPS produksi, jam 2 pagi tiap hari):
+0 2 * * * BACKUP_DIR=/home/webane/backups/jalajogja /var/www/jalajogja/scripts/backup-db.sh >> /var/log/jalajogja-backup.log 2>&1
 ```
 
-### Backup MinIO data
+Setup sekali sebelum dipakai (rclone remote `gdrive:` + `mc` alias `jalajogja-minio`
++ `POSTGRES_PASSWORD` dari `.env`) — lihat komentar kepala `scripts/backup-db.sh`.
+Retensi default 30 hari, lokal maupun di Google Drive (`gdrive:backup-app/jalakarta/`).
 
-```bash
-# Data MinIO ada di Docker volume
-# Untuk backup, copy dari volume ke host
-docker run --rm -v jalajogja_minio_data:/data -v $(pwd):/backup ubuntu \
-  tar czf /backup/minio_backup_$(date +%Y%m%d).tar.gz /data
-```
+> **Catatan default `BACKUP_DIR`**: script default-nya `/var/backups/jalajogja`,
+> yang butuh akses root untuk dibuat. User VPS non-root (`webane`) WAJIB override
+> ke path di home directory (`~/backups/jalajogja`) seperti contoh di atas —
+> jangan andalkan default-nya begitu saja di VPS ini.
 
 ### Cek disk usage
 
