@@ -278,17 +278,27 @@ export default async function AcaraDetailPage({
 
         {/* Daftar Pendaftaran */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-sm font-semibold">Daftar Pendaftar</h2>
-            <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
-              <a href={`/api/events/${eventId}/export-participants?tenant=${slug}`}>
-                <Download className="h-3 w-3 mr-1" />
-                Export ke Excel
-              </a>
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
+                <a href={`/api/events/${eventId}/export-participants?tenant=${slug}`}>
+                  <Download className="h-3 w-3 mr-1" />
+                  Export ke Excel
+                </a>
+              </Button>
+              <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
+                <a href={`/api/events/${eventId}/export-participants?tenant=${slug}&all=1`}>
+                  <Download className="h-3 w-3 mr-1" />
+                  Export Semua Peserta
+                </a>
+              </Button>
+            </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-1">
-            Hanya peserta yang sudah dikonfirmasi/bayar (status Dikonfirmasi atau Hadir) yang diikutkan.
+            &ldquo;Export ke Excel&rdquo; hanya peserta yang sudah dikonfirmasi/bayar (status Dikonfirmasi
+            atau Hadir). &ldquo;Export Semua Peserta&rdquo; menyertakan semua status termasuk yang belum
+            bayar/dibatalkan, dengan kolom Status Pendaftaran &amp; Status Pembayaran untuk membedakannya.
           </p>
           <EventRegistrationList
             slug={slug}

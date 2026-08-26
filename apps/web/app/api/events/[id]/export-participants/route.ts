@@ -1,13 +1,15 @@
 export const dynamic = "force-dynamic";
-// GET /api/events/[id]/export-participants?tenant={slug}
-// Export peserta event (yang sudah confirmed/attended — lihat filter status di bawah) ke Excel.
-// Kolom sesuai urutan yang diminta admin: Nomor Stambuk, Nama Lengkap, Nomor Telepon, Nomor
-// WhatsApp, Alamat, Kabupaten, Kode Pos, Profesi/Pekerjaan, Angkatan, Jenis Kelamin, custom
-// field event (dinamis per event), Pembayaran, Tanggal Transfer, Cara Transfer.
+// GET /api/events/[id]/export-participants?tenant={slug}&all=1
+// Export peserta event ke Excel. Kolom sesuai urutan: No. Registrasi, Status Pendaftaran,
+// Nomor Stambuk, Nama Lengkap, Nomor Telepon, Nomor WhatsApp, Alamat, Kabupaten, Kode Pos,
+// Profesi/Pekerjaan, Angkatan, Jenis Kelamin, custom field event (dinamis per event),
+// Status Pembayaran, Total Dibayarkan, Kode Voucher, Tanggal Transfer, Cara Transfer.
 //
-// Filter peserta — HANYA yang sudah bayar (atau tiket gratis, yang trivially "lunas"):
-//   status IN ('confirmed', 'attended') — 'pending' (belum dikonfirmasi/belum bayar) dan
-//   'cancelled' TIDAK diikutkan. Konsisten dengan `isPaid` di event-registration-list.tsx.
+// Filter peserta — DUA MODE:
+//   - Default (tanpa ?all=1): HANYA status IN ('confirmed', 'attended') — konsisten dengan
+//     `isPaid` di event-registration-list.tsx.
+//   - `?all=1`: SEMUA registrasi tanpa filter status (termasuk 'pending' dan 'cancelled') —
+//     kolom "Status Pendaftaran" membedakan baris mana yang mana.
 //
 // Dua jalur invoice per registrasi (lihat acara/[id]/page.tsx untuk pola query yang sama):
 //   1. Alur lama (registerForEventAction): invoices.sourceType='event_registration',
@@ -15,9 +17,15 @@ export const dynamic = "force-dynamic";
 //   2. Alur cart (addEventTicketToCartAction, auto-create saat invoice lunas): invoice TIDAK
 //      direferensikan langsung dari registrasi — disimpan di
 //      registration.customFields.sourceInvoiceId (lihat billing/actions.ts).
-// "Pembayaran" = SUM seluruh payment berstatus 'paid' untuk invoice itu (mengakomodasi
-// cicilan — beberapa payment per invoice). "Tanggal Transfer"/"Cara Transfer" diambil dari
-// payment PALING BARU (by confirmedAt) sebagai representasi tunggal per baris Excel.
+//
+// "Status Pembayaran" (Lunas/Sebagian/Belum Bayar) dan "Total Dibayarkan" diturunkan LANGSUNG
+// dari invoices.status + invoices.paidAmount (running total otentik, di-update atomik tiap
+// konfirmasi) — BUKAN dijumlah manual dari baris payments, karena sebagian payment lama bisa
+// saja metadatanya (tanggal/metode) kosong dari alur konfirmasi yang belum rapi dulu. Untuk
+// "Belum Bayar", Total Dibayarkan sengaja DIKOSONGKAN (bukan 0) supaya mudah di-SUM/filter.
+// "Kode Voucher" dari invoices.voucherCode — kosong berarti bayar mandiri tanpa voucher.
+// "Tanggal Transfer"/"Cara Transfer" tetap diambil dari payment PALING BARU (by confirmedAt,
+// status='paid') sebagai representasi tunggal per baris — boleh kosong jika tidak ada data.
 
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
@@ -31,6 +39,10 @@ import { displayPhone } from "@/lib/phone";
 import { formatFieldValue, type CustomFormField } from "@/lib/event-custom-form";
 
 const GENDER_LABEL: Record<string, string> = { male: "Laki-laki", female: "Perempuan" };
+
+const REG_STATUS_LABEL: Record<string, string> = {
+  pending: "Menunggu", confirmed: "Dikonfirmasi", cancelled: "Dibatalkan", attended: "Hadir",
+};
 
 const METHOD_LABEL: Record<string, string> = {
   cash: "Tunai", transfer: "Transfer Bank", qris: "QRIS",
@@ -51,6 +63,7 @@ export async function GET(
   const { id: eventId } = await params;
   const slug = req.nextUrl.searchParams.get("tenant") ?? req.nextUrl.searchParams.get("slug");
   if (!slug) return NextResponse.json({ error: "Parameter tenant wajib diisi." }, { status: 400 });
+  const includeAll = req.nextUrl.searchParams.get("all") === "1";
 
   const access = await getTenantAccess(slug);
   if (!access) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -80,6 +93,7 @@ export async function GET(
     .select({
       id:                 schema.eventRegistrations.id,
       registrationNumber: schema.eventRegistrations.registrationNumber,
+      status:             schema.eventRegistrations.status,
       ticketId:           schema.eventRegistrations.ticketId,
       memberId:           schema.eventRegistrations.memberId,
       attendeeName:       schema.eventRegistrations.attendeeName,
@@ -87,14 +101,22 @@ export async function GET(
       customFieldsData:   schema.eventRegistrations.customFields,
     })
     .from(schema.eventRegistrations)
-    .where(and(
-      eq(schema.eventRegistrations.eventId, eventId),
-      inArray(schema.eventRegistrations.status, ["confirmed", "attended"]),
-    ))
+    .where(
+      includeAll
+        ? eq(schema.eventRegistrations.eventId, eventId)
+        : and(
+            eq(schema.eventRegistrations.eventId, eventId),
+            inArray(schema.eventRegistrations.status, ["confirmed", "attended"]),
+          )
+    )
     .orderBy(schema.eventRegistrations.createdAt);
 
   if (regs.length === 0) {
-    return NextResponse.json({ error: "Belum ada peserta yang sudah bayar/dikonfirmasi untuk event ini." }, { status: 400 });
+    return NextResponse.json({
+      error: includeAll
+        ? "Belum ada peserta yang mendaftar untuk event ini."
+        : "Belum ada peserta yang sudah bayar/dikonfirmasi untuk event ini.",
+    }, { status: 400 });
   }
 
   // ── Resolve invoice per registrasi (2 jalur, lihat komentar file) ──────────────
@@ -141,6 +163,21 @@ export async function GET(
     arr.push(p);
     paymentsByInvoice.set(p.sourceId, arr);
   }
+
+  // Status pembayaran otentik + kode voucher — langsung dari invoices, bukan dijumlah
+  // manual dari payments (lihat komentar file di atas).
+  const invoiceRows = invoiceIds.length > 0
+    ? await db
+        .select({
+          id:          schema.invoices.id,
+          status:      schema.invoices.status,
+          paidAmount:  schema.invoices.paidAmount,
+          voucherCode: schema.invoices.voucherCode,
+        })
+        .from(schema.invoices)
+        .where(inArray(schema.invoices.id, invoiceIds))
+    : [];
+  const invoiceMap = new Map(invoiceRows.map((i) => [i.id, i]));
 
   // ── Batch fetch data anggota (public schema) ───────────────────────────────────
   const memberIds = [...new Set(regs.map((r) => r.memberId).filter((x): x is string => !!x))];
@@ -189,10 +226,11 @@ export async function GET(
 
   // ── Susun baris Excel ────────────────────────────────────────────────────────
   const headers = [
-    "No. Registrasi", "Nomor Stambuk", "Nama Lengkap", "Nomor Telepon", "Nomor WhatsApp",
-    "Alamat", "Kabupaten", "Kode Pos", "Profesi/Pekerjaan", "Angkatan", "Jenis Kelamin",
+    "No. Registrasi", "Status Pendaftaran", "Nomor Stambuk", "Nama Lengkap", "Nomor Telepon",
+    "Nomor WhatsApp", "Alamat", "Kabupaten", "Kode Pos", "Profesi/Pekerjaan", "Angkatan",
+    "Jenis Kelamin",
     ...customFields.map((f) => f.label),
-    "Pembayaran", "Tanggal Transfer", "Cara Transfer",
+    "Status Pembayaran", "Total Dibayarkan", "Kode Voucher", "Tanggal Transfer", "Cara Transfer",
   ];
 
   const dataRows = regs.map((r) => {
@@ -214,12 +252,30 @@ export async function GET(
     }
 
     const invoiceId = invoiceIdByReg.get(r.id);
+    const invoice   = invoiceId ? invoiceMap.get(invoiceId) : undefined;
     const payments  = invoiceId ? (paymentsByInvoice.get(invoiceId) ?? []) : [];
-    const totalPaid = payments.reduce((sum, p) => sum + parseFloat(String(p.amount)), 0);
     const latestPayment = payments.length > 0
       ? payments.reduce((a, b) =>
           new Date(b.confirmedAt ?? 0).getTime() > new Date(a.confirmedAt ?? 0).getTime() ? b : a)
       : null;
+
+    // Status Pembayaran + Total Dibayarkan — dari invoices.status/paidAmount langsung
+    // (lihat komentar file). "Belum Bayar" → total DIKOSONGKAN (bukan 0), sesuai permintaan.
+    let paymentStatusLabel: string;
+    let totalDibayarkan: number | string;
+    if (isFree) {
+      paymentStatusLabel = "Lunas";
+      totalDibayarkan    = 0;
+    } else if (invoice?.status === "paid") {
+      paymentStatusLabel = "Lunas";
+      totalDibayarkan    = parseFloat(String(invoice.paidAmount));
+    } else if (invoice?.status === "partial") {
+      paymentStatusLabel = "Sebagian";
+      totalDibayarkan    = parseFloat(String(invoice.paidAmount));
+    } else {
+      paymentStatusLabel = "Belum Bayar";
+      totalDibayarkan    = "";
+    }
 
     const customFieldsData = r.customFieldsData as Record<string, unknown> | null;
     const customFieldValues = customFields.map((f) => {
@@ -229,6 +285,7 @@ export async function GET(
 
     return [
       r.registrationNumber,
+      REG_STATUS_LABEL[r.status] ?? r.status,
       member?.stambukNumber ?? "",
       r.attendeeName,
       contact?.phone ? displayPhone(contact.phone) : (r.attendeePhone ? displayPhone(r.attendeePhone) : ""),
@@ -240,7 +297,9 @@ export async function GET(
       angkatan,
       member?.gender ? (GENDER_LABEL[member.gender] ?? "") : "",
       ...customFieldValues,
-      isFree ? 0 : totalPaid,
+      paymentStatusLabel,
+      totalDibayarkan,
+      invoice?.voucherCode ?? "",
       isFree ? "—" : formatDateSimple(latestPayment?.transferDate ?? null),
       isFree ? "Gratis" : (latestPayment ? (METHOD_LABEL[latestPayment.method] ?? latestPayment.method) : ""),
     ];
@@ -252,11 +311,12 @@ export async function GET(
   const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 
   const safeName = event.title.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
+  const fileSuffix = includeAll ? "-semua" : "";
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="peserta-${safeName}.xlsx"`,
+      "Content-Disposition": `attachment; filename="peserta-${safeName}${fileSuffix}.xlsx"`,
     },
   });
 }
