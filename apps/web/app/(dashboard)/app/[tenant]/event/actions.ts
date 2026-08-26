@@ -1319,6 +1319,14 @@ export type UpdateRegistrationData = {
   customFieldAnswers?:  Record<string, string>;
 };
 
+// Keys di dalam event_registrations.customFields yang DIKELOLA SISTEM (bukan jawaban form
+// custom field yang diedit admin lewat dialog ini) — WAJIB dipertahankan saat admin mengedit
+// data peserta. `sourceInvoiceId` adalah satu-satunya penghubung registrasi tiket dari cart ke
+// invoice pelunasannya (bukan foreign key kolom, murni key JSONB) — kalau ditimpa/hilang, invoice
+// yang sudah lunas tidak lagi terhubung ke registrasinya (status pembayaran tampil salah di
+// admin/export meski pendaftaran sudah confirmed). Lihat lib/event-registration-sync.server.ts.
+const RESERVED_CUSTOM_FIELD_KEYS = ["sourceInvoiceId"] as const;
+
 export async function updateRegistrationDataAction(
   slug: string,
   registrationId: string,
@@ -1335,12 +1343,25 @@ export async function updateRegistrationDataAction(
   const { db, schema } = createTenantDb(slug);
 
   const [reg] = await db
-    .select({ id: schema.eventRegistrations.id, eventId: schema.eventRegistrations.eventId })
+    .select({
+      id:           schema.eventRegistrations.id,
+      eventId:      schema.eventRegistrations.eventId,
+      customFields: schema.eventRegistrations.customFields,
+    })
     .from(schema.eventRegistrations)
     .where(eq(schema.eventRegistrations.id, registrationId))
     .limit(1);
 
   if (!reg) return { success: false, error: "Registrasi tidak ditemukan." };
+
+  // MERGE, bukan replace — dulu customFields ditimpa total dengan customFieldAnswers, diam-diam
+  // menghapus sourceInvoiceId setiap kali admin edit nama/HP/email peserta di dialog ini.
+  const existingFields = (reg.customFields ?? {}) as Record<string, unknown>;
+  const preservedFields: Record<string, unknown> = {};
+  for (const key of RESERVED_CUSTOM_FIELD_KEYS) {
+    if (existingFields[key] !== undefined) preservedFields[key] = existingFields[key];
+  }
+  const mergedFields = { ...preservedFields, ...(data.customFieldAnswers ?? {}) };
 
   try {
     await db
@@ -1349,10 +1370,7 @@ export async function updateRegistrationDataAction(
         attendeeName:  data.attendeeName.trim(),
         attendeePhone: data.attendeePhone?.trim() ? normalizePhone(data.attendeePhone) : null,
         attendeeEmail: data.attendeeEmail?.trim().toLowerCase() || null,
-        customFields:
-          data.customFieldAnswers && Object.keys(data.customFieldAnswers).length > 0
-            ? data.customFieldAnswers
-            : null,
+        customFields:  Object.keys(mergedFields).length > 0 ? mergedFields : null,
         updatedAt: new Date(),
       })
       .where(eq(schema.eventRegistrations.id, registrationId));

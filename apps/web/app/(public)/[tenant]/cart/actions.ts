@@ -15,6 +15,7 @@ import { getTokoSettings } from "@/lib/toko-settings";
 import { auth } from "@/lib/auth";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, anchorTodayUtc, todayInTz, formatInTz, tzLabel } from "@/lib/tenant-timezone.server";
+import { createEventRegistrationsFromInvoiceTickets } from "@/lib/event-registration-sync.server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,44 +126,6 @@ export type CheckoutShippingData = {
 
 const COOKIE_NAME = "cart_session";
 const CART_TTL_HOURS = 24;
-
-// Sama dengan generateRegistrationNumber di event/actions.ts / generateEventRegNumber di
-// finance/billing/actions.ts — di-duplikasi agar cart tidak bergantung ke modul lain (pola
-// yang sama sudah dipakai berulang di project ini). Dipakai HANYA untuk checkout Rp 0 (voucher
-// 100%) yang auto-lunas tiket event tanpa lewat confirmInvoicePaymentAction.
-async function generateEventRegNumber(
-  tenantDb: ReturnType<typeof createTenantDb>,
-): Promise<string> {
-  const { db: tdb, schema } = tenantDb;
-  const now    = new Date();
-  const year   = now.getFullYear();
-  const month  = now.getMonth() + 1;
-  const yyyymm = `${year}${String(month).padStart(2, "0")}`;
-
-  const nextNumber = await tdb.transaction(async (tx) => {
-    const rows = await tx
-      .select()
-      .from(schema.eventRegistrationSequences)
-      .where(
-        sql`${schema.eventRegistrationSequences.year}  = ${year}
-        AND ${schema.eventRegistrationSequences.month} = ${month}
-        FOR UPDATE`
-      );
-
-    if (rows.length === 0) {
-      await tx.insert(schema.eventRegistrationSequences).values({ year, month, counter: 1 });
-      return 1;
-    }
-    const next = rows[0].counter + 1;
-    await tx
-      .update(schema.eventRegistrationSequences)
-      .set({ counter: next })
-      .where(eq(schema.eventRegistrationSequences.id, rows[0].id));
-    return next;
-  });
-
-  return `EVT-${yyyymm}-${String(nextNumber).padStart(5, "0")}`;
-}
 
 function formatEventDateWib(date: Date | null, timezone: string): string {
   if (!date) return "-";
@@ -899,47 +862,15 @@ export async function checkoutAction(
             .where(eq(schema.campaigns.id, cId));
         }
 
-        // Auto-create event_registrations dari tiket — attendee data ada di item.notes (JSON),
-        // pola sama dengan parsing invoiceItems.description di confirmInvoicePaymentAction.
-        for (const item of resolvedItems) {
-          if (item.itemType !== "ticket" || !item.itemId) continue;
-
-          let attendeeName  = item.name ?? "Peserta";
-          let attendeePhone: string | null = null;
-          let attendeeEmail: string | null = null;
-          let extraFields:   Record<string, unknown> | null = null;
-          try {
-            const p = JSON.parse(item.notes ?? "{}") as Record<string, unknown>;
-            attendeeName  = String(p.attendeeName ?? item.name ?? "Peserta").trim();
-            attendeePhone = p.attendeePhone ? String(p.attendeePhone) : null;
-            attendeeEmail = p.attendeeEmail ? String(p.attendeeEmail) : null;
-            extraFields   = p.customFieldAnswers ? (p.customFieldAnswers as Record<string, unknown>) : null;
-          } catch { /* gunakan default */ }
-
-          const [ticket] = await tx
-            .select({ eventId: schema.eventTickets.eventId })
-            .from(schema.eventTickets)
-            .where(eq(schema.eventTickets.id, item.itemId))
-            .limit(1);
-          if (!ticket?.eventId) continue;
-
-          const regNumber = await generateEventRegNumber(tenantDb);
-
-          await tx.insert(schema.eventRegistrations).values({
-            eventId:            ticket.eventId,
-            ticketId:           item.itemId,
-            memberId:           memberId ?? null,
-            profileId:          profileId ?? null,
-            attendeeName,
-            attendeePhone,
-            attendeeEmail,
-            registrationNumber: regNumber,
-            status:             "confirmed",
-            customFields:       { sourceInvoiceId: invoice.id, ...(extraFields ?? {}) },
-          });
-
-          newEventRegs.push({ eventId: ticket.eventId, regNumber, attendeeName, attendeePhone });
-        }
+        // Auto-create event_registrations dari tiket — SATU-SATUNYA implementasi, dipakai
+        // bersama oleh checkoutAction (di sini) DAN confirmInvoicePaymentAction/
+        // verifySubmittedPaymentAction (finance/billing/actions.ts). JANGAN tulis ulang logic
+        // ini di sini — invoice_items sudah ter-insert di atas (description = item.notes),
+        // helper bersama membaca langsung dari situ. Lihat lib/event-registration-sync.server.ts.
+        const ticketResult = await createEventRegistrationsFromInvoiceTickets(
+          tx, tenantDb, invoice.id, memberId ?? null, profileId ?? null,
+        );
+        newEventRegs.push(...ticketResult.created);
       }
 
       // Hapus cart setelah checkout berhasil — masih dalam lock yang sama
