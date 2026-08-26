@@ -40,8 +40,9 @@ app/(dashboard)/[tenant]/toko/
 ├── layout.tsx          → toko shell: TokoNav (sub-nav kiri) + slot konten kanan
 ├── page.tsx            → redirect ke /toko/produk
 ├── produk/
-│   ├── page.tsx        → list produk: grid 5 kolom + filter status + search + pagination
+│   ├── page.tsx        → list produk: TABEL (thumbnail+nama+harga+stok+tipe+status+aksi) + filter status + search + pagination
 │   ├── new/page.tsx    → pre-create draft → redirect ke edit
+│   ├── [id]/page.tsx   → detail produk: statistik pembeli + tabel daftar pembeli + export Excel
 │   └── [id]/edit/page.tsx → full editor: ProductForm (Tiptap + MediaPicker + SeoPanel)
 ├── pesanan/
 │   ├── page.tsx        → list pesanan: tabel + filter status + search + pagination
@@ -60,9 +61,17 @@ components/toko/
 ├── toko-nav.tsx              → sub-nav kiri: Dashboard, Produk, Pesanan, Kategori
 ├── product-form.tsx          → full editor produk (Tiptap + MediaPicker + SeoPanel + sidebar)
 ├── product-list-client.tsx   → tombol pre-create produk baru
+├── product-table-client.tsx  → tabel list produk (thumbnail, harga, stok, tipe, status, aksi Eye/Pencil/Trash2)
+├── product-buyer-list.tsx    → tabel "Daftar Pembeli" di halaman detail produk (search client-side)
 ├── order-create-client.tsx   → UI keranjang pesanan manual admin
 ├── order-detail-client.tsx   → OrderActions + AddPaymentForm (status transitions)
 └── category-manage-client.tsx → CRUD kategori inline
+```
+
+```
+lib/
+├── product-buyers.server.ts     → resolveProductBuyers() — query "siapa membeli produk X", shared oleh halaman detail + export Excel
+└── format-shipping-method.ts    → formatShippingMethod() — label "Ambil Sendiri" / "JNE REG (COD)" dst, dipakai lintas modul
 ```
 
 ---
@@ -1102,6 +1111,7 @@ Phase V — Produk Variasi
 | Phase P4 — detail variasi picker + add to cart variasi | ✅ Selesai |
 | Phase P5 — SEO metadata per halaman | ✅ Selesai |
 | **Registry Desain Kartu Arsip** (§ di bawah) | ✅ Selesai |
+| **Admin: List Produk Tabel + Detail Pembeli + Export Excel** (§ di bawah) | ✅ Selesai (belum di-deploy VPS) |
 
 ---
 
@@ -1224,3 +1234,120 @@ pola sama persis `campaigns-design-1.tsx`).
 punya bug pre-existing sama persis — tidak pernah destructure `variant`/`onVariantChange`, admin
 tidak pernah bisa pilih "Showcase"/"Carousel Produk" dari UI. Difix bersamaan (tambah "Design
 Layout" picker, pola identik `CampaignsEditor`/`EventsEditor`).
+
+---
+
+## Admin: List Produk Tabel + Detail Pembeli per Produk + Export Excel
+
+> **Status: SELESAI — diimplementasikan 2026-08-26.** Diminta user via 5 poin eksplisit:
+> (1) `/toko/produk` seragamkan layout dengan halaman admin lain (rujukan: Event) — tabel,
+> bukan card-grid; (2) foto produk di kiri tiap baris; (3) icon "lihat" ke halaman yang
+> menampilkan SEMUA pembeli produk itu (persis pola Eye icon di Event admin); (4) icon
+> edit+hapus; (5) export daftar pembeli per produk ke Excel — termasuk jumlah, varian/ukuran,
+> cara pengiriman (karena satu orang bisa beli >1×), mendukung mode "sudah bayar" maupun
+> "semua pembeli termasuk yang belum bayar".
+
+### Keputusan yang dikunci
+
+- **`/toko/produk` jadi tabel**, dispatch dari komponen client baru `ProductTable` — struktur
+  kolom dan pola aksi (Eye/Pencil/Trash2, `useTransition` + `confirm()` + optimistic removal)
+  disalin langsung dari `EventTable` (`components/event/event-list-client.tsx`) supaya konsisten
+  dengan modul admin lain, sesuai instruksi eksplisit user "seperti event".
+- **Satu resolver query dipakai bersama** oleh halaman detail dan route export
+  (`resolveProductBuyers()`, `lib/product-buyers.server.ts`) — pola yang sama persis dengan
+  `resolveVariantPriceRanges()` untuk harga variasi: mencegah UI dan file export drift satu
+  sama lain karena keduanya membaca logic yang identik, bukan dua implementasi terpisah.
+- **Polimorfisme `itemId` produk variasi ditangani eksplisit** — sesuai catatan arsitektur di
+  `packages/db/src/helpers/resolve-product-item.ts`: untuk produk `simple`, `invoice_items.
+  itemId = products.id`; untuk produk `variable`, `itemId = product_variations.id` (varian
+  spesifik yang dibeli), BUKAN id produk induk. `resolveProductBuyers()` fetch semua variasi
+  milik produk lebih dulu, lalu query `invoice_items.itemId IN [product.id, ...semua
+  variation.id]` — tanpa ini, daftar pembeli produk bervariasi akan selalu kosong.
+- **Status pembayaran diturunkan dari `invoices.status`/`paidAmount` langsung** (bukan
+  dijumlah manual dari `payments`) — persis pola yang sudah dikunci di fitur export peserta
+  event (`export-participants/route.ts`). Tiga label: `Lunas` (paid, `totalDibayarkan =
+  paidAmount`), `Sebagian` (partial, `totalDibayarkan = paidAmount`), `Belum Bayar` (selain
+  itu, `totalDibayarkan = ""` — dikosongkan, BUKAN `0`, supaya tidak disalahartikan sebagai
+  "sudah bayar Rp 0").
+- **`totalDibayarkan` scoped ke INVOICE, bukan per-baris item** — kalau satu invoice punya
+  >1 baris produk yang sama (atau produk berbeda), tiap baris pembeli menampilkan angka
+  total-invoice yang sama. Ini representasi "berapa yang sudah masuk untuk invoice ini",
+  didokumentasikan eksplisit sebagai comment di `product-buyers.server.ts` supaya admin (dan
+  developer berikutnya) tidak menjumlahkan kolom ini lintas baris kalau invoice-nya sama.
+- **Dua mode export, sama pola dengan export peserta event**: default (`GET /api/products/
+  [id]/export-buyers?tenant=...`) hanya `invoice.status === "paid"`; `?all=1` menyertakan
+  semua status. Kalau hasil kosong, response 400 dengan pesan yang beda per mode ("Belum ada
+  pembelian produk ini yang sudah lunas" vs "Belum ada yang membeli produk ini").
+- **Shipping label per baris** (`formatShippingMethod()`, `lib/format-shipping-method.ts`,
+  helper murni baru) — `"Ambil Sendiri"` untuk `deliveryMethod === "pickup"`, atau
+  `"{KURIR} {LAYANAN}"` (+ `" (COD)"` kalau `paymentMethod === "cod"`) untuk kurir. Baris
+  shipping dicocokkan dari `invoice_shipping_lines` via composite key `${invoiceId}|
+  ${sellerType}|${sellerId ?? ""}` — sama seller-group matching yang sudah dipakai checkout
+  publik untuk invoice campur tenant+mitra.
+- **Harga di list tabel mendukung rentang untuk produk variasi** — reuse
+  `resolveVariantPriceRanges()` (sudah ada, sebelumnya cuma dipakai halaman publik) untuk
+  tampilkan `"Rp 50.000 – Rp 75.000"` alih-alih satu angka `products.price` yang salah untuk
+  produk `productType === "variable"`.
+
+### File baru
+
+```
+apps/web/lib/format-shipping-method.ts
+  → formatShippingMethod(line): string — pure, dipakai list detail pembeli + export Excel
+
+apps/web/lib/product-buyers.server.ts
+  → import "server-only". resolveProductBuyers(tenantClient, productId, {includeAll}):
+    { product, rows: ProductBuyerRow[] } — satu-satunya query "siapa pembeli produk ini"
+
+apps/web/components/toko/product-table-client.tsx
+  → ProductTable — tabel list /toko/produk, pola disalin dari EventTable
+
+apps/web/components/toko/product-buyer-list.tsx
+  → ProductBuyerList — tabel + search client-side di halaman detail produk
+
+apps/web/app/(dashboard)/app/[tenant]/toko/produk/[id]/page.tsx
+  → halaman detail produk: header (foto+nama+SKU+status+harga+stok+Edit), 4 stat box
+    (Total Pembelian/Lunas/Sebagian/Belum Bayar), 2 tombol export, <ProductBuyerList>
+
+apps/web/app/api/products/[id]/export-buyers/route.ts
+  → GET /api/products/{id}/export-buyers?tenant=&all=1 — auth getTenantAccess()+
+    hasReadAccess(...,"toko") wajib (standalone API route, bukan dilindungi layout guard),
+    export XLSX kolom: No. Invoice, Nama Pembeli, Telepon, Jumlah, Varian/Ukuran,
+    Harga Satuan, Subtotal, Cara Pengiriman, Status Pembayaran, Total Dibayarkan, Tanggal Pesan
+```
+
+### File yang diubah
+
+```
+apps/web/app/(dashboard)/app/[tenant]/toko/produk/page.tsx
+  → ditulis ulang: card-grid → <ProductTable>. Tambah kolom sku+productType ke SELECT.
+    Hitung priceLabel via resolveVariantPriceRanges() untuk produk variable.
+  → drive-by fix: buildUrl() dan search <form action> sebelumnya kembalikan
+    `/${slug}/toko/produk?...` (kurang prefix /app) — sisa dari migrasi URL admin lama yang
+    terlewat di file ini. Sekarang benar `/app/${slug}/toko/produk?...`.
+  → dead import `eq` (drizzle-orm) yang sudah tidak dipakai dihapus.
+```
+
+### Gap yang ditemukan, SENGAJA tidak diperbaiki (di luar scope permintaan)
+
+`deleteProductAction` (`toko/actions.ts`) mengecek "pesanan aktif" via JOIN ke tabel LEGACY
+`orders`/`order_items` (`WHERE orders.status != 'cancelled'`) — bukan `invoice_items`. Sesuai
+lesson lama ("migrasi admin order → invoice-only flow", modul ini sudah lama tidak lagi
+menulis ke `orders`/`order_items` sama sekali), guard ini secara efektif mati: produk yang
+sedang dipesan lewat invoice/cart universal tidak pernah tertangkap, admin bisa hapus produk
+yang masih ada transaksi aktif. Ditemukan saat audit fungsi ini untuk memverifikasi tombol
+Hapus baru, TAPI tidak diperbaiki — perbaikannya butuh keputusan terpisah (apakah cukup ganti
+sumber query ke `invoice_items`, atau soft-delete/arsipkan produk yang punya histori transaksi
+alih-alih hard block) yang tidak diminta di task ini.
+
+### Verifikasi
+
+`bun x tsc --noEmit` 0 error. Build production genuine (`bun run build --filter=@jalajogja/web`,
+dev server dimatikan + `.next` dibersihkan sebelum build, `Cached: 0 cached, 1 total`, 47.3
+detik) — route baru `/app/[tenant]/toko/produk/[id]` (5.64 kB) dan
+`/api/products/[id]/export-buyers` (dikonfirmasi manifest-nya ter-compile di
+`.next/server/app/api/products/`) muncul tanpa error di build output. **Belum di-commit/push,
+belum dijalankan di VPS, belum diverifikasi visual di browser** — perlu dicoba: buka
+`/toko/produk` (tabel+thumbnail), klik icon mata ke satu produk (statistik+daftar pembeli),
+klik kedua tombol export (mode lunas-saja vs semua), dan coba Hapus di list (perhatikan gap
+`deleteProductAction` di atas — hapus produk yang masih ada invoice aktif TIDAK akan diblokir).
