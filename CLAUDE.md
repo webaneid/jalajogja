@@ -17499,8 +17499,85 @@ sukses end-to-end (dump Postgres + arsip MinIO sama-sama muncul di
 sesi ini — itu secret lama dari cron aplikasi yang sudah ada jauh sebelum pekerjaan
 hari ini, tidak pernah disentuh/digenerate ulang.
 
+### [2026-08-28] Bug: Notifikasi WA Tiket Berbayar Menyesatkan — "Diterima" Tanpa Info Bayar
+
+User laporkan (tenant `pc-ikpm-jogjakarta`, event dengan tiket berbayar + Toggle B "Wajib
+Terdaftar (Umum)"): daftar tiket, belum bayar, tapi merasa "tiba-tiba sudah confirm ikut" —
+bukan invoice yang dikirim sebagai notifikasi. Diklarifikasi mid-turn oleh user sendiri:
+*"jadi yg bermasalah ini hanya notifikasi saja, harusnya notifikasi yg dikirim invoice dulu
+sebelum dikonfirmasi..."*
+
+**Verifikasi data state — TIDAK ada bug korektnes**: `registerForEventAction` sudah benar
+sejak awal — `regStatus = isGratis && !event.requireApproval ? "confirmed" : "pending"`, jadi
+tiket BERBAYAR selalu `status="pending"` sampai pembayaran benar-benar dikonfirmasi. Front-end
+web (`event-register-form.tsx`) juga sudah benar — untuk `!success.isPaid` menampilkan
+"Pendaftaran Diterima!" + kotak amber "Selesaikan Pembayaran" dengan total tagihan, BUKAN
+"confirmed". Jadi state DB dan UI website sudah akurat — murni masalah notifikasi WA.
+
+**Root cause**: `registerForEventAction` mengirim WA `event_registered` ("Pendaftaran Anda...
+telah diterima") SECARA UNCONDITIONAL — untuk tiket gratis MAUPUN berbayar, terlepas status
+pembayaran. Ini keputusan lama yang sudah didokumentasikan (lesson "[2026-07-15] Fase 5 —
+Event": *"tiket berbayar via alur direct tidak dapat invoice_created sama sekali,
+event_registered menutup gap itu"*) — TAPI templatenya (`WA_TEMPLATE_DEFAULTS.event_registered`)
+tidak pernah disesuaikan untuk mengomunikasikan "masih perlu bayar" — nol info nominal, nol
+link invoice, nol jatuh tempo. Diverifikasi via grep: `createLinkedInvoice()` (packages/db)
+TIDAK PERNAH mengirim notifikasi apa pun (tidak bisa, cross-package boundary) — jadi untuk alur
+direct/legacy (tanpa cart, `hasLinkedItems=false`), customer HANYA menerima "pendaftaran
+diterima" tanpa pernah menerima info tagihan sama sekali via WA.
+
+**Gap kedua ditemukan sekaligus**: `confirmEventInvoicePaymentAction` (`event/actions.ts`,
+dipanggil admin saat verifikasi bukti bayar tiket via invoice) TIDAK PERNAH mengirim notifikasi
+`payment_confirmed` — beda dari fungsi sejenis di `finance/billing/actions.ts` yang sudah benar
+kirim ini. Kalau hanya fix pertama dieksekusi tanpa ini, customer akan dapat notifikasi invoice
+tapi lalu diam total saat pembayarannya benar-benar dikonfirmasi.
+
+**Fix — 2 titik, pola disalin persis dari `cart/actions.ts`'s `checkoutAction`**:
+1. `registerForEventAction` — untuk tiket berbayar (`!isGratis`), notifikasi yang dikirim
+   SEKARANG `invoice_created` (nominal `total+uniqueCode`, `dueDate`, `invoiceUrl` ke
+   `/invoice/{invoiceId}`) — BUKAN `event_registered` lagi. `event_registered` HANYA dikirim
+   untuk tiket gratis (`isGratis`), di mana registrasi memang langsung final di titik itu.
+2. `confirmEventInvoicePaymentAction` — ditambah `notifyWa({event:"payment_confirmed"})`
+   setelah settlement, digate via object-holder `settlementInfo.newStatus !== ""` (pola
+   "object holder, bukan `let` union-reassignment" yang sudah dikunci sebagai lesson lama —
+   `let` yang di-reassign di dalam closure `db.transaction()` menyempit jadi `never` saat
+   diakses di luar) — supaya notifikasi TIDAK terkirim kalau transaction cuma lolos guard
+   race-condition kosong tanpa benar-benar melakukan apa pun.
+
+**`createLinkedInvoice()` (`packages/db/src/helpers/billing.ts`) diperluas return-nya** —
+tambah `total` dan `dueDate` (sebelumnya cuma `{invoiceId, invoiceNumber, uniqueCode}`) supaya
+`registerForEventAction` bisa membangun notifikasi tanpa reimplementasi/query ulang. Backward
+compatible — dicek grep, hanya 2 caller (`event/actions.ts` yang destructure, `donasi/
+actions.ts` yang tidak destructure sama sekali) — nol breaking change.
+
+**Confirmed dead code, TIDAK disentuh**: `confirmRegistrationPaymentAction` (jalur legacy
+`payments.sourceType='event_registration'`) — grep `insert(schema.payments)` di seluruh app
+menunjukkan NOL titik yang pernah insert payment dengan sourceType itu lagi sejak
+`registerForEventAction` direfactor pakai `createLinkedInvoice` (yang selalu bikin payment
+`sourceType='invoice'`) — fungsi ini sudah unreachable dari UI manapun, di luar scope fix ini.
+
+`tsc --noEmit` 0 error kedua package (`apps/web`+`packages/db`) + `bun run build
+--filter=@jalajogja/web` genuine sukses (dev server dimatikan+`.next` dibersihkan+direstart,
+`Cached: 0 cached, 1 total`, 47.6s). Nol migrasi DB (murni perubahan kode aplikasi). **Belum
+di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi end-to-end dengan WA
+sungguhan** — user perlu coba daftar tiket berbayar baru di tenant manapun, konfirmasi WA yang
+masuk sekarang bilang "Invoice Baru" dengan link+nominal (bukan "Pendaftaran Diterima" tanpa
+info bayar), lalu konfirmasi pembayarannya via `/finance/event/acara/{id}` untuk cek WA
+"Pembayaran Dikonfirmasi" terkirim.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Enkripsi NIK at-rest + rate limit OTP/login + backup otomatis
+- Terakhir dikerjakan: **Bug notifikasi WA tiket berbayar menyesatkan** — lihat lesson
+  `[2026-08-28]` "Bug: Notifikasi WA Tiket Berbayar Menyesatkan" di atas. User laporkan tiket
+  berbayar terasa "langsung confirm" meski belum bayar — root cause TERNYATA murni notifikasi
+  WA (`event_registered` dikirim unconditional untuk tiket berbayar, tanpa info tagihan; state
+  DB dan UI website sudah benar sejak awal). Fix: `registerForEventAction` kirim `invoice_
+  created` (bukan `event_registered`) untuk tiket berbayar; `confirmEventInvoicePaymentAction`
+  ditambah notifikasi `payment_confirmed` yang sebelumnya tidak ada sama sekali.
+  `createLinkedInvoice()` diperluas return-nya (`total`+`dueDate`, backward compatible). `tsc`
+  0 error kedua package + build genuine sukses. **Belum di-commit/push ke git, belum dijalankan
+  di VPS, belum diverifikasi end-to-end dengan WA sungguhan** — user perlu coba daftar tiket
+  berbayar baru dan konfirmasi WA yang masuk sekarang benar (invoice dulu, baru konfirmasi
+  setelah admin verifikasi bayar).
+- Sesi sebelumnya: **Enkripsi NIK at-rest + rate limit OTP/login + backup otomatis
   Postgres+MinIO ke Google Drive** — lihat lesson `[2026-08-26]` "Enkripsi NIK At-Rest
   + Rate Limit OTP/Login + Backup Otomatis..." di atas untuk detail lengkap. Status:
   **SELESAI SEPENUHNYA DAN SUDAH DI-DEPLOY** — migration `0062` + skrip

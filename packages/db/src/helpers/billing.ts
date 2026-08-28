@@ -231,7 +231,7 @@ export async function findEligibleInstallmentPlan(
 export async function createLinkedInvoice(
   tenantDb: TenantDb,
   input: CreateLinkedInvoiceInput
-): Promise<{ invoiceId: string; invoiceNumber: string; uniqueCode: number }> {
+): Promise<{ invoiceId: string; invoiceNumber: string; uniqueCode: number; total: number; dueDate: string }> {
   const { db, schema } = tenantDb;
 
   const invoiceNumber = await generateFinancialNumber(tenantDb, "invoice");
@@ -293,7 +293,7 @@ export async function createLinkedInvoice(
     );
   }
 
-  return { invoiceId: invoice.id, invoiceNumber, uniqueCode };
+  return { invoiceId: invoice.id, invoiceNumber, uniqueCode, total, dueDate };
 }
 
 // ─── syncInvoicePayment ───────────────────────────────────────────────────────

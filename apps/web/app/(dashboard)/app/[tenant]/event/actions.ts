@@ -9,7 +9,7 @@ import { auth }           from "@/lib/auth";
 import { headers, cookies } from "next/headers";
 import { normalizePhone } from "@/lib/phone";
 import type { CustomFormField } from "@/lib/event-custom-form";
-import { notifyWa, waAppUrl } from "@/lib/wa-notify";
+import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, formatInTz, tzLabel, todayInTz } from "@/lib/tenant-timezone.server";
 import { checkGeneralRegistrationEligibility } from "@/lib/member-eligibility";
 
@@ -752,9 +752,64 @@ export async function registerForEventAction(
         .returning({ id: schema.eventRegistrations.id });
     });
 
-    // Notifikasi WA — konfirmasi pendaftaran diterima. Fire di sini (bukan setelah
-    // payment confirm) karena ini satu-satunya touchpoint untuk alur direct (bukan cart) —
-    // tiket berbayar via cart sudah dapat invoice_created+payment_confirmed generik.
+    // Tiket berbayar — buat invoice universal (tanpa direct payment record)
+    if (!isGratis) {
+      const ticketName = ticket.name ?? "Tiket Event";
+
+      const { invoiceId, invoiceNumber, uniqueCode, total, dueDate } = await createLinkedInvoice(tenantDb, {
+        sourceType:    "event_registration",
+        sourceId:      reg.id,
+        customerName:  data.attendeeName.trim(),
+        customerPhone: data.attendeePhone?.trim() ?? null,
+        customerEmail: data.attendeeEmail?.trim() ?? null,
+        items: [{
+          itemType:  "ticket",
+          itemId:    data.ticketId,
+          name:      ticketName,
+          unitPrice: price,
+          quantity:  1,
+        }],
+      });
+
+      // Notifikasi WA — WAJIB kirim "invoice_created" (nominal + link + jatuh tempo) di sini,
+      // BUKAN "event_registered". Registrasi masih berstatus "pending" (belum bayar) — kirim
+      // pesan "pendaftaran diterima" di titik ini menyesatkan, seolah sudah confirmed padahal
+      // masih menunggu pembayaran (bug dilaporkan user 2026-08-28). Notifikasi konfirmasi baru
+      // dikirim saat pembayaran benar-benar diverifikasi — lihat confirmEventInvoicePaymentAction.
+      void (async () => {
+        const invoiceUrl = await waAppUrl(slug, `/invoice/${invoiceId}`);
+        void notifyWa({
+          slug, tenantDb, event: "invoice_created",
+          phone: normalizePhone(data.attendeePhone),
+          vars: {
+            name:          data.attendeeName.trim(),
+            invoiceNumber,
+            // Wajib total + uniqueCode — invoice publik selalu tampilkan nominal transfer
+            // dengan kode unik ditambahkan. Lihat lesson CLAUDE.md § Kode Unik Transaksi.
+            amount:        waRupiah(total + uniqueCode),
+            dueDate,
+            invoiceUrl,
+          },
+        });
+      })();
+
+      revalidatePath(`/app/${slug}/event/acara/${data.eventId}`);
+      return {
+        success: true,
+        data: {
+          registrationId:     reg.id,
+          registrationNumber: regNumber,
+          isPaid:             false,
+          amount:             price,
+          uniqueCode,
+          totalAmount:        price + uniqueCode,
+          invoiceId,
+        },
+      };
+    }
+
+    // Tiket gratis — langsung confirmed (kecuali requireApproval), notifikasi "pendaftaran
+    // diterima" aman dikirim segera karena statusnya memang sudah final di titik ini.
     void (async () => {
       const [eventUrl, tenantTimezone] = await Promise.all([
         waAppUrl(slug, `/agenda/${event.slug}`),
@@ -773,40 +828,6 @@ export async function registerForEventAction(
         },
       });
     })();
-
-    // Tiket berbayar — buat invoice universal (tanpa direct payment record)
-    if (!isGratis) {
-      const ticketName = ticket.name ?? "Tiket Event";
-
-      const { invoiceId, uniqueCode } = await createLinkedInvoice(tenantDb, {
-        sourceType:    "event_registration",
-        sourceId:      reg.id,
-        customerName:  data.attendeeName.trim(),
-        customerPhone: data.attendeePhone?.trim() ?? null,
-        customerEmail: data.attendeeEmail?.trim() ?? null,
-        items: [{
-          itemType:  "ticket",
-          itemId:    data.ticketId,
-          name:      ticketName,
-          unitPrice: price,
-          quantity:  1,
-        }],
-      });
-
-      revalidatePath(`/app/${slug}/event/acara/${data.eventId}`);
-      return {
-        success: true,
-        data: {
-          registrationId:     reg.id,
-          registrationNumber: regNumber,
-          isPaid:             false,
-          amount:             price,
-          uniqueCode,
-          totalAmount:        price + uniqueCode,
-          invoiceId,
-        },
-      };
-    }
 
     revalidatePath(`/app/${slug}/event/acara/${data.eventId}`);
     return {
@@ -1173,6 +1194,12 @@ export async function confirmEventInvoicePaymentAction(
     const tenantTimezone = await getTenantTimezone(tenantDb);
     const txNumber = await generateFinancialNumber(tenantDb, "journal");
 
+    // Object holder (bukan `let` union-reassignment) — TypeScript menyempitkan `let` yang
+    // di-reassign di dalam closure db.transaction() jadi `never` saat diakses di luar. Dipakai
+    // untuk deteksi "sesuatu benar-benar terjadi" (bukan cuma lolos guard race-condition di
+    // dalam transaction) sebelum kirim notifikasi WA.
+    const settlementInfo: { newStatus: string } = { newStatus: "" };
+
     await db.transaction(async (tx) => {
       // Lock invoice — cegah race dengan pemanggil lain (checkoutAction/finance/billing) pada
       // invoice yang sama, pola sama dengan confirmInvoicePaymentAction.
@@ -1188,6 +1215,7 @@ export async function confirmEventInvoicePaymentAction(
       const uniqueCode = lockedInv.uniqueCode ?? 0;
       const newPaid    = paidSoFar + payAmount;
       const newStatus  = newPaid >= (total + uniqueCode) ? "paid" : "partial";
+      settlementInfo.newStatus = newStatus;
 
       await tx
         .update(schema.payments)
@@ -1220,6 +1248,22 @@ export async function confirmEventInvoicePaymentAction(
           .where(eq(schema.eventRegistrations.id, inv.sourceId!));
       }
     });
+
+    // Notifikasi WA "pembayaran dikonfirmasi" — HANYA kalau settlement benar-benar terjadi
+    // (bukan lolos guard race-condition kosong di dalam transaction). Ini pasangan dari
+    // "invoice_created" yang dikirim registerForEventAction saat registrasi dibuat — sekarang
+    // customer dapat kepastian kalau pembayarannya sudah diterima admin, bukan sekadar diam.
+    if (settlementInfo.newStatus !== "") {
+      void notifyWa({
+        slug, tenantDb, event: "payment_confirmed",
+        phone: normalizePhone(inv.customerPhone),
+        vars: {
+          name:          inv.customerName,
+          invoiceNumber: inv.invoiceNumber,
+          amount:        waRupiah(payAmount),
+        },
+      });
+    }
 
     // Cari eventId untuk revalidate
     const [reg] = await db
