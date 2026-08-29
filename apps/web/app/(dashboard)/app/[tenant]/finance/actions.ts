@@ -351,6 +351,16 @@ export async function confirmPaymentAction(
     return { success: false, error: "Pembayaran sudah dikonfirmasi sebelumnya." };
   if (payment.status === "cancelled" || payment.status === "failed")
     return { success: false, error: "Pembayaran tidak bisa dikonfirmasi." };
+  // Pembayaran invoice (cart/manual/toko/tiket/donasi via billing) WAJIB dikonfirmasi dari
+  // halaman detail invoice (confirmInvoicePaymentAction/verifySubmittedPaymentAction di
+  // finance/billing/actions.ts) — fungsi generik ini HANYA journal+update payments.status,
+  // TIDAK PERNAH menyentuh invoices.status/paidAmount ataupun invoice_payments. Kalau dipakai
+  // untuk payment sourceType="invoice", uang tercatat di jurnal tapi invoice-nya tidak pernah
+  // ikut "lunas" — invoice bisa nyangkut selamanya. Ditemukan dari data production nyata
+  // (2026-08-29, invoice 620-INV-202607-00041 nyangkut di waiting_verification karena
+  // rejectPaymentAction versi ini dipakai alih-alih versi billing).
+  if (payment.sourceType === "invoice")
+    return { success: false, error: "Pembayaran ini berasal dari invoice — konfirmasi dari halaman detail invoice (Keuangan → Billing → Invoice), bukan dari sini." };
 
   try {
     const mappings = await resolveAccountMappings(tenantDb);
@@ -417,7 +427,7 @@ export async function rejectPaymentAction(
   const { db, schema } = createTenantDb(slug);
 
   const [payment] = await db
-    .select({ id: schema.payments.id, status: schema.payments.status })
+    .select({ id: schema.payments.id, status: schema.payments.status, sourceType: schema.payments.sourceType })
     .from(schema.payments)
     .where(eq(schema.payments.id, paymentId))
     .limit(1);
@@ -425,6 +435,10 @@ export async function rejectPaymentAction(
   if (!payment) return { success: false, error: "Pembayaran tidak ditemukan." };
   if (payment.status === "paid")
     return { success: false, error: "Pembayaran sudah dikonfirmasi, tidak bisa ditolak." };
+  // Sama seperti confirmPaymentAction di atas — jangan tolak payment invoice dari sini, lihat
+  // komentar lengkap di confirmPaymentAction.
+  if (payment.sourceType === "invoice")
+    return { success: false, error: "Pembayaran ini berasal dari invoice — tolak dari halaman detail invoice (Keuangan → Billing → Invoice), bukan dari sini." };
 
   await db
     .update(schema.payments)
