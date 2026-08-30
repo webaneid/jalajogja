@@ -13,6 +13,11 @@
 // INVOICE (bukan per-baris) — kalau satu invoice punya >1 baris produk yang sama, tiap baris
 // akan menampilkan angka total-invoice yang SAMA; itu disengaja (representasi "berapa yang
 // sudah masuk untuk invoice ini"), JANGAN dijumlah lintas baris kalau invoice-nya sama.
+//
+// Voucher (docs/arsitektur-voucher.md): lineTotal SUDAH net-of-voucher (invoice_items.total =
+// unitPrice*quantity - discountAmount). discountAmount + voucherCode diekspos terpisah supaya
+// UI/export bisa menjelaskan KENAPA lineTotal lebih kecil dari unitPrice*quantity — jangan
+// pernah tampilkan lineTotal tanpa keduanya kalau discountAmount > 0.
 import "server-only";
 import { eq, and, inArray } from "drizzle-orm";
 import type { TenantDb } from "@jalajogja/db";
@@ -27,7 +32,9 @@ export type ProductBuyerRow = {
   variantLabel:        string; // "" untuk produk simple
   quantity:            number;
   unitPrice:            number;
-  lineTotal:           number;
+  lineTotal:           number; // NET of diskon voucher — lihat discountAmount untuk selisihnya
+  discountAmount:      number; // potongan voucher pada baris INI (invoice_items.discountAmount)
+  voucherCode:         string | null; // kode voucher invoice ini (invoices.voucherCode), null = tanpa voucher
   shippingLabel:       string;
   paymentStatusLabel:  "Lunas" | "Sebagian" | "Belum Bayar";
   totalDibayarkan:     number | "";
@@ -76,14 +83,15 @@ export async function resolveProductBuyers(
 
   const items = await db
     .select({
-      invoiceId:  schema.invoiceItems.invoiceId,
-      itemId:     schema.invoiceItems.itemId,
-      name:       schema.invoiceItems.name,
-      quantity:   schema.invoiceItems.quantity,
-      unitPrice:  schema.invoiceItems.unitPrice,
-      total:      schema.invoiceItems.total,
-      sellerType: schema.invoiceItems.sellerType,
-      sellerId:   schema.invoiceItems.sellerId,
+      invoiceId:      schema.invoiceItems.invoiceId,
+      itemId:         schema.invoiceItems.itemId,
+      name:           schema.invoiceItems.name,
+      quantity:       schema.invoiceItems.quantity,
+      unitPrice:      schema.invoiceItems.unitPrice,
+      total:          schema.invoiceItems.total,
+      discountAmount: schema.invoiceItems.discountAmount,
+      sellerType:     schema.invoiceItems.sellerType,
+      sellerId:       schema.invoiceItems.sellerId,
     })
     .from(schema.invoiceItems)
     .where(and(
@@ -98,6 +106,7 @@ export async function resolveProductBuyers(
       id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber,
       customerName: schema.invoices.customerName, customerPhone: schema.invoices.customerPhone,
       status: schema.invoices.status, paidAmount: schema.invoices.paidAmount,
+      voucherCode: schema.invoices.voucherCode,
       createdAt: schema.invoices.createdAt,
     })
     .from(schema.invoices)
@@ -157,6 +166,8 @@ export async function resolveProductBuyers(
       quantity:           item.quantity,
       unitPrice:          parseFloat(String(item.unitPrice)),
       lineTotal:          parseFloat(String(item.total)),
+      discountAmount:     parseFloat(String(item.discountAmount ?? "0")),
+      voucherCode:        invoice.voucherCode ?? null,
       shippingLabel:      formatShippingMethod(shipping),
       paymentStatusLabel,
       totalDibayarkan,

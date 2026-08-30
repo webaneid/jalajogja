@@ -77,7 +77,14 @@ export function ProductBuyerList({ slug, rows }: { slug: string; rows: ProductBu
                   <td className="px-4 py-3">{r.customerName}</td>
                   <td className="px-4 py-3 text-muted-foreground">{r.variantLabel || "—"}</td>
                   <td className="px-4 py-3 text-center tabular-nums">{r.quantity}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{fmtRp(r.lineTotal)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {fmtRp(r.lineTotal)}
+                    {r.discountAmount > 0 && (
+                      <span className="block text-xs font-normal text-green-600">
+                        − {fmtRp(r.discountAmount)} voucher{r.voucherCode && ` (${r.voucherCode})`}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{r.shippingLabel}</td>
                   <td className="px-4 py-3">
                     <Badge variant={STATUS_VARIANT[r.paymentStatusLabel] ?? "outline"}>

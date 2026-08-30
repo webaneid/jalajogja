@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 // GET /api/products/[id]/export-buyers?tenant={slug}&all=1
 // Export daftar pembeli satu produk ke Excel. Kolom: No. Invoice, Nama Pembeli, Telepon,
-// Jumlah, Varian/Ukuran, Harga Satuan, Subtotal, Cara Pengiriman, Status Pembayaran,
-// Total Dibayarkan, Tanggal Pesan.
+// Jumlah, Varian/Ukuran, Harga Satuan, Subtotal, Diskon Voucher, Cara Pengiriman,
+// Status Pembayaran, Total Dibayarkan, Kode Voucher, Tanggal Pesan.
 //
 // Satu baris = satu invoice_item (satu kali produk ini dibeli dalam satu invoice) — bukan satu
 // baris per pembeli, karena satu orang bisa membeli produk yang sama >1× di invoice berbeda,
@@ -12,6 +12,12 @@ export const dynamic = "force-dynamic";
 //   - Default (tanpa ?all=1): HANYA invoice.status === 'paid'.
 //   - `?all=1`: SEMUA status (termasuk partial/pending/cancelled) — kolom "Status Pembayaran"
 //     membedakan baris mana yang mana.
+//
+// "Diskon Voucher" = potongan voucher pada BARIS ini (invoice_items.discountAmount, bisa beda
+// per baris kalau satu invoice punya banyak item — voucher Fase 1 memotong per-item, bukan
+// invoice keseluruhan). "Kode Voucher" = invoices.voucherCode (satu voucher per invoice, sama
+// untuk semua baris invoice yang sama) — kosong berarti tanpa voucher, persis pola export
+// peserta event.
 //
 // Query logic (resolveProductBuyers) dan status pembayaran dijamin identik dengan tabel
 // "Daftar Pembeli" di halaman /toko/produk/[id] — satu fungsi shared, lihat
@@ -59,7 +65,8 @@ export async function GET(
 
   const headers = [
     "No. Invoice", "Nama Pembeli", "Telepon", "Jumlah", "Varian/Ukuran", "Harga Satuan",
-    "Subtotal", "Cara Pengiriman", "Status Pembayaran", "Total Dibayarkan", "Tanggal Pesan",
+    "Subtotal", "Diskon Voucher", "Cara Pengiriman", "Status Pembayaran", "Total Dibayarkan",
+    "Kode Voucher", "Tanggal Pesan",
   ];
 
   const dataRows = rows.map((r) => [
@@ -70,9 +77,11 @@ export async function GET(
     r.variantLabel || "-",
     r.unitPrice,
     r.lineTotal,
+    r.discountAmount > 0 ? r.discountAmount : "",
     r.shippingLabel,
     r.paymentStatusLabel,
     r.totalDibayarkan,
+    r.voucherCode ?? "",
     fmtDate(r.createdAt),
   ]);
 
