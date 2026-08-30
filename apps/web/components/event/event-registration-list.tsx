@@ -45,6 +45,11 @@ export type RegistrationRow = {
   certificateUrl:     string | null;
   createdAt:          Date;
   customFields:       Record<string, string> | null;
+  // Baris "checkout belum lunas" tanpa baris event_registrations sungguhan (lihat
+  // getPendingTicketCheckouts di lib/event-registration-sync.server.ts) — TIDAK boleh
+  // dijadikan target aksi apa pun (Setujui/Edit/Batalkan/dst), karena `id` di sini bukan UUID
+  // registrasi asli. Konfirmasi pembayaran tetap wajib lewat halaman detail invoice.
+  isVirtual?:         boolean;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -65,6 +70,8 @@ function formatDate(d: Date | null, timezone: string) {
   return new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: timezone }).format(new Date(d));
 }
 
+const PAGE_SIZE = 25;
+
 // ─── EventRegistrationList ────────────────────────────────────────────────────
 
 export function EventRegistrationList({
@@ -84,6 +91,7 @@ export function EventRegistrationList({
 }) {
   const [rows,      setRows]      = useState<RegistrationRow[]>(initialRows);
   const [search,    setSearch]    = useState("");
+  const [page,      setPage]      = useState(1);
   const [actionId,  setActionId]  = useState<string | null>(null);
   const [error,     setError]     = useState<string | null>(null);
   const [proofOpen, setProofOpen] = useState<string | null>(null); // URL lightbox bukti
@@ -99,6 +107,15 @@ export function EventRegistrationList({
       (r.attendeeEmail ?? "").toLowerCase().includes(q)
     );
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    setPage(1); // reset ke halaman pertama setiap kali kata kunci berubah
+  }
 
   function runAction(
     id: string,
@@ -139,7 +156,7 @@ export function EventRegistrationList({
         <Input
           placeholder="Cari nama, nomor, email, HP..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => handleSearchChange(e.target.value)}
           className="pl-9 h-9 text-sm"
         />
       </div>
@@ -162,7 +179,7 @@ export function EventRegistrationList({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {filtered.map((reg) => {
+            {paginated.map((reg) => {
               const isLoading  = isPending && actionId === reg.id;
               const isPaid     = reg.paymentStatus === "paid" || reg.ticketPrice <= 0;
               const isWaiting  = reg.invoiceStatus === "waiting_verification";
@@ -235,6 +252,13 @@ export function EventRegistrationList({
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                    {reg.isVirtual ? (
+                      // Baris "checkout belum lunas" — bukan registrasi sungguhan, nol tombol
+                      // aksi (id-nya bukan UUID registrasi asli). Konfirmasi bayar via link
+                      // "Lihat Invoice" di kolom No. Daftar.
+                      <span className="text-[10px] text-muted-foreground italic">Belum terdaftar</span>
+                    ) : (
+                    <>
                       {isLoading && (
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                       )}
@@ -347,6 +371,8 @@ export function EventRegistrationList({
                       {reg.status === "cancelled" && (
                         <XCircle className="h-4 w-4 text-muted-foreground" />
                       )}
+                    </>
+                    )}
                     </div>
                   </td>
                 </tr>
@@ -362,9 +388,52 @@ export function EventRegistrationList({
         )}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Menampilkan {filtered.length} dari {rows.length} pendaftar
-      </p>
+      {/* Info jumlah + paginasi */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {filtered.length === 0
+            ? `Menampilkan 0 dari ${rows.length} pendaftar`
+            : `Menampilkan ${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, filtered.length)} dari ${filtered.length}${filtered.length !== rows.length ? ` (total ${rows.length})` : ""} pendaftar`}
+        </p>
+
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={currentPage === 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              ‹ Sebelumnya
+            </Button>
+            <div className="flex gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`rounded-md px-2.5 py-1 border text-xs ${
+                    p === currentPage
+                      ? "bg-foreground text-background border-foreground"
+                      : "border-border hover:bg-muted/40"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={currentPage === totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Berikutnya ›
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* Lightbox bukti bayar */}
       {proofOpen && (

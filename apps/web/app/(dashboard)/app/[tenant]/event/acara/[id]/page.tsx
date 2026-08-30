@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { EventRegistrationList, type RegistrationRow } from "@/components/event/event-registration-list";
 import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone.server";
 import type { CustomFormField } from "@/lib/event-custom-form";
+import { getPendingTicketCheckouts } from "@/lib/event-registration-sync.server";
 
 function formatDate(d: Date | null, timezone: string) {
   if (!d) return "—";
@@ -174,6 +175,39 @@ export default async function AcaraDetailPage({
     };
   });
 
+  // Orang yang sudah checkout tiket via keranjang tapi invoicenya belum lunas — jalur cart
+  // sengaja tidak pernah membuat baris event_registrations sampai lunas (lihat komentar di
+  // getPendingTicketCheckouts). Ditampilkan sebagai baris "Menunggu" tambahan, TANPA tombol
+  // aksi — konfirmasi bayar tetap wajib lewat halaman detail invoice.
+  const pendingCheckouts = await getPendingTicketCheckouts(tenantClient, eventId);
+  const virtualRows: RegistrationRow[] = pendingCheckouts.map((c) => ({
+    id:                 `checkout-${c.invoiceId}`,
+    registrationNumber: c.invoiceNumber,
+    attendeeName:       c.attendeeName,
+    attendeePhone:      c.attendeePhone,
+    attendeeEmail:      c.attendeeEmail,
+    status:             "pending",
+    checkedInAt:        null,
+    ticketName:         c.ticketName,
+    ticketPrice:        c.ticketPrice,
+    paymentId:          null,
+    paymentStatus:      null,
+    paymentMethod:      null,
+    invoiceId:          c.invoiceId,
+    invoiceStatus:      c.invoiceStatus,
+    proofUrl:           null,
+    certificateUrl:     null,
+    createdAt:          c.createdAt,
+    customFields:       c.extraFields as Record<string, string> | null,
+    isVirtual:          true,
+  }));
+
+  const allRows = [...registrations, ...virtualRows].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+  );
+  const totalWithVirtual   = Number(total)   + virtualRows.length;
+  const pendingWithVirtual = Number(pending) + virtualRows.length;
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -236,10 +270,10 @@ export default async function AcaraDetailPage({
         {/* Statistik */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: "Total Daftar",   value: total,     icon: Ticket,    color: "text-foreground"   },
-            { label: "Dikonfirmasi",   value: confirmed, icon: CalendarDays, color: "text-green-600" },
-            { label: "Menunggu",       value: pending,   icon: Globe,     color: "text-amber-600"   },
-            { label: "Hadir",          value: attended,  icon: UserCheck, color: "text-blue-600"    },
+            { label: "Total Daftar",   value: totalWithVirtual,   icon: Ticket,    color: "text-foreground"   },
+            { label: "Dikonfirmasi",   value: confirmed,          icon: CalendarDays, color: "text-green-600" },
+            { label: "Menunggu",       value: pendingWithVirtual, icon: Globe,     color: "text-amber-600"   },
+            { label: "Hadir",          value: attended,           icon: UserCheck, color: "text-blue-600"    },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="rounded-xl border border-border bg-card p-4 space-y-1">
               <div className="flex items-center justify-between">
@@ -298,12 +332,13 @@ export default async function AcaraDetailPage({
           <p className="text-xs text-muted-foreground -mt-1">
             &ldquo;Export ke Excel&rdquo; hanya peserta yang sudah dikonfirmasi/bayar (status Dikonfirmasi
             atau Hadir). &ldquo;Export Semua Peserta&rdquo; menyertakan semua status termasuk yang belum
-            bayar/dibatalkan, dengan kolom Status Pendaftaran &amp; Status Pembayaran untuk membedakannya.
+            bayar (baik yang sudah terdaftar maupun yang baru checkout lewat keranjang) dan yang
+            dibatalkan, dengan kolom Status Pendaftaran &amp; Status Pembayaran untuk membedakannya.
           </p>
           <EventRegistrationList
             slug={slug}
             eventId={eventId}
-            registrations={registrations}
+            registrations={allRows}
             timezone={tenantTimezone}
             enableCustomForm={event.enableCustomForm}
             customFormFields={(event.customFormFields as CustomFormField[] | null) ?? []}

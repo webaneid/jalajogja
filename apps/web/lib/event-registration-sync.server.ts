@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq, and, sql, type ExtractTablesWithRelations } from "drizzle-orm";
+import { eq, and, inArray, sql, type ExtractTablesWithRelations } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import { createTenantDb } from "@jalajogja/db";
@@ -64,6 +64,31 @@ async function generateEventRegNumber(
   });
 
   return `EVT-${yyyymm}-${String(nextNumber).padStart(5, "0")}`;
+}
+
+// Parsing nama/HP/email/custom-field peserta dari invoice_items.description (JSON yang disimpan
+// addEventTicketToCartAction, lihat lib/event-custom-form.ts) — dipakai baik saat membuat
+// registrasi sungguhan (di bawah) MAUPUN saat menampilkan preview "checkout belum lunas" yang
+// belum punya baris registrasi sama sekali (getPendingTicketCheckouts). Satu tempat, dua
+// pemanggil — jangan tulis ulang parsing ini di file lain.
+export function parseAttendeeFromInvoiceItem(item: { name: string; description: string | null }): {
+  attendeeName: string;
+  attendeePhone: string | null;
+  attendeeEmail: string | null;
+  extraFields: Record<string, unknown> | null;
+} {
+  let attendeeName  = item.name || "Peserta";
+  let attendeePhone: string | null = null;
+  let attendeeEmail: string | null = null;
+  let extraFields:   Record<string, unknown> | null = null;
+  try {
+    const p = JSON.parse(item.description ?? "{}") as Record<string, unknown>;
+    attendeeName  = String(p.attendeeName ?? item.name ?? "Peserta").trim();
+    attendeePhone = normalizePhone(p.attendeePhone ? String(p.attendeePhone) : null);
+    attendeeEmail = p.attendeeEmail ? String(p.attendeeEmail) : null;
+    extraFields   = p.customFieldAnswers ? (p.customFieldAnswers as Record<string, unknown>) : null;
+  } catch { /* gunakan default */ }
+  return { attendeeName, attendeePhone, attendeeEmail, extraFields };
 }
 
 type CreatedEventReg = {
@@ -156,17 +181,8 @@ export async function createEventRegistrationsFromInvoiceTickets(
       continue;
     }
 
-    let attendeeName  = item.name ?? "Peserta";
-    let attendeePhone: string | null = null;
-    let attendeeEmail: string | null = null;
-    let extraFields:   Record<string, unknown> | null = null;
-    try {
-      const p = JSON.parse(item.description ?? "{}") as Record<string, unknown>;
-      attendeeName  = String(p.attendeeName ?? item.name ?? "Peserta").trim();
-      attendeePhone = normalizePhone(p.attendeePhone ? String(p.attendeePhone) : null);
-      attendeeEmail = p.attendeeEmail ? String(p.attendeeEmail) : null;
-      extraFields   = p.customFieldAnswers ? (p.customFieldAnswers as Record<string, unknown>) : null;
-    } catch { /* gunakan default */ }
+    const { attendeeName, attendeePhone, attendeeEmail, extraFields } =
+      parseAttendeeFromInvoiceItem({ name: item.name ?? "Peserta", description: item.description });
 
     const regNumber = await generateEventRegNumber(tenantDb);
 
@@ -190,4 +206,95 @@ export async function createEventRegistrationsFromInvoiceTickets(
   }
 
   return result;
+}
+
+// ─── Checkout tiket yang belum lunas (belum punya baris registrasi) ───────────
+
+export type PendingTicketCheckout = {
+  invoiceId:      string;
+  invoiceNumber:  string;
+  invoiceStatus:  string;                     // "pending" | "waiting_verification" | "partial" | "overdue"
+  paidAmount:     number;
+  voucherCode:    string | null;
+  ticketId:       string;
+  ticketName:     string;
+  ticketPrice:    number;
+  attendeeName:   string;
+  attendeePhone:  string | null;
+  attendeeEmail:  string | null;
+  extraFields:    Record<string, unknown> | null;
+  memberId:       string | null;
+  profileId:      string | null;
+  createdAt:      Date;
+};
+
+// Orang yang sudah checkout tiket (invoice + invoice_items sudah ada) tapi invoicenya BELUM
+// lunas dan BELUM dibatalkan — jalur cart (addEventTicketToCartAction) sengaja TIDAK pernah
+// membuat baris event_registrations sampai invoice.status === "paid" (lihat
+// createEventRegistrationsFromInvoiceTickets di atas), jadi orang-orang ini nol jejak di tabel
+// registrasi. Fungsi ini murni BACA — tidak membuat/mengubah apa pun — dipakai untuk
+// menampilkan mereka sebagai baris "Menunggu" tambahan di admin + export, TANPA mengubah kapan
+// baris registrasi sungguhan dibuat.
+//
+// Invariant yang dipakai (bukan diverifikasi ulang di sini — enforced oleh satu-satunya fungsi
+// pembuat registrasi di atas): invoice yang statusnya BUKAN 'paid' TIDAK PERNAH punya baris
+// event_registrations untuk item tiketnya. Kalau invariant ini berubah, fungsi ini perlu direvisi.
+export async function getPendingTicketCheckouts(
+  tenantDb: ReturnType<typeof createTenantDb>,
+  eventId: string,
+): Promise<PendingTicketCheckout[]> {
+  const { db, schema } = tenantDb;
+
+  const ticketRows = await db
+    .select({ id: schema.eventTickets.id, name: schema.eventTickets.name, price: schema.eventTickets.price })
+    .from(schema.eventTickets)
+    .where(eq(schema.eventTickets.eventId, eventId));
+  if (ticketRows.length === 0) return [];
+  const ticketIds = ticketRows.map((t) => t.id);
+  const ticketMap = new Map(ticketRows.map((t) => [t.id, t]));
+
+  const rows = await db
+    .select({
+      invoiceId:     schema.invoiceItems.invoiceId,
+      itemId:        schema.invoiceItems.itemId,
+      itemName:      schema.invoiceItems.name,
+      description:   schema.invoiceItems.description,
+      invoiceNumber: schema.invoices.invoiceNumber,
+      invoiceStatus: schema.invoices.status,
+      paidAmount:    schema.invoices.paidAmount,
+      voucherCode:   schema.invoices.voucherCode,
+      memberId:      schema.invoices.memberId,
+      profileId:     schema.invoices.profileId,
+      createdAt:     schema.invoices.createdAt,
+    })
+    .from(schema.invoiceItems)
+    .innerJoin(schema.invoices, eq(schema.invoices.id, schema.invoiceItems.invoiceId))
+    .where(and(
+      eq(schema.invoiceItems.itemType, "ticket"),
+      inArray(schema.invoiceItems.itemId, ticketIds),
+      sql`${schema.invoices.status} NOT IN ('paid', 'cancelled')`,
+    ))
+    .orderBy(schema.invoices.createdAt);
+
+  return rows
+    .filter((r): r is typeof r & { itemId: string } => r.itemId != null)
+    .map((r) => {
+      const ticket = ticketMap.get(r.itemId)!;
+      const { attendeeName, attendeePhone, attendeeEmail, extraFields } =
+        parseAttendeeFromInvoiceItem({ name: r.itemName ?? "Peserta", description: r.description });
+      return {
+        invoiceId:     r.invoiceId,
+        invoiceNumber: r.invoiceNumber,
+        invoiceStatus: r.invoiceStatus,
+        paidAmount:    parseFloat(String(r.paidAmount ?? 0)),
+        voucherCode:   r.voucherCode,
+        ticketId:      r.itemId,
+        ticketName:    ticket.name,
+        ticketPrice:   parseFloat(String(ticket.price)),
+        attendeeName, attendeePhone, attendeeEmail, extraFields,
+        memberId:      r.memberId,
+        profileId:     r.profileId,
+        createdAt:     r.createdAt!,
+      };
+    });
 }

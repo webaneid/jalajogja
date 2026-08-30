@@ -9,7 +9,10 @@ export const dynamic = "force-dynamic";
 //   - Default (tanpa ?all=1): HANYA status IN ('confirmed', 'attended') — konsisten dengan
 //     `isPaid` di event-registration-list.tsx.
 //   - `?all=1`: SEMUA registrasi tanpa filter status (termasuk 'pending' dan 'cancelled') —
-//     kolom "Status Pendaftaran" membedakan baris mana yang mana.
+//     kolom "Status Pendaftaran" membedakan baris mana yang mana. Ikut disertakan: orang yang
+//     sudah checkout tiket via keranjang tapi invoicenya BELUM lunas (belum punya baris
+//     event_registrations sama sekali, lihat getPendingTicketCheckouts) — ditandai "Menunggu"
+//     sama seperti pending via jalur langsung, KECUALI invoice yang sudah dibatalkan.
 //
 // Dua jalur invoice per registrasi (lihat acara/[id]/page.tsx untuk pola query yang sama):
 //   1. Alur lama (registerForEventAction): invoices.sourceType='event_registration',
@@ -37,6 +40,7 @@ import {
 } from "@jalajogja/db";
 import { displayPhone } from "@/lib/phone";
 import { formatFieldValue, type CustomFormField } from "@/lib/event-custom-form";
+import { getPendingTicketCheckouts, type PendingTicketCheckout } from "@/lib/event-registration-sync.server";
 
 const GENDER_LABEL: Record<string, string> = { male: "Laki-laki", female: "Perempuan" };
 
@@ -111,7 +115,12 @@ export async function GET(
     )
     .orderBy(schema.eventRegistrations.createdAt);
 
-  if (regs.length === 0) {
+  // Checkout tiket belum lunas (nol baris registrasi) — hanya relevan untuk mode "semua".
+  const pendingCheckouts: PendingTicketCheckout[] = includeAll
+    ? await getPendingTicketCheckouts(tenantClient, eventId)
+    : [];
+
+  if (regs.length === 0 && pendingCheckouts.length === 0) {
     return NextResponse.json({
       error: includeAll
         ? "Belum ada peserta yang mendaftar untuk event ini."
@@ -180,7 +189,10 @@ export async function GET(
   const invoiceMap = new Map(invoiceRows.map((i) => [i.id, i]));
 
   // ── Batch fetch data anggota (public schema) ───────────────────────────────────
-  const memberIds = [...new Set(regs.map((r) => r.memberId).filter((x): x is string => !!x))];
+  const memberIds = [...new Set([
+    ...regs.map((r) => r.memberId),
+    ...pendingCheckouts.map((c) => c.memberId),
+  ].filter((x): x is string => !!x))];
   const memberRows = memberIds.length > 0
     ? await publicDb
         .select({
@@ -305,8 +317,56 @@ export async function GET(
     ];
   });
 
+  // Baris tambahan: checkout tiket belum lunas, tanpa baris registrasi (lihat komentar file
+  // atas). Reuse map anggota yang sama dengan dataRows di atas — memberIds sudah menyertakan
+  // pendingCheckouts.memberId.
+  const pendingDataRows = pendingCheckouts.map((c) => {
+    const member       = c.memberId ? memberMap.get(c.memberId) : undefined;
+    const contact       = member?.contactId ? contactMap.get(member.contactId) : undefined;
+    const address        = member?.homeAddressId ? addressMap.get(member.homeAddressId) : undefined;
+    const regencyName   = address?.regencyId != null ? regencyMap.get(address.regencyId) : undefined;
+    const professionNm  = member?.professionId != null ? professionMap.get(member.professionId) : undefined;
+
+    let angkatan = "";
+    if (member?.graduationYear) {
+      angkatan = String(member.graduationYear);
+      if (member.graduationYear === 1999 && member.graduationPeriod) {
+        angkatan += ` (${member.graduationPeriod === "awal" ? "Awal" : "Akhir"})`;
+      }
+    }
+
+    const paymentStatusLabel = c.invoiceStatus === "partial" ? "Sebagian" : "Belum Bayar";
+    const totalDibayarkan    = c.invoiceStatus === "partial" ? c.paidAmount : "";
+
+    const customFieldValues = customFields.map((f) => {
+      const val = c.extraFields?.[f.key];
+      return val == null || val === "" ? "" : formatFieldValue(val);
+    });
+
+    return [
+      c.invoiceNumber,
+      "Menunggu",
+      member?.stambukNumber ?? "",
+      c.attendeeName,
+      contact?.phone ? displayPhone(contact.phone) : (c.attendeePhone ? displayPhone(c.attendeePhone) : ""),
+      contact?.whatsapp ? displayPhone(contact.whatsapp) : "",
+      address?.detail ?? "",
+      regencyName ?? "",
+      address?.postalCode ?? "",
+      professionNm ?? "",
+      angkatan,
+      member?.gender ? (GENDER_LABEL[member.gender] ?? "") : "",
+      ...customFieldValues,
+      paymentStatusLabel,
+      totalDibayarkan,
+      c.voucherCode ?? "",
+      "",
+      "",
+    ];
+  });
+
   const wb = XLSX.utils.book_new();
-  const sheet = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+  const sheet = XLSX.utils.aoa_to_sheet([headers, ...dataRows, ...pendingDataRows]);
   XLSX.utils.book_append_sheet(wb, sheet, "Peserta");
   const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 
