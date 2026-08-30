@@ -42,6 +42,10 @@ function fmtTime(d: Date, timezone: string) {
   return new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: timezone }).format(d);
 }
 
+function fmtSaleDate(d: Date, timezone: string) {
+  return new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: timezone }).format(d);
+}
+
 // Tanggal pintar: hari sama → jam range; bulan sama → hari-hari range; beda bulan → full range
 function formatEventDateRange(startsAt: Date | null, endsAt: Date | null, timezone: string): string {
   if (!startsAt) return "—";
@@ -458,16 +462,33 @@ export default async function PublicEventPage({
 
   // Bangun info tiket untuk form (dengan sisa kuota)
   const ticketCountMap = new Map(ticketCounts.map((tc) => [tc.ticketId, tc.used]));
-  const ticketsForForm = tickets.map((t) => ({
-    id:                 t.id,
-    name:               t.name,
-    price:              parseFloat(String(t.price)),
-    quota:              t.quota,
-    description:        t.description,
-    usedCount:          ticketCountMap.get(t.id) ?? 0,
-    requiresMembership: t.requiresMembership,
-    requiresRegistration: t.requiresRegistration,
-  }));
+  const nowForSaleWindow = new Date();
+  const ticketsForForm = tickets.map((t) => {
+    // Sale window dicek di server SEKALI saat render (bukan realtime) — server action tetap
+    // re-validasi ulang saat submit, ini murni supaya pengunjung tidak mengisi form yang
+    // sudah pasti ditolak. Lihat lesson "showTicketCount: hitung per-query, bukan realtime".
+    let saleWindowLocked  = false;
+    let saleWindowMessage: string | null = null;
+    if (t.saleStartsAt && nowForSaleWindow < t.saleStartsAt) {
+      saleWindowLocked  = true;
+      saleWindowMessage = `Penjualan tiket ini dibuka mulai ${fmtSaleDate(t.saleStartsAt, tenantTimezone)}.`;
+    } else if (t.saleEndsAt && nowForSaleWindow > t.saleEndsAt) {
+      saleWindowLocked  = true;
+      saleWindowMessage = `Penjualan tiket ini telah berakhir pada ${fmtSaleDate(t.saleEndsAt, tenantTimezone)}.`;
+    }
+    return {
+      id:                 t.id,
+      name:               t.name,
+      price:              parseFloat(String(t.price)),
+      quota:              t.quota,
+      description:        t.description,
+      usedCount:          ticketCountMap.get(t.id) ?? 0,
+      requiresMembership: t.requiresMembership,
+      requiresRegistration: t.requiresRegistration,
+      saleWindowLocked,
+      saleWindowMessage,
+    };
+  });
 
   // Pre-fill data peserta dari session + cek sudah terdaftar
   const session = await auth.api.getSession({ headers: hdrs });

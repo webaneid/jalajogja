@@ -21,6 +21,12 @@ type TicketInfo = {
   usedCount?:         number;  // jumlah pendaftaran aktif (untuk tampil sisa kuota di form)
   requiresMembership: boolean;
   requiresRegistration: boolean;
+  // Jendela penjualan (sale_starts_at/sale_ends_at) — dikomputasi server-side di
+  // agenda/[slug]/page.tsx terhadap waktu render (timezone tenant), bukan dihitung ulang
+  // di client. Server action (registerForEventAction/addEventTicketToCartAction) tetap jadi
+  // penjaga sesungguhnya — ini murni supaya pengunjung tidak mengisi form yang pasti ditolak.
+  saleWindowLocked:   boolean;
+  saleWindowMessage:  string | null;
 };
 
 // Status kelayakan "Wajib Terdaftar (Umum)" — independen dari currentUserIsEnrolled
@@ -50,6 +56,15 @@ function getTicketLock(
   t: TicketInfo, baseUrl: string,
   currentUserIsEnrolled: boolean, reg: RegistrationStatus,
 ): TicketLock {
+  // Jendela penjualan dicek PALING AWAL — tidak ada aksi yang bisa diambil pengunjung
+  // (bukan soal keanggotaan/data diri), jadi ctaLabel/ctaHref sengaja null.
+  if (t.saleWindowLocked) {
+    return {
+      locked: true, badge: "Tidak Tersedia",
+      message:  t.saleWindowMessage,
+      ctaLabel: null, ctaHref: null,
+    };
+  }
   if (t.requiresMembership && !currentUserIsEnrolled) {
     return {
       locked: true, badge: "Anggota",
@@ -392,12 +407,14 @@ export function EventRegisterForm({
                   {t.description && (
                     <p className="mt-1 ml-6 text-xs text-muted-foreground">{t.description}</p>
                   )}
-                  <a
-                    href={lock.ctaHref ?? `${baseUrl}/akun/lengkapi`}
-                    className="mt-2 ml-6 text-xs text-primary hover:underline inline-flex items-center gap-1"
-                  >
-                    {lock.ctaLabel}
-                  </a>
+                  {lock.ctaHref && (
+                    <a
+                      href={lock.ctaHref}
+                      className="mt-2 ml-6 text-xs text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      {lock.ctaLabel}
+                    </a>
+                  )}
                 </div>
               ) : (
                 <button
@@ -455,12 +472,14 @@ export function EventRegisterForm({
             <p className="text-xs text-amber-800 dark:text-amber-200">
               {lock.message}
             </p>
-            <a
-              href={lock.ctaHref ?? `${baseUrl}/akun/lengkapi`}
-              className="btn btn-primary btn-sm inline-flex"
-            >
-              {lock.ctaLabel}
-            </a>
+            {lock.ctaHref && (
+              <a
+                href={lock.ctaHref}
+                className="btn btn-primary btn-sm inline-flex"
+              >
+                {lock.ctaLabel}
+              </a>
+            )}
           </div>
         ) : (
           <div className="rounded-lg border border-border bg-muted/20 p-3 flex items-center justify-between">
@@ -481,9 +500,11 @@ export function EventRegisterForm({
           <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
             {selectedTicketLock.message}
           </p>
-          <a href={selectedTicketLock.ctaHref ?? `${baseUrl}/akun/lengkapi`} className="btn btn-primary btn-sm inline-flex">
-            {selectedTicketLock.ctaLabel}
-          </a>
+          {selectedTicketLock.ctaHref && (
+            <a href={selectedTicketLock.ctaHref} className="btn btn-primary btn-sm inline-flex">
+              {selectedTicketLock.ctaLabel}
+            </a>
+          )}
         </div>
       )}
 
