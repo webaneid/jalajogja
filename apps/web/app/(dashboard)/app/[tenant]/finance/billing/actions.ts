@@ -5,6 +5,13 @@ import type { InvoiceStatus } from "@jalajogja/db";
 import { revalidatePath } from "next/cache";
 import { createTenantDb, generateFinancialNumber, settleInstallmentSchedules } from "@jalajogja/db";
 import { db as publicDb, tenants, tenantMemberships, getSetting } from "@jalajogja/db";
+import {
+  findVoucherByCode,
+  countCustomerRedemptions,
+  computeVoucherDiscount,
+  type ResolvedCartItemForVoucher,
+  type VoucherApplicationResult,
+} from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, hasReadAccess } from "@/lib/permissions";
 import { recordIncomeSplit } from "@jalajogja/db";
@@ -62,6 +69,7 @@ export type CreateInvoiceData = {
   memberId?:     string;
   items:         InvoiceItemInput[];
   discount?:     number;
+  voucherCode?:  string;
   dueDate?:      string; // YYYY-MM-DD
   notes?:        string;
 };
@@ -114,16 +122,11 @@ export async function createInvoiceAction(
 
   try {
     const tenantTimezone = await getTenantTimezone(tenantDb);
-    const invoiceNumber = await generateFinancialNumber(tenantDb, "invoice");
-    const subtotal  = calcSubtotal(data.items);
-    const discount  = data.discount ?? 0;
-    const total     = Math.max(0, subtotal - discount);
 
     // Kode Unik Otomatis (Rp 100–999) — jika unique_code_enabled di settings payment
     const { getSettings, generateUniqueCode } = await import("@jalajogja/db");
     const paymentSettings   = await getSettings(tenantDb, "payment");
     const uniqueCodeEnabled = paymentSettings["unique_code_enabled"] === true;
-    const uniqueCode        = uniqueCodeEnabled ? await generateUniqueCode(tenantDb) : 0;
 
     // Default due date: 3 hari dari sekarang, anchor ke kalender timezone tenant
     const dueDate = data.dueDate ?? (() => {
@@ -132,59 +135,139 @@ export async function createInvoiceAction(
       return d.toISOString().slice(0, 10);
     })();
 
-    const [invoice] = await db
-      .insert(schema.invoices)
-      .values({
-        invoiceNumber,
-        sourceType:    "manual",
-        sourceId:      null,
-        customerName:  data.customerName.trim(),
-        customerPhone: normalizePhone(data.customerPhone),
-        customerEmail: data.customerEmail?.trim() ?? null,
-        memberId:      data.memberId ?? null,
-        subtotal:      subtotal.toFixed(2),
-        discount:      discount.toFixed(2),
-        total:         total.toFixed(2),
-        uniqueCode,
-        paidAmount:    "0",
-        status:        "pending",
-        dueDate,
-        notes:         data.notes?.trim() ?? null,
-        createdBy:     access.tenantUser.id,
-      })
-      .returning({
-        id:            schema.invoices.id,
-        customerName:  schema.invoices.customerName,
-        customerPhone: schema.invoices.customerPhone,
-      });
+    const normalizedCustomerPhone = normalizePhone(data.customerPhone);
+    const customerEmailTrim       = data.customerEmail?.trim() ?? null;
 
-    // Insert items
-    await db.insert(schema.invoiceItems).values(
-      data.items.map((item, i) => ({
-        invoiceId:   invoice.id,
-        itemType:    item.itemType,
-        itemId:      item.itemId ?? null,
-        name:        item.name.trim(),
-        description: item.description?.trim() ?? null,
-        unitPrice:   item.unitPrice.toFixed(2),
-        quantity:    item.quantity,
-        total:       (item.unitPrice * item.quantity).toFixed(2),
-        sortOrder:   i,
-      }))
-    );
+    // Seluruh insert dibungkus transaction — voucher WAJIB dikunci (FOR UPDATE) + divalidasi
+    // ulang DI DALAM tx yang sama (cegah dua admin apply kode yang sama bersamaan lolos
+    // usageLimit), sekalian menutup celah atomicity lama (invoice+items sebelumnya 2 insert
+    // terpisah tanpa transaction sama sekali). generateFinancialNumber/generateUniqueCode aman
+    // dipanggil dari dalam sini — pola sama persis checkoutAction (cart/actions.ts), keduanya
+    // pakai tenantDb (bukan tx) dan membuka transaction bersarangnya sendiri (postgres.js
+    // savepoint), sudah terbukti aman di production.
+    const result = await db.transaction(async (tx) => {
+      let voucherApplication: VoucherApplicationResult | null = null;
+      if (data.voucherCode?.trim()) {
+        const voucherRow = await findVoucherByCode(tx, schema, data.voucherCode, true);
+        if (!voucherRow) throw new Error("Kode voucher tidak ditemukan.");
+
+        const existingRedemptions = await countCustomerRedemptions(tx, schema, voucherRow.id, {
+          phone: normalizedCustomerPhone, email: customerEmailTrim,
+        });
+
+        // Item admin-manual selalu milik tenant sendiri (searchBillingProductsAction tidak
+        // pernah mengembalikan produk mitra atau ID variasi) — nol resolusi tambahan diperlukan,
+        // beda dari checkoutAction (cart publik) yang harus resolveProductCartItem() dulu.
+        const voucherResolvedItems: ResolvedCartItemForVoucher[] = data.items.map((it) => ({
+          itemType: it.itemType,
+          itemId:   it.itemId ?? null,
+          unitPrice: it.unitPrice,
+          quantity:  it.quantity,
+          mitraId:   null,
+        }));
+
+        const voucherResult = computeVoucherDiscount(
+          voucherRow,
+          { phone: normalizedCustomerPhone, email: customerEmailTrim },
+          existingRedemptions,
+          voucherResolvedItems,
+        );
+        if ("error" in voucherResult) throw new Error(voucherResult.error);
+        voucherApplication = voucherResult;
+      }
+
+      const invoiceNumber = await generateFinancialNumber(tenantDb, "invoice");
+
+      const subtotalGross        = calcSubtotal(data.items);
+      const voucherDiscountTotal = voucherApplication?.totalDiscount ?? 0;
+      const subtotalNet          = subtotalGross - voucherDiscountTotal;
+      const manualDiscount       = data.discount ?? 0;
+      const total                = Math.max(0, subtotalNet - manualDiscount);
+
+      const uniqueCode = uniqueCodeEnabled ? await generateUniqueCode(tenantDb) : 0;
+
+      const [invoice] = await tx
+        .insert(schema.invoices)
+        .values({
+          invoiceNumber,
+          sourceType:    "manual",
+          sourceId:      null,
+          customerName:  data.customerName.trim(),
+          customerPhone: normalizedCustomerPhone,
+          customerEmail: customerEmailTrim,
+          memberId:      data.memberId ?? null,
+          subtotal:      subtotalNet.toFixed(2),
+          discount:      manualDiscount.toFixed(2),
+          total:         total.toFixed(2),
+          uniqueCode,
+          paidAmount:    "0",
+          status:        "pending",
+          dueDate,
+          notes:         data.notes?.trim() ?? null,
+          createdBy:     access.tenantUser.id,
+          voucherId:            voucherApplication?.voucher.id ?? null,
+          voucherCode:          voucherApplication?.voucher.code ?? null,
+          voucherDiscountTotal: voucherDiscountTotal.toFixed(2),
+        })
+        .returning({
+          id:            schema.invoices.id,
+          customerName:  schema.invoices.customerName,
+          customerPhone: schema.invoices.customerPhone,
+        });
+
+      // Insert items (dengan diskon per baris kalau voucher diterapkan)
+      await tx.insert(schema.invoiceItems).values(
+        data.items.map((item, i) => {
+          const discountAmount = voucherApplication?.perItemDiscount.get(i) ?? 0;
+          const lineTotal      = Math.max(0, item.unitPrice * item.quantity - discountAmount);
+          return {
+            invoiceId:      invoice.id,
+            itemType:       item.itemType,
+            itemId:         item.itemId ?? null,
+            name:           item.name.trim(),
+            description:    item.description?.trim() ?? null,
+            unitPrice:      item.unitPrice.toFixed(2),
+            quantity:       item.quantity,
+            total:          lineTotal.toFixed(2),
+            sortOrder:      i,
+            discountAmount: discountAmount.toFixed(2),
+            voucherId:      discountAmount > 0 ? (voucherApplication?.voucher.id ?? null) : null,
+          };
+        })
+      );
+
+      // Catat pemakaian voucher — lock yang sama dari resolusi di atas mencegah race dua
+      // pembuatan invoice bersamaan sama-sama lolos cek usageLimit voucher yang sama.
+      if (voucherApplication) {
+        await tx
+          .update(schema.vouchers)
+          .set({ usedCount: sql`${schema.vouchers.usedCount} + 1`, updatedAt: new Date() })
+          .where(eq(schema.vouchers.id, voucherApplication.voucher.id));
+
+        await tx.insert(schema.voucherRedemptions).values({
+          voucherId:     voucherApplication.voucher.id,
+          invoiceId:     invoice.id,
+          customerPhone: normalizedCustomerPhone,
+          customerEmail: customerEmailTrim,
+          discountTotal: voucherDiscountTotal.toFixed(2),
+        });
+      }
+
+      return { invoiceId: invoice.id, invoiceNumber, customerName: invoice.customerName, customerPhone: invoice.customerPhone, total, uniqueCode };
+    });
 
     // Kirim notifikasi WA (invoice_created) jika nomor HP customer tersedia
-    if (invoice.customerPhone) {
-      const invoiceUrl = await waAppUrl(slug, `/invoice/${invoice.id}`);
-      const amountDue  = total + uniqueCode;
+    if (result.customerPhone) {
+      const invoiceUrl = await waAppUrl(slug, `/invoice/${result.invoiceId}`);
+      const amountDue  = result.total + result.uniqueCode;
       void notifyWa({
         slug,
         tenantDb,
         event: "invoice_created",
-        phone: invoice.customerPhone,
+        phone: result.customerPhone,
         vars: {
-          name:          invoice.customerName,
-          invoiceNumber,
+          name:          result.customerName,
+          invoiceNumber: result.invoiceNumber,
           amount:        waRupiah(amountDue),
           dueDate:       dueDate,
           invoiceUrl,
@@ -193,10 +276,206 @@ export async function createInvoiceAction(
     }
 
     revalidateBilling(slug);
-    return { success: true, data: { invoiceId: invoice.id } };
+    return { success: true, data: { invoiceId: result.invoiceId } };
   } catch (err) {
+    if (err instanceof Error && err.message.toLowerCase().includes("voucher"))
+      return { success: false, error: err.message };
     console.error("[createInvoiceAction]", err);
     return { success: false, error: "Gagal membuat invoice." };
+  }
+}
+
+// ─── previewInvoiceVoucherAction ────────────────────────────────────────────
+// Preview murni untuk form buat invoice baru — TIDAK mengunci voucher row, TIDAK menaikkan
+// usedCount, TIDAK mutasi apa pun. createInvoiceAction SELALU re-validasi dari nol di dalam
+// transaction-nya sendiri (pola sama previewVoucherAction di cart/actions.ts).
+
+export type InvoiceVoucherPreview = {
+  valid:            boolean;
+  error?:           string;
+  voucherName?:     string;
+  perItemDiscount?: Record<number, number>; // index di items -> nominal potongan
+  totalDiscount?:   number;
+};
+
+export async function previewInvoiceVoucherAction(
+  slug: string,
+  code: string,
+  items: InvoiceItemInput[],
+  customerPhone?: string,
+  customerEmail?: string,
+): Promise<ActionResult<InvoiceVoucherPreview>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false as const, error: "Akses ditolak." };
+
+  if (!code?.trim() || !items.length)
+    return { success: true, data: { valid: false, error: "Kode voucher kosong." } };
+
+  const { db, schema } = createTenantDb(slug);
+
+  try {
+    const voucherRow = await findVoucherByCode(db, schema, code, false);
+    if (!voucherRow) return { success: true, data: { valid: false, error: "Kode voucher tidak ditemukan." } };
+
+    const normalizedPhone = customerPhone ? normalizePhone(customerPhone) : null;
+    const emailTrim       = customerEmail?.trim() || null;
+
+    const existingRedemptions = await countCustomerRedemptions(db, schema, voucherRow.id, {
+      phone: normalizedPhone, email: emailTrim,
+    });
+
+    const voucherResolvedItems: ResolvedCartItemForVoucher[] = items.map((it) => ({
+      itemType: it.itemType, itemId: it.itemId ?? null, unitPrice: it.unitPrice,
+      quantity: it.quantity, mitraId: null,
+    }));
+
+    const result = computeVoucherDiscount(
+      voucherRow, { phone: normalizedPhone, email: emailTrim }, existingRedemptions, voucherResolvedItems,
+    );
+    if ("error" in result) return { success: true, data: { valid: false, error: result.error } };
+
+    const perItemDiscount: Record<number, number> = {};
+    result.perItemDiscount.forEach((discount, index) => { perItemDiscount[index] = discount; });
+
+    return {
+      success: true,
+      data: { valid: true, voucherName: result.voucher.name, perItemDiscount, totalDiscount: result.totalDiscount },
+    };
+  } catch (err) {
+    console.error("[previewInvoiceVoucherAction]", err);
+    return { success: false, error: "Gagal memeriksa voucher." };
+  }
+}
+
+// ─── applyVoucherToInvoiceAction ────────────────────────────────────────────
+// Terapkan voucher ke invoice yang SUDAH ADA (bukan saat pembuatan). Dipakai admin di halaman
+// detail invoice supaya tidak perlu batalkan/buat ulang invoice hanya karena customer baru minta
+// kode voucher belakangan. Scope sengaja sempit: HANYA invoice yang belum ada pembayaran sama
+// sekali (paidAmount = 0) dan belum pernah pakai voucher lain — menghindari kompleksitas
+// menghitung ulang status/paidAmount/jurnal untuk invoice yang sudah sebagian dibayar.
+
+export async function applyVoucherToInvoiceAction(
+  slug: string,
+  invoiceId: string,
+  code: string,
+): Promise<ActionResult<{ total: number }>> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false as const, error: "Akses ditolak." };
+
+  if (!code?.trim()) return { success: false, error: "Kode voucher wajib diisi." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [lockedInv] = await tx
+        .select()
+        .from(schema.invoices)
+        .where(eq(schema.invoices.id, invoiceId))
+        .for("update");
+      if (!lockedInv) throw new Error("Invoice tidak ditemukan.");
+      if (["paid", "cancelled"].includes(lockedInv.status))
+        throw new Error(
+          lockedInv.status === "paid"
+            ? "Invoice sudah lunas, voucher tidak dapat diterapkan lagi."
+            : "Invoice sudah dibatalkan."
+        );
+      if (parseFloat(String(lockedInv.paidAmount)) > 0)
+        throw new Error("Voucher hanya bisa diterapkan sebelum ada pembayaran masuk. Batalkan pembayaran yang sudah tercatat terlebih dahulu.");
+      if (lockedInv.voucherId)
+        throw new Error("Invoice ini sudah menggunakan voucher lain.");
+
+      const items = await tx
+        .select()
+        .from(schema.invoiceItems)
+        .where(eq(schema.invoiceItems.invoiceId, invoiceId))
+        .orderBy(schema.invoiceItems.sortOrder);
+      if (!items.length) throw new Error("Invoice tidak memiliki item.");
+
+      const voucherRow = await findVoucherByCode(tx, schema, code, true);
+      if (!voucherRow) throw new Error("Kode voucher tidak ditemukan.");
+
+      const existingRedemptions = await countCustomerRedemptions(tx, schema, voucherRow.id, {
+        phone: lockedInv.customerPhone, email: lockedInv.customerEmail,
+      });
+
+      const voucherResolvedItems: ResolvedCartItemForVoucher[] = items.map((it) => ({
+        itemType: it.itemType as ResolvedCartItemForVoucher["itemType"],
+        itemId:   it.itemId,
+        unitPrice: parseFloat(String(it.unitPrice)),
+        quantity:  it.quantity,
+        mitraId:   null, // invoice manual admin selalu milik tenant sendiri
+      }));
+
+      const voucherResult = computeVoucherDiscount(
+        voucherRow,
+        { phone: lockedInv.customerPhone, email: lockedInv.customerEmail },
+        existingRedemptions,
+        voucherResolvedItems,
+      );
+      if ("error" in voucherResult) throw new Error(voucherResult.error);
+
+      const voucherDiscountTotal = voucherResult.totalDiscount;
+      const manualDiscount       = parseFloat(String(lockedInv.discount ?? "0"));
+      const subtotalGross        = items.reduce((sum, it) => sum + parseFloat(String(it.unitPrice)) * it.quantity, 0);
+      const subtotalNet          = subtotalGross - voucherDiscountTotal;
+      const total                = Math.max(0, subtotalNet - manualDiscount);
+
+      // Update tiap item dengan diskon barunya
+      for (let i = 0; i < items.length; i++) {
+        const discountAmount = voucherResult.perItemDiscount.get(i) ?? 0;
+        const lineTotal      = Math.max(0, parseFloat(String(items[i].unitPrice)) * items[i].quantity - discountAmount);
+        await tx
+          .update(schema.invoiceItems)
+          .set({
+            discountAmount: discountAmount.toFixed(2),
+            voucherId:      discountAmount > 0 ? voucherRow.id : null,
+            total:          lineTotal.toFixed(2),
+          })
+          .where(eq(schema.invoiceItems.id, items[i].id));
+      }
+
+      await tx
+        .update(schema.invoices)
+        .set({
+          subtotal:             subtotalNet.toFixed(2),
+          total:                total.toFixed(2),
+          voucherId:            voucherRow.id,
+          voucherCode:          voucherRow.code,
+          voucherDiscountTotal: voucherDiscountTotal.toFixed(2),
+          updatedAt:            new Date(),
+        })
+        .where(eq(schema.invoices.id, invoiceId));
+
+      await tx
+        .update(schema.vouchers)
+        .set({ usedCount: sql`${schema.vouchers.usedCount} + 1`, updatedAt: new Date() })
+        .where(eq(schema.vouchers.id, voucherRow.id));
+
+      await tx.insert(schema.voucherRedemptions).values({
+        voucherId:     voucherRow.id,
+        invoiceId,
+        customerPhone: lockedInv.customerPhone,
+        customerEmail: lockedInv.customerEmail,
+        discountTotal: voucherDiscountTotal.toFixed(2),
+      });
+
+      return { total };
+    });
+
+    revalidateBilling(slug);
+    revalidatePath(`/app/${slug}/finance/billing/invoice/${invoiceId}`);
+    return { success: true, data: { total: result.total } };
+  } catch (err) {
+    if (err instanceof Error && (err.message.toLowerCase().includes("voucher") || err.message.includes("Invoice")))
+      return { success: false, error: err.message };
+    console.error("[applyVoucherToInvoiceAction]", err);
+    return { success: false, error: "Gagal menerapkan voucher." };
   }
 }
 
@@ -1667,6 +1946,7 @@ export type InvoiceDetail = {
   subtotal:      number;
   shippingTotal: number;
   discount:      number;
+  voucherId:             string | null;
   voucherCode:           string | null;
   voucherDiscountTotal:  number;
   total:         number;
@@ -1804,6 +2084,7 @@ export async function getInvoiceDetailAction(
       subtotal:      parseFloat(String(inv.subtotal)),
       shippingTotal: parseFloat(String(inv.shippingTotal ?? "0")),
       discount:      parseFloat(String(inv.discount)),
+      voucherId:             inv.voucherId ?? null,
       voucherCode:           inv.voucherCode ?? null,
       voucherDiscountTotal:  parseFloat(String(inv.voucherDiscountTotal ?? "0")),
       total,

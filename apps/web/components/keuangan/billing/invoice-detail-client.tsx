@@ -12,6 +12,7 @@ import {
   updateAdminShippingTrackingAction,
   backfillEventRegistrationsAction,
   confirmCodPaymentAction,
+  applyVoucherToInvoiceAction,
   type InvoiceDetail,
 } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
@@ -370,6 +371,31 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
 
   const canPay    = !["paid", "cancelled"].includes(invoice.status) && invoice.remaining > 0;
   const canCancel = !["paid", "cancelled"].includes(invoice.status);
+
+  // Terapkan voucher ke invoice yang sudah ada — scope sengaja sempit, mirror guard server
+  // applyVoucherToInvoiceAction: hanya invoice yang belum ada pembayaran masuk sama sekali dan
+  // belum pernah pakai voucher lain. Kalau customer minta voucher belakangan setelah invoice
+  // sudah lunas/sebagian dibayar, admin perlu jalur lain (batalkan+buat ulang).
+  const canApplyVoucher = !["paid", "cancelled"].includes(invoice.status) && invoice.paidAmount === 0 && !invoice.voucherId;
+  const [voucherCode, setVoucherCode] = useState("");
+
+  function handleApplyVoucher(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    const code = voucherCode.trim();
+    if (!code) return;
+    startTransition(async () => {
+      const res = await applyVoucherToInvoiceAction(slug, invoice.id, code);
+      if (res.success) {
+        setSuccess("Voucher berhasil diterapkan.");
+        setVoucherCode("");
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+    });
+  }
 
   // Buka/tutup form "Konfirmasi Pembayaran" manual — SETIAP kali dibuka, payAmount di-reset
   // ke default yang benar saat itu (cicilan-aware). Jangan andalkan useState initializer saja
@@ -952,6 +978,33 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
           >
             {backfillPending ? "Menyinkronkan..." : "Sinkronkan Peserta Event"}
           </button>
+        </div>
+      )}
+
+      {/* ── Terapkan Voucher ────────────────────────────────────────────── */}
+      {canApplyVoucher && (
+        <div className="rounded-lg border border-border p-4 space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Terapkan Voucher</p>
+          <p className="text-sm text-muted-foreground">
+            Customer minta kode voucher setelah invoice dibuat? Terapkan di sini — tidak perlu
+            batalkan atau buat ulang invoice.
+          </p>
+          <form onSubmit={handleApplyVoucher} className="flex gap-2">
+            <input
+              type="text"
+              value={voucherCode}
+              onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+              placeholder="Kode Voucher"
+              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <button
+              type="submit"
+              disabled={pending || !voucherCode.trim()}
+              className="rounded-md border border-primary/50 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 disabled:opacity-60 transition-colors"
+            >
+              {pending ? "Menerapkan..." : "Terapkan"}
+            </button>
+          </form>
         </div>
       )}
 

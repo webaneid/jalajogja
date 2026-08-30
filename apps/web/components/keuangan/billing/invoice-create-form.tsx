@@ -8,6 +8,7 @@ import { MemberNameAutocomplete, type SelectedMember } from "@/components/keuang
 import type { CustomFormField } from "@/lib/event-custom-form";
 import {
   createInvoiceAction,
+  previewInvoiceVoucherAction,
   searchBillingProductsAction,
   searchBillingPaidTicketsAction,
   searchBillingCampaignsAction,
@@ -202,6 +203,16 @@ export function InvoiceCreateForm({ slug }: Props) {
   });
   const [notes, setNotes] = useState("");
 
+  // Voucher — preview murni (tidak mengunci/mutasi apa pun), createInvoiceAction SELALU
+  // re-validasi dari nol saat submit. Dilepas otomatis kalau subtotal berubah setelah
+  // diterapkan (item ditambah/dihapus/diedit) — mencegah nominal diskon yang tampil stale.
+  const [voucherInput,   setVoucherInput]   = useState("");
+  const [voucherChecking, setVoucherChecking] = useState(false);
+  const [voucherError,   setVoucherError]   = useState("");
+  const [voucherApplied, setVoucherApplied] = useState<{
+    code: string; name: string; totalDiscount: number; subtotalAtApply: number;
+  } | null>(null);
+
   // ── Item helpers ────────────────────────────────────────────────────────────
 
   function updateItem(key: string, patch: Partial<ItemLocal>) {
@@ -214,9 +225,56 @@ export function InvoiceCreateForm({ slug }: Props) {
 
   // ── Totals ──────────────────────────────────────────────────────────────────
 
-  const subtotal    = items.reduce((s, it) => s + it.unitPrice * it.quantity, 0);
-  const discountNum = parseFloat(discount.replace(/\D/g, "")) || 0;
-  const total       = Math.max(0, subtotal - discountNum);
+  const subtotal        = items.reduce((s, it) => s + it.unitPrice * it.quantity, 0);
+  const discountNum     = parseFloat(discount.replace(/\D/g, "")) || 0;
+  const voucherDiscount = voucherApplied && voucherApplied.subtotalAtApply === subtotal ? voucherApplied.totalDiscount : 0;
+  const subtotalNet     = subtotal - voucherDiscount;
+  const total            = Math.max(0, subtotalNet - discountNum);
+
+  // Lepas voucher secara otomatis kalau subtotal berubah setelah diterapkan (item berubah)
+  useEffect(() => {
+    if (voucherApplied && voucherApplied.subtotalAtApply !== subtotal) {
+      setVoucherApplied(null);
+      setVoucherError("Voucher dilepas karena item berubah — silakan terapkan ulang.");
+    }
+  }, [subtotal, voucherApplied]);
+
+  async function handleApplyVoucher() {
+    const code = voucherInput.trim();
+    if (!code) return;
+    setVoucherChecking(true);
+    setVoucherError("");
+    try {
+      const res = await previewInvoiceVoucherAction(
+        slug,
+        code,
+        items.map(({ _key, _ticketEnableCustomForm, _ticketCustomFields, _attendeeName, _attendeePhone, _attendeeEmail, _customFieldAnswers, ...item }) => item),
+        customerPhone.trim() || undefined,
+        customerEmail.trim() || undefined,
+      );
+      if (!res.success) {
+        setVoucherError(res.error);
+        return;
+      }
+      if (!res.data.valid) {
+        setVoucherError(res.data.error ?? "Voucher tidak valid.");
+        return;
+      }
+      setVoucherApplied({
+        code, name: res.data.voucherName ?? code,
+        totalDiscount: res.data.totalDiscount ?? 0,
+        subtotalAtApply: subtotal,
+      });
+    } finally {
+      setVoucherChecking(false);
+    }
+  }
+
+  function handleRemoveVoucher() {
+    setVoucherApplied(null);
+    setVoucherInput("");
+    setVoucherError("");
+  }
 
   // ── Submit ──────────────────────────────────────────────────────────────────
 
@@ -258,6 +316,7 @@ export function InvoiceCreateForm({ slug }: Props) {
           return item;
         }),
         discount: discountNum || undefined,
+        voucherCode: voucherApplied?.code || undefined,
         dueDate,
         notes: notes.trim() || undefined,
       });
@@ -536,6 +595,44 @@ export function InvoiceCreateForm({ slug }: Props) {
             <span className="text-muted-foreground">Subtotal</span>
             <span className="tabular-nums">Rp {formatRp(subtotal)}</span>
           </div>
+
+          {/* Kode Voucher */}
+          <div className="py-1">
+            {voucherApplied ? (
+              <div className="flex items-center justify-between gap-2 rounded-md bg-emerald-50 border border-emerald-200 px-3 py-1.5">
+                <span className="text-xs text-emerald-800">
+                  Voucher <strong>{voucherApplied.code}</strong> — {voucherApplied.name}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-emerald-800 tabular-nums">−Rp {formatRp(voucherApplied.totalDiscount)}</span>
+                  <button type="button" onClick={handleRemoveVoucher} className="text-xs text-emerald-700 hover:text-emerald-900 underline">
+                    Hapus
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={voucherInput}
+                  onChange={(e) => { setVoucherInput(e.target.value.toUpperCase()); setVoucherError(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleApplyVoucher(); } }}
+                  placeholder="Kode Voucher (opsional)"
+                  className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleApplyVoucher()}
+                  disabled={voucherChecking || !voucherInput.trim()}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50 whitespace-nowrap"
+                >
+                  {voucherChecking ? "Memeriksa..." : "Terapkan"}
+                </button>
+              </div>
+            )}
+            {voucherError && <p className="mt-1 text-xs text-destructive">{voucherError}</p>}
+          </div>
+
           <div className="flex justify-between items-center">
             <span className="text-muted-foreground">Diskon</span>
             <div className="relative w-36">
