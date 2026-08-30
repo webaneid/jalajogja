@@ -17564,8 +17564,74 @@ masuk sekarang bilang "Invoice Baru" dengan link+nominal (bukan "Pendaftaran Dit
 info bayar), lalu konfirmasi pembayarannya via `/finance/event/acara/{id}` untuk cek WA
 "Pembayaran Dikonfirmasi" terkirim.
 
+### [2026-08-31] Konsistensi Data Peserta Event + Voucher di Invoice Manual Admin + Fix 500 Tenant Fiktif
+
+Rangkaian 5 perbaikan dalam satu sesi, semua sudah **di-commit, push, DAN deploy ke VPS**
+(dikonfirmasi via `pm2 logs`+`curl` production, bukan cuma lokal).
+
+**1. Data peserta event tidak konsisten antar tenant** — root cause: dua jalur registrasi
+paralel yang sah (`registerForEventAction` "jalur langsung" vs `addEventTicketToCartAction`
+"jalur keranjang"), tapi hanya jalur langsung yang selalu tercatat sebagai baris pending —
+invoice tiket dari jalur keranjang yang belum lunas tidak muncul sama sekali di admin. Fix:
+`getPendingTicketCheckouts()` baru (`lib/event-registration-sync.server.ts`) baca `invoice_
+items` yang belum lunas untuk event ini, digabung sebagai "virtual row" (`isVirtual`) ke
+daftar peserta admin DAN ke export Excel (kecuali status `cancelled`) — supaya admin bisa
+lihat siapa sudah/belum bayar dalam satu tempat, tanpa mengubah proses (user eksplisit: "saya
+tidak masalah 2 sistem asal konsisten... yang penting bisa export mana yang belum bayar").
+Sekalian ditambah paginasi (25/halaman) + search yang me-reset halaman di tabel admin.
+
+**2. Voucher belum bisa dipakai di invoice manual admin** — `/finance/billing/invoice`
+sebelumnya tidak punya jalur voucher sama sekali, admin harus edit/cancel dulu kalau peserta
+mau pakai kode. Fix: `createInvoiceAction` dibungkus `db.transaction()` (sekalian menutup
+celah atomicity lama — insert invoice+items dulu 2 statement lepas tanpa transaction),
+voucher dikunci `FOR UPDATE` + divalidasi ulang di dalam tx; action baru
+`previewInvoiceVoucherAction` (preview saat buat invoice baru) dan
+`applyVoucherToInvoiceAction` (terapkan ke invoice existing, scope sempit: hanya kalau
+`paidAmount===0` dan belum pernah pakai voucher — menghindari kompleksitas recompute untuk
+invoice partial-paid). Reuse penuh core engine voucher yang sudah ada, nol migrasi DB. Detail:
+`docs/arsitektur-voucher.md` § 15.
+
+**3. Export pembeli produk tidak punya info voucher** — beda cakupan dari export peserta
+event yang sudah lebih dulu punya kolom ini. Fix: `resolveProductBuyers()` tambah
+`discountAmount`+`voucherCode`, diekspos di export Excel (kolom baru) dan tabel admin (sub-teks
+hijau "− Rp X voucher (KODE)" di bawah subtotal, mengikuti pola visual
+`invoice-detail-client.tsx`).
+
+**4. Tiket kadaluarsa tampil seolah bisa dibeli** — server action sudah benar menolak tiket
+yang `saleStartsAt`/`saleEndsAt` sudah lewat, tapi form publik nol tahu soal itu — pengunjung
+bisa isi seluruh form peserta baru ditolak saat submit. Fix: `agenda/[slug]/page.tsx` hitung
+`saleWindowLocked`+`saleWindowMessage` per tiket saat render (anchor timezone tenant, pola
+sama `formatEventDateRange`), `getTicketLock()` cek ini PALING AWAL (sebelum toggle
+keanggotaan/registrasi). Drive-by fix: 3 tempat render CTA kartu tiket terkunci sebelumnya
+selalu fallback ke `/akun/lengkapi` meski tidak ada aksi relevan (kadaluarsa tidak butuh CTA)
+— sekarang CTA cuma muncul kalau ada `ctaHref`.
+
+**5. Error 500 untuk tenant fiktif di catch-all route** — ditemukan LANGSUNG dari `pm2 logs`
+produksi (di luar 4 poin di atas) saat verifikasi deploy: bot/scraper probe path acak (`/dist/
+...`, `/v1/...`) ke-capture sebagai `[tenant]`, `resolveSlugKind()` (`[...slug]/page.tsx`)
+langsung `createTenantDb()` tanpa cek tenant exists dulu — schema yang tidak pernah ada bikin
+PostgreSQL error "relation does not exist" tembus jadi 500 (nol `error.tsx` boundary di route
+group `(public)`). Persis kelas bug yang sudah pernah difix untuk `generateMetadata` (lesson
+lama), tapi file ini kelewat. Fix: guard `public.tenants WHERE slug=X AND isActive=true` di
+awal `resolveSlugKind()`, sebelum `createTenantDb()` dipanggil — pola sama `getPage()`'s
+`tenant.isActive` check di file yang sama. **Diverifikasi empiris LANGSUNG di production**:
+`curl` ke path fake tenant balikan `404` bersih (sebelumnya 500), `pm2 logs` bersih. Detail:
+`docs/diagnostik/rencana-perbaikan-akses-404.md` § 13.
+
+`tsc --noEmit` 0 error kedua package di setiap poin + `bun run build --filter=@jalajogja/web`
+genuine sukses (dev server dimatikan+`.next` dibersihkan+direstart tiap kali) — 5 commit
+terpisah, semua di-push dan dikonfirmasi hidup di VPS via `pm2 logs`+`curl`.
+
 ## Context Sesi Terakhir
-- Terakhir dikerjakan: **Bug notifikasi WA tiket berbayar menyesatkan** — lihat lesson
+- Terakhir dikerjakan: **Konsistensi data peserta event, voucher di invoice manual admin,
+  export voucher toko, UX tiket kadaluarsa, dan fix 500 tenant fiktif** — lihat lesson
+  `[2026-08-31]` di atas untuk detail lengkap. **SEMUA 5 ITEM SUDAH DI-COMMIT, PUSH, DAN
+  DI-DEPLOY KE VPS** — dikonfirmasi via `pm2 logs`+`curl` production langsung (bukan cuma
+  lokal), termasuk verifikasi empiris fix #5 (path fake tenant balikan 404, bukan 500) di
+  server production sungguhan. Dokumentasi disinkronkan: `docs/arsitektur-voucher.md` § 15
+  (+ koreksi § 10 poin 4 yang basi) dan `docs/diagnostik/rencana-perbaikan-akses-404.md` § 13.
+  Nol tugas tersisa dari sesi ini.
+- Sesi sebelumnya: **Bug notifikasi WA tiket berbayar menyesatkan** — lihat lesson
   `[2026-08-28]` "Bug: Notifikasi WA Tiket Berbayar Menyesatkan" di atas. User laporkan tiket
   berbayar terasa "langsung confirm" meski belum bayar — root cause TERNYATA murni notifikasi
   WA (`event_registered` dikirim unconditional untuk tiket berbayar, tanpa info tagihan; state

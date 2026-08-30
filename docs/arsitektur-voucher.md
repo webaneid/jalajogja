@@ -23,6 +23,8 @@ audit lanjutan 2026-08-08)
   produk BERVARIASI (mismatch `product_variations.id` vs `products.id` di targeting) —
   ✅ Difix, lihat § 13. Belum di-commit/push/deploy — lihat § 13 untuk status verifikasi.
 - Sisa skenario manual (§ 9) masih perlu dicoba end-to-end
+- **Voucher di invoice manual admin** (buat baru & pasca-buat) — ✅ Selesai + di-deploy VPS
+  (2026-08-31), lihat § 15
 
 Fase 2 (diskon otomatis tanpa kode, target produk mitra, target per kategori) — **belum
 direncanakan detail**, lihat § 10 "Di Luar Scope Fase 1".
@@ -367,9 +369,9 @@ kepemilikan ke mitra, baris itu tetap tidak terpotong saat checkout sungguhan.
    ditanggung siapa (tenant subsidi penuh, atau otomatis kurangi komisi mitra proporsional).
 3. **Target per kategori produk** (bukan per-item) — `targetItemIds` bisa diperluas dengan kolom
    tambahan `targetCategoryIds` nanti tanpa breaking change.
-4. **Voucher untuk jalur di luar cart** (`registerForEventAction` alur langsung non-cart,
-   `createInvoiceAction` admin-manual) — Fase 1 cuma cart/checkout, jalur mayoritas traffic
-   publik. Alur admin-manual sudah punya kontrol penuh (admin bisa isi harga manual sendiri).
+4. **`registerForEventAction` alur langsung non-cart** — masih di luar scope, jalur legacy yang
+   tidak lewat cart universal. ~~`createInvoiceAction` admin-manual~~ **SUPERSEDED (2026-08-31)**
+   — voucher sekarang didukung penuh untuk invoice manual admin, lihat § 15.
 5. **Stacking voucher** (lebih dari satu kode per checkout) — tidak didukung, satu voucher per
    checkout. Perubahan besar ke resolver kalau dibutuhkan nanti (perlu urutan aplikasi antar
    diskon).
@@ -699,3 +701,33 @@ sukses (dev server dimatikan+`.next` dibersihkan+direstart). File disentuh:
 DB — murni perbaikan logika client + koreksi data manual satu invoice. **Sudah di-commit,
 belum di-deploy ke VPS** — perlu `git pull && bun run build --filter=@jalajogja/web && pm2
 restart jalajogja --update-env` di server sebelum fix ini aktif untuk customer berikutnya.
+
+---
+
+## 15. Voucher di Invoice Manual Admin — Buat Baru & Pasca-Buat (2026-08-31)
+
+Menutup item 4 § 10 di atas: admin sekarang bisa menerapkan kode voucher di `/finance/billing/
+invoice` untuk **dua skenario**, tanpa perlu edit/cancel invoice untuk memberi diskon.
+
+**1. Saat buat invoice baru** (`createInvoiceAction`) — admin isi kode voucher di form, sistem
+preview (`previewInvoiceVoucherAction`, read-only, dipanggil saat klik "Terapkan") lalu
+`createInvoiceAction` dibungkus `db.transaction()` — voucher dikunci `FOR UPDATE` +
+divalidasi ULANG di dalam transaction (bukan cuma percaya hasil preview) sebelum item+invoice
+ditulis. **Sekalian menutup celah atomicity lama**: sebelumnya insert invoice dan insert
+invoice_items adalah dua statement lepas tanpa transaction sama sekali — sekarang satu unit atomik.
+
+**2. Ke invoice yang sudah ada** (`applyVoucherToInvoiceAction`) — widget "Terapkan Voucher" di
+halaman detail invoice, HANYA tampil kalau `paidAmount === 0` DAN belum pernah pakai voucher
+DAN status bukan `paid`/`cancelled`. Scope sengaja sempit — begitu ada pembayaran masuk
+sedikit pun, invoice tidak bisa lagi diberi voucher lewat jalur ini (menghindari kompleksitas
+recompute status/jurnal untuk invoice yang sudah partial-paid). Mengunci invoice row sebelum
+menulis, prinsip sama dengan alur checkout publik.
+
+**File**: `apps/web/app/(dashboard)/app/[tenant]/finance/billing/actions.ts` (kedua action baru
++ rewrite `createInvoiceAction`), `invoice-create-form.tsx` (UI form baru), `invoice-detail-client.tsx`
+(widget "Terapkan Voucher"). Reuse penuh core engine yang sudah ada (`findVoucherByCode`,
+`countCustomerRedemptions`, `computeVoucherDiscount` dari `@jalajogja/db`) — nol perubahan ke
+resolver, nol migrasi DB.
+
+`tsc --noEmit` bersih kedua package + `bun run build --filter=@jalajogja/web` genuine sukses.
+**Sudah di-commit, push, dan di-deploy ke VPS** (2026-08-31).

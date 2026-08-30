@@ -1,5 +1,8 @@
 # Rencana Perbaikan — 404 Tersembunyi, Beban DB, dan Dugaan Blokir IP
 
+> **Susulan (2026-08-31)**: bug KOREKTNESS terpisah (500 untuk tenant fiktif, bukan cuma
+> query-boros) ditemukan+difix di fungsi yang sama (`resolveSlugKind()`) — lihat § 13.
+
 > **Status: ✅ SELESAI SELURUHNYA (2026-07-28).** Fase A+B+C dieksekusi+diverifikasi. § 6 (cek
 > Fail2ban di VPS) sudah dijalankan user — **hasil: Fail2ban TIDAK TERINSTALL sama sekali** di
 > VPS ini (`systemctl status fail2ban` → "Unit fail2ban.service could not be found"). Ini
@@ -474,3 +477,28 @@ keluhan berulang setelah fix ini di-deploy):
 berkurang/berhenti. Kalau masih berulang, kandidat paling murah untuk dicek berikutnya adalah
 `ufw`/`iptables` (Langkah pertama di atas) — sama-sama cuma perintah baca status, aman
 dijalankan kapan saja tanpa risiko.
+
+---
+
+## 13. Bug Terpisah Ditemukan di `resolveSlugKind()` — Error 500 untuk Tenant Fiktif (2026-08-31)
+
+Ditemukan LANGSUNG dari `pm2 logs` produksi saat deploy fitur lain (tidak terkait investigasi
+di atas) — beda dari § 3.3/§ 11.3 (dedup query, sudah difix), ini bug KOREKTNESS baru: bot/
+scraper probe path acak (mis. `/dist/some-page`, `/v1/foo/bar`) ke-capture segmen pertamanya
+sebagai `[tenant]`. `resolveSlugKind()` langsung `createTenantDb(tenantSlug)` dan query
+`tenant_{slug}.pages`/`.posts`/`.legacy_url_redirects` **tanpa cek dulu apakah tenant itu
+genuinely ada di `public.tenants`** — schema `tenant_dist`/`tenant_v1` yang tidak pernah exist
+bikin PostgreSQL lempar `relation "..." does not exist`, dan karena route group `(public)` tidak
+punya `error.tsx` boundary, error itu tembus jadi **500** (bukan 404 rapi) untuk request itu.
+
+**Fix**: tambah guard `public.tenants WHERE slug=X AND isActive=true` di AWAL
+`resolveSlugKind()`, sebelum `createTenantDb()` dipanggil sama sekali — kalau tidak ketemu,
+langsung `return { kind: "none" }` (jatuh natural ke `notFound()`). Pola sama persis
+`getPage()`'s `tenant.isActive` check di file yang sama.
+
+Diverifikasi empiris (bukan cuma baca kode): `/dist/some-page` dan `/v1/foo/bar` di lokal
+sekarang balikan `404` bersih, log dev server nol exception. Dikonfirmasi ulang LANGSUNG di
+production setelah deploy — `curl` ke path fake tenant balikan `404`, `pm2 logs` bersih.
+
+File: `apps/web/app/(public)/[tenant]/[...slug]/page.tsx`. Nol migrasi DB. **Sudah di-commit,
+push, dan di-deploy ke VPS** (2026-08-31).
