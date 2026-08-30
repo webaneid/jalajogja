@@ -77,6 +77,20 @@ async function postExists(tenantClient: TenantDb, postSlug: string): Promise<boo
 // masuk fungsi cache, split lagi di dalam. String primitif dibandingkan by VALUE, dedup benar.
 const resolveSlugKind = cache(async (tenantSlug: string, joinedSegments: string): Promise<Resolution> => {
   const segments = joinedSegments.split("/");
+
+  // Tolak SEGERA kalau tenant tidak ada/tidak aktif — cegah query ke schema tenant_{slug}
+  // yang tidak pernah ada (bot/scraper probe path acak seperti /dist/..., /v1/... ke-capture
+  // sebagai [tenant]). Tanpa ini, createTenantDb() di bawah query ke schema yang genuinely
+  // tidak exist → PostgreSQL "relation does not exist" tembus jadi 500 (nol try/catch, nol
+  // error.tsx boundary di route group ini) — bukan 404 rapi seperti seharusnya. Pola sama
+  // getPage()'s tenant.isActive check di file ini juga.
+  const [tenantRow] = await db
+    .select({ isActive: tenants.isActive })
+    .from(tenants)
+    .where(eq(tenants.slug, tenantSlug))
+    .limit(1);
+  if (!tenantRow?.isActive) return { kind: "none" };
+
   const tenantClient = createTenantDb(tenantSlug);
   const { db: tenantDb, schema } = tenantClient;
 
