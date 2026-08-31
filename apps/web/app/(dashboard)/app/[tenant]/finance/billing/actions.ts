@@ -9,6 +9,7 @@ import {
   findVoucherByCode,
   countCustomerRedemptions,
   computeVoucherDiscount,
+  resolveProductCartItem,
   type ResolvedCartItemForVoucher,
   type VoucherApplicationResult,
 } from "@jalajogja/db";
@@ -560,17 +561,57 @@ export async function applyVoucherToInvoiceAction(
       const voucherRow = await findVoucherByCode(tx, schema, code, true);
       if (!voucherRow) throw new Error("Kode voucher tidak ditemukan.");
 
+      // Sama seperti createInvoiceAction/previewInvoiceVoucherAction — item tanpa itemId
+      // (biasanya invoice lama yang dibuat sebelum item-nya dipilih dari katalog, atau bertipe
+      // custom yang sengaja tidak punya itemId) tidak pernah bisa cocok dengan voucher target-
+      // spesifik. Beda dari kedua fungsi lain: item di sini SUDAH tersimpan di DB (bukan dari
+      // form yang bisa diedit lagi) — pesannya diarahkan ke item YANG BERSANGKUTAN supaya admin
+      // tahu item mana yang bermasalah, bukan pesan generik dari computeVoucherDiscount.
+      if (voucherRow.targetItemIds.length > 0) {
+        const unlinked = items.find((it) => it.itemType !== "custom" && !it.itemId);
+        if (unlinked) {
+          throw new Error(
+            `Item "${unlinked.name}" di invoice ini tidak terhubung ke katalog (itemId kosong) — voucher target-spesifik tidak bisa dicocokkan. Kemungkinan invoice ini dibuat sebelum item-nya sempat dipilih dari hasil pencarian.`,
+          );
+        }
+      }
+
       const existingRedemptions = await countCustomerRedemptions(tx, schema, voucherRow.id, {
         phone: lockedInv.customerPhone, email: lockedInv.customerEmail,
       });
 
-      const voucherResolvedItems: ResolvedCartItemForVoucher[] = items.map((it) => ({
-        itemType: it.itemType as ResolvedCartItemForVoucher["itemType"],
-        itemId:   it.itemId,
-        unitPrice: parseFloat(String(it.unitPrice)),
-        quantity:  it.quantity,
-        mitraId:   null, // invoice manual admin selalu milik tenant sendiri
-      }));
+      // BUG NYATA (ditemukan 2026-08-31, lihat docs/arsitektur-voucher.md § 17): produk
+      // bervariasi menyimpan ID VARIASI (product_variations.id) di invoice_items.itemId
+      // (memang benar untuk keperluan fulfillment/SKU — lihat lib/resolve-product-item.ts).
+      // VoucherTargetPicker HANYA pernah menawarkan products.id (produk induk), jadi kalau
+      // itemId dibandingkan mentah-mentah ke voucher.targetItemIds, item bervariasi TIDAK
+      // PERNAH bisa cocok — persis kelas bug yang resolveProductCartItem() sudah dokumentasikan
+      // dan sudah difix di checkoutAction/previewOrderVoucherAction, tapi terlewat di sini
+      // karena fungsi ini baca item LANGSUNG dari DB (bukan dari resolveProductCartItem() lagi).
+      // Resolve HANYA untuk itemType="product" — tiket/donasi/custom tidak pernah punya varian.
+      const voucherResolvedItems: ResolvedCartItemForVoucher[] = await Promise.all(
+        items.map(async (it) => {
+          if (it.itemType === "product" && it.itemId) {
+            const resolved = await resolveProductCartItem(tx, schema, it.itemId);
+            if (resolved) {
+              return {
+                itemType:  "product" as const,
+                itemId:    resolved.productId, // ID produk INDUK — inilah yang dicek voucher
+                unitPrice: parseFloat(String(it.unitPrice)),
+                quantity:  it.quantity,
+                mitraId:   resolved.mitraId, // resolusi asli, bukan hardcode null
+              };
+            }
+          }
+          return {
+            itemType: it.itemType as ResolvedCartItemForVoucher["itemType"],
+            itemId:   it.itemId,
+            unitPrice: parseFloat(String(it.unitPrice)),
+            quantity:  it.quantity,
+            mitraId:   null,
+          };
+        }),
+      );
 
       const voucherResult = computeVoucherDiscount(
         voucherRow,

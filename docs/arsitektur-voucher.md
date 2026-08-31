@@ -783,7 +783,59 @@ TIDAK berubah — nol perubahan diperlukan di `invoice-detail-client.tsx` (clien
 
 `tsc --noEmit` bersih kedua package + `bun run build --filter=@jalajogja/web` genuine sukses
 (dev server dimatikan+`.next` dibersihkan+direstart, `Cached: 0 cached, 1 total`, 50.5 detik).
-Nol migrasi DB. **Belum di-commit/push/deploy ke VPS, belum diverifikasi visual di browser** —
-user perlu coba: buat invoice baru dengan voucher 100% → cek status langsung "Lunas" tanpa kode
-unik; terapkan voucher 100% ke invoice existing yang totalnya sebelumnya > 0 (sudah punya kode
-unik) → cek kode unik hilang + status berubah "Lunas".
+Nol migrasi DB. **SUDAH di-commit (`a9feb22`), di-push, dan di-deploy ke VPS** (user konfirmasi
+`git pull`+build+`pm2 restart` sukses) — **koreksi data historis 2 invoice production yang
+sudah terlanjur "nyantol" (voucher diterapkan sebelum fix ini live) juga sudah dikerjakan
+manual** via SQL yang mereplikasi persis logic `applyInvoiceZeroTotalSettlement()`
+(`docs/diagnostik/` — invoice `620-INV-202608-00221` dan `620-INV-202608-00105`, tenant
+`visikita`, masing-masing dinolkan kode uniknya + di-set `paid` + dibuatkan
+`event_registrations`-nya). Belum ada konfirmasi user mencoba skenario BARU (voucher 100% pada
+invoice yang genuinely dibuat setelah fix ini live) langsung di admin UI.
+
+## 17. Bug Kritis — Voucher Tidak Match untuk Produk Bervariasi di `applyVoucherToInvoiceAction` (2026-08-31)
+
+**Sama persis dengan § 13 (2026-08-08)** — tapi di fungsi yang BEDA. § 13 memperbaiki
+`checkoutAction`/`previewVoucherAction` (cart publik) via `resolveProductCartItem()`. Fungsi
+`applyVoucherToInvoiceAction` (§ 15, "Terapkan Voucher" di halaman detail invoice
+`/finance/billing/invoice/[id]` — untuk invoice yang SUDAH ADA) dibuat BELAKANGAN (2026-08-31)
+dan tidak pernah dapat perbaikan yang sama, meski root cause-nya IDENTIK: item produk
+bervariasi tersimpan di `invoice_items.itemId` sebagai `product_variations.id` (benar, untuk
+keperluan fulfillment/SKU), sementara `VoucherTargetPicker` hanya pernah menargetkan
+`products.id` (produk induk) — dibandingkan mentah-mentah, tidak pernah cocok.
+
+**Ditemukan lewat laporan user + diagnosa data langsung** (bukan tebakan): user laporkan
+"voucher untuk produk... tidak bisa dipakai" di invoice `8531135c-c0fc-4ca8-9a44-254d68ebfcbb`
+(tenant `visikita`). Query silang `invoice_items` × `vouchers` menunjukkan item "Kaos Spinker
+620... — L" punya `item_id = d48d0f8e-...`, sementara voucher `HUTANG2015` (target_type=product)
+menargetkan `4fd00c26-...`. Query lanjutan ke `products` mengonfirmasi: `4fd00c26-...` ADALAH
+produk induk ("Kaos Spinker 620...", `product_type=variable`), sementara `d48d0f8e-...` TIDAK
+ADA di `products` sama sekali — bukti langsung itu adalah `product_variations.id` (varian "L"),
+bukan `products.id`. Invoice ini kemungkinan besar dibuat lewat `/toko/pesanan/new`
+(`createOrderAction`, yang punya picker varian) — bukan `/finance/billing/invoice/new`
+(`searchBillingProductsAction` di alur itu tidak pernah menawarkan variasi individual sama
+sekali, jadi kelas bug ini TIDAK relevan untuk `createInvoiceAction`/`previewInvoiceVoucherAction`).
+
+**Fix**: import `resolveProductCartItem` (dari `@jalajogja/db`, helper yang SAMA persis dipakai
+§ 13, TIDAK ditulis ulang) ke `finance/billing/actions.ts`. Di `applyVoucherToInvoiceAction`,
+sebelum membangun `voucherResolvedItems`, tiap item bertipe `"product"` di-resolve dulu
+(`resolveProductCartItem(tx, schema, it.itemId)`) — hasilnya `resolved.productId` (produk induk)
+dipakai sebagai `itemId` untuk pencocokan voucher, dan `resolved.mitraId` (resolusi ASLI, bukan
+lagi hardcode `null`) menutup sekalian gap eksklusi-mitra yang sama seperti § 13 poin 2. Item
+non-product (ticket/donation/custom) tidak disentuh — tidak punya konsep variasi. Urutan array
+dipertahankan (`Promise.all` atas `items.map`, bukan reduce/sequential) supaya
+`voucherResult.perItemDiscount.get(i)` (di-key by index, dipakai untuk update tiap baris
+`invoice_items` setelahnya) tetap sinkron 1:1 dengan `items[i]` — tidak ada pergeseran index.
+
+**`createInvoiceAction`/`previewInvoiceVoucherAction` TIDAK disentuh** — item di alur itu SELALU
+berasal dari `searchBillingProductsAction` yang query `products` langsung tanpa join variasi,
+jadi `itemId`-nya tidak pernah bisa jadi ID varian di titik itu. Gap mitraId hardcode `null` di
+kedua fungsi itu (dicatat di komentar § "createInvoiceAction", baris ~227) TETAP belum
+diperbaiki — beda kelas masalah (fungsi itu tidak punya cara resolve ke item DB manapun karena
+item-nya belum pernah di-persist saat validasi berjalan), di luar scope perbaikan ini.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web`. `bun run build --filter=@jalajogja/web`
+genuine sukses (dev server dimatikan+`.next` dibersihkan+direstart, `Cached: 0 cached, 1 total`,
+49.2 detik). Nol migrasi DB — murni perbaikan logika resolusi, reuse helper yang sudah ada, sama
+seperti § 13. **Belum di-commit/push/deploy ke VPS, belum diverifikasi lewat klik ulang
+"Terapkan Voucher" di invoice `8531135c-...` yang sesungguhnya** — user perlu coba lagi setelah
+deploy.
