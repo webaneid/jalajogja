@@ -20,6 +20,7 @@ import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import {
   createEventRegistrationsFromInvoiceTickets,
   type EventTicketBackfillResult,
+  type TenantTx,
 } from "@/lib/event-registration-sync.server";
 import { getTenantTimezone, formatInTz, tzLabel, anchorTodayUtc, todayInTz, localDatetimeToUtcIso } from "@/lib/tenant-timezone.server";
 import { checkMemberEligibility } from "@/lib/member-eligibility";
@@ -92,6 +93,63 @@ function revalidateBilling(slug: string) {
 
 function calcSubtotal(items: InvoiceItemInput[]): number {
   return items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+}
+
+// ─── applyInvoiceZeroTotalSettlement ────────────────────────────────────────
+// Efek samping "invoice langsung lunas dengan total Rp 0" — voucher 100% (atau kombinasi
+// diskon) yang menghabiskan seluruh tagihan. Dipakai BAIK saat invoice BARU dibuat
+// (createInvoiceAction) MAUPUN saat voucher diterapkan ke invoice yang SUDAH ADA sehingga
+// totalnya turun jadi 0 (applyVoucherToInvoiceAction). TIDAK ADA jurnal di sini — nominal 0,
+// tidak ada uang masuk untuk dicatat. Pola sama persis checkoutAction (cart/actions.ts) —
+// lihat docs/arsitektur-voucher.md § "Checkout Rp 0 (voucher 100%) — auto lunas, tanpa
+// langkah bayar". Duplikasi guard sourceType="event_registration" dari confirmInvoicePaymentAction
+// di file yang sama (pola sudah established, bukan logic baru).
+async function applyInvoiceZeroTotalSettlement(
+  tx: TenantTx,
+  tenantDb: ReturnType<typeof createTenantDb>,
+  invoiceId: string,
+  invoiceSourceType: string,
+  invoiceSourceId: string | null,
+  invoiceMemberId: string | null,
+  invoiceProfileId: string | null,
+): Promise<{ newEventRegs: EventTicketBackfillResult["created"] }> {
+  const { schema } = tenantDb;
+
+  // Sync collected_amount kampanye donasi — dari invoice_items yang sudah ter-insert.
+  const donationItems = await tx
+    .select({ itemId: schema.invoiceItems.itemId, total: schema.invoiceItems.total })
+    .from(schema.invoiceItems)
+    .where(and(
+      eq(schema.invoiceItems.invoiceId, invoiceId),
+      eq(schema.invoiceItems.itemType, "donation"),
+    ));
+  const campaignAmounts: Record<string, number> = {};
+  for (const it of donationItems) {
+    if (it.itemId) campaignAmounts[it.itemId] = (campaignAmounts[it.itemId] ?? 0) + parseFloat(String(it.total));
+  }
+  for (const [cId, amt] of Object.entries(campaignAmounts)) {
+    await tx.update(schema.campaigns)
+      .set({ collectedAmount: sql`collected_amount + ${String(amt)}` })
+      .where(eq(schema.campaigns.id, cId));
+  }
+
+  // Alur lama (registerForEventAction): invoice terhubung langsung ke SATU event_registrations
+  // via sourceId — cukup tandai confirmed. JANGAN panggil createEventRegistrationsFromInvoiceTickets
+  // di bawah untuk kasus ini — item tiketnya tidak punya JSON attendee, akan bikin baris
+  // duplikat dengan nama salah (nama tiket, bukan nama peserta).
+  if (invoiceSourceType === "event_registration" && invoiceSourceId) {
+    await tx.update(schema.eventRegistrations)
+      .set({ status: "confirmed", updatedAt: new Date() })
+      .where(eq(schema.eventRegistrations.id, invoiceSourceId));
+    return { newEventRegs: [] };
+  }
+
+  // Alur cart/manual — auto-create dari item tiket. SATU-SATUNYA implementasi, lihat
+  // lib/event-registration-sync.server.ts.
+  const ticketResult = await createEventRegistrationsFromInvoiceTickets(
+    tx, tenantDb, invoiceId, invoiceMemberId, invoiceProfileId,
+  );
+  return { newEventRegs: ticketResult.created };
 }
 
 // ─── createInvoiceAction ─────────────────────────────────────────────────────
@@ -183,8 +241,14 @@ export async function createInvoiceAction(
       const subtotalNet          = subtotalGross - voucherDiscountTotal;
       const manualDiscount       = data.discount ?? 0;
       const total                = Math.max(0, subtotalNet - manualDiscount);
+      // Voucher 100% (atau kombinasi diskon) yang menghabiskan seluruh tagihan → invoice
+      // langsung lunas. Prinsip yang sama dengan checkoutAction (cart publik), sebelumnya
+      // cuma dipakai di sana — sekarang berlaku juga untuk invoice manual admin.
+      const isFullyPaid = total <= 0;
 
-      const uniqueCode = uniqueCodeEnabled ? await generateUniqueCode(tenantDb) : 0;
+      // Kode unik TIDAK PERNAH digenerate untuk tagihan Rp 0 — tidak ada apa pun yang perlu
+      // ditransfer, jadi tidak ada gunanya kode identifikasi transfer.
+      const uniqueCode = (uniqueCodeEnabled && !isFullyPaid) ? await generateUniqueCode(tenantDb) : 0;
 
       const [invoice] = await tx
         .insert(schema.invoices)
@@ -200,8 +264,8 @@ export async function createInvoiceAction(
           discount:      manualDiscount.toFixed(2),
           total:         total.toFixed(2),
           uniqueCode,
-          paidAmount:    "0",
-          status:        "pending",
+          paidAmount:    isFullyPaid ? total.toFixed(2) : "0",
+          status:        isFullyPaid ? "paid" : "pending",
           dueDate,
           notes:         data.notes?.trim() ?? null,
           createdBy:     access.tenantUser.id,
@@ -253,26 +317,85 @@ export async function createInvoiceAction(
         });
       }
 
-      return { invoiceId: invoice.id, invoiceNumber, customerName: invoice.customerName, customerPhone: invoice.customerPhone, total, uniqueCode };
+      // Invoice Rp 0 → efek samping "langsung lunas" (sync campaign + auto-create tiket
+      // event) — TANPA jurnal, tidak ada uang yang masuk untuk dicatat.
+      let newEventRegs: EventTicketBackfillResult["created"] = [];
+      if (isFullyPaid) {
+        const settlement = await applyInvoiceZeroTotalSettlement(
+          tx, tenantDb, invoice.id, "manual", null, data.memberId ?? null, null,
+        );
+        newEventRegs = settlement.newEventRegs;
+      }
+
+      return {
+        invoiceId: invoice.id, invoiceNumber, customerName: invoice.customerName,
+        customerPhone: invoice.customerPhone, total, uniqueCode, isFullyPaid, newEventRegs,
+      };
     });
 
-    // Kirim notifikasi WA (invoice_created) jika nomor HP customer tersedia
+    // Kirim notifikasi WA jika nomor HP customer tersedia
     if (result.customerPhone) {
-      const invoiceUrl = await waAppUrl(slug, `/invoice/${result.invoiceId}`);
-      const amountDue  = result.total + result.uniqueCode;
-      void notifyWa({
-        slug,
-        tenantDb,
-        event: "invoice_created",
-        phone: result.customerPhone,
-        vars: {
-          name:          result.customerName,
-          invoiceNumber: result.invoiceNumber,
-          amount:        waRupiah(amountDue),
-          dueDate:       dueDate,
-          invoiceUrl,
-        },
-      });
+      if (result.isFullyPaid) {
+        // Voucher 100% — invoice sudah langsung lunas, TIDAK ada apa pun yang perlu dibayar.
+        // Notifikasi STANDAR (payment_confirmed), bukan invoice_created — pola sama
+        // checkoutAction (cart/actions.ts).
+        void notifyWa({
+          slug, tenantDb, event: "payment_confirmed",
+          phone: result.customerPhone,
+          vars: {
+            name:          result.customerName,
+            invoiceNumber: result.invoiceNumber,
+            amount:        waRupiah(0),
+          },
+        });
+
+        for (const reg of result.newEventRegs) {
+          const [eventDetail] = await db
+            .select({
+              title:    schema.events.title,
+              slug:     schema.events.slug,
+              startsAt: schema.events.startsAt,
+              location: schema.events.location,
+            })
+            .from(schema.events)
+            .where(eq(schema.events.id, reg.eventId))
+            .limit(1);
+          if (!eventDetail) continue;
+
+          revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
+          revalidatePath(`/${slug}/agenda/${eventDetail.slug}`);
+
+          const eventUrl = await waAppUrl(slug, `/agenda/${eventDetail.slug}`);
+          void notifyWa({
+            slug, tenantDb, event: "event_registered",
+            phone: reg.attendeePhone,
+            vars: {
+              name:      reg.attendeeName,
+              eventName: eventDetail.title,
+              eventDate: formatEventDateWib(eventDetail.startsAt, tenantTimezone),
+              location:  eventDetail.location ?? "-",
+              regNumber: reg.regNumber,
+              eventUrl,
+            },
+          });
+        }
+      } else {
+        const invoiceUrl = await waAppUrl(slug, `/invoice/${result.invoiceId}`);
+        const amountDue  = result.total + result.uniqueCode;
+        void notifyWa({
+          slug,
+          tenantDb,
+          event: "invoice_created",
+          phone: result.customerPhone,
+          vars: {
+            name:          result.customerName,
+            invoiceNumber: result.invoiceNumber,
+            amount:        waRupiah(amountDue),
+            dueDate:       dueDate,
+            invoiceUrl,
+          },
+        });
+      }
     }
 
     revalidateBilling(slug);
@@ -372,6 +495,10 @@ export async function applyVoucherToInvoiceAction(
   const { db, schema } = tenantDb;
 
   try {
+    // Dipakai untuk format tanggal event kalau invoice ini jadi lunas Rp 0 dan punya item
+    // tiket yang perlu registrasi — dihitung sekali di luar transaction (read-only).
+    const tenantTimezone = await getTenantTimezone(tenantDb);
+
     const result = await db.transaction(async (tx) => {
       const [lockedInv] = await tx
         .select()
@@ -425,6 +552,12 @@ export async function applyVoucherToInvoiceAction(
       const subtotalGross        = items.reduce((sum, it) => sum + parseFloat(String(it.unitPrice)) * it.quantity, 0);
       const subtotalNet          = subtotalGross - voucherDiscountTotal;
       const total                = Math.max(0, subtotalNet - manualDiscount);
+      // Voucher yang menghabiskan seluruh sisa tagihan → invoice langsung lunas. Kode unik
+      // yang sudah ter-generate saat invoice dibuat (kalau ada) WAJIB dinolkan di sini —
+      // tanpa ini, amountDue (= total + uniqueCode) tetap > 0 walau total tampil Rp 0, dan
+      // invoice tidak pernah keluar dari status "belum dibayar". Lihat docs/arsitektur-voucher.md
+      // § "Checkout Rp 0".
+      const isFullyPaid = total <= 0;
 
       // Update tiap item dengan diskon barunya
       for (let i = 0; i < items.length; i++) {
@@ -448,6 +581,11 @@ export async function applyVoucherToInvoiceAction(
           voucherId:            voucherRow.id,
           voucherCode:          voucherRow.code,
           voucherDiscountTotal: voucherDiscountTotal.toFixed(2),
+          // Kode unik selalu dinolkan begitu invoice Rp 0 — lihat komentar di atas. Kalau
+          // belum Rp 0, uniqueCode yang sudah ada (kalau ada) TIDAK disentuh/diregenerasi.
+          ...(isFullyPaid
+            ? { uniqueCode: 0, status: "paid" as const, paidAmount: total.toFixed(2) }
+            : {}),
           updatedAt:            new Date(),
         })
         .where(eq(schema.invoices.id, invoiceId));
@@ -465,8 +603,68 @@ export async function applyVoucherToInvoiceAction(
         discountTotal: voucherDiscountTotal.toFixed(2),
       });
 
-      return { total };
+      // Invoice Rp 0 → efek samping "langsung lunas" (sync campaign + auto-create tiket
+      // event) — TANPA jurnal, tidak ada uang yang masuk untuk dicatat.
+      let newEventRegs: EventTicketBackfillResult["created"] = [];
+      if (isFullyPaid) {
+        const settlement = await applyInvoiceZeroTotalSettlement(
+          tx, tenantDb, invoiceId, lockedInv.sourceType, lockedInv.sourceId,
+          lockedInv.memberId, lockedInv.profileId,
+        );
+        newEventRegs = settlement.newEventRegs;
+      }
+
+      return {
+        total, isFullyPaid, newEventRegs,
+        customerPhone: lockedInv.customerPhone, customerName: lockedInv.customerName,
+        invoiceNumber: lockedInv.invoiceNumber,
+      };
     });
+
+    if (result.isFullyPaid && result.customerPhone) {
+      // Voucher menghabiskan seluruh sisa tagihan — notifikasi STANDAR (payment_confirmed),
+      // bukan invoice_created — pola sama checkoutAction (cart/actions.ts).
+      void notifyWa({
+        slug, tenantDb, event: "payment_confirmed",
+        phone: result.customerPhone,
+        vars: {
+          name:          result.customerName,
+          invoiceNumber: result.invoiceNumber,
+          amount:        waRupiah(0),
+        },
+      });
+
+      for (const reg of result.newEventRegs) {
+        const [eventDetail] = await db
+          .select({
+            title:    schema.events.title,
+            slug:     schema.events.slug,
+            startsAt: schema.events.startsAt,
+            location: schema.events.location,
+          })
+          .from(schema.events)
+          .where(eq(schema.events.id, reg.eventId))
+          .limit(1);
+        if (!eventDetail) continue;
+
+        revalidatePath(`/app/${slug}/event/acara/${reg.eventId}`);
+        revalidatePath(`/${slug}/agenda/${eventDetail.slug}`);
+
+        const eventUrl = await waAppUrl(slug, `/agenda/${eventDetail.slug}`);
+        void notifyWa({
+          slug, tenantDb, event: "event_registered",
+          phone: reg.attendeePhone,
+          vars: {
+            name:      reg.attendeeName,
+            eventName: eventDetail.title,
+            eventDate: formatEventDateWib(eventDetail.startsAt, tenantTimezone),
+            location:  eventDetail.location ?? "-",
+            regNumber: reg.regNumber,
+            eventUrl,
+          },
+        });
+      }
+    }
 
     revalidateBilling(slug);
     revalidatePath(`/app/${slug}/finance/billing/invoice/${invoiceId}`);

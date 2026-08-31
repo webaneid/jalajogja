@@ -25,6 +25,10 @@ audit lanjutan 2026-08-08)
 - Sisa skenario manual (§ 9) masih perlu dicoba end-to-end
 - **Voucher di invoice manual admin** (buat baru & pasca-buat) — ✅ Selesai + di-deploy VPS
   (2026-08-31), lihat § 15
+- **Bug KRITIS ditemukan dari laporan user (2026-08-31), di HARI YANG SAMA dengan § 15**: kode
+  unik tidak pernah dinolkan/di-skip untuk invoice manual admin yang totalnya jadi Rp 0 karena
+  voucher — invoice tampil "Rp 0" tapi tetap dianggap belum dibayar. ✅ Difix, lihat § 16.
+  Belum di-commit/push/deploy.
 
 Fase 2 (diskon otomatis tanpa kode, target produk mitra, target per kategori) — **belum
 direncanakan detail**, lihat § 10 "Di Luar Scope Fase 1".
@@ -731,3 +735,55 @@ resolver, nol migrasi DB.
 
 `tsc --noEmit` bersih kedua package + `bun run build --filter=@jalajogja/web` genuine sukses.
 **Sudah di-commit, push, dan di-deploy ke VPS** (2026-08-31).
+
+---
+
+## 16. Bug Kritis — Kode Unik Tidak Dinolkan untuk Invoice Manual Admin Rp 0 (2026-08-31)
+
+Laporan user (di hari yang sama § 15 di-deploy): *"kode voucher di input benar ... ketika sudah
+create invoice, tagihan nol, tp tagihan kode unik pembayaran masih dianggap belum dibayar."*
+
+**Root cause — dua titik, prinsip § 1 ("Voucher 100% harus Rp 0 TANPA kode unik") tidak pernah
+diterapkan ke invoice manual admin, hanya ke `checkoutAction`:**
+
+1. **`createInvoiceAction`** — `uniqueCode = uniqueCodeEnabled ? await generateUniqueCode(tenantDb)
+   : 0` dipanggil UNCONDITIONAL, tanpa cek `total > 0`. Invoice dengan `total=0` (voucher
+   menghabiskan seluruh tagihan) tetap dapat kode unik nonzero, status tetap `"pending"` —
+   `amountDue = total + uniqueCode` (dipakai semua titik konfirmasi pembayaran, lihat
+   `docs/arsitektur-kode-unik.md`) jadi tidak pernah 0 meski tampilan total sudah Rp 0.
+2. **`applyVoucherToInvoiceAction`** (terapkan voucher ke invoice yang SUDAH ADA) — lebih parah:
+   TIDAK PERNAH menyentuh `uniqueCode` sama sekali. Kalau invoice sudah punya kode unik dari
+   saat dibuat (total awalnya > 0), lalu voucher diterapkan belakangan sampai `total` jadi 0,
+   kode unik LAMA tetap nongol — persis skenario "update invoice" yang dilaporkan user.
+
+**Fix — replikasi pola `isFullyPaid` dari `checkoutAction` (cart/actions.ts) ke KEDUA action**,
+via helper baru `applyInvoiceZeroTotalSettlement()` (dipakai bersama, di file yang sama):
+- `uniqueCode` di-skip/dinolkan kalau `total <= 0` — tidak pernah digenerate baru
+  (`createInvoiceAction`), dan dinolkan eksplisit kalau sebelumnya sudah ada
+  (`applyVoucherToInvoiceAction`).
+- Invoice langsung ditandai `status: "paid"`, `paidAmount: total` (= "0.00") — TIDAK dibiarkan
+  "pending" menunggu admin klik konfirmasi pembayaran Rp 0 secara manual.
+- Efek samping "langsung lunas" direplikasi (bukan cuma status): sync `campaigns.collectedAmount`
+  untuk item donasi, auto-create `event_registrations` untuk item tiket (reuse
+  `createEventRegistrationsFromInvoiceTickets()`, SATU-SATUNYA implementasi — lihat
+  `lib/event-registration-sync.server.ts`) dengan guard `sourceType === "event_registration"`
+  (alur lama) yang sama dengan `confirmInvoicePaymentAction`. **TIDAK ADA jurnal** — nominal 0,
+  tidak ada uang masuk untuk dicatat, konsisten `checkoutAction`.
+- Notifikasi WA: `payment_confirmed` (amount "Rp 0") + `event_registered` per tiket — bukan
+  `invoice_created` — pola sama `checkoutAction`.
+- `activateForumMembershipIfApplicable` SENGAJA TIDAK direplikasi — invoice admin manual tidak
+  pernah punya `invoice_items.forGabungRegistration=true` (flag itu murni konsep alur publik
+  `/gabung`, lihat `docs/arsitektur-backbone-ikpm.md`), jadi tidak relevan di sini.
+
+**File**: `apps/web/app/(dashboard)/app/[tenant]/finance/billing/actions.ts` — helper baru
+`applyInvoiceZeroTotalSettlement()`, `createInvoiceAction` dan `applyVoucherToInvoiceAction`
+diperluas. Return type publik `applyVoucherToInvoiceAction` (`ActionResult<{ total: number }>`)
+TIDAK berubah — nol perubahan diperlukan di `invoice-detail-client.tsx` (client cukup
+`router.refresh()` setelah sukses, status "paid" baru langsung terbaca dari DB).
+
+`tsc --noEmit` bersih kedua package + `bun run build --filter=@jalajogja/web` genuine sukses
+(dev server dimatikan+`.next` dibersihkan+direstart, `Cached: 0 cached, 1 total`, 50.5 detik).
+Nol migrasi DB. **Belum di-commit/push/deploy ke VPS, belum diverifikasi visual di browser** —
+user perlu coba: buat invoice baru dengan voucher 100% → cek status langsung "Lunas" tanpa kode
+unik; terapkan voucher 100% ke invoice existing yang totalnya sebelumnya > 0 (sudah punya kode
+unik) → cek kode unik hilang + status berubah "Lunas".
