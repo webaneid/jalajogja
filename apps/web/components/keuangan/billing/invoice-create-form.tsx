@@ -223,6 +223,16 @@ export function InvoiceCreateForm({ slug }: Props) {
     setItems((prev) => prev.filter((it) => it._key !== key));
   }
 
+  // ── Katalog belum terpilih ──────────────────────────────────────────────────
+  // Item bertipe produk/tiket/donasi TAPI belum diklik dari hasil pencarian (itemId kosong) —
+  // ini bikin voucher target-spesifik selalu gagal cocok ("Voucher tidak berlaku untuk item di
+  // keranjang Anda") tanpa penjelasan yang jelas, karena admin mengira sudah pilih produk padahal
+  // hanya mengetik teks bebas. Dicek di sini supaya bisa dipakai untuk warning inline DAN guard
+  // submit/voucher.
+  const unlinkedItems = items.filter(
+    (it) => it.itemType !== "custom" && it.name.trim() && !it.itemId,
+  );
+
   // ── Totals ──────────────────────────────────────────────────────────────────
 
   const subtotal        = items.reduce((s, it) => s + it.unitPrice * it.quantity, 0);
@@ -242,6 +252,12 @@ export function InvoiceCreateForm({ slug }: Props) {
   async function handleApplyVoucher() {
     const code = voucherInput.trim();
     if (!code) return;
+    if (unlinkedItems.length > 0) {
+      setVoucherError(
+        `Item "${unlinkedItems[0].name}" belum dipilih dari hasil pencarian katalog — klik salah satu hasil pencarian di kolom Nama Item, atau ubah tipenya jadi "Lainnya".`,
+      );
+      return;
+    }
     setVoucherChecking(true);
     setVoucherError("");
     try {
@@ -281,6 +297,13 @@ export function InvoiceCreateForm({ slug }: Props) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
+    if (unlinkedItems.length > 0) {
+      setError(
+        `Item "${unlinkedItems[0].name}" belum dipilih dari hasil pencarian katalog — klik salah satu hasil pencarian di kolom Nama Item, atau ubah tipenya jadi "Lainnya".`,
+      );
+      return;
+    }
 
     startTransition(async () => {
       const res = await createInvoiceAction(slug, {
@@ -437,6 +460,12 @@ export function InvoiceCreateForm({ slug }: Props) {
                     className={inputCls}
                     required
                   />
+                )}
+                {item.itemType !== "custom" && item.name.trim() && !item.itemId && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    ⚠ Belum terhubung ke katalog — klik salah satu hasil pencarian di atas
+                    (voucher &amp; validasi harga tidak akan berfungsi untuk item ini).
+                  </p>
                 )}
               </div>
             </div>

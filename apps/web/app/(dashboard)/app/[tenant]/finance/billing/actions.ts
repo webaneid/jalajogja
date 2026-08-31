@@ -173,6 +173,17 @@ export async function createInvoiceAction(
     if (!item.name?.trim())  return { success: false, error: "Nama item tidak boleh kosong." };
     if (item.unitPrice < 0)  return { success: false, error: "Harga tidak boleh negatif." };
     if (item.quantity < 1)   return { success: false, error: "Kuantitas minimal 1." };
+    // Item produk/tiket/donasi WAJIB punya itemId (dipilih dari hasil pencarian katalog di
+    // client) — tanpa ini, voucher target-spesifik selalu gagal cocok tanpa penjelasan yang
+    // jelas ("Voucher tidak berlaku untuk item di keranjang Anda"), karena computeVoucherDiscount
+    // tidak bisa membandingkan itemId terhadap voucher.targetItemIds. Client sudah menggate ini,
+    // guard di sini murni defense-in-depth (server action bisa dipanggil langsung).
+    if (item.itemType !== "custom" && !item.itemId) {
+      return {
+        success: false,
+        error: `Item "${item.name.trim()}" belum dipilih dari hasil pencarian katalog — klik salah satu hasil pencarian, atau ubah tipenya jadi "Lainnya".`,
+      };
+    }
   }
 
   const tenantDb = createTenantDb(slug);
@@ -213,9 +224,17 @@ export async function createInvoiceAction(
           phone: normalizedCustomerPhone, email: customerEmailTrim,
         });
 
-        // Item admin-manual selalu milik tenant sendiri (searchBillingProductsAction tidak
-        // pernah mengembalikan produk mitra atau ID variasi) — nol resolusi tambahan diperlukan,
-        // beda dari checkoutAction (cart publik) yang harus resolveProductCartItem() dulu.
+        // KOREKSI (2026-08-31): klaim lama "searchBillingProductsAction tidak pernah
+        // mengembalikan produk mitra" TIDAK BENAR — query itu tidak filter mitraId sama sekali
+        // (beda dari getVoucherTargetOptionsAction yang eksplisit `mitraId IS NULL`, dipakai
+        // saat admin MEMILIH target voucher). mitraId di-hardcode null di bawah untuk konsistensi
+        // dengan checkoutAction (yang resolveProductCartItem() dulu untuk dapat mitraId asli),
+        // TAPI di sini itu KELIRU secara diam-diam: kalau admin menambahkan produk mitra sebagai
+        // item invoice, voucher "berlaku untuk semua produk" (targetItemIds kosong) akan ikut
+        // mendiskon produk mitra itu, padahal kebijakan Fase 1 (docs/arsitektur-voucher.md § 1)
+        // sengaja HANYA menyasar produk milik tenant sendiri. Belum diperbaiki — di luar scope
+        // fix voucher-rejected-karena-itemId-kosong yang baru dilakukan; catat sebagai gap
+        // terpisah kalau nanti dilaporkan.
         const voucherResolvedItems: ResolvedCartItemForVoucher[] = data.items.map((it) => ({
           itemType: it.itemType,
           itemId:   it.itemId ?? null,
@@ -435,6 +454,20 @@ export async function previewInvoiceVoucherAction(
 
   if (!code?.trim() || !items.length)
     return { success: true, data: { valid: false, error: "Kode voucher kosong." } };
+
+  // Sama seperti createInvoiceAction — item produk/tiket/donasi tanpa itemId (belum dipilih
+  // dari katalog) tidak pernah bisa cocok dengan voucher target-spesifik. Tangkap di sini supaya
+  // pesannya jelas soal ITEM-nya, bukan pesan generik "voucher tidak berlaku".
+  const unlinkedItem = items.find((it) => it.itemType !== "custom" && !it.itemId);
+  if (unlinkedItem) {
+    return {
+      success: true,
+      data: {
+        valid: false,
+        error: `Item "${unlinkedItem.name}" belum dipilih dari hasil pencarian katalog — voucher tidak bisa dicocokkan sampai item ini dipilih dari daftar.`,
+      },
+    };
+  }
 
   const { db, schema } = createTenantDb(slug);
 
