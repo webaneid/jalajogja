@@ -37,6 +37,39 @@ cuma indeks + catatan audit, bukan duplikasi isi.**
 
 ---
 
+## 2a. Alur Status Surat — Draft / Terkirim / Diarsipkan (Cara Kerja)
+
+> Ditulis 2026-09-04 setelah user bingung: surat sudah dikirim secara nyata (WA/print/kurir)
+> tapi status di arsip tetap "Draft". Gap dokumentasi murni — mekanismenya sudah benar sejak
+> awal, cuma belum pernah dijelaskan di mana pun.
+
+**Satu kolom, satu sumber kebenaran**: `letters.status` (`packages/db/src/schema/tenant/
+letters.ts`, `LETTER_STATUSES = ["draft", "sent", "received", "archived"]`). Untuk surat keluar
+dan nota dinas (yang relevan: `draft` / `sent` / `archived` — `received` khusus surat masuk).
+Badge status di halaman arsip (`letter-list-client.tsx`) dan di halaman edit (`letter-form.tsx`)
+sama-sama membaca kolom yang SAMA — tidak ada logika terpisah, tidak ada kolom lain yang ikut
+menentukan.
+
+**PENTING — status TIDAK PERNAH berubah otomatis.** Sistem tidak mendeteksi apakah surat
+benar-benar sudah dikirim secara nyata (dicetak, dikirim WA, diantar kurir, dsb). Satu-satunya
+cara mengubah status adalah admin klik tombol di halaman edit surat (`letter-form.tsx`):
+
+| Status sekarang | Tombol tersedia | Hasil |
+|---|---|---|
+| **Draft** | "Simpan Draft" | Tetap Draft |
+| | **"Kirim Surat"** | → **Terkirim** |
+| **Terkirim** | "Simpan Perubahan" | Tetap Terkirim (edit isi tanpa ganti status) |
+| | "Jadikan Draft" | → balik ke Draft |
+| **Draft / Terkirim** | "Arsipkan" | → **Diarsipkan** |
+| **Diarsipkan** | "Simpan Perubahan" | Tetap Diarsipkan |
+| | "Aktifkan Kembali" | → balik ke **Terkirim** |
+
+**Kalau surat "sudah dikirim" tapi statusnya masih Draft**: bukan bug — berarti setelah generate
+PDF/kirim manual, admin belum kembali ke halaman edit surat itu dan klik "Kirim Surat". Fix-nya
+selalu manual (buka surat → klik tombol), tidak ada cara massal/otomatis saat ini.
+
+---
+
 ## 3. Koreksi Dokumen Basi
 
 ### 3a. `arsitektur-surat.md` — status header salah + detail penyimpanan setting salah
@@ -171,6 +204,44 @@ desain sendiri (berapa file maks, tipe file apa saja, dst) sebelum dieksekusi.
 logic kirim/terima lintas tenant sama sekali. Konsisten dengan status lama di CLAUDE.md.
 **Tidak direncanakan diperbaiki sesi ini** — fitur besar, butuh desain alur kirim/terima antar
 tenant dulu (siapa yang approve di sisi penerima, bagaimana notifikasinya, dst).
+
+### Bug #5 — Link internal modul Surat kehilangan prefix `/app/`, 404 di custom domain — ✅ FIXED (2026-09-04)
+
+**Dilaporkan user**: `visikita.com/letters/keluar/{id}` → 404, sementara `jalakarta.com/app/
+visikita/letters/keluar/{id}` (link yang sama, dari `<Link>` di halaman arsip) aman.
+
+**Root cause #1 (bukan bug — cuma URL yang salah)**: dashboard admin HANYA bisa diakses lewat
+`jalakarta.com/app/{slug}/...` atau `{custom-domain}/admin/...` (lihat `docs/arsitektur-domain.md`
+§ 7.2). URL bare tanpa kedua prefix itu (seperti yang dilaporkan) jatuh ke jalur konten PUBLIK
+di middleware — tidak ada halaman publik untuk detail surat, jadi 404 lewat catch-all. Solusi:
+buka `{custom-domain}/admin/letters/keluar/{id}`, bukan path bare.
+
+**Root cause #2 (bug NYATA, ditemukan saat investigasi #1)**: `components/letters/letter-form.tsx`
+(redirect setelah buat surat baru) dan `components/letters/letter-list-client.tsx` (tombol
+"Surat Baru"/"Nota Dinas Baru" + link tiap baris tabel — dipakai di `keluar`, `nota`, `masuk`)
+membangun URL sebagai `` `/${slug}/letters/...` `` — **kurang prefix `/app/`**. Di `jalakarta.com`
+ini tertutupi diam-diam oleh redirect 301 legacy (`ADMIN_MODULES` di `next.config.ts`, sisa
+migrasi URL Fase 1-4) — tapi redirect itu SENGAJA `has: [{host: "jalakarta.com"}]`, tidak berlaku
+di custom domain (lihat `docs/arsitektur-domain.md` § 3.1). Jadi di `visikita.com` (atau tenant
+custom-domain manapun), tombol "Surat Baru" dan setiap link baris di arsip surat **404 nyata**,
+tidak ketolong redirect apa pun.
+
+**Audit lanjutan menemukan 5 file LAIN dengan bug kelas identik** (bukan cuma modul Surat) —
+sama-sama diproteksi legacy redirect di `jalakarta.com` tapi 404 di custom domain: filter status
++ form pencarian di `finance/pengeluaran`, `finance/jurnal`, `finance/pemasukan`; filter + form
+pencarian + link detail di `donasi/transaksi`; filter status di `website/posts`.
+
+**Fix**: tambah prefix `/app/` di ke-7 titik itu — perubahan string literal murni, tidak ada
+perubahan logika. `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine
+sukses. Commit `306c5e7`.
+
+**Aturan yang ditegaskan**: setiap kali menemukan link `` `/${slug}/{module}` `` tanpa prefix
+`/app/` di komponen dashboard admin manapun, itu KEMUNGKINAN BESAR masih berfungsi di
+`jalakarta.com` (tertolong redirect legacy `ADMIN_MODULES`) tapi **selalu 404 di custom domain**
+— dua kondisi ini tidak boleh dianggap "sama-sama aman" hanya karena diuji di `jalakarta.com`
+saja. Grep periodik `` `/\$\{slug\}/(members|pengurus|divisi|accounts|media|website|letters|
+finance|donasi|toko|settings|event)` `` di `apps/web/components` + `apps/web/app/(dashboard)`
+adalah cara murah mendeteksi sisa kasus serupa.
 
 ---
 

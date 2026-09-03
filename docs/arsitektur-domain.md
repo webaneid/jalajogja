@@ -466,6 +466,16 @@ Ditemukan lewat audit langsung ke kode — bukan asumsi. Dicatat di sini supaya 
 
   Deskripsi lengkap cara kerja FINAL (bukan riwayat perbaikannya): § 7.2.
 
+- **2026-09-04**: 7 link internal admin (modul Surat, Keuangan, Donasi, Website) membangun URL
+  sebagai `` `/${slug}/{module}` `` tanpa prefix `/app/` — masih "aman" di `jalakarta.com` karena
+  ketolong redirect 301 legacy `ADMIN_MODULES` (§ 3.1, `has: host jalakarta.com`), tapi 404
+  NYATA di custom domain (redirect legacy itu sengaja tidak berlaku di sana). Ditemukan lewat
+  laporan user: `visikita.com/letters/keluar/{id}` 404 padahal `jalakarta.com/app/visikita/
+  letters/keluar/{id}` (link yang sama) aman. Detail lengkap + daftar 7 file:
+  `docs/arsitektur-modul-surat.md` § 4 Bug #5. **Pola untuk deteksi kasus serupa ke depan**: link
+  `` `/${slug}/{module}` `` tanpa `/app/` di komponen dashboard TIDAK BOLEH dianggap aman hanya
+  karena teruji di `jalakarta.com` — redirect legacy `ADMIN_MODULES` menyamarkan bug persis ini.
+
 ### 8.2 Klaim basi di `docs/arsitektur-domain.md` versi lama (2026-05-26) — sudah dikoreksi di sini
 
 - ~~"Cron Verify-Domains yang Aman — belum difix, cron bisa downgrade `active` → `failed`"~~ — SALAH.

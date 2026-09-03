@@ -17622,7 +17622,74 @@ awal `resolveSlugKind()`, sebelum `createTenantDb()` dipanggil — pola sama `ge
 genuine sukses (dev server dimatikan+`.next` dibersihkan+direstart tiap kali) — 5 commit
 terpisah, semua di-push dan dikonfirmasi hidup di VPS via `pm2 logs`+`curl`.
 
+### [2026-09-04] Export Alamat Lengkap + Bug 404 Custom Domain Modul Surat (Prefix `/app/` Hilang di 7 File)
+
+**Bagian 1 — Export peserta event, kolom Alamat digabung lengkap**: user minta kolom "Alamat"
+di export Excel peserta event (`/api/events/[id]/export-participants`) memuat alamat LENGKAP
+(detail + kecamatan + kabupaten + provinsi digabung satu string) untuk keperluan vendor
+pengiriman — sebelumnya cuma `address.detail` polos. Kolom "Kabupaten" terpisah TETAP
+dipertahankan (redundant disengaja). Fix: tambah fetch `refDistricts`+`refProvinces` (sudah
+diverifikasi export dari `@jalajogja/db` sebelum dipakai) + `districtId`/`provinceId` di query
+`addresses`, helper baru `buildFullAddress()` (gabung 4 bagian, skip yang kosong, pisah koma)
+dipakai di KEDUA jalur baris (registrasi langsung + pending checkout via keranjang). `tsc`
+bersih, nol migrasi. **Sudah di-commit+push** (`a4be6ad`).
+
+**Bagian 2 — Investigasi 404 `visikita.com/letters/keluar/{id}` + kebingungan status surat**:
+user laporkan URL admin 404 di custom domain padahal aman di `jalakarta.com/app/visikita/...`,
+plus tidak paham apa yang menentukan status surat "Terkirim" vs tetap "Draft". Dua jawaban:
+
+1. **404 BUKAN bug** — dashboard admin cuma bisa diakses via `jalakarta.com/app/{slug}/...`
+   atau `{custom-domain}/admin/...` (arsitektur Admin-on-Custom-Domain yang sudah dikunci lama,
+   `docs/arsitektur-domain.md` § 7.2). URL bare tanpa prefix keduanya jatuh ke jalur konten
+   publik → 404 karena tidak ada halaman publik untuk detail surat. Solusi: pakai
+   `{custom-domain}/admin/letters/keluar/{id}`.
+2. **Status surat** — cuma SATU kolom (`letters.status`: draft/sent/archived untuk surat
+   keluar+nota), dan HANYA berubah kalau admin eksplisit klik tombol "Kirim Surat"/"Jadikan
+   Draft"/"Arsipkan"/"Aktifkan Kembali" di halaman edit — sistem tidak pernah mendeteksi
+   otomatis "sudah dikirim secara nyata". Didokumentasikan lengkap (state machine + tabel
+   tombol) di `docs/arsitektur-modul-surat.md` § 2a — gap dokumentasi murni, mekanismenya
+   sendiri sudah benar sejak awal, cuma belum pernah dijelaskan di mana pun.
+
+**Bug NYATA ditemukan saat investigasi poin 1** (bukan cuma miskonsepsi user) — `letter-form.tsx`
+(redirect setelah buat surat baru) dan `letter-list-client.tsx` (tombol "Surat Baru" + SEMUA
+link baris tabel arsip keluar/nota/masuk) membangun URL sebagai `` `/${slug}/letters/...` ``,
+KURANG prefix `/app/`. Di `jalakarta.com` ini tertutupi redirect 301 legacy `ADMIN_MODULES`
+(`next.config.ts`, sisa migrasi URL Fase 1-4), tapi redirect itu SENGAJA `has: [{host:
+"jalakarta.com"}]` — tidak berlaku di custom domain, jadi link-link itu **404 nyata** kalau
+diklik dari `visikita.com/admin/*` atau tenant custom-domain manapun. Audit lanjutan (grep pola
+yang sama lintas seluruh dashboard, bukan cuma modul Surat) menemukan **5 file lain dengan bug
+identik**: filter status + form pencarian di `finance/pengeluaran`, `finance/jurnal`, `finance/
+pemasukan`; filter + form pencarian + link detail di `donasi/transaksi`; filter status di
+`website/posts`. Total 7 file, semuanya perubahan string literal murni (tambah `/app/`), nol
+perubahan logika. `tsc --noEmit` 0 error + `bun run build --filter=@jalajogja/web` genuine
+sukses (dev server dimatikan+`.next` dibersihkan+direstart, 48s, bukan cache-hit). **Sudah
+di-commit+push** (`306c5e7`). Detail lengkap + daftar 7 file: `docs/arsitektur-modul-surat.md`
+§ 4 Bug #5, cross-reference di `docs/arsitektur-domain.md` § 8.1.
+
+**Aturan yang ditegaskan**: link `` `/${slug}/{module}` `` tanpa prefix `/app/` di komponen
+dashboard admin manapun TIDAK BOLEH dianggap aman hanya karena teruji di `jalakarta.com` —
+redirect legacy `ADMIN_MODULES` menyamarkan bug persis ini, dan redirect itu sengaja tidak
+berlaku di custom domain. Grep periodik `` `/\$\{slug\}/(members|pengurus|divisi|accounts|
+media|website|letters|finance|donasi|toko|settings|event)` `` di `apps/web/components` +
+`apps/web/app/(dashboard)` adalah cara murah mendeteksi sisa kasus serupa ke depan.
+
+**Belum dijalankan di VPS** untuk kedua bagian (nol migrasi DB — deploy cukup pull+build+
+restart). **Belum diverifikasi visual di browser** — user perlu coba (setelah deploy): download
+export peserta event, cek kolom Alamat berisi string gabungan; buka `visikita.com/admin/
+letters/keluar` dan klik tombol "Surat Baru" + link baris tabel (harus tidak 404 lagi).
+
 ## Context Sesi Terakhir
+- Terakhir dikerjakan: **Export peserta event — alamat lengkap + bug 404 custom domain modul
+  Surat (prefix `/app/` hilang di 7 file)** — lihat lesson `[2026-09-04]` di atas untuk detail
+  lengkap. Dua bagian: (1) kolom "Alamat" di export Excel peserta event sekarang gabung detail+
+  kecamatan+kabupaten+provinsi (sudah di-commit+push `a4be6ad`); (2) investigasi 404 custom
+  domain modul Surat menemukan bug NYATA lintas 7 file (Surat+Keuangan+Donasi+Website) — link
+  internal admin kurang prefix `/app/`, aman di `jalakarta.com` (tertolong redirect legacy) tapi
+  404 di custom domain (sudah di-commit+push `306c5e7`), plus dokumentasi state machine status
+  surat (`docs/arsitektur-modul-surat.md` § 2a, sebelumnya nol dijelaskan di mana pun). `tsc`+
+  build genuine bersih di kedua bagian. **Belum dijalankan di VPS, belum diverifikasi visual di
+  browser** — user perlu deploy lalu coba: download export event (cek kolom Alamat), dan buka
+  `{custom-domain}/admin/letters/keluar` untuk konfirmasi tombol+link tidak lagi 404.
 - Terakhir dikerjakan: **Konsistensi data peserta event, voucher di invoice manual admin,
   export voucher toko, UX tiket kadaluarsa, dan fix 500 tenant fiktif** — lihat lesson
   `[2026-08-31]` di atas untuk detail lengkap. **SEMUA 5 ITEM SUDAH DI-COMMIT, PUSH, DAN
