@@ -1847,3 +1847,325 @@ di-backport ke data lain, murni cleanup test data lokal.
       Kalau dikerjakan: key baru di settings group `"payment"`, cron baru transisi status +
       auto-cancel (perlu lepas kuota/stok ter-reserve, ikuti pola `cancelInvoiceAction`). Detail
       lengkap di CLAUDE.md § Technical Debt. **Belum dijadwalkan eksekusi.**
+
+---
+
+## 15. [PERENCANAAN — BELUM DIEKSEKUSI] Unifikasi Invoice Manual Admin — Variasi Produk + Pengiriman
+
+> **Status: 📋 RENCANA MURNI. Nol kode ditulis.** Ditulis atas permintaan eksplisit user
+> ("bikin perencanaan dulu aja bro yg matang..") sebelum eksekusi apa pun. Dokumen ini WAJIB
+> dibaca ulang dan disetujui user (termasuk menjawab § 15.7) sebelum baris kode pertama ditulis.
+
+### 15.1 Masalah yang Memicu
+
+User melaporkan (tenant `visikita`, produk "Kaos" yang punya variasi ukuran) bahwa form
+**"Buat Invoice"** (`/finance/billing/invoice/new`, modul Keuangan → Billing) TIDAK BISA:
+1. Memilih varian produk (ukuran/warna) saat menambahkan produk bervariasi ke invoice.
+2. Memilih metode pengiriman (kurir RajaOngkir / COD / Ambil Sendiri).
+
+Diverifikasi lewat baca kode langsung (`invoice-create-form.tsx` 733 baris + `finance/billing/
+actions.ts`'s `createInvoiceAction`/`searchBillingProductsAction`) — **laporan user akurat 100%**,
+kedua kapabilitas itu genuinely tidak ada sama sekali di form ini.
+
+Sebaliknya, form **"Buat Pesanan"** (`/toko/pesanan/new`, modul Toko) SUDAH punya KEDUA
+kapabilitas itu secara penuh (`AdminVariationPicker` + `SellerGroup`-based shipping widget
+dengan RajaOngkir/COD/pickup). Solusi "pakai saja Buat Pesanan yang sudah ada" ditolak user
+secara eksplisit — jawabannya "TIDAK", karena:
+- Harga yang di-resolve BEDA (Buat Pesanan hanya bisa pilih dari katalog Produk Toko; Buat
+  Invoice mendukung Produk + Tiket Event + Donasi/Campaign + item custom bebas dalam SATU
+  invoice campuran).
+- Variasi/atribut yang tersedia BEDA secara konsep — dua form ini punya cakupan item yang
+  sepenuhnya berbeda, bukan sekadar UI yang beda tapi datanya sama.
+
+Permintaan user: **satu arah invoice** — konsisten antara front-end (checkout publik) dan
+admin, beda hanya di UI. Pertanyaan terbuka dari user sendiri: "atau gmn?" (atau bagaimana) —
+dijawab di § 15.3 dengan rekomendasi SCOPE YANG LEBIH SEMPIT dari "satu arah mutlak", disertai
+alasan eksplisit kenapa penyempitan ini tepat.
+
+### 15.2 Audit Kondisi Saat Ini — Peta Tiga Jalur Pembuatan Invoice
+
+Ada TIGA titik yang sama-sama menghasilkan baris `invoices`/`invoiceItems`/
+`invoiceShippingLines`, masing-masing di file terpisah:
+
+| Jalur | File | Trigger | Permission gate |
+|---|---|---|---|
+| **Publik (cart)** | `app/(public)/[tenant]/cart/actions.ts`'s `checkoutAction` | Customer klik "Checkout" di `/checkout` | Tanpa auth (guest boleh) |
+| **Toko (admin)** | `app/(dashboard)/app/[tenant]/toko/actions.ts`'s `createOrderAction` | Admin klik "Buat Pesanan" di `/toko/pesanan/new` | `hasFullAccess(..., "toko")` |
+| **Billing (admin)** | `app/(dashboard)/app/[tenant]/finance/billing/actions.ts`'s `createInvoiceAction` | Admin klik "Buat Invoice" di `/finance/billing/invoice/new` | `hasFullAccess(..., "keuangan")` |
+
+**Yang SUDAH sama di ketiganya** (infrastruktur bersama, tidak perlu disentuh):
+- Skema tabel tujuan (`invoices`/`invoiceItems`/`invoiceShippingLines`/`invoicePayments`) — satu
+  skema universal, bukan tiga skema berbeda.
+- Voucher engine (`findVoucherByCode`/`countCustomerRedemptions`/`computeVoucherDiscount` di
+  `packages/db/src/helpers/voucher.ts`) — pure function, direuse identik oleh ketiganya.
+- Kode unik transaksi (`generateUniqueCode`) + aturan `amountDue = total + uniqueCode`.
+- Setelah invoice TERBIT: konfirmasi pembayaran, penolakan, pembatalan, cicilan, fulfillment —
+  SEMUA sudah lewat mekanisme invoice generik yang sama (`confirmInvoicePaymentAction`,
+  `verifySubmittedPaymentAction`, `rejectPaymentAction`, `cancelInvoiceAction`,
+  `confirmCodPaymentAction`) — lihat § 15.2a, ini sudah unified sejak lama, TIDAK termasuk
+  scope pekerjaan ini.
+
+**Yang BEDA — inilah titik divergensi sesungguhnya**:
+
+| Aspek | Publik (`checkoutAction`) | Toko (`createOrderAction`) | Billing (`createInvoiceAction`) |
+|---|---|---|---|
+| Sumber item | `cart_items` (customer sendiri yang isi) | Katalog Produk Toko saja | Produk + Tiket Event + Donasi + item custom bebas |
+| Resolusi variasi produk | ✅ via `resolveProductCartItem()` (`itemId` asli disimpan, `productId` induk dipisah untuk voucher) | ✅ via `resolveProductCartItem()` (identik) + `AdminVariationPicker` dialog UI | ❌ `searchBillingProductsAction` return `{id, name, price, sku}` — TIDAK ADA productType/variasi sama sekali |
+| Widget pengiriman | ✅ `SellerGroup`/`CheckoutShippingData`, per-seller (kurir/COD/pickup) | ✅ identik (`order-create-client.tsx`, `LocalSellerGroup`) | ❌ tidak ada field pengiriman apa pun |
+| `sourceType` yang ditulis | `"cart"` | `"order"` | `"manual"` |
+| `mitraId` untuk voucher matching | ✅ resolved dari `resolveProductCartItem()` | ✅ resolved | ❌ **hardcode `null`** (gap pre-existing, lihat § 15.4d) |
+
+### 15.2a Temuan Penting: Konfirmasi Pembayaran SUDAH Unified — Bukan Bagian dari Masalah
+
+`toko/actions.ts` masih punya 4 fungsi (`addPaymentToOrderAction`, `confirmOrderPaymentAction`,
+`cancelOrderAction`, `updateOrderStatusAction`) yang beroperasi di tabel **LEGACY**
+`schema.orders`/`schema.orderItems` — tapi dikonfirmasi lewat 3 bukti independen bahwa keempatnya
+**dead code, tidak reachable dari UI mana pun**:
+1. `pesanan/[id]/page.tsx` (satu-satunya route yang merender komponen pemanggil ke-4 fungsi ini,
+   `order-detail-client.tsx`) adalah stub yang SELALU redirect ke list — dikonfirmasi baca isi
+   filenya langsung (13 baris, komentar eksplisit: `"Halaman pesanan lama sudah tidak dipakai —
+   semua pesanan kini via invoice"`).
+2. `schema.orders` = 0 baris di kedua tenant lokal yang dicek.
+3. `docs/arsitektur-product.md` (§ "Gap yang ditemukan") secara independen mengonfirmasi hal
+   yang sama: `deleteProductAction` masih JOIN ke `orders`/`order_items` untuk cek "pesanan
+   aktif" tapi guard itu "efektif mati" karena modul ini sudah lama tidak menulis ke tabel itu.
+
+**Konsekuensi penting untuk scope pekerjaan ini**: pembayaran/pembatalan/fulfillment untuk
+pesanan produk yang dibuat via `createOrderAction` MODERN sudah lewat mekanisme invoice generik
+yang SAMA dengan Billing (`confirmInvoicePaymentAction` dkk, bukan 4 fungsi legacy di atas) —
+jadi unifikasi yang dibutuhkan HANYA di titik PEMBUATAN invoice (CREATE), bukan seluruh siklus
+hidupnya. Ini secara signifikan mempersempit scope pekerjaan.
+
+### 15.3 Keputusan Arsitektur yang Direkomendasikan
+
+**Bukan "satu arah mutlak" (gabung SEMUA termasuk publik) — melainkan: satukan DUA jalur ADMIN
+(Toko + Billing) jadi SATU, biarkan jalur PUBLIK tetap terpisah.**
+
+Alasan pemisahan publik tetap dipertahankan:
+- Konteksnya struktural berbeda: publik selalu mulai dari `cart_items` yang sudah terisi lewat
+  navigasi browsing produk (`/produk/{slug}` → "Tambah ke Keranjang" → picker atribut di
+  halaman detail produk, BUKAN di form checkout) — bukan form "ketik lalu cari katalog" seperti
+  admin. Menyatukan ini akan memaksa checkout publik ikut pola search-autocomplete admin, yang
+  justru mengubah UX customer yang sudah berjalan baik tanpa alasan.
+- Publik tidak butuh: pilihan tipe item campuran bebas (Tiket/Donasi/custom — customer sudah
+  di context spesifik produk/tiket/campaign saat menambah ke cart), autocomplete pelanggan
+  (customer = dirinya sendiri), atau kode unik/voucher-preview di form yang sama dengan
+  pemilihan item (checkout publik SUDAH punya alur voucher sendiri di halaman terpisah).
+- Risiko regresi: `checkoutAction` adalah kode paling sering dieksekusi di seluruh platform
+  (setiap transaksi customer nyata lewat sini) — menyentuhnya demi unifikasi UI admin adalah
+  risiko yang tidak proporsional dengan manfaatnya.
+
+**Yang diusulkan untuk DUA jalur admin (Toko + Billing)**:
+1. **Retire (pensiunkan) `/toko/pesanan/new`** — hapus halaman ini, redirect ke
+   `/finance/billing/invoice/new` (pola sama seperti `pesanan/[id]/page.tsx` yang sudah jadi
+   stub redirect sejak migrasi invoice-only lama).
+2. **Perluas `/finance/billing/invoice/new`** (`invoice-create-form.tsx` +
+   `createInvoiceAction`/`previewInvoiceVoucherAction`) supaya bisa melakukan SEMUA yang bisa
+   dilakukan `createOrderAction`:
+   - Saat admin pilih produk `productType === "variable"` dari `CatalogItemAutocomplete` →
+     buka `<AdminVariationPicker>` (komponen SUDAH ADA, `components/toko/admin-variation-
+     picker.tsx` — reuse langsung, TIDAK ditulis ulang) untuk pilih kombinasi atribut → `itemId`
+     yang tersimpan ke `invoiceItems.itemId` adalah ID VARIASI (bukan produk induk), persis pola
+     `resolveProductCartItem()` yang sudah benar di `createOrderAction`/`checkoutAction`.
+   - Widget pengiriman baru — REUSE logic dari `order-create-client.tsx` (`LocalSellerGroup`,
+     `CourierOption`, fetch cost RajaOngkir, toggle delivery/payment method per-seller,
+     re-validasi server-side terhadap `tokoSettings`/`schema.mitras`) — porting UI + server data
+     fetching (`pesanan/new/page.tsx`'s server component logic: RajaOngkir addon config, toko
+     settings, per-mitra shipping config) ke `finance/billing/invoice/new/page.tsx`.
+   - Widget pengiriman HANYA muncul/relevan kalau invoice mengandung minimal satu item bertipe
+     produk (Tiket/Donasi/custom tidak butuh pengiriman fisik) — kondisional, bukan selalu
+     tampil.
+3. **`createOrderAction` DIHAPUS TOTAL** setelah `createInvoiceAction` terbukti mencakup semua
+   kemampuannya (bukan dibiarkan sebagai dead code baru — beda dari 4 fungsi legacy `schema.
+   orders` yang SUDAH lama jadi dead code sebelum sesi ini, retensi mereka di luar scope ini).
+
+### 15.4 Rincian Teknis per Titik Perbedaan
+
+**a. Permission module (`toko` vs `keuangan`)**
+
+`createOrderAction` di-gate `hasFullAccess(..., "toko")`; `createInvoiceAction` di-gate
+`hasFullAccess(..., "keuangan")` — dua modul berbeda di sistem 10-modul permission
+(`lib/permissions.ts`). Kalau "Buat Pesanan" dihapus dan digantikan sepenuhnya oleh "Buat
+Invoice", staf yang SEBELUMNYA punya akses `toko` (full) tapi TIDAK punya akses `keuangan`
+(mis. staf gudang/admin toko yang bukan bendahara) akan KEHILANGAN kemampuan membuat pesanan
+produk — regresi akses nyata untuk role tertentu, bukan sekadar cosmetic. **Ini keputusan
+produk, bukan teknis — dicatat sebagai pertanyaan terbuka § 15.7 poin 1.**
+
+**b. `sourceType` yang ditulis + dependency di `/toko/pesanan/page.tsx`**
+
+`/toko/pesanan/page.tsx` (halaman LIST pesanan di modul Toko, TIDAK dihapus — cuma tombol
+"Buat Pesanan"-nya yang di-retire) memfilter query-nya dengan
+`eq(schema.invoices.sourceType, "order")` secara literal. Kalau `createInvoiceAction`
+(pengganti) menulis `sourceType: "manual"` untuk SEMUA invoice terlepas isinya (perilaku
+saat ini), invoice produk yang dibuat lewat form baru TIDAK AKAN muncul lagi di halaman list
+Toko ini — regresi fungsional.
+
+Dua opsi (dibahas, TIDAK diputuskan sepihak — lihat § 15.7 poin 2):
+- **Opsi B1** — `createInvoiceAction` menulis `sourceType` secara DINAMIS: `"order"` kalau
+  SEMUA item invoice bertipe produk (persis kondisi yang dulu memicu `createOrderAction`),
+  `"manual"` untuk kasus campuran/lainnya. Minim perubahan di `/toko/pesanan/page.tsx`.
+- **Opsi B2** — Ganti filter `/toko/pesanan/page.tsx` dari `sourceType==='order'` jadi
+  "invoice yang punya minimal satu `invoiceItems.itemType==='product'`" (query via
+  `EXISTS`/JOIN ke `invoice_items`, konsisten dengan arah migrasi income-splitting yang SUDAH
+  meninggalkan `sourceType` sebagai basis akurasi laporan keuangan — lihat catatan di § 14
+  soal `invoice_items.item_type` sebagai basis yang lebih granular). Lebih tahan lama tapi
+  mengubah 1 file tambahan.
+
+**c. Widget pengiriman — kondisional, bukan selalu tampil**
+
+Tidak semua invoice Billing butuh pengiriman (Tiket/Donasi/custom item tidak punya wujud
+fisik). Widget pengiriman baru di `invoice-create-form.tsx` WAJIB muncul HANYA ketika
+`items.some(i => i.type === "product")` — dan di dalam kelompok produk itu sendiri, dikelompokkan
+per-seller (tenant vs tiap mitra) persis algoritma `SellerGroup` yang sudah ada, karena satu
+invoice campuran produk tenant+mitra tetap valid (keputusan lama yang sudah dikunci: "Boleh
+campur toko + mitra").
+
+**d. Gap pre-existing yang HARUS ikut ditutup: `mitraId: null` hardcoded di voucher matching**
+
+Ditemukan saat audit (bukan disebabkan sesi ini) — komentar eksplisit di
+`createInvoiceAction`/`previewInvoiceVoucherAction` (`finance/billing/actions.ts`, per catatan
+"KOREKSI (2026-08-31)") mengakui `mitraId` untuk keperluan pencocokan target voucher
+di-hardcode `null`, alih-alih di-resolve dari produk sesungguhnya via
+`resolveProductCartItem()`. Efeknya: produk MITRA yang ditambahkan ke invoice manual admin
+BISA salah menerima diskon voucher yang seharusnya cuma berlaku untuk produk TENANT (atau
+sebaliknya), tergantung bagaimana `computeVoucherDiscount()` memakai `mitraId` di logic
+matching-nya.
+
+Karena pekerjaan ini SUDAH HARUS menyentuh baris kode yang sama (resolusi item produk di
+`createInvoiceAction`, untuk menambahkan dukungan variasi), memperbaiki `mitraId` di titik
+yang sama adalah perubahan MURAH (nol biaya tambahan riset, sudah tahu polanya dari
+`resolveProductCartItem()`) — direkomendasikan DIBUNDLE ke pekerjaan ini, bukan ditunda
+terpisah. Dicatat sebagai keputusan yang perlu dikonfirmasi di § 15.7 poin 3 (defaultnya:
+ya, dibundle).
+
+**e. Voucher preview — `perItemDiscount` key alignment untuk variasi**
+
+`previewInvoiceVoucherAction` menerima array item mentah dari form untuk preview diskon
+sebelum submit. Begitu form bisa kirim `itemId` = ID VARIASI, fungsi ini WAJIB mengikuti pola
+yang sama seperti fix §17 `docs/arsitektur-voucher.md` (`applyVoucherToInvoiceAction`) — resolve
+`itemId` variasi → `productId` induk HANYA untuk matching, sambil `perItemDiscount` tetap
+di-key oleh `itemId` ASLI (variasi) supaya alignment index dengan array yang dikirim form tidak
+geser. Pola ini SUDAH ada preseden kerjanya persis di commit `56ac7db` — tinggal direplikasi
+ke fungsi preview yang setipe.
+
+### 15.5 Yang TIDAK Berubah (Batasan Scope, Sengaja Dijaga)
+
+- `checkoutAction` (public cart checkout) — nol sentuhan.
+- Seluruh siklus PASCA-invoice-terbit (konfirmasi/tolak/batal/cicilan/fulfillment/COD) — sudah
+  unified, nol sentuhan (lihat § 15.2a).
+- Voucher engine inti (`packages/db/src/helpers/voucher.ts`) — dipakai apa adanya, tidak
+  diubah.
+- Skema DB — nol migrasi baru diperkirakan dibutuhkan (semua kolom yang perlu, seperti
+  `invoiceItems.itemId`/`invoiceShippingLines.*`, sudah ada sejak fitur COD/pickup § 14 dan
+  fitur variasi produk lama).
+- 4 fungsi legacy `schema.orders`-based di `toko/actions.ts` dan guard basi di
+  `deleteProductAction` (`docs/arsitektur-product.md`) — dead code yang SUDAH terdokumentasi
+  sebagai gap terpisah sebelum sesi ini, TETAP di luar scope pekerjaan ini (jangan digabung,
+  supaya PR/perubahan tetap fokus dan mudah di-review).
+
+### 15.6 Rencana Fase Eksekusi (draft, menunggu konfirmasi § 15.7)
+
+1. **Fase A — Server-side**: perluas `searchBillingProductsAction` (atau tambah action baru)
+   untuk expose `productType`; tambah action `getBillingProductVariationsAction` (bisa reuse
+   `getProductVariationsAction` dari `toko/actions.ts` apa adanya kalau sudah generik, atau
+   duplikasi tipis ke `finance/billing/actions.ts` sesuai konvensi "duplikasi demi isolasi" —
+   diputuskan saat implementasi berdasar seberapa reusable fungsi aslinya). Perluas
+   `createInvoiceAction` + `previewInvoiceVoucherAction`: resolusi `itemId`/`productId`
+   terpisah (§ 15.4e), fix `mitraId` (§ 15.4d), terima+simpan payload shipping
+   (`invoiceShippingLines`), keputusan `sourceType` dinamis (§ 15.4b, opsi terpilih).
+   Verifikasi `tsc --noEmit` di `apps/web` dan `packages/db`.
+2. **Fase B — Server-side data fetching untuk halaman**: perluas
+   `finance/billing/invoice/new/page.tsx` mereplikasi fetch yang sudah ada di
+   `pesanan/new/page.tsx` (RajaOngkir addon config, `getTokoSettings()`, per-mitra shipping
+   config via `schema.mitras` + `memberBusinesses`) — HANYA dipanggil/dipakai kalau tenant
+   memang mengaktifkan modul Toko (cek relevansinya, jangan fetch sia-sia untuk tenant yang
+   modul Ekosistem/Toko-nya nonaktif).
+3. **Fase C — Client UI**: `invoice-create-form.tsx` — integrasikan `<AdminVariationPicker>`
+   ke alur pilih item produk; port widget shipping dari `order-create-client.tsx`
+   (`LocalSellerGroup` dkk) sebagai komponen baru atau bagian dari form ini, kondisional
+   tampil (§ 15.4c). Verifikasi `tsc --noEmit` + `bun run build --filter=@jalajogja/web`
+   genuine (dev server dimatikan, `.next` dibersihkan, direstart setelah).
+4. **Fase D — Retire "Buat Pesanan"**: `pesanan/new/page.tsx` diubah jadi stub redirect ke
+   `/finance/billing/invoice/new` (pola sama `pesanan/[id]/page.tsx`), `order-create-client.tsx`
+   + `AdminVariationPicker`'s pemanggilan lama dihapus KALAU sudah tidak dipakai di tempat lain
+   (dicek dulu — `AdminVariationPicker` dipakai ULANG oleh form baru, jangan dihapus filenya,
+   cuma pemanggilan dari `order-create-client.tsx` yang sudah tidak relevan). `createOrderAction`
+   dihapus dari `toko/actions.ts` setelah dipastikan nol pemanggil tersisa (grep).
+   Sesuaikan `toko-nav.tsx` (submenu "Buat Pesanan" kalau ada link langsung ke tombol itu).
+5. **Fase E — Update `/toko/pesanan/page.tsx`** sesuai opsi B1/B2 yang dipilih (§ 15.4b).
+6. **Fase F — Dokumentasi**: update `docs/arsitektur-product.md` (hapus/tandai superseded
+   bagian "Buat Pesanan"), `docs/arsitektur-billing.md` § 13 (perluas cakupan deskripsi form),
+   `docs/arsitektur-voucher.md` (tambah catatan variasi-di-Billing-invoice kalau relevan).
+   Update CLAUDE.md Lessons Learned.
+
+Setiap fase diverifikasi `tsc --noEmit` (kedua package) sebelum lanjut ke fase berikutnya,
+sesuai SOP project. `bun run build --filter=@jalajogja/web` genuine (dev server dimatikan,
+`.next` dibersihkan sebelum build, direstart setelah) dijalankan minimal di akhir Fase C dan
+Fase D. Belum ada instruksi untuk commit/push/deploy — menunggu seluruh fase selesai dan
+diverifikasi lokal, sesuai pola kerja project ini.
+
+### 15.7 Keputusan Terbuka — Wajib Dijawab User Sebelum Eksekusi
+
+1. **Akses role staf toko-tanpa-keuangan** (§ 15.4a) — kalau "Buat Pesanan" dihapus, staf
+   dengan permission `toko: full` tapi `keuangan: none` kehilangan cara membuat pesanan
+   produk. Tiga opsi: (i) terima risiko ini (asumsi role seperti itu jarang/tidak dipakai di
+   praktik — perlu dicek dulu apakah ada custom role tenant manapun dengan kombinasi ini);
+   (ii) `createInvoiceAction` mengizinkan akses kalau `hasFullAccess(..., "toko") ||
+   hasFullAccess(..., "keuangan")` KHUSUS untuk invoice yang isinya murni produk (menambah
+   percabangan guard, lebih kompleks); (iii) pertahankan "Buat Pesanan" sebagai ENTRY POINT
+   terpisah (route/tombol beda) yang keduanya memanggil action YANG SAMA — tidak retire
+   halaman/tombolnya, cuma unify logic di baliknya. **Rekomendasi: (iii)** — risiko akses
+   paling rendah, dan user sendiri bilang "bedanya di UI saja" yang justru cocok dengan
+   opsi ini (dua PINTU MASUK/tombol, satu MEKANISME).
+2. **`sourceType` — dinamis (B1) atau ganti basis filter list (B2)** (§ 15.4b). Rekomendasi:
+   B1 (lebih murah, minim perubahan file lain) kecuali user ingin sekalian membereskan
+   ketergantungan `sourceType` di tempat lain juga (di luar scope pekerjaan ini kalau begitu).
+3. **Bundling fix `mitraId: null`** (§ 15.4d) — rekomendasi: ya, dibundle (murah, satu titik
+   kode yang sama).
+4. **Nasib halaman/tombol "Buat Pesanan" secara UI** — mengikuti keputusan poin 1: kalau opsi
+   (iii) dipilih, apakah tombolnya tetap bernama "Buat Pesanan" (di sub-nav Toko) sebagai
+   jalan pintas ke form yang sama (mungkin dengan filter tampilan default "hanya produk"), atau
+   dihapus total dan digantikan satu tombol "Buat Invoice" di kedua modul?
+
+### 15.8 Query Diagnosa — Cek Data Historis SEBELUM Eksekusi (read-only, jalankan di VPS)
+
+Ditanyakan user "aman secara data?" saat rencana ini ditulis. Jawaban: rencana ini sendiri
+aman (nol migrasi, tidak menyentuh baris lama, tidak menyentuh siklus pasca-terbit invoice) —
+TAPI ada 1 celah PRE-EXISTING (bukan disebabkan rencana ini) yang belum diverifikasi ke data
+production: sebelum rencana ini, `searchBillingProductsAction` (form "Buat Invoice") tidak
+membedakan produk simple/variable — admin BISA sudah pernah menambahkan produk bervariasi
+lewat form ini, tersimpan sebagai `itemId` = ID PRODUK INDUK (bukan varian spesifik) dengan
+harga dasar produk induk, karena memang belum ada picker varian saat itu.
+
+Jalankan via SSH ke VPS (`docker compose exec -T postgres psql -U jalakarta -d jalakarta`,
+ganti `tenant_visikita` sesuai schema tenant yang mau dicek — ulangi per tenant aktif):
+
+```sql
+-- Cari invoice_items dari invoice manual admin (sourceType='manual') yang itemId-nya
+-- adalah PARENT product id untuk produk yang sebenarnya productType='variable'.
+-- Hasil 0 baris = aman, tidak pernah terjadi. Ada baris = data lama yang perlu keputusan
+-- terpisah (biarkan sebagai histori apa adanya, atau koreksi manual seperti kasus voucher
+-- lama di docs/arsitektur-voucher.md § 16-17).
+SELECT
+  i.id                  AS invoice_id,
+  i.invoice_number,
+  i.created_at,
+  ii.id                 AS invoice_item_id,
+  ii.item_id,
+  ii.name               AS item_name_snapshot,
+  ii.unit_price,
+  p.name                AS product_name,
+  p.product_type
+FROM tenant_visikita.invoice_items ii
+JOIN tenant_visikita.invoices i  ON i.id = ii.invoice_id
+JOIN tenant_visikita.products p ON p.id = ii.item_id
+WHERE ii.item_type = 'product'
+  AND i.source_type = 'manual'
+  AND p.product_type = 'variable'
+ORDER BY i.created_at DESC;
+```
+
+Belum dijalankan — menunggu Anda sempat SSH. Tidak memblokir penulisan kode di § 15.6 (hasil
+query ini murni informasional untuk data LAMA, tidak mengubah desain rencana), tapi sebaiknya
+dijalankan sebelum invoice manual pertama pakai form BARU dibuat, supaya kalau ada baris lama
+yang perlu dikoreksi, tidak tercampur dengan data baru yang sudah benar.
