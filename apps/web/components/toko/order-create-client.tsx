@@ -264,17 +264,26 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
     setGroupChoices((prev) => ({ ...prev, [groupKey]: { ...getChoice(groupKey), ...patch } }));
   }
 
+  // Kota tujuan HANYA wajib/relevan kalau minimal satu grup masih pakai kurir — kalau semua
+  // grup pilih "Ambil Sendiri", tidak ada pengiriman jarak jauh sama sekali (pola sama
+  // `anyCourierGroup` di checkout-form.tsx, checkout publik).
+  const anyCourierGroup = sellerGroups.some((g) => getChoice(g.key).deliveryMethod === "courier");
+
   useEffect(() => {
     if (citySearch.length < 2) { setCityResults([]); return; }
     setCityLoading(true);
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(citySearch)}&limit=15`);
-        const data = (await res.json()) as { cities: CityResult[] };
+        const data = (await res.json()) as { cities?: CityResult[]; error?: string };
         setCityResults(data.cities ?? []);
-        setCityOpen(true);
+      } catch {
+        setCityResults([]);
       } finally {
         setCityLoading(false);
+        // Buka dropdown terlepas hasil kosong/gagal — tampilkan status "tidak ada hasil",
+        // jangan diam tanpa umpan balik (itu yang bikin terasa "tidak bisa di-search").
+        setCityOpen(true);
       }
     }, 300);
     return () => clearTimeout(timer);
@@ -341,7 +350,7 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
 
     let shipping: OrderData["shipping"] = null;
     if (needsShipping) {
-      if (!destCity) { setError("Pilih kota tujuan pengiriman."); return; }
+      if (anyCourierGroup && !destCity) { setError("Pilih kota tujuan pengiriman."); return; }
       const lines: CheckoutShippingLine[] = [];
       for (const g of sellerGroups) {
         const choice = getChoice(g.key);
@@ -363,7 +372,9 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
           deliveryMethod: "courier", paymentMethod: choice.paymentMethod,
         });
       }
-      shipping = { cityId: destCity.id, cityName: destCity.label, address: shippingAddress.trim() || undefined, lines };
+      // destCity bisa null kalau semua grup "Ambil Sendiri" — cityId/cityName tidak pernah
+      // dibaca server-side untuk kasus itu (lihat createOrderAction), pola sama checkout-form.tsx.
+      shipping = { cityId: destCity?.id ?? 0, cityName: destCity?.label ?? "", address: shippingAddress.trim() || undefined, lines };
     }
 
     const data: OrderData = {
@@ -461,32 +472,40 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
           <div className="space-y-3 rounded-lg border border-border p-3">
             <h3 className="text-sm font-medium">Pengiriman</h3>
 
-            <div className="relative">
-              <label className="block text-xs text-muted-foreground mb-1">Kota Tujuan</label>
-              <input
-                type="text"
-                value={destCity ? destCity.label : citySearch}
-                onChange={(e) => { setDestCity(null); setCitySearch(e.target.value); }}
-                onFocus={() => cityResults.length > 0 && setCityOpen(true)}
-                onBlur={() => setTimeout(() => setCityOpen(false), 200)}
-                placeholder="Ketik nama kelurahan/kecamatan/kota tujuan..."
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-              {cityLoading && <p className="mt-1 text-xs text-muted-foreground">Mencari kota...</p>}
-              {cityOpen && cityResults.length > 0 && (
-                <ul className="absolute z-20 top-full mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
-                  {cityResults.map((c) => (
-                    <li
-                      key={c.id}
-                      onMouseDown={() => { setDestCity(c); setCitySearch(""); setCityOpen(false); }}
-                      className="px-3 py-2 text-sm cursor-pointer hover:bg-muted"
-                    >
-                      {c.label}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            {anyCourierGroup && (
+              <div className="relative">
+                <label className="block text-xs text-muted-foreground mb-1">Kota Tujuan</label>
+                <input
+                  type="text"
+                  value={destCity ? destCity.label : citySearch}
+                  onChange={(e) => { setDestCity(null); setCitySearch(e.target.value); setCityOpen(true); }}
+                  onFocus={() => setCityOpen(true)}
+                  onBlur={() => setTimeout(() => setCityOpen(false), 200)}
+                  placeholder="Ketik nama kelurahan/kecamatan/kota tujuan..."
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  autoComplete="off"
+                />
+                {cityOpen && citySearch.length >= 2 && (
+                  <ul className="absolute z-20 top-full mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
+                    {cityLoading ? (
+                      <li className="px-3 py-2 text-sm text-muted-foreground">Mencari kota...</li>
+                    ) : cityResults.length === 0 ? (
+                      <li className="px-3 py-2 text-sm text-muted-foreground">Tidak ada hasil untuk &quot;{citySearch}&quot;</li>
+                    ) : (
+                      cityResults.map((c) => (
+                        <li
+                          key={c.id}
+                          onMouseDown={() => { setDestCity(c); setCitySearch(""); setCityOpen(false); }}
+                          className="px-3 py-2 text-sm cursor-pointer hover:bg-muted"
+                        >
+                          {c.label}
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                )}
+              </div>
+            )}
 
             {sellerGroups.map((g) => {
               const choice = getChoice(g.key);

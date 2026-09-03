@@ -1972,6 +1972,13 @@ Alasan pemisahan publik tetap dipertahankan:
      re-validasi server-side terhadap `tokoSettings`/`schema.mitras`) — porting UI + server data
      fetching (`pesanan/new/page.tsx`'s server component logic: RajaOngkir addon config, toko
      settings, per-mitra shipping config) ke `finance/billing/invoice/new/page.tsx`.
+     > **PENTING (2026-09-04)**: `order-create-client.tsx` PERNAH punya 2 bug di widget ini
+     > (Kota Tujuan tetap wajib meski semua grup pilih "Ambil Sendiri" + dropdown pencarian
+     > kota tidak pernah tampil kalau hasil kosong/gagal) — SUDAH DIFIX di file itu sendiri.
+     > Kalau porting dilakukan, port versi FIXED (`anyCourierGroup` guard + dropdown
+     > `cityOpen && citySearch.length>=2` dengan state loading/kosong eksplisit), JANGAN
+     > menyalin dari commit/riwayat sebelum fix ini. Detail lengkap: lesson CLAUDE.md
+     > "[2026-09-04] Bug Widget Pengiriman `/toko/pesanan/new`".
    - Widget pengiriman HANYA muncul/relevan kalau invoice mengandung minimal satu item bertipe
      produk (Tiket/Donasi/custom tidak butuh pengiriman fisik) — kondisional, bukan selalu
      tampil.

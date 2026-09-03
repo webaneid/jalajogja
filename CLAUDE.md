@@ -17678,7 +17678,89 @@ restart). **Belum diverifikasi visual di browser** — user perlu coba (setelah 
 export peserta event, cek kolom Alamat berisi string gabungan; buka `visikita.com/admin/
 letters/keluar` dan klik tombol "Surat Baru" + link baris tabel (harus tidak 404 lagi).
 
+### [2026-09-04] Bug Widget Pengiriman `/toko/pesanan/new` — Kota Tujuan Wajib Walau "Ambil
+Sendiri" + Search Kota Tidak Pernah Tampil
+
+User laporkan (`visikita/toko/pesanan/new`, card "Pengiriman"): (1) pilih "Ambil Sendiri" tapi
+Kota Tujuan tetap diwajibkan, tidak bisa buat pesanan; (2) Kota Tujuan tidak bisa di-search.
+Diverifikasi via baca kode langsung (`order-create-client.tsx`) dan dibandingkan dengan
+implementasi PUBLIK yang sudah terbukti benar (`checkout-form.tsx`, checkout cart) — dua bug
+NYATA, keduanya penyimpangan dari pola yang sudah proven di komponen saudaranya.
+
+**Bug #1 — validasi submit tidak peduli metode pengiriman**: `handleSubmit()` cek
+`if (!destCity) { setError(...); return; }` di dalam blok `if (needsShipping)` —
+`needsShipping = sellerGroups.length > 0` HANYA cek "ada produk berbobot", TIDAK peduli admin
+sudah pilih "Ambil Sendiri" untuk SEMUA grup. Referensi yang benar
+(`checkout-form.tsx:261`): `if (anyCourierGroup && !destCity) {...}` — `anyCourierGroup` cuma
+`true` kalau MINIMAL SATU grup masih pilih kurir. Field UI "Kota Tujuan" pun sebelumnya SELALU
+tampil terlepas metode pengiriman — di referensi publik, field itu dibungkus
+`{anyCourierGroup && (...)}` (hilang total kalau semua pickup).
+
+**Bug #2 — dropdown pencarian kota diam total saat hasil kosong/gagal**: dropdown gated
+`{cityOpen && cityResults.length > 0 && (...)}`, dan `onFocus` cuma buka dropdown KALAU sudah
+ada `cityResults` tersimpan (`cityResults.length > 0 && setCityOpen(true)`) — sementara
+`cityResults` awalnya `[]` dan HANYA terisi lewat `useEffect` debounce setelah fetch sukses.
+`onChange` juga tidak pernah `setCityOpen(true)` sendiri (beda dari referensi). Akibatnya:
+begitu API RajaOngkir mengembalikan array kosong (query tidak match, atau error apa pun —
+`fetch` di sini juga TIDAK PUNYA `catch` block sama sekali, exception silently jadi unhandled
+rejection), dropdown TIDAK PERNAH muncul — nol loading state, nol pesan "tidak ada hasil", user
+melihat ketikan mereka tidak berefek apa pun sama sekali. Referensi publik selalu membuka kotak
+dropdown begitu `citySearch.length >= 2` (gate `cityOpen && citySearch.length >= 2`, BUKAN
+`cityResults.length > 0`) dan merender status loading/kosong/list DI DALAM kotak itu — user
+selalu dapat umpan balik, tidak pernah "diam".
+
+**Fix — 4 titik, semua meniru pola `checkout-form.tsx` yang sudah terbukti benar**:
+1. `anyCourierGroup = sellerGroups.some(g => getChoice(g.key).deliveryMethod === "courier")`
+   dihitung sekali, dipakai di guard submit DAN visibilitas field Kota Tujuan.
+2. `useEffect` debounce dibungkus `try/catch` (exception → `setCityResults([])`, bukan silent
+   unhandled rejection), dan `setCityOpen(true)` dipindah ke `finally` (selalu buka dropdown
+   selesai searching, terlepas hasil kosong/gagal — bukan cuma saat sukses+ada isi).
+3. `onChange` sekarang `setCityOpen(true)` langsung saat mengetik (bukan menunggu fetch selesai);
+   `onFocus` jadi `() => setCityOpen(true)` tanpa syarat; render gate dropdown jadi
+   `cityOpen && citySearch.length >= 2`, isi dropdown 3 cabang eksplisit (loading/"Tidak ada
+   hasil untuk ..."/list) — persis struktur referensi.
+4. `shipping.cityId`/`cityName` (top-level, WAJIB `number`/`string` di tipe
+   `CheckoutShippingData`) — untuk kasus semua-pickup, `destCity` genuinely `null`. Dicek dulu
+   `createOrderAction` (`toko/actions.ts`) TIDAK PERNAH membaca `data.shipping.cityId`/
+   `.cityName` sama sekali (cuma `data.shipping.lines`, per-baris pakai `originCityId` milik
+   SELLER bukan destinasi) — aman pakai fallback `destCity?.id ?? 0` /
+   `destCity?.label ?? ""`, pola yang SUDAH dipakai `checkout-form.tsx:310-311` untuk kasus
+   yang sama persis.
+
+**Aturan yang ditegaskan**: kalau dua komponen (admin vs publik) SENGAJA dibangun dengan
+"REUSE logic" dari satu sama lain (didokumentasikan eksplisit di `docs/arsitektur-billing.md`
+§ 15.4), dan salah satunya kemudian dilaporkan bug, WAJIB bandingkan implementasi SATU-SATUNYA
+sama lain dulu (bukan cuma baca kode yang bug sendirian) — referensi yang "sudah proven" hampir
+selalu punya jawaban pasti untuk pola yang benar, dan perbedaannya (di sini: guard
+`anyCourierGroup`, `try/catch` fetch, gate dropdown berbasis panjang query bukan hasil) langsung
+menunjuk root cause tanpa perlu menebak.
+
+`tsc --noEmit` 0 error (`apps/web`) + `bun run build --filter=@jalajogja/web` genuine sukses
+(dev server dimatikan+`.next` dibersihkan+direstart, `Cached: 0 cached, 1 total`, 48.4 detik) —
+route `/app/[tenant]/toko/pesanan/new` (11.4 kB) terkonfirmasi compile bersih. Nol migrasi DB
+(murni perubahan client component). Detail cross-reference ditambahkan ke
+`docs/arsitektur-billing.md` § 15.3 (peringatan eksplisit: kalau rencana § 15 "Unifikasi
+Invoice Manual Admin" dieksekusi nanti, WAJIB port versi widget yang SUDAH DIFIX ini, bukan
+versi lama). **Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual
+di browser** — user perlu coba: pilih "Ambil Sendiri" untuk semua produk di keranjang pesanan,
+konfirmasi field Kota Tujuan hilang dan pesanan bisa dibuat tanpa error; ketik nama kota/
+kecamatan di field Kota Tujuan (untuk skenario campuran kurir+pickup), konfirmasi dropdown
+tampil (loading → hasil atau "Tidak ada hasil").
+
 ## Context Sesi Terakhir
+- Terakhir dikerjakan: **Bug widget Pengiriman `/toko/pesanan/new`** — lihat lesson
+  `[2026-09-04]` "Bug Widget Pengiriman" tepat di atas untuk detail lengkap. User laporkan 2
+  bug nyata di card "Pengiriman" (Kota Tujuan tetap wajib walau semua produk "Ambil Sendiri";
+  dropdown pencarian kota tidak pernah tampil apa pun saat hasil kosong/API gagal). Root cause
+  ditemukan via perbandingan langsung dengan `checkout-form.tsx` (referensi publik yang sudah
+  proven, didokumentasikan sebagai sumber "reuse logic" untuk komponen ini). Fix: guard
+  `anyCourierGroup` (Kota Tujuan cuma wajib/tampil kalau minimal 1 grup masih pilih kurir),
+  `try/catch` di fetch pencarian kota + dropdown selalu buka dengan status eksplisit
+  (loading/kosong/list) alih-alih diam total. `tsc`+build genuine bersih. Cross-reference
+  ditambahkan ke `docs/arsitektur-billing.md` § 15.3 (peringatan untuk rencana unifikasi form
+  invoice admin yang belum dieksekusi — jangan port versi widget yang lama/buggy). **Belum
+  di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi visual di browser** — user
+  perlu coba dua skenario di atas.
 - Terakhir dikerjakan: **Export peserta event — alamat lengkap + bug 404 custom domain modul
   Surat (prefix `/app/` hilang di 7 file)** — lihat lesson `[2026-09-04]` di atas untuk detail
   lengkap. Dua bagian: (1) kolom "Alamat" di export Excel peserta event sekarang gabung detail+
