@@ -78,8 +78,8 @@ export function LetterListClient({ slug, type, initialLetters }: Props) {
     });
   }
 
-  const newHref  = `/${slug}/letters/${TYPE_NEW_HREF[type]}`;
-  const prefix   = `/${slug}/letters/${TYPE_PREFIX[type]}`;
+  const newHref  = `/app/${slug}/letters/${TYPE_NEW_HREF[type]}`;
+  const prefix   = `/app/${slug}/letters/${TYPE_PREFIX[type]}`;
   const hasDetail = type !== "incoming"; // masuk tidak punya halaman detail terpisah
 
   return (

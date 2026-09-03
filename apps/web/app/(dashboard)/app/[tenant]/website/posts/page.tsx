@@ -106,8 +106,8 @@ export default async function PostsPage({
             s === "all" ? !statusFilter : statusFilter === s;
           const href =
             s === "all"
-              ? `/${slug}/website/posts${query ? `?q=${query}` : ""}`
-              : `/${slug}/website/posts?status=${s}${query ? `&q=${query}` : ""}`;
+              ? `/app/${slug}/website/posts${query ? `?q=${query}` : ""}`
+              : `/app/${slug}/website/posts?status=${s}${query ? `&q=${query}` : ""}`;
           return (
             <a key={s} href={href}>
               <Badge

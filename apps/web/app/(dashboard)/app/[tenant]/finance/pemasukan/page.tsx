@@ -113,7 +113,7 @@ export default async function PemasukanPage({
     if (overrides.q ?? q) sp.set("q", overrides.q ?? q ?? "");
     if (overrides.status ?? status) sp.set("status", overrides.status ?? status ?? "");
     if (overrides.page) sp.set("page", overrides.page);
-    return `/${slug}/finance/pemasukan?${sp.toString()}`;
+    return `/app/${slug}/finance/pemasukan?${sp.toString()}`;
   };
 
   const statuses = ["all", "submitted", "paid", "pending", "rejected", "cancelled"];
@@ -152,7 +152,7 @@ export default async function PemasukanPage({
       </div>
 
       {/* Search */}
-      <form method="GET" action={`/${slug}/finance/pemasukan`}>
+      <form method="GET" action={`/app/${slug}/finance/pemasukan`}>
         <div className="relative max-w-sm">
           <input
             name="q"

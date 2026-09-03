@@ -146,8 +146,8 @@ export function LetterForm({ slug, letterId, type, letterTypes, templates, offic
             await syncSignatureSlotsAction(slug, res.letterId, slots);
           }
           const editPath = type === "outgoing"
-            ? `/${slug}/letters/keluar/${res.letterId}/edit`
-            : `/${slug}/letters/nota/${res.letterId}/edit`;
+            ? `/app/${slug}/letters/keluar/${res.letterId}/edit`
+            : `/app/${slug}/letters/nota/${res.letterId}/edit`;
           router.push(editPath);
         } else {
           setError(res.error);

@@ -61,7 +61,7 @@ export default async function JurnalPage({
     const sp = new URLSearchParams();
     if (overrides.q ?? q) sp.set("q", overrides.q ?? q ?? "");
     if (overrides.page) sp.set("page", overrides.page);
-    return `/${slug}/finance/jurnal?${sp.toString()}`;
+    return `/app/${slug}/finance/jurnal?${sp.toString()}`;
   };
 
   return (
@@ -83,7 +83,7 @@ export default async function JurnalPage({
       </div>
 
       {/* Search */}
-      <form method="GET" action={`/${slug}/finance/jurnal`}>
+      <form method="GET" action={`/app/${slug}/finance/jurnal`}>
         <div className="relative max-w-sm">
           <input
             name="q"

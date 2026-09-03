@@ -85,7 +85,7 @@ export default async function TransaksiListPage({
     const sp = new URLSearchParams();
     if (overrides.q      ?? q)      sp.set("q",      overrides.q      ?? q ?? "");
     if (overrides.status ?? status) sp.set("status", overrides.status ?? status ?? "");
-    return `/${slug}/donasi/transaksi?${sp.toString()}`;
+    return `/app/${slug}/donasi/transaksi?${sp.toString()}`;
   };
 
   return (
@@ -125,7 +125,7 @@ export default async function TransaksiListPage({
       </div>
 
       {/* Search */}
-      <form method="GET" action={`/${slug}/donasi/transaksi`}>
+      <form method="GET" action={`/app/${slug}/donasi/transaksi`}>
         {status && <input type="hidden" name="status" value={status} />}
         <div className="max-w-sm">
           <input
@@ -165,8 +165,8 @@ export default async function TransaksiListPage({
                 const isAdmin  = r.sourceType === "donation";
                 const nomor    = r.donationNumber ?? r.invoiceNumber;
                 const detailHref = isAdmin
-                  ? `/${slug}/donasi/transaksi/${r.donationId}`
-                  : `/${slug}/finance/billing/invoice/${r.invoiceId}`;
+                  ? `/app/${slug}/donasi/transaksi/${r.donationId}`
+                  : `/app/${slug}/finance/billing/invoice/${r.invoiceId}`;
                 return (
                   <tr key={`${r.invoiceId}-${r.itemName}`} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
