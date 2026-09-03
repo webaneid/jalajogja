@@ -5,6 +5,10 @@ export const dynamic = "force-dynamic";
 // Profesi/Pekerjaan, Angkatan, Jenis Kelamin, custom field event (dinamis per event),
 // Status Pembayaran, Total Dibayarkan, Kode Voucher, Tanggal Transfer, Cara Transfer.
 //
+// Kolom "Alamat" berisi alamat LENGKAP (detail + kecamatan + kabupaten + provinsi digabung
+// jadi satu string, dipisah koma) — bukan cuma alamat detail. Kolom "Kabupaten" tetap ada
+// terpisah di sampingnya (redundant dengan sengaja, sesuai kebutuhan vendor).
+//
 // Filter peserta — DUA MODE:
 //   - Default (tanpa ?all=1): HANYA status IN ('confirmed', 'attended') — konsisten dengan
 //     `isPaid` di event-registration-list.tsx.
@@ -36,7 +40,8 @@ import { eq, and, inArray, sql } from "drizzle-orm";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasReadAccess } from "@/lib/permissions";
 import {
-  createTenantDb, db as publicDb, members, contacts, addresses, refRegencies, refProfessions,
+  createTenantDb, db as publicDb, members, contacts, addresses, refRegencies, refDistricts,
+  refProvinces, refProfessions,
 } from "@jalajogja/db";
 import { displayPhone } from "@/lib/phone";
 import { formatFieldValue, type CustomFormField } from "@/lib/event-custom-form";
@@ -218,7 +223,11 @@ export async function GET(
   const addressIds = [...new Set(memberRows.map((m) => m.homeAddressId).filter((x): x is string => !!x))];
   const addressRows = addressIds.length > 0
     ? await publicDb
-        .select({ id: addresses.id, detail: addresses.detail, regencyId: addresses.regencyId, postalCode: addresses.postalCode })
+        .select({
+          id: addresses.id, detail: addresses.detail, districtId: addresses.districtId,
+          regencyId: addresses.regencyId, provinceId: addresses.provinceId,
+          postalCode: addresses.postalCode,
+        })
         .from(addresses)
         .where(inArray(addresses.id, addressIds))
     : [];
@@ -229,6 +238,31 @@ export async function GET(
     ? await publicDb.select({ id: refRegencies.id, name: refRegencies.name }).from(refRegencies).where(inArray(refRegencies.id, regencyIds))
     : [];
   const regencyMap = new Map(regencyRows.map((r) => [r.id, r.name]));
+
+  const districtIds = [...new Set(addressRows.map((a) => a.districtId).filter((x): x is number => x != null))];
+  const districtRows = districtIds.length > 0
+    ? await publicDb.select({ id: refDistricts.id, name: refDistricts.name }).from(refDistricts).where(inArray(refDistricts.id, districtIds))
+    : [];
+  const districtMap = new Map(districtRows.map((d) => [d.id, d.name]));
+
+  const provinceIds = [...new Set(addressRows.map((a) => a.provinceId).filter((x): x is number => x != null))];
+  const provinceRows = provinceIds.length > 0
+    ? await publicDb.select({ id: refProvinces.id, name: refProvinces.name }).from(refProvinces).where(inArray(refProvinces.id, provinceIds))
+    : [];
+  const provinceMap = new Map(provinceRows.map((p) => [p.id, p.name]));
+
+  // Alamat lengkap untuk kolom "Alamat" — gabung detail + kecamatan + kabupaten + provinsi.
+  // Kolom "Kabupaten" tetap terpisah di bawah (redundant secara sengaja, sesuai kebutuhan vendor).
+  function buildFullAddress(address: typeof addressRows[number] | undefined): string {
+    if (!address) return "";
+    const parts = [
+      address.detail ?? "",
+      address.districtId != null ? districtMap.get(address.districtId) : undefined,
+      address.regencyId != null ? regencyMap.get(address.regencyId) : undefined,
+      address.provinceId != null ? provinceMap.get(address.provinceId) : undefined,
+    ].filter((p): p is string => !!p && p.trim() !== "");
+    return parts.join(", ");
+  }
 
   const professionIds = [...new Set(memberRows.map((m) => m.professionId).filter((x): x is number => x != null))];
   const professionRows = professionIds.length > 0
@@ -302,7 +336,7 @@ export async function GET(
       r.attendeeName,
       contact?.phone ? displayPhone(contact.phone) : (r.attendeePhone ? displayPhone(r.attendeePhone) : ""),
       contact?.whatsapp ? displayPhone(contact.whatsapp) : "",
-      address?.detail ?? "",
+      buildFullAddress(address),
       regencyName ?? "",
       address?.postalCode ?? "",
       professionNm ?? "",
@@ -350,7 +384,7 @@ export async function GET(
       c.attendeeName,
       contact?.phone ? displayPhone(contact.phone) : (c.attendeePhone ? displayPhone(c.attendeePhone) : ""),
       contact?.whatsapp ? displayPhone(contact.whatsapp) : "",
-      address?.detail ?? "",
+      buildFullAddress(address),
       regencyName ?? "",
       address?.postalCode ?? "",
       professionNm ?? "",
