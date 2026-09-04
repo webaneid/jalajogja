@@ -3,7 +3,7 @@
 import { eq, and, sql, ne, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
-  createTenantDb, recordIncome, generateFinancialNumber, syncInvoicePayment,
+  createTenantDb, recordIncome, generateFinancialNumber, generateUniqueCode, syncInvoicePayment,
   resolveProductCartItem, findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount,
   type VoucherApplicationResult,
 } from "@jalajogja/db";
@@ -612,7 +612,7 @@ export async function createOrderAction(
 
     type TxResult =
       | { error: string }
-      | { invoiceId: string; invoiceNumber: string; total: number; uniqueCode: number; dueDate: string; customerName: string };
+      | { invoiceId: string; invoiceNumber: string; total: number; uniqueCode: number; dueDate: string; isFullyPaid: boolean; customerName: string };
 
     const txResult: TxResult = await db.transaction(async (tx) => {
       // ── Resolusi item — JANGAN percaya harga/mitraId dari client (pola checkoutAction) ──
@@ -749,7 +749,12 @@ export async function createOrderAction(
 
       const manualDiscount = data.discount ?? 0;
       const total = Math.max(0, subtotal + shippingTotal - manualDiscount);
-      const uniqueCode = uniqueCodeEnabled ? await import("@jalajogja/db").then(m => m.generateUniqueCode(tenantClient)) : 0;
+      // Voucher 100% (atau kombinasi diskon+ongkir Rp 0) → invoice langsung lunas. Pola SAMA
+      // PERSIS checkoutAction (cart/actions.ts) & createInvoiceAction (finance/billing/actions.ts).
+      const isFullyPaid = total <= 0;
+      // Kode unik TIDAK PERNAH digenerate untuk tagihan Rp 0 — sebelumnya baris ini tidak punya
+      // guard sama sekali (bug: amountDue = total(0) + uniqueCode(nonzero) tidak pernah "lunas").
+      const uniqueCode = (uniqueCodeEnabled && !isFullyPaid) ? await generateUniqueCode(tenantClient) : 0;
 
       const dueDate = (() => {
         const d = anchorTodayUtc(tenantTimezone);
@@ -777,9 +782,9 @@ export async function createOrderAction(
           shippingTotal: shippingTotal.toFixed(2),
           discount:      manualDiscount.toFixed(2),
           total:         total.toFixed(2),
-          paidAmount:    "0",
+          paidAmount:    isFullyPaid ? total.toFixed(2) : "0",
           uniqueCode,
-          status:        "pending",
+          status:        isFullyPaid ? "paid" : "pending",
           dueDate,
           notes:         notesWithAddress,
           createdBy:     access.tenantUser.id,
@@ -829,7 +834,7 @@ export async function createOrderAction(
       }
 
       return {
-        invoiceId: invoice.id, invoiceNumber, total, uniqueCode, dueDate,
+        invoiceId: invoice.id, invoiceNumber, total, uniqueCode, dueDate, isFullyPaid,
         customerName: data.customerName.trim(),
       };
     });
@@ -839,6 +844,19 @@ export async function createOrderAction(
     if (normalizedPhone) {
       void (async () => {
         const invoiceUrl = await waAppUrl(slug, `/invoice/${txResult.invoiceId}`);
+
+        if (txResult.isFullyPaid) {
+          // Voucher/diskon menghabiskan seluruh tagihan — invoice sudah langsung lunas, TIDAK
+          // ada apa pun yang perlu dibayar. Notifikasi STANDAR (payment_confirmed), bukan
+          // invoice_created — pola sama checkoutAction & createInvoiceAction.
+          void notifyWa({
+            slug, tenantDb: tenantClient, event: "payment_confirmed",
+            phone: normalizedPhone,
+            vars: { name: txResult.customerName, invoiceNumber: txResult.invoiceNumber, amount: waRupiah(0) },
+          });
+          return;
+        }
+
         void notifyWa({
           slug, tenantDb: tenantClient, event: "invoice_created",
           phone: normalizedPhone,

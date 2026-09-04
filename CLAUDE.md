@@ -17747,7 +17747,79 @@ konfirmasi field Kota Tujuan hilang dan pesanan bisa dibuat tanpa error; ketik n
 kecamatan di field Kota Tujuan (untuk skenario campuran kurir+pickup), konfirmasi dropdown
 tampil (loading → hasil atau "Tidak ada hasil").
 
+### [2026-09-04] Bug Kode Unik Ke-3 (LAGI) di `createOrderAction` — §16 Cuma Fix 2 dari 3
+Implementasi Independen
+
+User frustrasi (verbatim, layak dikutip): *"kenapa lupa terus masalah unik code, pemesanan
+berhasil, ketika dibuat .. tapi ketika input voucher, kode unik pembayaran selalu jadi
+masalah.. pusing saya.. ini gk pernah terdeteksi apa gimana?"* — pertanyaan sah, karena bug
+KELAS PERSIS SAMA sudah pernah dilaporkan+difix 4 hari sebelumnya (`docs/arsitektur-voucher.md`
+§16, 2026-08-31, sudah lama tercatat di CLAUDE.md sesi sebelumnya). Jawaban jujur: §16 cuma
+memperbaiki 2 dari **3 implementasi independen** yang sama-sama menulis logic "buat invoice +
+kode unik" di codebase ini — `createInvoiceAction`+`applyVoucherToInvoiceAction` (keduanya
+`finance/billing/actions.ts`, modul Billing) sudah benar sejak §16, tapi `createOrderAction`
+(`toko/actions.ts`, modul Toko, `/app/{slug}/toko/pesanan/new`) TIDAK PERNAH ikut diaudit saat
+itu — fokusnya waktu itu murni "invoice manual admin" (Billing), bukan "semua titik yang
+memanggil `generateUniqueCode()`".
+
+**Root cause — identik §16 poin 1, file berbeda**: `uniqueCode = uniqueCodeEnabled ?
+generateUniqueCode(...) : 0` — UNCONDITIONAL, tanpa cek `total > 0`. Fungsi ini bahkan TIDAK
+PUNYA logic `isFullyPaid` sama sekali sebelum fix ini (lebih parah dari `createInvoiceAction`
+sebelum §16, yang setidaknya sudah punya kerangka `isFullyPaid`, cuma lupa pasang guard
+uniqueCode-nya). Voucher yang menghabiskan seluruh tagihan tetap dapat kode unik nonzero,
+`status` hardcode `"pending"` — `amountDue = total(0) + uniqueCode(nonzero)` (formula
+universal, dipakai SEMUA titik konfirmasi pembayaran — `docs/arsitektur-kode-unik.md`) jadi
+tidak pernah 0, invoice tidak pernah keluar dari "belum dibayar" meski tagihan tampil Rp 0.
+
+**Fix — replikasi PERSIS pola `isFullyPaid` dari `checkoutAction`/`createInvoiceAction`, bukan
+pola baru**: `isFullyPaid = total <= 0`; `uniqueCode = (uniqueCodeEnabled && !isFullyPaid) ?
+generateUniqueCode(...) : 0`; insert invoice `status: isFullyPaid ? "paid" : "pending"`,
+`paidAmount: isFullyPaid ? total.toFixed(2) : "0"`; `isFullyPaid` diteruskan keluar transaction
+untuk cabang notifikasi WA (`payment_confirmed` amount Rp 0, bukan `invoice_created`) — pola
+sama `checkoutAction`. Tidak perlu efek samping donasi/tiket seperti §16 (`campaigns.
+collectedAmount`, `event_registrations`) — item di `createOrderAction` SELALU
+`itemType:"product"` (modul Toko murni).
+
+**Bug TypeScript ditemukan+difix sebagai bagian implementasi**: fungsi ini punya anotasi tipe
+MANUAL `type TxResult = {error} | {invoiceId,...}` di atas `db.transaction()` — TIDAK otomatis
+diinferensi dari return literal. Menambah `isFullyPaid` ke object return SAJA TIDAK CUKUP,
+`tsc` tetap gagal karena anotasi eksplisit itu membatasi tipe hasil. Field baru harus
+ditambahkan KE ANOTASI TIPE-nya juga. **Aturan yang ditegaskan**: kalau `db.transaction()`
+punya anotasi tipe manual (pola ini juga dipakai 3× di `cart/actions.ts`), field baru yang
+ditambahkan ke return statement WAJIB ditambahkan ke anotasi tipe-nya juga — TIDAK ikut infer
+otomatis dari perubahan literal, beda dari transaksi tanpa anotasi eksplisit.
+
+**Rekomendasi belum dieksekusi/didiskusikan**: ini bug voucher KETIGA (§16/§17/§18 di
+`docs/arsitektur-voucher.md`) dalam 4 hari, semuanya berakar dari 3 implementasi independen
+(`checkoutAction` cart publik, `createOrderAction` Toko admin, `createInvoiceAction`+
+`applyVoucherToInvoiceAction` Billing admin) yang masing-masing menulis ulang logic
+"resolve item + voucher + kode unik + isFullyPaid" secara terpisah. Selama pola ini bertahan,
+perbaikan di SATU implementasi tidak otomatis berlaku ke yang lain — persis §16→§18. Kalau
+kelas bug ini muncul lagi, pertimbangkan konsolidasi ke satu helper bersama
+(`packages/db/src/helpers/billing.ts`) dipakai ketiganya, alih-alih terus menambal satu-satu.
+Detail lengkap + status verifikasi: `docs/arsitektur-voucher.md` § 18.
+
+`tsc --noEmit` bersih di `apps/web` (2× — sekali gagal karena anotasi TxResult, langsung
+difix) + `bun run build --filter=@jalajogja/web` genuine sukses (dev server dimatikan+`.next`
+dibersihkan+direstart, `Cached: 0 cached, 1 total`, 48.0 detik). Nol migrasi DB. **Belum
+di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi lewat pembuatan pesanan+
+voucher 100% yang sesungguhnya** — user perlu coba lagi setelah deploy: buat pesanan di
+`/toko/pesanan/new` dengan voucher yang menghabiskan seluruh tagihan, konfirmasi invoice
+langsung berstatus "Lunas" tanpa kode unik tersisa.
+
 ## Context Sesi Terakhir
+- Terakhir dikerjakan: **Bug kode unik ke-3 di `createOrderAction`** — lihat lesson
+  `[2026-09-04]` "Bug Kode Unik Ke-3 (LAGI)" tepat di atas untuk detail lengkap. User laporkan
+  (frustrasi) voucher yang menghabiskan seluruh tagihan di `/toko/pesanan/new` bikin invoice
+  tidak pernah "lunas" — kode unik tetap tergenerate meski total Rp 0. Root cause: `createOrder
+  Action` adalah implementasi KETIGA "buat invoice + kode unik" yang independen dari 2 lainnya
+  (`checkoutAction`, `createInvoiceAction`) dan tidak ikut diaudit saat bug kelas SAMA difix di
+  2 lainnya (§16 `docs/arsitektur-voucher.md`, 2026-08-31) — bug lama yang "kelihatan sudah
+  difix" ternyata cuma difix di 2/3 tempat. Fix: replikasi pola `isFullyPaid` yang sudah proven,
+  plus fix TypeScript (anotasi tipe manual `TxResult` tidak auto-infer field baru). `tsc`+build
+  genuine bersih. Ditulis rekomendasi (belum dieksekusi) untuk konsolidasi ke 1 helper bersama
+  supaya kelas bug ini tidak muncul lagi kali keempat. **Belum di-commit/push ke git, belum
+  dijalankan di VPS, belum diverifikasi lewat pesanan+voucher 100% yang sesungguhnya.**
 - Terakhir dikerjakan: **Bug widget Pengiriman `/toko/pesanan/new`** — lihat lesson
   `[2026-09-04]` "Bug Widget Pengiriman" tepat di atas untuk detail lengkap. User laporkan 2
   bug nyata di card "Pengiriman" (Kota Tujuan tetap wajib walau semua produk "Ambil Sendiri";

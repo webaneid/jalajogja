@@ -29,6 +29,12 @@ audit lanjutan 2026-08-08)
   unik tidak pernah dinolkan/di-skip untuk invoice manual admin yang totalnya jadi Rp 0 karena
   voucher — invoice tampil "Rp 0" tapi tetap dianggap belum dibayar. ✅ Difix, lihat § 16.
   Belum di-commit/push/deploy.
+- **Bug KRITIS lain, `applyVoucherToInvoiceAction` — voucher tidak match produk bervariasi**
+  (2026-08-31) — kelas sama § 13, fungsi beda. ✅ Difix, lihat § 17. Belum di-commit/push/deploy.
+- **Bug KRITIS (LAGI) — kode unik tidak dinolkan, kali ini di `createOrderAction` (Toko)**
+  (2026-09-04) — kelas PERSIS SAMA § 16, tapi § 16 cuma memperbaiki 2 dari 3 implementasi
+  independen. ✅ Difix, lihat § 18 (termasuk rekomendasi konsolidasi ke satu helper bersama
+  supaya kelas bug ini tidak muncul untuk kali keempat). Belum di-commit/push/deploy.
 
 Fase 2 (diskon otomatis tanpa kode, target produk mitra, target per kategori) — **belum
 direncanakan detail**, lihat § 10 "Di Luar Scope Fase 1".
@@ -839,3 +845,71 @@ genuine sukses (dev server dimatikan+`.next` dibersihkan+direstart, `Cached: 0 c
 seperti § 13. **Belum di-commit/push/deploy ke VPS, belum diverifikasi lewat klik ulang
 "Terapkan Voucher" di invoice `8531135c-...` yang sesungguhnya** — user perlu coba lagi setelah
 deploy.
+
+## 18. Bug Kritis (LAGI) — Kode Unik Tidak Dinolkan di `createOrderAction` (Toko), § 16 Cuma
+Fix 2 dari 3 Implementasi (2026-09-04)
+
+User bertanya frustrasi: *"kenapa lupa terus masalah unik code, pemesanan berhasil, ketika
+dibuat .. tapi ketika input voucher, kode unik pembayaran selalu jadi masalah.. ini gk pernah
+terdeteksi apa gimana?"* — pertanyaan yang sah, karena bug PERSIS SAMA (§16) sudah pernah
+dilaporkan+difix 4 hari sebelumnya. Jawaban jujur: § 16 **hanya memperbaiki 2 dari 3**
+implementasi independen "buat invoice dengan kode unik" yang ada di codebase ini —
+`createInvoiceAction` dan `applyVoucherToInvoiceAction` (keduanya di `finance/billing/
+actions.ts`, modul Billing) — TIDAK PERNAH menyentuh `createOrderAction` (`toko/actions.ts`,
+modul Toko, dipakai `/app/{slug}/toko/pesanan/new`), yang punya bug KELAS PERSIS SAMA dan
+sudah ada sejak fitur voucher-di-form-admin-Toko dibangun (lesson CLAUDE.md
+"[2026-08-15] `/toko/pesanan/new` — Search Pelanggan Gabungan..."). Ini SATU-SATUNYA titik yang
+disebut secara implisit "sisa pekerjaan" oleh § 17 (yang menyebut `createOrderAction`
+eksplisit, tapi cuma untuk bug variasi produk yang berbeda, bukan bug kode unik ini) — audit
+§ 16 tidak pernah cross-check ke sini karena fokusnya waktu itu murni "invoice manual admin"
+(Billing), bukan "SEMUA titik yang bisa memanggil `generateUniqueCode()`".
+
+**Root cause — identik § 16 poin 1, di file berbeda**: `createOrderAction` (`toko/actions.ts`)
+punya `uniqueCode = uniqueCodeEnabled ? await generateUniqueCode(...) : 0` — UNCONDITIONAL,
+tanpa cek `total > 0`. Voucher yang menghabiskan seluruh tagihan (atau kombinasi diskon+ongkir
+Rp 0) tetap dapat kode unik nonzero, `status` tetap hardcode `"pending"` (fungsi ini bahkan TIDAK
+PUNYA logic `isFullyPaid` sama sekali sebelum fix ini — beda dari § 16 yang setidaknya sudah
+punya kerangka `isFullyPaid` di `createInvoiceAction`, cuma lupa pasang guard uniqueCode-nya).
+`amountDue = total(0) + uniqueCode(nonzero)` (formula universal, dipakai semua titik konfirmasi
+pembayaran — `docs/arsitektur-kode-unik.md`) jadi tidak pernah 0, invoice tidak pernah keluar
+dari status "belum dibayar" meski tagihan tampil Rp 0.
+
+**Fix — replikasi PERSIS pola `isFullyPaid` dari `checkoutAction`/`createInvoiceAction`**
+(bukan pola baru): `isFullyPaid = total <= 0` dihitung di `createOrderAction`; `uniqueCode`
+sekarang `(uniqueCodeEnabled && !isFullyPaid) ? generateUniqueCode(...) : 0`; insert invoice
+`status: isFullyPaid ? "paid" : "pending"`, `paidAmount: isFullyPaid ? total.toFixed(2) : "0"`.
+`isFullyPaid` diteruskan keluar transaction untuk cabang notifikasi WA (`payment_confirmed`
+amount Rp 0, bukan `invoice_created`) — pola sama `checkoutAction`. **Tidak perlu efek samping
+donasi/tiket** seperti § 16 (`campaigns.collectedAmount`, `event_registrations`) — item di
+`createOrderAction` SELALU `itemType: "product"` (modul Toko murni), tidak pernah donasi/tiket.
+
+**Bug TypeScript ditemukan+difix saat implementasi**: fungsi ini punya anotasi tipe manual
+`type TxResult = {error} | {invoiceId, invoiceNumber, total, uniqueCode, dueDate,
+customerName}` di atas `db.transaction()` — TIDAK otomatis diinferensi dari return statement
+literal. Menambah `isFullyPaid` ke object return TIDAK CUKUP, `tsc` tetap gagal karena
+anotasi eksplisit ini membatasi tipe hasil transaksi. Field `isFullyPaid` harus ditambahkan
+KE ANOTASI TIPE-nya juga. **Aturan yang ditegaskan**: kalau `db.transaction()` punya anotasi
+tipe manual (`const txResult: TxResult = await db.transaction(...)`, pola ini juga dipakai
+3× di `cart/actions.ts`), field baru yang ditambahkan ke return statement WAJIB ditambahkan
+KE ANOTASI TIPE-nya juga — anotasi manual tidak ikut infer otomatis dari perubahan literal,
+beda dari transaksi tanpa anotasi eksplisit (yang tipe hasilnya otomatis mengikuti literal).
+
+**Rekomendasi belum dieksekusi**: ini bug KEDUA (§16, §17, §18 — tiga bug voucher berbeda,
+semuanya bermuara di `createOrderAction` atau sibling-nya) dalam 4 hari yang berakar dari HAL
+YANG SAMA — tiga implementasi independen ("`checkoutAction`" cart publik, "`createOrderAction`"
+Toko admin, "`createInvoiceAction`"+"`applyVoucherToInvoiceAction`" Billing admin) yang
+masing-masing menulis ulang logic "resolve item + voucher + kode unik + isFullyPaid" secara
+terpisah, alih-alih satu helper bersama. Selama pola ini bertahan, setiap perbaikan di SATU
+implementasi TIDAK OTOMATIS berlaku ke implementasi lain — persis yang terjadi di §16→§18. Kalau
+kelas bug ini muncul lagi (titik generateUniqueCode/isFullyPaid keempat), pertimbangkan
+mengekstrak satu fungsi bersama (`packages/db/src/helpers/billing.ts`, dipakai KETIGA
+implementasi) alih-alih terus menambal titik yang sama satu-satu. **Belum didiskusikan/
+dikonfirmasi dengan user** — murni catatan untuk keputusan arsitektur mendatang.
+
+**Verifikasi**: `tsc --noEmit` bersih di `apps/web` (2× — sekali gagal karena anotasi TxResult,
+langsung difix). `bun run build --filter=@jalajogja/web` genuine sukses (dev server
+dimatikan+`.next` dibersihkan+direstart, `Cached: 0 cached, 1 total`, 48.0 detik). Nol migrasi
+DB. **Belum di-commit/push ke git, belum dijalankan di VPS, belum diverifikasi lewat pembuatan
+pesanan+voucher 100% yang sesungguhnya** — user perlu coba lagi setelah deploy: buat pesanan di
+`/toko/pesanan/new` dengan voucher yang menghabiskan seluruh tagihan, konfirmasi invoice
+langsung berstatus "Lunas" tanpa kode unik tersisa.
