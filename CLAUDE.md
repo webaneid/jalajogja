@@ -2739,18 +2739,18 @@ di mana user punya Better Auth account yang tidak terhubung ke `public.members` 
 
 **Fix**: Buat halaman error di LUAR route `/akun/*` — misalnya `/{slug}/akun-error`.
 - Di luar route → tidak kena `akun/layout.tsx` check → tidak ada loop
-  tidak perlu atur lebar/tinggi manual seperti absolute), tapi menghasilkan visual "menggantung/
-  menimpa" yang identik — ini teknik yang sebenarnya dipakai sumber referensi aslinya juga
-  (`margin-top:-40px`), bukan `position:absolute`. `overflow-hidden` di `<section>` pembungkus
-  tidak masalah karena kartu floating tetap ada DALAM bounds section (overlap ke area hero di
-  atasnya, bukan keluar section).
+- Halaman ini tampilkan pesan + tombol sign-out → user bisa keluar lalu register ulang
+- `akun/layout.tsx` dan `akun/page.tsx` redirect ke sini kalau identity null + bukan pengurus
 
-**Editor**: toggle 2-pilihan (button list, pola sama dengan Design Layout picker) muncul di bawah
-checklist metrik funfact, HANYA saat Funfact aktif (`d.showModuleStrip === true`) — kalau Funfact
-dimatikan, toggle posisi ikut tersembunyi (tidak relevan).
+**Aturan umum**: Jika halaman A redirect ke halaman B, dan B bisa redirect balik ke A → LOOP.
+Sebelum set redirect target, trace: apakah target bisa mengembalikan ke sini? Kalau iya, cari
+target yang tidak punya redirect balik, atau buat halaman dead-end khusus (seperti `akun-error`).
 
-**Verifikasi**: `tsc --noEmit` + `bun run build` — 0 error. `hero-design-1.tsx` dikonfirmasi lagi
-tetap kosong perubahannya (fitur ini 100% scoped ke Desain 2). Belum diverifikasi visual di browser.
+**Penyebab data**: `members.better_auth_user_id` null terjadi kalau:
+1. Admin input data anggota via dashboard (tidak buat akun) → user belum pernah register
+2. Register flow ada bug yang skip `UPDATE members SET better_auth_user_id`
+Fix data: `docs/fix-akun-tidak-terhubung.sql` — diagnosa + backfill otomatis (via email match
+atau via tenant.users) + instruksi manual untuk yang tidak bisa dibackfill otomatis.
 
 ### [2026-07-17] Strip Modul Desain 2 — Kartu Foto Overlay + Fallback Foto Berlapis
 
