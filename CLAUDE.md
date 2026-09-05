@@ -134,131 +134,26 @@ import { PublicButton } from "@/components/website/public/ui/public-button";
 - `btn-full` untuk lebar penuh (form submit)
 - Komponen `PublicButton` polimorfik: auto jadi `<a>` kalau ada prop `href`, jadi `<button>` kalau tidak
 
-## Keputusan Arsitektur yang Sudah Dikunci
-- Multi-tenant: schema isolation per tenant (bukan row-level tenant_id)
-- **Member data: terpusat di `public.members`** — bukan di tenant schema
-- **Akses member: dikontrol via `public.tenant_memberships`** — tenant hanya lihat member mereka sendiri
-- Super admin jalakarta: akses semua `public.members` tanpa filter
-- Payment: semua butuh konfirmasi manual (cash/transfer/QRIS/gateway)
+## Keputusan Arsitektur & Database (ADR)
+Keputusan besar yang sudah dikunci dipindah ke `docs/decisions/` (format ADR, tidak
+diedit setelah `Accepted` — kalau keputusan berubah, buat ADR baru dengan
+"Supersedes ADR-XXXX"):
+- Multi-tenant via schema isolation → `docs/decisions/adr-0001-multi-tenant-schema-isolation.md`
+- Payment wajib konfirmasi manual → `docs/decisions/adr-0002-payment-manual-confirmation.md`
+- Pattern tabel tenant (Drizzle pgSchema factory, FK via DDL, enum-as-text) → `docs/decisions/adr-0003-tenant-table-pattern.md`
+- Auth stack (Better Auth + Drizzle adapter, tabel di public schema) → `docs/decisions/adr-0004-auth-stack-better-auth.md`
+
+Fakta stack singkat (bukan keputusan yang butuh rationale panjang):
 - Storage: self-hosted MinIO di VPS
-- Auth: Better Auth dengan Drizzle adapter
-- Monorepo: Turborepo dengan workspace Bun
-- Port dev: 6202 (frontend + API dalam satu Next.js app). Jalankan: `bun run dev --filter=@jalajogja/web`
-- Port 6201: dicadangkan untuk API server terpisah di masa depan
+- Monorepo: Turborepo, workspace Bun
+- Port dev: 6202 (frontend + API dalam satu Next.js app) — `bun run dev --filter=@jalajogja/web`. Port 6201 dicadangkan untuk API server terpisah di masa depan.
+- Double-entry accounting + helpers (`recordExpense`/`recordIncome`/`recordTransfer`/`generateFinancialNumber`) → `docs/arsitektur-keuangan.md`
+- Struktur `packages/db/src/` (client, tenant-client, schema/public, schema/tenant, helpers) → lihat kode langsung, sudah jarang berubah
 
-## Keputusan Teknis Database
-
-### Pattern: pgSchema Factory untuk Tenant Tables
-Tenant tables menggunakan `pgSchema()` factory dari Drizzle, bukan `pgTable` biasa.
-```typescript
-const s = pgSchema(`tenant_${slug}`); // → "tenant_ikpm"
-const users = s.table("users", { ... }); // → tenant_ikpm.users
-```
-- `getTenantSchema(slug)` di `packages/db/src/schema/tenant/index.ts` adalah entry point utama
-- Result di-cache in-memory agar tidak buat objek baru setiap request
-- `createTenantDb(slug)` di `tenant-client.ts` mengembalikan `{ db, schema }` siap pakai
-
-### FK Constraints di Tenant Tables
-FK **tidak** didefinisikan di Drizzle untuk tenant tables (menghindari circular ref di factory pattern).
-FK tetap ada di DB via raw SQL DDL yang dijalankan saat tenant baru dibuat (`createTenantSchemaInDb`).
-Drizzle schema dipakai untuk TypeScript types + query building saja.
-
-### Enum di Tenant Tables
-Gunakan `text` column dengan TypeScript enum constraint, **bukan** `pgEnum`:
-```typescript
-status: text("status", { enum: ["draft", "published"] }).notNull().default("draft")
-```
-Alasan: `pgEnum` bersifat schema-scoped di PostgreSQL → ratusan tenant = ribuan enum objects.
-
-### drizzle-kit: Public Schema Only
-`drizzle-kit` hanya mengelola **public schema**. Tenant schema dibuat programmatically via
-`createTenantSchemaInDb(db, slug)` — dipanggil saat tenant baru dibuat, bukan via migration file.
-
-### Double-Entry Accounting + Helpers
-> Detail lengkap: **`docs/arsitektur-keuangan.md`**
-
-Helper di `packages/db/src/helpers/finance.ts` (tanda tangan memakai `tenantDb`, bukan `{db, schema}`):
-- `recordExpense(tenantDb, { amount, expenseAccountId, cashAccountId, ... })`
-- `recordIncome(tenantDb, { amount, incomeAccountId, cashAccountId, ... })`
-- `recordTransfer(tenantDb, { amount, fromAccountId, toAccountId, ... })`
-- `generateFinancialNumber(tenantDb, type)` — format `620-PAY/DIS/JNL-YYYYMM-NNNNN`
-
-### Better Auth Tables: Public Schema
-Tabel auth (user, session, account, verification) ada di `public` schema.
-Satu user bisa akses multiple tenant. Mapping role per tenant ada di `tenant_{slug}.users`.
-
-### Arsitektur Member: Federated Identity
-> Detail lengkap — visi, skenario, implementasi, lessons learned: **`docs/arsitektur-keanggotaan.md`**
-
-- `public.members` — identitas global IKPM, satu record per orang lintas semua cabang
-- `public.tenant_memberships` — relasi cabang, satu orang bisa di banyak cabang
-- `public.member_number_seq` — SEQUENCE global atomic
-- Tenant schema **TIDAK punya tabel members** — semua referensi via UUID ke `public.members.id`
-- Query tenant: **wajib** JOIN `tenant_memberships WHERE tenant_id = {current}` (application-level, bukan RLS)
-
-### Arsitektur Akun: Tiga Level Akses
-> Detail lengkap: **`docs/arsitektur-akun.md`**
-
-jalakarta punya **tiga level akses** yang berbeda entitas, berbeda tabel, berbeda lifecycle.
-**PRINSIP UTAMA (tidak boleh dilanggar):**
-
-> Pengurus adalah anggota IKPM yang sedang bertugas — bukan entitas terpisah.
-> Satu akun Better Auth berlaku di dua konteks: dashboard (saat menjabat) + front-end (selamanya).
-
-**Super Admin jalakarta** (platform level) — terpisah dari sistem tenant, tidak dibahas di sini.
-
-**Level 1 — Pengurus** (subset Anggota IKPM, per tenant)
-- Anggota IKPM yang diangkat owner/super admin, masa jabatan terbatas
-- Login di **dashboard tenant** + **front-end** (sebagai anggota IKPM)
-- Saat masa jabatan berakhir → turun ke Level 2, akun tetap ada
-- Data: `public.members` + `public.user` + `tenant_{slug}.users`
-- Wajib: `tenant.users.member_id` TIDAK BOLEH null — pengurus HARUS anggota IKPM
-
-**Level 2 — Anggota IKPM** (alumni Gontor)
-- Login di **front-end saja** (belanja, donasi, event lintas semua tenant)
-- Data: `public.members` + `public.user` (via `members.better_auth_user_id`)
-- TIDAK ada di `tenant.users` kecuali diangkat jadi pengurus
-
-**Level 3 — Akun Publik** (orang umum, bukan alumni)
-- Login di **front-end saja**
-- Data: `public.profiles` + `public.user`
-- Tidak bisa diangkat jadi pengurus
-
-**Kolom kunci yang membedakan:**
-- `public.members.better_auth_user_id` → anggota IKPM yang sudah aktivasi login front-end
-- `public.profiles.better_auth_user_id` → akun publik
-- `tenant.users.member_id` → wajib tidak null (pengurus HARUS anggota IKPM)
-
-**`public.profiles` HANYA untuk akun publik** — tidak ada `member_id` atau `account_type` di sini.
-
-**Routing pasca login:**
-- `/{slug}/login` → cek session → ada → `getAkunIdentity()` ada → `/akun` | null → `/dashboard`
-- `/{slug}/akun` → `getAkunIdentity()` null (pengurus-only) → redirect `/dashboard`
-- Dashboard → dilindungi middleware, cek `tenant.users`
-
-**Fix dilakukan** di 3 tempat: `pengurus/actions.ts`, `settings/actions.ts`, `invite/actions.ts`.
-Semua alur aktivasi pengurus sekarang set `members.better_auth_user_id` → pengurus langsung
-dapat akses front-end sebagai anggota IKPM. Guard `isNull()` mencegah overwrite akun yang sudah ada.
-
-### Struktur File packages/db/src/
-```
-src/
-├── index.ts               ← public API
-├── client.ts              ← public schema db instance
-├── tenant-client.ts       ← factory: createTenantDb(slug)
-├── schema/
-│   ├── public/            ← auth.ts, tenants.ts, members.ts, tenant-memberships.ts, profiles.ts
-│   └── tenant/            ← factory tables: users, website, letters, finance, shop, settings
-│                             (members TIDAK ADA di sini — sudah dipindah ke public)
-└── helpers/
-    ├── finance.ts         ← double-entry helper functions
-    ├── member-number.ts   ← generateMemberNumber() via PostgreSQL SEQUENCE
-    └── create-tenant-schema.ts ← DDL provisioning tenant baru
-```
-
-### Orders & Payment
-`member_id` di `orders` nullable — untuk donasi dari luar yang tidak perlu login.
-Semua payment butuh konfirmasi manual (cash/transfer/QRIS/gateway).
+Model identitas & level akses (federated member identity, 3 level akses, routing
+pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
+- `docs/arsitektur-keanggotaan.md` — identitas global anggota lintas tenant
+- `docs/arsitektur-akun.md` — 3 level akses (Pengurus/Anggota/Publik) + routing
 
 ## Arsitektur Website (Dashboard CMS + Front-end Publik)
 > **Peta/indeks SEMUA dokumen front-end publik** (header, footer, landing, post, card+section,
