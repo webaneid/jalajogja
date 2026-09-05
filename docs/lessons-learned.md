@@ -542,4 +542,34 @@
 **Fix:** Ganti jadi satu query JOIN (`members INNER JOIN contacts WHERE contacts.email = X OR contacts.phone = Y`).
 **Pencegahan:** Begitu kelas bug ini ditemukan sekali, wajib langsung grep pola yang sama (`{helperTable}.findFirst` diikuti `eq({entitas}.{fk}, hasil_pencarian_pertama)`) di seluruh codebase — pola yang sama besar kemungkinan di-copy-paste ke kebutuhan serupa lain.
 
-<!-- Entri chunk lain (1, 3) ditambahkan menyusul setelah proses klasifikasi selesai -->
+## [2026-06] Jangan reflex pakai Redis untuk kebutuhan TTL/rate-limit sederhana — PostgreSQL sudah cukup
+**Masalah:** Ada dorongan menambah Redis untuk sistem OTP hanya karena asosiasi umum "OTP = TTL = butuh Redis".
+**Root cause:** Asumsi keliru bahwa TTL/sekali-pakai/rate-limit selalu butuh in-memory store terpisah, padahal untuk skala traffic proyek ini PostgreSQL sudah cukup: TTL via kolom `expires_at` + filter `WHERE expires_at > NOW()`; sekali pakai via kolom `used_at` (NULL=belum, non-NULL=sudah); rate limit via `COUNT WHERE created_at > NOW() - INTERVAL '1 hour'`.
+**Fix:** Tabel `public.otp_tokens` biasa, tanpa dependency tambahan.
+**Pencegahan:** Redis (atau in-memory store lain) hanya diperlukan kalau operasi TTL/rate-limit sungguh-sungguh dipanggil jutaan kali per hari (high-traffic genuinely terbukti, bukan diasumsikan). Untuk fitur baru dengan kebutuhan skala kecil-menengah, defaultkan ke kolom timestamp PostgreSQL yang sudah dipakai sebelum mengusulkan infrastruktur tambahan.
+
+---
+
+## [2026-05] Route group Next.js `(dashboard)`/`(public)` tidak mengubah URL — path yang sama di keduanya bentrok
+**Masalah:** Dev server gagal start dengan error "You cannot have two parallel pages that resolve to the same path" saat menambah halaman publik baru.
+**Root cause:** Route group Next.js App Router (`(namafolder)`) murni organisasi filesystem — tidak pernah muncul di URL. `(dashboard)/[tenant]/akun/page.tsx` dan `(public)/[tenant]/akun/page.tsx` sama-sama resolve ke `/{tenant}/akun`.
+**Fix:** Rename salah satu (dashboard admin `/akun` → `/accounts`, dst).
+**Pencegahan:** Sebelum menambah halaman baru di `(public)` atau `(dashboard)`, selalu cek dulu apakah path yang sama sudah dipakai di sisi lain. Gunakan nama folder berbeda untuk halaman admin vs publik yang konsepnya serupa (produk vs toko, event vs agenda, donasi vs campaign) — update juga `nav-menu.ts` setiap kali rename terjadi.
+
+---
+
+## [2026-04] Kolom timestamp konfirmasi eksplisit (signed_at/confirmed_at/approved_at/paid_at) tidak boleh punya DEFAULT
+**Masalah:** Slot tanda tangan baru di `letter_signatures` langsung tampil "✓ TTD" begitu di-assign officer, padahal belum ada yang benar-benar menandatangani.
+**Root cause:** Kolom `signed_at` di DDL tenant lama punya `DEFAULT now()` (sisa versi sebelum refactor) — setiap INSERT baru otomatis mendapat `signed_at = NOW()` tanpa aksi TTD sungguhan. Gejala pasti: `signed_at = created_at` persis sama.
+**Fix:** `ALTER TABLE ... ALTER COLUMN signed_at DROP DEFAULT` per tenant terdampak, lalu reset baris yang ter-auto-sign.
+**Pencegahan:** Kolom apa pun yang merepresentasikan konfirmasi eksplisit user (`signed_at`, `confirmed_at`, `approved_at`, `paid_at`, dll di modul manapun) tidak boleh punya `DEFAULT` di DDL — harus selalu NULL saat row dibuat, diisi eksplisit hanya saat event konfirmasi genuinely terjadi. Kalau menemukan bug "status langsung true padahal belum ada aksi user", cek dulu apakah `created_at === kolom_timestamp_terkait`.
+
+---
+
+## [2026-04] Tiga kebiasaan modul baru: toggle tanpa konsumen, Drizzle notNull vs DDL, nama fitur menentukan validasi
+**Masalah:** Saat membangun modul Event, ditemukan 3 pola kesalahan berulang: (1) toggle UI ditambahkan sebelum consumer-nya diimplementasikan (`showAttendeeList` sempat tampil padahal belum ada efeknya di halaman publik); (2) DDL `NOT NULL` tanpa `.notNull()` yang cocok di Drizzle schema membuat TypeScript type lebih lebar dari realita; (3) fitur "Sertifikat Kehadiran" nyaris divalidasi untuk status `confirmed` padahal namanya menyiratkan hanya untuk `attended`.
+**Root cause:** Ketidaksesuaian antara apa yang ditawarkan UI/nama fitur vs apa yang benar-benar diimplementasikan/divalidasi di baliknya.
+**Fix:** Toggle baru hanya ditambahkan setelah consumer-nya ada; DDL `NOT NULL` selalu dipasangkan `.notNull()` di baris Drizzle yang sama; validasi backend disesuaikan ketat dengan semantik nama fitur di UI.
+**Pencegahan:** Jangan expose toggle boolean di form admin sebelum ada consumer yang benar-benar membaca nilainya. Setiap menulis DDL `NOT NULL`, langsung tambahkan `.notNull()` di baris Drizzle yang sama. Kalau nama fitur di UI menyiratkan kondisi spesifik, validasi backend harus secermat itu — kalau ragu, pilih validasi yang lebih ketat.
+
+<!-- Entri chunk lain (3) ditambahkan menyusul setelah proses klasifikasi selesai -->

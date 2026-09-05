@@ -143,7 +143,8 @@ slot_section    TEXT     NULLABLE
 signing_token   TEXT     UNIQUE NULLABLE
   -- UUID untuk URL publik /{slug}/sign/{token}
   -- null = tidak diundang via link (TTD langsung dari dashboard)
-  -- dikosongkan setelah TTD berhasil (prevent reuse)
+  -- TIDAK dikosongkan setelah TTD berhasil (lihat ralat di § 10) — link tetap bisa diakses
+  -- untuk melihat konfirmasi TTD; reuse dicegah oleh guard signed_at, bukan nullifikasi token
 ```
 
 **Kolom yang diubah menjadi nullable** (saat ini NOT NULL):
@@ -263,8 +264,15 @@ Perlu: render berdasarkan `signature_layout`.
 | `double-with-witnesses` | baris utama 2 slot + label "Saksi:" + grid 3 kolom untuk witness slots |
 
 **Aturan render slot di PDF:**
-- Slot yang sudah `signed_at IS NOT NULL` → tampilkan QR + nama + jabatan + tanggal (jika `signature_show_date`)
+- Slot yang sudah `signed_at IS NOT NULL` → tampilkan QR + nama + jabatan
 - Slot yang belum TTD → tampilkan nama + jabatan, spasi kosong sebagai pengganti QR (garis `___`)
+
+> **Ralat**: Tanggal TTD **TIDAK PERNAH ditampilkan di PDF**, terlepas dari setting
+> `signature_show_date` — `lib/letter-html.ts` hardcode `showDate: false` ke `renderSignatureBlockHtml()`
+> saat generate PDF (dikonfirmasi ke kode langsung, keputusan disengaja bukan bug). Setting
+> `signature_show_date` HANYA memengaruhi preview di dashboard (`letters/keluar/[id]/page.tsx`,
+> `letters/nota/[id]/page.tsx`, `letter-form.tsx`/`letter-template-form.tsx` meneruskan
+> `signatureShowDate` ke `<SignatureBlock>`) — bukan hasil PDF yang benar-benar diunduh/dikirim.
 
 **Aturan format tanggal di blok TTD:**
 Format tanggal TTD **tidak punya setting sendiri** — selalu pakai `letter_config` dari pengaturan surat:
@@ -519,7 +527,9 @@ Semua fitur arsitektur TTD telah diimplementasikan. Tidak ada item yang pending.
 
 [Officer Sign via URL]
   → /(public)/[tenant]/sign/[token]
-  → signByTokenAction: cek expiry → insert hash → clear token
+  → signByTokenAction: cek expiry → insert hash → signing_token TIDAK di-clear (ralat: token
+    dipertahankan supaya link tetap bisa diakses untuk lihat konfirmasi TTD; double-sign dicegah
+    via guard signed_at, bukan nullifikasi token — lihat § 3)
   → QR verify URL muncul setelah TTD
 
 [PDF Generate]

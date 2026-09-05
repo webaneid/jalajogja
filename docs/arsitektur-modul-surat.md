@@ -135,6 +135,14 @@ CRUD (name, title, org, phone, email, address). Dipakai sebagai sumber alternati
 surat selain `public.members` (lihat fallback chain di `docs/arsitektur-surat-detail.md`
 § Merge Fields, tabel "Sumber data per tipe penerima").
 
+### Officer / Penandatangan — Dua Konsep Berbeda, Jangan Ditukar
+**Dropdown "Yang Mengeluarkan" di form surat pakai `isActive`, bukan `canSign`.** Semua officer
+aktif boleh muncul sebagai pihak yang mengeluarkan surat — `canSign` adalah atribut terpisah,
+khusus untuk menentukan siapa yang boleh diisi ke slot tanda tangan digital di
+`letter_signatures` (lihat `docs/arsitektur-tandatangan.md`). Jangan filter dropdown "Yang
+Mengeluarkan" pakai `canSign` — dua konsep ini melayani kebutuhan berbeda dan tidak boleh
+dicampur.
+
 ---
 
 ## 2. Status Aktual Fitur (diverifikasi langsung ke kode, bukan disalin dari dokumen lama)

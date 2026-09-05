@@ -1158,12 +1158,31 @@ Keduanya nullable. Lookup saat checkout:
       `UPDATE public.members SET better_auth_user_id = userId WHERE id = memberId AND better_auth_user_id IS NULL`
 - [x] **`activateUserDirectAction`** — sama, sudah set `better_auth_user_id`
 - [x] **`acceptInviteAction` + `registerAndAcceptAction`** — sudah set `better_auth_user_id` jika `invite.memberId` tidak null
-- [x] **Redirect loop `akun ↔ dashboard-redirect ↔ register?error=no-tenant`** — dua root cause:
+- [x] **Redirect loop `akun ↔ dashboard-redirect ↔ /no-tenant-access`** (tujuan akhir sekarang
+      `/no-tenant-access`, BUKAN `/register?error=no-tenant` lagi — lihat ralat di
+      `docs/arsitektur-login-universal.md` § "Alur Login & Routing Pasca Login") — dua root cause:
   1. `login-form.tsx`: `router.push(dest)` → stale server cache → session null → loop.
      **Fix**: `window.location.href = dest` (full reload) untuk semua alur login.
   2. `akun/layout.tsx`: `if (!identity) redirect('/app/${slug}/dashboard')` tanpa cek.
      Jika user bukan pengurus tenant ini → admin layout redirect lagi → loop.
-     **Fix**: cek `tenant.users` dulu; kalau ada → admin dashboard; kalau tidak → login.
+     **Fix**: cek `tenant.users` dulu; kalau ada → admin dashboard; kalau tidak → `/{slug}/login`
+     atau, kalau identity null DAN bukan pengurus tenant ini, → halaman dead-end
+     `/{slug}/akun-error` (lihat di bawah) — bukan redirect lagi.
+
+**Halaman dead-end `/{slug}/akun-error`** — dipakai saat `getAkunIdentity()` null DAN user bukan
+pengurus tenant ini (kasus: akun Better Auth ada tapi tidak terhubung ke `public.members` maupun
+`public.profiles`, mis. data anggota diinput admin manual sebelum user register sendiri, atau
+register flow yang skip `UPDATE members SET better_auth_user_id`). Halaman ini SENGAJA di LUAR
+route `/akun/*` (tidak kena `akun/layout.tsx` guard) — hanya tampilkan pesan + tombol sign-out,
+tidak redirect ke mana pun. `akun/layout.tsx` dan `akun/page.tsx` redirect ke sini (bukan ke
+`/login`) untuk kasus ini.
+
+**Aturan umum, berlaku di seluruh aplikasi**: sebelum menetapkan target redirect di halaman A,
+trace dulu — apakah halaman target B punya kondisi yang bisa redirect balik ke A? Kalau ya, itu
+LOOP. Solusinya: cari target yang genuinely tidak punya redirect balik, atau buat halaman
+dead-end khusus (seperti `akun-error`) yang murni menampilkan pesan tanpa logic redirect lebih
+lanjut. Data historis yang bisa memicu kondisi ini bisa dibackfill manual — lihat
+`docs/fix-akun-tidak-terhubung.sql`.
 
 ### Pengurus Lama Tanpa `members.betterAuthUserId`
 Pengurus yang diaktifkan SEBELUM fix `createOfficerWithAccountAction` punya:

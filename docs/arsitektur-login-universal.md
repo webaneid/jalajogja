@@ -414,7 +414,10 @@ if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
 ### Client component (login/register/forgot-password)
 ```typescript
 import { authClient } from "@/lib/auth-client";
-// signIn, forgetPassword, resetPassword via Better Auth client
+// signIn, resetPassword via Better Auth client — TIDAK forgetPassword(), method itu
+// tidak ada di versi Better Auth yang dipakai project ini. Permintaan reset password
+// (jalur email fallback) pakai direct fetch POST /api/auth/request-password-reset,
+// bukan method client — lihat § "Halaman Lupa Password" untuk alur lengkap.
 ```
 
 ---
