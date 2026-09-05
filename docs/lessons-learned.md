@@ -260,4 +260,130 @@
 **Fix:** Jangan pre-encode nilai sebelum diserahkan ke `.cookies.set()`.
 **Pencegahan:** `encodeURIComponent` manual hanya sah dipakai kalau menulis cookie lewat `headers.append("set-cookie", ...)` RAW. Kalau menulis lewat `.cookies.set()`, jangan pernah pre-encode — API itu sudah encode otomatis.
 
-<!-- Entri chunk lain (1, 3, 4, 5, 8) ditambahkan menyusul setelah proses klasifikasi selesai -->
+## [2026-07-31] Auto-link identitas berdasarkan kecocokan email tanpa verifikasi adalah celah identity-takeover
+**Masalah:** Kode dari agen lain di `lib/akun-identity.ts` menambahkan blok "auto-link" yang mencocokkan email session user terhadap `contacts.email` member manapun yang belum diklaim, lalu diam-diam menulis `betterAuthUserId = userId` tanpa verifikasi email apa pun.
+**Root cause:** Better Auth di project ini tidak punya email verification aktif, dan endpoint register publik tidak cek `members`/`contacts.email` sebelum mendaftarkan — siapa pun bisa daftar akun dengan email siapa saja (tanpa dibuktikan kepemilikannya) lalu otomatis "claim" identitas member yang emailnya kebetulan cocok.
+**Fix:** Blok auto-link dihapus total, revert ke lookup `betterAuthUserId` murni.
+**Pencegahan:** Jangan pernah auto-link/auto-claim sebuah identitas berdasarkan kecocokan field yang diinput sendiri oleh user (email, nomor HP, dll) tanpa proses verifikasi kepemilikan (OTP, magic link) — terutama di sistem tanpa email verification aktif secara default. Kalau menemukan komponen yang melanggar pattern yang sudah terdokumentasi wajib (mis. `onMouseDown` preventDefault untuk custom dropdown blur-close), grep juga komponen kembaran hasil copy-paste — kalau kembarannya juga melanggar, catat eksplisit sebagai debt terpisah, jangan dibiarkan tanpa jejak.
+
+---
+
+## [2026-08-01] Field UI yang terlihat fungsional belum tentu genuinely dikoneksikan ke logic
+**Masalah:** Field "Nama Akun (Linimasa)" di editor section Instagram seharusnya jadi acuan akun yang terhubung, tapi ternyata cuma label kosmetik — foto yang ditarik selalu dari akun OAuth terakhir connect, tidak pernah divalidasi terhadap apa yang diketik admin.
+**Root cause:** Sejak rilis OAuth pertama, field `accountName` terlihat fungsional (nama jelas, lokasi masuk akal) tapi tidak pernah genuinely dikoneksikan ke logic resolusi feed.
+**Fix:** Nilai field dibawa lintas redirect OAuth (HMAC-signed di `state` param), dibandingkan case-insensitive terhadap username hasil OAuth sebelum token disimpan.
+**Pencegahan:** Sebuah field UI yang terlihat jelas namanya/lokasinya belum tentu benar-benar dipakai untuk keperluan yang namanya implikasikan — verifikasi wiring aktual di kode. Kalau user menegur bahwa penjelasan kita salah, jangan membela penjelasan lama — cek ulang kode dari nol dengan asumsi penjelasan sebelumnya salah, dan kalau perbaikannya punya lebih dari satu interpretasi, tanya eksplisit lewat opsi konkret.
+
+---
+
+## [2026-07-30] Section dengan mock data/fallback dummy yang bisa terlihat publik adalah red flag otomatis
+**Masalah:** Fitur "Section Directory" yang diklaim agen lain "selesai dengan sempurna" punya 2 bug fatal: fallback mock data (nama usaha/dokter/pesantren fiktif) tercampur tanpa penanda dengan data asli, dan nol tenant scoping — query ke tabel `public.member_*` tanpa `JOIN tenant_memberships`, kebocoran data lintas-tenant.
+**Root cause:** Parameter fungsi bernama `tenantClient` memberi kesan palsu bahwa scoping sudah terjadi, padahal tidak ada filter tenant sama sekali di query-nya.
+**Fix:** Mock data dihapus total, query ditulis ulang pakai `INNER JOIN tenantMemberships` scoped ke tenant, hardcode nama tenant diganti dinamis.
+**Pencegahan:** Frasa "fallback mock data" di laporan manapun adalah red flag otomatis yang harus memicu pemeriksaan apakah data palsu itu genuinely bisa terlihat pengunjung publik. Setiap resolver baru yang query tabel `public.member_*` wajib dicek eksplisit apakah sudah `JOIN tenant_memberships` — jangan asumsikan dari nama parameter bahwa scoping sudah terjadi.
+
+---
+
+## [2026-07-30] "User marah soal agen ngarang data" berarti hapus SEMUA data pengganti, termasuk yang dibuat sesi sendiri
+**Masalah:** User marah karena section Instagram "ngarang data" — bukan cuma mock data dari agen sebelumnya, tapi juga fallback "sementara" yang dibuat sendiri oleh sesi ini di sesi sebelumnya dengan niat berbeda.
+**Root cause:** User tidak membedakan "data palsu dari agen lain" vs "data palsu dari sesi sendiri" — keduanya sama-sama melanggar maksud asli fitur.
+**Fix:** Section dibongkar total, diganti OAuth Graph API sungguhan.
+**Pencegahan:** Kalau user marah soal "agen ngarang data", treat itu sebagai instruksi untuk menghilangkan SEMUA bentuk data pengganti/dummy dari fitur itu, termasuk yang sesi ini sendiri pernah buat. Jangan defensif/parsial saat memperbaiki keluhan seperti ini. Riset ke dokumentasi API pihak ketiga yang jarang dipakai wajib pakai web search sungguhan, bukan diasumsikan dari training data yang berpotensi basi.
+
+---
+
+## [2026-07-30] Task audit-bug bukan lisensi menambah keputusan desain baru yang tidak diminta
+**Masalah:** Saat mengaudit bug (autoplay, duplikat iframe), ditambahkan juga cap tinggi `max-h-[500px]` pada gambar hero dengan alasan "cegah foto ekstrem mendominasi visual" — user menegur keras karena ini bukan bug fix, murni keputusan desain baru yang tidak diminta.
+**Root cause:** `width:100%; height:auto; max-height:Npx` pada elemen `<img>` membuat browser mengorbankan WIDTH demi menjaga rasio asli begitu max-height mengikat (CSS 2.1 §10.4) — bukan cuma memotong tinggi, gambar jadi lebih sempit dari frame dekoratifnya.
+**Fix:** Revert total ke `w-full h-auto` polos.
+**Pencegahan:** Task audit-bug bukan lisensi menambah keputusan desain/UX baru yang tidak diminta, bahkan kalau niatnya baik. Kalau menemukan potensi masalah UX di luar scope yang diminta, laporkan/tanyakan dulu ke user — jangan langsung eksekusi.
+
+---
+
+## [2026-07-30] Autoplay iframe video butuh mute eksplisit; duplikasi DOM mobile/desktop tidak aman untuk embed berat
+**Masalah:** (1) `youtubeAutoplay=true` selalu gagal diam-diam — browser modern memblokir autoplay iframe bersuara tanpa user gesture, kode tidak pernah kirim `mute=1`. (2) iframe YouTube ter-mount 2× bersamaan (pola render mobile+desktop sekaligus, `display` di-toggle CSS) — video ter-load dobel.
+**Root cause:** (1) Tidak membedakan "mulai sendiri via config" (harus mute paksa) dari "user klik tombol Putar" (boleh bersuara). (2) `display:none` tidak menghentikan iframe content/network activity — pola duplikasi render aman untuk konten ringan tapi tidak untuk embed berat.
+**Fix:** Mute paksa untuk autoplay otomatis. Untuk media berat, satu render dengan posisi diatur via CSS Grid `order`, bukan duplikasi DOM.
+**Pencegahan:** Jangan samakan `mute` otomatis dengan `autoplay` — dua konsep berbeda. Untuk embed berat (iframe, video), gunakan satu render + reposisi CSS, bukan duplikasi DOM mobile/desktop.
+
+---
+
+## [2026-07-29] Grid kolom sama rata + `mx-auto` tidak menjamin true center untuk elemen lebar variabel
+**Masalah:** Nav menu di header "Pill" tidak benar-benar center, menempel ke kanan begitu nav punya beberapa item menu.
+**Root cause:** `grid-cols-3` membagi header jadi 3 kolom sama rata; nav dengan `mx-auto` cuma ter-center di dalam kolom tengahnya sendiri (1/3 lebar header) — begitu lebar konten nav > 1/3 lebar header, `mx-auto` resolve ke 0 dan nav jatuh rata-kiri.
+**Fix:** `grid-cols-[1fr_auto_1fr]` — kolom tengah `auto` mengikuti lebar konten nav, kedua kolom `1fr` menyerap sisa ruang sama rata.
+**Pencegahan:** Untuk pola "logo kiri, nav tengah (lebar variabel), aksi kanan", pakai grid `[1fr auto 1fr]`, bukan `grid-cols-N` dengan kolom sama rata.
+
+---
+
+## [2026-07-28] Bug `access.userId` vs `access.tenantUser.id` bisa menular ke banyak fungsi bertetangga bertahun-tahun tanpa terdeteksi
+**Masalah:** Tombol "Konfirmasi Lunas" di Catat Pemasukan selalu gagal sejak file dibuat (berbulan-bulan) — `confirmPaymentAction` menulis `access.userId` (nanoid) ke kolom UUID, tertangkap try/catch jadi pesan error generik.
+**Root cause:** Bug persis pola yang sudah didokumentasikan sebagai lesson lama ("UUID vs nanoid"), sudah benar di fungsi tetangga di file yang sama, tapi tidak pernah di-grep ke fungsi lain — audit menemukan 5 titik lain dengan bug identik di file yang sama (disbursement actions, journal action), seluruh alur konfirmasi pemasukan/pengeluaran/jurnal manual rusak sejak modul dibuat.
+**Fix:** Keenam titik diganti `access.tenantUser.id` (UUID asli).
+**Pencegahan:** Kalau menemukan bug `access.userId` vs `access.tenantUser.id` di satu fungsi, wajib grep SELURUH file yang sama untuk pola serupa — bug ini terbukti bisa menular ke banyak fungsi bertetangga tanpa terdeteksi bertahun-tahun, bahkan setelah polanya sudah didokumentasikan sebagai lesson. Jangan cukup fix 1 titik yang dilaporkan lalu berhenti.
+
+---
+
+## [2026-07-28] Draft rencana lama bukan sumber kebenaran final; React.cache() hanya dedup argumen primitif
+**Masalah:** (1) `React.cache()` di sekitar `resolveSlugKind()` tidak pernah dedup meski dipanggil 2×. (2) Draft rencana lama mengusulkan exclude `robots.txt`/`sitemap.xml` dari matcher middleware — kalau dieksekusi literal akan mematikan rewrite custom domain yang baru saja difix di sesi lain yang berjalan paralel.
+**Root cause:** (1) `React.cache()` membandingkan argumen non-primitif secara REFERENCE, bukan deep-equality — array `segments` dari 2 titik `await params` berbeda adalah reference berbeda meski isinya identik. (2) Kode bisa berubah sejak rencana ditulis, terutama kalau ada sesi/agen lain paralel.
+**Fix:** (1) Ubah signature fungsi menerima `joinedSegments: string` (di-`.join("/")` sebelum masuk cache) — string dibanding by value. (2) Cek dulu premis draft masih valid sebelum eksekusi literal.
+**Pencegahan:** `React.cache()` hanya dedup benar untuk argumen primitif — argumen array/object harus diserialisasi jadi string dulu. Sebelum mengeksekusi draft rencana lama secara literal, cek dulu apakah premisnya masih valid.
+
+---
+
+## [2026-07-28] Metadata Route convention Next.js (robots/manifest/favicon) di-anchor ke root — build sukses bukan bukti route terdaftar
+**Masalah:** Memindah `app/robots.ts` ke nested `app/(public)/[tenant]/robots.ts` lolos `tsc`+`next build` tanpa error, tapi menghasilkan NOL route terdaftar.
+**Root cause:** Regex pencocokan Next.js untuk `robots`/`manifest`/`favicon.ico` di-anchor dengan `^` — hanya match kalau file ada persis di root `app/` (beda dari `sitemap`/`icon`/`opengraph-image` yang boleh nested). Bug kedua (metodologi verifikasi): test curl dengan Host-header spoofed menunjukkan 200 + konten benar, padahal middleware's internal fetch gagal silent karena `APP_INTERNAL_URL` tidak diset — request jatuh ke file root yang kebetulan isinya identik.
+**Fix:** Pakai Route Handler manual (`route.ts`) di folder literal `robots.txt` — tidak terikat regex Metadata Route convention.
+**Pencegahan:** Klaim kompatibilitas Next.js Metadata Route convention wajib diverifikasi empiris (cek `app-paths-manifest.json` atau curl langsung, bukan cuma percaya build sukses). Simulasi custom domain via Host-header-spoof wajib disertai `APP_INTERNAL_URL` yang benar dan pengecekan header `x-middleware-rewrite` — status 200 + isi "kelihatan benar" bisa false-positive.
+
+---
+
+## [2026-07-28] Guard validasi field wajib diperiksa di SEMUA jalur input, bukan cuma yang disebut user
+**Masalah:** Field `graduationYear` bisa diisi "99" (bukan "1999") lewat beberapa jalur input yang masing-masing tidak divalidasi — auto-join Marhalah gagal diam-diam.
+**Root cause:** 3 dari 4 titik input nol/kurang validasi range: form self-service pakai atribut HTML5 `min`/`max` yang dekoratif (submit lewat `fetch()` custom), form admin wizard mengandalkan validasi native HTML5 yang gampang di-bypass, endpoint PATCH partial-update juga nol validasi.
+**Fix:** Guard eksplisit (required + range) ditambahkan di ketiga titik SERVER-SIDE.
+**Pencegahan:** Kalau diminta tambah guard/validasi untuk sebuah field, jangan cuma tambah di satu tempat yang disebut user — audit semua titik input (form self-service, form admin, endpoint API, importer bulk) untuk field yang sama, field seperti ini nyaris selalu punya beberapa jalur masuk independen yang masing-masing butuh guard server-side sendiri.
+
+---
+
+## [2026-07-27] Kelas bug bundling RSC hanya ketangkap dengan menjalankan lewat Next.js dev server sungguhan, bukan `bun run` standalone
+**Masalah:** Fitur import WordPress crash di production dengan "Class extends value undefined is not a constructor" — padahal POC standalone via `bun run` sudah "terbukti aman" menjalankan fungsi yang sama.
+**Root cause:** Modul server mengimpor definisi Node extension custom yang punya `addNodeView() { return ReactNodeViewRenderer(...) }` — import `ReactNodeViewRenderer` dari `@tiptap/react` (paket browser-only) ada di level modul, tetap tereksekusi begitu file di-import untuk keperluan apa pun. Next.js/Turbopack menerapkan aturan bundling RSC ketat yang tidak ada di runtime Bun/Node biasa.
+**Fix:** Buat duplikasi schema-only (tanpa `addNodeView()`/import `@tiptap/react`) untuk dipakai modul server.
+**Pencegahan:** Verifikasi "kode berhasil dijalankan via `bun run`/Node langsung" tidak pernah cukup untuk kode yang akan dipakai di Server Component/Server Action/Client Component Next.js — terutama kalau kode itu mengimpor package pihak ketiga yang biasa dipakai di konteks browser-only. Bug bundling-level jenis ini hanya ketangkap dengan benar-benar menjalankan lewat Next.js dev server dan mengakses halaman yang memicunya.
+
+---
+
+## [2026-07-27] Meng-copy pola/konstanta "karena sama persis" tidak berarti polanya sendiri sudah benar
+**Masalah:** Gambar landscape dipotong paksa jadi kotak 1:1 — konstanta `PATH_PRIORITY` loncat langsung dari variant `large` ke variant KOTAK tanpa mempertimbangkan `medium`/`thumbnail` (rasio aspek sama) sebagai fallback antara. Bug sistemik di 3 file duplikat konstanta yang sama.
+**Root cause:** File ketiga (importer WordPress) meng-copy pola dari file pertama "karena sama persis" tanpa mempertanyakan urutannya — konsisten dengan yang lama, termasuk konsisten salahnya.
+**Fix:** Urutan diperbaiki jadi `["large","medium","thumbnail","square-large","square","profile","original"]` di ketiga file.
+**Pencegahan:** Kalau meng-copy sebuah pola/konstanta ke file baru dengan alasan "sama persis dengan yang existing", itu tidak berarti pola itu sendiri sudah benar — tetap pertanyakan apakah logic aslinya benar, jangan asumsikan "sudah dipakai di tempat lain jadi pasti sudah teruji".
+
+---
+
+## [2026-07-28] Route sibling dengan dynamic-segment berbeda nama hanya ketangkap dev server, bukan production build
+**Masalah:** Route baru `post/[category]/[slug]/page.tsx` gagal start dengan error "cannot use different slug names for the same dynamic path" — tapi `next build` (production) tidak menangkap konflik ini sama sekali, sukses dan mencantumkan kedua route di listing.
+**Root cause:** Next.js App Router mewajibkan satu nama dynamic segment yang sama di kedalaman yang sama untuk semua route sibling — hanya dev server (Turbopack) yang menangkapnya saat start.
+**Fix:** Rename folder jadi `post/[slug]/[postSlug]/page.tsx`.
+**Pencegahan:** Kalau menambah route baru yang berbagi parent folder dengan route dynamic-segment yang sudah ada, wajib restart dev server (bukan cukup `next build`) untuk memverifikasi tidak ada konflik penamaan dynamic segment.
+
+---
+
+## [2026-07-28] Fitur export untuk skema yang sudah punya importer harus diverifikasi via round-trip, bukan structural parse
+**Masalah:** Draf pertama WXR exporter cuma emit 1 dari 2 key Yoast yang dibutuhkan untuk merekonstruksi `posts.robots="noindex,nofollow"` — hasil export, saat di-import ulang, lossy (cuma jadi "noindex").
+**Root cause:** Importer (`mapYoastSeo()`) membaca 2 key Yoast terpisah untuk merekonstruksi nilai compound — ketahuan cuma dari menjalankan hasil export balik lewat importer sendiri dan membandingkan field-per-field.
+**Fix:** Tambah key kedua yang hilang saat kondisi compound terpenuhi.
+**Pencegahan:** Kalau membangun fitur export untuk skema yang sudah punya importer (arah kebalikan), verifikasi paling kuat adalah menjalankan file hasil export balik lewat importer yang sudah ada dan membandingkan field-per-field dengan data asal — bukan cuma "structural parse OK".
+
+---
+
+## [2026-07-27] Node.js URL API punya perilaku IPv6 tidak intuitif yang mudah lolos validator SSRF
+**Masalah:** Modul validasi SSRF (`assertSafeExternalUrl`) salah menolak/meloloskan URL dengan IPv6.
+**Root cause:** `url.hostname` mempertahankan tanda kurung untuk IPv6 literal (`"[::1]"`) yang tidak dipahami `dns.lookup()`; `new URL("http://[::ffff:127.0.0.1]/")` menormalisasi notasi dotted-quad IPv4-mapped IPv6 jadi hex groups murni sebelum kode sempat melihat string aslinya.
+**Fix:** `url.hostname.replace(/^\[|\]$/g, "")` sebelum `dns.lookup()`; deteksi prefix IPv4-mapped dilakukan secara numerik dari grup 16-bit yang sudah di-expand, bukan dari karakter titik di string.
+**Pencegahan:** Validator IP/URL berbasis `URL`/`dns` Node.js wajib ditest dengan IPv6 literal (biasa dan IPv4-mapped) untuk KEDUA arah (harus lolos dan harus tertolak) — test hanya kasus "harus tertolak" tidak akan menangkap bug yang tertolak untuk alasan salah.
+
+<!-- Entri chunk lain (1, 3, 4, 8) ditambahkan menyusul setelah proses klasifikasi selesai -->

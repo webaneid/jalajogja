@@ -309,6 +309,20 @@ Phase 4 — Halaman /akun/media (opsional)
 4. **Reuse `processImage()` yang sudah ada** — jangan duplikasi Sharp pipeline
 5. **Batch delete tidak ada di member UI** — member hanya hapus satu per satu
 6. **Admin tidak bisa lihat file member** via admin media library — filter `WHERE member_id IS NULL` di admin, `WHERE member_id = ?` di member API
+7. **Upload media sisi ADMIN (mengedit data anggota LAIN) tidak boleh reuse komponen self-service.**
+   `components/media/cover-image-field.tsx` (`CoverImageField`) dan `useMemberMediaPicker` HANYA
+   valid dipakai di form SELF-SERVICE (`/akun/*`) karena endpoint uploadnya
+   (`app/api/akun/media/upload/route.ts`'s `getSessionMember()`) SELALU resolve target member dari
+   SESSION YANG SEDANG LOGIN (`members.betterAuthUserId === session.user.id`). Admin yang mengedit
+   data anggota lain login sebagai DIRINYA SENDIRI, bukan sebagai anggota yang sedang diedit — kalau
+   komponen self-service ini dipakai di form admin, upload foto akan salah sasaran (menempel ke akun
+   admin, bukan anggota yang sedang diedit). Untuk upload di sisi admin (mis. wizard tambah/edit
+   anggota), gunakan `components/media/media-picker.tsx`'s `MediaPicker` generik (media library
+   tenant-scoped standar yang sudah dipakai luas di admin — produk, post, dll) dengan
+   `module="members"`. Field target (`coverUrl`/`logoUrl`) tetap disimpan sebagai URL string biasa
+   (bukan FK). Kalau perlu komponen wrapper (thumbnail preview + tombol Ganti/Hapus + `MediaPicker`
+   inline) untuk form admin, ikuti pola `PhotoPickerField` (dibuat identik per form wizard step,
+   bukan diekstrak ke file shared — tiap wizard step sudah self-contained per konvensi project ini).
 
 ---
 
