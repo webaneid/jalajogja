@@ -572,4 +572,100 @@
 **Fix:** Toggle baru hanya ditambahkan setelah consumer-nya ada; DDL `NOT NULL` selalu dipasangkan `.notNull()` di baris Drizzle yang sama; validasi backend disesuaikan ketat dengan semantik nama fitur di UI.
 **Pencegahan:** Jangan expose toggle boolean di form admin sebelum ada consumer yang benar-benar membaca nilainya. Setiap menulis DDL `NOT NULL`, langsung tambahkan `.notNull()` di baris Drizzle yang sama. Kalau nama fitur di UI menyiratkan kondisi spesifik, validasi backend harus secermat itu — kalau ragu, pilih validasi yang lebih ketat.
 
-<!-- Entri chunk lain (3) ditambahkan menyusul setelah proses klasifikasi selesai -->
+## [2026-07-21] Tabel helper yang direferensi banyak entitas — JOIN dari sisi entitas target, jangan cari row helper dulu
+**Masalah:** Fitur "Phone First" tetap tidak menemukan nama untuk nomor HP yang terkonfirmasi benar milik member terdaftar.
+**Root cause:** `lookup-member` mencari contact dulu (`contacts.findFirst` tanpa `orderBy`, tidak deterministik), baru cari member via `contactId` itu. Nomor HP yang sama bisa muncul di beberapa baris `contacts` berbeda, masing-masing terhubung ke entitas sendiri-sendiri (`members`, `member_businesses`, `member_professionals`) — kalau `findFirst()` mengembalikan baris yang bukan yang terhubung ke `members`, pencarian gagal meski orangnya terdaftar.
+**Fix:** Ganti jadi JOIN langsung `members INNER JOIN contacts ON contacts.id = members.contactId WHERE contacts.phone/whatsapp = X`.
+**Pencegahan:** Kapan pun ada tabel helper yang direferensi oleh lebih dari satu entitas berbeda, mencari row di tabel helper dulu baru mencari entitas yang mereferensikannya adalah pola salah kalau nilai yang dicari bisa muncul di banyak baris helper untuk entitas berbeda. Selalu JOIN dari sisi entitas target ke tabel helper. Begitu pola ini ditemukan sekali, wajib grep pola yang sama di seluruh codebase — kemungkinan di-copy-paste ke tempat lain.
+
+---
+
+## [2026-07-21] Cek `res.ok` sebelum parse body sebagai kesimpulan bisnis — jangan samakan "gagal" dengan "negatif"
+**Masalah:** Fitur "Phone First" (lookup otomatis isi nama dari nomor HP) tidak mengisi nama meski nomor terdaftar dan API terbukti benar via curl.
+**Root cause:** Caller memanggil endpoint lalu langsung `res.json()` tanpa cek `res.ok`. Endpoint punya rate limit — response 429 `{error:...}` tetap ter-parse, field yang diharapkan jadi `undefined` (falsy) → diperlakukan sama persis dengan "tidak ditemukan".
+**Fix:** Tambah `if (!res.ok) return;` sebelum `res.json()` di setiap caller.
+**Pencegahan:** Setiap `fetch()` ke API yang responsnya dipakai untuk kesimpulan bisnis (found/not-found, valid/invalid) wajib cek `res.ok` sebelum parse body sebagai data sukses — kalau tidak, body error ikut ter-parse dan field yang diharapkan selalu falsy, gampang salah disimpulkan sebagai "negatif" alih-alih "gagal". Audit endpoint lain dengan rate-limit guard untuk pola sama.
+
+---
+
+## [2026-07-21] 3 gotcha deploy: bun install setelah pull dependency baru, quoting env var App Password, pm2 env bukan cara verifikasi env Next.js
+**Masalah:** Setup SMTP platform pertama kali di VPS menemukan 3 gotcha operasional.
+**Root cause/temuan:** (1) `git pull` menarik `package.json` yang berubah tapi tidak otomatis install paket baru — `bun install` root wajib sebelum build. (2) Google App Password berspasi kosmetik tapi env var dengan karakter khusus butuh SATU pasang quote membungkus seluruh value (`SMTP_FROM="Nama <email>"`, bukan quote parsial). (3) `pm2 env <id>` hanya menampilkan env yang PM2 sendiri suntikkan — tidak mencakup `.env.local` yang dibaca Next.js sendiri via `@next/env`.
+**Fix:** `bun install` root sebelum build kalau ada dependency baru; satu pasang quote membungkus seluruh value env; verifikasi env framework via `node --env-file=.env.local -e "console.log(process.env.X)"` atau tes fungsional, bukan `pm2 env`.
+**Pencegahan:** Sama seperti temuan di atas — ketiganya berlaku umum untuk deploy VPS project ini ke depan.
+
+---
+
+## [2026-07-20] URL dari service eksternal yang butuh auth header tidak boleh di-embed langsung ke `<img src>`/`<a href>` — proxy di server
+**Masalah:** QR code WhatsApp tidak muncul di modal setup admin — awalnya terlihat seperti masalah Mixed Content.
+**Root cause:** Endpoint GOWA `/statics/qrcode/*.png` selalu butuh header `Authorization: Basic` DAN `X-Device-Id` (dikonfirmasi via curl langsung) — `<img>` tidak bisa mengirim header custom, jadi URL mentah tidak pernah bisa langsung di-embed di browser, bukan cuma soal http vs https.
+**Fix:** Endpoint API sendiri fetch bytes gambar QR di server (dengan auth benar), konversi ke base64 data URL, kembalikan ke client.
+**Pencegahan:** Kalau ada field url/link dari service eksternal yang akan di-embed langsung di browser, jangan asumsikan itu publicly-fetchable tanpa kredensial — verifikasi dengan curl langsung. Kalau butuh auth, satu-satunya cara aman adalah proxy/fetch di server sendiri.
+
+---
+
+## [2026-07-20] Kolom `jsonb(...).notNull()` tidak boleh ditulis `null` untuk "hapus" — DELETE row, bukan UPDATE ke null
+**Masalah:** Klik "Nonaktifkan" WhatsApp Gateway men-crash Server Component render.
+**Root cause:** Action menulis `upsertSettings(..., {whatsapp_config: null})` untuk "menghapus" config — tapi kolom `settings.value` bertipe `jsonb().notNull()`. Drizzle mengirim literal SQL NULL untuk value JS null → PostgreSQL menolak.
+**Fix:** Helper baru `deleteSetting()` — DELETE row, bukan UPDATE value ke null.
+**Pencegahan:** Kolom `jsonb(...).notNull()` tidak pernah boleh ditulis `null` untuk mengosongkan/menghapus sebuah key. Kalau maksudnya "reset ke tidak ada", hapus row-nya, bukan upsert dengan null.
+
+---
+
+## [2026-07-20] Combobox berbasis cmdk — `CommandItem value` wajib label untuk filtering, bukan ID
+**Masalah:** Search di banyak Combobox generik (10+ pemakai) tidak pernah menemukan hasil meski data ada.
+**Root cause:** `<CommandItem value={opt.value}>` mengisi `value` cmdk (dasar filter bawaan) dengan UUID opsi, bukan labelnya — ketik nama dibandingkan ke string UUID, tidak pernah match.
+**Fix:** `value={opt.label}` untuk filtering + `onSelect={() => onValueChange(opt.value)}` (ambil ID via closure).
+**Pencegahan:** Setiap kali membuat/mereview Combobox berbasis cmdk, `value` wajib berisi teks yang ingin dicocokkan pencarian (label), bukan identifier internal — resolve ID sesungguhnya via closure di `onSelect`. `shouldFilter={false}` + search server-side adalah pengecualian aman.
+
+---
+
+## [2026-07-19] Guard permission di layout/page tidak melindungi Server Action — Server Action perlu guard sendiri
+**Masalah:** Audit menemukan 4 Server Action read hanya cek `getTenantAccess(slug)` (user valid, role apapun) — tidak cek level permission, padahal semua mutation action di file yang sama konsisten pakai guard permission.
+**Root cause:** Guard di layout hanya menutup jalur navigasi UI — Server Action adalah endpoint POST yang bisa dipanggil langsung (curl/devtools dengan cookie sesi valid) tanpa membuka halaman yang memanggilnya.
+**Fix:** Tambah guard permission eksplisit di keempat action.
+**Pencegahan:** Guard permission di layout/page level tidak pernah cukup sebagai satu-satunya lapis pertahanan untuk Server Action. Setiap Server Action yang mengembalikan data sensitif wajib punya guard permission sendiri. Audit berguna: dalam satu file actions.ts, bandingkan guard di action mutasi vs action read.
+
+---
+
+## [2026-07-19] File `lib/*.ts` yang dipakai client DAN server wajib di-split .ts (pure) + .server.ts (DB-touching)
+**Masalah:** `tsc --noEmit` lolos bersih, tapi `next build` produksi di VPS gagal total: `Module not found: Can't resolve 'net'/'tls'/'perf_hooks'/'fs'`.
+**Root cause:** Satu file re-export semua dari package DB — satu client component yang import apa pun dari file itu menarik SELURUH package DB ke bundle browser (package itu punya top-level side-effect import yang membuka koneksi Postgres, tidak bisa di-tree-shake). `tsc` tidak menangkap ini karena cuma cek tipe, tidak tahu bundler client/server boundary.
+**Fix:** Split jadi `nama.ts` (pure, zero import DB, aman client) + `nama.server.ts` (`import "server-only"` di baris pertama, re-export fungsi yang butuh DB).
+**Pencegahan:** Setiap kali membuat file `lib/*.ts` baru yang dipakai lintas client dan server, cek apakah file itu mengimpor package DB/server-only secara langsung atau transitif — kalau ya, split dari awal. `tsc --noEmit` tidak cukup untuk verifikasi ini, jalankan `bun run build` produksi sungguhan. Pola ini sudah berulang beberapa kali di project ini.
+
+---
+
+## [2026-07-19] "Hari ini" via `new Date().toISOString()` selalu salah jam 00:00-06:59 WIB; state dari prop via `useState` tidak auto-sync setelah `router.refresh()`
+**Masalah:** (1) Termin cicilan pertama langsung berstatus "Terlambat" begitu invoice baru dikonversi. (2) Field nominal nyangkut ke nilai lama setelah invoice dikonversi di halaman yang sama.
+**Root cause:** (1) "Hari ini" dihitung via `new Date().toISOString().slice(0,10)` — murni UTC; jam 00:00-06:59 WIB jatuh di tanggal sebelumnya secara UTC. (2) State di-`useState(defaultValue)` hanya dihitung sekali saat mount; `router.refresh()` mengirim prop baru tanpa remount, state lama tetap dipakai.
+**Fix:** (1) Anchor "hari ini" ke kalender WIB dulu (`toLocaleDateString("en-CA", {timeZone:"Asia/Jakarta"})`), baru hitung offset. (2) `useEffect`+`useRef` sync ke default terbaru hanya kalau state saat ini masih persis sama dengan default sebelumnya (bukan overwrite langsung, yang akan menimpa edit manual user).
+**Pencegahan:** Kode yang MENGHITUNG (bukan cuma menampilkan) "hari ini"/offset tanggal untuk logic bisnis wajib anchor ke kalender timezone tenant — jangan pernah `new Date()` mentah. Komponen client dengan state yang di-inisialisasi dari prop via `useState(propDerivedValue)` tidak otomatis ikut berubah kalau prop berubah tanpa remount — sync via `useEffect` yang membandingkan terhadap nilai default sebelumnya (via `useRef`).
+
+---
+
+## [2026-07-18] `Intl.NumberFormat({style:"currency"})` di client component memicu hydration mismatch (React #418)
+**Masalah:** React error #418 tetap muncul di halaman admin billing meski fix `timeZone` untuk tanggal sudah diterapkan.
+**Root cause:** Karakter antara "Rp" dan angka yang dihasilkan `style:"currency"` adalah U+00A0 (NBSP), dan keberadaannya bergantung versi ICU/CLDR runtime — server Node.js dan browser client bisa punya versi berbeda, menghasilkan teks berbeda persis.
+**Fix:** Ganti jadi `"Rp " + Intl.NumberFormat(locale, {style:"decimal"}).format(n)` — literal "Rp " pakai spasi ASCII biasa, `Intl.NumberFormat` hanya untuk grouping digit.
+**Pencegahan:** `Intl.NumberFormat(locale, {style:"currency"})` tidak boleh dipakai di komponen `"use client"` manapun — tidak stabil lintas versi ICU/CLDR server-vs-browser. Selalu bangun manual: literal simbol mata uang + spasi ASCII + `Intl.NumberFormat({style:"decimal"})`. Berlaku sama dengan aturan `timeZone` eksplisit untuk tanggal — keduanya kelas "SSR/CSR formatting environment-dependent".
+
+---
+
+## [2026-07-18] Upload file dari sumber tak terkontrol — jangan percaya `file.type`/ekstensi, decode isi byte
+**Masalah:** Customer upload foto bukti transfer HEIC dari galeri iPhone — "terlihat berhasil" di HP customer, tapi admin (desktop) tidak melihat bukti sama sekali.
+**Root cause:** (1) `file.type` HEIC dari galeri sering kosong di browser mobile → gagal validasi MIME diam-diam. (2) HEIC tidak native-viewable di kebanyakan browser desktop — render blank meski URL valid tersimpan.
+**Fix:** Endpoint upload decode isi file pakai Sharp (bukan tebak dari MIME/ekstensi), paksa konversi ke WebP sebelum simpan.
+**Pencegahan:** Untuk fitur upload foto dari sumber tak terkontrol (HP customer) di modul manapun, jangan pernah percaya `file.type` atau nama file sebagai sumber kebenaran format. Kalau ada library image-processing di project, selalu decode+convert di server ke format universal sebagai satu-satunya sumber kebenaran.
+
+---
+
+## [2026-07-17] Server Action yang ubah data publik wajib `revalidatePath` ke halaman publik, bukan cuma admin
+**Masalah:** Setting desain section landing sudah tersimpan tapi front-end publik masih tampilkan versi lama.
+**Root cause:** Action hanya `revalidatePath` ke path admin — tidak pernah ke halaman publik, yang jadi 100% bergantung ISR timer, terasa seperti "tidak update" kalau dicek sebelum timer selesai.
+**Fix:** Tambah `revalidatePath` ke path publik yang relevan (homepage + halaman biasa).
+**Pencegahan:** Setiap Server Action yang mengubah data yang dibaca halaman publik (bukan cuma admin) wajib `revalidatePath` ke path publiknya juga — jangan cukup revalidate path admin lalu berasumsi ISR timer "menyusul sendiri". Cek apakah ada halaman `(public)/[tenant]/...` yang query tabel yang sama.
+
+<!-- Entri chunk 3 (sisa entri paling akhir) sudah tergabung di chunk-chunk lain -->
+
+

@@ -1238,3 +1238,22 @@ itu dengan nilai wajar (`resolvedTrackingNumber` fallback string kosong di fulfi
 endpoint OTP (`send-otp/route.ts`) — punya guard tambahan (rate limit, verified-check) sebelum
 kirim yang tidak cocok dipaksakan ke wrapper generik. Tetap pakai `resolveWaTemplateText()` yang
 sama untuk template editable, jadi teks OTP pun ikut bisa dikustomisasi tenant.
+
+### 16.9 Fallback email untuk notifikasi bisnis (non-auth) — DITUNDA, keputusan sadar (2026-07-21)
+
+Beda dengan fallback auth (login/daftar/lupa-password, sudah dibangun — lihat
+`docs/arsitektur-login-universal.md`), notifikasi bisnis (~24 `WaNotifKey` event, ~10 file
+caller `notifyWa()`: pembayaran, donasi, event, fulfillment, dll) TIDAK punya fallback email
+saat WA gateway down/dibatasi. Alasan ditunda:
+1. Alur donasi/checkout tamu ("Phone First") sengaja cuma minta nomor HP untuk donatur tak
+   dikenal (`isKnown=false`) — tidak ada email untuk dikirimi apa pun sama sekali, jadi fallback
+   email cuma menutup sebagian kasus (member/akun yang emailnya sudah tersimpan).
+2. Kalau notifikasi bisnis gagal terkirim, transaksi tetap bisa dicek manual di dashboard admin
+   (invoice list, status pembayaran) — tidak menghalangi bisnis berjalan, cuma mengurangi
+   kenyamanan, beda dari auth yang kalau buntu = user benar-benar tidak bisa masuk sistem.
+
+Kalau nanti mau dikerjakan, dua opsi yang sempat dibahas:
+- **(a) Scope terbatas** — hanya untuk penerima yang emailnya diketahui, reuse teks WA existing
+  (`wa-templates.ts`) sebagai isi email, tidak perlu 24 template baru.
+- **(b) Scope penuh** — sekalian wajibkan email di form donasi/checkout tamu (mengubah UX "cukup
+  HP" yang sudah dikunci).
