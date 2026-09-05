@@ -386,4 +386,34 @@
 **Fix:** `url.hostname.replace(/^\[|\]$/g, "")` sebelum `dns.lookup()`; deteksi prefix IPv4-mapped dilakukan secara numerik dari grup 16-bit yang sudah di-expand, bukan dari karakter titik di string.
 **Pencegahan:** Validator IP/URL berbasis `URL`/`dns` Node.js wajib ditest dengan IPv6 literal (biasa dan IPv4-mapped) untuk KEDUA arah (harus lolos dan harus tertolak) — test hanya kasus "harus tertolak" tidak akan menangkap bug yang tertolak untuk alasan salah.
 
-<!-- Entri chunk lain (1, 3, 4, 8) ditambahkan menyusul setelah proses klasifikasi selesai -->
+## [2026-05] `resolveIdentity` di checkout harus terima session, bukan hanya phone/email lookup
+**Masalah:** Di `checkoutAction`, `resolveIdentity` dipanggil hanya dengan `phone`/`email` tanpa data session — dua user berbeda dengan nomor HP yang sama menyebabkan invoice ter-assign ke user yang salah.
+**Root cause:** Identity resolution mengandalkan lookup by phone/email sebagai satu-satunya sumber, padahal user yang sedang login (session) adalah sumber identitas yang lebih akurat dan harus menang.
+**Fix:** Panggil `const session = await auth.api.getSession(...)` di awal `checkoutAction`, kirim `betterAuthUserId: session?.user?.id` ke `resolveIdentity`. Session selalu menang atas lookup HP/email.
+**Pencegahan:** Setiap server action yang membuat/mengaitkan transaksi dengan user wajib cek session terlebih dahulu sebelum fallback ke lookup by phone/email.
+
+---
+
+## [2026-05] Bug `ProfessionCombobox` kosong karena API response tidak di-wrap seperti diasumsikan
+**Masalah:** `ProfessionCombobox` di `/akun/lengkapi` sempat selalu kosong.
+**Root cause:** API `/api/ref/professions` return plain array, tapi kode baca `.data` (undefined).
+**Fix:** `Array.isArray(profData) ? profData : (profData.data ?? [])`.
+**Pencegahan:** Selalu verifikasi struktur response API sebelum akses `.data` — jangan asumsikan semua API mem-wrap dalam `{ data: [...] }`.
+
+---
+
+## [2026-05] Drizzle `count()`/`sum()` kehilangan type-safety dalam `Promise.all` destructuring
+**Masalah:** `count()` dari drizzle-orm menyebabkan TypeScript error saat dipakai dengan `Promise.all` destructuring; `sum()` pada kolom nullable mengembalikan `null` kalau semua row null.
+**Root cause:** Helper `count()` drizzle tidak mem-preserve tipe dengan baik dalam context destructuring; `sum()` SQL agregat me-return `null` bukan `0` saat kosong; `Promise.all([...])` dengan destructuring array kehilangan urutan/tipe inferensi di TypeScript.
+**Fix:** Gunakan `sql<number>\`count(*)\`` (bukan `count()`), `sql<string>\`coalesce(sum(...),0)\`` untuk aggregate nullable (parse ke `Number()` saat display — return PostgreSQL aggregate selalu string), dan sequential `await` (bukan `Promise.all` destructuring) untuk multi-query yang butuh type-safety.
+**Pencegahan:** Berlaku di semua query count/sum di seluruh aplikasi — jangan pakai `count()`/`sum()` drizzle langsung untuk hasil yang akan dipakai lebih lanjut di TypeScript.
+
+---
+
+## [2026-05] Dua error Server/Client Component Next.js App Router yang sering muncul saat split SC↔CC
+**Masalah:** (1) `Functions are not valid as a child of Client Components`. (2) `Event handlers cannot be passed to Client Component props`.
+**Root cause:** (1) Mengirim fungsi (render prop) sebagai `children` dari Server Component ke Client Component — fungsi tidak serializable lintas SC→CC boundary. (2) Event handler (`onChange`, `onClick`, dll) ditulis langsung di elemen dalam SC.
+**Fix:** (1) Kirim data serializable (array/object) sebagai prop, render grid/list di dalam CC. (2) Ekstrak elemen interaktif ke CC terpisah — jangan jadikan seluruh page client hanya karena satu `<select onChange>`.
+**Pencegahan:** SC hanya boleh fetch data + pass data (bukan fungsi) ke CC; setiap elemen yang butuh event handler wajib ada di dalam file dengan `"use client"`.
+
+<!-- Entri chunk lain (1, 3, 4) ditambahkan menyusul setelah proses klasifikasi selesai -->

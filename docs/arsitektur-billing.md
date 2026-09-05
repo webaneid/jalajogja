@@ -1864,6 +1864,17 @@ di-backport ke data lain, murni cleanup test data lokal.
 
 ---
 
+> **Prinsip Billing Universal — jangan pernah split list transaksi per jalur masuk.** Semua
+> transaksi dari jalur manapun (admin/front-end/API) idealnya tampil dalam SATU list (query dari
+> `invoices` sebagai sumber utama, filter via `sourceType`/`item_type`, badge visual kalau perlu
+> dibedakan) — bukan dua section terpisah untuk data yang sama. **Ralat terhadap klaim lama:**
+> catatan sebelumnya (CLAUDE.md, 2026-05) mengklaim `/toko/pesanan` sudah "difix" dari pola
+> dua-tabel (`orders` lama + "Pesanan via Keranjang" dari `invoices`) — ternyata TIDAK akurat
+> untuk halaman ini. `docs/arsitektur-fulfillment.md` § 4 (List Pesanan) dan § 15 di bawah
+> (2026-09-04) sama-sama mengonfirmasi `/toko/pesanan/page.tsx` MASIH dua tabel terpisah saat ini
+> — prinsipnya tetap valid sebagai tujuan arsitektur, tapi contoh "sudah difix" itu keliru untuk
+> kasus spesifik ini. § 15 di bawah adalah rencana yang belum dieksekusi untuk menyatukannya.
+
 ## 15. [PERENCANAAN — BELUM DIEKSEKUSI] Unifikasi Invoice Manual Admin — Variasi Produk + Pengiriman
 
 > **Status: 📋 RENCANA MURNI. Nol kode ditulis.** Ditulis atas permintaan eksplisit user

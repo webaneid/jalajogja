@@ -126,6 +126,77 @@ public.members
 - diisi = anggota sudah bisa login di front-end
 - diisi VIA proses aktivasi mandiri (`/aktivasi`) atau admin aktifkan dari dashboard
 
+**`member_number` vs `stambuk_number` — sering tertukar, BEDA:**
+- `member_number` ("No. ID IKPM Gontor") — auto-generated via PostgreSQL SEQUENCE
+  (`public.member_number_seq`), format `{tahun_daftar}{DDMMYYYY_lahir}{5-digit-urutan}`. Sekarang
+  di-generate baik di `createMemberAction` (admin) MAUPUN di `PATCH /api/akun/member-data`
+  (self-service, kalau `member.memberNumber IS NULL` saat PATCH) — sequence yang sama, atomic,
+  tidak ada duplikat. Anggota lama yang `member_number IS NULL` di-backfill langsung via SQL
+  `nextval('public.member_number_seq')`.
+- `stambuk_number` ("No. Stambuk Gontor") — nomor santri PM Gontor, diisi MANUAL, tidak pernah
+  auto-generate.
+- Label ini konsisten dipakai di `/anggota/[id]` dan `/akun` — jangan tampilkan "Belum diterbitkan"
+  untuk `member_number` (selalu ada setelah PATCH pertama, gunakan `Row` component yang otomatis
+  hide kalau value null).
+
+## Self-Service Profil Lengkap (`/akun/lengkapi` + Halaman Turunan)
+
+**Self-service ≠ admin wizard — action dan auth berbeda:**
+- Admin actions (`updateMemberAction`, `upsertMemberContactAction`) pakai `getTenantAccess(slug)`
+  — profile holder publik tidak punya akses ini.
+- Self-service pakai API routes terpisah: `/api/akun/member-data`, `/api/akun/member-contact`,
+  `/api/akun/member-education` (GET+POST riwayat pendidikan, replace-all pattern),
+  `/api/akun/member-pesantren` (GET+POST data pesantren, replace-all) — semua auth via
+  `auth.api.getSession() → profiles.betterAuthUserId → profiles.memberId`.
+- Halaman: `app/(public)/[tenant]/akun/pesantren/page.tsx`, `.../akun/usaha/page.tsx`,
+  `app/(public)/[tenant]/anggota/[id]/page.tsx` (profil lengkap, auth-protected owner only via
+  `session.user.id === member.betterAuthUserId`).
+
+**`/akun/lengkapi` = 3 step:** Identitas → Kontak & Alamat → Riwayat Pendidikan (multi-entry,
+Gontor checkbox + kampus).
+
+**Batas field yang boleh diedit self-service** (vs admin-only): boleh — nama, NIK, stambuk,
+gender, tgl/tempat lahir, tahun lulus, profesi, kontak, alamat, sosmed. Admin-only (tidak boleh
+diubah self-service): `status`, `joinedAt`, `memberNumber` — field yang menentukan hak anggota
+tetap di tangan admin.
+
+**Completeness check heuristik:** cek `birthDate` dan `contactId` sebagai proxy (bukan cek semua
+field satu-satu) — kalau salah satu null, tampilkan banner "lengkapi data" di dashboard.
+
+**Prinsip form ganda (front-end + admin wizard) — WAJIB konsisten:** Form anggota ada di DUA
+tempat — front-end `/akun/lengkapi` self-service DAN admin wizard
+`step1-identity.tsx`/`step2-contact.tsx`/`step4-business.tsx`. Setiap perubahan field
+(wajib/opsional, komponen, validasi) wajib diterapkan ke KEDUANYA sekaligus — dua form ini mudah
+drift karena dikembangkan terpisah; audit ini harus jadi langkah rutin tiap kali menambah field
+baru ke salah satu form.
+
+Detail field yang harus konsisten di kedua tempat:
+- 4 field wajib form anggota IKPM: jenis kelamin, tanggal lahir, tahun lulus KMI, profesi.
+- Field wajib Step 2: Nomor HP, Nomor WhatsApp, Email, Status Domisili.
+- `RegencyCombobox` (`components/ui/regency-combobox.tsx`) — search kabupaten langsung tanpa
+  pilih provinsi dulu, debounce 300ms, min 2 karakter, max 15 hasil, via
+  `/api/ref/regencies?search=`. Dipakai untuk tempat lahir di kedua form.
+- Phone Number — format E.164 (`+628xxxxxxxx`) via `components/ui/phone-input.tsx` (country flag
+  + dial code selector, 57 negara, default Indonesia +62, auto-parse format lama `08xxx`).
+  Sinkronisasi WA←HP via checkbox "Sama dengan nomor HP".
+- Visibilitas kontak: `public.contacts` punya 3 kolom boolean `is_phone_public`,
+  `is_whatsapp_public`, `is_email_public` (default `false`, privat) — checkbox "Publik" di bawah
+  tiap field, tersimpan via `upsertMemberContactAction` + `PATCH /api/akun/member-contact`.
+- Visibilitas alamat — aturan FIXED (bukan toggle user): Provinsi & Kabupaten/Kota publik;
+  Kecamatan, Desa/Kelurahan, Kode Pos, Alamat Detail tidak ditampilkan ke publik. Implementasi via
+  prop `hints` di `WilayahSelect` (teks keterangan di bawah tiap input), tidak perlu kolom DB.
+- Sosial media: semua opsional, semua otomatis publik jika diisi (tidak ada toggle per-platform).
+- Urutan tampil alamat standar Indonesia: Alamat detail → Desa/Kelurahan → Kecamatan →
+  Kabupaten/Kota → Provinsi → Kode Pos (spesifik ke umum, bukan sebaliknya). `refVillages` wajib
+  di-fetch untuk melengkapi alamat.
+- `WilayahSelect` — props yang valid: `defaultValue`, `onChange`, `namePrefix`, `disabled`,
+  `requiredLevel`, `labels`, `className` (TIDAK ada prop `level`/`placeholder`). Prop `labels`
+  dipakai untuk rename label level (mis. birth place hanya butuh province+regency, tapi komponen
+  tetap render 4 level).
+- (Minor, opsional) Singleton page enforcement untuk template "terms"/"privacy":
+  `createSingletonPageAction` cek existing sebelum insert, return existing ID — di level action,
+  bukan DB constraint.
+
 ---
 
 ## Tabel `public.profiles` — Akun Publik

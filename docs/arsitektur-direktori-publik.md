@@ -294,6 +294,24 @@ Popup besar atau halaman terpisah: foto + deskripsi + data klasifikasi + kontak 
 | Punya pesantren | COUNT DISTINCT member_id dari member_owned_pesantren |
 | Latar belakang wali santri | GROUP BY wali_santri |
 
+> **Koreksi "Distribusi per provinsi" (anggota):** implementasi aktual sudah pindah ke
+> kabupaten/kota (`refRegencies`), bukan provinsi — granularitas lebih berguna untuk domisili
+> anggota. Wajib filter `WHERE refRegencies.id IS NOT NULL` (tanpa ini anggota tanpa alamat masuk
+> dengan nama null dan merusak label BarList). Aturan umum: setiap kolom nullable di statistik
+> (waliSantri, domicileStatus, employees, branches, graduationYear, dll) wajib filter
+> `IS NOT NULL` — jangan tampilkan "Tidak diketahui" sebagai bar besar hanya karena banyak
+> anggota belum isi data.
+>
+> **Sub-periode angkatan 1999:** Gontor punya dua angkatan di tahun 1999 (Awal/Akhir) — kolom
+> `graduation_period TEXT CHECK (graduation_period IN ('awal','akhir'))` di `public.members`.
+> Query statistik wajib `GROUP BY members.graduationYear, members.graduationPeriod` bersamaan
+> (tidak bisa group hanya by year untuk kasus 1999). Label display 3 kemungkinan: "1999 (Awal)",
+> "1999 (Akhir)", atau "1999 (Belum ditentukan)" — kasus terakhir adalah data lama sebelum kolom
+> period ditambahkan (sinyal data lama yang perlu diupdate via `/akun/lengkapi`, bukan error,
+> jangan disembunyikan/digabung). Validasi form: `graduationPeriod` wajib diisi jika
+> `graduationYear === 1999`, berlaku di `app/(public)/[tenant]/akun/lengkapi/page.tsx` dan
+> `components/members/wizard/step1-identity.tsx`.
+
 **Statistik Pesantren:**
 | Metrik | Query |
 |--------|-------|
