@@ -195,6 +195,20 @@ sort_order      INTEGER NOT NULL DEFAULT 0
 > untuk invoice manual admin).** `invoices.discount` TIDAK PERNAH diisi oleh alur voucher — lihat
 > `docs/arsitektur-voucher.md` untuk alasan dan alur lengkap.
 
+> **Invariant: halaman admin yang di-scope ke SATU domain (Toko/Event/Donasi) TIDAK BOLEH
+> menampilkan `invoices.total` mentah sebagai nominal.** Karena arsitektur cart universal
+> sengaja mengizinkan satu invoice mencampur item lintas-domain (produk+tiket+donasi dalam satu
+> checkout), kolom nominal di halaman admin yang di-scope ke satu domain WAJIB dihitung ulang
+> dari `invoice_items` yang difilter `itemType` domain itu (`SUM(invoice_items.total) WHERE
+> itemType='product'`, ditambah `SUM(invoice_shipping_lines.cost)` untuk shipping yang selalu
+> domain produk) — bukan percaya `invoices.total` penuh, meski filter WHERE halaman itu sendiri
+> sudah benar memilih baris invoice yang relevan. "Invoice yang relevan" ≠ "nominal invoice itu
+> seluruhnya relevan". Pengecualian sah: halaman detail invoice/fulfillment yang MEMANG
+> menampilkan tabel itemized penuh sebelum baris total (transparan by design) — contoh:
+> `pesanan/invoice/[invoiceId]/page.tsx`. Kasus nyata (2026-08-15): `/toko/pesanan` list sempat
+> menampilkan total invoice campuran produk+tiket event sebagai "Total" — dihitung ulang jadi
+> "Total Produk" via 2 query agregat `GROUP BY invoiceId`.
+
 ### `invoice_payments`
 
 Tabel junction antara invoice dan payments. Satu invoice bisa punya banyak

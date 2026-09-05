@@ -191,6 +191,22 @@ Disimpan di `tenant_addon_installations.config` (JSONB):
 - `couriers` — kurir yang ditawarkan di checkout (dari yang tersedia di RajaOngkir)
 - `default_weight_gram` — **dihapus** dari config, karena sekarang wajib isi per produk
 
+**Daftar lengkap 16 kurir valid untuk akun RajaOngkir tenant ini** (dikonfirmasi langsung dari
+API produksi, BUKAN dokumentasi resmi yang kontradiktif — submit kode kurir sengaja salah
+bersama kandidat lain, respons 422 API RajaOngkir sendiri berisi daftar valid): `jne`,
+`sicepat`, `ide` (ID Express), `sap`, `jnt`, `ninja`, `tiki`, `lion`, `anteraja`, `pos`, `ncs`
+(NCS Express), `rex` (REX/Royal Express Indonesia), `rpx`, `sentral` (Sentral Cargo), `star`
+(Star Cargo), `wahana` (Wahana). Checkbox setting `COURIER_OPTIONS` (`config-form.tsx`)
+mencakup ke-16 ini sejak 2026-08-14 (sebelumnya cuma 10). Catatan: `ncs`/`sentral`/`star` valid
+menurut API tapi tidak selalu mengembalikan hasil biaya untuk semua rute (kemungkinan tidak
+melayani rute tsb / tidak aktif untuk tier akun tertentu) — bukan berarti kode salah.
+
+Metodologi (untuk audit serupa ke depan): untuk pertanyaan "apakah daftar kita lengkap sesuai
+penyedia eksternal X", jangan percaya dokumentasi pihak ketiga begitu saja (apalagi kalau
+daftar tergantung tier akun/versi API) — kalau API punya mekanisme validasi (submit kode salah
+→ error message berisi daftar valid), itu sumber kebenaran paling otoritatif untuk
+kredensial/akun yang dipakai.
+
 **Keputusan dikunci:** API key adalah platform-level, bukan per-tenant. Alasannya:
 - Menyederhanakan setup tenant (tidak perlu daftar RajaOngkir sendiri)
 - Satu key platform untuk semua tenant jalakarta
