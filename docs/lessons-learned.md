@@ -416,4 +416,130 @@
 **Fix:** (1) Kirim data serializable (array/object) sebagai prop, render grid/list di dalam CC. (2) Ekstrak elemen interaktif ke CC terpisah — jangan jadikan seluruh page client hanya karena satu `<select onChange>`.
 **Pencegahan:** SC hanya boleh fetch data + pass data (bukan fungsi) ke CC; setiap elemen yang butuh event handler wajib ada di dalam file dengan `"use client"`.
 
-<!-- Entri chunk lain (1, 3, 4) ditambahkan menyusul setelah proses klasifikasi selesai -->
+## [2026-07-26] Ringkasan eksekusi dari agent/sesi lain wajib diverifikasi ke kode, bahkan kalau klaim "tsc 0 error" benar
+**Masalah:** Agent lain mengklaim fitur editor baru (block "Baca Juga", embed YouTube/Instagram) selesai + `tsc --noEmit` 0 error. Setelah diverifikasi: bug data-breaking (URL path-mode mentah tanpa strip prefix tenant, rusak di custom domain), race condition loader Instagram, dan 2 klaim yang ternyata tidak ada implementasinya sama sekali.
+**Root cause:** Ringkasan eksekusi dari agent/sesi lain dipercaya berdasarkan narasi, bukan diverifikasi ke kode aktual.
+**Fix:** Bug diperbaiki; klaim yang salah dikoreksi/diabaikan setelah verifikasi.
+**Pencegahan:** Ringkasan eksekusi dari agent/sesi lain — termasuk klaim "tsc 0 error" — tidak boleh dipercaya sebagai bukti "tidak ada bug". `tsc` cuma menangkap type error, bukan bug logic, race condition runtime, atau "klaim fitur yang ternyata tidak terhubung ke mana pun". Setiap klaim spesifik ("X sudah di-update", "Y terintegrasi ke Z") wajib diverifikasi dengan membaca file yang disebut dan grep pemakaiannya.
+
+---
+
+## [2026-07-26] Bug: baris "duplicate" ikut membuat member baru ganda karena gate logic tidak menutup semua skenario
+**Masalah:** Baris import yang seharusnya SKIP (member sudah jadi anggota tenant ini) malah ikut membuat `contacts`+`addresses`+`members` baru identik setiap kali file yang sama di-import ulang.
+**Root cause:** `ImportRowPreview.linkOnly` hanya `true` untuk satu dari tiga skenario match member — `commitImportAction` menggate insert dengan `if (!preview.linkOnly)`, kondisi ini salah bernilai `true` juga untuk skenario "duplicate".
+**Fix:** Gate diubah jadi `if (!preview.existingMemberId)` — hanya insert kalau benar-benar tidak ada member existing yang cocok.
+**Pencegahan:** Kalau sebuah alur punya lebih dari 2 skenario status, jangan gate logic pakai satu boolean yang cuma membedakan satu pasang skenario — gate langsung dari sumber kebenaran paling primitif (ID existing, null/tidak-null), bukan dari flag turunan yang cuma valid sebagian kasus. Bug kelas ini tidak akan tertangkap tsc/build.
+
+---
+
+## [2026-07-25] Bug tampilan combobox: ID tersimpan tapi display name tidak di-SELECT untuk re-render
+**Masalah:** Field kabupaten tempat lahir di form edit anggota tampak kosong lagi setiap form dibuka ulang, padahal sudah dipilih dan disimpan.
+**Root cause:** Data tersimpan benar — bug ada di jalur baca/tampilan. `RegencyCombobox` butuh `value` (ID) DAN `displayName` untuk menampilkan pilihan awal, tapi query edit page hanya SELECT ID.
+**Fix:** Tambah `refRegencies.name` ke SELECT query edit page, teruskan sampai ke state komponen combobox.
+**Pencegahan:** Kalau combobox/autocomplete butuh menampilkan pilihan awal dari data server, field display-name-nya harus di-select eksplisit di server DAN diteruskan ke state komponen — ID saja tidak cukup. Kalau laporan bug "data tidak tersimpan" untuk field combobox, cek dulu apakah datanya benar-benar hilang di DB sebelum menyimpulkan bug di jalur tulis.
+
+---
+
+## [2026-07-25] Guard "generate field kalau kosong" yang dikunci di satu jalur mutasi tidak otomatis berlaku di jalur lain
+**Masalah:** `updateMemberAction` (edit admin) tidak pernah men-generate No. Anggota meski admin baru mengisi Tanggal Lahir untuk member yang belum punya nomor.
+**Root cause:** Pola "generate No. Anggota begitu Tanggal Lahir pertama kali diketahui" sudah dikunci di `PATCH /api/akun/member-data` (self-service) — tapi `updateMemberAction` (jalur admin, file berbeda) tidak pernah punya guard yang sama.
+**Fix:** `updateMemberAction` sekarang SELECT `memberNumber` existing dulu; kalau null, generate dari `data.birthDate` sebelum update.
+**Pencegahan:** Pola guard yang dikunci di satu jalur mutasi tidak otomatis berlaku di jalur mutasi lain untuk entitas yang sama. Kalau sebuah field punya banyak titik mutasi (create-admin, edit-admin, self-service, import massal), audit semua titik satu per satu — jangan asumsikan satu fix menutup seluruh kelas masalah.
+
+---
+
+## [2026-07-25] Merge-patch bocor field non-skema karena iterasi berdasarkan `incoming`, bukan `existing`
+**Masalah:** Baris import yang match member existing selalu gagal commit dengan `SQL syntax error at or near "where"` — ditemukan dari testing sungguhan.
+**Root cause:** `fillEmpty()` iterasi `for (const key in incoming)` — objek `incoming` (`preview.member` apa adanya) punya field `fullName` yang bukan bagian skema `MemberFieldPatch`; `existing["fullName"]` jadi `undefined` → dianggap kosong → masuk patch → Drizzle buang key tak dikenal skema → SQL `SET` kosong → syntax error.
+**Fix:** Bangun objek `incomingMember` eksplisit tanpa `fullName`; hardening `fillEmpty()` — iterasi diubah jadi `for (const key in existing)` supaya field ekstra di `incoming` otomatis diabaikan.
+**Pencegahan:** Kalau dua fungsi (preview vs commit) sama-sama memanggil helper dengan parameter yang seharusnya identik bentuknya, verifikasi keduanya benar-benar membangun parameter dengan cara yang sama. Untuk helper yang membandingkan "existing" vs "incoming" field-per-field, selalu iterasi berdasarkan key dari `existing` (sumber kebenaran skema), bukan dari `incoming`.
+
+---
+
+## [2026-07-25] Reversal keputusan arsitektur yang sudah dikunci wajib dikonfirmasi eksplisit, tidak diam-diam diubah
+**Masalah:** `activateForumMembershipIfApplicable()` menganggap SIAPA PUN yang bayar item syarat iuran forum sebagai niat gabung — donasi organik lewat `/campaign/{slug}` (nol niat gabung) bisa tak sengaja mengaktifkan keanggotaan.
+**Root cause:** Keputusan Fase D sebelumnya secara eksplisit "reuse billing universal tanpa menandai invoice" — benar untuk kasus itu, tapi tidak cukup membedakan niat gabung dari donasi biasa.
+**Fix:** Penanda `for_gabung_registration` dipropagasi end-to-end dari link `/gabung` → cart → invoice item; `activateForumMembershipIfApplicable` wajib cek flag ini, bukan cuma cocok itemId.
+**Pencegahan:** Kalau instruksi/perbaikan tampak membalik keputusan arsitektur yang sudah eksplisit dikunci di sesi sebelumnya, jangan diam-diam ubah — konfirmasi dulu via pertanyaan eksplisit yang menyebutkan ini reversal, baru eksekusi setelah dikonfirmasi.
+
+---
+
+## [2026-07-25] Template import yang "generik" tapi masih anchor ke satu sumber data eksternal belum genuinely schema-first
+**Masalah:** Template import yang baru dipivot jadi "generik untuk semua tenant" masih menyusun kolom dari isi Excel sumber (kurang 4 kolom, tambah 1) — kolom "Forbis ID" (nama internal satu forum tertentu) tetap ada di template yang diklaim generik.
+**Root cause:** Instruksi "buat sesuai struktur kita, bukan struktur eksternal" dijalankan setengah hati — tetap anchor ke sumber data eksternal (reshuffle kolom) alih-alih audit skema penuh dari nol.
+**Fix:** Baca ulang seluruh schema terkait disilangkan dengan field eligibility keanggotaan generik, susun ulang kolom template murni dari situ. "Forbis ID" → "Nomor Keanggotaan" (generik).
+**Pencegahan:** Kalau diminta membuat sesuatu "sesuai struktur kita, bukan struktur X", verifikasi: apakah hasil akhirnya bisa ditelusuri balik ke SATU sumber spesifik (satu forum/file/tenant)? Kalau ya, itu tanda belum genuinely schema-first — ulangi dari audit skema penuh.
+
+---
+
+## [2026-07-24] Kolom enum dengan CHECK constraint DB manual butuh sinkronisasi terpisah dari Drizzle schema
+**Masalah:** Menambah kategori profesi baru "Kreatif" hanya di `lib/professional-types.ts` + Drizzle schema enum tidak cukup — insert tetap ditolak database.
+**Root cause:** Kolom punya CHECK constraint PostgreSQL sungguhan (dibuat via DDL inline manual saat migration, bukan `pgEnum`) — dua tempat terpisah yang harus disinkronkan manual.
+**Fix:** Update Drizzle schema enum + migration baru `DROP`+`ADD CONSTRAINT` untuk CHECK constraint. Nama constraint diverifikasi via `psql \d`, bukan ditebak.
+**Pencegahan:** Kalau kolom `text(...,{enum:[...]})` punya "kembaran" konseptual di file konstanta terpisah, keduanya wajib diupdate bersamaan — dan kalau kolom dibuat via migration SQL manual, kemungkinan besar ada CHECK constraint DB yang juga perlu di-ALTER terpisah. `tsc` tidak pernah menangkap CHECK constraint DB yang ketinggalan — verifikasi manual via `\d` wajib jadi bagian proses.
+
+---
+
+## [2026-07-23] `displayPhone()` adalah fungsi terminal — jangan diproses ulang untuk membangun link
+**Masalah:** Link `wa.me` rusak total di production — 4 titik membangun link dengan `.replace(/\D/g,"")` pada nilai yang sudah melewati `displayPhone()` (`+6281234567890` → `081234567890` → stripped, hilang kode negara). Juga ditemukan 3 implementasi `normalizePhone`-like yang saling kompetitif.
+**Root cause:** `displayPhone()` diperlakukan sebagai nilai yang bisa diproses ulang, padahal hasilnya sudah dilokalkan untuk tampilan (kehilangan info yang dibutuhkan link).
+**Fix:** Helper baru `toWaDigits()` sebagai satu-satunya cara membangun digit `wa.me`/GOWA. Migration backfill pakai `COALESCE(normalize(...), original)`, bukan assign langsung.
+**Pencegahan:** `displayPhone()` hasilnya hanya untuk ditampilkan sebagai teks — begitu lewat fungsi ini, jangan proses ulang untuk keperluan lain (link, kalkulasi), selalu turunkan dari nilai E.164 asli. Untuk migration SQL yang menormalisasi kolom `NOT NULL` massal, wajib `COALESCE(fungsi_normalize(...), nilai_asli)` karena fungsi normalize bisa return NULL.
+
+---
+
+## [2026-07-22] Payment ditolak/dibatalkan tetap kelihatan seperti pemasukan kalau tidak difilter status
+**Masalah:** User khawatir payment yang ditolak masih ikut kehitung sebagai pemasukan.
+**Root cause:** Bukan bug data — `/finance/pemasukan` menampilkan semua status (termasuk rejected/cancelled) tanpa filter default, nominal selalu hijau tanpa mempedulikan status.
+**Fix:** Filter default exclude `rejected`/`cancelled`; nominal baris itu jadi abu-abu+dicoret.
+**Pencegahan:** Untuk pertanyaan finansial yang menyangkut uang sungguhan, verifikasi ke data sungguhan dulu. Query deteksi "duplikat pembayaran" harus bandingkan SUM aktual terhadap nilai yang seharusnya (total + kode unik), bukan cuma `COUNT(*) > 1` — sistem ini sengaja mendukung pembayaran dicicil, "lebih dari 1 payment lunas" bukan sinyal bug dengan sendirinya.
+
+---
+
+## [2026-07-22] Wrapper component yang destructuring manual field config bisa diam-diam menjatuhkan field baru
+**Masalah:** User pilih "Landscape" di editor Galeri Foto tapi foto tetap kotak di front-end.
+**Root cause:** `<Gallery>` melakukan `const { layout, columns } = { ...DEFAULT, ...config }` — hanya menarik `layout`+`columns` manual, `aspectRatio` tidak ikut diteruskan meski valid secara type.
+**Fix:** Tambah `aspectRatio` ke destructuring + teruskan sebagai prop.
+**Pencegahan:** Kalau komponen wrapper menerima `config` dan meneruskan sebagian field via destructuring manual (bukan spread utuh), setiap field baru di tipe config wajib dicek juga di wrapper. `tsc` tidak menangkap ini — hanya ketahuan lewat testing visual.
+
+---
+
+## [2026-07-22] Memperluas standar ke section baru butuh identifikasi perilaku default ASLI-nya dulu
+**Masalah:** Memperluas field `titleAlign` ke section Galeri/Statistik hampir didefault ke `"left"` mengikuti section lain — padahal Galeri/Statistik sebelumnya selalu hardcode `text-center`.
+**Root cause:** Default baru yang dipaksa `"left"` akan membuat section existing yang sudah dikonfigurasi admin tiba-tiba lompat dari center ke kiri — regresi visual yang tidak tertangkap tsc/build.
+**Fix:** Default runtime `d.titleAlign ?? "center"` khusus section yang perilaku aslinya selalu center.
+**Pencegahan:** Saat memperluas standar ke section baru yang pernah punya default berbeda dari acuan awal, identifikasi dulu perilaku asli section itu sebelum field baru ditambahkan — jadikan default runtime DAN default eksplisit di konstanta. Kelas regresi visual ini paling gampang lolos audit tsc/build.
+
+---
+
+## [2026-07-22] Nama class CSS yang kebetulan sama dengan class global tidak berarti instruksi untuk menimpanya
+**Masalah:** User memberi spesifikasi CSS untuk tombol dengan nama class `.btn-ghost` — project sudah punya `.btn-ghost` sistem-wide (Public Button System) dengan visual total berbeda.
+**Root cause:** Risiko menimpa definisi class global yang dipakai luas hanya karena user memberi spesifikasi dengan nama yang kebetulan sama.
+**Fix:** Dibuat komponen React berdiri sendiri, bukan menimpa class global.
+**Pencegahan:** Kalau user memberi CSS/spesifikasi eksternal dengan nama class yang kebetulan sama dengan class yang sudah dipakai luas, jangan asumsikan itu instruksi menimpa definisi lama — cek dulu apakah keduanya menjelaskan visual yang sama. Kalau beda, buat implementasi terpisah.
+
+---
+
+## [2026-07-22] Root cause bug scroll/state sering ada di komponen tetangga, bukan di komponen yang menampilkan gejalanya
+**Masalah:** Navigasi lightbox galeri menyebabkan scroll jump ke atas, padahal kode navigasi internal lightbox sudah benar (`router.replace(..., {scroll:false})`).
+**Root cause:** Root cause sesungguhnya di titik berbeda — thumbnail grid memakai anchor HTML polos (`<a href>`), bukan `next/link`, sehingga navigasi native browser tidak bisa dipasang `scroll:false`.
+**Fix:** Ganti `<a>` → `<Link href={...} scroll={false}>`.
+**Pencegahan:** Kalau ada laporan "navigasi X di dalam Y menyebabkan scroll jump/state hilang", cek juga titik pembuka/pemicu di luar komponen yang dicurigai — root cause sering ada di komponen tetangga yang menghubungkan dua state.
+
+---
+
+## [2026-07-21] Deploy: pisahkan command build dari restart, selalu verifikasi sebelum lanjut
+**Masalah:** `bun run build` dan `pm2 restart --update-env` tereksekusi menyatu tanpa jeda — build belum selesai tapi restart tetap jalan terhadap `.next/` lama/tidak lengkap, menyebabkan crash-loop.
+**Root cause:** Instruksi deploy menggabungkan command build dan restart tanpa penekanan "tunggu sampai selesai dulu".
+**Fix:** Jalankan build sendirian, tunggu selesai, verifikasi file target ada dengan timestamp baru, baru restart.
+**Pencegahan:** Untuk instruksi deploy, selalu minta command build terpisah dari restart (jangan digabung tanpa penekanan tunggu), dan selalu sertakan langkah verifikasi (cek file target, restart counter stabil, curl response) sebagai bagian instruksi.
+
+---
+
+## [2026-07-21] Lookup "cari row di tabel helper dulu, baru cari entitas pemilik di query terpisah" bisa gagal kalau baris pertama bukan milik entitas yang dicari
+**Masalah:** `api/akun/register/route.ts` mengecek duplikat email/HP dengan query terpisah (`contacts.findFirst` lalu `members.findFirst`) — kalau contact yang ketemu adalah baris usaha/profesional/pesantren (bukan yang tertaut ke members), pengecekan "sudah terdaftar" gagal total.
+**Root cause:** Pola dua-query terpisah — kalau baris pertama yang match bukan milik entitas yang dicari, hasil kedua jadi `undefined` padahal seharusnya ketemu. Bug yang sama sebelumnya juga ditemukan di lookup-member donasi.
+**Fix:** Ganti jadi satu query JOIN (`members INNER JOIN contacts WHERE contacts.email = X OR contacts.phone = Y`).
+**Pencegahan:** Begitu kelas bug ini ditemukan sekali, wajib langsung grep pola yang sama (`{helperTable}.findFirst` diikuti `eq({entitas}.{fk}, hasil_pencarian_pertama)`) di seluruh codebase — pola yang sama besar kemungkinan di-copy-paste ke kebutuhan serupa lain.
+
+<!-- Entri chunk lain (1, 3) ditambahkan menyusul setelah proses klasifikasi selesai -->
