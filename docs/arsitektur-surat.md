@@ -450,6 +450,19 @@ function renderIdentitasSurat(params: {
 **Layout 3** membutuhkan `letter_types.name` — perlu di-fetch saat generate PDF.
 Saat ini PDF route tidak fetch `letter_types`. Perlu ditambah.
 
+### 7a. Detail Teknis Generate PDF
+
+- `lib/letter-merge.ts`: `resolveMergeFields(template, ctx)` — regex replace `{{key}}` dari flat map
+- `lib/letter-html.ts`: build HTML lengkap (kop surat header image, metadata, body, signers + QR, footer image)
+  - Margin via CSS `@page { margin: Xmm }` — BUKAN body padding, agar tidak dobel dengan Playwright
+  - Footer: `position: fixed; bottom: 0` → muncul di SETIAP halaman PDF
+  - Body mendapat `padding-bottom: 36mm` kondisional saat footer ada (cegah overlap)
+  - F4/Folio: lebar tepat `215mm` (BUKAN 210mm)
+- `POST /api/letters/[id]/generate-pdf?slug=` — auth check → fetch data → build HTML →
+  Playwright → MinIO → update `pdf_url`
+- `components/letters/generate-pdf-button.tsx` — tombol unduh + link buka PDF terakhir
+  (auto-download); muncul di halaman detail keluar + nota
+
 ---
 
 ## 8. Render di Detail View (Web)

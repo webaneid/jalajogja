@@ -19,6 +19,124 @@ cuma indeks + catatan audit, bukan duplikasi isi.**
 
 ---
 
+## 1a. Fondasi: Tabel Schema, Route, Server Actions
+
+### Tabel Schema
+```
+letter_types      → jenis surat (SK, Undangan, dll) — CRUD inline di /letters/template
+letter_contacts   → kontak luar + opsional link ke public.members
+letter_templates  → template KONTEN surat (perihal + isi) — type: outgoing|internal,
+                    subject, body, is_active. (Kop surat/styling/paper-size/margin TIDAK
+                    lagi di sini — pindah ke settings.letter_config, lihat di bawah)
+letters           → surat utama — type: outgoing | incoming | internal
+letter_number_sequences → counter nomor surat per year+type+category (atomic)
+letter_signatures → slot tanda tangan digital per officer (multi-signer, lihat
+                    docs/arsitektur-tandatangan.md untuk skema lengkap slot_order/
+                    slot_section/signing_token)
+```
+
+### Route Structure
+```
+app/(dashboard)/[tenant]/letters/
+├── layout.tsx            → shell: LettersNav (sub-nav kiri) + slot konten kanan
+├── page.tsx              → redirect ke /letters/keluar
+├── keluar/
+│   ├── page.tsx          → list surat keluar (type=outgoing)
+│   ├── new/page.tsx      → pre-create draft → redirect ke edit
+│   ├── [id]/edit/page.tsx → LetterForm (subject, body, nomor, jenis, template, paper size)
+│   └── [id]/bulk/page.tsx → BulkRecipientPicker (mail merge)
+├── masuk/
+│   ├── page.tsx          → list surat masuk (type=incoming)
+│   └── new/page.tsx      → IncomingLetterForm (direct save, no pre-create)
+├── nota/
+│   ├── page.tsx          → list nota dinas (type=internal)
+│   ├── new/page.tsx      → pre-create draft → redirect ke edit
+│   └── [id]/edit/page.tsx → LetterForm (sama seperti keluar)
+├── kontak/
+│   └── page.tsx          → CRUD letter_contacts (kontak luar untuk surat)
+├── pengaturan/
+│   └── page.tsx          → LetterConfigClient (kop surat, paper size, format nomor, dst — settings.letter_config)
+└── template/
+    ├── page.tsx          → LetterTypeManageClient + LetterTemplateList
+    ├── new/page.tsx      → LetterTemplateForm
+    └── [id]/edit/page.tsx → LetterTemplateForm
+```
+
+### Server Actions (letters/actions.ts)
+```
+createLetterDraftAction(slug, type)           → pre-create draft → return letterId
+createIncomingLetterAction(slug, data)        → direct create surat masuk
+updateLetterAction(slug, letterId, data)      → update semua field
+updateLetterStatusAction(slug, letterId, s)   → quick status change (lihat § 2a alur status)
+deleteLetterAction(slug, letterId)            → delete sigs dulu, baru letter
+getNextLetterNumberAction(slug, type, cat?)   → atomic SELECT FOR UPDATE
+
+createBulkLettersAction(slug, parentId, recipients[]) → insert N child letters (mail merge)
+markAllChildrenSentAction(slug, parentId)     → bulk update status anak draft → sent
+
+CRUD letter_types:    createLetterTypeAction, updateLetterTypeAction, deleteLetterTypeAction
+CRUD letter_templates: createLetterTemplateAction, updateLetterTemplateAction, deleteLetterTemplateAction
+CRUD letter_contacts: createLetterContactAction, updateLetterContactAction, deleteLetterContactAction
+```
+
+Untuk actions terkait tanda tangan (`signByTokenAction`, `syncSignatureSlotsAction`,
+`generateSigningTokenAction`, dst) lihat `docs/arsitektur-tandatangan.md`.
+
+### Format Nomor Surat — Dinamis
+Format string dikonfigurasi per-tenant di `/letters/pengaturan` (`settings.letter_config.number_format`),
+di-resolve oleh `lib/letter-number.ts`:
+```
+resolveLetterNumberFormat()  — parse token dari letter_config.number_format
+resolveSequenceCategory()    — tentukan kategori counter: kalau format pakai {issuer_code} →
+                                category = divisionCode.upper(); selain itu → "UMUM"
+```
+Token yang didukung: `{number}`, `{number:N}` (zero-padded N digit), `{type_code}`,
+`{org_code}`, `{issuer_code}` (dari `letters.issuer_officer_id` → kode divisi officer),
+`{month_roman}`, `{month}`, `{year}`, `{year:2}`.
+Counter atomic tetap via `SELECT FOR UPDATE` di `letter_number_sequences`, dipartisi per
+year+type+category.
+
+### Ukuran Kertas — Presisi Piksel (@ 96 DPI)
+| Ukuran | Lebar | Tinggi |
+|--------|-------|--------|
+| A4 | 794px | 1123px |
+| F4 / Folio | 813px | 1247px |
+| Letter | 816px | 1056px |
+
+Tinggi hanya referensi (konten menentukan panjang aktual). Dipakai di dropdown pengaturan
+(`letter-config-client.tsx`) untuk hint dinamis sesuai pilihan ukuran kertas.
+
+### Mail Merge Bulk — Arsitektur
+```
+createBulkLettersAction(slug, parentId, recipients[])
+  ├─ BulkRecipient type: { type: "member"|"contact", id, name, phone?, email?, address?, number?, nik? }
+  ├─ Nomor anak: parent.letterNumber + "/1", "/2", dst — null jika parent belum punya nomor
+  ├─ Sequential insert (BUKAN Promise.all) — supaya suffix nomor konsisten
+  └─ Guard: max 500 recipients, admin/owner only; set isBulk=true di parent setelah selesai
+
+GET /api/ref/tenant-members — paginated (PAGE_SIZE=30), filter status/search/page
+  └─ JOIN: members INNER JOIN tenantMemberships LEFT JOIN contacts (phone/email via FK)
+
+components/letters/bulk-recipient-picker.tsx — dua tab:
+  ├─ "Dari Anggota": debounced search (300ms), pagination, filter status, "Pilih semua halaman ini"
+  └─ "Dari Kontak": pre-loaded dari server
+
+components/letters/bulk-children-section.tsx:
+  ├─ "Generate Semua PDF" — Promise.allSettled, paralel per anak
+  └─ "Tandai Semua Terkirim" — optimistic update via markAllChildrenSentAction
+```
+Merge fields tambahan untuk bulk: `{{recipient.name}}`, `{{recipient.phone}}`, dll —
+resolved per-anak saat generate PDF (lihat `docs/arsitektur-surat-detail.md` § Merge Fields
+untuk daftar lengkap variabel `{{recipient.*}}`).
+
+### Manajemen Kontak Surat
+`letter_contacts` dikelola di `/letters/kontak` (`letter-contact-manage-client.tsx`) — inline
+CRUD (name, title, org, phone, email, address). Dipakai sebagai sumber alternatif penerima
+surat selain `public.members` (lihat fallback chain di `docs/arsitektur-surat-detail.md`
+§ Merge Fields, tabel "Sumber data per tipe penerima").
+
+---
+
 ## 2. Status Aktual Fitur (diverifikasi langsung ke kode, bukan disalin dari dokumen lama)
 
 | Fitur | Status | Bukti verifikasi |
