@@ -666,6 +666,27 @@
 **Fix:** Tambah `revalidatePath` ke path publik yang relevan (homepage + halaman biasa).
 **Pencegahan:** Setiap Server Action yang mengubah data yang dibaca halaman publik (bukan cuma admin) wajib `revalidatePath` ke path publiknya juga — jangan cukup revalidate path admin lalu berasumsi ISR timer "menyusul sendiri". Cek apakah ada halaman `(public)/[tenant]/...` yang query tabel yang sama.
 
-<!-- Entri chunk 3 (sisa entri paling akhir) sudah tergabung di chunk-chunk lain -->
+## [2025-04] `<SelectItem value="">` tidak valid di Radix — pakai sentinel eksplisit
+**Masalah:** Error Radix saat memakai `<SelectItem value="">` untuk opsi "tidak ada pilihan".
+**Root cause:** Radix melarang empty string sebagai value karena dipakai sebagai sentinel internal "clear selection".
+**Fix:** Gunakan sentinel eksplisit seperti `value="none"`, konversi ke `null` sebelum dikirim ke server action.
+**Pencegahan:** Berlaku di semua `SelectItem` di seluruh aplikasi — jangan pernah `value=""`, selalu sentinel string eksplisit yang dikonversi ke `null`/`undefined` di boundary sebelum ke server.
 
+---
+
+## [2025-04] Auth gate jangan diduplikasi di middleware DAN layout tanpa koordinasi — pikirkan partial state
+**Masalah:** Infinite redirect loop — `signUp.email()` berhasil tapi `registerAction` (buat tenant) gagal, user punya session tapi tidak punya tenant. `middleware.ts` blok `/register` → redirect `/dashboard-redirect` → `AuthLayout` juga redirect semua user login ke sana → tidak ada tenant → redirect balik ke `/register?error=no-tenant` → loop tak henti.
+**Root cause:** Auth gate diduplikasi di dua tempat (middleware + layout) yang saling bertabrakan, tanpa mempertimbangkan state "berhasil sebagian" (signup sukses, provisioning gagal).
+**Fix:** `middleware.ts` hapus `/register` dari `AUTH_PAGES`; `AuthLayout` cek tenant dulu (punya → dashboard, belum → render halaman); `register/page.tsx` skip `signUp` kalau email sudah ada, langsung ke `registerAction`.
+**Pencegahan:** Auth gate jangan diduplikasi di middleware DAN layout tanpa koordinasi eksplisit. Selalu pikirkan "partial state": kalau step 1 berhasil tapi step 2 gagal, user harus bisa recover. Setiap redirect chain harus punya exit condition — hindari pola A → B → A. (Kelas bug yang sama muncul lagi berkali-kali di project ini dalam bentuk berbeda — lihat lesson lain soal redirect loop `/akun`.)
+
+---
+
+## [2025-04] Setelah ganti port dev server, `BETTER_AUTH_URL`/`NEXT_PUBLIC_APP_URL` wajib ikut diganti
+**Masalah:** Error "An unexpected response was received from the server" dari Better Auth client setelah ganti port dev server.
+**Root cause:** Server return HTML (bukan JSON) karena port di `.env.local` tidak cocok lagi dengan port dev server yang aktual berjalan.
+**Fix:** Update `BETTER_AUTH_URL` + `NEXT_PUBLIC_APP_URL` di `.env.local`, restart server, clear cookie browser.
+**Pencegahan:** Setiap kali ganti port dev server, langsung cek dan update kedua env var ini — jangan tunggu sampai muncul error auth yang membingungkan.
+
+<!-- Semua chunk log kronologis (0, A, B, C, 2, 5, 6, 7, 8) + section "## Lessons Learned"/"Arsitektur Modul Toko" lama sudah selesai dimigrasikan -->
 

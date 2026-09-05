@@ -119,6 +119,21 @@ State halaman yang mungkin:
 
 ## 3. Perubahan Data Model
 
+### Fondasi: `divisions` + `officers` (Modul Pengurus)
+```sql
+divisions   -- hierarkis self-referential (parent_id FK ke diri sendiri), kode singkatan (SEKR, BEND, dll)
+officers    -- FK cross-schema ke public.members (bukan tenant members), can_sign flag untuk penandatangan resmi
+```
+**Keputusan desain yang dikunci:**
+- QR Code verifikasi: hash di-generate **saat officer menandatangani** (`letter_id + officer_id + timestamp`), bukan stored di officer table.
+- Layout TTD **tidak di-hardcode** — posisi QR Code bebas ditempatkan di template surat oleh admin.
+- Info di QR Code: nama + jabatan + divisi + tanggal (bukan data sensitif).
+- `deleteOfficerAction` diblokir jika officer sudah punya `letter_signatures` — gunakan toggle non-aktif saja.
+- `deleteDivisionAction` diblokir jika masih ada officer di divisi.
+- `can_sign` menentukan siapa yang boleh diisi ke slot tanda tangan digital — beda dari `isActive`
+  yang menentukan siapa yang boleh muncul di dropdown "Yang Mengeluarkan" surat (lihat
+  `docs/arsitektur-modul-surat.md` § "Officer / Penandatangan").
+
 ### Tabel `letters` — 2 kolom baru
 
 ```sql
@@ -245,6 +260,16 @@ Tidak ada combobox assign di detail page. Assignment dilakukan di edit page.
 - `app/(public)/[tenant]/sign/[token]/page.tsx` — server component (state: invalid, expired, already-signed, pending)
 - `components/letters/signing-page-client.tsx` — tombol TTD + QR setelah berhasil
 - `signByTokenAction` ada di `letters/actions.ts` (bukan file terpisah)
+
+**QR optimistic update caveat:** QR di-generate server-side (Node.js) saat halaman detail
+dimuat. Setelah officer sign (optimistic update via client), QR tidak tersedia langsung —
+tampilkan placeholder. QR baru muncul setelah halaman di-refresh (server render ulang).
+
+**Halaman verifikasi (`/verify/[hash]`, pola sama untuk `/sign/[token]`): tampilkan "invalid"
+bukan 404.** Kalau hash/token tidak ditemukan, jangan `notFound()` — itu membingungkan (hash bisa
+dipalsukan atau surat sudah diedit, bukan berarti halaman tidak ada). Tampilkan halaman
+informatif "Tanda Tangan Tidak Valid" / "Tautan Tidak Valid". `notFound()` hanya untuk tenant
+yang tidak ada/tidak aktif.
 
 ---
 

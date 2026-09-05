@@ -450,3 +450,21 @@ donasi/event by judul (konfirmasi klarifikasi § "false alarm" di atas), pilih s
 "Judul Artikel / Tautan" langsung terisi otomatis; ketik Label Awalan custom; pilih/paste URL
 yang sangat panjang, cek popup tidak melebar/overflow.
 
+---
+
+## 7. Tiptap v3 — Gotcha Teknis Dasar (migrasi dari v2)
+
+- `BubbleMenu` pindah subpath: `@tiptap/react/menus` (bukan `@tiptap/react` langsung).
+- `immediatelyRender: false` wajib di config editor untuk Next.js SSR (App Router).
+- Named import untuk extension bawaan: `{ TextStyle }`, `{ Table }` (bukan default import).
+- Tidak ada `tippyOptions` lagi — ganti Floating UI: `options={{ placement: "top" }}`.
+- `setContent(parsed)` tanpa argument kedua (signature lama menerimanya, v3 tidak).
+- oEmbed universal via `noembed.com/embed?url=` — support 300+ platform, tidak perlu package
+  tambahan per-platform.
+- `EmbedBlockView`: `dangerouslySetInnerHTML` tidak re-execute tag `<script>` yang dikandungnya —
+  pakai `useEffect` untuk re-inject script secara manual (perlu untuk embed Twitter/Instagram
+  yang butuh script loader).
+- Preview konten embed (bukan editor aktif): jangan pakai `dangerouslySetInnerHTML` polos di
+  preview — pakai `<TiptapEditor editable={false}>` supaya React NodeView (termasuk logic
+  re-inject script di atas) tetap aktif.
+

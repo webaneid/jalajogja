@@ -463,6 +463,13 @@ Saat ini PDF route tidak fetch `letter_types`. Perlu ditambah.
 - `components/letters/generate-pdf-button.tsx` — tombol unduh + link buka PDF terakhir
   (auto-download); muncul di halaman detail keluar + nota
 
+**Playwright di Next.js API Route:**
+- Import dari `playwright`, bukan `@playwright/test`: `import { chromium } from "playwright"`
+- Wajib `args: ["--no-sandbox", "--disable-setuid-sandbox"]` untuk Docker/VPS environment
+- Jalankan di Node.js runtime (bukan Edge) — default di Next.js App Router
+- Pattern: `let browser; try { browser = await chromium.launch(...) } finally { await browser?.close() }`
+- `await page.setContent(html, { waitUntil: "networkidle" })` — tunggu semua resource (gambar MinIO) loaded
+
 ---
 
 ## 8. Render di Detail View (Web)
