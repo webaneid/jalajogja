@@ -1300,6 +1300,19 @@ kena filter ini) — jadi tidak pernah ada kasus "semua variant kosong".
 **Sengaja TIDAK retroaktif** — cuma berlaku untuk upload BARU. File yang sudah terlanjur ter-upscale
 sebelum fix ini TIDAK di-reprocess otomatis; admin perlu upload ulang manual kalau mau perbaiki.
 
+### Gotcha: `PostCardData.coverVariants` saat dibangun manual di luar pipeline standar
+`PostCardData.coverVariants` HARUS berisi URL penuh (comment tipe-nya: "semua variant resolved
+URLs"), bukan path relatif dari DB. Kalau ada fungsi helper yang membangun `PostCardData` secara
+manual di luar pipeline fetch standar (contoh: `getRelatedPosts`), field `media.variants` dari DB
+TIDAK BOLEH langsung dituangkan ke `coverVariants` — itu path relatif
+(`"website/2026/05/..._sq.webp"`) yang akan 404 di custom domain kalau dipakai sebagai `src`
+gambar.
+
+Pola benar: set `coverVariants: null` secara eksplisit, dan hanya isi `coverUrl` via
+`resolveMediaUrl(tenantSlug, media.path, media.variants)`. `pickCover()` sudah otomatis fallback
+ke `coverUrl` kalau `coverVariants` null atau tidak punya variant yang diminta — jadi aman, tidak
+perlu logic tambahan di caller.
+
 **Tidak disentuh**: `processVariant()` (dipakai `POST /api/media/[id]/recrop`, manual crop dari
 admin) — itu tindakan eksplisit admin menggambar crop box sendiri, beda konteks dari auto-generate
 saat upload.

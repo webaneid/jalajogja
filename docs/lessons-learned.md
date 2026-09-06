@@ -688,5 +688,61 @@
 **Fix:** Update `BETTER_AUTH_URL` + `NEXT_PUBLIC_APP_URL` di `.env.local`, restart server, clear cookie browser.
 **Pencegahan:** Setiap kali ganti port dev server, langsung cek dan update kedua env var ini — jangan tunggu sampai muncul error auth yang membingungkan.
 
-<!-- Semua chunk log kronologis (0, A, B, C, 2, 5, 6, 7, 8) + section "## Lessons Learned"/"Arsitektur Modul Toko" lama sudah selesai dimigrasikan -->
+---
+
+## [2026-05] 4 gotcha migrasi URL admin `/{slug}/*` → `/app/{slug}/*`
+**Masalah:** Migrasi struktur URL admin (pindah dari berbagi namespace dengan publik ke prefix `/app/`) menyisakan beberapa kelas bug yang baru ketahuan setelah deploy.
+**Root cause/temuan:** (1) Grep audit `href.*${slug}` tidak menangkap import statement `from "@/app/(dashboard)/[tenant]/..."` — format string berbeda dari href, import path yang mengarah ke folder lama lolos audit. (2) Halaman baru yang pakai `useSearchParams()` gagal build production di Next.js 15 kalau tidak dibungkus `<Suspense>`. (3) Redirect 301 `next.config.ts` untuk backward-compat URL lama butuh regex `:slug` dengan negative lookahead supaya tidak salah-tangkap `/api`, `/app`, `/platform`. (4) Audit yang hanya scope ke `(dashboard)/` dan `components/dashboard/` melewatkan link admin di `(public)/` dan `components/website/public/` (tombol "Dashboard Admin" di header, redirect pengurus di halaman akun, link invite) — baru ketahuan dari error report mobile.
+**Fix:** Audit migrasi URL serupa ke depan wajib grep 4 area terpisah: (a) `redirect()`/`revalidatePath()` di actions, (b) `href`/`router.push` di dashboard, (c) `from "@/app/(dashboard)/[tenant]/` untuk import path, (d) `slug}/dashboard` dkk di `app/(public)`, `app/(auth)`, `components/website`, `components/akun` — area (c) dan (d) paling sering terlewat.
+**Pencegahan:** Checklist post-deploy migrasi URL: buka Incognito, login sebagai pengurus, klik "Dashboard Admin" dari header depan, buka link invite, cek `/akun` sebagai pengurus, cek behavior di mobile (beda dari desktop), cek `pm2 logs` untuk error 404/exception baru.
+
+---
+
+## [2026-05] drizzle-kit `strict: true` hang di CI/VPS non-interaktif; bash `!` dalam double-quote memicu history expansion
+**Masalah:** (1) `drizzle-kit` dengan `strict: true` minta konfirmasi terminal interaktif — di VPS/CI non-interaktif ini hang lalu exit code 1. (2) Password/value yang mengandung `!` dalam double-quote di bash men-trigger history expansion, menyebabkan command SSH/env error yang membingungkan.
+**Root cause:** (1) Mode strict dirancang untuk sesi interaktif developer, tidak cocok script otomatis/SSH non-tty. (2) Bash history expansion (`!`) aktif default di shell interaktif bahkan di dalam double-quote (tidak di single-quote).
+**Fix:** (1) Untuk produksi, jalankan SQL migration file langsung via psql berurutan, skip `drizzle-kit strict` di jalur deploy otomatis. (2) Selalu bungkus value yang mengandung `!` dengan single quote.
+**Pencegahan:** Jangan andalkan `drizzle-kit` mode strict untuk migrasi otomatis VPS/CI — pakai raw SQL file + psql. Untuk command yang menyertakan password/secret di shell, default ke single-quote kecuali butuh interpolasi variable.
+
+---
+
+## [2026-05] Urutan DDL tabel dengan FK di `create-tenant-schema.ts` harus mengikuti dependency, bukan urutan penulisan bebas
+**Masalah:** Tabel `letters` sempat dibuat SEBELUM `officers` di DDL, padahal `letters` punya `REFERENCES officers(id)` — error saat register tenant pertama kali.
+**Root cause:** Tidak ada pengecekan otomatis urutan definisi tabel vs dependency FK-nya saat menulis DDL manual berurutan dalam satu file besar.
+**Fix:** Pindahkan definisi `divisions` dan `officers` ke sebelum `letters`.
+**Pencegahan:** Setiap kali menambah kolom FK baru (`REFERENCES tabel_lain(id)`) ke DDL tenant schema, cek ulang apakah `tabel_lain` sudah didefinisikan lebih awal di file yang sama.
+
+---
+
+## [2026-05] Query `LIKE` terhadap JSONB `::text` harus ikut format spasi serialisasi PostgreSQL
+**Masalah:** Query `WHERE content::text LIKE '%"src":"website/%'` mengembalikan 0 rows padahal data yang dicari ada.
+**Root cause:** PostgreSQL menyerialisasi JSONB ke text dengan spasi setelah colon (`"src": "..."`), bukan tanpa spasi seperti yang lazim ditulis manual di string literal.
+**Fix:** Ubah pattern jadi `LIKE '%"src": "website/%'` (ada spasi setelah colon).
+**Pencegahan:** Setiap kali menulis query `LIKE`/pattern-match terhadap kolom JSONB yang di-cast `::text`, cek dulu format serialisasi aktual PostgreSQL (spasi setelah `:` dan `,`) — jangan asumsikan format compact seperti `JSON.stringify()` JavaScript.
+
+---
+
+## [2026-05] Keputusan infra: PM2 (`next start`) untuk aplikasi, Docker HANYA untuk PostgreSQL+MinIO — jangan campur
+**Masalah:** Aplikasi Next.js sempat ambigu mau dijalankan via Docker container atau PM2 — dua pendekatan build yang tidak kompatibel dicampur bisa bikin deploy gagal diam-diam.
+**Root cause:** `output: "standalone"` di `next.config.ts` menghasilkan `.next/standalone/` dengan server.js sendiri — beda total dengan `next start` yang baca `.next/` biasa.
+**Fix/Keputusan terkunci:** Aplikasi dijalankan via PM2 (`ecosystem.config.cjs` di root repo, `script: "next"`, `args: "start"`, `exec_mode: "fork"`). Docker HANYA untuk PostgreSQL + MinIO. Hapus `output: "standalone"` dari `next.config.ts` untuk target PM2. Deploy ulang: `git pull && bun run build --filter=@jalajogja/web && pm2 restart jalajogja --update-env`. Migrasi DB VPS lewat `docker compose exec -T postgres psql ...` (Postgres jalan di container) — urutan wajib: migrate DB dulu, baru restart PM2. Reset PM2 kalau perlu: `pm2 delete jalajogja` → `pm2 start ecosystem.config.cjs` → `pm2 save`.
+**Pencegahan:** Jangan pernah aktifkan `output: "standalone"` selama app dijalankan via PM2 `next start` — dua mode ini didesain untuk jalur deploy berbeda.
+
+---
+
+## [2026-05] Path param dinamis (`[id]`) yang query kolom UUID wajib divalidasi formatnya dulu sebelum hit DB
+**Masalah:** `invalid input syntax for type uuid: "ikpmjogja"` — crash langsung di level driver PostgreSQL saat bot/request manual hit endpoint dengan path segment yang bukan UUID.
+**Root cause:** Route dinamis `[id]` menerima string apa saja dari URL dan langsung dipakai untuk query ke kolom bertipe UUID tanpa validasi format.
+**Fix:** Tambah regex check sebelum query (`/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`); kalau tidak match, return 400 early tanpa hit DB.
+**Pencegahan:** Setiap API route yang menerima ID sebagai path param yang akan dipakai untuk query kolom UUID wajib validasi format UUID di awal handler, sebelum query dijalankan.
+
+---
+
+## [2026-05] Error "Failed to find Server Action" di log setelah deploy adalah perilaku normal, bukan bug
+**Masalah:** `[Error: Failed to find Server Action "x"...]` muncul berkali-kali di error log (PM2) setelah setiap deploy, terlihat seperti bug.
+**Root cause:** Next.js meng-hash setiap server action saat build — hash berbeda di tiap deployment. User yang masih membuka tab browser versi sebelum deploy lalu submit form akan mengirim hash lama yang tidak dikenali server baru.
+**Fix:** Tidak perlu tindakan — user cukup refresh browser, error hilang sendiri.
+**Pencegahan:** Jangan habiskan waktu debug error ini kalau muncul pada tab/sesi lama yang belum di-refresh setelah deploy. Investigasi serius hanya kalau error muncul terus-menerus pada request BARU.
+
+<!-- Semua chunk log kronologis (0, A, B, C, D, 2, 5, 6, 7, 8) + section "## Lessons Learned"/"Arsitektur Modul Toko"/"Arsitektur Login Universal" lama sudah selesai dimigrasikan -->
 

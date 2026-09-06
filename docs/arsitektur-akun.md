@@ -409,6 +409,21 @@ apakah user adalah anggota IKPM di front-end. Jika null, user dianggap "dashboar
 diarahkan ke `/dashboard` saat membuka `/akun`. Ini benar untuk kasus darurat, tapi jika dibiarkan
 permanen, pengurus tidak bisa menikmati hak front-end sebagai anggota IKPM (belanja, donasi, dll).
 
+### Aktivasi Akun Login untuk Anggota Non-Pengurus (Admin Dashboard)
+
+Berbeda dari `createOfficerWithAccountAction` (aktivasi akun PENGURUS di atas), ada jalur
+terpisah untuk anggota biasa hasil import/data historis yang belum punya akun Better Auth
+(`members.betterAuthUserId` null): `activateMemberAccountAction(slug, memberId, email, password)`
+di `app/(dashboard)/app/[tenant]/members/actions.ts`. Alur: cek hak akses admin tenant → validasi
+format email+password → buat akun Better Auth via `auth.api.signUpEmail` → set
+`public.members.betterAuthUserId = authUserId` langsung (bukan lewat `tenant.users` seperti jalur
+pengurus) → update/create `contacts.email` agar konsisten.
+
+UI: komponen `<ChangePasswordSection>` (`components/members/change-password-section.tsx`) —
+kondisional berdasar `hasAccount`: kalau `false`, tampilkan form "Aktifkan Akun Login" (email
+pre-filled dari kontak + password sementara + konfirmasi); kalau `true`, tampilkan form "Ubah
+Password" biasa.
+
 ---
 
 ## Alur Masa Jabatan Berakhir

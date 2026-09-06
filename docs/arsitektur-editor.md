@@ -280,6 +280,22 @@ Audit dilakukan atas permintaan user setelah menerima ringkasan eksekusi dari ag
 klaim di ringkasan itu diverifikasi LANGSUNG ke kode (bukan dipercaya begitu saja), sesuai prinsip
 "CLAUDE.md adalah project brain, bukan source of truth — verifikasi ke kode aktual".
 
+### 5.0. Konteks Dasar: `RenderContext.imageBaseUrl` untuk Gambar Inline Tiptap
+
+`lib/letter-render.ts` punya `RenderContext { imageBaseUrl? }` + helper `fixImageSrc()` yang
+menangani dua kasus di `<img src>` dalam konten Tiptap: (1) path relatif hasil upload, dan (2)
+URL localhost/127.0.0.1 yang tertinggal dari development, di-replace ke URL production. Signature
+`renderBody(body, { imageBaseUrl })` backward-compatible (param opsional).
+
+Pola pemanggilan standar di semua halaman yang me-render konten Tiptap:
+```typescript
+const imageBaseUrl = `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${slug}`;
+const html = renderBody(post.content, { imageBaseUrl });
+```
+Dipakai di: `post/[slug]`, `campaign/[slug]`, `produk/[slug]`, `agenda/[slug]`. Field ini sudah ada
+SEBELUM `tenantSlug`/`baseUrl` (§ 5.1 di bawah) ditambahkan untuk kasus link internal "Baca
+Juga" — keduanya sekarang hidup berdampingan di `RenderContext` yang sama.
+
 ### 5.1. Bug Data-Breaking: Link Internal "Baca Juga" Rusak di Custom Domain (SUDAH DIFIX)
 
 `RelatedLinkDialog` (toolbar) memakai `<PublicLinkPicker>` yang — sesuai kontraknya
