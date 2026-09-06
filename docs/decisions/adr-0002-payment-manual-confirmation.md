@@ -4,7 +4,7 @@
 **Tanggal:** 2026-09-06 (diekstrak dari CLAUDE.md, keputusan asli lebih awal)
 
 ## Context
-jalajogja menerima pembayaran lewat berbagai metode (cash, transfer bank, QRIS,
+Jalakarta menerima pembayaran lewat berbagai metode (cash, transfer bank, QRIS,
 payment gateway) untuk donasi, belanja toko, dan iuran. Perlu keputusan konsisten
 soal kapan sebuah pembayaran dianggap "lunas" di sistem.
 
