@@ -692,8 +692,9 @@ ada.
 
 ### Timezone — Semua Input & Tampilan Jam Mengikuti Setting Tenant (SELESAI, 2026-07-19)
 
-> Detail lengkap (root cause, desain helper, cakupan fix): CLAUDE.md
-> "[2026-07-19] Arsitektur Timezone Tenant — Akhirnya Benar-Benar Dipakai".
+> Detail lengkap (root cause, desain helper, cakupan fix): `docs/lessons-learned.md` —
+> ""Hari ini" via new Date().toISOString() selalu salah jam 00:00-06:59 WIB; state dari prop
+> via useState tidak auto-sync setelah router.refresh()".
 
 Bug kritis ditemukan: `EventForm` kirim string `datetime-local` mentah (tanpa offset) ke server
 action, yang langsung `new Date(string)` — di server (biasanya UTC), ini bisa menggeser jam

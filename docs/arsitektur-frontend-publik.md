@@ -407,5 +407,6 @@ Project", kecuali:
 - Produk Variasi V8 (validasi stok server-side saat add to cart) — ditunda
 - Gallery Phase 4 (masonry + carousel) — belum
 
-Untuk status paling akurat, **selalu cek CLAUDE.md § "Status Project" dan § "Lessons Learned"**
-langsung — dokumen ini adalah peta struktur, bukan tracker status (yang cepat basi).
+Untuk status paling akurat, **selalu cek CLAUDE.md § "Status Project (terkini)" dan
+`docs/lessons-learned.md`** langsung — dokumen ini adalah peta struktur, bukan tracker status
+(yang cepat basi).

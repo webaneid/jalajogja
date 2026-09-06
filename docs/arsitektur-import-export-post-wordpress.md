@@ -654,8 +654,8 @@ duplicate-content baru).
 > di-reuse — `apps/web/lib/tenant-timezone.ts` (pure, client-safe) +
 > `apps/web/lib/tenant-timezone.server.ts` (`getTenantTimezone()`, server-only) — dipakai
 > konsisten di modul Event/Invoice/Cicilan setelah serangkaian bug tanggal WIB/UTC yang sudah
-> berkali-kali ditemukan+difix di project ini (lihat lesson CLAUDE.md "Arsitektur Timezone
-> Tenant — Akhirnya Benar-Benar Dipakai"). JANGAN tambah `dayjs` sebagai dependency baru hanya
+> berkali-kali ditemukan+difix di project ini (lihat `docs/lessons-learned.md` — ""Hari ini" via
+> new Date().toISOString() selalu salah jam 00:00-06:59 WIB..."). JANGAN tambah `dayjs` sebagai dependency baru hanya
 > untuk fitur ini — akan jadi cara KEDUA menangani timezone di codebase yang sama, sumber bug
 > inkonsistensi di masa depan.
 
@@ -666,7 +666,7 @@ duplicate-content baru).
     BUKAN hardcode `"Asia/Jakarta"`) + `localDatetimeToUtcIso(post_date, timezone)` — dua
     fungsi yang SUDAH ADA di `lib/tenant-timezone.ts`/`.server.ts`, bukan ditulis ulang.
 * **Kasus 2: Pergeseran Jam Publikasi di Frontend (+7 Jam / -7 Jam)**
-  * *Penyebab*: String tanggal lokal tanpa timezone offset dianggap sebagai UTC oleh JavaScript `new Date()` — persis kelas bug yang sudah berulang kali ditemukan di modul Event/Cicilan project ini (lihat CLAUDE.md, banyak lesson soal ini).
+  * *Penyebab*: String tanggal lokal tanpa timezone offset dianggap sebagai UTC oleh JavaScript `new Date()` — persis kelas bug yang sudah berulang kali ditemukan di modul Event/Cicilan project ini (lihat `docs/lessons-learned.md`, entri-entri soal "Hari ini"/timezone WIB).
   * *Solusi*: `localDatetimeToUtcIso(dateString, tenantTimezone)` — SUDAH menangani fixed-offset
     Indonesia (WIB/WITA/WIT, tanpa DST) dengan benar, TIDAK butuh `dayjs` atau library timezone
     apa pun. Ganti seluruh referensi `dayjs.tz(...)` di draf pertama dengan fungsi ini.
@@ -703,8 +703,9 @@ duplicate-content baru).
 > `["large", "medium", "thumbnail", "square-large", "square", "profile", "original"]` di
 > ketiga file — diverifikasi empiris dengan 3 gambar sintetis (800×450/1600×900/350×350) via
 > Sharp sungguhan: 800×450 sebelumnya salah pilih `square`, sekarang benar pilih `medium`;
-> 1600×900 dan 350×350 hasilnya identik lama/baru (nol regresi). Lihat lesson CLAUDE.md
-> "[2026-07-28] Bug Sistemik: PATH_PRIORITY Loncat Langsung ke 'Square'" untuk detail penuh.
+> 1600×900 dan 350×350 hasilnya identik lama/baru (nol regresi). Lihat `docs/lessons-learned.md`
+> — "Meng-copy pola/konstanta 'karena sama persis' tidak berarti polanya sendiri sudah benar"
+> untuk detail penuh.
 > **Tidak retroaktif** — hanya berlaku upload/import BARU setelah fix ini.
 
 1. **MinIO Asset Downloader Worker**:
@@ -1699,8 +1700,8 @@ pendekatan ini dengan percaya diri.
   (tidak ada isu versi untuk yang terakhir ini, dependency baru murni).
 - **Bug berulang ditemukan**: `bun add ... --filter=@jalajogja/web` KEMBALI salah menaruh
   ketiga dependency ini di root `package.json`, bukan `apps/web/package.json` — persis kelas bug
-  yang sudah didokumentasikan sebelumnya untuk `recharts` (CLAUDE.md `[2026-07-16] Bug deploy
-  kedua`). Diperbaiki manual: 3 entri dipindah dari root ke `apps/web/package.json` (posisi
+  yang sudah didokumentasikan sebelumnya untuk `recharts` (`docs/lessons-learned.md` — "Date
+  object di raw sql template lolos tsc+build, crash cuma saat runtime"). Diperbaiki manual: 3 entri dipindah dari root ke `apps/web/package.json` (posisi
   alfabetis yang benar), `bun install` ulang untuk sinkronkan lockfile, dikonfirmasi ulang ketiga
   dependency tetap resolve dari `apps/web` (`bun -e 'import(...)'` per paket, semua OK). **Aturan
   lama ditegaskan lagi**: `--filter=` TIDAK BOLEH dipercaya buta — SELALU `git diff package.json`

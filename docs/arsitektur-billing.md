@@ -992,8 +992,9 @@ lewat jalur manapun.
 
 Setelah kode di atas "SELESAI" dari sisi implementasi, testing manual di dev machine lokal
 menemukan 4 bug nyata (di luar bug data lokal terpisah, lihat bagian "Bug Lokal — Bukan Bug
-Kode" di bawah). Lesson lengkap: CLAUDE.md "[2026-07-19] Fitur Cicilan — 4 Bug Ditemukan Saat
-Testing Manual".
+Kode" di bawah). Lesson lengkap: `docs/lessons-learned.md` — ""Hari ini" via
+new Date().toISOString() selalu salah jam 00:00-06:59 WIB; state dari prop via useState tidak
+auto-sync setelah router.refresh()".
 
 1. **Termin 1 langsung "Terlambat" begitu invoice baru saja dikonversi** —
    `convertInvoiceToInstallmentAction` menghitung "hari ini" via `new Date().toISOString()`
@@ -1050,8 +1051,9 @@ seperti ini sebelum asumsi cuma kurang migration `ADD COLUMN`.
 
 ### Timezone — Semua Perhitungan Tanggal Mengikuti Setting Tenant (SELESAI, 2026-07-19)
 
-> Detail lengkap (root cause, desain helper, cakupan fix di modul Event+Invoice): CLAUDE.md
-> "[2026-07-19] Arsitektur Timezone Tenant — Akhirnya Benar-Benar Dipakai".
+> Detail lengkap (root cause, desain helper, cakupan fix di modul Event+Invoice):
+> `docs/lessons-learned.md` — ""Hari ini" via new Date().toISOString() selalu salah jam
+> 00:00-06:59 WIB; state dari prop via useState tidak auto-sync setelah router.refresh()".
 
 Audit lanjutan dari 4 bug cicilan di atas menemukan pola yang sama berulang di banyak tempat:
 default `dueDate` invoice (+3 hari, 3 lokasi duplikat: `createLinkedInvoice`, `checkoutAction`,
@@ -1126,7 +1128,8 @@ body: file (image/jpeg|png|webp|heic, maks 8 MB)
   konversi ke WebP (`.rotate()` auto-orientasi EXIF + `.resize(1600,1600,{fit:"inside"})` +
   `.webp({quality:85})`). Alasan: HEIC bisa berhasil ter-upload tapi tidak native-viewable di
   kebanyakan browser desktop — admin melihat "tidak ada bukti" meski `proofUrl` valid tersimpan.
-  Lihat lesson CLAUDE.md `[2026-07-18] Bug: Bukti Transfer Gagal Upload Diam-Diam`.
+  Lihat `docs/lessons-learned.md` — "Upload file dari sumber tak terkontrol — jangan percaya
+  file.type/ekstensi, decode isi byte".
 - File disimpan ke MinIO bucket `tenant-{slug}` di path `payments/{invoiceId}/{uuid}.webp` (selalu
   `.webp`, format input asli tidak lagi relevan setelah konversi)
 - Response: `{ url: string }` — URL lengkap MinIO
@@ -1165,8 +1168,8 @@ body: file (image/jpeg|png|webp|heic, maks 8 MB)
 
 ### Concurrency Safety — Lock + Re-check Wajib di Semua Aksi Status-Changing
 
-> **Status: SELESAI — audit + fix 2026-07-18.** Detail lengkap tiap temuan: lesson CLAUDE.md
-> "Audit Proaktif — 4 Race Condition Ditemukan".
+> **Status: SELESAI — audit + fix 2026-07-18.** Detail lengkap tiap temuan: `docs/lessons-learned.md`
+> — "Guard status harus diulang setelah lock, client harus refresh setelah mutasi — pola berulang ke-4".
 
 Semua aksi yang mengubah `payments.status` atau `invoices.status`/`paidAmount` WAJIB pola ini:
 1. SELECT biasa di luar transaction — cuma early-exit UX cepat (pesan error tanpa nunggu lock)
@@ -1195,7 +1198,7 @@ Lightbox juga tersedia di halaman invoice publik `/{slug}/invoice/{id}`:
 ### Admin Edit Bukti Transfer + Metadata Payment
 
 > **Status: SELESAI — 2026-07-18.** Diminta user setelah insiden bukti transfer gagal terlampir
-> (bug HEIC, lihat lesson CLAUDE.md di atas) — sebagai jalan recovery kalau kejadian serupa
+> (bug HEIC, lihat `docs/lessons-learned.md` di atas) — sebagai jalan recovery kalau kejadian serupa
 > terulang: admin bisa tambah/ganti bukti transfer dan koreksi data pengirim langsung dari
 > halaman invoice, tanpa perlu minta customer submit ulang dari nol.
 

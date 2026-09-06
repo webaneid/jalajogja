@@ -799,7 +799,9 @@ komponennya sudah generik, nol perubahan diperlukan):
 - Anggota baru bulan ini — `COUNT(*) FROM members WHERE createdAt >= awal_bulan_ini` — WAJIB
   pakai anchor kalender WIB (`anchorTodayUtc()`/pola timezone yang sudah dikunci berkali-kali
   di project ini), BUKAN `new Date()` mentah yang bisa geser 1 hari di jam-jam awal WIB (lihat
-  lesson lama "Bug Kritis Import Anggota" / rangkaian bug WIB-vs-UTC lain di CLAUDE.md).
+  `docs/lessons-learned.md` — "Bug: baris 'duplicate' ikut membuat member baru ganda karena gate
+  logic tidak menutup semua skenario" dan ""Hari ini" via new Date().toISOString() selalu salah
+  jam 00:00-06:59 WIB").
 
 **B. Breakdown jumlah tenant per tipe** — bar list kecil (cabang/marhalah/forum/pusat),
 `GROUP BY tenant_type`, urutan tetap sesuai `TENANT_TYPES` (bukan hasil `COUNT` descending,

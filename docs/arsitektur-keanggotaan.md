@@ -420,6 +420,6 @@ Keanggotaan Forum (§ "Nomor Keanggotaan Lokal Forum" di `docs/arsitektur-backbo
 Guard ditambahkan di 3 dari 4 titik di atas (poin 1/2/4 — required + range 1920/1950–tahun
 berjalan, tolak kalau di luar itu); titik ke-3 (Bulk Import) SUDAH punya guard setara sejak
 lama (`parseGraduationYear()` di `lib/import-anggota-mapping.ts`, reject <1950 atau >tahun
-berjalan → `null`, ditandai tidak match di preview). Detail lengkap: lesson CLAUDE.md
-`[2026-07-28] Guard Tahun Lulus KMI`.
+berjalan → `null`, ditandai tidak match di preview). Detail lengkap: `docs/lessons-learned.md`
+— "Guard validasi field wajib diperiksa di SEMUA jalur input, bukan cuma yang disebut user".
 

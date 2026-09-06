@@ -162,6 +162,34 @@ pasca-login) — **jangan diduplikasi di sini**, referensi utamanya:
 - `docs/arsitektur-keanggotaan.md` — identitas global anggota lintas tenant
 - `docs/arsitektur-akun.md` — 3 level akses (Pengurus/Anggota/Publik) + routing
 
+## Peta Dokumen Tambahan
+> Topik-topik ini tidak punya section tersendiri di atas — kalau task menyangkut salah satu,
+> baca file-nya langsung, jangan asumsikan "belum ada dokumentasinya".
+
+| Topik | Dokumen |
+|---|---|
+| Add-on Ongkos Kirim (RajaOngkir, dropship mitra) | `docs/arsitektur-addon-ongkir.md` |
+| Section landing "CTA" | `docs/arsitektur-cta-section.md` |
+| Section landing "Keunggulan/Layanan" | `docs/arsitektur-keunggulan-section.md` |
+| Section landing "Tentang Kami" | `docs/arsitektur-tentang-kami-section.md` |
+| `SectionTitleBlock` (blok judul standar semua section) | `docs/arsitektur-section-title-block.md` |
+| Alur front-end donasi publik (detail, bukan skema) | `docs/arsitektur-donasi-alur.md` |
+| Editor Tiptap & Content Renderer Universal | `docs/arsitektur-editor.md` |
+| Ekosistem Sinergi Anggota (interkoneksi Usaha/Profesional/Pesantren) | `docs/arsitektur-ekosistem.md` |
+| Bergabung ke tenant tipe Forum (pendaftaran) | `docs/arsitektur-gabung-forum.md` |
+| Header & footer publik (semua desain) | `docs/arsitektur-header-footer-publik.md` |
+| Import Anggota bulk (Excel/CSV) | `docs/arsitektur-import-anggota.md` |
+| Import/Export Post WordPress (WXR) | `docs/arsitektur-import-export-post-wordpress.md` |
+| Koneksi Instagram otomatis (Graph API) | `docs/arsitektur-instagram-embed.md` |
+| Integrasi KBLI (klasifikasi usaha) — perencanaan, belum dieksekusi | `docs/arsitektur-integrasi-kbli.md` |
+| Mobile shell (header global, sticky bar, aturan spacer) | `docs/arsitektur-mobile-shell.md` |
+| Penulis & Editor Post (byline system) | `docs/arsitektur-penulis-post.md` |
+| Data Pesantren anggota | `docs/arsitektur-pesantren.md` |
+| Data Profesional anggota — perencanaan, belum dieksekusi | `docs/arsitektur-profesional.md` |
+| Role & User Management (custom role, permission matrix) | `docs/arsitektur-role-user.md` |
+| Taksonomi bidang usaha spesifik/sub-sektor | `docs/arsitektur-usaha-taxonomy-gemini.md` |
+| Data Usaha anggota (`/akun/usaha`) | `docs/arsitektur-usaha.md` |
+
 ## Arsitektur Website (Dashboard CMS + Front-end Publik)
 > **Peta/indeks SEMUA dokumen front-end publik** (header, footer, landing, post, card+section,
 > direktori, akun, SEO, gallery, dll — 14 dokumen dirangkai jadi satu peta rute + struktur file):

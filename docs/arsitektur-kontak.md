@@ -145,8 +145,10 @@ export function toWaDigits(raw: string | null | undefined): string {
 `packages/db/src/helpers/billing.ts` (`createLinkedInvoice()` — dipakai bersama oleh
 Toko/Donasi/Event untuk membuat invoice universal) butuh normalisasi phone juga, tapi
 `packages/db` **tidak boleh** mengimpor `apps/web/lib/phone.ts` — package itu harus tetap
-zero-dependency ke `@jalajogja/db` supaya aman dipakai client component (lihat lesson
-`tenant-timezone.ts` di CLAUDE.md soal Postgres client bocor ke client bundle).
+zero-dependency ke `@jalajogja/db` supaya aman dipakai client component (lihat
+`docs/lessons-learned.md` — "File lib/*.ts yang dipakai client DAN server wajib di-split .ts
+(pure) + .server.ts (DB-touching)", soal `tenant-timezone.ts` Postgres client bocor ke client
+bundle).
 
 Solusinya: `packages/db/src/helpers/phone.ts` — duplikasi minimal `normalizePhone()` SAJA
 (bukan `displayPhone`/`toWaDigits`, karena `packages/db` tidak butuh itu), dipakai hanya

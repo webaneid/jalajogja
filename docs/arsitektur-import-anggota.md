@@ -543,7 +543,9 @@ checkbox skip, karena bisa jadi memang 2 orang berbeda berbagi 1 nomor keluarga.
 **Race condition — double-submit tombol "Import N Anggota"**: `commitImportAction`
 sebelumnya SELECT lalu cek `status !== "draft"` sebelum memproses — pola "cek di luar
 transaction, cuma early-exit UX" yang sudah berkali-kali jadi sumber race condition di project
-ini (checkout, payment confirm, event registration — lihat lesson CLAUDE.md terkait). Kalau
+ini (checkout, payment confirm, event registration — lihat `docs/lessons-learned.md`, "Guard
+status harus diulang setelah lock..." dan "Guard 'sudah ada sebelumnya' harus diulang di dalam
+transaction..."). Kalau
 admin klik dua kali cepat (atau dua tab), kedua request bisa lolos cek yang sama dan memproses
 749 baris yang sama dua kali. **Fix**: diganti klaim atomic (`UPDATE import_batches SET
 status='committed' WHERE id=X AND status='draft' RETURNING id`) — hanya SATU request yang bisa

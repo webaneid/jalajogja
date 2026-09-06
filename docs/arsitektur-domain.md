@@ -209,8 +209,8 @@ Sebelumnya pola `isOwnHost(host) ? "/${slug}" : ""` dihitung ulang secara indepe
 (server component + client component dengan pola `useState`+`useEffect` yang setara) di seluruh
 `app/(public)/[tenant]/**`. Tidak ada satu sumber kebenaran/helper bersama — setiap halaman baru
 mengulang komputasi sendiri, konsisten dengan pola bug yang berulang beberapa kali di histori
-project (lesson CLAUDE.md "Bug Sistemik: `href="../"` di 6 Halaman", "Custom Domain Harus
-Diisolasi", dst).
+project (`docs/lessons-learned.md` — `href="../"` mengikuti matematika RFC 3986, bukan intuisi
+"naik satu level", dst).
 
 **Fix**: dua helper baru —
 - `lib/resolve-base-url.ts` — `resolveBaseUrl(slug)`, server-only (pakai `next/headers`). Sekalian
@@ -508,8 +508,8 @@ kemungkinan sisa draft desain awal yang tidak pernah diupdate seiring project be
 
 ### 8.5 Rencana "Fase 5" lama (`docs/rencana-migrasi-url.md`, dihapus 2026-08-25) — kontradiksi internal, tidak pernah diadopsi
 
-Dokumen lama itu (Fase 1-4-nya sudah lama selesai dan riwayatnya tercatat penuh di lesson
-CLAUDE.md — lihat `[2025-05] Migrasi URL Admin — Lessons Learned`) mengusulkan admin subdomain
+Dokumen lama itu (Fase 1-4-nya sudah lama selesai dan riwayatnya tercatat penuh di
+`docs/lessons-learned.md` — "4 gotcha migrasi URL admin `/{slug}/*` → `/app/{slug}/*`") mengusulkan admin subdomain
 (`admin.{customdomain}`) via **Cloudflare orange-cloud proxy** untuk SSL-nya — ini **bertentangan
 langsung** dengan seluruh pendekatan custom domain yang sudah berjalan (§ 6: DNS-only/grey-cloud,
 SSL manual via Certbot di VPS, bukan Cloudflare). Proposal itu tidak pernah dieksekusi — solusi
