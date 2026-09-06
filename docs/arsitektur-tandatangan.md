@@ -119,6 +119,21 @@ State halaman yang mungkin:
 
 ## 3. Perubahan Data Model
 
+### Fondasi: `divisions` + `officers` (Modul Pengurus)
+```sql
+divisions   -- hierarkis self-referential (parent_id FK ke diri sendiri), kode singkatan (SEKR, BEND, dll)
+officers    -- FK cross-schema ke public.members (bukan tenant members), can_sign flag untuk penandatangan resmi
+```
+**Keputusan desain yang dikunci:**
+- QR Code verifikasi: hash di-generate **saat officer menandatangani** (`letter_id + officer_id + timestamp`), bukan stored di officer table.
+- Layout TTD **tidak di-hardcode** — posisi QR Code bebas ditempatkan di template surat oleh admin.
+- Info di QR Code: nama + jabatan + divisi + tanggal (bukan data sensitif).
+- `deleteOfficerAction` diblokir jika officer sudah punya `letter_signatures` — gunakan toggle non-aktif saja.
+- `deleteDivisionAction` diblokir jika masih ada officer di divisi.
+- `can_sign` menentukan siapa yang boleh diisi ke slot tanda tangan digital — beda dari `isActive`
+  yang menentukan siapa yang boleh muncul di dropdown "Yang Mengeluarkan" surat (lihat
+  `docs/arsitektur-modul-surat.md` § "Officer / Penandatangan").
+
 ### Tabel `letters` — 2 kolom baru
 
 ```sql
@@ -143,7 +158,8 @@ slot_section    TEXT     NULLABLE
 signing_token   TEXT     UNIQUE NULLABLE
   -- UUID untuk URL publik /{slug}/sign/{token}
   -- null = tidak diundang via link (TTD langsung dari dashboard)
-  -- dikosongkan setelah TTD berhasil (prevent reuse)
+  -- TIDAK dikosongkan setelah TTD berhasil (lihat ralat di § 10) — link tetap bisa diakses
+  -- untuk melihat konfirmasi TTD; reuse dicegah oleh guard signed_at, bukan nullifikasi token
 ```
 
 **Kolom yang diubah menjadi nullable** (saat ini NOT NULL):
@@ -245,6 +261,16 @@ Tidak ada combobox assign di detail page. Assignment dilakukan di edit page.
 - `components/letters/signing-page-client.tsx` — tombol TTD + QR setelah berhasil
 - `signByTokenAction` ada di `letters/actions.ts` (bukan file terpisah)
 
+**QR optimistic update caveat:** QR di-generate server-side (Node.js) saat halaman detail
+dimuat. Setelah officer sign (optimistic update via client), QR tidak tersedia langsung —
+tampilkan placeholder. QR baru muncul setelah halaman di-refresh (server render ulang).
+
+**Halaman verifikasi (`/verify/[hash]`, pola sama untuk `/sign/[token]`): tampilkan "invalid"
+bukan 404.** Kalau hash/token tidak ditemukan, jangan `notFound()` — itu membingungkan (hash bisa
+dipalsukan atau surat sudah diedit, bukan berarti halaman tidak ada). Tampilkan halaman
+informatif "Tanda Tangan Tidak Valid" / "Tautan Tidak Valid". `notFound()` hanya untuk tenant
+yang tidak ada/tidak aktif.
+
 ---
 
 ## 6. Perubahan PDF Rendering (letter-html.ts)
@@ -263,8 +289,15 @@ Perlu: render berdasarkan `signature_layout`.
 | `double-with-witnesses` | baris utama 2 slot + label "Saksi:" + grid 3 kolom untuk witness slots |
 
 **Aturan render slot di PDF:**
-- Slot yang sudah `signed_at IS NOT NULL` → tampilkan QR + nama + jabatan + tanggal (jika `signature_show_date`)
+- Slot yang sudah `signed_at IS NOT NULL` → tampilkan QR + nama + jabatan
 - Slot yang belum TTD → tampilkan nama + jabatan, spasi kosong sebagai pengganti QR (garis `___`)
+
+> **Ralat**: Tanggal TTD **TIDAK PERNAH ditampilkan di PDF**, terlepas dari setting
+> `signature_show_date` — `lib/letter-html.ts` hardcode `showDate: false` ke `renderSignatureBlockHtml()`
+> saat generate PDF (dikonfirmasi ke kode langsung, keputusan disengaja bukan bug). Setting
+> `signature_show_date` HANYA memengaruhi preview di dashboard (`letters/keluar/[id]/page.tsx`,
+> `letters/nota/[id]/page.tsx`, `letter-form.tsx`/`letter-template-form.tsx` meneruskan
+> `signatureShowDate` ke `<SignatureBlock>`) — bukan hasil PDF yang benar-benar diunduh/dikirim.
 
 **Aturan format tanggal di blok TTD:**
 Format tanggal TTD **tidak punya setting sendiri** — selalu pakai `letter_config` dari pengaturan surat:
@@ -519,7 +552,9 @@ Semua fitur arsitektur TTD telah diimplementasikan. Tidak ada item yang pending.
 
 [Officer Sign via URL]
   → /(public)/[tenant]/sign/[token]
-  → signByTokenAction: cek expiry → insert hash → clear token
+  → signByTokenAction: cek expiry → insert hash → signing_token TIDAK di-clear (ralat: token
+    dipertahankan supaya link tetap bisa diakses untuk lihat konfirmasi TTD; double-sign dicegah
+    via guard signed_at, bukan nullifikasi token — lihat § 3)
   → QR verify URL muncul setelah TTD
 
 [PDF Generate]

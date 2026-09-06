@@ -38,10 +38,11 @@ Setiap klaim dicek dengan salah satu dari:
 - **Baca file langsung** (`Read`) — untuk memahami logic persis, bukan menebak dari nama file.
 - **Grep terarah** — untuk konfirmasi pola dipakai/tidak dipakai di seluruh codebase (bukan
   cuma 1 contoh yang kebetulan cocok).
-- **Cross-check terhadap dokumentasi/lesson yang sudah ada** (`CLAUDE.md`) — kalau sebuah
-  masalah SUDAH pernah ditemukan+difix sebelumnya (mis. bug 404 bot/scraper generateMetadata,
-  lesson `[2026-05] Bot/Scraper Errors`), itu jadi konteks penting apakah temuan baru ini
-  tumpang tindih atau benar-benar baru.
+- **Cross-check terhadap dokumentasi/lesson yang sudah ada** (`docs/lessons-learned.md`) — kalau
+  sebuah masalah SUDAH pernah ditemukan+difix sebelumnya (mis. bug 404 bot/scraper
+  generateMetadata, `## [2026-08-31] Guard "tenant exists" wajib diaudit ke SEMUA titik
+  pemanggilan...`), itu jadi konteks penting apakah temuan baru ini tumpang tindih atau
+  benar-benar baru.
 
 Yang **TIDAK BISA diverifikasi** dari sesi ini (dan kenapa) ditandai eksplisit — bukan
 diasumsikan benar/salah tanpa bukti.

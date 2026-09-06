@@ -3,7 +3,7 @@
 > **Dokumen terkait:**
 > - `docs/arsitektur-frontend-publik.md` § 2, § 12 — peta umum header/footer + aturan UI publik
 > - `docs/arsitektur-header-footer-publik.md` — katalog desain header/footer
-> - CLAUDE.md § Lessons Learned tanggal 2026-07-18 s/d 2026-07-20 — riwayat kronologis penemuan
+> - `docs/lessons-learned.md` entri tanggal 2026-07-18 s/d 2026-07-20 — riwayat kronologis penemuan
 >   bug yang mendasari dokumen ini (baca kalau butuh konteks historis, BUKAN untuk operasional —
 >   dokumen ini adalah versi final/ringkas, ikuti § 5 dan § 8 di bawah untuk kerja sehari-hari)
 

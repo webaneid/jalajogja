@@ -1138,7 +1138,8 @@ yang BENAR untuk dipakai sekarang adalah SELURUH poin 1–5 di atas, bukan dafta
 - **`apps/web/components/akun/membership-eligibility-overlay.tsx`** (`MembershipEligibilityOverlay`,
   rename dari `ForumJoinOverlay`) — sudah menjalankan generalisasi PENUH: prop `isForum`
   (cabang/marhalah vs forum framing berbeda), `isJoined` (fix bug "sebelum dapat mendaftar" untuk
-  anggota yang sudah aktif — CLAUDE.md lesson `[2026-08-01]`), `directoryIncompleteModule` +
+  anggota yang sudah aktif — `docs/arsitektur-akun.md` § "Toggle Per-Tenant untuk Modul Ekosistem",
+  bagian "Susulan — bug ditemukan dari testing sungguhan"), `directoryIncompleteModule` +
   `enabledModules` (integrasi ekosistem toggle). 4 kondisi tombol sesuai § "Refinement
   ForumJoinOverlay" di atas, DITAMBAH pembedaan framing pesan `isJoined` yang belum ada saat
   refinement itu ditulis.

@@ -280,6 +280,22 @@ Audit dilakukan atas permintaan user setelah menerima ringkasan eksekusi dari ag
 klaim di ringkasan itu diverifikasi LANGSUNG ke kode (bukan dipercaya begitu saja), sesuai prinsip
 "CLAUDE.md adalah project brain, bukan source of truth — verifikasi ke kode aktual".
 
+### 5.0. Konteks Dasar: `RenderContext.imageBaseUrl` untuk Gambar Inline Tiptap
+
+`lib/letter-render.ts` punya `RenderContext { imageBaseUrl? }` + helper `fixImageSrc()` yang
+menangani dua kasus di `<img src>` dalam konten Tiptap: (1) path relatif hasil upload, dan (2)
+URL localhost/127.0.0.1 yang tertinggal dari development, di-replace ke URL production. Signature
+`renderBody(body, { imageBaseUrl })` backward-compatible (param opsional).
+
+Pola pemanggilan standar di semua halaman yang me-render konten Tiptap:
+```typescript
+const imageBaseUrl = `${process.env.MINIO_PUBLIC_URL ?? "https://minio.jalakarta.com"}/tenant-${slug}`;
+const html = renderBody(post.content, { imageBaseUrl });
+```
+Dipakai di: `post/[slug]`, `campaign/[slug]`, `produk/[slug]`, `agenda/[slug]`. Field ini sudah ada
+SEBELUM `tenantSlug`/`baseUrl` (§ 5.1 di bawah) ditambahkan untuk kasus link internal "Baca
+Juga" — keduanya sekarang hidup berdampingan di `RenderContext` yang sama.
+
 ### 5.1. Bug Data-Breaking: Link Internal "Baca Juga" Rusak di Custom Domain (SUDAH DIFIX)
 
 `RelatedLinkDialog` (toolbar) memakai `<PublicLinkPicker>` yang — sesuai kontraknya
@@ -449,4 +465,22 @@ diverifikasi visual di browser** — user diminta coba: buka dialog "Baca Juga",
 donasi/event by judul (konfirmasi klarifikasi § "false alarm" di atas), pilih satu, cek field
 "Judul Artikel / Tautan" langsung terisi otomatis; ketik Label Awalan custom; pilih/paste URL
 yang sangat panjang, cek popup tidak melebar/overflow.
+
+---
+
+## 7. Tiptap v3 — Gotcha Teknis Dasar (migrasi dari v2)
+
+- `BubbleMenu` pindah subpath: `@tiptap/react/menus` (bukan `@tiptap/react` langsung).
+- `immediatelyRender: false` wajib di config editor untuk Next.js SSR (App Router).
+- Named import untuk extension bawaan: `{ TextStyle }`, `{ Table }` (bukan default import).
+- Tidak ada `tippyOptions` lagi — ganti Floating UI: `options={{ placement: "top" }}`.
+- `setContent(parsed)` tanpa argument kedua (signature lama menerimanya, v3 tidak).
+- oEmbed universal via `noembed.com/embed?url=` — support 300+ platform, tidak perlu package
+  tambahan per-platform.
+- `EmbedBlockView`: `dangerouslySetInnerHTML` tidak re-execute tag `<script>` yang dikandungnya —
+  pakai `useEffect` untuk re-inject script secara manual (perlu untuk embed Twitter/Instagram
+  yang butuh script loader).
+- Preview konten embed (bukan editor aktif): jangan pakai `dangerouslySetInnerHTML` polos di
+  preview — pakai `<TiptapEditor editable={false}>` supaya React NodeView (termasuk logic
+  re-inject script di atas) tetap aktif.
 

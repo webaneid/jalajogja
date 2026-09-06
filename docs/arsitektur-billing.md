@@ -195,6 +195,20 @@ sort_order      INTEGER NOT NULL DEFAULT 0
 > untuk invoice manual admin).** `invoices.discount` TIDAK PERNAH diisi oleh alur voucher — lihat
 > `docs/arsitektur-voucher.md` untuk alasan dan alur lengkap.
 
+> **Invariant: halaman admin yang di-scope ke SATU domain (Toko/Event/Donasi) TIDAK BOLEH
+> menampilkan `invoices.total` mentah sebagai nominal.** Karena arsitektur cart universal
+> sengaja mengizinkan satu invoice mencampur item lintas-domain (produk+tiket+donasi dalam satu
+> checkout), kolom nominal di halaman admin yang di-scope ke satu domain WAJIB dihitung ulang
+> dari `invoice_items` yang difilter `itemType` domain itu (`SUM(invoice_items.total) WHERE
+> itemType='product'`, ditambah `SUM(invoice_shipping_lines.cost)` untuk shipping yang selalu
+> domain produk) — bukan percaya `invoices.total` penuh, meski filter WHERE halaman itu sendiri
+> sudah benar memilih baris invoice yang relevan. "Invoice yang relevan" ≠ "nominal invoice itu
+> seluruhnya relevan". Pengecualian sah: halaman detail invoice/fulfillment yang MEMANG
+> menampilkan tabel itemized penuh sebelum baris total (transparan by design) — contoh:
+> `pesanan/invoice/[invoiceId]/page.tsx`. Kasus nyata (2026-08-15): `/toko/pesanan` list sempat
+> menampilkan total invoice campuran produk+tiket event sebagai "Total" — dihitung ulang jadi
+> "Total Produk" via 2 query agregat `GROUP BY invoiceId`.
+
 ### `invoice_payments`
 
 Tabel junction antara invoice dan payments. Satu invoice bisa punya banyak
@@ -978,8 +992,9 @@ lewat jalur manapun.
 
 Setelah kode di atas "SELESAI" dari sisi implementasi, testing manual di dev machine lokal
 menemukan 4 bug nyata (di luar bug data lokal terpisah, lihat bagian "Bug Lokal — Bukan Bug
-Kode" di bawah). Lesson lengkap: CLAUDE.md "[2026-07-19] Fitur Cicilan — 4 Bug Ditemukan Saat
-Testing Manual".
+Kode" di bawah). Lesson lengkap: `docs/lessons-learned.md` — ""Hari ini" via
+new Date().toISOString() selalu salah jam 00:00-06:59 WIB; state dari prop via useState tidak
+auto-sync setelah router.refresh()".
 
 1. **Termin 1 langsung "Terlambat" begitu invoice baru saja dikonversi** —
    `convertInvoiceToInstallmentAction` menghitung "hari ini" via `new Date().toISOString()`
@@ -1036,8 +1051,9 @@ seperti ini sebelum asumsi cuma kurang migration `ADD COLUMN`.
 
 ### Timezone — Semua Perhitungan Tanggal Mengikuti Setting Tenant (SELESAI, 2026-07-19)
 
-> Detail lengkap (root cause, desain helper, cakupan fix di modul Event+Invoice): CLAUDE.md
-> "[2026-07-19] Arsitektur Timezone Tenant — Akhirnya Benar-Benar Dipakai".
+> Detail lengkap (root cause, desain helper, cakupan fix di modul Event+Invoice):
+> `docs/lessons-learned.md` — ""Hari ini" via new Date().toISOString() selalu salah jam
+> 00:00-06:59 WIB; state dari prop via useState tidak auto-sync setelah router.refresh()".
 
 Audit lanjutan dari 4 bug cicilan di atas menemukan pola yang sama berulang di banyak tempat:
 default `dueDate` invoice (+3 hari, 3 lokasi duplikat: `createLinkedInvoice`, `checkoutAction`,
@@ -1112,7 +1128,8 @@ body: file (image/jpeg|png|webp|heic, maks 8 MB)
   konversi ke WebP (`.rotate()` auto-orientasi EXIF + `.resize(1600,1600,{fit:"inside"})` +
   `.webp({quality:85})`). Alasan: HEIC bisa berhasil ter-upload tapi tidak native-viewable di
   kebanyakan browser desktop — admin melihat "tidak ada bukti" meski `proofUrl` valid tersimpan.
-  Lihat lesson CLAUDE.md `[2026-07-18] Bug: Bukti Transfer Gagal Upload Diam-Diam`.
+  Lihat `docs/lessons-learned.md` — "Upload file dari sumber tak terkontrol — jangan percaya
+  file.type/ekstensi, decode isi byte".
 - File disimpan ke MinIO bucket `tenant-{slug}` di path `payments/{invoiceId}/{uuid}.webp` (selalu
   `.webp`, format input asli tidak lagi relevan setelah konversi)
 - Response: `{ url: string }` — URL lengkap MinIO
@@ -1151,8 +1168,8 @@ body: file (image/jpeg|png|webp|heic, maks 8 MB)
 
 ### Concurrency Safety — Lock + Re-check Wajib di Semua Aksi Status-Changing
 
-> **Status: SELESAI — audit + fix 2026-07-18.** Detail lengkap tiap temuan: lesson CLAUDE.md
-> "Audit Proaktif — 4 Race Condition Ditemukan".
+> **Status: SELESAI — audit + fix 2026-07-18.** Detail lengkap tiap temuan: `docs/lessons-learned.md`
+> — "Guard status harus diulang setelah lock, client harus refresh setelah mutasi — pola berulang ke-4".
 
 Semua aksi yang mengubah `payments.status` atau `invoices.status`/`paidAmount` WAJIB pola ini:
 1. SELECT biasa di luar transaction — cuma early-exit UX cepat (pesan error tanpa nunggu lock)
@@ -1181,7 +1198,7 @@ Lightbox juga tersedia di halaman invoice publik `/{slug}/invoice/{id}`:
 ### Admin Edit Bukti Transfer + Metadata Payment
 
 > **Status: SELESAI — 2026-07-18.** Diminta user setelah insiden bukti transfer gagal terlampir
-> (bug HEIC, lihat lesson CLAUDE.md di atas) — sebagai jalan recovery kalau kejadian serupa
+> (bug HEIC, lihat `docs/lessons-learned.md` di atas) — sebagai jalan recovery kalau kejadian serupa
 > terulang: admin bisa tambah/ganti bukti transfer dan koreksi data pengirim langsung dari
 > halaman invoice, tanpa perlu minta customer submit ulang dari nol.
 
@@ -1849,6 +1866,17 @@ di-backport ke data lain, murni cleanup test data lokal.
       lengkap di CLAUDE.md § Technical Debt. **Belum dijadwalkan eksekusi.**
 
 ---
+
+> **Prinsip Billing Universal — jangan pernah split list transaksi per jalur masuk.** Semua
+> transaksi dari jalur manapun (admin/front-end/API) idealnya tampil dalam SATU list (query dari
+> `invoices` sebagai sumber utama, filter via `sourceType`/`item_type`, badge visual kalau perlu
+> dibedakan) — bukan dua section terpisah untuk data yang sama. **Ralat terhadap klaim lama:**
+> catatan sebelumnya (CLAUDE.md, 2026-05) mengklaim `/toko/pesanan` sudah "difix" dari pola
+> dua-tabel (`orders` lama + "Pesanan via Keranjang" dari `invoices`) — ternyata TIDAK akurat
+> untuk halaman ini. `docs/arsitektur-fulfillment.md` § 4 (List Pesanan) dan § 15 di bawah
+> (2026-09-04) sama-sama mengonfirmasi `/toko/pesanan/page.tsx` MASIH dua tabel terpisah saat ini
+> — prinsipnya tetap valid sebagai tujuan arsitektur, tapi contoh "sudah difix" itu keliru untuk
+> kasus spesifik ini. § 15 di bawah adalah rencana yang belum dieksekusi untuk menyatukannya.
 
 ## 15. [PERENCANAAN — BELUM DIEKSEKUSI] Unifikasi Invoice Manual Admin — Variasi Produk + Pengiriman
 

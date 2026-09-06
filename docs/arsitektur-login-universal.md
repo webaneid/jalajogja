@@ -414,7 +414,10 @@ if (!session?.user) redirect(`/${slug}/login?redirect=/${slug}/akun`);
 ### Client component (login/register/forgot-password)
 ```typescript
 import { authClient } from "@/lib/auth-client";
-// signIn, forgetPassword, resetPassword via Better Auth client
+// signIn, resetPassword via Better Auth client — TIDAK forgetPassword(), method itu
+// tidak ada di versi Better Auth yang dipakai project ini. Permintaan reset password
+// (jalur email fallback) pakai direct fetch POST /api/auth/request-password-reset,
+// bukan method client — lihat § "Halaman Lupa Password" untuk alur lengkap.
 ```
 
 ---
@@ -506,6 +509,39 @@ Redirect langsung ke `/app/${slug}/dashboard` tanpa cek ini menyebabkan loop:
 pengurus non-anggota → admin layout cek tenant.users → redirect `/app/login`
 → middleware: ada session → `/dashboard-redirect` → `getFirstTenantForUser()` null
 → `/register?error=no-tenant` → loop.
+
+> **Update (2026-07-25): tujuan akhir redirect "sesi valid, tanpa akses tenant mana pun" BUKAN
+> LAGI `/register?error=no-tenant`.** Alur lengkap: `(dashboard)/app/[tenant]/layout.tsx`'s
+> `getTenantAccess(slug)` null → `redirect("/dashboard-redirect")` → `getFirstTenantForUser()`
+> null (akun ini tidak punya `tenant.users` di tenant mana pun) → sekarang
+> `redirect("/no-tenant-access")` (bukan `/register?error=no-tenant` lagi).
+>
+> **Kenapa bukan redirect ke `/app/login`**: middleware punya aturan
+> `if (pathname === "/app/login" && isLoggedIn) redirect("/dashboard-redirect")` (mencegah user
+> yang sudah login melihat form login lagi). Kalau `/dashboard-redirect` mengarahkan balik ke
+> `/app/login` untuk kasus "sesi valid tanpa akses tenant", middleware akan lempar balik ke
+> `/dashboard-redirect` lagi — infinite loop. Solusinya harus berupa halaman yang berada DI LUAR
+> `/app/*` sehingga tidak kena aturan bounce-back manapun.
+>
+> **Halaman baru `app/no-tenant-access/page.tsx`** (di luar `/app/*`) — menampilkan email akun
+> yang sedang login + pesan "belum terdaftar sebagai pengurus di tenant mana pun, hubungi admin
+> platform" + tombol "Keluar & Coba Akun Lain" (`sign-out-button.tsx`, pakai
+> `window.location.href` setelah `signOut()`, bukan `router.push`).
+>
+> **`/register?error=no-tenant` handling DIHAPUS TOTAL** dari `(auth)/register/page.tsx` (sudah
+> 100% dead code sejak `REGISTRATION_OPEN=false` — pesan itu tidak pernah terlihat karena
+> short-circuit ke "Pendaftaran Ditutup" duluan).
+>
+> **Aturan umum**: setiap kali menambah/mengubah target redirect untuk kasus "sesi valid tapi
+> tidak diizinkan", wajib cek dulu apakah tujuan baru itu sendiri punya aturan redirect-balik
+> untuk kondisi "sudah login" — kalau ya, jangan arahkan ke situ, cari/buat tujuan yang netral
+> terhadap status login.
+>
+> Perbaikan terkait (murni UI admin platform): halaman `/platform/tenants/[slug]` sekarang
+> menampilkan section "Pengurus / Login Tenant" (nama+email+role tiap pengurus, join manual ke
+> `public.user` karena FK tidak didefinisikan Drizzle untuk tenant tables) — sebelumnya hanya cek
+> `hasOwner: boolean` tanpa detail.
+
 | `app/api/akun/profil/route.ts` | Tambah whatsapp di PATCH |
 | `app/(public)/[tenant]/login/page.tsx` | Tambah lupa password link, ubah redirect |
 | `app/(public)/[tenant]/register/page.tsx` | Tambah WA field + member lookup |

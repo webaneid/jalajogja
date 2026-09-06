@@ -18,8 +18,8 @@
 > **Bagian yang SALAH/USANG** (jangan diikuti — lihat koreksi inline di titik terkait di bawah):
 > Tahap 4.3 ("Build dan jalankan container" untuk app), bagian "Update aplikasi" &
 > "Restart service tertentu" di Maintenance, dan contoh nilai `jalajogja` di `.env.local`.
-> Untuk alur deploy kode sehari-hari yang BENAR, lihat `CLAUDE.md` lesson
-> `[2026-05] PM2 vs Docker — Pilih Satu, Jangan Keduanya`.
+> Untuk alur deploy kode sehari-hari yang BENAR, lihat `docs/lessons-learned.md` — "Keputusan
+> infra: PM2 (`next start`) untuk aplikasi, Docker HANYA untuk PostgreSQL+MinIO — jangan campur".
 
 **Spesifikasi:** Ubuntu 24.04 LTS, VPS Hostinger, domain via Cloudflare  
 **Stack:** Nginx (reverse proxy) + Docker Compose (PostgreSQL + MinIO saja) + PM2 (Next.js app) + Certbot (SSL)

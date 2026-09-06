@@ -120,6 +120,18 @@ export type PublicUser =
 Avatar: tidak ada kolom `avatarUrl` di `public.members` maupun `public.profiles` saat ini.
 Sementara pakai **inisial nama** (huruf pertama) sebagai fallback.
 
+### UserButton Dropdown — Dua Entry Point Berbeda Konteks
+- **"Akun Saya"** → `/{slug}/akun` — selalu tampil untuk semua user yang login (anggota/publik/pengurus).
+- **"Dashboard Admin"** → `/{slug}/dashboard` — hanya tampil jika user punya record di `tenant.users`
+  (dicek via `checkDashboardAccessAction(slug)`, server action ringan di
+  `app/(public)/[tenant]/actions.ts` — server actions untuk public layout, bukan per-route).
+
+`checkDashboardAccessAction` dipanggil di `useEffect` client-side saat `session.user.id`
+berubah — BUKAN di server layout — supaya `PublicLayout` tetap ISR-safe (tidak ada DB query
+saat render awal). Prinsip ini berlaku untuk semua data "apakah user punya akses X" yang
+sifatnya tambahan/opsional di header publik: fetch client-side setelah mount, jangan blokir ISR
+dengan query di server component layout.
+
 ---
 
 ## Desain 1: Flex Header (Default Baru)
