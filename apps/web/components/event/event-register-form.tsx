@@ -169,8 +169,16 @@ export function EventRegisterForm({
 }: EventRegisterFormProps) {
   // Routing ke cart jika ada linked items (campaign + produk → satu invoice)
   const hasLinkedItems = !!(donationPrompt || linkedProductId);
-  // Pilihan tiket
-  const [selectedTicketId, setSelectedTicketId] = useState<string>(tickets[0]?.id ?? "");
+  // Pilihan tiket — default ke tiket pertama yang TIDAK terkunci (kalau ada), supaya banner
+  // "tiket terkunci" di bawah tidak salah muncul hanya karena tiket pertama dalam urutan
+  // kebetulan yang terkunci sementara tiket lain masih bisa dibeli. Kartu terkunci memang tidak
+  // bisa diklik user (lihat render di bawah), jadi default awal ini satu-satunya kesempatan
+  // untuk memilih tiket yang valid. Fallback ke tickets[0] kalau semua tiket terkunci.
+  const [selectedTicketId, setSelectedTicketId] = useState<string>(
+    tickets.find((t) => !getTicketLock(t, baseUrl, currentUserIsEnrolled, registrationStatus).locked)?.id
+      ?? tickets[0]?.id
+      ?? ""
+  );
 
   // Form peserta — pre-filled dari session jika ada
   const [attendeeName,  setAttendeeName]  = useState(defaultAttendeeName);
@@ -416,39 +424,42 @@ export function EventRegisterForm({
                     </a>
                   )}
                 </div>
-              ) : (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setSelectedTicketId(t.id)}
-                  className={`w-full text-left rounded-lg border p-3 transition-colors ${
-                    selectedTicketId === t.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50 hover:bg-muted/30"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Ticket className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="font-medium text-sm truncate">{t.name}</span>
-                      {(t.requiresMembership || t.requiresRegistration) && (
-                        <span className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded-full font-medium">
-                          {t.requiresMembership ? "Anggota" : "Terdaftar"}
-                        </span>
-                      )}
+              ) : (() => {
+                const isSelected = selectedTicketId === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSelectedTicketId(t.id)}
+                    className={`w-full text-left rounded-lg border p-3 transition-colors ${
+                      isSelected
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border hover:border-primary/50 hover:bg-muted/30"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Ticket className={`h-4 w-4 shrink-0 ${isSelected ? "text-primary-foreground" : "text-muted-foreground"}`} />
+                        <span className="font-medium text-sm truncate">{t.name}</span>
+                        {(t.requiresMembership || t.requiresRegistration) && (
+                          <span className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded-full font-medium">
+                            {t.requiresMembership ? "Anggota" : "Terdaftar"}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-sm font-semibold shrink-0">
+                        {t.price <= 0 ? "Gratis" : formatRupiah(t.price)}
+                      </span>
                     </div>
-                    <span className="text-sm font-semibold shrink-0">
-                      {t.price <= 0 ? "Gratis" : formatRupiah(t.price)}
-                    </span>
-                  </div>
-                  {t.description && (
-                    <p className="mt-1 ml-6 text-xs text-muted-foreground">{t.description}</p>
-                  )}
-                  {t.quota !== null && (
-                    <p className="mt-0.5 ml-6 text-xs text-muted-foreground">Kuota: {t.quota} orang</p>
-                  )}
-                </button>
-              );
+                    {t.description && (
+                      <p className={`mt-1 ml-6 text-xs ${isSelected ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{t.description}</p>
+                    )}
+                    {t.quota !== null && (
+                      <p className={`mt-0.5 ml-6 text-xs ${isSelected ? "text-primary-foreground/80" : "text-muted-foreground"}`}>Kuota: {t.quota} orang</p>
+                    )}
+                  </button>
+                );
+              })();
             })}
           </div>
         </div>

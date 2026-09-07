@@ -26,6 +26,31 @@
 - Storage: MinIO (self-hosted)
 - Deploy: Docker + Nginx di VPS
 
+## Commands
+
+Package manager: **Bun** (workspaces `apps/*` + `packages/*`, jalankan `bun install` di root).
+
+```bash
+bun run dev                              # semua app via turbo dev
+bun run dev --filter=@jalajogja/web      # hanya web (port 6202, --turbopack)
+bun run build                            # turbo build semua workspace
+bun run lint                             # turbo lint (next lint di app web)
+bun run type-check                       # tsc --noEmit di semua workspace
+bun run clean                            # turbo clean + hapus semua node_modules
+```
+
+Database (Drizzle Kit, jalan dari `packages/db` atau via root — cek workspace aktif):
+```bash
+bun run db:generate   # generate migration dari schema
+bun run db:migrate    # jalankan migration
+bun run db:push       # push schema langsung (dev only, skip migration file)
+bun run db:studio     # buka Drizzle Studio
+```
+
+- **Tidak ada test suite** (belum ada Vitest/Jest/file test apapun di repo) — verifikasi lewat `type-check` + jalankan dev server + cek manual di browser.
+- Backup/restore DB manual: `scripts/backup-db.sh`, `scripts/restore-db.sh`.
+- `AGENTS.md` di root adalah salinan lama CLAUDE.md untuk Codex — **sudah basi** (mis. masih bilang `normalizePhone()` "belum dibuat"). Jangan jadikan acuan; kalau diupdate, source of truth tetap CLAUDE.md ini.
+
 ## Cara Claude Harus Bekerja
 1. SELALU jelaskan pendekatan dan risikonya sebelum menulis kode
 2. SELALU pertimbangkan implikasi multi-tenant di setiap keputusan
@@ -399,6 +424,7 @@ app/(dashboard)/[tenant]/
 - **Prinsip**: front-end pakai cart universal, admin pakai invoice manual — SATU infrastruktur. Fulfillment terpisah dari payment. Detail di `docs/arsitektur-billing.md` + `docs/arsitektur-fulfillment.md`.
 - [x] Donasi / Infaq — arsitektur di `docs/arsitektur-donasi.md` (schema + CRUD + SEO + kategori) + **Registry Desain Kartu Arsip** (setting bernomor "Desain 1/2/..." di `/donasi/pengaturan`, pola sama Hero/Strip Modul — setiap desain WAJIB grid desktop/list mobile, § 14m — § 14j dan § 14l dua putaran koreksi sebelumnya, keduanya superseded) + **Info Block Polimorfik** (slot info card yang beda per tipe campaign — progress bar vs harga+ketersediaan qurban, terbuka untuk sub-tipe qurban baru nanti seperti patungan/tabungan) — § 14k + **Desain 2 "Modern Capsule"** (card, sumber `design-refs/Bantuanku/`, donor count) — setting arsip adalah satu sumber kebenaran, section landing "Grid Donasi" otomatis ikut (bukan pilihan terpisah) — § 14o, § 14n ditandai superseded — sekalian fix bug pre-existing `CampaignsEditor` yang belum pernah punya picker Design Layout
 - [x] Event — arsitektur di `docs/arsitektur-event.md` — semua Step 1–6 selesai + fitur tiket wajib anggota (`requires_membership`, commit `4f3c185`) + **Tab Peserta & Statistik** (commit `9cf2b12`, migration 0023) + **E10 Donation Prompt UI** (routing kondisional cart vs direct, migration 0024+0025)
+- [~] **Event — Multi-Tiket per Transaksi (quantity + multi-peserta dalam satu checkout, integrasi custom form)** — RENCANA, baru dokumentasi (§ "RENCANA — Multi-Tiket per Transaksi" di `docs/arsitektur-event.md`), belum dieksekusi. Saat ini 1 registrasi = 1 tiket = 1 orang, tidak ada quantity.
 - [x] Dokumen — arsitektur di `docs/arsitektur-document.md` (schema + CRUD + versioning + PDF viewer + halaman publik)
 - [x] Role System & User Management — custom roles + permission matrix + `/settings/users` + `/settings/roles` + halaman undangan publik + 3 jalur aktivasi + **sidebar filtering + 10 module guards (selesai)**
 - [x] **Modul Akun Phase 1** — `public.profiles` schema + migrasi `profile_id` ke 4 tabel transaksi (invoices, orders, donations, event_registrations). TypeScript 0 errors. Tenant existing `pc-ikpm-jogjakarta` sudah dimigrasikan manual.

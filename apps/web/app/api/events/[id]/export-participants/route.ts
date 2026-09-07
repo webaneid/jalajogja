@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // jadi satu string, dipisah koma) — bukan cuma alamat detail. Kolom "Kabupaten" tetap ada
 // terpisah di sampingnya (redundant dengan sengaja, sesuai kebutuhan vendor).
 //
-// Filter peserta — DUA MODE:
+// Filter peserta — DUA MODE (independen, bisa dikombinasikan dengan ?ticketId= di bawah):
 //   - Default (tanpa ?all=1): HANYA status IN ('confirmed', 'attended') — konsisten dengan
 //     `isPaid` di event-registration-list.tsx.
 //   - `?all=1`: SEMUA registrasi tanpa filter status (termasuk 'pending' dan 'cancelled') —
@@ -17,6 +17,8 @@ export const dynamic = "force-dynamic";
 //     sudah checkout tiket via keranjang tapi invoicenya BELUM lunas (belum punya baris
 //     event_registrations sama sekali, lihat getPendingTicketCheckouts) — ditandai "Menunggu"
 //     sama seperti pending via jalur langsung, KECUALI invoice yang sudah dibatalkan.
+//   - `?ticketId=`: opsional, batasi export ke SATU jenis tiket saja (dipakai oleh tab filter
+//     tiket di EventRegistrationList) — berlaku untuk kedua mode di atas sekaligus.
 //
 // Dua jalur invoice per registrasi (lihat acara/[id]/page.tsx untuk pola query yang sama):
 //   1. Alur lama (registerForEventAction): invoices.sourceType='event_registration',
@@ -73,6 +75,7 @@ export async function GET(
   const slug = req.nextUrl.searchParams.get("tenant") ?? req.nextUrl.searchParams.get("slug");
   if (!slug) return NextResponse.json({ error: "Parameter tenant wajib diisi." }, { status: 400 });
   const includeAll = req.nextUrl.searchParams.get("all") === "1";
+  const ticketIdFilter = req.nextUrl.searchParams.get("ticketId");
 
   const access = await getTenantAccess(slug);
   if (!access) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -93,10 +96,16 @@ export async function GET(
   const customFields = (event.customFormFields as CustomFormField[] | null) ?? [];
 
   const tickets = await db
-    .select({ id: schema.eventTickets.id, price: schema.eventTickets.price })
+    .select({ id: schema.eventTickets.id, name: schema.eventTickets.name, price: schema.eventTickets.price })
     .from(schema.eventTickets)
     .where(eq(schema.eventTickets.eventId, eventId));
   const ticketMap = new Map(tickets.map((t) => [t.id, t]));
+
+  // ?ticketId= opsional — batasi ke satu jenis tiket (lihat komentar file atas). Tetap
+  // digabung AND dengan filter status (includeAll), bukan menggantikannya.
+  const regFilterConditions = [eq(schema.eventRegistrations.eventId, eventId)];
+  if (!includeAll) regFilterConditions.push(inArray(schema.eventRegistrations.status, ["confirmed", "attended"]));
+  if (ticketIdFilter) regFilterConditions.push(eq(schema.eventRegistrations.ticketId, ticketIdFilter));
 
   const regs = await db
     .select({
@@ -110,19 +119,15 @@ export async function GET(
       customFieldsData:   schema.eventRegistrations.customFields,
     })
     .from(schema.eventRegistrations)
-    .where(
-      includeAll
-        ? eq(schema.eventRegistrations.eventId, eventId)
-        : and(
-            eq(schema.eventRegistrations.eventId, eventId),
-            inArray(schema.eventRegistrations.status, ["confirmed", "attended"]),
-          )
-    )
+    .where(and(...regFilterConditions))
     .orderBy(schema.eventRegistrations.createdAt);
 
   // Checkout tiket belum lunas (nol baris registrasi) — hanya relevan untuk mode "semua".
+  // getPendingTicketCheckouts sendiri tidak menerima filter tiket (dipakai bersama di tempat
+  // lain) — filter ticketId dilakukan di sini setelah hasilnya diambil.
   const pendingCheckouts: PendingTicketCheckout[] = includeAll
-    ? await getPendingTicketCheckouts(tenantClient, eventId)
+    ? (await getPendingTicketCheckouts(tenantClient, eventId))
+        .filter((c) => !ticketIdFilter || c.ticketId === ticketIdFilter)
     : [];
 
   if (regs.length === 0 && pendingCheckouts.length === 0) {
@@ -405,7 +410,10 @@ export async function GET(
   const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 
   const safeName = event.title.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
-  const fileSuffix = includeAll ? "-semua" : "";
+  const ticketSuffix = ticketIdFilter
+    ? `-${(ticketMap.get(ticketIdFilter)?.name ?? "tiket").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}`
+    : "";
+  const fileSuffix = (includeAll ? "-semua" : "") + ticketSuffix;
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

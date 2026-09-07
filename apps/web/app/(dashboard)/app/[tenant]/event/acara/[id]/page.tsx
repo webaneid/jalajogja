@@ -3,9 +3,8 @@ import { getTenantAccess } from "@/lib/tenant";
 import { redirect, notFound } from "next/navigation";
 import { eq, count, and, inArray, sql } from "drizzle-orm";
 import Link from "next/link";
-import { CalendarDays, MapPin, Globe, Users, Pencil, Ticket, UserCheck, Download } from "lucide-react";
+import { CalendarDays, MapPin, Globe, Users, Pencil, Ticket, UserCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { EventRegistrationList, type RegistrationRow } from "@/components/event/event-registration-list";
 import { getTenantTimezone, formatInTz } from "@/lib/tenant-timezone.server";
 import type { CustomFormField } from "@/lib/event-custom-form";
@@ -161,6 +160,7 @@ export default async function AcaraDetailPage({
       attendeeEmail:      r.attendeeEmail ?? null,
       status:             r.status as RegistrationRow["status"],
       checkedInAt:        r.checkedInAt ?? null,
+      ticketId:           r.ticketId ?? null,
       ticketName:         ticket?.name ?? "—",
       ticketPrice:        ticket ? parseFloat(String(ticket.price)) : 0,
       paymentId:          payment?.id ?? null,
@@ -188,6 +188,7 @@ export default async function AcaraDetailPage({
     attendeeEmail:      c.attendeeEmail,
     status:             "pending",
     checkedInAt:        null,
+    ticketId:           c.ticketId,
     ticketName:         c.ticketName,
     ticketPrice:        c.ticketPrice,
     paymentId:          null,
@@ -312,29 +313,7 @@ export default async function AcaraDetailPage({
 
         {/* Daftar Pendaftaran */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h2 className="text-sm font-semibold">Daftar Pendaftar</h2>
-            <div className="flex items-center gap-1.5">
-              <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
-                <a href={`/api/events/${eventId}/export-participants?tenant=${slug}`}>
-                  <Download className="h-3 w-3 mr-1" />
-                  Export ke Excel
-                </a>
-              </Button>
-              <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
-                <a href={`/api/events/${eventId}/export-participants?tenant=${slug}&all=1`}>
-                  <Download className="h-3 w-3 mr-1" />
-                  Export Semua Peserta
-                </a>
-              </Button>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground -mt-1">
-            &ldquo;Export ke Excel&rdquo; hanya peserta yang sudah dikonfirmasi/bayar (status Dikonfirmasi
-            atau Hadir). &ldquo;Export Semua Peserta&rdquo; menyertakan semua status termasuk yang belum
-            bayar (baik yang sudah terdaftar maupun yang baru checkout lewat keranjang) dan yang
-            dibatalkan, dengan kolom Status Pendaftaran &amp; Status Pembayaran untuk membedakannya.
-          </p>
+          <h2 className="text-sm font-semibold">Daftar Pendaftar</h2>
           <EventRegistrationList
             slug={slug}
             eventId={eventId}
@@ -342,6 +321,7 @@ export default async function AcaraDetailPage({
             timezone={tenantTimezone}
             enableCustomForm={event.enableCustomForm}
             customFormFields={(event.customFormFields as CustomFormField[] | null) ?? []}
+            tickets={tickets.map((t) => ({ id: t.id, name: t.name }))}
           />
         </div>
       </main>

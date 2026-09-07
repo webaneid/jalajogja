@@ -253,6 +253,49 @@ components/event/
 - Input harga **selalu tampil** (disabled jika Gratis) — tidak disembunyikan saat Gratis dipilih. Alasan: jika disembunyikan, user tidak tahu di mana mengisi harga setelah toggle ke Berbayar
 - Field `_isGratis`, `_key`, `_expanded` di-strip di `buildData()` — tidak dikirim ke server
 
+### EventRegistrationList — Filter per Tiket + Export per Tiket (2026-09-08)
+
+> Status: **SELESAI.** Ditulis di sini sebelum eksekusi sesuai disiplin `CLAUDE.md` § "Cara Claude
+> Harus Bekerja" poin 7 — bukan RENCANA ditunda, langsung dieksekusi sesi yang sama.
+
+**Masalah:** Sebelumnya `EventRegistrationList` di halaman admin `acara/[id]` cuma satu tabel
+gabungan semua tiket + satu search box. Kalau event punya >1 jenis tiket (mis. tiket reuni Batch
+1 & Batch 2), admin tidak bisa lihat peserta per jenis tiket secara terpisah, dan dua tombol
+export ("Export ke Excel" = hanya confirmed/attended, "Export Semua Peserta" = semua status)
+selalu men-download SEMUA tiket sekaligus — tidak ada cara export per tiket tanpa filter manual
+di Excel setelahnya.
+
+**Desain:**
+1. **`RegistrationRow`** (`event-registration-list.tsx`) — tambah field `ticketId: string | null`
+   (sebelumnya cuma ada `ticketName` string, tidak cukup untuk filter yang akurat — dua tiket
+   idealnya tidak boleh sama nama tapi lebih aman filter by ID). Di-populate di
+   `acara/[id]/page.tsx` dari `r.ticketId` (registrasi asli) dan `c.ticketId` (baris virtual
+   "checkout belum lunas" dari `getPendingTicketCheckouts`).
+2. **Tab/pill filter tiket** — di atas search box, computed dari prop baru `tickets: {id, name}[]`
+   (dikirim server, urutan ikut `sort_order`, TERMASUK tiket yang belum punya pendaftar sama
+   sekali — supaya admin tetap lihat tab-nya walau kosong). Tab "Semua" selalu ada di depan.
+   Setiap tab tampilkan jumlah baris (badge angka) — dihitung client-side dari `rows`, bukan
+   query server terpisah. Tab hanya dirender kalau `tickets.length > 1` (event 1 tiket tidak
+   perlu filter — konsisten dengan pola `tickets.length > 1` yang sama di `EventRegisterForm`
+   publik).
+3. **Filter gabungan** — `ticketFilter` (state baru) DAN `search` (sudah ada) jalan bersamaan,
+   bukan saling menggantikan (AND, bukan OR).
+4. **Export ikut tab aktif** — tombol "Export ke Excel" / "Export Semua Peserta" DIPINDAH dari
+   server component (`acara/[id]/page.tsx`) ke dalam `EventRegistrationList` (client), supaya
+   href-nya bisa baca `ticketFilter` yang sedang aktif dan menambahkan `&ticketId={id}` ke query
+   string saat tab bukan "Semua". Tab "Semua" tidak mengirim `ticketId` sama sekali — perilaku
+   lama (export semua tiket) tetap identik, tidak ada breaking change buat event 1 tiket.
+5. **API `/api/events/[id]/export-participants`** — tambah query param opsional `ticketId`.
+   Kalau ada: filter `event_registrations` dengan `eq(ticketId, ...)` DAN filter
+   `pendingCheckouts` (mode `all=1`) dengan `c.ticketId === ticketId` (helper
+   `getPendingTicketCheckouts` sendiri tidak diubah — filter dilakukan setelah hasilnya diambil,
+   helper itu dipakai bersama tempat lain jadi tidak boleh diberi parameter baru yang spesifik
+   kasus ini). Nama file export ikut tersisip nama tiket (slug) saat difilter, supaya admin tidak
+   tertukar file mana untuk tiket mana.
+
+**File yang diubah:** `components/event/event-registration-list.tsx`,
+`event/acara/[id]/page.tsx`, `api/events/[id]/export-participants/route.ts`.
+
 ---
 
 ## Status Event
@@ -575,6 +618,32 @@ Berlaku untuk semua input conditional di seluruh aplikasi.
 ### payments.source_type
 Drizzle enum `PAYMENT_SOURCE_TYPES` DAN DDL CHECK constraint di `create-tenant-schema.ts` harus diperbarui bersamaan saat menambah source_type baru. Jika hanya update salah satu → runtime error saat insert.
 
+### Default tiket terpilih harus skip tiket yang terkunci (fix 2026-09-08)
+**Masalah:** Saat event punya >1 jenis tiket dan salah satunya terkunci (sale window berakhir,
+kuota habis, dll), banner ringkasan di bawah daftar tiket ("Penjualan tiket ini telah berakhir
+pada ...") tetap muncul walau tiket LAIN masih aktif dan bisa dibeli. User mengira seluruh
+penjualan event sudah tutup padahal cuma satu jenis tiket yang tutup.
+**Root cause:** `selectedTicketId` di `EventRegisterForm` di-default ke `tickets[0]?.id` — tiket
+pertama menurut `sort_order`, tanpa cek status lock-nya. Kartu tiket yang terkunci dirender
+sebagai `<div>` (bukan `<button>`), jadi user tidak bisa mengklik untuk memindah pilihan —
+banner salah ini nempel terus kalau tiket pertama dalam urutan kebetulan yang terkunci.
+**Fix:** Default `selectedTicketId` diubah supaya memilih tiket pertama yang TIDAK terkunci
+(kalau ada), baru fallback ke `tickets[0]` kalau semua tiket memang terkunci. Efeknya: banner
+ringkasan sekarang betul-betul hanya muncul kalau **seluruh** tiket event terkunci — persis
+model mental yang diharapkan ("penjualan berakhir" = tidak ada satupun tiket yang bisa dibeli).
+**Pencegahan:** Kalau ada state "terpilih secara default" dari sebuah list yang punya elemen
+ter-disable, jangan default ke index pertama secara buta — cari elemen valid/available pertama
+dulu. Pola ini berpotensi berulang di list-picker lain (produk variasi, dsb) — cek kalau
+menambah fitur serupa.
+
+### Kartu tiket tersedia dibuat lebih menonjol (2026-09-08)
+Sebelumnya kartu tiket terpilih hanya diberi `border-primary bg-primary/5` (tint tipis 5%) —
+kurang kontras dibanding kartu terkunci yang berwarna solid abu-abu, jadi tiket yang justru
+BISA dibeli malah kurang menonjol secara visual. Diubah jadi solid `bg-primary
+text-primary-foreground` (bukan hardcode `text-white` — projek ini multi-tenant, warna primary
+ikut setting `/settings/display` per tenant, jadi teks kontrasnya wajib ikut token
+`--primary-foreground`, bukan warna tetap).
+
 ---
 
 ## Registry Desain Kartu Arsip (Grid Desktop / List Mobile)
@@ -713,3 +782,131 @@ prop `timezone` dari server page ke seluruh rantai komponen (termasuk 5-lapis
 Helper terpusat: `packages/db/src/helpers/tenant-timezone.ts` (re-export dari
 `@/lib/tenant-timezone` di apps/web) — `getTenantTimezone`, `localDatetimeToUtcIso`,
 `utcIsoToLocalDatetime`, `formatInTz`, `todayInTz`, `anchorTodayUtc`.
+
+---
+
+## RENCANA — Multi-Tiket per Transaksi (Quantity + Multi-Peserta)
+
+> Status: **RENCANA, belum dieksekusi.** Dicatat dari investigasi 2026-09-07/08, dieksekusi
+> nanti setelah instruksi eksplisit. Ditulis di sini DULU sebelum kode, sesuai disiplin
+> `CLAUDE.md` § "Cara Claude Harus Bekerja" poin 7.
+
+### Masalah Saat Ini (Root Cause)
+
+Model data hari ini: **1 `event_registrations` = 1 orang = 1 tiket.** Tidak ada field quantity
+di mana pun. Konsekuensinya, satu orang tidak bisa beli/daftarkan beberapa tiket sekaligus
+dalam satu transaksi — tiga titik kode yang menegaskan ini:
+
+1. **`addEventTicketToCartAction`** ([event/actions.ts:1006-1038](../apps/web/app/(dashboard)/app/[tenant]/event/actions.ts)) —
+   `cart_items.quantity` di-hardcode `1`. Kalau tiket **jenis yang sama** sudah ada di cart lalu
+   ditambahkan lagi, kode TIDAK membuat baris cart_item baru — ia menemukan item lama
+   (`cartId + itemId`) dan **menimpa `notes`-nya** (data peserta lama hilang tertimpa peserta
+   baru).
+2. **`createEventRegistrationsFromInvoiceTickets`** (`lib/event-registration-sync.server.ts`) —
+   membuat persis **1 baris registrasi per `invoice_items` bertipe "ticket"**, tidak ada loop
+   berdasarkan quantity sama sekali.
+3. **Kuota tiket** — soft-check di `addEventTicketToCartAction` (`used >= ticket.quota`) tidak
+   memperhitungkan permintaan >1 sekaligus, dan checkout (`checkoutAction` di
+   `cart/actions.ts`) **tidak punya hard lock kuota tiket sama sekali** di dalam transaction
+   (beda dengan alur lama `registerForEventAction` yang sudah `FOR UPDATE` kunci baris tiket —
+   lihat § "Guard 'sudah ada sebelumnya'..." di `docs/lessons-learned.md`). Kalau quantity>1
+   dibuka tanpa menambal ini, oversell kuota jadi jauh lebih mudah terjadi.
+
+### Tujuan Fitur
+
+Satu orang bisa checkout **N tiket sekaligus** (dari jenis tiket yang sama atau campuran), isi
+nama peserta untuk tiap tiket, dalam satu invoice — dengan UI yang enak dipakai (bukan submit
+form berkali-kali).
+
+### Desain yang Diusulkan
+
+**1. Data model cart — `cart_items.notes` jadi array, bukan objek tunggal**
+```
+// Sekarang (1 attendee):
+{ attendeeName, attendeePhone, attendeeEmail, customFieldAnswers }
+
+// Rencana (N attendee, quantity = attendees.length):
+{ attendees: [
+    { attendeeName, attendeePhone, attendeeEmail, customFieldAnswers },
+    { attendeeName, attendeePhone, attendeeEmail, customFieldAnswers },
+    ...
+  ] }
+```
+`cart_items.quantity` diisi `attendees.length` (kolom ini sudah ada, generik, dipakai benar
+oleh produk — tiket tinggal ikut pola yang sama). `unitPrice` tetap harga per-tiket; total baris
+tetap `unitPrice * quantity` (logic ini sudah generik di `checkoutAction`, tidak perlu diubah).
+
+**Kompatibilitas mundur** — invoice/cart lama masih simpan `notes` sebagai objek tunggal (bukan
+`{attendees: [...]}`). `parseAttendeeFromInvoiceItem()` wajib deteksi dua format: kalau ada key
+`attendees` (array) → format baru, loop; kalau tidak → treat sebagai 1 attendee format lama.
+Jangan migrasi data lama, cukup dual-parse.
+
+**2. `addEventTicketToCartAction` → jadi "tambah 1 peserta ke baris tiket ini di cart"**
+- Ganti perilaku "tiket sama → timpa notes" jadi "tiket sama → **append** ke array `attendees`,
+  quantity naik 1".
+- Soft quota check: `used + (currentQuantityInCart + 1) > ticket.quota` → tolak, bukan cuma
+  `used >= quota`.
+- Perlu aksi baru untuk **hapus 1 peserta** dari baris tiket di cart (bukan hapus seluruh baris)
+  — UI keranjang publik (`/{slug}/keranjang`) perlu list per-peserta dengan tombol hapus per
+  baris, bukan cuma per jenis tiket.
+
+**3. UI form pendaftaran (`event-register-form.tsx`)**
+- Tambah quantity stepper (atau tombol "+ Tambah Peserta") di bawah pilihan tiket — tiap klik
+  render 1 card form peserta baru (nama/HP/email + custom form jika aktif).
+- Toggle "Gunakan data yang sama untuk semua peserta" (default ON untuk field custom-form yang
+  masuk akal dibagi, mis. "Asal Cabang"; OFF untuk field yang jelas per-orang seperti nama) —
+  ini yang dimaksud user sebagai "UI-nya keren" — jangan paksa isi ulang semua field N kali kalau
+  jawabannya sama, tapi tetap kasih opsi override per-peserta.
+- Guard kuota di client harus baca sisa kuota REAL-TIME terhadap quantity yang diminta, bukan
+  cuma "kuota ada/tidak" seperti sekarang.
+- Alur lama (`registerForEventAction`, non-cart) **TIDAK ikut didapat fitur ini** — cukup cart
+  flow (sudah pakai invoice universal, lebih siap untuk multi-item). Alur lama tetap 1
+  tiket/submit seperti sekarang.
+
+**4. Hubungan dengan Custom Form (migration 0022, `custom_form_fields`)**
+Ini poin yang diminta user secara eksplisit — custom form per event saat ini diisi SEKALI per
+registrasi (1 attendee). Dengan multi-peserta:
+- Tiap peserta tambahan pada dasarnya punya jawaban custom form sendiri (`customFieldAnswers`
+  per-attendee, sudah tercermin di struktur data § 1 di atas).
+- Tapi banyak field custom form logically SAMA untuk semua peserta dalam satu transaksi (mis.
+  "Instansi/Kantor", "Kelompok Rombongan") — bukan per-orang (mis. "Ukuran Kaos"). Perlu
+  keputusan produk saat desain UI: apakah `CustomFormField` butuh flag baru
+  `perAttendee: boolean` (field yang `perAttendee=false` diisi sekali dan disalin ke semua
+  attendee; yang `true` diisi manual tiap kartu peserta)? Kalau tidak, default aman: SEMUA field
+  ditawarkan "sama untuk semua" dengan opsi override per toggle (§ 3), tidak perlu ubah schema
+  `custom_form_fields`.
+
+**5. `createEventRegistrationsFromInvoiceTickets` → loop per attendee**
+- Parse `attendees[]` dari `invoice_items.description` (§ 1), loop insert 1
+  `event_registrations` per elemen.
+- Idempotency check saat ini (`ticketId + customFields->>'sourceInvoiceId' = invoiceId`, ambil 1
+  baris) tidak cukup untuk N baris per invoice_item — perlu tag tambahan per baris, mis.
+  `customFields.sourceInvoiceItemAttendeeIndex` (0-based), supaya re-run (retry pembayaran,
+  webhook duplikat) tetap idempotent per-attendee, bukan cuma per-invoice.
+- Setiap attendee generate `registrationNumber` sendiri (`EVT-YYYYMM-NNNNN`) via
+  `generateEventRegNumber()` yang sudah ada — tidak perlu helper baru.
+
+**6. Kuota — tambah hard lock di checkout**
+Di dalam transaction `checkoutAction` (`cart/actions.ts`), sebelum insert registrasi: `SELECT
+... FROM event_tickets WHERE id = ANY(ticketIds) FOR UPDATE`, hitung ulang `used` DI DALAM
+transaction, tolak checkout kalau `used + requestedQty > quota` untuk tiket manapun. Pola ini
+sudah ada persis di `registerForEventAction` (alur lama) — tinggal diterapkan juga di
+`checkoutAction`, bukan pola baru yang perlu didesain dari nol.
+
+### Pertanyaan Terbuka (perlu keputusan sebelum eksekusi)
+- Ada batas maksimum quantity per baris/checkout (mis. 10 tiket/transaksi) untuk cegah abuse?
+- Kalau salah satu attendee dalam satu baris kena kuota habis di tengah proses (partial), apakah
+  seluruh checkout gagal (all-or-nothing) atau hanya sebagian attendee ter-daftar? — rekomendasi:
+  all-or-nothing per baris tiket, konsisten dengan pola transaction lain di project ini.
+- `perAttendee` flag di custom form fields — dibuat sekarang (butuh migration schema baru) atau
+  ditunda ke iterasi berikutnya (default semua field "sama untuk semua" + override manual)?
+
+### File yang Akan Tersentuh Saat Eksekusi
+```
+apps/web/app/(dashboard)/app/[tenant]/event/actions.ts   → addEventTicketToCartAction (append bukan timpa)
+apps/web/app/(public)/[tenant]/cart/actions.ts            → checkoutAction (hard lock kuota tiket)
+apps/web/lib/event-registration-sync.server.ts            → loop per attendee + idempotency per index
+apps/web/components/event/event-register-form.tsx         → UI quantity + multi-peserta + toggle "sama untuk semua"
+apps/web/components/event/public/...                      → UI keranjang: list per-peserta per baris tiket
+docs/arsitektur-event.md                                  → update status setelah eksekusi (bagian ini)
+```

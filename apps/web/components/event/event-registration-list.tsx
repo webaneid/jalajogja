@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   XCircle, UserCheck,
-  Search, Loader2, BadgeCheck, BanknoteIcon, ExternalLink, ImageIcon, X as XIcon, Pencil,
+  Search, Loader2, BadgeCheck, BanknoteIcon, ExternalLink, ImageIcon, X as XIcon, Pencil, Download,
 } from "lucide-react";
 import {
   approveRegistrationAction,
@@ -34,6 +34,7 @@ export type RegistrationRow = {
   attendeeEmail:      string | null;
   status:             "pending" | "confirmed" | "cancelled" | "attended";
   checkedInAt:        Date | null;
+  ticketId:           string | null;
   ticketName:         string;
   ticketPrice:        number;
   paymentId:          string | null;
@@ -81,6 +82,7 @@ export function EventRegistrationList({
   timezone,
   enableCustomForm,
   customFormFields,
+  tickets,
 }: {
   slug:             string;
   eventId:          string;
@@ -88,17 +90,31 @@ export function EventRegistrationList({
   timezone:         string;
   enableCustomForm: boolean;
   customFormFields: CustomFormField[];
+  // Semua jenis tiket event ini (urutan ikut sort_order), TERMASUK yang belum punya pendaftar
+  // sama sekali — dipakai untuk tab filter di bawah. Tab hanya dirender kalau length > 1,
+  // konsisten dengan pola yang sama di EventRegisterForm publik.
+  tickets:          { id: string; name: string }[];
 }) {
-  const [rows,      setRows]      = useState<RegistrationRow[]>(initialRows);
-  const [search,    setSearch]    = useState("");
-  const [page,      setPage]      = useState(1);
-  const [actionId,  setActionId]  = useState<string | null>(null);
-  const [error,     setError]     = useState<string | null>(null);
-  const [proofOpen, setProofOpen] = useState<string | null>(null); // URL lightbox bukti
-  const [editRow,   setEditRow]   = useState<RegistrationRow | null>(null); // dialog edit data peserta
+  const [rows,         setRows]         = useState<RegistrationRow[]>(initialRows);
+  const [search,       setSearch]       = useState("");
+  const [ticketFilter, setTicketFilter] = useState<string | "all">("all");
+  const [page,         setPage]         = useState(1);
+  const [actionId,     setActionId]     = useState<string | null>(null);
+  const [error,        setError]        = useState<string | null>(null);
+  const [proofOpen,    setProofOpen]    = useState<string | null>(null); // URL lightbox bukti
+  const [editRow,      setEditRow]      = useState<RegistrationRow | null>(null); // dialog edit data peserta
   const [isPending, startTransition] = useTransition();
 
+  // Jumlah baris per tiket (termasuk "Semua") — dihitung dari rows yang ada, bukan query
+  // server terpisah. Dipakai untuk badge angka di tiap tab.
+  const countByTicket = new Map<string, number>();
+  for (const r of rows) {
+    const key = r.ticketId ?? "";
+    countByTicket.set(key, (countByTicket.get(key) ?? 0) + 1);
+  }
+
   const filtered = rows.filter((r) => {
+    if (ticketFilter !== "all" && r.ticketId !== ticketFilter) return false;
     const q = search.toLowerCase();
     return (
       r.attendeeName.toLowerCase().includes(q) ||
@@ -107,6 +123,15 @@ export function EventRegistrationList({
       (r.attendeeEmail ?? "").toLowerCase().includes(q)
     );
   });
+
+  function handleTicketFilterChange(value: string | "all") {
+    setTicketFilter(value);
+    setPage(1);
+  }
+
+  // Query string export ikut tab tiket yang sedang aktif — tab "Semua" tidak kirim ticketId
+  // sama sekali (perilaku lama, export semua tiket, tetap identik).
+  const exportTicketParam = ticketFilter !== "all" ? `&ticketId=${ticketFilter}` : "";
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -150,6 +175,62 @@ export function EventRegistrationList({
 
   return (
     <div className="space-y-4">
+      {/* Export — ikut tab tiket yang sedang aktif (lihat exportTicketParam) */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-1.5">
+          <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
+            <a href={`/api/events/${eventId}/export-participants?tenant=${slug}${exportTicketParam}`}>
+              <Download className="h-3 w-3 mr-1" />
+              Export ke Excel
+            </a>
+          </Button>
+          <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
+            <a href={`/api/events/${eventId}/export-participants?tenant=${slug}&all=1${exportTicketParam}`}>
+              <Download className="h-3 w-3 mr-1" />
+              Export Semua Peserta
+            </a>
+          </Button>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground -mt-2">
+        &ldquo;Export ke Excel&rdquo; hanya peserta yang sudah dikonfirmasi/bayar (status Dikonfirmasi
+        atau Hadir). &ldquo;Export Semua Peserta&rdquo; menyertakan semua status termasuk yang belum
+        bayar (baik yang sudah terdaftar maupun yang baru checkout lewat keranjang) dan yang
+        dibatalkan, dengan kolom Status Pendaftaran &amp; Status Pembayaran untuk membedakannya.
+        {tickets.length > 1 && " Pilih tab tiket di bawah untuk membatasi export ke satu jenis tiket saja."}
+      </p>
+
+      {/* Tab filter per tiket — hanya kalau event punya lebih dari 1 jenis tiket */}
+      {tickets.length > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => handleTicketFilterChange("all")}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium border transition-colors ${
+              ticketFilter === "all"
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border hover:border-primary/50"
+            }`}
+          >
+            Semua ({rows.length})
+          </button>
+          {tickets.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => handleTicketFilterChange(t.id)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium border transition-colors ${
+                ticketFilter === t.id
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border hover:border-primary/50"
+              }`}
+            >
+              {t.name} ({countByTicket.get(t.id) ?? 0})
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
