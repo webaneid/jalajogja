@@ -645,21 +645,48 @@ ter-disable, jangan default ke index pertama secara buta — cari elemen valid/a
 dulu. Pola ini berpotensi berulang di list-picker lain (produk variasi, dsb) — cek kalau
 menambah fitur serupa.
 
-**Fix susulan — alasan terkunci campuran (2026-09-08, ditemukan user di production):** Fix di
-atas cuma menutup KEBANYAKAN kasus — kalau **SEMUA** tiket event kebetulan terkunci untuk viewer
-tertentu (mis. tiket A sale sudah berakhir, tiket B butuh keanggotaan dan viewer belum jadi
-anggota), `selectedTicketId` fallback ke `tickets[0]`, dan banner ringkasan menampilkan pesan
-SPESIFIK tiket pertama itu ("Penjualan tiket ini telah berakhir...") — padahal alasan tiket lain
-berbeda sama sekali (butuh keanggotaan, bukan sale berakhir). User uji di production
-(`visikita.com/agenda/...`) sebagai pengunjung anonim/bukan anggota → kena persis kasus ini,
-kelihatan seperti fix pertama tidak jalan padahal memang skenarionya beda (bukan "1 terkunci +
-1 aktif" seperti kasus original, tapi "2 terkunci dengan alasan beda"). **Fix**: hitung
-`getTicketLock` untuk SEMUA tiket, bukan cuma yang terpilih — kalau semua terkunci DENGAN alasan
-sama (badge sama) tetap tampilkan pesan spesifik (masih akurat), kalau alasan CAMPURAN tampilkan
-pesan generik "Semua tiket untuk event ini sedang tidak tersedia untuk Anda saat ini — lihat
-keterangan di masing-masing tiket di atas" tanpa CTA tunggal (karena tidak ada satu aksi yang
-berlaku untuk semua tiket). Pesan per-kartu individual (yang sudah akurat dari awal) tidak
-diubah — cuma banner ringkasan gabungan di bawahnya.
+**Fix susulan — alasan terkunci campuran (2026-09-08, SUPERSEDED beberapa jam kemudian, lihat
+entry di bawah):** Fix di atas cuma menutup KEBANYAKAN kasus — kalau **SEMUA** tiket event
+kebetulan terkunci untuk viewer tertentu (mis. tiket A sale sudah berakhir, tiket B butuh
+keanggotaan dan viewer belum jadi anggota), `selectedTicketId` fallback ke `tickets[0]`, dan
+banner ringkasan menampilkan pesan SPESIFIK tiket pertama itu ("Penjualan tiket ini telah
+berakhir...") — padahal alasan tiket lain berbeda sama sekali. Percobaan fix saat itu: ganti
+jadi pesan generik "Semua tiket untuk event ini sedang tidak tersedia untuk Anda saat ini..."
+kalau alasannya campuran. **User menolak pendekatan ini** (lihat entry "Banner ringkasan
+dihapus total" di bawah) — pesan generik itu sendiri dianggap bikin calon pendaftar takut
+padahal salah satu tiket sebenarnya masih bisa didaftar (cuma perlu lengkapi keanggotaan dulu,
+bukan dead-end). **Jangan coba pendekatan "pesan generik saat alasan campuran" ini lagi** —
+sudah dicoba dan ditolak, bukan sekadar belum terpikirkan.
+
+### Banner ringkasan tiket terkunci dihapus total (2026-09-08)
+**Masalah dengan DUA percobaan fix sebelumnya** (default-selection + pesan generik di atas):
+keduanya masih mempertahankan konsep "banner ringkasan" di bawah daftar tiket untuk kondisi
+"tiket terpilih terkunci". User keberatan pada prinsipnya, bukan cuma redaksi katanya — alasan:
+1. **Kalau masih ada tiket yang bisa dijual/didaftar, TIDAK PERLU notifikasi apapun** di luar
+   status masing-masing kartu tiket. Ini sudah otomatis benar sejak fix pertama (banner cuma
+   tampil kalau tiket TERPILIH terkunci, dan default-selection sudah skip ke tiket yang tidak
+   terkunci kalau ada) — tapi user menegaskan ini sebagai prinsip yang tidak boleh dilanggar ke
+   depannya, bukan cuma kebetulan sudah benar.
+2. **Kartu tiket individual sudah cukup sebagai "notifikasi"** — badge ("Anggota", "Tidak
+   Tersedia") + link CTA per kartu (mis. `<a href="/akun/lengkapi">Lengkapi Keanggotaan →</a>`,
+   sudah ada jauh sebelum sesi ini, tidak pernah diubah) sudah menjelaskan situasi per tiket.
+   Banner ringkasan tambahan di bawahnya redundan DAN — untuk tiket yang cuma butuh lengkapi
+   keanggotaan (bukan benar-benar tutup) — menyesatkan ke arah sebaliknya: bikin situasi yang
+   sebenarnya masih bisa ditindaklanjuti (`isipun keanggotaan → tiket kebuka`) terlihat seperti
+   dead-end "semua tidak tersedia".
+
+**Fix final:** Hapus SELURUH banner ringkasan (`{selectedTicketLocked && tickets.length > 1 &&
+(...)}`) beserta variable pendukungnya (`allTicketLocks`, `allTicketsLocked`, `mixedLockReasons`,
+`summaryLockMessage`). `selectedTicketLocked` tetap dipertahankan HANYA untuk gate section
+form+submit di bawahnya (`{!selectedTicketLocked && (<>...form...</>)}`) — kalau tiket yang
+terpilih terkunci, form peserta memang tidak boleh tampil, itu bukan "notifikasi", itu mencegah
+submit ke tiket yang tidak valid. Yang TIDAK diubah sama sekali: pesan+badge per kartu tiket
+individual (baris terkunci maupun tidak) — itu sudah benar sejak awal dan tidak pernah jadi
+masalah, keluhan user selalu soal banner ringkasan tambahan di bawahnya, bukan info per kartu.
+**Pencegahan:** Kalau ke depan ada dorongan menambah "ringkasan gabungan" dari status per-item
+sebuah list (di modul manapun) — pertimbangkan dulu apakah info per-item saja sudah cukup
+sebelum menambah lapisan ringkasan baru. Lapisan ringkasan gampang jadi kurang presisi
+dibanding info per-item aslinya begitu ada campuran kondisi (persis kasus ini, dua kali).
 
 ### Kartu tiket tersedia dibuat lebih menonjol (2026-09-08)
 Sebelumnya kartu tiket terpilih hanya diberi `border-primary bg-primary/5` (tint tipis 5%) —

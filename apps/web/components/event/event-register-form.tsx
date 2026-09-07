@@ -220,19 +220,6 @@ export function EventRegisterForm({
     : { locked: false, badge: null, message: null, ctaLabel: null, ctaHref: null };
   const selectedTicketLocked = selectedTicketLock.locked;
 
-  // Kalau SEMUA tiket ternyata terkunci (bukan cuma tiket yang default-terpilih) TAPI dengan
-  // alasan berbeda-beda per tiket (mis. tiket A sale berakhir, tiket B butuh keanggotaan),
-  // jangan tampilkan salah satu alasan spesifik yang kebetulan milik tiket pertama di array —
-  // itu menyesatkan (bilang "penjualan berakhir" padahal tiket lain sebenarnya cuma butuh
-  // keanggotaan). Tampilkan pesan gabungan yang jujur; kalau semua tiket kebetulan terkunci
-  // dengan alasan SAMA, tetap tampilkan pesan spesifiknya seperti biasa (masih akurat).
-  const allTicketLocks    = tickets.map((t) => getTicketLock(t, baseUrl, currentUserIsEnrolled, registrationStatus));
-  const allTicketsLocked  = tickets.length > 0 && allTicketLocks.every((l) => l.locked);
-  const mixedLockReasons  = allTicketsLocked && !allTicketLocks.every((l) => l.badge === allTicketLocks[0].badge);
-  const summaryLockMessage = mixedLockReasons
-    ? "Semua tiket untuk event ini sedang tidak tersedia untuk Anda saat ini — lihat keterangan di masing-masing tiket di atas."
-    : selectedTicketLock.message;
-
   function handleSubmit() {
     setError(null);
     if (!attendeeName.trim()) {
@@ -518,22 +505,11 @@ export function EventRegisterForm({
         );
       })()}
 
-      {/* CTA — tampil ketika tiket terpilih terkunci (multi-tiket). Pesan + CTA disesuaikan
-          kalau semua tiket terkunci dengan alasan campuran (lihat summaryLockMessage). */}
-      {selectedTicketLocked && tickets.length > 1 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-700 p-4 space-y-2">
-          <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
-            {summaryLockMessage}
-          </p>
-          {!mixedLockReasons && selectedTicketLock.ctaHref && (
-            <a href={selectedTicketLock.ctaHref} className="btn btn-primary btn-sm inline-flex">
-              {selectedTicketLock.ctaLabel}
-            </a>
-          )}
-        </div>
-      )}
-
-      {/* Semua section di bawah hanya tampil jika tiket terpilih tidak terkunci */}
+      {/* Semua section di bawah hanya tampil jika tiket terpilih tidak terkunci. Tidak ada
+          banner ringkasan tambahan di sini dengan sengaja — tiap kartu tiket di atas sudah
+          punya badge + keterangan/CTA sendiri (mis. "Lengkapi Keanggotaan →"), itu sudah cukup
+          jadi penjelasan. Banner tambahan pernah dicoba (2026-09-08) tapi bikin rancu — lihat
+          docs/arsitektur-event.md § Lessons Learned untuk riwayatnya, jangan diulang. */}
       {!selectedTicketLocked && (
         <>
           {/* Data Peserta */}
