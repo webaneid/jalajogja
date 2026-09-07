@@ -645,6 +645,22 @@ ter-disable, jangan default ke index pertama secara buta — cari elemen valid/a
 dulu. Pola ini berpotensi berulang di list-picker lain (produk variasi, dsb) — cek kalau
 menambah fitur serupa.
 
+**Fix susulan — alasan terkunci campuran (2026-09-08, ditemukan user di production):** Fix di
+atas cuma menutup KEBANYAKAN kasus — kalau **SEMUA** tiket event kebetulan terkunci untuk viewer
+tertentu (mis. tiket A sale sudah berakhir, tiket B butuh keanggotaan dan viewer belum jadi
+anggota), `selectedTicketId` fallback ke `tickets[0]`, dan banner ringkasan menampilkan pesan
+SPESIFIK tiket pertama itu ("Penjualan tiket ini telah berakhir...") — padahal alasan tiket lain
+berbeda sama sekali (butuh keanggotaan, bukan sale berakhir). User uji di production
+(`visikita.com/agenda/...`) sebagai pengunjung anonim/bukan anggota → kena persis kasus ini,
+kelihatan seperti fix pertama tidak jalan padahal memang skenarionya beda (bukan "1 terkunci +
+1 aktif" seperti kasus original, tapi "2 terkunci dengan alasan beda"). **Fix**: hitung
+`getTicketLock` untuk SEMUA tiket, bukan cuma yang terpilih — kalau semua terkunci DENGAN alasan
+sama (badge sama) tetap tampilkan pesan spesifik (masih akurat), kalau alasan CAMPURAN tampilkan
+pesan generik "Semua tiket untuk event ini sedang tidak tersedia untuk Anda saat ini — lihat
+keterangan di masing-masing tiket di atas" tanpa CTA tunggal (karena tidak ada satu aksi yang
+berlaku untuk semua tiket). Pesan per-kartu individual (yang sudah akurat dari awal) tidak
+diubah — cuma banner ringkasan gabungan di bawahnya.
+
 ### Kartu tiket tersedia dibuat lebih menonjol (2026-09-08)
 Sebelumnya kartu tiket terpilih hanya diberi `border-primary bg-primary/5` (tint tipis 5%) —
 kurang kontras dibanding kartu terkunci yang berwarna solid abu-abu, jadi tiket yang justru
