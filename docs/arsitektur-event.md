@@ -962,3 +962,148 @@ apps/web/components/event/event-register-form.tsx         → UI quantity + mult
 apps/web/components/event/public/...                      → UI keranjang: list per-peserta per baris tiket
 docs/arsitektur-event.md                                  → update status setelah eksekusi (bagian ini)
 ```
+
+---
+
+## RENCANA — Check-in via Scan Kamera (QR)
+
+> Status: **RENCANA, belum dieksekusi.** Dicatat dari investigasi 2026-09-08 (user minta cek
+> visibilitas dulu sebelum eksekusi). Feasibility: **layak, pola standar, tidak ada blocker
+> teknis** — lihat verdict di bawah.
+
+### Kenapa Sekarang Tidak Bisa "Scan untuk Check-in"
+QR di tiket peserta (muncul di `/{slug}/akun/event`, lihat § "Arsitektur Login Universal") **bukan
+QR fungsional** — isinya cuma teks polos (nama event, tiket, nomor, nama, HP, email, status),
+di-generate `generateQrDataUrl()` di [`akun/event/page.tsx`](../apps/web/app/(public)/[tenant]/akun/event/page.tsx).
+Kalau di-scan pakai scanner HP apa pun, cuma menampilkan teks itu — tidak ada link, tidak ada
+token, tidak trigger apa pun.
+
+Di sisi admin, halaman check-in (`event/acara/[id]/checkin`, komponen `EventCheckinClient`)
+**100% manual**: search nama/nomor/HP → klik tombol "Check-in". Tidak ada kamera, tidak ada
+decode QR, tidak ada endpoint yang menerima hasil scan. `jsqr` yang sudah jadi dependency project
+cuma dipakai di `api/decode-qr/route.ts` untuk decode gambar QRIS pembayaran — sama sekali tidak
+tersentuh oleh flow event.
+
+Codebase ini **sudah punya pola QR fungsional** untuk kasus lain — QR tanda tangan surat encode
+URL asli ke halaman publik `/verify/[hash]` (`buildVerifyUrl()` di `lib/qr-code.ts`). Event tiket
+tidak pakai pola ini sama sekali.
+
+### Verdict Feasibility
+**Layak, dan ini pola umum di aplikasi ticketing** — browser modern (mobile maupun desktop)
+mendukung akses kamera via `getUserMedia()` di halaman HTTPS (produksi `jalakarta.com` sudah
+HTTPS, tidak ada blocker). Baik HP (kamera belakang) maupun webcam laptop bisa dipakai — API-nya
+sama, cuma constraint kamera yang beda (`facingMode: "environment"` untuk minta kamera belakang
+di HP; laptop biasanya cuma punya satu kamera jadi otomatis dipakai). Tidak perlu native app,
+tidak perlu izin khusus di luar izin kamera browser standar.
+
+### Desain yang Diusulkan
+
+**1. QR peserta harus encode TOKEN, bukan teks polos**
+Ganti isi QR dari blok teks jadi identifier yang bisa langsung dipakai memanggil aksi check-in.
+Info manusiawi (nama/HP/email/no. registrasi) **tidak hilang** — itu semua sudah tampil sebagai
+teks biasa di bawah QR di kartu tiket yang sama (lihat screenshot user), jadi mengganti isi QR
+jadi token tidak mengurangi apa pun yang terlihat mata.
+
+Dua opsi, perlu keputusan sebelum eksekusi:
+| Opsi | Isi QR | Migration | Trade-off |
+|---|---|---|---|
+| **A — pakai ulang `registration.id`** | UUID PK yang sudah ada | Tidak perlu migration sama sekali | Simpel & cepat. Tapi QR = PK asli tidak bisa "dicabut" tanpa mengubah identitas baris (kalau tiket hilang/discreenshot orang lain, tidak bisa regenerate QR baru tanpa insert ulang baris) |
+| **B — kolom baru `checkin_token`** (nanoid random, unik) | Token terpisah dari PK | 1 migration kecil (tenant table pattern, ADR-0003) | Token bisa di-regenerate kapan saja (invalidate QR lama) tanpa ganggu baris registrasi — standar praktik ticketing (QR hilang/dibagi ke orang lain → admin klik "Reset QR") |
+
+**Rekomendasi: Opsi B** — biaya migration kecil, tapi dapat kemampuan revoke/regenerate yang
+biasanya dibutuhkan begitu sistem dipakai sungguhan (orang kehilangan HP, screenshot QR
+tersebar, dll). Opsi A valid sebagai jalan pintas MVP kalau mau coba cepat dulu.
+
+**2. Validasi saat check-in via scan (beda dari klik manual)**
+`checkInRegistrationAction(slug, registrationId)` yang sudah ada ([actions.ts:1432](../apps/web/app/(dashboard)/app/[tenant]/event/actions.ts:1432))
+BELUM validasi bahwa registrasi yang di-check-in benar-benar milik event yang sedang dibuka
+halaman check-in-nya — aman untuk klik manual (list sudah di-scope ke event yang benar dari
+server), tapi TIDAK aman untuk scan (QR dari event lain yang kebetulan discan di halaman event
+ini seharusnya ditolak, bukan diam-diam check-in ke event yang salah). Tambah param
+`expectedEventId` + validasi `reg.eventId === expectedEventId` sebelum update — reuse fungsi yang
+sama, bukan bikin action baru terpisah.
+
+Kondisi lain yang harus dibedakan pesannya (bukan cuma "gagal" generik):
+- Token tidak ditemukan → "QR tidak dikenali."
+- Token ada tapi `eventId` beda → "QR ini bukan untuk event ini."
+- Sudah `attended` sebelumnya → tampilkan sebagai **info**, bukan error (nama + jam check-in
+  sebelumnya) — scan ulang orang yang sama bukan serangan, cuma normal (staff kadang scan dobel
+  tanpa sadar).
+- Status `cancelled` → "Pendaftaran ini sudah dibatalkan."
+- Status lain (`pending` tanpa alur cash-at-door) → ikut aturan yang sudah ada di action existing.
+
+**3. Komponen scanner kamera — halaman baru, bukan modal di atas list yang sama**
+Tambah toggle "Scan QR" di halaman `checkin/page.tsx`, di samping search box yang sudah ada
+(search **tetap ada** sebagai fallback — HP mati, QR rusak, walk-in tanpa pra-daftar, dll, semua
+kasus ini butuh manual search, jangan dihilangkan).
+
+Alur:
+- Tombol "Aktifkan Kamera" (WAJIB via user gesture — browser tidak bisa auto-request kamera saat
+  page load) → `getUserMedia({ video: { facingMode: "environment" } })`, fallback ke kamera
+  default kalau `environment` tidak tersedia (kasus laptop webcam)
+- Preview video full-width, loop scan tiap ~200-300ms: gambar frame ke `<canvas>` tersembunyi →
+  decode dengan `jsqr` (sudah jadi dependency, tidak perlu nambah baru) → kalau ketemu QR valid,
+  panggil action
+- **Debounce hasil scan** — begitu 1 QR sukses diproses, jangan proses ulang QR yang sama dalam
+  ~3 detik (kamera terus menyala, QR yang sama masih ada di frame beberapa detik) — tanpa ini,
+  1 orang discan bisa ke-check-in berkali-kali dalam sesi yang sama (tidak merusak data karena
+  idempotent, tapi bikin banyak call sia-sia + flash sukses berulang membingungkan)
+- Feedback visual jelas & besar (halaman ini dipakai sambil berdiri di pintu, bukan duduk depan
+  laptop) — flash hijau + nama peserta untuk sukses, flash merah + alasan untuk gagal, lanjut
+  scanning otomatis tanpa perlu tap apa pun lagi
+- Kalau user tolak izin kamera browser → tampilkan pesan jelas + tombol balik ke mode search
+  manual, jangan biarkan halaman blank/stuck
+
+**4. Pilihan library: pakai `jsqr` mentah vs library scanner siap pakai**
+`jsqr` sendiri cuma fungsi decode (kasih raw pixel data → keluar hasil teks) — TIDAK menghandle
+akses kamera, loop render, UI pemilihan kamera (device dengan >1 kamera), dsb. Itu semua harus
+ditulis manual kalau pakai `jsqr` polos.
+
+| Opsi | Kelebihan | Kekurangan |
+|---|---|---|
+| **`jsqr` + tulis sendiri getUserMedia/canvas loop** | Tidak nambah dependency baru, kontrol penuh | Banyak edge-case browser (autoplay iOS Safari, permission race, orientasi video) harus ditangani manual — riskan bug di device yang belum sempat dites |
+| **Library scanner siap pakai** (mis. `html5-qrcode` atau `@zxing/library`) | Sudah handle edge-case cross-browser, ada UI pemilihan kamera bawaan | Dependency baru, perlu dicek ukuran bundle + kompatibilitas Next.js App Router (client component) |
+
+**Rekomendasi: pakai library siap pakai** untuk bagian kamera+scanning-loop (bukan `jsqr` manual)
+— area ini justru yang paling gampang buggy kalau ditulis dari nol (terutama iOS Safari), dan
+project sudah terbiasa nambah dependency kecil kalau memang menyelesaikan masalah nyata (lihat
+`react-image-crop`, `qrcode`, dll di `apps/web/package.json`). `jsqr` yang sudah ada tetap bisa
+dipertahankan untuk kegunaannya semula (decode gambar QRIS statis), tidak perlu dihapus.
+
+**5. Halaman check-in butuh perhatian responsive KHUSUS, di luar backlog umum**
+User sendiri sudah sadar dashboard admin secara umum belum responsive. Halaman ini beda kelas —
+tujuannya memang dipakai berdiri di pintu masuk pakai HP, jadi harus dapat perlakuan mobile-first
+walau bagian admin lain belum. Scope perbaikan responsive **dibatasi ke halaman checkin ini
+saja** (tombol besar, preview kamera full-width, layout satu kolom) — bukan alasan untuk
+merombak keseluruhan shell dashboard sekalian (di luar scope permintaan ini).
+
+**6. Kompatibel laptop/webcam sekaligus HP — tidak perlu kode terpisah**
+`getUserMedia()` adalah API yang sama persis di kedua kasus — bedanya cuma constraint kamera
+mana yang diminta (`facingMode`) dan berapa banyak kamera yang terdeteksi
+(`navigator.mediaDevices.enumerateDevices()`). Kalau device (laptop) cuma punya 1 kamera,
+otomatis dipakai tanpa perlu UI pemilihan; kalau lebih dari 1 (HP dengan depan+belakang, atau
+laptop dengan kamera eksternal terpasang), baru tampilkan dropdown pilih kamera. Tidak perlu
+membangun dua jalur kode berbeda untuk "mode HP" vs "mode laptop".
+
+### Pertanyaan Terbuka (perlu keputusan sebelum eksekusi)
+- Opsi A (pakai ulang `registration.id`) atau Opsi B (`checkin_token` baru, direkomendasikan)?
+- Setuju pakai library scanner siap pakai (nambah 1 dependency), atau tetap mau `jsqr` manual
+  walau lebih rawan bug cross-browser?
+- Kalau Opsi B dipilih: perlu tombol admin "Reset/Regenerate QR" di detail pendaftaran (invalidate
+  QR lama), atau cukup token statis seumur hidup registrasi untuk versi pertama?
+- QR lama yang sudah pernah di-generate (kalau ada peserta yang sudah screenshot QR versi teks
+  lama sebelum fitur ini jalan) otomatis tidak valid lagi setelah ganti ke token — perlu
+  pemberitahuan ke peserta existing (WA notif "QR tiket Anda perlu di-refresh, buka lagi halaman
+  akun") atau event yang sudah lewat/dekat tidak perlu diributkan?
+
+### File yang Akan Tersentuh Saat Eksekusi
+```
+packages/db/src/schema/tenant/events.ts                 → kolom checkin_token (kalau Opsi B)
+packages/db/src/helpers/create-tenant-schema.ts          → DDL checkin_token (kalau Opsi B)
+packages/db/migrations/NNNN_event_checkin_token.sql      → migration baru (kalau Opsi B)
+apps/web/app/(public)/[tenant]/akun/event/page.tsx       → ganti isi QR: teks polos → token
+apps/web/app/(dashboard)/app/[tenant]/event/actions.ts   → checkInRegistrationAction + validasi eventId, atau checkInByTokenAction baru
+apps/web/components/event/event-checkin-client.tsx       → tambah toggle "Scan QR" + komponen scanner kamera
+apps/web/app/(dashboard)/app/[tenant]/event/acara/[id]/checkin/page.tsx → layout responsive khusus halaman ini
+docs/arsitektur-event.md                                 → update status setelah eksekusi (bagian ini)
+```
