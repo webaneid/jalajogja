@@ -73,6 +73,7 @@ export default async function AkunEventPage({ params }: { params: Params }) {
     .select({
       id:                 schema.eventRegistrations.id,
       registrationNumber: schema.eventRegistrations.registrationNumber,
+      checkinToken:       schema.eventRegistrations.checkinToken,
       status:             schema.eventRegistrations.status,
       attendeeName:       schema.eventRegistrations.attendeeName,
       attendeePhone:      schema.eventRegistrations.attendeePhone,
@@ -118,19 +119,13 @@ export default async function AkunEventPage({ params }: { params: Params }) {
     const invoice = invoiceMap[r.id] ?? null;
     const isWaitingVerif = invoice?.status === "waiting_verification";
 
-    // QR hanya untuk tiket yang sudah dikonfirmasi
+    // QR hanya untuk tiket yang sudah dikonfirmasi. Isi QR adalah checkin_token (bukan teks info
+    // peserta) — dibaca langsung oleh scanner kamera di halaman check-in admin
+    // (checkInByTokenAction). Info peserta (nama/HP/email/no. registrasi) tetap tampil sebagai
+    // teks biasa di kartu yang sama, jadi tidak ada info yang hilang buat peserta.
     let qrDataUrl: string | null = null;
     if (!isPending) {
-      const lines = [
-        `EVENT: ${r.eventTitle ?? "—"}`,
-        `TIKET: ${r.ticketName ?? "—"}`,
-        `NO: ${r.registrationNumber}`,
-        `NAMA: ${r.attendeeName}`,
-        r.attendeePhone ? `HP: ${displayPhone(r.attendeePhone)}` : null,
-        r.attendeeEmail ? `EMAIL: ${r.attendeeEmail}` : null,
-        `STATUS: ${status.toUpperCase()}`,
-      ].filter(Boolean).join("\n");
-      qrDataUrl = await generateQrDataUrl(lines, "#111827");
+      qrDataUrl = await generateQrDataUrl(r.checkinToken, "#111827");
     }
 
     // Label status: jika menunggu verifikasi, tampilkan label berbeda

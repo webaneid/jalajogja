@@ -965,11 +965,15 @@ docs/arsitektur-event.md                                  → update status sete
 
 ---
 
-## RENCANA — Check-in via Scan Kamera (QR)
+## Check-in via Scan Kamera (QR) — ✅ SELESAI (2026-09-08)
 
-> Status: **RENCANA, belum dieksekusi.** Dicatat dari investigasi 2026-09-08 (user minta cek
-> visibilitas dulu sebelum eksekusi). Feasibility: **layak, pola standar, tidak ada blocker
-> teknis** — lihat verdict di bawah.
+> Status: **Kode selesai + type-check + production build bersih.** Migration sudah jalan di dev
+> lokal. **Belum di-deploy ke VPS** (migration 0063 belum jalan di production, kode belum
+> di-push). Investigasi awal 2026-09-08 (user minta cek visibilitas dulu), lanjut dieksekusi
+> sesi yang sama setelah user konfirmasi "langsung jalankan rencana kamu". Keputusan yang diambil
+> di 2 pertanyaan terbuka: **Opsi B** (kolom `checkin_token` baru, bukan reuse `id`) dan
+> **library siap pakai `html5-qrcode`** (bukan `jsqr` manual) — sesuai rekomendasi awal, user
+> tidak membantah.
 
 ### Kenapa Sekarang Tidak Bisa "Scan untuk Check-in"
 QR di tiket peserta (muncul di `/{slug}/akun/event`, lihat § "Arsitektur Login Universal") **bukan
@@ -1085,25 +1089,64 @@ otomatis dipakai tanpa perlu UI pemilihan; kalau lebih dari 1 (HP dengan depan+b
 laptop dengan kamera eksternal terpasang), baru tampilkan dropdown pilih kamera. Tidak perlu
 membangun dua jalur kode berbeda untuk "mode HP" vs "mode laptop".
 
-### Pertanyaan Terbuka (perlu keputusan sebelum eksekusi)
-- Opsi A (pakai ulang `registration.id`) atau Opsi B (`checkin_token` baru, direkomendasikan)?
-- Setuju pakai library scanner siap pakai (nambah 1 dependency), atau tetap mau `jsqr` manual
-  walau lebih rawan bug cross-browser?
-- Kalau Opsi B dipilih: perlu tombol admin "Reset/Regenerate QR" di detail pendaftaran (invalidate
-  QR lama), atau cukup token statis seumur hidup registrasi untuk versi pertama?
-- QR lama yang sudah pernah di-generate (kalau ada peserta yang sudah screenshot QR versi teks
-  lama sebelum fitur ini jalan) otomatis tidak valid lagi setelah ganti ke token — perlu
-  pemberitahuan ke peserta existing (WA notif "QR tiket Anda perlu di-refresh, buka lagi halaman
-  akun") atau event yang sudah lewat/dekat tidak perlu diributkan?
+### Keputusan yang Diambil (sudah dieksekusi)
+- **Opsi B dipilih** — kolom `checkin_token UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE` baru
+  di `event_registrations`, terpisah dari `id`. Sama seperti `id`, di-generate DB-level via
+  `defaultRandom()` di Drizzle — TIDAK ada kode INSERT (registerForEventAction,
+  addEventTicketToCartAction, createEventRegistrationsFromInvoiceTickets) yang perlu diubah,
+  token otomatis terisi di semua jalur pembuatan registrasi yang sudah ada.
+- **`html5-qrcode` dipilih** (bukan `jsqr` manual) — handle akses kamera + loop scanning +
+  fallback kamera sendiri. `jsqr` yang sudah ada TETAP dipertahankan untuk kegunaan semula
+  (decode gambar QRIS statis di `api/decode-qr/route.ts`), tidak disentuh.
+- **Tombol "Reset/Regenerate QR" — DITUNDA**, tidak dibuat di versi pertama ini. Token statis
+  seumur hidup registrasi untuk sekarang; gampang ditambah nanti (satu UPDATE
+  `checkin_token = gen_random_uuid()` per baris) kalau kebutuhannya muncul.
+- **Notifikasi ke peserta soal QR lama yang berubah isinya — DITUNDA/tidak dianggap perlu.**
+  Peserta tidak pernah melihat isi mentah QR-nya (cuma gambar QR + info teks di sampingnya, yang
+  TIDAK berubah) — jadi tidak ada yang terlihat beda dari sisi peserta. Halaman `/akun/event`
+  selalu generate QR fresh dari `checkin_token` saat ini setiap kali dibuka, jadi otomatis benar
+  tanpa aksi apa pun dari peserta.
 
-### File yang Akan Tersentuh Saat Eksekusi
+### Ringkasan Implementasi
+- **Migration**: `packages/db/migrations/0063_event_checkin_token.sql` — loop semua tenant aktif,
+  `ADD COLUMN IF NOT EXISTS`. Sudah dijalankan di dev lokal, **belum di VPS**.
+- **Schema**: `packages/db/src/schema/tenant/events.ts` (kolom Drizzle) +
+  `packages/db/src/helpers/create-tenant-schema.ts` (DDL untuk tenant baru).
+- **QR generation**: `apps/web/app/(public)/[tenant]/akun/event/page.tsx` — `generateQrDataUrl()`
+  sekarang dikasih `r.checkinToken`, bukan blok teks. Info manusiawi (nama/HP/email/no.
+  registrasi) tidak hilang — tetap tampil sebagai teks biasa di kartu yang sama.
+- **Server action baru**: `checkInByTokenAction(slug, eventId, token)` di
+  `apps/web/app/(dashboard)/app/[tenant]/event/actions.ts` — validasi `eventId` cocok (celah yang
+  tidak ada di `checkInRegistrationAction` lama, aman untuk klik manual tapi tidak untuk scan),
+  bedakan hasil "sudah check-in sebelumnya" (info, bukan error) dari check-in baru (return
+  `attendeeName` + `eventTitle` untuk pesan "Selamat datang").
+- **Komponen scanner baru**: `apps/web/components/event/event-qr-scanner.tsx` — kamera TIDAK
+  pernah tertutup sendiri antar-scan (sesuai permintaan user), cooldown 3 detik per token supaya
+  QR yang sama yang masih di frame tidak diproses berkali-kali, fallback otomatis dari
+  `facingMode:"environment"` (HP) ke kamera pertama yang terdeteksi (laptop/webcam) kalau
+  `environment` tidak tersedia.
+- **Integrasi**: `event-checkin-client.tsx` dapat toggle "Cari Manual" (default, tetap ada sebagai
+  fallback) vs "Scan QR". `checkin/page.tsx` kirim `eventId` sebagai prop baru.
+- **Verifikasi**: `bun run type-check` + `bun run build --filter=@jalajogja/web` bersih (termasuk
+  route `checkin` ter-build sebagai dynamic route, ~114kB bundle sendiri — tidak crash SSR
+  meski `html5-qrcode` di-import dari client component, dikonfirmasi `require()` langsung di
+  Node tidak melempar error modul). **Belum bisa dites end-to-end di browser sungguhan** — halaman
+  admin perlu login, tidak ada akses SSH/kredensial dev dari sesi ini.
+- **Responsive halaman checkin**: TIDAK disentuh di iterasi ini — toggle + scanner memakai
+  komponen `Button` full-width yang sudah reasonably mobile-friendly secara default, tapi belum
+  ada audit/pass responsive khusus seperti direncanakan di § 5 rencana awal. Kalau di tes nyata
+  di HP ternyata kurang nyaman, perlu sesi lanjutan.
+
+### File yang Disentuh
 ```
-packages/db/src/schema/tenant/events.ts                 → kolom checkin_token (kalau Opsi B)
-packages/db/src/helpers/create-tenant-schema.ts          → DDL checkin_token (kalau Opsi B)
-packages/db/migrations/NNNN_event_checkin_token.sql      → migration baru (kalau Opsi B)
-apps/web/app/(public)/[tenant]/akun/event/page.tsx       → ganti isi QR: teks polos → token
-apps/web/app/(dashboard)/app/[tenant]/event/actions.ts   → checkInRegistrationAction + validasi eventId, atau checkInByTokenAction baru
-apps/web/components/event/event-checkin-client.tsx       → tambah toggle "Scan QR" + komponen scanner kamera
-apps/web/app/(dashboard)/app/[tenant]/event/acara/[id]/checkin/page.tsx → layout responsive khusus halaman ini
-docs/arsitektur-event.md                                 → update status setelah eksekusi (bagian ini)
+packages/db/src/schema/tenant/events.ts                  → kolom checkinToken
+packages/db/src/helpers/create-tenant-schema.ts           → DDL checkin_token
+packages/db/migrations/0063_event_checkin_token.sql       → migration baru
+apps/web/app/(public)/[tenant]/akun/event/page.tsx        → QR isi checkinToken, bukan teks
+apps/web/app/(dashboard)/app/[tenant]/event/actions.ts    → checkInByTokenAction baru
+apps/web/components/event/event-qr-scanner.tsx            → BARU — komponen scanner kamera
+apps/web/components/event/event-checkin-client.tsx        → toggle Cari Manual / Scan QR
+apps/web/app/(dashboard)/app/[tenant]/event/acara/[id]/checkin/page.tsx → kirim prop eventId
+apps/web/package.json                                     → dependency baru html5-qrcode
+docs/arsitektur-event.md                                  → dokumen ini
 ```

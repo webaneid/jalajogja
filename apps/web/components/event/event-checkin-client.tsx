@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   UserCheck, Search, CheckCircle2, XCircle,
-  Loader2, AlertCircle
+  Loader2, AlertCircle, QrCode, ListFilter
 } from "lucide-react";
 import { checkInRegistrationAction } from "@/app/(dashboard)/app/[tenant]/event/actions";
+import { EventQrScanner } from "@/components/event/event-qr-scanner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,19 +28,36 @@ type RegistrationItem = {
 
 export function EventCheckinClient({
   slug,
+  eventId,
   registrations: initialRows,
   timezone,
 }: {
   slug:          string;
+  eventId:       string;
   registrations: RegistrationItem[];
   timezone:      string;
 }) {
   const [rows,   setRows]   = useState<RegistrationItem[]>(initialRows);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"manual" | "scan">("manual");
   const [lastCheckedIn, setLastCheckedIn] = useState<string | null>(null);
   const [error,  setError]  = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Dipanggil dari EventQrScanner setelah check-in baru sukses via scan — update baris yang
+  // sesuai persis seperti handleCheckIn (klik manual), tanpa reload halaman.
+  function handleScannedCheckedIn(registrationId: string, attendeeName: string) {
+    setLastCheckedIn(attendeeName);
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === registrationId
+          ? { ...r, status: "attended", checkedInAt: new Date() }
+          : r
+      )
+    );
+    setTimeout(() => setLastCheckedIn(null), 3000);
+  }
 
   const filtered = rows.filter((r) => {
     const q = search.toLowerCase();
@@ -95,6 +113,28 @@ export function EventCheckinClient({
         </div>
       </div>
 
+      {/* Toggle mode — Cari Manual (default, selalu tersedia sebagai fallback) vs Scan QR */}
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          type="button"
+          variant={viewMode === "manual" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setViewMode("manual")}
+        >
+          <ListFilter className="h-4 w-4 mr-1.5" />
+          Cari Manual
+        </Button>
+        <Button
+          type="button"
+          variant={viewMode === "scan" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setViewMode("scan")}
+        >
+          <QrCode className="h-4 w-4 mr-1.5" />
+          Scan QR
+        </Button>
+      </div>
+
       {/* Notifikasi berhasil check-in */}
       {lastCheckedIn && (
         <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 p-3 text-sm dark:bg-green-950 dark:border-green-800">
@@ -112,6 +152,12 @@ export function EventCheckinClient({
         </div>
       )}
 
+      {viewMode === "scan" && (
+        <EventQrScanner slug={slug} eventId={eventId} onCheckedIn={handleScannedCheckedIn} />
+      )}
+
+      {viewMode === "manual" && (
+      <>
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -198,6 +244,8 @@ export function EventCheckinClient({
       <p className="text-xs text-muted-foreground text-center">
         {filtered.length} dari {rows.length} peserta
       </p>
+      </>
+      )}
     </div>
   );
 }

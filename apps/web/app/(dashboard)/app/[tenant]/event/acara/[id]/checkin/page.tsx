@@ -89,7 +89,7 @@ export default async function EventCheckinPage({
       </div>
 
       <main className="flex-1 overflow-y-auto p-6">
-        <EventCheckinClient slug={slug} registrations={registrations} timezone={tenantTimezone} />
+        <EventCheckinClient slug={slug} eventId={eventId} registrations={registrations} timezone={tenantTimezone} />
       </main>
     </div>
   );

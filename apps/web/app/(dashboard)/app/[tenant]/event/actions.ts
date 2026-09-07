@@ -1460,5 +1460,80 @@ export async function checkInRegistrationAction(
   return { success: true, data: undefined };
 }
 
+// ─── Check-in via scan QR (kamera) ────────────────────────────────────────────
+// Beda dari checkInRegistrationAction (klik manual dari list yang sudah di-scope ke event yang
+// benar oleh server): di sini identitas datang dari QR yang bisa saja discan di halaman event
+// yang salah, jadi WAJIB validasi eventId cocok. Sudah-attended juga dibedakan jadi hasil "info"
+// tersendiri (bukan error) — scan ulang orang yang sama itu normal, bukan serangan.
+
+export type CheckInScanResult =
+  | { success: true; alreadyCheckedIn: false; registrationId: string; attendeeName: string; eventTitle: string }
+  | { success: true; alreadyCheckedIn: true;  registrationId: string; attendeeName: string; checkedInAt: string | null }
+  | { success: false; error: string };
+
+export async function checkInByTokenAction(
+  slug:    string,
+  eventId: string,
+  token:   string,
+): Promise<CheckInScanResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "event"))
+    return { success: false, error: "Akses ditolak." };
+
+  const { db, schema } = createTenantDb(slug);
+
+  const [reg] = await db
+    .select({
+      id:           schema.eventRegistrations.id,
+      eventId:      schema.eventRegistrations.eventId,
+      status:       schema.eventRegistrations.status,
+      attendeeName: schema.eventRegistrations.attendeeName,
+      checkedInAt:  schema.eventRegistrations.checkedInAt,
+    })
+    .from(schema.eventRegistrations)
+    .where(eq(schema.eventRegistrations.checkinToken, token))
+    .limit(1);
+
+  if (!reg) return { success: false, error: "QR tidak dikenali." };
+  if (reg.eventId !== eventId) return { success: false, error: "QR ini bukan untuk event ini." };
+  if (reg.status === "cancelled") return { success: false, error: "Pendaftaran ini sudah dibatalkan." };
+
+  if (reg.status === "attended") {
+    return {
+      success:          true,
+      alreadyCheckedIn: true,
+      registrationId:   reg.id,
+      attendeeName:     reg.attendeeName,
+      checkedInAt:      reg.checkedInAt ? reg.checkedInAt.toISOString() : null,
+    };
+  }
+
+  if (!["confirmed", "pending"].includes(reg.status))
+    return { success: false, error: `Peserta berstatus "${reg.status}", tidak bisa check-in.` };
+
+  const [event] = await db
+    .select({ title: schema.events.title })
+    .from(schema.events)
+    .where(eq(schema.events.id, eventId))
+    .limit(1);
+
+  await db
+    .update(schema.eventRegistrations)
+    .set({ status: "attended", checkedInAt: new Date(), checkedInBy: access.userId, updatedAt: new Date() })
+    .where(eq(schema.eventRegistrations.id, reg.id));
+
+  revalidatePath(`/app/${slug}/event/acara/${eventId}`);
+  revalidatePath(`/app/${slug}/event/acara/${eventId}/checkin`);
+
+  return {
+    success:          true,
+    alreadyCheckedIn: false,
+    registrationId:   reg.id,
+    attendeeName:     reg.attendeeName,
+    eventTitle:       event?.title ?? "",
+  };
+}
+
 // Export generateRegistrationNumber
 export { generateRegistrationNumber };

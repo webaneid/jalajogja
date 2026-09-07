@@ -814,6 +814,7 @@ export async function createTenantSchemaInDb(
         custom_fields       JSONB,
         status              TEXT        NOT NULL DEFAULT 'pending'
                                         CHECK (status IN ('pending','confirmed','cancelled','attended')),
+        checkin_token       UUID        NOT NULL DEFAULT gen_random_uuid() UNIQUE,
         checked_in_at       TIMESTAMPTZ,
         checked_in_by       UUID        REFERENCES "${s}".users(id) ON DELETE SET NULL,
         certificate_url     TEXT,

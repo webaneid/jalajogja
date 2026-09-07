@@ -187,6 +187,11 @@ export function createEventRegistrationsTable(s: ReturnType<typeof pgSchema>) {
 
     status: text("status", { enum: REGISTRATION_STATUSES }).notNull().default("pending"),
 
+    // Token check-in via scan QR — terpisah dari `id` supaya bisa di-regenerate (invalidate QR
+    // lama) tanpa mengganti identitas baris registrasi. Lihat docs/arsitektur-event.md § "RENCANA
+    // — Check-in via Scan Kamera (QR)".
+    checkinToken: uuid("checkin_token").notNull().unique().defaultRandom(),
+
     // Kehadiran aktual (check-in saat hari-H)
     checkedInAt: timestamp("checked_in_at", { withTimezone: true }),
     checkedInBy: uuid("checked_in_by"),   // FK → users.id via SQL
