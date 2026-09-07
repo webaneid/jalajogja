@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 import { displayPhone } from "@/lib/phone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -142,6 +143,38 @@ export function EventRegistrationList({
     setPage(1); // reset ke halaman pertama setiap kali kata kunci berubah
   }
 
+  // Export via fetch (bukan navigasi <a href> langsung) — supaya kalau server balas error (mis.
+  // "belum ada peserta"), pesannya bisa ditampilkan sebagai toast, bukan browser nyasar ke
+  // halaman JSON mentah. Sukses → trigger download dari blob response secara manual.
+  const [exportingKey, setExportingKey] = useState<string | null>(null);
+
+  async function handleExport(key: string, url: string) {
+    setExportingKey(key);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error ?? "Gagal export data peserta.");
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const filename = disposition.match(/filename="(.+)"/)?.[1] ?? "peserta.xlsx";
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      toast.error("Gagal export data peserta. Coba lagi.");
+    } finally {
+      setExportingKey(null);
+    }
+  }
+
   function runAction(
     id: string,
     fn: () => Promise<{ success: boolean; error?: string }>
@@ -178,17 +211,29 @@ export function EventRegistrationList({
       {/* Export — ikut tab tiket yang sedang aktif (lihat exportTicketParam) */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-1.5">
-          <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
-            <a href={`/api/events/${eventId}/export-participants?tenant=${slug}${exportTicketParam}`}>
-              <Download className="h-3 w-3 mr-1" />
-              Export ke Excel
-            </a>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={exportingKey !== null}
+            onClick={() => handleExport("confirmed", `/api/events/${eventId}/export-participants?tenant=${slug}${exportTicketParam}`)}
+          >
+            {exportingKey === "confirmed"
+              ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              : <Download className="h-3 w-3 mr-1" />}
+            Export ke Excel
           </Button>
-          <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
-            <a href={`/api/events/${eventId}/export-participants?tenant=${slug}&all=1${exportTicketParam}`}>
-              <Download className="h-3 w-3 mr-1" />
-              Export Semua Peserta
-            </a>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={exportingKey !== null}
+            onClick={() => handleExport("all", `/api/events/${eventId}/export-participants?tenant=${slug}&all=1${exportTicketParam}`)}
+          >
+            {exportingKey === "all"
+              ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              : <Download className="h-3 w-3 mr-1" />}
+            Export Semua Peserta
           </Button>
         </div>
       </div>

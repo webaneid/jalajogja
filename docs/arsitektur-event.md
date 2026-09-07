@@ -296,6 +296,15 @@ di Excel setelahnya.
 **File yang diubah:** `components/event/event-registration-list.tsx`,
 `event/acara/[id]/page.tsx`, `api/events/[id]/export-participants/route.ts`.
 
+**Fix susulan (2026-09-08) — error export tampil sebagai JSON mentah:** Tombol export
+sebelumnya `<a href>` langsung ke API route — kalau API balas error (mis. peserta kosong untuk
+tiket yang dipilih), browser navigasi ke halaman JSON mentah (`{"error": "..."}`), pengalaman
+jelek. Diubah jadi `fetch()` dari client: response OK → trigger download manual dari blob
+(`URL.createObjectURL` + `<a download>` sintetis, nama file dari header `Content-Disposition`);
+response error → parse JSON, tampilkan `toast.error()` (sonner, sudah global di `app/layout.tsx`)
+alih-alih navigasi. Tidak perlu ubah kontrak response API route sama sekali — cukup ubah cara
+client mengonsumsinya.
+
 ---
 
 ## Status Event
