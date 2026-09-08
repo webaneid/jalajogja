@@ -174,7 +174,7 @@ export default async function FulfillmentPage({
       {/* Item pesanan */}
       <div>
         <h2 className="font-semibold text-sm mb-2">Item Pesanan</h2>
-        <div className="rounded-lg border border-border overflow-hidden">
+        <div className="rounded-lg border border-border overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
               <tr>

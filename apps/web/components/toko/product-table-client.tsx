@@ -58,8 +58,8 @@ export function ProductTable({ slug, products: initialProducts }: { slug: string
   }
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="border border-border rounded-lg overflow-x-auto">
+      <table className="w-full text-sm min-w-[760px]">
         <thead>
           <tr className="border-b border-border bg-muted/40">
             <th className="px-4 py-3" />

@@ -49,8 +49,8 @@ export function ProductBuyerList({ slug, rows }: { slug: string; rows: ProductBu
           </p>
         </div>
       ) : (
-        <div className="border border-border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="border border-border rounded-lg overflow-x-auto">
+          <table className="w-full text-sm min-w-[880px]">
             <thead>
               <tr className="border-b border-border bg-muted/40">
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Invoice</th>

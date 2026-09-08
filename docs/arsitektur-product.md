@@ -1351,3 +1351,21 @@ belum dijalankan di VPS, belum diverifikasi visual di browser** — perlu dicoba
 `/toko/produk` (tabel+thumbnail), klik icon mata ke satu produk (statistik+daftar pembeli),
 klik kedua tombol export (mode lunas-saja vs semua), dan coba Hapus di list (perhatikan gap
 `deleteProductAction` di atas — hapus produk yang masih ada invoice aktif TIDAK akan diblokir).
+
+### Admin responsive (mobile) — modul ketiga setelah Event & Donasi (2026-09-08)
+Pola identik dengan `docs/arsitektur-event.md` § "RENCANA — Modul Event Responsive (Mobile)" —
+baca di sana untuk alasan lengkap. Ringkasan yang dieksekusi di modul Toko:
+- `components/toko/toko-nav.tsx` + `toko/layout.tsx` — jadi strip horizontal-scroll di mobile,
+  kolom vertikal di desktop. Copy pola persis dari `event-nav.tsx` (termasuk logic active-state
+  khusus item "Dashboard" yang path-nya string kosong, tidak berubah).
+- 4 tabel yang salah pakai `overflow-hidden` (kolom hilang, bukan bisa discroll) —
+  `product-buyer-list.tsx` (8 kolom, `min-w-[880px]`), `product-table-client.tsx` (7 kolom,
+  `min-w-[760px]`), `toko/pesanan/page.tsx` (4 kolom, `min-w-[600px]`),
+  `toko/pesanan/invoice/[invoiceId]/page.tsx` (3 kolom, tanpa `min-w` — sudah cukup sempit).
+  Semua diganti `overflow-x-auto`.
+- **Tidak disentuh** (dicek dulu, bukan bug): `category-manage-client.tsx` (divide-y list, bukan
+  tabel), `fulfillment-client.tsx` (card kurir, bukan tabel), thumbnail gambar di
+  `product-table-client.tsx`/`product-form.tsx`/`variation-table.tsx`/`produk/[id]/page.tsx`
+  (`overflow-hidden` di situ memang benar untuk crop gambar persegi), shell layout editor
+  `product-form.tsx` (`flex flex-1 overflow-hidden` + panel `overflow-y-auto` sendiri-sendiri —
+  pola sama dengan `campaign-form.tsx` di modul Donasi, bukan bug).
