@@ -1030,4 +1030,30 @@ terpisah kalau mau ditutup — `SectionPicker` (dialog pilih tipe section, `grid
 **Belum diverifikasi visual** — perlu login admin untuk screenshot di viewport mobile beneran,
 sama seperti 3 modul sebelumnya.
 
+### Fix susulan — header halaman list dengan banyak tombol (2026-09-08)
+User laporan langsung via screenshot: header `/website/posts` (`flex items-center
+justify-between` 1 baris, judul + 2 link + `CreateButton` — 3 item aksi) di mobile bikin teks
+link ("Import dari WordPress") wrap jadi kotak tinggi ganjil, bukan tersusun rapi. Ini pola beda
+dari yang sudah diperbaiki di atas (bukan tabel/sidebar-form) — header halaman LIST yang
+tombolnya banyak.
+
+**Fix** (sesuai arahan user: judul 1 baris, Import+Export sejajar 1 baris, Post Baru baris
+terpisah): `posts/page.tsx` header diubah `flex flex-col gap-3 md:flex-row ...` (stack di
+mobile, satu baris di desktop) + teks link dipersingkat "Import dari WordPress" → "Import dari
+WP", "Export ke WordPress" → "Export ke WP" (sesuai saran user) + `CreateButton` dibungkus
+`w-full sm:w-auto` (pakai selector anak `[&>button]:w-full` karena `CreateButton` sendiri tidak
+menerima prop className tambahan). Pola sama diterapkan ke `pages/page.tsx` (cuma 1 tombol,
+risiko lebih rendah, tapi disamakan untuk konsistensi).
+
+**Dicek, tidak perlu diubah**: `website/page.tsx` (dashboard) — shortcut button row sudah
+`flex-wrap`, stat card grid sudah `grid-cols-2 sm:grid-cols-4`; section header "Post Terbaru"
+dan `StatCard` internal — 2 item pendek, tidak berisiko wrap aneh. `categories/page.tsx`,
+`import-wordpress/page.tsx`, `pesan/page.tsx` — tidak ada pola header serupa.
+
+**Pelajaran untuk halaman list module lain** (Event/Donasi/Toko yang sudah "selesai" duluan):
+pola header 1-baris-banyak-tombol ini KEMUNGKINAN juga ada di modul lain yang belum dicek
+sedetail ini — baru ketauan di sesi ini karena user kebetulan screenshot halaman Posts duluan.
+Kalau user laporan hal serupa di modul lain, jangan anggap modul itu "sudah pernah dicek beres
+semua" — cek ulang header list page-nya spesifik.
+
 

@@ -40,14 +40,16 @@ export default async function PagesListPage({
 
   return (
     <div className="p-6 space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Halaman</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Halaman statis — Tentang Kami, Kontak, FAQ, dll
           </p>
         </div>
-        <CreatePageButton slug={slug} />
+        <div className="[&>button]:w-full sm:[&>button]:w-auto">
+          <CreatePageButton slug={slug} />
+        </div>
       </div>
 
       {/* Singleton pages — Syarat & Ketentuan + Kebijakan Privasi */}

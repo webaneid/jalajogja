@@ -72,30 +72,35 @@ export default async function PostsPage({
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header — mobile: 3 baris (judul, Import+Export sejajar, Post Baru sendiri).
+          Desktop: satu baris seperti semula. */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Posts</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Artikel, berita, dan pengumuman organisasi
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <a
-            href={`/app/${slug}/website/import-wordpress`}
-            className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors"
-            title="Impor post dari file WordPress WXR XML atau tarik langsung dari situs WordPress via REST API"
-          >
-            Import dari WordPress
-          </a>
-          <a
-            href={`/api/website/export-wxr?slug=${slug}`}
-            className="text-sm px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors"
-            title="Unduh semua post sebagai file WordPress WXR XML — bisa diimpor kembali ke WordPress kapan saja"
-          >
-            Export ke WordPress
-          </a>
-          <CreateButton slug={slug} />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+            <a
+              href={`/app/${slug}/website/import-wordpress`}
+              className="text-sm text-center px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors"
+              title="Impor post dari file WordPress WXR XML atau tarik langsung dari situs WordPress via REST API"
+            >
+              Import dari WP
+            </a>
+            <a
+              href={`/api/website/export-wxr?slug=${slug}`}
+              className="text-sm text-center px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors"
+              title="Unduh semua post sebagai file WordPress WXR XML — bisa diimpor kembali ke WordPress kapan saja"
+            >
+              Export ke WP
+            </a>
+          </div>
+          <div className="[&>button]:w-full sm:[&>button]:w-auto">
+            <CreateButton slug={slug} />
+          </div>
         </div>
       </div>
 
