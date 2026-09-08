@@ -1369,3 +1369,11 @@ baca di sana untuk alasan lengkap. Ringkasan yang dieksekusi di modul Toko:
   (`overflow-hidden` di situ memang benar untuk crop gambar persegi), shell layout editor
   `product-form.tsx` (`flex flex-1 overflow-hidden` + panel `overflow-y-auto` sendiri-sendiri —
   pola sama dengan `campaign-form.tsx` di modul Donasi, bukan bug).
+
+**Susulan (2026-09-08)**: shell editor `product-form.tsx` di atas TERNYATA juga perlu dibikin
+responsive — kasusnya paling rumit dari 3 form (Event/Donasi/Toko) karena sidebar-nya punya trik
+tambahan (footer tombol simpan flex sibling, bukan sticky, untuk cegah overlap konten panjang).
+Diperbaiki dengan bikin `flex-1`+`overflow-y-auto` di wrapper konten sidebar jadi `md:flex-1
+md:overflow-y-auto` (bukan dihapus — triknya tetap jalan di desktop). Detail lengkap alasan+cara
+di `docs/arsitektur-event.md` § "Susulan — Layout Create/Edit juga responsive", jangan
+diduplikasi di sini.

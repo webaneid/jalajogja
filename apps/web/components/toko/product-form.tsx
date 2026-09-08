@@ -373,10 +373,11 @@ export function ProductForm({
         <StatusBadge status={status} />
       </div>
 
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Body — mobile: satu kolom natural scroll (sidebar di bawah main). Desktop: dua panel
+          independen scroll seperti semula. Pola sama dengan event-form.tsx/campaign-form.tsx. */}
+      <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden">
         {/* ── Main area ── */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <div className="flex-1 md:overflow-y-auto p-4 md:p-6 space-y-5">
           {/* Nama */}
           <div>
             <Input
@@ -441,9 +442,14 @@ export function ProductForm({
             sticky bottom-0 sebagai sibling — begitu Atribut Produk punya >1 grup (konten jadi
             tinggi), footer "melayang" menutupi tombol Generate Variasi/baris variasi saat
             discroll. Pola ini (scroll dibatasi ke area konten, footer flex biasa) menghilangkan
-            kelas overlap ini total, bukan cuma ditambal padding. */}
-        <div className="w-72 shrink-0 border-l border-border bg-muted/10 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto space-y-5 p-4">
+            kelas overlap ini total, bukan cuma ditambal padding.
+            Mobile: seluruh sidebar (termasuk trik scroll-internal ini) TIDAK dipakai — flex-1 +
+            overflow-y-auto cuma aktif dari md ke atas (`md:flex-1 md:overflow-y-auto`), supaya di
+            mobile kontennya mengalir natural sebagai bagian dari satu kolom yang di-scroll body,
+            bukan area scroll independen bersarang di dalam kolom yang juga discroll (UX buruk di
+            layar sentuh). */}
+        <div className="w-full md:w-72 md:shrink-0 border-t md:border-t-0 md:border-l border-border bg-muted/10 flex flex-col md:overflow-hidden">
+          <div className="md:flex-1 md:overflow-y-auto space-y-5 p-4">
 
             {/* Harga & Stok */}
             <div className="space-y-2">

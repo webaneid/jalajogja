@@ -1246,3 +1246,29 @@ docs/arsitektur-event.md                                    → update status se
 ### Verifikasi Setelah Eksekusi
 `resize_window` (mobile preset) via browser tool lokal untuk tiap halaman di atas — bukan cuma
 type-check, karena ini murni perubahan visual/layout yang type-checker tidak bisa validasi.
+
+### Susulan — Layout Create/Edit (`event-form.tsx`) juga responsive (2026-09-08)
+User laporan lanjutan: halaman create/edit (bukan cuma list/checkin) di Event, Donasi, Toko
+sama-sama belum responsive — ternyata KETIGANYA pakai pola layout editor yang identik: sidebar
+`w-72` (288px) TETAP nempel di samping, `flex flex-1 overflow-hidden` dua-panel-independen-scroll
+tanpa logic mobile sama sekali. Diperbaiki di ketiga form sekaligus (`event-form.tsx`,
+`campaign-form.tsx` di Donasi, `product-form.tsx` di Toko — lihat masing-masing doc modul untuk
+detail per-file):
+- Header: `flex items-center justify-between` → stack vertikal + wrap tombol di mobile
+  (`flex-col sm:flex-row ... flex-wrap` pada baris tombol) — EventForm py header paling ramai
+  (sampai 4 tombol: Hapus/Batalkan/Simpan/Publikasikan), paling butuh ini.
+- Body: `flex flex-1 overflow-hidden` → `flex flex-col md:flex-row flex-1 overflow-y-auto
+  md:overflow-hidden` — mobile jadi SATU kolom scroll natural (sidebar di bawah main), desktop
+  tetap dua panel independen scroll seperti semula.
+- Main area & sidebar: `overflow-y-auto` yang tadinya unconditional diubah jadi `md:overflow-y-auto`
+  (mobile: ikut alur scroll body, tidak scroll sendiri — nested-scroll-di-dalam-scroll itu UX
+  buruk di touchscreen). Sidebar `w-72 shrink-0 border-l` → `w-full md:w-72 md:shrink-0 border-t
+  md:border-t-0 md:border-l` (full-width + border atas saat ditumpuk di bawah main, kolom+border
+  kiri seperti semula di desktop).
+- **Kasus khusus `product-form.tsx`**: sidebar-nya punya trik tambahan (footer tombol simpan flex
+  sibling biasa, BUKAN sticky — sengaja dibikin begitu sebelumnya untuk cegah footer menutupi
+  konten saat scroll, lihat komentar di file). Trik itu butuh `flex-1`+`overflow-y-auto` di
+  wrapper konten sidebar — diubah jadi `md:flex-1 md:overflow-y-auto` (bukan dihapus) supaya
+  trik-nya tetap jalan di desktop, tapi di mobile kontennya mengalir natural tanpa area scroll
+  bersarang.
+**Belum diverifikasi visual** — perlu login admin untuk screenshot di viewport mobile beneran.

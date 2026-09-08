@@ -2523,3 +2523,9 @@ modul Donasi:
 - `campaign-form.tsx` punya `overflow-hidden` juga TAPI itu bukan tabel — itu shell layout
   editor (`flex flex-1 overflow-hidden` + panel dalam `overflow-y-auto` sendiri-sendiri),
   overflow-hidden di situ memang benar, jangan diubah kalau audit modul lain nemu pola serupa.
+
+**Susulan (2026-09-08)**: shell editor `campaign-form.tsx` di atas TERNYATA juga perlu dibikin
+responsive (sidebar `w-72` selalu nempel di samping, tidak ada logic mobile) — sudah diperbaiki
+mengikuti pola identik dengan `event-form.tsx`. Detail lengkap alasan+cara di
+`docs/arsitektur-event.md` § "Susulan — Layout Create/Edit juga responsive", jangan diduplikasi
+di sini.

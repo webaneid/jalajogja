@@ -562,7 +562,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background sticky top-0 z-10">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-background sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <Link
             href={`/app/${slug}/event/acara`}
@@ -573,7 +573,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
           </Link>
           <Badge variant={st.variant}>{st.label}</Badge>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {eventId && (
             <Button
               variant="outline"
@@ -625,10 +625,12 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
         </div>
       </div>
 
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Body — mobile: satu kolom natural scroll (sidebar di bawah main). Desktop: dua panel
+          independen scroll seperti semula. Lihat docs/arsitektur-event.md § "RENCANA — Modul
+          Event Responsive (Mobile)". */}
+      <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden">
         {/* Main area */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 md:overflow-y-auto p-4 md:p-6 space-y-6">
           {error && (
             <div className="rounded-md bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">
               {error}
@@ -1101,7 +1103,7 @@ export function EventForm({ slug, eventId, categories, activeCampaigns, activePr
         </div>
 
         {/* Sidebar */}
-        <aside className="w-72 shrink-0 border-l border-border overflow-y-auto p-4 space-y-5 bg-muted/10">
+        <aside className="w-full md:w-72 md:shrink-0 border-t md:border-t-0 md:border-l border-border md:overflow-y-auto p-4 space-y-5 bg-muted/10">
           {/* Kategori Event */}
           <div className="space-y-2">
             <Label>Kategori</Label>
