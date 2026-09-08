@@ -163,9 +163,9 @@ export function MediaShell({
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="border-b border-border bg-card px-6 py-4 shrink-0">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="text-xl font-semibold">Media Library</h1>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <h1 className="text-xl font-semibold whitespace-nowrap">Media Library</h1>
+          <div className="flex items-center gap-2 flex-wrap">
             {selected.size > 0 && (
               <Button
                 variant="destructive"
