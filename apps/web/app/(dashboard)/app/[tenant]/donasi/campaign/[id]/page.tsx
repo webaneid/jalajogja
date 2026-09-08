@@ -291,8 +291,8 @@ export default async function CampaignDetailPage({
             <p className="text-sm text-muted-foreground">Belum ada donasi langsung</p>
           </div>
         ) : (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="rounded-lg border border-border overflow-x-auto">
+            <table className="w-full text-sm min-w-[560px]">
               <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-2.5 text-left font-medium">Nomor</th>
@@ -360,8 +360,8 @@ export default async function CampaignDetailPage({
             <p className="text-sm text-muted-foreground">Belum ada donasi via keranjang</p>
           </div>
         ) : (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="rounded-lg border border-border overflow-x-auto">
+            <table className="w-full text-sm min-w-[560px]">
               <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-2.5 text-left font-medium">No. Invoice</th>
@@ -423,8 +423,8 @@ export default async function CampaignDetailPage({
             </p>
           </div>
         ) : (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="rounded-lg border border-border overflow-x-auto">
+            <table className="w-full text-sm min-w-[560px]">
               <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-2.5 text-left font-medium">Nomor</th>

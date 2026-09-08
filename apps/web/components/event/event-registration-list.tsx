@@ -292,8 +292,8 @@ export function EventRegistrationList({
       )}
 
       {/* Table */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="rounded-lg border border-border overflow-x-auto">
+        <table className="w-full text-sm min-w-[560px]">
           <thead className="bg-muted/50">
             <tr>
               <th className="text-left px-3 py-2.5 font-medium text-xs text-muted-foreground">No. Daftar</th>

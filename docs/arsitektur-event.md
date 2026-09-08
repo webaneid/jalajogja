@@ -1156,3 +1156,93 @@ apps/web/app/(dashboard)/app/[tenant]/event/acara/[id]/checkin/page.tsx → kiri
 apps/web/package.json                                     → dependency baru html5-qrcode
 docs/arsitektur-event.md                                  → dokumen ini
 ```
+
+---
+
+## RENCANA — Modul Event Responsive (Mobile)
+
+> Status: **RENCANA, belum dieksekusi.** Dicatat 2026-09-08 sebelum eksekusi (disiplin
+> `CLAUDE.md` § "Cara Claude Harus Bekerja" poin 7). **Scope sengaja dibatasi ke modul Event
+> saja** — dashboard admin lain BELUM responsive dan TIDAK disentuh di rencana ini (keputusan
+> user: mulai dari satu modul konkret dulu, bukan audit menyeluruh dashboard sekaligus).
+
+### Prinsip Pembagian Effort (keputusan user)
+Tiga tingkat perlakuan berbeda, bukan satu treatment untuk semua:
+1. **Nav/submenu Event** — full fix sekarang (jadi strip horizontal-scroll di mobile)
+2. **Tabel biasa (Acara list, Peserta list di detail acara)** — fix ringan "sementara": cuma
+   bisa di-scroll horizontal kayak Excel, BUKAN dirombak jadi card. Sengaja kecil biar
+   perubahannya tidak besar
+3. **Halaman Check-in** — SATU-SATUNYA yang dapat perlakuan "super responsive": di mobile jadi
+   card menurun ke bawah (bukan tabel sama sekali)
+
+Alasan pembagian ini (dari user): halaman check-in memang didesain dipakai berdiri pakai HP di
+pintu masuk acara (lihat § "Check-in via Scan Kamera (QR)" di atas) — jadi itu yang paling butuh
+pengalaman mobile penuh. Tabel lain masih dipakai duduk di depan laptop, jadi cukup bisa
+di-scroll, tidak perlu dirombak total sekarang. **Catatan user**: kalau nanti mau lebih jauh,
+SEMUA tabel jadi card-menurun-ke-bawah di mobile itu arah yang lebih baik jangka panjang — tapi
+itu di luar scope rencana ini, dicatat sebagai arah masa depan saja.
+
+### 1. `EventNav` — sudah 1 komponen, tinggal dibuat adaptif
+Sudah dicek: `components/event/event-nav.tsx` MEMANG sudah satu-satunya sumber sub-nav Event
+(dipakai sekali di `event/layout.tsx`, membungkus SEMUA halaman Event — Acara/Kategori/
+Pengaturan/detail acara/checkin). Jadi "componentize supaya edit sekali kena semua" yang
+diminta **sudah terpenuhi secara struktural** — tidak perlu refactor pemisahan komponen, cukup
+buat isinya adaptif per breakpoint.
+
+**Masalah saat ini**: `w-48 shrink-0 border-r ... py-4` — SELALU render sebagai kolom vertikal
+lebar tetap 192px, di layar HP sempit itu makan porsi besar dari viewport secara permanen,
+tidak ada logic mobile sama sekali.
+
+**Fix**: ubah container jadi responsive — di bawah breakpoint (`md`), render sebagai strip
+horizontal di ATAS konten (bukan kolom kiri), item-nya scroll ke samping
+(`flex flex-row overflow-x-auto whitespace-nowrap`, tiap item `shrink-0` supaya tidak
+kegencet). Di atas `md`, tetap kolom vertikal seperti sekarang (tidak berubah untuk desktop).
+`event/layout.tsx` ikut berubah: `flex h-full` → `flex flex-col md:flex-row h-full` (nav di
+atas konten saat mobile, di samping saat desktop).
+
+### 2. Tabel biasa — ganti `overflow-hidden` jadi `overflow-x-auto`
+Dicek: DUA tabel di modul Event pakai `overflow-hidden` di div pembungkus — ini SALAH untuk
+mobile, bukan cuma "belum responsive": `overflow-hidden` bikin kolom yang kepotong di layar
+sempit hilang sama sekali (tidak bisa diakses), bukan bisa di-scroll. Persis kebalikan dari
+yang diminta user ("kayak Excel, bisa discroll").
+- `components/event/event-list-client.tsx` (Acara list) — baris ~109
+- `components/event/event-registration-list.tsx` (Peserta list di detail acara — BUKAN
+  halaman checkin, itu beda file dan sudah tidak pakai `<table>` sama sekali)
+
+Fix: ganti `overflow-hidden` → `overflow-x-auto` di kedua tempat. Perubahan minimal, sesuai
+prinsip "jangan besar-besar dulu" dari user.
+
+(`event-category-manage-client.tsx` sudah aman — itu list `divide-y`, bukan `<table>`, tidak
+ada masalah overflow horizontal.)
+
+### 3. Halaman Check-in — audit + polish "super responsive"
+Sudah dicek: `event-checkin-client.tsx` **sudah** render baris peserta sebagai card
+(`<div className="flex items-center gap-3 rounded-lg border p-3">`), BUKAN `<table>` — jadi
+fondasi "card menurun ke bawah" yang diminta user **sudah ada dari awal**, bukan perlu
+dirombak dari nol. Yang perlu dicek/dipoles saat eksekusi (bukan redesign besar):
+- Baris kartu peserta: pastikan di layar sangat sempit (~320-375px) nama+meta+tombol aksi
+  tidak saling gencet — mungkin perlu `flex-wrap` atau susun ulang jadi 2 baris (info di atas,
+  tombol aksi full-width di bawah) khusus breakpoint mobile.
+- Stats strip (`grid grid-cols-3 gap-3`) — 3 kolom sama lebar, cek angka+label tidak terlalu
+  mepet di layar sempit, kecilkan font/padding kalau perlu.
+- Toggle "Cari Manual"/"Scan QR" (`grid grid-cols-2 gap-2`) — sudah 2 kolom, kemungkinan besar
+  sudah oke, verifikasi saja.
+- Scanner kamera (`EventQrScanner`) — video full-width, `html5-qrcode` biasanya auto-sizing ke
+  container, verifikasi tidak overflow horizontal di viewport sempit.
+- Header halaman (`checkin/page.tsx`, sticky top) — link balik + judul event + tanggal, cek
+  tidak wrap berantakan kalau judul event panjang.
+
+### File yang Akan Tersentuh Saat Eksekusi
+```
+apps/web/components/event/event-nav.tsx                    → jadi adaptif (strip mobile / kolom desktop)
+apps/web/app/(dashboard)/app/[tenant]/event/layout.tsx      → flex-col md:flex-row
+apps/web/components/event/event-list-client.tsx             → overflow-hidden → overflow-x-auto
+apps/web/components/event/event-registration-list.tsx       → overflow-hidden → overflow-x-auto
+apps/web/components/event/event-checkin-client.tsx          → polish spacing/wrap di layar sempit
+apps/web/app/(dashboard)/app/[tenant]/event/acara/[id]/checkin/page.tsx → cek header sticky
+docs/arsitektur-event.md                                    → update status setelah eksekusi
+```
+
+### Verifikasi Setelah Eksekusi
+`resize_window` (mobile preset) via browser tool lokal untuk tiap halaman di atas — bukan cuma
+type-check, karena ini murni perubahan visual/layout yang type-checker tidak bisa validasi.

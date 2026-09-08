@@ -17,21 +17,24 @@ export function DonasiNav({ slug }: { slug: string }) {
   const base = `/app/${slug}/donasi`;
 
   return (
-    <nav className="w-48 shrink-0 border-r border-border bg-muted/20 py-4">
-      <p className="px-4 pb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+    // Mobile (< md): strip horizontal-scroll di atas konten. Desktop (md+): kolom vertikal
+    // seperti semula. Pola sama persis dengan components/event/event-nav.tsx — lihat
+    // docs/arsitektur-event.md § "RENCANA — Modul Event Responsive (Mobile)" untuk alasannya.
+    <nav className="md:w-48 md:shrink-0 border-b md:border-b-0 md:border-r border-border bg-muted/20 py-2 md:py-4 overflow-x-auto md:overflow-visible">
+      <p className="hidden md:block px-4 pb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
         Donasi
       </p>
-      <ul className="space-y-0.5 px-2">
+      <ul className="flex flex-row md:flex-col gap-1 md:gap-0.5 px-3 md:px-2">
         {NAV_ITEMS.map(({ label, icon: Icon, path }) => {
           const href     = `${base}${path}`;
           const isActive = pathname.startsWith(href);
 
           return (
-            <li key={label}>
+            <li key={label} className="shrink-0">
               <Link
                 href={href}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm whitespace-nowrap transition-colors",
                   isActive
                     ? "bg-background text-foreground font-medium shadow-sm border border-border"
                     : "text-muted-foreground hover:text-foreground hover:bg-background/60"

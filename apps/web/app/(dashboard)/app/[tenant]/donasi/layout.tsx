@@ -17,7 +17,7 @@ export default async function DonasiLayout({
   if (!hasReadAccess(access.tenantUser, "donasi")) redirect(`/app/${slug}/dashboard`);
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col md:flex-row h-full">
       <DonasiNav slug={slug} />
       <main className="flex-1 overflow-y-auto">
         {children}

@@ -2506,3 +2506,20 @@ Status campaign bisa pindah ke nilai apapun langsung — tidak perlu urutan draf
 Implementasi: `<select>` native di header form, nilai disimpan bersamaan tombol "Simpan".
 Tidak butuh `toggleCampaignStatusAction` di UI (action bisa tetap ada untuk programmatic use).
 Prinsip: jangan paksa admin mengikuti alur yang tidak mereka butuhkan.
+
+### Admin responsive (mobile) — modul kedua setelah Event (2026-09-08)
+Pola identik dengan `docs/arsitektur-event.md` § "RENCANA — Modul Event Responsive (Mobile)" —
+baca di sana untuk alasan lengkap kenapa dibagi 3 tingkat effort (nav full fix, tabel biasa
+cukup scroll, cuma satu halaman yang layak "super responsive"). Ringkasan yang dieksekusi di
+modul Donasi:
+- `components/donasi/donasi-nav.tsx` + `donasi/layout.tsx` — jadi strip horizontal-scroll di
+  mobile, kolom vertikal di desktop. Copy pola persis dari `event-nav.tsx`.
+- `campaign-list-client.tsx` + 3 tabel di `donasi/campaign/[id]/page.tsx` (donasi langsung,
+  donasi via keranjang, penyaluran) — `overflow-hidden` → `overflow-x-auto` + `min-w` supaya
+  bisa discroll, bukan ke-clip.
+- `donasi/transaksi/page.tsx` — SUDAH benar dari awal (`overflow-x-auto`), tidak disentuh.
+- `campaign-category-manage-client.tsx` — list `divide-y`, bukan `<table>`, tidak ada masalah
+  overflow horizontal, tidak disentuh.
+- `campaign-form.tsx` punya `overflow-hidden` juga TAPI itu bukan tabel — itu shell layout
+  editor (`flex flex-1 overflow-hidden` + panel dalam `overflow-y-auto` sendiri-sendiri),
+  overflow-hidden di situ memang benar, jangan diubah kalau audit modul lain nemu pola serupa.

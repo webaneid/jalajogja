@@ -114,8 +114,8 @@ export function CampaignTable({
           </p>
         </div>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-lg border border-border overflow-x-auto">
+          <table className="w-full text-sm min-w-[720px]">
             <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-2.5 text-left font-medium">Campaign</th>
