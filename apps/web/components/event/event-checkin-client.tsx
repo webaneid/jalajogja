@@ -72,7 +72,7 @@ export function EventCheckinClient({
     setError(null);
     setActionId(id);
     startTransition(async () => {
-      const res = await checkInRegistrationAction(slug, id);
+      const res = await checkInRegistrationAction(slug, id, eventId);
       setActionId(null);
       if (!res.success) {
         setError(res.error ?? "Gagal check-in.");

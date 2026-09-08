@@ -1431,7 +1431,13 @@ export async function updateRegistrationDataAction(
 
 export async function checkInRegistrationAction(
   slug: string,
-  registrationId: string
+  registrationId: string,
+  // Defense-in-depth: saat ini registrationId SELALU berasal dari list yang sudah di-scope
+  // server-side ke event yang benar (event-checkin-client.tsx), jadi param ini opsional demi
+  // backward-compat pemanggil lain yang mungkin belum sempat diupdate. Kalau diisi, tetap
+  // divalidasi cocok — konsisten dengan checkInByTokenAction yang WAJIB validasi ini (di situ
+  // registrationId datang dari QR yang bisa saja discan di halaman event yang salah).
+  expectedEventId?: string,
 ): Promise<ActionResult> {
   const access = await getTenantAccess(slug);
   if (!access) return { success: false, error: "Akses ditolak." };
@@ -1447,6 +1453,8 @@ export async function checkInRegistrationAction(
     .limit(1);
 
   if (!reg) return { success: false, error: "Registrasi tidak ditemukan." };
+  if (expectedEventId && reg.eventId !== expectedEventId)
+    return { success: false, error: "Registrasi ini bukan untuk event yang sedang dibuka." };
   if (!["confirmed", "pending"].includes(reg.status))
     return { success: false, error: `Peserta berstatus "${reg.status}", tidak bisa check-in.` };
 

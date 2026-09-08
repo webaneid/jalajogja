@@ -1119,7 +1119,13 @@ membangun dua jalur kode berbeda untuk "mode HP" vs "mode laptop".
   `apps/web/app/(dashboard)/app/[tenant]/event/actions.ts` — validasi `eventId` cocok (celah yang
   tidak ada di `checkInRegistrationAction` lama, aman untuk klik manual tapi tidak untuk scan),
   bedakan hasil "sudah check-in sebelumnya" (info, bukan error) dari check-in baru (return
-  `attendeeName` + `eventTitle` untuk pesan "Selamat datang").
+  `attendeeName` + `eventTitle` untuk pesan "Selamat datang"). **Fix susulan (security review
+  pakai skill `jalakarta-security-review`, 2026-09-08)**: `checkInRegistrationAction` (yang lama,
+  dipakai tombol check-in manual) ditambah parameter opsional `expectedEventId` + validasi yang
+  sama — sebelumnya aman cuma karena `registrationId` yang dikirim selalu dari list yang
+  sudah di-scope server-side, bukan dijamin di level action itu sendiri. Defense-in-depth,
+  konsisten dengan `checkInByTokenAction`. `event-checkin-client.tsx` sudah kirim `eventId`
+  (prop yang sudah ada) di pemanggilannya.
 - **Komponen scanner baru**: `apps/web/components/event/event-qr-scanner.tsx` — kamera TIDAK
   pernah tertutup sendiri antar-scan (sesuai permintaan user), cooldown 3 detik per token supaya
   QR yang sama yang masih di frame tidak diproses berkali-kali, fallback otomatis dari
