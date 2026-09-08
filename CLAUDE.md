@@ -75,6 +75,36 @@ bun run db:studio     # buka Drizzle Studio
 - Semua fungsi database wajib multi-tenant aware (gunakan tenant schema)
 - Penamaan: camelCase untuk variabel/fungsi, PascalCase untuk komponen/types
 
+## Security — Non-Negotiable
+> Checklist lengkap + alasan tiap poin: **`docs/arsitektur-keamanan.md`**. Diadaptasi
+> 2026-09-08 dari standar `~/sites/master-typescript`, disesuaikan ke stack project ini
+> (Next.js Server Actions, Better Auth, isolasi schema-per-tenant — bukan Elysia/JWT custom).
+
+- JANGAN PERNAH hardcode secret/API key/password di kode — selalu dari `process.env`, `.env*`
+  sudah di `.gitignore`. **Enforcement otomatis aktif dua lapis**: hook Claude Code
+  (`.claude/hooks/secret-scan.sh`) + git hook independen (`.githooks/pre-commit`, wajib
+  `git config core.hooksPath .githooks` sekali per clone/mesin).
+- Server Action/route handler admin WAJIB `getTenantAccess(slug)` di awal + authorization
+  lewat `canAccess`/`hasFullAccess`/`hasReadAccess` (`lib/permissions.ts`) — JANGAN cek
+  `role` manual per-action.
+- Semua akses tenant WAJIB lewat `createTenantDb(slug)` yang `slug`-nya berasal dari
+  `getTenantAccess()` yang sudah tervalidasi ke session — JANGAN pakai `slug`/`tenantId`
+  mentah dari body/query request tanpa validasi balik. Query ke data global
+  (`public.members`, dst) yang tenant-scoped WAJIB JOIN `tenant_memberships`.
+  Ini kategori Critical KHUSUS project ini (isolasi schema-per-tenant, bukan row-level).
+- Query DB lewat Drizzle (parameterized otomatis) — raw SQL `sql\`...\`` WAJIB pakai
+  interpolasi `${value}`, JANGAN string concatenation manual.
+- Upload MinIO WAJIB validasi ukuran + format di server (proses ulang via Sharp, bukan cuma
+  trust `file.type` client) + nama file di-generate ulang server-side (`randomUUID()`).
+- Pembayaran: manual confirmation (ADR-0002), BUKAN webhook gateway otomatis — jangan
+  tambah endpoint webhook payment tanpa ADR baru yang eksplisit Supersedes ADR-0002.
+- Setelah bikin Server Action/route handler baru → jalankan skill `jalakarta-security-review`
+  sebelum menganggap task selesai. Diingatkan otomatis (warning, bukan block) oleh
+  `.claude/hooks/security-review-reminder.sh` tiap edit `*/actions.ts`, `*/route.ts`, atau
+  file terkait auth/upload/media/payment.
+- Audit menyeluruh (banyak file/modul, sebelum deploy fitur besar) → delegasikan ke subagent
+  `security-auditor` (read-only, context terisolasi).
+
 ## Arsitektur Kontak (Phone & WhatsApp)
 > Detail lengkap: **`docs/arsitektur-kontak.md`**
 
