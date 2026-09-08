@@ -988,4 +988,46 @@ Spesifikasi pengembangan lanjutan meliputi:
 - **Responsive Instagram Embed**: Parser post/reel Instagram dengan auto-script loader `instagram.com/embed.js`.
 - **Frontend Spacing Standard**: Utility `.prose-jalakarta` untuk menjamin konsistensi jarak antar-block di seluruh breakpoint.
 
+## Admin Responsive (Mobile) — modul keempat setelah Event, Donasi, Toko (2026-09-08)
+
+Pola identik dengan `docs/arsitektur-event.md` § "RENCANA — Modul Event Responsive (Mobile)" +
+§ "Susulan — Layout Create/Edit juga responsive" — baca di sana untuk alasan lengkap. Modul
+Website adalah yang terbesar (11 halaman: Dashboard, Posts list/new/edit, Halaman list/new/edit,
+Kategori, Pesan, Import WP, Pengaturan) — dicek satu-satu, bukan cuma pola nav+tabel yang sudah
+terbukti di 3 modul sebelumnya.
+
+**Yang diperbaiki (mengikuti pola yang sudah terbukti):**
+- `website-nav.tsx` + `website/layout.tsx` — strip horizontal-scroll di mobile, kolom vertikal
+  di desktop.
+- `post-form.tsx` + `page-form.tsx` — sidebar `w-72` → `w-full md:w-72`, body
+  `flex-col md:flex-row`. **Beda struktur kecil dari event-form.tsx/product-form.tsx**:
+  `overflow-y-auto` di sini ada LANGSUNG di div sidebar terluar (bukan di div konten dalam
+  sidebar seperti product-form.tsx) — footer tombol Simpan/Publikasikan jadi flex sibling biasa
+  di dalam div yang sama, bukan dipisah kayak product-form.tsx. Fix-nya tetap sama prinsipnya:
+  `overflow-y-auto` unconditional → `md:overflow-y-auto`.
+- 4 tabel `overflow-hidden` → `overflow-x-auto`: `category-table.tsx`, `post-list-client.tsx`,
+  `page-list-client.tsx`, `tag-table.tsx`. Keempatnya SUDAH punya `hidden sm:table-cell`/
+  `hidden md:table-cell` di beberapa kolom (kombinasi progressive-hide + scroll, lebih baik dari
+  3 modul sebelumnya yang murni scroll-only).
+
+**Dicek, TIDAK ada masalah (bukan bug):** avatar/thumbnail gambar (`author-picker.tsx`,
+`section-editors.tsx`, dll — semua `overflow-hidden` di situ untuk crop gambar, benar), progress
+bar `import-wordpress-client.tsx`, card list `pesan/page.tsx` (sudah `.map()` div bukan tabel),
+`website/pengaturan/page.tsx` (Widget Area Builder — sudah `max-w-2xl`, tidak ada sidebar fixed
+lebar), `category-manager.tsx` (cuma menyusun 2 tabel di atas sudah vertikal).
+
+**BELUM disentuh — batas yang jujur, bukan diklaim selesai:** `section-editors.tsx` (1906 baris,
+editor per tipe section Landing Page — Hero/CTA/Grid Post/dll) punya ~14 `grid-cols-2`/
+`grid-cols-3` TANPA prefix responsive (mis. `grid grid-cols-2 gap-2` polos, bukan
+`grid-cols-1 sm:grid-cols-2`). Ini BUKAN bug separah sidebar-selalu-nempel yang sudah diperbaiki
+di atas — sekarang field-field itu sudah dapat lebar penuh viewport mobile (bukan lagi
+diperkecil paksa oleh sidebar 288px yang sudah dihapus), jadi kondisinya "bisa dipakai tapi
+agak sempit di grid 2-3 kolom" bukan "rusak/kepotong". Belum diaudit+diperbaiki satu-satu karena
+scope-nya besar (14 lokasi, perlu dicek konteks masing-masing biar tidak salah ubah). Perlu sesi
+terpisah kalau mau ditutup — `SectionPicker` (dialog pilih tipe section, `grid-cols-2` di dalam
+`max-w-3xl` dialog) juga masuk kategori sama: bisa dipakai, belum dioptimalkan.
+
+**Belum diverifikasi visual** — perlu login admin untuk screenshot di viewport mobile beneran,
+sama seperti 3 modul sebelumnya.
+
 

@@ -283,8 +283,8 @@ export function CategoryTable({
           Belum ada kategori. Tambahkan kategori pertama di atas.
         </div>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-lg border border-border overflow-x-auto">
+          <table className="w-full text-sm min-w-[420px]">
             <thead>
               <tr className="border-b border-border bg-muted/40">
                 <th className="px-4 py-3 text-left font-medium">Nama</th>

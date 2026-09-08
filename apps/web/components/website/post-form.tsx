@@ -595,11 +595,13 @@ export function PostForm({
         <StatusBadge status={status} />
       </div>
 
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Body — mobile: satu kolom natural scroll (sidebar di bawah main). Desktop: dua panel
+          independen scroll seperti semula. Pola sama dengan event-form.tsx dkk, lihat
+          docs/arsitektur-event.md § "Susulan — Layout Create/Edit juga responsive". */}
+      <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden">
 
         {/* ── Konten utama ──────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 md:overflow-y-auto p-4 md:p-6 space-y-4">
 
           <Input
             value={title}
@@ -644,7 +646,7 @@ export function PostForm({
         </div>
 
         {/* ── Sidebar kanan ──────────────────────────────────────────── */}
-        <div className="w-72 shrink-0 border-l border-border overflow-y-auto flex flex-col">
+        <div className="w-full md:w-72 md:shrink-0 border-t md:border-t-0 md:border-l border-border md:overflow-y-auto flex flex-col">
           <div className="flex-1 p-4 space-y-5">
 
             {/* Status */}
