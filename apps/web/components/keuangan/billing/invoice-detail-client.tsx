@@ -6,6 +6,7 @@ import { X, ImagePlus, Loader2, Check } from "lucide-react";
 import {
   confirmInvoicePaymentAction,
   cancelInvoiceAction,
+  reactivateInvoiceAction,
   verifySubmittedPaymentAction,
   rejectPaymentAction,
   updatePaymentEvidenceAction,
@@ -441,6 +442,20 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
     setError("");
     startTransition(async () => {
       const res = await cancelInvoiceAction(slug, invoice.id, cancelNote);
+      if (res.success) {
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+    });
+  }
+
+  // Invoice dibatalkan (manual maupun auto-cancel cron) bisa diaktifkan kembali — cuma valid
+  // kalau stok item produknya masih tersedia (dicek server-side). Lihat docs/arsitektur-stok.md.
+  function handleReactivate() {
+    setError("");
+    startTransition(async () => {
+      const res = await reactivateInvoiceAction(slug, invoice.id);
       if (res.success) {
         router.refresh();
       } else {
@@ -1029,6 +1044,20 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
               {showCancel ? "Batal" : "Batalkan Invoice"}
             </button>
           )}
+        </div>
+      )}
+
+      {/* ── Aktifkan kembali invoice yang dibatalkan — cek stok server-side ────── */}
+      {invoice.status === "cancelled" && (
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={handleReactivate}
+            disabled={pending}
+            className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary transition-colors disabled:opacity-60"
+          >
+            {pending ? "Memproses..." : "Aktifkan Kembali"}
+          </button>
         </div>
       )}
 

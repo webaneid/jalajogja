@@ -14,6 +14,8 @@ export type WaNotifKey =
   | "order_processing"
   | "order_shipped"
   | "order_delivered"
+  | "product_stock_out"
+  | "order_auto_cancelled"
   | "event_registered"
   | "event_reminder"
   | "event_certificate_ready"
@@ -47,6 +49,8 @@ export const WA_NOTIF_DEFAULTS: WaNotifConfig["notifications"] = {
   order_processing:        false,
   order_shipped:           false,
   order_delivered:         false,
+  product_stock_out:       false,
+  order_auto_cancelled:    false,
   event_registered:        false,
   event_reminder:          false,
   event_certificate_ready: false,

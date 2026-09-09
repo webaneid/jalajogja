@@ -8,6 +8,10 @@ pesanan, kategori) dan front-end publik (listing + detail produk).
 - `docs/arsitektur-image.md` — sistem gambar, variant, autocrop, module-aware generation
 - `docs/arsitektur-card-section.md` — card + section front-end untuk produk (ProductCard, ProductsSection)
 - `docs/arsitektur-keuangan.md` — integrasi pembayaran pesanan → jurnal keuangan
+- `docs/arsitektur-stok.md` — **Kode SELESAI (2026-09-09)**: pengurangan stok fisik saat invoice
+  `paid` (alur cart/invoice publik + admin, sebelumnya hanya ada di alur `orders` manual lama),
+  stok tersedia (computed) vs stok fisik, notifikasi stok habis, auto-cancel opsional + reaktivasi.
+  Belum di-push/deploy VPS/verifikasi visual.
 
 ---
 

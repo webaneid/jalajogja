@@ -50,9 +50,11 @@ const NOTIF_GROUPS: Array<{
   {
     label: "Toko & Pengiriman",
     items: [
-      { key: "order_processing", label: "Pesanan diproses",  desc: "Kirim saat admin mulai memproses pesanan." },
-      { key: "order_shipped",    label: "Pesanan dikirim",   desc: "Kirim ke customer saat pesanan dikirim + nomor resi." },
-      { key: "order_delivered",  label: "Pesanan selesai",   desc: "Kirim saat pesanan diterima customer." },
+      { key: "order_processing",     label: "Pesanan diproses",  desc: "Kirim saat admin mulai memproses pesanan." },
+      { key: "order_shipped",        label: "Pesanan dikirim",   desc: "Kirim ke customer saat pesanan dikirim + nomor resi." },
+      { key: "order_delivered",      label: "Pesanan selesai",   desc: "Kirim saat pesanan diterima customer." },
+      { key: "product_stock_out",    label: "Stok produk habis", desc: "Kirim ke pemesan kalau stok produk di pesanan pending-nya ternyata sudah habis — minta konfirmasi sebelum bayar." },
+      { key: "order_auto_cancelled", label: "Pesanan dibatalkan otomatis", desc: "Kirim saat pesanan dibatalkan otomatis karena lewat jatuh tempo tanpa pembayaran (perlu diaktifkan di /toko/pengaturan)." },
     ],
   },
   {

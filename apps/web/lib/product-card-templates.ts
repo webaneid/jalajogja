@@ -18,6 +18,11 @@ export type ProductCardData = {
   sellerType:   "tenant" | "mitra";
   businessName: string | null;
   mitraId:      string | null;
+  // Stok tersedia (fisik dikurangi reservasi invoice pending) — HANYA diisi di halaman detail
+  // produk (produk/[productSlug]/page.tsx) untuk produk simple. Card grid/list/related TIDAK
+  // mengisi ini (undefined) — tidak perlu tampilan stok di situ. null = produk variable (stok
+  // per-variasi dipakai, bukan field ini). Lihat docs/arsitektur-stok.md.
+  availableStock?: number | null;
 };
 
 export type SessionType = "none" | "public" | "member";

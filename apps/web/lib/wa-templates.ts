@@ -41,6 +41,14 @@ export const WA_TEMPLATE_DEFAULTS: Record<string, string> = {
   order_delivered:
     "✅ *Pesanan Selesai*\n\nHalo {{name}}, pesanan *{{orderNumber}}* telah tiba.\n\nTerima kasih sudah berbelanja di *{{orgName}}*! Semoga puas dengan produknya. 😊",
 
+  // Stok — docs/arsitektur-stok.md. Beda dari order_* di atas (yang soal pengiriman) — ini
+  // soal ketersediaan barang di invoice yang BELUM dibayar.
+  product_stock_out:
+    "⚠️ *Stok Produk Habis*\n\nHalo {{name}}, stok produk *{{productName}}* pada pesanan *{{invoiceNumber}}* sudah habis terjual ke pembeli lain.\n\nSilakan konfirmasi terlebih dahulu ke kami sebelum Anda melakukan pembayaran, supaya tidak ada pembayaran untuk barang yang sudah tidak tersedia.\n\n{{invoiceUrl}}",
+
+  order_auto_cancelled:
+    "❌ *Pesanan Dibatalkan*\n\nHalo {{name}}, pesanan *{{invoiceNumber}}* telah dibatalkan otomatis karena belum ada pembayaran hingga melewati batas waktu.\n\nMasih ingin melanjutkan? Hubungi kami — pesanan yang dibatalkan masih bisa diaktifkan kembali selama stok masih tersedia.\n\n{{invoiceUrl}}",
+
   // ── Event ─────────────────────────────────────────────────────────────────────
 
   event_registered:

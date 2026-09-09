@@ -30,6 +30,9 @@ export async function saveTokoSettingsAction(
   if (values.pickupEnabled && !values.pickupAddress.trim()) {
     return { error: "Alamat Lengkap wajib diisi kalau Ambil Sendiri diaktifkan." };
   }
+  if (values.autoCancelEnabled && (!Number.isInteger(values.autoCancelDaysAfterDue) || values.autoCancelDaysAfterDue < 1)) {
+    return { error: "Durasi auto-cancel minimal 1 hari." };
+  }
 
   const tenantDb = createTenantDb(slug);
   await upsertSettings(tenantDb, "toko", {
@@ -43,6 +46,8 @@ export async function saveTokoSettingsAction(
     pickup_location_name: values.pickupLocationName,
     pickup_address:       values.pickupAddress,
     pickup_maps_url:      values.pickupMapsUrl,
+    auto_cancel_enabled:         values.autoCancelEnabled,
+    auto_cancel_days_after_due:  values.autoCancelDaysAfterDue,
   });
 
   revalidatePath(`/app/${slug}/toko/pengaturan`);

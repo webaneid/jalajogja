@@ -240,6 +240,55 @@ export function TokoSettingsForm({ slug, initialSettings }: Props) {
         )}
       </section>
 
+      {/* ── Auto-cancel Pesanan Belum Dibayar — docs/arsitektur-stok.md ────── */}
+      <section className="space-y-4">
+        <div className="pb-2 border-b border-border">
+          <h2 className="text-sm font-semibold">Auto-cancel Pesanan Belum Dibayar</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Pengingat H-1 sebelum jatuh tempo tetap selalu berjalan, terlepas pengaturan ini.
+            Ini cuma mengatur apa yang terjadi SETELAH jatuh tempo lewat tanpa pembayaran.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="auto-cancel-enabled" className="text-sm">Aktifkan Auto-cancel</Label>
+            <p className="text-xs text-muted-foreground">
+              Pesanan produk yang belum dibayar akan dibatalkan otomatis setelah jatuh tempo lewat.
+              Kalau nonaktif, pesanan yang belum dibayar dibiarkan menggantung seperti biasa.
+            </p>
+          </div>
+          <Switch
+            id="auto-cancel-enabled"
+            checked={settings.autoCancelEnabled}
+            onCheckedChange={(v: boolean) => set("autoCancelEnabled", v)}
+          />
+        </div>
+
+        {settings.autoCancelEnabled && (
+          <div className="space-y-1.5 pl-4 border-l-2 border-primary/20">
+            <Label htmlFor="auto-cancel-days" className="text-sm">
+              Batalkan otomatis (hari setelah jatuh tempo)
+            </Label>
+            <Input
+              id="auto-cancel-days"
+              type="number"
+              min={1}
+              step={1}
+              value={settings.autoCancelDaysAfterDue}
+              onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+                set("autoCancelDaysAfterDue", parseInt(e.target.value, 10) || 1)
+              }
+              className="h-8 text-sm w-24"
+            />
+            <p className="text-xs text-muted-foreground">
+              Pemesan akan diberi tahu (WA/Email) saat pesanannya dibatalkan. Pesanan yang sudah
+              dibatalkan tetap bisa diaktifkan kembali oleh admin selama stok masih tersedia.
+            </p>
+          </div>
+        )}
+      </section>
+
       {/* ── Simpan ────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-4 pt-2">
         <Button type="submit" disabled={saving}>

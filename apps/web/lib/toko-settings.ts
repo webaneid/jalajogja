@@ -13,6 +13,11 @@ export type TokoSettings = {
   pickupLocationName: string;
   pickupAddress:      string;
   pickupMapsUrl:      string;
+  // Auto-cancel pesanan (invoice dengan item produk) yang belum dibayar. Lihat
+  // docs/arsitektur-stok.md. Reminder H-1 sebelum dueDate TETAP jalan terlepas toggle ini —
+  // ini cuma soal apa yang terjadi SETELAH dueDate lewat tanpa pembayaran.
+  autoCancelEnabled:      boolean;
+  autoCancelDaysAfterDue: number; // hari setelah dueDate lewat sebelum invoice dibatalkan otomatis
 };
 
 export const DEFAULT_TOKO_SETTINGS: TokoSettings = {
@@ -26,6 +31,8 @@ export const DEFAULT_TOKO_SETTINGS: TokoSettings = {
   pickupLocationName: "",
   pickupAddress:      "",
   pickupMapsUrl:      "",
+  autoCancelEnabled:      false,
+  autoCancelDaysAfterDue: 2,
 };
 
 export async function getTokoSettings(slug: string): Promise<TokoSettings> {
@@ -42,5 +49,7 @@ export async function getTokoSettings(slug: string): Promise<TokoSettings> {
     pickupLocationName: (raw.pickup_location_name as string  | undefined) ?? DEFAULT_TOKO_SETTINGS.pickupLocationName,
     pickupAddress:      (raw.pickup_address       as string  | undefined) ?? DEFAULT_TOKO_SETTINGS.pickupAddress,
     pickupMapsUrl:      (raw.pickup_maps_url      as string  | undefined) ?? DEFAULT_TOKO_SETTINGS.pickupMapsUrl,
+    autoCancelEnabled:      (raw.auto_cancel_enabled         as boolean | undefined) ?? DEFAULT_TOKO_SETTINGS.autoCancelEnabled,
+    autoCancelDaysAfterDue: (raw.auto_cancel_days_after_due  as number  | undefined) ?? DEFAULT_TOKO_SETTINGS.autoCancelDaysAfterDue,
   };
 }

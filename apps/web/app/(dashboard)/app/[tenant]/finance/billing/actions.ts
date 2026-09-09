@@ -13,6 +13,10 @@ import {
   type ResolvedCartItemForVoucher,
   type VoucherApplicationResult,
 } from "@jalajogja/db";
+import {
+  decrementStockForInvoiceItems, restoreStockForInvoiceItems, checkStockAvailability,
+  getProductInvoiceItems,
+} from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, hasReadAccess } from "@/lib/permissions";
 import { recordIncomeSplit } from "@jalajogja/db";
@@ -115,6 +119,12 @@ async function applyInvoiceZeroTotalSettlement(
   invoiceProfileId: string | null,
 ): Promise<{ newEventRegs: EventTicketBackfillResult["created"] }> {
   const { schema } = tenantDb;
+
+  // Kurangi stok fisik produk — invoice ini BARU SAJA jadi paid (Rp 0). Lihat
+  // docs/arsitektur-stok.md. Satu tempat untuk KEDUA pemanggil (createInvoiceAction +
+  // applyVoucherToInvoiceAction), bukan diulang di masing-masing.
+  const productItems = await getProductInvoiceItems(tx, schema, invoiceId);
+  if (productItems.length > 0) await decrementStockForInvoiceItems(tx, schema, productItems);
 
   // Sync collected_amount kampanye donasi — dari invoice_items yang sudah ter-insert.
   const donationItems = await tx
@@ -1033,6 +1043,70 @@ export async function cancelInvoiceAction(
   }
 }
 
+// ─── reactivateInvoiceAction ──────────────────────────────────────────────────
+// Aktifkan kembali invoice yang sudah dibatalkan (manual maupun auto-cancel cron) — KHUSUS
+// invoice dengan item produk, wajib cek stok tersedia dulu (keputusan user: "bisa diaktifkan
+// kembali selama stock tersedia"). Lihat docs/arsitektur-stok.md. Invoice yang dibatalkan di
+// sini SELALU belum pernah dibayar (cancelInvoiceAction/cron auto-cancel keduanya hanya
+// menyentuh invoice dengan paidAmount=0) — jadi TIDAK PERNAH ada stok fisik yang perlu
+// dikembalikan, murni pindah status + kasih dueDate baru.
+
+export async function reactivateInvoiceAction(
+  slug: string,
+  invoiceId: string,
+): Promise<ActionResult> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "keuangan"))
+    return { success: false, error: "Akses ditolak." };
+
+  const tenantDb = createTenantDb(slug);
+  const { db, schema } = tenantDb;
+
+  try {
+    const tenantTimezone = await getTenantTimezone(tenantDb);
+
+    await db.transaction(async (tx) => {
+      const [lockedInv] = await tx
+        .select({ status: schema.invoices.status })
+        .from(schema.invoices)
+        .where(sql`${schema.invoices.id} = ${invoiceId} FOR UPDATE`)
+        .limit(1);
+      if (!lockedInv) throw new Error("Invoice tidak ditemukan.");
+      if (lockedInv.status !== "cancelled") throw new Error("Invoice ini tidak dalam status dibatalkan.");
+
+      const productItems = await getProductInvoiceItems(tx, schema, invoiceId);
+      if (productItems.length > 0) {
+        const stockCheck = await checkStockAvailability(tx, schema, productItems);
+        if (!stockCheck.ok) {
+          throw new Error(`Stok tidak cukup untuk mengaktifkan kembali pesanan ini (tersisa ${stockCheck.available}, dibutuhkan ${stockCheck.requested}).`);
+        }
+      }
+
+      // Jatuh tempo baru dihitung ulang dari sekarang (+3 hari, sama seperti default checkout)
+      // — supaya tidak langsung ke-cancel lagi di cron berikutnya kalau auto-cancel aktif.
+      const dueDate = (() => {
+        const d = anchorTodayUtc(tenantTimezone);
+        d.setUTCDate(d.getUTCDate() + 3);
+        return d.toISOString().slice(0, 10);
+      })();
+
+      await tx
+        .update(schema.invoices)
+        .set({ status: "pending", dueDate, stockAlertSentAt: null, updatedAt: new Date() })
+        .where(eq(schema.invoices.id, invoiceId));
+    });
+
+    revalidateBilling(slug);
+    return { success: true, data: undefined };
+  } catch (err) {
+    if (err instanceof Error && (err.message.includes("Stok tidak cukup") || err.message.includes("tidak dalam status")))
+      return { success: false, error: err.message };
+    console.error("[reactivateInvoiceAction]", err);
+    return { success: false, error: "Gagal mengaktifkan kembali invoice." };
+  }
+}
+
 // ─── activateForumMembershipIfApplicable ──────────────────────────────────────
 // Setelah invoice benar-benar lunas (bukan partial): cek apakah tenant ini forum DAN
 // sudah mengonfigurasi produk/campaign sebagai syarat iuran (`membership_config`, key
@@ -1383,6 +1457,10 @@ export async function confirmInvoicePaymentAction(
           );
           newEventRegs.push(...ticketResult.created);
         }
+
+        // Kurangi stok fisik produk — invoice ini BARU SAJA jadi paid. Lihat docs/arsitektur-stok.md.
+        const productItems = await getProductInvoiceItems(tx, schema, invoiceId);
+        if (productItems.length > 0) await decrementStockForInvoiceItems(tx, schema, productItems);
       }
 
       return payment.id;
@@ -1948,6 +2026,10 @@ export async function verifySubmittedPaymentAction(
           );
           newEventRegs.push(...ticketResult.created);
         }
+
+        // Kurangi stok fisik produk — invoice ini BARU SAJA jadi paid. Lihat docs/arsitektur-stok.md.
+        const productItems = await getProductInvoiceItems(tx, schema, inv.id);
+        if (productItems.length > 0) await decrementStockForInvoiceItems(tx, schema, productItems);
       }
     });
 
@@ -3481,6 +3563,23 @@ export async function confirmCodPaymentAction(
         cashAccountId:   split.cashAccountId,
         lines:           split.lines,
       });
+
+      // Kurangi stok fisik produk — HANYA kalau invoice keseluruhan baru jadi paid (bukan
+      // partial — mitra portion mungkin masih pending terpisah), dan HANYA item milik tenant
+      // sendiri (sellerType="tenant") — bukan tanggung jawab konfirmasi COD ini untuk item
+      // mitra. Lihat docs/arsitektur-stok.md.
+      if (newStatus === "paid") {
+        const productItemRows = await tx
+          .select({ itemId: schema.invoiceItems.itemId, quantity: schema.invoiceItems.quantity })
+          .from(schema.invoiceItems)
+          .where(and(
+            eq(schema.invoiceItems.invoiceId, line.invoiceId),
+            eq(schema.invoiceItems.itemType, "product"),
+            eq(schema.invoiceItems.sellerType, "tenant"),
+          ));
+        const productItems = productItemRows.filter((r): r is { itemId: string; quantity: number } => r.itemId !== null);
+        if (productItems.length > 0) await decrementStockForInvoiceItems(tx, schema, productItems);
+      }
 
       return { paymentId: payment.id };
     });

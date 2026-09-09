@@ -1,7 +1,7 @@
 import { notFound }                from "next/navigation";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { resolveVariantPriceRanges } from "@/lib/product-variation-price.server";
-import { createTenantDb, db, tenants, members, memberBusinesses, getSettings } from "@jalajogja/db";
+import { createTenantDb, db, tenants, members, memberBusinesses, getSettings, getAvailableStock } from "@jalajogja/db";
 import { auth }                   from "@/lib/auth";
 import { headers }                from "next/headers";
 import { renderBody }             from "@/lib/letter-render";
@@ -170,17 +170,22 @@ export default async function ProdukDetailPage({
     // (row.price) — resolve DI SINI, sebelum diteruskan ke client component, supaya seluruh
     // downstream (resolvePrice, priceMin/priceMax, add-to-cart) selalu terima angka valid,
     // tidak perlu tahu apakah nilainya explicit atau fallback.
-    variations = vrows.map(v => ({
+    //
+    // stock DI SINI adalah stok TERSEDIA (fisik dikurangi reservasi invoice pending lain),
+    // BUKAN stok fisik mentah — lihat docs/arsitektur-stok.md. Halaman ini `revalidate = 60`,
+    // jadi angka ini bisa basi sampai 60 detik; itu wajar untuk tampilan, validasi
+    // sesungguhnya (checkout) selalu baca ulang dari DB.
+    variations = await Promise.all(vrows.map(async v => ({
       id:             v.id,
       sku:            v.sku ?? row.sku,
       price:          String(v.price ?? row.price),
       publicPrice:    v.publicPrice != null ? String(v.publicPrice) : null,
       memberPrice:    v.memberPrice != null ? String(v.memberPrice) : null,
-      stock:          v.stock,
+      stock:          await getAvailableStock(tenantDb, schema, v.id) ?? v.stock,
       images:         (Array.isArray(v.images) ? v.images : []) as ProductVariationData["images"],
       attributeCombo: (v.attributeCombo ?? {}) as Record<string, string>,
       isActive:       v.isActive,
-    }));
+    })));
   }
 
   // priceMin/priceMax untuk variable product
@@ -206,6 +211,11 @@ export default async function ProdukDetailPage({
     alt:      img.alt,
   }));
 
+  // Stok tersedia — HANYA relevan untuk produk simple (variable pakai stock per-variasi di
+  // atas). null kalau variable, supaya client tahu "tidak perlu ditampilkan di sini" berbeda
+  // dari "stoknya 0". Lihat docs/arsitektur-stok.md.
+  const availableStock = isVariable ? null : await getAvailableStock(tenantDb, schema, row.id);
+
   // ── ProductCardData untuk client component ────────────────────────────────
   const { coverUrl, coverVariants } = extractCover(row.images);
   const product: ProductCardData = {
@@ -225,6 +235,7 @@ export default async function ProdukDetailPage({
     sellerType:   (row.sellerType ?? "tenant") as "tenant" | "mitra",
     businessName,
     mitraId:      row.mitraId ?? null,
+    availableStock,
   };
 
   // ── attribute groups ──────────────────────────────────────────────────────

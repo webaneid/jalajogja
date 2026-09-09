@@ -148,11 +148,13 @@ export function ProductDetailClient({
 
   const hasDiscount = !isVariable && displayPrice !== originalPrice;
 
-  // Stok
-  const stock = isVariable ? (activeVariation?.stock ?? 0) : null;
+  // Stok — untuk simple product, `product.availableStock` (stok fisik dikurangi reservasi
+  // invoice pending lain, dihitung server-side) SEBELUMNYA tidak pernah ada sama sekali di tipe
+  // data ini, jadi isOutOfStock selalu hardcode false apapun stoknya. Lihat docs/arsitektur-stok.md.
+  const stock = isVariable ? (activeVariation?.stock ?? 0) : (product.availableStock ?? null);
   const isOutOfStock = isVariable
     ? (activeVariation !== null && stock === 0)
-    : false;
+    : (stock !== null && stock <= 0);
 
   // Tombol disabled jika variable dan belum pilih semua atribut
   const allAttrSelected = isVariable
@@ -263,7 +265,9 @@ export function ProductDetailClient({
     </div>
   );
 
-  const stockInfo = isVariable && activeVariation && (
+  // Tampil untuk variasi yang sudah dipilih MAUPUN produk simple (sebelumnya cuma variasi —
+  // produk simple tidak pernah tampilkan stok sama sekali). Lihat docs/arsitektur-stok.md.
+  const stockInfo = (isVariable ? activeVariation !== null : true) && stock !== null && (
     <p className="text-sm text-muted-foreground">
       Stok: <span className={stock === 0 ? "text-destructive font-medium" : "text-foreground font-medium"}>
         {stock === 0 ? "Habis" : stock}

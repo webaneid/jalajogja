@@ -121,6 +121,9 @@ export function createInvoicesTable(s: ReturnType<typeof pgSchema>) {
     // Status & tanggal
     status:  text("status", { enum: INVOICE_STATUSES }).notNull().default("pending"),
     dueDate: date("due_date"),          // batas bayar (default +3 hari dari created_at)
+    // Stok — lihat docs/arsitektur-stok.md. Cap kirim notifikasi "stok habis" sekali per invoice
+    // (bukan tiap cron jalan) — null = belum pernah dikirim.
+    stockAlertSentAt: timestamp("stock_alert_sent_at", { withTimezone: true }),
 
     notes:  text("notes"),
     pdfUrl: text("pdf_url"),

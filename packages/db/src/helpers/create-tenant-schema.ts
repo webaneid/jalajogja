@@ -1231,6 +1231,7 @@ export async function createTenantSchemaInDb(
         status          TEXT           NOT NULL DEFAULT 'pending'
                                        CHECK (status IN ('draft','pending','waiting_verification','partial','paid','cancelled','overdue')),
         due_date        DATE,
+        stock_alert_sent_at TIMESTAMPTZ,
         notes           TEXT,
         pdf_url         TEXT,
         installment_plan_id UUID       REFERENCES "${s}".installment_plans(id) ON DELETE SET NULL,

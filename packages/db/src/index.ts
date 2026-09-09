@@ -64,6 +64,17 @@ export {
   type ResolvedProductCartItem,
 } from "./helpers/resolve-product-item";
 
+// Stok produk — SATU-SATUNYA tempat baca/ubah products.stock / product_variations.stock dari
+// alur cart→invoice. Lihat docs/arsitektur-stok.md untuk desain lengkap.
+export {
+  getAvailableStock,
+  checkStockAvailability,
+  decrementStockForInvoiceItems,
+  restoreStockForInvoiceItems,
+  getProductInvoiceItems,
+  type StockLineItem,
+} from "./helpers/stock";
+
 // Timezone tenant — satu sumber kebenaran untuk Event, Invoice/Billing, cron. Lihat
 // packages/db/src/helpers/tenant-timezone.ts untuk penjelasan kenapa ditempatkan di sini
 // (bukan apps/web/lib) — createLinkedInvoice juga memakainya.

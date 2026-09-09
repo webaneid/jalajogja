@@ -9,6 +9,9 @@ import {
   findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount, resolveProductCartItem,
   type VoucherApplicationResult, type ResolvedCartItemForVoucher,
 } from "@jalajogja/db";
+import {
+  checkStockAvailability, decrementStockForInvoiceItems, type StockLineItem,
+} from "@jalajogja/db";
 import { tenants } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import { getTokoSettings } from "@/lib/toko-settings";
@@ -339,6 +342,10 @@ export async function addToCartAction(
 ): Promise<ActionResult<{ cartItemId: string }>> {
   if (!item.name?.trim()) return { success: false, error: "Nama item tidak boleh kosong." };
   if ((item.unitPrice ?? 0) < 0) return { success: false, error: "Harga tidak boleh negatif." };
+  const requestedQty = item.quantity ?? 1;
+  if (!Number.isInteger(requestedQty) || requestedQty < 1) {
+    return { success: false, error: "Kuantitas tidak valid." };
+  }
 
   try {
     const { db: tenantDb, schema } = createTenantDb(slug);
@@ -359,7 +366,7 @@ export async function addToCartAction(
         await tenantDb
           .update(schema.cartItems)
           .set({
-            quantity: existing.quantity + (item.quantity ?? 1),
+            quantity: existing.quantity + requestedQty,
             // Retroaktif: kalau user kembali lewat link /gabung untuk item yang sudah ada di
             // cart (ditambahkan sebelumnya lewat jalur biasa), tandai baris yang sudah ada —
             // jangan pernah UN-tandai baris yang sebelumnya sudah true hanya karena panggilan
@@ -387,7 +394,7 @@ export async function addToCartAction(
         itemId:    item.itemId ?? null,
         name:      item.name.trim(),
         unitPrice: item.unitPrice.toFixed(2),
-        quantity:  item.quantity ?? 1,
+        quantity:  requestedQty,
         notes:     item.notes?.trim() ?? null,
         sortOrder: Number(cnt),
         forGabungRegistration: !!item.forGabung,
@@ -645,6 +652,25 @@ export async function checkoutAction(
         });
       }
 
+      // ── Validasi stok tersedia — SEBELUM invoice dibuat. Lihat docs/arsitektur-stok.md.
+      // Bukan penolakan mutlak (2 checkout hampir bersamaan tetap bisa sama-sama lolos), itu
+      // wajar — ditutup notifikasi "stok habis" via cron, bukan lock lintas-invoice di sini.
+      const productStockItems: StockLineItem[] = resolvedItems
+        .filter((it) => it.itemType === "product" && it.itemId)
+        .map((it) => ({ itemId: it.itemId as string, quantity: it.quantity }));
+
+      if (productStockItems.length > 0) {
+        const stockCheck = await checkStockAvailability(tx, schema, productStockItems);
+        if (!stockCheck.ok) {
+          const itemName = resolvedItems.find((it) => it.itemId === stockCheck.itemId)?.name ?? "produk";
+          return {
+            error: stockCheck.available === 0
+              ? `Stok "${itemName}" sudah habis.`
+              : `Stok "${itemName}" tersisa ${stockCheck.available}, tidak cukup untuk ${stockCheck.requested} yang diminta.`,
+          };
+        }
+      }
+
       // ── Resolusi voucher (opsional) — SETELAH resolvedItems (unitPrice FINAL) siap, jangan
       // pernah reimplement resolusi harga sendiri di sini. Lihat docs/arsitektur-voucher.md.
       // Lock voucher row (forUpdate) di dalam transaction yang sama dengan lock cart — cegah
@@ -751,6 +777,12 @@ export async function checkoutAction(
           };
         })
       );
+
+      // Invoice langsung lunas (voucher 100%/Rp 0) — kurangi stok fisik sekarang juga, sama
+      // seperti titik "jadi paid" lainnya di finance/billing/actions.ts. Lihat docs/arsitektur-stok.md.
+      if (isFullyPaid && productStockItems.length > 0) {
+        await decrementStockForInvoiceItems(tx, schema, productStockItems);
+      }
 
       // Catat pemakaian voucher — lock yang sama dari resolusi di atas mencegah race
       // dua checkout bersamaan sama-sama lolos cek usageLimit voucher yang sama.
