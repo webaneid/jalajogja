@@ -236,18 +236,33 @@ posts.editorId         → SELALU dibiarkan NULL. WordPress tidak punya konsep "
 > ⚠️ **Fallback WAJIB untuk REST API — `_embedded['author']` bisa gagal/404 (dikonfirmasi
 > real case, § 2.2)**: kalau `_embedded['author']` tidak ada atau error, importer TIDAK PUNYA
 > nama penulis sama sekali dari sumbernya (field `author` di object post cuma angka ID numerik
-> WordPress, tidak berguna sebagai nama tampilan). Desain fallback dua-lapis:
-> 1. **Input batch-level di UI review** (direkomendasikan) — admin diminta pilih/ketik SATU nama
->    penulis default untuk SELURUH batch REST-pull ini sebelum commit (mis. "Admin {nama
->    tenant}") — dipakai sebagai `displayAuthorId` untuk semua baris yang tidak resolve penulis
->    dari embed.
-> 2. **Kalau admin skip pengisian itu juga** — `displayAuthorId` dibiarkan `null` untuk baris
->    tersebut, byline publik jatuh ke fallback default sistem yang sudah ada
->    (`docs/arsitektur-penulis-post.md` § 4 — tampilkan "Tim Redaksi" atau setara), BUKAN error
->    yang menggagalkan baris.
+> WordPress, tidak berguna sebagai nama tampilan).
+>
+> **REVISI 2026-09-13** (audit doc-vs-code menemukan bug nyata): desain "fallback dua-lapis"
+> yang tadinya tertulis di sini (opsi 1: input batch-level manual di UI; opsi 2: biarkan
+> `displayAuthorId = null`, andalkan fallback sistem "Tim Redaksi") **SALAH DIIMPLEMENTASI DI
+> SETENGAH JALAN** — opsi 1 (UI input) memang tidak pernah dibangun (sesuai catatan lama di sini,
+> tidak masalah), TAPI opsi 2 ternyata JUGA TIDAK BEKERJA seperti diklaim: `displayAuthorId = null`
+> membuat `post-detail-view.tsx` fallback ke `posts.authorId` (**admin yang menjalankan import**,
+> lihat kotak prinsip di atas — field itu SEHARUSNYA cuma audit trail internal) sebagai byline
+> PUBLIK, bukan ke "Tim Redaksi". Dikonfirmasi nyata: hasil tes live forbis.id (§ 15.4, 0/480
+> post resolve penulis) berarti SEMUA 480 post akan tampil dengan nama+foto admin importer
+> sebagai "penulis" di production — kontradiksi langsung dengan prinsip § 2.4 di atas.
+>
+> **Fix**: `resolveOrCreateAuthor()` (`import-wordpress/actions.ts`) sekarang TIDAK PERNAH
+> return `null` karena nama tidak ketemu — kalau `parsedAuthor.displayName` kosong, fallback ke
+> konstanta `FALLBACK_AUTHOR_NAME = "Tim Redaksi"` dan tetap lewat jalur find-or-create
+> `post_authors` yang sama (cache+lookup+`createGuestPostAuthorAction()`) — jadi `displayAuthorId`
+> SELALU terisi (ke author generik "Tim Redaksi" yang di-reuse lintas-batch, bukan `null`), dan
+> jalur fallback-ke-admin di `post-detail-view.tsx` tidak pernah ke-trigger untuk post hasil
+> import. Opsi 1 (input batch-level manual di UI) TETAP belum dibangun — masih backlog terpisah,
+> bukan blocker karena opsi 2 sekarang genuinely berfungsi sebagai fallback aman.
+>
 > Perilaku ini HANYA relevan untuk metode REST API — metode WXR (§ 2.1) selalu punya
 > `<wp:author>` di level channel yang bisa di-resolve terlepas embed sukses/gagal (WXR bukan
-> konsep "embed", datanya sudah menyatu di file).
+> konsep "embed", datanya sudah menyatu di file) — TAPI fallback "Tim Redaksi" yang sama juga
+> berlaku untuk WXR kalau `<dc:creator>`/`<wp:author>` kosong (jarang terjadi, tapi sekarang aman
+> kalau terjadi).
 
 **Find-or-create per-batch (WAJIB, cegah duplikat)** — pola SAMA PERSIS dengan
 `syncAutoTenantMemberships`/`computeMemberMergeCandidate` di Importer Anggota (§ Prinsip 9):

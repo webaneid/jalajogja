@@ -116,13 +116,26 @@ export async function importWxrFileAction(slug: string, formData: FormData): Pro
 // posts.authorId (internal, admin yang import) TIDAK PERNAH disentuh fungsi ini, editorId
 // SELALU null untuk konten hasil import WordPress.
 
+// Fallback kalau nama penulis asli WordPress tidak bisa di-resolve sama sekali (WXR: <dc:creator>
+// kosong; REST API: _embedded.author 404/gagal — kasus nyata, lihat § 2.2/§ 15.4 dokumen: 0/480
+// post resolve penulis di tes live forbis.id). SEBELUMNYA fungsi ini return `null` di kasus itu —
+// tapi displayAuthorId=null membuat post-detail-view.tsx fallback ke authorId (admin yang
+// MENJALANKAN import), menampilkan nama+foto ADMIN sebagai "penulis" publik di post yang bukan
+// tulisannya — bertentangan dengan prinsip § 2.4 ("authorId TIDAK PERNAH diisi dari data
+// WordPress ... bukan penulis asli artikel"). Fallback ke author generik ini menutup celah itu.
+const FALLBACK_AUTHOR_NAME = "Tim Redaksi";
+
 async function resolveOrCreateAuthor(
   slug: string,
   parsedAuthor: ParsedWpAuthor,
   cache: Map<string, string>, // nama (lowercase) → post_authors.id, di-thread sepanjang SATU batch commit
 ): Promise<string | null> {
-  const name = parsedAuthor.displayName?.trim();
-  if (!name) return null; // biarkan null — byline publik jatuh ke fallback default sistem (§ 2.4)
+  const resolvedName = parsedAuthor.displayName?.trim();
+  const name = resolvedName || FALLBACK_AUTHOR_NAME;
+  // Bio/avatar cuma relevan kalau penulis ASLI ketemu — jangan ikut fallback ke data acak
+  // kalau kita sedang membuat/reuse author generik.
+  const bio       = resolvedName ? parsedAuthor.bio       : null;
+  const avatarUrl = resolvedName ? parsedAuthor.avatarUrl : null;
 
   const cacheKey = name.toLowerCase();
   const cached = cache.get(cacheKey);
@@ -152,8 +165,8 @@ async function resolveOrCreateAuthor(
   // tidak reimplementasi logic insert post_authors di sini).
   const result = await createGuestPostAuthorAction(slug, {
     name,
-    bio: parsedAuthor.bio,
-    avatarUrl: parsedAuthor.avatarUrl,
+    bio,
+    avatarUrl,
   });
   if (!result.success) return null; // gagal buat — biarkan null, TIDAK menggagalkan seluruh baris commit
 
