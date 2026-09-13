@@ -1157,9 +1157,13 @@ grep -n "EventsSection" apps/web/components/website/public/landing-template.tsx
 > Ini status singkat yang di-OVERWRITE tiap kali berubah, BUKAN log yang ditambah terus.
 > Riwayat detail tiap perbaikan ada di `docs/lessons-learned.md` dan `docs/arsitektur-*.md` masing-masing modul.
 
-- Commit terakhir per `git log`: `aa4c1ea` (fix kode unik pesanan Rp 0 karena voucher) dan
-  `34d5906` (fix kota tujuan wajib + search kota toko), keduanya 2026-09-04 — SUDAH di-commit
-  (cross-check manual sebelum asumsi status deploy/verifikasi VPS, jangan percaya klaim lama).
+- Commit terakhir per `git log`: `32e6bd7` (2026-09-13) — audit keamanan bertahap (4 fase) +
+  fix: identity-takeover klaim akun member (Critical), stored XSS render Tiptap, permission gap
+  toko/cron, plus upgrade dependency (bun audit 62→6 vulnerabilities, termasuk 1 Critical di
+  better-auth). Detail lengkap di `docs/lessons-learned.md` (6 entri baru) +
+  `docs/arsitektur-keamanan.md` § 4c + `docs/arsitektur-login-universal.md` § "Klaim Akun
+  Member". SUDAH di-commit — cross-check manual sebelum asumsi status deploy/verifikasi VPS,
+  jangan percaya klaim lama.
 - Backlog lama belum dikonfirmasi statusnya (perlu verifikasi manual apakah sudah dikerjakan di
   sesi lain atau masih tertunda): sertifikat PDF untuk donasi, fitur V8 (cek stok produk),
   Donasi Rutin (siklus R1-R7, termasuk subscriptions `/{slug}/akun/subscriptions`), dan Fase 5
