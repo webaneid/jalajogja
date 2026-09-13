@@ -1055,6 +1055,19 @@ Rekening bank dan QRIS punya field `categories` di settings JSONB:
 Logika: cari yang spesifik dulu → fallback ke `general`.
 
 ## Technical Debt
+- **[BARU 2026-09-13] Postgres error "relation tenant_X.settings does not exist" di log produksi dari trafik bot/scanner** —
+  ditemukan saat verifikasi deploy pasca audit keamanan: PM2 error log menunjukkan slug aneh
+  (mis. `ppatk-luncurkan-skenario-penilaian-risiko-hingga-2021`) yang **dikonfirmasi TIDAK PERNAH
+  ada** di `public.tenants` (`SELECT ... WHERE slug ILIKE ...` → 0 rows) — murni bot/scanner hit
+  path `/{slug-acak}/...` langsung, memanfaatkan Next.js dynamic route `[tenant]` yang menerima
+  string apa saja. `apps/web/app/(public)/[tenant]/layout.tsx` SUDAH punya guard yang benar (cek
+  `tenants` exists + `notFound()` SEBELUM `createTenantDb(slug)`, baris ~18 & ~64) — tapi error
+  masih muncul, jadi kemungkinan ada `page.tsx` LAIN di bawah `(public)/[tenant]/**` yang panggil
+  `createTenantDb`/query tenant schema tanpa guard yang sama. Bukan kebocoran data (cuma Postgres
+  error di log, tidak ada info terekspos ke pengunjung), bukan dari perubahan sesi 2026-09-13.
+  **Belum diinvestigasi lebih lanjut** — perlu grep semua `page.tsx` publik yang panggil
+  `createTenantDb`/`getSettings` tanpa didahului cek `tenants.isActive`, tambahkan guard yang sama
+  seperti di `layout.tsx`.
 - `getFirstTenantForUser()` loop O(n) — perlu tabel `public.user_tenant_index` saat tenant > 100
 - `check-slug` endpoint perlu rate limiting per-IP (saat ini hanya referer check)
 - `getTenantAccess()` dipanggil di layout DAN page — perlu `React.cache()` saat query makin banyak
