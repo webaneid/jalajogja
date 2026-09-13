@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { eq, or }                    from "drizzle-orm";
-import { db, profiles, tenants, contacts, members, tenantMemberships, user as authUser } from "@jalajogja/db";
+import { eq, or, and, gt }           from "drizzle-orm";
+import { db, profiles, tenants, contacts, members, tenantMemberships, user as authUser, verification } from "@jalajogja/db";
 import { auth }                      from "@/lib/auth";
 import { normalizePhone }            from "@/lib/phone";
 import { rateLimitGuard }            from "@/lib/rate-limit";
@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       tenantSlug,
       stambukNumber,
       claimMemberId,  // UUID member yang diklaim (sudah dicari via lookup)
+      claimToken,     // bukti OTP terverifikasi untuk claimMemberId ini (dari /api/akun/verify-otp)
     } = body as {
       path:           "member" | "public";
       name:           string;
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
       tenantSlug?:    string;
       stambukNumber?: string;
       claimMemberId?: string;  // jika mode KLAIM (data sudah ada di members)
+      claimToken?:    string;
     };
 
     if (!name?.trim())     return NextResponse.json({ error: "Nama wajib diisi." },     { status: 400 });
@@ -103,6 +105,29 @@ export async function POST(req: NextRequest) {
 
       // ── Mode KLAIM: data existing di public.members ─────────────────────────
       if (claimMemberId) {
+        // WAJIB proof-of-ownership via OTP — tanpa ini, siapa pun yang tahu/menebak
+        // memberId (mis. lewat /api/akun/lookup-member?stambuk=) bisa klaim identitas
+        // orang lain hanya dengan email/password miliknya sendiri. claimToken hanya
+        // diterbitkan oleh /api/akun/verify-otp setelah OTP ke nomor WA TERDAFTAR milik
+        // member itu berhasil diverifikasi — sekali pakai, dihapus segera setelah dicek.
+        if (!claimToken)
+          return NextResponse.json({ error: "Verifikasi WhatsApp diperlukan untuk klaim akun anggota." }, { status: 403 });
+
+        // DELETE ... RETURNING dalam satu statement — atomic, tidak ada window SELECT-lalu-
+        // DELETE terpisah yang bisa dipakai dua request bersamaan pakai claimToken yang sama
+        // (baris DB yang sama tidak mungkin di-DELETE dua kali).
+        const [proof] = await db
+          .delete(verification)
+          .where(and(
+            eq(verification.identifier, `claim-member:${claimToken}`),
+            gt(verification.expiresAt, new Date()),
+          ))
+          .returning({ value: verification.value });
+
+        if (!proof || proof.value !== claimMemberId) {
+          return NextResponse.json({ error: "Verifikasi tidak valid atau sudah kadaluarsa. Ulangi proses klaim akun." }, { status: 403 });
+        }
+
         const existingMember = await db.query.members.findFirst({
           where: eq(members.id, claimMemberId),
           columns: { id: true, name: true, betterAuthUserId: true },

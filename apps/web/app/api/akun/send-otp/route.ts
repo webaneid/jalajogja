@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 // OTP berlaku 5 menit.
 
 import { NextRequest, NextResponse }  from "next/server";
-import { db, otpTokens, createTenantDb, getSettings } from "@jalajogja/db";
+import { db, otpTokens, createTenantDb, getSettings, members, contacts } from "@jalajogja/db";
 import { eq, and, gt, count, sql }   from "drizzle-orm";
 import { sendWaNotification }         from "@/lib/whatsapp";
 import { renderTemplateString }       from "@/lib/wa-templates";
@@ -13,6 +13,7 @@ import { resolveWaTemplateText }      from "@/lib/wa-notify";
 import { findUserByPhone }            from "@/lib/find-user-by-phone";
 import { normalizePhone }             from "@/lib/phone";
 import { rateLimitGuard }             from "@/lib/rate-limit";
+import { maskPhone }                  from "@/lib/mask-phone";
 import type { WaNotifConfig }         from "@/lib/whatsapp";
 
 const OTP_TTL_MINUTES   = 5;
@@ -31,12 +32,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
   }
 
-  const { phone: rawPhone, type, slug } = body as {
-    phone?: string; type?: string; slug?: string;
+  const { phone: rawPhone, type, slug, claimMemberId } = body as {
+    phone?: string; type?: string; slug?: string; claimMemberId?: string;
   };
 
-  if (!rawPhone || !type || !slug) {
-    return NextResponse.json({ error: "phone, type, dan slug wajib diisi" }, { status: 400 });
+  if (!type || !slug) {
+    return NextResponse.json({ error: "type dan slug wajib diisi" }, { status: 400 });
   }
   if (type !== "register" && type !== "reset_password" && type !== "login") {
     return NextResponse.json({ error: "type tidak valid" }, { status: 400 });
@@ -44,7 +45,32 @@ export async function POST(request: NextRequest) {
 
   const validType = type as "register" | "reset_password" | "login";
 
-  const phone = normalizePhone(rawPhone) ?? rawPhone.trim();
+  // ── Klaim akun member: OTP WAJIB dikirim ke nomor WA yang SUDAH tercatat di data
+  // keanggotaan (contacts.whatsapp/phone), BUKAN ke nomor yang diketik bebas oleh
+  // pendaftar di form — kalau tidak, OTP tidak pernah membuktikan kepemilikan identitas
+  // yang diklaim (siapa saja bisa daftar pakai HP sendiri lalu klaim member manapun).
+  let phone: string;
+  let phoneMasked: string | undefined;
+  if (validType === "register" && claimMemberId) {
+    const [row] = await db
+      .select({ phone: contacts.phone, whatsapp: contacts.whatsapp })
+      .from(members)
+      .innerJoin(contacts, eq(contacts.id, members.contactId))
+      .where(eq(members.id, claimMemberId))
+      .limit(1);
+    const onFile = row?.whatsapp ?? row?.phone;
+    if (!onFile) {
+      return NextResponse.json(
+        { error: "Nomor WhatsApp anggota belum terdaftar di data keanggotaan. Hubungi admin untuk verifikasi manual." },
+        { status: 422 },
+      );
+    }
+    phone = normalizePhone(onFile) ?? onFile;
+    phoneMasked = maskPhone(phone);
+  } else {
+    if (!rawPhone) return NextResponse.json({ error: "phone wajib diisi" }, { status: 400 });
+    phone = normalizePhone(rawPhone) ?? rawPhone.trim();
+  }
 
   // ── Login & reset password: tolak sebelum kirim OTP kalau nomor belum terdaftar di akun
   // manapun — cegah kirim WA sia-sia (biaya + membingungkan user yang OTP-nya tidak akan pernah
@@ -144,5 +170,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: errorMsg }, { status: 503 });
   }
 
-  return NextResponse.json({ ok: true, expiresIn: OTP_TTL_MINUTES });
+  return NextResponse.json({ ok: true, expiresIn: OTP_TTL_MINUTES, phoneMasked });
 }

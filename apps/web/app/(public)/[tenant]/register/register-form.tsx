@@ -21,10 +21,10 @@ type Step = "path" | "form" | "verify_otp";
 
 // ── OTP Step ──────────────────────────────────────────────────────────────────
 function OtpStep({
-  phone, slug, onVerified, onBack,
+  phone, displayPhone, slug, claimMemberId, onVerified, onBack,
 }: {
-  phone: string; slug: string;
-  onVerified: () => void; onBack: () => void;
+  phone: string; displayPhone: string; slug: string; claimMemberId?: string;
+  onVerified: (claimToken?: string) => void; onBack: () => void;
 }) {
   const [code,       setCode]       = useState("");
   const [error,      setError]      = useState<string | null>(null);
@@ -46,7 +46,7 @@ function OtpStep({
       const res  = await fetch("/api/akun/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, type: "register", slug }),
+        body: JSON.stringify({ phone, type: "register", slug, claimMemberId }),
       });
       const data = await res.json() as { error?: string };
       if (!res.ok) { setError(data.error ?? "Gagal mengirim ulang OTP."); return; }
@@ -68,14 +68,14 @@ function OtpStep({
         const res  = await fetch("/api/akun/verify-otp", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone, code: code.trim(), type: "register", slug }),
+          body: JSON.stringify({ phone, code: code.trim(), type: "register", slug, claimMemberId }),
         });
-        const data = await res.json() as { valid?: boolean; error?: string };
+        const data = await res.json() as { valid?: boolean; error?: string; claimToken?: string };
         if (!res.ok || !data.valid) {
           setError(data.error ?? "Kode tidak valid.");
           return;
         }
-        onVerified();
+        onVerified(data.claimToken);
       } catch {
         setError("Terjadi kesalahan. Coba lagi.");
       }
@@ -97,7 +97,7 @@ function OtpStep({
           </div>
           <div>
             <h1 className="text-lg font-bold leading-tight">Verifikasi WhatsApp</h1>
-            <p className="text-xs text-muted-foreground">Kode dikirim ke {phone}</p>
+            <p className="text-xs text-muted-foreground">Kode dikirim ke {displayPhone}</p>
           </div>
         </div>
       </div>
@@ -173,6 +173,10 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
   // Legal modal
   const [modalTpl, setModalTpl] = useState<"terms" | "privacy" | null>(null);
 
+  // Klaim akun member: bukti OTP (dari verify-otp) yang harus ikut dikirim ke /api/akun/register
+  const [claimToken,      setClaimToken]      = useState<string | undefined>(undefined);
+  const [otpDisplayPhone, setOtpDisplayPhone]  = useState("");
+
   const isClaiming  = lookup?.found === true && !lookup.hasAccount;
   const claimedName = lookup?.found ? lookup.name : null;
 
@@ -232,12 +236,35 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
 
     start(async () => {
       try {
+        // Klaim akun anggota (identitas SUDAH ada di public.members): verifikasi OTP
+        // WAJIB tanpa pengecualian, dan HARUS ke nomor WA yang tercatat di data
+        // keanggotaan itu sendiri — bukan tergantung toggle admin, dan bukan ke nomor
+        // yang diketik bebas di form ini (lihat lib/mask-phone.ts + send-otp/route.ts).
+        // Tanpa ini, siapa pun yang tahu memberId (mis. tebak nomor stambuk) bisa
+        // mengklaim identitas anggota lain hanya dengan email/password miliknya sendiri.
+        if (isClaiming && lookup?.found && lookup.memberId) {
+          const otpRes  = await fetch("/api/akun/send-otp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "register", slug, claimMemberId: lookup.memberId }),
+          });
+          const otpData = await otpRes.json() as { ok?: boolean; error?: string; phoneMasked?: string };
+          if (!otpRes.ok || !otpData.ok) {
+            setError(otpData.error ?? "Gagal mengirim OTP verifikasi. Hubungi admin untuk klaim manual.");
+            return;
+          }
+          setOtpDisplayPhone(otpData.phoneMasked ?? "nomor WhatsApp terdaftar Anda");
+          setStep("verify_otp");
+          return;
+        }
+
         const availRes  = await fetch(`/api/wa/available?slug=${encodeURIComponent(slug)}`, { cache: "no-store" });
         const availData = await availRes.json() as { registerOtp?: boolean };
 
         if (!availData.registerOtp) {
           // WA tidak tersedia / OTP registrasi belum diaktifkan admin → daftar langsung
-          // tanpa verifikasi nomor, persis alur sebelum fitur OTP ada.
+          // tanpa verifikasi nomor, persis alur sebelum fitur OTP ada. Hanya berlaku untuk
+          // pendaftaran BARU (bukan klaim) — identitas baru tidak punya siapa pun untuk dibajak.
           await doRegister();
           return;
         }
@@ -252,6 +279,7 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
           setError(otpData.error ?? "Gagal mengirim OTP ke WhatsApp. Pastikan nomor WA valid.");
           return;
         }
+        setOtpDisplayPhone(phone);
         setStep("verify_otp");
       } catch {
         setError("Terjadi kesalahan. Coba lagi.");
@@ -260,10 +288,11 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
   }
 
   // ── Setelah OTP terverifikasi ─────────────────────────────────────────────
-  function handleOtpVerified() {
+  function handleOtpVerified(verifiedClaimToken?: string) {
     start(async () => {
       try {
-        await doRegister();
+        setClaimToken(verifiedClaimToken);
+        await doRegister(verifiedClaimToken);
       } catch {
         setError("Terjadi kesalahan saat mendaftar.");
         setStep("form");
@@ -271,7 +300,7 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
     });
   }
 
-  async function doRegister() {
+  async function doRegister(claimTokenOverride?: string) {
     const body: Record<string, unknown> = {
       path: accountPath,
       name: isClaiming ? claimedName : name.trim(),
@@ -280,8 +309,12 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
     };
 
     if (accountPath === "member") {
-      if (isClaiming && lookup?.found) body.claimMemberId = lookup.memberId;
-      else if (stambuk.trim())         body.stambukNumber = stambuk.trim();
+      if (isClaiming && lookup?.found) {
+        body.claimMemberId = lookup.memberId;
+        body.claimToken    = claimTokenOverride ?? claimToken;
+      } else if (stambuk.trim()) {
+        body.stambukNumber = stambuk.trim();
+      }
     }
 
     const res  = await fetch("/api/akun/register", {
@@ -369,7 +402,9 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
           )}
           <OtpStep
             phone={phone}
+            displayPhone={otpDisplayPhone || phone}
             slug={slug}
+            claimMemberId={isClaiming && lookup?.found ? lookup.memberId : undefined}
             onVerified={handleOtpVerified}
             onBack={() => { setStep("form"); setError(null); }}
           />
@@ -503,7 +538,9 @@ export function RegisterForm({ slug, orgLabels }: { slug: string; orgLabels: Org
               required
             />
             <p className="text-xs text-muted-foreground">
-              Kode OTP verifikasi akan dikirim ke nomor WhatsApp ini.
+              {isClaiming
+                ? "Klaim akun anggota: kode OTP verifikasi akan dikirim ke nomor WhatsApp yang TERDAFTAR di data keanggotaan Anda, bukan nomor di atas."
+                : "Kode OTP verifikasi akan dikirim ke nomor WhatsApp ini."}
             </p>
           </div>
 

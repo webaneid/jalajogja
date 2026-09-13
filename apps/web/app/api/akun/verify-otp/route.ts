@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 //                         → return { valid: true, token: string }
 
 import { NextRequest, NextResponse }           from "next/server";
-import { db, otpTokens, verification }         from "@jalajogja/db";
+import { db, otpTokens, verification, members, contacts } from "@jalajogja/db";
 import { eq, and, gt, isNull }                 from "drizzle-orm";
 import { normalizePhone }                      from "@/lib/phone";
 import { findUserByPhone }                     from "@/lib/find-user-by-phone";
@@ -25,18 +25,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
   }
 
-  const { phone: rawPhone, code, type, slug } = body as {
-    phone?: string; code?: string; type?: string; slug?: string;
+  const { phone: rawPhone, code, type, slug, claimMemberId } = body as {
+    phone?: string; code?: string; type?: string; slug?: string; claimMemberId?: string;
   };
 
-  if (!rawPhone || !code || !type || !slug) {
-    return NextResponse.json({ error: "phone, code, type, dan slug wajib diisi" }, { status: 400 });
+  if (!code || !type || !slug) {
+    return NextResponse.json({ error: "code, type, dan slug wajib diisi" }, { status: 400 });
   }
   if (type !== "register" && type !== "reset_password" && type !== "login") {
     return NextResponse.json({ error: "type tidak valid" }, { status: 400 });
   }
 
-  const phone = normalizePhone(rawPhone) ?? rawPhone.trim();
+  // ── Klaim akun member: resolve nomor dari data keanggotaan (server-side), SAMA
+  // seperti /api/akun/send-otp — jangan percaya `phone` dari client di mode klaim,
+  // supaya OTP yang dicocokkan benar-benar OTP yang dikirim ke nomor member terkait.
+  let phone: string;
+  if (type === "register" && claimMemberId) {
+    const [row] = await db
+      .select({ phone: contacts.phone, whatsapp: contacts.whatsapp })
+      .from(members)
+      .innerJoin(contacts, eq(contacts.id, members.contactId))
+      .where(eq(members.id, claimMemberId))
+      .limit(1);
+    const onFile = row?.whatsapp ?? row?.phone;
+    if (!onFile) return NextResponse.json({ error: "Data anggota tidak valid." }, { status: 422 });
+    phone = normalizePhone(onFile) ?? onFile;
+  } else {
+    if (!rawPhone) return NextResponse.json({ error: "phone wajib diisi" }, { status: 400 });
+    phone = normalizePhone(rawPhone) ?? rawPhone.trim();
+  }
   const now   = new Date();
 
   // ── Cari OTP valid ────────────────────────────────────────────────────────────
@@ -84,6 +101,21 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ valid: true, token: resetToken });
+  }
+
+  // ── Jika klaim akun member: keluarkan claimToken sekali-pakai sebagai BUKTI
+  // verifikasi ke /api/akun/register. Tanpa ini, endpoint register bisa dipanggil
+  // langsung dengan claimMemberId tanpa pernah lewat OTP sama sekali (client-side
+  // flow control saja bukan proteksi nyata).
+  if (type === "register" && claimMemberId) {
+    const claimToken = generateToken24();
+    await db.insert(verification).values({
+      id:         crypto.randomUUID(),
+      identifier: `claim-member:${claimToken}`,
+      value:      claimMemberId,
+      expiresAt:  new Date(Date.now() + 10 * 60 * 1000), // 10 menit
+    });
+    return NextResponse.json({ valid: true, claimToken });
   }
 
   return NextResponse.json({ valid: true });

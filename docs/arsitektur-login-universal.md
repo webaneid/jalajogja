@@ -138,7 +138,7 @@ Sudah punya akun? [Masuk di sini]
 - Jika ditemukan: auto-isi nama, tampilkan banner info
 - Jika tidak: registrasi normal sebagai akun umum
 
-### Flow Registrasi (✅ SELESAI — OTP kondisional otomatis, 2026-07-21)
+### Flow Registrasi (✅ SELESAI — OTP kondisional otomatis, 2026-07-21; **klaim member direvisi 2026-09-13, lihat § "Klaim Akun Member" di bawah**)
 
 > **SUPERSEDED**: kalimat "OTP tidak bisa dinonaktifkan" di bawah ini pernah jadi keputusan
 > terkunci, tapi direvisi setelah insiden nyata 2026-07-20 (`docs/arsitektur-whatsapp.md` §
@@ -148,24 +148,28 @@ Sudah punya akun? [Masuk di sini]
 > submit ke `GET /api/wa/available` (endpoint ini sebenarnya SUDAH dibuat sejak awal untuk
 > tujuan ini — komentarnya sendiri bilang "dipakai oleh register form dan forgot-password untuk
 > memutuskan apakah tampilkan OTP step" — tapi tidak pernah benar-benar dipanggil sampai fix
-> ini).
+> ini). **Skip ini HANYA berlaku untuk pendaftaran member BARU (INSERT) dan jalur publik — TIDAK
+> berlaku untuk klaim member existing, lihat § di bawah.**
 
 ```
 User pilih jalur:
-  ├─ "Anggota IKPM Gontor" → isi stambuk (opsional) + form
+  ├─ "Anggota IKPM Gontor" → isi stambuk (opsional, trigger lookup-member) + form
   └─ "Bukan Anggota" → isi form langsung
 
 Isi form (nama, email, HP, WA, password)
   ↓
-Submit → GET /api/wa/available?slug=X → { registerOtp: boolean }
-  ├─ registerOtp = true  → POST /api/akun/send-otp (type="register")
-  │                         → step input OTP 6 digit → verify-otp → doRegister()
-  └─ registerOtp = false → doRegister() LANGSUNG, tanpa verifikasi nomor sama sekali
+Submit:
+  ├─ isClaiming (lookup-member ketemu member TANPA akun) → SELALU wajib OTP,
+  │  lihat § "Klaim Akun Member" — TIDAK melewati GET /api/wa/available sama sekali
+  └─ bukan klaim (member baru / publik) → GET /api/wa/available?slug=X → { registerOtp: boolean }
+       ├─ registerOtp = true  → POST /api/akun/send-otp (type="register", phone dari input)
+       │                         → step input OTP 6 digit → verify-otp → doRegister()
+       └─ registerOtp = false → doRegister() LANGSUNG, tanpa verifikasi nomor sama sekali
   ↓
 doRegister() → POST /api/akun/register:
-  - Jalur IKPM: cari member via stambuk/email/HP
-    → jika ketemu + belum punya akun: UPDATE members.better_auth_user_id
-    → jika tidak ketemu: INSERT baru ke public.members + contacts
+  - Jalur IKPM, klaim member existing: WAJIB claimToken valid (lihat di bawah), lalu
+    UPDATE members.better_auth_user_id
+  - Jalur IKPM, member baru: INSERT baru ke public.members + contacts (OTP opsional, lihat atas)
   - Jalur publik: INSERT public.profiles
   ↓
 Auto login via authClient.signIn.email()
@@ -173,11 +177,62 @@ Auto login via authClient.signIn.email()
 window.location.href = /{slug}/akun
 ```
 
-**Kenapa aman skip verifikasi nomor saat fallback**: registrasi bukan aksi sensitif — tidak ada
-yang bisa "diambil alih" hanya dengan tahu nomor HP orang lain, beda dengan reset password (lihat
-di bawah). Risiko terburuk: seseorang daftar dengan nomor yang bukan miliknya — sama persis
-risiko yang sudah diterima SEBELUM fitur OTP register pernah ada.
+**Kenapa aman skip verifikasi nomor saat fallback (KHUSUS member baru/publik)**: INSERT identitas
+baru bukan aksi sensitif — tidak ada yang bisa "diambil alih" hanya dengan tahu nomor HP orang
+lain, beda dengan reset password. Risiko terburuk: seseorang daftar dengan nomor yang bukan
+miliknya — sama persis risiko yang sudah diterima SEBELUM fitur OTP register pernah ada.
 OTP inline (state machine di form yang sama) — tidak ada halaman `/register/verify` terpisah.
+
+### Klaim Akun Member (existing) — OTP + `claimToken` WAJIB tanpa pengecualian
+> Ditambahkan 2026-09-13 setelah audit keamanan menemukan celah identity-takeover — detail
+> lengkap skenario eksploitasi + root cause di `docs/lessons-learned.md`
+> `[2026-09-13] OTP dikirim ke nomor yang diketik client sendiri bukan bukti kepemilikan identitas
+> yang diklaim`.
+
+Beda dari member baru: klaim adalah `UPDATE members.better_auth_user_id` ke member **EXISTING**
+(bisa ditemukan siapa saja via `GET /api/akun/lookup-member?stambuk=` — endpoint publik tanpa
+auth). Karena itu MENGAMBIL ALIH identitas yang sudah ada, verifikasi kepemilikan wajib mutlak —
+tidak boleh ikut logika skip di atas, dan tidak boleh percaya nomor yang diketik pendaftar.
+
+```
+Form terdeteksi isClaiming (lookup-member found=true, hasAccount=false)
+  ↓
+Submit → POST /api/akun/send-otp { type:"register", slug, claimMemberId }
+         (TANPA field `phone` dari form — diabaikan total kalau ada)
+  ↓
+Server: SELECT contacts.whatsapp/phone JOIN members WHERE members.id = claimMemberId
+  ├─ tidak ada nomor tercatat → 422 "Hubungi admin untuk verifikasi manual" (klaim diblok total)
+  └─ ada nomor tercatat → OTP dikirim ke NOMOR ITU (bukan ke nomor form),
+                          response: { ok:true, phoneMasked: "*******7890" }
+  ↓
+UI: "Kode OTP dikirim ke {phoneMasked}" (bukan ke nomor yang diketik user)
+  ↓
+User input OTP → POST /api/akun/verify-otp { type:"register", slug, claimMemberId, code }
+  (server resolve ULANG nomor dari DB yang sama, match ke otpTokens — client TIDAK bisa
+   pura-pura sudah verify dengan phone sembarang)
+  ↓
+Sukses → server insert `verification` row: identifier="claim-member:{claimToken random 24 char}",
+          value=claimMemberId, expiresAt=+10 menit → response { valid:true, claimToken }
+  ↓
+Client simpan claimToken, kirim di body POST /api/akun/register bareng claimMemberId
+  ↓
+POST /api/akun/register:
+  - claimToken WAJIB ada, kalau tidak → 403 langsung, TIDAK proses klaim apa pun
+  - DELETE ... RETURNING dari `verification` (atomic, sekali pakai, cegah race pemakaian ganda)
+    WHERE identifier=`claim-member:{claimToken}` AND expiresAt > now()
+  - Hasil DELETE harus ada barisnya DAN value === claimMemberId, kalau tidak → 403
+  - Baru setelah lolos: UPDATE members.better_auth_user_id
+```
+
+**Kalau tenant tidak punya WA gateway aktif sama sekali**: klaim akun member TETAP DIBLOK (tidak
+ada fallback "daftar tanpa verifikasi" seperti member baru) — `send-otp` gagal di pengecekan
+`whatsapp_config.verified` sebelum sempat mengirim apa pun, dan tanpa OTP tidak ada `claimToken`,
+jadi `register` menolak klaim. Ini keputusan sengaja: klaim identitas yang sudah ada JAUH lebih
+sensitif daripada gagal mendaftar member baru, jadi tidak boleh punya jalur skip verifikasi.
+
+**File yang terlibat**: `app/api/akun/lookup-member/route.ts`, `app/api/akun/send-otp/route.ts`,
+`app/api/akun/verify-otp/route.ts`, `app/api/akun/register/route.ts`,
+`app/(public)/[tenant]/register/register-form.tsx`, helper `lib/mask-phone.ts` (baru).
 
 ---
 
@@ -326,12 +381,17 @@ Aksi: `PATCH /api/akun/profil` (endpoint sudah ada, perlu tambah `whatsapp` fiel
 | `GET /api/akun/lookup-member` | Cek apakah email/HP cocok dengan data member; return `{ found, name, memberId }` |
 
 ### Endpoint lookup-member
+> Bagian di bawah ini bagian dari catatan desain awal (sebagian sudah drift dari implementasi
+> aktual, mis. kolom `full_name` — kolom sebenarnya `members.name`). Untuk alur klaim akun yang
+> pakai hasil lookup ini + security model-nya, acuan yang akurat adalah § "Klaim Akun Member"
+> di atas, bukan bagian ini.
 ```
 GET /api/akun/lookup-member?email=xxx@xxx.com
 GET /api/akun/lookup-member?phone=0812xxxx
+GET /api/akun/lookup-member?stambuk=1234
 
 Response (found):
-{ found: true, name: "Ahmad Fulan", memberId: "uuid" }
+{ found: true, name: "Ahmad Fulan", memberId: "uuid", hasAccount: false, type: "member" }
 
 Response (not found):
 { found: false }

@@ -1252,6 +1252,7 @@ export async function saveVariationsAction(
 ): Promise<{ error?: string }> {
   const access = await getTenantAccess(slug);
   if (!access) return { error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { error: "Akses ditolak." };
 
   const { db: tenantDb, schema } = createTenantDb(slug);
 
@@ -1280,11 +1281,13 @@ export async function saveVariationsAction(
       sku:            v.sku.trim() || null,
       // Kosong = null → fallback ke harga produk induk saat dibaca (lib/product-variation-
       // price.server.ts), bukan dipaksa jadi 0 seperti sebelumnya.
-      price:          v.price.trim() ? (parseFloat(v.price) || 0).toFixed(2) : null,
-      publicPrice:    v.publicPrice ? (parseFloat(v.publicPrice)).toFixed(2) : null,
-      memberPrice:    v.memberPrice ? (parseFloat(v.memberPrice)).toFixed(2) : null,
-      stock:          parseInt(v.stock) || 0,
-      weightGram:     v.weightGram ? (parseInt(v.weightGram) || null) : null,
+      // Math.max(0, ...) — harga/stok/berat negatif dari client tidak boleh lolos ke DB,
+      // bisa mempengaruhi total invoice checkout kalau tidak dijaga di sini.
+      price:          v.price.trim() ? Math.max(0, parseFloat(v.price) || 0).toFixed(2) : null,
+      publicPrice:    v.publicPrice ? Math.max(0, parseFloat(v.publicPrice) || 0).toFixed(2) : null,
+      memberPrice:    v.memberPrice ? Math.max(0, parseFloat(v.memberPrice) || 0).toFixed(2) : null,
+      stock:          Math.max(0, parseInt(v.stock) || 0),
+      weightGram:     v.weightGram ? Math.max(0, parseInt(v.weightGram) || 0) || null : null,
       images:         v.images,
       attributeCombo: v.attributeCombo,
       isActive:       v.isActive,
@@ -1313,6 +1316,7 @@ export async function generateVariationsAction(
 ): Promise<{ variations?: VariationLocal[]; error?: string }> {
   const access = await getTenantAccess(slug);
   if (!access) return { error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "toko")) return { error: "Akses ditolak." };
 
   if (attributeGroups.length === 0 || attributeGroups.some(g => g.values.length === 0)) {
     return { error: "Semua atribut harus memiliki minimal satu nilai." };

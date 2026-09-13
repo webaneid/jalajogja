@@ -5,6 +5,7 @@
 // atau prosemirror-model agar tidak ada dependency pada window/document (server-safe).
 
 import { stripTenantPrefix } from "./strip-tenant-prefix"; // pure string, aman di sini (nol DOM/Node dependency)
+import sanitizeHtml          from "sanitize-html";          // Node-only (htmlparser2), TIDAK butuh window/document — aman di server
 
 type TiptapNode = {
   type: string;
@@ -48,6 +49,67 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+// `content` Tiptap tersimpan sebagai JSON bebas dari client (Server Action `updatePostAction`
+// dkk tidak validasi struktur) — siapa pun dengan akses "website: full" di suatu tenant bisa
+// menyisipkan node `embedBlock` dengan `html` mentah (mis. `<script>`) langsung lewat Server
+// Action, bypass UI editor. `renderBody` dipakai untuk render publik (semua pengunjung tenant),
+// jadi TIDAK boleh percaya `html`/`href` apa adanya — sanitasi di titik render ini (bukan cuma
+// saat save) supaya menutup konten lama yang mungkin sudah tersimpan sebelum fix ini juga.
+const EMBED_IFRAME_HOSTS = new Set([
+  "www.youtube.com", "www.youtube-nocookie.com", "player.vimeo.com",
+  "w.soundcloud.com", "www.instagram.com", "www.tiktok.com", "twitframe.com",
+]);
+const EMBED_SCRIPT_HOSTS = new Set([
+  "platform.twitter.com", "www.tiktok.com", "www.instagram.com",
+]);
+
+function isAllowedEmbedHost(src: string | undefined, allowlist: Set<string>): boolean {
+  if (!src) return false;
+  try {
+    const u = new URL(src, "https://invalid.local"); // base dummy — tolak relative src (tidak valid utk iframe/script eksternal)
+    return u.protocol === "https:" && allowlist.has(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeEmbedHtml(html: string): string {
+  return sanitizeHtml(html, {
+    allowedTags: ["div", "blockquote", "p", "a", "span", "img", "iframe", "script"],
+    allowedAttributes: {
+      // "data-*" aman di-wildcard — atribut data- tidak pernah dieksekusi browser (beda dari
+      // "on*" event handler yang memang tidak di-whitelist di sini), dibutuhkan widget script
+      // resmi (Instagram/TikTok) untuk tahu konten mana yang di-render ulang jadi embed.
+      "*":        ["class", "style", "title", "data-*"],
+      a:          ["href", "target", "rel"],
+      img:        ["src", "alt", "width", "height"],
+      iframe:     ["src", "allow", "allowfullscreen", "loading", "frameborder", "width", "height"],
+      script:     ["src", "async", "charset"],
+      blockquote: ["cite"],
+    },
+    allowedSchemesByTag: { a: ["https", "mailto"], img: ["https"], iframe: ["https"], script: ["https"] },
+    // Whitelist HOST (bukan cuma scheme) untuk iframe/script — dua tag ini yang bisa
+    // eksekusi kode kalau host-nya bebas. Tag lain sudah cukup aman lewat allowedAttributes.
+    exclusiveFilter: (frame) => {
+      if (frame.tag === "iframe") return !isAllowedEmbedHost(frame.attribs.src, EMBED_IFRAME_HOSTS);
+      if (frame.tag === "script") {
+        if (frame.text?.trim()) return true; // tolak inline script content, hanya boleh `src` loader
+        return !isAllowedEmbedHost(frame.attribs.src, EMBED_SCRIPT_HOSTS);
+      }
+      return false;
+    },
+  });
+}
+
+// Skema URL aman untuk link teks biasa — tolak `javascript:`/`data:`/`vbscript:` dst.
+// Path relatif ("/...", "#...") dan URL tanpa skema (protocol-relative sudah lolos regex ini
+// karena "//" bukan skema) dianggap aman (link internal).
+function sanitizeLinkHref(href: string): string {
+  const trimmed = href.trim();
+  if (/^(https?:|mailto:|tel:|\/|#)/i.test(trimmed)) return escapeHtml(trimmed);
+  return "#";
+}
+
 function applyMark(text: string, mark: TiptapMark): string {
   switch (mark.type) {
     case "bold":      return `<strong>${text}</strong>`;
@@ -56,7 +118,7 @@ function applyMark(text: string, mark: TiptapMark): string {
     case "strike":    return `<s>${text}</s>`;
     case "code":      return `<code>${text}</code>`;
     case "link": {
-      const href = escapeHtml(mark.attrs?.href ?? "");
+      const href = sanitizeLinkHref(mark.attrs?.href ?? "");
       return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
     }
     case "textStyle": {
@@ -187,7 +249,7 @@ function renderNode(node: TiptapNode, ctx?: RenderContext): string {
 
     case "embedBlock": {
       const html = node.attrs?.html as string | null;
-      if (html) return `<div style="margin:1em 0">${html}</div>`;
+      if (html) return `<div style="margin:1em 0">${sanitizeEmbedHtml(html)}</div>`;
       const url = escapeHtml(node.attrs?.url as string ?? "");
       return `<a href="${url}" target="_blank">${url}</a>`;
     }

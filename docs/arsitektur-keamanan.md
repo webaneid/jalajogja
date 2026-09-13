@@ -96,6 +96,27 @@ project ini isolasi via **schema Postgres terpisah per tenant** (`tenant_{slug}`
   penjualan, dll) — lihat lesson "Public action tanpa auth" di `docs/arsitektur-event.md`.
   Kalau review ketemu action publik BARU tanpa validasi apa pun di dalamnya, itu baru masalah.
 
+### 4c. OTP/kode verifikasi — kirim ke kontak TERCATAT untuk identitas yang diverifikasi, bukan yang diketik user
+> Ditemukan audit 2026-09-13 — detail skenario & fix di `docs/lessons-learned.md`
+> `[2026-09-13] OTP dikirim ke nomor yang diketik client sendiri bukan bukti kepemilikan
+> identitas yang diklaim` dan implementasinya di `docs/arsitektur-login-universal.md` §
+> "Klaim Akun Member".
+- Kalau sebuah alur OTP dimaksudkan untuk MEMBUKTIKAN kepemilikan suatu identitas/record yang
+  SUDAH ADA di DB (klaim akun, link akun ke data existing, dst) — nomor tujuan OTP WAJIB
+  di-resolve SERVER-SIDE dari data identitas itu sendiri (mis. `contacts.whatsapp` milik member
+  yang diklaim), **BUKAN** dari field yang diketik bebas oleh pihak yang sedang mengklaim. OTP
+  yang dikirim ke nomor pilihan pendaftar hanya membuktikan "pendaftar bisa terima WA di nomor
+  itu" — bukan "pendaftar adalah pemilik identitas yang diklaim".
+- Proof hasil verifikasi OTP yang dipakai di request/step BERIKUTNYA (mis. step 1 verifikasi →
+  step 2 baru lakukan mutasi) WAJIB berupa token sekali-pakai yang dikonsumsi via satu statement
+  DB atomic (`DELETE ... RETURNING`, bukan `SELECT` lalu `DELETE` terpisah) — jangan hanya
+  mengandalkan urutan pemanggilan endpoint di client (client bisa saja panggil endpoint mutasi
+  langsung, skip step verifikasi sama sekali).
+- Beda dengan pendaftaran identitas BARU (INSERT, bukan klaim ke identitas existing) — itu tetap
+  boleh punya jalur skip-OTP kalau gateway OTP tidak tersedia (lihat § 4b soal "endpoint publik
+  tanpa validasi" — analognya di sini: risiko rendah karena tidak ada identitas existing yang
+  bisa diambil alih). Klaim ke identitas existing TIDAK BOLEH punya jalur skip serupa.
+
 ## 5. Frontend (Next.js App Router)
 - Server Components untuk data yang butuh filter tenant/permission — jangan fetch data
   sensitif di Client Component lalu filter di client (authorization logic harus di server).

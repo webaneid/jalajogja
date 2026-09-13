@@ -11,12 +11,12 @@ const VPS_IP = "72.61.215.7";
 const CRON_SECRET = process.env.CRON_SECRET;
 
 export async function GET(req: NextRequest) {
-  // Auth check — hanya boleh dipanggil dengan secret yang benar
-  if (CRON_SECRET) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${CRON_SECRET}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  // Auth check — fail-closed: kalau CRON_SECRET tidak diset di environment, endpoint TETAP
+  // ditolak (bukan lolos tanpa auth). Sebelumnya dibungkus `if (CRON_SECRET)` — kalau env var
+  // kosong, blok pengecekan ini dilewati seluruhnya dan endpoint jadi publik tanpa auth apa pun
+  // (bisa memicu re-check DNS semua tenant + membocorkan daftar custom domain & statusnya).
+  if (req.headers.get("authorization") !== `Bearer ${CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Ambil semua tenant dengan status pending atau failed — TIDAK proses active
