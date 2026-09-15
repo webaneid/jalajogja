@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { ShoppingCart, Minus, Plus, Store } from "lucide-react";
+import { useState, useEffect, useTransition } from "react";
+import { ShoppingCart, Minus, Plus, Store, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProductImageViewer } from "./product-image-viewer";
 import { addToCartAction } from "@/app/(public)/[tenant]/cart/actions";
 import { resolvePrice, formatPrice, priceLabel } from "@/lib/product-card-templates";
 import type { ProductCardData, SessionType } from "@/lib/product-card-templates";
+import { isFreeShippingMatch } from "@/lib/free-shipping-match";
 import type { NavItem } from "@/lib/nav-menu";
 import { SingleFeatureImage } from "@/components/website/public/single/single-feature-image";
 import { SocialShareCard } from "@/components/website/public/single/social-share-card";
@@ -40,6 +41,14 @@ export type ViewerImage = {
   url:      string;
   variants?: Record<string, string> | null;
   alt:      string;
+};
+
+// Hasil search /api/ongkir/cities — sama shape dipakai checkout-form.tsx.
+type FsCityResult = {
+  id:              number;
+  label:           string;
+  cityName:        string;
+  provinceName:    string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -109,6 +118,42 @@ export function ProductDetailClient({
   const [added, setAdded]         = useState(false);
   const [error, setError]         = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Badge "Gratis Ongkir" — mode "all" selalu tampil, mode "regions" perlu customer ketik
+  // daerah tujuan dulu (search kelurahan yang sama dipakai checkout) baru dicocokkan. Lihat
+  // docs/arsitektur-addon-ongkir.md § "Badge Gratis Ongkir di Halaman Produk Publik".
+  const freeShippingMode      = product.freeShippingMode      ?? "none";
+  const freeShippingProvinces = product.freeShippingProvinces ?? [];
+  const freeShippingCities    = product.freeShippingCities    ?? [];
+  const [fsDestQuery,   setFsDestQuery]   = useState("");
+  const [fsDestResults, setFsDestResults] = useState<FsCityResult[]>([]);
+  const [fsDestOpen,    setFsDestOpen]    = useState(false);
+  const [fsMatchedName, setFsMatchedName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (freeShippingMode !== "regions" || fsMatchedName) return;
+    if (fsDestQuery.trim().length < 2) { setFsDestResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(fsDestQuery)}&limit=8`);
+        const data = await res.json() as { cities?: FsCityResult[] };
+        setFsDestResults(data.cities ?? []);
+      } catch {
+        setFsDestResults([]);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [fsDestQuery, freeShippingMode, fsMatchedName]);
+
+  function handlePickFsDestination(city: FsCityResult) {
+    const matched = isFreeShippingMatch(
+      { freeShippingMode, freeShippingProvinces, freeShippingCities },
+      { provinceName: city.provinceName, cityName: city.cityName },
+    );
+    setFsDestOpen(false);
+    setFsDestQuery(city.label);
+    setFsMatchedName(matched ? (city.cityName || city.provinceName) : null);
+  }
   // Popup sukses "Produk berhasil ditambahkan!" — muncul setelah addToCartAction sukses,
   // menggantikan feedback inline lama. collapseSignal MobileActionSheet dipakai supaya popup
   // ini (z-50) tidak tersembunyi di balik sheet (z-71) saat dibuka dari mobile.
@@ -275,6 +320,46 @@ export function ProductDetailClient({
     </p>
   );
 
+  const freeShippingBadge = (
+    <div className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">
+      <Truck className="h-3.5 w-3.5 shrink-0" />
+      {freeShippingMode === "all" ? "Gratis Ongkir Seluruh Indonesia" : `Gratis Ongkir ke ${fsMatchedName}`}
+    </div>
+  );
+
+  const freeShippingInfo =
+    freeShippingMode === "all" ? freeShippingBadge
+    : freeShippingMode === "regions" ? (
+      fsMatchedName ? freeShippingBadge : (
+        <div className="relative max-w-xs">
+          <input
+            type="text"
+            value={fsDestQuery}
+            onChange={(e) => { setFsDestQuery(e.target.value); setFsDestOpen(true); }}
+            onFocus={() => fsDestResults.length > 0 && setFsDestOpen(true)}
+            onBlur={() => setTimeout(() => setFsDestOpen(false), 150)}
+            placeholder="Cek gratis ongkir ke daerah Anda..."
+            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          {fsDestOpen && fsDestResults.length > 0 && (
+            <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
+              {fsDestResults.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handlePickFsDestination(c)}
+                  className="block w-full text-left px-3 py-2 text-xs hover:bg-muted transition-colors"
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )
+    ) : null;
+
   const qtyAndCta = (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
@@ -349,6 +434,7 @@ export function ProductDetailClient({
             {priceBlock}
             {variationPicker}
             {stockInfo}
+            {freeShippingInfo}
             {qtyAndCta}
           </div>
         </MobileActionSheet>
@@ -369,6 +455,7 @@ export function ProductDetailClient({
           {priceBlock}
           {variationPicker}
           {stockInfo}
+          {freeShippingInfo}
           {qtyAndCta}
         </div>
       </div>

@@ -13,6 +13,7 @@ import {
 } from "@/app/(public)/[tenant]/cart/actions";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isSafeExternalUrl } from "@/lib/safe-url";
+import { isFreeShippingMatch } from "@/lib/free-shipping-match";
 
 // ─── Tipe kurir ───────────────────────────────────────────────────────────────
 
@@ -27,27 +28,12 @@ type CourierOption = {
   rawCost?:    number;
 };
 
-// Item cart yang dipakai hitung diskon gratis-ongkir — bentuk sama SellerGroup["items"][number].
-type FreeShippingCartItem = SellerGroup["items"][number];
-
-// Gratis ongkir dicocokkan by NAMA (provinsi/kabupaten), bukan ID — search kelurahan tujuan
-// customer tidak pernah balikin ID provinsi/kabupaten numerik, cuma nama string. Aman karena
-// dua-duanya dari dataset RajaOngkir yang sama. Lihat docs/arsitektur-addon-ongkir.md §
-// "RENCANA — Gratis Ongkir per Produk".
-function isItemFreeShipping(item: FreeShippingCartItem, dest: { provinceName: string; cityName: string }): boolean {
-  if (item.freeShippingMode === "all") return true;
-  if (item.freeShippingMode !== "regions") return false;
-  const up = (s: string) => s.trim().toUpperCase();
-  return item.freeShippingProvinces.some(p => up(p.name) === up(dest.provinceName))
-      || item.freeShippingCities.some(c => up(c.name) === up(dest.cityName));
-}
-
 // Diskon proporsional-berat — bukan hard Rp0 per grup. Kalau SEMUA item grup gratis-ongkir,
 // hasilnya otomatis 1 (ongkir jadi Rp0) dari rumus yang sama, tanpa cabang logic terpisah.
 function freeShippingRatio(group: SellerGroup, dest: { provinceName: string; cityName: string }): number {
   if (group.totalWeightGram <= 0) return 0;
   const freeWeight = group.items.reduce((s, it) =>
-    s + (isItemFreeShipping(it, dest) ? it.weightGram * it.quantity : 0), 0);
+    s + (isFreeShippingMatch(it, dest) ? it.weightGram * it.quantity : 0), 0);
   return freeWeight / group.totalWeightGram;
 }
 

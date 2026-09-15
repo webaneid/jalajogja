@@ -963,3 +963,45 @@ docs/arsitektur-addon-ongkir.md                                       → dokume
 - Voucher + gratis-ongkir bersamaan — dua mekanisme independen (voucher potong harga barang,
   ini potong ongkir), tidak ada interaksi khusus yang perlu ditangani, tapi belum dites kombinasi
   keduanya secara eksplisit.
+
+---
+
+## Badge "Gratis Ongkir" di Halaman Produk Publik — ✅ Kode SELESAI (2026-09-15)
+
+> `bun run type-check` 0 error di semua workspace. **Belum diverifikasi visual di browser**
+> (tidak ada kredensial di sesi eksekusi). Risiko rendah — murni tampilan, tidak menyentuh
+> uang/data pribadi (search kota reuse endpoint publik yang sama dipakai checkout, tidak ada
+> PII) — tidak dijalankan security review terpisah untuk perubahan ini.
+
+Diminta user: tampilkan badge visual di halaman detail produk publik supaya customer tahu
+produk itu gratis ongkir SEBELUM checkout — sebelumnya field gratis-ongkir cuma dipakai di
+checkout/admin, tidak pernah disalurkan ke halaman produk publik sama sekali.
+
+**Desain**: badge pill, background warna primer tenant (`--primary`), teks putih.
+- Mode **"all"** → selalu tampil, teks tetap: **"Gratis Ongkir Seluruh Indonesia"**.
+- Mode **"regions"** → TIDAK langsung tampil (tidak tahu daerah customer) — tampil kotak
+  pencarian kecil "Cek gratis ongkir ke daerah Anda", customer ketik nama kelurahan/kota (reuse
+  `/api/ongkir/cities` search yang sama persis dipakai checkout) → kalau cocok provinsi/kota
+  yang dikonfigurasi admin, badge muncul: **"Gratis Ongkir ke {Nama Kota/Kabupaten}"**.
+- Mode **"none"** → tidak ada badge/UI apa pun (tidak berubah dari sekarang).
+
+**Konsolidasi logic pencocokan** — `isItemFreeShipping()` sudah terduplikasi 2× hari ini
+(`checkout-form.tsx` dan `order-create-client.tsx`, ditulis terpisah saat fitur gratis-ongkir
+dibangun). Nambah pemakaian ke-3 di halaman produk TANPA konsolidasi akan jadi duplikat ke-3 —
+pola yang sudah pernah bermasalah di project ini. Diekstrak jadi helper bersama
+`apps/web/lib/free-shipping-match.ts` (`isFreeShippingMatch(config, dest)`), 2 tempat lama
+di-refactor untuk pakai ini juga.
+
+**File yang tersentuh**:
+```
+apps/web/lib/free-shipping-match.ts                                  → BARU, helper matching bersama
+apps/web/components/billing/checkout-form.tsx                        → refactor pakai helper bersama
+apps/web/components/toko/order-create-client.tsx                     → refactor pakai helper bersama
+apps/web/lib/product-card-templates.ts                                → +3 field opsional ProductCardData
+apps/web/app/(public)/[tenant]/produk/[productSlug]/page.tsx         → query + kirim 3 field baru
+apps/web/components/toko/public/product-detail-client.tsx            → badge + kotak cek daerah
+docs/arsitektur-addon-ongkir.md                                       → dokumen ini
+```
+
+**Di luar scope**: badge di card produk (grid/list archive) — cuma di halaman DETAIL produk
+untuk sekarang, sesuai permintaan user.

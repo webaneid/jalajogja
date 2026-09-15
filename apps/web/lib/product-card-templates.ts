@@ -23,6 +23,13 @@ export type ProductCardData = {
   // mengisi ini (undefined) — tidak perlu tampilan stok di situ. null = produk variable (stok
   // per-variasi dipakai, bukan field ini). Lihat docs/arsitektur-stok.md.
   availableStock?: number | null;
+  // Gratis ongkir — HANYA diisi di halaman detail produk (sama pola availableStock di atas),
+  // card grid/list/related TIDAK mengisi (undefined = tidak tahu/tidak relevan di situ). Produk
+  // mitra TIDAK PERNAH mengisi ini (selalu "none" kalau ada mitraId). Lihat
+  // docs/arsitektur-addon-ongkir.md § "Badge Gratis Ongkir di Halaman Produk Publik".
+  freeShippingMode?:      "none" | "all" | "regions";
+  freeShippingProvinces?: { id: number; name: string }[];
+  freeShippingCities?:    { id: number; name: string }[];
 };
 
 export type SessionType = "none" | "public" | "member";

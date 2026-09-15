@@ -109,6 +109,10 @@ export default async function ProdukDetailPage({
       mitraId:         schema.products.mitraId,
       categoryName:    schema.productCategories.name,
       categorySlug:    schema.productCategories.slug,
+      // Gratis ongkir — badge di halaman ini, lihat docs/arsitektur-addon-ongkir.md.
+      freeShippingMode:      schema.products.freeShippingMode,
+      freeShippingProvinces: schema.products.freeShippingProvinces,
+      freeShippingCities:    schema.products.freeShippingCities,
     })
     .from(schema.products)
     .leftJoin(schema.productCategories, eq(schema.productCategories.id, schema.products.categoryId))
@@ -236,6 +240,12 @@ export default async function ProdukDetailPage({
     businessName,
     mitraId:      row.mitraId ?? null,
     availableStock,
+    // Gratis ongkir — TIDAK PERNAH untuk produk mitra, sama scope kota asal/lokasi pickup
+    // per-produk (mitra sudah punya solusi sendiri di level entity). Guard eksplisit di sini
+    // juga (bukan cuma percaya kolom DB "none" untuk mitra) — konsisten pola checkout/page.tsx.
+    freeShippingMode:      row.mitraId ? "none" : row.freeShippingMode,
+    freeShippingProvinces: row.mitraId ? [] : (row.freeShippingProvinces ?? []),
+    freeShippingCities:    row.mitraId ? [] : (row.freeShippingCities ?? []),
   };
 
   // ── attribute groups ──────────────────────────────────────────────────────

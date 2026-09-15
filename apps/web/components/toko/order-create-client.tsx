@@ -11,6 +11,7 @@ import type { CheckoutShippingLine } from "@/app/(public)/[tenant]/cart/actions"
 import { PhoneInput } from "@/components/ui/phone-input";
 import { CustomerSearchAutocomplete, type SelectedCustomer } from "@/components/toko/customer-search-autocomplete";
 import { AdminVariationPicker, type PickedVariation } from "@/components/toko/admin-variation-picker";
+import { isFreeShippingMatch } from "@/lib/free-shipping-match";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -89,23 +90,10 @@ type LocalSellerGroup = {
   }>;
 };
 
-// Gratis ongkir dicocokkan by NAMA (provinsi/kabupaten), bukan ID — sama alasan checkout publik,
-// lihat docs/arsitektur-addon-ongkir.md § "RENCANA — Gratis Ongkir per Produk".
-function isItemFreeShipping(
-  item: LocalSellerGroup["items"][number],
-  dest: { provinceName: string; cityName: string },
-): boolean {
-  if (item.freeShippingMode === "all") return true;
-  if (item.freeShippingMode !== "regions") return false;
-  const up = (s: string) => s.trim().toUpperCase();
-  return item.freeShippingProvinces.some(p => up(p.name) === up(dest.provinceName))
-      || item.freeShippingCities.some(c => up(c.name) === up(dest.cityName));
-}
-
 function freeShippingRatio(group: LocalSellerGroup, dest: { provinceName: string; cityName: string }): number {
   if (group.totalWeightGram <= 0) return 0;
   const freeWeight = group.items.reduce((s, it) =>
-    s + (isItemFreeShipping(it, dest) ? it.weightGram * it.qty : 0), 0);
+    s + (isFreeShippingMatch(it, dest) ? it.weightGram * it.qty : 0), 0);
   return freeWeight / group.totalWeightGram;
 }
 
