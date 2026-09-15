@@ -956,6 +956,9 @@ export async function createTenantSchemaInDb(
                                  CHECK (free_shipping_mode IN ('none','all','regions')),
         free_shipping_provinces JSONB,            -- [{id,name}] RajaOngkir province_id
         free_shipping_cities    JSONB,            -- [{id,name}] RajaOngkir city_id
+        pickup_location_name TEXT,                -- lokasi ambil sendiri override (khusus produk tenant, bukan mitra)
+        pickup_address       TEXT,
+        pickup_maps_url      TEXT,
         created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )

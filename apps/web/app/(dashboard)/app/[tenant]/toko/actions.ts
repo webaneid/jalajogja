@@ -45,6 +45,9 @@ export type ProductData = {
   freeShippingMode?:      FreeShippingMode;
   freeShippingProvinces?: FreeShippingRegion[];
   freeShippingCities?:    FreeShippingRegion[];
+  pickupLocationName?: string | null;
+  pickupAddress?:      string | null;
+  pickupMapsUrl?:      string | null;
   images:          ProductImage[];
   productType?:    "simple" | "variable";
   attributeGroups?: import("@jalajogja/db").AttributeGroup[];
@@ -238,6 +241,9 @@ export async function createProductAction(
         freeShippingMode:      data.freeShippingMode      ?? "none",
         freeShippingProvinces: data.freeShippingProvinces ?? [],
         freeShippingCities:    data.freeShippingCities    ?? [],
+        pickupLocationName: data.pickupLocationName ?? null,
+        pickupAddress:      data.pickupAddress      ?? null,
+        pickupMapsUrl:      data.pickupMapsUrl       ?? null,
         images:        data.images.map((img, i) => ({ ...img, order: i })),
         categoryId:    data.categoryId      ?? null,
         status:        data.status          ?? "draft",
@@ -347,6 +353,9 @@ export async function updateProductAction(
         freeShippingMode:      data.freeShippingMode      ?? "none",
         freeShippingProvinces: data.freeShippingProvinces ?? [],
         freeShippingCities:    data.freeShippingCities    ?? [],
+        pickupLocationName: data.pickupLocationName ?? null,
+        pickupAddress:      data.pickupAddress      ?? null,
+        pickupMapsUrl:      data.pickupMapsUrl       ?? null,
         images:          data.images,
         categoryId:      data.categoryId   ?? null,
         status:          data.status,

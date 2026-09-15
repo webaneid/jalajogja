@@ -1878,6 +1878,85 @@ di-backport ke data lain, murni cleanup test data lokal.
 > — prinsipnya tetap valid sebagai tujuan arsitektur, tapi contoh "sudah difix" itu keliru untuk
 > kasus spesifik ini. § 15 di bawah adalah rencana yang belum dieksekusi untuk menyatukannya.
 
+## 14.5 ✅ Kode SELESAI (2026-09-15) — Lokasi Ambil Sendiri per Produk Tenant
+
+> Perluasan langsung dari pola kota asal per-produk & gratis ongkir per-produk (lihat
+> `docs/arsitektur-addon-ongkir.md`) — SATU sesi eksekusi yang sama, konsep serupa diterapkan
+> ke fasilitas Ambil Sendiri (§ 14 di atas). `bun run type-check` 0 error di semua workspace.
+> Migration `0067` sudah dijalankan di dev lokal (kolom terverifikasi ada). **Belum
+> diverifikasi visual di browser** (tidak ada kredensial login admin di sesi eksekusi). Belum
+> di-commit/push.
+
+**Masalah**: lokasi "Ambil Sendiri" (`pickupLocationName`/`pickupAddress`/`pickupMapsUrl`)
+untuk produk tenant sendiri SATU untuk semua produk — dari `tenant.settings` group `"toko"`
+(§ 14.1). Sama seperti kota asal sebelum diperbaiki: kalau tenant jual produk dari beberapa
+lokasi berbeda (mis. gudang A dan gudang B), customer yang pilih Ambil Sendiri untuk produk di
+gudang B tetap diarahkan ke alamat gudang A (default toko) — salah.
+
+**Klarifikasi keputusan user (2026-09-15, setelah 1 putaran salah paham)**: perilaku yang benar
+adalah **FALLBACK ke default toko**, PERSIS pola kota asal — bukan hard-block. Kalau produk
+punya lokasi ambil sendiri sendiri (diisi admin) → pakai itu. Kalau kosong → otomatis pakai
+lokasi default `/toko/pengaturan` seperti sekarang.
+
+**Scope**: KHUSUS produk tenant sendiri — mitra TIDAK disentuh (mitra sudah punya solusinya
+sendiri di level entity, `mitras.pickupLocationName/Address/MapsUrl`, § 14.1). Sama scope
+decision persis kota asal per-produk.
+
+**Schema** — 3 kolom nullable baru di `products` (`packages/db/src/schema/tenant/shop.ts`),
+setelah `freeShippingCities`:
+```typescript
+pickupLocationName: text("pickup_location_name"),
+pickupAddress:      text("pickup_address"),
+pickupMapsUrl:      text("pickup_maps_url"),
+```
+DDL tenant baru (`create-tenant-schema.ts`) + migration `0067_product_pickup_location.sql`
+(pola sama `0065`/`0066`, loop tenant aktif, `ALTER TABLE products ADD COLUMN IF NOT EXISTS`).
+
+**UI admin** — `product-form.tsx`, section baru "Lokasi Ambil Sendiri (opsional)" di bawah
+"Gratis Ongkir": 3 text input (nama lokasi, alamat, link Google Maps) — placeholder "kosongkan
+untuk pakai lokasi default toko". Sinyal "override aktif" = `pickupLocationName` terisi
+(non-empty), sama pola `originCityId` sebagai sinyal override kota asal.
+
+**Resolusi di checkout** — `checkout/page.tsx` § baris ~263-286 (2 cabang produk tenant, BUKAN
+cabang mitra yang tidak disentuh sama sekali): ganti
+```typescript
+pickupLocationName  = tokoSettings.pickupLocationName || null;
+pickupAddress       = tokoSettings.pickupAddress || null;
+pickupMapsUrl       = tokoSettings.pickupMapsUrl || null;
+```
+jadi
+```typescript
+pickupLocationName  = d.productPickupLocationName || tokoSettings.pickupLocationName || null;
+pickupAddress       = d.productPickupAddress       || tokoSettings.pickupAddress       || null;
+pickupMapsUrl       = d.productPickupMapsUrl       || tokoSettings.pickupMapsUrl       || null;
+```
+di KEDUA cabang tenant (baris ~263 override-origin DAN baris ~275 fallback-origin — override
+lokasi ambil sendiri independen dari override kota asal, produk boleh override salah satu saja).
+Query `productDetails` tambah 3 kolom baru. Pola sama diterapkan di `pesanan/new/page.tsx` +
+`order-create-client.tsx` (sisi admin, duplikasi pre-existing yang sama seperti kota asal &
+gratis ongkir — dipatch 2×, bukan dikonsolidasi, lihat catatan technical debt di
+`docs/arsitektur-addon-ongkir.md`).
+
+**Batasan yang diterima (bukan bug)**: `groupKey` TIDAK ikut lokasi pickup (cuma ikut
+originCityId) — kalau 2 produk tenant kebetulan sama `originCityId` tapi beda lokasi pickup,
+grup akan pakai lokasi dari item PERTAMA yang diproses. Edge case sangat jarang (admin yang
+setup origin sama tapi pickup beda), tidak di-split lebih lanjut untuk minimalkan kompleksitas —
+kalau nyata jadi masalah, solusinya masukkan pickup ke groupKey juga (perluasan mudah, pola
+sudah ada).
+
+**File yang tersentuh**: `packages/db/src/schema/tenant/shop.ts`,
+`packages/db/src/helpers/create-tenant-schema.ts`,
+`packages/db/migrations/0067_product_pickup_location.sql` (baru),
+`apps/web/components/toko/product-form.tsx`,
+`apps/web/app/(dashboard)/app/[tenant]/toko/actions.ts`,
+`apps/web/app/(dashboard)/app/[tenant]/toko/produk/[id]/edit/page.tsx`,
+`apps/web/app/(dashboard)/app/[tenant]/toko/produk/new/page.tsx`,
+`apps/web/app/(public)/[tenant]/checkout/page.tsx`,
+`apps/web/app/(dashboard)/app/[tenant]/toko/pesanan/new/page.tsx`,
+`apps/web/components/toko/order-create-client.tsx`.
+
+---
+
 ## 15. [PERENCANAAN — BELUM DIEKSEKUSI] Unifikasi Invoice Manual Admin — Variasi Produk + Pengiriman
 
 > **Status: 📋 RENCANA MURNI. Nol kode ditulis.** Ditulis atas permintaan eksplisit user

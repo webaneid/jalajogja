@@ -103,6 +103,13 @@ export function createProductsTable(s: ReturnType<typeof pgSchema>) {
     freeShippingMode:      text("free_shipping_mode", { enum: FREE_SHIPPING_MODES }).notNull().default("none"),
     freeShippingProvinces: jsonb("free_shipping_provinces").$type<FreeShippingRegion[]>(),
     freeShippingCities:    jsonb("free_shipping_cities").$type<FreeShippingRegion[]>(),
+    // Lokasi Ambil Sendiri — override opsional dari default toko, KHUSUS produk tenant sendiri
+    // (sama alasan originCityId di atas — mitra sudah punya solusinya sendiri di
+    // mitras.pickupLocationName/Address/MapsUrl). Kosong = fallback ke default toko saat
+    // checkout. Lihat docs/arsitektur-billing.md § 14.5.
+    pickupLocationName: text("pickup_location_name"),
+    pickupAddress:      text("pickup_address"),
+    pickupMapsUrl:      text("pickup_maps_url"),
     // Mitra fields
     sellerType:  text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull().default("tenant"),
     mitraId:     uuid("mitra_id"),

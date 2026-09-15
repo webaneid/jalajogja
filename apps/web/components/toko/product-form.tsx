@@ -77,6 +77,9 @@ export type ProductFormProps = {
     freeShippingMode:      "none" | "all" | "regions";
     freeShippingProvinces: FreeShippingRegion[];
     freeShippingCities:    FreeShippingRegion[];
+    pickupLocationName: string | null;
+    pickupAddress:      string | null;
+    pickupMapsUrl:      string | null;
     images:          ProductImage[];
     categoryId:      string | null;
     status:          "draft" | "active" | "archived";
@@ -250,6 +253,9 @@ export function ProductForm({
   const [freeShippingMode,      setFreeShippingMode]      = useState<FreeShippingMode>(initialData.freeShippingMode);
   const [freeShippingProvinces, setFreeShippingProvinces] = useState<FreeShippingRegion[]>(initialData.freeShippingProvinces);
   const [freeShippingCities,    setFreeShippingCities]    = useState<FreeShippingRegion[]>(initialData.freeShippingCities);
+  const [pickupLocationName, setPickupLocationName] = useState(initialData.pickupLocationName ?? "");
+  const [pickupAddress,      setPickupAddress]      = useState(initialData.pickupAddress ?? "");
+  const [pickupMapsUrl,      setPickupMapsUrl]      = useState(initialData.pickupMapsUrl ?? "");
   const [productType,     setProductType]     = useState<"simple" | "variable">(initialData.productType);
   const [attributeGroups, setAttributeGroups] = useState<AttributeGroup[]>(initialData.attributeGroups);
   const [variations,      setVariations]      = useState<VariationLocal[]>(initialData.variations);
@@ -300,6 +306,9 @@ export function ProductForm({
       freeShippingMode,
       freeShippingProvinces: freeShippingMode === "regions" ? freeShippingProvinces : [],
       freeShippingCities:    freeShippingMode === "regions" ? freeShippingCities    : [],
+      pickupLocationName: pickupLocationName.trim() || null,
+      pickupAddress:      pickupAddress.trim() || null,
+      pickupMapsUrl:      pickupMapsUrl.trim() || null,
       productType,
       attributeGroups: productType === "variable" ? attributeGroups : [],
       images:      images.map((img, i) => ({ ...img, order: i })),
@@ -595,6 +604,35 @@ export function ProductForm({
                     setFreeShippingProvinces(provinces);
                     setFreeShippingCities(cities);
                   }}
+                />
+              </div>
+
+              {/* Lokasi Ambil Sendiri — override opsional dari default toko, KHUSUS produk
+                  tenant sendiri (bukan mitra — mitra atur lokasi sendiri di profil mitra).
+                  Kosongkan untuk pakai lokasi default toko. docs/arsitektur-billing.md § 14.5. */}
+              <div className="rounded-xl border border-border bg-card p-3 space-y-1.5">
+                <p className="text-xs font-medium leading-none">Lokasi Ambil Sendiri</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Opsional — kosongkan untuk pakai lokasi ambil sendiri default toko.
+                </p>
+                <Input
+                  value={pickupLocationName}
+                  onChange={(e) => setPickupLocationName(e.target.value)}
+                  placeholder="Nama lokasi (mis. Gudang Sleman)"
+                  className="h-8 text-xs"
+                />
+                <textarea
+                  value={pickupAddress}
+                  onChange={(e) => setPickupAddress(e.target.value)}
+                  placeholder="Alamat lengkap"
+                  rows={2}
+                  className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                />
+                <Input
+                  value={pickupMapsUrl}
+                  onChange={(e) => setPickupMapsUrl(e.target.value)}
+                  placeholder="Link Google Maps (opsional)"
+                  className="h-8 text-xs"
                 />
               </div>
             </div>

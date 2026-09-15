@@ -35,6 +35,12 @@ type ProductOption = {
   freeShippingMode:      "none" | "all" | "regions";
   freeShippingProvinces: { id: number; name: string }[];
   freeShippingCities:    { id: number; name: string }[];
+  // Lokasi Ambil Sendiri override per-produk — KHUSUS produk tenant sendiri (mitraId null),
+  // tidak pernah dipakai untuk produk mitra. Fallback ke default toko kalau kosong. Lihat
+  // docs/arsitektur-billing.md § 14.5.
+  pickupLocationName: string | null;
+  pickupAddress:      string | null;
+  pickupMapsUrl:      string | null;
 };
 
 type CartItem = { product: ProductOption; qty: number };
@@ -207,6 +213,10 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
       freeShippingMode:      parent?.freeShippingMode ?? "none",
       freeShippingProvinces: parent?.freeShippingProvinces ?? [],
       freeShippingCities:    parent?.freeShippingCities ?? [],
+      // Variasi ikut lokasi ambil sendiri produk induknya — tidak ada override per-variasi.
+      pickupLocationName: parent?.pickupLocationName ?? null,
+      pickupAddress:      parent?.pickupAddress      ?? null,
+      pickupMapsUrl:      parent?.pickupMapsUrl       ?? null,
     });
     setVariationPicker(null);
   }
@@ -277,13 +287,20 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
         sellerType = "tenant"; sellerId = null; sellerName = tenantName;
         originCityId = p.originCityId; originCityName = p.originCityName ?? "";
         codEnabled = tenantShipping?.codEnabled ?? false; pickupEnabled = tenantShipping?.pickupEnabled ?? false;
-        pickupLocationName = tenantShipping?.pickupLocationName ?? null; pickupAddress = tenantShipping?.pickupAddress ?? null; pickupMapsUrl = tenantShipping?.pickupMapsUrl ?? null;
+        // BARU — lokasi ambil sendiri override per-produk, fallback default toko.
+        pickupLocationName = p.pickupLocationName || tenantShipping?.pickupLocationName || null;
+        pickupAddress      = p.pickupAddress      || tenantShipping?.pickupAddress      || null;
+        pickupMapsUrl      = p.pickupMapsUrl      || tenantShipping?.pickupMapsUrl      || null;
       } else if (!p.mitraId && tenantShipping) {
         // Fallback — produk tenant tanpa override sendiri, pakai default toko.
         sellerType = "tenant"; sellerId = null; sellerName = tenantName;
         originCityId = tenantShipping.originCityId; originCityName = tenantShipping.originCityName;
         codEnabled = tenantShipping.codEnabled; pickupEnabled = tenantShipping.pickupEnabled;
-        pickupLocationName = tenantShipping.pickupLocationName; pickupAddress = tenantShipping.pickupAddress; pickupMapsUrl = tenantShipping.pickupMapsUrl;
+        // BARU — lokasi ambil sendiri override per-produk (independen dari override kota asal),
+        // fallback default toko.
+        pickupLocationName = p.pickupLocationName || tenantShipping.pickupLocationName;
+        pickupAddress      = p.pickupAddress      || tenantShipping.pickupAddress;
+        pickupMapsUrl      = p.pickupMapsUrl      || tenantShipping.pickupMapsUrl;
       } else {
         continue; // kota asal tidak diketahui — grup dilewati (produk tetap masuk item pesanan)
       }

@@ -195,6 +195,13 @@ export default async function CheckoutPage({ params }: Props) {
               freeShippingMode:      ts.products.freeShippingMode,
               freeShippingProvinces: ts.products.freeShippingProvinces,
               freeShippingCities:    ts.products.freeShippingCities,
+              // Lokasi Ambil Sendiri override per-produk — KHUSUS produk tenant sendiri, sama
+              // scope kota asal di atas (mitra tidak pernah baca ini, sudah punya solusi sendiri
+              // di mitras.pickupLocationName dst). Fallback ke default toko kalau kosong. Lihat
+              // docs/arsitektur-billing.md § 14.5.
+              productPickupLocationName: ts.products.pickupLocationName,
+              productPickupAddress:      ts.products.pickupAddress,
+              productPickupMapsUrl:      ts.products.pickupMapsUrl,
               mitraOriginCityId:     ts.mitras.rajaongkirCityId,
               mitraOriginCityName:   ts.mitras.rajaongkirCityName,
               businessId:      ts.mitras.businessId,
@@ -269,9 +276,10 @@ export default async function CheckoutPage({ params }: Props) {
               originCityName = d.productOriginCityName ?? "";
               codEnabled          = tokoSettings.codEnabled;
               pickupEnabled       = tokoSettings.pickupEnabled;
-              pickupLocationName  = tokoSettings.pickupLocationName || null;
-              pickupAddress       = tokoSettings.pickupAddress || null;
-              pickupMapsUrl       = tokoSettings.pickupMapsUrl || null;
+              // BARU — lokasi ambil sendiri override per-produk, fallback default toko.
+              pickupLocationName  = d.productPickupLocationName || tokoSettings.pickupLocationName || null;
+              pickupAddress       = d.productPickupAddress       || tokoSettings.pickupAddress       || null;
+              pickupMapsUrl       = d.productPickupMapsUrl       || tokoSettings.pickupMapsUrl       || null;
             } else if (!d.mitraId && config.origin_city_id) {
               // Fallback — produk tenant tanpa override sendiri, pakai default toko.
               sellerType    = "tenant";
@@ -281,9 +289,11 @@ export default async function CheckoutPage({ params }: Props) {
               originCityName = config.origin_city_name ?? "";
               codEnabled          = tokoSettings.codEnabled;
               pickupEnabled       = tokoSettings.pickupEnabled;
-              pickupLocationName  = tokoSettings.pickupLocationName || null;
-              pickupAddress       = tokoSettings.pickupAddress || null;
-              pickupMapsUrl       = tokoSettings.pickupMapsUrl || null;
+              // BARU — lokasi ambil sendiri override per-produk, fallback default toko (produk
+              // bisa override lokasi pickup TANPA override kota asal — dua hal independen).
+              pickupLocationName  = d.productPickupLocationName || tokoSettings.pickupLocationName || null;
+              pickupAddress       = d.productPickupAddress       || tokoSettings.pickupAddress       || null;
+              pickupMapsUrl       = d.productPickupMapsUrl       || tokoSettings.pickupMapsUrl       || null;
             } else {
               continue; // kota asal tidak diketahui, skip
             }

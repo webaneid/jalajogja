@@ -54,6 +54,11 @@ export default async function PesananNewPage({
       freeShippingMode:      schema.products.freeShippingMode,
       freeShippingProvinces: schema.products.freeShippingProvinces,
       freeShippingCities:    schema.products.freeShippingCities,
+      // Lokasi Ambil Sendiri override per-produk — KHUSUS produk tenant sendiri, sama scope
+      // kota asal di atas. docs/arsitektur-billing.md § 14.5.
+      pickupLocationName: schema.products.pickupLocationName,
+      pickupAddress:      schema.products.pickupAddress,
+      pickupMapsUrl:      schema.products.pickupMapsUrl,
     })
     .from(schema.products)
     .where(eq(schema.products.status, "active"))
@@ -74,6 +79,9 @@ export default async function PesananNewPage({
     freeShippingMode:      p.freeShippingMode,
     freeShippingProvinces: p.freeShippingProvinces ?? [],
     freeShippingCities:    p.freeShippingCities ?? [],
+    pickupLocationName: p.pickupLocationName,
+    pickupAddress:      p.pickupAddress,
+    pickupMapsUrl:      p.pickupMapsUrl,
   }));
 
   // ── Konfig ongkir tenant (add-on RajaOngkir) — sama pola checkout/page.tsx ────────
