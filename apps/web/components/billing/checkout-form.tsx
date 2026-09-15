@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useTransition, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { Truck } from "lucide-react";
 import {
   checkoutAction,
   previewVoucherAction,
@@ -712,14 +713,30 @@ export function CheckoutForm({
               />
             </div>
 
-            <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+            <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-1.5">
               <p className="font-medium text-foreground">Paket dikirim dari:</p>
-              {sellerGroups.filter(g => getChoice(g.key).deliveryMethod === "courier").map(g => (
-                <p key={g.key}>
-                  • {g.sellerName} — {g.originCityName} · {(g.totalWeightGram / 1000).toFixed(g.totalWeightGram >= 1000 ? 1 : 0)}
-                  {g.totalWeightGram >= 1000 ? " kg" : ` g`} · {g.items.length} produk
-                </p>
-              ))}
+              {sellerGroups.filter(g => getChoice(g.key).deliveryMethod === "courier").map(g => {
+                // Mode "all" tampil selalu (tidak perlu tahu tujuan). Mode "regions" baru tahu
+                // begitu destCity dipilih & cocok. Lihat docs/arsitektur-addon-ongkir.md.
+                const hasAllFree = g.items.some(it => it.freeShippingMode === "all");
+                const regionsMatch = !hasAllFree && destCity
+                  ? g.items.find(it => it.freeShippingMode === "regions" && isFreeShippingMatch(it, destCity))
+                  : undefined;
+                return (
+                  <div key={g.key} className="space-y-1">
+                    <p>
+                      • {g.sellerName} — {g.originCityName} · {(g.totalWeightGram / 1000).toFixed(g.totalWeightGram >= 1000 ? 1 : 0)}
+                      {g.totalWeightGram >= 1000 ? " kg" : ` g`} · {g.items.length} produk
+                    </p>
+                    {(hasAllFree || regionsMatch) && (
+                      <div className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[10px] font-semibold text-primary-foreground">
+                        <Truck className="h-3 w-3 shrink-0" />
+                        {hasAllFree ? "Gratis Ongkir Seluruh Indonesia" : `Gratis Ongkir ke ${destCity!.cityName || destCity!.provinceName}`}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
             )}
