@@ -17,6 +17,7 @@ import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { SeoPanel } from "@/components/seo/seo-panel";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
 import { RajaOngkirCityPicker, type RajaOngkirCity } from "@/components/ui/rajaongkir-city-picker";
+import { FreeShippingPicker, type FreeShippingMode, type FreeShippingRegion } from "@/components/toko/free-shipping-picker";
 import {
   createProductAction,
   updateProductAction,
@@ -73,6 +74,9 @@ export type ProductFormProps = {
     weightGram:      number | null;
     originCityId:    number | null;
     originCityName:  string | null;
+    freeShippingMode:      "none" | "all" | "regions";
+    freeShippingProvinces: FreeShippingRegion[];
+    freeShippingCities:    FreeShippingRegion[];
     images:          ProductImage[];
     categoryId:      string | null;
     status:          "draft" | "active" | "archived";
@@ -243,6 +247,9 @@ export function ProductForm({
   const [weightGram,      setWeightGram]      = useState(initialData.weightGram != null ? String(initialData.weightGram) : "");
   const [originCityId,    setOriginCityId]    = useState<number | null>(initialData.originCityId);
   const [originCityName,  setOriginCityName]  = useState(initialData.originCityName ?? "");
+  const [freeShippingMode,      setFreeShippingMode]      = useState<FreeShippingMode>(initialData.freeShippingMode);
+  const [freeShippingProvinces, setFreeShippingProvinces] = useState<FreeShippingRegion[]>(initialData.freeShippingProvinces);
+  const [freeShippingCities,    setFreeShippingCities]    = useState<FreeShippingRegion[]>(initialData.freeShippingCities);
   const [productType,     setProductType]     = useState<"simple" | "variable">(initialData.productType);
   const [attributeGroups, setAttributeGroups] = useState<AttributeGroup[]>(initialData.attributeGroups);
   const [variations,      setVariations]      = useState<VariationLocal[]>(initialData.variations);
@@ -290,6 +297,9 @@ export function ProductForm({
       weightGram:      weightGramNum,
       originCityId,
       originCityName:  originCityId ? (originCityName.trim() || null) : null,
+      freeShippingMode,
+      freeShippingProvinces: freeShippingMode === "regions" ? freeShippingProvinces : [],
+      freeShippingCities:    freeShippingMode === "regions" ? freeShippingCities    : [],
       productType,
       attributeGroups: productType === "variable" ? attributeGroups : [],
       images:      images.map((img, i) => ({ ...img, order: i })),
@@ -566,6 +576,25 @@ export function ProductForm({
                     setOriginCityName(city?.label ?? "");
                   }}
                   placeholder="Ketik nama kota (min. 2 karakter)..."
+                />
+              </div>
+
+              {/* Gratis Ongkir — diskon proporsional-berat saat checkout, bukan hard Rp0.
+                  KHUSUS produk tenant sendiri, sama alasan Kota Asal Pengiriman di atas. */}
+              <div className="rounded-xl border border-border bg-card p-3 space-y-1.5">
+                <p className="text-xs font-medium leading-none">Gratis Ongkir</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Ongkir produk ini ditanggung toko — semua daerah, atau daerah tertentu saja.
+                </p>
+                <FreeShippingPicker
+                  mode={freeShippingMode}
+                  provinces={freeShippingProvinces}
+                  cities={freeShippingCities}
+                  onChange={({ mode, provinces, cities }) => {
+                    setFreeShippingMode(mode);
+                    setFreeShippingProvinces(provinces);
+                    setFreeShippingCities(cities);
+                  }}
                 />
               </div>
             </div>

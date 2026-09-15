@@ -84,6 +84,13 @@ export type SellerGroup = {
     name:        string;
     quantity:    number;
     weightGram:  number;
+    // Gratis ongkir — dipakai client (checkout-form.tsx) hitung diskon proporsional-berat
+    // SETELAH tujuan diketahui (matching by name, bukan ID — lihat docs/arsitektur-addon-ongkir.md
+    // § "RENCANA — Gratis Ongkir per Produk"). "none" untuk produk mitra (selalu, tidak pernah
+    // dibaca dari product.freeShippingMode — sama scope decision seperti originCityId).
+    freeShippingMode:      "none" | "all" | "regions";
+    freeShippingProvinces: { id: number; name: string }[];
+    freeShippingCities:    { id: number; name: string }[];
   }>;
   totalWeightGram: number;
   // Opsi COD & Ambil Sendiri milik penjual grup ini — dari mitras (sellerType='mitra') atau
@@ -109,6 +116,9 @@ export type CheckoutShippingLine = {
   etd?:             string;
   weightGram?:      number;
   cost:            number;
+  // Nominal yang sudah dipotong dari ongkir normal karena produk gratis-ongkir — murni display
+  // ("Hemat RpX"), `cost` di atas SUDAH final/terdiskon. Tidak pernah dipakai validasi apa pun.
+  freeShippingDiscount?: number;
   // Delivery method "pickup" → cost selalu 0, paymentMethod selalu "prepaid" (server re-cek ini,
   // jangan percaya client). pickupLocationName/Address/MapsUrl hanya terisi untuk pickup.
   deliveryMethod:  "courier" | "pickup";
@@ -862,6 +872,7 @@ export async function checkoutAction(
             etd:            line.etd ?? null,
             weightGram:     line.weightGram ?? null,
             cost:           line.cost.toFixed(2),
+            freeShippingDiscount: line.freeShippingDiscount != null ? line.freeShippingDiscount.toFixed(2) : null,
             status:         "pending" as const,
             deliveryMethod: "courier" as const,
             paymentMethod,

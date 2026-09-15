@@ -329,6 +329,10 @@ export function createInvoiceShippingLinesTable(s: ReturnType<typeof pgSchema>) 
     etd:             text("etd"),                        // estimasi tiba, mis '1-2 hari'
     weightGram:      integer("weight_gram"),
     cost:            numeric("cost", { precision: 15, scale: 2 }).notNull(), // "0" untuk pickup
+    // Nominal yang dihemat dari gratis-ongkir produk (murni display "Hemat RpX" — cost di atas
+    // SUDAH final/terdiskon, kolom ini bukan input hitung ulang apa pun). Nullable — null berarti
+    // tidak ada diskon gratis-ongkir sama sekali di baris ini.
+    freeShippingDiscount: numeric("free_shipping_discount", { precision: 15, scale: 2 }),
     trackingNumber:  text("tracking_number"),            // resi, diisi mitra setelah kirim
     shippedAt:       timestamp("shipped_at",   { withTimezone: true }),
     deliveredAt:     timestamp("delivered_at", { withTimezone: true }),

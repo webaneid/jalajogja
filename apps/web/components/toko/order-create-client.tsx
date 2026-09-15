@@ -29,6 +29,12 @@ type ProductOption = {
   // Pengiriman per Produk Tenant".
   originCityId:   number | null;
   originCityName: string | null;
+  // Gratis ongkir per-produk — KHUSUS produk tenant sendiri (mitraId null), tidak pernah dipakai
+  // untuk produk mitra. Lihat docs/arsitektur-addon-ongkir.md § "RENCANA — Gratis Ongkir per
+  // Produk".
+  freeShippingMode:      "none" | "all" | "regions";
+  freeShippingProvinces: { id: number; name: string }[];
+  freeShippingCities:    { id: number; name: string }[];
 };
 
 type CartItem = { product: ProductOption; qty: number };
@@ -67,9 +73,37 @@ type LocalSellerGroup = {
   pickupLocationName:  string | null;
   pickupAddress:       string | null;
   pickupMapsUrl:       string | null;
+  // Dipakai hitung diskon gratis-ongkir proporsional-berat — lihat freeShippingRatio() di bawah.
+  items: Array<{
+    weightGram:            number;
+    qty:                   number;
+    freeShippingMode:      "none" | "all" | "regions";
+    freeShippingProvinces: { id: number; name: string }[];
+    freeShippingCities:    { id: number; name: string }[];
+  }>;
 };
 
-type CourierOption = { courier: string; service: string; serviceDesc: string; etd: string; cost: number };
+// Gratis ongkir dicocokkan by NAMA (provinsi/kabupaten), bukan ID — sama alasan checkout publik,
+// lihat docs/arsitektur-addon-ongkir.md § "RENCANA — Gratis Ongkir per Produk".
+function isItemFreeShipping(
+  item: LocalSellerGroup["items"][number],
+  dest: { provinceName: string; cityName: string },
+): boolean {
+  if (item.freeShippingMode === "all") return true;
+  if (item.freeShippingMode !== "regions") return false;
+  const up = (s: string) => s.trim().toUpperCase();
+  return item.freeShippingProvinces.some(p => up(p.name) === up(dest.provinceName))
+      || item.freeShippingCities.some(c => up(c.name) === up(dest.cityName));
+}
+
+function freeShippingRatio(group: LocalSellerGroup, dest: { provinceName: string; cityName: string }): number {
+  if (group.totalWeightGram <= 0) return 0;
+  const freeWeight = group.items.reduce((s, it) =>
+    s + (isItemFreeShipping(it, dest) ? it.weightGram * it.qty : 0), 0);
+  return freeWeight / group.totalWeightGram;
+}
+
+type CourierOption = { courier: string; service: string; serviceDesc: string; etd: string; cost: number; rawCost?: number };
 type FlatCourierResult = { name: string; code: string; service: string; description: string; cost: number; etd: string };
 type CityResult = { id: number; label: string; cityName: string; districtName: string; subdistrictName: string; provinceName: string; zipCode: string };
 
@@ -170,6 +204,9 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
       // scope, lihat docs/arsitektur-addon-ongkir.md).
       originCityId:   parent?.originCityId ?? null,
       originCityName: parent?.originCityName ?? null,
+      freeShippingMode:      parent?.freeShippingMode ?? "none",
+      freeShippingProvinces: parent?.freeShippingProvinces ?? [],
+      freeShippingCities:    parent?.freeShippingCities ?? [],
     });
     setVariationPicker(null);
   }
@@ -257,10 +294,18 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
       if (!groupMap[key]) {
         groupMap[key] = {
           key, sellerType, sellerId, sellerName, originCityId, originCityName, totalWeightGram: 0,
-          codEnabled, pickupEnabled, pickupLocationName, pickupAddress, pickupMapsUrl,
+          codEnabled, pickupEnabled, pickupLocationName, pickupAddress, pickupMapsUrl, items: [],
         };
       }
       groupMap[key].totalWeightGram += p.weightGram * item.qty;
+      groupMap[key].items.push({
+        weightGram: p.weightGram,
+        qty:        item.qty,
+        // Gratis ongkir TIDAK PERNAH dibaca untuk produk mitra, sama seperti kota asal.
+        freeShippingMode:      p.mitraId ? "none" : p.freeShippingMode,
+        freeShippingProvinces: p.mitraId ? [] : p.freeShippingProvinces,
+        freeShippingCities:    p.mitraId ? [] : p.freeShippingCities,
+      });
     }
     return Object.values(groupMap);
   }, [cart, mitraConfigMap, tenantShipping, tenantName]);
@@ -313,14 +358,14 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
   // menganggap semua grup "belum di-fetch" untuk kota yang baru.
   useEffect(() => { setGroupStates({}); }, [destCity?.id]);
 
-  async function fetchCouriers(group: LocalSellerGroup, destCityId: number) {
+  async function fetchCouriers(group: LocalSellerGroup, dest: CityResult) {
     setGroupStates((prev) => ({ ...prev, [group.key]: { options: [], selected: null, loading: true, error: "" } }));
     try {
       const res = await fetch(`/api/ongkir/cost?slug=${slug}`, {
         method: "POST",
         body: new URLSearchParams({
           origin: String(group.originCityId),
-          destination: String(destCityId),
+          destination: String(dest.id),
           weight: String(Math.max(group.totalWeightGram, 1)),
           courier: addonCouriers.join(":"),
         }),
@@ -330,7 +375,11 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
         setGroupStates((prev) => ({ ...prev, [group.key]: { options: [], selected: null, loading: false, error: data.error ?? "Gagal mengambil ongkir." } }));
         return;
       }
-      const options = flattenCourierOptions(data.costs ?? []);
+      const rawOptions = flattenCourierOptions(data.costs ?? []);
+      const ratio       = freeShippingRatio(group, dest);
+      const options: CourierOption[] = ratio > 0
+        ? rawOptions.map((o) => ({ ...o, rawCost: o.cost, cost: Math.round(o.cost * (1 - ratio)) }))
+        : rawOptions;
       setGroupStates((prev) => ({ ...prev, [group.key]: { options, selected: options[0] ?? null, loading: false, error: options.length === 0 ? "Tidak ada opsi kurir." : "" } }));
     } catch {
       setGroupStates((prev) => ({ ...prev, [group.key]: { options: [], selected: null, loading: false, error: "Gagal mengambil ongkir." } }));
@@ -342,7 +391,7 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
     for (const g of sellerGroups) {
       if (getChoice(g.key).deliveryMethod !== "courier") continue;
       if (groupStates[g.key]) continue;
-      void fetchCouriers(g, destCity.id);
+      void fetchCouriers(g, destCity);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destCity, sellerGroups, groupChoices]);
@@ -389,6 +438,7 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
           originCityId: g.originCityId, originCityName: g.originCityName,
           courier: sel.courier, service: sel.service, serviceDesc: sel.serviceDesc, etd: sel.etd,
           weightGram: g.totalWeightGram, cost: sel.cost,
+          freeShippingDiscount: sel.rawCost != null ? sel.rawCost - sel.cost : undefined,
           deliveryMethod: "courier", paymentMethod: choice.paymentMethod,
         });
       }
@@ -578,7 +628,9 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
                         >
                           {state.options.map((o) => (
                             <option key={`${o.courier}|${o.service}`} value={`${o.courier}|${o.service}`}>
-                              {o.courier.toUpperCase()} {o.service} — {formatRupiah(o.cost)} ({o.etd})
+                              {o.courier.toUpperCase()} {o.service} — {o.rawCost != null && o.rawCost > o.cost
+                                ? `${formatRupiah(o.cost)} (hemat ${formatRupiah(o.rawCost - o.cost)}, gratis ongkir)`
+                                : formatRupiah(o.cost)} ({o.etd})
                             </option>
                           ))}
                         </select>

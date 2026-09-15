@@ -189,6 +189,12 @@ export default async function CheckoutPage({ params }: Props) {
               // Asal Pengiriman per Produk Tenant".
               productOriginCityId:   ts.products.originCityId,
               productOriginCityName: ts.products.originCityName,
+              // Gratis ongkir per-produk — KHUSUS produk tenant sendiri, sama scope kota asal
+              // di atas (mitra tidak pernah baca ini). docs/arsitektur-addon-ongkir.md §
+              // "RENCANA — Gratis Ongkir per Produk".
+              freeShippingMode:      ts.products.freeShippingMode,
+              freeShippingProvinces: ts.products.freeShippingProvinces,
+              freeShippingCities:    ts.products.freeShippingCities,
               mitraOriginCityId:     ts.mitras.rajaongkirCityId,
               mitraOriginCityName:   ts.mitras.rajaongkirCityName,
               businessId:      ts.mitras.businessId,
@@ -299,6 +305,11 @@ export default async function CheckoutPage({ params }: Props) {
               name:       item.name,
               quantity:   item.quantity,
               weightGram: weightGram,
+              // Gratis ongkir — TIDAK PERNAH dibaca untuk produk mitra (d.mitraId truthy),
+              // sama scope decision seperti kota asal.
+              freeShippingMode:      d.mitraId ? "none" : (d.freeShippingMode ?? "none"),
+              freeShippingProvinces: d.mitraId ? [] : (d.freeShippingProvinces ?? []),
+              freeShippingCities:    d.mitraId ? [] : (d.freeShippingCities ?? []),
             });
             groupMap[groupKey].totalWeightGram += weightGram * item.quantity;
           }

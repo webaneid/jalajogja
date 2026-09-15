@@ -49,6 +49,11 @@ export default async function PesananNewPage({
       // Kota Asal Pengiriman per Produk Tenant".
       originCityId:   schema.products.originCityId,
       originCityName: schema.products.originCityName,
+      // Gratis ongkir per-produk — KHUSUS produk tenant sendiri, sama scope kota asal di atas.
+      // docs/arsitektur-addon-ongkir.md § "RENCANA — Gratis Ongkir per Produk".
+      freeShippingMode:      schema.products.freeShippingMode,
+      freeShippingProvinces: schema.products.freeShippingProvinces,
+      freeShippingCities:    schema.products.freeShippingCities,
     })
     .from(schema.products)
     .where(eq(schema.products.status, "active"))
@@ -66,6 +71,9 @@ export default async function PesananNewPage({
     productType: p.productType as "simple" | "variable",
     originCityId:   p.originCityId,
     originCityName: p.originCityName,
+    freeShippingMode:      p.freeShippingMode,
+    freeShippingProvinces: p.freeShippingProvinces ?? [],
+    freeShippingCities:    p.freeShippingCities ?? [],
   }));
 
   // ── Konfig ongkir tenant (add-on RajaOngkir) — sama pola checkout/page.tsx ────────

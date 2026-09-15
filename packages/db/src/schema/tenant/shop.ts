@@ -20,6 +20,12 @@ export type AttributeGroup = {
 };
 export type ProductStatus = typeof PRODUCT_STATUSES[number];
 
+export const FREE_SHIPPING_MODES = ["none", "all", "regions"] as const;
+export type  FreeShippingMode    = typeof FREE_SHIPPING_MODES[number];
+// id = RajaOngkir province_id / city_id (BUKAN kode BPS) — dari /destination/province dan
+// /destination/city/{province_id}, terpisah dari search kelurahan yang dipakai kota asal.
+export type FreeShippingRegion = { id: number; name: string };
+
 export const ORDER_STATUSES = [
   "pending",    // menunggu pembayaran
   "paid",       // pembayaran dikonfirmasi
@@ -90,6 +96,13 @@ export function createProductsTable(s: ReturnType<typeof pgSchema>) {
     // docs/arsitektur-addon-ongkir.md § "RENCANA — Kota Asal Pengiriman per Produk Tenant".
     originCityId:   integer("origin_city_id"),
     originCityName: text("origin_city_name"),
+    // Gratis ongkir — "none" (default), "all" (semua daerah), "regions" (provinsi/kabupaten
+    // tertentu, cocok kode RajaOngkir). KHUSUS produk tenant sendiri (sama alasan originCityId
+    // di atas). Dihitung sebagai diskon proporsional-berat saat checkout, bukan hard Rp0 — lihat
+    // docs/arsitektur-addon-ongkir.md § "RENCANA — Gratis Ongkir per Produk".
+    freeShippingMode:      text("free_shipping_mode", { enum: FREE_SHIPPING_MODES }).notNull().default("none"),
+    freeShippingProvinces: jsonb("free_shipping_provinces").$type<FreeShippingRegion[]>(),
+    freeShippingCities:    jsonb("free_shipping_cities").$type<FreeShippingRegion[]>(),
     // Mitra fields
     sellerType:  text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull().default("tenant"),
     mitraId:     uuid("mitra_id"),

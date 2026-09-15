@@ -21,7 +21,34 @@ type CourierOption = {
   serviceDesc: string;
   etd:         string;
   cost:        number;
+  // Harga SEBELUM diskon gratis-ongkir — hanya terisi kalau ada diskon (untuk tampilan coret).
+  // `cost` di atas SUDAH final/terdiskon, dipakai apa adanya untuk total & submit.
+  rawCost?:    number;
 };
+
+// Item cart yang dipakai hitung diskon gratis-ongkir — bentuk sama SellerGroup["items"][number].
+type FreeShippingCartItem = SellerGroup["items"][number];
+
+// Gratis ongkir dicocokkan by NAMA (provinsi/kabupaten), bukan ID — search kelurahan tujuan
+// customer tidak pernah balikin ID provinsi/kabupaten numerik, cuma nama string. Aman karena
+// dua-duanya dari dataset RajaOngkir yang sama. Lihat docs/arsitektur-addon-ongkir.md §
+// "RENCANA — Gratis Ongkir per Produk".
+function isItemFreeShipping(item: FreeShippingCartItem, dest: { provinceName: string; cityName: string }): boolean {
+  if (item.freeShippingMode === "all") return true;
+  if (item.freeShippingMode !== "regions") return false;
+  const up = (s: string) => s.trim().toUpperCase();
+  return item.freeShippingProvinces.some(p => up(p.name) === up(dest.provinceName))
+      || item.freeShippingCities.some(c => up(c.name) === up(dest.cityName));
+}
+
+// Diskon proporsional-berat — bukan hard Rp0 per grup. Kalau SEMUA item grup gratis-ongkir,
+// hasilnya otomatis 1 (ongkir jadi Rp0) dari rumus yang sama, tanpa cabang logic terpisah.
+function freeShippingRatio(group: SellerGroup, dest: { provinceName: string; cityName: string }): number {
+  if (group.totalWeightGram <= 0) return 0;
+  const freeWeight = group.items.reduce((s, it) =>
+    s + (isItemFreeShipping(it, dest) ? it.weightGram * it.quantity : 0), 0);
+  return freeWeight / group.totalWeightGram;
+}
 
 // RajaOngkir v2 response sudah flat — tidak ada nested costs[]
 type FlatCourierResult = {
@@ -109,7 +136,9 @@ export function CheckoutForm({
   const [voucherPending, startVoucherTransition] = useTransition();
 
   // Step 2 — kota tujuan
-  const [destCity,     setDestCity]     = useState<{ id: number; name: string } | null>(null);
+  // provinceName/cityName (BUKAN cuma label gabungan) dibutuhkan untuk cocokkan diskon
+  // gratis-ongkir per-produk — lihat freeShippingRatio() di atas.
+  const [destCity, setDestCity] = useState<{ id: number; name: string; provinceName: string; cityName: string } | null>(null);
   const [address,      setAddress]      = useState("");
   const [citySearch,   setCitySearch]   = useState("");
   const [cityResults,  setCityResults]  = useState<CityResult[]>([]);
@@ -151,8 +180,12 @@ export function CheckoutForm({
     return () => clearTimeout(t);
   }, [citySearch]);
 
-  // Fetch kurir saat masuk step 3
-  const fetchCouriers = useCallback(async (group: SellerGroup, destCityId: number) => {
+  // Fetch kurir saat masuk step 3 — dest butuh provinceName/cityName (bukan cuma id) untuk
+  // hitung diskon gratis-ongkir per-produk.
+  const fetchCouriers = useCallback(async (
+    group: SellerGroup,
+    dest: { id: number; provinceName: string; cityName: string },
+  ) => {
     setGroupStates(prev => ({
       ...prev,
       [group.key]: { options: [], selected: null, loading: true, error: "" },
@@ -163,7 +196,7 @@ export function CheckoutForm({
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
           origin:      group.originCityId,
-          destination: destCityId,
+          destination: dest.id,
           weight:      group.totalWeightGram,
           courier:     addonCouriers.join(":"),
         }),
@@ -176,7 +209,11 @@ export function CheckoutForm({
         }));
         return;
       }
-      const options = flattenCourierOptions(data.costs);
+      const rawOptions = flattenCourierOptions(data.costs);
+      const ratio       = freeShippingRatio(group, dest);
+      const options: CourierOption[] = ratio > 0
+        ? rawOptions.map(o => ({ ...o, rawCost: o.cost, cost: Math.round(o.cost * (1 - ratio)) }))
+        : rawOptions;
       setGroupStates(prev => ({
         ...prev,
         [group.key]: { options, selected: options[0] ?? null, loading: false, error: "" },
@@ -263,7 +300,7 @@ export function CheckoutForm({
     setStep(3);
     for (const group of sellerGroups) {
       if (getChoice(group.key).deliveryMethod === "courier" && destCity) {
-        void fetchCouriers(group, destCity.id);
+        void fetchCouriers(group, destCity);
       }
     }
   }
@@ -300,6 +337,7 @@ export function CheckoutForm({
           etd:           sel.etd,
           weightGram:    g.totalWeightGram,
           cost:          sel.cost,
+          freeShippingDiscount: sel.rawCost != null ? sel.rawCost - sel.cost : undefined,
           deliveryMethod: "courier",
           paymentMethod:  choice.paymentMethod,
         };
@@ -510,7 +548,7 @@ export function CheckoutForm({
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
-                              setDestCity({ id: city.id, name: city.label });
+                              setDestCity({ id: city.id, name: city.label, provinceName: city.provinceName, cityName: city.cityName });
                               setCitySearch("");
                               setCityOpen(false);
                             }}
@@ -625,12 +663,22 @@ export function CheckoutForm({
                                 <span className="text-sm font-medium uppercase">
                                   {opt.courier} {opt.service}
                                 </span>
-                                <span className="text-sm font-semibold tabular-nums shrink-0">
-                                  {formatRp(opt.cost)}
+                                <span className="text-right shrink-0">
+                                  {opt.rawCost != null && opt.rawCost > opt.cost && (
+                                    <span className="block text-xs text-muted-foreground line-through tabular-nums">
+                                      {formatRp(opt.rawCost)}
+                                    </span>
+                                  )}
+                                  <span className="text-sm font-semibold tabular-nums">
+                                    {opt.cost === 0 && opt.rawCost != null ? "GRATIS" : formatRp(opt.cost)}
+                                  </span>
                                 </span>
                               </div>
                               <p className="text-xs text-muted-foreground">
                                 {opt.serviceDesc} · Estimasi {opt.etd}
+                                {opt.rawCost != null && opt.rawCost > opt.cost && (
+                                  <span className="text-green-600 font-medium"> · Hemat {formatRp(opt.rawCost - opt.cost)} (gratis ongkir)</span>
+                                )}
                               </p>
                             </div>
                           </label>

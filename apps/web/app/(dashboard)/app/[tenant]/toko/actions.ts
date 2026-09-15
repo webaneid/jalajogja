@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import {
   createTenantDb, recordIncome, generateFinancialNumber, generateUniqueCode, syncInvoicePayment,
   resolveProductCartItem, findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount,
-  type VoucherApplicationResult,
+  type VoucherApplicationResult, type FreeShippingMode, type FreeShippingRegion,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess, canConfirmPayment } from "@/lib/permissions";
@@ -42,6 +42,9 @@ export type ProductData = {
   weightGram?:     number | null;
   originCityId?:   number | null;
   originCityName?: string | null;
+  freeShippingMode?:      FreeShippingMode;
+  freeShippingProvinces?: FreeShippingRegion[];
+  freeShippingCities?:    FreeShippingRegion[];
   images:          ProductImage[];
   productType?:    "simple" | "variable";
   attributeGroups?: import("@jalajogja/db").AttributeGroup[];
@@ -232,6 +235,9 @@ export async function createProductAction(
         weightGram:    data.weightGram      ?? null,
         originCityId:  data.originCityId    ?? null,
         originCityName: data.originCityName ?? null,
+        freeShippingMode:      data.freeShippingMode      ?? "none",
+        freeShippingProvinces: data.freeShippingProvinces ?? [],
+        freeShippingCities:    data.freeShippingCities    ?? [],
         images:        data.images.map((img, i) => ({ ...img, order: i })),
         categoryId:    data.categoryId      ?? null,
         status:        data.status          ?? "draft",
@@ -338,6 +344,9 @@ export async function updateProductAction(
         weightGram:      data.weightGram   ?? null,
         originCityId:    data.originCityId   ?? null,
         originCityName:  data.originCityName ?? null,
+        freeShippingMode:      data.freeShippingMode      ?? "none",
+        freeShippingProvinces: data.freeShippingProvinces ?? [],
+        freeShippingCities:    data.freeShippingCities    ?? [],
         images:          data.images,
         categoryId:      data.categoryId   ?? null,
         status:          data.status,
@@ -710,6 +719,7 @@ export async function createOrderAction(
         serviceDesc?:        string | null;
         etd?:                string | null;
         weightGram?:         number | null;
+        freeShippingDiscount?: string | null;
       };
       const shippingLineValues: ShippingLineInsert[] = [];
       if (data.shipping && data.shipping.lines.length > 0) {
@@ -747,6 +757,7 @@ export async function createOrderAction(
               originCityId: line.originCityId ?? null, originCityName: line.originCityName ?? null,
               courier: line.courier ?? null, service: line.service ?? null, serviceDesc: line.serviceDesc ?? null,
               etd: line.etd ?? null, weightGram: line.weightGram ?? null, cost: line.cost.toFixed(2),
+              freeShippingDiscount: line.freeShippingDiscount != null ? line.freeShippingDiscount.toFixed(2) : null,
               status: "pending" as const, deliveryMethod: "courier" as const, paymentMethod,
             });
           }

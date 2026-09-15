@@ -762,3 +762,198 @@ Buka /keranjang
 [Customer terima barang]
     • Konfirmasi terima (opsional Phase 2)
 ```
+
+---
+
+## Gratis Ongkir per Produk — ✅ Kode SELESAI (2026-09-15)
+
+> Status: `bun run type-check` 0 error di semua workspace. Migration `0066` sudah dijalankan
+> di dev lokal (kolom + CHECK constraint terverifikasi ada). **Belum diverifikasi visual di
+> browser** (tidak ada kredensial login admin di sesi eksekusi). Belum di-commit/push. Konten
+> di bawah dipertahankan apa adanya sebagai rencana yang sudah dieksekusi persis sesuai isinya —
+> semua "RENCANA"/"BARU" di bawah artinya "sudah dikerjakan", bukan lagi rencana.
+
+### Konsep
+
+Admin bisa tandai produk (tenant sendiri) "Gratis Ongkir" dengan 2 mode:
+1. **Semua daerah** — ongkir produk ini selalu gratis, ke mana pun.
+2. **Daerah tertentu** — gratis hanya kalau tujuan customer ada di provinsi/kabupaten yang
+   dipilih admin (harus cocok kode RajaOngkir, bukan kode BPS — konsisten dengan prinsip yang
+   sudah dikunci di dokumen ini).
+
+**Verifikasi API (2026-09-15, dites langsung ke endpoint produksi, bukan cuma dokumentasi
+pihak ketiga)** — RajaOngkir v2 (Komerce) ternyata punya 2 endpoint list bersih terpisah dari
+search kelurahan yang sudah dipakai untuk kota asal:
+```
+GET /destination/province            → [{id, name}], 34 provinsi. Dites: id=19 "DI YOGYAKARTA"
+GET /destination/city/{province_id}  → [{id, name}], kabupaten/kota. Dites province_id=19 →
+                                        id=260 "BANTUL", id=261 "SLEMAN", dst.
+```
+Berbeda dari `/destination/domestic-destination` (search kelurahan yang dipakai kota asal/tujuan
+checkout) — endpoint itu **tidak** mengembalikan `province_id`/`city_id` numerik, cuma
+`province_name`/`city_name` sebagai string. Dites juga (search "bantul"):
+`{"id":31442,...,"province_name":"DI YOGYAKARTA","city_name":"BANTUL",...}` — tidak ada
+`city_id`. Jadi **pencocokan tujuan customer vs daerah gratis-ongkir yang dipilih admin WAJIB
+lewat NAMA** (bukan ID) — tapi ini aman, dua-duanya dari dataset RajaOngkir yang sama (bukan
+lintas-sumber BPS vs RajaOngkir yang sudah jadi masalah kritis di dokumen ini sebelumnya),
+dikonfirmasi nama identik persis ("BANTUL" di kedua endpoint).
+
+### Desain: diskon proporsional-berat, BUKAN grup terpisah
+
+Ongkir tetap dihitung NORMAL untuk seluruh berat SellerGroup (tetap satu paket fisik), lalu
+dipotong sebesar porsi berat item yang gratis-ongkir untuk tujuan itu:
+```
+freeWeightShare = Σ(berat item gratis-ongkir yang eligible) / totalWeightGram grup
+ongkirFinal      = round(ongkirNormal × (1 − freeWeightShare))
+```
+Kenapa ini lebih baik dari "grup dipisah jadi Rp0 kalau ada produk gratis": rumus yang sama
+otomatis menangani KEDUA kasus tanpa cabang logic terpisah — keranjang campur produk gratis +
+biasa → ongkir tetap ada tapi lebih murah (bukan 0 penuh, bukan diabaikan); keranjang isinya
+SEMUA produk gratis-ongkir → `freeWeightShare = 1` → ongkir otomatis Rp0, dari rumus yang sama.
+
+**Keputusan scope (default, konsisten dengan kota asal)**: fitur ini KHUSUS produk tenant
+sendiri — `product-form.tsx` (tempat field ini ditambahkan) memang HANYA pernah dipakai untuk
+produk tenant (dikonfirmasi tidak pernah dipakai render/edit produk mitra), jadi otomatis
+ter-scope tanpa perlu guard `mitraId` eksplisit — sama seperti kota asal. **Belum ditanyakan
+eksplisit ke user apakah mitra juga perlu fitur ini** — kalau nanti diminta, itu perluasan
+terpisah (form produk mitra sendiri yang perlu field serupa).
+
+### 1. Schema — `packages/db/src/schema/tenant/shop.ts`
+
+Tambah di `createProductsTable()`, setelah `originCityName`:
+```typescript
+export const FREE_SHIPPING_MODES = ["none", "all", "regions"] as const;
+export type  FreeShippingMode    = typeof FREE_SHIPPING_MODES[number];
+export type  FreeShippingRegion  = { id: number; name: string }; // id = RajaOngkir province/city id
+
+// ... di createProductsTable():
+freeShippingMode:      text("free_shipping_mode", { enum: FREE_SHIPPING_MODES }).notNull().default("none"),
+freeShippingProvinces: jsonb("free_shipping_provinces").$type<FreeShippingRegion[]>(),
+freeShippingCities:    jsonb("free_shipping_cities").$type<FreeShippingRegion[]>(),
+```
+
+Tambah juga 1 kolom nullable di `createInvoiceShippingLinesTable()` (`packages/db/src/schema/tenant/billing.ts`) — nominal yang dihemat, untuk transparansi tampilan ("Hemat RpX"), TIDAK dipakai untuk hitung ulang apa pun (murni display, `cost` yang dikirim tetap angka final):
+```typescript
+freeShippingDiscount: numeric("free_shipping_discount", { precision: 15, scale: 2 }),
+```
+
+### 2. DDL tenant baru + Migration `0066_product_free_shipping.sql`
+
+Pola sama `0065`. Tambah ke `create-tenant-schema.ts` (tabel `products`) DAN migration baru
+(loop tenant aktif, `products` + `invoice_shipping_lines`).
+
+### 3. API baru — proxy list provinsi/kabupaten (BUKAN search kelurahan yang sudah ada)
+
+```
+GET /api/ongkir/provinces                     → proxy GET /destination/province
+GET /api/ongkir/cities-by-province?provinceId= → proxy GET /destination/city/{provinceId}
+```
+Penamaan sengaja dibedakan dari `/api/ongkir/cities` yang sudah ada (itu search kelurahan) —
+supaya tidak ambigu. Pola sama persis `cities/route.ts` (baca `RAJAONGKIR_PLATFORM_KEY` dari
+ENV, tidak pernah ke browser, `cache: "no-store"`).
+
+### 4. UI admin — komponen baru `apps/web/components/toko/free-shipping-picker.tsx`
+
+Dipakai di `product-form.tsx`, section baru di bawah "Kota Asal Pengiriman":
+- Radio 3 opsi: **Tidak** / **Semua Daerah** / **Daerah Tertentu**
+- Kalau "Daerah Tertentu":
+  - Checkbox list Provinsi — fetch penuh 34 provinsi sekali (`/api/ongkir/provinces`), filter
+    client-side by teks (dataset kecil, tidak perlu debounce server).
+  - Kabupaten/Kota — dropdown "pilih provinsi untuk browse" (single-select) → fetch
+    `/api/ongkir/cities-by-province?provinceId=`, tampil checkbox kota-kota provinsi itu.
+    Kota yang dicentang terkumpul di state terpisah (chip list, bisa browse provinsi lain tanpa
+    kehilangan pilihan kota dari provinsi sebelumnya — akumulatif, bukan reset per provinsi).
+- State: `{id,name}[]` untuk provinsi & kota, dikirim apa adanya ke `originCityId`-sibling
+  pattern (id+name disimpan bareng, sama seperti kota asal).
+
+### 5. Form produk + actions — `product-form.tsx`, `toko/actions.ts`, edit/new page
+
+Sama pola field kota asal: state baru di `ProductForm`, masuk `ProductData` payload, disimpan di
+`createProductAction`/`updateProductAction`, di-fetch balik di halaman edit.
+
+### 6. Checkout — bawa config gratis-ongkir per item, hitung diskon di client
+
+**`checkout/page.tsx`** (server) — tambah 3 kolom baru ke query `productDetails` (dari
+`ts.products`), teruskan ke `SellerGroup.items[]` (tipe `CartItem` di `cart/actions.ts` perlu
+field `freeShippingMode`/`freeShippingProvinces`/`freeShippingCities` juga). **Grouping/groupKey
+TIDAK berubah** — diskon ini murni post-processing cost, bukan pemisah grup (beda dari kota
+asal yang memang harus split grup).
+
+**`checkout-form.tsx`** (client) — di `fetchCouriers`, setelah dapat `options` mentah dari
+`/api/ongkir/cost`, hitung `freeShippingRatio(group, destCity)`:
+```typescript
+function isItemFree(item: SellerGroupItem, dest: { provinceName: string; cityName: string }): boolean {
+  if (item.freeShippingMode === "all") return true;
+  if (item.freeShippingMode !== "regions") return false;
+  const up = (s: string) => s.toUpperCase();
+  return !!(
+    item.freeShippingProvinces?.some(p => up(p.name) === up(dest.provinceName)) ||
+    item.freeShippingCities?.some(c => up(c.name) === up(dest.cityName))
+  );
+}
+function freeShippingRatio(group: SellerGroup, dest: {provinceName:string; cityName:string}): number {
+  if (group.totalWeightGram <= 0) return 0;
+  const freeWeight = group.items.reduce((s, it) =>
+    s + (isItemFree(it, dest) ? it.weightGram * it.quantity : 0), 0);
+  return freeWeight / group.totalWeightGram;
+}
+```
+Terapkan rasio ini ke SEMUA opsi kurir sebelum disimpan ke `groupStates` (bukan cuma yang
+terpilih) — supaya harga yang tampil di daftar pilihan kurir SUDAH final/diskon, customer
+membandingkan harga yang benar:
+```typescript
+const ratio   = freeShippingRatio(group, dest);
+const options = ratio > 0
+  ? rawOptions.map(o => ({ ...o, cost: Math.round(o.cost * (1 - ratio)), rawCost: o.cost }))
+  : rawOptions.map(o => ({ ...o, rawCost: o.cost }));
+```
+`CourierOption` tipe tambah field `rawCost?: number` (harga sebelum diskon, buat tampilan
+coret "~~Rp20.000~~ Rp12.000 · Hemat Rp8.000"). `CheckoutShippingLine` tambah field
+`freeShippingDiscount?: number` = `rawCost - cost` (kalau ada), diteruskan ke `checkoutAction`
+→ disimpan di kolom baru `invoice_shipping_lines.free_shipping_discount` (murni display,
+TIDAK dipakai validasi apa pun server-side — sama seperti `cost` yang memang sudah dipercaya
+dari client, dicatat sebagai gap pre-existing di rencana sebelumnya).
+
+**Butuh perubahan kecil**: `destCity` state di `checkout-form.tsx` saat ini cuma simpan
+`{id, name}` (label gabungan) — perlu diperluas jadi `{id, name, provinceName, cityName}` biar
+bisa dipakai match (`city.provinceName`/`city.cityName` sudah ada di `CityResult`, tinggal
+disimpan juga saat `setDestCity(...)` dipanggil).
+
+### 7. Admin manual order — `order-create-client.tsx` (untuk konsistensi, pola sama)
+
+`destCity` di sini SUDAH menyimpan `CityResult` penuh (beda dari checkout publik) — jadi
+`provinceName`/`cityName` sudah tersedia tanpa perlu ubah state. Tambah `originCityId`-sibling
+fields ke `ProductOption` (freeShippingMode/Provinces/Cities), terapkan `freeShippingRatio` yang
+sama di `fetchCouriers` lokal. Variasi (synthetic `ProductOption` dari `PickedVariation`) ikut
+config produk induk — sama seperti kota asal.
+
+### File yang Akan Tersentuh
+
+```
+packages/db/src/schema/tenant/shop.ts                                → +3 kolom products
+packages/db/src/schema/tenant/billing.ts                              → +1 kolom invoice_shipping_lines
+packages/db/src/helpers/create-tenant-schema.ts                       → DDL tenant baru (2 tabel)
+packages/db/migrations/0066_product_free_shipping.sql                 → BARU
+apps/web/app/api/ongkir/provinces/route.ts                            → BARU
+apps/web/app/api/ongkir/cities-by-province/route.ts                   → BARU
+apps/web/components/toko/free-shipping-picker.tsx                     → BARU
+apps/web/components/toko/product-form.tsx                             → field baru
+apps/web/app/(dashboard)/app/[tenant]/toko/actions.ts                 → ProductData + create/update
+apps/web/app/(dashboard)/app/[tenant]/toko/produk/[id]/edit/page.tsx  → initialData
+apps/web/app/(dashboard)/app/[tenant]/toko/produk/new/page.tsx        → initialData
+apps/web/app/(public)/[tenant]/cart/actions.ts                        → SellerGroup.items[] tipe baru
+apps/web/app/(public)/[tenant]/checkout/page.tsx                      → query + teruskan field baru
+apps/web/components/billing/checkout-form.tsx                         → hitung diskon, destCity diperluas
+apps/web/app/(dashboard)/app/[tenant]/toko/pesanan/new/page.tsx       → sama, sisi admin
+apps/web/components/toko/order-create-client.tsx                      → sama, sisi admin
+docs/arsitektur-addon-ongkir.md                                       → dokumen ini
+```
+
+### Di luar scope (dicatat, bukan dikerjakan)
+
+- Tampilan "Hemat RpX" di halaman invoice publik/admin (kolom DB sudah ada, render-nya belum —
+  follow-up cepat kalau diminta).
+- Berlaku untuk produk mitra — belum diputuskan, default TIDAK (lihat § scope di atas).
+- Voucher + gratis-ongkir bersamaan — dua mekanisme independen (voucher potong harga barang,
+  ini potong ongkir), tidak ada interaksi khusus yang perlu ditangani, tapi belum dites kombinasi
+  keduanya secara eksplisit.

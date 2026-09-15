@@ -952,6 +952,10 @@ export async function createTenantSchemaInDb(
         weight_gram  INTEGER,                   -- berat produk (gram), wajib untuk produk mitra
         origin_city_id    INTEGER,               -- kota asal override (khusus produk tenant, bukan mitra)
         origin_city_name  TEXT,
+        free_shipping_mode      TEXT NOT NULL DEFAULT 'none'
+                                 CHECK (free_shipping_mode IN ('none','all','regions')),
+        free_shipping_provinces JSONB,            -- [{id,name}] RajaOngkir province_id
+        free_shipping_cities    JSONB,            -- [{id,name}] RajaOngkir city_id
         created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )
@@ -1405,6 +1409,7 @@ export async function createTenantSchemaInDb(
         etd              TEXT,
         weight_gram      INTEGER,
         cost             NUMERIC(15,2)  NOT NULL,
+        free_shipping_discount NUMERIC(15,2),
         tracking_number  TEXT,
         shipped_at       TIMESTAMPTZ,
         delivered_at     TIMESTAMPTZ,
