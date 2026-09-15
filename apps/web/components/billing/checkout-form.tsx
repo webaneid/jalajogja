@@ -12,6 +12,7 @@ import {
   type VoucherPreview,
 } from "@/app/(public)/[tenant]/cart/actions";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { isSafeExternalUrl } from "@/lib/safe-url";
 
 // ─── Tipe kurir ───────────────────────────────────────────────────────────────
 
@@ -487,8 +488,8 @@ export function CheckoutForm({
                         <div className="rounded-md bg-muted/50 p-3 text-xs space-y-1">
                           <p className="font-medium text-foreground">{group.pickupLocationName}</p>
                           <p className="text-muted-foreground">{group.pickupAddress}</p>
-                          {group.pickupMapsUrl && (
-                            <a href={group.pickupMapsUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                          {isSafeExternalUrl(group.pickupMapsUrl) && (
+                            <a href={group.pickupMapsUrl!} target="_blank" rel="noopener noreferrer" className="text-primary underline">
                               Buka di Google Maps →
                             </a>
                           )}
@@ -604,8 +605,8 @@ export function CheckoutForm({
                     <div className="rounded-md bg-muted/50 p-3 text-sm space-y-1">
                       <p className="font-medium">{group.pickupLocationName}</p>
                       <p className="text-xs text-muted-foreground">{group.pickupAddress}</p>
-                      {group.pickupMapsUrl && (
-                        <a href={group.pickupMapsUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline">
+                      {isSafeExternalUrl(group.pickupMapsUrl) && (
+                        <a href={group.pickupMapsUrl!} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline">
                           Buka di Google Maps →
                         </a>
                       )}

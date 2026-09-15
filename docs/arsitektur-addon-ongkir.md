@@ -670,11 +670,17 @@ di `docs/lessons-learned.md` kalau dieksekusi — konsolidasi penuh sebagai task
 
 ### Catatan di luar scope (ditemukan saat riset, bukan bagian rencana ini)
 
-`checkoutAction` **mempercayai `line.cost` dari client apa adanya** (`cart/actions.ts:864`,
-`cost: line.cost.toFixed(2)`) — hanya re-validasi COD/pickup eligibility server-side, TIDAK
-re-panggil RajaOngkir untuk verifikasi nominal ongkir. Ini gap pre-existing, tidak berhubungan
-dengan per-produk origin, TIDAK termasuk scope rencana ini — dicatat di sini supaya tidak
-terlupa, bukan untuk dikerjakan sekarang.
+`checkoutAction` **mempercayai `line.cost` dari client apa adanya** (`cart/actions.ts`,
+`cost: Math.max(0, line.cost).toFixed(2)`) — hanya re-validasi COD/pickup eligibility
+server-side, TIDAK re-panggil RajaOngkir untuk verifikasi nominal ongkir. Ini gap pre-existing,
+tidak berhubungan dengan per-produk origin, TIDAK termasuk scope rencana ini.
+
+**Update (2026-09-15, security review sebelum push)**: `Math.max(0, ...)` ditambahkan
+(`cart/actions.ts` + `toko/actions.ts` `createOrderAction`) untuk cegah `cost` negatif
+mengurangi total invoice — mitigasi PARSIAL, bukan fix penuh (client masih bisa kirim `cost`
+lebih kecil dari harga RajaOngkir sungguhan, cuma tidak bisa negatif). Detail:
+`docs/lessons-learned.md` [2026-09-15]. Fix penuh (rekomputasi cost server-side ke RajaOngkir)
+tetap belum dikerjakan.
 
 ### File yang Akan Tersentuh
 

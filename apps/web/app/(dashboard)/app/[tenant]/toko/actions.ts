@@ -13,6 +13,7 @@ import { normalizePhone } from "@/lib/phone";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, anchorTodayUtc } from "@/lib/tenant-timezone.server";
 import { getTokoSettings } from "@/lib/toko-settings";
+import { isSafeExternalUrl } from "@/lib/safe-url";
 import type { CheckoutShippingData } from "@/app/(public)/[tenant]/cart/actions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -757,15 +758,22 @@ export async function createOrderAction(
             shippingLineValues.push({
               sellerType: line.sellerType, sellerId: line.sellerId ?? null, sellerName: line.sellerName,
               cost: "0.00", status: "pending" as const, deliveryMethod: "pickup" as const, paymentMethod: "prepaid" as const,
-              pickupLocationName: line.pickupLocationName ?? null, pickupAddress: line.pickupAddress ?? null, pickupMapsUrl: line.pickupMapsUrl ?? null,
+              pickupLocationName: line.pickupLocationName ?? null, pickupAddress: line.pickupAddress ?? null,
+              // Validasi skema URL sebelum simpan — dirender sebagai <a href> mentah di admin,
+              // defense-in-depth meski aktor di sini sudah admin terautentikasi. Lihat lib/safe-url.ts.
+              pickupMapsUrl: isSafeExternalUrl(line.pickupMapsUrl) ? line.pickupMapsUrl : null,
             });
           } else {
-            shippingTotal += line.cost;
+            // Math.max(0, ...) — cegah cost negatif (defense-in-depth, aktor sudah admin
+            // terautentikasi tapi jaga konsistensi dengan checkoutAction). Lihat
+            // docs/lessons-learned.md [2026-09-15].
+            const safeCost = Math.max(0, line.cost);
+            shippingTotal += safeCost;
             shippingLineValues.push({
               sellerType: line.sellerType, sellerId: line.sellerId ?? null, sellerName: line.sellerName,
               originCityId: line.originCityId ?? null, originCityName: line.originCityName ?? null,
               courier: line.courier ?? null, service: line.service ?? null, serviceDesc: line.serviceDesc ?? null,
-              etd: line.etd ?? null, weightGram: line.weightGram ?? null, cost: line.cost.toFixed(2),
+              etd: line.etd ?? null, weightGram: line.weightGram ?? null, cost: safeCost.toFixed(2),
               freeShippingDiscount: line.freeShippingDiscount != null ? line.freeShippingDiscount.toFixed(2) : null,
               status: "pending" as const, deliveryMethod: "courier" as const, paymentMethod,
             });

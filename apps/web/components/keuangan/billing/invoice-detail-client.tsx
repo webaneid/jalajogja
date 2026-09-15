@@ -18,6 +18,7 @@ import {
 } from "@/app/(dashboard)/app/[tenant]/finance/billing/actions";
 import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
 import { compressImage } from "@/lib/client-image-compress";
+import { isSafeExternalUrl } from "@/lib/safe-url";
 import { displayPhone } from "@/lib/phone";
 import {
   Dialog,
@@ -1227,8 +1228,11 @@ export function InvoiceDetailClient({ slug, invoice, timezone }: Props) {
                   <div className="text-xs text-muted-foreground space-y-0.5">
                     {sl.pickupLocationName && <p className="font-medium text-foreground">{sl.pickupLocationName}</p>}
                     {sl.pickupAddress && <p>{sl.pickupAddress}</p>}
-                    {sl.pickupMapsUrl && (
-                      <a href={sl.pickupMapsUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-primary hover:underline">
+                    {/* isSafeExternalUrl — defense-in-depth, cegah javascript:/data: URI dirender
+                        sebagai href (checkoutAction sudah validasi saat simpan, ini lapis kedua
+                        untuk baris lama/jalur lain). Lihat lib/safe-url.ts. */}
+                    {isSafeExternalUrl(sl.pickupMapsUrl) && (
+                      <a href={sl.pickupMapsUrl!} target="_blank" rel="noopener noreferrer" className="inline-block text-primary hover:underline">
                         Buka di Google Maps →
                       </a>
                     )}

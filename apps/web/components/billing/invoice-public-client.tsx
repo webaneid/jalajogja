@@ -7,6 +7,7 @@ import { submitPaymentProofAction, convertInvoiceToInstallmentAction } from "@/a
 import { compressImage } from "@/lib/client-image-compress";
 import { parseTicketAttendee, humanizeFieldKey, formatFieldValue } from "@/lib/event-custom-form";
 import { displayPhone } from "@/lib/phone";
+import { isSafeExternalUrl } from "@/lib/safe-url";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -714,9 +715,11 @@ export function InvoicePublicClient({ slug, invoice, eligibleInstallmentPlan, ti
                       <p className="font-medium text-foreground">{line.pickupLocationName}</p>
                     )}
                     {line.pickupAddress && <p>{line.pickupAddress}</p>}
-                    {line.pickupMapsUrl && (
+                    {/* isSafeExternalUrl — defense-in-depth, cegah javascript:/data: URI. Lihat
+                        lib/safe-url.ts. */}
+                    {isSafeExternalUrl(line.pickupMapsUrl) && (
                       <a
-                        href={line.pickupMapsUrl}
+                        href={line.pickupMapsUrl!}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-block text-primary hover:underline"

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Package, Truck, CheckCircle2, Clock, ExternalLink, MapPin } from "lucide-react";
 import { updateShippingTrackingAction, confirmMitraCodReceivedAction } from "./actions";
+import { isSafeExternalUrl } from "@/lib/safe-url";
 
 export type MitraOrderItem = {
   name:      string;
@@ -238,9 +239,9 @@ export function MitraPesananClient({ slug, orders }: Props) {
                     <p className="font-medium text-foreground">{order.shipping.pickupLocationName}</p>
                   )}
                   {order.shipping.pickupAddress && <p>{order.shipping.pickupAddress}</p>}
-                  {order.shipping.pickupMapsUrl && (
+                  {isSafeExternalUrl(order.shipping.pickupMapsUrl) && (
                     <a
-                      href={order.shipping.pickupMapsUrl}
+                      href={order.shipping.pickupMapsUrl!}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-block text-primary hover:underline"

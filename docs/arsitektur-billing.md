@@ -1878,14 +1878,23 @@ di-backport ke data lain, murni cleanup test data lokal.
 > — prinsipnya tetap valid sebagai tujuan arsitektur, tapi contoh "sudah difix" itu keliru untuk
 > kasus spesifik ini. § 15 di bawah adalah rencana yang belum dieksekusi untuk menyatukannya.
 
-## 14.5 ✅ Kode SELESAI (2026-09-15) — Lokasi Ambil Sendiri per Produk Tenant
+## 14.5 ✅ Kode SELESAI + Security Review (2026-09-15) — Lokasi Ambil Sendiri per Produk Tenant
 
 > Perluasan langsung dari pola kota asal per-produk & gratis ongkir per-produk (lihat
 > `docs/arsitektur-addon-ongkir.md`) — SATU sesi eksekusi yang sama, konsep serupa diterapkan
 > ke fasilitas Ambil Sendiri (§ 14 di atas). `bun run type-check` 0 error di semua workspace.
 > Migration `0067` sudah dijalankan di dev lokal (kolom terverifikasi ada). **Belum
-> diverifikasi visual di browser** (tidak ada kredensial login admin di sesi eksekusi). Belum
-> di-commit/push.
+> diverifikasi visual di browser** (tidak ada kredensial login admin di sesi eksekusi).
+>
+> **Security review** (subagent `security-auditor`, sebelum push 3 commit ketiga fitur
+> pengiriman per-produk sekaligus) menemukan 1 temuan HIGH (`pickupMapsUrl` dari checkout
+> publik ditulis mentah lalu dirender `<a href>` — javascript: URI stored-XSS) dan 1 MEDIUM
+> (`cost` shipping tidak di-clamp non-negatif). **Keduanya sudah diperbaiki** — lihat
+> `docs/lessons-learned.md` [2026-09-15] "`pickupMapsUrl` dari checkout PUBLIK..." untuk detail
+> lengkap akar masalah + fix (`lib/safe-url.ts`, diterapkan di titik simpan DAN titik render,
+> 5 komponen). Gap besar "cost tidak direkomputasi ke RajaOngkir server-side" TETAP belum
+> ditutup (di luar scope sesi ini, sudah didokumentasikan di `docs/arsitektur-addon-ongkir.md`)
+> — clamp non-negatif hanya mitigasi parsial, bukan fix penuh.
 
 **Masalah**: lokasi "Ambil Sendiri" (`pickupLocationName`/`pickupAddress`/`pickupMapsUrl`)
 untuk produk tenant sendiri SATU untuk semua produk — dari `tenant.settings` group `"toko"`

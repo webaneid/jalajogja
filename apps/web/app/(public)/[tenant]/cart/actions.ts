@@ -15,6 +15,7 @@ import {
 import { tenants } from "@jalajogja/db";
 import { normalizePhone } from "@/lib/phone";
 import { getTokoSettings } from "@/lib/toko-settings";
+import { isSafeExternalUrl } from "@/lib/safe-url";
 import { auth } from "@/lib/auth";
 import { notifyWa, waAppUrl, waRupiah } from "@/lib/wa-notify";
 import { getTenantTimezone, anchorTodayUtc, todayInTz, formatInTz, tzLabel } from "@/lib/tenant-timezone.server";
@@ -717,7 +718,11 @@ export async function checkoutAction(
         const lineTotal = Math.max(0, it.unitPrice * it.quantity - discount);
         return s + lineTotal;
       }, 0);
-      const shippingTotal  = shipping?.lines.reduce((s, l) => s + l.cost, 0) ?? 0;
+      // Math.max(0, ...) — cost dari client TIDAK divalidasi ulang ke RajaOngkir (gap
+      // pre-existing, dicatat docs/arsitektur-addon-ongkir.md), tapi minimal cegah cost negatif
+      // dipakai untuk mengurangi total invoice di bawah subtotal. Lihat docs/lessons-learned.md
+      // [2026-09-15].
+      const shippingTotal  = shipping?.lines.reduce((s, l) => s + Math.max(0, l.cost), 0) ?? 0;
       const total          = subtotal + shippingTotal;
       // Voucher 100% (atau kombinasi diskon+ongkir Rp 0) → invoice langsung lunas tanpa
       // langkah bayar sama sekali. Lihat docs/arsitektur-voucher.md § "Checkout Rp 0".
@@ -856,7 +861,10 @@ export async function checkoutAction(
               paymentMethod:  "prepaid" as const,
               pickupLocationName: line.pickupLocationName ?? null,
               pickupAddress:      line.pickupAddress ?? null,
-              pickupMapsUrl:      line.pickupMapsUrl ?? null,
+              // Validasi skema URL sebelum simpan — dirender sebagai <a href> mentah di admin,
+              // checkoutAction ini publik/tanpa auth, jangan percaya URL dari client apa adanya
+              // (cegah javascript:/data: URI). Lihat lib/safe-url.ts.
+              pickupMapsUrl:      isSafeExternalUrl(line.pickupMapsUrl) ? line.pickupMapsUrl : null,
             };
           }
           return {
@@ -871,7 +879,8 @@ export async function checkoutAction(
             serviceDesc:    line.serviceDesc ?? null,
             etd:            line.etd ?? null,
             weightGram:     line.weightGram ?? null,
-            cost:           line.cost.toFixed(2),
+            // Math.max(0, ...) — konsisten dengan shippingTotal di atas, cegah cost negatif.
+            cost:           Math.max(0, line.cost).toFixed(2),
             freeShippingDiscount: line.freeShippingDiscount != null ? line.freeShippingDiscount.toFixed(2) : null,
             status:         "pending" as const,
             deliveryMethod: "courier" as const,
