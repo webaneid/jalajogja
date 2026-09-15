@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 //                         → return { valid: true, token: string }
 
 import { NextRequest, NextResponse }           from "next/server";
-import { db, otpTokens, verification, members, contacts } from "@jalajogja/db";
+import { db, otpTokens, verification, members, contacts, createTenantDb, resolveCheckoutContact } from "@jalajogja/db";
 import { eq, and, gt, isNull }                 from "drizzle-orm";
 import { normalizePhone }                      from "@/lib/phone";
 import { findUserByPhone }                     from "@/lib/find-user-by-phone";
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   if (!code || !type || !slug) {
     return NextResponse.json({ error: "code, type, dan slug wajib diisi" }, { status: 400 });
   }
-  if (type !== "register" && type !== "reset_password" && type !== "login") {
+  if (type !== "register" && type !== "reset_password" && type !== "login" && type !== "checkout_verify") {
     return NextResponse.json({ error: "type tidak valid" }, { status: 400 });
   }
 
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     .where(and(
       eq(otpTokens.phone, phone),
       eq(otpTokens.code,  code.trim()),
-      eq(otpTokens.type,  type as "register" | "reset_password" | "login"),
+      eq(otpTokens.type,  type as "register" | "reset_password" | "login" | "checkout_verify"),
       gt(otpTokens.expiresAt, now),
       isNull(otpTokens.usedAt),
     ))
@@ -116,6 +116,45 @@ export async function POST(request: NextRequest) {
       expiresAt:  new Date(Date.now() + 10 * 60 * 1000), // 10 menit
     });
     return NextResponse.json({ valid: true, claimToken });
+  }
+
+  // ── Checkout: OTP terverifikasi → BARU SETELAH INI boleh balikin nama/email/alamat untuk
+  // auto-isi form. Panggil ulang resolveCheckoutContact() (state HTTP tidak persisten antar
+  // request, tidak ada hasil yang disimpan dari send-otp) — murni kemudahan transaksi, BUKAN
+  // klaim keanggotaan (tidak menyentuh betterAuthUserId). Lihat docs/arsitektur-billing.md § 16.
+  if (type === "checkout_verify") {
+    // OTP SUDAH tervalidasi+dipakai di titik ini (tidak bisa dibatalkan) — kalau lookup gagal
+    // teknis di sini, tetap balas `valid:true` tanpa data (customer sudah lolos verifikasi,
+    // lanjutkan checkout tanpa auto-isi, bukan tampilkan error setelah OTP benar).
+    try {
+      const { db: checkoutTenantDb, schema: checkoutSchema } = createTenantDb(slug);
+      const match = await resolveCheckoutContact(db, checkoutTenantDb, checkoutSchema, phone);
+
+      // Token bukti verifikasi sekali-pakai — checkoutAction WAJIB minta ini + cek ulang
+      // resolveCheckoutContact() sendiri sebelum percaya nama/email yang di-submit client untuk
+      // nomor yang match (jangan pernah percaya state UI sebagai proteksi anti-fraud).
+      let verifyToken: string | undefined;
+      if (match.found) {
+        verifyToken = generateToken24();
+        await db.insert(verification).values({
+          id:         crypto.randomUUID(),
+          identifier: `checkout-verify:${verifyToken}`,
+          value:      phone,
+          expiresAt:  new Date(Date.now() + 30 * 60 * 1000), // 30 menit — cukup selesaikan checkout multi-step
+        });
+      }
+
+      return NextResponse.json({
+        valid:   true,
+        name:    match.name    ?? null,
+        email:   match.email   ?? null,
+        address: match.address ?? null,
+        verifyToken,
+      });
+    } catch (err) {
+      console.error("[verify-otp checkout_verify] resolveCheckoutContact gagal:", err);
+      return NextResponse.json({ valid: true, name: null, email: null, address: null });
+    }
   }
 
   return NextResponse.json({ valid: true });

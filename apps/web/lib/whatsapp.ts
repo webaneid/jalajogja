@@ -27,6 +27,7 @@ export type WaNotifKey =
   | "otp_register"
   | "otp_reset_password"
   | "otp_login"
+  | "otp_checkout_verify"
   | "installment_converted"
   | "installment_payment_submitted"
   | "installment_payment_confirmed"
@@ -62,6 +63,7 @@ export const WA_NOTIF_DEFAULTS: WaNotifConfig["notifications"] = {
   otp_register:            false,
   otp_reset_password:      false,
   otp_login:               false,
+  otp_checkout_verify:     false,
   installment_converted:          false,
   installment_payment_submitted:  false,
   installment_payment_confirmed:  false,

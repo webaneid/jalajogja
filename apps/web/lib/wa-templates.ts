@@ -92,6 +92,9 @@ export const WA_TEMPLATE_DEFAULTS: Record<string, string> = {
   otp_login:
     "🔐 *Masuk ke {{orgName}}*\n\nKode OTP login Anda: *{{otp}}*\n\nBerlaku {{expiry}} menit. Jangan bagikan kode ini kepada siapapun.",
 
+  otp_checkout_verify:
+    "🔐 *Verifikasi Pesanan {{orgName}}*\n\nKode OTP untuk konfirmasi data pesanan Anda: *{{otp}}*\n\nBerlaku {{expiry}} menit. Jika bukan Anda yang sedang checkout, abaikan pesan ini.",
+
   // ── Cicilan ───────────────────────────────────────────────────────────────────
 
   installment_converted:

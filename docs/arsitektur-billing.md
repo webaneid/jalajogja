@@ -2292,3 +2292,210 @@ Belum dijalankan — menunggu Anda sempat SSH. Tidak memblokir penulisan kode di
 query ini murni informasional untuk data LAMA, tidak mengubah desain rencana), tapi sebaiknya
 dijalankan sebelum invoice manual pertama pakai form BARU dibuat, supaya kalau ada baris lama
 yang perlu dikoreksi, tidak tercampur dengan data baru yang sudah benar.
+
+---
+
+## 16. [PERENCANAAN — BELUM DIEKSEKUSI] Checkout — Field Wajib + Auto-Isi Identitas via Nomor HP
+
+> Diminta user 2026-09-15 setelah menemukan `/{slug}/checkout` di production membiarkan Nama +
+> Nomor HP + Alamat Detail semuanya opsional — dianggap "data rusak" karena pesanan bisa masuk
+> tanpa cara menghubungi/mengirim ke pembeli sama sekali. 5 poin diminta user, dicek satu-satu
+> ke kode aktual sebelum menulis rencana ini (bukan asumsi).
+
+### Temuan dari kode aktual (sebelum rencana)
+
+1. **Nomor HP** — saat ini bukan wajib berdiri sendiri, aturannya "HP **atau** email, salah
+   satu" (`checkout-form.tsx:289` client, `cart/actions.ts:503` server — DUA titik, harus
+   diubah bareng). **Nama** — 100% opsional, fallback ke `identity.resolvedName ?? phone ??
+   email ?? "Guest"` (`cart/actions.ts:526-530`).
+2. **Alamat Detail** — opsional, TAPI sudah di-scope dengan benar: field ini hanya pernah
+   dirender kalau `anyCourierGroup` true (`checkout-form.tsx:505`, minimal 1 grup pengiriman
+   pakai kurir, bukan Ambil Sendiri semua) — jadi tinggal hapus label "(opsional)" + tambah
+   validasi di titik yang sama tempat `destCity` sudah divalidasi wajib
+   (`handleStep2Next`, `checkout-form.tsx:298-299`), TIDAK perlu ubah kapan field ini muncul.
+3. **Auto-isi dari database saat nomor HP match** — **BELUM ADA sama sekali di UI/API**. Tidak
+   ada endpoint publik yang menerima nomor HP lalu balikin nama/email/alamat.
+4. **Transaksi otomatis terhubung ke identitas meski tidak login** — **SUDAH JALAN, sejak lama**
+   (Modul Akun Phase 2, lihat CLAUDE.md § Status Project). `checkoutAction` MEMANG SUDAH
+   memanggil `resolveIdentity()` (`packages/db/src/helpers/resolve-identity.ts`) dengan
+   phone/email dari form — lookup ke `public.contacts` → `public.members` (anggota IKPM,
+   **lintas SEMUA tenant**, persis yang diminta poin 3 "seluruh database... database member")
+   DAN `public.profiles` (akun publik) — kalau ketemu, `invoices.memberId`/`profileId` diisi
+   OTOMATIS (`cart/actions.ts:751-752`), **tanpa customer perlu login**. Begitu customer login
+   nanti dengan akun yang sama, transaksi itu otomatis muncul di riwayatnya. **Tidak ada
+   kerjaan baru untuk poin ini** — cuma perlu dikonfirmasi ke Anda bahwa ini sudah berjalan,
+   bukan berarti tidak perlu dites ulang end-to-end.
+5. **Kelurahan/Desa Tujuan tetap wajib manual** — sudah benar sejak awal, sudah divalidasi wajib
+   (`checkout-form.tsx:298`, `if (anyCourierGroup && !destCity)`). **Tidak ada perubahan.**
+
+### Rencana Poin 1 — Nama + Nomor HP wajib
+
+Ubah validasi di 2 titik (client `checkout-form.tsx:289` + server `cart/actions.ts:503`, WAJIB
+bareng — jangan cuma client, itu bisa dilewati panggilan langsung ke Server Action):
+```typescript
+if (!phone.trim())  { setError("Nomor HP wajib diisi."); return; }
+if (!name.trim())   { setError("Nama wajib diisi."); return; }
+```
+Email TETAP opsional (tidak diminta user, tidak diubah). Hapus `optional` prop dari
+`<PhoneInput>` (`checkout-form.tsx:406`) dan label "(opsional)" dari field Nama
+(`checkout-form.tsx:423`) supaya UI konsisten dengan validasi baru.
+
+**Dampak ke `resolveIdentity()`**: tidak ada — fungsi itu sudah menerima `phone` sebagai
+parameter utama pencarian, cuma sekarang PASTI terisi (sebelumnya kadang kosong kalau customer
+pilih isi email saja) → **hasil samping positif**: matching by phone jadi lebih konsisten,
+tidak lagi bergantung customer kebetulan isi email yang classified sama di database.
+
+### Rencana Poin 2 — Alamat Detail wajib (kondisional)
+
+Di `handleStep2Next` (`checkout-form.tsx:298`), tambah baris:
+```typescript
+if (anyCourierGroup && !address.trim()) { setError("Alamat detail wajib diisi."); return; }
+```
+Hapus label "(opsional)" (`checkout-form.tsx:570`). **Server-side**: `checkoutAction` saat ini
+TIDAK re-validasi `shipping.address` sama sekali (cek `cart/actions.ts`, tidak ada guard) —
+tambah validasi yang sama di server: kalau ada baris `deliveryMethod:"courier"` di
+`shipping.lines` TAPI `shipping.address` kosong, tolak dengan error yang sama. Ini penting
+karena `checkoutAction` bisa dipanggil langsung tanpa lewat form (bypass validasi client).
+
+### Rencana Poin 3 & 4 — Auto-isi identitas via nomor HP (✅ FINAL, sudah dikonfirmasi user)
+
+**Poin 4 (linking otomatis ke `memberId`/`profileId`) — sudah selesai, tidak ada kerjaan baru,
+tetap jalan silent seperti sekarang.** Sisanya di bawah ini rencana final Poin 3 (auto-isi
+TAMPIL di layar customer), sudah melalui 3 putaran klarifikasi dengan user (2026-09-15) —
+bukan lagi opsi, ini yang akan dieksekusi.
+
+#### Kenapa OTP wajib (bukan opsional) — keputusan final user
+
+Draf pertama rencana ini mengusulkan OTP **opsional** (tombol "Cek data saya" yang bisa
+dilewati). **User menolak itu secara eksplisit** — maunya begitu nomor HP terdeteksi cocok di
+database, verifikasi OTP **wajib dan memblokir lanjut checkout** kalau gagal/tidak diisi
+("kalau tidak benar -> gk bisa berarti", "harus terkonfirmasi bahwa benar2 dia yg mau beli").
+Alasan: bukan cuma privasi (mencegah reveal data ke bukan-pemiliknya), tapi juga **anti-fraud**
+— mencegah orang checkout mengatasnamakan identitas orang lain yang datanya kebetulan match.
+
+Prinsip privasi dari draf pertama TETAP berlaku (lihat `docs/arsitektur-direktori-publik.md` —
+data pribadi tidak pernah di-reveal tanpa bukti kepemilikan nomor), cuma sekarang jadi WAJIB,
+bukan pilihan.
+
+#### 3 sumber data auto-isi (diperluas dari draf pertama — keputusan final user)
+
+Bukan cuma `member`/`profile` — user eksplisit minta **"semua data yang ada"**, termasuk
+riwayat transaksi tamu murni (belum pernah jadi member/profile formal, cuma pernah checkout
+sekali sebagai tamu). Urutan prioritas per FIELD (bukan per-sumber — kalau sumber prioritas
+tinggi tidak punya suatu field, coba sumber berikutnya untuk field itu saja):
+
+1. **`public.members`** (anggota IKPM, lintas SEMUA tenant, via `contacts` + `addresses`)
+2. **`public.profiles`** (akun publik non-anggota, lintas SEMUA tenant)
+3. **`invoices` tenant INI SAJA** (bukan lintas-tenant — riwayat beli di toko lain kurang
+   relevan buat alamat kirim toko ini, dan scan lintas-tenant di setiap pengecekan nomor HP
+   tidak scalable) — ambil `customerName`/`customerEmail`/`shippingAddress` dari invoice
+   TERBARU yang `customerPhone` cocok, kalau invoice itu ada.
+
+**Bukan konteks "klaim keanggotaan"** — dikonfirmasi eksplisit oleh user: lookup ini TIDAK
+memicu alur `register` mode klaim (`claimMemberId`/`claimToken`, tidak membuat akun login, tidak
+mengubah `members.betterAuthUserId`). Murni baca data kontak yang sudah ada untuk isi form
+transaksi INI saja.
+
+#### Alur final
+
+```
+Customer ketik nomor HP (blur/selesai ngetik, BUKAN tiap keystroke)
+  → server cek 3 sumber di atas (helper baru resolveCheckoutContact(), lihat di bawah)
+  → TIDAK ketemu di mana pun
+      → lanjut isi form manual seperti sekarang, TIDAK ADA perubahan perilaku
+  → KETEMU di salah satu/lebih sumber
+      → OTP 6-digit OTOMATIS terkirim ke WA nomor itu (reuse infra OTP Fase 7)
+      → muncul kolom input OTP, WAJIB diisi untuk lanjut ke Step 2
+      → kode BENAR  → Nama/Email/Alamat Detail otomatis terisi (field gabungan dari 3 sumber
+                       sesuai prioritas per-field di atas), tetap bisa diedit manual,
+                       badge "✓ Terverifikasi", lanjut checkout normal
+      → kode SALAH/kadaluarsa/tidak diisi → TIDAK BISA lanjut dengan nomor ini (harus ganti
+                       nomor lain yang tidak match apa pun, atau masukkan kode yang benar)
+```
+
+**Response saat cek nomor HP** (sebelum OTP dikirim) sengaja generik — TIDAK membedakan
+"nomor tidak ditemukan" vs "nomor ditemukan tapi WA gateway gagal kirim" di level PESAN error
+(keduanya beda STATE di UI: state `not_found` langsung lanjut manual tanpa pesan error apa pun,
+state `send_failed` baru tampilkan pesan error) — mencegah kebocoran sinyal "nomor ini ada di
+database kita" lewat perbedaan pesan. **Residual risk yang diterima**: munculnya kolom OTP itu
+SENDIRI tetap sinyal biner "nomor ini dikenal sistem" (tanpa detail apa pun) ke siapa pun yang
+coba-coba nomor sembarangan — jauh lebih kecil dari reveal nama+alamat penuh (draf pertama),
+tapi tidak nol. Dimitigasi dengan rate limit ketat per-IP di endpoint pengecekan (reuse
+`rateLimitGuard` yang sudah dipakai `send-otp`) — cegah enumerasi massal.
+
+**Edge case — WA gateway gagal kirim OTP secara teknis** (bukan salah kode, tapi API/gateway
+down): customer diberi pilihan lanjut sebagai tamu murni TANPA auto-isi (isi manual), BUKAN
+diblokir total — kegagalan teknis infrastruktur tidak boleh menghalangi orang checkout sama
+sekali.
+
+#### Rencana teknis
+
+**Helper baru** `packages/db/src/helpers/resolve-checkout-contact.ts` —
+`resolveCheckoutContact(publicDb, tenantDb, schema, phone)` → `{ found: boolean; name?: string;
+email?: string; address?: string }`. Cek 3 sumber sesuai urutan di atas, merge per-field (bukan
+all-or-nothing per sumber). Untuk `members`: compose alamat dari `addresses` (`detail` + nama
+kecamatan/kabupaten/provinsi via JOIN ke `ref_districts`/`ref_regencies`/`ref_provinces` — WAJIB
+JOIN untuk nama, bukan cuma ID mentah, sesuai `docs/arsitektur-kontak.md`/lesson wilayah names)
+jadi satu string, karena field "Alamat Detail" di checkout adalah teks bebas, bukan dropdown
+wilayah.
+
+**`send-otp/route.ts`** — tambah `type: "checkout_verify"`. Alur: `resolveCheckoutContact()`
+dulu — kalau `found: false`, balikin sukses generik TANPA kirim OTP (state `not_found` di
+client, client lanjut manual, TIDAK dianggap error). Kalau `found: true`, kirim OTP ke `phone`
+(sama seperti mode lain), balikin `{ ok: true }`.
+
+**`verify-otp/route.ts`** — tambah `type: "checkout_verify"`. Setelah OTP tervalidasi
+(reuse mekanisme sama persis mode lain), panggil ULANG `resolveCheckoutContact()` (state HTTP
+tidak persisten antar-request, jangan simpan hasil sementara di server) → balikin `{ valid:
+true, name, email, address }`.
+
+**`checkout-form.tsx`** — state baru per field HP: `idle` → `checking` → (`not_found`, lanjut
+diam-diam) → (`found`, tampil kolom OTP wajib) → `verified` (auto-isi + badge) / `otp_failed`
+(blokir Next sampai benar). UI kolom OTP mirip pola `login-form.tsx` mode WA OTP yang sudah ada
+(banyak bisa di-reuse langsung). Tombol "Lanjut" di Step 1 disabled selama state `found` tapi
+belum `verified`.
+
+**`checkoutAction`** (`cart/actions.ts`) — TIDAK perlu berubah untuk bagian ini (poin 4 sudah
+otomatis jalan via `resolveIdentity()` begitu form terisi nama/email/phone yang valid — endpoint
+baru di atas cuma soal UI-side auto-fill, bukan soal linking yang memang sudah ada).
+
+### File yang Akan Tersentuh
+
+```
+packages/db/src/helpers/resolve-checkout-contact.ts      → BARU
+packages/db/src/index.ts                                  → export helper baru
+apps/web/components/billing/checkout-form.tsx             → validasi wajib (poin 1,2) + UI OTP wajib (poin 3)
+apps/web/app/(public)/[tenant]/cart/actions.ts             → validasi server-side (poin 1,2)
+apps/web/app/api/akun/send-otp/route.ts                    → type baru "checkout_verify"
+apps/web/app/api/akun/verify-otp/route.ts                  → type baru, balikin data auto-isi
+apps/web/lib/wa-templates.ts                                → template WA baru untuk checkout_verify
+apps/web/lib/whatsapp.ts                                    → WaNotifKey + WA_NOTIF_DEFAULTS baru (kalau notifikasi OTP checkout perlu toggle terpisah — cek dulu apakah otp_login sudah cukup)
+docs/arsitektur-billing.md                                  → dokumen ini
+```
+
+### Status: ✅ Kode SELESAI + Security Review (2026-09-15)
+
+Semua poin sudah dikonfirmasi user (3 putaran klarifikasi) dan dieksekusi. `bun run type-check`
+0 error di semua workspace. Migration `0068_otp_checkout_verify_type.sql` sudah dijalankan di
+dev lokal. **Belum diverifikasi visual di browser** (tidak ada kredensial di sesi eksekusi).
+
+**Security review** (subagent `security-auditor`) menemukan 1 HIGH + 2 MEDIUM — **semua sudah
+diperbaiki**:
+- **HIGH** — Gate OTP anti-fraud sebelumnya PURE client-side (`checkoutAction` bisa dipanggil
+  langsung dengan nama+HP siapa pun tanpa pernah lewat OTP sama sekali, mem-bypass seluruh
+  tujuan fitur ini). **Fix**: `checkoutAction` sekarang memanggil ULANG `resolveCheckoutContact()`
+  SENDIRI (tidak percaya klaim `found`/`verified` dari client) — kalau nomor match, WAJIB ada
+  `verifyToken` (token bukti sekali-pakai, pola sama `claimToken` di alur klaim member, tabel
+  `verification`, DELETE...RETURNING atomic) yang cuma diterbitkan `verify-otp` SETELAH OTP
+  benar-benar diverifikasi. Tanpa token valid yang cocok nomornya, checkout ditolak.
+- **MEDIUM** — Trigger OTP semula pakai debounce keystroke (menyimpang dari desain "blur"),
+  dan berbagi rate-limit dengan type lain (register/login yang butuh klik tombol eksplisit) —
+  rawan diotomasi untuk enumerasi nomor terdaftar. **Fix**: `PhoneInput` dapat prop `onBlur`
+  baru, trigger pindah ke blur; rate-limit terpisah 5/10menit per-IP khusus `checkout_verify`.
+- **MEDIUM** — Field nomor HP tidak terkunci setelah status "verified" (bisa diganti tanpa
+  reset Nama/Email/Alamat yang sudah ter-auto-isi dari nomor SEBELUMNYA — invoice berpotensi
+  salah kaitan identitas). **Fix**: nomor HP ikut terkunci saat "verified" (tombol eksplisit
+  "Ganti nomor" yang mereset semua field sekaligus), dan `handlePhoneChange` reset
+  Nama/Email/Alamat setiap kali nomor berubah dari status non-idle.
+
+Detail lengkap perbaikan: lihat commit yang menyertai dokumen ini.

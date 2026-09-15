@@ -105,6 +105,7 @@ type Props = {
   required?:   boolean;
   value:       string;         // E.164 full value, e.g. "+628xxxxxxxxx"
   onChange:    (e164: string) => void;
+  onBlur?:     () => void;
   disabled?:   boolean;
   placeholder?: string;
   hint?:        string;
@@ -116,6 +117,7 @@ export function PhoneInput({
   required,
   value,
   onChange,
+  onBlur,
   disabled,
   placeholder = "8xxxxxxxxxx",
   hint,
@@ -207,6 +209,7 @@ export function PhoneInput({
           inputMode="numeric"
           value={number}
           onChange={handleNumberChange}
+          onBlur={onBlur}
           placeholder={placeholder}
           disabled={disabled}
           className="flex-1 bg-transparent px-3 py-1 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 min-w-0"

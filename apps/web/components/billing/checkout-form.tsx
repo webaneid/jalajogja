@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, useCallback } from "react";
+import { useState, useEffect, useTransition, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   checkoutAction,
@@ -130,6 +130,87 @@ export function CheckoutForm({
   const [name,  setName]  = useState(defaults?.name  ?? "");
   const [notes, setNotes] = useState("");
 
+  // Auto-isi via nomor HP — begitu nomor cocok dengan data yang SUDAH ADA (member/profile/
+  // riwayat tamu tenant ini), OTP WAJIB dikirim+diverifikasi sebelum Nama/Email/Alamat
+  // otomatis terisi. TIDAK ADA reveal data apa pun sebelum OTP benar. Kalau nomor tidak cocok
+  // apa pun, langsung lanjut isi manual seperti biasa (status tetap "idle", tidak ada beda
+  // perilaku dari sebelumnya). Trigger di BLUR (selesai ngetik), BUKAN tiap keystroke — endpoint
+  // ini mengirim WA sungguhan begitu match ditemukan. `verifyToken` = bukti sekali-pakai yang
+  // WAJIB dikirim ke checkoutAction — server checkoutAction TETAP re-cek match+token sendiri,
+  // status di state ini murni UX, BUKAN proteksi (lihat docs/arsitektur-billing.md § 16).
+  const [contactCheck, setContactCheck] = useState<{
+    status:        "idle" | "checking" | "found" | "verified" | "failed";
+    otp:           string;
+    verifyPending: boolean;
+    verifyToken?:  string;
+    error:         string;
+  }>({ status: "idle", otp: "", verifyPending: false, error: "" });
+  const lastCheckedPhoneRef = useRef<string>("");
+
+  // Nomor berubah setelah sempat found/verified — reset SEMUANYA, termasuk Nama/Email/Alamat
+  // yang mungkin sudah ter-auto-isi dari nomor SEBELUMNYA (cegah invoice terkirim dengan nomor
+  // baru tapi identitas nomor lama).
+  function handlePhoneChange(next: string) {
+    setPhone(next);
+    if (contactCheck.status !== "idle") {
+      setContactCheck({ status: "idle", otp: "", verifyPending: false, error: "" });
+      setName("");
+      setEmail("");
+      setAddress("");
+    }
+  }
+
+  function handlePhoneBlur() {
+    const trimmed = phone.trim();
+    if (trimmed.length < 10 || trimmed === lastCheckedPhoneRef.current) return;
+    lastCheckedPhoneRef.current = trimmed;
+    setContactCheck((c) => ({ ...c, status: "checking" }));
+    void (async () => {
+      try {
+        const res  = await fetch("/api/akun/send-otp", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ phone: trimmed, type: "checkout_verify", slug }),
+        });
+        const data = await res.json() as { ok?: boolean; found?: boolean };
+        if (res.ok && data.ok && data.found) {
+          setContactCheck({ status: "found", otp: "", verifyPending: false, error: "" });
+        } else {
+          // Tidak cocok apa pun, ATAU kegagalan teknis (gateway down dll) — jangan blokir,
+          // anggap sama seperti tidak cocok: lanjut isi manual.
+          setContactCheck({ status: "idle", otp: "", verifyPending: false, error: "" });
+        }
+      } catch {
+        setContactCheck({ status: "idle", otp: "", verifyPending: false, error: "" });
+      }
+    })();
+  }
+
+  function handleVerifyContactOtp() {
+    if (contactCheck.otp.trim().length !== 6) return;
+    setContactCheck((c) => ({ ...c, verifyPending: true, error: "" }));
+    void (async () => {
+      try {
+        const res  = await fetch("/api/akun/verify-otp", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ phone: phone.trim(), code: contactCheck.otp.trim(), type: "checkout_verify", slug }),
+        });
+        const data = await res.json() as { valid?: boolean; name?: string | null; email?: string | null; address?: string | null; verifyToken?: string; error?: string };
+        if (!res.ok || !data.valid) {
+          setContactCheck((c) => ({ ...c, verifyPending: false, status: "failed", error: data.error ?? "Kode OTP tidak valid." }));
+          return;
+        }
+        if (data.name)    setName(data.name);
+        if (data.email)   setEmail(data.email);
+        if (data.address) setAddress(data.address);
+        setContactCheck((c) => ({ ...c, verifyPending: false, status: "verified", verifyToken: data.verifyToken, error: "" }));
+      } catch {
+        setContactCheck((c) => ({ ...c, verifyPending: false, status: "failed", error: "Gagal memverifikasi kode." }));
+      }
+    })();
+  }
+
   // Voucher — preview murni (baca saja, tidak mengunci/menaikkan usedCount). Checkout sungguhan
   // selalu re-validasi dari nol di dalam transaction-nya sendiri (lihat cart/actions.ts).
   const [voucherInput,   setVoucherInput]   = useState("");
@@ -256,7 +337,7 @@ export function CheckoutForm({
     startTransition(async () => {
       const res = await checkoutAction(
         slug,
-        { phone, email, name, method: "transfer", notes },
+        { phone, email, name, method: "transfer", notes, verifyToken: contactCheck.verifyToken },
         shippingData,
         voucherPreview?.valid ? voucherInput.trim() : undefined,
       );
@@ -286,8 +367,17 @@ export function CheckoutForm({
   }
 
   function handleStep1Next() {
-    if (!phone.trim() && !email.trim()) {
-      setError("Nomor HP atau email wajib diisi.");
+    if (!phone.trim())  { setError("Nomor HP wajib diisi."); return; }
+    if (!name.trim())   { setError("Nama wajib diisi."); return; }
+    // Kalau nomor HP cocok data yang sudah ada, OTP wajib diverifikasi dulu (status "found"
+    // atau "failed" = belum/gagal verifikasi) — tombol "Lanjut" sudah disabled untuk kasus ini
+    // juga, guard ini jaga-jaga kalau handler terpanggil lewat jalur lain.
+    if (contactCheck.status === "checking") {
+      setError("Mohon tunggu, sedang mengecek data Anda...");
+      return;
+    }
+    if (contactCheck.status === "found" || contactCheck.status === "failed") {
+      setError("Masukkan kode OTP yang dikirim ke WhatsApp Anda untuk lanjut.");
       return;
     }
     setError("");
@@ -297,6 +387,7 @@ export function CheckoutForm({
 
   function handleStep2Next() {
     if (anyCourierGroup && !destCity) { setError("Pilih kota tujuan pengiriman."); return; }
+    if (anyCourierGroup && !address.trim()) { setError("Alamat detail wajib diisi."); return; }
     setError("");
     setStep(3);
     for (const group of sellerGroups) {
@@ -402,12 +493,20 @@ export function CheckoutForm({
               <PhoneInput
                 label="Nomor HP"
                 value={phone}
-                onChange={setPhone}
-                optional
-                hint="Atau isi email di sebelah kanan"
+                onChange={handlePhoneChange}
+                onBlur={handlePhoneBlur}
+                required
+                disabled={contactCheck.status === "found" || contactCheck.status === "verified" || contactCheck.verifyPending}
+                hint={
+                  contactCheck.status === "checking" ? "Mengecek data..."
+                  : contactCheck.status === "verified" ? "✓ Data Anda otomatis terisi — klik Ganti untuk pakai nomor lain"
+                  : undefined
+                }
               />
               <div>
-                <label className={labelCls}>Email</label>
+                <label className={labelCls}>
+                  Email <span className="text-muted-foreground text-xs">(opsional)</span>
+                </label>
                 <input
                   type="email"
                   value={email}
@@ -418,10 +517,61 @@ export function CheckoutForm({
               </div>
             </div>
 
+            {/* Kolom OTP — muncul HANYA kalau nomor HP cocok data yang sudah ada. WAJIB
+                diverifikasi untuk lanjut (bukan opsional) — lihat docs/arsitektur-billing.md § 16. */}
+            {(contactCheck.status === "found" || contactCheck.status === "failed") && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
+                <p className="text-xs text-foreground">
+                  Nomor ini terdaftar di sistem kami. Masukkan kode OTP yang dikirim via WhatsApp
+                  untuk mengisi otomatis data Anda.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={contactCheck.otp}
+                    onChange={(e) => setContactCheck((c) => ({ ...c, otp: e.target.value.replace(/\D/g, "") }))}
+                    placeholder="Kode OTP 6 digit"
+                    className={`${inputCls} tracking-widest`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerifyContactOtp}
+                    disabled={contactCheck.otp.trim().length !== 6 || contactCheck.verifyPending}
+                    className="shrink-0 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                  >
+                    {contactCheck.verifyPending ? "Memeriksa..." : "Verifikasi"}
+                  </button>
+                </div>
+                {contactCheck.error && (
+                  <p className="text-xs text-destructive">{contactCheck.error}</p>
+                )}
+              </div>
+            )}
+
+            {contactCheck.status === "verified" && (
+              <div className="flex items-center justify-between gap-2 rounded-md bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-700">
+                <span>✓ Nomor terverifikasi — data Anda terisi otomatis.</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    lastCheckedPhoneRef.current = "";
+                    setContactCheck({ status: "idle", otp: "", verifyPending: false, error: "" });
+                    setPhone("");
+                    setName("");
+                    setEmail("");
+                    setAddress("");
+                  }}
+                  className="shrink-0 text-green-700 underline hover:text-green-900"
+                >
+                  Ganti nomor
+                </button>
+              </div>
+            )}
+
             <div>
-              <label className={labelCls}>
-                Nama <span className="text-muted-foreground text-xs">(opsional)</span>
-              </label>
+              <label className={labelCls}>Nama</label>
               <input
                 type="text"
                 value={name}
@@ -566,9 +716,7 @@ export function CheckoutForm({
             </div>
 
             <div>
-              <label className={labelCls}>
-                Alamat Detail <span className="text-muted-foreground text-xs">(opsional)</span>
-              </label>
+              <label className={labelCls}>Alamat Detail</label>
               <textarea
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
@@ -791,7 +939,7 @@ export function CheckoutForm({
               <button
                 type="button"
                 onClick={handleStep1Next}
-                disabled={pending}
+                disabled={pending || contactCheck.status === "checking" || contactCheck.status === "found" || contactCheck.status === "failed"}
                 className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
               >
                 {pending

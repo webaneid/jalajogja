@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 // OTP berlaku 5 menit.
 
 import { NextRequest, NextResponse }  from "next/server";
-import { db, otpTokens, createTenantDb, getSettings, members, contacts } from "@jalajogja/db";
+import { db, otpTokens, createTenantDb, getSettings, members, contacts, resolveCheckoutContact } from "@jalajogja/db";
 import { eq, and, gt, count, sql }   from "drizzle-orm";
 import { sendWaNotification }         from "@/lib/whatsapp";
 import { renderTemplateString }       from "@/lib/wa-templates";
@@ -39,11 +39,11 @@ export async function POST(request: NextRequest) {
   if (!type || !slug) {
     return NextResponse.json({ error: "type dan slug wajib diisi" }, { status: 400 });
   }
-  if (type !== "register" && type !== "reset_password" && type !== "login") {
+  if (type !== "register" && type !== "reset_password" && type !== "login" && type !== "checkout_verify") {
     return NextResponse.json({ error: "type tidak valid" }, { status: 400 });
   }
 
-  const validType = type as "register" | "reset_password" | "login";
+  const validType = type as "register" | "reset_password" | "login" | "checkout_verify";
 
   // ── Klaim akun member: OTP WAJIB dikirim ke nomor WA yang SUDAH tercatat di data
   // keanggotaan (contacts.whatsapp/phone), BUKAN ke nomor yang diketik bebas oleh
@@ -83,6 +83,33 @@ export async function POST(request: NextRequest) {
         { error: "Nomor ini belum terdaftar di akun manapun." },
         { status: 404 },
       );
+    }
+  }
+
+  // ── Checkout: auto-isi Nama/Email/Alamat — HANYA kirim OTP kalau nomor cocok dengan data
+  // yang sudah ada (member/profile/riwayat tamu tenant ini). Kalau tidak cocok, jangan kirim
+  // OTP sama sekali — balas sukses generik `found:false` (BUKAN error) supaya client tahu
+  // lanjut isi manual tanpa menampilkan pesan error apa pun. Ini murni kemudahan transaksi,
+  // BUKAN alur klaim keanggotaan. Lihat docs/arsitektur-billing.md § 16.
+  if (validType === "checkout_verify") {
+    // Rate limit TERPISAH dan lebih ketat dari budget generik di atas — endpoint ini terpicu
+    // otomatis (blur field, bukan klik tombol eksplisit seperti register/login) dan mengirim WA
+    // sungguhan ke nomor yang match, jadi lebih rawan disalahgunakan untuk enumerasi nomor
+    // terdaftar dari satu IP kalau berbagi budget dengan type lain.
+    const checkoutIpBlocked = rateLimitGuard(request, "send-otp-checkout-verify", 5, 10 * 60_000);
+    if (checkoutIpBlocked) return checkoutIpBlocked;
+
+    try {
+      const { db: checkoutTenantDb, schema: checkoutSchema } = createTenantDb(slug);
+      const match = await resolveCheckoutContact(db, checkoutTenantDb, checkoutSchema, phone);
+      if (!match.found) {
+        return NextResponse.json({ ok: true, found: false });
+      }
+    } catch (err) {
+      // Kegagalan teknis di titik lookup TIDAK BOLEH memblokir checkout — anggap sama seperti
+      // tidak cocok apa pun, customer lanjut isi manual.
+      console.error("[send-otp checkout_verify] resolveCheckoutContact gagal:", err);
+      return NextResponse.json({ ok: true, found: false });
     }
   }
 
@@ -143,9 +170,10 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Kirim via WA ──────────────────────────────────────────────────────────────
-  const eventKey = type === "register" ? "otp_register"
-                 : type === "login"    ? "otp_login"
-                 :                       "otp_reset_password";
+  const eventKey = type === "register"         ? "otp_register"
+                 : type === "login"            ? "otp_login"
+                 : type === "checkout_verify"  ? "otp_checkout_verify"
+                 :                                "otp_reset_password";
   const tpl      = await resolveWaTemplateText(tenantClient, eventKey);
   const message  = tpl ? renderTemplateString(tpl, {
     orgName,
@@ -170,5 +198,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: errorMsg }, { status: 503 });
   }
 
-  return NextResponse.json({ ok: true, expiresIn: OTP_TTL_MINUTES, phoneMasked });
+  return NextResponse.json({
+    ok: true,
+    expiresIn: OTP_TTL_MINUTES,
+    phoneMasked,
+    ...(validType === "checkout_verify" ? { found: true } : {}),
+  });
 }

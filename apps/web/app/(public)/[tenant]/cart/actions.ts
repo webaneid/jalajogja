@@ -1,9 +1,9 @@
 "use server";
 
 import { cookies, headers } from "next/headers";
-import { eq, and, or, inArray, sql } from "drizzle-orm";
+import { eq, and, or, inArray, sql, gt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db, resolveIdentity, generateUniqueCode, generateInstallmentScheduleCode, settleInstallmentSchedules } from "@jalajogja/db";
+import { db, resolveIdentity, resolveCheckoutContact, verification, generateUniqueCode, generateInstallmentScheduleCode, settleInstallmentSchedules } from "@jalajogja/db";
 import { createTenantDb, generateFinancialNumber, getSettings } from "@jalajogja/db";
 import {
   findVoucherByCode, countCustomerRedemptions, computeVoucherDiscount, resolveProductCartItem,
@@ -70,6 +70,10 @@ export type CheckoutCustomerData = {
   name?:   string;
   method:  "cash" | "transfer" | "qris";
   notes?:  string;
+  // Bukti verifikasi OTP sekali-pakai dari /api/akun/verify-otp (type "checkout_verify") —
+  // WAJIB terisi kalau nomor HP di atas cocok data yang sudah ada di sistem (dicek ulang
+  // server-side, TIDAK percaya klaim client). Lihat docs/arsitektur-billing.md § 16.
+  verifyToken?: string;
 };
 
 export type SellerGroup = {
@@ -500,8 +504,18 @@ export async function checkoutAction(
   shipping?: CheckoutShippingData,
   voucherCode?: string,
 ): Promise<ActionResult<{ invoiceId: string; invoiceNumber: string }>> {
-  if (!customer.phone?.trim() && !customer.email?.trim()) {
-    return { success: false, error: "Nomor HP atau email wajib diisi." };
+  if (!customer.phone?.trim()) {
+    return { success: false, error: "Nomor HP wajib diisi." };
+  }
+  if (!customer.name?.trim()) {
+    return { success: false, error: "Nama wajib diisi." };
+  }
+  // Alamat detail wajib kalau ADA baris pengiriman kurir (bukan Ambil Sendiri semua) — server
+  // TIDAK PERNAH percaya validasi client saja, checkoutAction bisa dipanggil langsung tanpa
+  // lewat form. Lihat docs/arsitektur-billing.md § 16.
+  const hasCourierLine = shipping?.lines.some((l) => l.deliveryMethod === "courier") ?? false;
+  if (hasCourierLine && !shipping?.address?.trim()) {
+    return { success: false, error: "Alamat detail wajib diisi." };
   }
 
   try {
@@ -510,6 +524,31 @@ export async function checkoutAction(
 
     const tenantDb = createTenantDb(slug);
     const { db: tdb, schema } = tenantDb;
+
+    // ── Gate anti-fraud: kalau nomor HP ini cocok data yang sudah ada, WAJIB ada bukti
+    // verifikasi OTP yang valid — jangan pernah percaya nama/email dari client begitu saja
+    // untuk nomor yang match, siapa pun bisa memanggil Server Action ini langsung (bypass UI/
+    // gate OTP di checkout-form.tsx, itu cuma UX, bukan proteksi nyata). Server SENDIRI yang
+    // menentukan `found`, bukan menerima klaim `found`/`verified` dari client. Pola sama
+    // `claimToken` di /api/akun/register (DELETE...RETURNING atomic, sekali pakai). Lihat
+    // docs/arsitektur-billing.md § 16.
+    const normalizedPhoneForCheck = normalizePhone(customer.phone) ?? customer.phone.trim();
+    const contactMatch = await resolveCheckoutContact(db, tdb, schema, normalizedPhoneForCheck);
+    if (contactMatch.found) {
+      if (!customer.verifyToken) {
+        return { success: false, error: "Nomor HP ini terdaftar di sistem kami — verifikasi OTP diperlukan sebelum lanjut." };
+      }
+      const [proof] = await db
+        .delete(verification)
+        .where(and(
+          eq(verification.identifier, `checkout-verify:${customer.verifyToken}`),
+          gt(verification.expiresAt, new Date()),
+        ))
+        .returning({ value: verification.value });
+      if (!proof || proof.value !== normalizedPhoneForCheck) {
+        return { success: false, error: "Verifikasi OTP tidak valid atau sudah kadaluarsa. Ulangi proses verifikasi." };
+      }
+    }
 
     // ── Lookup identitas via resolveIdentity ─────────────────────────────────
     // Urutan: session login → public.profiles → public.members → guest

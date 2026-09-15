@@ -94,6 +94,14 @@ export {
   type ResolvedIdentity,
 } from "./helpers/resolve-identity";
 
+// Checkout contact auto-isi — lookup nama/email/alamat dari nomor HP (member/profile/riwayat
+// tamu tenant ini), murni kemudahan transaksi, BUKAN klaim keanggotaan. WAJIB dipanggil di
+// belakang gate OTP. Lihat docs/arsitektur-billing.md § 16.
+export {
+  resolveCheckoutContact,
+  type CheckoutContactMatch,
+} from "./helpers/resolve-checkout-contact";
+
 // Member tenant membership auto-sync (PC IKPM Cabang & Marhalah)
 export { syncAutoTenantMemberships } from "./helpers/member-sync";
 
