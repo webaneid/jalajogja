@@ -6,17 +6,9 @@ import { Handshake } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label  } from "@/components/ui/label";
 import { useBaseUrl } from "@/lib/use-base-url";
+import { RajaOngkirCityPicker, type RajaOngkirCity } from "@/components/ui/rajaongkir-city-picker";
 
 type Business = { id: string; name: string; brand: string | null };
-type City     = {
-  id:             number;
-  label:          string;
-  cityName:       string;
-  districtName:   string;
-  subdistrictName: string;
-  provinceName:   string;
-  zipCode:        string;
-};
 
 export default function MitraApplyPage() {
   const router = useRouter();
@@ -34,10 +26,7 @@ export default function MitraApplyPage() {
   const [error,         setError]         = useState<string | null>(null);
 
   // Kota asal pengiriman
-  const [citySearch,   setCitySearch]   = useState("");
-  const [cityResults,  setCityResults]  = useState<City[]>([]);
-  const [selectedCity, setSelectedCity] = useState<City | null>(null);
-  const [cityOpen,     setCityOpen]     = useState(false);
+  const [selectedCity, setSelectedCity] = useState<RajaOngkirCity | null>(null);
 
   useEffect(() => {
     fetch(`/api/mitra/status?slug=${slug}`)
@@ -49,18 +38,6 @@ export default function MitraApplyPage() {
         setLoading(false);
       });
   }, [slug]);
-
-  useEffect(() => {
-    if (citySearch.length < 2) { setCityResults([]); return; }
-    const timer = setTimeout(async () => {
-      const res = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(citySearch)}&limit=15`);
-      const data = await res.json() as { cities: City[] };
-      const cities = data.cities ?? [];
-      setCityResults(cities);
-      if (cities.length > 0) setCityOpen(true);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [citySearch]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -135,37 +112,12 @@ export default function MitraApplyPage() {
           <Label className="text-sm">
             Kota Asal Pengiriman <span className="text-destructive">*</span>
           </Label>
-          <div className="relative">
-            <input
-              type="text"
-              value={citySearch}
-              onChange={e => { setCitySearch(e.target.value); setSelectedCity(null); }}
-              onBlur={() => setTimeout(() => setCityOpen(false), 200)}
-              placeholder="Ketik nama kota (min. 2 karakter)..."
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            {cityOpen && cityResults.length > 0 && (
-              <ul className="absolute z-20 top-full mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
-                {cityResults.map(city => (
-                  <li
-                    key={city.id}
-                    onMouseDown={() => {
-                      setSelectedCity(city);
-                      setCitySearch(city.label);
-                      setCityOpen(false);
-                    }}
-                    className="px-3 py-2 text-sm cursor-pointer hover:bg-muted"
-                  >
-                    {city.label}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          {selectedCity && (
-            <p className="text-xs text-green-600">✓ {selectedCity.label} dipilih</p>
-          )}
-          <p className="text-xs text-muted-foreground">Kota gudang/rumah tempat produk dikirim.</p>
+          <RajaOngkirCityPicker
+            value={selectedCity?.id ?? null}
+            valueLabel={selectedCity?.label ?? ""}
+            onChange={setSelectedCity}
+            helperText="Kota gudang/rumah tempat produk dikirim."
+          />
         </div>
 
         <div className="space-y-1.5">

@@ -24,6 +24,11 @@ type ProductOption = {
   mitraId:     string | null;
   sellerType:  "tenant" | "mitra";
   productType: "simple" | "variable";
+  // Override kota asal per-produk — KHUSUS produk tenant sendiri (mitraId null), tidak pernah
+  // dipakai untuk produk mitra. Lihat docs/arsitektur-addon-ongkir.md § "RENCANA — Kota Asal
+  // Pengiriman per Produk Tenant".
+  originCityId:   number | null;
+  originCityName: string | null;
 };
 
 type CartItem = { product: ProductOption; qty: number };
@@ -161,6 +166,10 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
       mitraId:     parent?.mitraId ?? null,
       sellerType:  parent?.sellerType ?? "tenant",
       productType: "simple", // sudah dipilih, tidak perlu picker lagi kalau qty diubah di cart
+      // Variasi ikut kota asal produk induknya — tidak ada override per-variasi (keputusan
+      // scope, lihat docs/arsitektur-addon-ongkir.md).
+      originCityId:   parent?.originCityId ?? null,
+      originCityName: parent?.originCityName ?? null,
     });
     setVariationPicker(null);
   }
@@ -219,12 +228,21 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
       let pickupMapsUrl: string | null;
 
       if (p.mitraId && mitraConfigMap[p.mitraId]?.originCityId) {
+        // Produk mitra — SELALU pakai kota asal mitra sendiri. p.originCityId TIDAK PERNAH
+        // dibaca di sini (mitra wajib jual produk sendiri, satu lokasi tunggal).
         const mc = mitraConfigMap[p.mitraId];
         sellerType = "mitra"; sellerId = p.mitraId; sellerName = mc.sellerName;
         originCityId = mc.originCityId as number; originCityName = mc.originCityName ?? "";
         codEnabled = mc.codEnabled; pickupEnabled = mc.pickupEnabled;
         pickupLocationName = mc.pickupLocationName; pickupAddress = mc.pickupAddress; pickupMapsUrl = mc.pickupMapsUrl;
+      } else if (!p.mitraId && p.originCityId) {
+        // BARU — produk tenant sendiri dengan override kota asal per-produk.
+        sellerType = "tenant"; sellerId = null; sellerName = tenantName;
+        originCityId = p.originCityId; originCityName = p.originCityName ?? "";
+        codEnabled = tenantShipping?.codEnabled ?? false; pickupEnabled = tenantShipping?.pickupEnabled ?? false;
+        pickupLocationName = tenantShipping?.pickupLocationName ?? null; pickupAddress = tenantShipping?.pickupAddress ?? null; pickupMapsUrl = tenantShipping?.pickupMapsUrl ?? null;
       } else if (!p.mitraId && tenantShipping) {
+        // Fallback — produk tenant tanpa override sendiri, pakai default toko.
         sellerType = "tenant"; sellerId = null; sellerName = tenantName;
         originCityId = tenantShipping.originCityId; originCityName = tenantShipping.originCityName;
         codEnabled = tenantShipping.codEnabled; pickupEnabled = tenantShipping.pickupEnabled;
@@ -233,7 +251,9 @@ export function OrderCreateClient({ slug, tenantName, products, tenantShipping, 
         continue; // kota asal tidak diketahui — grup dilewati (produk tetap masuk item pesanan)
       }
 
-      const key = `${sellerType}:${sellerId ?? "tenant"}`;
+      // key ikut origin — 2 produk tenant dengan kota asal beda otomatis jadi 2 SellerGroup
+      // terpisah, sama seperti checkout publik.
+      const key = `${sellerType}:${sellerId ?? "tenant"}:${originCityId}`;
       if (!groupMap[key]) {
         groupMap[key] = {
           key, sellerType, sellerId, sellerName, originCityId, originCityName, totalWeightGram: 0,

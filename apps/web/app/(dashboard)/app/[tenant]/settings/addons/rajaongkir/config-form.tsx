@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition, useEffect, useRef } from "react";
+import { useState, useTransition } from "react";
 import { saveRajaOngkirConfigAction } from "./actions";
+import { RajaOngkirCityPicker, type RajaOngkirCity } from "@/components/ui/rajaongkir-city-picker";
 
 // Daftar lengkap 16 kurir yang divalidasi RajaOngkir untuk API key platform kita (dicek
 // langsung via error 422 endpoint /calculate/domestic-cost saat kirim kode tidak valid — bukan
@@ -26,16 +27,6 @@ const COURIER_OPTIONS = [
   { value: "wahana",   label: "Wahana" },
 ] as const;
 
-type City = {
-  id:             number;
-  label:          string;
-  cityName:       string;
-  districtName:   string;
-  subdistrictName: string;
-  provinceName:   string;
-  zipCode:        string;
-};
-
 type Props = {
   slug:           string;
   installationId: string;
@@ -53,28 +44,13 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
 
   const [couriers, setCouriers] = useState<string[]>(initialConfig.couriers);
 
-  const [citySearch,   setCitySearch]   = useState(initialConfig.originCityName);
-  const [cityResults,  setCityResults]  = useState<City[]>([]);
-  const [selectedCity, setSelectedCity] = useState<City | null>(
-    initialConfig.originCityId
-      ? { id: initialConfig.originCityId, label: initialConfig.originCityName, cityName: "", districtName: "", subdistrictName: "", provinceName: "", zipCode: "" }
-      : null,
-  );
-  const [cityOpen, setCityOpen] = useState(false);
-  const userTypedRef = useRef(false);
+  const [originCityId,   setOriginCityId]   = useState<number | null>(initialConfig.originCityId);
+  const [originCityName, setOriginCityName] = useState(initialConfig.originCityName);
 
-  useEffect(() => {
-    // Jangan fetch saat mount — hanya fetch jika user mengetik
-    if (!userTypedRef.current) return;
-    if (citySearch.length < 2) { setCityResults([]); return; }
-    const timer = setTimeout(async () => {
-      const res  = await fetch(`/api/ongkir/cities?q=${encodeURIComponent(citySearch)}&limit=15`);
-      const data = await res.json() as { cities: City[] };
-      setCityResults(data.cities ?? []);
-      setCityOpen(true);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [citySearch]);
+  function handleCityChange(city: RajaOngkirCity | null) {
+    setOriginCityId(city?.id ?? null);
+    setOriginCityName(city?.label ?? "");
+  }
 
   function toggleCourier(val: string) {
     setCouriers(prev => prev.includes(val) ? prev.filter(c => c !== val) : [...prev, val]);
@@ -86,8 +62,8 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
     setSaved(false);
     startTransition(async () => {
       const res = await saveRajaOngkirConfigAction(installationId, {
-        origin_city_id:   selectedCity?.id ?? null,
-        origin_city_name: selectedCity?.label ?? "",
+        origin_city_id:   originCityId,
+        origin_city_name: originCityName,
         couriers,
       });
       if ("error" in res) {
@@ -108,40 +84,12 @@ export function RajaOngkirConfigForm({ slug, installationId, initialConfig }: Pr
       {/* Kota asal */}
       <div className="space-y-1">
         <label className="block text-sm font-medium">Kota Asal Pengiriman</label>
-        <div className="relative">
-          <input
-            type="text"
-            value={citySearch}
-            onChange={e => { userTypedRef.current = true; setCitySearch(e.target.value); setSelectedCity(null); }}
-            onFocus={() => cityResults.length > 0 && setCityOpen(true)}
-            onBlur={() => setTimeout(() => setCityOpen(false), 200)}
-            placeholder="Ketik nama kota (min. 2 karakter)..."
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          {cityOpen && cityResults.length > 0 && (
-            <ul className="absolute z-20 top-full mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
-              {cityResults.map(city => (
-                <li
-                  key={city.id}
-                  onMouseDown={() => {
-                    setSelectedCity(city);
-                    setCitySearch(city.label);
-                    setCityOpen(false);
-                  }}
-                  className="px-3 py-2 text-sm cursor-pointer hover:bg-muted"
-                >
-                  {city.label}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        {selectedCity && (
-          <p className="text-xs text-green-600">✓ {selectedCity.label} (ID: {selectedCity.id})</p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          Kota asal untuk produk milik toko ini. Mitra atur kota asal sendiri di profil mitra.
-        </p>
+        <RajaOngkirCityPicker
+          value={originCityId}
+          valueLabel={originCityName}
+          onChange={handleCityChange}
+          helperText="Kota asal default untuk produk milik toko ini (bisa di-override per-produk di form produk). Mitra atur kota asal sendiri di profil mitra."
+        />
       </div>
 
       {/* Kurir */}

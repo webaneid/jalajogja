@@ -85,6 +85,8 @@ export default async function ProductEditPage({
         memberPrice: product.memberPrice != null ? parseFloat(String(product.memberPrice)) : null,
         stock:           product.stock,
         weightGram:      product.weightGram  ?? null,
+        originCityId:    product.originCityId   ?? null,
+        originCityName:  product.originCityName ?? null,
         images,
         categoryId:      product.categoryId  ?? null,
         status:          product.status,

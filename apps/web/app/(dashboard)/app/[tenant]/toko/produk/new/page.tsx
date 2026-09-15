@@ -53,6 +53,8 @@ export default async function ProdukNewPage({
         memberPrice:     null,
         stock:           0,
         weightGram:      null,
+        originCityId:    null,
+        originCityName:  null,
         productType:     "simple",
         attributeGroups: [],
         variations:      [],

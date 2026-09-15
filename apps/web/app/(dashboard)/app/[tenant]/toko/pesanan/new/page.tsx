@@ -44,6 +44,11 @@ export default async function PesananNewPage({
       mitraId:     schema.products.mitraId,
       sellerType:  schema.products.sellerType,
       productType: schema.products.productType,
+      // Override kota asal per-produk — KHUSUS produk tenant sendiri (mitraId null), tidak
+      // pernah dipakai untuk produk mitra. Lihat docs/arsitektur-addon-ongkir.md § "RENCANA —
+      // Kota Asal Pengiriman per Produk Tenant".
+      originCityId:   schema.products.originCityId,
+      originCityName: schema.products.originCityName,
     })
     .from(schema.products)
     .where(eq(schema.products.status, "active"))
@@ -59,6 +64,8 @@ export default async function PesananNewPage({
     mitraId:     p.mitraId,
     sellerType:  p.sellerType as "tenant" | "mitra",
     productType: p.productType as "simple" | "variable",
+    originCityId:   p.originCityId,
+    originCityName: p.originCityName,
   }));
 
   // ── Konfig ongkir tenant (add-on RajaOngkir) — sama pola checkout/page.tsx ────────

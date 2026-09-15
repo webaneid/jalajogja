@@ -84,6 +84,12 @@ export function createProductsTable(s: ReturnType<typeof pgSchema>) {
     attributeGroups: jsonb("attribute_groups").$type<AttributeGroup[]>(),  // null jika simple
     // Pengiriman
     weightGram: integer("weight_gram"),    // berat produk (gram), wajib untuk produk mitra
+    // Kota asal pengiriman — override opsional dari default toko, KHUSUS produk tenant sendiri
+    // (mitraId null). Produk mitra TIDAK PERNAH pakai kolom ini — kota asal mitra selalu dari
+    // mitras.rajaongkir_city_id (mitra wajib jual produk sendiri, satu lokasi tunggal). Lihat
+    // docs/arsitektur-addon-ongkir.md § "RENCANA — Kota Asal Pengiriman per Produk Tenant".
+    originCityId:   integer("origin_city_id"),
+    originCityName: text("origin_city_name"),
     // Mitra fields
     sellerType:  text("seller_type", { enum: ["tenant", "mitra"] as const }).notNull().default("tenant"),
     mitraId:     uuid("mitra_id"),

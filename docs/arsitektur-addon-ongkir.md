@@ -502,7 +502,210 @@ Tenant route baru:
 - Asuransi pengiriman
 - Return/retur barang
 - Dropship label (print label pengiriman atas nama tenant, bukan mitra)
-- `weight_gram` di `product_variations` (override per variasi)
+
+**Koreksi (2026-09-15):** `weight_gram` di `product_variations` SUDAH ADA sejak lama (dikonfirmasi
+di kode, `packages/db/src/schema/tenant/shop.ts:150`, dipakai sebagai override per-variasi di
+`checkout/page.tsx:223`) — baris "Ditunda" untuk ini di versi dokumen sebelumnya keliru/basi.
+
+---
+
+## Kota Asal Pengiriman per Produk Tenant — ✅ Kode SELESAI (2026-09-15)
+
+> Status: `bun run type-check` 0 error di semua workspace. Migration `0065` sudah dijalankan
+> di dev lokal (kolom terverifikasi ada). **Belum diverifikasi visual di browser** (perlu login
+> admin — tidak ada kredensial di sesi ini, sama seperti keterbatasan yang dicatat di fitur stok
+> sebelumnya). Belum di-commit/push, menunggu instruksi user. Konten di bawah dipertahankan apa
+> adanya sebagai rencana yang sudah dieksekusi persis sesuai isinya (bukan rekap ulang) — semua
+> "RENCANA"/"BARU" di bawah artinya "sudah dikerjakan sesuai rencana ini", bukan lagi rencana.
+
+### Masalah
+
+Saat ini kota asal pengiriman untuk produk **milik tenant sendiri** (bukan mitra) SATU untuk
+SEMUA produk — diambil dari satu config `/settings/addons/rajaongkir`
+(`tenant_addon_installations.config.origin_city_id`, dibaca di `checkout/page.tsx:248-253` dan
+`toko/pesanan/new/page.tsx` versi admin). Produk **mitra** sudah bisa beda kota asal (per mitra,
+`mitras.rajaongkir_city_id`) — tapi produk tenant sendiri tidak bisa, meski kenyataannya tenant
+bisa saja kirim sebagian produk dari gudang berbeda (mis. sebagian dropship dari supplier lain,
+sebagian dari gudang sendiri).
+
+Konfirmasi dari baca kode (bukan asumsi): tidak ada kolom kota-asal apa pun di tabel `products` —
+hanya `weight_gram` yang per-produk. Query `checkout/page.tsx:181-197` cuma JOIN `mitras` untuk
+origin, tidak pernah baca origin dari `products` itu sendiri.
+
+### Solusi
+
+Tambah kolom **opsional** `origin_city_id`/`origin_city_name` di tabel `products` — kalau diisi
+admin, override kota asal default tenant KHUSUS untuk produk itu; kalau kosong, fallback ke
+default tenant seperti sekarang. Pola INI PERSIS meniru `mitras.rajaongkir_city_id` yang sudah
+terbukti jalan — bukan desain baru.
+
+**Keputusan user (2026-09-15) — field ini KHUSUS produk tenant sendiri, TIDAK berlaku untuk
+produk mitra.** Alasan: mitra wajib jual produk buatan/milik sendiri, bukan dropship produk
+pihak lain — jadi kota asal mitra sudah pasti tunggal (lokasi mitra itu sendiri,
+`mitras.rajaongkir_city_id`), tidak ada skenario "satu mitra, produk beda gudang" yang perlu
+diakomodasi. Konsekuensi teknis: `product.originCityId` HANYA pernah dibaca kalau
+`product.mitraId IS NULL` — kalau suatu produk ternyata match ke mitra, override produk
+diabaikan sama sekali (defense-in-depth; secara UI pun field ini memang tidak pernah muncul
+untuk produk mitra karena `product-form.tsx` — form yang dipakai field ini — dikonfirmasi HANYA
+dipakai untuk produk tenant, tidak pernah untuk produk mitra, lihat § 5).
+
+**Urutan resolusi origin per item cart** (baru):
+```
+Produk milik mitra (product.mitraId IS NOT NULL):
+  1. mitra.rajaongkirCityId                            ← sudah ada, TIDAK berubah
+  (product.originCityId TIDAK PERNAH dicek untuk produk mitra)
+
+Produk milik tenant sendiri (product.mitraId IS NULL):
+  1. product.originCityId (kalau diisi admin)          ← BARU
+  2. tenant default (config.origin_city_id)             ← sudah ada, fallback terakhir
+```
+
+### 1. Schema — `packages/db/src/schema/tenant/shop.ts`
+
+Tambah 2 kolom nullable di `createProductsTable()`, tepat setelah `weightGram` (baris ~86):
+```typescript
+originCityId:   integer("origin_city_id"),
+originCityName: text("origin_city_name"),
+```
+
+### 2. DDL tenant baru — `packages/db/src/helpers/create-tenant-schema.ts`
+
+Tambah 2 baris setelah `weight_gram INTEGER,` di definisi tabel `products` (baris ~952).
+
+### 3. Migration tenant existing — `packages/db/migrations/0065_product_origin_city.sql`
+
+Pola sama persis `0058_shipping_cod_pickup.sql` (loop tenant aktif, `ALTER TABLE ... ADD COLUMN
+IF NOT EXISTS`):
+```sql
+DO $$
+DECLARE r RECORD; t TEXT;
+BEGIN
+  FOR r IN SELECT slug FROM public.tenants WHERE is_active = true LOOP
+    t := 'tenant_' || r.slug;
+    EXECUTE format('ALTER TABLE %I.products ADD COLUMN IF NOT EXISTS origin_city_id INTEGER', t);
+    EXECUTE format('ALTER TABLE %I.products ADD COLUMN IF NOT EXISTS origin_city_name TEXT', t);
+  END LOOP;
+END;
+$$;
+```
+
+### 4. Komponen baru — `apps/web/components/ui/rajaongkir-city-picker.tsx`
+
+**Temuan penting**: combobox pencarian kota RajaOngkir (debounced fetch ke `/api/ongkir/cities`)
+sudah DIDUPLIKASI independen 2×: `settings/addons/rajaongkir/config-form.tsx` (kota asal
+default tenant) dan `akun/mitra/apply/page.tsx` (kota asal mitra saat daftar). Menambah field
+ini di `product-form.tsx` akan jadi duplikat ke-3 kalau ditulis inline lagi — pola persis yang
+sudah pernah bikin masalah di project ini (kode-unik/voucher, 3× implementasi independen,
+`docs/arsitektur-voucher.md` § 16-18).
+
+**Keputusan user (2026-09-15) — konsolidasi sekalian, bukan ditunda.** Ekstrak jadi SATU
+komponen reusable (`<RajaOngkirCityPicker value={cityId} valueName={cityName} onChange={...} />`,
+controlled, sama sekali tidak tahu soal produk/mitra/tenant — cuma cari+pilih kota), dipakai di
+LOGIC BARU (`product-form.tsx`) DAN 2 tempat existing di-refactor dari inline ke komponen ini:
+- `product-form.tsx` (BARU — pemicu ekstraksi ini)
+- `settings/addons/rajaongkir/config-form.tsx` (refactor dari inline, baris ~56-71)
+- `akun/mitra/apply/page.tsx` (refactor dari inline, baris ~37-63)
+
+Risiko refactor 2 tempat existing: RENDAH — keduanya cuma UI (state cityId/cityName + hasil
+pencarian), tidak menyentuh logic simpan/validasi apa pun. Selama komponen baru mempertahankan
+behavior identik (debounce, minimal 2 karakter, endpoint `/api/ongkir/cities` yang sama), hasil
+akhirnya sama persis dari sudut pandang admin/mitra yang memakainya — cuma sumber kode yang
+disatukan.
+
+### 5. Form produk — `apps/web/components/toko/product-form.tsx`
+
+Tambah field baru "Kota Asal Pengiriman (opsional)" di bawah card "Stok & Berat" (baris ~516-544)
+— pakai `<RajaOngkirCityPicker>`, placeholder "Pakai kota asal default toko". State baru
+`originCityId`/`originCityName`, dikirim di `saveProductAction` (perlu tambah 2 field di payload
++ type `ProductFormValues` yang relevan).
+
+### 6. Resolusi origin saat checkout — 2 titik (duplikasi pre-existing, BUKAN diperkenalkan sesi ini)
+
+Dua tempat independen sudah membangun `SellerGroup` dengan logic identik (pre-existing
+duplication, sudah begitu sebelum rencana ini — bukan sesuatu yang baru diperkenalkan):
+- **Publik**: `apps/web/app/(public)/[tenant]/checkout/page.tsx` baris 181-261
+- **Admin manual order**: `apps/web/app/(dashboard)/app/[tenant]/toko/pesanan/new/page.tsx` +
+  `apps/web/components/toko/order-create-client.tsx`
+
+Kedua tempat perlu patch YANG SAMA:
+1. Query produk tambah `originCityId`/`originCityName` dari `products` (bukan cuma dari JOIN
+   `mitras`).
+2. Urutan resolusi (baris ~237-261 di `checkout/page.tsx`) — **produk mitra TIDAK PERNAH baca
+   `product.originCityId`**, urutan mitra sama sekali tidak berubah dari sekarang:
+   ```typescript
+   if (d.mitraId && d.mitraOriginCityId) {
+     // Produk mitra — SAMA PERSIS seperti sekarang, product.originCityId diabaikan
+     sellerType = "mitra"; originCityId = d.mitraOriginCityId; originCityName = d.mitraOriginCityName ?? "";
+   } else if (!d.mitraId && d.originCityId) {
+     // BARU — produk tenant sendiri, override per-produk
+     sellerType = "tenant"; originCityId = d.originCityId; originCityName = d.originCityName ?? "";
+   } else if (!d.mitraId && config.origin_city_id) {
+     // (sama seperti sekarang) fallback ke default toko
+     sellerType = "tenant"; originCityId = config.origin_city_id; originCityName = config.origin_city_name ?? "";
+   } else {
+     continue; // kota asal tidak diketahui, skip (sama seperti sekarang)
+   }
+   ```
+3. **`groupKey` WAJIB ikut memasukkan `originCityId`** (baris ~263), bukan cuma
+   `sellerType:sellerId` — supaya 2 produk tenant dengan kota asal beda otomatis jadi 2
+   `SellerGroup` terpisah (2 kartu "Paket dari..." di UI checkout), bukan tergabung salah:
+   ```typescript
+   const groupKey = `${sellerType}:${sellerId ?? "tenant"}:${originCityId}`;
+   ```
+
+**Tidak perlu ada perubahan** di `checkoutAction` (`cart/actions.ts`) — sudah generik menerima
+`shipping.lines[]` apa adanya tanpa asumsi "cuma 1 seller-group tenant per invoice" (dikonfirmasi
+baca kode, `sellerId` sudah nullable + tidak ada unique constraint di `invoice_shipping_lines`
+yang membatasi baris `seller_type='tenant'` cuma boleh satu per invoice).
+
+### Konsolidasi duplikasi checkout/admin-order (opsional, di luar scope fitur ini)
+
+Dua tempat di atas SUDAH duplikat sebelum rencana ini (bukan pre-existing tapi memang sengaja
+ditulis 2× waktu fitur COD/pickup & mitra origin dibangun). Menambah patch yang sama 2× lagi
+menambah utang duplikasi, tapi mengonsolidasi jadi satu helper (`resolveSellerGroups()` di
+`packages/db/src/helpers/shipping.ts`, dipakai kedua sisi) adalah refactor terpisah yang lebih
+besar dan berisiko menyentuh 2 alur yang sudah jalan sekaligus. **Rekomendasi**: terima
+duplikasi untuk sekarang (patch 2× seperti pola yang sudah ada), catat sebagai technical debt
+di `docs/lessons-learned.md` kalau dieksekusi — konsolidasi penuh sebagai task terpisah nanti.
+
+### Catatan di luar scope (ditemukan saat riset, bukan bagian rencana ini)
+
+`checkoutAction` **mempercayai `line.cost` dari client apa adanya** (`cart/actions.ts:864`,
+`cost: line.cost.toFixed(2)`) — hanya re-validasi COD/pickup eligibility server-side, TIDAK
+re-panggil RajaOngkir untuk verifikasi nominal ongkir. Ini gap pre-existing, tidak berhubungan
+dengan per-produk origin, TIDAK termasuk scope rencana ini — dicatat di sini supaya tidak
+terlupa, bukan untuk dikerjakan sekarang.
+
+### File yang Akan Tersentuh
+
+```
+packages/db/src/schema/tenant/shop.ts                                → +2 kolom products
+packages/db/src/helpers/create-tenant-schema.ts                      → DDL tenant baru
+packages/db/migrations/0065_product_origin_city.sql                  → BARU, migration tenant existing
+apps/web/components/ui/rajaongkir-city-picker.tsx                    → BARU, komponen shared
+apps/web/components/toko/product-form.tsx                            → field baru + payload
+apps/web/app/(dashboard)/app/[tenant]/toko/actions.ts                → createProductAction/updateProductAction terima+simpan 2 field baru
+apps/web/app/(public)/[tenant]/checkout/page.tsx                     → resolusi origin + groupKey
+apps/web/app/(dashboard)/app/[tenant]/toko/pesanan/new/page.tsx      → sama, sisi admin
+apps/web/components/toko/order-create-client.tsx                     → sama, sisi admin
+docs/arsitektur-addon-ongkir.md                                      → dokumen ini
+```
+
+### Keputusan Final (user, 2026-09-15) — semua pertanyaan terbuka sudah dijawab
+
+1. **Konsolidasi city-picker: YA, sekalian.** Komponen `<RajaOngkirCityPicker>` dipakai di 3
+   tempat (product-form.tsx BARU + refactor config-form.tsx + refactor mitra/apply/page.tsx) —
+   lihat § 4.
+2. **Override HANYA berlaku produk tenant sendiri, TIDAK untuk produk mitra.** Alasan bisnis:
+   mitra wajib jual produk milik/buatan sendiri (bukan dropship produk pihak lain), jadi satu
+   mitra = satu kota asal tunggal, tidak ada kasus "produk mitra yang sama, gudang beda-beda"
+   yang perlu diakomodasi. `product.originCityId` tidak pernah dibaca untuk produk yang
+   `mitraId`-nya terisi — lihat § "Urutan resolusi" dan § 6.
+3. **Per-produk saja, TIDAK per-variasi.** Semua variasi dari satu produk ikut kota asal produk
+   induknya — tidak ada perluasan ke `product_variations` di rencana ini.
+
+Rencana ini SUDAH FINAL secara desain, siap dieksekusi — menunggu sinyal eksekusi terpisah dari
+user (belum diminta mulai kode di pesan yang menghasilkan revisi ini).
 
 ---
 

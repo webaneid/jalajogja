@@ -950,6 +950,8 @@ export async function createTenantSchemaInDb(
                                     CHECK (seller_type IN ('tenant','mitra')),
         mitra_id     UUID,                      -- FK → mitras.id (set setelah tabel mitras dibuat)
         weight_gram  INTEGER,                   -- berat produk (gram), wajib untuk produk mitra
+        origin_city_id    INTEGER,               -- kota asal override (khusus produk tenant, bukan mitra)
+        origin_city_name  TEXT,
         created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW()
       )

@@ -183,8 +183,14 @@ export default async function CheckoutPage({ params }: Props) {
               productId:       ts.products.id,
               weightGram:      ts.products.weightGram,
               mitraId:         ts.products.mitraId,
-              originCityId:    ts.mitras.rajaongkirCityId,
-              originCityName:  ts.mitras.rajaongkirCityName,
+              // Override kota asal per-produk — KHUSUS produk tenant sendiri, tidak pernah
+              // dipakai untuk produk mitra (mitra selalu pakai originCityId mitranya sendiri,
+              // lihat resolusi di bawah). docs/arsitektur-addon-ongkir.md § "RENCANA — Kota
+              // Asal Pengiriman per Produk Tenant".
+              productOriginCityId:   ts.products.originCityId,
+              productOriginCityName: ts.products.originCityName,
+              mitraOriginCityId:     ts.mitras.rajaongkirCityId,
+              mitraOriginCityName:   ts.mitras.rajaongkirCityName,
               businessId:      ts.mitras.businessId,
               mitraCodEnabled:         ts.mitras.codEnabled,
               mitraPickupEnabled:      ts.mitras.pickupEnabled,
@@ -234,18 +240,34 @@ export default async function CheckoutPage({ params }: Props) {
             let pickupAddress: string | null;
             let pickupMapsUrl: string | null;
 
-            if (d.mitraId && d.originCityId) {
+            if (d.mitraId && d.mitraOriginCityId) {
+              // Produk mitra — SELALU pakai kota asal mitra sendiri. product.originCityId
+              // TIDAK PERNAH dibaca di sini, bahkan kalau terisi (mitra wajib jual produk
+              // sendiri, satu lokasi tunggal — bukan skenario yang butuh override per-produk).
               sellerType    = "mitra";
               sellerId      = d.mitraId;
               sellerName    = d.businessId ? (bizMap[d.businessId] ?? "Mitra") : "Mitra";
-              originCityId  = d.originCityId;
-              originCityName = d.originCityName ?? "";
+              originCityId  = d.mitraOriginCityId;
+              originCityName = d.mitraOriginCityName ?? "";
               codEnabled          = d.mitraCodEnabled ?? false;
               pickupEnabled       = d.mitraPickupEnabled ?? false;
               pickupLocationName  = d.mitraPickupLocationName ?? null;
               pickupAddress       = d.mitraPickupAddress ?? null;
               pickupMapsUrl       = d.mitraPickupMapsUrl ?? null;
+            } else if (!d.mitraId && d.productOriginCityId) {
+              // BARU — produk tenant sendiri dengan override kota asal per-produk.
+              sellerType    = "tenant";
+              sellerId      = null;
+              sellerName    = tenant.name;
+              originCityId  = d.productOriginCityId;
+              originCityName = d.productOriginCityName ?? "";
+              codEnabled          = tokoSettings.codEnabled;
+              pickupEnabled       = tokoSettings.pickupEnabled;
+              pickupLocationName  = tokoSettings.pickupLocationName || null;
+              pickupAddress       = tokoSettings.pickupAddress || null;
+              pickupMapsUrl       = tokoSettings.pickupMapsUrl || null;
             } else if (!d.mitraId && config.origin_city_id) {
+              // Fallback — produk tenant tanpa override sendiri, pakai default toko.
               sellerType    = "tenant";
               sellerId      = null;
               sellerName    = tenant.name;
@@ -260,7 +282,9 @@ export default async function CheckoutPage({ params }: Props) {
               continue; // kota asal tidak diketahui, skip
             }
 
-            const groupKey = `${sellerType}:${sellerId ?? "tenant"}`;
+            // groupKey ikut origin — 2 produk tenant dengan kota asal beda otomatis jadi 2
+            // SellerGroup terpisah (2 kartu "Paket dari..." di checkout), bukan tergabung salah.
+            const groupKey = `${sellerType}:${sellerId ?? "tenant"}:${originCityId}`;
             if (!groupMap[groupKey]) {
               groupMap[groupKey] = {
                 key: groupKey, sellerType, sellerId, sellerName,

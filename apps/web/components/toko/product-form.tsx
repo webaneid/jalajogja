@@ -16,6 +16,7 @@ import {
 import { TiptapEditor } from "@/components/editor/tiptap-editor";
 import { SeoPanel } from "@/components/seo/seo-panel";
 import { MediaPicker, type MediaItem } from "@/components/media/media-picker";
+import { RajaOngkirCityPicker, type RajaOngkirCity } from "@/components/ui/rajaongkir-city-picker";
 import {
   createProductAction,
   updateProductAction,
@@ -70,6 +71,8 @@ export type ProductFormProps = {
     memberPrice:     number | null;
     stock:           number;
     weightGram:      number | null;
+    originCityId:    number | null;
+    originCityName:  string | null;
     images:          ProductImage[];
     categoryId:      string | null;
     status:          "draft" | "active" | "archived";
@@ -238,6 +241,8 @@ export function ProductForm({
   const [memberPrice,     setMemberPrice]     = useState(initialData.memberPrice != null ? String(initialData.memberPrice) : "");
   const [stock,           setStock]           = useState(String(initialData.stock));
   const [weightGram,      setWeightGram]      = useState(initialData.weightGram != null ? String(initialData.weightGram) : "");
+  const [originCityId,    setOriginCityId]    = useState<number | null>(initialData.originCityId);
+  const [originCityName,  setOriginCityName]  = useState(initialData.originCityName ?? "");
   const [productType,     setProductType]     = useState<"simple" | "variable">(initialData.productType);
   const [attributeGroups, setAttributeGroups] = useState<AttributeGroup[]>(initialData.attributeGroups);
   const [variations,      setVariations]      = useState<VariationLocal[]>(initialData.variations);
@@ -283,6 +288,8 @@ export function ProductForm({
       memberPrice:     memberPrice ? (parseFloat(memberPrice) || null) : null,
       stock:           stockNum,
       weightGram:      weightGramNum,
+      originCityId,
+      originCityName:  originCityId ? (originCityName.trim() || null) : null,
       productType,
       attributeGroups: productType === "variable" ? attributeGroups : [],
       images:      images.map((img, i) => ({ ...img, order: i })),
@@ -541,6 +548,25 @@ export function ProductForm({
                     className="h-7 text-xs w-28 px-2 shrink-0"
                   />
                 </div>
+              </div>
+
+              {/* Kota Asal Pengiriman — override opsional dari default toko, KHUSUS produk
+                  tenant sendiri (bukan mitra — mitra atur kota asal sendiri di profil mitra,
+                  lihat docs/arsitektur-addon-ongkir.md). Kosongkan untuk pakai default toko. */}
+              <div className="rounded-xl border border-border bg-card p-3 space-y-1.5">
+                <p className="text-xs font-medium leading-none">Kota Asal Pengiriman</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Opsional — kosongkan untuk pakai kota asal default toko.
+                </p>
+                <RajaOngkirCityPicker
+                  value={originCityId}
+                  valueLabel={originCityName}
+                  onChange={(city: RajaOngkirCity | null) => {
+                    setOriginCityId(city?.id ?? null);
+                    setOriginCityName(city?.label ?? "");
+                  }}
+                  placeholder="Ketik nama kota (min. 2 karakter)..."
+                />
               </div>
             </div>
 
