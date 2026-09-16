@@ -2093,6 +2093,14 @@ dihitung real-time: `forum_status === 'active' && better_auth_user_id === null` 
 user_id` terisi), label otomatis balik jadi "Aktif" di render berikutnya — tidak ada state yang
 perlu di-update manual di mana pun.
 
+**Definisi persis (dikonfirmasi user 2026-09-17)**: *"claim keanggotaan adalah, claim bahwa dia
+aktif secara keanggotaan, tp pending karena blm set password."* — "Pending Claim" **BUKAN**
+"menunggu approval admin" (itu `forum_status='pending'`, kondisi berbeda) — maknanya murni
+**sudah resmi/aktif secara keanggotaan, tinggal orangnya sendiri yang perlu klaim akun (set
+password/register) supaya bisa login** ke platform forum. Import Excel tidak pernah "mengaktifkan
+sistem login" — cuma mengaktifkan status keanggotaan (kalau syaratnya terpenuhi, § 4), login
+tetap murni tindakan terpisah dari orangnya sendiri.
+
 **Prioritas badge Status — SATU badge per baris, bukan ditumpuk** (revisi dari draft pertama
 "dua badge terpisah" — ternyata untuk forum, override klaim akun MENGGANTIKAN label forum_status,
 bukan berdampingan dengannya, supaya tidak ada 2 badge redundan bilang hal yang sama):
