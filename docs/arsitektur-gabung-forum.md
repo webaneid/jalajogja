@@ -2321,6 +2321,27 @@ menimpa.
   benar untuk keduanya, lalu join manual sesudahnya dapat nomor urut lanjutan (bukan mulai dari
   1 lagi) — ini yang belum pernah dites sebelum temuan gap ini
 
+### 12. Susulan Belum Dibahas — Notifikasi Status ke Member (SENGAJA DITUNDA, 2026-09-17)
+
+User tanya apakah badge di atas juga bisa tampil sebagai notifikasi ke MEMBER di `/akun` (bukan
+cuma admin `/members`) — dijawab (3 kasus, ringkas) lalu **sengaja ditunda sampai eksekusi § 1–11
+di atas selesai**, supaya tidak melebar sebelum yang sudah direncanakan matang:
+
+1. **Cabang/marhalah "Data Belum Lengkap"** — GRATIS, sudah otomatis konsisten (overlay
+   `MembershipEligibilityOverlay` yang sudah ada pakai fungsi eligibility yang sama). Nol kerja
+   tambahan.
+2. **Forum "Pending Claim"** — TIDAK bisa jadi notifikasi `/akun` (orangnya belum punya akun,
+   tidak bisa login untuk melihatnya). Kalau mau ditindaklanjuti, bentuknya notifikasi WA
+   keluar (fitur baru terpisah, butuh WA template baru) — bukan overlay `/akun`.
+3. **Forum "Menunggu Persetujuan"/"Ditangguhkan"/"Ditolak"** — celah nyata ditemukan:
+   `MembershipEligibilityOverlay` SEKARANG cuma tahu 1 kondisi "forum belum genuinely aktif" →
+   selalu pesan generik "Gabung {tenantName}", TERMASUK untuk member yang sebenarnya
+   ditangguhkan/ditolak admin (pesan jadi salah/membingungkan). Perlu percabangan pesan baru
+   per `forumStatus` di komponen yang sama.
+
+**Jangan mulai § 12 ini sebelum § 1–11 selesai dan dikonfirmasi user** — ingatkan user soal ini
+begitu eksekusi utama beres, jangan diasumsikan otomatis termasuk.
+
 ---
 
 ## Dokumen Terkait
