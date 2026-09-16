@@ -2120,25 +2120,62 @@ untuk state selain `active`. Untuk baris yang statusnya sudah "Pending Claim" (o
 badge "Akun" terpisah ini TIDAK usah dirender lagi di baris yang sama (sudah terwakili di badge
 utama, hindari redundan).
 
-### 4. ⚠️ Perlu Konfirmasi — Import Excel: Rekonsiliasi dengan § 22.5 `arsitektur-import-anggota.md`
+### 4. Import Excel — Rekonsiliasi dengan § 22.5 `arsitektur-import-anggota.md` (DIKONFIRMASI)
 
-Sebelum menulis rencana ini saya cek dokumen import (§ 22.5, 2026-07-31) — ada keputusan LAMA
-yang sudah dikunci ketat dan pernah di-revert sekali karena implementasi awalnya salah paham:
-*"kalau kosong berarti blm terdaftar, hanya anggota dengan nomor id saja yg otomatis jadi
-anggota... kita pakai standard ketat gitu agar urutannya tidak berubah."* — yaitu: baris Excel
-TANPA kolom Nomor Keanggotaan terisi TETAP `pending` selamanya (tidak pernah auto-generate nomor
-saat import, beda dari `/gabung` yang generate real-time).
+> **Dikonfirmasi user 2026-09-17**: *"untuk yang pending secara nomor id forum tentu pending..
+> tanpa nomor id forum posisinya pending, dia harus melengkapi data, atau membayar donasi
+> campaign jika diwajibkan, standardnya dia akan memiliki nomor id forum tersebut."* — interpretasi
+> di bawah BENAR, § 22.5 TIDAK berubah.
 
-**Interpretasi saya (kemungkinan besar TIDAK ada kontradiksi, tapi perlu kamu konfirmasi)**:
-pernyataan hari ini *"kalau di import ... otomatis aktif ... tapi wajib klaim keanggotaan"*
-kemungkinan besar berbicara soal baris yang **Excel-nya SUDAH punya Nomor Keanggotaan** (skenario
-yang MEMANG sudah `active` menurut § 22.5 yang ada) — kontribusi barunya di sini murni soal LABEL
-("Pending Claim" saat belum klaim akun), bukan mengubah kapan `forum_status` jadi `active`. Baris
-TANPA nomor di Excel tetap `pending` seperti § 22.5, sama sekali tidak tersentuh rencana ini.
-**Kalau interpretasi ini salah** — kalau maksudmu SEMUA baris forum hasil import (nomor kosong
-ataupun tidak) harus langsung `active` — itu perlu diskusi ulang eksplisit dulu karena mengubah
-keputusan yang sudah pernah direvert satu kali sebelumnya (§ 22.5), bukan sesuatu yang saya
-putuskan sendiri di sini.
+Baris Excel TANPA kolom Nomor Keanggotaan terisi **TETAP `pending`** (tidak pernah auto-generate
+nomor saat import — beda dari `/gabung` yang generate real-time) — sesuai § 22.5, standar ketat
+yang sudah dikunci sebelumnya dan pernah di-revert sekali karena implementasi awalnya salah paham.
+Baris yang **Excel-nya SUDAH punya Nomor Keanggotaan** → `forum_status='active'` (sesuai § 22.5
+yang sudah ada) + label "Pending Claim" (§ 3) sampai klaim akun. Nol perubahan ke logic aktivasi
+import — kontribusi rencana ini murni di lapisan LABEL, bukan lapisan status.
+
+### 4b. ⚠️ Temuan Baru — Celah Sinkronisasi Counter Setelah Import (2 dari 4 Preset Format)
+
+> User: *"yg paling saya khawatirkan adalah harus memastikan bahwa setelah import, ketika member
+> baru datang dan bergabung dia bisa langsung mendapat id dan mendapat nomor urut sesuai standard
+> forum di nomor paling akhir setelah hasil import manual. ini harus dipastikan benar."*
+
+**Kabar baik — proteksi ini SUDAH ADA**, dibangun bareng fitur import: setelah commit import,
+`commitImportAction` (`members/import/actions.ts:437-464`) otomatis melanjutkan
+`forum_membership_sequences.last_number` ke nilai tertinggi yang ter-import (`GREATEST`, atomic
+`SELECT ... FOR UPDATE`, pola sama `generateForumMembershipNumber()`) — anggota baru yang join via
+`/gabung` setelah import benar mendapat nomor urut lanjutan, bukan mulai dari 1 lagi.
+
+**Tapi ada gap nyata**: ekstraksi nomor untuk sinkronisasi ini (`extractYearSeqFromMembershipNumber`,
+`lib/import-anggota-mapping.ts:176-180`) **HANYA mengenali preset `year_seq`** ("Tahun + Urutan",
+`2017.00001`, via regex `^\d{4}\.(\d+)$`) — 3 preset lain (`month_year_seq` "Bulan-Tahun + Urutan",
+`year_birthdate_seq` "Tahun + Tgl Lahir + Urutan", `joinyear_gradyear_seq` "Tahun Daftar +
+Angkatan + Urutan") **TIDAK dikenali fungsi ini** (regex tidak match bentuknya) — kalau forum yang
+diimport pakai salah satu dari 3 format itu, sinkronisasi counter SILENT GAGAL (tidak error, cuma
+tidak jalan) — persis risiko yang kamu khawatirkan, tapi terbatas ke 3 format non-default ini.
+(Catatan: `joinyear_gradyear_seq` kebetulan PUNYA bentuk numerik yang sama — `\d{4}\.\d+` — jadi
+SEBENARNYA ikut ter-parse oleh regex yang ada meski komentarnya tidak menyebut preset itu; yang
+BENAR-BENAR tidak tercover cuma `month_year_seq` dan `year_birthdate_seq`.)
+
+**Perbaikan yang direncanakan**: generalisasi `extractYearSeqFromMembershipNumber()` jadi
+format-aware — terima parameter `format: ForumMembershipNumberFormat` (dari
+`membership_config` tenant), parsing per-format sebagai INVERS PERSIS dari
+`formatForumMembershipNumber()`:
+- `year_seq`/`month_year_seq`/`joinyear_gradyear_seq` → seq = substring setelah "." TERAKHIR
+  (bukan regex 4-digit-tetap — robust kalau seq pernah tembus >99999).
+- `year_birthdate_seq` (tanpa separator, `${year}${birthDDMMYYYY}${seq}`) → seq = substring
+  SETELAH 12 karakter pertama (4 tahun + 8 tanggal lahir), BUKAN "5 karakter terakhir" (salah
+  kalau seq pernah tembus >99999, string jadi lebih panjang dari 17 karakter).
+- Format tidak dikenali / parsing gagal → `null` seperti sekarang (skip counter continuation
+  untuk baris itu, tidak pernah crash import).
+
+Dipanggil dengan format YANG SEDANG DIKONFIGURASI admin forum saat ini (`getSetting(tenantDb,
+"membership_config","forum")`, sudah di-fetch `commitImportAction` untuk keperluan lain) —
+BUKAN dicoba-tebak dari bentuk string. Batasan yang tetap diterima: kalau format nomor historis
+di Excel BEDA dari format yang SEKARANG dikonfigurasi (mis. admin pernah ganti preset), parsing
+tetap gagal untuk baris lama itu — di luar scope yang bisa diselesaikan otomatis, sama seperti
+batasan "tidak ada backfill nomor untuk anggota lama" yang sudah dicatat di § "Nomor Keanggotaan
+Lokal Forum" di atas.
 
 ### 5. Aksi Admin Baru — Approve/Suspend, OPSIONAL (bukan gate wajib)
 
@@ -2268,6 +2305,8 @@ menimpa.
 | `app/(dashboard)/app/[tenant]/members/[id]/page.tsx` | Query + render sejajar (§ 7) |
 | `app/(dashboard)/app/[tenant]/members/actions.ts` | 4 action baru (§ 5) + fix `createMemberAction` payment-aware (§ 5) |
 | `app/(dashboard)/app/[tenant]/members/[id]/edit/page.tsx` (mungkin) | Keputusan dropdown status vestigial (§ 9) |
+| `lib/import-anggota-mapping.ts` | `extractYearSeqFromMembershipNumber` → format-aware, cover 4 preset (§ 4b) |
+| `app/(dashboard)/app/[tenant]/members/import/actions.ts` | Kirim `format` yang dikonfigurasi ke fungsi ekstraksi (§ 4b) |
 
 ### 11. Verifikasi Sebelum Dianggap Selesai
 
@@ -2277,6 +2316,10 @@ menimpa.
   active, admin-add manual dengan & tanpa campaign wajib (cek forumStatus beda), import Excel
   dengan & tanpa nomor (cek § 4 tidak berubah); cabang mana pun — member dengan data lengkap vs
   belum lengkap tampil beda badge, TIDAK ada perubahan pada baris yang sudah lengkap
+- **Khusus § 4b**: uji import dengan tenant forum yang dikonfigurasi preset `month_year_seq` DAN
+  `year_birthdate_seq` (bukan cuma default `year_seq`) — konfirmasi counter ikut tersinkron
+  benar untuk keduanya, lalu join manual sesudahnya dapat nomor urut lanjutan (bukan mulai dari
+  1 lagi) — ini yang belum pernah dites sebelum temuan gap ini
 
 ---
 
