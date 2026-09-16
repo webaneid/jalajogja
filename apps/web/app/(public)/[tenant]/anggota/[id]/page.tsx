@@ -18,6 +18,7 @@ import {
   CreditCard, Hash, Briefcase,
 } from "lucide-react";
 import { SocialLinks } from "@/components/ui/social-links";
+import { isValidUuid } from "@/lib/is-uuid";
 
 type Params = Promise<{ tenant: string; id: string }>;
 
@@ -63,6 +64,7 @@ const PERAN_LABEL: Record<string, string> = {
 
 export default async function AnggotaProfilePage({ params }: { params: Params }) {
   const { tenant: slug, id: memberId } = await params;
+  if (!isValidUuid(memberId)) notFound();
 
   // ── Auth: wajib login ─────────────────────────────────────────────────────
   const session = await auth.api.getSession({ headers: await headers() });

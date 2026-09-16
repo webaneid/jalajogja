@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { createTenantDb, getSettings, findEligibleInstallmentPlan } from "@jalajogja/db";
 import { getTenantTimezone } from "@/lib/tenant-timezone.server";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
+import { isValidUuid } from "@/lib/is-uuid";
 import { ArrowLeft, Receipt } from "lucide-react";
 import type { Metadata } from "next";
 import {
@@ -42,6 +43,7 @@ function filterByCategory<T extends { categories: string[] }>(
 
 export default async function PublicInvoicePage({ params }: Props) {
   const { tenant: slug, id: invoiceId } = await params;
+  if (!isValidUuid(invoiceId)) notFound();
 
   const [tenant] = await db
     .select({ id: tenants.id, name: tenants.name })

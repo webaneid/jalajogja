@@ -8,6 +8,14 @@
 
 ---
 
+## [2026-09-18] Segmen URL `[id]` mentah dipakai langsung di query kolom UUID — crash 500 untuk bot/scanner, bukan 404 bersih
+**Masalah:** PM2 error log produksi menunjukkan `invalid input syntax for type uuid: "mogus.id"` dari `/usaha/[id]/page.tsx` — bot/scanner probe path acak (`/{tenant}/usaha/mogus.id`) bikin Postgres throw error mentah, ditangkap sebagai 500 generic error page, bukan 404 yang wajar.
+**Root cause:** Segmen URL `id` dari `params` dipakai LANGSUNG di `eq(kolomUuid, id)` tanpa validasi bentuknya dulu — untuk string yang bukan UUID valid, driver Postgres gagal cast ke tipe `uuid` dan throw exception mentah yang tidak ditangkap (tidak ada `error.tsx` boundary khusus di route group `(public)`, sesuai lesson `[2026-08-31]` di bawah).
+**Fix:** Helper baru `apps/web/lib/is-uuid.ts` (`isValidUuid()`, regex generik) dipasang di AWAL tiap halaman yang menerima `id` UUID dari URL — `notFound()`/`return {}` langsung kalau tidak valid, sebelum query apa pun. Diterapkan ke 6 halaman: `usaha/[id]`, `pesantren/[id]`, `profesional/[id]`, `anggota/[id]`, `dokumen/view/[id]`, `invoice/[id]` (baik `generateMetadata` maupun komponen halaman utama, masing-masing).
+**Pencegahan:** Sama seperti lesson "guard tenant exists" `[2026-08-31]` — kelas bug ini ("segmen URL dipakai mentah tanpa validasi bentuk sebelum masuk query bertipe spesifik") ditemukan di 1 halaman lewat log produksi, TAPI polanya sistemik di semua halaman publik `[tenant]/{modul}/[id]` yang query langsung by UUID. Kalau nambah halaman publik baru dengan pola serupa, WAJIB validasi format `id` (UUID/angka/dll sesuai tipe kolom) di baris pertama sebelum query — jangan asumsikan Postgres error mentah otomatis jadi 404 yang aman.
+
+---
+
 ## [2026-09-16] GOWA `/app/logout` menghapus device sepenuhnya, bukan cuma logout sesi — QR reconnect selalu 502 setelahnya
 **Masalah:** Admin klik "Putuskan" (disconnect) WhatsApp di settings, lalu coba hubungkan ulang → QR gagal load, `/api/wa/qr` balas 502 terus-menerus. Terjadi di ≥2 tenant (`pc-ikpm-jogjakarta`, `forcreator`), bukan kasus tunggal.
 **Root cause:** `disconnectWhatsAppAction`/`deactivateWhatsAppAction` (`settings/actions.ts`) memanggil GOWA `GET /app/logout` dengan asumsi ini cuma logout sesi WA (device tetap terdaftar, tinggal discan ulang). Ternyata di versi GOWA yang jalan sekarang, `/app/logout` **menghapus device_id dari GOWA sepenuhnya** — `/app/devices` tidak lagi mencantumkannya. `/api/wa/qr` (`app/api/wa/qr/route.ts`) langsung panggil `/app/login` tanpa pastikan device masih ada dulu → GOWA balas 404 `DEVICE_NOT_FOUND` → route sengaja diteruskan sebagai 502 ke client (bukan bug terpisah, itu perilaku by-design route ini untuk error GOWA non-2xx).

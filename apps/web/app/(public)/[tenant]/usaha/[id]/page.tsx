@@ -18,6 +18,7 @@ import { generateMetadata as buildMetadata } from "@/lib/seo";
 import { getTenantSeoBase } from "@/lib/tenant-seo";
 import { resolveBaseUrl } from "@/lib/resolve-base-url";
 import { getPublicNavMenu } from "@/lib/get-public-nav-menu";
+import { isValidUuid } from "@/lib/is-uuid";
 import { SocialLinks } from "@/components/ui/social-links";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getVariantUrl } from "@/lib/image-processor";
@@ -36,6 +37,7 @@ type Params = Promise<{ tenant: string; id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { tenant: slug, id } = await params;
+  if (!isValidUuid(id)) return {};
   const [base, b] = await Promise.all([
     getTenantSeoBase(slug),
     db.select({ name: memberBusinesses.name, coverUrl: memberBusinesses.coverUrl, description: memberBusinesses.description })
@@ -65,6 +67,7 @@ function InfoRow({ label, value }: { label: string; value?: string | number | nu
 
 export default async function UsahaDetailPage({ params }: { params: Params }) {
   const { tenant: slug, id } = await params;
+  if (!isValidUuid(id)) notFound();
 
   const [tenant] = await db
     .select({ id: tenants.id, name: tenants.name, isActive: tenants.isActive })
