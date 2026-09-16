@@ -20,6 +20,18 @@ export async function GET(request: NextRequest) {
   const deviceId = slug;
 
   try {
+    // GOWA `/app/logout` (dipanggil saat admin klik "Putuskan") ternyata menghapus device
+    // sepenuhnya, bukan cuma logout sesi — device_id jadi tidak listed lagi dan /app/login
+    // berikutnya selalu 404 DEVICE_NOT_FOUND. Daftarkan ulang di sini (idempotent — GOWA
+    // balas non-200 "already exists" kalau device masih ada, diabaikan) supaya reconnect
+    // setelah disconnect selalu bisa, bukan cuma saat pertama kali. Lihat docs/lessons-learned.md.
+    await fetch(`${baseUrl}/devices`, {
+      method:  "POST",
+      headers: { Authorization: gowaBasicAuth(), "Content-Type": "application/json" },
+      body:    JSON.stringify({ device_id: deviceId }),
+      cache:   "no-store",
+    }).catch(() => {});
+
     const res = await fetch(`${baseUrl}/app/login`, {
       headers: { Authorization: gowaBasicAuth(), "X-Device-Id": deviceId },
       cache: "no-store",

@@ -8,6 +8,14 @@
 
 ---
 
+## [2026-09-16] GOWA `/app/logout` menghapus device sepenuhnya, bukan cuma logout sesi — QR reconnect selalu 502 setelahnya
+**Masalah:** Admin klik "Putuskan" (disconnect) WhatsApp di settings, lalu coba hubungkan ulang → QR gagal load, `/api/wa/qr` balas 502 terus-menerus. Terjadi di ≥2 tenant (`pc-ikpm-jogjakarta`, `forcreator`), bukan kasus tunggal.
+**Root cause:** `disconnectWhatsAppAction`/`deactivateWhatsAppAction` (`settings/actions.ts`) memanggil GOWA `GET /app/logout` dengan asumsi ini cuma logout sesi WA (device tetap terdaftar, tinggal discan ulang). Ternyata di versi GOWA yang jalan sekarang, `/app/logout` **menghapus device_id dari GOWA sepenuhnya** — `/app/devices` tidak lagi mencantumkannya. `/api/wa/qr` (`app/api/wa/qr/route.ts`) langsung panggil `/app/login` tanpa pastikan device masih ada dulu → GOWA balas 404 `DEVICE_NOT_FOUND` → route sengaja diteruskan sebagai 502 ke client (bukan bug terpisah, itu perilaku by-design route ini untuk error GOWA non-2xx).
+**Fix:** `/api/wa/qr/route.ts` sekarang `POST /devices` (idempotent — GOWA balas non-200 "already exists" kalau device masih ada, diabaikan) SEBELUM memanggil `/app/login`, meniru pola yang sudah ada di `connectWhatsAppAction`. Device yang terlanjur hilang untuk 2 tenant di atas didaftarkan ulang manual via curl langsung ke GOWA production sebagai mitigasi darurat sebelum fix di-deploy.
+**Pencegahan:** Kalau sebuah endpoint API mengasumsikan resource eksternal (device GOWA, dll) "pasti masih ada" setelah alur normal (logout/disconnect), jangan percaya — verifikasi/re-create idempotent di titik pemakaian berikutnya, terutama untuk service pihak ketiga yang perilakunya tidak selalu sama persis dengan dokumentasi/asumsi awal saat integrasi dibangun.
+
+---
+
 ## [2026-08-31] Guard "tenant exists" wajib diaudit ke SEMUA titik pemanggilan, bukan cuma yang pernah dilaporkan bug
 **Masalah:** Bot/scraper yang probe path acak (`/dist/...`, `/v1/...`) menyebabkan error 500 di catch-all route `[...slug]/page.tsx` (ditemukan dari `pm2 logs` production).
 **Root cause:** `resolveSlugKind()` langsung memanggil `createTenantDb()` untuk segmen URL yang ditangkap sebagai `[tenant]` TANPA cek dulu tenant itu genuinely ada — schema yang tidak pernah ada menyebabkan error PostgreSQL "relation does not exist" tembus jadi 500 (tidak ada `error.tsx` boundary di route group `(public)`). Kelas bug ini SUDAH PERNAH difix sebelumnya untuk `generateMetadata` di file lain, tapi fungsi ini kelewat saat itu.
