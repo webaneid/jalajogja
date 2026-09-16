@@ -2036,7 +2036,7 @@ ini. Nol migrasi DB (semua kolom/flag yang dipakai sudah ada sejak sesi-sesi seb
 
 ---
 
-## Admin Dashboard Forum — Menutup Gap `/members` (RENCANA, 2026-09-17)
+## Admin Dashboard Forum — Menutup Gap `/members` (✅ Kode SELESAI, 2026-09-17)
 
 > Ditulis setelah audit dokumentasi-vs-kode (diminta user): *"apakah kamu bisa cek jenis tenant
 > forum ... bandingkan antara dokumentasi dan implemented code, kemudian cek laman /members ...
@@ -2045,7 +2045,13 @@ ini. Nol migrasi DB (semua kolom/flag yang dipakai sudah ada sejak sesi-sesi seb
 > keanggotaan ikpm, atau aktif keanggotaan forum."* Tiga temuan audit + tindak lanjut user
 > (*"dipastikan bahwa admin bisa approving bahkan men-suspend user jika diperlukan"* + pertanyaan
 > soal member yang resmi tapi belum klaim akun) dirangkum jadi satu rencana eksekusi di sini.
-> **Belum dieksekusi** — dokumen dulu, kode menyusul setelah rencana ini oke.
+>
+> **Status: kode SELESAI** — `bun run type-check` bersih (semua package), skill
+> `jalakarta-security-review` dijalankan untuk 4 action baru + `createMemberAction` (hasil:
+> nol temuan, 1 perbaikan proaktif ditambahkan saat review — race condition double-klik pada
+> approve/reject/suspend/reactivate, sekarang dibungkus `db.transaction()` + `FOR UPDATE` row
+> lock, pola sama `generateForumMembershipNumber()`). Nol migrasi DB (sesuai rencana). **Belum
+> di-commit/push, belum dijalankan di VPS, belum diverifikasi visual di browser.**
 
 ### 1. Ringkasan Temuan Audit
 

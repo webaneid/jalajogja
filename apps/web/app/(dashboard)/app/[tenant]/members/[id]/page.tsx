@@ -26,6 +26,9 @@ import { getEnabledEkosistemModules, getEkosistemModuleLabels } from "@/lib/ekos
 import { resolveEkosistemModuleLabel } from "@/lib/ekosistem-modules";
 import { getTaxonomyOverrides } from "@/lib/taxonomy-overrides.server";
 import { displayPhone }   from "@/lib/phone";
+import { checkMemberEligibility } from "@/lib/member-eligibility";
+import { resolveForumStatusBadge, shouldShowAccountBadge, type ForumStatus } from "@/lib/forum-status-badge";
+import { ForumStatusActions } from "@/components/members/forum-status-actions";
 import { DeleteMemberButton } from "./delete-button";
 import {
   EducationSection,
@@ -147,6 +150,9 @@ export default async function MemberDetailPage({
         website:   socialMedias.website,
         // Keanggotaan
         status:        tenantMemberships.status,
+        forumStatus:   tenantMemberships.forumStatus,
+        membershipNumber: tenantMemberships.membershipNumber,
+        betterAuthUserId: members.betterAuthUserId,
         joinedAt:      tenantMemberships.joinedAt,
         registeredVia: tenantMemberships.registeredVia,
       })
@@ -283,6 +289,33 @@ export default async function MemberDetailPage({
 
   if (!row) notFound();
 
+  const isForumTenant = access.tenant.tenantType === "forum";
+  const hasAccount = !!row.betterAuthUserId;
+  const forumStatus = row.forumStatus as ForumStatus | null;
+  const showAccountBadge = shouldShowAccountBadge(isForumTenant, forumStatus, hasAccount);
+
+  // "Data Belum Lengkap" (§ 8 docs/arsitektur-gabung-forum.md) — cabang/marhalah, murni label,
+  // sama kondisi dengan yang dipakai /members (list).
+  let showIncompleteBadge = false;
+  if (!isForumTenant && row.status === "active") {
+    const eligibility = await checkMemberEligibility(memberId, []);
+    showIncompleteBadge = !eligibility.eligible;
+  }
+
+  let headerBadgeLabel: string;
+  let headerBadgeColor: string;
+  if (isForumTenant) {
+    const badge = resolveForumStatusBadge(forumStatus, hasAccount);
+    headerBadgeLabel = badge.label;
+    headerBadgeColor = badge.colorClass;
+  } else if (showIncompleteBadge) {
+    headerBadgeLabel = "Data Belum Lengkap";
+    headerBadgeColor = "bg-amber-100 text-amber-700";
+  } else {
+    headerBadgeLabel = STATUS_LABEL[row.status ?? "active"];
+    headerBadgeColor = STATUS_COLOR[row.status ?? "active"];
+  }
+
   // Format tempat lahir
   const birthPlace = row.birthRegencyName
     ? `${row.birthRegencyName}${row.birthProvinceName ? `, ${row.birthProvinceName}` : ""}`
@@ -351,12 +384,17 @@ export default async function MemberDetailPage({
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{row.name}</h1>
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <span
-              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[row.status ?? "active"]}`}
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${headerBadgeColor}`}
             >
-              {STATUS_LABEL[row.status ?? "active"]}
+              {headerBadgeLabel}
             </span>
+            {showAccountBadge && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                Belum Klaim Akun
+              </span>
+            )}
             {row.memberNumber && (
               <span className="font-mono text-xs text-muted-foreground">
                 {row.memberNumber}
@@ -364,7 +402,10 @@ export default async function MemberDetailPage({
             )}
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          {isForumTenant && (
+            <ForumStatusActions slug={slug} memberId={memberId} forumStatus={forumStatus} />
+          )}
           <Link
             href={`/app/${slug}/members/${memberId}/edit`}
             className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-accent transition-colors"
@@ -392,7 +433,10 @@ export default async function MemberDetailPage({
       {/* ── Keanggotaan ── */}
       <Section title="Keanggotaan">
         <dl>
-          <Row label="Status"        value={STATUS_LABEL[row.status ?? "active"]} />
+          <Row label="Status" value={headerBadgeLabel} />
+          {isForumTenant && (
+            <Row label="No. ID Forum" value={row.membershipNumber} />
+          )}
           <Row label="Bergabung"     value={joinedAtFormatted} />
           <Row label="Didaftarkan via" value={row.registeredVia ?? undefined} />
         </dl>

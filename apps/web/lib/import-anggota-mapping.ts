@@ -38,6 +38,7 @@ import {
   BUSINESS_BRANCHES_ENUM,
   BUSINESS_REVENUE_ENUM,
 } from "@/lib/business-form-options";
+import type { ForumMembershipNumberFormat } from "@/lib/forum-membership-number";
 
 // ── Isi HANYA field yang di database masih kosong — TIDAK PERNAH menimpa nilai yang sudah
 // ada. Generik, dipakai untuk members DAN contacts (bentuk field beda, logic sama). ──────
@@ -167,16 +168,40 @@ export function mapDomicileStatus(raw: string): "permanent" | "temporary" | null
 // tenant_memberships.membershipNumber ───────────────────────────────────────────────
 // Disimpan APA ADANYA sebagai teks (cuma trim) — TIDAK divalidasi/direformat, karena setiap
 // tenant forum bisa memilih preset format nomornya sendiri (lib/forum-membership-number.ts,
-// 3 preset berbeda) — tool ini tidak berhak memaksa satu format "benar" untuk semua forum.
-// Fungsi di bawah HANYA best-effort UNTUK MELANJUTKAN COUNTER: kalau kebetulan formatnya
-// "TAHUN.URUTAN" (preset default "Tahun + Urutan", contoh "2017.00001"), sequence-nya
-// diekstrak supaya forum_membership_sequences tidak tabrakan dengan nomor yang sudah
-// diimport. Format lain (atau tidak ada — banyak forum baru belum punya penomoran historis
-// sama sekali) tetap diterima sebagai string biasa, cuma tidak ikut proses lanjutan counter.
-export function extractYearSeqFromMembershipNumber(raw: string): { seq: number } | null {
-  const m = raw.trim().match(/^\d{4}\.(\d+)$/);
-  if (!m) return null;
-  return { seq: parseInt(m[1], 10) };
+// 4 preset berbeda) — tool ini tidak berhak memaksa satu format "benar" untuk semua forum.
+// Fungsi di bawah HANYA best-effort UNTUK MELANJUTKAN COUNTER: kalau string yang diimport
+// COCOK dengan bentuk preset yang SEDANG DIKONFIGURASI admin forum ini, sequence-nya diekstrak
+// supaya forum_membership_sequences tidak tabrakan/mulai dari 1 lagi setelah import bawa nomor
+// historis. Format lain (beda dari yang sedang dikonfigurasi, atau tidak dikenali) tetap
+// diterima sebagai string biasa, cuma tidak ikut proses lanjutan counter — dicatat sebagai
+// batasan yang diterima, lihat docs/arsitektur-gabung-forum.md § 4b.
+//
+// Invers PERSIS dari formatForumMembershipNumber() (lib/forum-membership-number.ts) — kalau
+// formula generate berubah di sana, fungsi ekstraksi di sini WAJIB ikut disesuaikan.
+export function extractSeqFromMembershipNumber(
+  raw: string,
+  format: ForumMembershipNumberFormat,
+): number | null {
+  const s = raw.trim();
+  switch (format) {
+    case "year_seq":
+    case "month_year_seq":
+    case "joinyear_gradyear_seq": {
+      // Ketiga preset ini selalu "<prefix>.<seq>" — seq = semua digit setelah titik TERAKHIR
+      // (bukan regex 4-digit-tetap — robust kalau seq pernah tembus >99999, padStart(5) cuma
+      // menjamin MINIMAL 5 digit, bukan maksimal).
+      const m = s.match(/\.(\d+)$/);
+      return m ? parseInt(m[1], 10) : null;
+    }
+    case "year_birthdate_seq": {
+      // Tanpa separator: `${year:4}${birthDDMMYYYY:8}${seq:min5}` — seq = SISA string setelah
+      // 12 karakter pertama (4 tahun + 8 tanggal lahir), BUKAN "5 karakter terakhir" (salah
+      // kalau seq pernah tembus >99999, string jadi lebih panjang dari 17 karakter).
+      if (s.length < 13 || !/^\d+$/.test(s)) return null;
+      const seqPart = s.slice(12);
+      return seqPart ? parseInt(seqPart, 10) : null;
+    }
+  }
 }
 
 // ── Provinsi: normalisasi non-breaking space (artefak umum hasil copy-paste) ────────

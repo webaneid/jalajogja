@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
   db,
@@ -17,16 +17,21 @@ import {
   syncAutoTenantMemberships,
   encryptPii,
   hashPiiForLookup,
+  createTenantDb,
+  getSetting,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess }   from "@/lib/permissions";
 import { normalizePhone }  from "@/lib/phone";
 import { hashPassword }    from "better-auth/crypto";
+import { hasPaymentRequirement } from "@/lib/membership-config";
+import { generateForumMembershipNumber } from "@/lib/forum-membership-number.server";
 import type { BusinessSector } from "@/lib/business-sectors";
 import type {
   BusinessCategory, BusinessLegality, BusinessPosition,
   BusinessEmployees, BusinessBranches, BusinessRevenue,
 } from "@/lib/business-form-options";
+import type { MembershipConfigData } from "../settings/actions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 // Catatan: phone/email/address sudah dipindah ke helper tables (contacts, addresses)
@@ -124,16 +129,33 @@ export async function createMemberAction(
       })
       .returning({ id: members.id });
 
-    // Catat keanggotaan di tenant ini. forumStatus HANYA relevan untuk tenant forum. STANDAR
-    // KETAT (dikunci user 2026-07-31, § 22.5 docs/arsitektur-import-anggota.md): "active" HANYA
-    // kalau member ini PUNYA Nomor Keanggotaan — form tambah manual ini TIDAK PUNYA field untuk
-    // isi nomor sama sekali, jadi member yang ditambah lewat sini SELALU tetap "pending" (belum
-    // resmi jadi anggota forum) sampai nomornya diberikan lewat jalur lain (import yang
-    // membawa nomor, atau member itu sendiri join manual via /gabung nanti — yang generate
-    // nomor "urutan berikutnya" secara sah karena join real-time). Nomor TIDAK PERNAH
-    // di-generate di titik ini — supaya urutan nomor tetap merepresentasikan histori
-    // pendaftaran sesungguhnya, bukan angka karangan untuk data yang belum lengkap.
+    // Catat keanggotaan di tenant ini. forumStatus HANYA relevan untuk tenant forum.
+    // REVISI 2026-09-17 (docs/arsitektur-gabung-forum.md § 2/§ 5, superseded sebagian dari
+    // § 22.5 docs/arsitektur-import-anggota.md YANG KHUSUS bagian createMemberAction — § 22.5
+    // untuk IMPORT EXCEL TETAP TIDAK BERUBAH): admin tambah 1 anggota manual sekarang IKUT
+    // config campaign wajib forum ini — kalau campaign wajib → tetap "pending" (menunggu
+    // bayar+approve, sama seperti self-join berbayar), kalau TIDAK ada kewajiban campaign →
+    // langsung "active" (tindakan admin dianggap otoritatif, sama seperti import yang sudah
+    // punya nomor) + generate Nomor Keanggotaan sekali (reuse generator yang sama persis
+    // dipakai joinForumAction/activateForumMembershipIfApplicable).
     const isForumTenant = access.tenant.tenantType === "forum";
+    let forumStatus: "pending" | "active" | null = null;
+    let membershipNumber: string | null = null;
+
+    if (isForumTenant) {
+      const tenantDb = createTenantDb(slug);
+      const config = await getSetting<MembershipConfigData>(tenantDb, "membership_config", "forum");
+      const paymentRequired = hasPaymentRequirement(config);
+      forumStatus = paymentRequired ? "pending" : "active";
+      if (!paymentRequired && config?.membershipNumberFormat) {
+        membershipNumber = await generateForumMembershipNumber({
+          tenantId: access.tenant.id,
+          memberId: newMember.id,
+          format:   config.membershipNumberFormat,
+          joinDate: new Date(),
+        });
+      }
+    }
 
     await db.insert(tenantMemberships).values({
       tenantId: access.tenant.id,
@@ -142,7 +164,9 @@ export async function createMemberAction(
       joinedAt: data.joinedAt ?? null,
       registeredVia: "admin",
       membershipType: access.tenant.tenantType,
-      forumStatus: isForumTenant ? "pending" : null,
+      forumStatus,
+      membershipNumber,
+      approvedAt: forumStatus === "active" ? new Date() : null,
     });
 
     // Auto-sync keanggotaan ke tenant PC IKPM Cabang & Marhalah jika tenant tersebut ada & aktif
@@ -1026,6 +1050,181 @@ export async function activateMemberAccountAction(
     console.error("[activateMemberAccountAction]", err);
     const msg = err instanceof Error ? err.message : "Gagal mengaktifkan akun.";
     return { success: false, error: msg };
+  }
+}
+
+// ── Aksi admin forum: Approve/Tolak/Suspend/Aktifkan Kembali ──────────────────────
+// Kapabilitas MANUAL opsional (docs/arsitektur-gabung-forum.md § 5) — TIDAK mengubah alur
+// default joinForumAction/activateForumMembershipIfApplicable, yang tetap berjalan tanpa
+// approval gate. Guard identik di keempatnya: tenant harus forum, baris target harus
+// genuinely membershipType='forum' milik tenant ini (JANGAN percaya memberId mentah dari
+// client tanpa scope tenant). Baca+cek+tulis dibungkus SATU transaksi dengan row lock
+// (`FOR UPDATE`, pola sama generateForumMembershipNumber()) — mencegah race double-klik
+// admin memproses baris yang sama dua kali secara bersamaan (mis. approve 2x paralel
+// menghasilkan 2 Nomor Keanggotaan ter-generate untuk 1 orang).
+type ForumMembershipRow = { id: string; forumStatus: string | null; membershipNumber: string | null };
+
+async function loadForumMembershipForUpdate(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  tenantId: string,
+  memberId: string,
+): Promise<ForumMembershipRow | null> {
+  const [row] = await tx
+    .select({
+      id:          tenantMemberships.id,
+      forumStatus: tenantMemberships.forumStatus,
+      membershipNumber: tenantMemberships.membershipNumber,
+    })
+    .from(tenantMemberships)
+    .where(sql`${tenantMemberships.tenantId} = ${tenantId}
+      AND ${tenantMemberships.memberId} = ${memberId}
+      AND ${tenantMemberships.membershipType} = 'forum'
+      FOR UPDATE`)
+    .limit(1);
+  return row ?? null;
+}
+
+export async function approveForumMembershipAction(
+  slug: string, memberId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota")) return { success: false, error: "Akses ditolak." };
+  if (access.tenant.tenantType !== "forum") return { success: false, error: "Bukan tenant forum." };
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const row = await loadForumMembershipForUpdate(tx, access.tenant.id, memberId);
+      if (!row) return { success: false as const, error: "Anggota forum tidak ditemukan." };
+      if (row.forumStatus !== "pending") return { success: false as const, error: "Status saat ini bukan 'Menunggu Persetujuan'." };
+
+      let membershipNumber = row.membershipNumber;
+      if (!membershipNumber) {
+        const tenantDb = createTenantDb(slug);
+        const config = await getSetting<MembershipConfigData>(tenantDb, "membership_config", "forum");
+        if (config?.membershipNumberFormat) {
+          membershipNumber = await generateForumMembershipNumber({
+            tenantId: access.tenant.id,
+            memberId,
+            format:   config.membershipNumberFormat,
+            joinDate: new Date(),
+          });
+        }
+      }
+
+      await tx.update(tenantMemberships)
+        .set({ forumStatus: "active", membershipNumber, approvedAt: new Date(), updatedAt: new Date() })
+        .where(eq(tenantMemberships.id, row.id));
+
+      return { success: true as const };
+    });
+
+    if (result.success) {
+      revalidatePath(`/app/${slug}/members`);
+      revalidatePath(`/app/${slug}/members/${memberId}`);
+    }
+    return result;
+  } catch (err) {
+    console.error("[approveForumMembershipAction]", err);
+    return { success: false, error: "Gagal menyetujui keanggotaan." };
+  }
+}
+
+export async function rejectForumMembershipAction(
+  slug: string, memberId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota")) return { success: false, error: "Akses ditolak." };
+  if (access.tenant.tenantType !== "forum") return { success: false, error: "Bukan tenant forum." };
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const row = await loadForumMembershipForUpdate(tx, access.tenant.id, memberId);
+      if (!row) return { success: false as const, error: "Anggota forum tidak ditemukan." };
+      if (row.forumStatus !== "pending") return { success: false as const, error: "Status saat ini bukan 'Menunggu Persetujuan'." };
+
+      await tx.update(tenantMemberships)
+        .set({ forumStatus: "rejected", updatedAt: new Date() })
+        .where(eq(tenantMemberships.id, row.id));
+
+      return { success: true as const };
+    });
+
+    if (result.success) {
+      revalidatePath(`/app/${slug}/members`);
+      revalidatePath(`/app/${slug}/members/${memberId}`);
+    }
+    return result;
+  } catch (err) {
+    console.error("[rejectForumMembershipAction]", err);
+    return { success: false, error: "Gagal menolak keanggotaan." };
+  }
+}
+
+export async function suspendForumMembershipAction(
+  slug: string, memberId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota")) return { success: false, error: "Akses ditolak." };
+  if (access.tenant.tenantType !== "forum") return { success: false, error: "Bukan tenant forum." };
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const row = await loadForumMembershipForUpdate(tx, access.tenant.id, memberId);
+      if (!row) return { success: false as const, error: "Anggota forum tidak ditemukan." };
+      if (row.forumStatus !== "active") return { success: false as const, error: "Status saat ini bukan 'Aktif'." };
+
+      await tx.update(tenantMemberships)
+        .set({ forumStatus: "suspended", updatedAt: new Date() })
+        .where(eq(tenantMemberships.id, row.id));
+
+      return { success: true as const };
+    });
+
+    if (result.success) {
+      revalidatePath(`/app/${slug}/members`);
+      revalidatePath(`/app/${slug}/members/${memberId}`);
+    }
+    return result;
+  } catch (err) {
+    console.error("[suspendForumMembershipAction]", err);
+    return { success: false, error: "Gagal menangguhkan keanggotaan." };
+  }
+}
+
+export async function reactivateForumMembershipAction(
+  slug: string, memberId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getTenantAccess(slug);
+  if (!access) return { success: false, error: "Akses ditolak." };
+  if (!hasFullAccess(access.tenantUser, "anggota")) return { success: false, error: "Akses ditolak." };
+  if (access.tenant.tenantType !== "forum") return { success: false, error: "Bukan tenant forum." };
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const row = await loadForumMembershipForUpdate(tx, access.tenant.id, memberId);
+      if (!row) return { success: false as const, error: "Anggota forum tidak ditemukan." };
+      if (row.forumStatus !== "suspended") return { success: false as const, error: "Status saat ini bukan 'Ditangguhkan'." };
+
+      // TIDAK generate ulang membershipNumber — nomor lama dipertahankan (pola sama
+      // "member yang sempat suspended lalu aktif lagi TIDAK dapat nomor baru" di joinForumAction).
+      await tx.update(tenantMemberships)
+        .set({ forumStatus: "active", updatedAt: new Date() })
+        .where(eq(tenantMemberships.id, row.id));
+
+      return { success: true as const };
+    });
+
+    if (result.success) {
+      revalidatePath(`/app/${slug}/members`);
+      revalidatePath(`/app/${slug}/members/${memberId}`);
+    }
+    return result;
+  } catch (err) {
+    console.error("[reactivateForumMembershipAction]", err);
+    return { success: false, error: "Gagal mengaktifkan kembali keanggotaan." };
   }
 }
 

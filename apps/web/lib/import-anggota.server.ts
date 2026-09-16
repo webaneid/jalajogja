@@ -403,7 +403,7 @@ export async function buildPreviewRow(
   if (pcCabangRaw && !primaryCabangRefId) notes.push(`PC IKPM Cabang tidak dikenali (harus persis salah satu daftar baku): "${pcCabangRaw}"`);
 
   // ── Nomor Keanggotaan (opsional, khusus tenant forum — lihat commitImportAction) ──
-  // Diterima apa adanya, tidak divalidasi format — lihat comment extractYearSeqFromMembershipNumber.
+  // Diterima apa adanya, tidak divalidasi format — lihat comment extractSeqFromMembershipNumber.
   const membershipNumber = (raw["nomor keanggotaan"] ?? "").trim() || null;
 
   // ── Kontak ──

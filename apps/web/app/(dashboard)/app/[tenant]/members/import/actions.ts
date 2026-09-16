@@ -5,12 +5,14 @@ import { revalidatePath } from "next/cache";
 import {
   db, members, contacts, addresses, socialMedias, memberBusinesses, tenantMemberships,
   importBatches, importBatchRows, generateMemberNumber, forumMembershipSequences,
-  syncAutoTenantMemberships,
+  syncAutoTenantMemberships, createTenantDb, getSetting,
 } from "@jalajogja/db";
 import { getTenantAccess } from "@/lib/tenant";
 import { hasFullAccess } from "@/lib/permissions";
 import { parseXlsxBuffer, buildPreviewRow, computeMemberMergeCandidate } from "@/lib/import-anggota.server";
-import { extractYearSeqFromMembershipNumber, type ImportRowPreview } from "@/lib/import-anggota-mapping";
+import { extractSeqFromMembershipNumber, type ImportRowPreview } from "@/lib/import-anggota-mapping";
+import type { ForumMembershipNumberFormat } from "@/lib/forum-membership-number";
+import type { MembershipConfigData } from "../../settings/actions";
 
 // ─── Parse & Preview ─────────────────────────────────────────────────────────
 
@@ -171,6 +173,16 @@ export async function commitImportAction(
   // nomor tetap merepresentasikan histori pendaftaran yang sesungguhnya — bukan angka yang
   // dikarang untuk menutupi data yang belum lengkap.
   const isForumTenant = access.tenant.tenantType === "forum";
+
+  // Format nomor keanggotaan forum YANG SEDANG DIKONFIGURASI admin — dipakai HANYA untuk
+  // ekstraksi sequence saat melanjutkan counter (§ 4b docs/arsitektur-gabung-forum.md), BUKAN
+  // untuk validasi/reformat nomor yang diimport (itu tetap apa adanya, lihat § 22.5 di atas).
+  let membershipNumberFormat: ForumMembershipNumberFormat | null = null;
+  if (isForumTenant) {
+    const tenantDb = createTenantDb(slug);
+    const config = await getSetting<MembershipConfigData>(tenantDb, "membership_config", "forum");
+    membershipNumberFormat = config?.membershipNumberFormat ?? null;
+  }
 
   let inserted = 0;
   let merged = 0;
@@ -418,9 +430,9 @@ export async function commitImportAction(
       // writtenMembershipNumber = nomor yang BENAR-BENAR tertulis di baris ini (baik dari
       // insert baru MAUPUN backfill ke tenant_membership existing) — bukan preview.membershipNumber
       // mentah, supaya lanjutan counter tetap benar untuk kedua jalur.
-      if (isForumTenant && writtenMembershipNumber) {
-        const parsed = extractYearSeqFromMembershipNumber(writtenMembershipNumber);
-        if (parsed && parsed.seq > maxImportedSeq) maxImportedSeq = parsed.seq;
+      if (isForumTenant && writtenMembershipNumber && membershipNumberFormat) {
+        const seq = extractSeqFromMembershipNumber(writtenMembershipNumber, membershipNumberFormat);
+        if (seq !== null && seq > maxImportedSeq) maxImportedSeq = seq;
       }
       await db.update(importBatchRows)
         .set({ status: "inserted", memberId: finalMemberId })
@@ -440,9 +452,11 @@ export async function commitImportAction(
   // MembershipNumber() untuk join /gabung BERIKUTNYA) tidak otomatis tahu soal ini. Tanpa
   // langkah ini, join pertama pasca-import akan mulai dari seq=1 lagi — nabrak seq yang
   // sudah dipakai anggota lama (mis. "2017.00001") meski string lengkapnya beda karena
-  // prefix tahun beda. HANYA berlaku kalau nomor yang diimport formatnya "TAHUN.URUTAN"
-  // (extractYearSeqFromMembershipNumber) — format lain diterima sebagai teks tapi tidak ikut
-  // proses lanjutan counter ini (tidak ada cara generik melanjutkan format yang tidak
+  // prefix tahun beda. Berlaku untuk SEMUA 4 preset format nomor forum yang sedang dikonfigurasi
+  // admin (extractSeqFromMembershipNumber, § 4b docs/arsitektur-gabung-forum.md) — kalau string
+  // yang diimport TIDAK cocok bentuk preset yang sedang aktif (mis. admin pernah ganti preset,
+  // atau data historis dari skema penomoran lama), baris itu diterima sebagai teks tapi tidak
+  // ikut proses lanjutan counter ini (tidak ada cara generik melanjutkan format yang tidak
   // dikenal). Pola locking SAMA PERSIS generateForumMembershipNumber() (SELECT FOR UPDATE)
   // — hanya MAJU (GREATEST), tidak pernah mundur kalau counter sudah lebih tinggi dari batch
   // import ini (mis. sudah ada join manual sebelum import ini jalan).
