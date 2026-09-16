@@ -2063,61 +2063,82 @@ ini. Nol migrasi DB (semua kolom/flag yang dipakai sudah ada sejak sesi-sesi seb
    yang menambah anggota manual akan melihat badge hijau "Aktif" padahal `forumStatus`-nya masih
    `"pending"` (belum resmi, belum dapat nomor keanggotaan).
 
-### 2. Dua Sumbu Status yang Harus Dipisah Tegas (jawab pertanyaan user)
+> **Putaran diskusi susulan (2026-09-17)** — user menjelaskan state machine lengkap sebelum
+> desain dikunci final. 4 poin forum + 1 poin cabang/marhalah, dikonfirmasi via `AskUserQuestion`
+> (3 pertanyaan) sebelum ditulis di bawah. Isi § 2–9 di bawah adalah versi FINAL hasil putaran
+> ini — menggantikan draft pertama (dua-badge-terpisah) yang sempat ditulis di commit sebelumnya.
 
-Ini jawaban langsung untuk *"status yg blm claim keanggotaan tapi itu sudah sebagai anggota
-resmi sebenarnya tp blm claim keanggotaan ini statusnya bgmn"* — ternyata ada **DUA sumbu
-independen** yang selama ini bercampur jadi satu kolom "Status", dan keduanya BUKAN hal yang
-sama:
+### 2. Empat Alur Aktivasi Forum + Satu Alur Cabang/Marhalah (dikunci user, 2026-09-17)
 
-| Sumbu | Kolom sumber | Makna | Nilai |
+| Alur | `forum_status` saat dibuat | Butuh klaim akun? | Skip syarat campaign? |
 |---|---|---|---|
-| **A. Status keanggotaan forum** | `tenant_memberships.forum_status` | Sudah resmi anggota forum atau belum, dari sisi alur join/approval | `pending` \| `active` \| `suspended` \| `rejected` |
-| **B. Klaim akun login** | `members.better_auth_user_id` | Orang ini SUDAH resmi tercatat sebagai anggota (baris `tenant_memberships` ADA), tapi apakah dia sudah pernah login/klaim akun sama sekali | `NULL` = belum klaim, terisi = sudah klaim |
+| **Self-join** (`/gabung`, klik "Gabung Forum") — TANPA campaign wajib | `active` langsung | Tidak — orangnya sudah login untuk bisa klik | — |
+| **Self-join** — DENGAN campaign wajib (`hasPaymentRequirement`) | `pending` → `active` setelah bayar+admin approve (`activateForumMembershipIfApplicable`) | Tidak — sudah login | Tidak, ini justru alur campaign-nya |
+| **Admin tambah 1 anggota manual** (`members/new`) | Ikut config campaign forum: **wajib** → `pending` (sama seperti self-join berbayar); **tidak wajib** → `active` langsung (otoritatif, admin yang input) | Ya, kalau `active` langsung (member belum tentu pernah login) | Ya, kalau tidak ada kewajiban campaign |
+| **Import Excel massal** | `active` HANYA kalau baris itu SUDAH punya Nomor Keanggotaan (dari Excel atau DB) — **kebijakan ini TIDAK BERUBAH**, lihat § 3 di bawah | Ya, selalu (baris import tidak pernah otomatis dianggap sudah login) | Ya, unconditional — import tidak pernah lewat alur campaign |
+| **Cabang/Marhalah** (`register`, admin add, import) | *(pakai `status` generik, bukan `forum_status`)* — `active` ditulis langsung seperti sekarang, TAPI label "Aktif" di `/members` di-override jadi "Data Belum Lengkap" selama `checkMemberEligibility(memberId, [])` belum lolos (§ 8) | Sama seperti forum — dicek terpisah, independen | — |
 
-Kasus yang dimaksud user (*"sudah sebagai anggota resmi sebenarnya tp blm claim keanggotaan"*)
-persis Sumbu B: member yang datanya masuk lewat **import massal** atau **admin tambah manual**
-— baris `tenant_memberships` SUDAH ada (resmi tercatat), tapi `members.better_auth_user_id`
-masih `NULL` karena orangnya belum pernah register/login sama sekali. Ini **independen** dari
-Sumbu A — kombinasi keduanya bisa apa saja: member bisa `forumStatus=active` (sudah admin
-approve manual) TAPI tetap belum pernah klaim akun (Sumbu B `NULL`), atau sebaliknya sudah klaim
-akun tapi `forumStatus` masih `pending`.
+**Forum yang self-join/campaign — TIDAK pernah "Pending Claim"**: karena keduanya mensyaratkan
+orang sudah login (klik dari `/akun`), `better_auth_user_id` pasti sudah terisi di titik itu.
+"Pending Claim" HANYA relevan untuk baris yang dibuat SECARA ADMINISTRATIF tanpa orangnya hadir
+sendiri (admin manual-add tanpa campaign, atau import Excel dengan nomor) — dua-duanya legitimately
+bisa `forum_status=active` TAPI `better_auth_user_id` masih `NULL`.
 
-**Keputusan desain**: JANGAN digabung jadi satu kolom "Status" seperti sekarang. Tampilkan
-sebagai **dua badge terpisah** di `/members` — badge Sumbu A pakai label forum yang benar
-(bukan "Aktif" generik), badge Sumbu B ("Belum Klaim Akun", warna redup) **hanya muncul kalau
-`better_auth_user_id IS NULL`** — pola sama dengan `forumMembershipNumber` yang "hanya render
-kalau ada nilai" (§ "Nomor Keanggotaan Lokal Forum" di atas), supaya tidak menambah noise untuk
-kasus normal (sudah klaim).
+### 3. "Pending Claim" — Label Tampilan Saja, TIDAK Ada Nilai `forum_status` Baru (dikunci)
 
-**Cakupan Sumbu B**: konsepnya BUKAN spesifik forum (`better_auth_user_id` berlaku untuk
-cabang/marhalah juga — member hasil import CSV di cabang manapun bisa saja belum pernah login).
-Badge "Belum Klaim Akun" ditambahkan **universal ke `/members` semua tipe tenant** (query cost
-nihil — tinggal ikut `select` `members.betterAuthUserId`), bukan cuma forum. Yang forum-spesifik
-HANYA kolom No. ID Forum + filter/badge Sumbu A.
+Dikonfirmasi via `AskUserQuestion`: **BUKAN** nilai enum baru di DB — `forum_status` tetap
+`'active'` untuk baris ini, nol migrasi. "Pending Claim" murni **override label di UI** yang
+dihitung real-time: `forum_status === 'active' && better_auth_user_id === null` → tampilkan
+"Pending Claim" alih-alih "Aktif". Begitu member klaim akun (register/login, `better_auth_
+user_id` terisi), label otomatis balik jadi "Aktif" di render berikutnya — tidak ada state yang
+perlu di-update manual di mana pun.
 
-### 3. Label & Warna Badge `forum_status` (Sumbu A)
+**Prioritas badge Status — SATU badge per baris, bukan ditumpuk** (revisi dari draft pertama
+"dua badge terpisah" — ternyata untuk forum, override klaim akun MENGGANTIKAN label forum_status,
+bukan berdampingan dengannya, supaya tidak ada 2 badge redundan bilang hal yang sama):
 
-| `forum_status` | Label | Warna |
-|---|---|---|
-| `pending` | Menunggu Persetujuan | kuning/amber |
-| `active` | Aktif | hijau |
-| `suspended` | Ditangguhkan | oranye |
-| `rejected` | Ditolak | merah |
-| `NULL` (baris non-forum) | *(pakai badge `status` generik lama, tidak berubah)* | — |
+```
+forum_status = 'pending'   → "Menunggu Persetujuan"  (belum aktif sama sekali, klaim akun tidak relevan dulu)
+forum_status = 'active'  + belum klaim akun → "Pending Claim"   (OVERRIDE — prioritas tertinggi)
+forum_status = 'active'  + sudah klaim akun → "Aktif"
+forum_status = 'suspended' → "Ditangguhkan"
+forum_status = 'rejected'  → "Ditolak"
+```
 
-Untuk tenant `cabang`/`marhalah`, kolom "Status" di `/members` **TIDAK BERUBAH SAMA SEKALI** —
-tetap badge `status` generik (Aktif/Tidak Aktif/Alumni) seperti sekarang. Percabangan render
-murni berdasar `access.tenant.tenantType === "forum"` (data-driven, sama pola yang sudah dipakai
-`forumMembershipNumber` di kartu mobile `/akun` — bukan pengecekan baru yang aneh).
+Kolom "Akun" TERPISAH (kecil, redup, di bawah/samping nama) tetap ada untuk kasus `pending`/
+`suspended`/`rejected` yang JUGA belum klaim akun (mis. admin add manual dengan campaign wajib,
+belum bayar, DAN belum pernah login sama sekali) — supaya info klaim tidak hilang sepenuhnya
+untuk state selain `active`. Untuk baris yang statusnya sudah "Pending Claim" (override di atas),
+badge "Akun" terpisah ini TIDAK usah dirender lagi di baris yang sama (sudah terwakili di badge
+utama, hindari redundan).
 
-### 4. Aksi Admin Baru — Approve/Suspend, OPSIONAL (bukan gate wajib)
+### 4. ⚠️ Perlu Konfirmasi — Import Excel: Rekonsiliasi dengan § 22.5 `arsitektur-import-anggota.md`
+
+Sebelum menulis rencana ini saya cek dokumen import (§ 22.5, 2026-07-31) — ada keputusan LAMA
+yang sudah dikunci ketat dan pernah di-revert sekali karena implementasi awalnya salah paham:
+*"kalau kosong berarti blm terdaftar, hanya anggota dengan nomor id saja yg otomatis jadi
+anggota... kita pakai standard ketat gitu agar urutannya tidak berubah."* — yaitu: baris Excel
+TANPA kolom Nomor Keanggotaan terisi TETAP `pending` selamanya (tidak pernah auto-generate nomor
+saat import, beda dari `/gabung` yang generate real-time).
+
+**Interpretasi saya (kemungkinan besar TIDAK ada kontradiksi, tapi perlu kamu konfirmasi)**:
+pernyataan hari ini *"kalau di import ... otomatis aktif ... tapi wajib klaim keanggotaan"*
+kemungkinan besar berbicara soal baris yang **Excel-nya SUDAH punya Nomor Keanggotaan** (skenario
+yang MEMANG sudah `active` menurut § 22.5 yang ada) — kontribusi barunya di sini murni soal LABEL
+("Pending Claim" saat belum klaim akun), bukan mengubah kapan `forum_status` jadi `active`. Baris
+TANPA nomor di Excel tetap `pending` seperti § 22.5, sama sekali tidak tersentuh rencana ini.
+**Kalau interpretasi ini salah** — kalau maksudmu SEMUA baris forum hasil import (nomor kosong
+ataupun tidak) harus langsung `active` — itu perlu diskusi ulang eksplisit dulu karena mengubah
+keputusan yang sudah pernah direvert satu kali sebelumnya (§ 22.5), bukan sesuatu yang saya
+putuskan sendiri di sini.
+
+### 5. Aksi Admin Baru — Approve/Suspend, OPSIONAL (bukan gate wajib)
 
 > User eksplisit: *"sementara memang tidak perlu approval admin, tapi dipastikan bahwa admin
 > bisa approving bahkan men-suspend user jika diperlukan"* — jadi ini kapabilitas MANUAL yang
-> tersedia kalau admin butuh, BUKAN mengubah alur default. `joinForumAction` (self-join, auto
-> `forum_status="active"`) dan `activateForumMembershipIfApplicable` (settlement pembayaran)
-> **TIDAK disentuh sama sekali** — tetap langsung aktif seperti sekarang, tanpa approval gate.
+> tersedia kalau admin butuh, BUKAN mengubah alur default. `joinForumAction` (self-join) dan
+> `activateForumMembershipIfApplicable` (settlement pembayaran) **TIDAK disentuh** — tetap
+> seperti sekarang.
 
 4 Server Action baru di `members/actions.ts` (pola sama `changeUserPasswordAction` yang sudah
 ada — guard tenant + permission dulu, lalu validasi baris target genuinely `membershipType
@@ -2141,84 +2162,113 @@ reactivateForumMembershipAction(slug, memberId)  // suspended → active
 
 Guard wajib di keempatnya (urutan sama semua):
 1. `getTenantAccess(slug)` + `hasFullAccess(access.tenantUser, "anggota")`
-2. `access.tenant.tenantType === "forum"` — tolak kalau bukan tenant forum (aksi ini tidak
-   relevan untuk cabang/marhalah)
+2. `access.tenant.tenantType === "forum"` — tolak kalau bukan tenant forum
 3. Baris `tenant_memberships` target genuinely `tenantId = access.tenant.id AND membershipType
-   = 'forum'` — JANGAN percaya `memberId` mentah dari client tanpa scope tenant (pola yang sama
-   berulang kali dikunci di CLAUDE.md § Security)
+   = 'forum'` — JANGAN percaya `memberId` mentah dari client tanpa scope tenant
 4. Transisi status hanya dari state yang valid (mis. `approveForumMembershipAction` cuma jalan
-   kalau `forumStatus === 'pending'`, tolak dengan pesan jelas kalau tidak) — cegah race/klik
-   ganda menghasilkan state aneh
+   kalau `forumStatus === 'pending'`) — cegah race/klik ganda menghasilkan state aneh
 
 `revalidatePath(/app/${slug}/members)` di setiap aksi, sama pola existing.
 
-**Tidak ada "Perpanjang" (dari desain v1 lama)** — itu untuk iuran tahunan (`expires_at`),
-fitur billing forum belum ada sama sekali (§ "Integrasi Billing" masih rencana), di luar scope
-penutupan gap ini. Dicatat sebagai limitasi eksplisit, bukan terlewat.
+**Tidak ada "Perpanjang"** (v1 lama, untuk iuran tahunan `expires_at`) — billing forum belum ada
+sama sekali, di luar scope. **`createMemberAction` (admin tambah manual) perlu diperbaiki** —
+saat ini SELALU hardcode `forumStatus: "pending"` tanpa cek config; per § 2 di atas harus jadi
+payment-requirement-aware:
+```typescript
+const config = await getSetting<MembershipConfigData>(tenantDb, "membership_config", "forum");
+const paymentRequired = isForumTenant && hasPaymentRequirement(config);
+// paymentRequired → "pending" (sama seperti sekarang); !paymentRequired → "active" langsung
+// (+ generate membershipNumber sekali kalau format dikonfigurasi, reuse generator yang sama).
+```
 
-### 5. Perubahan UI `/members` (list) — khusus tenant forum
+### 6. Perubahan UI `/members` (list)
 
-- **Kolom tabel baru** (dirender kondisional `tenantType === "forum"`, disisipkan sebelum
-  kolom Status): **"No. ID Forum"** — `membershipNumber ?? "—"`, font-mono kecil (pola sama
-  kolom "No. Anggota" yang sudah ada).
-- **Kolom "Status"** — untuk forum, ganti sumber dari `status` generik ke `forumStatus`
-  (§ 3 di atas untuk label/warna).
-- **Badge tambahan "Belum Klaim Akun"** — universal semua tipe tenant, kecil, redup, muncul
-  di bawah/samping nama HANYA kalau `betterAuthUserId` `NULL` (§ 2).
-- **Filter status** — untuk forum, chip filter (`Semua`/`active`/`inactive`/`alumni`) diganti
-  jadi (`Semua`/`Menunggu Persetujuan`/`Aktif`/`Ditangguhkan`/`Ditolak`) yang query terhadap
-  `forumStatus`, bukan `status`. Cabang/marhalah — chip filter TIDAK berubah.
-- **Filter tambahan (checkbox terpisah, semua tipe tenant)**: "Hanya yang belum klaim akun" —
-  `WHERE members.better_auth_user_id IS NULL`, independen dari filter status manapun (bisa
-  dikombinasikan, mis. "Aktif" + "belum klaim akun" sekaligus untuk cari member resmi forum yang
-  perlu diingatkan klaim akun).
-- **Aksi baris** — untuk baris forum `pending`: tombol "Setujui" / "Tolak". Untuk `active`:
-  tombol "Tangguhkan". Untuk `suspended`: tombol "Aktifkan Kembali". `rejected`: tidak ada aksi
-  (state akhir, admin bisa reactivate manual lewat DB kalau genuinely perlu — di luar scope UI).
-  Konfirmasi inline (pola `delete-button.tsx` yang sudah ada — bukan modal baru).
+- **Kolom baru** (kondisional `tenantType === "forum"`, sebelum kolom Status): **"No. ID
+  Forum"** — `membershipNumber ?? "—"`, font-mono kecil (pola sama "No. Anggota").
+- **Kolom "Status"** — forum pakai badge prioritas § 3. Cabang/marhalah pakai badge § 8
+  (override "Data Belum Lengkap"). **Keduanya SATU badge**, bukan badge status + badge klaim
+  akun berdampingan (kecuali kasus non-`active` di § 3).
+- **Badge "Akun" terpisah** (redup, kecil) — universal semua tipe tenant, muncul kalau
+  `betterAuthUserId IS NULL` DAN badge Status utama BUKAN sudah "Pending Claim" (hindari
+  redundan, § 3).
+- **Filter status** — forum: (`Semua`/`Menunggu Persetujuan`/`Aktif`/`Pending Claim`/
+  `Ditangguhkan`/`Ditolak`) query terhadap `forum_status` + kondisi `betterAuthUserId`. Cabang/
+  marhalah: chip lama (Aktif/Tidak Aktif/Alumni) TIDAK berubah — "Data Belum Lengkap" bukan chip
+  filter baru, cuma override label (kalau nanti user minta filter terpisah untuk ini, susulan).
+- **Filter checkbox tambahan (semua tipe)**: "Hanya yang belum klaim akun" —
+  `WHERE members.better_auth_user_id IS NULL`, independen dari filter status.
+- **Aksi baris (forum saja)** — `pending`: "Setujui"/"Tolak". `active` (termasuk "Pending
+  Claim"): "Tangguhkan". `suspended`: "Aktifkan Kembali". `rejected`: tidak ada aksi UI.
+  Konfirmasi inline (pola `delete-button.tsx`).
 
-### 6. Perubahan `/members/{id}` (detail)
+### 7. Perubahan `/members/{id}` (detail)
 
-Query tambah `forumStatus`, `membershipNumber`, `members.betterAuthUserId` (3 field baru,
-sejajar `status`/`joinedAt`/`registeredVia` yang sudah ada). Render: badge status + No. ID Forum
-+ badge klaim akun sejajar info yang sudah ada, tombol aksi approve/suspend sama seperti di
-list (duplikasi UI kecil diterima — pola sama tombol Hapus yang sudah ada baik di list maupun
-detail).
+Query tambah `forumStatus`, `membershipNumber`, `members.betterAuthUserId`. Render: badge status
+(prioritas sama § 3/§ 8) + No. ID Forum + badge Akun kalau relevan, tombol aksi approve/suspend
+sama seperti di list.
 
-### 7. Yang TIDAK Berubah / Di Luar Scope
+### 8. Cabang/Marhalah — "Data Belum Lengkap" (RENCANA BARU, cross-tenant, BUKAN forum-spesifik)
+
+> Detail lengkap + keterkaitan dengan standar label `/akun` yang SUDAH ada (2026-07-24):
+> **`docs/arsitektur-akun.md` § "Standar Label Keanggotaan"** — dokumen ini cuma ringkasan
+> untuk konteks `/members`.
+
+User: *"keanggotaan marhalah dan ikpm cabang, statusnya akan benar2 aktif hanya ketika dia telah
+selesai melengkapi minimal data pribadi sampai step 2, selain data pendidikan."* Dikonfirmasi via
+`AskUserQuestion`: **murni label tampilan admin** — `tenant_memberships.status` TETAP ditulis
+`"active"` seperti sekarang di `register/route.ts` (nol perubahan ke insert/alur registrasi),
+NOL pembatasan akses/fungsi. Ini PURELY tentang apa yang admin LIHAT di `/members`.
+
+**Fungsi yang dipakai — SUDAH ADA, tidak perlu dibuat baru**: `checkMemberEligibility(memberId,
+[])` (`lib/member-eligibility.ts`) — array kosong = skip syarat "directory" (Usaha/Pesantren/
+Profesional, step 4). Kebetulan fungsi ini SUDAH TIDAK PERNAH mensyaratkan "Riwayat Pendidikan"
+(tabel multi-entry, step 3 wizard) — dia hanya cek `graduationYear` (field tunggal, step 1) —
+jadi cakupannya PERSIS "Step 1 + Step 2, kecuali Riwayat Pendidikan" tanpa perlu fungsi baru.
+Field yang dicek: gender, birthDate, graduationYear(+Period kalau 1999), professionId,
+waliSantri, primaryCabangRefId (semua Step 1) + domicileStatus, homeAddressId, phone, whatsapp,
+email (Step 2).
+
+**Override rule**: `status === "active" && !eligible` → badge "Data Belum Lengkap" (warna
+amber, sama urgency dengan forum "Menunggu Persetujuan") menggantikan "Aktif". `status ===
+"inactive"`/`"alumni"` → TIDAK di-override (state itu sendiri sudah eksplisit, tidak perlu
+kualifikasi tambahan).
+
+**PENTING — ini TIDAK menyentuh `resolveAkunBranding()`**: keputusan 2026-07-24 yang sudah
+dikunci (cabang/marhalah "ada baris `tenant_memberships` apa pun" tetap cukup untuk label
+"Anggota X" di KARTU MEMBER ITU SENDIRI di `/akun`) **TIDAK diubah** — itu untuk tampilan member
+melihat kartunya sendiri, beda audiens dari `/members` (tampilan ADMIN melihat daftar). Dua
+sistem label independen yang kebetulan pakai fungsi eligibility yang sama, TIDAK saling
+menimpa.
+
+### 9. Yang TIDAK Berubah / Di Luar Scope
 
 - Skema DB — **NOL migrasi baru**. Semua kolom (`forum_status`, `membership_number`,
-  `better_auth_user_id`) sudah ada sejak migration lama (`0018`, `0045`). Ini murni kerja
-  query+UI+server action baru.
-- `joinForumAction`, `activateForumMembershipIfApplicable`, alur `/gabung` — nol perubahan,
-  default tetap auto-active tanpa approval (dikunci eksplisit oleh user).
-- Iuran tahunan/"Perpanjang" (`expires_at`) — di luar scope, billing forum belum ada (§ 4).
-- Form edit member generik (`members/[id]/edit`) — dropdown `status` yang sudah ada di situ
-  TETAP untuk cabang/marhalah. Untuk forum, dropdown itu sekarang jadi vestigial/membingungkan
-  (status generik forum selalu "active", tidak lagi sumber kebenaran) — perlu diputuskan saat
-  implementasi apakah disembunyikan untuk tenant forum atau dibiarkan (dengan catatan/tooltip
-  bahwa ini bukan status forum yang sesungguhnya). **Belum diputuskan** — placeholder untuk
-  didiskusikan saat eksekusi, bukan diasumsikan sekarang.
+  `better_auth_user_id`) sudah ada. Murni kerja query+UI+server action.
+- `joinForumAction`, `activateForumMembershipIfApplicable`, alur `/gabung` — nol perubahan.
+- Import Excel (`import-anggota.server.ts`) — nol perubahan MENUNGGU konfirmasi § 4.
+- `resolveAkunBranding()` / label kartu `/akun` — nol perubahan (§ 8).
+- Iuran tahunan/"Perpanjang" (`expires_at`) — di luar scope, billing forum belum ada.
+- Form edit member generik (`members/[id]/edit`) — dropdown `status` TETAP untuk cabang/
+  marhalah. Untuk forum, jadi vestigial (forum pakai `forum_status`, bukan `status`) — perlu
+  diputuskan saat implementasi apakah disembunyikan untuk tenant forum. **Belum diputuskan.**
 
-### 8. File yang Disentuh (perkiraan)
+### 10. File yang Disentuh (perkiraan)
 
 | File | Perubahan |
 |---|---|
-| `app/(dashboard)/app/[tenant]/members/page.tsx` | Query tambah `forumStatus`/`membershipNumber`/`betterAuthUserId`; render kondisional per tenantType; filter chip forum-aware; filter checkbox klaim akun |
-| `app/(dashboard)/app/[tenant]/members/[id]/page.tsx` | Query + render sejajar (§ 6) |
-| `app/(dashboard)/app/[tenant]/members/actions.ts` | 4 action baru (§ 4) |
-| `app/(dashboard)/app/[tenant]/members/[id]/edit/page.tsx` (mungkin) | Keputusan dropdown status vestigial (§ 7) — kalau diputuskan disembunyikan |
+| `app/(dashboard)/app/[tenant]/members/page.tsx` | Query tambah `forumStatus`/`membershipNumber`/`betterAuthUserId`; render badge prioritas § 3/§ 8; filter chip forum-aware; filter checkbox klaim akun |
+| `app/(dashboard)/app/[tenant]/members/[id]/page.tsx` | Query + render sejajar (§ 7) |
+| `app/(dashboard)/app/[tenant]/members/actions.ts` | 4 action baru (§ 5) + fix `createMemberAction` payment-aware (§ 5) |
+| `app/(dashboard)/app/[tenant]/members/[id]/edit/page.tsx` (mungkin) | Keputusan dropdown status vestigial (§ 9) |
 
-### 9. Verifikasi Sebelum Dianggap Selesai
+### 11. Verifikasi Sebelum Dianggap Selesai
 
-- `bun run type-check` bersih (seperti biasa)
-- Skill `jalakarta-security-review` untuk 4 action baru (server action baru, wajib per
-  CLAUDE.md § Security) — fokus ke guard tenant-scope § 4 poin 3
-- Verifikasi manual: tenant forum (`forcreator`) — approve satu member pending → cek nomor
-  keanggotaan tergenerate, badge berubah; suspend member active → cek badge + tidak ikut hilang
-  dari daftar (masih perlu terlihat, cuma beda status); cabang (`pc-ikpm-jogjakarta` mana pun)
-  → pastikan tampilan `/members` TIDAK berubah sama sekali (regresi paling gampang lolos kalau
-  render kondisional salah tulis)
+- `bun run type-check` bersih
+- Skill `jalakarta-security-review` untuk action baru + perubahan `createMemberAction`
+- Verifikasi manual: forum (`forcreator`) — approve pending→active (nomor tergenerate), suspend
+  active, admin-add manual dengan & tanpa campaign wajib (cek forumStatus beda), import Excel
+  dengan & tanpa nomor (cek § 4 tidak berubah); cabang mana pun — member dengan data lengkap vs
+  belum lengkap tampil beda badge, TIDAK ada perubahan pada baris yang sudah lengkap
 
 ---
 

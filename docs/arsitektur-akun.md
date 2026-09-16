@@ -686,6 +686,13 @@ server dimatikan dulu, `.next` dibersihkan, direstart setelah build). Nol migras
 diverifikasi visual di browser oleh Claude — user yang punya tenant forum `forcreator` lokal
 perlu mengonfirmasi langsung.
 
+> **Terkait tapi TIDAK sama (2026-09-17, RENCANA belum dieksekusi)**: badge admin baru di
+> `/app/{slug}/members` ("Data Belum Lengkap" untuk cabang/marhalah, reuse `checkMemberEligibility
+> (memberId, [])` yang sama) — beda AUDIENS dari standar di atas (admin melihat daftar, bukan
+> member melihat kartu sendiri), TIDAK mengubah `resolveAkunBranding()` atau keputusan yang
+> dikunci di sini. Detail: `docs/arsitektur-gabung-forum.md` § "Admin Dashboard Forum — Menutup
+> Gap `/members`" → § 8.
+
 ### Eligibility Overlay Generik — Digeneralisasi ke Semua Tipe Tenant (2026-07-24, susulan)
 
 **Rangkaian 2 permintaan susulan dari user di sesi yang sama:**
