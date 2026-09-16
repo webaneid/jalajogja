@@ -1381,3 +1381,72 @@ Diperbaiki dengan bikin `flex-1`+`overflow-y-auto` di wrapper konten sidebar jad
 md:overflow-y-auto` (bukan dihapus — triknya tetap jalan di desktop). Detail lengkap alasan+cara
 di `docs/arsitektur-event.md` § "Susulan — Layout Create/Edit juga responsive", jangan
 diduplikasi di sini.
+
+### Susulan — Alamat Lengkap + Kode Pos + Ongkos Kirim di Daftar Pembeli/Export (RENCANA, 2026-09-17)
+
+> Diminta user setelah audit: *"selain status pembayaran saya butuh: 1. metode pengiriman...
+> 2. alamat lengkap orang itu, jika ada di pembelian waktu checkout ambil itu, dan kombinasikan
+> dengan data member. alamat lengkap yg tertulis, jadi lengkap dengan kode pos dll.. 3. terus
+> ongkos kirimnya brp."* Metode pengiriman (poin 1) **sudah ada** (`shippingLabel`, lihat
+> section di atas) — rencana ini HANYA menutup poin 2 dan 3.
+
+**Temuan audit — datanya sudah ada, cuma belum ditarik ke `resolveProductBuyers()`:**
+- `invoices.shippingAddress` (text) — "Alamat Detail" yang diisi user saat checkout.
+- `invoices.shippingCityName` (text) — hasil pencarian kelurahan RajaOngkir, **SUDAH SATU
+  STRING LENGKAP** `"Kelurahan, Kecamatan, Kabupaten, Provinsi, Kode Pos"` (bukan cuma nama
+  kota). Gabungan `[shippingAddress, shippingCityName].filter(Boolean).join(", ")` = alamat
+  lengkap+kodepos — pola PERSIS yang SUDAH dipakai di `toko/pesanan/invoice/[invoiceId]/
+  page.tsx:164`, tinggal direplikasi di `product-buyers.server.ts`, BUKAN logic baru.
+- `invoice_shipping_lines.cost` (numeric) — sudah di-`select` untuk hitung `shippingLabel`,
+  cuma kolom `cost`-nya sendiri belum ikut di-`select`.
+
+**Fallback "kombinasikan dengan data member" — keputusan desain (belum dikonfirmasi eksplisit
+oleh user, diasumsikan default paling aman, TANDAI untuk direview)**: `invoices.memberId`
+(hasil `resolveIdentity()` saat checkout, sudah ada) dipakai untuk fallback ke alamat member
+tersimpan (`public.members.homeAddressId → public.addresses`, helper `composeAddress()` yang
+sudah ada di `packages/db/src/helpers/resolve-checkout-contact.ts`) **HANYA kalau
+`shippingAddress` kosong total** (mis. invoice lama sebelum fitur OTP auto-fill dibangun, atau
+kasus deliveryMethod="pickup" yang memang tidak pernah minta alamat kirim) — checkout snapshot
+SELALU diutamakan kalau ada, tidak pernah ditimpa data member yang mungkin sudah berubah sejak
+transaksi itu terjadi (prinsip "snapshot saat transaksi" yang sudah dikunci berkali-kali di
+project ini, sama seperti harga produk di invoice_items tidak ikut berubah kalau harga produk
+diedit belakangan).
+
+**Kolom baru** (di `ProductBuyerRow`, tabel UI, dan export Excel — ketiganya, konsisten):
+1. **"Alamat Lengkap"** — string gabungan di atas (checkout snapshot, fallback data member).
+2. **"Ongkos Kirim"** — `invoice_shipping_lines.cost`, format Rupiah, `"Rp 0"` untuk pickup
+   (bukan dikosongkan — beda dari `totalDibayarkan` yang sengaja `""` untuk belum bayar, karena
+   `cost` SELALU punya nilai pasti terlepas status bayar, `""` di sini justru salah makna).
+
+**File yang disentuh:**
+```
+apps/web/lib/product-buyers.server.ts
+  → invoiceRows: tambah select shippingAddress, shippingCityName, memberId
+  → shippingLines: tambah select cost
+  → ProductBuyerRow: tambah field fullAddress (string), shippingCost (number)
+  → fallback data member: query public.members.homeAddressId → composeAddress() HANYA kalau
+    shippingAddress kosong DAN invoice.memberId ada (query tambahan per-row yang butuh
+    fallback — batch dengan Promise.all seperti pola checkMemberEligibility di fitur
+    /members sebelumnya, BUKAN N+1 query serial)
+
+apps/web/app/api/products/[id]/export-buyers/route.ts
+  → tambah 2 header kolom + mapping dataRows
+
+apps/web/components/toko/product-buyer-list.tsx
+  → tambah 2 kolom tabel UI (konsisten dengan export — user tidak minta eksplisit tapi
+    "3 atau 4 kolom" di pertanyaan awal mengindikasikan ingin lihat juga, bukan cuma export)
+```
+
+**Yang TIDAK berubah**: skema DB (nol migrasi — semua kolom sudah ada), `formatShippingMethod()`
+dan kolom "Cara Pengiriman" yang sudah ada (poin 1, tidak disentuh), mode dua-export (lunas/
+semua) yang sudah ada.
+
+**Verifikasi sebelum dianggap selesai**: `bun run type-check` bersih, skill
+`jalakarta-security-review` (route export sudah baca file MinIO-scale, tapi field baru murni
+tambahan kolom text/angka — fokus review ke query fallback member baru: JOIN yang benar,
+tidak bocor data member tenant lain — meski `public.members` memang lintas-tenant by design,
+pastikan tidak ada kebocoran field SENSITIF di luar alamat, mis. NIK), verifikasi manual: 1
+produk dengan invoice yang punya `shippingAddress` lengkap → cek gabungan alamat benar; 1
+invoice pickup (tanpa alamat) yang linked ke member dengan alamat tersimpan → cek fallback
+jalan; 1 invoice guest tanpa member link sama sekali dan tanpa alamat → cek kolom kosong "—"
+dengan aman (tidak crash).
